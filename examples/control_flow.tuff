@@ -1,0 +1,39 @@
+// Control flow - demonstrates if/else and while
+fn max(a: i32, b: i32) -> i32 {
+    if a > b {
+        return a;
+    } else {
+        return b;
+    }
+}
+
+fn min(a: i32, b: i32) -> i32 {
+    if a < b {
+        return a;
+    } else {
+        return b;
+    }
+}
+
+fn abs(x: i32) -> i32 {
+    if x < 0 {
+        return -x;
+    }
+    return x;
+}
+
+fn gcd(a: i32, b: i32) -> i32 {
+    while b != 0 {
+        let temp: i32 = b;
+        b = a % b;
+        a = temp;
+    }
+    return a;
+}
+
+fn main() -> i32 {
+    let m: i32 = max(10, 20);
+    let g: i32 = gcd(48, 18);
+    // max(10,20) = 20, gcd(48,18) = 6, sum = 26
+    return m + g;
+}

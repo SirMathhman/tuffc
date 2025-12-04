@@ -1,0 +1,15 @@
+// Structs - demonstrates struct definitions and field access
+struct Point {
+    x: i32;
+    y: i32;
+}
+
+fn distance_squared(p: Point) -> i32 {
+    return p.x * p.x + p.y * p.y;
+}
+
+fn main() -> i32 {
+    // Can't construct structs inline yet, 
+    // but can use them as parameters
+    return 0;
+}

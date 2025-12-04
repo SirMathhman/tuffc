@@ -1,0 +1,9 @@
+[package]
+name = "tuffc"
+version = "0.1.0"
+edition = "2021"
+description = "A self-hosted compiler for the Tuff programming language"
+license = "MIT"
+readme = "README.md"
+
+[dependencies]
