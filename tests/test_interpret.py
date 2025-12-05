@@ -417,6 +417,6 @@ def test_interpretAll_with_main_mapping():
 def test_interpretAll_with_use_statement():
     mapping = {
         "main": "use lib::x; x",
-        "lib": "let x = 100;",
+        "lib": "out let x = 100;",
     }
     assert interpretAll("main", mapping) == "100"

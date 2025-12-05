@@ -416,4 +416,3 @@ def interpretAll(name: str, mapping: dict[str, str]) -> str:
     env["__mapping__"] = mapping
     src = mapping[name]
     return interpret(src, env)
-
