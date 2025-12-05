@@ -1,6 +1,0 @@
-[tool.poetry]
-name = "tuffc"
-version = "0.1.0"
-
-[tool.pytest.ini_options]
-python_files = "tests.py test_*.py *_test.py"
