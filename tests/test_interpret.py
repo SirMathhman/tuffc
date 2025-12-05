@@ -27,6 +27,14 @@ def test_logical_or_false_false():
     assert interpret("false || false") == "false"
 
 
+def test_logical_and_true_false():
+    assert interpret("true && false") == "false"
+
+
+def test_logical_and_false_true():
+    assert interpret("false && true") == "false"
+
+
 def test_interpret_strips_u8_suffix():
     assert interpret("100U8") == "100"
 

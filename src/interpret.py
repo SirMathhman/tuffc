@@ -384,6 +384,20 @@ def interpret(s: str, env: dict | None = None) -> str:
         name = m_deref.group(1)
         return _pointers.try_deref_simple(name, env)
 
+    # Support short-circuit boolean AND operator `&&` when present at top-level
+    # AND has higher precedence than OR so handle it first. Evaluate left
+    # side and if it's `false` return immediately without evaluating the
+    # right side.
+    if "&&" in s:
+        parts = [p.strip() for p in s.split("&&")]
+        if len(parts) >= 2:
+            for i, part_expr in enumerate(parts):
+                val = interpret(part_expr, env)
+                if val == "false":
+                    return "false"
+                if i == len(parts) - 1:
+                    return "true"
+
     # Support short-circuit boolean OR operator `||` when present at top-level
     # (parentheses/braces have already been reduced). Evaluate left side and
     # if it's `true` return immediately without evaluating the right side.
