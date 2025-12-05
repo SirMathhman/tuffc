@@ -206,3 +206,7 @@ def test_declare_uninitialized_then_assign():
 
 def test_typed_declaration_trailing_returns_empty():
     assert interpret("let x : I32;") == ""
+
+
+def test_typeof_plain_integer_defaults_to_i32():
+    assert interpret("typeOf(100)") == "I32"

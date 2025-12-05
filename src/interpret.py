@@ -45,7 +45,9 @@ def interpret(s: str, env: dict | None = None) -> str:
                     if explicit:
                         for k, b in explicit:
                             if k.lower() != declared_kind or int(b) != declared_bits:
-                                raise ValueError("initializer suffixes must match declared type")
+                                raise ValueError(
+                                    "initializer suffixes must match declared type"
+                                )
 
                     # find identifiers used in initializer and ensure any typed
                     # variables referenced are compatible with the declared type
@@ -54,7 +56,9 @@ def interpret(s: str, env: dict | None = None) -> str:
                         if ident in env and env[ident][1] is not None:
                             kval, kkind, kbits = env[ident]
                             if kkind != declared_kind or kbits != declared_bits:
-                                raise ValueError("initializer references variable with incompatible type")
+                                raise ValueError(
+                                    "initializer references variable with incompatible type"
+                                )
 
                     val_str = interpret(init_expr, env)
                 else:
@@ -149,6 +153,47 @@ def interpret(s: str, env: dict | None = None) -> str:
                     last = interpret(part, env)
 
         return last if last is not None else ""
+
+    # Provide a `typeOf(expr)` convenience when the entire input is a
+    # typeOf(...) invocation. This must be handled before the generic
+    # parentheses evaluation (which would otherwise strip the parens).
+    m_typeof = re.match(r"^\s*typeOf\s*\((.*)\)\s*$", s)
+    if m_typeof:
+        inner = m_typeof.group(1).strip()
+
+        # If it's a simple identifier, look up its declared type.
+        if re.match(r"^[A-Za-z_]\w*$", inner):
+            if inner in env:
+                kind, bits = env[inner][1], env[inner][2]
+                if kind is None:
+                    # untyped variable defaults to I32 for integers
+                    val = env[inner][0]
+                    if isinstance(val, int):
+                        return "I32"
+                    return "F64"
+                return kind.upper() + str(bits)
+            # unknown identifier — treat as I32 by default
+            return "I32"
+
+        # If it's a numeric literal or expression, attempt to detect an
+        # explicit suffix like U8/I32/F32 in the text. Prefer explicit
+        # suffix when present.
+        # find U/I/F suffix matches (e.g. 2U8, 3.14F32)
+        explicit = re.findall(r"(?i)([uif])(\d+)\b", inner)
+        if explicit:
+            k, b = explicit[0]
+            return k.upper() + str(int(b))
+
+        # otherwise if it's a plain integer literal return I32, float -> F64
+        mnum = _LEADING_NUMBER.match(inner)
+        if mnum:
+            num = mnum.group(0)
+            if any(ch in num for ch in ".eE"):
+                return "F64"
+            return "I32"
+
+        # fallback
+        return "I32"
 
     # Evaluate innermost parenthesized expressions first, replacing them
     # with their evaluated result. This allows "(1 + 10) * 2U8" to become
