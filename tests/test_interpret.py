@@ -212,6 +212,14 @@ def test_block_local_scope_not_visible_outside():
         interpret("{let x = 100;} x")
 
 
+def test_mutable_outer_variable_modified_in_block():
+    assert interpret("let mut x = 0; {x = 10;} x") == "10"
+
+
+def test_mutable_outer_variable_modified_in_block_separate_parts():
+    assert interpret("let mut x = 0; {x = 10;}; x") == "10"
+
+
 def test_typed_initializer_from_incompatible_typed_variable_raises():
     import pytest
 

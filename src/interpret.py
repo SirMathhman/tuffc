@@ -262,7 +262,19 @@ def interpret(s: str, env: dict | None = None) -> str:
         inner = s[open_idx + 1 : close_idx]
         # Evaluate block contents in a local copy of the environment so
         # variables declared inside a `{ ... }` block do not leak out.
-        val = interpret(inner, env.copy())
+        # However, assignments to variables that already exist in the
+        # outer environment should affect the outer environment when the
+        # variable is assignable (e.g. `let mut x = 0; { x = 10; }`). To
+        # accomplish this propagate any changes for variables that were
+        # present in the outer env after evaluating the block.
+        child_env = env.copy()
+        val = interpret(inner, child_env)
+        # Propagate any modifications to variables that existed in the
+        # parent environment. New variables declared inside the block
+        # remain local to the child_env and are not copied out.
+        for nm, child_binding in child_env.items():
+            if nm in env and child_binding != env[nm]:
+                env[nm] = child_binding
         braced_occurred = True
         s = s[:open_idx] + val + s[close_idx + 1 :]
 
