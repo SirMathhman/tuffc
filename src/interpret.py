@@ -19,4 +19,14 @@ def interpret(s: str) -> str:
         raise TypeError("interpret expects a string")
 
     m = _LEADING_NUMBER.match(s)
-    return m.group(0) if m else s
+    if not m:
+        return s
+
+    prefix = m.group(0)
+    suffix = s[len(prefix) :]
+
+    # Negative numbers with an unsigned suffix (e.g. "-100U8") are invalid.
+    if suffix and suffix[0].lower() == "u" and prefix.startswith("-"):
+        raise ValueError("negative unsigned literal not allowed")
+
+    return prefix

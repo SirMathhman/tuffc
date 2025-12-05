@@ -21,3 +21,17 @@ def test_interpret_keeps_float_prefix():
 
 def test_interpret_non_numeric_unchanged():
     assert interpret("abc") == "abc"
+
+
+def test_negative_unsigned_raises():
+    import pytest
+
+    with pytest.raises(ValueError):
+        interpret("-100U8")
+
+
+def test_negative_unsigned_lowercase_raises():
+    import pytest
+
+    with pytest.raises(ValueError):
+        interpret("-42u16")
