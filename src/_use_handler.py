@@ -6,22 +6,26 @@ def try_handle_use_statement(s: str, env: dict) -> str | None:
     and return the trailing remainder. Otherwise return None.
 
     Supports:
-    - `use lib::x;` - loads lib module and extracts binding x into current scope
+    - `from lib use { x };` - loads lib module and extracts binding x into current scope
+    - `from lib use { x, y };` - extracts multiple bindings
     """
     stripped = s.lstrip()
-    if not stripped.startswith("use "):
+    if not stripped.startswith("from "):
         return None
 
-    # Parse: use module::binding;
+    # Parse: from module use { binding1, binding2, ... };
     m = re.match(
-        r"^\s*use\s+([A-Za-z_]\w*)::\s*([A-Za-z_]\w*)\s*;?\s*(.*)", s, re.DOTALL
+        r"^\s*from\s+([A-Za-z_]\w*)\s+use\s*\{([^}]+)\}\s*;?\s*(.*)", s, re.DOTALL
     )
     if not m:
         raise ValueError("invalid use statement")
 
     module_name = m.group(1)
-    binding_name = m.group(2)
+    bindings_str = m.group(2)
     remainder = m.group(3)
+
+    # Parse the bindings list
+    binding_names = [b.strip() for b in bindings_str.split(",") if b.strip()]
 
     # Get mapping from env
     mapping = env.get("__mapping__", {})
@@ -36,21 +40,21 @@ def try_handle_use_statement(s: str, env: dict) -> str | None:
     module_env = {"__mapping__": mapping, "__exported__": set()}
     interpret(module_code, module_env)
 
-    # Extract the binding from the module's environment
-    # Only extract if it was marked as exported with 'out'
-    if binding_name not in module_env:
-        raise ValueError(
-            f"binding '{binding_name}' not found in module '{module_name}'"
-        )
-
+    # Extract the bindings from the module's environment
     exported = module_env.get("__exported__", set())
-    if binding_name not in exported:
-        raise ValueError(
-            f"binding '{binding_name}' is not exported from module '{module_name}'"
-        )
+    for binding_name in binding_names:
+        if binding_name not in module_env:
+            raise ValueError(
+                f"binding '{binding_name}' not found in module '{module_name}'"
+            )
 
-    # Copy the binding into the current environment
-    env[binding_name] = module_env[binding_name]
+        if binding_name not in exported:
+            raise ValueError(
+                f"binding '{binding_name}' is not exported from module '{module_name}'"
+            )
+
+        # Copy the binding into the current environment
+        env[binding_name] = module_env[binding_name]
 
     # Return the remainder for further processing
     return remainder if remainder else ""
