@@ -22,8 +22,49 @@ def interpret(s: str, env: dict | None = None) -> str:
 
     # If input contains multiple statements separated by ';', evaluate them
     # sequentially and return the value of the last statement.
+    # Only treat s as multiple statements when there are top-level
+    # semicolons (not ones enclosed in parentheses/braces or strings).
+    parts = None
     if ";" in s:
-        parts = [p.strip() for p in s.split(";") if p.strip()]
+        parts = []
+        cur = []
+        depth = 0
+        in_string = False
+        i = 0
+        had_top_level = False
+        while i < len(s):
+            ch = s[i]
+            if ch == '"':
+                in_string = not in_string
+                cur.append(ch)
+            elif not in_string:
+                if ch in '({':
+                    depth += 1
+                    cur.append(ch)
+                elif ch in ')}':
+                    depth -= 1
+                    cur.append(ch)
+                elif ch == ';' and depth == 0:
+                    had_top_level = True
+                    part = ''.join(cur).strip()
+                    if part:
+                        parts.append(part)
+                    cur = []
+                else:
+                    cur.append(ch)
+            else:
+                cur.append(ch)
+            i += 1
+
+        last_part = ''.join(cur).strip()
+        if last_part:
+            parts.append(last_part)
+
+        if not had_top_level:
+            parts = None
+        
+    if parts is not None:
+        # parts was already prepared above; process each top-level part
         last = None
         for part in parts:
             if part.startswith("let "):

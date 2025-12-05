@@ -201,6 +201,10 @@ def test_braces_evaluate_inner_expression():
     assert interpret("{100}") == "100"
 
 
+def test_block_braces_with_statements():
+    assert interpret("{let x = 100; x}") == "100"
+
+
 def test_typed_initializer_from_incompatible_typed_variable_raises():
     import pytest
 
