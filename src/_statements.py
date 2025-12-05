@@ -14,9 +14,32 @@ def evaluate_statement_parts(parts: list[str], env: dict) -> str:
     i = 0
     while i < len(parts):
         part = parts[i]
+        # If this part starts an if-statement and it's a single-part if
+        # (no else present in the same part and next part does not begin
+        # with 'else'), evaluate the then-branch as statements.
+        if part.lstrip().startswith("if") and not part.lstrip().startswith("if"):
+            pass
+
         # If this part starts an if-statement and the next top-level part
         # begins with 'else', treat them together as a single if-statement
         # so branches can contain assignments or other statements.
+        # Handle an if-statement that is represented entirely within this
+        # part (i.e. `if (cond) stmt` with no else). We will execute the
+        # then-branch as statements when the condition is true.
+        if part.lstrip().startswith("if") and (i + 1 >= len(parts) or not parts[i + 1].lstrip().startswith("else")):
+            m_if_single = re.match(r"^\s*if\s*\((.*)\)\s*(.*)$", part)
+            if not m_if_single:
+                # Not a standalone single-part if, fall through
+                pass
+            else:
+                cond = m_if_single.group(1).strip()
+                then_expr = m_if_single.group(2).strip()
+                cond_val = interpret(cond, env)
+                if cond_val == "true":
+                    last = evaluate_statement_parts([then_expr], env)
+                i += 1
+                continue
+
         if part.lstrip().startswith("if") and i + 1 < len(parts) and parts[i + 1].lstrip().startswith("else"):
             # extract condition and then-expression from the 'if' part
             m_if = re.match(r"^\s*if\s*\((.*)\)\s*(.*)$", part)
