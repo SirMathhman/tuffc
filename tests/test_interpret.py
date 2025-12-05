@@ -182,6 +182,10 @@ def test_typeof_on_typed_variable_returns_declared():
     assert interpret("let x : U8 = 100; typeOf(x)") == "U8"
 
 
+def test_typeof_on_untyped_variable_defaults_to_i32():
+    assert interpret("let x = 100; typeOf(x)") == "I32"
+
+
 def test_typed_initializer_mismatched_signedness_raises():
     import pytest
 
