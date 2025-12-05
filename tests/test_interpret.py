@@ -46,3 +46,23 @@ def test_unsigned_overflow_raises():
 
 def test_unsigned_max_allowed():
     assert interpret("255U8") == "255"
+
+
+def test_signed_i8_bounds():
+    assert interpret("127I8") == "127"
+    assert interpret("-128I8") == "-128"
+
+
+def test_signed_i8_overflow_underflow():
+    import pytest
+
+    with pytest.raises(ValueError):
+        interpret("128I8")
+
+    with pytest.raises(ValueError):
+        interpret("-129I8")
+
+
+def test_signed_i16_boundaries():
+    assert interpret("32767I16") == "32767"
+    assert interpret("-32768I16") == "-32768"

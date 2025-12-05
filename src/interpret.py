@@ -29,23 +29,33 @@ def interpret(s: str) -> str:
     if suffix and suffix[0].lower() == "u" and prefix.startswith("-"):
         raise ValueError("negative unsigned literal not allowed")
 
-    # If suffix indicates an unsigned integer width (e.g. U8), validate range.
+    # If suffix indicates an integer width (e.g. U8 or I16), validate range.
     # Only validate integer numeric prefixes (no '.' or exponent).
-    if suffix and suffix[0].lower() == "u":
-        m_bits = re.match(r"^u(\d+)", suffix, re.IGNORECASE)
+    if suffix and suffix[0].lower() in ("u", "i"):
+        m_bits = re.match(r"^[ui](\d+)", suffix, re.IGNORECASE)
         if m_bits:
             # ensure prefix is an integer literal
             if any(ch in prefix for ch in ".eE"):
-                raise ValueError("unsigned literal must be integer")
+                raise ValueError("integer-suffixed literal must be integer")
 
             bits = int(m_bits.group(1))
-            max_val = (1 << bits) - 1 if bits > 0 else 0
+            if bits <= 0:
+                raise ValueError("invalid integer width")
+
             try:
                 val = int(prefix, 10)
             except ValueError:
                 raise ValueError("invalid integer literal")
 
-            if val < 0 or val > max_val:
-                raise ValueError("unsigned literal out of range")
+            if suffix[0].lower() == "u":
+                max_val = (1 << bits) - 1
+                if val < 0 or val > max_val:
+                    raise ValueError("unsigned literal out of range")
+            else:
+                # signed: range is -(2^(bits-1)) .. 2^(bits-1)-1
+                max_pos = (1 << (bits - 1)) - 1
+                min_neg = - (1 << (bits - 1))
+                if val < min_neg or val > max_pos:
+                    raise ValueError("signed literal out of range")
 
     return prefix
