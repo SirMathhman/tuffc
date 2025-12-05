@@ -117,3 +117,7 @@ def test_plain_plus_u32_overflow():
     # adding a plain integer to a max-U32 should still obey U32 range
     with pytest.raises(ValueError):
         interpret("4294967295 + 1U32")
+
+
+def test_plain_integer_addition():
+    assert interpret("1 + 2") == "3"

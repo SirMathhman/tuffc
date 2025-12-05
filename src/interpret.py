@@ -48,12 +48,26 @@ def interpret(s: str) -> str:
         # Accept cases where either operand has an integer suffix and the
         # other is unsuffixed. Extract type/width for each operand and
         # enforce that the resulting effective types match.
-        m_left_bits = re.match(r"^[ui](\d+)", left_suffix, re.IGNORECASE) if left_suffix else None
-        m_right_bits = re.match(r"^[ui](\d+)", suffix2, re.IGNORECASE) if suffix2 else None
+        m_left_bits = (
+            re.match(r"^[ui](\d+)", left_suffix, re.IGNORECASE) if left_suffix else None
+        )
+        m_right_bits = (
+            re.match(r"^[ui](\d+)", suffix2, re.IGNORECASE) if suffix2 else None
+        )
 
-        # If neither has a suffix, we cannot perform typed integer addition here
+        # If neither side has a suffix, treat this as a plain integer addition
+        # (e.g., "1 + 2"). Require integer-like prefixes and return the sum.
         if not (m_left_bits or m_right_bits):
-            raise ValueError("both operands lack integer width suffix")
+            if any(ch in prefix for ch in ".eE") or any(ch in prefix2 for ch in ".eE"):
+                raise ValueError("integer addition requires integer literals")
+
+            try:
+                v1 = int(prefix, 10)
+                v2 = int(prefix2, 10)
+            except ValueError:
+                raise ValueError("invalid integer literal")
+
+            return str(v1 + v2)
 
         # determine effective kind/bits: prefer explicit, otherwise inherit
         if m_left_bits:
@@ -65,7 +79,9 @@ def interpret(s: str) -> str:
 
         # if both sides have explicit suffixes they must match
         if m_left_bits and m_right_bits:
-            if left_suffix[0].lower() != suffix2[0].lower() or int(m_left_bits.group(1)) != int(m_right_bits.group(1)):
+            if left_suffix[0].lower() != suffix2[0].lower() or int(
+                m_left_bits.group(1)
+            ) != int(m_right_bits.group(1)):
                 raise ValueError("mismatched operand types")
 
         # ensure integer prefixes (no '.' or exponent)
