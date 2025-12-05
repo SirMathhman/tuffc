@@ -205,6 +205,13 @@ def test_block_braces_with_statements():
     assert interpret("{let x = 100; x}") == "100"
 
 
+def test_block_local_scope_not_visible_outside():
+    import pytest
+
+    with pytest.raises(ValueError):
+        interpret("{let x = 100;} x")
+
+
 def test_typed_initializer_from_incompatible_typed_variable_raises():
     import pytest
 
