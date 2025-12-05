@@ -1,6 +1,7 @@
 """
 Arithmetic expression evaluation helpers for the interpreter.
 """
+
 import re
 
 
@@ -10,16 +11,16 @@ _LEADING_NUMBER = re.compile(r"^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?")
 def evaluate_arithmetic(s: str, env: dict) -> str:
     """
     Evaluate arithmetic expressions with +, -, * operators.
-    
+
     Parses multi-term expressions, respects operator precedence (* before +/-),
     and validates type consistency (all suffixes must match).
-    
+
     Returns the evaluated result as a string.
     """
     m = _LEADING_NUMBER.match(s)
     if not m:
         return None  # Not an arithmetic expression
-    
+
     prefix = m.group(0)
     suffix = s[len(prefix) :]
 
@@ -69,9 +70,7 @@ def evaluate_arithmetic(s: str, env: dict) -> str:
             pos += op_idx + 1
 
     # If none of the terms carry a [ui]<bits> suffix, perform plain integer sum.
-    explicit = [
-        t for t in terms if re.match(r"^[ui]\d+", t[1].strip(), re.IGNORECASE)
-    ]
+    explicit = [t for t in terms if re.match(r"^[ui]\d+", t[1].strip(), re.IGNORECASE)]
     if not explicit:
         # ensure all are integer-like prefixes
         for num, _suf in terms:
@@ -101,9 +100,7 @@ def evaluate_arithmetic(s: str, env: dict) -> str:
     # At least one term has an explicit suffix; determine effective kind/bits
     kinds_bits = []
     for num, suf in terms:
-        m_bits = (
-            re.match(r"^[ui](\d+)", suf.strip(), re.IGNORECASE) if suf else None
-        )
+        m_bits = re.match(r"^[ui](\d+)", suf.strip(), re.IGNORECASE) if suf else None
         if m_bits:
             kinds_bits.append((suf.strip()[0].lower(), int(m_bits.group(1))))
 
