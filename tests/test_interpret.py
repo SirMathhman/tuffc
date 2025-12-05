@@ -62,6 +62,10 @@ def test_compound_add_assign_immutable_raises():
         interpret("let x = 0; x += 1;")
 
 
+def test_while_loop_increments_until_condition():
+    assert interpret("let mut x = 0; while (x < 2) x += 1; x") == "2"
+
+
 def test_interpret_strips_u8_suffix():
     assert interpret("100U8") == "100"
 

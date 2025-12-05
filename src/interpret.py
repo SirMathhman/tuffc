@@ -130,15 +130,15 @@ def interpret(s: str, env: dict | None = None) -> str:
             if ch == '"':
                 in_string = not in_string
             elif not in_string:
-                if ch == '(':
+                if ch == "(":
                     depth += 1
-                elif ch == ')':
+                elif ch == ")":
                     depth -= 1
                     if depth == 0:
                         break
             j += 1
 
-        if j >= len(s) or s[j] != ')':
+        if j >= len(s) or s[j] != ")":
             raise ValueError("unmatched parentheses in if condition")
 
         cond = s[i + 1 : j].strip()
@@ -152,15 +152,15 @@ def interpret(s: str, env: dict | None = None) -> str:
             if ch == '"':
                 in_string = not in_string
             elif not in_string:
-                if ch in '{(':
+                if ch in "{(":
                     depth += 1
-                elif ch in '})':
+                elif ch in "})":
                     if depth > 0:
                         depth -= 1
                 elif s.startswith("else", k) and depth == 0:
                     # ensure 'else' is a standalone token
-                    before = s[k - 1] if k - 1 >= 0 else ' '
-                    after = s[k + 4] if k + 4 < len(s) else ' '
+                    before = s[k - 1] if k - 1 >= 0 else " "
+                    after = s[k + 4] if k + 4 < len(s) else " "
                     if before.isspace() and after.isspace():
                         else_pos = k
                         break
@@ -240,6 +240,38 @@ def interpret(s: str, env: dict | None = None) -> str:
     logical_result = _logic.evaluate_logical(s, env)
     if logical_result is not None:
         return logical_result
+
+    # Support simple comparison operators at top level: ==, !=, <=, >=, <, >
+    mcmp = re.match(r"^\s*(.+?)\s*(==|!=|<=|>=|<|>)\s*(.+)\s*$", s)
+    if mcmp:
+        left = mcmp.group(1).strip()
+        op = mcmp.group(2)
+        right = mcmp.group(3).strip()
+        lv = interpret(left, env)
+        rv = interpret(right, env)
+        # Try numeric comparison first
+        try:
+            ln = int(lv, 10)
+            rn = int(rv, 10)
+            if op == "==":
+                return "true" if ln == rn else "false"
+            if op == "!=":
+                return "true" if ln != rn else "false"
+            if op == "<":
+                return "true" if ln < rn else "false"
+            if op == ">":
+                return "true" if ln > rn else "false"
+            if op == "<=":
+                return "true" if ln <= rn else "false"
+            if op == ">=":
+                return "true" if ln >= rn else "false"
+        except ValueError:
+            # fallback to string comparison
+            if op == "==":
+                return "true" if lv == rv else "false"
+            if op == "!=":
+                return "true" if lv != rv else "false"
+            return "false"
 
     # substitute variables from env into the expression
     if env:

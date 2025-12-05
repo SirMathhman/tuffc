@@ -20,6 +20,29 @@ def evaluate_statement_parts(parts: list[str], env: dict) -> str:
         if part.lstrip().startswith("if") and not part.lstrip().startswith("if"):
             pass
 
+        # while loops: `while (cond) stmt` where stmt is a single top-level part
+        if part.lstrip().startswith("while"):
+            m_while = re.match(r"^\s*while\s*\((.*)\)\s*(.*)$", part)
+            if not m_while:
+                raise ValueError("invalid while statement")
+            cond = m_while.group(1).strip()
+            body = m_while.group(2).strip()
+            # Loop until condition false. Evaluate cond via interpret.
+            while True:
+                cond_val = interpret(cond, env)
+                if cond_val == "false":
+                    break
+                if cond_val != "true":
+                    try:
+                        if int(cond_val, 10) == 0:
+                            break
+                    except Exception:
+                        break
+                # execute body as a statement (may be assignment or block)
+                evaluate_statement_parts([body], env)
+            i += 1
+            continue
+
         # If this part starts an if-statement and the next top-level part
         # begins with 'else', treat them together as a single if-statement
         # so branches can contain assignments or other statements.
