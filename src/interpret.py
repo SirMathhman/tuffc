@@ -381,3 +381,18 @@ def interpret(s: str, env: dict | None = None) -> str:
                     raise ValueError("signed literal out of range")
 
     return prefix
+
+
+def interpretAll(name: str, key: str, mapping: dict[str, str]) -> str:
+    """Stub: interpret all items in `mapping` using provided name/key.
+
+    Parameters:
+    - name: parameter name used when interpreting items
+    - key: key name used when interpreting items
+    - mapping: dict[str, str] mapping input names to expressions
+
+    Returns:
+    - string: placeholder return value for now
+    """
+    # TODO: implement interpret-all behavior
+    return ""
