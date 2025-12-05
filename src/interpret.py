@@ -25,6 +25,69 @@ def interpret(s: str) -> str:
     prefix = m.group(0)
     suffix = s[len(prefix) :]
 
+    # Support simple two-term integer addition like "100U32 + 200U32".
+    # If there's a plus sign after the first operand's suffix, parse the
+    # right-hand operand and compute the result when both sides have
+    # matching integer suffixes (same signedness and width).
+    if "+" in suffix:
+        plus_pos = suffix.find("+")
+        left_suffix = suffix[:plus_pos].strip()
+        right_part = suffix[plus_pos + 1 :].strip()
+
+        # rebuild exact operand strings
+        left_full = prefix + left_suffix
+
+        # parse second operand's leading number and suffix
+        m2 = _LEADING_NUMBER.match(right_part)
+        if not m2:
+            raise ValueError("invalid right-hand operand")
+
+        prefix2 = m2.group(0)
+        suffix2 = right_part[len(prefix2) :]
+
+        # both operands must use integer suffixes
+        if not (left_suffix and left_suffix[0].lower() in ("u", "i") and suffix2 and suffix2[0].lower() in ("u", "i")):
+            raise ValueError("both operands must be integer-suffixed")
+
+        m_left_bits = re.match(r"^[ui](\d+)", left_suffix, re.IGNORECASE)
+        m_right_bits = re.match(r"^[ui](\d+)", suffix2, re.IGNORECASE)
+        if not (m_left_bits and m_right_bits):
+            raise ValueError("invalid integer width in operands")
+
+        # must match type and width
+        if left_suffix[0].lower() != suffix2[0].lower() or int(m_left_bits.group(1)) != int(m_right_bits.group(1)):
+            raise ValueError("mismatched operand types")
+
+        # ensure integer prefixes (no '.' or exponent)
+        if any(ch in prefix for ch in ".eE") or any(ch in prefix2 for ch in ".eE"):
+            raise ValueError("integer addition requires integer literals")
+
+        bits = int(m_left_bits.group(1))
+
+        try:
+            v1 = int(prefix, 10)
+            v2 = int(prefix2, 10)
+        except ValueError:
+            raise ValueError("invalid integer literal")
+
+        # check negative unsigned (already validated for left, validate right)
+        if left_suffix[0].lower() == "u" and (v1 < 0 or v2 < 0):
+            raise ValueError("negative unsigned literal not allowed")
+
+        result = v1 + v2
+
+        if left_suffix[0].lower() == "u":
+            max_val = (1 << bits) - 1
+            if result < 0 or result > max_val:
+                raise ValueError("unsigned literal out of range")
+        else:
+            max_pos = (1 << (bits - 1)) - 1
+            min_neg = -(1 << (bits - 1))
+            if result < min_neg or result > max_pos:
+                raise ValueError("signed literal out of range")
+
+        return str(result)
+
     # Negative numbers with an unsigned suffix (e.g. "-100U8") are invalid.
     if suffix and suffix[0].lower() == "u" and prefix.startswith("-"):
         raise ValueError("negative unsigned literal not allowed")

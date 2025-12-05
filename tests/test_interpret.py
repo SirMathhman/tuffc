@@ -78,3 +78,15 @@ def test_signed_i16_boundaries():
 
 def test_quoted_string_preserved():
     assert interpret('"test"') == '"test"'
+
+
+def test_add_unsigned_u32():
+    assert interpret("100U32 + 200U32") == "300"
+
+
+def test_add_unsigned_u32_overflow():
+    import pytest
+
+    # 2^32 - 1 is max for U32
+    with pytest.raises(ValueError):
+        interpret("4294967295U32 + 1U32")
