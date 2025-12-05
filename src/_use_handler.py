@@ -63,6 +63,8 @@ def try_handle_use_statement(s: str, env: dict) -> str | None:
     module_code = mapping[module_name]
     
     # First pass: interpret to collect input declarations
+    # During this pass, the in_handler will bind dummy values (0) for input variables
+    # so that other statements in the module don't fail
     module_env = {"__mapping__": mapping, "__exported__": set(), "__inputs__": {}}
     interpret(module_code, module_env)
     

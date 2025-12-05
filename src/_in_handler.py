@@ -25,6 +25,14 @@ def handle_in_keyword(part: str, env: dict) -> str | None:
             var_type = m_in.group(2)
             inputs[var_name] = var_type
             env["__inputs__"] = inputs
+            
+            # Bind variable only if it doesn't already exist (e.g., from second pass)
+            if var_name not in env:
+                # During first pass, bind a dummy value (0) so other code can reference it
+                kind = var_type[0].lower()
+                bits = int(var_type[1:]) if len(var_type) > 1 else None
+                env[var_name] = (0, kind, bits, False)
+            
             # Consume the entire 'in let' declaration
             return ""
 
