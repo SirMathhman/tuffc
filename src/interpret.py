@@ -1,7 +1,7 @@
 import re
 
 from ._arithmetic import evaluate_arithmetic, _LEADING_NUMBER
-from . import _pointers
+from . import _pointers, _logic
 
 
 def interpret(s: str, env: dict | None = None) -> str:
@@ -64,234 +64,9 @@ def interpret(s: str, env: dict | None = None) -> str:
             parts = None
 
     if parts is not None:
-        # parts was already prepared above; process each top-level part
-        last = None
-        for part in parts:
-            if part.startswith("let "):
-                # typed with initializer: `let [mut] name : U8 = expr`
-                # Support typed declarations including pointer types such as
-                # `let name : *I32 = &other;` as well as plain integer types
-                # like `let name : I32 = 10`.
-                m = re.match(
-                    r"let\s+(mut\s+)?([A-Za-z_]\w*)\s*:\s*(\*(?:\s*mut\s*)?[uUiI]\d+|[uUiI]\d+)\s*=\s*(.+)",
-                    part,
-                )
-                if m:
-                    mut_flag = bool(m.group(1))
-                    name = m.group(2)
-                    type_spec = m.group(3)
-                    init_expr = m.group(4).strip()
-                    # If this is a typed declaration with an initializer,
-                    # ensure any explicit suffixes or typed variables in the
-                    # initializer match the declared type (kind and width).
-                    declared_kind = type_spec[0].lower()
-                    # If this is a pointer type the first character is '*'
-                    # followed by the pointed type kind and width. Normalize
-                    # pointer declarations into a `declared_kind` of '*'
-                    # while `declared_bits` is the pointed width.
-                    if declared_kind == "*":
-                        # delegate pointer initializer handling to helper
-                        handled = _pointers.handle_typed_pointer_initializer(
-                            env, name, type_spec, init_expr, mut_flag
-                        )
-                        if handled:
-                            last = ""
-                            continue
-                    else:
-                        declared_bits = int(type_spec[1:])
+        from ._statements import evaluate_statement_parts
 
-                    # If declaring a pointer type, the initializer must be an
-                    # address-of of the form `&name`. Validate the target
-                    # variable exists and its type matches the pointed type.
-                    if declared_kind == "*":
-                        m_addr = re.match(
-                            r"^\s*&\s*(mut\s+)?([A-Za-z_]\w*)\s*$", init_expr
-                        )
-                        if not m_addr:
-                            raise ValueError(
-                                "pointer initializer must be &identifier or &mut identifier"
-                            )
-                        is_mut_addr = bool(m_addr.group(1))
-                        target = m_addr.group(2)
-                        if target not in env:
-                            raise ValueError("pointer to undeclared variable")
-                        tval, tkind, tbits, _ = env[target]
-                        # untyped value defaults to I32
-                        if tkind is None:
-                            tkind = "i"
-                            tbits = 32
-                        if tkind != pointed_kind or tbits != declared_bits:
-                            raise ValueError("pointer target type mismatch")
-                        # if initializer used &mut, require pointer type be mutable
-                        if is_mut_addr and not pointed_mut:
-                            raise ValueError(
-                                "cannot take &mut for non-mutable pointer type"
-                            )
-                        # if initializer uses &mut, ensure the target variable
-                        # is declared mutable.
-                        if is_mut_addr and not env[target][3]:
-                            raise ValueError(
-                                "cannot take &mut of an immutable variable"
-                            )
-                        # store pointer by keeping the target identifier as
-                        # the 'value' and mark the kind with a leading '*',
-                        # include 'mut' in the kind string when pointer is mutable
-                        ptr_kind = "*"
-                        if pointed_mut:
-                            ptr_kind += "mut"
-                        ptr_kind += pointed_kind
-                        env[name] = (target, ptr_kind, declared_bits, mut_flag)
-                        last = ""
-                        continue
-
-                    # find explicit suffixes like U8, i32, etc. in the init expr
-                    # find U/I suffixes even when attached to numeric prefixes (e.g. 2U8)
-                    explicit = re.findall(r"(?i)([ui])(\d+)\b", init_expr)
-                    if explicit:
-                        for k, b in explicit:
-                            if k.lower() != declared_kind or int(b) != declared_bits:
-                                raise ValueError(
-                                    "initializer suffixes must match declared type"
-                                )
-
-                    # find identifiers used in initializer and ensure any typed
-                    # variables referenced are compatible with the declared type
-                    idents = re.findall(r"\b([A-Za-z_]\w*)\b", init_expr)
-                    for ident in idents:
-                        if ident in env and env[ident][1] is not None:
-                            kval, kkind, kbits, _kmut = env[ident]
-                            # for pointer declarations the ident(s) we inspect
-                            # are expected to be plain variables (not pointer
-                            # types), so normalize any pointer kinds we
-                            # encounter for the comparison.
-                            if kkind and kkind.startswith("*"):
-                                kcomp = kkind[1:]
-                            else:
-                                kcomp = kkind
-                            if kcomp != declared_kind or kbits != declared_bits:
-                                raise ValueError(
-                                    "initializer references variable with incompatible type"
-                                )
-
-                    val_str = interpret(init_expr, env)
-                else:
-                    # typed without initializer: `let name : U8`
-                    m_typed_noinit = re.match(
-                        r"let\s+(mut\s+)?([A-Za-z_]\w*)\s*:\s*(\*(?:\s*mut\s*)?[uUiI]\d+|[uUiI]\d+)\s*$",
-                        part,
-                    )
-                    if m_typed_noinit:
-                        mut_flag = bool(m_typed_noinit.group(1))
-                        name = m_typed_noinit.group(2)
-                        type_spec = m_typed_noinit.group(3)
-                        # no initializer; store variable uninitialized
-                        if name in env:
-                            raise ValueError(f"variable '{name}' already declared")
-                        # allow pointer no-init handling via helper
-                        handled = _pointers.handle_typed_pointer_noinit(
-                            env, name, type_spec, mut_flag
-                        )
-                        if handled:
-                            last = ""
-                            continue
-                        # not a pointer type — fall through for normal handling
-                        kind = type_spec[0].lower()
-                        bits = int(type_spec[1:])
-                        if bits <= 0:
-                            raise ValueError("invalid integer width")
-                        # uninitialized declarations are considered assignable
-                        env[name] = (None, kind, bits, True)
-                        last = ""
-                        continue
-                    # support untyped let with initializer: `let name = expr`
-                    m2 = re.match(r"let\s+(mut\s+)?([A-Za-z_]\w*)\s*=\s*(.+)", part)
-                    if not m2:
-                        raise ValueError("invalid let statement")
-                    mut_flag = bool(m2.group(1))
-                    name = m2.group(2)
-                    type_spec = None
-                    init_expr = m2.group(3).strip()
-                    val_str = interpret(init_expr, env)
-                try:
-                    val = int(val_str, 10)
-                except ValueError:
-                    raise ValueError("invalid initializer for variable")
-
-                if type_spec is not None:
-                    kind = type_spec[0].lower()
-                    bits = int(type_spec[1:])
-                    if bits <= 0:
-                        raise ValueError("invalid integer width")
-
-                    if kind == "u":
-                        max_val = (1 << bits) - 1
-                        if val < 0 or val > max_val:
-                            raise ValueError("unsigned literal out of range")
-                    else:
-                        max_pos = (1 << (bits - 1)) - 1
-                        min_neg = -(1 << (bits - 1))
-                        if val < min_neg or val > max_pos:
-                            raise ValueError("signed literal out of range")
-
-                    if name in env:
-                        raise ValueError(f"variable '{name}' already declared")
-
-                    env[name] = (val, kind, bits, mut_flag)
-                else:
-                    if name in env:
-                        raise ValueError(f"variable '{name}' already declared")
-
-                    env[name] = (val, None, None, mut_flag)
-                # `let` statements don't produce a visible value when they are
-                # the final statement; return an empty string for those.
-                last = ""
-            else:
-                # assignment? match `name = expr`
-                # handle pointer-target assignment like '*p = expr'
-                handled, maybe_last = _pointers.try_deref_assign(part, env)
-                if handled:
-                    last = maybe_last
-                    continue
-                else:
-                    m_assign = re.match(r"^([A-Za-z_]\w*)\s*=\s*(.+)$", part)
-                    if m_assign:
-                        name = m_assign.group(1)
-                        expr = m_assign.group(2).strip()
-                        if name not in env:
-                            raise ValueError(
-                                f"assignment to undeclared variable '{name}'"
-                            )
-                        val_str = interpret(expr, env)
-                        try:
-                            val = int(val_str, 10)
-                        except ValueError:
-                            raise ValueError("invalid assignment value")
-
-                        # check typed variable range if applicable
-                        kind, bits = env[name][1], env[name][2]
-                        if kind is not None:
-                            if kind == "u":
-                                max_val = (1 << bits) - 1
-                                if val < 0 or val > max_val:
-                                    raise ValueError("unsigned literal out of range")
-                            else:
-                                max_pos = (1 << (bits - 1)) - 1
-                                min_neg = -(1 << (bits - 1))
-                                if val < min_neg or val > max_pos:
-                                    raise ValueError("signed literal out of range")
-
-                        # ensure assignment permitted: allow if variable is
-                        # uninitialized (value None) or if it is mutable
-                        prev_val, prev_kind, prev_bits, prev_mut = env[name]
-                        if prev_val is not None and not prev_mut:
-                            raise ValueError("assignment to immutable variable")
-
-                        env[name] = (val, kind, bits, prev_mut)
-                        last = str(val)
-                    else:
-                        last = interpret(part, env)
-
-        return last if last is not None else ""
+        return evaluate_statement_parts(parts, env)
 
     # Provide a `typeOf(expr)` convenience when the entire input is a
     # typeOf(...) invocation. This must be handled before the generic
@@ -333,6 +108,83 @@ def interpret(s: str, env: dict | None = None) -> str:
 
         # fallback
         return "I32"
+
+    # Support simple if-then-else expressions at top-level like
+    # `if (cond) then_expr else else_expr`. We parse the condition in
+    # parentheses and locate a top-level `else` to split the branches.
+    stripped = s.lstrip()
+    if stripped.startswith("if"):
+        # find the opening paren for the condition
+        i = s.find("if") + 2
+        while i < len(s) and s[i].isspace():
+            i += 1
+        if i >= len(s) or s[i] != "(":
+            raise ValueError("invalid if expression")
+
+        # find matching ')' for the condition
+        j = i
+        depth = 0
+        in_string = False
+        while j < len(s):
+            ch = s[j]
+            if ch == '"':
+                in_string = not in_string
+            elif not in_string:
+                if ch == '(':
+                    depth += 1
+                elif ch == ')':
+                    depth -= 1
+                    if depth == 0:
+                        break
+            j += 1
+
+        if j >= len(s) or s[j] != ')':
+            raise ValueError("unmatched parentheses in if condition")
+
+        cond = s[i + 1 : j].strip()
+        # find top-level 'else' after j
+        k = j + 1
+        depth = 0
+        in_string = False
+        else_pos = -1
+        while k < len(s):
+            ch = s[k]
+            if ch == '"':
+                in_string = not in_string
+            elif not in_string:
+                if ch in '{(':
+                    depth += 1
+                elif ch in '})':
+                    if depth > 0:
+                        depth -= 1
+                elif s.startswith("else", k) and depth == 0:
+                    # ensure 'else' is a standalone token
+                    before = s[k - 1] if k - 1 >= 0 else ' '
+                    after = s[k + 4] if k + 4 < len(s) else ' '
+                    if before.isspace() and after.isspace():
+                        else_pos = k
+                        break
+            k += 1
+
+        if else_pos == -1:
+            raise ValueError("if expression missing else branch")
+
+        then_expr = s[j + 1 : else_pos].strip()
+        else_expr = s[else_pos + 4 :].strip()
+
+        cond_val = interpret(cond, env)
+        # truthiness: explicit 'true'/'false' or numeric (non-zero true)
+        if cond_val == "true":
+            chosen = then_expr
+        elif cond_val == "false":
+            chosen = else_expr
+        else:
+            try:
+                chosen = then_expr if int(cond_val, 10) != 0 else else_expr
+            except Exception:
+                chosen = else_expr
+
+        return interpret(chosen, env)
 
     # Evaluate innermost parenthesized expressions first, replacing them
     # with their evaluated result. This allows "(1 + 10) * 2U8" to become
@@ -384,36 +236,10 @@ def interpret(s: str, env: dict | None = None) -> str:
         name = m_deref.group(1)
         return _pointers.try_deref_simple(name, env)
 
-    # Support short-circuit boolean AND operator `&&` when present at top-level
-    # AND has higher precedence than OR so handle it first. Evaluate left
-    # side and if it's `false` return immediately without evaluating the
-    # right side.
-    if "&&" in s:
-        parts = [p.strip() for p in s.split("&&")]
-        if len(parts) >= 2:
-            for i, part_expr in enumerate(parts):
-                val = interpret(part_expr, env)
-                if val == "false":
-                    return "false"
-                if i == len(parts) - 1:
-                    return "true"
-
-    # Support short-circuit boolean OR operator `||` when present at top-level
-    # (parentheses/braces have already been reduced). Evaluate left side and
-    # if it's `true` return immediately without evaluating the right side.
-    if "||" in s:
-        parts = [p.strip() for p in s.split("||")]
-        if len(parts) >= 2:
-            # evaluate left-to-right with short-circuiting
-            for i, part_expr in enumerate(parts):
-                val = interpret(part_expr, env)
-                if val == "true":
-                    return "true"
-                # if not true and it's the last part, result is false
-                if i == len(parts) - 1:
-                    return "false"
-            # fallback
-            return "false"
+    # Delegate logical operator handling to helper module (supports &&, ||).
+    logical_result = _logic.evaluate_logical(s, env)
+    if logical_result is not None:
+        return logical_result
 
     # substitute variables from env into the expression
     if env:

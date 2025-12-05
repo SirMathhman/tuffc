@@ -35,6 +35,14 @@ def test_logical_and_false_true():
     assert interpret("false && true") == "false"
 
 
+def test_if_expression_true_branch():
+    assert interpret("let x = if (true) 3 else 5; x") == "3"
+
+
+def test_if_expression_false_branch():
+    assert interpret("let x = if (false) 3 else 5; x") == "5"
+
+
 def test_interpret_strips_u8_suffix():
     assert interpret("100U8") == "100"
 
