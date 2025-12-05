@@ -35,3 +35,14 @@ def test_negative_unsigned_lowercase_raises():
 
     with pytest.raises(ValueError):
         interpret("-42u16")
+
+
+def test_unsigned_overflow_raises():
+    import pytest
+
+    with pytest.raises(ValueError):
+        interpret("256U8")
+
+
+def test_unsigned_max_allowed():
+    assert interpret("255U8") == "255"

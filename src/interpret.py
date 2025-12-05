@@ -29,4 +29,23 @@ def interpret(s: str) -> str:
     if suffix and suffix[0].lower() == "u" and prefix.startswith("-"):
         raise ValueError("negative unsigned literal not allowed")
 
+    # If suffix indicates an unsigned integer width (e.g. U8), validate range.
+    # Only validate integer numeric prefixes (no '.' or exponent).
+    if suffix and suffix[0].lower() == "u":
+        m_bits = re.match(r"^u(\d+)", suffix, re.IGNORECASE)
+        if m_bits:
+            # ensure prefix is an integer literal
+            if any(ch in prefix for ch in ".eE"):
+                raise ValueError("unsigned literal must be integer")
+
+            bits = int(m_bits.group(1))
+            max_val = (1 << bits) - 1 if bits > 0 else 0
+            try:
+                val = int(prefix, 10)
+            except ValueError:
+                raise ValueError("invalid integer literal")
+
+            if val < 0 or val > max_val:
+                raise ValueError("unsigned literal out of range")
+
     return prefix
