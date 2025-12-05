@@ -172,3 +172,7 @@ def test_multiple_parenthesized_subexpressions():
 def test_variable_declaration_and_lookup():
     expr = "let x : U8 = (1 + 10) * (2U8 + 3); x"
     assert interpret(expr) == "55"
+
+
+def test_let_trailing_returns_empty():
+    assert interpret("let x : U8 = 100;") == ""

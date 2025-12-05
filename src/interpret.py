@@ -55,7 +55,9 @@ def interpret(s: str, env: dict | None = None) -> str:
                         raise ValueError("signed literal out of range")
 
                 env[name] = (val, kind, bits)
-                last = str(val)
+                # `let` statements don't produce a visible value when they are
+                # the final statement; return an empty string for those.
+                last = ""
             else:
                 last = interpret(part, env)
 
