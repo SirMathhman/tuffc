@@ -45,7 +45,7 @@ def handle_struct_declaration(part: str, env: dict) -> tuple[str | None, str]:
         raise ValueError(f"struct '{sname}' already defined")
     types[sname] = fields
     env["__types__"] = types
-    
+
     # if there is trailing text after the struct decl, put it back
     rest = part[j + 1 :].strip()
     return rest, ""

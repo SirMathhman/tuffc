@@ -3,7 +3,7 @@ import re
 
 def handle_out_keyword(part: str, env: dict) -> str | None:
     """Handle 'out' keyword for exporting variables from modules.
-    
+
     Returns the remainder to process, or None if this wasn't an 'out' statement.
     """
     if not part.startswith("out "):

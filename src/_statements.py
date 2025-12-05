@@ -1,6 +1,7 @@
 import re
 from ._functions import ReturnSignal, register_function_from_part
 from ._out_handler import handle_out_keyword
+from ._in_handler import handle_in_keyword
 from ._struct_handler import handle_struct_declaration
 
 
@@ -212,7 +213,7 @@ def evaluate_statement_parts(parts: list[str], env: dict) -> str:
 
         part = parts[i]
         i += 1
-        
+
         # Handle 'out' keyword for exporting variables from modules
         remainder = handle_out_keyword(part, env)
         if remainder is not None:
@@ -220,7 +221,18 @@ def evaluate_statement_parts(parts: list[str], env: dict) -> str:
             parts[i - 1] = remainder
             i -= 1
             continue
-        
+
+        # Handle 'in' keyword for declaring module inputs
+        remainder = handle_in_keyword(part, env)
+        if remainder is not None:
+            # If remainder is empty, we've consumed the entire statement
+            if remainder == "":
+                continue
+            # Otherwise process the remainder
+            parts[i - 1] = remainder
+            i -= 1
+            continue
+
         if part.startswith("let "):
             m = re.match(
                 r"let\s+(mut\s+)?([A-Za-z_]\w*)\s*:\s*(\*(?:\s*mut\s*)?[uUiI]\d+|[uUiI]\d+)\s*=\s*(.+)",

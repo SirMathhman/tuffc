@@ -420,3 +420,11 @@ def test_interpretAll_with_use_statement():
         "lib": "out let x = 100;",
     }
     assert interpretAll("main", mapping) == "100"
+
+
+def test_interpretAll_with_module_input():
+    mapping = {
+        "main": "from lib { 100 } use x; x",
+        "lib": "in let value : I32; out let x = value;",
+    }
+    assert interpretAll("main", mapping) == "100"
