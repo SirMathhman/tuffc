@@ -97,3 +97,10 @@ def test_mixed_signedness_addition_raises():
 
     with pytest.raises(ValueError):
         interpret("1U8 + 2I8")
+
+
+def test_mixed_width_addition_raises():
+    import pytest
+
+    with pytest.raises(ValueError):
+        interpret("1U8 + 2U16")
