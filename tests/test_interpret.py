@@ -371,25 +371,18 @@ def test_simple_function_declaration_and_call():
 
 def test_function_with_expression_body_implicitly_returns():
     expr = (
-        "fn add(first : I32, second : I32) : I32 => { first + second } "
-        "add(10, 20)"
+        "fn add(first : I32, second : I32) : I32 => { first + second } " "add(10, 20)"
     )
     assert interpret(expr) == "30"
 
 
 def test_function_decl_no_braces_expression_body():
-    expr = (
-        "fn add(first : I32, second : I32) : I32 => first + second; "
-        "add(10, 20)"
-    )
+    expr = "fn add(first : I32, second : I32) : I32 => first + second; " "add(10, 20)"
     assert interpret(expr) == "30"
 
 
 def test_function_decl_without_return_spec():
-    expr = (
-        "fn add(first : I32, second : I32) => first + second; "
-        "add(10, 20)"
-    )
+    expr = "fn add(first : I32, second : I32) => first + second; " "add(10, 20)"
     assert interpret(expr) == "30"
 
 
@@ -404,3 +397,8 @@ def test_function_call_chain_forward_reference():
     # first calls second; second declared after first — call first() should succeed
     expr = "fn first() => second(); fn second() => 100; first()"
     assert interpret(expr) == "100"
+
+
+def test_method_call_on_primitive_i32():
+    expr = "impl I32 { fn addOne(this) => this + 1; } 100.addOne()"
+    assert interpret(expr) == "101"

@@ -36,6 +36,77 @@ def evaluate_statement_parts(parts: list[str], env: dict) -> str:
             val = interpret(expr, env)
             raise ReturnSignal(val)
         # Struct declaration: `struct Name { field : Type, ... }`
+        # Impl block: `impl Type { fn name(params...) => ... }` (methods)
+        if part.lstrip().startswith("impl "):
+            m_start = re.match(r"^\s*impl\s+([A-Za-z_]\w*)\s*\{", part)
+            if not m_start:
+                raise ValueError("invalid impl declaration")
+            tname = m_start.group(1)
+            open_idx = part.find("{", m_start.end() - 1)
+            depth = 0
+            j = open_idx
+            in_string = False
+            while j < len(part):
+                ch = part[j]
+                if ch == '"':
+                    in_string = not in_string
+                elif not in_string:
+                    if ch == '{':
+                        depth += 1
+                    elif ch == '}':
+                        depth -= 1
+                        if depth == 0:
+                            break
+                j += 1
+            if j >= len(part) or part[j] != '}':
+                raise ValueError("invalid impl declaration (unmatched brace)")
+
+            body = part[open_idx + 1 : j].strip()
+            # body may contain multiple function declarations separated by ';'
+            # iterate over top-level semicolon-separated fragments and register
+            from ._functions import register_method_from_part
+
+            cur = []
+            depth = 0
+            in_string = False
+            fragments = []
+            k = 0
+            while k < len(body):
+                ch = body[k]
+                if ch == '"':
+                    in_string = not in_string
+                    cur.append(ch)
+                elif not in_string:
+                    if ch in '{(':
+                        depth += 1
+                        cur.append(ch)
+                    elif ch in '})':
+                        depth -= 1
+                        cur.append(ch)
+                    elif ch == ';' and depth == 0:
+                        frag = ''.join(cur).strip()
+                        if frag:
+                            fragments.append(frag)
+                        cur = []
+                    else:
+                        cur.append(ch)
+                else:
+                    cur.append(ch)
+                k += 1
+            last_frag = ''.join(cur).strip()
+            if last_frag:
+                fragments.append(last_frag)
+
+            for frag in fragments:
+                register_method_from_part(tname, frag, env)
+
+            last = ""
+            rest = part[j + 1 :].strip()
+            if rest:
+                parts[i] = rest
+                continue
+            i += 1
+            continue
         if part.lstrip().startswith("struct "):
             # allow struct declaration possibly followed by other tokens
             m_start = re.match(r"^\s*struct\s+([A-Za-z_]\w*)\s*\{", part)

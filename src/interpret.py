@@ -2,7 +2,12 @@ import re
 
 from ._arithmetic import evaluate_arithmetic, _LEADING_NUMBER
 from . import _pointers, _logic
-from ._functions import try_handle_top_level_fn, try_evaluate_function_call
+from ._functions import (
+    try_handle_top_level_fn,
+    try_handle_top_level_impl,
+    try_evaluate_function_call,
+    try_evaluate_method_call,
+)
 
 
 def interpret(s: str, env: dict | None = None) -> str:
@@ -188,6 +193,8 @@ def interpret(s: str, env: dict | None = None) -> str:
         return interpret(chosen, env)
 
     rest_fn = try_handle_top_level_fn(s, env)
+    if rest_fn is None:
+        rest_fn = try_handle_top_level_impl(s, env)
     if rest_fn is not None:
         if rest_fn:
             return interpret(rest_fn, env)
@@ -231,14 +238,19 @@ def interpret(s: str, env: dict | None = None) -> str:
 
         inner = s[open_idx + 1 : close_idx]
 
-        fn_call = try_evaluate_function_call(s, open_idx, close_idx, env)
+        # check for method-style call first: obj.method(args)
+        fn_call = try_evaluate_method_call(s, open_idx, close_idx, env)
         if fn_call:
-            # parse arguments as top-level comma separated parts
             id_start, ret_val = fn_call
             s = s[:id_start] + ret_val + s[close_idx + 1 :]
         else:
-            val = interpret(inner, env)
-            s = s[:open_idx] + val + s[close_idx + 1 :]
+            fn_call = try_evaluate_function_call(s, open_idx, close_idx, env)
+            if fn_call:
+                id_start, ret_val = fn_call
+                s = s[:id_start] + ret_val + s[close_idx + 1 :]
+            else:
+                val = interpret(inner, env)
+                s = s[:open_idx] + val + s[close_idx + 1 :]
 
     # Support simple dereference expressions where the entire input is a
     # prefix '*' followed by an identifier (e.g. `*y`). This is intentionally
