@@ -33,6 +33,14 @@ def interpret(s: str, env: dict | None = None) -> str:
                     name = m.group(1)
                     type_spec = m.group(2)
                     init_expr = m.group(3).strip()
+                    # if the initializer contains any explicit integer suffixes
+                    # they must match the declared type_spec exactly
+                    suf_matches = re.findall(r"[uUiI]\d+\b", init_expr)
+                    if suf_matches:
+                        # normalize to a single representative like 'u8' or 'i32'
+                        normalized = {s.lower() for s in suf_matches}
+                        if len(normalized) != 1 or next(iter(normalized)).lower() != type_spec.lower():
+                            raise ValueError("mismatched initializer type")
                     val_str = interpret(init_expr, env)
                 else:
                     # typed without initializer: `let name : U8`
@@ -101,6 +109,15 @@ def interpret(s: str, env: dict | None = None) -> str:
                     expr = m_assign.group(2).strip()
                     if name not in env:
                         raise ValueError(f"assignment to undeclared variable '{name}'")
+                    # if assignment expression contains explicit integer suffixes
+                    # ensure they match variable's declared type when applicable
+                    suf_matches = re.findall(r"[uUiI]\d+\b", expr)
+                    if suf_matches and env[name][1] is not None:
+                        normalized = {s.lower() for s in suf_matches}
+                        decl_spec = env[name][1] + str(env[name][2])
+                        if len(normalized) != 1 or next(iter(normalized)).lower() != decl_spec.lower():
+                            raise ValueError("mismatched initializer type")
+
                     val_str = interpret(expr, env)
                     try:
                         val = int(val_str, 10)
