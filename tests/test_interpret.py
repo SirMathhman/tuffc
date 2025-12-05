@@ -214,3 +214,7 @@ def test_typeof_plain_integer_defaults_to_i32():
 
 def test_typeof_with_suffix_returns_explicit():
     assert interpret("typeOf(100U8)") == "U8"
+
+
+def test_typeof_expression_with_explicit_suffix_returns_explicit():
+    assert interpret("typeOf((1 + 10) * (2U8 + 3))") == "U8"
