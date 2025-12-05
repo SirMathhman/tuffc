@@ -19,6 +19,10 @@ def test_interpret_keeps_float_prefix():
     assert interpret("3.14F32") == "3.14"
 
 
+def test_zero_float_f32():
+    assert interpret("0.0F32") == "0.0"
+
+
 def test_interpret_non_numeric_unchanged():
     assert interpret("abc") == "abc"
 

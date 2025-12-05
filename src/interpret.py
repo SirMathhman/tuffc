@@ -54,7 +54,7 @@ def interpret(s: str) -> str:
             else:
                 # signed: range is -(2^(bits-1)) .. 2^(bits-1)-1
                 max_pos = (1 << (bits - 1)) - 1
-                min_neg = - (1 << (bits - 1))
+                min_neg = -(1 << (bits - 1))
                 if val < min_neg or val > max_pos:
                     raise ValueError("signed literal out of range")
 
