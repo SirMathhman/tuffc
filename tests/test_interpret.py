@@ -31,6 +31,10 @@ def test_interpret_non_numeric_unchanged():
     assert interpret("abc") == "abc"
 
 
+def test_single_char_returns_same():
+    assert interpret("a") == "a"
+
+
 def test_negative_unsigned_raises():
     import pytest
 
