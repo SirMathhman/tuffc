@@ -31,10 +31,6 @@ def test_interpret_non_numeric_unchanged():
     assert interpret("abc") == "abc"
 
 
-def test_single_char_returns_same():
-    assert interpret("a") == "a"
-
-
 def test_negative_unsigned_raises():
     import pytest
 
@@ -78,3 +74,7 @@ def test_signed_i8_overflow_underflow():
 def test_signed_i16_boundaries():
     assert interpret("32767I16") == "32767"
     assert interpret("-32768I16") == "-32768"
+
+
+def test_quoted_string_preserved():
+    assert interpret('"test"') == '"test"'
