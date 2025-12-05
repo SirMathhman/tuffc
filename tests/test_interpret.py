@@ -210,3 +210,7 @@ def test_typed_declaration_trailing_returns_empty():
 
 def test_typeof_plain_integer_defaults_to_i32():
     assert interpret("typeOf(100)") == "I32"
+
+
+def test_typeof_with_suffix_returns_explicit():
+    assert interpret("typeOf(100U8)") == "U8"
