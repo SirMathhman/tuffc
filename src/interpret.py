@@ -30,20 +30,88 @@ def interpret(s: str) -> str:
     # right-hand operand and compute the result when both sides have
     # matching integer suffixes (same signedness and width).
     if "+" in suffix:
-        plus_pos = suffix.find("+")
-        left_suffix = suffix[:plus_pos].strip()
-        right_part = suffix[plus_pos + 1 :].strip()
+        # Parse a sequence of terms (number + optional suffix) separated by '+'.
+        # Collect (num_str, suffix_str) for each term.
+        terms = []
+        pos = 0
+        s_rest = s
+        while True:
+            # skip leading whitespace between terms
+            while pos < len(s_rest) and s_rest[pos].isspace():
+                pos += 1
 
-        # rebuild exact operand strings
-        left_full = prefix + left_suffix
+            mterm = _LEADING_NUMBER.match(s_rest[pos:])
+            if not mterm:
+                raise ValueError("invalid operand in addition")
 
-        # parse second operand's leading number and suffix
-        m2 = _LEADING_NUMBER.match(right_part)
-        if not m2:
-            raise ValueError("invalid right-hand operand")
+            num = mterm.group(0)
+            pos += mterm.end()
 
-        prefix2 = m2.group(0)
-        suffix2 = right_part[len(prefix2) :]
+            # find next '+' in the remaining chunk
+            rest = s_rest[pos:]
+            plus_idx = rest.find("+")
+            if plus_idx == -1:
+                term_suffix = rest
+                terms.append((num, term_suffix.strip()))
+                break
+            else:
+                term_suffix = rest[:plus_idx]
+                terms.append((num, term_suffix.strip()))
+                # advance pos beyond '+' and continue parsing next term
+                pos += plus_idx + 1
+
+        # If none of the terms carry a [ui]<bits> suffix, perform plain integer sum.
+        explicit = [t for t in terms if re.match(r"^[ui]\d+", t[1].strip(), re.IGNORECASE)]
+        if not explicit:
+            # ensure all are integer-like prefixes
+            for num, _suf in terms:
+                if any(ch in num for ch in ".eE"):
+                    raise ValueError("integer addition requires integer literals")
+            total = sum(int(num, 10) for num, _ in terms)
+            return str(total)
+
+        # At least one term has an explicit suffix; determine effective kind/bits
+        kinds_bits = []
+        for num, suf in terms:
+            m_bits = re.match(r"^[ui](\d+)", suf.strip(), re.IGNORECASE) if suf else None
+            if m_bits:
+                kinds_bits.append((suf.strip()[0].lower(), int(m_bits.group(1))))
+
+        # all explicit suffixes must match in kind and bits
+        if any(k != kinds_bits[0][0] or b != kinds_bits[0][1] for k, b in kinds_bits):
+            raise ValueError("mismatched operand types")
+
+        kind, bits = kinds_bits[0]
+
+        # ensure all numeric prefixes are integers (no '.' or exponent)
+        for num, _ in terms:
+            if any(ch in num for ch in ".eE"):
+                raise ValueError("integer addition requires integer literals")
+
+        values = []
+        try:
+            for num, _ in terms:
+                values.append(int(num, 10))
+        except ValueError:
+            raise ValueError("invalid integer literal")
+
+        # negative unsigned check
+        if kind == "u" and any(v < 0 for v in values):
+            raise ValueError("negative unsigned literal not allowed")
+
+        result = sum(values)
+
+        if kind == "u":
+            max_val = (1 << bits) - 1
+            if result < 0 or result > max_val:
+                raise ValueError("unsigned literal out of range")
+        else:
+            max_pos = (1 << (bits - 1)) - 1
+            min_neg = -(1 << (bits - 1))
+            if result < min_neg or result > max_pos:
+                raise ValueError("signed literal out of range")
+
+        return str(result)
 
         # Accept cases where either operand has an integer suffix and the
         # other is unsuffixed. Extract type/width for each operand and

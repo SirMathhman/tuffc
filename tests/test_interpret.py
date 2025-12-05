@@ -121,3 +121,7 @@ def test_plain_plus_u32_overflow():
 
 def test_plain_integer_addition():
     assert interpret("1 + 2") == "3"
+
+
+def test_chain_addition_mixed_suffixes():
+    assert interpret("10U8 + 2 + 8U8") == "20"
