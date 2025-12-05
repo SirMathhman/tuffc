@@ -163,8 +163,13 @@ def try_evaluate_function_call(s: str, open_idx: int, close_idx: int, env: dict)
         raise ValueError("function call argument count mismatch")
 
     child_env = {}
+    # bring types and any function definitions into the child environment so
+    # function bodies can call other functions visible at call-time.
     if "__types__" in env:
         child_env["__types__"] = env["__types__"].copy()
+    for nm, binding in env.items():
+        if isinstance(binding, tuple) and len(binding) == 4 and binding[0] == "fn":
+            child_env[nm] = binding
 
     from .interpret import interpret
 

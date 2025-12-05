@@ -398,3 +398,9 @@ def test_duplicate_function_declaration_raises():
 
     with pytest.raises(ValueError):
         interpret("fn empty() => {} fn empty() => {}")
+
+
+def test_function_call_chain_forward_reference():
+    # first calls second; second declared after first — call first() should succeed
+    expr = "fn first() => second(); fn second() => 100; first()"
+    assert interpret(expr) == "100"
