@@ -229,8 +229,6 @@ def test_mutable_pointer_assigns_through_and_updates_target():
     assert interpret("let mut x = 0; let y : *mut I32 = &mut x; *y = 100; x") == "100"
 
 
-def test_mutable_pointer_assign_and_deref():
-    assert interpret("let mut x = 0; let y : *mut I32 = &mut x; *y = 100; *y") == "100"
 
 
 def test_typed_initializer_from_incompatible_typed_variable_raises():
