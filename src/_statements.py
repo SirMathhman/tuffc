@@ -51,14 +51,14 @@ def evaluate_statement_parts(parts: list[str], env: dict) -> str:
                 if ch == '"':
                     in_string = not in_string
                 elif not in_string:
-                    if ch == '{':
+                    if ch == "{":
                         depth += 1
-                    elif ch == '}':
+                    elif ch == "}":
                         depth -= 1
                         if depth == 0:
                             break
                 j += 1
-            if j >= len(part) or part[j] != '}':
+            if j >= len(part) or part[j] != "}":
                 raise ValueError("invalid impl declaration (unmatched brace)")
 
             body = part[open_idx + 1 : j].strip()
@@ -77,14 +77,14 @@ def evaluate_statement_parts(parts: list[str], env: dict) -> str:
                     in_string = not in_string
                     cur.append(ch)
                 elif not in_string:
-                    if ch in '{(':
+                    if ch in "{(":
                         depth += 1
                         cur.append(ch)
-                    elif ch in '})':
+                    elif ch in "})":
                         depth -= 1
                         cur.append(ch)
-                    elif ch == ';' and depth == 0:
-                        frag = ''.join(cur).strip()
+                    elif ch == ";" and depth == 0:
+                        frag = "".join(cur).strip()
                         if frag:
                             fragments.append(frag)
                         cur = []
@@ -93,7 +93,7 @@ def evaluate_statement_parts(parts: list[str], env: dict) -> str:
                 else:
                     cur.append(ch)
                 k += 1
-            last_frag = ''.join(cur).strip()
+            last_frag = "".join(cur).strip()
             if last_frag:
                 fragments.append(last_frag)
 

@@ -53,12 +53,12 @@ def parse_function_from_part(part: str):
         ret_spec = m_ret.group(1)
         rest = rest[m_ret.end() :].lstrip()
 
-    if not rest.startswith('=>'):
+    if not rest.startswith("=>"):
         raise ValueError("invalid function declaration (missing =>)")
     rest = rest[2:].lstrip()
 
-    if rest.startswith('{'):
-        b_open = part.find('{', part.find('=>'))
+    if rest.startswith("{"):
+        b_open = part.find("{", part.find("=>"))
         depth = 0
         j2 = b_open
         in_string = False
@@ -67,21 +67,21 @@ def parse_function_from_part(part: str):
             if ch == '"':
                 in_string = not in_string
             elif not in_string:
-                if ch == '{':
+                if ch == "{":
                     depth += 1
-                elif ch == '}':
+                elif ch == "}":
                     depth -= 1
                     if depth == 0:
                         break
             j2 += 1
-        if j2 >= len(part) or part[j2] != '}':
+        if j2 >= len(part) or part[j2] != "}":
             raise ValueError("invalid function declaration (unmatched brace)")
 
         body = part[b_open + 1 : j2].strip()
         rest2 = part[j2 + 1 :].strip()
     else:
         body = rest
-        rest2 = ''
+        rest2 = ""
 
     return (fname, params, ret_spec, body, rest2)
 
@@ -118,13 +118,13 @@ def try_handle_top_level_impl(s: str, env: dict) -> str | None:
     empty). Otherwise return None.
     """
     stripped = s.lstrip()
-    if not stripped.startswith('impl'):
+    if not stripped.startswith("impl"):
         return None
     m_start = re.match(r"^\s*impl\s+([A-Za-z_]\w*)\s*\{", s)
     if not m_start:
         raise ValueError("invalid impl declaration")
     tname = m_start.group(1)
-    open_idx = s.find('{', m_start.end() - 1)
+    open_idx = s.find("{", m_start.end() - 1)
     depth = 0
     j = open_idx
     in_string = False
@@ -133,14 +133,14 @@ def try_handle_top_level_impl(s: str, env: dict) -> str | None:
         if ch == '"':
             in_string = not in_string
         elif not in_string:
-            if ch == '{':
+            if ch == "{":
                 depth += 1
-            elif ch == '}':
+            elif ch == "}":
                 depth -= 1
                 if depth == 0:
                     break
         j += 1
-    if j >= len(s) or s[j] != '}':
+    if j >= len(s) or s[j] != "}":
         raise ValueError("invalid impl declaration (unmatched brace)")
 
     body = s[open_idx + 1 : j].strip()
@@ -156,14 +156,14 @@ def try_handle_top_level_impl(s: str, env: dict) -> str | None:
             in_string = not in_string
             cur.append(ch)
         elif not in_string:
-            if ch in '{(':
+            if ch in "{(":
                 depth += 1
                 cur.append(ch)
-            elif ch in '})':
+            elif ch in "})":
                 depth -= 1
                 cur.append(ch)
-            elif ch == ';' and depth == 0:
-                frag = ''.join(cur).strip()
+            elif ch == ";" and depth == 0:
+                frag = "".join(cur).strip()
                 if frag:
                     fragments.append(frag)
                 cur = []
@@ -172,7 +172,7 @@ def try_handle_top_level_impl(s: str, env: dict) -> str | None:
         else:
             cur.append(ch)
         k += 1
-    last_frag = ''.join(cur).strip()
+    last_frag = "".join(cur).strip()
     if last_frag:
         fragments.append(last_frag)
 
@@ -184,20 +184,20 @@ def try_handle_top_level_impl(s: str, env: dict) -> str | None:
 
 
 def register_method_from_part(type_name: str, part: str, env: dict) -> str:
-        """Parse a function declaration from `part` and register it as a method
-        for `type_name` under env['__impls__'].
+    """Parse a function declaration from `part` and register it as a method
+    for `type_name` under env['__impls__'].
 
-        Returns any trailing remainder after the function declaration.
-        """
-        fname, params, ret_spec, body, rest2 = parse_function_from_part(part)
-        impls = env.get("__impls__", {})
-        methods = impls.get(type_name, {})
-        if fname in methods:
-            raise ValueError(f"method '{fname}' already defined for type '{type_name}'")
-        methods[fname] = ("fn", params, ret_spec, body)
-        impls[type_name] = methods
-        env["__impls__"] = impls
-        return rest2
+    Returns any trailing remainder after the function declaration.
+    """
+    fname, params, ret_spec, body, rest2 = parse_function_from_part(part)
+    impls = env.get("__impls__", {})
+    methods = impls.get(type_name, {})
+    if fname in methods:
+        raise ValueError(f"method '{fname}' already defined for type '{type_name}'")
+    methods[fname] = ("fn", params, ret_spec, body)
+    impls[type_name] = methods
+    env["__impls__"] = impls
+    return rest2
 
 
 def try_evaluate_function_call(s: str, open_idx: int, close_idx: int, env: dict):
@@ -324,7 +324,7 @@ def try_evaluate_method_call(s: str, open_idx: int, close_idx: int, env: dict):
     dot_pos = id_start - 1
     while dot_pos >= 0 and s[dot_pos].isspace():
         dot_pos -= 1
-    if dot_pos < 0 or s[dot_pos] != '.':
+    if dot_pos < 0 or s[dot_pos] != ".":
         return None
 
     # find object expression start
@@ -335,14 +335,14 @@ def try_evaluate_method_call(s: str, open_idx: int, close_idx: int, env: dict):
         return None
 
     # handle parenthesized/object expressions or identifiers/numeric literals
-    if s[obj_end] == ')':
+    if s[obj_end] == ")":
         depth = 0
         j = obj_end
         while j >= 0:
             ch = s[j]
-            if ch == ')':
+            if ch == ")":
                 depth += 1
-            elif ch == '(':
+            elif ch == "(":
                 depth -= 1
                 if depth == 0:
                     break
@@ -387,21 +387,21 @@ def try_evaluate_method_call(s: str, open_idx: int, close_idx: int, env: dict):
             in_string = not in_string
             cur.append(ch)
         elif not in_string:
-            if ch in '({':
+            if ch in "({":
                 depth += 1
                 cur.append(ch)
-            elif ch in ')}':
+            elif ch in ")}":
                 depth -= 1
                 cur.append(ch)
-            elif ch == ',' and depth == 0:
-                args.append(''.join(cur).strip())
+            elif ch == "," and depth == 0:
+                args.append("".join(cur).strip())
                 cur = []
             else:
                 cur.append(ch)
         else:
             cur.append(ch)
         k += 1
-    last_arg = ''.join(cur).strip()
+    last_arg = "".join(cur).strip()
     if last_arg:
         args.append(last_arg)
 
@@ -417,7 +417,7 @@ def try_evaluate_method_call(s: str, open_idx: int, close_idx: int, env: dict):
         child_env["__types__"] = env["__types__"].copy()
     # copy functions and impls so method body can call them
     for nm, b in env.items():
-        if isinstance(b, tuple) and len(b) == 4 and b[0] == 'fn':
+        if isinstance(b, tuple) and len(b) == 4 and b[0] == "fn":
             child_env[nm] = b
     if "__impls__" in env:
         child_env["__impls__"] = {k: v.copy() for k, v in env["__impls__"].items()}
@@ -432,7 +432,7 @@ def try_evaluate_method_call(s: str, open_idx: int, close_idx: int, env: dict):
     # if params include a 'this' param, assign it first
     param_iter = iter(params)
     assigned = 0
-    for (pname, ptype) in params:
+    for pname, ptype in params:
         if assigned == 0:
             # bind this
             if ptype is None:
