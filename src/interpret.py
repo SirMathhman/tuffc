@@ -383,29 +383,20 @@ def interpret(s: str, env: dict | None = None) -> str:
     return prefix
 
 
-def interpretAll(name: str, key_or_mapping: dict | str, mapping: dict | None = None) -> str:
-    """Interpret the mapping entry identified by name/key.
+def interpretAll(name: str, mapping: dict[str, str]) -> str:
+    """Interpret the mapping entry identified by name.
 
-    Supported call forms:
-    - interpretAll(name: str, mapping: dict[str,str])
-    - interpretAll(name: str, key: str, mapping: dict[str,str])
+    Parameters:
+    - name: entry key in mapping to interpret
+    - mapping: dict[str,str] mapping input names to expressions
 
     Returns the string result of interpreting the requested entry.
     """
-    # normalize call signature
-    if mapping is None:
-        # interpretAll(name, mapping)
-        key = name
-        mapping = key_or_mapping
-    else:
-        # interpretAll(name, key, mapping)
-        key = key_or_mapping
-
     if not isinstance(mapping, dict):
         raise TypeError("mapping must be a dict[str,str]")
-    if key not in mapping:
-        raise KeyError(key)
+    if name not in mapping:
+        raise KeyError(name)
 
     env: dict = {}
-    src = mapping[key]
+    src = mapping[name]
     return interpret(src, env)
