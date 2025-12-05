@@ -189,6 +189,10 @@ def test_let_without_type_and_lookup():
     assert interpret("let x = 100; x") == "100"
 
 
+def test_let_assign_from_variable():
+    assert interpret("let x = 100; let y = x; y") == "100"
+
+
 def test_let_without_type_trailing_returns_empty():
     assert interpret("let x = 100;") == ""
 
