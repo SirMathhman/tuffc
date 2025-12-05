@@ -90,3 +90,10 @@ def test_add_unsigned_u32_overflow():
     # 2^32 - 1 is max for U32
     with pytest.raises(ValueError):
         interpret("4294967295U32 + 1U32")
+
+
+def test_mixed_signedness_addition_raises():
+    import pytest
+
+    with pytest.raises(ValueError):
+        interpret("1U8 + 2I8")
