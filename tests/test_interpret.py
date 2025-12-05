@@ -51,6 +51,17 @@ def test_mutable_if_statement_changes_outer_variable():
     assert interpret("let mut x = 100; if (true) x = 200; x") == "200"
 
 
+def test_compound_add_assign_mutable():
+    assert interpret("let mut x = 0; x += 1; x") == "1"
+
+
+def test_compound_add_assign_immutable_raises():
+    import pytest
+
+    with pytest.raises(ValueError):
+        interpret("let x = 0; x += 1;")
+
+
 def test_interpret_strips_u8_suffix():
     assert interpret("100U8") == "100"
 

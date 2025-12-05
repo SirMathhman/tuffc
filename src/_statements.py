@@ -188,6 +188,45 @@ def evaluate_statement_parts(parts: list[str], env: dict) -> str:
                     last = maybe_last
                     continue
 
+            m_comp_assign = re.match(r"^([A-Za-z_]\w*)\s*\+=\s*(.+)$", part)
+            if m_comp_assign:
+                name = m_comp_assign.group(1)
+                expr = m_comp_assign.group(2).strip()
+                if name not in env:
+                    raise ValueError(f"assignment to undeclared variable '{name}'")
+                prev_val, prev_kind, prev_bits, prev_mut = env[name]
+                if prev_val is None:
+                    raise ValueError("compound assignment on uninitialized variable")
+                if not prev_mut:
+                    raise ValueError("assignment to immutable variable")
+
+                rhs_str = interpret(expr, env)
+                try:
+                    rhs_val = int(rhs_str, 10)
+                except ValueError:
+                    raise ValueError("invalid assignment value")
+
+                if isinstance(prev_kind, str) and prev_kind.startswith("*"):
+                    raise ValueError("compound assignment not supported for pointer types")
+
+                new_val = prev_val + rhs_val
+
+                # Range checks for typed variable
+                if prev_kind is not None:
+                    if prev_kind == "u":
+                        max_val = (1 << prev_bits) - 1
+                        if new_val < 0 or new_val > max_val:
+                            raise ValueError("unsigned literal out of range")
+                    else:
+                        max_pos = (1 << (prev_bits - 1)) - 1
+                        min_neg = -(1 << (prev_bits - 1))
+                        if new_val < min_neg or new_val > max_pos:
+                            raise ValueError("signed literal out of range")
+
+                env[name] = (new_val, prev_kind, prev_bits, prev_mut)
+                last = str(new_val)
+                continue
+
             m_assign = re.match(r"^([A-Za-z_]\w*)\s*=\s*(.+)$", part)
             if m_assign:
                 name = m_assign.group(1)
