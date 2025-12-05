@@ -252,6 +252,7 @@ def interpret(s: str, env: dict | None = None) -> str:
     # with their evaluated result. This allows "(1 + 10) * 2U8" to become
     # "11 * 2U8" which the rest of the parser handles.
     # Support curly-brace grouping `{ ... }` same as parentheses.
+    braced_occurred = False
     while "{" in s:
         open_idx = s.rfind("{")
         close_idx = s.find("}", open_idx)
@@ -259,7 +260,10 @@ def interpret(s: str, env: dict | None = None) -> str:
             raise ValueError("unmatched brace")
 
         inner = s[open_idx + 1 : close_idx]
-        val = interpret(inner, env)
+        # Evaluate block contents in a local copy of the environment so
+        # variables declared inside a `{ ... }` block do not leak out.
+        val = interpret(inner, env.copy())
+        braced_occurred = True
         s = s[:open_idx] + val + s[close_idx + 1 :]
 
     while "(" in s:
@@ -284,6 +288,11 @@ def interpret(s: str, env: dict | None = None) -> str:
         name = ident_full.group(0)
         if name in env:
             return str(env[name][0])
+        # If the input had a braced block that was evaluated separately,
+        # an identifier that wasn't declared in the outer environment
+        # should be considered an error rather than left as-is.
+        if braced_occurred:
+            raise ValueError(f"use of undeclared variable '{name}'")
 
     m = _LEADING_NUMBER.match(s)
     if not m:
