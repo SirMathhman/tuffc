@@ -43,6 +43,10 @@ def test_if_expression_false_branch():
     assert interpret("let x = if (false) 3 else 5; x") == "5"
 
 
+def test_if_statement_with_assignments_affects_env():
+    assert interpret("let x : I32; if (true) x = 3; else x = 5; x") == "3"
+
+
 def test_interpret_strips_u8_suffix():
     assert interpret("100U8") == "100"
 

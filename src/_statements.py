@@ -11,7 +11,43 @@ def evaluate_statement_parts(parts: list[str], env: dict) -> str:
     from .interpret import interpret
 
     last = None
-    for part in parts:
+    i = 0
+    while i < len(parts):
+        part = parts[i]
+        # If this part starts an if-statement and the next top-level part
+        # begins with 'else', treat them together as a single if-statement
+        # so branches can contain assignments or other statements.
+        if part.lstrip().startswith("if") and i + 1 < len(parts) and parts[i + 1].lstrip().startswith("else"):
+            # extract condition and then-expression from the 'if' part
+            m_if = re.match(r"^\s*if\s*\((.*)\)\s*(.*)$", part)
+            if not m_if:
+                raise ValueError("invalid if statement")
+            cond = m_if.group(1).strip()
+            then_expr = m_if.group(2).strip()
+            else_part = parts[i + 1].lstrip()
+            # remove the leading 'else' token from else_part
+            if not else_part.startswith("else"):
+                raise ValueError("malformed else part")
+            else_expr = else_part[len("else"):].strip()
+
+            cond_val = interpret(cond, env)
+            if cond_val == "true":
+                chosen = then_expr
+            elif cond_val == "false":
+                chosen = else_expr
+            else:
+                try:
+                    chosen = then_expr if int(cond_val, 10) != 0 else else_expr
+                except Exception:
+                    chosen = else_expr
+
+            # evaluate chosen branch as a statement part (so assignments work)
+            last = evaluate_statement_parts([chosen], env)
+            i += 2
+            continue
+
+        part = parts[i]
+        i += 1
         if part.startswith("let "):
             m = re.match(
                 r"let\s+(mut\s+)?([A-Za-z_]\w*)\s*:\s*(\*(?:\s*mut\s*)?[uUiI]\d+|[uUiI]\d+)\s*=\s*(.+)",
