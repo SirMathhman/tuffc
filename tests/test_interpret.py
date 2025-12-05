@@ -163,3 +163,7 @@ def test_parentheses_wrap_expression():
 
 def test_parentheses_in_expression():
     assert interpret("(1 + 10) * 2U8") == "22"
+
+
+def test_multiple_parenthesized_subexpressions():
+    assert interpret("(1 + 10) * (2U8 + 3)") == "55"
