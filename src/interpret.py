@@ -36,7 +36,9 @@ def interpret(s: str, env: dict | None = None) -> str:
                     val_str = interpret(init_expr, env)
                 else:
                     # typed without initializer: `let name : U8`
-                    m_typed_noinit = re.match(r"let\s+([A-Za-z_]\w*)\s*:\s*([uUiI]\d+)\s*$", part)
+                    m_typed_noinit = re.match(
+                        r"let\s+([A-Za-z_]\w*)\s*:\s*([uUiI]\d+)\s*$", part
+                    )
                     if m_typed_noinit:
                         name = m_typed_noinit.group(1)
                         type_spec = m_typed_noinit.group(2)

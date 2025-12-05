@@ -195,3 +195,7 @@ def test_redeclaration_raises():
 
 def test_declare_uninitialized_then_assign():
     assert interpret("let x : I32; x = 100; x") == "100"
+
+
+def test_typed_declaration_trailing_returns_empty():
+    assert interpret("let x : I32;") == ""
