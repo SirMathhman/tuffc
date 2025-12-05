@@ -174,6 +174,13 @@ def test_variable_declaration_and_lookup():
     assert interpret(expr) == "55"
 
 
+def test_typed_initializer_mismatched_signedness_raises():
+    import pytest
+
+    with pytest.raises(ValueError):
+        interpret("let x : I32 = (1 + 10) * (2U8 + 3); x")
+
+
 def test_let_trailing_returns_empty():
     assert interpret("let x : U8 = 100;") == ""
 
