@@ -174,6 +174,10 @@ def test_variable_declaration_and_lookup():
     assert interpret(expr) == "55"
 
 
+def test_typed_initializer_plain_integer_assigns_and_lookup():
+    assert interpret("let x : U8 = 100; x") == "100"
+
+
 def test_typed_initializer_mismatched_signedness_raises():
     import pytest
 
