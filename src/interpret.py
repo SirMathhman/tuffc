@@ -28,7 +28,9 @@ def interpret(s: str, env: dict | None = None) -> str:
         for part in parts:
             if part.startswith("let "):
                 # typed with initializer: `let [mut] name : U8 = expr`
-                m = re.match(r"let\s+(mut\s+)?([A-Za-z_]\w*)\s*:\s*([uUiI]\d+)\s*=\s*(.+)", part)
+                m = re.match(
+                    r"let\s+(mut\s+)?([A-Za-z_]\w*)\s*:\s*([uUiI]\d+)\s*=\s*(.+)", part
+                )
                 if m:
                     mut_flag = bool(m.group(1))
                     name = m.group(2)
@@ -209,6 +211,17 @@ def interpret(s: str, env: dict | None = None) -> str:
     # Evaluate innermost parenthesized expressions first, replacing them
     # with their evaluated result. This allows "(1 + 10) * 2U8" to become
     # "11 * 2U8" which the rest of the parser handles.
+    # Support curly-brace grouping `{ ... }` same as parentheses.
+    while "{" in s:
+        open_idx = s.rfind("{")
+        close_idx = s.find("}", open_idx)
+        if close_idx == -1:
+            raise ValueError("unmatched brace")
+
+        inner = s[open_idx + 1 : close_idx]
+        val = interpret(inner, env)
+        s = s[:open_idx] + val + s[close_idx + 1 :]
+
     while "(" in s:
         open_idx = s.rfind("(")
         close_idx = s.find(")", open_idx)
