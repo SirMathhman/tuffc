@@ -125,3 +125,7 @@ def test_plain_integer_addition():
 
 def test_chain_addition_mixed_suffixes():
     assert interpret("10U8 + 2 + 8U8") == "20"
+
+
+def test_long_plain_chain_addition():
+    assert interpret("1 + 2 + 3 + 4") == "10"

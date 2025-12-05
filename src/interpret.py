@@ -61,7 +61,9 @@ def interpret(s: str) -> str:
                 pos += plus_idx + 1
 
         # If none of the terms carry a [ui]<bits> suffix, perform plain integer sum.
-        explicit = [t for t in terms if re.match(r"^[ui]\d+", t[1].strip(), re.IGNORECASE)]
+        explicit = [
+            t for t in terms if re.match(r"^[ui]\d+", t[1].strip(), re.IGNORECASE)
+        ]
         if not explicit:
             # ensure all are integer-like prefixes
             for num, _suf in terms:
@@ -73,7 +75,9 @@ def interpret(s: str) -> str:
         # At least one term has an explicit suffix; determine effective kind/bits
         kinds_bits = []
         for num, suf in terms:
-            m_bits = re.match(r"^[ui](\d+)", suf.strip(), re.IGNORECASE) if suf else None
+            m_bits = (
+                re.match(r"^[ui](\d+)", suf.strip(), re.IGNORECASE) if suf else None
+            )
             if m_bits:
                 kinds_bits.append((suf.strip()[0].lower(), int(m_bits.group(1))))
 
