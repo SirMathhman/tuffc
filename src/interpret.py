@@ -18,6 +18,36 @@ def interpret(s: str) -> str:
     if not isinstance(s, str):
         raise TypeError("interpret expects a string")
 
+    # Handle fully-wrapped parentheses like "(expr)" by evaluating inner expr.
+    t = s.strip()
+    # strip matching outer parentheses pairs
+    while t.startswith("("):
+        depth = 0
+        matched = -1
+        for i, ch in enumerate(t):
+            if ch == "(":
+                depth += 1
+            elif ch == ")":
+                depth -= 1
+                if depth == 0:
+                    matched = i
+                    break
+
+        if matched == -1:
+            break
+
+        # if the matching ')' closes the entire trimmed string, evaluate inside
+        if matched == len(t) - 1:
+            t = t[1:matched].strip()
+            # continue to support nested wrapping
+            continue
+        else:
+            break
+
+    if t is not s.strip():
+        # evaluate the inner expression
+        return interpret(t)
+
     m = _LEADING_NUMBER.match(s)
     if not m:
         return s
