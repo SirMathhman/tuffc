@@ -159,3 +159,7 @@ def test_multiplication_precedence_with_leading_add():
 
 def test_parentheses_wrap_expression():
     assert interpret("(1 + 10 * 2U8)") == "21"
+
+
+def test_parentheses_in_expression():
+    assert interpret("(1 + 10) * 2U8") == "22"

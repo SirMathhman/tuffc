@@ -18,35 +18,18 @@ def interpret(s: str) -> str:
     if not isinstance(s, str):
         raise TypeError("interpret expects a string")
 
-    # Handle fully-wrapped parentheses like "(expr)" by evaluating inner expr.
-    t = s.strip()
-    # strip matching outer parentheses pairs
-    while t.startswith("("):
-        depth = 0
-        matched = -1
-        for i, ch in enumerate(t):
-            if ch == "(":
-                depth += 1
-            elif ch == ")":
-                depth -= 1
-                if depth == 0:
-                    matched = i
-                    break
+    # Evaluate innermost parenthesized expressions first, replacing them
+    # with their evaluated result. This allows "(1 + 10) * 2U8" to become
+    # "11 * 2U8" which the rest of the parser handles.
+    while "(" in s:
+        open_idx = s.rfind("(")
+        close_idx = s.find(")", open_idx)
+        if close_idx == -1:
+            raise ValueError("unmatched parentheses")
 
-        if matched == -1:
-            break
-
-        # if the matching ')' closes the entire trimmed string, evaluate inside
-        if matched == len(t) - 1:
-            t = t[1:matched].strip()
-            # continue to support nested wrapping
-            continue
-        else:
-            break
-
-    if t is not s.strip():
-        # evaluate the inner expression
-        return interpret(t)
+        inner = s[open_idx + 1 : close_idx]
+        val = interpret(inner)
+        s = s[:open_idx] + val + s[close_idx + 1 :]
 
     m = _LEADING_NUMBER.match(s)
     if not m:
