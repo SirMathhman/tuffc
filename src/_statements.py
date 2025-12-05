@@ -1,4 +1,5 @@
 import re
+from ._functions import ReturnSignal, register_function_from_part
 
 
 def evaluate_statement_parts(parts: list[str], env: dict) -> str:
@@ -14,6 +15,26 @@ def evaluate_statement_parts(parts: list[str], env: dict) -> str:
     i = 0
     while i < len(parts):
         part = parts[i]
+        # Function declaration: delegate to helper to register in env
+        if part.lstrip().startswith("fn "):
+            rest2 = register_function_from_part(part, env)
+            last = ""
+            if rest2:
+                parts[i] = rest2
+                continue
+            i += 1
+            continue
+        # return statement inside functions: `return expr` or `return`.
+        if part.lstrip().startswith("return"):
+            m_ret = re.match(r"^\s*return\s*(.*)$", part, re.DOTALL)
+            if not m_ret:
+                raise ValueError("invalid return statement")
+            expr = m_ret.group(1).strip()
+            if not expr:
+                raise ReturnSignal("")
+            # evaluate return expression using interpret from the current env
+            val = interpret(expr, env)
+            raise ReturnSignal(val)
         # Struct declaration: `struct Name { field : Type, ... }`
         if part.lstrip().startswith("struct "):
             # allow struct declaration possibly followed by other tokens
@@ -31,14 +52,14 @@ def evaluate_statement_parts(parts: list[str], env: dict) -> str:
                 if ch == '"':
                     in_string = not in_string
                 elif not in_string:
-                    if ch == '{':
+                    if ch == "{":
                         depth += 1
-                    elif ch == '}':
+                    elif ch == "}":
                         depth -= 1
                         if depth == 0:
                             break
                 j += 1
-            if j >= len(part) or part[j] != '}':
+            if j >= len(part) or part[j] != "}":
                 raise ValueError("invalid struct declaration (unmatched brace)")
             body = part[open_idx + 1 : j].strip()
             fields = []
@@ -192,7 +213,9 @@ def evaluate_statement_parts(parts: list[str], env: dict) -> str:
                             )
 
                 # support struct literal initializer `TypeName { a, b }`
-                m_struct_init = re.match(r"^([A-Za-z_]\w*)\s*\{(.*)\}$", init_expr, re.DOTALL)
+                m_struct_init = re.match(
+                    r"^([A-Za-z_]\w*)\s*\{(.*)\}$", init_expr, re.DOTALL
+                )
                 if m_struct_init:
                     sname = m_struct_init.group(1)
                     inner = m_struct_init.group(2).strip()
@@ -250,7 +273,9 @@ def evaluate_statement_parts(parts: list[str], env: dict) -> str:
                 init_expr = m2.group(3).strip()
                 # support struct literal initializer `TypeName { a, b }` for
                 # untyped `let` forms too (e.g. `let s = Point { 1, 2 }`).
-                m_struct_init = re.match(r"^([A-Za-z_]\w*)\s*\{(.*)\}$", init_expr, re.DOTALL)
+                m_struct_init = re.match(
+                    r"^([A-Za-z_]\w*)\s*\{(.*)\}$", init_expr, re.DOTALL
+                )
                 if m_struct_init:
                     sname = m_struct_init.group(1)
                     inner = m_struct_init.group(2).strip()

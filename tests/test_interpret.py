@@ -359,3 +359,11 @@ def test_typeof_expression_with_i64_returns_i64():
 
 def test_let_with_braced_initializer():
     assert interpret("let x = {100}; x") == "100"
+
+
+def test_simple_function_declaration_and_call():
+    expr = (
+        "fn add(first : I32, second : I32) : I32 => { return first + second; } "
+        "add(10, 20)"
+    )
+    assert interpret(expr) == "30"
