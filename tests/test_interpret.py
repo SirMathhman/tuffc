@@ -104,3 +104,16 @@ def test_mixed_width_addition_raises():
 
     with pytest.raises(ValueError):
         interpret("1U8 + 2U16")
+
+
+def test_plain_plus_u8():
+    assert interpret("1 + 2U8") == "3"
+    assert interpret("1U8 + 2") == "3"
+
+
+def test_plain_plus_u32_overflow():
+    import pytest
+
+    # adding a plain integer to a max-U32 should still obey U32 range
+    with pytest.raises(ValueError):
+        interpret("4294967295 + 1U32")
