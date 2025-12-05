@@ -391,3 +391,10 @@ def test_function_decl_without_return_spec():
         "add(10, 20)"
     )
     assert interpret(expr) == "30"
+
+
+def test_duplicate_function_declaration_raises():
+    import pytest
+
+    with pytest.raises(ValueError):
+        interpret("fn empty() => {} fn empty() => {}")
