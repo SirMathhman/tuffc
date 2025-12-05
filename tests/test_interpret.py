@@ -404,6 +404,11 @@ def test_method_call_on_primitive_i32():
     assert interpret(expr) == "101"
 
 
+def test_module_and_scoped_call():
+    expr = "module test { fn get() => 100; } test::get()"
+    assert interpret(expr) == "100"
+
+
 def test_interpretAll_with_main_mapping():
     mapping = {"main": "impl I32 { fn addOne(this) => this + 1; } 100.addOne()"}
     assert interpretAll("main", mapping) == "101"

@@ -5,6 +5,7 @@ from . import _pointers, _logic
 from ._functions import (
     try_handle_top_level_fn,
     try_handle_top_level_impl,
+    try_handle_top_level_module,
     try_evaluate_function_call,
     try_evaluate_method_call,
 )
@@ -195,6 +196,8 @@ def interpret(s: str, env: dict | None = None) -> str:
     rest_fn = try_handle_top_level_fn(s, env)
     if rest_fn is None:
         rest_fn = try_handle_top_level_impl(s, env)
+    if rest_fn is None:
+        rest_fn = try_handle_top_level_module(s, env)
     if rest_fn is not None:
         if rest_fn:
             return interpret(rest_fn, env)
@@ -244,13 +247,21 @@ def interpret(s: str, env: dict | None = None) -> str:
             id_start, ret_val = fn_call
             s = s[:id_start] + ret_val + s[close_idx + 1 :]
         else:
-            fn_call = try_evaluate_function_call(s, open_idx, close_idx, env)
-            if fn_call:
-                id_start, ret_val = fn_call
+            # then check for module-scoped calls like `mod::fn(...)`
+            from ._functions import try_evaluate_scoped_function_call
+
+            scoped = try_evaluate_scoped_function_call(s, open_idx, close_idx, env)
+            if scoped:
+                id_start, ret_val = scoped
                 s = s[:id_start] + ret_val + s[close_idx + 1 :]
             else:
-                val = interpret(inner, env)
-                s = s[:open_idx] + val + s[close_idx + 1 :]
+                fn_call = try_evaluate_function_call(s, open_idx, close_idx, env)
+                if fn_call:
+                    id_start, ret_val = fn_call
+                    s = s[:id_start] + ret_val + s[close_idx + 1 :]
+                else:
+                    val = interpret(inner, env)
+                    s = s[:open_idx] + val + s[close_idx + 1 :]
 
     # Support simple dereference expressions where the entire input is a
     # prefix '*' followed by an identifier (e.g. `*y`). This is intentionally

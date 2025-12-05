@@ -107,6 +107,15 @@ def evaluate_statement_parts(parts: list[str], env: dict) -> str:
                 continue
             i += 1
             continue
+        # Module declaration: `module Name { ... }`
+        if part.lstrip().startswith("module "):
+            from ._module_handler import evaluate_module_declaration
+            rest, last = evaluate_module_declaration(part, env)
+            if rest:
+                parts[i] = rest
+                continue
+            i += 1
+            continue
         if part.lstrip().startswith("struct "):
             # allow struct declaration possibly followed by other tokens
             m_start = re.match(r"^\s*struct\s+([A-Za-z_]\w*)\s*\{", part)
