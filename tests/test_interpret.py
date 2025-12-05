@@ -140,3 +140,18 @@ def test_subtraction_underflow_unsigned_raises():
 
     with pytest.raises(ValueError):
         interpret("0U8 - 1U8")
+
+
+def test_multiplication_and_addition():
+    assert interpret("10 * 2U8 + 1") == "21"
+
+
+def test_multiplication_overflow_raises():
+    import pytest
+
+    with pytest.raises(ValueError):
+        interpret("128U8 * 2U8")
+
+
+def test_multiplication_precedence_with_leading_add():
+    assert interpret("1 + 10 * 2U8") == "21"

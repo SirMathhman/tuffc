@@ -29,7 +29,7 @@ def interpret(s: str) -> str:
     # If there's a plus sign after the first operand's suffix, parse the
     # right-hand operand and compute the result when both sides have
     # matching integer suffixes (same signedness and width).
-    if "+" in suffix or "-" in suffix:
+    if "+" in suffix or "-" in suffix or "*" in suffix:
         # Parse a sequence of terms (number + optional suffix) separated by '+'.
         # Collect (num_str, suffix_str) for each term.
         terms = []
@@ -52,20 +52,15 @@ def interpret(s: str) -> str:
             rest = s_rest[pos:]
             plus_idx = rest.find("+")
             minus_idx = rest.find("-")
+            star_idx = rest.find("*")
             # determine the nearest operator index that's not -1
-            if plus_idx == -1:
-                op_idx = minus_idx
-                op_char = "-"
-            elif minus_idx == -1:
-                op_idx = plus_idx
-                op_char = "+"
-            else:
-                if plus_idx < minus_idx:
-                    op_idx = plus_idx
-                    op_char = "+"
-                else:
-                    op_idx = minus_idx
-                    op_char = "-"
+            # pick nearest operator among +, -, *
+            op_idx = -1
+            op_char = None
+            for idx, ch in ((plus_idx, "+"), (minus_idx, "-"), (star_idx, "*")):
+                if idx != -1 and (op_idx == -1 or idx < op_idx):
+                    op_idx = idx
+                    op_char = ch
 
             if op_idx == -1:
                 term_suffix = rest
@@ -87,12 +82,25 @@ def interpret(s: str) -> str:
             for num, _suf in terms:
                 if any(ch in num for ch in ".eE"):
                     raise ValueError("integer addition requires integer literals")
-            # compute with operators if present
-            total = int(terms[0][0], 10)
-            for i, (num, _suf) in enumerate(terms[1:], start=0):
-                op = ops[i]
-                val = int(num, 10)
-                total = total + val if op == "+" else total - val
+            # compute respecting '*' precedence
+            values_plain = [int(num, 10) for num, _ in terms]
+            # collapse '*' groups first
+            stack = [values_plain[0]]
+            new_ops = []
+            for i, op in enumerate(ops):
+                if op == "*":
+                    stack[-1] = stack[-1] * values_plain[i + 1]
+                else:
+                    new_ops.append(op)
+                    stack.append(values_plain[i + 1])
+
+            total = stack[0]
+            for i, op in enumerate(new_ops):
+                if op == "+":
+                    total += stack[i + 1]
+                else:
+                    total -= stack[i + 1]
+
             return str(total)
 
         # At least one term has an explicit suffix; determine effective kind/bits
@@ -126,14 +134,22 @@ def interpret(s: str) -> str:
         if kind == "u" and any(v < 0 for v in values):
             raise ValueError("negative unsigned literal not allowed")
 
-        # apply operators left-to-right
-        result = values[0]
-        for i, v in enumerate(values[1:], start=0):
-            op = ops[i]
-            if op == "+":
-                result += v
+        # apply '*' precedence first across values
+        stack = [values[0]]
+        new_ops = []
+        for i, op in enumerate(ops):
+            if op == "*":
+                stack[-1] = stack[-1] * values[i + 1]
             else:
-                result -= v
+                new_ops.append(op)
+                stack.append(values[i + 1])
+
+        result = stack[0]
+        for i, op in enumerate(new_ops):
+            if op == "+":
+                result += stack[i + 1]
+            else:
+                result -= stack[i + 1]
 
         if kind == "u":
             max_val = (1 << bits) - 1
