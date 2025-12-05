@@ -186,6 +186,17 @@ def test_typeof_on_untyped_variable_defaults_to_i32():
     assert interpret("let x = 100; typeOf(x)") == "I32"
 
 
+def test_mutable_declaration_allows_reassignment():
+    assert interpret("let mut x = 0; x = 100; x") == "100"
+
+
+def test_immutable_declaration_reassignment_raises():
+    import pytest
+
+    with pytest.raises(ValueError):
+        interpret("let x = 0; x = 100;")
+
+
 def test_typed_initializer_from_incompatible_typed_variable_raises():
     import pytest
 

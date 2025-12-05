@@ -27,12 +27,13 @@ def interpret(s: str, env: dict | None = None) -> str:
         last = None
         for part in parts:
             if part.startswith("let "):
-                # typed with initializer: `let name : U8 = expr`
-                m = re.match(r"let\s+([A-Za-z_]\w*)\s*:\s*([uUiI]\d+)\s*=\s*(.+)", part)
+                # typed with initializer: `let [mut] name : U8 = expr`
+                m = re.match(r"let\s+(mut\s+)?([A-Za-z_]\w*)\s*:\s*([uUiI]\d+)\s*=\s*(.+)", part)
                 if m:
-                    name = m.group(1)
-                    type_spec = m.group(2)
-                    init_expr = m.group(3).strip()
+                    mut_flag = bool(m.group(1))
+                    name = m.group(2)
+                    type_spec = m.group(3)
+                    init_expr = m.group(4).strip()
                     # If this is a typed declaration with an initializer,
                     # ensure any explicit suffixes or typed variables in the
                     # initializer match the declared type (kind and width).
@@ -54,7 +55,7 @@ def interpret(s: str, env: dict | None = None) -> str:
                     idents = re.findall(r"\b([A-Za-z_]\w*)\b", init_expr)
                     for ident in idents:
                         if ident in env and env[ident][1] is not None:
-                            kval, kkind, kbits = env[ident]
+                            kval, kkind, kbits, _kmut = env[ident]
                             if kkind != declared_kind or kbits != declared_bits:
                                 raise ValueError(
                                     "initializer references variable with incompatible type"
@@ -64,11 +65,13 @@ def interpret(s: str, env: dict | None = None) -> str:
                 else:
                     # typed without initializer: `let name : U8`
                     m_typed_noinit = re.match(
-                        r"let\s+([A-Za-z_]\w*)\s*:\s*([uUiI]\d+)\s*$", part
+                        r"let\s+(mut\s+)?([A-Za-z_]\w*)\s*:\s*([uUiI]\d+)\s*$",
+                        part,
                     )
                     if m_typed_noinit:
-                        name = m_typed_noinit.group(1)
-                        type_spec = m_typed_noinit.group(2)
+                        mut_flag = bool(m_typed_noinit.group(1))
+                        name = m_typed_noinit.group(2)
+                        type_spec = m_typed_noinit.group(3)
                         # no initializer; store variable uninitialized
                         if name in env:
                             raise ValueError(f"variable '{name}' already declared")
@@ -76,16 +79,18 @@ def interpret(s: str, env: dict | None = None) -> str:
                         bits = int(type_spec[1:])
                         if bits <= 0:
                             raise ValueError("invalid integer width")
-                        env[name] = (None, kind, bits)
+                        # uninitialized declarations are considered assignable
+                        env[name] = (None, kind, bits, True)
                         last = ""
                         continue
                     # support untyped let with initializer: `let name = expr`
-                    m2 = re.match(r"let\s+([A-Za-z_]\w*)\s*=\s*(.+)", part)
+                    m2 = re.match(r"let\s+(mut\s+)?([A-Za-z_]\w*)\s*=\s*(.+)", part)
                     if not m2:
                         raise ValueError("invalid let statement")
-                    name = m2.group(1)
+                    mut_flag = bool(m2.group(1))
+                    name = m2.group(2)
                     type_spec = None
-                    init_expr = m2.group(2).strip()
+                    init_expr = m2.group(3).strip()
                     val_str = interpret(init_expr, env)
                 try:
                     val = int(val_str, 10)
@@ -111,12 +116,12 @@ def interpret(s: str, env: dict | None = None) -> str:
                     if name in env:
                         raise ValueError(f"variable '{name}' already declared")
 
-                    env[name] = (val, kind, bits)
+                    env[name] = (val, kind, bits, mut_flag)
                 else:
                     if name in env:
                         raise ValueError(f"variable '{name}' already declared")
 
-                    env[name] = (val, None, None)
+                    env[name] = (val, None, None, mut_flag)
                 # `let` statements don't produce a visible value when they are
                 # the final statement; return an empty string for those.
                 last = ""
@@ -147,7 +152,13 @@ def interpret(s: str, env: dict | None = None) -> str:
                             if val < min_neg or val > max_pos:
                                 raise ValueError("signed literal out of range")
 
-                    env[name] = (val, kind, bits)
+                    # ensure assignment permitted: allow if variable is
+                    # uninitialized (value None) or if it is mutable
+                    prev_val, prev_kind, prev_bits, prev_mut = env[name]
+                    if prev_val is not None and not prev_mut:
+                        raise ValueError("assignment to immutable variable")
+
+                    env[name] = (val, kind, bits, prev_mut)
                     last = str(val)
                 else:
                     last = interpret(part, env)
