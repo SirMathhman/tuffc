@@ -6,7 +6,9 @@ from .typed_int import SUFFIX_MAP, TypedInt
 
 _SUFFIX_RE = re.compile(r"^([+-]?\d+)(?:U8|U16|U32|U64|I8|I16|I32|I64)$")
 _ANY_SUFFIX_RE = re.compile(r"([+-]?\d+)(?:U8|U16|U32|U64|I8|I16|I32|I64)\b")
-_LET_RE = re.compile(r"^let\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(U8|U16|U32|U64|I8|I16|I32|I64)\s*=\s*(.+)$")
+_LET_RE = re.compile(
+    r"^let\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(U8|U16|U32|U64|I8|I16|I32|I64)\s*=\s*(.+)$"
+)
 
 
 def interpret(s: str) -> str:
@@ -76,7 +78,11 @@ def interpret(s: str) -> str:
             if isinstance(result, TypedInt):
                 # if final is a single identifier, return plain numeric string
                 if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", final):
-                    return str(result.signed_value() if result.signed else result.unsigned_value())
+                    return str(
+                        result.signed_value()
+                        if result.signed
+                        else result.unsigned_value()
+                    )
                 return result.format_with_suffix()
 
             if isinstance(result, int):
