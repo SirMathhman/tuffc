@@ -72,7 +72,7 @@ def interpret(s: str, env: dict | None = None) -> str:
                 # `let name : *I32 = &other;` as well as plain integer types
                 # like `let name : I32 = 10`.
                 m = re.match(
-                    r"let\s+(mut\s+)?([A-Za-z_]\w*)\s*:\s*(\*?[uUiI]\d+)\s*=\s*(.+)",
+                    r"let\s+(mut\s+)?([A-Za-z_]\w*)\s*:\s*(\*(?:\s*mut\s*)?[uUiI]\d+|[uUiI]\d+)\s*=\s*(.+)",
                     part,
                 )
                 if m:
@@ -89,10 +89,16 @@ def interpret(s: str, env: dict | None = None) -> str:
                     # pointer declarations into a `declared_kind` of '*'
                     # while `declared_bits` is the pointed width.
                     if declared_kind == "*":
-                        if len(type_spec) < 3:
+                        # normalize by removing '*' and whitespace
+                        rest = re.sub(r"\s+", "", type_spec[1:])
+                        pointed_mut = False
+                        if rest.startswith("mut"):
+                            pointed_mut = True
+                            rest = rest[len("mut"):]
+                        if len(rest) < 2:
                             raise ValueError("invalid pointer type")
-                        pointed_kind = type_spec[1].lower()
-                        declared_bits = int(type_spec[2:])
+                        pointed_kind = rest[0].lower()
+                        declared_bits = int(rest[1:])
                     else:
                         declared_bits = int(type_spec[1:])
 
@@ -100,10 +106,11 @@ def interpret(s: str, env: dict | None = None) -> str:
                     # address-of of the form `&name`. Validate the target
                     # variable exists and its type matches the pointed type.
                     if declared_kind == "*":
-                        m_addr = re.match(r"^\s*&\s*([A-Za-z_]\w*)\s*$", init_expr)
+                        m_addr = re.match(r"^\s*&\s*(mut\s+)?([A-Za-z_]\w*)\s*$", init_expr)
                         if not m_addr:
-                            raise ValueError("pointer initializer must be &identifier")
-                        target = m_addr.group(1)
+                            raise ValueError("pointer initializer must be &identifier or &mut identifier")
+                        is_mut_addr = bool(m_addr.group(1))
+                        target = m_addr.group(2)
                         if target not in env:
                             raise ValueError("pointer to undeclared variable")
                         tval, tkind, tbits, _ = env[target]
@@ -113,9 +120,21 @@ def interpret(s: str, env: dict | None = None) -> str:
                             tbits = 32
                         if tkind != pointed_kind or tbits != declared_bits:
                             raise ValueError("pointer target type mismatch")
+                        # if initializer used &mut, require pointer type be mutable
+                        if is_mut_addr and not pointed_mut:
+                            raise ValueError("cannot take &mut for non-mutable pointer type")
+                        # if initializer uses &mut, ensure the target variable
+                        # is declared mutable.
+                        if is_mut_addr and not env[target][3]:
+                            raise ValueError("cannot take &mut of an immutable variable")
                         # store pointer by keeping the target identifier as
-                        # the 'value' and mark the kind with a leading '*'
-                        env[name] = (target, "*" + pointed_kind, declared_bits, mut_flag)
+                        # the 'value' and mark the kind with a leading '*',
+                        # include 'mut' in the kind string when pointer is mutable
+                        ptr_kind = "*"
+                        if pointed_mut:
+                            ptr_kind += "mut"
+                        ptr_kind += pointed_kind
+                        env[name] = (target, ptr_kind, declared_bits, mut_flag)
                         last = ""
                         continue
 
@@ -152,7 +171,7 @@ def interpret(s: str, env: dict | None = None) -> str:
                 else:
                     # typed without initializer: `let name : U8`
                     m_typed_noinit = re.match(
-                        r"let\s+(mut\s+)?([A-Za-z_]\w*)\s*:\s*([uUiI]\d+)\s*$",
+                        r"let\s+(mut\s+)?([A-Za-z_]\w*)\s*:\s*(\*(?:\s*mut\s*)?[uUiI]\d+|[uUiI]\d+)\s*$",
                         part,
                     )
                     if m_typed_noinit:
@@ -162,8 +181,18 @@ def interpret(s: str, env: dict | None = None) -> str:
                         # no initializer; store variable uninitialized
                         if name in env:
                             raise ValueError(f"variable '{name}' already declared")
-                        kind = type_spec[0].lower()
-                        bits = int(type_spec[1:])
+                        # normalize pointer types into a compact kind string
+                        if type_spec.startswith("*"):
+                            rest = re.sub(r"\s+", "", type_spec[1:])
+                            if rest.startswith("mut"):
+                                kind = "*mut" + rest[len("mut"):][0].lower()
+                                bits = int(rest[len("mut"):][1:])
+                            else:
+                                kind = "*" + rest[0].lower()
+                                bits = int(rest[1:])
+                        else:
+                            kind = type_spec[0].lower()
+                            bits = int(type_spec[1:])
                         if bits <= 0:
                             raise ValueError("invalid integer width")
                         # uninitialized declarations are considered assignable
@@ -214,41 +243,87 @@ def interpret(s: str, env: dict | None = None) -> str:
                 last = ""
             else:
                 # assignment? match `name = expr`
-                m_assign = re.match(r"^([A-Za-z_]\w*)\s*=\s*(.+)$", part)
-                if m_assign:
-                    name = m_assign.group(1)
-                    expr = m_assign.group(2).strip()
-                    if name not in env:
-                        raise ValueError(f"assignment to undeclared variable '{name}'")
+                # handle pointer-target assignment like '*p = expr'
+                m_deref_assign = re.match(r"^\*\s*([A-Za-z_]\w*)\s*=\s*(.+)$", part)
+                if m_deref_assign:
+                    ptr_name = m_deref_assign.group(1)
+                    expr = m_deref_assign.group(2).strip()
+                    if ptr_name not in env:
+                        raise ValueError(f"assignment to undeclared pointer '{ptr_name}'")
+                    ptr_val, ptr_kind, ptr_bits, ptr_mutflag = env[ptr_name]
+                    if not (isinstance(ptr_kind, str) and ptr_kind.startswith("*")):
+                        raise ValueError("assignment through non-pointer")
+                    # require pointer to be a mutable pointer type (i.e. '*mut')
+                    if not ptr_kind.startswith("*mut"):
+                        raise ValueError("assignment through immutable pointer not allowed")
+                    target = ptr_val
+                    if target not in env:
+                        raise ValueError("pointer points to undeclared variable")
+                    # compute rhs value
                     val_str = interpret(expr, env)
                     try:
                         val = int(val_str, 10)
                     except ValueError:
                         raise ValueError("invalid assignment value")
-
-                    # check typed variable range if applicable
-                    kind, bits = env[name][1], env[name][2]
-                    if kind is not None:
-                        if kind == "u":
-                            max_val = (1 << bits) - 1
+                    # perform range checks against the pointed variable type
+                    t_val, t_kind, t_bits, t_mut = env[target]
+                    if t_kind is not None:
+                        # normalize pointer target kinds (strip '*')
+                        if isinstance(t_kind, str) and t_kind.startswith("*"):
+                            t_cmp_kind = t_kind[1:]
+                        else:
+                            t_cmp_kind = t_kind
+                        if t_cmp_kind == "u":
+                            max_val = (1 << t_bits) - 1
                             if val < 0 or val > max_val:
                                 raise ValueError("unsigned literal out of range")
                         else:
-                            max_pos = (1 << (bits - 1)) - 1
-                            min_neg = -(1 << (bits - 1))
+                            max_pos = (1 << (t_bits - 1)) - 1
+                            min_neg = -(1 << (t_bits - 1))
                             if val < min_neg or val > max_pos:
                                 raise ValueError("signed literal out of range")
-
-                    # ensure assignment permitted: allow if variable is
-                    # uninitialized (value None) or if it is mutable
-                    prev_val, prev_kind, prev_bits, prev_mut = env[name]
-                    if prev_val is not None and not prev_mut:
-                        raise ValueError("assignment to immutable variable")
-
-                    env[name] = (val, kind, bits, prev_mut)
+                    # ensure target variable is mutable
+                    if not env[target][3]:
+                        raise ValueError("assignment to immutable variable via pointer")
+                    # write back to target
+                    env[target] = (val, env[target][1], env[target][2], env[target][3])
                     last = str(val)
                 else:
-                    last = interpret(part, env)
+                    m_assign = re.match(r"^([A-Za-z_]\w*)\s*=\s*(.+)$", part)
+                    if m_assign:
+                        name = m_assign.group(1)
+                        expr = m_assign.group(2).strip()
+                        if name not in env:
+                            raise ValueError(f"assignment to undeclared variable '{name}'")
+                        val_str = interpret(expr, env)
+                        try:
+                            val = int(val_str, 10)
+                        except ValueError:
+                            raise ValueError("invalid assignment value")
+
+                        # check typed variable range if applicable
+                        kind, bits = env[name][1], env[name][2]
+                        if kind is not None:
+                            if kind == "u":
+                                max_val = (1 << bits) - 1
+                                if val < 0 or val > max_val:
+                                    raise ValueError("unsigned literal out of range")
+                            else:
+                                max_pos = (1 << (bits - 1)) - 1
+                                min_neg = -(1 << (bits - 1))
+                                if val < min_neg or val > max_pos:
+                                    raise ValueError("signed literal out of range")
+
+                        # ensure assignment permitted: allow if variable is
+                        # uninitialized (value None) or if it is mutable
+                        prev_val, prev_kind, prev_bits, prev_mut = env[name]
+                        if prev_val is not None and not prev_mut:
+                            raise ValueError("assignment to immutable variable")
+
+                        env[name] = (val, kind, bits, prev_mut)
+                        last = str(val)
+                    else:
+                        last = interpret(part, env)
 
         return last if last is not None else ""
 
