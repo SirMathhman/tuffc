@@ -129,3 +129,14 @@ def test_chain_addition_mixed_suffixes():
 
 def test_long_plain_chain_addition():
     assert interpret("1 + 2 + 3 + 4") == "10"
+
+
+def test_subtraction_and_mixed_ops():
+    assert interpret("10U8 - 5U8 + 3") == "8"
+
+
+def test_subtraction_underflow_unsigned_raises():
+    import pytest
+
+    with pytest.raises(ValueError):
+        interpret("0U8 - 1U8")

@@ -29,12 +29,13 @@ def interpret(s: str) -> str:
     # If there's a plus sign after the first operand's suffix, parse the
     # right-hand operand and compute the result when both sides have
     # matching integer suffixes (same signedness and width).
-    if "+" in suffix:
+    if "+" in suffix or "-" in suffix:
         # Parse a sequence of terms (number + optional suffix) separated by '+'.
         # Collect (num_str, suffix_str) for each term.
         terms = []
         pos = 0
         s_rest = s
+        ops = []
         while True:
             # skip leading whitespace between terms
             while pos < len(s_rest) and s_rest[pos].isspace():
@@ -47,18 +48,35 @@ def interpret(s: str) -> str:
             num = mterm.group(0)
             pos += mterm.end()
 
-            # find next '+' in the remaining chunk
+            # find next operator (+ or -) in the remaining chunk
             rest = s_rest[pos:]
             plus_idx = rest.find("+")
+            minus_idx = rest.find("-")
+            # determine the nearest operator index that's not -1
             if plus_idx == -1:
+                op_idx = minus_idx
+                op_char = "-"
+            elif minus_idx == -1:
+                op_idx = plus_idx
+                op_char = "+"
+            else:
+                if plus_idx < minus_idx:
+                    op_idx = plus_idx
+                    op_char = "+"
+                else:
+                    op_idx = minus_idx
+                    op_char = "-"
+
+            if op_idx == -1:
                 term_suffix = rest
                 terms.append((num, term_suffix.strip()))
                 break
             else:
-                term_suffix = rest[:plus_idx]
+                term_suffix = rest[:op_idx]
                 terms.append((num, term_suffix.strip()))
-                # advance pos beyond '+' and continue parsing next term
-                pos += plus_idx + 1
+                ops.append(op_char)
+                # advance pos beyond operator and continue parsing next term
+                pos += op_idx + 1
 
         # If none of the terms carry a [ui]<bits> suffix, perform plain integer sum.
         explicit = [
@@ -69,7 +87,12 @@ def interpret(s: str) -> str:
             for num, _suf in terms:
                 if any(ch in num for ch in ".eE"):
                     raise ValueError("integer addition requires integer literals")
-            total = sum(int(num, 10) for num, _ in terms)
+            # compute with operators if present
+            total = int(terms[0][0], 10)
+            for i, (num, _suf) in enumerate(terms[1:], start=0):
+                op = ops[i]
+                val = int(num, 10)
+                total = total + val if op == "+" else total - val
             return str(total)
 
         # At least one term has an explicit suffix; determine effective kind/bits
@@ -103,7 +126,14 @@ def interpret(s: str) -> str:
         if kind == "u" and any(v < 0 for v in values):
             raise ValueError("negative unsigned literal not allowed")
 
-        result = sum(values)
+        # apply operators left-to-right
+        result = values[0]
+        for i, v in enumerate(values[1:], start=0):
+            op = ops[i]
+            if op == "+":
+                result += v
+            else:
+                result -= v
 
         if kind == "u":
             max_val = (1 << bits) - 1
