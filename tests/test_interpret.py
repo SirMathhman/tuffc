@@ -23,6 +23,10 @@ def test_zero_float_f32():
     assert interpret("0.0F32") == "0.0"
 
 
+def test_zero_float_f64():
+    assert interpret("0.0F64") == "0.0"
+
+
 def test_interpret_non_numeric_unchanged():
     assert interpret("abc") == "abc"
 
