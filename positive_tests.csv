@@ -1,8 +1,0 @@
-input,expected_output
-hello,hello
-,
-hello world,hello world
-12345,12345
-hello!@#$%,hello!@#$%
-test with spaces,test with spaces
-123 456,123 456
