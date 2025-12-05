@@ -68,8 +68,12 @@ def interpret(s: str, env: dict | None = None) -> str:
         for part in parts:
             if part.startswith("let "):
                 # typed with initializer: `let [mut] name : U8 = expr`
+                # Support typed declarations including pointer types such as
+                # `let name : *I32 = &other;` as well as plain integer types
+                # like `let name : I32 = 10`.
                 m = re.match(
-                    r"let\s+(mut\s+)?([A-Za-z_]\w*)\s*:\s*([uUiI]\d+)\s*=\s*(.+)", part
+                    r"let\s+(mut\s+)?([A-Za-z_]\w*)\s*:\s*(\*?[uUiI]\d+)\s*=\s*(.+)",
+                    part,
                 )
                 if m:
                     mut_flag = bool(m.group(1))
@@ -80,7 +84,40 @@ def interpret(s: str, env: dict | None = None) -> str:
                     # ensure any explicit suffixes or typed variables in the
                     # initializer match the declared type (kind and width).
                     declared_kind = type_spec[0].lower()
-                    declared_bits = int(type_spec[1:])
+                    # If this is a pointer type the first character is '*'
+                    # followed by the pointed type kind and width. Normalize
+                    # pointer declarations into a `declared_kind` of '*'
+                    # while `declared_bits` is the pointed width.
+                    if declared_kind == "*":
+                        if len(type_spec) < 3:
+                            raise ValueError("invalid pointer type")
+                        pointed_kind = type_spec[1].lower()
+                        declared_bits = int(type_spec[2:])
+                    else:
+                        declared_bits = int(type_spec[1:])
+
+                    # If declaring a pointer type, the initializer must be an
+                    # address-of of the form `&name`. Validate the target
+                    # variable exists and its type matches the pointed type.
+                    if declared_kind == "*":
+                        m_addr = re.match(r"^\s*&\s*([A-Za-z_]\w*)\s*$", init_expr)
+                        if not m_addr:
+                            raise ValueError("pointer initializer must be &identifier")
+                        target = m_addr.group(1)
+                        if target not in env:
+                            raise ValueError("pointer to undeclared variable")
+                        tval, tkind, tbits, _ = env[target]
+                        # untyped value defaults to I32
+                        if tkind is None:
+                            tkind = "i"
+                            tbits = 32
+                        if tkind != pointed_kind or tbits != declared_bits:
+                            raise ValueError("pointer target type mismatch")
+                        # store pointer by keeping the target identifier as
+                        # the 'value' and mark the kind with a leading '*'
+                        env[name] = (target, "*" + pointed_kind, declared_bits, mut_flag)
+                        last = ""
+                        continue
 
                     # find explicit suffixes like U8, i32, etc. in the init expr
                     # find U/I suffixes even when attached to numeric prefixes (e.g. 2U8)
@@ -98,7 +135,15 @@ def interpret(s: str, env: dict | None = None) -> str:
                     for ident in idents:
                         if ident in env and env[ident][1] is not None:
                             kval, kkind, kbits, _kmut = env[ident]
-                            if kkind != declared_kind or kbits != declared_bits:
+                            # for pointer declarations the ident(s) we inspect
+                            # are expected to be plain variables (not pointer
+                            # types), so normalize any pointer kinds we
+                            # encounter for the comparison.
+                            if kkind and kkind.startswith("*"):
+                                kcomp = kkind[1:]
+                            else:
+                                kcomp = kkind
+                            if kcomp != declared_kind or kbits != declared_bits:
                                 raise ValueError(
                                     "initializer references variable with incompatible type"
                                 )
@@ -287,6 +332,27 @@ def interpret(s: str, env: dict | None = None) -> str:
         inner = s[open_idx + 1 : close_idx]
         val = interpret(inner, env)
         s = s[:open_idx] + val + s[close_idx + 1 :]
+
+    # Support simple dereference expressions where the entire input is a
+    # prefix '*' followed by an identifier (e.g. `*y`). This is intentionally
+    # limited — parsing unary '*' in the middle of arithmetic expressions
+    # would require a proper tokenizer. For our current tests this is
+    # sufficient.
+    m_deref = re.match(r"^\s*\*\s*([A-Za-z_]\w*)\s*$", s)
+    if m_deref:
+        name = m_deref.group(1)
+        if name not in env:
+            raise ValueError(f"dereference of undeclared variable '{name}'")
+        val, kind, bits, _mut = env[name]
+        if not (kind and isinstance(kind, str) and kind.startswith("*")):
+            raise ValueError("dereference of non-pointer")
+        target = val
+        if target not in env:
+            raise ValueError(f"pointer points to undeclared variable '{target}'")
+        targ_val = env[target][0]
+        if targ_val is None:
+            raise ValueError(f"dereference of uninitialized variable '{target}'")
+        return str(targ_val)
 
     # substitute variables from env into the expression
     if env:

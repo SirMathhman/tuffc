@@ -220,6 +220,10 @@ def test_mutable_outer_variable_modified_in_block_separate_parts():
     assert interpret("let mut x = 0; {x = 10;}; x") == "10"
 
 
+def test_pointer_declare_take_address_and_deref():
+    assert interpret("let x = 100; let y : *I32 = &x; *y") == "100"
+
+
 def test_typed_initializer_from_incompatible_typed_variable_raises():
     import pytest
 
