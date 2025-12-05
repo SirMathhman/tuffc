@@ -412,3 +412,11 @@ def test_module_and_scoped_call():
 def test_interpretAll_with_main_mapping():
     mapping = {"main": "impl I32 { fn addOne(this) => this + 1; } 100.addOne()"}
     assert interpretAll("main", mapping) == "101"
+
+
+def test_interpretAll_with_use_statement():
+    mapping = {
+        "main": "use lib::x; x",
+        "lib": "let x = 100;",
+    }
+    assert interpretAll("main", mapping) == "100"

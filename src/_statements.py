@@ -110,6 +110,7 @@ def evaluate_statement_parts(parts: list[str], env: dict) -> str:
         # Module declaration: `module Name { ... }`
         if part.lstrip().startswith("module "):
             from ._module_handler import evaluate_module_declaration
+
             rest, last = evaluate_module_declaration(part, env)
             if rest:
                 parts[i] = rest

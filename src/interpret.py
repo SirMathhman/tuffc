@@ -9,6 +9,7 @@ from ._functions import (
     try_evaluate_function_call,
     try_evaluate_method_call,
 )
+from ._use_handler import try_handle_use_statement
 
 
 def interpret(s: str, env: dict | None = None) -> str:
@@ -198,6 +199,8 @@ def interpret(s: str, env: dict | None = None) -> str:
         rest_fn = try_handle_top_level_impl(s, env)
     if rest_fn is None:
         rest_fn = try_handle_top_level_module(s, env)
+    if rest_fn is None:
+        rest_fn = try_handle_use_statement(s, env)
     if rest_fn is not None:
         if rest_fn:
             return interpret(rest_fn, env)
@@ -409,5 +412,8 @@ def interpretAll(name: str, mapping: dict[str, str]) -> str:
         raise KeyError(name)
 
     env: dict = {}
+    # Store mapping in env so interpret can access it for use statements
+    env["__mapping__"] = mapping
     src = mapping[name]
     return interpret(src, env)
+

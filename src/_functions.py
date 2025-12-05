@@ -278,6 +278,8 @@ def register_method_from_part(type_name: str, part: str, env: dict) -> str:
 
 
 # Import and re-export function call evaluators for backward compatibility
-from ._functions_calls import try_evaluate_function_call, try_evaluate_method_call  # noqa: E402
+from ._functions_calls import (
+    try_evaluate_function_call,
+    try_evaluate_method_call,
+)  # noqa: E402
 from ._functions_scoped import try_evaluate_scoped_function_call  # noqa: E402
-
