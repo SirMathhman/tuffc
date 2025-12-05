@@ -178,6 +178,10 @@ def test_typed_initializer_plain_integer_assigns_and_lookup():
     assert interpret("let x : U8 = 100; x") == "100"
 
 
+def test_typeof_on_typed_variable_returns_declared():
+    assert interpret("let x : U8 = 100; typeOf(x)") == "U8"
+
+
 def test_typed_initializer_mismatched_signedness_raises():
     import pytest
 
