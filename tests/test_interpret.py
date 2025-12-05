@@ -264,3 +264,7 @@ def test_typeof_expression_with_explicit_suffix_returns_explicit():
 
 def test_typeof_expression_with_i64_returns_i64():
     assert interpret("typeOf((1 + 10) * (2I64 + 3))") == "I64"
+
+
+def test_let_with_braced_initializer():
+    assert interpret("let x = {100}; x") == "100"
