@@ -383,3 +383,11 @@ def test_function_decl_no_braces_expression_body():
         "add(10, 20)"
     )
     assert interpret(expr) == "30"
+
+
+def test_function_decl_without_return_spec():
+    expr = (
+        "fn add(first : I32, second : I32) => first + second; "
+        "add(10, 20)"
+    )
+    assert interpret(expr) == "30"
