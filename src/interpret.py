@@ -63,8 +63,14 @@ def interpret(s: str, env: dict | None = None) -> str:
                         if val < min_neg or val > max_pos:
                             raise ValueError("signed literal out of range")
 
+                    if name in env:
+                        raise ValueError(f"variable '{name}' already declared")
+
                     env[name] = (val, kind, bits)
                 else:
+                    if name in env:
+                        raise ValueError(f"variable '{name}' already declared")
+
                     env[name] = (val, None, None)
                 # `let` statements don't produce a visible value when they are
                 # the final statement; return an empty string for those.

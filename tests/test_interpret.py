@@ -184,3 +184,10 @@ def test_let_without_type_and_lookup():
 
 def test_let_without_type_trailing_returns_empty():
     assert interpret("let x = 100;") == ""
+
+
+def test_redeclaration_raises():
+    import pytest
+
+    with pytest.raises(ValueError):
+        interpret("let x = 100; let x = 100;")
