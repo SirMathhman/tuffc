@@ -4,7 +4,7 @@ import re
 _LEADING_NUMBER = re.compile(r"^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?")
 
 
-def interpret(s: str) -> str:
+def interpret(s: str, env: dict | None = None) -> str:
     """Return the input string, stripping any trailing type-suffix when present.
 
     Examples:
@@ -18,6 +18,49 @@ def interpret(s: str) -> str:
     if not isinstance(s, str):
         raise TypeError("interpret expects a string")
 
+    env = {} if env is None else env
+
+    # If input contains multiple statements separated by ';', evaluate them
+    # sequentially and return the value of the last statement.
+    if ";" in s:
+        parts = [p.strip() for p in s.split(";") if p.strip()]
+        last = None
+        for part in parts:
+            if part.startswith("let "):
+                m = re.match(r"let\s+([A-Za-z_]\w*)\s*:\s*([uUiI]\d+)\s*=\s*(.+)", part)
+                if not m:
+                    raise ValueError("invalid let statement")
+                name = m.group(1)
+                type_spec = m.group(2)
+                init_expr = m.group(3).strip()
+                val_str = interpret(init_expr, env)
+                try:
+                    val = int(val_str, 10)
+                except ValueError:
+                    raise ValueError("invalid initializer for variable")
+
+                kind = type_spec[0].lower()
+                bits = int(type_spec[1:])
+                if bits <= 0:
+                    raise ValueError("invalid integer width")
+
+                if kind == "u":
+                    max_val = (1 << bits) - 1
+                    if val < 0 or val > max_val:
+                        raise ValueError("unsigned literal out of range")
+                else:
+                    max_pos = (1 << (bits - 1)) - 1
+                    min_neg = -(1 << (bits - 1))
+                    if val < min_neg or val > max_pos:
+                        raise ValueError("signed literal out of range")
+
+                env[name] = (val, kind, bits)
+                last = str(val)
+            else:
+                last = interpret(part, env)
+
+        return last if last is not None else ""
+
     # Evaluate innermost parenthesized expressions first, replacing them
     # with their evaluated result. This allows "(1 + 10) * 2U8" to become
     # "11 * 2U8" which the rest of the parser handles.
@@ -28,8 +71,21 @@ def interpret(s: str) -> str:
             raise ValueError("unmatched parentheses")
 
         inner = s[open_idx + 1 : close_idx]
-        val = interpret(inner)
+        val = interpret(inner, env)
         s = s[:open_idx] + val + s[close_idx + 1 :]
+
+    # substitute variables from env into the expression
+    if env:
+        # replace longest names first to avoid partial matches
+        for name in sorted(env.keys(), key=len, reverse=True):
+            s = re.sub(r"\b" + re.escape(name) + r"\b", str(env[name][0]), s)
+
+    # if the whole string is an identifier, return its value
+    ident_full = re.match(r"^[A-Za-z_]\w*$", s.strip())
+    if ident_full:
+        name = ident_full.group(0)
+        if name in env:
+            return str(env[name][0])
 
     m = _LEADING_NUMBER.match(s)
     if not m:

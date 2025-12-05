@@ -167,3 +167,8 @@ def test_parentheses_in_expression():
 
 def test_multiple_parenthesized_subexpressions():
     assert interpret("(1 + 10) * (2U8 + 3)") == "55"
+
+
+def test_variable_declaration_and_lookup():
+    expr = "let x : U8 = (1 + 10) * (2U8 + 3); x"
+    assert interpret(expr) == "55"
