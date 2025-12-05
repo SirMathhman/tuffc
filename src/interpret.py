@@ -27,21 +27,37 @@ def interpret(s: str, env: dict | None = None) -> str:
         last = None
         for part in parts:
             if part.startswith("let "):
-                # support typed let: `let name : U8 = expr`
+                # typed with initializer: `let name : U8 = expr`
                 m = re.match(r"let\s+([A-Za-z_]\w*)\s*:\s*([uUiI]\d+)\s*=\s*(.+)", part)
                 if m:
                     name = m.group(1)
                     type_spec = m.group(2)
                     init_expr = m.group(3).strip()
+                    val_str = interpret(init_expr, env)
                 else:
-                    # support untyped let: `let name = expr`
+                    # typed without initializer: `let name : U8`
+                    m_typed_noinit = re.match(r"let\s+([A-Za-z_]\w*)\s*:\s*([uUiI]\d+)\s*$", part)
+                    if m_typed_noinit:
+                        name = m_typed_noinit.group(1)
+                        type_spec = m_typed_noinit.group(2)
+                        # no initializer; store variable uninitialized
+                        if name in env:
+                            raise ValueError(f"variable '{name}' already declared")
+                        kind = type_spec[0].lower()
+                        bits = int(type_spec[1:])
+                        if bits <= 0:
+                            raise ValueError("invalid integer width")
+                        env[name] = (None, kind, bits)
+                        last = ""
+                        continue
+                    # support untyped let with initializer: `let name = expr`
                     m2 = re.match(r"let\s+([A-Za-z_]\w*)\s*=\s*(.+)", part)
                     if not m2:
                         raise ValueError("invalid let statement")
                     name = m2.group(1)
                     type_spec = None
                     init_expr = m2.group(2).strip()
-                val_str = interpret(init_expr, env)
+                    val_str = interpret(init_expr, env)
                 try:
                     val = int(val_str, 10)
                 except ValueError:
@@ -76,7 +92,36 @@ def interpret(s: str, env: dict | None = None) -> str:
                 # the final statement; return an empty string for those.
                 last = ""
             else:
-                last = interpret(part, env)
+                # assignment? match `name = expr`
+                m_assign = re.match(r"^([A-Za-z_]\w*)\s*=\s*(.+)$", part)
+                if m_assign:
+                    name = m_assign.group(1)
+                    expr = m_assign.group(2).strip()
+                    if name not in env:
+                        raise ValueError(f"assignment to undeclared variable '{name}'")
+                    val_str = interpret(expr, env)
+                    try:
+                        val = int(val_str, 10)
+                    except ValueError:
+                        raise ValueError("invalid assignment value")
+
+                    # check typed variable range if applicable
+                    kind, bits = env[name][1], env[name][2]
+                    if kind is not None:
+                        if kind == "u":
+                            max_val = (1 << bits) - 1
+                            if val < 0 or val > max_val:
+                                raise ValueError("unsigned literal out of range")
+                        else:
+                            max_pos = (1 << (bits - 1)) - 1
+                            min_neg = -(1 << (bits - 1))
+                            if val < min_neg or val > max_pos:
+                                raise ValueError("signed literal out of range")
+
+                    env[name] = (val, kind, bits)
+                    last = str(val)
+                else:
+                    last = interpret(part, env)
 
         return last if last is not None else ""
 

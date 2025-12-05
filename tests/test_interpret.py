@@ -191,3 +191,7 @@ def test_redeclaration_raises():
 
     with pytest.raises(ValueError):
         interpret("let x = 100; let x = 100;")
+
+
+def test_declare_uninitialized_then_assign():
+    assert interpret("let x : I32; x = 100; x") == "100"
