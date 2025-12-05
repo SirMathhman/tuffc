@@ -15,6 +15,10 @@ def test_boolean_true_literal():
     assert interpret("true") == "true"
 
 
+def test_boolean_false_literal():
+    assert interpret("false") == "false"
+
+
 def test_interpret_strips_u8_suffix():
     assert interpret("100U8") == "100"
 
