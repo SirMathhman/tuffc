@@ -274,10 +274,28 @@ def interpret(s: str, env: dict | None = None) -> str:
             return "false"
 
     # substitute variables from env into the expression
+    # Resolve struct field access like `obj.field` first, replacing with
+    # the underlying numeric value when possible.
+    def _replace_field(m: re.Match) -> str:
+        obj_name = m.group(1)
+        field_name = m.group(2)
+        if obj_name in env:
+            val = env[obj_name][0]
+            if isinstance(val, dict):
+                if field_name in val:
+                    return str(val[field_name])
+                raise ValueError(f"struct '{obj_name}' has no field '{field_name}'")
+        return m.group(0)
+
+    s = re.sub(r"\b([A-Za-z_]\w*)\.([A-Za-z_]\w*)\b", _replace_field, s)
     if env:
         # replace longest names first to avoid partial matches
         for name in sorted(env.keys(), key=len, reverse=True):
-            s = re.sub(r"\b" + re.escape(name) + r"\b", str(env[name][0]), s)
+            # skip internal helpers like '__types__' which aren't variable bindings
+            binding = env.get(name)
+            if not isinstance(binding, tuple) or len(binding) != 4:
+                continue
+            s = re.sub(r"\b" + re.escape(name) + r"\b", str(binding[0]), s)
 
     # if the whole string is an identifier, return its value
     ident_full = re.match(r"^[A-Za-z_]\w*$", s.strip())

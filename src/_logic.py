@@ -7,14 +7,13 @@ returns None.
 """
 
 
-
-
 def evaluate_logical(s: str, env: dict) -> str | None:
     # AND has higher precedence than OR; evaluate AND chains first.
     if "&&" in s:
         parts = [p.strip() for p in s.split("&&")]
         if len(parts) >= 2:
             from .interpret import interpret
+
             for i, part_expr in enumerate(parts):
                 val = interpret(part_expr, env)
                 if val == "false":
@@ -26,6 +25,7 @@ def evaluate_logical(s: str, env: dict) -> str | None:
         parts = [p.strip() for p in s.split("||")]
         if len(parts) >= 2:
             from .interpret import interpret
+
             for i, part_expr in enumerate(parts):
                 val = interpret(part_expr, env)
                 if val == "true":

@@ -27,7 +27,9 @@ def parse_pointer_spec(type_spec: str):
     return (True, pointed_mut, pointed_kind, bits)
 
 
-def handle_typed_pointer_initializer(env: dict, name: str, type_spec: str, init_expr: str, mut_flag: bool) -> bool:
+def handle_typed_pointer_initializer(
+    env: dict, name: str, type_spec: str, init_expr: str, mut_flag: bool
+) -> bool:
     m_addr = re.match(r"^\s*&\s*(mut\s+)?([A-Za-z_]\w*)\s*$", init_expr)
     if not m_addr:
         return False
@@ -63,7 +65,9 @@ def handle_typed_pointer_initializer(env: dict, name: str, type_spec: str, init_
     return True
 
 
-def handle_typed_pointer_noinit(env: dict, name: str, type_spec: str, mut_flag: bool) -> bool:
+def handle_typed_pointer_noinit(
+    env: dict, name: str, type_spec: str, mut_flag: bool
+) -> bool:
     is_ptr, pointed_mut, pointed_kind, bits = parse_pointer_spec(type_spec)
     if not is_ptr:
         return False

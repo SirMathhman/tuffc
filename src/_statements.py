@@ -14,6 +14,55 @@ def evaluate_statement_parts(parts: list[str], env: dict) -> str:
     i = 0
     while i < len(parts):
         part = parts[i]
+        # Struct declaration: `struct Name { field : Type, ... }`
+        if part.lstrip().startswith("struct "):
+            # allow struct declaration possibly followed by other tokens
+            m_start = re.match(r"^\s*struct\s+([A-Za-z_]\w*)\s*\{", part)
+            if not m_start:
+                raise ValueError("invalid struct declaration")
+            sname = m_start.group(1)
+            # find matching closing brace
+            open_idx = part.find("{", m_start.end() - 1)
+            depth = 0
+            j = open_idx
+            in_string = False
+            while j < len(part):
+                ch = part[j]
+                if ch == '"':
+                    in_string = not in_string
+                elif not in_string:
+                    if ch == '{':
+                        depth += 1
+                    elif ch == '}':
+                        depth -= 1
+                        if depth == 0:
+                            break
+                j += 1
+            if j >= len(part) or part[j] != '}':
+                raise ValueError("invalid struct declaration (unmatched brace)")
+            body = part[open_idx + 1 : j].strip()
+            fields = []
+            if body:
+                for f in [p.strip() for p in body.split(",")]:
+                    fm = re.match(r"([A-Za-z_]\w*)\s*:\s*([A-Za-z_]\w*)", f)
+                    if not fm:
+                        raise ValueError("invalid struct field")
+                    fname = fm.group(1)
+                    ftype = fm.group(2)
+                    fields.append((fname, ftype))
+            types = env.get("__types__", {})
+            if sname in types:
+                raise ValueError(f"struct '{sname}' already defined")
+            types[sname] = fields
+            env["__types__"] = types
+            last = ""
+            # if there is trailing text after the struct decl, put it back
+            rest = part[j + 1 :].strip()
+            if rest:
+                parts[i] = rest
+                continue
+            i += 1
+            continue
         # If this part starts an if-statement and it's a single-part if
         # (no else present in the same part and next part does not begin
         # with 'else'), evaluate the then-branch as statements.
@@ -49,7 +98,9 @@ def evaluate_statement_parts(parts: list[str], env: dict) -> str:
         # Handle an if-statement that is represented entirely within this
         # part (i.e. `if (cond) stmt` with no else). We will execute the
         # then-branch as statements when the condition is true.
-        if part.lstrip().startswith("if") and (i + 1 >= len(parts) or not parts[i + 1].lstrip().startswith("else")):
+        if part.lstrip().startswith("if") and (
+            i + 1 >= len(parts) or not parts[i + 1].lstrip().startswith("else")
+        ):
             m_if_single = re.match(r"^\s*if\s*\((.*)\)\s*(.*)$", part)
             if not m_if_single:
                 # Not a standalone single-part if, fall through
@@ -63,7 +114,11 @@ def evaluate_statement_parts(parts: list[str], env: dict) -> str:
                 i += 1
                 continue
 
-        if part.lstrip().startswith("if") and i + 1 < len(parts) and parts[i + 1].lstrip().startswith("else"):
+        if (
+            part.lstrip().startswith("if")
+            and i + 1 < len(parts)
+            and parts[i + 1].lstrip().startswith("else")
+        ):
             # extract condition and then-expression from the 'if' part
             m_if = re.match(r"^\s*if\s*\((.*)\)\s*(.*)$", part)
             if not m_if:
@@ -74,7 +129,7 @@ def evaluate_statement_parts(parts: list[str], env: dict) -> str:
             # remove the leading 'else' token from else_part
             if not else_part.startswith("else"):
                 raise ValueError("malformed else part")
-            else_expr = else_part[len("else"):].strip()
+            else_expr = else_part[len("else") :].strip()
 
             cond_val = interpret(cond, env)
             if cond_val == "true":
@@ -136,6 +191,30 @@ def evaluate_statement_parts(parts: list[str], env: dict) -> str:
                                 "initializer references variable with incompatible type"
                             )
 
+                # support struct literal initializer `TypeName { a, b }`
+                m_struct_init = re.match(r"^([A-Za-z_]\w*)\s*\{(.*)\}$", init_expr, re.DOTALL)
+                if m_struct_init:
+                    sname = m_struct_init.group(1)
+                    inner = m_struct_init.group(2).strip()
+                    types = env.get("__types__", {})
+                    if sname not in types:
+                        raise ValueError(f"unknown struct type '{sname}'")
+                    fdefs = types[sname]
+                    # split by comma (simple top-level split)
+                    vals = [p.strip() for p in inner.split(",")] if inner else []
+                    if len(vals) != len(fdefs):
+                        raise ValueError("struct initializer field count mismatch")
+                    obj = {}
+                    for (fname, _ftype), vexpr in zip(fdefs, vals):
+                        vstr = interpret(vexpr, env)
+                        try:
+                            v = int(vstr, 10)
+                        except ValueError:
+                            raise ValueError("invalid struct field initializer")
+                        obj[fname] = v
+                    env[name] = (obj, f"struct:{sname}", None, mut_flag)
+                    last = ""
+                    continue
                 val_str = interpret(init_expr, env)
             else:
                 m_typed_noinit = re.match(
@@ -169,6 +248,33 @@ def evaluate_statement_parts(parts: list[str], env: dict) -> str:
                 name = m2.group(2)
                 type_spec = None
                 init_expr = m2.group(3).strip()
+                # support struct literal initializer `TypeName { a, b }` for
+                # untyped `let` forms too (e.g. `let s = Point { 1, 2 }`).
+                m_struct_init = re.match(r"^([A-Za-z_]\w*)\s*\{(.*)\}$", init_expr, re.DOTALL)
+                if m_struct_init:
+                    sname = m_struct_init.group(1)
+                    inner = m_struct_init.group(2).strip()
+                    types = env.get("__types__", {})
+                    if sname not in types:
+                        raise ValueError(f"unknown struct type '{sname}'")
+                    fdefs = types[sname]
+                    vals = [p.strip() for p in inner.split(",")] if inner else []
+                    if len(vals) != len(fdefs):
+                        raise ValueError("struct initializer field count mismatch")
+                    obj = {}
+                    for (fname, _ftype), vexpr in zip(fdefs, vals):
+                        vstr = interpret(vexpr, env)
+                        try:
+                            v = int(vstr, 10)
+                        except ValueError:
+                            raise ValueError("invalid struct field initializer")
+                        obj[fname] = v
+                    if name in env:
+                        raise ValueError(f"variable '{name}' already declared")
+                    env[name] = (obj, f"struct:{sname}", None, mut_flag)
+                    last = ""
+                    continue
+
                 val_str = interpret(init_expr, env)
 
             try:
@@ -230,7 +336,9 @@ def evaluate_statement_parts(parts: list[str], env: dict) -> str:
                     raise ValueError("invalid assignment value")
 
                 if isinstance(prev_kind, str) and prev_kind.startswith("*"):
-                    raise ValueError("compound assignment not supported for pointer types")
+                    raise ValueError(
+                        "compound assignment not supported for pointer types"
+                    )
 
                 new_val = prev_val + rhs_val
 

@@ -66,6 +66,14 @@ def test_while_loop_increments_until_condition():
     assert interpret("let mut x = 0; while (x < 2) x += 1; x") == "2"
 
 
+def test_struct_and_field_access():
+    expr = (
+        "struct Point { x : I32, y : I32 } "
+        "let myStruct = Point { 3, 4 }; myStruct.x + myStruct.y"
+    )
+    assert interpret(expr) == "7"
+
+
 def test_interpret_strips_u8_suffix():
     assert interpret("100U8") == "100"
 
