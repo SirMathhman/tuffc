@@ -9,3 +9,7 @@ from tuffc.interpreter import interpret
 
 def test_interpret_returns_input():
     assert interpret("hello") == "hello"
+
+
+def test_interpret_returns_numeric_string():
+    assert interpret("100") == "100"
