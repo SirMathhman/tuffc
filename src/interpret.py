@@ -27,34 +27,45 @@ def interpret(s: str, env: dict | None = None) -> str:
         last = None
         for part in parts:
             if part.startswith("let "):
+                # support typed let: `let name : U8 = expr`
                 m = re.match(r"let\s+([A-Za-z_]\w*)\s*:\s*([uUiI]\d+)\s*=\s*(.+)", part)
-                if not m:
-                    raise ValueError("invalid let statement")
-                name = m.group(1)
-                type_spec = m.group(2)
-                init_expr = m.group(3).strip()
+                if m:
+                    name = m.group(1)
+                    type_spec = m.group(2)
+                    init_expr = m.group(3).strip()
+                else:
+                    # support untyped let: `let name = expr`
+                    m2 = re.match(r"let\s+([A-Za-z_]\w*)\s*=\s*(.+)", part)
+                    if not m2:
+                        raise ValueError("invalid let statement")
+                    name = m2.group(1)
+                    type_spec = None
+                    init_expr = m2.group(2).strip()
                 val_str = interpret(init_expr, env)
                 try:
                     val = int(val_str, 10)
                 except ValueError:
                     raise ValueError("invalid initializer for variable")
 
-                kind = type_spec[0].lower()
-                bits = int(type_spec[1:])
-                if bits <= 0:
-                    raise ValueError("invalid integer width")
+                if type_spec is not None:
+                    kind = type_spec[0].lower()
+                    bits = int(type_spec[1:])
+                    if bits <= 0:
+                        raise ValueError("invalid integer width")
 
-                if kind == "u":
-                    max_val = (1 << bits) - 1
-                    if val < 0 or val > max_val:
-                        raise ValueError("unsigned literal out of range")
+                    if kind == "u":
+                        max_val = (1 << bits) - 1
+                        if val < 0 or val > max_val:
+                            raise ValueError("unsigned literal out of range")
+                    else:
+                        max_pos = (1 << (bits - 1)) - 1
+                        min_neg = -(1 << (bits - 1))
+                        if val < min_neg or val > max_pos:
+                            raise ValueError("signed literal out of range")
+
+                    env[name] = (val, kind, bits)
                 else:
-                    max_pos = (1 << (bits - 1)) - 1
-                    min_neg = -(1 << (bits - 1))
-                    if val < min_neg or val > max_pos:
-                        raise ValueError("signed literal out of range")
-
-                env[name] = (val, kind, bits)
+                    env[name] = (val, None, None)
                 # `let` statements don't produce a visible value when they are
                 # the final statement; return an empty string for those.
                 last = ""

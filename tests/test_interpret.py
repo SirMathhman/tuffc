@@ -176,3 +176,11 @@ def test_variable_declaration_and_lookup():
 
 def test_let_trailing_returns_empty():
     assert interpret("let x : U8 = 100;") == ""
+
+
+def test_let_without_type_and_lookup():
+    assert interpret("let x = 100; x") == "100"
+
+
+def test_let_without_type_trailing_returns_empty():
+    assert interpret("let x = 100;") == ""
