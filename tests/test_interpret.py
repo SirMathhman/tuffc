@@ -4,7 +4,7 @@ from pathlib import Path
 # Ensure project root is on sys.path so `src` package is importable during tests
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
-from src.interpret import interpret
+from src.interpret import interpret, interpretAll
 
 
 def test_interpret_returns_same_string():
@@ -402,3 +402,8 @@ def test_function_call_chain_forward_reference():
 def test_method_call_on_primitive_i32():
     expr = "impl I32 { fn addOne(this) => this + 1; } 100.addOne()"
     assert interpret(expr) == "101"
+
+
+def test_interpretAll_with_main_mapping():
+    mapping = {"main": "impl I32 { fn addOne(this) => this + 1; } 100.addOne()"}
+    assert interpretAll("main", mapping) == "101"
