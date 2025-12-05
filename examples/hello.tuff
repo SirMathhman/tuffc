@@ -1,4 +1,0 @@
-// Hello World - minimal Tuff program
-fn main() -> i32 {
-    return 0;
-}
