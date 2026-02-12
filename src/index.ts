@@ -1424,10 +1424,45 @@ function createVariableDeclarationError(
   };
 }
 
+function detectCompoundAssignment(
+  line: string,
+): { varName: string; operator: string; value: string } | undefined {
+  const trimmedLine = line.trim();
+  const operators = ["+=", "-=", "*=", "/=", "&=", "|=", "^="];
+
+  for (const op of operators) {
+    const opIndex = trimmedLine.indexOf(op);
+    if (opIndex !== -1) {
+      const varName = trimmedLine.slice(0, opIndex).trim();
+      const operator = op[0]; // +, -, *, /, etc.
+      let valueStr = trimmedLine.slice(opIndex + 2).trim();
+      if (valueStr.endsWith(";")) valueStr = valueStr.slice(0, -1);
+
+      // Basic validation that varName is an identifier
+      if (isValidVariableName(varName)) {
+        return { varName, operator, value: valueStr };
+      }
+    }
+  }
+  return undefined;
+}
+
 function parseVariableAssignment(
   line: string,
 ): Result<{ name: string; value: string }, string> {
   const trimmedLine = line.trim();
+
+  // Handle compound assignment operators (+=, -=, *=, /=, etc.)
+  const compoundAssign = detectCompoundAssignment(line);
+  if (compoundAssign) {
+    const { varName, operator, value } = compoundAssign;
+    // Expand compound assignment: x += 1 becomes x = x + 1
+    return ok({
+      name: varName,
+      value: `${varName} ${operator} ${value}`,
+    });
+  }
+
   const equalIndex = trimmedLine.indexOf("=");
   if (equalIndex === -1) {
     return err("No '=' found");
@@ -1592,6 +1627,18 @@ function processSingleVariableDeclaration(
   return ok({ varMap, typeMap });
 }
 
+function createImmutableVariableError(
+  input: string,
+  varName: string,
+): InterpretError {
+  return {
+    source: input,
+    description: "Cannot reassign immutable variable",
+    reason: `Variable '${varName}' is not declared as mutable`,
+    fix: "Declare the variable with 'let mut varName = value;'",
+  };
+}
+
 function processSingleVariableReassignment(
   input: string,
   line: string,
@@ -1623,12 +1670,7 @@ function processSingleVariableReassignment(
   }
 
   if (!mutableVars.has(varName)) {
-    return err({
-      source: input,
-      description: "Cannot reassign immutable variable",
-      reason: `Variable '${varName}' is not declared as mutable`,
-      fix: "Declare the variable with 'let mut varName = value;'",
-    });
+    return err(createImmutableVariableError(input, varName));
   }
 
   const valueResult = interpretWithVars(
@@ -2206,6 +2248,25 @@ function findMatchingParen(input: string, openIndex: number): number {
   return -1;
 }
 
+function validateFunctionBodies(
+  extractedFunctions: Map<string, FunctionDefinition>,
+  finalVars: VariableMap,
+  mutableVars: Set<string>,
+  input: string,
+): Result<undefined, InterpretError> {
+  for (const [, funcDef] of extractedFunctions) {
+    const compoundAssign = detectCompoundAssignment(funcDef.body);
+    if (
+      compoundAssign &&
+      finalVars.has(compoundAssign.varName) &&
+      !mutableVars.has(compoundAssign.varName)
+    ) {
+      return err(createImmutableVariableError(input, compoundAssign.varName));
+    }
+  }
+  return ok(undefined);
+}
+
 function handleMultilineInput(
   input: string,
   extractedAliases: Map<string, string>,
@@ -2255,6 +2316,7 @@ function handleMultilineInput(
   let finalVars = variables;
   let finalTypes = variableTypes;
   let finalStringVars = stringVariables;
+  let mutableVars = new Set<string>();
   if (input.includes("let ")) {
     const processResult = processVariableDeclarations(
       input,
@@ -2271,11 +2333,57 @@ function handleMultilineInput(
     finalVars = processResult.value.varMap;
     finalTypes = processResult.value.typeMap;
     finalStringVars = processResult.value.stringVarMap;
+    
+    // Extract which variables are mutable
+    const lines = input.split("\n");
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith("let mut ")) {
+        const afterMut = trimmed.slice(8).trim();
+        const eqIndex = afterMut.indexOf("=");
+        if (eqIndex !== -1) {
+          const varName = afterMut.slice(0, eqIndex).trim();
+          mutableVars.add(varName);
+        }
+      }
+    }
+  }
+
+  // Validate that function bodies don't modify immutable variables
+  const validateResult = validateFunctionBodies(
+    extractedFunctions,
+    finalVars,
+    mutableVars,
+    input,
+  );
+  if (validateResult.isFailure()) {
+    return validateResult;
   }
 
   // Evaluate the last non-declaration, non-comment line
   const lines = input.split("\n");
+  return evaluateLastLine(
+    input,
+    lines,
+    finalVars,
+    finalTypes,
+    extractedAliases,
+    extractedFunctions,
+    finalStringVars,
+    localStructNames,
+  );
+}
 
+function evaluateLastLine(
+  input: string,
+  lines: string[],
+  finalVars: VariableMap,
+  finalTypes: TypeMap,
+  extractedAliases: AliasMap,
+  extractedFunctions: FunctionMap,
+  finalStringVars: TypeMap,
+  localStructNames: Set<string>,
+): Result<TuffValue, InterpretError> {
   // Find the last non-empty, non-comment line
   let lastLine = "";
   for (let i = lines.length - 1; i >= 0; i--) {
