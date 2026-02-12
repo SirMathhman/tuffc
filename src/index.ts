@@ -1,3 +1,7 @@
+import { readFileSync, writeFileSync } from "fs";
+import { resolve, join } from "path";
+import { fileURLToPath } from "url";
+
 export class CompileError extends Error {
   // Code snippet of what was invalid, should ideally be a few lines of code to give context to the error.
   erroneousCode: string;
@@ -315,4 +319,31 @@ export function compileTuffToC(source: string): string {
   }
 
   throw new CompileError("Not implemented yet", source, "?", "?");
+}
+
+// CLI functionality: compile main.tuff to main.c when run directly
+if (import.meta.main) {
+  try {
+    const currentFile = fileURLToPath(import.meta.url);
+    const srcDir = resolve(currentFile, "..");
+    const projectRoot = resolve(srcDir, "..");
+    const tuffFile = join(projectRoot, "main.tuff");
+    const cFile = join(projectRoot, "main.c");
+
+    const tuffSource = readFileSync(tuffFile, "utf-8");
+    const cCode = compileTuffToC(tuffSource);
+    writeFileSync(cFile, cCode, "utf-8");
+
+    console.log("Compilation successful: main.tuff -> main.c");
+  } catch (error) {
+    if (error instanceof CompileError) {
+      console.error("Compilation error:", error.message);
+      console.error("Code:", error.erroneousCode);
+      console.error("Reason:", error.reason);
+      console.error("Fix:", error.fix);
+    } else {
+      console.error("Error:", (error as any).message || error);
+    }
+    process.exit(1);
+  }
 }
