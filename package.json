@@ -2,11 +2,12 @@
   "name": "tuff-project",
   "version": "1.0.0",
   "description": "A basic TypeScript project",
-  "main": "dist/index.js",
+  "type": "module",
+  "main": "dist/index.ts",
   "scripts": {
-    "build": "tsc",
-    "dev": "tsc --watch",
-    "start": "node dist/index.js"
+    "build": "bun run tsc",
+    "dev": "bun run tsc --watch",
+    "start": "bun run dist/index.js"
   },
   "keywords": [],
   "author": "",

@@ -6,15 +6,14 @@ A basic TypeScript project.
 
 ### Prerequisites
 
-- Node.js (v16 or higher)
-- npm or yarn
+- Bun (latest version)
 
 ### Installation
 
 Install dependencies:
 
 ```bash
-npm install
+bun install
 ```
 
 ### Development
@@ -22,7 +21,7 @@ npm install
 Build the project in watch mode:
 
 ```bash
-npm run dev
+bun run dev
 ```
 
 ### Build
@@ -30,7 +29,7 @@ npm run dev
 Compile TypeScript to JavaScript:
 
 ```bash
-npm run build
+bun run build
 ```
 
 ### Run
@@ -38,5 +37,5 @@ npm run build
 Execute the compiled code:
 
 ```bash
-npm start
+bun start
 ```
