@@ -393,3 +393,9 @@ testSuccess(
   101,
   "interpret function with this parameter called using dot notation => 101",
 );
+
+testSuccess(
+  "extern fn createSlice<T>() : *[T];\nextern fn addSlice(this : *[T], element : T) : *[T];\nextern fn getSlice(this : *[T], index : USize) : T;\ncreateSlice<I32>().addSlice(100).getSlice(0)",
+  100,
+  "interpret chained extern function calls with method notation => 100",
+);

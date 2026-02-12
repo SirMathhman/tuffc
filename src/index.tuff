@@ -36,10 +36,7 @@ struct FunctionDefinition {
 // OK, now that I can comment, I can explain myself a bit better.
 // If a function is marked as `extern` you should just provide a common-sense implementation in JS.
 extern fn createSlice<T>() : *[T];
-extern fn getSlice(slice : *[T], index : USize) : T;
-extern fn addSlice(slice : *[T], element : T) : *[T];
+extern fn getSlice(this : *[T], index : USize) : T;
+extern fn addSlice(this : *[T], element : T) : *[T];
 
-let slice : *[I32] = createSlice<I32>();
-
-fn addOnce(this : I32) => this + 1;
-100.addOnce()
+createSlice<I32>().addSlice(100).getSlice(0)

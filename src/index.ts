@@ -8,6 +8,7 @@ type FunctionDefinition = {
   body: string;
   returnType: string;
   params: FunctionParam[];
+  isExtern?: boolean;
 };
 
 type FunctionContext = {
@@ -54,6 +55,66 @@ function getContextMaps(ctx: InterpreterContext) {
       (ctx.variables as Map<string, FunctionContext>) || new Map(),
   };
 }
+
+type BuiltinFunction = (params: Map<string, TuffValue>) => TuffValue;
+
+const builtinFunctions: Map<string, BuiltinFunction> = new Map<
+  string,
+  BuiltinFunction
+>([
+  [
+    "createSlice",
+    (() => {
+      return {
+        variables: new Map([["__array_count", 0]]),
+        functions: new Map(),
+      } as TuffValue;
+    }) as BuiltinFunction,
+  ],
+  [
+    "addSlice",
+    ((params: Map<string, TuffValue>) => {
+      const thisValue = params.get("this") as FunctionContext | undefined;
+      const element = params.get("element") as number | undefined;
+
+      if (
+        !thisValue ||
+        typeof thisValue !== "object" ||
+        !("variables" in thisValue)
+      ) {
+        return 0 as TuffValue;
+      }
+
+      const count = (thisValue.variables.get("__array_count") as number) || 0;
+      const newVars = new Map(thisValue.variables);
+      newVars.set("__array_" + count, element || 0);
+      newVars.set("__array_count", count + 1);
+
+      return {
+        variables: newVars,
+        functions: thisValue.functions,
+      } as TuffValue;
+    }) as BuiltinFunction,
+  ],
+  [
+    "getSlice",
+    ((params: Map<string, TuffValue>) => {
+      const thisValue = params.get("this") as FunctionContext | undefined;
+      const index = params.get("index") as number | undefined;
+
+      if (
+        !thisValue ||
+        typeof thisValue !== "object" ||
+        !("variables" in thisValue)
+      ) {
+        return 0 as TuffValue;
+      }
+
+      const value = thisValue.variables.get("__array_" + (index || 0));
+      return ((value as number) || 0) as TuffValue;
+    }) as BuiltinFunction,
+  ],
+]);
 
 function extractNumericPart(input: string): string | undefined {
   let i = 0;
@@ -578,24 +639,6 @@ function extractExternFunction(
     return false;
   }
 
-  // Find the return type (between : or => and ; or end of line)
-  const colonIndex = externFnText.indexOf(":");
-  const arrowIndex = externFnText.indexOf("=>");
-  const semiIndex = externFnText.indexOf(";");
-  let returnType = "undefined";
-  let typeStartIdx = -1;
-
-  if (colonIndex !== -1) {
-    typeStartIdx = colonIndex + 1;
-  } else if (arrowIndex !== -1) {
-    typeStartIdx = arrowIndex + 2;
-  }
-
-  if (typeStartIdx !== -1) {
-    const endIdx = semiIndex !== -1 ? semiIndex : externFnText.length;
-    returnType = externFnText.slice(typeStartIdx, endIdx).trim();
-  }
-
   // Extract parameters
   const closeParenIndex = externFnText.indexOf(")");
   const headerPart = externFnText.slice(0, closeParenIndex + 1);
@@ -614,11 +657,31 @@ function extractExternFunction(
     }
   }
 
+  // Find the return type (after the closing paren)
+  let returnType = "undefined";
+  const afterParen = externFnText.slice(closeParenIndex + 1);
+  const semiIndex = afterParen.indexOf(";");
+  const colonIndex = afterParen.indexOf(":");
+  const arrowIndex = afterParen.indexOf("=>");
+  let typeStartIdx = -1;
+
+  if (colonIndex !== -1) {
+    typeStartIdx = colonIndex + 1;
+  } else if (arrowIndex !== -1) {
+    typeStartIdx = arrowIndex + 2;
+  }
+
+  if (typeStartIdx !== -1) {
+    const endIdx = semiIndex !== -1 ? semiIndex : afterParen.length;
+    returnType = afterParen.slice(typeStartIdx, endIdx).trim();
+  }
+
   functionalNameTracker.add(funcName);
   functions.set(funcName, {
     body: "0", // Extern functions have no Tuff implementation, default to 0
     returnType: returnType,
     params: params,
+    isExtern: true,
   });
   return true;
 }
@@ -1757,7 +1820,18 @@ function parseAndValidateArguments(
       // Allow generic type parameters (like T) to accept any argument
       const isGenericParam =
         param.type.length === 1 && param.type >= "A" && param.type <= "Z";
-      if (!isGenericParam && param.type !== argType && param.type !== "I32") {
+
+      // Allow numeric literals (I32) to be passed to unsigned types (USize, U8, U16, etc.)
+      const isNumericLiteralToUnsigned =
+        argType === "I32" &&
+        (param.type.startsWith("U") || param.type === "USize");
+
+      if (
+        !isGenericParam &&
+        !isNumericLiteralToUnsigned &&
+        param.type !== argType &&
+        param.type !== "I32"
+      ) {
         return err({
           source: input,
           description: "Type mismatch in function call",
@@ -1786,6 +1860,17 @@ function extractMethodCallInfo(
     const potentialValue = funcNameWithGenerics.slice(0, lastDotIndex);
     const potentialFuncName = funcNameWithGenerics.slice(lastDotIndex + 1);
 
+    // First, check if this matches a variable.functionName pattern where functionName takes 'this'
+    if (isValidVariableName(potentialValue) && variables.has(potentialValue)) {
+      const baseFuncName = extractBaseName(potentialFuncName);
+      if (functions.has(baseFuncName)) {
+        const funcDef = functions.get(baseFuncName)!;
+        if (funcDef.params.length > 0 && funcDef.params[0].name === "this") {
+          return { methodValue: potentialValue, funcName: potentialFuncName };
+        }
+      }
+    }
+
     // If the part before the dot is not a valid variable name, it's a method call
     if (!isValidVariableName(potentialValue)) {
       // Validate that the value can be evaluated
@@ -1807,6 +1892,32 @@ function extractMethodCallInfo(
   return { funcName: funcNameWithGenerics };
 }
 
+function interpretDottedReturnValue(
+  returnValue: TuffValue,
+  returnType: string,
+  dotRest: string,
+  paramVars: Map<string, TuffValue>,
+  paramTypes: Map<string, string>,
+  typeAliases: Map<string, string>,
+  functions: Map<string, FunctionDefinition>,
+  structNames: Set<string>,
+): Result<TuffValue, InterpretError> {
+  const tempVars = new Map(paramVars);
+  const tempTypes = new Map(paramTypes);
+  tempVars.set("__ret", returnValue);
+  tempTypes.set("__ret", returnType);
+
+  return interpretWithVars(
+    `__ret.${dotRest}`,
+    tempVars,
+    tempTypes,
+    typeAliases,
+    functions,
+    new Map(),
+    structNames,
+  );
+}
+
 function checkIfFunctionReturnsThis(funcBody: string): boolean {
   if (funcBody === "this") return true;
   if (funcBody.startsWith("{") && funcBody.endsWith("}")) {
@@ -1821,11 +1932,12 @@ function checkIfFunctionReturnsThis(funcBody: string): boolean {
 
 function handleFunctionCallWithDotAccess(
   rest: string,
-  funcDef: { body: string },
+  funcDef: { body: string; returnType: string },
   paramVars: Map<string, TuffValue>,
   paramTypes: Map<string, string>,
   typeAliases: Map<string, string>,
   structNames: Set<string>,
+  functions: Map<string, FunctionDefinition> = new Map(),
 ): Result<TuffValue, InterpretError> | undefined {
   if (!rest.startsWith(".")) return undefined;
 
@@ -1847,14 +1959,124 @@ function handleFunctionCallWithDotAccess(
     );
   }
 
-  return undefined;
+  // For functions that don't return "this", interpret the body to get return value
+  // Store it in a temp variable with the function's return type
+  const returnValueResult = interpretWithVars(
+    funcDef.body,
+    paramVars,
+    paramTypes,
+    typeAliases,
+    functions,
+    new Map(),
+    structNames,
+  );
+
+  if (returnValueResult.isFailure()) {
+    return returnValueResult;
+  }
+
+  const returnValue = returnValueResult.value;
+
+  return interpretDottedReturnValue(
+    returnValue,
+    funcDef.returnType,
+    dotRest,
+    paramVars,
+    paramTypes,
+    typeAliases,
+    functions,
+    structNames,
+  );
+}
+
+function handleBuiltinOrRegularCall(
+  funcDef: {
+    body: string;
+    returnType: string;
+    params: FunctionParam[];
+    isExtern?: boolean;
+  },
+  effectiveFuncName: string,
+  paramVars: Map<string, TuffValue>,
+  paramTypes: Map<string, string>,
+  rest: string,
+  typeAliases: Map<string, string>,
+  functions: Map<string, FunctionDefinition>,
+  structNames: Set<string>,
+): Result<TuffValue, InterpretError> | undefined {
+  // For builtin extern functions, get the actual return value first
+  let returnValue: TuffValue | undefined = undefined;
+  if (funcDef.isExtern && builtinFunctions.has(effectiveFuncName)) {
+    const builtin = builtinFunctions.get(effectiveFuncName)!;
+    returnValue = builtin(paramVars);
+  }
+
+  // Handle dot access with proper return value
+  if (rest.startsWith(".")) {
+    if (returnValue !== undefined) {
+      // For builtin functions, we already have the return value
+      const dotRest = rest.slice(1).trim();
+      return interpretDottedReturnValue(
+        returnValue,
+        funcDef.returnType,
+        dotRest,
+        paramVars,
+        paramTypes,
+        typeAliases,
+        functions,
+        structNames,
+      );
+    } else {
+      // For regular functions, use the original handler
+      const dotResult = handleFunctionCallWithDotAccess(
+        rest,
+        funcDef,
+        paramVars,
+        paramTypes,
+        typeAliases,
+        structNames,
+        functions,
+      );
+      if (dotResult) return dotResult;
+    }
+  }
+
+  if (rest.length > 0 && rest !== ";") return undefined;
+
+  const returnsThis = checkIfFunctionReturnsThis(funcDef.body);
+  if (returnsThis) {
+    return ok({
+      variables: paramVars,
+      functions: getNestedFunctions(funcDef.body),
+    });
+  }
+
+  // Return the builtin result if we have one
+  if (returnValue !== undefined) {
+    return ok(returnValue);
+  }
+
+  return interpretWithVars(
+    funcDef.body,
+    paramVars,
+    paramTypes,
+    typeAliases,
+    functions,
+    new Map(),
+    structNames,
+  );
 }
 
 function tryFunctionCall(
   input: string,
   functions: Map<
     string,
-    { body: string; returnType: string; params: FunctionParam[] }
+    {
+      body: string;
+      returnType: string;
+      params: FunctionParam[];
+      isExtern?: boolean;
+    }
   >,
   variables: Map<string, TuffValue>,
   variableTypes: Map<string, string>,
@@ -1890,7 +2112,8 @@ function tryFunctionCall(
     funcDef.params.length > 0 &&
     funcDef.params[0].name === "this"
   ) {
-    argString = argString.length > 0 ? methodValue + ", " + argString : methodValue;
+    argString =
+      argString.length > 0 ? methodValue + ", " + argString : methodValue;
   }
 
   const argResult = parseAndValidateArguments(
@@ -1905,34 +2128,15 @@ function tryFunctionCall(
 
   const { paramVars, paramTypes } = argResult.value;
   const rest = input.slice(closeParenIndex + 1).trim();
-  const returnsThis = checkIfFunctionReturnsThis(funcDef.body);
 
-  const dotResult = handleFunctionCallWithDotAccess(
-    rest,
+  return handleBuiltinOrRegularCall(
     funcDef,
+    effectiveFuncName,
     paramVars,
     paramTypes,
-    typeAliases,
-    structNames,
-  );
-  if (dotResult) return dotResult;
-
-  if (rest.length > 0 && rest !== ";") return undefined;
-
-  if (returnsThis) {
-    return ok({
-      variables: paramVars,
-      functions: getNestedFunctions(funcDef.body),
-    });
-  }
-
-  return interpretWithVars(
-    funcDef.body,
-    paramVars,
-    paramTypes,
+    rest,
     typeAliases,
     functions,
-    new Map(),
     structNames,
   );
 }
