@@ -54,3 +54,9 @@ testFailure(
   "1U8 + 255U8",
   "overflow",
 );
+testFailure(
+  "1U8 + 255",
+  'interpret("1U8 + 255") => Err',
+  "1U8 + 255",
+  "type",
+);

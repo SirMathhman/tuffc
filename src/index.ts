@@ -116,18 +116,22 @@ export function interpret(input: string): Result<number, InterpretError> {
     const rightValue = rightResult.value.value;
     const rightSuffix = rightResult.value.suffix;
 
-    // If both have type suffixes, verify they match and check for overflow
-    if (leftSuffix.length > 0 && rightSuffix.length > 0) {
-      if (leftSuffix !== rightSuffix) {
-        return err({
-          source: input,
-          description: "Type mismatch in addition",
-          reason: `Cannot add values of different types: ${leftSuffix} and ${rightSuffix}`,
-          fix: "Use operands with the same type suffix",
-        });
-      }
+    // Get effective types (use "I32" as default if no suffix)
+    const leftType = leftSuffix.length > 0 ? leftSuffix : "I32";
+    const rightType = rightSuffix.length > 0 ? rightSuffix : "I32";
 
-      // Check if result fits in the type
+    // Verify types match
+    if (leftType !== rightType) {
+      return err({
+        source: input,
+        description: "Type mismatch in addition",
+        reason: `Cannot add values of different types: ${leftType} and ${rightType}`,
+        fix: "Use operands with the same type or ensure both have matching type suffixes",
+      });
+    }
+
+    // Only check for overflow on unsigned types with explicit suffixes
+    if (leftSuffix.length > 0 && leftSuffix === rightSuffix) {
       const range = getUnsignedTypeRange(leftSuffix);
       const sum = leftValue + rightValue;
       if (range !== undefined && (sum < range.min || sum > range.max)) {
