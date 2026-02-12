@@ -127,12 +127,19 @@ void testArgsLengthAddition()
     assertValid("Add args length to itself", "__args__.length + __args__.length", 4, 1, argv);
 }
 
+void testArgsSecondArgLength()
+{
+    char *argv[] = {"foo"};
+    assertValid("Get length of second argument", "__args__[1].length;", 3, 1, argv);
+}
+
 int32_t main()
 {
     testEmptyProgram();
     testArgsLength();
     testArgsLengthWithArg();
     testArgsLengthAddition();
+    testArgsSecondArgLength();
 
     fprintf(stderr, "Passed %d/%d tests\n", passingTests, totalTests);
 

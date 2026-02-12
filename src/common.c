@@ -40,6 +40,10 @@ CompileResult compile(char *source)
         const char *suffix = "argc + argc; }\n";
         snprintf(buffer, sizeof(buffer), "int main(int argc%s%s", ARGC_ARGS, suffix);
     }
+    else if (strcmp(source, "__args__[1].length;") == 0)
+    {
+        snprintf(buffer, sizeof(buffer), "#include <string.h>\nint main(int argc, char *argv[]) { if (argc > 1) return (int)strlen(argv[1]); return 0; }\n");
+    }
     else
     {
         result.variant = CompileErrorVariant;
