@@ -88,6 +88,12 @@ export function interpret(input: string): Result<number, InterpretError> {
     return ok(0);
   }
 
+  // Handle parenthesized expressions
+  if (input[0] === "(" && input[input.length - 1] === ")") {
+    // Recursively evaluate the inner expression
+    return interpret(input.slice(1, -1));
+  }
+
   // Check for addition operator
   const plusIndex = input.indexOf(" + ");
   if (plusIndex !== -1) {

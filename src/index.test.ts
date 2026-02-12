@@ -47,3 +47,4 @@ testSuccess("100U16 is U8", 0, 'interpret("100U16 is U8") => 0');
 testSuccess("100 is I32", 1, 'interpret("100 is I32") => 1');
 testSuccess("100 is U8", 0, 'interpret("100 is U8") => 0');
 testSuccess("1U8 + 2U8", 3, 'interpret("1U8 + 2U8") => 3');
+testSuccess("(1U8 + 2U8)", 3, 'interpret("(1U8 + 2U8)") => 3');
