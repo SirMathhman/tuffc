@@ -228,11 +228,17 @@ function getExpressionResultType(
   return checkAndPromoteTypes(sourceForErrors, leftType, rightType, false);
 }
 
-function isValidFieldType(typeStr: string): boolean {
+function isValidFieldType(
+  typeStr: string,
+  genericParams?: Set<string>,
+): boolean {
   const trimmed = typeStr.trim();
   // Valid types: I32, U8, U16, U32, U64, I8, I16, I64
   const validTypes = ["I32", "U8", "U16", "U32", "U64", "I8", "I16", "I64"];
-  return validTypes.includes(trimmed);
+  if (validTypes.includes(trimmed)) return true;
+  // Check if it's a generic type parameter
+  if (genericParams && genericParams.has(trimmed)) return true;
+  return false;
 }
 
 function validateStructDefinitions(
@@ -241,6 +247,7 @@ function validateStructDefinitions(
   const lines = input.split("\n");
   const structNames = new Set<string>();
   let currentStructName: string | undefined;
+  let currentGenericParams: Set<string> = new Set();
   const structFields = new Map<string, Set<string>>();
 
   for (let i = 0; i < lines.length; i++) {
@@ -252,11 +259,26 @@ function validateStructDefinitions(
       const colonIndex = trimmedLine.indexOf("{");
       if (colonIndex !== -1) {
         const structNamePart = trimmedLine.slice(7, colonIndex).trim();
-        const spaceIndex = structNamePart.indexOf(" ");
-        const structName =
-          spaceIndex === -1
-            ? structNamePart
-            : structNamePart.slice(0, spaceIndex);
+
+        // Extract struct name and generic parameters
+        const angleIndex = structNamePart.indexOf("<");
+        let structName: string;
+        if (angleIndex !== -1) {
+          structName = structNamePart.slice(0, angleIndex).trim();
+          const genericPartEnd = structNamePart.indexOf(">");
+          if (genericPartEnd !== -1) {
+            const genericParamStr = structNamePart.slice(
+              angleIndex + 1,
+              genericPartEnd,
+            );
+            currentGenericParams = new Set(
+              genericParamStr.split(",").map((p) => p.trim()),
+            );
+          }
+        } else {
+          structName = structNamePart;
+          currentGenericParams = new Set();
+        }
 
         if (structNames.has(structName)) {
           return err({
@@ -298,7 +320,7 @@ function validateStructDefinitions(
             ? typePartStr.slice(0, semicolonIndex).trim()
             : typePartStr.trim();
 
-        if (!isValidFieldType(typeStr)) {
+        if (!isValidFieldType(typeStr, currentGenericParams)) {
           return err({
             source: input,
             description: "Unknown field type",
@@ -312,6 +334,7 @@ function validateStructDefinitions(
     // Check for struct closing
     if (trimmedLine === "}") {
       currentStructName = undefined;
+      currentGenericParams = new Set();
     }
   }
 

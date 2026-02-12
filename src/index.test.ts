@@ -80,6 +80,11 @@ testFailure(
   "struct Wrapper {\n    x : UnknownType;\n}",
   "unknown",
 );
+testSuccess(
+  "struct Wrapper<T> {\n    x : T;\n}",
+  0,
+  "interpret generic struct => 0",
+);
 testSuccess("1U8 + 2U8 + 3U8", 6, 'interpret("1U8 + 2U8 + 3U8") => 6');
 testSuccess("1U8 + 255 + 1U16", 257, 'interpret("1U8 + 255 + 1U16") => 257');
 testFailure(
