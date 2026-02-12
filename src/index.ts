@@ -1,10 +1,12 @@
-export function interpret(input: string): number {
+import { Result, ok, err } from "./result";
+
+export function interpret(input: string): Result<number, string> {
   if (input === "") {
-    return 0;
+    return ok(0);
   }
   const parsed = parseInt(input, 10);
   if (isNaN(parsed)) {
-    throw new Error("Not implemented");
+    return err("Not implemented");
   }
-  return parsed;
+  return ok(parsed);
 }

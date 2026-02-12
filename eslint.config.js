@@ -31,6 +31,14 @@ export default [
           argsIgnorePattern: "^_",
         },
       ],
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "ThrowStatement",
+          message:
+            "Use Result<T, E> instead of throwing errors. Use err() to create a Failure result.",
+        },
+      ],
     },
   },
 ];
