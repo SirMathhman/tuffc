@@ -269,6 +269,85 @@ function extractTypeAliases(
   return ok(typeAliases);
 }
 
+function extractFunctionDefinitions(
+  input: string,
+): Result<Map<string, { body: string; returnType: string }>, InterpretError> {
+  const lines = input.split("\n");
+  const functions = new Map<string, { body: string; returnType: string }>();
+
+  for (const line of lines) {
+    const trimmedLine = line.trim();
+
+    if (trimmedLine.startsWith("fn ")) {
+      const arrowIndex = trimmedLine.indexOf("=>");
+      if (arrowIndex === -1) {
+        return err({
+          source: input,
+          description: "Invalid function definition",
+          reason: "Function definition must have '=>' arrow",
+          fix: "Use syntax: fn name() : ReturnType => body;",
+        });
+      }
+
+      const headerPart = trimmedLine.slice(3, arrowIndex).trim();
+      const parenIndex = headerPart.indexOf("(");
+      if (parenIndex === -1) {
+        return err({
+          source: input,
+          description: "Invalid function definition",
+          reason: "Function must have parentheses",
+          fix: "Use syntax: fn name() : ReturnType => body;",
+        });
+      }
+
+      const funcName = headerPart.slice(0, parenIndex).trim();
+      if (!isValidVariableName(funcName)) {
+        return err({
+          source: input,
+          description: "Invalid function name",
+          reason: `Function name '${funcName}' is invalid`,
+          fix: "Use valid identifier names (alphanumeric and underscore)",
+        });
+      }
+
+      if (functions.has(funcName)) {
+        return err({
+          source: input,
+          description: "Duplicate function definition",
+          reason: `function '${funcName}' is declared multiple times`,
+          fix: "Use a different function name or remove the duplicate",
+        });
+      }
+
+      const closeParenIndex = headerPart.indexOf(")");
+      const colonIndex = headerPart.indexOf(":");
+      if (
+        colonIndex === -1 ||
+        closeParenIndex === -1 ||
+        colonIndex < closeParenIndex
+      ) {
+        return err({
+          source: input,
+          description: "Invalid function definition",
+          reason: "Function must have return type annotation",
+          fix: "Use syntax: fn name() : ReturnType => body;",
+        });
+      }
+
+      const returnType = headerPart.slice(colonIndex + 1).trim();
+
+      let bodyStr = trimmedLine.slice(arrowIndex + 2).trim();
+      if (bodyStr.endsWith(";")) {
+        bodyStr = bodyStr.slice(0, -1).trim();
+      }
+
+      functions.set(funcName, { body: bodyStr, returnType });
+    }
+  }
+
+  return ok(functions);
+}
+
 function resolveTypeAlias(
   typeStr: string,
   typeAliases: Map<string, string>,
@@ -683,6 +762,87 @@ function validateTypeSuffix(
   return ok(undefined);
 }
 
+function tryFunctionCall(
+  input: string,
+  functions: Map<string, { body: string; returnType: string }>,
+  variables: Map<string, number>,
+  variableTypes: Map<string, string>,
+  typeAliases: Map<string, string>,
+): Result<number, InterpretError> | undefined {
+  const callParenIndex = input.indexOf("()");
+  if (callParenIndex === input.length - 2 && callParenIndex !== -1) {
+    const funcName = input.slice(0, callParenIndex).trim();
+    if (functions.has(funcName)) {
+      const funcDef = functions.get(funcName)!;
+      return interpretWithVars(
+        funcDef.body,
+        variables,
+        variableTypes,
+        typeAliases,
+        functions,
+      );
+    }
+  }
+  return undefined;
+}
+
+function handleMultilineInput(
+  input: string,
+  extractedAliases: Map<string, string>,
+  variables: Map<string, number>,
+  variableTypes: Map<string, string>,
+): Result<number, InterpretError> {
+  // Extract functions first
+  let extractedFunctions = new Map<
+    string,
+    { body: string; returnType: string }
+  >();
+  if (input.includes("fn ")) {
+    const functionsResult = extractFunctionDefinitions(input);
+    if (functionsResult.isFailure()) {
+      return functionsResult;
+    }
+    extractedFunctions = functionsResult.value;
+  }
+
+  // Update variables and types if there are let declarations
+  let finalVars = variables;
+  let finalTypes = variableTypes;
+  if (input.includes("let ")) {
+    const processResult = processVariableDeclarations(
+      input,
+      variables,
+      variableTypes,
+      extractedAliases,
+    );
+    if (processResult.isFailure()) {
+      return processResult;
+    }
+    finalVars = processResult.value.varMap;
+    finalTypes = processResult.value.typeMap;
+  }
+
+  // Evaluate the last non-declaration line
+  const lines = input.split("\n");
+  const lastLine = lines[lines.length - 1].trim();
+  if (
+    !lastLine.startsWith("let ") &&
+    !lastLine.startsWith("type ") &&
+    !lastLine.startsWith("fn ") &&
+    lastLine.length > 0
+  ) {
+    return interpretWithVars(
+      lastLine,
+      finalVars,
+      finalTypes,
+      extractedAliases,
+      extractedFunctions,
+    );
+  }
+
+  return ok(0);
+}
+
 function evaluateIsTypeCheck(input: string): Result<number, InterpretError> {
   const isKeywordIndex = input.indexOf(" is ");
   const valueWithSuffix = input.slice(0, isKeywordIndex);
@@ -730,6 +890,7 @@ function interpretWithVars(
   variables: Map<string, number> = new Map(),
   variableTypes: Map<string, string> = new Map(),
   typeAliases: Map<string, string> = new Map(),
+  functions: Map<string, { body: string; returnType: string }> = new Map(),
 ): Result<number, InterpretError> {
   if (input === "") {
     return ok(0);
@@ -745,31 +906,9 @@ function interpretWithVars(
     extractedAliases = aliasesResult.value;
   }
 
-  // Handle multiline input with variable declarations
-  if (input.includes("let ")) {
-    const processResult = processVariableDeclarations(
-      input,
-      variables,
-      variableTypes,
-      extractedAliases,
-    );
-    if (processResult.isFailure()) {
-      return processResult;
-    }
-    const { varMap, typeMap } = processResult.value;
-
-    // After processing declarations, evaluate the last non-declaration line
-    const lines = input.split("\n");
-    const lastLine = lines[lines.length - 1].trim();
-    if (
-      !lastLine.startsWith("let ") &&
-      !lastLine.startsWith("type ") &&
-      lastLine.length > 0
-    ) {
-      return interpretWithVars(lastLine, varMap, typeMap, extractedAliases);
-    }
-
-    return ok(0);
+  // Handle multiline input with variable declarations or function definitions
+  if (input.includes("let ") || input.includes("fn ")) {
+    return handleMultilineInput(input, extractedAliases, variables, variableTypes);
   }
 
   // Handle multiline input with struct declarations
@@ -779,6 +918,18 @@ function interpretWithVars(
       return validationResult;
     }
     return ok(0);
+  }
+
+  // Check if input is a function call: name()
+  const functionCallResult = tryFunctionCall(
+    input,
+    functions,
+    variables,
+    variableTypes,
+    extractedAliases,
+  );
+  if (functionCallResult !== undefined) {
+    return functionCallResult;
   }
 
   // Check if input is a variable reference
@@ -794,6 +945,7 @@ function interpretWithVars(
       variables,
       variableTypes,
       extractedAliases,
+      functions,
     );
   }
 

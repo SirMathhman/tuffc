@@ -122,3 +122,8 @@ testSuccess(
   100,
   "interpret type alias => 100",
 );
+testSuccess(
+  "fn get() : I32 => 100;\nget()",
+  100,
+  "interpret function definition and call => 100",
+);
