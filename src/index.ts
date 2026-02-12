@@ -36,6 +36,17 @@ function isUnsignedTypeSuffix(suffix: string): boolean {
   return true;
 }
 
+function getUnsignedTypeRange(suffix: string): { min: number; max: number } | null {
+  if (!isUnsignedTypeSuffix(suffix)) {
+    return null;
+  }
+  const bitSize = parseInt(suffix.slice(1), 10);
+  return {
+    min: 0,
+    max: Math.pow(2, bitSize) - 1,
+  };
+}
+
 export function interpret(input: string): Result<number, InterpretError> {
   if (input === "") {
     return ok(0);
@@ -63,6 +74,19 @@ export function interpret(input: string): Result<number, InterpretError> {
       reason: `Type suffix ${typeSuffix} is unsigned, but the value is negative`,
       fix: `Use a signed type suffix (e.g., 'I8' instead of 'U8') or remove the negative sign`,
     });
+  }
+
+  // Check if value is within the range of the type suffix
+  if (typeSuffix.length > 0) {
+    const range = getUnsignedTypeRange(typeSuffix);
+    if (range !== null && (parsed < range.min || parsed > range.max)) {
+      return err({
+        source: input,
+        description: `Value out of range for type ${typeSuffix}`,
+        reason: `The value ${parsed} is out of range for type ${typeSuffix}. Valid range is [${range.min}, ${range.max}]`,
+        fix: `Use a value within the range [${range.min}, ${range.max}] or use a larger type suffix`,
+      });
+    }
   }
 
   return ok(parsed);

@@ -33,6 +33,7 @@ testSuccess("100", 100, 'interpret("100") => 100');
 testSuccess("100U8", 100, 'interpret("100U8") => 100');
 
 testFailure("-100U8", 'interpret("-100U8") => Err', "-100U8", "unsigned");
+testFailure("256U8", 'interpret("256U8") => Err', "256U8", "out of range");
 testFailure(
   "not a number",
   "interpret invalid input returns descriptive error",
