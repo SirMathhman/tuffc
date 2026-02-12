@@ -92,6 +92,11 @@ testFailure(
   "let x = 0;\nlet x = 0;\nx",
   "duplicate",
 );
+testSuccess(
+  "let x : U8 = 100;\nx",
+  100,
+  "interpret typed variable binding => 100",
+);
 testSuccess("1U8 + 2U8 + 3U8", 6, 'interpret("1U8 + 2U8 + 3U8") => 6');
 testSuccess("1U8 + 255 + 1U16", 257, 'interpret("1U8 + 255 + 1U16") => 257');
 testFailure(

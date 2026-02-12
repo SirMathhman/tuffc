@@ -455,7 +455,20 @@ function processVariableDeclarations(
         });
       }
 
-      const varName = trimmedLine.slice(4, equalIndex).trim();
+      // Extract variable name and optional type annotation: "let varName : Type = value"
+      const beforeEqual = trimmedLine.slice(4, equalIndex).trim();
+      const colonIndex = beforeEqual.indexOf(":");
+      let varName: string;
+      let typeAnnotation: string | undefined;
+
+      if (colonIndex !== -1) {
+        varName = beforeEqual.slice(0, colonIndex).trim();
+        typeAnnotation = beforeEqual.slice(colonIndex + 1).trim();
+      } else {
+        varName = beforeEqual;
+        typeAnnotation = undefined;
+      }
+
       let valueStr = trimmedLine.slice(equalIndex + 1).trim();
       if (valueStr.endsWith(";")) {
         valueStr = valueStr.slice(0, -1);
@@ -484,7 +497,31 @@ function processVariableDeclarations(
         return valueResult;
       }
 
-      varMap.set(varName, valueResult.value);
+      const value = valueResult.value;
+
+      // If type annotation is provided, validate the value against it
+      if (typeAnnotation && !isValidFieldType(typeAnnotation)) {
+        return err({
+          source: input,
+          description: "Unknown type annotation",
+          reason: `unknown type '${typeAnnotation}' in variable declaration for '${varName}'`,
+          fix: "Use a valid type like I32, U8, U16, U32, U64, I8, I16, or I64",
+        });
+      }
+
+      // Validate the value fits in the specified type
+      if (typeAnnotation) {
+        const validationResult = validateTypeSuffix(
+          input,
+          value,
+          typeAnnotation,
+        );
+        if (validationResult.isFailure()) {
+          return validationResult;
+        }
+      }
+
+      varMap.set(varName, value);
       declaredInThisScope.add(varName);
     }
   }
