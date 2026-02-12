@@ -1,0 +1,1 @@
+clang main.c run.c -o run.exe
