@@ -141,6 +141,11 @@ void testArgsNotANumber()
     assertInvalid("__args__ is not a number", "__args__");
 }
 
+void testSimpleVariableDeclaration()
+{
+    assertValid("simple variable declaration", "let x = 0;", 0, 0, NULL);
+}
+
 int32_t main()
 {
     testEmptyProgram();
@@ -149,6 +154,7 @@ int32_t main()
     testArgsLengthTotal();
     testAccessArgsLengthVariable();
     testArgsNotANumber();
+    testSimpleVariableDeclaration();
 
     fprintf(stderr, "Passed %d/%d tests\n", passingTests, totalTests);
 
