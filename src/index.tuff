@@ -1,1 +1,4 @@
-0
+struct Wrapper {
+    x : I32;
+    x : I32;
+}

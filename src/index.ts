@@ -1,5 +1,8 @@
 import { Result, ok, err, type DescriptiveError } from "./result";
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+declare const Bun: any;
+
 export type InterpretError = DescriptiveError;
 
 function extractNumericPart(input: string): string | undefined {
@@ -102,7 +105,6 @@ function parseOperandTypes(
 
   return ok({ leftType, rightType });
 }
-
 
 function checkAndPromoteTypes(
   input: string,
@@ -226,6 +228,72 @@ function getExpressionResultType(
   return checkAndPromoteTypes(sourceForErrors, leftType, rightType, false);
 }
 
+function validateStructDefinitions(
+  input: string,
+): Result<undefined, InterpretError> {
+  const lines = input.split("\n");
+  const structNames = new Set<string>();
+  let currentStructName: string | undefined;
+  const structFields = new Map<string, Set<string>>();
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmedLine = line.trim();
+
+    // Check for struct declaration
+    if (trimmedLine.startsWith("struct ")) {
+      const colonIndex = trimmedLine.indexOf("{");
+      if (colonIndex !== -1) {
+        const structNamePart = trimmedLine.slice(7, colonIndex).trim();
+        const spaceIndex = structNamePart.indexOf(" ");
+        const structName =
+          spaceIndex === -1
+            ? structNamePart
+            : structNamePart.slice(0, spaceIndex);
+
+        if (structNames.has(structName)) {
+          return err({
+            source: input,
+            description: "Duplicate struct declaration",
+            reason: `duplicate struct definition: '${structName}' is declared multiple times`,
+            fix: "Remove the duplicate struct declaration or use a different name",
+          });
+        }
+        structNames.add(structName);
+        currentStructName = structName;
+        structFields.set(structName, new Set<string>());
+      }
+    } else if (
+      currentStructName &&
+      trimmedLine.includes(":") &&
+      !trimmedLine.startsWith("}")
+    ) {
+      // Parse field declaration: "fieldName : Type;"
+      const colonIndex = trimmedLine.indexOf(":");
+      if (colonIndex !== -1) {
+        const fieldName = trimmedLine.slice(0, colonIndex).trim();
+        const fields = structFields.get(currentStructName)!;
+        if (fields.has(fieldName)) {
+          return err({
+            source: input,
+            description: "Duplicate field in struct",
+            reason: `duplicate field declaration: '${fieldName}' is declared multiple times in struct '${currentStructName}'`,
+            fix: "Remove the duplicate field or use a different field name",
+          });
+        }
+        fields.add(fieldName);
+      }
+    }
+
+    // Check for struct closing
+    if (trimmedLine === "}") {
+      currentStructName = undefined;
+    }
+  }
+
+  return ok(undefined);
+}
+
 function handleAddition(
   input: string,
   leftStr: string,
@@ -296,6 +364,15 @@ function handleAddition(
 
 export function interpret(input: string): Result<number, InterpretError> {
   if (input === "") {
+    return ok(0);
+  }
+
+  // Handle multiline input with struct declarations
+  if (input.includes("struct ")) {
+    const validationResult = validateStructDefinitions(input);
+    if (validationResult.isFailure()) {
+      return validationResult;
+    }
     return ok(0);
   }
 
@@ -398,4 +475,18 @@ export function interpret(input: string): Result<number, InterpretError> {
   }
 
   return ok(parsed);
+}
+
+// Read and interpret the .tuff file
+const tuffFilePath = import.meta.dir + "/index.tuff";
+const tuffContent = await Bun.file(tuffFilePath).text();
+const result = interpret(tuffContent.trim());
+
+if (result.isSuccess()) {
+  console.log(`Result: ${result.value}`);
+} else {
+  console.error(`Source: ${result.error.source}`);
+  console.error(`Error: ${result.error.description}`);
+  console.error(`Reason: ${result.error.reason}`);
+  console.error(`Fix: ${result.error.fix}`);
 }

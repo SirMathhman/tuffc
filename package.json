@@ -5,7 +5,7 @@
   "description": "A TypeScript project using Bun",
   "main": "dist/index.js",
   "scripts": {
-    "dev": "bun run src/index.ts",
+    "dev": "nodemon --watch src/index.ts --watch src/index.tuff --exec bun ./src/index.ts",
     "build": "bun build src/index.ts --outdir dist",
     "start": "bun dist/index.js",
     "test": "bun test",
@@ -23,6 +23,7 @@
     "eslint": "^10.0.0",
     "husky": "^9.1.7",
     "lint-staged": "^16.2.7",
+    "nodemon": "^3.1.0",
     "typescript": "latest"
   },
   "lint-staged": {

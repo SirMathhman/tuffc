@@ -61,6 +61,19 @@ testSuccess(
   1,
   'interpret("(1U8 + 256U16) is U16") => 1',
 );
+testSuccess("struct Ok {}", 0, 'interpret("struct Ok {}") => 0');
+testFailure(
+  "struct Wrapper {}\nstruct Wrapper {}",
+  "interpret duplicate struct declarations => Err",
+  "struct Wrapper {}\nstruct Wrapper {}",
+  "duplicate",
+);
+testFailure(
+  "struct Wrapper {\n    x : I32;\n    x : I32;\n}",
+  "interpret duplicate struct fields => Err",
+  "struct Wrapper {\n    x : I32;\n    x : I32;\n}",
+  "duplicate",
+);
 testSuccess("1U8 + 2U8 + 3U8", 6, 'interpret("1U8 + 2U8 + 3U8") => 6');
 testSuccess("1U8 + 255 + 1U16", 257, 'interpret("1U8 + 255 + 1U16") => 257');
 testFailure(
