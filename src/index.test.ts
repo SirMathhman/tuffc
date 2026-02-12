@@ -63,3 +63,9 @@ testSuccess(
 );
 testSuccess("1U8 + 2U8 + 3U8", 6, 'interpret("1U8 + 2U8 + 3U8") => 6');
 testSuccess("1U8 + 255 + 1U16", 257, 'interpret("1U8 + 255 + 1U16") => 257');
+testFailure(
+  "100U16 + 200U16 + 1U8",
+  'interpret("100U16 + 200U16 + 1U8") => Err',
+  "100U16 + 200U16 + 1U8",
+  "type",
+);

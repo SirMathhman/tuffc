@@ -68,33 +68,73 @@ function promoteTypes(type1: string, type2: string): string | undefined {
   return size1 > size2 ? type1 : type2;
 }
 
+function createTypeMismatchError(
+  input: string,
+  leftType: string,
+  rightType: string,
+): InterpretError {
+  return {
+    source: input,
+    description: "Type mismatch in addition",
+    reason: `Cannot add values of different types: ${leftType} and ${rightType}`,
+    fix: "Use operands with the same type or ensure both have matching type suffixes",
+  };
+}
+
+function parseOperandTypes(
+  leftStr: string,
+  rightStr: string,
+): Result<{ leftType: string; rightType: string }, InterpretError> {
+  const leftResult = parseTypedValue(leftStr);
+  if (leftResult.isFailure()) {
+    return leftResult;
+  }
+  const leftSuffix = leftResult.value.suffix;
+
+  const rightResult = parseTypedValue(rightStr);
+  if (rightResult.isFailure()) {
+    return rightResult;
+  }
+  const rightSuffix = rightResult.value.suffix;
+
+  const leftType = leftSuffix.length > 0 ? leftSuffix : "I32";
+  const rightType = rightSuffix.length > 0 ? rightSuffix : "I32";
+
+  return ok({ leftType, rightType });
+}
+
+
 function checkAndPromoteTypes(
   input: string,
   leftType: string,
   rightType: string,
+  allowExplicitPromotion: boolean = true,
 ): Result<string, InterpretError> {
   if (leftType === rightType) {
     return ok(leftType);
   }
-  if (leftType.startsWith("U") && rightType.startsWith("U")) {
-    const promoted = promoteTypes(leftType, rightType);
-    if (promoted !== undefined) {
-      return ok(promoted);
-    }
-  }
-  // Handle untyped (I32) values - promote to match the typed value
+  // Handle untyped (I32) values - always allow promotion to match the typed value
   if (rightType === "I32" && leftType.startsWith("U")) {
     return ok(leftType);
   }
   if (leftType === "I32" && rightType.startsWith("U")) {
     return ok(rightType);
   }
-  return err({
-    source: input,
-    description: "Type mismatch in addition",
-    reason: `Cannot add values of different types: ${leftType} and ${rightType}`,
-    fix: "Use operands with the same type or ensure both have matching type suffixes",
-  });
+  // For explicit types, allow promotion to wider types
+  if (leftType.startsWith("U") && rightType.startsWith("U")) {
+    const promoted = promoteTypes(leftType, rightType);
+    if (promoted !== undefined) {
+      // Always allow if one of the operands is already the promoted type (widening)
+      if (promoted === leftType || promoted === rightType) {
+        return ok(promoted);
+      }
+      //  Only allow arbitrary promotion if explicitly enabled
+      if (allowExplicitPromotion) {
+        return ok(promoted);
+      }
+    }
+  }
+  return err(createTypeMismatchError(input, leftType, rightType));
 }
 
 function parseNumericPartOrError(
@@ -136,25 +176,20 @@ function getAdditionResultType(
   leftStr: string,
   rightStr: string,
 ): Result<string, InterpretError> {
-  const leftResult = parseTypedValue(leftStr);
-  if (leftResult.isFailure()) {
-    return leftResult;
+  const typesResult = parseOperandTypes(leftStr, rightStr);
+  if (typesResult.isFailure()) {
+    return typesResult;
   }
-  const leftSuffix = leftResult.value.suffix;
+  const { leftType, rightType } = typesResult.value;
 
-  const rightResult = parseTypedValue(rightStr);
-  if (rightResult.isFailure()) {
-    return rightResult;
-  }
-  const rightSuffix = rightResult.value.suffix;
-
-  const leftType = leftSuffix.length > 0 ? leftSuffix : "I32";
-  const rightType = rightSuffix.length > 0 ? rightSuffix : "I32";
-
-  return checkAndPromoteTypes(input, leftType, rightType);
+  // Allow promotion for simple operands (both are literals)
+  return checkAndPromoteTypes(input, leftType, rightType, true);
 }
 
-function getExpressionResultType(expr: string): Result<string, InterpretError> {
+function getExpressionResultType(
+  expr: string,
+  sourceForErrors: string = expr,
+): Result<string, InterpretError> {
   // Determine the result type of an expression (used for chained additions)
   const plusIndex = expr.indexOf(" + ");
   if (plusIndex === -1) {
@@ -162,7 +197,7 @@ function getExpressionResultType(expr: string): Result<string, InterpretError> {
     const numPart = extractNumericPart(expr);
     if (numPart === undefined) {
       return err({
-        source: expr,
+        source: sourceForErrors,
         description: "Failed to parse input as a number",
         reason: "The input string cannot be converted to a valid integer",
         fix: "Provide a valid numeric string (e.g., '42', '100', '-5')",
@@ -172,10 +207,23 @@ function getExpressionResultType(expr: string): Result<string, InterpretError> {
     const type = suffix.length > 0 ? suffix : "I32";
     return ok(type);
   }
-  // Chained addition: recursively determine the result type
+  // Chained addition: reject mixing of different explicit types
   const leftStr = expr.slice(0, plusIndex);
   const rightStr = expr.slice(plusIndex + 3);
-  return getAdditionResultType(expr, leftStr, rightStr);
+
+  const typesResult = parseOperandTypes(leftStr, rightStr);
+  if (typesResult.isFailure()) {
+    return typesResult;
+  }
+  const { leftType, rightType } = typesResult.value;
+
+  // In a chain, reject mixing of different explicit types (e.g., U16 + U8)
+  if (leftType !== rightType && leftType !== "I32" && rightType !== "I32") {
+    return err(createTypeMismatchError(sourceForErrors, leftType, rightType));
+  }
+
+  // Allow untyped values to promote to match explicit types
+  return checkAndPromoteTypes(sourceForErrors, leftType, rightType, false);
 }
 
 function handleAddition(
@@ -211,7 +259,7 @@ function handleAddition(
   const leftType = leftSuffix.length > 0 ? leftSuffix : "I32";
   let rightType: string;
   if (rightHasAddition) {
-    const typeResult = getExpressionResultType(rightStr);
+    const typeResult = getExpressionResultType(rightStr, input);
     if (typeResult.isFailure()) {
       return typeResult;
     }
@@ -220,7 +268,13 @@ function handleAddition(
     rightType = rightSuffix.length > 0 ? rightSuffix : "I32";
   }
 
-  const typeResult = checkAndPromoteTypes(input, leftType, rightType);
+  // Don't allow promotion between different explicit types if right is computed
+  const typeResult = checkAndPromoteTypes(
+    input,
+    leftType,
+    rightType,
+    !rightHasAddition,
+  );
   if (typeResult.isFailure()) {
     return typeResult;
   }
