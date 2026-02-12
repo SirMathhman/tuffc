@@ -4,6 +4,27 @@
 #include <stdint.h>
 #include <string.h>
 
+// Helper function to write content to a file
+static int32_t write_file(const char *filename, const char *content)
+{
+    FILE *file = safe_fopen(filename, "wb");
+    if (!file)
+    {
+        fprintf(stderr, "Failed to open %s for writing\n", filename);
+        return 1;
+    }
+    fwrite(content, 1, strlen(content), file);
+    fclose(file);
+    return 0;
+}
+
+// Helper function to handle file seek errors
+static void handle_file_error(FILE *file, const char *message)
+{
+    fprintf(stderr, "%s\n", message);
+    fclose(file);
+}
+
 int32_t main()
 {
     FILE *source_file = safe_fopen("main.tuff", "rb");
@@ -15,23 +36,20 @@ int32_t main()
 
     if (fseek(source_file, 0, SEEK_END) != 0)
     {
-        fprintf(stderr, "Failed to seek main.tuff\n");
-        fclose(source_file);
+        handle_file_error(source_file, "Failed to seek main.tuff");
         return 1;
     }
 
     long source_size = ftell(source_file);
     if (source_size < 0)
     {
-        fprintf(stderr, "Failed to get size of main.tuff\n");
-        fclose(source_file);
+        handle_file_error(source_file, "Failed to get size of main.tuff");
         return 1;
     }
 
     if (fseek(source_file, 0, SEEK_SET) != 0)
     {
-        fprintf(stderr, "Failed to rewind main.tuff\n");
-        fclose(source_file);
+        handle_file_error(source_file, "Failed to rewind main.tuff");
         return 1;
     }
 
@@ -62,23 +80,15 @@ int32_t main()
         return 1;
     }
 
-    FILE *header_file = safe_fopen("main.h", "wb");
-    if (!header_file)
+    if (write_file("main.h", result.output.headerCCode) != 0)
     {
-        fprintf(stderr, "Failed to open main.h for writing\n");
         return 1;
     }
-    fwrite(result.output.headerCCode, 1, strlen(result.output.headerCCode), header_file);
-    fclose(header_file);
 
-    FILE *target_file = safe_fopen("main.c", "wb");
-    if (!target_file)
+    if (write_file("main.c", result.output.targetCCode) != 0)
     {
-        fprintf(stderr, "Failed to open main.c for writing\n");
         return 1;
     }
-    fwrite(result.output.targetCCode, 1, strlen(result.output.targetCCode), target_file);
-    fclose(target_file);
 
     return 0;
 }
