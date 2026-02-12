@@ -106,6 +106,7 @@ export function interpret(input: string): Result<number, InterpretError> {
       return leftResult;
     }
     const leftValue = leftResult.value.value;
+    const leftSuffix = leftResult.value.suffix;
 
     // Parse right operand
     const rightResult = parseTypedValue(rightStr);
@@ -113,6 +114,31 @@ export function interpret(input: string): Result<number, InterpretError> {
       return rightResult;
     }
     const rightValue = rightResult.value.value;
+    const rightSuffix = rightResult.value.suffix;
+
+    // If both have type suffixes, verify they match and check for overflow
+    if (leftSuffix.length > 0 && rightSuffix.length > 0) {
+      if (leftSuffix !== rightSuffix) {
+        return err({
+          source: input,
+          description: "Type mismatch in addition",
+          reason: `Cannot add values of different types: ${leftSuffix} and ${rightSuffix}`,
+          fix: "Use operands with the same type suffix",
+        });
+      }
+
+      // Check if result fits in the type
+      const range = getUnsignedTypeRange(leftSuffix);
+      const sum = leftValue + rightValue;
+      if (range !== undefined && (sum < range.min || sum > range.max)) {
+        return err({
+          source: input,
+          description: "Arithmetic overflow",
+          reason: `overflow: the sum ${sum} exceeds the range of type ${leftSuffix} [${range.min}, ${range.max}]`,
+          fix: `Use a larger type suffix (e.g., ${leftSuffix === "U8" ? "U16" : "U32"}) or reduce operand values`,
+        });
+      }
+    }
 
     // Return the sum
     return ok(leftValue + rightValue);
