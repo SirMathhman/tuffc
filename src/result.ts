@@ -1,3 +1,14 @@
+export interface DescriptiveError {
+  /** The thing that caused the error */
+  source: string;
+  /** The actual error description */
+  description: string;
+  /** The reason why it's an error */
+  reason: string;
+  /** The way to fix the error */
+  fix: string;
+}
+
 export type Result<T, E> = Success<T> | Failure<E>;
 
 export class Success<T> {
