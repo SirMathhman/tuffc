@@ -387,3 +387,9 @@ testSuccess(
   0,
   "interpret extern function declarations and generic function call => 0",
 );
+
+testSuccess(
+  "fn addOnce(this : I32) => this + 1;\n100.addOnce()",
+  101,
+  "interpret function with this parameter called using dot notation => 101",
+);

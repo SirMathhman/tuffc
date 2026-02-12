@@ -1773,6 +1773,83 @@ function parseAndValidateArguments(
   return ok({ paramVars, paramTypes });
 }
 
+function extractMethodCallInfo(
+  funcNameWithGenerics: string,
+  ctx: InterpreterContext,
+): { methodValue?: string; funcName: string } {
+  const { variables, variableTypes, typeAliases, functions, structNames } =
+    getContextMaps(ctx);
+
+  // Check if this is a method call: value.functionName()
+  const lastDotIndex = funcNameWithGenerics.lastIndexOf(".");
+  if (lastDotIndex !== -1) {
+    const potentialValue = funcNameWithGenerics.slice(0, lastDotIndex);
+    const potentialFuncName = funcNameWithGenerics.slice(lastDotIndex + 1);
+
+    // If the part before the dot is not a valid variable name, it's a method call
+    if (!isValidVariableName(potentialValue)) {
+      // Validate that the value can be evaluated
+      const valueResult = interpretWithVars(
+        potentialValue,
+        variables,
+        variableTypes,
+        typeAliases,
+        functions,
+        new Map(),
+        structNames,
+      );
+      if (valueResult.isSuccess()) {
+        return { methodValue: potentialValue, funcName: potentialFuncName };
+      }
+    }
+  }
+
+  return { funcName: funcNameWithGenerics };
+}
+
+function checkIfFunctionReturnsThis(funcBody: string): boolean {
+  if (funcBody === "this") return true;
+  if (funcBody.startsWith("{") && funcBody.endsWith("}")) {
+    const innerBody = funcBody.slice(1, -1).trim();
+    const bodyLines = getLines(innerBody);
+    if (bodyLines.length > 0) {
+      return bodyLines[bodyLines.length - 1].trim() === "this";
+    }
+  }
+  return false;
+}
+
+function handleFunctionCallWithDotAccess(
+  rest: string,
+  funcDef: { body: string },
+  paramVars: Map<string, TuffValue>,
+  paramTypes: Map<string, string>,
+  typeAliases: Map<string, string>,
+  structNames: Set<string>,
+): Result<TuffValue, InterpretError> | undefined {
+  if (!rest.startsWith(".")) return undefined;
+
+  let dotRest = rest.slice(1).trim();
+  if (dotRest.endsWith(";")) {
+    dotRest = dotRest.slice(0, -1).trim();
+  }
+
+  const returnsThis = checkIfFunctionReturnsThis(funcDef.body);
+  if (returnsThis) {
+    return interpretWithVars(
+      dotRest,
+      paramVars,
+      paramTypes,
+      typeAliases,
+      getNestedFunctions(funcDef.body),
+      new Map(),
+      structNames,
+    );
+  }
+
+  return undefined;
+}
+
 function tryFunctionCall(
   input: string,
   functions: Map<
@@ -1784,110 +1861,92 @@ function tryFunctionCall(
   typeAliases: Map<string, string>,
   structNames: Set<string> = new Set(),
 ): Result<TuffValue, InterpretError> | undefined {
-  // Match function calls with or without arguments: name() or name(arg1, arg2, ...)
   const openParenIndex = input.indexOf("(");
   if (openParenIndex === -1) return undefined;
 
-  // Find the matching closing parenthesis
-  let closeParenIndex = -1;
-  let parenDepth = 0;
-  for (let i = openParenIndex; i < input.length; i++) {
-    if (input[i] === "(") parenDepth++;
+  const closeParenIndex = findMatchingParen(input, openParenIndex);
+  if (closeParenIndex === -1 || closeParenIndex <= openParenIndex)
+    return undefined;
+
+  const nameBeforeParen = input.slice(0, openParenIndex).trim();
+  const ctx = { variables, variableTypes, typeAliases, functions, structNames };
+  const { methodValue, funcName: rawFuncName } = extractMethodCallInfo(
+    nameBeforeParen,
+    ctx,
+  );
+
+  const funcName = extractBaseName(rawFuncName);
+  const effectiveFuncName = funcName.startsWith("this.")
+    ? funcName.slice(5)
+    : funcName;
+
+  if (!functions.has(effectiveFuncName)) return undefined;
+
+  const funcDef = functions.get(effectiveFuncName)!;
+  let argString = input.slice(openParenIndex + 1, closeParenIndex).trim();
+
+  if (
+    methodValue !== undefined &&
+    funcDef.params.length > 0 &&
+    funcDef.params[0].name === "this"
+  ) {
+    argString = argString.length > 0 ? methodValue + ", " + argString : methodValue;
+  }
+
+  const argResult = parseAndValidateArguments(
+    argString,
+    funcDef,
+    ctx,
+    effectiveFuncName,
+    input,
+  );
+
+  if (argResult.isFailure()) return argResult;
+
+  const { paramVars, paramTypes } = argResult.value;
+  const rest = input.slice(closeParenIndex + 1).trim();
+  const returnsThis = checkIfFunctionReturnsThis(funcDef.body);
+
+  const dotResult = handleFunctionCallWithDotAccess(
+    rest,
+    funcDef,
+    paramVars,
+    paramTypes,
+    typeAliases,
+    structNames,
+  );
+  if (dotResult) return dotResult;
+
+  if (rest.length > 0 && rest !== ";") return undefined;
+
+  if (returnsThis) {
+    return ok({
+      variables: paramVars,
+      functions: getNestedFunctions(funcDef.body),
+    });
+  }
+
+  return interpretWithVars(
+    funcDef.body,
+    paramVars,
+    paramTypes,
+    typeAliases,
+    functions,
+    new Map(),
+    structNames,
+  );
+}
+
+function findMatchingParen(input: string, openIndex: number): number {
+  let depth = 0;
+  for (let i = openIndex; i < input.length; i++) {
+    if (input[i] === "(") depth++;
     else if (input[i] === ")") {
-      parenDepth--;
-      if (parenDepth === 0) {
-        closeParenIndex = i;
-        break;
-      }
+      depth--;
+      if (depth === 0) return i;
     }
   }
-
-  if (closeParenIndex !== -1 && closeParenIndex > openParenIndex) {
-    const funcNameWithGenerics = input.slice(0, openParenIndex).trim();
-    // Handle explicit type parameters in function calls: pass<I32>(100) => pass
-    const funcName = extractBaseName(funcNameWithGenerics);
-
-    const effectiveFuncName = funcName.startsWith("this.")
-      ? funcName.slice(5)
-      : funcName;
-    if (functions.has(effectiveFuncName)) {
-      const funcDef = functions.get(effectiveFuncName)!;
-      const argString = input.slice(openParenIndex + 1, closeParenIndex).trim();
-
-      const argResult = parseAndValidateArguments(
-        argString,
-        funcDef,
-        { variables, variableTypes, typeAliases, functions, structNames },
-        effectiveFuncName,
-        input,
-      );
-
-      if (argResult.isFailure()) {
-        return argResult;
-      }
-      const { paramVars, paramTypes } = argResult.value;
-
-      const rest = input.slice(closeParenIndex + 1).trim();
-
-      // Check if it returns 'this'
-      let returnsThis = funcDef.body === "this";
-      if (
-        !returnsThis &&
-        funcDef.body.startsWith("{") &&
-        funcDef.body.endsWith("}")
-      ) {
-        const innerBody = funcDef.body.slice(1, -1).trim();
-        const bodyLines = getLines(innerBody);
-        if (bodyLines.length > 0) {
-          const lastLine = bodyLines[bodyLines.length - 1].trim();
-          if (lastLine === "this") {
-            returnsThis = true;
-          }
-        }
-      }
-
-      if (rest.startsWith(".")) {
-        let dotRest = rest.slice(1).trim();
-        if (dotRest.endsWith(";")) {
-          dotRest = dotRest.slice(0, -1).trim();
-        }
-
-        if (returnsThis) {
-          return interpretWithVars(
-            dotRest,
-            paramVars,
-            paramTypes,
-            typeAliases,
-            getNestedFunctions(funcDef.body),
-            new Map(),
-            structNames,
-          );
-        }
-      }
-
-      if (rest.length > 0 && rest !== ";") {
-        return undefined;
-      }
-
-      if (returnsThis) {
-        return ok({
-          variables: paramVars,
-          functions: getNestedFunctions(funcDef.body),
-        });
-      }
-
-      return interpretWithVars(
-        funcDef.body,
-        paramVars,
-        paramTypes,
-        typeAliases,
-        functions,
-        new Map(),
-        structNames,
-      );
-    }
-  }
-  return undefined;
+  return -1;
 }
 
 function handleMultilineInput(
