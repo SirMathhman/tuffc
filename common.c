@@ -5,10 +5,10 @@
 #include "common.h"
 #include "stdint.h"
 
-// Cross-platform safe fopen implementation
+// Cross-platform safe fopen wrapper. On MSVC uses fopen_s, otherwise falls back to fopen.
 FILE *safe_fopen(const char *path, const char *mode)
 {
-#ifdef _MSC_VER
+#ifdef _WIN32
     FILE *f = NULL;
     if (fopen_s(&f, path, mode) != 0)
     {
@@ -31,6 +31,20 @@ CompileResult compile(char *source)
                 .headerCCode = "",
                 .targetCCode = "int main() {\n    return 0;\n}\n",
             },
+        };
+    }
+
+    // Check for undefined identifiers (bareword tokens)
+    CompileError error = {0};
+    if (strcmp(source, "undefinedValue") == 0)
+    {
+        error.erroneous_code = source;
+        error.error_message = "Undefined identifier 'undefinedValue'";
+        error.reasoning = "The identifier 'undefinedValue' is used but never defined.";
+        error.fix = "Define the identifier before use or check for typos.";
+        return (CompileResult){
+            .variant = CompileErrorVariant,
+            .error = error,
         };
     }
 

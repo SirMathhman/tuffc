@@ -8,9 +8,6 @@ typedef struct
     char *targetCCode;
 } Output;
 
-// Cross-platform safe fopen wrapper (uses fopen_s on MSVC)
-FILE *safe_fopen(const char *path, const char *mode);
-
 typedef struct
 {
     char *erroneous_code;
@@ -34,3 +31,7 @@ typedef struct
 } CompileResult;
 
 CompileResult compile(char *source);
+
+// Cross-platform wrapper for secure fopen variants on MSVC
+// Returns NULL on failure (same as fopen)
+FILE *safe_fopen(const char *path, const char *mode);

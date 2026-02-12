@@ -83,7 +83,7 @@ void assertValid(char *testName, char *source, int32_t expectedExitCode, int32_t
     totalTests++;
 }
 
-void assertError(char *testName, char *source)
+void assertInvalid(char *testName, char *source)
 {
     CompileResult result = compile(source);
     if (result.variant == OutputVariant)
@@ -102,12 +102,18 @@ void assertError(char *testName, char *source)
 
 void testEmptyProgram()
 {
-    assertValid("Empty program", "", 0, 0, NULL);
+    assertValid("An empty program", "", 0, 0, NULL);
+}
+
+void testUndefinedValue()
+{
+    assertInvalid("An undefined value", "undefinedValue");
 }
 
 int32_t main()
 {
     testEmptyProgram();
+    testUndefinedValue();
 
     fprintf(stderr, "Passed %d/%d tests\n", passingTests, totalTests);
 
