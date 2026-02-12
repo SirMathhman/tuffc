@@ -224,6 +224,11 @@ void testReadI32Addition()
     assertValidWithStdIn("Read and add two I32 values", "read<I32>() + read<I32>()", 100, "25 75");
 }
 
+void testVariableAndDoubling()
+{
+    assertValidWithStdIn("Variable assignment and doubling", "let x : I32 = read<I32>(); x + x", 50, "25 75");
+}
+
 int32_t main()
 {
     testEmptyProgram();
@@ -233,6 +238,7 @@ int32_t main()
     testArgsSecondArgLength();
     testReadI32();
     testReadI32Addition();
+    testVariableAndDoubling();
 
     fprintf(stderr, "Passed %d/%d tests\n", passingTests, totalTests);
 

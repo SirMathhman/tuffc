@@ -25,10 +25,46 @@ FILE *safe_fopen(const char *path, const char *mode)
 #define I32_HEADER "#include <stdio.h>\n#include "
 #define I32_MAIN "int main() { int32_t "
 
+// Helper to parse "let x : I32 = read<I32>(); [expression]"
+static int parse_let_statement(const char *source, char *var_name, char *expression, int buf_size)
+{
+    // Check if source starts with "let "
+    if (strncmp(source, "let ", 4) != 0)
+        return 0;
+
+    const char *pos = source + 4;
+
+    // Extract variable name
+    int i = 0;
+    while (i < buf_size - 1 && isalnum(pos[i]))
+    {
+        var_name[i] = pos[i];
+        i++;
+    }
+    var_name[i] = '\0';
+
+    if (i == 0 || i >= buf_size - 1)
+        return 0;
+
+    pos += i;
+
+    // Skip whitespace and ": I32 = read<I32>(); "
+    if (strncmp(pos, " : I32 = read<I32>(); ", 22) != 0)
+        return 0;
+
+    pos += 22;
+
+    // The rest is the expression
+    strncpy(expression, pos, buf_size - 1);
+    expression[buf_size - 1] = '\0';
+
+    return 1;
+}
+
 CompileResult compile(char *source)
 {
     CompileResult result;
-    static char buffer[256];
+    static char buffer[512];
 
     result.variant = OutputVariant;
     result.output.headerCCode = "";
@@ -56,12 +92,24 @@ CompileResult compile(char *source)
     }
     else
     {
-        result.variant = CompileErrorVariant;
-        result.error.erroneous_code = source;
-        result.error.error_message = "Unsupported source code";
-        result.error.reasoning = "Only empty programs and __args__.length are supported";
-        result.error.fix = "Provide an empty source string or __args__.length";
-        return result;
+        // Try to parse "let x : I32 = read<I32>(); [expression]"
+        char var_name[64];
+        char expression[256];
+
+        if (parse_let_statement(source, var_name, expression, sizeof(expression)))
+        {
+            snprintf(buffer, sizeof(buffer), "%s<stdint.h>\n%s%s; scanf(\"%%d\", &%s); return %s; }\n",
+                     I32_HEADER, I32_MAIN, var_name, var_name, expression);
+        }
+        else
+        {
+            result.variant = CompileErrorVariant;
+            result.error.erroneous_code = source;
+            result.error.error_message = "Unsupported source code";
+            result.error.reasoning = "Only empty programs and __args__.length are supported";
+            result.error.fix = "Provide an empty source string or __args__.length";
+            return result;
+        }
     }
 
     result.output.targetCCode = buffer;
