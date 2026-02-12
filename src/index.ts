@@ -469,6 +469,7 @@ function getLines(input: string): string[] {
 
 function extractFunctionDefinitions(
   input: string,
+  includeIndented: boolean = false,
 ): Result<
   Map<string, { body: string; returnType: string; params: FunctionParam[] }>,
   InterpretError
@@ -484,7 +485,12 @@ function extractFunctionDefinitions(
     const rawLine = linesArray[idx];
     const cleanLine = rawLine.trim();
 
-    if (rawLine.length > 0 && rawLine[0] === " " && cleanLine.startsWith("fn ")) {
+    if (
+      !includeIndented &&
+      rawLine.length > 0 &&
+      rawLine[0] === " " &&
+      cleanLine.startsWith("fn ")
+    ) {
       continue;
     }
 
@@ -1473,36 +1479,38 @@ function tryFunctionCall(
 
       const rest = input.slice(closeParenIndex + 1).trim();
       if (rest.startsWith(".")) {
-        const propertyName = rest.slice(1).trim();
-        // Check if there are other operators in the property name (simple check)
-        if (!propertyName.includes(" ") && !propertyName.includes("+")) {
-          // A function can return 'this' either as a direct expression or as the last expression in a block
-          let returnsThis = funcDef.body === "this";
+        const dotRest = rest.slice(1).trim();
+        let returnsThis = funcDef.body === "this";
 
-          if (
-            !returnsThis &&
-            funcDef.body.startsWith("{") &&
-            funcDef.body.endsWith("}")
-          ) {
-            const innerBody = funcDef.body.slice(1, -1).trim();
-            const bodyLines = innerBody.split("\n");
+        if (
+          !returnsThis &&
+          funcDef.body.startsWith("{") &&
+          funcDef.body.endsWith("}")
+        ) {
+          const innerBody = funcDef.body.slice(1, -1).trim();
+          const bodyLines = getLines(innerBody);
+          if (bodyLines.length > 0) {
             const lastLine = bodyLines[bodyLines.length - 1].trim();
             if (lastLine === "this") {
               returnsThis = true;
             }
           }
+        }
 
-          if (returnsThis) {
-            if (paramVars.has(propertyName)) {
-              return ok(paramVars.get(propertyName)!);
-            }
-            return err({
-              source: input,
-              description: "Undefined property",
-              reason: `Property '${propertyName}' is not defined on the returned context`,
-              fix: "Ensure the property name matches a function parameter",
-            });
-          }
+        if (returnsThis) {
+          const nestedResult = extractFunctionDefinitions(funcDef.body, true);
+          const nestedFuncs = nestedResult.isSuccess()
+            ? nestedResult.value
+            : new Map();
+
+          return interpretWithVars(
+            dotRest,
+            paramVars,
+            paramTypes,
+            typeAliases,
+            nestedFuncs,
+            new Map(),
+          );
         }
       }
 

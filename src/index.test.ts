@@ -261,3 +261,9 @@ testSuccess(
   100,
   "interpret function returning this inside block and accessing property => 100",
 );
+
+testSuccess(
+  "fn pass(field : I32) => {\n    fn get() => field;\n    this\n};\npass(100).get()",
+  100,
+  "interpret function returning this with nested function call => 100",
+);
