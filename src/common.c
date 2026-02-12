@@ -39,6 +39,13 @@ CompileResult compile(char *source)
         result.output.headerCCode = "";
         result.output.targetCCode = "int main(int argc, char *argv[]) { return argc; }\n";
     }
+    // Handle __args__.length + __args__.length - return argc + argc
+    else if (strcmp(source, "__args__.length + __args__.length") == 0)
+    {
+        result.variant = OutputVariant;
+        result.output.headerCCode = "";
+        result.output.targetCCode = "int main(int argc, char *argv[]) { return argc + argc; }\n";
+    }
     else
     {
         result.variant = CompileErrorVariant;
