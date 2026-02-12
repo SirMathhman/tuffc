@@ -62,4 +62,8 @@ describe("The compiler", () => {
   it("fails to compile an undefined value", () => {
     expectInvalid("undefined");
   });
+
+  it("fails to compile a negative U8 literal", () => {
+    expectInvalid("-100U8");
+  });
 });
