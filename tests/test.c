@@ -234,6 +234,11 @@ void testMutableVariableAssignment()
     assertValidWithStdIn("Mutable variable assignment", "let mut x = 0; x = read<I32>(); x", 42, "42");
 }
 
+void testMutableVariableDoubleRead()
+{
+    assertValidWithStdIn("Mutable variable with double read", "let mut x = read<I32>(); x = read<I32>(); x", 99, "55 99");
+}
+
 int32_t main()
 {
     testEmptyProgram();
@@ -245,6 +250,7 @@ int32_t main()
     testReadI32Addition();
     testVariableAndDoubling();
     testMutableVariableAssignment();
+    testMutableVariableDoubleRead();
 
     fprintf(stderr, "Passed %d/%d tests\n", passingTests, totalTests);
 
