@@ -137,3 +137,8 @@ testSuccess(
   100,
   "interpret typed mutable variable and reassignment => 100",
 );
+testSuccess(
+  '"test".length',
+  4,
+  'interpret string length access => 4',
+);

@@ -1071,6 +1071,26 @@ function interpretWithVars(
     return ok(variables.get(input)!);
   }
 
+  // Check for string literal property access (e.g., "test".length)
+  if (input.startsWith('"') && input.includes('".')) {
+    const dotIndex = input.indexOf('".');
+    if (dotIndex !== -1) {
+      const stringContent = input.slice(1, dotIndex);
+      const propertyName = input.slice(dotIndex + 2);
+
+      if (propertyName === "length") {
+        return ok(stringContent.length);
+      }
+
+      return err({
+        source: input,
+        description: "Unknown string property",
+        reason: `String property '${propertyName}' is not supported`,
+        fix: "Use 'length' to get the string length",
+      });
+    }
+  }
+
   // Handle parenthesized expressions
   if (input[0] === "(" && input[input.length - 1] === ")") {
     // Recursively evaluate the inner expression
