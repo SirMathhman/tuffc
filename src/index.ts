@@ -88,7 +88,7 @@ function validateTypeRange(
 
 function parseNumericLiteral(
   str: string,
-): { value: number; suffix: string } | null {
+): { value: number; suffix: string } | undefined {
   let numStr = "";
   let i = 0;
   let isNegative = false;
@@ -104,7 +104,7 @@ function parseNumericLiteral(
   }
 
   if (numStr.length === 0) {
-    return null;
+    return undefined;
   }
 
   const num = parseInt(numStr);
@@ -114,14 +114,14 @@ function parseNumericLiteral(
   return { value, suffix };
 }
 
-function handleBinaryAddition(source: string): string | null {
+function handleBinaryAddition(source: string): string | undefined {
   if (!source.includes(" + ")) {
-    return null;
+    return undefined;
   }
 
   const parts = source.split(" + ");
   if (parts.length !== 2) {
-    return null;
+    return undefined;
   }
 
   const left = parts[0];
@@ -131,7 +131,7 @@ function handleBinaryAddition(source: string): string | null {
   if (left === "__args__[0].length") {
     const parsed = parseNumericLiteral(right);
     if (!parsed) {
-      return null;
+      return undefined;
     }
 
     validateTypeRange(parsed.suffix, parsed.value, source);
@@ -149,7 +149,7 @@ function handleBinaryAddition(source: string): string | null {
   if (right === "__args__[0].length") {
     const parsed = parseNumericLiteral(left);
     if (!parsed) {
-      return null;
+      return undefined;
     }
 
     validateTypeRange(parsed.suffix, parsed.value, source);
@@ -163,7 +163,7 @@ function handleBinaryAddition(source: string): string | null {
     );
   }
 
-  return null;
+  return undefined;
 }
 
 export function compileTuffToC(source: string): string {
