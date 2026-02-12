@@ -558,6 +558,71 @@ function getLines(input: string): string[] {
   return input.split("\n");
 }
 
+function extractExternFunction(
+  cleanLine: string,
+  functionalNameTracker: Set<string>,
+  functions: Map<string, FunctionDefinition>,
+): boolean {
+  if (!cleanLine.startsWith("extern fn ")) {
+    return false;
+  }
+
+  const externFnText = cleanLine.slice(10); // Remove "extern fn "
+  const parenIndex = externFnText.indexOf("(");
+  if (parenIndex === -1) return false;
+
+  const funcNameWithGenerics = externFnText.slice(0, parenIndex).trim();
+  const funcName = extractBaseName(funcNameWithGenerics);
+
+  if (!isValidVariableName(funcName) || functionalNameTracker.has(funcName)) {
+    return false;
+  }
+
+  // Find the return type (between : or => and ; or end of line)
+  const colonIndex = externFnText.indexOf(":");
+  const arrowIndex = externFnText.indexOf("=>");
+  const semiIndex = externFnText.indexOf(";");
+  let returnType = "undefined";
+  let typeStartIdx = -1;
+
+  if (colonIndex !== -1) {
+    typeStartIdx = colonIndex + 1;
+  } else if (arrowIndex !== -1) {
+    typeStartIdx = arrowIndex + 2;
+  }
+
+  if (typeStartIdx !== -1) {
+    const endIdx = semiIndex !== -1 ? semiIndex : externFnText.length;
+    returnType = externFnText.slice(typeStartIdx, endIdx).trim();
+  }
+
+  // Extract parameters
+  const closeParenIndex = externFnText.indexOf(")");
+  const headerPart = externFnText.slice(0, closeParenIndex + 1);
+  const paramsText = headerPart.slice(parenIndex + 1, closeParenIndex).trim();
+  const params: FunctionParam[] = [];
+
+  if (paramsText.length > 0) {
+    const paramParts = paramsText.split(",");
+    for (const part of paramParts) {
+      const colonPos = part.indexOf(":");
+      if (colonPos !== -1) {
+        const paramName = part.slice(0, colonPos).trim();
+        const paramType = part.slice(colonPos + 1).trim();
+        params.push({ name: paramName, type: paramType });
+      }
+    }
+  }
+
+  functionalNameTracker.add(funcName);
+  functions.set(funcName, {
+    body: "0", // Extern functions have no Tuff implementation, default to 0
+    returnType: returnType,
+    params: params,
+  });
+  return true;
+}
+
 function extractFunctionDefinitions(
   input: string,
   includeIndented: boolean = false,
@@ -580,6 +645,11 @@ function extractFunctionDefinitions(
       rawLine[0] === " " &&
       cleanLine.startsWith("fn ")
     ) {
+      continue;
+    }
+
+    // Handle extern function declarations
+    if (extractExternFunction(cleanLine, functionalNameTracker, functions)) {
       continue;
     }
 
@@ -1881,7 +1951,7 @@ function handleMultilineInput(
 
   // Evaluate the last non-declaration, non-comment line
   const lines = input.split("\n");
-  
+
   // Find the last non-empty, non-comment line
   let lastLine = "";
   for (let i = lines.length - 1; i >= 0; i--) {
@@ -1891,11 +1961,12 @@ function handleMultilineInput(
       break;
     }
   }
-  
+
   if (
     !lastLine.startsWith("let ") &&
     !lastLine.startsWith("type ") &&
     !lastLine.startsWith("fn ") &&
+    !lastLine.startsWith("extern fn ") &&
     !lastLine.startsWith("struct ") &&
     lastLine !== "}" &&
     lastLine.length > 0

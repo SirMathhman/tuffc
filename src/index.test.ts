@@ -381,3 +381,9 @@ testSuccess(
   0,
   "interpret type declarations with trailing comment => 0",
 );
+
+testSuccess(
+  "extern fn createSlice<T>() : *[T];\nextern fn getSlice(slice : *[T], index : USize) : T;\nlet slice : *[I32] = createSlice<I32>();",
+  0,
+  "interpret extern function declarations and generic function call => 0",
+);
