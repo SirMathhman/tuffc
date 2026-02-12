@@ -2,65 +2,101 @@
 
 ## Project Overview
 
-**Tuff** is a compiler that translates `.tuff` source code into C. The compiler reads a single input file (`main.tuff`), parses/analyzes it, and generates two output files: a C header file (`main.h`) and a C implementation file (`main.c`).
+**Tuff** is a compiler that translates `.tuff` source code into C. The compiler reads a single `.tuff` source file, parses it, analyzes language semantics, and generates two output C files: a header file (`main.h`) and an implementation file (`main.c`).
 
 ## Architecture & Data Flow
 
 ### Core Compilation Pipeline
 
-1. **Entry Point** ([../main.c](../main.c)): Orchestrates the entire pipeline:
-   - Reads `main.tuff` from disk with exhaustive error handling
-   - Calls `compile(source)` function with entire file contents as string
-   - Writes C output files and handles compilation failures gracefully
+The compiler is a **multi-stage translator** implemented entirely in [../src/common.c](../src/common.c):
 
-2. **Compilation Logic** ([../common.c](../common.c)): Contains the `compile()` stub—this is where language-specific parsing and code generation happens (currently TODO)
+1. **Lexing & Parsing**: Statement-level parsing
+   - Handles `let` declarations with optional type annotations (e.g., `let x: USize = expr;`)
+   - Parses expression terms (literals, identifiers, special `__args__` references)
+   - Splits statements on `;` delimiters and trims whitespace
 
-3. **Type System** ([../common.h](../common.h)): Critical tagged union pattern:
-   ```c
-   typedef struct {
-       enum { OutputVariant, CompileErrorVariant } variant;
-       union {
-           Output output;           // {headerCCode, targetCCode}
-           CompileError error;      // {erroneous_code, error_message, reasoning, fix}
-       };
-   } CompileResult;
-   ```
-   **Always** check the `variant` field before accessing union members—never assume success.
+2. **Semantic Analysis**: Inline symbol tracking
+   - Maintains `SymbolTable` of declared variables for scope validation
+   - Rejects undefined identifiers and duplicate declarations with detailed error messages
+   - Validates `__args__` access patterns (e.g., `__args__.length`, `__args__[1].length`)
 
-### Execution Module
+3. **Codegen & Output**: Generates "boilerplate-free" C
+   - Variable declarations → `int var = expr;`
+   - Final expression → `return expr;`
+   - Auto-includes headers (`<string.h>`) when needed
+   - Conditionally adds `argc`/`argv` to `main()` signature based on usage
 
-**Note**: [../exec.c](../exec.c) appears identical to [../main.c](../main.c) in current state. Clarify its intended purpose before adding execution-specific logic.
+### Type System & Result Pattern
+
+**Critical Design** ([../src/common.h](../src/common.h)): Tagged union for flexible error recovery:
+
+```c
+typedef struct {
+    enum { OutputVariant, CompileErrorVariant } variant;
+    union {
+        Output output;           // {headerCCode, targetCCode}
+        CompileError error;      // Rich error details
+    };
+} CompileResult;
+```
+
+- **Always check `variant` first** before accessing union fields
+- `CompileError` includes: erroneous code snippet, message, reasoning, and fix suggestion
+- This pattern enables graceful failure with actionable diagnostics
+
+### Entry Points
+
+- **[../src/exec.c](../src/exec.c)**: Compiler tool (`tuffc.exe`)—reads `main.tuff`, calls `compile()`, writes `main.h`/`main.c`
+- **[../src/main.c](../src/main.c)**: Generated output file (not source)—produced by compiler
 
 ## Build & Test System
 
 ### Build Commands
 
-- **Build**: `./scripts/build.ps1` → Compiles `main.c`, `common.c`, `exec.c` → `./dist/tuffc.exe`
-- **Test**: `./scripts/test.ps1` → Compiles test suite with `test.c` (not `exec.c`) → Runs `./dist/test.exe`
-- **Run**: `./scripts/run.ps1` → Builds then executes compiled program
+- **Build compiler**: `./scripts/build.ps1` → Compiles `exec.c` + `common.c` → `./dist/tuffc.exe`
+- **Test suite**: `./scripts/test.ps1` → Compiles test harness + `common.c` → Runs `./dist/test.exe`
+- **Run end-to-end**: `./scripts/run.ps1` → Builds compiler, runs `tuffc.exe` to process `main.tuff`, generates `main.h`/`main.c`
 
-### Test Framework ([../test.c](../test.c))
+### Tuff Language Features (Implemented)
 
-Manual assertion approach over a testing library:
+The compiler currently supports:
 
-- `assertValid(name, source, expectedExitCode, argc, argv)`: Compile source, verify no errors, run binary
-- `assertError(name, source)`: Compile source, verify compilation failure
-- Global counters: `passingTests`, `totalTests` → Summary printed to stderr
-- **TODO**: Actual binary execution logic not implemented
+- **Variable Declaration**: `let x = expr;` or `let x: TypeName = expr;`
+- **Integer Literals**: `0`, `42`, `999`, etc.
+- **Identifiers**: User-defined variables and `__args__` special cases
+- **Addition Operator**: `expr + expr` (chains allowed: `a + b + c`)
+- **Command-line Arguments**:
+  - `__args__.length` → returns `argc - 1` (count of actual arguments)
+  - `__args__[index].length` → returns strlen of argument at index
+- **Implicit Return**: Final expression becomes `return expr;`
+- **Error Messages**: Rich diagnostics with reasoning and fix suggestions
+
+### Test Framework ([../tests/test.c](../tests/test.c))
+
+Functional assertion framework with **full binary execution support**:
+
+- `assertValid(testName, source, expectedExitCode, argc, argv)`:
+  - Compiles source → generates temp files → invokes clang → executes binary → captures exit code
+  - Verifies exit code matches expected value
+- `assertInvalid(testName, source)`:
+  - Compiles source, verifies compilation error (not output)
+- Global counters: `passingTests`, `totalTests` → summary to stderr
+- **Binary execution fully implemented**: temp file creation, clang invocation, process execution via `system()` calls
 
 ## Coding Conventions
 
 ### Memory & Resource Management
 
 - **Manual allocation**: Use `malloc()` for dynamic memory; **always** check return value before dereferencing
-- **File I/O**: Pair every `fopen()` with `fclose()`. Follow the pattern in [../main.c](../main.c):
+- **File I/O**: Pair every `fopen()` with `fclose()`. Follow the pattern in [../src/exec.c](../src/exec.c):
   ```c
-  FILE *f = fopen(...);
+  FILE *f = safe_fopen(path, mode);
   if (!f) { fprintf(stderr, "..."); return error; }
   // ... operations ...
   fclose(f);
   ```
 - **Error propagation**: Return immediately on resource allocation failure; don't cascade errors
+- **Platform-safe I/O**: Use `safe_fopen()` wrapper (defined in [../src/common.c](../src/common.c)) for MSVC/Windows compatibility
 
 ### Integer Types
 
@@ -72,58 +108,71 @@ Use fixed-width types exclusively:
 
 ### Error Handling (No Exceptions)
 
-- **Pattern**: Enum-based result types, never C exceptions
+- **Pattern**: Enum-based result types (`CompileResult`), never C exceptions
 - **Exit codes**: Return 0 for success, 1 for errors
 - **Error output**: Use `fprintf(stderr, ...)` for all error messages and diagnostics
-- **Error recovery**: Design functions to fail cleanly with detailed messages (see `CompileError.reasoning` field)
+- **Compiler errors**: Return `CompileError` variant with `erroneous_code`, `error_message`, `reasoning`, `fix` fields for user guidance
 
 ### Strings & Buffers
 
-- Always null-terminate manually when reading files: `source[source_size] = '\0'`
-- Use `strlen()` for length when writing file contents
-- Avoid buffer overflow: Validate sizes before reads/writes
+- Always null-terminate manually: `source[source_size] = '\0'`
+- Use `strlen()` for length checking before writes
+- Validate buffer sizes: Check `MAX_EXPR_LEN` (512), `MAX_SYMBOLS` (64), `MAX_SYMBOL_NAME` (64)
+- Use `snprintf()` for safe string formatting (never `sprintf()`)
 
 ## Key Files & Responsibilities
 
-| File                       | Purpose                                                  |
-| -------------------------- | -------------------------------------------------------- |
-| [../main.c](../main.c)     | **Entry point**: file I/O, orchestration, error handling |
-| [../common.h](../common.h) | Type definitions, `CompileResult` union                  |
-| [../common.c](../common.c) | `compile()` function implementation (stub)               |
-| [../exec.c](../exec.c)     | **Status unclear**—investigate before extending          |
-| [../test.c](../test.c)     | Test harness and assertions                              |
-| [../scripts/](../scripts/) | Build/test PowerShell automation                         |
+| File                               | Purpose                                                                       |
+| ---------------------------------- | ----------------------------------------------------------------------------- |
+| [../src/exec.c](../src/exec.c)     | **Compiler entry point**: file I/O, orchestration, error handling             |
+| [../src/common.h](../src/common.h) | Type definitions, `CompileResult` union, `safe_fopen()` declaration           |
+| [../src/common.c](../src/common.c) | **Full compiler implementation**: lexing, parsing, semantic analysis, codegen |
+| [../tests/test.c](../tests/test.c) | Test harness with binary execution support                                    |
+| [../scripts/](../scripts/)         | Build/test PowerShell automation                                              |
 
 ## Common Tasks
 
 ### Adding a New Language Feature
 
-1. Update `CompileResult` or add helper types in [../common.h](../common.h) if needed
-2. Implement parsing/code-gen logic in [../common.c](../common.c)
-3. Add test case to [../test.c](../test.c) using `assertValid()` or `assertError()`
+1. Update `CompileResult` or add helper types in [../src/common.h](../src/common.h) if needed
+2. Implement parsing/code-gen logic in [../src/common.c](../src/common.c):
+   - Add term parsing in `translate_term()` for simple values
+   - Add expression handling in `translate_expression()` for operators
+   - Add statement parsing in `compile()` for declarations/statements
+3. Add test cases to [../tests/test.c](../tests/test.c) using `assertValid()` or `assertInvalid()`
 4. Run `./scripts/test.ps1` to verify
 
 ### Debugging Compilation Failures
 
-- Check [../main.c](../main.c) stderr output first (file I/O errors vs. compilation errors)
+- Check [../src/exec.c](../src/exec.c) stderr output first (file I/O errors vs. compilation errors)
 - Examine `CompileError` fields in result: `erroneous_code`, `error_message`, `reasoning`, `fix`
-- Test the `compile()` function in isolation via [../test.c](../test.c)
+- Test the `compile()` function in isolation via [../tests/test.c](../tests/test.c)
 
 ### Extending Test Coverage
 
-- Add new test function in [../test.c](../test.c): `void testFeatureName()`
-- Call `assertValid()` or `assertError()` with appropriate inputs
-- **TODO**: Implement binary execution in `assertValid()` to complete the test loop
+- Add new test function in [../tests/test.c](../tests/test.c): `void testFeatureName()`
+- Call `assertValid()` or `assertInvalid()` with appropriate inputs
+- The test framework automatically compiles generated C code with clang and executes binaries
 
-## Active TODOs & Gaps
+## Strengths & Current Status
 
-1. **[../common.c](../common.c)**: `compile()` function body—stub returns placeholder
-2. **[../test.c](../test.c)**: Binary execution (`actualExitCode = -1` hardcoded)—needs temp file creation, clang invocation, execution
-3. **[../exec.c](../exec.c)**: Purpose/differences from [../main.c](../main.c) unclear—needs investigation
-4. **Documentation**: No README—add once project stabilizes
+✅ **Fully Functional**:
+
+- Complete lexer/parser with symbol tracking
+- Multi-stage semantic analysis with rich error messages
+- Term-level and expression-level codegen
+- Full test framework with binary execution
+
+⚠️ **Potential Extensions**:
+
+- Expand operators beyond `+` (arithmetic, comparison, logical)
+- Add more data types (beyond `int`)
+- Implement function declarations
+- Add control flow (if, while, for)
 
 ## Windows-Specific Notes
 
 - Scripts are PowerShell (`.ps1`)—run directly: `./scripts/build.ps1`
+- Use `safe_fopen()` for MSVC compatibility (handles `fopen_s` internally)
 - Output binary: `./dist/tuffc.exe`
-- File paths may contain spaces; always quote in clang commands
+- File paths may contain spaces; clang commands properly quoted
