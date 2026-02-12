@@ -53,6 +53,14 @@ export default [
           message: "Do not use null. Use undefined instead.",
         },
       ],
+      "max-lines-per-function": [
+        "error",
+        {
+          max: 100,
+          skipBlankLines: true,
+          skipComments: true,
+        },
+      ],
     },
   },
 ];
