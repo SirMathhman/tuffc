@@ -1,10 +1,17 @@
 import { expect, test } from "bun:test";
 import { interpret } from "./index";
 
-const INDEX_TUFF_INPUT = `fn Wrapper(field : I32) : Wrapper => {
-  fn get() => field;
+const INDEX_TUFF_INPUT = `struct DescriptiveError {
+    source : *Str;
+    description : *Str;
+    reason : *Str;
+    fix : *Str;
+}
 
-  this
+fn Wrapper(field : I32) : Wrapper => {
+    fn get() => field;
+
+    this
 }
 
 let temp : Wrapper = Wrapper(100);
@@ -160,6 +167,12 @@ testSuccess(
 );
 
 testSuccess(
+  "fn pass<T>(value : T) => value;\npass(100)",
+  100,
+  "interpret generic function call with concrete argument => 100",
+);
+
+testSuccess(
   "struct DescriptiveError {\n    source : *Str;\n    description : *Str;\n    reason : *Str;\n    fix : *Str;\n}\n\nfn Success<T>() => {\n}",
   0,
   "interpret index.tuff struct and function definitions with optional return type => 0",
@@ -206,7 +219,7 @@ testFailure(
 testSuccess(
   INDEX_TUFF_INPUT,
   100,
-  "interpret minimal index.tuff scenario => 100",
+  "interpret actual index.tuff content => 100",
 );
 
 testFailure(

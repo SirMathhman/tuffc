@@ -330,6 +330,24 @@ function extractTypeAliases(
   return ok(typeAliases);
 }
 
+function extractGenericParameters(nameWithGenerics: string): Set<string> {
+  const angleIndex = nameWithGenerics.indexOf("<");
+  if (angleIndex === -1) return new Set();
+
+  const closeAngleIndex = nameWithGenerics.lastIndexOf(">");
+  if (closeAngleIndex <= angleIndex) return new Set();
+
+  const genericsStr = nameWithGenerics
+    .slice(angleIndex + 1, closeAngleIndex)
+    .trim();
+  return new Set(
+    genericsStr
+      .split(",")
+      .map((t) => t.trim())
+      .filter((t) => t.length > 0),
+  );
+}
+
 function extractReturnType(
   headerPart: string,
   colonIndex: number,
@@ -337,6 +355,7 @@ function extractReturnType(
   funcName: string,
   input: string,
   structNames: Set<string>,
+  genericParams: Set<string> = new Set(),
 ): Result<string, InterpretError> {
   let returnType = "I32";
   if (
@@ -352,7 +371,7 @@ function extractReturnType(
     if (
       !isValidFieldType(
         returnType,
-        undefined,
+        genericParams,
         new Map(),
         structNames,
         tempFunctions,
@@ -406,7 +425,10 @@ function processFunctionDefinitionLine(
     });
   }
 
-  let funcName = headerPart.slice(0, parenIndex).trim();
+  const funcNameWithGenerics = headerPart.slice(0, parenIndex).trim();
+  const genericParams = extractGenericParameters(funcNameWithGenerics);
+
+  let funcName = funcNameWithGenerics;
   const angleIndex = funcName.indexOf("<");
   if (angleIndex !== -1) {
     funcName = funcName.slice(0, angleIndex).trim();
@@ -440,6 +462,7 @@ function processFunctionDefinitionLine(
     funcName,
     input,
     structNames,
+    genericParams,
   );
   if (paramsResult.isFailure()) {
     return paramsResult;
@@ -453,6 +476,7 @@ function processFunctionDefinitionLine(
     funcName,
     input,
     structNames,
+    genericParams,
   );
   if (returnTypeResult.isFailure()) {
     return returnTypeResult;
@@ -474,6 +498,7 @@ function extractFunctionParameters(
   funcName: string,
   input: string,
   structNames: Set<string> = new Set(),
+  genericParams: Set<string> = new Set(),
 ): Result<FunctionParam[], InterpretError> {
   const params: FunctionParam[] = [];
   if (closeParenIndex > parenIndex + 1) {
@@ -503,7 +528,12 @@ function extractFunctionParameters(
           if (colonIdx !== -1) {
             paramType = trimmedPart.slice(colonIdx + 1).trim();
             if (
-              !isValidFieldType(paramType, undefined, new Map(), structNames)
+              !isValidFieldType(
+                paramType,
+                genericParams,
+                new Map(),
+                structNames,
+              )
             ) {
               return err({
                 source: input,
@@ -1564,7 +1594,9 @@ function parseAndValidateArguments(
     if (i < args.length) {
       const param = funcDef.params[i];
       const argType = argTypes[i];
-      if (param.type !== argType && param.type !== "I32") {
+      // Allow generic type parameters (like T) to accept any argument
+      const isGenericParam = param.type.length === 1 && param.type >= "A" && param.type <= "Z";
+      if (!isGenericParam && param.type !== argType && param.type !== "I32") {
         return err({
           source: input,
           description: "Type mismatch in function call",
