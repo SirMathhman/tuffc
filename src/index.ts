@@ -1,8 +1,5 @@
 import { Result, ok, err, type DescriptiveError } from "./result";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-declare const Bun: any;
-
 export type InterpretError = DescriptiveError;
 
 function extractNumericPart(input: string): string | undefined {

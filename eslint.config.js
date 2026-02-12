@@ -17,6 +17,7 @@ export default [
       globals: {
         console: "readonly",
         process: "readonly",
+        Bun: "readonly",
       },
     },
     plugins: {
