@@ -11,3 +11,7 @@ const user: User = {
 };
 
 console.log(`Welcome, ${user.name}!`);
+
+function interpret(input: string): number {
+  throw new Error("Not implemented");
+}

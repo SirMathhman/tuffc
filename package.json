@@ -1,4 +1,5 @@
 {
+  "type": "module",
   "name": "tuff",
   "version": "1.0.0",
   "description": "A TypeScript project using Bun",
@@ -7,11 +8,25 @@
     "dev": "bun run src/index.ts",
     "build": "bun build src/index.ts --outdir dist",
     "start": "bun dist/index.js",
-    "test": "bun test"
+    "test": "bun test",
+    "lint": "eslint src --ext .ts",
+    "lint:fix": "eslint src --ext .ts --fix",
+    "prepare": "husky"
   },
   "dependencies": {},
   "devDependencies": {
-    "typescript": "latest",
-    "@types/bun": "latest"
+    "@eslint/js": "^10.0.1",
+    "@types/bun": "latest",
+    "@typescript-eslint/eslint-plugin": "^8.55.0",
+    "@typescript-eslint/parser": "^8.55.0",
+    "eslint": "^10.0.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.2.7",
+    "typescript": "latest"
+  },
+  "lint-staged": {
+    "src/**/*.ts": [
+      "eslint"
+    ]
   }
 }
