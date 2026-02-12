@@ -6,4 +6,4 @@ struct DescriptiveError {
 }
 
 fn pass<T>(value : T) => value;
-pass(100);
+pass<I32>(100);

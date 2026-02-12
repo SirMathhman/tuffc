@@ -330,6 +330,14 @@ function extractTypeAliases(
   return ok(typeAliases);
 }
 
+function extractBaseName(nameWithGenerics: string): string {
+  const angleIndex = nameWithGenerics.indexOf("<");
+  if (angleIndex !== -1) {
+    return nameWithGenerics.slice(0, angleIndex).trim();
+  }
+  return nameWithGenerics;
+}
+
 function extractGenericParameters(nameWithGenerics: string): Set<string> {
   const angleIndex = nameWithGenerics.indexOf("<");
   if (angleIndex === -1) return new Set();
@@ -427,12 +435,7 @@ function processFunctionDefinitionLine(
 
   const funcNameWithGenerics = headerPart.slice(0, parenIndex).trim();
   const genericParams = extractGenericParameters(funcNameWithGenerics);
-
-  let funcName = funcNameWithGenerics;
-  const angleIndex = funcName.indexOf("<");
-  if (angleIndex !== -1) {
-    funcName = funcName.slice(0, angleIndex).trim();
-  }
+  const funcName = extractBaseName(funcNameWithGenerics);
 
   if (!isValidVariableName(funcName)) {
     return err({
@@ -1595,7 +1598,8 @@ function parseAndValidateArguments(
       const param = funcDef.params[i];
       const argType = argTypes[i];
       // Allow generic type parameters (like T) to accept any argument
-      const isGenericParam = param.type.length === 1 && param.type >= "A" && param.type <= "Z";
+      const isGenericParam =
+        param.type.length === 1 && param.type >= "A" && param.type <= "Z";
       if (!isGenericParam && param.type !== argType && param.type !== "I32") {
         return err({
           source: input,
@@ -1642,7 +1646,10 @@ function tryFunctionCall(
   }
 
   if (closeParenIndex !== -1 && closeParenIndex > openParenIndex) {
-    const funcName = input.slice(0, openParenIndex).trim();
+    const funcNameWithGenerics = input.slice(0, openParenIndex).trim();
+    // Handle explicit type parameters in function calls: pass<I32>(100) => pass
+    const funcName = extractBaseName(funcNameWithGenerics);
+
     const effectiveFuncName = funcName.startsWith("this.")
       ? funcName.slice(5)
       : funcName;
