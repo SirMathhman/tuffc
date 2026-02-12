@@ -125,4 +125,8 @@ describe("The compiler", () => {
   it("adds argument length to number", () => {
     expectValid("3U8 + __args__[0].length", ["100"], 6);
   });
+
+  it("compiles USize type", () => {
+    expectValid("100USize", [], 100);
+  });
 });

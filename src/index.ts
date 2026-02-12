@@ -26,7 +26,7 @@ function validateTypeRange(
   value: number,
   source: string,
 ): void {
-  const validTypes = ["U8", "U16", "U32", "U64", "I8", "I16", "I32", "I64"];
+  const validTypes = ["U8", "U16", "U32", "U64", "I8", "I16", "I32", "I64", "USize"];
 
   if (suffix === "" || validTypes.includes(suffix)) {
     if (suffix === "U8" && (value < 0 || value > 255)) {
@@ -73,6 +73,13 @@ function validateTypeRange(
         source,
         "I32 is a signed 32-bit integer with a valid range of -2147483648 to 2147483647",
         "Use a value between -2147483648 and 2147483647",
+      );
+    } else if (suffix === "USize" && value < 0) {
+      throw new CompileError(
+        "USize literal out of range",
+        source,
+        "USize is an unsigned size type with a valid range of 0 and above",
+        "Use a non-negative value",
       );
     }
   } else {
@@ -188,7 +195,7 @@ export function compileTuffToC(source: string): string {
     const typeEnd = source.length - 3; // Before ">()
     const type = source.slice(typeStart, typeEnd);
 
-    const validTypes = ["U8", "U16", "U32", "U64", "I8", "I16", "I32", "I64"];
+    const validTypes = ["U8", "U16", "U32", "U64", "I8", "I16", "I32", "I64", "USize"];
     if (!validTypes.includes(type)) {
       throw new CompileError(
         "Invalid type in read function",
