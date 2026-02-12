@@ -249,3 +249,9 @@ testSuccess(
   100,
   "interpret function call with this. prefix => 100",
 );
+
+testSuccess(
+  "fn pass(field : I32) => this;\npass(100).field",
+  100,
+  "interpret function returning this and accessing parameter property => 100",
+);

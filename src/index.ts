@@ -25,6 +25,16 @@ function createDefaultContext(): InterpreterContext {
   };
 }
 
+function getContextMaps(ctx: InterpreterContext) {
+  return {
+    variables: ctx.variables || new Map(),
+    variableTypes: ctx.variableTypes || new Map(),
+    typeAliases: ctx.typeAliases || new Map(),
+    functions: ctx.functions || new Map(),
+    stringVariables: ctx.stringVariables || new Map(),
+  };
+}
+
 function extractNumericPart(input: string): string | undefined {
   let i = 0;
   if (input[i] === "-") {
@@ -639,11 +649,8 @@ function handleAddition(
   rightStr: string,
   ctx: InterpreterContext = createDefaultContext(),
 ): Result<number, InterpretError> {
-  const variables = ctx.variables || new Map();
-  const variableTypes = ctx.variableTypes || new Map();
-  const typeAliases = ctx.typeAliases || new Map();
-  const functions = ctx.functions || new Map();
-  const stringVariables = ctx.stringVariables || new Map();
+  const { variables, variableTypes, typeAliases, functions, stringVariables } =
+    getContextMaps(ctx);
   // Recursively interpret the left side (can be variable or expression)
   const leftResult = interpretWithVars(
     leftStr,
@@ -1333,6 +1340,65 @@ function tryStringLiteralProperty(
   return undefined;
 }
 
+function parseAndValidateArguments(
+  argString: string,
+  funcDef: { params: FunctionParam[] },
+  ctx: InterpreterContext,
+  funcName: string,
+  input: string,
+): Result<
+  { paramVars: Map<string, number>; paramTypes: Map<string, string> },
+  InterpretError
+> {
+  const args: number[] = [];
+  const argTypes: string[] = [];
+  const { variables, variableTypes, typeAliases, functions } =
+    getContextMaps(ctx);
+
+  if (argString.length > 0) {
+    const argParts = argString.split(",");
+    for (const argPart of argParts) {
+      const trimmedArg = argPart.trim();
+      const argResult = interpretWithVars(
+        trimmedArg,
+        variables,
+        variableTypes,
+        typeAliases,
+        functions,
+        new Map(),
+      );
+      if (argResult.isFailure()) {
+        return argResult;
+      }
+      args.push(argResult.value);
+      const argType =
+        determineAssignedValueType(trimmedArg, variableTypes) || "I32";
+      argTypes.push(argType);
+    }
+  }
+
+  const paramVars = new Map(variables);
+  const paramTypes = new Map(variableTypes);
+  for (let i = 0; i < funcDef.params.length; i++) {
+    if (i < args.length) {
+      const param = funcDef.params[i];
+      const argType = argTypes[i];
+      if (param.type !== argType && param.type !== "I32") {
+        return err({
+          source: input,
+          description: "Type mismatch in function call",
+          reason: `type mismatch: Cannot pass argument of type '${argType}' to parameter '${param.name}' of type '${param.type}' in function '${funcName}'`,
+          fix: `Use a value of type '${param.type}'`,
+        });
+      }
+      paramVars.set(param.name, args[i]);
+      paramTypes.set(param.name, param.type);
+    }
+  }
+
+  return ok({ paramVars, paramTypes });
+}
+
 function tryFunctionCall(
   input: string,
   functions: Map<
@@ -1345,13 +1411,23 @@ function tryFunctionCall(
 ): Result<number, InterpretError> | undefined {
   // Match function calls with or without arguments: name() or name(arg1, arg2, ...)
   const openParenIndex = input.indexOf("(");
-  const closeParenIndex = input.lastIndexOf(")");
+  if (openParenIndex === -1) return undefined;
 
-  if (
-    openParenIndex !== -1 &&
-    closeParenIndex === input.length - 1 &&
-    closeParenIndex > openParenIndex
-  ) {
+  // Find the matching closing parenthesis
+  let closeParenIndex = -1;
+  let parenDepth = 0;
+  for (let i = openParenIndex; i < input.length; i++) {
+    if (input[i] === "(") parenDepth++;
+    else if (input[i] === ")") {
+      parenDepth--;
+      if (parenDepth === 0) {
+        closeParenIndex = i;
+        break;
+      }
+    }
+  }
+
+  if (closeParenIndex !== -1 && closeParenIndex > openParenIndex) {
     const funcName = input.slice(0, openParenIndex).trim();
     const effectiveFuncName = funcName.startsWith("this.")
       ? funcName.slice(5)
@@ -1360,49 +1436,40 @@ function tryFunctionCall(
       const funcDef = functions.get(effectiveFuncName)!;
       const argString = input.slice(openParenIndex + 1, closeParenIndex).trim();
 
-      // Parse arguments
-      const args: number[] = [];
-      const argTypes: string[] = [];
-      if (argString.length > 0) {
-        const argParts = argString.split(",");
-        for (const argPart of argParts) {
-          const trimmedArg = argPart.trim();
-          const argResult = interpretWithVars(
-            trimmedArg,
-            variables,
-            variableTypes,
-            typeAliases,
-            functions,
-            new Map(),
-          );
-          if (argResult.isFailure()) {
-            return argResult;
+      const argResult = parseAndValidateArguments(
+        argString,
+        funcDef,
+        { variables, variableTypes, typeAliases, functions },
+        effectiveFuncName,
+        input,
+      );
+
+      if (argResult.isFailure()) {
+        return argResult;
+      }
+      const { paramVars, paramTypes } = argResult.value;
+
+      const rest = input.slice(closeParenIndex + 1).trim();
+      if (rest.startsWith(".")) {
+        const propertyName = rest.slice(1).trim();
+        // Check if there are other operators in the property name (simple check)
+        if (!propertyName.includes(" ") && !propertyName.includes("+")) {
+          if (funcDef.body === "this") {
+            if (paramVars.has(propertyName)) {
+              return ok(paramVars.get(propertyName)!);
+            }
+            return err({
+              source: input,
+              description: "Undefined property",
+              reason: `Property '${propertyName}' is not defined on the returned context`,
+              fix: "Ensure the property name matches a function parameter",
+            });
           }
-          args.push(argResult.value);
-          const argType =
-            determineAssignedValueType(trimmedArg, variableTypes) || "I32";
-          argTypes.push(argType);
         }
       }
 
-      // Map parameters to argument values and validate types
-      const paramVars = new Map(variables);
-      const paramTypes = new Map(variableTypes);
-      for (let i = 0; i < funcDef.params.length; i++) {
-        if (i < args.length) {
-          const param = funcDef.params[i];
-          const argType = argTypes[i];
-          if (param.type !== argType && param.type !== "I32") {
-            return err({
-              source: input,
-              description: "Type mismatch in function call",
-              reason: `type mismatch: Cannot pass argument of type '${argType}' to parameter '${param.name}' of type '${param.type}' in function '${effectiveFuncName}'`,
-              fix: `Use a value of type '${param.type}'`,
-            });
-          }
-          paramVars.set(param.name, args[i]);
-          paramTypes.set(param.name, param.type);
-        }
+      if (rest.length > 0 && rest !== ";") {
+        return undefined;
       }
 
       return interpretWithVars(
