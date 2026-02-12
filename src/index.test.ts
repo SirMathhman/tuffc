@@ -142,3 +142,8 @@ testSuccess(
   4,
   'interpret string length access => 4',
 );
+testSuccess(
+  'let x : *Str = "test";\nx.length',
+  4,
+  'interpret string variable property access => 4',
+);

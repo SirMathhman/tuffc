@@ -1,1 +1,2 @@
-"test".length
+let x : *Str = "test";
+x.length

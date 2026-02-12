@@ -367,8 +367,8 @@ function isValidFieldType(
   const resolved = typeAliases
     ? resolveTypeAlias(trimmed, typeAliases)
     : trimmed;
-  // Valid types: I32, U8, U16, U32, U64, I8, I16, I64
-  const validTypes = ["I32", "U8", "U16", "U32", "U64", "I8", "I16", "I64"];
+  // Valid types: I32, U8, U16, U32, U64, I8, I16, I64, *Str
+  const validTypes = ["I32", "U8", "U16", "U32", "U64", "I8", "I16", "I64", "*Str"];
   if (validTypes.includes(resolved)) return true;
   // Check if it's a generic type parameter
   if (genericParams && genericParams.has(resolved)) return true;
@@ -490,7 +490,7 @@ function handleAddition(
   const leftSuffix = leftResult.value.suffix;
 
   // Recursively interpret the right side (handles chained additions)
-  const rightResult = interpretWithVars(rightStr, variables);
+  const rightResult = interpretWithVars(rightStr, variables, new Map(), new Map(), new Map(), new Map());
   if (rightResult.isFailure()) {
     return rightResult;
   }
@@ -591,6 +591,67 @@ function determineAssignedValueType(
   return undefined;
 }
 
+function interpretPropertyAccess(
+  input: string,
+  variableTypes: Map<string, string>,
+  stringVariables: Map<string, string>,
+): Result<number, InterpretError> | undefined {
+  const dotIndex = input.indexOf(".");
+  if (dotIndex === -1) {
+    return undefined;
+  }
+
+  const varName = input.slice(0, dotIndex);
+  const propertyName = input.slice(dotIndex + 1);
+
+  // Check if this is a variable property access (not a number like 1.5)
+  if (!isValidVariableName(varName)) {
+    return undefined;
+  }
+
+  const varType = variableTypes.get(varName);
+  if (varType !== "*Str") {
+    return undefined;
+  }
+
+  const stringValue = stringVariables.get(varName);
+  if (stringValue === undefined) {
+    return err({
+      source: input,
+      description: "Undefined string variable",
+      reason: `String variable '${varName}' has no value`,
+      fix: "Assign a string literal to the variable",
+    });
+  }
+
+  if (propertyName === "length") {
+    return ok(stringValue.length);
+  }
+
+  return err(createStringPropertyError(input, propertyName));
+}
+
+function createStringPropertyError(
+  input: string,
+  propertyName: string,
+): InterpretError {
+  return {
+    source: input,
+    description: "Unknown string property",
+    reason: `String property '${propertyName}' is not supported`,
+    fix: "Use 'length' to get the string length",
+  };
+}
+
+function createVariableDeclarationError(input: string, syntax: string): InterpretError {
+  return {
+    source: input,
+    description: "Invalid variable declaration",
+    reason: "Variable declaration must have an '=' sign",
+    fix: `Use syntax: ${syntax}`,
+  };
+}
+
 function parseVariableAssignment(line: string): Result<
   { name: string; value: string },
   string
@@ -615,6 +676,13 @@ function parseVariableAssignment(line: string): Result<
   if (valueStr.endsWith(";")) valueStr = valueStr.slice(0, -1);
 
   return ok({ name: nameStr, value: valueStr });
+}
+
+function extractStringFromLiteral(input: string): string | undefined {
+  if (input.startsWith('"') && input.endsWith('"')) {
+    return input.slice(1, -1);
+  }
+  return undefined;
 }
 
 function validateVariableAssignmentType(
@@ -668,12 +736,7 @@ function processSingleVariableDeclaration(
 > {
   const parseResult = parseVariableAssignment(line);
   if (parseResult.isFailure()) {
-    return err({
-      source: input,
-      description: "Invalid variable declaration",
-      reason: "Variable declaration must have an '=' sign",
-      fix: "Use syntax: let varName = value;",
-    });
+    return err(createVariableDeclarationError(input, 'let varName = value;'));
   }
 
   const { name: varNameWithSuffix, value: valueStr } = parseResult.value;
@@ -712,6 +775,8 @@ function processSingleVariableDeclaration(
     varMap,
     typeMap,
     typeAliases,
+    new Map(),
+    new Map(),
   );
   if (valueInterpretResult.isFailure()) return valueInterpretResult;
   const value = valueInterpretResult.value;
@@ -787,7 +852,7 @@ function processSingleVariableReassignment(
     });
   }
 
-  const valueResult = interpretWithVars(valueStr, varMap, typeMap, typeAliases);
+  const valueResult = interpretWithVars(valueStr, varMap, typeMap, typeAliases, new Map(), new Map());
   if (valueResult.isFailure()) return valueResult;
   const value = valueResult.value;
 
@@ -810,19 +875,55 @@ function processVariableDeclarations(
   variables: Map<string, number>,
   variableTypes: Map<string, string> = new Map(),
   typeAliases: Map<string, string> = new Map(),
+  stringVariables: Map<string, string> = new Map(),
 ): Result<
-  { varMap: Map<string, number>; typeMap: Map<string, string> },
+  { varMap: Map<string, number>; typeMap: Map<string, string>; stringVarMap: Map<string, string> },
   InterpretError
 > {
   const lines = input.split("\n");
   const varMap = new Map(variables);
   const typeMap = new Map(variableTypes);
+  const stringVarMap = new Map(stringVariables);
   const declaredInThisScope = new Set<string>();
   const mutableVars = new Set<string>();
 
   for (const line of lines) {
     const trimmedLine = line.trim();
     if (trimmedLine.startsWith("let ")) {
+      // Check if this is a string variable declaration
+      const colonIndex = trimmedLine.indexOf(":");
+      if (colonIndex !== -1) {
+        const afterColon = trimmedLine.slice(colonIndex + 1, trimmedLine.indexOf("=")).trim();
+        
+        if (afterColon === "*Str") {
+          // This is a string variable declaration
+          const parseResult = parseVariableAssignment(line);
+          if (parseResult.isFailure()) {
+            return err(createVariableDeclarationError(input, 'let varName : *Str = "value";'));
+          }
+          
+          const { name: nameWithType, value: valueStr } = parseResult.value;
+          const nameOnly = nameWithType.slice(0, nameWithType.indexOf(":")).trim();
+          
+          // Extract string value from literal
+          const stringValue = extractStringFromLiteral(valueStr);
+          if (stringValue === undefined) {
+            return err({
+              source: input,
+              description: "Invalid string assignment",
+              reason: `String variable '${nameOnly}' must be assigned a string literal`,
+              fix: 'Use syntax: let x : *Str = "value";',
+            });
+          }
+          
+          stringVarMap.set(nameOnly, stringValue);
+          typeMap.set(nameOnly, "*Str");
+          declaredInThisScope.add(nameOnly);
+          continue;
+        }
+      }
+      
+      // Regular numeric variable declaration
       const result = processSingleVariableDeclaration(
         input,
         line,
@@ -835,8 +936,6 @@ function processVariableDeclarations(
       if (result.isFailure()) {
         return result;
       }
-      // Maps are modified in place by processSingleVariableDeclaration,
-      // so result.value contains the same updated maps
     } else if (
       trimmedLine.includes("=") &&
       !trimmedLine.startsWith("let ") &&
@@ -859,7 +958,7 @@ function processVariableDeclarations(
     }
   }
 
-  return ok({ varMap, typeMap });
+  return ok({ varMap, typeMap, stringVarMap });
 }
 
 function validateTypeSuffix(
@@ -909,6 +1008,7 @@ function tryFunctionCall(
         variableTypes,
         typeAliases,
         functions,
+        new Map(),
       );
     }
   }
@@ -920,6 +1020,7 @@ function handleMultilineInput(
   extractedAliases: Map<string, string>,
   variables: Map<string, number>,
   variableTypes: Map<string, string>,
+  stringVariables: Map<string, string> = new Map(),
 ): Result<number, InterpretError> {
   // Extract functions first
   let extractedFunctions = new Map<
@@ -937,18 +1038,21 @@ function handleMultilineInput(
   // Update variables and types if there are let declarations
   let finalVars = variables;
   let finalTypes = variableTypes;
+  let finalStringVars = stringVariables;
   if (input.includes("let ")) {
     const processResult = processVariableDeclarations(
       input,
       variables,
       variableTypes,
       extractedAliases,
+      stringVariables,
     );
     if (processResult.isFailure()) {
       return processResult;
     }
     finalVars = processResult.value.varMap;
     finalTypes = processResult.value.typeMap;
+    finalStringVars = processResult.value.stringVarMap;
   }
 
   // Evaluate the last non-declaration line
@@ -966,6 +1070,7 @@ function handleMultilineInput(
       finalTypes,
       extractedAliases,
       extractedFunctions,
+      finalStringVars,
     );
   }
 
@@ -1020,6 +1125,7 @@ function interpretWithVars(
   variableTypes: Map<string, string> = new Map(),
   typeAliases: Map<string, string> = new Map(),
   functions: Map<string, { body: string; returnType: string }> = new Map(),
+  stringVariables: Map<string, string> = new Map(),
 ): Result<number, InterpretError> {
   if (input === "") {
     return ok(0);
@@ -1042,6 +1148,7 @@ function interpretWithVars(
       extractedAliases,
       variables,
       variableTypes,
+      stringVariables,
     );
   }
 
@@ -1071,6 +1178,12 @@ function interpretWithVars(
     return ok(variables.get(input)!);
   }
 
+  // Check for property access on variables or string literals
+  const propertyAccess = interpretPropertyAccess(input, variableTypes, stringVariables);
+  if (propertyAccess !== undefined) {
+    return propertyAccess;
+  }
+
   // Check for string literal property access (e.g., "test".length)
   if (input.startsWith('"') && input.includes('".')) {
     const dotIndex = input.indexOf('".');
@@ -1082,12 +1195,7 @@ function interpretWithVars(
         return ok(stringContent.length);
       }
 
-      return err({
-        source: input,
-        description: "Unknown string property",
-        reason: `String property '${propertyName}' is not supported`,
-        fix: "Use 'length' to get the string length",
-      });
+      return err(createStringPropertyError(input, propertyName));
     }
   }
 
@@ -1100,6 +1208,7 @@ function interpretWithVars(
       variableTypes,
       extractedAliases,
       functions,
+      stringVariables,
     );
   }
 
@@ -1137,7 +1246,7 @@ function interpretWithVars(
 }
 
 export function interpret(input: string): Result<number, InterpretError> {
-  return interpretWithVars(input);
+  return interpretWithVars(input, new Map(), new Map(), new Map(), new Map(), new Map());
 }
 
 // Read and interpret the .tuff file
