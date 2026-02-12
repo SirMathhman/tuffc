@@ -113,4 +113,8 @@ describe("The compiler", () => {
   it("fails to compile invalid type suffix", () => {
     expectInvalid("100U7");
   });
+
+  it("reads a U8 argument", () => {
+    expectValid("read<U8>()", ["100"], 100);
+  });
 });

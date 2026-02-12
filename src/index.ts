@@ -102,6 +102,25 @@ export function compileTuffToC(source: string): string {
     return "#include <stdlib.h>\nint main() { return 0; }";
   }
 
+  // Check for read<Type>() syntax
+  if (source.startsWith("read<") && source.endsWith(">()")) {
+    const typeStart = 5; // After "read<"
+    const typeEnd = source.length - 3; // Before ">()
+    const type = source.slice(typeStart, typeEnd);
+
+    const validTypes = ["U8", "U16", "U32", "U64", "I8", "I16", "I32", "I64"];
+    if (!validTypes.includes(type)) {
+      throw new CompileError(
+        "Invalid type in read function",
+        source,
+        "Only the following types are supported: " + validTypes.join(", "),
+        "Use one of the supported types",
+      );
+    }
+
+    return "#include <stdlib.h>\nint main(int argc, char* argv[]) { if (argc < 2) return 1; return atoi(argv[1]); }";
+  }
+
   // Numeric literal (with optional type suffix) - return C code that exits with that numeric value
   let numStr = "";
   let i = 0;
