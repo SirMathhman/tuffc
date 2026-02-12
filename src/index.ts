@@ -433,12 +433,34 @@ function isValidVariableName(name: string): boolean {
   return true;
 }
 
+function determineAssignedValueType(
+  valueStr: string,
+  typeMap: Map<string, string>,
+): string | undefined {
+  // Check if valueStr is a variable reference
+  if (isValidVariableName(valueStr) && typeMap.has(valueStr)) {
+    // valueStr is a variable reference; use its tracked type
+    return typeMap.get(valueStr);
+  }
+
+  // valueStr is a numeric literal; extract its type
+  const numericPart = extractNumericPart(valueStr);
+  if (numericPart !== undefined) {
+    const valueSuffix = valueStr.slice(numericPart.length);
+    return valueSuffix.length > 0 ? valueSuffix : "I32";
+  }
+
+  return undefined;
+}
+
 function processVariableDeclarations(
   input: string,
   variables: Map<string, number>,
-): Result<Map<string, number>, InterpretError> {
+  variableTypes: Map<string, string> = new Map(),
+): Result<{ varMap: Map<string, number>; typeMap: Map<string, string> }, InterpretError> {
   const lines = input.split("\n");
   const varMap = new Map(variables);
+  const typeMap = new Map(variableTypes);
   const declaredInThisScope = new Set<string>();
 
   for (const line of lines) {
@@ -509,28 +531,26 @@ function processVariableDeclarations(
         });
       }
 
-      // Check type compatibility: extract explicit type from value if present
-      if (typeAnnotation) {
-        const numericPart = extractNumericPart(valueStr);
-        if (numericPart !== undefined) {
-          const valueSuffix = valueStr.slice(numericPart.length);
-          const valueType = valueSuffix.length > 0 ? valueSuffix : "I32";
+      // Determine the type of the assigned value
+      const assignedValueType = determineAssignedValueType(valueStr, typeMap);
 
-          // If value has explicit type different from declared type, check compatibility
-          if (valueType !== typeAnnotation) {
-            // Allow widening: U8 -> U16, but not narrowing: U16 -> U8
-            const valueBits = getTypeBitSize(valueType);
-            const declaredBits = getTypeBitSize(typeAnnotation);
-            
-            if (valueBits !== undefined && declaredBits !== undefined && valueBits > declaredBits) {
-              return err({
-                source: input,
-                description: "Type mismatch in variable assignment",
-                reason: `Cannot assign value of type '${valueType}' to variable of type '${typeAnnotation}'`,
-                fix: `Use a value of type '${typeAnnotation}' or change the variable type to '${valueType}'`,
-              });
-            }
-          }
+      // Check type compatibility if both types are known
+      if (typeAnnotation && assignedValueType && typeAnnotation !== assignedValueType) {
+        // Allow widening: U8 -> U16, but not narrowing: U16 -> U8
+        const valueBits = getTypeBitSize(assignedValueType);
+        const declaredBits = getTypeBitSize(typeAnnotation);
+
+        if (
+          valueBits !== undefined &&
+          declaredBits !== undefined &&
+          valueBits > declaredBits
+        ) {
+          return err({
+            source: input,
+            description: "Type mismatch in variable assignment",
+            reason: `Cannot assign value of type '${assignedValueType}' to variable of type '${typeAnnotation}'`,
+            fix: `Use a value of type '${typeAnnotation}' or change the variable type to '${assignedValueType}'`,
+          });
         }
       }
 
@@ -547,11 +567,14 @@ function processVariableDeclarations(
       }
 
       varMap.set(varName, value);
+      // Track the inferred type of the variable
+      const finalType = typeAnnotation || (assignedValueType || "I32");
+      typeMap.set(varName, finalType);
       declaredInThisScope.add(varName);
     }
   }
 
-  return ok(varMap);
+  return ok({ varMap, typeMap });
 }
 
 function validateTypeSuffix(
@@ -586,6 +609,7 @@ function validateTypeSuffix(
 function interpretWithVars(
   input: string,
   variables: Map<string, number> = new Map(),
+  variableTypes: Map<string, string> = new Map(),
 ): Result<number, InterpretError> {
   if (input === "") {
     return ok(0);
@@ -593,17 +617,17 @@ function interpretWithVars(
 
   // Handle multiline input with variable declarations
   if (input.includes("let ")) {
-    const processResult = processVariableDeclarations(input, variables);
+    const processResult = processVariableDeclarations(input, variables, variableTypes);
     if (processResult.isFailure()) {
       return processResult;
     }
-    const varMap = processResult.value;
+    const { varMap, typeMap } = processResult.value;
 
     // After processing declarations, evaluate the last non-declaration line
     const lines = input.split("\n");
     const lastLine = lines[lines.length - 1].trim();
     if (!lastLine.startsWith("let ") && lastLine.length > 0) {
-      return interpretWithVars(lastLine, varMap);
+      return interpretWithVars(lastLine, varMap, typeMap);
     }
 
     return ok(0);
@@ -626,7 +650,7 @@ function interpretWithVars(
   // Handle parenthesized expressions
   if (input[0] === "(" && input[input.length - 1] === ")") {
     // Recursively evaluate the inner expression
-    return interpretWithVars(input.slice(1, -1), variables);
+    return interpretWithVars(input.slice(1, -1), variables, variableTypes);
   }
 
   // Check for type compatibility check syntax BEFORE addition

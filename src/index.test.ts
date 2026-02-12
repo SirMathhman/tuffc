@@ -96,12 +96,20 @@ testSuccess(
   "let x : U8 = 100;\nx",
   100,
   "interpret typed variable binding => 100",
-);testFailure(
+);
+testFailure(
   "let x : U8 = 100U16;\nx",
-  'interpret type mismatch in variable assignment => Err',
+  "interpret type mismatch in variable assignment => Err",
   "let x : U8 = 100U16;\nx",
   "type",
-);testSuccess("1U8 + 2U8 + 3U8", 6, 'interpret("1U8 + 2U8 + 3U8") => 6');
+);
+testFailure(
+  "let x = 100U16;\nlet y : U8 = x;\ny",
+  "interpret type mismatch assigning variable to typed variable => Err",
+  "let x = 100U16;\nlet y : U8 = x;\ny",
+  "type",
+);
+testSuccess("1U8 + 2U8 + 3U8", 6, 'interpret("1U8 + 2U8 + 3U8") => 6');
 testSuccess("1U8 + 255 + 1U16", 257, 'interpret("1U8 + 255 + 1U16") => 257');
 testFailure(
   "100U16 + 200U16 + 1U8",
