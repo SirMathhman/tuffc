@@ -70,4 +70,44 @@ describe("The compiler", () => {
   it("fails to compile a U8 literal out of range (256)", () => {
     expectInvalid("256U8");
   });
+
+  it("compiles U16 type", () => {
+    expectValid("100U16", [], 100);
+  });
+
+  it("compiles U32 type", () => {
+    expectValid("100000U32", [], 100000 % 256);
+  });
+
+  it("compiles U64 type", () => {
+    expectValid("50U64", [], 50);
+  });
+
+  it("compiles I8 type with positive value", () => {
+    expectValid("100I8", [], 100);
+  });
+
+  it("compiles I16 type with positive value", () => {
+    expectValid("1000I16", [], 1000 % 256);
+  });
+
+  it("compiles I32 type with positive value", () => {
+    expectValid("100000I32", [], 100000 % 256);
+  });
+
+  it("compiles I64 type with positive value", () => {
+    expectValid("50I64", [], 50);
+  });
+
+  it("fails to compile lowercase u8 (case sensitivity)", () => {
+    expectInvalid("100u8");
+  });
+
+  it("fails to compile lowercase i8 (case sensitivity)", () => {
+    expectInvalid("100i8");
+  });
+
+  it("fails to compile invalid type suffix", () => {
+    expectInvalid("100U7");
+  });
 });
