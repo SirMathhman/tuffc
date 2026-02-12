@@ -20,5 +20,15 @@ fn Err<T, X>(error : X) => {
 }
 
 type Result<T, X> = Ok<T, X> | Err<T, X>;
-let result : Result<T, X> = Ok<I32, I32>(100);
-result is Ok<I32, I32>
+type InterpretError = DescriptiveError;
+
+struct FunctionParam {
+    name : *Str;
+    type : *Str;
+}
+
+struct FunctionDefinition {
+    body : *Str;
+    returnType : *Str;
+    params : *[FunctionParam];
+}

@@ -357,3 +357,15 @@ testSuccess(
   100,
   "interpret function with inferred type from function name => 100",
 );
+
+testSuccess(
+  "fn Ok<T, X>(value : T) => {\n    fn isSuccess() => true;\n    fn isFailure() => false;\n    this\n}\n\nfn Err<T, X>(error : X) => {\n    fn isSuccess() => false;\n    fn isFailure() => true;\n    this\n}",
+  0,
+  "interpret Result type with nested isSuccess and isFailure methods => 0",
+);
+
+testSuccess(
+  "struct Param {\n    name : *Str;\n}\n\nstruct Func {\n    params : *[Param];\n}",
+  0,
+  "interpret struct with array field type => 0",
+);

@@ -682,6 +682,19 @@ function isValidFieldType(
 ): boolean {
   const trimmed = typeStr.trim();
 
+  // Check for array type: *[TypeName]
+  if (trimmed.startsWith("*[") && trimmed.endsWith("]")) {
+    const innerType = trimmed.slice(2, -1).trim();
+    // Recursively validate the inner type
+    return isValidFieldType(
+      innerType,
+      genericParams,
+      typeAliases,
+      structNames,
+      functions,
+    );
+  }
+
   // Extract base name if the type has generic parameters (e.g., Result<T, X> => Result)
   let baseName = trimmed;
   let angleIndex = trimmed.indexOf("<");
@@ -832,7 +845,7 @@ function validateStructDefinitions(
             ? typePartStr.slice(0, semicolonIndex).trim()
             : typePartStr.trim();
 
-        if (!isValidFieldType(typeStr, currentGenericParams, typeAliases)) {
+        if (!isValidFieldType(typeStr, currentGenericParams, typeAliases, structNames)) {
           return err({
             source: input,
             description: "Unknown field type",
