@@ -463,37 +463,59 @@ function extractFunctionParameters(
   return ok(params);
 }
 
+function getLines(input: string): string[] {
+  return input.split("\n");
+}
+
 function extractFunctionDefinitions(
   input: string,
 ): Result<
   Map<string, { body: string; returnType: string; params: FunctionParam[] }>,
   InterpretError
 > {
-  const lines = input.split("\n");
+  const linesArray = getLines(input);
   const functions = new Map<
     string,
     { body: string; returnType: string; params: FunctionParam[] }
   >();
-  const existingFuncNames = new Set<string>();
+  const functionalNameTracker = new Set<string>();
 
-  for (const line of lines) {
-    const trimmedLine = line.trim();
+  for (let idx = 0; idx < linesArray.length; idx++) {
+    const rawLine = linesArray[idx];
+    const cleanLine = rawLine.trim();
 
-    if (line.length > 0 && line[0] === " " && trimmedLine.startsWith("fn ")) {
+    if (rawLine.length > 0 && rawLine[0] === " " && cleanLine.startsWith("fn ")) {
       continue;
     }
 
-    if (trimmedLine.startsWith("fn ")) {
+    if (cleanLine.startsWith("fn ")) {
+      // Check if this is a multi-line function
+      let functionText = cleanLine;
+      if (cleanLine.includes("=> {") && !cleanLine.includes("}")) {
+        // Multi-line function, collect lines until closing brace
+        let braceDepth = 1;
+        for (let j = idx + 1; j < linesArray.length; j++) {
+          const nextLine = linesArray[j];
+          functionText += "\n" + nextLine;
+          if (nextLine.includes("{")) braceDepth++;
+          if (nextLine.includes("}")) braceDepth--;
+          if (braceDepth === 0) {
+            idx = j; // Skip these lines in the next outer loop iteration
+            break;
+          }
+        }
+      }
+
       const result = processFunctionDefinitionLine(
-        trimmedLine,
+        functionText,
         input,
-        existingFuncNames,
+        functionalNameTracker,
       );
       if (result.isFailure()) {
         return result;
       }
       const funcDef = result.value;
-      existingFuncNames.add(funcDef.name);
+      functionalNameTracker.add(funcDef.name);
       functions.set(funcDef.name, {
         body: funcDef.body,
         returnType: funcDef.returnType,
@@ -546,7 +568,7 @@ function validateStructDefinitions(
   input: string,
   typeAliases: Map<string, string> = new Map(),
 ): Result<undefined, InterpretError> {
-  const lines = input.split("\n");
+  const lines = getLines(input);
   const structNames = new Set<string>();
   let currentStructName: string | undefined;
   let currentGenericParams: Set<string> = new Set();
@@ -1454,7 +1476,23 @@ function tryFunctionCall(
         const propertyName = rest.slice(1).trim();
         // Check if there are other operators in the property name (simple check)
         if (!propertyName.includes(" ") && !propertyName.includes("+")) {
-          if (funcDef.body === "this") {
+          // A function can return 'this' either as a direct expression or as the last expression in a block
+          let returnsThis = funcDef.body === "this";
+
+          if (
+            !returnsThis &&
+            funcDef.body.startsWith("{") &&
+            funcDef.body.endsWith("}")
+          ) {
+            const innerBody = funcDef.body.slice(1, -1).trim();
+            const bodyLines = innerBody.split("\n");
+            const lastLine = bodyLines[bodyLines.length - 1].trim();
+            if (lastLine === "this") {
+              returnsThis = true;
+            }
+          }
+
+          if (returnsThis) {
             if (paramVars.has(propertyName)) {
               return ok(paramVars.get(propertyName)!);
             }

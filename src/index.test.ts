@@ -255,3 +255,9 @@ testSuccess(
   100,
   "interpret function returning this and accessing parameter property => 100",
 );
+
+testSuccess(
+  "fn pass(field : I32) => {\n    this\n};\npass(100).field",
+  100,
+  "interpret function returning this inside block and accessing property => 100",
+);
