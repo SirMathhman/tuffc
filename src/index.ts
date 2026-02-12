@@ -591,6 +591,69 @@ function determineAssignedValueType(
   return undefined;
 }
 
+function parseVariableAssignment(line: string): Result<
+  { name: string; value: string },
+  string
+> {
+  const trimmedLine = line.trim();
+  const equalIndex = trimmedLine.indexOf("=");
+  if (equalIndex === -1) {
+    return err("No '=' found");
+  }
+
+  let nameStr = trimmedLine.slice(0, equalIndex).trim();
+  // Remove 'let' prefix if present
+  if (nameStr.startsWith("let ")) {
+    nameStr = nameStr.slice(4).trim();
+  }
+  // Remove 'mut' prefix if present
+  if (nameStr.startsWith("mut ")) {
+    nameStr = nameStr.slice(4).trim();
+  }
+
+  let valueStr = trimmedLine.slice(equalIndex + 1).trim();
+  if (valueStr.endsWith(";")) valueStr = valueStr.slice(0, -1);
+
+  return ok({ name: nameStr, value: valueStr });
+}
+
+function validateVariableAssignmentType(
+  input: string,
+  assignedValueType: string | undefined,
+  declaredType: string | undefined,
+): Result<undefined, InterpretError> {
+  if (declaredType && assignedValueType && declaredType !== assignedValueType) {
+    const valueBits = getTypeBitSize(assignedValueType);
+    const declaredBits = getTypeBitSize(declaredType);
+    if (
+      valueBits !== undefined &&
+      declaredBits !== undefined &&
+      valueBits > declaredBits
+    ) {
+      return err({
+        source: input,
+        description: "Type mismatch in variable assignment",
+        reason: `Cannot assign value of type '${assignedValueType}' to variable of type '${declaredType}'`,
+        fix: `Use a value of type '${declaredType}' or change the variable type`,
+      });
+    }
+  }
+
+  if (declaredType) {
+    // Determine numeric value for validation
+    const numericPart = extractNumericPart(
+      assignedValueType && assignedValueType.length > 0
+        ? assignedValueType
+        : "0",
+    );
+    const numValue = numericPart !== undefined ? parseInt(numericPart, 10) : 0;
+    const validationResult = validateTypeSuffix(input, numValue, declaredType);
+    if (validationResult.isFailure()) return validationResult;
+  }
+
+  return ok(undefined);
+}
+
 function processSingleVariableDeclaration(
   input: string,
   line: string,
@@ -598,13 +661,13 @@ function processSingleVariableDeclaration(
   typeMap: Map<string, string>,
   declaredInThisScope: Set<string>,
   typeAliases: Map<string, string>,
+  mutableVars?: Set<string>,
 ): Result<
   { varMap: Map<string, number>; typeMap: Map<string, string> },
   InterpretError
 > {
-  const trimmedLine = line.trim();
-  const equalIndex = trimmedLine.indexOf("=");
-  if (equalIndex === -1) {
+  const parseResult = parseVariableAssignment(line);
+  if (parseResult.isFailure()) {
     return err({
       source: input,
       description: "Invalid variable declaration",
@@ -613,15 +676,19 @@ function processSingleVariableDeclaration(
     });
   }
 
-  const beforeEqual = trimmedLine.slice(4, equalIndex).trim();
-  const colonIndex = beforeEqual.indexOf(":");
-  const varName =
-    colonIndex !== -1 ? beforeEqual.slice(0, colonIndex).trim() : beforeEqual;
-  const typeAnnotation =
-    colonIndex !== -1 ? beforeEqual.slice(colonIndex + 1).trim() : undefined;
+  const { name: varNameWithSuffix, value: valueStr } = parseResult.value;
 
-  let valueStr = trimmedLine.slice(equalIndex + 1).trim();
-  if (valueStr.endsWith(";")) valueStr = valueStr.slice(0, -1);
+  // Check for 'mut' keyword that was already parsed
+  const trimmedLine = line.trim();
+  const beforeEqual = trimmedLine.slice(4, trimmedLine.indexOf("=")).trim();
+  let isMutable = beforeEqual.startsWith("mut ");
+
+  // Extract variable name and type annotation
+  let nameStr = varNameWithSuffix;
+  const colonIndex = nameStr.indexOf(":");
+  const varName = colonIndex !== -1 ? nameStr.slice(0, colonIndex).trim() : nameStr;
+  const typeAnnotation =
+    colonIndex !== -1 ? nameStr.slice(colonIndex + 1).trim() : undefined;
 
   if (!isValidVariableName(varName)) {
     return err({
@@ -640,9 +707,14 @@ function processSingleVariableDeclaration(
     });
   }
 
-  const valueResult = interpretWithVars(valueStr, varMap, typeMap, typeAliases);
-  if (valueResult.isFailure()) return valueResult;
-  const value = valueResult.value;
+  const valueInterpretResult = interpretWithVars(
+    valueStr,
+    varMap,
+    typeMap,
+    typeAliases,
+  );
+  if (valueInterpretResult.isFailure()) return valueInterpretResult;
+  const value = valueInterpretResult.value;
 
   if (
     typeAnnotation &&
@@ -661,40 +733,76 @@ function processSingleVariableDeclaration(
     ? resolveTypeAlias(typeAnnotation, typeAliases)
     : undefined;
 
-  if (
-    resolvedAnnotation &&
-    assignedValueType &&
-    resolvedAnnotation !== assignedValueType
-  ) {
-    const valueBits = getTypeBitSize(assignedValueType);
-    const declaredBits = getTypeBitSize(resolvedAnnotation);
-    if (
-      valueBits !== undefined &&
-      declaredBits !== undefined &&
-      valueBits > declaredBits
-    ) {
-      return err({
-        source: input,
-        description: "Type mismatch in variable assignment",
-        reason: `Cannot assign value of type '${assignedValueType}' to variable of type '${typeAnnotation}'`,
-        fix: `Use a value of type '${typeAnnotation}' or change the variable type to '${assignedValueType}'`,
-      });
-    }
-  }
-
-  if (resolvedAnnotation) {
-    const validationResult = validateTypeSuffix(
-      input,
-      value,
-      resolvedAnnotation,
-    );
-    if (validationResult.isFailure()) return validationResult;
-  }
+  const typeCheckResult = validateVariableAssignmentType(
+    input,
+    assignedValueType,
+    resolvedAnnotation,
+  );
+  if (typeCheckResult.isFailure()) return typeCheckResult;
 
   varMap.set(varName, value);
   typeMap.set(varName, resolvedAnnotation || assignedValueType || "I32");
   declaredInThisScope.add(varName);
+  if (isMutable && mutableVars) {
+    mutableVars.add(varName);
+  }
   return ok({ varMap, typeMap });
+}
+
+function processSingleVariableReassignment(
+  input: string,
+  line: string,
+  varMap: Map<string, number>,
+  typeMap: Map<string, string>,
+  mutableVars: Set<string>,
+  typeAliases: Map<string, string>,
+): Result<Map<string, number>, InterpretError> {
+  const parseResult = parseVariableAssignment(line);
+  if (parseResult.isFailure()) {
+    return err({
+      source: input,
+      description: "Invalid reassignment",
+      reason: "Reassignment must have an '=' sign",
+      fix: "Use syntax: varName = value;",
+    });
+  }
+
+  const { name: varName, value: valueStr } = parseResult.value;
+
+  if (!varMap.has(varName)) {
+    return err({
+      source: input,
+      description: "Undefined variable",
+      reason: `Variable '${varName}' is not defined`,
+      fix: "Declare the variable first using 'let varName = value;'",
+    });
+  }
+
+  if (!mutableVars.has(varName)) {
+    return err({
+      source: input,
+      description: "Cannot reassign immutable variable",
+      reason: `Variable '${varName}' is not declared as mutable`,
+      fix: "Declare the variable with 'let mut varName = value;'",
+    });
+  }
+
+  const valueResult = interpretWithVars(valueStr, varMap, typeMap, typeAliases);
+  if (valueResult.isFailure()) return valueResult;
+  const value = valueResult.value;
+
+  const assignedValueType = determineAssignedValueType(valueStr, typeMap);
+  const declaredType = typeMap.get(varName);
+
+  const typeCheckResult = validateVariableAssignmentType(
+    input,
+    assignedValueType,
+    declaredType,
+  );
+  if (typeCheckResult.isFailure()) return typeCheckResult;
+
+  varMap.set(varName, value);
+  return ok(varMap);
 }
 
 function processVariableDeclarations(
@@ -710,6 +818,7 @@ function processVariableDeclarations(
   const varMap = new Map(variables);
   const typeMap = new Map(variableTypes);
   const declaredInThisScope = new Set<string>();
+  const mutableVars = new Set<string>();
 
   for (const line of lines) {
     const trimmedLine = line.trim();
@@ -721,12 +830,32 @@ function processVariableDeclarations(
         typeMap,
         declaredInThisScope,
         typeAliases,
+        mutableVars,
       );
       if (result.isFailure()) {
         return result;
       }
       // Maps are modified in place by processSingleVariableDeclaration,
       // so result.value contains the same updated maps
+    } else if (
+      trimmedLine.includes("=") &&
+      !trimmedLine.startsWith("let ") &&
+      !trimmedLine.startsWith("fn ") &&
+      !trimmedLine.startsWith("type ") &&
+      !trimmedLine.startsWith("struct ")
+    ) {
+      // This looks like a reassignment
+      const reassignResult = processSingleVariableReassignment(
+        input,
+        line,
+        varMap,
+        typeMap,
+        mutableVars,
+        typeAliases,
+      );
+      if (reassignResult.isFailure()) {
+        return reassignResult;
+      }
     }
   }
 
@@ -908,7 +1037,12 @@ function interpretWithVars(
 
   // Handle multiline input with variable declarations or function definitions
   if (input.includes("let ") || input.includes("fn ")) {
-    return handleMultilineInput(input, extractedAliases, variables, variableTypes);
+    return handleMultilineInput(
+      input,
+      extractedAliases,
+      variables,
+      variableTypes,
+    );
   }
 
   // Handle multiline input with struct declarations

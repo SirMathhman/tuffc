@@ -1,7 +1,12 @@
 ---
 name: pull-from-index
-description: Describe when to use this prompt
+description: Implement a new test case based on index.tuff content
 ---
 
-Implement a new test case from index.tuff.
-Do not copy the entire content of index.tuff if it is large, but rather create a smaller test that replicateds
+Create a test case to verify the current index.tuff behavior. The user specifies the expected output (a number or error).
+
+To avoid duplication, extract a minimal test case that replicates the scenario instead of copying the entire index.tuff file.
+
+Add the test to the test suite following project conventions, then verify it passes by running `bun run test`.
+
+**Important**: If `bun run start` fails while tests pass, the issue needs isolation. Continue adding tests to narrow down the specific problem, then fix that exact issue.

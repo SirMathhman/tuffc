@@ -127,3 +127,13 @@ testSuccess(
   100,
   "interpret function definition and call => 100",
 );
+testSuccess(
+  "let mut x = 0;\nx = 1;\nx",
+  1,
+  "interpret mutable variable and reassignment => 1",
+);
+testSuccess(
+  "let mut x : U8 = 0;\nx = 100;\nx",
+  100,
+  "interpret typed mutable variable and reassignment => 100",
+);
