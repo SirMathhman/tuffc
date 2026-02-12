@@ -102,73 +102,7 @@ static void check_exit_code(const char *testName, int32_t expectedExitCode, int3
     }
 }
 
-// We do one assert per test anyways
-void assertValidWithArgs(char *testName, char *source, int32_t expectedExitCode, int32_t argc, char **argv)
-{
-    CompileResult result;
-    if (assert_setup(testName, source, &result) != 0)
-        return;
-
-    char temp_header[32], temp_source[32], temp_exe[32];
-    setup_temp_files(temp_header, temp_source, temp_exe);
-
-    if (write_temp_files(testName, result.output.headerCCode, result.output.targetCCode, temp_header, temp_source) != 0)
-        return;
-
-    if (compile_with_clang(testName, temp_exe, temp_source, temp_header, result.output.targetCCode) != 0)
-        return;
-
-    char exec_cmd[512];
-    snprintf(exec_cmd, sizeof(exec_cmd), "%s", temp_exe);
-    for (int32_t i = 0; i < argc; i++)
-    {
-        size_t current_len = strlen(exec_cmd);
-        snprintf(exec_cmd + current_len, sizeof(exec_cmd) - current_len, " %s", argv[i]);
-    }
-    int32_t actualExitCode = system(exec_cmd);
-
-    cleanup_files(temp_header, temp_source, temp_exe);
-    check_exit_code(testName, expectedExitCode, actualExitCode, result.output.targetCCode);
-}
-
-void assertValidWithStdIn(char *testName, char *source, int32_t expectedExitCode, char *stdin_input)
-{
-    CompileResult result;
-    if (assert_setup(testName, source, &result) != 0)
-        return;
-
-    char temp_header[32], temp_source[32], temp_exe[32];
-    setup_temp_files(temp_header, temp_source, temp_exe);
-    char temp_stdin[] = "temp_test_stdin_XXXXXX.txt";
-
-    if (write_temp_files(testName, result.output.headerCCode, result.output.targetCCode, temp_header, temp_source) != 0)
-        return;
-
-    FILE *stdinf = safe_fopen(temp_stdin, "w");
-    if (!stdinf)
-    {
-        fprintf(stderr, "Test %s failed: could not create temp stdin file\n", testName);
-        cleanup_files(temp_header, temp_source, temp_exe);
-        return;
-    }
-    if (stdin_input)
-        fwrite(stdin_input, 1, strlen(stdin_input), stdinf);
-    fclose(stdinf);
-
-    if (compile_with_clang(testName, temp_exe, temp_source, temp_header, result.output.targetCCode) != 0)
-    {
-        remove(temp_stdin);
-        return;
-    }
-
-    char exec_cmd[512];
-    snprintf(exec_cmd, sizeof(exec_cmd), "%s < %s", temp_exe, temp_stdin);
-    int32_t actualExitCode = system(exec_cmd);
-
-    cleanup_files_with_stdin(temp_header, temp_source, temp_exe, temp_stdin);
-    check_exit_code(testName, expectedExitCode, actualExitCode, result.output.targetCCode);
-}
-
+// Consolidated assertion function that handles both stdin and args
 void assertValidWithStdInAndArgs(char *testName, char *source, int32_t expectedExitCode, char *stdin_input, int32_t argc, char **argv)
 {
     CompileResult result;
@@ -233,60 +167,60 @@ void assertInvalid(char *testName, char *source)
 
 void testEmptyProgram()
 {
-    assertValidWithArgs("An empty program", "", 0, 0, NULL);
+    assertValidWithStdInAndArgs("An empty program", "", 0, NULL, 0, NULL);
 }
 
 void testArgsLength()
 {
-    assertValidWithArgs("Get args length", "__args__.length", 1, 0, NULL);
+    assertValidWithStdInAndArgs("Get args length", "__args__.length", 1, NULL, 0, NULL);
 }
 
 void testArgsLengthWithArg()
 {
     char *argv[] = {"foo"};
-    assertValidWithArgs("Get args length with one argument", "__args__.length", 2, 1, argv);
+    assertValidWithStdInAndArgs("Get args length with one argument", "__args__.length", 2, NULL, 1, argv);
 }
 
 void testArgsLengthAddition()
 {
     char *argv[] = {"foo"};
-    assertValidWithArgs("Add args length to itself", "__args__.length + __args__.length", 4, 1, argv);
+    assertValidWithStdInAndArgs("Add args length to itself", "__args__.length + __args__.length", 4, NULL, 1, argv);
 }
 
 void testArgsSecondArgLength()
 {
     char *argv[] = {"foo"};
-    assertValidWithArgs("Get length of second argument", "__args__[1].length;", 3, 1, argv);
+    assertValidWithStdInAndArgs("Get length of second argument", "__args__[1].length;", 3, NULL, 1, argv);
 }
 
 void testReadI32()
 {
-    assertValidWithStdIn("Read I32 from stdin", "read<I32>()", 100, "100");
+    assertValidWithStdInAndArgs("Read I32 from stdin", "read<I32>()", 100, "100", 0, NULL);
 }
 
 void testReadI32Addition()
 {
-    assertValidWithStdIn("Read and add two I32 values", "read<I32>() + read<I32>()", 100, "25 75");
+    assertValidWithStdInAndArgs("Read and add two I32 values", "read<I32>() + read<I32>()", 100, "25 75", 0, NULL);
 }
 
 void testVariableAndDoubling()
 {
-    assertValidWithStdIn("Variable assignment and doubling", "let x : I32 = read<I32>(); x + x", 50, "25 75");
+    assertValidWithStdInAndArgs("Variable assignment and doubling", "let x : I32 = read<I32>(); x + x", 50, "25 75", 0, NULL);
 }
 
 void testMutableVariableAssignment()
 {
-    assertValidWithStdIn("Mutable variable assignment", "let mut x = 0; x = read<I32>(); x", 42, "42");
+    assertValidWithStdInAndArgs("Mutable variable assignment", "let mut x = 0; x = read<I32>(); x", 42, "42", 0, NULL);
 }
 
 void testMutableVariableDoubleRead()
 {
-    assertValidWithStdIn("Mutable variable with double read", "let mut x = read<I32>(); x = read<I32>(); x", 99, "55 99");
+    assertValidWithStdInAndArgs("Mutable variable with double read", "let mut x = read<I32>(); x = read<I32>(); x", 99, "55 99", 0, NULL);
 }
 
 void testSimpleVariableReturn()
 {
-    assertValidWithStdIn("Simple variable return", "let x : I32 = read<I32>(); x", 75, "75");
+    assertValidWithStdInAndArgs("Simple variable return", "let x : I32 = read<I32>(); x", 75, "75", 0, NULL);
 }
 
 void testReadU8PlusArgsLength()
