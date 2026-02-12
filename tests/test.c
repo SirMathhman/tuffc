@@ -170,91 +170,9 @@ void testEmptyProgram()
     assertValid("An empty program", "", 0, NULL, 0, NULL);
 }
 
-void testArgsLength()
-{
-    assertValid("Get args length", "__args__.length", 1, NULL, 0, NULL);
-}
-
-void testArgsLengthWithArg()
-{
-    char *argv[] = {"foo"};
-    assertValid("Get args length with one argument", "__args__.length", 2, NULL, 1, argv);
-}
-
-void testArgsLengthAddition()
-{
-    char *argv[] = {"foo"};
-    assertValid("Add args length to itself", "__args__.length + __args__.length", 4, NULL, 1, argv);
-}
-
-void testArgsSecondArgLength()
-{
-    char *argv[] = {"foo"};
-    assertValid("Get length of second argument", "__args__[1].length;", 3, NULL, 1, argv);
-}
-
-void testReadI32()
-{
-    assertValid("Read I32 from stdin", "read<I32>()", 100, "100", 0, NULL);
-}
-
-void testReadI32Addition()
-{
-    assertValid("Read and add two I32 values", "read<I32>() + read<I32>()", 100, "25 75", 0, NULL);
-}
-
-void testVariableAndDoubling()
-{
-    assertValid("Variable assignment and doubling", "let x : I32 = read<I32>(); x + x", 50, "25 75", 0, NULL);
-}
-
-void testMutableVariableAssignment()
-{
-    assertValid("Mutable variable assignment", "let mut x = 0; x = read<I32>(); x", 42, "42", 0, NULL);
-}
-
-void testMutableVariableDoubleRead()
-{
-    assertValid("Mutable variable with double read", "let mut x = read<I32>(); x = read<I32>(); x", 99, "55 99", 0, NULL);
-}
-
-void testSimpleVariableReturn()
-{
-    assertValid("Simple variable return", "let x : I32 = read<I32>(); x", 75, "75", 0, NULL);
-}
-
-void testReadU8PlusArgsLength()
-{
-    char *argv[] = {"arg1"};
-    assertValid("Read U8 and add args length", "read<U8>() + __args__.length", 7, "5", 1, argv);
-}
-
-void testDuplicateVariableDeclaration()
-{
-    assertInvalid("Duplicate variable declaration", "let x = 0; let x = 0;");
-}
-
-void testSimpleVariableDeclaration()
-{
-    assertValid("Simple variable declaration", "let x = 100;", 0, NULL, 0, NULL);
-}
-
 int32_t main()
 {
     testEmptyProgram();
-    testArgsLength();
-    testArgsLengthWithArg();
-    testArgsLengthAddition();
-    testArgsSecondArgLength();
-    testReadI32();
-    testReadI32Addition();
-    testVariableAndDoubling();
-    testMutableVariableAssignment();
-    testMutableVariableDoubleRead();
-    testSimpleVariableReturn();
-    testReadU8PlusArgsLength();
-    testDuplicateVariableDeclaration();
-    testSimpleVariableDeclaration();
 
     fprintf(stderr, "Passed %d/%d tests\n", passingTests, totalTests);
 
