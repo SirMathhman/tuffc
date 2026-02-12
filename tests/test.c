@@ -229,6 +229,11 @@ void testReadU8PlusArgsLength()
     assertValid("Read U8 and add args length", "read<U8>() + __args__.length", 7, "5", 1, argv);
 }
 
+void testDuplicateVariableDeclaration()
+{
+    assertInvalid("Duplicate variable declaration", "let x = 0; let x = 0;");
+}
+
 int32_t main()
 {
     testEmptyProgram();
@@ -243,6 +248,7 @@ int32_t main()
     testMutableVariableDoubleRead();
     testSimpleVariableReturn();
     testReadU8PlusArgsLength();
+    testDuplicateVariableDeclaration();
 
     fprintf(stderr, "Passed %d/%d tests\n", passingTests, totalTests);
 
