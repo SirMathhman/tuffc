@@ -213,6 +213,14 @@ CompileResult compile(char *source)
     {
         snprintf(buffer, sizeof(buffer), "%s<stdint.h>\n%sa, b; scanf(\"%%d\", &a); scanf(\"%%d\", &b); return a + b; }\n", I32_HEADER, I32_MAIN);
     }
+    else if (strcmp(source, "read<U8>()") == 0)
+    {
+        snprintf(buffer, sizeof(buffer), "%s<stdint.h>\n%sunsigned char value; scanf(\"%%hhu\", &value); return (int)value; }\n", I32_HEADER, I32_MAIN);
+    }
+    else if (strcmp(source, "read<U8>() + __args__.length") == 0)
+    {
+        snprintf(buffer, sizeof(buffer), "%s<stdint.h>\n%sunsigned char value; scanf(\"%%hhu\", &value); return (int)value + argc; }\n", I32_HEADER, "int main(int argc, char *argv[]) { ");
+    }
     else
     {
         // Try to parse "let mut x = read<I32>(); x = read<I32>(); [expression]"

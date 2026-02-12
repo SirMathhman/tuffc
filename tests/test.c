@@ -169,6 +169,51 @@ void assertValidWithStdIn(char *testName, char *source, int32_t expectedExitCode
     check_exit_code(testName, expectedExitCode, actualExitCode, result.output.targetCCode);
 }
 
+void assertValidWithStdInAndArgs(char *testName, char *source, int32_t expectedExitCode, char *stdin_input, int32_t argc, char **argv)
+{
+    CompileResult result;
+    if (assert_setup(testName, source, &result) != 0)
+        return;
+
+    char temp_header[32], temp_source[32], temp_exe[32];
+    setup_temp_files(temp_header, temp_source, temp_exe);
+    char temp_stdin[] = "temp_test_stdin_XXXXXX.txt";
+
+    if (write_temp_files(testName, result.output.headerCCode, result.output.targetCCode, temp_header, temp_source) != 0)
+        return;
+
+    FILE *stdinf = safe_fopen(temp_stdin, "w");
+    if (!stdinf)
+    {
+        fprintf(stderr, "Test %s failed: could not create temp stdin file\n", testName);
+        cleanup_files(temp_header, temp_source, temp_exe);
+        return;
+    }
+    if (stdin_input)
+        fwrite(stdin_input, 1, strlen(stdin_input), stdinf);
+    fclose(stdinf);
+
+    if (compile_with_clang(testName, temp_exe, temp_source, temp_header, result.output.targetCCode) != 0)
+    {
+        remove(temp_stdin);
+        return;
+    }
+
+    char exec_cmd[512];
+    snprintf(exec_cmd, sizeof(exec_cmd), "%s", temp_exe);
+    for (int32_t i = 0; i < argc; i++)
+    {
+        size_t current_len = strlen(exec_cmd);
+        snprintf(exec_cmd + current_len, sizeof(exec_cmd) - current_len, " %s", argv[i]);
+    }
+    size_t current_len = strlen(exec_cmd);
+    snprintf(exec_cmd + current_len, sizeof(exec_cmd) - current_len, " < %s", temp_stdin);
+    int32_t actualExitCode = system(exec_cmd);
+
+    cleanup_files_with_stdin(temp_header, temp_source, temp_exe, temp_stdin);
+    check_exit_code(testName, expectedExitCode, actualExitCode, result.output.targetCCode);
+}
+
 void assertInvalid(char *testName, char *source)
 {
     totalTests++;
@@ -244,6 +289,12 @@ void testSimpleVariableReturn()
     assertValidWithStdIn("Simple variable return", "let x : I32 = read<I32>(); x", 75, "75");
 }
 
+void testReadU8PlusArgsLength()
+{
+    char *argv[] = {"arg1"};
+    assertValidWithStdInAndArgs("Read U8 and add args length", "read<U8>() + __args__.length", 7, "5", 1, argv);
+}
+
 int32_t main()
 {
     testEmptyProgram();
@@ -257,6 +308,7 @@ int32_t main()
     testMutableVariableAssignment();
     testMutableVariableDoubleRead();
     testSimpleVariableReturn();
+    testReadU8PlusArgsLength();
 
     fprintf(stderr, "Passed %d/%d tests\n", passingTests, totalTests);
 
