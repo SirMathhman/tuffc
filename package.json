@@ -9,6 +9,7 @@
     "build": "bun build src/index.ts --outdir dist",
     "start": "bun dist/index.js",
     "test": "bun test",
+    "cpd": "pmd cpd src --language typescript --minimum-tokens 35",
     "lint": "eslint src --ext .ts",
     "lint:fix": "eslint src --ext .ts --fix",
     "prepare": "husky"
@@ -22,6 +23,7 @@
     "eslint": "^10.0.0",
     "husky": "^9.1.7",
     "lint-staged": "^16.2.7",
+    "pmd": "^3.0.1",
     "typescript": "latest"
   },
   "lint-staged": {
