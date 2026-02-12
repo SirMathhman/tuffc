@@ -32,155 +32,122 @@ static void safe_string_copy(char *dest, const char *src, int buf_size)
     dest[i] = '\0';
 }
 
+// Helper to extract variable name from position, returns length of var name or 0 on error
+static int extract_variable_name(const char *pos, char *var_name, int buf_size)
+{
+    int i = 0;
+    while (i < buf_size - 1 && isalnum(pos[i]))
+    {
+        var_name[i] = pos[i];
+        i++;
+    }
+    var_name[i] = '\0';
+
+    if (i == 0 || i >= buf_size - 1)
+        return 0;
+
+    return i;
+}
+
 #define ARGC_ARGS ", char *argv[]) { return "
 #define I32_HEADER "#include <stdio.h>\n#include "
 #define I32_MAIN "int main() { int32_t "
 
-// Helper to parse "let x : I32 = read<I32>(); [expression]"
-static int parse_let_statement(const char *source, char *var_name, char *expression, int buf_size)
+// Helper to generate code for single read pattern
+static void generate_i32_single_read(char *buffer, size_t buf_size, const char *var_decl, const char *var_ref, const char *return_expr)
 {
-    // Check if source starts with "let "
-    if (strncmp(source, "let ", 4) != 0)
+    snprintf(buffer, buf_size, "%s<stdint.h>\n%s%s; scanf(\"%%d\", &%s); return %s; }\n",
+             I32_HEADER, I32_MAIN, var_decl, var_ref, return_expr);
+}
+
+// Helper to generate code for U8 single read pattern
+static void generate_u8_single_read(char *buffer, size_t buf_size, const char *var_decl, const char *var_ref, const char *return_expr)
+{
+    snprintf(buffer, buf_size, "%s<stdint.h>\nint main() { %s; scanf(\"%%hhu\", &%s); return %s; }\n",
+             I32_HEADER, var_decl, var_ref, return_expr);
+}
+
+// Helper to generate code for double read pattern
+static void generate_double_read(char *buffer, size_t buf_size, const char *var_decl, const char *var1, const char *var2, const char *expr)
+{
+    snprintf(buffer, buf_size, "%s<stdint.h>\n%s%s; scanf(\"%%d\", &%s); scanf(\"%%d\", &%s); return %s; }\n",
+             I32_HEADER, I32_MAIN, var_decl, var1, var2, expr);
+}
+static int parse_let_base(const char *source, const char *prefix, char *var_name, int buf_size, const char **remaining)
+{
+    if (strncmp(source, prefix, strlen(prefix)) != 0)
         return 0;
 
-    const char *pos = source + 4;
-
-    // Extract variable name
-    int i = 0;
-    while (i < buf_size - 1 && isalnum(pos[i]))
-    {
-        var_name[i] = pos[i];
-        i++;
-    }
-    var_name[i] = '\0';
-
-    if (i == 0 || i >= buf_size - 1)
+    const char *pos = source + strlen(prefix);
+    int i = extract_variable_name(pos, var_name, buf_size);
+    if (i == 0)
         return 0;
 
-    pos += i;
-
-    // Skip whitespace and ": I32 = read<I32>(); "
-    if (strncmp(pos, " : I32 = read<I32>(); ", 22) != 0)
-        return 0;
-
-    pos += 22;
-
-    // The rest is the expression
-    safe_string_copy(expression, pos, buf_size);
-
+    *remaining = pos + i;
     return 1;
 }
 
-// Helper to parse "let mut x = 0; x = read<I32>(); [expression]"
+// Parse "let x : I32 = read<I32>(); [expression]"
+static int parse_let_statement(const char *source, char *var_name, char *expression, int buf_size)
+{
+    const char *pos;
+    if (!parse_let_base(source, "let ", var_name, buf_size, &pos))
+        return 0;
+
+    if (strncmp(pos, " : I32 = read<I32>(); ", 22) != 0)
+        return 0;
+
+    safe_string_copy(expression, pos + 22, buf_size);
+    return 1;
+}
+
+// Parse "let mut x = 0; x = read<I32>(); [expression]"
 static int parse_let_mut_statement(const char *source, char *var_name, char *expression, int buf_size)
 {
-    // Check if source starts with "let mut "
-    if (strncmp(source, "let mut ", 8) != 0)
+    const char *pos;
+    if (!parse_let_base(source, "let mut ", var_name, buf_size, &pos))
         return 0;
 
-    const char *pos = source + 8;
-
-    // Extract variable name
-    int i = 0;
-    while (i < buf_size - 1 && isalnum(pos[i]))
-    {
-        var_name[i] = pos[i];
-        i++;
-    }
-    var_name[i] = '\0';
-
-    if (i == 0 || i >= buf_size - 1)
-        return 0;
-
-    pos += i;
-
-    // Skip " = 0; "
     if (strncmp(pos, " = 0; ", 6) != 0)
         return 0;
 
     pos += 6;
 
-    // Check variable name matches in assignment: "[varname] = read<I32>(); "
-    // First extract and verify variable name in assignment
     char assign_var[64];
-    int j = 0;
-    while (j < buf_size - 1 && isalnum(pos[j]))
-    {
-        assign_var[j] = pos[j];
-        j++;
-    }
-    assign_var[j] = '\0';
-
-    if (strcmp(var_name, assign_var) != 0)
+    if (extract_variable_name(pos, assign_var, sizeof(assign_var)) == 0 || strcmp(var_name, assign_var) != 0)
         return 0;
 
-    pos += j;
+    pos += strlen(var_name);
 
-    // Skip " = read<I32>(); "
     if (strncmp(pos, " = read<I32>(); ", 16) != 0)
         return 0;
 
-    pos += 16;
-
-    // The rest is the expression
-    safe_string_copy(expression, pos, buf_size);
-
+    safe_string_copy(expression, pos + 16, buf_size);
     return 1;
 }
 
-// Helper to parse "let mut x = read<I32>(); x = read<I32>(); [expression]"
+// Parse "let mut x = read<I32>(); x = read<I32>(); [expression]"
 static int parse_let_mut_double_read_statement(const char *source, char *var_name, char *expression, int buf_size)
 {
-    // Check if source starts with "let mut "
-    if (strncmp(source, "let mut ", 8) != 0)
+    const char *pos;
+    if (!parse_let_base(source, "let mut ", var_name, buf_size, &pos))
         return 0;
 
-    const char *pos = source + 8;
-
-    // Extract variable name
-    int i = 0;
-    while (i < buf_size - 1 && isalnum(pos[i]))
-    {
-        var_name[i] = pos[i];
-        i++;
-    }
-    var_name[i] = '\0';
-
-    if (i == 0 || i >= buf_size - 1)
-        return 0;
-
-    pos += i;
-
-    // Skip " = read<I32>(); "
     if (strncmp(pos, " = read<I32>(); ", 16) != 0)
         return 0;
 
     pos += 16;
 
-    // Check variable name matches in second assignment: "[varname] = read<I32>(); "
     char assign_var[64];
-    int j = 0;
-    while (j < buf_size - 1 && isalnum(pos[j]))
-    {
-        assign_var[j] = pos[j];
-        j++;
-    }
-    assign_var[j] = '\0';
-
-    if (strcmp(var_name, assign_var) != 0)
+    if (extract_variable_name(pos, assign_var, sizeof(assign_var)) == 0 || strcmp(var_name, assign_var) != 0)
         return 0;
 
-    pos += j;
+    pos += strlen(var_name);
 
-    // Skip " = read<I32>(); "
     if (strncmp(pos, " = read<I32>(); ", 16) != 0)
         return 0;
 
-    pos += 16;
-
-    // The rest is the expression
-    safe_string_copy(expression, pos, buf_size);
-
+    safe_string_copy(expression, pos + 16, buf_size);
     return 1;
 }
 
@@ -194,15 +161,8 @@ static int parse_let_simple_statement(const char *source, char *var_name, int bu
     const char *pos = source + 4;
 
     // Extract variable name
-    int i = 0;
-    while (i < buf_size - 1 && isalnum(pos[i]))
-    {
-        var_name[i] = pos[i];
-        i++;
-    }
-    var_name[i] = '\0';
-
-    if (i == 0 || i >= buf_size - 1)
+    int i = extract_variable_name(pos, var_name, buf_size);
+    if (i == 0)
         return 0;
 
     pos += i;
@@ -250,19 +210,19 @@ CompileResult compile(char *source)
     }
     else if (strcmp(source, "read<I32>()") == 0)
     {
-        snprintf(buffer, sizeof(buffer), "%s<stdint.h>\n%svalue; scanf(\"%%d\", &value); return value; }\n", I32_HEADER, I32_MAIN);
+        generate_i32_single_read(buffer, sizeof(buffer), "value", "value", "value");
     }
     else if (strcmp(source, "read<I32>() + read<I32>()") == 0)
     {
-        snprintf(buffer, sizeof(buffer), "%s<stdint.h>\n%sa, b; scanf(\"%%d\", &a); scanf(\"%%d\", &b); return a + b; }\n", I32_HEADER, I32_MAIN);
+        generate_double_read(buffer, sizeof(buffer), "a, b", "a", "b", "a + b");
     }
     else if (strcmp(source, "read<U8>()") == 0)
     {
-        snprintf(buffer, sizeof(buffer), "%s<stdint.h>\n%sunsigned char value; scanf(\"%%hhu\", &value); return (int)value; }\n", I32_HEADER, I32_MAIN);
+        generate_u8_single_read(buffer, sizeof(buffer), "unsigned char value", "value", "(int)value");
     }
     else if (strcmp(source, "read<U8>() + __args__.length") == 0)
     {
-        snprintf(buffer, sizeof(buffer), "%s<stdint.h>\n%sunsigned char value; scanf(\"%%hhu\", &value); return (int)value + argc; }\n", I32_HEADER, "int main(int argc, char *argv[]) { ");
+        snprintf(buffer, sizeof(buffer), "%s<stdint.h>\nint main(int argc, char *argv[]) { unsigned char value; scanf(\"%%hhu\", &value); return (int)value + argc; }\n", I32_HEADER);
     }
     else
     {
@@ -277,20 +237,17 @@ CompileResult compile(char *source)
         // Try to parse "let mut x = read<I32>(); x = read<I32>(); [expression]"
         else if (parse_let_mut_double_read_statement(source, var_name, expression, sizeof(expression)))
         {
-            snprintf(buffer, sizeof(buffer), "%s<stdint.h>\n%s%s; scanf(\"%%d\", &%s); scanf(\"%%d\", &%s); return %s; }\n",
-                     I32_HEADER, I32_MAIN, var_name, var_name, var_name, expression);
+            generate_double_read(buffer, sizeof(buffer), var_name, var_name, var_name, expression);
         }
         // Try to parse "let mut x = 0; x = read<I32>(); [expression]"
         else if (parse_let_mut_statement(source, var_name, expression, sizeof(expression)))
         {
-            snprintf(buffer, sizeof(buffer), "%s<stdint.h>\n%s%s; scanf(\"%%d\", &%s); return %s; }\n",
-                     I32_HEADER, I32_MAIN, var_name, var_name, expression);
+            generate_i32_single_read(buffer, sizeof(buffer), var_name, var_name, expression);
         }
         // Try to parse "let x : I32 = read<I32>(); [expression]"
         else if (parse_let_statement(source, var_name, expression, sizeof(expression)))
         {
-            snprintf(buffer, sizeof(buffer), "%s<stdint.h>\n%s%s; scanf(\"%%d\", &%s); return %s; }\n",
-                     I32_HEADER, I32_MAIN, var_name, var_name, expression);
+            generate_i32_single_read(buffer, sizeof(buffer), var_name, var_name, expression);
         }
         else
         {

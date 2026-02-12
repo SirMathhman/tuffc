@@ -5,6 +5,8 @@ description: Test-Driven Development workflow for implementing new test cases
 
 # TDD Workflow
 
+You MUST use your #tool:todo to manage your tasks.
+
 1. **Receive test case** — User provides a test case to implement
 2. **Add to test suite** — Add the test case to `tests/test.c` without reading source code
 3. **Run tests** — Execute the test suite to observe the failure
