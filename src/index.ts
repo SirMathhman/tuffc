@@ -509,6 +509,31 @@ function processVariableDeclarations(
         });
       }
 
+      // Check type compatibility: extract explicit type from value if present
+      if (typeAnnotation) {
+        const numericPart = extractNumericPart(valueStr);
+        if (numericPart !== undefined) {
+          const valueSuffix = valueStr.slice(numericPart.length);
+          const valueType = valueSuffix.length > 0 ? valueSuffix : "I32";
+
+          // If value has explicit type different from declared type, check compatibility
+          if (valueType !== typeAnnotation) {
+            // Allow widening: U8 -> U16, but not narrowing: U16 -> U8
+            const valueBits = getTypeBitSize(valueType);
+            const declaredBits = getTypeBitSize(typeAnnotation);
+            
+            if (valueBits !== undefined && declaredBits !== undefined && valueBits > declaredBits) {
+              return err({
+                source: input,
+                description: "Type mismatch in variable assignment",
+                reason: `Cannot assign value of type '${valueType}' to variable of type '${typeAnnotation}'`,
+                fix: `Use a value of type '${typeAnnotation}' or change the variable type to '${valueType}'`,
+              });
+            }
+          }
+        }
+      }
+
       // Validate the value fits in the specified type
       if (typeAnnotation) {
         const validationResult = validateTypeSuffix(
