@@ -5,5 +5,5 @@ struct DescriptiveError {
     fix : *Str;
 }
 
-fn pass<T>(value : T) => value;
-pass<I32>(100);
+fn pass<T>(value : T) => this;
+pass<I32>(100).value;

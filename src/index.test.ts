@@ -179,6 +179,12 @@ testSuccess(
 );
 
 testSuccess(
+  "fn pass<T>(value : T) => this;\npass<I32>(100).value",
+  100,
+  "interpret generic function call with explicit type parameter and property access => 100",
+);
+
+testSuccess(
   "struct DescriptiveError {\n    source : *Str;\n    description : *Str;\n    reason : *Str;\n    fix : *Str;\n}\n\nfn Success<T>() => {\n}",
   0,
   "interpret index.tuff struct and function definitions with optional return type => 0",

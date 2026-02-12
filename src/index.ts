@@ -1690,7 +1690,10 @@ function tryFunctionCall(
       }
 
       if (rest.startsWith(".")) {
-        const dotRest = rest.slice(1).trim();
+        let dotRest = rest.slice(1).trim();
+        if (dotRest.endsWith(";")) {
+          dotRest = dotRest.slice(0, -1).trim();
+        }
 
         if (returnsThis) {
           return interpretWithVars(
