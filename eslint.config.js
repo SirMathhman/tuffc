@@ -38,6 +38,16 @@ export default [
           message:
             "Use Result<T, E> instead of throwing errors. Use err() to create a Failure result.",
         },
+        {
+          selector: "Literal[regex]",
+          message:
+            "Regular expressions are not allowed. Use string methods instead.",
+        },
+        {
+          selector: "NewExpression[callee.name='RegExp']",
+          message:
+            "RegExp constructor is not allowed. Use string methods instead.",
+        },
       ],
     },
   },
