@@ -815,6 +815,19 @@ function isValidFieldType(
 ): boolean {
   const trimmed = typeStr.trim();
 
+  // Check for mutable array type: *mut [TypeName]
+  if (trimmed.startsWith("*mut [") && trimmed.endsWith("]")) {
+    const innerType = trimmed.slice(6, -1).trim();
+    // Recursively validate the inner type
+    return isValidFieldType(
+      innerType,
+      genericParams,
+      typeAliases,
+      structNames,
+      functions,
+    );
+  }
+
   // Check for array type: *[TypeName]
   if (trimmed.startsWith("*[") && trimmed.endsWith("]")) {
     const innerType = trimmed.slice(2, -1).trim();
@@ -1006,7 +1019,9 @@ function validateStructDefinitions(
   return ok(undefined);
 }
 
-function validateContractDefinitions(input: string): Result<undefined, InterpretError> {
+function validateContractDefinitions(
+  input: string,
+): Result<undefined, InterpretError> {
   const contractNames = new Set<string>();
   const lines = getLines(input);
 
@@ -1670,6 +1685,11 @@ function processVariableDeclarations(
   const mutableVars = new Set<string>();
 
   for (const line of lines) {
+    // Skip indented lines (they're inside function bodies)
+    if (line.length > 0 && line[0] === " ") {
+      continue;
+    }
+
     const trimmedLine = line.trim();
     if (trimmedLine.startsWith("let ")) {
       // Check if this is a string variable declaration
@@ -1852,9 +1872,16 @@ function parseAndValidateArguments(
         argType === "I32" &&
         (param.type.startsWith("U") || param.type === "USize");
 
+      // Allow mutable array type (*mut [T]) to be passed to immutable parameter (*[T])
+      const isMutableToImmutable =
+        argType.startsWith("*mut [") &&
+        param.type.startsWith("*[") &&
+        argType.slice(6) === param.type.slice(2);
+
       if (
         !isGenericParam &&
         !isNumericLiteralToUnsigned &&
+        !isMutableToImmutable &&
         param.type !== argType &&
         param.type !== "I32"
       ) {

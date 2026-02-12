@@ -35,18 +35,17 @@ struct FunctionDefinition {
 
 // OK, now that I can comment, I can explain myself a bit better.
 // If a function is marked as `extern` you should just provide a common-sense implementation in JS.
-extern fn createSlice<T>() : *[T];
+extern fn createSlice<T>() : *mut [T];
 extern fn getSlice(this : *[T], index : USize) : T;
-extern fn addSlice(this : *[T], element : T) : *[T];
+extern fn addSlice(this : *mut [T], element : T) : *mut [T];
 
-contract Equatable {
+contract Equatable<T> {
+    fn isEqualTo(*this, other : T) : Bool;
 }
 
-contract Equatable {
-}
-
-fn Map<K, V>() => {
-    
+fn Map<K : Equatable<K>, V>() => {
+    // A slice of tuples, tuple (K, V)
+    let mut slice : *[(K, V)] = createSlice<(K, V)>();
 }
 
 createSlice<I32>().addSlice(100).getSlice(0)

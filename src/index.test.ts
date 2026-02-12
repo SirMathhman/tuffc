@@ -405,3 +405,27 @@ testSuccess(
   100,
   "interpret chained extern function calls with method notation => 100",
 );
+
+testSuccess(
+  "contract Equatable<T> {\n    fn isEqualTo(*this, other : T) : Bool;\n}",
+  0,
+  "interpret contract with generic type parameter => 0",
+);
+
+testSuccess(
+  "fn Map<K, V>() => {}",
+  0,
+  "interpret function with multiple generic parameters => 0",
+);
+
+testSuccess(
+  "fn test() => {\n    let mut slice : *[I32] = 0;\n}",
+  0,
+  "interpret mutable variable declaration with mut keyword => 0",
+);
+
+testSuccess(
+  "extern fn createSlice<T>() : *mut [T];\nfn test<T>() => {\n    let mut slice : *mut [T] = createSlice<T>();\n}",
+  0,
+  "interpret function with mutable slice type and generic parameter => 0",
+);
