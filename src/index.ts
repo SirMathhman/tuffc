@@ -439,6 +439,7 @@ function processVariableDeclarations(
 ): Result<Map<string, number>, InterpretError> {
   const lines = input.split("\n");
   const varMap = new Map(variables);
+  const declaredInThisScope = new Set<string>();
 
   for (const line of lines) {
     const trimmedLine = line.trim();
@@ -469,12 +470,22 @@ function processVariableDeclarations(
         });
       }
 
+      if (declaredInThisScope.has(varName)) {
+        return err({
+          source: input,
+          description: "Duplicate variable declaration",
+          reason: `duplicate variable: '${varName}' is declared multiple times`,
+          fix: "Use a different variable name or remove the duplicate declaration",
+        });
+      }
+
       const valueResult = interpretWithVars(valueStr, varMap);
       if (valueResult.isFailure()) {
         return valueResult;
       }
 
       varMap.set(varName, valueResult.value);
+      declaredInThisScope.add(varName);
     }
   }
 

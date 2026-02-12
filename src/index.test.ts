@@ -86,6 +86,12 @@ testSuccess(
   "interpret generic struct => 0",
 );
 testSuccess("let x = 0;\nx", 0, "interpret variable binding => 0");
+testFailure(
+  "let x = 0;\nlet x = 0;\nx",
+  "interpret duplicate variable declarations => Err",
+  "let x = 0;\nlet x = 0;\nx",
+  "duplicate",
+);
 testSuccess("1U8 + 2U8 + 3U8", 6, 'interpret("1U8 + 2U8 + 3U8") => 6');
 testSuccess("1U8 + 255 + 1U16", 257, 'interpret("1U8 + 255 + 1U16") => 257');
 testFailure(
