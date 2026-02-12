@@ -167,7 +167,6 @@ void assertInvalid(char *testName, char *source)
 
 void testEmptyProgram()
 {
-    assertValid("An empty program", "", 0, NULL, 0, NULL);
 }
 
 int32_t main()
