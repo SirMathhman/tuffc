@@ -43,3 +43,4 @@ testFailure(
 
 testSuccess("100U8 is U8", 1, 'interpret("100U8 is U8") => 1');
 testSuccess("100U8 is U16", 0, 'interpret("100U8 is U16") => 0');
+testSuccess("100U16 is U8", 0, 'interpret("100U16 is U8") => 0');
