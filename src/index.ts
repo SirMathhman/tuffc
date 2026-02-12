@@ -49,6 +49,25 @@ function getUnsignedTypeRange(
   };
 }
 
+function getTypeBitSize(suffix: string): number | undefined {
+  if (!isUnsignedTypeSuffix(suffix)) {
+    return undefined;
+  }
+  return parseInt(suffix.slice(1), 10);
+}
+
+function promoteTypes(type1: string, type2: string): string | undefined {
+  if (type1 === type2) {
+    return type1;
+  }
+  const size1 = getTypeBitSize(type1);
+  const size2 = getTypeBitSize(type2);
+  if (size1 === undefined || size2 === undefined) {
+    return undefined;
+  }
+  return size1 > size2 ? type1 : type2;
+}
+
 function parseNumericPartOrError(
   input: string,
   numericPart: string | undefined,
@@ -83,6 +102,65 @@ function parseTypedValue(
   return ok({ value, suffix });
 }
 
+function handleAddition(
+  input: string,
+  leftStr: string,
+  rightStr: string,
+): Result<number, InterpretError> {
+  const leftResult = parseTypedValue(leftStr);
+  if (leftResult.isFailure()) {
+    return leftResult;
+  }
+  const leftValue = leftResult.value.value;
+  const leftSuffix = leftResult.value.suffix;
+
+  const rightResult = parseTypedValue(rightStr);
+  if (rightResult.isFailure()) {
+    return rightResult;
+  }
+  const rightValue = rightResult.value.value;
+  const rightSuffix = rightResult.value.suffix;
+
+  const leftType = leftSuffix.length > 0 ? leftSuffix : "I32";
+  const rightType = rightSuffix.length > 0 ? rightSuffix : "I32";
+
+  let resultType = leftType;
+  if (leftType !== rightType) {
+    if (leftSuffix.length > 0 && rightSuffix.length > 0) {
+      const promoted = promoteTypes(leftType, rightType);
+      if (promoted === undefined) {
+        return err({
+          source: input,
+          description: "Incompatible types in addition",
+          reason: `Cannot add values of types ${leftType} and ${rightType}`,
+          fix: "Ensure both operands have compatible unsigned type suffixes",
+        });
+      }
+      resultType = promoted;
+    } else {
+      return err({
+        source: input,
+        description: "Type mismatch in addition",
+        reason: `Cannot add values of different types: ${leftType} and ${rightType}`,
+        fix: "Use operands with the same type or ensure both have matching type suffixes",
+      });
+    }
+  }
+
+  const range = getUnsignedTypeRange(resultType);
+  const sum = leftValue + rightValue;
+  if (range !== undefined && (sum < range.min || sum > range.max)) {
+    return err({
+      source: input,
+      description: "Arithmetic overflow",
+      reason: `overflow: the sum ${sum} exceeds the range of type ${resultType} [${range.min}, ${range.max}]`,
+      fix: `Use a larger type suffix (e.g., ${resultType === "U8" ? "U16" : "U32"}) or reduce operand values`,
+    });
+  }
+
+  return ok(sum);
+}
+
 export function interpret(input: string): Result<number, InterpretError> {
   if (input === "") {
     return ok(0);
@@ -99,53 +177,7 @@ export function interpret(input: string): Result<number, InterpretError> {
   if (plusIndex !== -1) {
     const leftStr = input.slice(0, plusIndex);
     const rightStr = input.slice(plusIndex + 3);
-
-    // Parse left operand
-    const leftResult = parseTypedValue(leftStr);
-    if (leftResult.isFailure()) {
-      return leftResult;
-    }
-    const leftValue = leftResult.value.value;
-    const leftSuffix = leftResult.value.suffix;
-
-    // Parse right operand
-    const rightResult = parseTypedValue(rightStr);
-    if (rightResult.isFailure()) {
-      return rightResult;
-    }
-    const rightValue = rightResult.value.value;
-    const rightSuffix = rightResult.value.suffix;
-
-    // Get effective types (use "I32" as default if no suffix)
-    const leftType = leftSuffix.length > 0 ? leftSuffix : "I32";
-    const rightType = rightSuffix.length > 0 ? rightSuffix : "I32";
-
-    // Verify types match
-    if (leftType !== rightType) {
-      return err({
-        source: input,
-        description: "Type mismatch in addition",
-        reason: `Cannot add values of different types: ${leftType} and ${rightType}`,
-        fix: "Use operands with the same type or ensure both have matching type suffixes",
-      });
-    }
-
-    // Only check for overflow on unsigned types with explicit suffixes
-    if (leftSuffix.length > 0 && leftSuffix === rightSuffix) {
-      const range = getUnsignedTypeRange(leftSuffix);
-      const sum = leftValue + rightValue;
-      if (range !== undefined && (sum < range.min || sum > range.max)) {
-        return err({
-          source: input,
-          description: "Arithmetic overflow",
-          reason: `overflow: the sum ${sum} exceeds the range of type ${leftSuffix} [${range.min}, ${range.max}]`,
-          fix: `Use a larger type suffix (e.g., ${leftSuffix === "U8" ? "U16" : "U32"}) or reduce operand values`,
-        });
-      }
-    }
-
-    // Return the sum
-    return ok(leftValue + rightValue);
+    return handleAddition(input, leftStr, rightStr);
   }
 
   // Check for type compatibility check syntax: "<value><suffix> is <target_suffix>"

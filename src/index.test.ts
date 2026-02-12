@@ -54,9 +54,5 @@ testFailure(
   "1U8 + 255U8",
   "overflow",
 );
-testFailure(
-  "1U8 + 255",
-  'interpret("1U8 + 255") => Err',
-  "1U8 + 255",
-  "type",
-);
+testFailure("1U8 + 255", 'interpret("1U8 + 255") => Err', "1U8 + 255", "type");
+testSuccess("1U8 + 255U16", 256, 'interpret("1U8 + 255U16") => 256');
