@@ -774,7 +774,18 @@ function determineAssignedValueType(
 }
 function interpretNumericLiteral(
   input: string,
+  variables: Map<string, number> = new Map(),
 ): Result<number, InterpretError> {
+  // Check if input is a valid variable name that's not defined
+  if (isValidVariableName(input) && !variables.has(input)) {
+    return err({
+      source: input,
+      description: "Undefined variable",
+      reason: `Variable '${input}' is not defined`,
+      fix: "Declare the variable first using 'let varName = value;' or pass it as a function parameter",
+    });
+  }
+
   // Extract numeric part and type suffix
   const numericPart = extractNumericPart(input);
   const parseResult = parseNumericPartOrError(input, numericPart);
@@ -798,7 +809,10 @@ function interpretEarlyReturns(
   variables: Map<string, number>,
   variableTypes: Map<string, string>,
   typeAliases: Map<string, string>,
-  functions: Map<string, { body: string; returnType: string; params: string[] }>,
+  functions: Map<
+    string,
+    { body: string; returnType: string; params: string[] }
+  >,
   stringVariables: Map<string, string>,
   extractedAliases: Map<string, string>,
 ): Result<number, InterpretError> | undefined {
@@ -1579,7 +1593,7 @@ function interpretWithVars(
     });
   }
 
-  return interpretNumericLiteral(input);
+  return interpretNumericLiteral(input, variables);
 }
 
 export function interpret(input: string): Result<number, InterpretError> {

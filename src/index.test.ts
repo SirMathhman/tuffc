@@ -229,3 +229,10 @@ testSuccess(
   100,
   "interpret function with multiple parameters and addition => 100",
 );
+
+testFailure(
+  "fn pass(x : I32, y : I32) => x + y;\npass(25)",
+  "interpret function call with missing argument => Err",
+  "y",
+  "not defined",
+);

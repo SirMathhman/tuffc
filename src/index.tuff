@@ -6,4 +6,4 @@ struct DescriptiveError {
 }
 
 fn pass(x : I32, y : I32) => x + y;
-pass(25, 75)
+pass(25)
