@@ -221,6 +221,12 @@ testSuccess(
   "interpret generic type alias definition => 0",
 );
 
+testSuccess(
+  "fn Ok<T, X>(value : T) => {\n    this\n}\n\ntype Result<T, X> = Ok<T, X>;\nlet result : Result<I32, I32> = Ok<I32, I32>(100);",
+  0,
+  "interpret generic function with parametrized type alias in variable declaration => 0",
+);
+
 testFailure(
   "fn empty() => {}\nfn empty() => {}",
   "interpret duplicate function definitions => Err",

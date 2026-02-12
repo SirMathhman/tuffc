@@ -641,9 +641,25 @@ function isValidFieldType(
   functions?: Map<string, FunctionDefinition>,
 ): boolean {
   const trimmed = typeStr.trim();
+  
+  // Extract base name if the type has generic parameters (e.g., Result<T, X> => Result)
+  let baseName = trimmed;
+  let angleIndex = trimmed.indexOf("<");
+  if (angleIndex !== -1) {
+    baseName = trimmed.slice(0, angleIndex).trim();
+  }
+  
   const resolved = typeAliases
-    ? resolveTypeAlias(trimmed, typeAliases)
-    : trimmed;
+    ? resolveTypeAlias(baseName, typeAliases)
+    : baseName;
+  
+  // Also extract base name from the resolved result (e.g., Ok<T, X> => Ok)
+  let resolvedBaseName = resolved;
+  angleIndex = resolved.indexOf("<");
+  if (angleIndex !== -1) {
+    resolvedBaseName = resolved.slice(0, angleIndex).trim();
+  }
+  
   // Valid types: I32, U8, U16, U32, U64, I8, I16, I64, *Str
   const validTypes = [
     "I32",
@@ -656,13 +672,13 @@ function isValidFieldType(
     "I64",
     "*Str",
   ];
-  if (validTypes.includes(resolved)) return true;
+  if (validTypes.includes(resolvedBaseName)) return true;
   // Check if it's a generic type parameter
-  if (genericParams && genericParams.has(resolved)) return true;
+  if (genericParams && genericParams.has(resolvedBaseName)) return true;
   // Check if it's a struct name
-  if (structNames && structNames.has(resolved)) return true;
+  if (structNames && structNames.has(resolvedBaseName)) return true;
   // Check if it's a function name (allowed as a type for Fluent API contexts)
-  if (functions && functions.has(resolved)) return true;
+  if (functions && functions.has(resolvedBaseName)) return true;
   return false;
 }
 
