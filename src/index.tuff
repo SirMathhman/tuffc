@@ -6,9 +6,19 @@ struct DescriptiveError {
 }
 
 fn Ok<T, X>(value : T) => {
+    fn isSuccess() => true;
+    fn isFailure() => false;
+
     this
 }
 
-type Result<T, X> = Ok<T, X>;
+fn Err<T, X>(error : X) => {
+    fn isSuccess() => false;
+    fn isFailure() => true;
+
+    this
+}
+
+type Result<T, X> = Ok<T, X> | Err<T, X>;
 let result : Result<T, X> = Ok<I32, I32>(100);
 result is Ok<I32, I32>

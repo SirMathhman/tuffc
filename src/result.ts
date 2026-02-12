@@ -21,14 +21,6 @@ export class Ok<T> {
   isFailure(): this is Err<never> {
     return false;
   }
-
-  map<U>(fn: (value: T) => U): Result<U, never> {
-    return new Ok(fn(this.value));
-  }
-
-  mapError<F>(_fn: (error: never) => F): Result<T, F> {
-    return this;
-  }
 }
 
 export class Err<E> {
@@ -40,14 +32,6 @@ export class Err<E> {
 
   isFailure(): this is Err<E> {
     return true;
-  }
-
-  mapValue<U>(_fn: (value: never) => U): Result<U, E> {
-    return this;
-  }
-
-  mapError<F>(fn: (error: E) => F): Result<never, F> {
-    return new Err(fn(this.error));
   }
 }
 
