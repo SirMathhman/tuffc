@@ -68,6 +68,32 @@ function promoteTypes(type1: string, type2: string): string | undefined {
   return size1 > size2 ? type1 : type2;
 }
 
+function checkAndPromoteTypes(
+  input: string,
+  leftType: string,
+  rightType: string,
+): Result<string, InterpretError> {
+  if (leftType === rightType) {
+    return ok(leftType);
+  }
+  if (leftType.startsWith("U") && rightType.startsWith("U")) {
+    const promoted = promoteTypes(leftType, rightType);
+    if (promoted !== undefined) {
+      return ok(promoted);
+    }
+  }
+  if (rightType === "I32") {
+    // rightType is I32, which means it's a chained addition or untyped result
+    return ok(leftType);
+  }
+  return err({
+    source: input,
+    description: "Type mismatch in addition",
+    reason: `Cannot add values of different types: ${leftType} and ${rightType}`,
+    fix: "Use operands with the same type or ensure both have matching type suffixes",
+  });
+}
+
 function parseNumericPartOrError(
   input: string,
   numericPart: string | undefined,
@@ -122,30 +148,7 @@ function getAdditionResultType(
   const leftType = leftSuffix.length > 0 ? leftSuffix : "I32";
   const rightType = rightSuffix.length > 0 ? rightSuffix : "I32";
 
-  let resultType = leftType;
-  if (leftType !== rightType) {
-    if (leftSuffix.length > 0 && rightSuffix.length > 0) {
-      const promoted = promoteTypes(leftType, rightType);
-      if (promoted === undefined) {
-        return err({
-          source: input,
-          description: "Incompatible types in addition",
-          reason: `Cannot add values of types ${leftType} and ${rightType}`,
-          fix: "Ensure both operands have compatible unsigned type suffixes",
-        });
-      }
-      resultType = promoted;
-    } else {
-      return err({
-        source: input,
-        description: "Type mismatch in addition",
-        reason: `Cannot add values of different types: ${leftType} and ${rightType}`,
-        fix: "Use operands with the same type or ensure both have matching type suffixes",
-      });
-    }
-  }
-
-  return ok(resultType);
+  return checkAndPromoteTypes(input, leftType, rightType);
 }
 
 function handleAddition(
@@ -158,14 +161,34 @@ function handleAddition(
     return leftResult;
   }
   const leftValue = leftResult.value.value;
+  const leftSuffix = leftResult.value.suffix;
 
-  const rightResult = parseTypedValue(rightStr);
+  // Recursively interpret the right side (handles chained additions)
+  const rightResult = interpret(rightStr);
   if (rightResult.isFailure()) {
     return rightResult;
   }
-  const rightValue = rightResult.value.value;
+  const rightValue = rightResult.value;
 
-  const typeResult = getAdditionResultType(input, leftStr, rightStr);
+  // For chained additions, determine the right side's type.
+  // If right side is a simple value, extract the suffix.
+  // If it's a chained addition (has " + "), use the left type for consistency.
+  const rightHasAddition = rightStr.indexOf(" + ") !== -1;
+  let rightSuffix = "";
+  if (!rightHasAddition) {
+    const rightNumPart = extractNumericPart(rightStr);
+    rightSuffix =
+      rightNumPart !== undefined ? rightStr.slice(rightNumPart.length) : "";
+  }
+
+  const leftType = leftSuffix.length > 0 ? leftSuffix : "I32";
+  const rightType = rightHasAddition
+    ? leftType
+    : rightSuffix.length > 0
+      ? rightSuffix
+      : "I32";
+
+  const typeResult = checkAndPromoteTypes(input, leftType, rightType);
   if (typeResult.isFailure()) {
     return typeResult;
   }
