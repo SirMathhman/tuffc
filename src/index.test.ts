@@ -430,9 +430,8 @@ testSuccess(
   "interpret function with mutable slice type and generic parameter => 0",
 );
 
-testFailure(
-  "let counter = 0;\ncounter += 1;\ncounter",
-  "interpret immutable variable += operation => Err",
-  "let counter = 0;\ncounter += 1;\ncounter",
-  "not defined",
+testSuccess(
+  "let counter = 0;\nfn empty() => counter += 1;\ncounter",
+  0,
+  "interpret immutable variable assigned in uncalled function => 0",
 );
