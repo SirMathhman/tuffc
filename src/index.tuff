@@ -1,3 +1,3 @@
-let x = 100U16;
-let y : U8 = x;
-y
+type Temp = I32;
+let temp : Temp = 100;
+temp

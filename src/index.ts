@@ -225,21 +225,80 @@ function getExpressionResultType(
   return checkAndPromoteTypes(sourceForErrors, leftType, rightType, false);
 }
 
+function extractTypeAliases(
+  input: string,
+): Result<Map<string, string>, InterpretError> {
+  const lines = input.split("\n");
+  const typeAliases = new Map<string, string>();
+
+  for (const line of lines) {
+    const trimmedLine = line.trim();
+
+    if (trimmedLine.startsWith("type ")) {
+      const equalIndex = trimmedLine.indexOf("=");
+      if (equalIndex !== -1) {
+        const aliasNamePart = trimmedLine.slice(5, equalIndex).trim();
+        let baseName = trimmedLine.slice(equalIndex + 1).trim();
+        if (baseName.endsWith(";")) {
+          baseName = baseName.slice(0, -1).trim();
+        }
+
+        if (!isValidVariableName(aliasNamePart)) {
+          return err({
+            source: input,
+            description: "Invalid type alias name",
+            reason: `Type alias name '${aliasNamePart}' is invalid`,
+            fix: "Use valid identifier names (alphanumeric and underscore)",
+          });
+        }
+
+        if (typeAliases.has(aliasNamePart)) {
+          return err({
+            source: input,
+            description: "Duplicate type alias",
+            reason: `type alias '${aliasNamePart}' is declared multiple times`,
+            fix: "Use a different alias name or remove the duplicate declaration",
+          });
+        }
+
+        typeAliases.set(aliasNamePart, baseName);
+      }
+    }
+  }
+
+  return ok(typeAliases);
+}
+
+function resolveTypeAlias(
+  typeStr: string,
+  typeAliases: Map<string, string>,
+): string {
+  if (typeAliases.has(typeStr)) {
+    return typeAliases.get(typeStr)!;
+  }
+  return typeStr;
+}
+
 function isValidFieldType(
   typeStr: string,
   genericParams?: Set<string>,
+  typeAliases?: Map<string, string>,
 ): boolean {
   const trimmed = typeStr.trim();
+  const resolved = typeAliases
+    ? resolveTypeAlias(trimmed, typeAliases)
+    : trimmed;
   // Valid types: I32, U8, U16, U32, U64, I8, I16, I64
   const validTypes = ["I32", "U8", "U16", "U32", "U64", "I8", "I16", "I64"];
-  if (validTypes.includes(trimmed)) return true;
+  if (validTypes.includes(resolved)) return true;
   // Check if it's a generic type parameter
-  if (genericParams && genericParams.has(trimmed)) return true;
+  if (genericParams && genericParams.has(resolved)) return true;
   return false;
 }
 
 function validateStructDefinitions(
   input: string,
+  typeAliases: Map<string, string> = new Map(),
 ): Result<undefined, InterpretError> {
   const lines = input.split("\n");
   const structNames = new Set<string>();
@@ -317,7 +376,7 @@ function validateStructDefinitions(
             ? typePartStr.slice(0, semicolonIndex).trim()
             : typePartStr.trim();
 
-        if (!isValidFieldType(typeStr, currentGenericParams)) {
+        if (!isValidFieldType(typeStr, currentGenericParams, typeAliases)) {
           return err({
             source: input,
             description: "Unknown field type",
@@ -453,11 +512,121 @@ function determineAssignedValueType(
   return undefined;
 }
 
+function processSingleVariableDeclaration(
+  input: string,
+  line: string,
+  varMap: Map<string, number>,
+  typeMap: Map<string, string>,
+  declaredInThisScope: Set<string>,
+  typeAliases: Map<string, string>,
+): Result<
+  { varMap: Map<string, number>; typeMap: Map<string, string> },
+  InterpretError
+> {
+  const trimmedLine = line.trim();
+  const equalIndex = trimmedLine.indexOf("=");
+  if (equalIndex === -1) {
+    return err({
+      source: input,
+      description: "Invalid variable declaration",
+      reason: "Variable declaration must have an '=' sign",
+      fix: "Use syntax: let varName = value;",
+    });
+  }
+
+  const beforeEqual = trimmedLine.slice(4, equalIndex).trim();
+  const colonIndex = beforeEqual.indexOf(":");
+  const varName =
+    colonIndex !== -1 ? beforeEqual.slice(0, colonIndex).trim() : beforeEqual;
+  const typeAnnotation =
+    colonIndex !== -1 ? beforeEqual.slice(colonIndex + 1).trim() : undefined;
+
+  let valueStr = trimmedLine.slice(equalIndex + 1).trim();
+  if (valueStr.endsWith(";")) valueStr = valueStr.slice(0, -1);
+
+  if (!isValidVariableName(varName)) {
+    return err({
+      source: input,
+      description: "Invalid variable name",
+      reason: `Variable name '${varName}' is invalid`,
+      fix: "Use valid identifier names (alphanumeric and underscore)",
+    });
+  }
+  if (declaredInThisScope.has(varName)) {
+    return err({
+      source: input,
+      description: "Duplicate variable declaration",
+      reason: `duplicate variable: '${varName}' is declared multiple times`,
+      fix: "Use a different variable name or remove the duplicate declaration",
+    });
+  }
+
+  const valueResult = interpretWithVars(valueStr, varMap, typeMap, typeAliases);
+  if (valueResult.isFailure()) return valueResult;
+  const value = valueResult.value;
+
+  if (
+    typeAnnotation &&
+    !isValidFieldType(typeAnnotation, undefined, typeAliases)
+  ) {
+    return err({
+      source: input,
+      description: "Unknown type annotation",
+      reason: `unknown type '${typeAnnotation}' in variable declaration for '${varName}'`,
+      fix: "Use a valid type like I32, U8, U16, U32, U64, I8, I16, or I64",
+    });
+  }
+
+  const assignedValueType = determineAssignedValueType(valueStr, typeMap);
+  const resolvedAnnotation = typeAnnotation
+    ? resolveTypeAlias(typeAnnotation, typeAliases)
+    : undefined;
+
+  if (
+    resolvedAnnotation &&
+    assignedValueType &&
+    resolvedAnnotation !== assignedValueType
+  ) {
+    const valueBits = getTypeBitSize(assignedValueType);
+    const declaredBits = getTypeBitSize(resolvedAnnotation);
+    if (
+      valueBits !== undefined &&
+      declaredBits !== undefined &&
+      valueBits > declaredBits
+    ) {
+      return err({
+        source: input,
+        description: "Type mismatch in variable assignment",
+        reason: `Cannot assign value of type '${assignedValueType}' to variable of type '${typeAnnotation}'`,
+        fix: `Use a value of type '${typeAnnotation}' or change the variable type to '${assignedValueType}'`,
+      });
+    }
+  }
+
+  if (resolvedAnnotation) {
+    const validationResult = validateTypeSuffix(
+      input,
+      value,
+      resolvedAnnotation,
+    );
+    if (validationResult.isFailure()) return validationResult;
+  }
+
+  varMap.set(varName, value);
+  typeMap.set(varName, resolvedAnnotation || assignedValueType || "I32");
+  declaredInThisScope.add(varName);
+  return ok({ varMap, typeMap });
+}
+
 function processVariableDeclarations(
   input: string,
   variables: Map<string, number>,
   variableTypes: Map<string, string> = new Map(),
-): Result<{ varMap: Map<string, number>; typeMap: Map<string, string> }, InterpretError> {
+  typeAliases: Map<string, string> = new Map(),
+): Result<
+  { varMap: Map<string, number>; typeMap: Map<string, string> },
+  InterpretError
+> {
   const lines = input.split("\n");
   const varMap = new Map(variables);
   const typeMap = new Map(variableTypes);
@@ -465,112 +634,20 @@ function processVariableDeclarations(
 
   for (const line of lines) {
     const trimmedLine = line.trim();
-
     if (trimmedLine.startsWith("let ")) {
-      const equalIndex = trimmedLine.indexOf("=");
-      if (equalIndex === -1) {
-        return err({
-          source: input,
-          description: "Invalid variable declaration",
-          reason: "Variable declaration must have an '=' sign",
-          fix: "Use syntax: let varName = value;",
-        });
+      const result = processSingleVariableDeclaration(
+        input,
+        line,
+        varMap,
+        typeMap,
+        declaredInThisScope,
+        typeAliases,
+      );
+      if (result.isFailure()) {
+        return result;
       }
-
-      // Extract variable name and optional type annotation: "let varName : Type = value"
-      const beforeEqual = trimmedLine.slice(4, equalIndex).trim();
-      const colonIndex = beforeEqual.indexOf(":");
-      let varName: string;
-      let typeAnnotation: string | undefined;
-
-      if (colonIndex !== -1) {
-        varName = beforeEqual.slice(0, colonIndex).trim();
-        typeAnnotation = beforeEqual.slice(colonIndex + 1).trim();
-      } else {
-        varName = beforeEqual;
-        typeAnnotation = undefined;
-      }
-
-      let valueStr = trimmedLine.slice(equalIndex + 1).trim();
-      if (valueStr.endsWith(";")) {
-        valueStr = valueStr.slice(0, -1);
-      }
-
-      if (!isValidVariableName(varName)) {
-        return err({
-          source: input,
-          description: "Invalid variable name",
-          reason: `Variable name '${varName}' is invalid`,
-          fix: "Use valid identifier names (alphanumeric and underscore)",
-        });
-      }
-
-      if (declaredInThisScope.has(varName)) {
-        return err({
-          source: input,
-          description: "Duplicate variable declaration",
-          reason: `duplicate variable: '${varName}' is declared multiple times`,
-          fix: "Use a different variable name or remove the duplicate declaration",
-        });
-      }
-
-      const valueResult = interpretWithVars(valueStr, varMap);
-      if (valueResult.isFailure()) {
-        return valueResult;
-      }
-
-      const value = valueResult.value;
-
-      // If type annotation is provided, validate the value against it
-      if (typeAnnotation && !isValidFieldType(typeAnnotation)) {
-        return err({
-          source: input,
-          description: "Unknown type annotation",
-          reason: `unknown type '${typeAnnotation}' in variable declaration for '${varName}'`,
-          fix: "Use a valid type like I32, U8, U16, U32, U64, I8, I16, or I64",
-        });
-      }
-
-      // Determine the type of the assigned value
-      const assignedValueType = determineAssignedValueType(valueStr, typeMap);
-
-      // Check type compatibility if both types are known
-      if (typeAnnotation && assignedValueType && typeAnnotation !== assignedValueType) {
-        // Allow widening: U8 -> U16, but not narrowing: U16 -> U8
-        const valueBits = getTypeBitSize(assignedValueType);
-        const declaredBits = getTypeBitSize(typeAnnotation);
-
-        if (
-          valueBits !== undefined &&
-          declaredBits !== undefined &&
-          valueBits > declaredBits
-        ) {
-          return err({
-            source: input,
-            description: "Type mismatch in variable assignment",
-            reason: `Cannot assign value of type '${assignedValueType}' to variable of type '${typeAnnotation}'`,
-            fix: `Use a value of type '${typeAnnotation}' or change the variable type to '${assignedValueType}'`,
-          });
-        }
-      }
-
-      // Validate the value fits in the specified type
-      if (typeAnnotation) {
-        const validationResult = validateTypeSuffix(
-          input,
-          value,
-          typeAnnotation,
-        );
-        if (validationResult.isFailure()) {
-          return validationResult;
-        }
-      }
-
-      varMap.set(varName, value);
-      // Track the inferred type of the variable
-      const finalType = typeAnnotation || (assignedValueType || "I32");
-      typeMap.set(varName, finalType);
-      declaredInThisScope.add(varName);
+      // Maps are modified in place by processSingleVariableDeclaration,
+      // so result.value contains the same updated maps
     }
   }
 
@@ -606,18 +683,76 @@ function validateTypeSuffix(
   return ok(undefined);
 }
 
+function evaluateIsTypeCheck(input: string): Result<number, InterpretError> {
+  const isKeywordIndex = input.indexOf(" is ");
+  const valueWithSuffix = input.slice(0, isKeywordIndex);
+  const targetTypeSuffix = input.slice(isKeywordIndex + 4);
+
+  let evaluateExpr = valueWithSuffix;
+  if (
+    evaluateExpr[0] === "(" &&
+    evaluateExpr[evaluateExpr.length - 1] === ")"
+  ) {
+    evaluateExpr = evaluateExpr.slice(1, -1);
+  }
+
+  const additionIndex = evaluateExpr.indexOf(" + ");
+  let effectiveTypeSuffix: string;
+  if (additionIndex !== -1) {
+    const leftStr = evaluateExpr.slice(0, additionIndex);
+    const rightStr = evaluateExpr.slice(additionIndex + 3);
+    const typeResult = getAdditionResultType(input, leftStr, rightStr);
+    if (typeResult.isFailure()) {
+      return typeResult;
+    }
+    effectiveTypeSuffix = typeResult.value;
+  } else {
+    const numericPart = extractNumericPart(evaluateExpr);
+    if (numericPart === undefined) {
+      return err({
+        source: input,
+        description: "Failed to parse input as a number",
+        reason: "The input string cannot be converted to a valid integer",
+        fix: "Provide a valid numeric string (e.g., '42', '100', '-5')",
+      });
+    }
+    const originalTypeSuffix = evaluateExpr.slice(numericPart.length);
+    effectiveTypeSuffix =
+      originalTypeSuffix.length > 0 ? originalTypeSuffix : "I32";
+  }
+
+  const typeMatches = effectiveTypeSuffix === targetTypeSuffix;
+  return ok(typeMatches ? 1 : 0);
+}
+
 function interpretWithVars(
   input: string,
   variables: Map<string, number> = new Map(),
   variableTypes: Map<string, string> = new Map(),
+  typeAliases: Map<string, string> = new Map(),
 ): Result<number, InterpretError> {
   if (input === "") {
     return ok(0);
   }
 
+  // First, extract type aliases if present (before processing anything else)
+  let extractedAliases = typeAliases;
+  if (input.includes("type ")) {
+    const aliasesResult = extractTypeAliases(input);
+    if (aliasesResult.isFailure()) {
+      return aliasesResult;
+    }
+    extractedAliases = aliasesResult.value;
+  }
+
   // Handle multiline input with variable declarations
   if (input.includes("let ")) {
-    const processResult = processVariableDeclarations(input, variables, variableTypes);
+    const processResult = processVariableDeclarations(
+      input,
+      variables,
+      variableTypes,
+      extractedAliases,
+    );
     if (processResult.isFailure()) {
       return processResult;
     }
@@ -626,8 +761,12 @@ function interpretWithVars(
     // After processing declarations, evaluate the last non-declaration line
     const lines = input.split("\n");
     const lastLine = lines[lines.length - 1].trim();
-    if (!lastLine.startsWith("let ") && lastLine.length > 0) {
-      return interpretWithVars(lastLine, varMap, typeMap);
+    if (
+      !lastLine.startsWith("let ") &&
+      !lastLine.startsWith("type ") &&
+      lastLine.length > 0
+    ) {
+      return interpretWithVars(lastLine, varMap, typeMap, extractedAliases);
     }
 
     return ok(0);
@@ -635,7 +774,7 @@ function interpretWithVars(
 
   // Handle multiline input with struct declarations
   if (input.includes("struct ")) {
-    const validationResult = validateStructDefinitions(input);
+    const validationResult = validateStructDefinitions(input, extractedAliases);
     if (validationResult.isFailure()) {
       return validationResult;
     }
@@ -650,59 +789,19 @@ function interpretWithVars(
   // Handle parenthesized expressions
   if (input[0] === "(" && input[input.length - 1] === ")") {
     // Recursively evaluate the inner expression
-    return interpretWithVars(input.slice(1, -1), variables, variableTypes);
+    return interpretWithVars(
+      input.slice(1, -1),
+      variables,
+      variableTypes,
+      extractedAliases,
+    );
   }
 
   // Check for type compatibility check syntax BEFORE addition
   // This allows "is" checks to contain addition expressions
   const isKeywordIndex = input.indexOf(" is ");
   if (isKeywordIndex !== -1) {
-    const valueWithSuffix = input.slice(0, isKeywordIndex);
-    const targetTypeSuffix = input.slice(isKeywordIndex + 4);
-
-    // Strip outer parentheses from valueWithSuffix if present
-    let evaluateExpr = valueWithSuffix;
-    if (
-      evaluateExpr[0] === "(" &&
-      evaluateExpr[evaluateExpr.length - 1] === ")"
-    ) {
-      evaluateExpr = evaluateExpr.slice(1, -1);
-    }
-
-    // Check if the expression is an addition
-    const additionIndex = evaluateExpr.indexOf(" + ");
-    let effectiveTypeSuffix: string;
-    if (additionIndex !== -1) {
-      const leftStr = evaluateExpr.slice(0, additionIndex);
-      const rightStr = evaluateExpr.slice(additionIndex + 3);
-      const typeResult = getAdditionResultType(input, leftStr, rightStr);
-      if (typeResult.isFailure()) {
-        return typeResult;
-      }
-      effectiveTypeSuffix = typeResult.value;
-    } else {
-      // Parse the value with its suffix
-      const numericPart = extractNumericPart(evaluateExpr);
-      if (numericPart === undefined) {
-        return err({
-          source: input,
-          description: "Failed to parse input as a number",
-          reason: "The input string cannot be converted to a valid integer",
-          fix: "Provide a valid numeric string (e.g., '42', '100', '-5')",
-        });
-      }
-
-      // Extract the original type suffix from the value
-      const originalTypeSuffix = evaluateExpr.slice(numericPart.length);
-
-      // Determine the effective type suffix (use I32 as implicit default)
-      effectiveTypeSuffix =
-        originalTypeSuffix.length > 0 ? originalTypeSuffix : "I32";
-    }
-
-    // Check if effective type matches target type
-    const typeMatches = effectiveTypeSuffix === targetTypeSuffix;
-    return ok(typeMatches ? 1 : 0);
+    return evaluateIsTypeCheck(input);
   }
 
   // Check for addition operator

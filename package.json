@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "nodemon --watch src/index.ts --watch src/index.tuff --exec bun ./src/index.ts",
     "build": "bun build src/index.ts --outdir dist",
-    "start": "bun dist/index.js",
+    "start": "bun ./src/index.ts",
     "test": "bun test",
     "cpd": "pmd cpd src --language typescript --minimum-tokens 35",
     "lint": "eslint src --ext .ts",

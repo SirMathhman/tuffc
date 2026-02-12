@@ -117,3 +117,8 @@ testFailure(
   "100U16 + 200U16 + 1U8",
   "type",
 );
+testSuccess(
+  "type Temp = I32;\nlet temp : Temp = 100;\ntemp",
+  100,
+  "interpret type alias => 100",
+);
