@@ -2539,6 +2539,50 @@ function interpretWithVars(
   return interpretNumericLiteral(input, variables);
 }
 
+function removeComments(input: string): string {
+  let result = "";
+  let i = 0;
+
+  while (i < input.length) {
+    // Check for multi-line comment: /* ... */
+    if (i < input.length - 1 && input[i] === "/" && input[i + 1] === "*") {
+      // Skip until we find */
+      i += 2;
+      while (i < input.length - 1) {
+        if (input[i] === "*" && input[i + 1] === "/") {
+          i += 2;
+          break;
+        }
+        i++;
+      }
+      // Skip the last character if we didn't find */
+      if (i < input.length) {
+        i++;
+      }
+      continue;
+    }
+
+    // Check for single-line comment: //
+    if (i < input.length - 1 && input[i] === "/" && input[i + 1] === "/") {
+      // Skip until end of line
+      while (i < input.length && input[i] !== "\n") {
+        i++;
+      }
+      // Keep the newline
+      if (i < input.length && input[i] === "\n") {
+        result += "\n";
+        i++;
+      }
+      continue;
+    }
+
+    result += input[i];
+    i++;
+  }
+
+  return result;
+}
+
 function truncateErrorSource(error: InterpretError): InterpretError {
   if (error.source.length > 200) {
     // Truncate to stay under 200 characters total (including "...")
@@ -2552,8 +2596,11 @@ function truncateErrorSource(error: InterpretError): InterpretError {
 }
 
 export function interpret(input: string): Result<TuffValue, InterpretError> {
+  // Remove comments first
+  const cleanedInput = removeComments(input);
+
   const result = interpretWithVars(
-    input,
+    cleanedInput,
     new Map(),
     new Map(),
     new Map(),

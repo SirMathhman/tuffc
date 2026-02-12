@@ -435,3 +435,9 @@ testSuccess(
   1,
   "interpret index.tuff counter increments to 1",
 );
+
+testSuccess(
+  "/* multi-line comment */\n100",
+  100,
+  "interpret code with multi-line comment => 100",
+);

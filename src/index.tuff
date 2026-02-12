@@ -43,6 +43,8 @@ contract Equatable<T> {
     fn isEqualTo(*this, other : T) : Bool;
 }
 
+
+
 fn Map<K : Equatable<K>, V>() => {
     // A slice of tuples, tuple (K, V)
     let slice : *mut [(K, V)] = createSlice<(K, V)>();
@@ -58,7 +60,13 @@ fn Map<K : Equatable<K>, V>() => {
     }
 }
 
-let mut counter = 0;
-fn empty() => counter += 1;
-empty();
-counter
+/*
+fn iter<T>(slice : *[T]) : (() => (Bool, *T)) => {
+    let mut counter = 0;
+    yield () => {
+        if (counter < slice.init) yield (false, 0);
+        let element : *[T] = slice + element;
+        yield (counter == slice.init, element);
+    }
+}
+*/
