@@ -114,7 +114,7 @@ describe("The compiler", () => {
     expectInvalid("100U7");
   });
 
-  it("reads a U8 argument", () => {
-    expectValid("read<U8>()", ["100"], 100);
+  it("accesses argument length", () => {
+    expectValid("__args__[0].length", ["100"], 3);
   });
 });

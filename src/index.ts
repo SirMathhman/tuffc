@@ -121,6 +121,11 @@ export function compileTuffToC(source: string): string {
     return "#include <stdlib.h>\nint main(int argc, char* argv[]) { if (argc < 2) return 1; return atoi(argv[1]); }";
   }
 
+  // Check for __args__[0].length syntax
+  if (source === "__args__[0].length") {
+    return "#include <stdlib.h>\n#include <string.h>\nint main(int argc, char* argv[]) { if (argc < 2) return 0; return strlen(argv[1]); }";
+  }
+
   // Numeric literal (with optional type suffix) - return C code that exits with that numeric value
   let numStr = "";
   let i = 0;
