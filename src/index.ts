@@ -63,6 +63,18 @@ export function compileTuffToC(source: string): string {
     // If remaining chars are valid suffix (or none), it's a valid literal
     if (validSuffix) {
       const num = parseInt(numStr);
+      const suffix = source.slice(i);
+
+      // Validate U8 range (0-255)
+      if (suffix === "U8" && (num < 0 || num > 255)) {
+        throw new CompileError(
+          "U8 literal out of range",
+          source,
+          "U8 is an unsigned 8-bit integer with a valid range of 0 to 255",
+          `Use a value between 0 and 255, or use a different numeric type`,
+        );
+      }
+
       return `#include <stdlib.h>\nint main() { return ${num}; }`;
     }
   }

@@ -66,4 +66,8 @@ describe("The compiler", () => {
   it("fails to compile a negative U8 literal", () => {
     expectInvalid("-100U8");
   });
+
+  it("fails to compile a U8 literal out of range (256)", () => {
+    expectInvalid("256U8");
+  });
 });
