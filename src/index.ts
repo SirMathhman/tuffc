@@ -2496,7 +2496,12 @@ if (result.isSuccess()) {
       length ${rawSource.length} characters. 
       To keep error messages informative, this must be corrected to be a smaller code snippet, ideally less than 200 characters.`);
   } else {
-    console.error(`Source: ${rawSource}`);
+    console.error(`Source Code: 
+
+${rawSource}
+
+If the given code does not actually provide relevant context, then this is an issue and must be corrected.
+`);
     console.error(`Error: ${result.error.description}`);
     console.error(`Reason: ${result.error.reason}`);
     console.error(`Fix: ${result.error.fix}`);
