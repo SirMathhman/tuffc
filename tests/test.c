@@ -1,4 +1,4 @@
-#include "common.h"
+#include "../src/common.h"
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -63,8 +63,14 @@ void assertValid(char *testName, char *source, int32_t expectedExitCode, int32_t
     }
 
     // Execute binary and capture exit code
-    char exec_cmd[256];
+    char exec_cmd[512];
     snprintf(exec_cmd, sizeof(exec_cmd), "%s", temp_exe);
+    // Append command-line arguments
+    for (int32_t i = 0; i < argc; i++)
+    {
+        size_t current_len = strlen(exec_cmd);
+        snprintf(exec_cmd + current_len, sizeof(exec_cmd) - current_len, " %s", argv[i]);
+    }
     int32_t actualExitCode = system(exec_cmd);
 
     // Clean up temp files
@@ -110,10 +116,24 @@ void testUndefinedValue()
     assertInvalid("An undefined value", "undefinedValue");
 }
 
+void testArgsLength()
+{
+    char *args[] = {"foo"};
+    assertValid("args[1].length returns string length", "__args__[1].length", 3, 1, args);
+}
+
+void testArgsLengthTotal()
+{
+    char *args[] = {"foo"};
+    assertValid("args.length returns argument count", "__args__.length", 1, 1, args);
+}
+
 int32_t main()
 {
     testEmptyProgram();
     testUndefinedValue();
+    testArgsLength();
+    testArgsLengthTotal();
 
     fprintf(stderr, "Passed %d/%d tests\n", passingTests, totalTests);
 

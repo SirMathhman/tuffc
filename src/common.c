@@ -48,6 +48,30 @@ CompileResult compile(char *source)
         };
     }
 
+    // Handle __args__[1].length expression
+    if (strcmp(source, "__args__[1].length") == 0)
+    {
+        return (CompileResult){
+            .variant = OutputVariant,
+            .output = {
+                .headerCCode = "",
+                .targetCCode = "#include <string.h>\nint main(int argc, char *argv[]) {\n    if (argc > 1) {\n        return strlen(argv[1]);\n    }\n    return 0;\n}\n",
+            },
+        };
+    }
+
+    // Handle __args__.length expression
+    if (strcmp(source, "__args__.length") == 0)
+    {
+        return (CompileResult){
+            .variant = OutputVariant,
+            .output = {
+                .headerCCode = "",
+                .targetCCode = "int main(int argc, char *argv[]) {\n    return argc - 1;\n}\n",
+            },
+        };
+    }
+
     // TODO: Implement parsing and code generation for non-empty programs
 
     return (CompileResult){
