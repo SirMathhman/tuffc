@@ -2,6 +2,18 @@ import { readFileSync, writeFileSync } from "fs";
 import { resolve, join } from "path";
 import { fileURLToPath } from "url";
 
+const VALID_TYPES = [
+  "U8",
+  "U16",
+  "U32",
+  "U64",
+  "I8",
+  "I16",
+  "I32",
+  "I64",
+  "USize",
+];
+
 export class CompileError extends Error {
   // Code snippet of what was invalid, should ideally be a few lines of code to give context to the error.
   erroneousCode: string;
@@ -30,19 +42,7 @@ function validateTypeRange(
   value: number,
   source: string,
 ): void {
-  const validTypes = [
-    "U8",
-    "U16",
-    "U32",
-    "U64",
-    "I8",
-    "I16",
-    "I32",
-    "I64",
-    "USize",
-  ];
-
-  if (suffix === "" || validTypes.includes(suffix)) {
+  if (suffix === "" || VALID_TYPES.includes(suffix)) {
     if (suffix === "U8" && (value < 0 || value > 255)) {
       throw new CompileError(
         "U8 literal out of range",
@@ -101,7 +101,7 @@ function validateTypeRange(
       "Invalid type suffix '" + suffix + "'",
       source,
       "Only the following type suffixes are supported: " +
-        validTypes.join(", "),
+        VALID_TYPES.join(", "),
       "Use one of the supported type suffixes or no suffix at all",
     );
   }
@@ -217,18 +217,7 @@ function handleLetBinding(source: string): string | undefined {
   const value = typeAndValue.slice(equalsIndex + 1).trim();
 
   // Validate the type
-  const validTypes = [
-    "U8",
-    "U16",
-    "U32",
-    "U64",
-    "I8",
-    "I16",
-    "I32",
-    "I64",
-    "USize",
-  ];
-  if (!validTypes.includes(type)) {
+  if (!VALID_TYPES.includes(type)) {
     return undefined;
   }
 
@@ -271,22 +260,11 @@ export function compileTuffToC(source: string): string {
     const typeEnd = source.length - 3; // Before ">()
     const type = source.slice(typeStart, typeEnd);
 
-    const validTypes = [
-      "U8",
-      "U16",
-      "U32",
-      "U64",
-      "I8",
-      "I16",
-      "I32",
-      "I64",
-      "USize",
-    ];
-    if (!validTypes.includes(type)) {
+    if (!VALID_TYPES.includes(type)) {
       throw new CompileError(
         "Invalid type in read function",
         source,
-        "Only the following types are supported: " + validTypes.join(", "),
+        "Only the following types are supported: " + VALID_TYPES.join(", "),
         "Use one of the supported types",
       );
     }
