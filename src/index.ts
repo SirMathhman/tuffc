@@ -81,20 +81,16 @@ export function interpret(input: string): Result<number, InterpretError> {
     if (parseResult.isFailure()) {
       return parseResult;
     }
-    const parsed = parseResult.value;
 
-    // Check if value fits in the target type
-    const targetRange = getUnsignedTypeRange(targetTypeSuffix);
-    if (
-      targetRange !== undefined &&
-      (parsed < targetRange.min || parsed > targetRange.max)
-    ) {
-      // Value is out of range for target type, return 1
-      return ok(1);
-    }
+    // Extract the original type suffix from the value
+    const originalTypeSuffix =
+      numericPart !== undefined
+        ? valueWithSuffix.slice(numericPart.length)
+        : "";
 
-    // Value fits in target type, return 0
-    return ok(0);
+    // Check if original type matches target type
+    const typeMatches = originalTypeSuffix === targetTypeSuffix;
+    return ok(typeMatches ? 1 : 0);
   }
 
   // Extract numeric part and type suffix
