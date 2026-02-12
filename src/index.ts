@@ -64,9 +64,52 @@ function parseNumericPartOrError(
   return ok(parseInt(numericPart, 10));
 }
 
+function parseTypedValue(
+  input: string,
+): Result<{ value: number; suffix: string }, InterpretError> {
+  const numericPart = extractNumericPart(input);
+  if (numericPart === undefined) {
+    return err({
+      source: input,
+      description: "Failed to parse input as a number",
+      reason: "The input string cannot be converted to a valid integer",
+      fix: "Provide a valid numeric string (e.g., '42', '100', '-5')",
+    });
+  }
+
+  const value = parseInt(numericPart, 10);
+  const suffix = input.slice(numericPart.length);
+
+  return ok({ value, suffix });
+}
+
 export function interpret(input: string): Result<number, InterpretError> {
   if (input === "") {
     return ok(0);
+  }
+
+  // Check for addition operator
+  const plusIndex = input.indexOf(" + ");
+  if (plusIndex !== -1) {
+    const leftStr = input.slice(0, plusIndex);
+    const rightStr = input.slice(plusIndex + 3);
+
+    // Parse left operand
+    const leftResult = parseTypedValue(leftStr);
+    if (leftResult.isFailure()) {
+      return leftResult;
+    }
+    const leftValue = leftResult.value.value;
+
+    // Parse right operand
+    const rightResult = parseTypedValue(rightStr);
+    if (rightResult.isFailure()) {
+      return rightResult;
+    }
+    const rightValue = rightResult.value.value;
+
+    // Return the sum
+    return ok(leftValue + rightValue);
   }
 
   // Check for type compatibility check syntax: "<value><suffix> is <target_suffix>"
