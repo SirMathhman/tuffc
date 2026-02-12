@@ -120,24 +120,50 @@ function handleBinaryAddition(source: string): string | null {
   }
 
   const parts = source.split(" + ");
-  if (parts.length !== 2 || parts[0] !== "__args__[0].length") {
+  if (parts.length !== 2) {
     return null;
   }
 
-  const parsed = parseNumericLiteral(parts[1]);
-  if (!parsed) {
-    return null;
+  const left = parts[0];
+  const right = parts[1];
+
+  // Case 1: __args__[0].length + numeric literal
+  if (left === "__args__[0].length") {
+    const parsed = parseNumericLiteral(right);
+    if (!parsed) {
+      return null;
+    }
+
+    validateTypeRange(parsed.suffix, parsed.value, source);
+
+    return (
+      "#include <stdlib.h>\n#include <string.h>\nint main(int argc, char* argv[]) { if (argc < 2) return " +
+      parsed.value +
+      "; return strlen(argv[1]) + " +
+      parsed.value +
+      "; }"
+    );
   }
 
-  validateTypeRange(parsed.suffix, parsed.value, source);
+  // Case 2: numeric literal + __args__[0].length
+  if (right === "__args__[0].length") {
+    const parsed = parseNumericLiteral(left);
+    if (!parsed) {
+      return null;
+    }
 
-  return (
-    "#include <stdlib.h>\n#include <string.h>\nint main(int argc, char* argv[]) { if (argc < 2) return " +
-    parsed.value +
-    "; return strlen(argv[1]) + " +
-    parsed.value +
-    "; }"
-  );
+    validateTypeRange(parsed.suffix, parsed.value, source);
+
+    return (
+      "#include <stdlib.h>\n#include <string.h>\nint main(int argc, char* argv[]) { if (argc < 2) return " +
+      parsed.value +
+      "; return " +
+      parsed.value +
+      " + strlen(argv[1]); }"
+    );
+  }
+
+  return null;
 }
 
 export function compileTuffToC(source: string): string {

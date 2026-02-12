@@ -121,4 +121,8 @@ describe("The compiler", () => {
   it("adds number to argument length", () => {
     expectValid("__args__[0].length + 3U8", ["100"], 6);
   });
+
+  it("adds argument length to number", () => {
+    expectValid("3U8 + __args__[0].length", ["100"], 6);
+  });
 });
