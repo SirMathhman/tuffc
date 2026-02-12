@@ -56,6 +56,7 @@ void assertValid(char *testName, char *source, int32_t expectedExitCode, int32_t
     if (compile_status != 0)
     {
         fprintf(stderr, "Test %s failed: clang compilation failed\n", testName);
+        fprintf(stderr, "Generated C code:\n%s\n", result.output.targetCCode);
         remove(temp_header);
         remove(temp_source);
         totalTests++;
@@ -81,6 +82,7 @@ void assertValid(char *testName, char *source, int32_t expectedExitCode, int32_t
     if (actualExitCode != expectedExitCode)
     {
         fprintf(stderr, "Test %s failed: expected exit code %d, got %d\n", testName, expectedExitCode, actualExitCode);
+        fprintf(stderr, "Generated C code:\n%s\n", result.output.targetCCode);
     }
     else
     {
@@ -134,6 +136,11 @@ void testAccessArgsLengthVariable()
     assertValid("assign __args__.length to typed variable and perform arithmetic", "let x : USize = __args__.length; x + x", 2, 1, args);
 }
 
+void testArgsNotANumber()
+{
+    assertInvalid("__args__ is not a number", "__args__");
+}
+
 int32_t main()
 {
     testEmptyProgram();
@@ -141,6 +148,7 @@ int32_t main()
     testArgsLength();
     testArgsLengthTotal();
     testAccessArgsLengthVariable();
+    testArgsNotANumber();
 
     fprintf(stderr, "Passed %d/%d tests\n", passingTests, totalTests);
 

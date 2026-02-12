@@ -84,6 +84,19 @@ CompileResult compile(char *source)
         };
     }
 
+    // Check for __args__ used alone (not as a number type)
+    if (strcmp(source, "__args__") == 0)
+    {
+        error.erroneous_code = source;
+        error.error_message = "Type error: __args__ is not a number";
+        error.reasoning = "__args__ is an array of command-line arguments. To use it as a number, access the length property (__args__.length) or an indexed element (__args__[index]).";
+        error.fix = "Use __args__.length to get the argument count, or __args__[index].length to get a specific argument's length.";
+        return (CompileResult){
+            .variant = CompileErrorVariant,
+            .error = error,
+        };
+    }
+
     // TODO: Implement parsing and code generation for non-empty programs
 
     return (CompileResult){
