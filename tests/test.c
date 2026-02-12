@@ -10,6 +10,7 @@ int32_t totalTests = 0;
 // We do one assert per test anyways
 void assertValid(char *testName, char *source, int32_t expectedExitCode, int32_t argc, char **argv)
 {
+    totalTests++;
     CompileResult result = compile(source);
     if (result.variant == CompileErrorVariant)
     {
@@ -88,11 +89,11 @@ void assertValid(char *testName, char *source, int32_t expectedExitCode, int32_t
     {
         passingTests++;
     }
-    totalTests++;
 }
 
 void assertInvalid(char *testName, char *source)
 {
+    totalTests++;
     CompileResult result = compile(source);
     if (result.variant == OutputVariant)
     {
@@ -105,7 +106,6 @@ void assertInvalid(char *testName, char *source)
     {
         passingTests++;
     }
-    totalTests++;
 }
 
 void testEmptyProgram()
