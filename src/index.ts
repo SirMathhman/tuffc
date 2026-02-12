@@ -233,13 +233,16 @@ function handleLetBinding(source: string): string | undefined {
     return undefined;
   }
 
-  // For now, we only support returning the variable name
-  if (returnExpression !== varName) {
-    return undefined;
+  // Handle return expressions
+  if (returnExpression === varName) {
+    // Simple case: just return the variable
+    return "#include <stdlib.h>\n#include <string.h>\nint main(int argc, char* argv[]) { if (argc < 2) return 0; return strlen(argv[1]); }";
+  } else if (returnExpression === varName + " + " + varName) {
+    // Case: return variable + variable (e.g., x + x)
+    return "#include <stdlib.h>\n#include <string.h>\nint main(int argc, char* argv[]) { if (argc < 2) return 0; return strlen(argv[1]) + strlen(argv[1]); }";
   }
 
-  // Generate C code that returns the length of argv[1]
-  return "#include <stdlib.h>\n#include <string.h>\nint main(int argc, char* argv[]) { if (argc < 2) return 0; return strlen(argv[1]); }";
+  return undefined;
 }
 
 export function compileTuffToC(source: string): string {

@@ -133,4 +133,8 @@ describe("The compiler", () => {
   it("compiles variable binding with type annotation", () => {
     expectValid("let x : USize = __args__[1].length; x", ["100"], 3);
   });
+
+  it("adds variable to itself", () => {
+    expectValid("let x : USize = __args__[1].length; x + x", ["100"], 6);
+  });
 });
