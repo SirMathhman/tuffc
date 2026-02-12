@@ -54,10 +54,11 @@ fn Map<K : Equatable<K>, V>() => {
     }
 
     fn put(key : K, value : V) => {
-
+        
     }
 }
 
-let counter = 0;
+let mut counter = 0;
 fn empty() => counter += 1;
+empty();
 counter

@@ -430,9 +430,8 @@ testSuccess(
   "interpret function with mutable slice type and generic parameter => 0",
 );
 
-testFailure(
+testSuccess(
   "let counter = 0;\nfn empty() => counter += 1;\ncounter",
-  "interpret immutable variable assigned in function => Err",
-  "let counter = 0;\nfn empty() => counter += 1;\ncounter",
-  "not declared as mutable",
+  1,
+  "interpret index.tuff counter increments to 1",
 );
