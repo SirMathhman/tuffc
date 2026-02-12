@@ -1,0 +1,1 @@
+clang main.c run.c test.c -o ./dist/test.exe
