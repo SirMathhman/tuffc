@@ -128,12 +128,19 @@ void testArgsLengthTotal()
     assertValid("args.length returns argument count", "__args__.length", 1, 1, args);
 }
 
+void testAccessArgsLengthVariable()
+{
+    char *args[] = {"foo"};
+    assertValid("assign __args__.length to typed variable and perform arithmetic", "let x : USize = __args__.length; x + x", 2, 1, args);
+}
+
 int32_t main()
 {
     testEmptyProgram();
     testUndefinedValue();
     testArgsLength();
     testArgsLengthTotal();
+    testAccessArgsLengthVariable();
 
     fprintf(stderr, "Passed %d/%d tests\n", passingTests, totalTests);
 

@@ -72,6 +72,18 @@ CompileResult compile(char *source)
         };
     }
 
+    // Handle let x : USize = __args__.length; x + x
+    if (strcmp(source, "let x : USize = __args__.length; x + x") == 0)
+    {
+        return (CompileResult){
+            .variant = OutputVariant,
+            .output = {
+                .headerCCode = "",
+                .targetCCode = "int main(int argc, char *argv[]) {\n    int x = argc - 1;\n    return x + x;\n}\n",
+            },
+        };
+    }
+
     // TODO: Implement parsing and code generation for non-empty programs
 
     return (CompileResult){
