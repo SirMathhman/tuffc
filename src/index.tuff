@@ -1,2 +1,9 @@
-let x : *Str = "test";
-x.length
+struct DescriptiveError {
+    source : *Str;
+    description : *Str;
+    reason : *Str;
+    fix : *Str;
+}
+
+fn pass(x : I32) => x;
+pass(100)

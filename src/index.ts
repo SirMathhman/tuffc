@@ -238,30 +238,38 @@ function extractTypeAliases(
       const equalIndex = trimmedLine.indexOf("=");
       if (equalIndex !== -1) {
         const aliasNamePart = trimmedLine.slice(5, equalIndex).trim();
+
+        // Handle generic type aliases by extracting just the base name
+        let aliasName = aliasNamePart;
+        const angleIndex = aliasNamePart.indexOf("<");
+        if (angleIndex !== -1) {
+          aliasName = aliasNamePart.slice(0, angleIndex).trim();
+        }
+
         let baseName = trimmedLine.slice(equalIndex + 1).trim();
         if (baseName.endsWith(";")) {
           baseName = baseName.slice(0, -1).trim();
         }
 
-        if (!isValidVariableName(aliasNamePart)) {
+        if (!isValidVariableName(aliasName)) {
           return err({
             source: input,
             description: "Invalid type alias name",
-            reason: `Type alias name '${aliasNamePart}' is invalid`,
+            reason: `Type alias name '${aliasName}' is invalid`,
             fix: "Use valid identifier names (alphanumeric and underscore)",
           });
         }
 
-        if (typeAliases.has(aliasNamePart)) {
+        if (typeAliases.has(aliasName)) {
           return err({
             source: input,
             description: "Duplicate type alias",
-            reason: `type alias '${aliasNamePart}' is declared multiple times`,
+            reason: `type alias '${aliasName}' is declared multiple times`,
             fix: "Use a different alias name or remove the duplicate declaration",
           });
         }
 
-        typeAliases.set(aliasNamePart, baseName);
+        typeAliases.set(aliasName, baseName);
       }
     }
   }
@@ -269,79 +277,194 @@ function extractTypeAliases(
   return ok(typeAliases);
 }
 
+function processFunctionDefinitionLine(
+  trimmedLine: string,
+  input: string,
+  existingFunctions: Set<string>,
+): Result<
+  { name: string; body: string; returnType: string; params: string[] },
+  InterpretError
+> {
+  const arrowIndex = trimmedLine.indexOf("=>");
+  if (arrowIndex === -1) {
+    return err({
+      source: input,
+      description: "Invalid function definition",
+      reason: "Function definition must have '=>' arrow",
+      fix: "Use syntax: fn name() : ReturnType => body;",
+    });
+  }
+
+  const headerPart = trimmedLine.slice(3, arrowIndex).trim();
+  const parenIndex = headerPart.indexOf("(");
+  if (parenIndex === -1) {
+    return err({
+      source: input,
+      description: "Invalid function definition",
+      reason: "Function must have parentheses",
+      fix: "Use syntax: fn name() : ReturnType => body;",
+    });
+  }
+
+  let funcName = headerPart.slice(0, parenIndex).trim();
+  const angleIndex = funcName.indexOf("<");
+  if (angleIndex !== -1) {
+    funcName = funcName.slice(0, angleIndex).trim();
+  }
+
+  if (!isValidVariableName(funcName)) {
+    return err({
+      source: input,
+      description: "Invalid function name",
+      reason: `Function name '${funcName}' is invalid`,
+      fix: "Use valid identifier names (alphanumeric and underscore)",
+    });
+  }
+
+  if (existingFunctions.has(funcName)) {
+    return err({
+      source: input,
+      description: "Duplicate function definition",
+      reason: `function '${funcName}' is declared multiple times`,
+      fix: "Use a different function name or remove the duplicate",
+    });
+  }
+
+  const closeParenIndex = headerPart.indexOf(")");
+  const colonIndex = headerPart.indexOf(":");
+
+  // Extract parameters
+  const paramsResult = extractFunctionParameters(
+    headerPart,
+    parenIndex,
+    closeParenIndex,
+    funcName,
+    input,
+  );
+  if (paramsResult.isFailure()) {
+    return paramsResult;
+  }
+  const params = paramsResult.value;
+
+  // Extract return type
+  let returnType = "I32";
+  if (
+    colonIndex !== -1 &&
+    closeParenIndex !== -1 &&
+    colonIndex > closeParenIndex
+  ) {
+    returnType = headerPart.slice(colonIndex + 1).trim();
+    if (!isValidFieldType(returnType, undefined, new Map())) {
+      return err({
+        source: input,
+        description: "Unknown return type",
+        reason: `unknown return type '${returnType}' in function '${funcName}'`,
+        fix: "Use a valid return type like I32, U8, U16, U32, U64, I8, I16, or I64",
+      });
+    }
+  } else if (colonIndex !== -1 && closeParenIndex === -1) {
+    return err({
+      source: input,
+      description: "Invalid function definition",
+      reason: "Function must have parentheses",
+      fix: "Use syntax: fn name() => body; or fn name() : ReturnType => body;",
+    });
+  }
+
+  let bodyStr = trimmedLine.slice(arrowIndex + 2).trim();
+  if (bodyStr.endsWith(";")) {
+    bodyStr = bodyStr.slice(0, -1).trim();
+  }
+
+  return ok({ name: funcName, body: bodyStr, returnType, params });
+}
+
+function extractFunctionParameters(
+  headerPart: string,
+  parenIndex: number,
+  closeParenIndex: number,
+  funcName: string,
+  input: string,
+): Result<string[], InterpretError> {
+  const params: string[] = [];
+  if (closeParenIndex > parenIndex + 1) {
+    const paramString = headerPart
+      .slice(parenIndex + 1, closeParenIndex)
+      .trim();
+    if (paramString.length > 0) {
+      const paramParts = paramString.split(",");
+      const seenParams = new Set<string>();
+      for (const part of paramParts) {
+        const trimmedPart = part.trim();
+        const colonIdx = trimmedPart.indexOf(":");
+        const paramName =
+          colonIdx !== -1 ? trimmedPart.slice(0, colonIdx).trim() : trimmedPart;
+        if (paramName.length > 0) {
+          if (seenParams.has(paramName)) {
+            return err({
+              source: input,
+              description: "Duplicate parameter name",
+              reason: `parameter '${paramName}' is declared multiple times in function '${funcName}'`,
+              fix: "Use different parameter names",
+            });
+          }
+          seenParams.add(paramName);
+          params.push(paramName);
+
+          if (colonIdx !== -1) {
+            const paramType = trimmedPart.slice(colonIdx + 1).trim();
+            if (!isValidFieldType(paramType, undefined, new Map())) {
+              return err({
+                source: input,
+                description: "Unknown parameter type",
+                reason: `unknown parameter type '${paramType}' in function '${funcName}'`,
+                fix: "Use a valid type like I32, U8, U16, U32, U64, I8, I16, I64, or *Str",
+              });
+            }
+          }
+        }
+      }
+    }
+  }
+  return ok(params);
+}
+
 function extractFunctionDefinitions(
   input: string,
-): Result<Map<string, { body: string; returnType: string }>, InterpretError> {
+): Result<
+  Map<string, { body: string; returnType: string; params: string[] }>,
+  InterpretError
+> {
   const lines = input.split("\n");
-  const functions = new Map<string, { body: string; returnType: string }>();
+  const functions = new Map<
+    string,
+    { body: string; returnType: string; params: string[] }
+  >();
+  const existingFuncNames = new Set<string>();
 
   for (const line of lines) {
     const trimmedLine = line.trim();
 
+    if (line.length > 0 && line[0] === " " && trimmedLine.startsWith("fn ")) {
+      continue;
+    }
+
     if (trimmedLine.startsWith("fn ")) {
-      const arrowIndex = trimmedLine.indexOf("=>");
-      if (arrowIndex === -1) {
-        return err({
-          source: input,
-          description: "Invalid function definition",
-          reason: "Function definition must have '=>' arrow",
-          fix: "Use syntax: fn name() : ReturnType => body;",
-        });
+      const result = processFunctionDefinitionLine(
+        trimmedLine,
+        input,
+        existingFuncNames,
+      );
+      if (result.isFailure()) {
+        return result;
       }
-
-      const headerPart = trimmedLine.slice(3, arrowIndex).trim();
-      const parenIndex = headerPart.indexOf("(");
-      if (parenIndex === -1) {
-        return err({
-          source: input,
-          description: "Invalid function definition",
-          reason: "Function must have parentheses",
-          fix: "Use syntax: fn name() : ReturnType => body;",
-        });
-      }
-
-      const funcName = headerPart.slice(0, parenIndex).trim();
-      if (!isValidVariableName(funcName)) {
-        return err({
-          source: input,
-          description: "Invalid function name",
-          reason: `Function name '${funcName}' is invalid`,
-          fix: "Use valid identifier names (alphanumeric and underscore)",
-        });
-      }
-
-      if (functions.has(funcName)) {
-        return err({
-          source: input,
-          description: "Duplicate function definition",
-          reason: `function '${funcName}' is declared multiple times`,
-          fix: "Use a different function name or remove the duplicate",
-        });
-      }
-
-      const closeParenIndex = headerPart.indexOf(")");
-      const colonIndex = headerPart.indexOf(":");
-      if (
-        colonIndex === -1 ||
-        closeParenIndex === -1 ||
-        colonIndex < closeParenIndex
-      ) {
-        return err({
-          source: input,
-          description: "Invalid function definition",
-          reason: "Function must have return type annotation",
-          fix: "Use syntax: fn name() : ReturnType => body;",
-        });
-      }
-
-      const returnType = headerPart.slice(colonIndex + 1).trim();
-
-      let bodyStr = trimmedLine.slice(arrowIndex + 2).trim();
-      if (bodyStr.endsWith(";")) {
-        bodyStr = bodyStr.slice(0, -1).trim();
-      }
-
-      functions.set(funcName, { body: bodyStr, returnType });
+      const funcDef = result.value;
+      existingFuncNames.add(funcDef.name);
+      functions.set(funcDef.name, {
+        body: funcDef.body,
+        returnType: funcDef.returnType,
+        params: funcDef.params,
+      });
     }
   }
 
@@ -368,7 +491,17 @@ function isValidFieldType(
     ? resolveTypeAlias(trimmed, typeAliases)
     : trimmed;
   // Valid types: I32, U8, U16, U32, U64, I8, I16, I64, *Str
-  const validTypes = ["I32", "U8", "U16", "U32", "U64", "I8", "I16", "I64", "*Str"];
+  const validTypes = [
+    "I32",
+    "U8",
+    "U16",
+    "U32",
+    "U64",
+    "I8",
+    "I16",
+    "I64",
+    "*Str",
+  ];
   if (validTypes.includes(resolved)) return true;
   // Check if it's a generic type parameter
   if (genericParams && genericParams.has(resolved)) return true;
@@ -490,7 +623,14 @@ function handleAddition(
   const leftSuffix = leftResult.value.suffix;
 
   // Recursively interpret the right side (handles chained additions)
-  const rightResult = interpretWithVars(rightStr, variables, new Map(), new Map(), new Map(), new Map());
+  const rightResult = interpretWithVars(
+    rightStr,
+    variables,
+    new Map(),
+    new Map(),
+    new Map(),
+    new Map(),
+  );
   if (rightResult.isFailure()) {
     return rightResult;
   }
@@ -595,6 +735,7 @@ function interpretPropertyAccess(
   input: string,
   variableTypes: Map<string, string>,
   stringVariables: Map<string, string>,
+  variables: Map<string, number> = new Map(),
 ): Result<number, InterpretError> | undefined {
   const dotIndex = input.indexOf(".");
   if (dotIndex === -1) {
@@ -603,6 +744,29 @@ function interpretPropertyAccess(
 
   const varName = input.slice(0, dotIndex);
   const propertyName = input.slice(dotIndex + 1);
+
+  // Handle this.x syntax to access variables
+  if (varName === "this") {
+    if (!isValidVariableName(propertyName)) {
+      return err({
+        source: input,
+        description: "Invalid property name",
+        reason: `Property name '${propertyName}' is invalid`,
+        fix: "Use valid identifier names (alphanumeric and underscore)",
+      });
+    }
+
+    if (!variables.has(propertyName)) {
+      return err({
+        source: input,
+        description: "Undefined variable",
+        reason: `Variable '${propertyName}' is not defined`,
+        fix: "Declare the variable first using 'let varName = value;'",
+      });
+    }
+
+    return ok(variables.get(propertyName)!);
+  }
 
   // Check if this is a variable property access (not a number like 1.5)
   if (!isValidVariableName(varName)) {
@@ -643,7 +807,10 @@ function createStringPropertyError(
   };
 }
 
-function createVariableDeclarationError(input: string, syntax: string): InterpretError {
+function createVariableDeclarationError(
+  input: string,
+  syntax: string,
+): InterpretError {
   return {
     source: input,
     description: "Invalid variable declaration",
@@ -652,10 +819,9 @@ function createVariableDeclarationError(input: string, syntax: string): Interpre
   };
 }
 
-function parseVariableAssignment(line: string): Result<
-  { name: string; value: string },
-  string
-> {
+function parseVariableAssignment(
+  line: string,
+): Result<{ name: string; value: string }, string> {
   const trimmedLine = line.trim();
   const equalIndex = trimmedLine.indexOf("=");
   if (equalIndex === -1) {
@@ -736,7 +902,7 @@ function processSingleVariableDeclaration(
 > {
   const parseResult = parseVariableAssignment(line);
   if (parseResult.isFailure()) {
-    return err(createVariableDeclarationError(input, 'let varName = value;'));
+    return err(createVariableDeclarationError(input, "let varName = value;"));
   }
 
   const { name: varNameWithSuffix, value: valueStr } = parseResult.value;
@@ -749,7 +915,8 @@ function processSingleVariableDeclaration(
   // Extract variable name and type annotation
   let nameStr = varNameWithSuffix;
   const colonIndex = nameStr.indexOf(":");
-  const varName = colonIndex !== -1 ? nameStr.slice(0, colonIndex).trim() : nameStr;
+  const varName =
+    colonIndex !== -1 ? nameStr.slice(0, colonIndex).trim() : nameStr;
   const typeAnnotation =
     colonIndex !== -1 ? nameStr.slice(colonIndex + 1).trim() : undefined;
 
@@ -852,7 +1019,14 @@ function processSingleVariableReassignment(
     });
   }
 
-  const valueResult = interpretWithVars(valueStr, varMap, typeMap, typeAliases, new Map(), new Map());
+  const valueResult = interpretWithVars(
+    valueStr,
+    varMap,
+    typeMap,
+    typeAliases,
+    new Map(),
+    new Map(),
+  );
   if (valueResult.isFailure()) return valueResult;
   const value = valueResult.value;
 
@@ -877,7 +1051,11 @@ function processVariableDeclarations(
   typeAliases: Map<string, string> = new Map(),
   stringVariables: Map<string, string> = new Map(),
 ): Result<
-  { varMap: Map<string, number>; typeMap: Map<string, string>; stringVarMap: Map<string, string> },
+  {
+    varMap: Map<string, number>;
+    typeMap: Map<string, string>;
+    stringVarMap: Map<string, string>;
+  },
   InterpretError
 > {
   const lines = input.split("\n");
@@ -893,18 +1071,27 @@ function processVariableDeclarations(
       // Check if this is a string variable declaration
       const colonIndex = trimmedLine.indexOf(":");
       if (colonIndex !== -1) {
-        const afterColon = trimmedLine.slice(colonIndex + 1, trimmedLine.indexOf("=")).trim();
-        
+        const afterColon = trimmedLine
+          .slice(colonIndex + 1, trimmedLine.indexOf("="))
+          .trim();
+
         if (afterColon === "*Str") {
           // This is a string variable declaration
           const parseResult = parseVariableAssignment(line);
           if (parseResult.isFailure()) {
-            return err(createVariableDeclarationError(input, 'let varName : *Str = "value";'));
+            return err(
+              createVariableDeclarationError(
+                input,
+                'let varName : *Str = "value";',
+              ),
+            );
           }
-          
+
           const { name: nameWithType, value: valueStr } = parseResult.value;
-          const nameOnly = nameWithType.slice(0, nameWithType.indexOf(":")).trim();
-          
+          const nameOnly = nameWithType
+            .slice(0, nameWithType.indexOf(":"))
+            .trim();
+
           // Extract string value from literal
           const stringValue = extractStringFromLiteral(valueStr);
           if (stringValue === undefined) {
@@ -915,14 +1102,14 @@ function processVariableDeclarations(
               fix: 'Use syntax: let x : *Str = "value";',
             });
           }
-          
+
           stringVarMap.set(nameOnly, stringValue);
           typeMap.set(nameOnly, "*Str");
           declaredInThisScope.add(nameOnly);
           continue;
         }
       }
-      
+
       // Regular numeric variable declaration
       const result = processSingleVariableDeclaration(
         input,
@@ -990,22 +1177,82 @@ function validateTypeSuffix(
   return ok(undefined);
 }
 
+function tryStringLiteralProperty(input: string): Result<number, InterpretError> | undefined {
+  if (input.startsWith('"') && input.includes('".')) {
+    const dotIndex = input.indexOf('".');
+    if (dotIndex !== -1) {
+      const stringContent = input.slice(1, dotIndex);
+      const propertyName = input.slice(dotIndex + 2);
+
+      if (propertyName === "length") {
+        return ok(stringContent.length);
+      }
+
+      return err(createStringPropertyError(input, propertyName));
+    }
+  }
+  return undefined;
+}
+
 function tryFunctionCall(
   input: string,
-  functions: Map<string, { body: string; returnType: string }>,
+  functions: Map<
+    string,
+    { body: string; returnType: string; params: string[] }
+  >,
   variables: Map<string, number>,
   variableTypes: Map<string, string>,
   typeAliases: Map<string, string>,
 ): Result<number, InterpretError> | undefined {
-  const callParenIndex = input.indexOf("()");
-  if (callParenIndex === input.length - 2 && callParenIndex !== -1) {
-    const funcName = input.slice(0, callParenIndex).trim();
+  // Match function calls with or without arguments: name() or name(arg1, arg2, ...)
+  const openParenIndex = input.indexOf("(");
+  const closeParenIndex = input.lastIndexOf(")");
+
+  if (
+    openParenIndex !== -1 &&
+    closeParenIndex === input.length - 1 &&
+    closeParenIndex > openParenIndex
+  ) {
+    const funcName = input.slice(0, openParenIndex).trim();
     if (functions.has(funcName)) {
       const funcDef = functions.get(funcName)!;
+      const argString = input.slice(openParenIndex + 1, closeParenIndex).trim();
+
+      // Parse arguments
+      const args: number[] = [];
+      if (argString.length > 0) {
+        const argParts = argString.split(",");
+        for (const argPart of argParts) {
+          const trimmedArg = argPart.trim();
+          const argResult = interpretWithVars(
+            trimmedArg,
+            variables,
+            variableTypes,
+            typeAliases,
+            functions,
+            new Map(),
+          );
+          if (argResult.isFailure()) {
+            return argResult;
+          }
+          args.push(argResult.value);
+        }
+      }
+
+      // Map parameters to argument values
+      const paramVars = new Map(variables);
+      const paramTypes = new Map(variableTypes);
+      for (let i = 0; i < funcDef.params.length; i++) {
+        if (i < args.length) {
+          paramVars.set(funcDef.params[i], args[i]);
+          paramTypes.set(funcDef.params[i], funcDef.returnType);
+        }
+      }
+
       return interpretWithVars(
         funcDef.body,
-        variables,
-        variableTypes,
+        paramVars,
+        paramTypes,
         typeAliases,
         functions,
         new Map(),
@@ -1025,7 +1272,7 @@ function handleMultilineInput(
   // Extract functions first
   let extractedFunctions = new Map<
     string,
-    { body: string; returnType: string }
+    { body: string; returnType: string; params: string[] }
   >();
   if (input.includes("fn ")) {
     const functionsResult = extractFunctionDefinitions(input);
@@ -1062,6 +1309,8 @@ function handleMultilineInput(
     !lastLine.startsWith("let ") &&
     !lastLine.startsWith("type ") &&
     !lastLine.startsWith("fn ") &&
+    !lastLine.startsWith("struct ") &&
+    lastLine !== "}" &&
     lastLine.length > 0
   ) {
     return interpretWithVars(
@@ -1119,19 +1368,37 @@ function evaluateIsTypeCheck(input: string): Result<number, InterpretError> {
   return ok(typeMatches ? 1 : 0);
 }
 
+function containsOnlyTypeDeclarations(input: string): boolean {
+  const lines = input.split("\n");
+  for (const line of lines) {
+    const trimmedLine = line.trim();
+    if (
+      trimmedLine.length > 0 &&
+      !trimmedLine.startsWith("type ") &&
+      !trimmedLine.startsWith("//")
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function interpretWithVars(
   input: string,
   variables: Map<string, number> = new Map(),
   variableTypes: Map<string, string> = new Map(),
   typeAliases: Map<string, string> = new Map(),
-  functions: Map<string, { body: string; returnType: string }> = new Map(),
+  functions: Map<
+    string,
+    { body: string; returnType: string; params: string[] }
+  > = new Map(),
   stringVariables: Map<string, string> = new Map(),
 ): Result<number, InterpretError> {
   if (input === "") {
     return ok(0);
   }
 
-  // First, extract type aliases if present (before processing anything else)
+  // First, extract type aliases if present
   let extractedAliases = typeAliases;
   if (input.includes("type ")) {
     const aliasesResult = extractTypeAliases(input);
@@ -1141,7 +1408,6 @@ function interpretWithVars(
     extractedAliases = aliasesResult.value;
   }
 
-  // Handle multiline input with variable declarations or function definitions
   if (input.includes("let ") || input.includes("fn ")) {
     return handleMultilineInput(
       input,
@@ -1152,7 +1418,6 @@ function interpretWithVars(
     );
   }
 
-  // Handle multiline input with struct declarations
   if (input.includes("struct ")) {
     const validationResult = validateStructDefinitions(input, extractedAliases);
     if (validationResult.isFailure()) {
@@ -1161,7 +1426,10 @@ function interpretWithVars(
     return ok(0);
   }
 
-  // Check if input is a function call: name()
+  if (input.includes("type ") && containsOnlyTypeDeclarations(input)) {
+    return ok(0);
+  }
+
   const functionCallResult = tryFunctionCall(
     input,
     functions,
@@ -1173,35 +1441,26 @@ function interpretWithVars(
     return functionCallResult;
   }
 
-  // Check if input is a variable reference
   if (variables.has(input)) {
     return ok(variables.get(input)!);
   }
 
-  // Check for property access on variables or string literals
-  const propertyAccess = interpretPropertyAccess(input, variableTypes, stringVariables);
+  const propertyAccess = interpretPropertyAccess(
+    input,
+    variableTypes,
+    stringVariables,
+    variables,
+  );
   if (propertyAccess !== undefined) {
     return propertyAccess;
   }
 
-  // Check for string literal property access (e.g., "test".length)
-  if (input.startsWith('"') && input.includes('".')) {
-    const dotIndex = input.indexOf('".');
-    if (dotIndex !== -1) {
-      const stringContent = input.slice(1, dotIndex);
-      const propertyName = input.slice(dotIndex + 2);
-
-      if (propertyName === "length") {
-        return ok(stringContent.length);
-      }
-
-      return err(createStringPropertyError(input, propertyName));
-    }
+  const stringProp = tryStringLiteralProperty(input);
+  if (stringProp !== undefined) {
+    return stringProp;
   }
 
-  // Handle parenthesized expressions
   if (input[0] === "(" && input[input.length - 1] === ")") {
-    // Recursively evaluate the inner expression
     return interpretWithVars(
       input.slice(1, -1),
       variables,
@@ -1212,8 +1471,6 @@ function interpretWithVars(
     );
   }
 
-  // Check for type compatibility check syntax BEFORE addition
-  // This allows "is" checks to contain addition expressions
   const isKeywordIndex = input.indexOf(" is ");
   if (isKeywordIndex !== -1) {
     return evaluateIsTypeCheck(input);
@@ -1246,7 +1503,14 @@ function interpretWithVars(
 }
 
 export function interpret(input: string): Result<number, InterpretError> {
-  return interpretWithVars(input, new Map(), new Map(), new Map(), new Map(), new Map());
+  return interpretWithVars(
+    input,
+    new Map(),
+    new Map(),
+    new Map(),
+    new Map(),
+    new Map(),
+  );
 }
 
 // Read and interpret the .tuff file

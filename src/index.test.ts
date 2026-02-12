@@ -1,12 +1,16 @@
 import { expect, test } from "bun:test";
 import { interpret } from "./index";
 
+const DUPE_FUNC_INPUT =
+  "struct DescriptiveError {\n    source : *Str;\n    description : *Str;\n    reason : *Str;\n    fix : *Str;\n}\n\nfn empty() => {}\nfn empty() => {}";
+
 function testSuccess(input: string, expected: number, description: string) {
   test(description, () => {
     const result = interpret(input);
-    expect(result.isSuccess()).toBe(true);
     if (result.isSuccess()) {
       expect(result.value).toBe(expected);
+    } else {
+      expect(result.error).toBeUndefined();
     }
   });
 }
@@ -137,13 +141,85 @@ testSuccess(
   100,
   "interpret typed mutable variable and reassignment => 100",
 );
-testSuccess(
-  '"test".length',
-  4,
-  'interpret string length access => 4',
-);
+testSuccess('"test".length', 4, "interpret string length access => 4");
 testSuccess(
   'let x : *Str = "test";\nx.length',
   4,
-  'interpret string variable property access => 4',
+  "interpret string variable property access => 4",
+);
+testSuccess(
+  "fn Success<T>() : I32 => 0;",
+  0,
+  "interpret generic function definition => 0",
+);
+
+testSuccess(
+  "struct DescriptiveError {\n    source : *Str;\n    description : *Str;\n    reason : *Str;\n    fix : *Str;\n}\n\nfn Success<T>() => {\n}",
+  0,
+  "interpret index.tuff struct and function definitions with optional return type => 0",
+);
+
+testFailure(
+  "fn Success<T>() : UnknownType => {}",
+  "interpret function with unknown return type => Err",
+  "fn Success<T>() : UnknownType => {}",
+  "unknown return type",
+);
+
+testSuccess(
+  "let x = 100;\nthis.x",
+  100,
+  "interpret this.x property access for variable => 100",
+);
+
+testSuccess(
+  "fn wrapper() => {\n    fn inner() => 0;\n    0\n}",
+  0,
+  "interpret function with nested function definition => 0",
+);
+
+testSuccess(
+  "fn Ok() => {\n    fn isSuccess() => true;\n    0\n}\nfn Err() => {\n    fn isSuccess() => false;\n    0\n}",
+  0,
+  "interpret multiple functions with same nested function names => 0",
+);
+
+testSuccess(
+  "type Result<T, X> = Ok<T, X> | Err<T, X>;",
+  0,
+  "interpret generic type alias definition => 0",
+);
+
+testFailure(
+  "fn empty() => {}\nfn empty() => {}",
+  "interpret duplicate function definitions => Err",
+  "fn empty() => {}\nfn empty() => {}",
+  "declared multiple times",
+);
+
+testFailure(
+  DUPE_FUNC_INPUT,
+  "interpret exact index.tuff content => Err",
+  DUPE_FUNC_INPUT,
+  "declared multiple times",
+);
+
+testFailure(
+  "fn pass(x : I32, x : I32) => {}",
+  "interpret duplicate function parameters => Err",
+  "fn pass(x : I32, x : I32) => {}",
+  "declared multiple times",
+);
+
+testFailure(
+  "fn pass(x : UnknownType) => {}",
+  "interpret function with unknown parameter type => Err",
+  "fn pass(x : UnknownType) => {}",
+  "unknown",
+);
+
+testSuccess(
+  "fn pass(x : I32) => x;\npass(100)",
+  100,
+  "interpret function with parameter and function call => 100",
 );
