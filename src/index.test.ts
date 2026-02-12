@@ -74,6 +74,12 @@ testFailure(
   "struct Wrapper {\n    x : I32;\n    x : I32;\n}",
   "duplicate",
 );
+testFailure(
+  "struct Wrapper {\n    x : UnknownType;\n}",
+  "interpret invalid field type => Err",
+  "struct Wrapper {\n    x : UnknownType;\n}",
+  "unknown",
+);
 testSuccess("1U8 + 2U8 + 3U8", 6, 'interpret("1U8 + 2U8 + 3U8") => 6');
 testSuccess("1U8 + 255 + 1U16", 257, 'interpret("1U8 + 255 + 1U16") => 257');
 testFailure(

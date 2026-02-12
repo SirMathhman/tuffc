@@ -228,6 +228,13 @@ function getExpressionResultType(
   return checkAndPromoteTypes(sourceForErrors, leftType, rightType, false);
 }
 
+function isValidFieldType(typeStr: string): boolean {
+  const trimmed = typeStr.trim();
+  // Valid types: I32, U8, U16, U32, U64, I8, I16, I64
+  const validTypes = ["I32", "U8", "U16", "U32", "U64", "I8", "I16", "I64"];
+  return validTypes.includes(trimmed);
+}
+
 function validateStructDefinitions(
   input: string,
 ): Result<undefined, InterpretError> {
@@ -282,6 +289,23 @@ function validateStructDefinitions(
           });
         }
         fields.add(fieldName);
+
+        // Extract and validate the type
+        const typePartStr = trimmedLine.slice(colonIndex + 1);
+        const semicolonIndex = typePartStr.indexOf(";");
+        const typeStr =
+          semicolonIndex !== -1
+            ? typePartStr.slice(0, semicolonIndex).trim()
+            : typePartStr.trim();
+
+        if (!isValidFieldType(typeStr)) {
+          return err({
+            source: input,
+            description: "Unknown field type",
+            reason: `unknown type '${typeStr}' in field '${fieldName}' of struct '${currentStructName}'`,
+            fix: "Use a valid type like I32, U8, U16, U32, U64, I8, I16, or I64",
+          });
+        }
       }
     }
 
