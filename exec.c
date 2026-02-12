@@ -6,7 +6,7 @@
 
 int32_t main()
 {
-    FILE *source_file = fopen("main.tuff", "rb");
+    FILE *source_file = safe_fopen("main.tuff", "rb");
     if (!source_file)
     {
         fprintf(stderr, "Failed to open main.tuff\n");
@@ -62,7 +62,7 @@ int32_t main()
         return 1;
     }
 
-    FILE *header_file = fopen("main.h", "wb");
+    FILE *header_file = safe_fopen("main.h", "wb");
     if (!header_file)
     {
         fprintf(stderr, "Failed to open main.h for writing\n");
@@ -71,7 +71,7 @@ int32_t main()
     fwrite(result.output.headerCCode, 1, strlen(result.output.headerCCode), header_file);
     fclose(header_file);
 
-    FILE *target_file = fopen("main.c", "wb");
+    FILE *target_file = safe_fopen("main.c", "wb");
     if (!target_file)
     {
         fprintf(stderr, "Failed to open main.c for writing\n");

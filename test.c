@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 int32_t passingTests = 0;
 int32_t totalTests = 0;
 
@@ -20,15 +21,57 @@ void assertValid(char *testName, char *source, int32_t expectedExitCode, int32_t
         return;
     }
 
-    /*
-    TODO:
-    write to temp file
-    compile temp file using clang
-    execute binary using argc, argv
-    assert exit code equals expectedExitCode
-    */
+    // Generate temp file names
+    char temp_header[] = "temp_test_header_XXXXXX.h";
+    char temp_source[] = "temp_test_source_XXXXXX.c";
+    char temp_exe[] = "temp_test_exe_XXXXXX.exe";
 
-    int32_t actualExitCode = -1;
+    // Write header file
+    FILE *hf = safe_fopen(temp_header, "w");
+    if (!hf)
+    {
+        fprintf(stderr, "Test %s failed: could not create temp header file\n", testName);
+        totalTests++;
+        return;
+    }
+    fwrite(result.output.headerCCode, 1, strlen(result.output.headerCCode), hf);
+    fclose(hf);
+
+    // Write source file
+    FILE *sf = safe_fopen(temp_source, "w");
+    if (!sf)
+    {
+        fprintf(stderr, "Test %s failed: could not create temp source file\n", testName);
+        remove(temp_header);
+        totalTests++;
+        return;
+    }
+    fwrite(result.output.targetCCode, 1, strlen(result.output.targetCCode), sf);
+    fclose(sf);
+
+    // Compile with clang
+    char compile_cmd[512];
+    snprintf(compile_cmd, sizeof(compile_cmd), "clang -o %s %s 2>nul", temp_exe, temp_source);
+    int compile_status = system(compile_cmd);
+    if (compile_status != 0)
+    {
+        fprintf(stderr, "Test %s failed: clang compilation failed\n", testName);
+        remove(temp_header);
+        remove(temp_source);
+        totalTests++;
+        return;
+    }
+
+    // Execute binary and capture exit code
+    char exec_cmd[256];
+    snprintf(exec_cmd, sizeof(exec_cmd), "%s", temp_exe);
+    int32_t actualExitCode = system(exec_cmd);
+
+    // Clean up temp files
+    remove(temp_header);
+    remove(temp_source);
+    remove(temp_exe);
+
     if (actualExitCode != expectedExitCode)
     {
         fprintf(stderr, "Test %s failed: expected exit code %d, got %d\n", testName, expectedExitCode, actualExitCode);

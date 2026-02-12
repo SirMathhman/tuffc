@@ -1,10 +1,15 @@
 #pragma once
 
+#include <stdio.h>
+
 typedef struct
 {
     char *headerCCode;
     char *targetCCode;
 } Output;
+
+// Cross-platform safe fopen wrapper (uses fopen_s on MSVC)
+FILE *safe_fopen(const char *path, const char *mode);
 
 typedef struct
 {
