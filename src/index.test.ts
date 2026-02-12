@@ -4,6 +4,22 @@ import { interpret } from "./index";
 const DUPE_FUNC_INPUT =
   "struct DescriptiveError {\n    source : *Str;\n    description : *Str;\n    reason : *Str;\n    fix : *Str;\n}\n\nfn empty() => {}\nfn empty() => {}";
 
+const INDEX_TUFF_INPUT = `struct DescriptiveError {
+    source : *Str;
+    description : *Str;
+    reason : *Str;
+    fix : *Str;
+}
+
+fn Wrapper(field : I32) : Wrapper => {
+    fn get() => field;
+
+    this
+}
+
+let temp : Wrapper = Wrapper(100);
+temp.get()`;
+
 function testSuccess(input: string, expected: number, description: string) {
   test(description, () => {
     const result = interpret(input);
@@ -197,11 +213,10 @@ testFailure(
   "declared multiple times",
 );
 
-testFailure(
-  DUPE_FUNC_INPUT,
-  "interpret exact index.tuff content => Err",
-  DUPE_FUNC_INPUT,
-  "declared multiple times",
+testSuccess(
+  INDEX_TUFF_INPUT,
+  100,
+  "interpret actual index.tuff content => 100",
 );
 
 testFailure(
