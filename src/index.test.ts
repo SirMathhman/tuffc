@@ -369,3 +369,15 @@ testSuccess(
   0,
   "interpret struct with array field type => 0",
 );
+
+testSuccess(
+  "fn Ok<T, X>(value : T) => this;\nfn Err<T, X>(error : X) => this;\n\ntype Result<T, X> = Ok<T, X> | Err<T, X>;\ntype Error = Err<I32, *Str>;",
+  0,
+  "interpret type alias with union syntax => 0",
+);
+
+testSuccess(
+  "type Result<T, X> = Ok<T, X> | Err<T, X>;\n// Let's see what happens here!",
+  0,
+  "interpret type declarations with trailing comment => 0",
+);

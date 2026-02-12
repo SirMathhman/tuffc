@@ -32,3 +32,5 @@ struct FunctionDefinition {
     returnType : *Str;
     params : *[FunctionParam];
 }
+
+// Let's see what happens here!

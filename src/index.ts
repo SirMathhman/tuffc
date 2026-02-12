@@ -845,7 +845,14 @@ function validateStructDefinitions(
             ? typePartStr.slice(0, semicolonIndex).trim()
             : typePartStr.trim();
 
-        if (!isValidFieldType(typeStr, currentGenericParams, typeAliases, structNames)) {
+        if (
+          !isValidFieldType(
+            typeStr,
+            currentGenericParams,
+            typeAliases,
+            structNames,
+          )
+        ) {
           return err({
             source: input,
             description: "Unknown field type",
@@ -1872,9 +1879,19 @@ function handleMultilineInput(
     finalStringVars = processResult.value.stringVarMap;
   }
 
-  // Evaluate the last non-declaration line
+  // Evaluate the last non-declaration, non-comment line
   const lines = input.split("\n");
-  const lastLine = lines[lines.length - 1].trim();
+  
+  // Find the last non-empty, non-comment line
+  let lastLine = "";
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const trimmedLine = lines[i].trim();
+    if (trimmedLine.length > 0 && !trimmedLine.startsWith("//")) {
+      lastLine = trimmedLine;
+      break;
+    }
+  }
+  
   if (
     !lastLine.startsWith("let ") &&
     !lastLine.startsWith("type ") &&
