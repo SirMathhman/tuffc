@@ -5,5 +5,11 @@ struct DescriptiveError {
     fix : *Str;
 }
 
-fn get() => 100;
-this.get()
+fn Wrapper(field : I32) : Wrapper => {
+    fn get() => field;
+
+    this
+}
+
+let temp : Wrapper = Wrapper(100);
+temp.get()

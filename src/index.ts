@@ -4,15 +4,31 @@ export type InterpretError = DescriptiveError;
 
 type FunctionParam = { name: string; type: string };
 
+type FunctionDefinition = {
+  body: string;
+  returnType: string;
+  params: FunctionParam[];
+};
+
+type FunctionContext = {
+  variables: Map<string, TuffValue>;
+  functions: Map<string, FunctionDefinition>;
+};
+
+type TuffValue = number | FunctionContext;
+
+type VariableMap = Map<string, TuffValue>;
+type TypeMap = Map<string, string>;
+type FunctionMap = Map<string, FunctionDefinition>;
+type AliasMap = Map<string, string>;
+
 type InterpreterContext = {
-  variables?: Map<string, number>;
-  variableTypes?: Map<string, string>;
-  typeAliases?: Map<string, string>;
-  functions?: Map<
-    string,
-    { body: string; returnType: string; params: FunctionParam[] }
-  >;
-  stringVariables?: Map<string, string>;
+  variables?: VariableMap;
+  variableTypes?: TypeMap;
+  typeAliases?: AliasMap;
+  functions?: FunctionMap;
+  stringVariables?: TypeMap;
+  structNames?: Set<string>;
 };
 
 function createDefaultContext(): InterpreterContext {
@@ -22,16 +38,20 @@ function createDefaultContext(): InterpreterContext {
     typeAliases: new Map(),
     functions: new Map(),
     stringVariables: new Map(),
+    structNames: new Set(),
   };
 }
 
 function getContextMaps(ctx: InterpreterContext) {
   return {
-    variables: ctx.variables || new Map(),
+    variables: (ctx.variables as Map<string, TuffValue>) || new Map(),
     variableTypes: ctx.variableTypes || new Map(),
     typeAliases: ctx.typeAliases || new Map(),
     functions: ctx.functions || new Map(),
     stringVariables: ctx.stringVariables || new Map(),
+    structNames: ctx.structNames || new Set(),
+    contextVariables:
+      (ctx.variables as Map<string, FunctionContext>) || new Map(),
   };
 }
 
@@ -310,10 +330,57 @@ function extractTypeAliases(
   return ok(typeAliases);
 }
 
+function extractReturnType(
+  headerPart: string,
+  colonIndex: number,
+  closeParenIndex: number,
+  funcName: string,
+  input: string,
+  structNames: Set<string>,
+): Result<string, InterpretError> {
+  let returnType = "I32";
+  if (
+    colonIndex !== -1 &&
+    closeParenIndex !== -1 &&
+    colonIndex > closeParenIndex
+  ) {
+    returnType = headerPart.slice(colonIndex + 1).trim();
+
+    const tempFunctions = new Map<string, FunctionDefinition>();
+    tempFunctions.set(funcName, { body: "", returnType: "", params: [] });
+
+    if (
+      !isValidFieldType(
+        returnType,
+        undefined,
+        new Map(),
+        structNames,
+        tempFunctions,
+      )
+    ) {
+      return err({
+        source: input,
+        description: "Unknown return type",
+        reason: `unknown return type '${returnType}' in function '${funcName}'`,
+        fix: "Use a valid return type like I32, U8, U16, U32, U64, I8, I16, or I64",
+      });
+    }
+  } else if (colonIndex !== -1 && closeParenIndex === -1) {
+    return err({
+      source: input,
+      description: "Invalid function definition",
+      reason: "Function must have parentheses",
+      fix: "Use syntax: fn name() => body; or fn name() : ReturnType => body;",
+    });
+  }
+  return ok(returnType);
+}
+
 function processFunctionDefinitionLine(
   trimmedLine: string,
   input: string,
   existingFunctions: Set<string>,
+  structNames: Set<string> = new Set(),
 ): Result<
   { name: string; body: string; returnType: string; params: FunctionParam[] },
   InterpretError
@@ -366,43 +433,31 @@ function processFunctionDefinitionLine(
   const closeParenIndex = headerPart.indexOf(")");
   const colonIndex = headerPart.indexOf(":");
 
-  // Extract parameters
   const paramsResult = extractFunctionParameters(
     headerPart,
     parenIndex,
     closeParenIndex,
     funcName,
     input,
+    structNames,
   );
   if (paramsResult.isFailure()) {
     return paramsResult;
   }
   const params = paramsResult.value;
 
-  // Extract return type
-  let returnType = "I32";
-  if (
-    colonIndex !== -1 &&
-    closeParenIndex !== -1 &&
-    colonIndex > closeParenIndex
-  ) {
-    returnType = headerPart.slice(colonIndex + 1).trim();
-    if (!isValidFieldType(returnType, undefined, new Map())) {
-      return err({
-        source: input,
-        description: "Unknown return type",
-        reason: `unknown return type '${returnType}' in function '${funcName}'`,
-        fix: "Use a valid return type like I32, U8, U16, U32, U64, I8, I16, or I64",
-      });
-    }
-  } else if (colonIndex !== -1 && closeParenIndex === -1) {
-    return err({
-      source: input,
-      description: "Invalid function definition",
-      reason: "Function must have parentheses",
-      fix: "Use syntax: fn name() => body; or fn name() : ReturnType => body;",
-    });
+  const returnTypeResult = extractReturnType(
+    headerPart,
+    colonIndex,
+    closeParenIndex,
+    funcName,
+    input,
+    structNames,
+  );
+  if (returnTypeResult.isFailure()) {
+    return returnTypeResult;
   }
+  const returnType = returnTypeResult.value;
 
   let bodyStr = trimmedLine.slice(arrowIndex + 2).trim();
   if (bodyStr.endsWith(";")) {
@@ -418,6 +473,7 @@ function extractFunctionParameters(
   closeParenIndex: number,
   funcName: string,
   input: string,
+  structNames: Set<string> = new Set(),
 ): Result<FunctionParam[], InterpretError> {
   const params: FunctionParam[] = [];
   if (closeParenIndex > parenIndex + 1) {
@@ -446,7 +502,9 @@ function extractFunctionParameters(
           let paramType = "I32";
           if (colonIdx !== -1) {
             paramType = trimmedPart.slice(colonIdx + 1).trim();
-            if (!isValidFieldType(paramType, undefined, new Map())) {
+            if (
+              !isValidFieldType(paramType, undefined, new Map(), structNames)
+            ) {
               return err({
                 source: input,
                 description: "Unknown parameter type",
@@ -470,10 +528,8 @@ function getLines(input: string): string[] {
 function extractFunctionDefinitions(
   input: string,
   includeIndented: boolean = false,
-): Result<
-  Map<string, { body: string; returnType: string; params: FunctionParam[] }>,
-  InterpretError
-> {
+  structNames: Set<string> = new Set(),
+): Result<Map<string, FunctionDefinition>, InterpretError> {
   const linesArray = getLines(input);
   const functions = new Map<
     string,
@@ -516,6 +572,7 @@ function extractFunctionDefinitions(
         functionText,
         input,
         functionalNameTracker,
+        structNames,
       );
       if (result.isFailure()) {
         return result;
@@ -547,6 +604,8 @@ function isValidFieldType(
   typeStr: string,
   genericParams?: Set<string>,
   typeAliases?: Map<string, string>,
+  structNames?: Set<string>,
+  functions?: Map<string, FunctionDefinition>,
 ): boolean {
   const trimmed = typeStr.trim();
   const resolved = typeAliases
@@ -567,7 +626,34 @@ function isValidFieldType(
   if (validTypes.includes(resolved)) return true;
   // Check if it's a generic type parameter
   if (genericParams && genericParams.has(resolved)) return true;
+  // Check if it's a struct name
+  if (structNames && structNames.has(resolved)) return true;
+  // Check if it's a function name (allowed as a type for Fluent API contexts)
+  if (functions && functions.has(resolved)) return true;
   return false;
+}
+
+function extractStructNames(input: string): Set<string> {
+  const lines = getLines(input);
+  const structNames = new Set<string>();
+
+  for (const line of lines) {
+    const trimmedLine = line.trim();
+    if (trimmedLine.startsWith("struct ")) {
+      const openBraceIndex = trimmedLine.indexOf("{");
+      if (openBraceIndex !== -1) {
+        const structNamePart = trimmedLine.slice(7, openBraceIndex).trim();
+        const angleIndex = structNamePart.indexOf("<");
+        const structName =
+          angleIndex !== -1
+            ? structNamePart.slice(0, angleIndex).trim()
+            : structNamePart;
+        structNames.add(structName);
+      }
+    }
+  }
+
+  return structNames;
 }
 
 function validateStructDefinitions(
@@ -619,12 +705,19 @@ function validateStructDefinitions(
           });
         }
         structNames.add(structName);
-        currentStructName = structName;
-        structFields.set(structName, new Set<string>());
+
+        // If it's a single line struct definition like "struct Ok {}", don't set currentStructName
+        if (trimmedLine.endsWith("}")) {
+          currentStructName = undefined;
+        } else {
+          currentStructName = structName;
+          structFields.set(structName, new Set<string>());
+        }
       }
     } else if (
       currentStructName &&
       trimmedLine.includes(":") &&
+      !trimmedLine.includes("fn ") &&
       !trimmedLine.startsWith("}")
     ) {
       // Parse field declaration: "fieldName : Type;"
@@ -676,9 +769,15 @@ function handleAddition(
   leftStr: string,
   rightStr: string,
   ctx: InterpreterContext = createDefaultContext(),
-): Result<number, InterpretError> {
-  const { variables, variableTypes, typeAliases, functions, stringVariables } =
-    getContextMaps(ctx);
+): Result<TuffValue, InterpretError> {
+  const {
+    variables,
+    variableTypes,
+    typeAliases,
+    functions,
+    stringVariables,
+    structNames,
+  } = getContextMaps(ctx);
   // Recursively interpret the left side (can be variable or expression)
   const leftResult = interpretWithVars(
     leftStr,
@@ -687,6 +786,7 @@ function handleAddition(
     typeAliases,
     functions,
     stringVariables,
+    structNames,
   );
   if (leftResult.isFailure()) {
     return leftResult;
@@ -701,11 +801,21 @@ function handleAddition(
     typeAliases,
     functions,
     stringVariables,
+    structNames,
   );
   if (rightResult.isFailure()) {
     return rightResult;
   }
   const rightValue = rightResult.value;
+
+  if (typeof leftValue !== "number" || typeof rightValue !== "number") {
+    return err({
+      source: input,
+      description: "Type mismatch in addition",
+      reason: "Addition is only supported for numeric values",
+      fix: "Ensure both operands are numbers",
+    });
+  }
 
   // Determine the left side's type - check if it's a literal with suffix or a variable
   let leftSuffix: string;
@@ -812,8 +922,8 @@ function determineAssignedValueType(
 }
 function interpretNumericLiteral(
   input: string,
-  variables: Map<string, number> = new Map(),
-): Result<number, InterpretError> {
+  variables: VariableMap = new Map(),
+): Result<TuffValue, InterpretError> {
   // Check if input is a valid variable name that's not defined
   if (isValidVariableName(input) && !variables.has(input)) {
     return err({
@@ -844,7 +954,7 @@ function interpretNumericLiteral(
 
 function interpretEarlyReturns(
   input: string,
-  variables: Map<string, number>,
+  variables: Map<string, TuffValue>,
   variableTypes: Map<string, string>,
   typeAliases: Map<string, string>,
   functions: Map<
@@ -853,13 +963,15 @@ function interpretEarlyReturns(
   >,
   stringVariables: Map<string, string>,
   extractedAliases: Map<string, string>,
-): Result<number, InterpretError> | undefined {
+  structNames: Set<string> = new Set(),
+): Result<TuffValue, InterpretError> | undefined {
   const functionCallResult = tryFunctionCall(
     input,
     functions,
     variables,
     variableTypes,
     extractedAliases,
+    structNames,
   );
   if (functionCallResult !== undefined) {
     return functionCallResult;
@@ -874,6 +986,8 @@ function interpretEarlyReturns(
     variableTypes,
     stringVariables,
     variables,
+    extractedAliases,
+    structNames,
   );
   if (propertyAccess !== undefined) {
     return propertyAccess;
@@ -892,6 +1006,7 @@ function interpretEarlyReturns(
       extractedAliases,
       functions,
       stringVariables,
+      structNames,
     );
   }
 
@@ -907,8 +1022,10 @@ function interpretPropertyAccess(
   input: string,
   variableTypes: Map<string, string>,
   stringVariables: Map<string, string>,
-  variables: Map<string, number> = new Map(),
-): Result<number, InterpretError> | undefined {
+  variables: Map<string, TuffValue> = new Map(),
+  typeAliases: Map<string, string> = new Map(),
+  structNames: Set<string> = new Set(),
+): Result<TuffValue, InterpretError> | undefined {
   const dotIndex = input.indexOf(".");
   if (dotIndex === -1) {
     return undefined;
@@ -938,6 +1055,28 @@ function interpretPropertyAccess(
     }
 
     return ok(variables.get(propertyName)!);
+  }
+
+  // Handle context variables (Fluent API)
+  if (variables.has(varName)) {
+    const val = variables.get(varName);
+    if (
+      val !== undefined &&
+      typeof val === "object" &&
+      "variables" in val &&
+      "functions" in val
+    ) {
+      const context = val as FunctionContext;
+      return interpretWithVars(
+        propertyName,
+        context.variables,
+        new Map(),
+        typeAliases,
+        context.functions,
+        new Map(),
+        structNames,
+      );
+    }
   }
 
   // Check if this is a variable property access (not a number like 1.5)
@@ -1063,15 +1202,14 @@ function validateVariableAssignmentType(
 function processSingleVariableDeclaration(
   input: string,
   line: string,
-  varMap: Map<string, number>,
-  typeMap: Map<string, string>,
+  varMap: VariableMap,
+  typeMap: TypeMap,
   declaredInThisScope: Set<string>,
-  typeAliases: Map<string, string>,
+  typeAliases: AliasMap,
   mutableVars?: Set<string>,
-): Result<
-  { varMap: Map<string, number>; typeMap: Map<string, string> },
-  InterpretError
-> {
+  functions: FunctionMap = new Map(),
+  structNames: Set<string> = new Set(),
+): Result<{ varMap: VariableMap; typeMap: TypeMap }, InterpretError> {
   const parseResult = parseVariableAssignment(line);
   if (parseResult.isFailure()) {
     return err(createVariableDeclarationError(input, "let varName = value;"));
@@ -1114,15 +1252,22 @@ function processSingleVariableDeclaration(
     varMap,
     typeMap,
     typeAliases,
+    functions,
     new Map(),
-    new Map(),
+    structNames,
   );
   if (valueInterpretResult.isFailure()) return valueInterpretResult;
   const value = valueInterpretResult.value;
 
   if (
     typeAnnotation &&
-    !isValidFieldType(typeAnnotation, undefined, typeAliases)
+    !isValidFieldType(
+      typeAnnotation,
+      undefined,
+      typeAliases,
+      structNames,
+      functions,
+    )
   ) {
     return err({
       source: input,
@@ -1156,11 +1301,12 @@ function processSingleVariableDeclaration(
 function processSingleVariableReassignment(
   input: string,
   line: string,
-  varMap: Map<string, number>,
-  typeMap: Map<string, string>,
+  varMap: VariableMap,
+  typeMap: TypeMap,
   mutableVars: Set<string>,
-  typeAliases: Map<string, string>,
-): Result<Map<string, number>, InterpretError> {
+  typeAliases: AliasMap,
+  functions: FunctionMap = new Map(),
+): Result<VariableMap, InterpretError> {
   const parseResult = parseVariableAssignment(line);
   if (parseResult.isFailure()) {
     return err({
@@ -1196,7 +1342,7 @@ function processSingleVariableReassignment(
     varMap,
     typeMap,
     typeAliases,
-    new Map(),
+    functions,
     new Map(),
   );
   if (valueResult.isFailure()) return valueResult;
@@ -1216,15 +1362,22 @@ function processSingleVariableReassignment(
   return ok(varMap);
 }
 
+function getNestedFunctions(body: string): FunctionMap {
+  const nestedResult = extractFunctionDefinitions(body, true);
+  return nestedResult.isSuccess() ? nestedResult.value : new Map();
+}
+
 function processVariableDeclarations(
   input: string,
-  variables: Map<string, number>,
+  variables: Map<string, TuffValue>,
   variableTypes: Map<string, string> = new Map(),
   typeAliases: Map<string, string> = new Map(),
   stringVariables: Map<string, string> = new Map(),
+  functions: Map<string, FunctionDefinition> = new Map(),
+  structNames: Set<string> = new Set(),
 ): Result<
   {
-    varMap: Map<string, number>;
+    varMap: Map<string, TuffValue>;
     typeMap: Map<string, string>;
     stringVarMap: Map<string, string>;
   },
@@ -1291,6 +1444,8 @@ function processVariableDeclarations(
         declaredInThisScope,
         typeAliases,
         mutableVars,
+        functions,
+        structNames,
       );
       if (result.isFailure()) {
         return result;
@@ -1310,6 +1465,7 @@ function processVariableDeclarations(
         typeMap,
         mutableVars,
         typeAliases,
+        functions,
       );
       if (reassignResult.isFailure()) {
         return reassignResult;
@@ -1351,7 +1507,7 @@ function validateTypeSuffix(
 
 function tryStringLiteralProperty(
   input: string,
-): Result<number, InterpretError> | undefined {
+): Result<TuffValue, InterpretError> | undefined {
   if (input.startsWith('"') && input.includes('".')) {
     const dotIndex = input.indexOf('".');
     if (dotIndex !== -1) {
@@ -1374,11 +1530,8 @@ function parseAndValidateArguments(
   ctx: InterpreterContext,
   funcName: string,
   input: string,
-): Result<
-  { paramVars: Map<string, number>; paramTypes: Map<string, string> },
-  InterpretError
-> {
-  const args: number[] = [];
+): Result<{ paramVars: VariableMap; paramTypes: TypeMap }, InterpretError> {
+  const args: TuffValue[] = [];
   const argTypes: string[] = [];
   const { variables, variableTypes, typeAliases, functions } =
     getContextMaps(ctx);
@@ -1433,10 +1586,11 @@ function tryFunctionCall(
     string,
     { body: string; returnType: string; params: FunctionParam[] }
   >,
-  variables: Map<string, number>,
+  variables: Map<string, TuffValue>,
   variableTypes: Map<string, string>,
   typeAliases: Map<string, string>,
-): Result<number, InterpretError> | undefined {
+  structNames: Set<string> = new Set(),
+): Result<TuffValue, InterpretError> | undefined {
   // Match function calls with or without arguments: name() or name(arg1, arg2, ...)
   const openParenIndex = input.indexOf("(");
   if (openParenIndex === -1) return undefined;
@@ -1467,7 +1621,7 @@ function tryFunctionCall(
       const argResult = parseAndValidateArguments(
         argString,
         funcDef,
-        { variables, variableTypes, typeAliases, functions },
+        { variables, variableTypes, typeAliases, functions, structNames },
         effectiveFuncName,
         input,
       );
@@ -1478,44 +1632,49 @@ function tryFunctionCall(
       const { paramVars, paramTypes } = argResult.value;
 
       const rest = input.slice(closeParenIndex + 1).trim();
-      if (rest.startsWith(".")) {
-        const dotRest = rest.slice(1).trim();
-        let returnsThis = funcDef.body === "this";
 
-        if (
-          !returnsThis &&
-          funcDef.body.startsWith("{") &&
-          funcDef.body.endsWith("}")
-        ) {
-          const innerBody = funcDef.body.slice(1, -1).trim();
-          const bodyLines = getLines(innerBody);
-          if (bodyLines.length > 0) {
-            const lastLine = bodyLines[bodyLines.length - 1].trim();
-            if (lastLine === "this") {
-              returnsThis = true;
-            }
+      // Check if it returns 'this'
+      let returnsThis = funcDef.body === "this";
+      if (
+        !returnsThis &&
+        funcDef.body.startsWith("{") &&
+        funcDef.body.endsWith("}")
+      ) {
+        const innerBody = funcDef.body.slice(1, -1).trim();
+        const bodyLines = getLines(innerBody);
+        if (bodyLines.length > 0) {
+          const lastLine = bodyLines[bodyLines.length - 1].trim();
+          if (lastLine === "this") {
+            returnsThis = true;
           }
         }
+      }
+
+      if (rest.startsWith(".")) {
+        const dotRest = rest.slice(1).trim();
 
         if (returnsThis) {
-          const nestedResult = extractFunctionDefinitions(funcDef.body, true);
-          const nestedFuncs = nestedResult.isSuccess()
-            ? nestedResult.value
-            : new Map();
-
           return interpretWithVars(
             dotRest,
             paramVars,
             paramTypes,
             typeAliases,
-            nestedFuncs,
+            getNestedFunctions(funcDef.body),
             new Map(),
+            structNames,
           );
         }
       }
 
       if (rest.length > 0 && rest !== ";") {
         return undefined;
+      }
+
+      if (returnsThis) {
+        return ok({
+          variables: paramVars,
+          functions: getNestedFunctions(funcDef.body),
+        });
       }
 
       return interpretWithVars(
@@ -1525,6 +1684,7 @@ function tryFunctionCall(
         typeAliases,
         functions,
         new Map(),
+        structNames,
       );
     }
   }
@@ -1534,17 +1694,34 @@ function tryFunctionCall(
 function handleMultilineInput(
   input: string,
   extractedAliases: Map<string, string>,
-  variables: Map<string, number>,
+  variables: Map<string, TuffValue>,
   variableTypes: Map<string, string>,
   stringVariables: Map<string, string> = new Map(),
-): Result<number, InterpretError> {
+  structNames?: Set<string>,
+): Result<TuffValue, InterpretError> {
+  // Extract struct names
+  const localStructNames = new Set(structNames);
+  if (input.includes("struct ")) {
+    const names = extractStructNames(input);
+    for (const name of names) {
+      localStructNames.add(name);
+    }
+
+    // Validate struct definitions
+    const validationResult = validateStructDefinitions(input, extractedAliases);
+    if (validationResult.isFailure()) {
+      return validationResult;
+    }
+  }
+
   // Extract functions first
-  let extractedFunctions = new Map<
-    string,
-    { body: string; returnType: string; params: FunctionParam[] }
-  >();
+  let extractedFunctions = new Map<string, FunctionDefinition>();
   if (input.includes("fn ")) {
-    const functionsResult = extractFunctionDefinitions(input);
+    const functionsResult = extractFunctionDefinitions(
+      input,
+      false,
+      localStructNames,
+    );
     if (functionsResult.isFailure()) {
       return functionsResult;
     }
@@ -1562,6 +1739,8 @@ function handleMultilineInput(
       variableTypes,
       extractedAliases,
       stringVariables,
+      extractedFunctions,
+      localStructNames,
     );
     if (processResult.isFailure()) {
       return processResult;
@@ -1589,13 +1768,14 @@ function handleMultilineInput(
       extractedAliases,
       extractedFunctions,
       finalStringVars,
+      localStructNames,
     );
   }
 
   return ok(0);
 }
 
-function evaluateIsTypeCheck(input: string): Result<number, InterpretError> {
+function evaluateIsTypeCheck(input: string): Result<TuffValue, InterpretError> {
   const isKeywordIndex = input.indexOf(" is ");
   const valueWithSuffix = input.slice(0, isKeywordIndex);
   const targetTypeSuffix = input.slice(isKeywordIndex + 4);
@@ -1654,15 +1834,13 @@ function containsOnlyTypeDeclarations(input: string): boolean {
 
 function interpretWithVars(
   input: string,
-  variables: Map<string, number> = new Map(),
-  variableTypes: Map<string, string> = new Map(),
-  typeAliases: Map<string, string> = new Map(),
-  functions: Map<
-    string,
-    { body: string; returnType: string; params: FunctionParam[] }
-  > = new Map(),
-  stringVariables: Map<string, string> = new Map(),
-): Result<number, InterpretError> {
+  variables: VariableMap = new Map(),
+  variableTypes: TypeMap = new Map(),
+  typeAliases: AliasMap = new Map(),
+  functions: FunctionMap = new Map(),
+  stringVariables: TypeMap = new Map(),
+  structNames: Set<string> = new Set(),
+): Result<TuffValue, InterpretError> {
   if (input === "") {
     return ok(0);
   }
@@ -1677,22 +1855,19 @@ function interpretWithVars(
     extractedAliases = aliasesResult.value;
   }
 
-  if (input.includes("let ") || input.includes("fn ")) {
+  if (
+    input.includes("let ") ||
+    input.includes("fn ") ||
+    input.includes("struct ")
+  ) {
     return handleMultilineInput(
       input,
       extractedAliases,
       variables,
       variableTypes,
       stringVariables,
+      structNames,
     );
-  }
-
-  if (input.includes("struct ")) {
-    const validationResult = validateStructDefinitions(input, extractedAliases);
-    if (validationResult.isFailure()) {
-      return validationResult;
-    }
-    return ok(0);
   }
 
   if (input.includes("type ") && containsOnlyTypeDeclarations(input)) {
@@ -1723,13 +1898,14 @@ function interpretWithVars(
       typeAliases: extractedAliases,
       functions,
       stringVariables,
+      structNames,
     });
   }
 
   return interpretNumericLiteral(input, variables);
 }
 
-export function interpret(input: string): Result<number, InterpretError> {
+export function interpret(input: string): Result<TuffValue, InterpretError> {
   return interpretWithVars(
     input,
     new Map(),

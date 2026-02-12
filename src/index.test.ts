@@ -267,3 +267,21 @@ testSuccess(
   100,
   "interpret function returning this with nested function call => 100",
 );
+
+testSuccess(
+  "fn Wrapper(field : I32) => {\n    fn get() => field;\n    this\n};\nlet temp = Wrapper(100);\ntemp.get()",
+  100,
+  "interpret variable storing this context and calling nested function => 100",
+);
+
+testSuccess(
+  "struct Wrapper {}\nfn Wrapper(field : I32) : Wrapper => {\n    fn get() => field;\n    this\n};\nlet temp : Wrapper = Wrapper(100);\ntemp.get()",
+  100,
+  "interpret function with struct return type and typed variable assignment => 100",
+);
+
+testSuccess(
+  "fn Wrapper(field : I32) : Wrapper => {\n    fn get() => field;\n    this\n};\nlet temp : Wrapper = Wrapper(100);\ntemp.get()",
+  100,
+  "interpret function with inferred type from function name => 100",
+);
