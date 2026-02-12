@@ -7,80 +7,94 @@
 int32_t passingTests = 0;
 int32_t totalTests = 0;
 
-// We do one assert per test anyways
-void assertValidWithArgs(char *testName, char *source, int32_t expectedExitCode, int32_t argc, char **argv)
+static void print_compilation_error(const char *testName, CompileResult result)
 {
-    totalTests++;
-    CompileResult result = compile(source);
-    if (result.variant == CompileErrorVariant)
-    {
-        fprintf(stderr, "Test %s failed: compilation error\n", testName);
-        fprintf(stderr, "Erroneous code:\n%s\n", result.error.erroneous_code);
-        fprintf(stderr, "Error message:\n%s\n", result.error.error_message);
-        fprintf(stderr, "Reasoning:\n%s\n", result.error.reasoning);
-        fprintf(stderr, "Fix:\n%s\n", result.error.fix);
-        return;
-    }
+    fprintf(stderr, "Test %s failed: compilation error\n", testName);
+    fprintf(stderr, "Erroneous code:\n%s\n", result.error.erroneous_code);
+    fprintf(stderr, "Error message:\n%s\n", result.error.error_message);
+    fprintf(stderr, "Reasoning:\n%s\n", result.error.reasoning);
+    fprintf(stderr, "Fix:\n%s\n", result.error.fix);
+}
 
-    // Generate temp file names
-    char temp_header[] = "temp_test_header_XXXXXX.h";
-    char temp_source[] = "temp_test_source_XXXXXX.c";
-    char temp_exe[] = "temp_test_exe_XXXXXX.exe";
-
-    // Write header file
+static int write_temp_files(const char *testName, char *header, char *source, char *temp_header, char *temp_source)
+{
     FILE *hf = safe_fopen(temp_header, "w");
     if (!hf)
     {
         fprintf(stderr, "Test %s failed: could not create temp header file\n", testName);
-        return;
+        return 1;
     }
-    fwrite(result.output.headerCCode, 1, strlen(result.output.headerCCode), hf);
+    fwrite(header, 1, strlen(header), hf);
     fclose(hf);
 
-    // Write source file
     FILE *sf = safe_fopen(temp_source, "w");
     if (!sf)
     {
         fprintf(stderr, "Test %s failed: could not create temp source file\n", testName);
         remove(temp_header);
-        return;
+        return 1;
     }
-    fwrite(result.output.targetCCode, 1, strlen(result.output.targetCCode), sf);
+    fwrite(source, 1, strlen(source), sf);
     fclose(sf);
+    return 0;
+}
 
-    // Compile with clang
+static void cleanup_files(char *h, char *s, char *e)
+{
+    remove(h);
+    remove(s);
+    remove(e);
+}
+
+static void cleanup_files_with_stdin(char *h, char *s, char *e, char *si)
+{
+    remove(h);
+    remove(s);
+    remove(e);
+    remove(si);
+}
+
+static int assert_setup(const char *testName, const char *source, CompileResult *result)
+{
+    totalTests++;
+    *result = compile((char *)source);
+    if (result->variant == CompileErrorVariant)
+    {
+        print_compilation_error(testName, *result);
+        return 1;
+    }
+    return 0;
+}
+
+static void setup_temp_files(char *temp_header, char *temp_source, char *temp_exe)
+{
+    snprintf(temp_header, 32, "temp_test_header_XXXXXX.h");
+    snprintf(temp_source, 32, "temp_test_source_XXXXXX.c");
+    snprintf(temp_exe, 32, "temp_test_exe_XXXXXX.exe");
+}
+
+static int compile_with_clang(const char *testName, char *temp_exe, char *temp_source, char *temp_header, char *generated_code)
+{
     char compile_cmd[512];
     snprintf(compile_cmd, sizeof(compile_cmd), "clang -o %s %s 2>nul", temp_exe, temp_source);
     int compile_status = system(compile_cmd);
     if (compile_status != 0)
     {
         fprintf(stderr, "Test %s failed: clang compilation failed\n", testName);
-        fprintf(stderr, "Generated C code:\n%s\n", result.output.targetCCode);
+        fprintf(stderr, "Generated C code:\n%s\n", generated_code);
         remove(temp_header);
         remove(temp_source);
-        return;
+        return 1;
     }
+    return 0;
+}
 
-    // Execute binary and capture exit code
-    char exec_cmd[512];
-    snprintf(exec_cmd, sizeof(exec_cmd), "%s", temp_exe);
-    // Append command-line arguments
-    for (int32_t i = 0; i < argc; i++)
-    {
-        size_t current_len = strlen(exec_cmd);
-        snprintf(exec_cmd + current_len, sizeof(exec_cmd) - current_len, " %s", argv[i]);
-    }
-    int32_t actualExitCode = system(exec_cmd);
-
-    // Clean up temp files
-    remove(temp_header);
-    remove(temp_source);
-    remove(temp_exe);
-
+static void check_exit_code(const char *testName, int32_t expectedExitCode, int32_t actualExitCode, char *generated_code)
+{
     if (actualExitCode != expectedExitCode)
     {
         fprintf(stderr, "Test %s failed: expected exit code %d, got %d\n", testName, expectedExitCode, actualExitCode);
-        fprintf(stderr, "Generated C code:\n%s\n", result.output.targetCCode);
+        fprintf(stderr, "Generated C code:\n%s\n", generated_code);
     }
     else
     {
@@ -88,94 +102,71 @@ void assertValidWithArgs(char *testName, char *source, int32_t expectedExitCode,
     }
 }
 
+// We do one assert per test anyways
+void assertValidWithArgs(char *testName, char *source, int32_t expectedExitCode, int32_t argc, char **argv)
+{
+    CompileResult result;
+    if (assert_setup(testName, source, &result) != 0)
+        return;
+
+    char temp_header[32], temp_source[32], temp_exe[32];
+    setup_temp_files(temp_header, temp_source, temp_exe);
+
+    if (write_temp_files(testName, result.output.headerCCode, result.output.targetCCode, temp_header, temp_source) != 0)
+        return;
+
+    if (compile_with_clang(testName, temp_exe, temp_source, temp_header, result.output.targetCCode) != 0)
+        return;
+
+    char exec_cmd[512];
+    snprintf(exec_cmd, sizeof(exec_cmd), "%s", temp_exe);
+    for (int32_t i = 0; i < argc; i++)
+    {
+        size_t current_len = strlen(exec_cmd);
+        snprintf(exec_cmd + current_len, sizeof(exec_cmd) - current_len, " %s", argv[i]);
+    }
+    int32_t actualExitCode = system(exec_cmd);
+
+    cleanup_files(temp_header, temp_source, temp_exe);
+    check_exit_code(testName, expectedExitCode, actualExitCode, result.output.targetCCode);
+}
+
 void assertValidWithStdIn(char *testName, char *source, int32_t expectedExitCode, char *stdin_input)
 {
-    totalTests++;
-    CompileResult result = compile(source);
-    if (result.variant == CompileErrorVariant)
-    {
-        fprintf(stderr, "Test %s failed: compilation error\n", testName);
-        fprintf(stderr, "Erroneous code:\n%s\n", result.error.erroneous_code);
-        fprintf(stderr, "Error message:\n%s\n", result.error.error_message);
-        fprintf(stderr, "Reasoning:\n%s\n", result.error.reasoning);
-        fprintf(stderr, "Fix:\n%s\n", result.error.fix);
+    CompileResult result;
+    if (assert_setup(testName, source, &result) != 0)
         return;
-    }
 
-    // Generate temp file names
-    char temp_header[] = "temp_test_header_XXXXXX.h";
-    char temp_source[] = "temp_test_source_XXXXXX.c";
-    char temp_exe[] = "temp_test_exe_XXXXXX.exe";
+    char temp_header[32], temp_source[32], temp_exe[32];
+    setup_temp_files(temp_header, temp_source, temp_exe);
     char temp_stdin[] = "temp_test_stdin_XXXXXX.txt";
 
-    // Write header file
-    FILE *hf = safe_fopen(temp_header, "w");
-    if (!hf)
-    {
-        fprintf(stderr, "Test %s failed: could not create temp header file\n", testName);
+    if (write_temp_files(testName, result.output.headerCCode, result.output.targetCCode, temp_header, temp_source) != 0)
         return;
-    }
-    fwrite(result.output.headerCCode, 1, strlen(result.output.headerCCode), hf);
-    fclose(hf);
 
-    // Write source file
-    FILE *sf = safe_fopen(temp_source, "w");
-    if (!sf)
-    {
-        fprintf(stderr, "Test %s failed: could not create temp source file\n", testName);
-        remove(temp_header);
-        return;
-    }
-    fwrite(result.output.targetCCode, 1, strlen(result.output.targetCCode), sf);
-    fclose(sf);
-
-    // Write stdin file
     FILE *stdinf = safe_fopen(temp_stdin, "w");
     if (!stdinf)
     {
         fprintf(stderr, "Test %s failed: could not create temp stdin file\n", testName);
-        remove(temp_header);
-        remove(temp_source);
+        cleanup_files(temp_header, temp_source, temp_exe);
         return;
     }
     if (stdin_input)
         fwrite(stdin_input, 1, strlen(stdin_input), stdinf);
     fclose(stdinf);
 
-    // Compile with clang
-    char compile_cmd[512];
-    snprintf(compile_cmd, sizeof(compile_cmd), "clang -o %s %s 2>nul", temp_exe, temp_source);
-    int compile_status = system(compile_cmd);
-    if (compile_status != 0)
+    if (compile_with_clang(testName, temp_exe, temp_source, temp_header, result.output.targetCCode) != 0)
     {
-        fprintf(stderr, "Test %s failed: clang compilation failed\n", testName);
-        fprintf(stderr, "Generated C code:\n%s\n", result.output.targetCCode);
-        remove(temp_header);
-        remove(temp_source);
         remove(temp_stdin);
         return;
     }
 
-    // Execute binary with stdin redirected and capture exit code
     char exec_cmd[512];
     snprintf(exec_cmd, sizeof(exec_cmd), "%s < %s", temp_exe, temp_stdin);
     int32_t actualExitCode = system(exec_cmd);
 
-    // Clean up temp files
-    remove(temp_header);
-    remove(temp_source);
-    remove(temp_exe);
-    remove(temp_stdin);
-
-    if (actualExitCode != expectedExitCode)
-    {
-        fprintf(stderr, "Test %s failed: expected exit code %d, got %d\n", testName, expectedExitCode, actualExitCode);
-        fprintf(stderr, "Generated C code:\n%s\n", result.output.targetCCode);
-    }
-    else
-    {
-        passingTests++;
-    }
+    cleanup_files_with_stdin(temp_header, temp_source, temp_exe, temp_stdin);
+    check_exit_code(testName, expectedExitCode, actualExitCode, result.output.targetCCode);
 }
 
 void assertInvalid(char *testName, char *source)
