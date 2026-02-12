@@ -84,3 +84,4 @@ int32_t main()
     if (source_file)
         fclose(source_file);
     return 1;
+}

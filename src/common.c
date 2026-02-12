@@ -21,6 +21,17 @@ FILE *safe_fopen(const char *path, const char *mode)
 #endif
 }
 
+// Safe string copy that avoids deprecated strncpy warnings
+static void safe_string_copy(char *dest, const char *src, int buf_size)
+{
+    int i;
+    for (i = 0; i < buf_size - 1 && src[i] != '\0'; i++)
+    {
+        dest[i] = src[i];
+    }
+    dest[i] = '\0';
+}
+
 #define ARGC_ARGS ", char *argv[]) { return "
 #define I32_HEADER "#include <stdio.h>\n#include "
 #define I32_MAIN "int main() { int32_t "
@@ -55,8 +66,7 @@ static int parse_let_statement(const char *source, char *var_name, char *express
     pos += 22;
 
     // The rest is the expression
-    strncpy(expression, pos, buf_size - 1);
-    expression[buf_size - 1] = '\0';
+    safe_string_copy(expression, pos, buf_size);
 
     return 1;
 }
@@ -113,8 +123,7 @@ static int parse_let_mut_statement(const char *source, char *var_name, char *exp
     pos += 16;
 
     // The rest is the expression
-    strncpy(expression, pos, buf_size - 1);
-    expression[buf_size - 1] = '\0';
+    safe_string_copy(expression, pos, buf_size);
 
     return 1;
 }
