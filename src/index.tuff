@@ -45,7 +45,19 @@ contract Equatable<T> {
 
 fn Map<K : Equatable<K>, V>() => {
     // A slice of tuples, tuple (K, V)
-    let mut slice : *[(K, V)] = createSlice<(K, V)>();
+    let slice : *mut [(K, V)] = createSlice<(K, V)>();
+
+    fn hasKey(key : V) => {
+        for (i in 0..slice.init) {
+
+        }
+    }
+
+    fn put(key : K, value : V) => {
+
+    }
 }
 
-createSlice<I32>().addSlice(100).getSlice(0)
+let counter = 0;
+counter += 1;
+counter

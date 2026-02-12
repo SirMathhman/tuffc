@@ -432,7 +432,7 @@ testSuccess(
 
 testFailure(
   "let counter = 0;\ncounter += 1;\ncounter",
-  'interpret immutable variable += operation => Err',
+  "interpret immutable variable += operation => Err",
   "let counter = 0;\ncounter += 1;\ncounter",
   "not defined",
 );

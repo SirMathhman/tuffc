@@ -2452,8 +2452,20 @@ function interpretWithVars(
   return interpretNumericLiteral(input, variables);
 }
 
+function truncateErrorSource(error: InterpretError): InterpretError {
+  if (error.source.length > 200) {
+    // Truncate to stay under 200 characters total (including "...")
+    const maxLength = 197; // Leave room for "..."
+    return {
+      ...error,
+      source: error.source.slice(0, maxLength) + "...",
+    };
+  }
+  return error;
+}
+
 export function interpret(input: string): Result<TuffValue, InterpretError> {
-  return interpretWithVars(
+  const result = interpretWithVars(
     input,
     new Map(),
     new Map(),
@@ -2461,6 +2473,13 @@ export function interpret(input: string): Result<TuffValue, InterpretError> {
     new Map(),
     new Map(),
   );
+
+  // Ensure error sources don't exceed 200 characters
+  if (result.isFailure()) {
+    return err(truncateErrorSource(result.error));
+  }
+
+  return result;
 }
 
 // Read and interpret the .tuff file
@@ -2471,8 +2490,15 @@ const result = interpret(tuffContent.trim());
 if (result.isSuccess()) {
   console.log(`Result: ${result.value}`);
 } else {
-  console.error(`Source: ${result.error.source}`);
-  console.error(`Error: ${result.error.description}`);
-  console.error(`Reason: ${result.error.reason}`);
-  console.error(`Fix: ${result.error.fix}`);
+  const rawSource = result.error.source;
+  if (rawSource.length > 200) {
+    console.error(`Error '${result.error.description}' provided too much source code, 
+      length ${rawSource.length} characters. 
+      To keep error messages informative, this must be corrected to be a smaller code snippet, ideally less than 200 characters.`);
+  } else {
+    console.error(`Source: ${rawSource}`);
+    console.error(`Error: ${result.error.description}`);
+    console.error(`Reason: ${result.error.reason}`);
+    console.error(`Fix: ${result.error.fix}`);
+  }
 }
