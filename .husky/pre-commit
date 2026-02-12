@@ -2,5 +2,5 @@
 . "$(dirname -- "$0")/_/husky.sh"
 
 bun test
-pmd cpd --minimum-tokens 35 --files src/,tests/
+pmd cpd --minimum-tokens 35 --language typescript src/ tests/
 bun lint
