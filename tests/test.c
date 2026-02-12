@@ -110,9 +110,15 @@ void testEmptyProgram()
     assertValid("An empty program", "", 0, 0, NULL);
 }
 
+void testArgsLength()
+{
+    assertValid("Get args length", "__args__.length", 1, 0, NULL);
+}
+
 int32_t main()
 {
     testEmptyProgram();
+    testArgsLength();
 
     fprintf(stderr, "Passed %d/%d tests\n", passingTests, totalTests);
 
