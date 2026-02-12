@@ -7,12 +7,16 @@
   "scripts": {
     "build": "bun run tsc",
     "dev": "bun run tsc --watch",
-    "start": "bun run dist/index.js"
+    "start": "bun run dist/index.js",
+    "lint": "eslint src/ tests/"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "typescript": "^5.3.3"
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.0.0",
+    "typescript": "^5.3.3",
+    "typescript-eslint": "^8.55.0"
   }
 }
