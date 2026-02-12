@@ -48,6 +48,10 @@ export default [
           message:
             "RegExp constructor is not allowed. Use string methods instead.",
         },
+        {
+          selector: "Literal[value=null]",
+          message: "Do not use null. Use undefined instead.",
+        },
       ],
     },
   },

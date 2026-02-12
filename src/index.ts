@@ -2,13 +2,13 @@ import { Result, ok, err, type DescriptiveError } from "./result";
 
 export type InterpretError = DescriptiveError;
 
-function extractNumericPart(input: string): string | null {
+function extractNumericPart(input: string): string | undefined {
   let i = 0;
   if (input[i] === "-") {
     i++;
   }
   if (i >= input.length || !isDigit(input[i])) {
-    return null;
+    return undefined;
   }
   while (i < input.length && isDigit(input[i])) {
     i++;
@@ -36,9 +36,11 @@ function isUnsignedTypeSuffix(suffix: string): boolean {
   return true;
 }
 
-function getUnsignedTypeRange(suffix: string): { min: number; max: number } | null {
+function getUnsignedTypeRange(
+  suffix: string,
+): { min: number; max: number } | undefined {
   if (!isUnsignedTypeSuffix(suffix)) {
-    return null;
+    return undefined;
   }
   const bitSize = parseInt(suffix.slice(1), 10);
   return {
@@ -54,7 +56,7 @@ export function interpret(input: string): Result<number, InterpretError> {
 
   // Extract numeric part and type suffix
   const numericPart = extractNumericPart(input);
-  if (numericPart === null) {
+  if (numericPart === undefined) {
     return err({
       source: input,
       description: "Failed to parse input as a number",
@@ -79,7 +81,7 @@ export function interpret(input: string): Result<number, InterpretError> {
   // Check if value is within the range of the type suffix
   if (typeSuffix.length > 0) {
     const range = getUnsignedTypeRange(typeSuffix);
-    if (range !== null && (parsed < range.min || parsed > range.max)) {
+    if (range !== undefined && (parsed < range.min || parsed > range.max)) {
       return err({
         source: input,
         description: `Value out of range for type ${typeSuffix}`,
