@@ -103,7 +103,7 @@ static void check_exit_code(const char *testName, int32_t expectedExitCode, int3
 }
 
 // Consolidated assertion function that handles both stdin and args
-void assertValidWithStdInAndArgs(char *testName, char *source, int32_t expectedExitCode, char *stdin_input, int32_t argc, char **argv)
+void assertValid(char *testName, char *source, int32_t expectedExitCode, char *stdin_input, int32_t argc, char **argv)
 {
     CompileResult result;
     if (assert_setup(testName, source, &result) != 0)
@@ -167,66 +167,66 @@ void assertInvalid(char *testName, char *source)
 
 void testEmptyProgram()
 {
-    assertValidWithStdInAndArgs("An empty program", "", 0, NULL, 0, NULL);
+    assertValid("An empty program", "", 0, NULL, 0, NULL);
 }
 
 void testArgsLength()
 {
-    assertValidWithStdInAndArgs("Get args length", "__args__.length", 1, NULL, 0, NULL);
+    assertValid("Get args length", "__args__.length", 1, NULL, 0, NULL);
 }
 
 void testArgsLengthWithArg()
 {
     char *argv[] = {"foo"};
-    assertValidWithStdInAndArgs("Get args length with one argument", "__args__.length", 2, NULL, 1, argv);
+    assertValid("Get args length with one argument", "__args__.length", 2, NULL, 1, argv);
 }
 
 void testArgsLengthAddition()
 {
     char *argv[] = {"foo"};
-    assertValidWithStdInAndArgs("Add args length to itself", "__args__.length + __args__.length", 4, NULL, 1, argv);
+    assertValid("Add args length to itself", "__args__.length + __args__.length", 4, NULL, 1, argv);
 }
 
 void testArgsSecondArgLength()
 {
     char *argv[] = {"foo"};
-    assertValidWithStdInAndArgs("Get length of second argument", "__args__[1].length;", 3, NULL, 1, argv);
+    assertValid("Get length of second argument", "__args__[1].length;", 3, NULL, 1, argv);
 }
 
 void testReadI32()
 {
-    assertValidWithStdInAndArgs("Read I32 from stdin", "read<I32>()", 100, "100", 0, NULL);
+    assertValid("Read I32 from stdin", "read<I32>()", 100, "100", 0, NULL);
 }
 
 void testReadI32Addition()
 {
-    assertValidWithStdInAndArgs("Read and add two I32 values", "read<I32>() + read<I32>()", 100, "25 75", 0, NULL);
+    assertValid("Read and add two I32 values", "read<I32>() + read<I32>()", 100, "25 75", 0, NULL);
 }
 
 void testVariableAndDoubling()
 {
-    assertValidWithStdInAndArgs("Variable assignment and doubling", "let x : I32 = read<I32>(); x + x", 50, "25 75", 0, NULL);
+    assertValid("Variable assignment and doubling", "let x : I32 = read<I32>(); x + x", 50, "25 75", 0, NULL);
 }
 
 void testMutableVariableAssignment()
 {
-    assertValidWithStdInAndArgs("Mutable variable assignment", "let mut x = 0; x = read<I32>(); x", 42, "42", 0, NULL);
+    assertValid("Mutable variable assignment", "let mut x = 0; x = read<I32>(); x", 42, "42", 0, NULL);
 }
 
 void testMutableVariableDoubleRead()
 {
-    assertValidWithStdInAndArgs("Mutable variable with double read", "let mut x = read<I32>(); x = read<I32>(); x", 99, "55 99", 0, NULL);
+    assertValid("Mutable variable with double read", "let mut x = read<I32>(); x = read<I32>(); x", 99, "55 99", 0, NULL);
 }
 
 void testSimpleVariableReturn()
 {
-    assertValidWithStdInAndArgs("Simple variable return", "let x : I32 = read<I32>(); x", 75, "75", 0, NULL);
+    assertValid("Simple variable return", "let x : I32 = read<I32>(); x", 75, "75", 0, NULL);
 }
 
 void testReadU8PlusArgsLength()
 {
     char *argv[] = {"arg1"};
-    assertValidWithStdInAndArgs("Read U8 and add args length", "read<U8>() + __args__.length", 7, "5", 1, argv);
+    assertValid("Read U8 and add args length", "read<U8>() + __args__.length", 7, "5", 1, argv);
 }
 
 int32_t main()
