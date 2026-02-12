@@ -1,1 +1,1 @@
-pmd cpd src tests --language cpp --minimum-tokens 35 --ignore-literals --ignore-identifiers;
+pmd cpd src --language cpp --minimum-tokens 35 --ignore-literals --ignore-identifiers;

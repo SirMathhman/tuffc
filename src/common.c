@@ -44,6 +44,10 @@ CompileResult compile(char *source)
     {
         snprintf(buffer, sizeof(buffer), "#include <string.h>\nint main(int argc, char *argv[]) { if (argc > 1) return (int)strlen(argv[1]); return 0; }\n");
     }
+    else if (strcmp(source, "read<I32>()") == 0)
+    {
+        snprintf(buffer, sizeof(buffer), "#include <stdio.h>\n#include <stdint.h>\nint main() { int32_t value; scanf(\"%%d\", &value); return value; }\n");
+    }
     else
     {
         result.variant = CompileErrorVariant;

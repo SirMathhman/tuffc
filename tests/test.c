@@ -214,6 +214,11 @@ void testArgsSecondArgLength()
     assertValidWithArgs("Get length of second argument", "__args__[1].length;", 3, 1, argv);
 }
 
+void testReadI32()
+{
+    assertValidWithStdIn("Read I32 from stdin", "read<I32>()", 100, "100");
+}
+
 int32_t main()
 {
     testEmptyProgram();
@@ -221,6 +226,7 @@ int32_t main()
     testArgsLengthWithArg();
     testArgsLengthAddition();
     testArgsSecondArgLength();
+    testReadI32();
 
     fprintf(stderr, "Passed %d/%d tests\n", passingTests, totalTests);
 
