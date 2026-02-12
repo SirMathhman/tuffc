@@ -627,9 +627,49 @@ function resolveTypeAlias(
   typeStr: string,
   typeAliases: Map<string, string>,
 ): string {
-  if (typeAliases.has(typeStr)) {
-    return typeAliases.get(typeStr)!;
+  // Extract base name and parameters from the input type
+  const baseNameInput = extractBaseName(typeStr);
+  const paramsInput = extractGenericParameters(typeStr);
+
+  // Check if the base name is in the alias map
+  if (typeAliases.has(baseNameInput)) {
+    let aliasValue = typeAliases.get(baseNameInput)!;
+
+    // If the input had generic parameters, substitute them into the alias value
+    if (paramsInput.size > 0) {
+      const paramsAlias = extractGenericParameters(aliasValue);
+      const paramsArray = Array.from(paramsInput);
+      const paramsAliasArray = Array.from(paramsAlias);
+
+      // Create a substitution map: T -> I32, X -> I32, etc.
+      const substitutions = new Map<string, string>();
+      for (
+        let i = 0;
+        i < paramsAliasArray.length && i < paramsArray.length;
+        i++
+      ) {
+        substitutions.set(paramsAliasArray[i], paramsArray[i]);
+      }
+
+      // Substitute all occurrences in the alias value
+      for (const [from, to] of substitutions) {
+        // Replace all occurrences of the type variable
+        let newValue = "";
+        let pos = 0;
+        let index = aliasValue.indexOf(from, pos);
+        while (index !== -1) {
+          newValue += aliasValue.slice(pos, index) + to;
+          pos = index + from.length;
+          index = aliasValue.indexOf(from, pos);
+        }
+        newValue += aliasValue.slice(pos);
+        aliasValue = newValue;
+      }
+    }
+
+    return aliasValue;
   }
+
   return typeStr;
 }
 
@@ -641,25 +681,25 @@ function isValidFieldType(
   functions?: Map<string, FunctionDefinition>,
 ): boolean {
   const trimmed = typeStr.trim();
-  
+
   // Extract base name if the type has generic parameters (e.g., Result<T, X> => Result)
   let baseName = trimmed;
   let angleIndex = trimmed.indexOf("<");
   if (angleIndex !== -1) {
     baseName = trimmed.slice(0, angleIndex).trim();
   }
-  
+
   const resolved = typeAliases
     ? resolveTypeAlias(baseName, typeAliases)
     : baseName;
-  
+
   // Also extract base name from the resolved result (e.g., Ok<T, X> => Ok)
   let resolvedBaseName = resolved;
   angleIndex = resolved.indexOf("<");
   if (angleIndex !== -1) {
     resolvedBaseName = resolved.slice(0, angleIndex).trim();
   }
-  
+
   // Valid types: I32, U8, U16, U32, U64, I8, I16, I64, *Str
   const validTypes = [
     "I32",
@@ -967,6 +1007,17 @@ function determineAssignedValueType(
     return valueSuffix.length > 0 ? valueSuffix : "I32";
   }
 
+  // Check if it's a function call: extract the function name (with generics) as the type
+  const openParenIndex = valueStr.indexOf("(");
+  if (openParenIndex !== -1 && valueStr.endsWith(")")) {
+    const funcNameWithGenerics = valueStr.slice(0, openParenIndex).trim();
+    const funcBaseName = extractBaseName(funcNameWithGenerics);
+    if (isValidVariableName(funcBaseName)) {
+      // Return the full name with generics (e.g., "Ok<I32, I32>" instead of just "Ok")
+      return funcNameWithGenerics;
+    }
+  }
+
   return undefined;
 }
 function interpretNumericLiteral(
@@ -1061,7 +1112,7 @@ function interpretEarlyReturns(
 
   const isKeywordIndex = input.indexOf(" is ");
   if (isKeywordIndex !== -1) {
-    return evaluateIsTypeCheck(input);
+    return evaluateIsTypeCheck(input, variableTypes);
   }
 
   return undefined;
@@ -1833,7 +1884,10 @@ function handleMultilineInput(
   return ok(0);
 }
 
-function evaluateIsTypeCheck(input: string): Result<TuffValue, InterpretError> {
+function evaluateIsTypeCheck(
+  input: string,
+  variableTypes: Map<string, string> = new Map(),
+): Result<TuffValue, InterpretError> {
   const isKeywordIndex = input.indexOf(" is ");
   const valueWithSuffix = input.slice(0, isKeywordIndex);
   const targetTypeSuffix = input.slice(isKeywordIndex + 4);
@@ -1857,21 +1911,30 @@ function evaluateIsTypeCheck(input: string): Result<TuffValue, InterpretError> {
     }
     effectiveTypeSuffix = typeResult.value;
   } else {
-    const numericPart = extractNumericPart(evaluateExpr);
-    if (numericPart === undefined) {
-      return err({
-        source: input,
-        description: "Failed to parse input as a number",
-        reason: "The input string cannot be converted to a valid integer",
-        fix: "Provide a valid numeric string (e.g., '42', '100', '-5')",
-      });
+    // Check if evaluateExpr is a variable name
+    if (variableTypes.has(evaluateExpr)) {
+      effectiveTypeSuffix = variableTypes.get(evaluateExpr) || "I32";
+    } else {
+      const numericPart = extractNumericPart(evaluateExpr);
+      if (numericPart === undefined) {
+        return err({
+          source: input,
+          description: "Failed to parse input as a number",
+          reason: "The input string cannot be converted to a valid integer",
+          fix: "Provide a valid numeric string (e.g., '42', '100', '-5')",
+        });
+      }
+      const originalTypeSuffix = evaluateExpr.slice(numericPart.length);
+      effectiveTypeSuffix =
+        originalTypeSuffix.length > 0 ? originalTypeSuffix : "I32";
     }
-    const originalTypeSuffix = evaluateExpr.slice(numericPart.length);
-    effectiveTypeSuffix =
-      originalTypeSuffix.length > 0 ? originalTypeSuffix : "I32";
   }
 
-  const typeMatches = effectiveTypeSuffix === targetTypeSuffix;
+  // Extract base names (without generics) from both types for comparison
+  const effectiveBaseName = extractBaseName(effectiveTypeSuffix);
+  const targetBaseName = extractBaseName(targetTypeSuffix);
+
+  const typeMatches = effectiveBaseName === targetBaseName;
   return ok(typeMatches ? 1 : 0);
 }
 

@@ -227,6 +227,42 @@ testSuccess(
   "interpret generic function with parametrized type alias in variable declaration => 0",
 );
 
+testSuccess(
+  "fn Ok<T>(value : T) => {\n    this\n}\nlet result = Ok<I32>(100);\nresult is Ok",
+  1,
+  "interpret type check on variable with is operator (no parameters) => 1",
+);
+
+testSuccess(
+  "fn Ok<T, X>(value : T) => {\n    this\n}\nlet result = Ok<I32, I32>(100);\nresult is Ok<I32, I32>",
+  1,
+  "interpret parametrized type check with is operator => 1",
+);
+
+testSuccess(
+  "fn Ok<T, X>(value : T) => {\n    this\n}\nlet result = Ok<I32, I32>(100);\nresult is Ok",
+  1,
+  "interpret parametrized function call check with base name => 1",
+);
+
+testSuccess(
+  "fn Ok() => this;\nlet result = Ok();\nresult is Ok",
+  1,
+  "interpret simple function call check with is operator => 1",
+);
+
+testSuccess(
+  "fn Ok<T, X>(value : T) => {\n    this\n}\n\ntype Result<T, X> = Ok<T, X>;\nlet result : Result<I32, I32> = Ok<I32, I32>(100);\nresult is Ok<I32, I32>",
+  1,
+  "interpret parametrized type check with concrete type annotation => 1",
+);
+
+testSuccess(
+  "fn Ok<T, X>(value : T) => {\n    this\n}\n\ntype Result<T, X> = Ok<T, X>;\nlet result : Result<T, X> = Ok<I32, I32>(100);\nresult is Ok<I32, I32>",
+  1,
+  "interpret parametrized type check with generic type annotation => 1",
+);
+
 testFailure(
   "fn empty() => {}\nfn empty() => {}",
   "interpret duplicate function definitions => Err",

@@ -11,3 +11,4 @@ fn Ok<T, X>(value : T) => {
 
 type Result<T, X> = Ok<T, X>;
 let result : Result<T, X> = Ok<I32, I32>(100);
+result is Ok<I32, I32>
