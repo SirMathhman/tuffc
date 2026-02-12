@@ -1,17 +1,10 @@
 import { expect, test } from "bun:test";
 import { interpret } from "./index";
 
-const INDEX_TUFF_INPUT = `struct DescriptiveError {
-    source : *Str;
-    description : *Str;
-    reason : *Str;
-    fix : *Str;
-}
+const INDEX_TUFF_INPUT = `fn Wrapper(field : I32) : Wrapper => {
+  fn get() => field;
 
-fn Wrapper(field : I32) : Wrapper => {
-    fn get() => field;
-
-    this
+  this
 }
 
 let temp : Wrapper = Wrapper(100);
@@ -213,7 +206,7 @@ testFailure(
 testSuccess(
   INDEX_TUFF_INPUT,
   100,
-  "interpret actual index.tuff content => 100",
+  "interpret minimal index.tuff scenario => 100",
 );
 
 testFailure(
