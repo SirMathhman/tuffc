@@ -40,3 +40,6 @@ testFailure(
   "not a number",
   "cannot be converted",
 );
+
+testSuccess("256U8 is U8", 1, 'interpret("256U8 is U8") => 1');
+testSuccess("256U8 is U16", 0, 'interpret("256U8 is U16") => 0');

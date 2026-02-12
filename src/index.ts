@@ -49,13 +49,10 @@ function getUnsignedTypeRange(
   };
 }
 
-export function interpret(input: string): Result<number, InterpretError> {
-  if (input === "") {
-    return ok(0);
-  }
-
-  // Extract numeric part and type suffix
-  const numericPart = extractNumericPart(input);
+function parseNumericPartOrError(
+  input: string,
+  numericPart: string | undefined,
+): Result<number, InterpretError> {
   if (numericPart === undefined) {
     return err({
       source: input,
@@ -64,11 +61,52 @@ export function interpret(input: string): Result<number, InterpretError> {
       fix: "Provide a valid numeric string (e.g., '42', '100', '-5')",
     });
   }
+  return ok(parseInt(numericPart, 10));
+}
 
-  const parsed = parseInt(numericPart, 10);
+export function interpret(input: string): Result<number, InterpretError> {
+  if (input === "") {
+    return ok(0);
+  }
+
+  // Check for type compatibility check syntax: "<value><suffix> is <target_suffix>"
+  const isKeywordIndex = input.indexOf(" is ");
+  if (isKeywordIndex !== -1) {
+    const valueWithSuffix = input.slice(0, isKeywordIndex);
+    const targetTypeSuffix = input.slice(isKeywordIndex + 4);
+
+    // Parse the value with its suffix
+    const numericPart = extractNumericPart(valueWithSuffix);
+    const parseResult = parseNumericPartOrError(input, numericPart);
+    if (parseResult.isFailure()) {
+      return parseResult;
+    }
+    const parsed = parseResult.value;
+
+    // Check if value fits in the target type
+    const targetRange = getUnsignedTypeRange(targetTypeSuffix);
+    if (
+      targetRange !== undefined &&
+      (parsed < targetRange.min || parsed > targetRange.max)
+    ) {
+      // Value is out of range for target type, return 1
+      return ok(1);
+    }
+
+    // Value fits in target type, return 0
+    return ok(0);
+  }
+
+  // Extract numeric part and type suffix
+  const numericPart = extractNumericPart(input);
+  const parseResult = parseNumericPartOrError(input, numericPart);
+  if (parseResult.isFailure()) {
+    return parseResult;
+  }
+  const parsed = parseResult.value;
 
   // Check for unsigned type suffix with negative value
-  const typeSuffix = input.slice(numericPart.length);
+  const typeSuffix = input.slice(numericPart!.length);
   if (parsed < 0 && isUnsignedTypeSuffix(typeSuffix)) {
     return err({
       source: input,
