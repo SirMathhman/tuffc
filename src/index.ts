@@ -144,8 +144,8 @@ function handleBinaryAddition(source: string): string | undefined {
   const left = parts[0];
   const right = parts[1];
 
-  // Case 1: __args__[0].length + numeric literal
-  if (left === "__args__[0].length") {
+  // Case 1: __args__[1].length + numeric literal
+  if (left === "__args__[1].length") {
     const parsed = parseNumericLiteral(right);
     if (!parsed) {
       return undefined;
@@ -162,8 +162,8 @@ function handleBinaryAddition(source: string): string | undefined {
     );
   }
 
-  // Case 2: numeric literal + __args__[0].length
-  if (right === "__args__[0].length") {
+  // Case 2: numeric literal + __args__[1].length
+  if (right === "__args__[1].length") {
     const parsed = parseNumericLiteral(left);
     if (!parsed) {
       return undefined;
@@ -228,8 +228,8 @@ function handleLetBinding(source: string): string | undefined {
     return undefined;
   }
 
-  // For now, we only support __args__[0].length as the RHS
-  if (value !== "__args__[0].length") {
+  // For now, we only support __args__[1].length as the RHS
+  if (value !== "__args__[1].length") {
     return undefined;
   }
 
@@ -287,8 +287,8 @@ export function compileTuffToC(source: string): string {
     return "#include <stdlib.h>\nint main(int argc, char* argv[]) { if (argc < 2) return 1; return atoi(argv[1]); }";
   }
 
-  // Check for __args__[0].length syntax
-  if (source === "__args__[0].length") {
+  // Check for __args__[1].length syntax
+  if (source === "__args__[1].length") {
     return "#include <stdlib.h>\n#include <string.h>\nint main(int argc, char* argv[]) { if (argc < 2) return 0; return strlen(argv[1]); }";
   }
 

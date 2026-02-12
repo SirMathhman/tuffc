@@ -115,15 +115,15 @@ describe("The compiler", () => {
   });
 
   it("accesses argument length", () => {
-    expectValid("__args__[0].length", ["100"], 3);
+    expectValid("__args__[1].length", ["100"], 3);
   });
 
   it("adds number to argument length", () => {
-    expectValid("__args__[0].length + 3U8", ["100"], 6);
+    expectValid("__args__[1].length + 3U8", ["100"], 6);
   });
 
   it("adds argument length to number", () => {
-    expectValid("3U8 + __args__[0].length", ["100"], 6);
+    expectValid("3U8 + __args__[1].length", ["100"], 6);
   });
 
   it("compiles USize type", () => {
@@ -131,6 +131,6 @@ describe("The compiler", () => {
   });
 
   it("compiles variable binding with type annotation", () => {
-    expectValid("let x : USize = __args__[0].length; x", ["100"], 3);
+    expectValid("let x : USize = __args__[1].length; x", ["100"], 3);
   });
 });
