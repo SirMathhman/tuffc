@@ -2,6 +2,27 @@ import { Result, ok, err, type DescriptiveError } from "./result";
 
 export type InterpretError = DescriptiveError;
 
+type InterpreterContext = {
+  variables?: Map<string, number>;
+  variableTypes?: Map<string, string>;
+  typeAliases?: Map<string, string>;
+  functions?: Map<
+    string,
+    { body: string; returnType: string; params: string[] }
+  >;
+  stringVariables?: Map<string, string>;
+};
+
+function createDefaultContext(): InterpreterContext {
+  return {
+    variables: new Map(),
+    variableTypes: new Map(),
+    typeAliases: new Map(),
+    functions: new Map(),
+    stringVariables: new Map(),
+  };
+}
+
 function extractNumericPart(input: string): string | undefined {
   let i = 0;
   if (input[i] === "-") {
@@ -613,34 +634,55 @@ function handleAddition(
   input: string,
   leftStr: string,
   rightStr: string,
-  variables: Map<string, number> = new Map(),
+  ctx: InterpreterContext = createDefaultContext(),
 ): Result<number, InterpretError> {
-  const leftResult = parseTypedValue(leftStr);
+  const variables = ctx.variables || new Map();
+  const variableTypes = ctx.variableTypes || new Map();
+  const typeAliases = ctx.typeAliases || new Map();
+  const functions = ctx.functions || new Map();
+  const stringVariables = ctx.stringVariables || new Map();
+  // Recursively interpret the left side (can be variable or expression)
+  const leftResult = interpretWithVars(
+    leftStr,
+    variables,
+    variableTypes,
+    typeAliases,
+    functions,
+    stringVariables,
+  );
   if (leftResult.isFailure()) {
     return leftResult;
   }
-  const leftValue = leftResult.value.value;
-  const leftSuffix = leftResult.value.suffix;
+  const leftValue = leftResult.value;
 
   // Recursively interpret the right side (handles chained additions)
   const rightResult = interpretWithVars(
     rightStr,
     variables,
-    new Map(),
-    new Map(),
-    new Map(),
-    new Map(),
+    variableTypes,
+    typeAliases,
+    functions,
+    stringVariables,
   );
   if (rightResult.isFailure()) {
     return rightResult;
   }
   const rightValue = rightResult.value;
 
-  // For chained additions, determine the right side's type.
-  // If right side is a simple value, extract the suffix.
-  // If it's a chained addition (has " + "), determine the result type recursively.
-  const rightHasAddition = rightStr.indexOf(" + ") !== -1;
+  // Determine the left side's type - check if it's a literal with suffix or a variable
+  let leftSuffix: string;
+  const leftNumPart = extractNumericPart(leftStr);
+  if (leftNumPart !== undefined) {
+    leftSuffix = leftStr.slice(leftNumPart.length);
+  } else if (variables.has(leftStr)) {
+    // Left side is a variable - use its type
+    leftSuffix = variableTypes.get(leftStr) || "I32";
+  } else {
+    leftSuffix = "I32";
+  }
+
   let rightSuffix = "";
+  const rightHasAddition = rightStr.indexOf(" + ") !== -1;
   if (!rightHasAddition) {
     const rightNumPart = extractNumericPart(rightStr);
     rightSuffix =
@@ -726,6 +768,84 @@ function determineAssignedValueType(
   if (numericPart !== undefined) {
     const valueSuffix = valueStr.slice(numericPart.length);
     return valueSuffix.length > 0 ? valueSuffix : "I32";
+  }
+
+  return undefined;
+}
+function interpretNumericLiteral(
+  input: string,
+): Result<number, InterpretError> {
+  // Extract numeric part and type suffix
+  const numericPart = extractNumericPart(input);
+  const parseResult = parseNumericPartOrError(input, numericPart);
+  if (parseResult.isFailure()) {
+    return parseResult;
+  }
+  const parsed = parseResult.value;
+
+  // Check for unsigned type suffix with negative value
+  const typeSuffix = input.slice(numericPart!.length);
+  const validationResult = validateTypeSuffix(input, parsed, typeSuffix);
+  if (validationResult.isFailure()) {
+    return validationResult;
+  }
+
+  return ok(parsed);
+}
+
+function interpretEarlyReturns(
+  input: string,
+  variables: Map<string, number>,
+  variableTypes: Map<string, string>,
+  typeAliases: Map<string, string>,
+  functions: Map<string, { body: string; returnType: string; params: string[] }>,
+  stringVariables: Map<string, string>,
+  extractedAliases: Map<string, string>,
+): Result<number, InterpretError> | undefined {
+  const functionCallResult = tryFunctionCall(
+    input,
+    functions,
+    variables,
+    variableTypes,
+    extractedAliases,
+  );
+  if (functionCallResult !== undefined) {
+    return functionCallResult;
+  }
+
+  if (variables.has(input)) {
+    return ok(variables.get(input)!);
+  }
+
+  const propertyAccess = interpretPropertyAccess(
+    input,
+    variableTypes,
+    stringVariables,
+    variables,
+  );
+  if (propertyAccess !== undefined) {
+    return propertyAccess;
+  }
+
+  const stringProp = tryStringLiteralProperty(input);
+  if (stringProp !== undefined) {
+    return stringProp;
+  }
+
+  if (input[0] === "(" && input[input.length - 1] === ")") {
+    return interpretWithVars(
+      input.slice(1, -1),
+      variables,
+      variableTypes,
+      extractedAliases,
+      functions,
+      stringVariables,
+    );
+  }
+
+  const isKeywordIndex = input.indexOf(" is ");
+  if (isKeywordIndex !== -1) {
+    return evaluateIsTypeCheck(input);
   }
 
   return undefined;
@@ -1177,7 +1297,9 @@ function validateTypeSuffix(
   return ok(undefined);
 }
 
-function tryStringLiteralProperty(input: string): Result<number, InterpretError> | undefined {
+function tryStringLiteralProperty(
+  input: string,
+): Result<number, InterpretError> | undefined {
   if (input.startsWith('"') && input.includes('".')) {
     const dotIndex = input.indexOf('".');
     if (dotIndex !== -1) {
@@ -1430,50 +1552,17 @@ function interpretWithVars(
     return ok(0);
   }
 
-  const functionCallResult = tryFunctionCall(
+  const earlyResult = interpretEarlyReturns(
     input,
-    functions,
     variables,
     variableTypes,
+    typeAliases,
+    functions,
+    stringVariables,
     extractedAliases,
   );
-  if (functionCallResult !== undefined) {
-    return functionCallResult;
-  }
-
-  if (variables.has(input)) {
-    return ok(variables.get(input)!);
-  }
-
-  const propertyAccess = interpretPropertyAccess(
-    input,
-    variableTypes,
-    stringVariables,
-    variables,
-  );
-  if (propertyAccess !== undefined) {
-    return propertyAccess;
-  }
-
-  const stringProp = tryStringLiteralProperty(input);
-  if (stringProp !== undefined) {
-    return stringProp;
-  }
-
-  if (input[0] === "(" && input[input.length - 1] === ")") {
-    return interpretWithVars(
-      input.slice(1, -1),
-      variables,
-      variableTypes,
-      extractedAliases,
-      functions,
-      stringVariables,
-    );
-  }
-
-  const isKeywordIndex = input.indexOf(" is ");
-  if (isKeywordIndex !== -1) {
-    return evaluateIsTypeCheck(input);
+  if (earlyResult !== undefined) {
+    return earlyResult;
   }
 
   // Check for addition operator
@@ -1481,25 +1570,16 @@ function interpretWithVars(
   if (plusIndex !== -1) {
     const leftStr = input.slice(0, plusIndex);
     const rightStr = input.slice(plusIndex + 3);
-    return handleAddition(input, leftStr, rightStr, variables);
+    return handleAddition(input, leftStr, rightStr, {
+      variables,
+      variableTypes,
+      typeAliases: extractedAliases,
+      functions,
+      stringVariables,
+    });
   }
 
-  // Extract numeric part and type suffix
-  const numericPart = extractNumericPart(input);
-  const parseResult = parseNumericPartOrError(input, numericPart);
-  if (parseResult.isFailure()) {
-    return parseResult;
-  }
-  const parsed = parseResult.value;
-
-  // Check for unsigned type suffix with negative value
-  const typeSuffix = input.slice(numericPart!.length);
-  const validationResult = validateTypeSuffix(input, parsed, typeSuffix);
-  if (validationResult.isFailure()) {
-    return validationResult;
-  }
-
-  return ok(parsed);
+  return interpretNumericLiteral(input);
 }
 
 export function interpret(input: string): Result<number, InterpretError> {

@@ -5,5 +5,5 @@ struct DescriptiveError {
     fix : *Str;
 }
 
-fn pass(x : I32) => x;
-pass(100)
+fn pass(x : I32, y : I32) => x + y;
+pass(25, 75)

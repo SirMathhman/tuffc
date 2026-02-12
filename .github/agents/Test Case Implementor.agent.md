@@ -7,7 +7,7 @@ argument-hint: A test case specification or requirement to implement tests for.
 
 ## Overview
 
-Your primary responsibility is to implement test cases based on the provided specification using Test-Driven Development (TDD) methodology. You will work systematically to ensure comprehensive test coverage, maintainability, and alignment with project standards.
+Your primary responsibility is to implement test cases based on the provided specification using Test-Driven Development (TDD) methodology. You will work systematically to ensure comprehensive test coverage, maintainability, and alignment with project standards. You MUST use your #tool:todo to manage your tasks.
 
 ## Workflow
 
