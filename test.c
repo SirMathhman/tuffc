@@ -1,6 +1,8 @@
-#include "run.h"
+#include "common.h"
 #include <stddef.h>
-
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
 int32_t passingTests = 0;
 int32_t totalTests = 0;
 
@@ -10,11 +12,11 @@ void assertValid(char *testName, char *source, int32_t expectedExitCode, int32_t
     CompileResult result = compile(source);
     if (result.variant == CompileErrorVariant)
     {
-        printf("Test %s failed: compilation error\n", testName);
-        printf("Erroneous code:\n%s\n", result.error.erroneous_code);
-        printf("Error message:\n%s\n", result.error.error_message);
-        printf("Reasoning:\n%s\n", result.error.reasoning);
-        printf("Fix:\n%s\n", result.error.fix);
+        fprintf(stderr, "Test %s failed: compilation error\n", testName);
+        fprintf(stderr, "Erroneous code:\n%s\n", result.error.erroneous_code);
+        fprintf(stderr, "Error message:\n%s\n", result.error.error_message);
+        fprintf(stderr, "Reasoning:\n%s\n", result.error.reasoning);
+        fprintf(stderr, "Fix:\n%s\n", result.error.fix);
         return;
     }
 
@@ -29,11 +31,10 @@ void assertValid(char *testName, char *source, int32_t expectedExitCode, int32_t
     int32_t actualExitCode = -1;
     if (actualExitCode != expectedExitCode)
     {
-        printf("Test %s failed: expected exit code %d, got %d\n", testName, expectedExitCode, actualExitCode);
+        fprintf(stderr, "Test %s failed: expected exit code %d, got %d\n", testName, expectedExitCode, actualExitCode);
     }
     else
     {
-        printf("Test %s passed\n", testName);
         passingTests++;
     }
     totalTests++;
@@ -44,9 +45,9 @@ void assertError(char *testName, char *source)
     CompileResult result = compile(source);
     if (result.variant == OutputVariant)
     {
-        printf("Test %s failed: expected compilation error, got output\n", testName);
-        printf("Header C code:\n%s\n", result.output.headerCCode);
-        printf("Target C code:\n%s\n", result.output.targetCCode);
+        fprintf(stderr, "Test %s failed: expected compilation error, got output\n", testName);
+        fprintf(stderr, "Header C code:\n%s\n", result.output.headerCCode);
+        fprintf(stderr, "Target C code:\n%s\n", result.output.targetCCode);
         return;
     }
     else
@@ -65,16 +66,16 @@ int32_t main()
 {
     testEmptyProgram();
 
-    printf("Passed %d/%d tests\n", passingTests, totalTests);
+    fprintf(stderr, "Passed %d/%d tests\n", passingTests, totalTests);
 
     if (passingTests == totalTests)
     {
-        printf("All tests passed!\n");
+        fprintf(stderr, "All tests passed!\n");
         return 0;
     }
     else
     {
-        printf("Some tests failed.\n");
+        fprintf(stderr, "Some tests failed.\n");
         return 1;
     }
 }

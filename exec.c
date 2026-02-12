@@ -1,21 +1,8 @@
+#include "common.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <string.h>
-#include "main.h"
-#include "run.h"
-
-CompileResult compile(char *source)
-{
-    // TODO:
-
-    return (CompileResult){
-        .variant = OutputVariant,
-        .output = {
-            .headerCCode = "/* header C code */",
-            .targetCCode = "/* target C code */",
-        },
-    };
-}
 
 int32_t main()
 {

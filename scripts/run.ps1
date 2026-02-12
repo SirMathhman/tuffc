@@ -1,2 +1,2 @@
 ./build.ps1;
-./run.exe;
+./dist/tuffc.exe;

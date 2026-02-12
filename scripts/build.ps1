@@ -1,1 +1,1 @@
-clang main.c run.c -o run.exe
+clang main.c common.c exec.c -o ./dist/tuffc.exe
