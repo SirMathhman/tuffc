@@ -62,3 +62,4 @@ testSuccess(
   'interpret("(1U8 + 256U16) is U16") => 1',
 );
 testSuccess("1U8 + 2U8 + 3U8", 6, 'interpret("1U8 + 2U8 + 3U8") => 6');
+testSuccess("1U8 + 255 + 1U16", 257, 'interpret("1U8 + 255 + 1U16") => 257');

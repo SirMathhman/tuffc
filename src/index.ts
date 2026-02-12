@@ -82,9 +82,12 @@ function checkAndPromoteTypes(
       return ok(promoted);
     }
   }
-  if (rightType === "I32") {
-    // rightType is I32, which means it's a chained addition or untyped result
+  // Handle untyped (I32) values - promote to match the typed value
+  if (rightType === "I32" && leftType.startsWith("U")) {
     return ok(leftType);
+  }
+  if (leftType === "I32" && rightType.startsWith("U")) {
+    return ok(rightType);
   }
   return err({
     source: input,
@@ -151,6 +154,30 @@ function getAdditionResultType(
   return checkAndPromoteTypes(input, leftType, rightType);
 }
 
+function getExpressionResultType(expr: string): Result<string, InterpretError> {
+  // Determine the result type of an expression (used for chained additions)
+  const plusIndex = expr.indexOf(" + ");
+  if (plusIndex === -1) {
+    // Simple value, extract its type
+    const numPart = extractNumericPart(expr);
+    if (numPart === undefined) {
+      return err({
+        source: expr,
+        description: "Failed to parse input as a number",
+        reason: "The input string cannot be converted to a valid integer",
+        fix: "Provide a valid numeric string (e.g., '42', '100', '-5')",
+      });
+    }
+    const suffix = expr.slice(numPart.length);
+    const type = suffix.length > 0 ? suffix : "I32";
+    return ok(type);
+  }
+  // Chained addition: recursively determine the result type
+  const leftStr = expr.slice(0, plusIndex);
+  const rightStr = expr.slice(plusIndex + 3);
+  return getAdditionResultType(expr, leftStr, rightStr);
+}
+
 function handleAddition(
   input: string,
   leftStr: string,
@@ -172,7 +199,7 @@ function handleAddition(
 
   // For chained additions, determine the right side's type.
   // If right side is a simple value, extract the suffix.
-  // If it's a chained addition (has " + "), use the left type for consistency.
+  // If it's a chained addition (has " + "), determine the result type recursively.
   const rightHasAddition = rightStr.indexOf(" + ") !== -1;
   let rightSuffix = "";
   if (!rightHasAddition) {
@@ -182,11 +209,16 @@ function handleAddition(
   }
 
   const leftType = leftSuffix.length > 0 ? leftSuffix : "I32";
-  const rightType = rightHasAddition
-    ? leftType
-    : rightSuffix.length > 0
-      ? rightSuffix
-      : "I32";
+  let rightType: string;
+  if (rightHasAddition) {
+    const typeResult = getExpressionResultType(rightStr);
+    if (typeResult.isFailure()) {
+      return typeResult;
+    }
+    rightType = typeResult.value;
+  } else {
+    rightType = rightSuffix.length > 0 ? rightSuffix : "I32";
+  }
 
   const typeResult = checkAndPromoteTypes(input, leftType, rightType);
   if (typeResult.isFailure()) {
