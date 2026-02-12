@@ -342,6 +342,7 @@ function handleAddition(
   input: string,
   leftStr: string,
   rightStr: string,
+  variables: Map<string, number> = new Map(),
 ): Result<number, InterpretError> {
   const leftResult = parseTypedValue(leftStr);
   if (leftResult.isFailure()) {
@@ -351,7 +352,7 @@ function handleAddition(
   const leftSuffix = leftResult.value.suffix;
 
   // Recursively interpret the right side (handles chained additions)
-  const rightResult = interpret(rightStr);
+  const rightResult = interpretWithVars(rightStr, variables);
   if (rightResult.isFailure()) {
     return rightResult;
   }
@@ -406,8 +407,132 @@ function handleAddition(
   return ok(sum);
 }
 
-export function interpret(input: string): Result<number, InterpretError> {
+function isValidVariableName(name: string): boolean {
+  if (name.length === 0) return false;
+  // First character must be a letter or underscore
+  const firstChar = name[0];
+  if (
+    !(firstChar >= "a" && firstChar <= "z") &&
+    !(firstChar >= "A" && firstChar <= "Z") &&
+    firstChar !== "_"
+  ) {
+    return false;
+  }
+  // Rest must be alphanumeric or underscore
+  for (let i = 1; i < name.length; i++) {
+    const char = name[i];
+    if (
+      !(char >= "a" && char <= "z") &&
+      !(char >= "A" && char <= "Z") &&
+      !(char >= "0" && char <= "9") &&
+      char !== "_"
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function processVariableDeclarations(
+  input: string,
+  variables: Map<string, number>,
+): Result<Map<string, number>, InterpretError> {
+  const lines = input.split("\n");
+  const varMap = new Map(variables);
+
+  for (const line of lines) {
+    const trimmedLine = line.trim();
+
+    if (trimmedLine.startsWith("let ")) {
+      const equalIndex = trimmedLine.indexOf("=");
+      if (equalIndex === -1) {
+        return err({
+          source: input,
+          description: "Invalid variable declaration",
+          reason: "Variable declaration must have an '=' sign",
+          fix: "Use syntax: let varName = value;",
+        });
+      }
+
+      const varName = trimmedLine.slice(4, equalIndex).trim();
+      let valueStr = trimmedLine.slice(equalIndex + 1).trim();
+      if (valueStr.endsWith(";")) {
+        valueStr = valueStr.slice(0, -1);
+      }
+
+      if (!isValidVariableName(varName)) {
+        return err({
+          source: input,
+          description: "Invalid variable name",
+          reason: `Variable name '${varName}' is invalid`,
+          fix: "Use valid identifier names (alphanumeric and underscore)",
+        });
+      }
+
+      const valueResult = interpretWithVars(valueStr, varMap);
+      if (valueResult.isFailure()) {
+        return valueResult;
+      }
+
+      varMap.set(varName, valueResult.value);
+    }
+  }
+
+  return ok(varMap);
+}
+
+function validateTypeSuffix(
+  input: string,
+  parsed: number,
+  typeSuffix: string,
+): Result<undefined, InterpretError> {
+  if (parsed < 0 && isUnsignedTypeSuffix(typeSuffix)) {
+    return err({
+      source: input,
+      description: "Negative value with unsigned type",
+      reason: `Type suffix ${typeSuffix} is unsigned, but the value is negative`,
+      fix: `Use a signed type suffix (e.g., 'I8' instead of 'U8') or remove the negative sign`,
+    });
+  }
+
+  if (typeSuffix.length > 0) {
+    const range = getUnsignedTypeRange(typeSuffix);
+    if (range !== undefined && (parsed < range.min || parsed > range.max)) {
+      return err({
+        source: input,
+        description: `Value out of range for type ${typeSuffix}`,
+        reason: `The value ${parsed} is out of range for type ${typeSuffix}. Valid range is [${range.min}, ${range.max}]`,
+        fix: `Use a value within the range [${range.min}, ${range.max}] or use a larger type suffix`,
+      });
+    }
+  }
+
+  return ok(undefined);
+}
+
+function interpretWithVars(
+  input: string,
+  variables: Map<string, number> = new Map(),
+): Result<number, InterpretError> {
   if (input === "") {
+    return ok(0);
+  }
+
+  // Handle multiline input with variable declarations
+  if (input.includes("let ")) {
+    const processResult = processVariableDeclarations(input, variables);
+    if (processResult.isFailure()) {
+      return processResult;
+    }
+    const varMap = processResult.value;
+
+    // After processing declarations, evaluate the last non-declaration line
+    const lines = input.split("\n");
+    const lastLine = lines[lines.length - 1].trim();
+    if (!lastLine.startsWith("let ") && lastLine.length > 0) {
+      return interpretWithVars(lastLine, varMap);
+    }
+
     return ok(0);
   }
 
@@ -420,10 +545,15 @@ export function interpret(input: string): Result<number, InterpretError> {
     return ok(0);
   }
 
+  // Check if input is a variable reference
+  if (variables.has(input)) {
+    return ok(variables.get(input)!);
+  }
+
   // Handle parenthesized expressions
   if (input[0] === "(" && input[input.length - 1] === ")") {
     // Recursively evaluate the inner expression
-    return interpret(input.slice(1, -1));
+    return interpretWithVars(input.slice(1, -1), variables);
   }
 
   // Check for type compatibility check syntax BEFORE addition
@@ -483,7 +613,7 @@ export function interpret(input: string): Result<number, InterpretError> {
   if (plusIndex !== -1) {
     const leftStr = input.slice(0, plusIndex);
     const rightStr = input.slice(plusIndex + 3);
-    return handleAddition(input, leftStr, rightStr);
+    return handleAddition(input, leftStr, rightStr, variables);
   }
 
   // Extract numeric part and type suffix
@@ -496,29 +626,16 @@ export function interpret(input: string): Result<number, InterpretError> {
 
   // Check for unsigned type suffix with negative value
   const typeSuffix = input.slice(numericPart!.length);
-  if (parsed < 0 && isUnsignedTypeSuffix(typeSuffix)) {
-    return err({
-      source: input,
-      description: "Negative value with unsigned type",
-      reason: `Type suffix ${typeSuffix} is unsigned, but the value is negative`,
-      fix: `Use a signed type suffix (e.g., 'I8' instead of 'U8') or remove the negative sign`,
-    });
-  }
-
-  // Check if value is within the range of the type suffix
-  if (typeSuffix.length > 0) {
-    const range = getUnsignedTypeRange(typeSuffix);
-    if (range !== undefined && (parsed < range.min || parsed > range.max)) {
-      return err({
-        source: input,
-        description: `Value out of range for type ${typeSuffix}`,
-        reason: `The value ${parsed} is out of range for type ${typeSuffix}. Valid range is [${range.min}, ${range.max}]`,
-        fix: `Use a value within the range [${range.min}, ${range.max}] or use a larger type suffix`,
-      });
-    }
+  const validationResult = validateTypeSuffix(input, parsed, typeSuffix);
+  if (validationResult.isFailure()) {
+    return validationResult;
   }
 
   return ok(parsed);
+}
+
+export function interpret(input: string): Result<number, InterpretError> {
+  return interpretWithVars(input);
 }
 
 // Read and interpret the .tuff file

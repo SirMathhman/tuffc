@@ -1,3 +1,2 @@
-struct Wrapper<T> {
-    x : T;
-}
+let x = 0;
+x
