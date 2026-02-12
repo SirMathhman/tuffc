@@ -1006,6 +1006,32 @@ function validateStructDefinitions(
   return ok(undefined);
 }
 
+function validateContractDefinitions(input: string): Result<undefined, InterpretError> {
+  const contractNames = new Set<string>();
+  const lines = getLines(input);
+
+  for (const line of lines) {
+    const trimmedLine = line.trim();
+    if (trimmedLine.startsWith("contract ")) {
+      const openBraceIndex = trimmedLine.indexOf("{");
+      if (openBraceIndex !== -1) {
+        const contractName = trimmedLine.slice(9, openBraceIndex).trim();
+        if (contractNames.has(contractName)) {
+          return err({
+            source: input,
+            description: "Duplicate contract declaration",
+            reason: `duplicate contract definition: '${contractName}' is declared multiple times`,
+            fix: "Remove the duplicate contract declaration or use a different name",
+          });
+        }
+        contractNames.add(contractName);
+      }
+    }
+  }
+
+  return ok(undefined);
+}
+
 function handleAddition(
   input: string,
   leftStr: string,
@@ -2176,6 +2202,14 @@ function handleMultilineInput(
     }
   }
 
+  // Validate contract definitions
+  if (input.includes("contract ")) {
+    const validationResult = validateContractDefinitions(input);
+    if (validationResult.isFailure()) {
+      return validationResult;
+    }
+  }
+
   // Extract functions first
   let extractedFunctions = new Map<string, FunctionDefinition>();
   if (input.includes("fn ")) {
@@ -2343,7 +2377,8 @@ function interpretWithVars(
   if (
     input.includes("let ") ||
     input.includes("fn ") ||
-    input.includes("struct ")
+    input.includes("struct ") ||
+    input.includes("contract ")
   ) {
     return handleMultilineInput(
       input,

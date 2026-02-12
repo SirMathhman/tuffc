@@ -39,4 +39,14 @@ extern fn createSlice<T>() : *[T];
 extern fn getSlice(this : *[T], index : USize) : T;
 extern fn addSlice(this : *[T], element : T) : *[T];
 
+contract Equatable {
+}
+
+contract Equatable {
+}
+
+fn Map<K, V>() => {
+    
+}
+
 createSlice<I32>().addSlice(100).getSlice(0)

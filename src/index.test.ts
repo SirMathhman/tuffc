@@ -102,6 +102,12 @@ testSuccess(
   0,
   "interpret generic struct => 0",
 );
+testFailure(
+  "contract Equatable {}\ncontract Equatable {}",
+  "interpret duplicate contract declarations => Err",
+  "contract Equatable {}\ncontract Equatable {}",
+  "duplicate",
+);
 testSuccess("let x = 0;\nx", 0, "interpret variable binding => 0");
 testFailure(
   "let x = 0;\nlet x = 0;\nx",
