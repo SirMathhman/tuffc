@@ -1,11 +1,11 @@
 #include "run.h"
 #include <stddef.h>
 
-int passingTests = 0;
-int totalTests = 0;
+int32_t passingTests = 0;
+int32_t totalTests = 0;
 
 // We do one assert per test anyways
-void assertValid(char *testName, char *source, int expectedExitCode, int argc, char **argv)
+void assertValid(char *testName, char *source, int32_t expectedExitCode, int32_t argc, char **argv)
 {
     CompileResult result = compile(source);
     if (result.variant == CompileErrorVariant)
@@ -26,7 +26,7 @@ void assertValid(char *testName, char *source, int expectedExitCode, int argc, c
     assert exit code equals expectedExitCode
     */
 
-    int actualExitCode = -1;
+    int32_t actualExitCode = -1;
     if (actualExitCode != expectedExitCode)
     {
         printf("Test %s failed: expected exit code %d, got %d\n", testName, expectedExitCode, actualExitCode);
@@ -61,7 +61,20 @@ void testEmptyProgram()
     assertValid("Empty program", "", 0, 0, NULL);
 }
 
-int main()
+int32_t main()
 {
-    return 0;
+    testEmptyProgram();
+
+    printf("Passed %d/%d tests\n", passingTests, totalTests);
+
+    if (passingTests == totalTests)
+    {
+        printf("All tests passed!\n");
+        return 0;
+    }
+    else
+    {
+        printf("Some tests failed.\n");
+        return 1;
+    }
 }

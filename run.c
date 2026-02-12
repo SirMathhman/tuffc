@@ -4,7 +4,7 @@
 #include "main.h"
 #include "run.h"
 
-CompileResult compile(char* source)
+CompileResult compile(char *source)
 {
     // TODO:
 
@@ -17,7 +17,7 @@ CompileResult compile(char* source)
     };
 }
 
-int main()
+int32_t main()
 {
     FILE *source_file = fopen("main.tuff", "rb");
     if (!source_file)
