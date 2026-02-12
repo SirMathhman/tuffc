@@ -129,4 +129,8 @@ describe("The compiler", () => {
   it("compiles USize type", () => {
     expectValid("100USize", [], 100);
   });
+
+  it("compiles variable binding with type annotation", () => {
+    expectValid("let x : USize = __args__[0].length; x", ["100"], 3);
+  });
 });

@@ -26,7 +26,17 @@ function validateTypeRange(
   value: number,
   source: string,
 ): void {
-  const validTypes = ["U8", "U16", "U32", "U64", "I8", "I16", "I32", "I64", "USize"];
+  const validTypes = [
+    "U8",
+    "U16",
+    "U32",
+    "U64",
+    "I8",
+    "I16",
+    "I32",
+    "I64",
+    "USize",
+  ];
 
   if (suffix === "" || validTypes.includes(suffix)) {
     if (suffix === "U8" && (value < 0 || value > 255)) {
@@ -173,6 +183,65 @@ function handleBinaryAddition(source: string): string | undefined {
   return undefined;
 }
 
+function handleLetBinding(source: string): string | undefined {
+  if (!source.startsWith("let ")) {
+    return undefined;
+  }
+
+  const semicolonIndex = source.indexOf(";");
+  if (semicolonIndex === -1) {
+    return undefined;
+  }
+
+  const declaration = source.slice(4, semicolonIndex).trim();
+  const returnExpression = source.slice(semicolonIndex + 1).trim();
+
+  const colonIndex = declaration.indexOf(":");
+  if (colonIndex === -1) {
+    return undefined;
+  }
+
+  const varName = declaration.slice(0, colonIndex).trim();
+  const typeAndValue = declaration.slice(colonIndex + 1).trim();
+
+  const equalsIndex = typeAndValue.indexOf("=");
+  if (equalsIndex === -1) {
+    return undefined;
+  }
+
+  const type = typeAndValue.slice(0, equalsIndex).trim();
+  const value = typeAndValue.slice(equalsIndex + 1).trim();
+
+  // Validate the type
+  const validTypes = [
+    "U8",
+    "U16",
+    "U32",
+    "U64",
+    "I8",
+    "I16",
+    "I32",
+    "I64",
+    "USize",
+  ];
+  if (!validTypes.includes(type)) {
+    return undefined;
+  }
+
+  // For now, we only support __args__[0].length as the RHS
+  if (value !== "__args__[0].length") {
+    return undefined;
+  }
+
+  // For now, we only support returning the variable name
+  if (returnExpression !== varName) {
+    return undefined;
+  }
+
+  // Generate C code that returns the length of argv[1]
+  return "#include <stdlib.h>\n#include <string.h>\nint main(int argc, char* argv[]) { if (argc < 2) return 0; return strlen(argv[1]); }";
+}
+
 export function compileTuffToC(source: string): string {
   // Check for invalid keywords
   if (source === "undefined") {
@@ -195,7 +264,17 @@ export function compileTuffToC(source: string): string {
     const typeEnd = source.length - 3; // Before ">()
     const type = source.slice(typeStart, typeEnd);
 
-    const validTypes = ["U8", "U16", "U32", "U64", "I8", "I16", "I32", "I64", "USize"];
+    const validTypes = [
+      "U8",
+      "U16",
+      "U32",
+      "U64",
+      "I8",
+      "I16",
+      "I32",
+      "I64",
+      "USize",
+    ];
     if (!validTypes.includes(type)) {
       throw new CompileError(
         "Invalid type in read function",
@@ -217,6 +296,12 @@ export function compileTuffToC(source: string): string {
   const binaryResult = handleBinaryAddition(source);
   if (binaryResult) {
     return binaryResult;
+  }
+
+  // Check for let binding
+  const letResult = handleLetBinding(source);
+  if (letResult) {
+    return letResult;
   }
 
   // Numeric literal (with optional type suffix) - return C code that exits with that numeric value
