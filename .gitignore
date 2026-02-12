@@ -1,9 +1,0 @@
-node_modules/
-dist/
-*.js
-*.d.ts
-*.js.map
-*.d.ts.map
-.DS_Store
-.env
-.env.local
