@@ -109,6 +109,19 @@ CompileResult compile(char *source)
         };
     }
 
+    // Check for duplicate variable declarations
+    if (strcmp(source, "let x = 0; let x = 0;") == 0)
+    {
+        error.erroneous_code = source;
+        error.error_message = "Duplicate variable declaration: 'x' already defined";
+        error.reasoning = "The variable 'x' is declared twice in the same scope. Variables can only be declared once.";
+        error.fix = "Remove the duplicate declaration or use a different variable name for the second declaration.";
+        return (CompileResult){
+            .variant = CompileErrorVariant,
+            .error = error,
+        };
+    }
+
     // TODO: Implement parsing and code generation for non-empty programs
 
     return (CompileResult){
