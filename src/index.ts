@@ -88,8 +88,12 @@ export function interpret(input: string): Result<number, InterpretError> {
         ? valueWithSuffix.slice(numericPart.length)
         : "";
 
-    // Check if original type matches target type
-    const typeMatches = originalTypeSuffix === targetTypeSuffix;
+    // Determine the effective type suffix (use I32 as implicit default if no suffix)
+    const effectiveTypeSuffix =
+      originalTypeSuffix.length > 0 ? originalTypeSuffix : "I32";
+
+    // Check if effective type matches target type
+    const typeMatches = effectiveTypeSuffix === targetTypeSuffix;
     return ok(typeMatches ? 1 : 0);
   }
 
