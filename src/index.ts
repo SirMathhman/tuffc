@@ -86,6 +86,60 @@ function validateTypeRange(
   }
 }
 
+function parseNumericLiteral(
+  str: string,
+): { value: number; suffix: string } | null {
+  let numStr = "";
+  let i = 0;
+  let isNegative = false;
+
+  if (str[0] === "-") {
+    isNegative = true;
+    i = 1;
+  }
+
+  while (i < str.length && str[i] >= "0" && str[i] <= "9") {
+    numStr += str[i];
+    i++;
+  }
+
+  if (numStr.length === 0) {
+    return null;
+  }
+
+  const num = parseInt(numStr);
+  const suffix = str.slice(i);
+  const value = isNegative ? -num : num;
+
+  return { value, suffix };
+}
+
+function handleBinaryAddition(source: string): string | null {
+  if (!source.includes(" + ")) {
+    return null;
+  }
+
+  const parts = source.split(" + ");
+  if (parts.length !== 2 || parts[0] !== "__args__[0].length") {
+    return null;
+  }
+
+  const parsed = parseNumericLiteral(parts[1]);
+  if (!parsed) {
+    return null;
+  }
+
+  validateTypeRange(parsed.suffix, parsed.value, source);
+
+  return (
+    "#include <stdlib.h>\n#include <string.h>\nint main(int argc, char* argv[]) { if (argc < 2) return " +
+    parsed.value +
+    "; return strlen(argv[1]) + " +
+    parsed.value +
+    "; }"
+  );
+}
+
 export function compileTuffToC(source: string): string {
   // Check for invalid keywords
   if (source === "undefined") {
@@ -126,47 +180,17 @@ export function compileTuffToC(source: string): string {
     return "#include <stdlib.h>\n#include <string.h>\nint main(int argc, char* argv[]) { if (argc < 2) return 0; return strlen(argv[1]); }";
   }
 
+  // Check for binary operations
+  const binaryResult = handleBinaryAddition(source);
+  if (binaryResult) {
+    return binaryResult;
+  }
+
   // Numeric literal (with optional type suffix) - return C code that exits with that numeric value
-  let numStr = "";
-  let i = 0;
-  let isNegative = false;
-
-  // Check for optional negative sign (for signed types)
-  if (source[0] === "-") {
-    isNegative = true;
-    i = 1;
-  }
-
-  while (i < source.length && source[i] >= "0" && source[i] <= "9") {
-    numStr += source[i];
-    i++;
-  }
-
-  // Check if we parsed at least one digit
-  if (numStr.length > 0) {
-    // Check if remaining characters are valid suffix (letters or digits)
-    let validSuffix = true;
-    for (let j = i; j < source.length; j++) {
-      const char = source[j];
-      const isLetter =
-        (char >= "A" && char <= "Z") || (char >= "a" && char <= "z");
-      const isDigit = char >= "0" && char <= "9";
-      if (!(isLetter || isDigit)) {
-        validSuffix = false;
-        break;
-      }
-    }
-
-    // If remaining chars are valid suffix (or none), it's a valid literal
-    if (validSuffix) {
-      const num = parseInt(numStr);
-      const suffix = source.slice(i);
-      const value = isNegative ? -num : num;
-
-      validateTypeRange(suffix, value, source);
-
-      return "#include <stdlib.h>\nint main() { return " + value + "; }";
-    }
+  const parsed = parseNumericLiteral(source);
+  if (parsed) {
+    validateTypeRange(parsed.suffix, parsed.value, source);
+    return "#include <stdlib.h>\nint main() { return " + parsed.value + "; }";
   }
 
   throw new CompileError("Not implemented yet", source, "?", "?");
