@@ -2,13 +2,15 @@ import { Result, ok, err, type DescriptiveError } from "./result";
 
 export type InterpretError = DescriptiveError;
 
+type FunctionParam = { name: string; type: string };
+
 type InterpreterContext = {
   variables?: Map<string, number>;
   variableTypes?: Map<string, string>;
   typeAliases?: Map<string, string>;
   functions?: Map<
     string,
-    { body: string; returnType: string; params: string[] }
+    { body: string; returnType: string; params: FunctionParam[] }
   >;
   stringVariables?: Map<string, string>;
 };
@@ -303,7 +305,7 @@ function processFunctionDefinitionLine(
   input: string,
   existingFunctions: Set<string>,
 ): Result<
-  { name: string; body: string; returnType: string; params: string[] },
+  { name: string; body: string; returnType: string; params: FunctionParam[] },
   InterpretError
 > {
   const arrowIndex = trimmedLine.indexOf("=>");
@@ -406,8 +408,8 @@ function extractFunctionParameters(
   closeParenIndex: number,
   funcName: string,
   input: string,
-): Result<string[], InterpretError> {
-  const params: string[] = [];
+): Result<FunctionParam[], InterpretError> {
+  const params: FunctionParam[] = [];
   if (closeParenIndex > parenIndex + 1) {
     const paramString = headerPart
       .slice(parenIndex + 1, closeParenIndex)
@@ -430,10 +432,10 @@ function extractFunctionParameters(
             });
           }
           seenParams.add(paramName);
-          params.push(paramName);
 
+          let paramType = "I32";
           if (colonIdx !== -1) {
-            const paramType = trimmedPart.slice(colonIdx + 1).trim();
+            paramType = trimmedPart.slice(colonIdx + 1).trim();
             if (!isValidFieldType(paramType, undefined, new Map())) {
               return err({
                 source: input,
@@ -443,6 +445,7 @@ function extractFunctionParameters(
               });
             }
           }
+          params.push({ name: paramName, type: paramType });
         }
       }
     }
@@ -453,13 +456,13 @@ function extractFunctionParameters(
 function extractFunctionDefinitions(
   input: string,
 ): Result<
-  Map<string, { body: string; returnType: string; params: string[] }>,
+  Map<string, { body: string; returnType: string; params: FunctionParam[] }>,
   InterpretError
 > {
   const lines = input.split("\n");
   const functions = new Map<
     string,
-    { body: string; returnType: string; params: string[] }
+    { body: string; returnType: string; params: FunctionParam[] }
   >();
   const existingFuncNames = new Set<string>();
 
@@ -811,7 +814,7 @@ function interpretEarlyReturns(
   typeAliases: Map<string, string>,
   functions: Map<
     string,
-    { body: string; returnType: string; params: string[] }
+    { body: string; returnType: string; params: FunctionParam[] }
   >,
   stringVariables: Map<string, string>,
   extractedAliases: Map<string, string>,
@@ -1334,7 +1337,7 @@ function tryFunctionCall(
   input: string,
   functions: Map<
     string,
-    { body: string; returnType: string; params: string[] }
+    { body: string; returnType: string; params: FunctionParam[] }
   >,
   variables: Map<string, number>,
   variableTypes: Map<string, string>,
@@ -1350,12 +1353,16 @@ function tryFunctionCall(
     closeParenIndex > openParenIndex
   ) {
     const funcName = input.slice(0, openParenIndex).trim();
-    if (functions.has(funcName)) {
-      const funcDef = functions.get(funcName)!;
+    const effectiveFuncName = funcName.startsWith("this.")
+      ? funcName.slice(5)
+      : funcName;
+    if (functions.has(effectiveFuncName)) {
+      const funcDef = functions.get(effectiveFuncName)!;
       const argString = input.slice(openParenIndex + 1, closeParenIndex).trim();
 
       // Parse arguments
       const args: number[] = [];
+      const argTypes: string[] = [];
       if (argString.length > 0) {
         const argParts = argString.split(",");
         for (const argPart of argParts) {
@@ -1372,16 +1379,29 @@ function tryFunctionCall(
             return argResult;
           }
           args.push(argResult.value);
+          const argType =
+            determineAssignedValueType(trimmedArg, variableTypes) || "I32";
+          argTypes.push(argType);
         }
       }
 
-      // Map parameters to argument values
+      // Map parameters to argument values and validate types
       const paramVars = new Map(variables);
       const paramTypes = new Map(variableTypes);
       for (let i = 0; i < funcDef.params.length; i++) {
         if (i < args.length) {
-          paramVars.set(funcDef.params[i], args[i]);
-          paramTypes.set(funcDef.params[i], funcDef.returnType);
+          const param = funcDef.params[i];
+          const argType = argTypes[i];
+          if (param.type !== argType && param.type !== "I32") {
+            return err({
+              source: input,
+              description: "Type mismatch in function call",
+              reason: `type mismatch: Cannot pass argument of type '${argType}' to parameter '${param.name}' of type '${param.type}' in function '${effectiveFuncName}'`,
+              fix: `Use a value of type '${param.type}'`,
+            });
+          }
+          paramVars.set(param.name, args[i]);
+          paramTypes.set(param.name, param.type);
         }
       }
 
@@ -1408,7 +1428,7 @@ function handleMultilineInput(
   // Extract functions first
   let extractedFunctions = new Map<
     string,
-    { body: string; returnType: string; params: string[] }
+    { body: string; returnType: string; params: FunctionParam[] }
   >();
   if (input.includes("fn ")) {
     const functionsResult = extractFunctionDefinitions(input);
@@ -1526,7 +1546,7 @@ function interpretWithVars(
   typeAliases: Map<string, string> = new Map(),
   functions: Map<
     string,
-    { body: string; returnType: string; params: string[] }
+    { body: string; returnType: string; params: FunctionParam[] }
   > = new Map(),
   stringVariables: Map<string, string> = new Map(),
 ): Result<number, InterpretError> {

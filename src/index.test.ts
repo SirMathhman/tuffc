@@ -236,3 +236,16 @@ testFailure(
   "y",
   "not defined",
 );
+
+testFailure(
+  "fn pass(x : U16) => x;\npass(100I64)",
+  "interpret function call with type mismatch (I64 to U16) => Err",
+  "pass(100I64)",
+  "type mismatch",
+);
+
+testSuccess(
+  "fn get() => 100;\nthis.get()",
+  100,
+  "interpret function call with this. prefix => 100",
+);
