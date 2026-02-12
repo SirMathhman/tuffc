@@ -56,3 +56,8 @@ testFailure(
 );
 testFailure("1U8 + 255", 'interpret("1U8 + 255") => Err', "1U8 + 255", "type");
 testSuccess("1U8 + 255U16", 256, 'interpret("1U8 + 255U16") => 256');
+testSuccess(
+  "(1U8 + 256U16) is U16",
+  1,
+  'interpret("(1U8 + 256U16) is U16") => 1',
+);

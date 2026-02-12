@@ -102,23 +102,21 @@ function parseTypedValue(
   return ok({ value, suffix });
 }
 
-function handleAddition(
+function getAdditionResultType(
   input: string,
   leftStr: string,
   rightStr: string,
-): Result<number, InterpretError> {
+): Result<string, InterpretError> {
   const leftResult = parseTypedValue(leftStr);
   if (leftResult.isFailure()) {
     return leftResult;
   }
-  const leftValue = leftResult.value.value;
   const leftSuffix = leftResult.value.suffix;
 
   const rightResult = parseTypedValue(rightStr);
   if (rightResult.isFailure()) {
     return rightResult;
   }
-  const rightValue = rightResult.value.value;
   const rightSuffix = rightResult.value.suffix;
 
   const leftType = leftSuffix.length > 0 ? leftSuffix : "I32";
@@ -147,6 +145,32 @@ function handleAddition(
     }
   }
 
+  return ok(resultType);
+}
+
+function handleAddition(
+  input: string,
+  leftStr: string,
+  rightStr: string,
+): Result<number, InterpretError> {
+  const leftResult = parseTypedValue(leftStr);
+  if (leftResult.isFailure()) {
+    return leftResult;
+  }
+  const leftValue = leftResult.value.value;
+
+  const rightResult = parseTypedValue(rightStr);
+  if (rightResult.isFailure()) {
+    return rightResult;
+  }
+  const rightValue = rightResult.value.value;
+
+  const typeResult = getAdditionResultType(input, leftStr, rightStr);
+  if (typeResult.isFailure()) {
+    return typeResult;
+  }
+  const resultType = typeResult.value;
+
   const range = getUnsignedTypeRange(resultType);
   const sum = leftValue + rightValue;
   if (range !== undefined && (sum < range.min || sum > range.max)) {
@@ -172,40 +196,64 @@ export function interpret(input: string): Result<number, InterpretError> {
     return interpret(input.slice(1, -1));
   }
 
+  // Check for type compatibility check syntax BEFORE addition
+  // This allows "is" checks to contain addition expressions
+  const isKeywordIndex = input.indexOf(" is ");
+  if (isKeywordIndex !== -1) {
+    const valueWithSuffix = input.slice(0, isKeywordIndex);
+    const targetTypeSuffix = input.slice(isKeywordIndex + 4);
+
+    // Strip outer parentheses from valueWithSuffix if present
+    let evaluateExpr = valueWithSuffix;
+    if (
+      evaluateExpr[0] === "(" &&
+      evaluateExpr[evaluateExpr.length - 1] === ")"
+    ) {
+      evaluateExpr = evaluateExpr.slice(1, -1);
+    }
+
+    // Check if the expression is an addition
+    const additionIndex = evaluateExpr.indexOf(" + ");
+    let effectiveTypeSuffix: string;
+    if (additionIndex !== -1) {
+      const leftStr = evaluateExpr.slice(0, additionIndex);
+      const rightStr = evaluateExpr.slice(additionIndex + 3);
+      const typeResult = getAdditionResultType(input, leftStr, rightStr);
+      if (typeResult.isFailure()) {
+        return typeResult;
+      }
+      effectiveTypeSuffix = typeResult.value;
+    } else {
+      // Parse the value with its suffix
+      const numericPart = extractNumericPart(evaluateExpr);
+      if (numericPart === undefined) {
+        return err({
+          source: input,
+          description: "Failed to parse input as a number",
+          reason: "The input string cannot be converted to a valid integer",
+          fix: "Provide a valid numeric string (e.g., '42', '100', '-5')",
+        });
+      }
+
+      // Extract the original type suffix from the value
+      const originalTypeSuffix = evaluateExpr.slice(numericPart.length);
+
+      // Determine the effective type suffix (use I32 as implicit default)
+      effectiveTypeSuffix =
+        originalTypeSuffix.length > 0 ? originalTypeSuffix : "I32";
+    }
+
+    // Check if effective type matches target type
+    const typeMatches = effectiveTypeSuffix === targetTypeSuffix;
+    return ok(typeMatches ? 1 : 0);
+  }
+
   // Check for addition operator
   const plusIndex = input.indexOf(" + ");
   if (plusIndex !== -1) {
     const leftStr = input.slice(0, plusIndex);
     const rightStr = input.slice(plusIndex + 3);
     return handleAddition(input, leftStr, rightStr);
-  }
-
-  // Check for type compatibility check syntax: "<value><suffix> is <target_suffix>"
-  const isKeywordIndex = input.indexOf(" is ");
-  if (isKeywordIndex !== -1) {
-    const valueWithSuffix = input.slice(0, isKeywordIndex);
-    const targetTypeSuffix = input.slice(isKeywordIndex + 4);
-
-    // Parse the value with its suffix
-    const numericPart = extractNumericPart(valueWithSuffix);
-    const parseResult = parseNumericPartOrError(input, numericPart);
-    if (parseResult.isFailure()) {
-      return parseResult;
-    }
-
-    // Extract the original type suffix from the value
-    const originalTypeSuffix =
-      numericPart !== undefined
-        ? valueWithSuffix.slice(numericPart.length)
-        : "";
-
-    // Determine the effective type suffix (use I32 as implicit default if no suffix)
-    const effectiveTypeSuffix =
-      originalTypeSuffix.length > 0 ? originalTypeSuffix : "I32";
-
-    // Check if effective type matches target type
-    const typeMatches = effectiveTypeSuffix === targetTypeSuffix;
-    return ok(typeMatches ? 1 : 0);
   }
 
   // Extract numeric part and type suffix
