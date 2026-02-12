@@ -234,6 +234,11 @@ void testDuplicateVariableDeclaration()
     assertInvalid("Duplicate variable declaration", "let x = 0; let x = 0;");
 }
 
+void testSimpleVariableDeclaration()
+{
+    assertValid("Simple variable declaration", "let x = 100;", 0, NULL, 0, NULL);
+}
+
 int32_t main()
 {
     testEmptyProgram();
@@ -249,6 +254,7 @@ int32_t main()
     testSimpleVariableReturn();
     testReadU8PlusArgsLength();
     testDuplicateVariableDeclaration();
+    testSimpleVariableDeclaration();
 
     fprintf(stderr, "Passed %d/%d tests\n", passingTests, totalTests);
 

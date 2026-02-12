@@ -184,6 +184,49 @@ static int parse_let_mut_double_read_statement(const char *source, char *var_nam
     return 1;
 }
 
+// Helper to parse "let x = [value];" - simple variable declaration
+static int parse_let_simple_statement(const char *source, char *var_name, int buf_size)
+{
+    // Check if source starts with "let "
+    if (strncmp(source, "let ", 4) != 0)
+        return 0;
+
+    const char *pos = source + 4;
+
+    // Extract variable name
+    int i = 0;
+    while (i < buf_size - 1 && isalnum(pos[i]))
+    {
+        var_name[i] = pos[i];
+        i++;
+    }
+    var_name[i] = '\0';
+
+    if (i == 0 || i >= buf_size - 1)
+        return 0;
+
+    pos += i;
+
+    // Check for " = [numeric_value];" pattern
+    if (strncmp(pos, " = ", 3) != 0)
+        return 0;
+
+    pos += 3;
+
+    // Skip numeric value (just check we have digits followed by semicolon)
+    while (isdigit(*pos))
+        pos++;
+
+    if (*pos != ';')
+        return 0;
+
+    // Check we're at end of string
+    if (*(pos + 1) != '\0')
+        return 0;
+
+    return 1;
+}
+
 CompileResult compile(char *source)
 {
     CompileResult result;
@@ -223,11 +266,16 @@ CompileResult compile(char *source)
     }
     else
     {
-        // Try to parse "let mut x = read<I32>(); x = read<I32>(); [expression]"
+        // Try to parse "let x = [value];" - simple variable declaration
         char var_name[64];
         char expression[256];
 
-        if (parse_let_mut_double_read_statement(source, var_name, expression, sizeof(expression)))
+        if (parse_let_simple_statement(source, var_name, sizeof(var_name)))
+        {
+            snprintf(buffer, sizeof(buffer), "#include <stdint.h>\nint main() { int32_t %s; return 0; }\n", var_name);
+        }
+        // Try to parse "let mut x = read<I32>(); x = read<I32>(); [expression]"
+        else if (parse_let_mut_double_read_statement(source, var_name, expression, sizeof(expression)))
         {
             snprintf(buffer, sizeof(buffer), "%s<stdint.h>\n%s%s; scanf(\"%%d\", &%s); scanf(\"%%d\", &%s); return %s; }\n",
                      I32_HEADER, I32_MAIN, var_name, var_name, var_name, expression);
