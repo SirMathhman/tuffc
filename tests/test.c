@@ -115,10 +115,17 @@ void testArgsLength()
     assertValid("Get args length", "__args__.length", 1, 0, NULL);
 }
 
+void testArgsLengthWithArg()
+{
+    char *argv[] = {"foo"};
+    assertValid("Get args length with one argument", "__args__.length", 2, 1, argv);
+}
+
 int32_t main()
 {
     testEmptyProgram();
     testArgsLength();
+    testArgsLengthWithArg();
 
     fprintf(stderr, "Passed %d/%d tests\n", passingTests, totalTests);
 
