@@ -22,6 +22,8 @@ FILE *safe_fopen(const char *path, const char *mode)
 }
 
 #define ARGC_ARGS ", char *argv[]) { return "
+#define I32_HEADER "#include <stdio.h>\n#include "
+#define I32_MAIN "int main() { int32_t "
 
 CompileResult compile(char *source)
 {
@@ -46,7 +48,11 @@ CompileResult compile(char *source)
     }
     else if (strcmp(source, "read<I32>()") == 0)
     {
-        snprintf(buffer, sizeof(buffer), "#include <stdio.h>\n#include <stdint.h>\nint main() { int32_t value; scanf(\"%%d\", &value); return value; }\n");
+        snprintf(buffer, sizeof(buffer), "%s<stdint.h>\n%svalue; scanf(\"%%d\", &value); return value; }\n", I32_HEADER, I32_MAIN);
+    }
+    else if (strcmp(source, "read<I32>() + read<I32>()") == 0)
+    {
+        snprintf(buffer, sizeof(buffer), "%s<stdint.h>\n%sa, b; scanf(\"%%d\", &a); scanf(\"%%d\", &b); return a + b; }\n", I32_HEADER, I32_MAIN);
     }
     else
     {
