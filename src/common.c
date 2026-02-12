@@ -21,30 +21,24 @@ FILE *safe_fopen(const char *path, const char *mode)
 #endif
 }
 
+#define ARGC_ARGS ", char *argv[]) { return "
+
 CompileResult compile(char *source)
 {
     CompileResult result;
+    static char buffer[256];
 
-    // For empty source, generate a simple valid C program
+    result.variant = OutputVariant;
+    result.output.headerCCode = "";
+
     if (source == NULL || source[0] == '\0')
-    {
-        result.variant = OutputVariant;
-        result.output.headerCCode = "";
-        result.output.targetCCode = "int main() { return 0; }\n";
-    }
-    // Handle __args__.length - return the argc value
+        snprintf(buffer, sizeof(buffer), "int main() { return 0; }\n");
     else if (strcmp(source, "__args__.length") == 0)
-    {
-        result.variant = OutputVariant;
-        result.output.headerCCode = "";
-        result.output.targetCCode = "int main(int argc, char *argv[]) { return argc; }\n";
-    }
-    // Handle __args__.length + __args__.length - return argc + argc
+        snprintf(buffer, sizeof(buffer), "int main(int argc%sargc; }\n", ARGC_ARGS);
     else if (strcmp(source, "__args__.length + __args__.length") == 0)
     {
-        result.variant = OutputVariant;
-        result.output.headerCCode = "";
-        result.output.targetCCode = "int main(int argc, char *argv[]) { return argc + argc; }\n";
+        const char *suffix = "argc + argc; }\n";
+        snprintf(buffer, sizeof(buffer), "int main(int argc%s%s", ARGC_ARGS, suffix);
     }
     else
     {
@@ -53,7 +47,9 @@ CompileResult compile(char *source)
         result.error.error_message = "Unsupported source code";
         result.error.reasoning = "Only empty programs and __args__.length are supported";
         result.error.fix = "Provide an empty source string or __args__.length";
+        return result;
     }
 
+    result.output.targetCCode = buffer;
     return result;
 }
