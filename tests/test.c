@@ -32,7 +32,6 @@ void assertValid(char *testName, char *source, int32_t expectedExitCode, int32_t
     if (!hf)
     {
         fprintf(stderr, "Test %s failed: could not create temp header file\n", testName);
-        totalTests++;
         return;
     }
     fwrite(result.output.headerCCode, 1, strlen(result.output.headerCCode), hf);
@@ -44,7 +43,6 @@ void assertValid(char *testName, char *source, int32_t expectedExitCode, int32_t
     {
         fprintf(stderr, "Test %s failed: could not create temp source file\n", testName);
         remove(temp_header);
-        totalTests++;
         return;
     }
     fwrite(result.output.targetCCode, 1, strlen(result.output.targetCCode), sf);
@@ -60,7 +58,6 @@ void assertValid(char *testName, char *source, int32_t expectedExitCode, int32_t
         fprintf(stderr, "Generated C code:\n%s\n", result.output.targetCCode);
         remove(temp_header);
         remove(temp_source);
-        totalTests++;
         return;
     }
 
