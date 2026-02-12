@@ -79,14 +79,15 @@ export function compileTuffToC(source: string): string {
 
       if (suffix === "") {
         // No suffix - allow any value
-        return `#include <stdlib.h>\nint main() { return ${value}; }`;
+        return "#include <stdlib.h>\nint main() { return " + value + "; }";
       } else if (!validTypes.includes(suffix)) {
         // Invalid type suffix
         throw new CompileError(
-          `Invalid type suffix '${suffix}'`,
+          "Invalid type suffix '" + suffix + "'",
           source,
-          `Only the following type suffixes are supported: ${validTypes.join(", ")}`,
-          `Use one of the supported type suffixes or no suffix at all`,
+          "Only the following type suffixes are supported: " +
+            validTypes.join(", "),
+          "Use one of the supported type suffixes or no suffix at all",
         );
       }
 
@@ -96,35 +97,35 @@ export function compileTuffToC(source: string): string {
           "U8 literal out of range",
           source,
           "U8 is an unsigned 8-bit integer with a valid range of 0 to 255",
-          `Use a value between 0 and 255`,
+          "Use a value between 0 and 255",
         );
       } else if (suffix === "I8" && (value < -128 || value > 127)) {
         throw new CompileError(
           "I8 literal out of range",
           source,
           "I8 is a signed 8-bit integer with a valid range of -128 to 127",
-          `Use a value between -128 and 127`,
+          "Use a value between -128 and 127",
         );
       } else if (suffix === "U16" && (value < 0 || value > 65535)) {
         throw new CompileError(
           "U16 literal out of range",
           source,
           "U16 is an unsigned 16-bit integer with a valid range of 0 to 65535",
-          `Use a value between 0 and 65535`,
+          "Use a value between 0 and 65535",
         );
       } else if (suffix === "I16" && (value < -32768 || value > 32767)) {
         throw new CompileError(
           "I16 literal out of range",
           source,
           "I16 is a signed 16-bit integer with a valid range of -32768 to 32767",
-          `Use a value between -32768 and 32767`,
+          "Use a value between -32768 and 32767",
         );
       } else if (suffix === "U32" && (value < 0 || value > 4294967295)) {
         throw new CompileError(
           "U32 literal out of range",
           source,
           "U32 is an unsigned 32-bit integer with a valid range of 0 to 4294967295",
-          `Use a value between 0 and 4294967295`,
+          "Use a value between 0 and 4294967295",
         );
       } else if (
         suffix === "I32" &&
@@ -134,11 +135,11 @@ export function compileTuffToC(source: string): string {
           "I32 literal out of range",
           source,
           "I32 is a signed 32-bit integer with a valid range of -2147483648 to 2147483647",
-          `Use a value between -2147483648 and 2147483647`,
+          "Use a value between -2147483648 and 2147483647",
         );
       }
 
-      return `#include <stdlib.h>\nint main() { return ${value}; }`;
+      return "#include <stdlib.h>\nint main() { return " + value + "; }";
     }
   }
 

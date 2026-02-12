@@ -10,26 +10,29 @@ function expectValid(source: string, args: string[], exitCode: number) {
 
   // Write C code to a temp file
   const tmpDir = tmpdir();
-  const sourceFile = join(tmpDir, `tuff_test_${Date.now()}.c`);
+  const sourceFile = join(tmpDir, "tuff_test_" + Date.now() + ".c");
   const exeFile = join(
     tmpDir,
-    `tuff_test_${Date.now()}${process.platform === "win32" ? ".exe" : ""}`,
+    "tuff_test_" + Date.now() + (process.platform === "win32" ? ".exe" : ""),
   );
 
   try {
     writeFileSync(sourceFile, cCode);
 
     // Compile with clang
-    execSync(`clang -o "${exeFile}" "${sourceFile}"`, {
+    execSync('clang -o "' + exeFile + '" "' + sourceFile + '"', {
       stdio: "pipe",
     });
 
     // Run the executable and capture exit code
     let actualExitCode = 0;
     try {
-      execSync(`"${exeFile}" ${args.map((arg) => `"${arg}"`).join(" ")}`, {
-        stdio: "pipe",
-      });
+      execSync(
+        '"' + exeFile + '" ' + args.map((arg) => '"' + arg + '"').join(" "),
+        {
+          stdio: "pipe",
+        },
+      );
     } catch (error: unknown) {
       actualExitCode = (error as any).status || 1;
     }
