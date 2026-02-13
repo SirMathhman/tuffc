@@ -32,7 +32,7 @@ impl Context {
             .map(|(val, ty, _)| (*val, ty.clone()))
     }
 
-    fn set_var(&mut self, name: String, value: i32) -> Result<(), InterpreterError> {
+    fn set_var(&mut self, name: String, value: i32, value_type: &str) -> Result<(), InterpreterError> {
         if let Some((_, ty, is_mutable)) = self.variables.get(&name) {
             if !is_mutable {
                 return Err(InterpreterError {
@@ -42,6 +42,19 @@ impl Context {
                     fix: "Declare the variable with 'mut' keyword, e.g., 'let mut x = 0;'".to_string(),
                 });
             }
+            
+            // Check for type narrowing
+            let target_width = get_type_width(ty);
+            let source_width = get_type_width(value_type);
+            if source_width > target_width {
+                return Err(InterpreterError {
+                    code_snippet: format!("{} = {};", name, value),
+                    error_message: format!("Cannot assign {} to {}", value_type, ty),
+                    explanation: "Narrowing type conversions are not allowed.".to_string(),
+                    fix: "Use a larger target type or change the source type.".to_string(),
+                });
+            }
+            
             let ty_clone = ty.clone();
             self.variables.insert(name, (value, ty_clone, true));
             Ok(())
@@ -491,9 +504,16 @@ fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, Inte
 
                 // Evaluate the value expression
                 let value = interpret_with_context(value_expr, context.clone())?;
+                
+                // Extract the type of the value being assigned
+                let value_type = if let Ok((_, ty)) = extract_value_and_type(value_expr, &context) {
+                    ty
+                } else {
+                    "I32".to_string()
+                };
 
                 // Apply the assignment
-                context.set_var(left.to_string(), value)?;
+                context.set_var(left.to_string(), value, &value_type)?;
 
                 // If there's no rest, return the assigned value
                 if rest.is_empty() {
@@ -778,6 +798,12 @@ mod tests {
     #[test]
     fn test_interpret_assignment_to_undefined_variable() {
         let result = interpret("x = 100; x");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_interpret_mutable_variable_type_narrowing() {
+        let result = interpret("let mut x = 0U8; x = 100U16; x");
         assert!(result.is_err());
     }
 }
