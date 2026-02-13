@@ -1028,4 +1028,10 @@ mod tests {
         let result = interpret("let x = 100; {} x");
         assert!(matches!(result, Ok(100)));
     }
+
+    #[test]
+    fn test_interpret_braces_scope_isolation() {
+        let result = interpret("{ let x = 0; } let y = x; y");
+        assert!(result.is_err());
+    }
 }
