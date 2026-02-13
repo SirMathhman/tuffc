@@ -186,21 +186,38 @@ fn apply_operation(
 }
 
 fn find_lowest_precedence_operator(input: &str) -> Option<(usize, char)> {
-    // First pass: look for low-precedence operators (+ and -)
+    let mut paren_depth = 0;
+
+    // First pass: look for low-precedence operators (+ and -) outside parentheses
     for (pos, ch) in input.char_indices() {
-        if matches!(ch, '+' | '-') {
-            // Make sure this is not a negative sign at the beginning or after an operator
-            if ch == '-' && (pos == 0 || input[..pos].trim().ends_with(['+', '-', '*', '/'])) {
-                continue;
+        match ch {
+            '(' => paren_depth += 1,
+            ')' => paren_depth -= 1,
+            _ => {
+                if paren_depth == 0 && matches!(ch, '+' | '-') {
+                    // Make sure this is not a negative sign at the beginning or after an operator
+                    if ch == '-'
+                        && (pos == 0 || input[..pos].trim().ends_with(['+', '-', '*', '/']))
+                    {
+                        continue;
+                    }
+                    return Some((pos, ch));
+                }
             }
-            return Some((pos, ch));
         }
     }
 
-    // Second pass: look for high-precedence operators (* and /)
+    paren_depth = 0;
+    // Second pass: look for high-precedence operators (* and /) outside parentheses
     for (pos, ch) in input.char_indices() {
-        if matches!(ch, '*' | '/') {
-            return Some((pos, ch));
+        match ch {
+            '(' => paren_depth += 1,
+            ')' => paren_depth -= 1,
+            _ => {
+                if paren_depth == 0 && matches!(ch, '*' | '/') {
+                    return Some((pos, ch));
+                }
+            }
         }
     }
 
@@ -209,6 +226,31 @@ fn find_lowest_precedence_operator(input: &str) -> Option<(usize, char)> {
 
 fn interpret(input: &str) -> Result<i32, InterpreterError> {
     let input = input.trim();
+
+    // Strip outer parentheses if they wrap the entire expression
+    let input = if input.starts_with('(') && input.ends_with(')') {
+        let mut paren_depth = 0;
+        let mut is_wrapped = true;
+        for (i, ch) in input.char_indices() {
+            match ch {
+                '(' => paren_depth += 1,
+                ')' => paren_depth -= 1,
+                _ => {}
+            }
+            // If parentheses close before the end, they don't wrap the entire expression
+            if paren_depth == 0 && i < input.len() - 1 {
+                is_wrapped = false;
+                break;
+            }
+        }
+        if is_wrapped {
+            &input[1..input.len() - 1]
+        } else {
+            input
+        }
+    } else {
+        input
+    };
 
     // Check for binary operations (+, -, *, /) respecting operator precedence
     if let Some((pos, op_char)) = find_lowest_precedence_operator(input) {
@@ -225,19 +267,31 @@ fn interpret(input: &str) -> Result<i32, InterpreterError> {
             if !left.is_empty() && !right.is_empty() {
                 // Determine if left is a simple literal or a complex expression
                 let (left_val, left_type) = if find_lowest_precedence_operator(left).is_none() {
-                    // left is a simple literal, extract its value and type
-                    extract_value_and_type(left)?
+                    // Try parsing as a literal first
+                    match extract_value_and_type(left) {
+                        Ok(result) => result,
+                        Err(_) => {
+                            // If it's not a simple literal, recursively evaluate
+                            (interpret(left)?, "I32")
+                        }
+                    }
                 } else {
-                    // left is a complex expression, recursively evaluate
+                    // Complex expression with operators, recursively evaluate
                     (interpret(left)?, "I32")
                 };
 
                 // Determine if right is a simple literal or a complex expression
                 let (right_val, right_type) = if find_lowest_precedence_operator(right).is_none() {
-                    // right is a simple literal, extract its value and type
-                    extract_value_and_type(right)?
+                    // Try parsing as a literal first
+                    match extract_value_and_type(right) {
+                        Ok(result) => result,
+                        Err(_) => {
+                            // If it's not a simple literal, recursively evaluate
+                            (interpret(right)?, "I32")
+                        }
+                    }
                 } else {
-                    // right is a complex expression, recursively evaluate
+                    // Complex expression with operators, recursively evaluate
                     (interpret(right)?, "I32")
                 };
 
@@ -364,5 +418,11 @@ mod tests {
     fn test_interpret_addition_and_multiplication() {
         let result = interpret("2 + 3 * 4");
         assert!(matches!(result, Ok(14)));
+    }
+
+    #[test]
+    fn test_interpret_parentheses_precedence() {
+        let result = interpret("(2 + 3) * 4");
+        assert!(matches!(result, Ok(20)));
     }
 }
