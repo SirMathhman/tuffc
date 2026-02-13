@@ -687,4 +687,10 @@ mod tests {
         let result = interpret("let x = 100U16; let y : U8 = x; y");
         assert!(result.is_err());
     }
+
+    #[test]
+    fn test_interpret_undefined_variable() {
+        let result = interpret("let x = undefinedVariable; x");
+        assert!(result.is_err());
+    }
 }
