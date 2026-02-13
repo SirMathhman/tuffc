@@ -1,0 +1,15 @@
+{
+  "name": "tuff-stage0",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Stage 0 JavaScript bootstrap compiler for Tuff-lite",
+  "bin": {
+    "tuff": "./src/cli.js"
+  },
+  "scripts": {
+    "test": "node ./tests/run-tests.js",
+    "test:update": "node ./tests/run-tests.js --update",
+    "compile:sample": "node ./src/cli.js compile ./tests/cases/factorial.tuff -o ./tests/out/factorial.js"
+  }
+}

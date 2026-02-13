@@ -1,0 +1,195 @@
+import { TuffError } from "./errors.js";
+
+const KEYWORDS = new Set([
+  "fn",
+  "let",
+  "struct",
+  "type",
+  "match",
+  "case",
+  "if",
+  "else",
+  "for",
+  "while",
+  "loop",
+  "in",
+  "return",
+  "break",
+  "continue",
+  "is",
+  "class",
+  "object",
+  "impl",
+  "with",
+  "out",
+  "module",
+  "extern",
+  "async",
+]);
+
+const TWO_CHAR = new Set([
+  "=>",
+  "==",
+  "!=",
+  "<=",
+  ">=",
+  "&&",
+  "||",
+  "::",
+  "..",
+  "|>",
+]);
+const THREE_CHAR = new Set(["..."]);
+
+function isAlpha(ch) {
+  return /[A-Za-z_]/.test(ch);
+}
+
+function isNum(ch) {
+  return /[0-9]/.test(ch);
+}
+
+function isAlphaNum(ch) {
+  return /[A-Za-z0-9_]/.test(ch);
+}
+
+export function lex(source, filePath = "<memory>") {
+  const tokens = [];
+  let i = 0;
+  let line = 1;
+  let column = 1;
+
+  const loc = () => ({ filePath, line, column });
+
+  const advance = () => {
+    const ch = source[i++];
+    if (ch === "\n") {
+      line += 1;
+      column = 1;
+    } else {
+      column += 1;
+    }
+    return ch;
+  };
+
+  const peek = (n = 0) => source[i + n] ?? "\0";
+
+  const add = (type, value, start) => tokens.push({ type, value, loc: start });
+
+  while (i < source.length) {
+    const ch = peek();
+    if (ch === " " || ch === "\t" || ch === "\r" || ch === "\n") {
+      advance();
+      continue;
+    }
+
+    if (ch === "/" && peek(1) === "/") {
+      while (i < source.length && peek() !== "\n") advance();
+      continue;
+    }
+
+    if (ch === "/" && peek(1) === "*") {
+      advance();
+      advance();
+      while (i < source.length && !(peek() === "*" && peek(1) === "/")) {
+        advance();
+      }
+      if (i >= source.length)
+        throw new TuffError("Unterminated block comment", loc());
+      advance();
+      advance();
+      continue;
+    }
+
+    const start = loc();
+    const three = `${peek()}${peek(1)}${peek(2)}`;
+    if (THREE_CHAR.has(three)) {
+      add("symbol", three, start);
+      advance();
+      advance();
+      advance();
+      continue;
+    }
+
+    const two = `${peek()}${peek(1)}`;
+    if (TWO_CHAR.has(two)) {
+      add("symbol", two, start);
+      advance();
+      advance();
+      continue;
+    }
+
+    if (isAlpha(ch)) {
+      let text = "";
+      while (isAlphaNum(peek())) text += advance();
+      if (KEYWORDS.has(text)) {
+        add("keyword", text, start);
+      } else if (text === "true" || text === "false") {
+        add("bool", text === "true", start);
+      } else {
+        add("identifier", text, start);
+      }
+      continue;
+    }
+
+    if (isNum(ch)) {
+      let text = "";
+      if (peek() === "0" && ["x", "b", "o"].includes(peek(1))) {
+        text += advance();
+        text += advance();
+        while (/[0-9A-Fa-f_]/.test(peek())) text += advance();
+      } else {
+        while (/[0-9_]/.test(peek())) text += advance();
+        if (peek() === "." && isNum(peek(1))) {
+          text += advance();
+          while (/[0-9_]/.test(peek())) text += advance();
+        }
+      }
+      add("number", text.replaceAll("_", ""), start);
+      continue;
+    }
+
+    if (ch === '"') {
+      advance();
+      let text = "";
+      while (i < source.length && peek() !== '"') {
+        if (peek() === "\\") {
+          const a = advance();
+          const b = advance();
+          text += a + b;
+        } else {
+          text += advance();
+        }
+      }
+      if (peek() !== '"')
+        throw new TuffError("Unterminated string literal", start);
+      advance();
+      add("string", text, start);
+      continue;
+    }
+
+    if (ch === "'") {
+      advance();
+      let text = "";
+      while (i < source.length && peek() !== "'") {
+        text += advance();
+      }
+      if (peek() !== "'")
+        throw new TuffError("Unterminated char literal", start);
+      advance();
+      add("char", text, start);
+      continue;
+    }
+
+    if ("(){}[],:;+-*/%<>=.!?|&".includes(ch)) {
+      add("symbol", ch, start);
+      advance();
+      continue;
+    }
+
+    throw new TuffError(`Unexpected character '${ch}'`, start);
+  }
+
+  tokens.push({ type: "eof", value: "<eof>", loc: { filePath, line, column } });
+  return tokens;
+}
