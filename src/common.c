@@ -24,8 +24,18 @@ FILE *safe_fopen(const char *path, const char *mode)
 
 CompileResult compile(char *source)
 {
-    // Default scenario is unknown source code.
     CompileResult result;
+    
+    // For empty source code, generate a valid C program that exits with code 0
+    if (source == NULL || strlen(source) == 0)
+    {
+        result.variant = OutputVariant;
+        result.output.headerCCode = "";
+        result.output.targetCCode = "int main() {\n    return 0;\n}\n";
+        return result;
+    }
+    
+    // Default scenario is unknown source code.
     result.variant = CompileErrorVariant;
     result.error.erroneous_code = source;
     result.error.error_message = "Unknown compilation error";
