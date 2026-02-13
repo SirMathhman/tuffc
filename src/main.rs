@@ -426,6 +426,8 @@ fn parse_if_else_parts(input: &str) -> Option<(String, String, String)> {
                 if let Some(cond_end_pos) = cond_end {
                     let condition_str = rest[1..cond_end_pos].trim();
                     let after_cond = rest[cond_end_pos + 1..].trim();
+
+                    // Check if there's an else keyword
                     if let Some(else_pos) = find_else_keyword(after_cond) {
                         let true_expr = after_cond[..else_pos].trim();
                         let else_part = after_cond[else_pos + 1..].trim();
@@ -448,6 +450,24 @@ fn parse_if_else_parts(input: &str) -> Option<(String, String, String)> {
                                     false_expr_start.trim().to_string(),
                                 ));
                             }
+                        }
+                    } else {
+                        // No else clause - find the end of the true branch
+                        // The true branch ends at a semicolon or space followed by non-if content
+                        if let Some(semi_pos) = find_char_at_depth_zero(after_cond, ';') {
+                            let true_expr = after_cond[..semi_pos].trim();
+                            return Some((
+                                condition_str.to_string(),
+                                true_expr.to_string(),
+                                "0".to_string(), // Default false branch returns 0
+                            ));
+                        } else {
+                            // No semicolon - take the whole thing as true branch
+                            return Some((
+                                condition_str.to_string(),
+                                after_cond.to_string(),
+                                "0".to_string(), // Default false branch returns 0
+                            ));
                         }
                     }
                 }
@@ -1254,5 +1274,11 @@ mod tests {
     fn test_interpret_if_else_with_braced_assignment() {
         let result = interpret("let mut x = 0; if (true) { x = 1; } else { x = 2; } x");
         assert!(matches!(result, Ok(1)));
+    }
+
+    #[test]
+    fn test_interpret_if_false_no_else() {
+        let result = interpret("let mut x = 0; if (false) { x = 1; } x");
+        assert!(matches!(result, Ok(0)));
     }
 }
