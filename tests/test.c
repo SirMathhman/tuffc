@@ -4,6 +4,13 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+
+// String constants to avoid duplication
+static const char *const MSG_TEMP_FAIL = "Test %s failed: could not create temp %s\n";
+static const char *const MSG_GENERATED_CODE = "Generated C code:\n%s\n";
+static const char *const MSG_EXIT_CODE_MISMATCH = "Test %s failed: expected exit code %d, got %d\n";
+static const char *const MSG_EXPECTED_COMPILE_ERROR = "Test %s failed: wanted compilation error, got output\n";
+
 int32_t passingTests = 0;
 int32_t totalTests = 0;
 
@@ -21,7 +28,7 @@ static int write_temp_files(const char *testName, char *header, char *source, ch
     FILE *hf = safe_fopen(temp_header, "w");
     if (!hf)
     {
-        fprintf(stderr, "Test %s failed: could not create temp header file\n", testName);
+        fprintf(stderr, MSG_TEMP_FAIL, testName, "header file");
         return 1;
     }
     fwrite(header, 1, strlen(header), hf);
@@ -30,7 +37,7 @@ static int write_temp_files(const char *testName, char *header, char *source, ch
     FILE *sf = safe_fopen(temp_source, "w");
     if (!sf)
     {
-        fprintf(stderr, "Test %s failed: could not create temp source file\n", testName);
+        fprintf(stderr, MSG_TEMP_FAIL, testName, "source file");
         remove(temp_header);
         return 1;
     }
@@ -81,7 +88,7 @@ static int compile_with_clang(const char *testName, char *temp_exe, char *temp_s
     if (compile_status != 0)
     {
         fprintf(stderr, "Test %s failed: clang compilation failed\n", testName);
-        fprintf(stderr, "Generated C code:\n%s\n", generated_code);
+        fprintf(stderr, MSG_GENERATED_CODE, generated_code);
         remove(temp_header);
         remove(temp_source);
         return 1;
@@ -93,8 +100,8 @@ static void check_exit_code(const char *testName, int32_t expectedExitCode, int3
 {
     if (actualExitCode != expectedExitCode)
     {
-        fprintf(stderr, "Test %s failed: expected exit code %d, got %d\n", testName, expectedExitCode, actualExitCode);
-        fprintf(stderr, "Generated C code:\n%s\n", generated_code);
+        fprintf(stderr, MSG_EXIT_CODE_MISMATCH, testName, expectedExitCode, actualExitCode);
+        fprintf(stderr, MSG_GENERATED_CODE, generated_code);
     }
     else
     {
@@ -119,7 +126,7 @@ void assertValid(char *testName, char *source, int32_t expectedExitCode, char *s
     FILE *stdinf = safe_fopen(temp_stdin, "w");
     if (!stdinf)
     {
-        fprintf(stderr, "Test %s failed: could not create temp stdin file\n", testName);
+        fprintf(stderr, MSG_TEMP_FAIL, testName, "stdin file");
         cleanup_files(temp_header, temp_source, temp_exe);
         return;
     }
@@ -154,7 +161,7 @@ void assertInvalid(char *testName, char *source)
     CompileResult result = compile(source);
     if (result.variant == OutputVariant)
     {
-        fprintf(stderr, "Test %s failed: expected compilation error, got output\n", testName);
+        fprintf(stderr, MSG_EXPECTED_COMPILE_ERROR, testName);
         fprintf(stderr, "Header C code:\n%s\n", result.output.headerCCode);
         fprintf(stderr, "Target C code:\n%s\n", result.output.targetCCode);
         return;
@@ -202,7 +209,12 @@ void testBinaryAddition()
 
 void testVarDeclaration()
 {
-    assertValid("var_decl", "let x : U8 = read<U8>(); x + x", 50, "25", 0, NULL);
+    assertValid("var_decl", "let y : U8 = read<U8>(); y + y", 50, "25", 0, NULL);
+}
+
+void testVariableMutation()
+{
+    assertValid("var_mutation", "let mut x : U8 = read<U8>(); x = read<U8>(); x", 75, "25 75", 0, NULL);
 }
 
 int32_t main()
@@ -215,6 +227,7 @@ int32_t main()
     testReadU8();
     testBinaryAddition();
     testVarDeclaration();
+    testVariableMutation();
 
     fprintf(stderr, "Passed %d/%d tests\n", passingTests, totalTests);
 

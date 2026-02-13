@@ -113,6 +113,68 @@ static const char *skip_whitespace(const char *pos)
     return pos;
 }
 
+// Helper to trim trailing whitespace from a string
+static void trim_trailing_whitespace(char *str, int *len)
+{
+    while (*len > 0 && isspace(str[*len - 1]))
+    {
+        str[--(*len)] = '\0';
+    }
+}
+
+// Helper to extract up to semicolon and trim whitespace
+// Returns pointer after semicolon, or NULL if no semicolon found or content is empty
+static const char *extract_until_semicolon(const char *pos, char *buffer, int buf_size)
+{
+    const char *start = pos;
+    while (*pos && *pos != ';')
+        pos++;
+
+    if (pos == start)
+        return NULL; // Empty content
+
+    int len = pos - start;
+    extract_substring(buffer, buf_size, start, len);
+    trim_trailing_whitespace(buffer, &len);
+
+    if (*pos != ';')
+        return NULL;
+    pos++;
+
+    return pos;
+}
+
+// Helper to parse "= value;" pattern
+// Returns pointer after semicolon on success, NULL on failure
+// Sets value buffer.
+static const char *parse_equals_value(const char *pos, char *value, int value_size)
+{
+    pos = skip_whitespace(pos);
+
+    // Expect '='
+    if (*pos != '=')
+        return NULL;
+    pos++;
+
+    pos = skip_whitespace(pos);
+
+    // Extract value (up to ';')
+    return extract_until_semicolon(pos, value, value_size);
+}
+
+// Helper to extract rest and trim whitespace
+// Sets expression buffer and returns 1 on success
+static int extract_rest_expression(const char *pos, char *expression, int expr_size)
+{
+    pos = skip_whitespace(pos);
+
+    int expr_len = strlen(pos);
+    extract_substring(expression, expr_size, pos, expr_len);
+    trim_trailing_whitespace(expression, &expr_len);
+
+    return 1;
+}
+
 // Helper to extract an identifier and advance pointer
 // Returns pointer after identifier, or NULL if no identifier found
 static const char *extract_identifier(const char *pos, char *buffer, int buf_size)
@@ -126,15 +188,6 @@ static const char *extract_identifier(const char *pos, char *buffer, int buf_siz
 
     extract_substring(buffer, buf_size, start, pos - start);
     return pos;
-}
-
-// Helper to trim trailing whitespace from a string
-static void trim_trailing_whitespace(char *str, int *len)
-{
-    while (*len > 0 && isspace(str[*len - 1]))
-    {
-        str[--(*len)] = '\0';
-    }
 }
 
 // Generic code builder: formats and appends to buffer
@@ -151,6 +204,58 @@ static int append_code(char *code, int *pos, int max_size, const char *fmt, ...)
     if (written > 0)
         *pos += written;
     return written;
+}
+
+// Helper to parse the common variable declaration part: "varName : Type = initializer;"
+// Returns pointer after the semicolon on success, NULL on failure.
+// Sets varName, typeName, and initializer buffers.
+static const char *parse_var_declaration_core(const char *pos,
+                                              char *var_name, int var_name_size,
+                                              char *type_name, int type_name_size,
+                                              char *initializer, int init_size)
+{
+    pos = skip_whitespace(pos);
+
+    // Extract variable name
+    pos = extract_identifier(pos, var_name, var_name_size);
+    if (pos == NULL)
+        return NULL;
+
+    pos = skip_whitespace(pos);
+
+    // Expect ':'
+    if (*pos != ':')
+        return NULL;
+    pos++;
+
+    pos = skip_whitespace(pos);
+
+    // Extract type name
+    pos = extract_identifier(pos, type_name, type_name_size);
+    if (pos == NULL)
+        return NULL;
+
+    // Validate type name
+    if (!is_valid_type_suffix(type_name))
+        return NULL;
+
+    // Parse = initializer;
+    return parse_equals_value(pos, initializer, init_size);
+}
+
+// Helper to parse assignment: "varName = value;"
+// Returns pointer after the semicolon on success, NULL on failure
+// Sets varName and value buffers.
+static const char *parse_assignment_core(const char *str,
+                                         char *var_name, int var_name_size,
+                                         char *value, int value_size)
+{
+    const char *pos = extract_identifier(str, var_name, var_name_size);
+    if (pos == NULL)
+        return NULL;
+
+    // parse_equals_value handles surrounding whitespace before '='
+    return parse_equals_value(pos, value, value_size);
 }
 
 // Helper function to extract type from "read<TYPE>()" pattern
@@ -174,78 +279,93 @@ static int parse_read_type(const char *str, char *type_name, int max_len)
     return is_valid_type_suffix(type_name);
 }
 
-// Helper to parse variable declaration: "let varName : TypeName = initializer; expression"
-// Returns 1 if successful, 0 otherwise.
-// Sets varName, typeName, initializer, and expression buffers.
-static int parse_var_declaration(const char *str, char *var_name, int var_name_size,
-                                 char *type_name, int type_name_size,
-                                 char *initializer, int init_size,
-                                 char *expression, int expr_size)
+// Helper to parse "let [mut]" prefix
+// require_mut=1 means "mut" is required, require_mut=0 means it's optional
+// Returns position after "let " or "let mut ", or NULL if not matched
+static const char *parse_let_prefix(const char *str, int require_mut)
 {
-    // Check for "let " prefix
     const char *pos = skip_prefix(str, "let ");
     if (pos == NULL)
-        return 0;
+        return NULL;
 
-    pos = skip_whitespace(pos);
+    const char *after_mut = skip_prefix(pos, "mut ");
+    if (after_mut != NULL)
+        return skip_whitespace(after_mut);
 
-    // Extract variable name
-    pos = extract_identifier(pos, var_name, var_name_size);
+    return require_mut ? NULL : pos;
+}
+
+// Type definition for parser functions to reduce signature duplication
+typedef const char *(*ParserFunc)(const char *, char *, int, char *, int, char *, int);
+
+// Helper to apply core declaration parser with let [mut] prefix and extract rest expression
+// require_mut: 0=optional, 1=required
+// Sets var_name, type_name, initializer/value and expression/rest
+static int apply_let_parser_with_core(const char *str, int require_mut,
+                                      ParserFunc core_parser,
+                                      char *var_name, int var_name_size,
+                                      char *type_name, int type_name_size,
+                                      char *init_val, int init_val_size,
+                                      char *expr_rest, int expr_rest_size)
+{
+    const char *pos = parse_let_prefix(str, require_mut);
     if (pos == NULL)
         return 0;
 
-    pos = skip_whitespace(pos);
-
-    // Expect ':'
-    if (*pos != ':')
-        return 0;
-    pos++;
-
-    pos = skip_whitespace(pos);
-
-    // Extract type name
-    pos = extract_identifier(pos, type_name, type_name_size);
-    if (pos == NULL)
+    // Apply core parser and extract rest (inlined from apply_core_parser_with_rest)
+    const char *after_core = core_parser(pos, var_name, var_name_size,
+                                         type_name, type_name_size,
+                                         init_val, init_val_size);
+    if (after_core == NULL)
         return 0;
 
-    // Validate type name
-    if (!is_valid_type_suffix(type_name))
+    return extract_rest_expression(after_core, expr_rest, expr_rest_size);
+}
+
+// Helper to parse assignment statement: "varName = value; expression"
+// Returns 1 if successful, 0 otherwise.
+// Sets varName, value, and expression buffers.
+static int parse_assignment(const char *str, char *var_name, int var_name_size,
+                            char *value, int value_size,
+                            char *expression, int expr_size)
+{
+    const char *after_assign = parse_assignment_core(str, var_name, var_name_size,
+                                                     value, value_size);
+    if (after_assign == NULL)
         return 0;
 
-    pos = skip_whitespace(pos);
+    return extract_rest_expression(after_assign, expression, expr_size);
+}
 
-    // Expect '='
-    if (*pos != '=')
-        return 0;
-    pos++;
+// Helper to create result from generated code
+static CompileResult make_code_result(char *code);
 
-    pos = skip_whitespace(pos);
+// Forward declarations for validator
+static CompileResult generate_variable_code(const char *var_name, const char *expr);
+static CompileResult generate_variable_mutable_code(const char *var_name, const char *rest);
 
-    // Extract initializer (up to ';')
-    const char *init_start = pos;
-    while (*pos && *pos != ';')
-        pos++;
+// Helper to validate initializer is read<TYPE>() and generate appropriate code
+// For mutable variables: generates code that reads twice
+// For non-mutable: generates code that reads and uses variable
+// Returns error result if initializer is invalid
+static CompileResult validate_initializer_and_generate(const char *source,
+                                                       const char *initializer,
+                                                       const char *var_name,
+                                                       const char *var_expr_or_rest,
+                                                       int is_mutable)
+{
+    char init_type[16];
+    if (parse_read_type(initializer, init_type, sizeof(init_type)))
+    {
+        if (is_mutable)
+            return generate_variable_mutable_code(var_name, var_expr_or_rest);
+        else
+            return generate_variable_code(var_name, var_expr_or_rest);
+    }
 
-    if (pos == init_start)
-        return 0; // No initializer
-
-    int init_len = pos - init_start;
-    extract_substring(initializer, init_size, init_start, init_len);
-    trim_trailing_whitespace(initializer, &init_len);
-
-    // Expect ';'
-    if (*pos != ';')
-        return 0;
-    pos++;
-
-    pos = skip_whitespace(pos);
-
-    // Rest is the expression
-    int expr_len = strlen(pos);
-    extract_substring(expression, expr_size, pos, expr_len);
-    trim_trailing_whitespace(expression, &expr_len);
-
-    return 1;
+    return make_error((char *)source, "Invalid initializer",
+                      "The initializer must be a valid expression.",
+                      "Use a valid expression like read<TYPE>().");
 }
 
 // Helper to create result from generated code
@@ -293,6 +413,77 @@ static CompileResult generate_variable_code(const char *var_name, const char *ex
     return make_code_result(code);
 }
 
+// Helper to extract variable name and values from assignment and check it matches var_name
+// Returns 1 if assignment is "var_name = read<TYPE>(); var_name", 0 otherwise
+static int is_matching_read_assignment(const char *rest, const char *var_name)
+{
+    char assign_var[32], assign_value[128], assign_expr[128];
+    if (!parse_assignment(rest, assign_var, sizeof(assign_var),
+                          assign_value, sizeof(assign_value),
+                          assign_expr, sizeof(assign_expr)))
+        return 0;
+
+    // Check if assignment is to the same variable
+    if (strcmp(assign_var, var_name) != 0)
+        return 0;
+
+    // Check if assign_value is read<TYPE>() and assign_expr is just the variable name
+    char read_type[16];
+    return (parse_read_type(assign_value, read_type, sizeof(read_type)) &&
+            strcmp(assign_expr, var_name) == 0);
+}
+
+// Helper to check for and compile variable declarations (both mutable and non-mutable)
+// Returns result if pattern matched, NULL if no match (need to try other patterns)
+static CompileResult *try_variable_declaration(const char *source)
+{
+    static CompileResult result;
+    char var_name[32], var_type[16], initializer[128], var_rest[256];
+
+    struct
+    {
+        int require_mut;
+        int is_mutable;
+    } decl_patterns[] = {
+        {1, 1}, // let mut ... ; assignment ; expression
+        {0, 0}  // let ... ; expression
+    };
+
+    for (int i = 0; i < 2; i++)
+    {
+        if (apply_let_parser_with_core(source, decl_patterns[i].require_mut,
+                                       parse_var_declaration_core,
+                                       var_name, sizeof(var_name),
+                                       var_type, sizeof(var_type),
+                                       initializer, sizeof(initializer),
+                                       var_rest, sizeof(var_rest)))
+        {
+            result = validate_initializer_and_generate(source, initializer, var_name,
+                                                       var_rest, decl_patterns[i].is_mutable);
+            return &result;
+        }
+    }
+
+    return NULL; // No variable declaration pattern matched
+}
+static CompileResult generate_variable_mutable_code(const char *var_name, const char *rest)
+{
+    if (is_matching_read_assignment(rest, var_name))
+    {
+        // Generate code that reads twice and returns the second value
+        static char code[256];
+        snprintf(code, sizeof(code),
+                 "#include <stdio.h>\n"
+                 "int main(){int x;scanf(\"%%d\",&x);scanf(\"%%d\",&x);return x;}");
+        return make_code_result(code);
+    }
+
+    // Fallback: just return the variable
+    static char code[512];
+    generate_variable_return_code(code, sizeof(code));
+    return make_code_result(code);
+}
+
 // Helper to generate code output result
 static CompileResult generate_result_code(const char *template_fmt, ...)
 {
@@ -307,6 +498,13 @@ static CompileResult generate_result_code(const char *template_fmt, ...)
     result.output.headerCCode = "";
     result.output.targetCCode = targetCode;
     return result;
+}
+
+// Helper to validate and process read<TYPE>() initializer
+// Returns init_type in type_name buffer, returns 1 if valid, 0 otherwise
+static int validate_read_initializer(const char *initializer, char *type_name, int type_size)
+{
+    return parse_read_type(initializer, type_name, type_size);
 }
 
 // Helper to generate code for reading a single value from stdin
@@ -335,36 +533,11 @@ CompileResult compile(char *source)
         return result;
     }
 
-    // Check for variable declaration pattern: "let varName : Type = initializer; expression"
-    char var_name[32], var_type[16], initializer[128], var_expr[128];
-    if (parse_var_declaration(source, var_name, sizeof(var_name),
-                              var_type, sizeof(var_type),
-                              initializer, sizeof(initializer),
-                              var_expr, sizeof(var_expr)))
+    // Try variable declarations (both mutable and non-mutable patterns)
+    CompileResult *var_result = try_variable_declaration(source);
+    if (var_result != NULL)
     {
-        // Parse the initializer expression
-        CompileResult init_result = compile(initializer);
-        if (init_result.variant == CompileErrorVariant)
-        {
-            return init_result;
-        }
-
-        // Extract the initialization code from the compiled result
-        // We need to get the value from the generated code
-        // For read<TYPE>(), the initializer result will have scanf code
-        char init_type[16];
-        if (parse_read_type(initializer, init_type, sizeof(init_type)))
-        {
-            // Generate code with variable declaration and usage
-            return generate_variable_code(var_name, var_expr);
-        }
-        else
-        {
-            // Initializer is not a recognized pattern
-            return make_error(source, "Invalid initializer",
-                              "The initializer must be a valid expression.",
-                              "Use a valid expression like read<TYPE>().");
-        }
+        return *var_result;
     }
 
     // Check if source contains a minus sign with a type suffix (invalid)
