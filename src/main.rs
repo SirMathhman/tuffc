@@ -10,9 +10,17 @@ struct InterpreterError {
 }
 
 #[derive(Debug, Clone)]
+struct FunctionDef {
+    params: Vec<(String, String)>,
+    return_type: String,
+    body: String,
+}
+
+#[derive(Debug, Clone)]
 struct Context {
     variables: HashMap<String, (i32, String, bool)>, // (value, type, is_mutable)
     tuples: HashMap<String, (Vec<i32>, Vec<String>, bool)>, // (values, types, is_mutable)
+    functions: HashMap<String, FunctionDef>,
 }
 
 impl Context {
@@ -20,6 +28,7 @@ impl Context {
         Context {
             variables: HashMap::new(),
             tuples: HashMap::new(),
+            functions: HashMap::new(),
         }
     }
 
@@ -69,6 +78,23 @@ impl Context {
     ) -> Self {
         self.tuples.insert(name, (values, types, is_mutable));
         self
+    }
+
+    fn with_function(mut self, name: String, function_def: FunctionDef) -> Self {
+        self.functions.insert(name, function_def);
+        self
+    }
+
+    fn get_function(&self, name: &str) -> Option<FunctionDef> {
+        self.functions.get(name).cloned()
+    }
+
+    fn function_scope(&self) -> Self {
+        Context {
+            variables: HashMap::new(),
+            tuples: HashMap::new(),
+            functions: self.functions.clone(),
+        }
     }
 
     fn set_var(
@@ -503,8 +529,115 @@ fn parse_tuple_index(input: &str) -> Option<(String, usize)> {
     None
 }
 
+fn parse_function_parameters(params_str: &str) -> Option<Vec<(String, String)>> {
+    let trimmed = params_str.trim();
+    if trimmed.is_empty() {
+        return Some(Vec::new());
+    }
+
+    let mut params = Vec::new();
+    for part in trimmed.split(',') {
+        let param = part.trim();
+        let colon_pos = param.find(':')?;
+        let param_name = param[..colon_pos].trim();
+        let param_type = param[colon_pos + 1..].trim();
+
+        if param_name.is_empty() || !is_valid_identifier(param_name) || !is_valid_type(param_type) {
+            return None;
+        }
+
+        params.push((param_name.to_string(), param_type.to_string()));
+    }
+
+    Some(params)
+}
+
+fn parse_function_call(input: &str) -> Option<(String, Vec<String>)> {
+    let trimmed = input.trim();
+    let open_paren = trimmed.find('(')?;
+    if !trimmed.ends_with(')') {
+        return None;
+    }
+
+    let name = trimmed[..open_paren].trim();
+    if name.is_empty() || !is_valid_identifier(name) {
+        return None;
+    }
+
+    let args_inner = &trimmed[open_paren + 1..trimmed.len() - 1];
+    let args_inner = args_inner.trim();
+    if args_inner.is_empty() {
+        return Some((name.to_string(), Vec::new()));
+    }
+
+    let mut args = Vec::new();
+    let mut current = String::new();
+    let mut paren_depth = 0;
+    let mut brace_depth = 0;
+
+    for ch in args_inner.chars() {
+        match ch {
+            '(' => {
+                paren_depth += 1;
+                current.push(ch);
+            }
+            ')' => {
+                paren_depth -= 1;
+                current.push(ch);
+            }
+            '{' => {
+                brace_depth += 1;
+                current.push(ch);
+            }
+            '}' => {
+                brace_depth -= 1;
+                current.push(ch);
+            }
+            ',' if paren_depth == 0 && brace_depth == 0 => {
+                let arg = current.trim();
+                if arg.is_empty() {
+                    return None;
+                }
+                args.push(arg.to_string());
+                current.clear();
+            }
+            _ => current.push(ch),
+        }
+    }
+
+    let last_arg = current.trim();
+    if last_arg.is_empty() {
+        return None;
+    }
+    args.push(last_arg.to_string());
+
+    Some((name.to_string(), args))
+}
+
 fn find_char_at_depth_zero(input: &str, target_char: char) -> Option<usize> {
     find_at_depth_zero(input, |ch, _pos| ch == target_char).map(|(pos, _)| pos)
+}
+
+fn find_matching_brace_end(input: &str, open_brace_pos: usize) -> Option<usize> {
+    if input.as_bytes().get(open_brace_pos).copied() != Some(b'{') {
+        return None;
+    }
+
+    let mut brace_depth = 0;
+    for (i, ch) in input[open_brace_pos..].char_indices() {
+        match ch {
+            '{' => brace_depth += 1,
+            '}' => {
+                brace_depth -= 1;
+                if brace_depth == 0 {
+                    return Some(open_brace_pos + i);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    None
 }
 
 fn find_operator_at_depth(
@@ -783,24 +916,7 @@ fn parse_while_parts(input: &str) -> Option<(String, String)> {
 
     // Extract the body - handle both braced and non-braced bodies
     let body = if after_cond.starts_with('{') {
-        // Find the matching closing brace
-        let mut brace_depth = 0;
-        let mut body_end = None;
-        for (i, ch) in after_cond.char_indices() {
-            match ch {
-                '{' => brace_depth += 1,
-                '}' => {
-                    brace_depth -= 1;
-                    if brace_depth == 0 {
-                        body_end = Some(i);
-                        break;
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        if let Some(end_pos) = body_end {
+        if let Some(end_pos) = find_matching_brace_end(after_cond, 0) {
             after_cond[..=end_pos].trim().to_string()
         } else {
             // No matching closing brace found
@@ -952,31 +1068,11 @@ fn handle_while_loop(
     // After the loop, find what comes after by looking for the end of the while statement
     // For braced bodies, find the matching closing brace
     if body_str.trim_start().starts_with('{') {
-        let mut brace_depth = 0;
-        let mut body_end_pos = None;
-        let mut found_opening_brace = false;
-
-        for (i, ch) in input.char_indices() {
-            if ch == '{' && !found_opening_brace {
-                found_opening_brace = true;
-                brace_depth = 1;
-            } else if found_opening_brace {
-                match ch {
-                    '{' => brace_depth += 1,
-                    '}' => {
-                        brace_depth -= 1;
-                        if brace_depth == 0 {
-                            body_end_pos = Some(i + 1);
-                            break;
-                        }
-                    }
-                    _ => {}
-                }
-            }
-        }
-
-        if let Some(end_pos) = body_end_pos {
-            let after_loop = input[end_pos..].trim_start();
+        let body_start_pos = input.find('{');
+        if let Some(end_pos) =
+            body_start_pos.and_then(|start| find_matching_brace_end(input, start))
+        {
+            let after_loop = input[end_pos + 1..].trim_start();
             // Skip optional semicolon
             let after_loop = if after_loop.starts_with(';') {
                 after_loop[1..].trim_start()
@@ -1024,6 +1120,131 @@ fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, Inte
     if let Some(value_expr_str) = input.strip_prefix("yield ") {
         let value_expr = value_expr_str.trim();
         return interpret_with_context(value_expr, context);
+    }
+
+    // Handle function definitions: fn name(param: Type, ...) : ReturnType => body rest
+    if let Some(after_fn) = input.strip_prefix("fn ") {
+        let after_fn = after_fn.trim_start();
+        let open_paren_pos = after_fn.find('(').ok_or_else(|| InterpreterError {
+            code_snippet: input.to_string(),
+            error_message: "Invalid function declaration".to_string(),
+            explanation: "Function declarations must include a parameter list in parentheses."
+                .to_string(),
+            fix: "Use format: fn name(param: Type) : ReturnType => body".to_string(),
+        })?;
+
+        let fn_name = after_fn[..open_paren_pos].trim();
+        if fn_name.is_empty() || !is_valid_identifier(fn_name) {
+            return Err(InterpreterError {
+                code_snippet: input.to_string(),
+                error_message: "Invalid function name".to_string(),
+                explanation: "Function names must be valid identifiers.".to_string(),
+                fix: "Use a valid function name without operators or delimiters.".to_string(),
+            });
+        }
+
+        let mut paren_depth = 0;
+        let mut close_paren_rel = None;
+        for (i, ch) in after_fn[open_paren_pos..].char_indices() {
+            match ch {
+                '(' => paren_depth += 1,
+                ')' => {
+                    paren_depth -= 1;
+                    if paren_depth == 0 {
+                        close_paren_rel = Some(i + open_paren_pos);
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        let close_paren_pos = close_paren_rel.ok_or_else(|| InterpreterError {
+            code_snippet: input.to_string(),
+            error_message: "Invalid function parameter list".to_string(),
+            explanation: "Function parameters must have balanced parentheses.".to_string(),
+            fix: "Close the function parameter list with ')'".to_string(),
+        })?;
+
+        let params_str = &after_fn[open_paren_pos + 1..close_paren_pos];
+        let params = parse_function_parameters(params_str).ok_or_else(|| InterpreterError {
+            code_snippet: input.to_string(),
+            error_message: "Invalid function parameters".to_string(),
+            explanation: "Each parameter must be in the format name : Type.".to_string(),
+            fix: "Use comma-separated typed parameters, e.g., first : I32, second : I32"
+                .to_string(),
+        })?;
+
+        let after_params = after_fn[close_paren_pos + 1..].trim_start();
+        let after_colon = after_params
+            .strip_prefix(':')
+            .ok_or_else(|| InterpreterError {
+                code_snippet: input.to_string(),
+                error_message: "Missing function return type".to_string(),
+                explanation: "Function declarations require an explicit return type.".to_string(),
+                fix: "Add ': ReturnType' before the => token.".to_string(),
+            })?;
+
+        let arrow_pos = after_colon.find("=>").ok_or_else(|| InterpreterError {
+            code_snippet: input.to_string(),
+            error_message: "Missing function body arrow".to_string(),
+            explanation: "Function declarations must contain '=>'.".to_string(),
+            fix: "Add '=> body' after the return type.".to_string(),
+        })?;
+
+        let return_type = after_colon[..arrow_pos].trim();
+        if !is_valid_type(return_type) {
+            return Err(InterpreterError {
+                code_snippet: input.to_string(),
+                error_message: format!("Unknown return type '{}'", return_type),
+                explanation: "The return type must be a supported primitive type.".to_string(),
+                fix: "Use one of U8, U16, U32, U64, I8, I16, I32, I64, Bool.".to_string(),
+            });
+        }
+
+        let after_arrow = after_colon[arrow_pos + 2..].trim_start();
+        if after_arrow.is_empty() {
+            return Err(InterpreterError {
+                code_snippet: input.to_string(),
+                error_message: "Missing function body".to_string(),
+                explanation: "Function declarations must include a body expression.".to_string(),
+                fix: "Add a body after '=>', e.g., { first + second }".to_string(),
+            });
+        }
+
+        let (body, rest) = if after_arrow.starts_with('{') {
+            let end = find_matching_brace_end(after_arrow, 0).ok_or_else(|| InterpreterError {
+                code_snippet: input.to_string(),
+                error_message: "Unclosed function body".to_string(),
+                explanation: "Braced function bodies must have matching braces.".to_string(),
+                fix: "Close the function body with '}'".to_string(),
+            })?;
+
+            (
+                after_arrow[..=end].trim().to_string(),
+                after_arrow[end + 1..].trim().to_string(),
+            )
+        } else if let Some(semi_pos) = find_char_at_depth_zero(after_arrow, ';') {
+            (
+                after_arrow[..semi_pos].trim().to_string(),
+                after_arrow[semi_pos + 1..].trim().to_string(),
+            )
+        } else {
+            (after_arrow.trim().to_string(), String::new())
+        };
+
+        let fn_def = FunctionDef {
+            params,
+            return_type: return_type.to_string(),
+            body,
+        };
+        context = context.with_function(fn_name.to_string(), fn_def);
+
+        if rest.is_empty() {
+            return Ok(0);
+        }
+
+        return interpret_with_context(&rest, context);
     }
 
     // Handle case: expression followed by space and let statement, like "{} let x = 0; x"
@@ -1548,6 +1769,39 @@ fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, Inte
         }
     }
 
+    // Handle function calls: name(arg1, arg2, ...)
+    if let Some((fn_name, args)) = parse_function_call(input) {
+        if let Some(function_def) = context.get_function(&fn_name) {
+            if args.len() != function_def.params.len() {
+                return Err(InterpreterError {
+                    code_snippet: input.to_string(),
+                    error_message: format!(
+                        "Function '{}' expected {} arguments, got {}",
+                        fn_name,
+                        function_def.params.len(),
+                        args.len()
+                    ),
+                    explanation: "Function calls must provide exactly one argument for each declared parameter."
+                        .to_string(),
+                    fix: "Pass the required number of arguments in the call.".to_string(),
+                });
+            }
+
+            let mut fn_context = context.function_scope();
+            for ((param_name, param_type), arg_expr) in function_def.params.iter().zip(args.iter())
+            {
+                let arg_val = interpret_with_context(arg_expr, context.clone())?;
+                validate_result_in_type(arg_val, param_type, input)?;
+                fn_context =
+                    fn_context.with_var(param_name.clone(), arg_val, param_type.clone(), false);
+            }
+
+            let result = interpret_with_context(&function_def.body, fn_context)?;
+            validate_result_in_type(result, &function_def.return_type, input)?;
+            return Ok(result);
+        }
+    }
+
     // Handle simple variable lookup
     let trimmed = input.trim();
     if let Some((val, _)) = context.get_var(trimmed) {
@@ -1957,5 +2211,12 @@ mod tests {
     fn test_interpret_yield_in_brace_block() {
         let result = interpret("let x = { if (true) yield 1; 2 }; x");
         assert!(matches!(result, Ok(1)));
+    }
+
+    #[test]
+    fn test_interpret_function_definition_and_call() {
+        let result =
+            interpret("fn add(first : I32, second : I32) : I32 => { first + second } add(3, 4)");
+        assert!(matches!(result, Ok(7)));
     }
 }
