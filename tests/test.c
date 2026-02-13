@@ -175,10 +175,16 @@ void testNumericLiteral()
     assertValid("hundred", "100", 100, "", 0, NULL);
 }
 
+void testU8Literal()
+{
+    assertValid("u8_hundred", "100U8", 100, "", 0, NULL);
+}
+
 int32_t main()
 {
     testEmptyProgram();
     testNumericLiteral();
+    testU8Literal();
 
     fprintf(stderr, "Passed %d/%d tests\n", passingTests, totalTests);
 

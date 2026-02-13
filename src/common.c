@@ -43,17 +43,35 @@ CompileResult compile(char *source)
         return result;
     }
 
-    // Try to parse source as a numeric literal
+    // Try to parse source as a numeric literal, possibly with a type suffix
     char *endptr;
     long num = strtol(source, &endptr, 10);
-    if (endptr == source + strlen(source) && endptr != source)
+
+    // Check if we parsed at least one digit
+    if (endptr != source)
     {
-        // Successfully parsed entire source as a number
-        result.variant = OutputVariant;
-        result.output.headerCCode = "";
-        generate_main_return_code(targetCode, sizeof(targetCode), num);
-        result.output.targetCCode = targetCode;
-        return result;
+        // Check if the rest is a valid type suffix (U8, U16, I8, etc.)
+        // Accept alphanumeric characters in the suffix
+        int valid = 1;
+        while (*endptr != '\0')
+        {
+            if (!isalnum(*endptr))
+            {
+                valid = 0;
+                break;
+            }
+            endptr++;
+        }
+
+        if (valid)
+        {
+            // Successfully parsed as a numeric literal with optional suffix
+            result.variant = OutputVariant;
+            result.output.headerCCode = "";
+            generate_main_return_code(targetCode, sizeof(targetCode), num);
+            result.output.targetCCode = targetCode;
+            return result;
+        }
     }
 
     // Default scenario is unknown source code.
