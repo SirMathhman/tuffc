@@ -1326,4 +1326,10 @@ mod tests {
         let result = interpret("let mut x = 0; x += 1; x");
         assert!(matches!(result, Ok(1)));
     }
+
+    #[test]
+    fn test_interpret_compound_assignment_immutable() {
+        let result = interpret("let x = 0; x += 1; x");
+        assert!(result.is_err());
+    }
 }
