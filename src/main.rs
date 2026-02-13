@@ -374,7 +374,8 @@ fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, Inte
         let rest = input[semicolon_pos + 1..].trim();
 
         // Check for mut keyword
-        let (is_mutable, name_and_type_str) = if let Some(stripped) = let_part.strip_prefix("mut ") {
+        let (is_mutable, name_and_type_str) = if let Some(stripped) = let_part.strip_prefix("mut ")
+        {
             (true, stripped.trim())
         } else {
             (false, let_part)
@@ -766,5 +767,11 @@ mod tests {
     fn test_interpret_mutable_variable() {
         let result = interpret("let mut x = 0; x = 100; x");
         assert!(matches!(result, Ok(100)));
+    }
+
+    #[test]
+    fn test_interpret_immutable_variable_assignment() {
+        let result = interpret("let x = 0; x = 100; x");
+        assert!(result.is_err());
     }
 }
