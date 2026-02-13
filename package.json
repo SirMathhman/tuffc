@@ -8,8 +8,9 @@
     "tuff": "./src/cli.js"
   },
   "scripts": {
-    "test": "node ./tests/run-tests.js",
+    "test": "node ./tests/run-tests.js && node ./tests/stage1-bootstrap.js",
     "test:update": "node ./tests/run-tests.js --update",
-    "compile:sample": "node ./src/cli.js compile ./tests/cases/factorial.tuff -o ./tests/out/factorial.js"
+    "compile:sample": "node ./src/cli.js compile ./tests/cases/factorial.tuff -o ./tests/out/factorial.js",
+    "stage1:bootstrap": "node ./tests/stage1-bootstrap.js"
   }
 }

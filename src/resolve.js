@@ -22,7 +22,16 @@ class Scope {
   }
 }
 
-export function resolveNames(ast) {
+export function resolveNames(ast, options = {}) {
+  const hostBuiltins = new Set(options.hostBuiltins ?? []);
+  const allowHostPrefix = options.allowHostPrefix ?? "";
+
+  const isHostBuiltin = (name) => {
+    if (hostBuiltins.has(name)) return true;
+    if (allowHostPrefix && name.startsWith(allowHostPrefix)) return true;
+    return false;
+  };
+
   const globals = new Scope();
   for (const node of ast.body) {
     if (["FnDecl", "StructDecl", "TypeAlias"].includes(node.kind)) {
@@ -34,7 +43,11 @@ export function resolveNames(ast) {
     if (!expr) return;
     switch (expr.kind) {
       case "Identifier":
-        if (!scope.has(expr.name) && !globals.has(expr.name)) {
+        if (
+          !scope.has(expr.name) &&
+          !globals.has(expr.name) &&
+          !isHostBuiltin(expr.name)
+        ) {
           throw new TuffError(`Unknown identifier '${expr.name}'`);
         }
         break;

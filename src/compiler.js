@@ -7,19 +7,19 @@ import { resolveNames } from "./resolve.js";
 import { typecheck } from "./typecheck.js";
 import { generateJavaScript } from "./codegen-js.js";
 
-export function compileSource(source, filePath = "<memory>") {
+export function compileSource(source, filePath = "<memory>", options = {}) {
   const tokens = lex(source, filePath);
   const cst = parse(tokens);
   const core = desugar(cst);
-  resolveNames(core);
+  resolveNames(core, options.resolve ?? {});
   typecheck(core);
   const js = generateJavaScript(core);
   return { tokens, cst, core, js };
 }
 
-export function compileFile(inputPath, outputPath = null) {
+export function compileFile(inputPath, outputPath = null, options = {}) {
   const source = fs.readFileSync(inputPath, "utf8");
-  const result = compileSource(source, inputPath);
+  const result = compileSource(source, inputPath, options);
   const finalOutput = outputPath ?? inputPath.replace(/\.tuff$/i, ".js");
   fs.mkdirSync(path.dirname(finalOutput), { recursive: true });
   fs.writeFileSync(finalOutput, result.js, "utf8");
