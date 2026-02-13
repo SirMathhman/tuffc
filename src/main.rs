@@ -372,6 +372,16 @@ fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, Inte
         // Validate the value is within the type bounds
         validate_result_in_type(val, &var_type, input)?;
 
+        // Check for duplicate variable declarations
+        if context.get_var(&var_name).is_some() {
+            return Err(InterpreterError {
+                code_snippet: format!("let {} : {} = ...", var_name, var_type),
+                error_message: format!("Variable '{}' is already defined", var_name),
+                explanation: "A variable with this name has already been declared in the current scope.".to_string(),
+                fix: "Use a different variable name or shadowing is not allowed.".to_string(),
+            });
+        }
+
         // Add the variable to context
         context = context.with_var(var_name, val, var_type);
 
@@ -609,5 +619,11 @@ mod tests {
     fn test_interpret_let_binding_without_type() {
         let result = interpret("let x = 100; x");
         assert!(matches!(result, Ok(100)));
+    }
+
+    #[test]
+    fn test_interpret_duplicate_let_binding() {
+        let result = interpret("let x = 100; let x = 100;");
+        assert!(result.is_err());
     }
 }
