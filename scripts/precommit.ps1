@@ -3,7 +3,7 @@ if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }
 
-pmd cpd src --language rust --minimum-tokens 35
+pmd cpd src --language rust --minimum-tokens 35 --ignore-identifiers --ignore-literals --format markdown
 if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }

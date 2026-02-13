@@ -354,4 +354,10 @@ mod tests {
         let result = interpret("2 + 3 - 4");
         assert!(matches!(result, Ok(1)));
     }
+
+    #[test]
+    fn test_interpret_multiplication_and_subtraction() {
+        let result = interpret("2 * 3 - 4");
+        assert!(matches!(result, Ok(2)));
+    }
 }
