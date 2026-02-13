@@ -9,11 +9,46 @@ struct InterpreterError {
 }
 
 fn interpret(input: &str) -> Result<i32, InterpreterError> {
+    // Try parsing as a plain integer first
+    if let Ok(val) = input.parse::<i32>() {
+        return Ok(val);
+    }
+
+    // Try parsing with type suffixes (e.g., "100U8", "42I32")
+    let unsigned_suffixes = ["U8", "U16", "U32", "U64"];
+    let signed_suffixes = ["I8", "I16", "I32", "I64"];
+
+    for suffix in &unsigned_suffixes {
+        if input.ends_with(suffix) {
+            let without_suffix = &input[..input.len() - suffix.len()];
+            if without_suffix.starts_with('-') {
+                return Err(InterpreterError {
+                    code_snippet: input.to_string(),
+                    error_message: "Negative value with unsigned type suffix".to_string(),
+                    explanation: "Unsigned types (U8, U16, U32, U64) cannot represent negative numbers. The language semantics require unsigned types to only hold non-negative values.".to_string(),
+                    fix: "Use a signed type suffix (I8, I16, I32, I64) for negative numbers, or remove the negative sign.".to_string(),
+                });
+            }
+            if let Ok(val) = without_suffix.parse::<i32>() {
+                return Ok(val);
+            }
+        }
+    }
+
+    for suffix in &signed_suffixes {
+        if input.ends_with(suffix) {
+            let without_suffix = &input[..input.len() - suffix.len()];
+            if let Ok(val) = without_suffix.parse::<i32>() {
+                return Ok(val);
+            }
+        }
+    }
+
     Err(InterpreterError {
         code_snippet: input.to_string(),
-        error_message: "not implemented".to_string(),
-        explanation: "This feature has not yet been implemented.".to_string(),
-        fix: "Implement this feature.".to_string(),
+        error_message: "Failed to parse input as integer".to_string(),
+        explanation: "The input could not be parsed as a valid integer, optionally with a type suffix (U8, U16, U32, U64, I8, I16, I32, I64).".to_string(),
+        fix: "Provide a valid integer value, optionally with a type suffix.".to_string(),
     })
 }
 
@@ -55,6 +90,24 @@ mod tests {
     #[test]
     fn test_interpret_invalid() {
         let result = interpret("invalid");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_interpret_number() {
+        let result = interpret("100");
+        assert!(matches!(result, Ok(100)));
+    }
+
+    #[test]
+    fn test_interpret_typed_number() {
+        let result = interpret("100U8");
+        assert!(matches!(result, Ok(100)));
+    }
+
+    #[test]
+    fn test_interpret_negative_unsigned() {
+        let result = interpret("-100U8");
         assert!(result.is_err());
     }
 }
