@@ -3,4 +3,12 @@ name = "Tuff"
 version = "0.1.0"
 edition = "2021"
 
+[lints.clippy]
+panic = "deny"
+unwrap_used = "deny"
+expect_used = "deny"
+panicking_unwrap = "deny"
+todo = "deny"
+unimplemented = "deny"
+
 [dependencies]
