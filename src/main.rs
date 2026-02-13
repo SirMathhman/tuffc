@@ -1180,6 +1180,24 @@ fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, Inte
                 {
                     // If types don't match, check if coercion is allowed
                     if actual_type != declared_type {
+                        // Reject Bool-to-numeric or numeric-to-Bool conversions
+                        let is_type_conversion_invalid =
+                            (actual_type == "Bool") != (declared_type == "Bool");
+                        let has_type_bounds = get_type_bounds(declared_type).is_some();
+
+                        if is_type_conversion_invalid || !has_type_bounds {
+                            return Err(InterpreterError {
+                                code_snippet: input.to_string(),
+                                error_message: format!(
+                                    "Tuple element {} type mismatch: expected {}, got {}",
+                                    i, declared_type, actual_type
+                                ),
+                                explanation: "The tuple elements must match their declared types."
+                                    .to_string(),
+                                fix: "Ensure each tuple element has the correct type.".to_string(),
+                            });
+                        }
+
                         // Check if the value fits in the declared type
                         if let Some((min, max)) = get_type_bounds(declared_type) {
                             if *val < min || *val > max {
@@ -1196,17 +1214,6 @@ fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, Inte
                                     fix: "Use a value that fits in the declared type.".to_string(),
                                 });
                             }
-                        } else {
-                            return Err(InterpreterError {
-                                code_snippet: input.to_string(),
-                                error_message: format!(
-                                    "Tuple element {} type mismatch: expected {}, got {}",
-                                    i, declared_type, actual_type
-                                ),
-                                explanation: "The tuple elements must match their declared types."
-                                    .to_string(),
-                                fix: "Ensure each tuple element has the correct type.".to_string(),
-                            });
                         }
                     }
                 }
@@ -1913,6 +1920,12 @@ mod tests {
     #[test]
     fn test_interpret_tuple_length_mismatch() {
         let result = interpret("let myTuple : (U8, U16) = ();");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_interpret_tuple_type_mismatch() {
+        let result = interpret("let myTuple : (U8, U16) = (true, true);");
         assert!(result.is_err());
     }
 }
