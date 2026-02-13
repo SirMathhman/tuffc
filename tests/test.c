@@ -195,6 +195,11 @@ void testReadU8()
     assertValid("read<U8>()", "read<U8>()", 100, "100", 0, NULL);
 }
 
+void testBinaryAddition()
+{
+    assertValid("read_add", "read<U8>() + read<U8>()", 100, "25 75", 0, NULL);
+}
+
 int32_t main()
 {
     testEmptyProgram();
@@ -203,6 +208,7 @@ int32_t main()
     testNegativeU8Literal();
     testU8OutOfRange();
     testReadU8();
+    testBinaryAddition();
 
     fprintf(stderr, "Passed %d/%d tests\n", passingTests, totalTests);
 

@@ -88,6 +88,75 @@ static int is_value_in_range(long value, const char *suffix)
     return 0; // Unknown type
 }
 
+// Helper function to extract type from "read<TYPE>()" pattern
+// Returns 1 if valid, 0 otherwise. Sets type_name buffer.
+static int parse_read_type(const char *str, char *type_name, int max_len)
+{
+    if (strncmp(str, "read<", 5) != 0)
+        return 0;
+
+    const char *type_start = str + 5;
+    const char *type_end = strchr(type_start, '>');
+
+    if (type_end == NULL || strcmp(type_end, ">()") != 0)
+        return 0;
+
+    int type_len = type_end - type_start;
+    if (type_len >= max_len)
+        return 0;
+
+    memcpy(type_name, type_start, type_len);
+    type_name[type_len] = '\0';
+
+    return is_valid_type_suffix(type_name);
+}
+
+// Helper to extract a substring and null-terminate it
+static void extract_substring(char *dest, int dest_size, const char *src, int len)
+{
+    if (len >= dest_size)
+        len = dest_size - 1;
+    memcpy(dest, src, len);
+    dest[len] = '\0';
+}
+
+// Helper to generate code output result
+static CompileResult generate_result_code(const char *template_fmt, ...)
+{
+    CompileResult result;
+    static char targetCode[256];
+    va_list args;
+    va_start(args, template_fmt);
+    vsnprintf(targetCode, sizeof(targetCode), template_fmt, args);
+    va_end(args);
+
+    result.variant = OutputVariant;
+    result.output.headerCCode = "";
+    result.output.targetCCode = targetCode;
+    return result;
+}
+
+// Helper to generate code for reading a single value from stdin
+static CompileResult generate_read_code(void)
+{
+    static char code[256];
+    const char *readCodeTemplate =
+        "#include <stdio.h>\n"
+        "int main() {\n"
+        "    int value;\n"
+        "    scanf(\"%d\", &value);\n"
+        "    return (int)value;\n"
+        "}\n";
+
+    snprintf(code, sizeof(code), "%s", readCodeTemplate);
+
+    CompileResult result;
+    result.variant = OutputVariant;
+    result.output.headerCCode = "";
+    result.output.targetCCode = code;
+    return result;
+}
+
 CompileResult compile(char *source)
 {
     CompileResult result;
@@ -124,41 +193,55 @@ CompileResult compile(char *source)
         pos++;
     }
 
+    // Check for binary operations FIRST (e.g., "read<U8>() + read<U8>()")
+    const char *plus_op = strchr(source, '+');
+    if (plus_op != NULL)
+    {
+        // Try to parse as binary addition
+        // Split by the '+' operator
+        int left_len = plus_op - source;
+        char left_op[128];
+        extract_substring(left_op, sizeof(left_op), source, left_len);
+
+        // Trim whitespace from left operand
+        while (left_len > 0 && isspace(left_op[left_len - 1]))
+        {
+            left_op[--left_len] = '\0';
+        }
+
+        // Get right operand and trim leading whitespace
+        const char *right_op_start = plus_op + 1;
+        while (*right_op_start && isspace(*right_op_start))
+        {
+            right_op_start++;
+        }
+
+        // Try to parse both operands as read<TYPE>()
+        char left_type[16], right_type[16];
+        if (parse_read_type(left_op, left_type, sizeof(left_type)) &&
+            parse_read_type(right_op_start, right_type, sizeof(right_type)))
+        {
+            // Generate C code that reads two values and returns their sum
+            return generate_result_code(
+                "#include <stdio.h>\nint main() {\n    int a, b;\n    scanf(\"%%d %%d\", &a, &b);\n    return a + b;\n}\n");
+        }
+    }
+
     // Check for read<TYPE>() pattern
     const char *read_pattern = "read<";
     if (strncmp(source, read_pattern, 5) == 0)
     {
-        // Try to parse read<TYPE>()
-        const char *type_start = source + 5;
-        const char *type_end = strchr(type_start, '>');
-
-        if (type_end != NULL && strcmp(type_end, ">()") == 0)
+        char type_name[16];
+        if (parse_read_type(source, type_name, sizeof(type_name)))
         {
-            // Extract the type
-            int type_len = type_end - type_start;
-            char type_name[16];
-            memcpy(type_name, type_start, type_len);
-            type_name[type_len] = '\0';
-
-            // Check if it's a valid type
-            if (is_valid_type_suffix(type_name))
-            {
-                // Generate C code that reads from stdin and returns the value
-                static char readCode[256];
-                snprintf(readCode, sizeof(readCode),
-                         "#include <stdio.h>\nint main() {\n    int value;\n    scanf(\"%%d\", &value);\n    return (int)value;\n}\n");
-
-                result.variant = OutputVariant;
-                result.output.headerCCode = "";
-                result.output.targetCCode = readCode;
-                return result;
-            }
-            else
-            {
-                return make_error(source, "Unknown type in read function",
-                                  "The type in read<T>() is not a recognized integer type.",
-                                  "Specify a valid integer type for the read function.");
-            }
+            // Generate C code that reads from stdin and returns the value
+            return generate_read_code();
+        }
+        else
+        {
+            return make_error(source, "Unknown type in read function",
+                              "The type in read<T>() is not a recognized integer type.",
+                              "Specify a valid integer type for the read function.");
         }
     }
 
@@ -191,8 +274,7 @@ CompileResult compile(char *source)
                 // Extract the suffix
                 int suffix_len = endptr - suffix_start;
                 char suffix[16];
-                memcpy(suffix, suffix_start, suffix_len);
-                suffix[suffix_len] = '\0';
+                extract_substring(suffix, sizeof(suffix), suffix_start, suffix_len);
 
                 // Check if suffix is a valid type
                 if (!is_valid_type_suffix(suffix))
@@ -220,8 +302,8 @@ CompileResult compile(char *source)
         }
     }
 
-    // Default scenario is unknown source code.
+    // If we get here, the source doesn't match any recognized pattern
     return make_error(source, "Invalid syntax",
-                      "The source code does not match any recognized pattern. Expected empty input, a numeric literal, or a numeric literal with a type suffix.",
-                      "Check the syntax and ensure the input is a valid numeric literal, optionally with a type suffix like U8, U16, I32, etc.");
+                      "The source code does not match any recognized expression pattern.",
+                      "Check the syntax of your input and ensure it matches a valid expression format (empty, numeric literal, read<TYPE>(), or binary addition).");
 }
