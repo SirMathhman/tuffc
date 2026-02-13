@@ -38,7 +38,16 @@ export function resolveNames(ast, options = {}) {
 
   const globals = new Scope();
   for (const node of ast.body) {
-    if (["FnDecl", "StructDecl", "TypeAlias"].includes(node.kind)) {
+    if (
+      [
+        "FnDecl",
+        "StructDecl",
+        "TypeAlias",
+        "ExternFnDecl",
+        "ExternLetDecl",
+        "ExternTypeDecl",
+      ].includes(node.kind)
+    ) {
       globals.define(node.name);
     }
   }

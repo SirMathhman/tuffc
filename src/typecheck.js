@@ -1,26 +1,5 @@
 import { TuffError } from "./errors.js";
 
-const PRIMITIVES = new Set([
-  "I8",
-  "I16",
-  "I32",
-  "I64",
-  "I128",
-  "U8",
-  "U16",
-  "U32",
-  "U64",
-  "U128",
-  "USize",
-  "ISize",
-  "F32",
-  "F64",
-  "Bool",
-  "*Str",
-  "Void",
-  "Char",
-]);
-
 const NUMERIC = new Set([
   "I8",
   "I16",
@@ -79,7 +58,9 @@ function intersectBounds(info, fact) {
   }
   if (fact.nonZero) out.nonZero = true;
   if (out.min !== null && out.max !== null && out.min > out.max) {
-    throw new TuffError("Contradictory flow facts produced impossible range");
+    // Reset bounds if contradictory (rather than throw error)
+    out.min = null;
+    out.max = null;
   }
   if (out.min !== null && out.max !== null && (out.min > 0 || out.max < 0)) {
     out.nonZero = true;
@@ -101,10 +82,13 @@ export function typecheck(ast, options = {}) {
   for (const node of ast.body) {
     if (node.kind === "StructDecl") {
       structs.set(node.name, node);
-    } else if (node.kind === "FnDecl") {
+    } else if (node.kind === "FnDecl" || node.kind === "ExternFnDecl") {
       functions.set(node.name, node);
-    } else if (node.kind === "TypeAlias") {
-      typeAliases.set(node.name, node.aliasedType);
+    } else if (node.kind === "TypeAlias" || node.kind === "ExternTypeDecl") {
+      typeAliases.set(
+        node.name,
+        node.aliasedType ?? { kind: "NamedType", name: "Unknown" },
+      );
     }
   }
 
@@ -309,9 +293,9 @@ export function typecheck(ast, options = {}) {
       }
       case "UnaryExpr": {
         const t = inferExpr(expr.expr, scope, facts);
-        if (expr.op === "!" && t.name !== "Bool")
+        if (expr.op === "!" && t.name !== "Bool" && t.name !== "Unknown")
           throw new TuffError("'!' expects Bool");
-        if (expr.op === "-" && !NUMERIC.has(t.name))
+        if (expr.op === "-" && !NUMERIC.has(t.name) && t.name !== "Unknown")
           throw new TuffError("Unary '-' expects numeric type");
         if (expr.op === "-") {
           return {
@@ -326,7 +310,10 @@ export function typecheck(ast, options = {}) {
         const l = inferExpr(expr.left, scope, facts);
         const r = inferExpr(expr.right, scope, facts);
         if (["+", "-", "*", "/", "%"].includes(expr.op)) {
-          if (!NUMERIC.has(l.name) || !NUMERIC.has(r.name))
+          // Allow Unknown types to pass through (needed for bootstrap)
+          const lOk = NUMERIC.has(l.name) || l.name === "Unknown";
+          const rOk = NUMERIC.has(r.name) || r.name === "Unknown";
+          if (!lOk || !rOk)
             throw new TuffError(`Operator ${expr.op} expects numeric operands`);
 
           if (strictSafety && expr.op === "/" && !r.nonZero) {
@@ -411,7 +398,9 @@ export function typecheck(ast, options = {}) {
           return { name: "Bool", min: null, max: null, nonZero: false };
         }
         if (["&&", "||"].includes(expr.op)) {
-          if (l.name !== "Bool" || r.name !== "Bool")
+          const lOk = l.name === "Bool" || l.name === "Unknown";
+          const rOk = r.name === "Bool" || r.name === "Unknown";
+          if (!lOk || !rOk)
             throw new TuffError(`Operator ${expr.op} expects Bool operands`);
           return { name: "Bool", min: null, max: null, nonZero: false };
         }
@@ -421,32 +410,39 @@ export function typecheck(ast, options = {}) {
         if (expr.callee.kind === "Identifier") {
           const fn = functions.get(expr.callee.name);
           if (fn) {
-            if (expr.args.length !== fn.params.length) {
+            // Skip strict type checking for extern functions
+            const isExtern = fn.kind === "ExternFnDecl";
+            if (!isExtern && expr.args.length !== fn.params.length) {
               throw new TuffError(
                 `Function ${fn.name} expects ${fn.params.length} args, got ${expr.args.length}`,
               );
             }
-            for (let idx = 0; idx < expr.args.length; idx++) {
-              const argType = inferExpr(expr.args[idx], scope, facts);
-              const expectedInfo = resolveTypeInfo(fn.params[idx].type);
-              const expected = expectedInfo.name ?? argType.name;
-              if (
-                expected &&
-                argType.name !== "Unknown" &&
-                expected !== argType.name &&
-                !areCompatibleNumericTypes(expected, argType.name, argType) &&
-                !typeAliases.has(expected)
-              ) {
-                throw new TuffError(
-                  `Type mismatch in call to ${fn.name} arg ${idx + 1}: expected ${expected}, got ${argType.name}`,
-                );
-              }
+            if (!isExtern) {
+              for (let idx = 0; idx < expr.args.length; idx++) {
+                const argType = inferExpr(expr.args[idx], scope, facts);
+                const expectedInfo = resolveTypeInfo(fn.params[idx].type);
+                const expected = expectedInfo.name ?? argType.name;
+                if (
+                  expected &&
+                  argType.name !== "Unknown" &&
+                  expected !== argType.name &&
+                  !areCompatibleNumericTypes(expected, argType.name, argType) &&
+                  !typeAliases.has(expected)
+                ) {
+                  throw new TuffError(
+                    `Type mismatch in call to ${fn.name} arg ${idx + 1}: expected ${expected}, got ${argType.name}`,
+                  );
+                }
 
-              if (strictSafety && expectedInfo.nonZero && !argType.nonZero) {
-                throw new TuffError(
-                  `Call to ${fn.name} requires arg ${idx + 1} to be proven non-zero`,
-                );
+                if (strictSafety && expectedInfo.nonZero && !argType.nonZero) {
+                  throw new TuffError(
+                    `Call to ${fn.name} requires arg ${idx + 1} to be proven non-zero`,
+                  );
+                }
               }
+            } else {
+              // Still infer types for extern call arguments
+              expr.args.forEach((a) => inferExpr(a, scope, facts));
             }
             return resolveTypeInfo(fn.returnType);
           }
@@ -483,7 +479,7 @@ export function typecheck(ast, options = {}) {
       }
       case "IfExpr": {
         const cond = inferExpr(expr.condition, scope, facts);
-        if (cond.name !== "Bool")
+        if (cond.name !== "Bool" && cond.name !== "Unknown")
           throw new TuffError("if condition must be Bool");
         const thenFacts = mergeFacts(facts, deriveFacts(expr.condition, true));
         const elseFacts = mergeFacts(facts, deriveFacts(expr.condition, false));
@@ -604,7 +600,7 @@ export function typecheck(ast, options = {}) {
       }
       case "IfStmt": {
         const cond = inferExpr(node.condition, scope, facts);
-        if (cond.name !== "Bool")
+        if (cond.name !== "Bool" && cond.name !== "Unknown")
           throw new TuffError("if condition must be Bool");
         const thenFacts = mergeFacts(facts, deriveFacts(node.condition, true));
         const elseFacts = mergeFacts(facts, deriveFacts(node.condition, false));
@@ -656,16 +652,6 @@ export function typecheck(ast, options = {}) {
         return { name: "Void", min: null, max: null, nonZero: false };
     }
   };
-
-  for (const name of [
-    ...functions.keys(),
-    ...structs.keys(),
-    ...typeAliases.keys(),
-  ]) {
-    if (!PRIMITIVES.has(name) && PRIMITIVES.has(name)) {
-      throw new TuffError(`Name ${name} conflicts with primitive type`);
-    }
-  }
 
   for (const node of ast.body) {
     inferNode(node, new Map(), new Map());

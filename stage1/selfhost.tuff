@@ -1,0 +1,1964 @@
+/**
+ * Self-hosted Tuff compiler.
+ * Compiles Tuff source to JavaScript.
+ *
+ * Uses extern functions for string/array/map operations.
+ */
+
+// ============================================================================
+// Extern declarations - these come from runtime.js
+// ============================================================================
+
+extern fn str_length(s: *Str) : I32;
+extern fn str_char_at(s: *Str, i: I32) : I32;
+extern fn str_char(s: *Str, i: I32) : *Str;
+extern fn str_slice(s: *Str, start: I32, end: I32) : *Str;
+extern fn str_concat(a: *Str, b: *Str) : *Str;
+extern fn str_eq(a: *Str, b: *Str) : Bool;
+extern fn str_from_char_code(code: I32) : *Str;
+extern fn str_index_of(s: *Str, needle: *Str) : I32;
+extern fn str_includes(s: *Str, needle: *Str) : Bool;
+extern fn str_starts_with(s: *Str, prefix: *Str) : Bool;
+extern fn str_trim(s: *Str) : *Str;
+extern fn str_replace_all(s: *Str, from: *Str, to: *Str) : *Str;
+extern fn char_code(ch: *Str) : I32;
+extern fn int_to_string(n: I32) : *Str;
+extern fn parse_int(s: *Str) : I32;
+
+extern fn sb_new() : I32;
+extern fn sb_append(sb: I32, s: *Str) : I32;
+extern fn sb_append_char(sb: I32, code: I32) : I32;
+extern fn sb_build(sb: I32) : *Str;
+
+extern fn vec_new() : I32;
+extern fn vec_push(arr: I32, item: I32) : I32;
+extern fn vec_get(arr: I32, i: I32) : I32;
+extern fn vec_set(arr: I32, i: I32, v: I32) : I32;
+extern fn vec_length(arr: I32) : I32;
+extern fn vec_clear(arr: I32) : I32;
+extern fn vec_join(arr: I32, sep: *Str) : *Str;
+extern fn vec_includes(arr: I32, item: I32) : Bool;
+
+extern fn map_new() : I32;
+extern fn map_set(m: I32, k: *Str, v: I32) : I32;
+extern fn map_get(m: I32, k: *Str) : I32;
+extern fn map_has(m: I32, k: *Str) : Bool;
+
+extern fn set_new() : I32;
+extern fn set_add(s: I32, item: *Str) : I32;
+extern fn set_has(s: I32, item: *Str) : Bool;
+
+extern fn str_vec_new() : I32;
+extern fn str_vec_push(arr: I32, s: *Str) : I32;
+extern fn str_vec_get(arr: I32, i: I32) : *Str;
+extern fn str_vec_length(arr: I32) : I32;
+
+extern fn read_file(filePath: *Str) : *Str;
+extern fn write_file(filePath: *Str, contents: *Str) : I32;
+
+extern fn print(s: *Str) : I32;
+extern fn print_error(s: *Str) : I32;
+extern fn panic(msg: *Str) : I32;
+
+// ============================================================================
+// Token Kinds
+// ============================================================================
+
+let TK_EOF : I32 = 0;
+let TK_KEYWORD : I32 = 1;
+let TK_IDENTIFIER : I32 = 2;
+let TK_NUMBER : I32 = 3;
+let TK_STRING : I32 = 4;
+let TK_BOOL : I32 = 5;
+let TK_SYMBOL : I32 = 6;
+let TK_CHAR : I32 = 7;
+
+// ============================================================================
+// Token structure - array-based representation
+// Tokens are stored as indices into arrays.
+// tok_kinds[i], tok_values[i], tok_lines[i], tok_cols[i]
+// ============================================================================
+
+let tok_kinds : I32 = vec_new();
+let tok_values : I32 = vec_new();
+let tok_lines : I32 = vec_new();
+let tok_cols : I32 = vec_new();
+let tok_count : I32 = 0;
+
+fn tok_add(kind: I32, value: I32, line: I32, col: I32) : I32 => {
+    let idx = tok_count;
+    vec_push(tok_kinds, kind);
+    vec_push(tok_values, value);
+    vec_push(tok_lines, line);
+    vec_push(tok_cols, col);
+    tok_count = tok_count + 1;
+    idx
+}
+
+fn tok_kind(idx: I32) : I32 => vec_get(tok_kinds, idx);
+fn tok_value(idx: I32) : I32 => vec_get(tok_values, idx);
+
+// String intern table - stores strings by index for reverse lookup
+let intern_table : I32 = str_vec_new();
+let intern_map : I32 = map_new();
+
+fn intern(s: *Str) : I32 => {
+    if (map_has(intern_map, s)) {
+        map_get(intern_map, s)
+    } else {
+        let idx = str_vec_length(intern_table);
+        str_vec_push(intern_table, s);
+        map_set(intern_map, s, idx);
+        idx
+    }
+}
+
+fn get_intern(idx: I32) : *Str => {
+    str_vec_get(intern_table, idx)
+}
+
+// Keywords set
+let keywords : I32 = set_new();
+
+fn init_keywords() : I32 => {
+    set_add(keywords, "fn");
+    set_add(keywords, "let");
+    set_add(keywords, "struct");
+    set_add(keywords, "type");
+    set_add(keywords, "match");
+    set_add(keywords, "case");
+    set_add(keywords, "if");
+    set_add(keywords, "else");
+    set_add(keywords, "for");
+    set_add(keywords, "while");
+    set_add(keywords, "loop");
+    set_add(keywords, "in");
+    set_add(keywords, "return");
+    set_add(keywords, "break");
+    set_add(keywords, "continue");
+    set_add(keywords, "is");
+    set_add(keywords, "class");
+    set_add(keywords, "object");
+    set_add(keywords, "impl");
+    set_add(keywords, "with");
+    set_add(keywords, "out");
+    set_add(keywords, "module");
+    set_add(keywords, "extern");
+    set_add(keywords, "async");
+    0
+}
+
+fn is_keyword(s: *Str) : Bool => set_has(keywords, s);
+
+// ============================================================================
+// Lexer
+// ============================================================================
+
+let lex_source : *Str = "";
+let lex_pos : I32 = 0;
+let lex_line : I32 = 1;
+let lex_col : I32 = 1;
+let lex_len : I32 = 0;
+
+fn lex_init(source: *Str) : I32 => {
+    lex_source = source;
+    lex_pos = 0;
+    lex_line = 1;
+    lex_col = 1;
+    lex_len = str_length(source);
+    // Clear token arrays for fresh compilation
+    vec_clear(tok_kinds);
+    vec_clear(tok_values);
+    vec_clear(tok_lines);
+    vec_clear(tok_cols);
+    tok_count = 0;
+    0
+}
+
+fn lex_peek(offset: I32) : I32 => {
+    let p = lex_pos + offset;
+    if (p >= lex_len) {
+        0
+    } else {
+        str_char_at(lex_source, p)
+    }
+}
+
+fn lex_advance() : I32 => {
+    let ch = lex_peek(0);
+    lex_pos = lex_pos + 1;
+    if (ch == 10) {
+        lex_line = lex_line + 1;
+        lex_col = 1;
+        ch
+    } else {
+        lex_col = lex_col + 1;
+        ch
+    }
+}
+
+fn is_alpha(ch: I32) : Bool => {
+    if (ch >= 65 && ch <= 90) { true }
+    else if (ch >= 97 && ch <= 122) { true }
+    else if (ch == 95) { true }
+    else { false }
+}
+
+fn is_digit(ch: I32) : Bool => ch >= 48 && ch <= 57;
+
+fn is_alnum(ch: I32) : Bool => is_alpha(ch) || is_digit(ch);
+
+fn is_whitespace(ch: I32) : Bool => {
+    ch == 32 || ch == 9 || ch == 13 || ch == 10
+}
+
+fn lex_read_ident() : *Str => {
+    let sb = sb_new();
+    while (is_alnum(lex_peek(0))) {
+        sb_append_char(sb, lex_advance());
+    }
+    sb_build(sb)
+}
+
+fn lex_read_number() : *Str => {
+    let sb = sb_new();
+    // Handle 0x, 0b, 0o
+    if (lex_peek(0) == 48) {
+        let next = lex_peek(1);
+        if (next == 120 || next == 98 || next == 111) {
+            sb_append_char(sb, lex_advance());
+            sb_append_char(sb, lex_advance());
+            while (is_alnum(lex_peek(0)) || lex_peek(0) == 95) {
+                let ch = lex_advance();
+                if (ch != 95) {
+                    sb_append_char(sb, ch);
+                }
+            }
+            return sb_build(sb);
+        }
+    }
+    while (is_digit(lex_peek(0)) || lex_peek(0) == 95) {
+        let ch = lex_advance();
+        if (ch != 95) {
+            sb_append_char(sb, ch);
+        }
+    }
+    if (lex_peek(0) == 46 && is_digit(lex_peek(1))) {
+        sb_append_char(sb, lex_advance());
+        while (is_digit(lex_peek(0)) || lex_peek(0) == 95) {
+            let ch = lex_advance();
+            if (ch != 95) {
+                sb_append_char(sb, ch);
+            }
+        }
+    }
+    sb_build(sb)
+}
+
+fn lex_read_string() : *Str => {
+    lex_advance();  // skip opening "
+    let sb = sb_new();
+    while (lex_pos < lex_len && lex_peek(0) != 34) {
+        if (lex_peek(0) == 92) {
+            sb_append_char(sb, lex_advance());
+            sb_append_char(sb, lex_advance());
+        } else {
+            sb_append_char(sb, lex_advance());
+        }
+    }
+    if (lex_peek(0) != 34) {
+        panic("Unterminated string");
+    }
+    lex_advance();  // skip closing "
+    sb_build(sb)
+}
+
+fn lex_read_char() : *Str => {
+    lex_advance();  // skip opening '
+    let sb = sb_new();
+    while (lex_pos < lex_len && lex_peek(0) != 39) {
+        sb_append_char(sb, lex_advance());
+    }
+    if (lex_peek(0) != 39) {
+        panic("Unterminated char");
+    }
+    lex_advance();  // skip closing '
+    sb_build(sb)
+}
+
+fn lex_check_two(a: I32, b: I32) : Bool => {
+    lex_peek(0) == a && lex_peek(1) == b
+}
+
+fn lex_all() : I32 => {
+    init_keywords();
+    
+    while (lex_pos < lex_len) {
+        let ch = lex_peek(0);
+        
+        // Skip whitespace
+        if (is_whitespace(ch)) {
+            lex_advance();
+            continue;
+        }
+        
+        // Line comment
+        if (ch == 47 && lex_peek(1) == 47) {
+            while (lex_pos < lex_len && lex_peek(0) != 10) {
+                lex_advance();
+            }
+            continue;
+        }
+        
+        // Block comment
+        if (ch == 47 && lex_peek(1) == 42) {
+            lex_advance();
+            lex_advance();
+            while (lex_pos < lex_len && !(lex_peek(0) == 42 && lex_peek(1) == 47)) {
+                lex_advance();
+            }
+            if (lex_pos >= lex_len) {
+                panic("Unterminated block comment");
+            }
+            lex_advance();
+            lex_advance();
+            continue;
+        }
+        
+        let start_line = lex_line;
+        let start_col = lex_col;
+        
+        // Three-char operators
+        if (lex_peek(0) == 46 && lex_peek(1) == 46 && lex_peek(2) == 46) {
+            lex_advance();
+            lex_advance();
+            lex_advance();
+            tok_add(TK_SYMBOL, intern("..."), start_line, start_col);
+            continue;
+        }
+        
+        // Two-char operators
+        if (lex_check_two(61, 62)) { lex_advance(); lex_advance(); tok_add(TK_SYMBOL, intern("=>"), start_line, start_col); continue; }
+        if (lex_check_two(61, 61)) { lex_advance(); lex_advance(); tok_add(TK_SYMBOL, intern("=="), start_line, start_col); continue; }
+        if (lex_check_two(33, 61)) { lex_advance(); lex_advance(); tok_add(TK_SYMBOL, intern("!="), start_line, start_col); continue; }
+        if (lex_check_two(60, 61)) { lex_advance(); lex_advance(); tok_add(TK_SYMBOL, intern("<="), start_line, start_col); continue; }
+        if (lex_check_two(62, 61)) { lex_advance(); lex_advance(); tok_add(TK_SYMBOL, intern(">="), start_line, start_col); continue; }
+        if (lex_check_two(38, 38)) { lex_advance(); lex_advance(); tok_add(TK_SYMBOL, intern("&&"), start_line, start_col); continue; }
+        if (lex_check_two(124, 124)) { lex_advance(); lex_advance(); tok_add(TK_SYMBOL, intern("||"), start_line, start_col); continue; }
+        if (lex_check_two(58, 58)) { lex_advance(); lex_advance(); tok_add(TK_SYMBOL, intern("::"), start_line, start_col); continue; }
+        if (lex_check_two(46, 46)) { lex_advance(); lex_advance(); tok_add(TK_SYMBOL, intern(".."), start_line, start_col); continue; }
+        if (lex_check_two(124, 62)) { lex_advance(); lex_advance(); tok_add(TK_SYMBOL, intern("|>"), start_line, start_col); continue; }
+        
+        // Identifier or keyword
+        if (is_alpha(ch)) {
+            let text = lex_read_ident();
+            if (str_eq(text, "true")) {
+                tok_add(TK_BOOL, 1, start_line, start_col);
+            } else if (str_eq(text, "false")) {
+                tok_add(TK_BOOL, 0, start_line, start_col);
+            } else if (is_keyword(text)) {
+                tok_add(TK_KEYWORD, intern(text), start_line, start_col);
+            } else {
+                tok_add(TK_IDENTIFIER, intern(text), start_line, start_col);
+            }
+            continue;
+        }
+        
+        // Number
+        if (is_digit(ch)) {
+            let text = lex_read_number();
+            tok_add(TK_NUMBER, intern(text), start_line, start_col);
+            continue;
+        }
+        
+        // String
+        if (ch == 34) {
+            let text = lex_read_string();
+            tok_add(TK_STRING, intern(text), start_line, start_col);
+            continue;
+        }
+        
+        // Char
+        if (ch == 39) {
+            let text = lex_read_char();
+            tok_add(TK_CHAR, intern(text), start_line, start_col);
+            continue;
+        }
+        
+        // Single-char symbols
+        if (str_includes("(){}[],:;+-*/%<>=.!?|&", str_from_char_code(ch))) {
+            lex_advance();
+            tok_add(TK_SYMBOL, intern(str_from_char_code(ch)), start_line, start_col);
+            continue;
+        }
+        
+        panic(str_concat("Unexpected character: ", str_from_char_code(ch)));
+    }
+    
+    tok_add(TK_EOF, intern("<eof>"), lex_line, lex_col);
+    tok_count
+}
+
+// ============================================================================
+// AST Node Kinds
+// ============================================================================
+
+let NK_PROGRAM : I32 = 1;
+let NK_FN_DECL : I32 = 2;
+let NK_STRUCT_DECL : I32 = 3;
+let NK_TYPE_ALIAS : I32 = 4;
+let NK_LET_DECL : I32 = 5;
+let NK_IMPORT_DECL : I32 = 6;
+let NK_EXPR_STMT : I32 = 7;
+let NK_RETURN_STMT : I32 = 8;
+let NK_IF_STMT : I32 = 9;
+let NK_WHILE_STMT : I32 = 10;
+let NK_FOR_STMT : I32 = 11;
+let NK_BLOCK : I32 = 12;
+let NK_ASSIGN_STMT : I32 = 13;
+let NK_BREAK_STMT : I32 = 14;
+let NK_CONTINUE_STMT : I32 = 15;
+let NK_CLASS_FN_DECL : I32 = 16;
+let NK_EXTERN_FN_DECL : I32 = 17;
+let NK_EXTERN_LET_DECL : I32 = 18;
+let NK_EXTERN_TYPE_DECL : I32 = 19;
+
+let NK_NUMBER_LIT : I32 = 20;
+let NK_BOOL_LIT : I32 = 21;
+let NK_STRING_LIT : I32 = 22;
+let NK_CHAR_LIT : I32 = 23;
+let NK_IDENTIFIER : I32 = 24;
+let NK_BINARY_EXPR : I32 = 25;
+let NK_UNARY_EXPR : I32 = 26;
+let NK_CALL_EXPR : I32 = 27;
+let NK_MEMBER_EXPR : I32 = 28;
+let NK_INDEX_EXPR : I32 = 29;
+let NK_STRUCT_INIT : I32 = 30;
+let NK_IF_EXPR : I32 = 31;
+let NK_MATCH_EXPR : I32 = 32;
+let NK_IS_EXPR : I32 = 33;
+let NK_UNWRAP_EXPR : I32 = 34;
+
+let NK_NAMED_TYPE : I32 = 40;
+let NK_POINTER_TYPE : I32 = 41;
+let NK_ARRAY_TYPE : I32 = 42;
+let NK_TUPLE_TYPE : I32 = 43;
+let NK_REFINEMENT_TYPE : I32 = 44;
+let NK_UNION_TYPE : I32 = 45;
+
+let NK_WILDCARD_PAT : I32 = 50;
+let NK_LITERAL_PAT : I32 = 51;
+let NK_NAME_PAT : I32 = 52;
+let NK_STRUCT_PAT : I32 = 53;
+
+// ============================================================================
+// AST Storage (array-based)
+// ============================================================================
+
+let node_kinds : I32 = vec_new();
+let node_data1 : I32 = vec_new();  // Generic data slot 1
+let node_data2 : I32 = vec_new();  // Generic data slot 2
+let node_data3 : I32 = vec_new();  // Generic data slot 3
+let node_data4 : I32 = vec_new();  // Generic data slot 4
+let node_data5 : I32 = vec_new();  // Generic data slot 5
+let node_count : I32 = 0;
+
+fn node_new(kind: I32) : I32 => {
+    let idx = node_count;
+    vec_push(node_kinds, kind);
+    vec_push(node_data1, 0);
+    vec_push(node_data2, 0);
+    vec_push(node_data3, 0);
+    vec_push(node_data4, 0);
+    vec_push(node_data5, 0);
+    node_count = node_count + 1;
+    idx
+}
+
+fn node_kind(idx: I32) : I32 => vec_get(node_kinds, idx);
+fn node_set_data1(idx: I32, v: I32) : I32 => { vec_set(node_data1, idx, v); 0 }
+fn node_set_data2(idx: I32, v: I32) : I32 => { vec_set(node_data2, idx, v); 0 }
+fn node_set_data3(idx: I32, v: I32) : I32 => { vec_set(node_data3, idx, v); 0 }
+fn node_set_data4(idx: I32, v: I32) : I32 => { vec_set(node_data4, idx, v); 0 }
+fn node_set_data5(idx: I32, v: I32) : I32 => { vec_set(node_data5, idx, v); 0 }
+fn node_get_data1(idx: I32) : I32 => vec_get(node_data1, idx);
+fn node_get_data2(idx: I32) : I32 => vec_get(node_data2, idx);
+fn node_get_data3(idx: I32) : I32 => vec_get(node_data3, idx);
+fn node_get_data4(idx: I32) : I32 => vec_get(node_data4, idx);
+fn node_get_data5(idx: I32) : I32 => vec_get(node_data5, idx);
+
+// ============================================================================
+// Parser
+// ============================================================================
+
+let parse_pos : I32 = 0;
+
+fn parse_init() : I32 => {
+    parse_pos = 0;
+    // Clear node arrays for fresh compilation
+    vec_clear(node_kinds);
+    vec_clear(node_data1);
+    vec_clear(node_data2);
+    vec_clear(node_data3);
+    vec_clear(node_data4);
+    vec_clear(node_data5);
+    node_count = 0;
+    0
+}
+
+fn p_peek(offset: I32) : I32 => {
+    let idx = parse_pos + offset;
+    if (idx >= tok_count) {
+        tok_count - 1
+    } else {
+        idx
+    }
+}
+
+fn p_at_kind(kind: I32) : Bool => tok_kind(p_peek(0)) == kind;
+
+fn p_at_value(val: *Str) : Bool => {
+    let v = tok_value(p_peek(0));
+    map_has(intern_map, val) && map_get(intern_map, val) == v
+}
+
+fn p_at(kind: I32, val: *Str) : Bool => p_at_kind(kind) && p_at_value(val);
+
+fn p_eat() : I32 => {
+    let t = p_peek(0);
+    parse_pos = parse_pos + 1;
+    t
+}
+
+fn p_expect_kind(kind: I32, msg: *Str) : I32 => {
+    if (!p_at_kind(kind)) {
+        panic(msg);
+    }
+    p_eat()
+}
+
+fn p_expect(kind: I32, val: *Str, msg: *Str) : I32 => {
+    if (!p_at(kind, val)) {
+        panic(msg);
+    }
+    p_eat()
+}
+
+fn p_parse_identifier() : I32 => {
+    let t = p_expect_kind(TK_IDENTIFIER, "Expected identifier");
+    tok_value(t)
+}
+
+// Note: No forward declarations needed - JS hoists functions
+
+fn p_can_start_type_tok() : Bool => {
+    if (p_at_kind(TK_IDENTIFIER)) { return true; }
+    if (p_at(TK_SYMBOL, "*")) { return true; }
+    if (p_at(TK_SYMBOL, "[")) { return true; }
+    if (p_at(TK_SYMBOL, "(")) { return true; }
+    false
+}
+
+fn p_can_start_refinement_expr() : Bool => {
+    if (p_at_kind(TK_NUMBER)) { return true; }
+    if (p_at_kind(TK_IDENTIFIER)) { return true; }
+    if (p_at_kind(TK_BOOL)) { return true; }
+    if (p_at_kind(TK_STRING)) { return true; }
+    if (p_at(TK_SYMBOL, "(")) { return true; }
+    if (p_at(TK_SYMBOL, "-")) { return true; }
+    if (p_at(TK_SYMBOL, "!")) { return true; }
+    false
+}
+
+fn p_parse_type() : I32 => {
+    // Pointer type
+    if (p_at(TK_SYMBOL, "*")) {
+        p_eat();
+        let mutable = 0;
+        if (p_at(TK_KEYWORD, "mut")) {
+            p_eat();
+            mutable = 1;
+        }
+        let inner = p_parse_type();
+        let node = node_new(NK_POINTER_TYPE);
+        node_set_data1(node, mutable);
+        node_set_data2(node, inner);
+        return node;
+    }
+    
+    // Array type
+    if (p_at(TK_SYMBOL, "[")) {
+        p_eat();
+        let elem = p_parse_type();
+        let init = 0;
+        let total = 0;
+        if (p_at(TK_SYMBOL, ";")) {
+            p_eat();
+            init = p_parse_expression(0);
+            p_expect(TK_SYMBOL, ";", "Expected ';' in array type");
+            total = p_parse_expression(0);
+        }
+        p_expect(TK_SYMBOL, "]", "Expected ']'");
+        let node = node_new(NK_ARRAY_TYPE);
+        node_set_data1(node, elem);
+        node_set_data2(node, init);
+        node_set_data3(node, total);
+        return node;
+    }
+    
+    // Tuple type
+    if (p_at(TK_SYMBOL, "(")) {
+        p_eat();
+        let members = vec_new();
+        if (!p_at(TK_SYMBOL, ")")) {
+            vec_push(members, p_parse_type());
+            while (p_at(TK_SYMBOL, ",")) {
+                p_eat();
+                vec_push(members, p_parse_type());
+            }
+        }
+        p_expect(TK_SYMBOL, ")", "Expected ')' in tuple type");
+        let node = node_new(NK_TUPLE_TYPE);
+        node_set_data1(node, members);
+        return node;
+    }
+    
+    // Named type with optional generics
+    let name = p_parse_identifier();
+    let generics = vec_new();
+    
+    // Handle :: path
+    while (p_at(TK_SYMBOL, "::")) {
+        p_eat();
+        let part = p_parse_identifier();
+        // Combine names - for now just track them
+    }
+    
+    // Generic args
+    if (p_at(TK_SYMBOL, "<") && p_can_start_type_tok()) {
+        p_eat();
+        if (!p_at(TK_SYMBOL, ">")) {
+            vec_push(generics, p_parse_type());
+            while (p_at(TK_SYMBOL, ",")) {
+                p_eat();
+                vec_push(generics, p_parse_type());
+            }
+        }
+        p_expect(TK_SYMBOL, ">", "Expected '>' in generic args");
+    }
+    
+    let type_node = node_new(NK_NAMED_TYPE);
+    node_set_data1(type_node, name);
+    node_set_data2(type_node, generics);
+    
+    // Refinement predicate
+    let has_refine = p_at(TK_SYMBOL, "!=") || p_at(TK_SYMBOL, "<") || p_at(TK_SYMBOL, ">") || p_at(TK_SYMBOL, "<=") || p_at(TK_SYMBOL, ">=");
+    if (has_refine && p_can_start_refinement_expr()) {
+        let op = tok_value(p_eat());
+        let val_expr = p_parse_expression(0);
+        let refine = node_new(NK_REFINEMENT_TYPE);
+        node_set_data1(refine, type_node);
+        node_set_data2(refine, op);
+        node_set_data3(refine, val_expr);
+        type_node = refine;
+    }
+    
+    // Union types
+    while (p_at(TK_SYMBOL, "|") || p_at(TK_SYMBOL, "|>")) {
+        let is_extract = 0;
+        if (p_at(TK_SYMBOL, "|>")) {
+            is_extract = 1;
+        }
+        p_eat();
+        let right = p_parse_type();
+        let union_node = node_new(NK_UNION_TYPE);
+        node_set_data1(union_node, type_node);
+        node_set_data2(union_node, right);
+        node_set_data3(union_node, is_extract);
+        type_node = union_node;
+    }
+    
+    type_node
+}
+
+fn p_parse_pattern() : I32 => {
+    // Wildcard
+    if (p_at(TK_SYMBOL, "_") || p_at(TK_IDENTIFIER, "_")) {
+        p_eat();
+        return node_new(NK_WILDCARD_PAT);
+    }
+    
+    // Number literal
+    if (p_at_kind(TK_NUMBER)) {
+        let t = p_eat();
+        let node = node_new(NK_LITERAL_PAT);
+        node_set_data1(node, tok_value(t));
+        return node;
+    }
+    
+    // Bool literal
+    if (p_at_kind(TK_BOOL)) {
+        let t = p_eat();
+        let node = node_new(NK_LITERAL_PAT);
+        node_set_data1(node, tok_value(t));
+        return node;
+    }
+    
+    // Name or struct pattern
+    let name = p_parse_identifier();
+    
+    if (p_at(TK_SYMBOL, "{")) {
+        p_eat();
+        let fields = vec_new();
+        if (!p_at(TK_SYMBOL, "}")) {
+            vec_push(fields, p_parse_identifier());
+            while (p_at(TK_SYMBOL, ",")) {
+                p_eat();
+                vec_push(fields, p_parse_identifier());
+            }
+        }
+        p_expect(TK_SYMBOL, "}", "Expected '}' in pattern");
+        let node = node_new(NK_STRUCT_PAT);
+        node_set_data1(node, name);
+        node_set_data2(node, fields);
+        return node;
+    }
+    
+    let node = node_new(NK_NAME_PAT);
+    node_set_data1(node, name);
+    node
+}
+
+fn p_parse_primary() : I32 => {
+    // Number
+    if (p_at_kind(TK_NUMBER)) {
+        let t = p_eat();
+        let node = node_new(NK_NUMBER_LIT);
+        node_set_data1(node, tok_value(t));
+        return node;
+    }
+    
+    // Bool
+    if (p_at_kind(TK_BOOL)) {
+        let t = p_eat();
+        let node = node_new(NK_BOOL_LIT);
+        node_set_data1(node, tok_value(t));
+        return node;
+    }
+    
+    // String
+    if (p_at_kind(TK_STRING)) {
+        let t = p_eat();
+        let node = node_new(NK_STRING_LIT);
+        node_set_data1(node, tok_value(t));
+        return node;
+    }
+    
+    // Char
+    if (p_at_kind(TK_CHAR)) {
+        let t = p_eat();
+        let node = node_new(NK_CHAR_LIT);
+        node_set_data1(node, tok_value(t));
+        return node;
+    }
+    
+    // Parenthesized expression
+    if (p_at(TK_SYMBOL, "(")) {
+        p_eat();
+        let expr = p_parse_expression(0);
+        p_expect(TK_SYMBOL, ")", "Expected ')'");
+        return expr;
+    }
+    
+    // If expression
+    if (p_at(TK_KEYWORD, "if")) {
+        p_eat();
+        p_expect(TK_SYMBOL, "(", "Expected '(' after if");
+        let cond = p_parse_expression(0);
+        p_expect(TK_SYMBOL, ")", "Expected ')' after condition");
+        let then_branch = if (p_at(TK_SYMBOL, "{")) { p_parse_block() } else { p_parse_expression(0) };
+        let else_branch = 0;
+        if (p_at(TK_KEYWORD, "else")) {
+            p_eat();
+            else_branch = if (p_at(TK_SYMBOL, "{")) { p_parse_block() } else { p_parse_expression(0) };
+        }
+        let node = node_new(NK_IF_EXPR);
+        node_set_data1(node, cond);
+        node_set_data2(node, then_branch);
+        node_set_data3(node, else_branch);
+        return node;
+    }
+    
+    // Match expression
+    if (p_at(TK_KEYWORD, "match")) {
+        p_eat();
+        p_expect(TK_SYMBOL, "(", "Expected '(' after match");
+        let target = p_parse_expression(0);
+        p_expect(TK_SYMBOL, ")", "Expected ')' after match target");
+        p_expect(TK_SYMBOL, "{", "Expected '{'");
+        let cases = vec_new();
+        while (!p_at(TK_SYMBOL, "}")) {
+            p_expect(TK_KEYWORD, "case", "Expected 'case'");
+            let pat = p_parse_pattern();
+            p_expect(TK_SYMBOL, "=", "Expected '='");
+            let body = if (p_at(TK_SYMBOL, "{")) { p_parse_block() } else { p_parse_expression(0) };
+            p_expect(TK_SYMBOL, ";", "Expected ';' after case");
+            let case_node = vec_new();
+            vec_push(case_node, pat);
+            vec_push(case_node, body);
+            vec_push(cases, case_node);
+        }
+        p_expect(TK_SYMBOL, "}", "Expected '}'");
+        let node = node_new(NK_MATCH_EXPR);
+        node_set_data1(node, target);
+        node_set_data2(node, cases);
+        return node;
+    }
+    
+    // Identifier (possibly struct init or call)
+    if (p_at_kind(TK_IDENTIFIER)) {
+        let name = p_parse_identifier();
+        let expr = node_new(NK_IDENTIFIER);
+        node_set_data1(expr, name);
+        
+        // Struct init
+        if (p_at(TK_SYMBOL, "{")) {
+            p_eat();
+            let fields = vec_new();
+            if (!p_at(TK_SYMBOL, "}")) {
+                let key = p_parse_identifier();
+                p_expect(TK_SYMBOL, ":", "Expected ':' in struct init");
+                let val = p_parse_expression(0);
+                let field = vec_new();
+                vec_push(field, key);
+                vec_push(field, val);
+                vec_push(fields, field);
+                while (p_at(TK_SYMBOL, ",")) {
+                    p_eat();
+                    let key2 = p_parse_identifier();
+                    p_expect(TK_SYMBOL, ":", "Expected ':'");
+                    let val2 = p_parse_expression(0);
+                    let field2 = vec_new();
+                    vec_push(field2, key2);
+                    vec_push(field2, val2);
+                    vec_push(fields, field2);
+                }
+            }
+            p_expect(TK_SYMBOL, "}", "Expected '}'");
+            let init_node = node_new(NK_STRUCT_INIT);
+            node_set_data1(init_node, name);
+            node_set_data2(init_node, fields);
+            expr = init_node;
+        }
+        
+        // Postfix: call, member, index
+        while (true) {
+            if (p_at(TK_SYMBOL, "(")) {
+                p_eat();
+                let args = vec_new();
+                if (!p_at(TK_SYMBOL, ")")) {
+                    vec_push(args, p_parse_expression(0));
+                    while (p_at(TK_SYMBOL, ",")) {
+                        p_eat();
+                        vec_push(args, p_parse_expression(0));
+                    }
+                }
+                p_expect(TK_SYMBOL, ")", "Expected ')'");
+                let call = node_new(NK_CALL_EXPR);
+                node_set_data1(call, expr);
+                node_set_data2(call, args);
+                expr = call;
+                continue;
+            }
+            if (p_at(TK_SYMBOL, ".")) {
+                p_eat();
+                let prop = p_parse_identifier();
+                let member = node_new(NK_MEMBER_EXPR);
+                node_set_data1(member, expr);
+                node_set_data2(member, prop);
+                expr = member;
+                continue;
+            }
+            if (p_at(TK_SYMBOL, "[")) {
+                p_eat();
+                let idx_expr = p_parse_expression(0);
+                p_expect(TK_SYMBOL, "]", "Expected ']'");
+                let idx_node = node_new(NK_INDEX_EXPR);
+                node_set_data1(idx_node, expr);
+                node_set_data2(idx_node, idx_expr);
+                expr = idx_node;
+                continue;
+            }
+            break;
+        }
+        
+        return expr;
+    }
+    
+    panic("Unexpected token in expression");
+    0
+}
+
+fn p_parse_unary() : I32 => {
+    if (p_at(TK_SYMBOL, "!") || p_at(TK_SYMBOL, "-")) {
+        let op = tok_value(p_eat());
+        let inner = p_parse_unary();
+        let node = node_new(NK_UNARY_EXPR);
+        node_set_data1(node, op);
+        node_set_data2(node, inner);
+        return node;
+    }
+    p_parse_primary()
+}
+
+fn p_get_precedence(op: I32) : I32 => {
+    // Map operator to precedence
+    // We use intern indices, so we need to check against known values
+    if (map_has(intern_map, "||") && op == map_get(intern_map, "||")) { return 1; }
+    if (map_has(intern_map, "&&") && op == map_get(intern_map, "&&")) { return 2; }
+    if (map_has(intern_map, "==") && op == map_get(intern_map, "==")) { return 3; }
+    if (map_has(intern_map, "!=") && op == map_get(intern_map, "!=")) { return 3; }
+    if (map_has(intern_map, "<") && op == map_get(intern_map, "<")) { return 4; }
+    if (map_has(intern_map, "<=") && op == map_get(intern_map, "<=")) { return 4; }
+    if (map_has(intern_map, ">") && op == map_get(intern_map, ">")) { return 4; }
+    if (map_has(intern_map, ">=") && op == map_get(intern_map, ">=")) { return 4; }
+    if (map_has(intern_map, "+") && op == map_get(intern_map, "+")) { return 5; }
+    if (map_has(intern_map, "-") && op == map_get(intern_map, "-")) { return 5; }
+    if (map_has(intern_map, "*") && op == map_get(intern_map, "*")) { return 6; }
+    if (map_has(intern_map, "/") && op == map_get(intern_map, "/")) { return 6; }
+    if (map_has(intern_map, "%") && op == map_get(intern_map, "%")) { return 6; }
+    0
+}
+
+fn p_is_binary_op() : Bool => {
+    if (p_at(TK_SYMBOL, "+")) { return true; }
+    if (p_at(TK_SYMBOL, "-")) { return true; }
+    if (p_at(TK_SYMBOL, "*")) { return true; }
+    if (p_at(TK_SYMBOL, "/")) { return true; }
+    if (p_at(TK_SYMBOL, "%")) { return true; }
+    if (p_at(TK_SYMBOL, "==")) { return true; }
+    if (p_at(TK_SYMBOL, "!=")) { return true; }
+    if (p_at(TK_SYMBOL, "<")) { return true; }
+    if (p_at(TK_SYMBOL, "<=")) { return true; }
+    if (p_at(TK_SYMBOL, ">")) { return true; }
+    if (p_at(TK_SYMBOL, ">=")) { return true; }
+    if (p_at(TK_SYMBOL, "&&")) { return true; }
+    if (p_at(TK_SYMBOL, "||")) { return true; }
+    if (p_at(TK_KEYWORD, "is")) { return true; }
+    false
+}
+
+fn p_parse_expression(minPrec: I32) : I32 => {
+    let left = p_parse_unary();
+    
+    while (p_is_binary_op()) {
+        let op = tok_value(p_peek(0));
+        let prec = p_get_precedence(op);
+        
+        // Handle 'is' keyword specially
+        if (p_at(TK_KEYWORD, "is")) {
+            p_eat();
+            let pat = p_parse_pattern();
+            let is_node = node_new(NK_IS_EXPR);
+            node_set_data1(is_node, left);
+            node_set_data2(is_node, pat);
+            left = is_node;
+            continue;
+        }
+        
+        if (prec < minPrec) {
+            break;
+        }
+        
+        p_eat();
+        let right = p_parse_expression(prec + 1);
+        let bin = node_new(NK_BINARY_EXPR);
+        node_set_data1(bin, op);
+        node_set_data2(bin, left);
+        node_set_data3(bin, right);
+        left = bin;
+    }
+    
+    // Unwrap operator
+    if (p_at(TK_SYMBOL, "?")) {
+        p_eat();
+        let unwrap = node_new(NK_UNWRAP_EXPR);
+        node_set_data1(unwrap, left);
+        left = unwrap;
+    }
+    
+    left
+}
+
+fn p_parse_block() : I32 => {
+    p_expect(TK_SYMBOL, "{", "Expected '{'");
+    let stmts = vec_new();
+    while (!p_at(TK_SYMBOL, "}") && !p_at_kind(TK_EOF)) {
+        vec_push(stmts, p_parse_statement());
+    }
+    p_expect(TK_SYMBOL, "}", "Expected '}'");
+    let node = node_new(NK_BLOCK);
+    node_set_data1(node, stmts);
+    node
+}
+
+fn p_parse_function(is_class: I32) : I32 => {
+    p_expect(TK_KEYWORD, "fn", "Expected 'fn'");
+    let name = p_parse_identifier();
+    
+    // Generics
+    let generics = vec_new();
+    if (p_at(TK_SYMBOL, "<")) {
+        p_eat();
+        if (!p_at(TK_SYMBOL, ">")) {
+            vec_push(generics, p_parse_identifier());
+            while (p_at(TK_SYMBOL, ",")) {
+                p_eat();
+                vec_push(generics, p_parse_identifier());
+            }
+        }
+        p_expect(TK_SYMBOL, ">", "Expected '>'");
+    }
+    
+    // Parameters
+    p_expect(TK_SYMBOL, "(", "Expected '('");
+    let params = vec_new();
+    if (!p_at(TK_SYMBOL, ")")) {
+        let pname = p_parse_identifier();
+        let ptype = 0;
+        if (p_at(TK_SYMBOL, ":")) {
+            p_eat();
+            ptype = p_parse_type();
+        }
+        let param = vec_new();
+        vec_push(param, pname);
+        vec_push(param, ptype);
+        vec_push(params, param);
+        while (p_at(TK_SYMBOL, ",")) {
+            p_eat();
+            let pname2 = p_parse_identifier();
+            let ptype2 = 0;
+            if (p_at(TK_SYMBOL, ":")) {
+                p_eat();
+                ptype2 = p_parse_type();
+            }
+            let param2 = vec_new();
+            vec_push(param2, pname2);
+            vec_push(param2, ptype2);
+            vec_push(params, param2);
+        }
+    }
+    p_expect(TK_SYMBOL, ")", "Expected ')'");
+    
+    // Return type
+    let ret_type = 0;
+    if (p_at(TK_SYMBOL, ":")) {
+        p_eat();
+        ret_type = p_parse_type();
+    }
+    
+    // Body
+    p_expect(TK_SYMBOL, "=>", "Expected '=>'");
+    let body = if (p_at(TK_SYMBOL, "{")) { p_parse_block() } else { p_parse_expression(0) };
+    
+    // Semicolon for expression body
+    if (node_kind(body) != NK_BLOCK) {
+        if (!p_at(TK_SYMBOL, "}") && !p_at_kind(TK_EOF)) {
+            p_expect(TK_SYMBOL, ";", "Expected ';'");
+        }
+    }
+    
+    let kind = if (is_class == 1) { NK_CLASS_FN_DECL } else { NK_FN_DECL };
+    let node = node_new(kind);
+    node_set_data1(node, name);
+    node_set_data2(node, generics);
+    node_set_data3(node, params);
+    node_set_data4(node, ret_type);
+    node_set_data5(node, body);
+    node
+}
+
+fn p_parse_struct() : I32 => {
+    p_expect(TK_KEYWORD, "struct", "Expected 'struct'");
+    let name = p_parse_identifier();
+    
+    let generics = vec_new();
+    if (p_at(TK_SYMBOL, "<")) {
+        p_eat();
+        if (!p_at(TK_SYMBOL, ">")) {
+            vec_push(generics, p_parse_identifier());
+            while (p_at(TK_SYMBOL, ",")) {
+                p_eat();
+                vec_push(generics, p_parse_identifier());
+            }
+        }
+        p_expect(TK_SYMBOL, ">", "Expected '>'");
+    }
+    
+    p_expect(TK_SYMBOL, "{", "Expected '{'");
+    let fields = vec_new();
+    while (!p_at(TK_SYMBOL, "}")) {
+        let fname = p_parse_identifier();
+        p_expect(TK_SYMBOL, ":", "Expected ':'");
+        let ftype = p_parse_type();
+        let field = vec_new();
+        vec_push(field, fname);
+        vec_push(field, ftype);
+        vec_push(fields, field);
+        if (p_at(TK_SYMBOL, ",") || p_at(TK_SYMBOL, ";")) {
+            p_eat();
+        }
+    }
+    p_expect(TK_SYMBOL, "}", "Expected '}'");
+    
+    let node = node_new(NK_STRUCT_DECL);
+    node_set_data1(node, name);
+    node_set_data2(node, generics);
+    node_set_data3(node, fields);
+    node
+}
+
+fn p_parse_type_alias() : I32 => {
+    p_expect(TK_KEYWORD, "type", "Expected 'type'");
+    let name = p_parse_identifier();
+    
+    let generics = vec_new();
+    if (p_at(TK_SYMBOL, "<")) {
+        p_eat();
+        if (!p_at(TK_SYMBOL, ">")) {
+            vec_push(generics, p_parse_identifier());
+            while (p_at(TK_SYMBOL, ",")) {
+                p_eat();
+                vec_push(generics, p_parse_identifier());
+            }
+        }
+        p_expect(TK_SYMBOL, ">", "Expected '>'");
+    }
+    
+    p_expect(TK_SYMBOL, "=", "Expected '='");
+    let aliased = p_parse_type();
+    p_expect(TK_SYMBOL, ";", "Expected ';'");
+    
+    let node = node_new(NK_TYPE_ALIAS);
+    node_set_data1(node, name);
+    node_set_data2(node, generics);
+    node_set_data3(node, aliased);
+    node
+}
+
+fn p_parse_let() : I32 => {
+    p_expect(TK_KEYWORD, "let", "Expected 'let'");
+    
+    // Destructuring import
+    if (p_at(TK_SYMBOL, "{")) {
+        p_eat();
+        let names = vec_new();
+        if (!p_at(TK_SYMBOL, "}")) {
+            vec_push(names, p_parse_identifier());
+            while (p_at(TK_SYMBOL, ",")) {
+                p_eat();
+                vec_push(names, p_parse_identifier());
+            }
+        }
+        p_expect(TK_SYMBOL, "}", "Expected '}'");
+        p_expect(TK_SYMBOL, "=", "Expected '='");
+        let parts = vec_new();
+        vec_push(parts, p_parse_identifier());
+        while (p_at(TK_SYMBOL, "::")) {
+            p_eat();
+            vec_push(parts, p_parse_identifier());
+        }
+        p_expect(TK_SYMBOL, ";", "Expected ';'");
+        let node = node_new(NK_IMPORT_DECL);
+        node_set_data1(node, names);
+        node_set_data2(node, parts);
+        return node;
+    }
+    
+    let name = p_parse_identifier();
+    let vtype = 0;
+    if (p_at(TK_SYMBOL, ":")) {
+        p_eat();
+        vtype = p_parse_type();
+    }
+    p_expect(TK_SYMBOL, "=", "Expected '='");
+    let value = p_parse_expression(0);
+    p_expect(TK_SYMBOL, ";", "Expected ';'");
+    
+    let node = node_new(NK_LET_DECL);
+    node_set_data1(node, name);
+    node_set_data2(node, vtype);
+    node_set_data3(node, value);
+    node
+}
+
+fn p_parse_for() : I32 => {
+    p_expect(TK_KEYWORD, "for", "Expected 'for'");
+    p_expect(TK_SYMBOL, "(", "Expected '('");
+    let iter = p_parse_identifier();
+    p_expect(TK_KEYWORD, "in", "Expected 'in'");
+    let start = p_parse_expression(0);
+    p_expect(TK_SYMBOL, "..", "Expected '..'");
+    let end = p_parse_expression(0);
+    p_expect(TK_SYMBOL, ")", "Expected ')'");
+    let body = p_parse_block();
+    
+    let node = node_new(NK_FOR_STMT);
+    node_set_data1(node, iter);
+    node_set_data2(node, start);
+    node_set_data3(node, end);
+    node_set_data4(node, body);
+    node
+}
+
+// Parse extern fn/let/type declarations
+fn p_parse_extern_decl() : I32 => {
+    if (p_at(TK_KEYWORD, "fn")) {
+        p_eat();
+        let name = p_parse_identifier();
+        
+        // Generics
+        let generics = vec_new();
+        if (p_at(TK_SYMBOL, "<")) {
+            p_eat();
+            if (!p_at(TK_SYMBOL, ">")) {
+                vec_push(generics, p_parse_identifier());
+                while (p_at(TK_SYMBOL, ",")) {
+                    p_eat();
+                    vec_push(generics, p_parse_identifier());
+                }
+            }
+            p_expect(TK_SYMBOL, ">", "Expected '>'");
+        }
+        
+        // Parameters
+        p_expect(TK_SYMBOL, "(", "Expected '('");
+        let params = vec_new();
+        if (!p_at(TK_SYMBOL, ")")) {
+            let pname = p_parse_identifier();
+            let ptype = 0;
+            if (p_at(TK_SYMBOL, ":")) {
+                p_eat();
+                ptype = p_parse_type();
+            }
+            let param = vec_new();
+            vec_push(param, pname);
+            vec_push(param, ptype);
+            vec_push(params, param);
+            while (p_at(TK_SYMBOL, ",")) {
+                p_eat();
+                let pname2 = p_parse_identifier();
+                let ptype2 = 0;
+                if (p_at(TK_SYMBOL, ":")) {
+                    p_eat();
+                    ptype2 = p_parse_type();
+                }
+                let param2 = vec_new();
+                vec_push(param2, pname2);
+                vec_push(param2, ptype2);
+                vec_push(params, param2);
+            }
+        }
+        p_expect(TK_SYMBOL, ")", "Expected ')'");
+        
+        // Return type
+        let ret_type = 0;
+        if (p_at(TK_SYMBOL, ":")) {
+            p_eat();
+            ret_type = p_parse_type();
+        }
+        
+        // No body - just semicolon
+        p_expect(TK_SYMBOL, ";", "Expected ';' after extern fn");
+        
+        // Create a special node for extern fn
+        let node = node_new(NK_EXTERN_FN_DECL);
+        node_set_data1(node, name);
+        node_set_data2(node, generics);
+        node_set_data3(node, params);
+        node_set_data4(node, ret_type);
+        return node;
+    }
+    if (p_at(TK_KEYWORD, "let")) {
+        p_eat();
+        let name = p_parse_identifier();
+        let typ = 0;
+        if (p_at(TK_SYMBOL, ":")) {
+            p_eat();
+            typ = p_parse_type();
+        }
+        p_expect(TK_SYMBOL, ";", "Expected ';' after extern let");
+        let node = node_new(NK_EXTERN_LET_DECL);
+        node_set_data1(node, name);
+        node_set_data2(node, typ);
+        return node;
+    }
+    if (p_at(TK_KEYWORD, "type")) {
+        p_eat();
+        let name = p_parse_identifier();
+        p_expect(TK_SYMBOL, ";", "Expected ';' after extern type");
+        let node = node_new(NK_EXTERN_TYPE_DECL);
+        node_set_data1(node, name);
+        return node;
+    }
+    panic("Expected fn, let, or type after extern")
+}
+
+fn p_parse_statement() : I32 => {
+    if (p_at(TK_KEYWORD, "let")) { return p_parse_let(); }
+    if (p_at(TK_KEYWORD, "struct")) { return p_parse_struct(); }
+    if (p_at(TK_KEYWORD, "type")) { return p_parse_type_alias(); }
+    if (p_at(TK_KEYWORD, "fn")) { return p_parse_function(0); }
+    if (p_at(TK_KEYWORD, "extern")) {
+        p_eat();
+        // extern fn/let/type declaration
+        return p_parse_extern_decl();
+    }
+    if (p_at(TK_KEYWORD, "class")) {
+        p_eat();
+        return p_parse_function(1);
+    }
+    if (p_at(TK_KEYWORD, "return")) {
+        p_eat();
+        let value = 0;
+        if (!p_at(TK_SYMBOL, ";")) {
+            value = p_parse_expression(0);
+        }
+        p_expect(TK_SYMBOL, ";", "Expected ';'");
+        let node = node_new(NK_RETURN_STMT);
+        node_set_data1(node, value);
+        return node;
+    }
+    if (p_at(TK_KEYWORD, "if")) {
+        let expr = p_parse_primary();
+        if (node_get_data2(expr) != 0 && node_kind(node_get_data2(expr)) == NK_BLOCK) {
+            let stmt = node_new(NK_IF_STMT);
+            node_set_data1(stmt, node_get_data1(expr));
+            node_set_data2(stmt, node_get_data2(expr));
+            node_set_data3(stmt, node_get_data3(expr));
+            return stmt;
+        }
+        p_expect(TK_SYMBOL, ";", "Expected ';' after if expression");
+        let estmt = node_new(NK_EXPR_STMT);
+        node_set_data1(estmt, expr);
+        return estmt;
+    }
+    if (p_at(TK_KEYWORD, "while")) {
+        p_eat();
+        p_expect(TK_SYMBOL, "(", "Expected '('");
+        let cond = p_parse_expression(0);
+        p_expect(TK_SYMBOL, ")", "Expected ')'");
+        let body = p_parse_block();
+        let node = node_new(NK_WHILE_STMT);
+        node_set_data1(node, cond);
+        node_set_data2(node, body);
+        return node;
+    }
+    if (p_at(TK_KEYWORD, "for")) { return p_parse_for(); }
+    if (p_at(TK_KEYWORD, "break")) {
+        p_eat();
+        p_expect(TK_SYMBOL, ";", "Expected ';'");
+        return node_new(NK_BREAK_STMT);
+    }
+    if (p_at(TK_KEYWORD, "continue")) {
+        p_eat();
+        p_expect(TK_SYMBOL, ";", "Expected ';'");
+        return node_new(NK_CONTINUE_STMT);
+    }
+    if (p_at(TK_SYMBOL, "{")) { return p_parse_block(); }
+    
+    // Expression statement
+    let expr = p_parse_expression(0);
+    
+    // Assignment
+    if (p_at(TK_SYMBOL, "=")) {
+        p_eat();
+        let value = p_parse_expression(0);
+        p_expect(TK_SYMBOL, ";", "Expected ';'");
+        let node = node_new(NK_ASSIGN_STMT);
+        node_set_data1(node, expr);
+        node_set_data2(node, value);
+        return node;
+    }
+    
+    if (p_at(TK_SYMBOL, ";")) {
+        p_eat();
+    } else if (!p_at(TK_SYMBOL, "}")) {
+        p_expect(TK_SYMBOL, ";", "Expected ';'");
+    }
+    
+    let node = node_new(NK_EXPR_STMT);
+    node_set_data1(node, expr);
+    node
+}
+
+fn p_parse_program() : I32 => {
+    let stmts = vec_new();
+    while (!p_at_kind(TK_EOF)) {
+        vec_push(stmts, p_parse_statement());
+    }
+    let node = node_new(NK_PROGRAM);
+    node_set_data1(node, stmts);
+    node
+}
+
+// ============================================================================
+// Desugar - skip for now, minimal implementation
+// ============================================================================
+
+fn desugar(program: I32) : I32 => program;
+
+// ============================================================================
+// Name Resolution - skip for now, minimal implementation
+// ============================================================================
+
+fn resolve_names(program: I32) : I32 => program;
+
+// ============================================================================
+// Typecheck - skip for now, minimal implementation
+// ============================================================================
+
+fn typecheck_program(program: I32) : I32 => program;
+
+// ============================================================================
+// JavaScript Code Generation
+// ============================================================================
+
+fn get_interned_str(idx: I32) : *Str => {
+    // Look up the interned string by index
+    get_intern(idx)
+}
+
+fn emit_expr(n: I32) : *Str => {
+    let kind = node_kind(n);
+    
+    if (kind == NK_NUMBER_LIT) {
+        let val = node_get_data1(n);
+        // Get the number string from intern
+        return get_interned_str(val);
+    }
+    
+    if (kind == NK_BOOL_LIT) {
+        let val = node_get_data1(n);
+        if (val == 1) { return "true"; }
+        return "false";
+    }
+    
+    if (kind == NK_STRING_LIT) {
+        let val = node_get_data1(n);
+        let s = get_interned_str(val);
+        return str_concat(str_concat("\"", s), "\"");
+    }
+    
+    if (kind == NK_CHAR_LIT) {
+        let val = node_get_data1(n);
+        let s = get_interned_str(val);
+        return str_concat(str_concat("\"", s), "\"");
+    }
+    
+    if (kind == NK_IDENTIFIER) {
+        let name_idx = node_get_data1(n);
+        return get_interned_str(name_idx);
+    }
+    
+    if (kind == NK_UNARY_EXPR) {
+        let op = get_interned_str(node_get_data1(n));
+        let inner = emit_expr(node_get_data2(n));
+        return str_concat(str_concat("(", op), str_concat(inner, ")"));
+    }
+    
+    if (kind == NK_BINARY_EXPR) {
+        let op = get_interned_str(node_get_data1(n));
+        if (str_eq(op, "==")) { op = "==="; }
+        if (str_eq(op, "!=")) { op = "!=="; }
+        let left = emit_expr(node_get_data2(n));
+        let right = emit_expr(node_get_data3(n));
+        return str_concat(str_concat(str_concat(str_concat("(", left), str_concat(" ", op)), str_concat(" ", right)), ")");
+    }
+    
+    if (kind == NK_CALL_EXPR) {
+        let callee = emit_expr(node_get_data1(n));
+        let args = node_get_data2(n);
+        let arg_strs = vec_new();
+        let i = 0;
+        let len = vec_length(args);
+        while (i < len) {
+            vec_push(arg_strs, emit_expr(vec_get(args, i)));
+            i = i + 1;
+        }
+        let args_str = vec_join(arg_strs, ", ");
+        return str_concat(str_concat(callee, "("), str_concat(args_str, ")"));
+    }
+    
+    if (kind == NK_MEMBER_EXPR) {
+        let obj = emit_expr(node_get_data1(n));
+        let prop = get_interned_str(node_get_data2(n));
+        return str_concat(str_concat(obj, "."), prop);
+    }
+    
+    if (kind == NK_INDEX_EXPR) {
+        let target = emit_expr(node_get_data1(n));
+        let idx_expr = emit_expr(node_get_data2(n));
+        return str_concat(str_concat(str_concat(target, "["), idx_expr), "]");
+    }
+    
+    if (kind == NK_STRUCT_INIT) {
+        let name_idx = node_get_data1(n);
+        let name = get_interned_str(name_idx);
+        let fields = node_get_data2(n);
+        let sb = sb_new();
+        sb_append(sb, "({ __tag: ");
+        sb_append(sb, str_concat(str_concat("\"", name), "\""));
+        let i = 0;
+        let len = vec_length(fields);
+        while (i < len) {
+            let field = vec_get(fields, i);
+            let key_idx = vec_get(field, 0);
+            let val_node = vec_get(field, 1);
+            sb_append(sb, ", ");
+            sb_append(sb, get_interned_str(key_idx));
+            sb_append(sb, ": ");
+            sb_append(sb, emit_expr(val_node));
+            i = i + 1;
+        }
+        sb_append(sb, " })");
+        return sb_build(sb);
+    }
+    
+    if (kind == NK_IF_EXPR) {
+        let cond = emit_expr(node_get_data1(n));
+        let then_b = node_get_data2(n);
+        let else_b = node_get_data3(n);
+        let then_str = if (node_kind(then_b) == NK_BLOCK) { emit_block_as_iife(then_b) } else { emit_expr(then_b) };
+        let else_str = if (else_b == 0) { "undefined" } else {
+            if (node_kind(else_b) == NK_BLOCK) { emit_block_as_iife(else_b) } else { emit_expr(else_b) }
+        };
+        return str_concat(str_concat(str_concat(str_concat("((", cond), ") ? "), str_concat(then_str, " : ")), str_concat(else_str, ")"));
+    }
+    
+    if (kind == NK_MATCH_EXPR) {
+        let target = emit_expr(node_get_data1(n));
+        let cases = node_get_data2(n);
+        let sb = sb_new();
+        sb_append(sb, "(() => { const __m = ");
+        sb_append(sb, target);
+        sb_append(sb, "; ");
+        let i = 0;
+        let len = vec_length(cases);
+        while (i < len) {
+            let case_node = vec_get(cases, i);
+            let pat = vec_get(case_node, 0);
+            let body = vec_get(case_node, 1);
+            let guard = emit_pattern_guard("__m", pat);
+            if (i == 0) {
+                sb_append(sb, "if (");
+            } else {
+                sb_append(sb, "else if (");
+            }
+            sb_append(sb, guard);
+            sb_append(sb, ") { ");
+            sb_append(sb, emit_pattern_bindings("__m", pat));
+            sb_append(sb, "return ");
+            sb_append(sb, if (node_kind(body) == NK_BLOCK) { emit_block(body) } else { emit_expr(body) });
+            sb_append(sb, "; } ");
+            i = i + 1;
+        }
+        sb_append(sb, "else { throw new Error(\"Non-exhaustive match\"); } })()");
+        return sb_build(sb);
+    }
+    
+    if (kind == NK_IS_EXPR) {
+        let inner = emit_expr(node_get_data1(n));
+        let pat = node_get_data2(n);
+        return str_concat(str_concat("(", emit_pattern_guard(inner, pat)), ")");
+    }
+    
+    if (kind == NK_UNWRAP_EXPR) {
+        return emit_expr(node_get_data1(n));
+    }
+    
+    "undefined"
+}
+
+fn emit_pattern_guard(value_expr: *Str, pat: I32) : *Str => {
+    let kind = node_kind(pat);
+    if (kind == NK_WILDCARD_PAT) { return "true"; }
+    if (kind == NK_LITERAL_PAT) {
+        let val = get_interned_str(node_get_data1(pat));
+        return str_concat(str_concat(str_concat(value_expr, " === "), val), "");
+    }
+    if (kind == NK_NAME_PAT) {
+        let name = get_interned_str(node_get_data1(pat));
+        return str_concat(str_concat(str_concat(str_concat(value_expr, " && "), value_expr), ".__tag === \""), str_concat(name, "\""));
+    }
+    if (kind == NK_STRUCT_PAT) {
+        let name = get_interned_str(node_get_data1(pat));
+        return str_concat(str_concat(str_concat(str_concat(value_expr, " && "), value_expr), ".__tag === \""), str_concat(name, "\""));
+    }
+    "false"
+}
+
+fn emit_pattern_bindings(value_expr: *Str, pat: I32) : *Str => {
+    let kind = node_kind(pat);
+    if (kind == NK_STRUCT_PAT) {
+        let fields = node_get_data2(pat);
+        let sb = sb_new();
+        let i = 0;
+        let len = vec_length(fields);
+        while (i < len) {
+            let fname_idx = vec_get(fields, i);
+            let fname = get_interned_str(fname_idx);
+            sb_append(sb, "const ");
+            sb_append(sb, fname);
+            sb_append(sb, " = ");
+            sb_append(sb, value_expr);
+            sb_append(sb, ".");
+            sb_append(sb, fname);
+            sb_append(sb, "; ");
+            i = i + 1;
+        }
+        return sb_build(sb);
+    }
+    if (kind == NK_NAME_PAT) {
+        let name = get_interned_str(node_get_data1(pat));
+        return str_concat(str_concat(str_concat("const ", name), " = "), str_concat(value_expr, "; "));
+    }
+    ""
+}
+
+fn emit_stmt(n: I32) : *Str => {
+    let kind = node_kind(n);
+    
+    if (kind == NK_LET_DECL) {
+        let name_idx = node_get_data1(n);
+        let name = get_interned_str(name_idx);
+        let value = emit_expr(node_get_data3(n));
+        return str_concat(str_concat(str_concat("let ", name), " = "), str_concat(value, ";"));
+    }
+    
+    if (kind == NK_IMPORT_DECL) {
+        return "// import placeholder";
+    }
+    
+    if (kind == NK_EXPR_STMT) {
+        return str_concat(emit_expr(node_get_data1(n)), ";");
+    }
+    
+    if (kind == NK_ASSIGN_STMT) {
+        let target = emit_expr(node_get_data1(n));
+        let value = emit_expr(node_get_data2(n));
+        return str_concat(str_concat(str_concat(target, " = "), value), ";");
+    }
+    
+    if (kind == NK_RETURN_STMT) {
+        let value = node_get_data1(n);
+        if (value == 0) {
+            return "return;";
+        }
+        return str_concat("return ", str_concat(emit_expr(value), ";"));
+    }
+    
+    if (kind == NK_IF_STMT) {
+        let cond = emit_expr(node_get_data1(n));
+        let then_b = emit_block(node_get_data2(n));
+        let else_b = node_get_data3(n);
+        if (else_b == 0) {
+            return str_concat(str_concat("if (", cond), str_concat(") ", then_b));
+        }
+        return str_concat(str_concat(str_concat(str_concat("if (", cond), ") "), then_b), str_concat(" else ", emit_stmt_or_block(else_b)));
+    }
+    
+    // IfExpr used as statement (e.g., in else-if chains)
+    if (kind == NK_IF_EXPR) {
+        let cond = emit_expr(node_get_data1(n));
+        let then_b = node_get_data2(n);
+        let else_b = node_get_data3(n);
+        let then_str = emit_stmt_or_block(then_b);
+        if (else_b == 0) {
+            return str_concat(str_concat("if (", cond), str_concat(") ", then_str));
+        }
+        return str_concat(str_concat(str_concat(str_concat("if (", cond), ") "), then_str), str_concat(" else ", emit_stmt_or_block(else_b)));
+    }
+    
+    if (kind == NK_WHILE_STMT) {
+        let cond = emit_expr(node_get_data1(n));
+        let body = emit_block(node_get_data2(n));
+        return str_concat(str_concat("while (", cond), str_concat(") ", body));
+    }
+    
+    if (kind == NK_FOR_STMT) {
+        let iter_idx = node_get_data1(n);
+        let iter = get_interned_str(iter_idx);
+        let start = emit_expr(node_get_data2(n));
+        let end = emit_expr(node_get_data3(n));
+        let body = emit_block(node_get_data4(n));
+        return str_concat(str_concat(str_concat(str_concat(str_concat(str_concat(str_concat("for (let ", iter), " = "), start), str_concat("; ", iter)), str_concat(" < ", end)), str_concat("; ", str_concat(iter, "++) "))), body);
+    }
+    
+    if (kind == NK_BREAK_STMT) {
+        return "break;";
+    }
+    
+    if (kind == NK_CONTINUE_STMT) {
+        return "continue;";
+    }
+    
+    if (kind == NK_BLOCK) {
+        return emit_block(n);
+    }
+    
+    if (kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL) {
+        let name_idx = node_get_data1(n);
+        let name = get_interned_str(name_idx);
+        let params = node_get_data3(n);
+        let body = node_get_data5(n);
+        
+        let param_names = vec_new();
+        let i = 0;
+        let len = vec_length(params);
+        while (i < len) {
+            let param = vec_get(params, i);
+            vec_push(param_names, get_interned_str(vec_get(param, 0)));
+            i = i + 1;
+        }
+        let params_str = vec_join(param_names, ", ");
+        
+        if (node_kind(body) == NK_BLOCK) {
+            return str_concat(str_concat(str_concat("function ", name), str_concat("(", params_str)), str_concat(") ", emit_fn_block(body)));
+        }
+        return str_concat(str_concat(str_concat(str_concat("function ", name), str_concat("(", params_str)), ") { return "), str_concat(emit_expr(body), "; }"));
+    }
+    
+    if (kind == NK_STRUCT_DECL) {
+        let name_idx = node_get_data1(n);
+        let name = get_interned_str(name_idx);
+        let fields = node_get_data3(n);
+        let sb = sb_new();
+        sb_append(sb, "function ");
+        sb_append(sb, name);
+        sb_append(sb, "(fields = {}) { return { __tag: \"");
+        sb_append(sb, name);
+        sb_append(sb, "\"");
+        let i = 0;
+        let len = vec_length(fields);
+        while (i < len) {
+            let field = vec_get(fields, i);
+            let fname = get_interned_str(vec_get(field, 0));
+            sb_append(sb, ", ");
+            sb_append(sb, fname);
+            sb_append(sb, ": fields.");
+            sb_append(sb, fname);
+            i = i + 1;
+        }
+        sb_append(sb, " }; }");
+        return sb_build(sb);
+    }
+    
+    if (kind == NK_TYPE_ALIAS) {
+        let name_idx = node_get_data1(n);
+        let name = get_interned_str(name_idx);
+        return str_concat(str_concat("// type ", name), " = ...");
+    }
+    
+    if (kind == NK_EXTERN_FN_DECL) {
+        let name_idx = node_get_data1(n);
+        let name = get_interned_str(name_idx);
+        return str_concat("// extern fn ", name);
+    }
+    
+    if (kind == NK_EXTERN_LET_DECL) {
+        let name_idx = node_get_data1(n);
+        let name = get_interned_str(name_idx);
+        return str_concat("// extern let ", name);
+    }
+    
+    if (kind == NK_EXTERN_TYPE_DECL) {
+        let name_idx = node_get_data1(n);
+        let name = get_interned_str(name_idx);
+        return str_concat("// extern type ", name);
+    }
+    
+    ""
+}
+
+fn emit_stmt_or_block(n: I32) : *Str => {
+    if (node_kind(n) == NK_BLOCK) {
+        return emit_block(n);
+    }
+    str_concat("{ ", str_concat(emit_stmt(n), " }"))
+}
+
+fn emit_block(n: I32) : *Str => {
+    let stmts = node_get_data1(n);
+    let sb = sb_new();
+    sb_append(sb, "{\n");
+    let i = 0;
+    let len = vec_length(stmts);
+    while (i < len) {
+        sb_append(sb, "  ");
+        sb_append(sb, emit_stmt(vec_get(stmts, i)));
+        sb_append(sb, "\n");
+        i = i + 1;
+    }
+    sb_append(sb, "}");
+    sb_build(sb)
+}
+
+// Emit a block wrapped in an IIFE for use in expressions
+fn emit_block_as_iife(n: I32) : *Str => {
+    let stmts = node_get_data1(n);
+    let len = vec_length(stmts);
+    if (len == 0) {
+        return "(() => undefined)()";
+    }
+    let sb = sb_new();
+    sb_append(sb, "(() => {\n");
+    let i = 0;
+    while (i < len) {
+        let stmt = vec_get(stmts, i);
+        let is_last = i == len - 1;
+        let kind = node_kind(stmt);
+        if (is_last && kind == NK_EXPR_STMT) {
+            sb_append(sb, "  return ");
+            sb_append(sb, emit_expr(node_get_data1(stmt)));
+            sb_append(sb, ";\n");
+        } else if (is_last && (kind == NK_IF_STMT || kind == NK_IF_EXPR)) {
+            sb_append(sb, "  return ");
+            sb_append(sb, emit_if_as_expr(stmt));
+            sb_append(sb, ";\n");
+        } else {
+            sb_append(sb, "  ");
+            sb_append(sb, emit_stmt(stmt));
+            sb_append(sb, "\n");
+        }
+        i = i + 1;
+    }
+    sb_append(sb, "})()");
+    sb_build(sb)
+}
+
+fn emit_fn_block(n: I32) : *Str => {
+    let stmts = node_get_data1(n);
+    let len = vec_length(stmts);
+    if (len == 0) {
+        return "{\n}";
+    }
+    let sb = sb_new();
+    sb_append(sb, "{\n");
+    let i = 0;
+    while (i < len) {
+        let stmt = vec_get(stmts, i);
+        let is_last = i == len - 1;
+        let kind = node_kind(stmt);
+        if (is_last && kind == NK_EXPR_STMT) {
+            sb_append(sb, "  return ");
+            sb_append(sb, emit_expr(node_get_data1(stmt)));
+            sb_append(sb, ";\n");
+        } else if (is_last && (kind == NK_IF_STMT || kind == NK_IF_EXPR)) {
+            // Return the result of the if expression
+            sb_append(sb, "  return ");
+            sb_append(sb, emit_if_as_expr(stmt));
+            sb_append(sb, ";\n");
+        } else {
+            sb_append(sb, "  ");
+            sb_append(sb, emit_stmt(stmt));
+            sb_append(sb, "\n");
+        }
+        i = i + 1;
+    }
+    sb_append(sb, "}");
+    sb_build(sb)
+}
+
+// Emit an if statement as a ternary expression
+fn emit_if_as_expr(n: I32) : *Str => {
+    let cond = emit_expr(node_get_data1(n));
+    let then_branch = node_get_data2(n);
+    let else_branch = node_get_data3(n);
+    
+    let then_code = emit_branch_as_expr(then_branch);
+    let else_code = if (else_branch == 0) { "undefined" } else { emit_branch_as_expr(else_branch) };
+    
+    str_concat(str_concat(str_concat(str_concat("((", cond), ") ? "), str_concat(then_code, " : ")), str_concat(else_code, ")"))
+}
+
+fn emit_branch_as_expr(n: I32) : *Str => {
+    let kind = node_kind(n);
+    if (kind == NK_BLOCK) {
+        // Wrap block in IIFE
+        let stmts = node_get_data1(n);
+        let len = vec_length(stmts);
+        if (len == 0) {
+            return "undefined";
+        }
+        let sb = sb_new();
+        sb_append(sb, "(() => {\n");
+        let i = 0;
+        while (i < len) {
+            let stmt = vec_get(stmts, i);
+            let is_last = i == len - 1;
+            let stmt_kind = node_kind(stmt);
+            if (is_last && stmt_kind == NK_EXPR_STMT) {
+                sb_append(sb, "    return ");
+                sb_append(sb, emit_expr(node_get_data1(stmt)));
+                sb_append(sb, ";\n");
+            } else if (is_last && (stmt_kind == NK_IF_STMT || stmt_kind == NK_IF_EXPR)) {
+                sb_append(sb, "    return ");
+                sb_append(sb, emit_if_as_expr(stmt));
+                sb_append(sb, ";\n");
+            } else {
+                sb_append(sb, "    ");
+                sb_append(sb, emit_stmt(stmt));
+                sb_append(sb, "\n");
+            }
+            i = i + 1;
+        }
+        sb_append(sb, "  })()");
+        return sb_build(sb);
+    }
+    if (kind == NK_IF_STMT || kind == NK_IF_EXPR) {
+        return emit_if_as_expr(n);
+    }
+    emit_expr(n)
+}
+
+fn generate_js(program: I32) : *Str => {
+    let stmts = node_get_data1(program);
+    let sb = sb_new();
+    sb_append(sb, "\"use strict\";\n\n");
+    let i = 0;
+    let len = vec_length(stmts);
+    while (i < len) {
+        sb_append(sb, emit_stmt(vec_get(stmts, i)));
+        sb_append(sb, "\n\n");
+        i = i + 1;
+    }
+    sb_build(sb)
+}
+
+// ============================================================================
+// Main compiler pipeline
+// ============================================================================
+
+fn compile_source(source: *Str) : *Str => {
+    lex_init(source);
+    lex_all();
+    parse_init();
+    let program = p_parse_program();
+    let desugared = desugar(program);
+    let resolved = resolve_names(desugared);
+    let typed = typecheck_program(resolved);
+    generate_js(typed)
+}
+
+fn compile_file(inputPath: *Str, outputPath: *Str) : I32 => {
+    let source = read_file(inputPath);
+    let js = compile_source(source);
+    write_file(outputPath, js)
+}
+
+// Entry point for testing
+fn main() : I32 => {
+    print("Self-hosted Tuff compiler loaded");
+    0
+}

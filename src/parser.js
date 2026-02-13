@@ -489,6 +489,73 @@ export function parse(tokens) {
     if (at("keyword", "struct")) return parseStruct();
     if (at("keyword", "type")) return parseTypeAlias();
     if (at("keyword", "fn")) return parseFunction(false);
+    if (at("keyword", "extern")) {
+      eat();
+      if (at("keyword", "fn")) {
+        expect("keyword", "fn", "Expected fn");
+        const name = parseIdentifier();
+        const generics = [];
+        if (at("symbol", "<")) {
+          eat();
+          if (!at("symbol", ">")) {
+            do {
+              generics.push(parseIdentifier());
+              if (!at("symbol", ",")) break;
+              eat();
+            } while (true);
+          }
+          expect("symbol", ">", "Expected '>' after generics");
+        }
+        expect("symbol", "(", "Expected '('");
+        const params = [];
+        if (!at("symbol", ")")) {
+          do {
+            const paramName = parseIdentifier();
+            let paramType = null;
+            if (at("symbol", ":")) {
+              eat();
+              paramType = parseType();
+            }
+            params.push({ name: paramName, type: paramType });
+            if (!at("symbol", ",")) break;
+            eat();
+          } while (true);
+        }
+        expect("symbol", ")", "Expected ')'");
+        let returnType = null;
+        if (at("symbol", ":")) {
+          eat();
+          returnType = parseType();
+        }
+        expect("symbol", ";", "Expected ';' after extern fn");
+        return {
+          kind: "ExternFnDecl",
+          name,
+          generics,
+          params,
+          returnType,
+          body: null,
+        };
+      }
+      if (at("keyword", "let")) {
+        const start = expect("keyword", "let").loc;
+        const name = parseIdentifier();
+        expect("symbol", ":", "Expected ':' in extern let");
+        const type = parseType();
+        expect("symbol", ";", "Expected ';' after extern let");
+        return { kind: "ExternLetDecl", name, type, loc: start };
+      }
+      if (at("keyword", "type")) {
+        eat();
+        const name = parseIdentifier();
+        expect("symbol", ";", "Expected ';' after extern type");
+        return { kind: "ExternTypeDecl", name };
+      }
+      throw new TuffError(
+        "Expected 'fn', 'let', or 'type' after 'extern'",
+        peek().loc,
+      );
+    }
     if (at("keyword", "class")) {
       eat();
       return parseFunction(true);

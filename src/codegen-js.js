@@ -1,4 +1,4 @@
-function emitPatternGuard(valueExpr, pattern, bindTarget = "") {
+function emitPatternGuard(valueExpr, pattern) {
   switch (pattern.kind) {
     case "WildcardPattern":
       return "true";
@@ -20,9 +20,11 @@ function emitExpr(expr) {
     case "BoolLiteral":
       return expr.value ? "true" : "false";
     case "StringLiteral":
-      return JSON.stringify(expr.value);
+      // The lexer preserves escape sequences as-is, so just wrap in quotes
+      return `"${expr.value}"`;
     case "CharLiteral":
-      return JSON.stringify(expr.value);
+      // Same for char literals
+      return `"${expr.value}"`;
     case "Identifier":
       return expr.name;
     case "UnaryExpr":
@@ -44,11 +46,11 @@ function emitExpr(expr) {
     case "IfExpr": {
       const thenBody =
         expr.thenBranch.kind === "Block"
-          ? emitBlock(expr.thenBranch)
+          ? `(() => ${emitFunctionBlock(expr.thenBranch)})()`
           : emitExpr(expr.thenBranch);
       const elseBody = expr.elseBranch
         ? expr.elseBranch.kind === "Block"
-          ? emitBlock(expr.elseBranch)
+          ? `(() => ${emitFunctionBlock(expr.elseBranch)})()`
           : emitExpr(expr.elseBranch)
         : "undefined";
       return `((${emitExpr(expr.condition)}) ? ${thenBody} : ${elseBody})`;
@@ -68,7 +70,9 @@ function emitExpr(expr) {
             bind = `const ${c.pattern.name} = __m;`;
           }
           const body =
-            c.body.kind === "Block" ? emitBlock(c.body) : emitExpr(c.body);
+            c.body.kind === "Block"
+              ? `(() => ${emitFunctionBlock(c.body)})()`
+              : emitExpr(c.body);
           return `${idx === 0 ? "if" : "else if"} (${guard}) { ${bind} return ${body}; }`;
         })
         .join(" ");
@@ -87,7 +91,8 @@ function emitExpr(expr) {
 function emitStmt(stmt) {
   switch (stmt.kind) {
     case "LetDecl":
-      return `const ${stmt.name} = ${emitExpr(stmt.value)};`;
+      // Use 'let' to allow reassignment during bootstrap
+      return `let ${stmt.name} = ${emitExpr(stmt.value)};`;
     case "ImportDecl":
       return `// import placeholder: { ${stmt.names.join(", ")} } = ${stmt.modulePath}`;
     case "ExprStmt":
@@ -97,6 +102,13 @@ function emitStmt(stmt) {
     case "ReturnStmt":
       return stmt.value ? `return ${emitExpr(stmt.value)};` : "return;";
     case "IfStmt": {
+      const elsePart = stmt.elseBranch
+        ? ` else ${emitStmtOrBlock(stmt.elseBranch)}`
+        : "";
+      return `if (${emitExpr(stmt.condition)}) ${emitStmtOrBlock(stmt.thenBranch)}${elsePart}`;
+    }
+    case "IfExpr": {
+      // IfExpr used as a statement (e.g., in else if chains)
       const elsePart = stmt.elseBranch
         ? ` else ${emitStmtOrBlock(stmt.elseBranch)}`
         : "";
@@ -127,6 +139,13 @@ function emitStmt(stmt) {
     }
     case "TypeAlias":
       return `// type ${stmt.name} = ${JSON.stringify(stmt.aliasedType.kind)}`;
+    case "ExternFnDecl":
+      // Extern functions are provided by the runtime - just emit a comment
+      return `// extern fn ${stmt.name}`;
+    case "ExternLetDecl":
+      return `// extern let ${stmt.name}`;
+    case "ExternTypeDecl":
+      return `// extern type ${stmt.name}`;
     default:
       return "";
   }
@@ -150,9 +169,39 @@ function emitFunctionBlock(block) {
     if (isLast && s.kind === "ExprStmt") {
       return `  return ${emitExpr(s.expr)};`;
     }
+    // For IfStmt at last position, emit as expression with return
+    if (isLast && s.kind === "IfStmt") {
+      const thenBody =
+        s.thenBranch.kind === "Block"
+          ? `(() => ${emitFunctionBlock(s.thenBranch)})()`
+          : emitExpr(s.thenBranch);
+      const elseBody = s.elseBranch
+        ? s.elseBranch.kind === "Block"
+          ? `(() => ${emitFunctionBlock(s.elseBranch)})()`
+          : s.elseBranch.kind === "IfStmt"
+            ? emitIfStmtAsExpr(s.elseBranch)
+            : emitExpr(s.elseBranch)
+        : "undefined";
+      return `  return ((${emitExpr(s.condition)}) ? ${thenBody} : ${elseBody});`;
+    }
     return `  ${emitStmt(s)}`;
   });
   return `{\n${rows.join("\n")}\n}`;
+}
+
+function emitIfStmtAsExpr(s) {
+  const thenBody =
+    s.thenBranch.kind === "Block"
+      ? `(() => ${emitFunctionBlock(s.thenBranch)})()`
+      : emitExpr(s.thenBranch);
+  const elseBody = s.elseBranch
+    ? s.elseBranch.kind === "Block"
+      ? `(() => ${emitFunctionBlock(s.elseBranch)})()`
+      : s.elseBranch.kind === "IfStmt"
+        ? emitIfStmtAsExpr(s.elseBranch)
+        : emitExpr(s.elseBranch)
+    : "undefined";
+  return `((${emitExpr(s.condition)}) ? ${thenBody} : ${elseBody})`;
 }
 
 export function generateJavaScript(ast) {
