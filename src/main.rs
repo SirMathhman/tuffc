@@ -103,6 +103,7 @@ fn get_type_bounds(type_name: &str) -> Option<(i32, i32)> {
     }
 }
 
+#[allow(dead_code)]
 fn get_type_width(type_name: &str) -> u8 {
     match type_name {
         "I8" | "U8" => 8,
@@ -113,6 +114,7 @@ fn get_type_width(type_name: &str) -> u8 {
     }
 }
 
+#[allow(dead_code)]
 fn get_effective_type<'a>(left_type: &'a str, right_type: &'a str) -> &'a str {
     // If one operand is default I32 (untyped), use the other's type
     match (left_type, right_type) {
@@ -122,6 +124,7 @@ fn get_effective_type<'a>(left_type: &'a str, right_type: &'a str) -> &'a str {
     }
 }
 
+#[allow(dead_code)]
 fn get_wider_type<'a>(left_type: &'a str, right_type: &'a str) -> &'a str {
     let left_width = get_type_width(left_type);
     let right_width = get_type_width(right_type);
@@ -151,52 +154,95 @@ fn validate_result_in_type(
     Ok(result)
 }
 
+fn apply_operation(
+    left_val: i32,
+    left_type: &str,
+    op_char: char,
+    right_val: i32,
+    right_type: &str,
+    code_snippet: &str,
+) -> Result<i32, InterpreterError> {
+    let result_val = match op_char {
+        '+' => left_val + right_val,
+        '-' => left_val - right_val,
+        '*' => left_val * right_val,
+        '/' => {
+            if right_val == 0 {
+                return Err(InterpreterError {
+                    code_snippet: code_snippet.to_string(),
+                    error_message: "Division by zero".to_string(),
+                    explanation: "Dividing by zero is undefined in mathematics and not allowed in this language.".to_string(),
+                    fix: "Use a non-zero divisor.".to_string(),
+                });
+            }
+            left_val / right_val
+        }
+        _ => return Ok(left_val),
+    };
+
+    // Use the effective type for validation
+    let result_type = get_effective_type(left_type, right_type);
+    validate_result_in_type(result_val, result_type, code_snippet)
+}
+
+fn find_leftmost_operator(input: &str) -> Option<(usize, char)> {
+    for (pos, ch) in input.char_indices() {
+        if matches!(ch, '+' | '-' | '*' | '/') {
+            // Make sure this is not a negative sign at the beginning or after an operator
+            if ch == '-' && (pos == 0 || input[..pos].trim().ends_with(['+', '-', '*', '/'])) {
+                continue;
+            }
+            return Some((pos, ch));
+        }
+    }
+    None
+}
+
 fn interpret(input: &str) -> Result<i32, InterpreterError> {
     let input = input.trim();
 
-    // Check for binary operations (+, -, *, /)
-    for op_char in ['+', '-', '*', '/'] {
-        if let Some(pos) = input.rfind(op_char) {
-            // Make sure this is not a negative sign at the beginning or after an operator
-            if op_char == '-' && (pos == 0 || input[..pos].trim().ends_with(['+', '-', '*', '/'])) {
-                continue;
-            }
+    // Check for binary operations (+, -, *, /) from left to right
+    if let Some((pos, op_char)) = find_leftmost_operator(input) {
+        // Safe string splitting by char position
+        if pos > 0 && pos < input.len() {
+            let left = input[..pos].trim();
+            let right_start = pos + 1;
+            let right_remainder = if right_start < input.len() {
+                input[right_start..].trim()
+            } else {
+                ""
+            };
 
-            // Safe string splitting by char position
-            if pos > 0 && pos < input.len() {
-                let left = input[..pos].trim();
-                let right_start = pos + 1;
-                let right = if right_start < input.len() {
-                    input[right_start..].trim()
-                } else {
-                    ""
-                };
-
-                if !left.is_empty() && !right.is_empty() {
-                    if let (Ok((left_val, left_type)), Ok((right_val, right_type))) =
-                        (extract_value_and_type(left), extract_value_and_type(right))
-                    {
-                        let result_val = match op_char {
-                            '+' => left_val + right_val,
-                            '-' => left_val - right_val,
-                            '*' => left_val * right_val,
-                            '/' => {
-                                if right_val == 0 {
-                                    return Err(InterpreterError {
-                                        code_snippet: input.to_string(),
-                                        error_message: "Division by zero".to_string(),
-                                        explanation: "Dividing by zero is undefined in mathematics and not allowed in this language.".to_string(),
-                                        fix: "Use a non-zero divisor.".to_string(),
-                                    });
-                                }
-                                left_val / right_val
-                            }
-                            _ => continue,
+            if !left.is_empty() && !right_remainder.is_empty() {
+                if let Ok((left_val, left_type)) = extract_value_and_type(left) {
+                    // Extract just the first operand from the right side
+                    // Find where the first value ends (at the next operator or end of string)
+                    let first_right_operand_len =
+                        if let Some((next_op_pos, _)) = find_leftmost_operator(right_remainder) {
+                            next_op_pos
+                        } else {
+                            right_remainder.len()
                         };
 
-                        // Validate the result fits in the effective type of the two operand types
-                        let result_type = get_effective_type(left_type, right_type);
-                        return validate_result_in_type(result_val, result_type, input);
+                    let first_right_operand = right_remainder[..first_right_operand_len].trim();
+
+                    if let Ok((right_val, right_type)) = extract_value_and_type(first_right_operand)
+                    {
+                        let result_val = apply_operation(
+                            left_val, left_type, op_char, right_val, right_type, input,
+                        )?;
+
+                        // Check if there are more operations after the first right operand
+                        let after_right_word =
+                            right_remainder[first_right_operand_len..].trim_start();
+                        if after_right_word.is_empty() {
+                            // No more operations, return the result
+                            return Ok(result_val);
+                        } else {
+                            // Recursively evaluate the remaining expression with the result
+                            let new_expr = format!("{} {}", result_val, after_right_word);
+                            return interpret(&new_expr);
+                        }
                     }
                 }
             }
@@ -301,5 +347,11 @@ mod tests {
     fn test_interpret_addition_wider_type_overflow() {
         let result = interpret("1U8 + 65535U16");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_interpret_chained_operations() {
+        let result = interpret("2 + 3 - 4");
+        assert!(matches!(result, Ok(1)));
     }
 }
