@@ -253,4 +253,10 @@ mod tests {
         let result = interpret("1U8 + 255U8");
         assert!(result.is_err());
     }
+
+    #[test]
+    fn test_interpret_addition_overflow_untyped() {
+        let result = interpret("1U8 + 255");
+        assert!(result.is_err());
+    }
 }
