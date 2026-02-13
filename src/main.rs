@@ -1909,4 +1909,10 @@ mod tests {
         let result = interpret("let myTuple : (U8, U16) = (1, 2); myTuple[0] + myTuple[1]");
         assert!(matches!(result, Ok(3)));
     }
+
+    #[test]
+    fn test_interpret_tuple_length_mismatch() {
+        let result = interpret("let myTuple : (U8, U16) = ();");
+        assert!(result.is_err());
+    }
 }
