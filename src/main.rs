@@ -168,6 +168,30 @@ fn extract_value_and_type(
     })
 }
 
+fn extract_if_else_type(input: &str, context: &Context) -> Option<String> {
+    if let Some((_condition, true_expr, false_expr)) = parse_if_else_parts(input) {
+        // Extract type from true branch
+        let true_type = if let Ok((_, ty)) = extract_value_and_type(&true_expr, context) {
+            ty
+        } else {
+            "I32".to_string()
+        };
+
+        // Extract type from false branch
+        let false_type = if let Ok((_, ty)) = extract_value_and_type(&false_expr, context) {
+            ty
+        } else {
+            "I32".to_string()
+        };
+
+        // Return type if they match (already validated by if-else handler)
+        if true_type == false_type {
+            return Some(true_type);
+        }
+    }
+    None
+}
+
 fn get_type_bounds(type_name: &str) -> Option<(i32, i32)> {
     match type_name {
         "U8" => Some((0, 255)),
@@ -374,6 +398,53 @@ fn find_else_keyword(input: &str) -> Option<usize> {
     .map(|(pos, _)| pos)
 }
 
+fn parse_if_else_parts(input: &str) -> Option<(String, String, String)> {
+    let trimmed = input.trim();
+    if let Some(if_pos) = find_if_keyword(trimmed) {
+        if if_pos == 0 || trimmed[..if_pos].ends_with(' ') {
+            let after_if = if if_pos == 0 { 3 } else { if_pos + 3 };
+            let rest = trimmed[after_if..].trim();
+
+            if rest.starts_with('(') {
+                // Find the matching closing paren
+                let mut paren_depth = 0;
+                let mut cond_end = None;
+                for (i, ch) in rest.char_indices() {
+                    match ch {
+                        '(' => paren_depth += 1,
+                        ')' => {
+                            paren_depth -= 1;
+                            if paren_depth == 0 {
+                                cond_end = Some(i);
+                                break;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+
+                if let Some(cond_end_pos) = cond_end {
+                    let condition_str = rest[1..cond_end_pos].trim();
+                    let after_cond = rest[cond_end_pos + 1..].trim();
+                    if let Some(else_pos) = find_else_keyword(after_cond) {
+                        let true_expr = after_cond[..else_pos].trim();
+                        let else_part = after_cond[else_pos + 1..].trim();
+
+                        if let Some(false_expr) = else_part.strip_prefix("else ") {
+                            return Some((
+                                condition_str.to_string(),
+                                true_expr.to_string(),
+                                false_expr.to_string(),
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
 fn is_narrowing_conversion(value_expr: &str, target_type: &str) -> Result<(), (String, String)> {
     let target_width = get_type_width(target_type);
 
@@ -575,6 +646,18 @@ fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, Inte
             if let Ok((_, inferred_type)) = extract_value_and_type(value_expr, &context) {
                 var_type = inferred_type;
             }
+        } else {
+            // If explicit type annotation, check if-else expressions have matching type
+            if let Some(if_else_type) = extract_if_else_type(value_expr, &context) {
+                if if_else_type != var_type {
+                    return Err(InterpreterError {
+                        code_snippet: input.to_string(),
+                        error_message: format!("Cannot assign {} to {}", if_else_type, var_type),
+                        explanation: "The if-else expression returns a different type than the declared variable type.".to_string(),
+                        fix: "Ensure the if-else branches return the declared type, or change the variable type annotation.".to_string(),
+                    });
+                }
+            }
         }
 
         // Validate the value is within the type bounds of the declared type
@@ -702,97 +785,68 @@ fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, Inte
     }
 
     // Handle if-else expressions: if (condition) true_expr else false_expr
-    if let Some(if_pos) = find_if_keyword(input) {
-        if if_pos == 0 || input[..if_pos].ends_with(' ') {
-            let after_if = if if_pos == 0 { 3 } else { if_pos + 3 };
-            let rest = input[after_if..].trim();
+    if let Some((condition_str, true_expr_str, false_expr_str)) = parse_if_else_parts(input) {
+        // Evaluate the condition and extract its type
+        let cond_val = interpret_with_context(&condition_str, context.clone())?;
+        let cond_type = if let Ok((_, ty)) = extract_value_and_type(&condition_str, &context) {
+            ty
+        } else {
+            "I32".to_string()
+        };
 
-            // Look for opening paren for condition
-            if rest.starts_with('(') {
-                // Find the matching closing paren
-                let mut paren_depth = 0;
-                let mut cond_end = None;
-                for (i, ch) in rest.char_indices() {
-                    match ch {
-                        '(' => paren_depth += 1,
-                        ')' => {
-                            paren_depth -= 1;
-                            if paren_depth == 0 {
-                                cond_end = Some(i);
-                                break;
-                            }
-                        }
-                        _ => {}
-                    }
-                }
+        // Validate that the condition is a boolean type
+        if cond_type != "Bool" {
+            return Err(InterpreterError {
+                code_snippet: format!("if ({}) ...", condition_str),
+                error_message: format!(
+                    "If condition must be of type Bool, got {}",
+                    cond_type
+                ),
+                explanation: "If-else expressions require a boolean condition (true or false). Conditions must evaluate to bool type, not numeric types."
+                    .to_string(),
+                fix: "Use a boolean expression or variable of type Bool as the condition."
+                    .to_string(),
+            });
+        }
 
-                if let Some(cond_end_pos) = cond_end {
-                    let condition_str = &rest[1..cond_end_pos].trim();
-                    let after_cond = rest[cond_end_pos + 1..].trim();
+        // Evaluate both branches and extract their types
+        let true_result = interpret_with_context(&true_expr_str, context.clone())?;
+        let true_type = if let Ok((_, ty)) = extract_value_and_type(&true_expr_str, &context) {
+            ty
+        } else {
+            "I32".to_string()
+        };
 
-                    // Evaluate the condition and extract its type
-                    let cond_val = interpret_with_context(condition_str, context.clone())?;
-                    let cond_type =
-                        if let Ok((_, ty)) = extract_value_and_type(condition_str, &context) {
-                            ty
-                        } else {
-                            "I32".to_string()
-                        };
+        let false_result = interpret_with_context(&false_expr_str, context.clone())?;
+        let false_type = if let Ok((_, ty)) = extract_value_and_type(&false_expr_str, &context) {
+            ty
+        } else {
+            "I32".to_string()
+        };
 
-                    // Validate that the condition is a boolean type
-                    if cond_type != "Bool" {
-                        return Err(InterpreterError {
-                            code_snippet: format!("if ({}) ...", condition_str),
-                            error_message: format!("If condition must be of type Bool, got {}", cond_type),
-                            explanation: "If-else expressions require a boolean condition (true or false). Conditions must evaluate to bool type, not numeric types.".to_string(),
-                            fix: "Use a boolean expression or variable of type Bool as the condition.".to_string(),
-                        });
-                    }
+        // Validate that both branches have the same type
+        if true_type != false_type {
+            return Err(InterpreterError {
+                code_snippet: format!(
+                    "if ({}) {} else {}",
+                    condition_str, true_expr_str, false_expr_str
+                ),
+                error_message: format!(
+                    "If-else branch types mismatch: true branch is {}, false branch is {}",
+                    true_type, false_type
+                ),
+                explanation: "Both branches of an if-else expression must return values of the same type."
+                    .to_string(),
+                fix: "Ensure both branches return the same type, or cast one branch to match the other."
+                    .to_string(),
+            });
+        }
 
-                    // Look for else keyword
-                    if let Some(else_pos) = find_else_keyword(after_cond) {
-                        let true_expr = after_cond[..else_pos].trim();
-                        let else_part = after_cond[else_pos + 1..].trim(); // Skip space before else
-
-                        // Extract the false expression (after "else ")
-                        if let Some(false_expr) = else_part.strip_prefix("else ") {
-                            // Evaluate both branches and extract their types
-                            let true_result = interpret_with_context(true_expr, context.clone())?;
-                            let true_type =
-                                if let Ok((_, ty)) = extract_value_and_type(true_expr, &context) {
-                                    ty
-                                } else {
-                                    "I32".to_string()
-                                };
-
-                            let false_result = interpret_with_context(false_expr, context.clone())?;
-                            let false_type =
-                                if let Ok((_, ty)) = extract_value_and_type(false_expr, &context) {
-                                    ty
-                                } else {
-                                    "I32".to_string()
-                                };
-
-                            // Validate that both branches have the same type
-                            if true_type != false_type {
-                                return Err(InterpreterError {
-                                    code_snippet: format!("if ({}) {} else {}", condition_str, true_expr, false_expr),
-                                    error_message: format!("If-else branch types mismatch: true branch is {}, false branch is {}", true_type, false_type),
-                                    explanation: "Both branches of an if-else expression must return values of the same type.".to_string(),
-                                    fix: "Ensure both branches return the same type, or cast one branch to match the other.".to_string(),
-                                });
-                            }
-
-                            // Return appropriate branch
-                            if cond_val != 0 {
-                                return Ok(true_result);
-                            } else {
-                                return Ok(false_result);
-                            }
-                        }
-                    }
-                }
-            }
+        // Return appropriate branch
+        if cond_val != 0 {
+            return Ok(true_result);
+        } else {
+            return Ok(false_result);
         }
     }
 
@@ -1169,6 +1223,12 @@ mod tests {
     #[test]
     fn test_interpret_if_else_mismatched_types() {
         let result = interpret("if (true) true else 5");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_interpret_if_else_assign_wrong_type() {
+        let result = interpret("let x : Bool = if (true) 10 else 5; x");
         assert!(result.is_err());
     }
 }
