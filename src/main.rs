@@ -124,6 +124,14 @@ fn extract_value_and_type(
         }
     }
 
+    // Try parsing as boolean first
+    if trimmed == "true" {
+        return Ok((1, "Bool".to_string()));
+    }
+    if trimmed == "false" {
+        return Ok((0, "Bool".to_string()));
+    }
+
     // Try parsing as a plain integer first
     if let Ok(val) = input.parse::<i32>() {
         return Ok((val, "I32".to_string()));
@@ -170,6 +178,7 @@ fn get_type_bounds(type_name: &str) -> Option<(i32, i32)> {
         "I16" => Some((-32768, 32767)),
         "I32" => Some((i32::MIN, i32::MAX)),
         "I64" => Some((i32::MIN, i32::MAX)),
+        "Bool" => Some((0, 1)),
         _ => None,
     }
 }
@@ -180,6 +189,7 @@ fn get_type_width(type_name: &str) -> u8 {
         "I16" | "U16" => 16,
         "I32" | "U32" => 32,
         "I64" | "U64" => 64,
+        "Bool" => 1,
         _ => 0,
     }
 }
@@ -187,7 +197,7 @@ fn get_type_width(type_name: &str) -> u8 {
 fn is_valid_type(type_name: &str) -> bool {
     matches!(
         type_name,
-        "U8" | "U16" | "U32" | "U64" | "I8" | "I16" | "I32" | "I64"
+        "U8" | "U16" | "U32" | "U64" | "I8" | "I16" | "I32" | "I64" | "Bool"
     )
 }
 
@@ -422,17 +432,19 @@ fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, Inte
         let (var_name, mut var_type) = if let Some(colon_pos) = name_and_type.find(':') {
             let name = name_and_type[..colon_pos].trim().to_string();
             let ty = name_and_type[colon_pos + 1..].trim().to_string();
-            
+
             // Validate the type annotation
             if !is_valid_type(&ty) {
                 return Err(InterpreterError {
                     code_snippet: input.to_string(),
                     error_message: format!("Unknown type '{}'", ty),
-                    explanation: "The type must be one of: U8, U16, U32, U64, I8, I16, I32, I64.".to_string(),
-                    fix: "Use a valid type annotation or omit the type to let it be inferred.".to_string(),
+                    explanation: "The type must be one of: U8, U16, U32, U64, I8, I16, I32, I64."
+                        .to_string(),
+                    fix: "Use a valid type annotation or omit the type to let it be inferred."
+                        .to_string(),
                 });
             }
-            
+
             (name, ty)
         } else {
             // No type annotation, default to I32 (will be refined after evaluating the expression)
@@ -834,5 +846,11 @@ mod tests {
     fn test_interpret_unknown_type() {
         let result = interpret("let x : UnknownType = 100; x");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_interpret_bool_type() {
+        let result = interpret("let x : Bool = true; x");
+        assert!(matches!(result, Ok(1)));
     }
 }
