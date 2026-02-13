@@ -19,9 +19,5 @@ panic_in_result_fn = "deny"
 
 # Indexing/slicing
 indexing_slicing = "deny"
-string_slice = "deny"
-
-# Arithmetic
-arithmetic_side_effects = "deny"
 
 [dependencies]

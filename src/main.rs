@@ -43,7 +43,7 @@ fn validate_and_parse_with_suffix(
     }
 }
 
-fn interpret(input: &str) -> Result<i32, InterpreterError> {
+fn parse_single_value(input: &str) -> Result<i32, InterpreterError> {
     // Try parsing as a plain integer first
     if let Ok(val) = input.parse::<i32>() {
         return Ok(val);
@@ -81,6 +81,59 @@ fn interpret(input: &str) -> Result<i32, InterpreterError> {
         explanation: "The input could not be parsed as a valid integer, optionally with a type suffix (U8, U16, U32, U64, I8, I16, I32, I64).".to_string(),
         fix: "Provide a valid integer value, optionally with a type suffix.".to_string(),
     })
+}
+
+fn interpret(input: &str) -> Result<i32, InterpreterError> {
+    let input = input.trim();
+
+    // Check for binary operations (+, -, *, /)
+    for op_char in ['+', '-', '*', '/'] {
+        if let Some(pos) = input.rfind(op_char) {
+            // Make sure this is not a negative sign at the beginning or after an operator
+            if op_char == '-' && (pos == 0 || input[..pos].trim().ends_with(['+', '-', '*', '/'])) {
+                continue;
+            }
+
+            // Safe string splitting by char position
+            if pos > 0 && pos < input.len() {
+                let left = input[..pos].trim();
+                let right_start = pos + 1;
+                let right = if right_start < input.len() {
+                    input[right_start..].trim()
+                } else {
+                    ""
+                };
+
+                if !left.is_empty() && !right.is_empty() {
+                    if let (Ok(left_val), Ok(right_val)) =
+                        (parse_single_value(left), parse_single_value(right))
+                    {
+                        return match op_char {
+                            '+' => Ok(left_val + right_val),
+                            '-' => Ok(left_val - right_val),
+                            '*' => Ok(left_val * right_val),
+                            '/' => {
+                                if right_val == 0 {
+                                    Err(InterpreterError {
+                                        code_snippet: input.to_string(),
+                                        error_message: "Division by zero".to_string(),
+                                        explanation: "Dividing by zero is undefined in mathematics and not allowed in this language.".to_string(),
+                                        fix: "Use a non-zero divisor.".to_string(),
+                                    })
+                                } else {
+                                    Ok(left_val / right_val)
+                                }
+                            }
+                            _ => continue,
+                        };
+                    }
+                }
+            }
+        }
+    }
+
+    // Fall back to parsing as a single value
+    parse_single_value(input)
 }
 
 fn main() {
@@ -146,5 +199,11 @@ mod tests {
     fn test_interpret_out_of_range() {
         let result = interpret("256U8");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_interpret_addition() {
+        let result = interpret("1U8 + 2U8");
+        assert!(matches!(result, Ok(3)));
     }
 }
