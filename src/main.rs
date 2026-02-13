@@ -369,15 +369,68 @@ fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, Inte
         // Evaluate the value expression
         let val = interpret_with_context(value_expr, context.clone())?;
 
-        // Validate the value is within the type bounds
+        // Validate the value is within the type bounds of the declared type
         validate_result_in_type(val, &var_type, input)?;
+
+        // Check for explicit type mismatch - disallow narrowing conversions from sized types
+        // If the expression explicitly contains a type suffix that's wider than the target, reject it
+        if value_expr.contains("U16") && (var_type == "U8" || var_type == "I8") {
+            return Err(InterpreterError {
+                code_snippet: input.to_string(),
+                error_message: format!("Cannot assign U16 to {}", var_type),
+                explanation: "Narrowing type conversions are not allowed.".to_string(),
+                fix: "Use a larger target type or change the source type.".to_string(),
+            });
+        }
+        if value_expr.contains("U32") && (var_type == "U8" || var_type == "I8" || var_type == "U16" || var_type == "I16") {
+            return Err(InterpreterError {
+                code_snippet: input.to_string(),
+                error_message: format!("Cannot assign U32 to {}", var_type),
+                explanation: "Narrowing type conversions are not allowed.".to_string(),
+                fix: "Use a larger target type or change the source type.".to_string(),
+            });
+        }
+        if value_expr.contains("U64") && (var_type != "U64" && var_type != "I64") {
+            return Err(InterpreterError {
+                code_snippet: input.to_string(),
+                error_message: format!("Cannot assign U64 to {}", var_type),
+                explanation: "Narrowing type conversions are not allowed.".to_string(),
+                fix: "Use U64 or I64 as the target type.".to_string(),
+            });
+        }
+        if value_expr.contains("I16") && (var_type == "I8" || var_type == "U8") {
+            return Err(InterpreterError {
+                code_snippet: input.to_string(),
+                error_message: format!("Cannot assign I16 to {}", var_type),
+                explanation: "Narrowing type conversions are not allowed.".to_string(),
+                fix: "Use a larger target type or change the source type.".to_string(),
+            });
+        }
+        if value_expr.contains("I32") && (var_type == "I8" || var_type == "I16") {
+            return Err(InterpreterError {
+                code_snippet: input.to_string(),
+                error_message: format!("Cannot assign I32 to {}", var_type),
+                explanation: "Narrowing type conversions are not allowed.".to_string(),
+                fix: "Use a larger target type or change the source type.".to_string(),
+            });
+        }
+        if value_expr.contains("I64") && (var_type != "I64") {
+            return Err(InterpreterError {
+                code_snippet: input.to_string(),
+                error_message: format!("Cannot assign I64 to {}", var_type),
+                explanation: "Narrowing type conversions are not allowed.".to_string(),
+                fix: "Use I64 as the target type.".to_string(),
+            });
+        }
 
         // Check for duplicate variable declarations
         if context.get_var(&var_name).is_some() {
             return Err(InterpreterError {
                 code_snippet: format!("let {} : {} = ...", var_name, var_type),
                 error_message: format!("Variable '{}' is already defined", var_name),
-                explanation: "A variable with this name has already been declared in the current scope.".to_string(),
+                explanation:
+                    "A variable with this name has already been declared in the current scope."
+                        .to_string(),
                 fix: "Use a different variable name or shadowing is not allowed.".to_string(),
             });
         }
@@ -624,6 +677,18 @@ mod tests {
     #[test]
     fn test_interpret_duplicate_let_binding() {
         let result = interpret("let x = 100; let x = 100;");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_interpret_let_type_promotion() {
+        let result = interpret("let x : U16 = 100U8; x");
+        assert!(matches!(result, Ok(100)));
+    }
+
+    #[test]
+    fn test_interpret_let_type_mismatch() {
+        let result = interpret("let x : U8 = 100U16; x");
         assert!(result.is_err());
     }
 }
