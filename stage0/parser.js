@@ -1,4 +1,3 @@
-export * from "../stage0/parser.js";
 import { TuffError } from "./errors.js";
 
 export function parse(tokens) {

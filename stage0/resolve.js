@@ -1,4 +1,3 @@
-export * from "../stage0/resolve.js";
 import { TuffError } from "./errors.js";
 
 class Scope {

@@ -11,10 +11,16 @@ Implements Phase 1 / Stage 0 from `SELF-HOST.md`:
 - CLI: `tuff compile file.tuff`
 - Snapshot and runtime test harness
 
+## Repository layout (stage clarity)
+
+- `stage0/` — **canonical Stage 0 bootstrap compiler** (JavaScript)
+- `stage1/` — Stage 1 self-hosted compiler sources/runtime (`selfhost.tuff`, `compiler.tuff`)
+- `src/` — compatibility re-export shims that forward to `stage0/`
+
 ## Quick start
 
 1. Run tests: `npm test`
-2. Compile file: `node ./src/cli.js compile ./tests/cases/factorial.tuff -o ./tests/out/factorial.js`
+2. Compile file: `node ./stage0/cli.js compile ./tests/cases/factorial.tuff -o ./tests/out/factorial.js`
 
 ## Phase 2 / Stage 1
 
@@ -54,7 +60,7 @@ CLI options:
 
 Example:
 
-- `node ./src/cli.js compile ./tests/modules/app.tuff --modules --module-base ./tests/modules -o ./tests/out/stage2/app.js`
+- `node ./stage0/cli.js compile ./tests/modules/app.tuff --modules --module-base ./tests/modules -o ./tests/out/stage2/app.js`
 
 Run Phase 3 verification only:
 
@@ -76,8 +82,8 @@ Production-readiness diagnostics are now available:
 
 Example:
 
-- `node ./src/cli.js compile ./tests/out/stage4/cli-fail.tuff --stage2 --json-errors`
-- `node ./src/cli.js compile ./tests/out/stage4/cli-fail.tuff --lint --json-errors`
+- `node ./stage0/cli.js compile ./tests/out/stage4/cli-fail.tuff --stage2 --json-errors`
+- `node ./stage0/cli.js compile ./tests/out/stage4/cli-fail.tuff --lint --json-errors`
 
 Run Phase 4 verification only:
 

@@ -1,4 +1,3 @@
-export * from "../stage0/typecheck.js";
 import { TuffError } from "./errors.js";
 
 const NUMERIC = new Set([

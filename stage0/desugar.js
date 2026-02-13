@@ -1,4 +1,3 @@
-export * from "../stage0/desugar.js";
 export function desugar(ast) {
   const out = [];
   for (const node of ast.body) {

@@ -1,4 +1,3 @@
-export * from "../stage0/codegen-js.js";
 function emitPatternGuard(valueExpr, pattern) {
   switch (pattern.kind) {
     case "WildcardPattern":

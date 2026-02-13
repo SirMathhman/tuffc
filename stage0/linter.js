@@ -1,4 +1,3 @@
-export * from "../stage0/linter.js";
 import { TuffError } from "./errors.js";
 
 function walkNode(node, visit) {

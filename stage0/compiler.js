@@ -1,4 +1,3 @@
-export * from "../stage0/compiler.js";
 import fs from "node:fs";
 import path from "node:path";
 import { lex } from "./lexer.js";

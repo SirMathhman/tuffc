@@ -1,4 +1,3 @@
-export * from "../stage0/errors.js";
 export class TuffError extends Error {
   constructor(message, loc = null, options = {}) {
     const code = options.code ?? "E_GENERIC";

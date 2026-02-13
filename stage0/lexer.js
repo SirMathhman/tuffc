@@ -1,4 +1,3 @@
-export * from "../stage0/lexer.js";
 import { TuffError } from "./errors.js";
 
 const KEYWORDS = new Set([

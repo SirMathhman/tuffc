@@ -5,12 +5,12 @@
   "type": "module",
   "description": "Stage 0 JavaScript bootstrap compiler for Tuff-lite",
   "bin": {
-    "tuff": "./src/cli.js"
+    "tuff": "./stage0/cli.js"
   },
   "scripts": {
     "test": "node ./tests/run-tests.js && node ./tests/stage1-bootstrap.js && node ./tests/phase3-stage2.js && node ./tests/phase4-production.js",
     "test:update": "node ./tests/run-tests.js --update",
-    "compile:sample": "node ./src/cli.js compile ./tests/cases/factorial.tuff -o ./tests/out/factorial.js",
+    "compile:sample": "node ./stage0/cli.js compile ./tests/cases/factorial.tuff -o ./tests/out/factorial.js",
     "stage1:bootstrap": "node ./tests/stage1-bootstrap.js",
     "stage2:verify": "node ./tests/phase3-stage2.js",
     "stage4:verify": "node ./tests/phase4-production.js"
