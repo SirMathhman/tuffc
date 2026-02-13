@@ -185,12 +185,18 @@ void testNegativeU8Literal()
     assertInvalid("negative_u8", "-100U8");
 }
 
+void testU8OutOfRange()
+{
+    assertInvalid("u8_out_of_range", "256U8");
+}
+
 int32_t main()
 {
     testEmptyProgram();
     testNumericLiteral();
     testU8Literal();
     testNegativeU8Literal();
+    testU8OutOfRange();
 
     fprintf(stderr, "Passed %d/%d tests\n", passingTests, totalTests);
 
