@@ -170,9 +170,15 @@ void testEmptyProgram()
     assertValid("empty", "", 0, "", 0, NULL);
 }
 
+void testNumericLiteral()
+{
+    assertValid("hundred", "100", 100, "", 0, NULL);
+}
+
 int32_t main()
 {
     testEmptyProgram();
+    testNumericLiteral();
 
     fprintf(stderr, "Passed %d/%d tests\n", passingTests, totalTests);
 
