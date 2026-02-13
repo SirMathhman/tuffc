@@ -250,6 +250,7 @@ foreach ($file in $files) {
                 Write-Host "Duplicate string subset found in $file"
                 Write-Host "  line $($a.Line) and line $($b.Line), length $($dup.Length)"
                 Write-Host "  `"$(Format-Preview -Text $dup)`""
+                Write-Host "  -> You MUST extract this as a constant (local or global)"
             }
         }
     }
