@@ -1020,6 +1020,12 @@ fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, Inte
         return Ok(0);
     }
 
+    // Handle yield statements: yield value
+    if let Some(value_expr_str) = input.strip_prefix("yield ") {
+        let value_expr = value_expr_str.trim();
+        return interpret_with_context(value_expr, context);
+    }
+
     // Handle case: expression followed by space and let statement, like "{} let x = 0; x"
     // First check if we have a pattern like "something let " where something doesn't contain let
     if !input.starts_with("let ") {
@@ -1945,5 +1951,11 @@ mod tests {
     fn test_interpret_tuple_index_out_of_bounds_with_assignment() {
         let result = interpret("let myTuple = (1, 2); let temp : Bool = myTuple[2];");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_interpret_yield_in_brace_block() {
+        let result = interpret("let x = { if (true) yield 1; 2 }; x");
+        assert!(matches!(result, Ok(1)));
     }
 }
