@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::io::{self, Write};
 
 #[derive(Debug)]
@@ -6,6 +7,32 @@ struct InterpreterError {
     error_message: String,
     explanation: String,
     fix: String,
+}
+
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+struct Context {
+    variables: HashMap<String, (i32, String)>, // (value, type)
+}
+
+impl Context {
+    #[allow(dead_code)]
+    fn new() -> Self {
+        Context {
+            variables: HashMap::new(),
+        }
+    }
+
+    #[allow(dead_code)]
+    fn with_var(mut self, name: String, value: i32, var_type: String) -> Self {
+        self.variables.insert(name, (value, var_type));
+        self
+    }
+
+    #[allow(dead_code)]
+    fn get_var(&self, name: &str) -> Option<(i32, String)> {
+        self.variables.get(name).cloned()
+    }
 }
 
 fn validate_and_parse_with_suffix(
@@ -43,10 +70,23 @@ fn validate_and_parse_with_suffix(
     }
 }
 
-fn extract_value_and_type(input: &str) -> Result<(i32, &str), InterpreterError> {
+fn extract_value_and_type(
+    input: &str,
+    context: &Context,
+) -> Result<(i32, String), InterpreterError> {
+    // Check if it's a variable reference
+    let trimmed = input.trim();
+    if !trimmed.chars().any(|c| {
+        c.is_whitespace() || matches!(c, '+' | '-' | '*' | '/' | '(' | ')' | '{' | '}' | ':')
+    }) {
+        if let Some((val, var_type)) = context.get_var(trimmed) {
+            return Ok((val, var_type));
+        }
+    }
+
     // Try parsing as a plain integer first
     if let Ok(val) = input.parse::<i32>() {
-        return Ok((val, "I32"));
+        return Ok((val, "I32".to_string()));
     }
 
     // Try parsing with type suffixes (e.g., "100U8", "42I32")
@@ -66,7 +106,7 @@ fn extract_value_and_type(input: &str) -> Result<(i32, &str), InterpreterError> 
     for (suffix, min, max) in &unsigned_suffixes {
         if let Some(result) = validate_and_parse_with_suffix(input, suffix, *min, *max, true) {
             match result {
-                Ok(val) => return Ok((val, suffix)),
+                Ok(val) => return Ok((val, suffix.to_string())),
                 Err(e) => return Err(e),
             }
         }
@@ -75,7 +115,7 @@ fn extract_value_and_type(input: &str) -> Result<(i32, &str), InterpreterError> 
     for (suffix, min, max) in &signed_suffixes {
         if let Some(result) = validate_and_parse_with_suffix(input, suffix, *min, *max, false) {
             match result {
-                Ok(val) => return Ok((val, suffix)),
+                Ok(val) => return Ok((val, suffix.to_string())),
                 Err(e) => return Err(e),
             }
         }
@@ -230,7 +270,7 @@ fn find_lowest_precedence_operator(input: &str) -> Option<(usize, char)> {
     None
 }
 
-fn interpret(input: &str) -> Result<i32, InterpreterError> {
+fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, InterpreterError> {
     let input = input.trim();
 
     // Strip outer parentheses or braces if they wrap the entire expression
@@ -255,13 +295,62 @@ fn interpret(input: &str) -> Result<i32, InterpreterError> {
             }
         }
         if is_wrapped {
-            &input[1..input.len() - 1]
+            input[1..input.len() - 1].trim()
         } else {
             input
         }
     } else {
         input
     };
+
+    // Handle let statements: let name : type = expr; rest
+    if input.starts_with("let ") {
+        // Find the semicolon that separates the let statement from the rest
+        let semicolon_pos = input.find(';')
+            .ok_or_else(|| InterpreterError {
+                code_snippet: input.to_string(),
+                error_message: "Let statement must end with semicolon".to_string(),
+                explanation: "Variable declarations must be followed by a semicolon and then the expression to evaluate.".to_string(),
+                fix: "Add a semicolon after the variable assignment.".to_string(),
+            })?;
+
+        let let_part = input[4..semicolon_pos].trim(); // Skip "let "
+        let rest = input[semicolon_pos + 1..].trim();
+
+        // Parse: name : type = value
+        let eq_pos = let_part.find('=').ok_or_else(|| InterpreterError {
+            code_snippet: input.to_string(),
+            error_message: "Variable declaration must have an assignment".to_string(),
+            explanation: "Format should be: let name : type = value;".to_string(),
+            fix: "Add an assignment with = operator.".to_string(),
+        })?;
+
+        let name_and_type = let_part[..eq_pos].trim();
+        let value_expr = let_part[eq_pos + 1..].trim();
+
+        // Parse name : type
+        let colon_pos = name_and_type.find(':').ok_or_else(|| InterpreterError {
+            code_snippet: input.to_string(),
+            error_message: "Variable type annotation required".to_string(),
+            explanation: "Format should be: let name : type = value;".to_string(),
+            fix: "Specify the type with a colon after the variable name.".to_string(),
+        })?;
+
+        let var_name = name_and_type[..colon_pos].trim().to_string();
+        let var_type = name_and_type[colon_pos + 1..].trim().to_string();
+
+        // Evaluate the value expression
+        let val = interpret_with_context(value_expr, context.clone())?;
+
+        // Validate the value is within the type bounds
+        validate_result_in_type(val, &var_type, input)?;
+
+        // Add the variable to context
+        context = context.with_var(var_name, val, var_type);
+
+        // Continue evaluating the rest
+        return interpret_with_context(rest, context);
+    }
 
     // Check for binary operations (+, -, *, /) respecting operator precedence
     if let Some((pos, op_char)) = find_lowest_precedence_operator(input) {
@@ -279,43 +368,59 @@ fn interpret(input: &str) -> Result<i32, InterpreterError> {
                 // Determine if left is a simple literal or a complex expression
                 let (left_val, left_type) = if find_lowest_precedence_operator(left).is_none() {
                     // Try parsing as a literal first
-                    match extract_value_and_type(left) {
+                    match extract_value_and_type(left, &context) {
                         Ok(result) => result,
                         Err(_) => {
                             // If it's not a simple literal, recursively evaluate
-                            (interpret(left)?, "I32")
+                            (
+                                interpret_with_context(left, context.clone())?,
+                                "I32".to_string(),
+                            )
                         }
                     }
                 } else {
                     // Complex expression with operators, recursively evaluate
-                    (interpret(left)?, "I32")
+                    (
+                        interpret_with_context(left, context.clone())?,
+                        "I32".to_string(),
+                    )
                 };
 
                 // Determine if right is a simple literal or a complex expression
                 let (right_val, right_type) = if find_lowest_precedence_operator(right).is_none() {
                     // Try parsing as a literal first
-                    match extract_value_and_type(right) {
+                    match extract_value_and_type(right, &context) {
                         Ok(result) => result,
                         Err(_) => {
                             // If it's not a simple literal, recursively evaluate
-                            (interpret(right)?, "I32")
+                            (
+                                interpret_with_context(right, context.clone())?,
+                                "I32".to_string(),
+                            )
                         }
                     }
                 } else {
                     // Complex expression with operators, recursively evaluate
-                    (interpret(right)?, "I32")
+                    (
+                        interpret_with_context(right, context.clone())?,
+                        "I32".to_string(),
+                    )
                 };
 
                 let result_val =
-                    apply_operation(left_val, left_type, op_char, right_val, right_type, input)?;
+                    apply_operation(left_val, &left_type, op_char, right_val, &right_type, input)?;
                 return Ok(result_val);
             }
         }
     }
 
     // Fall back to parsing as a single value
-    let (val, _type) = extract_value_and_type(input)?;
+    let (val, _type) = extract_value_and_type(input, &context)?;
     Ok(val)
+}
+
+fn interpret(input: &str) -> Result<i32, InterpreterError> {
+    interpret_with_context(input, Context::new())
 }
 
 fn main() {
@@ -440,6 +545,12 @@ mod tests {
     #[test]
     fn test_interpret_braces_grouping() {
         let result = interpret("(2 + { 1 + 2 }) * 4");
+        assert!(matches!(result, Ok(20)));
+    }
+
+    #[test]
+    fn test_interpret_let_binding() {
+        let result = interpret("(2 + { let x : U8 = 1 + 2; x }) * 4");
         assert!(matches!(result, Ok(20)));
     }
 }
