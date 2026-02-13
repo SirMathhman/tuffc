@@ -730,8 +730,24 @@ fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, Inte
                     let condition_str = &rest[1..cond_end_pos].trim();
                     let after_cond = rest[cond_end_pos + 1..].trim();
 
-                    // Evaluate the condition
+                    // Evaluate the condition and extract its type
                     let cond_val = interpret_with_context(condition_str, context.clone())?;
+                    let cond_type =
+                        if let Ok((_, ty)) = extract_value_and_type(condition_str, &context) {
+                            ty
+                        } else {
+                            "I32".to_string()
+                        };
+
+                    // Validate that the condition is a boolean type
+                    if cond_type != "Bool" {
+                        return Err(InterpreterError {
+                            code_snippet: format!("if ({}) ...", condition_str),
+                            error_message: format!("If condition must be of type Bool, got {}", cond_type),
+                            explanation: "If-else expressions require a boolean condition (true or false). Conditions must evaluate to bool type, not numeric types.".to_string(),
+                            fix: "Use a boolean expression or variable of type Bool as the condition.".to_string(),
+                        });
+                    }
 
                     // Look for else keyword
                     if let Some(else_pos) = find_else_keyword(after_cond) {
@@ -1118,5 +1134,11 @@ mod tests {
     fn test_interpret_if_else_true() {
         let result = interpret("let x = if (true) 3 else 5; x");
         assert!(matches!(result, Ok(3)));
+    }
+
+    #[test]
+    fn test_interpret_if_non_bool_condition() {
+        let result = interpret("if (100) 3 else 5");
+        assert!(result.is_err());
     }
 }
