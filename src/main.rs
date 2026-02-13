@@ -350,6 +350,30 @@ fn find_is_operator(input: &str) -> Option<usize> {
     .map(|(pos, _)| pos)
 }
 
+fn find_if_keyword(input: &str) -> Option<usize> {
+    find_at_depth_zero(input, |_ch, pos| {
+        if (pos == 0 || input[..pos].ends_with(' ')) && pos + 3 <= input.len() {
+            let from_pos = if pos == 0 { 0 } else { pos + 1 };
+            input[from_pos..].starts_with("if ")
+        } else {
+            false
+        }
+    })
+    .map(|(pos, _)| if pos == 0 { 0 } else { pos + 1 })
+}
+
+fn find_else_keyword(input: &str) -> Option<usize> {
+    find_at_depth_zero(input, |ch, pos| {
+        if ch == ' ' && pos + 5 <= input.len() {
+            let after_space = &input[pos + 1..];
+            after_space.starts_with("else ")
+        } else {
+            false
+        }
+    })
+    .map(|(pos, _)| pos)
+}
+
 fn is_narrowing_conversion(value_expr: &str, target_type: &str) -> Result<(), (String, String)> {
     let target_width = get_type_width(target_type);
 
@@ -674,6 +698,61 @@ fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, Inte
             // Check if the type matches
             let result = if actual_type == type_name { 1 } else { 0 };
             return Ok(result);
+        }
+    }
+
+    // Handle if-else expressions: if (condition) true_expr else false_expr
+    if let Some(if_pos) = find_if_keyword(input) {
+        if if_pos == 0 || input[..if_pos].ends_with(' ') {
+            let after_if = if if_pos == 0 { 3 } else { if_pos + 3 };
+            let rest = input[after_if..].trim();
+
+            // Look for opening paren for condition
+            if rest.starts_with('(') {
+                // Find the matching closing paren
+                let mut paren_depth = 0;
+                let mut cond_end = None;
+                for (i, ch) in rest.char_indices() {
+                    match ch {
+                        '(' => paren_depth += 1,
+                        ')' => {
+                            paren_depth -= 1;
+                            if paren_depth == 0 {
+                                cond_end = Some(i);
+                                break;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+
+                if let Some(cond_end_pos) = cond_end {
+                    let condition_str = &rest[1..cond_end_pos].trim();
+                    let after_cond = rest[cond_end_pos + 1..].trim();
+
+                    // Evaluate the condition
+                    let cond_val = interpret_with_context(condition_str, context.clone())?;
+
+                    // Look for else keyword
+                    if let Some(else_pos) = find_else_keyword(after_cond) {
+                        let true_expr = after_cond[..else_pos].trim();
+                        let else_part = after_cond[else_pos + 1..].trim(); // Skip space before else
+
+                        // Extract the false expression (after "else ")
+                        if let Some(false_expr) = else_part.strip_prefix("else ") {
+                            // Return appropriate branch
+                            if cond_val != 0 {
+                                let true_result =
+                                    interpret_with_context(true_expr, context.clone())?;
+                                return Ok(true_result);
+                            } else {
+                                let false_result = interpret_with_context(false_expr, context)?;
+                                return Ok(false_result);
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -1033,5 +1112,11 @@ mod tests {
     fn test_interpret_braces_scope_isolation() {
         let result = interpret("{ let x = 0; } let y = x; y");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_interpret_if_else_true() {
+        let result = interpret("let x = if (true) 3 else 5; x");
+        assert!(matches!(result, Ok(3)));
     }
 }
