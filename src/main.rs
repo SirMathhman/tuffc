@@ -437,7 +437,7 @@ fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, Inte
         }
     }
 
-    // Handle case: fully wrapped expression followed by space, like "{} x"
+    // Handle case: fully wrapped expression followed by space, like "{} x" or "{ x = 100; } x"
     // Check if input starts with a fully wrapped expression followed by space
     if !input.starts_with("let ") && (input.starts_with('{') || input.starts_with('(')) {
         // Find where the wrapping expression ends
@@ -477,11 +477,10 @@ fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, Inte
                     .is_some_and(|c| matches!(c, '+' | '-' | '*' | '/' | ';'))
             {
                 let wrapped_expr = &input[..=end_pos];
-                // Try to evaluate the wrapped expression
-                if let Ok(_val) = interpret_with_context(wrapped_expr, context.clone()) {
-                    // Successfully evaluated the wrapped expression, now evaluate the rest
-                    return interpret_with_context(remaining, context);
-                }
+                // Evaluate the wrapped expression AND the remaining content as a sequence
+                // by concatenating them with a semicolon
+                let sequence_to_eval = format!("{}; {}", wrapped_expr, remaining);
+                return interpret_with_context(&sequence_to_eval, context);
             }
         }
     }
@@ -543,7 +542,8 @@ fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, Inte
         };
 
         // Evaluate the value expression to get both the value and its inferred type
-        let val = interpret_with_context(value_expr, context.clone())?;
+        let ctx = context.clone();
+        let val = interpret_with_context(value_expr, ctx)?;
 
         // If no explicit type annotation, infer it from the expression
         if !name_and_type.contains(':') {
@@ -629,7 +629,8 @@ fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, Inte
                 let rest = right_and_rest[semicolon_pos + 1..].trim();
 
                 // Evaluate the value expression
-                let value = interpret_with_context(value_expr, context.clone())?;
+                let ctx = context.clone();
+                let value = interpret_with_context(value_expr, ctx)?;
 
                 // Extract the type of the value being assigned
                 let value_type = if let Ok((_, ty)) = extract_value_and_type(value_expr, &context) {
@@ -682,22 +683,14 @@ fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, Inte
         let first_part = input[..semi_pos].trim();
         let rest = input[semi_pos + 1..].trim();
 
-        // Only handle this if first_part is not a let statement or assignment
+        // Only handle this if first_part is not a let statement or assignment at depth 0
         // (those are already handled above)
-        if !first_part.starts_with("let ")
-            && !first_part.chars().any(|c| matches!(c, '='))
-            && !rest.is_empty()
-        {
+        let has_top_level_assignment = find_char_at_depth_zero(first_part, '=').is_some();
+        if !first_part.starts_with("let ") && !has_top_level_assignment && !rest.is_empty() {
             // Try to evaluate the first expression
-            match interpret_with_context(first_part, context.clone()) {
-                Ok(_first_val) => {
-                    // Successfully evaluated, continue with the rest
-                    return interpret_with_context(rest, context);
-                }
-                Err(_) => {
-                    // Fall through if first part fails to evaluate
-                }
-            }
+            let _first_val = interpret_with_context(first_part, context.clone())?;
+            // Continue evaluating the rest with the same context
+            return interpret_with_context(rest, context);
         }
     }
 
