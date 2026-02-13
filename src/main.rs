@@ -247,6 +247,16 @@ fn apply_operation(
     right_type: &str,
     code_snippet: &str,
 ) -> Result<i32, InterpreterError> {
+    // Check that operands are not boolean types
+    if left_type == "Bool" || right_type == "Bool" {
+        return Err(InterpreterError {
+            code_snippet: code_snippet.to_string(),
+            error_message: "Cannot use boolean values in arithmetic operations".to_string(),
+            explanation: "Boolean values (true/false) cannot be used as operands in arithmetic operations (+, -, *, /).".to_string(),
+            fix: "Use integer or other numeric types instead of boolean types.".to_string(),
+        });
+    }
+
     let result_val = match op_char {
         '+' => left_val + right_val,
         '-' => left_val - right_val,
@@ -852,5 +862,11 @@ mod tests {
     fn test_interpret_bool_type() {
         let result = interpret("let x : Bool = true; x");
         assert!(matches!(result, Ok(1)));
+    }
+
+    #[test]
+    fn test_interpret_bool_in_arithmetic() {
+        let result = interpret("true + false");
+        assert!(result.is_err());
     }
 }
