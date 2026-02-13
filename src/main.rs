@@ -185,9 +185,10 @@ fn apply_operation(
     validate_result_in_type(result_val, result_type, code_snippet)
 }
 
-fn find_leftmost_operator(input: &str) -> Option<(usize, char)> {
+fn find_lowest_precedence_operator(input: &str) -> Option<(usize, char)> {
+    // First pass: look for low-precedence operators (+ and -)
     for (pos, ch) in input.char_indices() {
-        if matches!(ch, '+' | '-' | '*' | '/') {
+        if matches!(ch, '+' | '-') {
             // Make sure this is not a negative sign at the beginning or after an operator
             if ch == '-' && (pos == 0 || input[..pos].trim().ends_with(['+', '-', '*', '/'])) {
                 continue;
@@ -195,56 +196,54 @@ fn find_leftmost_operator(input: &str) -> Option<(usize, char)> {
             return Some((pos, ch));
         }
     }
+
+    // Second pass: look for high-precedence operators (* and /)
+    for (pos, ch) in input.char_indices() {
+        if matches!(ch, '*' | '/') {
+            return Some((pos, ch));
+        }
+    }
+
     None
 }
 
 fn interpret(input: &str) -> Result<i32, InterpreterError> {
     let input = input.trim();
 
-    // Check for binary operations (+, -, *, /) from left to right
-    if let Some((pos, op_char)) = find_leftmost_operator(input) {
+    // Check for binary operations (+, -, *, /) respecting operator precedence
+    if let Some((pos, op_char)) = find_lowest_precedence_operator(input) {
         // Safe string splitting by char position
         if pos > 0 && pos < input.len() {
             let left = input[..pos].trim();
             let right_start = pos + 1;
-            let right_remainder = if right_start < input.len() {
+            let right = if right_start < input.len() {
                 input[right_start..].trim()
             } else {
                 ""
             };
 
-            if !left.is_empty() && !right_remainder.is_empty() {
-                if let Ok((left_val, left_type)) = extract_value_and_type(left) {
-                    // Extract just the first operand from the right side
-                    // Find where the first value ends (at the next operator or end of string)
-                    let first_right_operand_len =
-                        if let Some((next_op_pos, _)) = find_leftmost_operator(right_remainder) {
-                            next_op_pos
-                        } else {
-                            right_remainder.len()
-                        };
+            if !left.is_empty() && !right.is_empty() {
+                // Determine if left is a simple literal or a complex expression
+                let (left_val, left_type) = if find_lowest_precedence_operator(left).is_none() {
+                    // left is a simple literal, extract its value and type
+                    extract_value_and_type(left)?
+                } else {
+                    // left is a complex expression, recursively evaluate
+                    (interpret(left)?, "I32")
+                };
 
-                    let first_right_operand = right_remainder[..first_right_operand_len].trim();
+                // Determine if right is a simple literal or a complex expression
+                let (right_val, right_type) = if find_lowest_precedence_operator(right).is_none() {
+                    // right is a simple literal, extract its value and type
+                    extract_value_and_type(right)?
+                } else {
+                    // right is a complex expression, recursively evaluate
+                    (interpret(right)?, "I32")
+                };
 
-                    if let Ok((right_val, right_type)) = extract_value_and_type(first_right_operand)
-                    {
-                        let result_val = apply_operation(
-                            left_val, left_type, op_char, right_val, right_type, input,
-                        )?;
-
-                        // Check if there are more operations after the first right operand
-                        let after_right_word =
-                            right_remainder[first_right_operand_len..].trim_start();
-                        if after_right_word.is_empty() {
-                            // No more operations, return the result
-                            return Ok(result_val);
-                        } else {
-                            // Recursively evaluate the remaining expression with the result
-                            let new_expr = format!("{} {}", result_val, after_right_word);
-                            return interpret(&new_expr);
-                        }
-                    }
-                }
+                let result_val =
+                    apply_operation(left_val, left_type, op_char, right_val, right_type, input)?;
+                return Ok(result_val);
             }
         }
     }
@@ -359,5 +358,11 @@ mod tests {
     fn test_interpret_multiplication_and_subtraction() {
         let result = interpret("2 * 3 - 4");
         assert!(matches!(result, Ok(2)));
+    }
+
+    #[test]
+    fn test_interpret_addition_and_multiplication() {
+        let result = interpret("2 + 3 * 4");
+        assert!(matches!(result, Ok(14)));
     }
 }
