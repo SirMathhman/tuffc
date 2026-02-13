@@ -750,44 +750,83 @@ fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, Inte
         return interpret_with_context(rest, context);
     }
 
-    // Handle assignment expressions: variable = value; rest
-    // Look for assignment at depth 0, but avoid confusing with let statement operators
-    if let Some(eq_pos) = find_char_at_depth_zero(input, '=') {
+    // Handle compound assignment expressions: variable += value; rest
+    // Check for += operator before checking for simple =
+    // Handle assignment expressions: variable = value; rest or variable += value; rest
+    // Check for compound assignment (+=) first, then simple assignment (=)
+    let assignment_info: Option<(&str, &str, bool)> = if input.contains("+=") {
+        if let Some(plus_pos) = find_char_at_depth_zero(input, '+') {
+            if plus_pos + 1 < input.len() && &input[plus_pos + 1..plus_pos + 2] == "=" {
+                let left = input[..plus_pos].trim();
+                let right_and_rest = input[plus_pos + 2..].trim();
+                Some((left, right_and_rest, true))
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    } else if let Some(eq_pos) = find_char_at_depth_zero(input, '=') {
         let left = input[..eq_pos].trim();
         let right_and_rest = input[eq_pos + 1..].trim();
+        Some((left, right_and_rest, false))
+    } else {
+        None
+    };
 
-        // Check if left side is a simple variable name (not an operator expression)
+    if let Some((left, right_and_rest, is_compound)) = assignment_info {
+        // Check if left side is a simple variable name
         if !left
             .chars()
             .any(|c| matches!(c, '+' | '-' | '*' | '/' | '(' | ')' | '{' | '}' | ';' | ':'))
             && !left.starts_with("let ")
         {
-            // This is an assignment. Find the semicolon to separate assignment from rest
+            // This is an assignment. Find the semicolon
             if let Some(semicolon_pos) = find_char_at_depth_zero(right_and_rest, ';') {
                 let value_expr = right_and_rest[..semicolon_pos].trim();
                 let rest = right_and_rest[semicolon_pos + 1..].trim();
 
-                // Evaluate the value expression
+                // Evaluate the right side
                 let ctx = context.clone();
-                let value = interpret_with_context(value_expr, ctx)?;
+                let right_value = interpret_with_context(value_expr, ctx)?;
 
-                // Extract the type of the value being assigned
-                let value_type = if let Ok((_, ty)) = extract_value_and_type(value_expr, &context) {
-                    ty
+                if is_compound {
+                    // Compound assignment: get current value and add
+                    if let Some((current_value, var_type)) = context.get_var(left) {
+                        let result_value = current_value + right_value;
+                        validate_result_in_type(result_value, &var_type, input)?;
+                        context.set_var(left.to_string(), result_value, &var_type)?;
+
+                        if rest.is_empty() {
+                            return Ok(result_value);
+                        }
+                        return interpret_with_context(rest, context);
+                    } else {
+                        return Err(InterpreterError {
+                            code_snippet: format!("{} += {}", left, value_expr),
+                            error_message: format!("Undefined variable '{}'", left),
+                            explanation: "The variable has not been declared in the current scope."
+                                .to_string(),
+                            fix: "Declare the variable with a 'let' statement before using compound assignment."
+                                .to_string(),
+                        });
+                    }
                 } else {
-                    "I32".to_string()
-                };
+                    // Simple assignment: assign the value
+                    let value_type =
+                        if let Ok((_, ty)) = extract_value_and_type(value_expr, &context) {
+                            ty
+                        } else {
+                            "I32".to_string()
+                        };
 
-                // Apply the assignment
-                context.set_var(left.to_string(), value, &value_type)?;
+                    context.set_var(left.to_string(), right_value, &value_type)?;
 
-                // If there's no rest, return the assigned value
-                if rest.is_empty() {
-                    return Ok(value);
+                    if rest.is_empty() {
+                        return Ok(right_value);
+                    }
+                    return interpret_with_context(rest, context);
                 }
-
-                // Continue evaluating the rest
-                return interpret_with_context(rest, context);
             }
         }
     }
@@ -1280,5 +1319,11 @@ mod tests {
     fn test_interpret_if_false_no_else() {
         let result = interpret("let mut x = 0; if (false) { x = 1; } x");
         assert!(matches!(result, Ok(0)));
+    }
+
+    #[test]
+    fn test_interpret_compound_assignment_add() {
+        let result = interpret("let mut x = 0; x += 1; x");
+        assert!(matches!(result, Ok(1)));
     }
 }
