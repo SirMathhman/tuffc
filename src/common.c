@@ -28,15 +28,15 @@ static void generate_main_return_code(char *buffer, size_t bufsize, long returnV
     snprintf(buffer, bufsize, "int main() {\n    return %ld;\n}\n", returnValue);
 }
 
-// Helper function to create a compilation error result
-static CompileResult make_compile_error(char *source)
+// Helper function to create a specific compilation error result
+static CompileResult make_error(char *source, const char *message, const char *reasoning, const char *fix)
 {
     CompileResult result;
     result.variant = CompileErrorVariant;
     result.error.erroneous_code = source;
-    result.error.error_message = "Unknown compilation error";
-    result.error.reasoning = "The compiler encountered an unexpected condition that it doesn't know how to handle.";
-    result.error.fix = "Please report this issue to the developers with the source code that caused the error.";
+    result.error.error_message = (char *)message;
+    result.error.reasoning = (char *)reasoning;
+    result.error.fix = (char *)fix;
     return result;
 }
 
@@ -69,7 +69,9 @@ CompileResult compile(char *source)
         if (has_minus && isalpha(*pos))
         {
             // Found minus sign followed (eventually) by letters - invalid
-            return make_compile_error(source);
+            return make_error(source, "Negative number with type suffix is not allowed",
+                            "Type-suffixed literals cannot be negative. The minus operator is not allowed on type-suffixed numeric literals.",
+                            "Remove the type suffix or use a positive number.");
         }
         pos++;
     }
@@ -106,5 +108,7 @@ CompileResult compile(char *source)
     }
 
     // Default scenario is unknown source code.
-    return make_compile_error(source);
+    return make_error(source, "Invalid syntax",
+                    "The source code does not match any recognized pattern. Expected empty input, a numeric literal, or a numeric literal with a type suffix.",
+                    "Check the syntax and ensure the input is a valid numeric literal, optionally with a type suffix like U8, U16, I32, etc.");
 }
