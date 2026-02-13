@@ -437,6 +437,55 @@ fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, Inte
         }
     }
 
+    // Handle case: fully wrapped expression followed by space, like "{} x"
+    // Check if input starts with a fully wrapped expression followed by space
+    if !input.starts_with("let ") && (input.starts_with('{') || input.starts_with('(')) {
+        // Find where the wrapping expression ends
+        let mut depth_paren = 0;
+        let mut depth_brace = 0;
+        let mut wrapped_end = None;
+
+        for (pos, ch) in input.char_indices() {
+            match ch {
+                '(' => depth_paren += 1,
+                ')' => {
+                    depth_paren -= 1;
+                    if depth_paren == 0 && depth_brace == 0 && pos > 0 {
+                        wrapped_end = Some(pos);
+                        break;
+                    }
+                }
+                '{' => depth_brace += 1,
+                '}' => {
+                    depth_brace -= 1;
+                    if depth_paren == 0 && depth_brace == 0 && pos > 0 {
+                        wrapped_end = Some(pos);
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        if let Some(end_pos) = wrapped_end {
+            let remaining = input[end_pos + 1..].trim();
+            // Only proceed if there's remaining content and it's not starting with an operator
+            if !remaining.is_empty()
+                && !remaining
+                    .chars()
+                    .next()
+                    .is_some_and(|c| matches!(c, '+' | '-' | '*' | '/' | ';'))
+            {
+                let wrapped_expr = &input[..=end_pos];
+                // Try to evaluate the wrapped expression
+                if let Ok(_val) = interpret_with_context(wrapped_expr, context.clone()) {
+                    // Successfully evaluated the wrapped expression, now evaluate the rest
+                    return interpret_with_context(remaining, context);
+                }
+            }
+        }
+    }
+
     // Handle let statements: let [mut] name : type = expr; rest
     if input.starts_with("let ") {
         // Find the semicolon that separates the let statement from the rest
@@ -978,6 +1027,12 @@ mod tests {
     #[test]
     fn test_interpret_empty_braces_with_let() {
         let result = interpret("{} let x = 100; x");
+        assert!(matches!(result, Ok(100)));
+    }
+
+    #[test]
+    fn test_interpret_let_with_empty_braces() {
+        let result = interpret("let x = 100; {} x");
         assert!(matches!(result, Ok(100)));
     }
 }
