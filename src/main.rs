@@ -1042,6 +1042,36 @@ fn is_fully_wrapped(input: &str) -> bool {
     true
 }
 
+fn handle_compound_assignment(
+    statement: &str,
+    context: &mut Context,
+    input: &str,
+) -> Result<(), InterpreterError> {
+    if let Some(plus_pos) = statement.find("+=") {
+        let var_name = statement[..plus_pos].trim();
+        let right_part = statement[plus_pos + 2..].trim();
+
+        if let Some((current_val, var_type)) = context.get_var(var_name) {
+            let right_value = interpret_with_context(right_part, context.clone())?;
+            let new_value = current_val + right_value;
+
+            // Validate and apply the change
+            validate_result_in_type(new_value, &var_type, input)?;
+            context.set_var(var_name.to_string(), new_value, &var_type)?;
+        } else {
+            return Err(InterpreterError {
+                code_snippet: format!("{} += {}", var_name, right_part),
+                error_message: format!("Undefined variable '{}'", var_name),
+                explanation: "The variable has not been declared in the current scope.".to_string(),
+                fix:
+                    "Declare the variable with a 'let' statement before using compound assignment."
+                        .to_string(),
+            });
+        }
+    }
+    Ok(())
+}
+
 fn handle_while_loop(
     condition_str: &str,
     body_str: &str,
@@ -1085,31 +1115,26 @@ fn handle_while_loop(
             break;
         }
 
-        // Execute the body - handle compound assignments manually to update context
-        if body_to_execute.contains("+=") {
-            // Handle compound assignment like "x += 1"
-            if let Some(plus_pos) = body_to_execute.find("+=") {
-                let var_name = body_to_execute[..plus_pos].trim();
-                let right_part = body_to_execute[plus_pos + 2..].trim();
-
-                if let Some((current_val, var_type)) = context.get_var(var_name) {
-                    let right_value = interpret_with_context(right_part, context.clone())?;
-                    let new_value = current_val + right_value;
-
-                    // Validate and apply the change
-                    validate_result_in_type(new_value, &var_type, input)?;
-                    context.set_var(var_name.to_string(), new_value, &var_type)?;
-                } else {
-                    return Err(InterpreterError {
-                        code_snippet: format!("{} += {}", var_name, right_part),
-                        error_message: format!("Undefined variable '{}'", var_name),
-                        explanation: "The variable has not been declared in the current scope."
-                            .to_string(),
-                        fix: "Declare the variable with a 'let' statement before using compound assignment."
-                            .to_string(),
-                    });
+        // Execute the body - handle break statement first
+        if body_to_execute.contains("break") {
+            // Find where break is
+            if let Some(break_pos) = body_to_execute.find("break") {
+                // Execute statements before the break
+                let mut before_break = body_to_execute[..break_pos].trim();
+                // Strip trailing semicolon if present
+                if before_break.ends_with(';') {
+                    before_break = before_break[..before_break.len() - 1].trim();
                 }
+
+                if !before_break.is_empty() && before_break.contains("+=") {
+                    handle_compound_assignment(before_break, &mut context, input)?;
+                }
+
+                // Exit the loop due to break
+                break;
             }
+        } else if body_to_execute.contains("+=") {
+            handle_compound_assignment(body_to_execute, &mut context, input)?;
         }
 
         iterations += 1;
@@ -2303,5 +2328,11 @@ mod tests {
     fn test_interpret_function_yield_does_not_short_circuit_function() {
         let result = interpret("fn get() => { yield 100; } + 50; get()");
         assert!(matches!(result, Ok(150)));
+    }
+
+    #[test]
+    fn test_interpret_while_loop_with_break() {
+        let result = interpret("let mut x = 0; while (x < 4) { x += 1; break; } x");
+        assert!(matches!(result, Ok(1)));
     }
 }
