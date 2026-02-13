@@ -338,6 +338,18 @@ fn find_lowest_precedence_operator(input: &str) -> Option<(usize, char)> {
     find_operator_at_depth(input, &['*', '/'], false)
 }
 
+fn find_is_operator(input: &str) -> Option<usize> {
+    find_at_depth_zero(input, |ch, pos| {
+        if ch == ' ' && pos + 4 <= input.len() {
+            let after_space = &input[pos + 1..];
+            after_space.starts_with("is ")
+        } else {
+            false
+        }
+    })
+    .map(|(pos, _)| pos)
+}
+
 fn is_narrowing_conversion(value_expr: &str, target_type: &str) -> Result<(), (String, String)> {
     let target_width = get_type_width(target_type);
 
@@ -568,6 +580,30 @@ fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, Inte
                 // Continue evaluating the rest
                 return interpret_with_context(rest, context);
             }
+        }
+    }
+
+    // Handle "is" type check operator: value is Type
+    if let Some(is_pos) = find_is_operator(input) {
+        let left = input[..is_pos].trim();
+        let right_part = input[is_pos + 1..].trim(); // Skip the space before "is"
+
+        // Extract the type name (should be "is TypeName")
+        if let Some(type_name) = right_part.strip_prefix("is ") {
+            let type_name = type_name.trim();
+
+            // Evaluate the left side
+            let (_, actual_type) = if let Ok(result) = extract_value_and_type(left, &context) {
+                result
+            } else {
+                // Try recursive interpretation
+                let val = interpret_with_context(left, context.clone())?;
+                (val, "I32".to_string())
+            };
+
+            // Check if the type matches
+            let result = if actual_type == type_name { 1 } else { 0 };
+            return Ok(result);
         }
     }
 
@@ -874,5 +910,11 @@ mod tests {
     fn test_interpret_bool_in_arithmetic_with_parentheses() {
         let result = interpret("(true) + false");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_interpret_is_type_operator() {
+        let result = interpret("100U8 is U8");
+        assert!(matches!(result, Ok(1)));
     }
 }
