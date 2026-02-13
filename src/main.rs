@@ -12,12 +12,14 @@ struct InterpreterError {
 #[derive(Debug, Clone)]
 struct Context {
     variables: HashMap<String, (i32, String, bool)>, // (value, type, is_mutable)
+    tuples: HashMap<String, (Vec<i32>, Vec<String>, bool)>, // (values, types, is_mutable)
 }
 
 impl Context {
     fn new() -> Self {
         Context {
             variables: HashMap::new(),
+            tuples: HashMap::new(),
         }
     }
 
@@ -30,6 +32,43 @@ impl Context {
         self.variables
             .get(name)
             .map(|(val, ty, _)| (*val, ty.clone()))
+    }
+
+    fn get_tuple(&self, name: &str) -> Option<(Vec<i32>, Vec<String>)> {
+        self.tuples
+            .get(name)
+            .map(|(vals, types, _)| (vals.clone(), types.clone()))
+    }
+
+    fn set_tuple(
+        &mut self,
+        name: String,
+        values: Vec<i32>,
+        types: Vec<String>,
+    ) -> Result<(), InterpreterError> {
+        if let Some((_, _, is_mutable)) = self.tuples.get(&name) {
+            if !is_mutable {
+                return Err(InterpreterError {
+                    code_snippet: format!("{} = {:?}", name, values),
+                    error_message: format!("Cannot assign to immutable tuple '{}'", name),
+                    explanation: "Tuples declared without the 'mut' keyword are immutable and cannot be reassigned.".to_string(),
+                    fix: "Declare the tuple with 'mut' keyword, e.g., 'let mut myTuple = ...;'".to_string(),
+                });
+            }
+        }
+        self.tuples.insert(name, (values, types, true));
+        Ok(())
+    }
+
+    fn with_tuple(
+        mut self,
+        name: String,
+        values: Vec<i32>,
+        types: Vec<String>,
+        is_mutable: bool,
+    ) -> Self {
+        self.tuples.insert(name, (values, types, is_mutable));
+        self
     }
 
     fn set_var(
@@ -325,6 +364,142 @@ where
         }
     }
 
+    None
+}
+
+fn extract_tuple_content(input: &str) -> Option<&str> {
+    let trimmed = input.trim();
+    if trimmed.starts_with('(') && trimmed.ends_with(')') {
+        Some(&trimmed[1..trimmed.len() - 1])
+    } else {
+        None
+    }
+}
+
+fn parse_tuple_type(input: &str) -> Option<Vec<String>> {
+    let inner = extract_tuple_content(input)?;
+    let mut types = Vec::new();
+    let mut current_type = String::new();
+    let mut paren_depth = 0;
+
+    for ch in inner.chars() {
+        match ch {
+            '(' => {
+                paren_depth += 1;
+                current_type.push(ch);
+            }
+            ')' => {
+                paren_depth -= 1;
+                current_type.push(ch);
+            }
+            ',' if paren_depth == 0 => {
+                let trimmed_type = current_type.trim();
+                if is_valid_type(trimmed_type) {
+                    types.push(trimmed_type.to_string());
+                    current_type.clear();
+                } else {
+                    return None;
+                }
+            }
+            _ => current_type.push(ch),
+        }
+    }
+
+    if !current_type.is_empty() {
+        let trimmed_type = current_type.trim();
+        if is_valid_type(trimmed_type) {
+            types.push(trimmed_type.to_string());
+        } else {
+            return None;
+        }
+    }
+
+    if types.is_empty() {
+        None
+    } else {
+        Some(types)
+    }
+}
+
+fn parse_tuple_literal(input: &str, context: &Context) -> Option<(Vec<i32>, Vec<String>)> {
+    let inner = extract_tuple_content(input)?;
+    let mut values = Vec::new();
+    let mut types = Vec::new();
+    let mut current_expr = String::new();
+    let mut paren_depth = 0;
+    let mut brace_depth = 0;
+
+    for ch in inner.chars() {
+        match ch {
+            '(' => {
+                paren_depth += 1;
+                current_expr.push(ch);
+            }
+            ')' => {
+                paren_depth -= 1;
+                current_expr.push(ch);
+            }
+            '{' => {
+                brace_depth += 1;
+                current_expr.push(ch);
+            }
+            '}' => {
+                brace_depth -= 1;
+                current_expr.push(ch);
+            }
+            ',' if paren_depth == 0 && brace_depth == 0 => {
+                let expr = current_expr.trim();
+                if !expr.is_empty() {
+                    if let Ok((val, ty)) = extract_value_and_type(expr, context) {
+                        values.push(val);
+                        types.push(ty);
+                        current_expr.clear();
+                    } else {
+                        return None;
+                    }
+                }
+            }
+            _ => current_expr.push(ch),
+        }
+    }
+
+    if !current_expr.is_empty() {
+        let expr = current_expr.trim();
+        if let Ok((val, ty)) = extract_value_and_type(expr, context) {
+            values.push(val);
+            types.push(ty);
+        } else {
+            return None;
+        }
+    }
+
+    if values.is_empty() {
+        None
+    } else {
+        Some((values, types))
+    }
+}
+
+fn is_valid_identifier(s: &str) -> bool {
+    !s.chars()
+        .any(|c| matches!(c, '+' | '-' | '*' | '/' | '(' | ')' | '{' | '}' | ';' | ':'))
+}
+
+fn parse_tuple_index(input: &str) -> Option<(String, usize)> {
+    let trimmed = input.trim();
+    // Look for pattern: identifier[index]
+    if let Some(bracket_pos) = trimmed.find('[') {
+        if trimmed.ends_with(']') {
+            let var_name = trimmed[..bracket_pos].trim();
+            let index_str = trimmed[bracket_pos + 1..trimmed.len() - 1].trim();
+            if let Ok(index) = index_str.parse::<usize>() {
+                // Check that var_name is a valid identifier
+                if is_valid_identifier(var_name) {
+                    return Some((var_name.to_string(), index));
+                }
+            }
+        }
+    }
     None
 }
 
@@ -942,27 +1117,120 @@ fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, Inte
         let value_expr = name_and_type_str[eq_pos + 1..].trim();
 
         // Parse name : type (where type is optional)
-        let (var_name, mut var_type) = if let Some(colon_pos) = name_and_type.find(':') {
+        let (var_name, mut var_type, is_tuple) = if let Some(colon_pos) = name_and_type.find(':') {
             let name = name_and_type[..colon_pos].trim().to_string();
             let ty = name_and_type[colon_pos + 1..].trim().to_string();
 
-            // Validate the type annotation
-            if !is_valid_type(&ty) {
+            // Check if it's a tuple type
+            if parse_tuple_type(&ty).is_some() {
+                (name, ty, true)
+            } else if is_valid_type(&ty) {
+                (name, ty, false)
+            } else {
                 return Err(InterpreterError {
                     code_snippet: input.to_string(),
                     error_message: format!("Unknown type '{}'", ty),
-                    explanation: "The type must be one of: U8, U16, U32, U64, I8, I16, I32, I64."
+                    explanation: "The type must be one of: U8, U16, U32, U64, I8, I16, I32, I64, or a tuple type like (U8, U16)."
                         .to_string(),
                     fix: "Use a valid type annotation or omit the type to let it be inferred."
                         .to_string(),
                 });
             }
-
-            (name, ty)
         } else {
             // No type annotation, default to I32 (will be refined after evaluating the expression)
-            (name_and_type.to_string(), "I32".to_string())
+            (name_and_type.to_string(), "I32".to_string(), false)
         };
+
+        // If it's a tuple type, parse the tuple literal
+        if is_tuple {
+            if let Some((values, actual_types)) = parse_tuple_literal(value_expr, &context) {
+                // Verify the types match the declared tuple types
+                let declared_tuple_types = match parse_tuple_type(&var_type) {
+                    Some(types) => types,
+                    None => {
+                        return Err(InterpreterError {
+                            code_snippet: input.to_string(),
+                            error_message: "Failed to parse tuple type".to_string(),
+                            explanation: "The tuple type could not be parsed.".to_string(),
+                            fix: "Check the tuple type format.".to_string(),
+                        })
+                    }
+                };
+                if values.len() != declared_tuple_types.len() {
+                    return Err(InterpreterError {
+                        code_snippet: input.to_string(),
+                        error_message: format!(
+                            "Tuple length mismatch: expected {}, got {}",
+                            declared_tuple_types.len(),
+                            values.len()
+                        ),
+                        explanation:
+                            "The tuple literal must have the same number of elements as declared."
+                                .to_string(),
+                        fix: "Provide the correct number of elements in the tuple.".to_string(),
+                    });
+                }
+
+                // Check type compatibility - allow coercion if the value fits in the target type
+                for (i, ((val, actual_type), declared_type)) in values
+                    .iter()
+                    .zip(actual_types.iter())
+                    .zip(declared_tuple_types.iter())
+                    .enumerate()
+                {
+                    // If types don't match, check if coercion is allowed
+                    if actual_type != declared_type {
+                        // Check if the value fits in the declared type
+                        if let Some((min, max)) = get_type_bounds(declared_type) {
+                            if *val < min || *val > max {
+                                return Err(InterpreterError {
+                                    code_snippet: input.to_string(),
+                                    error_message: format!(
+                                        "Tuple element {} value {} is out of range for type {}",
+                                        i, val, declared_type
+                                    ),
+                                    explanation: format!(
+                                        "The value must fit in the range [{}, {}] for type {}.",
+                                        min, max, declared_type
+                                    ),
+                                    fix: "Use a value that fits in the declared type.".to_string(),
+                                });
+                            }
+                        } else {
+                            return Err(InterpreterError {
+                                code_snippet: input.to_string(),
+                                error_message: format!(
+                                    "Tuple element {} type mismatch: expected {}, got {}",
+                                    i, declared_type, actual_type
+                                ),
+                                explanation: "The tuple elements must match their declared types."
+                                    .to_string(),
+                                fix: "Ensure each tuple element has the correct type.".to_string(),
+                            });
+                        }
+                    }
+                }
+
+                // Add the tuple to the context with declared types
+                context = context.with_tuple(var_name, values, declared_tuple_types, is_mutable);
+
+                // If there's no rest, return 0 (empty expression)
+                if rest.is_empty() {
+                    return Ok(0);
+                }
+
+                // Continue evaluating the rest
+                return interpret_with_context(rest, context);
+            } else {
+                return Err(InterpreterError {
+                    code_snippet: input.to_string(),
+                    error_message: format!("Failed to parse tuple literal '{}'", value_expr),
+                    explanation: "The tuple literal must be in the format (value1, value2, ...)"
+                        .to_string(),
+                    fix: "Provide a valid tuple literal.".to_string(),
+                });
+            }
+        }
 
         // Evaluate the value expression to get both the value and its inferred type
         let ctx = context.clone();
@@ -1072,11 +1340,7 @@ fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, Inte
 
     if let Some((left, right_and_rest, is_compound)) = assignment_info {
         // Check if left side is a simple variable name
-        if !left
-            .chars()
-            .any(|c| matches!(c, '+' | '-' | '*' | '/' | '(' | ')' | '{' | '}' | ';' | ':'))
-            && !left.starts_with("let ")
-        {
+        if is_valid_identifier(left) && !left.starts_with("let ") {
             // This is an assignment. Find the semicolon
             if let Some(semicolon_pos) = find_char_at_depth_zero(right_and_rest, ';') {
                 let value_expr = right_and_rest[..semicolon_pos].trim();
@@ -1247,6 +1511,27 @@ fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, Inte
             let result_val =
                 apply_operation(left_val, &left_type, op_char, right_val, &right_type, input)?;
             return Ok(result_val);
+        }
+    }
+
+    // Handle tuple indexing: myTuple[index]
+    if let Some((tuple_name, index)) = parse_tuple_index(input) {
+        if let Some((values, _types)) = context.get_tuple(&tuple_name) {
+            if let Some(value) = values.get(index) {
+                return Ok(*value);
+            } else {
+                return Err(InterpreterError {
+                    code_snippet: input.to_string(),
+                    error_message: format!(
+                        "Tuple index {} out of bounds (length {})",
+                        index,
+                        values.len()
+                    ),
+                    explanation: "The tuple index must be within the bounds of the tuple."
+                        .to_string(),
+                    fix: format!("Use an index between 0 and {}", values.len() - 1),
+                });
+            }
         }
     }
 
@@ -1617,5 +1902,11 @@ mod tests {
     fn test_interpret_while_loop_non_bool_condition() {
         let result = interpret("let mut x = 0; while (100) { x += 1; } x");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_interpret_tuple_indexing() {
+        let result = interpret("let myTuple : (U8, U16) = (1, 2); myTuple[0] + myTuple[1]");
+        assert!(matches!(result, Ok(3)));
     }
 }
