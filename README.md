@@ -11,22 +11,24 @@ Implements Phase 1 / Stage 0 from `SELF-HOST.md`:
 - CLI: `tuff compile file.tuff`
 - Snapshot and runtime test harness
 
-## Repository layout (stage clarity)
+## Repository layout (Gradle-like, multi-language)
 
-- `stage0/` — **canonical Stage 0 bootstrap compiler** (JavaScript)
-- `stage1/` — Stage 1 self-hosted compiler sources/runtime (`selfhost.tuff`, `compiler.tuff`)
-- `src/` — compatibility re-export shims that forward to `stage0/`
+- `src/main/js` — bootstrap/runtime JavaScript implementation
+- `src/main/tuff` — main Tuff compiler sources (self-hosted stages)
+- `src/main/rust` — Rust experiments/runtime tooling
+- `src/test/js` — JS test harnesses
+- `src/test/tuff` — Tuff test programs and module fixtures
 
 ## Quick start
 
 1. Run tests: `npm test`
-2. Compile file: `node ./stage0/cli.js compile ./tests/cases/factorial.tuff -o ./tests/out/factorial.js`
+2. Compile file: `node ./src/main/js/cli.js compile ./src/test/tuff/cases/factorial.tuff -o ./tests/out/factorial.js`
 
 ## Phase 2 / Stage 1
 
-Stage 1 source is in `stage1/compiler.tuff`.
+Stage 1 source is in `src/main/tuff/compiler.tuff`.
 
-- Stage 0 compiles `stage1/compiler.tuff` to `tests/out/stage1/stage1_a.js`
+- Stage 0 compiles `src/main/tuff/compiler.tuff` to `tests/out/stage1/stage1_a.js`
 - `stage1_a.js` then compiles the same Stage 1 source to `stage1_b.js`
 - The bootstrap check verifies normalized equivalence between `stage1_a.js` and `stage1_b.js`
 
@@ -60,7 +62,7 @@ CLI options:
 
 Example:
 
-- `node ./stage0/cli.js compile ./tests/modules/app.tuff --modules --module-base ./tests/modules -o ./tests/out/stage2/app.js`
+- `node ./src/main/js/cli.js compile ./src/test/tuff/modules/app.tuff --modules --module-base ./src/test/tuff/modules -o ./tests/out/stage2/app.js`
 
 Run Phase 3 verification only:
 
@@ -82,8 +84,8 @@ Production-readiness diagnostics are now available:
 
 Example:
 
-- `node ./stage0/cli.js compile ./tests/out/stage4/cli-fail.tuff --stage2 --json-errors`
-- `node ./stage0/cli.js compile ./tests/out/stage4/cli-fail.tuff --lint --json-errors`
+- `node ./src/main/js/cli.js compile ./tests/out/stage4/cli-fail.tuff --stage2 --json-errors`
+- `node ./src/main/js/cli.js compile ./tests/out/stage4/cli-fail.tuff --lint --json-errors`
 
 Run Phase 4 verification only:
 

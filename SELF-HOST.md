@@ -85,18 +85,18 @@ Stage 0 (JS) → compiles → Stage 1 (Tuff-lite) → compiles → Stage 2 (Full
 
 ## File Structure
 
-- `stage0/lexer.js` (then `stage1/lexer.tuff`) — Tokenization logic
-- `stage0/parser.js` → `.tuff` — Recursive descent parser
-- `stage0/ast.js` → `.tuff` — AST node definitions (structs/enums)
-- `stage0/desugar.js` → `.tuff` — CST to Core transformation
-- `stage0/resolve.js` → `.tuff` — Name resolution, scope analysis
-- `stage0/typecheck.js` → `.tuff` — Type inference, constraint generation
-- `stage0/constraints.js` → `.tuff` — Refinement constraint representation
-- `stage0/solver.js` → `.tuff` — SMT integration / decision procedure
-- `stage0/borrow.js` → `.tuff` — Ownership and borrow checking
-- `stage0/codegen/js.js` → `.tuff` — JavaScript code generation
-- `stage0/codegen/llvm.tuff` — LLVM IR generation (Phase 4)
-- `tests/` — Organized by phase: `parse/`, `typecheck/`, `refinements/`, `e2e/`
+- `src/main/js/lexer.js` (then `src/main/tuff/lexer.tuff`) — Tokenization logic
+- `src/main/js/parser.js` → `.tuff` — Recursive descent parser
+- `src/main/js/ast.js` → `.tuff` — AST node definitions (structs/enums)
+- `src/main/js/desugar.js` → `.tuff` — CST to Core transformation
+- `src/main/js/resolve.js` → `.tuff` — Name resolution, scope analysis
+- `src/main/js/typecheck.js` → `.tuff` — Type inference, constraint generation
+- `src/main/js/constraints.js` → `.tuff` — Refinement constraint representation
+- `src/main/js/solver.js` → `.tuff` — SMT integration / decision procedure
+- `src/main/js/borrow.js` → `.tuff` — Ownership and borrow checking
+- `src/main/js/codegen/js.js` → `.tuff` — JavaScript code generation
+- `src/main/js/codegen/llvm.tuff` — LLVM IR generation (Phase 4)
+- `src/test/` — Organized by language (`js`, `tuff`) and feature coverage
 
 ---
 

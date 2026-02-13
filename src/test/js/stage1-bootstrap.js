@@ -2,17 +2,23 @@ import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
 import { fileURLToPath } from "node:url";
-import { compileSource } from "../stage0/compiler.js";
-import { lex } from "../stage0/lexer.js";
-import { parse } from "../stage0/parser.js";
-import { desugar } from "../stage0/desugar.js";
-import { resolveNames } from "../stage0/resolve.js";
-import { typecheck } from "../stage0/typecheck.js";
-import { generateJavaScript } from "../stage0/codegen-js.js";
+import { compileSource } from "../../main/js/compiler.js";
+import { lex } from "../../main/js/lexer.js";
+import { parse } from "../../main/js/parser.js";
+import { desugar } from "../../main/js/desugar.js";
+import { resolveNames } from "../../main/js/resolve.js";
+import { typecheck } from "../../main/js/typecheck.js";
+import { generateJavaScript } from "../../main/js/codegen-js.js";
 
 const thisFile = fileURLToPath(import.meta.url);
-const root = path.resolve(path.dirname(thisFile), "..");
-const stage1SourcePath = path.join(root, "stage1", "compiler.tuff");
+const root = path.resolve(path.dirname(thisFile), "..", "..", "..");
+const stage1SourcePath = path.join(
+  root,
+  "src",
+  "main",
+  "tuff",
+  "compiler.tuff",
+);
 const stage1OutDir = path.join(root, "tests", "out", "stage1");
 const stage1APath = path.join(stage1OutDir, "stage1_a.js");
 const stage1BPath = path.join(stage1OutDir, "stage1_b.js");
@@ -76,7 +82,14 @@ if (normalizeJs(stage0Result.js) !== normalizeJs(stage1B)) {
 }
 
 // smoke-check a non-stage1 program compile equivalence
-const smokePath = path.join(root, "tests", "cases", "factorial.tuff");
+const smokePath = path.join(
+  root,
+  "src",
+  "test",
+  "tuff",
+  "cases",
+  "factorial.tuff",
+);
 const smokeSource = fs.readFileSync(smokePath, "utf8");
 const smokeA = compileSource(smokeSource, smokePath).js;
 const smokeB = stage1Compiler.compileToJs(smokeSource);

@@ -2,10 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
 import { fileURLToPath } from "node:url";
-import { compileFile, compileSource } from "../stage0/compiler.js";
+import { compileFile, compileSource } from "../../main/js/compiler.js";
 
 const thisFile = fileURLToPath(import.meta.url);
-const root = path.resolve(path.dirname(thisFile), "..");
+const root = path.resolve(path.dirname(thisFile), "..", "..", "..");
 const outDir = path.join(root, "tests", "out", "stage2");
 fs.mkdirSync(outDir, { recursive: true });
 
@@ -81,11 +81,18 @@ expectCompileFail(
   "Non-exhaustive match",
 );
 
-const moduleEntry = path.join(root, "tests", "modules", "app.tuff");
+const moduleEntry = path.join(
+  root,
+  "src",
+  "test",
+  "tuff",
+  "modules",
+  "app.tuff",
+);
 const moduleOut = path.join(outDir, "module-app.js");
 const moduleResult = compileFile(moduleEntry, moduleOut, {
   enableModules: true,
-  modules: { moduleBaseDir: path.join(root, "tests", "modules") },
+  modules: { moduleBaseDir: path.join(root, "src", "test", "tuff", "modules") },
   typecheck: { strictSafety: false },
 });
 

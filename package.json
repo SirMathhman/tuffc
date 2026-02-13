@@ -5,14 +5,14 @@
   "type": "module",
   "description": "Stage 0 JavaScript bootstrap compiler for Tuff-lite",
   "bin": {
-    "tuff": "./stage0/cli.js"
+    "tuff": "./src/main/js/cli.js"
   },
   "scripts": {
-    "test": "node ./tests/run-tests.js && node ./tests/stage1-bootstrap.js && node ./tests/phase3-stage2.js && node ./tests/phase4-production.js",
-    "test:update": "node ./tests/run-tests.js --update",
-    "compile:sample": "node ./stage0/cli.js compile ./tests/cases/factorial.tuff -o ./tests/out/factorial.js",
-    "stage1:bootstrap": "node ./tests/stage1-bootstrap.js",
-    "stage2:verify": "node ./tests/phase3-stage2.js",
-    "stage4:verify": "node ./tests/phase4-production.js"
+    "test": "node ./src/test/js/run-tests.js && node ./src/test/js/stage1-bootstrap.js && node ./src/test/js/phase3-stage2.js && node ./src/test/js/phase4-production.js",
+    "test:update": "node ./src/test/js/run-tests.js --update",
+    "compile:sample": "node ./src/main/js/cli.js compile ./src/test/tuff/cases/factorial.tuff -o ./tests/out/factorial.js",
+    "stage1:bootstrap": "node ./src/test/js/stage1-bootstrap.js",
+    "stage2:verify": "node ./src/test/js/phase3-stage2.js",
+    "stage4:verify": "node ./src/test/js/phase4-production.js"
   }
 }

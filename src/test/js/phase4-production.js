@@ -2,11 +2,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
-import { compileSource } from "../stage0/compiler.js";
-import { toDiagnostic } from "../stage0/errors.js";
+import { compileSource } from "../../main/js/compiler.js";
+import { toDiagnostic } from "../../main/js/errors.js";
 
 const thisFile = fileURLToPath(import.meta.url);
-const root = path.resolve(path.dirname(thisFile), "..");
+const root = path.resolve(path.dirname(thisFile), "..", "..", "..");
 const outDir = path.join(root, "tests", "out", "stage4");
 fs.mkdirSync(outDir, { recursive: true });
 
@@ -45,7 +45,7 @@ fs.writeFileSync(failingFile, `fn bad(x : I32) : I32 => 100 / x;`, "utf8");
 
 const cli = spawnSync(
   process.execPath,
-  ["./stage0/cli.js", "compile", failingFile, "--stage2", "--json-errors"],
+  ["./src/main/js/cli.js", "compile", failingFile, "--stage2", "--json-errors"],
   {
     cwd: root,
     encoding: "utf8",
@@ -92,7 +92,13 @@ fs.writeFileSync(
 
 const lintCli = spawnSync(
   process.execPath,
-  ["./stage0/cli.js", "compile", lintFailingFile, "--lint", "--json-errors"],
+  [
+    "./src/main/js/cli.js",
+    "compile",
+    lintFailingFile,
+    "--lint",
+    "--json-errors",
+  ],
   {
     cwd: root,
     encoding: "utf8",

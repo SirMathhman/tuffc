@@ -12,12 +12,12 @@ import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
 import { fileURLToPath } from "node:url";
-import { compileSource } from "../stage0/compiler.js";
-import * as runtime from "../stage1/runtime.js";
+import { compileSource } from "../../main/js/compiler.js";
+import * as runtime from "../../main/js/runtime.js";
 
 const thisFile = fileURLToPath(import.meta.url);
-const root = path.resolve(path.dirname(thisFile), "..");
-const selfhostPath = path.join(root, "stage1", "selfhost.tuff");
+const root = path.resolve(path.dirname(thisFile), "..", "..", "..");
+const selfhostPath = path.join(root, "src", "main", "tuff", "selfhost.tuff");
 const outDir = path.join(root, "tests", "out", "selfhost");
 
 fs.mkdirSync(outDir, { recursive: true });
