@@ -553,4 +553,10 @@ mod tests {
         let result = interpret("(2 + { let x : U8 = 1 + 2; x }) * 4");
         assert!(matches!(result, Ok(20)));
     }
+
+    #[test]
+    fn test_interpret_nested_let_bindings() {
+        let result = interpret("(2 + { let x : U8 = 1 + 2; let y : U8 = x; y }) * 4");
+        assert!(matches!(result, Ok(20)));
+    }
 }
