@@ -40,34 +40,52 @@ static CompileResult make_error(char *source, const char *message, const char *r
     return result;
 }
 
+// Helper function to check if a suffix is a valid type
+static int is_valid_type_suffix(const char *suffix)
+{
+    static const char *valid_suffixes[] = {
+        "U8", "U16", "U32", "U64",
+        "I8", "I16", "I32", "I64",
+        NULL // Sentinel
+    };
+
+    for (int i = 0; valid_suffixes[i] != NULL; i++)
+    {
+        if (strcmp(suffix, valid_suffixes[i]) == 0)
+            return 1;
+    }
+    return 0;
+}
+
 // Helper function to check if a numeric value is within range for a type suffix
 static int is_value_in_range(long value, const char *suffix)
 {
-    // Type range specifications
-    struct
+    // Type range definitions using long long to handle full ranges
+    struct TypeRange
     {
-        const char *type;
-        long min;
-        long max;
-    } type_ranges[] = {
+        const char *name;
+        long long min;
+        long long max;
+    };
+
+    static struct TypeRange ranges[] = {
         {"U8", 0, 255},
         {"I8", -128, 127},
         {"U16", 0, 65535},
         {"I16", -32768, 32767},
-        {NULL, 0, 0} // Sentinel for unknown types
-    };
+        {"U32", 0, 4294967295LL},
+        {"I32", -2147483648LL, 2147483647LL},
+        {"U64", 0, 18446744073709551615ULL},
+        {"I64", -9223372036854775807LL - 1, 9223372036854775807LL},
+        {NULL, 0, 0}};
 
-    // Check each type range
-    for (int i = 0; type_ranges[i].type != NULL; i++)
+    for (int i = 0; ranges[i].name != NULL; i++)
     {
-        if (strcmp(suffix, type_ranges[i].type) == 0)
-        {
-            return value >= type_ranges[i].min && value <= type_ranges[i].max;
-        }
+        if (strcmp(suffix, ranges[i].name) == 0)
+            return value >= ranges[i].min && value <= ranges[i].max;
     }
 
-    // Unknown suffix - accept any value
-    return 1;
+    return 0; // Unknown type
 }
 
 CompileResult compile(char *source)
@@ -137,6 +155,14 @@ CompileResult compile(char *source)
                 char suffix[16];
                 memcpy(suffix, suffix_start, suffix_len);
                 suffix[suffix_len] = '\0';
+
+                // Check if suffix is a valid type
+                if (!is_valid_type_suffix(suffix))
+                {
+                    return make_error(source, "Unknown type suffix",
+                                      "The type suffix is not recognized. Allowed suffixes are: U8, U16, U32, U64, I8, I16, I32, I64.",
+                                      "Use one of the allowed type suffixes or remove the suffix entirely.");
+                }
 
                 // Check if value is in range for the type
                 if (!is_value_in_range(num, suffix))
