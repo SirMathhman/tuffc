@@ -11,7 +11,7 @@ struct InterpreterError {
 
 #[derive(Debug, Clone)]
 struct Context {
-    variables: HashMap<String, (i32, String)>, // (value, type)
+    variables: HashMap<String, (i32, String, bool)>, // (value, type, is_mutable)
 }
 
 impl Context {
@@ -21,13 +21,36 @@ impl Context {
         }
     }
 
-    fn with_var(mut self, name: String, value: i32, var_type: String) -> Self {
-        self.variables.insert(name, (value, var_type));
+    fn with_var(mut self, name: String, value: i32, var_type: String, is_mutable: bool) -> Self {
+        self.variables.insert(name, (value, var_type, is_mutable));
         self
     }
 
     fn get_var(&self, name: &str) -> Option<(i32, String)> {
-        self.variables.get(name).cloned()
+        self.variables.get(name).map(|(val, ty, _)| (*val, ty.clone()))
+    }
+
+    fn set_var(&mut self, name: String, value: i32) -> Result<(), InterpreterError> {
+        if let Some((_, ty, is_mutable)) = self.variables.get(&name) {
+            if !is_mutable {
+                return Err(InterpreterError {
+                    code_snippet: format!("{} = {}", name, value),
+                    error_message: format!("Cannot assign to immutable variable '{}'", name),
+                    explanation: "Variables declared without the 'mut' keyword are immutable and cannot be reassigned.".to_string(),
+                    fix: "Declare the variable with 'mut' keyword, e.g., 'let mut x = 0;'".to_string(),
+                });
+            }
+            let ty_clone = ty.clone();
+            self.variables.insert(name, (value, ty_clone, true));
+            Ok(())
+        } else {
+            Err(InterpreterError {
+                code_snippet: format!("{} = {}", name, value),
+                error_message: format!("Undefined variable '{}'", name),
+                explanation: "The variable has not been declared in the current scope.".to_string(),
+                fix: "Declare the variable with a 'let' statement before assigning to it.".to_string(),
+            })
+        }
     }
 }
 
@@ -334,7 +357,7 @@ fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, Inte
         input
     };
 
-    // Handle let statements: let name : type = expr; rest
+    // Handle let statements: let [mut] name : type = expr; rest
     if input.starts_with("let ") {
         // Find the semicolon that separates the let statement from the rest
         let semicolon_pos = find_char_at_depth_zero(input, ';').ok_or_else(|| InterpreterError {
@@ -347,16 +370,23 @@ fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, Inte
         let let_part = input[4..semicolon_pos].trim(); // Skip "let "
         let rest = input[semicolon_pos + 1..].trim();
 
+        // Check for mut keyword
+        let (is_mutable, name_and_type_str) = if let_part.starts_with("mut ") {
+            (true, let_part[4..].trim())
+        } else {
+            (false, let_part)
+        };
+
         // Find the equals sign at depth 0 (outside braces and parens)
-        let eq_pos = find_char_at_depth_zero(let_part, '=').ok_or_else(|| InterpreterError {
+        let eq_pos = find_char_at_depth_zero(name_and_type_str, '=').ok_or_else(|| InterpreterError {
             code_snippet: input.to_string(),
             error_message: "Variable declaration must have an assignment".to_string(),
-            explanation: "Format should be: let name : type = value;".to_string(),
+            explanation: "Format should be: let [mut] name : type = value;".to_string(),
             fix: "Add an assignment with = operator.".to_string(),
         })?;
 
-        let name_and_type = let_part[..eq_pos].trim();
-        let value_expr = let_part[eq_pos + 1..].trim();
+        let name_and_type = name_and_type_str[..eq_pos].trim();
+        let value_expr = name_and_type_str[eq_pos + 1..].trim();
 
         // Parse name : type (where type is optional)
         let (var_name, mut var_type) = if let Some(colon_pos) = name_and_type.find(':') {
@@ -426,7 +456,7 @@ fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, Inte
         }
 
         // Add the variable to context
-        context = context.with_var(var_name, val, var_type);
+        context = context.with_var(var_name, val, var_type, is_mutable);
 
         // If there's no rest, return 0 (empty expression)
         if rest.is_empty() {
@@ -435,6 +465,38 @@ fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, Inte
 
         // Continue evaluating the rest
         return interpret_with_context(rest, context);
+    }
+
+    // Handle assignment expressions: variable = value; rest
+    // Look for assignment at depth 0, but avoid confusing with let statement operators
+    if let Some(eq_pos) = find_char_at_depth_zero(input, '=') {
+        let left = input[..eq_pos].trim();
+        let right_and_rest = input[eq_pos + 1..].trim();
+        
+        // Check if left side is a simple variable name (not an operator expression)
+        if !left.chars().any(|c| matches!(c, '+' | '-' | '*' | '/' | '(' | ')' | '{' | '}' | ';' | ':'))
+            && !left.starts_with("let ")
+        {
+            // This is an assignment. Find the semicolon to separate assignment from rest
+            if let Some(semicolon_pos) = find_char_at_depth_zero(right_and_rest, ';') {
+                let value_expr = right_and_rest[..semicolon_pos].trim();
+                let rest = right_and_rest[semicolon_pos + 1..].trim();
+                
+                // Evaluate the value expression
+                let value = interpret_with_context(value_expr, context.clone())?;
+                
+                // Apply the assignment
+                context.set_var(left.to_string(), value)?;
+                
+                // If there's no rest, return the assigned value
+                if rest.is_empty() {
+                    return Ok(value);
+                }
+                
+                // Continue evaluating the rest
+                return interpret_with_context(rest, context);
+            }
+        }
     }
 
     // Check for binary operations (+, -, *, /) respecting operator precedence
@@ -692,5 +754,11 @@ mod tests {
     fn test_interpret_undefined_variable() {
         let result = interpret("let x = undefinedVariable; x");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_interpret_mutable_variable() {
+        let result = interpret("let mut x = 0; x = 100; x");
+        assert!(matches!(result, Ok(100)));
     }
 }
