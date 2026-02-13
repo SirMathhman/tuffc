@@ -32,7 +32,12 @@ impl Context {
             .map(|(val, ty, _)| (*val, ty.clone()))
     }
 
-    fn set_var(&mut self, name: String, value: i32, value_type: &str) -> Result<(), InterpreterError> {
+    fn set_var(
+        &mut self,
+        name: String,
+        value: i32,
+        value_type: &str,
+    ) -> Result<(), InterpreterError> {
         if let Some((_, ty, is_mutable)) = self.variables.get(&name) {
             if !is_mutable {
                 return Err(InterpreterError {
@@ -42,7 +47,7 @@ impl Context {
                     fix: "Declare the variable with 'mut' keyword, e.g., 'let mut x = 0;'".to_string(),
                 });
             }
-            
+
             // Check for type narrowing
             let target_width = get_type_width(ty);
             let source_width = get_type_width(value_type);
@@ -54,7 +59,7 @@ impl Context {
                     fix: "Use a larger target type or change the source type.".to_string(),
                 });
             }
-            
+
             let ty_clone = ty.clone();
             self.variables.insert(name, (value, ty_clone, true));
             Ok(())
@@ -177,6 +182,13 @@ fn get_type_width(type_name: &str) -> u8 {
         "I64" | "U64" => 64,
         _ => 0,
     }
+}
+
+fn is_valid_type(type_name: &str) -> bool {
+    matches!(
+        type_name,
+        "U8" | "U16" | "U32" | "U64" | "I8" | "I16" | "I32" | "I64"
+    )
 }
 
 fn get_effective_type<'a>(left_type: &'a str, right_type: &'a str) -> &'a str {
@@ -410,6 +422,17 @@ fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, Inte
         let (var_name, mut var_type) = if let Some(colon_pos) = name_and_type.find(':') {
             let name = name_and_type[..colon_pos].trim().to_string();
             let ty = name_and_type[colon_pos + 1..].trim().to_string();
+            
+            // Validate the type annotation
+            if !is_valid_type(&ty) {
+                return Err(InterpreterError {
+                    code_snippet: input.to_string(),
+                    error_message: format!("Unknown type '{}'", ty),
+                    explanation: "The type must be one of: U8, U16, U32, U64, I8, I16, I32, I64.".to_string(),
+                    fix: "Use a valid type annotation or omit the type to let it be inferred.".to_string(),
+                });
+            }
+            
             (name, ty)
         } else {
             // No type annotation, default to I32 (will be refined after evaluating the expression)
@@ -504,7 +527,7 @@ fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, Inte
 
                 // Evaluate the value expression
                 let value = interpret_with_context(value_expr, context.clone())?;
-                
+
                 // Extract the type of the value being assigned
                 let value_type = if let Ok((_, ty)) = extract_value_and_type(value_expr, &context) {
                     ty
@@ -804,6 +827,12 @@ mod tests {
     #[test]
     fn test_interpret_mutable_variable_type_narrowing() {
         let result = interpret("let mut x = 0U8; x = 100U16; x");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_interpret_unknown_type() {
+        let result = interpret("let x : UnknownType = 100; x");
         assert!(result.is_err());
     }
 }
