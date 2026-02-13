@@ -774,4 +774,10 @@ mod tests {
         let result = interpret("let x = 0; x = 100; x");
         assert!(result.is_err());
     }
+
+    #[test]
+    fn test_interpret_assignment_to_undefined_variable() {
+        let result = interpret("x = 100; x");
+        assert!(result.is_err());
+    }
 }
