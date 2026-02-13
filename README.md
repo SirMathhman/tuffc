@@ -32,3 +32,46 @@ Implementation note:
 
 - Stage 1 runtime hooks are exposed via `__host_*` functions in the bootstrap harness.
 - This keeps Stage 1 authored in Tuff-lite while preserving deterministic bootstrap equivalence during Phase 2.
+
+## Phase 3 / Stage 2
+
+Stage 2 capabilities are available in strict mode:
+
+- Refinement type parsing (e.g. `I32 != 0`, `USize < 100`)
+- Flow-sensitive narrowing in `if` branches
+- Compile-time proof checks for:
+  - division/modulo by zero
+  - integer overflow/underflow for provable arithmetic ranges
+  - array index bounds (when provable)
+- Match exhaustiveness checks for union-tag cases
+- Module graph loading via `let { ... } = com::path::Module`
+
+CLI options:
+
+- `--stage2` enables strict safety checks
+- `--modules` enables module graph loading
+- `--module-base <dir>` sets the module root directory
+
+Example:
+
+- `node ./src/cli.js compile ./tests/modules/app.tuff --modules --module-base ./tests/modules -o ./tests/out/stage2/app.js`
+
+Run Phase 3 verification only:
+
+- `npm run stage2:verify`
+
+## Phase 4 (current focus)
+
+Production-readiness diagnostics are now available:
+
+- Structured compiler diagnostics with stable error codes
+- Human-readable CLI diagnostics by default
+- Machine-readable diagnostics with `--json-errors`
+
+Example:
+
+- `node ./src/cli.js compile ./tests/out/stage4/cli-fail.tuff --stage2 --json-errors`
+
+Run Phase 4 verification only:
+
+- `npm run stage4:verify`

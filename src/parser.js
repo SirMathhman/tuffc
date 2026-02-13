@@ -13,7 +13,10 @@ export function parse(tokens) {
   const expect = (type, value = undefined, message = "Unexpected token") => {
     const t = peek();
     if (!at(type, value)) {
-      throw new TuffError(message + `, got ${t.type}:${t.value}`, t.loc);
+      throw new TuffError(message + `, got ${t.type}:${t.value}`, t.loc, {
+        code: "E_PARSE_EXPECTED_TOKEN",
+        hint: "Check token order, punctuation, and delimiters around this location.",
+      });
     }
     return eat();
   };
@@ -22,6 +25,23 @@ export function parse(tokens) {
     expect("identifier", undefined, "Expected identifier").value;
 
   const parseType = () => {
+    const canStartTypeToken = (tok) => {
+      if (!tok) return false;
+      if (tok.type === "identifier") return true;
+      if (tok.type === "symbol" && ["*", "[", "("].includes(tok.value))
+        return true;
+      return false;
+    };
+
+    const canStartRefinementExpr = (tok) => {
+      if (!tok) return false;
+      if (["number", "identifier", "bool", "string", "char"].includes(tok.type))
+        return true;
+      if (tok.type === "symbol" && ["(", "-", "!"].includes(tok.value))
+        return true;
+      return false;
+    };
+
     if (at("symbol", "*")) {
       eat();
       const mutable = at("keyword", "mut") ? !!eat() : false;
@@ -65,7 +85,7 @@ export function parse(tokens) {
       nameParts.push(parseIdentifier());
     }
     let genericArgs = [];
-    if (at("symbol", "<")) {
+    if (at("symbol", "<") && canStartTypeToken(peek(1))) {
       eat();
       if (!at("symbol", ">")) {
         do {
@@ -81,10 +101,29 @@ export function parse(tokens) {
       name: nameParts.join("::"),
       genericArgs,
     };
-    while (at("symbol", "|")) {
-      eat();
+
+    if (
+      (at("symbol", "!=") ||
+        at("symbol", "<") ||
+        at("symbol", ">") ||
+        at("symbol", "<=") ||
+        at("symbol", ">=")) &&
+      canStartRefinementExpr(peek(1))
+    ) {
+      const op = eat().value;
+      const valueExpr = parseExpression();
+      typeExpr = { kind: "RefinementType", base: typeExpr, op, valueExpr };
+    }
+
+    while (at("symbol", "|") || at("symbol", "|>")) {
+      const unionOp = eat().value;
       const right = parseType();
-      typeExpr = { kind: "UnionType", left: typeExpr, right };
+      typeExpr = {
+        kind: "UnionType",
+        left: typeExpr,
+        right,
+        extractFromLeft: unionOp === "|>",
+      };
     }
     return typeExpr;
   };
@@ -117,7 +156,7 @@ export function parse(tokens) {
   };
 
   const parsePattern = () => {
-    if (at("symbol", "_")) {
+    if (at("symbol", "_") || at("identifier", "_")) {
       eat();
       return { kind: "WildcardPattern" };
     }
@@ -251,6 +290,10 @@ export function parse(tokens) {
     throw new TuffError(
       `Unexpected token ${peek().type}:${peek().value}`,
       peek().loc,
+      {
+        code: "E_PARSE_UNEXPECTED_TOKEN",
+        hint: "Ensure expressions and statements use valid Tuff-lite syntax.",
+      },
     );
   };
 

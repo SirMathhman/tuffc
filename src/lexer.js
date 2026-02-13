@@ -95,7 +95,10 @@ export function lex(source, filePath = "<memory>") {
         advance();
       }
       if (i >= source.length)
-        throw new TuffError("Unterminated block comment", loc());
+        throw new TuffError("Unterminated block comment", loc(), {
+          code: "E_LEX_UNTERMINATED_BLOCK_COMMENT",
+          hint: "Close the comment with */.",
+        });
       advance();
       advance();
       continue;
@@ -162,7 +165,10 @@ export function lex(source, filePath = "<memory>") {
         }
       }
       if (peek() !== '"')
-        throw new TuffError("Unterminated string literal", start);
+        throw new TuffError("Unterminated string literal", start, {
+          code: "E_LEX_UNTERMINATED_STRING",
+          hint: "Close the string with a matching double quote.",
+        });
       advance();
       add("string", text, start);
       continue;
@@ -175,7 +181,10 @@ export function lex(source, filePath = "<memory>") {
         text += advance();
       }
       if (peek() !== "'")
-        throw new TuffError("Unterminated char literal", start);
+        throw new TuffError("Unterminated char literal", start, {
+          code: "E_LEX_UNTERMINATED_CHAR",
+          hint: "Close the char literal with a matching single quote.",
+        });
       advance();
       add("char", text, start);
       continue;
@@ -187,7 +196,10 @@ export function lex(source, filePath = "<memory>") {
       continue;
     }
 
-    throw new TuffError(`Unexpected character '${ch}'`, start);
+    throw new TuffError(`Unexpected character '${ch}'`, start, {
+      code: "E_LEX_UNEXPECTED_CHAR",
+      hint: "Remove or escape the invalid character.",
+    });
   }
 
   tokens.push({ type: "eof", value: "<eof>", loc: { filePath, line, column } });

@@ -11,6 +11,10 @@ class Scope {
       throw new TuffError(
         `Variable shadowing/redeclaration is not allowed: ${name}`,
         loc,
+        {
+          code: "E_RESOLVE_SHADOWING",
+          hint: "Rename one of the variables; shadowing is disallowed in Tuff.",
+        },
       );
     }
     this.bindings.set(name, true);
@@ -48,7 +52,10 @@ export function resolveNames(ast, options = {}) {
           !globals.has(expr.name) &&
           !isHostBuiltin(expr.name)
         ) {
-          throw new TuffError(`Unknown identifier '${expr.name}'`);
+          throw new TuffError(`Unknown identifier '${expr.name}'`, null, {
+            code: "E_RESOLVE_UNKNOWN_IDENTIFIER",
+            hint: "Declare the identifier in scope or import it from a module.",
+          });
         }
         break;
       case "BinaryExpr":
@@ -74,6 +81,11 @@ export function resolveNames(ast, options = {}) {
         if (!globals.has(expr.name)) {
           throw new TuffError(
             `Unknown struct/type '${expr.name}' in initializer`,
+            null,
+            {
+              code: "E_RESOLVE_UNKNOWN_STRUCT",
+              hint: "Declare the struct before using it or import the correct module.",
+            },
           );
         }
         expr.fields.forEach((f) => visitExpr(f.value, scope));
