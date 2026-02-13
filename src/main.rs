@@ -12,7 +12,7 @@ struct InterpreterError {
 #[derive(Debug, Clone)]
 struct FunctionDef {
     params: Vec<(String, String)>,
-    return_type: String,
+    return_type: Option<String>,
     body: String,
 }
 
@@ -614,6 +614,56 @@ fn parse_function_call(input: &str) -> Option<(String, Vec<String>)> {
     Some((name.to_string(), args))
 }
 
+fn parse_return_value(statement: &str) -> Option<String> {
+    let return_expr = statement.strip_prefix("return ")?;
+    let trimmed = return_expr.trim();
+    let trimmed = if let Some(stripped) = trimmed.strip_suffix(';') {
+        stripped.trim()
+    } else {
+        trimmed
+    };
+
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
+fn extract_return_expression_from_body(body: &str) -> Option<String> {
+    // Normalize one level of wrapping braces first
+    let normalized = if is_fully_wrapped(body.trim()) {
+        body.trim()[1..body.trim().len() - 1].trim()
+    } else {
+        body.trim()
+    };
+
+    // Direct return expression
+    if let Some(return_value) = parse_return_value(normalized) {
+        return Some(return_value);
+    }
+
+    // Return inside a leading braced block, e.g. "{ return 100; } + 50"
+    if normalized.starts_with('{') {
+        if let Some(block_end) = find_matching_brace_end(normalized, 0) {
+            let inner_block = normalized[1..block_end].trim();
+            if let Some(return_value) = parse_return_value(inner_block) {
+                return Some(return_value);
+            }
+        }
+    }
+
+    // Return as first statement in a sequence
+    if let Some(semi_pos) = find_char_at_depth_zero(normalized, ';') {
+        let first_stmt = normalized[..semi_pos].trim();
+        if let Some(return_value) = parse_return_value(first_stmt) {
+            return Some(return_value);
+        }
+    }
+
+    None
+}
+
 fn find_char_at_depth_zero(input: &str, target_char: char) -> Option<usize> {
     find_at_depth_zero(input, |ch, _pos| ch == target_char).map(|(pos, _)| pos)
 }
@@ -1119,10 +1169,15 @@ fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, Inte
     // Handle yield statements: yield value
     if let Some(value_expr_str) = input.strip_prefix("yield ") {
         let value_expr = value_expr_str.trim();
+        let value_expr = if let Some(stripped) = value_expr.strip_suffix(';') {
+            stripped.trim()
+        } else {
+            value_expr
+        };
         return interpret_with_context(value_expr, context);
     }
 
-    // Handle function definitions: fn name(param: Type, ...) : ReturnType => body rest
+    // Handle function definitions: fn name(param: Type, ...) [: ReturnType] => body
     if let Some(after_fn) = input.strip_prefix("fn ") {
         let after_fn = after_fn.trim_start();
         let open_paren_pos = after_fn.find('(').ok_or_else(|| InterpreterError {
@@ -1176,33 +1231,42 @@ fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, Inte
         })?;
 
         let after_params = after_fn[close_paren_pos + 1..].trim_start();
-        let after_colon = after_params
-            .strip_prefix(':')
-            .ok_or_else(|| InterpreterError {
+        let (return_type, after_arrow) = if let Some(after_colon) = after_params.strip_prefix(':') {
+            let arrow_pos = after_colon.find("=>").ok_or_else(|| InterpreterError {
                 code_snippet: input.to_string(),
-                error_message: "Missing function return type".to_string(),
-                explanation: "Function declarations require an explicit return type.".to_string(),
-                fix: "Add ': ReturnType' before the => token.".to_string(),
+                error_message: "Missing function body arrow".to_string(),
+                explanation: "Function declarations must contain '=>'.".to_string(),
+                fix: "Add '=> body' after the return type.".to_string(),
             })?;
 
-        let arrow_pos = after_colon.find("=>").ok_or_else(|| InterpreterError {
-            code_snippet: input.to_string(),
-            error_message: "Missing function body arrow".to_string(),
-            explanation: "Function declarations must contain '=>'.".to_string(),
-            fix: "Add '=> body' after the return type.".to_string(),
-        })?;
+            let parsed_return_type = after_colon[..arrow_pos].trim();
+            if !is_valid_type(parsed_return_type) {
+                return Err(InterpreterError {
+                    code_snippet: input.to_string(),
+                    error_message: format!("Unknown return type '{}'", parsed_return_type),
+                    explanation: "The return type must be a supported primitive type.".to_string(),
+                    fix: "Use one of U8, U16, U32, U64, I8, I16, I32, I64, Bool.".to_string(),
+                });
+            }
 
-        let return_type = after_colon[..arrow_pos].trim();
-        if !is_valid_type(return_type) {
+            (
+                Some(parsed_return_type.to_string()),
+                after_colon[arrow_pos + 2..].trim_start(),
+            )
+        } else if let Some(stripped) = after_params.strip_prefix("=>") {
+            (None, stripped.trim_start())
+        } else {
             return Err(InterpreterError {
                 code_snippet: input.to_string(),
-                error_message: format!("Unknown return type '{}'", return_type),
-                explanation: "The return type must be a supported primitive type.".to_string(),
-                fix: "Use one of U8, U16, U32, U64, I8, I16, I32, I64, Bool.".to_string(),
+                error_message: "Invalid function declaration".to_string(),
+                explanation:
+                    "Function declarations must use '=>' and may optionally include ': ReturnType'."
+                        .to_string(),
+                fix: "Use format: fn name(params) => body or fn name(params) : Type => body"
+                    .to_string(),
             });
-        }
+        };
 
-        let after_arrow = after_colon[arrow_pos + 2..].trim_start();
         if after_arrow.is_empty() {
             return Err(InterpreterError {
                 code_snippet: input.to_string(),
@@ -1212,7 +1276,12 @@ fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, Inte
             });
         }
 
-        let (body, rest) = if after_arrow.starts_with('{') {
+        let (body, rest) = if let Some(semi_pos) = find_char_at_depth_zero(after_arrow, ';') {
+            (
+                after_arrow[..semi_pos].trim().to_string(),
+                after_arrow[semi_pos + 1..].trim().to_string(),
+            )
+        } else if after_arrow.starts_with('{') {
             let end = find_matching_brace_end(after_arrow, 0).ok_or_else(|| InterpreterError {
                 code_snippet: input.to_string(),
                 error_message: "Unclosed function body".to_string(),
@@ -1224,18 +1293,13 @@ fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, Inte
                 after_arrow[..=end].trim().to_string(),
                 after_arrow[end + 1..].trim().to_string(),
             )
-        } else if let Some(semi_pos) = find_char_at_depth_zero(after_arrow, ';') {
-            (
-                after_arrow[..semi_pos].trim().to_string(),
-                after_arrow[semi_pos + 1..].trim().to_string(),
-            )
         } else {
             (after_arrow.trim().to_string(), String::new())
         };
 
         let fn_def = FunctionDef {
             params,
-            return_type: return_type.to_string(),
+            return_type,
             body,
         };
         context = context.with_function(fn_name.to_string(), fn_def);
@@ -1796,8 +1860,17 @@ fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, Inte
                     fn_context.with_var(param_name.clone(), arg_val, param_type.clone(), false);
             }
 
-            let result = interpret_with_context(&function_def.body, fn_context)?;
-            validate_result_in_type(result, &function_def.return_type, input)?;
+            let result = if let Some(return_expr) =
+                extract_return_expression_from_body(&function_def.body)
+            {
+                interpret_with_context(&return_expr, fn_context.clone())?
+            } else {
+                interpret_with_context(&function_def.body, fn_context)?
+            };
+
+            if let Some(return_type) = &function_def.return_type {
+                validate_result_in_type(result, return_type, input)?;
+            }
             return Ok(result);
         }
     }
@@ -2218,5 +2291,17 @@ mod tests {
         let result =
             interpret("fn add(first : I32, second : I32) : I32 => { first + second } add(3, 4)");
         assert!(matches!(result, Ok(7)));
+    }
+
+    #[test]
+    fn test_interpret_function_return_short_circuit() {
+        let result = interpret("fn get() => { return 100; } + 50; get()");
+        assert!(matches!(result, Ok(100)));
+    }
+
+    #[test]
+    fn test_interpret_function_yield_does_not_short_circuit_function() {
+        let result = interpret("fn get() => { yield 100; } + 50; get()");
+        assert!(matches!(result, Ok(150)));
     }
 }
