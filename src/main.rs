@@ -27,7 +27,9 @@ impl Context {
     }
 
     fn get_var(&self, name: &str) -> Option<(i32, String)> {
-        self.variables.get(name).map(|(val, ty, _)| (*val, ty.clone()))
+        self.variables
+            .get(name)
+            .map(|(val, ty, _)| (*val, ty.clone()))
     }
 
     fn set_var(&mut self, name: String, value: i32) -> Result<(), InterpreterError> {
@@ -48,7 +50,8 @@ impl Context {
                 code_snippet: format!("{} = {}", name, value),
                 error_message: format!("Undefined variable '{}'", name),
                 explanation: "The variable has not been declared in the current scope.".to_string(),
-                fix: "Declare the variable with a 'let' statement before assigning to it.".to_string(),
+                fix: "Declare the variable with a 'let' statement before assigning to it."
+                    .to_string(),
             })
         }
     }
@@ -371,19 +374,20 @@ fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, Inte
         let rest = input[semicolon_pos + 1..].trim();
 
         // Check for mut keyword
-        let (is_mutable, name_and_type_str) = if let_part.starts_with("mut ") {
-            (true, let_part[4..].trim())
+        let (is_mutable, name_and_type_str) = if let Some(stripped) = let_part.strip_prefix("mut ") {
+            (true, stripped.trim())
         } else {
             (false, let_part)
         };
 
         // Find the equals sign at depth 0 (outside braces and parens)
-        let eq_pos = find_char_at_depth_zero(name_and_type_str, '=').ok_or_else(|| InterpreterError {
-            code_snippet: input.to_string(),
-            error_message: "Variable declaration must have an assignment".to_string(),
-            explanation: "Format should be: let [mut] name : type = value;".to_string(),
-            fix: "Add an assignment with = operator.".to_string(),
-        })?;
+        let eq_pos =
+            find_char_at_depth_zero(name_and_type_str, '=').ok_or_else(|| InterpreterError {
+                code_snippet: input.to_string(),
+                error_message: "Variable declaration must have an assignment".to_string(),
+                explanation: "Format should be: let [mut] name : type = value;".to_string(),
+                fix: "Add an assignment with = operator.".to_string(),
+            })?;
 
         let name_and_type = name_and_type_str[..eq_pos].trim();
         let value_expr = name_and_type_str[eq_pos + 1..].trim();
@@ -472,27 +476,29 @@ fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, Inte
     if let Some(eq_pos) = find_char_at_depth_zero(input, '=') {
         let left = input[..eq_pos].trim();
         let right_and_rest = input[eq_pos + 1..].trim();
-        
+
         // Check if left side is a simple variable name (not an operator expression)
-        if !left.chars().any(|c| matches!(c, '+' | '-' | '*' | '/' | '(' | ')' | '{' | '}' | ';' | ':'))
+        if !left
+            .chars()
+            .any(|c| matches!(c, '+' | '-' | '*' | '/' | '(' | ')' | '{' | '}' | ';' | ':'))
             && !left.starts_with("let ")
         {
             // This is an assignment. Find the semicolon to separate assignment from rest
             if let Some(semicolon_pos) = find_char_at_depth_zero(right_and_rest, ';') {
                 let value_expr = right_and_rest[..semicolon_pos].trim();
                 let rest = right_and_rest[semicolon_pos + 1..].trim();
-                
+
                 // Evaluate the value expression
                 let value = interpret_with_context(value_expr, context.clone())?;
-                
+
                 // Apply the assignment
                 context.set_var(left.to_string(), value)?;
-                
+
                 // If there's no rest, return the assigned value
                 if rest.is_empty() {
                     return Ok(value);
                 }
-                
+
                 // Continue evaluating the rest
                 return interpret_with_context(rest, context);
             }
