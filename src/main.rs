@@ -43,10 +43,10 @@ fn validate_and_parse_with_suffix(
     }
 }
 
-fn parse_single_value(input: &str) -> Result<i32, InterpreterError> {
+fn extract_value_and_type(input: &str) -> Result<(i32, &str), InterpreterError> {
     // Try parsing as a plain integer first
     if let Ok(val) = input.parse::<i32>() {
-        return Ok(val);
+        return Ok((val, "I32"));
     }
 
     // Try parsing with type suffixes (e.g., "100U8", "42I32")
@@ -65,13 +65,19 @@ fn parse_single_value(input: &str) -> Result<i32, InterpreterError> {
 
     for (suffix, min, max) in &unsigned_suffixes {
         if let Some(result) = validate_and_parse_with_suffix(input, suffix, *min, *max, true) {
-            return result;
+            match result {
+                Ok(val) => return Ok((val, suffix)),
+                Err(e) => return Err(e),
+            }
         }
     }
 
     for (suffix, min, max) in &signed_suffixes {
         if let Some(result) = validate_and_parse_with_suffix(input, suffix, *min, *max, false) {
-            return result;
+            match result {
+                Ok(val) => return Ok((val, suffix)),
+                Err(e) => return Err(e),
+            }
         }
     }
 
@@ -81,6 +87,38 @@ fn parse_single_value(input: &str) -> Result<i32, InterpreterError> {
         explanation: "The input could not be parsed as a valid integer, optionally with a type suffix (U8, U16, U32, U64, I8, I16, I32, I64).".to_string(),
         fix: "Provide a valid integer value, optionally with a type suffix.".to_string(),
     })
+}
+
+fn get_type_bounds(type_name: &str) -> Option<(i32, i32)> {
+    match type_name {
+        "U8" => Some((0, 255)),
+        "U16" => Some((0, 65535)),
+        "U32" => Some((0, u32::MAX as i32)),
+        "U64" => Some((0, i32::MAX)),
+        "I8" => Some((-128, 127)),
+        "I16" => Some((-32768, 32767)),
+        "I32" => Some((i32::MIN, i32::MAX)),
+        "I64" => Some((i32::MIN, i32::MAX)),
+        _ => None,
+    }
+}
+
+fn validate_result_in_type(
+    result: i32,
+    type_name: &str,
+    code_snippet: &str,
+) -> Result<i32, InterpreterError> {
+    if let Some((min, max)) = get_type_bounds(type_name) {
+        if result < min || result > max {
+            return Err(InterpreterError {
+                code_snippet: code_snippet.to_string(),
+                error_message: format!("Arithmetic overflow: result {} is out of range for type {}", result, type_name),
+                explanation: format!("The {} type can only hold values between {} and {} (inclusive). The arithmetic operation produced a result outside this range, causing an overflow. The language semantics enforce these bounds to prevent data loss.", type_name, min, max),
+                fix: format!("Use a larger type for the operation, or adjust the operands to produce a result in the range [{}, {}].", min, max),
+            });
+        }
+    }
+    Ok(result)
 }
 
 fn interpret(input: &str) -> Result<i32, InterpreterError> {
@@ -105,27 +143,29 @@ fn interpret(input: &str) -> Result<i32, InterpreterError> {
                 };
 
                 if !left.is_empty() && !right.is_empty() {
-                    if let (Ok(left_val), Ok(right_val)) =
-                        (parse_single_value(left), parse_single_value(right))
+                    if let (Ok((left_val, left_type)), Ok((right_val, _))) =
+                        (extract_value_and_type(left), extract_value_and_type(right))
                     {
-                        return match op_char {
-                            '+' => Ok(left_val + right_val),
-                            '-' => Ok(left_val - right_val),
-                            '*' => Ok(left_val * right_val),
+                        let result_val = match op_char {
+                            '+' => left_val + right_val,
+                            '-' => left_val - right_val,
+                            '*' => left_val * right_val,
                             '/' => {
                                 if right_val == 0 {
-                                    Err(InterpreterError {
+                                    return Err(InterpreterError {
                                         code_snippet: input.to_string(),
                                         error_message: "Division by zero".to_string(),
                                         explanation: "Dividing by zero is undefined in mathematics and not allowed in this language.".to_string(),
                                         fix: "Use a non-zero divisor.".to_string(),
-                                    })
-                                } else {
-                                    Ok(left_val / right_val)
+                                    });
                                 }
+                                left_val / right_val
                             }
                             _ => continue,
                         };
+
+                        // Validate the result fits in the left operand's type
+                        return validate_result_in_type(result_val, left_type, input);
                     }
                 }
             }
@@ -133,7 +173,8 @@ fn interpret(input: &str) -> Result<i32, InterpreterError> {
     }
 
     // Fall back to parsing as a single value
-    parse_single_value(input)
+    let (val, _type) = extract_value_and_type(input)?;
+    Ok(val)
 }
 
 fn main() {
@@ -205,5 +246,11 @@ mod tests {
     fn test_interpret_addition() {
         let result = interpret("1U8 + 2U8");
         assert!(matches!(result, Ok(3)));
+    }
+
+    #[test]
+    fn test_interpret_addition_overflow() {
+        let result = interpret("1U8 + 255U8");
+        assert!(result.is_err());
     }
 }
