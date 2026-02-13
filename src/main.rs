@@ -869,4 +869,10 @@ mod tests {
         let result = interpret("true + false");
         assert!(result.is_err());
     }
+
+    #[test]
+    fn test_interpret_bool_in_arithmetic_with_parentheses() {
+        let result = interpret("(true) + false");
+        assert!(result.is_err());
+    }
 }
