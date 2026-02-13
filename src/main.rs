@@ -1940,4 +1940,10 @@ mod tests {
         let result = interpret("let myTuple = (1, 2); myTuple[2]");
         assert!(result.is_err());
     }
+
+    #[test]
+    fn test_interpret_tuple_index_out_of_bounds_with_assignment() {
+        let result = interpret("let myTuple = (1, 2); let temp : Bool = myTuple[2];");
+        assert!(result.is_err());
+    }
 }
