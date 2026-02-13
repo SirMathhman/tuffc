@@ -430,12 +430,24 @@ fn parse_if_else_parts(input: &str) -> Option<(String, String, String)> {
                         let true_expr = after_cond[..else_pos].trim();
                         let else_part = after_cond[else_pos + 1..].trim();
 
-                        if let Some(false_expr) = else_part.strip_prefix("else ") {
-                            return Some((
-                                condition_str.to_string(),
-                                true_expr.to_string(),
-                                false_expr.to_string(),
-                            ));
+                        if let Some(false_expr_start) = else_part.strip_prefix("else ") {
+                            // Find the semicolon that ends the false branch
+                            if let Some(semi_pos) = find_char_at_depth_zero(false_expr_start, ';') {
+                                // Include the semicolon in the false expression
+                                let false_expr = &false_expr_start[..=semi_pos];
+                                return Some((
+                                    condition_str.to_string(),
+                                    true_expr.to_string(),
+                                    false_expr.trim().to_string(),
+                                ));
+                            } else {
+                                // If no semicolon, take the whole thing
+                                return Some((
+                                    condition_str.to_string(),
+                                    true_expr.to_string(),
+                                    false_expr_start.trim().to_string(),
+                                ));
+                            }
                         }
                     }
                 }
@@ -1230,5 +1242,11 @@ mod tests {
     fn test_interpret_if_else_assign_wrong_type() {
         let result = interpret("let x : Bool = if (true) 10 else 5; x");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_interpret_if_else_with_assignment() {
+        let result = interpret("let mut x = 0; if (true) x = 1; else x = 2; x");
+        assert!(matches!(result, Ok(1)));
     }
 }
