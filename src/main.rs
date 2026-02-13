@@ -306,19 +306,54 @@ fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, Inte
     // Handle let statements: let name : type = expr; rest
     if input.starts_with("let ") {
         // Find the semicolon that separates the let statement from the rest
-        let semicolon_pos = input.find(';')
-            .ok_or_else(|| InterpreterError {
-                code_snippet: input.to_string(),
-                error_message: "Let statement must end with semicolon".to_string(),
-                explanation: "Variable declarations must be followed by a semicolon and then the expression to evaluate.".to_string(),
-                fix: "Add a semicolon after the variable assignment.".to_string(),
-            })?;
+        // We need to track nesting depth to find the correct semicolon
+        let mut paren_depth = 0;
+        let mut brace_depth = 0;
+        let mut semicolon_pos = None;
+        
+        for (pos, ch) in input.char_indices() {
+            match ch {
+                '(' => paren_depth += 1,
+                ')' => paren_depth -= 1,
+                '{' => brace_depth += 1,
+                '}' => brace_depth -= 1,
+                ';' if paren_depth == 0 && brace_depth == 0 => {
+                    semicolon_pos = Some(pos);
+                    break;
+                }
+                _ => {}
+            }
+        }
+        
+        let semicolon_pos = semicolon_pos.ok_or_else(|| InterpreterError {
+            code_snippet: input.to_string(),
+            error_message: "Let statement must end with semicolon".to_string(),
+            explanation: "Variable declarations must be followed by a semicolon and then the expression to evaluate.".to_string(),
+            fix: "Add a semicolon after the variable assignment.".to_string(),
+        })?;
 
         let let_part = input[4..semicolon_pos].trim(); // Skip "let "
         let rest = input[semicolon_pos + 1..].trim();
 
-        // Parse: name : type = value
-        let eq_pos = let_part.find('=').ok_or_else(|| InterpreterError {
+        // Find the equals sign at depth 0 (outside braces and parens)
+        let mut eq_pos = None;
+        paren_depth = 0;
+        brace_depth = 0;
+        for (pos, ch) in let_part.char_indices() {
+            match ch {
+                '(' => paren_depth += 1,
+                ')' => paren_depth -= 1,
+                '{' => brace_depth += 1,
+                '}' => brace_depth -= 1,
+                '=' if paren_depth == 0 && brace_depth == 0 => {
+                    eq_pos = Some(pos);
+                    break;
+                }
+                _ => {}
+            }
+        }
+        
+        let eq_pos = eq_pos.ok_or_else(|| InterpreterError {
             code_snippet: input.to_string(),
             error_message: "Variable declaration must have an assignment".to_string(),
             explanation: "Format should be: let name : type = value;".to_string(),
@@ -557,6 +592,13 @@ mod tests {
     #[test]
     fn test_interpret_nested_let_bindings() {
         let result = interpret("(2 + { let x : U8 = 1 + 2; let y : U8 = x; y }) * 4");
+        assert!(matches!(result, Ok(20)));
+    }
+
+    #[test]
+    fn test_interpret_top_level_let_binding() {
+        let result =
+            interpret("let z : U8 = (2 + { let x : U8 = 1 + 2; let y : U8 = x; y }) * 4; z");
         assert!(matches!(result, Ok(20)));
     }
 }
