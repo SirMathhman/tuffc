@@ -103,6 +103,36 @@ fn get_type_bounds(type_name: &str) -> Option<(i32, i32)> {
     }
 }
 
+fn get_type_width(type_name: &str) -> u8 {
+    match type_name {
+        "I8" | "U8" => 8,
+        "I16" | "U16" => 16,
+        "I32" | "U32" => 32,
+        "I64" | "U64" => 64,
+        _ => 0,
+    }
+}
+
+fn get_effective_type<'a>(left_type: &'a str, right_type: &'a str) -> &'a str {
+    // If one operand is default I32 (untyped), use the other's type
+    match (left_type, right_type) {
+        ("I32", other) if other != "I32" => other,
+        (other, "I32") if other != "I32" => other,
+        _ => get_wider_type(left_type, right_type),
+    }
+}
+
+fn get_wider_type<'a>(left_type: &'a str, right_type: &'a str) -> &'a str {
+    let left_width = get_type_width(left_type);
+    let right_width = get_type_width(right_type);
+
+    if right_width > left_width {
+        right_type
+    } else {
+        left_type
+    }
+}
+
 fn validate_result_in_type(
     result: i32,
     type_name: &str,
@@ -143,7 +173,7 @@ fn interpret(input: &str) -> Result<i32, InterpreterError> {
                 };
 
                 if !left.is_empty() && !right.is_empty() {
-                    if let (Ok((left_val, left_type)), Ok((right_val, _))) =
+                    if let (Ok((left_val, left_type)), Ok((right_val, right_type))) =
                         (extract_value_and_type(left), extract_value_and_type(right))
                     {
                         let result_val = match op_char {
@@ -164,8 +194,9 @@ fn interpret(input: &str) -> Result<i32, InterpreterError> {
                             _ => continue,
                         };
 
-                        // Validate the result fits in the left operand's type
-                        return validate_result_in_type(result_val, left_type, input);
+                        // Validate the result fits in the effective type of the two operand types
+                        let result_type = get_effective_type(left_type, right_type);
+                        return validate_result_in_type(result_val, result_type, input);
                     }
                 }
             }
@@ -258,5 +289,11 @@ mod tests {
     fn test_interpret_addition_overflow_untyped() {
         let result = interpret("1U8 + 255");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_interpret_addition_wider_type() {
+        let result = interpret("1U8 + 255U16");
+        assert!(matches!(result, Ok(256)));
     }
 }
