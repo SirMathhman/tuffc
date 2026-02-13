@@ -200,6 +200,11 @@ void testBinaryAddition()
     assertValid("read_add", "read<U8>() + read<U8>()", 100, "25 75", 0, NULL);
 }
 
+void testVarDeclaration()
+{
+    assertValid("var_decl", "let x : U8 = read<U8>(); x + x", 50, "25", 0, NULL);
+}
+
 int32_t main()
 {
     testEmptyProgram();
@@ -209,6 +214,7 @@ int32_t main()
     testU8OutOfRange();
     testReadU8();
     testBinaryAddition();
+    testVarDeclaration();
 
     fprintf(stderr, "Passed %d/%d tests\n", passingTests, totalTests);
 

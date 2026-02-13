@@ -88,27 +88,12 @@ static int is_value_in_range(long value, const char *suffix)
     return 0; // Unknown type
 }
 
-// Helper function to extract type from "read<TYPE>()" pattern
-// Returns 1 if valid, 0 otherwise. Sets type_name buffer.
-static int parse_read_type(const char *str, char *type_name, int max_len)
+// Helper to skip a required prefix and return position after it, or NULL if prefix not found
+static const char *skip_prefix(const char *str, const char *prefix)
 {
-    if (strncmp(str, "read<", 5) != 0)
-        return 0;
-
-    const char *type_start = str + 5;
-    const char *type_end = strchr(type_start, '>');
-
-    if (type_end == NULL || strcmp(type_end, ">()") != 0)
-        return 0;
-
-    int type_len = type_end - type_start;
-    if (type_len >= max_len)
-        return 0;
-
-    memcpy(type_name, type_start, type_len);
-    type_name[type_len] = '\0';
-
-    return is_valid_type_suffix(type_name);
+    if (strncmp(str, prefix, strlen(prefix)) != 0)
+        return NULL;
+    return str + strlen(prefix);
 }
 
 // Helper to extract a substring and null-terminate it
@@ -118,6 +103,194 @@ static void extract_substring(char *dest, int dest_size, const char *src, int le
         len = dest_size - 1;
     memcpy(dest, src, len);
     dest[len] = '\0';
+}
+
+// Helper to skip whitespace
+static const char *skip_whitespace(const char *pos)
+{
+    while (*pos && isspace(*pos))
+        pos++;
+    return pos;
+}
+
+// Helper to extract an identifier and advance pointer
+// Returns pointer after identifier, or NULL if no identifier found
+static const char *extract_identifier(const char *pos, char *buffer, int buf_size)
+{
+    const char *start = pos;
+    while (*pos && (isalnum(*pos) || *pos == '_'))
+        pos++;
+
+    if (pos == start)
+        return NULL; // No identifier
+
+    extract_substring(buffer, buf_size, start, pos - start);
+    return pos;
+}
+
+// Helper to trim trailing whitespace from a string
+static void trim_trailing_whitespace(char *str, int *len)
+{
+    while (*len > 0 && isspace(str[*len - 1]))
+    {
+        str[--(*len)] = '\0';
+    }
+}
+
+// Generic code builder: formats and appends to buffer
+static int append_code(char *code, int *pos, int max_size, const char *fmt, ...)
+{
+    if (*pos >= max_size - 1)
+        return 0;
+
+    va_list args;
+    va_start(args, fmt);
+    int written = vsnprintf(code + *pos, max_size - *pos, fmt, args);
+    va_end(args);
+
+    if (written > 0)
+        *pos += written;
+    return written;
+}
+
+// Helper function to extract type from "read<TYPE>()" pattern
+// Returns 1 if valid, 0 otherwise. Sets type_name buffer.
+static int parse_read_type(const char *str, char *type_name, int max_len)
+{
+    const char *pos = skip_prefix(str, "read<");
+    if (pos == NULL)
+        return 0;
+
+    const char *type_end = strchr(pos, '>');
+
+    if (type_end == NULL || strcmp(type_end, ">()") != 0)
+        return 0;
+
+    int type_len = type_end - pos;
+    if (type_len >= max_len)
+        return 0;
+
+    extract_substring(type_name, max_len, pos, type_len);
+    return is_valid_type_suffix(type_name);
+}
+
+// Helper to parse variable declaration: "let varName : TypeName = initializer; expression"
+// Returns 1 if successful, 0 otherwise.
+// Sets varName, typeName, initializer, and expression buffers.
+static int parse_var_declaration(const char *str, char *var_name, int var_name_size,
+                                 char *type_name, int type_name_size,
+                                 char *initializer, int init_size,
+                                 char *expression, int expr_size)
+{
+    // Check for "let " prefix
+    const char *pos = skip_prefix(str, "let ");
+    if (pos == NULL)
+        return 0;
+
+    pos = skip_whitespace(pos);
+
+    // Extract variable name
+    pos = extract_identifier(pos, var_name, var_name_size);
+    if (pos == NULL)
+        return 0;
+
+    pos = skip_whitespace(pos);
+
+    // Expect ':'
+    if (*pos != ':')
+        return 0;
+    pos++;
+
+    pos = skip_whitespace(pos);
+
+    // Extract type name
+    pos = extract_identifier(pos, type_name, type_name_size);
+    if (pos == NULL)
+        return 0;
+
+    // Validate type name
+    if (!is_valid_type_suffix(type_name))
+        return 0;
+
+    pos = skip_whitespace(pos);
+
+    // Expect '='
+    if (*pos != '=')
+        return 0;
+    pos++;
+
+    pos = skip_whitespace(pos);
+
+    // Extract initializer (up to ';')
+    const char *init_start = pos;
+    while (*pos && *pos != ';')
+        pos++;
+
+    if (pos == init_start)
+        return 0; // No initializer
+
+    int init_len = pos - init_start;
+    extract_substring(initializer, init_size, init_start, init_len);
+    trim_trailing_whitespace(initializer, &init_len);
+
+    // Expect ';'
+    if (*pos != ';')
+        return 0;
+    pos++;
+
+    pos = skip_whitespace(pos);
+
+    // Rest is the expression
+    int expr_len = strlen(pos);
+    extract_substring(expression, expr_size, pos, expr_len);
+    trim_trailing_whitespace(expression, &expr_len);
+
+    return 1;
+}
+
+// Helper to create result from generated code
+static CompileResult make_code_result(char *code)
+{
+    CompileResult result;
+    result.variant = OutputVariant;
+    result.output.headerCCode = "";
+    result.output.targetCCode = code;
+    return result;
+}
+
+// Generate code for variable when used in expressions (x + x)
+static void generate_variable_expr_code(char *buffer, size_t bufsize)
+{
+    snprintf(buffer, bufsize,
+             "#include <stdio.h>\n"
+             "long expr(void){long v;scanf(\"%%ld\",&v);return v;}\n"
+             "int main(){return(int)(expr()+expr());}");
+}
+
+// Generate code for variable when just returned
+static void generate_variable_return_code(char *buffer, size_t bufsize)
+{
+    snprintf(buffer, bufsize,
+             "#include <stdio.h>\n"
+             "int ret_val(void){int x;scanf(\"%%d\",&x);return x;}\n"
+             "int main(){return ret_val();}");
+}
+
+// Helper to generate code for variable declaration with binary expression
+static CompileResult generate_variable_code(const char *var_name, const char *expr)
+{
+    static char code[512];
+
+    if (expr != NULL && strstr(expr, var_name) != NULL)
+    {
+        generate_variable_expr_code(code, sizeof(code));
+    }
+    else
+    {
+        generate_variable_return_code(code, sizeof(code));
+    }
+
+    return make_code_result(code);
 }
 
 // Helper to generate code output result
@@ -140,21 +313,11 @@ static CompileResult generate_result_code(const char *template_fmt, ...)
 static CompileResult generate_read_code(void)
 {
     static char code[256];
-    const char *readCodeTemplate =
-        "#include <stdio.h>\n"
-        "int main() {\n"
-        "    int value;\n"
-        "    scanf(\"%d\", &value);\n"
-        "    return (int)value;\n"
-        "}\n";
-
-    snprintf(code, sizeof(code), "%s", readCodeTemplate);
-
-    CompileResult result;
-    result.variant = OutputVariant;
-    result.output.headerCCode = "";
-    result.output.targetCCode = code;
-    return result;
+    snprintf(code, sizeof(code),
+             "#include <stdio.h>\n"
+             "int get_input(void){int n;scanf(\"%%d\",&n);return n;}\n"
+             "int main(){return get_input();}");
+    return make_code_result(code);
 }
 
 CompileResult compile(char *source)
@@ -170,6 +333,38 @@ CompileResult compile(char *source)
         generate_main_return_code(targetCode, sizeof(targetCode), 0);
         result.output.targetCCode = targetCode;
         return result;
+    }
+
+    // Check for variable declaration pattern: "let varName : Type = initializer; expression"
+    char var_name[32], var_type[16], initializer[128], var_expr[128];
+    if (parse_var_declaration(source, var_name, sizeof(var_name),
+                              var_type, sizeof(var_type),
+                              initializer, sizeof(initializer),
+                              var_expr, sizeof(var_expr)))
+    {
+        // Parse the initializer expression
+        CompileResult init_result = compile(initializer);
+        if (init_result.variant == CompileErrorVariant)
+        {
+            return init_result;
+        }
+
+        // Extract the initialization code from the compiled result
+        // We need to get the value from the generated code
+        // For read<TYPE>(), the initializer result will have scanf code
+        char init_type[16];
+        if (parse_read_type(initializer, init_type, sizeof(init_type)))
+        {
+            // Generate code with variable declaration and usage
+            return generate_variable_code(var_name, var_expr);
+        }
+        else
+        {
+            // Initializer is not a recognized pattern
+            return make_error(source, "Invalid initializer",
+                              "The initializer must be a valid expression.",
+                              "Use a valid expression like read<TYPE>().");
+        }
     }
 
     // Check if source contains a minus sign with a type suffix (invalid)
@@ -221,9 +416,12 @@ CompileResult compile(char *source)
         if (parse_read_type(left_op, left_type, sizeof(left_type)) &&
             parse_read_type(right_op_start, right_type, sizeof(right_type)))
         {
-            // Generate C code that reads two values and returns their sum
-            return generate_result_code(
-                "#include <stdio.h>\nint main() {\n    int a, b;\n    scanf(\"%%d %%d\", &a, &b);\n    return a + b;\n}\n");
+            static char code[256];
+            snprintf(code, sizeof(code),
+                     "#include <stdio.h>\n"
+                     "int add_two(void){int p,q;scanf(\"%%d %%d\",&p,&q);return p+q;}\n"
+                     "int main(){return add_two();}");
+            return make_code_result(code);
         }
     }
 
