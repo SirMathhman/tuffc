@@ -28,6 +28,18 @@ static void generate_main_return_code(char *buffer, size_t bufsize, long returnV
     snprintf(buffer, bufsize, "int main() {\n    return %ld;\n}\n", returnValue);
 }
 
+// Helper function to create a compilation error result
+static CompileResult make_compile_error(char *source)
+{
+    CompileResult result;
+    result.variant = CompileErrorVariant;
+    result.error.erroneous_code = source;
+    result.error.error_message = "Unknown compilation error";
+    result.error.reasoning = "The compiler encountered an unexpected condition that it doesn't know how to handle.";
+    result.error.fix = "Please report this issue to the developers with the source code that caused the error.";
+    return result;
+}
+
 CompileResult compile(char *source)
 {
     CompileResult result;
@@ -41,6 +53,25 @@ CompileResult compile(char *source)
         generate_main_return_code(targetCode, sizeof(targetCode), 0);
         result.output.targetCCode = targetCode;
         return result;
+    }
+
+    // Check if source contains a minus sign with a type suffix (invalid)
+    // e.g., "-100U8" is not allowed
+    const char *pos = source;
+    int has_minus = 0;
+    while (*pos)
+    {
+        if (*pos == '-')
+        {
+            has_minus = 1;
+        }
+        // Check if there are alphabetic characters (potential type suffix)
+        if (has_minus && isalpha(*pos))
+        {
+            // Found minus sign followed (eventually) by letters - invalid
+            return make_compile_error(source);
+        }
+        pos++;
     }
 
     // Try to parse source as a numeric literal, possibly with a type suffix
@@ -75,10 +106,5 @@ CompileResult compile(char *source)
     }
 
     // Default scenario is unknown source code.
-    result.variant = CompileErrorVariant;
-    result.error.erroneous_code = source;
-    result.error.error_message = "Unknown compilation error";
-    result.error.reasoning = "The compiler encountered an unexpected condition that it doesn't know how to handle.";
-    result.error.fix = "Please report this issue to the developers with the source code that caused the error.";
-    return result;
+    return make_compile_error(source);
 }

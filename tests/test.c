@@ -180,11 +180,17 @@ void testU8Literal()
     assertValid("u8_hundred", "100U8", 100, "", 0, NULL);
 }
 
+void testNegativeU8Literal()
+{
+    assertInvalid("negative_u8", "-100U8");
+}
+
 int32_t main()
 {
     testEmptyProgram();
     testNumericLiteral();
     testU8Literal();
+    testNegativeU8Literal();
 
     fprintf(stderr, "Passed %d/%d tests\n", passingTests, totalTests);
 
