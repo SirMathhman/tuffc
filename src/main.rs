@@ -376,6 +376,11 @@ fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, Inte
         // Add the variable to context
         context = context.with_var(var_name, val, var_type);
 
+        // If there's no rest, return 0 (empty expression)
+        if rest.is_empty() {
+            return Ok(0);
+        }
+
         // Continue evaluating the rest
         return interpret_with_context(rest, context);
     }
@@ -593,5 +598,11 @@ mod tests {
         let result =
             interpret("let z : U8 = (2 + { let x : U8 = 1 + 2; let y : U8 = x; y }) * 4; z");
         assert!(matches!(result, Ok(20)));
+    }
+
+    #[test]
+    fn test_interpret_let_binding_no_rest() {
+        let result = interpret("let x : U8 = 100;");
+        assert!(matches!(result, Ok(0)));
     }
 }
