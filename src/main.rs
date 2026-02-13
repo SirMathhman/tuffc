@@ -1249,4 +1249,10 @@ mod tests {
         let result = interpret("let mut x = 0; if (true) x = 1; else x = 2; x");
         assert!(matches!(result, Ok(1)));
     }
+
+    #[test]
+    fn test_interpret_if_else_with_braced_assignment() {
+        let result = interpret("let mut x = 0; if (true) { x = 1; } else { x = 2; } x");
+        assert!(matches!(result, Ok(1)));
+    }
 }
