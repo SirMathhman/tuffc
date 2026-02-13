@@ -362,6 +362,98 @@ fn find_lowest_precedence_operator(input: &str) -> Option<(usize, char)> {
     find_operator_at_depth(input, &['*', '/'], false)
 }
 
+fn is_boolean_expression(input: &str) -> bool {
+    find_operator_at_depth(input, &['<'], false).is_some()
+}
+
+fn extract_assignment_target(input: &str) -> &str {
+    input
+        .split(|c: char| c == '+' || c == '=' || c == '-' || c == '*' || c == '/')
+        .next()
+        .unwrap_or("")
+        .trim()
+}
+
+fn split_binary_operands(input: &str, pos: usize) -> Option<(&str, &str)> {
+    if pos == 0 || pos >= input.len() {
+        return None;
+    }
+
+    let left = input[..pos].trim();
+    let right = input[pos + 1..].trim();
+    if left.is_empty() || right.is_empty() {
+        return None;
+    }
+
+    Some((left, right))
+}
+
+fn evaluate_binary_operands(
+    input: &str,
+    pos: usize,
+    context: &Context,
+) -> Result<Option<(i32, String, i32, String)>, InterpreterError> {
+    if let Some((left, right)) = split_binary_operands(input, pos) {
+        let (left_val, left_type) = evaluate_expression_value_and_type(left, context)?;
+        let (right_val, right_type) = evaluate_expression_value_and_type(right, context)?;
+        Ok(Some((left_val, left_type, right_val, right_type)))
+    } else {
+        Ok(None)
+    }
+}
+
+fn evaluate_condition_as_bool(
+    condition_str: &str,
+    context: &Context,
+    construct: &str,
+) -> Result<i32, InterpreterError> {
+    let cond_val = interpret_with_context(condition_str, context.clone())?;
+    let cond_type = if is_boolean_expression(condition_str) {
+        "Bool".to_string()
+    } else if let Ok((_, ty)) = extract_value_and_type(condition_str, context) {
+        ty
+    } else {
+        "I32".to_string()
+    };
+
+    if cond_type != "Bool" {
+        return Err(InterpreterError {
+            code_snippet: format!("{} ({}) ...", construct.to_lowercase(), condition_str),
+            error_message: format!(
+                "{} condition must be of type Bool, got {}",
+                construct, cond_type
+            ),
+            explanation: format!(
+                "{} expressions require a boolean condition (true or false). Conditions must evaluate to bool type, not numeric types.",
+                construct
+            ),
+            fix: "Use a boolean expression or variable of type Bool as the condition.".to_string(),
+        });
+    }
+
+    Ok(cond_val)
+}
+
+fn evaluate_expression_value_and_type(
+    expr: &str,
+    context: &Context,
+) -> Result<(i32, String), InterpreterError> {
+    if !is_boolean_expression(expr) && find_lowest_precedence_operator(expr).is_none() {
+        match extract_value_and_type(expr, context) {
+            Ok(result) => Ok(result),
+            Err(_) => Ok((
+                interpret_with_context(expr, context.clone())?,
+                "I32".to_string(),
+            )),
+        }
+    } else {
+        Ok((
+            interpret_with_context(expr, context.clone())?,
+            "I32".to_string(),
+        ))
+    }
+}
+
 fn find_is_operator(input: &str) -> Option<usize> {
     find_at_depth_zero(input, |ch, pos| {
         if ch == ' ' && pos + 4 <= input.len() {
@@ -477,6 +569,53 @@ fn parse_if_else_parts(input: &str) -> Option<(String, String, String)> {
     None
 }
 
+fn parse_while_parts(input: &str) -> Option<(String, String)> {
+    let trimmed = input.trim();
+
+    // Quick check: must start with "while ("
+    if !trimmed.starts_with("while (") {
+        return None;
+    }
+
+    let start_pos = "while ".len(); // Position after "while "
+    let mut paren_count = 0;
+    let mut cond_end_pos = None;
+
+    // Find the closing ) that matches the opening (
+    for (i, ch) in trimmed[start_pos..].char_indices() {
+        match ch {
+            '(' => paren_count += 1,
+            ')' => {
+                paren_count -= 1;
+                if paren_count == 0 {
+                    cond_end_pos = Some(i + start_pos);
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let cond_end = cond_end_pos?; // Return None if no closing paren found
+    let condition = trimmed[start_pos + 1..cond_end].to_string();
+
+    // Find the body after the closing paren
+    let after_cond = &trimmed[cond_end + 1..].trim_start();
+
+    if after_cond.is_empty() {
+        return None;
+    }
+
+    // Extract the body - look for the semicolon
+    if let Some(semi_idx) = after_cond.find(';') {
+        let body = after_cond[..semi_idx].trim().to_string();
+        Some((condition, body))
+    } else {
+        // No semicolon - treat rest as body
+        Some((condition, after_cond.trim().to_string()))
+    }
+}
+
 fn is_narrowing_conversion(value_expr: &str, target_type: &str) -> Result<(), (String, String)> {
     let target_width = get_type_width(target_type);
 
@@ -532,6 +671,83 @@ fn is_fully_wrapped(input: &str) -> bool {
         }
     }
     true
+}
+
+fn handle_while_loop(
+    condition_str: &str,
+    body_str: &str,
+    input: &str,
+    mut context: Context,
+) -> Result<i32, InterpreterError> {
+    const MAX_ITERATIONS: usize = 1024;
+    let mut iterations = 0;
+
+    loop {
+        // Check iteration limit
+        if iterations >= MAX_ITERATIONS {
+            return Err(InterpreterError {
+                code_snippet: input.to_string(),
+                error_message: "While loop exceeded maximum iterations (1024)".to_string(),
+                explanation: "The while loop has reached the maximum iteration limit of 1024 to prevent infinite loops."
+                    .to_string(),
+                fix: "Ensure your while loop terminates within 1024 iterations, or refactor your logic."
+                    .to_string(),
+            });
+        }
+
+        // Evaluate and type-check the condition
+        let cond_val = evaluate_condition_as_bool(condition_str, &context, "While")?;
+
+        // Check condition - if false, exit loop
+        if cond_val == 0 {
+            break;
+        }
+
+        // Execute the body - handle compound assignments manually to update context
+        if body_str.contains("+=") {
+            // Handle compound assignment like "x += 1"
+            if let Some(plus_pos) = body_str.find("+=") {
+                let var_name = body_str[..plus_pos].trim();
+                let right_part = body_str[plus_pos + 2..].trim();
+
+                if let Some((current_val, var_type)) = context.get_var(var_name) {
+                    let right_value = interpret_with_context(right_part, context.clone())?;
+                    let new_value = current_val + right_value;
+
+                    // Validate and apply the change
+                    validate_result_in_type(new_value, &var_type, input)?;
+                    context.set_var(var_name.to_string(), new_value, &var_type)?;
+                } else {
+                    return Err(InterpreterError {
+                        code_snippet: format!("{} += {}", var_name, right_part),
+                        error_message: format!("Undefined variable '{}'", var_name),
+                        explanation: "The variable has not been declared in the current scope."
+                            .to_string(),
+                        fix: "Declare the variable with a 'let' statement before using compound assignment."
+                            .to_string(),
+                    });
+                }
+            }
+        }
+
+        iterations += 1;
+    }
+
+    // After the loop, find what comes after and continue
+    if let Some(semi_pos) = find_char_at_depth_zero(input, ';') {
+        let after_loop = input[semi_pos + 1..].trim();
+        if !after_loop.is_empty() {
+            return interpret_with_context(after_loop, context);
+        }
+    }
+
+    // Return the current value of the variable targeted by loop body assignment when available
+    let var_name = extract_assignment_target(body_str);
+    if let Some((val, _)) = context.get_var(var_name) {
+        return Ok(val);
+    }
+
+    Ok(0)
 }
 
 fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, InterpreterError> {
@@ -855,30 +1071,15 @@ fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, Inte
         }
     }
 
+    // Handle while loop: while (condition) body
+    if let Some((condition_str, body_str)) = parse_while_parts(input) {
+        return handle_while_loop(&condition_str, &body_str, input, context);
+    }
+
     // Handle if-else expressions: if (condition) true_expr else false_expr
     if let Some((condition_str, true_expr_str, false_expr_str)) = parse_if_else_parts(input) {
-        // Evaluate the condition and extract its type
-        let cond_val = interpret_with_context(&condition_str, context.clone())?;
-        let cond_type = if let Ok((_, ty)) = extract_value_and_type(&condition_str, &context) {
-            ty
-        } else {
-            "I32".to_string()
-        };
-
-        // Validate that the condition is a boolean type
-        if cond_type != "Bool" {
-            return Err(InterpreterError {
-                code_snippet: format!("if ({}) ...", condition_str),
-                error_message: format!(
-                    "If condition must be of type Bool, got {}",
-                    cond_type
-                ),
-                explanation: "If-else expressions require a boolean condition (true or false). Conditions must evaluate to bool type, not numeric types."
-                    .to_string(),
-                fix: "Use a boolean expression or variable of type Bool as the condition."
-                    .to_string(),
-            });
-        }
+        // Evaluate and type-check the condition
+        let cond_val = evaluate_condition_as_bool(&condition_str, &context, "If")?;
 
         // Evaluate both branches and extract their types
         let true_result = interpret_with_context(&true_expr_str, context.clone())?;
@@ -938,66 +1139,41 @@ fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, Inte
         }
     }
 
+    // Handle comparison expressions (<)
+    if let Some((pos, _)) = find_operator_at_depth(input, &['<'], false) {
+        if let Some((left_val, left_type, right_val, right_type)) =
+            evaluate_binary_operands(input, pos, &context)?
+        {
+            if left_type == "Bool" || right_type == "Bool" {
+                return Err(InterpreterError {
+                    code_snippet: input.to_string(),
+                    error_message: "Cannot compare boolean values with '<'".to_string(),
+                    explanation:
+                        "The '<' operator is only valid for numeric operands in this language."
+                            .to_string(),
+                    fix: "Use numeric values on both sides of '<'.".to_string(),
+                });
+            }
+
+            return Ok(if left_val < right_val { 1 } else { 0 });
+        }
+    }
+
     // Check for binary operations (+, -, *, /) respecting operator precedence
     if let Some((pos, op_char)) = find_lowest_precedence_operator(input) {
-        // Safe string splitting by char position
-        if pos > 0 && pos < input.len() {
-            let left = input[..pos].trim();
-            let right_start = pos + 1;
-            let right = if right_start < input.len() {
-                input[right_start..].trim()
-            } else {
-                ""
-            };
-
-            if !left.is_empty() && !right.is_empty() {
-                // Determine if left is a simple literal or a complex expression
-                let (left_val, left_type) = if find_lowest_precedence_operator(left).is_none() {
-                    // Try parsing as a literal first
-                    match extract_value_and_type(left, &context) {
-                        Ok(result) => result,
-                        Err(_) => {
-                            // If it's not a simple literal, recursively evaluate
-                            (
-                                interpret_with_context(left, context.clone())?,
-                                "I32".to_string(),
-                            )
-                        }
-                    }
-                } else {
-                    // Complex expression with operators, recursively evaluate
-                    (
-                        interpret_with_context(left, context.clone())?,
-                        "I32".to_string(),
-                    )
-                };
-
-                // Determine if right is a simple literal or a complex expression
-                let (right_val, right_type) = if find_lowest_precedence_operator(right).is_none() {
-                    // Try parsing as a literal first
-                    match extract_value_and_type(right, &context) {
-                        Ok(result) => result,
-                        Err(_) => {
-                            // If it's not a simple literal, recursively evaluate
-                            (
-                                interpret_with_context(right, context.clone())?,
-                                "I32".to_string(),
-                            )
-                        }
-                    }
-                } else {
-                    // Complex expression with operators, recursively evaluate
-                    (
-                        interpret_with_context(right, context.clone())?,
-                        "I32".to_string(),
-                    )
-                };
-
-                let result_val =
-                    apply_operation(left_val, &left_type, op_char, right_val, &right_type, input)?;
-                return Ok(result_val);
-            }
+        if let Some((left_val, left_type, right_val, right_type)) =
+            evaluate_binary_operands(input, pos, &context)?
+        {
+            let result_val =
+                apply_operation(left_val, &left_type, op_char, right_val, &right_type, input)?;
+            return Ok(result_val);
         }
+    }
+
+    // Handle simple variable lookup
+    let trimmed = input.trim();
+    if let Some((val, _)) = context.get_var(trimmed) {
+        return Ok(val);
     }
 
     // Fall back to parsing as a single value
@@ -1343,5 +1519,11 @@ mod tests {
     fn test_interpret_compound_assignment_bool_type() {
         let result = interpret("let mut x = true; x += 1; x");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_interpret_while_loop() {
+        let result = interpret("let mut x = 0; while (x < 4) x += 1; x");
+        assert!(matches!(result, Ok(4)));
     }
 }
