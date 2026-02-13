@@ -296,4 +296,10 @@ mod tests {
         let result = interpret("1U8 + 255U16");
         assert!(matches!(result, Ok(256)));
     }
+
+    #[test]
+    fn test_interpret_addition_wider_type_overflow() {
+        let result = interpret("1U8 + 65535U16");
+        assert!(result.is_err());
+    }
 }
