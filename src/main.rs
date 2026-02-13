@@ -606,14 +606,42 @@ fn parse_while_parts(input: &str) -> Option<(String, String)> {
         return None;
     }
 
-    // Extract the body - look for the semicolon
-    if let Some(semi_idx) = after_cond.find(';') {
-        let body = after_cond[..semi_idx].trim().to_string();
-        Some((condition, body))
+    // Extract the body - handle both braced and non-braced bodies
+    let body = if after_cond.starts_with('{') {
+        // Find the matching closing brace
+        let mut brace_depth = 0;
+        let mut body_end = None;
+        for (i, ch) in after_cond.char_indices() {
+            match ch {
+                '{' => brace_depth += 1,
+                '}' => {
+                    brace_depth -= 1;
+                    if brace_depth == 0 {
+                        body_end = Some(i);
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        if let Some(end_pos) = body_end {
+            after_cond[..=end_pos].trim().to_string()
+        } else {
+            // No matching closing brace found
+            return None;
+        }
     } else {
-        // No semicolon - treat rest as body
-        Some((condition, after_cond.trim().to_string()))
-    }
+        // Non-braced body - look for semicolon at depth 0
+        if let Some(semi_idx) = find_char_at_depth_zero(after_cond, ';') {
+            after_cond[..semi_idx].trim().to_string()
+        } else {
+            // No semicolon - treat rest as body
+            after_cond.trim().to_string()
+        }
+    };
+
+    Some((condition, body))
 }
 
 fn is_narrowing_conversion(value_expr: &str, target_type: &str) -> Result<(), (String, String)> {
@@ -682,6 +710,19 @@ fn handle_while_loop(
     const MAX_ITERATIONS: usize = 1024;
     let mut iterations = 0;
 
+    // Strip outer braces from body if they wrap the entire expression
+    let body_to_execute = if is_fully_wrapped(body_str) {
+        let unwrapped = body_str[1..body_str.len() - 1].trim();
+        // Remove trailing semicolon if present
+        if unwrapped.ends_with(';') {
+            unwrapped[..unwrapped.len() - 1].trim()
+        } else {
+            unwrapped
+        }
+    } else {
+        body_str
+    };
+
     loop {
         // Check iteration limit
         if iterations >= MAX_ITERATIONS {
@@ -704,11 +745,11 @@ fn handle_while_loop(
         }
 
         // Execute the body - handle compound assignments manually to update context
-        if body_str.contains("+=") {
+        if body_to_execute.contains("+=") {
             // Handle compound assignment like "x += 1"
-            if let Some(plus_pos) = body_str.find("+=") {
-                let var_name = body_str[..plus_pos].trim();
-                let right_part = body_str[plus_pos + 2..].trim();
+            if let Some(plus_pos) = body_to_execute.find("+=") {
+                let var_name = body_to_execute[..plus_pos].trim();
+                let right_part = body_to_execute[plus_pos + 2..].trim();
 
                 if let Some((current_val, var_type)) = context.get_var(var_name) {
                     let right_value = interpret_with_context(right_part, context.clone())?;
@@ -733,16 +774,55 @@ fn handle_while_loop(
         iterations += 1;
     }
 
-    // After the loop, find what comes after and continue
-    if let Some(semi_pos) = find_char_at_depth_zero(input, ';') {
-        let after_loop = input[semi_pos + 1..].trim();
+    // After the loop, find what comes after by looking for the end of the while statement
+    // For braced bodies, find the matching closing brace
+    if body_str.trim_start().starts_with('{') {
+        let mut brace_depth = 0;
+        let mut body_end_pos = None;
+        let mut found_opening_brace = false;
+
+        for (i, ch) in input.char_indices() {
+            if ch == '{' && !found_opening_brace {
+                found_opening_brace = true;
+                brace_depth = 1;
+            } else if found_opening_brace {
+                match ch {
+                    '{' => brace_depth += 1,
+                    '}' => {
+                        brace_depth -= 1;
+                        if brace_depth == 0 {
+                            body_end_pos = Some(i + 1);
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        if let Some(end_pos) = body_end_pos {
+            let after_loop = input[end_pos..].trim_start();
+            // Skip optional semicolon
+            let after_loop = if after_loop.starts_with(';') {
+                after_loop[1..].trim_start()
+            } else {
+                after_loop
+            };
+
+            if !after_loop.is_empty() {
+                return interpret_with_context(after_loop, context);
+            }
+        }
+    } else if let Some(semi_pos) = find_char_at_depth_zero(input, ';') {
+        // For non-braced bodies, find the semicolon
+        let after_loop = input[semi_pos + 1..].trim_start();
         if !after_loop.is_empty() {
             return interpret_with_context(after_loop, context);
         }
     }
 
     // Return the current value of the variable targeted by loop body assignment when available
-    let var_name = extract_assignment_target(body_str);
+    let var_name = extract_assignment_target(body_to_execute);
     if let Some((val, _)) = context.get_var(var_name) {
         return Ok(val);
     }
@@ -1524,6 +1604,12 @@ mod tests {
     #[test]
     fn test_interpret_while_loop() {
         let result = interpret("let mut x = 0; while (x < 4) x += 1; x");
+        assert!(matches!(result, Ok(4)));
+    }
+
+    #[test]
+    fn test_interpret_while_loop_braced() {
+        let result = interpret("let mut x = 0; while (x < 4) { x += 1; } x");
         assert!(matches!(result, Ok(4)));
     }
 }
