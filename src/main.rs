@@ -10,26 +10,22 @@ struct InterpreterError {
 }
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 struct Context {
     variables: HashMap<String, (i32, String)>, // (value, type)
 }
 
 impl Context {
-    #[allow(dead_code)]
     fn new() -> Self {
         Context {
             variables: HashMap::new(),
         }
     }
 
-    #[allow(dead_code)]
     fn with_var(mut self, name: String, value: i32, var_type: String) -> Self {
         self.variables.insert(name, (value, var_type));
         self
     }
 
-    #[allow(dead_code)]
     fn get_var(&self, name: &str) -> Option<(i32, String)> {
         self.variables.get(name).cloned()
     }
@@ -143,7 +139,6 @@ fn get_type_bounds(type_name: &str) -> Option<(i32, i32)> {
     }
 }
 
-#[allow(dead_code)]
 fn get_type_width(type_name: &str) -> u8 {
     match type_name {
         "I8" | "U8" => 8,
@@ -154,7 +149,6 @@ fn get_type_width(type_name: &str) -> u8 {
     }
 }
 
-#[allow(dead_code)]
 fn get_effective_type<'a>(left_type: &'a str, right_type: &'a str) -> &'a str {
     // If one operand is default I32 (untyped), use the other's type
     match (left_type, right_type) {
@@ -164,7 +158,6 @@ fn get_effective_type<'a>(left_type: &'a str, right_type: &'a str) -> &'a str {
     }
 }
 
-#[allow(dead_code)]
 fn get_wider_type<'a>(left_type: &'a str, right_type: &'a str) -> &'a str {
     let left_width = get_type_width(left_type);
     let right_width = get_type_width(right_type);
@@ -310,7 +303,7 @@ fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, Inte
         let mut paren_depth = 0;
         let mut brace_depth = 0;
         let mut semicolon_pos = None;
-        
+
         for (pos, ch) in input.char_indices() {
             match ch {
                 '(' => paren_depth += 1,
@@ -324,7 +317,7 @@ fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, Inte
                 _ => {}
             }
         }
-        
+
         let semicolon_pos = semicolon_pos.ok_or_else(|| InterpreterError {
             code_snippet: input.to_string(),
             error_message: "Let statement must end with semicolon".to_string(),
@@ -352,7 +345,7 @@ fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, Inte
                 _ => {}
             }
         }
-        
+
         let eq_pos = eq_pos.ok_or_else(|| InterpreterError {
             code_snippet: input.to_string(),
             error_message: "Variable declaration must have an assignment".to_string(),
