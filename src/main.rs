@@ -301,7 +301,7 @@ fn is_fully_wrapped(input: &str) -> bool {
     let mut paren_depth = 0;
     let mut brace_depth = 0;
     let len = input.len();
-    
+
     for (i, ch) in input.char_indices() {
         match ch {
             '(' => paren_depth += 1,
@@ -359,17 +359,25 @@ fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, Inte
         let value_expr = let_part[eq_pos + 1..].trim();
 
         // Parse name : type (where type is optional)
-        let (var_name, var_type) = if let Some(colon_pos) = name_and_type.find(':') {
+        let (var_name, mut var_type) = if let Some(colon_pos) = name_and_type.find(':') {
             let name = name_and_type[..colon_pos].trim().to_string();
             let ty = name_and_type[colon_pos + 1..].trim().to_string();
             (name, ty)
         } else {
-            // No type annotation, infer from the expression
+            // No type annotation, default to I32 (will be refined after evaluating the expression)
             (name_and_type.to_string(), "I32".to_string())
         };
 
-        // Evaluate the value expression
+        // Evaluate the value expression to get both the value and its inferred type
         let val = interpret_with_context(value_expr, context.clone())?;
+
+        // If no explicit type annotation, infer it from the expression
+        if !name_and_type.contains(':') {
+            // Try to extract the type from the value expression
+            if let Ok((_, inferred_type)) = extract_value_and_type(value_expr, &context) {
+                var_type = inferred_type;
+            }
+        }
 
         // Validate the value is within the type bounds of the declared type
         validate_result_in_type(val, &var_type, input)?;
@@ -382,6 +390,27 @@ fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, Inte
                 explanation: "Narrowing type conversions are not allowed.".to_string(),
                 fix: "Use a larger target type or change the source type.".to_string(),
             });
+        }
+
+        // Check if the value_expr is a simple variable reference, and if so, check its type
+        let trimmed_expr = value_expr.trim();
+        if !trimmed_expr
+            .chars()
+            .any(|c| matches!(c, '+' | '-' | '*' | '/' | '(' | ')' | '{' | '}'))
+        {
+            if let Some((_, var_value_type)) = context.get_var(trimmed_expr) {
+                // Check if assigning this variable type to the target type is a narrowing conversion
+                let source_width = get_type_width(&var_value_type);
+                let target_width = get_type_width(&var_type);
+                if source_width > target_width {
+                    return Err(InterpreterError {
+                        code_snippet: input.to_string(),
+                        error_message: format!("Cannot assign {} to {}", var_value_type, var_type),
+                        explanation: "Narrowing type conversions are not allowed.".to_string(),
+                        fix: "Use a larger target type or change the source type.".to_string(),
+                    });
+                }
+            }
         }
 
         // Check for duplicate variable declarations
@@ -650,6 +679,12 @@ mod tests {
     #[test]
     fn test_interpret_let_type_mismatch() {
         let result = interpret("let x : U8 = 100U16; x");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_interpret_let_variable_type_narrowing() {
+        let result = interpret("let x = 100U16; let y : U8 = x; y");
         assert!(result.is_err());
     }
 }
