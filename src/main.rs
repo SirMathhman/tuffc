@@ -1338,4 +1338,10 @@ mod tests {
         let result = interpret("x += 1; x");
         assert!(result.is_err());
     }
+
+    #[test]
+    fn test_interpret_compound_assignment_bool_type() {
+        let result = interpret("let mut x = true; x += 1; x");
+        assert!(result.is_err());
+    }
 }
