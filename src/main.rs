@@ -417,6 +417,26 @@ fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, Inte
         input
     };
 
+    // If empty after stripping, return 0
+    if input.is_empty() {
+        return Ok(0);
+    }
+
+    // Handle case: expression followed by space and let statement, like "{} let x = 0; x"
+    // First check if we have a pattern like "something let " where something doesn't contain let
+    if !input.starts_with("let ") {
+        if let Some(space_let_pos) = input.find(" let ") {
+            let before_let = input[..space_let_pos].trim();
+            let after_space = input[space_let_pos + 1..].trim(); // Skip the space
+
+            // Try to evaluate the part before "let" as a standalone expression
+            if let Ok(_val) = interpret_with_context(before_let, context.clone()) {
+                // Successfully evaluated the expression before "let", now evaluate the rest
+                return interpret_with_context(after_space, context);
+            }
+        }
+    }
+
     // Handle let statements: let [mut] name : type = expr; rest
     if input.starts_with("let ") {
         // Find the semicolon that separates the let statement from the rest
@@ -604,6 +624,31 @@ fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, Inte
             // Check if the type matches
             let result = if actual_type == type_name { 1 } else { 0 };
             return Ok(result);
+        }
+    }
+
+    // Handle expression sequences: expr; rest
+    // Look for a semicolon at depth 0, but make sure it's not inside assignment or let
+    if let Some(semi_pos) = find_char_at_depth_zero(input, ';') {
+        let first_part = input[..semi_pos].trim();
+        let rest = input[semi_pos + 1..].trim();
+
+        // Only handle this if first_part is not a let statement or assignment
+        // (those are already handled above)
+        if !first_part.starts_with("let ")
+            && !first_part.chars().any(|c| matches!(c, '='))
+            && !rest.is_empty()
+        {
+            // Try to evaluate the first expression
+            match interpret_with_context(first_part, context.clone()) {
+                Ok(_first_val) => {
+                    // Successfully evaluated, continue with the rest
+                    return interpret_with_context(rest, context);
+                }
+                Err(_) => {
+                    // Fall through if first part fails to evaluate
+                }
+            }
         }
     }
 
@@ -928,5 +973,11 @@ mod tests {
     fn test_interpret_is_type_operator_variable() {
         let result = interpret("let x = 0; x is I32");
         assert!(matches!(result, Ok(1)));
+    }
+
+    #[test]
+    fn test_interpret_empty_braces_with_let() {
+        let result = interpret("{} let x = 100; x");
+        assert!(matches!(result, Ok(100)));
     }
 }
