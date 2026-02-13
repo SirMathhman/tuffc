@@ -917,4 +917,10 @@ mod tests {
         let result = interpret("100U8 is U8");
         assert!(matches!(result, Ok(1)));
     }
+
+    #[test]
+    fn test_interpret_is_type_operator_untyped() {
+        let result = interpret("100 is I32");
+        assert!(matches!(result, Ok(1)));
+    }
 }
