@@ -756,13 +756,37 @@ fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, Inte
 
                         // Extract the false expression (after "else ")
                         if let Some(false_expr) = else_part.strip_prefix("else ") {
+                            // Evaluate both branches and extract their types
+                            let true_result = interpret_with_context(true_expr, context.clone())?;
+                            let true_type =
+                                if let Ok((_, ty)) = extract_value_and_type(true_expr, &context) {
+                                    ty
+                                } else {
+                                    "I32".to_string()
+                                };
+
+                            let false_result = interpret_with_context(false_expr, context.clone())?;
+                            let false_type =
+                                if let Ok((_, ty)) = extract_value_and_type(false_expr, &context) {
+                                    ty
+                                } else {
+                                    "I32".to_string()
+                                };
+
+                            // Validate that both branches have the same type
+                            if true_type != false_type {
+                                return Err(InterpreterError {
+                                    code_snippet: format!("if ({}) {} else {}", condition_str, true_expr, false_expr),
+                                    error_message: format!("If-else branch types mismatch: true branch is {}, false branch is {}", true_type, false_type),
+                                    explanation: "Both branches of an if-else expression must return values of the same type.".to_string(),
+                                    fix: "Ensure both branches return the same type, or cast one branch to match the other.".to_string(),
+                                });
+                            }
+
                             // Return appropriate branch
                             if cond_val != 0 {
-                                let true_result =
-                                    interpret_with_context(true_expr, context.clone())?;
                                 return Ok(true_result);
                             } else {
-                                let false_result = interpret_with_context(false_expr, context)?;
                                 return Ok(false_result);
                             }
                         }
@@ -1139,6 +1163,12 @@ mod tests {
     #[test]
     fn test_interpret_if_non_bool_condition() {
         let result = interpret("if (100) 3 else 5");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_interpret_if_else_mismatched_types() {
+        let result = interpret("if (true) true else 5");
         assert!(result.is_err());
     }
 }
