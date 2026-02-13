@@ -5,7 +5,7 @@ import { formatDiagnostic, toDiagnostic } from "./errors.js";
 
 function printUsage() {
   console.log(
-    "Usage:\n  tuff compile <input.tuff> [-o output.js] [--stage2] [--modules] [--module-base <dir>] [--json-errors]",
+    "Usage:\n  tuff compile <input.tuff> [-o output.js] [--stage2] [--modules] [--module-base <dir>] [--lint] [--json-errors]",
   );
 }
 
@@ -37,6 +37,7 @@ function main(argv) {
   let modules = false;
   let moduleBaseDir = null;
   let jsonErrors = false;
+  let lint = false;
   for (let i = 2; i < args.length; i++) {
     if (args[i] === "-o" || args[i] === "--out") {
       output = args[i + 1] ? path.resolve(args[i + 1]) : null;
@@ -60,6 +61,10 @@ function main(argv) {
       jsonErrors = true;
       continue;
     }
+    if (args[i] === "--lint") {
+      lint = true;
+      continue;
+    }
   }
 
   try {
@@ -69,6 +74,7 @@ function main(argv) {
         moduleBaseDir: moduleBaseDir ?? path.dirname(path.resolve(input)),
       },
       typecheck: { strictSafety: stage2 },
+      lint: { enabled: lint },
     });
     console.log(`Compiled ${input} -> ${outputPath}`);
   } catch (error) {

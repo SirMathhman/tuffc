@@ -29,6 +29,14 @@ try {
     );
     process.exit(1);
   }
+  for (const key of ["source", "cause", "reason", "fix"]) {
+    if (!diag[key] || typeof diag[key] !== "string") {
+      console.error(
+        `Expected diagnostic field '${key}' to be a non-empty string`,
+      );
+      process.exit(1);
+    }
+  }
 }
 
 // 2) Ensure CLI emits machine-readable JSON diagnostics.
@@ -63,6 +71,62 @@ if (parsed.code !== "E_SAFETY_DIV_BY_ZERO") {
     `Expected CLI diagnostic code E_SAFETY_DIV_BY_ZERO, got ${parsed.code}`,
   );
   process.exit(1);
+}
+
+for (const key of ["source", "cause", "reason", "fix"]) {
+  if (!parsed[key] || typeof parsed[key] !== "string") {
+    console.error(
+      `Expected CLI diagnostic field '${key}' to be a non-empty string`,
+    );
+    process.exit(1);
+  }
+}
+
+// 3) Ensure lint diagnostics use the same 4-part contract.
+const lintFailingFile = path.join(outDir, "cli-lint-fail.tuff");
+fs.writeFileSync(
+  lintFailingFile,
+  `fn main() : I32 => { let unused : I32 = 1; 0 }`,
+  "utf8",
+);
+
+const lintCli = spawnSync(
+  process.execPath,
+  ["./src/cli.js", "compile", lintFailingFile, "--lint", "--json-errors"],
+  {
+    cwd: root,
+    encoding: "utf8",
+  },
+);
+
+if (lintCli.status === 0) {
+  console.error("CLI expected lint failure status when --lint is enabled");
+  process.exit(1);
+}
+
+let lintParsed;
+try {
+  lintParsed = JSON.parse((lintCli.stderr ?? "").trim());
+} catch {
+  console.error("CLI did not emit valid JSON diagnostics for lint failure");
+  console.error(lintCli.stderr);
+  process.exit(1);
+}
+
+if (lintParsed.code !== "E_LINT_UNUSED_BINDING") {
+  console.error(
+    `Expected lint diagnostic code E_LINT_UNUSED_BINDING, got ${lintParsed.code}`,
+  );
+  process.exit(1);
+}
+
+for (const key of ["source", "cause", "reason", "fix"]) {
+  if (!lintParsed[key] || typeof lintParsed[key] !== "string") {
+    console.error(
+      `Expected lint CLI diagnostic field '${key}' to be a non-empty string`,
+    );
+    process.exit(1);
+  }
 }
 
 console.log("Phase 4 production diagnostics checks passed");

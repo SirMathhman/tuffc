@@ -65,12 +65,19 @@ Run Phase 3 verification only:
 Production-readiness diagnostics are now available:
 
 - Structured compiler diagnostics with stable error codes
+- Four-part diagnostics for every error:
+  1. erroneous source excerpt
+  2. cause message
+  3. semantic reason
+  4. concrete fix guidance
 - Human-readable CLI diagnostics by default
 - Machine-readable diagnostics with `--json-errors`
+- Optional lint pass with `--lint`
 
 Example:
 
 - `node ./src/cli.js compile ./tests/out/stage4/cli-fail.tuff --stage2 --json-errors`
+- `node ./src/cli.js compile ./tests/out/stage4/cli-fail.tuff --lint --json-errors`
 
 Run Phase 4 verification only:
 

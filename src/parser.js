@@ -129,13 +129,13 @@ export function parse(tokens) {
   };
 
   const parseBlock = () => {
-    expect("symbol", "{", "Expected '{'");
+    const start = expect("symbol", "{", "Expected '{'").loc;
     const statements = [];
     while (!at("symbol", "}") && !at("eof")) {
       statements.push(parseStatement());
     }
     expect("symbol", "}", "Expected '}'");
-    return { kind: "Block", statements };
+    return { kind: "Block", statements, loc: start };
   };
 
   const precedence = {
@@ -184,11 +184,22 @@ export function parse(tokens) {
   };
 
   const parsePrimary = () => {
-    if (at("number"))
-      return { kind: "NumberLiteral", value: Number(eat().value) };
-    if (at("bool")) return { kind: "BoolLiteral", value: !!eat().value };
-    if (at("string")) return { kind: "StringLiteral", value: eat().value };
-    if (at("char")) return { kind: "CharLiteral", value: eat().value };
+    if (at("number")) {
+      const t = eat();
+      return { kind: "NumberLiteral", value: Number(t.value), loc: t.loc };
+    }
+    if (at("bool")) {
+      const t = eat();
+      return { kind: "BoolLiteral", value: !!t.value, loc: t.loc };
+    }
+    if (at("string")) {
+      const t = eat();
+      return { kind: "StringLiteral", value: t.value, loc: t.loc };
+    }
+    if (at("char")) {
+      const t = eat();
+      return { kind: "CharLiteral", value: t.value, loc: t.loc };
+    }
 
     if (at("symbol", "(")) {
       eat();
@@ -198,7 +209,7 @@ export function parse(tokens) {
     }
 
     if (at("keyword", "if")) {
-      eat();
+      const start = eat().loc;
       expect("symbol", "(", "Expected '(' after if");
       const condition = parseExpression();
       expect("symbol", ")", "Expected ')' after if condition");
@@ -208,11 +219,11 @@ export function parse(tokens) {
         eat();
         elseBranch = at("symbol", "{") ? parseBlock() : parseExpression();
       }
-      return { kind: "IfExpr", condition, thenBranch, elseBranch };
+      return { kind: "IfExpr", condition, thenBranch, elseBranch, loc: start };
     }
 
     if (at("keyword", "match")) {
-      eat();
+      const start = eat().loc;
       expect("symbol", "(", "Expected '(' after match");
       const target = parseExpression();
       expect("symbol", ")", "Expected ')' after match target");
@@ -227,12 +238,12 @@ export function parse(tokens) {
         cases.push({ pattern, body });
       }
       expect("symbol", "}", "Expected '}' for match");
-      return { kind: "MatchExpr", target, cases };
+      return { kind: "MatchExpr", target, cases, loc: start };
     }
 
     if (at("identifier")) {
       const idTok = eat();
-      let expr = { kind: "Identifier", name: idTok.value };
+      let expr = { kind: "Identifier", name: idTok.value, loc: idTok.loc };
 
       if (at("symbol", "{")) {
         eat();
@@ -248,7 +259,12 @@ export function parse(tokens) {
           } while (true);
         }
         expect("symbol", "}", "Expected '}' in struct init");
-        expr = { kind: "StructInit", name: idTok.value, fields };
+        expr = {
+          kind: "StructInit",
+          name: idTok.value,
+          fields,
+          loc: idTok.loc,
+        };
       }
 
       while (true) {
@@ -263,7 +279,7 @@ export function parse(tokens) {
             } while (true);
           }
           expect("symbol", ")", "Expected ')' after call args");
-          expr = { kind: "CallExpr", callee: expr, args };
+          expr = { kind: "CallExpr", callee: expr, args, loc: expr.loc };
           continue;
         }
         if (at("symbol", ".")) {
@@ -272,6 +288,7 @@ export function parse(tokens) {
             kind: "MemberExpr",
             object: expr,
             property: parseIdentifier(),
+            loc: expr.loc,
           };
           continue;
         }
@@ -279,7 +296,7 @@ export function parse(tokens) {
           eat();
           const index = parseExpression();
           expect("symbol", "]", "Expected ']' after index");
-          expr = { kind: "IndexExpr", target: expr, index };
+          expr = { kind: "IndexExpr", target: expr, index, loc: expr.loc };
           continue;
         }
         break;
@@ -299,8 +316,13 @@ export function parse(tokens) {
 
   const parseUnary = () => {
     if (at("symbol", "!") || at("symbol", "-")) {
-      const op = eat().value;
-      return { kind: "UnaryExpr", op, expr: parseUnary() };
+      const tok = eat();
+      return {
+        kind: "UnaryExpr",
+        op: tok.value,
+        expr: parseUnary(),
+        loc: tok.loc,
+      };
     }
     return parsePrimary();
   };
@@ -315,15 +337,15 @@ export function parse(tokens) {
       eat();
       if (op === "is") {
         const pattern = parsePattern();
-        left = { kind: "IsExpr", expr: left, pattern };
+        left = { kind: "IsExpr", expr: left, pattern, loc: left.loc ?? t.loc };
       } else {
         const right = parseExpression(prec + 1);
-        left = { kind: "BinaryExpr", op, left, right };
+        left = { kind: "BinaryExpr", op, left, right, loc: left.loc ?? t.loc };
       }
     }
     if (at("symbol", "?")) {
       eat();
-      left = { kind: "UnwrapExpr", expr: left };
+      left = { kind: "UnwrapExpr", expr: left, loc: left.loc };
     }
     return left;
   };
