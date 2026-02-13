@@ -4,11 +4,24 @@ version = "0.1.0"
 edition = "2021"
 
 [lints.clippy]
+# Direct panic macros
 panic = "deny"
+unimplemented = "deny"
+todo = "deny"
+unreachable = "deny"
+
+# Unwrap/expect
 unwrap_used = "deny"
 expect_used = "deny"
-panicking_unwrap = "deny"
-todo = "deny"
-unimplemented = "deny"
+get_unwrap = "deny"
+unwrap_in_result = "deny"
+panic_in_result_fn = "deny"
+
+# Indexing/slicing
+indexing_slicing = "deny"
+string_slice = "deny"
+
+# Arithmetic
+arithmetic_side_effects = "deny"
 
 [dependencies]
