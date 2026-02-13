@@ -190,6 +190,11 @@ void testU8OutOfRange()
     assertInvalid("u8_out_of_range", "256U8");
 }
 
+void testReadU8()
+{
+    assertValid("read<U8>()", "read<U8>()", 100, "100", 0, NULL);
+}
+
 int32_t main()
 {
     testEmptyProgram();
@@ -197,6 +202,7 @@ int32_t main()
     testU8Literal();
     testNegativeU8Literal();
     testU8OutOfRange();
+    testReadU8();
 
     fprintf(stderr, "Passed %d/%d tests\n", passingTests, totalTests);
 

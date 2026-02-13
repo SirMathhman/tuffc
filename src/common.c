@@ -124,6 +124,44 @@ CompileResult compile(char *source)
         pos++;
     }
 
+    // Check for read<TYPE>() pattern
+    const char *read_pattern = "read<";
+    if (strncmp(source, read_pattern, 5) == 0)
+    {
+        // Try to parse read<TYPE>()
+        const char *type_start = source + 5;
+        const char *type_end = strchr(type_start, '>');
+
+        if (type_end != NULL && strcmp(type_end, ">()") == 0)
+        {
+            // Extract the type
+            int type_len = type_end - type_start;
+            char type_name[16];
+            memcpy(type_name, type_start, type_len);
+            type_name[type_len] = '\0';
+
+            // Check if it's a valid type
+            if (is_valid_type_suffix(type_name))
+            {
+                // Generate C code that reads from stdin and returns the value
+                static char readCode[256];
+                snprintf(readCode, sizeof(readCode),
+                         "#include <stdio.h>\nint main() {\n    int value;\n    scanf(\"%%d\", &value);\n    return (int)value;\n}\n");
+
+                result.variant = OutputVariant;
+                result.output.headerCCode = "";
+                result.output.targetCCode = readCode;
+                return result;
+            }
+            else
+            {
+                return make_error(source, "Unknown type in read function",
+                                  "The type in read<T>() is not a recognized integer type.",
+                                  "Specify a valid integer type for the read function.");
+            }
+        }
+    }
+
     // Try to parse source as a numeric literal, possibly with a type suffix
     char *endptr;
     long num = strtol(source, &endptr, 10);
@@ -160,8 +198,8 @@ CompileResult compile(char *source)
                 if (!is_valid_type_suffix(suffix))
                 {
                     return make_error(source, "Unknown type suffix",
-                                      "The type suffix is not recognized. Allowed suffixes are: U8, U16, U32, U64, I8, I16, I32, I64.",
-                                      "Use one of the allowed type suffixes or remove the suffix entirely.");
+                                      "The suffix does not correspond to a numeric type.",
+                                      "Specify a valid numeric type suffix.");
                 }
 
                 // Check if value is in range for the type
