@@ -86,30 +86,21 @@ fn extract_value_and_type(
     }
 
     // Try parsing with type suffixes (e.g., "100U8", "42I32")
-    let unsigned_suffixes = [
+    let all_suffixes = [
         ("U8", 0i32, 255i32),
         ("U16", 0, 65535),
         ("U32", 0, u32::MAX as i32),
         ("U64", 0, i32::MAX),
-    ];
-    let signed_suffixes = [
         ("I8", -128i32, 127i32),
         ("I16", -32768, 32767),
         ("I32", i32::MIN, i32::MAX),
         ("I64", i32::MIN, i32::MAX),
     ];
 
-    for (suffix, min, max) in &unsigned_suffixes {
-        if let Some(result) = validate_and_parse_with_suffix(input, suffix, *min, *max, true) {
-            match result {
-                Ok(val) => return Ok((val, suffix.to_string())),
-                Err(e) => return Err(e),
-            }
-        }
-    }
-
-    for (suffix, min, max) in &signed_suffixes {
-        if let Some(result) = validate_and_parse_with_suffix(input, suffix, *min, *max, false) {
+    for (suffix, min, max) in &all_suffixes {
+        let is_unsigned = suffix.starts_with('U');
+        if let Some(result) = validate_and_parse_with_suffix(input, suffix, *min, *max, is_unsigned)
+        {
             match result {
                 Ok(val) => return Ok((val, suffix.to_string())),
                 Err(e) => return Err(e),
@@ -218,11 +209,13 @@ fn apply_operation(
     validate_result_in_type(result_val, result_type, code_snippet)
 }
 
-fn find_lowest_precedence_operator(input: &str) -> Option<(usize, char)> {
+fn find_at_depth_zero<F>(input: &str, mut predicate: F) -> Option<(usize, char)>
+where
+    F: FnMut(char, usize) -> bool,
+{
     let mut paren_depth = 0;
     let mut brace_depth = 0;
 
-    // First pass: look for low-precedence operators (+ and -) outside parentheses and braces
     for (pos, ch) in input.char_indices() {
         match ch {
             '(' => paren_depth += 1,
@@ -230,30 +223,7 @@ fn find_lowest_precedence_operator(input: &str) -> Option<(usize, char)> {
             '{' => brace_depth += 1,
             '}' => brace_depth -= 1,
             _ => {
-                if paren_depth == 0 && brace_depth == 0 && matches!(ch, '+' | '-') {
-                    // Make sure this is not a negative sign at the beginning or after an operator
-                    if ch == '-'
-                        && (pos == 0 || input[..pos].trim().ends_with(['+', '-', '*', '/']))
-                    {
-                        continue;
-                    }
-                    return Some((pos, ch));
-                }
-            }
-        }
-    }
-
-    paren_depth = 0;
-    brace_depth = 0;
-    // Second pass: look for high-precedence operators (* and /) outside parentheses and braces
-    for (pos, ch) in input.char_indices() {
-        match ch {
-            '(' => paren_depth += 1,
-            ')' => paren_depth -= 1,
-            '{' => brace_depth += 1,
-            '}' => brace_depth -= 1,
-            _ => {
-                if paren_depth == 0 && brace_depth == 0 && matches!(ch, '*' | '/') {
+                if paren_depth == 0 && brace_depth == 0 && predicate(ch, pos) {
                     return Some((pos, ch));
                 }
             }
@@ -263,35 +233,103 @@ fn find_lowest_precedence_operator(input: &str) -> Option<(usize, char)> {
     None
 }
 
+fn find_char_at_depth_zero(input: &str, target_char: char) -> Option<usize> {
+    find_at_depth_zero(input, |ch, _pos| ch == target_char).map(|(pos, _)| pos)
+}
+
+fn find_operator_at_depth(
+    input: &str,
+    operators: &[char],
+    exclude_unary_minus: bool,
+) -> Option<(usize, char)> {
+    let operators_copy = operators.to_vec();
+    find_at_depth_zero(input, move |ch, pos| {
+        if !operators_copy.contains(&ch) {
+            return false;
+        }
+        if exclude_unary_minus
+            && ch == '-'
+            && (pos == 0 || input[..pos].trim().ends_with(['+', '-', '*', '/']))
+        {
+            return false;
+        }
+        true
+    })
+}
+
+fn find_lowest_precedence_operator(input: &str) -> Option<(usize, char)> {
+    // First pass: look for low-precedence operators (+ and -) outside parentheses and braces
+    if let Some(result) = find_operator_at_depth(input, &['+', '-'], true) {
+        return Some(result);
+    }
+
+    // Second pass: look for high-precedence operators (* and /) outside parentheses and braces
+    find_operator_at_depth(input, &['*', '/'], false)
+}
+
+fn is_narrowing_conversion(value_expr: &str, target_type: &str) -> Result<(), (String, String)> {
+    let target_width = get_type_width(target_type);
+
+    let type_suffixes = [
+        ("U64", 64),
+        ("I64", 64),
+        ("U32", 32),
+        ("I32", 32),
+        ("U16", 16),
+        ("I16", 16),
+        ("U8", 8),
+        ("I8", 8),
+    ];
+
+    for (suffix, width) in &type_suffixes {
+        if value_expr.contains(suffix) && *width > target_width {
+            return Err((suffix.to_string(), target_type.to_string()));
+        }
+    }
+
+    Ok(())
+}
+
+fn is_fully_wrapped(input: &str) -> bool {
+    if (!input.starts_with('(') && !input.starts_with('{'))
+        || (!input.ends_with(')') && !input.ends_with('}'))
+    {
+        return false;
+    }
+
+    // Check that delimiters don't close before the end
+    let mut paren_depth = 0;
+    let mut brace_depth = 0;
+    let len = input.len();
+    
+    for (i, ch) in input.char_indices() {
+        match ch {
+            '(' => paren_depth += 1,
+            ')' => {
+                paren_depth -= 1;
+                if paren_depth == 0 && brace_depth == 0 && i < len - 1 {
+                    return false;
+                }
+            }
+            '{' => brace_depth += 1,
+            '}' => {
+                brace_depth -= 1;
+                if paren_depth == 0 && brace_depth == 0 && i < len - 1 {
+                    return false;
+                }
+            }
+            _ => {}
+        }
+    }
+    true
+}
+
 fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, InterpreterError> {
     let input = input.trim();
 
     // Strip outer parentheses or braces if they wrap the entire expression
-    let input = if (input.starts_with('(') && input.ends_with(')'))
-        || (input.starts_with('{') && input.ends_with('}'))
-    {
-        let mut paren_depth = 0;
-        let mut brace_depth = 0;
-        let mut is_wrapped = true;
-        for (i, ch) in input.char_indices() {
-            match ch {
-                '(' => paren_depth += 1,
-                ')' => paren_depth -= 1,
-                '{' => brace_depth += 1,
-                '}' => brace_depth -= 1,
-                _ => {}
-            }
-            // If delimiters close before the end, they don't wrap the entire expression
-            if (paren_depth == 0 && brace_depth == 0) && i < input.len() - 1 {
-                is_wrapped = false;
-                break;
-            }
-        }
-        if is_wrapped {
-            input[1..input.len() - 1].trim()
-        } else {
-            input
-        }
+    let input = if is_fully_wrapped(input) {
+        input[1..input.len() - 1].trim()
     } else {
         input
     };
@@ -299,26 +337,7 @@ fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, Inte
     // Handle let statements: let name : type = expr; rest
     if input.starts_with("let ") {
         // Find the semicolon that separates the let statement from the rest
-        // We need to track nesting depth to find the correct semicolon
-        let mut paren_depth = 0;
-        let mut brace_depth = 0;
-        let mut semicolon_pos = None;
-
-        for (pos, ch) in input.char_indices() {
-            match ch {
-                '(' => paren_depth += 1,
-                ')' => paren_depth -= 1,
-                '{' => brace_depth += 1,
-                '}' => brace_depth -= 1,
-                ';' if paren_depth == 0 && brace_depth == 0 => {
-                    semicolon_pos = Some(pos);
-                    break;
-                }
-                _ => {}
-            }
-        }
-
-        let semicolon_pos = semicolon_pos.ok_or_else(|| InterpreterError {
+        let semicolon_pos = find_char_at_depth_zero(input, ';').ok_or_else(|| InterpreterError {
             code_snippet: input.to_string(),
             error_message: "Let statement must end with semicolon".to_string(),
             explanation: "Variable declarations must be followed by a semicolon and then the expression to evaluate.".to_string(),
@@ -329,24 +348,7 @@ fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, Inte
         let rest = input[semicolon_pos + 1..].trim();
 
         // Find the equals sign at depth 0 (outside braces and parens)
-        let mut eq_pos = None;
-        paren_depth = 0;
-        brace_depth = 0;
-        for (pos, ch) in let_part.char_indices() {
-            match ch {
-                '(' => paren_depth += 1,
-                ')' => paren_depth -= 1,
-                '{' => brace_depth += 1,
-                '}' => brace_depth -= 1,
-                '=' if paren_depth == 0 && brace_depth == 0 => {
-                    eq_pos = Some(pos);
-                    break;
-                }
-                _ => {}
-            }
-        }
-
-        let eq_pos = eq_pos.ok_or_else(|| InterpreterError {
+        let eq_pos = find_char_at_depth_zero(let_part, '=').ok_or_else(|| InterpreterError {
             code_snippet: input.to_string(),
             error_message: "Variable declaration must have an assignment".to_string(),
             explanation: "Format should be: let name : type = value;".to_string(),
@@ -373,53 +375,12 @@ fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, Inte
         validate_result_in_type(val, &var_type, input)?;
 
         // Check for explicit type mismatch - disallow narrowing conversions from sized types
-        // If the expression explicitly contains a type suffix that's wider than the target, reject it
-        if value_expr.contains("U16") && (var_type == "U8" || var_type == "I8") {
+        if let Err((source_type, _)) = is_narrowing_conversion(value_expr, &var_type) {
             return Err(InterpreterError {
                 code_snippet: input.to_string(),
-                error_message: format!("Cannot assign U16 to {}", var_type),
+                error_message: format!("Cannot assign {} to {}", source_type, var_type),
                 explanation: "Narrowing type conversions are not allowed.".to_string(),
                 fix: "Use a larger target type or change the source type.".to_string(),
-            });
-        }
-        if value_expr.contains("U32") && (var_type == "U8" || var_type == "I8" || var_type == "U16" || var_type == "I16") {
-            return Err(InterpreterError {
-                code_snippet: input.to_string(),
-                error_message: format!("Cannot assign U32 to {}", var_type),
-                explanation: "Narrowing type conversions are not allowed.".to_string(),
-                fix: "Use a larger target type or change the source type.".to_string(),
-            });
-        }
-        if value_expr.contains("U64") && (var_type != "U64" && var_type != "I64") {
-            return Err(InterpreterError {
-                code_snippet: input.to_string(),
-                error_message: format!("Cannot assign U64 to {}", var_type),
-                explanation: "Narrowing type conversions are not allowed.".to_string(),
-                fix: "Use U64 or I64 as the target type.".to_string(),
-            });
-        }
-        if value_expr.contains("I16") && (var_type == "I8" || var_type == "U8") {
-            return Err(InterpreterError {
-                code_snippet: input.to_string(),
-                error_message: format!("Cannot assign I16 to {}", var_type),
-                explanation: "Narrowing type conversions are not allowed.".to_string(),
-                fix: "Use a larger target type or change the source type.".to_string(),
-            });
-        }
-        if value_expr.contains("I32") && (var_type == "I8" || var_type == "I16") {
-            return Err(InterpreterError {
-                code_snippet: input.to_string(),
-                error_message: format!("Cannot assign I32 to {}", var_type),
-                explanation: "Narrowing type conversions are not allowed.".to_string(),
-                fix: "Use a larger target type or change the source type.".to_string(),
-            });
-        }
-        if value_expr.contains("I64") && (var_type != "I64") {
-            return Err(InterpreterError {
-                code_snippet: input.to_string(),
-                error_message: format!("Cannot assign I64 to {}", var_type),
-                explanation: "Narrowing type conversions are not allowed.".to_string(),
-                fix: "Use I64 as the target type.".to_string(),
             });
         }
 
