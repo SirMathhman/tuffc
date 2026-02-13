@@ -1612,4 +1612,10 @@ mod tests {
         let result = interpret("let mut x = 0; while (x < 4) { x += 1; } x");
         assert!(matches!(result, Ok(4)));
     }
+
+    #[test]
+    fn test_interpret_while_loop_non_bool_condition() {
+        let result = interpret("let mut x = 0; while (100) { x += 1; } x");
+        assert!(result.is_err());
+    }
 }
