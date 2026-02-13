@@ -356,16 +356,15 @@ fn interpret_with_context(input: &str, mut context: Context) -> Result<i32, Inte
         let name_and_type = let_part[..eq_pos].trim();
         let value_expr = let_part[eq_pos + 1..].trim();
 
-        // Parse name : type
-        let colon_pos = name_and_type.find(':').ok_or_else(|| InterpreterError {
-            code_snippet: input.to_string(),
-            error_message: "Variable type annotation required".to_string(),
-            explanation: "Format should be: let name : type = value;".to_string(),
-            fix: "Specify the type with a colon after the variable name.".to_string(),
-        })?;
-
-        let var_name = name_and_type[..colon_pos].trim().to_string();
-        let var_type = name_and_type[colon_pos + 1..].trim().to_string();
+        // Parse name : type (where type is optional)
+        let (var_name, var_type) = if let Some(colon_pos) = name_and_type.find(':') {
+            let name = name_and_type[..colon_pos].trim().to_string();
+            let ty = name_and_type[colon_pos + 1..].trim().to_string();
+            (name, ty)
+        } else {
+            // No type annotation, infer from the expression
+            (name_and_type.to_string(), "I32".to_string())
+        };
 
         // Evaluate the value expression
         let val = interpret_with_context(value_expr, context.clone())?;
@@ -604,5 +603,11 @@ mod tests {
     fn test_interpret_let_binding_no_rest() {
         let result = interpret("let x : U8 = 100;");
         assert!(matches!(result, Ok(0)));
+    }
+
+    #[test]
+    fn test_interpret_let_binding_without_type() {
+        let result = interpret("let x = 100; x");
+        assert!(matches!(result, Ok(100)));
     }
 }
