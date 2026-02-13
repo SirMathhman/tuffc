@@ -1934,4 +1934,10 @@ mod tests {
         let result = interpret("let myTuple : (U8, U16) = (1, 2); myTuple[2]");
         assert!(result.is_err());
     }
+
+    #[test]
+    fn test_interpret_tuple_index_out_of_bounds_inferred() {
+        let result = interpret("let myTuple = (1, 2); myTuple[2]");
+        assert!(result.is_err());
+    }
 }
