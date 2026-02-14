@@ -618,6 +618,45 @@ export function parse(tokens) {
   };
 
   const parseStatement = () => {
+    if (at("keyword", "out")) {
+      const outTok = eat();
+      if (at("keyword", "fn")) {
+        const node = parseFunction(false);
+        node.exported = true;
+        node.loc = node.loc ?? outTok.loc;
+        return node;
+      }
+      if (at("keyword", "struct")) {
+        const node = parseStruct();
+        node.exported = true;
+        node.loc = node.loc ?? outTok.loc;
+        return node;
+      }
+      if (at("keyword", "enum")) {
+        const node = parseEnum();
+        node.exported = true;
+        node.loc = node.loc ?? outTok.loc;
+        return node;
+      }
+      if (at("keyword", "type")) {
+        const node = parseTypeAlias();
+        node.exported = true;
+        node.loc = node.loc ?? outTok.loc;
+        return node;
+      }
+      if (at("keyword", "class")) {
+        eat();
+        const node = parseFunction(true);
+        node.exported = true;
+        node.loc = node.loc ?? outTok.loc;
+        return node;
+      }
+      throw new TuffError("Expected declaration after 'out'", peek().loc, {
+        code: "E_PARSE_EXPECTED_TOKEN",
+        hint: "Use 'out' before a top-level fn/struct/enum/type/class declaration.",
+      });
+    }
+
     if (at("keyword", "let")) return parseLetDecl();
     if (at("keyword", "struct")) return parseStruct();
     if (at("keyword", "enum")) return parseEnum();

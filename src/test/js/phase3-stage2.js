@@ -104,4 +104,71 @@ if (got !== 42) {
   process.exit(1);
 }
 
+const rootResolutionEntry = path.join(
+  root,
+  "src",
+  "test",
+  "tuff",
+  "modules",
+  "app_root_resolution.tuff",
+);
+const rootResolutionOut = path.join(outDir, "module-app-root-resolution.js");
+const rootResolutionResult = compileFile(
+  rootResolutionEntry,
+  rootResolutionOut,
+  {
+    enableModules: true,
+    modules: {
+      moduleBaseDir: path.join(root, "src", "test", "tuff", "modules"),
+    },
+    typecheck: { strictSafety: false },
+  },
+);
+
+const rootResolutionSandbox = { module: { exports: {} }, exports: {}, console };
+vm.runInNewContext(
+  `${rootResolutionResult.js}\nmodule.exports = { main };`,
+  rootResolutionSandbox,
+);
+const rootResolutionGot = rootResolutionSandbox.module.exports.main();
+if (rootResolutionGot !== 42) {
+  console.error(
+    `Root module-base resolution test failed: expected 42, got ${rootResolutionGot}`,
+  );
+  process.exit(1);
+}
+
+const privateModuleDir = path.join(outDir, "private-module");
+fs.mkdirSync(privateModuleDir, { recursive: true });
+const privateMain = path.join(privateModuleDir, "Main.tuff");
+const privateLib = path.join(privateModuleDir, "Lib.tuff");
+const privateOut = path.join(privateModuleDir, "Main.js");
+fs.writeFileSync(
+  privateLib,
+  "fn hidden() : I32 => 1;\nout fn shown() : I32 => 2;\n",
+  "utf8",
+);
+fs.writeFileSync(
+  privateMain,
+  "let { hidden } = Lib;\nfn main() : I32 => hidden();\n",
+  "utf8",
+);
+
+try {
+  compileFile(privateMain, privateOut, {
+    enableModules: true,
+    modules: { moduleBaseDir: privateModuleDir },
+    typecheck: { strictSafety: false },
+  });
+  console.error("Expected non-exported import to fail, but it compiled");
+  process.exit(1);
+} catch (error) {
+  if (!String(error?.message ?? "").includes("not exported with 'out'")) {
+    console.error(
+      `Expected non-exported import failure message, got: ${error?.message}`,
+    );
+    process.exit(1);
+  }
+}
+
 console.log("Phase 3 Stage 2 checks passed");

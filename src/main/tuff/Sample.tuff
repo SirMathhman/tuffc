@@ -1,0 +1,3 @@
+out fn doSomething() => {
+    100
+}

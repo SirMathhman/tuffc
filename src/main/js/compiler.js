@@ -22,9 +22,27 @@ function createTracer(enabled) {
 }
 
 function gatherImports(program) {
-  return program.body
-    .filter((n) => n.kind === "ImportDecl")
-    .map((n) => n.modulePath);
+  return program.body.filter((n) => n.kind === "ImportDecl");
+}
+
+function getDeclName(node) {
+  if (!node) return null;
+  if (
+    [
+      "FnDecl",
+      "ClassFunctionDecl",
+      "StructDecl",
+      "EnumDecl",
+      "TypeAlias",
+      "ExternFnDecl",
+      "ExternLetDecl",
+      "ExternTypeDecl",
+      "LetDecl",
+    ].includes(node.kind)
+  ) {
+    return node.name ?? null;
+  }
+  return null;
 }
 
 function modulePathToFile(modulePath, moduleBaseDir) {
@@ -36,6 +54,7 @@ function loadModuleGraph(entryPath, options = {}) {
   const seen = new Set();
   const visiting = new Set();
   const ordered = [];
+  const moduleMetaByPath = new Map();
 
   const visit = (filePath, trail = []) => {
     const abs = path.resolve(filePath);
@@ -62,8 +81,58 @@ function loadModuleGraph(entryPath, options = {}) {
     const cst = parse(tokens);
     const core = desugar(cst);
 
+    const declarations = new Set();
+    const exported = new Set();
+    for (const stmt of core.body) {
+      const declName = getDeclName(stmt);
+      if (!declName) continue;
+      declarations.add(declName);
+      if (stmt.exported === true) {
+        exported.add(declName);
+      }
+    }
+
+    moduleMetaByPath.set(abs, {
+      declarations,
+      exported,
+      imports: gatherImports(core),
+    });
+
     for (const imp of gatherImports(core)) {
-      visit(modulePathToFile(imp, moduleBaseDir), [...trail, abs]);
+      const depFile = modulePathToFile(imp.modulePath, moduleBaseDir);
+      const depAbs = path.resolve(depFile);
+      visit(depFile, [...trail, abs]);
+
+      const depMeta = moduleMetaByPath.get(depAbs);
+      if (!depMeta) continue;
+
+      for (const importedName of imp.names ?? []) {
+        if (depMeta.exported.has(importedName)) {
+          continue;
+        }
+        if (depMeta.declarations.has(importedName)) {
+          throw new TuffError(
+            `Cannot import '${importedName}' from ${imp.modulePath}: symbol is not exported with 'out'`,
+            imp.loc ?? null,
+            {
+              code: "E_MODULE_PRIVATE_IMPORT",
+              reason:
+                "A module import referenced a declaration that exists but is not visible outside its module.",
+              fix: `Mark '${importedName}' as 'out' in ${imp.modulePath}, or stop importing it from this module.`,
+            },
+          );
+        }
+        throw new TuffError(
+          `Cannot import '${importedName}' from ${imp.modulePath}: exported symbol not found`,
+          imp.loc ?? null,
+          {
+            code: "E_MODULE_UNKNOWN_EXPORT",
+            reason:
+              "A module import requested a symbol that is not exported by the target module.",
+            fix: `Check the import list and module exports in ${imp.modulePath}.`,
+          },
+        );
+      }
     }
 
     visiting.delete(abs);

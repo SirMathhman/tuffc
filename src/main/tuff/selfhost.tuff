@@ -5,6 +5,12 @@
  * Uses extern functions for string/array/map operations.
  */
 
+/*
+It's time to work on multi-file compilation.
+
+let { doSomething } = Sample;
+*/
+
 // ============================================================================
 // Extern declarations - these come from runtime.js
 // ============================================================================
@@ -1385,6 +1391,20 @@ fn p_parse_extern_decl() : I32 => {
 }
 
 fn p_parse_statement() : I32 => {
+    if (p_at(TK_KEYWORD, "out")) {
+        p_eat();
+        if (p_at(TK_KEYWORD, "let")) { return p_parse_let(); }
+        if (p_at(TK_KEYWORD, "struct")) { return p_parse_struct(); }
+        if (p_at(TK_KEYWORD, "enum")) { return p_parse_enum(); }
+        if (p_at(TK_KEYWORD, "type")) { return p_parse_type_alias(); }
+        if (p_at(TK_KEYWORD, "fn")) { return p_parse_function(0); }
+        if (p_at(TK_KEYWORD, "class")) {
+            p_eat();
+            return p_parse_function(1);
+        }
+        panic("Expected declaration after 'out'");
+    }
+
     if (p_at(TK_KEYWORD, "let")) { return p_parse_let(); }
     if (p_at(TK_KEYWORD, "struct")) { return p_parse_struct(); }
     if (p_at(TK_KEYWORD, "enum")) { return p_parse_enum(); }
@@ -2587,7 +2607,7 @@ fn join_sources(sources: Vec<*Str>) : *Str => {
     sb_build(sb)
 }
 
-fn gather_module_sources(filePath: *Str, seen: Set, visiting: Set, sources: Vec<*Str>) : I32 => {
+fn gather_module_sources(filePath: *Str, moduleBasePath: *Str, seen: Set, visiting: Set, sources: Vec<*Str>) : I32 => {
     if (seen.set_has(filePath)) {
         return 0;
     }
@@ -2615,8 +2635,8 @@ fn gather_module_sources(filePath: *Str, seen: Set, visiting: Set, sources: Vec<
         if (node_kind(stmt) == NK_IMPORT_DECL) {
             let parts = node_get_data2(stmt);
             let rel = module_parts_to_relative_path(parts);
-            let depPath = path_join(path_dirname(filePath), rel);
-            gather_module_sources(depPath, seen, visiting, sources);
+            let depPath = path_join(moduleBasePath, rel);
+            gather_module_sources(depPath, moduleBasePath, seen, visiting, sources);
         }
         i = i + 1;
     }
@@ -2628,10 +2648,11 @@ fn gather_module_sources(filePath: *Str, seen: Set, visiting: Set, sources: Vec<
 }
 
 fn compile_file(inputPath: *Str, outputPath: *Str) : I32 => {
+    let moduleBasePath = path_dirname(inputPath);
     let seen = set_new();
     let visiting = set_new();
     let sources = vec_new();
-    gather_module_sources(inputPath, seen, visiting, sources);
+    gather_module_sources(inputPath, moduleBasePath, seen, visiting, sources);
     let merged = join_sources(sources);
     let js = compile_source(merged);
     write_file(outputPath, js)
