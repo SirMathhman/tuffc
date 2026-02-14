@@ -5,15 +5,15 @@ import { err, ok, type Result } from "./result.ts";
 type ResolveResult<T> = Result<T, TuffError>;
 
 class Scope {
-  parent: Scope | null;
+  parent: Scope | undefined;
   bindings: Map<string, boolean>;
 
-  constructor(parent: Scope | null = null) {
+  constructor(parent: Scope | undefined = undefined) {
     this.parent = parent;
     this.bindings = new Map();
   }
 
-  define(name: string, loc: unknown = null): ResolveResult<true> {
+  define(name: string, loc: unknown = undefined): ResolveResult<true> {
     if (this.bindings.has(name)) {
       return err(
         new TuffError(
@@ -88,7 +88,7 @@ export function resolveNames(
         externGlobalNames.add(node.name);
       }
       if (!globalDeclModuleByName.has(node.name)) {
-        globalDeclModuleByName.set(node.name, node.__modulePath ?? null);
+        globalDeclModuleByName.set(node.name, node.__modulePath ?? undefined);
       }
     }
   }
@@ -105,7 +105,7 @@ export function resolveNames(
   const visitExpr = (
     expr,
     scope,
-    currentModulePath = null,
+    currentModulePath = undefined,
   ): ResolveResult<void> => {
     if (!expr) return ok(undefined);
     switch (expr.kind) {
@@ -126,14 +126,14 @@ export function resolveNames(
               break;
             }
             const declModulePath =
-              globalDeclModuleByName.get(expr.name) ?? null;
+              globalDeclModuleByName.get(expr.name) ?? undefined;
             if (declModulePath && declModulePath !== currentModulePath) {
               const imported = moduleImportsByPath.get(currentModulePath);
               if (!(imported instanceof Set) || !imported.has(expr.name)) {
                 return err(
                   new TuffError(
                     `Implicit cross-module reference '${expr.name}' is not allowed`,
-                    expr.loc ?? null,
+                    expr.loc ?? undefined,
                     {
                       code: "E_MODULE_IMPLICIT_IMPORT",
                       hint: `Add 'let { ${expr.name} } = ...;' in this module to import it explicitly.`,
@@ -147,7 +147,7 @@ export function resolveNames(
         }
 
         return err(
-          new TuffError(`Unknown identifier '${expr.name}'`, null, {
+          new TuffError(`Unknown identifier '${expr.name}'`, undefined, {
             code: "E_RESOLVE_UNKNOWN_IDENTIFIER",
             hint: "Declare the identifier in scope or import it from a module.",
           }),
@@ -191,7 +191,7 @@ export function resolveNames(
           return err(
             new TuffError(
               `Unknown struct/type '${expr.name}' in initializer`,
-              null,
+              undefined,
               {
                 code: "E_RESOLVE_UNKNOWN_STRUCT",
                 hint: "Declare the struct before using it or import the correct module.",
@@ -258,7 +258,7 @@ export function resolveNames(
   const visitNode = (
     node,
     scope,
-    currentModulePath = null,
+    currentModulePath = undefined,
   ): ResolveResult<void> => {
     if (!node) return ok(undefined);
     const modulePath = node.__modulePath ?? currentModulePath;

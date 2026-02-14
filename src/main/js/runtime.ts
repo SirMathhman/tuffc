@@ -221,7 +221,7 @@ export function read_file(filePath: string): string {
   try {
     return fs.readFileSync(filePath, "utf8");
   } catch (error: unknown) {
-    throw new TuffError(`Failed to read file: ${filePath}`, null, {
+    throw new TuffError(`Failed to read file: ${filePath}`, undefined, {
       code: "E_SELFHOST_PANIC",
       reason:
         "The self-hosted compiler could not load a required source file while resolving inputs/modules.",
@@ -237,7 +237,7 @@ export function write_file(filePath: string, contents: string): number {
     fs.writeFileSync(filePath, contents, "utf8");
     return 0;
   } catch (error: unknown) {
-    throw new TuffError(`Failed to write file: ${filePath}`, null, {
+    throw new TuffError(`Failed to write file: ${filePath}`, undefined, {
       code: "E_SELFHOST_PANIC",
       reason:
         "The self-hosted compiler could not persist generated output to disk.",
@@ -274,7 +274,7 @@ export function print_error(s: unknown): void {
 
 // === Misc ===
 export function panic(msg: string): never {
-  throw new TuffError(msg, null, {
+  throw new TuffError(msg, undefined, {
     code: "E_SELFHOST_PANIC",
     reason:
       "The self-hosted compiler encountered an unrecoverable internal parse/compile condition.",
@@ -283,12 +283,12 @@ export function panic(msg: string): never {
 }
 
 export function panic_with_code(
-  code: string | null,
+  code: string | undefined,
   msg: string,
-  reason: string | null,
-  fix: string | null,
+  reason: string | undefined,
+  fix: string | undefined,
 ): never {
-  throw new TuffError(msg, null, {
+  throw new TuffError(msg, undefined, {
     code: code ?? "E_SELFHOST_PANIC",
     reason:
       reason ??
@@ -323,10 +323,6 @@ export function json_stringify(v: unknown): string {
 
 export function is_undefined(v: unknown): boolean {
   return v === undefined;
-}
-
-export function is_null(v: unknown): boolean {
-  return v === null;
 }
 
 export function typeof_value(v: unknown): string {

@@ -2,7 +2,7 @@
 import { TuffError } from "./errors.ts";
 import { err, ok, type Result } from "./result.ts";
 
-type Loc = { line?: number; column?: number; filePath?: string } | null;
+type Loc = { line?: number; column?: number; filePath?: string } | undefined;
 type Token = {
   type: string;
   value: unknown;
@@ -88,8 +88,8 @@ export function parse(tokens: Token[]): ParseResult<Program> {
       eat();
       const elementResult = parseType();
       if (!elementResult.ok) return elementResult;
-      let init = null;
-      let total = null;
+      let init = undefined;
+      let total = undefined;
       if (at("symbol", ";")) {
         eat();
         const initResult = parseExpression();
@@ -406,7 +406,7 @@ export function parse(tokens: Token[]): ParseResult<Program> {
       if (!closeResult.ok) return closeResult;
       const thenResult = at("symbol", "{") ? parseBlock() : parseExpression();
       if (!thenResult.ok) return thenResult;
-      let elseBranch = null;
+      let elseBranch = undefined;
       if (at("keyword", "else")) {
         eat();
         const elseResult = at("symbol", "{") ? parseBlock() : parseExpression();
@@ -648,7 +648,7 @@ export function parse(tokens: Token[]): ParseResult<Program> {
 
     const nameResult = parseIdentifier();
     if (!nameResult.ok) return nameResult;
-    let type = null;
+    let type = undefined;
     if (at("symbol", ":")) {
       eat();
       const typeResult = parseType();
@@ -701,12 +701,12 @@ export function parse(tokens: Token[]): ParseResult<Program> {
       "Expected '(' in function declaration",
     );
     if (!openResult.ok) return openResult;
-    const params: { name: string; type: Expr | null }[] = [];
+    const params: { name: string; type: Expr | undefined }[] = [];
     if (!at("symbol", ")")) {
       while (true) {
         const paramNameResult = parseIdentifier();
         if (!paramNameResult.ok) return paramNameResult;
-        let paramType = null;
+        let paramType = undefined;
         if (at("symbol", ":")) {
           eat();
           const paramTypeResult = parseType();
@@ -721,7 +721,7 @@ export function parse(tokens: Token[]): ParseResult<Program> {
     const closeResult = expect("symbol", ")", "Expected ')' after params");
     if (!closeResult.ok) return closeResult;
 
-    let returnType = null;
+    let returnType = undefined;
     if (at("symbol", ":")) {
       eat();
       const returnTypeResult = parseType();
@@ -963,12 +963,12 @@ export function parse(tokens: Token[]): ParseResult<Program> {
         }
         const openResult = expect("symbol", "(", "Expected '('");
         if (!openResult.ok) return openResult;
-        const params: { name: string; type: Expr | null }[] = [];
+        const params: { name: string; type: Expr | undefined }[] = [];
         if (!at("symbol", ")")) {
           while (true) {
             const paramNameResult = parseIdentifier();
             if (!paramNameResult.ok) return paramNameResult;
-            let paramType = null;
+            let paramType = undefined;
             if (at("symbol", ":")) {
               eat();
               const paramTypeResult = parseType();
@@ -982,7 +982,7 @@ export function parse(tokens: Token[]): ParseResult<Program> {
         }
         const closeResult = expect("symbol", ")", "Expected ')'");
         if (!closeResult.ok) return closeResult;
-        let returnType = null;
+        let returnType = undefined;
         if (at("symbol", ":")) {
           eat();
           const returnTypeResult = parseType();
@@ -1001,7 +1001,7 @@ export function parse(tokens: Token[]): ParseResult<Program> {
           generics,
           params,
           returnType,
-          body: null,
+          body: undefined,
         });
       }
       if (at("keyword", "let")) {
@@ -1071,7 +1071,7 @@ export function parse(tokens: Token[]): ParseResult<Program> {
     }
     if (at("keyword", "return")) {
       eat();
-      let value = null;
+      let value = undefined;
       if (!at("symbol", ";")) {
         const valueResult = parseExpression();
         if (!valueResult.ok) return valueResult;

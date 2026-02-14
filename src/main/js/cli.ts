@@ -43,12 +43,12 @@ function main(argv: string[]): void {
     return;
   }
 
-  let output = null;
+  let output = undefined;
   let stage2 = false;
   let modules = false;
-  let moduleBaseDir = null;
+  let moduleBaseDir = undefined;
   let jsonErrors = false;
-  let requestedBackend = null;
+  let requestedBackend = undefined;
   let lint = false;
   let lintFix = false;
   let lintStrict = false;
@@ -155,7 +155,7 @@ function main(argv: string[]): void {
   if (!result.ok) {
     const diag = toDiagnostic(result.error);
     if (jsonErrors) {
-      console.error(JSON.stringify(diag, null, 2));
+      console.error(JSON.stringify(diag, undefined, 2));
     } else {
       console.error(formatDiagnostic(diag));
     }
@@ -167,7 +167,7 @@ function main(argv: string[]): void {
     outputPath,
     lintIssues = [],
     lintFixesApplied = 0,
-    lintFixedSource = null,
+    lintFixedSource = undefined,
   } = result.value;
 
   if (lintFix && !modules && typeof lintFixedSource === "string") {

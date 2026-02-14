@@ -49,7 +49,7 @@ for (const filePath of tuffFiles) {
     },
   }) as {
     lintFixesApplied?: number;
-    lintFixedSource?: string | null;
+    lintFixedSource?: string | undefined;
   };
 
   const applied = result.lintFixesApplied ?? 0;

@@ -4,7 +4,9 @@ import { err, ok, type Result } from "./result.ts";
 export class TuffError extends Error {
   constructor(
     message: string,
-    loc: { line?: number; column?: number; filePath?: string } | null = null,
+    loc:
+      | { line?: number; column?: number; filePath?: string }
+      | undefined = undefined,
     options: Record<string, unknown> = {},
   ) {
     const code = options.code ?? "E_GENERIC";
@@ -17,9 +19,9 @@ export class TuffError extends Error {
     this.code = code;
     this.loc = loc;
     this.causeMessage = message;
-    this.source = options.source ?? null;
-    this.reason = options.reason ?? options.details ?? null;
-    this.fix = options.fix ?? options.hint ?? null;
+    this.source = options.source ?? undefined;
+    this.reason = options.reason ?? options.details ?? undefined;
+    this.fix = options.fix ?? options.hint ?? undefined;
     // Backward compatibility with existing diagnostics/tests.
     this.hint = this.fix;
     this.details = this.reason;
@@ -27,15 +29,15 @@ export class TuffError extends Error {
 }
 
 function getLine(source, lineNumber) {
-  if (!source || lineNumber == null || lineNumber < 1) return null;
+  if (!source || lineNumber == undefined || lineNumber < 1) return undefined;
   const lines = source.split(/\r?\n/);
-  return lines[lineNumber - 1] ?? null;
+  return lines[lineNumber - 1] ?? undefined;
 }
 
 function createSourceExcerpt(source, loc) {
-  if (!source || !loc?.line) return null;
+  if (!source || !loc?.line) return undefined;
   const lineText = getLine(source, loc.line);
-  if (lineText == null) return null;
+  if (lineText == undefined) return undefined;
 
   const col = Math.max(1, Number(loc.column ?? 1));
   const caretPad = " ".repeat(Math.max(0, col - 1));
@@ -46,7 +48,7 @@ export function enrichError(
   error: unknown,
   context: {
     sourceByFile?: Map<string, string>;
-    source?: string | null;
+    source?: string | undefined;
   } = {},
 ): unknown {
   if (!(error instanceof TuffError)) return error;
@@ -57,8 +59,8 @@ export function enrichError(
   const fromMap =
     filePath && context.sourceByFile instanceof Map
       ? context.sourceByFile.get(filePath)
-      : null;
-  const source = fromMap ?? context.source ?? null;
+      : undefined;
+  const source = fromMap ?? context.source ?? undefined;
   error.source = createSourceExcerpt(source, error.loc);
   return error;
 }
@@ -83,10 +85,10 @@ export function toDiagnostic(error: unknown): {
   cause: string;
   reason: string;
   fix: string;
-  hint: string | null;
-  details: string | null;
+  hint: string | undefined;
+  details: string | undefined;
   loc: unknown;
-  stack: string | null;
+  stack: string | undefined;
 } {
   const isTuff = error instanceof TuffError;
   const fallbackReason =
@@ -101,20 +103,20 @@ export function toDiagnostic(error: unknown): {
     cause: isTuff ? error.causeMessage : (error?.message ?? String(error)),
     reason: isTuff ? (error.reason ?? fallbackReason) : fallbackReason,
     fix: isTuff ? (error.fix ?? fallbackFix) : fallbackFix,
-    hint: isTuff ? error.hint : null,
-    details: isTuff ? error.details : null,
-    loc: isTuff ? error.loc : null,
-    stack: error?.stack ?? null,
+    hint: isTuff ? error.hint : undefined,
+    details: isTuff ? error.details : undefined,
+    loc: isTuff ? error.loc : undefined,
+    stack: error?.stack ?? undefined,
   };
 }
 
 export function formatDiagnostic(diag: {
-  loc?: { filePath?: string; line?: number; column?: number } | null;
-  source?: string | null;
-  cause?: string | null;
-  message?: string | null;
-  reason?: string | null;
-  fix?: string | null;
+  loc?: { filePath?: string; line?: number; column?: number } | undefined;
+  source?: string | undefined;
+  cause?: string | undefined;
+  message?: string | undefined;
+  reason?: string | undefined;
+  fix?: string | undefined;
   code?: string;
 }): string {
   const where = diag.loc

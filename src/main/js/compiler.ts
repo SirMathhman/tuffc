@@ -16,7 +16,7 @@ import * as runtime from "./runtime.ts";
 
 type CompilerResult<T> = Result<T, TuffError>;
 
-let cachedSelfhost = null;
+let cachedSelfhost = undefined;
 
 function toPosixPath(value) {
   return value.replaceAll("\\", "/");
@@ -76,7 +76,7 @@ function bootstrapSelfhostCompiler(options = {}): CompilerResult<unknown> {
     return err(
       new TuffError(
         "Selfhost compiler bootstrap exports are incomplete",
-        null,
+        undefined,
         {
           code: "E_SELFHOST_BOOTSTRAP_FAILED",
           reason:
@@ -108,7 +108,7 @@ function gatherImports(program) {
 }
 
 function getDeclName(node) {
-  if (!node) return null;
+  if (!node) return undefined;
   if (
     [
       "FnDecl",
@@ -122,9 +122,9 @@ function getDeclName(node) {
       "LetDecl",
     ].includes(node.kind)
   ) {
-    return node.name ?? null;
+    return node.name ?? undefined;
   }
-  return null;
+  return undefined;
 }
 
 function modulePathToFile(modulePath, moduleBaseDir) {
@@ -167,7 +167,7 @@ function loadModuleGraph(
       return err(
         new TuffError(
           `Module import cycle detected: ${cycle.join(" -> ")}`,
-          null,
+          undefined,
           {
             code: "E_MODULE_CYCLE",
             reason:
@@ -186,7 +186,7 @@ function loadModuleGraph(
       return err(
         new TuffError(
           `Cannot read module file: ${abs}`,
-          trail.length > 0 ? { file: trail[trail.length - 1] } : null,
+          trail.length > 0 ? { file: trail[trail.length - 1] } : undefined,
           {
             code: "E_MODULE_NOT_FOUND",
             reason:
@@ -239,7 +239,7 @@ function loadModuleGraph(
           return err(
             new TuffError(
               `Cannot import '${importedName}' from ${imp.modulePath}: symbol is not exported with 'out'`,
-              imp.loc ?? null,
+              imp.loc ?? undefined,
               {
                 code: "E_MODULE_PRIVATE_IMPORT",
                 reason:
@@ -252,7 +252,7 @@ function loadModuleGraph(
         return err(
           new TuffError(
             `Cannot import '${importedName}' from ${imp.modulePath}: exported symbol not found`,
-            imp.loc ?? null,
+            imp.loc ?? undefined,
             {
               code: "E_MODULE_UNKNOWN_EXPORT",
               reason:
@@ -306,7 +306,7 @@ export function compileSource(
       return err(
         new TuffError(
           "Selfhost backend does not support lint auto-fix yet",
-          null,
+          undefined,
           {
             code: "E_SELFHOST_UNSUPPORTED_OPTION",
             reason:
@@ -342,7 +342,7 @@ export function compileSource(
       return err(
         enriched instanceof TuffError
           ? enriched
-          : new TuffError(String(error), null),
+          : new TuffError(String(error), undefined),
       );
     }
     return ok({
@@ -415,7 +415,7 @@ export function compileSource(
 
 function compileFileInternal(
   inputPath: string,
-  outputPath: string | null = null,
+  outputPath: string | undefined = undefined,
   options: Record<string, unknown> = {},
 ): CompilerResult<Record<string, unknown>> {
   if ((options.backend ?? "stage0") === "selfhost") {
@@ -430,7 +430,7 @@ function compileFileInternal(
       return err(
         new TuffError(
           "Selfhost backend does not support lint auto-fix yet",
-          null,
+          undefined,
           {
             code: "E_SELFHOST_UNSUPPORTED_OPTION",
             reason:
@@ -482,12 +482,12 @@ function compileFileInternal(
         sourceByFile: new Map([[absInput, fs.readFileSync(absInput, "utf8")]]),
         source: fs.existsSync(absInput)
           ? fs.readFileSync(absInput, "utf8")
-          : null,
+          : undefined,
       });
       return err(
         enriched instanceof TuffError
           ? enriched
-          : new TuffError(String(error), null),
+          : new TuffError(String(error), undefined),
       );
     }
 
@@ -499,14 +499,14 @@ function compileFileInternal(
       js,
       lintIssues: [],
       lintFixesApplied: 0,
-      lintFixedSource: null,
+      lintFixedSource: undefined,
       outputPath: finalOutput,
     });
   }
 
   const run = createTracer(options.tracePasses);
   const useModules = !!options.enableModules;
-  let graph = null;
+  let graph = undefined;
   const lintMode = options.lint?.mode ?? "error";
   const allowImportCycles =
     options.lint?.enabled === true && lintMode === "warn";
@@ -530,7 +530,7 @@ function compileFileInternal(
         sourceByFile,
         source: fs.existsSync(inputPath)
           ? fs.readFileSync(inputPath, "utf8")
-          : null,
+          : undefined,
       });
       return graphResult;
     }
@@ -614,7 +614,7 @@ function compileFileInternal(
 
 export function compileFile(
   inputPath: string,
-  outputPath: string | null = null,
+  outputPath: string | undefined = undefined,
   options: Record<string, unknown> = {},
 ): CompilerResult<Record<string, unknown>> {
   return compileFileInternal(inputPath, outputPath, options);
@@ -636,7 +636,7 @@ export function compileSourceThrow(
 
 export function compileFileThrow(
   inputPath: string,
-  outputPath: string | null = null,
+  outputPath: string | undefined = undefined,
   options: Record<string, unknown> = {},
 ): Record<string, unknown> {
   const result = compileFile(inputPath, outputPath, options);

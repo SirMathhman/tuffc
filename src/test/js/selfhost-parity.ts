@@ -75,9 +75,14 @@ function assertContract(diag, label) {
   }
 }
 
-function expectBothFail(jsResultFn, selfhostFn, label, expectedCode = null) {
+function expectBothFail(
+  jsResultFn,
+  selfhostFn,
+  label,
+  expectedCode = undefined,
+) {
   const jsResult = jsResultFn();
-  let selfhostError = null;
+  let selfhostError = undefined;
 
   try {
     selfhostFn();

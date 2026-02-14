@@ -393,7 +393,7 @@ fs.writeFileSync(
   "utf8",
 );
 
-const implicitResult = compileFileResult(implicitConsumerModule, null, {
+const implicitResult = compileFileResult(implicitConsumerModule, undefined, {
   enableModules: true,
   modules: { moduleBaseDir: strictModuleDir },
 });
@@ -409,7 +409,7 @@ if (implicitDiag.code !== "E_MODULE_IMPLICIT_IMPORT") {
   process.exit(1);
 }
 
-const explicitResult = compileFileResult(explicitConsumerModule, null, {
+const explicitResult = compileFileResult(explicitConsumerModule, undefined, {
   enableModules: true,
   modules: { moduleBaseDir: strictModuleDir },
 });
@@ -443,7 +443,7 @@ fs.writeFileSync(
   "utf8",
 );
 
-const cycleLintWarn = compileFileResult(cycleLintA, null, {
+const cycleLintWarn = compileFileResult(cycleLintA, undefined, {
   enableModules: true,
   modules: { moduleBaseDir: cycleLintDir },
   lint: { enabled: true, mode: "warn" },
@@ -466,7 +466,7 @@ if (!hasCircularLint) {
   process.exit(1);
 }
 
-const cycleNoLint = compileFileResult(cycleLintA, null, {
+const cycleNoLint = compileFileResult(cycleLintA, undefined, {
   enableModules: true,
   modules: { moduleBaseDir: cycleLintDir },
 });

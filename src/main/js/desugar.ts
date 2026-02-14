@@ -38,7 +38,7 @@ export function desugar(ast: Program): {
                   {
                     kind: "LetDecl",
                     name: "this",
-                    type: null,
+                    type: undefined,
                     value: {
                       kind: "StructInit",
                       name: classNode.name,

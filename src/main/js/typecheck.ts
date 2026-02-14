@@ -28,7 +28,7 @@ function isTypeVariableName(name) {
 }
 
 function named(type) {
-  if (!type) return null;
+  if (!type) return undefined;
   if (typeof type === "string") return type;
   if (type.kind === "NamedType") return type.name;
   if (type.kind === "RefinementType") return named(type.base);
@@ -37,7 +37,7 @@ function named(type) {
   if (type.kind === "ArrayType") return "Array";
   if (type.kind === "PointerType") return "Pointer";
   if (type.kind === "TupleType") return "Tuple";
-  return null;
+  return undefined;
 }
 
 function i32Range() {
@@ -47,31 +47,35 @@ function i32Range() {
 function cloneInfo(info) {
   return {
     name: info?.name ?? "Unknown",
-    min: info?.min ?? null,
-    max: info?.max ?? null,
+    min: info?.min ?? undefined,
+    max: info?.max ?? undefined,
     nonZero: !!info?.nonZero,
-    arrayInit: info?.arrayInit ?? null,
-    arrayTotal: info?.arrayTotal ?? null,
-    unionTags: info?.unionTags ? [...info.unionTags] : null,
-    typeNode: info?.typeNode ?? null,
+    arrayInit: info?.arrayInit ?? undefined,
+    arrayTotal: info?.arrayTotal ?? undefined,
+    unionTags: info?.unionTags ? [...info.unionTags] : undefined,
+    typeNode: info?.typeNode ?? undefined,
   };
 }
 
 function intersectBounds(info, fact) {
   const out = cloneInfo(info);
-  if (fact.min !== undefined && fact.min !== null) {
-    out.min = out.min === null ? fact.min : Math.max(out.min, fact.min);
+  if (fact.min !== undefined && fact.min !== undefined) {
+    out.min = out.min === undefined ? fact.min : Math.max(out.min, fact.min);
   }
-  if (fact.max !== undefined && fact.max !== null) {
-    out.max = out.max === null ? fact.max : Math.min(out.max, fact.max);
+  if (fact.max !== undefined && fact.max !== undefined) {
+    out.max = out.max === undefined ? fact.max : Math.min(out.max, fact.max);
   }
   if (fact.nonZero) out.nonZero = true;
-  if (out.min !== null && out.max !== null && out.min > out.max) {
+  if (out.min !== undefined && out.max !== undefined && out.min > out.max) {
     // Reset bounds if contradictory (rather than throw error)
-    out.min = null;
-    out.max = null;
+    out.min = undefined;
+    out.max = undefined;
   }
-  if (out.min !== null && out.max !== null && (out.min > 0 || out.max < 0)) {
+  if (
+    out.min !== undefined &&
+    out.max !== undefined &&
+    (out.min > 0 || out.max < 0)
+  ) {
     out.nonZero = true;
   }
   return out;
@@ -221,7 +225,7 @@ function collectTypeVariables(type, knownTypeNames, out) {
 }
 
 function literalNumber(expr) {
-  return expr?.kind === "NumberLiteral" ? expr.value : null;
+  return expr?.kind === "NumberLiteral" ? expr.value : undefined;
 }
 
 export function typecheck(
@@ -252,18 +256,29 @@ export function typecheck(
   }
 
   const resolveTypeInfo = (type, seenAliases = new Set()) => {
-    if (!type) return { name: "Unknown", min: null, max: null, nonZero: false };
+    if (!type)
+      return {
+        name: "Unknown",
+        min: undefined,
+        max: undefined,
+        nonZero: false,
+      };
     if (typeof type === "string")
       return {
         name: type,
-        min: null,
-        max: null,
+        min: undefined,
+        max: undefined,
         nonZero: false,
-        typeNode: null,
+        typeNode: undefined,
       };
 
     if (type.kind === "NamedType") {
-      const base = { name: type.name, min: null, max: null, nonZero: false };
+      const base = {
+        name: type.name,
+        min: undefined,
+        max: undefined,
+        nonZero: false,
+      };
       if (type.name === "I32") {
         const r = i32Range();
         base.min = r.min;
@@ -278,7 +293,7 @@ export function typecheck(
           typeAliases.get(type.name),
           seenAliases,
         );
-        base.unionTags = aliasInfo.unionTags ?? null;
+        base.unionTags = aliasInfo.unionTags ?? undefined;
       }
       base.typeNode = type;
       return base;
@@ -287,18 +302,20 @@ export function typecheck(
     if (type.kind === "RefinementType") {
       const base = resolveTypeInfo(type.base, seenAliases);
       const lit = literalNumber(type.valueExpr);
-      if (lit !== null) {
+      if (lit !== undefined) {
         if (type.op === "!=" && lit === 0) {
           base.nonZero = true;
         }
         if (type.op === "<")
-          base.max = base.max === null ? lit - 1 : Math.min(base.max, lit - 1);
+          base.max =
+            base.max === undefined ? lit - 1 : Math.min(base.max, lit - 1);
         if (type.op === "<=")
-          base.max = base.max === null ? lit : Math.min(base.max, lit);
+          base.max = base.max === undefined ? lit : Math.min(base.max, lit);
         if (type.op === ">")
-          base.min = base.min === null ? lit + 1 : Math.max(base.min, lit + 1);
+          base.min =
+            base.min === undefined ? lit + 1 : Math.max(base.min, lit + 1);
         if (type.op === ">=")
-          base.min = base.min === null ? lit : Math.max(base.min, lit);
+          base.min = base.min === undefined ? lit : Math.max(base.min, lit);
       }
       return base;
     }
@@ -311,8 +328,8 @@ export function typecheck(
       if (right.name && right.name !== "Unknown") tags.push(right.name);
       return {
         name: `${left.name}|${right.name}`,
-        min: null,
-        max: null,
+        min: undefined,
+        max: undefined,
         nonZero: false,
         unionTags: [...new Set(tags)],
         typeNode: type,
@@ -322,8 +339,8 @@ export function typecheck(
     if (type.kind === "ArrayType") {
       return {
         name: "Array",
-        min: null,
-        max: null,
+        min: undefined,
+        max: undefined,
         nonZero: false,
         arrayInit: literalNumber(type.init),
         arrayTotal: literalNumber(type.total),
@@ -338,8 +355,8 @@ export function typecheck(
 
     return {
       name: named(type) ?? "Unknown",
-      min: null,
-      max: null,
+      min: undefined,
+      max: undefined,
       nonZero: false,
       typeNode: type,
     };
@@ -421,7 +438,7 @@ export function typecheck(
     if (expected === actual) return true;
     if (!NUMERIC.has(expected) || !NUMERIC.has(actual)) return false;
     if (UNSIGNED.has(expected)) {
-      return actualInfo.min !== null && actualInfo.min >= 0;
+      return actualInfo.min !== undefined && actualInfo.min >= 0;
     }
     return true;
   };
@@ -436,11 +453,26 @@ export function typecheck(
           nonZero: expr.value !== 0,
         });
       case "BoolLiteral":
-        return ok({ name: "Bool", min: null, max: null, nonZero: false });
+        return ok({
+          name: "Bool",
+          min: undefined,
+          max: undefined,
+          nonZero: false,
+        });
       case "StringLiteral":
-        return ok({ name: "*Str", min: null, max: null, nonZero: false });
+        return ok({
+          name: "*Str",
+          min: undefined,
+          max: undefined,
+          nonZero: false,
+        });
       case "CharLiteral":
-        return ok({ name: "Char", min: null, max: null, nonZero: false });
+        return ok({
+          name: "Char",
+          min: undefined,
+          max: undefined,
+          nonZero: false,
+        });
       case "Identifier": {
         if (scope.has(expr.name)) {
           const base = cloneInfo(scope.get(expr.name));
@@ -451,12 +483,32 @@ export function typecheck(
           return ok(cloneInfo(globalScope.get(expr.name)));
         }
         if (functions.has(expr.name))
-          return ok({ name: "Fn", min: null, max: null, nonZero: false });
+          return ok({
+            name: "Fn",
+            min: undefined,
+            max: undefined,
+            nonZero: false,
+          });
         if (structs.has(expr.name))
-          return ok({ name: expr.name, min: null, max: null, nonZero: false });
+          return ok({
+            name: expr.name,
+            min: undefined,
+            max: undefined,
+            nonZero: false,
+          });
         if (enums.has(expr.name))
-          return ok({ name: expr.name, min: null, max: null, nonZero: false });
-        return ok({ name: "Unknown", min: null, max: null, nonZero: false });
+          return ok({
+            name: expr.name,
+            min: undefined,
+            max: undefined,
+            nonZero: false,
+          });
+        return ok({
+          name: "Unknown",
+          min: undefined,
+          max: undefined,
+          nonZero: false,
+        });
       }
       case "StructInit": {
         const s = structs.get(expr.name);
@@ -474,7 +526,12 @@ export function typecheck(
           const inferResult = inferExpr(f.value, scope, facts);
           if (!inferResult.ok) return inferResult;
         }
-        return ok({ name: expr.name, min: null, max: null, nonZero: false });
+        return ok({
+          name: expr.name,
+          min: undefined,
+          max: undefined,
+          nonZero: false,
+        });
       }
       case "UnaryExpr": {
         const tResult = inferExpr(expr.expr, scope, facts);
@@ -487,11 +544,16 @@ export function typecheck(
         if (expr.op === "-") {
           return ok({
             ...t,
-            min: t.max === null ? null : -t.max,
-            max: t.min === null ? null : -t.min,
+            min: t.max === undefined ? undefined : -t.max,
+            max: t.min === undefined ? undefined : -t.min,
           });
         }
-        return ok({ name: "Bool", min: null, max: null, nonZero: false });
+        return ok({
+          name: "Bool",
+          min: undefined,
+          max: undefined,
+          nonZero: false,
+        });
       }
       case "BinaryExpr": {
         const lResult = inferExpr(expr.left, scope, facts);
@@ -525,12 +587,17 @@ export function typecheck(
             );
           }
 
-          const out = { name: l.name, min: null, max: null, nonZero: false };
+          const out = {
+            name: l.name,
+            min: undefined,
+            max: undefined,
+            nonZero: false,
+          };
           if (
-            l.min !== null &&
-            l.max !== null &&
-            r.min !== null &&
-            r.max !== null
+            l.min !== undefined &&
+            l.max !== undefined &&
+            r.min !== undefined &&
+            r.max !== undefined
           ) {
             if (expr.op === "+") {
               out.min = l.min + r.min;
@@ -552,7 +619,7 @@ export function typecheck(
 
           if (strictSafety && ["+", "-", "*"].includes(expr.op)) {
             const i32 = i32Range();
-            if (out.min === null || out.max === null) {
+            if (out.min === undefined || out.max === undefined) {
               return err(
                 new TuffError(
                   `Cannot prove overflow safety for '${expr.op}'`,
@@ -590,8 +657,8 @@ export function typecheck(
             );
           }
           if (
-            out.min !== null &&
-            out.max !== null &&
+            out.min !== undefined &&
+            out.max !== undefined &&
             (out.min > 0 || out.max < 0)
           ) {
             out.nonZero = true;
@@ -599,7 +666,12 @@ export function typecheck(
           return ok(out);
         }
         if (["==", "!=", "<", "<=", ">", ">="].includes(expr.op)) {
-          return ok({ name: "Bool", min: null, max: null, nonZero: false });
+          return ok({
+            name: "Bool",
+            min: undefined,
+            max: undefined,
+            nonZero: false,
+          });
         }
         if (["&&", "||"].includes(expr.op)) {
           const lOk = l.name === "Bool" || l.name === "Unknown";
@@ -611,9 +683,19 @@ export function typecheck(
                 expr.loc,
               ),
             );
-          return ok({ name: "Bool", min: null, max: null, nonZero: false });
+          return ok({
+            name: "Bool",
+            min: undefined,
+            max: undefined,
+            nonZero: false,
+          });
         }
-        return ok({ name: "Unknown", min: null, max: null, nonZero: false });
+        return ok({
+          name: "Unknown",
+          min: undefined,
+          max: undefined,
+          nonZero: false,
+        });
       }
       case "CallExpr": {
         if (expr.callee.kind === "Identifier") {
@@ -723,17 +805,27 @@ export function typecheck(
           const argResult = inferExpr(a, scope, facts);
           if (!argResult.ok) return argResult;
         }
-        return ok({ name: "Unknown", min: null, max: null, nonZero: false });
+        return ok({
+          name: "Unknown",
+          min: undefined,
+          max: undefined,
+          nonZero: false,
+        });
       }
       case "MemberExpr": {
         const tResult = inferExpr(expr.object, scope, facts);
         if (!tResult.ok) return tResult;
         const t = tResult.value;
         if (expr.property === "length" || expr.property === "init") {
-          const max = t.arrayTotal ?? t.arrayInit ?? null;
+          const max = t.arrayTotal ?? t.arrayInit ?? undefined;
           return ok({ name: "USize", min: 0, max, nonZero: false });
         }
-        return ok({ name: "Unknown", min: null, max: null, nonZero: false });
+        return ok({
+          name: "Unknown",
+          min: undefined,
+          max: undefined,
+          nonZero: false,
+        });
       }
       case "IndexExpr": {
         const targetResult = inferExpr(expr.target, scope, facts);
@@ -742,8 +834,8 @@ export function typecheck(
         const indexResult = inferExpr(expr.index, scope, facts);
         if (!indexResult.ok) return indexResult;
         const index = indexResult.value;
-        if (strictSafety && target.arrayInit !== null) {
-          if (index.max === null) {
+        if (strictSafety && target.arrayInit !== undefined) {
+          if (index.max === undefined) {
             return err(
               new TuffError("Cannot prove array index bound safety", expr.loc, {
                 code: "E_SAFETY_ARRAY_BOUNDS_UNPROVEN",
@@ -760,7 +852,12 @@ export function typecheck(
             );
           }
         }
-        return ok({ name: "Unknown", min: null, max: null, nonZero: false });
+        return ok({
+          name: "Unknown",
+          min: undefined,
+          max: undefined,
+          nonZero: false,
+        });
       }
       case "IfExpr": {
         const condResult = inferExpr(expr.condition, scope, facts);
@@ -785,7 +882,12 @@ export function typecheck(
           return ok(
             a.name === b.name
               ? a
-              : { name: "Unknown", min: null, max: null, nonZero: false },
+              : {
+                  name: "Unknown",
+                  min: undefined,
+                  max: undefined,
+                  nonZero: false,
+                },
           );
         }
         return ok(a);
@@ -819,17 +921,32 @@ export function typecheck(
             }
           }
         }
-        return ok({ name: "Unknown", min: null, max: null, nonZero: false });
+        return ok({
+          name: "Unknown",
+          min: undefined,
+          max: undefined,
+          nonZero: false,
+        });
       }
       case "IsExpr": {
         const exprResult = inferExpr(expr.expr, scope, facts);
         if (!exprResult.ok) return exprResult;
-        return ok({ name: "Bool", min: null, max: null, nonZero: false });
+        return ok({
+          name: "Bool",
+          min: undefined,
+          max: undefined,
+          nonZero: false,
+        });
       }
       case "UnwrapExpr":
         return inferExpr(expr.expr, scope, facts);
       default:
-        return ok({ name: "Unknown", min: null, max: null, nonZero: false });
+        return ok({
+          name: "Unknown",
+          min: undefined,
+          max: undefined,
+          nonZero: false,
+        });
     }
   };
 
@@ -837,11 +954,16 @@ export function typecheck(
     node,
     scope,
     facts,
-    expectedReturn = null,
+    expectedReturn = undefined,
   ): TypecheckResult<unknown> => {
     switch (node.kind) {
       case "Block": {
-        let last = { name: "Void", min: null, max: null, nonZero: false };
+        let last = {
+          name: "Void",
+          min: undefined,
+          max: undefined,
+          nonZero: false,
+        };
         const local = new Map(scope);
         const localFacts = new Map(facts);
         for (const s of node.statements) {
@@ -855,8 +977,8 @@ export function typecheck(
         const valueTypeResult = inferExpr(node.value, scope, facts);
         if (!valueTypeResult.ok) return valueTypeResult;
         const valueType = valueTypeResult.value;
-        const expectedInfo = node.type ? resolveTypeInfo(node.type) : null;
-        const expected = expectedInfo?.name ?? null;
+        const expectedInfo = node.type ? resolveTypeInfo(node.type) : undefined;
+        const expected = expectedInfo?.name ?? undefined;
         if (
           expected &&
           valueType.name !== "Unknown" &&
@@ -885,7 +1007,12 @@ export function typecheck(
           ? intersectBounds(expectedInfo, valueType)
           : valueType;
         scope.set(node.name, stored);
-        return ok({ name: "Void", min: null, max: null, nonZero: false });
+        return ok({
+          name: "Void",
+          min: undefined,
+          max: undefined,
+          nonZero: false,
+        });
       }
       case "AssignStmt": {
         const valueResult = inferExpr(node.value, scope, facts);
@@ -908,14 +1035,24 @@ export function typecheck(
             );
           if (t) scope.set(node.target.name, intersectBounds(t, value));
         }
-        return ok({ name: "Void", min: null, max: null, nonZero: false });
+        return ok({
+          name: "Void",
+          min: undefined,
+          max: undefined,
+          nonZero: false,
+        });
       }
       case "ExprStmt":
         return inferExpr(node.expr, scope, facts);
       case "ReturnStmt": {
         const tResult = node.value
           ? inferExpr(node.value, scope, facts)
-          : ok({ name: "Void", min: null, max: null, nonZero: false });
+          : ok({
+              name: "Void",
+              min: undefined,
+              max: undefined,
+              nonZero: false,
+            });
         if (!tResult.ok) return tResult;
         const t = tResult.value;
         if (
@@ -972,13 +1109,18 @@ export function typecheck(
           );
           if (!elseResult.ok) return elseResult;
         }
-        return ok({ name: "Void", min: null, max: null, nonZero: false });
+        return ok({
+          name: "Void",
+          min: undefined,
+          max: undefined,
+          nonZero: false,
+        });
       }
       case "ForStmt": {
         scope.set(node.iterator, {
           name: "I32",
           min: 0,
-          max: null,
+          max: undefined,
           nonZero: false,
         });
         const startResult = inferExpr(node.start, scope, facts);
@@ -992,7 +1134,12 @@ export function typecheck(
           expectedReturn,
         );
         if (!bodyResult.ok) return bodyResult;
-        return ok({ name: "Void", min: null, max: null, nonZero: false });
+        return ok({
+          name: "Void",
+          min: undefined,
+          max: undefined,
+          nonZero: false,
+        });
       }
       case "WhileStmt": {
         const condResult = inferExpr(node.condition, scope, facts);
@@ -1004,7 +1151,12 @@ export function typecheck(
           expectedReturn,
         );
         if (!bodyResult.ok) return bodyResult;
-        return ok({ name: "Void", min: null, max: null, nonZero: false });
+        return ok({
+          name: "Void",
+          min: undefined,
+          max: undefined,
+          nonZero: false,
+        });
       }
       case "FnDecl": {
         const fnScope = new Map(globalScope);
@@ -1035,10 +1187,20 @@ export function typecheck(
             ),
           );
         }
-        return ok({ name: "Void", min: null, max: null, nonZero: false });
+        return ok({
+          name: "Void",
+          min: undefined,
+          max: undefined,
+          nonZero: false,
+        });
       }
       default:
-        return ok({ name: "Void", min: null, max: null, nonZero: false });
+        return ok({
+          name: "Void",
+          min: undefined,
+          max: undefined,
+          nonZero: false,
+        });
     }
   };
 

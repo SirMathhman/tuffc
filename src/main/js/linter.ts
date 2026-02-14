@@ -41,10 +41,10 @@ function collectReceiverExternFns(ast) {
 export function autoFixProgram(
   ast: { body?: unknown[] },
   options: Record<string, unknown> = {},
-): { applied: number; fixedSource: string | null } {
+): { applied: number; fixedSource: string | undefined } {
   const enabled = options.enabled ?? false;
   const fix = options.fix ?? false;
-  const source = options.source ?? null;
+  const source = options.source ?? undefined;
   if (!enabled || !fix) return { applied: 0, fixedSource: source };
 
   const receiverExternFns = collectReceiverExternFns(ast);
@@ -135,7 +135,7 @@ export function lintProgram(
     const effectiveLines = new Set();
     for (const token of tokens) {
       if (token.type === "eof") continue;
-      if (token?.loc?.line != null) {
+      if (token?.loc?.line != undefined) {
         effectiveLines.add(token.loc.line);
       }
     }
@@ -192,7 +192,7 @@ export function lintProgram(
 
   walkNode(ast, (node) => {
     if (node.kind === "LetDecl") {
-      declaredLets.set(node.name, node.loc ?? null);
+      declaredLets.set(node.name, node.loc ?? undefined);
     }
 
     if (node.kind === "Identifier") {
@@ -210,7 +210,7 @@ export function lintProgram(
       issues.push(
         new TuffError(
           `Prefer receiver-call syntax for '${node.callee.name}'`,
-          node.loc ?? null,
+          node.loc ?? undefined,
           {
             code: "E_LINT_PREFER_RECEIVER_CALL",
             reason:
@@ -223,7 +223,7 @@ export function lintProgram(
 
     if (node.kind === "Block" && node.statements?.length === 0) {
       issues.push(
-        new TuffError("Empty block has no effect", node.loc ?? null, {
+        new TuffError("Empty block has no effect", node.loc ?? undefined, {
           code: "E_LINT_EMPTY_BLOCK",
           reason:
             "An empty block executes no statements, which is often accidental and can hide incomplete logic.",
@@ -239,7 +239,7 @@ export function lintProgram(
       issues.push(
         new TuffError(
           "Constant condition in if-expression/statement",
-          node.condition.loc ?? node.loc ?? null,
+          node.condition.loc ?? node.loc ?? undefined,
           {
             code: "E_LINT_CONSTANT_CONDITION",
             reason:
