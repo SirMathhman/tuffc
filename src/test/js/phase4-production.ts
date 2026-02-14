@@ -420,4 +420,68 @@ if (!explicitResult.ok) {
   process.exit(1);
 }
 
+// 9) Circular module imports should surface as lint warnings in warn mode.
+const cycleLintDir = path.join(outDir, "lint-cycle-modules");
+fs.mkdirSync(cycleLintDir, { recursive: true });
+
+const cycleLintA = path.join(cycleLintDir, "A.tuff");
+const cycleLintB = path.join(cycleLintDir, "B.tuff");
+
+fs.writeFileSync(
+  cycleLintA,
+  [
+    "let { b } = B;",
+    "out fn a() : I32 => b();",
+    "fn main() : I32 => a();",
+    "",
+  ].join("\n"),
+  "utf8",
+);
+fs.writeFileSync(
+  cycleLintB,
+  ["let { a } = A;", "out fn b() : I32 => a();", ""].join("\n"),
+  "utf8",
+);
+
+const cycleLintWarn = compileFileResult(cycleLintA, null, {
+  enableModules: true,
+  modules: { moduleBaseDir: cycleLintDir },
+  lint: { enabled: true, mode: "warn" },
+});
+if (!cycleLintWarn.ok) {
+  console.error(
+    `Expected lint warn mode to compile with circular import warning, got: ${String(unwrapErr(cycleLintWarn))}`,
+  );
+  process.exit(1);
+}
+
+const cycleLintIssues = cycleLintWarn.value?.lintIssues ?? [];
+const hasCircularLint = cycleLintIssues.some(
+  (issue) => toDiagnostic(issue).code === "E_LINT_CIRCULAR_IMPORT",
+);
+if (!hasCircularLint) {
+  console.error(
+    "Expected circular import lint issue E_LINT_CIRCULAR_IMPORT in lint warn mode",
+  );
+  process.exit(1);
+}
+
+const cycleNoLint = compileFileResult(cycleLintA, null, {
+  enableModules: true,
+  modules: { moduleBaseDir: cycleLintDir },
+});
+if (cycleNoLint.ok) {
+  console.error(
+    "Expected module cycle to remain a hard compile error when lint warn mode is not enabled",
+  );
+  process.exit(1);
+}
+const cycleNoLintDiag = toDiagnostic(unwrapErr(cycleNoLint));
+if (cycleNoLintDiag.code !== "E_MODULE_CYCLE") {
+  console.error(
+    `Expected E_MODULE_CYCLE without lint warn mode, got ${cycleNoLintDiag.code}`,
+  );
+  process.exit(1);
+}
+
 console.log("Phase 4 production diagnostics checks passed");

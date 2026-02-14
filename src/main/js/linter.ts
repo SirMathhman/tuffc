@@ -167,6 +167,25 @@ export function lintProgram(
     pushFileLengthIssue(options.filePath ?? "<memory>", options.source);
   }
 
+  if (Array.isArray(options.moduleImportCycles)) {
+    for (const cycle of options.moduleImportCycles) {
+      if (!Array.isArray(cycle) || cycle.length < 2) continue;
+      const firstFilePath = cycle[0] ?? "<module>";
+      issues.push(
+        new TuffError(
+          `Circular import detected: ${cycle.join(" -> ")}`,
+          { filePath: firstFilePath, line: 1, column: 1 },
+          {
+            code: "E_LINT_CIRCULAR_IMPORT",
+            reason:
+              "Circular dependencies between modules make dependency flow harder to understand and maintain.",
+            fix: "Refactor shared declarations into a third module and have each side import that shared module instead.",
+          },
+        ),
+      );
+    }
+  }
+
   const declaredLets = new Map();
   const identifierReads = new Set();
   const receiverExternFns = collectReceiverExternFns(ast);

@@ -138,12 +138,16 @@ function loadModuleGraph(
   ordered: unknown[];
   merged: unknown;
   moduleImportsByPath: Map<string, Set<string>>;
+  moduleImportCycles: string[][];
 }> {
   const moduleBaseDir = options.moduleBaseDir ?? path.dirname(entryPath);
+  const allowImportCycles = options.allowImportCycles ?? false;
   const seen = new Set();
   const visiting = new Set();
   const ordered = [];
   const moduleMetaByPath = new Map();
+  const moduleImportCycles = [];
+  const moduleImportCycleKeys = new Set();
 
   const visit = (filePath, trail = []): CompilerResult<void> => {
     const abs = path.resolve(filePath);
@@ -152,6 +156,14 @@ function loadModuleGraph(
       const cycleStart = trail.indexOf(abs);
       const cycle =
         cycleStart >= 0 ? [...trail.slice(cycleStart), abs] : [...trail, abs];
+      if (allowImportCycles) {
+        const cycleKey = cycle.join(" -> ");
+        if (!moduleImportCycleKeys.has(cycleKey)) {
+          moduleImportCycleKeys.add(cycleKey);
+          moduleImportCycles.push(cycle);
+        }
+        return ok(undefined);
+      }
       return err(
         new TuffError(
           `Module import cycle detected: ${cycle.join(" -> ")}`,
@@ -281,7 +293,7 @@ function loadModuleGraph(
     ),
   };
 
-  return ok({ ordered, merged, moduleImportsByPath });
+  return ok({ ordered, merged, moduleImportsByPath, moduleImportCycles });
 }
 
 export function compileSource(
@@ -495,10 +507,16 @@ function compileFileInternal(
   const run = createTracer(options.tracePasses);
   const useModules = !!options.enableModules;
   let graph = null;
+  const lintMode = options.lint?.mode ?? "error";
+  const allowImportCycles =
+    options.lint?.enabled === true && lintMode === "warn";
 
   if (useModules) {
     const graphResult = run("load-module-graph", () =>
-      loadModuleGraph(inputPath, options.modules ?? {}),
+      loadModuleGraph(inputPath, {
+        ...(options.modules ?? {}),
+        allowImportCycles,
+      }),
     );
     if (!graphResult.ok) {
       const sourceByFile = new Map();
@@ -556,11 +574,11 @@ function compileFileInternal(
     const lintIssues = lintProgram(graph.merged, {
       ...(options.lint ?? {}),
       sourceByFile,
+      moduleImportCycles: graph.moduleImportCycles,
     });
     for (const issue of lintIssues) {
       enrichError(issue, { sourceByFile });
     }
-    const lintMode = options.lint?.mode ?? "error";
     if (lintIssues.length > 0 && lintMode !== "warn") {
       return err(lintIssues[0]);
     }
