@@ -1,5 +1,5 @@
-import { TuffError } from "./errors.js";
-import { lex } from "./lexer.js";
+import { TuffError } from "./errors.ts";
+import { lex } from "./lexer.ts";
 
 function walkNode(node, visit) {
   if (!node || typeof node !== "object") return;

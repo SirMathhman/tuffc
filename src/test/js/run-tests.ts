@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
 import { fileURLToPath } from "node:url";
-import { compileSource } from "../../main/js/compiler.js";
+import { compileSource } from "../../main/js/compiler.ts";
 
 const thisFile = fileURLToPath(import.meta.url);
 const root = path.resolve(path.dirname(thisFile), "..", "..", "..");

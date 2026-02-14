@@ -1,4 +1,4 @@
-import { TuffError } from "./errors.js";
+import { TuffError, raise } from "./errors.ts";
 
 const NUMERIC = new Set([
   "I8",
@@ -453,13 +453,18 @@ export function typecheck(ast, options = {}) {
       }
       case "StructInit": {
         const s = structs.get(expr.name);
-        if (!s) throw new TuffError(`Unknown struct '${expr.name}'`, expr.loc);
+        if (!s)
+          return raise(
+            new TuffError(`Unknown struct '${expr.name}'`, expr.loc),
+          );
         const fieldMap = new Map(s.fields.map((f) => [f.name, f]));
         for (const f of expr.fields) {
           if (!fieldMap.has(f.key))
-            throw new TuffError(
-              `Unknown field '${f.key}' for struct ${expr.name}`,
-              expr.loc,
+            return raise(
+              new TuffError(
+                `Unknown field '${f.key}' for struct ${expr.name}`,
+                expr.loc,
+              ),
             );
           inferExpr(f.value, scope, facts);
         }
@@ -468,9 +473,11 @@ export function typecheck(ast, options = {}) {
       case "UnaryExpr": {
         const t = inferExpr(expr.expr, scope, facts);
         if (expr.op === "!" && t.name !== "Bool" && t.name !== "Unknown")
-          throw new TuffError("'!' expects Bool", expr.loc);
+          return raise(new TuffError("'!' expects Bool", expr.loc));
         if (expr.op === "-" && !NUMERIC.has(t.name) && t.name !== "Unknown")
-          throw new TuffError("Unary '-' expects numeric type", expr.loc);
+          return raise(
+            new TuffError("Unary '-' expects numeric type", expr.loc),
+          );
         if (expr.op === "-") {
           return {
             ...t,
@@ -488,19 +495,23 @@ export function typecheck(ast, options = {}) {
           const lOk = NUMERIC.has(l.name) || l.name === "Unknown";
           const rOk = NUMERIC.has(r.name) || r.name === "Unknown";
           if (!lOk || !rOk)
-            throw new TuffError(
-              `Operator ${expr.op} expects numeric operands`,
-              expr.loc,
+            return raise(
+              new TuffError(
+                `Operator ${expr.op} expects numeric operands`,
+                expr.loc,
+              ),
             );
 
           if (strictSafety && expr.op === "/" && !r.nonZero) {
-            throw new TuffError(
-              "Division by zero cannot be ruled out at compile time",
-              expr.loc,
-              {
-                code: "E_SAFETY_DIV_BY_ZERO",
-                hint: "Prove denominator != 0 via refinement type or control-flow guard.",
-              },
+            return raise(
+              new TuffError(
+                "Division by zero cannot be ruled out at compile time",
+                expr.loc,
+                {
+                  code: "E_SAFETY_DIV_BY_ZERO",
+                  hint: "Prove denominator != 0 via refinement type or control-flow guard.",
+                },
+              ),
             );
           }
 
@@ -532,34 +543,40 @@ export function typecheck(ast, options = {}) {
           if (strictSafety && ["+", "-", "*"].includes(expr.op)) {
             const i32 = i32Range();
             if (out.min === null || out.max === null) {
-              throw new TuffError(
-                `Cannot prove overflow safety for '${expr.op}'`,
-                expr.loc,
-                {
-                  code: "E_SAFETY_OVERFLOW_UNPROVEN",
-                  hint: "Add range checks or widen arithmetic before narrowing.",
-                },
+              return raise(
+                new TuffError(
+                  `Cannot prove overflow safety for '${expr.op}'`,
+                  expr.loc,
+                  {
+                    code: "E_SAFETY_OVERFLOW_UNPROVEN",
+                    hint: "Add range checks or widen arithmetic before narrowing.",
+                  },
+                ),
               );
             }
             if (out.min < i32.min || out.max > i32.max) {
-              throw new TuffError(
-                `Integer overflow/underflow proven possible for '${expr.op}'`,
-                expr.loc,
-                {
-                  code: "E_SAFETY_OVERFLOW",
-                  hint: "Constrain operands or use a larger intermediate numeric type.",
-                },
+              return raise(
+                new TuffError(
+                  `Integer overflow/underflow proven possible for '${expr.op}'`,
+                  expr.loc,
+                  {
+                    code: "E_SAFETY_OVERFLOW",
+                    hint: "Constrain operands or use a larger intermediate numeric type.",
+                  },
+                ),
               );
             }
           }
           if (strictSafety && expr.op === "%" && !r.nonZero) {
-            throw new TuffError(
-              "Modulo by zero cannot be ruled out at compile time",
-              expr.loc,
-              {
-                code: "E_SAFETY_MOD_BY_ZERO",
-                hint: "Prove modulo divisor != 0 via guard or refinement.",
-              },
+            return raise(
+              new TuffError(
+                "Modulo by zero cannot be ruled out at compile time",
+                expr.loc,
+                {
+                  code: "E_SAFETY_MOD_BY_ZERO",
+                  hint: "Prove modulo divisor != 0 via guard or refinement.",
+                },
+              ),
             );
           }
           if (
@@ -578,9 +595,11 @@ export function typecheck(ast, options = {}) {
           const lOk = l.name === "Bool" || l.name === "Unknown";
           const rOk = r.name === "Bool" || r.name === "Unknown";
           if (!lOk || !rOk)
-            throw new TuffError(
-              `Operator ${expr.op} expects Bool operands`,
-              expr.loc,
+            return raise(
+              new TuffError(
+                `Operator ${expr.op} expects Bool operands`,
+                expr.loc,
+              ),
             );
           return { name: "Bool", min: null, max: null, nonZero: false };
         }
@@ -643,9 +662,11 @@ export function typecheck(ast, options = {}) {
             // Skip strict type checking for extern functions
             const isExtern = fn.kind === "ExternFnDecl";
             if (!isExtern && expr.args.length !== fn.params.length) {
-              throw new TuffError(
-                `Function ${fn.name} expects ${fn.params.length} args, got ${expr.args.length}`,
-                expr.loc,
+              return raise(
+                new TuffError(
+                  `Function ${fn.name} expects ${fn.params.length} args, got ${expr.args.length}`,
+                  expr.loc,
+                ),
               );
             }
             if (!isExtern) {
@@ -662,16 +683,20 @@ export function typecheck(ast, options = {}) {
                   !areCompatibleNumericTypes(expected, argType.name, argType) &&
                   !typeAliases.has(expected)
                 ) {
-                  throw new TuffError(
-                    `Type mismatch in call to ${fn.name} arg ${idx + 1}: expected ${expected}, got ${argType.name}`,
-                    expr.loc,
+                  return raise(
+                    new TuffError(
+                      `Type mismatch in call to ${fn.name} arg ${idx + 1}: expected ${expected}, got ${argType.name}`,
+                      expr.loc,
+                    ),
                   );
                 }
 
                 if (strictSafety && expectedInfo.nonZero && !argType.nonZero) {
-                  throw new TuffError(
-                    `Call to ${fn.name} requires arg ${idx + 1} to be proven non-zero`,
-                    expr.loc,
+                  return raise(
+                    new TuffError(
+                      `Call to ${fn.name} requires arg ${idx + 1} to be proven non-zero`,
+                      expr.loc,
+                    ),
                   );
                 }
               }
@@ -697,20 +722,20 @@ export function typecheck(ast, options = {}) {
         const index = inferExpr(expr.index, scope, facts);
         if (strictSafety && target.arrayInit !== null) {
           if (index.max === null) {
-            throw new TuffError(
-              "Cannot prove array index bound safety",
-              expr.loc,
-              {
+            return raise(
+              new TuffError("Cannot prove array index bound safety", expr.loc, {
                 code: "E_SAFETY_ARRAY_BOUNDS_UNPROVEN",
                 hint: "Guard index with 'if (i < arr.length)' before indexing.",
-              },
+              }),
             );
           }
           if (index.max >= target.arrayInit || index.min < 0) {
-            throw new TuffError("Array index may be out of bounds", expr.loc, {
-              code: "E_SAFETY_ARRAY_BOUNDS",
-              hint: "Ensure 0 <= index < initialized length.",
-            });
+            return raise(
+              new TuffError("Array index may be out of bounds", expr.loc, {
+                code: "E_SAFETY_ARRAY_BOUNDS",
+                hint: "Ensure 0 <= index < initialized length.",
+              }),
+            );
           }
         }
         return { name: "Unknown", min: null, max: null, nonZero: false };
@@ -718,9 +743,11 @@ export function typecheck(ast, options = {}) {
       case "IfExpr": {
         const cond = inferExpr(expr.condition, scope, facts);
         if (cond.name !== "Bool" && cond.name !== "Unknown")
-          throw new TuffError(
-            "if condition must be Bool",
-            expr.condition?.loc ?? expr.loc,
+          return raise(
+            new TuffError(
+              "if condition must be Bool",
+              expr.condition?.loc ?? expr.loc,
+            ),
           );
         const thenFacts = mergeFacts(facts, deriveFacts(expr.condition, true));
         const elseFacts = mergeFacts(facts, deriveFacts(expr.condition, false));
@@ -745,13 +772,15 @@ export function typecheck(ast, options = {}) {
         if (strictSafety && target.unionTags?.length && !hasWildcard) {
           for (const tag of target.unionTags) {
             if (!seen.has(tag)) {
-              throw new TuffError(
-                `Non-exhaustive match: missing case for ${tag}`,
-                expr.loc,
-                {
-                  code: "E_MATCH_NON_EXHAUSTIVE",
-                  hint: "Add missing case arms or a wildcard case '_'.",
-                },
+              return raise(
+                new TuffError(
+                  `Non-exhaustive match: missing case for ${tag}`,
+                  expr.loc,
+                  {
+                    code: "E_MATCH_NON_EXHAUSTIVE",
+                    hint: "Add missing case arms or a wildcard case '_'.",
+                  },
+                ),
               );
             }
           }
@@ -791,15 +820,19 @@ export function typecheck(ast, options = {}) {
           !areCompatibleNumericTypes(expected, valueType.name, valueType) &&
           !typeAliases.has(expected)
         ) {
-          throw new TuffError(
-            `Type mismatch for let ${node.name}: expected ${expected}, got ${valueType.name}`,
-            node.loc,
+          return raise(
+            new TuffError(
+              `Type mismatch for let ${node.name}: expected ${expected}, got ${valueType.name}`,
+              node.loc,
+            ),
           );
         }
         if (strictSafety && expectedInfo?.nonZero && !valueType.nonZero) {
-          throw new TuffError(
-            `Cannot prove non-zero refinement for ${node.name}`,
-            node.loc,
+          return raise(
+            new TuffError(
+              `Cannot prove non-zero refinement for ${node.name}`,
+              node.loc,
+            ),
           );
         }
         const stored = expectedInfo
@@ -819,9 +852,11 @@ export function typecheck(ast, options = {}) {
             !isTypeVariableName(t.name) &&
             !isTypeVariableName(value.name)
           )
-            throw new int32_t(
-              `Assignment mismatch for ${node.target.name}: expected ${t.name}, got ${value.name}`,
-              node.loc ?? node.target?.loc,
+            return raise(
+              new TuffError(
+                `Assignment mismatch for ${node.target.name}: expected ${t.name}, got ${value.name}`,
+                node.loc ?? node.target?.loc,
+              ),
             );
           if (t) scope.set(node.target.name, intersectBounds(t, value));
         }
@@ -841,15 +876,19 @@ export function typecheck(ast, options = {}) {
           !isTypeVariableName(expectedReturn.name) &&
           !isTypeVariableName(t.name)
         ) {
-          throw new TuffError(
-            `Return type mismatch: expected ${expectedReturn.name}, got ${t.name}`,
-            node.loc,
+          return raise(
+            new TuffError(
+              `Return type mismatch: expected ${expectedReturn.name}, got ${t.name}`,
+              node.loc,
+            ),
           );
         }
         if (strictSafety && expectedReturn?.nonZero && !t.nonZero) {
-          throw new int32_t(
-            "Return value does not satisfy non-zero refinement",
-            node.loc,
+          return raise(
+            new TuffError(
+              "Return value does not satisfy non-zero refinement",
+              node.loc,
+            ),
           );
         }
         return t;
@@ -857,9 +896,11 @@ export function typecheck(ast, options = {}) {
       case "IfStmt": {
         const cond = inferExpr(node.condition, scope, facts);
         if (cond.name !== "Bool" && cond.name !== "Unknown")
-          throw new TuffError(
-            "if condition must be Bool",
-            node.condition?.loc ?? node.loc,
+          return raise(
+            new TuffError(
+              "if condition must be Bool",
+              node.condition?.loc ?? node.loc,
+            ),
           );
         const thenFacts = mergeFacts(facts, deriveFacts(node.condition, true));
         const elseFacts = mergeFacts(facts, deriveFacts(node.condition, false));
@@ -903,9 +944,11 @@ export function typecheck(ast, options = {}) {
           !isTypeVariableName(expected) &&
           !isTypeVariableName(bodyType.name)
         ) {
-          throw new TuffError(
-            `Function ${node.name} return type mismatch: expected ${expected}, got ${bodyType.name}`,
-            node.loc,
+          return raise(
+            new TuffError(
+              `Function ${node.name} return type mismatch: expected ${expected}, got ${bodyType.name}`,
+              node.loc,
+            ),
           );
         }
         return { name: "Void", min: null, max: null, nonZero: false };

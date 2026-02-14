@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { compileFile } from "../../main/js/compiler.js";
+import { compileFile } from "../../main/js/compiler.ts";
 
 const thisFile = fileURLToPath(import.meta.url);
 const root = path.resolve(path.dirname(thisFile), "..", "..", "..");

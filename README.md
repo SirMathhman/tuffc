@@ -24,10 +24,11 @@ Implements Phase 1 / Stage 0 from `SELF-HOST.md`:
 1. Build self-hosted compiler artifacts: `bun run build`
 2. Run tests: `bun run test`
 3. Run lint pass: `bun run lint`
-4. Run selfhost module verification only: `bun run selfhost:modules`
-5. Run selfhost diagnostics verification only: `bun run selfhost:diagnostics`
-6. Run selfhost differential parity gate: `bun run selfhost:parity`
-7. Compile file: `node ./src/main/js/cli.js compile ./src/test/tuff/cases/factorial.tuff -o ./tests/out/factorial.js`
+4. Run JS throw-ban lint gate: `bun run lint:throws`
+5. Run selfhost module verification only: `bun run selfhost:modules`
+6. Run selfhost diagnostics verification only: `bun run selfhost:diagnostics`
+7. Run selfhost differential parity gate: `bun run selfhost:parity`
+8. Compile file: `node ./src/main/js/cli.js compile ./src/test/tuff/cases/factorial.tuff -o ./tests/out/factorial.js`
 
 ## Phase 2 / Stage 1
 
@@ -96,3 +97,12 @@ Example:
 Run Phase 4 verification only:
 
 - `bun run stage4:verify`
+
+## Porting policy: no `throw` in JS
+
+For Tuff-portability, JavaScript compiler code is migrating from exception-based
+control flow to `Result<T, E>` values.
+
+- ESLint enforces a throw-ban rule (`ThrowStatement`) across JS sources.
+- The throw-ban is now enforced across `src/main/js` without legacy allowlists.
+- New and migrated code should use helpers in `src/main/js/result.js`.

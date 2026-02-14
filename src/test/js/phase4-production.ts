@@ -2,8 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
-import { compileFile, compileSource } from "../../main/js/compiler.js";
-import { toDiagnostic } from "../../main/js/errors.js";
+import { compileFile, compileSource } from "../../main/js/compiler.ts";
+import { toDiagnostic } from "../../main/js/errors.ts";
 
 const thisFile = fileURLToPath(import.meta.url);
 const root = path.resolve(path.dirname(thisFile), "..", "..", "..");
@@ -61,7 +61,7 @@ fs.writeFileSync(failingFile, `fn bad(x : I32) : I32 => 100 / x;`, "utf8");
 
 const cli = spawnSync(
   process.execPath,
-  ["./src/main/js/cli.js", "compile", failingFile, "--stage2", "--json-errors"],
+  ["./src/main/js/cli.ts", "compile", failingFile, "--stage2", "--json-errors"],
   {
     cwd: root,
     encoding: "utf8",
@@ -109,7 +109,7 @@ fs.writeFileSync(
 const lintCli = spawnSync(
   process.execPath,
   [
-    "./src/main/js/cli.js",
+    "./src/main/js/cli.ts",
     "compile",
     lintFailingFile,
     "--lint",
@@ -203,7 +203,7 @@ fs.writeFileSync(
 const lintFixCli = spawnSync(
   process.execPath,
   [
-    "./src/main/js/cli.js",
+    "./src/main/js/cli.ts",
     "compile",
     lintFixFile,
     "--lint",

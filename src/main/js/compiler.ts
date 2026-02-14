@@ -2,15 +2,16 @@ import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
 import { fileURLToPath } from "node:url";
-import { lex } from "./lexer.js";
-import { parse } from "./parser.js";
-import { desugar } from "./desugar.js";
-import { resolveNames } from "./resolve.js";
-import { typecheck } from "./typecheck.js";
-import { autoFixProgram, lintProgram } from "./linter.js";
-import { generateJavaScript } from "./codegen-js.js";
-import { TuffError, enrichError } from "./errors.js";
-import * as runtime from "./runtime.js";
+import { lex } from "./lexer.ts";
+import { parse } from "./parser.ts";
+import { desugar } from "./desugar.ts";
+import { resolveNames } from "./resolve.ts";
+import { typecheck } from "./typecheck.ts";
+import { autoFixProgram, lintProgram } from "./linter.ts";
+import { generateJavaScript } from "./codegen-js.ts";
+import { TuffError, enrichError, raise } from "./errors.ts";
+import { err, ok } from "./result.ts";
+import * as runtime from "./runtime.ts";
 
 let cachedSelfhost = null;
 
@@ -67,15 +68,17 @@ function bootstrapSelfhostCompiler(options = {}) {
     typeof compiled?.compile_source !== "function" ||
     typeof compiled?.compile_file !== "function"
   ) {
-    throw new TuffError(
-      "Selfhost compiler bootstrap exports are incomplete",
-      null,
-      {
-        code: "E_SELFHOST_BOOTSTRAP_FAILED",
-        reason:
-          "The generated selfhost JavaScript did not expose the expected compiler entry points.",
-        fix: "Ensure selfhost.tuff exports compile_source and compile_file and re-run bootstrap.",
-      },
+    return raise(
+      new TuffError(
+        "Selfhost compiler bootstrap exports are incomplete",
+        null,
+        {
+          code: "E_SELFHOST_BOOTSTRAP_FAILED",
+          reason:
+            "The generated selfhost JavaScript did not expose the expected compiler entry points.",
+          fix: "Ensure selfhost.tuff exports compile_source and compile_file and re-run bootstrap.",
+        },
+      ),
     );
   }
 
@@ -137,15 +140,17 @@ function loadModuleGraph(entryPath, options = {}) {
       const cycleStart = trail.indexOf(abs);
       const cycle =
         cycleStart >= 0 ? [...trail.slice(cycleStart), abs] : [...trail, abs];
-      throw new TuffError(
-        `Module import cycle detected: ${cycle.join(" -> ")}`,
-        null,
-        {
-          code: "E_MODULE_CYCLE",
-          reason:
-            "The module dependency graph contains a cycle, so a topological compilation order cannot be established.",
-          fix: "Break the cycle by moving shared declarations into a third module and import that module from each side.",
-        },
+      return raise(
+        new TuffError(
+          `Module import cycle detected: ${cycle.join(" -> ")}`,
+          null,
+          {
+            code: "E_MODULE_CYCLE",
+            reason:
+              "The module dependency graph contains a cycle, so a topological compilation order cannot be established.",
+            fix: "Break the cycle by moving shared declarations into a third module and import that module from each side.",
+          },
+        ),
       );
     }
     visiting.add(abs);
@@ -185,26 +190,30 @@ function loadModuleGraph(entryPath, options = {}) {
           continue;
         }
         if (depMeta.declarations.has(importedName)) {
-          throw new TuffError(
-            `Cannot import '${importedName}' from ${imp.modulePath}: symbol is not exported with 'out'`,
-            imp.loc ?? null,
-            {
-              code: "E_MODULE_PRIVATE_IMPORT",
-              reason:
-                "A module import referenced a declaration that exists but is not visible outside its module.",
-              fix: `Mark '${importedName}' as 'out' in ${imp.modulePath}, or stop importing it from this module.`,
-            },
+          return raise(
+            new TuffError(
+              `Cannot import '${importedName}' from ${imp.modulePath}: symbol is not exported with 'out'`,
+              imp.loc ?? null,
+              {
+                code: "E_MODULE_PRIVATE_IMPORT",
+                reason:
+                  "A module import referenced a declaration that exists but is not visible outside its module.",
+                fix: `Mark '${importedName}' as 'out' in ${imp.modulePath}, or stop importing it from this module.`,
+              },
+            ),
           );
         }
-        throw new TuffError(
-          `Cannot import '${importedName}' from ${imp.modulePath}: exported symbol not found`,
-          imp.loc ?? null,
-          {
-            code: "E_MODULE_UNKNOWN_EXPORT",
-            reason:
-              "A module import requested a symbol that is not exported by the target module.",
-            fix: `Check the import list and module exports in ${imp.modulePath}.`,
-          },
+        return raise(
+          new TuffError(
+            `Cannot import '${importedName}' from ${imp.modulePath}: exported symbol not found`,
+            imp.loc ?? null,
+            {
+              code: "E_MODULE_UNKNOWN_EXPORT",
+              reason:
+                "A module import requested a symbol that is not exported by the target module.",
+              fix: `Check the import list and module exports in ${imp.modulePath}.`,
+            },
+          ),
         );
       }
     }
@@ -242,15 +251,17 @@ function loadModuleGraph(entryPath, options = {}) {
 export function compileSource(source, filePath = "<memory>", options = {}) {
   if ((options.backend ?? "stage0") === "selfhost") {
     if (options.lint?.fix) {
-      throw new TuffError(
-        "Selfhost backend does not support lint auto-fix yet",
-        null,
-        {
-          code: "E_SELFHOST_UNSUPPORTED_OPTION",
-          reason:
-            "Selfhost backend currently supports strict file-length lint checks but not source auto-fix rewriting.",
-          fix: "Use backend: 'stage0' with --lint-fix, or disable lint auto-fix in selfhost mode.",
-        },
+      return raise(
+        new TuffError(
+          "Selfhost backend does not support lint auto-fix yet",
+          null,
+          {
+            code: "E_SELFHOST_UNSUPPORTED_OPTION",
+            reason:
+              "Selfhost backend currently supports strict file-length lint checks but not source auto-fix rewriting.",
+            fix: "Use backend: 'stage0' with --lint-fix, or disable lint auto-fix in selfhost mode.",
+          },
+        ),
       );
     }
 
@@ -279,7 +290,7 @@ export function compileSource(source, filePath = "<memory>", options = {}) {
         lintFixedSource: source,
       };
     } catch (error) {
-      throw enrichError(error, { source });
+      return raise(enrichError(error, { source }));
     }
   }
 
@@ -305,7 +316,7 @@ export function compileSource(source, filePath = "<memory>", options = {}) {
     }
     const lintMode = options.lint?.mode ?? "error";
     if (lintIssues.length > 0 && lintMode !== "warn") {
-      throw lintIssues[0];
+      return raise(lintIssues[0]);
     }
     const js = run("codegen", () => generateJavaScript(core));
     return {
@@ -318,7 +329,7 @@ export function compileSource(source, filePath = "<memory>", options = {}) {
       lintFixedSource,
     };
   } catch (error) {
-    throw enrichError(error, { source });
+    return raise(enrichError(error, { source }));
   }
 }
 
@@ -330,15 +341,17 @@ export function compileFile(inputPath, outputPath = null, options = {}) {
     try {
       const selfhost = bootstrapSelfhostCompiler(options);
       if (options.lint?.fix) {
-        throw new TuffError(
-          "Selfhost backend does not support lint auto-fix yet",
-          null,
-          {
-            code: "E_SELFHOST_UNSUPPORTED_OPTION",
-            reason:
-              "Selfhost backend currently supports strict file-length lint checks but not source auto-fix rewriting.",
-            fix: "Use backend: 'stage0' with --lint-fix, or disable lint auto-fix in selfhost mode.",
-          },
+        return raise(
+          new TuffError(
+            "Selfhost backend does not support lint auto-fix yet",
+            null,
+            {
+              code: "E_SELFHOST_UNSUPPORTED_OPTION",
+              reason:
+                "Selfhost backend currently supports strict file-length lint checks but not source auto-fix rewriting.",
+              fix: "Use backend: 'stage0' with --lint-fix, or disable lint auto-fix in selfhost mode.",
+            },
+          ),
         );
       }
 
@@ -390,12 +403,16 @@ export function compileFile(inputPath, outputPath = null, options = {}) {
         outputPath: finalOutput,
       };
     } catch (error) {
-      throw enrichError(error, {
-        sourceByFile: new Map([[absInput, fs.readFileSync(absInput, "utf8")]]),
-        source: fs.existsSync(absInput)
-          ? fs.readFileSync(absInput, "utf8")
-          : null,
-      });
+      return raise(
+        enrichError(error, {
+          sourceByFile: new Map([
+            [absInput, fs.readFileSync(absInput, "utf8")],
+          ]),
+          source: fs.existsSync(absInput)
+            ? fs.readFileSync(absInput, "utf8")
+            : null,
+        }),
+      );
     }
   }
 
@@ -438,7 +455,7 @@ export function compileFile(inputPath, outputPath = null, options = {}) {
       }
       const lintMode = options.lint?.mode ?? "error";
       if (lintIssues.length > 0 && lintMode !== "warn") {
-        throw lintIssues[0];
+        return raise(lintIssues[0]);
       }
       const js = run("codegen", () => generateJavaScript(graph.merged));
       result = {
@@ -469,16 +486,38 @@ export function compileFile(inputPath, outputPath = null, options = {}) {
         fs.readFileSync(inputPath, "utf8"),
       );
     }
-    throw enrichError(error, {
-      sourceByFile,
-      source: fs.existsSync(inputPath)
-        ? fs.readFileSync(inputPath, "utf8")
-        : null,
-    });
+    return raise(
+      enrichError(error, {
+        sourceByFile,
+        source: fs.existsSync(inputPath)
+          ? fs.readFileSync(inputPath, "utf8")
+          : null,
+      }),
+    );
   }
 
   const finalOutput = outputPath ?? inputPath.replace(/\.tuff$/i, ".js");
   fs.mkdirSync(path.dirname(finalOutput), { recursive: true });
   fs.writeFileSync(finalOutput, result.js, "utf8");
   return { ...result, outputPath: finalOutput };
+}
+
+export function compileSourceResult(
+  source,
+  filePath = "<memory>",
+  options = {},
+) {
+  try {
+    return ok(compileSource(source, filePath, options));
+  } catch (error) {
+    return err(error);
+  }
+}
+
+export function compileFileResult(inputPath, outputPath = null, options = {}) {
+  try {
+    return ok(compileFile(inputPath, outputPath, options));
+  } catch (error) {
+    return err(error);
+  }
 }

@@ -4,7 +4,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { TuffError } from "./errors.js";
+import { TuffError, raise } from "./errors.ts";
 
 // === String operations ===
 export function str_length(s) {
@@ -219,13 +219,15 @@ export function read_file(filePath) {
   try {
     return fs.readFileSync(filePath, "utf8");
   } catch (error) {
-    throw new TuffError(`Failed to read file: ${filePath}`, null, {
-      code: "E_SELFHOST_PANIC",
-      reason:
-        "The self-hosted compiler could not load a required source file while resolving inputs/modules.",
-      fix: "Verify the file path and module layout, then retry compilation.",
-      details: error?.message,
-    });
+    return raise(
+      new TuffError(`Failed to read file: ${filePath}`, null, {
+        code: "E_SELFHOST_PANIC",
+        reason:
+          "The self-hosted compiler could not load a required source file while resolving inputs/modules.",
+        fix: "Verify the file path and module layout, then retry compilation.",
+        details: error?.message,
+      }),
+    );
   }
 }
 
@@ -235,13 +237,15 @@ export function write_file(filePath, contents) {
     fs.writeFileSync(filePath, contents, "utf8");
     return 0;
   } catch (error) {
-    throw new TuffError(`Failed to write file: ${filePath}`, null, {
-      code: "E_SELFHOST_PANIC",
-      reason:
-        "The self-hosted compiler could not persist generated output to disk.",
-      fix: "Verify output path permissions and directory accessibility, then retry.",
-      details: error?.message,
-    });
+    return raise(
+      new TuffError(`Failed to write file: ${filePath}`, null, {
+        code: "E_SELFHOST_PANIC",
+        reason:
+          "The self-hosted compiler could not persist generated output to disk.",
+        fix: "Verify output path permissions and directory accessibility, then retry.",
+        details: error?.message,
+      }),
+    );
   }
 }
 
@@ -272,24 +276,28 @@ export function print_error(s) {
 
 // === Misc ===
 export function panic(msg) {
-  throw new TuffError(msg, null, {
-    code: "E_SELFHOST_PANIC",
-    reason:
-      "The self-hosted compiler encountered an unrecoverable internal parse/compile condition.",
-    fix: "Check the reported source construct and simplify or correct the syntax; if valid, add a targeted selfhost frontend test and patch the selfhost parser pipeline.",
-  });
+  return raise(
+    new TuffError(msg, null, {
+      code: "E_SELFHOST_PANIC",
+      reason:
+        "The self-hosted compiler encountered an unrecoverable internal parse/compile condition.",
+      fix: "Check the reported source construct and simplify or correct the syntax; if valid, add a targeted selfhost frontend test and patch the selfhost parser pipeline.",
+    }),
+  );
 }
 
 export function panic_with_code(code, msg, reason, fix) {
-  throw new TuffError(msg, null, {
-    code: code ?? "E_SELFHOST_PANIC",
-    reason:
-      reason ??
-      "The self-hosted compiler encountered an unrecoverable internal parse/compile condition.",
-    fix:
-      fix ??
-      "Check the reported source construct and simplify or correct the syntax; if valid, add a targeted selfhost frontend test and patch the selfhost parser pipeline.",
-  });
+  return raise(
+    new TuffError(msg, null, {
+      code: code ?? "E_SELFHOST_PANIC",
+      reason:
+        reason ??
+        "The self-hosted compiler encountered an unrecoverable internal parse/compile condition.",
+      fix:
+        fix ??
+        "Check the reported source construct and simplify or correct the syntax; if valid, add a targeted selfhost frontend test and patch the selfhost parser pipeline.",
+    }),
+  );
 }
 
 // === String Vector (for intern table) ===
@@ -328,9 +336,10 @@ export function typeof_value(v) {
 
 // === Test helpers ===
 export function assert(cond, msg) {
-  if (!cond) throw new Error("Assertion failed: " + msg);
+  if (!cond) return raise(new Error("Assertion failed: " + msg));
 }
 
 export function assert_eq(a, b, msg) {
-  if (a !== b) throw new Error(`Assertion failed: ${msg} (${a} !== ${b})`);
+  if (a !== b)
+    return raise(new Error(`Assertion failed: ${msg} (${a} !== ${b})`));
 }

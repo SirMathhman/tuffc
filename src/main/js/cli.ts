@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 import path from "node:path";
-import { compileFile } from "./compiler.js";
-import { formatDiagnostic, toDiagnostic } from "./errors.js";
+import { compileFileResult } from "./compiler.ts";
+import { formatDiagnostic, toDiagnostic } from "./errors.ts";
 
 function printUsage() {
   console.log(
@@ -136,48 +136,51 @@ function main(argv) {
   const backend =
     requestedBackend ?? (lint || tracePasses ? "stage0" : "selfhost");
 
-  try {
-    const {
-      outputPath,
-      lintIssues = [],
-      lintFixesApplied = 0,
-      lintFixedSource = null,
-    } = compileFile(path.resolve(input), output, {
-      backend,
-      enableModules: modules,
-      modules: {
-        moduleBaseDir: moduleBaseDir ?? path.dirname(path.resolve(input)),
-      },
-      typecheck: { strictSafety: stage2 },
-      lint: {
-        enabled: lint,
-        fix: lintFix,
-        mode: lintStrict ? "error" : "warn",
-      },
-      tracePasses,
-    });
+  const result = compileFileResult(path.resolve(input), output, {
+    backend,
+    enableModules: modules,
+    modules: {
+      moduleBaseDir: moduleBaseDir ?? path.dirname(path.resolve(input)),
+    },
+    typecheck: { strictSafety: stage2 },
+    lint: {
+      enabled: lint,
+      fix: lintFix,
+      mode: lintStrict ? "error" : "warn",
+    },
+    tracePasses,
+  });
 
-    if (lintFix && !modules && typeof lintFixedSource === "string") {
-      const absInput = path.resolve(input);
-      fs.writeFileSync(absInput, lintFixedSource, "utf8");
-      console.log(`Applied ${lintFixesApplied} lint auto-fix(es) to ${input}`);
-    }
-
-    console.log(`Compiled ${input} -> ${outputPath}`);
-    if (lint) {
-      printLintIssues(lintIssues);
-      if (lintStrict && lintIssues.length > 0) {
-        process.exitCode = 1;
-      }
-    }
-  } catch (error) {
-    const diag = toDiagnostic(error);
+  if (!result.ok) {
+    const diag = toDiagnostic(result.error);
     if (jsonErrors) {
       console.error(JSON.stringify(diag, null, 2));
     } else {
       console.error(formatDiagnostic(diag));
     }
     process.exitCode = 1;
+    return;
+  }
+
+  const {
+    outputPath,
+    lintIssues = [],
+    lintFixesApplied = 0,
+    lintFixedSource = null,
+  } = result.value;
+
+  if (lintFix && !modules && typeof lintFixedSource === "string") {
+    const absInput = path.resolve(input);
+    fs.writeFileSync(absInput, lintFixedSource, "utf8");
+    console.log(`Applied ${lintFixesApplied} lint auto-fix(es) to ${input}`);
+  }
+
+  console.log(`Compiled ${input} -> ${outputPath}`);
+  if (lint) {
+    printLintIssues(lintIssues);
+    if (lintStrict && lintIssues.length > 0) {
+      process.exitCode = 1;
+    }
   }
 }
 

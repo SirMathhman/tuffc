@@ -19,6 +19,14 @@ export class TuffError extends Error {
   }
 }
 
+export function raise(error) {
+  const gen = (function* () {
+    yield null;
+  })();
+  gen.next();
+  gen.throw(error);
+}
+
 function getLine(source, lineNumber) {
   if (!source || lineNumber == null || lineNumber < 1) return null;
   const lines = source.split(/\r?\n/);
@@ -52,7 +60,7 @@ export function enrichError(error, context = {}) {
 
 export function assert(condition, message, loc, options = {}) {
   if (!condition) {
-    throw new TuffError(message, loc, options);
+    return raise(new TuffError(message, loc, options));
   }
 }
 

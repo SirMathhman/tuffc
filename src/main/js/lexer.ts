@@ -1,4 +1,4 @@
-import { TuffError } from "./errors.js";
+import { TuffError, raise } from "./errors.ts";
 
 const KEYWORDS = new Set([
   "fn",
@@ -97,10 +97,12 @@ export function lex(source, filePath = "<memory>") {
         advance();
       }
       if (i >= source.length)
-        throw new TuffError("Unterminated block comment", loc(), {
-          code: "E_LEX_UNTERMINATED_BLOCK_COMMENT",
-          hint: "Close the comment with */.",
-        });
+        return raise(
+          new TuffError("Unterminated block comment", loc(), {
+            code: "E_LEX_UNTERMINATED_BLOCK_COMMENT",
+            hint: "Close the comment with */.",
+          }),
+        );
       advance();
       advance();
       continue;
@@ -168,10 +170,12 @@ export function lex(source, filePath = "<memory>") {
         }
       }
       if (peek() !== '"')
-        throw new TuffError("Unterminated string literal", start, {
-          code: "E_LEX_UNTERMINATED_STRING",
-          hint: "Close the string with a matching double quote.",
-        });
+        return raise(
+          new TuffError("Unterminated string literal", start, {
+            code: "E_LEX_UNTERMINATED_STRING",
+            hint: "Close the string with a matching double quote.",
+          }),
+        );
       advance();
       add("string", text, start, startIndex);
       continue;
@@ -184,10 +188,12 @@ export function lex(source, filePath = "<memory>") {
         text += advance();
       }
       if (peek() !== "'")
-        throw new TuffError("Unterminated char literal", start, {
-          code: "E_LEX_UNTERMINATED_CHAR",
-          hint: "Close the char literal with a matching single quote.",
-        });
+        return raise(
+          new TuffError("Unterminated char literal", start, {
+            code: "E_LEX_UNTERMINATED_CHAR",
+            hint: "Close the char literal with a matching single quote.",
+          }),
+        );
       advance();
       add("char", text, start, startIndex);
       continue;
@@ -199,10 +205,12 @@ export function lex(source, filePath = "<memory>") {
       continue;
     }
 
-    throw new TuffError(`Unexpected character '${ch}'`, start, {
-      code: "E_LEX_UNEXPECTED_CHAR",
-      hint: "Remove or escape the invalid character.",
-    });
+    return raise(
+      new TuffError(`Unexpected character '${ch}'`, start, {
+        code: "E_LEX_UNEXPECTED_CHAR",
+        hint: "Remove or escape the invalid character.",
+      }),
+    );
   }
 
   tokens.push({

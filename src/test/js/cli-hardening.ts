@@ -8,7 +8,7 @@ const root = path.resolve(path.dirname(thisFile), "..", "..", "..");
 function expectFail(args, expectedText, label) {
   const result = spawnSync(
     process.execPath,
-    ["./src/main/js/cli.js", ...args],
+    ["./src/main/js/cli.ts", ...args],
     {
       cwd: root,
       encoding: "utf8",

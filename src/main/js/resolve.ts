@@ -1,4 +1,4 @@
-import { TuffError } from "./errors.js";
+import { TuffError, raise } from "./errors.ts";
 
 class Scope {
   constructor(parent = null) {
@@ -8,13 +8,15 @@ class Scope {
 
   define(name, loc = null) {
     if (this.bindings.has(name)) {
-      throw new TuffError(
-        `Variable shadowing/redeclaration is not allowed: ${name}`,
-        loc,
-        {
-          code: "E_RESOLVE_SHADOWING",
-          hint: "Rename one of the variables; shadowing is disallowed in Tuff.",
-        },
+      return raise(
+        new TuffError(
+          `Variable shadowing/redeclaration is not allowed: ${name}`,
+          loc,
+          {
+            code: "E_RESOLVE_SHADOWING",
+            hint: "Rename one of the variables; shadowing is disallowed in Tuff.",
+          },
+        ),
       );
     }
     this.bindings.set(name, true);
@@ -112,13 +114,15 @@ export function resolveNames(ast, options = {}) {
             if (declModulePath && declModulePath !== currentModulePath) {
               const imported = moduleImportsByPath.get(currentModulePath);
               if (!(imported instanceof Set) || !imported.has(expr.name)) {
-                throw new TuffError(
-                  `Implicit cross-module reference '${expr.name}' is not allowed`,
-                  expr.loc ?? null,
-                  {
-                    code: "E_MODULE_IMPLICIT_IMPORT",
-                    hint: `Add 'let { ${expr.name} } = ...;' in this module to import it explicitly.`,
-                  },
+                return raise(
+                  new TuffError(
+                    `Implicit cross-module reference '${expr.name}' is not allowed`,
+                    expr.loc ?? null,
+                    {
+                      code: "E_MODULE_IMPLICIT_IMPORT",
+                      hint: `Add 'let { ${expr.name} } = ...;' in this module to import it explicitly.`,
+                    },
+                  ),
                 );
               }
             }
@@ -127,10 +131,12 @@ export function resolveNames(ast, options = {}) {
         }
 
         {
-          throw new TuffError(`Unknown identifier '${expr.name}'`, null, {
-            code: "E_RESOLVE_UNKNOWN_IDENTIFIER",
-            hint: "Declare the identifier in scope or import it from a module.",
-          });
+          return raise(
+            new TuffError(`Unknown identifier '${expr.name}'`, null, {
+              code: "E_RESOLVE_UNKNOWN_IDENTIFIER",
+              hint: "Declare the identifier in scope or import it from a module.",
+            }),
+          );
         }
       case "BinaryExpr":
         visitExpr(expr.left, scope, currentModulePath);
@@ -153,13 +159,15 @@ export function resolveNames(ast, options = {}) {
         break;
       case "StructInit":
         if (!globals.has(expr.name)) {
-          throw new TuffError(
-            `Unknown struct/type '${expr.name}' in initializer`,
-            null,
-            {
-              code: "E_RESOLVE_UNKNOWN_STRUCT",
-              hint: "Declare the struct before using it or import the correct module.",
-            },
+          return raise(
+            new TuffError(
+              `Unknown struct/type '${expr.name}' in initializer`,
+              null,
+              {
+                code: "E_RESOLVE_UNKNOWN_STRUCT",
+                hint: "Declare the struct before using it or import the correct module.",
+              },
+            ),
           );
         }
         expr.fields.forEach((f) =>

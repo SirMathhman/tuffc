@@ -1,4 +1,4 @@
-import { TuffError } from "./errors.js";
+import { TuffError, raise } from "./errors.ts";
 
 export function parse(tokens) {
   let i = 0;
@@ -13,10 +13,12 @@ export function parse(tokens) {
   const expect = (type, value = undefined, message = "Unexpected token") => {
     const t = peek();
     if (!at(type, value)) {
-      throw new TuffError(message + `, got ${t.type}:${t.value}`, t.loc, {
-        code: "E_PARSE_EXPECTED_TOKEN",
-        hint: "Check token order, punctuation, and delimiters around this location.",
-      });
+      return raise(
+        new TuffError(message + `, got ${t.type}:${t.value}`, t.loc, {
+          code: "E_PARSE_EXPECTED_TOKEN",
+          hint: "Check token order, punctuation, and delimiters around this location.",
+        }),
+      );
     }
     return eat();
   };
@@ -378,13 +380,15 @@ export function parse(tokens) {
       return parsePostfix(expr);
     }
 
-    throw new TuffError(
-      `Unexpected token ${peek().type}:${peek().value}`,
-      peek().loc,
-      {
-        code: "E_PARSE_UNEXPECTED_TOKEN",
-        hint: "Ensure expressions and statements use valid Tuff-lite syntax.",
-      },
+    return raise(
+      new TuffError(
+        `Unexpected token ${peek().type}:${peek().value}`,
+        peek().loc,
+        {
+          code: "E_PARSE_UNEXPECTED_TOKEN",
+          hint: "Ensure expressions and statements use valid Tuff-lite syntax.",
+        },
+      ),
     );
   };
 
@@ -651,10 +655,12 @@ export function parse(tokens) {
         node.loc = node.loc ?? outTok.loc;
         return node;
       }
-      throw new TuffError("Expected declaration after 'out'", peek().loc, {
-        code: "E_PARSE_EXPECTED_TOKEN",
-        hint: "Use 'out' before a top-level fn/struct/enum/type/class declaration.",
-      });
+      return raise(
+        new TuffError("Expected declaration after 'out'", peek().loc, {
+          code: "E_PARSE_EXPECTED_TOKEN",
+          hint: "Use 'out' before a top-level fn/struct/enum/type/class declaration.",
+        }),
+      );
     }
 
     if (at("keyword", "let")) return parseLetDecl();
@@ -736,9 +742,11 @@ export function parse(tokens) {
         expect("symbol", ";", "Expected ';' after extern type");
         return { kind: "ExternTypeDecl", name, generics };
       }
-      throw new TuffError(
-        "Expected 'fn', 'let', or 'type' after 'extern'",
-        peek().loc,
+      return raise(
+        new TuffError(
+          "Expected 'fn', 'let', or 'type' after 'extern'",
+          peek().loc,
+        ),
       );
     }
     if (at("keyword", "class")) {

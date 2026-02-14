@@ -2,8 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
 import { fileURLToPath } from "node:url";
-import { compileFile } from "../../main/js/compiler.js";
-import * as runtime from "../../main/js/runtime.js";
+import { compileFile } from "../../main/js/compiler.ts";
+import * as runtime from "../../main/js/runtime.ts";
 
 const thisFile = fileURLToPath(import.meta.url);
 const root = path.resolve(path.dirname(thisFile), "..", "..", "..");
