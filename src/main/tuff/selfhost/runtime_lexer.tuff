@@ -2,33 +2,38 @@
 // Extern declarations - these come from runtime.js
 // ============================================================================
 
-extern fn str_length(this: *Str) : USize;
-extern fn str_char_at(this: *Str, index : USize < this.str_length()) : Char;
 
-extern fn str_slice(this: *Str, 
+/*
+These are **Str and not *Str because are borrowing a string
+*/
+
+extern fn str_length(this: **Str) : USize;
+extern fn str_char_at(this: **Str, index : USize < this.str_length()) : Char;
+
+extern fn str_slice(this: **Str, 
     start: USize < this.str_length(), 
     end: USize < this.str_length()) : *Str;
 
 /*
-We'll need this eventually
+We'll need this eventually.
 
-extern fn str_mut_slice(this: *mut Str, start: I32, end: I32) : *mut Str;
+extern fn str_mut_slice(this: **mut Str, start: I32, end: I32) : *mut Str;
 */
 
 // Immutable, makes a new string
-extern fn str_concat(this: *Str, b: *Str) : *Str;
+extern fn str_concat(this: **Str, b: **Str) : *Str;
 
-extern fn str_eq(this: *Str, b: *Str) : Bool;
+extern fn str_eq(this: **Str, b: **Str) : Bool;
 extern fn str_from_char_code(code: I32) : *Str;
 
-extern fn str_index_of(this: *Str, needle: *Str) : I32;
-extern fn str_includes(this: *Str, needle: *Str) : Bool;
-extern fn str_starts_with(this: *Str, prefix: *Str) : Bool;
-extern fn str_trim(this: *Str) : *Str;
-extern fn str_replace_all(this: *Str, from: *Str, to: *Str) : *Str;
-extern fn char_code(ch: *Str) : I32;
+extern fn str_index_of(this: **Str, needle: **Str) : I32;
+extern fn str_includes(this: **Str, needle: **Str) : Bool;
+extern fn str_starts_with(this: **Str, prefix: **Str) : Bool;
+extern fn str_trim(this: **Str) : *Str;
+extern fn str_replace_all(this: **Str, from: **Str, to: **Str) : *Str;
+extern fn char_code(ch: **Str) : I32;
 extern fn int_to_string(n: I32) : *Str;
-extern fn parse_int(s: *Str) : I32;
+extern fn parse_int(s: **Str) : I32;
 
 extern type StringBuilder;
 extern fn sb_new() : StringBuilder;
