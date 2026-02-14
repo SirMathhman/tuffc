@@ -3,14 +3,24 @@
 // ============================================================================
 
 extern fn str_length(this: *Str) : USize;
+extern fn str_char_at(this: *Str, index : USize < this.str_length()) : Char;
 
-// Why do we have two of these?
-extern fn str_char_at(this: *Str, i: I32) : Char;
+extern fn str_slice(this: *Str, 
+    start: USize < this.str_length(), 
+    end: USize < this.str_length()) : *Str;
 
-extern fn str_slice(this: *Str, start: I32, end: I32) : *Str;
+/*
+We'll need this eventually
+
+extern fn str_mut_slice(this: *mut Str, start: I32, end: I32) : *mut Str;
+*/
+
+// Immutable, makes a new string
 extern fn str_concat(this: *Str, b: *Str) : *Str;
+
 extern fn str_eq(this: *Str, b: *Str) : Bool;
 extern fn str_from_char_code(code: I32) : *Str;
+
 extern fn str_index_of(this: *Str, needle: *Str) : I32;
 extern fn str_includes(this: *Str, needle: *Str) : Bool;
 extern fn str_starts_with(this: *Str, prefix: *Str) : Bool;
@@ -179,10 +189,11 @@ out fn lex_init(source: *Str) : I32 => {
 
 fn lex_peek(offset: I32) : I32 => {
     let p = lex_pos + offset;
-    if (p >= lex_len) {
+    if (p < 0 || p >= lex_len) {
         0
     } else {
-        lex_source.str_char_at(p)
+        let bounded : USize < lex_source.str_length() = p;
+        lex_source.str_char_at(bounded)
     }
 }
 

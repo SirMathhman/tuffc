@@ -138,7 +138,16 @@ export function parse(tokens: Token[]): ParseResult<Program> {
       nameParts.push(partResult.value);
     }
     const genericArgs: Expr[] = [];
-    if (at("symbol", "<") && canStartTypeToken(peek(1))) {
+    const wouldBeMemberRefinement =
+      at("symbol", "<") &&
+      peek(1)?.type === "identifier" &&
+      peek(2)?.type === "symbol" &&
+      peek(2)?.value === ".";
+    if (
+      at("symbol", "<") &&
+      canStartTypeToken(peek(1)) &&
+      !wouldBeMemberRefinement
+    ) {
       eat();
       if (!at("symbol", ">")) {
         while (true) {

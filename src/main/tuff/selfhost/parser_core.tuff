@@ -191,6 +191,21 @@ out fn p_can_start_refinement_expr() : Bool => {
     false
 }
 
+out fn p_can_start_refinement_expr_at(offset: I32) : Bool => {
+    let idx = p_peek(offset);
+    let k = tok_kind(idx);
+    if (k == TK_NUMBER || k == TK_IDENTIFIER || k == TK_BOOL || k == TK_STRING || k == TK_CHAR) {
+        return true;
+    }
+    if (k == TK_SYMBOL) {
+        let s = get_intern(tok_value(idx));
+        if (s.str_eq("(") || s.str_eq("-") || s.str_eq("!")) {
+            return true;
+        }
+    }
+    false
+}
+
 out fn p_parse_type() : I32 => {
     // Pointer type
     if (p_at(TK_SYMBOL, "*")) {
@@ -256,7 +271,18 @@ out fn p_parse_type() : I32 => {
     }
     
     // Generic args
-    if (p_at(TK_SYMBOL, "<") && p_can_start_type_tok_at(1)) {
+    let would_be_member_refine = false;
+    if (p_at(TK_SYMBOL, "<")) {
+        let k1 = tok_kind(p_peek(1));
+        let k2 = tok_kind(p_peek(2));
+        if (k1 == TK_IDENTIFIER && k2 == TK_SYMBOL) {
+            let s2 = get_intern(tok_value(p_peek(2)));
+            if (s2.str_eq(".")) {
+                would_be_member_refine = true;
+            }
+        }
+    }
+    if (p_at(TK_SYMBOL, "<") && p_can_start_type_tok_at(1) && !would_be_member_refine) {
         p_eat();
         if (!p_at(TK_SYMBOL, ">")) {
             generics.vec_push(p_parse_type());
@@ -274,7 +300,7 @@ out fn p_parse_type() : I32 => {
     
     // Refinement predicate
     let has_refine = p_at(TK_SYMBOL, "!=") || p_at(TK_SYMBOL, "<") || p_at(TK_SYMBOL, ">") || p_at(TK_SYMBOL, "<=") || p_at(TK_SYMBOL, ">=");
-    if (has_refine && p_can_start_refinement_expr()) {
+    if (has_refine && p_can_start_refinement_expr_at(1)) {
         let op = tok_value(p_eat());
         let val_expr = p_parse_expression(0);
         let refine = node_new(NK_REFINEMENT_TYPE);
