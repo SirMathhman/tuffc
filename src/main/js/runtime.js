@@ -273,6 +273,18 @@ export function panic(msg) {
   });
 }
 
+export function panic_with_code(code, msg, reason, fix) {
+  throw new TuffError(msg, null, {
+    code: code ?? "E_SELFHOST_PANIC",
+    reason:
+      reason ??
+      "The self-hosted compiler encountered an unrecoverable internal parse/compile condition.",
+    fix:
+      fix ??
+      "Check the reported source construct and simplify or correct the syntax; if valid, add a targeted selfhost frontend test and patch the selfhost parser pipeline.",
+  });
+}
+
 // === String Vector (for intern table) ===
 export function str_vec_new() {
   return [];

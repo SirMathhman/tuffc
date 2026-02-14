@@ -32,6 +32,7 @@ extern fn sb_build(sb: I32) : *Str;
 
 extern fn vec_new() : I32;
 extern fn vec_push(arr: I32, item: I32) : I32;
+extern fn vec_pop(arr: I32) : I32;
 extern fn vec_get(arr: I32, i: I32) : I32;
 extern fn vec_set(arr: I32, i: I32, v: I32) : I32;
 extern fn vec_length(arr: I32) : I32;
@@ -47,6 +48,7 @@ extern fn map_has(m: I32, k: *Str) : Bool;
 extern fn set_new() : I32;
 extern fn set_add(s: I32, item: *Str) : I32;
 extern fn set_has(s: I32, item: *Str) : Bool;
+extern fn set_delete(s: I32, item: *Str) : I32;
 
 extern fn str_vec_new() : I32;
 extern fn str_vec_push(arr: I32, s: *Str) : I32;
@@ -61,6 +63,7 @@ extern fn path_dirname(p: *Str) : *Str;
 extern fn print(s: *Str) : I32;
 extern fn print_error(s: *Str) : I32;
 extern fn panic(msg: *Str) : I32;
+extern fn panic_with_code(code: *Str, msg: *Str, reason: *Str, fix: *Str) : I32;
 
 // ============================================================================
 // Token Kinds
@@ -1414,7 +1417,306 @@ fn desugar(program: I32) : I32 => program;
 // Name Resolution - skip for now, minimal implementation
 // ============================================================================
 
-fn resolve_names(program: I32) : I32 => program;
+fn scope_define(scopes: I32, depth: I32, name: *Str) : I32 => {
+    let scope = vec_get(scopes, depth);
+    if (set_has(scope, name)) {
+        panic_with_code(
+            "E_RESOLVE_SHADOWING",
+            str_concat("Variable shadowing/redeclaration is not allowed: ", name),
+            "A name was declared multiple times in the same lexical scope.",
+            "Rename one of the bindings or move it to a different scope."
+        );
+    }
+    set_add(scope, name);
+    0
+}
+
+fn scope_has(scopes: I32, depth: I32, name: *Str) : Bool => {
+    let i = depth;
+    while (i >= 0) {
+        if (set_has(vec_get(scopes, i), name)) {
+            return true;
+        }
+        i = i - 1;
+    }
+    false
+}
+
+fn resolve_expr(n: I32, globals: I32, scopes: I32, depth: I32) : I32 => {
+    if (n == 0) {
+        return 0;
+    }
+
+    let kind = node_kind(n);
+
+    if (kind == NK_IDENTIFIER) {
+        let name = get_interned_str(node_get_data1(n));
+        if (!scope_has(scopes, depth, name) && !set_has(globals, name)) {
+            panic_with_code(
+                "E_RESOLVE_UNKNOWN_IDENTIFIER",
+                str_concat("Unknown identifier: ", name),
+                "The identifier is not declared in local scope, global declarations, or imports.",
+                "Declare the identifier before use or import it from the correct module."
+            );
+        }
+        return 0;
+    }
+
+    if (kind == NK_BINARY_EXPR) {
+        resolve_expr(node_get_data2(n), globals, scopes, depth);
+        resolve_expr(node_get_data3(n), globals, scopes, depth);
+        return 0;
+    }
+
+    if (kind == NK_UNARY_EXPR || kind == NK_UNWRAP_EXPR) {
+        resolve_expr(node_get_data2(n), globals, scopes, depth);
+        if (kind == NK_UNWRAP_EXPR) {
+            resolve_expr(node_get_data1(n), globals, scopes, depth);
+        }
+        return 0;
+    }
+
+    if (kind == NK_CALL_EXPR) {
+        resolve_expr(node_get_data1(n), globals, scopes, depth);
+        let args = node_get_data2(n);
+        let i = 0;
+        let len = vec_length(args);
+        while (i < len) {
+            resolve_expr(vec_get(args, i), globals, scopes, depth);
+            i = i + 1;
+        }
+        return 0;
+    }
+
+    if (kind == NK_MEMBER_EXPR) {
+        resolve_expr(node_get_data1(n), globals, scopes, depth);
+        return 0;
+    }
+
+    if (kind == NK_INDEX_EXPR) {
+        resolve_expr(node_get_data1(n), globals, scopes, depth);
+        resolve_expr(node_get_data2(n), globals, scopes, depth);
+        return 0;
+    }
+
+    if (kind == NK_STRUCT_INIT) {
+        let type_name = get_interned_str(node_get_data1(n));
+        if (!set_has(globals, type_name)) {
+            panic_with_code(
+                "E_RESOLVE_UNKNOWN_STRUCT",
+                str_concat("Unknown struct/type in initializer: ", type_name),
+                "A struct initializer referenced a type that is not declared in the merged module scope.",
+                "Declare the struct/type first or import the module that defines it."
+            );
+        }
+        let fields = node_get_data2(n);
+        let i = 0;
+        let len = vec_length(fields);
+        while (i < len) {
+            let field = vec_get(fields, i);
+            resolve_expr(vec_get(field, 1), globals, scopes, depth);
+            i = i + 1;
+        }
+        return 0;
+    }
+
+    if (kind == NK_IF_EXPR) {
+        resolve_expr(node_get_data1(n), globals, scopes, depth);
+        resolve_stmt(node_get_data2(n), globals, scopes, depth);
+        if (node_get_data3(n) != 0) {
+            resolve_stmt(node_get_data3(n), globals, scopes, depth);
+        }
+        return 0;
+    }
+
+    if (kind == NK_MATCH_EXPR) {
+        resolve_expr(node_get_data1(n), globals, scopes, depth);
+        let cases = node_get_data2(n);
+        let i = 0;
+        let len = vec_length(cases);
+        while (i < len) {
+            let case_node = vec_get(cases, i);
+            let pat = vec_get(case_node, 0);
+            let body = vec_get(case_node, 1);
+
+            let next_depth = depth + 1;
+            vec_push(scopes, set_new());
+
+            if (node_kind(pat) == NK_STRUCT_PAT) {
+                let fields = node_get_data2(pat);
+                let j = 0;
+                let fLen = vec_length(fields);
+                while (j < fLen) {
+                    scope_define(scopes, next_depth, get_interned_str(vec_get(fields, j)));
+                    j = j + 1;
+                }
+            } else if (node_kind(pat) == NK_NAME_PAT) {
+                let pat_name = get_interned_str(node_get_data1(pat));
+                if (!set_has(globals, pat_name)) {
+                    scope_define(scopes, next_depth, pat_name);
+                }
+            }
+
+            resolve_stmt(body, globals, scopes, next_depth);
+            vec_pop(scopes);
+            i = i + 1;
+        }
+        return 0;
+    }
+
+    if (kind == NK_IS_EXPR) {
+        resolve_expr(node_get_data1(n), globals, scopes, depth);
+        return 0;
+    }
+
+    0
+}
+
+fn resolve_stmt(n: I32, globals: I32, scopes: I32, depth: I32) : I32 => {
+    if (n == 0) {
+        return 0;
+    }
+
+    let kind = node_kind(n);
+
+    if (kind == NK_BLOCK) {
+        let next_depth = depth + 1;
+        vec_push(scopes, set_new());
+        let stmts = node_get_data1(n);
+        let i = 0;
+        let len = vec_length(stmts);
+        while (i < len) {
+            resolve_stmt(vec_get(stmts, i), globals, scopes, next_depth);
+            i = i + 1;
+        }
+        vec_pop(scopes);
+        return 0;
+    }
+
+    if (kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL) {
+        let fnScopes = vec_new();
+        vec_push(fnScopes, set_new());
+        let params = node_get_data3(n);
+        let i = 0;
+        let len = vec_length(params);
+        while (i < len) {
+            let param = vec_get(params, i);
+            scope_define(fnScopes, 0, get_interned_str(vec_get(param, 0)));
+            i = i + 1;
+        }
+        resolve_stmt(node_get_data5(n), globals, fnScopes, 0);
+        return 0;
+    }
+
+    if (kind == NK_LET_DECL) {
+        resolve_expr(node_get_data3(n), globals, scopes, depth);
+        scope_define(scopes, depth, get_interned_str(node_get_data1(n)));
+        return 0;
+    }
+
+    if (kind == NK_IMPORT_DECL) {
+        let names = node_get_data1(n);
+        let i = 0;
+        let len = vec_length(names);
+        while (i < len) {
+            scope_define(scopes, depth, get_interned_str(vec_get(names, i)));
+            i = i + 1;
+        }
+        return 0;
+    }
+
+    if (kind == NK_EXPR_STMT) {
+        resolve_expr(node_get_data1(n), globals, scopes, depth);
+        return 0;
+    }
+
+    if (kind == NK_ASSIGN_STMT) {
+        resolve_expr(node_get_data1(n), globals, scopes, depth);
+        resolve_expr(node_get_data2(n), globals, scopes, depth);
+        return 0;
+    }
+
+    if (kind == NK_RETURN_STMT) {
+        resolve_expr(node_get_data1(n), globals, scopes, depth);
+        return 0;
+    }
+
+    if (kind == NK_IF_STMT) {
+        resolve_expr(node_get_data1(n), globals, scopes, depth);
+        resolve_stmt(node_get_data2(n), globals, scopes, depth);
+        if (node_get_data3(n) != 0) {
+            resolve_stmt(node_get_data3(n), globals, scopes, depth);
+        }
+        return 0;
+    }
+
+    if (kind == NK_FOR_STMT) {
+        let next_depth = depth + 1;
+        vec_push(scopes, set_new());
+        scope_define(scopes, next_depth, get_interned_str(node_get_data1(n)));
+        resolve_expr(node_get_data2(n), globals, scopes, next_depth);
+        resolve_expr(node_get_data3(n), globals, scopes, next_depth);
+        resolve_stmt(node_get_data4(n), globals, scopes, next_depth);
+        vec_pop(scopes);
+        return 0;
+    }
+
+    if (kind == NK_WHILE_STMT) {
+        resolve_expr(node_get_data1(n), globals, scopes, depth);
+        resolve_stmt(node_get_data2(n), globals, scopes, depth);
+        return 0;
+    }
+
+    // Fallback: treat unmatched nodes as expressions.
+    resolve_expr(n, globals, scopes, depth);
+    0
+}
+
+fn resolve_names(program: I32) : I32 => {
+    let globals = set_new();
+    let body = node_get_data1(program);
+
+    // Predeclare global symbols.
+    let i = 0;
+    let len = vec_length(body);
+    while (i < len) {
+        let stmt = vec_get(body, i);
+        let kind = node_kind(stmt);
+        if (
+            kind == NK_FN_DECL ||
+            kind == NK_CLASS_FN_DECL ||
+            kind == NK_STRUCT_DECL ||
+            kind == NK_TYPE_ALIAS ||
+            kind == NK_LET_DECL ||
+            kind == NK_EXTERN_FN_DECL ||
+            kind == NK_EXTERN_LET_DECL ||
+            kind == NK_EXTERN_TYPE_DECL
+        ) {
+            let gname = get_interned_str(node_get_data1(stmt));
+            if (set_has(globals, gname)) {
+                panic_with_code(
+                    "E_RESOLVE_SHADOWING",
+                    str_concat("Variable shadowing/redeclaration is not allowed: ", gname),
+                    "A global declaration with the same name already exists.",
+                    "Rename one of the global declarations or split conflicting declarations into separate modules."
+                );
+            }
+            set_add(globals, gname);
+        }
+        i = i + 1;
+    }
+
+    // Resolve top-level statements.
+    let topScopes = vec_new();
+    vec_push(topScopes, set_new());
+    i = 0;
+    while (i < len) {
+        resolve_stmt(vec_get(body, i), globals, topScopes, 0);
+        i = i + 1;
+    }
+
+    program
+}
 
 // ============================================================================
 // Typecheck - skip for now, minimal implementation
@@ -1982,11 +2284,19 @@ fn join_sources(sources: I32) : *Str => {
     sb_build(sb)
 }
 
-fn gather_module_sources(filePath: *Str, seen: I32, sources: I32) : I32 => {
+fn gather_module_sources(filePath: *Str, seen: I32, visiting: I32, sources: I32) : I32 => {
     if (set_has(seen, filePath)) {
         return 0;
     }
-    set_add(seen, filePath);
+    if (set_has(visiting, filePath)) {
+        panic_with_code(
+            "E_MODULE_CYCLE",
+            str_concat("Module import cycle detected at ", filePath),
+            "A module was revisited while still being loaded, which means the import graph contains a cycle.",
+            "Break the cycle by extracting shared declarations into a third module imported by both sides."
+        );
+    }
+    set_add(visiting, filePath);
 
     let source = read_file(filePath);
     lex_init(source);
@@ -2003,19 +2313,22 @@ fn gather_module_sources(filePath: *Str, seen: I32, sources: I32) : I32 => {
             let parts = node_get_data2(stmt);
             let rel = module_parts_to_relative_path(parts);
             let depPath = path_join(path_dirname(filePath), rel);
-            gather_module_sources(depPath, seen, sources);
+            gather_module_sources(depPath, seen, visiting, sources);
         }
         i = i + 1;
     }
 
+    set_delete(visiting, filePath);
+    set_add(seen, filePath);
     str_vec_push(sources, source);
     0
 }
 
 fn compile_file(inputPath: *Str, outputPath: *Str) : I32 => {
     let seen = set_new();
+    let visiting = set_new();
     let sources = str_vec_new();
-    gather_module_sources(inputPath, seen, sources);
+    gather_module_sources(inputPath, seen, visiting, sources);
     let merged = join_sources(sources);
     let js = compile_source(merged);
     write_file(outputPath, js)

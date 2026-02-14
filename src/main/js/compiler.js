@@ -7,7 +7,19 @@ import { resolveNames } from "./resolve.js";
 import { typecheck } from "./typecheck.js";
 import { lintProgram } from "./linter.js";
 import { generateJavaScript } from "./codegen-js.js";
-import { enrichError } from "./errors.js";
+import { TuffError, enrichError } from "./errors.js";
+
+function createTracer(enabled) {
+  const trace = !!enabled;
+  return (name, fn) => {
+    if (!trace) return fn();
+    const start = performance.now();
+    const value = fn();
+    const ms = (performance.now() - start).toFixed(2);
+    console.error(`[trace] ${name}: ${ms}ms`);
+    return value;
+  };
+}
 
 function gatherImports(program) {
   return program.body
@@ -22,12 +34,28 @@ function modulePathToFile(modulePath, moduleBaseDir) {
 function loadModuleGraph(entryPath, options = {}) {
   const moduleBaseDir = options.moduleBaseDir ?? path.dirname(entryPath);
   const seen = new Set();
+  const visiting = new Set();
   const ordered = [];
 
-  const visit = (filePath) => {
+  const visit = (filePath, trail = []) => {
     const abs = path.resolve(filePath);
     if (seen.has(abs)) return;
-    seen.add(abs);
+    if (visiting.has(abs)) {
+      const cycleStart = trail.indexOf(abs);
+      const cycle =
+        cycleStart >= 0 ? [...trail.slice(cycleStart), abs] : [...trail, abs];
+      throw new TuffError(
+        `Module import cycle detected: ${cycle.join(" -> ")}`,
+        null,
+        {
+          code: "E_MODULE_CYCLE",
+          reason:
+            "The module dependency graph contains a cycle, so a topological compilation order cannot be established.",
+          fix: "Break the cycle by moving shared declarations into a third module and import that module from each side.",
+        },
+      );
+    }
+    visiting.add(abs);
 
     const source = fs.readFileSync(abs, "utf8");
     const tokens = lex(source, abs);
@@ -35,9 +63,11 @@ function loadModuleGraph(entryPath, options = {}) {
     const core = desugar(cst);
 
     for (const imp of gatherImports(core)) {
-      visit(modulePathToFile(imp, moduleBaseDir));
+      visit(modulePathToFile(imp, moduleBaseDir), [...trail, abs]);
     }
 
+    visiting.delete(abs);
+    seen.add(abs);
     ordered.push({ filePath: abs, source, tokens, cst, core });
   };
 
@@ -54,17 +84,18 @@ function loadModuleGraph(entryPath, options = {}) {
 }
 
 export function compileSource(source, filePath = "<memory>", options = {}) {
+  const run = createTracer(options.tracePasses);
   try {
-    const tokens = lex(source, filePath);
-    const cst = parse(tokens);
-    const core = desugar(cst);
-    resolveNames(core, options.resolve ?? {});
-    typecheck(core, options.typecheck ?? {});
+    const tokens = run("lex", () => lex(source, filePath));
+    const cst = run("parse", () => parse(tokens));
+    const core = run("desugar", () => desugar(cst));
+    run("resolve", () => resolveNames(core, options.resolve ?? {}));
+    run("typecheck", () => typecheck(core, options.typecheck ?? {}));
     const lintIssues = lintProgram(core, options.lint ?? {});
     if (lintIssues.length > 0) {
       throw lintIssues[0];
     }
-    const js = generateJavaScript(core);
+    const js = run("codegen", () => generateJavaScript(core));
     return { tokens, cst, core, js };
   } catch (error) {
     throw enrichError(error, { source });
@@ -72,20 +103,23 @@ export function compileSource(source, filePath = "<memory>", options = {}) {
 }
 
 export function compileFile(inputPath, outputPath = null, options = {}) {
+  const run = createTracer(options.tracePasses);
   const useModules = !!options.enableModules;
   let result;
   let graph = null;
 
   try {
     if (useModules) {
-      graph = loadModuleGraph(inputPath, options.modules ?? {});
-      resolveNames(graph.merged, options.resolve ?? {});
-      typecheck(graph.merged, options.typecheck ?? {});
+      graph = run("load-module-graph", () =>
+        loadModuleGraph(inputPath, options.modules ?? {}),
+      );
+      run("resolve", () => resolveNames(graph.merged, options.resolve ?? {}));
+      run("typecheck", () => typecheck(graph.merged, options.typecheck ?? {}));
       const lintIssues = lintProgram(graph.merged, options.lint ?? {});
       if (lintIssues.length > 0) {
         throw lintIssues[0];
       }
-      const js = generateJavaScript(graph.merged);
+      const js = run("codegen", () => generateJavaScript(graph.merged));
       result = {
         source: fs.readFileSync(inputPath, "utf8"),
         tokens: graph.ordered.at(-1)?.tokens ?? [],

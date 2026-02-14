@@ -5,7 +5,7 @@ import { formatDiagnostic, toDiagnostic } from "./errors.js";
 
 function printUsage() {
   console.log(
-    "Usage:\n  tuff compile <input.tuff> [-o output.js] [--stage2] [--modules] [--module-base <dir>] [--lint] [--json-errors]",
+    "Usage:\n  tuff compile <input.tuff> [-o output.js] [--stage2] [--modules] [--module-base <dir>] [--lint] [--json-errors] [--trace-passes]",
   );
 }
 
@@ -38,9 +38,16 @@ function main(argv) {
   let moduleBaseDir = null;
   let jsonErrors = false;
   let lint = false;
+  let tracePasses = false;
+  const unknownFlags = [];
   for (let i = 2; i < args.length; i++) {
     if (args[i] === "-o" || args[i] === "--out") {
-      output = args[i + 1] ? path.resolve(args[i + 1]) : null;
+      if (!args[i + 1] || args[i + 1].startsWith("-")) {
+        console.error("Missing value for --out/-o");
+        process.exitCode = 1;
+        return;
+      }
+      output = path.resolve(args[i + 1]);
       i += 1;
       continue;
     }
@@ -53,7 +60,12 @@ function main(argv) {
       continue;
     }
     if (args[i] === "--module-base") {
-      moduleBaseDir = args[i + 1] ? path.resolve(args[i + 1]) : null;
+      if (!args[i + 1] || args[i + 1].startsWith("-")) {
+        console.error("Missing value for --module-base");
+        process.exitCode = 1;
+        return;
+      }
+      moduleBaseDir = path.resolve(args[i + 1]);
       i += 1;
       continue;
     }
@@ -65,6 +77,20 @@ function main(argv) {
       lint = true;
       continue;
     }
+    if (args[i] === "--trace-passes") {
+      tracePasses = true;
+      continue;
+    }
+    if (args[i].startsWith("-")) {
+      unknownFlags.push(args[i]);
+    }
+  }
+
+  if (unknownFlags.length > 0) {
+    console.error(`Unknown option(s): ${unknownFlags.join(", ")}`);
+    printUsage();
+    process.exitCode = 1;
+    return;
   }
 
   try {
@@ -75,6 +101,7 @@ function main(argv) {
       },
       typecheck: { strictSafety: stage2 },
       lint: { enabled: lint },
+      tracePasses,
     });
     console.log(`Compiled ${input} -> ${outputPath}`);
   } catch (error) {

@@ -26,7 +26,8 @@ Implements Phase 1 / Stage 0 from `SELF-HOST.md`:
 3. Run lint pass: `bun run lint`
 4. Run selfhost module verification only: `bun run selfhost:modules`
 5. Run selfhost diagnostics verification only: `bun run selfhost:diagnostics`
-6. Compile file: `node ./src/main/js/cli.js compile ./src/test/tuff/cases/factorial.tuff -o ./tests/out/factorial.js`
+6. Run selfhost differential parity gate: `bun run selfhost:parity`
+7. Compile file: `node ./src/main/js/cli.js compile ./src/test/tuff/cases/factorial.tuff -o ./tests/out/factorial.js`
 
 ## Phase 2 / Stage 1
 
@@ -90,6 +91,7 @@ Example:
 
 - `node ./src/main/js/cli.js compile ./tests/out/stage4/cli-fail.tuff --stage2 --json-errors`
 - `node ./src/main/js/cli.js compile ./tests/out/stage4/cli-fail.tuff --lint --json-errors`
+- `node ./src/main/js/cli.js compile ./src/test/tuff/cases/factorial.tuff --trace-passes`
 
 Run Phase 4 verification only:
 

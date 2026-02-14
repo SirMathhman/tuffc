@@ -140,7 +140,11 @@ export function resolveNames(ast, options = {}) {
       case "FnDecl": {
         const fnScope = new Scope(scope);
         node.params.forEach((p) => fnScope.define(p.name));
-        visitNode(node.body, fnScope);
+        if (node.body?.kind === "Block") {
+          visitNode(node.body, fnScope);
+        } else {
+          visitExpr(node.body, fnScope);
+        }
         break;
       }
       case "LetDecl":
