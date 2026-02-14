@@ -1,4 +1,5 @@
-import { TuffError, raise } from "./errors.ts";
+import { TuffError } from "./errors.ts";
+import { err, ok } from "./result.ts";
 
 const KEYWORDS = new Set([
   "fn",
@@ -54,7 +55,10 @@ function isAlphaNum(ch) {
   return /[A-Za-z0-9_]/.test(ch);
 }
 
-export function lex(source: string, filePath: string = "<memory>"): unknown[] {
+export function lex(
+  source: string,
+  filePath: string = "<memory>",
+): { ok: true; value: unknown[] } | { ok: false; error: unknown } {
   const tokens = [];
   let i = 0;
   let line = 1;
@@ -97,7 +101,7 @@ export function lex(source: string, filePath: string = "<memory>"): unknown[] {
         advance();
       }
       if (i >= source.length)
-        return raise(
+        return err(
           new TuffError("Unterminated block comment", loc(), {
             code: "E_LEX_UNTERMINATED_BLOCK_COMMENT",
             hint: "Close the comment with */.",
@@ -170,7 +174,7 @@ export function lex(source: string, filePath: string = "<memory>"): unknown[] {
         }
       }
       if (peek() !== '"')
-        return raise(
+        return err(
           new TuffError("Unterminated string literal", start, {
             code: "E_LEX_UNTERMINATED_STRING",
             hint: "Close the string with a matching double quote.",
@@ -188,7 +192,7 @@ export function lex(source: string, filePath: string = "<memory>"): unknown[] {
         text += advance();
       }
       if (peek() !== "'")
-        return raise(
+        return err(
           new TuffError("Unterminated char literal", start, {
             code: "E_LEX_UNTERMINATED_CHAR",
             hint: "Close the char literal with a matching single quote.",
@@ -205,7 +209,7 @@ export function lex(source: string, filePath: string = "<memory>"): unknown[] {
       continue;
     }
 
-    return raise(
+    return err(
       new TuffError(`Unexpected character '${ch}'`, start, {
         code: "E_LEX_UNEXPECTED_CHAR",
         hint: "Remove or escape the invalid character.",
@@ -220,5 +224,5 @@ export function lex(source: string, filePath: string = "<memory>"): unknown[] {
     start: i,
     end: i,
   });
-  return tokens;
+  return ok(tokens);
 }

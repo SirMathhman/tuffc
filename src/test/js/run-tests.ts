@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
 import { fileURLToPath } from "node:url";
-import { compileSource } from "../../main/js/compiler.ts";
+import { compileSourceThrow } from "../../main/js/compiler.ts";
 
 const thisFile = fileURLToPath(import.meta.url);
 const root = path.resolve(path.dirname(thisFile), "..", "..", "..");
@@ -19,7 +19,7 @@ let passed = 0;
 for (const name of testCases) {
   const filePath = path.join(casesDir, name);
   const source = fs.readFileSync(filePath, "utf8");
-  const result = compileSource(source, filePath);
+  const result = compileSourceThrow(source, filePath);
 
   const jsPath = path.join(outDir, name.replace(/\.tuff$/, ".js"));
   fs.writeFileSync(jsPath, result.js, "utf8");

@@ -2,8 +2,23 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
-import { compileFile, compileSource } from "../../main/js/compiler.ts";
+import {
+  compileFileResult,
+  compileSourceResult,
+} from "../../main/js/compiler.ts";
 import { toDiagnostic } from "../../main/js/errors.ts";
+
+type ResultUnknown =
+  | { ok: true; value: unknown }
+  | { ok: false; error: unknown };
+
+function unwrapErr(result: ResultUnknown): unknown {
+  if ("error" in result) {
+    return result.error;
+  }
+  console.error("Expected error Result, got ok");
+  process.exit(1);
+}
 
 const thisFile = fileURLToPath(import.meta.url);
 const root = path.resolve(path.dirname(thisFile), "..", "..", "..");
@@ -12,48 +27,56 @@ const outDir = path.join(root, "tests", "out", "stage4");
 fs.mkdirSync(outDir, { recursive: true });
 
 // 1) Ensure internal diagnostics contain codes/hints for strict safety failures.
-try {
-  compileSource(`fn bad(x : I32) : I32 => 100 / x;`, "<phase4>", {
+const strictResult = compileSourceResult(
+  `fn bad(x : I32) : I32 => 100 / x;`,
+  "<phase4>",
+  {
     typecheck: { strictSafety: true },
-  });
+  },
+);
+if (strictResult.ok) {
   console.error("Phase 4 diagnostics test expected strict compile failure");
   process.exit(1);
-} catch (error) {
-  const diag = toDiagnostic(error);
-  if (diag.code !== "E_SAFETY_DIV_BY_ZERO") {
-    console.error(`Expected E_SAFETY_DIV_BY_ZERO, got ${diag.code}`);
-    process.exit(1);
-  }
-  if (!diag.hint || !diag.hint.includes("denominator")) {
+}
+const strictDiag = toDiagnostic(unwrapErr(strictResult));
+if (strictDiag.code !== "E_SAFETY_DIV_BY_ZERO") {
+  console.error(`Expected E_SAFETY_DIV_BY_ZERO, got ${strictDiag.code}`);
+  process.exit(1);
+}
+if (!strictDiag.hint || !strictDiag.hint.includes("denominator")) {
+  console.error(
+    `Expected diagnostic hint about denominator, got: ${strictDiag.hint}`,
+  );
+  process.exit(1);
+}
+for (const key of ["source", "cause", "reason", "fix"]) {
+  if (!strictDiag[key] || typeof strictDiag[key] !== "string") {
     console.error(
-      `Expected diagnostic hint about denominator, got: ${diag.hint}`,
+      `Expected diagnostic field '${key}' to be a non-empty string`,
     );
     process.exit(1);
-  }
-  for (const key of ["source", "cause", "reason", "fix"]) {
-    if (!diag[key] || typeof diag[key] !== "string") {
-      console.error(
-        `Expected diagnostic field '${key}' to be a non-empty string`,
-      );
-      process.exit(1);
-    }
   }
 }
 
 // 1b) Selfhost backend should also enforce strict-safety diagnostics contract.
-try {
-  compileSource(`fn bad(x : I32) : I32 => 100 / x;`, "<phase4-selfhost>", {
+const strictSelfhostResult = compileSourceResult(
+  `fn bad(x : I32) : I32 => 100 / x;`,
+  "<phase4-selfhost>",
+  {
     backend: "selfhost",
     typecheck: { strictSafety: true },
-  });
+  },
+);
+if (strictSelfhostResult.ok) {
   console.error("Selfhost strict-safety test expected compile failure");
   process.exit(1);
-} catch (error) {
-  const diag = toDiagnostic(error);
-  if (diag.code !== "E_SAFETY_DIV_BY_ZERO") {
-    console.error(`Expected E_SAFETY_DIV_BY_ZERO (selfhost), got ${diag.code}`);
-    process.exit(1);
-  }
+}
+const strictSelfhostDiag = toDiagnostic(unwrapErr(strictSelfhostResult));
+if (strictSelfhostDiag.code !== "E_SAFETY_DIV_BY_ZERO") {
+  console.error(
+    `Expected E_SAFETY_DIV_BY_ZERO (selfhost), got ${strictSelfhostDiag.code}`,
+  );
+  process.exit(1);
 }
 
 // 2) Ensure CLI emits machine-readable JSON diagnostics.
@@ -164,37 +187,37 @@ for (const key of ["source", "cause", "reason", "fix"]) {
 // 4) Receiver-call syntax for extern `this` parameter + lint suggestion.
 const receiverExtern = `extern fn str_length(this: *Str) : I32;`;
 
-try {
-  compileSource(
-    `${receiverExtern}\nfn main() : I32 => "abc".str_length();`,
-    "<receiver-syntax>",
-    {
-      lint: { enabled: true },
-    },
-  );
-} catch (error) {
+const receiverOk = compileSourceResult(
+  `${receiverExtern}\nfn main() : I32 => "abc".str_length();`,
+  "<receiver-syntax>",
+  {
+    lint: { enabled: true },
+  },
+);
+if (!receiverOk.ok) {
   console.error(
-    `Expected receiver-call syntax to compile/lint cleanly, got: ${error.message}`,
+    `Expected receiver-call syntax to compile/lint cleanly, got: ${String(unwrapErr(receiverOk))}`,
   );
   process.exit(1);
 }
 
-try {
-  compileSource(
-    `${receiverExtern}\nfn main() : I32 => str_length("abc");`,
-    "<receiver-lint>",
-    {
-      lint: { enabled: true },
-    },
-  );
+const receiverLint = compileSourceResult(
+  `${receiverExtern}\nfn main() : I32 => str_length("abc");`,
+  "<receiver-lint>",
+  {
+    lint: { enabled: true },
+  },
+);
+if (receiverLint.ok) {
   console.error("Expected lint failure for free-function receiver extern call");
   process.exit(1);
-} catch (error) {
-  const diag = toDiagnostic(error);
-  if (diag.code !== "E_LINT_PREFER_RECEIVER_CALL") {
-    console.error(`Expected E_LINT_PREFER_RECEIVER_CALL, got ${diag.code}`);
-    process.exit(1);
-  }
+}
+const receiverLintDiag = toDiagnostic(unwrapErr(receiverLint));
+if (receiverLintDiag.code !== "E_LINT_PREFER_RECEIVER_CALL") {
+  console.error(
+    `Expected E_LINT_PREFER_RECEIVER_CALL, got ${receiverLintDiag.code}`,
+  );
+  process.exit(1);
 }
 
 // 5) Ensure lint autofix rewrites receiver-style extern calls in source.
@@ -250,20 +273,19 @@ if (lintFixUpdated.includes('str_length("abcd")')) {
 }
 
 // 6) Generic extern type declarations should parse/compile.
-try {
-  compileSource(
-    [
-      "extern type Vec<T>;",
-      "extern fn vec_new() : Vec<T>;",
-      "extern fn vec_push(this: Vec<T>, item: T) : Vec<T>;",
-      "fn main() : I32 => 0;",
-      "",
-    ].join("\n"),
-    "<extern-type-generics>",
-  );
-} catch (error) {
+const externTypeResult = compileSourceResult(
+  [
+    "extern type Vec<T>;",
+    "extern fn vec_new() : Vec<T>;",
+    "extern fn vec_push(this: Vec<T>, item: T) : Vec<T>;",
+    "fn main() : I32 => 0;",
+    "",
+  ].join("\n"),
+  "<extern-type-generics>",
+);
+if (!externTypeResult.ok) {
   console.error(
-    `Expected generic extern type declarations to compile, got: ${error.message}`,
+    `Expected generic extern type declarations to compile, got: ${String(unwrapErr(externTypeResult))}`,
   );
   process.exit(1);
 }
@@ -275,35 +297,43 @@ const longEffectiveLinesSource = [
   "",
 ].join("\n");
 
-try {
-  compileSource(longEffectiveLinesSource, "<lint-file-too-long>", {
+const lintTooLong = compileSourceResult(
+  longEffectiveLinesSource,
+  "<lint-file-too-long>",
+  {
     lint: { enabled: true },
-  });
+  },
+);
+if (lintTooLong.ok) {
   console.error("Expected file-length lint failure for >500 effective lines");
   process.exit(1);
-} catch (error) {
-  const diag = toDiagnostic(error);
-  if (diag.code !== "E_LINT_FILE_TOO_LONG") {
-    console.error(`Expected E_LINT_FILE_TOO_LONG, got ${diag.code}`);
-    process.exit(1);
-  }
+}
+const lintTooLongDiag = toDiagnostic(unwrapErr(lintTooLong));
+if (lintTooLongDiag.code !== "E_LINT_FILE_TOO_LONG") {
+  console.error(`Expected E_LINT_FILE_TOO_LONG, got ${lintTooLongDiag.code}`);
+  process.exit(1);
 }
 
-try {
-  compileSource(longEffectiveLinesSource, "<lint-file-too-long-selfhost>", {
+const lintTooLongSelfhost = compileSourceResult(
+  longEffectiveLinesSource,
+  "<lint-file-too-long-selfhost>",
+  {
     backend: "selfhost",
     lint: { enabled: true, mode: "error" },
-  });
+  },
+);
+if (lintTooLongSelfhost.ok) {
   console.error(
     "Expected selfhost strict lint failure for >500 effective lines",
   );
   process.exit(1);
-} catch (error) {
-  const diag = toDiagnostic(error);
-  if (diag.code !== "E_LINT_FILE_TOO_LONG") {
-    console.error(`Expected E_LINT_FILE_TOO_LONG (selfhost), got ${diag.code}`);
-    process.exit(1);
-  }
+}
+const lintTooLongSelfhostDiag = toDiagnostic(unwrapErr(lintTooLongSelfhost));
+if (lintTooLongSelfhostDiag.code !== "E_LINT_FILE_TOO_LONG") {
+  console.error(
+    `Expected E_LINT_FILE_TOO_LONG (selfhost), got ${lintTooLongSelfhostDiag.code}`,
+  );
+  process.exit(1);
 }
 
 const mostlyCommentsSource = [
@@ -313,13 +343,16 @@ const mostlyCommentsSource = [
   "",
 ].join("\n");
 
-try {
-  compileSource(mostlyCommentsSource, "<lint-file-comments>", {
+const commentsSourceResult = compileSourceResult(
+  mostlyCommentsSource,
+  "<lint-file-comments>",
+  {
     lint: { enabled: true },
-  });
-} catch (error) {
+  },
+);
+if (!commentsSourceResult.ok) {
   console.error(
-    `Expected comment-only/blank lines to be excluded from line-count lint, got: ${error.message}`,
+    `Expected comment-only/blank lines to be excluded from line-count lint, got: ${String(unwrapErr(commentsSourceResult))}`,
   );
   process.exit(1);
 }
@@ -360,31 +393,29 @@ fs.writeFileSync(
   "utf8",
 );
 
-try {
-  compileFile(implicitConsumerModule, null, {
-    enableModules: true,
-    modules: { moduleBaseDir: strictModuleDir },
-  });
+const implicitResult = compileFileResult(implicitConsumerModule, null, {
+  enableModules: true,
+  modules: { moduleBaseDir: strictModuleDir },
+});
+if (implicitResult.ok) {
   console.error(
     "Expected strict module import failure for implicit cross-module symbol usage",
   );
   process.exit(1);
-} catch (error) {
-  const diag = toDiagnostic(error);
-  if (diag.code !== "E_MODULE_IMPLICIT_IMPORT") {
-    console.error(`Expected E_MODULE_IMPLICIT_IMPORT, got ${diag.code}`);
-    process.exit(1);
-  }
+}
+const implicitDiag = toDiagnostic(unwrapErr(implicitResult));
+if (implicitDiag.code !== "E_MODULE_IMPLICIT_IMPORT") {
+  console.error(`Expected E_MODULE_IMPLICIT_IMPORT, got ${implicitDiag.code}`);
+  process.exit(1);
 }
 
-try {
-  compileFile(explicitConsumerModule, null, {
-    enableModules: true,
-    modules: { moduleBaseDir: strictModuleDir },
-  });
-} catch (error) {
+const explicitResult = compileFileResult(explicitConsumerModule, null, {
+  enableModules: true,
+  modules: { moduleBaseDir: strictModuleDir },
+});
+if (!explicitResult.ok) {
   console.error(
-    `Expected explicit let-binding import to satisfy strict module resolve, got: ${error.message}`,
+    `Expected explicit let-binding import to satisfy strict module resolve, got: ${String(unwrapErr(explicitResult))}`,
   );
   process.exit(1);
 }

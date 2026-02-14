@@ -1,5 +1,8 @@
 // @ts-nocheck
-import { TuffError, raise } from "./errors.ts";
+import { TuffError } from "./errors.ts";
+import { err, ok, type Result } from "./result.ts";
+
+type TypecheckResult<T> = Result<T, TuffError>;
 
 const NUMERIC = new Set([
   "I8",
@@ -224,7 +227,7 @@ function literalNumber(expr) {
 export function typecheck(
   ast: { body: unknown[] },
   options: Record<string, unknown> = {},
-): { body: unknown[] } {
+): TypecheckResult<{ body: unknown[] }> {
   const strictSafety = !!options.strictSafety;
 
   const structs = new Map();
@@ -423,83 +426,86 @@ export function typecheck(
     return true;
   };
 
-  const inferExpr = (expr, scope, facts) => {
+  const inferExpr = (expr, scope, facts): TypecheckResult<unknown> => {
     switch (expr.kind) {
       case "NumberLiteral":
-        return {
+        return ok({
           name: "I32",
           min: expr.value,
           max: expr.value,
           nonZero: expr.value !== 0,
-        };
+        });
       case "BoolLiteral":
-        return { name: "Bool", min: null, max: null, nonZero: false };
+        return ok({ name: "Bool", min: null, max: null, nonZero: false });
       case "StringLiteral":
-        return { name: "*Str", min: null, max: null, nonZero: false };
+        return ok({ name: "*Str", min: null, max: null, nonZero: false });
       case "CharLiteral":
-        return { name: "Char", min: null, max: null, nonZero: false };
+        return ok({ name: "Char", min: null, max: null, nonZero: false });
       case "Identifier": {
         if (scope.has(expr.name)) {
           const base = cloneInfo(scope.get(expr.name));
           const fact = facts.get(expr.name);
-          return fact ? intersectBounds(base, fact) : base;
+          return ok(fact ? intersectBounds(base, fact) : base);
         }
         if (globalScope.has(expr.name)) {
-          return cloneInfo(globalScope.get(expr.name));
+          return ok(cloneInfo(globalScope.get(expr.name)));
         }
         if (functions.has(expr.name))
-          return { name: "Fn", min: null, max: null, nonZero: false };
+          return ok({ name: "Fn", min: null, max: null, nonZero: false });
         if (structs.has(expr.name))
-          return { name: expr.name, min: null, max: null, nonZero: false };
+          return ok({ name: expr.name, min: null, max: null, nonZero: false });
         if (enums.has(expr.name))
-          return { name: expr.name, min: null, max: null, nonZero: false };
-        return { name: "Unknown", min: null, max: null, nonZero: false };
+          return ok({ name: expr.name, min: null, max: null, nonZero: false });
+        return ok({ name: "Unknown", min: null, max: null, nonZero: false });
       }
       case "StructInit": {
         const s = structs.get(expr.name);
         if (!s)
-          return raise(
-            new TuffError(`Unknown struct '${expr.name}'`, expr.loc),
-          );
+          return err(new TuffError(`Unknown struct '${expr.name}'`, expr.loc));
         const fieldMap = new Map(s.fields.map((f) => [f.name, f]));
         for (const f of expr.fields) {
           if (!fieldMap.has(f.key))
-            return raise(
+            return err(
               new TuffError(
                 `Unknown field '${f.key}' for struct ${expr.name}`,
                 expr.loc,
               ),
             );
-          inferExpr(f.value, scope, facts);
+          const inferResult = inferExpr(f.value, scope, facts);
+          if (!inferResult.ok) return inferResult;
         }
-        return { name: expr.name, min: null, max: null, nonZero: false };
+        return ok({ name: expr.name, min: null, max: null, nonZero: false });
       }
       case "UnaryExpr": {
-        const t = inferExpr(expr.expr, scope, facts);
+        const tResult = inferExpr(expr.expr, scope, facts);
+        if (!tResult.ok) return tResult;
+        const t = tResult.value;
         if (expr.op === "!" && t.name !== "Bool" && t.name !== "Unknown")
-          return raise(new TuffError("'!' expects Bool", expr.loc));
+          return err(new TuffError("'!' expects Bool", expr.loc));
         if (expr.op === "-" && !NUMERIC.has(t.name) && t.name !== "Unknown")
-          return raise(
-            new TuffError("Unary '-' expects numeric type", expr.loc),
-          );
+          return err(new TuffError("Unary '-' expects numeric type", expr.loc));
         if (expr.op === "-") {
-          return {
+          return ok({
             ...t,
             min: t.max === null ? null : -t.max,
             max: t.min === null ? null : -t.min,
-          };
+          });
         }
-        return { name: "Bool", min: null, max: null, nonZero: false };
+        return ok({ name: "Bool", min: null, max: null, nonZero: false });
       }
       case "BinaryExpr": {
-        const l = inferExpr(expr.left, scope, facts);
-        const r = inferExpr(expr.right, scope, facts);
+        const lResult = inferExpr(expr.left, scope, facts);
+        if (!lResult.ok) return lResult;
+        const l = lResult.value;
+        const rResult = inferExpr(expr.right, scope, facts);
+        if (!rResult.ok) return rResult;
+        const r = rResult.value;
         if (["+", "-", "*", "/", "%"].includes(expr.op)) {
           // Allow Unknown types to pass through (needed for bootstrap)
           const lOk = NUMERIC.has(l.name) || l.name === "Unknown";
           const rOk = NUMERIC.has(r.name) || r.name === "Unknown";
           if (!lOk || !rOk)
-            return raise(
+            return err(
               new TuffError(
                 `Operator ${expr.op} expects numeric operands`,
                 expr.loc,
@@ -507,7 +513,7 @@ export function typecheck(
             );
 
           if (strictSafety && expr.op === "/" && !r.nonZero) {
-            return raise(
+            return err(
               new TuffError(
                 "Division by zero cannot be ruled out at compile time",
                 expr.loc,
@@ -547,7 +553,7 @@ export function typecheck(
           if (strictSafety && ["+", "-", "*"].includes(expr.op)) {
             const i32 = i32Range();
             if (out.min === null || out.max === null) {
-              return raise(
+              return err(
                 new TuffError(
                   `Cannot prove overflow safety for '${expr.op}'`,
                   expr.loc,
@@ -559,7 +565,7 @@ export function typecheck(
               );
             }
             if (out.min < i32.min || out.max > i32.max) {
-              return raise(
+              return err(
                 new TuffError(
                   `Integer overflow/underflow proven possible for '${expr.op}'`,
                   expr.loc,
@@ -572,7 +578,7 @@ export function typecheck(
             }
           }
           if (strictSafety && expr.op === "%" && !r.nonZero) {
-            return raise(
+            return err(
               new TuffError(
                 "Modulo by zero cannot be ruled out at compile time",
                 expr.loc,
@@ -590,30 +596,35 @@ export function typecheck(
           ) {
             out.nonZero = true;
           }
-          return out;
+          return ok(out);
         }
         if (["==", "!=", "<", "<=", ">", ">="].includes(expr.op)) {
-          return { name: "Bool", min: null, max: null, nonZero: false };
+          return ok({ name: "Bool", min: null, max: null, nonZero: false });
         }
         if (["&&", "||"].includes(expr.op)) {
           const lOk = l.name === "Bool" || l.name === "Unknown";
           const rOk = r.name === "Bool" || r.name === "Unknown";
           if (!lOk || !rOk)
-            return raise(
+            return err(
               new TuffError(
                 `Operator ${expr.op} expects Bool operands`,
                 expr.loc,
               ),
             );
-          return { name: "Bool", min: null, max: null, nonZero: false };
+          return ok({ name: "Bool", min: null, max: null, nonZero: false });
         }
-        return { name: "Unknown", min: null, max: null, nonZero: false };
+        return ok({ name: "Unknown", min: null, max: null, nonZero: false });
       }
       case "CallExpr": {
         if (expr.callee.kind === "Identifier") {
           const fn = functions.get(expr.callee.name);
           if (fn) {
-            const argTypes = expr.args.map((a) => inferExpr(a, scope, facts));
+            const argTypes = [];
+            for (const a of expr.args) {
+              const argResult = inferExpr(a, scope, facts);
+              if (!argResult.ok) return argResult;
+              argTypes.push(argResult.value);
+            }
 
             const genericBindings = new Map();
             const genericNames = new Set(fn.generics ?? []);
@@ -666,7 +677,7 @@ export function typecheck(
             // Skip strict type checking for extern functions
             const isExtern = fn.kind === "ExternFnDecl";
             if (!isExtern && expr.args.length !== fn.params.length) {
-              return raise(
+              return err(
                 new TuffError(
                   `Function ${fn.name} expects ${fn.params.length} args, got ${expr.args.length}`,
                   expr.loc,
@@ -687,7 +698,7 @@ export function typecheck(
                   !areCompatibleNumericTypes(expected, argType.name, argType) &&
                   !typeAliases.has(expected)
                 ) {
-                  return raise(
+                  return err(
                     new TuffError(
                       `Type mismatch in call to ${fn.name} arg ${idx + 1}: expected ${expected}, got ${argType.name}`,
                       expr.loc,
@@ -696,7 +707,7 @@ export function typecheck(
                 }
 
                 if (strictSafety && expectedInfo.nonZero && !argType.nonZero) {
-                  return raise(
+                  return err(
                     new TuffError(
                       `Call to ${fn.name} requires arg ${idx + 1} to be proven non-zero`,
                       expr.loc,
@@ -704,29 +715,36 @@ export function typecheck(
                   );
                 }
               }
-            } else {
-              // Extern args already inferred above.
             }
-            return resolveTypeInfo(resolvedReturnType);
+            return ok(resolveTypeInfo(resolvedReturnType));
           }
         }
-        expr.args.forEach((a) => inferExpr(a, scope, facts));
-        return { name: "Unknown", min: null, max: null, nonZero: false };
+        for (const a of expr.args) {
+          const argResult = inferExpr(a, scope, facts);
+          if (!argResult.ok) return argResult;
+        }
+        return ok({ name: "Unknown", min: null, max: null, nonZero: false });
       }
       case "MemberExpr": {
-        const t = inferExpr(expr.object, scope, facts);
+        const tResult = inferExpr(expr.object, scope, facts);
+        if (!tResult.ok) return tResult;
+        const t = tResult.value;
         if (expr.property === "length" || expr.property === "init") {
           const max = t.arrayTotal ?? t.arrayInit ?? null;
-          return { name: "USize", min: 0, max, nonZero: false };
+          return ok({ name: "USize", min: 0, max, nonZero: false });
         }
-        return { name: "Unknown", min: null, max: null, nonZero: false };
+        return ok({ name: "Unknown", min: null, max: null, nonZero: false });
       }
       case "IndexExpr": {
-        const target = inferExpr(expr.target, scope, facts);
-        const index = inferExpr(expr.index, scope, facts);
+        const targetResult = inferExpr(expr.target, scope, facts);
+        if (!targetResult.ok) return targetResult;
+        const target = targetResult.value;
+        const indexResult = inferExpr(expr.index, scope, facts);
+        if (!indexResult.ok) return indexResult;
+        const index = indexResult.value;
         if (strictSafety && target.arrayInit !== null) {
           if (index.max === null) {
-            return raise(
+            return err(
               new TuffError("Cannot prove array index bound safety", expr.loc, {
                 code: "E_SAFETY_ARRAY_BOUNDS_UNPROVEN",
                 hint: "Guard index with 'if (i < arr.length)' before indexing.",
@@ -734,7 +752,7 @@ export function typecheck(
             );
           }
           if (index.max >= target.arrayInit || index.min < 0) {
-            return raise(
+            return err(
               new TuffError("Array index may be out of bounds", expr.loc, {
                 code: "E_SAFETY_ARRAY_BOUNDS",
                 hint: "Ensure 0 <= index < initialized length.",
@@ -742,12 +760,14 @@ export function typecheck(
             );
           }
         }
-        return { name: "Unknown", min: null, max: null, nonZero: false };
+        return ok({ name: "Unknown", min: null, max: null, nonZero: false });
       }
       case "IfExpr": {
-        const cond = inferExpr(expr.condition, scope, facts);
+        const condResult = inferExpr(expr.condition, scope, facts);
+        if (!condResult.ok) return condResult;
+        const cond = condResult.value;
         if (cond.name !== "Bool" && cond.name !== "Unknown")
-          return raise(
+          return err(
             new TuffError(
               "if condition must be Bool",
               expr.condition?.loc ?? expr.loc,
@@ -755,28 +775,38 @@ export function typecheck(
           );
         const thenFacts = mergeFacts(facts, deriveFacts(expr.condition, true));
         const elseFacts = mergeFacts(facts, deriveFacts(expr.condition, false));
-        const a = inferNode(expr.thenBranch, new Map(scope), thenFacts);
-        const b = expr.elseBranch
-          ? inferNode(expr.elseBranch, new Map(scope), elseFacts)
-          : a;
-        return a.name === b.name
-          ? a
-          : { name: "Unknown", min: null, max: null, nonZero: false };
+        const aResult = inferNode(expr.thenBranch, new Map(scope), thenFacts);
+        if (!aResult.ok) return aResult;
+        const a = aResult.value;
+        if (expr.elseBranch) {
+          const bResult = inferNode(expr.elseBranch, new Map(scope), elseFacts);
+          if (!bResult.ok) return bResult;
+          const b = bResult.value;
+          return ok(
+            a.name === b.name
+              ? a
+              : { name: "Unknown", min: null, max: null, nonZero: false },
+          );
+        }
+        return ok(a);
       }
       case "MatchExpr": {
-        const target = inferExpr(expr.target, scope, facts);
+        const targetResult = inferExpr(expr.target, scope, facts);
+        if (!targetResult.ok) return targetResult;
+        const target = targetResult.value;
         const seen = new Set();
         let hasWildcard = false;
         for (const c of expr.cases) {
           if (c.pattern.kind === "WildcardPattern") hasWildcard = true;
           if (c.pattern.kind === "NamePattern") seen.add(c.pattern.name);
           if (c.pattern.kind === "StructPattern") seen.add(c.pattern.name);
-          inferNode(c.body, new Map(scope), new Map(facts));
+          const bodyResult = inferNode(c.body, new Map(scope), new Map(facts));
+          if (!bodyResult.ok) return bodyResult;
         }
         if (strictSafety && target.unionTags?.length && !hasWildcard) {
           for (const tag of target.unionTags) {
             if (!seen.has(tag)) {
-              return raise(
+              return err(
                 new TuffError(
                   `Non-exhaustive match: missing case for ${tag}`,
                   expr.loc,
@@ -789,30 +819,42 @@ export function typecheck(
             }
           }
         }
-        return { name: "Unknown", min: null, max: null, nonZero: false };
+        return ok({ name: "Unknown", min: null, max: null, nonZero: false });
       }
-      case "IsExpr":
-        inferExpr(expr.expr, scope, facts);
-        return { name: "Bool", min: null, max: null, nonZero: false };
+      case "IsExpr": {
+        const exprResult = inferExpr(expr.expr, scope, facts);
+        if (!exprResult.ok) return exprResult;
+        return ok({ name: "Bool", min: null, max: null, nonZero: false });
+      }
       case "UnwrapExpr":
         return inferExpr(expr.expr, scope, facts);
       default:
-        return { name: "Unknown", min: null, max: null, nonZero: false };
+        return ok({ name: "Unknown", min: null, max: null, nonZero: false });
     }
   };
 
-  const inferNode = (node, scope, facts, expectedReturn = null) => {
+  const inferNode = (
+    node,
+    scope,
+    facts,
+    expectedReturn = null,
+  ): TypecheckResult<unknown> => {
     switch (node.kind) {
       case "Block": {
         let last = { name: "Void", min: null, max: null, nonZero: false };
         const local = new Map(scope);
         const localFacts = new Map(facts);
-        for (const s of node.statements)
-          last = inferNode(s, local, localFacts, expectedReturn);
-        return last;
+        for (const s of node.statements) {
+          const result = inferNode(s, local, localFacts, expectedReturn);
+          if (!result.ok) return result;
+          last = result.value;
+        }
+        return ok(last);
       }
       case "LetDecl": {
-        const valueType = inferExpr(node.value, scope, facts);
+        const valueTypeResult = inferExpr(node.value, scope, facts);
+        if (!valueTypeResult.ok) return valueTypeResult;
+        const valueType = valueTypeResult.value;
         const expectedInfo = node.type ? resolveTypeInfo(node.type) : null;
         const expected = expectedInfo?.name ?? null;
         if (
@@ -824,7 +866,7 @@ export function typecheck(
           !areCompatibleNumericTypes(expected, valueType.name, valueType) &&
           !typeAliases.has(expected)
         ) {
-          return raise(
+          return err(
             new TuffError(
               `Type mismatch for let ${node.name}: expected ${expected}, got ${valueType.name}`,
               node.loc,
@@ -832,7 +874,7 @@ export function typecheck(
           );
         }
         if (strictSafety && expectedInfo?.nonZero && !valueType.nonZero) {
-          return raise(
+          return err(
             new TuffError(
               `Cannot prove non-zero refinement for ${node.name}`,
               node.loc,
@@ -843,10 +885,12 @@ export function typecheck(
           ? intersectBounds(expectedInfo, valueType)
           : valueType;
         scope.set(node.name, stored);
-        return { name: "Void", min: null, max: null, nonZero: false };
+        return ok({ name: "Void", min: null, max: null, nonZero: false });
       }
       case "AssignStmt": {
-        const value = inferExpr(node.value, scope, facts);
+        const valueResult = inferExpr(node.value, scope, facts);
+        if (!valueResult.ok) return valueResult;
+        const value = valueResult.value;
         if (node.target.kind === "Identifier") {
           const t = scope.get(node.target.name);
           if (
@@ -856,7 +900,7 @@ export function typecheck(
             !isTypeVariableName(t.name) &&
             !isTypeVariableName(value.name)
           )
-            return raise(
+            return err(
               new TuffError(
                 `Assignment mismatch for ${node.target.name}: expected ${t.name}, got ${value.name}`,
                 node.loc ?? node.target?.loc,
@@ -864,14 +908,16 @@ export function typecheck(
             );
           if (t) scope.set(node.target.name, intersectBounds(t, value));
         }
-        return { name: "Void", min: null, max: null, nonZero: false };
+        return ok({ name: "Void", min: null, max: null, nonZero: false });
       }
       case "ExprStmt":
         return inferExpr(node.expr, scope, facts);
       case "ReturnStmt": {
-        const t = node.value
+        const tResult = node.value
           ? inferExpr(node.value, scope, facts)
-          : { name: "Void", min: null, max: null, nonZero: false };
+          : ok({ name: "Void", min: null, max: null, nonZero: false });
+        if (!tResult.ok) return tResult;
+        const t = tResult.value;
         if (
           expectedReturn &&
           expectedReturn.name !== "Unknown" &&
@@ -880,7 +926,7 @@ export function typecheck(
           !isTypeVariableName(expectedReturn.name) &&
           !isTypeVariableName(t.name)
         ) {
-          return raise(
+          return err(
             new TuffError(
               `Return type mismatch: expected ${expectedReturn.name}, got ${t.name}`,
               node.loc,
@@ -888,19 +934,21 @@ export function typecheck(
           );
         }
         if (strictSafety && expectedReturn?.nonZero && !t.nonZero) {
-          return raise(
+          return err(
             new TuffError(
               "Return value does not satisfy non-zero refinement",
               node.loc,
             ),
           );
         }
-        return t;
+        return ok(t);
       }
       case "IfStmt": {
-        const cond = inferExpr(node.condition, scope, facts);
+        const condResult = inferExpr(node.condition, scope, facts);
+        if (!condResult.ok) return condResult;
+        const cond = condResult.value;
         if (cond.name !== "Bool" && cond.name !== "Unknown")
-          return raise(
+          return err(
             new TuffError(
               "if condition must be Bool",
               node.condition?.loc ?? node.loc,
@@ -908,26 +956,56 @@ export function typecheck(
           );
         const thenFacts = mergeFacts(facts, deriveFacts(node.condition, true));
         const elseFacts = mergeFacts(facts, deriveFacts(node.condition, false));
-        inferNode(node.thenBranch, new Map(scope), thenFacts, expectedReturn);
-        if (node.elseBranch)
-          inferNode(node.elseBranch, new Map(scope), elseFacts, expectedReturn);
-        return { name: "Void", min: null, max: null, nonZero: false };
+        const thenResult = inferNode(
+          node.thenBranch,
+          new Map(scope),
+          thenFacts,
+          expectedReturn,
+        );
+        if (!thenResult.ok) return thenResult;
+        if (node.elseBranch) {
+          const elseResult = inferNode(
+            node.elseBranch,
+            new Map(scope),
+            elseFacts,
+            expectedReturn,
+          );
+          if (!elseResult.ok) return elseResult;
+        }
+        return ok({ name: "Void", min: null, max: null, nonZero: false });
       }
-      case "ForStmt":
+      case "ForStmt": {
         scope.set(node.iterator, {
           name: "I32",
           min: 0,
           max: null,
           nonZero: false,
         });
-        inferExpr(node.start, scope, facts);
-        inferExpr(node.end, scope, facts);
-        inferNode(node.body, new Map(scope), new Map(facts), expectedReturn);
-        return { name: "Void", min: null, max: null, nonZero: false };
-      case "WhileStmt":
-        inferExpr(node.condition, scope, facts);
-        inferNode(node.body, new Map(scope), new Map(facts), expectedReturn);
-        return { name: "Void", min: null, max: null, nonZero: false };
+        const startResult = inferExpr(node.start, scope, facts);
+        if (!startResult.ok) return startResult;
+        const endResult = inferExpr(node.end, scope, facts);
+        if (!endResult.ok) return endResult;
+        const bodyResult = inferNode(
+          node.body,
+          new Map(scope),
+          new Map(facts),
+          expectedReturn,
+        );
+        if (!bodyResult.ok) return bodyResult;
+        return ok({ name: "Void", min: null, max: null, nonZero: false });
+      }
+      case "WhileStmt": {
+        const condResult = inferExpr(node.condition, scope, facts);
+        if (!condResult.ok) return condResult;
+        const bodyResult = inferNode(
+          node.body,
+          new Map(scope),
+          new Map(facts),
+          expectedReturn,
+        );
+        if (!bodyResult.ok) return bodyResult;
+        return ok({ name: "Void", min: null, max: null, nonZero: false });
+      }
       case "FnDecl": {
         const fnScope = new Map(globalScope);
         const fnFacts = new Map();
@@ -935,10 +1013,12 @@ export function typecheck(
           fnScope.set(p.name, resolveTypeInfo(p.type));
         }
         const expectedInfo = resolveTypeInfo(node.returnType);
-        const bodyType =
+        const bodyTypeResult =
           node.body.kind === "Block"
             ? inferNode(node.body, fnScope, fnFacts, expectedInfo)
             : inferExpr(node.body, fnScope, fnFacts);
+        if (!bodyTypeResult.ok) return bodyTypeResult;
+        const bodyType = bodyTypeResult.value;
         const expected = expectedInfo.name;
         if (
           expected &&
@@ -948,23 +1028,24 @@ export function typecheck(
           !isTypeVariableName(expected) &&
           !isTypeVariableName(bodyType.name)
         ) {
-          return raise(
+          return err(
             new TuffError(
               `Function ${node.name} return type mismatch: expected ${expected}, got ${bodyType.name}`,
               node.loc,
             ),
           );
         }
-        return { name: "Void", min: null, max: null, nonZero: false };
+        return ok({ name: "Void", min: null, max: null, nonZero: false });
       }
       default:
-        return { name: "Void", min: null, max: null, nonZero: false };
+        return ok({ name: "Void", min: null, max: null, nonZero: false });
     }
   };
 
   for (const node of ast.body) {
-    inferNode(node, new Map(), new Map());
+    const result = inferNode(node, new Map(), new Map());
+    if (!result.ok) return result;
   }
 
-  return ast;
+  return ok(ast);
 }

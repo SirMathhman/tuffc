@@ -43,3 +43,20 @@ export function mapError<T, E, F>(
   }
   return err(new Error("Unreachable Result state") as unknown as F);
 }
+
+export function flatMap<T, E, U>(
+  result: Result<T, E>,
+  fn: (value: T) => Result<U, E>,
+): Result<U, E> {
+  if (result.ok) {
+    return fn(result.value);
+  }
+  return result as ErrResult<E>;
+}
+
+export function unwrapOr<T, E>(result: Result<T, E>, defaultValue: T): T {
+  if (result.ok) {
+    return result.value;
+  }
+  return defaultValue;
+}

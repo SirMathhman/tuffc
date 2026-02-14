@@ -1,4 +1,6 @@
 // @ts-nocheck
+import { err, ok, type Result } from "./result.ts";
+
 export class TuffError extends Error {
   constructor(
     message: string,
@@ -22,14 +24,6 @@ export class TuffError extends Error {
     this.hint = this.fix;
     this.details = this.reason;
   }
-}
-
-export function raise(error: unknown): never {
-  const gen = (function* () {
-    yield null;
-  })();
-  gen.next();
-  gen.throw(error);
 }
 
 function getLine(source, lineNumber) {
@@ -69,15 +63,16 @@ export function enrichError(
   return error;
 }
 
-export function assert(
+export function assert<T>(
   condition: boolean,
   message: string,
   loc: unknown,
   options: Record<string, unknown> = {},
-): void {
+): Result<true, TuffError> {
   if (!condition) {
-    return raise(new TuffError(message, loc, options));
+    return err(new TuffError(message, loc, options));
   }
+  return ok(true);
 }
 
 export function toDiagnostic(error: unknown): {

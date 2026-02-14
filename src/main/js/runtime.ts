@@ -4,7 +4,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { TuffError, raise } from "./errors.ts";
+import { TuffError } from "./errors.ts";
 
 type StringBuilder = { parts: string[] };
 
@@ -93,7 +93,7 @@ export function sb_build(sb: StringBuilder): string {
 }
 
 export function sb_length(sb: StringBuilder): number {
-  return sb.parts.reduce((acc, s) => acc + s.length, 0);
+  return sb.parts.reduce((acc: number, s: string) => acc + s.length, 0);
 }
 
 // === Array/Vec operations ===
@@ -221,15 +221,13 @@ export function read_file(filePath: string): string {
   try {
     return fs.readFileSync(filePath, "utf8");
   } catch (error: unknown) {
-    return raise(
-      new TuffError(`Failed to read file: ${filePath}`, null, {
-        code: "E_SELFHOST_PANIC",
-        reason:
-          "The self-hosted compiler could not load a required source file while resolving inputs/modules.",
-        fix: "Verify the file path and module layout, then retry compilation.",
-        details: error instanceof Error ? error.message : String(error),
-      }),
-    );
+    throw new TuffError(`Failed to read file: ${filePath}`, null, {
+      code: "E_SELFHOST_PANIC",
+      reason:
+        "The self-hosted compiler could not load a required source file while resolving inputs/modules.",
+      fix: "Verify the file path and module layout, then retry compilation.",
+      details: error instanceof Error ? error.message : String(error),
+    });
   }
 }
 
@@ -239,15 +237,13 @@ export function write_file(filePath: string, contents: string): number {
     fs.writeFileSync(filePath, contents, "utf8");
     return 0;
   } catch (error: unknown) {
-    return raise(
-      new TuffError(`Failed to write file: ${filePath}`, null, {
-        code: "E_SELFHOST_PANIC",
-        reason:
-          "The self-hosted compiler could not persist generated output to disk.",
-        fix: "Verify output path permissions and directory accessibility, then retry.",
-        details: error instanceof Error ? error.message : String(error),
-      }),
-    );
+    throw new TuffError(`Failed to write file: ${filePath}`, null, {
+      code: "E_SELFHOST_PANIC",
+      reason:
+        "The self-hosted compiler could not persist generated output to disk.",
+      fix: "Verify output path permissions and directory accessibility, then retry.",
+      details: error instanceof Error ? error.message : String(error),
+    });
   }
 }
 
@@ -278,14 +274,12 @@ export function print_error(s: unknown): void {
 
 // === Misc ===
 export function panic(msg: string): never {
-  return raise(
-    new TuffError(msg, null, {
-      code: "E_SELFHOST_PANIC",
-      reason:
-        "The self-hosted compiler encountered an unrecoverable internal parse/compile condition.",
-      fix: "Check the reported source construct and simplify or correct the syntax; if valid, add a targeted selfhost frontend test and patch the selfhost parser pipeline.",
-    }),
-  );
+  throw new TuffError(msg, null, {
+    code: "E_SELFHOST_PANIC",
+    reason:
+      "The self-hosted compiler encountered an unrecoverable internal parse/compile condition.",
+    fix: "Check the reported source construct and simplify or correct the syntax; if valid, add a targeted selfhost frontend test and patch the selfhost parser pipeline.",
+  });
 }
 
 export function panic_with_code(
@@ -294,17 +288,15 @@ export function panic_with_code(
   reason: string | null,
   fix: string | null,
 ): never {
-  return raise(
-    new TuffError(msg, null, {
-      code: code ?? "E_SELFHOST_PANIC",
-      reason:
-        reason ??
-        "The self-hosted compiler encountered an unrecoverable internal parse/compile condition.",
-      fix:
-        fix ??
-        "Check the reported source construct and simplify or correct the syntax; if valid, add a targeted selfhost frontend test and patch the selfhost parser pipeline.",
-    }),
-  );
+  throw new TuffError(msg, null, {
+    code: code ?? "E_SELFHOST_PANIC",
+    reason:
+      reason ??
+      "The self-hosted compiler encountered an unrecoverable internal parse/compile condition.",
+    fix:
+      fix ??
+      "Check the reported source construct and simplify or correct the syntax; if valid, add a targeted selfhost frontend test and patch the selfhost parser pipeline.",
+  });
 }
 
 // === String Vector (for intern table) ===
@@ -343,10 +335,9 @@ export function typeof_value(v: unknown): string {
 
 // === Test helpers ===
 export function assert(cond: boolean, msg: string): void {
-  if (!cond) return raise(new Error("Assertion failed: " + msg));
+  if (!cond) throw new Error("Assertion failed: " + msg);
 }
 
 export function assert_eq(a: unknown, b: unknown, msg: string): void {
-  if (a !== b)
-    return raise(new Error(`Assertion failed: ${msg} (${a} !== ${b})`));
+  if (a !== b) throw new Error(`Assertion failed: ${msg} (${a} !== ${b})`);
 }

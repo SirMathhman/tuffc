@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
 import { fileURLToPath } from "node:url";
-import { compileFile } from "../../main/js/compiler.ts";
+import { compileFileThrow } from "../../main/js/compiler.ts";
 import * as runtime from "../../main/js/runtime.ts";
 
 const thisFile = fileURLToPath(import.meta.url);
@@ -33,7 +33,7 @@ const rootResolutionOutJs = path.join(outDir, "app-root-resolution.js");
 fs.mkdirSync(outDir, { recursive: true });
 
 console.log("Compiling selfhost.tuff with Stage 0...");
-const selfhostResult = compileFile(
+const selfhostResult = compileFileThrow(
   selfhostPath,
   path.join(outDir, "selfhost.js"),
   {

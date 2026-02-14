@@ -3,8 +3,11 @@ import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
 import { fileURLToPath } from "node:url";
-import { compileFile, compileSource } from "../../main/js/compiler.ts";
-import { raise, toDiagnostic } from "../../main/js/errors.ts";
+import {
+  compileFileResult,
+  compileSourceResult,
+} from "../../main/js/compiler.ts";
+import { toDiagnostic } from "../../main/js/errors.ts";
 import * as runtime from "../../main/js/runtime.ts";
 
 const thisFile = fileURLToPath(import.meta.url);
@@ -17,7 +20,7 @@ const selfhostPath = path.join(root, "src", "main", "tuff", "selfhost.tuff");
 fs.mkdirSync(outDir, { recursive: true });
 
 function loadSelfhost() {
-  const selfhostResult = compileFile(
+  const selfhostResult = compileFileResult(
     selfhostPath,
     path.join(outDir, "selfhost.js"),
     {
@@ -29,6 +32,7 @@ function loadSelfhost() {
       },
     },
   );
+  if (!selfhostResult.ok) throw selfhostResult.error;
 
   const sandbox = {
     module: { exports: {} },
@@ -38,7 +42,7 @@ function loadSelfhost() {
   };
 
   vm.runInNewContext(
-    `${selfhostResult.js}\nmodule.exports = { compile_source, compile_file, main };`,
+    `${selfhostResult.value.js}\nmodule.exports = { compile_source, compile_file, main };`,
     sandbox,
   );
 
@@ -47,7 +51,7 @@ function loadSelfhost() {
     typeof selfhost.compile_source !== "function" ||
     typeof selfhost.compile_file !== "function"
   ) {
-    return raise(new Error("selfhost compiler exports are incomplete"));
+    throw new Error("selfhost compiler exports are incomplete");
   }
   return selfhost;
 }
@@ -56,7 +60,7 @@ function runMainFromJs(js, label) {
   const sandbox = { module: { exports: {} }, exports: {}, console };
   vm.runInNewContext(`${js}\nmodule.exports = { main };`, sandbox);
   if (typeof sandbox.module.exports.main !== "function") {
-    return raise(new Error(`${label}: generated JS does not export main()`));
+    throw new Error(`${label}: generated JS does not export main()`);
   }
   return sandbox.module.exports.main();
 }
@@ -64,24 +68,16 @@ function runMainFromJs(js, label) {
 function assertContract(diag, label) {
   for (const key of ["source", "cause", "reason", "fix"]) {
     if (!diag[key] || typeof diag[key] !== "string") {
-      return raise(
-        new Error(
-          `${label}: diagnostic field '${key}' must be a non-empty string`,
-        ),
+      throw new Error(
+        `${label}: diagnostic field '${key}' must be a non-empty string`,
       );
     }
   }
 }
 
-function expectBothFail(jsFn, selfhostFn, label, expectedCode = null) {
-  let jsError = null;
+function expectBothFail(jsResultFn, selfhostFn, label, expectedCode = null) {
+  const jsResult = jsResultFn();
   let selfhostError = null;
-
-  try {
-    jsFn();
-  } catch (error) {
-    jsError = error;
-  }
 
   try {
     selfhostFn();
@@ -89,27 +85,23 @@ function expectBothFail(jsFn, selfhostFn, label, expectedCode = null) {
     selfhostError = error;
   }
 
-  if (!jsError || !selfhostError) {
-    return raise(new Error(`${label}: expected both compilers to fail`));
+  if (jsResult.ok || !selfhostError) {
+    throw new Error(`${label}: expected both compilers to fail`);
   }
 
-  const jsDiag = toDiagnostic(jsError);
+  const jsDiag = toDiagnostic(jsResult.error);
   const selfhostDiag = toDiagnostic(selfhostError);
   assertContract(jsDiag, `${label} (js)`);
   assertContract(selfhostDiag, `${label} (selfhost)`);
   if (expectedCode) {
     if (jsDiag.code !== expectedCode) {
-      return raise(
-        new Error(
-          `${label} (js): expected diagnostic code ${expectedCode}, got ${jsDiag.code}`,
-        ),
+      throw new Error(
+        `${label} (js): expected diagnostic code ${expectedCode}, got ${jsDiag.code}`,
       );
     }
     if (selfhostDiag.code !== expectedCode) {
-      return raise(
-        new Error(
-          `${label} (selfhost): expected diagnostic code ${expectedCode}, got ${selfhostDiag.code}`,
-        ),
+      throw new Error(
+        `${label} (selfhost): expected diagnostic code ${expectedCode}, got ${selfhostDiag.code}`,
       );
     }
   }
@@ -125,7 +117,12 @@ fn factorial(n: I32) : I32 => {
 fn main() : I32 => factorial(5);
 `;
 
-const jsFactorial = compileSource(factorialSource, "<parity-factorial-js>").js;
+const jsFactorialResultObj = compileSourceResult(
+  factorialSource,
+  "<parity-factorial-js>",
+);
+if (!jsFactorialResultObj.ok) throw jsFactorialResultObj.error;
+const jsFactorial = jsFactorialResultObj.value.js;
 const selfhostFactorial = selfhost.compile_source(factorialSource);
 const jsFactorialResult = runMainFromJs(jsFactorial, "js-factorial");
 const selfhostFactorialResult = runMainFromJs(
@@ -133,10 +130,8 @@ const selfhostFactorialResult = runMainFromJs(
   "selfhost-factorial",
 );
 if (jsFactorialResult !== selfhostFactorialResult) {
-  raise(
-    new Error(
-      `factorial parity mismatch: js=${jsFactorialResult}, selfhost=${selfhostFactorialResult}`,
-    ),
+  throw new Error(
+    `factorial parity mismatch: js=${jsFactorialResult}, selfhost=${selfhostFactorialResult}`,
   );
 }
 
@@ -149,15 +144,15 @@ fn pick(c: Color) : I32 =>
   };
 fn main() : I32 => pick(Color.Blue);
 `;
-const jsEnum = compileSource(enumSource, "<parity-enum-js>").js;
+const jsEnumResultObj = compileSourceResult(enumSource, "<parity-enum-js>");
+if (!jsEnumResultObj.ok) throw jsEnumResultObj.error;
+const jsEnum = jsEnumResultObj.value.js;
 const selfhostEnum = selfhost.compile_source(enumSource);
 const jsEnumResult = runMainFromJs(jsEnum, "js-enum");
 const selfhostEnumResult = runMainFromJs(selfhostEnum, "selfhost-enum");
 if (jsEnumResult !== selfhostEnumResult) {
-  raise(
-    new Error(
-      `enum parity mismatch: js=${jsEnumResult}, selfhost=${selfhostEnumResult}`,
-    ),
+  throw new Error(
+    `enum parity mismatch: js=${jsEnumResult}, selfhost=${selfhostEnumResult}`,
   );
 }
 
@@ -165,26 +160,25 @@ if (jsEnumResult !== selfhostEnumResult) {
 const jsModuleOut = path.join(outDir, "module-js.js");
 const selfhostModuleOut = path.join(outDir, "module-selfhost.js");
 
-const jsModule = compileFile(moduleEntry, jsModuleOut, {
+const jsModule = compileFileResult(moduleEntry, jsModuleOut, {
   enableModules: true,
   modules: { moduleBaseDir: modulesBase },
 });
+if (!jsModule.ok) throw jsModule.error;
 selfhost.compile_file(moduleEntry, selfhostModuleOut);
 
-const jsModuleResult = runMainFromJs(jsModule.js, "js-module");
+const jsModuleResult = runMainFromJs(jsModule.value.js, "js-module");
 const selfhostModuleJs = fs.readFileSync(selfhostModuleOut, "utf8");
 const selfhostModuleResult = runMainFromJs(selfhostModuleJs, "selfhost-module");
 if (jsModuleResult !== selfhostModuleResult) {
-  raise(
-    new Error(
-      `module parity mismatch: js=${jsModuleResult}, selfhost=${selfhostModuleResult}`,
-    ),
+  throw new Error(
+    `module parity mismatch: js=${jsModuleResult}, selfhost=${selfhostModuleResult}`,
   );
 }
 
 // 3) Parse failure parity (both must fail with diagnostics contract).
 expectBothFail(
-  () => compileSource("fn broken( : I32 => 0;", "<parity-bad-js>"),
+  () => compileSourceResult("fn broken( : I32 => 0;", "<parity-bad-js>"),
   () => selfhost.compile_source("fn broken( : I32 => 0;"),
   "parse-failure parity",
 );
@@ -201,7 +195,7 @@ fs.writeFileSync(
 
 expectBothFail(
   () =>
-    compileFile(missingEntry, missingJsOut, {
+    compileFileResult(missingEntry, missingJsOut, {
       enableModules: true,
       modules: { moduleBaseDir: path.dirname(missingEntry) },
     }),
@@ -221,7 +215,7 @@ fs.writeFileSync(cycleB, "let { a } = A;\nfn b() : I32 => a();\n", "utf8");
 
 expectBothFail(
   () =>
-    compileFile(cycleA, cycleJsOut, {
+    compileFileResult(cycleA, cycleJsOut, {
       enableModules: true,
       modules: { moduleBaseDir: cycleDir },
     }),
@@ -232,7 +226,11 @@ expectBothFail(
 
 // 6) Unknown identifier failure parity.
 expectBothFail(
-  () => compileSource("fn main() : I32 => missing_symbol;", "<unknown-id-js>"),
+  () =>
+    compileSourceResult(
+      "fn main() : I32 => missing_symbol;",
+      "<unknown-id-js>",
+    ),
   () => selfhost.compile_source("fn main() : I32 => missing_symbol;"),
   "unknown-identifier parity",
   "E_RESOLVE_UNKNOWN_IDENTIFIER",
@@ -246,7 +244,7 @@ fn main() : I32 => collide();
 `;
 
 expectBothFail(
-  () => compileSource(dupSource, "<dup-global-js>"),
+  () => compileSourceResult(dupSource, "<dup-global-js>"),
   () => selfhost.compile_source(dupSource),
   "duplicate-global parity",
   "E_RESOLVE_SHADOWING",
@@ -259,7 +257,7 @@ fn main() : I32 => add(1);
 `;
 
 expectBothFail(
-  () => compileSource(aritySource, "<arity-js>"),
+  () => compileSourceResult(aritySource, "<arity-js>"),
   () => selfhost.compile_source(aritySource),
   "arity-mismatch parity",
 );
@@ -284,7 +282,7 @@ fs.writeFileSync(
 
 expectBothFail(
   () =>
-    compileFile(privateEntry, privateJsOut, {
+    compileFileResult(privateEntry, privateJsOut, {
       enableModules: true,
       modules: { moduleBaseDir: privateDir },
     }),

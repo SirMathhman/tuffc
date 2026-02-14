@@ -3,7 +3,10 @@ import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
 import { fileURLToPath } from "node:url";
-import { compileFile, compileSource } from "../../main/js/compiler.ts";
+import {
+  compileFileResult,
+  compileSourceResult,
+} from "../../main/js/compiler.ts";
 
 const thisFile = fileURLToPath(import.meta.url);
 const root = path.resolve(path.dirname(thisFile), "..", "..", "..");
@@ -11,28 +14,30 @@ const outDir = path.join(root, "tests", "out", "stage2");
 fs.mkdirSync(outDir, { recursive: true });
 
 function expectCompileOk(label, source) {
-  try {
-    compileSource(source, `<${label}>`, { typecheck: { strictSafety: true } });
-  } catch (error) {
+  const result = compileSourceResult(source, `<${label}>`, {
+    typecheck: { strictSafety: true },
+  });
+  if (!result.ok) {
     console.error(
-      `Expected compile success for ${label}, but failed: ${error.message}`,
+      `Expected compile success for ${label}, but failed: ${result.error.message}`,
     );
     process.exit(1);
   }
 }
 
 function expectCompileFail(label, source, expectedMessagePart) {
-  try {
-    compileSource(source, `<${label}>`, { typecheck: { strictSafety: true } });
+  const result = compileSourceResult(source, `<${label}>`, {
+    typecheck: { strictSafety: true },
+  });
+  if (result.ok) {
     console.error(`Expected compile failure for ${label}, but it compiled`);
     process.exit(1);
-  } catch (error) {
-    if (!String(error.message).includes(expectedMessagePart)) {
-      console.error(
-        `Compile failure for ${label} did not include '${expectedMessagePart}'. Actual: ${error.message}`,
-      );
-      process.exit(1);
-    }
+  }
+  if (!String(result.error.message).includes(expectedMessagePart)) {
+    console.error(
+      `Compile failure for ${label} did not include '${expectedMessagePart}'. Actual: ${result.error.message}`,
+    );
+    process.exit(1);
   }
 }
 
@@ -91,14 +96,18 @@ const moduleEntry = path.join(
   "app.tuff",
 );
 const moduleOut = path.join(outDir, "module-app.js");
-const moduleResult = compileFile(moduleEntry, moduleOut, {
+const moduleResult = compileFileResult(moduleEntry, moduleOut, {
   enableModules: true,
   modules: { moduleBaseDir: path.join(root, "src", "test", "tuff", "modules") },
   typecheck: { strictSafety: false },
 });
+if (!moduleResult.ok) throw moduleResult.error;
 
 const sandbox = { module: { exports: {} }, exports: {}, console };
-vm.runInNewContext(`${moduleResult.js}\nmodule.exports = { main };`, sandbox);
+vm.runInNewContext(
+  `${moduleResult.value.js}\nmodule.exports = { main };`,
+  sandbox,
+);
 const got = sandbox.module.exports.main();
 if (got !== 42) {
   console.error(`Module system test failed: expected 42, got ${got}`);
@@ -114,7 +123,7 @@ const rootResolutionEntry = path.join(
   "app_root_resolution.tuff",
 );
 const rootResolutionOut = path.join(outDir, "module-app-root-resolution.js");
-const rootResolutionResult = compileFile(
+const rootResolutionResult = compileFileResult(
   rootResolutionEntry,
   rootResolutionOut,
   {
@@ -125,10 +134,11 @@ const rootResolutionResult = compileFile(
     typecheck: { strictSafety: false },
   },
 );
+if (!rootResolutionResult.ok) throw rootResolutionResult.error;
 
 const rootResolutionSandbox = { module: { exports: {} }, exports: {}, console };
 vm.runInNewContext(
-  `${rootResolutionResult.js}\nmodule.exports = { main };`,
+  `${rootResolutionResult.value.js}\nmodule.exports = { main };`,
   rootResolutionSandbox,
 );
 const rootResolutionGot = rootResolutionSandbox.module.exports.main();
@@ -155,21 +165,24 @@ fs.writeFileSync(
   "utf8",
 );
 
-try {
-  compileFile(privateMain, privateOut, {
-    enableModules: true,
-    modules: { moduleBaseDir: privateModuleDir },
-    typecheck: { strictSafety: false },
-  });
+const privateImportResult = compileFileResult(privateMain, privateOut, {
+  enableModules: true,
+  modules: { moduleBaseDir: privateModuleDir },
+  typecheck: { strictSafety: false },
+});
+if (privateImportResult.ok) {
   console.error("Expected non-exported import to fail, but it compiled");
   process.exit(1);
-} catch (error) {
-  if (!String(error?.message ?? "").includes("not exported with 'out'")) {
-    console.error(
-      `Expected non-exported import failure message, got: ${error?.message}`,
-    );
-    process.exit(1);
-  }
+}
+if (
+  !String(privateImportResult.error?.message ?? "").includes(
+    "not exported with 'out'",
+  )
+) {
+  console.error(
+    `Expected non-exported import failure message, got: ${privateImportResult.error?.message}`,
+  );
+  process.exit(1);
 }
 
 console.log("Phase 3 Stage 2 checks passed");

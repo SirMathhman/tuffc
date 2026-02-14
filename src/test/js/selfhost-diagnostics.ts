@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
 import { fileURLToPath } from "node:url";
-import { compileFile } from "../../main/js/compiler.ts";
+import { compileFileThrow } from "../../main/js/compiler.ts";
 import { toDiagnostic } from "../../main/js/errors.ts";
 import * as runtime from "../../main/js/runtime.ts";
 
@@ -14,7 +14,7 @@ const selfhostPath = path.join(root, "src", "main", "tuff", "selfhost.tuff");
 
 fs.mkdirSync(outDir, { recursive: true });
 
-const selfhostResult = compileFile(
+const selfhostResult = compileFileThrow(
   selfhostPath,
   path.join(outDir, "selfhost.js"),
   {

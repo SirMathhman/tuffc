@@ -10,9 +10,11 @@ import { resolveNames } from "./resolve.ts";
 import { typecheck } from "./typecheck.ts";
 import { autoFixProgram, lintProgram } from "./linter.ts";
 import { generateJavaScript } from "./codegen-js.ts";
-import { TuffError, enrichError, raise } from "./errors.ts";
-import { err, ok } from "./result.ts";
+import { TuffError, enrichError } from "./errors.ts";
+import { err, ok, type Result } from "./result.ts";
 import * as runtime from "./runtime.ts";
+
+type CompilerResult<T> = Result<T, TuffError>;
 
 let cachedSelfhost = null;
 
@@ -25,8 +27,8 @@ function getSelfhostEntryPath() {
   return path.resolve(path.dirname(thisFile), "..", "tuff", "selfhost.tuff");
 }
 
-function bootstrapSelfhostCompiler(options = {}) {
-  if (cachedSelfhost) return cachedSelfhost;
+function bootstrapSelfhostCompiler(options = {}): CompilerResult<unknown> {
+  if (cachedSelfhost) return ok(cachedSelfhost);
 
   const selfhostEntry = getSelfhostEntryPath();
   const selfhostOutput = path.join(
@@ -34,7 +36,7 @@ function bootstrapSelfhostCompiler(options = {}) {
     "selfhost.generated.js",
   );
 
-  const stage0Result = compileFile(selfhostEntry, selfhostOutput, {
+  const stage0Result = compileFileInternal(selfhostEntry, selfhostOutput, {
     ...options,
     backend: "stage0",
     enableModules: true,
@@ -51,6 +53,8 @@ function bootstrapSelfhostCompiler(options = {}) {
     lint: { enabled: false },
   });
 
+  if (!stage0Result.ok) return stage0Result;
+
   const sandbox = {
     module: { exports: {} },
     exports: {},
@@ -59,7 +63,7 @@ function bootstrapSelfhostCompiler(options = {}) {
   };
 
   vm.runInNewContext(
-    `${stage0Result.js}\nmodule.exports = { compile_source, compile_file, compile_source_with_options, compile_file_with_options, main };`,
+    `${stage0Result.value.js}\nmodule.exports = { compile_source, compile_file, compile_source_with_options, compile_file_with_options, main };`,
     sandbox,
     { filename: toPosixPath(selfhostOutput) },
   );
@@ -69,7 +73,7 @@ function bootstrapSelfhostCompiler(options = {}) {
     typeof compiled?.compile_source !== "function" ||
     typeof compiled?.compile_file !== "function"
   ) {
-    return raise(
+    return err(
       new TuffError(
         "Selfhost compiler bootstrap exports are incomplete",
         null,
@@ -84,7 +88,7 @@ function bootstrapSelfhostCompiler(options = {}) {
   }
 
   cachedSelfhost = compiled;
-  return cachedSelfhost;
+  return ok(cachedSelfhost);
 }
 
 function createTracer(enabled) {
@@ -127,21 +131,28 @@ function modulePathToFile(modulePath, moduleBaseDir) {
   return path.join(moduleBaseDir, ...modulePath.split("::")) + ".tuff";
 }
 
-function loadModuleGraph(entryPath, options = {}) {
+function loadModuleGraph(
+  entryPath,
+  options = {},
+): CompilerResult<{
+  ordered: unknown[];
+  merged: unknown;
+  moduleImportsByPath: Map<string, Set<string>>;
+}> {
   const moduleBaseDir = options.moduleBaseDir ?? path.dirname(entryPath);
   const seen = new Set();
   const visiting = new Set();
   const ordered = [];
   const moduleMetaByPath = new Map();
 
-  const visit = (filePath, trail = []) => {
+  const visit = (filePath, trail = []): CompilerResult<void> => {
     const abs = path.resolve(filePath);
-    if (seen.has(abs)) return;
+    if (seen.has(abs)) return ok(undefined);
     if (visiting.has(abs)) {
       const cycleStart = trail.indexOf(abs);
       const cycle =
         cycleStart >= 0 ? [...trail.slice(cycleStart), abs] : [...trail, abs];
-      return raise(
+      return err(
         new TuffError(
           `Module import cycle detected: ${cycle.join(" -> ")}`,
           null,
@@ -156,9 +167,30 @@ function loadModuleGraph(entryPath, options = {}) {
     }
     visiting.add(abs);
 
-    const source = fs.readFileSync(abs, "utf8");
-    const tokens = lex(source, abs);
-    const cst = parse(tokens);
+    let source: string;
+    try {
+      source = fs.readFileSync(abs, "utf8");
+    } catch (e: unknown) {
+      return err(
+        new TuffError(
+          `Cannot read module file: ${abs}`,
+          trail.length > 0 ? { file: trail[trail.length - 1] } : null,
+          {
+            code: "E_MODULE_NOT_FOUND",
+            reason:
+              "The requested module file does not exist or cannot be read.",
+            fix: "Verify the module path is correct and the file exists.",
+            details: e instanceof Error ? e.message : String(e),
+          },
+        ),
+      );
+    }
+    const tokensResult = lex(source, abs);
+    if (!tokensResult.ok) return tokensResult;
+    const tokens = tokensResult.value;
+    const cstResult = parse(tokens);
+    if (!cstResult.ok) return cstResult;
+    const cst = cstResult.value;
     const core = desugar(cst);
 
     const declarations = new Set();
@@ -181,7 +213,8 @@ function loadModuleGraph(entryPath, options = {}) {
     for (const imp of gatherImports(core)) {
       const depFile = modulePathToFile(imp.modulePath, moduleBaseDir);
       const depAbs = path.resolve(depFile);
-      visit(depFile, [...trail, abs]);
+      const visitResult = visit(depFile, [...trail, abs]);
+      if (!visitResult.ok) return visitResult;
 
       const depMeta = moduleMetaByPath.get(depAbs);
       if (!depMeta) continue;
@@ -191,7 +224,7 @@ function loadModuleGraph(entryPath, options = {}) {
           continue;
         }
         if (depMeta.declarations.has(importedName)) {
-          return raise(
+          return err(
             new TuffError(
               `Cannot import '${importedName}' from ${imp.modulePath}: symbol is not exported with 'out'`,
               imp.loc ?? null,
@@ -204,7 +237,7 @@ function loadModuleGraph(entryPath, options = {}) {
             ),
           );
         }
-        return raise(
+        return err(
           new TuffError(
             `Cannot import '${importedName}' from ${imp.modulePath}: exported symbol not found`,
             imp.loc ?? null,
@@ -222,9 +255,11 @@ function loadModuleGraph(entryPath, options = {}) {
     visiting.delete(abs);
     seen.add(abs);
     ordered.push({ filePath: abs, source, tokens, cst, core });
+    return ok(undefined);
   };
 
-  visit(entryPath);
+  const visitResult = visit(entryPath);
+  if (!visitResult.ok) return visitResult;
 
   const moduleImportsByPath = new Map();
   for (const [filePath, meta] of moduleMetaByPath.entries()) {
@@ -246,17 +281,17 @@ function loadModuleGraph(entryPath, options = {}) {
     ),
   };
 
-  return { ordered, merged, moduleImportsByPath };
+  return ok({ ordered, merged, moduleImportsByPath });
 }
 
 export function compileSource(
   source: string,
   filePath: string = "<memory>",
   options: Record<string, unknown> = {},
-): Record<string, unknown> {
+): CompilerResult<Record<string, unknown>> {
   if ((options.backend ?? "stage0") === "selfhost") {
     if (options.lint?.fix) {
-      return raise(
+      return err(
         new TuffError(
           "Selfhost backend does not support lint auto-fix yet",
           null,
@@ -270,13 +305,18 @@ export function compileSource(
       );
     }
 
+    const selfhostResult = bootstrapSelfhostCompiler(options);
+    if (!selfhostResult.ok) return selfhostResult;
+    const selfhost = selfhostResult.value;
+    const strictSafety = options.typecheck?.strictSafety ? 1 : 0;
+    const lintEnabled =
+      options.lint?.enabled && options.lint?.mode !== "warn" ? 1 : 0;
+    const maxEffectiveLines = options.lint?.maxEffectiveLines ?? 500;
+
+    // Selfhost can throw, wrap in try/catch but return Result
+    let js;
     try {
-      const selfhost = bootstrapSelfhostCompiler(options);
-      const strictSafety = options.typecheck?.strictSafety ? 1 : 0;
-      const lintEnabled =
-        options.lint?.enabled && options.lint?.mode !== "warn" ? 1 : 0;
-      const maxEffectiveLines = options.lint?.maxEffectiveLines ?? 500;
-      const js =
+      js =
         typeof selfhost.compile_source_with_options === "function"
           ? selfhost.compile_source_with_options(
               source,
@@ -285,91 +325,117 @@ export function compileSource(
               maxEffectiveLines,
             )
           : selfhost.compile_source(source);
-      return {
-        tokens: [],
-        cst: { kind: "Program", body: [] },
-        core: { kind: "Program", body: [] },
-        js,
-        lintIssues: [],
-        lintFixesApplied: 0,
-        lintFixedSource: source,
-      };
     } catch (error) {
-      return raise(enrichError(error, { source }));
+      const enriched = enrichError(error, { source });
+      return err(
+        enriched instanceof TuffError
+          ? enriched
+          : new TuffError(String(error), null),
+      );
     }
+    return ok({
+      tokens: [],
+      cst: { kind: "Program", body: [] },
+      core: { kind: "Program", body: [] },
+      js,
+      lintIssues: [],
+      lintFixesApplied: 0,
+      lintFixedSource: source,
+    });
   }
 
   const run = createTracer(options.tracePasses);
-  try {
-    const tokens = run("lex", () => lex(source, filePath));
-    const cst = run("parse", () => parse(tokens));
-    const core = run("desugar", () => desugar(cst));
-    run("resolve", () => resolveNames(core, options.resolve ?? {}));
-    run("typecheck", () => typecheck(core, options.typecheck ?? {}));
-    const { applied: lintFixesApplied, fixedSource: lintFixedSource } =
-      autoFixProgram(core, {
-        ...(options.lint ?? {}),
-        source,
-      });
-    const lintIssues = lintProgram(core, {
+  const tokensResult = run("lex", () => lex(source, filePath));
+  if (!tokensResult.ok) {
+    enrichError(tokensResult.error, { source });
+    return tokensResult;
+  }
+  const tokens = tokensResult.value;
+  const cstResult = run("parse", () => parse(tokens));
+  if (!cstResult.ok) {
+    enrichError(cstResult.error, { source });
+    return cstResult;
+  }
+  const cst = cstResult.value;
+  const core = run("desugar", () => desugar(cst));
+  const resolveResult = run("resolve", () =>
+    resolveNames(core, options.resolve ?? {}),
+  );
+  if (!resolveResult.ok) {
+    enrichError(resolveResult.error, { source });
+    return resolveResult;
+  }
+  const typecheckResult = run("typecheck", () =>
+    typecheck(core, options.typecheck ?? {}),
+  );
+  if (!typecheckResult.ok) {
+    enrichError(typecheckResult.error, { source });
+    return typecheckResult;
+  }
+  const { applied: lintFixesApplied, fixedSource: lintFixedSource } =
+    autoFixProgram(core, {
       ...(options.lint ?? {}),
       source,
-      filePath,
     });
-    for (const issue of lintIssues) {
-      enrichError(issue, { source });
-    }
-    const lintMode = options.lint?.mode ?? "error";
-    if (lintIssues.length > 0 && lintMode !== "warn") {
-      return raise(lintIssues[0]);
-    }
-    const js = run("codegen", () => generateJavaScript(core));
-    return {
-      tokens,
-      cst,
-      core,
-      js,
-      lintIssues,
-      lintFixesApplied,
-      lintFixedSource,
-    };
-  } catch (error) {
-    return raise(enrichError(error, { source }));
+  const lintIssues = lintProgram(core, {
+    ...(options.lint ?? {}),
+    source,
+    filePath,
+  });
+  for (const issue of lintIssues) {
+    enrichError(issue, { source });
   }
+  const lintMode = options.lint?.mode ?? "error";
+  if (lintIssues.length > 0 && lintMode !== "warn") {
+    return err(lintIssues[0]);
+  }
+  const js = run("codegen", () => generateJavaScript(core));
+  return ok({
+    tokens,
+    cst,
+    core,
+    js,
+    lintIssues,
+    lintFixesApplied,
+    lintFixedSource,
+  });
 }
 
-export function compileFile(
+function compileFileInternal(
   inputPath: string,
   outputPath: string | null = null,
   options: Record<string, unknown> = {},
-): Record<string, unknown> {
+): CompilerResult<Record<string, unknown>> {
   if ((options.backend ?? "stage0") === "selfhost") {
     const absInput = path.resolve(inputPath);
     const finalOutput = outputPath ?? absInput.replace(/\.tuff$/i, ".js");
 
+    const selfhostResult = bootstrapSelfhostCompiler(options);
+    if (!selfhostResult.ok) return selfhostResult;
+    const selfhost = selfhostResult.value;
+
+    if (options.lint?.fix) {
+      return err(
+        new TuffError(
+          "Selfhost backend does not support lint auto-fix yet",
+          null,
+          {
+            code: "E_SELFHOST_UNSUPPORTED_OPTION",
+            reason:
+              "Selfhost backend currently supports strict file-length lint checks but not source auto-fix rewriting.",
+            fix: "Use backend: 'stage0' with --lint-fix, or disable lint auto-fix in selfhost mode.",
+          },
+        ),
+      );
+    }
+
+    const strictSafety = options.typecheck?.strictSafety ? 1 : 0;
+    const lintEnabled =
+      options.lint?.enabled && options.lint?.mode !== "warn" ? 1 : 0;
+    const maxEffectiveLines = options.lint?.maxEffectiveLines ?? 500;
+
+    let js;
     try {
-      const selfhost = bootstrapSelfhostCompiler(options);
-      if (options.lint?.fix) {
-        return raise(
-          new TuffError(
-            "Selfhost backend does not support lint auto-fix yet",
-            null,
-            {
-              code: "E_SELFHOST_UNSUPPORTED_OPTION",
-              reason:
-                "Selfhost backend currently supports strict file-length lint checks but not source auto-fix rewriting.",
-              fix: "Use backend: 'stage0' with --lint-fix, or disable lint auto-fix in selfhost mode.",
-            },
-          ),
-        );
-      }
-
-      const strictSafety = options.typecheck?.strictSafety ? 1 : 0;
-      const lintEnabled =
-        options.lint?.enabled && options.lint?.mode !== "warn" ? 1 : 0;
-      const maxEffectiveLines = options.lint?.maxEffectiveLines ?? 500;
-
-      let js;
       if (options.enableModules) {
         const normalizedInput = toPosixPath(absInput);
         const normalizedOutput = toPosixPath(finalOutput);
@@ -399,138 +465,170 @@ export function compileFile(
         fs.mkdirSync(path.dirname(finalOutput), { recursive: true });
         fs.writeFileSync(finalOutput, js, "utf8");
       }
-
-      return {
-        source: fs.readFileSync(absInput, "utf8"),
-        tokens: [],
-        cst: { kind: "Program", body: [] },
-        core: { kind: "Program", body: [] },
-        js,
-        lintIssues: [],
-        lintFixesApplied: 0,
-        lintFixedSource: null,
-        outputPath: finalOutput,
-      };
     } catch (error) {
-      return raise(
-        enrichError(error, {
-          sourceByFile: new Map([
-            [absInput, fs.readFileSync(absInput, "utf8")],
-          ]),
-          source: fs.existsSync(absInput)
-            ? fs.readFileSync(absInput, "utf8")
-            : null,
-        }),
+      const enriched = enrichError(error, {
+        sourceByFile: new Map([[absInput, fs.readFileSync(absInput, "utf8")]]),
+        source: fs.existsSync(absInput)
+          ? fs.readFileSync(absInput, "utf8")
+          : null,
+      });
+      return err(
+        enriched instanceof TuffError
+          ? enriched
+          : new TuffError(String(error), null),
       );
     }
+
+    return ok({
+      source: fs.readFileSync(absInput, "utf8"),
+      tokens: [],
+      cst: { kind: "Program", body: [] },
+      core: { kind: "Program", body: [] },
+      js,
+      lintIssues: [],
+      lintFixesApplied: 0,
+      lintFixedSource: null,
+      outputPath: finalOutput,
+    });
   }
 
   const run = createTracer(options.tracePasses);
   const useModules = !!options.enableModules;
-  let result;
   let graph = null;
 
-  try {
-    if (useModules) {
-      graph = run("load-module-graph", () =>
-        loadModuleGraph(inputPath, options.modules ?? {}),
-      );
-      run("resolve", () =>
-        resolveNames(graph.merged, {
-          ...(options.resolve ?? {}),
-          strictModuleImports: options.resolve?.strictModuleImports ?? true,
-          moduleImportsByPath: graph.moduleImportsByPath,
-        }),
-      );
-      run("typecheck", () => typecheck(graph.merged, options.typecheck ?? {}));
-      const mergedSource = graph.ordered
-        .map((unit) => unit.source)
-        .join("\n\n");
-      const { applied: lintFixesApplied, fixedSource: lintFixedSource } =
-        autoFixProgram(graph.merged, {
-          ...(options.lint ?? {}),
-          source: mergedSource,
-        });
+  if (useModules) {
+    const graphResult = run("load-module-graph", () =>
+      loadModuleGraph(inputPath, options.modules ?? {}),
+    );
+    if (!graphResult.ok) {
       const sourceByFile = new Map();
-      for (const unit of graph.ordered) {
-        sourceByFile.set(unit.filePath, unit.source);
+      if (fs.existsSync(inputPath)) {
+        sourceByFile.set(
+          path.resolve(inputPath),
+          fs.readFileSync(inputPath, "utf8"),
+        );
       }
-      const lintIssues = lintProgram(graph.merged, {
-        ...(options.lint ?? {}),
-        sourceByFile,
-      });
-      for (const issue of lintIssues) {
-        enrichError(issue, { sourceByFile });
-      }
-      const lintMode = options.lint?.mode ?? "error";
-      if (lintIssues.length > 0 && lintMode !== "warn") {
-        return raise(lintIssues[0]);
-      }
-      const js = run("codegen", () => generateJavaScript(graph.merged));
-      result = {
-        source: fs.readFileSync(inputPath, "utf8"),
-        tokens: graph.ordered.at(-1)?.tokens ?? [],
-        cst: graph.ordered.at(-1)?.cst ?? { kind: "Program", body: [] },
-        core: graph.merged,
-        js,
-        lintIssues,
-        lintFixesApplied,
-        lintFixedSource,
-        moduleGraph: graph,
-      };
-    } else {
-      const source = fs.readFileSync(inputPath, "utf8");
-      result = compileSource(source, inputPath, options);
-    }
-  } catch (error) {
-    const sourceByFile = new Map();
-    if (useModules && graph?.ordered) {
-      for (const unit of graph.ordered) {
-        sourceByFile.set(unit.filePath, unit.source);
-      }
-    }
-    if (!useModules && fs.existsSync(inputPath)) {
-      sourceByFile.set(
-        path.resolve(inputPath),
-        fs.readFileSync(inputPath, "utf8"),
-      );
-    }
-    return raise(
-      enrichError(error, {
+      enrichError(graphResult.error, {
         sourceByFile,
         source: fs.existsSync(inputPath)
           ? fs.readFileSync(inputPath, "utf8")
           : null,
+      });
+      return graphResult;
+    }
+    graph = graphResult.value;
+    const resolveResult = run("resolve", () =>
+      resolveNames(graph.merged, {
+        ...(options.resolve ?? {}),
+        strictModuleImports: options.resolve?.strictModuleImports ?? true,
+        moduleImportsByPath: graph.moduleImportsByPath,
       }),
     );
-  }
+    if (!resolveResult.ok) {
+      const sourceByFile = new Map();
+      for (const unit of graph.ordered) {
+        sourceByFile.set(unit.filePath, unit.source);
+      }
+      enrichError(resolveResult.error, { sourceByFile });
+      return resolveResult;
+    }
+    const typecheckResult = run("typecheck", () =>
+      typecheck(graph.merged, options.typecheck ?? {}),
+    );
+    if (!typecheckResult.ok) {
+      const sourceByFile = new Map();
+      for (const unit of graph.ordered) {
+        sourceByFile.set(unit.filePath, unit.source);
+      }
+      enrichError(typecheckResult.error, { sourceByFile });
+      return typecheckResult;
+    }
+    const mergedSource = graph.ordered.map((unit) => unit.source).join("\n\n");
+    const { applied: lintFixesApplied, fixedSource: lintFixedSource } =
+      autoFixProgram(graph.merged, {
+        ...(options.lint ?? {}),
+        source: mergedSource,
+      });
+    const sourceByFile = new Map();
+    for (const unit of graph.ordered) {
+      sourceByFile.set(unit.filePath, unit.source);
+    }
+    const lintIssues = lintProgram(graph.merged, {
+      ...(options.lint ?? {}),
+      sourceByFile,
+    });
+    for (const issue of lintIssues) {
+      enrichError(issue, { sourceByFile });
+    }
+    const lintMode = options.lint?.mode ?? "error";
+    if (lintIssues.length > 0 && lintMode !== "warn") {
+      return err(lintIssues[0]);
+    }
+    const js = run("codegen", () => generateJavaScript(graph.merged));
 
-  const finalOutput = outputPath ?? inputPath.replace(/\.tuff$/i, ".js");
-  fs.mkdirSync(path.dirname(finalOutput), { recursive: true });
-  fs.writeFileSync(finalOutput, result.js, "utf8");
-  return { ...result, outputPath: finalOutput };
+    const finalOutput = outputPath ?? inputPath.replace(/\.tuff$/i, ".js");
+    fs.mkdirSync(path.dirname(finalOutput), { recursive: true });
+    fs.writeFileSync(finalOutput, js, "utf8");
+
+    return ok({
+      source: fs.readFileSync(inputPath, "utf8"),
+      tokens: graph.ordered.at(-1)?.tokens ?? [],
+      cst: graph.ordered.at(-1)?.cst ?? { kind: "Program", body: [] },
+      core: graph.merged,
+      js,
+      lintIssues,
+      lintFixesApplied,
+      lintFixedSource,
+      moduleGraph: graph,
+      outputPath: finalOutput,
+    });
+  } else {
+    const source = fs.readFileSync(inputPath, "utf8");
+    const compileResult = compileSource(source, inputPath, options);
+    if (!compileResult.ok) return compileResult;
+
+    const finalOutput = outputPath ?? inputPath.replace(/\.tuff$/i, ".js");
+    fs.mkdirSync(path.dirname(finalOutput), { recursive: true });
+    fs.writeFileSync(finalOutput, compileResult.value.js, "utf8");
+    return ok({ ...compileResult.value, outputPath: finalOutput });
+  }
 }
 
-export function compileSourceResult(
-  source: string,
-  filePath: string = "<memory>",
-  options: Record<string, unknown> = {},
-): { ok: true; value: unknown } | { ok: false; error: unknown } {
-  try {
-    return ok(compileSource(source, filePath, options));
-  } catch (error) {
-    return err(error);
-  }
-}
-
-export function compileFileResult(
+export function compileFile(
   inputPath: string,
   outputPath: string | null = null,
   options: Record<string, unknown> = {},
-): { ok: true; value: unknown } | { ok: false; error: unknown } {
-  try {
-    return ok(compileFile(inputPath, outputPath, options));
-  } catch (error) {
-    return err(error);
-  }
+): CompilerResult<Record<string, unknown>> {
+  return compileFileInternal(inputPath, outputPath, options);
 }
+
+// Legacy throwing wrappers for backward compatibility
+export function compileSourceThrow(
+  source: string,
+  filePath: string = "<memory>",
+  options: Record<string, unknown> = {},
+): Record<string, unknown> {
+  const result = compileSource(source, filePath, options);
+  if (!result.ok) {
+    // eslint-disable-next-line no-restricted-syntax -- intentional throw wrapper
+    throw result.error;
+  }
+  return result.value;
+}
+
+export function compileFileThrow(
+  inputPath: string,
+  outputPath: string | null = null,
+  options: Record<string, unknown> = {},
+): Record<string, unknown> {
+  const result = compileFile(inputPath, outputPath, options);
+  if (!result.ok) {
+    // eslint-disable-next-line no-restricted-syntax -- intentional throw wrapper
+    throw result.error;
+  }
+  return result.value;
+}
+
+// Aliases for the old API names (for tests that import compileSourceResult/compileFileResult)
+export const compileSourceResult = compileSource;
+export const compileFileResult = compileFile;

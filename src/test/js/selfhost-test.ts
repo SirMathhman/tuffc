@@ -13,7 +13,10 @@ import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
 import { fileURLToPath } from "node:url";
-import { compileFile, compileSource } from "../../main/js/compiler.ts";
+import {
+  compileFileThrow,
+  compileSourceThrow,
+} from "../../main/js/compiler.ts";
 import * as runtime from "../../main/js/runtime.ts";
 
 const thisFile = fileURLToPath(import.meta.url);
@@ -28,14 +31,18 @@ console.log("Compiling selfhost.tuff with Stage 0...");
 const selfhostSource = fs.readFileSync(selfhostPath, "utf8");
 let selfhostJs;
 try {
-  const result = compileFile(selfhostPath, path.join(outDir, "selfhost.js"), {
-    enableModules: true,
-    modules: { moduleBaseDir: path.dirname(selfhostPath) },
-    resolve: {
-      hostBuiltins: Object.keys(runtime),
-      allowHostPrefix: "",
+  const result = compileFileThrow(
+    selfhostPath,
+    path.join(outDir, "selfhost.js"),
+    {
+      enableModules: true,
+      modules: { moduleBaseDir: path.dirname(selfhostPath) },
+      resolve: {
+        hostBuiltins: Object.keys(runtime),
+        allowHostPrefix: "",
+      },
     },
-  });
+  );
   // @ts-nocheck
   selfhostJs = result.js;
 } catch (err) {

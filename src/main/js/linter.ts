@@ -126,7 +126,12 @@ export function lintProgram(
 
   function pushFileLengthIssue(filePath, source) {
     if (typeof source !== "string") return;
-    const tokens = lex(source, filePath);
+    const tokensResult = lex(source, filePath);
+    if (!tokensResult.ok) {
+      issues.push(tokensResult.error);
+      return;
+    }
+    const tokens = tokensResult.value;
     const effectiveLines = new Set();
     for (const token of tokens) {
       if (token.type === "eof") continue;

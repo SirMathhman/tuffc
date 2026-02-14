@@ -9,7 +9,7 @@
   },
   "scripts": {
     "build": "tsx ./src/test/js/selfhost-test.ts && tsx ./src/test/js/selfhost-modules.ts && tsx ./src/test/js/selfhost-diagnostics.ts && tsx ./src/test/js/selfhost-parity.ts",
-    "test": "tsx ./src/test/js/run-tests.ts && tsx ./src/test/js/stage1-bootstrap.ts && tsx ./src/test/js/phase3-stage2.ts && tsx ./src/test/js/phase4-production.ts && tsx ./src/test/js/cli-hardening.ts && tsx ./src/test/js/selfhost-test.ts && tsx ./src/test/js/selfhost-modules.ts && tsx ./src/test/js/selfhost-diagnostics.ts && tsx ./src/test/js/selfhost-parity.ts",
+    "test": "tsx ./src/test/js/result-migration.ts && tsx ./src/test/js/run-tests.ts && tsx ./src/test/js/stage1-bootstrap.ts && tsx ./src/test/js/phase3-stage2.ts && tsx ./src/test/js/phase4-production.ts && tsx ./src/test/js/cli-hardening.ts && tsx ./src/test/js/selfhost-test.ts && tsx ./src/test/js/selfhost-modules.ts && tsx ./src/test/js/selfhost-diagnostics.ts && tsx ./src/test/js/selfhost-parity.ts",
     "lint": "tsx ./src/main/js/cli.ts compile ./src/test/tuff/cases/factorial.tuff --lint -o ./tests/out/lint/factorial.js",
     "lint:eslint": "eslint .",
     "lint:throws": "eslint src/main/js src/test/js",

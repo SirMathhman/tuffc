@@ -1,15 +1,21 @@
 // @ts-nocheck
-import { TuffError, raise } from "./errors.ts";
+import { TuffError } from "./errors.ts";
+import { err, ok, type Result } from "./result.ts";
+
+type ResolveResult<T> = Result<T, TuffError>;
 
 class Scope {
-  constructor(parent = null) {
+  parent: Scope | null;
+  bindings: Map<string, boolean>;
+
+  constructor(parent: Scope | null = null) {
     this.parent = parent;
     this.bindings = new Map();
   }
 
-  define(name, loc = null) {
+  define(name: string, loc: unknown = null): ResolveResult<true> {
     if (this.bindings.has(name)) {
-      return raise(
+      return err(
         new TuffError(
           `Variable shadowing/redeclaration is not allowed: ${name}`,
           loc,
@@ -21,9 +27,10 @@ class Scope {
       );
     }
     this.bindings.set(name, true);
+    return ok(true);
   }
 
-  has(name) {
+  has(name: string): boolean {
     if (this.bindings.has(name)) return true;
     return this.parent ? this.parent.has(name) : false;
   }
@@ -32,7 +39,7 @@ class Scope {
 export function resolveNames(
   ast: { body: unknown[] },
   options: Record<string, unknown> = {},
-): { body: unknown[] } {
+): ResolveResult<{ body: unknown[] }> {
   const hostBuiltins = new Set(options.hostBuiltins ?? []);
   const allowHostPrefix = options.allowHostPrefix ?? "";
   const strictModuleImports = options.strictModuleImports ?? false;
@@ -65,7 +72,8 @@ export function resolveNames(
         "LetDecl",
       ].includes(node.kind)
     ) {
-      globals.define(node.name);
+      const defineResult = globals.define(node.name);
+      if (!defineResult.ok) return defineResult;
       if (!globalDeclKindByName.has(node.name)) {
         globalDeclKindByName.set(node.name, node.kind);
       }
@@ -94,8 +102,12 @@ export function resolveNames(
     return false;
   };
 
-  const visitExpr = (expr, scope, currentModulePath = null) => {
-    if (!expr) return;
+  const visitExpr = (
+    expr,
+    scope,
+    currentModulePath = null,
+  ): ResolveResult<void> => {
+    if (!expr) return ok(undefined);
     switch (expr.kind) {
       case "Identifier":
         if (hasNonGlobalBinding(scope, expr.name) || isHostBuiltin(expr.name)) {
@@ -118,7 +130,7 @@ export function resolveNames(
             if (declModulePath && declModulePath !== currentModulePath) {
               const imported = moduleImportsByPath.get(currentModulePath);
               if (!(imported instanceof Set) || !imported.has(expr.name)) {
-                return raise(
+                return err(
                   new TuffError(
                     `Implicit cross-module reference '${expr.name}' is not allowed`,
                     expr.loc ?? null,
@@ -134,36 +146,49 @@ export function resolveNames(
           break;
         }
 
-        {
-          return raise(
-            new TuffError(`Unknown identifier '${expr.name}'`, null, {
-              code: "E_RESOLVE_UNKNOWN_IDENTIFIER",
-              hint: "Declare the identifier in scope or import it from a module.",
-            }),
-          );
-        }
-      case "BinaryExpr":
-        visitExpr(expr.left, scope, currentModulePath);
-        visitExpr(expr.right, scope, currentModulePath);
+        return err(
+          new TuffError(`Unknown identifier '${expr.name}'`, null, {
+            code: "E_RESOLVE_UNKNOWN_IDENTIFIER",
+            hint: "Declare the identifier in scope or import it from a module.",
+          }),
+        );
+      case "BinaryExpr": {
+        const leftResult = visitExpr(expr.left, scope, currentModulePath);
+        if (!leftResult.ok) return leftResult;
+        const rightResult = visitExpr(expr.right, scope, currentModulePath);
+        if (!rightResult.ok) return rightResult;
         break;
+      }
       case "UnaryExpr":
-      case "UnwrapExpr":
-        visitExpr(expr.expr, scope, currentModulePath);
+      case "UnwrapExpr": {
+        const result = visitExpr(expr.expr, scope, currentModulePath);
+        if (!result.ok) return result;
         break;
-      case "CallExpr":
-        visitExpr(expr.callee, scope, currentModulePath);
-        expr.args.forEach((a) => visitExpr(a, scope, currentModulePath));
+      }
+      case "CallExpr": {
+        const calleeResult = visitExpr(expr.callee, scope, currentModulePath);
+        if (!calleeResult.ok) return calleeResult;
+        for (const a of expr.args) {
+          const argResult = visitExpr(a, scope, currentModulePath);
+          if (!argResult.ok) return argResult;
+        }
         break;
-      case "MemberExpr":
-        visitExpr(expr.object, scope, currentModulePath);
+      }
+      case "MemberExpr": {
+        const objectResult = visitExpr(expr.object, scope, currentModulePath);
+        if (!objectResult.ok) return objectResult;
         break;
-      case "IndexExpr":
-        visitExpr(expr.target, scope, currentModulePath);
-        visitExpr(expr.index, scope, currentModulePath);
+      }
+      case "IndexExpr": {
+        const targetResult = visitExpr(expr.target, scope, currentModulePath);
+        if (!targetResult.ok) return targetResult;
+        const indexResult = visitExpr(expr.index, scope, currentModulePath);
+        if (!indexResult.ok) return indexResult;
         break;
+      }
       case "StructInit":
         if (!globals.has(expr.name)) {
-          return raise(
+          return err(
             new TuffError(
               `Unknown struct/type '${expr.name}' in initializer`,
               null,
@@ -174,102 +199,176 @@ export function resolveNames(
             ),
           );
         }
-        expr.fields.forEach((f) =>
-          visitExpr(f.value, scope, currentModulePath),
+        for (const f of expr.fields) {
+          const fieldResult = visitExpr(f.value, scope, currentModulePath);
+          if (!fieldResult.ok) return fieldResult;
+        }
+        break;
+      case "IfExpr": {
+        const condResult = visitExpr(expr.condition, scope, currentModulePath);
+        if (!condResult.ok) return condResult;
+        const thenResult = visitNode(
+          expr.thenBranch,
+          new Scope(scope),
+          currentModulePath,
         );
+        if (!thenResult.ok) return thenResult;
+        if (expr.elseBranch) {
+          const elseResult = visitNode(
+            expr.elseBranch,
+            new Scope(scope),
+            currentModulePath,
+          );
+          if (!elseResult.ok) return elseResult;
+        }
         break;
-      case "IfExpr":
-        visitExpr(expr.condition, scope, currentModulePath);
-        visitNode(expr.thenBranch, new Scope(scope), currentModulePath);
-        if (expr.elseBranch)
-          visitNode(expr.elseBranch, new Scope(scope), currentModulePath);
-        break;
-      case "MatchExpr":
-        visitExpr(expr.target, scope, currentModulePath);
+      }
+      case "MatchExpr": {
+        const targetResult = visitExpr(expr.target, scope, currentModulePath);
+        if (!targetResult.ok) return targetResult;
         for (const c of expr.cases) {
           const matchScope = new Scope(scope);
           if (c.pattern.kind === "StructPattern") {
-            for (const field of c.pattern.fields) matchScope.define(field.bind);
+            for (const field of c.pattern.fields) {
+              const defineResult = matchScope.define(field.bind);
+              if (!defineResult.ok) return defineResult;
+            }
           } else if (c.pattern.kind === "NamePattern") {
             if (!globals.has(c.pattern.name)) {
-              matchScope.define(c.pattern.name);
+              const defineResult = matchScope.define(c.pattern.name);
+              if (!defineResult.ok) return defineResult;
             }
           }
-          visitNode(c.body, matchScope, currentModulePath);
+          const bodyResult = visitNode(c.body, matchScope, currentModulePath);
+          if (!bodyResult.ok) return bodyResult;
         }
         break;
-      case "IsExpr":
-        visitExpr(expr.expr, scope, currentModulePath);
+      }
+      case "IsExpr": {
+        const exprResult = visitExpr(expr.expr, scope, currentModulePath);
+        if (!exprResult.ok) return exprResult;
         break;
+      }
       default:
         break;
     }
+    return ok(undefined);
   };
 
-  const visitNode = (node, scope, currentModulePath = null) => {
-    if (!node) return;
+  const visitNode = (
+    node,
+    scope,
+    currentModulePath = null,
+  ): ResolveResult<void> => {
+    if (!node) return ok(undefined);
     const modulePath = node.__modulePath ?? currentModulePath;
     switch (node.kind) {
       case "Program":
-        node.body.forEach((n) => visitNode(n, scope, modulePath));
+        for (const n of node.body) {
+          const result = visitNode(n, scope, modulePath);
+          if (!result.ok) return result;
+        }
         break;
       case "Block": {
         const blockScope = new Scope(scope);
-        for (const s of node.statements) visitNode(s, blockScope, modulePath);
+        for (const s of node.statements) {
+          const result = visitNode(s, blockScope, modulePath);
+          if (!result.ok) return result;
+        }
         break;
       }
       case "FnDecl": {
         const fnScope = new Scope(scope);
-        node.params.forEach((p) => fnScope.define(p.name));
+        for (const p of node.params) {
+          const defineResult = fnScope.define(p.name);
+          if (!defineResult.ok) return defineResult;
+        }
         if (node.body?.kind === "Block") {
-          visitNode(node.body, fnScope, modulePath);
+          const result = visitNode(node.body, fnScope, modulePath);
+          if (!result.ok) return result;
         } else {
-          visitExpr(node.body, fnScope, modulePath);
+          const result = visitExpr(node.body, fnScope, modulePath);
+          if (!result.ok) return result;
         }
         break;
       }
-      case "LetDecl":
-        visitExpr(node.value, scope, modulePath);
+      case "LetDecl": {
+        const valueResult = visitExpr(node.value, scope, modulePath);
+        if (!valueResult.ok) return valueResult;
         if (!(scope === globals && globals.bindings.has(node.name))) {
-          scope.define(node.name, node.loc);
+          const defineResult = scope.define(node.name, node.loc);
+          if (!defineResult.ok) return defineResult;
         }
         break;
+      }
       case "ImportDecl":
-        node.names.forEach((n) => scope.define(n));
+        for (const n of node.names) {
+          const defineResult = scope.define(n);
+          if (!defineResult.ok) return defineResult;
+        }
         break;
-      case "ExprStmt":
-        visitExpr(node.expr, scope, modulePath);
+      case "ExprStmt": {
+        const result = visitExpr(node.expr, scope, modulePath);
+        if (!result.ok) return result;
         break;
-      case "AssignStmt":
-        visitExpr(node.target, scope, modulePath);
-        visitExpr(node.value, scope, modulePath);
+      }
+      case "AssignStmt": {
+        const targetResult = visitExpr(node.target, scope, modulePath);
+        if (!targetResult.ok) return targetResult;
+        const valueResult = visitExpr(node.value, scope, modulePath);
+        if (!valueResult.ok) return valueResult;
         break;
-      case "ReturnStmt":
-        visitExpr(node.value, scope, modulePath);
+      }
+      case "ReturnStmt": {
+        const result = visitExpr(node.value, scope, modulePath);
+        if (!result.ok) return result;
         break;
-      case "IfStmt":
-        visitExpr(node.condition, scope, modulePath);
-        visitNode(node.thenBranch, new Scope(scope), modulePath);
-        if (node.elseBranch)
-          visitNode(node.elseBranch, new Scope(scope), modulePath);
+      }
+      case "IfStmt": {
+        const condResult = visitExpr(node.condition, scope, modulePath);
+        if (!condResult.ok) return condResult;
+        const thenResult = visitNode(
+          node.thenBranch,
+          new Scope(scope),
+          modulePath,
+        );
+        if (!thenResult.ok) return thenResult;
+        if (node.elseBranch) {
+          const elseResult = visitNode(
+            node.elseBranch,
+            new Scope(scope),
+            modulePath,
+          );
+          if (!elseResult.ok) return elseResult;
+        }
         break;
+      }
       case "ForStmt": {
         const forScope = new Scope(scope);
-        forScope.define(node.iterator);
-        visitExpr(node.start, forScope, modulePath);
-        visitExpr(node.end, forScope, modulePath);
-        visitNode(node.body, forScope, modulePath);
+        const defineResult = forScope.define(node.iterator);
+        if (!defineResult.ok) return defineResult;
+        const startResult = visitExpr(node.start, forScope, modulePath);
+        if (!startResult.ok) return startResult;
+        const endResult = visitExpr(node.end, forScope, modulePath);
+        if (!endResult.ok) return endResult;
+        const bodyResult = visitNode(node.body, forScope, modulePath);
+        if (!bodyResult.ok) return bodyResult;
         break;
       }
-      case "WhileStmt":
-        visitExpr(node.condition, scope, modulePath);
-        visitNode(node.body, new Scope(scope), modulePath);
+      case "WhileStmt": {
+        const condResult = visitExpr(node.condition, scope, modulePath);
+        if (!condResult.ok) return condResult;
+        const bodyResult = visitNode(node.body, new Scope(scope), modulePath);
+        if (!bodyResult.ok) return bodyResult;
         break;
+      }
       default:
         break;
     }
+    return ok(undefined);
   };
 
-  visitNode(ast, globals);
-  return ast;
+  const visitResult = visitNode(ast, globals);
+  if (!visitResult.ok) return visitResult;
+  return ok(ast);
 }

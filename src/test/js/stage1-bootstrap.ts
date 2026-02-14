@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
 import { fileURLToPath } from "node:url";
-import { compileSource } from "../../main/js/compiler.ts";
+import { compileSourceThrow } from "../../main/js/compiler.ts";
 import { lex } from "../../main/js/lexer.ts";
 import { parse } from "../../main/js/parser.ts";
 import { desugar } from "../../main/js/desugar.ts";
@@ -36,7 +36,7 @@ const normalizeJs = (input) =>
 const stage1Source = fs.readFileSync(stage1SourcePath, "utf8");
 
 // stage0(stage1.tuff) => stage1_a.js
-const stage0Result = compileSource(stage1Source, stage1SourcePath, {
+const stage0Result = compileSourceThrow(stage1Source, stage1SourcePath, {
   resolve: { allowHostPrefix: "__host_" },
 });
 fs.writeFileSync(stage1APath, stage0Result.js, "utf8");
@@ -45,12 +45,27 @@ const sandbox = {
   module: { exports: {} },
   exports: {},
   console,
-  __host_lex: (source) => lex(source, "<stage1-host>"),
-  __host_parse: (tokens) => parse(tokens),
+  __host_lex: (source) => {
+    const result = lex(source, "<stage1-host>");
+    if (!result.ok) throw result.error;
+    return result.value;
+  },
+  __host_parse: (tokens) => {
+    const result = parse(tokens);
+    if (!result.ok) throw result.error;
+    return result.value;
+  },
   __host_desugar: (cst) => desugar(cst),
-  __host_resolveNames: (core) =>
-    resolveNames(core, { allowHostPrefix: "__host_" }),
-  __host_typecheck: (core) => typecheck(core),
+  __host_resolveNames: (core) => {
+    const result = resolveNames(core, { allowHostPrefix: "__host_" });
+    if (!result.ok) throw result.error;
+    return result.value;
+  },
+  __host_typecheck: (core) => {
+    const result = typecheck(core);
+    if (!result.ok) throw result.error;
+    return result.value;
+  },
   __host_generateJavaScript: (core) => generateJavaScript(core),
   __host_readFile: (filePath) => fs.readFileSync(filePath, "utf8"),
   __host_writeFile: (filePath, contents) => {
@@ -92,7 +107,7 @@ const smokePath = path.join(
   "factorial.tuff",
 );
 const smokeSource = fs.readFileSync(smokePath, "utf8");
-const smokeA = compileSource(smokeSource, smokePath).js;
+const smokeA = compileSourceThrow(smokeSource, smokePath).js;
 const smokeB = stage1Compiler.compileToJs(smokeSource);
 if (normalizeJs(smokeA) !== normalizeJs(smokeB)) {
   console.error("Stage 1 smoke compile equivalence failed for factorial.tuff");
