@@ -33,32 +33,32 @@ extern fn sb_build(sb: StringBuilder) : *Str;
 
 extern type Vec;
 extern fn vec_new() : Vec;
-extern fn vec_push(arr: Vec, item: I32) : Vec;
-extern fn vec_pop(arr: Vec) : I32;
-extern fn vec_get(arr: Vec, i: I32) : I32;
-extern fn vec_set(arr: Vec, i: I32, v: I32) : Vec;
-extern fn vec_length(arr: Vec) : I32;
-extern fn vec_clear(arr: Vec) : Vec;
-extern fn vec_join(arr: Vec, sep: *Str) : *Str;
-extern fn vec_includes(arr: Vec, item: I32) : Bool;
+extern fn vec_push(this: Vec, item: I32) : Vec;
+extern fn vec_pop(this: Vec) : I32;
+extern fn vec_get(this: Vec, i: I32) : I32;
+extern fn vec_set(this: Vec, i: I32, v: I32) : Vec;
+extern fn vec_length(this: Vec) : I32;
+extern fn vec_clear(this: Vec) : Vec;
+extern fn vec_join(this: Vec, sep: *Str) : *Str;
+extern fn vec_includes(this: Vec, item: I32) : Bool;
 
 extern type Map;
 extern fn map_new() : Map;
-extern fn map_set(m: Map, k: *Str, v: I32) : Map;
-extern fn map_get(m: Map, k: *Str) : I32;
-extern fn map_has(m: Map, k: *Str) : Bool;
+extern fn map_set(this: Map, k: *Str, v: I32) : Map;
+extern fn map_get(this: Map, k: *Str) : I32;
+extern fn map_has(this: Map, k: *Str) : Bool;
 
 extern type Set;
 extern fn set_new() : Set;
-extern fn set_add(s: Set, item: *Str) : Set;
-extern fn set_has(s: Set, item: *Str) : Bool;
-extern fn set_delete(s: Set, item: *Str) : Bool;
+extern fn set_add(this: Set, item: *Str) : Set;
+extern fn set_has(this: Set, item: *Str) : Bool;
+extern fn set_delete(this: Set, item: *Str) : Bool;
 
 extern type StringVec;
 extern fn str_vec_new() : StringVec;
-extern fn str_vec_push(arr: StringVec, s: *Str) : StringVec;
-extern fn str_vec_get(arr: StringVec, i: I32) : *Str;
-extern fn str_vec_length(arr: StringVec) : I32;
+extern fn str_vec_push(this: StringVec, s: *Str) : StringVec;
+extern fn str_vec_get(this: StringVec, i: I32) : *Str;
+extern fn str_vec_length(this: StringVec) : I32;
 
 extern fn read_file(filePath: *Str) : *Str;
 extern fn write_file(filePath: *Str, contents: *Str) : I32;
@@ -98,69 +98,69 @@ let tok_count : I32 = 0;
 
 fn tok_add(kind: I32, value: I32, line: I32, col: I32) : I32 => {
     let idx = tok_count;
-    vec_push(tok_kinds, kind);
-    vec_push(tok_values, value);
-    vec_push(tok_lines, line);
-    vec_push(tok_cols, col);
+    tok_kinds.vec_push(kind);
+    tok_values.vec_push(value);
+    tok_lines.vec_push(line);
+    tok_cols.vec_push(col);
     tok_count = tok_count + 1;
     idx
 }
 
-fn tok_kind(idx: I32) : I32 => vec_get(tok_kinds, idx);
-fn tok_value(idx: I32) : I32 => vec_get(tok_values, idx);
+fn tok_kind(idx: I32) : I32 => tok_kinds.vec_get(idx);
+fn tok_value(idx: I32) : I32 => tok_values.vec_get(idx);
 
 // String intern table - stores strings by index for reverse lookup
 let intern_table : StringVec = str_vec_new();
 let intern_map : Map = map_new();
 
 fn intern(s: *Str) : I32 => {
-    if (map_has(intern_map, s)) {
-        map_get(intern_map, s)
+    if (intern_map.map_has(s)) {
+        intern_map.map_get(s)
     } else {
-        let idx = str_vec_length(intern_table);
-        str_vec_push(intern_table, s);
-        map_set(intern_map, s, idx);
+        let idx = intern_table.str_vec_length();
+        intern_table.str_vec_push(s);
+        intern_map.map_set(s, idx);
         idx
     }
 }
 
 fn get_intern(idx: I32) : *Str => {
-    str_vec_get(intern_table, idx)
+    intern_table.str_vec_get(idx)
 }
 
 // Keywords set
 let keywords : Set = set_new();
 
 fn init_keywords() : I32 => {
-    set_add(keywords, "fn");
-    set_add(keywords, "let");
-    set_add(keywords, "struct");
-    set_add(keywords, "enum");
-    set_add(keywords, "type");
-    set_add(keywords, "match");
-    set_add(keywords, "case");
-    set_add(keywords, "if");
-    set_add(keywords, "else");
-    set_add(keywords, "for");
-    set_add(keywords, "while");
-    set_add(keywords, "loop");
-    set_add(keywords, "in");
-    set_add(keywords, "return");
-    set_add(keywords, "break");
-    set_add(keywords, "continue");
-    set_add(keywords, "is");
-    set_add(keywords, "class");
-    set_add(keywords, "object");
-    set_add(keywords, "impl");
-    set_add(keywords, "with");
-    set_add(keywords, "out");
-    set_add(keywords, "module");
-    set_add(keywords, "extern");
-    set_add(keywords, "async");
+    keywords.set_add("fn");
+    keywords.set_add("let");
+    keywords.set_add("struct");
+    keywords.set_add("enum");
+    keywords.set_add("type");
+    keywords.set_add("match");
+    keywords.set_add("case");
+    keywords.set_add("if");
+    keywords.set_add("else");
+    keywords.set_add("for");
+    keywords.set_add("while");
+    keywords.set_add("loop");
+    keywords.set_add("in");
+    keywords.set_add("return");
+    keywords.set_add("break");
+    keywords.set_add("continue");
+    keywords.set_add("is");
+    keywords.set_add("class");
+    keywords.set_add("object");
+    keywords.set_add("impl");
+    keywords.set_add("with");
+    keywords.set_add("out");
+    keywords.set_add("module");
+    keywords.set_add("extern");
+    keywords.set_add("async");
     0
 }
 
-fn is_keyword(s: *Str) : Bool => set_has(keywords, s);
+fn is_keyword(s: *Str) : Bool => keywords.set_has(s);
 
 // ============================================================================
 // Lexer
@@ -179,10 +179,10 @@ fn lex_init(source: *Str) : I32 => {
     lex_col = 1;
     lex_len = source.str_length();
     // Clear token arrays for fresh compilation
-    vec_clear(tok_kinds);
-    vec_clear(tok_values);
-    vec_clear(tok_lines);
-    vec_clear(tok_cols);
+    tok_kinds.vec_clear();
+    tok_values.vec_clear();
+    tok_lines.vec_clear();
+    tok_cols.vec_clear();
     tok_count = 0;
     0
 }
@@ -478,27 +478,27 @@ let node_count : I32 = 0;
 
 fn node_new(kind: I32) : I32 => {
     let idx = node_count;
-    vec_push(node_kinds, kind);
-    vec_push(node_data1, 0);
-    vec_push(node_data2, 0);
-    vec_push(node_data3, 0);
-    vec_push(node_data4, 0);
-    vec_push(node_data5, 0);
+    node_kinds.vec_push(kind);
+    node_data1.vec_push(0);
+    node_data2.vec_push(0);
+    node_data3.vec_push(0);
+    node_data4.vec_push(0);
+    node_data5.vec_push(0);
     node_count = node_count + 1;
     idx
 }
 
-fn node_kind(idx: I32) : I32 => vec_get(node_kinds, idx);
-fn node_set_data1(idx: I32, v: AnyValue) : I32 => { vec_set(node_data1, idx, v); 0 }
-fn node_set_data2(idx: I32, v: AnyValue) : I32 => { vec_set(node_data2, idx, v); 0 }
-fn node_set_data3(idx: I32, v: AnyValue) : I32 => { vec_set(node_data3, idx, v); 0 }
-fn node_set_data4(idx: I32, v: AnyValue) : I32 => { vec_set(node_data4, idx, v); 0 }
-fn node_set_data5(idx: I32, v: AnyValue) : I32 => { vec_set(node_data5, idx, v); 0 }
-fn node_get_data1(idx: I32) : I32 => vec_get(node_data1, idx);
-fn node_get_data2(idx: I32) : I32 => vec_get(node_data2, idx);
-fn node_get_data3(idx: I32) : I32 => vec_get(node_data3, idx);
-fn node_get_data4(idx: I32) : I32 => vec_get(node_data4, idx);
-fn node_get_data5(idx: I32) : I32 => vec_get(node_data5, idx);
+fn node_kind(idx: I32) : I32 => node_kinds.vec_get(idx);
+fn node_set_data1(idx: I32, v: AnyValue) : I32 => { node_data1.vec_set(idx, v); 0 }
+fn node_set_data2(idx: I32, v: AnyValue) : I32 => { node_data2.vec_set(idx, v); 0 }
+fn node_set_data3(idx: I32, v: AnyValue) : I32 => { node_data3.vec_set(idx, v); 0 }
+fn node_set_data4(idx: I32, v: AnyValue) : I32 => { node_data4.vec_set(idx, v); 0 }
+fn node_set_data5(idx: I32, v: AnyValue) : I32 => { node_data5.vec_set(idx, v); 0 }
+fn node_get_data1(idx: I32) : I32 => node_data1.vec_get(idx);
+fn node_get_data2(idx: I32) : I32 => node_data2.vec_get(idx);
+fn node_get_data3(idx: I32) : I32 => node_data3.vec_get(idx);
+fn node_get_data4(idx: I32) : I32 => node_data4.vec_get(idx);
+fn node_get_data5(idx: I32) : I32 => node_data5.vec_get(idx);
 
 // ============================================================================
 // Parser
@@ -509,12 +509,12 @@ let parse_pos : I32 = 0;
 fn parse_init() : I32 => {
     parse_pos = 0;
     // Clear node arrays for fresh compilation
-    vec_clear(node_kinds);
-    vec_clear(node_data1);
-    vec_clear(node_data2);
-    vec_clear(node_data3);
-    vec_clear(node_data4);
-    vec_clear(node_data5);
+    node_kinds.vec_clear();
+    node_data1.vec_clear();
+    node_data2.vec_clear();
+    node_data3.vec_clear();
+    node_data4.vec_clear();
+    node_data5.vec_clear();
     node_count = 0;
     0
 }
@@ -532,7 +532,7 @@ fn p_at_kind(kind: I32) : Bool => tok_kind(p_peek(0)) == kind;
 
 fn p_at_value(val: *Str) : Bool => {
     let v = tok_value(p_peek(0));
-    map_has(intern_map, val) && map_get(intern_map, val) == v
+    intern_map.map_has(val) && intern_map.map_get(val) == v
 }
 
 fn p_at(kind: I32, val: *Str) : Bool => p_at_kind(kind) && p_at_value(val);
@@ -624,10 +624,10 @@ fn p_parse_type() : I32 => {
         p_eat();
         let members = vec_new();
         if (!p_at(TK_SYMBOL, ")")) {
-            vec_push(members, p_parse_type());
+            members.vec_push(p_parse_type());
             while (p_at(TK_SYMBOL, ",")) {
                 p_eat();
-                vec_push(members, p_parse_type());
+                members.vec_push(p_parse_type());
             }
         }
         p_expect(TK_SYMBOL, ")", "Expected ')' in tuple type");
@@ -651,10 +651,10 @@ fn p_parse_type() : I32 => {
     if (p_at(TK_SYMBOL, "<") && p_can_start_type_tok()) {
         p_eat();
         if (!p_at(TK_SYMBOL, ">")) {
-            vec_push(generics, p_parse_type());
+            generics.vec_push(p_parse_type());
             while (p_at(TK_SYMBOL, ",")) {
                 p_eat();
-                vec_push(generics, p_parse_type());
+                generics.vec_push(p_parse_type());
             }
         }
         p_expect(TK_SYMBOL, ">", "Expected '>' in generic args");
@@ -724,10 +724,10 @@ fn p_parse_pattern() : I32 => {
         p_eat();
         let fields = vec_new();
         if (!p_at(TK_SYMBOL, "}")) {
-            vec_push(fields, p_parse_identifier());
+            fields.vec_push(p_parse_identifier());
             while (p_at(TK_SYMBOL, ",")) {
                 p_eat();
-                vec_push(fields, p_parse_identifier());
+                fields.vec_push(p_parse_identifier());
             }
         }
         p_expect(TK_SYMBOL, "}", "Expected '}' in pattern");
@@ -749,10 +749,10 @@ fn p_parse_postfix(exprIn: I32) : I32 => {
             p_eat();
             let args = vec_new();
             if (!p_at(TK_SYMBOL, ")")) {
-                vec_push(args, p_parse_expression(0));
+                args.vec_push(p_parse_expression(0));
                 while (p_at(TK_SYMBOL, ",")) {
                     p_eat();
-                    vec_push(args, p_parse_expression(0));
+                    args.vec_push(p_parse_expression(0));
                 }
             }
             p_expect(TK_SYMBOL, ")", "Expected ')'");
@@ -762,11 +762,11 @@ fn p_parse_postfix(exprIn: I32) : I32 => {
                 let recv = node_get_data1(expr);
                 let prop = node_get_data2(expr);
                 let lowered_args = vec_new();
-                vec_push(lowered_args, recv);
+                lowered_args.vec_push(recv);
                 let ai = 0;
-                let alen = vec_length(args);
+                let alen = args.vec_length();
                 while (ai < alen) {
-                    vec_push(lowered_args, vec_get(args, ai));
+                    lowered_args.vec_push(args.vec_get(ai));
                     ai = ai + 1;
                 }
                 let callee = node_new(NK_IDENTIFIER);
@@ -882,9 +882,9 @@ fn p_parse_primary() : I32 => {
             let body = if (p_at(TK_SYMBOL, "{")) { p_parse_block() } else { p_parse_expression(0) };
             p_expect(TK_SYMBOL, ";", "Expected ';' after case");
             let case_node = vec_new();
-            vec_push(case_node, pat);
-            vec_push(case_node, body);
-            vec_push(cases, case_node);
+            case_node.vec_push(pat);
+            case_node.vec_push(body);
+            cases.vec_push(case_node);
         }
         p_expect(TK_SYMBOL, "}", "Expected '}'");
         let node = node_new(NK_MATCH_EXPR);
@@ -908,18 +908,18 @@ fn p_parse_primary() : I32 => {
                 p_expect(TK_SYMBOL, ":", "Expected ':' in struct init");
                 let val = p_parse_expression(0);
                 let field = vec_new();
-                vec_push(field, key);
-                vec_push(field, val);
-                vec_push(fields, field);
+                field.vec_push(key);
+                field.vec_push(val);
+                fields.vec_push(field);
                 while (p_at(TK_SYMBOL, ",")) {
                     p_eat();
                     let key2 = p_parse_identifier();
                     p_expect(TK_SYMBOL, ":", "Expected ':'");
                     let val2 = p_parse_expression(0);
                     let field2 = vec_new();
-                    vec_push(field2, key2);
-                    vec_push(field2, val2);
-                    vec_push(fields, field2);
+                    field2.vec_push(key2);
+                    field2.vec_push(val2);
+                    fields.vec_push(field2);
                 }
             }
             p_expect(TK_SYMBOL, "}", "Expected '}'");
@@ -951,19 +951,19 @@ fn p_parse_unary() : I32 => {
 fn p_get_precedence(op: I32) : I32 => {
     // Map operator to precedence
     // We use intern indices, so we need to check against known values
-    if (map_has(intern_map, "||") && op == map_get(intern_map, "||")) { return 1; }
-    if (map_has(intern_map, "&&") && op == map_get(intern_map, "&&")) { return 2; }
-    if (map_has(intern_map, "==") && op == map_get(intern_map, "==")) { return 3; }
-    if (map_has(intern_map, "!=") && op == map_get(intern_map, "!=")) { return 3; }
-    if (map_has(intern_map, "<") && op == map_get(intern_map, "<")) { return 4; }
-    if (map_has(intern_map, "<=") && op == map_get(intern_map, "<=")) { return 4; }
-    if (map_has(intern_map, ">") && op == map_get(intern_map, ">")) { return 4; }
-    if (map_has(intern_map, ">=") && op == map_get(intern_map, ">=")) { return 4; }
-    if (map_has(intern_map, "+") && op == map_get(intern_map, "+")) { return 5; }
-    if (map_has(intern_map, "-") && op == map_get(intern_map, "-")) { return 5; }
-    if (map_has(intern_map, "*") && op == map_get(intern_map, "*")) { return 6; }
-    if (map_has(intern_map, "/") && op == map_get(intern_map, "/")) { return 6; }
-    if (map_has(intern_map, "%") && op == map_get(intern_map, "%")) { return 6; }
+    if (intern_map.map_has("||") && op == intern_map.map_get("||")) { return 1; }
+    if (intern_map.map_has("&&") && op == intern_map.map_get("&&")) { return 2; }
+    if (intern_map.map_has("==") && op == intern_map.map_get("==")) { return 3; }
+    if (intern_map.map_has("!=") && op == intern_map.map_get("!=")) { return 3; }
+    if (intern_map.map_has("<") && op == intern_map.map_get("<")) { return 4; }
+    if (intern_map.map_has("<=") && op == intern_map.map_get("<=")) { return 4; }
+    if (intern_map.map_has(">") && op == intern_map.map_get(">")) { return 4; }
+    if (intern_map.map_has(">=") && op == intern_map.map_get(">=")) { return 4; }
+    if (intern_map.map_has("+") && op == intern_map.map_get("+")) { return 5; }
+    if (intern_map.map_has("-") && op == intern_map.map_get("-")) { return 5; }
+    if (intern_map.map_has("*") && op == intern_map.map_get("*")) { return 6; }
+    if (intern_map.map_has("/") && op == intern_map.map_get("/")) { return 6; }
+    if (intern_map.map_has("%") && op == intern_map.map_get("%")) { return 6; }
     0
 }
 
@@ -1031,7 +1031,7 @@ fn p_parse_block() : I32 => {
     p_expect(TK_SYMBOL, "{", "Expected '{'");
     let stmts = vec_new();
     while (!p_at(TK_SYMBOL, "}") && !p_at_kind(TK_EOF)) {
-        vec_push(stmts, p_parse_statement());
+        stmts.vec_push(p_parse_statement());
     }
     p_expect(TK_SYMBOL, "}", "Expected '}'");
     let node = node_new(NK_BLOCK);
@@ -1048,10 +1048,10 @@ fn p_parse_function(is_class: I32) : I32 => {
     if (p_at(TK_SYMBOL, "<")) {
         p_eat();
         if (!p_at(TK_SYMBOL, ">")) {
-            vec_push(generics, p_parse_identifier());
+            generics.vec_push(p_parse_identifier());
             while (p_at(TK_SYMBOL, ",")) {
                 p_eat();
-                vec_push(generics, p_parse_identifier());
+                generics.vec_push(p_parse_identifier());
             }
         }
         p_expect(TK_SYMBOL, ">", "Expected '>'");
@@ -1068,9 +1068,9 @@ fn p_parse_function(is_class: I32) : I32 => {
             ptype = p_parse_type();
         }
         let param = vec_new();
-        vec_push(param, pname);
-        vec_push(param, ptype);
-        vec_push(params, param);
+        param.vec_push(pname);
+        param.vec_push(ptype);
+        params.vec_push(param);
         while (p_at(TK_SYMBOL, ",")) {
             p_eat();
             let pname2 = p_parse_identifier();
@@ -1080,9 +1080,9 @@ fn p_parse_function(is_class: I32) : I32 => {
                 ptype2 = p_parse_type();
             }
             let param2 = vec_new();
-            vec_push(param2, pname2);
-            vec_push(param2, ptype2);
-            vec_push(params, param2);
+            param2.vec_push(pname2);
+            param2.vec_push(ptype2);
+            params.vec_push(param2);
         }
     }
     p_expect(TK_SYMBOL, ")", "Expected ')'");
@@ -1123,10 +1123,10 @@ fn p_parse_struct() : I32 => {
     if (p_at(TK_SYMBOL, "<")) {
         p_eat();
         if (!p_at(TK_SYMBOL, ">")) {
-            vec_push(generics, p_parse_identifier());
+            generics.vec_push(p_parse_identifier());
             while (p_at(TK_SYMBOL, ",")) {
                 p_eat();
-                vec_push(generics, p_parse_identifier());
+                generics.vec_push(p_parse_identifier());
             }
         }
         p_expect(TK_SYMBOL, ">", "Expected '>'");
@@ -1139,9 +1139,9 @@ fn p_parse_struct() : I32 => {
         p_expect(TK_SYMBOL, ":", "Expected ':'");
         let ftype = p_parse_type();
         let field = vec_new();
-        vec_push(field, fname);
-        vec_push(field, ftype);
-        vec_push(fields, field);
+        field.vec_push(fname);
+        field.vec_push(ftype);
+        fields.vec_push(field);
         if (p_at(TK_SYMBOL, ",") || p_at(TK_SYMBOL, ";")) {
             p_eat();
         }
@@ -1161,7 +1161,7 @@ fn p_parse_enum() : I32 => {
     p_expect(TK_SYMBOL, "{", "Expected '{' after enum name");
     let variants = vec_new();
     while (!p_at(TK_SYMBOL, "}")) {
-        vec_push(variants, p_parse_identifier());
+        variants.vec_push(p_parse_identifier());
         if (p_at(TK_SYMBOL, ",") || p_at(TK_SYMBOL, ";")) {
             p_eat();
         }
@@ -1181,10 +1181,10 @@ fn p_parse_type_alias() : I32 => {
     if (p_at(TK_SYMBOL, "<")) {
         p_eat();
         if (!p_at(TK_SYMBOL, ">")) {
-            vec_push(generics, p_parse_identifier());
+            generics.vec_push(p_parse_identifier());
             while (p_at(TK_SYMBOL, ",")) {
                 p_eat();
-                vec_push(generics, p_parse_identifier());
+                generics.vec_push(p_parse_identifier());
             }
         }
         p_expect(TK_SYMBOL, ">", "Expected '>'");
@@ -1209,19 +1209,19 @@ fn p_parse_let() : I32 => {
         p_eat();
         let names = vec_new();
         if (!p_at(TK_SYMBOL, "}")) {
-            vec_push(names, p_parse_identifier());
+            names.vec_push(p_parse_identifier());
             while (p_at(TK_SYMBOL, ",")) {
                 p_eat();
-                vec_push(names, p_parse_identifier());
+                names.vec_push(p_parse_identifier());
             }
         }
         p_expect(TK_SYMBOL, "}", "Expected '}'");
         p_expect(TK_SYMBOL, "=", "Expected '='");
         let parts = vec_new();
-        vec_push(parts, p_parse_identifier());
+        parts.vec_push(p_parse_identifier());
         while (p_at(TK_SYMBOL, "::")) {
             p_eat();
-            vec_push(parts, p_parse_identifier());
+            parts.vec_push(p_parse_identifier());
         }
         p_expect(TK_SYMBOL, ";", "Expected ';'");
         let node = node_new(NK_IMPORT_DECL);
@@ -1277,10 +1277,10 @@ fn p_parse_extern_decl() : I32 => {
         if (p_at(TK_SYMBOL, "<")) {
             p_eat();
             if (!p_at(TK_SYMBOL, ">")) {
-                vec_push(generics, p_parse_identifier());
+                generics.vec_push(p_parse_identifier());
                 while (p_at(TK_SYMBOL, ",")) {
                     p_eat();
-                    vec_push(generics, p_parse_identifier());
+                    generics.vec_push(p_parse_identifier());
                 }
             }
             p_expect(TK_SYMBOL, ">", "Expected '>'");
@@ -1297,9 +1297,9 @@ fn p_parse_extern_decl() : I32 => {
                 ptype = p_parse_type();
             }
             let param = vec_new();
-            vec_push(param, pname);
-            vec_push(param, ptype);
-            vec_push(params, param);
+            param.vec_push(pname);
+            param.vec_push(ptype);
+            params.vec_push(param);
             while (p_at(TK_SYMBOL, ",")) {
                 p_eat();
                 let pname2 = p_parse_identifier();
@@ -1309,9 +1309,9 @@ fn p_parse_extern_decl() : I32 => {
                     ptype2 = p_parse_type();
                 }
                 let param2 = vec_new();
-                vec_push(param2, pname2);
-                vec_push(param2, ptype2);
-                vec_push(params, param2);
+                param2.vec_push(pname2);
+                param2.vec_push(ptype2);
+                params.vec_push(param2);
             }
         }
         p_expect(TK_SYMBOL, ")", "Expected ')'");
@@ -1451,7 +1451,7 @@ fn p_parse_statement() : I32 => {
 fn p_parse_program() : I32 => {
     let stmts = vec_new();
     while (!p_at_kind(TK_EOF)) {
-        vec_push(stmts, p_parse_statement());
+        stmts.vec_push(p_parse_statement());
     }
     let node = node_new(NK_PROGRAM);
     node_set_data1(node, stmts);
@@ -1469,8 +1469,8 @@ fn desugar(program: I32) : I32 => program;
 // ============================================================================
 
 fn scope_define(scopes: Vec, depth: I32, name: *Str) : I32 => {
-    let scope = vec_get(scopes, depth);
-    if (set_has(scope, name)) {
+    let scope = scopes.vec_get(depth);
+    if (scope.set_has(name)) {
         panic_with_code(
             "E_RESOLVE_SHADOWING",
             "Variable shadowing/redeclaration is not allowed: ".str_concat(name),
@@ -1478,14 +1478,14 @@ fn scope_define(scopes: Vec, depth: I32, name: *Str) : I32 => {
             "Rename one of the bindings or move it to a different scope."
         );
     }
-    set_add(scope, name);
+    scope.set_add(name);
     0
 }
 
 fn scope_has(scopes: Vec, depth: I32, name: *Str) : Bool => {
     let i = depth;
     while (i >= 0) {
-        if (set_has(vec_get(scopes, i), name)) {
+        if (scopes.vec_get(i).set_has(name)) {
             return true;
         }
         i = i - 1;
@@ -1502,7 +1502,7 @@ fn resolve_expr(n: I32, globals: Set, scopes: Vec, depth: I32) : I32 => {
 
     if (kind == NK_IDENTIFIER) {
         let name = get_interned_str(node_get_data1(n));
-        if (!scope_has(scopes, depth, name) && !set_has(globals, name)) {
+        if (!scope_has(scopes, depth, name) && !globals.set_has(name)) {
             panic_with_code(
                 "E_RESOLVE_UNKNOWN_IDENTIFIER",
                 "Unknown identifier: ".str_concat(name),
@@ -1531,9 +1531,9 @@ fn resolve_expr(n: I32, globals: Set, scopes: Vec, depth: I32) : I32 => {
         resolve_expr(node_get_data1(n), globals, scopes, depth);
         let args = node_get_data2(n);
         let i = 0;
-        let len = vec_length(args);
+        let len = args.vec_length();
         while (i < len) {
-            resolve_expr(vec_get(args, i), globals, scopes, depth);
+            resolve_expr(args.vec_get(i), globals, scopes, depth);
             i = i + 1;
         }
         return 0;
@@ -1552,7 +1552,7 @@ fn resolve_expr(n: I32, globals: Set, scopes: Vec, depth: I32) : I32 => {
 
     if (kind == NK_STRUCT_INIT) {
         let type_name = get_interned_str(node_get_data1(n));
-        if (!set_has(globals, type_name)) {
+        if (!globals.set_has(type_name)) {
             panic_with_code(
                 "E_RESOLVE_UNKNOWN_STRUCT",
                 "Unknown struct/type in initializer: ".str_concat(type_name),
@@ -1562,10 +1562,10 @@ fn resolve_expr(n: I32, globals: Set, scopes: Vec, depth: I32) : I32 => {
         }
         let fields = node_get_data2(n);
         let i = 0;
-        let len = vec_length(fields);
+        let len = fields.vec_length();
         while (i < len) {
-            let field = vec_get(fields, i);
-            resolve_expr(vec_get(field, 1), globals, scopes, depth);
+            let field = fields.vec_get(i);
+            resolve_expr(field.vec_get(1), globals, scopes, depth);
             i = i + 1;
         }
         return 0;
@@ -1584,32 +1584,32 @@ fn resolve_expr(n: I32, globals: Set, scopes: Vec, depth: I32) : I32 => {
         resolve_expr(node_get_data1(n), globals, scopes, depth);
         let cases = node_get_data2(n);
         let i = 0;
-        let len = vec_length(cases);
+        let len = cases.vec_length();
         while (i < len) {
-            let case_node = vec_get(cases, i);
-            let pat = vec_get(case_node, 0);
-            let body = vec_get(case_node, 1);
+            let case_node = cases.vec_get(i);
+            let pat = case_node.vec_get(0);
+            let body = case_node.vec_get(1);
 
             let next_depth = depth + 1;
-            vec_push(scopes, set_new());
+            scopes.vec_push(set_new());
 
             if (node_kind(pat) == NK_STRUCT_PAT) {
                 let fields = node_get_data2(pat);
                 let j = 0;
-                let fLen = vec_length(fields);
+                let fLen = fields.vec_length();
                 while (j < fLen) {
-                    scope_define(scopes, next_depth, get_interned_str(vec_get(fields, j)));
+                    scope_define(scopes, next_depth, get_interned_str(fields.vec_get(j)));
                     j = j + 1;
                 }
             } else if (node_kind(pat) == NK_NAME_PAT) {
                 let pat_name = get_interned_str(node_get_data1(pat));
-                if (!set_has(globals, pat_name)) {
+                if (!globals.set_has(pat_name)) {
                     scope_define(scopes, next_depth, pat_name);
                 }
             }
 
             resolve_stmt(body, globals, scopes, next_depth);
-            vec_pop(scopes);
+            scopes.vec_pop();
             i = i + 1;
         }
         return 0;
@@ -1632,27 +1632,27 @@ fn resolve_stmt(n: I32, globals: Set, scopes: Vec, depth: I32) : I32 => {
 
     if (kind == NK_BLOCK) {
         let next_depth = depth + 1;
-        vec_push(scopes, set_new());
+        scopes.vec_push(set_new());
         let stmts = node_get_data1(n);
         let i = 0;
-        let len = vec_length(stmts);
+        let len = stmts.vec_length();
         while (i < len) {
-            resolve_stmt(vec_get(stmts, i), globals, scopes, next_depth);
+            resolve_stmt(stmts.vec_get(i), globals, scopes, next_depth);
             i = i + 1;
         }
-        vec_pop(scopes);
+        scopes.vec_pop();
         return 0;
     }
 
     if (kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL) {
         let fnScopes = vec_new();
-        vec_push(fnScopes, set_new());
+        fnScopes.vec_push(set_new());
         let params = node_get_data3(n);
         let i = 0;
-        let len = vec_length(params);
+        let len = params.vec_length();
         while (i < len) {
-            let param = vec_get(params, i);
-            scope_define(fnScopes, 0, get_interned_str(vec_get(param, 0)));
+            let param = params.vec_get(i);
+            scope_define(fnScopes, 0, get_interned_str(param.vec_get(0)));
             i = i + 1;
         }
         resolve_stmt(node_get_data5(n), globals, fnScopes, 0);
@@ -1668,9 +1668,9 @@ fn resolve_stmt(n: I32, globals: Set, scopes: Vec, depth: I32) : I32 => {
     if (kind == NK_IMPORT_DECL) {
         let names = node_get_data1(n);
         let i = 0;
-        let len = vec_length(names);
+        let len = names.vec_length();
         while (i < len) {
-            scope_define(scopes, depth, get_interned_str(vec_get(names, i)));
+            scope_define(scopes, depth, get_interned_str(names.vec_get(i)));
             i = i + 1;
         }
         return 0;
@@ -1703,12 +1703,12 @@ fn resolve_stmt(n: I32, globals: Set, scopes: Vec, depth: I32) : I32 => {
 
     if (kind == NK_FOR_STMT) {
         let next_depth = depth + 1;
-        vec_push(scopes, set_new());
+        scopes.vec_push(set_new());
         scope_define(scopes, next_depth, get_interned_str(node_get_data1(n)));
         resolve_expr(node_get_data2(n), globals, scopes, next_depth);
         resolve_expr(node_get_data3(n), globals, scopes, next_depth);
         resolve_stmt(node_get_data4(n), globals, scopes, next_depth);
-        vec_pop(scopes);
+        scopes.vec_pop();
         return 0;
     }
 
@@ -1729,9 +1729,9 @@ fn resolve_names(program: I32) : I32 => {
 
     // Predeclare global symbols.
     let i = 0;
-    let len = vec_length(body);
+    let len = body.vec_length();
     while (i < len) {
-        let stmt = vec_get(body, i);
+        let stmt = body.vec_get(i);
         let kind = node_kind(stmt);
         if (
             kind == NK_FN_DECL ||
@@ -1745,7 +1745,7 @@ fn resolve_names(program: I32) : I32 => {
             kind == NK_EXTERN_TYPE_DECL
         ) {
             let gname = get_interned_str(node_get_data1(stmt));
-            if (set_has(globals, gname)) {
+            if (globals.set_has(gname)) {
                 panic_with_code(
                     "E_RESOLVE_SHADOWING",
                     "Variable shadowing/redeclaration is not allowed: ".str_concat(gname),
@@ -1753,17 +1753,17 @@ fn resolve_names(program: I32) : I32 => {
                     "Rename one of the global declarations or split conflicting declarations into separate modules."
                 );
             }
-            set_add(globals, gname);
+            globals.set_add(gname);
         }
         i = i + 1;
     }
 
     // Resolve top-level statements.
     let topScopes = vec_new();
-    vec_push(topScopes, set_new());
+    topScopes.vec_push(set_new());
     i = 0;
     while (i < len) {
-        resolve_stmt(vec_get(body, i), globals, topScopes, 0);
+        resolve_stmt(body.vec_get(i), globals, topScopes, 0);
         i = i + 1;
     }
 
@@ -1799,20 +1799,14 @@ fn typecheck_expr(n: I32, fn_arities: Map) : I32 => {
     if (kind == NK_CALL_EXPR) {
         let callee = node_get_data1(n);
         let args = node_get_data2(n);
-        let actual = vec_length(args);
+        let actual = args.vec_length();
 
         if (node_kind(callee) == NK_IDENTIFIER) {
             let fname = get_interned_str(node_get_data1(callee));
-            if (map_has(fn_arities, fname)) {
-                let expected = map_get(fn_arities, fname);
+            if (fn_arities.map_has(fname)) {
+                let expected = fn_arities.map_get(fname);
                 if (expected != actual) {
-                    let msg = str_concat(
-                        str_concat(
-                            "Function ".str_concat(fname),
-                            " expects ".str_concat(int_to_string(expected))
-                        ),
-                        " args, got ".str_concat(int_to_string(actual))
-                    );
+                    let msg = "Function ".str_concat(fname).str_concat(" expects ".str_concat(int_to_string(expected))).str_concat(" args, got ".str_concat(int_to_string(actual)));
                     panic_with_code(
                         "E_TYPE_ARG_COUNT",
                         msg,
@@ -1826,7 +1820,7 @@ fn typecheck_expr(n: I32, fn_arities: Map) : I32 => {
         typecheck_expr(callee, fn_arities);
         let i = 0;
         while (i < actual) {
-            typecheck_expr(vec_get(args, i), fn_arities);
+            typecheck_expr(args.vec_get(i), fn_arities);
             i = i + 1;
         }
         return 0;
@@ -1846,10 +1840,10 @@ fn typecheck_expr(n: I32, fn_arities: Map) : I32 => {
     if (kind == NK_STRUCT_INIT) {
         let fields = node_get_data2(n);
         let i = 0;
-        let len = vec_length(fields);
+        let len = fields.vec_length();
         while (i < len) {
-            let field = vec_get(fields, i);
-            typecheck_expr(vec_get(field, 1), fn_arities);
+            let field = fields.vec_get(i);
+            typecheck_expr(field.vec_get(1), fn_arities);
             i = i + 1;
         }
         return 0;
@@ -1868,10 +1862,10 @@ fn typecheck_expr(n: I32, fn_arities: Map) : I32 => {
         typecheck_expr(node_get_data1(n), fn_arities);
         let cases = node_get_data2(n);
         let i = 0;
-        let len = vec_length(cases);
+        let len = cases.vec_length();
         while (i < len) {
-            let case_node = vec_get(cases, i);
-            typecheck_stmt(vec_get(case_node, 1), fn_arities);
+            let case_node = cases.vec_get(i);
+            typecheck_stmt(case_node.vec_get(1), fn_arities);
             i = i + 1;
         }
         return 0;
@@ -1895,9 +1889,9 @@ fn typecheck_stmt(n: I32, fn_arities: Map) : I32 => {
     if (kind == NK_BLOCK) {
         let stmts = node_get_data1(n);
         let i = 0;
-        let len = vec_length(stmts);
+        let len = stmts.vec_length();
         while (i < len) {
-            typecheck_stmt(vec_get(stmts, i), fn_arities);
+            typecheck_stmt(stmts.vec_get(i), fn_arities);
             i = i + 1;
         }
         return 0;
@@ -1962,14 +1956,14 @@ fn typecheck_program(program: I32) : I32 => {
 
     // Collect function signatures (including extern fns).
     let i = 0;
-    let len = vec_length(body);
+    let len = body.vec_length();
     while (i < len) {
-        let stmt = vec_get(body, i);
+        let stmt = body.vec_get(i);
         let kind = node_kind(stmt);
         if (kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL || kind == NK_EXTERN_FN_DECL) {
             let name = get_interned_str(node_get_data1(stmt));
             let params = node_get_data3(stmt);
-            map_set(fn_arities, name, vec_length(params));
+            fn_arities.map_set(name, params.vec_length());
         }
         i = i + 1;
     }
@@ -1977,7 +1971,7 @@ fn typecheck_program(program: I32) : I32 => {
     // Check calls across whole program.
     i = 0;
     while (i < len) {
-        typecheck_stmt(vec_get(body, i), fn_arities);
+        typecheck_stmt(body.vec_get(i), fn_arities);
         i = i + 1;
     }
 
@@ -2011,13 +2005,13 @@ fn emit_expr(n: I32) : *Str => {
     if (kind == NK_STRING_LIT) {
         let val = node_get_data1(n);
         let s = get_interned_str(val);
-        return str_concat("\"".str_concat(s), "\"");
+        return "\"".str_concat(s).str_concat("\"");
     }
     
     if (kind == NK_CHAR_LIT) {
         let val = node_get_data1(n);
         let s = get_interned_str(val);
-        return str_concat("\"".str_concat(s), "\"");
+        return "\"".str_concat(s).str_concat("\"");
     }
     
     if (kind == NK_IDENTIFIER) {
@@ -2028,7 +2022,7 @@ fn emit_expr(n: I32) : *Str => {
     if (kind == NK_UNARY_EXPR) {
         let op = get_interned_str(node_get_data1(n));
         let inner = emit_expr(node_get_data2(n));
-        return str_concat("(".str_concat(op), inner.str_concat(")"));
+        return "(".str_concat(op).str_concat(inner.str_concat(")"));
     }
     
     if (kind == NK_BINARY_EXPR) {
@@ -2037,7 +2031,7 @@ fn emit_expr(n: I32) : *Str => {
         if (op.str_eq("!=")) { op = "!=="; }
         let left = emit_expr(node_get_data2(n));
         let right = emit_expr(node_get_data3(n));
-        return str_concat(str_concat(str_concat("(".str_concat(left), " ".str_concat(op)), " ".str_concat(right)), ")");
+        return str_concat("(".str_concat(left).str_concat(" ".str_concat(op)).str_concat(" ".str_concat(right)), ")");
     }
     
     if (kind == NK_CALL_EXPR) {
@@ -2045,25 +2039,25 @@ fn emit_expr(n: I32) : *Str => {
         let args = node_get_data2(n);
         let arg_strs = vec_new();
         let i = 0;
-        let len = vec_length(args);
+        let len = args.vec_length();
         while (i < len) {
-            vec_push(arg_strs, emit_expr(vec_get(args, i)));
+            arg_strs.vec_push(emit_expr(args.vec_get(i)));
             i = i + 1;
         }
-        let args_str = vec_join(arg_strs, ", ");
-        return str_concat(callee.str_concat("("), args_str.str_concat(")"));
+        let args_str = arg_strs.vec_join(", ");
+        return callee.str_concat("(").str_concat(args_str.str_concat(")"));
     }
     
     if (kind == NK_MEMBER_EXPR) {
         let obj = emit_expr(node_get_data1(n));
         let prop = get_interned_str(node_get_data2(n));
-        return str_concat(obj.str_concat("."), prop);
+        return obj.str_concat(".").str_concat(prop);
     }
     
     if (kind == NK_INDEX_EXPR) {
         let target = emit_expr(node_get_data1(n));
         let idx_expr = emit_expr(node_get_data2(n));
-        return str_concat(str_concat(target.str_concat("["), idx_expr), "]");
+        return target.str_concat("[").str_concat(idx_expr).str_concat("]");
     }
     
     if (kind == NK_STRUCT_INIT) {
@@ -2072,13 +2066,13 @@ fn emit_expr(n: I32) : *Str => {
         let fields = node_get_data2(n);
         let sb = sb_new();
         sb_append(sb, "({ __tag: ");
-        sb_append(sb, str_concat("\"".str_concat(name), "\""));
+        sb_append(sb, "\"".str_concat(name).str_concat("\""));
         let i = 0;
-        let len = vec_length(fields);
+        let len = fields.vec_length();
         while (i < len) {
-            let field = vec_get(fields, i);
-            let key_idx = vec_get(field, 0);
-            let val_node = vec_get(field, 1);
+            let field = fields.vec_get(i);
+            let key_idx = field.vec_get(0);
+            let val_node = field.vec_get(1);
             sb_append(sb, ", ");
             sb_append(sb, get_interned_str(key_idx));
             sb_append(sb, ": ");
@@ -2097,7 +2091,7 @@ fn emit_expr(n: I32) : *Str => {
         let else_str = if (else_b == 0) { "undefined" } else {
             if (node_kind(else_b) == NK_BLOCK) { emit_block_as_iife(else_b) } else { emit_expr(else_b) }
         };
-        return str_concat(str_concat(str_concat("((".str_concat(cond), ") ? "), then_str.str_concat(" : ")), else_str.str_concat(")"));
+        return str_concat("((".str_concat(cond).str_concat(") ? ").str_concat(then_str.str_concat(" : ")), else_str.str_concat(")"));
     }
     
     if (kind == NK_MATCH_EXPR) {
@@ -2108,11 +2102,11 @@ fn emit_expr(n: I32) : *Str => {
         sb_append(sb, target);
         sb_append(sb, "; ");
         let i = 0;
-        let len = vec_length(cases);
+        let len = cases.vec_length();
         while (i < len) {
-            let case_node = vec_get(cases, i);
-            let pat = vec_get(case_node, 0);
-            let body = vec_get(case_node, 1);
+            let case_node = cases.vec_get(i);
+            let pat = case_node.vec_get(0);
+            let body = case_node.vec_get(1);
             let guard = emit_pattern_guard("__m", pat);
             if (i == 0) {
                 sb_append(sb, "if (");
@@ -2134,7 +2128,7 @@ fn emit_expr(n: I32) : *Str => {
     if (kind == NK_IS_EXPR) {
         let inner = emit_expr(node_get_data1(n));
         let pat = node_get_data2(n);
-        return str_concat("(".str_concat(emit_pattern_guard(inner, pat)), ")");
+        return "(".str_concat(emit_pattern_guard(inner, pat)).str_concat(")");
     }
     
     if (kind == NK_UNWRAP_EXPR) {
@@ -2149,15 +2143,15 @@ fn emit_pattern_guard(value_expr: *Str, pat: I32) : *Str => {
     if (kind == NK_WILDCARD_PAT) { return "true"; }
     if (kind == NK_LITERAL_PAT) {
         let val = get_interned_str(node_get_data1(pat));
-        return str_concat(str_concat(value_expr.str_concat(" === "), val), "");
+        return value_expr.str_concat(" === ").str_concat(val).str_concat("");
     }
     if (kind == NK_NAME_PAT) {
         let name = get_interned_str(node_get_data1(pat));
-        return str_concat(str_concat(str_concat(value_expr.str_concat(" && "), value_expr), ".__tag === \""), name.str_concat("\""));
+        return str_concat(value_expr.str_concat(" && ").str_concat(value_expr).str_concat(".__tag === \""), name.str_concat("\""));
     }
     if (kind == NK_STRUCT_PAT) {
         let name = get_interned_str(node_get_data1(pat));
-        return str_concat(str_concat(str_concat(value_expr.str_concat(" && "), value_expr), ".__tag === \""), name.str_concat("\""));
+        return str_concat(value_expr.str_concat(" && ").str_concat(value_expr).str_concat(".__tag === \""), name.str_concat("\""));
     }
     "false"
 }
@@ -2168,9 +2162,9 @@ fn emit_pattern_bindings(value_expr: *Str, pat: I32) : *Str => {
         let fields = node_get_data2(pat);
         let sb = sb_new();
         let i = 0;
-        let len = vec_length(fields);
+        let len = fields.vec_length();
         while (i < len) {
-            let fname_idx = vec_get(fields, i);
+            let fname_idx = fields.vec_get(i);
             let fname = get_interned_str(fname_idx);
             sb_append(sb, "const ");
             sb_append(sb, fname);
@@ -2185,7 +2179,7 @@ fn emit_pattern_bindings(value_expr: *Str, pat: I32) : *Str => {
     }
     if (kind == NK_NAME_PAT) {
         let name = get_interned_str(node_get_data1(pat));
-        return str_concat(str_concat("const ".str_concat(name), " = "), value_expr.str_concat("; "));
+        return "const ".str_concat(name).str_concat(" = ").str_concat(value_expr.str_concat("; "));
     }
     ""
 }
@@ -2197,7 +2191,7 @@ fn emit_stmt(n: I32) : *Str => {
         let name_idx = node_get_data1(n);
         let name = get_interned_str(name_idx);
         let value = emit_expr(node_get_data3(n));
-        return str_concat(str_concat("let ".str_concat(name), " = "), value.str_concat(";"));
+        return "let ".str_concat(name).str_concat(" = ").str_concat(value.str_concat(";"));
     }
     
     if (kind == NK_IMPORT_DECL) {
@@ -2211,7 +2205,7 @@ fn emit_stmt(n: I32) : *Str => {
     if (kind == NK_ASSIGN_STMT) {
         let target = emit_expr(node_get_data1(n));
         let value = emit_expr(node_get_data2(n));
-        return str_concat(str_concat(target.str_concat(" = "), value), ";");
+        return target.str_concat(" = ").str_concat(value).str_concat(";");
     }
     
     if (kind == NK_RETURN_STMT) {
@@ -2219,7 +2213,7 @@ fn emit_stmt(n: I32) : *Str => {
         if (value == 0) {
             return "return;";
         }
-        return str_concat("return ", emit_expr(value).str_concat(";"));
+        return "return ".str_concat(emit_expr(value).str_concat(";"));
     }
     
     if (kind == NK_IF_STMT) {
@@ -2227,9 +2221,9 @@ fn emit_stmt(n: I32) : *Str => {
         let then_b = emit_block(node_get_data2(n));
         let else_b = node_get_data3(n);
         if (else_b == 0) {
-            return str_concat("if (".str_concat(cond), ") ".str_concat(then_b));
+            return "if (".str_concat(cond).str_concat(") ".str_concat(then_b));
         }
-        return str_concat(str_concat(str_concat("if (".str_concat(cond), ") "), then_b), " else ".str_concat(emit_stmt_or_block(else_b)));
+        return str_concat("if (".str_concat(cond).str_concat(") ").str_concat(then_b), " else ".str_concat(emit_stmt_or_block(else_b)));
     }
     
     // IfExpr used as statement (e.g., in else-if chains)
@@ -2239,15 +2233,15 @@ fn emit_stmt(n: I32) : *Str => {
         let else_b = node_get_data3(n);
         let then_str = emit_stmt_or_block(then_b);
         if (else_b == 0) {
-            return str_concat("if (".str_concat(cond), ") ".str_concat(then_str));
+            return "if (".str_concat(cond).str_concat(") ".str_concat(then_str));
         }
-        return str_concat(str_concat(str_concat("if (".str_concat(cond), ") "), then_str), " else ".str_concat(emit_stmt_or_block(else_b)));
+        return str_concat("if (".str_concat(cond).str_concat(") ").str_concat(then_str), " else ".str_concat(emit_stmt_or_block(else_b)));
     }
     
     if (kind == NK_WHILE_STMT) {
         let cond = emit_expr(node_get_data1(n));
         let body = emit_block(node_get_data2(n));
-        return str_concat("while (".str_concat(cond), ") ".str_concat(body));
+        return "while (".str_concat(cond).str_concat(") ".str_concat(body));
     }
     
     if (kind == NK_FOR_STMT) {
@@ -2256,7 +2250,7 @@ fn emit_stmt(n: I32) : *Str => {
         let start = emit_expr(node_get_data2(n));
         let end = emit_expr(node_get_data3(n));
         let body = emit_block(node_get_data4(n));
-        return str_concat(str_concat(str_concat(str_concat(str_concat(str_concat("for (let ".str_concat(iter), " = "), start), "; ".str_concat(iter)), " < ".str_concat(end)), str_concat("; ", iter.str_concat("++) "))), body);
+        return str_concat(str_concat(str_concat(str_concat("for (let ".str_concat(iter).str_concat(" = ").str_concat(start), "; ".str_concat(iter)), " < ".str_concat(end)), "; ".str_concat(iter.str_concat("++) "))), body);
     }
     
     if (kind == NK_BREAK_STMT) {
@@ -2279,18 +2273,18 @@ fn emit_stmt(n: I32) : *Str => {
         
         let param_names = vec_new();
         let i = 0;
-        let len = vec_length(params);
+        let len = params.vec_length();
         while (i < len) {
-            let param = vec_get(params, i);
-            vec_push(param_names, get_interned_str(vec_get(param, 0)));
+            let param = params.vec_get(i);
+            param_names.vec_push(get_interned_str(param.vec_get(0)));
             i = i + 1;
         }
-        let params_str = vec_join(param_names, ", ");
+        let params_str = param_names.vec_join(", ");
         
         if (node_kind(body) == NK_BLOCK) {
-            return str_concat(str_concat("function ".str_concat(name), "(".str_concat(params_str)), ") ".str_concat(emit_fn_block(body)));
+            return "function ".str_concat(name).str_concat("(".str_concat(params_str)).str_concat(") ".str_concat(emit_fn_block(body)));
         }
-        return str_concat(str_concat(str_concat("function ".str_concat(name), "(".str_concat(params_str)), ") { return "), emit_expr(body).str_concat("; }"));
+        return str_concat("function ".str_concat(name).str_concat("(".str_concat(params_str)).str_concat(") { return "), emit_expr(body).str_concat("; }"));
     }
     
     if (kind == NK_STRUCT_DECL) {
@@ -2304,10 +2298,10 @@ fn emit_stmt(n: I32) : *Str => {
         sb_append(sb, name);
         sb_append(sb, "\"");
         let i = 0;
-        let len = vec_length(fields);
+        let len = fields.vec_length();
         while (i < len) {
-            let field = vec_get(fields, i);
-            let fname = get_interned_str(vec_get(field, 0));
+            let field = fields.vec_get(i);
+            let fname = get_interned_str(field.vec_get(0));
             sb_append(sb, ", ");
             sb_append(sb, fname);
             sb_append(sb, ": fields.");
@@ -2321,7 +2315,7 @@ fn emit_stmt(n: I32) : *Str => {
     if (kind == NK_TYPE_ALIAS) {
         let name_idx = node_get_data1(n);
         let name = get_interned_str(name_idx);
-        return str_concat("// type ".str_concat(name), " = ...");
+        return "// type ".str_concat(name).str_concat(" = ...");
     }
 
     if (kind == NK_ENUM_DECL) {
@@ -2332,12 +2326,12 @@ fn emit_stmt(n: I32) : *Str => {
         sb_append(sb, name);
         sb_append(sb, " = { ");
         let i = 0;
-        let len = vec_length(variants);
+        let len = variants.vec_length();
         while (i < len) {
             if (i > 0) {
                 sb_append(sb, ", ");
             }
-            let v = get_interned_str(vec_get(variants, i));
+            let v = get_interned_str(variants.vec_get(i));
             sb_append(sb, v);
             sb_append(sb, ": { __tag: \"");
             sb_append(sb, v);
@@ -2373,7 +2367,7 @@ fn emit_stmt_or_block(n: I32) : *Str => {
     if (node_kind(n) == NK_BLOCK) {
         return emit_block(n);
     }
-    str_concat("{ ", emit_stmt(n).str_concat(" }"))
+    "{ ".str_concat(emit_stmt(n).str_concat(" }"))
 }
 
 fn emit_block(n: I32) : *Str => {
@@ -2381,10 +2375,10 @@ fn emit_block(n: I32) : *Str => {
     let sb = sb_new();
     sb_append(sb, "{\n");
     let i = 0;
-    let len = vec_length(stmts);
+    let len = stmts.vec_length();
     while (i < len) {
         sb_append(sb, "  ");
-        sb_append(sb, emit_stmt(vec_get(stmts, i)));
+        sb_append(sb, emit_stmt(stmts.vec_get(i)));
         sb_append(sb, "\n");
         i = i + 1;
     }
@@ -2395,7 +2389,7 @@ fn emit_block(n: I32) : *Str => {
 // Emit a block wrapped in an IIFE for use in expressions
 fn emit_block_as_iife(n: I32) : *Str => {
     let stmts = node_get_data1(n);
-    let len = vec_length(stmts);
+    let len = stmts.vec_length();
     if (len == 0) {
         return "(() => undefined)()";
     }
@@ -2403,7 +2397,7 @@ fn emit_block_as_iife(n: I32) : *Str => {
     sb_append(sb, "(() => {\n");
     let i = 0;
     while (i < len) {
-        let stmt = vec_get(stmts, i);
+        let stmt = stmts.vec_get(i);
         let is_last = i == len - 1;
         let kind = node_kind(stmt);
         if (is_last && kind == NK_EXPR_STMT) {
@@ -2427,7 +2421,7 @@ fn emit_block_as_iife(n: I32) : *Str => {
 
 fn emit_fn_block(n: I32) : *Str => {
     let stmts = node_get_data1(n);
-    let len = vec_length(stmts);
+    let len = stmts.vec_length();
     if (len == 0) {
         return "{\n}";
     }
@@ -2435,7 +2429,7 @@ fn emit_fn_block(n: I32) : *Str => {
     sb_append(sb, "{\n");
     let i = 0;
     while (i < len) {
-        let stmt = vec_get(stmts, i);
+        let stmt = stmts.vec_get(i);
         let is_last = i == len - 1;
         let kind = node_kind(stmt);
         if (is_last && kind == NK_EXPR_STMT) {
@@ -2467,7 +2461,7 @@ fn emit_if_as_expr(n: I32) : *Str => {
     let then_code = emit_branch_as_expr(then_branch);
     let else_code = if (else_branch == 0) { "undefined" } else { emit_branch_as_expr(else_branch) };
     
-    str_concat(str_concat(str_concat("((".str_concat(cond), ") ? "), then_code.str_concat(" : ")), else_code.str_concat(")"))
+    str_concat("((".str_concat(cond).str_concat(") ? ").str_concat(then_code.str_concat(" : ")), else_code.str_concat(")"))
 }
 
 fn emit_branch_as_expr(n: I32) : *Str => {
@@ -2475,7 +2469,7 @@ fn emit_branch_as_expr(n: I32) : *Str => {
     if (kind == NK_BLOCK) {
         // Wrap block in IIFE
         let stmts = node_get_data1(n);
-        let len = vec_length(stmts);
+        let len = stmts.vec_length();
         if (len == 0) {
             return "undefined";
         }
@@ -2483,7 +2477,7 @@ fn emit_branch_as_expr(n: I32) : *Str => {
         sb_append(sb, "(() => {\n");
         let i = 0;
         while (i < len) {
-            let stmt = vec_get(stmts, i);
+            let stmt = stmts.vec_get(i);
             let is_last = i == len - 1;
             let stmt_kind = node_kind(stmt);
             if (is_last && stmt_kind == NK_EXPR_STMT) {
@@ -2515,9 +2509,9 @@ fn generate_js(program: I32) : *Str => {
     let sb = sb_new();
     sb_append(sb, "\"use strict\";\n\n");
     let i = 0;
-    let len = vec_length(stmts);
+    let len = stmts.vec_length();
     while (i < len) {
-        sb_append(sb, emit_stmt(vec_get(stmts, i)));
+        sb_append(sb, emit_stmt(stmts.vec_get(i)));
         sb_append(sb, "\n\n");
         i = i + 1;
     }
@@ -2542,12 +2536,12 @@ fn compile_source(source: *Str) : *Str => {
 fn module_parts_to_relative_path(parts: Vec) : *Str => {
     let sb = sb_new();
     let i = 0;
-    let len = vec_length(parts);
+    let len = parts.vec_length();
     while (i < len) {
         if (i > 0) {
             sb_append(sb, "/");
         }
-        sb_append(sb, get_interned_str(vec_get(parts, i)));
+        sb_append(sb, get_interned_str(parts.vec_get(i)));
         i = i + 1;
     }
     sb_append(sb, ".tuff");
@@ -2557,22 +2551,22 @@ fn module_parts_to_relative_path(parts: Vec) : *Str => {
 fn join_sources(sources: StringVec) : *Str => {
     let sb = sb_new();
     let i = 0;
-    let len = str_vec_length(sources);
+    let len = sources.str_vec_length();
     while (i < len) {
         if (i > 0) {
             sb_append(sb, "\n\n");
         }
-        sb_append(sb, str_vec_get(sources, i));
+        sb_append(sb, sources.str_vec_get(i));
         i = i + 1;
     }
     sb_build(sb)
 }
 
 fn gather_module_sources(filePath: *Str, seen: Set, visiting: Set, sources: StringVec) : I32 => {
-    if (set_has(seen, filePath)) {
+    if (seen.set_has(filePath)) {
         return 0;
     }
-    if (set_has(visiting, filePath)) {
+    if (visiting.set_has(filePath)) {
         panic_with_code(
             "E_MODULE_CYCLE",
             "Module import cycle detected at ".str_concat(filePath),
@@ -2580,7 +2574,7 @@ fn gather_module_sources(filePath: *Str, seen: Set, visiting: Set, sources: Stri
             "Break the cycle by extracting shared declarations into a third module imported by both sides."
         );
     }
-    set_add(visiting, filePath);
+    visiting.set_add(filePath);
 
     let source = read_file(filePath);
     lex_init(source);
@@ -2590,9 +2584,9 @@ fn gather_module_sources(filePath: *Str, seen: Set, visiting: Set, sources: Stri
     let stmts = node_get_data1(program);
 
     let i = 0;
-    let len = vec_length(stmts);
+    let len = stmts.vec_length();
     while (i < len) {
-        let stmt = vec_get(stmts, i);
+        let stmt = stmts.vec_get(i);
         if (node_kind(stmt) == NK_IMPORT_DECL) {
             let parts = node_get_data2(stmt);
             let rel = module_parts_to_relative_path(parts);
@@ -2602,9 +2596,9 @@ fn gather_module_sources(filePath: *Str, seen: Set, visiting: Set, sources: Stri
         i = i + 1;
     }
 
-    set_delete(visiting, filePath);
-    set_add(seen, filePath);
-    str_vec_push(sources, source);
+    visiting.set_delete(filePath);
+    seen.set_add(filePath);
+    sources.str_vec_push(source);
     0
 }
 
