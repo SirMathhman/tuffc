@@ -83,6 +83,17 @@ expectCompileFail(
 );
 
 expectCompileOk(
+  "pointer-types-parse-and-call",
+  `extern fn readPtr(p : *I32) : I32;\nextern fn writePtr(p : *mut I32, v : I32) : I32;\nextern let rp : *I32;\nextern let wp : *mut I32;\nfn ok() : I32 => { writePtr(wp, 1); readPtr(rp) }`,
+);
+
+expectCompileFail(
+  "pointer-mutability-mismatch",
+  `extern fn writePtr(p : *mut I32, v : I32) : I32;\nextern let rp : *I32;\nfn bad() : I32 => writePtr(rp, 1);`,
+  "Type mismatch in call to writePtr arg 1",
+);
+
+expectCompileOk(
   "match-exhaustive",
   `struct Some<T> { value : I32 }\nstruct None<T> {}\ntype Option<T> = Some<T> | None<T>;\nfn f(o : Option<I32>) : I32 => match (o) { case Some { value } = value; case None = 0; };`,
 );

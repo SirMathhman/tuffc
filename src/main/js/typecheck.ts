@@ -35,7 +35,10 @@ function named(type) {
   if (type.kind === "UnionType")
     return `${named(type.left)}|${named(type.right)}`;
   if (type.kind === "ArrayType") return "Array";
-  if (type.kind === "PointerType") return "Pointer";
+  if (type.kind === "PointerType") {
+    const inner = named(type.to) ?? "Unknown";
+    return type.mutable ? `*mut ${inner}` : `*${inner}`;
+  }
   if (type.kind === "TupleType") return "Tuple";
   return undefined;
 }
@@ -350,7 +353,14 @@ export function typecheck(
 
     if (type.kind === "PointerType") {
       const inner = resolveTypeInfo(type.to, seenAliases);
-      return { ...inner, name: `*${inner.name}`, typeNode: type };
+      const pointerName = type.mutable
+        ? `*mut ${inner.name}`
+        : `*${inner.name}`;
+      return {
+        ...inner,
+        name: pointerName,
+        typeNode: type,
+      };
     }
 
     return {
@@ -363,7 +373,10 @@ export function typecheck(
   };
 
   for (const node of ast.body) {
-    if (node.kind === "LetDecl" && node.type) {
+    if (
+      (node.kind === "LetDecl" || node.kind === "ExternLetDecl") &&
+      node.type
+    ) {
       globalScope.set(node.name, resolveTypeInfo(node.type));
     }
   }

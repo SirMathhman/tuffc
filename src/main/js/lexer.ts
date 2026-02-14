@@ -27,6 +27,7 @@ const KEYWORDS = new Set([
   "module",
   "extern",
   "async",
+  "mut",
 ]);
 
 const TWO_CHAR = new Set([

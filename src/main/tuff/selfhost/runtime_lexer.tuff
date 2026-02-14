@@ -39,11 +39,10 @@ extern fn sb_build(sb: StringBuilder) : *Str;
 
 extern type Vec<T>;
 extern fn vec_new() : Vec<T>;
-extern fn vec_push(this: *mut Vec<T>, item: T) : Vec<T>;
-extern fn vec_pop(this: *mut Vec<T>) : I32;
+extern fn vec_push(this: Vec<T>, item: T) : Vec<T>;
+extern fn vec_pop(this: Vec<T>) : I32;
 
-extern fn vec_get(this: *Vec<T>, i: I32) : *T;
-extern fn vec_get(this: *mut Vec<T>, i : I32) : *mut T;
+extern fn vec_get(this: Vec<T>, i: I32) : T;
 
 extern fn vec_set(this: Vec<T>, i: I32, v: T) : Vec<T>;
 extern fn vec_length(this: Vec<T>) : USize;
@@ -161,6 +160,7 @@ fn init_keywords() : I32 => {
     keywords.set_add("module");
     keywords.set_add("extern");
     keywords.set_add("async");
+    keywords.set_add("mut");
     0
 }
 
