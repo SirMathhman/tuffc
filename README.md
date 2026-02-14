@@ -21,8 +21,10 @@ Implements Phase 1 / Stage 0 from `SELF-HOST.md`:
 
 ## Quick start
 
-1. Run tests: `npm test`
-2. Compile file: `node ./src/main/js/cli.js compile ./src/test/tuff/cases/factorial.tuff -o ./tests/out/factorial.js`
+1. Build self-hosted compiler artifacts: `bun run build`
+2. Run tests: `bun run test`
+3. Run lint pass: `bun run lint`
+4. Compile file: `node ./src/main/js/cli.js compile ./src/test/tuff/cases/factorial.tuff -o ./tests/out/factorial.js`
 
 ## Phase 2 / Stage 1
 
@@ -34,7 +36,7 @@ Stage 1 source is in `src/main/tuff/compiler.tuff`.
 
 Run only Stage 1 bootstrap validation:
 
-- `npm run stage1:bootstrap`
+- `bun run stage1:bootstrap`
 
 Implementation note:
 
@@ -66,7 +68,7 @@ Example:
 
 Run Phase 3 verification only:
 
-- `npm run stage2:verify`
+- `bun run stage2:verify`
 
 ## Phase 4 (current focus)
 
@@ -89,4 +91,4 @@ Example:
 
 Run Phase 4 verification only:
 
-- `npm run stage4:verify`
+- `bun run stage4:verify`
