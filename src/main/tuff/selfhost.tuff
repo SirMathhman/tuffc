@@ -10,8 +10,11 @@
 // ============================================================================
 
 extern fn str_length(this: *Str) : USize;
+
+// Why do we have two of these?
 extern fn str_char_at(this: *Str, i: I32) : I32;
 extern fn str_char(this: *Str, i: I32) : *Str;
+
 extern fn str_slice(this: *Str, start: I32, end: I32) : *Str;
 extern fn str_concat(this: *Str, b: *Str) : *Str;
 extern fn str_eq(this: *Str, b: *Str) : Bool;
