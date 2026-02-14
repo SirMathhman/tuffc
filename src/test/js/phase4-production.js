@@ -97,6 +97,7 @@ const lintCli = spawnSync(
     "compile",
     lintFailingFile,
     "--lint",
+    "--lint-strict",
     "--json-errors",
   ],
   {
@@ -169,6 +170,57 @@ try {
     console.error(`Expected E_LINT_PREFER_RECEIVER_CALL, got ${diag.code}`);
     process.exit(1);
   }
+}
+
+// 5) Ensure lint autofix rewrites receiver-style extern calls in source.
+const lintFixFile = path.join(outDir, "cli-lint-fix.tuff");
+fs.writeFileSync(
+  lintFixFile,
+  [
+    "extern fn str_length(this: *Str) : I32;",
+    'fn main() : I32 => str_length("abcd");',
+    "",
+  ].join("\n"),
+  "utf8",
+);
+
+const lintFixCli = spawnSync(
+  process.execPath,
+  [
+    "./src/main/js/cli.js",
+    "compile",
+    lintFixFile,
+    "--lint",
+    "--lint-fix",
+    "-o",
+    path.join(outDir, "cli-lint-fix.js"),
+  ],
+  {
+    cwd: root,
+    encoding: "utf8",
+  },
+);
+
+if (lintFixCli.status !== 0) {
+  console.error("CLI lint-fix command failed unexpectedly");
+  console.error(lintFixCli.stderr);
+  process.exit(1);
+}
+
+const lintFixUpdated = fs.readFileSync(lintFixFile, "utf8");
+if (!lintFixUpdated.includes('"abcd".str_length()')) {
+  console.error(
+    "Expected lint-fix to rewrite str_length call to receiver syntax",
+  );
+  console.error(lintFixUpdated);
+  process.exit(1);
+}
+if (lintFixUpdated.includes('str_length("abcd")')) {
+  console.error(
+    "Expected lint-fix to remove free-function receiver call usage",
+  );
+  console.error(lintFixUpdated);
+  process.exit(1);
 }
 
 console.log("Phase 4 production diagnostics checks passed");

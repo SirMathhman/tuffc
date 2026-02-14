@@ -60,7 +60,7 @@ export function lex(source, filePath = "<memory>") {
   let line = 1;
   let column = 1;
 
-  const loc = () => ({ filePath, line, column });
+  const loc = () => ({ filePath, line, column, index: i });
 
   const advance = () => {
     const ch = source[i++];
@@ -75,7 +75,8 @@ export function lex(source, filePath = "<memory>") {
 
   const peek = (n = 0) => source[i + n] ?? "\0";
 
-  const add = (type, value, start) => tokens.push({ type, value, loc: start });
+  const add = (type, value, start, startIndex) =>
+    tokens.push({ type, value, loc: start, start: startIndex, end: i });
 
   while (i < source.length) {
     const ch = peek();
@@ -106,20 +107,21 @@ export function lex(source, filePath = "<memory>") {
     }
 
     const start = loc();
+    const startIndex = i;
     const three = `${peek()}${peek(1)}${peek(2)}`;
     if (THREE_CHAR.has(three)) {
-      add("symbol", three, start);
       advance();
       advance();
       advance();
+      add("symbol", three, start, startIndex);
       continue;
     }
 
     const two = `${peek()}${peek(1)}`;
     if (TWO_CHAR.has(two)) {
-      add("symbol", two, start);
       advance();
       advance();
+      add("symbol", two, start, startIndex);
       continue;
     }
 
@@ -127,11 +129,11 @@ export function lex(source, filePath = "<memory>") {
       let text = "";
       while (isAlphaNum(peek())) text += advance();
       if (KEYWORDS.has(text)) {
-        add("keyword", text, start);
+        add("keyword", text, start, startIndex);
       } else if (text === "true" || text === "false") {
-        add("bool", text === "true", start);
+        add("bool", text === "true", start, startIndex);
       } else {
-        add("identifier", text, start);
+        add("identifier", text, start, startIndex);
       }
       continue;
     }
@@ -149,7 +151,7 @@ export function lex(source, filePath = "<memory>") {
           while (/[0-9_]/.test(peek())) text += advance();
         }
       }
-      add("number", text.replaceAll("_", ""), start);
+      add("number", text.replaceAll("_", ""), start, startIndex);
       continue;
     }
 
@@ -171,7 +173,7 @@ export function lex(source, filePath = "<memory>") {
           hint: "Close the string with a matching double quote.",
         });
       advance();
-      add("string", text, start);
+      add("string", text, start, startIndex);
       continue;
     }
 
@@ -187,13 +189,13 @@ export function lex(source, filePath = "<memory>") {
           hint: "Close the char literal with a matching single quote.",
         });
       advance();
-      add("char", text, start);
+      add("char", text, start, startIndex);
       continue;
     }
 
     if ("(){}[],:;+-*/%<>=.!?|&".includes(ch)) {
-      add("symbol", ch, start);
       advance();
+      add("symbol", ch, start, startIndex);
       continue;
     }
 
@@ -203,6 +205,12 @@ export function lex(source, filePath = "<memory>") {
     });
   }
 
-  tokens.push({ type: "eof", value: "<eof>", loc: { filePath, line, column } });
+  tokens.push({
+    type: "eof",
+    value: "<eof>",
+    loc: { filePath, line, column, index: i },
+    start: i,
+    end: i,
+  });
   return tokens;
 }

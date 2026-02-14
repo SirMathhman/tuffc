@@ -9,31 +9,18 @@
 // Extern declarations - these come from runtime.js
 // ============================================================================
 
-/*
 extern fn str_length(this: *Str) : I32;
-
-Support this syntax, so instead of
-
-str_length("test")
-
-do
-
-"test".str_length()
-
-Then, add a linter warning to suggest this
-*/
-extern fn str_length(this: *Str) : I32;
-extern fn str_char_at(s: *Str, i: I32) : I32;
-extern fn str_char(s: *Str, i: I32) : *Str;
-extern fn str_slice(s: *Str, start: I32, end: I32) : *Str;
-extern fn str_concat(a: *Str, b: *Str) : *Str;
-extern fn str_eq(a: *Str, b: *Str) : Bool;
+extern fn str_char_at(this: *Str, i: I32) : I32;
+extern fn str_char(this: *Str, i: I32) : *Str;
+extern fn str_slice(this: *Str, start: I32, end: I32) : *Str;
+extern fn str_concat(this: *Str, b: *Str) : *Str;
+extern fn str_eq(this: *Str, b: *Str) : Bool;
 extern fn str_from_char_code(code: I32) : *Str;
-extern fn str_index_of(s: *Str, needle: *Str) : I32;
-extern fn str_includes(s: *Str, needle: *Str) : Bool;
-extern fn str_starts_with(s: *Str, prefix: *Str) : Bool;
-extern fn str_trim(s: *Str) : *Str;
-extern fn str_replace_all(s: *Str, from: *Str, to: *Str) : *Str;
+extern fn str_index_of(this: *Str, needle: *Str) : I32;
+extern fn str_includes(this: *Str, needle: *Str) : Bool;
+extern fn str_starts_with(this: *Str, prefix: *Str) : Bool;
+extern fn str_trim(this: *Str) : *Str;
+extern fn str_replace_all(this: *Str, from: *Str, to: *Str) : *Str;
 extern fn char_code(ch: *Str) : I32;
 extern fn int_to_string(n: I32) : *Str;
 extern fn parse_int(s: *Str) : I32;
@@ -190,7 +177,7 @@ fn lex_init(source: *Str) : I32 => {
     lex_pos = 0;
     lex_line = 1;
     lex_col = 1;
-    lex_len = str_length(source);
+    lex_len = source.str_length();
     // Clear token arrays for fresh compilation
     vec_clear(tok_kinds);
     vec_clear(tok_values);
@@ -205,7 +192,7 @@ fn lex_peek(offset: I32) : I32 => {
     if (p >= lex_len) {
         0
     } else {
-        str_char_at(lex_source, p)
+        lex_source.str_char_at(p)
     }
 }
 
@@ -377,9 +364,9 @@ fn lex_all() : I32 => {
         // Identifier or keyword
         if (is_alpha(ch)) {
             let text = lex_read_ident();
-            if (str_eq(text, "true")) {
+            if (text.str_eq("true")) {
                 tok_add(TK_BOOL, 1, start_line, start_col);
-            } else if (str_eq(text, "false")) {
+            } else if (text.str_eq("false")) {
                 tok_add(TK_BOOL, 0, start_line, start_col);
             } else if (is_keyword(text)) {
                 tok_add(TK_KEYWORD, intern(text), start_line, start_col);
@@ -411,13 +398,13 @@ fn lex_all() : I32 => {
         }
         
         // Single-char symbols
-        if (str_includes("(){}[],:;+-*/%<>=.!?|&", str_from_char_code(ch))) {
+        if ("(){}[],:;+-*/%<>=.!?|&".str_includes(str_from_char_code(ch))) {
             lex_advance();
             tok_add(TK_SYMBOL, intern(str_from_char_code(ch)), start_line, start_col);
             continue;
         }
         
-        panic(str_concat("Unexpected character: ", str_from_char_code(ch)));
+        panic("Unexpected character: ".str_concat(str_from_char_code(ch)));
     }
     
     tok_add(TK_EOF, intern("<eof>"), lex_line, lex_col);
@@ -1486,7 +1473,7 @@ fn scope_define(scopes: Vec, depth: I32, name: *Str) : I32 => {
     if (set_has(scope, name)) {
         panic_with_code(
             "E_RESOLVE_SHADOWING",
-            str_concat("Variable shadowing/redeclaration is not allowed: ", name),
+            "Variable shadowing/redeclaration is not allowed: ".str_concat(name),
             "A name was declared multiple times in the same lexical scope.",
             "Rename one of the bindings or move it to a different scope."
         );
@@ -1518,7 +1505,7 @@ fn resolve_expr(n: I32, globals: Set, scopes: Vec, depth: I32) : I32 => {
         if (!scope_has(scopes, depth, name) && !set_has(globals, name)) {
             panic_with_code(
                 "E_RESOLVE_UNKNOWN_IDENTIFIER",
-                str_concat("Unknown identifier: ", name),
+                "Unknown identifier: ".str_concat(name),
                 "The identifier is not declared in local scope, global declarations, or imports.",
                 "Declare the identifier before use or import it from the correct module."
             );
@@ -1568,7 +1555,7 @@ fn resolve_expr(n: I32, globals: Set, scopes: Vec, depth: I32) : I32 => {
         if (!set_has(globals, type_name)) {
             panic_with_code(
                 "E_RESOLVE_UNKNOWN_STRUCT",
-                str_concat("Unknown struct/type in initializer: ", type_name),
+                "Unknown struct/type in initializer: ".str_concat(type_name),
                 "A struct initializer referenced a type that is not declared in the merged module scope.",
                 "Declare the struct/type first or import the module that defines it."
             );
@@ -1761,7 +1748,7 @@ fn resolve_names(program: I32) : I32 => {
             if (set_has(globals, gname)) {
                 panic_with_code(
                     "E_RESOLVE_SHADOWING",
-                    str_concat("Variable shadowing/redeclaration is not allowed: ", gname),
+                    "Variable shadowing/redeclaration is not allowed: ".str_concat(gname),
                     "A global declaration with the same name already exists.",
                     "Rename one of the global declarations or split conflicting declarations into separate modules."
                 );
@@ -1821,10 +1808,10 @@ fn typecheck_expr(n: I32, fn_arities: Map) : I32 => {
                 if (expected != actual) {
                     let msg = str_concat(
                         str_concat(
-                            str_concat("Function ", fname),
-                            str_concat(" expects ", int_to_string(expected))
+                            "Function ".str_concat(fname),
+                            " expects ".str_concat(int_to_string(expected))
                         ),
-                        str_concat(" args, got ", int_to_string(actual))
+                        " args, got ".str_concat(int_to_string(actual))
                     );
                     panic_with_code(
                         "E_TYPE_ARG_COUNT",
@@ -2024,13 +2011,13 @@ fn emit_expr(n: I32) : *Str => {
     if (kind == NK_STRING_LIT) {
         let val = node_get_data1(n);
         let s = get_interned_str(val);
-        return str_concat(str_concat("\"", s), "\"");
+        return str_concat("\"".str_concat(s), "\"");
     }
     
     if (kind == NK_CHAR_LIT) {
         let val = node_get_data1(n);
         let s = get_interned_str(val);
-        return str_concat(str_concat("\"", s), "\"");
+        return str_concat("\"".str_concat(s), "\"");
     }
     
     if (kind == NK_IDENTIFIER) {
@@ -2041,16 +2028,16 @@ fn emit_expr(n: I32) : *Str => {
     if (kind == NK_UNARY_EXPR) {
         let op = get_interned_str(node_get_data1(n));
         let inner = emit_expr(node_get_data2(n));
-        return str_concat(str_concat("(", op), str_concat(inner, ")"));
+        return str_concat("(".str_concat(op), inner.str_concat(")"));
     }
     
     if (kind == NK_BINARY_EXPR) {
         let op = get_interned_str(node_get_data1(n));
-        if (str_eq(op, "==")) { op = "==="; }
-        if (str_eq(op, "!=")) { op = "!=="; }
+        if (op.str_eq("==")) { op = "==="; }
+        if (op.str_eq("!=")) { op = "!=="; }
         let left = emit_expr(node_get_data2(n));
         let right = emit_expr(node_get_data3(n));
-        return str_concat(str_concat(str_concat(str_concat("(", left), str_concat(" ", op)), str_concat(" ", right)), ")");
+        return str_concat(str_concat(str_concat("(".str_concat(left), " ".str_concat(op)), " ".str_concat(right)), ")");
     }
     
     if (kind == NK_CALL_EXPR) {
@@ -2064,19 +2051,19 @@ fn emit_expr(n: I32) : *Str => {
             i = i + 1;
         }
         let args_str = vec_join(arg_strs, ", ");
-        return str_concat(str_concat(callee, "("), str_concat(args_str, ")"));
+        return str_concat(callee.str_concat("("), args_str.str_concat(")"));
     }
     
     if (kind == NK_MEMBER_EXPR) {
         let obj = emit_expr(node_get_data1(n));
         let prop = get_interned_str(node_get_data2(n));
-        return str_concat(str_concat(obj, "."), prop);
+        return str_concat(obj.str_concat("."), prop);
     }
     
     if (kind == NK_INDEX_EXPR) {
         let target = emit_expr(node_get_data1(n));
         let idx_expr = emit_expr(node_get_data2(n));
-        return str_concat(str_concat(str_concat(target, "["), idx_expr), "]");
+        return str_concat(str_concat(target.str_concat("["), idx_expr), "]");
     }
     
     if (kind == NK_STRUCT_INIT) {
@@ -2085,7 +2072,7 @@ fn emit_expr(n: I32) : *Str => {
         let fields = node_get_data2(n);
         let sb = sb_new();
         sb_append(sb, "({ __tag: ");
-        sb_append(sb, str_concat(str_concat("\"", name), "\""));
+        sb_append(sb, str_concat("\"".str_concat(name), "\""));
         let i = 0;
         let len = vec_length(fields);
         while (i < len) {
@@ -2110,7 +2097,7 @@ fn emit_expr(n: I32) : *Str => {
         let else_str = if (else_b == 0) { "undefined" } else {
             if (node_kind(else_b) == NK_BLOCK) { emit_block_as_iife(else_b) } else { emit_expr(else_b) }
         };
-        return str_concat(str_concat(str_concat(str_concat("((", cond), ") ? "), str_concat(then_str, " : ")), str_concat(else_str, ")"));
+        return str_concat(str_concat(str_concat("((".str_concat(cond), ") ? "), then_str.str_concat(" : ")), else_str.str_concat(")"));
     }
     
     if (kind == NK_MATCH_EXPR) {
@@ -2147,7 +2134,7 @@ fn emit_expr(n: I32) : *Str => {
     if (kind == NK_IS_EXPR) {
         let inner = emit_expr(node_get_data1(n));
         let pat = node_get_data2(n);
-        return str_concat(str_concat("(", emit_pattern_guard(inner, pat)), ")");
+        return str_concat("(".str_concat(emit_pattern_guard(inner, pat)), ")");
     }
     
     if (kind == NK_UNWRAP_EXPR) {
@@ -2162,15 +2149,15 @@ fn emit_pattern_guard(value_expr: *Str, pat: I32) : *Str => {
     if (kind == NK_WILDCARD_PAT) { return "true"; }
     if (kind == NK_LITERAL_PAT) {
         let val = get_interned_str(node_get_data1(pat));
-        return str_concat(str_concat(str_concat(value_expr, " === "), val), "");
+        return str_concat(str_concat(value_expr.str_concat(" === "), val), "");
     }
     if (kind == NK_NAME_PAT) {
         let name = get_interned_str(node_get_data1(pat));
-        return str_concat(str_concat(str_concat(str_concat(value_expr, " && "), value_expr), ".__tag === \""), str_concat(name, "\""));
+        return str_concat(str_concat(str_concat(value_expr.str_concat(" && "), value_expr), ".__tag === \""), name.str_concat("\""));
     }
     if (kind == NK_STRUCT_PAT) {
         let name = get_interned_str(node_get_data1(pat));
-        return str_concat(str_concat(str_concat(str_concat(value_expr, " && "), value_expr), ".__tag === \""), str_concat(name, "\""));
+        return str_concat(str_concat(str_concat(value_expr.str_concat(" && "), value_expr), ".__tag === \""), name.str_concat("\""));
     }
     "false"
 }
@@ -2198,7 +2185,7 @@ fn emit_pattern_bindings(value_expr: *Str, pat: I32) : *Str => {
     }
     if (kind == NK_NAME_PAT) {
         let name = get_interned_str(node_get_data1(pat));
-        return str_concat(str_concat(str_concat("const ", name), " = "), str_concat(value_expr, "; "));
+        return str_concat(str_concat("const ".str_concat(name), " = "), value_expr.str_concat("; "));
     }
     ""
 }
@@ -2210,7 +2197,7 @@ fn emit_stmt(n: I32) : *Str => {
         let name_idx = node_get_data1(n);
         let name = get_interned_str(name_idx);
         let value = emit_expr(node_get_data3(n));
-        return str_concat(str_concat(str_concat("let ", name), " = "), str_concat(value, ";"));
+        return str_concat(str_concat("let ".str_concat(name), " = "), value.str_concat(";"));
     }
     
     if (kind == NK_IMPORT_DECL) {
@@ -2218,13 +2205,13 @@ fn emit_stmt(n: I32) : *Str => {
     }
     
     if (kind == NK_EXPR_STMT) {
-        return str_concat(emit_expr(node_get_data1(n)), ";");
+        return emit_expr(node_get_data1(n)).str_concat(";");
     }
     
     if (kind == NK_ASSIGN_STMT) {
         let target = emit_expr(node_get_data1(n));
         let value = emit_expr(node_get_data2(n));
-        return str_concat(str_concat(str_concat(target, " = "), value), ";");
+        return str_concat(str_concat(target.str_concat(" = "), value), ";");
     }
     
     if (kind == NK_RETURN_STMT) {
@@ -2232,7 +2219,7 @@ fn emit_stmt(n: I32) : *Str => {
         if (value == 0) {
             return "return;";
         }
-        return str_concat("return ", str_concat(emit_expr(value), ";"));
+        return str_concat("return ", emit_expr(value).str_concat(";"));
     }
     
     if (kind == NK_IF_STMT) {
@@ -2240,9 +2227,9 @@ fn emit_stmt(n: I32) : *Str => {
         let then_b = emit_block(node_get_data2(n));
         let else_b = node_get_data3(n);
         if (else_b == 0) {
-            return str_concat(str_concat("if (", cond), str_concat(") ", then_b));
+            return str_concat("if (".str_concat(cond), ") ".str_concat(then_b));
         }
-        return str_concat(str_concat(str_concat(str_concat("if (", cond), ") "), then_b), str_concat(" else ", emit_stmt_or_block(else_b)));
+        return str_concat(str_concat(str_concat("if (".str_concat(cond), ") "), then_b), " else ".str_concat(emit_stmt_or_block(else_b)));
     }
     
     // IfExpr used as statement (e.g., in else-if chains)
@@ -2252,15 +2239,15 @@ fn emit_stmt(n: I32) : *Str => {
         let else_b = node_get_data3(n);
         let then_str = emit_stmt_or_block(then_b);
         if (else_b == 0) {
-            return str_concat(str_concat("if (", cond), str_concat(") ", then_str));
+            return str_concat("if (".str_concat(cond), ") ".str_concat(then_str));
         }
-        return str_concat(str_concat(str_concat(str_concat("if (", cond), ") "), then_str), str_concat(" else ", emit_stmt_or_block(else_b)));
+        return str_concat(str_concat(str_concat("if (".str_concat(cond), ") "), then_str), " else ".str_concat(emit_stmt_or_block(else_b)));
     }
     
     if (kind == NK_WHILE_STMT) {
         let cond = emit_expr(node_get_data1(n));
         let body = emit_block(node_get_data2(n));
-        return str_concat(str_concat("while (", cond), str_concat(") ", body));
+        return str_concat("while (".str_concat(cond), ") ".str_concat(body));
     }
     
     if (kind == NK_FOR_STMT) {
@@ -2269,7 +2256,7 @@ fn emit_stmt(n: I32) : *Str => {
         let start = emit_expr(node_get_data2(n));
         let end = emit_expr(node_get_data3(n));
         let body = emit_block(node_get_data4(n));
-        return str_concat(str_concat(str_concat(str_concat(str_concat(str_concat(str_concat("for (let ", iter), " = "), start), str_concat("; ", iter)), str_concat(" < ", end)), str_concat("; ", str_concat(iter, "++) "))), body);
+        return str_concat(str_concat(str_concat(str_concat(str_concat(str_concat("for (let ".str_concat(iter), " = "), start), "; ".str_concat(iter)), " < ".str_concat(end)), str_concat("; ", iter.str_concat("++) "))), body);
     }
     
     if (kind == NK_BREAK_STMT) {
@@ -2301,9 +2288,9 @@ fn emit_stmt(n: I32) : *Str => {
         let params_str = vec_join(param_names, ", ");
         
         if (node_kind(body) == NK_BLOCK) {
-            return str_concat(str_concat(str_concat("function ", name), str_concat("(", params_str)), str_concat(") ", emit_fn_block(body)));
+            return str_concat(str_concat("function ".str_concat(name), "(".str_concat(params_str)), ") ".str_concat(emit_fn_block(body)));
         }
-        return str_concat(str_concat(str_concat(str_concat("function ", name), str_concat("(", params_str)), ") { return "), str_concat(emit_expr(body), "; }"));
+        return str_concat(str_concat(str_concat("function ".str_concat(name), "(".str_concat(params_str)), ") { return "), emit_expr(body).str_concat("; }"));
     }
     
     if (kind == NK_STRUCT_DECL) {
@@ -2334,7 +2321,7 @@ fn emit_stmt(n: I32) : *Str => {
     if (kind == NK_TYPE_ALIAS) {
         let name_idx = node_get_data1(n);
         let name = get_interned_str(name_idx);
-        return str_concat(str_concat("// type ", name), " = ...");
+        return str_concat("// type ".str_concat(name), " = ...");
     }
 
     if (kind == NK_ENUM_DECL) {
@@ -2364,19 +2351,19 @@ fn emit_stmt(n: I32) : *Str => {
     if (kind == NK_EXTERN_FN_DECL) {
         let name_idx = node_get_data1(n);
         let name = get_interned_str(name_idx);
-        return str_concat("// extern fn ", name);
+        return "// extern fn ".str_concat(name);
     }
     
     if (kind == NK_EXTERN_LET_DECL) {
         let name_idx = node_get_data1(n);
         let name = get_interned_str(name_idx);
-        return str_concat("// extern let ", name);
+        return "// extern let ".str_concat(name);
     }
     
     if (kind == NK_EXTERN_TYPE_DECL) {
         let name_idx = node_get_data1(n);
         let name = get_interned_str(name_idx);
-        return str_concat("// extern type ", name);
+        return "// extern type ".str_concat(name);
     }
     
     ""
@@ -2386,7 +2373,7 @@ fn emit_stmt_or_block(n: I32) : *Str => {
     if (node_kind(n) == NK_BLOCK) {
         return emit_block(n);
     }
-    str_concat("{ ", str_concat(emit_stmt(n), " }"))
+    str_concat("{ ", emit_stmt(n).str_concat(" }"))
 }
 
 fn emit_block(n: I32) : *Str => {
@@ -2480,7 +2467,7 @@ fn emit_if_as_expr(n: I32) : *Str => {
     let then_code = emit_branch_as_expr(then_branch);
     let else_code = if (else_branch == 0) { "undefined" } else { emit_branch_as_expr(else_branch) };
     
-    str_concat(str_concat(str_concat(str_concat("((", cond), ") ? "), str_concat(then_code, " : ")), str_concat(else_code, ")"))
+    str_concat(str_concat(str_concat("((".str_concat(cond), ") ? "), then_code.str_concat(" : ")), else_code.str_concat(")"))
 }
 
 fn emit_branch_as_expr(n: I32) : *Str => {
@@ -2588,7 +2575,7 @@ fn gather_module_sources(filePath: *Str, seen: Set, visiting: Set, sources: Stri
     if (set_has(visiting, filePath)) {
         panic_with_code(
             "E_MODULE_CYCLE",
-            str_concat("Module import cycle detected at ", filePath),
+            "Module import cycle detected at ".str_concat(filePath),
             "A module was revisited while still being loaded, which means the import graph contains a cycle.",
             "Break the cycle by extracting shared declarations into a third module imported by both sides."
         );

@@ -1,12 +1,22 @@
 #!/usr/bin/env node
+import fs from "node:fs";
 import path from "node:path";
 import { compileFile } from "./compiler.js";
 import { formatDiagnostic, toDiagnostic } from "./errors.js";
 
 function printUsage() {
   console.log(
-    "Usage:\n  tuff compile <input.tuff> [-o output.js] [--stage2] [--modules] [--module-base <dir>] [--lint] [--json-errors] [--trace-passes]",
+    "Usage:\n  tuff compile <input.tuff> [-o output.js] [--stage2] [--modules] [--module-base <dir>] [--lint] [--lint-fix] [--lint-strict] [--json-errors] [--trace-passes]",
   );
+}
+
+function printLintIssues(issues) {
+  if (!issues || issues.length === 0) return;
+  console.warn(`Lint issues (${issues.length}):`);
+  for (let idx = 0; idx < issues.length; idx += 1) {
+    const diag = toDiagnostic(issues[idx]);
+    console.warn(`\n[${idx + 1}/${issues.length}] ${formatDiagnostic(diag)}`);
+  }
 }
 
 function main(argv) {
@@ -38,6 +48,8 @@ function main(argv) {
   let moduleBaseDir = null;
   let jsonErrors = false;
   let lint = false;
+  let lintFix = false;
+  let lintStrict = false;
   let tracePasses = false;
   const unknownFlags = [];
   for (let i = 2; i < args.length; i++) {
@@ -77,6 +89,16 @@ function main(argv) {
       lint = true;
       continue;
     }
+    if (args[i] === "--lint-fix") {
+      lint = true;
+      lintFix = true;
+      continue;
+    }
+    if (args[i] === "--lint-strict") {
+      lint = true;
+      lintStrict = true;
+      continue;
+    }
     if (args[i] === "--trace-passes") {
       tracePasses = true;
       continue;
@@ -94,16 +116,38 @@ function main(argv) {
   }
 
   try {
-    const { outputPath } = compileFile(path.resolve(input), output, {
+    const {
+      outputPath,
+      lintIssues = [],
+      lintFixesApplied = 0,
+      lintFixedSource = null,
+    } = compileFile(path.resolve(input), output, {
       enableModules: modules,
       modules: {
         moduleBaseDir: moduleBaseDir ?? path.dirname(path.resolve(input)),
       },
       typecheck: { strictSafety: stage2 },
-      lint: { enabled: lint },
+      lint: {
+        enabled: lint,
+        fix: lintFix,
+        mode: lintStrict ? "error" : "warn",
+      },
       tracePasses,
     });
+
+    if (lintFix && !modules && typeof lintFixedSource === "string") {
+      const absInput = path.resolve(input);
+      fs.writeFileSync(absInput, lintFixedSource, "utf8");
+      console.log(`Applied ${lintFixesApplied} lint auto-fix(es) to ${input}`);
+    }
+
     console.log(`Compiled ${input} -> ${outputPath}`);
+    if (lint) {
+      printLintIssues(lintIssues);
+      if (lintStrict && lintIssues.length > 0) {
+        process.exitCode = 1;
+      }
+    }
   } catch (error) {
     const diag = toDiagnostic(error);
     if (jsonErrors) {

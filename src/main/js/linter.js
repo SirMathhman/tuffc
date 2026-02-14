@@ -21,15 +21,8 @@ function walkNode(node, visit) {
   }
 }
 
-export function lintProgram(ast, options = {}) {
-  const enabled = options.enabled ?? false;
-  if (!enabled) return [];
-
-  const issues = [];
-  const declaredLets = new Map();
-  const identifierReads = new Set();
+function collectReceiverExternFns(ast) {
   const receiverExternFns = new Set();
-
   for (const node of ast.body ?? []) {
     if (
       node?.kind === "ExternFnDecl" &&
@@ -40,6 +33,90 @@ export function lintProgram(ast, options = {}) {
       receiverExternFns.add(node.name);
     }
   }
+  return receiverExternFns;
+}
+
+export function autoFixProgram(ast, options = {}) {
+  const enabled = options.enabled ?? false;
+  const fix = options.fix ?? false;
+  const source = options.source ?? null;
+  if (!enabled || !fix) return { applied: 0, fixedSource: source };
+
+  const receiverExternFns = collectReceiverExternFns(ast);
+  let applied = 0;
+  const edits = [];
+
+  walkNode(ast, (node) => {
+    if (
+      node?.kind === "CallExpr" &&
+      node.callee?.kind === "Identifier" &&
+      receiverExternFns.has(node.callee.name) &&
+      (node.callStyle ?? "") !== "method-sugar" &&
+      Array.isArray(node.args) &&
+      node.args.length > 0 &&
+      typeof node.start === "number" &&
+      typeof node.end === "number"
+    ) {
+      node.callStyle = "method-sugar";
+      applied += 1;
+
+      if (source) {
+        const firstArg = node.args[0];
+        if (
+          firstArg &&
+          typeof firstArg.start === "number" &&
+          typeof firstArg.end === "number"
+        ) {
+          const receiverText = source.slice(firstArg.start, firstArg.end);
+          const restArgs = [];
+          for (let i = 1; i < node.args.length; i += 1) {
+            const arg = node.args[i];
+            if (
+              !arg ||
+              typeof arg.start !== "number" ||
+              typeof arg.end !== "number"
+            ) {
+              return;
+            }
+            restArgs.push(source.slice(arg.start, arg.end));
+          }
+          const replacement = `${receiverText}.${node.callee.name}(${restArgs.join(", ")})`;
+          edits.push({ start: node.start, end: node.end, replacement });
+        }
+      }
+    }
+  });
+
+  let fixedSource = source;
+  if (source && edits.length > 0) {
+    edits.sort((a, b) => b.start - a.start);
+    const merged = [];
+    let lastStart = Infinity;
+    for (const edit of edits) {
+      if (edit.end <= lastStart) {
+        merged.push(edit);
+        lastStart = edit.start;
+      }
+    }
+    for (const edit of merged) {
+      fixedSource =
+        fixedSource.slice(0, edit.start) +
+        edit.replacement +
+        fixedSource.slice(edit.end);
+    }
+  }
+
+  return { applied, fixedSource };
+}
+
+export function lintProgram(ast, options = {}) {
+  const enabled = options.enabled ?? false;
+  if (!enabled) return [];
+
+  const issues = [];
+  const declaredLets = new Map();
+  const identifierReads = new Set();
+  const receiverExternFns = collectReceiverExternFns(ast);
 
   walkNode(ast, (node) => {
     if (node.kind === "LetDecl") {

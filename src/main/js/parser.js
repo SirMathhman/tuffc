@@ -21,8 +21,10 @@ export function parse(tokens) {
     return eat();
   };
 
-  const parseIdentifier = () =>
-    expect("identifier", undefined, "Expected identifier").value;
+  const parseIdentifierToken = () =>
+    expect("identifier", undefined, "Expected identifier");
+
+  const parseIdentifier = () => parseIdentifierToken().value;
 
   const parseType = () => {
     const canStartTypeToken = (tok) => {
@@ -196,7 +198,7 @@ export function parse(tokens) {
             eat();
           } while (true);
         }
-        expect("symbol", ")", "Expected ')' after call args");
+        const closeTok = expect("symbol", ")", "Expected ')' after call args");
 
         if (expr.kind === "MemberExpr") {
           // Receiver-call sugar: value.method(a, b) => method(value, a, b)
@@ -205,28 +207,47 @@ export function parse(tokens) {
             callee: { kind: "Identifier", name: expr.property, loc: expr.loc },
             args: [expr.object, ...args],
             loc: expr.loc,
+            start: expr.start,
+            end: closeTok.end,
             callStyle: "method-sugar",
           };
         } else {
-          expr = { kind: "CallExpr", callee: expr, args, loc: expr.loc };
+          expr = {
+            kind: "CallExpr",
+            callee: expr,
+            args,
+            loc: expr.loc,
+            start: expr.start,
+            end: closeTok.end,
+          };
         }
         continue;
       }
       if (at("symbol", ".")) {
         eat();
+        const propTok = parseIdentifierToken();
         expr = {
           kind: "MemberExpr",
           object: expr,
-          property: parseIdentifier(),
+          property: propTok.value,
           loc: expr.loc,
+          start: expr.start,
+          end: propTok.end,
         };
         continue;
       }
       if (at("symbol", "[")) {
         eat();
         const index = parseExpression();
-        expect("symbol", "]", "Expected ']' after index");
-        expr = { kind: "IndexExpr", target: expr, index, loc: expr.loc };
+        const closeTok = expect("symbol", "]", "Expected ']' after index");
+        expr = {
+          kind: "IndexExpr",
+          target: expr,
+          index,
+          loc: expr.loc,
+          start: expr.start,
+          end: closeTok.end,
+        };
         continue;
       }
       break;
@@ -241,6 +262,8 @@ export function parse(tokens) {
         kind: "NumberLiteral",
         value: Number(t.value),
         loc: t.loc,
+        start: t.start,
+        end: t.end,
       });
     }
     if (at("bool")) {
@@ -249,6 +272,8 @@ export function parse(tokens) {
         kind: "BoolLiteral",
         value: !!t.value,
         loc: t.loc,
+        start: t.start,
+        end: t.end,
       });
     }
     if (at("string")) {
@@ -257,11 +282,19 @@ export function parse(tokens) {
         kind: "StringLiteral",
         value: t.value,
         loc: t.loc,
+        start: t.start,
+        end: t.end,
       });
     }
     if (at("char")) {
       const t = eat();
-      return parsePostfix({ kind: "CharLiteral", value: t.value, loc: t.loc });
+      return parsePostfix({
+        kind: "CharLiteral",
+        value: t.value,
+        loc: t.loc,
+        start: t.start,
+        end: t.end,
+      });
     }
 
     if (at("symbol", "(")) {
@@ -312,7 +345,13 @@ export function parse(tokens) {
 
     if (at("identifier")) {
       const idTok = eat();
-      let expr = { kind: "Identifier", name: idTok.value, loc: idTok.loc };
+      let expr = {
+        kind: "Identifier",
+        name: idTok.value,
+        loc: idTok.loc,
+        start: idTok.start,
+        end: idTok.end,
+      };
 
       if (at("symbol", "{")) {
         eat();
@@ -352,11 +391,14 @@ export function parse(tokens) {
   const parseUnary = () => {
     if (at("symbol", "!") || at("symbol", "-")) {
       const tok = eat();
+      const inner = parseUnary();
       return {
         kind: "UnaryExpr",
         op: tok.value,
-        expr: parseUnary(),
+        expr: inner,
         loc: tok.loc,
+        start: tok.start,
+        end: inner?.end ?? tok.end,
       };
     }
     return parsePrimary();
@@ -372,15 +414,36 @@ export function parse(tokens) {
       eat();
       if (op === "is") {
         const pattern = parsePattern();
-        left = { kind: "IsExpr", expr: left, pattern, loc: left.loc ?? t.loc };
+        left = {
+          kind: "IsExpr",
+          expr: left,
+          pattern,
+          loc: left.loc ?? t.loc,
+          start: left?.start,
+          end: left?.end,
+        };
       } else {
         const right = parseExpression(prec + 1);
-        left = { kind: "BinaryExpr", op, left, right, loc: left.loc ?? t.loc };
+        left = {
+          kind: "BinaryExpr",
+          op,
+          left,
+          right,
+          loc: left.loc ?? t.loc,
+          start: left?.start,
+          end: right?.end ?? left?.end,
+        };
       }
     }
     if (at("symbol", "?")) {
-      eat();
-      left = { kind: "UnwrapExpr", expr: left, loc: left.loc };
+      const tok = eat();
+      left = {
+        kind: "UnwrapExpr",
+        expr: left,
+        loc: left.loc,
+        start: left?.start,
+        end: tok.end,
+      };
     }
     return left;
   };

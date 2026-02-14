@@ -5,7 +5,7 @@ import { parse } from "./parser.js";
 import { desugar } from "./desugar.js";
 import { resolveNames } from "./resolve.js";
 import { typecheck } from "./typecheck.js";
-import { lintProgram } from "./linter.js";
+import { autoFixProgram, lintProgram } from "./linter.js";
 import { generateJavaScript } from "./codegen-js.js";
 import { TuffError, enrichError } from "./errors.js";
 
@@ -91,12 +91,29 @@ export function compileSource(source, filePath = "<memory>", options = {}) {
     const core = run("desugar", () => desugar(cst));
     run("resolve", () => resolveNames(core, options.resolve ?? {}));
     run("typecheck", () => typecheck(core, options.typecheck ?? {}));
+    const { applied: lintFixesApplied, fixedSource: lintFixedSource } =
+      autoFixProgram(core, {
+        ...(options.lint ?? {}),
+        source,
+      });
     const lintIssues = lintProgram(core, options.lint ?? {});
-    if (lintIssues.length > 0) {
+    for (const issue of lintIssues) {
+      enrichError(issue, { source });
+    }
+    const lintMode = options.lint?.mode ?? "error";
+    if (lintIssues.length > 0 && lintMode !== "warn") {
       throw lintIssues[0];
     }
     const js = run("codegen", () => generateJavaScript(core));
-    return { tokens, cst, core, js };
+    return {
+      tokens,
+      cst,
+      core,
+      js,
+      lintIssues,
+      lintFixesApplied,
+      lintFixedSource,
+    };
   } catch (error) {
     throw enrichError(error, { source });
   }
@@ -115,8 +132,24 @@ export function compileFile(inputPath, outputPath = null, options = {}) {
       );
       run("resolve", () => resolveNames(graph.merged, options.resolve ?? {}));
       run("typecheck", () => typecheck(graph.merged, options.typecheck ?? {}));
+      const mergedSource = graph.ordered
+        .map((unit) => unit.source)
+        .join("\n\n");
+      const { applied: lintFixesApplied, fixedSource: lintFixedSource } =
+        autoFixProgram(graph.merged, {
+          ...(options.lint ?? {}),
+          source: mergedSource,
+        });
       const lintIssues = lintProgram(graph.merged, options.lint ?? {});
-      if (lintIssues.length > 0) {
+      const sourceByFile = new Map();
+      for (const unit of graph.ordered) {
+        sourceByFile.set(unit.filePath, unit.source);
+      }
+      for (const issue of lintIssues) {
+        enrichError(issue, { sourceByFile });
+      }
+      const lintMode = options.lint?.mode ?? "error";
+      if (lintIssues.length > 0 && lintMode !== "warn") {
         throw lintIssues[0];
       }
       const js = run("codegen", () => generateJavaScript(graph.merged));
@@ -126,6 +159,9 @@ export function compileFile(inputPath, outputPath = null, options = {}) {
         cst: graph.ordered.at(-1)?.cst ?? { kind: "Program", body: [] },
         core: graph.merged,
         js,
+        lintIssues,
+        lintFixesApplied,
+        lintFixedSource,
         moduleGraph: graph,
       };
     } else {

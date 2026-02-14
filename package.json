@@ -11,6 +11,7 @@
     "build": "node ./src/test/js/selfhost-test.js && node ./src/test/js/selfhost-modules.js && node ./src/test/js/selfhost-diagnostics.js && node ./src/test/js/selfhost-parity.js",
     "test": "node ./src/test/js/run-tests.js && node ./src/test/js/stage1-bootstrap.js && node ./src/test/js/phase3-stage2.js && node ./src/test/js/phase4-production.js && node ./src/test/js/cli-hardening.js && node ./src/test/js/selfhost-test.js && node ./src/test/js/selfhost-modules.js && node ./src/test/js/selfhost-diagnostics.js && node ./src/test/js/selfhost-parity.js",
     "lint": "node ./src/main/js/cli.js compile ./src/test/tuff/cases/factorial.tuff --lint -o ./tests/out/lint/factorial.js",
+    "lint:fix": "node ./src/test/js/lint-fix-all.js",
     "test:update": "node ./src/test/js/run-tests.js --update",
     "compile:sample": "node ./src/main/js/cli.js compile ./src/test/tuff/cases/factorial.tuff -o ./tests/out/factorial.js",
     "stage1:bootstrap": "node ./src/test/js/stage1-bootstrap.js",
