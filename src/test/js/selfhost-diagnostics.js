@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
 import { fileURLToPath } from "node:url";
-import { compileSource } from "../../main/js/compiler.js";
+import { compileFile } from "../../main/js/compiler.js";
 import { toDiagnostic } from "../../main/js/errors.js";
 import * as runtime from "../../main/js/runtime.js";
 
@@ -13,13 +13,18 @@ const selfhostPath = path.join(root, "src", "main", "tuff", "selfhost.tuff");
 
 fs.mkdirSync(outDir, { recursive: true });
 
-const selfhostSource = fs.readFileSync(selfhostPath, "utf8");
-const selfhostResult = compileSource(selfhostSource, selfhostPath, {
-  resolve: {
-    hostBuiltins: Object.keys(runtime),
-    allowHostPrefix: "",
+const selfhostResult = compileFile(
+  selfhostPath,
+  path.join(outDir, "selfhost.js"),
+  {
+    enableModules: true,
+    modules: { moduleBaseDir: path.dirname(selfhostPath) },
+    resolve: {
+      hostBuiltins: Object.keys(runtime),
+      allowHostPrefix: "",
+    },
   },
-});
+);
 
 const sandbox = {
   module: { exports: {} },

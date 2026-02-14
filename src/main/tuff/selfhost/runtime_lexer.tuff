@@ -1,0 +1,402 @@
+// ============================================================================
+// Extern declarations - these come from runtime.js
+// ============================================================================
+
+extern fn str_length(this: *Str) : USize;
+
+// Why do we have two of these?
+extern fn str_char_at(this: *Str, i: I32) : Char;
+
+extern fn str_slice(this: *Str, start: I32, end: I32) : *Str;
+extern fn str_concat(this: *Str, b: *Str) : *Str;
+extern fn str_eq(this: *Str, b: *Str) : Bool;
+extern fn str_from_char_code(code: I32) : *Str;
+extern fn str_index_of(this: *Str, needle: *Str) : I32;
+extern fn str_includes(this: *Str, needle: *Str) : Bool;
+extern fn str_starts_with(this: *Str, prefix: *Str) : Bool;
+extern fn str_trim(this: *Str) : *Str;
+extern fn str_replace_all(this: *Str, from: *Str, to: *Str) : *Str;
+extern fn char_code(ch: *Str) : I32;
+extern fn int_to_string(n: I32) : *Str;
+extern fn parse_int(s: *Str) : I32;
+
+extern type StringBuilder;
+extern fn sb_new() : StringBuilder;
+extern fn sb_append(sb: StringBuilder, s: *Str) : StringBuilder;
+extern fn sb_append_char(sb: StringBuilder, code: Char) : StringBuilder;
+extern fn sb_build(sb: StringBuilder) : *Str;
+
+extern type Vec<T>;
+extern fn vec_new() : Vec<T>;
+extern fn vec_push(this: Vec<T>, item: T) : Vec<T>;
+extern fn vec_pop(this: Vec<T>) : I32;
+extern fn vec_get(this: Vec<T>, i: I32) : T;
+extern fn vec_set(this: Vec<T>, i: I32, v: T) : Vec<T>;
+extern fn vec_length(this: Vec<T>) : USize;
+extern fn vec_clear(this: Vec<T>) : Vec<T>;
+extern fn vec_join(this: Vec<T>, sep: *Str) : *Str;
+extern fn vec_includes(this: Vec<T>, item: T) : Bool;
+
+extern type Map<K, V>;
+extern fn map_new() : Map<K, V>;
+extern fn map_set(this: Map<K, V>, k: K, v: V) : Map<K, V>;
+extern fn map_get(this: Map<K, V>, k: K) : I32;
+extern fn map_has(this: Map<K, V>, k: K) : Bool;
+
+extern type Set<T>;
+extern fn set_new() : Set<T>;
+extern fn set_add(this: Set<T>, item: T) : Set<T>;
+extern fn set_has(this: Set<T>, item: T) : Bool;
+extern fn set_delete(this: Set<T>, item: T) : Bool;
+
+extern fn read_file(filePath: *Str) : *Str;
+extern fn write_file(filePath: *Str, contents: *Str) : I32;
+extern fn path_join(a: *Str, b: *Str) : *Str;
+extern fn path_dirname(p: *Str) : *Str;
+
+extern fn print(s: *Str) : I32;
+extern fn print_error(s: *Str) : I32;
+extern fn panic(msg: *Str) : I32;
+extern fn panic_with_code(code: *Str, msg: *Str, reason: *Str, fix: *Str) : I32;
+
+// ============================================================================
+// Token Kinds
+// ============================================================================
+
+let TK_EOF : I32 = 0;
+let TK_KEYWORD : I32 = 1;
+let TK_IDENTIFIER : I32 = 2;
+let TK_NUMBER : I32 = 3;
+let TK_STRING : I32 = 4;
+let TK_BOOL : I32 = 5;
+let TK_SYMBOL : I32 = 6;
+let TK_CHAR : I32 = 7;
+
+// ============================================================================
+// Token structure - array-based representation
+// Tokens are stored as indices into arrays.
+// tok_kinds[i], tok_values[i], tok_lines[i], tok_cols[i]
+// ============================================================================
+
+let tok_kinds : Vec<I32> = vec_new();
+let tok_values : Vec<I32> = vec_new();
+let tok_lines : Vec<I32> = vec_new();
+let tok_cols : Vec<I32> = vec_new();
+let tok_count : I32 = 0;
+
+fn tok_add(kind: I32, value: I32, line: I32, col: I32) : I32 => {
+    let idx = tok_count;
+    tok_kinds.vec_push(kind);
+    tok_values.vec_push(value);
+    tok_lines.vec_push(line);
+    tok_cols.vec_push(col);
+    tok_count = tok_count + 1;
+    idx
+}
+
+fn tok_kind(idx: I32) : I32 => tok_kinds.vec_get(idx);
+fn tok_value(idx: I32) : I32 => tok_values.vec_get(idx);
+
+// String intern table - stores strings by index for reverse lookup
+let intern_table : Vec<*Str> = vec_new();
+let intern_map : Map = map_new();
+
+fn intern(s: *Str) : I32 => {
+    if (intern_map.map_has(s)) {
+        intern_map.map_get(s)
+    } else {
+        let idx = intern_table.vec_length();
+        intern_table.vec_push(s);
+        intern_map.map_set(s, idx);
+        idx
+    }
+}
+
+fn get_intern(idx: I32) : *Str => {
+    intern_table.vec_get(idx)
+}
+
+// Keywords set
+let keywords : Set = set_new();
+
+fn init_keywords() : I32 => {
+    keywords.set_add("fn");
+    keywords.set_add("let");
+    keywords.set_add("struct");
+    keywords.set_add("enum");
+    keywords.set_add("type");
+    keywords.set_add("match");
+    keywords.set_add("case");
+    keywords.set_add("if");
+    keywords.set_add("else");
+    keywords.set_add("for");
+    keywords.set_add("while");
+    keywords.set_add("loop");
+    keywords.set_add("in");
+    keywords.set_add("return");
+    keywords.set_add("break");
+    keywords.set_add("continue");
+    keywords.set_add("is");
+    keywords.set_add("class");
+    keywords.set_add("object");
+    keywords.set_add("impl");
+    keywords.set_add("with");
+    keywords.set_add("out");
+    keywords.set_add("module");
+    keywords.set_add("extern");
+    keywords.set_add("async");
+    0
+}
+
+fn is_keyword(s: *Str) : Bool => keywords.set_has(s);
+
+// ============================================================================
+// Lexer
+// ============================================================================
+
+let lex_source : *Str = "";
+let lex_pos : I32 = 0;
+let lex_line : I32 = 1;
+let lex_col : I32 = 1;
+let lex_len : USize = 0;
+
+fn lex_init(source: *Str) : I32 => {
+    lex_source = source;
+    lex_pos = 0;
+    lex_line = 1;
+    lex_col = 1;
+    lex_len = source.str_length();
+    // Clear token arrays for fresh compilation
+    tok_kinds.vec_clear();
+    tok_values.vec_clear();
+    tok_lines.vec_clear();
+    tok_cols.vec_clear();
+    tok_count = 0;
+    0
+}
+
+fn lex_peek(offset: I32) : I32 => {
+    let p = lex_pos + offset;
+    if (p >= lex_len) {
+        0
+    } else {
+        lex_source.str_char_at(p)
+    }
+}
+
+fn lex_advance() : I32 => {
+    let ch = lex_peek(0);
+    lex_pos = lex_pos + 1;
+    if (ch == 10) {
+        lex_line = lex_line + 1;
+        lex_col = 1;
+        ch
+    } else {
+        lex_col = lex_col + 1;
+        ch
+    }
+}
+
+fn is_alpha(ch: I32) : Bool => {
+    if (ch >= 65 && ch <= 90) { true }
+    else if (ch >= 97 && ch <= 122) { true }
+    else if (ch == 95) { true }
+    else { false }
+}
+
+fn is_digit(ch: I32) : Bool => ch >= 48 && ch <= 57;
+
+fn is_alnum(ch: I32) : Bool => is_alpha(ch) || is_digit(ch);
+
+fn is_whitespace(ch: I32) : Bool => {
+    ch == 32 || ch == 9 || ch == 13 || ch == 10
+}
+
+fn lex_read_ident() : *Str => {
+    let sb = sb_new();
+    while (is_alnum(lex_peek(0))) {
+        sb_append_char(sb, lex_advance());
+    }
+    sb_build(sb)
+}
+
+fn lex_read_number() : *Str => {
+    let sb = sb_new();
+    // Handle 0x, 0b, 0o
+    if (lex_peek(0) == 48) {
+        let next = lex_peek(1);
+        if (next == 120 || next == 98 || next == 111) {
+            sb_append_char(sb, lex_advance());
+            sb_append_char(sb, lex_advance());
+            while (is_alnum(lex_peek(0)) || lex_peek(0) == 95) {
+                let ch = lex_advance();
+                if (ch != 95) {
+                    sb_append_char(sb, ch);
+                }
+            }
+            return sb_build(sb);
+        }
+    }
+    while (is_digit(lex_peek(0)) || lex_peek(0) == 95) {
+        let ch = lex_advance();
+        if (ch != 95) {
+            sb_append_char(sb, ch);
+        }
+    }
+    if (lex_peek(0) == 46 && is_digit(lex_peek(1))) {
+        sb_append_char(sb, lex_advance());
+        while (is_digit(lex_peek(0)) || lex_peek(0) == 95) {
+            let ch = lex_advance();
+            if (ch != 95) {
+                sb_append_char(sb, ch);
+            }
+        }
+    }
+    sb_build(sb)
+}
+
+fn lex_read_string() : *Str => {
+    lex_advance();  // skip opening "
+    let sb = sb_new();
+    while (lex_pos < lex_len && lex_peek(0) != 34) {
+        if (lex_peek(0) == 92) {
+            sb_append_char(sb, lex_advance());
+            sb_append_char(sb, lex_advance());
+        } else {
+            sb_append_char(sb, lex_advance());
+        }
+    }
+    if (lex_peek(0) != 34) {
+        panic("Unterminated string");
+    }
+    lex_advance();  // skip closing "
+    sb_build(sb)
+}
+
+fn lex_read_char() : *Str => {
+    lex_advance();  // skip opening '
+    let sb = sb_new();
+    while (lex_pos < lex_len && lex_peek(0) != 39) {
+        sb_append_char(sb, lex_advance());
+    }
+    if (lex_peek(0) != 39) {
+        panic("Unterminated char");
+    }
+    lex_advance();  // skip closing '
+    sb_build(sb)
+}
+
+fn lex_check_two(a: I32, b: I32) : Bool => {
+    lex_peek(0) == a && lex_peek(1) == b
+}
+
+fn lex_all() : I32 => {
+    init_keywords();
+    
+    while (lex_pos < lex_len) {
+        let ch = lex_peek(0);
+        
+        // Skip whitespace
+        if (is_whitespace(ch)) {
+            lex_advance();
+            continue;
+        }
+        
+        // Line comment
+        if (ch == 47 && lex_peek(1) == 47) {
+            while (lex_pos < lex_len && lex_peek(0) != 10) {
+                lex_advance();
+            }
+            continue;
+        }
+        
+        // Block comment
+        if (ch == 47 && lex_peek(1) == 42) {
+            lex_advance();
+            lex_advance();
+            while (lex_pos < lex_len && !(lex_peek(0) == 42 && lex_peek(1) == 47)) {
+                lex_advance();
+            }
+            if (lex_pos >= lex_len) {
+                panic("Unterminated block comment");
+            }
+            lex_advance();
+            lex_advance();
+            continue;
+        }
+        
+        let start_line = lex_line;
+        let start_col = lex_col;
+        
+        // Three-char operators
+        if (lex_peek(0) == 46 && lex_peek(1) == 46 && lex_peek(2) == 46) {
+            lex_advance();
+            lex_advance();
+            lex_advance();
+            tok_add(TK_SYMBOL, intern("..."), start_line, start_col);
+            continue;
+        }
+        
+        // Two-char operators
+        if (lex_check_two(61, 62)) { lex_advance(); lex_advance(); tok_add(TK_SYMBOL, intern("=>"), start_line, start_col); continue; }
+        if (lex_check_two(61, 61)) { lex_advance(); lex_advance(); tok_add(TK_SYMBOL, intern("=="), start_line, start_col); continue; }
+        if (lex_check_two(33, 61)) { lex_advance(); lex_advance(); tok_add(TK_SYMBOL, intern("!="), start_line, start_col); continue; }
+        if (lex_check_two(60, 61)) { lex_advance(); lex_advance(); tok_add(TK_SYMBOL, intern("<="), start_line, start_col); continue; }
+        if (lex_check_two(62, 61)) { lex_advance(); lex_advance(); tok_add(TK_SYMBOL, intern(">="), start_line, start_col); continue; }
+        if (lex_check_two(38, 38)) { lex_advance(); lex_advance(); tok_add(TK_SYMBOL, intern("&&"), start_line, start_col); continue; }
+        if (lex_check_two(124, 124)) { lex_advance(); lex_advance(); tok_add(TK_SYMBOL, intern("||"), start_line, start_col); continue; }
+        if (lex_check_two(58, 58)) { lex_advance(); lex_advance(); tok_add(TK_SYMBOL, intern("::"), start_line, start_col); continue; }
+        if (lex_check_two(46, 46)) { lex_advance(); lex_advance(); tok_add(TK_SYMBOL, intern(".."), start_line, start_col); continue; }
+        if (lex_check_two(124, 62)) { lex_advance(); lex_advance(); tok_add(TK_SYMBOL, intern("|>"), start_line, start_col); continue; }
+        
+        // Identifier or keyword
+        if (is_alpha(ch)) {
+            let text = lex_read_ident();
+            if (text.str_eq("true")) {
+                tok_add(TK_BOOL, 1, start_line, start_col);
+            } else if (text.str_eq("false")) {
+                tok_add(TK_BOOL, 0, start_line, start_col);
+            } else if (is_keyword(text)) {
+                tok_add(TK_KEYWORD, intern(text), start_line, start_col);
+            } else {
+                tok_add(TK_IDENTIFIER, intern(text), start_line, start_col);
+            }
+            continue;
+        }
+        
+        // Number
+        if (is_digit(ch)) {
+            let text = lex_read_number();
+            tok_add(TK_NUMBER, intern(text), start_line, start_col);
+            continue;
+        }
+        
+        // String
+        if (ch == 34) {
+            let text = lex_read_string();
+            tok_add(TK_STRING, intern(text), start_line, start_col);
+            continue;
+        }
+        
+        // Char
+        if (ch == 39) {
+            let text = lex_read_char();
+            tok_add(TK_CHAR, intern(text), start_line, start_col);
+            continue;
+        }
+        
+        // Single-char symbols
+        if ("(){}[],:;+-*/%<>=.!?|&".str_includes(str_from_char_code(ch))) {
+            lex_advance();
+            tok_add(TK_SYMBOL, intern(str_from_char_code(ch)), start_line, start_col);
+            continue;
+        }
+        
+        panic("Unexpected character: ".str_concat(str_from_char_code(ch)));
+    }
+    
+    tok_add(TK_EOF, intern("<eof>"), lex_line, lex_col);
+    tok_count
+}
+
+out fn selfhost_runtime_lexer_marker() : I32 => 0;

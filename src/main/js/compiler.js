@@ -165,7 +165,11 @@ export function compileSource(source, filePath = "<memory>", options = {}) {
         ...(options.lint ?? {}),
         source,
       });
-    const lintIssues = lintProgram(core, options.lint ?? {});
+    const lintIssues = lintProgram(core, {
+      ...(options.lint ?? {}),
+      source,
+      filePath,
+    });
     for (const issue of lintIssues) {
       enrichError(issue, { source });
     }
@@ -209,11 +213,14 @@ export function compileFile(inputPath, outputPath = null, options = {}) {
           ...(options.lint ?? {}),
           source: mergedSource,
         });
-      const lintIssues = lintProgram(graph.merged, options.lint ?? {});
       const sourceByFile = new Map();
       for (const unit of graph.ordered) {
         sourceByFile.set(unit.filePath, unit.source);
       }
+      const lintIssues = lintProgram(graph.merged, {
+        ...(options.lint ?? {}),
+        sourceByFile,
+      });
       for (const issue of lintIssues) {
         enrichError(issue, { sourceByFile });
       }

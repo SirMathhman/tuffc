@@ -1,0 +1,307 @@
+// ============================================================================
+// Name Resolution - skip for now, minimal implementation
+// ============================================================================
+
+fn scope_define(scopes: Vec, depth: I32, name: *Str) : I32 => {
+    let scope = scopes.vec_get(depth);
+    if (scope.set_has(name)) {
+        panic_with_code(
+            "E_RESOLVE_SHADOWING",
+            "Variable shadowing/redeclaration is not allowed: ".str_concat(name),
+            "A name was declared multiple times in the same lexical scope.",
+            "Rename one of the bindings or move it to a different scope."
+        );
+    }
+    scope.set_add(name);
+    0
+}
+
+fn scope_has(scopes: Vec, depth: I32, name: *Str) : Bool => {
+    let i = depth;
+    while (i >= 0) {
+        if (scopes.vec_get(i).set_has(name)) {
+            return true;
+        }
+        i = i - 1;
+    }
+    false
+}
+
+fn resolve_expr(n: I32, globals: Set, scopes: Vec, depth: I32) : I32 => {
+    if (n == 0) {
+        return 0;
+    }
+
+    let kind = node_kind(n);
+
+    if (kind == NK_IDENTIFIER) {
+        let name = get_interned_str(node_get_data1(n));
+        if (!scope_has(scopes, depth, name) && !globals.set_has(name)) {
+            panic_with_code(
+                "E_RESOLVE_UNKNOWN_IDENTIFIER",
+                "Unknown identifier: ".str_concat(name),
+                "The identifier is not declared in local scope, global declarations, or imports.",
+                "Declare the identifier before use or import it from the correct module."
+            );
+        }
+        return 0;
+    }
+
+    if (kind == NK_BINARY_EXPR) {
+        resolve_expr(node_get_data2(n), globals, scopes, depth);
+        resolve_expr(node_get_data3(n), globals, scopes, depth);
+        return 0;
+    }
+
+    if (kind == NK_UNARY_EXPR || kind == NK_UNWRAP_EXPR) {
+        resolve_expr(node_get_data2(n), globals, scopes, depth);
+        if (kind == NK_UNWRAP_EXPR) {
+            resolve_expr(node_get_data1(n), globals, scopes, depth);
+        }
+        return 0;
+    }
+
+    if (kind == NK_CALL_EXPR) {
+        resolve_expr(node_get_data1(n), globals, scopes, depth);
+        let args = node_get_data2(n);
+        let i = 0;
+        let len = args.vec_length();
+        while (i < len) {
+            resolve_expr(args.vec_get(i), globals, scopes, depth);
+            i = i + 1;
+        }
+        return 0;
+    }
+
+    if (kind == NK_MEMBER_EXPR) {
+        resolve_expr(node_get_data1(n), globals, scopes, depth);
+        return 0;
+    }
+
+    if (kind == NK_INDEX_EXPR) {
+        resolve_expr(node_get_data1(n), globals, scopes, depth);
+        resolve_expr(node_get_data2(n), globals, scopes, depth);
+        return 0;
+    }
+
+    if (kind == NK_STRUCT_INIT) {
+        let type_name = get_interned_str(node_get_data1(n));
+        if (!globals.set_has(type_name)) {
+            panic_with_code(
+                "E_RESOLVE_UNKNOWN_STRUCT",
+                "Unknown struct/type in initializer: ".str_concat(type_name),
+                "A struct initializer referenced a type that is not declared in the merged module scope.",
+                "Declare the struct/type first or import the module that defines it."
+            );
+        }
+        let fields = node_get_data2(n);
+        let i = 0;
+        let len = fields.vec_length();
+        while (i < len) {
+            let field = fields.vec_get(i);
+            resolve_expr(field.vec_get(1), globals, scopes, depth);
+            i = i + 1;
+        }
+        return 0;
+    }
+
+    if (kind == NK_IF_EXPR) {
+        resolve_expr(node_get_data1(n), globals, scopes, depth);
+        resolve_stmt(node_get_data2(n), globals, scopes, depth);
+        if (node_get_data3(n) != 0) {
+            resolve_stmt(node_get_data3(n), globals, scopes, depth);
+        }
+        return 0;
+    }
+
+    if (kind == NK_MATCH_EXPR) {
+        resolve_expr(node_get_data1(n), globals, scopes, depth);
+        let cases = node_get_data2(n);
+        let i = 0;
+        let len = cases.vec_length();
+        while (i < len) {
+            let case_node = cases.vec_get(i);
+            let pat = case_node.vec_get(0);
+            let body = case_node.vec_get(1);
+
+            let next_depth = depth + 1;
+            scopes.vec_push(set_new());
+
+            if (node_kind(pat) == NK_STRUCT_PAT) {
+                let fields = node_get_data2(pat);
+                let j = 0;
+                let fLen = fields.vec_length();
+                while (j < fLen) {
+                    scope_define(scopes, next_depth, get_interned_str(fields.vec_get(j)));
+                    j = j + 1;
+                }
+            } else if (node_kind(pat) == NK_NAME_PAT) {
+                let pat_name = get_interned_str(node_get_data1(pat));
+                if (!globals.set_has(pat_name)) {
+                    scope_define(scopes, next_depth, pat_name);
+                }
+            }
+
+            resolve_stmt(body, globals, scopes, next_depth);
+            scopes.vec_pop();
+            i = i + 1;
+        }
+        return 0;
+    }
+
+    if (kind == NK_IS_EXPR) {
+        resolve_expr(node_get_data1(n), globals, scopes, depth);
+        return 0;
+    }
+
+    0
+}
+
+fn resolve_stmt(n: I32, globals: Set, scopes: Vec, depth: I32) : I32 => {
+    if (n == 0) {
+        return 0;
+    }
+
+    let kind = node_kind(n);
+
+    if (kind == NK_BLOCK) {
+        let next_depth = depth + 1;
+        scopes.vec_push(set_new());
+        let stmts = node_get_data1(n);
+        let i = 0;
+        let len = stmts.vec_length();
+        while (i < len) {
+            resolve_stmt(stmts.vec_get(i), globals, scopes, next_depth);
+            i = i + 1;
+        }
+        scopes.vec_pop();
+        return 0;
+    }
+
+    if (kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL) {
+        let fnScopes = vec_new();
+        fnScopes.vec_push(set_new());
+        let params = node_get_data3(n);
+        let i = 0;
+        let len = params.vec_length();
+        while (i < len) {
+            let param = params.vec_get(i);
+            scope_define(fnScopes, 0, get_interned_str(param.vec_get(0)));
+            i = i + 1;
+        }
+        resolve_stmt(node_get_data5(n), globals, fnScopes, 0);
+        return 0;
+    }
+
+    if (kind == NK_LET_DECL) {
+        resolve_expr(node_get_data3(n), globals, scopes, depth);
+        scope_define(scopes, depth, get_interned_str(node_get_data1(n)));
+        return 0;
+    }
+
+    if (kind == NK_IMPORT_DECL) {
+        let names = node_get_data1(n);
+        let i = 0;
+        let len = names.vec_length();
+        while (i < len) {
+            scope_define(scopes, depth, get_interned_str(names.vec_get(i)));
+            i = i + 1;
+        }
+        return 0;
+    }
+
+    if (kind == NK_EXPR_STMT) {
+        resolve_expr(node_get_data1(n), globals, scopes, depth);
+        return 0;
+    }
+
+    if (kind == NK_ASSIGN_STMT) {
+        resolve_expr(node_get_data1(n), globals, scopes, depth);
+        resolve_expr(node_get_data2(n), globals, scopes, depth);
+        return 0;
+    }
+
+    if (kind == NK_RETURN_STMT) {
+        resolve_expr(node_get_data1(n), globals, scopes, depth);
+        return 0;
+    }
+
+    if (kind == NK_IF_STMT) {
+        resolve_expr(node_get_data1(n), globals, scopes, depth);
+        resolve_stmt(node_get_data2(n), globals, scopes, depth);
+        if (node_get_data3(n) != 0) {
+            resolve_stmt(node_get_data3(n), globals, scopes, depth);
+        }
+        return 0;
+    }
+
+    if (kind == NK_FOR_STMT) {
+        let next_depth = depth + 1;
+        scopes.vec_push(set_new());
+        scope_define(scopes, next_depth, get_interned_str(node_get_data1(n)));
+        resolve_expr(node_get_data2(n), globals, scopes, next_depth);
+        resolve_expr(node_get_data3(n), globals, scopes, next_depth);
+        resolve_stmt(node_get_data4(n), globals, scopes, next_depth);
+        scopes.vec_pop();
+        return 0;
+    }
+
+    if (kind == NK_WHILE_STMT) {
+        resolve_expr(node_get_data1(n), globals, scopes, depth);
+        resolve_stmt(node_get_data2(n), globals, scopes, depth);
+        return 0;
+    }
+
+    // Fallback: treat unmatched nodes as expressions.
+    resolve_expr(n, globals, scopes, depth);
+    0
+}
+
+fn resolve_names(program: I32) : I32 => {
+    let globals = set_new();
+    let body = node_get_data1(program);
+
+    // Predeclare global symbols.
+    let i = 0;
+    let len = body.vec_length();
+    while (i < len) {
+        let stmt = body.vec_get(i);
+        let kind = node_kind(stmt);
+        if (
+            kind == NK_FN_DECL ||
+            kind == NK_CLASS_FN_DECL ||
+            kind == NK_STRUCT_DECL ||
+            kind == NK_ENUM_DECL ||
+            kind == NK_TYPE_ALIAS ||
+            kind == NK_LET_DECL ||
+            kind == NK_EXTERN_FN_DECL ||
+            kind == NK_EXTERN_LET_DECL ||
+            kind == NK_EXTERN_TYPE_DECL
+        ) {
+            let gname = get_interned_str(node_get_data1(stmt));
+            if (globals.set_has(gname)) {
+                panic_with_code(
+                    "E_RESOLVE_SHADOWING",
+                    "Variable shadowing/redeclaration is not allowed: ".str_concat(gname),
+                    "A global declaration with the same name already exists.",
+                    "Rename one of the global declarations or split conflicting declarations into separate modules."
+                );
+            }
+            globals.set_add(gname);
+        }
+        i = i + 1;
+    }
+
+    // Resolve top-level statements.
+    let topScopes = vec_new();
+    topScopes.vec_push(set_new());
+    i = 0;
+    while (i < len) {
+        resolve_stmt(body.vec_get(i), globals, topScopes, 0);
+        i = i + 1;
+    }
+
+    program
+}
+
+out fn selfhost_resolver_marker() : I32 => 0;

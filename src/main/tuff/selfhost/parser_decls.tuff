@@ -1,0 +1,470 @@
+fn p_parse_function(is_class: I32) : I32 => {
+    p_expect(TK_KEYWORD, "fn", "Expected 'fn'");
+    let name = p_parse_identifier();
+    
+    // Generics
+    let generics = vec_new();
+    if (p_at(TK_SYMBOL, "<")) {
+        p_eat();
+        if (!p_at(TK_SYMBOL, ">")) {
+            generics.vec_push(p_parse_identifier());
+            while (p_at(TK_SYMBOL, ",")) {
+                p_eat();
+                generics.vec_push(p_parse_identifier());
+            }
+        }
+        p_expect(TK_SYMBOL, ">", "Expected '>'");
+    }
+    
+    // Parameters
+    p_expect(TK_SYMBOL, "(", "Expected '('");
+    let params = vec_new();
+    if (!p_at(TK_SYMBOL, ")")) {
+        let pname = p_parse_identifier();
+        let ptype = 0;
+        if (p_at(TK_SYMBOL, ":")) {
+            p_eat();
+            ptype = p_parse_type();
+        }
+        let param = vec_new();
+        param.vec_push(pname);
+        param.vec_push(ptype);
+        params.vec_push(param);
+        while (p_at(TK_SYMBOL, ",")) {
+            p_eat();
+            let pname2 = p_parse_identifier();
+            let ptype2 = 0;
+            if (p_at(TK_SYMBOL, ":")) {
+                p_eat();
+                ptype2 = p_parse_type();
+            }
+            let param2 = vec_new();
+            param2.vec_push(pname2);
+            param2.vec_push(ptype2);
+            params.vec_push(param2);
+        }
+    }
+    p_expect(TK_SYMBOL, ")", "Expected ')'");
+    
+    // Return type
+    let ret_type = 0;
+    if (p_at(TK_SYMBOL, ":")) {
+        p_eat();
+        ret_type = p_parse_type();
+    }
+    
+    // Body
+    p_expect(TK_SYMBOL, "=>", "Expected '=>'");
+    let body = if (p_at(TK_SYMBOL, "{")) { p_parse_block() } else { p_parse_expression(0) };
+    
+    // Semicolon for expression body
+    if (node_kind(body) != NK_BLOCK) {
+        if (!p_at(TK_SYMBOL, "}") && !p_at_kind(TK_EOF)) {
+            p_expect(TK_SYMBOL, ";", "Expected ';'");
+        }
+    }
+    
+    let kind = if (is_class == 1) { NK_CLASS_FN_DECL } else { NK_FN_DECL };
+    let node = node_new(kind);
+    node_set_data1(node, name);
+    node_set_data2(node, generics);
+    node_set_data3(node, params);
+    node_set_data4(node, ret_type);
+    node_set_data5(node, body);
+    node
+}
+
+fn p_parse_struct() : I32 => {
+    p_expect(TK_KEYWORD, "struct", "Expected 'struct'");
+    let name = p_parse_identifier();
+    
+    let generics = vec_new();
+    if (p_at(TK_SYMBOL, "<")) {
+        p_eat();
+        if (!p_at(TK_SYMBOL, ">")) {
+            generics.vec_push(p_parse_identifier());
+            while (p_at(TK_SYMBOL, ",")) {
+                p_eat();
+                generics.vec_push(p_parse_identifier());
+            }
+        }
+        p_expect(TK_SYMBOL, ">", "Expected '>'");
+    }
+    
+    p_expect(TK_SYMBOL, "{", "Expected '{'");
+    let fields = vec_new();
+    while (!p_at(TK_SYMBOL, "}")) {
+        let fname = p_parse_identifier();
+        p_expect(TK_SYMBOL, ":", "Expected ':'");
+        let ftype = p_parse_type();
+        let field = vec_new();
+        field.vec_push(fname);
+        field.vec_push(ftype);
+        fields.vec_push(field);
+        if (p_at(TK_SYMBOL, ",") || p_at(TK_SYMBOL, ";")) {
+            p_eat();
+        }
+    }
+    p_expect(TK_SYMBOL, "}", "Expected '}'");
+    
+    let node = node_new(NK_STRUCT_DECL);
+    node_set_data1(node, name);
+    node_set_data2(node, generics);
+    node_set_data3(node, fields);
+    node
+}
+
+fn p_parse_enum() : I32 => {
+    p_expect(TK_KEYWORD, "enum", "Expected 'enum'");
+    let name = p_parse_identifier();
+    p_expect(TK_SYMBOL, "{", "Expected '{' after enum name");
+    let variants = vec_new();
+    while (!p_at(TK_SYMBOL, "}")) {
+        variants.vec_push(p_parse_identifier());
+        if (p_at(TK_SYMBOL, ",") || p_at(TK_SYMBOL, ";")) {
+            p_eat();
+        }
+    }
+    p_expect(TK_SYMBOL, "}", "Expected '}' after enum body");
+    let node = node_new(NK_ENUM_DECL);
+    node_set_data1(node, name);
+    node_set_data2(node, variants);
+    node
+}
+
+fn p_parse_type_alias() : I32 => {
+    p_expect(TK_KEYWORD, "type", "Expected 'type'");
+    let name = p_parse_identifier();
+    
+    let generics = vec_new();
+    if (p_at(TK_SYMBOL, "<")) {
+        p_eat();
+        if (!p_at(TK_SYMBOL, ">")) {
+            generics.vec_push(p_parse_identifier());
+            while (p_at(TK_SYMBOL, ",")) {
+                p_eat();
+                generics.vec_push(p_parse_identifier());
+            }
+        }
+        p_expect(TK_SYMBOL, ">", "Expected '>'");
+    }
+    
+    p_expect(TK_SYMBOL, "=", "Expected '='");
+    let aliased = p_parse_type();
+    p_expect(TK_SYMBOL, ";", "Expected ';'");
+    
+    let node = node_new(NK_TYPE_ALIAS);
+    node_set_data1(node, name);
+    node_set_data2(node, generics);
+    node_set_data3(node, aliased);
+    node
+}
+
+fn p_parse_let() : I32 => {
+    p_expect(TK_KEYWORD, "let", "Expected 'let'");
+    
+    // Destructuring import
+    if (p_at(TK_SYMBOL, "{")) {
+        p_eat();
+        let names = vec_new();
+        if (!p_at(TK_SYMBOL, "}")) {
+            names.vec_push(p_parse_identifier());
+            while (p_at(TK_SYMBOL, ",")) {
+                p_eat();
+                names.vec_push(p_parse_identifier());
+            }
+        }
+        p_expect(TK_SYMBOL, "}", "Expected '}'");
+        p_expect(TK_SYMBOL, "=", "Expected '='");
+        let parts = vec_new();
+        parts.vec_push(p_parse_identifier());
+        while (p_at(TK_SYMBOL, "::")) {
+            p_eat();
+            parts.vec_push(p_parse_identifier());
+        }
+        p_expect(TK_SYMBOL, ";", "Expected ';'");
+        let node = node_new(NK_IMPORT_DECL);
+        node_set_data1(node, names);
+        node_set_data2(node, parts);
+        return node;
+    }
+    
+    let name = p_parse_identifier();
+    let vtype = 0;
+    if (p_at(TK_SYMBOL, ":")) {
+        p_eat();
+        vtype = p_parse_type();
+    }
+    p_expect(TK_SYMBOL, "=", "Expected '='");
+    let value = p_parse_expression(0);
+    p_expect(TK_SYMBOL, ";", "Expected ';'");
+    
+    let node = node_new(NK_LET_DECL);
+    node_set_data1(node, name);
+    node_set_data2(node, vtype);
+    node_set_data3(node, value);
+    node
+}
+
+fn p_parse_for() : I32 => {
+    p_expect(TK_KEYWORD, "for", "Expected 'for'");
+    p_expect(TK_SYMBOL, "(", "Expected '('");
+    let iter = p_parse_identifier();
+    p_expect(TK_KEYWORD, "in", "Expected 'in'");
+    let start = p_parse_expression(0);
+    p_expect(TK_SYMBOL, "..", "Expected '..'");
+    let end = p_parse_expression(0);
+    p_expect(TK_SYMBOL, ")", "Expected ')'");
+    let body = p_parse_block();
+    
+    let node = node_new(NK_FOR_STMT);
+    node_set_data1(node, iter);
+    node_set_data2(node, start);
+    node_set_data3(node, end);
+    node_set_data4(node, body);
+    node
+}
+
+// Parse extern fn/let/type declarations
+fn p_parse_extern_decl() : I32 => {
+    if (p_at(TK_KEYWORD, "fn")) {
+        p_eat();
+        let name = p_parse_identifier();
+        
+        // Generics
+        let generics = vec_new();
+        if (p_at(TK_SYMBOL, "<")) {
+            p_eat();
+            if (!p_at(TK_SYMBOL, ">")) {
+                generics.vec_push(p_parse_identifier());
+                while (p_at(TK_SYMBOL, ",")) {
+                    p_eat();
+                    generics.vec_push(p_parse_identifier());
+                }
+            }
+            p_expect(TK_SYMBOL, ">", "Expected '>'");
+        }
+        
+        // Parameters
+        p_expect(TK_SYMBOL, "(", "Expected '('");
+        let params = vec_new();
+        if (!p_at(TK_SYMBOL, ")")) {
+            let pname = p_parse_identifier();
+            let ptype = 0;
+            if (p_at(TK_SYMBOL, ":")) {
+                p_eat();
+                ptype = p_parse_type();
+            }
+            let param = vec_new();
+            param.vec_push(pname);
+            param.vec_push(ptype);
+            params.vec_push(param);
+            while (p_at(TK_SYMBOL, ",")) {
+                p_eat();
+                let pname2 = p_parse_identifier();
+                let ptype2 = 0;
+                if (p_at(TK_SYMBOL, ":")) {
+                    p_eat();
+                    ptype2 = p_parse_type();
+                }
+                let param2 = vec_new();
+                param2.vec_push(pname2);
+                param2.vec_push(ptype2);
+                params.vec_push(param2);
+            }
+        }
+        p_expect(TK_SYMBOL, ")", "Expected ')'");
+        
+        // Return type
+        let ret_type = 0;
+        if (p_at(TK_SYMBOL, ":")) {
+            p_eat();
+            ret_type = p_parse_type();
+        }
+        
+        // No body - just semicolon
+        p_expect(TK_SYMBOL, ";", "Expected ';' after extern fn");
+        
+        // Create a special node for extern fn
+        let node = node_new(NK_EXTERN_FN_DECL);
+        node_set_data1(node, name);
+        node_set_data2(node, generics);
+        node_set_data3(node, params);
+        node_set_data4(node, ret_type);
+        return node;
+    }
+    if (p_at(TK_KEYWORD, "let")) {
+        p_eat();
+        let name = p_parse_identifier();
+        let typ = 0;
+        if (p_at(TK_SYMBOL, ":")) {
+            p_eat();
+            typ = p_parse_type();
+        }
+        p_expect(TK_SYMBOL, ";", "Expected ';' after extern let");
+        let node = node_new(NK_EXTERN_LET_DECL);
+        node_set_data1(node, name);
+        node_set_data2(node, typ);
+        return node;
+    }
+    if (p_at(TK_KEYWORD, "type")) {
+        p_eat();
+        let name = p_parse_identifier();
+        let generics = vec_new();
+        if (p_at(TK_SYMBOL, "<")) {
+            p_eat();
+            if (!p_at(TK_SYMBOL, ">")) {
+                generics.vec_push(p_parse_identifier());
+                while (p_at(TK_SYMBOL, ",")) {
+                    p_eat();
+                    generics.vec_push(p_parse_identifier());
+                }
+            }
+            p_expect(TK_SYMBOL, ">", "Expected '>' after extern type generics");
+        }
+        p_expect(TK_SYMBOL, ";", "Expected ';' after extern type");
+        let node = node_new(NK_EXTERN_TYPE_DECL);
+        node_set_data1(node, name);
+        node_set_data2(node, generics);
+        return node;
+    }
+    panic("Expected fn, let, or type after extern")
+}
+
+fn p_parse_statement() : I32 => {
+    if (p_at(TK_KEYWORD, "out")) {
+        p_eat();
+        if (p_at(TK_KEYWORD, "struct")) {
+            let out_node = p_parse_struct();
+            parse_exports.set_add(get_interned_str(node_get_data1(out_node)));
+            return out_node;
+        }
+        if (p_at(TK_KEYWORD, "enum")) {
+            let out_node = p_parse_enum();
+            parse_exports.set_add(get_interned_str(node_get_data1(out_node)));
+            return out_node;
+        }
+        if (p_at(TK_KEYWORD, "type")) {
+            let out_node = p_parse_type_alias();
+            parse_exports.set_add(get_interned_str(node_get_data1(out_node)));
+            return out_node;
+        }
+        if (p_at(TK_KEYWORD, "fn")) {
+            let out_node = p_parse_function(0);
+            parse_exports.set_add(get_interned_str(node_get_data1(out_node)));
+            return out_node;
+        }
+        if (p_at(TK_KEYWORD, "class")) {
+            p_eat();
+            let out_node = p_parse_function(1);
+            parse_exports.set_add(get_interned_str(node_get_data1(out_node)));
+            return out_node;
+        }
+        panic("Expected declaration after 'out'");
+    }
+
+    if (p_at(TK_KEYWORD, "let")) { return p_parse_let(); }
+    if (p_at(TK_KEYWORD, "struct")) { return p_parse_struct(); }
+    if (p_at(TK_KEYWORD, "enum")) { return p_parse_enum(); }
+    if (p_at(TK_KEYWORD, "type")) { return p_parse_type_alias(); }
+    if (p_at(TK_KEYWORD, "fn")) { return p_parse_function(0); }
+    if (p_at(TK_KEYWORD, "extern")) {
+        p_eat();
+        // extern fn/let/type declaration
+        return p_parse_extern_decl();
+    }
+    if (p_at(TK_KEYWORD, "class")) {
+        p_eat();
+        return p_parse_function(1);
+    }
+    if (p_at(TK_KEYWORD, "return")) {
+        p_eat();
+        let value = 0;
+        if (!p_at(TK_SYMBOL, ";")) {
+            value = p_parse_expression(0);
+        }
+        p_expect(TK_SYMBOL, ";", "Expected ';'");
+        let node = node_new(NK_RETURN_STMT);
+        node_set_data1(node, value);
+        return node;
+    }
+    if (p_at(TK_KEYWORD, "if")) {
+        let expr = p_parse_primary();
+        if (node_get_data2(expr) != 0 && node_kind(node_get_data2(expr)) == NK_BLOCK) {
+            let stmt = node_new(NK_IF_STMT);
+            node_set_data1(stmt, node_get_data1(expr));
+            node_set_data2(stmt, node_get_data2(expr));
+            node_set_data3(stmt, node_get_data3(expr));
+            return stmt;
+        }
+        p_expect(TK_SYMBOL, ";", "Expected ';' after if expression");
+        let estmt = node_new(NK_EXPR_STMT);
+        node_set_data1(estmt, expr);
+        return estmt;
+    }
+    if (p_at(TK_KEYWORD, "while")) {
+        p_eat();
+        p_expect(TK_SYMBOL, "(", "Expected '('");
+        let cond = p_parse_expression(0);
+        p_expect(TK_SYMBOL, ")", "Expected ')'");
+        let body = p_parse_block();
+        let node = node_new(NK_WHILE_STMT);
+        node_set_data1(node, cond);
+        node_set_data2(node, body);
+        return node;
+    }
+    if (p_at(TK_KEYWORD, "for")) { return p_parse_for(); }
+    if (p_at(TK_KEYWORD, "break")) {
+        p_eat();
+        p_expect(TK_SYMBOL, ";", "Expected ';'");
+        return node_new(NK_BREAK_STMT);
+    }
+    if (p_at(TK_KEYWORD, "continue")) {
+        p_eat();
+        p_expect(TK_SYMBOL, ";", "Expected ';'");
+        return node_new(NK_CONTINUE_STMT);
+    }
+    if (p_at(TK_SYMBOL, "{")) { return p_parse_block(); }
+    
+    // Expression statement
+    let expr = p_parse_expression(0);
+    
+    // Assignment
+    if (p_at(TK_SYMBOL, "=")) {
+        p_eat();
+        let value = p_parse_expression(0);
+        p_expect(TK_SYMBOL, ";", "Expected ';'");
+        let node = node_new(NK_ASSIGN_STMT);
+        node_set_data1(node, expr);
+        node_set_data2(node, value);
+        return node;
+    }
+    
+    if (p_at(TK_SYMBOL, ";")) {
+        p_eat();
+    } else if (!p_at(TK_SYMBOL, "}")) {
+        p_expect(TK_SYMBOL, ";", "Expected ';'");
+    }
+    
+    let node = node_new(NK_EXPR_STMT);
+    node_set_data1(node, expr);
+    node
+}
+
+fn p_parse_program() : I32 => {
+    let stmts = vec_new();
+    while (!p_at_kind(TK_EOF)) {
+        stmts.vec_push(p_parse_statement());
+    }
+    let node = node_new(NK_PROGRAM);
+    node_set_data1(node, stmts);
+    node
+}
+
+// ============================================================================
+// Desugar - skip for now, minimal implementation
+// ============================================================================
+
+fn desugar(program: I32) : I32 => program;
+
+out fn selfhost_parser_decls_marker() : I32 => 0;

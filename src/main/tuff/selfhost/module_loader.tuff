@@ -1,0 +1,170 @@
+fn module_parts_to_relative_path(parts: Vec) : *Str => {
+    let sb = sb_new();
+    let i = 0;
+    let len = parts.vec_length();
+    while (i < len) {
+        if (i > 0) {
+            sb_append(sb, "/");
+        }
+        sb_append(sb, get_interned_str(parts.vec_get(i)));
+        i = i + 1;
+    }
+    sb_append(sb, ".tuff");
+    sb_build(sb)
+}
+
+fn join_sources(sources: Vec<*Str>) : *Str => {
+    let sb = sb_new();
+    let i = 0;
+    let len = sources.vec_length();
+    while (i < len) {
+        if (i > 0) {
+            sb_append(sb, "\n\n");
+        }
+        sb_append(sb, sources.vec_get(i));
+        i = i + 1;
+    }
+    sb_build(sb)
+}
+
+fn is_module_decl_kind(kind: I32) : Bool => {
+    // Uses literal node-kind IDs to avoid cross-module constant resolution.
+    kind == 2 ||   // NK_FN_DECL
+    kind == 16 ||  // NK_CLASS_FN_DECL
+    kind == 3 ||   // NK_STRUCT_DECL
+    kind == 60 ||  // NK_ENUM_DECL
+    kind == 4 ||   // NK_TYPE_ALIAS
+    kind == 5 ||   // NK_LET_DECL
+    kind == 17 ||  // NK_EXTERN_FN_DECL
+    kind == 18 ||  // NK_EXTERN_LET_DECL
+    kind == 19     // NK_EXTERN_TYPE_DECL
+}
+
+fn collect_module_declarations(stmts: Vec) : Set<*Str> => {
+    let declared = set_new();
+    let i = 0;
+    let len = stmts.vec_length();
+    while (i < len) {
+        let stmt = stmts.vec_get(i);
+        let kind = node_kind(stmt);
+        if (is_module_decl_kind(kind)) {
+            declared.set_add(get_interned_str(node_get_data1(stmt)));
+        }
+        i = i + 1;
+    }
+    declared
+}
+
+fn module_has_out_export(source: *Str, name: *Str) : Bool => {
+    source.str_includes("out fn ".str_concat(name)) ||
+    source.str_includes("out struct ".str_concat(name)) ||
+    source.str_includes("out enum ".str_concat(name)) ||
+    source.str_includes("out type ".str_concat(name)) ||
+    source.str_includes("out class fn ".str_concat(name))
+}
+
+fn gather_module_sources(filePath: *Str, moduleBasePath: *Str, seen: Set, visiting: Set, sources: Vec<*Str>, module_declared_map: Map) : I32 => {
+    if (seen.set_has(filePath)) {
+        return 0;
+    }
+    if (visiting.set_has(filePath)) {
+        panic_with_code(
+            "E_MODULE_CYCLE",
+            "Module import cycle detected at ".str_concat(filePath),
+            "A module was revisited while still being loaded, which means the import graph contains a cycle.",
+            "Break the cycle by extracting shared declarations into a third module imported by both sides."
+        );
+    }
+    visiting.set_add(filePath);
+
+    let source = read_file(filePath);
+    lex_init(source);
+    lex_all();
+    parse_init();
+    let program = p_parse_program();
+    let stmts = node_get_data1(program);
+    let declared = collect_module_declarations(stmts);
+    module_declared_map.map_set(filePath, declared);
+
+    // IMPORTANT: snapshot imports before recursive calls, because parse_init()
+    // in child modules clears global AST storage arrays.
+    let imports = vec_new();
+    let i = 0;
+    let len = stmts.vec_length();
+    while (i < len) {
+        let stmt = stmts.vec_get(i);
+        if (node_kind(stmt) == 6) {
+            let parts = node_get_data2(stmt);
+            let rel = module_parts_to_relative_path(parts);
+            let depPath = path_join(moduleBasePath, rel);
+
+            let importNamesRaw = node_get_data1(stmt);
+            let importNames = vec_new();
+            let j = 0;
+            let jLen = importNamesRaw.vec_length();
+            while (j < jLen) {
+                importNames.vec_push(get_interned_str(importNamesRaw.vec_get(j)));
+                j = j + 1;
+            }
+
+            let importSpec = vec_new();
+            importSpec.vec_push(depPath);
+            importSpec.vec_push(importNames);
+            imports.vec_push(importSpec);
+        }
+        i = i + 1;
+    }
+
+    i = 0;
+    len = imports.vec_length();
+    while (i < len) {
+        let spec = imports.vec_get(i);
+        let depPath = spec.vec_get(0);
+        let importNames = spec.vec_get(1);
+
+        gather_module_sources(depPath, moduleBasePath, seen, visiting, sources, module_declared_map);
+
+        let depDeclared = module_declared_map.map_get(depPath);
+        let depSource = read_file(depPath);
+        let j = 0;
+        let jLen = importNames.vec_length();
+        while (j < jLen) {
+            let importedName = importNames.vec_get(j);
+            if (!module_has_out_export(depSource, importedName)) {
+                if (depDeclared.set_has(importedName)) {
+                    panic_with_code(
+                        "E_MODULE_PRIVATE_IMPORT",
+                        "Cannot import '".str_concat(importedName).str_concat("' from module: symbol is not exported with 'out'"),
+                        "A module import referenced a declaration that exists but is not visible outside its module.",
+                        "Mark the declaration with 'out' in the target module, or remove it from the import list."
+                    );
+                }
+                panic_with_code(
+                    "E_MODULE_UNKNOWN_EXPORT",
+                    "Cannot import '".str_concat(importedName).str_concat("' from module: exported symbol not found"),
+                    "A module import requested a symbol that is not exported by the target module.",
+                    "Check the import list and add a matching 'out' declaration in the target module."
+                );
+            }
+            j = j + 1;
+        }
+        i = i + 1;
+    }
+
+    visiting.set_delete(filePath);
+    seen.set_add(filePath);
+    sources.vec_push(source);
+    0
+}
+
+out fn compile_file(inputPath: *Str, outputPath: *Str) : I32 => {
+    let moduleBasePath = path_dirname(inputPath);
+    let seen = set_new();
+    let visiting = set_new();
+    let sources = vec_new();
+    let module_declared_map = map_new();
+    gather_module_sources(inputPath, moduleBasePath, seen, visiting, sources, module_declared_map);
+    let merged = join_sources(sources);
+    let js = compile_source(merged);
+    write_file(outputPath, js)
+}

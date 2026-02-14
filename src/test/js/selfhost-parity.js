@@ -16,13 +16,18 @@ const selfhostPath = path.join(root, "src", "main", "tuff", "selfhost.tuff");
 fs.mkdirSync(outDir, { recursive: true });
 
 function loadSelfhost() {
-  const selfhostSource = fs.readFileSync(selfhostPath, "utf8");
-  const selfhostResult = compileSource(selfhostSource, selfhostPath, {
-    resolve: {
-      hostBuiltins: Object.keys(runtime),
-      allowHostPrefix: "",
+  const selfhostResult = compileFile(
+    selfhostPath,
+    path.join(outDir, "selfhost.js"),
+    {
+      enableModules: true,
+      modules: { moduleBaseDir: path.dirname(selfhostPath) },
+      resolve: {
+        hostBuiltins: Object.keys(runtime),
+        allowHostPrefix: "",
+      },
     },
-  });
+  );
 
   const sandbox = {
     module: { exports: {} },

@@ -12,7 +12,7 @@ import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
 import { fileURLToPath } from "node:url";
-import { compileSource } from "../../main/js/compiler.js";
+import { compileFile, compileSource } from "../../main/js/compiler.js";
 import * as runtime from "../../main/js/runtime.js";
 
 const thisFile = fileURLToPath(import.meta.url);
@@ -27,7 +27,9 @@ console.log("Compiling selfhost.tuff with Stage 0...");
 const selfhostSource = fs.readFileSync(selfhostPath, "utf8");
 let selfhostJs;
 try {
-  const result = compileSource(selfhostSource, selfhostPath, {
+  const result = compileFile(selfhostPath, path.join(outDir, "selfhost.js"), {
+    enableModules: true,
+    modules: { moduleBaseDir: path.dirname(selfhostPath) },
     resolve: {
       hostBuiltins: Object.keys(runtime),
       allowHostPrefix: "",
@@ -39,7 +41,6 @@ try {
   process.exit(1);
 }
 
-fs.writeFileSync(path.join(outDir, "selfhost.js"), selfhostJs, "utf8");
 console.log("  -> Wrote selfhost.js");
 
 // Step 2: Create sandbox with runtime utilities
@@ -126,7 +127,9 @@ try {
 // Step 6: Bootstrap test - compile selfhost.tuff with itself
 console.log("Testing bootstrap (self-compilation)...");
 try {
-  const selfhostB = selfhost.compile_source(selfhostSource);
+  const selfhostBPath = path.join(outDir, "selfhost_b.js");
+  selfhost.compile_file(selfhostPath, selfhostBPath);
+  const selfhostB = fs.readFileSync(selfhostBPath, "utf8");
   fs.writeFileSync(path.join(outDir, "selfhost_b.js"), selfhostB, "utf8");
   console.log("  -> Self-hosted compiler compiled itself!");
 
@@ -144,7 +147,9 @@ try {
   const selfhostB_compiler = sandbox2.module.exports;
 
   // Triple-compile: use selfhost_b to compile selfhost again
-  const selfhostC = selfhostB_compiler.compile_source(selfhostSource);
+  const selfhostCPath = path.join(outDir, "selfhost_c.js");
+  selfhostB_compiler.compile_file(selfhostPath, selfhostCPath);
+  const selfhostC = fs.readFileSync(selfhostCPath, "utf8");
   fs.writeFileSync(path.join(outDir, "selfhost_c.js"), selfhostC, "utf8");
   console.log("  -> Triple compilation succeeded!");
 

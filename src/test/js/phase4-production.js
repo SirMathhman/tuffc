@@ -242,4 +242,43 @@ try {
   process.exit(1);
 }
 
+// 7) Effective-line lint should enforce <=500 non-comment/non-whitespace lines.
+const longEffectiveLinesSource = [
+  ...Array.from({ length: 501 }, (_, i) => `fn f${i}() : I32 => ${i};`),
+  "fn main() : I32 => f0();",
+  "",
+].join("\n");
+
+try {
+  compileSource(longEffectiveLinesSource, "<lint-file-too-long>", {
+    lint: { enabled: true },
+  });
+  console.error("Expected file-length lint failure for >500 effective lines");
+  process.exit(1);
+} catch (error) {
+  const diag = toDiagnostic(error);
+  if (diag.code !== "E_LINT_FILE_TOO_LONG") {
+    console.error(`Expected E_LINT_FILE_TOO_LONG, got ${diag.code}`);
+    process.exit(1);
+  }
+}
+
+const mostlyCommentsSource = [
+  ...Array.from({ length: 800 }, () => "// comment only"),
+  "",
+  "fn main() : I32 => 0;",
+  "",
+].join("\n");
+
+try {
+  compileSource(mostlyCommentsSource, "<lint-file-comments>", {
+    lint: { enabled: true },
+  });
+} catch (error) {
+  console.error(
+    `Expected comment-only/blank lines to be excluded from line-count lint, got: ${error.message}`,
+  );
+  process.exit(1);
+}
+
 console.log("Phase 4 production diagnostics checks passed");

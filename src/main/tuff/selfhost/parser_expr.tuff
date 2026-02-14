@@ -1,0 +1,298 @@
+fn p_parse_postfix(exprIn: I32) : I32 => {
+    let expr = exprIn;
+    while (true) {
+        if (p_at(TK_SYMBOL, "(")) {
+            p_eat();
+            let args = vec_new();
+            if (!p_at(TK_SYMBOL, ")")) {
+                args.vec_push(p_parse_expression(0));
+                while (p_at(TK_SYMBOL, ",")) {
+                    p_eat();
+                    args.vec_push(p_parse_expression(0));
+                }
+            }
+            p_expect(TK_SYMBOL, ")", "Expected ')'");
+
+            if (node_kind(expr) == NK_MEMBER_EXPR) {
+                // Receiver-call sugar: value.method(a, b) => method(value, a, b)
+                let recv = node_get_data1(expr);
+                let prop = node_get_data2(expr);
+                let lowered_args = vec_new();
+                lowered_args.vec_push(recv);
+                let ai = 0;
+                let alen = args.vec_length();
+                while (ai < alen) {
+                    lowered_args.vec_push(args.vec_get(ai));
+                    ai = ai + 1;
+                }
+                let callee = node_new(NK_IDENTIFIER);
+                node_set_data1(callee, prop);
+                let call = node_new(NK_CALL_EXPR);
+                node_set_data1(call, callee);
+                node_set_data2(call, lowered_args);
+                expr = call;
+            } else {
+                let call = node_new(NK_CALL_EXPR);
+                node_set_data1(call, expr);
+                node_set_data2(call, args);
+                expr = call;
+            }
+            continue;
+        }
+        if (p_at(TK_SYMBOL, ".")) {
+            p_eat();
+            let prop = p_parse_identifier();
+            let member = node_new(NK_MEMBER_EXPR);
+            node_set_data1(member, expr);
+            node_set_data2(member, prop);
+            expr = member;
+            continue;
+        }
+        if (p_at(TK_SYMBOL, "[")) {
+            p_eat();
+            let idx_expr = p_parse_expression(0);
+            p_expect(TK_SYMBOL, "]", "Expected ']'");
+            let idx_node = node_new(NK_INDEX_EXPR);
+            node_set_data1(idx_node, expr);
+            node_set_data2(idx_node, idx_expr);
+            expr = idx_node;
+            continue;
+        }
+        break;
+    }
+    expr
+}
+
+fn p_parse_primary() : I32 => {
+    // Number
+    if (p_at_kind(TK_NUMBER)) {
+        let t = p_eat();
+        let node = node_new(NK_NUMBER_LIT);
+        node_set_data1(node, tok_value(t));
+        return p_parse_postfix(node);
+    }
+    
+    // Bool
+    if (p_at_kind(TK_BOOL)) {
+        let t = p_eat();
+        let node = node_new(NK_BOOL_LIT);
+        node_set_data1(node, tok_value(t));
+        return p_parse_postfix(node);
+    }
+    
+    // String
+    if (p_at_kind(TK_STRING)) {
+        let t = p_eat();
+        let node = node_new(NK_STRING_LIT);
+        node_set_data1(node, tok_value(t));
+        return p_parse_postfix(node);
+    }
+    
+    // Char
+    if (p_at_kind(TK_CHAR)) {
+        let t = p_eat();
+        let node = node_new(NK_CHAR_LIT);
+        node_set_data1(node, tok_value(t));
+        return p_parse_postfix(node);
+    }
+    
+    // Parenthesized expression
+    if (p_at(TK_SYMBOL, "(")) {
+        p_eat();
+        let expr = p_parse_expression(0);
+        p_expect(TK_SYMBOL, ")", "Expected ')'");
+        return p_parse_postfix(expr);
+    }
+    
+    // If expression
+    if (p_at(TK_KEYWORD, "if")) {
+        p_eat();
+        p_expect(TK_SYMBOL, "(", "Expected '(' after if");
+        let cond = p_parse_expression(0);
+        p_expect(TK_SYMBOL, ")", "Expected ')' after condition");
+        let then_branch = if (p_at(TK_SYMBOL, "{")) { p_parse_block() } else { p_parse_expression(0) };
+        let else_branch = 0;
+        if (p_at(TK_KEYWORD, "else")) {
+            p_eat();
+            else_branch = if (p_at(TK_SYMBOL, "{")) { p_parse_block() } else { p_parse_expression(0) };
+        }
+        let node = node_new(NK_IF_EXPR);
+        node_set_data1(node, cond);
+        node_set_data2(node, then_branch);
+        node_set_data3(node, else_branch);
+        return p_parse_postfix(node);
+    }
+    
+    // Match expression
+    if (p_at(TK_KEYWORD, "match")) {
+        p_eat();
+        p_expect(TK_SYMBOL, "(", "Expected '(' after match");
+        let target = p_parse_expression(0);
+        p_expect(TK_SYMBOL, ")", "Expected ')' after match target");
+        p_expect(TK_SYMBOL, "{", "Expected '{'");
+        let cases = vec_new();
+        while (!p_at(TK_SYMBOL, "}")) {
+            p_expect(TK_KEYWORD, "case", "Expected 'case'");
+            let pat = p_parse_pattern();
+            p_expect(TK_SYMBOL, "=", "Expected '='");
+            let body = if (p_at(TK_SYMBOL, "{")) { p_parse_block() } else { p_parse_expression(0) };
+            p_expect(TK_SYMBOL, ";", "Expected ';' after case");
+            let case_node = vec_new();
+            case_node.vec_push(pat);
+            case_node.vec_push(body);
+            cases.vec_push(case_node);
+        }
+        p_expect(TK_SYMBOL, "}", "Expected '}'");
+        let node = node_new(NK_MATCH_EXPR);
+        node_set_data1(node, target);
+        node_set_data2(node, cases);
+        return node;
+    }
+    
+    // Identifier (possibly struct init or call)
+    if (p_at_kind(TK_IDENTIFIER)) {
+        let name = p_parse_identifier();
+        let expr = node_new(NK_IDENTIFIER);
+        node_set_data1(expr, name);
+        
+        // Struct init
+        if (p_at(TK_SYMBOL, "{")) {
+            p_eat();
+            let fields = vec_new();
+            if (!p_at(TK_SYMBOL, "}")) {
+                let key = p_parse_identifier();
+                p_expect(TK_SYMBOL, ":", "Expected ':' in struct init");
+                let val = p_parse_expression(0);
+                let field = vec_new();
+                field.vec_push(key);
+                field.vec_push(val);
+                fields.vec_push(field);
+                while (p_at(TK_SYMBOL, ",")) {
+                    p_eat();
+                    let key2 = p_parse_identifier();
+                    p_expect(TK_SYMBOL, ":", "Expected ':'");
+                    let val2 = p_parse_expression(0);
+                    let field2 = vec_new();
+                    field2.vec_push(key2);
+                    field2.vec_push(val2);
+                    fields.vec_push(field2);
+                }
+            }
+            p_expect(TK_SYMBOL, "}", "Expected '}'");
+            let init_node = node_new(NK_STRUCT_INIT);
+            node_set_data1(init_node, name);
+            node_set_data2(init_node, fields);
+            expr = init_node;
+        }
+        
+        return p_parse_postfix(expr);
+    }
+    
+    panic("Unexpected token in expression");
+    0
+}
+
+fn p_parse_unary() : I32 => {
+    if (p_at(TK_SYMBOL, "!") || p_at(TK_SYMBOL, "-")) {
+        let op = tok_value(p_eat());
+        let inner = p_parse_unary();
+        let node = node_new(NK_UNARY_EXPR);
+        node_set_data1(node, op);
+        node_set_data2(node, inner);
+        return node;
+    }
+    p_parse_primary()
+}
+
+fn p_get_precedence(op: I32) : I32 => {
+    // Map operator to precedence
+    // We use intern indices, so we need to check against known values
+    if (intern_map.map_has("||") && op == intern_map.map_get("||")) { return 1; }
+    if (intern_map.map_has("&&") && op == intern_map.map_get("&&")) { return 2; }
+    if (intern_map.map_has("==") && op == intern_map.map_get("==")) { return 3; }
+    if (intern_map.map_has("!=") && op == intern_map.map_get("!=")) { return 3; }
+    if (intern_map.map_has("<") && op == intern_map.map_get("<")) { return 4; }
+    if (intern_map.map_has("<=") && op == intern_map.map_get("<=")) { return 4; }
+    if (intern_map.map_has(">") && op == intern_map.map_get(">")) { return 4; }
+    if (intern_map.map_has(">=") && op == intern_map.map_get(">=")) { return 4; }
+    if (intern_map.map_has("+") && op == intern_map.map_get("+")) { return 5; }
+    if (intern_map.map_has("-") && op == intern_map.map_get("-")) { return 5; }
+    if (intern_map.map_has("*") && op == intern_map.map_get("*")) { return 6; }
+    if (intern_map.map_has("/") && op == intern_map.map_get("/")) { return 6; }
+    if (intern_map.map_has("%") && op == intern_map.map_get("%")) { return 6; }
+    0
+}
+
+fn p_is_binary_op() : Bool => {
+    if (p_at(TK_SYMBOL, "+")) { return true; }
+    if (p_at(TK_SYMBOL, "-")) { return true; }
+    if (p_at(TK_SYMBOL, "*")) { return true; }
+    if (p_at(TK_SYMBOL, "/")) { return true; }
+    if (p_at(TK_SYMBOL, "%")) { return true; }
+    if (p_at(TK_SYMBOL, "==")) { return true; }
+    if (p_at(TK_SYMBOL, "!=")) { return true; }
+    if (p_at(TK_SYMBOL, "<")) { return true; }
+    if (p_at(TK_SYMBOL, "<=")) { return true; }
+    if (p_at(TK_SYMBOL, ">")) { return true; }
+    if (p_at(TK_SYMBOL, ">=")) { return true; }
+    if (p_at(TK_SYMBOL, "&&")) { return true; }
+    if (p_at(TK_SYMBOL, "||")) { return true; }
+    if (p_at(TK_KEYWORD, "is")) { return true; }
+    false
+}
+
+fn p_parse_expression(minPrec: I32) : I32 => {
+    let left = p_parse_unary();
+    
+    while (p_is_binary_op()) {
+        let op = tok_value(p_peek(0));
+        let prec = p_get_precedence(op);
+        
+        // Handle 'is' keyword specially
+        if (p_at(TK_KEYWORD, "is")) {
+            p_eat();
+            let pat = p_parse_pattern();
+            let is_node = node_new(NK_IS_EXPR);
+            node_set_data1(is_node, left);
+            node_set_data2(is_node, pat);
+            left = is_node;
+            continue;
+        }
+        
+        if (prec < minPrec) {
+            break;
+        }
+        
+        p_eat();
+        let right = p_parse_expression(prec + 1);
+        let bin = node_new(NK_BINARY_EXPR);
+        node_set_data1(bin, op);
+        node_set_data2(bin, left);
+        node_set_data3(bin, right);
+        left = bin;
+    }
+    
+    // Unwrap operator
+    if (p_at(TK_SYMBOL, "?")) {
+        p_eat();
+        let unwrap = node_new(NK_UNWRAP_EXPR);
+        node_set_data1(unwrap, left);
+        left = unwrap;
+    }
+    
+    left
+}
+
+fn p_parse_block() : I32 => {
+    p_expect(TK_SYMBOL, "{", "Expected '{'");
+    let stmts = vec_new();
+    while (!p_at(TK_SYMBOL, "}") && !p_at_kind(TK_EOF)) {
+        stmts.vec_push(p_parse_statement());
+    }
+    p_expect(TK_SYMBOL, "}", "Expected '}'");
+    let node = node_new(NK_BLOCK);
+    node_set_data1(node, stmts);
+    node
+}
+
+out fn selfhost_parser_expr_marker() : I32 => 0;

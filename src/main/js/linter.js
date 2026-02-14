@@ -1,4 +1,5 @@
 import { TuffError } from "./errors.js";
+import { lex } from "./lexer.js";
 
 function walkNode(node, visit) {
   if (!node || typeof node !== "object") return;
@@ -114,6 +115,46 @@ export function lintProgram(ast, options = {}) {
   if (!enabled) return [];
 
   const issues = [];
+  const maxEffectiveLines = options.maxEffectiveLines ?? 500;
+
+  function pushFileLengthIssue(filePath, source) {
+    if (typeof source !== "string") return;
+    const tokens = lex(source, filePath);
+    const effectiveLines = new Set();
+    for (const token of tokens) {
+      if (token.type === "eof") continue;
+      if (token?.loc?.line != null) {
+        effectiveLines.add(token.loc.line);
+      }
+    }
+    const count = effectiveLines.size;
+    if (count > maxEffectiveLines) {
+      issues.push(
+        new TuffError(
+          `File exceeds ${maxEffectiveLines} effective lines (${count})`,
+          { filePath, line: 1, column: 1 },
+          {
+            code: "E_LINT_FILE_TOO_LONG",
+            reason:
+              "Large files are harder to review and maintain; this file exceeds the maximum effective line budget after excluding comments and blank lines.",
+            fix: `Split this file into smaller modules so each file has at most ${maxEffectiveLines} non-comment, non-whitespace lines.`,
+          },
+        ),
+      );
+    }
+  }
+
+  if (options.sourceByFile instanceof Map) {
+    const entries = [...options.sourceByFile.entries()].sort(([a], [b]) =>
+      a.localeCompare(b),
+    );
+    for (const [filePath, source] of entries) {
+      pushFileLengthIssue(filePath, source);
+    }
+  } else if (typeof options.source === "string") {
+    pushFileLengthIssue(options.filePath ?? "<memory>", options.source);
+  }
+
   const declaredLets = new Map();
   const identifierReads = new Set();
   const receiverExternFns = collectReceiverExternFns(ast);
