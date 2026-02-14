@@ -246,4 +246,33 @@ expectBothFail(
   "arity-mismatch parity",
 );
 
+// 9) Non-exported module import parity.
+const privateDir = path.join(outDir, "private-import");
+const privateLib = path.join(privateDir, "Lib.tuff");
+const privateEntry = path.join(privateDir, "Main.tuff");
+const privateJsOut = path.join(privateDir, "main-js.js");
+const privateSelfhostOut = path.join(privateDir, "main-selfhost.js");
+fs.mkdirSync(privateDir, { recursive: true });
+fs.writeFileSync(
+  privateLib,
+  "fn hidden() : I32 => 1;\nout fn shown() : I32 => 2;\n",
+  "utf8",
+);
+fs.writeFileSync(
+  privateEntry,
+  "let { hidden } = Lib;\nfn main() : I32 => hidden();\n",
+  "utf8",
+);
+
+expectBothFail(
+  () =>
+    compileFile(privateEntry, privateJsOut, {
+      enableModules: true,
+      modules: { moduleBaseDir: privateDir },
+    }),
+  () => selfhost.compile_file(privateEntry, privateSelfhostOut),
+  "private-import parity",
+  "E_MODULE_PRIVATE_IMPORT",
+);
+
 console.log("Selfhost differential parity checks passed");
