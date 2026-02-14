@@ -1,6 +1,10 @@
 // @ts-nocheck
 export class TuffError extends Error {
-  constructor(message, loc = null, options = {}) {
+  constructor(
+    message: string,
+    loc: { line?: number; column?: number; filePath?: string } | null = null,
+    options: Record<string, unknown> = {},
+  ) {
     const code = options.code ?? "E_GENERIC";
     super(
       loc
@@ -20,7 +24,7 @@ export class TuffError extends Error {
   }
 }
 
-export function raise(error) {
+export function raise(error: unknown): never {
   const gen = (function* () {
     yield null;
   })();
@@ -44,7 +48,13 @@ function createSourceExcerpt(source, loc) {
   return `${lineText}\n${caretPad}^`;
 }
 
-export function enrichError(error, context = {}) {
+export function enrichError(
+  error: unknown,
+  context: {
+    sourceByFile?: Map<string, string>;
+    source?: string | null;
+  } = {},
+): unknown {
   if (!(error instanceof TuffError)) return error;
 
   if (error.source) return error;
@@ -59,13 +69,30 @@ export function enrichError(error, context = {}) {
   return error;
 }
 
-export function assert(condition, message, loc, options = {}) {
+export function assert(
+  condition: boolean,
+  message: string,
+  loc: unknown,
+  options: Record<string, unknown> = {},
+): void {
   if (!condition) {
     return raise(new TuffError(message, loc, options));
   }
 }
 
-export function toDiagnostic(error) {
+export function toDiagnostic(error: unknown): {
+  kind: string;
+  code: string;
+  message: string;
+  source: string;
+  cause: string;
+  reason: string;
+  fix: string;
+  hint: string | null;
+  details: string | null;
+  loc: unknown;
+  stack: string | null;
+} {
   const isTuff = error instanceof TuffError;
   const fallbackReason =
     "This violates the language rules or safety guarantees enforced by the compiler.";
@@ -86,7 +113,15 @@ export function toDiagnostic(error) {
   };
 }
 
-export function formatDiagnostic(diag) {
+export function formatDiagnostic(diag: {
+  loc?: { filePath?: string; line?: number; column?: number } | null;
+  source?: string | null;
+  cause?: string | null;
+  message?: string | null;
+  reason?: string | null;
+  fix?: string | null;
+  code?: string;
+}): string {
   const where = diag.loc
     ? `${diag.loc.filePath ?? "<memory>"}:${diag.loc.line}:${diag.loc.column}`
     : "<unknown>";

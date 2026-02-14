@@ -29,7 +29,10 @@ class Scope {
   }
 }
 
-export function resolveNames(ast, options = {}) {
+export function resolveNames(
+  ast: { body: unknown[] },
+  options: Record<string, unknown> = {},
+): { body: unknown[] } {
   const hostBuiltins = new Set(options.hostBuiltins ?? []);
   const allowHostPrefix = options.allowHostPrefix ?? "";
   const strictModuleImports = options.strictModuleImports ?? false;

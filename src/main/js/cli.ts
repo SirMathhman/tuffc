@@ -5,13 +5,13 @@ import path from "node:path";
 import { compileFileResult } from "./compiler.ts";
 import { formatDiagnostic, toDiagnostic } from "./errors.ts";
 
-function printUsage() {
+function printUsage(): void {
   console.log(
     "Usage:\n  tuff compile <input.tuff> [-o output.js] [--stage2] [--modules] [--module-base <dir>] [--selfhost|--stage0] [--lint] [--lint-fix] [--lint-strict] [--json-errors] [--trace-passes]",
   );
 }
 
-function printLintIssues(issues) {
+function printLintIssues(issues: unknown[]): void {
   if (!issues || issues.length === 0) return;
   console.warn(`Lint issues (${issues.length}):`);
   for (let idx = 0; idx < issues.length; idx += 1) {
@@ -20,7 +20,7 @@ function printLintIssues(issues) {
   }
 }
 
-function main(argv) {
+function main(argv: string[]): void {
   const args = argv.slice(2);
   const command = args[0];
   if (!command || command === "-h" || command === "--help") {

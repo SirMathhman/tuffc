@@ -210,7 +210,7 @@ function emitIfStmtAsExpr(s) {
   return `((${emitExpr(s.condition)}) ? ${thenBody} : ${elseBody})`;
 }
 
-export function generateJavaScript(ast) {
+export function generateJavaScript(ast: { body: unknown[] }): string {
   const lines = ['"use strict";', ""];
   for (const node of ast.body) {
     lines.push(emitStmt(node));

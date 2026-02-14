@@ -249,7 +249,11 @@ function loadModuleGraph(entryPath, options = {}) {
   return { ordered, merged, moduleImportsByPath };
 }
 
-export function compileSource(source, filePath = "<memory>", options = {}) {
+export function compileSource(
+  source: string,
+  filePath: string = "<memory>",
+  options: Record<string, unknown> = {},
+): Record<string, unknown> {
   if ((options.backend ?? "stage0") === "selfhost") {
     if (options.lint?.fix) {
       return raise(
@@ -334,7 +338,11 @@ export function compileSource(source, filePath = "<memory>", options = {}) {
   }
 }
 
-export function compileFile(inputPath, outputPath = null, options = {}) {
+export function compileFile(
+  inputPath: string,
+  outputPath: string | null = null,
+  options: Record<string, unknown> = {},
+): Record<string, unknown> {
   if ((options.backend ?? "stage0") === "selfhost") {
     const absInput = path.resolve(inputPath);
     const finalOutput = outputPath ?? absInput.replace(/\.tuff$/i, ".js");
@@ -504,10 +512,10 @@ export function compileFile(inputPath, outputPath = null, options = {}) {
 }
 
 export function compileSourceResult(
-  source,
-  filePath = "<memory>",
-  options = {},
-) {
+  source: string,
+  filePath: string = "<memory>",
+  options: Record<string, unknown> = {},
+): { ok: true; value: unknown } | { ok: false; error: unknown } {
   try {
     return ok(compileSource(source, filePath, options));
   } catch (error) {
@@ -515,7 +523,11 @@ export function compileSourceResult(
   }
 }
 
-export function compileFileResult(inputPath, outputPath = null, options = {}) {
+export function compileFileResult(
+  inputPath: string,
+  outputPath: string | null = null,
+  options: Record<string, unknown> = {},
+): { ok: true; value: unknown } | { ok: false; error: unknown } {
   try {
     return ok(compileFile(inputPath, outputPath, options));
   } catch (error) {

@@ -54,7 +54,7 @@ function isAlphaNum(ch) {
   return /[A-Za-z0-9_]/.test(ch);
 }
 
-export function lex(source, filePath = "<memory>") {
+export function lex(source: string, filePath: string = "<memory>"): unknown[] {
   const tokens = [];
   let i = 0;
   let line = 1;

@@ -1,21 +1,37 @@
-export function desugar(ast) {
-  const out = [];
+type ProgramNode = { kind: string; [key: string]: unknown };
+type Program = { body: ProgramNode[] };
+
+export function desugar(ast: Program): {
+  kind: "Program";
+  body: ProgramNode[];
+} {
+  const out: ProgramNode[] = [];
+
   for (const node of ast.body) {
     if (node.kind === "ClassFunctionDecl") {
+      const classNode = node as ProgramNode & {
+        name: unknown;
+        generics: unknown;
+        params: unknown;
+        returnType: unknown;
+        body: ProgramNode & { statements?: ProgramNode[] };
+      };
+
       out.push({
         kind: "StructDecl",
-        name: node.name,
+        name: classNode.name,
         generics: [],
         fields: [],
       });
+
       out.push({
         kind: "FnDecl",
-        name: node.name,
-        generics: node.generics,
-        params: node.params,
-        returnType: node.returnType,
+        name: classNode.name,
+        generics: classNode.generics,
+        params: classNode.params,
+        returnType: classNode.returnType,
         body:
-          node.body.kind === "Block"
+          classNode.body.kind === "Block"
             ? {
                 kind: "Block",
                 statements: [
@@ -23,20 +39,26 @@ export function desugar(ast) {
                     kind: "LetDecl",
                     name: "this",
                     type: null,
-                    value: { kind: "StructInit", name: node.name, fields: [] },
+                    value: {
+                      kind: "StructInit",
+                      name: classNode.name,
+                      fields: [],
+                    },
                   },
-                  ...node.body.statements,
+                  ...(classNode.body.statements ?? []),
                   {
                     kind: "ExprStmt",
                     expr: { kind: "Identifier", name: "this" },
                   },
                 ],
               }
-            : node.body,
+            : classNode.body,
       });
-    } else {
-      out.push(node);
+      continue;
     }
+
+    out.push(node);
   }
+
   return { kind: "Program", body: out };
 }

@@ -1,62 +1,45 @@
-/**
- * @template T
- * @typedef {{ ok: true, value: T }} OkResult
- */
+export type OkResult<T> = { ok: true; value: T };
+export type ErrResult<E> = { ok: false; error: E };
+export type Result<T, E> = OkResult<T> | ErrResult<E>;
 
-/**
- * @template E
- * @typedef {{ ok: false, error: E }} ErrResult
- */
-
-/**
- * @template T, E
- * @typedef {OkResult<T> | ErrResult<E>} Result
- */
-
-/** @template T */
-export function ok(value) {
+export function ok<T>(value: T): OkResult<T> {
   return { ok: true, value };
 }
 
-/** @template E */
-export function err(error) {
+export function err<E>(error: E): ErrResult<E> {
   return { ok: false, error };
 }
 
-/** @template T, E */
-export function isOk(result) {
+export function isOk<T, E>(result: Result<T, E>): result is OkResult<T> {
   return result.ok === true;
 }
 
-/** @template T, E */
-export function isErr(result) {
+export function isErr<T, E>(result: Result<T, E>): result is ErrResult<E> {
   return result.ok === false;
 }
 
-/**
- * @template T, E
- * @template U
- * @param {Result<T, E>} result
- * @param {(value: T) => U} fn
- * @returns {Result<U, E>}
- */
-export function map(result, fn) {
+export function map<T, E, U>(
+  result: Result<T, E>,
+  fn: (value: T) => U,
+): Result<U, E> {
   if (result.ok) {
     return ok(fn(result.value));
   }
-  return result;
+  if (isErr(result)) {
+    return err(result.error);
+  }
+  return err(new Error("Unreachable Result state") as unknown as E);
 }
 
-/**
- * @template T, E
- * @template F
- * @param {Result<T, E>} result
- * @param {(error: E) => F} fn
- * @returns {Result<T, F>}
- */
-export function mapError(result, fn) {
+export function mapError<T, E, F>(
+  result: Result<T, E>,
+  fn: (error: E) => F,
+): Result<T, F> {
   if (result.ok) {
-    return result;
+    return ok(result.value);
   }
-  return err(fn(result.error));
+  if (isErr(result)) {
+    return err(fn(result.error));
+  }
+  return err(new Error("Unreachable Result state") as unknown as F);
 }

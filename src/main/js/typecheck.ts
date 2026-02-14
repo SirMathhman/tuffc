@@ -221,7 +221,10 @@ function literalNumber(expr) {
   return expr?.kind === "NumberLiteral" ? expr.value : null;
 }
 
-export function typecheck(ast, options = {}) {
+export function typecheck(
+  ast: { body: unknown[] },
+  options: Record<string, unknown> = {},
+): { body: unknown[] } {
   const strictSafety = !!options.strictSafety;
 
   const structs = new Map();

@@ -38,7 +38,10 @@ function collectReceiverExternFns(ast) {
   return receiverExternFns;
 }
 
-export function autoFixProgram(ast, options = {}) {
+export function autoFixProgram(
+  ast: { body?: unknown[] },
+  options: Record<string, unknown> = {},
+): { applied: number; fixedSource: string | null } {
   const enabled = options.enabled ?? false;
   const fix = options.fix ?? false;
   const source = options.source ?? null;
@@ -111,7 +114,10 @@ export function autoFixProgram(ast, options = {}) {
   return { applied, fixedSource };
 }
 
-export function lintProgram(ast, options = {}) {
+export function lintProgram(
+  ast: { body?: unknown[] },
+  options: Record<string, unknown> = {},
+): unknown[] {
   const enabled = options.enabled ?? false;
   if (!enabled) return [];
 

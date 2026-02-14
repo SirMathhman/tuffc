@@ -47,7 +47,10 @@ for (const filePath of tuffFiles) {
       fix: true,
       mode: "warn",
     },
-  });
+  }) as {
+    lintFixesApplied?: number;
+    lintFixedSource?: string | null;
+  };
 
   const applied = result.lintFixesApplied ?? 0;
   fixedTotal += applied;

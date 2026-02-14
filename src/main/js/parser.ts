@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { TuffError, raise } from "./errors.ts";
 
-export function parse(tokens) {
+export function parse(tokens: unknown[]): { kind: "Program"; body: unknown[] } {
   let i = 0;
 
   const peek = (n = 0) => tokens[i + n] ?? tokens[tokens.length - 1];
