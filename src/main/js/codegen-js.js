@@ -137,6 +137,12 @@ function emitStmt(stmt) {
         .join(", ");
       return `function ${stmt.name}(fields = {}) { return { __tag: ${JSON.stringify(stmt.name)}${init ? `, ${init}` : ""} }; }`;
     }
+    case "EnumDecl": {
+      const entries = stmt.variants
+        .map((v) => `${v}: { __tag: ${JSON.stringify(v)} }`)
+        .join(", ");
+      return `const ${stmt.name} = { ${entries} };`;
+    }
     case "TypeAlias":
       return `// type ${stmt.name} = ${JSON.stringify(stmt.aliasedType.kind)}`;
     case "ExternFnDecl":

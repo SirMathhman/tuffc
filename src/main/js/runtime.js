@@ -78,10 +78,12 @@ export function sb_new() {
 
 export function sb_append(sb, s) {
   sb.parts.push(s);
+  return sb;
 }
 
 export function sb_append_char(sb, code) {
   sb.parts.push(String.fromCharCode(code));
+  return sb;
 }
 
 export function sb_build(sb) {
@@ -99,6 +101,7 @@ export function vec_new() {
 
 export function vec_push(arr, item) {
   arr.push(item);
+  return arr;
 }
 
 export function vec_pop(arr) {
@@ -111,6 +114,7 @@ export function vec_get(arr, i) {
 
 export function vec_set(arr, i, v) {
   arr[i] = v;
+  return arr;
 }
 
 export function vec_length(arr) {
@@ -119,6 +123,7 @@ export function vec_length(arr) {
 
 export function vec_clear(arr) {
   arr.length = 0;
+  return arr;
 }
 
 export function vec_slice(arr, start, end) {
@@ -160,6 +165,7 @@ export function map_new() {
 
 export function map_set(m, k, v) {
   m.set(k, v);
+  return m;
 }
 
 export function map_get(m, k) {
@@ -193,6 +199,7 @@ export function set_new() {
 
 export function set_add(s, item) {
   s.add(item);
+  return s;
 }
 
 export function set_has(s, item) {
@@ -292,6 +299,7 @@ export function str_vec_new() {
 
 export function str_vec_push(arr, s) {
   arr.push(s);
+  return arr;
 }
 
 export function str_vec_get(arr, i) {

@@ -1,0 +1,9 @@
+enum Color { Red, Blue }
+
+fn pick(c: Color) : I32 =>
+  match (c) {
+    case Red = 1;
+    case Blue = 2;
+  };
+
+fn main() : I32 => pick(Color.Blue);

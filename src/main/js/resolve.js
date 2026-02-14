@@ -42,6 +42,7 @@ export function resolveNames(ast, options = {}) {
       [
         "FnDecl",
         "StructDecl",
+        "EnumDecl",
         "TypeAlias",
         "ExternFnDecl",
         "ExternLetDecl",

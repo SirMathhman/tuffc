@@ -25,35 +25,40 @@ extern fn char_code(ch: *Str) : I32;
 extern fn int_to_string(n: I32) : *Str;
 extern fn parse_int(s: *Str) : I32;
 
-extern fn sb_new() : I32;
-extern fn sb_append(sb: I32, s: *Str) : I32;
-extern fn sb_append_char(sb: I32, code: I32) : I32;
-extern fn sb_build(sb: I32) : *Str;
+extern type StringBuilder;
+extern fn sb_new() : StringBuilder;
+extern fn sb_append(sb: StringBuilder, s: *Str) : StringBuilder;
+extern fn sb_append_char(sb: StringBuilder, code: Char) : StringBuilder;
+extern fn sb_build(sb: StringBuilder) : *Str;
 
-extern fn vec_new() : I32;
-extern fn vec_push(arr: I32, item: I32) : I32;
-extern fn vec_pop(arr: I32) : I32;
-extern fn vec_get(arr: I32, i: I32) : I32;
-extern fn vec_set(arr: I32, i: I32, v: I32) : I32;
-extern fn vec_length(arr: I32) : I32;
-extern fn vec_clear(arr: I32) : I32;
-extern fn vec_join(arr: I32, sep: *Str) : *Str;
-extern fn vec_includes(arr: I32, item: I32) : Bool;
+extern type Vec;
+extern fn vec_new() : Vec;
+extern fn vec_push(arr: Vec, item: I32) : Vec;
+extern fn vec_pop(arr: Vec) : I32;
+extern fn vec_get(arr: Vec, i: I32) : I32;
+extern fn vec_set(arr: Vec, i: I32, v: I32) : Vec;
+extern fn vec_length(arr: Vec) : I32;
+extern fn vec_clear(arr: Vec) : Vec;
+extern fn vec_join(arr: Vec, sep: *Str) : *Str;
+extern fn vec_includes(arr: Vec, item: I32) : Bool;
 
-extern fn map_new() : I32;
-extern fn map_set(m: I32, k: *Str, v: I32) : I32;
-extern fn map_get(m: I32, k: *Str) : I32;
-extern fn map_has(m: I32, k: *Str) : Bool;
+extern type Map;
+extern fn map_new() : Map;
+extern fn map_set(m: Map, k: *Str, v: I32) : Map;
+extern fn map_get(m: Map, k: *Str) : I32;
+extern fn map_has(m: Map, k: *Str) : Bool;
 
-extern fn set_new() : I32;
-extern fn set_add(s: I32, item: *Str) : I32;
-extern fn set_has(s: I32, item: *Str) : Bool;
-extern fn set_delete(s: I32, item: *Str) : I32;
+extern type Set;
+extern fn set_new() : Set;
+extern fn set_add(s: Set, item: *Str) : Set;
+extern fn set_has(s: Set, item: *Str) : Bool;
+extern fn set_delete(s: Set, item: *Str) : Bool;
 
-extern fn str_vec_new() : I32;
-extern fn str_vec_push(arr: I32, s: *Str) : I32;
-extern fn str_vec_get(arr: I32, i: I32) : *Str;
-extern fn str_vec_length(arr: I32) : I32;
+extern type StringVec;
+extern fn str_vec_new() : StringVec;
+extern fn str_vec_push(arr: StringVec, s: *Str) : StringVec;
+extern fn str_vec_get(arr: StringVec, i: I32) : *Str;
+extern fn str_vec_length(arr: StringVec) : I32;
 
 extern fn read_file(filePath: *Str) : *Str;
 extern fn write_file(filePath: *Str, contents: *Str) : I32;
@@ -64,6 +69,7 @@ extern fn print(s: *Str) : I32;
 extern fn print_error(s: *Str) : I32;
 extern fn panic(msg: *Str) : I32;
 extern fn panic_with_code(code: *Str, msg: *Str, reason: *Str, fix: *Str) : I32;
+extern type AnyValue;
 
 // ============================================================================
 // Token Kinds
@@ -84,10 +90,10 @@ let TK_CHAR : I32 = 7;
 // tok_kinds[i], tok_values[i], tok_lines[i], tok_cols[i]
 // ============================================================================
 
-let tok_kinds : I32 = vec_new();
-let tok_values : I32 = vec_new();
-let tok_lines : I32 = vec_new();
-let tok_cols : I32 = vec_new();
+let tok_kinds : Vec = vec_new();
+let tok_values : Vec = vec_new();
+let tok_lines : Vec = vec_new();
+let tok_cols : Vec = vec_new();
 let tok_count : I32 = 0;
 
 fn tok_add(kind: I32, value: I32, line: I32, col: I32) : I32 => {
@@ -104,8 +110,8 @@ fn tok_kind(idx: I32) : I32 => vec_get(tok_kinds, idx);
 fn tok_value(idx: I32) : I32 => vec_get(tok_values, idx);
 
 // String intern table - stores strings by index for reverse lookup
-let intern_table : I32 = str_vec_new();
-let intern_map : I32 = map_new();
+let intern_table : StringVec = str_vec_new();
+let intern_map : Map = map_new();
 
 fn intern(s: *Str) : I32 => {
     if (map_has(intern_map, s)) {
@@ -123,12 +129,13 @@ fn get_intern(idx: I32) : *Str => {
 }
 
 // Keywords set
-let keywords : I32 = set_new();
+let keywords : Set = set_new();
 
 fn init_keywords() : I32 => {
     set_add(keywords, "fn");
     set_add(keywords, "let");
     set_add(keywords, "struct");
+    set_add(keywords, "enum");
     set_add(keywords, "type");
     set_add(keywords, "match");
     set_add(keywords, "case");
@@ -427,6 +434,7 @@ let NK_CLASS_FN_DECL : I32 = 16;
 let NK_EXTERN_FN_DECL : I32 = 17;
 let NK_EXTERN_LET_DECL : I32 = 18;
 let NK_EXTERN_TYPE_DECL : I32 = 19;
+let NK_ENUM_DECL : I32 = 60;
 
 let NK_NUMBER_LIT : I32 = 20;
 let NK_BOOL_LIT : I32 = 21;
@@ -460,12 +468,12 @@ let NK_STRUCT_PAT : I32 = 53;
 // AST Storage (array-based)
 // ============================================================================
 
-let node_kinds : I32 = vec_new();
-let node_data1 : I32 = vec_new();  // Generic data slot 1
-let node_data2 : I32 = vec_new();  // Generic data slot 2
-let node_data3 : I32 = vec_new();  // Generic data slot 3
-let node_data4 : I32 = vec_new();  // Generic data slot 4
-let node_data5 : I32 = vec_new();  // Generic data slot 5
+let node_kinds : Vec = vec_new();
+let node_data1 : Vec = vec_new();  // Generic data slot 1
+let node_data2 : Vec = vec_new();  // Generic data slot 2
+let node_data3 : Vec = vec_new();  // Generic data slot 3
+let node_data4 : Vec = vec_new();  // Generic data slot 4
+let node_data5 : Vec = vec_new();  // Generic data slot 5
 let node_count : I32 = 0;
 
 fn node_new(kind: I32) : I32 => {
@@ -481,11 +489,11 @@ fn node_new(kind: I32) : I32 => {
 }
 
 fn node_kind(idx: I32) : I32 => vec_get(node_kinds, idx);
-fn node_set_data1(idx: I32, v: I32) : I32 => { vec_set(node_data1, idx, v); 0 }
-fn node_set_data2(idx: I32, v: I32) : I32 => { vec_set(node_data2, idx, v); 0 }
-fn node_set_data3(idx: I32, v: I32) : I32 => { vec_set(node_data3, idx, v); 0 }
-fn node_set_data4(idx: I32, v: I32) : I32 => { vec_set(node_data4, idx, v); 0 }
-fn node_set_data5(idx: I32, v: I32) : I32 => { vec_set(node_data5, idx, v); 0 }
+fn node_set_data1(idx: I32, v: AnyValue) : I32 => { vec_set(node_data1, idx, v); 0 }
+fn node_set_data2(idx: I32, v: AnyValue) : I32 => { vec_set(node_data2, idx, v); 0 }
+fn node_set_data3(idx: I32, v: AnyValue) : I32 => { vec_set(node_data3, idx, v); 0 }
+fn node_set_data4(idx: I32, v: AnyValue) : I32 => { vec_set(node_data4, idx, v); 0 }
+fn node_set_data5(idx: I32, v: AnyValue) : I32 => { vec_set(node_data5, idx, v); 0 }
 fn node_get_data1(idx: I32) : I32 => vec_get(node_data1, idx);
 fn node_get_data2(idx: I32) : I32 => vec_get(node_data2, idx);
 fn node_get_data3(idx: I32) : I32 => vec_get(node_data3, idx);
@@ -1123,6 +1131,24 @@ fn p_parse_struct() : I32 => {
     node
 }
 
+fn p_parse_enum() : I32 => {
+    p_expect(TK_KEYWORD, "enum", "Expected 'enum'");
+    let name = p_parse_identifier();
+    p_expect(TK_SYMBOL, "{", "Expected '{' after enum name");
+    let variants = vec_new();
+    while (!p_at(TK_SYMBOL, "}")) {
+        vec_push(variants, p_parse_identifier());
+        if (p_at(TK_SYMBOL, ",") || p_at(TK_SYMBOL, ";")) {
+            p_eat();
+        }
+    }
+    p_expect(TK_SYMBOL, "}", "Expected '}' after enum body");
+    let node = node_new(NK_ENUM_DECL);
+    node_set_data1(node, name);
+    node_set_data2(node, variants);
+    node
+}
+
 fn p_parse_type_alias() : I32 => {
     p_expect(TK_KEYWORD, "type", "Expected 'type'");
     let name = p_parse_identifier();
@@ -1312,6 +1338,7 @@ fn p_parse_extern_decl() : I32 => {
 fn p_parse_statement() : I32 => {
     if (p_at(TK_KEYWORD, "let")) { return p_parse_let(); }
     if (p_at(TK_KEYWORD, "struct")) { return p_parse_struct(); }
+    if (p_at(TK_KEYWORD, "enum")) { return p_parse_enum(); }
     if (p_at(TK_KEYWORD, "type")) { return p_parse_type_alias(); }
     if (p_at(TK_KEYWORD, "fn")) { return p_parse_function(0); }
     if (p_at(TK_KEYWORD, "extern")) {
@@ -1417,7 +1444,7 @@ fn desugar(program: I32) : I32 => program;
 // Name Resolution - skip for now, minimal implementation
 // ============================================================================
 
-fn scope_define(scopes: I32, depth: I32, name: *Str) : I32 => {
+fn scope_define(scopes: Vec, depth: I32, name: *Str) : I32 => {
     let scope = vec_get(scopes, depth);
     if (set_has(scope, name)) {
         panic_with_code(
@@ -1431,7 +1458,7 @@ fn scope_define(scopes: I32, depth: I32, name: *Str) : I32 => {
     0
 }
 
-fn scope_has(scopes: I32, depth: I32, name: *Str) : Bool => {
+fn scope_has(scopes: Vec, depth: I32, name: *Str) : Bool => {
     let i = depth;
     while (i >= 0) {
         if (set_has(vec_get(scopes, i), name)) {
@@ -1442,7 +1469,7 @@ fn scope_has(scopes: I32, depth: I32, name: *Str) : Bool => {
     false
 }
 
-fn resolve_expr(n: I32, globals: I32, scopes: I32, depth: I32) : I32 => {
+fn resolve_expr(n: I32, globals: Set, scopes: Vec, depth: I32) : I32 => {
     if (n == 0) {
         return 0;
     }
@@ -1572,7 +1599,7 @@ fn resolve_expr(n: I32, globals: I32, scopes: I32, depth: I32) : I32 => {
     0
 }
 
-fn resolve_stmt(n: I32, globals: I32, scopes: I32, depth: I32) : I32 => {
+fn resolve_stmt(n: I32, globals: Set, scopes: Vec, depth: I32) : I32 => {
     if (n == 0) {
         return 0;
     }
@@ -1686,6 +1713,7 @@ fn resolve_names(program: I32) : I32 => {
             kind == NK_FN_DECL ||
             kind == NK_CLASS_FN_DECL ||
             kind == NK_STRUCT_DECL ||
+            kind == NK_ENUM_DECL ||
             kind == NK_TYPE_ALIAS ||
             kind == NK_LET_DECL ||
             kind == NK_EXTERN_FN_DECL ||
@@ -1722,7 +1750,7 @@ fn resolve_names(program: I32) : I32 => {
 // Typecheck - skip for now, minimal implementation
 // ============================================================================
 
-fn typecheck_expr(n: I32, fn_arities: I32) : I32 => {
+fn typecheck_expr(n: I32, fn_arities: Map) : I32 => {
     if (n == 0) {
         return 0;
     }
@@ -1833,7 +1861,7 @@ fn typecheck_expr(n: I32, fn_arities: I32) : I32 => {
     0
 }
 
-fn typecheck_stmt(n: I32, fn_arities: I32) : I32 => {
+fn typecheck_stmt(n: I32, fn_arities: Map) : I32 => {
     if (n == 0) {
         return 0;
     }
@@ -2271,6 +2299,30 @@ fn emit_stmt(n: I32) : *Str => {
         let name = get_interned_str(name_idx);
         return str_concat(str_concat("// type ", name), " = ...");
     }
+
+    if (kind == NK_ENUM_DECL) {
+        let name = get_interned_str(node_get_data1(n));
+        let variants = node_get_data2(n);
+        let sb = sb_new();
+        sb_append(sb, "const ");
+        sb_append(sb, name);
+        sb_append(sb, " = { ");
+        let i = 0;
+        let len = vec_length(variants);
+        while (i < len) {
+            if (i > 0) {
+                sb_append(sb, ", ");
+            }
+            let v = get_interned_str(vec_get(variants, i));
+            sb_append(sb, v);
+            sb_append(sb, ": { __tag: \"");
+            sb_append(sb, v);
+            sb_append(sb, "\" }");
+            i = i + 1;
+        }
+        sb_append(sb, " }; ");
+        return sb_build(sb);
+    }
     
     if (kind == NK_EXTERN_FN_DECL) {
         let name_idx = node_get_data1(n);
@@ -2463,7 +2515,7 @@ fn compile_source(source: *Str) : *Str => {
     generate_js(typed)
 }
 
-fn module_parts_to_relative_path(parts: I32) : *Str => {
+fn module_parts_to_relative_path(parts: Vec) : *Str => {
     let sb = sb_new();
     let i = 0;
     let len = vec_length(parts);
@@ -2478,7 +2530,7 @@ fn module_parts_to_relative_path(parts: I32) : *Str => {
     sb_build(sb)
 }
 
-fn join_sources(sources: I32) : *Str => {
+fn join_sources(sources: StringVec) : *Str => {
     let sb = sb_new();
     let i = 0;
     let len = str_vec_length(sources);
@@ -2492,7 +2544,7 @@ fn join_sources(sources: I32) : *Str => {
     sb_build(sb)
 }
 
-fn gather_module_sources(filePath: *Str, seen: I32, visiting: I32, sources: I32) : I32 => {
+fn gather_module_sources(filePath: *Str, seen: Set, visiting: Set, sources: StringVec) : I32 => {
     if (set_has(seen, filePath)) {
         return 0;
     }

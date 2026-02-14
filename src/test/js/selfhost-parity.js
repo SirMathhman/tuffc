@@ -126,6 +126,25 @@ if (jsFactorialResult !== selfhostFactorialResult) {
   );
 }
 
+const enumSource = `
+enum Color { Red, Blue }
+fn pick(c: Color) : I32 =>
+  match (c) {
+    case Red = 1;
+    case Blue = 2;
+  };
+fn main() : I32 => pick(Color.Blue);
+`;
+const jsEnum = compileSource(enumSource, "<parity-enum-js>").js;
+const selfhostEnum = selfhost.compile_source(enumSource);
+const jsEnumResult = runMainFromJs(jsEnum, "js-enum");
+const selfhostEnumResult = runMainFromJs(selfhostEnum, "selfhost-enum");
+if (jsEnumResult !== selfhostEnumResult) {
+  throw new Error(
+    `enum parity mismatch: js=${jsEnumResult}, selfhost=${selfhostEnumResult}`,
+  );
+}
+
 // 2) Module compile_file parity.
 const jsModuleOut = path.join(outDir, "module-js.js");
 const selfhostModuleOut = path.join(outDir, "module-selfhost.js");

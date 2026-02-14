@@ -76,12 +76,15 @@ export function typecheck(ast, options = {}) {
   const strictSafety = !!options.strictSafety;
 
   const structs = new Map();
+  const enums = new Map();
   const functions = new Map();
   const typeAliases = new Map();
 
   for (const node of ast.body) {
     if (node.kind === "StructDecl") {
       structs.set(node.name, node);
+    } else if (node.kind === "EnumDecl") {
+      enums.set(node.name, node);
     } else if (node.kind === "FnDecl" || node.kind === "ExternFnDecl") {
       functions.set(node.name, node);
     } else if (node.kind === "TypeAlias" || node.kind === "ExternTypeDecl") {
@@ -275,6 +278,8 @@ export function typecheck(ast, options = {}) {
         if (functions.has(expr.name))
           return { name: "Fn", min: null, max: null, nonZero: false };
         if (structs.has(expr.name))
+          return { name: expr.name, min: null, max: null, nonZero: false };
+        if (enums.has(expr.name))
           return { name: expr.name, min: null, max: null, nonZero: false };
         return { name: "Unknown", min: null, max: null, nonZero: false };
       }

@@ -472,6 +472,19 @@ export function parse(tokens) {
     return { kind: "StructDecl", name, generics, fields };
   };
 
+  const parseEnum = () => {
+    expect("keyword", "enum");
+    const name = parseIdentifier();
+    expect("symbol", "{", "Expected '{' after enum name");
+    const variants = [];
+    while (!at("symbol", "}")) {
+      variants.push(parseIdentifier());
+      if (at("symbol", ",") || at("symbol", ";")) eat();
+    }
+    expect("symbol", "}", "Expected '}' after enum body");
+    return { kind: "EnumDecl", name, variants };
+  };
+
   const parseTypeAlias = () => {
     expect("keyword", "type");
     const name = parseIdentifier();
@@ -509,6 +522,7 @@ export function parse(tokens) {
   const parseStatement = () => {
     if (at("keyword", "let")) return parseLetDecl();
     if (at("keyword", "struct")) return parseStruct();
+    if (at("keyword", "enum")) return parseEnum();
     if (at("keyword", "type")) return parseTypeAlias();
     if (at("keyword", "fn")) return parseFunction(false);
     if (at("keyword", "extern")) {

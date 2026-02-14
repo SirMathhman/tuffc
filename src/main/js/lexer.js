@@ -4,6 +4,7 @@ const KEYWORDS = new Set([
   "fn",
   "let",
   "struct",
+  "enum",
   "type",
   "match",
   "case",
