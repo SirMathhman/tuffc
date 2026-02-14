@@ -39,7 +39,7 @@ extern fn vec_push(this: Vec<T>, item: T) : Vec<T>;
 extern fn vec_pop(this: Vec<T>) : I32;
 extern fn vec_get(this: Vec<T>, i: I32) : T;
 extern fn vec_set(this: Vec<T>, i: I32, v: T) : Vec<T>;
-extern fn vec_length(this: Vec<T>) : I32;
+extern fn vec_length(this: Vec<T>) : USize;
 extern fn vec_clear(this: Vec<T>) : Vec<T>;
 extern fn vec_join(this: Vec<T>, sep: *Str) : *Str;
 extern fn vec_includes(this: Vec<T>, item: T) : Bool;
