@@ -55,6 +55,8 @@ extern fn str_vec_length(arr: I32) : I32;
 
 extern fn read_file(filePath: *Str) : *Str;
 extern fn write_file(filePath: *Str, contents: *Str) : I32;
+extern fn path_join(a: *Str, b: *Str) : *Str;
+extern fn path_dirname(p: *Str) : *Str;
 
 extern fn print(s: *Str) : I32;
 extern fn print_error(s: *Str) : I32;
@@ -1951,9 +1953,71 @@ fn compile_source(source: *Str) : *Str => {
     generate_js(typed)
 }
 
+fn module_parts_to_relative_path(parts: I32) : *Str => {
+    let sb = sb_new();
+    let i = 0;
+    let len = vec_length(parts);
+    while (i < len) {
+        if (i > 0) {
+            sb_append(sb, "/");
+        }
+        sb_append(sb, get_interned_str(vec_get(parts, i)));
+        i = i + 1;
+    }
+    sb_append(sb, ".tuff");
+    sb_build(sb)
+}
+
+fn join_sources(sources: I32) : *Str => {
+    let sb = sb_new();
+    let i = 0;
+    let len = str_vec_length(sources);
+    while (i < len) {
+        if (i > 0) {
+            sb_append(sb, "\n\n");
+        }
+        sb_append(sb, str_vec_get(sources, i));
+        i = i + 1;
+    }
+    sb_build(sb)
+}
+
+fn gather_module_sources(filePath: *Str, seen: I32, sources: I32) : I32 => {
+    if (set_has(seen, filePath)) {
+        return 0;
+    }
+    set_add(seen, filePath);
+
+    let source = read_file(filePath);
+    lex_init(source);
+    lex_all();
+    parse_init();
+    let program = p_parse_program();
+    let stmts = node_get_data1(program);
+
+    let i = 0;
+    let len = vec_length(stmts);
+    while (i < len) {
+        let stmt = vec_get(stmts, i);
+        if (node_kind(stmt) == NK_IMPORT_DECL) {
+            let parts = node_get_data2(stmt);
+            let rel = module_parts_to_relative_path(parts);
+            let depPath = path_join(path_dirname(filePath), rel);
+            gather_module_sources(depPath, seen, sources);
+        }
+        i = i + 1;
+    }
+
+    str_vec_push(sources, source);
+    0
+}
+
 fn compile_file(inputPath: *Str, outputPath: *Str) : I32 => {
-    let source = read_file(inputPath);
-    let js = compile_source(source);
+    let seen = set_new();
+    let sources = str_vec_new();
+    gather_module_sources(inputPath, seen, sources);
+    let merged = join_sources(sources);
+    let js = compile_source(merged);
     write_file(outputPath, js)
 }
 

@@ -4,6 +4,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import { TuffError } from "./errors.js";
 
 // === String operations ===
 export function str_length(s) {
@@ -208,13 +209,33 @@ export function set_size(s) {
 
 // === I/O ===
 export function read_file(filePath) {
-  return fs.readFileSync(filePath, "utf8");
+  try {
+    return fs.readFileSync(filePath, "utf8");
+  } catch (error) {
+    throw new TuffError(`Failed to read file: ${filePath}`, null, {
+      code: "E_SELFHOST_PANIC",
+      reason:
+        "The self-hosted compiler could not load a required source file while resolving inputs/modules.",
+      fix: "Verify the file path and module layout, then retry compilation.",
+      details: error?.message,
+    });
+  }
 }
 
 export function write_file(filePath, contents) {
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.writeFileSync(filePath, contents, "utf8");
-  return 0;
+  try {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, contents, "utf8");
+    return 0;
+  } catch (error) {
+    throw new TuffError(`Failed to write file: ${filePath}`, null, {
+      code: "E_SELFHOST_PANIC",
+      reason:
+        "The self-hosted compiler could not persist generated output to disk.",
+      fix: "Verify output path permissions and directory accessibility, then retry.",
+      details: error?.message,
+    });
+  }
 }
 
 export function file_exists(filePath) {
@@ -244,7 +265,12 @@ export function print_error(s) {
 
 // === Misc ===
 export function panic(msg) {
-  throw new Error(msg);
+  throw new TuffError(msg, null, {
+    code: "E_SELFHOST_PANIC",
+    reason:
+      "The self-hosted compiler encountered an unrecoverable internal parse/compile condition.",
+    fix: "Check the reported source construct and simplify or correct the syntax; if valid, add a targeted selfhost frontend test and patch the selfhost parser pipeline.",
+  });
 }
 
 // === String Vector (for intern table) ===

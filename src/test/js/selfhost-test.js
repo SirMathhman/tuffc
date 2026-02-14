@@ -159,8 +159,10 @@ try {
   if (normalize(selfhostB) === normalize(selfhostC)) {
     console.log("  -> Bootstrap equivalence verified: B == C");
   } else {
-    console.error("  -> Warning: selfhost_b.js and selfhost_c.js differ");
-    // Not a hard failure - small differences may be acceptable
+    console.error(
+      "  -> Bootstrap equivalence failed: selfhost_b.js and selfhost_c.js differ",
+    );
+    process.exit(1);
   }
 } catch (err) {
   console.error("Bootstrap failed:", err.message);

@@ -24,7 +24,9 @@ Implements Phase 1 / Stage 0 from `SELF-HOST.md`:
 1. Build self-hosted compiler artifacts: `bun run build`
 2. Run tests: `bun run test`
 3. Run lint pass: `bun run lint`
-4. Compile file: `node ./src/main/js/cli.js compile ./src/test/tuff/cases/factorial.tuff -o ./tests/out/factorial.js`
+4. Run selfhost module verification only: `bun run selfhost:modules`
+5. Run selfhost diagnostics verification only: `bun run selfhost:diagnostics`
+6. Compile file: `node ./src/main/js/cli.js compile ./src/test/tuff/cases/factorial.tuff -o ./tests/out/factorial.js`
 
 ## Phase 2 / Stage 1
 
