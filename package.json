@@ -23,10 +23,14 @@
     "cli:verify": "tsx ./src/test/js/cli-hardening.ts",
     "selfhost:modules": "tsx ./src/test/js/selfhost-modules.ts",
     "selfhost:diagnostics": "tsx ./src/test/js/selfhost-diagnostics.ts",
-    "selfhost:parity": "tsx ./src/test/js/selfhost-parity.ts"
+    "selfhost:parity": "tsx ./src/test/js/selfhost-parity.ts",
+    "web:verify": "tsx ./src/test/js/web-compiler-api.ts",
+    "build:web": "esbuild ./src/main/js/web-compiler.ts --bundle --platform=browser --format=iife --global-name=TuffCompiler --target=es2020 --minify --sourcemap --outfile=./tests/out/web/tuff-compiler.min.js",
+    "build:web:esm": "esbuild ./src/main/js/web-compiler.ts --bundle --platform=browser --format=esm --target=es2020 --minify --sourcemap --outfile=./tests/out/web/tuff-compiler.esm.js"
   },
   "devDependencies": {
     "@types/node": "^25.2.3",
+    "esbuild": "^0.25.11",
     "eslint": "^10.0.0",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",

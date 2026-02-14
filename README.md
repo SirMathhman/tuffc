@@ -98,6 +98,45 @@ Run Phase 4 verification only:
 
 - `bun run stage4:verify`
 
+## Browser/website tech-demo bundle
+
+You can ship the Stage 0 compiler as a browser bundle and compile Tuff source
+directly in a website.
+
+Build outputs:
+
+- IIFE/global bundle: `tests/out/web/tuff-compiler.min.js`
+- ESM bundle: `tests/out/web/tuff-compiler.esm.js`
+
+Build commands:
+
+- `npm run build:web`
+- `npm run build:web:esm`
+
+API exposed by the bundle:
+
+- `compileTuffToJs(source, options?) -> string`
+- `compileTuffToJsResult(source, options?) -> { ok, value | error }`
+- `compileTuffToJsDiagnostics(source, options?) -> diagnostic-safe object`
+
+Example (`build:web` global bundle):
+
+```html
+<script src="/assets/tuff-compiler.min.js"></script>
+<script>
+  const tuffCode = `fn main() : I32 => 42;`;
+  const jsCode = window.TuffCompiler.compileTuffToJs(tuffCode, {
+    typecheck: { strictSafety: true },
+    lint: { enabled: true, mode: "warn" },
+  });
+  console.log(jsCode);
+</script>
+```
+
+Sanity-check the browser API locally:
+
+- `npm run web:verify`
+
 ## Porting policy: no `throw` in compiler code
 
 For Tuff-portability, compiler code is migrating from exception-based
