@@ -756,9 +756,7 @@ export function typecheck(
               genericBindings,
             );
 
-            // Skip strict type checking for extern functions
-            const isExtern = fn.kind === "ExternFnDecl";
-            if (!isExtern && expr.args.length !== fn.params.length) {
+            if (expr.args.length !== fn.params.length) {
               return err(
                 new TuffError(
                   `Function ${fn.name} expects ${fn.params.length} args, got ${expr.args.length}`,
@@ -766,36 +764,34 @@ export function typecheck(
                 ),
               );
             }
-            if (!isExtern) {
-              for (let idx = 0; idx < expr.args.length; idx++) {
-                const argType = argTypes[idx];
-                const expectedInfo = resolveTypeInfo(fn.params[idx].type);
-                const expected = expectedInfo.name ?? argType.name;
-                if (
-                  expected &&
-                  argType.name !== "Unknown" &&
-                  expected !== argType.name &&
-                  !isTypeVariableName(expected) &&
-                  !isTypeVariableName(argType.name) &&
-                  !areCompatibleNumericTypes(expected, argType.name, argType) &&
-                  !typeAliases.has(expected)
-                ) {
-                  return err(
-                    new TuffError(
-                      `Type mismatch in call to ${fn.name} arg ${idx + 1}: expected ${expected}, got ${argType.name}`,
-                      expr.loc,
-                    ),
-                  );
-                }
+            for (let idx = 0; idx < expr.args.length; idx++) {
+              const argType = argTypes[idx];
+              const expectedInfo = resolveTypeInfo(fn.params[idx].type);
+              const expected = expectedInfo.name ?? argType.name;
+              if (
+                expected &&
+                argType.name !== "Unknown" &&
+                expected !== argType.name &&
+                !isTypeVariableName(expected) &&
+                !isTypeVariableName(argType.name) &&
+                !areCompatibleNumericTypes(expected, argType.name, argType) &&
+                !typeAliases.has(expected)
+              ) {
+                return err(
+                  new TuffError(
+                    `Type mismatch in call to ${fn.name} arg ${idx + 1}: expected ${expected}, got ${argType.name}`,
+                    expr.loc,
+                  ),
+                );
+              }
 
-                if (strictSafety && expectedInfo.nonZero && !argType.nonZero) {
-                  return err(
-                    new TuffError(
-                      `Call to ${fn.name} requires arg ${idx + 1} to be proven non-zero`,
-                      expr.loc,
-                    ),
-                  );
-                }
+              if (strictSafety && expectedInfo.nonZero && !argType.nonZero) {
+                return err(
+                  new TuffError(
+                    `Call to ${fn.name} requires arg ${idx + 1} to be proven non-zero`,
+                    expr.loc,
+                  ),
+                );
               }
             }
             return ok(resolveTypeInfo(resolvedReturnType));

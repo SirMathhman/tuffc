@@ -76,6 +76,12 @@ expectCompileFail(
   "Cannot prove array index bound safety",
 );
 
+expectCompileFail(
+  "extern-call-type-mismatch",
+  `extern fn takesI32(x : I32) : I32;\nfn bad() : I32 => takesI32(true);`,
+  "Type mismatch in call to takesI32 arg 1",
+);
+
 expectCompileOk(
   "match-exhaustive",
   `struct Some<T> { value : I32 }\nstruct None<T> {}\ntype Option<T> = Some<T> | None<T>;\nfn f(o : Option<I32>) : I32 => match (o) { case Some { value } = value; case None = 0; };`,
