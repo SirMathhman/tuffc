@@ -9,7 +9,7 @@
 // Extern declarations - these come from runtime.js
 // ============================================================================
 
-extern fn str_length(this: *Str) : I32;
+extern fn str_length(this: *Str) : USize;
 extern fn str_char_at(this: *Str, i: I32) : I32;
 extern fn str_char(this: *Str, i: I32) : *Str;
 extern fn str_slice(this: *Str, start: I32, end: I32) : *Str;
@@ -163,7 +163,7 @@ let lex_source : *Str = "";
 let lex_pos : I32 = 0;
 let lex_line : I32 = 1;
 let lex_col : I32 = 1;
-let lex_len : I32 = 0;
+let lex_len : USize = 0;
 
 fn lex_init(source: *Str) : I32 => {
     lex_source = source;
