@@ -135,4 +135,40 @@ for (const key of ["source", "cause", "reason", "fix"]) {
   }
 }
 
+// 4) Receiver-call syntax for extern `this` parameter + lint suggestion.
+const receiverExtern = `extern fn str_length(this: *Str) : I32;`;
+
+try {
+  compileSource(
+    `${receiverExtern}\nfn main() : I32 => "abc".str_length();`,
+    "<receiver-syntax>",
+    {
+      lint: { enabled: true },
+    },
+  );
+} catch (error) {
+  console.error(
+    `Expected receiver-call syntax to compile/lint cleanly, got: ${error.message}`,
+  );
+  process.exit(1);
+}
+
+try {
+  compileSource(
+    `${receiverExtern}\nfn main() : I32 => str_length("abc");`,
+    "<receiver-lint>",
+    {
+      lint: { enabled: true },
+    },
+  );
+  console.error("Expected lint failure for free-function receiver extern call");
+  process.exit(1);
+} catch (error) {
+  const diag = toDiagnostic(error);
+  if (diag.code !== "E_LINT_PREFER_RECEIVER_CALL") {
+    console.error(`Expected E_LINT_PREFER_RECEIVER_CALL, got ${diag.code}`);
+    process.exit(1);
+  }
+}
+
 console.log("Phase 4 production diagnostics checks passed");

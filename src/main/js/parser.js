@@ -183,29 +183,92 @@ export function parse(tokens) {
     return { kind: "NamePattern", name };
   };
 
+  const parsePostfix = (baseExpr) => {
+    let expr = baseExpr;
+    while (true) {
+      if (at("symbol", "(")) {
+        eat();
+        const args = [];
+        if (!at("symbol", ")")) {
+          do {
+            args.push(parseExpression());
+            if (!at("symbol", ",")) break;
+            eat();
+          } while (true);
+        }
+        expect("symbol", ")", "Expected ')' after call args");
+
+        if (expr.kind === "MemberExpr") {
+          // Receiver-call sugar: value.method(a, b) => method(value, a, b)
+          expr = {
+            kind: "CallExpr",
+            callee: { kind: "Identifier", name: expr.property, loc: expr.loc },
+            args: [expr.object, ...args],
+            loc: expr.loc,
+            callStyle: "method-sugar",
+          };
+        } else {
+          expr = { kind: "CallExpr", callee: expr, args, loc: expr.loc };
+        }
+        continue;
+      }
+      if (at("symbol", ".")) {
+        eat();
+        expr = {
+          kind: "MemberExpr",
+          object: expr,
+          property: parseIdentifier(),
+          loc: expr.loc,
+        };
+        continue;
+      }
+      if (at("symbol", "[")) {
+        eat();
+        const index = parseExpression();
+        expect("symbol", "]", "Expected ']' after index");
+        expr = { kind: "IndexExpr", target: expr, index, loc: expr.loc };
+        continue;
+      }
+      break;
+    }
+    return expr;
+  };
+
   const parsePrimary = () => {
     if (at("number")) {
       const t = eat();
-      return { kind: "NumberLiteral", value: Number(t.value), loc: t.loc };
+      return parsePostfix({
+        kind: "NumberLiteral",
+        value: Number(t.value),
+        loc: t.loc,
+      });
     }
     if (at("bool")) {
       const t = eat();
-      return { kind: "BoolLiteral", value: !!t.value, loc: t.loc };
+      return parsePostfix({
+        kind: "BoolLiteral",
+        value: !!t.value,
+        loc: t.loc,
+      });
     }
     if (at("string")) {
       const t = eat();
-      return { kind: "StringLiteral", value: t.value, loc: t.loc };
+      return parsePostfix({
+        kind: "StringLiteral",
+        value: t.value,
+        loc: t.loc,
+      });
     }
     if (at("char")) {
       const t = eat();
-      return { kind: "CharLiteral", value: t.value, loc: t.loc };
+      return parsePostfix({ kind: "CharLiteral", value: t.value, loc: t.loc });
     }
 
     if (at("symbol", "(")) {
       eat();
       const expr = parseExpression();
       expect("symbol", ")", "Expected ')' after expression");
-      return expr;
+      return parsePostfix(expr);
     }
 
     if (at("keyword", "if")) {
@@ -219,7 +282,13 @@ export function parse(tokens) {
         eat();
         elseBranch = at("symbol", "{") ? parseBlock() : parseExpression();
       }
-      return { kind: "IfExpr", condition, thenBranch, elseBranch, loc: start };
+      return parsePostfix({
+        kind: "IfExpr",
+        condition,
+        thenBranch,
+        elseBranch,
+        loc: start,
+      });
     }
 
     if (at("keyword", "match")) {
@@ -238,7 +307,7 @@ export function parse(tokens) {
         cases.push({ pattern, body });
       }
       expect("symbol", "}", "Expected '}' for match");
-      return { kind: "MatchExpr", target, cases, loc: start };
+      return parsePostfix({ kind: "MatchExpr", target, cases, loc: start });
     }
 
     if (at("identifier")) {
@@ -267,41 +336,7 @@ export function parse(tokens) {
         };
       }
 
-      while (true) {
-        if (at("symbol", "(")) {
-          eat();
-          const args = [];
-          if (!at("symbol", ")")) {
-            do {
-              args.push(parseExpression());
-              if (!at("symbol", ",")) break;
-              eat();
-            } while (true);
-          }
-          expect("symbol", ")", "Expected ')' after call args");
-          expr = { kind: "CallExpr", callee: expr, args, loc: expr.loc };
-          continue;
-        }
-        if (at("symbol", ".")) {
-          eat();
-          expr = {
-            kind: "MemberExpr",
-            object: expr,
-            property: parseIdentifier(),
-            loc: expr.loc,
-          };
-          continue;
-        }
-        if (at("symbol", "[")) {
-          eat();
-          const index = parseExpression();
-          expect("symbol", "]", "Expected ']' after index");
-          expr = { kind: "IndexExpr", target: expr, index, loc: expr.loc };
-          continue;
-        }
-        break;
-      }
-      return expr;
+      return parsePostfix(expr);
     }
 
     throw new TuffError(

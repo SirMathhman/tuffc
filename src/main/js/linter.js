@@ -28,6 +28,18 @@ export function lintProgram(ast, options = {}) {
   const issues = [];
   const declaredLets = new Map();
   const identifierReads = new Set();
+  const receiverExternFns = new Set();
+
+  for (const node of ast.body ?? []) {
+    if (
+      node?.kind === "ExternFnDecl" &&
+      Array.isArray(node.params) &&
+      node.params.length > 0 &&
+      node.params[0]?.name === "this"
+    ) {
+      receiverExternFns.add(node.name);
+    }
+  }
 
   walkNode(ast, (node) => {
     if (node.kind === "LetDecl") {
@@ -36,6 +48,28 @@ export function lintProgram(ast, options = {}) {
 
     if (node.kind === "Identifier") {
       identifierReads.add(node.name);
+    }
+
+    if (
+      node.kind === "CallExpr" &&
+      node.callee?.kind === "Identifier" &&
+      receiverExternFns.has(node.callee.name) &&
+      (node.callStyle ?? "") !== "method-sugar" &&
+      Array.isArray(node.args) &&
+      node.args.length > 0
+    ) {
+      issues.push(
+        new TuffError(
+          `Prefer receiver-call syntax for '${node.callee.name}'`,
+          node.loc ?? null,
+          {
+            code: "E_LINT_PREFER_RECEIVER_CALL",
+            reason:
+              "This extern function declares a receiver as its first 'this' parameter, so calling it as a free function is less idiomatic.",
+            fix: `Rewrite '${node.callee.name}(x, ...)' as 'x.${node.callee.name}(...)'.`,
+          },
+        ),
+      );
     }
 
     if (node.kind === "Block" && node.statements?.length === 0) {

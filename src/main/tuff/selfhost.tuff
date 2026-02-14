@@ -9,7 +9,20 @@
 // Extern declarations - these come from runtime.js
 // ============================================================================
 
-extern fn str_length(s: *Str) : I32;
+/*
+extern fn str_length(this: *Str) : I32;
+
+Support this syntax, so instead of
+
+str_length("test")
+
+do
+
+"test".str_length()
+
+Then, add a linter warning to suggest this
+*/
+extern fn str_length(this: *Str) : I32;
 extern fn str_char_at(s: *Str, i: I32) : I32;
 extern fn str_char(s: *Str, i: I32) : *Str;
 extern fn str_slice(s: *Str, start: I32, end: I32) : *Str;
@@ -742,13 +755,78 @@ fn p_parse_pattern() : I32 => {
     node
 }
 
+fn p_parse_postfix(exprIn: I32) : I32 => {
+    let expr = exprIn;
+    while (true) {
+        if (p_at(TK_SYMBOL, "(")) {
+            p_eat();
+            let args = vec_new();
+            if (!p_at(TK_SYMBOL, ")")) {
+                vec_push(args, p_parse_expression(0));
+                while (p_at(TK_SYMBOL, ",")) {
+                    p_eat();
+                    vec_push(args, p_parse_expression(0));
+                }
+            }
+            p_expect(TK_SYMBOL, ")", "Expected ')'");
+
+            if (node_kind(expr) == NK_MEMBER_EXPR) {
+                // Receiver-call sugar: value.method(a, b) => method(value, a, b)
+                let recv = node_get_data1(expr);
+                let prop = node_get_data2(expr);
+                let lowered_args = vec_new();
+                vec_push(lowered_args, recv);
+                let ai = 0;
+                let alen = vec_length(args);
+                while (ai < alen) {
+                    vec_push(lowered_args, vec_get(args, ai));
+                    ai = ai + 1;
+                }
+                let callee = node_new(NK_IDENTIFIER);
+                node_set_data1(callee, prop);
+                let call = node_new(NK_CALL_EXPR);
+                node_set_data1(call, callee);
+                node_set_data2(call, lowered_args);
+                expr = call;
+            } else {
+                let call = node_new(NK_CALL_EXPR);
+                node_set_data1(call, expr);
+                node_set_data2(call, args);
+                expr = call;
+            }
+            continue;
+        }
+        if (p_at(TK_SYMBOL, ".")) {
+            p_eat();
+            let prop = p_parse_identifier();
+            let member = node_new(NK_MEMBER_EXPR);
+            node_set_data1(member, expr);
+            node_set_data2(member, prop);
+            expr = member;
+            continue;
+        }
+        if (p_at(TK_SYMBOL, "[")) {
+            p_eat();
+            let idx_expr = p_parse_expression(0);
+            p_expect(TK_SYMBOL, "]", "Expected ']'");
+            let idx_node = node_new(NK_INDEX_EXPR);
+            node_set_data1(idx_node, expr);
+            node_set_data2(idx_node, idx_expr);
+            expr = idx_node;
+            continue;
+        }
+        break;
+    }
+    expr
+}
+
 fn p_parse_primary() : I32 => {
     // Number
     if (p_at_kind(TK_NUMBER)) {
         let t = p_eat();
         let node = node_new(NK_NUMBER_LIT);
         node_set_data1(node, tok_value(t));
-        return node;
+        return p_parse_postfix(node);
     }
     
     // Bool
@@ -756,7 +834,7 @@ fn p_parse_primary() : I32 => {
         let t = p_eat();
         let node = node_new(NK_BOOL_LIT);
         node_set_data1(node, tok_value(t));
-        return node;
+        return p_parse_postfix(node);
     }
     
     // String
@@ -764,7 +842,7 @@ fn p_parse_primary() : I32 => {
         let t = p_eat();
         let node = node_new(NK_STRING_LIT);
         node_set_data1(node, tok_value(t));
-        return node;
+        return p_parse_postfix(node);
     }
     
     // Char
@@ -772,7 +850,7 @@ fn p_parse_primary() : I32 => {
         let t = p_eat();
         let node = node_new(NK_CHAR_LIT);
         node_set_data1(node, tok_value(t));
-        return node;
+        return p_parse_postfix(node);
     }
     
     // Parenthesized expression
@@ -780,7 +858,7 @@ fn p_parse_primary() : I32 => {
         p_eat();
         let expr = p_parse_expression(0);
         p_expect(TK_SYMBOL, ")", "Expected ')'");
-        return expr;
+        return p_parse_postfix(expr);
     }
     
     // If expression
@@ -799,7 +877,7 @@ fn p_parse_primary() : I32 => {
         node_set_data1(node, cond);
         node_set_data2(node, then_branch);
         node_set_data3(node, else_branch);
-        return node;
+        return p_parse_postfix(node);
     }
     
     // Match expression
@@ -864,48 +942,7 @@ fn p_parse_primary() : I32 => {
             expr = init_node;
         }
         
-        // Postfix: call, member, index
-        while (true) {
-            if (p_at(TK_SYMBOL, "(")) {
-                p_eat();
-                let args = vec_new();
-                if (!p_at(TK_SYMBOL, ")")) {
-                    vec_push(args, p_parse_expression(0));
-                    while (p_at(TK_SYMBOL, ",")) {
-                        p_eat();
-                        vec_push(args, p_parse_expression(0));
-                    }
-                }
-                p_expect(TK_SYMBOL, ")", "Expected ')'");
-                let call = node_new(NK_CALL_EXPR);
-                node_set_data1(call, expr);
-                node_set_data2(call, args);
-                expr = call;
-                continue;
-            }
-            if (p_at(TK_SYMBOL, ".")) {
-                p_eat();
-                let prop = p_parse_identifier();
-                let member = node_new(NK_MEMBER_EXPR);
-                node_set_data1(member, expr);
-                node_set_data2(member, prop);
-                expr = member;
-                continue;
-            }
-            if (p_at(TK_SYMBOL, "[")) {
-                p_eat();
-                let idx_expr = p_parse_expression(0);
-                p_expect(TK_SYMBOL, "]", "Expected ']'");
-                let idx_node = node_new(NK_INDEX_EXPR);
-                node_set_data1(idx_node, expr);
-                node_set_data2(idx_node, idx_expr);
-                expr = idx_node;
-                continue;
-            }
-            break;
-        }
-        
-        return expr;
+        return p_parse_postfix(expr);
     }
     
     panic("Unexpected token in expression");
