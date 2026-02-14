@@ -215,4 +215,16 @@ expectBothFail(
   "E_RESOLVE_SHADOWING",
 );
 
+// 8) Function call arity mismatch parity (first type-semantics gate).
+const aritySource = `
+fn add(a: I32, b: I32) : I32 => a + b;
+fn main() : I32 => add(1);
+`;
+
+expectBothFail(
+  () => compileSource(aritySource, "<arity-js>"),
+  () => selfhost.compile_source(aritySource),
+  "arity-mismatch parity",
+);
+
 console.log("Selfhost differential parity checks passed");

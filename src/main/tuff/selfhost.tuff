@@ -1722,7 +1722,215 @@ fn resolve_names(program: I32) : I32 => {
 // Typecheck - skip for now, minimal implementation
 // ============================================================================
 
-fn typecheck_program(program: I32) : I32 => program;
+fn typecheck_expr(n: I32, fn_arities: I32) : I32 => {
+    if (n == 0) {
+        return 0;
+    }
+
+    let kind = node_kind(n);
+
+    if (kind == NK_BINARY_EXPR) {
+        typecheck_expr(node_get_data2(n), fn_arities);
+        typecheck_expr(node_get_data3(n), fn_arities);
+        return 0;
+    }
+
+    if (kind == NK_UNARY_EXPR || kind == NK_UNWRAP_EXPR) {
+        if (kind == NK_UNARY_EXPR) {
+            typecheck_expr(node_get_data2(n), fn_arities);
+        } else {
+            typecheck_expr(node_get_data1(n), fn_arities);
+        }
+        return 0;
+    }
+
+    if (kind == NK_CALL_EXPR) {
+        let callee = node_get_data1(n);
+        let args = node_get_data2(n);
+        let actual = vec_length(args);
+
+        if (node_kind(callee) == NK_IDENTIFIER) {
+            let fname = get_interned_str(node_get_data1(callee));
+            if (map_has(fn_arities, fname)) {
+                let expected = map_get(fn_arities, fname);
+                if (expected != actual) {
+                    let msg = str_concat(
+                        str_concat(
+                            str_concat("Function ", fname),
+                            str_concat(" expects ", int_to_string(expected))
+                        ),
+                        str_concat(" args, got ", int_to_string(actual))
+                    );
+                    panic_with_code(
+                        "E_TYPE_ARG_COUNT",
+                        msg,
+                        "A function call provided a different number of arguments than the function signature requires.",
+                        "Pass exactly the number of parameters declared by the function."
+                    );
+                }
+            }
+        }
+
+        typecheck_expr(callee, fn_arities);
+        let i = 0;
+        while (i < actual) {
+            typecheck_expr(vec_get(args, i), fn_arities);
+            i = i + 1;
+        }
+        return 0;
+    }
+
+    if (kind == NK_MEMBER_EXPR) {
+        typecheck_expr(node_get_data1(n), fn_arities);
+        return 0;
+    }
+
+    if (kind == NK_INDEX_EXPR) {
+        typecheck_expr(node_get_data1(n), fn_arities);
+        typecheck_expr(node_get_data2(n), fn_arities);
+        return 0;
+    }
+
+    if (kind == NK_STRUCT_INIT) {
+        let fields = node_get_data2(n);
+        let i = 0;
+        let len = vec_length(fields);
+        while (i < len) {
+            let field = vec_get(fields, i);
+            typecheck_expr(vec_get(field, 1), fn_arities);
+            i = i + 1;
+        }
+        return 0;
+    }
+
+    if (kind == NK_IF_EXPR) {
+        typecheck_expr(node_get_data1(n), fn_arities);
+        typecheck_stmt(node_get_data2(n), fn_arities);
+        if (node_get_data3(n) != 0) {
+            typecheck_stmt(node_get_data3(n), fn_arities);
+        }
+        return 0;
+    }
+
+    if (kind == NK_MATCH_EXPR) {
+        typecheck_expr(node_get_data1(n), fn_arities);
+        let cases = node_get_data2(n);
+        let i = 0;
+        let len = vec_length(cases);
+        while (i < len) {
+            let case_node = vec_get(cases, i);
+            typecheck_stmt(vec_get(case_node, 1), fn_arities);
+            i = i + 1;
+        }
+        return 0;
+    }
+
+    if (kind == NK_IS_EXPR) {
+        typecheck_expr(node_get_data1(n), fn_arities);
+        return 0;
+    }
+
+    0
+}
+
+fn typecheck_stmt(n: I32, fn_arities: I32) : I32 => {
+    if (n == 0) {
+        return 0;
+    }
+
+    let kind = node_kind(n);
+
+    if (kind == NK_BLOCK) {
+        let stmts = node_get_data1(n);
+        let i = 0;
+        let len = vec_length(stmts);
+        while (i < len) {
+            typecheck_stmt(vec_get(stmts, i), fn_arities);
+            i = i + 1;
+        }
+        return 0;
+    }
+
+    if (kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL) {
+        typecheck_stmt(node_get_data5(n), fn_arities);
+        return 0;
+    }
+
+    if (kind == NK_LET_DECL) {
+        typecheck_expr(node_get_data3(n), fn_arities);
+        return 0;
+    }
+
+    if (kind == NK_EXPR_STMT) {
+        typecheck_expr(node_get_data1(n), fn_arities);
+        return 0;
+    }
+
+    if (kind == NK_ASSIGN_STMT) {
+        typecheck_expr(node_get_data1(n), fn_arities);
+        typecheck_expr(node_get_data2(n), fn_arities);
+        return 0;
+    }
+
+    if (kind == NK_RETURN_STMT) {
+        typecheck_expr(node_get_data1(n), fn_arities);
+        return 0;
+    }
+
+    if (kind == NK_IF_STMT) {
+        typecheck_expr(node_get_data1(n), fn_arities);
+        typecheck_stmt(node_get_data2(n), fn_arities);
+        if (node_get_data3(n) != 0) {
+            typecheck_stmt(node_get_data3(n), fn_arities);
+        }
+        return 0;
+    }
+
+    if (kind == NK_FOR_STMT) {
+        typecheck_expr(node_get_data2(n), fn_arities);
+        typecheck_expr(node_get_data3(n), fn_arities);
+        typecheck_stmt(node_get_data4(n), fn_arities);
+        return 0;
+    }
+
+    if (kind == NK_WHILE_STMT) {
+        typecheck_expr(node_get_data1(n), fn_arities);
+        typecheck_stmt(node_get_data2(n), fn_arities);
+        return 0;
+    }
+
+    // Fallback: treat unmatched nodes as expressions.
+    typecheck_expr(n, fn_arities);
+    0
+}
+
+fn typecheck_program(program: I32) : I32 => {
+    let fn_arities = map_new();
+    let body = node_get_data1(program);
+
+    // Collect function signatures (including extern fns).
+    let i = 0;
+    let len = vec_length(body);
+    while (i < len) {
+        let stmt = vec_get(body, i);
+        let kind = node_kind(stmt);
+        if (kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL || kind == NK_EXTERN_FN_DECL) {
+            let name = get_interned_str(node_get_data1(stmt));
+            let params = node_get_data3(stmt);
+            map_set(fn_arities, name, vec_length(params));
+        }
+        i = i + 1;
+    }
+
+    // Check calls across whole program.
+    i = 0;
+    while (i < len) {
+        typecheck_stmt(vec_get(body, i), fn_arities);
+        i = i + 1;
+    }
+
+    program
+}
 
 // ============================================================================
 // JavaScript Code Generation
