@@ -6,7 +6,7 @@ import { formatDiagnostic, toDiagnostic } from "./errors.js";
 
 function printUsage() {
   console.log(
-    "Usage:\n  tuff compile <input.tuff> [-o output.js] [--stage2] [--modules] [--module-base <dir>] [--lint] [--lint-fix] [--lint-strict] [--json-errors] [--trace-passes]",
+    "Usage:\n  tuff compile <input.tuff> [-o output.js] [--stage2] [--modules] [--module-base <dir>] [--selfhost|--stage0] [--lint] [--lint-fix] [--lint-strict] [--json-errors] [--trace-passes]",
   );
 }
 
@@ -47,6 +47,7 @@ function main(argv) {
   let modules = false;
   let moduleBaseDir = null;
   let jsonErrors = false;
+  let requestedBackend = null;
   let lint = false;
   let lintFix = false;
   let lintStrict = false;
@@ -85,6 +86,14 @@ function main(argv) {
       jsonErrors = true;
       continue;
     }
+    if (args[i] === "--selfhost") {
+      requestedBackend = "selfhost";
+      continue;
+    }
+    if (args[i] === "--stage0") {
+      requestedBackend = "stage0";
+      continue;
+    }
     if (args[i] === "--lint") {
       lint = true;
       continue;
@@ -115,6 +124,18 @@ function main(argv) {
     return;
   }
 
+  const selfhostRequested = args.includes("--selfhost");
+  const stage0Requested = args.includes("--stage0");
+  if (selfhostRequested && stage0Requested) {
+    console.error("Options --selfhost and --stage0 are mutually exclusive");
+    printUsage();
+    process.exitCode = 1;
+    return;
+  }
+
+  const backend =
+    requestedBackend ?? (lint || tracePasses ? "stage0" : "selfhost");
+
   try {
     const {
       outputPath,
@@ -122,6 +143,7 @@ function main(argv) {
       lintFixesApplied = 0,
       lintFixedSource = null,
     } = compileFile(path.resolve(input), output, {
+      backend,
       enableModules: modules,
       modules: {
         moduleBaseDir: moduleBaseDir ?? path.dirname(path.resolve(input)),

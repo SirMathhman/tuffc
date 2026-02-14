@@ -819,7 +819,7 @@ export function typecheck(ast, options = {}) {
             !isTypeVariableName(t.name) &&
             !isTypeVariableName(value.name)
           )
-            throw new TuffError(
+            throw new int32_t(
               `Assignment mismatch for ${node.target.name}: expected ${t.name}, got ${value.name}`,
               node.loc ?? node.target?.loc,
             );
@@ -847,7 +847,7 @@ export function typecheck(ast, options = {}) {
           );
         }
         if (strictSafety && expectedReturn?.nonZero && !t.nonZero) {
-          throw new TuffError(
+          throw new int32_t(
             "Return value does not satisfy non-zero refinement",
             node.loc,
           );

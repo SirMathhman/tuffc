@@ -39,6 +39,22 @@ try {
   }
 }
 
+// 1b) Selfhost backend should also enforce strict-safety diagnostics contract.
+try {
+  compileSource(`fn bad(x : I32) : I32 => 100 / x;`, "<phase4-selfhost>", {
+    backend: "selfhost",
+    typecheck: { strictSafety: true },
+  });
+  console.error("Selfhost strict-safety test expected compile failure");
+  process.exit(1);
+} catch (error) {
+  const diag = toDiagnostic(error);
+  if (diag.code !== "E_SAFETY_DIV_BY_ZERO") {
+    console.error(`Expected E_SAFETY_DIV_BY_ZERO (selfhost), got ${diag.code}`);
+    process.exit(1);
+  }
+}
+
 // 2) Ensure CLI emits machine-readable JSON diagnostics.
 const failingFile = path.join(outDir, "cli-fail.tuff");
 fs.writeFileSync(failingFile, `fn bad(x : I32) : I32 => 100 / x;`, "utf8");
@@ -259,6 +275,23 @@ try {
   const diag = toDiagnostic(error);
   if (diag.code !== "E_LINT_FILE_TOO_LONG") {
     console.error(`Expected E_LINT_FILE_TOO_LONG, got ${diag.code}`);
+    process.exit(1);
+  }
+}
+
+try {
+  compileSource(longEffectiveLinesSource, "<lint-file-too-long-selfhost>", {
+    backend: "selfhost",
+    lint: { enabled: true, mode: "error" },
+  });
+  console.error(
+    "Expected selfhost strict lint failure for >500 effective lines",
+  );
+  process.exit(1);
+} catch (error) {
+  const diag = toDiagnostic(error);
+  if (diag.code !== "E_LINT_FILE_TOO_LONG") {
+    console.error(`Expected E_LINT_FILE_TOO_LONG (selfhost), got ${diag.code}`);
     process.exit(1);
   }
 }

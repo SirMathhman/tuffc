@@ -1,5 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
+import vm from "node:vm";
+import { fileURLToPath } from "node:url";
 import { lex } from "./lexer.js";
 import { parse } from "./parser.js";
 import { desugar } from "./desugar.js";
@@ -8,6 +10,78 @@ import { typecheck } from "./typecheck.js";
 import { autoFixProgram, lintProgram } from "./linter.js";
 import { generateJavaScript } from "./codegen-js.js";
 import { TuffError, enrichError } from "./errors.js";
+import * as runtime from "./runtime.js";
+
+let cachedSelfhost = null;
+
+function toPosixPath(value) {
+  return value.replaceAll("\\", "/");
+}
+
+function getSelfhostEntryPath() {
+  const thisFile = fileURLToPath(import.meta.url);
+  return path.resolve(path.dirname(thisFile), "..", "tuff", "selfhost.tuff");
+}
+
+function bootstrapSelfhostCompiler(options = {}) {
+  if (cachedSelfhost) return cachedSelfhost;
+
+  const selfhostEntry = getSelfhostEntryPath();
+  const selfhostOutput = path.join(
+    path.dirname(selfhostEntry),
+    "selfhost.generated.js",
+  );
+
+  const stage0Result = compileFile(selfhostEntry, selfhostOutput, {
+    ...options,
+    backend: "stage0",
+    enableModules: true,
+    modules: { moduleBaseDir: path.dirname(selfhostEntry) },
+    typecheck: {
+      ...(options.typecheck ?? {}),
+      strictSafety: false,
+    },
+    resolve: {
+      ...(options.resolve ?? {}),
+      hostBuiltins: Object.keys(runtime),
+      allowHostPrefix: "",
+    },
+    lint: { enabled: false },
+  });
+
+  const sandbox = {
+    module: { exports: {} },
+    exports: {},
+    console,
+    ...runtime,
+  };
+
+  vm.runInNewContext(
+    `${stage0Result.js}\nmodule.exports = { compile_source, compile_file, compile_source_with_options, compile_file_with_options, main };`,
+    sandbox,
+    { filename: toPosixPath(selfhostOutput) },
+  );
+
+  const compiled = sandbox.module.exports;
+  if (
+    typeof compiled?.compile_source !== "function" ||
+    typeof compiled?.compile_file !== "function"
+  ) {
+    throw new TuffError(
+      "Selfhost compiler bootstrap exports are incomplete",
+      null,
+      {
+        code: "E_SELFHOST_BOOTSTRAP_FAILED",
+        reason:
+          "The generated selfhost JavaScript did not expose the expected compiler entry points.",
+        fix: "Ensure selfhost.tuff exports compile_source and compile_file and re-run bootstrap.",
+      },
+    );
+  }
+
+  cachedSelfhost = compiled;
+  return cachedSelfhost;
+}
 
 function createTracer(enabled) {
   const trace = !!enabled;
@@ -166,6 +240,49 @@ function loadModuleGraph(entryPath, options = {}) {
 }
 
 export function compileSource(source, filePath = "<memory>", options = {}) {
+  if ((options.backend ?? "stage0") === "selfhost") {
+    if (options.lint?.fix) {
+      throw new TuffError(
+        "Selfhost backend does not support lint auto-fix yet",
+        null,
+        {
+          code: "E_SELFHOST_UNSUPPORTED_OPTION",
+          reason:
+            "Selfhost backend currently supports strict file-length lint checks but not source auto-fix rewriting.",
+          fix: "Use backend: 'stage0' with --lint-fix, or disable lint auto-fix in selfhost mode.",
+        },
+      );
+    }
+
+    try {
+      const selfhost = bootstrapSelfhostCompiler(options);
+      const strictSafety = options.typecheck?.strictSafety ? 1 : 0;
+      const lintEnabled =
+        options.lint?.enabled && options.lint?.mode !== "warn" ? 1 : 0;
+      const maxEffectiveLines = options.lint?.maxEffectiveLines ?? 500;
+      const js =
+        typeof selfhost.compile_source_with_options === "function"
+          ? selfhost.compile_source_with_options(
+              source,
+              strictSafety,
+              lintEnabled,
+              maxEffectiveLines,
+            )
+          : selfhost.compile_source(source);
+      return {
+        tokens: [],
+        cst: { kind: "Program", body: [] },
+        core: { kind: "Program", body: [] },
+        js,
+        lintIssues: [],
+        lintFixesApplied: 0,
+        lintFixedSource: source,
+      };
+    } catch (error) {
+      throw enrichError(error, { source });
+    }
+  }
+
   const run = createTracer(options.tracePasses);
   try {
     const tokens = run("lex", () => lex(source, filePath));
@@ -206,6 +323,82 @@ export function compileSource(source, filePath = "<memory>", options = {}) {
 }
 
 export function compileFile(inputPath, outputPath = null, options = {}) {
+  if ((options.backend ?? "stage0") === "selfhost") {
+    const absInput = path.resolve(inputPath);
+    const finalOutput = outputPath ?? absInput.replace(/\.tuff$/i, ".js");
+
+    try {
+      const selfhost = bootstrapSelfhostCompiler(options);
+      if (options.lint?.fix) {
+        throw new TuffError(
+          "Selfhost backend does not support lint auto-fix yet",
+          null,
+          {
+            code: "E_SELFHOST_UNSUPPORTED_OPTION",
+            reason:
+              "Selfhost backend currently supports strict file-length lint checks but not source auto-fix rewriting.",
+            fix: "Use backend: 'stage0' with --lint-fix, or disable lint auto-fix in selfhost mode.",
+          },
+        );
+      }
+
+      const strictSafety = options.typecheck?.strictSafety ? 1 : 0;
+      const lintEnabled =
+        options.lint?.enabled && options.lint?.mode !== "warn" ? 1 : 0;
+      const maxEffectiveLines = options.lint?.maxEffectiveLines ?? 500;
+
+      let js;
+      if (options.enableModules) {
+        const normalizedInput = toPosixPath(absInput);
+        const normalizedOutput = toPosixPath(finalOutput);
+        if (typeof selfhost.compile_file_with_options === "function") {
+          selfhost.compile_file_with_options(
+            normalizedInput,
+            normalizedOutput,
+            strictSafety,
+            lintEnabled,
+            maxEffectiveLines,
+          );
+        } else {
+          selfhost.compile_file(normalizedInput, normalizedOutput);
+        }
+        js = fs.readFileSync(finalOutput, "utf8");
+      } else {
+        const source = fs.readFileSync(absInput, "utf8");
+        js =
+          typeof selfhost.compile_source_with_options === "function"
+            ? selfhost.compile_source_with_options(
+                source,
+                strictSafety,
+                lintEnabled,
+                maxEffectiveLines,
+              )
+            : selfhost.compile_source(source);
+        fs.mkdirSync(path.dirname(finalOutput), { recursive: true });
+        fs.writeFileSync(finalOutput, js, "utf8");
+      }
+
+      return {
+        source: fs.readFileSync(absInput, "utf8"),
+        tokens: [],
+        cst: { kind: "Program", body: [] },
+        core: { kind: "Program", body: [] },
+        js,
+        lintIssues: [],
+        lintFixesApplied: 0,
+        lintFixedSource: null,
+        outputPath: finalOutput,
+      };
+    } catch (error) {
+      throw enrichError(error, {
+        sourceByFile: new Map([[absInput, fs.readFileSync(absInput, "utf8")]]),
+        source: fs.existsSync(absInput)
+          ? fs.readFileSync(absInput, "utf8")
+          : null,
+      });
+    }
+  }
+
   const run = createTracer(options.tracePasses);
   const useModules = !!options.enableModules;
   let result;

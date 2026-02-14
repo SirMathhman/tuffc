@@ -4,6 +4,7 @@
  */
 
 let { compile_file } = selfhost::module_loader;
+let { compile_file_with_options } = selfhost::module_loader;
 let { selfhost_runtime_lexer_marker } = selfhost::runtime_lexer;
 let { selfhost_parser_core_marker } = selfhost::parser_core;
 let { selfhost_parser_expr_marker } = selfhost::parser_expr;
@@ -13,23 +14,29 @@ let { selfhost_typecheck_marker } = selfhost::typecheck;
 let { selfhost_codegen_expr_marker } = selfhost::codegen_expr;
 let { selfhost_codegen_stmt_marker } = selfhost::codegen_stmt;
 let { lex_init, lex_all } = selfhost::runtime_lexer;
+let { lint_assert_file_length } = selfhost::runtime_lexer;
 let { parse_init } = selfhost::parser_core;
 let { p_parse_program, desugar } = selfhost::parser_decls;
 let { resolve_names } = selfhost::resolver;
-let { typecheck_program } = selfhost::typecheck;
+let { typecheck_program, typecheck_program_with_options } = selfhost::typecheck;
 let { generate_js } = selfhost::codegen_stmt;
 
-// Main compiler pipeline
-fn compile_source(source: *Str) : *Str => {
+out fn compile_source_with_options(source: *Str, strict_safety: I32, lint_enabled: I32, max_effective_lines: I32) : *Str => {
     lex_init(source);
     lex_all();
+    if (lint_enabled == 1) {
+        lint_assert_file_length("<memory>", max_effective_lines);
+    }
     parse_init();
     let program = p_parse_program();
     let desugared = desugar(program);
     let resolved = resolve_names(desugared);
-    let typed = typecheck_program(resolved);
+    let typed = typecheck_program_with_options(resolved, strict_safety);
     generate_js(typed)
 }
+
+// Main compiler pipeline
+fn compile_source(source: *Str) : *Str => compile_source_with_options(source, 0, 0, 500);
 
 // Entry point for testing
 fn main() : I32 => {

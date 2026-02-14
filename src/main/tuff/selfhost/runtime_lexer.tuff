@@ -401,4 +401,34 @@ out fn lex_all() : I32 => {
     tok_count
 }
 
+fn count_effective_token_lines() : I32 => {
+    let seen = map_new();
+    let count = 0;
+    let i = 0;
+    while (i < tok_count) {
+        if (tok_kind(i) != TK_EOF) {
+            let line = tok_lines.vec_get(i);
+            if (!seen.map_has(line)) {
+                seen.map_set(line, 1);
+                count = count + 1;
+            }
+        }
+        i = i + 1;
+    }
+    count
+}
+
+out fn lint_assert_file_length(filePath: *Str, maxEffectiveLines: I32) : I32 => {
+    let count = count_effective_token_lines();
+    if (count > maxEffectiveLines) {
+        panic_with_code(
+            "E_LINT_FILE_TOO_LONG",
+            "File exceeds ".str_concat(int_to_string(maxEffectiveLines)).str_concat(" effective lines (".str_concat(int_to_string(count)).str_concat(")")),
+            "Large files are harder to review and maintain; this file exceeds the maximum effective line budget after excluding comments and blank lines.",
+            "Split this file into smaller modules so each file has at most ".str_concat(int_to_string(maxEffectiveLines)).str_concat(" non-comment, non-whitespace lines.")
+        );
+    }
+    0
+}
+
 out fn selfhost_runtime_lexer_marker() : I32 => 0;
