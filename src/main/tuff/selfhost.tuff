@@ -63,7 +63,6 @@ extern fn print(s: *Str) : I32;
 extern fn print_error(s: *Str) : I32;
 extern fn panic(msg: *Str) : I32;
 extern fn panic_with_code(code: *Str, msg: *Str, reason: *Str, fix: *Str) : I32;
-extern type AnyValue;
 
 // ============================================================================
 // Token Kinds
@@ -483,6 +482,8 @@ fn node_new(kind: I32) : I32 => {
 }
 
 fn node_kind(idx: I32) : I32 => node_kinds.vec_get(idx);
+
+extern type AnyValue;
 fn node_set_data1(idx: I32, v: AnyValue) : I32 => { node_data1.vec_set(idx, v); 0 }
 fn node_set_data2(idx: I32, v: AnyValue) : I32 => { node_data2.vec_set(idx, v); 0 }
 fn node_set_data3(idx: I32, v: AnyValue) : I32 => { node_data3.vec_set(idx, v); 0 }
