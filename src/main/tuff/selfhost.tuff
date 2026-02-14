@@ -48,11 +48,11 @@ extern fn map_set(this: Map<K, V>, k: K, v: V) : Map<K, V>;
 extern fn map_get(this: Map<K, V>, k: K) : I32;
 extern fn map_has(this: Map<K, V>, k: K) : Bool;
 
-extern type Set;
-extern fn set_new() : Set;
-extern fn set_add(this: Set, item: *Str) : Set;
-extern fn set_has(this: Set, item: *Str) : Bool;
-extern fn set_delete(this: Set, item: *Str) : Bool;
+extern type Set<T>;
+extern fn set_new() : Set<T>;
+extern fn set_add(this: Set<T>, item: T) : Set<T>;
+extern fn set_has(this: Set<T>, item: T) : Bool;
+extern fn set_delete(this: Set<T>, item: T) : Bool;
 
 extern fn read_file(filePath: *Str) : *Str;
 extern fn write_file(filePath: *Str, contents: *Str) : I32;
