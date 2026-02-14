@@ -1,3 +1,6 @@
+let { p_at, p_eat, p_expect, p_parse_identifier, p_at_kind, p_peek, p_parse_pattern, node_kind, node_new, node_set_data1, node_set_data2, node_set_data3, node_get_data1, node_get_data2, node_get_data3 } = selfhost::parser_core;
+let { tok_value } = selfhost::runtime_lexer;
+
 fn p_parse_postfix(exprIn: I32) : I32 => {
     let expr = exprIn;
     while (true) {

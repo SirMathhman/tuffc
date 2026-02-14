@@ -2,6 +2,8 @@
 // AST Node Kinds
 // ============================================================================
 
+let { tok_kind, tok_value, get_intern } = selfhost::runtime_lexer;
+
 let NK_PROGRAM : I32 = 1;
 let NK_FN_DECL : I32 = 2;
 let NK_STRUCT_DECL : I32 = 3;
@@ -63,7 +65,7 @@ let node_data4 : Vec<I32> = vec_new();  // Generic data slot 4
 let node_data5 : Vec<I32> = vec_new();  // Generic data slot 5
 let node_count : I32 = 0;
 
-fn node_new(kind: I32) : I32 => {
+out fn node_new(kind: I32) : I32 => {
     let idx = node_count;
     node_kinds.vec_push(kind);
     node_data1.vec_push(0);
@@ -75,19 +77,19 @@ fn node_new(kind: I32) : I32 => {
     idx
 }
 
-fn node_kind(idx: I32) : I32 => node_kinds.vec_get(idx);
+out fn node_kind(idx: I32) : I32 => node_kinds.vec_get(idx);
 
 extern type AnyValue;
-fn node_set_data1(idx: I32, v: AnyValue) : I32 => { node_data1.vec_set(idx, v); 0 }
-fn node_set_data2(idx: I32, v: AnyValue) : I32 => { node_data2.vec_set(idx, v); 0 }
-fn node_set_data3(idx: I32, v: AnyValue) : I32 => { node_data3.vec_set(idx, v); 0 }
-fn node_set_data4(idx: I32, v: AnyValue) : I32 => { node_data4.vec_set(idx, v); 0 }
-fn node_set_data5(idx: I32, v: AnyValue) : I32 => { node_data5.vec_set(idx, v); 0 }
-fn node_get_data1(idx: I32) : I32 => node_data1.vec_get(idx);
-fn node_get_data2(idx: I32) : I32 => node_data2.vec_get(idx);
-fn node_get_data3(idx: I32) : I32 => node_data3.vec_get(idx);
-fn node_get_data4(idx: I32) : I32 => node_data4.vec_get(idx);
-fn node_get_data5(idx: I32) : I32 => node_data5.vec_get(idx);
+out fn node_set_data1(idx: I32, v: AnyValue) : I32 => { node_data1.vec_set(idx, v); 0 }
+out fn node_set_data2(idx: I32, v: AnyValue) : I32 => { node_data2.vec_set(idx, v); 0 }
+out fn node_set_data3(idx: I32, v: AnyValue) : I32 => { node_data3.vec_set(idx, v); 0 }
+out fn node_set_data4(idx: I32, v: AnyValue) : I32 => { node_data4.vec_set(idx, v); 0 }
+out fn node_set_data5(idx: I32, v: AnyValue) : I32 => { node_data5.vec_set(idx, v); 0 }
+out fn node_get_data1(idx: I32) : I32 => node_data1.vec_get(idx);
+out fn node_get_data2(idx: I32) : I32 => node_data2.vec_get(idx);
+out fn node_get_data3(idx: I32) : I32 => node_data3.vec_get(idx);
+out fn node_get_data4(idx: I32) : I32 => node_data4.vec_get(idx);
+out fn node_get_data5(idx: I32) : I32 => node_data5.vec_get(idx);
 
 // ============================================================================
 // Parser
@@ -96,7 +98,7 @@ fn node_get_data5(idx: I32) : I32 => node_data5.vec_get(idx);
 let parse_pos : I32 = 0;
 let parse_exports : Set<*Str> = set_new();
 
-fn parse_init() : I32 => {
+out fn parse_init() : I32 => {
     parse_pos = 0;
     parse_exports = set_new();
     // Clear node arrays for fresh compilation
@@ -110,7 +112,7 @@ fn parse_init() : I32 => {
     0
 }
 
-fn p_peek(offset: I32) : I32 => {
+out fn p_peek(offset: I32) : I32 => {
     let idx = parse_pos + offset;
     if (idx >= tok_count) {
         tok_count - 1
@@ -119,43 +121,43 @@ fn p_peek(offset: I32) : I32 => {
     }
 }
 
-fn p_at_kind(kind: I32) : Bool => tok_kind(p_peek(0)) == kind;
+out fn p_at_kind(kind: I32) : Bool => tok_kind(p_peek(0)) == kind;
 
-fn p_at_value(val: *Str) : Bool => {
+out fn p_at_value(val: *Str) : Bool => {
     let v = tok_value(p_peek(0));
     intern_map.map_has(val) && intern_map.map_get(val) == v
 }
 
-fn p_at(kind: I32, val: *Str) : Bool => p_at_kind(kind) && p_at_value(val);
+out fn p_at(kind: I32, val: *Str) : Bool => p_at_kind(kind) && p_at_value(val);
 
-fn p_eat() : I32 => {
+out fn p_eat() : I32 => {
     let t = p_peek(0);
     parse_pos = parse_pos + 1;
     t
 }
 
-fn p_expect_kind(kind: I32, msg: *Str) : I32 => {
+out fn p_expect_kind(kind: I32, msg: *Str) : I32 => {
     if (!p_at_kind(kind)) {
         panic(msg);
     }
     p_eat()
 }
 
-fn p_expect(kind: I32, val: *Str, msg: *Str) : I32 => {
+out fn p_expect(kind: I32, val: *Str, msg: *Str) : I32 => {
     if (!p_at(kind, val)) {
         panic(msg);
     }
     p_eat()
 }
 
-fn p_parse_identifier() : I32 => {
+out fn p_parse_identifier() : I32 => {
     let t = p_expect_kind(TK_IDENTIFIER, "Expected identifier");
     tok_value(t)
 }
 
 // Note: No forward declarations needed - JS hoists functions
 
-fn p_can_start_type_tok() : Bool => {
+out fn p_can_start_type_tok() : Bool => {
     if (p_at_kind(TK_IDENTIFIER)) { return true; }
     if (p_at(TK_SYMBOL, "*")) { return true; }
     if (p_at(TK_SYMBOL, "[")) { return true; }
@@ -163,7 +165,7 @@ fn p_can_start_type_tok() : Bool => {
     false
 }
 
-fn p_can_start_type_tok_at(offset: I32) : Bool => {
+out fn p_can_start_type_tok_at(offset: I32) : Bool => {
     let idx = p_peek(offset);
     let k = tok_kind(idx);
     if (k == TK_IDENTIFIER) {
@@ -178,7 +180,7 @@ fn p_can_start_type_tok_at(offset: I32) : Bool => {
     false
 }
 
-fn p_can_start_refinement_expr() : Bool => {
+out fn p_can_start_refinement_expr() : Bool => {
     if (p_at_kind(TK_NUMBER)) { return true; }
     if (p_at_kind(TK_IDENTIFIER)) { return true; }
     if (p_at_kind(TK_BOOL)) { return true; }
@@ -189,7 +191,7 @@ fn p_can_start_refinement_expr() : Bool => {
     false
 }
 
-fn p_parse_type() : I32 => {
+out fn p_parse_type() : I32 => {
     // Pointer type
     if (p_at(TK_SYMBOL, "*")) {
         p_eat();
@@ -300,7 +302,7 @@ fn p_parse_type() : I32 => {
     type_node
 }
 
-fn p_parse_pattern() : I32 => {
+out fn p_parse_pattern() : I32 => {
     // Wildcard
     if (p_at(TK_SYMBOL, "_") || p_at(TK_IDENTIFIER, "_")) {
         p_eat();

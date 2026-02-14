@@ -142,14 +142,27 @@ function loadModuleGraph(entryPath, options = {}) {
 
   visit(entryPath);
 
+  const moduleImportsByPath = new Map();
+  for (const [filePath, meta] of moduleMetaByPath.entries()) {
+    const importedNames = new Set();
+    for (const imp of meta.imports ?? []) {
+      for (const name of imp.names ?? []) {
+        importedNames.add(name);
+      }
+    }
+    moduleImportsByPath.set(filePath, importedNames);
+  }
+
   const merged = {
     kind: "Program",
     body: ordered.flatMap((unit) =>
-      unit.core.body.filter((n) => n.kind !== "ImportDecl"),
+      unit.core.body
+        .filter((n) => n.kind !== "ImportDecl")
+        .map((n) => ({ ...n, __modulePath: unit.filePath })),
     ),
   };
 
-  return { ordered, merged };
+  return { ordered, merged, moduleImportsByPath };
 }
 
 export function compileSource(source, filePath = "<memory>", options = {}) {
@@ -203,7 +216,13 @@ export function compileFile(inputPath, outputPath = null, options = {}) {
       graph = run("load-module-graph", () =>
         loadModuleGraph(inputPath, options.modules ?? {}),
       );
-      run("resolve", () => resolveNames(graph.merged, options.resolve ?? {}));
+      run("resolve", () =>
+        resolveNames(graph.merged, {
+          ...(options.resolve ?? {}),
+          strictModuleImports: options.resolve?.strictModuleImports ?? true,
+          moduleImportsByPath: graph.moduleImportsByPath,
+        }),
+      );
       run("typecheck", () => typecheck(graph.merged, options.typecheck ?? {}));
       const mergedSource = graph.ordered
         .map((unit) => unit.source)

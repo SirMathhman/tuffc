@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
-import { compileSource } from "../../main/js/compiler.js";
+import { compileFile, compileSource } from "../../main/js/compiler.js";
 import { toDiagnostic } from "../../main/js/errors.js";
 
 const thisFile = fileURLToPath(import.meta.url);
@@ -277,6 +277,71 @@ try {
 } catch (error) {
   console.error(
     `Expected comment-only/blank lines to be excluded from line-count lint, got: ${error.message}`,
+  );
+  process.exit(1);
+}
+
+// 8) Strict module-mode resolve should reject implicit cross-module references.
+const strictModuleDir = path.join(outDir, "strict-modules");
+fs.mkdirSync(strictModuleDir, { recursive: true });
+
+const exportedModule = path.join(strictModuleDir, "defs.tuff");
+const implicitConsumerModule = path.join(strictModuleDir, "app_implicit.tuff");
+const explicitConsumerModule = path.join(strictModuleDir, "app_explicit.tuff");
+
+fs.writeFileSync(
+  exportedModule,
+  [
+    "out fn exported_value() : I32 => 7;",
+    "out fn other_value() : I32 => 11;",
+    "",
+  ].join("\n"),
+  "utf8",
+);
+fs.writeFileSync(
+  implicitConsumerModule,
+  [
+    "let { exported_value } = defs;",
+    "fn helper() : I32 => other_value();",
+    "",
+  ].join("\n"),
+  "utf8",
+);
+fs.writeFileSync(
+  explicitConsumerModule,
+  [
+    "let { exported_value, other_value } = defs;",
+    "fn helper() : I32 => other_value();",
+    "",
+  ].join("\n"),
+  "utf8",
+);
+
+try {
+  compileFile(implicitConsumerModule, null, {
+    enableModules: true,
+    modules: { moduleBaseDir: strictModuleDir },
+  });
+  console.error(
+    "Expected strict module import failure for implicit cross-module symbol usage",
+  );
+  process.exit(1);
+} catch (error) {
+  const diag = toDiagnostic(error);
+  if (diag.code !== "E_MODULE_IMPLICIT_IMPORT") {
+    console.error(`Expected E_MODULE_IMPLICIT_IMPORT, got ${diag.code}`);
+    process.exit(1);
+  }
+}
+
+try {
+  compileFile(explicitConsumerModule, null, {
+    enableModules: true,
+    modules: { moduleBaseDir: strictModuleDir },
+  });
+} catch (error) {
+  console.error(
+    `Expected explicit let-binding import to satisfy strict module resolve, got: ${error.message}`,
   );
   process.exit(1);
 }

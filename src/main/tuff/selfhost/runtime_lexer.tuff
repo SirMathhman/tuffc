@@ -94,8 +94,8 @@ fn tok_add(kind: I32, value: I32, line: I32, col: I32) : I32 => {
     idx
 }
 
-fn tok_kind(idx: I32) : I32 => tok_kinds.vec_get(idx);
-fn tok_value(idx: I32) : I32 => tok_values.vec_get(idx);
+out fn tok_kind(idx: I32) : I32 => tok_kinds.vec_get(idx);
+out fn tok_value(idx: I32) : I32 => tok_values.vec_get(idx);
 
 // String intern table - stores strings by index for reverse lookup
 let intern_table : Vec<*Str> = vec_new();
@@ -112,9 +112,11 @@ fn intern(s: *Str) : I32 => {
     }
 }
 
-fn get_intern(idx: I32) : *Str => {
+out fn get_intern(idx: I32) : *Str => {
     intern_table.vec_get(idx)
 }
+
+out fn get_interned_str(idx: I32) : *Str => get_intern(idx);
 
 // Keywords set
 let keywords : Set = set_new();
@@ -160,7 +162,7 @@ let lex_line : I32 = 1;
 let lex_col : I32 = 1;
 let lex_len : USize = 0;
 
-fn lex_init(source: *Str) : I32 => {
+out fn lex_init(source: *Str) : I32 => {
     lex_source = source;
     lex_pos = 0;
     lex_line = 1;
@@ -290,7 +292,7 @@ fn lex_check_two(a: I32, b: I32) : Bool => {
     lex_peek(0) == a && lex_peek(1) == b
 }
 
-fn lex_all() : I32 => {
+out fn lex_all() : I32 => {
     init_keywords();
     
     while (lex_pos < lex_len) {

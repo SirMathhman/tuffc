@@ -12,6 +12,12 @@ let { selfhost_resolver_marker } = selfhost::resolver;
 let { selfhost_typecheck_marker } = selfhost::typecheck;
 let { selfhost_codegen_expr_marker } = selfhost::codegen_expr;
 let { selfhost_codegen_stmt_marker } = selfhost::codegen_stmt;
+let { lex_init, lex_all } = selfhost::runtime_lexer;
+let { parse_init } = selfhost::parser_core;
+let { p_parse_program, desugar } = selfhost::parser_decls;
+let { resolve_names } = selfhost::resolver;
+let { typecheck_program } = selfhost::typecheck;
+let { generate_js } = selfhost::codegen_stmt;
 
 // Main compiler pipeline
 fn compile_source(source: *Str) : *Str => {
