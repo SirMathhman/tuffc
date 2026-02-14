@@ -19,6 +19,10 @@ const NUMERIC = new Set([
 
 const UNSIGNED = new Set(["U8", "U16", "U32", "U64", "U128", "USize"]);
 
+function isTypeVariableName(name) {
+  return typeof name === "string" && /^[A-Z]$/.test(name);
+}
+
 function named(type) {
   if (!type) return null;
   if (typeof type === "string") return type;
@@ -45,6 +49,7 @@ function cloneInfo(info) {
     arrayInit: info?.arrayInit ?? null,
     arrayTotal: info?.arrayTotal ?? null,
     unionTags: info?.unionTags ? [...info.unionTags] : null,
+    typeNode: info?.typeNode ?? null,
   };
 }
 
@@ -68,6 +73,149 @@ function intersectBounds(info, fact) {
   return out;
 }
 
+function substituteType(type, bindings) {
+  if (!type) return type;
+
+  if (type.kind === "NamedType") {
+    if (
+      (!type.genericArgs || type.genericArgs.length === 0) &&
+      bindings.has(type.name)
+    ) {
+      return bindings.get(type.name);
+    }
+    return {
+      ...type,
+      genericArgs: (type.genericArgs ?? []).map((g) =>
+        substituteType(g, bindings),
+      ),
+    };
+  }
+
+  if (type.kind === "PointerType") {
+    return { ...type, to: substituteType(type.to, bindings) };
+  }
+
+  if (type.kind === "ArrayType") {
+    return { ...type, element: substituteType(type.element, bindings) };
+  }
+
+  if (type.kind === "TupleType") {
+    return {
+      ...type,
+      members: (type.members ?? []).map((m) => substituteType(m, bindings)),
+    };
+  }
+
+  if (type.kind === "RefinementType") {
+    return { ...type, base: substituteType(type.base, bindings) };
+  }
+
+  if (type.kind === "UnionType") {
+    return {
+      ...type,
+      left: substituteType(type.left, bindings),
+      right: substituteType(type.right, bindings),
+    };
+  }
+
+  return type;
+}
+
+function bindGenericsFromTypes(paramType, argType, genericNames, bindings) {
+  if (!paramType || !argType) return;
+
+  if (paramType.kind === "NamedType") {
+    const pArgs = paramType.genericArgs ?? [];
+    if (pArgs.length === 0 && genericNames.has(paramType.name)) {
+      if (!bindings.has(paramType.name)) {
+        bindings.set(paramType.name, argType);
+      }
+      return;
+    }
+
+    if (argType.kind === "NamedType" && argType.name === paramType.name) {
+      const aArgs = argType.genericArgs ?? [];
+      const len = Math.min(pArgs.length, aArgs.length);
+      for (let i = 0; i < len; i++) {
+        bindGenericsFromTypes(pArgs[i], aArgs[i], genericNames, bindings);
+      }
+    }
+    return;
+  }
+
+  if (paramType.kind === "PointerType" && argType.kind === "PointerType") {
+    bindGenericsFromTypes(paramType.to, argType.to, genericNames, bindings);
+    return;
+  }
+
+  if (paramType.kind === "ArrayType" && argType.kind === "ArrayType") {
+    bindGenericsFromTypes(
+      paramType.element,
+      argType.element,
+      genericNames,
+      bindings,
+    );
+    return;
+  }
+
+  if (paramType.kind === "TupleType" && argType.kind === "TupleType") {
+    const pMembers = paramType.members ?? [];
+    const aMembers = argType.members ?? [];
+    const len = Math.min(pMembers.length, aMembers.length);
+    for (let i = 0; i < len; i++) {
+      bindGenericsFromTypes(pMembers[i], aMembers[i], genericNames, bindings);
+    }
+    return;
+  }
+
+  if (paramType.kind === "RefinementType") {
+    bindGenericsFromTypes(paramType.base, argType, genericNames, bindings);
+  }
+}
+
+function collectTypeVariables(type, knownTypeNames, out) {
+  if (!type) return;
+
+  if (type.kind === "NamedType") {
+    const args = type.genericArgs ?? [];
+    if (args.length === 0 && !knownTypeNames.has(type.name)) {
+      out.add(type.name);
+      return;
+    }
+    for (const arg of args) {
+      collectTypeVariables(arg, knownTypeNames, out);
+    }
+    return;
+  }
+
+  if (type.kind === "PointerType") {
+    collectTypeVariables(type.to, knownTypeNames, out);
+    return;
+  }
+
+  if (type.kind === "ArrayType") {
+    collectTypeVariables(type.element, knownTypeNames, out);
+    return;
+  }
+
+  if (type.kind === "TupleType") {
+    for (const member of type.members ?? []) {
+      collectTypeVariables(member, knownTypeNames, out);
+    }
+    return;
+  }
+
+  if (type.kind === "RefinementType") {
+    collectTypeVariables(type.base, knownTypeNames, out);
+    return;
+  }
+
+  if (type.kind === "UnionType") {
+    collectTypeVariables(type.left, knownTypeNames, out);
+    collectTypeVariables(type.right, knownTypeNames, out);
+  }
+}
+
 function literalNumber(expr) {
   return expr?.kind === "NumberLiteral" ? expr.value : null;
 }
@@ -79,6 +227,7 @@ export function typecheck(ast, options = {}) {
   const enums = new Map();
   const functions = new Map();
   const typeAliases = new Map();
+  const globalScope = new Map();
 
   for (const node of ast.body) {
     if (node.kind === "StructDecl") {
@@ -98,7 +247,13 @@ export function typecheck(ast, options = {}) {
   const resolveTypeInfo = (type, seenAliases = new Set()) => {
     if (!type) return { name: "Unknown", min: null, max: null, nonZero: false };
     if (typeof type === "string")
-      return { name: type, min: null, max: null, nonZero: false };
+      return {
+        name: type,
+        min: null,
+        max: null,
+        nonZero: false,
+        typeNode: null,
+      };
 
     if (type.kind === "NamedType") {
       const base = { name: type.name, min: null, max: null, nonZero: false };
@@ -118,6 +273,7 @@ export function typecheck(ast, options = {}) {
         );
         base.unionTags = aliasInfo.unionTags ?? null;
       }
+      base.typeNode = type;
       return base;
     }
 
@@ -152,6 +308,7 @@ export function typecheck(ast, options = {}) {
         max: null,
         nonZero: false,
         unionTags: [...new Set(tags)],
+        typeNode: type,
       };
     }
 
@@ -163,12 +320,13 @@ export function typecheck(ast, options = {}) {
         nonZero: false,
         arrayInit: literalNumber(type.init),
         arrayTotal: literalNumber(type.total),
+        typeNode: type,
       };
     }
 
     if (type.kind === "PointerType") {
       const inner = resolveTypeInfo(type.to, seenAliases);
-      return { ...inner, name: `*${inner.name}` };
+      return { ...inner, name: `*${inner.name}`, typeNode: type };
     }
 
     return {
@@ -176,8 +334,15 @@ export function typecheck(ast, options = {}) {
       min: null,
       max: null,
       nonZero: false,
+      typeNode: type,
     };
   };
+
+  for (const node of ast.body) {
+    if (node.kind === "LetDecl" && node.type) {
+      globalScope.set(node.name, resolveTypeInfo(node.type));
+    }
+  }
 
   const deriveFacts = (expr, assumeTrue) => {
     const facts = new Map();
@@ -274,6 +439,9 @@ export function typecheck(ast, options = {}) {
           const base = cloneInfo(scope.get(expr.name));
           const fact = facts.get(expr.name);
           return fact ? intersectBounds(base, fact) : base;
+        }
+        if (globalScope.has(expr.name)) {
+          return cloneInfo(globalScope.get(expr.name));
         }
         if (functions.has(expr.name))
           return { name: "Fn", min: null, max: null, nonZero: false };
@@ -422,6 +590,56 @@ export function typecheck(ast, options = {}) {
         if (expr.callee.kind === "Identifier") {
           const fn = functions.get(expr.callee.name);
           if (fn) {
+            const argTypes = expr.args.map((a) => inferExpr(a, scope, facts));
+
+            const genericBindings = new Map();
+            const genericNames = new Set(fn.generics ?? []);
+            const knownTypeNames = new Set([
+              ...typeAliases.keys(),
+              ...structs.keys(),
+              ...enums.keys(),
+              "I8",
+              "I16",
+              "I32",
+              "I64",
+              "I128",
+              "U8",
+              "U16",
+              "U32",
+              "U64",
+              "U128",
+              "USize",
+              "ISize",
+              "F32",
+              "F64",
+              "Bool",
+              "Char",
+              "AnyValue",
+              "Void",
+              "Unknown",
+            ]);
+            for (const p of fn.params ?? []) {
+              collectTypeVariables(p.type, knownTypeNames, genericNames);
+            }
+            collectTypeVariables(fn.returnType, knownTypeNames, genericNames);
+            for (let idx = 0; idx < expr.args.length; idx++) {
+              const paramType = fn.params[idx]?.type;
+              const argTypeNode = argTypes[idx]?.typeNode;
+              if (paramType && argTypeNode && genericNames.size > 0) {
+                bindGenericsFromTypes(
+                  paramType,
+                  argTypeNode,
+                  genericNames,
+                  genericBindings,
+                );
+              }
+            }
+
+            const resolvedReturnType = substituteType(
+              fn.returnType,
+              genericBindings,
+            );
+
             // Skip strict type checking for extern functions
             const isExtern = fn.kind === "ExternFnDecl";
             if (!isExtern && expr.args.length !== fn.params.length) {
@@ -432,13 +650,15 @@ export function typecheck(ast, options = {}) {
             }
             if (!isExtern) {
               for (let idx = 0; idx < expr.args.length; idx++) {
-                const argType = inferExpr(expr.args[idx], scope, facts);
+                const argType = argTypes[idx];
                 const expectedInfo = resolveTypeInfo(fn.params[idx].type);
                 const expected = expectedInfo.name ?? argType.name;
                 if (
                   expected &&
                   argType.name !== "Unknown" &&
                   expected !== argType.name &&
+                  !isTypeVariableName(expected) &&
+                  !isTypeVariableName(argType.name) &&
                   !areCompatibleNumericTypes(expected, argType.name, argType) &&
                   !typeAliases.has(expected)
                 ) {
@@ -456,10 +676,9 @@ export function typecheck(ast, options = {}) {
                 }
               }
             } else {
-              // Still infer types for extern call arguments
-              expr.args.forEach((a) => inferExpr(a, scope, facts));
+              // Extern args already inferred above.
             }
-            return resolveTypeInfo(fn.returnType);
+            return resolveTypeInfo(resolvedReturnType);
           }
         }
         expr.args.forEach((a) => inferExpr(a, scope, facts));
@@ -567,6 +786,8 @@ export function typecheck(ast, options = {}) {
           expected &&
           valueType.name !== "Unknown" &&
           expected !== valueType.name &&
+          !isTypeVariableName(expected) &&
+          !isTypeVariableName(valueType.name) &&
           !areCompatibleNumericTypes(expected, valueType.name, valueType) &&
           !typeAliases.has(expected)
         ) {
@@ -591,7 +812,13 @@ export function typecheck(ast, options = {}) {
         const value = inferExpr(node.value, scope, facts);
         if (node.target.kind === "Identifier") {
           const t = scope.get(node.target.name);
-          if (t && value.name !== "Unknown" && t.name !== value.name)
+          if (
+            t &&
+            value.name !== "Unknown" &&
+            t.name !== value.name &&
+            !isTypeVariableName(t.name) &&
+            !isTypeVariableName(value.name)
+          )
             throw new TuffError(
               `Assignment mismatch for ${node.target.name}: expected ${t.name}, got ${value.name}`,
               node.loc ?? node.target?.loc,
@@ -610,7 +837,9 @@ export function typecheck(ast, options = {}) {
           expectedReturn &&
           expectedReturn.name !== "Unknown" &&
           t.name !== "Unknown" &&
-          expectedReturn.name !== t.name
+          expectedReturn.name !== t.name &&
+          !isTypeVariableName(expectedReturn.name) &&
+          !isTypeVariableName(t.name)
         ) {
           throw new TuffError(
             `Return type mismatch: expected ${expectedReturn.name}, got ${t.name}`,
@@ -655,7 +884,7 @@ export function typecheck(ast, options = {}) {
         inferNode(node.body, new Map(scope), new Map(facts), expectedReturn);
         return { name: "Void", min: null, max: null, nonZero: false };
       case "FnDecl": {
-        const fnScope = new Map();
+        const fnScope = new Map(globalScope);
         const fnFacts = new Map();
         for (const p of node.params) {
           fnScope.set(p.name, resolveTypeInfo(p.type));
@@ -670,7 +899,9 @@ export function typecheck(ast, options = {}) {
           expected &&
           bodyType.name !== "Unknown" &&
           bodyType.name !== "Void" &&
-          bodyType.name !== expected
+          bodyType.name !== expected &&
+          !isTypeVariableName(expected) &&
+          !isTypeVariableName(bodyType.name)
         ) {
           throw new TuffError(
             `Function ${node.name} return type mismatch: expected ${expected}, got ${bodyType.name}`,

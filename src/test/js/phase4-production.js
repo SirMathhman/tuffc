@@ -223,4 +223,23 @@ if (lintFixUpdated.includes('str_length("abcd")')) {
   process.exit(1);
 }
 
+// 6) Generic extern type declarations should parse/compile.
+try {
+  compileSource(
+    [
+      "extern type Vec<T>;",
+      "extern fn vec_new() : Vec<T>;",
+      "extern fn vec_push(this: Vec<T>, item: T) : Vec<T>;",
+      "fn main() : I32 => 0;",
+      "",
+    ].join("\n"),
+    "<extern-type-generics>",
+  );
+} catch (error) {
+  console.error(
+    `Expected generic extern type declarations to compile, got: ${error.message}`,
+  );
+  process.exit(1);
+}
+
 console.log("Phase 4 production diagnostics checks passed");

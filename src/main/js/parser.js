@@ -682,8 +682,20 @@ export function parse(tokens) {
       if (at("keyword", "type")) {
         eat();
         const name = parseIdentifier();
+        const generics = [];
+        if (at("symbol", "<")) {
+          eat();
+          if (!at("symbol", ">")) {
+            do {
+              generics.push(parseIdentifier());
+              if (!at("symbol", ",")) break;
+              eat();
+            } while (true);
+          }
+          expect("symbol", ">", "Expected '>' after extern type generics");
+        }
         expect("symbol", ";", "Expected ';' after extern type");
-        return { kind: "ExternTypeDecl", name };
+        return { kind: "ExternTypeDecl", name, generics };
       }
       throw new TuffError(
         "Expected 'fn', 'let', or 'type' after 'extern'",
