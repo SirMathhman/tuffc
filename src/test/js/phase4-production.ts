@@ -7,6 +7,7 @@ import { toDiagnostic } from "../../main/js/errors.ts";
 
 const thisFile = fileURLToPath(import.meta.url);
 const root = path.resolve(path.dirname(thisFile), "..", "..", "..");
+const tsxCli = path.join(root, "node_modules", "tsx", "dist", "cli.mjs");
 const outDir = path.join(root, "tests", "out", "stage4");
 fs.mkdirSync(outDir, { recursive: true });
 
@@ -61,7 +62,14 @@ fs.writeFileSync(failingFile, `fn bad(x : I32) : I32 => 100 / x;`, "utf8");
 
 const cli = spawnSync(
   process.execPath,
-  ["./src/main/js/cli.ts", "compile", failingFile, "--stage2", "--json-errors"],
+  [
+    tsxCli,
+    "./src/main/js/cli.ts",
+    "compile",
+    failingFile,
+    "--stage2",
+    "--json-errors",
+  ],
   {
     cwd: root,
     encoding: "utf8",
@@ -109,6 +117,7 @@ fs.writeFileSync(
 const lintCli = spawnSync(
   process.execPath,
   [
+    tsxCli,
     "./src/main/js/cli.ts",
     "compile",
     lintFailingFile,
@@ -203,6 +212,7 @@ fs.writeFileSync(
 const lintFixCli = spawnSync(
   process.execPath,
   [
+    tsxCli,
     "./src/main/js/cli.ts",
     "compile",
     lintFixFile,

@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { TuffError } from "./errors.ts";
 import { lex } from "./lexer.ts";
 

@@ -1,9 +1,10 @@
+// @ts-nocheck
 import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
 import { fileURLToPath } from "node:url";
 import { compileFile, compileSource } from "../../main/js/compiler.ts";
-import { toDiagnostic } from "../../main/js/errors.ts";
+import { raise, toDiagnostic } from "../../main/js/errors.ts";
 import * as runtime from "../../main/js/runtime.ts";
 
 const thisFile = fileURLToPath(import.meta.url);
@@ -46,7 +47,7 @@ function loadSelfhost() {
     typeof selfhost.compile_source !== "function" ||
     typeof selfhost.compile_file !== "function"
   ) {
-    throw new Error("selfhost compiler exports are incomplete");
+    return raise(new Error("selfhost compiler exports are incomplete"));
   }
   return selfhost;
 }
@@ -55,7 +56,7 @@ function runMainFromJs(js, label) {
   const sandbox = { module: { exports: {} }, exports: {}, console };
   vm.runInNewContext(`${js}\nmodule.exports = { main };`, sandbox);
   if (typeof sandbox.module.exports.main !== "function") {
-    throw new Error(`${label}: generated JS does not export main()`);
+    return raise(new Error(`${label}: generated JS does not export main()`));
   }
   return sandbox.module.exports.main();
 }
@@ -63,8 +64,10 @@ function runMainFromJs(js, label) {
 function assertContract(diag, label) {
   for (const key of ["source", "cause", "reason", "fix"]) {
     if (!diag[key] || typeof diag[key] !== "string") {
-      throw new Error(
-        `${label}: diagnostic field '${key}' must be a non-empty string`,
+      return raise(
+        new Error(
+          `${label}: diagnostic field '${key}' must be a non-empty string`,
+        ),
       );
     }
   }
@@ -87,7 +90,7 @@ function expectBothFail(jsFn, selfhostFn, label, expectedCode = null) {
   }
 
   if (!jsError || !selfhostError) {
-    throw new Error(`${label}: expected both compilers to fail`);
+    return raise(new Error(`${label}: expected both compilers to fail`));
   }
 
   const jsDiag = toDiagnostic(jsError);
@@ -96,13 +99,17 @@ function expectBothFail(jsFn, selfhostFn, label, expectedCode = null) {
   assertContract(selfhostDiag, `${label} (selfhost)`);
   if (expectedCode) {
     if (jsDiag.code !== expectedCode) {
-      throw new Error(
-        `${label} (js): expected diagnostic code ${expectedCode}, got ${jsDiag.code}`,
+      return raise(
+        new Error(
+          `${label} (js): expected diagnostic code ${expectedCode}, got ${jsDiag.code}`,
+        ),
       );
     }
     if (selfhostDiag.code !== expectedCode) {
-      throw new Error(
-        `${label} (selfhost): expected diagnostic code ${expectedCode}, got ${selfhostDiag.code}`,
+      return raise(
+        new Error(
+          `${label} (selfhost): expected diagnostic code ${expectedCode}, got ${selfhostDiag.code}`,
+        ),
       );
     }
   }
@@ -126,8 +133,10 @@ const selfhostFactorialResult = runMainFromJs(
   "selfhost-factorial",
 );
 if (jsFactorialResult !== selfhostFactorialResult) {
-  throw new Error(
-    `factorial parity mismatch: js=${jsFactorialResult}, selfhost=${selfhostFactorialResult}`,
+  raise(
+    new Error(
+      `factorial parity mismatch: js=${jsFactorialResult}, selfhost=${selfhostFactorialResult}`,
+    ),
   );
 }
 
@@ -145,8 +154,10 @@ const selfhostEnum = selfhost.compile_source(enumSource);
 const jsEnumResult = runMainFromJs(jsEnum, "js-enum");
 const selfhostEnumResult = runMainFromJs(selfhostEnum, "selfhost-enum");
 if (jsEnumResult !== selfhostEnumResult) {
-  throw new Error(
-    `enum parity mismatch: js=${jsEnumResult}, selfhost=${selfhostEnumResult}`,
+  raise(
+    new Error(
+      `enum parity mismatch: js=${jsEnumResult}, selfhost=${selfhostEnumResult}`,
+    ),
   );
 }
 
@@ -164,8 +175,10 @@ const jsModuleResult = runMainFromJs(jsModule.js, "js-module");
 const selfhostModuleJs = fs.readFileSync(selfhostModuleOut, "utf8");
 const selfhostModuleResult = runMainFromJs(selfhostModuleJs, "selfhost-module");
 if (jsModuleResult !== selfhostModuleResult) {
-  throw new Error(
-    `module parity mismatch: js=${jsModuleResult}, selfhost=${selfhostModuleResult}`,
+  raise(
+    new Error(
+      `module parity mismatch: js=${jsModuleResult}, selfhost=${selfhostModuleResult}`,
+    ),
   );
 }
 

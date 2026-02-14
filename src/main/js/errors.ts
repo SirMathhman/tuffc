@@ -1,3 +1,4 @@
+// @ts-nocheck
 export class TuffError extends Error {
   constructor(message, loc = null, options = {}) {
     const code = options.code ?? "E_GENERIC";

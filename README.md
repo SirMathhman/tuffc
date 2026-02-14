@@ -28,7 +28,7 @@ Implements Phase 1 / Stage 0 from `SELF-HOST.md`:
 5. Run selfhost module verification only: `bun run selfhost:modules`
 6. Run selfhost diagnostics verification only: `bun run selfhost:diagnostics`
 7. Run selfhost differential parity gate: `bun run selfhost:parity`
-8. Compile file: `node ./src/main/js/cli.js compile ./src/test/tuff/cases/factorial.tuff -o ./tests/out/factorial.js`
+8. Compile file: `tsx ./src/main/js/cli.ts compile ./src/test/tuff/cases/factorial.tuff -o ./tests/out/factorial.js`
 
 ## Phase 2 / Stage 1
 
@@ -68,7 +68,7 @@ CLI options:
 
 Example:
 
-- `node ./src/main/js/cli.js compile ./src/test/tuff/modules/app.tuff --modules --module-base ./src/test/tuff/modules -o ./tests/out/stage2/app.js`
+- `tsx ./src/main/js/cli.ts compile ./src/test/tuff/modules/app.tuff --modules --module-base ./src/test/tuff/modules -o ./tests/out/stage2/app.js`
 
 Run Phase 3 verification only:
 
@@ -90,19 +90,19 @@ Production-readiness diagnostics are now available:
 
 Example:
 
-- `node ./src/main/js/cli.js compile ./tests/out/stage4/cli-fail.tuff --stage2 --json-errors`
-- `node ./src/main/js/cli.js compile ./tests/out/stage4/cli-fail.tuff --lint --json-errors`
-- `node ./src/main/js/cli.js compile ./src/test/tuff/cases/factorial.tuff --trace-passes`
+- `tsx ./src/main/js/cli.ts compile ./tests/out/stage4/cli-fail.tuff --stage2 --json-errors`
+- `tsx ./src/main/js/cli.ts compile ./tests/out/stage4/cli-fail.tuff --lint --json-errors`
+- `tsx ./src/main/js/cli.ts compile ./src/test/tuff/cases/factorial.tuff --trace-passes`
 
 Run Phase 4 verification only:
 
 - `bun run stage4:verify`
 
-## Porting policy: no `throw` in JS
+## Porting policy: no `throw` in compiler code
 
-For Tuff-portability, JavaScript compiler code is migrating from exception-based
+For Tuff-portability, compiler code is migrating from exception-based
 control flow to `Result<T, E>` values.
 
-- ESLint enforces a throw-ban rule (`ThrowStatement`) across JS sources.
+- ESLint enforces a throw-ban rule (`ThrowStatement`) across TypeScript sources.
 - The throw-ban is now enforced across `src/main/js` without legacy allowlists.
-- New and migrated code should use helpers in `src/main/js/result.js`.
+- New and migrated code should use helpers in `src/main/js/result.ts`.

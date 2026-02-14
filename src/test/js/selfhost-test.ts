@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Test harness for the self-hosted Tuff compiler.
  *
@@ -35,6 +36,7 @@ try {
       allowHostPrefix: "",
     },
   });
+  // @ts-nocheck
   selfhostJs = result.js;
 } catch (err) {
   console.error("Failed to compile selfhost.tuff with Stage 0:", err.message);

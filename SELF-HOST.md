@@ -85,12 +85,12 @@ Stage 0 (JS) → compiles → Stage 1 (Tuff-lite) → compiles → Stage 2 (Full
 
 ## File Structure
 
-- `src/main/js/lexer.js` (then `src/main/tuff/lexer.tuff`) — Tokenization logic
-- `src/main/js/parser.js` → `.tuff` — Recursive descent parser
+- `src/main/js/lexer.ts` (then `src/main/tuff/lexer.tuff`) — Tokenization logic
+- `src/main/js/parser.ts` → `.tuff` — Recursive descent parser
 - `src/main/js/ast.js` → `.tuff` — AST node definitions (structs/enums)
-- `src/main/js/desugar.js` → `.tuff` — CST to Core transformation
-- `src/main/js/resolve.js` → `.tuff` — Name resolution, scope analysis
-- `src/main/js/typecheck.js` → `.tuff` — Type inference, constraint generation
+- `src/main/js/desugar.ts` → `.tuff` — CST to Core transformation
+- `src/main/js/resolve.ts` → `.tuff` — Name resolution, scope analysis
+- `src/main/js/typecheck.ts` → `.tuff` — Type inference, constraint generation
 - `src/main/js/constraints.js` → `.tuff` — Refinement constraint representation
 - `src/main/js/solver.js` → `.tuff` — SMT integration / decision procedure
 - `src/main/js/borrow.js` → `.tuff` — Ownership and borrow checking

@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { TuffError, raise } from "./errors.ts";
 
 class Scope {

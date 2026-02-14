@@ -1,11 +1,11 @@
 # Stage 0 Bootstrap Compiler
 
-This folder contains the canonical JavaScript bootstrap compiler implementation.
+This folder contains the canonical TypeScript bootstrap compiler implementation.
 
-- Entry CLI: `src/main/js/cli.js`
-- Main pipeline: `src/main/js/compiler.js`
+- Entry CLI: `src/main/js/cli.ts`
+- Main pipeline: `src/main/js/compiler.ts`
 - Frontend passes: lexer/parser/desugar/resolve/typecheck
-- Diagnostics + lint: `errors.js`, `linter.js`
+- Diagnostics + lint: `errors.ts`, `linter.ts`
 
 ## Backend modes
 

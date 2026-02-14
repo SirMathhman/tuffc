@@ -4,11 +4,12 @@ import { spawnSync } from "node:child_process";
 
 const thisFile = fileURLToPath(import.meta.url);
 const root = path.resolve(path.dirname(thisFile), "..", "..", "..");
+const tsxCli = path.join(root, "node_modules", "tsx", "dist", "cli.mjs");
 
 function expectFail(args, expectedText, label) {
   const result = spawnSync(
     process.execPath,
-    ["./src/main/js/cli.ts", ...args],
+    [tsxCli, "./src/main/js/cli.ts", ...args],
     {
       cwd: root,
       encoding: "utf8",
