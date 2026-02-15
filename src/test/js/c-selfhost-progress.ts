@@ -11,7 +11,12 @@ const entry = path.join(root, "src", "main", "tuff", "selfhost.tuff");
 const outDir = path.join(root, "tests", "out", "c");
 const outC = path.join(outDir, "selfhost.c");
 const outObj = path.join(outDir, "selfhost.o");
+const outExe = path.join(
+  outDir,
+  process.platform === "win32" ? "selfhost.exe" : "selfhost",
+);
 const runtimeDir = path.join(root, "src", "main", "c");
+const runtimeSource = path.join(runtimeDir, "tuff_runtime.c");
 
 fs.mkdirSync(outDir, { recursive: true });
 
@@ -71,6 +76,38 @@ if (objectCompile.status !== 0) {
   process.exit(1);
 }
 
+const link = spawnSync(
+  selected,
+  [outC, runtimeSource, "-I", runtimeDir, "-O0", "-o", outExe],
+  { encoding: "utf8" },
+);
+
+if (link.status !== 0) {
+  console.error(
+    `Failed to link generated selfhost C executable with ${selected}`,
+  );
+  console.error(link.stdout ?? "");
+  console.error(link.stderr ?? "");
+  process.exit(1);
+}
+
+const run = spawnSync(outExe, [], { encoding: "utf8" });
+if (run.status !== 0) {
+  console.error(`Linked selfhost executable exited with ${run.status}`);
+  console.error(run.stdout ?? "");
+  console.error(run.stderr ?? "");
+  process.exit(1);
+}
+
+const combined = `${run.stdout ?? ""}\n${run.stderr ?? ""}`;
+if (!combined.includes("Self-hosted Tuff compiler loaded")) {
+  console.error(
+    "Expected selfhost executable output to include 'Self-hosted Tuff compiler loaded'",
+  );
+  console.error(combined);
+  process.exit(1);
+}
+
 console.log(
-  `Selfhost C progress check passed with ${selected} (object compile)`,
+  `Selfhost C progress check passed with ${selected} (object+link+run)`,
 );
