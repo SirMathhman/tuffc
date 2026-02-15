@@ -130,11 +130,6 @@ function selectBackend(options, target, isSelfhostBootstrapInput = false) {
     return "stage0";
   }
 
-  // Host builtin symbol injection is currently a Stage0 resolve concern.
-  if (options.resolve?.hostBuiltins || options.resolve?.allowHostPrefix) {
-    return "stage0";
-  }
-
   // Default: selfhost-first for JS compilation.
   return "selfhost";
 }

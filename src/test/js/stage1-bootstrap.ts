@@ -37,6 +37,7 @@ const stage1Source = fs.readFileSync(stage1SourcePath, "utf8");
 
 // stage0(stage1.tuff) => stage1_a.js
 const stage0Result = compileSourceThrow(stage1Source, stage1SourcePath, {
+  backend: "stage0",
   resolve: { allowHostPrefix: "__host_" },
 });
 fs.writeFileSync(stage1APath, stage0Result.js, "utf8");
