@@ -466,6 +466,32 @@ if (implicitDiag.code !== "E_MODULE_IMPLICIT_IMPORT") {
   process.exit(1);
 }
 
+const implicitSelfhostNoBridge = compileFileResult(
+  implicitConsumerModule,
+  undefined,
+  {
+    backend: "selfhost",
+    enableModules: true,
+    modules: { moduleBaseDir: strictModuleDir },
+    borrowcheck: { enabled: false },
+  },
+);
+if (implicitSelfhostNoBridge.ok) {
+  console.error(
+    "Expected selfhost native strict module import failure without Stage0 borrow precheck",
+  );
+  process.exit(1);
+}
+const implicitSelfhostNoBridgeDiag = toDiagnostic(
+  unwrapErr(implicitSelfhostNoBridge),
+);
+if (implicitSelfhostNoBridgeDiag.code !== "E_MODULE_IMPLICIT_IMPORT") {
+  console.error(
+    `Expected E_MODULE_IMPLICIT_IMPORT (selfhost native), got ${implicitSelfhostNoBridgeDiag.code}`,
+  );
+  process.exit(1);
+}
+
 const explicitResult = compileFileResult(explicitConsumerModule, undefined, {
   enableModules: true,
   modules: { moduleBaseDir: strictModuleDir },

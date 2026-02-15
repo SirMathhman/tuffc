@@ -130,6 +130,11 @@ function selectBackend(options, target, isSelfhostBootstrapInput = false) {
     return "stage0";
   }
 
+  // Remaining intentional Stage0 ownership after selfhost-first migration:
+  // 1) Bootstrap seed for selfhost.tuff (isSelfhostBootstrapInput)
+  // 2) C target codegen
+  // 3) Lint auto-fix source rewriting
+
   // Default: selfhost-first for JS compilation.
   return "selfhost";
 }
