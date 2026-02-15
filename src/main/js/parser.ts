@@ -1005,14 +1005,6 @@ export function parse(tokens: Token[]): ParseResult<Program> {
       } else if (at("keyword", "struct")) {
         nodeResult = parseStruct(copyDecl);
       } else if (at("keyword", "enum")) {
-        if (copyDecl) {
-          return err(
-            new TuffError("Enums are copy by default; remove explicit 'copy'", peek().loc, {
-              code: "E_PARSE_EXPECTED_TOKEN",
-              hint: "Write 'enum ...' (or 'out enum ...') without the copy modifier.",
-            }),
-          );
-        }
         nodeResult = parseEnum();
       } else if (at("keyword", "type")) {
         nodeResult = parseTypeAlias(copyDecl);

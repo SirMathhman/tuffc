@@ -362,9 +362,6 @@ fn p_parse_statement() : I32 => {
         if (p_at(TK_KEYWORD, "struct")) {
             out_node = p_parse_struct(copy_decl);
         } else if (p_at(TK_KEYWORD, "enum")) {
-            if (copy_decl == 1) {
-                panic("Enums are copy by default; remove explicit 'copy'");
-            }
             out_node = p_parse_enum();
         } else if (p_at(TK_KEYWORD, "type")) {
             out_node = p_parse_type_alias(copy_decl);
