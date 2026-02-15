@@ -130,6 +130,30 @@ for (const key of ["source", "cause", "reason", "fix"]) {
   }
 }
 
+const copyAliasInvalid = compileSourceResult(
+  `struct Box { v : I32 }\ncopy type BoxAlias = Box;\nfn main() : I32 => 0;`,
+  "<phase4-copy-alias-invalid>",
+);
+if (copyAliasInvalid.ok) {
+  console.error("Expected invalid copy alias compile failure");
+  process.exit(1);
+}
+const copyAliasDiag = toDiagnostic(unwrapErr(copyAliasInvalid));
+if (copyAliasDiag.code !== "E_BORROW_INVALID_COPY_ALIAS") {
+  console.error(
+    `Expected E_BORROW_INVALID_COPY_ALIAS, got ${copyAliasDiag.code}`,
+  );
+  process.exit(1);
+}
+for (const key of ["source", "cause", "reason", "fix"]) {
+  if (!copyAliasDiag[key] || typeof copyAliasDiag[key] !== "string") {
+    console.error(
+      `Expected copy-alias diagnostic field '${key}' to be a non-empty string`,
+    );
+    process.exit(1);
+  }
+}
+
 // 2) Ensure CLI emits machine-readable JSON diagnostics.
 const failingFile = path.join(outDir, "cli-fail.tuff");
 fs.writeFileSync(failingFile, `fn bad(x : I32) : I32 => 100 / x;`, "utf8");

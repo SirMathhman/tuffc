@@ -32,6 +32,56 @@ expectOk(
   `fn main() : I32 => { let x : I32 = 1; let y : I32 = x; x + y }`,
 );
 
+expectOk(
+  "borrow-copy-struct",
+  `
+copy struct Vec2 { x : F32, y : F32 }
+fn main() : I32 => {
+  let a : Vec2 = Vec2 { x: 1, y: 2 };
+  let b : Vec2 = a;
+  let c : Vec2 = a;
+  0
+}
+`,
+);
+
+expectOk(
+  "borrow-copy-enum-default",
+  `
+enum Color { Red, Blue }
+fn main() : I32 => {
+  let c : Color = Color.Red;
+  let a : Color = c;
+  let b : Color = c;
+  0
+}
+`,
+);
+
+expectOk(
+  "borrow-copy-type-alias",
+  `
+copy struct Vec2 { x : F32, y : F32 }
+copy type Vec2Alias = Vec2;
+fn main() : I32 => {
+  let a : Vec2Alias = Vec2 { x: 1, y: 2 };
+  let b : Vec2Alias = a;
+  let c : Vec2Alias = a;
+  0
+}
+`,
+);
+
+expectFailCode(
+  "borrow-copy-type-alias-invalid",
+  `
+struct Box { v : I32 }
+copy type BoxAlias = Box;
+fn main() : I32 => 0;
+`,
+  "E_BORROW_INVALID_COPY_ALIAS",
+);
+
 expectFailCode(
   "borrow-use-after-move-struct",
   `

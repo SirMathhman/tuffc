@@ -526,4 +526,33 @@ if (!borrowOkStage0.ok || !borrowOkSelfhost.ok) {
   );
 }
 
+const copyStructSource = `
+copy struct Vec2 { x : F32, y : F32 }
+fn main() : I32 => {
+  let a : Vec2 = Vec2 { x: 1, y: 2 };
+  let b : Vec2 = a;
+  let c : Vec2 = a;
+  0
+}
+`;
+const copyStructStage0 = compileSourceResult(copyStructSource, "<copy-struct-stage0>");
+const copyStructSelfhost = compileSourceResult(copyStructSource, "<copy-struct-selfhost>", {
+  backend: "selfhost",
+});
+if (!copyStructStage0.ok || !copyStructSelfhost.ok) {
+  throw new Error("copy-struct parity: expected both backends to compile");
+}
+
+const copyAliasInvalidSource = `
+struct Box { v : I32 }
+copy type BoxAlias = Box;
+fn main() : I32 => 0;
+`;
+expectBothFail(
+  () => compileSourceResult(copyAliasInvalidSource, "<copy-alias-invalid-js>"),
+  () => selfhost.compile_source(copyAliasInvalidSource),
+  "copy-alias-invalid parity",
+  "E_BORROW_INVALID_COPY_ALIAS",
+);
+
 console.log("Selfhost differential parity checks passed");
