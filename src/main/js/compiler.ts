@@ -10,6 +10,7 @@ import { resolveNames } from "./resolve.ts";
 import { typecheck } from "./typecheck.ts";
 import { autoFixProgram, lintProgram } from "./linter.ts";
 import { generateJavaScript } from "./codegen-js.ts";
+import { generateC } from "./codegen-c.ts";
 import { TuffError, enrichError } from "./errors.ts";
 import { err, ok, type Result } from "./result.ts";
 import * as runtime from "./runtime.ts";
@@ -101,6 +102,29 @@ function createTracer(enabled) {
     console.error(`[trace] ${name}: ${ms}ms`);
     return value;
   };
+}
+
+function getCodegenTarget(options): string {
+  return options.target ?? "js";
+}
+
+function isSupportedTarget(target): boolean {
+  return target === "js" || target === "c";
+}
+
+function extensionForTarget(target): string {
+  return target === "c" ? ".c" : ".js";
+}
+
+function defaultOutputPath(inputPath, target): string {
+  return inputPath.replace(/\.tuff$/i, extensionForTarget(target));
+}
+
+function emitTarget(core, target): string {
+  if (target === "c") {
+    return generateC(core);
+  }
+  return generateJavaScript(core);
 }
 
 function gatherImports(program) {
@@ -301,7 +325,34 @@ export function compileSource(
   filePath: string = "<memory>",
   options: Record<string, unknown> = {},
 ): CompilerResult<Record<string, unknown>> {
+  const target = getCodegenTarget(options);
+  if (!isSupportedTarget(target)) {
+    return err(
+      new TuffError(`Unsupported codegen target: ${target}`, undefined, {
+        code: "E_UNSUPPORTED_TARGET",
+        reason:
+          "The compiler was asked to emit code for a target that is not implemented.",
+        fix: "Use target: 'js' or target: 'c'.",
+      }),
+    );
+  }
+
   if ((options.backend ?? "stage0") === "selfhost") {
+    if (target !== "js") {
+      return err(
+        new TuffError(
+          `Selfhost backend does not support target '${target}' yet`,
+          undefined,
+          {
+            code: "E_SELFHOST_UNSUPPORTED_OPTION",
+            reason:
+              "Selfhost backend currently emits JavaScript only and cannot generate other targets.",
+            fix: "Use backend: 'stage0' for target 'c', or set target: 'js' when using selfhost.",
+          },
+        ),
+      );
+    }
+
     if (options.lint?.fix) {
       return err(
         new TuffError(
@@ -350,6 +401,8 @@ export function compileSource(
       cst: { kind: "Program", body: [] },
       core: { kind: "Program", body: [] },
       js,
+      output: js,
+      target,
       lintIssues: [],
       lintFixesApplied: 0,
       lintFixedSource: source,
@@ -401,12 +454,27 @@ export function compileSource(
   if (lintIssues.length > 0 && lintMode !== "warn") {
     return err(lintIssues[0]);
   }
-  const js = run("codegen", () => generateJavaScript(core));
+
+  let output;
+  try {
+    output = run("codegen", () => emitTarget(core, target));
+  } catch (error) {
+    const enriched = enrichError(error, { source });
+    return err(
+      enriched instanceof TuffError
+        ? enriched
+        : new TuffError(String(error), undefined),
+    );
+  }
+
   return ok({
     tokens,
     cst,
     core,
-    js,
+    js: target === "js" ? output : undefined,
+    c: target === "c" ? output : undefined,
+    output,
+    target,
     lintIssues,
     lintFixesApplied,
     lintFixedSource,
@@ -418,9 +486,36 @@ function compileFileInternal(
   outputPath: string | undefined = undefined,
   options: Record<string, unknown> = {},
 ): CompilerResult<Record<string, unknown>> {
+  const target = getCodegenTarget(options);
+  if (!isSupportedTarget(target)) {
+    return err(
+      new TuffError(`Unsupported codegen target: ${target}`, undefined, {
+        code: "E_UNSUPPORTED_TARGET",
+        reason:
+          "The compiler was asked to emit code for a target that is not implemented.",
+        fix: "Use target: 'js' or target: 'c'.",
+      }),
+    );
+  }
+
   if ((options.backend ?? "stage0") === "selfhost") {
+    if (target !== "js") {
+      return err(
+        new TuffError(
+          `Selfhost backend does not support target '${target}' yet`,
+          undefined,
+          {
+            code: "E_SELFHOST_UNSUPPORTED_OPTION",
+            reason:
+              "Selfhost backend currently emits JavaScript only and cannot generate other targets.",
+            fix: "Use backend: 'stage0' for target 'c', or set target: 'js' when using selfhost.",
+          },
+        ),
+      );
+    }
+
     const absInput = path.resolve(inputPath);
-    const finalOutput = outputPath ?? absInput.replace(/\.tuff$/i, ".js");
+    const finalOutput = outputPath ?? defaultOutputPath(absInput, target);
 
     const selfhostResult = bootstrapSelfhostCompiler(options);
     if (!selfhostResult.ok) return selfhostResult;
@@ -497,6 +592,8 @@ function compileFileInternal(
       cst: { kind: "Program", body: [] },
       core: { kind: "Program", body: [] },
       js,
+      output: js,
+      target,
       lintIssues: [],
       lintFixesApplied: 0,
       lintFixedSource: undefined,
@@ -582,18 +679,36 @@ function compileFileInternal(
     if (lintIssues.length > 0 && lintMode !== "warn") {
       return err(lintIssues[0]);
     }
-    const js = run("codegen", () => generateJavaScript(graph.merged));
 
-    const finalOutput = outputPath ?? inputPath.replace(/\.tuff$/i, ".js");
+    let output;
+    try {
+      output = run("codegen", () => emitTarget(graph.merged, target));
+    } catch (error) {
+      const sourceByFile = new Map();
+      for (const unit of graph.ordered) {
+        sourceByFile.set(unit.filePath, unit.source);
+      }
+      const enriched = enrichError(error, { sourceByFile });
+      return err(
+        enriched instanceof TuffError
+          ? enriched
+          : new TuffError(String(error), undefined),
+      );
+    }
+
+    const finalOutput = outputPath ?? defaultOutputPath(inputPath, target);
     fs.mkdirSync(path.dirname(finalOutput), { recursive: true });
-    fs.writeFileSync(finalOutput, js, "utf8");
+    fs.writeFileSync(finalOutput, output, "utf8");
 
     return ok({
       source: fs.readFileSync(inputPath, "utf8"),
       tokens: graph.ordered.at(-1)?.tokens ?? [],
       cst: graph.ordered.at(-1)?.cst ?? { kind: "Program", body: [] },
       core: graph.merged,
-      js,
+      js: target === "js" ? output : undefined,
+      c: target === "c" ? output : undefined,
+      output,
+      target,
       lintIssues,
       lintFixesApplied,
       lintFixedSource,
@@ -605,9 +720,9 @@ function compileFileInternal(
     const compileResult = compileSource(source, inputPath, options);
     if (!compileResult.ok) return compileResult;
 
-    const finalOutput = outputPath ?? inputPath.replace(/\.tuff$/i, ".js");
+    const finalOutput = outputPath ?? defaultOutputPath(inputPath, target);
     fs.mkdirSync(path.dirname(finalOutput), { recursive: true });
-    fs.writeFileSync(finalOutput, compileResult.value.js, "utf8");
+    fs.writeFileSync(finalOutput, compileResult.value.output, "utf8");
     return ok({ ...compileResult.value, outputPath: finalOutput });
   }
 }

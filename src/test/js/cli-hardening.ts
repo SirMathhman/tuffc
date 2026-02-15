@@ -45,5 +45,15 @@ expectFail(
   "Missing value for --out/-o",
   "missing-out-value",
 );
+expectFail(
+  ["compile", "./src/test/tuff/cases/factorial.tuff", "--target"],
+  "Missing value for --target",
+  "missing-target-value",
+);
+expectFail(
+  ["compile", "./src/test/tuff/cases/factorial.tuff", "--target", "llvm"],
+  "E_UNSUPPORTED_TARGET",
+  "unsupported-target",
+);
 
 console.log("CLI hardening checks passed");

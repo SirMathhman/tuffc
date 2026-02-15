@@ -20,6 +20,8 @@
     "stage1:bootstrap": "tsx ./src/test/js/stage1-bootstrap.ts",
     "stage2:verify": "tsx ./src/test/js/phase3-stage2.ts",
     "stage4:verify": "tsx ./src/test/js/phase4-production.ts",
+    "c:verify": "tsx ./src/test/js/c-backend-smoke.ts",
+    "c:selfhost:verify": "tsx ./src/test/js/c-selfhost-progress.ts",
     "cli:verify": "tsx ./src/test/js/cli-hardening.ts",
     "selfhost:modules": "tsx ./src/test/js/selfhost-modules.ts",
     "selfhost:diagnostics": "tsx ./src/test/js/selfhost-diagnostics.ts",

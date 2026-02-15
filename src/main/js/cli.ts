@@ -7,7 +7,7 @@ import { formatDiagnostic, toDiagnostic } from "./errors.ts";
 
 function printUsage(): void {
   console.log(
-    "Usage:\n  tuff compile <input.tuff> [-o output.js] [--stage2] [--modules] [--module-base <dir>] [--selfhost|--stage0] [--lint] [--lint-fix] [--lint-strict] [--json-errors] [--trace-passes]",
+    "Usage:\n  tuff compile <input.tuff> [-o output.js|output.c] [--target <js|c>] [--stage2] [--modules] [--module-base <dir>] [--selfhost|--stage0] [--lint] [--lint-fix] [--lint-strict] [--json-errors] [--trace-passes]",
   );
 }
 
@@ -53,6 +53,7 @@ function main(argv: string[]): void {
   let lintFix = false;
   let lintStrict = false;
   let tracePasses = false;
+  let target = "js";
   const unknownFlags = [];
   for (let i = 2; i < args.length; i++) {
     if (args[i] === "-o" || args[i] === "--out") {
@@ -113,6 +114,16 @@ function main(argv: string[]): void {
       tracePasses = true;
       continue;
     }
+    if (args[i] === "--target") {
+      if (!args[i + 1] || args[i + 1].startsWith("-")) {
+        console.error("Missing value for --target");
+        process.exitCode = 1;
+        return;
+      }
+      target = args[i + 1];
+      i += 1;
+      continue;
+    }
     if (args[i].startsWith("-")) {
       unknownFlags.push(args[i]);
     }
@@ -149,6 +160,7 @@ function main(argv: string[]): void {
       fix: lintFix,
       mode: lintStrict ? "error" : "warn",
     },
+    target,
     tracePasses,
   });
 
