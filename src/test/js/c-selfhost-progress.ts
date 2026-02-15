@@ -47,6 +47,28 @@ function runStep(command, args, options = {}) {
   return result;
 }
 
+function isSegfaultLikeRun(result) {
+  const signal = result?.signal ?? null;
+  const status = result?.status;
+
+  if (signal === "SIGSEGV") {
+    return true;
+  }
+
+  // POSIX shells commonly use 139 for SIGSEGV (128 + 11).
+  if (status === 139) {
+    return true;
+  }
+
+  // Windows access violation / segfault-style exit code.
+  // 0xC0000005 = 3221225477 (sometimes surfaced as signed -1073741819).
+  if (status === 3221225477 || status === -1073741819) {
+    return true;
+  }
+
+  return false;
+}
+
 const thisFile = fileURLToPath(import.meta.url);
 const root = path.resolve(path.dirname(thisFile), "..", "..", "..");
 const entry = path.join(root, "src", "main", "tuff", "selfhost.tuff");
@@ -263,6 +285,11 @@ if (run.error) {
 
 if (run.signal) {
   console.error(`Harness terminated by signal: ${run.signal}`);
+  if (run.signal === "SIGSEGV") {
+    console.error(
+      "[c-selfhost][critical] Segmentation fault detected: generated C violated runtime safety assumptions. This indicates a compiler correctness/proof failure.",
+    );
+  }
   console.error(run.stdout ?? "");
   console.error(run.stderr ?? "");
   process.exit(1);
@@ -270,6 +297,11 @@ if (run.signal) {
 
 if (run.status !== 0) {
   console.error(`Linked selfhost executable exited with ${run.status}`);
+  if (isSegfaultLikeRun(run)) {
+    console.error(
+      "[c-selfhost][critical] Segmentation fault/access violation detected: generated C is unsound for this input and must be treated as a correctness proof failure.",
+    );
+  }
   console.error(run.stdout ?? "");
   console.error(run.stderr ?? "");
   if (run.status === 3221225786) {
