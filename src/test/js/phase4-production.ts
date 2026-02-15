@@ -298,6 +298,26 @@ if (receiverLintDiag.code !== "E_LINT_PREFER_RECEIVER_CALL") {
   process.exit(1);
 }
 
+const receiverLintSelfhost = compileSourceResult(
+  `${receiverExtern}\nfn main() : I32 => str_length("abc");`,
+  "<receiver-lint-selfhost>",
+  {
+    backend: "selfhost",
+    lint: { enabled: true, mode: "error" },
+  },
+);
+if (receiverLintSelfhost.ok) {
+  console.error("Expected selfhost lint failure for free-function receiver extern call");
+  process.exit(1);
+}
+const receiverLintSelfhostDiag = toDiagnostic(unwrapErr(receiverLintSelfhost));
+if (receiverLintSelfhostDiag.code !== "E_LINT_PREFER_RECEIVER_CALL") {
+  console.error(
+    `Expected E_LINT_PREFER_RECEIVER_CALL (selfhost), got ${receiverLintSelfhostDiag.code}`,
+  );
+  process.exit(1);
+}
+
 // 5) Ensure lint autofix rewrites receiver-style extern calls in source.
 const lintFixFile = path.join(outDir, "cli-lint-fix.tuff");
 fs.writeFileSync(
@@ -522,6 +542,30 @@ const explicitResult = compileFileResult(explicitConsumerModule, undefined, {
 if (!explicitResult.ok) {
   console.error(
     `Expected explicit let-binding import to satisfy strict module resolve, got: ${String(unwrapErr(explicitResult))}`,
+  );
+  process.exit(1);
+}
+
+const moduleLintFixUnsupported = compileFileResult(
+  explicitConsumerModule,
+  undefined,
+  {
+    backend: "selfhost",
+    enableModules: true,
+    modules: { moduleBaseDir: strictModuleDir },
+    lint: { enabled: true, fix: true, mode: "warn" },
+  },
+);
+if (moduleLintFixUnsupported.ok) {
+  console.error("Expected module lint-fix to be rejected in selfhost mode");
+  process.exit(1);
+}
+const moduleLintFixUnsupportedDiag = toDiagnostic(
+  unwrapErr(moduleLintFixUnsupported),
+);
+if (moduleLintFixUnsupportedDiag.code !== "E_SELFHOST_UNSUPPORTED_OPTION") {
+  console.error(
+    `Expected E_SELFHOST_UNSUPPORTED_OPTION for module lint-fix, got ${moduleLintFixUnsupportedDiag.code}`,
   );
   process.exit(1);
 }
