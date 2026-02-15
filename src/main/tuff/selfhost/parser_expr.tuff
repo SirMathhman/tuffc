@@ -33,11 +33,13 @@ fn p_parse_postfix(exprIn: I32) : I32 => {
                 let call = node_new(NK_CALL_EXPR);
                 node_set_data1(call, callee);
                 node_set_data2(call, lowered_args);
+                node_set_data3(call, 1);
                 expr = call;
             } else {
                 let call = node_new(NK_CALL_EXPR);
                 node_set_data1(call, expr);
                 node_set_data2(call, args);
+                node_set_data3(call, 0);
                 expr = call;
             }
             continue;

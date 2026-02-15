@@ -440,6 +440,8 @@ fn count_effective_token_lines() : I32 => {
     count
 }
 
+out fn lint_effective_line_count() : I32 => count_effective_token_lines();
+
 out fn lint_assert_file_length(filePath: *Str, maxEffectiveLines: I32) : I32 => {
     let count = count_effective_token_lines();
     if (count > maxEffectiveLines) {

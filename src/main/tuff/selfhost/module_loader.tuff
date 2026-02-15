@@ -7,6 +7,7 @@ let { resolve_names } = selfhost::resolver;
 let { typecheck_program, typecheck_program_with_options } = selfhost::typecheck;
 let { borrowcheck_program } = selfhost::borrowcheck;
 let { generate_js } = selfhost::codegen_stmt;
+let { lint_reset, lint_take_issues, lint_program, lint_add_circular_import_issue } = selfhost::linter;
 
 fn module_loader_sanitize_max_effective_lines(max_effective_lines: I32) : I32 => {
     if (max_effective_lines <= 0) {
@@ -355,11 +356,15 @@ fn module_has_out_export(source: *Str, name: *Str) : Bool => {
     source.str_includes("out class fn ".str_concat(name))
 }
 
-fn gather_module_sources(filePath: *Str, moduleBasePath: *Str, seen: *mut Set, visiting: *mut Set, sources: Vec<*Str>, module_declared_map: Map, all_declared_names: *mut Set, all_exported_declared_names: *mut Set, all_extern_declared_names: *mut Set, lint_enabled: I32, max_effective_lines: I32) : I32 => {
+fn gather_module_sources(filePath: *Str, moduleBasePath: *Str, seen: *mut Set, visiting: *mut Set, sources: Vec<*Str>, module_declared_map: Map, all_declared_names: *mut Set, all_exported_declared_names: *mut Set, all_extern_declared_names: *mut Set, lint_enabled: I32, max_effective_lines: I32, module_cycles: Vec<*Str>) : I32 => {
     if (seen.set_has(filePath)) {
         return 0;
     }
     if (visiting.set_has(filePath)) {
+        if (lint_enabled == 1) {
+            module_cycles.vec_push(filePath);
+            return 0;
+        }
         panic_with_code(
             "E_MODULE_CYCLE",
             "Module import cycle detected at ".str_concat(filePath),
@@ -372,9 +377,6 @@ fn gather_module_sources(filePath: *Str, moduleBasePath: *Str, seen: *mut Set, v
     let source = read_file(filePath);
     lex_init(source);
     lex_all();
-    if (lint_enabled == 1) {
-        lint_assert_file_length(filePath, max_effective_lines);
-    }
     parse_init();
     let program = p_parse_program();
     let stmts = node_get_data1(program);
@@ -435,7 +437,7 @@ fn gather_module_sources(filePath: *Str, moduleBasePath: *Str, seen: *mut Set, v
         let depPath = spec.vec_get(0);
         let importNames = spec.vec_get(1);
 
-        gather_module_sources(depPath, moduleBasePath, seen, visiting, sources, module_declared_map, all_declared_names, all_exported_declared_names, all_extern_declared_names, lint_enabled, max_effective_lines);
+        gather_module_sources(depPath, moduleBasePath, seen, visiting, sources, module_declared_map, all_declared_names, all_exported_declared_names, all_extern_declared_names, lint_enabled, max_effective_lines, module_cycles);
 
         let depDeclared = module_declared_map.map_get(depPath);
         let depSource = read_file(depPath);
@@ -504,7 +506,9 @@ out fn compile_file_with_options(inputPath: *Str, outputPath: *Str, strict_safet
     let all_declared_names = set_new();
     let all_exported_declared_names = set_new();
     let all_extern_declared_names = set_new();
-    gather_module_sources(inputPath, moduleBasePath, seen, visiting, sources, module_declared_map, all_declared_names, all_exported_declared_names, all_extern_declared_names, lint, max_lines);
+    let module_cycles = vec_new();
+    lint_reset();
+    gather_module_sources(inputPath, moduleBasePath, seen, visiting, sources, module_declared_map, all_declared_names, all_exported_declared_names, all_extern_declared_names, lint, max_lines, module_cycles);
     let merged = join_sources(sources);
     lex_init(merged);
     lex_all();
@@ -517,6 +521,16 @@ out fn compile_file_with_options(inputPath: *Str, outputPath: *Str, strict_safet
     if (borrow == 1) {
         borrowcheck_program(typed);
     }
+    if (lint == 1) {
+        lint_program(typed, inputPath, max_lines);
+        let i = 0;
+        let len = module_cycles.vec_length();
+        while (i < len) {
+            lint_add_circular_import_issue(module_cycles.vec_get(i));
+            i = i + 1;
+        }
+    }
     let js = generate_js(typed);
     write_file(outputPath, js)
 }
+

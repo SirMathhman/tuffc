@@ -14,14 +14,15 @@ let { selfhost_typecheck_marker } = selfhost::typecheck;
 let { selfhost_borrowcheck_marker } = selfhost::borrowcheck;
 let { selfhost_codegen_expr_marker } = selfhost::codegen_expr;
 let { selfhost_codegen_stmt_marker } = selfhost::codegen_stmt;
+let { selfhost_linter_marker } = selfhost::linter;
 let { lex_init, lex_all } = selfhost::runtime_lexer;
-let { lint_assert_file_length } = selfhost::runtime_lexer;
 let { parse_init } = selfhost::parser_core;
 let { p_parse_program, desugar } = selfhost::parser_decls;
 let { resolve_names } = selfhost::resolver;
 let { typecheck_program, typecheck_program_with_options } = selfhost::typecheck;
 let { borrowcheck_program } = selfhost::borrowcheck;
 let { generate_js } = selfhost::codegen_stmt;
+let { lint_reset, lint_take_issues, lint_program } = selfhost::linter;
 
 fn sanitize_max_effective_lines(max_effective_lines: I32) : I32 => {
     if (max_effective_lines <= 0) {
@@ -40,11 +41,9 @@ out fn compile_source_with_options(source: *Str, strict_safety: I32, lint_enable
     let strict = normalize_flag(strict_safety);
     let lint = normalize_flag(lint_enabled);
     let borrow = normalize_flag(borrow_enabled);
+    lint_reset();
     lex_init(source);
     lex_all();
-    if (lint == 1) {
-        lint_assert_file_length("<memory>", max_lines);
-    }
     parse_init();
     let program = p_parse_program();
     let desugared = desugar(program);
@@ -53,8 +52,13 @@ out fn compile_source_with_options(source: *Str, strict_safety: I32, lint_enable
     if (borrow == 1) {
         borrowcheck_program(typed);
     }
+    if (lint == 1) {
+        lint_program(typed, "<memory>", max_lines);
+    }
     generate_js(typed)
 }
+
+out fn take_lint_issues() : *Str => lint_take_issues();
 
 // Main compiler pipeline
 fn compile_source(source: *Str) : *Str => compile_source_with_options(source, 1, 0, 500, 1);

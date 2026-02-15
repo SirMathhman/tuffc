@@ -20,6 +20,27 @@ type CompilerResult<T> = Result<T, TuffError>;
 
 let cachedSelfhost = undefined;
 
+function decodeSelfhostLintIssues(payload): unknown[] {
+  if (typeof payload !== "string" || payload.length === 0) return [];
+  const records = payload.split("\u001e");
+  const issues = [];
+  for (const record of records) {
+    if (!record) continue;
+    const [code, message, reason, fix] = record.split("\u001f");
+    if (!code || !message) continue;
+    issues.push(
+      new TuffError(message, undefined, {
+        code,
+        reason:
+          reason ??
+          "Linting detected a style or maintainability issue in the current program.",
+        fix: fix ?? "Apply the suggested lint fix or adjust source style.",
+      }),
+    );
+  }
+  return issues;
+}
+
 function toPosixPath(value) {
   return value.replaceAll("\\", "/");
 }
@@ -65,7 +86,7 @@ function bootstrapSelfhostCompiler(options = {}): CompilerResult<unknown> {
   };
 
   vm.runInNewContext(
-    `${stage0Result.value.js}\nmodule.exports = { compile_source, compile_file, compile_source_with_options, compile_file_with_options, main };`,
+    `${stage0Result.value.js}\nmodule.exports = { compile_source, compile_file, compile_source_with_options, compile_file_with_options, take_lint_issues, main };`,
     sandbox,
     { filename: toPosixPath(selfhostOutput) },
   );
@@ -409,9 +430,9 @@ export function compileSource(
     if (!selfhostResult.ok) return selfhostResult;
     const selfhost = selfhostResult.value;
     const strictSafety = 1;
-    const lintEnabled =
-      options.lint?.enabled && options.lint?.mode !== "warn" ? 1 : 0;
+    const lintEnabled = options.lint?.enabled ? 1 : 0;
     const maxEffectiveLines = options.lint?.maxEffectiveLines ?? 500;
+    const lintMode = options.lint?.mode ?? "error";
 
     // Selfhost can throw, wrap in try/catch but return Result
     let js;
@@ -435,6 +456,17 @@ export function compileSource(
           : new TuffError(String(error), undefined),
       );
     }
+    const lintIssues =
+      typeof selfhost.take_lint_issues === "function"
+        ? decodeSelfhostLintIssues(selfhost.take_lint_issues())
+        : [];
+    for (const issue of lintIssues) {
+      enrichError(issue, { source });
+    }
+    if (lintIssues.length > 0 && lintMode !== "warn") {
+      return err(lintIssues[0]);
+    }
+
     return ok({
       tokens: [],
       cst: { kind: "Program", body: [] },
@@ -442,7 +474,7 @@ export function compileSource(
       js,
       output: js,
       target,
-      lintIssues: [],
+      lintIssues,
       lintFixesApplied: 0,
       lintFixedSource: source,
     });
@@ -602,9 +634,9 @@ function compileFileInternal(
     }
 
     const strictSafety = 1;
-    const lintEnabled =
-      options.lint?.enabled && options.lint?.mode !== "warn" ? 1 : 0;
+    const lintEnabled = options.lint?.enabled ? 1 : 0;
     const maxEffectiveLines = options.lint?.maxEffectiveLines ?? 500;
+    const lintMode = options.lint?.mode ?? "error";
 
     let js;
     try {
@@ -657,15 +689,27 @@ function compileFileInternal(
       );
     }
 
+    const source = fs.readFileSync(absInput, "utf8");
+    const lintIssues =
+      typeof selfhost.take_lint_issues === "function"
+        ? decodeSelfhostLintIssues(selfhost.take_lint_issues())
+        : [];
+    for (const issue of lintIssues) {
+      enrichError(issue, { source });
+    }
+    if (lintIssues.length > 0 && lintMode !== "warn") {
+      return err(lintIssues[0]);
+    }
+
     return ok({
-      source: fs.readFileSync(absInput, "utf8"),
+      source,
       tokens: [],
       cst: { kind: "Program", body: [] },
       core: { kind: "Program", body: [] },
       js,
       output: js,
       target,
-      lintIssues: [],
+      lintIssues,
       lintFixesApplied: 0,
       lintFixedSource: undefined,
       outputPath: finalOutput,
