@@ -1,5 +1,5 @@
 let { p_at, p_eat, p_expect, p_parse_identifier, p_at_kind, p_peek, p_parse_pattern, node_kind, node_new, node_set_data1, node_set_data2, node_set_data3, node_get_data1, node_get_data2, node_get_data3 } = selfhost::parser_core;
-let { tok_value } = selfhost::runtime_lexer;
+let { tok_value, get_interned_str } = selfhost::runtime_lexer;
 
 fn p_parse_postfix(exprIn: I32) : I32 => {
     let expr = exprIn;
@@ -196,8 +196,13 @@ fn p_parse_primary() : I32 => {
 }
 
 fn p_parse_unary() : I32 => {
-    if (p_at(TK_SYMBOL, "!") || p_at(TK_SYMBOL, "-")) {
-        let op = tok_value(p_eat());
+    if (p_at(TK_SYMBOL, "!") || p_at(TK_SYMBOL, "-") || p_at(TK_SYMBOL, "&")) {
+        let t = p_eat();
+        let op = tok_value(t);
+        if (get_interned_str(op).str_eq("&") && p_at(TK_KEYWORD, "mut")) {
+            p_eat();
+            op = intern("&mut");
+        }
         let inner = p_parse_unary();
         let node = node_new(NK_UNARY_EXPR);
         node_set_data1(node, op);

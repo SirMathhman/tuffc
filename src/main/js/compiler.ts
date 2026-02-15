@@ -8,6 +8,7 @@ import { parse } from "./parser.ts";
 import { desugar } from "./desugar.ts";
 import { resolveNames } from "./resolve.ts";
 import { typecheck } from "./typecheck.ts";
+import { borrowcheck } from "./borrowcheck.ts";
 import { autoFixProgram, lintProgram } from "./linter.ts";
 import { generateJavaScript } from "./codegen-js.ts";
 import { generateC } from "./codegen-c.ts";
@@ -52,6 +53,7 @@ function bootstrapSelfhostCompiler(options = {}): CompilerResult<unknown> {
       allowHostPrefix: "",
     },
     lint: { enabled: false },
+    borrowcheck: { enabled: false },
   });
 
   if (!stage0Result.ok) return stage0Result;
@@ -125,6 +127,26 @@ function emitTarget(core, target): string {
     return generateC(core);
   }
   return generateJavaScript(core);
+}
+
+function runBorrowPrecheckSource(
+  source,
+  filePath,
+  options,
+): CompilerResult<void> {
+  if (options.borrowcheck?.enabled === false) return ok(undefined);
+  const tokensResult = lex(source, filePath);
+  if (!tokensResult.ok) return tokensResult;
+  const cstResult = parse(tokensResult.value);
+  if (!cstResult.ok) return cstResult;
+  const core = desugar(cstResult.value);
+  const resolveResult = resolveNames(core, options.resolve ?? {});
+  if (!resolveResult.ok) return resolveResult;
+  const typecheckResult = typecheck(core, options.typecheck ?? {});
+  if (!typecheckResult.ok) return typecheckResult;
+  const borrowResult = borrowcheck(core, options.borrowcheck ?? {});
+  if (!borrowResult.ok) return borrowResult;
+  return ok(undefined);
 }
 
 function gatherImports(program) {
@@ -338,6 +360,8 @@ export function compileSource(
   }
 
   if ((options.backend ?? "stage0") === "selfhost") {
+    const borrowEnabled = options.borrowcheck?.enabled !== false;
+
     if (target !== "js") {
       return err(
         new TuffError(
@@ -366,6 +390,14 @@ export function compileSource(
           },
         ),
       );
+    }
+
+    if (borrowEnabled) {
+      const precheck = runBorrowPrecheckSource(source, filePath, options);
+      if (!precheck.ok) {
+        enrichError(precheck.error, { source });
+        return precheck;
+      }
     }
 
     const selfhostResult = bootstrapSelfhostCompiler(options);
@@ -410,6 +442,7 @@ export function compileSource(
   }
 
   const run = createTracer(options.tracePasses);
+  const borrowEnabled = options.borrowcheck?.enabled !== false;
   const tokensResult = run("lex", () => lex(source, filePath));
   if (!tokensResult.ok) {
     enrichError(tokensResult.error, { source });
@@ -436,6 +469,15 @@ export function compileSource(
   if (!typecheckResult.ok) {
     enrichError(typecheckResult.error, { source });
     return typecheckResult;
+  }
+  if (borrowEnabled) {
+    const borrowResult = run("borrowcheck", () =>
+      borrowcheck(core, options.borrowcheck ?? {}),
+    );
+    if (!borrowResult.ok) {
+      enrichError(borrowResult.error, { source });
+      return borrowResult;
+    }
   }
   const { applied: lintFixesApplied, fixedSource: lintFixedSource } =
     autoFixProgram(core, {
@@ -486,6 +528,8 @@ function compileFileInternal(
   outputPath: string | undefined = undefined,
   options: Record<string, unknown> = {},
 ): CompilerResult<Record<string, unknown>> {
+  const isSelfhostBootstrapInput =
+    path.resolve(inputPath) === path.resolve(getSelfhostEntryPath());
   const target = getCodegenTarget(options);
   if (!isSupportedTarget(target)) {
     return err(
@@ -499,6 +543,9 @@ function compileFileInternal(
   }
 
   if ((options.backend ?? "stage0") === "selfhost") {
+    const borrowEnabled =
+      options.borrowcheck?.enabled !== false && !isSelfhostBootstrapInput;
+
     if (target !== "js") {
       return err(
         new TuffError(
@@ -544,6 +591,33 @@ function compileFileInternal(
     let js;
     try {
       if (options.enableModules) {
+        const graphResult = loadModuleGraph(absInput, {
+          ...(options.modules ?? {}),
+          allowImportCycles: false,
+        });
+        if (!graphResult.ok) return graphResult;
+
+        const resolveResult = resolveNames(graphResult.value.merged, {
+          ...(options.resolve ?? {}),
+          strictModuleImports: options.resolve?.strictModuleImports ?? true,
+          moduleImportsByPath: graphResult.value.moduleImportsByPath,
+        });
+        if (!resolveResult.ok) return resolveResult;
+
+        const typecheckResult = typecheck(
+          graphResult.value.merged,
+          options.typecheck ?? {},
+        );
+        if (!typecheckResult.ok) return typecheckResult;
+
+        if (borrowEnabled) {
+          const borrowResult = borrowcheck(
+            graphResult.value.merged,
+            options.borrowcheck ?? {},
+          );
+          if (!borrowResult.ok) return borrowResult;
+        }
+
         const normalizedInput = toPosixPath(absInput);
         const normalizedOutput = toPosixPath(finalOutput);
         if (typeof selfhost.compile_file_with_options === "function") {
@@ -560,6 +634,10 @@ function compileFileInternal(
         js = fs.readFileSync(finalOutput, "utf8");
       } else {
         const source = fs.readFileSync(absInput, "utf8");
+        if (borrowEnabled) {
+          const precheck = runBorrowPrecheckSource(source, absInput, options);
+          if (!precheck.ok) return precheck;
+        }
         js =
           typeof selfhost.compile_source_with_options === "function"
             ? selfhost.compile_source_with_options(
@@ -602,6 +680,8 @@ function compileFileInternal(
   }
 
   const run = createTracer(options.tracePasses);
+  const borrowEnabled =
+    options.borrowcheck?.enabled !== false && !isSelfhostBootstrapInput;
   const useModules = !!options.enableModules;
   let graph = undefined;
   const lintMode = options.lint?.mode ?? "error";
@@ -657,6 +737,19 @@ function compileFileInternal(
       }
       enrichError(typecheckResult.error, { sourceByFile });
       return typecheckResult;
+    }
+    if (borrowEnabled) {
+      const borrowResult = run("borrowcheck", () =>
+        borrowcheck(graph.merged, options.borrowcheck ?? {}),
+      );
+      if (!borrowResult.ok) {
+        const sourceByFile = new Map();
+        for (const unit of graph.ordered) {
+          sourceByFile.set(unit.filePath, unit.source);
+        }
+        enrichError(borrowResult.error, { sourceByFile });
+        return borrowResult;
+      }
     }
     const mergedSource = graph.ordered.map((unit) => unit.source).join("\n\n");
     const { applied: lintFixesApplied, fixedSource: lintFixedSource } =

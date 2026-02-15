@@ -125,6 +125,16 @@ fn infer_expr_type_name(n: I32, fn_return_types: Map, local_types: Map) : *Str =
         }
         return "Unknown";
     }
+    if (kind == NK_UNARY_EXPR) {
+        let op = get_interned_str(node_get_data1(n));
+        let inner = infer_expr_type_name(node_get_data2(n), fn_return_types, local_types);
+        if (op.str_eq("&")) {
+            return "*".str_concat(inner);
+        }
+        if (op.str_eq("&mut")) {
+            return "*mut ".str_concat(inner);
+        }
+    }
     if (kind == NK_CALL_EXPR) {
         let callee = node_get_data1(n);
         if (node_kind(callee) == NK_IDENTIFIER) {

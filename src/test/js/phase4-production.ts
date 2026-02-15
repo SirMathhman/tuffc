@@ -106,6 +106,30 @@ for (const key of ["source", "cause", "reason", "fix"]) {
   }
 }
 
+const borrowGuardResult = compileSourceResult(
+  `struct Box { v : I32 }\nfn bad() : I32 => { let b : Box = Box { v: 1 }; let moved : Box = b; b.v }`,
+  "<phase4-borrow-use-after-move>",
+);
+if (borrowGuardResult.ok) {
+  console.error("Expected borrow-checker compile failure");
+  process.exit(1);
+}
+const borrowGuardDiag = toDiagnostic(unwrapErr(borrowGuardResult));
+if (borrowGuardDiag.code !== "E_BORROW_USE_AFTER_MOVE") {
+  console.error(
+    `Expected E_BORROW_USE_AFTER_MOVE, got ${borrowGuardDiag.code}`,
+  );
+  process.exit(1);
+}
+for (const key of ["source", "cause", "reason", "fix"]) {
+  if (!borrowGuardDiag[key] || typeof borrowGuardDiag[key] !== "string") {
+    console.error(
+      `Expected borrow diagnostic field '${key}' to be a non-empty string`,
+    );
+    process.exit(1);
+  }
+}
+
 // 2) Ensure CLI emits machine-readable JSON diagnostics.
 const failingFile = path.join(outDir, "cli-fail.tuff");
 fs.writeFileSync(failingFile, `fn bad(x : I32) : I32 => 100 / x;`, "utf8");

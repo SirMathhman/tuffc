@@ -1,0 +1,560 @@
+// @ts-nocheck
+import { TuffError } from "./errors.ts";
+import { err, ok, type Result } from "./result.ts";
+
+type BorrowcheckResult<T> = Result<T, TuffError>;
+
+const COPY_PRIMITIVES = new Set([
+  "I8",
+  "I16",
+  "I32",
+  "I64",
+  "I128",
+  "U8",
+  "U16",
+  "U32",
+  "U64",
+  "U128",
+  "USize",
+  "ISize",
+  "F32",
+  "F64",
+  "Bool",
+  "Char",
+]);
+
+function typeNameFromNode(typeNode) {
+  if (!typeNode) return "Unknown";
+  if (typeof typeNode === "string") return typeNode;
+  if (typeNode.kind === "NamedType") return typeNode.name;
+  if (typeNode.kind === "RefinementType")
+    return typeNameFromNode(typeNode.base);
+  if (typeNode.kind === "PointerType") {
+    const inner = typeNameFromNode(typeNode.to);
+    return typeNode.mutable ? `*mut ${inner}` : `*${inner}`;
+  }
+  if (typeNode.kind === "UnionType") {
+    return `${typeNameFromNode(typeNode.left)}|${typeNameFromNode(typeNode.right)}`;
+  }
+  return "Unknown";
+}
+
+function isCopyType(typeName, externTypeNames) {
+  if (!typeName || typeName === "Unknown") return false;
+  if (typeName.startsWith("*")) return true;
+  if (COPY_PRIMITIVES.has(typeName)) return true;
+  if (externTypeNames.has(typeName)) return false;
+  return false;
+}
+
+function canonicalPlace(expr) {
+  if (!expr) return undefined;
+  if (expr.kind === "Identifier") {
+    return { base: expr.name, path: expr.name };
+  }
+  if (expr.kind === "MemberExpr") {
+    const p = canonicalPlace(expr.object);
+    if (!p) return undefined;
+    return { base: p.base, path: `${p.path}.${expr.property}` };
+  }
+  if (expr.kind === "IndexExpr") {
+    const p = canonicalPlace(expr.target);
+    if (!p) return undefined;
+    return { base: p.base, path: `${p.path}[]` };
+  }
+  return undefined;
+}
+
+function placesConflict(a, b) {
+  if (!a || !b) return false;
+  if (a.base !== b.base) return false;
+  if (a.path === b.path) return true;
+
+  if (a.path.includes("[]") || b.path.includes("[]")) {
+    const ap = a.path.replaceAll("[]", "");
+    const bp = b.path.replaceAll("[]", "");
+    return ap.startsWith(bp) || bp.startsWith(ap);
+  }
+
+  return a.path.startsWith(`${b.path}.`) || b.path.startsWith(`${a.path}.`);
+}
+
+function inferExprTypeName(expr, envTypes, fnReturnTypes) {
+  if (!expr) return "Unknown";
+  switch (expr.kind) {
+    case "NumberLiteral":
+      return expr.numberType === "USize" ? "USize" : "I32";
+    case "BoolLiteral":
+      return "Bool";
+    case "CharLiteral":
+      return "Char";
+    case "StringLiteral":
+      return "*Str";
+    case "Identifier":
+      return envTypes.get(expr.name) ?? "Unknown";
+    case "UnaryExpr": {
+      const inner = inferExprTypeName(expr.expr, envTypes, fnReturnTypes);
+      if (expr.op === "&") return `*${inner}`;
+      if (expr.op === "&mut") return `*mut ${inner}`;
+      if (expr.op === "!") return "Bool";
+      return inner;
+    }
+    case "BinaryExpr": {
+      if (["==", "!=", "<", "<=", ">", ">=", "&&", "||"].includes(expr.op))
+        return "Bool";
+      return inferExprTypeName(expr.left, envTypes, fnReturnTypes);
+    }
+    case "CallExpr":
+      if (expr.callee?.kind === "Identifier") {
+        return fnReturnTypes.get(expr.callee.name) ?? "Unknown";
+      }
+      return "Unknown";
+    case "StructInit":
+      return expr.name ?? "Unknown";
+    default:
+      return "Unknown";
+  }
+}
+
+function createState() {
+  return {
+    moved: new Set(),
+    immutLoans: new Map(),
+    mutLoans: new Map(),
+    loanScopes: [],
+  };
+}
+
+function cloneState(state) {
+  const out = createState();
+  out.moved = new Set(state.moved);
+  for (const [k, v] of state.immutLoans.entries()) {
+    out.immutLoans.set(k, new Set(v));
+  }
+  for (const [k, v] of state.mutLoans.entries()) {
+    out.mutLoans.set(k, new Set(v));
+  }
+  out.loanScopes = [];
+  return out;
+}
+
+function beginLoanScope(state) {
+  state.loanScopes.push([]);
+}
+
+function addLoan(state, kind, place) {
+  const target = kind === "mut" ? state.mutLoans : state.immutLoans;
+  if (!target.has(place.base)) target.set(place.base, new Set());
+  target.get(place.base).add(place.path);
+  if (state.loanScopes.length > 0) {
+    state.loanScopes[state.loanScopes.length - 1].push({ kind, place });
+  }
+}
+
+function endLoanScope(state) {
+  const added = state.loanScopes.pop() ?? [];
+  for (let i = added.length - 1; i >= 0; i -= 1) {
+    const { kind, place } = added[i];
+    const target = kind === "mut" ? state.mutLoans : state.immutLoans;
+    if (!target.has(place.base)) continue;
+    const set = target.get(place.base);
+    set.delete(place.path);
+    if (set.size === 0) target.delete(place.base);
+  }
+}
+
+function anyConflictingLoan(state, place) {
+  const immut = state.immutLoans.get(place.base) ?? new Set();
+  const mut = state.mutLoans.get(place.base) ?? new Set();
+  for (const p of immut) {
+    if (placesConflict(place, { base: place.base, path: p })) return true;
+  }
+  for (const p of mut) {
+    if (placesConflict(place, { base: place.base, path: p })) return true;
+  }
+  return false;
+}
+
+function conflictingMutLoan(state, place) {
+  const mut = state.mutLoans.get(place.base) ?? new Set();
+  for (const p of mut) {
+    if (placesConflict(place, { base: place.base, path: p })) return true;
+  }
+  return false;
+}
+
+function conflictingImmutLoan(state, place) {
+  const immut = state.immutLoans.get(place.base) ?? new Set();
+  for (const p of immut) {
+    if (placesConflict(place, { base: place.base, path: p })) return true;
+  }
+  return false;
+}
+
+function borrowErr(message, loc, code, fix) {
+  return err(
+    new TuffError(message, loc, {
+      code,
+      reason:
+        "Borrowing and ownership rules require exclusive mutable access or shared immutable access, and disallow use-after-move.",
+      fix,
+    }),
+  );
+}
+
+export function borrowcheck(ast, options = {}): BorrowcheckResult<unknown> {
+  const fnReturnTypes = new Map();
+  const externTypeNames = new Set();
+  const globalTypeByName = new Map();
+  const globalFnNames = new Set();
+
+  for (const node of ast.body ?? []) {
+    if (node.kind === "ExternTypeDecl") {
+      externTypeNames.add(node.name);
+    }
+    if (node.kind === "FnDecl" || node.kind === "ExternFnDecl") {
+      globalFnNames.add(node.name);
+      fnReturnTypes.set(node.name, typeNameFromNode(node.returnType));
+    }
+    if (node.kind === "LetDecl" || node.kind === "ExternLetDecl") {
+      globalTypeByName.set(node.name, typeNameFromNode(node.type));
+    }
+  }
+
+  const consumePlace = (expr, state, envTypes): BorrowcheckResult<void> => {
+    const place = canonicalPlace(expr);
+    if (!place) return ok(undefined);
+
+    if (state.moved.has(place.base)) {
+      return borrowErr(
+        `Use of moved value '${place.base}'`,
+        expr?.loc,
+        "E_BORROW_USE_AFTER_MOVE",
+        "Reinitialize the value before use, or borrow it with '&' / '&mut' instead of moving.",
+      );
+    }
+
+    if (anyConflictingLoan(state, place)) {
+      return borrowErr(
+        `Cannot move '${place.base}' while it is borrowed`,
+        expr?.loc,
+        "E_BORROW_MOVE_WHILE_BORROWED",
+        "Ensure all borrows end before moving, or pass a borrow (&/&mut) instead.",
+      );
+    }
+
+    const ty = inferExprTypeName(expr, envTypes, fnReturnTypes);
+    if (!isCopyType(ty, externTypeNames)) {
+      state.moved.add(place.base);
+    }
+    return ok(undefined);
+  };
+
+  const ensureReadable = (expr, state): BorrowcheckResult<void> => {
+    const place = canonicalPlace(expr);
+    if (!place) return ok(undefined);
+    if (state.moved.has(place.base)) {
+      return borrowErr(
+        `Use of moved value '${place.base}'`,
+        expr?.loc,
+        "E_BORROW_USE_AFTER_MOVE",
+        "Reinitialize the value before use, or borrow it before moving.",
+      );
+    }
+    return ok(undefined);
+  };
+
+  const checkExpr = (
+    expr,
+    state,
+    envTypes,
+    mode = "move",
+  ): BorrowcheckResult<void> => {
+    if (!expr) return ok(undefined);
+
+    if (
+      mode === "move" &&
+      expr.kind === "Identifier" &&
+      globalFnNames.has(expr.name)
+    ) {
+      return ok(undefined);
+    }
+
+    if (expr.kind === "UnaryExpr" && (expr.op === "&" || expr.op === "&mut")) {
+      const place = canonicalPlace(expr.expr);
+      if (!place) {
+        return borrowErr(
+          `Borrow target is not a place expression`,
+          expr?.loc,
+          "E_BORROW_INVALID_TARGET",
+          "Borrow only identifiers, fields, or index places (e.g. &x, &obj.f, &arr[i]).",
+        );
+      }
+
+      const readResult = ensureReadable(expr.expr, state);
+      if (!readResult.ok) return readResult;
+
+      if (expr.op === "&") {
+        if (conflictingMutLoan(state, place)) {
+          return borrowErr(
+            `Cannot immutably borrow '${place.base}' because it is mutably borrowed`,
+            expr?.loc,
+            "E_BORROW_IMMUT_WHILE_MUT",
+            "End the mutable borrow first, or borrow mutably in a non-overlapping scope.",
+          );
+        }
+        addLoan(state, "immut", place);
+      } else {
+        if (
+          conflictingMutLoan(state, place) ||
+          conflictingImmutLoan(state, place)
+        ) {
+          return borrowErr(
+            `Cannot mutably borrow '${place.base}' because it is already borrowed`,
+            expr?.loc,
+            "E_BORROW_MUT_CONFLICT",
+            "Ensure no active borrows overlap this place before taking '&mut'.",
+          );
+        }
+        addLoan(state, "mut", place);
+      }
+      return ok(undefined);
+    }
+
+    switch (expr.kind) {
+      case "Identifier":
+      case "MemberExpr":
+      case "IndexExpr": {
+        if (mode === "read") return ensureReadable(expr, state);
+        return consumePlace(expr, state, envTypes);
+      }
+      case "NumberLiteral":
+      case "BoolLiteral":
+      case "StringLiteral":
+      case "CharLiteral":
+        return ok(undefined);
+      case "UnaryExpr":
+        return checkExpr(expr.expr, state, envTypes, "read");
+      case "BinaryExpr": {
+        const l = checkExpr(expr.left, state, envTypes, "read");
+        if (!l.ok) return l;
+        return checkExpr(expr.right, state, envTypes, "read");
+      }
+      case "CallExpr": {
+        if (
+          !(
+            expr.callee?.kind === "Identifier" &&
+            globalFnNames.has(expr.callee.name)
+          )
+        ) {
+          const c = checkExpr(expr.callee, state, envTypes, "read");
+          if (!c.ok) return c;
+        }
+        for (const a of expr.args ?? []) {
+          const r = checkExpr(a, state, envTypes, "read");
+          if (!r.ok) return r;
+        }
+        return ok(undefined);
+      }
+      case "StructInit": {
+        for (const f of expr.fields ?? []) {
+          const r = checkExpr(f.value, state, envTypes, "read");
+          if (!r.ok) return r;
+        }
+        return ok(undefined);
+      }
+      case "IfExpr": {
+        const cond = checkExpr(expr.condition, state, envTypes, "read");
+        if (!cond.ok) return cond;
+
+        const thenState = cloneState(state);
+        const thenEnv = new Map(envTypes);
+        const thenR = checkNode(expr.thenBranch, thenState, thenEnv);
+        if (!thenR.ok) return thenR;
+
+        if (expr.elseBranch) {
+          const elseState = cloneState(state);
+          const elseEnv = new Map(envTypes);
+          const elseR = checkNode(expr.elseBranch, elseState, elseEnv);
+          if (!elseR.ok) return elseR;
+          state.moved = new Set([...thenState.moved, ...elseState.moved]);
+        } else {
+          state.moved = new Set([...state.moved, ...thenState.moved]);
+        }
+        return ok(undefined);
+      }
+      case "MatchExpr": {
+        const target = checkExpr(expr.target, state, envTypes, "read");
+        if (!target.ok) return target;
+        const movedUnion = new Set(state.moved);
+        for (const c of expr.cases ?? []) {
+          const branchState = cloneState(state);
+          const branchEnv = new Map(envTypes);
+          const r = checkNode(c.body, branchState, branchEnv);
+          if (!r.ok) return r;
+          for (const m of branchState.moved) movedUnion.add(m);
+        }
+        state.moved = movedUnion;
+        return ok(undefined);
+      }
+      case "IsExpr":
+        return checkExpr(expr.expr, state, envTypes, "read");
+      case "UnwrapExpr":
+        return checkExpr(expr.expr, state, envTypes, "read");
+      default:
+        return ok(undefined);
+    }
+  };
+
+  const checkStmt = (stmt, state, envTypes): BorrowcheckResult<void> => {
+    if (!stmt) return ok(undefined);
+    switch (stmt.kind) {
+      case "LetDecl": {
+        const valueMode = canonicalPlace(stmt.value) ? "move" : "read";
+        const valueResult = checkExpr(stmt.value, state, envTypes, valueMode);
+        if (!valueResult.ok) return valueResult;
+        const ty = stmt.type
+          ? typeNameFromNode(stmt.type)
+          : inferExprTypeName(stmt.value, envTypes, fnReturnTypes);
+        envTypes.set(stmt.name, ty);
+        state.moved.delete(stmt.name);
+        return ok(undefined);
+      }
+      case "AssignStmt": {
+        const targetPlace = canonicalPlace(stmt.target);
+        if (targetPlace) {
+          if (anyConflictingLoan(state, targetPlace)) {
+            return borrowErr(
+              `Cannot assign to '${targetPlace.base}' while it is borrowed`,
+              stmt?.loc ?? stmt.target?.loc,
+              "E_BORROW_ASSIGN_WHILE_BORROWED",
+              "End active borrows before assignment, or assign in a non-overlapping scope.",
+            );
+          }
+        }
+        const rhsMode = canonicalPlace(stmt.value) ? "move" : "read";
+        const rhsResult = checkExpr(stmt.value, state, envTypes, rhsMode);
+        if (!rhsResult.ok) return rhsResult;
+        if (stmt.target?.kind === "Identifier") {
+          state.moved.delete(stmt.target.name);
+        }
+        return ok(undefined);
+      }
+      case "ExprStmt":
+        return checkExpr(stmt.expr, state, envTypes, "move");
+      case "ReturnStmt":
+        return stmt.value
+          ? checkExpr(
+              stmt.value,
+              state,
+              envTypes,
+              canonicalPlace(stmt.value) ? "move" : "read",
+            )
+          : ok(undefined);
+      case "IfStmt": {
+        const cond = checkExpr(stmt.condition, state, envTypes, "read");
+        if (!cond.ok) return cond;
+
+        const thenState = cloneState(state);
+        const thenEnv = new Map(envTypes);
+        const thenRes = checkNode(stmt.thenBranch, thenState, thenEnv);
+        if (!thenRes.ok) return thenRes;
+
+        if (stmt.elseBranch) {
+          const elseState = cloneState(state);
+          const elseEnv = new Map(envTypes);
+          const elseRes = checkNode(stmt.elseBranch, elseState, elseEnv);
+          if (!elseRes.ok) return elseRes;
+          state.moved = new Set([...thenState.moved, ...elseState.moved]);
+        } else {
+          state.moved = new Set([...state.moved, ...thenState.moved]);
+        }
+        return ok(undefined);
+      }
+      case "ForStmt": {
+        const start = checkExpr(stmt.start, state, envTypes, "read");
+        if (!start.ok) return start;
+        const end = checkExpr(stmt.end, state, envTypes, "read");
+        if (!end.ok) return end;
+        beginLoanScope(state);
+        const loopEnv = new Map(envTypes);
+        loopEnv.set(stmt.iterator, "I32");
+        const body = checkNode(stmt.body, state, loopEnv);
+        endLoanScope(state);
+        return body;
+      }
+      case "WhileStmt": {
+        const cond = checkExpr(stmt.condition, state, envTypes, "read");
+        if (!cond.ok) return cond;
+        beginLoanScope(state);
+        const body = checkNode(stmt.body, state, new Map(envTypes));
+        endLoanScope(state);
+        return body;
+      }
+      case "Block":
+        return checkBlock(stmt, state, envTypes);
+      case "FnDecl": {
+        const fnState = createState();
+        const fnEnv = new Map(globalTypeByName);
+        for (const p of stmt.params ?? []) {
+          fnEnv.set(p.name, typeNameFromNode(p.type));
+        }
+        if (stmt.body?.kind === "Block") {
+          return checkBlock(stmt.body, fnState, fnEnv);
+        }
+        return checkExpr(stmt.body, fnState, fnEnv, "move");
+      }
+      default:
+        return ok(undefined);
+    }
+  };
+
+  const checkBlock = (block, state, envTypes): BorrowcheckResult<void> => {
+    beginLoanScope(state);
+    const blockEnv = new Map(envTypes);
+    for (const s of block.statements ?? []) {
+      const r = checkStmt(s, state, blockEnv);
+      if (!r.ok) {
+        endLoanScope(state);
+        return r;
+      }
+    }
+    endLoanScope(state);
+    return ok(undefined);
+  };
+
+  const checkNode = (node, state, envTypes): BorrowcheckResult<void> => {
+    if (!node) return ok(undefined);
+    if (node.kind === "Block") return checkBlock(node, state, envTypes);
+    if (
+      node.kind === "NumberLiteral" ||
+      node.kind === "BoolLiteral" ||
+      node.kind === "StringLiteral" ||
+      node.kind === "CharLiteral" ||
+      node.kind === "Identifier" ||
+      node.kind === "UnaryExpr" ||
+      node.kind === "BinaryExpr" ||
+      node.kind === "CallExpr" ||
+      node.kind === "MemberExpr" ||
+      node.kind === "IndexExpr" ||
+      node.kind === "StructInit" ||
+      node.kind === "IfExpr" ||
+      node.kind === "MatchExpr" ||
+      node.kind === "IsExpr" ||
+      node.kind === "UnwrapExpr"
+    ) {
+      return checkExpr(node, state, envTypes, "move");
+    }
+    return checkStmt(node, state, envTypes);
+  };
+
+  const state = createState();
+  const env = new Map(globalTypeByName);
+
+  for (const node of ast.body ?? []) {
+    const r = checkStmt(node, state, env);
+    if (!r.ok) return r;
+  }
+
+  return ok(ast);
+}

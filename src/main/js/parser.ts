@@ -597,14 +597,18 @@ export function parse(tokens: Token[]): ParseResult<Program> {
   };
 
   const parseUnary = (): ParseResult<Expr> => {
-    if (at("symbol", "!") || at("symbol", "-")) {
+    if (at("symbol", "!") || at("symbol", "-") || at("symbol", "&")) {
       const tok = eat();
+      const op =
+        tok.value === "&" && at("keyword", "mut")
+          ? `${tok.value}${eat().value}`
+          : tok.value;
       const innerResult = parseUnary();
       if (!innerResult.ok) return innerResult;
       const inner = innerResult.value;
       return ok({
         kind: "UnaryExpr",
-        op: tok.value,
+        op,
         expr: inner,
         loc: tok.loc,
         start: tok.start,

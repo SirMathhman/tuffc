@@ -28,6 +28,9 @@ function emitExpr(expr) {
     case "Identifier":
       return expr.name;
     case "UnaryExpr":
+      if (expr.op === "&" || expr.op === "&mut") {
+        return emitExpr(expr.expr);
+      }
       return `(${expr.op}${emitExpr(expr.expr)})`;
     case "BinaryExpr":
       return `(${emitExpr(expr.left)} ${expr.op} ${emitExpr(expr.right)})`;

@@ -300,6 +300,9 @@ function emitExpr(expr, ctx, localTypes = new Map()) {
     case "Identifier":
       return resolveIdentifier(expr.name, ctx);
     case "UnaryExpr":
+      if (expr.op === "&" || expr.op === "&mut") {
+        return emitExpr(expr.expr, ctx, localTypes);
+      }
       return `(${expr.op}${emitExpr(expr.expr, ctx, localTypes)})`;
     case "BinaryExpr":
       return `(${emitExpr(expr.left, ctx, localTypes)} ${expr.op} ${emitExpr(expr.right, ctx, localTypes)})`;

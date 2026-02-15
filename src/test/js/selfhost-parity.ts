@@ -352,4 +352,60 @@ if (!nullableGuardedStage0.ok || !nullableGuardedSelfhost.ok) {
   throw new Error("nullable guarded parity: expected both backends to compile");
 }
 
+const borrowMoveSource = `
+struct Box { v : I32 }
+fn main() : I32 => {
+  let b : Box = Box { v: 1 };
+  let moved : Box = b;
+  b.v
+}
+`;
+const borrowMoveStage0 = compileSourceResult(
+  borrowMoveSource,
+  "<borrow-stage0>",
+);
+const borrowMoveSelfhost = compileSourceResult(
+  borrowMoveSource,
+  "<borrow-selfhost>",
+  {
+    backend: "selfhost",
+  },
+);
+if (borrowMoveStage0.ok || borrowMoveSelfhost.ok) {
+  throw new Error(
+    "borrow parity: expected both backends to fail on use-after-move",
+  );
+}
+if (toDiagnostic(borrowMoveStage0.error).code !== "E_BORROW_USE_AFTER_MOVE") {
+  throw new Error("borrow parity (stage0): expected E_BORROW_USE_AFTER_MOVE");
+}
+if (toDiagnostic(borrowMoveSelfhost.error).code !== "E_BORROW_USE_AFTER_MOVE") {
+  throw new Error("borrow parity (selfhost): expected E_BORROW_USE_AFTER_MOVE");
+}
+
+const borrowOkSource = `
+struct Box { v : I32 }
+fn main() : I32 => {
+  let b : Box = Box { v: 1 };
+  let r : *Box = &b;
+  0
+}
+`;
+const borrowOkStage0 = compileSourceResult(
+  borrowOkSource,
+  "<borrow-ok-stage0>",
+);
+const borrowOkSelfhost = compileSourceResult(
+  borrowOkSource,
+  "<borrow-ok-selfhost>",
+  {
+    backend: "selfhost",
+  },
+);
+if (!borrowOkStage0.ok || !borrowOkSelfhost.ok) {
+  throw new Error(
+    "borrow parity: expected both backends to compile borrow-only case",
+  );
+}
+
 console.log("Selfhost differential parity checks passed");

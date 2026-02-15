@@ -39,6 +39,9 @@ fn emit_expr(n: I32) : *Str => {
     
     if (kind == NK_UNARY_EXPR) {
         let op = get_interned_str(node_get_data1(n));
+        if (op.str_eq("&") || op.str_eq("&mut")) {
+            return emit_expr(node_get_data2(n));
+        }
         let inner = emit_expr(node_get_data2(n));
         return "(".str_concat(op).str_concat(inner.str_concat(")"));
     }

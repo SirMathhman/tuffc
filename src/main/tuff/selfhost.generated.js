@@ -1763,6 +1763,16 @@ function infer_expr_type_name(n, fn_return_types, local_types) {
 }
   return "Unknown";
 }
+  if ((kind == NK_UNARY_EXPR)) {
+  let op = get_interned_str(node_get_data1(n));
+  let inner = infer_expr_type_name(node_get_data2(n), fn_return_types, local_types);
+  if (str_eq(op, "&")) {
+  return str_concat("*", inner);
+}
+  if (str_eq(op, "&mut")) {
+  return str_concat("*mut ", inner);
+}
+}
   if ((kind == NK_CALL_EXPR)) {
   let callee = node_get_data1(n);
   if ((node_kind(callee) == NK_IDENTIFIER)) {
@@ -2730,8 +2740,13 @@ function p_parse_primary() {
 }
 
 function p_parse_unary() {
-  if ((p_at(TK_SYMBOL, "!") || p_at(TK_SYMBOL, "-"))) {
-  let op = tok_value(p_eat());
+  if (((p_at(TK_SYMBOL, "!") || p_at(TK_SYMBOL, "-")) || p_at(TK_SYMBOL, "&"))) {
+  let t = p_eat();
+  let op = tok_value(t);
+  if ((str_eq(get_interned_str(op), "&") && p_at(TK_KEYWORD, "mut"))) {
+  p_eat();
+  op = intern("&mut");
+}
   let inner = p_parse_unary();
   let node = node_new(NK_UNARY_EXPR);
   node_set_data1(node, op);
@@ -2907,6 +2922,9 @@ function emit_expr(n) {
 }
   if ((kind == NK_UNARY_EXPR)) {
   let op = get_interned_str(node_get_data1(n));
+  if ((str_eq(op, "&") || str_eq(op, "&mut"))) {
+  return emit_expr(node_get_data2(n));
+}
   let inner = emit_expr(node_get_data2(n));
   return str_concat(str_concat("(", op), str_concat(inner, ")"));
 }

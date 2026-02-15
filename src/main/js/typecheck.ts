@@ -628,6 +628,25 @@ export function typecheck(
         const tResult = inferExpr(expr.expr, scope, facts);
         if (!tResult.ok) return tResult;
         const t = tResult.value;
+        if (expr.op === "&" || expr.op === "&mut") {
+          const pointerName =
+            expr.op === "&mut" ? `*mut ${t.name}` : `*${t.name}`;
+          return ok({
+            name: pointerName,
+            min: undefined,
+            max: undefined,
+            nonZero: true,
+            typeNode: {
+              kind: "PointerType",
+              mutable: expr.op === "&mut",
+              to: t.typeNode ?? {
+                kind: "NamedType",
+                name: t.name,
+                genericArgs: [],
+              },
+            },
+          });
+        }
         if (expr.op === "!" && t.name !== "Bool" && t.name !== "Unknown")
           return err(new TuffError("'!' expects Bool", expr.loc));
         if (expr.op === "-" && !NUMERIC.has(t.name) && t.name !== "Unknown")
