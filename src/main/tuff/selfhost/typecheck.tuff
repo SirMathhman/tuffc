@@ -167,6 +167,17 @@ fn infer_expr_type_name(n: I32, fn_return_types: Map, local_types: Map) : *Str =
         if (op.str_eq("&mut")) {
             return "*mut ".str_concat(inner);
         }
+        if (op.str_eq("!")) {
+            return "Bool";
+        }
+        return inner;
+    }
+    if (kind == 25) {
+        let op = get_interned_str(node_get_data1(n));
+        if (op.str_eq("==") || op.str_eq("!=") || op.str_eq("<") || op.str_eq("<=") || op.str_eq(">") || op.str_eq(">=") || op.str_eq("&&") || op.str_eq("||")) {
+            return "Bool";
+        }
+        return infer_expr_type_name(node_get_data2(n), fn_return_types, local_types);
     }
     if (kind == 27) {
         let callee = node_get_data1(n);

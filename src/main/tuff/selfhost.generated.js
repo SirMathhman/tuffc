@@ -1811,6 +1811,17 @@ function infer_expr_type_name(n, fn_return_types, local_types) {
   if (str_eq(op, "&mut")) {
   return str_concat("*mut ", inner);
 }
+  if (str_eq(op, "!")) {
+  return "Bool";
+}
+  return inner;
+}
+  if ((kind == 25)) {
+  let op = get_interned_str(node_get_data1(n));
+  if ((((((((str_eq(op, "==") || str_eq(op, "!=")) || str_eq(op, "<")) || str_eq(op, "<=")) || str_eq(op, ">")) || str_eq(op, ">=")) || str_eq(op, "&&")) || str_eq(op, "||"))) {
+  return "Bool";
+}
+  return infer_expr_type_name(node_get_data2(n), fn_return_types, local_types);
 }
   if ((kind == 27)) {
   let callee = node_get_data1(n);
@@ -2462,6 +2473,685 @@ function typecheck_program(program) {
 }
 
 function selfhost_typecheck_marker() { return 0; }
+
+let bc_global_value_types = map_new();
+
+function bc_str_ends_with_local(s, suffix) {
+  let ns = str_length(s);
+  let nf = str_length(suffix);
+  if ((nf > ns)) {
+  return false;
+}
+  return str_eq(str_slice(s, (ns - nf), ns), suffix);
+}
+
+function bc_type_name_from_type_node(t) {
+  if ((t == 0)) {
+  return "Unknown";
+}
+  let k = node_kind(t);
+  if ((k == NK_NAMED_TYPE)) {
+  return get_interned_str(node_get_data1(t));
+}
+  if ((k == NK_REFINEMENT_TYPE)) {
+  return bc_type_name_from_type_node(node_get_data1(t));
+}
+  if ((k == NK_POINTER_TYPE)) {
+  let mutable = node_get_data1(t);
+  let inner = bc_type_name_from_type_node(node_get_data2(t));
+  if ((mutable == 1)) {
+  return str_concat("*mut ", inner);
+}
+  return str_concat("*", inner);
+}
+  if ((k == NK_UNION_TYPE)) {
+  let left = bc_type_name_from_type_node(node_get_data1(t));
+  let right = bc_type_name_from_type_node(node_get_data2(t));
+  return str_concat(str_concat(left, "|"), right);
+}
+  return "Unknown";
+}
+
+function is_copy_primitive(name) {
+  return (((((((((((((((str_eq(name, "I8") || str_eq(name, "I16")) || str_eq(name, "I32")) || str_eq(name, "I64")) || str_eq(name, "I128")) || str_eq(name, "U8")) || str_eq(name, "U16")) || str_eq(name, "U32")) || str_eq(name, "U64")) || str_eq(name, "U128")) || str_eq(name, "USize")) || str_eq(name, "ISize")) || str_eq(name, "F32")) || str_eq(name, "F64")) || str_eq(name, "Bool")) || str_eq(name, "Char"));
+}
+
+function is_copy_type(type_name, extern_type_names) {
+  if (str_eq(type_name, "Unknown")) {
+  return false;
+}
+  if (str_starts_with(type_name, "*")) {
+  return true;
+}
+  if (is_copy_primitive(type_name)) {
+  return true;
+}
+  if (((str_eq(type_name, "Vec") || str_eq(type_name, "Map")) || str_eq(type_name, "Set"))) {
+  return true;
+}
+  if (set_has(extern_type_names, type_name)) {
+  return false;
+}
+  return false;
+}
+
+function bc_infer_expr_type_name(n, env_types, fn_return_types) {
+  if ((n == 0)) {
+  return "Unknown";
+}
+  let kind = node_kind(n);
+  if ((kind == NK_NUMBER_LIT)) {
+  let text = get_interned_str(node_get_data1(n));
+  if (bc_str_ends_with_local(text, "USize")) {
+  return "USize";
+}
+  return "I32";
+}
+  if ((kind == NK_BOOL_LIT)) {
+  return "Bool";
+}
+  if ((kind == NK_STRING_LIT)) {
+  return "*Str";
+}
+  if ((kind == NK_CHAR_LIT)) {
+  return "Char";
+}
+  if ((kind == NK_IDENTIFIER)) {
+  let name = get_interned_str(node_get_data1(n));
+  if (map_has(env_types, name)) {
+  return map_get(env_types, name);
+}
+  if (map_has(bc_global_value_types, name)) {
+  return map_get(bc_global_value_types, name);
+}
+  return "Unknown";
+}
+  if ((kind == NK_UNARY_EXPR)) {
+  let op = get_interned_str(node_get_data1(n));
+  let inner = bc_infer_expr_type_name(node_get_data2(n), env_types, fn_return_types);
+  if (str_eq(op, "&")) {
+  return str_concat("*", inner);
+}
+  if (str_eq(op, "&mut")) {
+  return str_concat("*mut ", inner);
+}
+  if (str_eq(op, "!")) {
+  return "Bool";
+}
+  return inner;
+}
+  if ((kind == NK_BINARY_EXPR)) {
+  let op = get_interned_str(node_get_data1(n));
+  if ((((((((str_eq(op, "==") || str_eq(op, "!=")) || str_eq(op, "<")) || str_eq(op, "<=")) || str_eq(op, ">")) || str_eq(op, ">=")) || str_eq(op, "&&")) || str_eq(op, "||"))) {
+  return "Bool";
+}
+  return bc_infer_expr_type_name(node_get_data2(n), env_types, fn_return_types);
+}
+  if ((kind == NK_CALL_EXPR)) {
+  let callee = node_get_data1(n);
+  if ((node_kind(callee) == NK_IDENTIFIER)) {
+  let fname = get_interned_str(node_get_data1(callee));
+  if (map_has(fn_return_types, fname)) {
+  return map_get(fn_return_types, fname);
+}
+}
+}
+  if ((kind == NK_STRUCT_INIT)) {
+  return get_interned_str(node_get_data1(n));
+}
+  return "Unknown";
+}
+
+function place_new(base, path) {
+  let p = vec_new();
+  vec_push(p, base);
+  vec_push(p, path);
+  return p;
+}
+
+function place_is_valid(p) { return (vec_length(p) == 2); }
+
+function place_base(p) { return vec_get(p, 0); }
+
+function place_path(p) { return vec_get(p, 1); }
+
+function canonical_place(n) {
+  if ((n == 0)) {
+  return vec_new();
+}
+  let kind = node_kind(n);
+  if ((kind == NK_IDENTIFIER)) {
+  let name = get_interned_str(node_get_data1(n));
+  return place_new(name, name);
+}
+  if ((kind == NK_MEMBER_EXPR)) {
+  let base = canonical_place(node_get_data1(n));
+  if ((!place_is_valid(base))) {
+  return vec_new();
+}
+  let prop = get_interned_str(node_get_data2(n));
+  return place_new(place_base(base), str_concat(str_concat(place_path(base), "."), prop));
+}
+  if ((kind == NK_INDEX_EXPR)) {
+  let base = canonical_place(node_get_data1(n));
+  if ((!place_is_valid(base))) {
+  return vec_new();
+}
+  return place_new(place_base(base), str_concat(place_path(base), "[]"));
+}
+  return vec_new();
+}
+
+function places_conflict(a_base, a_path, b_base, b_path) {
+  if ((!str_eq(a_base, b_base))) {
+  return false;
+}
+  if (str_eq(a_path, b_path)) {
+  return true;
+}
+  if ((str_includes(a_path, "[]") || str_includes(b_path, "[]"))) {
+  return true;
+}
+  return (str_starts_with(a_path, str_concat(b_path, ".")) || str_starts_with(b_path, str_concat(a_path, ".")));
+}
+
+function state_new() {
+  let s = vec_new();
+  vec_push(s, set_new());
+  vec_push(s, vec_new());
+  vec_push(s, vec_new());
+  vec_push(s, vec_new());
+  return s;
+}
+
+function state_moved_set(state) { return vec_get(state, 0); }
+
+function state_moved_vec(state) { return vec_get(state, 1); }
+
+function state_loans(state) { return vec_get(state, 2); }
+
+function state_scope_starts(state) { return vec_get(state, 3); }
+
+function state_moved_has(state, name) { return set_has(state_moved_set(state), name); }
+
+function state_moved_add(state, name) {
+  if ((!set_has(state_moved_set(state), name))) {
+  set_add(state_moved_set(state), name);
+  vec_push(state_moved_vec(state), name);
+}
+  return 0;
+}
+
+function state_moved_delete(state, name) {
+  set_delete(state_moved_set(state), name);
+  return 0;
+}
+
+function state_begin_scope(state) {
+  vec_push(state_scope_starts(state), vec_length(state_loans(state)));
+  return 0;
+}
+
+function state_end_scope(state) {
+  let starts = state_scope_starts(state);
+  if ((vec_length(starts) == 0)) {
+  return 0;
+}
+  let start = vec_pop(starts);
+  let loans = state_loans(state);
+  while ((vec_length(loans) > start)) {
+  vec_pop(loans);
+}
+  return 0;
+}
+
+function state_add_loan(state, kind, base, path) {
+  let entry = vec_new();
+  vec_push(entry, kind);
+  vec_push(entry, base);
+  vec_push(entry, path);
+  vec_push(state_loans(state), entry);
+  return 0;
+}
+
+function state_any_conflicting_loan(state, base, path) {
+  let loans = state_loans(state);
+  let i = 0;
+  let len = vec_length(loans);
+  while ((i < len)) {
+  let e = vec_get(loans, i);
+  let eb = vec_get(e, 1);
+  let ep = vec_get(e, 2);
+  if (places_conflict(base, path, eb, ep)) {
+  return true;
+}
+  i = (i + 1);
+}
+  return false;
+}
+
+function state_conflicting_mut_loan(state, base, path) {
+  let loans = state_loans(state);
+  let i = 0;
+  let len = vec_length(loans);
+  while ((i < len)) {
+  let e = vec_get(loans, i);
+  if ((vec_get(e, 0) == 2)) {
+  let eb = vec_get(e, 1);
+  let ep = vec_get(e, 2);
+  if (places_conflict(base, path, eb, ep)) {
+  return true;
+}
+}
+  i = (i + 1);
+}
+  return false;
+}
+
+function state_conflicting_immut_loan(state, base, path) {
+  let loans = state_loans(state);
+  let i = 0;
+  let len = vec_length(loans);
+  while ((i < len)) {
+  let e = vec_get(loans, i);
+  if ((vec_get(e, 0) == 1)) {
+  let eb = vec_get(e, 1);
+  let ep = vec_get(e, 2);
+  if (places_conflict(base, path, eb, ep)) {
+  return true;
+}
+}
+  i = (i + 1);
+}
+  return false;
+}
+
+function state_clone(src) {
+  let dst = state_new();
+  let srcMoved = state_moved_vec(src);
+  let i = 0;
+  let len = vec_length(srcMoved);
+  while ((i < len)) {
+  state_moved_add(dst, vec_get(srcMoved, i));
+  i = (i + 1);
+}
+  let srcLoans = state_loans(src);
+  i = 0;
+  len = vec_length(srcLoans);
+  while ((i < len)) {
+  let e = vec_get(srcLoans, i);
+  state_add_loan(dst, vec_get(e, 0), vec_get(e, 1), vec_get(e, 2));
+  i = (i + 1);
+}
+  let srcScopes = state_scope_starts(src);
+  i = 0;
+  len = vec_length(srcScopes);
+  while ((i < len)) {
+  vec_push(state_scope_starts(dst), vec_get(srcScopes, i));
+  i = (i + 1);
+}
+  return dst;
+}
+
+function state_merge_moved_from_branches(dst, a, b) {
+  let newSet = set_new();
+  let newVec = vec_new();
+  let av = state_moved_vec(a);
+  let i = 0;
+  let len = vec_length(av);
+  while ((i < len)) {
+  let n = vec_get(av, i);
+  if ((set_has(state_moved_set(a), n) && (!set_has(newSet, n)))) {
+  set_add(newSet, n);
+  vec_push(newVec, n);
+}
+  i = (i + 1);
+}
+  let bv = state_moved_vec(b);
+  i = 0;
+  len = vec_length(bv);
+  while ((i < len)) {
+  let n = vec_get(bv, i);
+  if ((set_has(state_moved_set(b), n) && (!set_has(newSet, n)))) {
+  set_add(newSet, n);
+  vec_push(newVec, n);
+}
+  i = (i + 1);
+}
+  vec_set(dst, 0, newSet);
+  vec_set(dst, 1, newVec);
+  return 0;
+}
+
+function panic_borrow(code, message, fix) {
+  return panic_with_code(code, message, "Borrowing and ownership rules require exclusive mutable access or shared immutable access, and disallow use-after-move.", fix);
+}
+
+function ensure_readable(expr, state) {
+  let p = canonical_place(expr);
+  if ((!place_is_valid(p))) {
+  return 0;
+}
+  let base = place_base(p);
+  if (map_has(bc_global_value_types, base)) {
+  return 0;
+}
+  if (state_moved_has(state, base)) {
+  panic_borrow("E_BORROW_USE_AFTER_MOVE", str_concat(str_concat("Use of moved value '", base), "'"), "Reinitialize the value before use, or borrow it before moving.");
+}
+  return 0;
+}
+
+function consume_place(expr, state, env_types, fn_return_types, extern_type_names) {
+  let p = canonical_place(expr);
+  if ((!place_is_valid(p))) {
+  return 0;
+}
+  let base = place_base(p);
+  let path = place_path(p);
+  if (map_has(bc_global_value_types, base)) {
+  return 0;
+}
+  if (state_moved_has(state, base)) {
+  panic_borrow("E_BORROW_USE_AFTER_MOVE", str_concat(str_concat("Use of moved value '", base), "'"), "Reinitialize the value before use, or borrow it with '&' / '&mut' instead of moving.");
+}
+  if (state_any_conflicting_loan(state, base, path)) {
+  panic_borrow("E_BORROW_MOVE_WHILE_BORROWED", str_concat(str_concat("Cannot move '", base), "' while it is borrowed"), "Ensure all borrows end before moving, or pass a borrow (&/&mut) instead.");
+}
+  let ty = bc_infer_expr_type_name(expr, env_types, fn_return_types);
+  if ((!is_copy_type(ty, extern_type_names))) {
+  state_moved_add(state, base);
+}
+  return 0;
+}
+
+function check_expr(expr, state, env_types, fn_return_types, extern_type_names, global_fn_names, mode) {
+  if ((expr == 0)) {
+  return 0;
+}
+  if ((str_eq(mode, "move") && (node_kind(expr) == NK_IDENTIFIER))) {
+  let nm = get_interned_str(node_get_data1(expr));
+  if (set_has(global_fn_names, nm)) {
+  return 0;
+}
+}
+  if ((node_kind(expr) == NK_UNARY_EXPR)) {
+  let op = get_interned_str(node_get_data1(expr));
+  if ((str_eq(op, "&") || str_eq(op, "&mut"))) {
+  let target = node_get_data2(expr);
+  let p = canonical_place(target);
+  if ((!place_is_valid(p))) {
+  panic_borrow("E_BORROW_INVALID_TARGET", "Borrow target is not a place expression", "Borrow only identifiers, fields, or index places (e.g. &x, &obj.f, &arr[i]).");
+}
+  ensure_readable(target, state);
+  let base = place_base(p);
+  let path = place_path(p);
+  if (str_eq(op, "&")) {
+  if (state_conflicting_mut_loan(state, base, path)) {
+  panic_borrow("E_BORROW_IMMUT_WHILE_MUT", str_concat(str_concat("Cannot immutably borrow '", base), "' because it is mutably borrowed"), "End the mutable borrow first, or borrow mutably in a non-overlapping scope.");
+}
+  state_add_loan(state, 1, base, path);
+} else {
+  if ((state_conflicting_mut_loan(state, base, path) || state_conflicting_immut_loan(state, base, path))) {
+  panic_borrow("E_BORROW_MUT_CONFLICT", str_concat(str_concat("Cannot mutably borrow '", base), "' because it is already borrowed"), "Ensure no active borrows overlap this place before taking '&mut'.");
+}
+  state_add_loan(state, 2, base, path);
+}
+  return 0;
+}
+}
+  let kind = node_kind(expr);
+  if ((((kind == NK_IDENTIFIER) || (kind == NK_MEMBER_EXPR)) || (kind == NK_INDEX_EXPR))) {
+  if (str_eq(mode, "read")) {
+  ensure_readable(expr, state);
+  return 0;
+}
+  consume_place(expr, state, env_types, fn_return_types, extern_type_names);
+  return 0;
+}
+  if (((((kind == NK_NUMBER_LIT) || (kind == NK_BOOL_LIT)) || (kind == NK_STRING_LIT)) || (kind == NK_CHAR_LIT))) {
+  return 0;
+}
+  if ((kind == NK_UNARY_EXPR)) {
+  check_expr(node_get_data2(expr), state, env_types, fn_return_types, extern_type_names, global_fn_names, "read");
+  return 0;
+}
+  if ((kind == NK_BINARY_EXPR)) {
+  check_expr(node_get_data2(expr), state, env_types, fn_return_types, extern_type_names, global_fn_names, "read");
+  check_expr(node_get_data3(expr), state, env_types, fn_return_types, extern_type_names, global_fn_names, "read");
+  return 0;
+}
+  if ((kind == NK_CALL_EXPR)) {
+  let callee = node_get_data1(expr);
+  if ((!((node_kind(callee) == NK_IDENTIFIER) && set_has(global_fn_names, get_interned_str(node_get_data1(callee)))))) {
+  check_expr(callee, state, env_types, fn_return_types, extern_type_names, global_fn_names, "read");
+}
+  let args = node_get_data2(expr);
+  let i = 0;
+  let len = vec_length(args);
+  while ((i < len)) {
+  check_expr(vec_get(args, i), state, env_types, fn_return_types, extern_type_names, global_fn_names, "read");
+  i = (i + 1);
+}
+  return 0;
+}
+  if ((kind == NK_STRUCT_INIT)) {
+  let fields = node_get_data2(expr);
+  let i = 0;
+  let len = vec_length(fields);
+  while ((i < len)) {
+  let f = vec_get(fields, i);
+  check_expr(vec_get(f, 1), state, env_types, fn_return_types, extern_type_names, global_fn_names, "read");
+  i = (i + 1);
+}
+  return 0;
+}
+  if ((kind == NK_IF_EXPR)) {
+  check_expr(node_get_data1(expr), state, env_types, fn_return_types, extern_type_names, global_fn_names, "read");
+  let then_state = state_clone(state);
+  check_stmt(node_get_data2(expr), then_state, env_types, fn_return_types, extern_type_names, global_fn_names);
+  if ((node_get_data3(expr) != 0)) {
+  let else_state = state_clone(state);
+  check_stmt(node_get_data3(expr), else_state, env_types, fn_return_types, extern_type_names, global_fn_names);
+  state_merge_moved_from_branches(state, then_state, else_state);
+} else {
+  state_merge_moved_from_branches(state, then_state, state);
+}
+  return 0;
+}
+  if ((kind == NK_MATCH_EXPR)) {
+  check_expr(node_get_data1(expr), state, env_types, fn_return_types, extern_type_names, global_fn_names, "read");
+  let cases = node_get_data2(expr);
+  let merged = state_clone(state);
+  let i = 0;
+  let len = vec_length(cases);
+  while ((i < len)) {
+  let c = vec_get(cases, i);
+  let branch = state_clone(state);
+  check_stmt(vec_get(c, 1), branch, env_types, fn_return_types, extern_type_names, global_fn_names);
+  state_merge_moved_from_branches(merged, merged, branch);
+  i = (i + 1);
+}
+  state_merge_moved_from_branches(state, merged, state);
+  return 0;
+}
+  if ((kind == NK_IS_EXPR)) {
+  check_expr(node_get_data1(expr), state, env_types, fn_return_types, extern_type_names, global_fn_names, "read");
+  return 0;
+}
+  if ((kind == NK_UNWRAP_EXPR)) {
+  check_expr(node_get_data1(expr), state, env_types, fn_return_types, extern_type_names, global_fn_names, "read");
+  return 0;
+}
+  return 0;
+}
+
+function check_block(block, state, env_types, fn_return_types, extern_type_names, global_fn_names) {
+  state_begin_scope(state);
+  let stmts = node_get_data1(block);
+  let i = 0;
+  let len = vec_length(stmts);
+  while ((i < len)) {
+  check_stmt(vec_get(stmts, i), state, env_types, fn_return_types, extern_type_names, global_fn_names);
+  i = (i + 1);
+}
+  return state_end_scope(state);
+}
+
+function check_stmt(stmt, state, env_types, fn_return_types, extern_type_names, global_fn_names) {
+  if ((stmt == 0)) {
+  return 0;
+}
+  let kind = node_kind(stmt);
+  if ((kind == NK_LET_DECL)) {
+  let rhs = node_get_data3(stmt);
+  let mode = "read";
+  let p = canonical_place(rhs);
+  if (place_is_valid(p)) {
+  mode = "move";
+}
+  check_expr(rhs, state, env_types, fn_return_types, extern_type_names, global_fn_names, mode);
+  let name = get_interned_str(node_get_data1(stmt));
+  let tnode = node_get_data2(stmt);
+  if ((tnode != 0)) {
+  map_set(env_types, name, bc_type_name_from_type_node(tnode));
+} else {
+  map_set(env_types, name, bc_infer_expr_type_name(rhs, env_types, fn_return_types));
+}
+  state_moved_delete(state, name);
+  return 0;
+}
+  if ((kind == NK_ASSIGN_STMT)) {
+  let target = node_get_data1(stmt);
+  let tplace = canonical_place(target);
+  if (place_is_valid(tplace)) {
+  let base = place_base(tplace);
+  let path = place_path(tplace);
+  if (state_any_conflicting_loan(state, base, path)) {
+  panic_borrow("E_BORROW_ASSIGN_WHILE_BORROWED", str_concat(str_concat("Cannot assign to '", base), "' while it is borrowed"), "End active borrows before assignment, or assign in a non-overlapping scope.");
+}
+}
+  let rhs = node_get_data2(stmt);
+  let mode = "read";
+  let rhs_place = canonical_place(rhs);
+  if (place_is_valid(rhs_place)) {
+  mode = "move";
+}
+  check_expr(rhs, state, env_types, fn_return_types, extern_type_names, global_fn_names, mode);
+  if ((node_kind(target) == NK_IDENTIFIER)) {
+  state_moved_delete(state, get_interned_str(node_get_data1(target)));
+}
+  return 0;
+}
+  if ((kind == NK_EXPR_STMT)) {
+  check_expr(node_get_data1(stmt), state, env_types, fn_return_types, extern_type_names, global_fn_names, "move");
+  return 0;
+}
+  if ((kind == NK_RETURN_STMT)) {
+  let v = node_get_data1(stmt);
+  if ((v != 0)) {
+  let mode = "read";
+  if (place_is_valid(canonical_place(v))) {
+  mode = "move";
+}
+  check_expr(v, state, env_types, fn_return_types, extern_type_names, global_fn_names, mode);
+}
+  return 0;
+}
+  if ((kind == NK_IF_STMT)) {
+  check_expr(node_get_data1(stmt), state, env_types, fn_return_types, extern_type_names, global_fn_names, "read");
+  let then_state = state_clone(state);
+  check_stmt(node_get_data2(stmt), then_state, env_types, fn_return_types, extern_type_names, global_fn_names);
+  if ((node_get_data3(stmt) != 0)) {
+  let else_state = state_clone(state);
+  check_stmt(node_get_data3(stmt), else_state, env_types, fn_return_types, extern_type_names, global_fn_names);
+  state_merge_moved_from_branches(state, then_state, else_state);
+} else {
+  state_merge_moved_from_branches(state, then_state, state);
+}
+  return 0;
+}
+  if ((kind == NK_FOR_STMT)) {
+  check_expr(node_get_data2(stmt), state, env_types, fn_return_types, extern_type_names, global_fn_names, "read");
+  check_expr(node_get_data3(stmt), state, env_types, fn_return_types, extern_type_names, global_fn_names, "read");
+  state_begin_scope(state);
+  map_set(env_types, get_interned_str(node_get_data1(stmt)), "I32");
+  check_stmt(node_get_data4(stmt), state, env_types, fn_return_types, extern_type_names, global_fn_names);
+  state_end_scope(state);
+  return 0;
+}
+  if ((kind == NK_WHILE_STMT)) {
+  check_expr(node_get_data1(stmt), state, env_types, fn_return_types, extern_type_names, global_fn_names, "read");
+  state_begin_scope(state);
+  check_stmt(node_get_data2(stmt), state, env_types, fn_return_types, extern_type_names, global_fn_names);
+  state_end_scope(state);
+  return 0;
+}
+  if ((kind == NK_BLOCK)) {
+  check_block(stmt, state, env_types, fn_return_types, extern_type_names, global_fn_names);
+  return 0;
+}
+  if ((kind == NK_FN_DECL)) {
+  let fn_state = state_new();
+  let fn_env = map_new();
+  let params = node_get_data3(stmt);
+  let i = 0;
+  let len = vec_length(params);
+  while ((i < len)) {
+  let p = vec_get(params, i);
+  let pname = get_interned_str(vec_get(p, 0));
+  let ptype = vec_get(p, 1);
+  map_set(fn_env, pname, bc_type_name_from_type_node(ptype));
+  i = (i + 1);
+}
+  let body = node_get_data5(stmt);
+  if ((node_kind(body) == NK_BLOCK)) {
+  check_block(body, fn_state, fn_env, fn_return_types, extern_type_names, global_fn_names);
+} else {
+  check_expr(body, fn_state, fn_env, fn_return_types, extern_type_names, global_fn_names, "move");
+}
+  return 0;
+}
+  check_expr(stmt, state, env_types, fn_return_types, extern_type_names, global_fn_names, "move");
+  return 0;
+}
+
+function borrowcheck_program(program) {
+  let fn_return_types = map_new();
+  let extern_type_names = set_new();
+  let global_type_by_name = map_new();
+  let global_fn_names = set_new();
+  let body = node_get_data1(program);
+  let i = 0;
+  let len = vec_length(body);
+  while ((i < len)) {
+  let stmt = vec_get(body, i);
+  let kind = node_kind(stmt);
+  if ((kind == NK_EXTERN_TYPE_DECL)) {
+  set_add(extern_type_names, get_interned_str(node_get_data1(stmt)));
+}
+  if (((kind == NK_FN_DECL) || (kind == NK_EXTERN_FN_DECL))) {
+  let fname = get_interned_str(node_get_data1(stmt));
+  set_add(global_fn_names, fname);
+  map_set(fn_return_types, fname, bc_type_name_from_type_node(node_get_data4(stmt)));
+}
+  if (((kind == NK_LET_DECL) || (kind == NK_EXTERN_LET_DECL))) {
+  map_set(global_type_by_name, get_interned_str(node_get_data1(stmt)), bc_type_name_from_type_node(node_get_data2(stmt)));
+}
+  i = (i + 1);
+}
+  let state = state_new();
+  let env = global_type_by_name;
+  bc_global_value_types = global_type_by_name;
+  i = 0;
+  while ((i < len)) {
+  check_stmt(vec_get(body, i), state, env, fn_return_types, extern_type_names, global_fn_names);
+  i = (i + 1);
+}
+  return program;
+}
+
+function selfhost_borrowcheck_marker() { return 0; }
 
 function emit_stmt(n) {
   let kind = node_kind(n);
@@ -3187,13 +3877,14 @@ function gather_module_sources(filePath, moduleBasePath, seen, visiting, sources
 }
 
 function compile_file(inputPath, outputPath) {
-  return compile_file_with_options(inputPath, outputPath, 1, 0, 500);
+  return compile_file_with_options(inputPath, outputPath, 1, 0, 500, 1);
 }
 
-function compile_file_with_options(inputPath, outputPath, strict_safety, lint_enabled, max_effective_lines) {
+function compile_file_with_options(inputPath, outputPath, strict_safety, lint_enabled, max_effective_lines, borrow_enabled) {
   let max_lines = module_loader_sanitize_max_effective_lines(max_effective_lines);
   let strict = module_loader_normalize_flag(strict_safety);
   let lint = module_loader_normalize_flag(lint_enabled);
+  let borrow = module_loader_normalize_flag(borrow_enabled);
   let moduleBasePath = path_dirname(inputPath);
   let seen = set_new();
   let visiting = set_new();
@@ -3212,6 +3903,9 @@ function compile_file_with_options(inputPath, outputPath, strict_safety, lint_en
   let desugared = desugar(program);
   let resolved = resolve_names(desugared);
   let typed = typecheck_program_with_options(resolved, strict);
+  if ((borrow == 1)) {
+  borrowcheck_program(typed);
+}
   let js = generate_js(typed);
   return write_file(outputPath, js);
 }
@@ -3778,10 +4472,11 @@ function normalize_flag(value) {
 })());
 }
 
-function compile_source_with_options(source, strict_safety, lint_enabled, max_effective_lines) {
+function compile_source_with_options(source, strict_safety, lint_enabled, max_effective_lines, borrow_enabled) {
   let max_lines = sanitize_max_effective_lines(max_effective_lines);
   let strict = normalize_flag(strict_safety);
   let lint = normalize_flag(lint_enabled);
+  let borrow = normalize_flag(borrow_enabled);
   lex_init(source);
   lex_all();
   if ((lint == 1)) {
@@ -3792,10 +4487,13 @@ function compile_source_with_options(source, strict_safety, lint_enabled, max_ef
   let desugared = desugar(program);
   let resolved = resolve_names(desugared);
   let typed = typecheck_program_with_options(resolved, strict);
+  if ((borrow == 1)) {
+  borrowcheck_program(typed);
+}
   return generate_js(typed);
 }
 
-function compile_source(source) { return compile_source_with_options(source, 1, 0, 500); }
+function compile_source(source) { return compile_source_with_options(source, 1, 0, 500, 1); }
 
 function main() {
   print("Self-hosted Tuff compiler loaded");

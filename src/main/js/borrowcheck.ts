@@ -43,6 +43,9 @@ function isCopyType(typeName, externTypeNames) {
   if (!typeName || typeName === "Unknown") return false;
   if (typeName.startsWith("*")) return true;
   if (COPY_PRIMITIVES.has(typeName)) return true;
+  if (typeName === "Vec" || typeName === "Map" || typeName === "Set") {
+    return true;
+  }
   if (externTypeNames.has(typeName)) return false;
   return false;
 }

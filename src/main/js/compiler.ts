@@ -158,25 +158,6 @@ function emitTarget(core, target): string {
   return generateJavaScript(core);
 }
 
-function runBorrowPrecheckSource(
-  source,
-  filePath,
-  options,
-): CompilerResult<void> {
-  // Temporary Stage0 bridge: enforce borrow diagnostics until selfhost has a
-  // native borrowcheck pass. Keep this intentionally minimal and avoid
-  // duplicating resolve/typecheck semantics owned by selfhost.
-  if (options.borrowcheck?.enabled === false) return ok(undefined);
-  const tokensResult = lex(source, filePath);
-  if (!tokensResult.ok) return tokensResult;
-  const cstResult = parse(tokensResult.value);
-  if (!cstResult.ok) return cstResult;
-  const core = desugar(cstResult.value);
-  const borrowResult = borrowcheck(core, options.borrowcheck ?? {});
-  if (!borrowResult.ok) return borrowResult;
-  return ok(undefined);
-}
-
 function gatherImports(program) {
   return program.body.filter((n) => n.kind === "ImportDecl");
 }
@@ -422,16 +403,6 @@ export function compileSource(
       );
     }
 
-    if (borrowEnabled) {
-      const precheck = run("borrow-precheck", () =>
-        runBorrowPrecheckSource(source, filePath, options),
-      );
-      if (!precheck.ok) {
-        enrichError(precheck.error, { source });
-        return precheck;
-      }
-    }
-
     const selfhostResult = run("selfhost-bootstrap", () =>
       bootstrapSelfhostCompiler(options),
     );
@@ -452,6 +423,7 @@ export function compileSource(
               strictSafety,
               lintEnabled,
               maxEffectiveLines,
+              borrowEnabled ? 1 : 0,
             )
           : selfhost.compile_source(source),
       );
@@ -637,23 +609,6 @@ function compileFileInternal(
     let js;
     try {
       if (options.enableModules) {
-        // Temporary Stage0 bridge for borrow diagnostics on module programs.
-        // Selfhost remains source-of-truth for resolve/typecheck/codegen.
-        if (borrowEnabled) {
-          const graphResult = run("load-module-graph", () =>
-            loadModuleGraph(absInput, {
-              ...(options.modules ?? {}),
-              allowImportCycles: false,
-            }),
-          );
-          if (!graphResult.ok) return graphResult;
-
-          const borrowResult = run("borrowcheck", () =>
-            borrowcheck(graphResult.value.merged, options.borrowcheck ?? {}),
-          );
-          if (!borrowResult.ok) return borrowResult;
-        }
-
         // Selfhost handles the full module pipeline: load, resolve, typecheck, codegen.
         const normalizedInput = toPosixPath(absInput);
         const normalizedOutput = toPosixPath(finalOutput);
@@ -665,6 +620,7 @@ function compileFileInternal(
               strictSafety,
               lintEnabled,
               maxEffectiveLines,
+              borrowEnabled ? 1 : 0,
             );
           } else {
             selfhost.compile_file(normalizedInput, normalizedOutput);
@@ -673,12 +629,6 @@ function compileFileInternal(
         js = fs.readFileSync(finalOutput, "utf8");
       } else {
         const source = fs.readFileSync(absInput, "utf8");
-        if (borrowEnabled) {
-          const precheck = run("borrow-precheck", () =>
-            runBorrowPrecheckSource(source, absInput, options),
-          );
-          if (!precheck.ok) return precheck;
-        }
         js = run("selfhost-compile-source", () =>
           typeof selfhost.compile_source_with_options === "function"
             ? selfhost.compile_source_with_options(
@@ -686,6 +636,7 @@ function compileFileInternal(
                 strictSafety,
                 lintEnabled,
                 maxEffectiveLines,
+                borrowEnabled ? 1 : 0,
               )
             : selfhost.compile_source(source),
         );

@@ -11,6 +11,7 @@ let { selfhost_parser_expr_marker } = selfhost::parser_expr;
 let { selfhost_parser_decls_marker } = selfhost::parser_decls;
 let { selfhost_resolver_marker } = selfhost::resolver;
 let { selfhost_typecheck_marker } = selfhost::typecheck;
+let { selfhost_borrowcheck_marker } = selfhost::borrowcheck;
 let { selfhost_codegen_expr_marker } = selfhost::codegen_expr;
 let { selfhost_codegen_stmt_marker } = selfhost::codegen_stmt;
 let { lex_init, lex_all } = selfhost::runtime_lexer;
@@ -19,6 +20,7 @@ let { parse_init } = selfhost::parser_core;
 let { p_parse_program, desugar } = selfhost::parser_decls;
 let { resolve_names } = selfhost::resolver;
 let { typecheck_program, typecheck_program_with_options } = selfhost::typecheck;
+let { borrowcheck_program } = selfhost::borrowcheck;
 let { generate_js } = selfhost::codegen_stmt;
 
 fn sanitize_max_effective_lines(max_effective_lines: I32) : I32 => {
@@ -33,10 +35,11 @@ fn normalize_flag(value: I32) : I32 => {
     if (value == 0) { 0 } else { 1 }
 }
 
-out fn compile_source_with_options(source: *Str, strict_safety: I32, lint_enabled: I32, max_effective_lines: I32) : *Str => {
+out fn compile_source_with_options(source: *Str, strict_safety: I32, lint_enabled: I32, max_effective_lines: I32, borrow_enabled: I32) : *Str => {
     let max_lines = sanitize_max_effective_lines(max_effective_lines);
     let strict = normalize_flag(strict_safety);
     let lint = normalize_flag(lint_enabled);
+    let borrow = normalize_flag(borrow_enabled);
     lex_init(source);
     lex_all();
     if (lint == 1) {
@@ -47,11 +50,14 @@ out fn compile_source_with_options(source: *Str, strict_safety: I32, lint_enable
     let desugared = desugar(program);
     let resolved = resolve_names(desugared);
     let typed = typecheck_program_with_options(resolved, strict);
+    if (borrow == 1) {
+        borrowcheck_program(typed);
+    }
     generate_js(typed)
 }
 
 // Main compiler pipeline
-fn compile_source(source: *Str) : *Str => compile_source_with_options(source, 1, 0, 500);
+fn compile_source(source: *Str) : *Str => compile_source_with_options(source, 1, 0, 500, 1);
 
 // Entry point for testing
 fn main() : I32 => {

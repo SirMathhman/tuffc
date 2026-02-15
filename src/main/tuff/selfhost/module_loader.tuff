@@ -5,6 +5,7 @@ let { parse_init, node_kind, node_get_data1, node_get_data2, node_get_data3, nod
 let { p_parse_program, desugar } = selfhost::parser_decls;
 let { resolve_names } = selfhost::resolver;
 let { typecheck_program, typecheck_program_with_options } = selfhost::typecheck;
+let { borrowcheck_program } = selfhost::borrowcheck;
 let { generate_js } = selfhost::codegen_stmt;
 
 fn module_loader_sanitize_max_effective_lines(max_effective_lines: I32) : I32 => {
@@ -483,13 +484,14 @@ fn gather_module_sources(filePath: *Str, moduleBasePath: *Str, seen: *mut Set, v
 }
 
 out fn compile_file(inputPath: *Str, outputPath: *Str) : I32 => {
-    compile_file_with_options(inputPath, outputPath, 1, 0, 500)
+    compile_file_with_options(inputPath, outputPath, 1, 0, 500, 1)
 }
 
-out fn compile_file_with_options(inputPath: *Str, outputPath: *Str, strict_safety: I32, lint_enabled: I32, max_effective_lines: I32) : I32 => {
+out fn compile_file_with_options(inputPath: *Str, outputPath: *Str, strict_safety: I32, lint_enabled: I32, max_effective_lines: I32, borrow_enabled: I32) : I32 => {
     let max_lines = module_loader_sanitize_max_effective_lines(max_effective_lines);
     let strict = module_loader_normalize_flag(strict_safety);
     let lint = module_loader_normalize_flag(lint_enabled);
+    let borrow = module_loader_normalize_flag(borrow_enabled);
     let moduleBasePath = path_dirname(inputPath);
     let seen = set_new();
     let visiting = set_new();
@@ -508,6 +510,9 @@ out fn compile_file_with_options(inputPath: *Str, outputPath: *Str, strict_safet
     let desugared = desugar(program);
     let resolved = resolve_names(desugared);
     let typed = typecheck_program_with_options(resolved, strict);
+    if (borrow == 1) {
+        borrowcheck_program(typed);
+    }
     let js = generate_js(typed);
     write_file(outputPath, js)
 }

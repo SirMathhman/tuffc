@@ -112,7 +112,7 @@ expectCompileOk(
 expectCompileFail(
   "nullable-pointer-legacy-zero-rejected",
   `fn bad(p : *I32 | 0) : I32 => 0;`,
-  "numeric type literal",
+  "0USize",
 );
 
 expectCompileOk(
