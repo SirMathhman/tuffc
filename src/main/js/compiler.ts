@@ -159,18 +159,14 @@ function runBorrowPrecheckSource(
   options,
 ): CompilerResult<void> {
   // Temporary Stage0 bridge: enforce borrow diagnostics until selfhost has a
-  // native borrowcheck pass. Keep this temporary bridge until selfhost reaches
-  // full safety parity for source compilation diagnostics.
+  // native borrowcheck pass. Keep this intentionally minimal and avoid
+  // duplicating resolve/typecheck semantics owned by selfhost.
   if (options.borrowcheck?.enabled === false) return ok(undefined);
   const tokensResult = lex(source, filePath);
   if (!tokensResult.ok) return tokensResult;
   const cstResult = parse(tokensResult.value);
   if (!cstResult.ok) return cstResult;
   const core = desugar(cstResult.value);
-  const resolveResult = resolveNames(core, options.resolve ?? {});
-  if (!resolveResult.ok) return resolveResult;
-  const typecheckResult = typecheck(core, options.typecheck ?? {});
-  if (!typecheckResult.ok) return typecheckResult;
   const borrowResult = borrowcheck(core, options.borrowcheck ?? {});
   if (!borrowResult.ok) return borrowResult;
   return ok(undefined);
@@ -646,17 +642,6 @@ function compileFileInternal(
             }),
           );
           if (!graphResult.ok) return graphResult;
-
-          // Keep resolve precheck for strict module-import semantics until
-          // selfhost enforces equivalent behavior.
-          const resolveResult = run("resolve", () =>
-            resolveNames(graphResult.value.merged, {
-              ...(options.resolve ?? {}),
-              strictModuleImports: options.resolve?.strictModuleImports ?? true,
-              moduleImportsByPath: graphResult.value.moduleImportsByPath,
-            }),
-          );
-          if (!resolveResult.ok) return resolveResult;
 
           const borrowResult = run("borrowcheck", () =>
             borrowcheck(graphResult.value.merged, options.borrowcheck ?? {}),

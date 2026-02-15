@@ -1,7 +1,7 @@
 let { get_interned_str } = selfhost::runtime_lexer;
 let { lex_init, lex_all } = selfhost::runtime_lexer;
 let { lint_assert_file_length } = selfhost::runtime_lexer;
-let { parse_init, node_kind, node_get_data1, node_get_data2, node_set_data1 } = selfhost::parser_core;
+let { parse_init, node_kind, node_get_data1, node_get_data2, node_get_data3, node_get_data4, node_get_data5, node_set_data1 } = selfhost::parser_core;
 let { p_parse_program, desugar } = selfhost::parser_decls;
 let { resolve_names } = selfhost::resolver;
 let { typecheck_program, typecheck_program_with_options } = selfhost::typecheck;
@@ -92,6 +92,256 @@ fn collect_module_declarations(stmts: Vec) : *mut Set<*Str> => {
     declared
 }
 
+fn module_scope_define(scopes: Vec, depth: I32, name: *Str) : I32 => {
+    let scope = scopes.vec_get(depth);
+    scope.set_add(name);
+    0
+}
+
+fn module_scope_has(scopes: Vec, depth: I32, name: *Str) : Bool => {
+    let i = depth;
+    while (i >= 0) {
+        if (scopes.vec_get(i).set_has(name)) {
+            return true;
+        }
+        i = i - 1;
+    }
+    false
+}
+
+fn module_check_expr_implicit_imports(n: I32, declared: *mut Set, imported: *mut Set, all_exported_declared: *mut Set, all_extern_declared: *mut Set, scopes: Vec, depth: I32) : I32 => {
+    if (n == 0) {
+        return 0;
+    }
+
+    let kind = node_kind(n);
+    if (kind == 24) {
+        let name = get_interned_str(node_get_data1(n));
+        if (!module_scope_has(scopes, depth, name) && !declared.set_has(name) && !imported.set_has(name)) {
+            if (all_exported_declared.set_has(name) && !all_extern_declared.set_has(name)) {
+                panic_with_code(
+                    "E_MODULE_IMPLICIT_IMPORT",
+                    "Strict module imports require explicit import for symbol '".str_concat(name).str_concat("'"),
+                    "A module referenced a symbol declared in another module without importing it explicitly.",
+                    "Add the symbol to the module import list (for example: let { symbol } = moduleName;)."
+                );
+            }
+        }
+        return 0;
+    }
+
+    if (kind == 25) {
+        module_check_expr_implicit_imports(node_get_data2(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+        module_check_expr_implicit_imports(node_get_data3(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+        return 0;
+    }
+
+    if (kind == 26 || kind == 34) {
+        module_check_expr_implicit_imports(node_get_data2(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+        if (kind == 34) {
+            module_check_expr_implicit_imports(node_get_data1(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+        }
+        return 0;
+    }
+
+    if (kind == 27) {
+        module_check_expr_implicit_imports(node_get_data1(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+        let args = node_get_data2(n);
+        let i = 0;
+        let len = args.vec_length();
+        while (i < len) {
+            module_check_expr_implicit_imports(args.vec_get(i), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+            i = i + 1;
+        }
+        return 0;
+    }
+
+    if (kind == 28) {
+        module_check_expr_implicit_imports(node_get_data1(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+        return 0;
+    }
+
+    if (kind == 29) {
+        module_check_expr_implicit_imports(node_get_data1(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+        module_check_expr_implicit_imports(node_get_data2(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+        return 0;
+    }
+
+    if (kind == 30) {
+        let fields = node_get_data2(n);
+        let i = 0;
+        let len = fields.vec_length();
+        while (i < len) {
+            let f = fields.vec_get(i);
+            module_check_expr_implicit_imports(f.vec_get(1), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+            i = i + 1;
+        }
+        return 0;
+    }
+
+    if (kind == 31) {
+        module_check_expr_implicit_imports(node_get_data1(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+        module_check_stmt_implicit_imports(node_get_data2(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+        if (node_get_data3(n) != 0) {
+            module_check_stmt_implicit_imports(node_get_data3(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+        }
+        return 0;
+    }
+
+    if (kind == 32) {
+        module_check_expr_implicit_imports(node_get_data1(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+        let cases = node_get_data2(n);
+        let i = 0;
+        let len = cases.vec_length();
+        while (i < len) {
+            let case_node = cases.vec_get(i);
+            let pat = case_node.vec_get(0);
+            let body = case_node.vec_get(1);
+            let next_depth = depth + 1;
+            scopes.vec_push(set_new());
+            if (node_kind(pat) == 53) {
+                let fields = node_get_data2(pat);
+                let j = 0;
+                let fLen = fields.vec_length();
+                while (j < fLen) {
+                    module_scope_define(scopes, next_depth, get_interned_str(fields.vec_get(j)));
+                    j = j + 1;
+                }
+            } else if (node_kind(pat) == 52) {
+                let pat_name = get_interned_str(node_get_data1(pat));
+                if (!declared.set_has(pat_name) && !imported.set_has(pat_name)) {
+                    module_scope_define(scopes, next_depth, pat_name);
+                }
+            }
+            module_check_stmt_implicit_imports(body, declared, imported, all_exported_declared, all_extern_declared, scopes, next_depth);
+            scopes.vec_pop();
+            i = i + 1;
+        }
+        return 0;
+    }
+
+    if (kind == 33) {
+        module_check_expr_implicit_imports(node_get_data1(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+    }
+
+    0
+}
+
+fn module_check_stmt_implicit_imports(n: I32, declared: *mut Set, imported: *mut Set, all_exported_declared: *mut Set, all_extern_declared: *mut Set, scopes: Vec, depth: I32) : I32 => {
+    if (n == 0) {
+        return 0;
+    }
+
+    let kind = node_kind(n);
+    if (kind == 12) {
+        let next_depth = depth + 1;
+        scopes.vec_push(set_new());
+        let stmts = node_get_data1(n);
+        let i = 0;
+        let len = stmts.vec_length();
+        while (i < len) {
+            module_check_stmt_implicit_imports(stmts.vec_get(i), declared, imported, all_exported_declared, all_extern_declared, scopes, next_depth);
+            i = i + 1;
+        }
+        scopes.vec_pop();
+        return 0;
+    }
+
+    if (kind == 2 || kind == 16) {
+        let fnScopes = vec_new();
+        fnScopes.vec_push(set_new());
+        let params = node_get_data3(n);
+        let i = 0;
+        let len = params.vec_length();
+        while (i < len) {
+            let p = params.vec_get(i);
+            module_scope_define(fnScopes, 0, get_interned_str(p.vec_get(0)));
+            i = i + 1;
+        }
+        module_check_stmt_implicit_imports(node_get_data5(n), declared, imported, all_exported_declared, all_extern_declared, fnScopes, 0);
+        return 0;
+    }
+
+    if (kind == 5) {
+        module_check_expr_implicit_imports(node_get_data3(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+        module_scope_define(scopes, depth, get_interned_str(node_get_data1(n)));
+        return 0;
+    }
+
+    if (kind == 6) {
+        let names = node_get_data1(n);
+        let i = 0;
+        let len = names.vec_length();
+        while (i < len) {
+            module_scope_define(scopes, depth, get_interned_str(names.vec_get(i)));
+            i = i + 1;
+        }
+        return 0;
+    }
+
+    if (kind == 7) {
+        module_check_expr_implicit_imports(node_get_data1(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+        return 0;
+    }
+
+    if (kind == 13) {
+        module_check_expr_implicit_imports(node_get_data1(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+        module_check_expr_implicit_imports(node_get_data2(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+        return 0;
+    }
+
+    if (kind == 8) {
+        module_check_expr_implicit_imports(node_get_data1(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+        return 0;
+    }
+
+    if (kind == 9) {
+        module_check_expr_implicit_imports(node_get_data1(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+        module_check_stmt_implicit_imports(node_get_data2(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+        if (node_get_data3(n) != 0) {
+            module_check_stmt_implicit_imports(node_get_data3(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+        }
+        return 0;
+    }
+
+    if (kind == 11) {
+        let next_depth = depth + 1;
+        scopes.vec_push(set_new());
+        module_scope_define(scopes, next_depth, get_interned_str(node_get_data1(n)));
+        module_check_expr_implicit_imports(node_get_data2(n), declared, imported, all_exported_declared, all_extern_declared, scopes, next_depth);
+        module_check_expr_implicit_imports(node_get_data3(n), declared, imported, all_exported_declared, all_extern_declared, scopes, next_depth);
+        module_check_stmt_implicit_imports(node_get_data4(n), declared, imported, all_exported_declared, all_extern_declared, scopes, next_depth);
+        scopes.vec_pop();
+        return 0;
+    }
+
+    if (kind == 10) {
+        module_check_expr_implicit_imports(node_get_data1(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+        module_check_stmt_implicit_imports(node_get_data2(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+        return 0;
+    }
+
+    module_check_expr_implicit_imports(n, declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+    0
+}
+
+fn module_assert_no_implicit_imports(source: *Str, declared: *mut Set, imported: *mut Set, all_exported_declared: *mut Set, all_extern_declared: *mut Set) : I32 => {
+    lex_init(source);
+    lex_all();
+    parse_init();
+    let program = p_parse_program();
+    let topScopes = vec_new();
+    topScopes.vec_push(set_new());
+    let body = node_get_data1(program);
+    let i = 0;
+    let len = body.vec_length();
+    while (i < len) {
+        module_check_stmt_implicit_imports(body.vec_get(i), declared, imported, all_exported_declared, all_extern_declared, topScopes, 0);
+        i = i + 1;
+    }
+    0
+}
+
 fn module_has_out_export(source: *Str, name: *Str) : Bool => {
     source.str_includes("out fn ".str_concat(name)) ||
     source.str_includes("out struct ".str_concat(name)) ||
@@ -100,7 +350,7 @@ fn module_has_out_export(source: *Str, name: *Str) : Bool => {
     source.str_includes("out class fn ".str_concat(name))
 }
 
-fn gather_module_sources(filePath: *Str, moduleBasePath: *Str, seen: *mut Set, visiting: *mut Set, sources: Vec<*Str>, module_declared_map: Map, lint_enabled: I32, max_effective_lines: I32) : I32 => {
+fn gather_module_sources(filePath: *Str, moduleBasePath: *Str, seen: *mut Set, visiting: *mut Set, sources: Vec<*Str>, module_declared_map: Map, all_declared_names: *mut Set, all_exported_declared_names: *mut Set, all_extern_declared_names: *mut Set, lint_enabled: I32, max_effective_lines: I32) : I32 => {
     if (seen.set_has(filePath)) {
         return 0;
     }
@@ -125,6 +375,24 @@ fn gather_module_sources(filePath: *Str, moduleBasePath: *Str, seen: *mut Set, v
     let stmts = node_get_data1(program);
     let declared = collect_module_declarations(stmts);
     module_declared_map.map_set(filePath, declared);
+    let all_declared_items = node_get_data1(program);
+    let di = 0;
+    let dlen = all_declared_items.vec_length();
+    while (di < dlen) {
+        let dstmt = all_declared_items.vec_get(di);
+        let dkind = node_kind(dstmt);
+        if (is_module_decl_kind(dkind)) {
+            let dname = get_interned_str(node_get_data1(dstmt));
+            all_declared_names.set_add(dname);
+            if (dkind == 17 || dkind == 18 || dkind == 19) {
+                all_extern_declared_names.set_add(dname);
+            }
+            if (module_has_out_export(source, dname)) {
+                all_exported_declared_names.set_add(dname);
+            }
+        }
+        di = di + 1;
+    }
 
     // IMPORTANT: snapshot imports before recursive calls, because parse_init()
     // in child modules clears global AST storage arrays.
@@ -162,7 +430,7 @@ fn gather_module_sources(filePath: *Str, moduleBasePath: *Str, seen: *mut Set, v
         let depPath = spec.vec_get(0);
         let importNames = spec.vec_get(1);
 
-        gather_module_sources(depPath, moduleBasePath, seen, visiting, sources, module_declared_map, lint_enabled, max_effective_lines);
+        gather_module_sources(depPath, moduleBasePath, seen, visiting, sources, module_declared_map, all_declared_names, all_exported_declared_names, all_extern_declared_names, lint_enabled, max_effective_lines);
 
         let depDeclared = module_declared_map.map_get(depPath);
         let depSource = read_file(depPath);
@@ -191,6 +459,23 @@ fn gather_module_sources(filePath: *Str, moduleBasePath: *Str, seen: *mut Set, v
         i = i + 1;
     }
 
+    let imported_names = set_new();
+    i = 0;
+    len = imports.vec_length();
+    while (i < len) {
+        let spec = imports.vec_get(i);
+        let importNames = spec.vec_get(1);
+        let j = 0;
+        let jLen = importNames.vec_length();
+        while (j < jLen) {
+            imported_names.set_add(importNames.vec_get(j));
+            j = j + 1;
+        }
+        i = i + 1;
+    }
+
+    module_assert_no_implicit_imports(source, declared, imported_names, all_exported_declared_names, all_extern_declared_names);
+
     visiting.set_delete(filePath);
     seen.set_add(filePath);
     sources.vec_push(source);
@@ -210,7 +495,10 @@ out fn compile_file_with_options(inputPath: *Str, outputPath: *Str, strict_safet
     let visiting = set_new();
     let sources = vec_new();
     let module_declared_map = map_new();
-    gather_module_sources(inputPath, moduleBasePath, seen, visiting, sources, module_declared_map, lint, max_lines);
+    let all_declared_names = set_new();
+    let all_exported_declared_names = set_new();
+    let all_extern_declared_names = set_new();
+    gather_module_sources(inputPath, moduleBasePath, seen, visiting, sources, module_declared_map, all_declared_names, all_exported_declared_names, all_extern_declared_names, lint, max_lines);
     let merged = join_sources(sources);
     lex_init(merged);
     lex_all();

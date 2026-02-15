@@ -1797,6 +1797,9 @@ function infer_expr_type_name(n, fn_return_types, local_types) {
   if (map_has(local_types, name)) {
   return map_get(local_types, name);
 }
+  if (map_has(tc_global_value_types, name)) {
+  return map_get(tc_global_value_types, name);
+}
   return "Unknown";
 }
   if ((kind == 26)) {
@@ -1860,6 +1863,96 @@ function is_decimal_zero_literal(n) {
   return false;
 }
   return str_eq(get_interned_str(node_get_data1(n)), "0");
+}
+
+let tc_array_init_bounds = map_new();
+
+let tc_index_upper_bounds = map_new();
+
+let tc_global_value_types = map_new();
+
+let tc_alias_union_tags = map_new();
+
+function collect_union_named_tags(type_node, tags) {
+  if ((type_node == 0)) {
+  return 0;
+}
+  let kind = node_kind(type_node);
+  if ((kind == NK_UNION_TYPE)) {
+  collect_union_named_tags(node_get_data1(type_node), tags);
+  collect_union_named_tags(node_get_data2(type_node), tags);
+  return 0;
+}
+  if ((kind == NK_NAMED_TYPE)) {
+  vec_push(tags, get_interned_str(node_get_data1(type_node)));
+  return 0;
+}
+  if ((kind == NK_REFINEMENT_TYPE)) {
+  collect_union_named_tags(node_get_data1(type_node), tags);
+}
+  return 0;
+}
+
+function try_get_nonnegative_integer_literal(n) {
+  if (((n == 0) || (node_kind(n) != NK_NUMBER_LIT))) {
+  return (-1);
+}
+  let text = get_interned_str(node_get_data1(n));
+  if (str_ends_with_local(text, "USize")) {
+  let len = str_length(text);
+  let raw = str_slice(text, 0, (len - 5));
+  if ((!is_decimal_digits(raw))) {
+  return (-1);
+}
+  return parse_int(raw);
+}
+  if ((!is_decimal_digits(text))) {
+  return (-1);
+}
+  return parse_int(text);
+}
+
+function try_get_array_init_bound_from_type_node(t) {
+  if ((t == 0)) {
+  return (-1);
+}
+  let k = node_kind(t);
+  if ((k == NK_REFINEMENT_TYPE)) {
+  return try_get_array_init_bound_from_type_node(node_get_data1(t));
+}
+  if ((k == NK_POINTER_TYPE)) {
+  return try_get_array_init_bound_from_type_node(node_get_data2(t));
+}
+  if ((k == NK_ARRAY_TYPE)) {
+  return try_get_nonnegative_integer_literal(node_get_data2(t));
+}
+  return (-1);
+}
+
+function try_get_index_upper_bound_from_type_node(t) {
+  if (((t == 0) || (node_kind(t) != NK_REFINEMENT_TYPE))) {
+  return (-1);
+}
+  let base = node_get_data1(t);
+  if (((base == 0) || (node_kind(base) != NK_NAMED_TYPE))) {
+  return (-1);
+}
+  let base_name = get_interned_str(node_get_data1(base));
+  if ((!str_eq(base_name, "USize"))) {
+  return (-1);
+}
+  let lit = try_get_nonnegative_integer_literal(node_get_data3(t));
+  if ((lit < 0)) {
+  return (-1);
+}
+  let op = get_interned_str(node_get_data2(t));
+  if (str_eq(op, "<")) {
+  return (lit - 1);
+}
+  if (str_eq(op, "<=")) {
+  return lit;
+}
+  return (-1);
 }
 
 function is_zero_numeric_literal_node(n) {
@@ -2007,6 +2100,31 @@ function typecheck_expr(n, fn_arities, fn_param_types, fn_return_types, local_ty
   panic_with_code("E_SAFETY_NULLABLE_POINTER_GUARD", "Nullable pointer indexing requires guard", "A nullable pointer must be proven non-null before pointer-consuming operations.", "Guard with if (p != 0USize) or if (0USize != p) before indexing.");
 }
 }
+  if (((strict_safety == 1) && (node_kind(target_node) == NK_IDENTIFIER))) {
+  let tname = get_interned_str(node_get_data1(target_node));
+  if (map_has(tc_array_init_bounds, tname)) {
+  let bound = map_get(tc_array_init_bounds, tname);
+  if ((bound >= 0)) {
+  let index_node = node_get_data2(n);
+  let index_max = (-1);
+  if ((node_kind(index_node) == NK_IDENTIFIER)) {
+  let iname = get_interned_str(node_get_data1(index_node));
+  if (map_has(tc_index_upper_bounds, iname)) {
+  index_max = map_get(tc_index_upper_bounds, iname);
+}
+}
+  if ((index_max < 0)) {
+  index_max = try_get_nonnegative_integer_literal(index_node);
+}
+  if ((index_max < 0)) {
+  panic_with_code("E_SAFETY_ARRAY_BOUNDS_UNPROVEN", "Cannot prove array index bound safety", "The array index does not have a proven upper bound under strict safety checks.", "Guard index with 'if (i < arr.length)' before indexing.");
+}
+  if ((index_max >= bound)) {
+  panic_with_code("E_SAFETY_ARRAY_BOUNDS", "Array index may be out of bounds", "The proven index upper bound can exceed initialized array length.", "Ensure 0 <= index < initialized length.");
+}
+}
+}
+}
   typecheck_expr(node_get_data1(n), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety);
   typecheck_expr(node_get_data2(n), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety);
   return 0;
@@ -2036,14 +2154,40 @@ function typecheck_expr(n, fn_arities, fn_param_types, fn_return_types, local_ty
   return 0;
 }
   if ((kind == NK_MATCH_EXPR)) {
-  typecheck_expr(node_get_data1(n), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety);
+  let target = node_get_data1(n);
+  typecheck_expr(target, fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety);
+  let target_name = infer_expr_type_name(target, fn_return_types, local_types);
+  let expected_tags = vec_new();
+  if (map_has(tc_alias_union_tags, target_name)) {
+  expected_tags = map_get(tc_alias_union_tags, target_name);
+}
   let cases = node_get_data2(n);
   let i = 0;
   let len = vec_length(cases);
+  let seen_tags = set_new();
+  let has_wildcard = false;
   while ((i < len)) {
   let case_node = vec_get(cases, i);
+  let pat = vec_get(case_node, 0);
+  if ((node_kind(pat) == NK_WILDCARD_PAT)) {
+  has_wildcard = true;
+}
+  if (((node_kind(pat) == NK_NAME_PAT) || (node_kind(pat) == NK_STRUCT_PAT))) {
+  set_add(seen_tags, get_interned_str(node_get_data1(pat)));
+}
   typecheck_stmt(vec_get(case_node, 1), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety, "Unknown");
   i = (i + 1);
+}
+  if ((((strict_safety == 1) && (vec_length(expected_tags) > 0)) && (!has_wildcard))) {
+  let j = 0;
+  let jlen = vec_length(expected_tags);
+  while ((j < jlen)) {
+  let tag = vec_get(expected_tags, j);
+  if ((!set_has(seen_tags, tag))) {
+  panic_with_code("E_MATCH_NON_EXHAUSTIVE", str_concat("Non-exhaustive match: missing case for ", tag), "A match expression over a known union type does not handle all variants.", "Add missing case arms or include a wildcard case '_'.");
+}
+  j = (j + 1);
+}
 }
   return 0;
 }
@@ -2070,6 +2214,10 @@ function typecheck_stmt(n, fn_arities, fn_param_types, fn_return_types, local_ty
   return 0;
 }
   if (((kind == NK_FN_DECL) || (kind == NK_CLASS_FN_DECL))) {
+  let prev_array_bounds = tc_array_init_bounds;
+  let prev_index_bounds = tc_index_upper_bounds;
+  tc_array_init_bounds = map_new();
+  tc_index_upper_bounds = map_new();
   let fn_local_types = map_new();
   let fn_nonnull_ptrs = map_new();
   let params = node_get_data3(n);
@@ -2081,6 +2229,14 @@ function typecheck_stmt(n, fn_arities, fn_param_types, fn_return_types, local_ty
   let ptype = vec_get(p, 1);
   if ((ptype != 0)) {
   map_set(fn_local_types, pname, type_name_from_type_node(ptype));
+  let arr_init_bound = try_get_array_init_bound_from_type_node(ptype);
+  if ((arr_init_bound >= 0)) {
+  map_set(tc_array_init_bounds, pname, arr_init_bound);
+}
+  let index_upper_bound = try_get_index_upper_bound_from_type_node(ptype);
+  if ((index_upper_bound >= 0)) {
+  map_set(tc_index_upper_bounds, pname, index_upper_bound);
+}
   if (type_node_proves_nonzero(ptype)) {
   map_set(fn_nonnull_ptrs, pname, 1);
 }
@@ -2097,6 +2253,8 @@ function typecheck_stmt(n, fn_arities, fn_param_types, fn_return_types, local_ty
   panic_with_code("E_TYPE_RETURN_MISMATCH", str_concat(str_concat(str_concat(str_concat(str_concat("Function ", fname), " return type mismatch: expected "), expected_name), ", got "), body_name), "The function body expression type does not match the declared return type.", "Update the function return type annotation or adjust the returned expression.");
 }
 }
+  tc_array_init_bounds = prev_array_bounds;
+  tc_index_upper_bounds = prev_index_bounds;
   return 0;
 }
   if ((kind == NK_LET_DECL)) {
@@ -2111,7 +2269,16 @@ function typecheck_stmt(n, fn_arities, fn_param_types, fn_return_types, local_ty
   let msg = str_concat(str_concat(str_concat(str_concat(str_concat("Type mismatch for let ", vname), ": expected "), declared_name), ", got "), rhs_name);
   panic_with_code("E_TYPE_LET_MISMATCH", msg, "An explicit let type annotation does not match the assigned RHS expression type.", "Update the explicit type annotation or change the RHS expression to match.");
 }
-  map_set(local_types, get_interned_str(node_get_data1(n)), declared_name);
+  let lname = get_interned_str(node_get_data1(n));
+  map_set(local_types, lname, declared_name);
+  let arr_init_bound = try_get_array_init_bound_from_type_node(declared_type);
+  if ((arr_init_bound >= 0)) {
+  map_set(tc_array_init_bounds, lname, arr_init_bound);
+}
+  let index_upper_bound = try_get_index_upper_bound_from_type_node(declared_type);
+  if ((index_upper_bound >= 0)) {
+  map_set(tc_index_upper_bounds, lname, index_upper_bound);
+}
 } else { if ((!str_eq(rhs_name, "Unknown"))) {
   map_set(local_types, get_interned_str(node_get_data1(n)), rhs_name);
 } }
@@ -2233,6 +2400,8 @@ function typecheck_program_with_options(program, strict_safety) {
   let fn_param_types = map_new();
   let fn_return_types = map_new();
   let local_types = map_new();
+  tc_global_value_types = map_new();
+  tc_alias_union_tags = map_new();
   let body = node_get_data1(program);
   let i = 0;
   let len = vec_length(body);
@@ -2258,7 +2427,25 @@ function typecheck_program_with_options(program, strict_safety) {
   if ((kind == NK_EXTERN_LET_DECL)) {
   let vname = get_interned_str(node_get_data1(stmt));
   let vtype = node_get_data2(stmt);
-  map_set(local_types, vname, type_name_from_type_node(vtype));
+  let tname = type_name_from_type_node(vtype);
+  map_set(local_types, vname, tname);
+  map_set(tc_global_value_types, vname, tname);
+}
+  if ((kind == NK_TYPE_ALIAS)) {
+  let alias_name = get_interned_str(node_get_data1(stmt));
+  let alias_type = node_get_data3(stmt);
+  let tags = vec_new();
+  collect_union_named_tags(alias_type, tags);
+  if ((vec_length(tags) > 0)) {
+  map_set(tc_alias_union_tags, alias_name, tags);
+}
+}
+  if ((kind == NK_LET_DECL)) {
+  let vname = get_interned_str(node_get_data1(stmt));
+  let vtype = node_get_data2(stmt);
+  if ((vtype != 0)) {
+  map_set(tc_global_value_types, vname, type_name_from_type_node(vtype));
+}
 }
   i = (i + 1);
 }
@@ -2667,11 +2854,234 @@ function collect_module_declarations(stmts) {
   return declared;
 }
 
+function module_scope_define(scopes, depth, name) {
+  let scope = vec_get(scopes, depth);
+  set_add(scope, name);
+  return 0;
+}
+
+function module_scope_has(scopes, depth, name) {
+  let i = depth;
+  while ((i >= 0)) {
+  if (set_has(vec_get(scopes, i), name)) {
+  return true;
+}
+  i = (i - 1);
+}
+  return false;
+}
+
+function module_check_expr_implicit_imports(n, declared, imported, all_exported_declared, all_extern_declared, scopes, depth) {
+  if ((n == 0)) {
+  return 0;
+}
+  let kind = node_kind(n);
+  if ((kind == 24)) {
+  let name = get_interned_str(node_get_data1(n));
+  if ((((!module_scope_has(scopes, depth, name)) && (!set_has(declared, name))) && (!set_has(imported, name)))) {
+  if ((set_has(all_exported_declared, name) && (!set_has(all_extern_declared, name)))) {
+  panic_with_code("E_MODULE_IMPLICIT_IMPORT", str_concat(str_concat("Strict module imports require explicit import for symbol '", name), "'"), "A module referenced a symbol declared in another module without importing it explicitly.", "Add the symbol to the module import list (for example: let { symbol } = moduleName;).");
+}
+}
+  return 0;
+}
+  if ((kind == 25)) {
+  module_check_expr_implicit_imports(node_get_data2(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+  module_check_expr_implicit_imports(node_get_data3(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+  return 0;
+}
+  if (((kind == 26) || (kind == 34))) {
+  module_check_expr_implicit_imports(node_get_data2(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+  if ((kind == 34)) {
+  module_check_expr_implicit_imports(node_get_data1(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+}
+  return 0;
+}
+  if ((kind == 27)) {
+  module_check_expr_implicit_imports(node_get_data1(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+  let args = node_get_data2(n);
+  let i = 0;
+  let len = vec_length(args);
+  while ((i < len)) {
+  module_check_expr_implicit_imports(vec_get(args, i), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+  i = (i + 1);
+}
+  return 0;
+}
+  if ((kind == 28)) {
+  module_check_expr_implicit_imports(node_get_data1(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+  return 0;
+}
+  if ((kind == 29)) {
+  module_check_expr_implicit_imports(node_get_data1(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+  module_check_expr_implicit_imports(node_get_data2(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+  return 0;
+}
+  if ((kind == 30)) {
+  let fields = node_get_data2(n);
+  let i = 0;
+  let len = vec_length(fields);
+  while ((i < len)) {
+  let f = vec_get(fields, i);
+  module_check_expr_implicit_imports(vec_get(f, 1), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+  i = (i + 1);
+}
+  return 0;
+}
+  if ((kind == 31)) {
+  module_check_expr_implicit_imports(node_get_data1(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+  module_check_stmt_implicit_imports(node_get_data2(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+  if ((node_get_data3(n) != 0)) {
+  module_check_stmt_implicit_imports(node_get_data3(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+}
+  return 0;
+}
+  if ((kind == 32)) {
+  module_check_expr_implicit_imports(node_get_data1(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+  let cases = node_get_data2(n);
+  let i = 0;
+  let len = vec_length(cases);
+  while ((i < len)) {
+  let case_node = vec_get(cases, i);
+  let pat = vec_get(case_node, 0);
+  let body = vec_get(case_node, 1);
+  let next_depth = (depth + 1);
+  vec_push(scopes, set_new());
+  if ((node_kind(pat) == 53)) {
+  let fields = node_get_data2(pat);
+  let j = 0;
+  let fLen = vec_length(fields);
+  while ((j < fLen)) {
+  module_scope_define(scopes, next_depth, get_interned_str(vec_get(fields, j)));
+  j = (j + 1);
+}
+} else { if ((node_kind(pat) == 52)) {
+  let pat_name = get_interned_str(node_get_data1(pat));
+  if (((!set_has(declared, pat_name)) && (!set_has(imported, pat_name)))) {
+  module_scope_define(scopes, next_depth, pat_name);
+}
+} }
+  module_check_stmt_implicit_imports(body, declared, imported, all_exported_declared, all_extern_declared, scopes, next_depth);
+  vec_pop(scopes);
+  i = (i + 1);
+}
+  return 0;
+}
+  if ((kind == 33)) {
+  module_check_expr_implicit_imports(node_get_data1(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+}
+  return 0;
+}
+
+function module_check_stmt_implicit_imports(n, declared, imported, all_exported_declared, all_extern_declared, scopes, depth) {
+  if ((n == 0)) {
+  return 0;
+}
+  let kind = node_kind(n);
+  if ((kind == 12)) {
+  let next_depth = (depth + 1);
+  vec_push(scopes, set_new());
+  let stmts = node_get_data1(n);
+  let i = 0;
+  let len = vec_length(stmts);
+  while ((i < len)) {
+  module_check_stmt_implicit_imports(vec_get(stmts, i), declared, imported, all_exported_declared, all_extern_declared, scopes, next_depth);
+  i = (i + 1);
+}
+  vec_pop(scopes);
+  return 0;
+}
+  if (((kind == 2) || (kind == 16))) {
+  let fnScopes = vec_new();
+  vec_push(fnScopes, set_new());
+  let params = node_get_data3(n);
+  let i = 0;
+  let len = vec_length(params);
+  while ((i < len)) {
+  let p = vec_get(params, i);
+  module_scope_define(fnScopes, 0, get_interned_str(vec_get(p, 0)));
+  i = (i + 1);
+}
+  module_check_stmt_implicit_imports(node_get_data5(n), declared, imported, all_exported_declared, all_extern_declared, fnScopes, 0);
+  return 0;
+}
+  if ((kind == 5)) {
+  module_check_expr_implicit_imports(node_get_data3(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+  module_scope_define(scopes, depth, get_interned_str(node_get_data1(n)));
+  return 0;
+}
+  if ((kind == 6)) {
+  let names = node_get_data1(n);
+  let i = 0;
+  let len = vec_length(names);
+  while ((i < len)) {
+  module_scope_define(scopes, depth, get_interned_str(vec_get(names, i)));
+  i = (i + 1);
+}
+  return 0;
+}
+  if ((kind == 7)) {
+  module_check_expr_implicit_imports(node_get_data1(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+  return 0;
+}
+  if ((kind == 13)) {
+  module_check_expr_implicit_imports(node_get_data1(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+  module_check_expr_implicit_imports(node_get_data2(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+  return 0;
+}
+  if ((kind == 8)) {
+  module_check_expr_implicit_imports(node_get_data1(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+  return 0;
+}
+  if ((kind == 9)) {
+  module_check_expr_implicit_imports(node_get_data1(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+  module_check_stmt_implicit_imports(node_get_data2(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+  if ((node_get_data3(n) != 0)) {
+  module_check_stmt_implicit_imports(node_get_data3(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+}
+  return 0;
+}
+  if ((kind == 11)) {
+  let next_depth = (depth + 1);
+  vec_push(scopes, set_new());
+  module_scope_define(scopes, next_depth, get_interned_str(node_get_data1(n)));
+  module_check_expr_implicit_imports(node_get_data2(n), declared, imported, all_exported_declared, all_extern_declared, scopes, next_depth);
+  module_check_expr_implicit_imports(node_get_data3(n), declared, imported, all_exported_declared, all_extern_declared, scopes, next_depth);
+  module_check_stmt_implicit_imports(node_get_data4(n), declared, imported, all_exported_declared, all_extern_declared, scopes, next_depth);
+  vec_pop(scopes);
+  return 0;
+}
+  if ((kind == 10)) {
+  module_check_expr_implicit_imports(node_get_data1(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+  module_check_stmt_implicit_imports(node_get_data2(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+  return 0;
+}
+  module_check_expr_implicit_imports(n, declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+  return 0;
+}
+
+function module_assert_no_implicit_imports(source, declared, imported, all_exported_declared, all_extern_declared) {
+  lex_init(source);
+  lex_all();
+  parse_init();
+  let program = p_parse_program();
+  let topScopes = vec_new();
+  vec_push(topScopes, set_new());
+  let body = node_get_data1(program);
+  let i = 0;
+  let len = vec_length(body);
+  while ((i < len)) {
+  module_check_stmt_implicit_imports(vec_get(body, i), declared, imported, all_exported_declared, all_extern_declared, topScopes, 0);
+  i = (i + 1);
+}
+  return 0;
+}
+
 function module_has_out_export(source, name) {
   return ((((str_includes(source, str_concat("out fn ", name)) || str_includes(source, str_concat("out struct ", name))) || str_includes(source, str_concat("out enum ", name))) || str_includes(source, str_concat("out type ", name))) || str_includes(source, str_concat("out class fn ", name)));
 }
 
-function gather_module_sources(filePath, moduleBasePath, seen, visiting, sources, module_declared_map, lint_enabled, max_effective_lines) {
+function gather_module_sources(filePath, moduleBasePath, seen, visiting, sources, module_declared_map, all_declared_names, all_exported_declared_names, all_extern_declared_names, lint_enabled, max_effective_lines) {
   if (set_has(seen, filePath)) {
   return 0;
 }
@@ -2690,6 +3100,24 @@ function gather_module_sources(filePath, moduleBasePath, seen, visiting, sources
   let stmts = node_get_data1(program);
   let declared = collect_module_declarations(stmts);
   map_set(module_declared_map, filePath, declared);
+  let all_declared_items = node_get_data1(program);
+  let di = 0;
+  let dlen = vec_length(all_declared_items);
+  while ((di < dlen)) {
+  let dstmt = vec_get(all_declared_items, di);
+  let dkind = node_kind(dstmt);
+  if (is_module_decl_kind(dkind)) {
+  let dname = get_interned_str(node_get_data1(dstmt));
+  set_add(all_declared_names, dname);
+  if ((((dkind == 17) || (dkind == 18)) || (dkind == 19))) {
+  set_add(all_extern_declared_names, dname);
+}
+  if (module_has_out_export(source, dname)) {
+  set_add(all_exported_declared_names, dname);
+}
+}
+  di = (di + 1);
+}
   let imports = vec_new();
   let i = 0;
   let len = vec_length(stmts);
@@ -2720,7 +3148,7 @@ function gather_module_sources(filePath, moduleBasePath, seen, visiting, sources
   let spec = vec_get(imports, i);
   let depPath = vec_get(spec, 0);
   let importNames = vec_get(spec, 1);
-  gather_module_sources(depPath, moduleBasePath, seen, visiting, sources, module_declared_map, lint_enabled, max_effective_lines);
+  gather_module_sources(depPath, moduleBasePath, seen, visiting, sources, module_declared_map, all_declared_names, all_exported_declared_names, all_extern_declared_names, lint_enabled, max_effective_lines);
   let depDeclared = map_get(module_declared_map, depPath);
   let depSource = read_file(depPath);
   let j = 0;
@@ -2737,6 +3165,21 @@ function gather_module_sources(filePath, moduleBasePath, seen, visiting, sources
 }
   i = (i + 1);
 }
+  let imported_names = set_new();
+  i = 0;
+  len = vec_length(imports);
+  while ((i < len)) {
+  let spec = vec_get(imports, i);
+  let importNames = vec_get(spec, 1);
+  let j = 0;
+  let jLen = vec_length(importNames);
+  while ((j < jLen)) {
+  set_add(imported_names, vec_get(importNames, j));
+  j = (j + 1);
+}
+  i = (i + 1);
+}
+  module_assert_no_implicit_imports(source, declared, imported_names, all_exported_declared_names, all_extern_declared_names);
   set_delete(visiting, filePath);
   set_add(seen, filePath);
   vec_push(sources, source);
@@ -2756,7 +3199,10 @@ function compile_file_with_options(inputPath, outputPath, strict_safety, lint_en
   let visiting = set_new();
   let sources = vec_new();
   let module_declared_map = map_new();
-  gather_module_sources(inputPath, moduleBasePath, seen, visiting, sources, module_declared_map, lint, max_lines);
+  let all_declared_names = set_new();
+  let all_exported_declared_names = set_new();
+  let all_extern_declared_names = set_new();
+  gather_module_sources(inputPath, moduleBasePath, seen, visiting, sources, module_declared_map, all_declared_names, all_exported_declared_names, all_extern_declared_names, lint, max_lines);
   let merged = join_sources(sources);
   lex_init(merged);
   lex_all();
