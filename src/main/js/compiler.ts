@@ -633,35 +633,37 @@ function compileFileInternal(
     let js;
     try {
       if (options.enableModules) {
-        const graphResult = run("load-module-graph", () =>
-          loadModuleGraph(absInput, {
-            ...(options.modules ?? {}),
-            allowImportCycles: false,
-          }),
-        );
-        if (!graphResult.ok) return graphResult;
-
-        const resolveResult = run("resolve", () =>
-          resolveNames(graphResult.value.merged, {
-            ...(options.resolve ?? {}),
-            strictModuleImports: options.resolve?.strictModuleImports ?? true,
-            moduleImportsByPath: graphResult.value.moduleImportsByPath,
-          }),
-        );
-        if (!resolveResult.ok) return resolveResult;
-
-        const typecheckResult = run("typecheck", () =>
-          typecheck(graphResult.value.merged, typecheckOptions),
-        );
-        if (!typecheckResult.ok) return typecheckResult;
-
+        // Borrow precheck needs the merged module AST from Stage0 pipeline.
         if (borrowEnabled) {
+          const graphResult = run("load-module-graph", () =>
+            loadModuleGraph(absInput, {
+              ...(options.modules ?? {}),
+              allowImportCycles: false,
+            }),
+          );
+          if (!graphResult.ok) return graphResult;
+
+          const resolveResult = run("resolve", () =>
+            resolveNames(graphResult.value.merged, {
+              ...(options.resolve ?? {}),
+              strictModuleImports: options.resolve?.strictModuleImports ?? true,
+              moduleImportsByPath: graphResult.value.moduleImportsByPath,
+            }),
+          );
+          if (!resolveResult.ok) return resolveResult;
+
+          const typecheckResult = run("typecheck", () =>
+            typecheck(graphResult.value.merged, typecheckOptions),
+          );
+          if (!typecheckResult.ok) return typecheckResult;
+
           const borrowResult = run("borrowcheck", () =>
             borrowcheck(graphResult.value.merged, options.borrowcheck ?? {}),
           );
           if (!borrowResult.ok) return borrowResult;
         }
 
+        // Selfhost handles the full module pipeline: load, resolve, typecheck, codegen.
         const normalizedInput = toPosixPath(absInput);
         const normalizedOutput = toPosixPath(finalOutput);
         run("selfhost-compile-file", () => {
