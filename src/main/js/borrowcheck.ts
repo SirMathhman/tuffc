@@ -50,6 +50,86 @@ function isCopyType(typeName, externTypeNames) {
   return false;
 }
 
+function isTypeNodeCopyable(typeNode, context, visiting = new Set()) {
+  if (!typeNode) return false;
+
+  if (typeof typeNode === "string") {
+    if (COPY_PRIMITIVES.has(typeNode)) return true;
+    if (typeNode === "Vec" || typeNode === "Map" || typeNode === "Set") {
+      return true;
+    }
+    if (context.copyTypeNames.has(typeNode)) return true;
+    if (context.externTypeNames.has(typeNode)) return false;
+    if (context.copyAliasTypeByName.has(typeNode)) {
+      if (visiting.has(typeNode)) return false;
+      visiting.add(typeNode);
+      const ok = isTypeNodeCopyable(
+        context.copyAliasTypeByName.get(typeNode),
+        context,
+        visiting,
+      );
+      visiting.delete(typeNode);
+      return ok;
+    }
+    return false;
+  }
+
+  if (typeNode.kind === "NamedType") {
+    const name = typeNode.name;
+    if (COPY_PRIMITIVES.has(name)) return true;
+    if (name === "Vec" || name === "Map" || name === "Set") return true;
+    if (context.copyTypeNames.has(name)) return true;
+    if (context.externTypeNames.has(name)) return false;
+    if (context.copyAliasTypeByName.has(name)) {
+      if (visiting.has(name)) return false;
+      visiting.add(name);
+      const ok = isTypeNodeCopyable(
+        context.copyAliasTypeByName.get(name),
+        context,
+        visiting,
+      );
+      visiting.delete(name);
+      return ok;
+    }
+    return false;
+  }
+
+  if (typeNode.kind === "RefinementType") {
+    return isTypeNodeCopyable(typeNode.base, context, visiting);
+  }
+
+  if (typeNode.kind === "PointerType") {
+    return true;
+  }
+
+  if (typeNode.kind === "UnionType") {
+    return (
+      isTypeNodeCopyable(typeNode.left, context, visiting) &&
+      isTypeNodeCopyable(typeNode.right, context, visiting)
+    );
+  }
+
+  if (typeNode.kind === "TupleType") {
+    return (typeNode.members ?? []).every((m) =>
+      isTypeNodeCopyable(m, context, visiting),
+    );
+  }
+
+  return false;
+}
+
+function isCopyTypeWithRegistry(typeName, externTypeNames, copyTypeNames) {
+  if (!typeName || typeName === "Unknown") return false;
+  if (typeName.startsWith("*")) return true;
+  if (COPY_PRIMITIVES.has(typeName)) return true;
+  if (typeName === "Vec" || typeName === "Map" || typeName === "Set") {
+    return true;
+  }
+  if (copyTypeNames.has(typeName)) return true;
+  if (externTypeNames.has(typeName)) return false;
+  return false;
+}
+
 function canonicalPlace(expr) {
   if (!expr) return undefined;
   if (expr.kind === "Identifier") {
@@ -210,6 +290,8 @@ export function borrowcheck(ast, options = {}): BorrowcheckResult<unknown> {
   const externTypeNames = new Set();
   const globalTypeByName = new Map();
   const globalFnNames = new Set();
+  const copyTypeNames = new Set();
+  const copyAliasTypeByName = new Map();
 
   for (const node of ast.body ?? []) {
     if (node.kind === "ExternTypeDecl") {
@@ -222,6 +304,38 @@ export function borrowcheck(ast, options = {}): BorrowcheckResult<unknown> {
     if (node.kind === "LetDecl" || node.kind === "ExternLetDecl") {
       globalTypeByName.set(node.name, typeNameFromNode(node.type));
     }
+    if (node.kind === "StructDecl" && node.isCopy === true) {
+      copyTypeNames.add(node.name);
+    }
+    if (node.kind === "EnumDecl") {
+      copyTypeNames.add(node.name);
+    }
+    if (node.kind === "TypeAlias" && node.isCopy === true) {
+      copyAliasTypeByName.set(node.name, node.aliasedType);
+    }
+  }
+
+  for (const [aliasName, aliasType] of copyAliasTypeByName.entries()) {
+    const okAlias = isTypeNodeCopyable(
+      aliasType,
+      { copyTypeNames, copyAliasTypeByName, externTypeNames },
+      new Set([aliasName]),
+    );
+    if (!okAlias) {
+      return err(
+        new TuffError(
+          `copy type ${aliasName} must alias a copy-compatible type`,
+          undefined,
+          {
+            code: "E_BORROW_INVALID_COPY_ALIAS",
+            reason:
+              "A type alias marked 'copy' resolved to a non-copy type under move semantics.",
+            fix: "Only mark aliases as 'copy' when the aliased type is copy-compatible (primitives, pointers, enums, copy structs, or other copy aliases).",
+          },
+        ),
+      );
+    }
+    copyTypeNames.add(aliasName);
   }
 
   const consumePlace = (expr, state, envTypes): BorrowcheckResult<void> => {
@@ -247,7 +361,7 @@ export function borrowcheck(ast, options = {}): BorrowcheckResult<unknown> {
     }
 
     const ty = inferExprTypeName(expr, envTypes, fnReturnTypes);
-    if (!isCopyType(ty, externTypeNames)) {
+    if (!isCopyTypeWithRegistry(ty, externTypeNames, copyTypeNames)) {
       state.moved.add(place.base);
     }
     return ok(undefined);
