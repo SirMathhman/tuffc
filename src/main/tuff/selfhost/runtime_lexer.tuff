@@ -38,9 +38,10 @@ extern fn sb_append_char(this: StringBuilder, code: I32) : StringBuilder;
 extern fn sb_build(sb: StringBuilder) : *Str;
 
 extern type Vec<T>;
-extern fn vec_new() : Vec<T>;
+extern fn __vec_new() : Vec<T>;
 extern fn vec_push(this: Vec<T>, item: T) : Vec<T>;
 extern fn vec_pop(this: Vec<T>) : I32;
+out fn vec_new() : Vec<T> => __vec_new();
 
 extern fn vec_get(this: Vec<T>, i: I32) : T;
 
@@ -51,16 +52,19 @@ extern fn vec_join(this: Vec<T>, sep: *Str) : *Str;
 extern fn vec_includes(this: Vec<T>, item: T) : Bool;
 
 extern type Map<K, V>;
-extern fn map_new() : Map<K, V>;
+extern fn __map_new() : Map<K, V>;
 extern fn map_set(this: Map<K, V>, k: K, v: V) : Map<K, V>;
 extern fn map_get(this: Map<K, V>, k: K) : V;
 extern fn map_has(this: Map<K, V>, k: K) : Bool;
 
+out fn map_new() : Map<K, V> => __map_new();
+
 extern type Set<T>;
-extern fn set_new() : *mut Set<T>;
+extern fn __set_new() : *mut Set<T>;
 extern fn set_add(this: *mut Set<T>, item: T) : *mut Set<T>;
 extern fn set_has(this: *Set<T>, item: T) : Bool;
 extern fn set_delete(this: *mut Set<T>, item: T) : Bool;
+out fn set_new() : *mut Set<T> => __set_new();
 
 extern fn read_file(filePath: *Str) : *Str;
 extern fn write_file(filePath: *Str, contents: *Str) : I32;

@@ -160,9 +160,17 @@ export function vec_includes<T>(arr: T[], item: T): boolean {
   return arr.includes(item);
 }
 
+export function __vec_new<T = unknown>(): T[] {
+  return vec_new<T>();
+}
+
 // === Map operations ===
 export function map_new<K = unknown, V = unknown>(): Map<K, V> {
   return new Map<K, V>();
+}
+
+export function __map_new<K = unknown, V = unknown>(): Map<K, V> {
+  return map_new<K, V>();
 }
 
 export function map_set<K, V>(m: Map<K, V>, k: K, v: V): Map<K, V> {
@@ -197,6 +205,10 @@ export function map_values<K, V>(m: Map<K, V>): V[] {
 // === Set operations ===
 export function set_new<T = unknown>(): Set<T> {
   return new Set<T>();
+}
+
+export function __set_new<T = unknown>(): Set<T> {
+  return set_new<T>();
 }
 
 export function set_add<T>(s: Set<T>, item: T): Set<T> {

@@ -110,7 +110,7 @@ export function resolveNames(
     if (!expr) return ok(undefined);
     switch (expr.kind) {
       case "Identifier":
-        if (hasNonGlobalBinding(scope, expr.name) || isHostBuiltin(expr.name)) {
+        if (hasNonGlobalBinding(scope, expr.name)) {
           break;
         }
 
@@ -143,6 +143,10 @@ export function resolveNames(
               }
             }
           }
+          break;
+        }
+
+        if (isHostBuiltin(expr.name)) {
           break;
         }
 

@@ -350,6 +350,35 @@ expectBothFail(
   "E_MODULE_PRIVATE_IMPORT",
 );
 
+// 10) Implicit cross-module reference parity (must require explicit import).
+const implicitDir = path.join(outDir, "implicit-import");
+const implicitLib = path.join(implicitDir, "Lib.tuff");
+const implicitEntry = path.join(implicitDir, "Main.tuff");
+const implicitJsOut = path.join(implicitDir, "main-js.js");
+const implicitSelfhostOut = path.join(implicitDir, "main-selfhost.js");
+fs.mkdirSync(implicitDir, { recursive: true });
+fs.writeFileSync(
+  implicitLib,
+  "out fn shown() : I32 => 1;\nout fn helper() : I32 => 2;\n",
+  "utf8",
+);
+fs.writeFileSync(
+  implicitEntry,
+  "let { shown } = Lib;\nfn main() : I32 => shown() + helper();\n",
+  "utf8",
+);
+
+expectBothFail(
+  () =>
+    compileFileResult(implicitEntry, implicitJsOut, {
+      enableModules: true,
+      modules: { moduleBaseDir: implicitDir },
+    }),
+  () => selfhost.compile_file(implicitEntry, implicitSelfhostOut),
+  "implicit-import parity",
+  "E_MODULE_IMPLICIT_IMPORT",
+);
+
 const nullableStrictSource = "fn bad(p : *I32 | 0USize) : I32 => p[0];\n";
 
 const nullableStage0 = compileSourceResult(

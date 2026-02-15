@@ -2,7 +2,7 @@
 // AST Node Kinds
 // ============================================================================
 
-let { tok_kind, tok_value, get_intern } = selfhost::runtime_lexer;
+let { tok_kind, tok_value, get_intern, vec_new, set_new } = selfhost::runtime_lexer;
 
 let NK_PROGRAM : I32 = 1;
 let NK_FN_DECL : I32 = 2;

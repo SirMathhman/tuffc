@@ -40,11 +40,13 @@
 
 // extern type Vec
 
-// extern fn vec_new
+// extern fn __vec_new
 
 // extern fn vec_push
 
 // extern fn vec_pop
+
+function vec_new() { return __vec_new(); }
 
 // extern fn vec_get
 
@@ -60,7 +62,7 @@
 
 // extern type Map
 
-// extern fn map_new
+// extern fn __map_new
 
 // extern fn map_set
 
@@ -68,15 +70,19 @@
 
 // extern fn map_has
 
+function map_new() { return __map_new(); }
+
 // extern type Set
 
-// extern fn set_new
+// extern fn __set_new
 
 // extern fn set_add
 
 // extern fn set_has
 
 // extern fn set_delete
+
+function set_new() { return __set_new(); }
 
 // extern fn read_file
 
@@ -182,6 +188,7 @@ function init_keywords() {
   set_add(keywords, "out");
   set_add(keywords, "module");
   set_add(keywords, "extern");
+  set_add(keywords, "copy");
   set_add(keywords, "async");
   set_add(keywords, "mut");
   return 0;
@@ -490,6 +497,8 @@ function count_effective_token_lines() {
 }
   return count;
 }
+
+function lint_effective_line_count() { return count_effective_token_lines(); }
 
 function lint_assert_file_length(filePath, maxEffectiveLines) {
   let count = count_effective_token_lines();
@@ -1033,7 +1042,7 @@ function p_parse_function(is_class) {
   return node;
 }
 
-function p_parse_struct() {
+function p_parse_struct(is_copy) {
   p_expect(TK_KEYWORD, "struct", "Expected 'struct'");
   let name = p_parse_identifier();
   let generics = vec_new();
@@ -1067,6 +1076,7 @@ function p_parse_struct() {
   node_set_data1(node, name);
   node_set_data2(node, generics);
   node_set_data3(node, fields);
+  node_set_data4(node, is_copy);
   return node;
 }
 
@@ -1088,7 +1098,7 @@ function p_parse_enum() {
   return node;
 }
 
-function p_parse_type_alias() {
+function p_parse_type_alias(is_copy) {
   p_expect(TK_KEYWORD, "type", "Expected 'type'");
   let name = p_parse_identifier();
   let generics = vec_new();
@@ -1110,6 +1120,7 @@ function p_parse_type_alias() {
   node_set_data1(node, name);
   node_set_data2(node, generics);
   node_set_data3(node, aliased);
+  node_set_data4(node, is_copy);
   return node;
 }
 
@@ -1269,47 +1280,63 @@ function p_parse_extern_decl() {
 }
 
 function p_parse_statement() {
+  let exported = 0;
+  let copy_decl = 0;
+  let consumed_modifier = 0;
+  while ((p_at(TK_KEYWORD, "out") || p_at(TK_KEYWORD, "copy"))) {
+  consumed_modifier = 1;
   if (p_at(TK_KEYWORD, "out")) {
   p_eat();
-  if (p_at(TK_KEYWORD, "struct")) {
-  let out_node = p_parse_struct();
-  set_add(parse_exports, get_interned_str(node_get_data1(out_node)));
-  return out_node;
+  if ((exported == 1)) {
+  panic("Duplicate 'out' modifier");
 }
-  if (p_at(TK_KEYWORD, "enum")) {
-  let out_node = p_parse_enum();
-  set_add(parse_exports, get_interned_str(node_get_data1(out_node)));
-  return out_node;
-}
-  if (p_at(TK_KEYWORD, "type")) {
-  let out_node = p_parse_type_alias();
-  set_add(parse_exports, get_interned_str(node_get_data1(out_node)));
-  return out_node;
-}
-  if (p_at(TK_KEYWORD, "fn")) {
-  let out_node = p_parse_function(0);
-  set_add(parse_exports, get_interned_str(node_get_data1(out_node)));
-  return out_node;
-}
-  if (p_at(TK_KEYWORD, "class")) {
+  exported = 1;
+} else {
   p_eat();
-  let out_node = p_parse_function(1);
-  set_add(parse_exports, get_interned_str(node_get_data1(out_node)));
-  return out_node;
+  if ((copy_decl == 1)) {
+  panic("Duplicate 'copy' modifier");
 }
-  panic("Expected declaration after 'out'");
+  copy_decl = 1;
+}
+}
+  if ((consumed_modifier == 1)) {
+  let out_node = 0;
+  if (p_at(TK_KEYWORD, "struct")) {
+  out_node = p_parse_struct(copy_decl);
+} else { if (p_at(TK_KEYWORD, "enum")) {
+  out_node = p_parse_enum();
+} else { if (p_at(TK_KEYWORD, "type")) {
+  out_node = p_parse_type_alias(copy_decl);
+} else { if (p_at(TK_KEYWORD, "fn")) {
+  if ((copy_decl == 1)) {
+  panic("'copy' is only supported on struct/type declarations");
+}
+  out_node = p_parse_function(0);
+} else { if (p_at(TK_KEYWORD, "class")) {
+  if ((copy_decl == 1)) {
+  panic("'copy' is only supported on struct/type declarations");
+}
+  p_eat();
+  out_node = p_parse_function(1);
+} else {
+  panic("Expected declaration after modifiers");
+} } } } }
+  if ((exported == 1)) {
+  set_add(parse_exports, get_interned_str(node_get_data1(out_node)));
+}
+  return out_node;
 }
   if (p_at(TK_KEYWORD, "let")) {
   return p_parse_let();
 }
   if (p_at(TK_KEYWORD, "struct")) {
-  return p_parse_struct();
+  return p_parse_struct(0);
 }
   if (p_at(TK_KEYWORD, "enum")) {
   return p_parse_enum();
 }
   if (p_at(TK_KEYWORD, "type")) {
-  return p_parse_type_alias();
+  return p_parse_type_alias(0);
 }
   if (p_at(TK_KEYWORD, "fn")) {
   return p_parse_function(0);
@@ -2476,6 +2503,12 @@ function selfhost_typecheck_marker() { return 0; }
 
 let bc_global_value_types = map_new();
 
+let bc_copy_types = set_new();
+
+let bc_copy_alias_types = map_new();
+
+let bc_copy_alias_names = vec_new();
+
 function bc_str_ends_with_local(s, suffix) {
   let ns = str_length(s);
   let nf = str_length(suffix);
@@ -2529,8 +2562,73 @@ function is_copy_type(type_name, extern_type_names) {
   if (((str_eq(type_name, "Vec") || str_eq(type_name, "Map")) || str_eq(type_name, "Set"))) {
   return true;
 }
+  if (set_has(bc_copy_types, type_name)) {
+  return true;
+}
   if (set_has(extern_type_names, type_name)) {
   return false;
+}
+  return false;
+}
+
+function bc_find_copy_alias_type(name) {
+  if (map_has(bc_copy_alias_types, name)) {
+  return map_get(bc_copy_alias_types, name);
+}
+  return 0;
+}
+
+function bc_type_node_is_copyable(t, extern_type_names, visiting_aliases) {
+  if ((t == 0)) {
+  return false;
+}
+  let k = node_kind(t);
+  if ((k == NK_NAMED_TYPE)) {
+  let name = get_interned_str(node_get_data1(t));
+  if (is_copy_primitive(name)) {
+  return true;
+}
+  if (((str_eq(name, "Vec") || str_eq(name, "Map")) || str_eq(name, "Set"))) {
+  return true;
+}
+  if (set_has(bc_copy_types, name)) {
+  return true;
+}
+  if (set_has(extern_type_names, name)) {
+  return false;
+}
+  let alias_type = bc_find_copy_alias_type(name);
+  if ((alias_type != 0)) {
+  if (set_has(visiting_aliases, name)) {
+  return false;
+}
+  set_add(visiting_aliases, name);
+  let ok = bc_type_node_is_copyable(alias_type, extern_type_names, visiting_aliases);
+  set_delete(visiting_aliases, name);
+  return ok;
+}
+  return false;
+}
+  if ((k == NK_REFINEMENT_TYPE)) {
+  return bc_type_node_is_copyable(node_get_data1(t), extern_type_names, visiting_aliases);
+}
+  if ((k == NK_POINTER_TYPE)) {
+  return true;
+}
+  if ((k == NK_UNION_TYPE)) {
+  return (bc_type_node_is_copyable(node_get_data1(t), extern_type_names, visiting_aliases) && bc_type_node_is_copyable(node_get_data2(t), extern_type_names, visiting_aliases));
+}
+  if ((k == NK_TUPLE_TYPE)) {
+  let members = node_get_data1(t);
+  let i = 0;
+  let len = vec_length(members);
+  while ((i < len)) {
+  if ((!bc_type_node_is_copyable(vec_get(members, i), extern_type_names, visiting_aliases))) {
+  return false;
+}
+  i = (i + 1);
+}
+  return true;
 }
   return false;
 }
@@ -3122,6 +3220,9 @@ function borrowcheck_program(program) {
   let global_type_by_name = map_new();
   let global_fn_names = set_new();
   let body = node_get_data1(program);
+  bc_copy_types = set_new();
+  bc_copy_alias_types = map_new();
+  bc_copy_alias_names = vec_new();
   let i = 0;
   let len = vec_length(body);
   while ((i < len)) {
@@ -3138,6 +3239,30 @@ function borrowcheck_program(program) {
   if (((kind == NK_LET_DECL) || (kind == NK_EXTERN_LET_DECL))) {
   map_set(global_type_by_name, get_interned_str(node_get_data1(stmt)), bc_type_name_from_type_node(node_get_data2(stmt)));
 }
+  if ((kind == NK_ENUM_DECL)) {
+  set_add(bc_copy_types, get_interned_str(node_get_data1(stmt)));
+}
+  if (((kind == NK_STRUCT_DECL) && (node_get_data4(stmt) == 1))) {
+  set_add(bc_copy_types, get_interned_str(node_get_data1(stmt)));
+}
+  if (((kind == NK_TYPE_ALIAS) && (node_get_data4(stmt) == 1))) {
+  let alias_name = get_interned_str(node_get_data1(stmt));
+  vec_push(bc_copy_alias_names, alias_name);
+  map_set(bc_copy_alias_types, alias_name, node_get_data3(stmt));
+}
+  i = (i + 1);
+}
+  i = 0;
+  let copy_alias_count = vec_length(bc_copy_alias_names);
+  while ((i < copy_alias_count)) {
+  let alias_name = vec_get(bc_copy_alias_names, i);
+  let alias_type = map_get(bc_copy_alias_types, alias_name);
+  let visiting = set_new();
+  set_add(visiting, alias_name);
+  if ((!bc_type_node_is_copyable(alias_type, extern_type_names, visiting))) {
+  panic_with_code("E_BORROW_INVALID_COPY_ALIAS", str_concat(str_concat("copy type ", alias_name), " must alias a copy-compatible type"), "A type alias marked 'copy' resolved to a non-copy type under move semantics.", "Only mark aliases as 'copy' when the aliased type is copy-compatible (primitives, pointers, enums, copy structs, or other copy aliases).");
+}
+  set_add(bc_copy_types, alias_name);
   i = (i + 1);
 }
   let state = state_new();
@@ -3464,6 +3589,245 @@ function generate_js(program) {
 
 function selfhost_codegen_stmt_marker() { return 0; }
 
+let lint_issue_records = vec_new();
+
+function lint_issue_sep_field() { return "\u001f"; }
+
+function lint_issue_sep_record() { return "\u001e"; }
+
+function lint_issue_encode(code, message, reason, fix) {
+  return str_concat(str_concat(str_concat(str_concat(str_concat(str_concat(code, lint_issue_sep_field()), message), lint_issue_sep_field()), reason), lint_issue_sep_field()), fix);
+}
+
+function lint_add_issue(code, message, reason, fix) {
+  vec_push(lint_issue_records, lint_issue_encode(code, message, reason, fix));
+  return 0;
+}
+
+function lint_reset() {
+  vec_clear(lint_issue_records);
+  return 0;
+}
+
+function lint_take_issues() {
+  let s = vec_join(lint_issue_records, lint_issue_sep_record());
+  vec_clear(lint_issue_records);
+  return s;
+}
+
+function lint_check_file_length(file_path, max_effective_lines) {
+  let count = lint_effective_line_count();
+  if ((count > max_effective_lines)) {
+  lint_add_issue("E_LINT_FILE_TOO_LONG", str_concat(str_concat(str_concat(str_concat("File exceeds ", int_to_string(max_effective_lines)), " effective lines ("), int_to_string(count)), ")"), "Large files are harder to review and maintain; this file exceeds the maximum effective line budget after excluding comments and blank lines.", str_concat(str_concat("Split this file into smaller modules so each file has at most ", int_to_string(max_effective_lines)), " non-comment, non-whitespace lines."));
+}
+  return 0;
+}
+
+function lint_collect_expr(expr, receiver_extern_fns, reads) {
+  if ((expr == 0)) {
+  return 0;
+}
+  let kind = node_kind(expr);
+  if ((kind == NK_IDENTIFIER)) {
+  set_add(reads, get_interned_str(node_get_data1(expr)));
+  return 0;
+}
+  if (((kind == NK_UNARY_EXPR) || (kind == NK_UNWRAP_EXPR))) {
+  lint_collect_expr(node_get_data2(expr), receiver_extern_fns, reads);
+  if ((kind == NK_UNWRAP_EXPR)) {
+  lint_collect_expr(node_get_data1(expr), receiver_extern_fns, reads);
+}
+  return 0;
+}
+  if ((kind == NK_BINARY_EXPR)) {
+  lint_collect_expr(node_get_data2(expr), receiver_extern_fns, reads);
+  lint_collect_expr(node_get_data3(expr), receiver_extern_fns, reads);
+  return 0;
+}
+  if ((kind == NK_CALL_EXPR)) {
+  let callee = node_get_data1(expr);
+  let args = node_get_data2(expr);
+  if (((node_kind(callee) == NK_IDENTIFIER) && (vec_length(args) > 0))) {
+  let name = get_interned_str(node_get_data1(callee));
+  let call_style = node_get_data3(expr);
+  if ((set_has(receiver_extern_fns, name) && (call_style != 1))) {
+  lint_add_issue("E_LINT_PREFER_RECEIVER_CALL", str_concat(str_concat("Prefer receiver-call syntax for '", name), "'"), "This extern function declares a receiver as its first 'this' parameter, so calling it as a free function is less idiomatic.", str_concat(str_concat(str_concat(str_concat("Rewrite '", name), "(x, ...)' as 'x."), name), "(...)'."));
+}
+}
+  lint_collect_expr(callee, receiver_extern_fns, reads);
+  let i = 0;
+  let len = vec_length(args);
+  while ((i < len)) {
+  lint_collect_expr(vec_get(args, i), receiver_extern_fns, reads);
+  i = (i + 1);
+}
+  return 0;
+}
+  if ((kind == NK_MEMBER_EXPR)) {
+  lint_collect_expr(node_get_data1(expr), receiver_extern_fns, reads);
+  return 0;
+}
+  if ((kind == NK_INDEX_EXPR)) {
+  lint_collect_expr(node_get_data1(expr), receiver_extern_fns, reads);
+  lint_collect_expr(node_get_data2(expr), receiver_extern_fns, reads);
+  return 0;
+}
+  if ((kind == NK_STRUCT_INIT)) {
+  let fields = node_get_data2(expr);
+  let i = 0;
+  let len = vec_length(fields);
+  while ((i < len)) {
+  let field = vec_get(fields, i);
+  lint_collect_expr(vec_get(field, 1), receiver_extern_fns, reads);
+  i = (i + 1);
+}
+  return 0;
+}
+  if ((kind == NK_IF_EXPR)) {
+  let cond = node_get_data1(expr);
+  if ((node_kind(cond) == NK_BOOL_LIT)) {
+  lint_add_issue("E_LINT_CONSTANT_CONDITION", "Constant condition in if-expression/statement", "A constant condition means one branch is unreachable, which usually indicates dead or unintended code.", "Use a non-constant condition, or simplify by keeping only the branch that will execute.");
+}
+  lint_collect_expr(cond, receiver_extern_fns, reads);
+  lint_collect_stmt(node_get_data2(expr), receiver_extern_fns, reads, set_new(), vec_new());
+  if ((node_get_data3(expr) != 0)) {
+  lint_collect_stmt(node_get_data3(expr), receiver_extern_fns, reads, set_new(), vec_new());
+}
+  return 0;
+}
+  if ((kind == NK_MATCH_EXPR)) {
+  lint_collect_expr(node_get_data1(expr), receiver_extern_fns, reads);
+  let cases = node_get_data2(expr);
+  let i = 0;
+  let len = vec_length(cases);
+  while ((i < len)) {
+  let c = vec_get(cases, i);
+  lint_collect_stmt(vec_get(c, 1), receiver_extern_fns, reads, set_new(), vec_new());
+  i = (i + 1);
+}
+  return 0;
+}
+  if ((kind == NK_IS_EXPR)) {
+  lint_collect_expr(node_get_data1(expr), receiver_extern_fns, reads);
+}
+  return 0;
+}
+
+function lint_collect_stmt(stmt, receiver_extern_fns, reads, declared_set, declared_names) {
+  if ((stmt == 0)) {
+  return 0;
+}
+  let kind = node_kind(stmt);
+  if ((kind == NK_LET_DECL)) {
+  let name = get_interned_str(node_get_data1(stmt));
+  if ((!set_has(declared_set, name))) {
+  set_add(declared_set, name);
+  vec_push(declared_names, name);
+}
+  lint_collect_expr(node_get_data3(stmt), receiver_extern_fns, reads);
+  return 0;
+}
+  if ((kind == NK_BLOCK)) {
+  let stmts = node_get_data1(stmt);
+  if ((vec_length(stmts) == 0)) {
+  lint_add_issue("E_LINT_EMPTY_BLOCK", "Empty block has no effect", "An empty block executes no statements, which is often accidental and can hide incomplete logic.", "Add the intended statements to the block, or remove the block if it is unnecessary.");
+}
+  let i = 0;
+  let len = vec_length(stmts);
+  while ((i < len)) {
+  lint_collect_stmt(vec_get(stmts, i), receiver_extern_fns, reads, declared_set, declared_names);
+  i = (i + 1);
+}
+  return 0;
+}
+  if ((kind == NK_EXPR_STMT)) {
+  lint_collect_expr(node_get_data1(stmt), receiver_extern_fns, reads);
+  return 0;
+}
+  if ((kind == NK_ASSIGN_STMT)) {
+  lint_collect_expr(node_get_data1(stmt), receiver_extern_fns, reads);
+  lint_collect_expr(node_get_data2(stmt), receiver_extern_fns, reads);
+  return 0;
+}
+  if ((kind == NK_RETURN_STMT)) {
+  lint_collect_expr(node_get_data1(stmt), receiver_extern_fns, reads);
+  return 0;
+}
+  if ((kind == NK_IF_STMT)) {
+  let cond = node_get_data1(stmt);
+  if ((node_kind(cond) == NK_BOOL_LIT)) {
+  lint_add_issue("E_LINT_CONSTANT_CONDITION", "Constant condition in if-expression/statement", "A constant condition means one branch is unreachable, which usually indicates dead or unintended code.", "Use a non-constant condition, or simplify by keeping only the branch that will execute.");
+}
+  lint_collect_expr(cond, receiver_extern_fns, reads);
+  lint_collect_stmt(node_get_data2(stmt), receiver_extern_fns, reads, declared_set, declared_names);
+  lint_collect_stmt(node_get_data3(stmt), receiver_extern_fns, reads, declared_set, declared_names);
+  return 0;
+}
+  if ((kind == NK_FOR_STMT)) {
+  lint_collect_expr(node_get_data2(stmt), receiver_extern_fns, reads);
+  lint_collect_expr(node_get_data3(stmt), receiver_extern_fns, reads);
+  lint_collect_stmt(node_get_data4(stmt), receiver_extern_fns, reads, declared_set, declared_names);
+  return 0;
+}
+  if ((kind == NK_WHILE_STMT)) {
+  lint_collect_expr(node_get_data1(stmt), receiver_extern_fns, reads);
+  lint_collect_stmt(node_get_data2(stmt), receiver_extern_fns, reads, declared_set, declared_names);
+  return 0;
+}
+  if (((kind == NK_FN_DECL) || (kind == NK_CLASS_FN_DECL))) {
+  lint_collect_stmt(node_get_data5(stmt), receiver_extern_fns, reads, declared_set, declared_names);
+  return 0;
+}
+  lint_collect_expr(stmt, receiver_extern_fns, reads);
+  return 0;
+}
+
+function lint_add_circular_import_issue(cycle_text) {
+  return lint_add_issue("E_LINT_CIRCULAR_IMPORT", str_concat("Circular import detected: ", cycle_text), "Circular dependencies between modules make dependency flow harder to understand and maintain.", "Refactor shared declarations into a third module and have each side import that shared module instead.");
+}
+
+function lint_program(program, file_path, max_effective_lines) {
+  lint_check_file_length(file_path, max_effective_lines);
+  let receiver_extern_fns = set_new();
+  let reads = set_new();
+  let declared_set = set_new();
+  let declared_names = vec_new();
+  let body = node_get_data1(program);
+  let i = 0;
+  let len = vec_length(body);
+  while ((i < len)) {
+  let stmt = vec_get(body, i);
+  if ((node_kind(stmt) == NK_EXTERN_FN_DECL)) {
+  let params = node_get_data3(stmt);
+  if ((vec_length(params) > 0)) {
+  let p0 = vec_get(params, 0);
+  let p0name = get_interned_str(vec_get(p0, 0));
+  if (str_eq(p0name, "this")) {
+  set_add(receiver_extern_fns, get_interned_str(node_get_data1(stmt)));
+}
+}
+}
+  i = (i + 1);
+}
+  i = 0;
+  while ((i < len)) {
+  lint_collect_stmt(vec_get(body, i), receiver_extern_fns, reads, declared_set, declared_names);
+  i = (i + 1);
+}
+  i = 0;
+  let dlen = vec_length(declared_names);
+  while ((i < dlen)) {
+  let name = vec_get(declared_names, i);
+  if (((!str_starts_with(name, "_")) && (!set_has(reads, name)))) {
+  lint_add_issue("E_LINT_UNUSED_BINDING", str_concat(str_concat("Unused binding '", name), "'"), "Unused bindings increase cognitive load and can indicate leftover or incomplete code paths.", "Remove the binding if unused, use it intentionally, or rename it to start with '_' to mark it as intentionally unused.");
+}
+  i = (i + 1);
+}
+  return 0;
+}
+
+function selfhost_linter_marker() { return 0; }
+
 function module_loader_sanitize_max_effective_lines(max_effective_lines) {
   return (((max_effective_lines <= 0)) ? (() => {
   return 500;
@@ -3768,23 +4132,24 @@ function module_assert_no_implicit_imports(source, declared, imported, all_expor
 }
 
 function module_has_out_export(source, name) {
-  return ((((str_includes(source, str_concat("out fn ", name)) || str_includes(source, str_concat("out struct ", name))) || str_includes(source, str_concat("out enum ", name))) || str_includes(source, str_concat("out type ", name))) || str_includes(source, str_concat("out class fn ", name)));
+  return ((((((((str_includes(source, str_concat("out fn ", name)) || str_includes(source, str_concat("out struct ", name))) || str_includes(source, str_concat("out copy struct ", name))) || str_includes(source, str_concat("copy out struct ", name))) || str_includes(source, str_concat("out enum ", name))) || str_includes(source, str_concat("out type ", name))) || str_includes(source, str_concat("out copy type ", name))) || str_includes(source, str_concat("copy out type ", name))) || str_includes(source, str_concat("out class fn ", name)));
 }
 
-function gather_module_sources(filePath, moduleBasePath, seen, visiting, sources, module_declared_map, all_declared_names, all_exported_declared_names, all_extern_declared_names, lint_enabled, max_effective_lines) {
+function gather_module_sources(filePath, moduleBasePath, seen, visiting, sources, module_declared_map, all_declared_names, all_exported_declared_names, all_extern_declared_names, lint_enabled, max_effective_lines, module_cycles) {
   if (set_has(seen, filePath)) {
   return 0;
 }
   if (set_has(visiting, filePath)) {
+  if ((lint_enabled == 1)) {
+  vec_push(module_cycles, filePath);
+  return 0;
+}
   panic_with_code("E_MODULE_CYCLE", str_concat("Module import cycle detected at ", filePath), "A module was revisited while still being loaded, which means the import graph contains a cycle.", "Break the cycle by extracting shared declarations into a third module imported by both sides.");
 }
   set_add(visiting, filePath);
   let source = read_file(filePath);
   lex_init(source);
   lex_all();
-  if ((lint_enabled == 1)) {
-  lint_assert_file_length(filePath, max_effective_lines);
-}
   parse_init();
   let program = p_parse_program();
   let stmts = node_get_data1(program);
@@ -3838,7 +4203,7 @@ function gather_module_sources(filePath, moduleBasePath, seen, visiting, sources
   let spec = vec_get(imports, i);
   let depPath = vec_get(spec, 0);
   let importNames = vec_get(spec, 1);
-  gather_module_sources(depPath, moduleBasePath, seen, visiting, sources, module_declared_map, all_declared_names, all_exported_declared_names, all_extern_declared_names, lint_enabled, max_effective_lines);
+  gather_module_sources(depPath, moduleBasePath, seen, visiting, sources, module_declared_map, all_declared_names, all_exported_declared_names, all_extern_declared_names, lint_enabled, max_effective_lines, module_cycles);
   let depDeclared = map_get(module_declared_map, depPath);
   let depSource = read_file(depPath);
   let j = 0;
@@ -3893,7 +4258,9 @@ function compile_file_with_options(inputPath, outputPath, strict_safety, lint_en
   let all_declared_names = set_new();
   let all_exported_declared_names = set_new();
   let all_extern_declared_names = set_new();
-  gather_module_sources(inputPath, moduleBasePath, seen, visiting, sources, module_declared_map, all_declared_names, all_exported_declared_names, all_extern_declared_names, lint, max_lines);
+  let module_cycles = vec_new();
+  lint_reset();
+  gather_module_sources(inputPath, moduleBasePath, seen, visiting, sources, module_declared_map, all_declared_names, all_exported_declared_names, all_extern_declared_names, lint, max_lines, module_cycles);
   let merged = join_sources(sources);
   lex_init(merged);
   lex_all();
@@ -3905,6 +4272,15 @@ function compile_file_with_options(inputPath, outputPath, strict_safety, lint_en
   let typed = typecheck_program_with_options(resolved, strict);
   if ((borrow == 1)) {
   borrowcheck_program(typed);
+}
+  if ((lint == 1)) {
+  lint_program(typed, inputPath, max_lines);
+  let i = 0;
+  let len = vec_length(module_cycles);
+  while ((i < len)) {
+  lint_add_circular_import_issue(vec_get(module_cycles, i));
+  i = (i + 1);
+}
 }
   let js = generate_js(typed);
   return write_file(outputPath, js);
@@ -3940,11 +4316,13 @@ function p_parse_postfix(exprIn) {
   let call = node_new(NK_CALL_EXPR);
   node_set_data1(call, callee);
   node_set_data2(call, lowered_args);
+  node_set_data3(call, 1);
   expr = call;
 } else {
   let call = node_new(NK_CALL_EXPR);
   node_set_data1(call, expr);
   node_set_data2(call, args);
+  node_set_data3(call, 0);
   expr = call;
 }
   continue;
@@ -4477,11 +4855,9 @@ function compile_source_with_options(source, strict_safety, lint_enabled, max_ef
   let strict = normalize_flag(strict_safety);
   let lint = normalize_flag(lint_enabled);
   let borrow = normalize_flag(borrow_enabled);
+  lint_reset();
   lex_init(source);
   lex_all();
-  if ((lint == 1)) {
-  lint_assert_file_length("<memory>", max_lines);
-}
   parse_init();
   let program = p_parse_program();
   let desugared = desugar(program);
@@ -4490,8 +4866,13 @@ function compile_source_with_options(source, strict_safety, lint_enabled, max_ef
   if ((borrow == 1)) {
   borrowcheck_program(typed);
 }
+  if ((lint == 1)) {
+  lint_program(typed, "<memory>", max_lines);
+}
   return generate_js(typed);
 }
+
+function take_lint_issues() { return lint_take_issues(); }
 
 function compile_source(source) { return compile_source_with_options(source, 1, 0, 500, 1); }
 
