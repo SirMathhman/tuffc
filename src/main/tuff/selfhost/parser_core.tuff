@@ -63,7 +63,7 @@ let node_data2 : Vec<I32> = vec_new();  // Generic data slot 2
 let node_data3 : Vec<I32> = vec_new();  // Generic data slot 3
 let node_data4 : Vec<I32> = vec_new();  // Generic data slot 4
 let node_data5 : Vec<I32> = vec_new();  // Generic data slot 5
-let node_count : I32 = 0;
+let node_count : I32 = 1;
 
 out fn node_new(kind: I32) : I32 => {
     let idx = node_count;
@@ -108,7 +108,14 @@ out fn parse_init() : I32 => {
     node_data3.vec_clear();
     node_data4.vec_clear();
     node_data5.vec_clear();
-    node_count = 0;
+    // Reserve index 0 as null/sentinel node.
+    node_kinds.vec_push(0);
+    node_data1.vec_push(0);
+    node_data2.vec_push(0);
+    node_data3.vec_push(0);
+    node_data4.vec_push(0);
+    node_data5.vec_push(0);
+    node_count = 1;
     0
 }
 

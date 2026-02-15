@@ -5,6 +5,48 @@ import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { compileFileResult } from "../../main/js/compiler.ts";
 
+const MAX_HARNESS_TIMEOUT_MS = 15_000;
+
+function nowMs() {
+  return Date.now();
+}
+
+function formatBytes(value) {
+  if (!Number.isFinite(value)) return "unknown";
+  if (value < 1024) return `${value}B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)}KiB`;
+  return `${(value / (1024 * 1024)).toFixed(2)}MiB`;
+}
+
+function debugFile(label, filePath) {
+  const exists = fs.existsSync(filePath);
+  if (!exists) {
+    console.log(`[c-selfhost][debug] ${label}: missing (${filePath})`);
+    return;
+  }
+  const stat = fs.statSync(filePath);
+  console.log(
+    `[c-selfhost][debug] ${label}: ${filePath} size=${formatBytes(stat.size)} mtime=${stat.mtime.toISOString()}`,
+  );
+}
+
+function runStep(command, args, options = {}) {
+  const started = nowMs();
+  console.log(`[c-selfhost][debug] run: ${command} ${args.join(" ")}`);
+  const result = spawnSync(command, args, {
+    encoding: "utf8",
+    ...options,
+  });
+  const elapsed = nowMs() - started;
+  console.log(
+    `[c-selfhost][debug] done: ${command} exit=${result.status} signal=${result.signal ?? "none"} ms=${elapsed}`,
+  );
+  if (result.error) {
+    console.log(`[c-selfhost][debug] error: ${result.error.message}`);
+  }
+  return result;
+}
+
 const thisFile = fileURLToPath(import.meta.url);
 const root = path.resolve(path.dirname(thisFile), "..", "..", "..");
 const entry = path.join(root, "src", "main", "tuff", "selfhost.tuff");
@@ -14,14 +56,38 @@ const outObj = path.join(outDir, "selfhost.o");
 const outHarness = path.join(outDir, "selfhost_harness.c");
 const outExe = path.join(
   outDir,
-  process.platform === "win32" ? "selfhost.exe" : "selfhost",
+  process.platform === "win32"
+    ? `selfhost-${process.pid}.exe`
+    : `selfhost-${process.pid}`,
 );
 const runtimeDir = path.join(root, "src", "main", "c");
 const runtimeSource = path.join(runtimeDir, "tuff_runtime.c");
 const deepHarness = process.env.TUFF_C_SELFHOST_DEEP === "1";
+const parsedTimeout = Number(process.env.TUFF_C_SELFHOST_TIMEOUT_MS ?? "");
+const requestedTimeoutMs =
+  Number.isFinite(parsedTimeout) && parsedTimeout > 0
+    ? parsedTimeout
+    : deepHarness
+      ? 600000
+      : 30000;
+const runTimeoutMs = Math.min(requestedTimeoutMs, MAX_HARNESS_TIMEOUT_MS);
 console.log(
   `[c-selfhost] deep mode=${deepHarness} env=${process.env.TUFF_C_SELFHOST_DEEP ?? "<unset>"}`,
 );
+console.log(`[c-selfhost] cwd=${process.cwd()}`);
+console.log(`[c-selfhost] entry=${entry}`);
+console.log(`[c-selfhost] runtimeSource=${runtimeSource}`);
+console.log(`[c-selfhost] outDir=${outDir}`);
+console.log(`[c-selfhost] outC=${outC}`);
+console.log(`[c-selfhost] outObj=${outObj}`);
+console.log(`[c-selfhost] outHarness=${outHarness}`);
+console.log(`[c-selfhost] outExe=${outExe}`);
+console.log(`[c-selfhost] harness timeout=${runTimeoutMs}ms`);
+if (runTimeoutMs < requestedTimeoutMs) {
+  console.log(
+    `[c-selfhost][debug] timeout clamped from ${requestedTimeoutMs}ms to ${MAX_HARNESS_TIMEOUT_MS}ms`,
+  );
+}
 
 fs.mkdirSync(outDir, { recursive: true });
 
@@ -42,10 +108,17 @@ if (!compile.ok) {
   process.exit(1);
 }
 
+console.log(
+  `[c-selfhost][debug] compile ok target=${compile.value?.target ?? "unknown"} outputPath=${compile.value?.outputPath ?? "<none>"}`,
+);
+
 if (!fs.existsSync(outC)) {
   console.error("Expected generated selfhost.c output file");
   process.exit(1);
 }
+
+debugFile("generated-c", outC);
+debugFile("runtime-c", runtimeSource);
 
 console.log("[c-selfhost] selecting C compiler...");
 
@@ -55,9 +128,15 @@ const candidates =
     : ["cc", "clang", "gcc"];
 let selected = undefined;
 for (const candidate of candidates) {
-  const check = spawnSync(candidate, ["--version"], { encoding: "utf8" });
+  const check = runStep(candidate, ["--version"]);
   if (check.status === 0) {
     selected = candidate;
+    const firstLine = (check.stdout ?? "").split(/\r?\n/)[0] ?? "";
+    if (firstLine) {
+      console.log(
+        `[c-selfhost][debug] selected compiler version: ${firstLine}`,
+      );
+    }
     break;
   }
 }
@@ -70,11 +149,16 @@ if (!selected) {
   process.exit(0);
 }
 
-const objectCompile = spawnSync(
-  selected,
-  ["-Dmain=selfhost_entry", "-c", outC, "-I", runtimeDir, "-O0", "-o", outObj],
-  { encoding: "utf8" },
-);
+const objectCompile = runStep(selected, [
+  "-Dmain=selfhost_entry",
+  "-c",
+  outC,
+  "-I",
+  runtimeDir,
+  "-O0",
+  "-o",
+  outObj,
+]);
 
 if (objectCompile.error) {
   console.error(
@@ -91,6 +175,8 @@ if (objectCompile.status !== 0) {
   console.error(objectCompile.stderr ?? "");
   process.exit(1);
 }
+
+debugFile("object", outObj);
 
 const harnessSource = deepHarness
   ? `#include <stdint.h>
@@ -125,14 +211,20 @@ int main(void) {
 }
 `;
 fs.writeFileSync(outHarness, harnessSource, "utf8");
+debugFile("harness-source", outHarness);
 
 console.log("[c-selfhost] linking selfhost harness executable...");
 
-const link = spawnSync(
-  selected,
-  [outObj, outHarness, runtimeSource, "-I", runtimeDir, "-O0", "-o", outExe],
-  { encoding: "utf8" },
-);
+const link = runStep(selected, [
+  outObj,
+  outHarness,
+  runtimeSource,
+  "-I",
+  runtimeDir,
+  "-O0",
+  "-o",
+  outExe,
+]);
 
 if (link.error) {
   console.error(`Link failed to start: ${link.error.message}`);
@@ -148,14 +240,24 @@ if (link.status !== 0) {
   process.exit(1);
 }
 
+debugFile("linked-exe", outExe);
+
 console.log("[c-selfhost] running harness executable...");
-const run = spawnSync(outExe, [], {
-  encoding: "utf8",
-  timeout: deepHarness ? 120000 : 30000,
+const run = runStep(outExe, [], {
+  timeout: runTimeoutMs,
 });
 
 if (run.error) {
   console.error(`Harness run failed: ${run.error.message}`);
+  if ((run.error.message ?? "").includes("ETIMEDOUT")) {
+    console.error(
+      `[c-selfhost][debug] harness exceeded timeout ${runTimeoutMs}ms (hard cap ${MAX_HARNESS_TIMEOUT_MS}ms)`,
+    );
+  }
+  if (run.stdout || run.stderr) {
+    console.error(run.stdout ?? "");
+    console.error(run.stderr ?? "");
+  }
   process.exit(1);
 }
 
@@ -170,6 +272,11 @@ if (run.status !== 0) {
   console.error(`Linked selfhost executable exited with ${run.status}`);
   console.error(run.stdout ?? "");
   console.error(run.stderr ?? "");
+  if (run.status === 3221225786) {
+    console.error(
+      `[c-selfhost] exit 3221225786 (STATUS_CONTROL_C_EXIT) often indicates timeout/interrupt under heavy deep mode; current timeout=${runTimeoutMs}ms`,
+    );
+  }
   process.exit(1);
 }
 

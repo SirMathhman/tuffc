@@ -505,6 +505,15 @@ function emitFunctionBlock(block, ctx, localTypes) {
     if (isLast && s.kind === "ExprStmt") {
       return `  return ${emitExpr(s.expr, ctx, scoped)};`;
     }
+    if (isLast && s.kind === "IfStmt") {
+      const ifExpr = {
+        kind: "IfExpr",
+        condition: s.condition,
+        thenBranch: s.thenBranch,
+        elseBranch: s.elseBranch,
+      };
+      return `  return ${emitExpr(ifExpr, ctx, scoped)};`;
+    }
     return `  ${emitStmt(s, ctx, scoped)}`;
   });
   return `{\n${rows.join("\n")}\n}`;

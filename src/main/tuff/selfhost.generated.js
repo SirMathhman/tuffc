@@ -603,7 +603,7 @@ let node_data4 = vec_new();
 
 let node_data5 = vec_new();
 
-let node_count = 0;
+let node_count = 1;
 
 function node_new(kind) {
   let idx = node_count;
@@ -669,7 +669,13 @@ function parse_init() {
   vec_clear(node_data3);
   vec_clear(node_data4);
   vec_clear(node_data5);
-  node_count = 0;
+  vec_push(node_kinds, 0);
+  vec_push(node_data1, 0);
+  vec_push(node_data2, 0);
+  vec_push(node_data3, 0);
+  vec_push(node_data4, 0);
+  vec_push(node_data5, 0);
+  node_count = 1;
   return 0;
 }
 
@@ -1648,10 +1654,10 @@ function type_name_from_type_node(t) {
   return "Unknown";
 }
   let k = node_kind(t);
-  if ((k == NK_NAMED_TYPE)) {
+  if ((k == 40)) {
   return get_interned_str(node_get_data1(t));
 }
-  if ((k == NK_POINTER_TYPE)) {
+  if ((k == 41)) {
   let mutable = node_get_data1(t);
   let inner = type_name_from_type_node(node_get_data2(t));
   if ((mutable == 1)) {
@@ -1659,10 +1665,10 @@ function type_name_from_type_node(t) {
 }
   return str_concat("*", inner);
 }
-  if ((k == NK_REFINEMENT_TYPE)) {
+  if ((k == 44)) {
   return type_name_from_type_node(node_get_data1(t));
 }
-  if ((k == NK_UNION_TYPE)) {
+  if ((k == 45)) {
   let left = type_name_from_type_node(node_get_data1(t));
   let right = type_name_from_type_node(node_get_data2(t));
   return str_concat(str_concat(left, "|"), right);
@@ -1735,35 +1741,62 @@ function numeric_types_compatible(expected, actual, rhs) {
   return false;
 }
 
+function is_type_variable_name(name) {
+  if ((str_length(name) != 1)) {
+  return false;
+}
+  let ch = char_code(name);
+  return ((ch >= 65) && (ch <= 90));
+}
+
+function type_names_compatible(expected, actual, rhs) {
+  if ((str_eq(expected, "Unknown") || str_eq(actual, "Unknown"))) {
+  return true;
+}
+  if (str_eq(expected, actual)) {
+  return true;
+}
+  if ((is_type_variable_name(expected) || is_type_variable_name(actual))) {
+  return true;
+}
+  if (pointer_types_compatible(expected, actual)) {
+  return true;
+}
+  if (numeric_types_compatible(expected, actual, rhs)) {
+  return true;
+}
+  return false;
+}
+
 function infer_expr_type_name(n, fn_return_types, local_types) {
   if ((n == 0)) {
   return "Unknown";
 }
   let kind = node_kind(n);
-  if ((kind == NK_NUMBER_LIT)) {
+  if ((kind == 20)) {
   let text = get_interned_str(node_get_data1(n));
   if (str_ends_with_local(text, "USize")) {
   return "USize";
 }
   return "I32";
 }
-  if ((kind == NK_BOOL_LIT)) {
+  if ((kind == 21)) {
   return "Bool";
 }
-  if ((kind == NK_STRING_LIT)) {
+  if ((kind == 22)) {
   return "*Str";
 }
-  if ((kind == NK_CHAR_LIT)) {
+  if ((kind == 23)) {
   return "Char";
 }
-  if ((kind == NK_IDENTIFIER)) {
+  if ((kind == 24)) {
   let name = get_interned_str(node_get_data1(n));
   if (map_has(local_types, name)) {
   return map_get(local_types, name);
 }
   return "Unknown";
 }
-  if ((kind == NK_UNARY_EXPR)) {
+  if ((kind == 26)) {
   let op = get_interned_str(node_get_data1(n));
   let inner = infer_expr_type_name(node_get_data2(n), fn_return_types, local_types);
   if (str_eq(op, "&")) {
@@ -1773,9 +1806,9 @@ function infer_expr_type_name(n, fn_return_types, local_types) {
   return str_concat("*mut ", inner);
 }
 }
-  if ((kind == NK_CALL_EXPR)) {
+  if ((kind == 27)) {
   let callee = node_get_data1(n);
-  if ((node_kind(callee) == NK_IDENTIFIER)) {
+  if ((node_kind(callee) == 24)) {
   let fname = get_interned_str(node_get_data1(callee));
   if (map_has(fn_return_types, fname)) {
   return map_get(fn_return_types, fname);
@@ -1792,27 +1825,85 @@ function expr_is_number_literal_nonzero(n) {
   return (!str_eq(get_interned_str(node_get_data1(n)), "0"));
 }
 
-function typecheck_expr(n, fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety) {
+function is_decimal_digits(s) {
+  let i = 0;
+  let n = str_length(s);
+  if ((n == 0)) {
+  return false;
+}
+  while ((i < n)) {
+  let ch = str_char_at(s, i);
+  if (((ch < 48) || (ch > 57))) {
+  return false;
+}
+  i = (i + 1);
+}
+  return true;
+}
+
+function try_get_decimal_literal_value(n) {
+  if (((n == 0) || (node_kind(n) != NK_NUMBER_LIT))) {
+  return 0;
+}
+  let text = get_interned_str(node_get_data1(n));
+  if ((!is_decimal_digits(text))) {
+  return 0;
+}
+  return parse_int(text);
+}
+
+function is_decimal_zero_literal(n) {
+  if (((n == 0) || (node_kind(n) != NK_NUMBER_LIT))) {
+  return false;
+}
+  return str_eq(get_interned_str(node_get_data1(n)), "0");
+}
+
+function typecheck_expr(n, fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety) {
   if ((n == 0)) {
   return 0;
 }
   let kind = node_kind(n);
   if ((kind == NK_BINARY_EXPR)) {
-  typecheck_expr(node_get_data2(n), fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
-  typecheck_expr(node_get_data3(n), fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
+  typecheck_expr(node_get_data2(n), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety);
+  typecheck_expr(node_get_data3(n), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety);
   if ((strict_safety == 1)) {
   let op = get_interned_str(node_get_data1(n));
   if ((str_eq(op, "/") && (!expr_is_number_literal_nonzero(node_get_data3(n))))) {
   panic_with_code("E_SAFETY_DIV_BY_ZERO", "Division by zero cannot be ruled out at compile time", "The denominator is not proven non-zero under strict safety checks.", "Prove denominator != 0 via refinement type or control-flow guard.");
+}
+  if ((str_eq(op, "%") && (!expr_is_number_literal_nonzero(node_get_data3(n))))) {
+  panic_with_code("E_SAFETY_MOD_BY_ZERO", "Modulo by zero cannot be ruled out at compile time", "The modulo denominator is not proven non-zero under strict safety checks.", "Prove denominator != 0 via refinement type or control-flow guard.");
+}
+  if (((str_eq(op, "+") || str_eq(op, "-")) || str_eq(op, "*"))) {
+  let lnode = node_get_data2(n);
+  let rnode = node_get_data3(n);
+  let left = try_get_decimal_literal_value(lnode);
+  let right = try_get_decimal_literal_value(rnode);
+  if (((left != 0) || is_decimal_zero_literal(lnode))) {
+  if (((right != 0) || is_decimal_zero_literal(rnode))) {
+  let result = 0;
+  if (str_eq(op, "+")) {
+  result = (left + right);
+} else { if (str_eq(op, "-")) {
+  result = (left - right);
+} else {
+  result = (left * right);
+} }
+  if (((result < (-2147483648)) || (result > 2147483647))) {
+  panic_with_code("E_SAFETY_OVERFLOW", str_concat(str_concat("Integer overflow/underflow proven possible for '", op), "'"), "Arithmetic is proven to exceed I32 range under strict safety checks.", "Constrain operands or use a wider intermediate type before narrowing.");
+}
+}
+}
 }
 }
   return 0;
 }
   if (((kind == NK_UNARY_EXPR) || (kind == NK_UNWRAP_EXPR))) {
   if ((kind == NK_UNARY_EXPR)) {
-  typecheck_expr(node_get_data2(n), fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
+  typecheck_expr(node_get_data2(n), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety);
 } else {
-  typecheck_expr(node_get_data1(n), fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
+  typecheck_expr(node_get_data1(n), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety);
 }
   return 0;
 }
@@ -1830,11 +1921,28 @@ function typecheck_expr(n, fn_arities, fn_return_types, local_types, nonnull_ptr
   panic_with_code("E_TYPE_ARG_COUNT", msg, "A function call provided a different number of arguments than the function signature requires.", "Pass exactly the number of parameters declared by the function.");
 }
 }
+  if (map_has(fn_param_types, fname)) {
+  let expected_types = map_get(fn_param_types, fname);
+  let j = 0;
+  while ((j < actual)) {
+  let arg_node = vec_get(args, j);
+  let arg_name = infer_expr_type_name(arg_node, fn_return_types, local_types);
+  let expected_name = vec_get(expected_types, j);
+  if ((((strict_safety == 1) && str_starts_with(expected_name, "*")) && is_nullable_pointer_type_name(arg_name))) {
+  panic_with_code("E_SAFETY_NULLABLE_POINTER_GUARD", "Call requires nullable pointer guard", "A nullable pointer argument must be proven non-null before pointer-consuming calls.", "Guard pointer use with if (p != 0USize) or if (0USize != p) before the call.");
 }
-  typecheck_expr(callee, fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
+  if ((!type_names_compatible(expected_name, arg_name, arg_node))) {
+  let msg = str_concat(str_concat(str_concat(str_concat(str_concat(str_concat(str_concat("Type mismatch in call to ", fname), " arg "), int_to_string((j + 1))), ": expected "), expected_name), ", got "), arg_name);
+  panic_with_code("E_TYPE_ARG_MISMATCH", msg, "A function argument type does not match the corresponding parameter type.", "Update the call argument or function parameter type so both sides are compatible.");
+}
+  j = (j + 1);
+}
+}
+}
+  typecheck_expr(callee, fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety);
   let i = 0;
   while ((i < actual)) {
-  typecheck_expr(vec_get(args, i), fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
+  typecheck_expr(vec_get(args, i), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety);
   i = (i + 1);
 }
   return 0;
@@ -1854,7 +1962,7 @@ function typecheck_expr(n, fn_arities, fn_return_types, local_types, nonnull_ptr
 }
 }
 }
-  typecheck_expr(node_get_data1(n), fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
+  typecheck_expr(node_get_data1(n), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety);
   return 0;
 }
   if ((kind == NK_INDEX_EXPR)) {
@@ -1872,8 +1980,8 @@ function typecheck_expr(n, fn_arities, fn_return_types, local_types, nonnull_ptr
 }
 }
 }
-  typecheck_expr(node_get_data1(n), fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
-  typecheck_expr(node_get_data2(n), fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
+  typecheck_expr(node_get_data1(n), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety);
+  typecheck_expr(node_get_data2(n), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety);
   return 0;
 }
   if ((kind == NK_STRUCT_INIT)) {
@@ -1882,39 +1990,44 @@ function typecheck_expr(n, fn_arities, fn_return_types, local_types, nonnull_ptr
   let len = vec_length(fields);
   while ((i < len)) {
   let field = vec_get(fields, i);
-  typecheck_expr(vec_get(field, 1), fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
+  typecheck_expr(vec_get(field, 1), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety);
   i = (i + 1);
 }
   return 0;
 }
   if ((kind == NK_IF_EXPR)) {
-  typecheck_expr(node_get_data1(n), fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
-  typecheck_stmt(node_get_data2(n), fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
+  let cond = node_get_data1(n);
+  typecheck_expr(cond, fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety);
+  let cond_name = infer_expr_type_name(cond, fn_return_types, local_types);
+  if (((!str_eq(cond_name, "Bool")) && (!str_eq(cond_name, "Unknown")))) {
+  panic_with_code("E_TYPE_IF_CONDITION", "if condition must be Bool", "Conditional branches require a boolean predicate.", "Return or compute a Bool expression in the if condition.");
+}
+  typecheck_stmt(node_get_data2(n), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety, "Unknown");
   if ((node_get_data3(n) != 0)) {
-  typecheck_stmt(node_get_data3(n), fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
+  typecheck_stmt(node_get_data3(n), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety, "Unknown");
 }
   return 0;
 }
   if ((kind == NK_MATCH_EXPR)) {
-  typecheck_expr(node_get_data1(n), fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
+  typecheck_expr(node_get_data1(n), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety);
   let cases = node_get_data2(n);
   let i = 0;
   let len = vec_length(cases);
   while ((i < len)) {
   let case_node = vec_get(cases, i);
-  typecheck_stmt(vec_get(case_node, 1), fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
+  typecheck_stmt(vec_get(case_node, 1), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety, "Unknown");
   i = (i + 1);
 }
   return 0;
 }
   if ((kind == NK_IS_EXPR)) {
-  typecheck_expr(node_get_data1(n), fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
+  typecheck_expr(node_get_data1(n), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety);
   return 0;
 }
   return 0;
 }
 
-function typecheck_stmt(n, fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety) {
+function typecheck_stmt(n, fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety, expected_return_type) {
   if ((n == 0)) {
   return 0;
 }
@@ -1924,12 +2037,13 @@ function typecheck_stmt(n, fn_arities, fn_return_types, local_types, nonnull_ptr
   let i = 0;
   let len = vec_length(stmts);
   while ((i < len)) {
-  typecheck_stmt(vec_get(stmts, i), fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
+  typecheck_stmt(vec_get(stmts, i), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety, expected_return_type);
   i = (i + 1);
 }
   return 0;
 }
   if (((kind == NK_FN_DECL) || (kind == NK_CLASS_FN_DECL))) {
+  let fn_local_types = map_new();
   let params = node_get_data3(n);
   let i = 0;
   let len = vec_length(params);
@@ -1938,17 +2052,26 @@ function typecheck_stmt(n, fn_arities, fn_return_types, local_types, nonnull_ptr
   let pname = get_interned_str(vec_get(p, 0));
   let ptype = vec_get(p, 1);
   if ((ptype != 0)) {
-  map_set(local_types, pname, type_name_from_type_node(ptype));
+  map_set(fn_local_types, pname, type_name_from_type_node(ptype));
 }
   i = (i + 1);
 }
-  typecheck_stmt(node_get_data5(n), fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
+  let expected_name = type_name_from_type_node(node_get_data4(n));
+  typecheck_stmt(node_get_data5(n), fn_arities, fn_param_types, fn_return_types, fn_local_types, nonnull_ptrs, strict_safety, expected_name);
+  let body = node_get_data5(n);
+  if ((node_kind(body) != NK_BLOCK)) {
+  let body_name = infer_expr_type_name(body, fn_return_types, fn_local_types);
+  if ((!type_names_compatible(expected_name, body_name, body))) {
+  let fname = get_interned_str(node_get_data1(n));
+  panic_with_code("E_TYPE_RETURN_MISMATCH", str_concat(str_concat(str_concat(str_concat(str_concat("Function ", fname), " return type mismatch: expected "), expected_name), ", got "), body_name), "The function body expression type does not match the declared return type.", "Update the function return type annotation or adjust the returned expression.");
+}
+}
   return 0;
 }
   if ((kind == NK_LET_DECL)) {
   let declared_type = node_get_data2(n);
   let rhs = node_get_data3(n);
-  typecheck_expr(rhs, fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
+  typecheck_expr(rhs, fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety);
   let rhs_name = infer_expr_type_name(rhs, fn_return_types, local_types);
   if ((declared_type != 0)) {
   let declared_name = type_name_from_type_node(declared_type);
@@ -1964,21 +2087,44 @@ function typecheck_stmt(n, fn_arities, fn_return_types, local_types, nonnull_ptr
   return 0;
 }
   if ((kind == NK_EXPR_STMT)) {
-  typecheck_expr(node_get_data1(n), fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
+  typecheck_expr(node_get_data1(n), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety);
   return 0;
 }
   if ((kind == NK_ASSIGN_STMT)) {
-  typecheck_expr(node_get_data1(n), fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
-  typecheck_expr(node_get_data2(n), fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
+  let target = node_get_data1(n);
+  let value = node_get_data2(n);
+  typecheck_expr(target, fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety);
+  typecheck_expr(value, fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety);
+  if ((node_kind(target) == NK_IDENTIFIER)) {
+  let tname = get_interned_str(node_get_data1(target));
+  if (map_has(local_types, tname)) {
+  let expected_name = map_get(local_types, tname);
+  let value_name = infer_expr_type_name(value, fn_return_types, local_types);
+  if ((!type_names_compatible(expected_name, value_name, value))) {
+  panic_with_code("E_TYPE_ASSIGN_MISMATCH", str_concat(str_concat(str_concat(str_concat(str_concat("Assignment mismatch for ", tname), ": expected "), expected_name), ", got "), value_name), "The assigned value type is incompatible with the declared variable type.", "Assign a compatible value or change the variable type declaration.");
+}
+}
+}
   return 0;
 }
   if ((kind == NK_RETURN_STMT)) {
-  typecheck_expr(node_get_data1(n), fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
+  let value = node_get_data1(n);
+  typecheck_expr(value, fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety);
+  if ((!str_eq(expected_return_type, "Unknown"))) {
+  let value_name = infer_expr_type_name(value, fn_return_types, local_types);
+  if ((!type_names_compatible(expected_return_type, value_name, value))) {
+  panic_with_code("E_TYPE_RETURN_MISMATCH", str_concat(str_concat(str_concat("Return type mismatch: expected ", expected_return_type), ", got "), value_name), "A return statement produced a value incompatible with the function's declared return type.", "Return a value of the declared type or adjust the function return annotation.");
+}
+}
   return 0;
 }
   if ((kind == NK_IF_STMT)) {
   let cond = node_get_data1(n);
-  typecheck_expr(cond, fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
+  typecheck_expr(cond, fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety);
+  let cond_name = infer_expr_type_name(cond, fn_return_types, local_types);
+  if (((!str_eq(cond_name, "Bool")) && (!str_eq(cond_name, "Unknown")))) {
+  panic_with_code("E_TYPE_IF_CONDITION", "if condition must be Bool", "Conditional branches require a boolean predicate.", "Return or compute a Bool expression in the if condition.");
+}
   let then_nonnull = map_new();
   let else_nonnull = map_new();
   let copied = false;
@@ -2001,29 +2147,35 @@ function typecheck_stmt(n, fn_arities, fn_return_types, local_types, nonnull_ptr
   then_nonnull = nonnull_ptrs;
 }
   else_nonnull = nonnull_ptrs;
-  typecheck_stmt(node_get_data2(n), fn_arities, fn_return_types, local_types, then_nonnull, strict_safety);
+  typecheck_stmt(node_get_data2(n), fn_arities, fn_param_types, fn_return_types, local_types, then_nonnull, strict_safety, expected_return_type);
   if ((node_get_data3(n) != 0)) {
-  typecheck_stmt(node_get_data3(n), fn_arities, fn_return_types, local_types, else_nonnull, strict_safety);
+  typecheck_stmt(node_get_data3(n), fn_arities, fn_param_types, fn_return_types, local_types, else_nonnull, strict_safety, expected_return_type);
 }
   return 0;
 }
   if ((kind == NK_FOR_STMT)) {
-  typecheck_expr(node_get_data2(n), fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
-  typecheck_expr(node_get_data3(n), fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
-  typecheck_stmt(node_get_data4(n), fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
+  typecheck_expr(node_get_data2(n), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety);
+  typecheck_expr(node_get_data3(n), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety);
+  typecheck_stmt(node_get_data4(n), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety, expected_return_type);
   return 0;
 }
   if ((kind == NK_WHILE_STMT)) {
-  typecheck_expr(node_get_data1(n), fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
-  typecheck_stmt(node_get_data2(n), fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
+  let cond = node_get_data1(n);
+  typecheck_expr(cond, fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety);
+  let cond_name = infer_expr_type_name(cond, fn_return_types, local_types);
+  if (((!str_eq(cond_name, "Bool")) && (!str_eq(cond_name, "Unknown")))) {
+  panic_with_code("E_TYPE_IF_CONDITION", "if condition must be Bool", "Conditional branches require a boolean predicate.", "Return or compute a Bool expression in the condition.");
+}
+  typecheck_stmt(node_get_data2(n), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety, expected_return_type);
   return 0;
 }
-  typecheck_expr(n, fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
+  typecheck_expr(n, fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety);
   return 0;
 }
 
 function typecheck_program_with_options(program, strict_safety) {
   let fn_arities = map_new();
+  let fn_param_types = map_new();
   let fn_return_types = map_new();
   let local_types = map_new();
   let body = node_get_data1(program);
@@ -2036,6 +2188,15 @@ function typecheck_program_with_options(program, strict_safety) {
   let name = get_interned_str(node_get_data1(stmt));
   let params = node_get_data3(stmt);
   map_set(fn_arities, name, vec_length(params));
+  let param_types = vec_new();
+  let p = 0;
+  while ((p < vec_length(params))) {
+  let param = vec_get(params, p);
+  let param_type_node = vec_get(param, 1);
+  vec_push(param_types, type_name_from_type_node(param_type_node));
+  p = (p + 1);
+}
+  map_set(fn_param_types, name, param_types);
   let ret_type = node_get_data4(stmt);
   map_set(fn_return_types, name, type_name_from_type_node(ret_type));
 }
@@ -2048,7 +2209,7 @@ function typecheck_program_with_options(program, strict_safety) {
 }
   i = 0;
   while ((i < len)) {
-  typecheck_stmt(vec_get(body, i), fn_arities, fn_return_types, local_types, map_new(), strict_safety);
+  typecheck_stmt(vec_get(body, i), fn_arities, fn_param_types, fn_return_types, local_types, map_new(), strict_safety, "Unknown");
   i = (i + 1);
 }
   return program;

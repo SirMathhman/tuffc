@@ -267,6 +267,60 @@ expectBothFail(
   "arity-mismatch parity",
 );
 
+// 8b) Function call argument type mismatch parity.
+const argTypeMismatchSource = `
+fn takes_i32(x: I32) : I32 => x;
+fn main() : I32 => takes_i32(true);
+`;
+
+expectBothFail(
+  () => compileSourceResult(argTypeMismatchSource, "<arg-type-js>"),
+  () => selfhost.compile_source(argTypeMismatchSource),
+  "arg-type-mismatch parity",
+);
+
+// 8c) Assignment mismatch parity.
+const assignmentMismatchSource = `
+fn main() : I32 => {
+  let x : I32 = 1;
+  x = true;
+  x
+}
+`;
+
+expectBothFail(
+  () => compileSourceResult(assignmentMismatchSource, "<assign-type-js>"),
+  () => selfhost.compile_source(assignmentMismatchSource),
+  "assignment-type-mismatch parity",
+);
+
+// 8d) Return mismatch parity.
+const returnMismatchSource = `
+fn bad() : I32 => {
+  return true;
+}
+fn main() : I32 => bad();
+`;
+
+expectBothFail(
+  () => compileSourceResult(returnMismatchSource, "<return-type-js>"),
+  () => selfhost.compile_source(returnMismatchSource),
+  "return-type-mismatch parity",
+);
+
+// 8e) if condition must be Bool parity.
+const ifConditionSource = `
+fn main() : I32 => {
+  if (1) { 1 } else { 0 }
+}
+`;
+
+expectBothFail(
+  () => compileSourceResult(ifConditionSource, "<if-condition-js>"),
+  () => selfhost.compile_source(ifConditionSource),
+  "if-condition-bool parity",
+);
+
 // 9) Non-exported module import parity.
 const privateDir = path.join(outDir, "private-import");
 const privateLib = path.join(privateDir, "Lib.tuff");
@@ -350,6 +404,70 @@ const nullableGuardedSelfhost = compileSourceResult(
 );
 if (!nullableGuardedStage0.ok || !nullableGuardedSelfhost.ok) {
   throw new Error("nullable guarded parity: expected both backends to compile");
+}
+
+const moduloStrictSource = "fn bad_mod(x : I32) : I32 => 10 % x;\n";
+const moduloStage0 = compileSourceResult(moduloStrictSource, "<mod-stage0>", {
+  typecheck: { strictSafety: true },
+});
+const moduloSelfhostStrict = compileSourceResult(
+  moduloStrictSource,
+  "<mod-selfhost>",
+  {
+    backend: "selfhost",
+    typecheck: { strictSafety: true },
+  },
+);
+if (moduloStage0.ok || moduloSelfhostStrict.ok) {
+  throw new Error(
+    "modulo strict-safety parity: expected both backends to fail",
+  );
+}
+const moduloStage0Diag = toDiagnostic(moduloStage0.error);
+const moduloSelfhostDiag = toDiagnostic(moduloSelfhostStrict.error);
+if (moduloStage0Diag.code !== "E_SAFETY_MOD_BY_ZERO") {
+  throw new Error(
+    `modulo strict-safety parity (stage0): expected E_SAFETY_MOD_BY_ZERO, got ${moduloStage0Diag.code}`,
+  );
+}
+if (moduloSelfhostDiag.code !== "E_SAFETY_MOD_BY_ZERO") {
+  throw new Error(
+    `modulo strict-safety parity (selfhost): expected E_SAFETY_MOD_BY_ZERO, got ${moduloSelfhostDiag.code}`,
+  );
+}
+
+const overflowStrictSource = "fn overflow() : I32 => 2147483647 + 1;\n";
+const overflowStage0 = compileSourceResult(
+  overflowStrictSource,
+  "<overflow-stage0>",
+  {
+    typecheck: { strictSafety: true },
+  },
+);
+const overflowSelfhostStrict = compileSourceResult(
+  overflowStrictSource,
+  "<overflow-selfhost>",
+  {
+    backend: "selfhost",
+    typecheck: { strictSafety: true },
+  },
+);
+if (overflowStage0.ok || overflowSelfhostStrict.ok) {
+  throw new Error(
+    "overflow strict-safety parity: expected both backends to fail",
+  );
+}
+const overflowStage0Diag = toDiagnostic(overflowStage0.error);
+const overflowSelfhostDiag = toDiagnostic(overflowSelfhostStrict.error);
+if (overflowStage0Diag.code !== "E_SAFETY_OVERFLOW") {
+  throw new Error(
+    `overflow strict-safety parity (stage0): expected E_SAFETY_OVERFLOW, got ${overflowStage0Diag.code}`,
+  );
+}
+if (overflowSelfhostDiag.code !== "E_SAFETY_OVERFLOW") {
+  throw new Error(
+    `overflow strict-safety parity (selfhost): expected E_SAFETY_OVERFLOW, got ${overflowSelfhostDiag.code}`,
+  );
 }
 
 const borrowMoveSource = `
