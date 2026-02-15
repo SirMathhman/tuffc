@@ -158,6 +158,9 @@ function runBorrowPrecheckSource(
   filePath,
   options,
 ): CompilerResult<void> {
+  // Temporary Stage0 bridge: enforce borrow diagnostics until selfhost has a
+  // native borrowcheck pass. Keep this temporary bridge until selfhost reaches
+  // full safety parity for source compilation diagnostics.
   if (options.borrowcheck?.enabled === false) return ok(undefined);
   const tokensResult = lex(source, filePath);
   if (!tokensResult.ok) return tokensResult;
@@ -633,7 +636,8 @@ function compileFileInternal(
     let js;
     try {
       if (options.enableModules) {
-        // Borrow precheck needs the merged module AST from Stage0 pipeline.
+        // Temporary Stage0 bridge for borrow diagnostics on module programs.
+        // Selfhost remains source-of-truth for resolve/typecheck/codegen.
         if (borrowEnabled) {
           const graphResult = run("load-module-graph", () =>
             loadModuleGraph(absInput, {
@@ -643,6 +647,8 @@ function compileFileInternal(
           );
           if (!graphResult.ok) return graphResult;
 
+          // Keep resolve precheck for strict module-import semantics until
+          // selfhost enforces equivalent behavior.
           const resolveResult = run("resolve", () =>
             resolveNames(graphResult.value.merged, {
               ...(options.resolve ?? {}),
@@ -651,11 +657,6 @@ function compileFileInternal(
             }),
           );
           if (!resolveResult.ok) return resolveResult;
-
-          const typecheckResult = run("typecheck", () =>
-            typecheck(graphResult.value.merged, typecheckOptions),
-          );
-          if (!typecheckResult.ok) return typecheckResult;
 
           const borrowResult = run("borrowcheck", () =>
             borrowcheck(graphResult.value.merged, options.borrowcheck ?? {}),
