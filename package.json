@@ -9,7 +9,7 @@
   },
   "scripts": {
     "build": "tsx ./src/test/js/borrow-checker.ts && tsx ./src/test/js/selfhost-test.ts && tsx ./src/test/js/selfhost-modules.ts && tsx ./src/test/js/selfhost-diagnostics.ts && tsx ./src/test/js/selfhost-parity.ts && tsx ./src/test/js/stage-equivalence.ts",
-    "test": "tsx ./src/test/js/result-migration.ts && tsx ./src/test/js/run-tests.ts && tsx ./src/test/js/stage1-bootstrap.ts && tsx ./src/test/js/phase3-stage2.ts && tsx ./src/test/js/phase4-production.ts && tsx ./src/test/js/borrow-checker.ts && tsx ./src/test/js/cli-hardening.ts && tsx ./src/test/js/selfhost-test.ts && tsx ./src/test/js/selfhost-modules.ts && tsx ./src/test/js/selfhost-diagnostics.ts && tsx ./src/test/js/selfhost-parity.ts && tsx ./src/test/js/stage-equivalence.ts",
+    "test": "tsx ./src/test/js/result-migration.ts && tsx ./src/test/js/run-tests.ts && tsx ./src/test/js/stage1-bootstrap.ts && tsx ./src/test/js/phase3-stage2.ts && tsx ./src/test/js/phase4-production.ts && tsx ./src/test/js/borrow-checker.ts && tsx ./src/test/js/cli-hardening.ts && tsx ./src/test/js/selfhost-test.ts && tsx ./src/test/js/selfhost-modules.ts && tsx ./src/test/js/selfhost-diagnostics.ts && tsx ./src/test/js/selfhost-parity.ts && tsx ./src/test/js/stage-equivalence.ts && tsx ./src/test/js/spec-semantics-exhaustive.ts",
     "lint": "tsx ./src/main/js/cli.ts compile ./src/test/tuff/cases/factorial.tuff --lint -o ./tests/out/lint/factorial.js",
     "lint:eslint": "eslint .",
     "lint:throws": "eslint src/main/js src/test/js",
@@ -28,6 +28,7 @@
     "selfhost:diagnostics": "tsx ./src/test/js/selfhost-diagnostics.ts",
     "selfhost:parity": "tsx ./src/test/js/selfhost-parity.ts",
     "equiv:stages": "tsx ./src/test/js/stage-equivalence.ts",
+    "semantics:exhaustive": "tsx ./src/test/js/spec-semantics-exhaustive.ts",
     "web:verify": "tsx ./src/test/js/web-compiler-api.ts",
     "build:web": "esbuild ./src/main/js/web-compiler.ts --bundle --platform=browser --format=iife --global-name=TuffCompiler --target=es2020 --minify --sourcemap --outfile=./tests/out/web/tuff-compiler.min.js",
     "build:web:esm": "esbuild ./src/main/js/web-compiler.ts --bundle --platform=browser --format=esm --target=es2020 --minify --sourcemap --outfile=./tests/out/web/tuff-compiler.esm.js"
