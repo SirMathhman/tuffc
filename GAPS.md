@@ -1,0 +1,134 @@
+# Tuff Spec Gap Report
+
+_Last updated: 2026-02-15 (from `npm run semantics:exhaustive`)_
+
+This document lists the current gaps between the implemented compiler behavior and `SPECIFICATION.md`, based on the failing exhaustive semantics audit in `src/test/js/spec-semantics-exhaustive.ts`.
+
+## Summary
+
+- Exhaustive semantics audit: **failing**
+- Gap pattern: mostly **parsing/feature support gaps** and a few **diagnostic code naming mismatches**
+- Stage impact: most feature gaps fail consistently on Stage0/1/2/3 (with Stage2/3 often surfacing `E_SELFHOST_PANIC`)
+
+## A) Missing or incomplete language feature support
+
+These are spec-described constructs that currently fail to compile.
+
+### 1) Generic call/type argument usage mismatch
+
+- Spec area: `2.1`, `3.2`
+- Case: `functions:generic-identity`
+- Observed:
+  - Stage0/1: `E_RESOLVE_UNKNOWN_IDENTIFIER` (`I32` resolved as identifier in generic call context)
+  - Stage2/3: `E_RESOLVE_UNKNOWN_IDENTIFIER` / `E_SELFHOST_PANIC` variants
+
+### 2) Closure/lambda expression parsing
+
+- Spec area: `3.3`
+- Case: `closures:arrow-lambda`
+- Observed:
+  - Stage0/1: `E_PARSE_EXPECTED_TOKEN` (`Expected ')' after params, got =>`)
+  - Stage2/3: `E_SELFHOST_PANIC` (`Expected ')'`)
+
+### 3) `object` singleton declarations
+
+- Spec area: `2.1`, `3.4`
+- Case: `objects:singleton-generic`
+- Observed:
+  - Stage0/1: `E_PARSE_UNEXPECTED_TOKEN` (`keyword:object`)
+  - Stage2/3: `E_SELFHOST_PANIC` (`Unexpected token in expression`)
+
+### 4) `loop {}` construct
+
+- Spec area: `3.6`
+- Case: `loops:for-while-loop`
+- Observed:
+  - Stage0/1: `E_PARSE_UNEXPECTED_TOKEN` (`keyword:loop`)
+  - Stage2/3: `E_SELFHOST_PANIC` (`Unexpected token in expression`)
+
+### 5) `async fn` syntax/CPS surface
+
+- Spec area: `3.7`, `9.4`
+- Case: `async:syntax-cps`
+- Observed:
+  - Stage0/1: `E_PARSE_UNEXPECTED_TOKEN` (`keyword:async`)
+  - Stage2/3: `E_SELFHOST_PANIC` (`Unexpected token in expression`)
+
+### 6) Contracts/traits and `impl ... for ...`
+
+- Spec area: `2.2`
+- Case: `contracts:definition-and-impl`
+- Observed:
+  - Stage0/1: `E_PARSE_EXPECTED_TOKEN` (unexpected `Display` in statement flow)
+  - Stage2/3: `E_SELFHOST_PANIC` (`Expected ';'`)
+
+### 7) `class fn ...` desugar behavior mismatch
+
+- Spec area: `3.4`
+- Case: `class:syntax-desugar`
+- Observed:
+  - Stage0/1: `E_RESOLVE_SHADOWING` (name collision on `Car`)
+
+### 8) `expect` / `actual` declarations
+
+- Spec area: `5.2`
+- Case: `platform:expect-actual`
+- Observed:
+  - Stage0/1: `E_PARSE_EXPECTED_TOKEN` (`Expected ';' ... got keyword:fn`)
+  - Stage2/3: `E_SELFHOST_PANIC` (`Expected ';'`)
+
+### 9) Result union marker `|>` + unwrap ergonomics in tested form
+
+- Spec area: `2.1`, `4.7`
+- Case: `result:pipe-union-and-q`
+- Observed:
+  - Stage0/1: `E_PARSE_UNEXPECTED_TOKEN` (`Unexpected token symbol:{`)
+  - Stage2/3: `E_SELFHOST_PANIC` (`Unexpected token in expression`)
+
+### 10) Dependent array signature form (`L : USize`, `_` placeholder in tested shape)
+
+- Spec area: `2.1`, `2.4`, `4.3`
+- Case: `arrays:dependent-shape`
+- Observed:
+  - Stage0/1: `E_PARSE_EXPECTED_TOKEN` (`Expected '>' after generics, got ':'`)
+  - Stage2/3: `E_SELFHOST_PANIC` (`Expected '>'`)
+
+## B) Diagnostic contract/code alignment gaps
+
+These cases fail for code-name mismatch rather than semantic pass/fail behavior.
+
+### 1) Overflow strict-safety diagnostic code
+
+- Spec area: `4.2`, `9.2`
+- Case: `reject:overflow-strict`
+- Expected in test: `E_SAFETY_INTEGER_OVERFLOW` (or selfhost panic)
+- Actual stage1/2/3: `E_SAFETY_OVERFLOW`
+- Gap type: **diagnostic code naming mismatch**
+
+### 2) Non-exhaustive match diagnostic code
+
+- Spec area: `3.5`, `9.1`
+- Case: `reject:non-exhaustive-match`
+- Expected in test: `E_TYPE_MATCH_NON_EXHAUSTIVE` (or selfhost panic)
+- Actual stage1/2/3: `E_MATCH_NON_EXHAUSTIVE`
+- Gap type: **diagnostic code naming mismatch**
+
+## C) Cross-stage behavior notes
+
+- Unsupported syntax/features generally fail similarly across stages.
+- Stage2/Stage3 often collapse parser/resolver/type errors into `E_SELFHOST_PANIC`, reducing diagnostic specificity versus Stage0/Stage1.
+
+## D) Priority suggestions
+
+1. **Parser surface parity first**: `object`, `loop`, `async`, contracts/impl, expect/actual.
+2. **Type-system syntax/parsing fixes**: generic call forms and dependent array signatures.
+3. **Desugar/resolve collision handling**: `class fn` shadowing behavior.
+4. **Diagnostic harmonization**: align expected-vs-actual codes for overflow and match exhaustiveness.
+
+## E) Related non-spec test pipeline issue (separate)
+
+From `npm test`, there is also an unrelated blocker before exhaustive audit execution in that sequence:
+
+- `src/test/js/selfhost-test.ts:30:2` transform error (`Unexpected ']'`).
+
+This is a test file syntax issue, not a language-spec gap, but it currently blocks full pipeline completion.
