@@ -31,8 +31,8 @@ extern fn parse_int(s: *Str) : I32;
 
 extern type StringBuilder;
 extern fn sb_new() : StringBuilder;
-extern fn sb_append(sb: StringBuilder, s: *Str) : StringBuilder;
-extern fn sb_append_char(sb: StringBuilder, code: I32) : StringBuilder;
+extern fn sb_append(this: StringBuilder, s: *Str) : StringBuilder;
+extern fn sb_append_char(this: StringBuilder, code: I32) : StringBuilder;
 
 // Take ownership of the builder
 extern fn sb_build(sb: StringBuilder) : *Str;
