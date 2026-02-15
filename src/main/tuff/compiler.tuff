@@ -19,6 +19,7 @@ fn stage1Parse(tokens : I32) => __host_parse(tokens);
 fn stage1Desugar(cst : I32) => __host_desugar(cst);
 fn stage1Resolve(core : I32) => __host_resolveNames(core);
 fn stage1Typecheck(core : I32) => __host_typecheck(core);
+fn stage1Borrowcheck(core : I32) => __host_borrowcheck(core);
 fn stage1GenerateJavaScript(core : I32) => __host_generateJavaScript(core);
 
 fn compileToArtifacts(source : *Str) : CompileArtifacts => {
@@ -27,11 +28,12 @@ fn compileToArtifacts(source : *Str) : CompileArtifacts => {
     let coreA = stage1Desugar(cst);
     let coreB = stage1Resolve(coreA);
     let coreC = stage1Typecheck(coreB);
-    let js = stage1GenerateJavaScript(coreC);
+    let coreD = stage1Borrowcheck(coreC);
+    let js = stage1GenerateJavaScript(coreD);
     CompileArtifacts {
         tokens : tokens,
         cst : cst,
-        core : coreC,
+        core : coreD,
         js : js
     }
 }

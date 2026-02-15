@@ -9,6 +9,7 @@ import { parse } from "../../main/js/parser.ts";
 import { desugar } from "../../main/js/desugar.ts";
 import { resolveNames } from "../../main/js/resolve.ts";
 import { typecheck } from "../../main/js/typecheck.ts";
+import { borrowcheck } from "../../main/js/borrowcheck.ts";
 import { generateJavaScript } from "../../main/js/codegen-js.ts";
 
 const thisFile = fileURLToPath(import.meta.url);
@@ -64,6 +65,11 @@ const sandbox = {
   },
   __host_typecheck: (core) => {
     const result = typecheck(core);
+    if (!result.ok) throw result.error;
+    return result.value;
+  },
+  __host_borrowcheck: (core) => {
+    const result = borrowcheck(core);
     if (!result.ok) throw result.error;
     return result.value;
   },
