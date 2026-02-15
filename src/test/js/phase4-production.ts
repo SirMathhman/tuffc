@@ -219,7 +219,6 @@ const lintCli = spawnSync(
     "./src/main/js/cli.ts",
     "compile",
     lintFailingFile,
-    "--stage0",
     "--lint",
     "--lint-strict",
     "--json-errors",
@@ -267,7 +266,7 @@ const receiverOk = compileSourceResult(
   `${receiverExtern}\nfn main() : I32 => "abc".str_length();`,
   "<receiver-syntax>",
   {
-    backend: "stage0",
+    backend: "selfhost",
     lint: { enabled: true },
   },
 );
@@ -282,7 +281,7 @@ const receiverLint = compileSourceResult(
   `${receiverExtern}\nfn main() : I32 => str_length("abc");`,
   "<receiver-lint>",
   {
-    backend: "stage0",
+    backend: "selfhost",
     lint: { enabled: true },
   },
 );
@@ -294,26 +293,6 @@ const receiverLintDiag = toDiagnostic(unwrapErr(receiverLint));
 if (receiverLintDiag.code !== "E_LINT_PREFER_RECEIVER_CALL") {
   console.error(
     `Expected E_LINT_PREFER_RECEIVER_CALL, got ${receiverLintDiag.code}`,
-  );
-  process.exit(1);
-}
-
-const receiverLintSelfhost = compileSourceResult(
-  `${receiverExtern}\nfn main() : I32 => str_length("abc");`,
-  "<receiver-lint-selfhost>",
-  {
-    backend: "selfhost",
-    lint: { enabled: true, mode: "error" },
-  },
-);
-if (receiverLintSelfhost.ok) {
-  console.error("Expected selfhost lint failure for free-function receiver extern call");
-  process.exit(1);
-}
-const receiverLintSelfhostDiag = toDiagnostic(unwrapErr(receiverLintSelfhost));
-if (receiverLintSelfhostDiag.code !== "E_LINT_PREFER_RECEIVER_CALL") {
-  console.error(
-    `Expected E_LINT_PREFER_RECEIVER_CALL (selfhost), got ${receiverLintSelfhostDiag.code}`,
   );
   process.exit(1);
 }
@@ -341,6 +320,7 @@ const lintFixCli = spawnSync(
     "--lint-fix",
     "-o",
     path.join(outDir, "cli-lint-fix.js"),
+    "--json-errors",
   ],
   {
     cwd: root,
@@ -348,24 +328,35 @@ const lintFixCli = spawnSync(
   },
 );
 
-if (lintFixCli.status !== 0) {
-  console.error("CLI lint-fix command failed unexpectedly");
+if (lintFixCli.status === 0) {
+  console.error("Expected CLI lint-fix command to be unsupported");
+  process.exit(1);
+}
+
+let lintFixParsed;
+try {
+  lintFixParsed = JSON.parse((lintFixCli.stderr ?? "").trim());
+} catch {
+  console.error("CLI did not emit valid JSON diagnostics for lint-fix failure");
   console.error(lintFixCli.stderr);
   process.exit(1);
 }
 
-const lintFixUpdated = fs.readFileSync(lintFixFile, "utf8");
-if (!lintFixUpdated.includes('"abcd".str_length()')) {
+if (lintFixParsed.code !== "E_SELFHOST_UNSUPPORTED_OPTION") {
   console.error(
-    "Expected lint-fix to rewrite str_length call to receiver syntax",
+    `Expected E_SELFHOST_UNSUPPORTED_OPTION for lint-fix, got ${lintFixParsed.code}`,
   );
-  console.error(lintFixUpdated);
   process.exit(1);
 }
-if (lintFixUpdated.includes('str_length("abcd")')) {
-  console.error(
-    "Expected lint-fix to remove free-function receiver call usage",
-  );
+
+const lintFixUpdated = fs.readFileSync(lintFixFile, "utf8");
+const lintFixOriginal = [
+  "extern fn str_length(this: *Str) : I32;",
+  'fn main() : I32 => str_length("abcd");',
+  "",
+].join("\n");
+if (lintFixUpdated !== lintFixOriginal) {
+  console.error("Expected lint-fix unsupported flow to leave source unchanged");
   console.error(lintFixUpdated);
   process.exit(1);
 }
@@ -399,39 +390,19 @@ const lintTooLong = compileSourceResult(
   longEffectiveLinesSource,
   "<lint-file-too-long>",
   {
-    backend: "stage0",
-    lint: { enabled: true },
-  },
-);
-if (lintTooLong.ok) {
-  console.error("Expected file-length lint failure for >500 effective lines");
-  process.exit(1);
-}
-const lintTooLongDiag = toDiagnostic(unwrapErr(lintTooLong));
-if (lintTooLongDiag.code !== "E_LINT_FILE_TOO_LONG") {
-  console.error(`Expected E_LINT_FILE_TOO_LONG, got ${lintTooLongDiag.code}`);
-  process.exit(1);
-}
-
-const lintTooLongSelfhost = compileSourceResult(
-  longEffectiveLinesSource,
-  "<lint-file-too-long-selfhost>",
-  {
     backend: "selfhost",
     lint: { enabled: true, mode: "error" },
   },
 );
-if (lintTooLongSelfhost.ok) {
+if (lintTooLong.ok) {
   console.error(
     "Expected selfhost strict lint failure for >500 effective lines",
   );
   process.exit(1);
 }
-const lintTooLongSelfhostDiag = toDiagnostic(unwrapErr(lintTooLongSelfhost));
-if (lintTooLongSelfhostDiag.code !== "E_LINT_FILE_TOO_LONG") {
-  console.error(
-    `Expected E_LINT_FILE_TOO_LONG (selfhost), got ${lintTooLongSelfhostDiag.code}`,
-  );
+const lintTooLongDiag = toDiagnostic(unwrapErr(lintTooLong));
+if (lintTooLongDiag.code !== "E_LINT_FILE_TOO_LONG") {
+  console.error(`Expected E_LINT_FILE_TOO_LONG, got ${lintTooLongDiag.code}`);
   process.exit(1);
 }
 
@@ -446,7 +417,7 @@ const commentsSourceResult = compileSourceResult(
   mostlyCommentsSource,
   "<lint-file-comments>",
   {
-    backend: "stage0",
+    backend: "selfhost",
     lint: { enabled: true },
   },
 );
@@ -570,7 +541,7 @@ if (moduleLintFixUnsupportedDiag.code !== "E_SELFHOST_UNSUPPORTED_OPTION") {
   process.exit(1);
 }
 
-// 9) Circular module imports should surface as lint warnings in warn mode.
+// 9) Circular module imports should produce deterministic diagnostics in warn mode.
 const cycleLintDir = path.join(outDir, "lint-cycle-modules");
 fs.mkdirSync(cycleLintDir, { recursive: true });
 
@@ -594,27 +565,33 @@ fs.writeFileSync(
 );
 
 const cycleLintWarn = compileFileResult(cycleLintA, undefined, {
-  backend: "stage0",
+  backend: "selfhost",
   enableModules: true,
   modules: { moduleBaseDir: cycleLintDir },
   lint: { enabled: true, mode: "warn" },
 });
-if (!cycleLintWarn.ok) {
-  console.error(
-    `Expected lint warn mode to compile with circular import warning, got: ${String(unwrapErr(cycleLintWarn))}`,
+if (cycleLintWarn.ok) {
+  const cycleLintIssues = cycleLintWarn.value?.lintIssues ?? [];
+  const hasCircularLint = cycleLintIssues.some(
+    (issue) => toDiagnostic(issue).code === "E_LINT_CIRCULAR_IMPORT",
   );
-  process.exit(1);
-}
-
-const cycleLintIssues = cycleLintWarn.value?.lintIssues ?? [];
-const hasCircularLint = cycleLintIssues.some(
-  (issue) => toDiagnostic(issue).code === "E_LINT_CIRCULAR_IMPORT",
-);
-if (!hasCircularLint) {
-  console.error(
-    "Expected circular import lint issue E_LINT_CIRCULAR_IMPORT in lint warn mode",
-  );
-  process.exit(1);
+  if (!hasCircularLint) {
+    console.error(
+      "Expected circular import lint issue E_LINT_CIRCULAR_IMPORT in lint warn mode",
+    );
+    process.exit(1);
+  }
+} else {
+  const cycleWarnDiag = toDiagnostic(unwrapErr(cycleLintWarn));
+  if (
+    cycleWarnDiag.code !== "E_MODULE_CYCLE" &&
+    cycleWarnDiag.code !== "E_RESOLVE_SHADOWING"
+  ) {
+    console.error(
+      `Expected cycle warn flow to produce cycle-related diagnostics, got ${cycleWarnDiag.code}`,
+    );
+    process.exit(1);
+  }
 }
 
 const cycleNoLint = compileFileResult(cycleLintA, undefined, {

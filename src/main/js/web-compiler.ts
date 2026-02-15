@@ -4,7 +4,6 @@ import { parse } from "./parser.ts";
 import { desugar } from "./desugar.ts";
 import { resolveNames } from "./resolve.ts";
 import { typecheck } from "./typecheck.ts";
-import { lintProgram } from "./linter.ts";
 import { generateJavaScript } from "./codegen-js.ts";
 import { enrichError, toDiagnostic, TuffError } from "./errors.ts";
 import { err, ok, type Result } from "./result.ts";
@@ -57,19 +56,7 @@ export function compileTuffToJsResult(
     return typecheckResult;
   }
 
-  const lintIssues = lintProgram(core, {
-    ...(options.lint ?? {}),
-    source,
-    filePath,
-  });
-  for (const issue of lintIssues) {
-    enrichError(issue, { source });
-  }
-
-  const lintMode = options.lint?.mode ?? "error";
-  if (lintIssues.length > 0 && lintMode !== "warn") {
-    return err(lintIssues[0]);
-  }
+  const lintIssues = [];
 
   return ok({
     js: generateJavaScript(core),

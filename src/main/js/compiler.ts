@@ -9,7 +9,6 @@ import { desugar } from "./desugar.ts";
 import { resolveNames } from "./resolve.ts";
 import { typecheck } from "./typecheck.ts";
 import { borrowcheck } from "./borrowcheck.ts";
-import { autoFixProgram, lintProgram } from "./linter.ts";
 import { generateJavaScript } from "./codegen-js.ts";
 import { generateC } from "./codegen-c.ts";
 import { TuffError, enrichError } from "./errors.ts";
@@ -128,49 +127,6 @@ function createTracer(enabled) {
 
 function getCodegenTarget(options): string {
   return options.target ?? "js";
-}
-
-function prepareLintFixedSourceForSelfhost(
-  source,
-  filePath = "<memory>",
-  options = {},
-): CompilerResult<{
-  source: string;
-  lintFixesApplied: number;
-  lintFixedSource: string | undefined;
-}> {
-  if (!options?.enabled || !options?.fix) {
-    return ok({
-      source,
-      lintFixesApplied: 0,
-      lintFixedSource: source,
-    });
-  }
-
-  const tokensResult = lex(source, filePath);
-  if (!tokensResult.ok) {
-    enrichError(tokensResult.error, { source });
-    return tokensResult;
-  }
-
-  const cstResult = parse(tokensResult.value);
-  if (!cstResult.ok) {
-    enrichError(cstResult.error, { source });
-    return cstResult;
-  }
-
-  const core = desugar(cstResult.value);
-  const { applied: lintFixesApplied, fixedSource: lintFixedSource } =
-    autoFixProgram(core, {
-      ...options,
-      source,
-    });
-
-  return ok({
-    source: lintFixedSource ?? source,
-    lintFixesApplied,
-    lintFixedSource: lintFixedSource ?? source,
-  });
 }
 
 function selectBackend(options, target, isSelfhostBootstrapInput = false) {
@@ -446,17 +402,22 @@ export function compileSource(
       );
     }
 
-    const lintPreparedResult = prepareLintFixedSourceForSelfhost(
-      source,
-      filePath,
-      options.lint ?? {},
-    );
-    if (!lintPreparedResult.ok) {
-      return lintPreparedResult;
+    if (options.lint?.fix) {
+      return err(
+        new TuffError(
+          "Selfhost backend does not support lint auto-fix yet",
+          undefined,
+          {
+            code: "E_SELFHOST_UNSUPPORTED_OPTION",
+            reason:
+              "The Tuff-based linter currently supports diagnostics only and does not rewrite source automatically.",
+            fix: "Run without --lint-fix, or apply lint suggestions manually.",
+          },
+        ),
+      );
     }
-    const effectiveSource = lintPreparedResult.value.source;
-    const lintFixesApplied = lintPreparedResult.value.lintFixesApplied;
-    const lintFixedSource = lintPreparedResult.value.lintFixedSource;
+
+    const effectiveSource = source;
 
     const selfhostResult = run("selfhost-bootstrap", () =>
       bootstrapSelfhostCompiler(options),
@@ -509,9 +470,20 @@ export function compileSource(
       output: js,
       target,
       lintIssues,
-      lintFixesApplied,
-      lintFixedSource,
+      lintFixesApplied: 0,
+      lintFixedSource: source,
     });
+  }
+
+  if (options.lint?.enabled) {
+    return err(
+      new TuffError("Stage0 backend no longer supports linting", undefined, {
+        code: "E_SELFHOST_UNSUPPORTED_OPTION",
+        reason:
+          "Linting is now provided only by the Tuff selfhost pipeline to keep diagnostics behavior unified.",
+        fix: "Use backend: 'selfhost' (default) when enabling --lint.",
+      }),
+    );
   }
 
   const run = createTracer(options.tracePasses);
@@ -552,24 +524,6 @@ export function compileSource(
       return borrowResult;
     }
   }
-  const { applied: lintFixesApplied, fixedSource: lintFixedSource } =
-    autoFixProgram(core, {
-      ...(options.lint ?? {}),
-      source,
-    });
-  const lintIssues = lintProgram(core, {
-    ...(options.lint ?? {}),
-    source,
-    filePath,
-  });
-  for (const issue of lintIssues) {
-    enrichError(issue, { source });
-  }
-  const lintMode = options.lint?.mode ?? "error";
-  if (lintIssues.length > 0 && lintMode !== "warn") {
-    return err(lintIssues[0]);
-  }
-
   let output;
   try {
     output = run("codegen", () => emitTarget(core, target));
@@ -590,9 +544,9 @@ export function compileSource(
     c: target === "c" ? output : undefined,
     output,
     target,
-    lintIssues,
-    lintFixesApplied,
-    lintFixedSource,
+    lintIssues: [],
+    lintFixesApplied: 0,
+    lintFixedSource: source,
   });
 }
 
@@ -652,16 +606,16 @@ function compileFileInternal(
     if (!selfhostResult.ok) return selfhostResult;
     const selfhost = selfhostResult.value;
 
-    if (options.enableModules && options.lint?.fix) {
+    if (options.lint?.fix) {
       return err(
         new TuffError(
-          "Selfhost backend does not support module lint auto-fix yet",
+          "Selfhost backend does not support lint auto-fix yet",
           undefined,
           {
             code: "E_SELFHOST_UNSUPPORTED_OPTION",
             reason:
-              "Selfhost backend can auto-fix single-source lint issues, but rewriting an entire module graph in-place is not implemented yet.",
-            fix: "Disable --lint-fix for module graph compilation, or use backend: 'stage0' for module lint rewriting.",
+              "The Tuff-based linter currently supports diagnostics only and does not rewrite source automatically.",
+            fix: "Run without --lint-fix, or apply lint suggestions manually.",
           },
         ),
       );
@@ -671,22 +625,7 @@ function compileFileInternal(
     const lintEnabled = options.lint?.enabled ? 1 : 0;
     const maxEffectiveLines = options.lint?.maxEffectiveLines ?? 500;
     const lintMode = options.lint?.mode ?? "error";
-    let lintFixesApplied = 0;
-    let lintFixedSource = undefined;
-    let source = undefined;
-    let effectiveSource = undefined;
-    if (!options.enableModules) {
-      source = fs.readFileSync(absInput, "utf8");
-      const lintPreparedResult = prepareLintFixedSourceForSelfhost(
-        source,
-        absInput,
-        options.lint ?? {},
-      );
-      if (!lintPreparedResult.ok) return lintPreparedResult;
-      effectiveSource = lintPreparedResult.value.source;
-      lintFixesApplied = lintPreparedResult.value.lintFixesApplied;
-      lintFixedSource = lintPreparedResult.value.lintFixedSource;
-    }
+    const source = fs.readFileSync(absInput, "utf8");
 
     let js;
     try {
@@ -713,13 +652,13 @@ function compileFileInternal(
         js = run("selfhost-compile-source", () =>
           typeof selfhost.compile_source_with_options === "function"
             ? selfhost.compile_source_with_options(
-                effectiveSource ?? source,
+                source,
                 strictSafety,
                 lintEnabled,
                 maxEffectiveLines,
                 borrowEnabled ? 1 : 0,
               )
-            : selfhost.compile_source(effectiveSource ?? source),
+            : selfhost.compile_source(source),
         );
         fs.mkdirSync(path.dirname(finalOutput), { recursive: true });
         fs.writeFileSync(finalOutput, js, "utf8");
@@ -738,14 +677,12 @@ function compileFileInternal(
       );
     }
 
-    source = source ?? fs.readFileSync(absInput, "utf8");
-    effectiveSource = effectiveSource ?? source;
     const lintIssues =
       typeof selfhost.take_lint_issues === "function"
         ? decodeSelfhostLintIssues(selfhost.take_lint_issues())
         : [];
     for (const issue of lintIssues) {
-      enrichError(issue, { source: effectiveSource });
+      enrichError(issue, { source });
     }
     if (lintIssues.length > 0 && lintMode !== "warn") {
       return err(lintIssues[0]);
@@ -760,10 +697,21 @@ function compileFileInternal(
       output: js,
       target,
       lintIssues,
-      lintFixesApplied,
-      lintFixedSource,
+      lintFixesApplied: 0,
+      lintFixedSource: source,
       outputPath: finalOutput,
     });
+  }
+
+  if (options.lint?.enabled) {
+    return err(
+      new TuffError("Stage0 backend no longer supports linting", undefined, {
+        code: "E_SELFHOST_UNSUPPORTED_OPTION",
+        reason:
+          "Linting is now provided only by the Tuff selfhost pipeline to keep diagnostics behavior unified.",
+        fix: "Use backend: 'selfhost' (default) when enabling --lint.",
+      }),
+    );
   }
 
   const run = createTracer(options.tracePasses);
@@ -838,28 +786,6 @@ function compileFileInternal(
         return borrowResult;
       }
     }
-    const mergedSource = graph.ordered.map((unit) => unit.source).join("\n\n");
-    const { applied: lintFixesApplied, fixedSource: lintFixedSource } =
-      autoFixProgram(graph.merged, {
-        ...(options.lint ?? {}),
-        source: mergedSource,
-      });
-    const sourceByFile = new Map();
-    for (const unit of graph.ordered) {
-      sourceByFile.set(unit.filePath, unit.source);
-    }
-    const lintIssues = lintProgram(graph.merged, {
-      ...(options.lint ?? {}),
-      sourceByFile,
-      moduleImportCycles: graph.moduleImportCycles,
-    });
-    for (const issue of lintIssues) {
-      enrichError(issue, { sourceByFile });
-    }
-    if (lintIssues.length > 0 && lintMode !== "warn") {
-      return err(lintIssues[0]);
-    }
-
     let output;
     try {
       output = run("codegen", () => emitTarget(graph.merged, target));
@@ -889,9 +815,9 @@ function compileFileInternal(
       c: target === "c" ? output : undefined,
       output,
       target,
-      lintIssues,
-      lintFixesApplied,
-      lintFixedSource,
+      lintIssues: [],
+      lintFixesApplied: 0,
+      lintFixedSource: fs.readFileSync(inputPath, "utf8"),
       moduleGraph: graph,
       outputPath: finalOutput,
     });

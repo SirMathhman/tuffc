@@ -34,6 +34,7 @@ if (tuffFiles.length === 0) {
 fs.mkdirSync(outBase, { recursive: true });
 
 let fixedTotal = 0;
+let issueTotal = 0;
 for (const filePath of tuffFiles) {
   const rel = path.relative(root, filePath);
   const outPath = path.join(outBase, rel.replace(/\.tuff$/i, ".js"));
@@ -45,31 +46,34 @@ for (const filePath of tuffFiles) {
     },
     lint: {
       enabled: true,
-      fix: true,
+      fix: false,
       mode: "warn",
     },
   });
 
   if (!result.ok) {
+    const failed = result as { ok: false; error: unknown };
     console.error(`Failed to lint-fix: ${rel}`);
-    console.error(formatDiagnostic(toDiagnostic(result.error)));
+    console.error(formatDiagnostic(toDiagnostic(failed.error)));
     process.exit(1);
   }
 
-  const applied = result.value.lintFixesApplied ?? 0;
-  fixedTotal += applied;
-  if (applied > 0) {
-    fs.writeFileSync(
-      filePath,
-      result.value.lintFixedSource ?? fs.readFileSync(filePath, "utf8"),
-      "utf8",
-    );
-    console.log(`Fixed ${applied} issue(s): ${rel}`);
+  const okResult = result as {
+    ok: true;
+    value: { lintIssues?: unknown[] };
+  };
+  const issues = okResult.value.lintIssues ?? [];
+  issueTotal += issues.length;
+  if (issues.length > 0) {
+    console.log(`Lint issues (${issues.length}) in ${rel}`);
   } else {
-    console.log(`No fixes needed: ${rel}`);
+    console.log(`Lint clean: ${rel}`);
   }
 }
 
 console.log(
-  `\nDone. Applied ${fixedTotal} total lint auto-fix(es) across ${tuffFiles.length} .tuff file(s).`,
+  `\nDone. Selfhost lint reported ${issueTotal} issue(s) across ${tuffFiles.length} .tuff file(s).`,
+);
+console.log(
+  "Note: lint auto-fix rewriting is currently unsupported in the selfhost-only lint pipeline.",
 );
