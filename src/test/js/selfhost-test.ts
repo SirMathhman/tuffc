@@ -17,20 +17,25 @@ import {
   compileFileThrow,
   compileSourceThrow,
 } from "../../main/js/compiler.ts";
-import * as runtime from "../../main/js/runtime.ts";
-
-const thisFile = fileURLToPath(import.meta.url);
-const root = path.resolve(path.dirname(thisFile), "..", "..", "..");
 const selfhostPath = path.join(root, "src", "main", "tuff", "selfhost.tuff");
+import { compileAndLoadSelfhost } from "./selfhost-harness.ts";
 const outDir = path.join(root, "tests", "out", "selfhost");
 
-fs.mkdirSync(outDir, { recursive: true });
-
-// Step 1: Compile selfhost.tuff with Stage 0
-console.log("Compiling selfhost.tuff with Stage 0...");
-const selfhostSource = fs.readFileSync(selfhostPath, "utf8");
+function loadSelfhostCompilerFromJs(js) {
+    "compile_source",
+    "compile_file",
+    "compile_source_with_options",
+    "compile_file_with_options",
+    "main",
+  ].join(", ");
+let selfhostPath;
 let selfhostJs;
-try {
+let selfhost;
+    exports: {},
+  const loaded = compileAndLoadSelfhost(root, outDir);
+  selfhostPath = loaded.selfhostPath;
+  selfhostJs = loaded.selfhostJs;
+  selfhost = loaded.selfhost;
   const result = compileFileThrow(
     selfhostPath,
     path.join(outDir, "selfhost.js"),
@@ -38,41 +43,20 @@ try {
       enableModules: true,
       modules: { moduleBaseDir: path.dirname(selfhostPath) },
       resolve: {
-        hostBuiltins: Object.keys(runtime),
-        allowHostPrefix: "",
-      },
-    },
-  );
-  // @ts-nocheck
-  selfhostJs = result.js;
-} catch (err) {
   console.error("Failed to compile selfhost.tuff with Stage 0:", err.message);
   process.exit(1);
 }
 
 console.log("  -> Wrote selfhost.js");
 
-// Step 2: Create sandbox with runtime utilities
-const sandbox = {
-  module: { exports: {} },
-  exports: {},
-  console,
-  // Inject all runtime functions
-  ...runtime,
-};
-
-// Step 3: Run the compiled self-hosted compiler
+// Step 2 / 3: Load the compiled self-hosted compiler
+let selfhost;
 try {
-  vm.runInNewContext(
-    `${selfhostJs}\nmodule.exports = { compile_source, compile_file, compile_source_with_options, compile_file_with_options, main };`,
-    sandbox,
-  );
+  selfhost = loadSelfhostCompilerFromJs(selfhostJs);
 } catch (err) {
   console.error("Failed to load selfhost.js:", err.message);
   process.exit(1);
 }
-
-const selfhost = sandbox.module.exports;
 if (typeof selfhost.compile_source !== "function") {
   console.error("selfhost.compile_source not exported");
   process.exit(1);
@@ -147,17 +131,7 @@ try {
   console.log("  -> Self-hosted compiler compiled itself!");
 
   // Verify the bootstrap output is valid JS by loading it
-  const sandbox2 = {
-    module: { exports: {} },
-    exports: {},
-    console,
-    ...runtime,
-  };
-  vm.runInNewContext(
-    `${selfhostB}\nmodule.exports = { compile_source, compile_file, compile_source_with_options, compile_file_with_options, main };`,
-    sandbox2,
-  );
-  const selfhostB_compiler = sandbox2.module.exports;
+  const selfhostB_compiler = loadSelfhostCompilerFromJs(selfhostB);
   if (typeof selfhostB_compiler.compile_file_with_options !== "function") {
     console.error("selfhost_b compiler missing compile_file_with_options");
     process.exit(1);

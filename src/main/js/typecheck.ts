@@ -529,6 +529,37 @@ export function typecheck(
     return true;
   };
 
+  const ensureBoolCondition = (condition, scope, facts, fallbackLoc) => {
+    const condResult = inferExpr(condition, scope, facts);
+    if (!condResult.ok) return condResult;
+    const cond = condResult.value;
+    if (cond.name !== "Bool" && cond.name !== "Unknown") {
+      return err(
+        new TuffError(
+          "if condition must be Bool",
+          condition?.loc ?? fallbackLoc,
+        ),
+      );
+    }
+    return ok(cond);
+  };
+
+  const validateBinaryOperands = (leftType, rightType, expr, kind) => {
+    const isValid =
+      kind === "numeric"
+        ? (name) => NUMERIC.has(name) || name === "Unknown"
+        : (name) => name === "Bool" || name === "Unknown";
+    if (!isValid(leftType.name) || !isValid(rightType.name)) {
+      return err(
+        new TuffError(
+          `Operator ${expr.op} expects ${kind === "numeric" ? "numeric" : "Bool"} operands`,
+          expr.loc,
+        ),
+      );
+    }
+    return ok(undefined);
+  };
+
   const inferExpr = (expr, scope, facts): TypecheckResult<unknown> => {
     switch (expr.kind) {
       case "NumberLiteral": {
@@ -675,16 +706,8 @@ export function typecheck(
         if (!rResult.ok) return rResult;
         const r = rResult.value;
         if (["+", "-", "*", "/", "%"].includes(expr.op)) {
-          // Allow Unknown types to pass through (needed for bootstrap)
-          const lOk = NUMERIC.has(l.name) || l.name === "Unknown";
-          const rOk = NUMERIC.has(r.name) || r.name === "Unknown";
-          if (!lOk || !rOk)
-            return err(
-              new TuffError(
-                `Operator ${expr.op} expects numeric operands`,
-                expr.loc,
-              ),
-            );
+          const operandsOk = validateBinaryOperands(l, r, expr, "numeric");
+          if (!operandsOk.ok) return operandsOk;
 
           if (strictSafety && expr.op === "/" && !r.nonZero) {
             return err(
@@ -786,15 +809,8 @@ export function typecheck(
           });
         }
         if (["&&", "||"].includes(expr.op)) {
-          const lOk = l.name === "Bool" || l.name === "Unknown";
-          const rOk = r.name === "Bool" || r.name === "Unknown";
-          if (!lOk || !rOk)
-            return err(
-              new TuffError(
-                `Operator ${expr.op} expects Bool operands`,
-                expr.loc,
-              ),
-            );
+          const operandsOk = validateBinaryOperands(l, r, expr, "bool");
+          if (!operandsOk.ok) return operandsOk;
           return ok({
             name: "Bool",
             min: undefined,
@@ -1004,16 +1020,13 @@ export function typecheck(
         });
       }
       case "IfExpr": {
-        const condResult = inferExpr(expr.condition, scope, facts);
+        const condResult = ensureBoolCondition(
+          expr.condition,
+          scope,
+          facts,
+          expr.loc,
+        );
         if (!condResult.ok) return condResult;
-        const cond = condResult.value;
-        if (cond.name !== "Bool" && cond.name !== "Unknown")
-          return err(
-            new TuffError(
-              "if condition must be Bool",
-              expr.condition?.loc ?? expr.loc,
-            ),
-          );
         const thenFacts = mergeFacts(facts, deriveFacts(expr.condition, true));
         const elseFacts = mergeFacts(facts, deriveFacts(expr.condition, false));
         const aResult = inferNode(expr.thenBranch, new Map(scope), thenFacts);
@@ -1100,6 +1113,22 @@ export function typecheck(
     facts,
     expectedReturn = undefined,
   ): TypecheckResult<unknown> => {
+    const makeVoidType = () => ({
+      name: "Void",
+      min: undefined,
+      max: undefined,
+      nonZero: false,
+    });
+    const inferBodyAsVoid = (bodyNode): TypecheckResult<unknown> => {
+      const bodyResult = inferNode(
+        bodyNode,
+        new Map(scope),
+        new Map(facts),
+        expectedReturn,
+      );
+      if (!bodyResult.ok) return bodyResult;
+      return ok(makeVoidType());
+    };
     switch (node.kind) {
       case "Block": {
         let last = {
@@ -1225,16 +1254,13 @@ export function typecheck(
         return ok(t);
       }
       case "IfStmt": {
-        const condResult = inferExpr(node.condition, scope, facts);
+        const condResult = ensureBoolCondition(
+          node.condition,
+          scope,
+          facts,
+          node.loc,
+        );
         if (!condResult.ok) return condResult;
-        const cond = condResult.value;
-        if (cond.name !== "Bool" && cond.name !== "Unknown")
-          return err(
-            new TuffError(
-              "if condition must be Bool",
-              node.condition?.loc ?? node.loc,
-            ),
-          );
         const thenFacts = mergeFacts(facts, deriveFacts(node.condition, true));
         const elseFacts = mergeFacts(facts, deriveFacts(node.condition, false));
         const thenResult = inferNode(
@@ -1271,36 +1297,12 @@ export function typecheck(
         if (!startResult.ok) return startResult;
         const endResult = inferExpr(node.end, scope, facts);
         if (!endResult.ok) return endResult;
-        const bodyResult = inferNode(
-          node.body,
-          new Map(scope),
-          new Map(facts),
-          expectedReturn,
-        );
-        if (!bodyResult.ok) return bodyResult;
-        return ok({
-          name: "Void",
-          min: undefined,
-          max: undefined,
-          nonZero: false,
-        });
+        return inferBodyAsVoid(node.body);
       }
       case "WhileStmt": {
         const condResult = inferExpr(node.condition, scope, facts);
         if (!condResult.ok) return condResult;
-        const bodyResult = inferNode(
-          node.body,
-          new Map(scope),
-          new Map(facts),
-          expectedReturn,
-        );
-        if (!bodyResult.ok) return bodyResult;
-        return ok({
-          name: "Void",
-          min: undefined,
-          max: undefined,
-          nonZero: false,
-        });
+        return inferBodyAsVoid(node.body);
       }
       case "FnDecl": {
         const fnScope = new Map(globalScope);

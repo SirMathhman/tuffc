@@ -1,31 +1,19 @@
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { compileFileResult } from "../../main/js/compiler.ts";
 import { formatDiagnostic, toDiagnostic } from "../../main/js/errors.ts";
+import { collectFilesByExtension } from "./file-collect-utils.ts";
+import {
+  getRepoRootFromImportMeta,
+  getSrcDir,
+  getTestsOutDir,
+} from "./path-test-utils.ts";
 
-const thisFile = fileURLToPath(import.meta.url);
-const root = path.resolve(path.dirname(thisFile), "..", "..", "..");
-const srcDir = path.join(root, "src");
-const outBase = path.join(root, "tests", "out", "lint-fix");
+const root = getRepoRootFromImportMeta(import.meta.url);
+const srcDir = getSrcDir(root);
+const outBase = getTestsOutDir(root, "lint-fix");
 
-function collectTuffFiles(dir) {
-  const entries = fs.readdirSync(dir, { withFileTypes: true });
-  const files = [];
-  for (const entry of entries) {
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      files.push(...collectTuffFiles(full));
-      continue;
-    }
-    if (entry.isFile() && full.toLowerCase().endsWith(".tuff")) {
-      files.push(full);
-    }
-  }
-  return files;
-}
-
-const tuffFiles = collectTuffFiles(srcDir).sort();
+const tuffFiles = collectFilesByExtension(srcDir, ".tuff").sort();
 if (tuffFiles.length === 0) {
   console.log("No .tuff files found under src/");
   process.exit(0);

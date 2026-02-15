@@ -76,6 +76,27 @@ export function parse(tokens: Token[]): ParseResult<Program> {
       return false;
     };
 
+    const numericTypeLiteralError = (
+      kind: "invalid" | "unsupported",
+      raw: string,
+      loc: Loc,
+    ) => {
+      const message =
+        kind === "invalid"
+          ? `Invalid numeric type literal '${raw}'`
+          : `Unsupported numeric type literal '${raw}'`;
+      const hint =
+        kind === "invalid"
+          ? "Use 0USize as the nullable pointer sentinel in type unions."
+          : "Only 0USize is valid as a type-level nullable pointer sentinel.";
+      return err(
+        new TuffError(message, loc, {
+          code: "E_PARSE_INVALID_NUMERIC_TYPE_LITERAL",
+          hint,
+        }),
+      );
+    };
+
     const parseTypePrimary = (): ParseResult<Expr> => {
       if (at("symbol", "*")) {
         eat();
@@ -133,22 +154,11 @@ export function parse(tokens: Token[]): ParseResult<Program> {
         const t = eat();
         const raw = String(t.value ?? "");
         const match = raw.match(/^(-?\d+)([A-Za-z][A-Za-z0-9]*)?$/);
-        if (!match)
-          return err(
-            new TuffError(`Invalid numeric type literal '${raw}'`, t.loc, {
-              code: "E_PARSE_INVALID_NUMERIC_TYPE_LITERAL",
-              hint: "Use 0USize as the nullable pointer sentinel in type unions.",
-            }),
-          );
+        if (!match) return numericTypeLiteralError("invalid", raw, t.loc);
         const value = Number(match[1]);
         const suffix = match[2] ?? undefined;
         if (suffix !== "USize" || value !== 0) {
-          return err(
-            new TuffError(`Unsupported numeric type literal '${raw}'`, t.loc, {
-              code: "E_PARSE_INVALID_NUMERIC_TYPE_LITERAL",
-              hint: "Only 0USize is valid as a type-level nullable pointer sentinel.",
-            }),
-          );
+          return numericTypeLiteralError("unsupported", raw, t.loc);
         }
         const base = { kind: "NamedType", name: "USize", genericArgs: [] };
         const valueExpr = {
@@ -257,6 +267,67 @@ export function parse(tokens: Token[]): ParseResult<Program> {
     const close = expect("symbol", "}", "Expected '}'");
     if (!close.ok) return close;
     return ok({ kind: "Block", statements, loc: start });
+  };
+
+  const parseGenericParams = (
+    closeMessage = "Expected '>' after generics",
+  ): ParseResult<string[]> => {
+    const generics: string[] = [];
+    if (!at("symbol", "<")) {
+      return ok(generics);
+    }
+    eat();
+    if (!at("symbol", ">")) {
+      while (true) {
+        const genResult = parseIdentifier();
+        if (!genResult.ok) return genResult;
+        generics.push(genResult.value);
+        if (!at("symbol", ",")) break;
+        eat();
+      }
+    }
+    const closeResult = expect("symbol", ">", closeMessage);
+    if (!closeResult.ok) return closeResult;
+    return ok(generics);
+  };
+
+  const parseTypedParams = (
+    openMessage: string,
+    closeMessage: string,
+  ): ParseResult<{ name: string; type: Expr | undefined }[]> => {
+    const openResult = expect("symbol", "(", openMessage);
+    if (!openResult.ok) return openResult;
+    const params: { name: string; type: Expr | undefined }[] = [];
+    if (!at("symbol", ")")) {
+      while (true) {
+        const paramNameResult = parseIdentifier();
+        if (!paramNameResult.ok) return paramNameResult;
+        let paramType = undefined;
+        if (at("symbol", ":")) {
+          eat();
+          const paramTypeResult = parseType();
+          if (!paramTypeResult.ok) return paramTypeResult;
+          paramType = paramTypeResult.value;
+        }
+        params.push({ name: paramNameResult.value, type: paramType });
+        if (!at("symbol", ",")) break;
+        eat();
+      }
+    }
+    const closeResult = expect("symbol", ")", closeMessage);
+    if (!closeResult.ok) return closeResult;
+    return ok(params);
+  };
+
+  const parseOptionalReturnType = (): ParseResult<Expr | undefined> => {
+    let returnType = undefined;
+    if (at("symbol", ":")) {
+      eat();
+      const returnTypeResult = parseType();
+      if (!returnTypeResult.ok) return returnTypeResult;
+      returnType = returnTypeResult.value;
+    }
+    return ok(returnType);
   };
 
   const precedence: Record<string, number> = {
@@ -752,55 +823,16 @@ export function parse(tokens: Token[]): ParseResult<Program> {
     if (!fnResult.ok) return fnResult;
     const nameResult = parseIdentifier();
     if (!nameResult.ok) return nameResult;
-    const generics: string[] = [];
-    if (at("symbol", "<")) {
-      eat();
-      if (!at("symbol", ">")) {
-        while (true) {
-          const genResult = parseIdentifier();
-          if (!genResult.ok) return genResult;
-          generics.push(genResult.value);
-          if (!at("symbol", ",")) break;
-          eat();
-        }
-      }
-      const closeResult = expect("symbol", ">", "Expected '>' after generics");
-      if (!closeResult.ok) return closeResult;
-    }
+    const genericsResult = parseGenericParams("Expected '>' after generics");
+    if (!genericsResult.ok) return genericsResult;
+    const generics = genericsResult.value;
 
-    const openResult = expect(
-      "symbol",
-      "(",
+    const signatureResult = parseFunctionSignature(
       "Expected '(' in function declaration",
+      "Expected ')' after params",
     );
-    if (!openResult.ok) return openResult;
-    const params: { name: string; type: Expr | undefined }[] = [];
-    if (!at("symbol", ")")) {
-      while (true) {
-        const paramNameResult = parseIdentifier();
-        if (!paramNameResult.ok) return paramNameResult;
-        let paramType = undefined;
-        if (at("symbol", ":")) {
-          eat();
-          const paramTypeResult = parseType();
-          if (!paramTypeResult.ok) return paramTypeResult;
-          paramType = paramTypeResult.value;
-        }
-        params.push({ name: paramNameResult.value, type: paramType });
-        if (!at("symbol", ",")) break;
-        eat();
-      }
-    }
-    const closeResult = expect("symbol", ")", "Expected ')' after params");
-    if (!closeResult.ok) return closeResult;
-
-    let returnType = undefined;
-    if (at("symbol", ":")) {
-      eat();
-      const returnTypeResult = parseType();
-      if (!returnTypeResult.ok) return returnTypeResult;
-      returnType = returnTypeResult.value;
-    }
+    if (!signatureResult.ok) return signatureResult;
+    const { params, returnType } = signatureResult.value;
 
     const arrowResult = expect(
       "symbol",
@@ -828,26 +860,31 @@ export function parse(tokens: Token[]): ParseResult<Program> {
     });
   };
 
+  function parseFunctionSignature(
+    openMessage: string,
+    closeMessage: string,
+  ): ParseResult<{
+    params: { name: string; type: Expr }[];
+    returnType: Expr;
+  }> {
+    const paramsResult = parseTypedParams(openMessage, closeMessage);
+    if (!paramsResult.ok) return paramsResult;
+    const returnTypeResult = parseOptionalReturnType();
+    if (!returnTypeResult.ok) return returnTypeResult;
+    return ok({
+      params: paramsResult.value,
+      returnType: returnTypeResult.value,
+    });
+  }
+
   const parseStruct = (isCopy = false): ParseResult<Stmt> => {
     const structResult = expect("keyword", "struct");
     if (!structResult.ok) return structResult;
     const nameResult = parseIdentifier();
     if (!nameResult.ok) return nameResult;
-    const generics: string[] = [];
-    if (at("symbol", "<")) {
-      eat();
-      if (!at("symbol", ">")) {
-        while (true) {
-          const genResult = parseIdentifier();
-          if (!genResult.ok) return genResult;
-          generics.push(genResult.value);
-          if (!at("symbol", ",")) break;
-          eat();
-        }
-      }
-      const closeResult = expect("symbol", ">", "Expected '>'");
-      if (!closeResult.ok) return closeResult;
-    }
+    const genericsResult = parseGenericParams("Expected '>'");
+    if (!genericsResult.ok) return genericsResult;
+    const generics = genericsResult.value;
     const openResult = expect("symbol", "{");
     if (!openResult.ok) return openResult;
     const fields: { name: string; type: Expr }[] = [];
@@ -896,25 +933,11 @@ export function parse(tokens: Token[]): ParseResult<Program> {
     if (!typeResult.ok) return typeResult;
     const nameResult = parseIdentifier();
     if (!nameResult.ok) return nameResult;
-    const generics: string[] = [];
-    if (at("symbol", "<")) {
-      eat();
-      if (!at("symbol", ">")) {
-        while (true) {
-          const genResult = parseIdentifier();
-          if (!genResult.ok) return genResult;
-          generics.push(genResult.value);
-          if (!at("symbol", ",")) break;
-          eat();
-        }
-      }
-      const closeResult = expect(
-        "symbol",
-        ">",
-        "Expected '>' after alias generics",
-      );
-      if (!closeResult.ok) return closeResult;
-    }
+    const genericsResult = parseGenericParams(
+      "Expected '>' after alias generics",
+    );
+    if (!genericsResult.ok) return genericsResult;
+    const generics = genericsResult.value;
     const eqResult = expect("symbol", "=", "Expected '=' for type alias");
     if (!eqResult.ok) return eqResult;
     const aliasedTypeResult = parseType();
@@ -1055,53 +1078,17 @@ export function parse(tokens: Token[]): ParseResult<Program> {
         if (!fnKeywordResult.ok) return fnKeywordResult;
         const nameResult = parseIdentifier();
         if (!nameResult.ok) return nameResult;
-        const generics: string[] = [];
-        if (at("symbol", "<")) {
-          eat();
-          if (!at("symbol", ">")) {
-            while (true) {
-              const genResult = parseIdentifier();
-              if (!genResult.ok) return genResult;
-              generics.push(genResult.value);
-              if (!at("symbol", ",")) break;
-              eat();
-            }
-          }
-          const closeResult = expect(
-            "symbol",
-            ">",
-            "Expected '>' after generics",
-          );
-          if (!closeResult.ok) return closeResult;
-        }
-        const openResult = expect("symbol", "(", "Expected '('");
-        if (!openResult.ok) return openResult;
-        const params: { name: string; type: Expr | undefined }[] = [];
-        if (!at("symbol", ")")) {
-          while (true) {
-            const paramNameResult = parseIdentifier();
-            if (!paramNameResult.ok) return paramNameResult;
-            let paramType = undefined;
-            if (at("symbol", ":")) {
-              eat();
-              const paramTypeResult = parseType();
-              if (!paramTypeResult.ok) return paramTypeResult;
-              paramType = paramTypeResult.value;
-            }
-            params.push({ name: paramNameResult.value, type: paramType });
-            if (!at("symbol", ",")) break;
-            eat();
-          }
-        }
-        const closeResult = expect("symbol", ")", "Expected ')'");
-        if (!closeResult.ok) return closeResult;
-        let returnType = undefined;
-        if (at("symbol", ":")) {
-          eat();
-          const returnTypeResult = parseType();
-          if (!returnTypeResult.ok) return returnTypeResult;
-          returnType = returnTypeResult.value;
-        }
+        const genericsResult = parseGenericParams(
+          "Expected '>' after generics",
+        );
+        if (!genericsResult.ok) return genericsResult;
+        const generics = genericsResult.value;
+        const signatureResult = parseFunctionSignature(
+          "Expected '('",
+          "Expected ')'",
+        );
+        if (!signatureResult.ok) return signatureResult;
+        const { params, returnType } = signatureResult.value;
         const semiResult = expect(
           "symbol",
           ";",
@@ -1144,25 +1131,11 @@ export function parse(tokens: Token[]): ParseResult<Program> {
         eat();
         const nameResult = parseIdentifier();
         if (!nameResult.ok) return nameResult;
-        const generics: string[] = [];
-        if (at("symbol", "<")) {
-          eat();
-          if (!at("symbol", ">")) {
-            while (true) {
-              const genResult = parseIdentifier();
-              if (!genResult.ok) return genResult;
-              generics.push(genResult.value);
-              if (!at("symbol", ",")) break;
-              eat();
-            }
-          }
-          const closeResult = expect(
-            "symbol",
-            ">",
-            "Expected '>' after extern type generics",
-          );
-          if (!closeResult.ok) return closeResult;
-        }
+        const genericsResult = parseGenericParams(
+          "Expected '>' after extern type generics",
+        );
+        if (!genericsResult.ok) return genericsResult;
+        const generics = genericsResult.value;
         const semiResult = expect(
           "symbol",
           ";",

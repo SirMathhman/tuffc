@@ -39,13 +39,15 @@ function typeNameFromNode(typeNode) {
   return "Unknown";
 }
 
-function isCopyType(typeName, externTypeNames) {
+function hasBuiltinCopySemantics(typeName) {
   if (!typeName || typeName === "Unknown") return false;
   if (typeName.startsWith("*")) return true;
   if (COPY_PRIMITIVES.has(typeName)) return true;
-  if (typeName === "Vec" || typeName === "Map" || typeName === "Set") {
-    return true;
-  }
+  return typeName === "Vec" || typeName === "Map" || typeName === "Set";
+}
+
+function isCopyType(typeName, externTypeNames) {
+  if (hasBuiltinCopySemantics(typeName)) return true;
   if (externTypeNames.has(typeName)) return false;
   return false;
 }
@@ -54,10 +56,7 @@ function isTypeNodeCopyable(typeNode, context, visiting = new Set()) {
   if (!typeNode) return false;
 
   if (typeof typeNode === "string") {
-    if (COPY_PRIMITIVES.has(typeNode)) return true;
-    if (typeNode === "Vec" || typeNode === "Map" || typeNode === "Set") {
-      return true;
-    }
+    if (hasBuiltinCopySemantics(typeNode)) return true;
     if (context.copyTypeNames.has(typeNode)) return true;
     if (context.externTypeNames.has(typeNode)) return false;
     if (context.copyAliasTypeByName.has(typeNode)) {
@@ -76,8 +75,7 @@ function isTypeNodeCopyable(typeNode, context, visiting = new Set()) {
 
   if (typeNode.kind === "NamedType") {
     const name = typeNode.name;
-    if (COPY_PRIMITIVES.has(name)) return true;
-    if (name === "Vec" || name === "Map" || name === "Set") return true;
+    if (hasBuiltinCopySemantics(name)) return true;
     if (context.copyTypeNames.has(name)) return true;
     if (context.externTypeNames.has(name)) return false;
     if (context.copyAliasTypeByName.has(name)) {
@@ -119,12 +117,7 @@ function isTypeNodeCopyable(typeNode, context, visiting = new Set()) {
 }
 
 function isCopyTypeWithRegistry(typeName, externTypeNames, copyTypeNames) {
-  if (!typeName || typeName === "Unknown") return false;
-  if (typeName.startsWith("*")) return true;
-  if (COPY_PRIMITIVES.has(typeName)) return true;
-  if (typeName === "Vec" || typeName === "Map" || typeName === "Set") {
-    return true;
-  }
+  if (hasBuiltinCopySemantics(typeName)) return true;
   if (copyTypeNames.has(typeName)) return true;
   if (externTypeNames.has(typeName)) return false;
   return false;
@@ -249,26 +242,21 @@ function endLoanScope(state) {
 function anyConflictingLoan(state, place) {
   const immut = state.immutLoans.get(place.base) ?? new Set();
   const mut = state.mutLoans.get(place.base) ?? new Set();
-  for (const p of immut) {
-    if (placesConflict(place, { base: place.base, path: p })) return true;
-  }
-  for (const p of mut) {
-    if (placesConflict(place, { base: place.base, path: p })) return true;
-  }
-  return false;
+  return hasConflictInPaths(place, immut) || hasConflictInPaths(place, mut);
 }
 
 function conflictingMutLoan(state, place) {
   const mut = state.mutLoans.get(place.base) ?? new Set();
-  for (const p of mut) {
-    if (placesConflict(place, { base: place.base, path: p })) return true;
-  }
-  return false;
+  return hasConflictInPaths(place, mut);
 }
 
 function conflictingImmutLoan(state, place) {
   const immut = state.immutLoans.get(place.base) ?? new Set();
-  for (const p of immut) {
+  return hasConflictInPaths(place, immut);
+}
+
+function hasConflictInPaths(place, paths) {
+  for (const p of paths) {
     if (placesConflict(place, { base: place.base, path: p })) return true;
   }
   return false;
@@ -283,6 +271,14 @@ function borrowErr(message, loc, code, fix) {
       fix,
     }),
   );
+}
+
+function mergeMovedFromBranches(state, thenState, elseState) {
+  if (elseState) {
+    state.moved = new Set([...thenState.moved, ...elseState.moved]);
+  } else {
+    state.moved = new Set([...state.moved, ...thenState.moved]);
+  }
 }
 
 export function borrowcheck(ast, options = {}): BorrowcheckResult<unknown> {
@@ -338,18 +334,29 @@ export function borrowcheck(ast, options = {}): BorrowcheckResult<unknown> {
     copyTypeNames.add(aliasName);
   }
 
+  const checkNotMoved = (place, expr, state, fix): BorrowcheckResult<void> => {
+    if (!state.moved.has(place.base)) {
+      return ok(undefined);
+    }
+    return borrowErr(
+      `Use of moved value '${place.base}'`,
+      expr?.loc,
+      "E_BORROW_USE_AFTER_MOVE",
+      fix,
+    );
+  };
+
   const consumePlace = (expr, state, envTypes): BorrowcheckResult<void> => {
     const place = canonicalPlace(expr);
     if (!place) return ok(undefined);
 
-    if (state.moved.has(place.base)) {
-      return borrowErr(
-        `Use of moved value '${place.base}'`,
-        expr?.loc,
-        "E_BORROW_USE_AFTER_MOVE",
-        "Reinitialize the value before use, or borrow it with '&' / '&mut' instead of moving.",
-      );
-    }
+    const movedResult = checkNotMoved(
+      place,
+      expr,
+      state,
+      "Reinitialize the value before use, or borrow it with '&' / '&mut' instead of moving.",
+    );
+    if (!movedResult.ok) return movedResult;
 
     if (anyConflictingLoan(state, place)) {
       return borrowErr(
@@ -370,15 +377,12 @@ export function borrowcheck(ast, options = {}): BorrowcheckResult<unknown> {
   const ensureReadable = (expr, state): BorrowcheckResult<void> => {
     const place = canonicalPlace(expr);
     if (!place) return ok(undefined);
-    if (state.moved.has(place.base)) {
-      return borrowErr(
-        `Use of moved value '${place.base}'`,
-        expr?.loc,
-        "E_BORROW_USE_AFTER_MOVE",
-        "Reinitialize the value before use, or borrow it before moving.",
-      );
-    }
-    return ok(undefined);
+    return checkNotMoved(
+      place,
+      expr,
+      state,
+      "Reinitialize the value before use, or borrow it before moving.",
+    );
   };
 
   const checkExpr = (
@@ -494,9 +498,9 @@ export function borrowcheck(ast, options = {}): BorrowcheckResult<unknown> {
           const elseEnv = new Map(envTypes);
           const elseR = checkNode(expr.elseBranch, elseState, elseEnv);
           if (!elseR.ok) return elseR;
-          state.moved = new Set([...thenState.moved, ...elseState.moved]);
+          mergeMovedFromBranches(state, thenState, elseState);
         } else {
-          state.moved = new Set([...state.moved, ...thenState.moved]);
+          mergeMovedFromBranches(state, thenState);
         }
         return ok(undefined);
       }
@@ -582,9 +586,9 @@ export function borrowcheck(ast, options = {}): BorrowcheckResult<unknown> {
           const elseEnv = new Map(envTypes);
           const elseRes = checkNode(stmt.elseBranch, elseState, elseEnv);
           if (!elseRes.ok) return elseRes;
-          state.moved = new Set([...thenState.moved, ...elseState.moved]);
+          mergeMovedFromBranches(state, thenState, elseState);
         } else {
-          state.moved = new Set([...state.moved, ...thenState.moved]);
+          mergeMovedFromBranches(state, thenState);
         }
         return ok(undefined);
       }

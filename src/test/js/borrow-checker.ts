@@ -1,49 +1,21 @@
 // @ts-nocheck
-import { compileSourceResult } from "../../main/js/compiler.ts";
-import { toDiagnostic } from "../../main/js/errors.ts";
+import {
+  expectCompileFailCode as expectFailCode,
+  expectCompileOk as expectOk,
+} from "./compile-test-utils.ts";
+import {
+  BORROW_COPY_PRIMITIVE_SOURCE,
+  BORROW_INVALID_TARGET_SOURCE,
+  COPY_ALIAS_INVALID_BOX_SOURCE,
+  COPY_STRUCT_VEC2_PROGRAM,
+  makeBoxProgram,
+  makeImmutBorrowedBoxProgram,
+  MOVE_AFTER_MOVE_BOX_SOURCE,
+} from "./test-fixtures.ts";
 
-function expectOk(label, source, options = {}) {
-  const result = compileSourceResult(source, `<${label}>`, options);
-  if (!result.ok) {
-    console.error(
-      `Expected compile success for ${label}, but failed: ${result.error.message}`,
-    );
-    process.exit(1);
-  }
-}
+expectOk("borrow-copy-primitive", BORROW_COPY_PRIMITIVE_SOURCE);
 
-function expectFailCode(label, source, expectedCode, options = {}) {
-  const result = compileSourceResult(source, `<${label}>`, options);
-  if (result.ok) {
-    console.error(`Expected compile failure for ${label}, but it compiled`);
-    process.exit(1);
-  }
-  const diag = toDiagnostic(result.error);
-  if (diag.code !== expectedCode) {
-    console.error(
-      `Expected ${expectedCode} for ${label}, got ${diag.code} (${diag.message})`,
-    );
-    process.exit(1);
-  }
-}
-
-expectOk(
-  "borrow-copy-primitive",
-  `fn main() : I32 => { let x : I32 = 1; let y : I32 = x; x + y }`,
-);
-
-expectOk(
-  "borrow-copy-struct",
-  `
-copy struct Vec2 { x : F32, y : F32 }
-fn main() : I32 => {
-  let a : Vec2 = Vec2 { x: 1, y: 2 };
-  let b : Vec2 = a;
-  let c : Vec2 = a;
-  0
-}
-`,
-);
+expectOk("borrow-copy-struct", COPY_STRUCT_VEC2_PROGRAM);
 
 expectOk(
   "borrow-copy-enum-default",
@@ -61,7 +33,7 @@ fn main() : I32 => {
 expectOk(
   "borrow-copy-type-alias",
   `
-copy struct Vec2 { x : F32, y : F32 }
+copy struct Vec2 {x : F32, y : F32}
 copy type Vec2Alias = Vec2;
 fn main() : I32 => {
   let a : Vec2Alias = Vec2 { x: 1, y: 2 };
@@ -74,102 +46,63 @@ fn main() : I32 => {
 
 expectFailCode(
   "borrow-copy-type-alias-invalid",
-  `
-struct Box { v : I32 }
-copy type BoxAlias = Box;
-fn main() : I32 => 0;
-`,
+  COPY_ALIAS_INVALID_BOX_SOURCE,
   "E_BORROW_INVALID_COPY_ALIAS",
 );
 
 expectFailCode(
   "borrow-use-after-move-struct",
-  `
-struct Box { v : I32 }
-fn main() : I32 => {
-  let b : Box = Box { v: 1 };
-  let moved : Box = b;
-  b.v
-}
-`,
+  MOVE_AFTER_MOVE_BOX_SOURCE,
   "E_BORROW_USE_AFTER_MOVE",
 );
 
 expectFailCode(
   "borrow-move-while-immut-borrowed",
-  `
-struct Box { v : I32 }
-fn main() : I32 => {
-  let b : Box = Box { v: 1 };
-  let r : *Box = &b;
-  let moved : Box = b;
-  0
-}
-`,
+  makeImmutBorrowedBoxProgram(["  let moved : Box = b;", "  0"]),
   "E_BORROW_MOVE_WHILE_BORROWED",
 );
 
 expectFailCode(
   "borrow-mut-conflict",
-  `
-struct Box { v : I32 }
-fn main() : I32 => {
-  let b : Box = Box { v: 1 };
-  let r1 : *Box = &b;
-  let r2 : *mut Box = &mut b;
-  0
-}
-`,
+  makeBoxProgram([
+    "  let r1 : *Box = &b;",
+    "  let r2 : *mut Box = &mut b;",
+    "  0",
+  ]),
   "E_BORROW_MUT_CONFLICT",
 );
 
 expectFailCode(
   "borrow-immut-while-mut",
-  `
-struct Box { v : I32 }
-fn main() : I32 => {
-  let b : Box = Box { v: 1 };
-  let r1 : *mut Box = &mut b;
-  let r2 : *Box = &b;
-  0
-}
-`,
+  makeBoxProgram([
+    "  let r1 : *mut Box = &mut b;",
+    "  let r2 : *Box = &b;",
+    "  0",
+  ]),
   "E_BORROW_IMMUT_WHILE_MUT",
 );
 
 expectFailCode(
   "borrow-assign-while-borrowed",
-  `
-struct Box { v : I32 }
-fn main() : I32 => {
-  let b : Box = Box { v: 1 };
-  let r : *Box = &b;
-  b = Box { v: 2 };
-  0
-}
-`,
+  makeImmutBorrowedBoxProgram(["  b = Box { v: 2 };", "  0"]),
   "E_BORROW_ASSIGN_WHILE_BORROWED",
 );
 
 expectOk(
   "borrow-lexical-scope-release",
-  `
-struct Box { v : I32 }
-fn main() : I32 => {
-  let b : Box = Box { v: 1 };
-  if (true) {
-    let r : *Box = &b;
-    0;
-  }
-  let moved : Box = b;
-  0
-}
-`,
+  makeBoxProgram([
+    "  if (true) {",
+    "    let r : *Box = &b;",
+    "    0;",
+    "  }",
+    "  let moved : Box = b;",
+    "  0",
+  ]),
 );
 
 expectFailCode(
   "borrow-invalid-target",
-  `fn main() : I32 => { let x : I32 = 1; let r : *I32 = &(x + 1); 0 }`,
+  BORROW_INVALID_TARGET_SOURCE,
   "E_BORROW_INVALID_TARGET",
 );
 
@@ -190,14 +123,7 @@ fn main() : I32 => {
 
 expectFailCode(
   "borrow-selfhost-backend-enforced",
-  `
-struct Box { v : I32 }
-fn main() : I32 => {
-  let b : Box = Box { v: 1 };
-  let moved : Box = b;
-  b.v
-}
-`,
+  MOVE_AFTER_MOVE_BOX_SOURCE,
   "E_BORROW_USE_AFTER_MOVE",
   { backend: "selfhost" },
 );

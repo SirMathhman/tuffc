@@ -1,12 +1,18 @@
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import {
   compileFileResult,
   compileSourceResult,
 } from "../../main/js/compiler.ts";
 import { toDiagnostic } from "../../main/js/errors.ts";
+import { expectDiagnosticCode } from "./compile-test-utils.ts";
+import { assertDiagnosticContract } from "./diagnostic-contract-utils.ts";
+import { getRepoRootFromImportMeta, getTsxCliPath } from "./path-test-utils.ts";
+import {
+  NULLABLE_POINTER_UNGUARDED_SOURCE,
+  STRICT_DIV_BY_ZERO_SOURCE,
+} from "./test-fixtures.ts";
 
 type ResultUnknown =
   | { ok: true; value: unknown }
@@ -20,15 +26,14 @@ function unwrapErr(result: ResultUnknown): unknown {
   process.exit(1);
 }
 
-const thisFile = fileURLToPath(import.meta.url);
-const root = path.resolve(path.dirname(thisFile), "..", "..", "..");
-const tsxCli = path.join(root, "node_modules", "tsx", "dist", "cli.mjs");
+const root = getRepoRootFromImportMeta(import.meta.url);
+const tsxCli = getTsxCliPath(root);
 const outDir = path.join(root, "tests", "out", "stage4");
 fs.mkdirSync(outDir, { recursive: true });
 
 // 1) Ensure internal diagnostics contain codes/hints for strict safety failures.
 const strictResult = compileSourceResult(
-  `fn bad(x : I32) : I32 => 100 / x;`,
+  STRICT_DIV_BY_ZERO_SOURCE,
   "<phase4>",
   {
     typecheck: { strictSafety: true },
@@ -39,28 +44,18 @@ if (strictResult.ok) {
   process.exit(1);
 }
 const strictDiag = toDiagnostic(unwrapErr(strictResult));
-if (strictDiag.code !== "E_SAFETY_DIV_BY_ZERO") {
-  console.error(`Expected E_SAFETY_DIV_BY_ZERO, got ${strictDiag.code}`);
-  process.exit(1);
-}
+expectDiagnosticCode(strictDiag, "E_SAFETY_DIV_BY_ZERO", "phase4 strict");
 if (!strictDiag.hint || !strictDiag.hint.includes("denominator")) {
   console.error(
     `Expected diagnostic hint about denominator, got: ${strictDiag.hint}`,
   );
   process.exit(1);
 }
-for (const key of ["source", "cause", "reason", "fix"]) {
-  if (!strictDiag[key] || typeof strictDiag[key] !== "string") {
-    console.error(
-      `Expected diagnostic field '${key}' to be a non-empty string`,
-    );
-    process.exit(1);
-  }
-}
+assertDiagnosticContract(strictDiag);
 
 // 1b) Selfhost backend should also enforce strict-safety diagnostics contract.
 const strictSelfhostResult = compileSourceResult(
-  `fn bad(x : I32) : I32 => 100 / x;`,
+  STRICT_DIV_BY_ZERO_SOURCE,
   "<phase4-selfhost>",
   {
     backend: "selfhost",
@@ -72,15 +67,14 @@ if (strictSelfhostResult.ok) {
   process.exit(1);
 }
 const strictSelfhostDiag = toDiagnostic(unwrapErr(strictSelfhostResult));
-if (strictSelfhostDiag.code !== "E_SAFETY_DIV_BY_ZERO") {
-  console.error(
-    `Expected E_SAFETY_DIV_BY_ZERO (selfhost), got ${strictSelfhostDiag.code}`,
-  );
-  process.exit(1);
-}
+expectDiagnosticCode(
+  strictSelfhostDiag,
+  "E_SAFETY_DIV_BY_ZERO",
+  "phase4 strict (selfhost)",
+);
 
 const nullableGuardResult = compileSourceResult(
-  `fn bad(p : *I32 | 0USize) : I32 => p[0];`,
+  NULLABLE_POINTER_UNGUARDED_SOURCE,
   "<phase4-nullable-guard>",
   {
     typecheck: { strictSafety: true },
@@ -97,14 +91,7 @@ if (nullableGuardDiag.code !== "E_SAFETY_NULLABLE_POINTER_GUARD") {
   );
   process.exit(1);
 }
-for (const key of ["source", "cause", "reason", "fix"]) {
-  if (!nullableGuardDiag[key] || typeof nullableGuardDiag[key] !== "string") {
-    console.error(
-      `Expected nullable-pointer diagnostic field '${key}' to be a non-empty string`,
-    );
-    process.exit(1);
-  }
-}
+assertDiagnosticContract(nullableGuardDiag, "nullable-pointer diagnostic");
 
 const borrowGuardResult = compileSourceResult(
   `struct Box { v : I32 }\nfn bad() : I32 => { let b : Box = Box { v: 1 }; let moved : Box = b; b.v }`,
@@ -121,14 +108,7 @@ if (borrowGuardDiag.code !== "E_BORROW_USE_AFTER_MOVE") {
   );
   process.exit(1);
 }
-for (const key of ["source", "cause", "reason", "fix"]) {
-  if (!borrowGuardDiag[key] || typeof borrowGuardDiag[key] !== "string") {
-    console.error(
-      `Expected borrow diagnostic field '${key}' to be a non-empty string`,
-    );
-    process.exit(1);
-  }
-}
+assertDiagnosticContract(borrowGuardDiag, "borrow diagnostic");
 
 const copyAliasInvalid = compileSourceResult(
   `struct Box { v : I32 }\ncopy type BoxAlias = Box;\nfn main() : I32 => 0;`,
@@ -145,14 +125,7 @@ if (copyAliasDiag.code !== "E_BORROW_INVALID_COPY_ALIAS") {
   );
   process.exit(1);
 }
-for (const key of ["source", "cause", "reason", "fix"]) {
-  if (!copyAliasDiag[key] || typeof copyAliasDiag[key] !== "string") {
-    console.error(
-      `Expected copy-alias diagnostic field '${key}' to be a non-empty string`,
-    );
-    process.exit(1);
-  }
-}
+assertDiagnosticContract(copyAliasDiag, "copy-alias diagnostic");
 
 // 2) Ensure CLI emits machine-readable JSON diagnostics.
 const failingFile = path.join(outDir, "cli-fail.tuff");
@@ -195,14 +168,7 @@ if (parsed.code !== "E_SAFETY_DIV_BY_ZERO") {
   process.exit(1);
 }
 
-for (const key of ["source", "cause", "reason", "fix"]) {
-  if (!parsed[key] || typeof parsed[key] !== "string") {
-    console.error(
-      `Expected CLI diagnostic field '${key}' to be a non-empty string`,
-    );
-    process.exit(1);
-  }
-}
+assertDiagnosticContract(parsed, "CLI diagnostic");
 
 // 3) Ensure lint diagnostics use the same 4-part contract.
 const lintFailingFile = path.join(outDir, "cli-lint-fail.tuff");
@@ -250,14 +216,7 @@ if (lintParsed.code !== "E_LINT_UNUSED_BINDING") {
   process.exit(1);
 }
 
-for (const key of ["source", "cause", "reason", "fix"]) {
-  if (!lintParsed[key] || typeof lintParsed[key] !== "string") {
-    console.error(
-      `Expected lint CLI diagnostic field '${key}' to be a non-empty string`,
-    );
-    process.exit(1);
-  }
-}
+assertDiagnosticContract(lintParsed, "lint CLI diagnostic");
 
 // 4) Receiver-call syntax for extern `this` parameter + lint suggestion.
 const receiverExtern = `extern fn str_length(this: *Str) : I32;`;
@@ -342,12 +301,11 @@ try {
   process.exit(1);
 }
 
-if (lintFixParsed.code !== "E_SELFHOST_UNSUPPORTED_OPTION") {
-  console.error(
-    `Expected E_SELFHOST_UNSUPPORTED_OPTION for lint-fix, got ${lintFixParsed.code}`,
-  );
-  process.exit(1);
-}
+expectDiagnosticCode(
+  lintFixParsed,
+  "E_SELFHOST_UNSUPPORTED_OPTION",
+  "lint-fix",
+);
 
 const lintFixUpdated = fs.readFileSync(lintFixFile, "utf8");
 const lintFixOriginal = [
@@ -475,10 +433,11 @@ if (implicitResult.ok) {
   process.exit(1);
 }
 const implicitDiag = toDiagnostic(unwrapErr(implicitResult));
-if (implicitDiag.code !== "E_MODULE_IMPLICIT_IMPORT") {
-  console.error(`Expected E_MODULE_IMPLICIT_IMPORT, got ${implicitDiag.code}`);
-  process.exit(1);
-}
+expectDiagnosticCode(
+  implicitDiag,
+  "E_MODULE_IMPLICIT_IMPORT",
+  "strict module implicit import",
+);
 
 const implicitSelfhostNoBridge = compileFileResult(
   implicitConsumerModule,
@@ -499,12 +458,11 @@ if (implicitSelfhostNoBridge.ok) {
 const implicitSelfhostNoBridgeDiag = toDiagnostic(
   unwrapErr(implicitSelfhostNoBridge),
 );
-if (implicitSelfhostNoBridgeDiag.code !== "E_MODULE_IMPLICIT_IMPORT") {
-  console.error(
-    `Expected E_MODULE_IMPLICIT_IMPORT (selfhost native), got ${implicitSelfhostNoBridgeDiag.code}`,
-  );
-  process.exit(1);
-}
+expectDiagnosticCode(
+  implicitSelfhostNoBridgeDiag,
+  "E_MODULE_IMPLICIT_IMPORT",
+  "strict module implicit import (selfhost native)",
+);
 
 const explicitResult = compileFileResult(explicitConsumerModule, undefined, {
   enableModules: true,
@@ -534,12 +492,11 @@ if (moduleLintFixUnsupported.ok) {
 const moduleLintFixUnsupportedDiag = toDiagnostic(
   unwrapErr(moduleLintFixUnsupported),
 );
-if (moduleLintFixUnsupportedDiag.code !== "E_SELFHOST_UNSUPPORTED_OPTION") {
-  console.error(
-    `Expected E_SELFHOST_UNSUPPORTED_OPTION for module lint-fix, got ${moduleLintFixUnsupportedDiag.code}`,
-  );
-  process.exit(1);
-}
+expectDiagnosticCode(
+  moduleLintFixUnsupportedDiag,
+  "E_SELFHOST_UNSUPPORTED_OPTION",
+  "module lint-fix",
+);
 
 // 9) Circular module imports should produce deterministic diagnostics in warn mode.
 const cycleLintDir = path.join(outDir, "lint-cycle-modules");

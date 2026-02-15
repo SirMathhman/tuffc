@@ -1,10 +1,9 @@
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { getRepoRootFromImportMeta, getTsxCliPath } from "./path-test-utils.ts";
 
-const thisFile = fileURLToPath(import.meta.url);
-const root = path.resolve(path.dirname(thisFile), "..", "..", "..");
-const tsxCli = path.join(root, "node_modules", "tsx", "dist", "cli.mjs");
+const root = getRepoRootFromImportMeta(import.meta.url);
+const tsxCli = getTsxCliPath(root);
 
 function expectFail(args, expectedText, label) {
   const result = spawnSync(

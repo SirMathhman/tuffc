@@ -1,52 +1,33 @@
 // @ts-nocheck
 import fs from "node:fs";
 import path from "node:path";
-import vm from "node:vm";
-import { fileURLToPath } from "node:url";
 import {
   compileFileResult,
   compileSourceResult,
 } from "../../main/js/compiler.ts";
 import { toDiagnostic } from "../../main/js/errors.ts";
-import * as runtime from "../../main/js/runtime.ts";
+import { compileAndLoadSelfhost } from "./selfhost-harness.ts";
+import {
+  COPY_ALIAS_INVALID_BOX_SOURCE,
+  COPY_STRUCT_VEC2_PROGRAM,
+  makeImmutBorrowedBoxProgram,
+  MOVE_AFTER_MOVE_BOX_SOURCE,
+} from "./test-fixtures.ts";
+import { runMainFromJs } from "./js-runtime-test-utils.ts";
+import {
+  getRepoRootFromImportMeta,
+  getTestsOutDir,
+} from "./path-test-utils.ts";
 
-const thisFile = fileURLToPath(import.meta.url);
-const root = path.resolve(path.dirname(thisFile), "..", "..", "..");
-const outDir = path.join(root, "tests", "out", "selfhost", "parity");
+const root = getRepoRootFromImportMeta(import.meta.url);
+const outDir = getTestsOutDir(root, "selfhost", "parity");
 const modulesBase = path.join(root, "src", "test", "tuff", "modules");
 const moduleEntry = path.join(modulesBase, "app.tuff");
-const selfhostPath = path.join(root, "src", "main", "tuff", "selfhost.tuff");
 
 fs.mkdirSync(outDir, { recursive: true });
 
 function loadSelfhost() {
-  const selfhostResult = compileFileResult(
-    selfhostPath,
-    path.join(outDir, "selfhost.js"),
-    {
-      enableModules: true,
-      modules: { moduleBaseDir: path.dirname(selfhostPath) },
-      resolve: {
-        hostBuiltins: Object.keys(runtime),
-        allowHostPrefix: "",
-      },
-    },
-  );
-  if (!selfhostResult.ok) throw selfhostResult.error;
-
-  const sandbox = {
-    module: { exports: {} },
-    exports: {},
-    console,
-    ...runtime,
-  };
-
-  vm.runInNewContext(
-    `${selfhostResult.value.js}\nmodule.exports = { compile_source, compile_file, main };`,
-    sandbox,
-  );
-
-  const selfhost = sandbox.module.exports;
+  const { selfhost } = compileAndLoadSelfhost(root, outDir);
   if (
     typeof selfhost.compile_source !== "function" ||
     typeof selfhost.compile_file !== "function"
@@ -56,15 +37,6 @@ function loadSelfhost() {
   return selfhost;
 }
 
-function runMainFromJs(js, label) {
-  const sandbox = { module: { exports: {} }, exports: {}, console };
-  vm.runInNewContext(`${js}\nmodule.exports = { main };`, sandbox);
-  if (typeof sandbox.module.exports.main !== "function") {
-    throw new Error(`${label}: generated JS does not export main()`);
-  }
-  return sandbox.module.exports.main();
-}
-
 function assertContract(diag, label) {
   for (const key of ["source", "cause", "reason", "fix"]) {
     if (!diag[key] || typeof diag[key] !== "string") {
@@ -72,6 +44,12 @@ function assertContract(diag, label) {
         `${label}: diagnostic field '${key}' must be a non-empty string`,
       );
     }
+  }
+}
+
+function assertDiagCode(diag, expectedCode, label) {
+  if (diag.code !== expectedCode) {
+    throw new Error(`${label}: expected ${expectedCode}, got ${diag.code}`);
   }
 }
 
@@ -257,8 +235,8 @@ expectBothFail(
 
 // 8) Function call arity mismatch parity (first type-semantics gate).
 const aritySource = `
-fn add(a: I32, b: I32) : I32 => a + b;
-fn main() : I32 => add(1);
+fn add_pair(left: I32, right: I32) : I32 => left + right;
+fn main() : I32 => add_pair(1);
 `;
 
 expectBothFail(
@@ -403,16 +381,16 @@ if (nullableStage0.ok || nullableSelfhostStrict.ok) {
 }
 const nullableStage0Diag = toDiagnostic(nullableStage0.error);
 const nullableSelfhostDiag = toDiagnostic(nullableSelfhostStrict.error);
-if (nullableStage0Diag.code !== "E_SAFETY_NULLABLE_POINTER_GUARD") {
-  throw new Error(
-    `nullable strict-safety parity (stage0): expected E_SAFETY_NULLABLE_POINTER_GUARD, got ${nullableStage0Diag.code}`,
-  );
-}
-if (nullableSelfhostDiag.code !== "E_SAFETY_NULLABLE_POINTER_GUARD") {
-  throw new Error(
-    `nullable strict-safety parity (selfhost): expected E_SAFETY_NULLABLE_POINTER_GUARD, got ${nullableSelfhostDiag.code}`,
-  );
-}
+assertDiagCode(
+  nullableStage0Diag,
+  "E_SAFETY_NULLABLE_POINTER_GUARD",
+  "nullable strict-safety parity (stage0)",
+);
+assertDiagCode(
+  nullableSelfhostDiag,
+  "E_SAFETY_NULLABLE_POINTER_GUARD",
+  "nullable strict-safety parity (selfhost)",
+);
 
 const nullableGuardedSource =
   "fn ok(p : *I32 | 0USize) : I32 => { if (p != 0USize) { p[0] } else { 0 } }\n";
@@ -454,16 +432,16 @@ if (moduloStage0.ok || moduloSelfhostStrict.ok) {
 }
 const moduloStage0Diag = toDiagnostic(moduloStage0.error);
 const moduloSelfhostDiag = toDiagnostic(moduloSelfhostStrict.error);
-if (moduloStage0Diag.code !== "E_SAFETY_MOD_BY_ZERO") {
-  throw new Error(
-    `modulo strict-safety parity (stage0): expected E_SAFETY_MOD_BY_ZERO, got ${moduloStage0Diag.code}`,
-  );
-}
-if (moduloSelfhostDiag.code !== "E_SAFETY_MOD_BY_ZERO") {
-  throw new Error(
-    `modulo strict-safety parity (selfhost): expected E_SAFETY_MOD_BY_ZERO, got ${moduloSelfhostDiag.code}`,
-  );
-}
+assertDiagCode(
+  moduloStage0Diag,
+  "E_SAFETY_MOD_BY_ZERO",
+  "modulo strict-safety parity (stage0)",
+);
+assertDiagCode(
+  moduloSelfhostDiag,
+  "E_SAFETY_MOD_BY_ZERO",
+  "modulo strict-safety parity (selfhost)",
+);
 
 const overflowStrictSource = "fn overflow() : I32 => 2147483647 + 1;\n";
 const overflowStage0 = compileSourceResult(
@@ -488,25 +466,18 @@ if (overflowStage0.ok || overflowSelfhostStrict.ok) {
 }
 const overflowStage0Diag = toDiagnostic(overflowStage0.error);
 const overflowSelfhostDiag = toDiagnostic(overflowSelfhostStrict.error);
-if (overflowStage0Diag.code !== "E_SAFETY_OVERFLOW") {
-  throw new Error(
-    `overflow strict-safety parity (stage0): expected E_SAFETY_OVERFLOW, got ${overflowStage0Diag.code}`,
-  );
-}
-if (overflowSelfhostDiag.code !== "E_SAFETY_OVERFLOW") {
-  throw new Error(
-    `overflow strict-safety parity (selfhost): expected E_SAFETY_OVERFLOW, got ${overflowSelfhostDiag.code}`,
-  );
-}
+assertDiagCode(
+  overflowStage0Diag,
+  "E_SAFETY_OVERFLOW",
+  "overflow strict-safety parity (stage0)",
+);
+assertDiagCode(
+  overflowSelfhostDiag,
+  "E_SAFETY_OVERFLOW",
+  "overflow strict-safety parity (selfhost)",
+);
 
-const borrowMoveSource = `
-struct Box { v : I32 }
-fn main() : I32 => {
-  let b : Box = Box { v: 1 };
-  let moved : Box = b;
-  b.v
-}
-`;
+const borrowMoveSource = MOVE_AFTER_MOVE_BOX_SOURCE;
 const borrowMoveStage0 = compileSourceResult(
   borrowMoveSource,
   "<borrow-stage0>",
@@ -530,14 +501,7 @@ if (toDiagnostic(borrowMoveSelfhost.error).code !== "E_BORROW_USE_AFTER_MOVE") {
   throw new Error("borrow parity (selfhost): expected E_BORROW_USE_AFTER_MOVE");
 }
 
-const borrowOkSource = `
-struct Box { v : I32 }
-fn main() : I32 => {
-  let b : Box = Box { v: 1 };
-  let r : *Box = &b;
-  0
-}
-`;
+const borrowOkSource = makeImmutBorrowedBoxProgram(["  0"]);
 const borrowOkStage0 = compileSourceResult(
   borrowOkSource,
   "<borrow-ok-stage0>",
@@ -555,15 +519,7 @@ if (!borrowOkStage0.ok || !borrowOkSelfhost.ok) {
   );
 }
 
-const copyStructSource = `
-copy struct Vec2 { x : F32, y : F32 }
-fn main() : I32 => {
-  let a : Vec2 = Vec2 { x: 1, y: 2 };
-  let b : Vec2 = a;
-  let c : Vec2 = a;
-  0
-}
-`;
+const copyStructSource = COPY_STRUCT_VEC2_PROGRAM;
 const copyStructStage0 = compileSourceResult(
   copyStructSource,
   "<copy-struct-stage0>",
@@ -579,11 +535,7 @@ if (!copyStructStage0.ok || !copyStructSelfhost.ok) {
   throw new Error("copy-struct parity: expected both backends to compile");
 }
 
-const copyAliasInvalidSource = `
-struct Box { v : I32 }
-copy type BoxAlias = Box;
-fn main() : I32 => 0;
-`;
+const copyAliasInvalidSource = COPY_ALIAS_INVALID_BOX_SOURCE;
 expectBothFail(
   () => compileSourceResult(copyAliasInvalidSource, "<copy-alias-invalid-js>"),
   () => selfhost.compile_source(copyAliasInvalidSource),

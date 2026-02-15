@@ -1,8 +1,8 @@
-import vm from "node:vm";
 import {
   compileTuffToJs,
   compileTuffToJsDiagnostics,
 } from "../../main/js/web-compiler.ts";
+import { runMainFromJs } from "./js-runtime-test-utils.ts";
 
 const source = [
   "fn add(a : I32, b : I32) : I32 => a + b;",
@@ -15,15 +15,7 @@ const js = compileTuffToJs(source, {
   lint: { enabled: true, mode: "warn" },
 });
 
-const sandbox = { module: { exports: {} }, exports: {}, console };
-vm.runInNewContext(`${js}\nmodule.exports = { main };`, sandbox);
-
-if (typeof sandbox.module.exports.main !== "function") {
-  console.error("Expected compiled browser API output to define main()");
-  process.exit(1);
-}
-
-const value = sandbox.module.exports.main();
+const value = runMainFromJs(js, "web-compiler-api");
 if (value !== 42) {
   console.error(`Expected compiled output to return 42, got ${value}`);
   process.exit(1);

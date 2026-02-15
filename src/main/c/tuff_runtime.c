@@ -69,6 +69,12 @@ static inline const char *tuff_str(int64_t v)
     return (const char *)(intptr_t)v;
 }
 
+static inline const char *tuff_str_or_empty(int64_t v)
+{
+    const char *s = tuff_str(v);
+    return s == NULL ? "" : s;
+}
+
 static int tuff_is_managed_string_ptr(const char *p)
 {
     if (p == NULL)
@@ -153,6 +159,30 @@ static int tuff_value_equals(int64_t a, int64_t b)
     if (!tuff_is_managed_string_ptr(sa) || !tuff_is_managed_string_ptr(sb))
         return 0;
     return strcmp(sa, sb) == 0;
+}
+
+static int64_t tuff_map_index_of(TuffMap *m, int64_t key)
+{
+    if (m == NULL)
+        return -1;
+    for (size_t i = 0; i < m->len; i++)
+    {
+        if (tuff_value_equals(m->keys[i], key))
+            return (int64_t)i;
+    }
+    return -1;
+}
+
+static int64_t tuff_set_index_of(TuffSet *s, int64_t item)
+{
+    if (s == NULL)
+        return -1;
+    for (size_t i = 0; i < s->len; i++)
+    {
+        if (tuff_value_equals(s->items[i], item))
+            return (int64_t)i;
+    }
+    return -1;
 }
 
 static void *tuff_realloc_array(void *ptr, size_t elem_size, size_t new_cap)
@@ -254,12 +284,8 @@ int64_t str_slice(int64_t s, int64_t start, int64_t end)
 
 int64_t str_concat(int64_t a, int64_t b)
 {
-    const char *sa = tuff_str(a);
-    const char *sb = tuff_str(b);
-    if (sa == NULL)
-        sa = "";
-    if (sb == NULL)
-        sb = "";
+    const char *sa = tuff_str_or_empty(a);
+    const char *sb = tuff_str_or_empty(b);
     size_t na = strlen(sa);
     size_t nb = strlen(sb);
     char *out = (char *)malloc(na + nb + 1);
@@ -599,13 +625,11 @@ int64_t map_set(int64_t thisMap, int64_t k, int64_t v)
     k = tuff_canonicalize_key(k);
     if (m == NULL)
         return thisMap;
-    for (size_t i = 0; i < m->len; i++)
+    int64_t found = tuff_map_index_of(m, k);
+    if (found >= 0)
     {
-        if (tuff_value_equals(m->keys[i], k))
-        {
-            m->vals[i] = v;
-            return thisMap;
-        }
+        m->vals[(size_t)found] = v;
+        return thisMap;
     }
     map_reserve(m, m->len + 1);
     m->keys[m->len] = k;
@@ -618,28 +642,15 @@ int64_t map_get(int64_t thisMap, int64_t k)
 {
     TuffMap *m = (TuffMap *)tuff_from_val(thisMap);
     k = tuff_canonicalize_key(k);
-    if (m == NULL)
-        return 0;
-    for (size_t i = 0; i < m->len; i++)
-    {
-        if (tuff_value_equals(m->keys[i], k))
-            return m->vals[i];
-    }
-    return 0;
+    int64_t idx = tuff_map_index_of(m, k);
+    return idx >= 0 ? m->vals[(size_t)idx] : 0;
 }
 
 int64_t map_has(int64_t thisMap, int64_t k)
 {
     TuffMap *m = (TuffMap *)tuff_from_val(thisMap);
     k = tuff_canonicalize_key(k);
-    if (m == NULL)
-        return 0;
-    for (size_t i = 0; i < m->len; i++)
-    {
-        if (tuff_value_equals(m->keys[i], k))
-            return 1;
-    }
-    return 0;
+    return tuff_map_index_of(m, k) >= 0;
 }
 
 int64_t set_new(void)
@@ -670,11 +681,8 @@ int64_t set_add(int64_t thisSet, int64_t item)
     item = tuff_canonicalize_key(item);
     if (s == NULL)
         return thisSet;
-    for (size_t i = 0; i < s->len; i++)
-    {
-        if (tuff_value_equals(s->items[i], item))
-            return thisSet;
-    }
+    if (tuff_set_index_of(s, item) >= 0)
+        return thisSet;
     set_reserve(s, s->len + 1);
     s->items[s->len++] = item;
     return thisSet;
@@ -684,33 +692,20 @@ int64_t set_has(int64_t thisSet, int64_t item)
 {
     TuffSet *s = (TuffSet *)tuff_from_val(thisSet);
     item = tuff_canonicalize_key(item);
-    if (s == NULL)
-        return 0;
-    for (size_t i = 0; i < s->len; i++)
-    {
-        if (tuff_value_equals(s->items[i], item))
-            return 1;
-    }
-    return 0;
+    return tuff_set_index_of(s, item) >= 0;
 }
 
 int64_t set_delete(int64_t thisSet, int64_t item)
 {
     TuffSet *s = (TuffSet *)tuff_from_val(thisSet);
     item = tuff_canonicalize_key(item);
-    if (s == NULL)
+    int64_t idx = tuff_set_index_of(s, item);
+    if (idx < 0)
         return 0;
-    for (size_t i = 0; i < s->len; i++)
-    {
-        if (tuff_value_equals(s->items[i], item))
-        {
-            for (size_t j = i + 1; j < s->len; j++)
-                s->items[j - 1] = s->items[j];
-            s->len--;
-            return 1;
-        }
-    }
-    return 0;
+    for (size_t j = (size_t)idx + 1; j < s->len; j++)
+        s->items[j - 1] = s->items[j];
+    s->len--;
+    return 1;
 }
 
 int64_t read_file(int64_t filePath)
@@ -755,12 +750,8 @@ int64_t write_file(int64_t filePath, int64_t contents)
 
 int64_t path_join(int64_t a, int64_t b)
 {
-    const char *sa = tuff_str(a);
-    const char *sb = tuff_str(b);
-    if (sa == NULL)
-        sa = "";
-    if (sb == NULL)
-        sb = "";
+    const char *sa = tuff_str_or_empty(a);
+    const char *sb = tuff_str_or_empty(b);
     if (sb[0] == '/' || sb[0] == '\\' || (strlen(sb) > 1 && sb[1] == ':'))
         return tuff_register_cstring_copy(sb);
     size_t na = strlen(sa);

@@ -97,30 +97,21 @@ function emitStmt(stmt) {
       // Use 'let' to allow reassignment during bootstrap
       return `let ${stmt.name} = ${emitExpr(stmt.value)};`;
     case "ImportDecl":
-      return `// import placeholder: { ${stmt.names.join(", ")} } = ${stmt.modulePath}`;
+      return `// module import placeholder: { ${stmt.names.join(", ")} } = ${stmt.modulePath}`;
     case "ExprStmt":
       return `${emitExpr(stmt.expr)};`;
     case "AssignStmt":
       return `${emitExpr(stmt.target)} = ${emitExpr(stmt.value)};`;
     case "ReturnStmt":
       return stmt.value ? `return ${emitExpr(stmt.value)};` : "return;";
-    case "IfStmt": {
-      const elsePart = stmt.elseBranch
-        ? ` else ${emitStmtOrBlock(stmt.elseBranch)}`
-        : "";
-      return `if (${emitExpr(stmt.condition)}) ${emitStmtOrBlock(stmt.thenBranch)}${elsePart}`;
-    }
-    case "IfExpr": {
-      // IfExpr used as a statement (e.g., in else if chains)
-      const elsePart = stmt.elseBranch
-        ? ` else ${emitStmtOrBlock(stmt.elseBranch)}`
-        : "";
-      return `if (${emitExpr(stmt.condition)}) ${emitStmtOrBlock(stmt.thenBranch)}${elsePart}`;
-    }
+    case "IfStmt":
+      return emitIfLikeStmt(stmt);
+    case "IfExpr":
+      return emitIfLikeStmt(stmt);
     case "WhileStmt":
-      return `while (${emitExpr(stmt.condition)}) ${emitBlock(stmt.body)}`;
+      return `while (${emitExpr(stmt.condition)}) ${emitStmtOrBlock(stmt.body)}`;
     case "ForStmt":
-      return `for (let ${stmt.iterator} = ${emitExpr(stmt.start)}; ${stmt.iterator} < ${emitExpr(stmt.end)}; ${stmt.iterator}++) ${emitBlock(stmt.body)}`;
+      return `for (let ${stmt.iterator} = ${emitExpr(stmt.start)}; ${stmt.iterator} < ${emitExpr(stmt.end)}; ${stmt.iterator}++) ${emitStmtOrBlock(stmt.body)}`;
     case "BreakStmt":
       return "break;";
     case "ContinueStmt":
@@ -160,6 +151,13 @@ function emitStmt(stmt) {
   }
 }
 
+function emitIfLikeStmt(stmt) {
+  const elsePart = stmt.elseBranch
+    ? ` else ${emitStmtOrBlock(stmt.elseBranch)}`
+    : "";
+  return `if (${emitExpr(stmt.condition)}) ${emitStmtOrBlock(stmt.thenBranch)}${elsePart}`;
+}
+
 function emitStmtOrBlock(node) {
   if (node.kind === "Block") return emitBlock(node);
   return `{ ${emitStmt(node)} }`;
@@ -173,32 +171,25 @@ function emitFunctionBlock(block) {
   if (block.statements.length === 0) {
     return "{\n}";
   }
-  const rows = block.statements.map((s, idx) => {
+  const rows = [];
+  for (let idx = 0; idx < block.statements.length; idx += 1) {
+    const s = block.statements[idx];
     const isLast = idx === block.statements.length - 1;
     if (isLast && s.kind === "ExprStmt") {
-      return `  return ${emitExpr(s.expr)};`;
+      rows.push(`  return ${emitExpr(s.expr)};`);
+      continue;
     }
     // For IfStmt at last position, emit as expression with return
     if (isLast && s.kind === "IfStmt") {
-      const thenBody =
-        s.thenBranch.kind === "Block"
-          ? `(() => ${emitFunctionBlock(s.thenBranch)})()`
-          : emitExpr(s.thenBranch);
-      const elseBody = s.elseBranch
-        ? s.elseBranch.kind === "Block"
-          ? `(() => ${emitFunctionBlock(s.elseBranch)})()`
-          : s.elseBranch.kind === "IfStmt"
-            ? emitIfStmtAsExpr(s.elseBranch)
-            : emitExpr(s.elseBranch)
-        : "undefined";
-      return `  return ((${emitExpr(s.condition)}) ? ${thenBody} : ${elseBody});`;
+      rows.push(`  return ${emitIfStmtConditionalExpr(s)};`);
+      continue;
     }
-    return `  ${emitStmt(s)}`;
-  });
+    rows.push(`  ${emitStmt(s)}`);
+  }
   return `{\n${rows.join("\n")}\n}`;
 }
 
-function emitIfStmtAsExpr(s) {
+function emitIfStmtConditionalExpr(s) {
   const thenBody =
     s.thenBranch.kind === "Block"
       ? `(() => ${emitFunctionBlock(s.thenBranch)})()`
@@ -207,10 +198,14 @@ function emitIfStmtAsExpr(s) {
     ? s.elseBranch.kind === "Block"
       ? `(() => ${emitFunctionBlock(s.elseBranch)})()`
       : s.elseBranch.kind === "IfStmt"
-        ? emitIfStmtAsExpr(s.elseBranch)
+        ? emitIfStmtConditionalExpr(s.elseBranch)
         : emitExpr(s.elseBranch)
     : "undefined";
   return `((${emitExpr(s.condition)}) ? ${thenBody} : ${elseBody})`;
+}
+
+function emitIfStmtAsExpr(s) {
+  return emitIfStmtConditionalExpr(s);
 }
 
 export function generateJavaScript(ast: { body: unknown[] }): string {

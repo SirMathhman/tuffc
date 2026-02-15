@@ -129,6 +129,26 @@ function getCodegenTarget(options): string {
   return options.target ?? "js";
 }
 
+function selectBackendWithTargetCheck(
+  options,
+  target,
+  isSelfhostBootstrapInput = false,
+): CompilerResult<string> {
+  const selectedBackend = selectBackend(
+    options,
+    target,
+    isSelfhostBootstrapInput,
+  );
+  const targetCheck = ensureSupportedTarget(target);
+  if (!targetCheck.ok) return targetCheck;
+  return ok(selectedBackend);
+}
+
+function isBorrowcheckEnabled(options, disableForBootstrap = false) {
+  if (disableForBootstrap) return false;
+  return options.borrowcheck?.enabled !== false;
+}
+
 function selectBackend(options, target, isSelfhostBootstrapInput = false) {
   const explicit = options.backend;
   if (explicit === "stage0" || explicit === "selfhost") {
@@ -155,6 +175,137 @@ function selectBackend(options, target, isSelfhostBootstrapInput = false) {
 
 function isSupportedTarget(target): boolean {
   return target === "js" || target === "c";
+}
+
+function ensureSupportedTarget(target): CompilerResult<true> {
+  if (isSupportedTarget(target)) {
+    return ok(true);
+  }
+  return err(
+    new TuffError(`Unsupported codegen target: ${target}`, undefined, {
+      code: "E_UNSUPPORTED_TARGET",
+      reason:
+        "The compiler was asked to emit code for a target that is not implemented.",
+      fix: "Use target: 'js' or target: 'c'.",
+    }),
+  );
+}
+
+function ensureSelfhostJsTarget(target): CompilerResult<true> {
+  if (target === "js") {
+    return ok(true);
+  }
+  return err(
+    new TuffError(
+      `Selfhost backend does not support target '${target}' yet`,
+      undefined,
+      {
+        code: "E_SELFHOST_UNSUPPORTED_OPTION",
+        reason:
+          "Selfhost backend currently emits JavaScript only and cannot generate other targets.",
+        fix: "Use backend: 'stage0' for target 'c', or set target: 'js' when using selfhost.",
+      },
+    ),
+  );
+}
+
+function stage0LintUnsupportedError(): CompilerResult<never> {
+  return err(
+    new TuffError("Stage0 backend no longer supports linting", undefined, {
+      code: "E_SELFHOST_UNSUPPORTED_OPTION",
+      reason:
+        "Linting is now provided only by the Tuff selfhost pipeline to keep diagnostics behavior unified.",
+      fix: "Use backend: 'selfhost' (default) when enabling --lint.",
+    }),
+  );
+}
+
+function ensureSelfhostBackendOptions(target, options): CompilerResult<true> {
+  const selfhostTargetCheck = ensureSelfhostJsTarget(target);
+  if (!selfhostTargetCheck.ok) return selfhostTargetCheck;
+  if (options.lint?.fix) {
+    return err(
+      new TuffError(
+        "Selfhost backend does not support lint auto-fix yet",
+        undefined,
+        {
+          code: "E_SELFHOST_UNSUPPORTED_OPTION",
+          reason:
+            "The Tuff-based linter currently supports diagnostics only and does not rewrite source automatically.",
+          fix: "Run without --lint-fix, or apply lint suggestions manually.",
+        },
+      ),
+    );
+  }
+  return ok(true);
+}
+
+function handleSelfhostLintIssues(
+  selfhost,
+  source,
+  lintMode,
+): CompilerResult<unknown[]> {
+  const lintIssues =
+    typeof selfhost.take_lint_issues === "function"
+      ? decodeSelfhostLintIssues(selfhost.take_lint_issues())
+      : [];
+  for (const issue of lintIssues) {
+    enrichError(issue, { source });
+  }
+  if (lintIssues.length > 0 && lintMode !== "warn") {
+    return err(lintIssues[0]);
+  }
+  return ok(lintIssues);
+}
+
+function getSelfhostLintConfig(options) {
+  return {
+    strictSafety: 1,
+    lintEnabled: options.lint?.enabled ? 1 : 0,
+    maxEffectiveLines: options.lint?.maxEffectiveLines ?? 500,
+    lintMode: options.lint?.mode ?? "error",
+  };
+}
+
+function makeSelfhostCompileResult(source, js, target, lintIssues, outputPath) {
+  return {
+    source,
+    tokens: [],
+    cst: { kind: "Program", body: [] },
+    core: { kind: "Program", body: [] },
+    js,
+    output: js,
+    target,
+    lintIssues,
+    lintFixesApplied: 0,
+    lintFixedSource: source,
+    ...(outputPath ? { outputPath } : {}),
+  };
+}
+
+function initializeSelfhostCompileContext(
+  run,
+  options,
+): CompilerResult<{
+  selfhost: unknown;
+  strictSafety: number;
+  lintEnabled: number;
+  maxEffectiveLines: number;
+  lintMode: string;
+}> {
+  const selfhostResult = run("selfhost-bootstrap", () =>
+    bootstrapSelfhostCompiler(options),
+  );
+  if (!selfhostResult.ok) return selfhostResult;
+  const { strictSafety, lintEnabled, maxEffectiveLines, lintMode } =
+    getSelfhostLintConfig(options);
+  return ok({
+    selfhost: selfhostResult.value,
+    strictSafety,
+    lintEnabled,
+    maxEffectiveLines,
+    lintMode,
+  });
 }
 
 function extensionForTarget(target): string {
@@ -371,63 +522,31 @@ export function compileSource(
   options: Record<string, unknown> = {},
 ): CompilerResult<Record<string, unknown>> {
   const target = getCodegenTarget(options);
-  const selectedBackend = selectBackend(options, target, false);
-  if (!isSupportedTarget(target)) {
-    return err(
-      new TuffError(`Unsupported codegen target: ${target}`, undefined, {
-        code: "E_UNSUPPORTED_TARGET",
-        reason:
-          "The compiler was asked to emit code for a target that is not implemented.",
-        fix: "Use target: 'js' or target: 'c'.",
-      }),
-    );
-  }
+  const selectedBackendResult = selectBackendWithTargetCheck(
+    options,
+    target,
+    false,
+  );
+  if (!selectedBackendResult.ok) return selectedBackendResult;
 
-  if (selectedBackend === "selfhost") {
+  if (selectedBackendResult.value === "selfhost") {
     const run = createTracer(options.tracePasses);
-    const borrowEnabled = options.borrowcheck?.enabled !== false;
-
-    if (target !== "js") {
-      return err(
-        new TuffError(
-          `Selfhost backend does not support target '${target}' yet`,
-          undefined,
-          {
-            code: "E_SELFHOST_UNSUPPORTED_OPTION",
-            reason:
-              "Selfhost backend currently emits JavaScript only and cannot generate other targets.",
-            fix: "Use backend: 'stage0' for target 'c', or set target: 'js' when using selfhost.",
-          },
-        ),
-      );
-    }
-
-    if (options.lint?.fix) {
-      return err(
-        new TuffError(
-          "Selfhost backend does not support lint auto-fix yet",
-          undefined,
-          {
-            code: "E_SELFHOST_UNSUPPORTED_OPTION",
-            reason:
-              "The Tuff-based linter currently supports diagnostics only and does not rewrite source automatically.",
-            fix: "Run without --lint-fix, or apply lint suggestions manually.",
-          },
-        ),
-      );
-    }
+    const borrowEnabled = isBorrowcheckEnabled(options);
+    const selfhostOptionsCheck = ensureSelfhostBackendOptions(target, options);
+    if (!selfhostOptionsCheck.ok) return selfhostOptionsCheck;
 
     const effectiveSource = source;
-
-    const selfhostResult = run("selfhost-bootstrap", () =>
-      bootstrapSelfhostCompiler(options),
+    const selfhostContextResult = initializeSelfhostCompileContext(
+      run,
+      options,
     );
-    if (!selfhostResult.ok) return selfhostResult;
-    const selfhost = selfhostResult.value;
-    const strictSafety = 1;
-    const lintEnabled = options.lint?.enabled ? 1 : 0;
-    const maxEffectiveLines = options.lint?.maxEffectiveLines ?? 500;
-    const lintMode = options.lint?.mode ?? "error";
+    if (!selfhostContextResult.ok) return selfhostContextResult;
+    const selfhostContext = selfhostContextResult.value;
+    const selfhost = selfhostContext.selfhost;
+    const strictSafety = selfhostContext.strictSafety;
+    const lintEnabled = selfhostContext.lintEnabled;
+    const maxEffectiveLines = selfhostContext.maxEffectiveLines;
+    const lintMode = selfhostContext.lintMode;
 
     // Selfhost can throw, wrap in try/catch but return Result
     let js;
@@ -451,43 +570,23 @@ export function compileSource(
           : new TuffError(String(error), undefined),
       );
     }
-    const lintIssues =
-      typeof selfhost.take_lint_issues === "function"
-        ? decodeSelfhostLintIssues(selfhost.take_lint_issues())
-        : [];
-    for (const issue of lintIssues) {
-      enrichError(issue, { source: effectiveSource });
-    }
-    if (lintIssues.length > 0 && lintMode !== "warn") {
-      return err(lintIssues[0]);
-    }
+    const lintIssuesResult = handleSelfhostLintIssues(
+      selfhost,
+      effectiveSource,
+      lintMode,
+    );
+    if (!lintIssuesResult.ok) return lintIssuesResult;
+    const lintIssues = lintIssuesResult.value;
 
-    return ok({
-      tokens: [],
-      cst: { kind: "Program", body: [] },
-      core: { kind: "Program", body: [] },
-      js,
-      output: js,
-      target,
-      lintIssues,
-      lintFixesApplied: 0,
-      lintFixedSource: source,
-    });
+    return ok(makeSelfhostCompileResult(source, js, target, lintIssues));
   }
 
   if (options.lint?.enabled) {
-    return err(
-      new TuffError("Stage0 backend no longer supports linting", undefined, {
-        code: "E_SELFHOST_UNSUPPORTED_OPTION",
-        reason:
-          "Linting is now provided only by the Tuff selfhost pipeline to keep diagnostics behavior unified.",
-        fix: "Use backend: 'selfhost' (default) when enabling --lint.",
-      }),
-    );
+    return stage0LintUnsupportedError();
   }
 
   const run = createTracer(options.tracePasses);
-  const borrowEnabled = options.borrowcheck?.enabled !== false;
+  const borrowEnabled = isBorrowcheckEnabled(options);
   const tokensResult = run("lex", () => lex(source, filePath));
   if (!tokensResult.ok) {
     enrichError(tokensResult.error, { source });
@@ -561,70 +660,32 @@ function compileFileInternal(
     ? { ...(options.typecheck ?? {}), __bootstrapRelaxed: true }
     : (options.typecheck ?? {});
   const target = getCodegenTarget(options);
-  const selectedBackend = selectBackend(
+  const backendResult = selectBackendWithTargetCheck(
     options,
     target,
     isSelfhostBootstrapInput,
   );
-  if (!isSupportedTarget(target)) {
-    return err(
-      new TuffError(`Unsupported codegen target: ${target}`, undefined, {
-        code: "E_UNSUPPORTED_TARGET",
-        reason:
-          "The compiler was asked to emit code for a target that is not implemented.",
-        fix: "Use target: 'js' or target: 'c'.",
-      }),
-    );
-  }
+  if (!backendResult.ok) return backendResult;
+  const selectedBackend = backendResult.value;
 
   if (selectedBackend === "selfhost") {
     const run = createTracer(options.tracePasses);
-    const borrowEnabled =
-      options.borrowcheck?.enabled !== false && !isSelfhostBootstrapInput;
-
-    if (target !== "js") {
-      return err(
-        new TuffError(
-          `Selfhost backend does not support target '${target}' yet`,
-          undefined,
-          {
-            code: "E_SELFHOST_UNSUPPORTED_OPTION",
-            reason:
-              "Selfhost backend currently emits JavaScript only and cannot generate other targets.",
-            fix: "Use backend: 'stage0' for target 'c', or set target: 'js' when using selfhost.",
-          },
-        ),
-      );
-    }
+    const borrowEnabled = isBorrowcheckEnabled(
+      options,
+      isSelfhostBootstrapInput,
+    );
+    const selfhostOptionsCheck = ensureSelfhostBackendOptions(target, options);
+    if (!selfhostOptionsCheck.ok) return selfhostOptionsCheck;
 
     const absInput = path.resolve(inputPath);
     const finalOutput = outputPath ?? defaultOutputPath(absInput, target);
-
-    const selfhostResult = run("selfhost-bootstrap", () =>
-      bootstrapSelfhostCompiler(options),
+    const selfhostContextResult = initializeSelfhostCompileContext(
+      run,
+      options,
     );
-    if (!selfhostResult.ok) return selfhostResult;
-    const selfhost = selfhostResult.value;
-
-    if (options.lint?.fix) {
-      return err(
-        new TuffError(
-          "Selfhost backend does not support lint auto-fix yet",
-          undefined,
-          {
-            code: "E_SELFHOST_UNSUPPORTED_OPTION",
-            reason:
-              "The Tuff-based linter currently supports diagnostics only and does not rewrite source automatically.",
-            fix: "Run without --lint-fix, or apply lint suggestions manually.",
-          },
-        ),
-      );
-    }
-
-    const strictSafety = 1;
-    const lintEnabled = options.lint?.enabled ? 1 : 0;
-    const maxEffectiveLines = options.lint?.maxEffectiveLines ?? 500;
-    const lintMode = options.lint?.mode ?? "error";
+    if (!selfhostContextResult.ok) return selfhostContextResult;
+    const { selfhost, strictSafety, lintEnabled, maxEffectiveLines, lintMode } =
+      selfhostContextResult.value;
     const source = fs.readFileSync(absInput, "utf8");
 
     let js;
@@ -677,46 +738,25 @@ function compileFileInternal(
       );
     }
 
-    const lintIssues =
-      typeof selfhost.take_lint_issues === "function"
-        ? decodeSelfhostLintIssues(selfhost.take_lint_issues())
-        : [];
-    for (const issue of lintIssues) {
-      enrichError(issue, { source });
-    }
-    if (lintIssues.length > 0 && lintMode !== "warn") {
-      return err(lintIssues[0]);
-    }
-
-    return ok({
+    const lintIssuesResult = handleSelfhostLintIssues(
+      selfhost,
       source,
-      tokens: [],
-      cst: { kind: "Program", body: [] },
-      core: { kind: "Program", body: [] },
-      js,
-      output: js,
-      target,
-      lintIssues,
-      lintFixesApplied: 0,
-      lintFixedSource: source,
-      outputPath: finalOutput,
-    });
-  }
+      lintMode,
+    );
+    if (!lintIssuesResult.ok) return lintIssuesResult;
+    const lintIssues = lintIssuesResult.value;
 
-  if (options.lint?.enabled) {
-    return err(
-      new TuffError("Stage0 backend no longer supports linting", undefined, {
-        code: "E_SELFHOST_UNSUPPORTED_OPTION",
-        reason:
-          "Linting is now provided only by the Tuff selfhost pipeline to keep diagnostics behavior unified.",
-        fix: "Use backend: 'selfhost' (default) when enabling --lint.",
-      }),
+    return ok(
+      makeSelfhostCompileResult(source, js, target, lintIssues, finalOutput),
     );
   }
 
+  if (options.lint?.enabled) {
+    return stage0LintUnsupportedError();
+  }
+
   const run = createTracer(options.tracePasses);
-  const borrowEnabled =
-    options.borrowcheck?.enabled !== false && !isSelfhostBootstrapInput;
+  const borrowEnabled = isBorrowcheckEnabled(options, isSelfhostBootstrapInput);
   const useModules = !!options.enableModules;
   let graph = undefined;
   const lintMode = options.lint?.mode ?? "error";

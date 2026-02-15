@@ -1,9 +1,9 @@
 // @ts-nocheck
 import fs from "node:fs";
 import path from "node:path";
-import vm from "node:vm";
 import { fileURLToPath } from "node:url";
 import { compileSourceThrow } from "../../main/js/compiler.ts";
+import { runMainFromJs } from "./js-runtime-test-utils.ts";
 
 const thisFile = fileURLToPath(import.meta.url);
 const root = path.resolve(path.dirname(thisFile), "..", "..", "..");
@@ -41,24 +41,20 @@ for (const name of testCases) {
     }
   }
 
-  const sandbox = { module: { exports: {} }, exports: {}, console };
-  vm.runInNewContext(`${result.js}\nmodule.exports = { main };`, sandbox);
-  if (typeof sandbox.module.exports.main === "function") {
-    const output = sandbox.module.exports.main();
-    const expectedResultFile = path.join(
-      casesDir,
-      name.replace(/\.tuff$/, ".result.json"),
+  const expectedResultFile = path.join(
+    casesDir,
+    name.replace(/\.tuff$/, ".result.json"),
+  );
+  if (fs.existsSync(expectedResultFile)) {
+    const output = runMainFromJs(result.js, `run-tests:${name}`);
+    const expectedResult = JSON.parse(
+      fs.readFileSync(expectedResultFile, "utf8"),
     );
-    if (fs.existsSync(expectedResultFile)) {
-      const expectedResult = JSON.parse(
-        fs.readFileSync(expectedResultFile, "utf8"),
+    if (JSON.stringify(output) !== JSON.stringify(expectedResult)) {
+      console.error(
+        `Runtime expectation failed for ${name}: expected ${JSON.stringify(expectedResult)} got ${JSON.stringify(output)}`,
       );
-      if (JSON.stringify(output) !== JSON.stringify(expectedResult)) {
-        console.error(
-          `Runtime expectation failed for ${name}: expected ${JSON.stringify(expectedResult)} got ${JSON.stringify(output)}`,
-        );
-        process.exit(1);
-      }
+      process.exit(1);
     }
   }
 

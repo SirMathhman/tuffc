@@ -200,13 +200,16 @@ if (objectCompile.status !== 0) {
 
 debugFile("object", outObj);
 
+const SELFHOST_ENTRY_DECL = `#include <stdio.h>
+
+extern int64_t selfhost_entry(void);`;
+
 const harnessSource = deepHarness
   ? `#include <stdint.h>
 #include <inttypes.h>
 #include <string.h>
 #include <stdio.h>
-
-extern int64_t selfhost_entry(void);
+${SELFHOST_ENTRY_DECL.split("\n").slice(2).join("\n")}
 extern int64_t compile_source_with_options(int64_t source, int64_t strict_safety, int64_t lint_enabled, int64_t max_effective_lines);
 
 int main(void) {
@@ -226,7 +229,7 @@ int main(void) {
 `
   : `#include <stdint.h>
 
-extern int64_t selfhost_entry(void);
+${SELFHOST_ENTRY_DECL.split("\n").slice(2).join("\n")}
 
 int main(void) {
   return (int)selfhost_entry();

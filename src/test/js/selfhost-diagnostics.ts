@@ -1,70 +1,42 @@
 // @ts-nocheck
 import fs from "node:fs";
 import path from "node:path";
-import vm from "node:vm";
-import { fileURLToPath } from "node:url";
-import { compileFileThrow } from "../../main/js/compiler.ts";
 import { toDiagnostic } from "../../main/js/errors.ts";
-import * as runtime from "../../main/js/runtime.ts";
+import { compileAndLoadSelfhost } from "./selfhost-harness.ts";
+import { assertDiagnosticContract } from "./diagnostic-contract-utils.ts";
+import {
+  getRepoRootFromImportMeta,
+  getTestsOutDir,
+} from "./path-test-utils.ts";
 
-const thisFile = fileURLToPath(import.meta.url);
-const root = path.resolve(path.dirname(thisFile), "..", "..", "..");
-const outDir = path.join(root, "tests", "out", "selfhost", "diagnostics");
-const selfhostPath = path.join(root, "src", "main", "tuff", "selfhost.tuff");
-
-fs.mkdirSync(outDir, { recursive: true });
-
-const selfhostResult = compileFileThrow(
-  selfhostPath,
-  path.join(outDir, "selfhost.js"),
-  {
-    enableModules: true,
-    modules: { moduleBaseDir: path.dirname(selfhostPath) },
-    resolve: {
-      hostBuiltins: Object.keys(runtime),
-      allowHostPrefix: "",
-    },
-  },
-);
-
-const sandbox = {
-  module: { exports: {} },
-  exports: {},
-  console,
-  ...runtime,
-};
-
-vm.runInNewContext(
-  `${selfhostResult.js}\nmodule.exports = { compile_source, compile_file, main };`,
-  sandbox,
-);
-
-const selfhost = sandbox.module.exports;
+const root = getRepoRootFromImportMeta(import.meta.url);
+const outDir = getTestsOutDir(root, "selfhost", "diagnostics");
+const { selfhost } = compileAndLoadSelfhost(root, outDir);
 if (typeof selfhost.compile_source !== "function") {
   console.error("selfhost.compile_source not exported");
   process.exit(1);
 }
 
-// 1) Invalid syntax should produce structured diagnostics via toDiagnostic.
-try {
-  selfhost.compile_source("fn broken( : I32 => 0;");
-  console.error("Expected selfhost compile_source to fail for invalid syntax");
-  process.exit(1);
-} catch (error) {
-  const diag = toDiagnostic(error);
-  if (diag.code !== "E_SELFHOST_PANIC") {
-    console.error(`Expected E_SELFHOST_PANIC, got ${diag.code}`);
+function expectSelfhostPanic(run: () => void, label: string) {
+  try {
+    run();
+    console.error(`Expected ${label} to fail`);
     process.exit(1);
-  }
-  for (const key of ["source", "cause", "reason", "fix"]) {
-    if (!diag[key] || typeof diag[key] !== "string") {
-      console.error(
-        `Expected selfhost diagnostic field '${key}' to be a non-empty string`,
-      );
+  } catch (error) {
+    const diag = toDiagnostic(error);
+    if (diag.code !== "E_SELFHOST_PANIC") {
+      console.error(`Expected E_SELFHOST_PANIC for ${label}, got ${diag.code}`);
       process.exit(1);
     }
+    assertDiagnosticContract(diag, `${label} diagnostic`);
   }
 }
+
+// 1) Invalid syntax should produce structured diagnostics via toDiagnostic.
+expectSelfhostPanic(
+  () => selfhost.compile_source("fn broken( : I32 => 0;"),
+  "selfhost compile_source invalid syntax",
+);
 
 // 2) Missing module path should also produce the same diagnostics contract.
 const missingModuleEntry = path.join(outDir, "missing-module-app.tuff");
@@ -75,26 +47,9 @@ fs.writeFileSync(
   "utf8",
 );
 
-try {
-  selfhost.compile_file(missingModuleEntry, missingModuleOut);
-  console.error("Expected selfhost compile_file to fail for missing module");
-  process.exit(1);
-} catch (error) {
-  const diag = toDiagnostic(error);
-  if (diag.code !== "E_SELFHOST_PANIC") {
-    console.error(
-      `Expected missing-module diagnostic code E_SELFHOST_PANIC, got ${diag.code}`,
-    );
-    process.exit(1);
-  }
-  for (const key of ["source", "cause", "reason", "fix"]) {
-    if (!diag[key] || typeof diag[key] !== "string") {
-      console.error(
-        `Expected missing-module diagnostic field '${key}' to be a non-empty string`,
-      );
-      process.exit(1);
-    }
-  }
-}
+expectSelfhostPanic(
+  () => selfhost.compile_file(missingModuleEntry, missingModuleOut),
+  "selfhost compile_file missing module",
+);
 
 console.log("Selfhost diagnostics contract checks passed");

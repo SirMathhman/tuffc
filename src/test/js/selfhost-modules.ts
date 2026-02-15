@@ -3,13 +3,10 @@ import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
 import { fileURLToPath } from "node:url";
-import { compileFileThrow } from "../../main/js/compiler.ts";
-import * as runtime from "../../main/js/runtime.ts";
+import { compileAndLoadSelfhost } from "./selfhost-harness.ts";
 
 const thisFile = fileURLToPath(import.meta.url);
 const root = path.resolve(path.dirname(thisFile), "..", "..", "..");
-
-const selfhostPath = path.join(root, "src", "main", "tuff", "selfhost.tuff");
 const modulesEntry = path.join(
   root,
   "src",
@@ -30,35 +27,8 @@ const outDir = path.join(root, "tests", "out", "selfhost", "modules");
 const moduleOutJs = path.join(outDir, "app.js");
 const rootResolutionOutJs = path.join(outDir, "app-root-resolution.js");
 
-fs.mkdirSync(outDir, { recursive: true });
-
 console.log("Compiling selfhost.tuff with Stage 0...");
-const selfhostResult = compileFileThrow(
-  selfhostPath,
-  path.join(outDir, "selfhost.js"),
-  {
-    enableModules: true,
-    modules: { moduleBaseDir: path.dirname(selfhostPath) },
-    resolve: {
-      hostBuiltins: Object.keys(runtime),
-      allowHostPrefix: "",
-    },
-  },
-);
-
-const sandbox = {
-  module: { exports: {} },
-  exports: {},
-  console,
-  ...runtime,
-};
-
-vm.runInNewContext(
-  `${selfhostResult.js}\nmodule.exports = { compile_source, compile_file, main };`,
-  sandbox,
-);
-
-const selfhost = sandbox.module.exports;
+const { selfhost } = compileAndLoadSelfhost(root, outDir);
 if (typeof selfhost.compile_file !== "function") {
   console.error("selfhost.compile_file not exported");
   process.exit(1);

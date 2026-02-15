@@ -396,18 +396,10 @@ function emitStmt(stmt, ctx, localTypes = new Map()) {
       return stmt.value
         ? `return ${emitExpr(stmt.value, ctx, localTypes)};`
         : "return 0;";
-    case "IfStmt": {
-      const elsePart = stmt.elseBranch
-        ? ` else ${emitStmtOrBlock(stmt.elseBranch, ctx, localTypes)}`
-        : "";
-      return `if (${emitExpr(stmt.condition, ctx, localTypes)}) ${emitStmtOrBlock(stmt.thenBranch, ctx, localTypes)}${elsePart}`;
-    }
-    case "IfExpr": {
-      const elsePart = stmt.elseBranch
-        ? ` else ${emitStmtOrBlock(stmt.elseBranch, ctx, localTypes)}`
-        : "";
-      return `if (${emitExpr(stmt.condition, ctx, localTypes)}) ${emitStmtOrBlock(stmt.thenBranch, ctx, localTypes)}${elsePart}`;
-    }
+    case "IfStmt":
+      return emitIfLike(stmt, ctx, localTypes);
+    case "IfExpr":
+      return emitIfLike(stmt, ctx, localTypes);
     case "WhileStmt":
       return `while (${emitExpr(stmt.condition, ctx, localTypes)}) ${emitBlock(stmt.body, ctx, localTypes)}`;
     case "ForStmt":
@@ -419,7 +411,7 @@ function emitStmt(stmt, ctx, localTypes = new Map()) {
     case "Block":
       return emitBlock(stmt, ctx, localTypes);
     case "ImportDecl":
-      return `/* import placeholder: { ${stmt.names.join(", ")} } = ${stmt.modulePath} */`;
+      return `/* import placeholder(module=${stmt.modulePath}, names=${stmt.names.join("|")}) */`;
     case "FnDecl": {
       const params = stmt.params
         .map((p) => `${typeToCType(p.type, ctx)} ${toCName(p.name)}`)
@@ -467,7 +459,11 @@ function emitStmt(stmt, ctx, localTypes = new Map()) {
       return `typedef enum ${stmt.name}_Tag { ${tagEntries} } ${stmt.name}_Tag;\ntypedef struct ${stmt.name} { int32_t __tag; ${fields} } ${stmt.name};\n${constructors}`;
     }
     case "ExternFnDecl":
-      return `extern ${typeToCType(stmt.returnType, ctx)} ${stmt.name}(${(stmt.params ?? []).map((p) => `${typeToCType(p.type, ctx)} ${toCName(p.name)}`).join(", ")});`;
+      return emitPrototype(
+        `extern ${typeToCType(stmt.returnType, ctx)}`,
+        stmt.name,
+        emitParamList(stmt.params, ctx),
+      );
     case "ExternLetDecl":
       return `extern ${typeToCType(stmt.type, ctx)} ${toCName(stmt.name)};`;
     case "ExternTypeDecl":
@@ -479,6 +475,23 @@ function emitStmt(stmt, ctx, localTypes = new Map()) {
       unsupported(stmt, `${stmt.kind} statements`);
       return "";
   }
+}
+
+function emitIfLike(stmt, ctx, localTypes) {
+  const elsePart = stmt.elseBranch
+    ? ` else ${emitStmtOrBlock(stmt.elseBranch, ctx, localTypes)}`
+    : "";
+  return `if (${emitExpr(stmt.condition, ctx, localTypes)}) ${emitStmtOrBlock(stmt.thenBranch, ctx, localTypes)}${elsePart}`;
+}
+
+function emitPrototype(returnType, name, params) {
+  return `${returnType} ${name}(${params});`;
+}
+
+function emitParamList(params, ctx) {
+  return (params ?? [])
+    .map((p) => `${typeToCType(p.type, ctx)} ${toCName(p.name)}`)
+    .join(", ");
 }
 
 function emitStmtOrBlock(node, ctx, localTypes) {
@@ -503,7 +516,7 @@ function emitFunctionBlock(block, ctx, localTypes) {
   const rows = block.statements.map((s, idx) => {
     const isLast = idx === block.statements.length - 1;
     if (isLast && s.kind === "ExprStmt") {
-      return `  return ${emitExpr(s.expr, ctx, scoped)};`;
+      return "  return " + emitExpr(s.expr, ctx, scoped) + ";";
     }
     if (isLast && s.kind === "IfStmt") {
       const ifExpr = {
@@ -585,10 +598,8 @@ export function generateC(ast) {
 
   for (const node of fnNodes) {
     const returnType = typeToCType(node.returnType, ctx);
-    const params = (node.params ?? [])
-      .map((p) => `${typeToCType(p.type, ctx)} ${toCName(p.name)}`)
-      .join(", ");
-    lines.push(`${returnType} ${toCName(node.name)}(${params});`);
+    const params = emitParamList(node.params, ctx);
+    lines.push(emitPrototype(returnType, toCName(node.name), params));
   }
   lines.push("");
 

@@ -69,18 +69,14 @@ function runCase(caseName) {
   return { caseName, expected, outSource, outExe };
 }
 
-const candidates =
+const compilerCandidates =
   process.platform === "win32"
-    ? ["clang", "gcc", "cc"]
-    : ["cc", "clang", "gcc"];
-let selected = undefined;
-for (const candidate of candidates) {
+    ? ["gcc", "clang", "cc"]
+    : ["clang", "cc", "gcc"];
+const selected = compilerCandidates.find((candidate) => {
   const check = spawnSync(candidate, ["--version"], { encoding: "utf8" });
-  if (check.status === 0) {
-    selected = candidate;
-    break;
-  }
-}
+  return check.status === 0;
+});
 
 if (!selected) {
   console.warn(
