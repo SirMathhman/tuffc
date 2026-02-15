@@ -27,6 +27,26 @@ function isTypeVariableName(name) {
   return typeof name === "string" && /^[A-Z]$/.test(name);
 }
 
+function areCompatibleNamedTypes(expected, actual) {
+  if (expected === actual) return true;
+
+  // Mutable pointer can be used where immutable pointer is expected.
+  // expected: *T, actual: *mut T  => allowed
+  if (
+    typeof expected === "string" &&
+    typeof actual === "string" &&
+    expected.startsWith("*") &&
+    !expected.startsWith("*mut ") &&
+    actual.startsWith("*mut ")
+  ) {
+    const expectedInner = expected.slice(1);
+    const actualInner = actual.slice(5);
+    return expectedInner === actualInner;
+  }
+
+  return false;
+}
+
 function named(type) {
   if (!type) return undefined;
   if (typeof type === "string") return type;
@@ -784,7 +804,7 @@ export function typecheck(
               if (
                 expected &&
                 argType.name !== "Unknown" &&
-                expected !== argType.name &&
+                !areCompatibleNamedTypes(expected, argType.name) &&
                 !isTypeVariableName(expected) &&
                 !isTypeVariableName(argType.name) &&
                 !areCompatibleNumericTypes(expected, argType.name, argType) &&
@@ -991,7 +1011,7 @@ export function typecheck(
         if (
           expected &&
           valueType.name !== "Unknown" &&
-          expected !== valueType.name &&
+          !areCompatibleNamedTypes(expected, valueType.name) &&
           !isTypeVariableName(expected) &&
           !isTypeVariableName(valueType.name) &&
           !areCompatibleNumericTypes(expected, valueType.name, valueType) &&
@@ -1032,7 +1052,7 @@ export function typecheck(
           if (
             t &&
             value.name !== "Unknown" &&
-            t.name !== value.name &&
+            !areCompatibleNamedTypes(t.name, value.name) &&
             !isTypeVariableName(t.name) &&
             !isTypeVariableName(value.name)
           )
@@ -1068,7 +1088,7 @@ export function typecheck(
           expectedReturn &&
           expectedReturn.name !== "Unknown" &&
           t.name !== "Unknown" &&
-          expectedReturn.name !== t.name &&
+          !areCompatibleNamedTypes(expectedReturn.name, t.name) &&
           !isTypeVariableName(expectedReturn.name) &&
           !isTypeVariableName(t.name)
         ) {
@@ -1185,7 +1205,7 @@ export function typecheck(
           expected &&
           bodyType.name !== "Unknown" &&
           bodyType.name !== "Void" &&
-          bodyType.name !== expected &&
+          !areCompatibleNamedTypes(expected, bodyType.name) &&
           !isTypeVariableName(expected) &&
           !isTypeVariableName(bodyType.name)
         ) {

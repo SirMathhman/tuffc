@@ -96,7 +96,7 @@ out fn node_get_data5(idx: I32) : I32 => node_data5.vec_get(idx);
 // ============================================================================
 
 let parse_pos : I32 = 0;
-let parse_exports : Set<*Str> = set_new();
+let parse_exports : *mut Set<*Str> = set_new();
 
 out fn parse_init() : I32 => {
     parse_pos = 0;

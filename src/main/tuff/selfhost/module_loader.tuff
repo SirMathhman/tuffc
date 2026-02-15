@@ -65,7 +65,7 @@ fn is_module_decl_kind(kind: I32) : Bool => {
     kind == 19     // NK_EXTERN_TYPE_DECL
 }
 
-fn collect_module_declarations(stmts: Vec) : Set<*Str> => {
+fn collect_module_declarations(stmts: Vec) : *mut Set<*Str> => {
     let declared = set_new();
     let i = 0;
     let len = stmts.vec_length();
@@ -88,7 +88,7 @@ fn module_has_out_export(source: *Str, name: *Str) : Bool => {
     source.str_includes("out class fn ".str_concat(name))
 }
 
-fn gather_module_sources(filePath: *Str, moduleBasePath: *Str, seen: Set, visiting: Set, sources: Vec<*Str>, module_declared_map: Map, lint_enabled: I32, max_effective_lines: I32) : I32 => {
+fn gather_module_sources(filePath: *Str, moduleBasePath: *Str, seen: *mut Set, visiting: *mut Set, sources: Vec<*Str>, module_declared_map: Map, lint_enabled: I32, max_effective_lines: I32) : I32 => {
     if (seen.set_has(filePath)) {
         return 0;
     }

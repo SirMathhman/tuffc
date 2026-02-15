@@ -30,7 +30,7 @@ fn scope_has(scopes: Vec, depth: I32, name: *Str) : Bool => {
     false
 }
 
-fn resolve_expr(n: I32, globals: Set, scopes: Vec, depth: I32) : I32 => {
+fn resolve_expr(n: I32, globals: *mut Set, scopes: Vec, depth: I32) : I32 => {
     if (n == 0) {
         return 0;
     }
@@ -160,7 +160,7 @@ fn resolve_expr(n: I32, globals: Set, scopes: Vec, depth: I32) : I32 => {
     0
 }
 
-fn resolve_stmt(n: I32, globals: Set, scopes: Vec, depth: I32) : I32 => {
+fn resolve_stmt(n: I32, globals: *mut Set, scopes: Vec, depth: I32) : I32 => {
     if (n == 0) {
         return 0;
     }

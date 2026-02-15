@@ -53,14 +53,14 @@ extern fn vec_includes(this: Vec<T>, item: T) : Bool;
 extern type Map<K, V>;
 extern fn map_new() : Map<K, V>;
 extern fn map_set(this: Map<K, V>, k: K, v: V) : Map<K, V>;
-extern fn map_get(this: Map<K, V>, k: K) : I32;
+extern fn map_get(this: Map<K, V>, k: K) : V;
 extern fn map_has(this: Map<K, V>, k: K) : Bool;
 
 extern type Set<T>;
-extern fn set_new() : Set<T>;
-extern fn set_add(this: Set<T>, item: T) : Set<T>;
-extern fn set_has(this: Set<T>, item: T) : Bool;
-extern fn set_delete(this: Set<T>, item: T) : Bool;
+extern fn set_new() : *mut Set<T>;
+extern fn set_add(this: *mut Set<T>, item: T) : *mut Set<T>;
+extern fn set_has(this: *Set<T>, item: T) : Bool;
+extern fn set_delete(this: *mut Set<T>, item: T) : Bool;
 
 extern fn read_file(filePath: *Str) : *Str;
 extern fn write_file(filePath: *Str, contents: *Str) : I32;
@@ -132,7 +132,7 @@ out fn get_intern(idx: I32) : *Str => {
 out fn get_interned_str(idx: I32) : *Str => get_intern(idx);
 
 // Keywords set
-let keywords : Set = set_new();
+let keywords : *mut Set = set_new();
 
 fn init_keywords() : I32 => {
     keywords.set_add("fn");
