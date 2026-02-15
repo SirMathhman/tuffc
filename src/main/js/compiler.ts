@@ -130,6 +130,49 @@ function getCodegenTarget(options): string {
   return options.target ?? "js";
 }
 
+function prepareLintFixedSourceForSelfhost(
+  source,
+  filePath = "<memory>",
+  options = {},
+): CompilerResult<{
+  source: string;
+  lintFixesApplied: number;
+  lintFixedSource: string | undefined;
+}> {
+  if (!options?.enabled || !options?.fix) {
+    return ok({
+      source,
+      lintFixesApplied: 0,
+      lintFixedSource: source,
+    });
+  }
+
+  const tokensResult = lex(source, filePath);
+  if (!tokensResult.ok) {
+    enrichError(tokensResult.error, { source });
+    return tokensResult;
+  }
+
+  const cstResult = parse(tokensResult.value);
+  if (!cstResult.ok) {
+    enrichError(cstResult.error, { source });
+    return cstResult;
+  }
+
+  const core = desugar(cstResult.value);
+  const { applied: lintFixesApplied, fixedSource: lintFixedSource } =
+    autoFixProgram(core, {
+      ...options,
+      source,
+    });
+
+  return ok({
+    source: lintFixedSource ?? source,
+    lintFixesApplied,
+    lintFixedSource: lintFixedSource ?? source,
+  });
+}
+
 function selectBackend(options, target, isSelfhostBootstrapInput = false) {
   const explicit = options.backend;
   if (explicit === "stage0" || explicit === "selfhost") {
@@ -146,15 +189,9 @@ function selectBackend(options, target, isSelfhostBootstrapInput = false) {
     return "stage0";
   }
 
-  // Keep lint auto-fix on Stage0 until selfhost implements source rewriting.
-  if (options.lint?.fix) {
-    return "stage0";
-  }
-
   // Remaining intentional Stage0 ownership after selfhost-first migration:
   // 1) Bootstrap seed for selfhost.tuff (isSelfhostBootstrapInput)
   // 2) C target codegen
-  // 3) Lint auto-fix source rewriting
 
   // Default: selfhost-first for JS compilation.
   return "selfhost";
@@ -409,20 +446,17 @@ export function compileSource(
       );
     }
 
-    if (options.lint?.fix) {
-      return err(
-        new TuffError(
-          "Selfhost backend does not support lint auto-fix yet",
-          undefined,
-          {
-            code: "E_SELFHOST_UNSUPPORTED_OPTION",
-            reason:
-              "Selfhost backend currently supports strict file-length lint checks but not source auto-fix rewriting.",
-            fix: "Use backend: 'stage0' with --lint-fix, or disable lint auto-fix in selfhost mode.",
-          },
-        ),
-      );
+    const lintPreparedResult = prepareLintFixedSourceForSelfhost(
+      source,
+      filePath,
+      options.lint ?? {},
+    );
+    if (!lintPreparedResult.ok) {
+      return lintPreparedResult;
     }
+    const effectiveSource = lintPreparedResult.value.source;
+    const lintFixesApplied = lintPreparedResult.value.lintFixesApplied;
+    const lintFixedSource = lintPreparedResult.value.lintFixedSource;
 
     const selfhostResult = run("selfhost-bootstrap", () =>
       bootstrapSelfhostCompiler(options),
@@ -440,16 +474,16 @@ export function compileSource(
       js = run("selfhost-compile-source", () =>
         typeof selfhost.compile_source_with_options === "function"
           ? selfhost.compile_source_with_options(
-              source,
+              effectiveSource,
               strictSafety,
               lintEnabled,
               maxEffectiveLines,
               borrowEnabled ? 1 : 0,
             )
-          : selfhost.compile_source(source),
+          : selfhost.compile_source(effectiveSource),
       );
     } catch (error) {
-      const enriched = enrichError(error, { source });
+      const enriched = enrichError(error, { source: effectiveSource });
       return err(
         enriched instanceof TuffError
           ? enriched
@@ -461,7 +495,7 @@ export function compileSource(
         ? decodeSelfhostLintIssues(selfhost.take_lint_issues())
         : [];
     for (const issue of lintIssues) {
-      enrichError(issue, { source });
+      enrichError(issue, { source: effectiveSource });
     }
     if (lintIssues.length > 0 && lintMode !== "warn") {
       return err(lintIssues[0]);
@@ -475,8 +509,8 @@ export function compileSource(
       output: js,
       target,
       lintIssues,
-      lintFixesApplied: 0,
-      lintFixedSource: source,
+      lintFixesApplied,
+      lintFixedSource,
     });
   }
 
@@ -618,16 +652,16 @@ function compileFileInternal(
     if (!selfhostResult.ok) return selfhostResult;
     const selfhost = selfhostResult.value;
 
-    if (options.lint?.fix) {
+    if (options.enableModules && options.lint?.fix) {
       return err(
         new TuffError(
-          "Selfhost backend does not support lint auto-fix yet",
+          "Selfhost backend does not support module lint auto-fix yet",
           undefined,
           {
             code: "E_SELFHOST_UNSUPPORTED_OPTION",
             reason:
-              "Selfhost backend currently supports strict file-length lint checks but not source auto-fix rewriting.",
-            fix: "Use backend: 'stage0' with --lint-fix, or disable lint auto-fix in selfhost mode.",
+              "Selfhost backend can auto-fix single-source lint issues, but rewriting an entire module graph in-place is not implemented yet.",
+            fix: "Disable --lint-fix for module graph compilation, or use backend: 'stage0' for module lint rewriting.",
           },
         ),
       );
@@ -637,6 +671,22 @@ function compileFileInternal(
     const lintEnabled = options.lint?.enabled ? 1 : 0;
     const maxEffectiveLines = options.lint?.maxEffectiveLines ?? 500;
     const lintMode = options.lint?.mode ?? "error";
+    let lintFixesApplied = 0;
+    let lintFixedSource = undefined;
+    let source = undefined;
+    let effectiveSource = undefined;
+    if (!options.enableModules) {
+      source = fs.readFileSync(absInput, "utf8");
+      const lintPreparedResult = prepareLintFixedSourceForSelfhost(
+        source,
+        absInput,
+        options.lint ?? {},
+      );
+      if (!lintPreparedResult.ok) return lintPreparedResult;
+      effectiveSource = lintPreparedResult.value.source;
+      lintFixesApplied = lintPreparedResult.value.lintFixesApplied;
+      lintFixedSource = lintPreparedResult.value.lintFixedSource;
+    }
 
     let js;
     try {
@@ -660,17 +710,16 @@ function compileFileInternal(
         });
         js = fs.readFileSync(finalOutput, "utf8");
       } else {
-        const source = fs.readFileSync(absInput, "utf8");
         js = run("selfhost-compile-source", () =>
           typeof selfhost.compile_source_with_options === "function"
             ? selfhost.compile_source_with_options(
-                source,
+                effectiveSource ?? source,
                 strictSafety,
                 lintEnabled,
                 maxEffectiveLines,
                 borrowEnabled ? 1 : 0,
               )
-            : selfhost.compile_source(source),
+            : selfhost.compile_source(effectiveSource ?? source),
         );
         fs.mkdirSync(path.dirname(finalOutput), { recursive: true });
         fs.writeFileSync(finalOutput, js, "utf8");
@@ -689,13 +738,14 @@ function compileFileInternal(
       );
     }
 
-    const source = fs.readFileSync(absInput, "utf8");
+    source = source ?? fs.readFileSync(absInput, "utf8");
+    effectiveSource = effectiveSource ?? source;
     const lintIssues =
       typeof selfhost.take_lint_issues === "function"
         ? decodeSelfhostLintIssues(selfhost.take_lint_issues())
         : [];
     for (const issue of lintIssues) {
-      enrichError(issue, { source });
+      enrichError(issue, { source: effectiveSource });
     }
     if (lintIssues.length > 0 && lintMode !== "warn") {
       return err(lintIssues[0]);
@@ -710,8 +760,8 @@ function compileFileInternal(
       output: js,
       target,
       lintIssues,
-      lintFixesApplied: 0,
-      lintFixedSource: undefined,
+      lintFixesApplied,
+      lintFixedSource,
       outputPath: finalOutput,
     });
   }

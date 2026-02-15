@@ -317,7 +317,6 @@ const lintFixCli = spawnSync(
     "./src/main/js/cli.ts",
     "compile",
     lintFixFile,
-    "--stage0",
     "--lint",
     "--lint-fix",
     "-o",

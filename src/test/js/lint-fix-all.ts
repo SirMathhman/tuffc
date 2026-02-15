@@ -1,7 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { compileFile } from "../../main/js/compiler.ts";
+import { compileFileResult } from "../../main/js/compiler.ts";
+import { formatDiagnostic, toDiagnostic } from "../../main/js/errors.ts";
 
 const thisFile = fileURLToPath(import.meta.url);
 const root = path.resolve(path.dirname(thisFile), "..", "..", "..");
@@ -38,7 +39,7 @@ for (const filePath of tuffFiles) {
   const outPath = path.join(outBase, rel.replace(/\.tuff$/i, ".js"));
   fs.mkdirSync(path.dirname(outPath), { recursive: true });
 
-  const result = compileFile(filePath, outPath, {
+  const result = compileFileResult(filePath, outPath, {
     resolve: {
       allowHostPrefix: "__host_",
     },
@@ -47,17 +48,20 @@ for (const filePath of tuffFiles) {
       fix: true,
       mode: "warn",
     },
-  }) as {
-    lintFixesApplied?: number;
-    lintFixedSource?: string | undefined;
-  };
+  });
 
-  const applied = result.lintFixesApplied ?? 0;
+  if (!result.ok) {
+    console.error(`Failed to lint-fix: ${rel}`);
+    console.error(formatDiagnostic(toDiagnostic(result.error)));
+    process.exit(1);
+  }
+
+  const applied = result.value.lintFixesApplied ?? 0;
   fixedTotal += applied;
   if (applied > 0) {
     fs.writeFileSync(
       filePath,
-      result.lintFixedSource ?? fs.readFileSync(filePath, "utf8"),
+      result.value.lintFixedSource ?? fs.readFileSync(filePath, "utf8"),
       "utf8",
     );
     console.log(`Fixed ${applied} issue(s): ${rel}`);
