@@ -195,6 +195,7 @@ const lintCli = spawnSync(
     "./src/main/js/cli.ts",
     "compile",
     lintFailingFile,
+    "--stage0",
     "--lint",
     "--lint-strict",
     "--json-errors",
@@ -242,6 +243,7 @@ const receiverOk = compileSourceResult(
   `${receiverExtern}\nfn main() : I32 => "abc".str_length();`,
   "<receiver-syntax>",
   {
+    backend: "stage0",
     lint: { enabled: true },
   },
 );
@@ -256,6 +258,7 @@ const receiverLint = compileSourceResult(
   `${receiverExtern}\nfn main() : I32 => str_length("abc");`,
   "<receiver-lint>",
   {
+    backend: "stage0",
     lint: { enabled: true },
   },
 );
@@ -290,6 +293,7 @@ const lintFixCli = spawnSync(
     "./src/main/js/cli.ts",
     "compile",
     lintFixFile,
+    "--stage0",
     "--lint",
     "--lint-fix",
     "-o",
@@ -352,6 +356,7 @@ const lintTooLong = compileSourceResult(
   longEffectiveLinesSource,
   "<lint-file-too-long>",
   {
+    backend: "stage0",
     lint: { enabled: true },
   },
 );
@@ -398,6 +403,7 @@ const commentsSourceResult = compileSourceResult(
   mostlyCommentsSource,
   "<lint-file-comments>",
   {
+    backend: "stage0",
     lint: { enabled: true },
   },
 );
@@ -495,6 +501,7 @@ fs.writeFileSync(
 );
 
 const cycleLintWarn = compileFileResult(cycleLintA, undefined, {
+  backend: "stage0",
   enableModules: true,
   modules: { moduleBaseDir: cycleLintDir },
   lint: { enabled: true, mode: "warn" },

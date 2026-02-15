@@ -19,7 +19,9 @@ let passed = 0;
 for (const name of testCases) {
   const filePath = path.join(casesDir, name);
   const source = fs.readFileSync(filePath, "utf8");
-  const result = compileSourceThrow(source, filePath);
+  const result = compileSourceThrow(source, filePath, {
+    backend: "stage0",
+  });
 
   const jsPath = path.join(outDir, name.replace(/\.tuff$/, ".js"));
   fs.writeFileSync(jsPath, result.js, "utf8");

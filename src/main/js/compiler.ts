@@ -109,6 +109,36 @@ function getCodegenTarget(options): string {
   return options.target ?? "js";
 }
 
+function selectBackend(options, target, isSelfhostBootstrapInput = false) {
+  const explicit = options.backend;
+  if (explicit === "stage0" || explicit === "selfhost") {
+    return explicit;
+  }
+
+  // Selfhost compiler source itself must be compiled by Stage0 bootstrap.
+  if (isSelfhostBootstrapInput) {
+    return "stage0";
+  }
+
+  // C target is Stage0-only today.
+  if (target !== "js") {
+    return "stage0";
+  }
+
+  // Keep lint auto-fix on Stage0 until selfhost implements source rewriting.
+  if (options.lint?.fix) {
+    return "stage0";
+  }
+
+  // Host builtin symbol injection is currently a Stage0 resolve concern.
+  if (options.resolve?.hostBuiltins || options.resolve?.allowHostPrefix) {
+    return "stage0";
+  }
+
+  // Default: selfhost-first for JS compilation.
+  return "selfhost";
+}
+
 function isSupportedTarget(target): boolean {
   return target === "js" || target === "c";
 }
@@ -347,6 +377,7 @@ export function compileSource(
   options: Record<string, unknown> = {},
 ): CompilerResult<Record<string, unknown>> {
   const target = getCodegenTarget(options);
+  const selectedBackend = selectBackend(options, target, false);
   if (!isSupportedTarget(target)) {
     return err(
       new TuffError(`Unsupported codegen target: ${target}`, undefined, {
@@ -358,7 +389,8 @@ export function compileSource(
     );
   }
 
-  if ((options.backend ?? "stage0") === "selfhost") {
+  if (selectedBackend === "selfhost") {
+    const run = createTracer(options.tracePasses);
     const borrowEnabled = options.borrowcheck?.enabled !== false;
 
     if (target !== "js") {
@@ -392,14 +424,18 @@ export function compileSource(
     }
 
     if (borrowEnabled) {
-      const precheck = runBorrowPrecheckSource(source, filePath, options);
+      const precheck = run("borrow-precheck", () =>
+        runBorrowPrecheckSource(source, filePath, options),
+      );
       if (!precheck.ok) {
         enrichError(precheck.error, { source });
         return precheck;
       }
     }
 
-    const selfhostResult = bootstrapSelfhostCompiler(options);
+    const selfhostResult = run("selfhost-bootstrap", () =>
+      bootstrapSelfhostCompiler(options),
+    );
     if (!selfhostResult.ok) return selfhostResult;
     const selfhost = selfhostResult.value;
     const strictSafety = 1;
@@ -410,7 +446,7 @@ export function compileSource(
     // Selfhost can throw, wrap in try/catch but return Result
     let js;
     try {
-      js =
+      js = run("selfhost-compile-source", () =>
         typeof selfhost.compile_source_with_options === "function"
           ? selfhost.compile_source_with_options(
               source,
@@ -418,7 +454,8 @@ export function compileSource(
               lintEnabled,
               maxEffectiveLines,
             )
-          : selfhost.compile_source(source);
+          : selfhost.compile_source(source),
+      );
     } catch (error) {
       const enriched = enrichError(error, { source });
       return err(
@@ -533,6 +570,11 @@ function compileFileInternal(
     ? { ...(options.typecheck ?? {}), __bootstrapRelaxed: true }
     : (options.typecheck ?? {});
   const target = getCodegenTarget(options);
+  const selectedBackend = selectBackend(
+    options,
+    target,
+    isSelfhostBootstrapInput,
+  );
   if (!isSupportedTarget(target)) {
     return err(
       new TuffError(`Unsupported codegen target: ${target}`, undefined, {
@@ -544,7 +586,8 @@ function compileFileInternal(
     );
   }
 
-  if ((options.backend ?? "stage0") === "selfhost") {
+  if (selectedBackend === "selfhost") {
+    const run = createTracer(options.tracePasses);
     const borrowEnabled =
       options.borrowcheck?.enabled !== false && !isSelfhostBootstrapInput;
 
@@ -566,7 +609,9 @@ function compileFileInternal(
     const absInput = path.resolve(inputPath);
     const finalOutput = outputPath ?? defaultOutputPath(absInput, target);
 
-    const selfhostResult = bootstrapSelfhostCompiler(options);
+    const selfhostResult = run("selfhost-bootstrap", () =>
+      bootstrapSelfhostCompiler(options),
+    );
     if (!selfhostResult.ok) return selfhostResult;
     const selfhost = selfhostResult.value;
 
@@ -593,54 +638,60 @@ function compileFileInternal(
     let js;
     try {
       if (options.enableModules) {
-        const graphResult = loadModuleGraph(absInput, {
-          ...(options.modules ?? {}),
-          allowImportCycles: false,
-        });
+        const graphResult = run("load-module-graph", () =>
+          loadModuleGraph(absInput, {
+            ...(options.modules ?? {}),
+            allowImportCycles: false,
+          }),
+        );
         if (!graphResult.ok) return graphResult;
 
-        const resolveResult = resolveNames(graphResult.value.merged, {
-          ...(options.resolve ?? {}),
-          strictModuleImports: options.resolve?.strictModuleImports ?? true,
-          moduleImportsByPath: graphResult.value.moduleImportsByPath,
-        });
+        const resolveResult = run("resolve", () =>
+          resolveNames(graphResult.value.merged, {
+            ...(options.resolve ?? {}),
+            strictModuleImports: options.resolve?.strictModuleImports ?? true,
+            moduleImportsByPath: graphResult.value.moduleImportsByPath,
+          }),
+        );
         if (!resolveResult.ok) return resolveResult;
 
-        const typecheckResult = typecheck(
-          graphResult.value.merged,
-          typecheckOptions,
+        const typecheckResult = run("typecheck", () =>
+          typecheck(graphResult.value.merged, typecheckOptions),
         );
         if (!typecheckResult.ok) return typecheckResult;
 
         if (borrowEnabled) {
-          const borrowResult = borrowcheck(
-            graphResult.value.merged,
-            options.borrowcheck ?? {},
+          const borrowResult = run("borrowcheck", () =>
+            borrowcheck(graphResult.value.merged, options.borrowcheck ?? {}),
           );
           if (!borrowResult.ok) return borrowResult;
         }
 
         const normalizedInput = toPosixPath(absInput);
         const normalizedOutput = toPosixPath(finalOutput);
-        if (typeof selfhost.compile_file_with_options === "function") {
-          selfhost.compile_file_with_options(
-            normalizedInput,
-            normalizedOutput,
-            strictSafety,
-            lintEnabled,
-            maxEffectiveLines,
-          );
-        } else {
-          selfhost.compile_file(normalizedInput, normalizedOutput);
-        }
+        run("selfhost-compile-file", () => {
+          if (typeof selfhost.compile_file_with_options === "function") {
+            selfhost.compile_file_with_options(
+              normalizedInput,
+              normalizedOutput,
+              strictSafety,
+              lintEnabled,
+              maxEffectiveLines,
+            );
+          } else {
+            selfhost.compile_file(normalizedInput, normalizedOutput);
+          }
+        });
         js = fs.readFileSync(finalOutput, "utf8");
       } else {
         const source = fs.readFileSync(absInput, "utf8");
         if (borrowEnabled) {
-          const precheck = runBorrowPrecheckSource(source, absInput, options);
+          const precheck = run("borrow-precheck", () =>
+            runBorrowPrecheckSource(source, absInput, options),
+          );
           if (!precheck.ok) return precheck;
         }
-        js =
+        js = run("selfhost-compile-source", () =>
           typeof selfhost.compile_source_with_options === "function"
             ? selfhost.compile_source_with_options(
                 source,
@@ -648,7 +699,8 @@ function compileFileInternal(
                 lintEnabled,
                 maxEffectiveLines,
               )
-            : selfhost.compile_source(source);
+            : selfhost.compile_source(source),
+        );
         fs.mkdirSync(path.dirname(finalOutput), { recursive: true });
         fs.writeFileSync(finalOutput, js, "utf8");
       }

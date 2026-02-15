@@ -144,8 +144,7 @@ function main(argv: string[]): void {
     return;
   }
 
-  const backend =
-    requestedBackend ?? (lint || tracePasses ? "stage0" : "selfhost");
+  const backend = requestedBackend ?? (lintFix ? "stage0" : "selfhost");
 
   const result = compileFileResult(path.resolve(input), output, {
     backend,

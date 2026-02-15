@@ -218,6 +218,36 @@ fn is_decimal_zero_literal(n: I32) : Bool => {
     get_interned_str(node_get_data1(n)).str_eq("0")
 }
 
+fn is_zero_numeric_literal_node(n: I32) : Bool => {
+    if (n == 0 || node_kind(n) != NK_NUMBER_LIT) {
+        return false;
+    }
+    let text = get_interned_str(node_get_data1(n));
+    text.str_eq("0") || text.str_eq("0USize")
+}
+
+fn expr_is_proven_nonzero(n: I32, nonnull_ptrs: Map) : Bool => {
+    if (expr_is_number_literal_nonzero(n)) {
+        return true;
+    }
+    if (n != 0 && node_kind(n) == NK_IDENTIFIER) {
+        let name = get_interned_str(node_get_data1(n));
+        return nonnull_ptrs.map_has(name);
+    }
+    false
+}
+
+fn type_node_proves_nonzero(t: I32) : Bool => {
+    if (t == 0 || node_kind(t) != NK_REFINEMENT_TYPE) {
+        return false;
+    }
+    let op = get_interned_str(node_get_data2(t));
+    if (!op.str_eq("!=")) {
+        return false;
+    }
+    is_zero_numeric_literal_node(node_get_data3(t))
+}
+
 fn typecheck_expr(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types: Map, local_types: Map, nonnull_ptrs: Map, strict_safety: I32) : I32 => {
     if (n == 0) {
         return 0;
@@ -229,7 +259,7 @@ fn typecheck_expr(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types:
         typecheck_expr(node_get_data2(n), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety);
         typecheck_expr(node_get_data3(n), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety);
         let op = get_interned_str(node_get_data1(n));
-        if (op.str_eq("/") && !expr_is_number_literal_nonzero(node_get_data3(n))) {
+        if (op.str_eq("/") && !expr_is_proven_nonzero(node_get_data3(n), nonnull_ptrs)) {
             panic_with_code(
                 "E_SAFETY_DIV_BY_ZERO",
                 "Division by zero cannot be ruled out at compile time",
@@ -237,7 +267,7 @@ fn typecheck_expr(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types:
                 "Prove denominator != 0 via refinement type or control-flow guard."
             );
         }
-        if (op.str_eq("%") && !expr_is_number_literal_nonzero(node_get_data3(n))) {
+        if (op.str_eq("%") && !expr_is_proven_nonzero(node_get_data3(n), nonnull_ptrs)) {
             panic_with_code(
                 "E_SAFETY_MOD_BY_ZERO",
                 "Modulo by zero cannot be ruled out at compile time",
@@ -471,6 +501,7 @@ fn typecheck_stmt(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types:
 
     if (kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL) {
         let fn_local_types = map_new();
+        let fn_nonnull_ptrs = map_new();
         let params = node_get_data3(n);
         let i = 0;
         let len = params.vec_length();
@@ -480,12 +511,15 @@ fn typecheck_stmt(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types:
             let ptype = p.vec_get(1);
             if (ptype != 0) {
                 fn_local_types.map_set(pname, type_name_from_type_node(ptype));
+                if (type_node_proves_nonzero(ptype)) {
+                    fn_nonnull_ptrs.map_set(pname, 1);
+                }
             }
             i = i + 1;
         }
 
         let expected_name = type_name_from_type_node(node_get_data4(n));
-        typecheck_stmt(node_get_data5(n), fn_arities, fn_param_types, fn_return_types, fn_local_types, nonnull_ptrs, strict_safety, expected_name);
+        typecheck_stmt(node_get_data5(n), fn_arities, fn_param_types, fn_return_types, fn_local_types, fn_nonnull_ptrs, strict_safety, expected_name);
 
         let body = node_get_data5(n);
         if (node_kind(body) != NK_BLOCK) {
@@ -588,7 +622,8 @@ fn typecheck_stmt(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types:
         }
         let then_nonnull = map_new();
         let else_nonnull = map_new();
-        let copied = false;
+        let copied_then = false;
+        let copied_else = false;
         if (node_kind(cond) == NK_BINARY_EXPR) {
             let op = get_interned_str(node_get_data1(cond));
             let left = node_get_data2(cond);
@@ -596,18 +631,38 @@ fn typecheck_stmt(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types:
             if (op.str_eq("!=")) {
                 if (node_kind(left) == NK_IDENTIFIER && is_usize_zero_literal_node(right)) {
                     then_nonnull.map_set(get_interned_str(node_get_data1(left)), 1);
-                    copied = true;
+                    copied_then = true;
                 }
                 if (node_kind(right) == NK_IDENTIFIER && is_usize_zero_literal_node(left)) {
                     then_nonnull.map_set(get_interned_str(node_get_data1(right)), 1);
-                    copied = true;
+                    copied_then = true;
+                }
+                if (node_kind(left) == NK_IDENTIFIER && is_zero_numeric_literal_node(right)) {
+                    then_nonnull.map_set(get_interned_str(node_get_data1(left)), 1);
+                    copied_then = true;
+                }
+                if (node_kind(right) == NK_IDENTIFIER && is_zero_numeric_literal_node(left)) {
+                    then_nonnull.map_set(get_interned_str(node_get_data1(right)), 1);
+                    copied_then = true;
+                }
+            }
+            if (op.str_eq("==")) {
+                if (node_kind(left) == NK_IDENTIFIER && is_zero_numeric_literal_node(right)) {
+                    else_nonnull.map_set(get_interned_str(node_get_data1(left)), 1);
+                    copied_else = true;
+                }
+                if (node_kind(right) == NK_IDENTIFIER && is_zero_numeric_literal_node(left)) {
+                    else_nonnull.map_set(get_interned_str(node_get_data1(right)), 1);
+                    copied_else = true;
                 }
             }
         }
-        if (!copied) {
+        if (!copied_then) {
             then_nonnull = nonnull_ptrs;
         }
-        else_nonnull = nonnull_ptrs;
+        if (!copied_else) {
+            else_nonnull = nonnull_ptrs;
+        }
         typecheck_stmt(node_get_data2(n), fn_arities, fn_param_types, fn_return_types, local_types, then_nonnull, strict_safety, expected_return_type);
         if (node_get_data3(n) != 0) {
             typecheck_stmt(node_get_data3(n), fn_arities, fn_param_types, fn_return_types, local_types, else_nonnull, strict_safety, expected_return_type);
