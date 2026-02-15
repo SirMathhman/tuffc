@@ -828,7 +828,7 @@ export function parse(tokens: Token[]): ParseResult<Program> {
     });
   };
 
-  const parseStruct = (): ParseResult<Stmt> => {
+  const parseStruct = (isCopy = false): ParseResult<Stmt> => {
     const structResult = expect("keyword", "struct");
     if (!structResult.ok) return structResult;
     const nameResult = parseIdentifier();
@@ -863,7 +863,13 @@ export function parse(tokens: Token[]): ParseResult<Program> {
     }
     const closeResult = expect("symbol", "}");
     if (!closeResult.ok) return closeResult;
-    return ok({ kind: "StructDecl", name: nameResult.value, generics, fields });
+    return ok({
+      kind: "StructDecl",
+      name: nameResult.value,
+      generics,
+      fields,
+      isCopy,
+    });
   };
 
   const parseEnum = (): ParseResult<Stmt> => {
@@ -885,7 +891,7 @@ export function parse(tokens: Token[]): ParseResult<Program> {
     return ok({ kind: "EnumDecl", name: nameResult.value, variants });
   };
 
-  const parseTypeAlias = (): ParseResult<Stmt> => {
+  const parseTypeAlias = (isCopy = false): ParseResult<Stmt> => {
     const typeResult = expect("keyword", "type");
     if (!typeResult.ok) return typeResult;
     const nameResult = parseIdentifier();
@@ -920,6 +926,7 @@ export function parse(tokens: Token[]): ParseResult<Program> {
       name: nameResult.value,
       generics,
       aliasedType: aliasedTypeResult.value,
+      isCopy,
     });
   };
 
@@ -952,61 +959,94 @@ export function parse(tokens: Token[]): ParseResult<Program> {
   };
 
   const parseStatement = (): ParseResult<Stmt> => {
-    if (at("keyword", "out")) {
-      const outTok = eat();
+    let exported = false;
+    let copyDecl = false;
+    let modifierLoc = undefined;
+    let consumedModifier = false;
+    while (at("keyword", "out") || at("keyword", "copy")) {
+      consumedModifier = true;
+      const tok = eat();
+      modifierLoc = modifierLoc ?? tok.loc;
+      if (tok.value === "out") {
+        if (exported) {
+          return err(
+            new TuffError("Duplicate 'out' modifier", tok.loc, {
+              code: "E_PARSE_EXPECTED_TOKEN",
+              hint: "Use 'out' at most once before a declaration.",
+            }),
+          );
+        }
+        exported = true;
+      } else {
+        if (copyDecl) {
+          return err(
+            new TuffError("Duplicate 'copy' modifier", tok.loc, {
+              code: "E_PARSE_EXPECTED_TOKEN",
+              hint: "Use 'copy' at most once before a declaration.",
+            }),
+          );
+        }
+        copyDecl = true;
+      }
+    }
+
+    if (consumedModifier) {
+      let nodeResult: ParseResult<Stmt> | undefined = undefined;
       if (at("keyword", "fn")) {
-        const nodeResult = parseFunction(false);
-        if (!nodeResult.ok) return nodeResult;
-        const node = nodeResult.value;
-        node.exported = true;
-        node.loc = node.loc ?? outTok.loc;
-        return ok(node);
-      }
-      if (at("keyword", "struct")) {
-        const nodeResult = parseStruct();
-        if (!nodeResult.ok) return nodeResult;
-        const node = nodeResult.value;
-        node.exported = true;
-        node.loc = node.loc ?? outTok.loc;
-        return ok(node);
-      }
-      if (at("keyword", "enum")) {
-        const nodeResult = parseEnum();
-        if (!nodeResult.ok) return nodeResult;
-        const node = nodeResult.value;
-        node.exported = true;
-        node.loc = node.loc ?? outTok.loc;
-        return ok(node);
-      }
-      if (at("keyword", "type")) {
-        const nodeResult = parseTypeAlias();
-        if (!nodeResult.ok) return nodeResult;
-        const node = nodeResult.value;
-        node.exported = true;
-        node.loc = node.loc ?? outTok.loc;
-        return ok(node);
-      }
-      if (at("keyword", "class")) {
+        if (copyDecl) {
+          return err(
+            new TuffError("'copy' is only supported on struct/type declarations", peek().loc, {
+              code: "E_PARSE_EXPECTED_TOKEN",
+              hint: "Use 'copy struct ...' or 'copy type ...'.",
+            }),
+          );
+        }
+        nodeResult = parseFunction(false);
+      } else if (at("keyword", "struct")) {
+        nodeResult = parseStruct(copyDecl);
+      } else if (at("keyword", "enum")) {
+        if (copyDecl) {
+          return err(
+            new TuffError("Enums are copy by default; remove explicit 'copy'", peek().loc, {
+              code: "E_PARSE_EXPECTED_TOKEN",
+              hint: "Write 'enum ...' (or 'out enum ...') without the copy modifier.",
+            }),
+          );
+        }
+        nodeResult = parseEnum();
+      } else if (at("keyword", "type")) {
+        nodeResult = parseTypeAlias(copyDecl);
+      } else if (at("keyword", "class")) {
+        if (copyDecl) {
+          return err(
+            new TuffError("'copy' is only supported on struct/type declarations", peek().loc, {
+              code: "E_PARSE_EXPECTED_TOKEN",
+              hint: "Use 'copy struct ...' or 'copy type ...'.",
+            }),
+          );
+        }
         eat();
-        const nodeResult = parseFunction(true);
-        if (!nodeResult.ok) return nodeResult;
-        const node = nodeResult.value;
-        node.exported = true;
-        node.loc = node.loc ?? outTok.loc;
-        return ok(node);
+        nodeResult = parseFunction(true);
+      } else {
+        return err(
+          new TuffError("Expected declaration after modifiers", peek().loc, {
+            code: "E_PARSE_EXPECTED_TOKEN",
+            hint: "Use modifiers before a top-level fn/struct/enum/type/class declaration.",
+          }),
+        );
       }
-      return err(
-        new TuffError("Expected declaration after 'out'", peek().loc, {
-          code: "E_PARSE_EXPECTED_TOKEN",
-          hint: "Use 'out' before a top-level fn/struct/enum/type/class declaration.",
-        }),
-      );
+
+      if (!nodeResult.ok) return nodeResult;
+      const node = nodeResult.value;
+      if (exported) node.exported = true;
+      node.loc = node.loc ?? modifierLoc;
+      return ok(node);
     }
 
     if (at("keyword", "let")) return parseLetDecl();
-    if (at("keyword", "struct")) return parseStruct();
+    if (at("keyword", "struct")) return parseStruct(false);
     if (at("keyword", "enum")) return parseEnum();
-    if (at("keyword", "type")) return parseTypeAlias();
+    if (at("keyword", "type")) return parseTypeAlias(false);
     if (at("keyword", "fn")) return parseFunction(false);
     if (at("keyword", "extern")) {
       eat();

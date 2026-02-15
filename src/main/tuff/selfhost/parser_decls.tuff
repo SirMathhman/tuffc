@@ -77,7 +77,7 @@ fn p_parse_function(is_class: I32) : I32 => {
     node
 }
 
-fn p_parse_struct() : I32 => {
+fn p_parse_struct(is_copy: I32) : I32 => {
     p_expect(TK_KEYWORD, "struct", "Expected 'struct'");
     let name = p_parse_identifier();
     
@@ -114,6 +114,7 @@ fn p_parse_struct() : I32 => {
     node_set_data1(node, name);
     node_set_data2(node, generics);
     node_set_data3(node, fields);
+    node_set_data4(node, is_copy);
     node
 }
 
@@ -135,7 +136,7 @@ fn p_parse_enum() : I32 => {
     node
 }
 
-fn p_parse_type_alias() : I32 => {
+fn p_parse_type_alias(is_copy: I32) : I32 => {
     p_expect(TK_KEYWORD, "type", "Expected 'type'");
     let name = p_parse_identifier();
     
@@ -160,6 +161,7 @@ fn p_parse_type_alias() : I32 => {
     node_set_data1(node, name);
     node_set_data2(node, generics);
     node_set_data3(node, aliased);
+    node_set_data4(node, is_copy);
     node
 }
 
@@ -335,41 +337,62 @@ fn p_parse_extern_decl() : I32 => {
 }
 
 fn p_parse_statement() : I32 => {
-    if (p_at(TK_KEYWORD, "out")) {
-        p_eat();
-        if (p_at(TK_KEYWORD, "struct")) {
-            let out_node = p_parse_struct();
-            parse_exports.set_add(get_interned_str(node_get_data1(out_node)));
-            return out_node;
-        }
-        if (p_at(TK_KEYWORD, "enum")) {
-            let out_node = p_parse_enum();
-            parse_exports.set_add(get_interned_str(node_get_data1(out_node)));
-            return out_node;
-        }
-        if (p_at(TK_KEYWORD, "type")) {
-            let out_node = p_parse_type_alias();
-            parse_exports.set_add(get_interned_str(node_get_data1(out_node)));
-            return out_node;
-        }
-        if (p_at(TK_KEYWORD, "fn")) {
-            let out_node = p_parse_function(0);
-            parse_exports.set_add(get_interned_str(node_get_data1(out_node)));
-            return out_node;
-        }
-        if (p_at(TK_KEYWORD, "class")) {
+    let exported = 0;
+    let copy_decl = 0;
+    let consumed_modifier = 0;
+    while (p_at(TK_KEYWORD, "out") || p_at(TK_KEYWORD, "copy")) {
+        consumed_modifier = 1;
+        if (p_at(TK_KEYWORD, "out")) {
             p_eat();
-            let out_node = p_parse_function(1);
-            parse_exports.set_add(get_interned_str(node_get_data1(out_node)));
-            return out_node;
+            if (exported == 1) {
+                panic("Duplicate 'out' modifier");
+            }
+            exported = 1;
+        } else {
+            p_eat();
+            if (copy_decl == 1) {
+                panic("Duplicate 'copy' modifier");
+            }
+            copy_decl = 1;
         }
-        panic("Expected declaration after 'out'");
+    }
+
+    if (consumed_modifier == 1) {
+        let out_node = 0;
+        if (p_at(TK_KEYWORD, "struct")) {
+            out_node = p_parse_struct(copy_decl);
+        } else if (p_at(TK_KEYWORD, "enum")) {
+            if (copy_decl == 1) {
+                panic("Enums are copy by default; remove explicit 'copy'");
+            }
+            out_node = p_parse_enum();
+        } else if (p_at(TK_KEYWORD, "type")) {
+            out_node = p_parse_type_alias(copy_decl);
+        } else if (p_at(TK_KEYWORD, "fn")) {
+            if (copy_decl == 1) {
+                panic("'copy' is only supported on struct/type declarations");
+            }
+            out_node = p_parse_function(0);
+        } else if (p_at(TK_KEYWORD, "class")) {
+            if (copy_decl == 1) {
+                panic("'copy' is only supported on struct/type declarations");
+            }
+            p_eat();
+            out_node = p_parse_function(1);
+        } else {
+            panic("Expected declaration after modifiers");
+        }
+
+        if (exported == 1) {
+            parse_exports.set_add(get_interned_str(node_get_data1(out_node)));
+        }
+        return out_node;
     }
 
     if (p_at(TK_KEYWORD, "let")) { return p_parse_let(); }
-    if (p_at(TK_KEYWORD, "struct")) { return p_parse_struct(); }
+    if (p_at(TK_KEYWORD, "struct")) { return p_parse_struct(0); }
     if (p_at(TK_KEYWORD, "enum")) { return p_parse_enum(); }
-    if (p_at(TK_KEYWORD, "type")) { return p_parse_type_alias(); }
+    if (p_at(TK_KEYWORD, "type")) { return p_parse_type_alias(0); }
     if (p_at(TK_KEYWORD, "fn")) { return p_parse_function(0); }
     if (p_at(TK_KEYWORD, "extern")) {
         p_eat();

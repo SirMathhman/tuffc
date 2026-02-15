@@ -159,6 +159,7 @@ fn init_keywords() : I32 => {
     keywords.set_add("out");
     keywords.set_add("module");
     keywords.set_add("extern");
+    keywords.set_add("copy");
     keywords.set_add("async");
     keywords.set_add("mut");
     0

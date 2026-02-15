@@ -22,6 +22,7 @@ export function desugar(ast: Program): {
         name: classNode.name,
         generics: [],
         fields: [],
+        isCopy: false,
       });
 
       out.push({

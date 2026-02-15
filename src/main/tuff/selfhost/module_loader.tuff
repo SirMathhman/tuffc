@@ -346,8 +346,12 @@ fn module_assert_no_implicit_imports(source: *Str, declared: *mut Set, imported:
 fn module_has_out_export(source: *Str, name: *Str) : Bool => {
     source.str_includes("out fn ".str_concat(name)) ||
     source.str_includes("out struct ".str_concat(name)) ||
+    source.str_includes("out copy struct ".str_concat(name)) ||
+    source.str_includes("copy out struct ".str_concat(name)) ||
     source.str_includes("out enum ".str_concat(name)) ||
     source.str_includes("out type ".str_concat(name)) ||
+    source.str_includes("out copy type ".str_concat(name)) ||
+    source.str_includes("copy out type ".str_concat(name)) ||
     source.str_includes("out class fn ".str_concat(name))
 }
 

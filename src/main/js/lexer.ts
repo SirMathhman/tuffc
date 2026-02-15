@@ -26,6 +26,7 @@ const KEYWORDS = new Set([
   "out",
   "module",
   "extern",
+  "copy",
   "async",
   "mut",
 ]);
