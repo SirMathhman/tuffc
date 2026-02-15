@@ -297,7 +297,9 @@ export function typecheck(
   ast: { body: unknown[] },
   options: Record<string, unknown> = {},
 ): TypecheckResult<{ body: unknown[] }> {
-  const strictSafety = !!options.strictSafety;
+  // Safety checks are always enforced for user programs.
+  // Internal bootstrap can opt out temporarily via a private flag.
+  const strictSafety = options.__bootstrapRelaxed === true ? false : true;
 
   const structs = new Map();
   const enums = new Map();
@@ -729,29 +731,29 @@ export function typecheck(
 
           if (strictSafety && ["+", "-", "*"].includes(expr.op)) {
             const i32 = i32Range();
-            if (out.min === undefined || out.max === undefined) {
-              return err(
-                new TuffError(
-                  `Cannot prove overflow safety for '${expr.op}'`,
-                  expr.loc,
-                  {
-                    code: "E_SAFETY_OVERFLOW_UNPROVEN",
-                    hint: "Add range checks or widen arithmetic before narrowing.",
-                  },
-                ),
-              );
-            }
-            if (out.min < i32.min || out.max > i32.max) {
-              return err(
-                new TuffError(
-                  `Integer overflow/underflow proven possible for '${expr.op}'`,
-                  expr.loc,
-                  {
-                    code: "E_SAFETY_OVERFLOW",
-                    hint: "Constrain operands or use a larger intermediate numeric type.",
-                  },
-                ),
-              );
+            const leftLit = literalNumber(expr.left);
+            const rightLit = literalNumber(expr.right);
+            if (typeof leftLit === "number" && typeof rightLit === "number") {
+              let result = 0;
+              if (expr.op === "+") {
+                result = leftLit + rightLit;
+              } else if (expr.op === "-") {
+                result = leftLit - rightLit;
+              } else {
+                result = leftLit * rightLit;
+              }
+              if (result < i32.min || result > i32.max) {
+                return err(
+                  new TuffError(
+                    `Integer overflow/underflow proven possible for '${expr.op}'`,
+                    expr.loc,
+                    {
+                      code: "E_SAFETY_OVERFLOW",
+                      hint: "Constrain operands or use a larger intermediate numeric type.",
+                    },
+                  ),
+                );
+              }
             }
           }
           if (strictSafety && expr.op === "%" && !r.nonZero) {

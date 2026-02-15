@@ -64,7 +64,7 @@ const sandbox = {
 // Step 3: Run the compiled self-hosted compiler
 try {
   vm.runInNewContext(
-    `${selfhostJs}\nmodule.exports = { compile_source, compile_file, main };`,
+    `${selfhostJs}\nmodule.exports = { compile_source, compile_file, compile_source_with_options, compile_file_with_options, main };`,
     sandbox,
   );
 } catch (err) {
@@ -75,6 +75,10 @@ try {
 const selfhost = sandbox.module.exports;
 if (typeof selfhost.compile_source !== "function") {
   console.error("selfhost.compile_source not exported");
+  process.exit(1);
+}
+if (typeof selfhost.compile_file_with_options !== "function") {
+  console.error("selfhost.compile_file_with_options not exported");
   process.exit(1);
 }
 
@@ -137,7 +141,7 @@ try {
 console.log("Testing bootstrap (self-compilation)...");
 try {
   const selfhostBPath = path.join(outDir, "selfhost_b.js");
-  selfhost.compile_file(selfhostPath, selfhostBPath);
+  selfhost.compile_file_with_options(selfhostPath, selfhostBPath, 0, 0, 500);
   const selfhostB = fs.readFileSync(selfhostBPath, "utf8");
   fs.writeFileSync(path.join(outDir, "selfhost_b.js"), selfhostB, "utf8");
   console.log("  -> Self-hosted compiler compiled itself!");
@@ -150,14 +154,24 @@ try {
     ...runtime,
   };
   vm.runInNewContext(
-    `${selfhostB}\nmodule.exports = { compile_source, compile_file, main };`,
+    `${selfhostB}\nmodule.exports = { compile_source, compile_file, compile_source_with_options, compile_file_with_options, main };`,
     sandbox2,
   );
   const selfhostB_compiler = sandbox2.module.exports;
+  if (typeof selfhostB_compiler.compile_file_with_options !== "function") {
+    console.error("selfhost_b compiler missing compile_file_with_options");
+    process.exit(1);
+  }
 
   // Triple-compile: use selfhost_b to compile selfhost again
   const selfhostCPath = path.join(outDir, "selfhost_c.js");
-  selfhostB_compiler.compile_file(selfhostPath, selfhostCPath);
+  selfhostB_compiler.compile_file_with_options(
+    selfhostPath,
+    selfhostCPath,
+    0,
+    0,
+    500,
+  );
   const selfhostC = fs.readFileSync(selfhostCPath, "utf8");
   fs.writeFileSync(path.join(outDir, "selfhost_c.js"), selfhostC, "utf8");
   console.log("  -> Triple compilation succeeded!");

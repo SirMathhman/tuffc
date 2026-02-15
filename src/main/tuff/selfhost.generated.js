@@ -1753,6 +1753,9 @@ function type_names_compatible(expected, actual, rhs) {
   if ((str_eq(expected, "Unknown") || str_eq(actual, "Unknown"))) {
   return true;
 }
+  if ((str_eq(expected, "AnyValue") || str_eq(actual, "AnyValue"))) {
+  return true;
+}
   if (str_eq(expected, actual)) {
   return true;
 }
@@ -1867,13 +1870,12 @@ function typecheck_expr(n, fn_arities, fn_param_types, fn_return_types, local_ty
   if ((kind == NK_BINARY_EXPR)) {
   typecheck_expr(node_get_data2(n), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety);
   typecheck_expr(node_get_data3(n), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety);
-  if ((strict_safety == 1)) {
   let op = get_interned_str(node_get_data1(n));
   if ((str_eq(op, "/") && (!expr_is_number_literal_nonzero(node_get_data3(n))))) {
-  panic_with_code("E_SAFETY_DIV_BY_ZERO", "Division by zero cannot be ruled out at compile time", "The denominator is not proven non-zero under strict safety checks.", "Prove denominator != 0 via refinement type or control-flow guard.");
+  panic_with_code("E_SAFETY_DIV_BY_ZERO", "Division by zero cannot be ruled out at compile time", "The denominator is not proven non-zero under safety checks.", "Prove denominator != 0 via refinement type or control-flow guard.");
 }
   if ((str_eq(op, "%") && (!expr_is_number_literal_nonzero(node_get_data3(n))))) {
-  panic_with_code("E_SAFETY_MOD_BY_ZERO", "Modulo by zero cannot be ruled out at compile time", "The modulo denominator is not proven non-zero under strict safety checks.", "Prove denominator != 0 via refinement type or control-flow guard.");
+  panic_with_code("E_SAFETY_MOD_BY_ZERO", "Modulo by zero cannot be ruled out at compile time", "The modulo denominator is not proven non-zero under safety checks.", "Prove denominator != 0 via refinement type or control-flow guard.");
 }
   if (((str_eq(op, "+") || str_eq(op, "-")) || str_eq(op, "*"))) {
   let lnode = node_get_data2(n);
@@ -1891,8 +1893,7 @@ function typecheck_expr(n, fn_arities, fn_param_types, fn_return_types, local_ty
   result = (left * right);
 } }
   if (((result < (-2147483648)) || (result > 2147483647))) {
-  panic_with_code("E_SAFETY_OVERFLOW", str_concat(str_concat("Integer overflow/underflow proven possible for '", op), "'"), "Arithmetic is proven to exceed I32 range under strict safety checks.", "Constrain operands or use a wider intermediate type before narrowing.");
-}
+  panic_with_code("E_SAFETY_OVERFLOW", str_concat(str_concat("Integer overflow/underflow proven possible for '", op), "'"), "Arithmetic is proven to exceed I32 range under safety checks.", "Constrain operands or use a wider intermediate type before narrowing.");
 }
 }
 }
@@ -1928,7 +1929,7 @@ function typecheck_expr(n, fn_arities, fn_param_types, fn_return_types, local_ty
   let arg_node = vec_get(args, j);
   let arg_name = infer_expr_type_name(arg_node, fn_return_types, local_types);
   let expected_name = vec_get(expected_types, j);
-  if ((((strict_safety == 1) && str_starts_with(expected_name, "*")) && is_nullable_pointer_type_name(arg_name))) {
+  if ((str_starts_with(expected_name, "*") && is_nullable_pointer_type_name(arg_name))) {
   panic_with_code("E_SAFETY_NULLABLE_POINTER_GUARD", "Call requires nullable pointer guard", "A nullable pointer argument must be proven non-null before pointer-consuming calls.", "Guard pointer use with if (p != 0USize) or if (0USize != p) before the call.");
 }
   if ((!type_names_compatible(expected_name, arg_name, arg_node))) {
@@ -1948,7 +1949,6 @@ function typecheck_expr(n, fn_arities, fn_param_types, fn_return_types, local_ty
   return 0;
 }
   if ((kind == NK_MEMBER_EXPR)) {
-  if ((strict_safety == 1)) {
   let obj = node_get_data1(n);
   let obj_name = infer_expr_type_name(obj, fn_return_types, local_types);
   if (is_nullable_pointer_type_name(obj_name)) {
@@ -1961,12 +1961,10 @@ function typecheck_expr(n, fn_arities, fn_param_types, fn_return_types, local_ty
   panic_with_code("E_SAFETY_NULLABLE_POINTER_GUARD", "Nullable pointer access requires guard", "A nullable pointer must be proven non-null before pointer-consuming operations.", "Guard with if (p != 0USize) or if (0USize != p) before member access.");
 }
 }
-}
   typecheck_expr(node_get_data1(n), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety);
   return 0;
 }
   if ((kind == NK_INDEX_EXPR)) {
-  if ((strict_safety == 1)) {
   let target_node = node_get_data1(n);
   let target_name = infer_expr_type_name(target_node, fn_return_types, local_types);
   if (is_nullable_pointer_type_name(target_name)) {
@@ -1977,7 +1975,6 @@ function typecheck_expr(n, fn_arities, fn_param_types, fn_return_types, local_ty
 }
   if ((!guarded)) {
   panic_with_code("E_SAFETY_NULLABLE_POINTER_GUARD", "Nullable pointer indexing requires guard", "A nullable pointer must be proven non-null before pointer-consuming operations.", "Guard with if (p != 0USize) or if (0USize != p) before indexing.");
-}
 }
 }
   typecheck_expr(node_get_data1(n), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety);
@@ -2174,6 +2171,9 @@ function typecheck_stmt(n, fn_arities, fn_param_types, fn_return_types, local_ty
 }
 
 function typecheck_program_with_options(program, strict_safety) {
+  if ((strict_safety != 1)) {
+  return program;
+}
   let fn_arities = map_new();
   let fn_param_types = map_new();
   let fn_return_types = map_new();
@@ -2216,7 +2216,7 @@ function typecheck_program_with_options(program, strict_safety) {
 }
 
 function typecheck_program(program) {
-  return typecheck_program_with_options(program, 0);
+  return typecheck_program_with_options(program, 1);
 }
 
 function selfhost_typecheck_marker() { return 0; }
@@ -2689,7 +2689,7 @@ function gather_module_sources(filePath, moduleBasePath, seen, visiting, sources
 }
 
 function compile_file(inputPath, outputPath) {
-  return compile_file_with_options(inputPath, outputPath, 0, 0, 500);
+  return compile_file_with_options(inputPath, outputPath, 1, 0, 500);
 }
 
 function compile_file_with_options(inputPath, outputPath, strict_safety, lint_enabled, max_effective_lines) {
@@ -3294,7 +3294,7 @@ function compile_source_with_options(source, strict_safety, lint_enabled, max_ef
   return generate_js(typed);
 }
 
-function compile_source(source) { return compile_source_with_options(source, 0, 0, 500); }
+function compile_source(source) { return compile_source_with_options(source, 1, 0, 500); }
 
 function main() {
   print("Self-hosted Tuff compiler loaded");

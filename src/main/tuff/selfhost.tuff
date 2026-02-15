@@ -51,7 +51,7 @@ out fn compile_source_with_options(source: *Str, strict_safety: I32, lint_enable
 }
 
 // Main compiler pipeline
-fn compile_source(source: *Str) : *Str => compile_source_with_options(source, 0, 0, 500);
+fn compile_source(source: *Str) : *Str => compile_source_with_options(source, 1, 0, 500);
 
 // Entry point for testing
 fn main() : I32 => {

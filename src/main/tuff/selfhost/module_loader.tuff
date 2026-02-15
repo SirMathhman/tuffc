@@ -198,7 +198,7 @@ fn gather_module_sources(filePath: *Str, moduleBasePath: *Str, seen: *mut Set, v
 }
 
 out fn compile_file(inputPath: *Str, outputPath: *Str) : I32 => {
-    compile_file_with_options(inputPath, outputPath, 0, 0, 500)
+    compile_file_with_options(inputPath, outputPath, 1, 0, 500)
 }
 
 out fn compile_file_with_options(inputPath: *Str, outputPath: *Str, strict_safety: I32, lint_enabled: I32, max_effective_lines: I32) : I32 => {

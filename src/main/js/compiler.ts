@@ -43,16 +43,15 @@ function bootstrapSelfhostCompiler(options = {}): CompilerResult<unknown> {
     backend: "stage0",
     enableModules: true,
     modules: { moduleBaseDir: path.dirname(selfhostEntry) },
-    typecheck: {
-      ...(options.typecheck ?? {}),
-      strictSafety: false,
-    },
     resolve: {
       ...(options.resolve ?? {}),
       hostBuiltins: Object.keys(runtime),
       allowHostPrefix: "",
     },
     lint: { enabled: false },
+    // Bootstrap compiles the compiler implementation itself, which is not yet
+    // fully annotated for always-on safety proofs.
+    typecheck: { ...(options.typecheck ?? {}), __bootstrapRelaxed: true },
     borrowcheck: { enabled: false },
   });
 
@@ -403,7 +402,7 @@ export function compileSource(
     const selfhostResult = bootstrapSelfhostCompiler(options);
     if (!selfhostResult.ok) return selfhostResult;
     const selfhost = selfhostResult.value;
-    const strictSafety = options.typecheck?.strictSafety ? 1 : 0;
+    const strictSafety = 1;
     const lintEnabled =
       options.lint?.enabled && options.lint?.mode !== "warn" ? 1 : 0;
     const maxEffectiveLines = options.lint?.maxEffectiveLines ?? 500;
@@ -530,6 +529,9 @@ function compileFileInternal(
 ): CompilerResult<Record<string, unknown>> {
   const isSelfhostBootstrapInput =
     path.resolve(inputPath) === path.resolve(getSelfhostEntryPath());
+  const typecheckOptions = isSelfhostBootstrapInput
+    ? { ...(options.typecheck ?? {}), __bootstrapRelaxed: true }
+    : (options.typecheck ?? {});
   const target = getCodegenTarget(options);
   if (!isSupportedTarget(target)) {
     return err(
@@ -583,7 +585,7 @@ function compileFileInternal(
       );
     }
 
-    const strictSafety = options.typecheck?.strictSafety ? 1 : 0;
+    const strictSafety = 1;
     const lintEnabled =
       options.lint?.enabled && options.lint?.mode !== "warn" ? 1 : 0;
     const maxEffectiveLines = options.lint?.maxEffectiveLines ?? 500;
@@ -606,7 +608,7 @@ function compileFileInternal(
 
         const typecheckResult = typecheck(
           graphResult.value.merged,
-          options.typecheck ?? {},
+          typecheckOptions,
         );
         if (!typecheckResult.ok) return typecheckResult;
 
@@ -728,7 +730,7 @@ function compileFileInternal(
       return resolveResult;
     }
     const typecheckResult = run("typecheck", () =>
-      typecheck(graph.merged, options.typecheck ?? {}),
+      typecheck(graph.merged, typecheckOptions),
     );
     if (!typecheckResult.ok) {
       const sourceByFile = new Map();
