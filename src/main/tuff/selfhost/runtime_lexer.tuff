@@ -269,6 +269,12 @@ fn lex_read_number() : *Str => {
             }
         }
     }
+    while (is_alnum(lex_peek(0)) || lex_peek(0) == 95) {
+        let ch = lex_advance();
+        if (ch != 95) {
+            sb_append_char(sb, ch);
+        }
+    }
     sb_build(sb)
 }
 

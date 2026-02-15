@@ -206,97 +206,122 @@ out fn p_can_start_refinement_expr_at(offset: I32) : Bool => {
     false
 }
 
-out fn p_parse_type() : I32 => {
-    // Pointer type
-    if (p_at(TK_SYMBOL, "*")) {
-        p_eat();
-        let mutable = 0;
-        if (p_at(TK_KEYWORD, "mut")) {
+out fn p_parse_type_primary() : I32 => {
+        // Pointer type
+        if (p_at(TK_SYMBOL, "*")) {
             p_eat();
-            mutable = 1;
-        }
-        let inner = p_parse_type();
-        let node = node_new(NK_POINTER_TYPE);
-        node_set_data1(node, mutable);
-        node_set_data2(node, inner);
-        return node;
-    }
-    
-    // Array type
-    if (p_at(TK_SYMBOL, "[")) {
-        p_eat();
-        let elem = p_parse_type();
-        let init = 0;
-        let total = 0;
-        if (p_at(TK_SYMBOL, ";")) {
-            p_eat();
-            init = p_parse_expression(0);
-            p_expect(TK_SYMBOL, ";", "Expected ';' in array type");
-            total = p_parse_expression(0);
-        }
-        p_expect(TK_SYMBOL, "]", "Expected ']'");
-        let node = node_new(NK_ARRAY_TYPE);
-        node_set_data1(node, elem);
-        node_set_data2(node, init);
-        node_set_data3(node, total);
-        return node;
-    }
-    
-    // Tuple type
-    if (p_at(TK_SYMBOL, "(")) {
-        p_eat();
-        let members = vec_new();
-        if (!p_at(TK_SYMBOL, ")")) {
-            members.vec_push(p_parse_type());
-            while (p_at(TK_SYMBOL, ",")) {
+            let mutable = 0;
+            if (p_at(TK_KEYWORD, "mut")) {
                 p_eat();
+                mutable = 1;
+            }
+            let inner = p_parse_type_primary();
+            let node = node_new(NK_POINTER_TYPE);
+            node_set_data1(node, mutable);
+            node_set_data2(node, inner);
+            return node;
+        }
+        
+        // Array type
+        if (p_at(TK_SYMBOL, "[")) {
+            p_eat();
+            let elem = p_parse_type();
+            let init = 0;
+            let total = 0;
+            if (p_at(TK_SYMBOL, ";")) {
+                p_eat();
+                init = p_parse_expression(0);
+                p_expect(TK_SYMBOL, ";", "Expected ';' in array type");
+                total = p_parse_expression(0);
+            }
+            p_expect(TK_SYMBOL, "]", "Expected ']'");
+            let node = node_new(NK_ARRAY_TYPE);
+            node_set_data1(node, elem);
+            node_set_data2(node, init);
+            node_set_data3(node, total);
+            return node;
+        }
+        
+        // Tuple type
+        if (p_at(TK_SYMBOL, "(")) {
+            p_eat();
+            let members = vec_new();
+            if (!p_at(TK_SYMBOL, ")")) {
                 members.vec_push(p_parse_type());
+                while (p_at(TK_SYMBOL, ",")) {
+                    p_eat();
+                    members.vec_push(p_parse_type());
+                }
+            }
+            p_expect(TK_SYMBOL, ")", "Expected ')' in tuple type");
+            let node = node_new(NK_TUPLE_TYPE);
+            node_set_data1(node, members);
+            return node;
+        }
+
+        // Type-level nullable pointer sentinel: 0USize
+        if (p_at_kind(TK_NUMBER)) {
+            let t = p_eat();
+            let raw = get_intern(tok_value(t));
+            if (!raw.str_eq("0USize")) {
+                panic("Only 0USize is supported as a type-level numeric sentinel");
+            }
+            let base = node_new(NK_NAMED_TYPE);
+            node_set_data1(base, intern("USize"));
+            node_set_data2(base, vec_new());
+            let lit = node_new(NK_NUMBER_LIT);
+            node_set_data1(lit, tok_value(t));
+            let refine = node_new(NK_REFINEMENT_TYPE);
+            node_set_data1(refine, base);
+            node_set_data2(refine, intern("=="));
+            node_set_data3(refine, lit);
+            return refine;
+        }
+        
+        // Named type with optional generics
+        let name = p_parse_identifier();
+        let generics = vec_new();
+        
+        // Handle :: path
+        while (p_at(TK_SYMBOL, "::")) {
+            p_eat();
+            let part = p_parse_identifier();
+            // Combine names - for now just track them
+        }
+        
+        // Generic args
+        let would_be_member_refine = false;
+        if (p_at(TK_SYMBOL, "<")) {
+            let k1 = tok_kind(p_peek(1));
+            let k2 = tok_kind(p_peek(2));
+            if (k1 == TK_IDENTIFIER && k2 == TK_SYMBOL) {
+                let s2 = get_intern(tok_value(p_peek(2)));
+                if (s2.str_eq(".")) {
+                    would_be_member_refine = true;
+                }
             }
         }
-        p_expect(TK_SYMBOL, ")", "Expected ')' in tuple type");
-        let node = node_new(NK_TUPLE_TYPE);
-        node_set_data1(node, members);
-        return node;
-    }
-    
-    // Named type with optional generics
-    let name = p_parse_identifier();
-    let generics = vec_new();
-    
-    // Handle :: path
-    while (p_at(TK_SYMBOL, "::")) {
-        p_eat();
-        let part = p_parse_identifier();
-        // Combine names - for now just track them
-    }
-    
-    // Generic args
-    let would_be_member_refine = false;
-    if (p_at(TK_SYMBOL, "<")) {
-        let k1 = tok_kind(p_peek(1));
-        let k2 = tok_kind(p_peek(2));
-        if (k1 == TK_IDENTIFIER && k2 == TK_SYMBOL) {
-            let s2 = get_intern(tok_value(p_peek(2)));
-            if (s2.str_eq(".")) {
-                would_be_member_refine = true;
-            }
-        }
-    }
-    if (p_at(TK_SYMBOL, "<") && p_can_start_type_tok_at(1) && !would_be_member_refine) {
-        p_eat();
-        if (!p_at(TK_SYMBOL, ">")) {
-            generics.vec_push(p_parse_type());
-            while (p_at(TK_SYMBOL, ",")) {
-                p_eat();
+        if (p_at(TK_SYMBOL, "<") && p_can_start_type_tok_at(1) && !would_be_member_refine) {
+            p_eat();
+            if (!p_at(TK_SYMBOL, ">")) {
                 generics.vec_push(p_parse_type());
+                while (p_at(TK_SYMBOL, ",")) {
+                    p_eat();
+                    generics.vec_push(p_parse_type());
+                }
             }
+            p_expect(TK_SYMBOL, ">", "Expected '>' in generic args");
         }
-        p_expect(TK_SYMBOL, ">", "Expected '>' in generic args");
-    }
-    
-    let type_node = node_new(NK_NAMED_TYPE);
-    node_set_data1(type_node, name);
-    node_set_data2(type_node, generics);
+        
+        let type_node = node_new(NK_NAMED_TYPE);
+        node_set_data1(type_node, name);
+        node_set_data2(type_node, generics);
+        return type_node;
+}
+
+out fn p_parse_type() : I32 => {
+
+    let type_node = p_parse_type_primary();
     
     // Refinement predicate
     let has_refine = p_at(TK_SYMBOL, "!=") || p_at(TK_SYMBOL, "<") || p_at(TK_SYMBOL, ">") || p_at(TK_SYMBOL, "<=") || p_at(TK_SYMBOL, ">=");
@@ -317,7 +342,7 @@ out fn p_parse_type() : I32 => {
             is_extract = 1;
         }
         p_eat();
-        let right = p_parse_type();
+        let right = p_parse_type_primary();
         let union_node = node_new(NK_UNION_TYPE);
         node_set_data1(union_node, type_node);
         node_set_data2(union_node, right);

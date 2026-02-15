@@ -76,96 +76,140 @@ export function parse(tokens: Token[]): ParseResult<Program> {
       return false;
     };
 
-    if (at("symbol", "*")) {
-      eat();
-      const mutable = at("keyword", "mut") ? !!eat() : false;
-      const toResult = parseType();
-      if (!toResult.ok) return toResult;
-      return ok({ kind: "PointerType", mutable, to: toResult.value });
-    }
-
-    if (at("symbol", "[")) {
-      eat();
-      const elementResult = parseType();
-      if (!elementResult.ok) return elementResult;
-      let init = undefined;
-      let total = undefined;
-      if (at("symbol", ";")) {
+    const parseTypePrimary = (): ParseResult<Expr> => {
+      if (at("symbol", "*")) {
         eat();
-        const initResult = parseExpression();
-        if (!initResult.ok) return initResult;
-        init = initResult.value;
-        const semi = expect("symbol", ";", "Expected ';' in array type");
-        if (!semi.ok) return semi;
-        const totalResult = parseExpression();
-        if (!totalResult.ok) return totalResult;
-        total = totalResult.value;
+        const mutable = at("keyword", "mut") ? !!eat() : false;
+        const toResult = parseTypePrimary();
+        if (!toResult.ok) return toResult;
+        return ok({ kind: "PointerType", mutable, to: toResult.value });
       }
-      const close = expect("symbol", "]", "Expected ']' after array type");
-      if (!close.ok) return close;
+
+      if (at("symbol", "[")) {
+        eat();
+        const elementResult = parseType();
+        if (!elementResult.ok) return elementResult;
+        let init = undefined;
+        let total = undefined;
+        if (at("symbol", ";")) {
+          eat();
+          const initResult = parseExpression();
+          if (!initResult.ok) return initResult;
+          init = initResult.value;
+          const semi = expect("symbol", ";", "Expected ';' in array type");
+          if (!semi.ok) return semi;
+          const totalResult = parseExpression();
+          if (!totalResult.ok) return totalResult;
+          total = totalResult.value;
+        }
+        const close = expect("symbol", "]", "Expected ']' after array type");
+        if (!close.ok) return close;
+        return ok({
+          kind: "ArrayType",
+          element: elementResult.value,
+          init,
+          total,
+        });
+      }
+
+      if (at("symbol", "(")) {
+        eat();
+        const members: Expr[] = [];
+        if (!at("symbol", ")")) {
+          while (true) {
+            const memberResult = parseType();
+            if (!memberResult.ok) return memberResult;
+            members.push(memberResult.value);
+            if (!at("symbol", ",")) break;
+            eat();
+          }
+        }
+        const close = expect("symbol", ")", "Expected ')' for tuple type");
+        if (!close.ok) return close;
+        return ok({ kind: "TupleType", members });
+      }
+
+      if (at("number")) {
+        const t = eat();
+        const raw = String(t.value ?? "");
+        const match = raw.match(/^(-?\d+)([A-Za-z][A-Za-z0-9]*)?$/);
+        if (!match)
+          return err(
+            new TuffError(`Invalid numeric type literal '${raw}'`, t.loc, {
+              code: "E_PARSE_INVALID_NUMERIC_TYPE_LITERAL",
+              hint: "Use 0USize as the nullable pointer sentinel in type unions.",
+            }),
+          );
+        const value = Number(match[1]);
+        const suffix = match[2] ?? undefined;
+        if (suffix !== "USize" || value !== 0) {
+          return err(
+            new TuffError(`Unsupported numeric type literal '${raw}'`, t.loc, {
+              code: "E_PARSE_INVALID_NUMERIC_TYPE_LITERAL",
+              hint: "Only 0USize is valid as a type-level nullable pointer sentinel.",
+            }),
+          );
+        }
+        const base = { kind: "NamedType", name: "USize", genericArgs: [] };
+        const valueExpr = {
+          kind: "NumberLiteral",
+          value: 0,
+          numberType: "USize",
+          loc: t.loc,
+          start: t.start,
+          end: t.end,
+        };
+        return ok({ kind: "RefinementType", base, op: "==", valueExpr });
+      }
+
+      const firstIdResult = expect(
+        "identifier",
+        undefined,
+        "Expected type name",
+      );
+      if (!firstIdResult.ok) return firstIdResult;
+      const nameParts = [firstIdResult.value.value as string];
+      while (at("symbol", "::")) {
+        eat();
+        const partResult = parseIdentifier();
+        if (!partResult.ok) return partResult;
+        nameParts.push(partResult.value);
+      }
+      const genericArgs: Expr[] = [];
+      const wouldBeMemberRefinement =
+        at("symbol", "<") &&
+        peek(1)?.type === "identifier" &&
+        peek(2)?.type === "symbol" &&
+        peek(2)?.value === ".";
+      if (
+        at("symbol", "<") &&
+        canStartTypeToken(peek(1)) &&
+        !wouldBeMemberRefinement
+      ) {
+        eat();
+        if (!at("symbol", ">")) {
+          while (true) {
+            const argResult = parseType();
+            if (!argResult.ok) return argResult;
+            genericArgs.push(argResult.value);
+            if (!at("symbol", ",")) break;
+            eat();
+          }
+        }
+        const close = expect("symbol", ">", "Expected '>' in generic args");
+        if (!close.ok) return close;
+      }
+
       return ok({
-        kind: "ArrayType",
-        element: elementResult.value,
-        init,
-        total,
+        kind: "NamedType",
+        name: nameParts.join("::"),
+        genericArgs,
       });
-    }
-
-    if (at("symbol", "(")) {
-      eat();
-      const members: Expr[] = [];
-      if (!at("symbol", ")")) {
-        while (true) {
-          const memberResult = parseType();
-          if (!memberResult.ok) return memberResult;
-          members.push(memberResult.value);
-          if (!at("symbol", ",")) break;
-          eat();
-        }
-      }
-      const close = expect("symbol", ")", "Expected ')' for tuple type");
-      if (!close.ok) return close;
-      return ok({ kind: "TupleType", members });
-    }
-
-    const firstIdResult = expect("identifier", undefined, "Expected type name");
-    if (!firstIdResult.ok) return firstIdResult;
-    const nameParts = [firstIdResult.value.value as string];
-    while (at("symbol", "::")) {
-      eat();
-      const partResult = parseIdentifier();
-      if (!partResult.ok) return partResult;
-      nameParts.push(partResult.value);
-    }
-    const genericArgs: Expr[] = [];
-    const wouldBeMemberRefinement =
-      at("symbol", "<") &&
-      peek(1)?.type === "identifier" &&
-      peek(2)?.type === "symbol" &&
-      peek(2)?.value === ".";
-    if (
-      at("symbol", "<") &&
-      canStartTypeToken(peek(1)) &&
-      !wouldBeMemberRefinement
-    ) {
-      eat();
-      if (!at("symbol", ">")) {
-        while (true) {
-          const argResult = parseType();
-          if (!argResult.ok) return argResult;
-          genericArgs.push(argResult.value);
-          if (!at("symbol", ",")) break;
-          eat();
-        }
-      }
-      const close = expect("symbol", ">", "Expected '>' in generic args");
-      if (!close.ok) return close;
-    }
-    let typeExpr: Expr = {
-      kind: "NamedType",
-      name: nameParts.join("::"),
-      genericArgs,
     };
+
+    const primaryResult = parseTypePrimary();
+    if (!primaryResult.ok) return primaryResult;
+    let typeExpr: Expr = primaryResult.value;
 
     if (
       (at("symbol", "!=") ||
@@ -188,7 +232,7 @@ export function parse(tokens: Token[]): ParseResult<Program> {
 
     while (at("symbol", "|") || at("symbol", "|>")) {
       const unionOp = eat().value as string;
-      const rightResult = parseType();
+      const rightResult = parseTypePrimary();
       if (!rightResult.ok) return rightResult;
       typeExpr = {
         kind: "UnionType",
@@ -237,8 +281,14 @@ export function parse(tokens: Token[]): ParseResult<Program> {
       eat();
       return ok({ kind: "WildcardPattern" });
     }
-    if (at("number"))
-      return ok({ kind: "LiteralPattern", value: Number(eat().value) });
+    if (at("number")) {
+      const raw = String(eat().value ?? "");
+      const match = raw.match(/^(-?\d+(?:\.\d+)?)/);
+      return ok({
+        kind: "LiteralPattern",
+        value: Number(match?.[1] ?? raw),
+      });
+    }
     if (at("bool")) return ok({ kind: "LiteralPattern", value: !!eat().value });
     if (at("string")) return ok({ kind: "LiteralPattern", value: eat().value });
 
@@ -351,15 +401,25 @@ export function parse(tokens: Token[]): ParseResult<Program> {
   };
 
   const parsePrimary = (): ParseResult<Expr> => {
-    if (at("number")) {
-      const t = eat();
-      return parsePostfix({
+    const parseNumberLiteralToken = (t: Token): Expr => {
+      const raw = String(t.value ?? "");
+      const match = raw.match(/^(-?\d+(?:\.\d+)?)([A-Za-z][A-Za-z0-9]*)?$/);
+      const numericPart = match?.[1] ?? raw;
+      const suffix = match?.[2] ?? undefined;
+      return {
         kind: "NumberLiteral",
-        value: Number(t.value),
+        value: Number(numericPart),
+        numberType: suffix ?? "I32",
+        raw,
         loc: t.loc,
         start: t.start,
         end: t.end,
-      });
+      };
+    };
+
+    if (at("number")) {
+      const t = eat();
+      return parsePostfix(parseNumberLiteralToken(t));
     }
     if (at("bool")) {
       const t = eat();

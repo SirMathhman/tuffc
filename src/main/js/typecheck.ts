@@ -30,6 +30,11 @@ function isTypeVariableName(name) {
 function areCompatibleNamedTypes(expected, actual) {
   if (expected === actual) return true;
 
+  if (typeof expected === "string" && expected.includes("|")) {
+    const parts = expected.split("|").map((p) => p.trim());
+    if (parts.includes(actual)) return true;
+  }
+
   // Mutable pointer can be used where immutable pointer is expected.
   // expected: *T, actual: *mut T  => allowed
   if (
@@ -82,6 +87,14 @@ function cloneInfo(info) {
 
 function intersectBounds(info, fact) {
   const out = cloneInfo(info);
+  if (fact.nonNullPointer) {
+    const pointerBranch = getNullablePointerBranch(out.typeNode);
+    if (pointerBranch) {
+      out.typeNode = pointerBranch;
+      out.name = named(pointerBranch) ?? out.name;
+      out.nonZero = true;
+    }
+  }
   if (fact.min !== undefined && fact.min !== undefined) {
     out.min = out.min === undefined ? fact.min : Math.max(out.min, fact.min);
   }
@@ -249,6 +262,35 @@ function collectTypeVariables(type, knownTypeNames, out) {
 
 function literalNumber(expr) {
   return expr?.kind === "NumberLiteral" ? expr.value : undefined;
+}
+
+function isUSizeZeroLiteralExpr(expr) {
+  return (
+    expr?.kind === "NumberLiteral" &&
+    Number(expr?.value) === 0 &&
+    expr?.numberType === "USize"
+  );
+}
+
+function isUSizeZeroTypeNode(typeNode) {
+  if (!typeNode || typeNode.kind !== "RefinementType") return false;
+  if (typeNode.op !== "==") return false;
+  if (typeNode.base?.kind !== "NamedType" || typeNode.base?.name !== "USize")
+    return false;
+  return isUSizeZeroLiteralExpr(typeNode.valueExpr);
+}
+
+function getNullablePointerBranch(typeNode) {
+  if (!typeNode || typeNode.kind !== "UnionType") return undefined;
+  const left = typeNode.left;
+  const right = typeNode.right;
+  if (left?.kind === "PointerType" && isUSizeZeroTypeNode(right)) return left;
+  if (right?.kind === "PointerType" && isUSizeZeroTypeNode(left)) return right;
+  return undefined;
+}
+
+function isNullablePointerInfo(info) {
+  return !!getNullablePointerBranch(info?.typeNode);
 }
 
 export function typecheck(
@@ -419,6 +461,15 @@ export function typecheck(
         if (op === "==")
           addFact(left.name, { min: v, max: v, nonZero: v !== 0 });
         if (op === "!=" && v === 0) addFact(left.name, { nonZero: true });
+        if (op === "!=" && isUSizeZeroLiteralExpr(right)) {
+          addFact(left.name, { nonNullPointer: true });
+        }
+      }
+
+      if (left.kind === "NumberLiteral" && right.kind === "Identifier") {
+        if (op === "!=" && isUSizeZeroLiteralExpr(left)) {
+          addFact(right.name, { nonNullPointer: true });
+        }
       }
     };
 
@@ -478,13 +529,20 @@ export function typecheck(
 
   const inferExpr = (expr, scope, facts): TypecheckResult<unknown> => {
     switch (expr.kind) {
-      case "NumberLiteral":
+      case "NumberLiteral": {
+        const numberName = expr.numberType === "USize" ? "USize" : "I32";
         return ok({
-          name: "I32",
+          name: numberName,
           min: expr.value,
           max: expr.value,
           nonZero: expr.value !== 0,
+          typeNode: {
+            kind: "NamedType",
+            name: numberName,
+            genericArgs: [],
+          },
         });
+      }
       case "BoolLiteral":
         return ok({
           name: "Bool",
@@ -802,6 +860,22 @@ export function typecheck(
               const expectedInfo = resolveTypeInfo(fn.params[idx].type);
               const expected = expectedInfo.name ?? argType.name;
               if (
+                strictSafety &&
+                expected?.startsWith("*") &&
+                isNullablePointerInfo(argType)
+              ) {
+                return err(
+                  new TuffError(
+                    `Call to ${fn.name} arg ${idx + 1} requires nullable pointer guard`,
+                    expr.loc,
+                    {
+                      code: "E_SAFETY_NULLABLE_POINTER_GUARD",
+                      hint: "Guard pointer use with if (p != 0USize) (or 0USize != p) before dereference/consumption.",
+                    },
+                  ),
+                );
+              }
+              if (
                 expected &&
                 argType.name !== "Unknown" &&
                 !areCompatibleNamedTypes(expected, argType.name) &&
@@ -845,6 +919,14 @@ export function typecheck(
         const tResult = inferExpr(expr.object, scope, facts);
         if (!tResult.ok) return tResult;
         const t = tResult.value;
+        if (strictSafety && isNullablePointerInfo(t)) {
+          return err(
+            new TuffError("Nullable pointer access requires guard", expr.loc, {
+              code: "E_SAFETY_NULLABLE_POINTER_GUARD",
+              hint: "Use if (p != 0USize) or if (0USize != p) before accessing members.",
+            }),
+          );
+        }
         if (expr.property === "length" || expr.property === "init") {
           const max = t.arrayTotal ?? t.arrayInit ?? undefined;
           return ok({ name: "USize", min: 0, max, nonZero: false });
@@ -860,6 +942,18 @@ export function typecheck(
         const targetResult = inferExpr(expr.target, scope, facts);
         if (!targetResult.ok) return targetResult;
         const target = targetResult.value;
+        if (strictSafety && isNullablePointerInfo(target)) {
+          return err(
+            new TuffError(
+              "Nullable pointer indexing requires guard",
+              expr.loc,
+              {
+                code: "E_SAFETY_NULLABLE_POINTER_GUARD",
+                hint: "Use if (p != 0USize) or if (0USize != p) before indexing through pointers.",
+              },
+            ),
+          );
+        }
         const indexResult = inferExpr(expr.index, scope, facts);
         if (!indexResult.ok) return indexResult;
         const index = indexResult.value;

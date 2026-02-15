@@ -79,6 +79,33 @@ if (strictSelfhostDiag.code !== "E_SAFETY_DIV_BY_ZERO") {
   process.exit(1);
 }
 
+const nullableGuardResult = compileSourceResult(
+  `fn bad(p : *I32 | 0USize) : I32 => p[0];`,
+  "<phase4-nullable-guard>",
+  {
+    typecheck: { strictSafety: true },
+  },
+);
+if (nullableGuardResult.ok) {
+  console.error("Expected nullable-pointer strict-safety compile failure");
+  process.exit(1);
+}
+const nullableGuardDiag = toDiagnostic(unwrapErr(nullableGuardResult));
+if (nullableGuardDiag.code !== "E_SAFETY_NULLABLE_POINTER_GUARD") {
+  console.error(
+    `Expected E_SAFETY_NULLABLE_POINTER_GUARD, got ${nullableGuardDiag.code}`,
+  );
+  process.exit(1);
+}
+for (const key of ["source", "cause", "reason", "fix"]) {
+  if (!nullableGuardDiag[key] || typeof nullableGuardDiag[key] !== "string") {
+    console.error(
+      `Expected nullable-pointer diagnostic field '${key}' to be a non-empty string`,
+    );
+    process.exit(1);
+  }
+}
+
 // 2) Ensure CLI emits machine-readable JSON diagnostics.
 const failingFile = path.join(outDir, "cli-fail.tuff");
 fs.writeFileSync(failingFile, `fn bad(x : I32) : I32 => 100 / x;`, "utf8");

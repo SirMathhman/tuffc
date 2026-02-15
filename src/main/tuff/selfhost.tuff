@@ -21,17 +21,32 @@ let { resolve_names } = selfhost::resolver;
 let { typecheck_program, typecheck_program_with_options } = selfhost::typecheck;
 let { generate_js } = selfhost::codegen_stmt;
 
+fn sanitize_max_effective_lines(max_effective_lines: I32) : I32 => {
+    if (max_effective_lines <= 0) {
+        500
+    } else {
+        max_effective_lines
+    }
+}
+
+fn normalize_flag(value: I32) : I32 => {
+    if (value == 0) { 0 } else { 1 }
+}
+
 out fn compile_source_with_options(source: *Str, strict_safety: I32, lint_enabled: I32, max_effective_lines: I32) : *Str => {
+    let max_lines = sanitize_max_effective_lines(max_effective_lines);
+    let strict = normalize_flag(strict_safety);
+    let lint = normalize_flag(lint_enabled);
     lex_init(source);
     lex_all();
-    if (lint_enabled == 1) {
-        lint_assert_file_length("<memory>", max_effective_lines);
+    if (lint == 1) {
+        lint_assert_file_length("<memory>", max_lines);
     }
     parse_init();
     let program = p_parse_program();
     let desugared = desugar(program);
     let resolved = resolve_names(desugared);
-    let typed = typecheck_program_with_options(resolved, strict_safety);
+    let typed = typecheck_program_with_options(resolved, strict);
     generate_js(typed)
 }
 

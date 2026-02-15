@@ -7,6 +7,18 @@ let { resolve_names } = selfhost::resolver;
 let { typecheck_program, typecheck_program_with_options } = selfhost::typecheck;
 let { generate_js } = selfhost::codegen_stmt;
 
+fn module_loader_sanitize_max_effective_lines(max_effective_lines: I32) : I32 => {
+    if (max_effective_lines <= 0) {
+        500
+    } else {
+        max_effective_lines
+    }
+}
+
+    fn module_loader_normalize_flag(value: I32) : I32 => {
+        if (value == 0) { 0 } else { 1 }
+    }
+
 fn module_parts_to_relative_path(parts: Vec) : *Str => {
     let sb = sb_new();
     let i = 0;
@@ -190,12 +202,15 @@ out fn compile_file(inputPath: *Str, outputPath: *Str) : I32 => {
 }
 
 out fn compile_file_with_options(inputPath: *Str, outputPath: *Str, strict_safety: I32, lint_enabled: I32, max_effective_lines: I32) : I32 => {
+    let max_lines = module_loader_sanitize_max_effective_lines(max_effective_lines);
+    let strict = module_loader_normalize_flag(strict_safety);
+    let lint = module_loader_normalize_flag(lint_enabled);
     let moduleBasePath = path_dirname(inputPath);
     let seen = set_new();
     let visiting = set_new();
     let sources = vec_new();
     let module_declared_map = map_new();
-    gather_module_sources(inputPath, moduleBasePath, seen, visiting, sources, module_declared_map, lint_enabled, max_effective_lines);
+    gather_module_sources(inputPath, moduleBasePath, seen, visiting, sources, module_declared_map, lint, max_lines);
     let merged = join_sources(sources);
     lex_init(merged);
     lex_all();
@@ -204,7 +219,7 @@ out fn compile_file_with_options(inputPath: *Str, outputPath: *Str, strict_safet
     program = strip_import_decls(program);
     let desugared = desugar(program);
     let resolved = resolve_names(desugared);
-    let typed = typecheck_program_with_options(resolved, strict_safety);
+    let typed = typecheck_program_with_options(resolved, strict);
     let js = generate_js(typed);
     write_file(outputPath, js)
 }

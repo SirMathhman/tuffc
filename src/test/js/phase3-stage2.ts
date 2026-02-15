@@ -93,6 +93,28 @@ expectCompileFail(
   "Type mismatch in call to writePtr arg 1",
 );
 
+expectCompileFail(
+  "nullable-pointer-unguarded-call",
+  `fn bad(p : *I32 | 0USize) : I32 => p[0];`,
+  "Nullable pointer",
+);
+
+expectCompileOk(
+  "nullable-pointer-guarded-call",
+  `fn good(p : *I32 | 0USize) : I32 => { if (p != 0USize) { p[0] } else { 0 } }`,
+);
+
+expectCompileOk(
+  "nullable-pointer-guarded-call-reversed",
+  `fn good(p : *I32 | 0USize) : I32 => { if (0USize != p) { p[0] } else { 0 } }`,
+);
+
+expectCompileFail(
+  "nullable-pointer-legacy-zero-rejected",
+  `fn bad(p : *I32 | 0) : I32 => 0;`,
+  "numeric type literal",
+);
+
 expectCompileOk(
   "match-exhaustive",
   `struct Some<T> { value : I32 }\nstruct None<T> {}\ntype Option<T> = Some<T> | None<T>;\nfn f(o : Option<I32>) : I32 => match (o) { case Some { value } = value; case None = 0; };`,

@@ -43,6 +43,13 @@ typedef struct
     size_t cap;
 } TuffSet;
 
+static char **g_managed_strings = NULL;
+static size_t g_managed_strings_len = 0;
+static size_t g_managed_strings_cap = 0;
+
+static int tuff_is_small_int(int64_t v);
+static char *tuff_strdup(const char *s);
+
 static inline int64_t tuff_to_val(const void *p)
 {
     return (int64_t)(intptr_t)p;
@@ -55,7 +62,60 @@ static inline void *tuff_from_val(int64_t v)
 
 static inline const char *tuff_str(int64_t v)
 {
+    if (v == 0)
+        return NULL;
+    if (tuff_is_small_int(v))
+        return NULL;
     return (const char *)(intptr_t)v;
+}
+
+static int tuff_is_managed_string_ptr(const char *p)
+{
+    if (p == NULL)
+        return 0;
+    for (size_t i = 0; i < g_managed_strings_len; i++)
+    {
+        if (g_managed_strings[i] == p)
+            return 1;
+    }
+    return 0;
+}
+
+static int64_t tuff_register_owned_string(char *owned)
+{
+    if (owned == NULL)
+        return 0;
+    if (!tuff_is_managed_string_ptr(owned))
+    {
+        if (g_managed_strings_len >= g_managed_strings_cap)
+        {
+            size_t next_cap = g_managed_strings_cap == 0 ? 32 : g_managed_strings_cap * 2;
+            char **next = (char **)realloc(g_managed_strings, sizeof(char *) * next_cap);
+            if (next == NULL)
+                tuff_panic("Out of memory in managed string registry");
+            g_managed_strings = next;
+            g_managed_strings_cap = next_cap;
+        }
+        g_managed_strings[g_managed_strings_len++] = owned;
+    }
+    return tuff_to_val(owned);
+}
+
+static int64_t tuff_register_cstring_copy(const char *s)
+{
+    return tuff_register_owned_string(tuff_strdup(s));
+}
+
+static int64_t tuff_canonicalize_key(int64_t v)
+{
+    if (v == 0)
+        return 0;
+    if (tuff_is_small_int(v))
+        return v;
+    const char *p = (const char *)(intptr_t)v;
+    if (tuff_is_managed_string_ptr(p))
+        return v;
+    return tuff_register_cstring_copy(p);
 }
 
 static char *tuff_strdup(const char *s)
@@ -89,6 +149,8 @@ static int tuff_value_equals(int64_t a, int64_t b)
     const char *sa = tuff_str(a);
     const char *sb = tuff_str(b);
     if (sa == NULL || sb == NULL)
+        return 0;
+    if (!tuff_is_managed_string_ptr(sa) || !tuff_is_managed_string_ptr(sb))
         return 0;
     return strcmp(sa, sb) == 0;
 }
@@ -168,7 +230,7 @@ int64_t str_slice(int64_t s, int64_t start, int64_t end)
 {
     const char *p = tuff_str(s);
     if (p == NULL)
-        return tuff_to_val(tuff_strdup(""));
+        return tuff_register_cstring_copy("");
     size_t n = strlen(p);
     if (start < 0)
         start = 0;
@@ -187,7 +249,7 @@ int64_t str_slice(int64_t s, int64_t start, int64_t end)
         tuff_panic("Out of memory in str_slice");
     memcpy(out, p + start, out_n);
     out[out_n] = '\0';
-    return tuff_to_val(out);
+    return tuff_register_owned_string(out);
 }
 
 int64_t str_concat(int64_t a, int64_t b)
@@ -205,7 +267,7 @@ int64_t str_concat(int64_t a, int64_t b)
         tuff_panic("Out of memory in str_concat");
     memcpy(out, sa, na);
     memcpy(out + na, sb, nb + 1);
-    return tuff_to_val(out);
+    return tuff_register_owned_string(out);
 }
 
 int64_t str_eq(int64_t a, int64_t b)
@@ -224,7 +286,7 @@ int64_t str_from_char_code(int64_t code)
         tuff_panic("Out of memory in str_from_char_code");
     out[0] = (char)code;
     out[1] = '\0';
-    return tuff_to_val(out);
+    return tuff_register_owned_string(out);
 }
 
 int64_t str_index_of(int64_t s, int64_t needle)
@@ -258,7 +320,7 @@ int64_t str_trim(int64_t s)
 {
     const char *p = tuff_str(s);
     if (p == NULL)
-        return tuff_to_val(tuff_strdup(""));
+        return tuff_register_cstring_copy("");
     size_t n = strlen(p);
     size_t a = 0;
     while (a < n && (p[a] == ' ' || p[a] == '\n' || p[a] == '\r' || p[a] == '\t'))
@@ -277,7 +339,7 @@ int64_t str_replace_all(int64_t s, int64_t from, int64_t to)
     if (src == NULL)
         return tuff_to_val(tuff_strdup(""));
     if (needle == NULL || needle[0] == '\0')
-        return tuff_to_val(tuff_strdup(src));
+        return tuff_register_cstring_copy(src);
     if (repl == NULL)
         repl = "";
 
@@ -315,7 +377,7 @@ int64_t str_replace_all(int64_t s, int64_t from, int64_t to)
         dst += rp_len;
         cur = hit + nd_len;
     }
-    return tuff_to_val(out);
+    return tuff_register_owned_string(out);
 }
 
 int64_t char_code(int64_t ch)
@@ -327,7 +389,7 @@ int64_t int_to_string(int64_t n)
 {
     char buf[64];
     snprintf(buf, sizeof(buf), "%lld", (long long)n);
-    return tuff_to_val(tuff_strdup(buf));
+    return tuff_register_cstring_copy(buf);
 }
 
 int64_t parse_int(int64_t s)
@@ -392,8 +454,8 @@ int64_t sb_build(int64_t sb_val)
 {
     TuffStringBuilder *sb = (TuffStringBuilder *)tuff_from_val(sb_val);
     if (sb == NULL)
-        return tuff_to_val(tuff_strdup(""));
-    return tuff_to_val(tuff_strdup(sb->buf));
+        return tuff_register_cstring_copy("");
+    return tuff_register_cstring_copy(sb->buf);
 }
 
 int64_t vec_new(void)
@@ -534,6 +596,7 @@ static void map_reserve(TuffMap *m, size_t need)
 int64_t map_set(int64_t thisMap, int64_t k, int64_t v)
 {
     TuffMap *m = (TuffMap *)tuff_from_val(thisMap);
+    k = tuff_canonicalize_key(k);
     if (m == NULL)
         return thisMap;
     for (size_t i = 0; i < m->len; i++)
@@ -554,6 +617,7 @@ int64_t map_set(int64_t thisMap, int64_t k, int64_t v)
 int64_t map_get(int64_t thisMap, int64_t k)
 {
     TuffMap *m = (TuffMap *)tuff_from_val(thisMap);
+    k = tuff_canonicalize_key(k);
     if (m == NULL)
         return 0;
     for (size_t i = 0; i < m->len; i++)
@@ -567,6 +631,7 @@ int64_t map_get(int64_t thisMap, int64_t k)
 int64_t map_has(int64_t thisMap, int64_t k)
 {
     TuffMap *m = (TuffMap *)tuff_from_val(thisMap);
+    k = tuff_canonicalize_key(k);
     if (m == NULL)
         return 0;
     for (size_t i = 0; i < m->len; i++)
@@ -602,6 +667,7 @@ static void set_reserve(TuffSet *s, size_t need)
 int64_t set_add(int64_t thisSet, int64_t item)
 {
     TuffSet *s = (TuffSet *)tuff_from_val(thisSet);
+    item = tuff_canonicalize_key(item);
     if (s == NULL)
         return thisSet;
     for (size_t i = 0; i < s->len; i++)
@@ -617,6 +683,7 @@ int64_t set_add(int64_t thisSet, int64_t item)
 int64_t set_has(int64_t thisSet, int64_t item)
 {
     TuffSet *s = (TuffSet *)tuff_from_val(thisSet);
+    item = tuff_canonicalize_key(item);
     if (s == NULL)
         return 0;
     for (size_t i = 0; i < s->len; i++)
@@ -630,6 +697,7 @@ int64_t set_has(int64_t thisSet, int64_t item)
 int64_t set_delete(int64_t thisSet, int64_t item)
 {
     TuffSet *s = (TuffSet *)tuff_from_val(thisSet);
+    item = tuff_canonicalize_key(item);
     if (s == NULL)
         return 0;
     for (size_t i = 0; i < s->len; i++)
@@ -664,7 +732,7 @@ int64_t read_file(int64_t filePath)
     size_t r = fread(buf, 1, (size_t)n, f);
     buf[r] = '\0';
     fclose(f);
-    return tuff_to_val(buf);
+    return tuff_register_owned_string(buf);
 }
 
 int64_t write_file(int64_t filePath, int64_t contents)
@@ -694,7 +762,7 @@ int64_t path_join(int64_t a, int64_t b)
     if (sb == NULL)
         sb = "";
     if (sb[0] == '/' || sb[0] == '\\' || (strlen(sb) > 1 && sb[1] == ':'))
-        return tuff_to_val(tuff_strdup(sb));
+        return tuff_register_cstring_copy(sb);
     size_t na = strlen(sa);
     size_t nb = strlen(sb);
     int needs_sep = na > 0 && sa[na - 1] != '/' && sa[na - 1] != '\\';
@@ -705,24 +773,24 @@ int64_t path_join(int64_t a, int64_t b)
     if (needs_sep)
         strcat(out, "/");
     strcat(out, sb);
-    return tuff_to_val(out);
+    return tuff_register_owned_string(out);
 }
 
 int64_t path_dirname(int64_t p)
 {
     const char *s = tuff_str(p);
     if (s == NULL)
-        return tuff_to_val(tuff_strdup("."));
+        return tuff_register_cstring_copy(".");
     size_t n = strlen(s);
     if (n == 0)
-        return tuff_to_val(tuff_strdup("."));
+        return tuff_register_cstring_copy(".");
     const char *last_slash = strrchr(s, '/');
     const char *last_back = strrchr(s, '\\');
     const char *last = last_slash;
     if (last_back != NULL && (last == NULL || last_back > last))
         last = last_back;
     if (last == NULL)
-        return tuff_to_val(tuff_strdup("."));
+        return tuff_register_cstring_copy(".");
     size_t out_n = (size_t)(last - s);
     if (out_n == 0)
         out_n = 1;
@@ -731,7 +799,7 @@ int64_t path_dirname(int64_t p)
         tuff_panic("Out of memory in path_dirname");
     memcpy(out, s, out_n);
     out[out_n] = '\0';
-    return tuff_to_val(out);
+    return tuff_register_owned_string(out);
 }
 
 int64_t print(int64_t s)

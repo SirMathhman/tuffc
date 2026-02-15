@@ -158,7 +158,14 @@ export function lex(
           while (/[0-9_]/.test(peek())) text += advance();
         }
       }
-      add("number", text.replaceAll("_", ""), start, startIndex);
+      let suffix = "";
+      while (/[A-Za-z0-9_]/.test(peek())) suffix += advance();
+      add(
+        "number",
+        `${text.replaceAll("_", "")}${suffix.replaceAll("_", "")}`,
+        start,
+        startIndex,
+      );
       continue;
     }
 

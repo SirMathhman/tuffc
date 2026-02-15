@@ -295,6 +295,12 @@ function lex_read_number() {
 }
 }
 }
+  while ((is_alnum(lex_peek(0)) || (lex_peek(0) == 95))) {
+  let ch = lex_advance();
+  if ((ch != 95)) {
+  sb_append_char(sb, ch);
+}
+}
   return sb_build(sb);
 }
 
@@ -781,7 +787,7 @@ function p_can_start_refinement_expr_at(offset) {
   return false;
 }
 
-function p_parse_type() {
+function p_parse_type_primary() {
   if (p_at(TK_SYMBOL, "*")) {
   p_eat();
   let mutable = 0;
@@ -789,7 +795,7 @@ function p_parse_type() {
   p_eat();
   mutable = 1;
 }
-  let inner = p_parse_type();
+  let inner = p_parse_type_primary();
   let node = node_new(NK_POINTER_TYPE);
   node_set_data1(node, mutable);
   node_set_data2(node, inner);
@@ -828,6 +834,23 @@ function p_parse_type() {
   node_set_data1(node, members);
   return node;
 }
+  if (p_at_kind(TK_NUMBER)) {
+  let t = p_eat();
+  let raw = get_intern(tok_value(t));
+  if ((!str_eq(raw, "0USize"))) {
+  panic("Only 0USize is supported as a type-level numeric sentinel");
+}
+  let base = node_new(NK_NAMED_TYPE);
+  node_set_data1(base, intern("USize"));
+  node_set_data2(base, vec_new());
+  let lit = node_new(NK_NUMBER_LIT);
+  node_set_data1(lit, tok_value(t));
+  let refine = node_new(NK_REFINEMENT_TYPE);
+  node_set_data1(refine, base);
+  node_set_data2(refine, intern("=="));
+  node_set_data3(refine, lit);
+  return refine;
+}
   let name = p_parse_identifier();
   let generics = vec_new();
   while (p_at(TK_SYMBOL, "::")) {
@@ -859,6 +882,11 @@ function p_parse_type() {
   let type_node = node_new(NK_NAMED_TYPE);
   node_set_data1(type_node, name);
   node_set_data2(type_node, generics);
+  return type_node;
+}
+
+function p_parse_type() {
+  let type_node = p_parse_type_primary();
   let has_refine = ((((p_at(TK_SYMBOL, "!=") || p_at(TK_SYMBOL, "<")) || p_at(TK_SYMBOL, ">")) || p_at(TK_SYMBOL, "<=")) || p_at(TK_SYMBOL, ">="));
   if ((has_refine && p_can_start_refinement_expr_at(1))) {
   let op = tok_value(p_eat());
@@ -875,7 +903,7 @@ function p_parse_type() {
   is_extract = 1;
 }
   p_eat();
-  let right = p_parse_type();
+  let right = p_parse_type_primary();
   let union_node = node_new(NK_UNION_TYPE);
   node_set_data1(union_node, type_node);
   node_set_data2(union_node, right);
@@ -1634,6 +1662,11 @@ function type_name_from_type_node(t) {
   if ((k == NK_REFINEMENT_TYPE)) {
   return type_name_from_type_node(node_get_data1(t));
 }
+  if ((k == NK_UNION_TYPE)) {
+  let left = type_name_from_type_node(node_get_data1(t));
+  let right = type_name_from_type_node(node_get_data2(t));
+  return str_concat(str_concat(left, "|"), right);
+}
   return "Unknown";
 }
 
@@ -1641,10 +1674,52 @@ function pointer_types_compatible(expected, actual) {
   if (str_eq(expected, actual)) {
   return true;
 }
+  if (str_includes(expected, "|")) {
+  if (((str_starts_with(expected, str_concat(actual, "|")) || str_ends_with_local(expected, str_concat("|", actual))) || str_includes(expected, str_concat(str_concat("|", actual), "|")))) {
+  return true;
+}
+}
   if (((str_starts_with(expected, "*") && (!str_starts_with(expected, "*mut "))) && str_starts_with(actual, "*mut "))) {
   let expected_inner = str_slice(expected, 1, str_length(expected));
   let actual_inner = str_slice(actual, 5, str_length(actual));
   return str_eq(expected_inner, actual_inner);
+}
+  return false;
+}
+
+function str_ends_with_local(s, suffix) {
+  let ns = str_length(s);
+  let nf = str_length(suffix);
+  if ((nf > ns)) {
+  return false;
+}
+  return str_eq(str_slice(s, (ns - nf), ns), suffix);
+}
+
+function is_number_literal_with_suffix(n, suffix) {
+  if (((n == 0) || (node_kind(n) != NK_NUMBER_LIT))) {
+  return false;
+}
+  let text = get_interned_str(node_get_data1(n));
+  return str_ends_with_local(text, suffix);
+}
+
+function is_usize_zero_literal_node(n) {
+  if ((!is_number_literal_with_suffix(n, "USize"))) {
+  return false;
+}
+  return str_eq(get_interned_str(node_get_data1(n)), "0USize");
+}
+
+function is_nullable_pointer_type_name(name) {
+  if ((!str_includes(name, "|"))) {
+  return false;
+}
+  if ((str_starts_with(name, "*") && str_ends_with_local(name, "|USize"))) {
+  return true;
+}
+  if ((str_starts_with(name, "USize|*") && str_includes(name, "*"))) {
+  return true;
 }
   return false;
 }
@@ -1666,6 +1741,10 @@ function infer_expr_type_name(n, fn_return_types, local_types) {
 }
   let kind = node_kind(n);
   if ((kind == NK_NUMBER_LIT)) {
+  let text = get_interned_str(node_get_data1(n));
+  if (str_ends_with_local(text, "USize")) {
+  return "USize";
+}
   return "I32";
 }
   if ((kind == NK_BOOL_LIT)) {
@@ -1703,14 +1782,14 @@ function expr_is_number_literal_nonzero(n) {
   return (!str_eq(get_interned_str(node_get_data1(n)), "0"));
 }
 
-function typecheck_expr(n, fn_arities, fn_return_types, local_types, strict_safety) {
+function typecheck_expr(n, fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety) {
   if ((n == 0)) {
   return 0;
 }
   let kind = node_kind(n);
   if ((kind == NK_BINARY_EXPR)) {
-  typecheck_expr(node_get_data2(n), fn_arities, fn_return_types, local_types, strict_safety);
-  typecheck_expr(node_get_data3(n), fn_arities, fn_return_types, local_types, strict_safety);
+  typecheck_expr(node_get_data2(n), fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
+  typecheck_expr(node_get_data3(n), fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
   if ((strict_safety == 1)) {
   let op = get_interned_str(node_get_data1(n));
   if ((str_eq(op, "/") && (!expr_is_number_literal_nonzero(node_get_data3(n))))) {
@@ -1721,9 +1800,9 @@ function typecheck_expr(n, fn_arities, fn_return_types, local_types, strict_safe
 }
   if (((kind == NK_UNARY_EXPR) || (kind == NK_UNWRAP_EXPR))) {
   if ((kind == NK_UNARY_EXPR)) {
-  typecheck_expr(node_get_data2(n), fn_arities, fn_return_types, local_types, strict_safety);
+  typecheck_expr(node_get_data2(n), fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
 } else {
-  typecheck_expr(node_get_data1(n), fn_arities, fn_return_types, local_types, strict_safety);
+  typecheck_expr(node_get_data1(n), fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
 }
   return 0;
 }
@@ -1731,8 +1810,9 @@ function typecheck_expr(n, fn_arities, fn_return_types, local_types, strict_safe
   let callee = node_get_data1(n);
   let args = node_get_data2(n);
   let actual = vec_length(args);
+  let fname = "";
   if ((node_kind(callee) == NK_IDENTIFIER)) {
-  let fname = get_interned_str(node_get_data1(callee));
+  fname = get_interned_str(node_get_data1(callee));
   if (map_has(fn_arities, fname)) {
   let expected = map_get(fn_arities, fname);
   if ((expected != actual)) {
@@ -1741,21 +1821,49 @@ function typecheck_expr(n, fn_arities, fn_return_types, local_types, strict_safe
 }
 }
 }
-  typecheck_expr(callee, fn_arities, fn_return_types, local_types, strict_safety);
+  typecheck_expr(callee, fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
   let i = 0;
   while ((i < actual)) {
-  typecheck_expr(vec_get(args, i), fn_arities, fn_return_types, local_types, strict_safety);
+  typecheck_expr(vec_get(args, i), fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
   i = (i + 1);
 }
   return 0;
 }
   if ((kind == NK_MEMBER_EXPR)) {
-  typecheck_expr(node_get_data1(n), fn_arities, fn_return_types, local_types, strict_safety);
+  if ((strict_safety == 1)) {
+  let obj = node_get_data1(n);
+  let obj_name = infer_expr_type_name(obj, fn_return_types, local_types);
+  if (is_nullable_pointer_type_name(obj_name)) {
+  let guarded = false;
+  if ((node_kind(obj) == NK_IDENTIFIER)) {
+  let oname = get_interned_str(node_get_data1(obj));
+  guarded = map_has(nonnull_ptrs, oname);
+}
+  if ((!guarded)) {
+  panic_with_code("E_SAFETY_NULLABLE_POINTER_GUARD", "Nullable pointer access requires guard", "A nullable pointer must be proven non-null before pointer-consuming operations.", "Guard with if (p != 0USize) or if (0USize != p) before member access.");
+}
+}
+}
+  typecheck_expr(node_get_data1(n), fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
   return 0;
 }
   if ((kind == NK_INDEX_EXPR)) {
-  typecheck_expr(node_get_data1(n), fn_arities, fn_return_types, local_types, strict_safety);
-  typecheck_expr(node_get_data2(n), fn_arities, fn_return_types, local_types, strict_safety);
+  if ((strict_safety == 1)) {
+  let target_node = node_get_data1(n);
+  let target_name = infer_expr_type_name(target_node, fn_return_types, local_types);
+  if (is_nullable_pointer_type_name(target_name)) {
+  let guarded = false;
+  if ((node_kind(target_node) == NK_IDENTIFIER)) {
+  let tname = get_interned_str(node_get_data1(target_node));
+  guarded = map_has(nonnull_ptrs, tname);
+}
+  if ((!guarded)) {
+  panic_with_code("E_SAFETY_NULLABLE_POINTER_GUARD", "Nullable pointer indexing requires guard", "A nullable pointer must be proven non-null before pointer-consuming operations.", "Guard with if (p != 0USize) or if (0USize != p) before indexing.");
+}
+}
+}
+  typecheck_expr(node_get_data1(n), fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
+  typecheck_expr(node_get_data2(n), fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
   return 0;
 }
   if ((kind == NK_STRUCT_INIT)) {
@@ -1764,39 +1872,39 @@ function typecheck_expr(n, fn_arities, fn_return_types, local_types, strict_safe
   let len = vec_length(fields);
   while ((i < len)) {
   let field = vec_get(fields, i);
-  typecheck_expr(vec_get(field, 1), fn_arities, fn_return_types, local_types, strict_safety);
+  typecheck_expr(vec_get(field, 1), fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
   i = (i + 1);
 }
   return 0;
 }
   if ((kind == NK_IF_EXPR)) {
-  typecheck_expr(node_get_data1(n), fn_arities, fn_return_types, local_types, strict_safety);
-  typecheck_stmt(node_get_data2(n), fn_arities, fn_return_types, local_types, strict_safety);
+  typecheck_expr(node_get_data1(n), fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
+  typecheck_stmt(node_get_data2(n), fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
   if ((node_get_data3(n) != 0)) {
-  typecheck_stmt(node_get_data3(n), fn_arities, fn_return_types, local_types, strict_safety);
+  typecheck_stmt(node_get_data3(n), fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
 }
   return 0;
 }
   if ((kind == NK_MATCH_EXPR)) {
-  typecheck_expr(node_get_data1(n), fn_arities, fn_return_types, local_types, strict_safety);
+  typecheck_expr(node_get_data1(n), fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
   let cases = node_get_data2(n);
   let i = 0;
   let len = vec_length(cases);
   while ((i < len)) {
   let case_node = vec_get(cases, i);
-  typecheck_stmt(vec_get(case_node, 1), fn_arities, fn_return_types, local_types, strict_safety);
+  typecheck_stmt(vec_get(case_node, 1), fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
   i = (i + 1);
 }
   return 0;
 }
   if ((kind == NK_IS_EXPR)) {
-  typecheck_expr(node_get_data1(n), fn_arities, fn_return_types, local_types, strict_safety);
+  typecheck_expr(node_get_data1(n), fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
   return 0;
 }
   return 0;
 }
 
-function typecheck_stmt(n, fn_arities, fn_return_types, local_types, strict_safety) {
+function typecheck_stmt(n, fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety) {
   if ((n == 0)) {
   return 0;
 }
@@ -1806,19 +1914,31 @@ function typecheck_stmt(n, fn_arities, fn_return_types, local_types, strict_safe
   let i = 0;
   let len = vec_length(stmts);
   while ((i < len)) {
-  typecheck_stmt(vec_get(stmts, i), fn_arities, fn_return_types, local_types, strict_safety);
+  typecheck_stmt(vec_get(stmts, i), fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
   i = (i + 1);
 }
   return 0;
 }
   if (((kind == NK_FN_DECL) || (kind == NK_CLASS_FN_DECL))) {
-  typecheck_stmt(node_get_data5(n), fn_arities, fn_return_types, local_types, strict_safety);
+  let params = node_get_data3(n);
+  let i = 0;
+  let len = vec_length(params);
+  while ((i < len)) {
+  let p = vec_get(params, i);
+  let pname = get_interned_str(vec_get(p, 0));
+  let ptype = vec_get(p, 1);
+  if ((ptype != 0)) {
+  map_set(local_types, pname, type_name_from_type_node(ptype));
+}
+  i = (i + 1);
+}
+  typecheck_stmt(node_get_data5(n), fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
   return 0;
 }
   if ((kind == NK_LET_DECL)) {
   let declared_type = node_get_data2(n);
   let rhs = node_get_data3(n);
-  typecheck_expr(rhs, fn_arities, fn_return_types, local_types, strict_safety);
+  typecheck_expr(rhs, fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
   let rhs_name = infer_expr_type_name(rhs, fn_return_types, local_types);
   if ((declared_type != 0)) {
   let declared_name = type_name_from_type_node(declared_type);
@@ -1834,38 +1954,61 @@ function typecheck_stmt(n, fn_arities, fn_return_types, local_types, strict_safe
   return 0;
 }
   if ((kind == NK_EXPR_STMT)) {
-  typecheck_expr(node_get_data1(n), fn_arities, fn_return_types, local_types, strict_safety);
+  typecheck_expr(node_get_data1(n), fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
   return 0;
 }
   if ((kind == NK_ASSIGN_STMT)) {
-  typecheck_expr(node_get_data1(n), fn_arities, fn_return_types, local_types, strict_safety);
-  typecheck_expr(node_get_data2(n), fn_arities, fn_return_types, local_types, strict_safety);
+  typecheck_expr(node_get_data1(n), fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
+  typecheck_expr(node_get_data2(n), fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
   return 0;
 }
   if ((kind == NK_RETURN_STMT)) {
-  typecheck_expr(node_get_data1(n), fn_arities, fn_return_types, local_types, strict_safety);
+  typecheck_expr(node_get_data1(n), fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
   return 0;
 }
   if ((kind == NK_IF_STMT)) {
-  typecheck_expr(node_get_data1(n), fn_arities, fn_return_types, local_types, strict_safety);
-  typecheck_stmt(node_get_data2(n), fn_arities, fn_return_types, local_types, strict_safety);
+  let cond = node_get_data1(n);
+  typecheck_expr(cond, fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
+  let then_nonnull = map_new();
+  let else_nonnull = map_new();
+  let copied = false;
+  if ((node_kind(cond) == NK_BINARY_EXPR)) {
+  let op = get_interned_str(node_get_data1(cond));
+  let left = node_get_data2(cond);
+  let right = node_get_data3(cond);
+  if (str_eq(op, "!=")) {
+  if (((node_kind(left) == NK_IDENTIFIER) && is_usize_zero_literal_node(right))) {
+  map_set(then_nonnull, get_interned_str(node_get_data1(left)), 1);
+  copied = true;
+}
+  if (((node_kind(right) == NK_IDENTIFIER) && is_usize_zero_literal_node(left))) {
+  map_set(then_nonnull, get_interned_str(node_get_data1(right)), 1);
+  copied = true;
+}
+}
+}
+  if ((!copied)) {
+  then_nonnull = nonnull_ptrs;
+}
+  else_nonnull = nonnull_ptrs;
+  typecheck_stmt(node_get_data2(n), fn_arities, fn_return_types, local_types, then_nonnull, strict_safety);
   if ((node_get_data3(n) != 0)) {
-  typecheck_stmt(node_get_data3(n), fn_arities, fn_return_types, local_types, strict_safety);
+  typecheck_stmt(node_get_data3(n), fn_arities, fn_return_types, local_types, else_nonnull, strict_safety);
 }
   return 0;
 }
   if ((kind == NK_FOR_STMT)) {
-  typecheck_expr(node_get_data2(n), fn_arities, fn_return_types, local_types, strict_safety);
-  typecheck_expr(node_get_data3(n), fn_arities, fn_return_types, local_types, strict_safety);
-  typecheck_stmt(node_get_data4(n), fn_arities, fn_return_types, local_types, strict_safety);
+  typecheck_expr(node_get_data2(n), fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
+  typecheck_expr(node_get_data3(n), fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
+  typecheck_stmt(node_get_data4(n), fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
   return 0;
 }
   if ((kind == NK_WHILE_STMT)) {
-  typecheck_expr(node_get_data1(n), fn_arities, fn_return_types, local_types, strict_safety);
-  typecheck_stmt(node_get_data2(n), fn_arities, fn_return_types, local_types, strict_safety);
+  typecheck_expr(node_get_data1(n), fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
+  typecheck_stmt(node_get_data2(n), fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
   return 0;
 }
-  typecheck_expr(n, fn_arities, fn_return_types, local_types, strict_safety);
+  typecheck_expr(n, fn_arities, fn_return_types, local_types, nonnull_ptrs, strict_safety);
   return 0;
 }
 
@@ -1895,7 +2038,7 @@ function typecheck_program_with_options(program, strict_safety) {
 }
   i = 0;
   while ((i < len)) {
-  typecheck_stmt(vec_get(body, i), fn_arities, fn_return_types, local_types, strict_safety);
+  typecheck_stmt(vec_get(body, i), fn_arities, fn_return_types, local_types, map_new(), strict_safety);
   i = (i + 1);
 }
   return program;
@@ -2218,6 +2361,22 @@ function generate_js(program) {
 
 function selfhost_codegen_stmt_marker() { return 0; }
 
+function module_loader_sanitize_max_effective_lines(max_effective_lines) {
+  return (((max_effective_lines <= 0)) ? (() => {
+  return 500;
+})() : (() => {
+  return max_effective_lines;
+})());
+}
+
+function module_loader_normalize_flag(value) {
+  return (((value == 0)) ? (() => {
+  return 0;
+})() : (() => {
+  return 1;
+})());
+}
+
 function module_parts_to_relative_path(parts) {
   let sb = sb_new();
   let i = 0;
@@ -2363,12 +2522,15 @@ function compile_file(inputPath, outputPath) {
 }
 
 function compile_file_with_options(inputPath, outputPath, strict_safety, lint_enabled, max_effective_lines) {
+  let max_lines = module_loader_sanitize_max_effective_lines(max_effective_lines);
+  let strict = module_loader_normalize_flag(strict_safety);
+  let lint = module_loader_normalize_flag(lint_enabled);
   let moduleBasePath = path_dirname(inputPath);
   let seen = set_new();
   let visiting = set_new();
   let sources = vec_new();
   let module_declared_map = map_new();
-  gather_module_sources(inputPath, moduleBasePath, seen, visiting, sources, module_declared_map, lint_enabled, max_effective_lines);
+  gather_module_sources(inputPath, moduleBasePath, seen, visiting, sources, module_declared_map, lint, max_lines);
   let merged = join_sources(sources);
   lex_init(merged);
   lex_all();
@@ -2377,7 +2539,7 @@ function compile_file_with_options(inputPath, outputPath, strict_safety, lint_en
   program = strip_import_decls(program);
   let desugared = desugar(program);
   let resolved = resolve_names(desugared);
-  let typed = typecheck_program_with_options(resolved, strict_safety);
+  let typed = typecheck_program_with_options(resolved, strict);
   let js = generate_js(typed);
   return write_file(outputPath, js);
 }
@@ -2920,17 +3082,36 @@ function emit_pattern_bindings(value_expr, pat) {
 
 function selfhost_codegen_expr_marker() { return 0; }
 
+function sanitize_max_effective_lines(max_effective_lines) {
+  return (((max_effective_lines <= 0)) ? (() => {
+  return 500;
+})() : (() => {
+  return max_effective_lines;
+})());
+}
+
+function normalize_flag(value) {
+  return (((value == 0)) ? (() => {
+  return 0;
+})() : (() => {
+  return 1;
+})());
+}
+
 function compile_source_with_options(source, strict_safety, lint_enabled, max_effective_lines) {
+  let max_lines = sanitize_max_effective_lines(max_effective_lines);
+  let strict = normalize_flag(strict_safety);
+  let lint = normalize_flag(lint_enabled);
   lex_init(source);
   lex_all();
-  if ((lint_enabled == 1)) {
-  lint_assert_file_length("<memory>", max_effective_lines);
+  if ((lint == 1)) {
+  lint_assert_file_length("<memory>", max_lines);
 }
   parse_init();
   let program = p_parse_program();
   let desugared = desugar(program);
   let resolved = resolve_names(desugared);
-  let typed = typecheck_program_with_options(resolved, strict_safety);
+  let typed = typecheck_program_with_options(resolved, strict);
   return generate_js(typed);
 }
 

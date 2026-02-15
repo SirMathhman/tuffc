@@ -296,4 +296,60 @@ expectBothFail(
   "E_MODULE_PRIVATE_IMPORT",
 );
 
+const nullableStrictSource = "fn bad(p : *I32 | 0USize) : I32 => p[0];\n";
+
+const nullableStage0 = compileSourceResult(
+  nullableStrictSource,
+  "<nullable-stage0>",
+  {
+    typecheck: { strictSafety: true },
+  },
+);
+const nullableSelfhostStrict = compileSourceResult(
+  nullableStrictSource,
+  "<nullable-selfhost>",
+  {
+    backend: "selfhost",
+    typecheck: { strictSafety: true },
+  },
+);
+if (nullableStage0.ok || nullableSelfhostStrict.ok) {
+  throw new Error(
+    "nullable strict-safety parity: expected both backends to fail",
+  );
+}
+const nullableStage0Diag = toDiagnostic(nullableStage0.error);
+const nullableSelfhostDiag = toDiagnostic(nullableSelfhostStrict.error);
+if (nullableStage0Diag.code !== "E_SAFETY_NULLABLE_POINTER_GUARD") {
+  throw new Error(
+    `nullable strict-safety parity (stage0): expected E_SAFETY_NULLABLE_POINTER_GUARD, got ${nullableStage0Diag.code}`,
+  );
+}
+if (nullableSelfhostDiag.code !== "E_SAFETY_NULLABLE_POINTER_GUARD") {
+  throw new Error(
+    `nullable strict-safety parity (selfhost): expected E_SAFETY_NULLABLE_POINTER_GUARD, got ${nullableSelfhostDiag.code}`,
+  );
+}
+
+const nullableGuardedSource =
+  "fn ok(p : *I32 | 0USize) : I32 => { if (p != 0USize) { p[0] } else { 0 } }\n";
+const nullableGuardedStage0 = compileSourceResult(
+  nullableGuardedSource,
+  "<nullable-guarded-stage0>",
+  {
+    typecheck: { strictSafety: true },
+  },
+);
+const nullableGuardedSelfhost = compileSourceResult(
+  nullableGuardedSource,
+  "<nullable-guarded-selfhost>",
+  {
+    backend: "selfhost",
+    typecheck: { strictSafety: true },
+  },
+);
+if (!nullableGuardedStage0.ok || !nullableGuardedSelfhost.ok) {
+  throw new Error("nullable guarded parity: expected both backends to compile");
+}
+
 console.log("Selfhost differential parity checks passed");
