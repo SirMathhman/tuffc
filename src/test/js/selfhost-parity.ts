@@ -535,10 +535,17 @@ fn main() : I32 => {
   0
 }
 `;
-const copyStructStage0 = compileSourceResult(copyStructSource, "<copy-struct-stage0>");
-const copyStructSelfhost = compileSourceResult(copyStructSource, "<copy-struct-selfhost>", {
-  backend: "selfhost",
-});
+const copyStructStage0 = compileSourceResult(
+  copyStructSource,
+  "<copy-struct-stage0>",
+);
+const copyStructSelfhost = compileSourceResult(
+  copyStructSource,
+  "<copy-struct-selfhost>",
+  {
+    backend: "selfhost",
+  },
+);
 if (!copyStructStage0.ok || !copyStructSelfhost.ok) {
   throw new Error("copy-struct parity: expected both backends to compile");
 }

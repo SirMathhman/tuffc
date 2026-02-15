@@ -995,10 +995,14 @@ export function parse(tokens: Token[]): ParseResult<Program> {
       if (at("keyword", "fn")) {
         if (copyDecl) {
           return err(
-            new TuffError("'copy' is only supported on struct/type declarations", peek().loc, {
-              code: "E_PARSE_EXPECTED_TOKEN",
-              hint: "Use 'copy struct ...' or 'copy type ...'.",
-            }),
+            new TuffError(
+              "'copy' is only supported on struct/type declarations",
+              peek().loc,
+              {
+                code: "E_PARSE_EXPECTED_TOKEN",
+                hint: "Use 'copy struct ...' or 'copy type ...'.",
+              },
+            ),
           );
         }
         nodeResult = parseFunction(false);
@@ -1011,10 +1015,14 @@ export function parse(tokens: Token[]): ParseResult<Program> {
       } else if (at("keyword", "class")) {
         if (copyDecl) {
           return err(
-            new TuffError("'copy' is only supported on struct/type declarations", peek().loc, {
-              code: "E_PARSE_EXPECTED_TOKEN",
-              hint: "Use 'copy struct ...' or 'copy type ...'.",
-            }),
+            new TuffError(
+              "'copy' is only supported on struct/type declarations",
+              peek().loc,
+              {
+                code: "E_PARSE_EXPECTED_TOKEN",
+                hint: "Use 'copy struct ...' or 'copy type ...'.",
+              },
+            ),
           );
         }
         eat();
