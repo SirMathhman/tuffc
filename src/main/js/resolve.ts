@@ -276,6 +276,52 @@ export function resolveNames(
       }
       case "CallExpr": {
         if (
+          expr.callStyle === "method-sugar" &&
+          expr.callee?.kind === "Identifier" &&
+          expr.callee.name === "into"
+        ) {
+          const receiver = expr.args?.[0];
+          if (!receiver) {
+            return err(
+              new TuffError("into conversion requires a receiver", expr.loc, {
+                code: "E_RESOLVE_UNKNOWN_IDENTIFIER",
+                hint: "Use value.into<Contract>(...) with a receiver value.",
+              }),
+            );
+          }
+
+          const receiverResult = visitExpr(receiver, scope, currentModulePath);
+          if (!receiverResult.ok) return receiverResult;
+
+          for (const a of (expr.args ?? []).slice(1)) {
+            const argResult = visitExpr(a, scope, currentModulePath);
+            if (!argResult.ok) return argResult;
+          }
+
+          const typeArgs = expr.typeArgs ?? [];
+          const contractType =
+            typeArgs.length === 1 && typeArgs[0]?.kind === "NamedType"
+              ? typeArgs[0]
+              : undefined;
+          const contractName = contractType?.name;
+
+          if (!contractName || !contractNames.has(contractName)) {
+            return err(
+              new TuffError(
+                `Unknown contract '${contractName ?? "<missing>"}'`,
+                expr.loc ?? undefined,
+                {
+                  code: "E_RESOLVE_UNKNOWN_IDENTIFIER",
+                  hint: "Use value.into<Contract>(...) with a declared contract name.",
+                },
+              ),
+            );
+          }
+
+          break;
+        }
+
+        if (
           !(
             expr.callStyle === "method-sugar" &&
             expr.callee?.kind === "Identifier"

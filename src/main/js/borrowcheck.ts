@@ -466,6 +466,28 @@ export function borrowcheck(ast, options = {}): BorrowcheckResult<unknown> {
       }
       case "CallExpr": {
         if (
+          expr.callStyle === "method-sugar" &&
+          expr.callee?.kind === "Identifier" &&
+          expr.callee.name === "into"
+        ) {
+          if ((expr.args?.length ?? 0) >= 1) {
+            const receiverMode = canonicalPlace(expr.args[0]) ? "move" : "read";
+            const receiverResult = checkExpr(
+              expr.args[0],
+              state,
+              envTypes,
+              receiverMode,
+            );
+            if (!receiverResult.ok) return receiverResult;
+          }
+          for (const a of (expr.args ?? []).slice(1)) {
+            const r = checkExpr(a, state, envTypes, "read");
+            if (!r.ok) return r;
+          }
+          return ok(undefined);
+        }
+
+        if (
           !(
             expr.callee?.kind === "Identifier" &&
             globalFnNames.has(expr.callee.name)

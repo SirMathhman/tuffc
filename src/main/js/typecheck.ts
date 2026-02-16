@@ -27,6 +27,15 @@ function isTypeVariableName(name) {
   return typeof name === "string" && /^[A-Z]$/.test(name);
 }
 
+function extractIntoContractNameFromTypeArgs(typeArgs) {
+  if (!Array.isArray(typeArgs) || typeArgs.length !== 1) return undefined;
+  const only = typeArgs[0];
+  if (!only || typeof only !== "object") return undefined;
+  if (only.kind !== "NamedType") return undefined;
+  if ((only.genericArgs ?? []).length > 0) return undefined;
+  return only.name;
+}
+
 function functionTypeName(paramNames, returnName) {
   return `(${(paramNames ?? []).join(",")})=>${returnName ?? "Unknown"}`;
 }
@@ -534,6 +543,28 @@ export function typecheck(
           );
         }
       }
+    }
+
+    return ok(true);
+  };
+
+  const ensureTypeCanConvertIntoContract = (
+    sourceTypeName,
+    contractName,
+    loc,
+  ): TypecheckResult<true> => {
+    const implementers = contractImplementers.get(contractName);
+    if (!implementers?.has(sourceTypeName)) {
+      return err(
+        new TuffError(
+          `Type '${sourceTypeName}' cannot convert into contract '${contractName}'`,
+          loc,
+          {
+            code: "E_TYPE_INTO_NOT_IMPLEMENTED",
+            hint: `Declare conversion in constructor/body with 'into ${contractName};'.`,
+          },
+        ),
+      );
     }
 
     return ok(true);
@@ -1187,6 +1218,86 @@ export function typecheck(
         });
       }
       case "CallExpr": {
+        if (
+          expr.callStyle === "method-sugar" &&
+          expr.callee?.kind === "Identifier" &&
+          expr.callee.name === "into"
+        ) {
+          if ((expr.args?.length ?? 0) < 1) {
+            return err(
+              new TuffError(
+                "into conversion requires a receiver value",
+                expr.loc,
+                {
+                  code: "E_TYPE_INTO_ARG_COUNT",
+                  hint: "Use value.into<Contract>(...) with exactly one receiver.",
+                },
+              ),
+            );
+          }
+
+          const contractName = extractIntoContractNameFromTypeArgs(
+            expr.typeArgs,
+          );
+          if (!contractName) {
+            return err(
+              new TuffError(
+                "into conversion requires exactly one contract type argument",
+                expr.loc,
+                {
+                  code: "E_TYPE_INTO_CONTRACT_EXPECTED",
+                  hint: "Use value.into<Contract>(...) where Contract is a declared contract name.",
+                },
+              ),
+            );
+          }
+
+          if (!contracts.has(contractName)) {
+            return err(
+              new TuffError(
+                `Unknown contract '${contractName}' in into conversion`,
+                expr.loc,
+                {
+                  code: "E_TYPE_INTO_UNKNOWN_CONTRACT",
+                  hint: "Declare the contract before converting with into.",
+                },
+              ),
+            );
+          }
+
+          const sourceResult = inferExpr(expr.args[0], scope, facts);
+          if (!sourceResult.ok) return sourceResult;
+          const sourceType = sourceResult.value;
+          if (sourceType.name && sourceType.name !== "Unknown") {
+            const contractResult = ensureTypeCanConvertIntoContract(
+              sourceType.name,
+              contractName,
+              expr.loc,
+            );
+            if (!contractResult.ok) return contractResult;
+          }
+
+          for (const a of (expr.args ?? []).slice(1)) {
+            const argResult = inferExpr(a, scope, facts);
+            if (!argResult.ok) return argResult;
+          }
+
+          return ok({
+            name: `__dyn_${contractName}`,
+            min: undefined,
+            max: undefined,
+            nonZero: false,
+            typeNode: {
+              kind: "NamedType",
+              name: `__dyn_${contractName}`,
+              genericArgs:
+                sourceType.typeNode && sourceType.typeNode.kind
+                  ? [sourceType.typeNode]
+                  : [],
+            },
+          });
+        }
+
         if (expr.callee.kind === "Identifier") {
           const fn = functions.get(expr.callee.name);
           if (fn) {
@@ -1558,7 +1669,7 @@ export function typecheck(
               `Unknown contract '${expr.contractName}' in into expression`,
               expr.loc,
               {
-                code: "E_TYPE_UNKNOWN_CONTRACT",
+                code: "E_TYPE_INTO_UNKNOWN_CONTRACT",
                 hint: "Declare the contract before converting with 'into'.",
               },
             ),
@@ -1566,12 +1677,10 @@ export function typecheck(
         }
 
         if (valueTypeName && valueTypeName !== "Unknown") {
-          const contractResult = ensureTypeSatisfiesContract(
+          const contractResult = ensureTypeCanConvertIntoContract(
             valueTypeName,
             expr.contractName,
-            valueTypeName,
             expr.loc,
-            false,
           );
           if (!contractResult.ok) return contractResult;
         }

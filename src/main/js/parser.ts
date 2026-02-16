@@ -608,9 +608,25 @@ export function parse(tokens: Token[]): ParseResult<Program> {
       }
       if (at("symbol", ".")) {
         eat();
-        const propResult = parseIdentifierToken();
-        if (!propResult.ok) return propResult;
-        const propTok = propResult.value;
+        let propTok;
+        if (at("identifier")) {
+          const propResult = parseIdentifierToken();
+          if (!propResult.ok) return propResult;
+          propTok = propResult.value;
+        } else if (at("keyword")) {
+          propTok = eat();
+        } else {
+          return err(
+            new TuffError(
+              `Expected member name after '.', got ${peek().type}:${peek().value}`,
+              peek().loc,
+              {
+                code: "E_PARSE_EXPECTED_TOKEN",
+                hint: "Use an identifier-like member name after '.'.",
+              },
+            ),
+          );
+        }
         expr = {
           kind: "MemberExpr",
           object: expr,

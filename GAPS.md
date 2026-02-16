@@ -87,10 +87,12 @@ These are spec-described constructs that currently fail to compile.
 - Notes:
   - Added Stage0 desugaring that synthesizes runtime contract wrapper/table structs (`__dyn_<Contract>`, `__dyn_<Contract>Table`).
   - Added Stage0 lowering for `into Contract;` to generate `into<Contract>()` factory closures when contract methods are declared locally.
+  - Canonical conversion call syntax now works in Stage0: `value.into<Contract>(...)` (infix `value into Contract(...)` remains accepted for compatibility).
   - Added constructor-style desugar for `fn TypeName(...) { ... into Contract; }` to synthesize implicit constructor state and return value in Stage0.
   - Added parser/typechecker/borrowchecker support needed by corrected syntax flow: expression `into`, uninitialized `let mut name : Type;`, and pointer qualifiers `*out uninit mut T` (runtime-first semantics, static diagnostics to be tightened).
   - Added JS codegen dynamic method dispatch fallback for method-sugar calls: prefers `receiver.table.method(receiver.ref, ...)` when present, otherwise falls back to static function call.
   - Added resolver/typecheck support for local function declarations in block scope so lowered dynamic factories can reference captured/local methods.
+  - Borrow checker enforces move semantics for canonical conversions and reports use-after-move via `E_BORROW_USE_AFTER_MOVE` when a consumed source is reused.
   - Covered by runtime regression in `src/test/js/contracts-static-dispatch.ts` (`v.drive()` through dynamic wrapper returns expected value).
   - Selfhost parser/typecheck/codegen parity for this dynamic path remains pending.
 

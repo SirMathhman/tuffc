@@ -46,6 +46,25 @@ function emitExpr(expr) {
       if (
         expr.callStyle === "method-sugar" &&
         expr.callee?.kind === "Identifier" &&
+        expr.callee.name === "into"
+      ) {
+        const contractTypeArg = expr.typeArgs?.[0];
+        const contractName =
+          contractTypeArg?.kind === "NamedType"
+            ? contractTypeArg.name
+            : undefined;
+        const src = emitExpr(expr.args?.[0]);
+        const restArgs = (expr.args ?? []).slice(1).map(emitExpr).join(", ");
+        const consumeSource =
+          expr.args?.[0]?.kind === "Identifier"
+            ? `${expr.args[0].name} = undefined;`
+            : "";
+        return `(() => { const __src = ${src}; const __conv = __src?.__into?.[${JSON.stringify(contractName ?? "")}] ; if (!__conv) { throw new Error(${JSON.stringify(`Missing into converter for ${contractName ?? "<unknown>"}`)}); } const __out = __conv(${restArgs}); ${consumeSource} return __out; })()`;
+      }
+
+      if (
+        expr.callStyle === "method-sugar" &&
+        expr.callee?.kind === "Identifier" &&
         (expr.args?.length ?? 0) >= 1
       ) {
         const receiver = emitExpr(expr.args[0]);

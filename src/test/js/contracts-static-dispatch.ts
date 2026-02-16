@@ -73,7 +73,7 @@ const dynamicDispatchSource = [
   "fn main() : I32 => {",
   '  let myCar = Car("Roadster");',
   "  let mut carPtr : Car;",
-  "  let vehicle = myCar into Vehicle(&mut carPtr);",
+  "  let vehicle = myCar.into<Vehicle>(&mut carPtr);",
   "  vehicle.drive()",
   "}",
   "",
@@ -101,5 +101,27 @@ if (dynamicValue !== 7) {
   );
   process.exit(1);
 }
+
+expectFailCode(
+  "contracts-into-use-after-move",
+  [
+    "contract Vehicle {",
+    "  fn drive(*this) : I32;",
+    "}",
+    "fn Car(name : *Str) {",
+    "  fn drive(self : *mut Car) : I32 => 7;",
+    "  into Vehicle;",
+    "}",
+    "fn main() : I32 => {",
+    '  let myCar = Car("Roadster");',
+    "  let mut carPtr : Car;",
+    "  let _vehicle = myCar.into<Vehicle>(&mut carPtr);",
+    "  myCar.drive()",
+    "}",
+    "",
+  ].join("\n"),
+  "E_BORROW_USE_AFTER_MOVE",
+  { backend: "stage0" },
+);
 
 console.log("Contract static-dispatch checks passed");
