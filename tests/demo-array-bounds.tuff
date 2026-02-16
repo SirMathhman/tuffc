@@ -1,0 +1,1 @@
+fn bad(arr : *[I32], i : USize) : I32 => arr[i];

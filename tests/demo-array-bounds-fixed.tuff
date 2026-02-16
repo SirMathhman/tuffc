@@ -1,0 +1,5 @@
+fn bad() : I32 => {
+    let arr : [I32; 5; 5] = [1, 2, 3, 4, 5];
+    let i : USize = 10;
+    arr[i]
+}

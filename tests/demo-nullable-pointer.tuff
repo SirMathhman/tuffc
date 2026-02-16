@@ -1,0 +1,3 @@
+fn bad(ptr : *I32 | 0USize) => {
+    let x = *ptr;
+}
