@@ -36,6 +36,41 @@ fn p_has_generic_call_suffix() : Bool => {
     }
 }
 
+fn p_has_generic_struct_init_suffix() : Bool => {
+    if (!p_at(TK_SYMBOL, "<")) {
+        return false;
+    }
+    if (!p_can_start_type_tok_at(1)) {
+        return false;
+    }
+    let cursor = 0;
+    let depth = 0;
+    while (true) {
+        let ti = p_peek(cursor);
+        let tk = tok_kind(ti);
+        if (tk == TK_EOF) {
+            return false;
+        }
+        if (tk == TK_SYMBOL) {
+            let sym = get_interned_str(tok_value(ti));
+            if (sym.str_eq("<")) {
+                depth = depth + 1;
+            } else if (sym.str_eq(">")) {
+                depth = depth - 1;
+                if (depth == 0) {
+                    let next = p_peek(cursor + 1);
+                    if (tok_kind(next) == TK_SYMBOL) {
+                        let next_sym = get_interned_str(tok_value(next));
+                        return next_sym.str_eq("{");
+                    }
+                    return false;
+                }
+            }
+        }
+        cursor = cursor + 1;
+    }
+}
+
 fn p_parse_postfix(exprIn: I32) : I32 => {
     let expr = exprIn;
     while (true) {
@@ -150,6 +185,13 @@ fn p_parse_postfix(exprIn: I32) : I32 => {
             node_set_data1(idx_node, expr);
             node_set_data2(idx_node, idx_expr);
             expr = idx_node;
+            continue;
+        }
+        if (p_at(TK_SYMBOL, "?")) {
+            p_eat();
+            let unwrap = node_new(NK_UNWRAP_EXPR);
+            node_set_data1(unwrap, expr);
+            expr = unwrap;
             continue;
         }
         break;
@@ -352,6 +394,19 @@ fn p_parse_primary() : I32 => {
         let name = p_parse_identifier();
         let expr = node_new(NK_IDENTIFIER);
         node_set_data1(expr, name);
+
+        let generic_args = vec_new();
+        if (p_at(TK_SYMBOL, "<") && p_has_generic_struct_init_suffix()) {
+            p_eat();
+            if (!p_at(TK_SYMBOL, ">")) {
+                generic_args.vec_push(p_parse_type());
+                while (p_at(TK_SYMBOL, ",")) {
+                    p_eat();
+                    generic_args.vec_push(p_parse_type());
+                }
+            }
+            p_expect(TK_SYMBOL, ">", "Expected '>' in generic struct initializer");
+        }
         
         // Struct init
         if (p_at(TK_SYMBOL, "{")) {
@@ -380,6 +435,7 @@ fn p_parse_primary() : I32 => {
             let init_node = node_new(NK_STRUCT_INIT);
             node_set_data1(init_node, name);
             node_set_data2(init_node, fields);
+            node_set_data3(init_node, generic_args);
             expr = init_node;
         }
         
@@ -473,14 +529,6 @@ fn p_parse_expression(minPrec: I32) : I32 => {
         node_set_data2(bin, left);
         node_set_data3(bin, right);
         left = bin;
-    }
-    
-    // Unwrap operator
-    if (p_at(TK_SYMBOL, "?")) {
-        p_eat();
-        let unwrap = node_new(NK_UNWRAP_EXPR);
-        node_set_data1(unwrap, left);
-        left = unwrap;
     }
     
     left

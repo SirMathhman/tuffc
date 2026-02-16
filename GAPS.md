@@ -88,13 +88,14 @@ These are spec-described constructs that currently fail to compile.
   - Updated typecheck/codegen behavior to skip emitting `expect` declarations and emit only runtime `actual` implementations.
   - Implemented `expect`/`actual` as contextual modifiers (not globally reserved keywords) to avoid breaking existing identifiers.
 
-### 7) Result union marker `|>` + unwrap ergonomics in tested form
+### ✅ Resolved: Result union marker `|>` + unwrap ergonomics in tested form
 
 - Spec area: `2.1`, `4.7`
-- Case: `result:pipe-union-and-q`
-- Observed:
-  - Stage0/1: `E_PARSE_UNEXPECTED_TOKEN` (`Unexpected token symbol:{`)
-  - Stage2/3: `E_SELFHOST_PANIC` (`Unexpected token in expression`)
+- Cases: `result:pipe-union-and-q`, `result:unwrap-call-postfix`
+- Status: **fixed** (no longer reported by `npm run semantics:exhaustive`)
+- Notes:
+  - Added generic struct initializer parsing in expressions (e.g. `Ok<I32> { value: v }`) in Stage0 and selfhost parsers.
+  - Moved unwrap parsing to true postfix handling so Rust-like forms such as `doSomething()?` are parsed with correct precedence.
 
 ### 8) Dependent array signature form (`L : USize`, `_` placeholder in tested shape)
 

@@ -598,6 +598,17 @@ export function parse(tokens: Token[]): ParseResult<Program> {
         };
         continue;
       }
+      if (at("symbol", "?")) {
+        const tok = eat();
+        expr = {
+          kind: "UnwrapExpr",
+          expr,
+          loc: expr.loc,
+          start: expr.start,
+          end: tok.end,
+        };
+        continue;
+      }
       break;
     }
     return ok(expr);
@@ -843,10 +854,70 @@ export function parse(tokens: Token[]): ParseResult<Program> {
     }
 
     if (at("identifier")) {
+      const canStartTypeToken = (tok: Token | undefined): boolean => {
+        if (!tok) return false;
+        if (tok.type === "identifier") return true;
+        if (
+          tok.type === "symbol" &&
+          ["*", "[", "("].includes(tok.value as string)
+        )
+          return true;
+        return false;
+      };
+
+      const hasGenericStructInitSuffix = (): boolean => {
+        if (!at("symbol", "<") || !canStartTypeToken(peek(1))) {
+          return false;
+        }
+        let j = i;
+        let depth = 0;
+        while (j < tokens.length) {
+          const t = tokens[j];
+          if (t.type === "symbol" && t.value === "<") {
+            depth += 1;
+            j += 1;
+            continue;
+          }
+          if (t.type === "symbol" && t.value === ">") {
+            depth -= 1;
+            j += 1;
+            if (depth === 0) {
+              const next = tokens[j];
+              return next?.type === "symbol" && next?.value === "{";
+            }
+            continue;
+          }
+          if (t.type === "eof") return false;
+          j += 1;
+        }
+        return false;
+      };
+
       const idTok = eat();
+      const genericArgs: Expr[] = [];
+      if (hasGenericStructInitSuffix()) {
+        eat(); // '<'
+        if (!at("symbol", ">")) {
+          while (true) {
+            const argResult = parseType();
+            if (!argResult.ok) return argResult;
+            genericArgs.push(argResult.value);
+            if (!at("symbol", ",")) break;
+            eat();
+          }
+        }
+        const closeGenericResult = expect(
+          "symbol",
+          ">",
+          "Expected '>' in generic struct initializer",
+        );
+        if (!closeGenericResult.ok) return closeGenericResult;
+      }
+
       let expr: Expr = {
         kind: "Identifier",
         name: idTok.value,
+        genericArgs,
         loc: idTok.loc,
         start: idTok.start,
         end: idTok.end,
@@ -881,6 +952,7 @@ export function parse(tokens: Token[]): ParseResult<Program> {
         expr = {
           kind: "StructInit",
           name: idTok.value,
+          genericArgs,
           fields,
           loc: idTok.loc,
         };
@@ -959,16 +1031,6 @@ export function parse(tokens: Token[]): ParseResult<Program> {
           end: right?.end ?? left?.end,
         };
       }
-    }
-    if (at("symbol", "?")) {
-      const tok = eat();
-      left = {
-        kind: "UnwrapExpr",
-        expr: left,
-        loc: left.loc,
-        start: left?.start,
-        end: tok.end,
-      };
     }
     return ok(left);
   };
