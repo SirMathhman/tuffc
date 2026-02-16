@@ -314,9 +314,230 @@ export function typecheck(
   const enums = new Map();
   const objects = new Map();
   const contracts = new Map();
+  const contractImplementers = new Map();
   const functions = new Map();
   const typeAliases = new Map();
   const globalScope = new Map();
+  let activeGenericConstraints: Record<string, unknown> = {};
+
+  const markContractImplementation = (contractName, typeName) => {
+    if (!contractImplementers.has(contractName)) {
+      contractImplementers.set(contractName, new Set());
+    }
+    contractImplementers.get(contractName).add(typeName);
+  };
+
+  const collectIntoContracts = (node, intoContracts) => {
+    if (!node) return;
+    switch (node.kind) {
+      case "IntoStmt":
+        if (typeof node.contractName === "string") {
+          intoContracts.add(node.contractName);
+        }
+        break;
+      case "Block":
+        for (const stmt of node.statements ?? []) {
+          collectIntoContracts(stmt, intoContracts);
+        }
+        break;
+      case "IfStmt":
+        collectIntoContracts(node.thenBranch, intoContracts);
+        collectIntoContracts(node.elseBranch, intoContracts);
+        break;
+      case "ForStmt":
+      case "WhileStmt":
+      case "LoopStmt":
+        collectIntoContracts(node.body, intoContracts);
+        break;
+      default:
+        break;
+    }
+  };
+
+  const registerFnContractConformance = (node) => {
+    if (!node || node.kind !== "FnDecl" || node.expectDecl === true) return;
+
+    const intoContracts = new Set();
+    collectIntoContracts(node.body, intoContracts);
+    if (intoContracts.size === 0) return;
+
+    const inferredType = named(node.returnType);
+    const implTypeName =
+      typeof inferredType === "string" && inferredType !== "Unknown"
+        ? inferredType
+        : node.name;
+
+    for (const contractName of intoContracts) {
+      markContractImplementation(contractName, implTypeName);
+    }
+  };
+
+  const getContractMethod = (contractName, methodName) => {
+    const contract = contracts.get(contractName);
+    if (!contract) return undefined;
+    return (contract.methods ?? []).find((m) => m.name === methodName);
+  };
+
+  const substituteThisType = (typeNode, implTypeName) => {
+    if (!typeNode || typeof typeNode !== "object") return typeNode;
+
+    if (typeNode.kind === "NamedType") {
+      if (typeNode.name === "This") {
+        return { ...typeNode, name: implTypeName };
+      }
+      return {
+        ...typeNode,
+        genericArgs: (typeNode.genericArgs ?? []).map((g) =>
+          substituteThisType(g, implTypeName),
+        ),
+      };
+    }
+
+    if (typeNode.kind === "PointerType") {
+      return { ...typeNode, to: substituteThisType(typeNode.to, implTypeName) };
+    }
+
+    if (typeNode.kind === "ArrayType") {
+      return {
+        ...typeNode,
+        element: substituteThisType(typeNode.element, implTypeName),
+      };
+    }
+
+    if (typeNode.kind === "TupleType") {
+      return {
+        ...typeNode,
+        members: (typeNode.members ?? []).map((m) =>
+          substituteThisType(m, implTypeName),
+        ),
+      };
+    }
+
+    if (typeNode.kind === "RefinementType") {
+      return {
+        ...typeNode,
+        base: substituteThisType(typeNode.base, implTypeName),
+      };
+    }
+
+    if (typeNode.kind === "UnionType") {
+      return {
+        ...typeNode,
+        left: substituteThisType(typeNode.left, implTypeName),
+        right: substituteThisType(typeNode.right, implTypeName),
+      };
+    }
+
+    return typeNode;
+  };
+
+  const contractMethodImplementedByType = (
+    contractName,
+    methodName,
+    typeName,
+  ) => {
+    const method = getContractMethod(contractName, methodName);
+    if (!method) return false;
+
+    const fn = functions.get(methodName);
+    if (!fn) return false;
+
+    const methodParams = method.params ?? [];
+    const fnParams = fn.params ?? [];
+    if (methodParams.length !== fnParams.length) return false;
+
+    for (let idx = 0; idx < methodParams.length; idx += 1) {
+      const contractParam = methodParams[idx];
+      const fnParamTypeName = resolveTypeInfo(fnParams[idx]?.type).name;
+
+      if (contractParam?.implicitThis) {
+        if (
+          fnParamTypeName !== typeName &&
+          fnParamTypeName !== `*${typeName}` &&
+          fnParamTypeName !== `*mut ${typeName}`
+        ) {
+          return false;
+        }
+        continue;
+      }
+
+      const expectedTypeNode = substituteThisType(
+        contractParam?.type,
+        typeName,
+      );
+      const expectedTypeName = resolveTypeInfo(expectedTypeNode).name;
+      if (
+        expectedTypeName &&
+        expectedTypeName !== "Unknown" &&
+        !areCompatibleNamedTypes(expectedTypeName, fnParamTypeName)
+      ) {
+        return false;
+      }
+    }
+
+    const expectedReturnName = resolveTypeInfo(
+      substituteThisType(method.returnType, typeName),
+    ).name;
+    const actualReturnName = resolveTypeInfo(fn.returnType).name;
+    if (
+      expectedReturnName &&
+      expectedReturnName !== "Unknown" &&
+      actualReturnName !== "Unknown" &&
+      !areCompatibleNamedTypes(expectedReturnName, actualReturnName)
+    ) {
+      return false;
+    }
+
+    return true;
+  };
+
+  const ensureTypeSatisfiesContract = (
+    boundTypeName,
+    contractName,
+    genericName,
+    loc,
+    requireMethodCheck = true,
+  ): TypecheckResult<true> => {
+    const implementers = contractImplementers.get(contractName);
+    if (!implementers?.has(boundTypeName)) {
+      return err(
+        new TuffError(
+          `Type '${boundTypeName}' does not implement contract '${contractName}' required for generic '${genericName}'`,
+          loc,
+          {
+            code: "E_TYPE_CONTRACT_NOT_IMPLEMENTED",
+            hint: `Declare contract conformance with 'into ${contractName};' in a constructor for '${boundTypeName}'.`,
+          },
+        ),
+      );
+    }
+
+    if (requireMethodCheck) {
+      const contract = contracts.get(contractName);
+      for (const method of contract?.methods ?? []) {
+        if (
+          !contractMethodImplementedByType(
+            contractName,
+            method.name,
+            boundTypeName,
+          )
+        ) {
+          return err(
+            new TuffError(
+              `Type '${boundTypeName}' is missing contract method '${method.name}' for '${contractName}'`,
+              loc,
+              {
+                code: "E_TYPE_CONTRACT_METHOD_MISSING",
+                hint: `Add function '${method.name}(...)' compatible with contract '${contractName}' for '${boundTypeName}'.`,
+              },
+            ),
+          );
+        }
+      }
+    }
+
+    return ok(true);
+  };
 
   for (const node of ast.body) {
     if (node.kind === "StructDecl") {
@@ -332,6 +553,9 @@ export function typecheck(
         continue;
       }
       functions.set(node.name, node);
+      if (node.kind === "FnDecl") {
+        registerFnContractConformance(node);
+      }
     } else if (node.kind === "TypeAlias" || node.kind === "ExternTypeDecl") {
       typeAliases.set(
         node.name,
@@ -975,6 +1199,14 @@ export function typecheck(
 
             const genericBindings = new Map();
             const genericNames = new Set(fn.generics ?? []);
+            const explicitTypeArgs = expr.typeArgs ?? [];
+            for (
+              let idx = 0;
+              idx < explicitTypeArgs.length && idx < (fn.generics ?? []).length;
+              idx += 1
+            ) {
+              genericBindings.set(fn.generics[idx], explicitTypeArgs[idx]);
+            }
             const knownTypeNames = new Set([
               ...typeAliases.keys(),
               ...structs.keys(),
@@ -1020,6 +1252,33 @@ export function typecheck(
               fn.returnType,
               genericBindings,
             );
+
+            const genericConstraints = fn.genericConstraints ?? {};
+            for (const genericName of Object.keys(genericConstraints)) {
+              if (!genericBindings.has(genericName)) continue;
+
+              const constraintType = genericConstraints[genericName];
+              const constraintName = named(constraintType);
+              if (!constraintName || !contracts.has(constraintName)) continue;
+
+              const boundType = genericBindings.get(genericName);
+              const boundTypeName =
+                named(boundType) ?? resolveTypeInfo(boundType).name;
+              if (
+                !boundTypeName ||
+                boundTypeName === "Unknown" ||
+                isTypeVariableName(boundTypeName)
+              ) {
+                continue;
+              }
+              const contractResult = ensureTypeSatisfiesContract(
+                boundTypeName,
+                constraintName,
+                genericName,
+                expr.loc,
+              );
+              if (!contractResult.ok) return contractResult;
+            }
 
             if (expr.args.length !== fn.params.length) {
               return err(
@@ -1078,6 +1337,59 @@ export function typecheck(
             return ok(resolveTypeInfo(resolvedReturnType));
           }
         }
+
+        if (
+          expr.callStyle === "method-sugar" &&
+          expr.callee.kind === "Identifier"
+        ) {
+          const receiverResult = inferExpr(expr.args?.[0], scope, facts);
+          if (!receiverResult.ok) return receiverResult;
+          const receiverType = receiverResult.value;
+          const receiverName = receiverType.name;
+
+          if (isTypeVariableName(receiverName)) {
+            const constraintNode = activeGenericConstraints?.[receiverName];
+            const constraintName = named(constraintNode);
+            if (constraintName && contracts.has(constraintName)) {
+              const method = getContractMethod(
+                constraintName,
+                expr.callee.name,
+              );
+              if (!method) {
+                return err(
+                  new TuffError(
+                    `Contract '${constraintName}' does not declare method '${expr.callee.name}'`,
+                    expr.loc,
+                    {
+                      code: "E_TYPE_CONTRACT_METHOD_NOT_FOUND",
+                      hint: `Add '${expr.callee.name}' to contract '${constraintName}' or call a declared contract method.`,
+                    },
+                  ),
+                );
+              }
+
+              if ((method.params ?? []).length !== (expr.args ?? []).length) {
+                return err(
+                  new TuffError(
+                    `Method '${expr.callee.name}' on contract '${constraintName}' expects ${(method.params ?? []).length} args, got ${(expr.args ?? []).length}`,
+                    expr.loc,
+                    {
+                      code: "E_TYPE_ARG_COUNT",
+                      hint: "Pass exactly the arguments required by the contract method signature.",
+                    },
+                  ),
+                );
+              }
+
+              const methodReturn = substituteThisType(
+                method.returnType,
+                receiverName,
+              );
+              return ok(resolveTypeInfo(methodReturn));
+            }
+          }
+        }
+
         for (const a of expr.args) {
           const argResult = inferExpr(a, scope, facts);
           if (!argResult.ok) return argResult;
@@ -1234,6 +1546,56 @@ export function typecheck(
       }
       case "UnwrapExpr":
         return inferExpr(expr.expr, scope, facts);
+      case "IntoExpr": {
+        const valueResult = inferExpr(expr.value, scope, facts);
+        if (!valueResult.ok) return valueResult;
+        const valueType = valueResult.value;
+        const valueTypeName = valueType.name;
+
+        if (!contracts.has(expr.contractName)) {
+          return err(
+            new TuffError(
+              `Unknown contract '${expr.contractName}' in into expression`,
+              expr.loc,
+              {
+                code: "E_TYPE_UNKNOWN_CONTRACT",
+                hint: "Declare the contract before converting with 'into'.",
+              },
+            ),
+          );
+        }
+
+        if (valueTypeName && valueTypeName !== "Unknown") {
+          const contractResult = ensureTypeSatisfiesContract(
+            valueTypeName,
+            expr.contractName,
+            valueTypeName,
+            expr.loc,
+            false,
+          );
+          if (!contractResult.ok) return contractResult;
+        }
+
+        for (const a of expr.args ?? []) {
+          const argResult = inferExpr(a, scope, facts);
+          if (!argResult.ok) return argResult;
+        }
+
+        return ok({
+          name: `__dyn_${expr.contractName}`,
+          min: undefined,
+          max: undefined,
+          nonZero: false,
+          typeNode: {
+            kind: "NamedType",
+            name: `__dyn_${expr.contractName}`,
+            genericArgs:
+              valueType.typeNode && valueType.typeNode.kind
+                ? [valueType.typeNode]
+                : [],
+          },
+        });
+      }
       case "LambdaExpr": {
         const lambdaScope = new Map(scope);
         for (const p of expr.params ?? []) {
@@ -1275,6 +1637,8 @@ export function typecheck(
         });
       }
       case "FnExpr": {
+        const prevConstraints = activeGenericConstraints;
+        activeGenericConstraints = expr.genericConstraints ?? {};
         const fnScope = new Map(scope);
         const paramInfos = (expr.params ?? []).map((p) =>
           resolveTypeInfo(p.type),
@@ -1295,7 +1659,11 @@ export function typecheck(
                 explicitReturn ?? undefined,
               )
             : inferExpr(expr.body, fnScope, new Map(facts));
-        if (!bodyResult.ok) return bodyResult;
+        if (!bodyResult.ok) {
+          activeGenericConstraints = prevConstraints;
+          return bodyResult;
+        }
+        activeGenericConstraints = prevConstraints;
         const inferredReturn = explicitReturn ?? bodyResult.value;
 
         return ok({
@@ -1366,6 +1734,39 @@ export function typecheck(
         };
         const local = new Map(scope);
         const localFacts = new Map(facts);
+        for (const s of node.statements ?? []) {
+          if (s.kind === "FnDecl") {
+            const paramInfos = (s.params ?? []).map((p) =>
+              resolveTypeInfo(p.type),
+            );
+            const retInfo = resolveTypeInfo(s.returnType);
+            local.set(s.name, {
+              name: functionTypeName(
+                paramInfos.map((p) => p.name ?? "Unknown"),
+                retInfo.name ?? "Unknown",
+              ),
+              min: undefined,
+              max: undefined,
+              nonZero: false,
+              typeNode: {
+                kind: "FunctionType",
+                params: paramInfos.map(
+                  (p) =>
+                    p.typeNode ?? {
+                      kind: "NamedType",
+                      name: p.name ?? "Unknown",
+                      genericArgs: [],
+                    },
+                ),
+                returnType: retInfo.typeNode ?? {
+                  kind: "NamedType",
+                  name: retInfo.name ?? "Unknown",
+                  genericArgs: [],
+                },
+              },
+            });
+          }
+        }
         for (const s of node.statements) {
           const result = inferNode(s, local, localFacts, expectedReturn);
           if (!result.ok) return result;
@@ -1374,6 +1775,29 @@ export function typecheck(
         return ok(last);
       }
       case "LetDecl": {
+        if (!node.value) {
+          if (!node.type) {
+            return err(
+              new TuffError(
+                `Uninitialized let ${node.name} requires explicit type`,
+                node.loc,
+                {
+                  code: "E_TYPE_UNINITIALIZED_LET",
+                  hint: "Provide a type annotation for uninitialized declarations.",
+                },
+              ),
+            );
+          }
+          const declaredInfo = resolveTypeInfo(node.type);
+          scope.set(node.name, declaredInfo);
+          return ok({
+            name: "Void",
+            min: undefined,
+            max: undefined,
+            nonZero: false,
+          });
+        }
+
         const valueTypeResult = inferExpr(node.value, scope, facts);
         if (!valueTypeResult.ok) return valueTypeResult;
         const valueType = valueTypeResult.value;
@@ -1543,8 +1967,10 @@ export function typecheck(
             nonZero: false,
           });
         }
-        const fnScope = new Map(globalScope);
+        const fnScope = new Map(scope);
         const fnFacts = new Map();
+        const prevConstraints = activeGenericConstraints;
+        activeGenericConstraints = node.genericConstraints ?? {};
         for (const p of node.params) {
           fnScope.set(p.name, resolveTypeInfo(p.type));
         }
@@ -1553,7 +1979,11 @@ export function typecheck(
           node.body.kind === "Block"
             ? inferNode(node.body, fnScope, fnFacts, expectedInfo)
             : inferExpr(node.body, fnScope, fnFacts);
-        if (!bodyTypeResult.ok) return bodyTypeResult;
+        if (!bodyTypeResult.ok) {
+          activeGenericConstraints = prevConstraints;
+          return bodyTypeResult;
+        }
+        activeGenericConstraints = prevConstraints;
         const bodyType = bodyTypeResult.value;
         const expected = expectedInfo.name;
         if (

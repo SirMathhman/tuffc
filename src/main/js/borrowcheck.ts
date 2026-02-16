@@ -525,6 +525,16 @@ export function borrowcheck(ast, options = {}): BorrowcheckResult<unknown> {
         return checkExpr(expr.expr, state, envTypes, "read");
       case "UnwrapExpr":
         return checkExpr(expr.expr, state, envTypes, "read");
+      case "IntoExpr": {
+        const valueMode = canonicalPlace(expr.value) ? "move" : "read";
+        const valueResult = checkExpr(expr.value, state, envTypes, valueMode);
+        if (!valueResult.ok) return valueResult;
+        for (const a of expr.args ?? []) {
+          const argResult = checkExpr(a, state, envTypes, "read");
+          if (!argResult.ok) return argResult;
+        }
+        return ok(undefined);
+      }
       default:
         return ok(undefined);
     }
@@ -534,6 +544,12 @@ export function borrowcheck(ast, options = {}): BorrowcheckResult<unknown> {
     if (!stmt) return ok(undefined);
     switch (stmt.kind) {
       case "LetDecl": {
+        if (!stmt.value) {
+          const ty = stmt.type ? typeNameFromNode(stmt.type) : "Unknown";
+          envTypes.set(stmt.name, ty);
+          state.moved.delete(stmt.name);
+          return ok(undefined);
+        }
         const valueMode = canonicalPlace(stmt.value) ? "move" : "read";
         const valueResult = checkExpr(stmt.value, state, envTypes, valueMode);
         if (!valueResult.ok) return valueResult;
@@ -674,7 +690,8 @@ export function borrowcheck(ast, options = {}): BorrowcheckResult<unknown> {
       node.kind === "IfExpr" ||
       node.kind === "MatchExpr" ||
       node.kind === "IsExpr" ||
-      node.kind === "UnwrapExpr"
+      node.kind === "UnwrapExpr" ||
+      node.kind === "IntoExpr"
     ) {
       return checkExpr(node, state, envTypes, "move");
     }

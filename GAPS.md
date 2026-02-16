@@ -66,7 +66,7 @@ These are spec-described constructs that currently fail to compile.
   - Stage0/1: `E_PARSE_UNEXPECTED_TOKEN` (`keyword:async`)
   - Stage2/3: `E_SELFHOST_PANIC` (`Unexpected token in expression`)
 
-### ✅ Resolved: `contract` keyword (static syntax surface)
+### ✅ Resolved: `contract` keyword + Stage0 static dispatch checks
 
 - Spec area: `2.2`
 - Case: `contracts:definition-and-impl`
@@ -75,14 +75,31 @@ These are spec-described constructs that currently fail to compile.
   - Added parser support for `contract Name { fn ...; }` declarations in Stage0 and selfhost.
   - Added support for constructor-local `into Contract;` statements in Stage0 and selfhost.
   - Added resolver/typecheck plumbing so unknown contracts in `into` statements are diagnosed.
-  - Current implementation is static-syntax/conformance plumbing only; dynamic dispatch/table generation remains intentionally out-of-scope.
+  - Stage0 now enforces generic contract bounds at call sites (`T : Contract`) and validates required contract method implementations for concrete implementers.
+  - Added focused Stage0 regressions in `src/test/js/contracts-static-dispatch.ts`.
+  - Stage0 now also supports expression-form conversions (`value into Contract(...)`) for dynamic wrappers.
+  - Selfhost parity for the new bound/method-conformance checks is still a follow-up task.
+
+### ✅ Resolved: Stage0 dynamic dispatch lowering for `into` contracts
+
+- Spec area: `2.2`
+- Status: **implemented in Stage0 runtime/codegen path**
+- Notes:
+  - Added Stage0 desugaring that synthesizes runtime contract wrapper/table structs (`__dyn_<Contract>`, `__dyn_<Contract>Table`).
+  - Added Stage0 lowering for `into Contract;` to generate `into<Contract>()` factory closures when contract methods are declared locally.
+  - Added constructor-style desugar for `fn TypeName(...) { ... into Contract; }` to synthesize implicit constructor state and return value in Stage0.
+  - Added parser/typechecker/borrowchecker support needed by corrected syntax flow: expression `into`, uninitialized `let mut name : Type;`, and pointer qualifiers `*out uninit mut T` (runtime-first semantics, static diagnostics to be tightened).
+  - Added JS codegen dynamic method dispatch fallback for method-sugar calls: prefers `receiver.table.method(receiver.ref, ...)` when present, otherwise falls back to static function call.
+  - Added resolver/typecheck support for local function declarations in block scope so lowered dynamic factories can reference captured/local methods.
+  - Covered by runtime regression in `src/test/js/contracts-static-dispatch.ts` (`v.drive()` through dynamic wrapper returns expected value).
+  - Selfhost parser/typecheck/codegen parity for this dynamic path remains pending.
 
 ### 5) `class fn ...` desugar behavior mismatch
 
 - Spec area: `3.4`
 - Case: `class:syntax-desugar`
 - Observed:
-  - Stage0/1: `E_RESOLVE_SHADOWING` (name collision on `Car`)
+  - Stage0/1: `E_GENERIC` (constructor/class return typing mismatch)
 
 ### ✅ Resolved: `expect` / `actual` declarations
 

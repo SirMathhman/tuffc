@@ -31,6 +31,7 @@ const KEYWORDS = new Set([
   "copy",
   "async",
   "mut",
+  "uninit",
 ]);
 
 const TWO_CHAR = new Set([

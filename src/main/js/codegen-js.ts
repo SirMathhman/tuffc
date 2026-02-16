@@ -1,4 +1,6 @@
 let objectCtorNames = new Set();
+let contractMethodNamesByName = new Map();
+let functionEmitStack = [];
 
 function emitPatternGuard(valueExpr, pattern) {
   switch (pattern.kind) {
@@ -31,12 +33,31 @@ function emitExpr(expr) {
       return expr.name;
     case "UnaryExpr":
       if (expr.op === "&" || expr.op === "&mut") {
+        if (expr.op === "&mut" && expr.expr?.kind === "Identifier") {
+          const n = expr.expr.name;
+          return `({ __ptr_get: () => ${n}, __ptr_set: (__v) => { ${n} = __v; } })`;
+        }
         return emitExpr(expr.expr);
       }
       return `(${expr.op}${emitExpr(expr.expr)})`;
     case "BinaryExpr":
       return `(${emitExpr(expr.left)} ${expr.op} ${emitExpr(expr.right)})`;
     case "CallExpr":
+      if (
+        expr.callStyle === "method-sugar" &&
+        expr.callee?.kind === "Identifier" &&
+        (expr.args?.length ?? 0) >= 1
+      ) {
+        const receiver = emitExpr(expr.args[0]);
+        const rest = (expr.args ?? []).slice(1).map(emitExpr).join(", ");
+        const dynArgs = [`__recv.ref`, rest]
+          .filter((x) => x.length > 0)
+          .join(", ");
+        const staticArgs = [`__recv`, rest]
+          .filter((x) => x.length > 0)
+          .join(", ");
+        return `(() => { const __recv = ${receiver}; const __dyn = __recv?.table?.${expr.callee.name}; return __dyn ? __dyn(${dynArgs}) : ${emitExpr(expr.callee)}(${staticArgs}); })()`;
+      }
       return `${emitExpr(expr.callee)}(${expr.args.map(emitExpr).join(", ")})`;
     case "MemberExpr":
       return `${emitExpr(expr.object)}.${expr.property}`;
@@ -93,6 +114,15 @@ function emitExpr(expr) {
     }
     case "UnwrapExpr":
       return emitExpr(expr.expr);
+    case "IntoExpr": {
+      const src = emitExpr(expr.value);
+      const args = (expr.args ?? []).map(emitExpr).join(", ");
+      const consumeSource =
+        expr.value?.kind === "Identifier"
+          ? `${expr.value.name} = undefined;`
+          : "";
+      return `(() => { const __src = ${src}; const __conv = __src?.__into?.[${JSON.stringify(expr.contractName)}]; if (!__conv) { throw new Error(${JSON.stringify(`Missing into converter for ${expr.contractName}`)}); } const __out = __conv(${args}); ${consumeSource} return __out; })()`;
+    }
     case "LambdaExpr": {
       const params = (expr.params ?? []).map((p) => p.name).join(", ");
       if (expr.body?.kind === "Block") {
@@ -117,7 +147,9 @@ function emitStmt(stmt) {
   switch (stmt.kind) {
     case "LetDecl":
       // Use 'let' to allow reassignment during bootstrap
-      return `let ${stmt.name} = ${emitExpr(stmt.value)};`;
+      return stmt.value
+        ? `let ${stmt.name} = ${emitExpr(stmt.value)};`
+        : `let ${stmt.name};`;
     case "ImportDecl":
       return `// module import placeholder: { ${stmt.names.join(", ")} } = ${stmt.modulePath}`;
     case "ExprStmt":
@@ -140,8 +172,27 @@ function emitStmt(stmt) {
       return "break;";
     case "ContinueStmt":
       return "continue;";
-    case "IntoStmt":
-      return `// into ${stmt.contractName}`;
+    case "IntoStmt": {
+      const ctx = functionEmitStack[functionEmitStack.length - 1];
+      const methods = contractMethodNamesByName.get(stmt.contractName) ?? [];
+      const hasLocals =
+        methods.length > 0 && methods.every((m) => ctx?.localFns?.has(m));
+      if (!ctx || !hasLocals) {
+        return `// into ${stmt.contractName}`;
+      }
+      const tableName = `__dyn_${stmt.contractName}Table`;
+      const wrapperName = `__dyn_${stmt.contractName}`;
+      const tableFields = methods.map((m) => `${m}: ${m}`).join(", ");
+      return [
+        `const __self = (typeof __this !== "undefined") ? __this : this;`,
+        `__self.__into = __self.__into || {};`,
+        `__self.__into[${JSON.stringify(stmt.contractName)}] = (ptr) => {`,
+        `  if (ptr && typeof ptr.__ptr_set === "function") { ptr.__ptr_set(__self); }`,
+        `  const __ref = ptr && typeof ptr.__ptr_get === "function" ? ptr.__ptr_get() : ptr;`,
+        `  return ${wrapperName}({ ref: __ref, table: ${tableName}({ ${tableFields} }) });`,
+        `};`,
+      ].join("\n");
+    }
     case "Block":
       return emitBlock(stmt);
     case "FnDecl": {
@@ -150,7 +201,15 @@ function emitStmt(stmt) {
       }
       const params = stmt.params.map((p) => p.name).join(", ");
       if (stmt.body.kind === "Block") {
-        return `function ${stmt.name}(${params}) ${emitFunctionBlock(stmt.body)}`;
+        const localFns = new Set(
+          (stmt.body?.statements ?? [])
+            .filter((s) => s?.kind === "FnDecl")
+            .map((s) => s.name),
+        );
+        functionEmitStack.push({ localFns, fnName: stmt.name });
+        const emittedBody = emitFunctionBlock(stmt.body);
+        functionEmitStack.pop();
+        return `function ${stmt.name}(${params}) ${emittedBody}`;
       }
       return `function ${stmt.name}(${params}) { return ${emitExpr(stmt.body)}; }`;
     }
@@ -266,10 +325,18 @@ function emitIfStmtAsExpr(s) {
 
 export function generateJavaScript(ast: { body: unknown[] }): string {
   objectCtorNames = new Set();
+  contractMethodNamesByName = new Map();
+  functionEmitStack = [];
   for (const node of ast.body ?? []) {
     const decl = node as any;
     if (decl?.kind === "ObjectDecl" && (decl?.inputs ?? []).length > 0) {
       objectCtorNames.add(decl.name);
+    }
+    if (decl?.kind === "ContractDecl") {
+      contractMethodNamesByName.set(
+        decl.name,
+        (decl.methods ?? []).map((m) => m.name),
+      );
     }
   }
 

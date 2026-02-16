@@ -116,6 +116,30 @@ export function resolveNames(
   };
 
   const globals = new Scope();
+  const valueDeclKinds = new Set([
+    "FnDecl",
+    "ClassFunctionDecl",
+    "ExternFnDecl",
+    "ExternLetDecl",
+    "LetDecl",
+  ]);
+  const typeDeclKinds = new Set([
+    "StructDecl",
+    "EnumDecl",
+    "ObjectDecl",
+    "ContractDecl",
+    "TypeAlias",
+    "ExternTypeDecl",
+  ]);
+
+  const canCoexistGlobalName = (existingKind, nextKind) => {
+    const existingIsValue = valueDeclKinds.has(existingKind);
+    const existingIsType = typeDeclKinds.has(existingKind);
+    const nextIsValue = valueDeclKinds.has(nextKind);
+    const nextIsType = typeDeclKinds.has(nextKind);
+    return (existingIsValue && nextIsType) || (existingIsType && nextIsValue);
+  };
+
   for (const node of ast.body) {
     if (node.kind === "FnDecl" && node.expectDecl === true) {
       continue;
@@ -134,8 +158,24 @@ export function resolveNames(
         "LetDecl",
       ].includes(node.kind)
     ) {
-      const defineResult = globals.define(node.name);
-      if (!defineResult.ok) return defineResult;
+      if (globals.bindings.has(node.name)) {
+        const existingKind = globalDeclKindByName.get(node.name);
+        if (!canCoexistGlobalName(existingKind, node.kind)) {
+          return err(
+            new TuffError(
+              `Variable shadowing/redeclaration is not allowed: ${node.name}`,
+              node.loc,
+              {
+                code: "E_RESOLVE_SHADOWING",
+                hint: "Rename one of the declarations; shadowing is disallowed in Tuff.",
+              },
+            ),
+          );
+        }
+      } else {
+        const defineResult = globals.define(node.name);
+        if (!defineResult.ok) return defineResult;
+      }
       if (!globalDeclKindByName.has(node.name)) {
         globalDeclKindByName.set(node.name, node.kind);
       }
@@ -235,8 +275,15 @@ export function resolveNames(
         break;
       }
       case "CallExpr": {
-        const calleeResult = visitExpr(expr.callee, scope, currentModulePath);
-        if (!calleeResult.ok) return calleeResult;
+        if (
+          !(
+            expr.callStyle === "method-sugar" &&
+            expr.callee?.kind === "Identifier"
+          )
+        ) {
+          const calleeResult = visitExpr(expr.callee, scope, currentModulePath);
+          if (!calleeResult.ok) return calleeResult;
+        }
         for (const a of expr.args) {
           const argResult = visitExpr(a, scope, currentModulePath);
           if (!argResult.ok) return argResult;
@@ -318,6 +365,27 @@ export function resolveNames(
         if (!exprResult.ok) return exprResult;
         break;
       }
+      case "IntoExpr": {
+        const valueResult = visitExpr(expr.value, scope, currentModulePath);
+        if (!valueResult.ok) return valueResult;
+        for (const a of expr.args ?? []) {
+          const argResult = visitExpr(a, scope, currentModulePath);
+          if (!argResult.ok) return argResult;
+        }
+        if (!contractNames.has(expr.contractName)) {
+          return err(
+            new TuffError(
+              `Unknown contract '${expr.contractName}'`,
+              expr.loc ?? undefined,
+              {
+                code: "E_RESOLVE_UNKNOWN_IDENTIFIER",
+                hint: "Declare the contract before using 'into'.",
+              },
+            ),
+          );
+        }
+        break;
+      }
       case "LambdaExpr": {
         const lambdaScope = new Scope(scope);
         for (const p of expr.params ?? []) {
@@ -382,6 +450,12 @@ export function resolveNames(
         break;
       case "Block": {
         const blockScope = new Scope(scope);
+        for (const s of node.statements ?? []) {
+          if (s.kind === "FnDecl") {
+            const defineResult = blockScope.define(s.name, s.loc);
+            if (!defineResult.ok) return defineResult;
+          }
+        }
         for (const s of node.statements) {
           const result = visitNode(s, blockScope, modulePath);
           if (!result.ok) return result;
@@ -407,8 +481,10 @@ export function resolveNames(
         break;
       }
       case "LetDecl": {
-        const valueResult = visitExpr(node.value, scope, modulePath);
-        if (!valueResult.ok) return valueResult;
+        if (node.value) {
+          const valueResult = visitExpr(node.value, scope, modulePath);
+          if (!valueResult.ok) return valueResult;
+        }
         if (!(scope === globals && globals.bindings.has(node.name))) {
           const defineResult = scope.define(node.name, node.loc);
           if (!defineResult.ok) return defineResult;
