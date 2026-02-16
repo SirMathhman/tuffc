@@ -607,6 +607,12 @@ export function borrowcheck(ast, options = {}): BorrowcheckResult<unknown> {
         endLoanScope(state);
         return body;
       }
+      case "LoopStmt": {
+        beginLoanScope(state);
+        const body = checkNode(stmt.body, state, new Map(envTypes));
+        endLoanScope(state);
+        return body;
+      }
       case "WhileStmt": {
         const cond = checkExpr(stmt.condition, state, envTypes, "read");
         if (!cond.ok) return cond;

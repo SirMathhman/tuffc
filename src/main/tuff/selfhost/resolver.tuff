@@ -400,6 +400,11 @@ fn resolve_stmt(n: I32, globals: *mut Set, scopes: Vec, depth: I32) : I32 => {
         return 0;
     }
 
+    if (kind == NK_LOOP_STMT) {
+        resolve_stmt(node_get_data1(n), globals, scopes, depth);
+        return 0;
+    }
+
     // Fallback: treat unmatched nodes as expressions.
     resolve_expr(n, globals, scopes, depth);
     0

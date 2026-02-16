@@ -48,13 +48,15 @@ These are spec-described constructs that currently fail to compile.
   - Wired object declarations into resolver/module declaration collection.
   - Added nominal object typing and JS/selfhost codegen singleton emission so `Name<T>` use-sites compile.
 
-### 2) `loop {}` construct
+### ✅ Resolved: `loop {}` construct
 
 - Spec area: `3.6`
 - Case: `loops:for-while-loop`
-- Observed:
-  - Stage0/1: `E_PARSE_UNEXPECTED_TOKEN` (`keyword:loop`)
-  - Stage2/3: `E_SELFHOST_PANIC` (`Unexpected token in expression`)
+- Status: **fixed** (no longer reported by `npm run semantics:exhaustive`)
+- Notes:
+  - Added Stage0 parser support for `loop { ... }` as `LoopStmt`.
+  - Mirrored loop statement parsing in selfhost parser.
+  - Wired `LoopStmt` through resolver/typecheck/borrowcheck and JS/C codegen in Stage0 and selfhost.
 
 ### 3) `async fn` syntax/CPS surface
 
@@ -134,7 +136,7 @@ These cases fail for code-name mismatch rather than semantic pass/fail behavior.
 
 ## D) Priority suggestions
 
-1. **Parser surface parity first**: `loop`, `async`, contracts/impl.
+1. **Parser surface parity first**: `async`, contracts/impl.
 2. **Type-system syntax/parsing fixes**: generic call forms and dependent array signatures.
 3. **Desugar/resolve collision handling**: `class fn` shadowing behavior.
 4. **Diagnostic harmonization**: align expected-vs-actual codes for overflow and match exhaustiveness.

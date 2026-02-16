@@ -69,6 +69,11 @@ fn emit_stmt(n: I32) : *Str => {
         let body = emit_block(node_get_data4(n));
         return str_concat(str_concat(str_concat(str_concat("for (let ".str_concat(iter).str_concat(" = ").str_concat(start), "; ".str_concat(iter)), " < ".str_concat(end)), "; ".str_concat(iter.str_concat("++) "))), body);
     }
+
+    if (kind == NK_LOOP_STMT) {
+        let body = emit_block(node_get_data1(n));
+        return "while (true) ".str_concat(body);
+    }
     
     if (kind == NK_BREAK_STMT) {
         return "break;";

@@ -765,6 +765,13 @@ fn check_stmt(stmt: I32, state: Vec, env_types: Map, fn_return_types: Map, exter
         return 0;
     }
 
+    if (kind == NK_LOOP_STMT) {
+        state_begin_scope(state);
+        check_stmt(node_get_data1(stmt), state, env_types, fn_return_types, extern_type_names, global_fn_names);
+        state_end_scope(state);
+        return 0;
+    }
+
     if (kind == NK_BLOCK) {
         check_block(stmt, state, env_types, fn_return_types, extern_type_names, global_fn_names);
         return 0;

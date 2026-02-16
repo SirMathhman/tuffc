@@ -1523,6 +1523,9 @@ export function typecheck(
         if (!endResult.ok) return endResult;
         return inferBodyAsVoid(node.body);
       }
+      case "LoopStmt": {
+        return inferBodyAsVoid(node.body);
+      }
       case "WhileStmt": {
         const condResult = inferExpr(node.condition, scope, facts);
         if (!condResult.ok) return condResult;

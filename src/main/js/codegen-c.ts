@@ -404,6 +404,8 @@ function emitStmt(stmt, ctx, localTypes = new Map()) {
       return `while (${emitExpr(stmt.condition, ctx, localTypes)}) ${emitBlock(stmt.body, ctx, localTypes)}`;
     case "ForStmt":
       return `for (int64_t ${toCName(stmt.iterator)} = ${emitExpr(stmt.start, ctx, localTypes)}; ${toCName(stmt.iterator)} < ${emitExpr(stmt.end, ctx, localTypes)}; ${toCName(stmt.iterator)}++) ${emitBlock(stmt.body, ctx, localTypes)}`;
+    case "LoopStmt":
+      return `while (1) ${emitBlock(stmt.body, ctx, localTypes)}`;
     case "BreakStmt":
       return "break;";
     case "ContinueStmt":

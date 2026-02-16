@@ -134,6 +134,8 @@ function emitStmt(stmt) {
       return `while (${emitExpr(stmt.condition)}) ${emitStmtOrBlock(stmt.body)}`;
     case "ForStmt":
       return `for (let ${stmt.iterator} = ${emitExpr(stmt.start)}; ${stmt.iterator} < ${emitExpr(stmt.end)}; ${stmt.iterator}++) ${emitStmtOrBlock(stmt.body)}`;
+    case "LoopStmt":
+      return `while (true) ${emitStmtOrBlock(stmt.body)}`;
     case "BreakStmt":
       return "break;";
     case "ContinueStmt":

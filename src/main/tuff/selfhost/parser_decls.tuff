@@ -491,6 +491,13 @@ fn p_parse_statement() : I32 => {
         return node;
     }
     if (p_at(TK_KEYWORD, "for")) { return p_parse_for(); }
+    if (p_at(TK_KEYWORD, "loop")) {
+        p_eat();
+        let body = p_parse_block();
+        let node = node_new(NK_LOOP_STMT);
+        node_set_data1(node, body);
+        return node;
+    }
     if (p_at(TK_KEYWORD, "break")) {
         p_eat();
         p_expect(TK_SYMBOL, ";", "Expected ';'");

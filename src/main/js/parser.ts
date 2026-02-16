@@ -1445,6 +1445,17 @@ export function parse(tokens: Token[]): ParseResult<Program> {
     });
   };
 
+  const parseLoopStmt = (): ParseResult<Stmt> => {
+    const loopResult = expect("keyword", "loop");
+    if (!loopResult.ok) return loopResult;
+    const bodyResult = parseBlock();
+    if (!bodyResult.ok) return bodyResult;
+    return ok({
+      kind: "LoopStmt",
+      body: bodyResult.value,
+    });
+  };
+
   const parseStatement = (): ParseResult<Stmt> => {
     const atContextualModifier = (name: "expect" | "actual") => {
       const t = peek();
@@ -1799,6 +1810,7 @@ export function parse(tokens: Token[]): ParseResult<Program> {
       });
     }
     if (at("keyword", "for")) return parseForStmt();
+    if (at("keyword", "loop")) return parseLoopStmt();
     if (at("keyword", "break")) {
       eat();
       const semiResult = expect("symbol", ";");

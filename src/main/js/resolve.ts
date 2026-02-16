@@ -464,6 +464,11 @@ export function resolveNames(
         if (!bodyResult.ok) return bodyResult;
         break;
       }
+      case "LoopStmt": {
+        const bodyResult = visitNode(node.body, new Scope(scope), modulePath);
+        if (!bodyResult.ok) return bodyResult;
+        break;
+      }
       case "WhileStmt": {
         const condResult = visitExpr(node.condition, scope, modulePath);
         if (!condResult.ok) return condResult;
