@@ -336,6 +336,7 @@ function getDeclName(node) {
       "StructDecl",
       "EnumDecl",
       "ObjectDecl",
+      "ContractDecl",
       "TypeAlias",
       "ExternFnDecl",
       "ExternLetDecl",

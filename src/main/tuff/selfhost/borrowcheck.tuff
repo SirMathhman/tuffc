@@ -777,6 +777,10 @@ fn check_stmt(stmt: I32, state: Vec, env_types: Map, fn_return_types: Map, exter
         return 0;
     }
 
+    if (kind == NK_CONTRACT_DECL || kind == NK_INTO_STMT) {
+        return 0;
+    }
+
     if (kind == NK_FN_DECL) {
         let fn_state = state_new();
         let fn_env = map_new();

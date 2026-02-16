@@ -178,6 +178,77 @@ fn p_parse_object() : I32 => {
     node
 }
 
+fn p_parse_contract() : I32 => {
+    p_expect(TK_KEYWORD, "contract", "Expected 'contract'");
+    let name = p_parse_identifier();
+    p_expect(TK_SYMBOL, "{", "Expected '{' after contract name");
+
+    let methods = vec_new();
+    while (!p_at(TK_SYMBOL, "}")) {
+        p_expect(TK_KEYWORD, "fn", "Expected 'fn' in contract declaration");
+        let mname = p_parse_identifier();
+        let mgenerics = p_parse_decl_generics("Expected '>' after contract method generics");
+
+        p_expect(TK_SYMBOL, "(", "Expected '(' in contract method signature");
+        let params = vec_new();
+        if (!p_at(TK_SYMBOL, ")")) {
+            while (true) {
+                let pname = 0;
+                let ptype = 0;
+                let implicit_this = 0;
+
+                if (p_at(TK_SYMBOL, "*")) {
+                    p_eat();
+                    if (p_at(TK_KEYWORD, "mut")) {
+                        p_eat();
+                    }
+                    pname = p_parse_identifier();
+                    ptype = 0;
+                    implicit_this = 1;
+                } else {
+                    pname = p_parse_identifier();
+                    if (p_at(TK_SYMBOL, ":")) {
+                        p_eat();
+                        ptype = p_parse_type();
+                    }
+                }
+
+                let param = vec_new();
+                param.vec_push(pname);
+                param.vec_push(ptype);
+                param.vec_push(implicit_this);
+                params.vec_push(param);
+
+                if (!p_at(TK_SYMBOL, ",")) {
+                    break;
+                }
+                p_eat();
+            }
+        }
+        p_expect(TK_SYMBOL, ")", "Expected ')' after contract method params");
+
+        let ret = 0;
+        if (p_at(TK_SYMBOL, ":")) {
+            p_eat();
+            ret = p_parse_type();
+        }
+        p_expect(TK_SYMBOL, ";", "Expected ';' after contract method signature");
+
+        let method = vec_new();
+        method.vec_push(mname);
+        method.vec_push(mgenerics);
+        method.vec_push(params);
+        method.vec_push(ret);
+        methods.vec_push(method);
+    }
+
+    p_expect(TK_SYMBOL, "}", "Expected '}' after contract body");
+    let node = node_new(NK_CONTRACT_DECL);
+    node_set_data1(node, name);
+    node_set_data2(node, methods);
+    node
+}
+
 fn p_parse_type_alias(is_copy: I32) : I32 => {
     p_expect(TK_KEYWORD, "type", "Expected 'type'");
     let name = p_parse_identifier();
@@ -407,6 +478,14 @@ fn p_parse_statement() : I32 => {
                 panic("'expect'/'actual' are currently supported only on fn declarations");
             }
             out_node = p_parse_object();
+        } else if (p_at(TK_KEYWORD, "contract")) {
+            if (copy_decl == 1) {
+                panic("'copy' is only supported on struct/type declarations");
+            }
+            if (expect_decl == 1 || actual_decl == 1) {
+                panic("'expect'/'actual' are currently supported only on fn declarations");
+            }
+            out_node = p_parse_contract();
         } else if (p_at(TK_KEYWORD, "type")) {
             out_node = p_parse_type_alias(copy_decl);
         } else if (p_at(TK_KEYWORD, "fn")) {
@@ -443,6 +522,7 @@ fn p_parse_statement() : I32 => {
     if (p_at(TK_KEYWORD, "struct")) { return p_parse_struct(0); }
     if (p_at(TK_KEYWORD, "enum")) { return p_parse_enum(); }
     if (p_at(TK_KEYWORD, "object")) { return p_parse_object(); }
+    if (p_at(TK_KEYWORD, "contract")) { return p_parse_contract(); }
     if (p_at(TK_KEYWORD, "type")) { return p_parse_type_alias(0); }
     if (p_at(TK_KEYWORD, "fn")) { return p_parse_function(0, 0); }
     if (p_at(TK_KEYWORD, "extern")) {
@@ -496,6 +576,14 @@ fn p_parse_statement() : I32 => {
         let body = p_parse_block();
         let node = node_new(NK_LOOP_STMT);
         node_set_data1(node, body);
+        return node;
+    }
+    if (p_at(TK_KEYWORD, "into")) {
+        p_eat();
+        let cname = p_parse_identifier();
+        p_expect(TK_SYMBOL, ";", "Expected ';' after into statement");
+        let node = node_new(NK_INTO_STMT);
+        node_set_data1(node, cname);
         return node;
     }
     if (p_at(TK_KEYWORD, "break")) {

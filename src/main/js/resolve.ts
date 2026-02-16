@@ -107,6 +107,7 @@ export function resolveNames(
   const globalDeclKindByName = new Map();
   const exportedGlobalNames = new Set();
   const externGlobalNames = new Set();
+  const contractNames = new Set();
 
   const isHostBuiltin = (name) => {
     if (hostBuiltins.has(name)) return true;
@@ -125,6 +126,7 @@ export function resolveNames(
         "StructDecl",
         "EnumDecl",
         "ObjectDecl",
+        "ContractDecl",
         "TypeAlias",
         "ExternFnDecl",
         "ExternLetDecl",
@@ -149,6 +151,9 @@ export function resolveNames(
       }
       if (!globalDeclModuleByName.has(node.name)) {
         globalDeclModuleByName.set(node.name, node.__modulePath ?? undefined);
+      }
+      if (node.kind === "ContractDecl") {
+        contractNames.add(node.name);
       }
     }
   }
@@ -474,6 +479,21 @@ export function resolveNames(
         if (!condResult.ok) return condResult;
         const bodyResult = visitNode(node.body, new Scope(scope), modulePath);
         if (!bodyResult.ok) return bodyResult;
+        break;
+      }
+      case "IntoStmt": {
+        if (!contractNames.has(node.contractName)) {
+          return err(
+            new TuffError(
+              `Unknown contract '${node.contractName}'`,
+              node.loc ?? undefined,
+              {
+                code: "E_RESOLVE_UNKNOWN_IDENTIFIER",
+                hint: "Declare the contract before using 'into'.",
+              },
+            ),
+          );
+        }
         break;
       }
       default:

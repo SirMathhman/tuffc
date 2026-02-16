@@ -1392,6 +1392,122 @@ export function parse(tokens: Token[]): ParseResult<Program> {
     });
   };
 
+  const parseContract = (): ParseResult<Stmt> => {
+    const contractResult = expect("keyword", "contract", "Expected contract");
+    if (!contractResult.ok) return contractResult;
+    const nameResult = parseIdentifier();
+    if (!nameResult.ok) return nameResult;
+    const openResult = expect("symbol", "{", "Expected '{' after contract");
+    if (!openResult.ok) return openResult;
+
+    const methods: {
+      name: string;
+      generics: string[];
+      params: {
+        name: string;
+        type: Expr | undefined;
+        implicitThis?: boolean;
+      }[];
+      returnType: Expr | undefined;
+    }[] = [];
+
+    while (!at("symbol", "}")) {
+      const fnResult = expect(
+        "keyword",
+        "fn",
+        "Expected 'fn' in contract declaration",
+      );
+      if (!fnResult.ok) return fnResult;
+
+      const methodNameResult = parseIdentifier();
+      if (!methodNameResult.ok) return methodNameResult;
+
+      const genericsResult = parseGenericParams(
+        "Expected '>' after contract method generics",
+      );
+      if (!genericsResult.ok) return genericsResult;
+
+      const openParamsResult = expect(
+        "symbol",
+        "(",
+        "Expected '(' in contract method signature",
+      );
+      if (!openParamsResult.ok) return openParamsResult;
+
+      const params: {
+        name: string;
+        type: Expr | undefined;
+        implicitThis?: boolean;
+      }[] = [];
+      if (!at("symbol", ")")) {
+        while (true) {
+          if (at("symbol", "*")) {
+            eat();
+            const mutable = at("keyword", "mut") ? !!eat() : false;
+            const thisNameResult = parseIdentifier();
+            if (!thisNameResult.ok) return thisNameResult;
+            params.push({
+              name: thisNameResult.value,
+              implicitThis: true,
+              type: {
+                kind: "PointerType",
+                mutable,
+                to: { kind: "NamedType", name: "This", genericArgs: [] },
+              },
+            });
+          } else {
+            const paramNameResult = parseIdentifier();
+            if (!paramNameResult.ok) return paramNameResult;
+            let paramType = undefined;
+            if (at("symbol", ":")) {
+              eat();
+              const paramTypeResult = parseType();
+              if (!paramTypeResult.ok) return paramTypeResult;
+              paramType = paramTypeResult.value;
+            }
+            params.push({ name: paramNameResult.value, type: paramType });
+          }
+
+          if (!at("symbol", ",")) break;
+          eat();
+        }
+      }
+
+      const closeParamsResult = expect(
+        "symbol",
+        ")",
+        "Expected ')' after contract method params",
+      );
+      if (!closeParamsResult.ok) return closeParamsResult;
+
+      const returnTypeResult = parseOptionalReturnType();
+      if (!returnTypeResult.ok) return returnTypeResult;
+
+      const semiResult = expect(
+        "symbol",
+        ";",
+        "Expected ';' after contract method signature",
+      );
+      if (!semiResult.ok) return semiResult;
+
+      methods.push({
+        name: methodNameResult.value,
+        generics: genericsResult.value,
+        params,
+        returnType: returnTypeResult.value,
+      });
+    }
+
+    const closeResult = expect(
+      "symbol",
+      "}",
+      "Expected '}' after contract body",
+    );
+    if (!closeResult.ok) return closeResult;
+
+    return ok({ kind: "ContractDecl", name: nameResult.value, methods });
+  };
+
   const parseTypeAlias = (isCopy = false): ParseResult<Stmt> => {
     const typeResult = expect("keyword", "type");
     if (!typeResult.ok) return typeResult;
@@ -1619,6 +1735,32 @@ export function parse(tokens: Token[]): ParseResult<Program> {
           );
         }
         nodeResult = parseObject();
+      } else if (at("keyword", "contract")) {
+        if (copyDecl) {
+          return err(
+            new TuffError(
+              "'copy' is only supported on struct/type declarations",
+              peek().loc,
+              {
+                code: "E_PARSE_EXPECTED_TOKEN",
+                hint: "Use 'copy struct ...' or 'copy type ...'.",
+              },
+            ),
+          );
+        }
+        if (expectDecl || actualDecl) {
+          return err(
+            new TuffError(
+              "'expect'/'actual' are currently supported only on fn declarations",
+              peek().loc,
+              {
+                code: "E_PARSE_EXPECTED_TOKEN",
+                hint: "Use expect/actual before fn declarations.",
+              },
+            ),
+          );
+        }
+        nodeResult = parseContract();
       } else if (at("keyword", "type")) {
         if (expectDecl || actualDecl) {
           return err(
@@ -1680,6 +1822,7 @@ export function parse(tokens: Token[]): ParseResult<Program> {
     if (at("keyword", "struct")) return parseStruct(false);
     if (at("keyword", "enum")) return parseEnum();
     if (at("keyword", "object")) return parseObject();
+    if (at("keyword", "contract")) return parseContract();
     if (at("keyword", "type")) return parseTypeAlias(false);
     if (at("keyword", "fn")) return parseFunction(false);
     if (at("keyword", "extern")) {
@@ -1811,6 +1954,18 @@ export function parse(tokens: Token[]): ParseResult<Program> {
     }
     if (at("keyword", "for")) return parseForStmt();
     if (at("keyword", "loop")) return parseLoopStmt();
+    if (at("keyword", "into")) {
+      eat();
+      const contractNameResult = parseIdentifier();
+      if (!contractNameResult.ok) return contractNameResult;
+      const semiResult = expect(
+        "symbol",
+        ";",
+        "Expected ';' after into statement",
+      );
+      if (!semiResult.ok) return semiResult;
+      return ok({ kind: "IntoStmt", contractName: contractNameResult.value });
+    }
     if (at("keyword", "break")) {
       eat();
       const semiResult = expect("symbol", ";");

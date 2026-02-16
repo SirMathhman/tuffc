@@ -634,6 +634,9 @@ export function borrowcheck(ast, options = {}): BorrowcheckResult<unknown> {
         }
         return checkExpr(stmt.body, fnState, fnEnv, "move");
       }
+      case "ContractDecl":
+      case "IntoStmt":
+        return ok(undefined);
       default:
         return ok(undefined);
     }

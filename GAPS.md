@@ -66,13 +66,16 @@ These are spec-described constructs that currently fail to compile.
   - Stage0/1: `E_PARSE_UNEXPECTED_TOKEN` (`keyword:async`)
   - Stage2/3: `E_SELFHOST_PANIC` (`Unexpected token in expression`)
 
-### 4) Contracts/traits and `impl ... for ...`
+### ✅ Resolved: `contract` keyword (static syntax surface)
 
 - Spec area: `2.2`
 - Case: `contracts:definition-and-impl`
-- Observed:
-  - Stage0/1: `E_PARSE_EXPECTED_TOKEN` (unexpected `Display` in statement flow)
-  - Stage2/3: `E_SELFHOST_PANIC` (`Expected ';'`)
+- Status: **fixed** (no longer reported by `npm run semantics:exhaustive`)
+- Notes:
+  - Added parser support for `contract Name { fn ...; }` declarations in Stage0 and selfhost.
+  - Added support for constructor-local `into Contract;` statements in Stage0 and selfhost.
+  - Added resolver/typecheck plumbing so unknown contracts in `into` statements are diagnosed.
+  - Current implementation is static-syntax/conformance plumbing only; dynamic dispatch/table generation remains intentionally out-of-scope.
 
 ### 5) `class fn ...` desugar behavior mismatch
 
@@ -136,7 +139,7 @@ These cases fail for code-name mismatch rather than semantic pass/fail behavior.
 
 ## D) Priority suggestions
 
-1. **Parser surface parity first**: `async`, contracts/impl.
+1. **Parser surface parity first**: `async`.
 2. **Type-system syntax/parsing fixes**: generic call forms and dependent array signatures.
 3. **Desugar/resolve collision handling**: `class fn` shadowing behavior.
 4. **Diagnostic harmonization**: align expected-vs-actual codes for overflow and match exhaustiveness.

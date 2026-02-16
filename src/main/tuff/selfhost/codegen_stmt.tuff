@@ -82,6 +82,11 @@ fn emit_stmt(n: I32) : *Str => {
     if (kind == NK_CONTINUE_STMT) {
         return "continue;";
     }
+
+    if (kind == NK_INTO_STMT) {
+        let cname = get_interned_str(node_get_data1(n));
+        return "// into ".str_concat(cname);
+    }
     
     if (kind == NK_BLOCK) {
         return emit_block(n);
@@ -212,6 +217,11 @@ fn emit_stmt(n: I32) : *Str => {
 
         sb_append(sb, " }; __cache.set(__key, __value); return __value; }; })();");
         return sb_build(sb);
+    }
+
+    if (kind == NK_CONTRACT_DECL) {
+        let name = get_interned_str(node_get_data1(n));
+        return "// contract ".str_concat(name);
     }
     
     if (kind == NK_EXTERN_FN_DECL) {

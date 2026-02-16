@@ -410,6 +410,8 @@ function emitStmt(stmt, ctx, localTypes = new Map()) {
       return "break;";
     case "ContinueStmt":
       return "continue;";
+    case "IntoStmt":
+      return `/* into ${stmt.contractName} */`;
     case "Block":
       return emitBlock(stmt, ctx, localTypes);
     case "ImportDecl":
@@ -460,6 +462,8 @@ function emitStmt(stmt, ctx, localTypes = new Map()) {
 
       return `typedef enum ${stmt.name}_Tag { ${tagEntries} } ${stmt.name}_Tag;\ntypedef struct ${stmt.name} { int32_t __tag; ${fields} } ${stmt.name};\n${constructors}`;
     }
+    case "ContractDecl":
+      return `/* contract ${stmt.name} */`;
     case "ExternFnDecl":
       return emitPrototype(
         `extern ${typeToCType(stmt.returnType, ctx)}`,

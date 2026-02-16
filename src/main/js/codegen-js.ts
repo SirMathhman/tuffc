@@ -140,6 +140,8 @@ function emitStmt(stmt) {
       return "break;";
     case "ContinueStmt":
       return "continue;";
+    case "IntoStmt":
+      return `// into ${stmt.contractName}`;
     case "Block":
       return emitBlock(stmt);
     case "FnDecl": {
@@ -189,6 +191,8 @@ function emitStmt(stmt) {
         `})();`,
       ].join("\n");
     }
+    case "ContractDecl":
+      return `// contract ${stmt.name}`;
     case "TypeAlias":
       return `// type ${stmt.name} = ${JSON.stringify(stmt.aliasedType.kind)}`;
     case "ExternFnDecl":

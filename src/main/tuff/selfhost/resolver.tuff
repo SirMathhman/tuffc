@@ -326,6 +326,10 @@ fn resolve_stmt(n: I32, globals: *mut Set, scopes: Vec, depth: I32) : I32 => {
         return 0;
     }
 
+    if (kind == NK_CONTRACT_DECL) {
+        return 0;
+    }
+
     if (kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL || kind == NK_ACTUAL_FN_DECL) {
         let fnScopes = vec_new();
         fnScopes.vec_push(set_new());
@@ -405,6 +409,19 @@ fn resolve_stmt(n: I32, globals: *mut Set, scopes: Vec, depth: I32) : I32 => {
         return 0;
     }
 
+    if (kind == NK_INTO_STMT) {
+        let cname = get_interned_str(node_get_data1(n));
+        if (!globals.set_has(cname)) {
+            panic_with_code(
+                "E_RESOLVE_UNKNOWN_IDENTIFIER",
+                "Unknown contract: ".str_concat(cname),
+                "An into statement referenced a contract that is not declared in scope.",
+                "Declare the contract before using 'into'."
+            );
+        }
+        return 0;
+    }
+
     // Fallback: treat unmatched nodes as expressions.
     resolve_expr(n, globals, scopes, depth);
     0
@@ -429,6 +446,7 @@ out fn resolve_names(program: I32) : I32 => {
             kind == NK_STRUCT_DECL ||
             kind == NK_ENUM_DECL ||
             kind == NK_OBJECT_DECL ||
+            kind == NK_CONTRACT_DECL ||
             kind == NK_TYPE_ALIAS ||
             kind == NK_LET_DECL ||
             kind == NK_EXTERN_FN_DECL ||

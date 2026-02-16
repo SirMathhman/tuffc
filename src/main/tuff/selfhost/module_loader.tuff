@@ -73,6 +73,7 @@ fn is_module_decl_kind(kind: I32) : Bool => {
     kind == 3 ||   // NK_STRUCT_DECL
     kind == 60 ||  // NK_ENUM_DECL
     kind == 63 ||  // NK_OBJECT_DECL
+    kind == 65 ||  // NK_CONTRACT_DECL
     kind == 4 ||   // NK_TYPE_ALIAS
     kind == 5 ||   // NK_LET_DECL
     kind == 17 ||  // NK_EXTERN_FN_DECL
@@ -352,6 +353,7 @@ fn module_has_out_export(source: *Str, name: *Str) : Bool => {
     source.str_includes("copy out struct ".str_concat(name)) ||
     source.str_includes("out enum ".str_concat(name)) ||
     source.str_includes("out object ".str_concat(name)) ||
+    source.str_includes("out contract ".str_concat(name)) ||
     source.str_includes("out type ".str_concat(name)) ||
     source.str_includes("out copy type ".str_concat(name)) ||
     source.str_includes("copy out type ".str_concat(name)) ||

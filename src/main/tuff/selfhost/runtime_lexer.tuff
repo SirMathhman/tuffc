@@ -158,7 +158,9 @@ fn init_keywords() : I32 => {
     keywords.set_add("is");
     keywords.set_add("class");
     keywords.set_add("object");
+    keywords.set_add("contract");
     keywords.set_add("impl");
+    keywords.set_add("into");
     keywords.set_add("with");
     keywords.set_add("out");
     keywords.set_add("module");

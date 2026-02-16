@@ -313,6 +313,7 @@ export function typecheck(
   const structs = new Map();
   const enums = new Map();
   const objects = new Map();
+  const contracts = new Map();
   const functions = new Map();
   const typeAliases = new Map();
   const globalScope = new Map();
@@ -324,6 +325,8 @@ export function typecheck(
       enums.set(node.name, node);
     } else if (node.kind === "ObjectDecl") {
       objects.set(node.name, node);
+    } else if (node.kind === "ContractDecl") {
+      contracts.set(node.name, node);
     } else if (node.kind === "FnDecl" || node.kind === "ExternFnDecl") {
       if (node.kind === "FnDecl" && node.expectDecl === true) {
         continue;
@@ -1564,6 +1567,30 @@ export function typecheck(
           return err(
             new TuffError(
               `Function ${node.name} return type mismatch: expected ${expected}, got ${bodyType.name}`,
+              node.loc,
+            ),
+          );
+        }
+        return ok({
+          name: "Void",
+          min: undefined,
+          max: undefined,
+          nonZero: false,
+        });
+      }
+      case "ContractDecl": {
+        return ok({
+          name: "Void",
+          min: undefined,
+          max: undefined,
+          nonZero: false,
+        });
+      }
+      case "IntoStmt": {
+        if (!contracts.has(node.contractName)) {
+          return err(
+            new TuffError(
+              `Unknown contract '${node.contractName}' in into statement`,
               node.loc,
             ),
           );
