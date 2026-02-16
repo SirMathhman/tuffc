@@ -230,14 +230,19 @@ out fn p_parse_type_primary() : I32 => {
         if (p_at(TK_SYMBOL, "*")) {
             p_eat();
             let mutable = 0;
+            let move_ptr = 0;
             if (p_at(TK_KEYWORD, "mut")) {
                 p_eat();
                 mutable = 1;
+            } else if (p_at(TK_KEYWORD, "move")) {
+                p_eat();
+                move_ptr = 1;
             }
             let inner = p_parse_type_primary();
             let node = node_new(NK_POINTER_TYPE);
             node_set_data1(node, mutable);
             node_set_data2(node, inner);
+            node_set_data3(node, move_ptr);
             return node;
         }
         

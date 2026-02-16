@@ -56,6 +56,64 @@ fn emit_expr(n: I32) : *Str => {
     }
     
     if (kind == NK_CALL_EXPR) {
+        let callee_node = node_get_data1(n);
+        if (node_kind(callee_node) == NK_IDENTIFIER) {
+            let callee_name = get_interned_str(node_get_data1(callee_node));
+            if (callee_name.str_eq("drop")) {
+                return "undefined";
+            }
+            if (callee_name.str_eq("into") && node_get_data3(n) == 1) {
+                let args = node_get_data2(n);
+                if (args.vec_length() < 1) {
+                    return "undefined";
+                }
+
+                let type_args = node_get_data4(n);
+                let contract_name = "";
+                if (type_args.vec_length() == 1 && node_kind(type_args.vec_get(0)) == NK_NAMED_TYPE) {
+                    contract_name = get_interned_str(node_get_data1(type_args.vec_get(0)));
+                }
+
+                let src_node = args.vec_get(0);
+                let src = emit_expr(src_node);
+                let consume_source = "";
+                if (node_kind(src_node) == NK_IDENTIFIER) {
+                    consume_source = get_interned_str(node_get_data1(src_node)).str_concat(" = undefined;");
+                }
+
+                if (node_get_data5(n) == 1) {
+                    return "(() => { const __src = ".str_concat(src)
+                        .str_concat("; const __conv = __src?.__into?.[")
+                        .str_concat("\"").str_concat(contract_name).str_concat("\"")
+                        .str_concat("]; if (!__conv) { throw new Error(\"Missing into converter for ")
+                        .str_concat(if (contract_name.str_eq("")) { "<unknown>" } else { contract_name })
+                        .str_concat("\"); } ")
+                        .str_concat(consume_source)
+                        .str_concat(" let __used = false; return (...__intoArgs) => { if (__used) { throw new Error(\"Into converter already consumed for ")
+                        .str_concat(if (contract_name.str_eq("")) { "<unknown>" } else { contract_name })
+                        .str_concat("\"); } __used = true; return __conv(...__intoArgs); }; })()");
+                }
+
+                let arg_strs = vec_new();
+                let i = 1;
+                let len = args.vec_length();
+                while (i < len) {
+                    arg_strs.vec_push(emit_expr(args.vec_get(i)));
+                    i = i + 1;
+                }
+                let rest_args = arg_strs.vec_join(", ");
+                return "(() => { const __src = ".str_concat(src)
+                    .str_concat("; const __conv = __src?.__into?.[")
+                    .str_concat("\"").str_concat(contract_name).str_concat("\"")
+                    .str_concat("]; if (!__conv) { throw new Error(\"Missing into converter for ")
+                    .str_concat(if (contract_name.str_eq("")) { "<unknown>" } else { contract_name })
+                    .str_concat("\"); } const __out = __conv(")
+                    .str_concat(rest_args)
+                    .str_concat("); ")
+                    .str_concat(consume_source)
+                    .str_concat(" return __out; })()");
+            }
+        }
         let callee = emit_expr(node_get_data1(n));
         let args = node_get_data2(n);
         let arg_strs = vec_new();

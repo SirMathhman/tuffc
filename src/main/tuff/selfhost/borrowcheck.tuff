@@ -5,6 +5,8 @@ let bc_global_value_types : Map = map_new();
 let bc_copy_types : *mut Set = set_new();
 let bc_copy_alias_types : Map = map_new();
 let bc_copy_alias_names : Vec = vec_new();
+let bc_destructor_aliases : Map = map_new();
+let bc_destructor_alias_names : Vec = vec_new();
 
 fn bc_str_ends_with_local(s: *Str, suffix: *Str) : Bool => {
     let ns = s.str_length();
@@ -29,6 +31,10 @@ fn bc_type_name_from_type_node(t: I32) : *Str => {
     if (k == NK_POINTER_TYPE) {
         let mutable = node_get_data1(t);
         let inner = bc_type_name_from_type_node(node_get_data2(t));
+        let move_ptr = node_get_data3(t);
+        if (move_ptr == 1) {
+            return "*move ".str_concat(inner);
+        }
         if (mutable == 1) {
             return "*mut ".str_concat(inner);
         }
@@ -259,11 +265,13 @@ fn places_conflict(a_base: *Str, a_path: *Str, b_base: *Str, b_path: *Str) : Boo
 }
 
 fn state_new() : Vec => {
-    // [moved_set, moved_vec, loans_vec, scope_starts]
+    // [moved_set, moved_vec, loans_vec, scope_starts, dropped_set, dropped_vec]
     let s = vec_new();
     s.vec_push(set_new());
     s.vec_push(vec_new());
     s.vec_push(vec_new());
+    s.vec_push(vec_new());
+    s.vec_push(set_new());
     s.vec_push(vec_new());
     s
 }
@@ -272,8 +280,11 @@ fn state_moved_set(state: Vec) : *mut Set => state.vec_get(0);
 fn state_moved_vec(state: Vec) : Vec => state.vec_get(1);
 fn state_loans(state: Vec) : Vec => state.vec_get(2);
 fn state_scope_starts(state: Vec) : Vec => state.vec_get(3);
+fn state_dropped_set(state: Vec) : *mut Set => state.vec_get(4);
+fn state_dropped_vec(state: Vec) : Vec => state.vec_get(5);
 
 fn state_moved_has(state: Vec, name: *Str) : Bool => state_moved_set(state).set_has(name);
+fn state_dropped_has(state: Vec, name: *Str) : Bool => state_dropped_set(state).set_has(name);
 
 fn state_moved_add(state: Vec, name: *Str) : I32 => {
     if (!state_moved_set(state).set_has(name)) {
@@ -285,6 +296,19 @@ fn state_moved_add(state: Vec, name: *Str) : I32 => {
 
 fn state_moved_delete(state: Vec, name: *Str) : I32 => {
     state_moved_set(state).set_delete(name);
+    0
+}
+
+fn state_dropped_add(state: Vec, name: *Str) : I32 => {
+    if (!state_dropped_set(state).set_has(name)) {
+        state_dropped_set(state).set_add(name);
+        state_dropped_vec(state).vec_push(name);
+    }
+    0
+}
+
+fn state_dropped_delete(state: Vec, name: *Str) : I32 => {
+    state_dropped_set(state).set_delete(name);
     0
 }
 
@@ -395,6 +419,14 @@ fn state_clone(src: Vec) : Vec => {
         i = i + 1;
     }
 
+    let srcDropped = state_dropped_vec(src);
+    i = 0;
+    len = srcDropped.vec_length();
+    while (i < len) {
+        state_dropped_add(dst, srcDropped.vec_get(i));
+        i = i + 1;
+    }
+
     dst
 }
 
@@ -428,6 +460,36 @@ fn state_merge_moved_from_branches(dst: Vec, a: Vec, b: Vec) : I32 => {
 
     dst.vec_set(0, newSet);
     dst.vec_set(1, newVec);
+
+    let droppedSet = set_new();
+    let droppedVec = vec_new();
+
+    let adv = state_dropped_vec(a);
+    i = 0;
+    len = adv.vec_length();
+    while (i < len) {
+        let n = adv.vec_get(i);
+        if (state_dropped_set(a).set_has(n) && !droppedSet.set_has(n)) {
+            droppedSet.set_add(n);
+            droppedVec.vec_push(n);
+        }
+        i = i + 1;
+    }
+
+    let bdv = state_dropped_vec(b);
+    i = 0;
+    len = bdv.vec_length();
+    while (i < len) {
+        let n = bdv.vec_get(i);
+        if (state_dropped_set(b).set_has(n) && !droppedSet.set_has(n)) {
+            droppedSet.set_add(n);
+            droppedVec.vec_push(n);
+        }
+        i = i + 1;
+    }
+
+    dst.vec_set(4, droppedSet);
+    dst.vec_set(5, droppedVec);
     0
 }
 
@@ -449,6 +511,13 @@ fn ensure_readable(expr: I32, state: Vec) : I32 => {
     if (bc_global_value_types.map_has(base)) {
         return 0;
     }
+    if (state_dropped_has(state, base)) {
+        panic_borrow(
+            "E_BORROW_USE_AFTER_DROP",
+            "Use of dropped value '".str_concat(base).str_concat("'"),
+            "Do not use a value after explicit or implicit drop; move/copy before dropping if needed."
+        );
+    }
     if (state_moved_has(state, base)) {
         panic_borrow(
             "E_BORROW_USE_AFTER_MOVE",
@@ -469,6 +538,14 @@ fn consume_place(expr: I32, state: Vec, env_types: Map, fn_return_types: Map, ex
 
     if (bc_global_value_types.map_has(base)) {
         return 0;
+    }
+
+    if (state_dropped_has(state, base)) {
+        panic_borrow(
+            "E_BORROW_USE_AFTER_DROP",
+            "Use of dropped value '".str_concat(base).str_concat("'"),
+            "Do not use a value after explicit or implicit drop; move/copy before dropping if needed."
+        );
     }
 
     if (state_moved_has(state, base)) {
@@ -576,6 +653,77 @@ fn check_expr(expr: I32, state: Vec, env_types: Map, fn_return_types: Map, exter
 
     if (kind == NK_CALL_EXPR) {
         let callee = node_get_data1(expr);
+        if (node_kind(callee) == NK_IDENTIFIER && get_interned_str(node_get_data1(callee)).str_eq("drop")) {
+            let args = node_get_data2(expr);
+            if (args.vec_length() != 1) {
+                panic_borrow(
+                    "E_BORROW_INVALID_TARGET",
+                    "drop expects exactly one argument",
+                    "Call drop with exactly one local/place value such as drop(x) or x.drop()."
+                );
+            }
+            let target = args.vec_get(0);
+            let p = canonical_place(target);
+            if (!place_is_valid(p)) {
+                panic_borrow(
+                    "E_BORROW_INVALID_TARGET",
+                    "drop target must be a place expression",
+                    "Call drop with a local/place value such as drop(x) or x.drop()."
+                );
+            }
+
+            let base = place_base(p);
+            let path = place_path(p);
+            if (state_dropped_has(state, base)) {
+                panic_borrow(
+                    "E_BORROW_DOUBLE_DROP",
+                    "Double drop of '".str_concat(base).str_concat("'"),
+                    "Ensure each owned value is dropped exactly once."
+                );
+            }
+
+            let target_type = bc_infer_expr_type_name(target, env_types, fn_return_types);
+            if (!bc_destructor_aliases.map_has(target_type)) {
+                panic_borrow(
+                    "E_BORROW_DROP_MISSING_DESTRUCTOR",
+                    "Type '".str_concat(target_type).str_concat("' has no associated destructor"),
+                    "Associate a destructor via 'type Alias = Base then destructorName;' and use that alias type."
+                );
+            }
+
+            ensure_readable(target, state);
+            if (state_any_conflicting_loan(state, base, path)) {
+                panic_borrow(
+                    "E_BORROW_MOVE_WHILE_BORROWED",
+                    "Cannot drop '".str_concat(base).str_concat("' while it is borrowed"),
+                    "Ensure all borrows end before dropping the value."
+                );
+            }
+
+            state_dropped_add(state, base);
+            state_moved_add(state, base);
+            return 0;
+        }
+
+        if (node_kind(callee) == NK_IDENTIFIER && get_interned_str(node_get_data1(callee)).str_eq("into") && node_get_data3(expr) == 1) {
+            let args = node_get_data2(expr);
+            if (args.vec_length() >= 1) {
+                let receiver = args.vec_get(0);
+                let receiver_mode = "read";
+                if (place_is_valid(canonical_place(receiver))) {
+                    receiver_mode = "move";
+                }
+                check_expr(receiver, state, env_types, fn_return_types, extern_type_names, global_fn_names, receiver_mode);
+            }
+            let i = 1;
+            let len = args.vec_length();
+            while (i < len) {
+                check_expr(args.vec_get(i), state, env_types, fn_return_types, extern_type_names, global_fn_names, "read");
+                i = i + 1;
+            }
+            return 0;
+        }
+
         if (!(node_kind(callee) == NK_IDENTIFIER && global_fn_names.set_has(get_interned_str(node_get_data1(callee))))) {
             check_expr(callee, state, env_types, fn_return_types, extern_type_names, global_fn_names, "read");
         }
@@ -682,6 +830,7 @@ fn check_stmt(stmt: I32, state: Vec, env_types: Map, fn_return_types: Map, exter
             env_types.map_set(name, bc_infer_expr_type_name(rhs, env_types, fn_return_types));
         }
         state_moved_delete(state, name);
+        state_dropped_delete(state, name);
         return 0;
     }
 
@@ -709,7 +858,9 @@ fn check_stmt(stmt: I32, state: Vec, env_types: Map, fn_return_types: Map, exter
         check_expr(rhs, state, env_types, fn_return_types, extern_type_names, global_fn_names, mode);
 
         if (node_kind(target) == NK_IDENTIFIER) {
-            state_moved_delete(state, get_interned_str(node_get_data1(target)));
+            let target_name = get_interned_str(node_get_data1(target));
+            state_moved_delete(state, target_name);
+            state_dropped_delete(state, target_name);
         }
         return 0;
     }
@@ -823,6 +974,8 @@ out fn borrowcheck_program(program: I32) : I32 => {
     bc_copy_types = set_new();
     bc_copy_alias_types = map_new();
     bc_copy_alias_names = vec_new();
+    bc_destructor_aliases = map_new();
+    bc_destructor_alias_names = vec_new();
     let i = 0;
     let len = body.vec_length();
     while (i < len) {
@@ -850,6 +1003,69 @@ out fn borrowcheck_program(program: I32) : I32 => {
             bc_copy_alias_names.vec_push(alias_name);
             bc_copy_alias_types.map_set(alias_name, node_get_data3(stmt));
         }
+        if (kind == NK_TYPE_ALIAS && node_get_data5(stmt) != 0) {
+            let alias_name = get_interned_str(node_get_data1(stmt));
+            let destructor_name = get_interned_str(node_get_data5(stmt));
+            bc_destructor_aliases.map_set(alias_name, destructor_name);
+            bc_destructor_alias_names.vec_push(alias_name);
+        }
+        i = i + 1;
+    }
+
+    // Validate destructor declarations/signatures.
+    i = 0;
+    let dlen = bc_destructor_alias_names.vec_length();
+    while (i < dlen) {
+        let alias_name = bc_destructor_alias_names.vec_get(i);
+        let destructor_name = bc_destructor_aliases.map_get(alias_name);
+        let found = false;
+        let j = 0;
+        while (j < len) {
+            let stmt = body.vec_get(j);
+            if (node_kind(stmt) == NK_FN_DECL && get_interned_str(node_get_data1(stmt)).str_eq(destructor_name)) {
+                found = true;
+                let valid = true;
+                let params = node_get_data3(stmt);
+                if (params.vec_length() != 1) {
+                    valid = false;
+                } else {
+                    let p0 = params.vec_get(0);
+                    let pname = get_interned_str(p0.vec_get(0));
+                    let ptype = p0.vec_get(1);
+                    if (!pname.str_eq("this")) {
+                        valid = false;
+                    }
+                    if (ptype == 0 || node_kind(ptype) != NK_POINTER_TYPE || node_get_data3(ptype) != 1 || !bc_type_name_from_type_node(node_get_data2(ptype)).str_eq(alias_name)) {
+                        valid = false;
+                    }
+                }
+
+                if (!bc_type_name_from_type_node(node_get_data4(stmt)).str_eq("Void")) {
+                    valid = false;
+                }
+
+                if (!valid) {
+                    panic_with_code(
+                        "E_TYPE_DESTRUCTOR_SIGNATURE",
+                        "Destructor '".str_concat(destructor_name).str_concat("' must have signature fn ").str_concat(destructor_name).str_concat("(this : *move ").str_concat(alias_name).str_concat(") : Void"),
+                        "Destructor signatures must use a move receiver of the alias type and return Void.",
+                        "Use exactly one receiver parameter named 'this' with type '*move AliasType' and return Void."
+                    );
+                }
+                break;
+            }
+            j = j + 1;
+        }
+
+        if (!found) {
+            panic_with_code(
+                "E_TYPE_DESTRUCTOR_NOT_FOUND",
+                "Destructor '".str_concat(destructor_name).str_concat("' for alias '").str_concat(alias_name).str_concat("' was not found"),
+                "A type alias referenced a destructor function that does not exist.",
+                "Declare the destructor function before using it in 'type Alias = ... then destructor'."
+            );
+        }
+
         i = i + 1;
     }
 

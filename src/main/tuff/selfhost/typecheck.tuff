@@ -16,6 +16,10 @@ fn type_name_from_type_node(t: I32) : *Str => {
     if (k == 41) {
         let mutable = node_get_data1(t);
         let inner = type_name_from_type_node(node_get_data2(t));
+        let move_ptr = node_get_data3(t);
+        if (move_ptr == 1) {
+            return "*move ".str_concat(inner);
+        }
         if (mutable == 1) {
             return "*mut ".str_concat(inner);
         }
@@ -183,6 +187,14 @@ fn infer_expr_type_name(n: I32, fn_return_types: Map, local_types: Map) : *Str =
         let callee = node_get_data1(n);
         if (node_kind(callee) == 24) {
             let fname = get_interned_str(node_get_data1(callee));
+            if (fname.str_eq("into") && node_get_data3(n) == 1) {
+                let type_args = node_get_data4(n);
+                if (type_args.vec_length() == 1 && node_kind(type_args.vec_get(0)) == NK_NAMED_TYPE) {
+                    let cname = get_interned_str(node_get_data1(type_args.vec_get(0)));
+                    return "__dyn_".str_concat(cname);
+                }
+                return "Unknown";
+            }
             if (fn_return_types.map_has(fname)) {
                 return fn_return_types.map_get(fname);
             }
@@ -237,7 +249,20 @@ let tc_array_init_bounds : Map = map_new();
 let tc_index_upper_bounds : Map = map_new();
 let tc_global_value_types : Map = map_new();
 let tc_alias_union_tags : Map = map_new();
+let tc_type_alias_names : *mut Set = set_new();
 let tc_contract_names : *mut Set = set_new();
+let tc_destructor_alias_by_alias : Map = map_new();
+let tc_destructor_alias_names : Vec = vec_new();
+
+fn type_node_is_move_pointer_to_alias(t: I32, alias_name: *Str) : Bool => {
+    if (t == 0 || node_kind(t) != NK_POINTER_TYPE) {
+        return false;
+    }
+    if (node_get_data3(t) != 1) {
+        return false;
+    }
+    type_name_from_type_node(node_get_data2(t)).str_eq(alias_name)
+}
 
 fn collect_union_named_tags(type_node: I32, tags: Vec) : I32 => {
     if (type_node == 0) {
@@ -427,6 +452,62 @@ fn typecheck_expr(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types:
 
         if (node_kind(callee) == NK_IDENTIFIER) {
             fname = get_interned_str(node_get_data1(callee));
+
+            if (fname.str_eq("drop")) {
+                if (arg_count != 1) {
+                    panic_with_code(
+                        "E_TYPE_ARG_COUNT",
+                        "drop expects exactly one argument",
+                        "The drop builtin requires one argument representing the value to drop.",
+                        "Call drop(value) with exactly one argument."
+                    );
+                }
+                let target = args.vec_get(0);
+                let target_name = infer_expr_type_name(target, fn_return_types, local_types);
+                if (!tc_destructor_alias_by_alias.map_has(target_name)) {
+                    panic_with_code(
+                        "E_TYPE_DESTRUCTOR_NOT_FOUND",
+                        "Type '".str_concat(target_name).str_concat("' does not have an associated destructor"),
+                        "drop can only be called for values whose alias type declares a destructor.",
+                        "Define `type Alias = Base then destructorName;` and use that alias for dropped values."
+                    );
+                }
+                return 0;
+            }
+
+            if (fname.str_eq("into") && node_get_data3(n) == 1) {
+                if (arg_count < 1) {
+                    panic_with_code(
+                        "E_TYPE_ARG_COUNT",
+                        "into conversion requires a receiver",
+                        "Method-sugar into conversion requires a source value as receiver.",
+                        "Use value.into<Contract>(...) with a receiver value."
+                    );
+                }
+
+                let type_args = node_get_data4(n);
+                let cname = "";
+                if (type_args.vec_length() == 1 && node_kind(type_args.vec_get(0)) == NK_NAMED_TYPE) {
+                    cname = get_interned_str(node_get_data1(type_args.vec_get(0)));
+                }
+                if (cname.str_eq("") || !tc_contract_names.set_has(cname)) {
+                    panic_with_code(
+                        "E_TYPE_INTO_UNKNOWN_CONTRACT",
+                        "Unknown contract '".str_concat(if (cname.str_eq("")) { "<missing>" } else { cname }).str_concat("' in into conversion"),
+                        "An into conversion referenced a contract that is not declared.",
+                        "Declare the contract before converting with into."
+                    );
+                }
+
+                typecheck_expr(args.vec_get(0), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety);
+                let j = 1;
+                while (j < arg_count) {
+                    typecheck_expr(args.vec_get(j), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety);
+                    j = j + 1;
+                }
+                return 0;
+            }
+
             if (fn_arities.map_has(fname)) {
                 let expected = fn_arities.map_get(fname);
                 if (expected != arg_count) {
@@ -746,7 +827,7 @@ fn typecheck_stmt(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types:
         let rhs_name = infer_expr_type_name(rhs, fn_return_types, local_types);
         if (declared_type != 0) {
             let declared_name = type_name_from_type_node(declared_type);
-            if (!declared_name.str_eq("Unknown") && !rhs_name.str_eq("Unknown") && !pointer_types_compatible(declared_name, rhs_name) && !numeric_types_compatible(declared_name, rhs_name, rhs)) {
+            if (!declared_name.str_eq("Unknown") && !rhs_name.str_eq("Unknown") && !pointer_types_compatible(declared_name, rhs_name) && !numeric_types_compatible(declared_name, rhs_name, rhs) && !tc_type_alias_names.set_has(declared_name)) {
                 let vname = get_interned_str(node_get_data1(n));
                 let msg = "Type mismatch for let ".str_concat(vname).str_concat(": expected ").str_concat(declared_name).str_concat(", got ").str_concat(rhs_name);
                 panic_with_code(
@@ -790,7 +871,7 @@ fn typecheck_stmt(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types:
             if (local_types.map_has(tname)) {
                 let expected_name = local_types.map_get(tname);
                 let value_name = infer_expr_type_name(value, fn_return_types, local_types);
-                if (!type_names_compatible(expected_name, value_name, value)) {
+                if (!type_names_compatible(expected_name, value_name, value) && !tc_type_alias_names.set_has(expected_name)) {
                     panic_with_code(
                         "E_TYPE_ASSIGN_MISMATCH",
                         "Assignment mismatch for ".str_concat(tname).str_concat(": expected ").str_concat(expected_name).str_concat(", got ").str_concat(value_name),
@@ -929,17 +1010,17 @@ fn typecheck_stmt(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types:
 }
 
 out fn typecheck_program_with_options(program: I32, strict_safety: I32) : I32 => {
-    if (strict_safety != 1) {
-        return program;
-    }
-
     let fn_arities = map_new();
     let fn_param_types = map_new();
     let fn_return_types = map_new();
+    let fn_nodes = map_new();
     let local_types = map_new();
     tc_global_value_types = map_new();
     tc_alias_union_tags = map_new();
+    tc_type_alias_names = set_new();
     tc_contract_names = set_new();
+    tc_destructor_alias_by_alias = map_new();
+    tc_destructor_alias_names = vec_new();
     let body = node_get_data1(program);
 
     // Collect function signatures (including extern fns).
@@ -950,6 +1031,7 @@ out fn typecheck_program_with_options(program: I32, strict_safety: I32) : I32 =>
         let kind = node_kind(stmt);
         if (kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL || kind == NK_EXTERN_FN_DECL || kind == NK_ACTUAL_FN_DECL) {
             let name = get_interned_str(node_get_data1(stmt));
+            fn_nodes.map_set(name, stmt);
             let params = node_get_data3(stmt);
             fn_arities.map_set(name, params.vec_length());
 
@@ -975,12 +1057,23 @@ out fn typecheck_program_with_options(program: I32, strict_safety: I32) : I32 =>
         }
         if (kind == NK_TYPE_ALIAS) {
             let alias_name = get_interned_str(node_get_data1(stmt));
+            tc_type_alias_names.set_add(alias_name);
             let alias_type = node_get_data3(stmt);
             let tags = vec_new();
             collect_union_named_tags(alias_type, tags);
             if (tags.vec_length() > 0) {
                 tc_alias_union_tags.map_set(alias_name, tags);
             }
+
+            let destructor_name_idx = node_get_data5(stmt);
+            if (destructor_name_idx != 0) {
+                let destructor_name = get_interned_str(destructor_name_idx);
+                tc_destructor_alias_by_alias.map_set(alias_name, destructor_name);
+                tc_destructor_alias_names.vec_push(alias_name);
+            }
+        }
+        if (kind == NK_EXTERN_TYPE_DECL) {
+            tc_type_alias_names.set_add(get_interned_str(node_get_data1(stmt)));
         }
         if (kind == NK_CONTRACT_DECL) {
             tc_contract_names.set_add(get_interned_str(node_get_data1(stmt)));
@@ -993,6 +1086,59 @@ out fn typecheck_program_with_options(program: I32, strict_safety: I32) : I32 =>
             }
         }
         i = i + 1;
+    }
+
+    // Validate destructor declarations/signatures irrespective of strict mode.
+    i = 0;
+    let destructor_alias_count = tc_destructor_alias_names.vec_length();
+    while (i < destructor_alias_count) {
+        let alias_name = tc_destructor_alias_names.vec_get(i);
+        let destructor_name = tc_destructor_alias_by_alias.map_get(alias_name);
+        if (!fn_nodes.map_has(destructor_name)) {
+            panic_with_code(
+                "E_TYPE_DESTRUCTOR_NOT_FOUND",
+                "Destructor '".str_concat(destructor_name).str_concat("' for alias '").str_concat(alias_name).str_concat("' was not found"),
+                "A type alias referenced a destructor function that does not exist.",
+                "Declare the destructor function before using it in 'type Alias = ... then destructor'."
+            );
+        }
+
+        let fn_node = fn_nodes.map_get(destructor_name);
+        let params = node_get_data3(fn_node);
+        let valid = true;
+        if (params.vec_length() != 1) {
+            valid = false;
+        } else {
+            let p0 = params.vec_get(0);
+            let pname = get_interned_str(p0.vec_get(0));
+            let ptype = p0.vec_get(1);
+            if (!pname.str_eq("this")) {
+                valid = false;
+            }
+            if (!type_node_is_move_pointer_to_alias(ptype, alias_name)) {
+                valid = false;
+            }
+        }
+
+        let ret_name = type_name_from_type_node(node_get_data4(fn_node));
+        if (!ret_name.str_eq("Void")) {
+            valid = false;
+        }
+
+        if (!valid) {
+            panic_with_code(
+                "E_TYPE_DESTRUCTOR_SIGNATURE",
+                "Destructor '".str_concat(destructor_name).str_concat("' must have signature fn ").str_concat(destructor_name).str_concat("(this : *move ").str_concat(alias_name).str_concat(") : Void"),
+                "Destructor signatures must follow the required receiver and return type contract.",
+                "Use exactly one receiver parameter named 'this' with type '*move AliasType' and return Void."
+            );
+        }
+
+        i = i + 1;
+    }
+
+    if (strict_safety != 1) {
+        return program;
     }
 
     // Check calls across whole program.

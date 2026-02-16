@@ -543,4 +543,172 @@ expectBothFail(
   "E_BORROW_INVALID_COPY_ALIAS",
 );
 
+const destructorSignatureMismatchSource = `
+type DroppableI32 = I32 then myDestructor;
+fn myDestructor(this : *move DroppableI32) : I32 => 1;
+fn main() : I32 => 0;
+`;
+expectBothFail(
+  () =>
+    compileSourceResult(
+      destructorSignatureMismatchSource,
+      "<destructor-signature-mismatch-js>",
+      { backend: "stage0" },
+    ),
+  () => selfhost.compile_source(destructorSignatureMismatchSource),
+  "destructor-signature-mismatch parity",
+  "E_TYPE_DESTRUCTOR_SIGNATURE",
+);
+
+const dropDoubleDropSource = `
+type DroppableI32 = I32 then myDestructor;
+fn myDestructor(this : *move DroppableI32) : Void => {}
+fn main() : I32 => {
+  let x : DroppableI32 = 1;
+  drop(x);
+  drop(x);
+  0
+}
+`;
+expectBothFail(
+  () =>
+    compileSourceResult(dropDoubleDropSource, "<drop-double-drop-js>", {
+      backend: "stage0",
+    }),
+  () => selfhost.compile_source(dropDoubleDropSource),
+  "drop-double-drop parity",
+  "E_BORROW_DOUBLE_DROP",
+);
+
+const dropUseAfterDropSource = `
+type DroppableI32 = I32 then myDestructor;
+fn myDestructor(this : *move DroppableI32) : Void => {}
+fn main() : I32 => {
+  let x : DroppableI32 = 1;
+  drop(x);
+  let y : DroppableI32 = x;
+  0
+}
+`;
+expectBothFail(
+  () =>
+    compileSourceResult(dropUseAfterDropSource, "<drop-use-after-drop-js>", {
+      backend: "stage0",
+    }),
+  () => selfhost.compile_source(dropUseAfterDropSource),
+  "drop-use-after-drop parity",
+  "E_BORROW_USE_AFTER_DROP",
+);
+
+const dropCallResultSource = `
+type DroppableI32 = I32 then myDestructor;
+fn myDestructor(this : *move DroppableI32) : Void => {}
+extern fn mk() : DroppableI32;
+fn main() : I32 => {
+  drop(mk());
+  0
+}
+`;
+expectBothFail(
+  () =>
+    compileSourceResult(dropCallResultSource, "<drop-call-result-js>", {
+      backend: "stage0",
+    }),
+  () => selfhost.compile_source(dropCallResultSource),
+  "drop-call-result parity",
+  "E_BORROW_INVALID_TARGET",
+);
+
+const intoCallFormSource = [
+  "contract Vehicle {",
+  "  fn drive(*me) : I32;",
+  "}",
+  "struct Box { v : I32 }",
+  "fn makeVehicle() : Box => {",
+  "  into Vehicle;",
+  "  Box { v: 1 }",
+  "}",
+  "fn drive(me : *mut Box) : I32 => me.v;",
+  "fn main() : I32 => {",
+  "  let b : Box = makeVehicle();",
+  "  let vehicle = b.into<Vehicle>();",
+  "  0",
+  "}",
+  "",
+].join("\n");
+const intoCallStage0 = compileSourceResult(
+  intoCallFormSource,
+  "<into-call-stage0>",
+  {
+    backend: "stage0",
+  },
+);
+const intoCallSelfhost = compileSourceResult(
+  intoCallFormSource,
+  "<into-call-selfhost>",
+  { backend: "selfhost" },
+);
+if (!intoCallStage0.ok || !intoCallSelfhost.ok) {
+  throw new Error("into-call-form parity: expected both backends to compile");
+}
+
+const intoValueUseAfterMoveSource = [
+  "contract Vehicle {",
+  "  fn drive(*me) : I32;",
+  "}",
+  "struct Box { v : I32 }",
+  "fn makeVehicle() : Box => {",
+  "  into Vehicle;",
+  "  Box { v: 1 }",
+  "}",
+  "fn drive(me : *mut Box) : I32 => me.v;",
+  "fn main() : I32 => {",
+  "  let b : Box = makeVehicle();",
+  "  let converter = b.into<Vehicle>;",
+  "  b.v",
+  "}",
+  "",
+].join("\n");
+expectBothFail(
+  () =>
+    compileSourceResult(intoValueUseAfterMoveSource, "<into-value-uam-js>", {
+      backend: "stage0",
+    }),
+  () => selfhost.compile_source(intoValueUseAfterMoveSource),
+  "into-value-use-after-move parity",
+  "E_BORROW_USE_AFTER_MOVE",
+);
+
+const dropZeroArgsSource = `
+fn main() : I32 => {
+  drop();
+  0
+}
+`;
+expectBothFail(
+  () =>
+    compileSourceResult(dropZeroArgsSource, "<drop-zero-args-js>", {
+      backend: "stage0",
+    }),
+  () => selfhost.compile_source(dropZeroArgsSource),
+  "drop-zero-args parity",
+  "E_RESOLVE_UNKNOWN_IDENTIFIER",
+);
+
+const dropTwoArgsSource = `
+fn main() : I32 => {
+  drop(1, 2);
+  0
+}
+`;
+expectBothFail(
+  () =>
+    compileSourceResult(dropTwoArgsSource, "<drop-two-args-js>", {
+      backend: "stage0",
+    }),
+  () => selfhost.compile_source(dropTwoArgsSource),
+  "drop-two-args parity",
+  "E_RESOLVE_UNKNOWN_IDENTIFIER",
+);
+
 console.log("Selfhost differential parity checks passed");

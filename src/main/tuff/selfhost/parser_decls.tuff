@@ -257,6 +257,11 @@ fn p_parse_type_alias(is_copy: I32) : I32 => {
     
     p_expect(TK_SYMBOL, "=", "Expected '='");
     let aliased = p_parse_type();
+    let destructor_name = 0;
+    if (p_at(TK_KEYWORD, "then")) {
+        p_eat();
+        destructor_name = p_parse_identifier();
+    }
     p_expect(TK_SYMBOL, ";", "Expected ';'");
     
     let node = node_new(NK_TYPE_ALIAS);
@@ -264,6 +269,7 @@ fn p_parse_type_alias(is_copy: I32) : I32 => {
     node_set_data2(node, generics);
     node_set_data3(node, aliased);
     node_set_data4(node, is_copy);
+    node_set_data5(node, destructor_name);
     node
 }
 

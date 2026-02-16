@@ -193,6 +193,8 @@ function init_keywords() {
   (() => { const __recv = keywords; const __dyn = __recv?.table?.set_add; return __dyn ? __dyn(__recv.ref, "copy") : set_add(__recv, "copy"); })();
   (() => { const __recv = keywords; const __dyn = __recv?.table?.set_add; return __dyn ? __dyn(__recv.ref, "async") : set_add(__recv, "async"); })();
   (() => { const __recv = keywords; const __dyn = __recv?.table?.set_add; return __dyn ? __dyn(__recv.ref, "mut") : set_add(__recv, "mut"); })();
+  (() => { const __recv = keywords; const __dyn = __recv?.table?.set_add; return __dyn ? __dyn(__recv.ref, "move") : set_add(__recv, "move"); })();
+  (() => { const __recv = keywords; const __dyn = __recv?.table?.set_add; return __dyn ? __dyn(__recv.ref, "then") : set_add(__recv, "then"); })();
   return 0;
 }
 
@@ -833,14 +835,19 @@ function p_parse_type_primary() {
   if (p_at(TK_SYMBOL, "*")) {
   p_eat();
   let mutable = 0;
+  let move_ptr = 0;
   if (p_at(TK_KEYWORD, "mut")) {
   p_eat();
   mutable = 1;
-}
+} else { if (p_at(TK_KEYWORD, "move")) {
+  p_eat();
+  move_ptr = 1;
+} }
   let inner = p_parse_type_primary();
   let node = node_new(NK_POINTER_TYPE);
   node_set_data1(node, mutable);
   node_set_data2(node, inner);
+  node_set_data3(node, move_ptr);
   return node;
 }
   if (p_at(TK_SYMBOL, "[")) {
@@ -1257,12 +1264,18 @@ function p_parse_type_alias(is_copy) {
   let generics = p_parse_decl_generics("Expected '>'");
   p_expect(TK_SYMBOL, "=", "Expected '='");
   let aliased = p_parse_type();
+  let destructor_name = 0;
+  if (p_at(TK_KEYWORD, "then")) {
+  p_eat();
+  destructor_name = p_parse_identifier();
+}
   p_expect(TK_SYMBOL, ";", "Expected ';'");
   let node = node_new(NK_TYPE_ALIAS);
   node_set_data1(node, name);
   node_set_data2(node, generics);
   node_set_data3(node, aliased);
   node_set_data4(node, is_copy);
+  node_set_data5(node, destructor_name);
   return node;
 }
 
@@ -1762,6 +1775,45 @@ function resolve_expr(n, globals, scopes, depth) {
   return 0;
 }
   if ((kind == NK_CALL_EXPR)) {
+  let callee = node_get_data1(n);
+  if (((node_kind(callee) == NK_IDENTIFIER) && (() => { const __recv = get_interned_str(node_get_data1(callee)); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "drop") : str_eq(__recv, "drop"); })())) {
+  let args = node_get_data2(n);
+  if (((() => { const __recv = args; const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })() != 1)) {
+  panic_with_code("E_RESOLVE_UNKNOWN_IDENTIFIER", "drop expects exactly one argument", "Built-in drop requires exactly one receiver value.", "Use drop(value) or value.drop() with exactly one receiver value.");
+}
+  resolve_expr((() => { const __recv = args; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })(), globals, scopes, depth);
+  return 0;
+}
+  if ((((node_kind(callee) == NK_IDENTIFIER) && (() => { const __recv = get_interned_str(node_get_data1(callee)); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "into") : str_eq(__recv, "into"); })()) && (node_get_data3(n) == 1))) {
+  let args = node_get_data2(n);
+  if (((() => { const __recv = args; const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })() < 1)) {
+  panic_with_code("E_RESOLVE_UNKNOWN_IDENTIFIER", "into conversion requires a receiver", "Method-sugar into conversion requires a source value as receiver.", "Use value.into<Contract>(...) with a receiver value.");
+}
+  let type_args = node_get_data4(n);
+  let contract_name = "";
+  if ((((() => { const __recv = type_args; const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })() == 1) && (node_kind((() => { const __recv = type_args; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })()) == NK_NAMED_TYPE))) {
+  contract_name = get_interned_str(node_get_data1((() => { const __recv = type_args; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })()));
+}
+  if (((() => { const __recv = contract_name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "") : str_eq(__recv, ""); })() || (!(() => { const __recv = globals; const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, contract_name) : set_has(__recv, contract_name); })()))) {
+  panic_with_code("E_RESOLVE_UNKNOWN_IDENTIFIER", (() => { const __recv = (() => { const __recv = "Unknown contract '"; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, (((() => { const __recv = contract_name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "") : str_eq(__recv, ""); })()) ? (() => {
+  return "<missing>";
+})() : (() => {
+  return contract_name;
+})())) : str_concat(__recv, (((() => { const __recv = contract_name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "") : str_eq(__recv, ""); })()) ? (() => {
+  return "<missing>";
+})() : (() => {
+  return contract_name;
+})())); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "'") : str_concat(__recv, "'"); })(), "An into conversion referenced a contract that is not declared in scope.", "Use value.into<Contract>(...) with a declared contract name.");
+}
+  resolve_expr((() => { const __recv = args; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })(), globals, scopes, depth);
+  let i = 1;
+  let len = (() => { const __recv = args; const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })();
+  while ((i < len)) {
+  resolve_expr((() => { const __recv = args; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(), globals, scopes, depth);
+  i = (i + 1);
+}
+  return 0;
+}
   resolve_expr(node_get_data1(n), globals, scopes, depth);
   let args = node_get_data2(n);
   let i = 0;
@@ -2021,6 +2073,10 @@ function type_name_from_type_node(t) {
   if ((k == 41)) {
   let mutable = node_get_data1(t);
   let inner = type_name_from_type_node(node_get_data2(t));
+  let move_ptr = node_get_data3(t);
+  if ((move_ptr == 1)) {
+  return (() => { const __recv = "*move "; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, inner) : str_concat(__recv, inner); })();
+}
   if ((mutable == 1)) {
   return (() => { const __recv = "*mut "; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, inner) : str_concat(__recv, inner); })();
 }
@@ -2188,6 +2244,14 @@ function infer_expr_type_name(n, fn_return_types, local_types) {
   let callee = node_get_data1(n);
   if ((node_kind(callee) == 24)) {
   let fname = get_interned_str(node_get_data1(callee));
+  if (((() => { const __recv = fname; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "into") : str_eq(__recv, "into"); })() && (node_get_data3(n) == 1))) {
+  let type_args = node_get_data4(n);
+  if ((((() => { const __recv = type_args; const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })() == 1) && (node_kind((() => { const __recv = type_args; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })()) == NK_NAMED_TYPE))) {
+  let cname = get_interned_str(node_get_data1((() => { const __recv = type_args; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })()));
+  return (() => { const __recv = "__dyn_"; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, cname) : str_concat(__recv, cname); })();
+}
+  return "Unknown";
+}
   if ((() => { const __recv = fn_return_types; const __dyn = __recv?.table?.map_has; return __dyn ? __dyn(__recv.ref, fname) : map_has(__recv, fname); })()) {
   return (() => { const __recv = fn_return_types; const __dyn = __recv?.table?.map_get; return __dyn ? __dyn(__recv.ref, fname) : map_get(__recv, fname); })();
 }
@@ -2245,7 +2309,23 @@ let tc_global_value_types = map_new();
 
 let tc_alias_union_tags = map_new();
 
+let tc_type_alias_names = set_new();
+
 let tc_contract_names = set_new();
+
+let tc_destructor_alias_by_alias = map_new();
+
+let tc_destructor_alias_names = vec_new();
+
+function type_node_is_move_pointer_to_alias(t, alias_name) {
+  if (((t == 0) || (node_kind(t) != NK_POINTER_TYPE))) {
+  return false;
+}
+  if ((node_get_data3(t) != 1)) {
+  return false;
+}
+  return (() => { const __recv = type_name_from_type_node(node_get_data2(t)); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, alias_name) : str_eq(__recv, alias_name); })();
+}
 
 function collect_union_named_tags(type_node, tags) {
   if ((type_node == 0)) {
@@ -2412,6 +2492,45 @@ function typecheck_expr(n, fn_arities, fn_param_types, fn_return_types, local_ty
   let fname = "";
   if ((node_kind(callee) == NK_IDENTIFIER)) {
   fname = get_interned_str(node_get_data1(callee));
+  if ((() => { const __recv = fname; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "drop") : str_eq(__recv, "drop"); })()) {
+  if ((arg_count != 1)) {
+  panic_with_code("E_TYPE_ARG_COUNT", "drop expects exactly one argument", "The drop builtin requires one argument representing the value to drop.", "Call drop(value) with exactly one argument.");
+}
+  let target = (() => { const __recv = args; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })();
+  let target_name = infer_expr_type_name(target, fn_return_types, local_types);
+  if ((!(() => { const __recv = tc_destructor_alias_by_alias; const __dyn = __recv?.table?.map_has; return __dyn ? __dyn(__recv.ref, target_name) : map_has(__recv, target_name); })())) {
+  panic_with_code("E_TYPE_DESTRUCTOR_NOT_FOUND", (() => { const __recv = (() => { const __recv = "Type '"; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, target_name) : str_concat(__recv, target_name); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "' does not have an associated destructor") : str_concat(__recv, "' does not have an associated destructor"); })(), "drop can only be called for values whose alias type declares a destructor.", "Define `type Alias = Base then destructorName;` and use that alias for dropped values.");
+}
+  return 0;
+}
+  if (((() => { const __recv = fname; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "into") : str_eq(__recv, "into"); })() && (node_get_data3(n) == 1))) {
+  if ((arg_count < 1)) {
+  panic_with_code("E_TYPE_ARG_COUNT", "into conversion requires a receiver", "Method-sugar into conversion requires a source value as receiver.", "Use value.into<Contract>(...) with a receiver value.");
+}
+  let type_args = node_get_data4(n);
+  let cname = "";
+  if ((((() => { const __recv = type_args; const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })() == 1) && (node_kind((() => { const __recv = type_args; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })()) == NK_NAMED_TYPE))) {
+  cname = get_interned_str(node_get_data1((() => { const __recv = type_args; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })()));
+}
+  if (((() => { const __recv = cname; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "") : str_eq(__recv, ""); })() || (!(() => { const __recv = tc_contract_names; const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, cname) : set_has(__recv, cname); })()))) {
+  panic_with_code("E_TYPE_INTO_UNKNOWN_CONTRACT", (() => { const __recv = (() => { const __recv = "Unknown contract '"; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, (((() => { const __recv = cname; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "") : str_eq(__recv, ""); })()) ? (() => {
+  return "<missing>";
+})() : (() => {
+  return cname;
+})())) : str_concat(__recv, (((() => { const __recv = cname; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "") : str_eq(__recv, ""); })()) ? (() => {
+  return "<missing>";
+})() : (() => {
+  return cname;
+})())); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "' in into conversion") : str_concat(__recv, "' in into conversion"); })(), "An into conversion referenced a contract that is not declared.", "Declare the contract before converting with into.");
+}
+  typecheck_expr((() => { const __recv = args; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })(), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety);
+  let j = 1;
+  while ((j < arg_count)) {
+  typecheck_expr((() => { const __recv = args; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, j) : vec_get(__recv, j); })(), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety);
+  j = (j + 1);
+}
+  return 0;
+}
   if ((() => { const __recv = fn_arities; const __dyn = __recv?.table?.map_has; return __dyn ? __dyn(__recv.ref, fname) : map_has(__recv, fname); })()) {
   let expected = (() => { const __recv = fn_arities; const __dyn = __recv?.table?.map_get; return __dyn ? __dyn(__recv.ref, fname) : map_get(__recv, fname); })();
   if ((expected != arg_count)) {
@@ -2644,7 +2763,7 @@ function typecheck_stmt(n, fn_arities, fn_param_types, fn_return_types, local_ty
   let rhs_name = infer_expr_type_name(rhs, fn_return_types, local_types);
   if ((declared_type != 0)) {
   let declared_name = type_name_from_type_node(declared_type);
-  if (((((!(() => { const __recv = declared_name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "Unknown") : str_eq(__recv, "Unknown"); })()) && (!(() => { const __recv = rhs_name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "Unknown") : str_eq(__recv, "Unknown"); })())) && (!pointer_types_compatible(declared_name, rhs_name))) && (!numeric_types_compatible(declared_name, rhs_name, rhs)))) {
+  if ((((((!(() => { const __recv = declared_name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "Unknown") : str_eq(__recv, "Unknown"); })()) && (!(() => { const __recv = rhs_name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "Unknown") : str_eq(__recv, "Unknown"); })())) && (!pointer_types_compatible(declared_name, rhs_name))) && (!numeric_types_compatible(declared_name, rhs_name, rhs))) && (!(() => { const __recv = tc_type_alias_names; const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, declared_name) : set_has(__recv, declared_name); })()))) {
   let vname = get_interned_str(node_get_data1(n));
   let msg = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = "Type mismatch for let "; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, vname) : str_concat(__recv, vname); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ": expected ") : str_concat(__recv, ": expected "); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, declared_name) : str_concat(__recv, declared_name); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ", got ") : str_concat(__recv, ", got "); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, rhs_name) : str_concat(__recv, rhs_name); })();
   panic_with_code("E_TYPE_LET_MISMATCH", msg, "An explicit let type annotation does not match the assigned RHS expression type.", "Update the explicit type annotation or change the RHS expression to match.");
@@ -2678,7 +2797,7 @@ function typecheck_stmt(n, fn_arities, fn_param_types, fn_return_types, local_ty
   if ((() => { const __recv = local_types; const __dyn = __recv?.table?.map_has; return __dyn ? __dyn(__recv.ref, tname) : map_has(__recv, tname); })()) {
   let expected_name = (() => { const __recv = local_types; const __dyn = __recv?.table?.map_get; return __dyn ? __dyn(__recv.ref, tname) : map_get(__recv, tname); })();
   let value_name = infer_expr_type_name(value, fn_return_types, local_types);
-  if ((!type_names_compatible(expected_name, value_name, value))) {
+  if (((!type_names_compatible(expected_name, value_name, value)) && (!(() => { const __recv = tc_type_alias_names; const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, expected_name) : set_has(__recv, expected_name); })()))) {
   panic_with_code("E_TYPE_ASSIGN_MISMATCH", (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = "Assignment mismatch for "; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, tname) : str_concat(__recv, tname); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ": expected ") : str_concat(__recv, ": expected "); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, expected_name) : str_concat(__recv, expected_name); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ", got ") : str_concat(__recv, ", got "); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, value_name) : str_concat(__recv, value_name); })(), "The assigned value type is incompatible with the declared variable type.", "Assign a compatible value or change the variable type declaration.");
 }
 }
@@ -2784,16 +2903,17 @@ function typecheck_stmt(n, fn_arities, fn_param_types, fn_return_types, local_ty
 }
 
 function typecheck_program_with_options(program, strict_safety) {
-  if ((strict_safety != 1)) {
-  return program;
-}
   let fn_arities = map_new();
   let fn_param_types = map_new();
   let fn_return_types = map_new();
+  let fn_nodes = map_new();
   let local_types = map_new();
   tc_global_value_types = map_new();
   tc_alias_union_tags = map_new();
+  tc_type_alias_names = set_new();
   tc_contract_names = set_new();
+  tc_destructor_alias_by_alias = map_new();
+  tc_destructor_alias_names = vec_new();
   let body = node_get_data1(program);
   let i = 0;
   let len = (() => { const __recv = body; const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })();
@@ -2802,6 +2922,7 @@ function typecheck_program_with_options(program, strict_safety) {
   let kind = node_kind(stmt);
   if (((((kind == NK_FN_DECL) || (kind == NK_CLASS_FN_DECL)) || (kind == NK_EXTERN_FN_DECL)) || (kind == NK_ACTUAL_FN_DECL))) {
   let name = get_interned_str(node_get_data1(stmt));
+  (() => { const __recv = fn_nodes; const __dyn = __recv?.table?.map_set; return __dyn ? __dyn(__recv.ref, name, stmt) : map_set(__recv, name, stmt); })();
   let params = node_get_data3(stmt);
   (() => { const __recv = fn_arities; const __dyn = __recv?.table?.map_set; return __dyn ? __dyn(__recv.ref, name, (() => { const __recv = params; const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })()) : map_set(__recv, name, (() => { const __recv = params; const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })()); })();
   let param_types = vec_new();
@@ -2825,12 +2946,22 @@ function typecheck_program_with_options(program, strict_safety) {
 }
   if ((kind == NK_TYPE_ALIAS)) {
   let alias_name = get_interned_str(node_get_data1(stmt));
+  (() => { const __recv = tc_type_alias_names; const __dyn = __recv?.table?.set_add; return __dyn ? __dyn(__recv.ref, alias_name) : set_add(__recv, alias_name); })();
   let alias_type = node_get_data3(stmt);
   let tags = vec_new();
   collect_union_named_tags(alias_type, tags);
   if (((() => { const __recv = tags; const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })() > 0)) {
   (() => { const __recv = tc_alias_union_tags; const __dyn = __recv?.table?.map_set; return __dyn ? __dyn(__recv.ref, alias_name, tags) : map_set(__recv, alias_name, tags); })();
 }
+  let destructor_name_idx = node_get_data5(stmt);
+  if ((destructor_name_idx != 0)) {
+  let destructor_name = get_interned_str(destructor_name_idx);
+  (() => { const __recv = tc_destructor_alias_by_alias; const __dyn = __recv?.table?.map_set; return __dyn ? __dyn(__recv.ref, alias_name, destructor_name) : map_set(__recv, alias_name, destructor_name); })();
+  (() => { const __recv = tc_destructor_alias_names; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, alias_name) : vec_push(__recv, alias_name); })();
+}
+}
+  if ((kind == NK_EXTERN_TYPE_DECL)) {
+  (() => { const __recv = tc_type_alias_names; const __dyn = __recv?.table?.set_add; return __dyn ? __dyn(__recv.ref, get_interned_str(node_get_data1(stmt))) : set_add(__recv, get_interned_str(node_get_data1(stmt))); })();
 }
   if ((kind == NK_CONTRACT_DECL)) {
   (() => { const __recv = tc_contract_names; const __dyn = __recv?.table?.set_add; return __dyn ? __dyn(__recv.ref, get_interned_str(node_get_data1(stmt))) : set_add(__recv, get_interned_str(node_get_data1(stmt))); })();
@@ -2843,6 +2974,42 @@ function typecheck_program_with_options(program, strict_safety) {
 }
 }
   i = (i + 1);
+}
+  i = 0;
+  let destructor_alias_count = (() => { const __recv = tc_destructor_alias_names; const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })();
+  while ((i < destructor_alias_count)) {
+  let alias_name = (() => { const __recv = tc_destructor_alias_names; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })();
+  let destructor_name = (() => { const __recv = tc_destructor_alias_by_alias; const __dyn = __recv?.table?.map_get; return __dyn ? __dyn(__recv.ref, alias_name) : map_get(__recv, alias_name); })();
+  if ((!(() => { const __recv = fn_nodes; const __dyn = __recv?.table?.map_has; return __dyn ? __dyn(__recv.ref, destructor_name) : map_has(__recv, destructor_name); })())) {
+  panic_with_code("E_TYPE_DESTRUCTOR_NOT_FOUND", (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = "Destructor '"; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, destructor_name) : str_concat(__recv, destructor_name); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "' for alias '") : str_concat(__recv, "' for alias '"); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, alias_name) : str_concat(__recv, alias_name); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "' was not found") : str_concat(__recv, "' was not found"); })(), "A type alias referenced a destructor function that does not exist.", "Declare the destructor function before using it in 'type Alias = ... then destructor'.");
+}
+  let fn_node = (() => { const __recv = fn_nodes; const __dyn = __recv?.table?.map_get; return __dyn ? __dyn(__recv.ref, destructor_name) : map_get(__recv, destructor_name); })();
+  let params = node_get_data3(fn_node);
+  let valid = true;
+  if (((() => { const __recv = params; const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })() != 1)) {
+  valid = false;
+} else {
+  let p0 = (() => { const __recv = params; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })();
+  let pname = get_interned_str((() => { const __recv = p0; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })());
+  let ptype = (() => { const __recv = p0; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 1) : vec_get(__recv, 1); })();
+  if ((!(() => { const __recv = pname; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "this") : str_eq(__recv, "this"); })())) {
+  valid = false;
+}
+  if ((!type_node_is_move_pointer_to_alias(ptype, alias_name))) {
+  valid = false;
+}
+}
+  let ret_name = type_name_from_type_node(node_get_data4(fn_node));
+  if ((!(() => { const __recv = ret_name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "Void") : str_eq(__recv, "Void"); })())) {
+  valid = false;
+}
+  if ((!valid)) {
+  panic_with_code("E_TYPE_DESTRUCTOR_SIGNATURE", (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = "Destructor '"; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, destructor_name) : str_concat(__recv, destructor_name); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "' must have signature fn ") : str_concat(__recv, "' must have signature fn "); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, destructor_name) : str_concat(__recv, destructor_name); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "(this : *move ") : str_concat(__recv, "(this : *move "); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, alias_name) : str_concat(__recv, alias_name); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ") : Void") : str_concat(__recv, ") : Void"); })(), "Destructor signatures must follow the required receiver and return type contract.", "Use exactly one receiver parameter named 'this' with type '*move AliasType' and return Void.");
+}
+  i = (i + 1);
+}
+  if ((strict_safety != 1)) {
+  return program;
 }
   i = 0;
   while ((i < len)) {
@@ -2865,6 +3032,10 @@ let bc_copy_types = set_new();
 let bc_copy_alias_types = map_new();
 
 let bc_copy_alias_names = vec_new();
+
+let bc_destructor_aliases = map_new();
+
+let bc_destructor_alias_names = vec_new();
 
 function bc_str_ends_with_local(s, suffix) {
   let ns = (() => { const __recv = s; const __dyn = __recv?.table?.str_length; return __dyn ? __dyn(__recv.ref) : str_length(__recv); })();
@@ -2889,6 +3060,10 @@ function bc_type_name_from_type_node(t) {
   if ((k == NK_POINTER_TYPE)) {
   let mutable = node_get_data1(t);
   let inner = bc_type_name_from_type_node(node_get_data2(t));
+  let move_ptr = node_get_data3(t);
+  if ((move_ptr == 1)) {
+  return (() => { const __recv = "*move "; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, inner) : str_concat(__recv, inner); })();
+}
   if ((mutable == 1)) {
   return (() => { const __recv = "*mut "; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, inner) : str_concat(__recv, inner); })();
 }
@@ -3116,6 +3291,8 @@ function state_new() {
   (() => { const __recv = s; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, vec_new()) : vec_push(__recv, vec_new()); })();
   (() => { const __recv = s; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, vec_new()) : vec_push(__recv, vec_new()); })();
   (() => { const __recv = s; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, vec_new()) : vec_push(__recv, vec_new()); })();
+  (() => { const __recv = s; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, set_new()) : vec_push(__recv, set_new()); })();
+  (() => { const __recv = s; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, vec_new()) : vec_push(__recv, vec_new()); })();
   return s;
 }
 
@@ -3127,7 +3304,13 @@ function state_loans(state) { return (() => { const __recv = state; const __dyn 
 
 function state_scope_starts(state) { return (() => { const __recv = state; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 3) : vec_get(__recv, 3); })(); }
 
+function state_dropped_set(state) { return (() => { const __recv = state; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 4) : vec_get(__recv, 4); })(); }
+
+function state_dropped_vec(state) { return (() => { const __recv = state; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 5) : vec_get(__recv, 5); })(); }
+
 function state_moved_has(state, name) { return (() => { const __recv = state_moved_set(state); const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, name) : set_has(__recv, name); })(); }
+
+function state_dropped_has(state, name) { return (() => { const __recv = state_dropped_set(state); const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, name) : set_has(__recv, name); })(); }
 
 function state_moved_add(state, name) {
   if ((!(() => { const __recv = state_moved_set(state); const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, name) : set_has(__recv, name); })())) {
@@ -3139,6 +3322,19 @@ function state_moved_add(state, name) {
 
 function state_moved_delete(state, name) {
   (() => { const __recv = state_moved_set(state); const __dyn = __recv?.table?.set_delete; return __dyn ? __dyn(__recv.ref, name) : set_delete(__recv, name); })();
+  return 0;
+}
+
+function state_dropped_add(state, name) {
+  if ((!(() => { const __recv = state_dropped_set(state); const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, name) : set_has(__recv, name); })())) {
+  (() => { const __recv = state_dropped_set(state); const __dyn = __recv?.table?.set_add; return __dyn ? __dyn(__recv.ref, name) : set_add(__recv, name); })();
+  (() => { const __recv = state_dropped_vec(state); const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, name) : vec_push(__recv, name); })();
+}
+  return 0;
+}
+
+function state_dropped_delete(state, name) {
+  (() => { const __recv = state_dropped_set(state); const __dyn = __recv?.table?.set_delete; return __dyn ? __dyn(__recv.ref, name) : set_delete(__recv, name); })();
   return 0;
 }
 
@@ -3245,6 +3441,13 @@ function state_clone(src) {
   (() => { const __recv = state_scope_starts(dst); const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, (() => { const __recv = srcScopes; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })()) : vec_push(__recv, (() => { const __recv = srcScopes; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })()); })();
   i = (i + 1);
 }
+  let srcDropped = state_dropped_vec(src);
+  i = 0;
+  len = (() => { const __recv = srcDropped; const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })();
+  while ((i < len)) {
+  state_dropped_add(dst, (() => { const __recv = srcDropped; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })());
+  i = (i + 1);
+}
   return dst;
 }
 
@@ -3275,6 +3478,32 @@ function state_merge_moved_from_branches(dst, a, b) {
 }
   (() => { const __recv = dst; const __dyn = __recv?.table?.vec_set; return __dyn ? __dyn(__recv.ref, 0, newSet) : vec_set(__recv, 0, newSet); })();
   (() => { const __recv = dst; const __dyn = __recv?.table?.vec_set; return __dyn ? __dyn(__recv.ref, 1, newVec) : vec_set(__recv, 1, newVec); })();
+  let droppedSet = set_new();
+  let droppedVec = vec_new();
+  let adv = state_dropped_vec(a);
+  i = 0;
+  len = (() => { const __recv = adv; const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })();
+  while ((i < len)) {
+  let n = (() => { const __recv = adv; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })();
+  if (((() => { const __recv = state_dropped_set(a); const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, n) : set_has(__recv, n); })() && (!(() => { const __recv = droppedSet; const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, n) : set_has(__recv, n); })()))) {
+  (() => { const __recv = droppedSet; const __dyn = __recv?.table?.set_add; return __dyn ? __dyn(__recv.ref, n) : set_add(__recv, n); })();
+  (() => { const __recv = droppedVec; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, n) : vec_push(__recv, n); })();
+}
+  i = (i + 1);
+}
+  let bdv = state_dropped_vec(b);
+  i = 0;
+  len = (() => { const __recv = bdv; const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })();
+  while ((i < len)) {
+  let n = (() => { const __recv = bdv; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })();
+  if (((() => { const __recv = state_dropped_set(b); const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, n) : set_has(__recv, n); })() && (!(() => { const __recv = droppedSet; const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, n) : set_has(__recv, n); })()))) {
+  (() => { const __recv = droppedSet; const __dyn = __recv?.table?.set_add; return __dyn ? __dyn(__recv.ref, n) : set_add(__recv, n); })();
+  (() => { const __recv = droppedVec; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, n) : vec_push(__recv, n); })();
+}
+  i = (i + 1);
+}
+  (() => { const __recv = dst; const __dyn = __recv?.table?.vec_set; return __dyn ? __dyn(__recv.ref, 4, droppedSet) : vec_set(__recv, 4, droppedSet); })();
+  (() => { const __recv = dst; const __dyn = __recv?.table?.vec_set; return __dyn ? __dyn(__recv.ref, 5, droppedVec) : vec_set(__recv, 5, droppedVec); })();
   return 0;
 }
 
@@ -3291,6 +3520,9 @@ function ensure_readable(expr, state) {
   if ((() => { const __recv = bc_global_value_types; const __dyn = __recv?.table?.map_has; return __dyn ? __dyn(__recv.ref, base) : map_has(__recv, base); })()) {
   return 0;
 }
+  if (state_dropped_has(state, base)) {
+  panic_borrow("E_BORROW_USE_AFTER_DROP", (() => { const __recv = (() => { const __recv = "Use of dropped value '"; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, base) : str_concat(__recv, base); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "'") : str_concat(__recv, "'"); })(), "Do not use a value after explicit or implicit drop; move/copy before dropping if needed.");
+}
   if (state_moved_has(state, base)) {
   panic_borrow("E_BORROW_USE_AFTER_MOVE", (() => { const __recv = (() => { const __recv = "Use of moved value '"; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, base) : str_concat(__recv, base); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "'") : str_concat(__recv, "'"); })(), "Reinitialize the value before use, or borrow it before moving.");
 }
@@ -3306,6 +3538,9 @@ function consume_place(expr, state, env_types, fn_return_types, extern_type_name
   let path = place_path(p);
   if ((() => { const __recv = bc_global_value_types; const __dyn = __recv?.table?.map_has; return __dyn ? __dyn(__recv.ref, base) : map_has(__recv, base); })()) {
   return 0;
+}
+  if (state_dropped_has(state, base)) {
+  panic_borrow("E_BORROW_USE_AFTER_DROP", (() => { const __recv = (() => { const __recv = "Use of dropped value '"; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, base) : str_concat(__recv, base); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "'") : str_concat(__recv, "'"); })(), "Do not use a value after explicit or implicit drop; move/copy before dropping if needed.");
 }
   if (state_moved_has(state, base)) {
   panic_borrow("E_BORROW_USE_AFTER_MOVE", (() => { const __recv = (() => { const __recv = "Use of moved value '"; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, base) : str_concat(__recv, base); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "'") : str_concat(__recv, "'"); })(), "Reinitialize the value before use, or borrow it with '&' / '&mut' instead of moving.");
@@ -3382,6 +3617,51 @@ function check_expr(expr, state, env_types, fn_return_types, extern_type_names, 
 }
   if ((kind == NK_CALL_EXPR)) {
   let callee = node_get_data1(expr);
+  if (((node_kind(callee) == NK_IDENTIFIER) && (() => { const __recv = get_interned_str(node_get_data1(callee)); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "drop") : str_eq(__recv, "drop"); })())) {
+  let args = node_get_data2(expr);
+  if (((() => { const __recv = args; const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })() != 1)) {
+  panic_borrow("E_BORROW_INVALID_TARGET", "drop expects exactly one argument", "Call drop with exactly one local/place value such as drop(x) or x.drop().");
+}
+  let target = (() => { const __recv = args; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })();
+  let p = canonical_place(target);
+  if ((!place_is_valid(p))) {
+  panic_borrow("E_BORROW_INVALID_TARGET", "drop target must be a place expression", "Call drop with a local/place value such as drop(x) or x.drop().");
+}
+  let base = place_base(p);
+  let path = place_path(p);
+  if (state_dropped_has(state, base)) {
+  panic_borrow("E_BORROW_DOUBLE_DROP", (() => { const __recv = (() => { const __recv = "Double drop of '"; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, base) : str_concat(__recv, base); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "'") : str_concat(__recv, "'"); })(), "Ensure each owned value is dropped exactly once.");
+}
+  let target_type = bc_infer_expr_type_name(target, env_types, fn_return_types);
+  if ((!(() => { const __recv = bc_destructor_aliases; const __dyn = __recv?.table?.map_has; return __dyn ? __dyn(__recv.ref, target_type) : map_has(__recv, target_type); })())) {
+  panic_borrow("E_BORROW_DROP_MISSING_DESTRUCTOR", (() => { const __recv = (() => { const __recv = "Type '"; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, target_type) : str_concat(__recv, target_type); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "' has no associated destructor") : str_concat(__recv, "' has no associated destructor"); })(), "Associate a destructor via 'type Alias = Base then destructorName;' and use that alias type.");
+}
+  ensure_readable(target, state);
+  if (state_any_conflicting_loan(state, base, path)) {
+  panic_borrow("E_BORROW_MOVE_WHILE_BORROWED", (() => { const __recv = (() => { const __recv = "Cannot drop '"; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, base) : str_concat(__recv, base); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "' while it is borrowed") : str_concat(__recv, "' while it is borrowed"); })(), "Ensure all borrows end before dropping the value.");
+}
+  state_dropped_add(state, base);
+  state_moved_add(state, base);
+  return 0;
+}
+  if ((((node_kind(callee) == NK_IDENTIFIER) && (() => { const __recv = get_interned_str(node_get_data1(callee)); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "into") : str_eq(__recv, "into"); })()) && (node_get_data3(expr) == 1))) {
+  let args = node_get_data2(expr);
+  if (((() => { const __recv = args; const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })() >= 1)) {
+  let receiver = (() => { const __recv = args; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })();
+  let receiver_mode = "read";
+  if (place_is_valid(canonical_place(receiver))) {
+  receiver_mode = "move";
+}
+  check_expr(receiver, state, env_types, fn_return_types, extern_type_names, global_fn_names, receiver_mode);
+}
+  let i = 1;
+  let len = (() => { const __recv = args; const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })();
+  while ((i < len)) {
+  check_expr((() => { const __recv = args; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(), state, env_types, fn_return_types, extern_type_names, global_fn_names, "read");
+  i = (i + 1);
+}
+  return 0;
+}
   if ((!((node_kind(callee) == NK_IDENTIFIER) && (() => { const __recv = global_fn_names; const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, get_interned_str(node_get_data1(callee))) : set_has(__recv, get_interned_str(node_get_data1(callee))); })()))) {
   check_expr(callee, state, env_types, fn_return_types, extern_type_names, global_fn_names, "read");
 }
@@ -3478,6 +3758,7 @@ function check_stmt(stmt, state, env_types, fn_return_types, extern_type_names, 
   (() => { const __recv = env_types; const __dyn = __recv?.table?.map_set; return __dyn ? __dyn(__recv.ref, name, bc_infer_expr_type_name(rhs, env_types, fn_return_types)) : map_set(__recv, name, bc_infer_expr_type_name(rhs, env_types, fn_return_types)); })();
 }
   state_moved_delete(state, name);
+  state_dropped_delete(state, name);
   return 0;
 }
   if ((kind == NK_ASSIGN_STMT)) {
@@ -3498,7 +3779,9 @@ function check_stmt(stmt, state, env_types, fn_return_types, extern_type_names, 
 }
   check_expr(rhs, state, env_types, fn_return_types, extern_type_names, global_fn_names, mode);
   if ((node_kind(target) == NK_IDENTIFIER)) {
-  state_moved_delete(state, get_interned_str(node_get_data1(target)));
+  let target_name = get_interned_str(node_get_data1(target));
+  state_moved_delete(state, target_name);
+  state_dropped_delete(state, target_name);
 }
   return 0;
 }
@@ -3593,6 +3876,8 @@ function borrowcheck_program(program) {
   bc_copy_types = set_new();
   bc_copy_alias_types = map_new();
   bc_copy_alias_names = vec_new();
+  bc_destructor_aliases = map_new();
+  bc_destructor_alias_names = vec_new();
   let i = 0;
   let len = (() => { const __recv = body; const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })();
   while ((i < len)) {
@@ -3619,6 +3904,53 @@ function borrowcheck_program(program) {
   let alias_name = get_interned_str(node_get_data1(stmt));
   (() => { const __recv = bc_copy_alias_names; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, alias_name) : vec_push(__recv, alias_name); })();
   (() => { const __recv = bc_copy_alias_types; const __dyn = __recv?.table?.map_set; return __dyn ? __dyn(__recv.ref, alias_name, node_get_data3(stmt)) : map_set(__recv, alias_name, node_get_data3(stmt)); })();
+}
+  if (((kind == NK_TYPE_ALIAS) && (node_get_data5(stmt) != 0))) {
+  let alias_name = get_interned_str(node_get_data1(stmt));
+  let destructor_name = get_interned_str(node_get_data5(stmt));
+  (() => { const __recv = bc_destructor_aliases; const __dyn = __recv?.table?.map_set; return __dyn ? __dyn(__recv.ref, alias_name, destructor_name) : map_set(__recv, alias_name, destructor_name); })();
+  (() => { const __recv = bc_destructor_alias_names; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, alias_name) : vec_push(__recv, alias_name); })();
+}
+  i = (i + 1);
+}
+  i = 0;
+  let dlen = (() => { const __recv = bc_destructor_alias_names; const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })();
+  while ((i < dlen)) {
+  let alias_name = (() => { const __recv = bc_destructor_alias_names; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })();
+  let destructor_name = (() => { const __recv = bc_destructor_aliases; const __dyn = __recv?.table?.map_get; return __dyn ? __dyn(__recv.ref, alias_name) : map_get(__recv, alias_name); })();
+  let found = false;
+  let j = 0;
+  while ((j < len)) {
+  let stmt = (() => { const __recv = body; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, j) : vec_get(__recv, j); })();
+  if (((node_kind(stmt) == NK_FN_DECL) && (() => { const __recv = get_interned_str(node_get_data1(stmt)); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, destructor_name) : str_eq(__recv, destructor_name); })())) {
+  found = true;
+  let valid = true;
+  let params = node_get_data3(stmt);
+  if (((() => { const __recv = params; const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })() != 1)) {
+  valid = false;
+} else {
+  let p0 = (() => { const __recv = params; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })();
+  let pname = get_interned_str((() => { const __recv = p0; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })());
+  let ptype = (() => { const __recv = p0; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 1) : vec_get(__recv, 1); })();
+  if ((!(() => { const __recv = pname; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "this") : str_eq(__recv, "this"); })())) {
+  valid = false;
+}
+  if (((((ptype == 0) || (node_kind(ptype) != NK_POINTER_TYPE)) || (node_get_data3(ptype) != 1)) || (!(() => { const __recv = bc_type_name_from_type_node(node_get_data2(ptype)); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, alias_name) : str_eq(__recv, alias_name); })()))) {
+  valid = false;
+}
+}
+  if ((!(() => { const __recv = bc_type_name_from_type_node(node_get_data4(stmt)); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "Void") : str_eq(__recv, "Void"); })())) {
+  valid = false;
+}
+  if ((!valid)) {
+  panic_with_code("E_TYPE_DESTRUCTOR_SIGNATURE", (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = "Destructor '"; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, destructor_name) : str_concat(__recv, destructor_name); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "' must have signature fn ") : str_concat(__recv, "' must have signature fn "); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, destructor_name) : str_concat(__recv, destructor_name); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "(this : *move ") : str_concat(__recv, "(this : *move "); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, alias_name) : str_concat(__recv, alias_name); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ") : Void") : str_concat(__recv, ") : Void"); })(), "Destructor signatures must use a move receiver of the alias type and return Void.", "Use exactly one receiver parameter named 'this' with type '*move AliasType' and return Void.");
+}
+  break;
+}
+  j = (j + 1);
+}
+  if ((!found)) {
+  panic_with_code("E_TYPE_DESTRUCTOR_NOT_FOUND", (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = "Destructor '"; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, destructor_name) : str_concat(__recv, destructor_name); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "' for alias '") : str_concat(__recv, "' for alias '"); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, alias_name) : str_concat(__recv, alias_name); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "' was not found") : str_concat(__recv, "' was not found"); })(), "A type alias referenced a destructor function that does not exist.", "Declare the destructor function before using it in 'type Alias = ... then destructor'.");
 }
   i = (i + 1);
 }
@@ -4833,6 +5165,32 @@ function p_has_generic_value_suffix() {
 function p_parse_postfix(exprIn) {
   let expr = exprIn;
   while (true) {
+  if (((((node_kind(expr) == NK_MEMBER_EXPR) && (() => { const __recv = get_interned_str(node_get_data2(expr)); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "into") : str_eq(__recv, "into"); })()) && p_at(TK_SYMBOL, "<")) && p_has_generic_value_suffix())) {
+  p_eat();
+  let type_args = vec_new();
+  if ((!p_at(TK_SYMBOL, ">"))) {
+  (() => { const __recv = type_args; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, p_parse_type()) : vec_push(__recv, p_parse_type()); })();
+  while (p_at(TK_SYMBOL, ",")) {
+  p_eat();
+  (() => { const __recv = type_args; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, p_parse_type()) : vec_push(__recv, p_parse_type()); })();
+}
+}
+  p_expect(TK_SYMBOL, ">", "Expected '>' after into type args");
+  let recv = node_get_data1(expr);
+  let prop = node_get_data2(expr);
+  let args = vec_new();
+  (() => { const __recv = args; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, recv) : vec_push(__recv, recv); })();
+  let callee = node_new(NK_IDENTIFIER);
+  node_set_data1(callee, prop);
+  let into_value = node_new(NK_CALL_EXPR);
+  node_set_data1(into_value, callee);
+  node_set_data2(into_value, args);
+  node_set_data3(into_value, 1);
+  node_set_data4(into_value, type_args);
+  node_set_data5(into_value, 1);
+  expr = into_value;
+  continue;
+}
   if ((p_at(TK_SYMBOL, "<") && p_has_generic_call_suffix())) {
   p_eat();
   let type_args = vec_new();
@@ -4923,7 +5281,14 @@ function p_parse_postfix(exprIn) {
 }
   if (p_at(TK_SYMBOL, ".")) {
   p_eat();
-  let prop = p_parse_identifier();
+  let prop = 0;
+  if (p_at_kind(TK_IDENTIFIER)) {
+  prop = p_parse_identifier();
+} else { if (p_at_kind(TK_KEYWORD)) {
+  prop = tok_value(p_eat());
+} else {
+  panic("Expected member name after '.'");
+} }
   let member = node_new(NK_MEMBER_EXPR);
   node_set_data1(member, expr);
   node_set_data2(member, prop);
@@ -5308,12 +5673,46 @@ function p_is_binary_op() {
   if (p_at(TK_KEYWORD, "is")) {
   return true;
 }
+  if (p_at(TK_KEYWORD, "into")) {
+  return true;
+}
   return false;
 }
 
 function p_parse_expression(minPrec) {
   let left = p_parse_unary();
   while (p_is_binary_op()) {
+  if (((minPrec <= 0) && p_at(TK_KEYWORD, "into"))) {
+  p_eat();
+  let contract_name = p_parse_identifier();
+  let type_args = vec_new();
+  let contract_type = node_new(NK_NAMED_TYPE);
+  node_set_data1(contract_type, contract_name);
+  node_set_data2(contract_type, vec_new());
+  (() => { const __recv = type_args; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, contract_type) : vec_push(__recv, contract_type); })();
+  let args = vec_new();
+  (() => { const __recv = args; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, left) : vec_push(__recv, left); })();
+  if (p_at(TK_SYMBOL, "(")) {
+  p_eat();
+  if ((!p_at(TK_SYMBOL, ")"))) {
+  (() => { const __recv = args; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, p_parse_expression(0)) : vec_push(__recv, p_parse_expression(0)); })();
+  while (p_at(TK_SYMBOL, ",")) {
+  p_eat();
+  (() => { const __recv = args; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, p_parse_expression(0)) : vec_push(__recv, p_parse_expression(0)); })();
+}
+}
+  p_expect(TK_SYMBOL, ")", "Expected ')' after into arguments");
+}
+  let call = node_new(NK_CALL_EXPR);
+  let callee = node_new(NK_IDENTIFIER);
+  node_set_data1(callee, intern("into"));
+  node_set_data1(call, callee);
+  node_set_data2(call, args);
+  node_set_data3(call, 1);
+  node_set_data4(call, type_args);
+  left = call;
+  continue;
+}
   let op = tok_value(p_peek(0));
   let prec = p_get_precedence(op);
   if (p_at(TK_KEYWORD, "is")) {
@@ -5401,6 +5800,66 @@ function emit_expr(n) {
   return str_concat((() => { const __recv = (() => { const __recv = (() => { const __recv = "("; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, left) : str_concat(__recv, left); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, (() => { const __recv = " "; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, op) : str_concat(__recv, op); })()) : str_concat(__recv, (() => { const __recv = " "; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, op) : str_concat(__recv, op); })()); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, (() => { const __recv = " "; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, right) : str_concat(__recv, right); })()) : str_concat(__recv, (() => { const __recv = " "; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, right) : str_concat(__recv, right); })()); })(), ")");
 }
   if ((kind == NK_CALL_EXPR)) {
+  let callee_node = node_get_data1(n);
+  if ((node_kind(callee_node) == NK_IDENTIFIER)) {
+  let callee_name = get_interned_str(node_get_data1(callee_node));
+  if ((() => { const __recv = callee_name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "drop") : str_eq(__recv, "drop"); })()) {
+  return "undefined";
+}
+  if (((() => { const __recv = callee_name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "into") : str_eq(__recv, "into"); })() && (node_get_data3(n) == 1))) {
+  let args = node_get_data2(n);
+  if (((() => { const __recv = args; const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })() < 1)) {
+  return "undefined";
+}
+  let type_args = node_get_data4(n);
+  let contract_name = "";
+  if ((((() => { const __recv = type_args; const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })() == 1) && (node_kind((() => { const __recv = type_args; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })()) == NK_NAMED_TYPE))) {
+  contract_name = get_interned_str(node_get_data1((() => { const __recv = type_args; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })()));
+}
+  let src_node = (() => { const __recv = args; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })();
+  let src = emit_expr(src_node);
+  let consume_source = "";
+  if ((node_kind(src_node) == NK_IDENTIFIER)) {
+  consume_source = (() => { const __recv = get_interned_str(node_get_data1(src_node)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " = undefined;") : str_concat(__recv, " = undefined;"); })();
+}
+  if ((node_get_data5(n) == 1)) {
+  return (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = "(() => { const __src = "; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, src) : str_concat(__recv, src); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "; const __conv = __src?.__into?.[") : str_concat(__recv, "; const __conv = __src?.__into?.["); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "\"") : str_concat(__recv, "\""); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, contract_name) : str_concat(__recv, contract_name); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "\"") : str_concat(__recv, "\""); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "]; if (!__conv) { throw new Error(\"Missing into converter for ") : str_concat(__recv, "]; if (!__conv) { throw new Error(\"Missing into converter for "); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, (((() => { const __recv = contract_name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "") : str_eq(__recv, ""); })()) ? (() => {
+  return "<unknown>";
+})() : (() => {
+  return contract_name;
+})())) : str_concat(__recv, (((() => { const __recv = contract_name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "") : str_eq(__recv, ""); })()) ? (() => {
+  return "<unknown>";
+})() : (() => {
+  return contract_name;
+})())); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "\"); } ") : str_concat(__recv, "\"); } "); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, consume_source) : str_concat(__recv, consume_source); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " let __used = false; return (...__intoArgs) => { if (__used) { throw new Error(\"Into converter already consumed for ") : str_concat(__recv, " let __used = false; return (...__intoArgs) => { if (__used) { throw new Error(\"Into converter already consumed for "); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, (((() => { const __recv = contract_name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "") : str_eq(__recv, ""); })()) ? (() => {
+  return "<unknown>";
+})() : (() => {
+  return contract_name;
+})())) : str_concat(__recv, (((() => { const __recv = contract_name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "") : str_eq(__recv, ""); })()) ? (() => {
+  return "<unknown>";
+})() : (() => {
+  return contract_name;
+})())); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "\"); } __used = true; return __conv(...__intoArgs); }; })()") : str_concat(__recv, "\"); } __used = true; return __conv(...__intoArgs); }; })()"); })();
+}
+  let arg_strs = vec_new();
+  let i = 1;
+  let len = (() => { const __recv = args; const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })();
+  while ((i < len)) {
+  (() => { const __recv = arg_strs; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, emit_expr((() => { const __recv = args; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })())) : vec_push(__recv, emit_expr((() => { const __recv = args; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })())); })();
+  i = (i + 1);
+}
+  let rest_args = (() => { const __recv = arg_strs; const __dyn = __recv?.table?.vec_join; return __dyn ? __dyn(__recv.ref, ", ") : vec_join(__recv, ", "); })();
+  return (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = "(() => { const __src = "; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, src) : str_concat(__recv, src); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "; const __conv = __src?.__into?.[") : str_concat(__recv, "; const __conv = __src?.__into?.["); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "\"") : str_concat(__recv, "\""); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, contract_name) : str_concat(__recv, contract_name); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "\"") : str_concat(__recv, "\""); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "]; if (!__conv) { throw new Error(\"Missing into converter for ") : str_concat(__recv, "]; if (!__conv) { throw new Error(\"Missing into converter for "); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, (((() => { const __recv = contract_name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "") : str_eq(__recv, ""); })()) ? (() => {
+  return "<unknown>";
+})() : (() => {
+  return contract_name;
+})())) : str_concat(__recv, (((() => { const __recv = contract_name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "") : str_eq(__recv, ""); })()) ? (() => {
+  return "<unknown>";
+})() : (() => {
+  return contract_name;
+})())); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "\"); } const __out = __conv(") : str_concat(__recv, "\"); } const __out = __conv("); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, rest_args) : str_concat(__recv, rest_args); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "); ") : str_concat(__recv, "); "); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, consume_source) : str_concat(__recv, consume_source); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " return __out; })()") : str_concat(__recv, " return __out; })()"); })();
+}
+}
   let callee = emit_expr(node_get_data1(n));
   let args = node_get_data2(n);
   let arg_strs = vec_new();

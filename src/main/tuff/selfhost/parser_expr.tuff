@@ -163,6 +163,35 @@ fn p_has_generic_value_suffix() : Bool => {
 fn p_parse_postfix(exprIn: I32) : I32 => {
     let expr = exprIn;
     while (true) {
+        if (node_kind(expr) == NK_MEMBER_EXPR && get_interned_str(node_get_data2(expr)).str_eq("into") && p_at(TK_SYMBOL, "<") && p_has_generic_value_suffix()) {
+            p_eat();
+            let type_args = vec_new();
+            if (!p_at(TK_SYMBOL, ">")) {
+                type_args.vec_push(p_parse_type());
+                while (p_at(TK_SYMBOL, ",")) {
+                    p_eat();
+                    type_args.vec_push(p_parse_type());
+                }
+            }
+            p_expect(TK_SYMBOL, ">", "Expected '>' after into type args");
+
+            let recv = node_get_data1(expr);
+            let prop = node_get_data2(expr);
+            let args = vec_new();
+            args.vec_push(recv);
+            let callee = node_new(NK_IDENTIFIER);
+            node_set_data1(callee, prop);
+
+            let into_value = node_new(NK_CALL_EXPR);
+            node_set_data1(into_value, callee);
+            node_set_data2(into_value, args);
+            node_set_data3(into_value, 1);
+            node_set_data4(into_value, type_args);
+            node_set_data5(into_value, 1);
+            expr = into_value;
+            continue;
+        }
+
         if (p_at(TK_SYMBOL, "<") && p_has_generic_call_suffix()) {
             p_eat();
             let type_args = vec_new();
@@ -259,7 +288,14 @@ fn p_parse_postfix(exprIn: I32) : I32 => {
         }
         if (p_at(TK_SYMBOL, ".")) {
             p_eat();
-            let prop = p_parse_identifier();
+            let prop = 0;
+            if (p_at_kind(TK_IDENTIFIER)) {
+                prop = p_parse_identifier();
+            } else if (p_at_kind(TK_KEYWORD)) {
+                prop = tok_value(p_eat());
+            } else {
+                panic("Expected member name after '.'");
+            }
             let member = node_new(NK_MEMBER_EXPR);
             node_set_data1(member, expr);
             node_set_data2(member, prop);
@@ -601,6 +637,7 @@ fn p_is_binary_op() : Bool => {
     if (p_at(TK_SYMBOL, "&&")) { return true; }
     if (p_at(TK_SYMBOL, "||")) { return true; }
     if (p_at(TK_KEYWORD, "is")) { return true; }
+    if (p_at(TK_KEYWORD, "into")) { return true; }
     false
 }
 
@@ -608,6 +645,41 @@ fn p_parse_expression(minPrec: I32) : I32 => {
     let left = p_parse_unary();
     
     while (p_is_binary_op()) {
+        if (minPrec <= 0 && p_at(TK_KEYWORD, "into")) {
+            p_eat();
+            let contract_name = p_parse_identifier();
+
+            let type_args = vec_new();
+            let contract_type = node_new(NK_NAMED_TYPE);
+            node_set_data1(contract_type, contract_name);
+            node_set_data2(contract_type, vec_new());
+            type_args.vec_push(contract_type);
+
+            let args = vec_new();
+            args.vec_push(left);
+            if (p_at(TK_SYMBOL, "(")) {
+                p_eat();
+                if (!p_at(TK_SYMBOL, ")")) {
+                    args.vec_push(p_parse_expression(0));
+                    while (p_at(TK_SYMBOL, ",")) {
+                        p_eat();
+                        args.vec_push(p_parse_expression(0));
+                    }
+                }
+                p_expect(TK_SYMBOL, ")", "Expected ')' after into arguments");
+            }
+
+            let call = node_new(NK_CALL_EXPR);
+            let callee = node_new(NK_IDENTIFIER);
+            node_set_data1(callee, intern("into"));
+            node_set_data1(call, callee);
+            node_set_data2(call, args);
+            node_set_data3(call, 1);
+            node_set_data4(call, type_args);
+            left = call;
+            continue;
+        }
+
         let op = tok_value(p_peek(0));
         let prec = p_get_precedence(op);
         
