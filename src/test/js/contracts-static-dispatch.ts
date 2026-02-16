@@ -102,6 +102,47 @@ if (dynamicValue !== 7) {
   process.exit(1);
 }
 
+const dynamicConverterValueSource = [
+  "contract Vehicle {",
+  "  fn drive(*this) : I32;",
+  "}",
+  "fn Car(name : *Str) {",
+  "  fn drive(self : *mut Car) : I32 => 11;",
+  "  into Vehicle;",
+  "}",
+  "fn main() : I32 => {",
+  '  let myCar = Car("Roadster");',
+  "  let mut carPtr : Car;",
+  "  let converter = myCar.into<Vehicle>;",
+  "  let vehicle = converter(&mut carPtr);",
+  "  vehicle.drive()",
+  "}",
+  "",
+].join("\n");
+
+const dynamicConverterValueResult = compileSourceResult(
+  dynamicConverterValueSource,
+  "<contracts-dynamic-dispatch-converter-value-runtime>",
+  { backend: "stage0" },
+);
+if (!dynamicConverterValueResult.ok) {
+  console.error(
+    `Expected converter-value dispatch sample to compile, got: ${dynamicConverterValueResult.error.message}`,
+  );
+  process.exit(1);
+}
+
+const dynamicConverterValue = runMainFromJs(
+  dynamicConverterValueResult.value.js,
+  "contracts-dynamic-dispatch-converter-value-runtime",
+);
+if (dynamicConverterValue !== 11) {
+  console.error(
+    `Expected converter-value dynamic dispatch runtime result 11, got ${JSON.stringify(dynamicConverterValue)}`,
+  );
+  process.exit(1);
+}
+
 expectFailCode(
   "contracts-into-use-after-move",
   [
@@ -116,6 +157,27 @@ expectFailCode(
     '  let myCar = Car("Roadster");',
     "  let mut carPtr : Car;",
     "  let _vehicle = myCar.into<Vehicle>(&mut carPtr);",
+    "  myCar.drive()",
+    "}",
+    "",
+  ].join("\n"),
+  "E_BORROW_USE_AFTER_MOVE",
+  { backend: "stage0" },
+);
+
+expectFailCode(
+  "contracts-into-value-extract-use-after-move",
+  [
+    "contract Vehicle {",
+    "  fn drive(*this) : I32;",
+    "}",
+    "fn Car(name : *Str) {",
+    "  fn drive(self : *mut Car) : I32 => 7;",
+    "  into Vehicle;",
+    "}",
+    "fn main() : I32 => {",
+    '  let myCar = Car("Roadster");',
+    "  let _converter = myCar.into<Vehicle>;",
     "  myCar.drive()",
     "}",
     "",

@@ -432,6 +432,23 @@ export function resolveNames(
         }
         break;
       }
+      case "IntoValueExpr": {
+        const valueResult = visitExpr(expr.value, scope, currentModulePath);
+        if (!valueResult.ok) return valueResult;
+        if (!expr.contractName || !contractNames.has(expr.contractName)) {
+          return err(
+            new TuffError(
+              `Unknown contract '${expr.contractName ?? "<missing>"}'`,
+              expr.loc ?? undefined,
+              {
+                code: "E_RESOLVE_UNKNOWN_IDENTIFIER",
+                hint: "Use value.into<Contract> with a declared contract name.",
+              },
+            ),
+          );
+        }
+        break;
+      }
       case "LambdaExpr": {
         const lambdaScope = new Scope(scope);
         for (const p of expr.params ?? []) {

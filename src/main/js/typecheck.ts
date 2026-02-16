@@ -1705,6 +1705,67 @@ export function typecheck(
           },
         });
       }
+      case "IntoValueExpr": {
+        const valueResult = inferExpr(expr.value, scope, facts);
+        if (!valueResult.ok) return valueResult;
+        const valueType = valueResult.value;
+        const valueTypeName = valueType.name;
+
+        if (!expr.contractName) {
+          return err(
+            new TuffError(
+              "into conversion value requires exactly one contract type argument",
+              expr.loc,
+              {
+                code: "E_TYPE_INTO_CONTRACT_EXPECTED",
+                hint: "Use value.into<Contract> where Contract is a declared contract name.",
+              },
+            ),
+          );
+        }
+
+        if (!contracts.has(expr.contractName)) {
+          return err(
+            new TuffError(
+              `Unknown contract '${expr.contractName}' in into conversion`,
+              expr.loc,
+              {
+                code: "E_TYPE_INTO_UNKNOWN_CONTRACT",
+                hint: "Declare the contract before converting with into.",
+              },
+            ),
+          );
+        }
+
+        if (valueTypeName && valueTypeName !== "Unknown") {
+          const contractResult = ensureTypeCanConvertIntoContract(
+            valueTypeName,
+            expr.contractName,
+            expr.loc,
+          );
+          if (!contractResult.ok) return contractResult;
+        }
+
+        const returnName = `__dyn_${expr.contractName}`;
+        return ok({
+          name: functionTypeName(["Unknown"], returnName),
+          min: undefined,
+          max: undefined,
+          nonZero: false,
+          typeNode: {
+            kind: "FunctionType",
+            params: [{ kind: "NamedType", name: "Unknown", genericArgs: [] }],
+            returnType: {
+              kind: "NamedType",
+              name: returnName,
+              genericArgs:
+                valueType.typeNode && valueType.typeNode.kind
+                  ? [valueType.typeNode]
+                  : [],
+            },
+          },
+        });
+      }
       case "LambdaExpr": {
         const lambdaScope = new Map(scope);
         for (const p of expr.params ?? []) {

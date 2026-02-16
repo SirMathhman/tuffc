@@ -557,6 +557,12 @@ export function borrowcheck(ast, options = {}): BorrowcheckResult<unknown> {
         }
         return ok(undefined);
       }
+      case "IntoValueExpr": {
+        const valueMode = canonicalPlace(expr.value) ? "move" : "read";
+        const valueResult = checkExpr(expr.value, state, envTypes, valueMode);
+        if (!valueResult.ok) return valueResult;
+        return ok(undefined);
+      }
       default:
         return ok(undefined);
     }
@@ -713,7 +719,8 @@ export function borrowcheck(ast, options = {}): BorrowcheckResult<unknown> {
       node.kind === "MatchExpr" ||
       node.kind === "IsExpr" ||
       node.kind === "UnwrapExpr" ||
-      node.kind === "IntoExpr"
+      node.kind === "IntoExpr" ||
+      node.kind === "IntoValueExpr"
     ) {
       return checkExpr(node, state, envTypes, "move");
     }

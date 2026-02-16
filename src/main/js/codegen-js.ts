@@ -142,6 +142,15 @@ function emitExpr(expr) {
           : "";
       return `(() => { const __src = ${src}; const __conv = __src?.__into?.[${JSON.stringify(expr.contractName)}]; if (!__conv) { throw new Error(${JSON.stringify(`Missing into converter for ${expr.contractName}`)}); } const __out = __conv(${args}); ${consumeSource} return __out; })()`;
     }
+    case "IntoValueExpr": {
+      const src = emitExpr(expr.value);
+      const contractName = expr.contractName ?? "<unknown>";
+      const consumeSource =
+        expr.value?.kind === "Identifier"
+          ? `${expr.value.name} = undefined;`
+          : "";
+      return `(() => { const __src = ${src}; const __conv = __src?.__into?.[${JSON.stringify(contractName)}]; if (!__conv) { throw new Error(${JSON.stringify(`Missing into converter for ${contractName}`)}); } ${consumeSource} let __used = false; return (...__intoArgs) => { if (__used) { throw new Error(${JSON.stringify(`Into converter already consumed for ${contractName}`)}); } __used = true; return __conv(...__intoArgs); }; })()`;
+    }
     case "LambdaExpr": {
       const params = (expr.params ?? []).map((p) => p.name).join(", ");
       if (expr.body?.kind === "Block") {

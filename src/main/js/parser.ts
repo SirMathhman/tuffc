@@ -485,6 +485,74 @@ export function parse(tokens: Token[]): ParseResult<Program> {
           return false;
         };
 
+        const hasGenericValueSuffix = (): boolean => {
+          if (!at("symbol", "<") || !canStartTypeToken(peek(1))) {
+            return false;
+          }
+          let j = i;
+          let depth = 0;
+          while (j < tokens.length) {
+            const t = tokens[j];
+            if (t.type === "symbol" && t.value === "<") {
+              depth += 1;
+              j += 1;
+              continue;
+            }
+            if (t.type === "symbol" && t.value === ">") {
+              depth -= 1;
+              j += 1;
+              if (depth === 0) {
+                const next = tokens[j];
+                return !(next?.type === "symbol" && next?.value === "(");
+              }
+              continue;
+            }
+            if (t.type === "eof") return false;
+            j += 1;
+          }
+          return false;
+        };
+
+        if (
+          expr.kind === "MemberExpr" &&
+          expr.property === "into" &&
+          hasGenericValueSuffix()
+        ) {
+          eat(); // '<'
+          const typeArgs: Expr[] = [];
+          if (!at("symbol", ">")) {
+            while (true) {
+              const typeArgResult = parseType();
+              if (!typeArgResult.ok) return typeArgResult;
+              typeArgs.push(typeArgResult.value);
+              if (!at("symbol", ",")) break;
+              eat();
+            }
+          }
+          const closeGenericsResult = expect(
+            "symbol",
+            ">",
+            "Expected '>' after into type args",
+          );
+          if (!closeGenericsResult.ok) return closeGenericsResult;
+          const contractType = typeArgs.length === 1 ? typeArgs[0] : undefined;
+          const contractName =
+            contractType?.kind === "NamedType" &&
+            (contractType.genericArgs ?? []).length === 0
+              ? contractType.name
+              : undefined;
+          expr = {
+            kind: "IntoValueExpr",
+            value: expr.object,
+            contractName,
+            typeArgs,
+            loc: expr.loc,
+            start: expr.start,
+            end: closeGenericsResult.value.end,
+          };
+          continue;
+        }
+
         if (hasGenericCallSuffix()) {
           eat(); // '<'
           const typeArgs: Expr[] = [];
