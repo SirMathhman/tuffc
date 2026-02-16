@@ -86,6 +86,21 @@ function emitExpr(expr) {
     }
     case "UnwrapExpr":
       return emitExpr(expr.expr);
+    case "LambdaExpr": {
+      const params = (expr.params ?? []).map((p) => p.name).join(", ");
+      if (expr.body?.kind === "Block") {
+        return `((${params}) => ${emitFunctionBlock(expr.body)})`;
+      }
+      return `((${params}) => ${emitExpr(expr.body)})`;
+    }
+    case "FnExpr": {
+      const params = (expr.params ?? []).map((p) => p.name).join(", ");
+      const name = expr.name ? ` ${expr.name}` : "";
+      if (expr.body?.kind === "Block") {
+        return `(function${name}(${params}) ${emitFunctionBlock(expr.body)})`;
+      }
+      return `(function${name}(${params}) { return ${emitExpr(expr.body)}; })`;
+    }
     default:
       return "undefined";
   }

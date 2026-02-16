@@ -253,6 +253,48 @@ export function resolveNames(
         if (!exprResult.ok) return exprResult;
         break;
       }
+      case "LambdaExpr": {
+        const lambdaScope = new Scope(scope);
+        for (const p of expr.params ?? []) {
+          const defineResult = lambdaScope.define(p.name);
+          if (!defineResult.ok) return defineResult;
+        }
+        if (expr.body?.kind === "Block") {
+          const bodyResult = visitNode(
+            expr.body,
+            lambdaScope,
+            currentModulePath,
+          );
+          if (!bodyResult.ok) return bodyResult;
+        } else {
+          const bodyResult = visitExpr(
+            expr.body,
+            lambdaScope,
+            currentModulePath,
+          );
+          if (!bodyResult.ok) return bodyResult;
+        }
+        break;
+      }
+      case "FnExpr": {
+        const fnScope = new Scope(scope);
+        if (expr.name) {
+          const defineSelfResult = fnScope.define(expr.name);
+          if (!defineSelfResult.ok) return defineSelfResult;
+        }
+        for (const p of expr.params ?? []) {
+          const defineResult = fnScope.define(p.name);
+          if (!defineResult.ok) return defineResult;
+        }
+        if (expr.body?.kind === "Block") {
+          const bodyResult = visitNode(expr.body, fnScope, currentModulePath);
+          if (!bodyResult.ok) return bodyResult;
+        } else {
+          const bodyResult = visitExpr(expr.body, fnScope, currentModulePath);
+          if (!bodyResult.ok) return bodyResult;
+        }
+        break;
+      }
       default:
         break;
     }

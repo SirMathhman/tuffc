@@ -155,6 +155,47 @@ fn emit_expr(n: I32) : *Str => {
     if (kind == NK_UNWRAP_EXPR) {
         return emit_expr(node_get_data1(n));
     }
+
+    if (kind == NK_LAMBDA_EXPR) {
+        let params = node_get_data1(n);
+        let body = node_get_data2(n);
+        let pnames = vec_new();
+        let i = 0;
+        let len = params.vec_length();
+        while (i < len) {
+            let param = params.vec_get(i);
+            pnames.vec_push(get_interned_str(param.vec_get(0)));
+            i = i + 1;
+        }
+        let args = pnames.vec_join(", ");
+        if (node_kind(body) == NK_BLOCK) {
+            return "((".str_concat(args).str_concat(") => ").str_concat(emit_fn_block(body)).str_concat(")");
+        }
+        return "((".str_concat(args).str_concat(") => ").str_concat(emit_expr(body)).str_concat(")");
+    }
+
+    if (kind == NK_FN_EXPR) {
+        let fname_idx = node_get_data1(n);
+        let params = node_get_data3(n);
+        let body = node_get_data5(n);
+        let pnames = vec_new();
+        let i = 0;
+        let len = params.vec_length();
+        while (i < len) {
+            let param = params.vec_get(i);
+            pnames.vec_push(get_interned_str(param.vec_get(0)));
+            i = i + 1;
+        }
+        let args = pnames.vec_join(", ");
+        let namePart = "";
+        if (fname_idx != 0) {
+            namePart = " ".str_concat(get_interned_str(fname_idx));
+        }
+        if (node_kind(body) == NK_BLOCK) {
+            return "(function".str_concat(namePart).str_concat("(").str_concat(args).str_concat(") ").str_concat(emit_fn_block(body)).str_concat(")");
+        }
+        return "(function".str_concat(namePart).str_concat("(").str_concat(args).str_concat(") { return ").str_concat(emit_expr(body)).str_concat("; })");
+    }
     
     "undefined"
 }

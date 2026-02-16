@@ -14,23 +14,31 @@ This document lists the current gaps between the implemented compiler behavior a
 
 These are spec-described constructs that currently fail to compile.
 
-### 1) Generic call/type argument usage mismatch
+### ✅ Resolved: Generic call/type argument usage mismatch
 
 - Spec area: `2.1`, `3.2`
 - Case: `functions:generic-identity`
-- Observed:
-  - Stage0/1: `E_RESOLVE_UNKNOWN_IDENTIFIER` (`I32` resolved as identifier in generic call context)
-  - Stage2/3: `E_RESOLVE_UNKNOWN_IDENTIFIER` / `E_SELFHOST_PANIC` variants
+- Status: **fixed** (no longer reported by `npm run semantics:exhaustive`)
+- Notes:
+  - Added generic call suffix parsing (`callee<T>(...)`) in Stage0 parser.
+  - Mirrored parser behavior in selfhost parser for stage alignment.
 
-### 2) Closure/lambda expression parsing
+### ✅ Resolved: Closure/lambda expression parsing
 
 - Spec area: `3.3`
 - Case: `closures:arrow-lambda`
-- Observed:
-  - Stage0/1: `E_PARSE_EXPECTED_TOKEN` (`Expected ')' after params, got =>`)
-  - Stage2/3: `E_SELFHOST_PANIC` (`Expected ')'`)
+- Status: **fixed** (no longer reported by `npm run semantics:exhaustive`)
+- Notes:
+  - Added parser support for function types (`() => T`, `(A) => B`).
+  - Added expression support for `() => ...` lambdas and `fn ... => ...` function expressions.
+  - Added function-value equivalence audit cases:
+    - `let func : () => I32 = get;`
+    - `let func : () => I32 = fn get() : I32 => 100;`
+    - `let func : () => I32 = () => 100;`
+    - `let func = () => 100;`
+  - Mirrored parser support in selfhost parser for stage alignment.
 
-### 3) `object` singleton declarations
+### 1) `object` singleton declarations
 
 - Spec area: `2.1`, `3.4`
 - Case: `objects:singleton-generic`
@@ -38,7 +46,7 @@ These are spec-described constructs that currently fail to compile.
   - Stage0/1: `E_PARSE_UNEXPECTED_TOKEN` (`keyword:object`)
   - Stage2/3: `E_SELFHOST_PANIC` (`Unexpected token in expression`)
 
-### 4) `loop {}` construct
+### 2) `loop {}` construct
 
 - Spec area: `3.6`
 - Case: `loops:for-while-loop`
@@ -46,7 +54,7 @@ These are spec-described constructs that currently fail to compile.
   - Stage0/1: `E_PARSE_UNEXPECTED_TOKEN` (`keyword:loop`)
   - Stage2/3: `E_SELFHOST_PANIC` (`Unexpected token in expression`)
 
-### 5) `async fn` syntax/CPS surface
+### 3) `async fn` syntax/CPS surface
 
 - Spec area: `3.7`, `9.4`
 - Case: `async:syntax-cps`
@@ -54,7 +62,7 @@ These are spec-described constructs that currently fail to compile.
   - Stage0/1: `E_PARSE_UNEXPECTED_TOKEN` (`keyword:async`)
   - Stage2/3: `E_SELFHOST_PANIC` (`Unexpected token in expression`)
 
-### 6) Contracts/traits and `impl ... for ...`
+### 4) Contracts/traits and `impl ... for ...`
 
 - Spec area: `2.2`
 - Case: `contracts:definition-and-impl`
@@ -62,14 +70,14 @@ These are spec-described constructs that currently fail to compile.
   - Stage0/1: `E_PARSE_EXPECTED_TOKEN` (unexpected `Display` in statement flow)
   - Stage2/3: `E_SELFHOST_PANIC` (`Expected ';'`)
 
-### 7) `class fn ...` desugar behavior mismatch
+### 5) `class fn ...` desugar behavior mismatch
 
 - Spec area: `3.4`
 - Case: `class:syntax-desugar`
 - Observed:
   - Stage0/1: `E_RESOLVE_SHADOWING` (name collision on `Car`)
 
-### 8) `expect` / `actual` declarations
+### 6) `expect` / `actual` declarations
 
 - Spec area: `5.2`
 - Case: `platform:expect-actual`
@@ -77,7 +85,7 @@ These are spec-described constructs that currently fail to compile.
   - Stage0/1: `E_PARSE_EXPECTED_TOKEN` (`Expected ';' ... got keyword:fn`)
   - Stage2/3: `E_SELFHOST_PANIC` (`Expected ';'`)
 
-### 9) Result union marker `|>` + unwrap ergonomics in tested form
+### 7) Result union marker `|>` + unwrap ergonomics in tested form
 
 - Spec area: `2.1`, `4.7`
 - Case: `result:pipe-union-and-q`
@@ -85,7 +93,7 @@ These are spec-described constructs that currently fail to compile.
   - Stage0/1: `E_PARSE_UNEXPECTED_TOKEN` (`Unexpected token symbol:{`)
   - Stage2/3: `E_SELFHOST_PANIC` (`Unexpected token in expression`)
 
-### 10) Dependent array signature form (`L : USize`, `_` placeholder in tested shape)
+### 8) Dependent array signature form (`L : USize`, `_` placeholder in tested shape)
 
 - Spec area: `2.1`, `2.4`, `4.3`
 - Case: `arrays:dependent-shape`

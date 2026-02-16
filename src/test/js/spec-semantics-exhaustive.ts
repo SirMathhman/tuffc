@@ -144,10 +144,39 @@ const positiveCases = [
     section: "3.3",
     source: [
       "fn applyTwice(x : I32, f : (I32) => I32) : I32 => f(f(x));",
-      "let out : I32 = applyTwice(2, (v : I32) => v + 3);",
-      "out;",
+      "let resultValue : I32 = applyTwice(2, (v : I32) => v + 3);",
+      "resultValue;",
       "",
     ].join("\n"),
+  },
+  {
+    id: "closures:function-value-from-decl",
+    section: "3.2/3.3",
+    source: [
+      "fn get() : I32 => 100;",
+      "let func : () => I32 = get;",
+      "func();",
+      "",
+    ].join("\n"),
+  },
+  {
+    id: "closures:function-value-from-fn-expr",
+    section: "3.2/3.3",
+    source: [
+      "let func : () => I32 = fn get() : I32 => 100;",
+      "func();",
+      "",
+    ].join("\n"),
+  },
+  {
+    id: "closures:function-value-from-lambda",
+    section: "3.3",
+    source: ["let func : () => I32 = () => 100;", "func();", ""].join("\n"),
+  },
+  {
+    id: "closures:function-value-inferred",
+    section: "3.3",
+    source: ["let func = () => 100;", "func();", ""].join("\n"),
   },
   {
     id: "structs:instantiation",

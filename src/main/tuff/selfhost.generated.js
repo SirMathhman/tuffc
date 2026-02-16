@@ -580,6 +580,10 @@ let NK_IS_EXPR = 33;
 
 let NK_UNWRAP_EXPR = 34;
 
+let NK_LAMBDA_EXPR = 35;
+
+let NK_FN_EXPR = 36;
+
 let NK_NAMED_TYPE = 40;
 
 let NK_POINTER_TYPE = 41;
@@ -591,6 +595,8 @@ let NK_TUPLE_TYPE = 43;
 let NK_REFINEMENT_TYPE = 44;
 
 let NK_UNION_TYPE = 45;
+
+let NK_FUNCTION_TYPE = 46;
 
 let NK_WILDCARD_PAT = 50;
 
@@ -695,6 +701,13 @@ function p_peek(offset) {
 })() : (() => {
   return idx;
 })());
+}
+
+function p_mark() { return parse_pos; }
+
+function p_restore(mark) {
+  parse_pos = mark;
+  return 0;
 }
 
 function p_at_kind(kind) { return (tok_kind(p_peek(0)) == kind); }
@@ -838,13 +851,35 @@ function p_parse_type_primary() {
   p_eat();
   let members = vec_new();
   if ((!p_at(TK_SYMBOL, ")"))) {
+  if (((tok_kind(p_peek(0)) == TK_IDENTIFIER) && (tok_kind(p_peek(1)) == TK_SYMBOL))) {
+  let sym0 = get_intern(tok_value(p_peek(1)));
+  if (str_eq(sym0, ":")) {
+  p_eat();
+  p_eat();
+}
+}
   vec_push(members, p_parse_type());
   while (p_at(TK_SYMBOL, ",")) {
   p_eat();
+  if (((tok_kind(p_peek(0)) == TK_IDENTIFIER) && (tok_kind(p_peek(1)) == TK_SYMBOL))) {
+  let sym = get_intern(tok_value(p_peek(1)));
+  if (str_eq(sym, ":")) {
+  p_eat();
+  p_eat();
+}
+}
   vec_push(members, p_parse_type());
 }
 }
   p_expect(TK_SYMBOL, ")", "Expected ')' in tuple type");
+  if (p_at(TK_SYMBOL, "=>")) {
+  p_eat();
+  let ret = p_parse_type();
+  let fnty = node_new(NK_FUNCTION_TYPE);
+  node_set_data1(fnty, members);
+  node_set_data2(fnty, ret);
+  return fnty;
+}
   let node = node_new(NK_TUPLE_TYPE);
   node_set_data1(node, members);
   return node;
@@ -903,7 +938,14 @@ function p_parse_type_primary() {
 function p_parse_type() {
   let type_node = p_parse_type_primary();
   let has_refine = ((((p_at(TK_SYMBOL, "!=") || p_at(TK_SYMBOL, "<")) || p_at(TK_SYMBOL, ">")) || p_at(TK_SYMBOL, "<=")) || p_at(TK_SYMBOL, ">="));
-  if ((has_refine && p_can_start_refinement_expr_at(1))) {
+  let starts_generic_call_suffix = false;
+  if ((p_at(TK_SYMBOL, ">") && (tok_kind(p_peek(1)) == TK_SYMBOL))) {
+  let next_sym = get_intern(tok_value(p_peek(1)));
+  if (str_eq(next_sym, "(")) {
+  starts_generic_call_suffix = true;
+}
+}
+  if (((has_refine && p_can_start_refinement_expr_at(1)) && (!starts_generic_call_suffix))) {
   let op = tok_value(p_eat());
   let val_expr = p_parse_expression(0);
   let refine = node_new(NK_REFINEMENT_TYPE);
@@ -1555,6 +1597,40 @@ function resolve_expr(n, globals, scopes, depth) {
 }
   if ((kind == NK_IS_EXPR)) {
   resolve_expr(node_get_data1(n), globals, scopes, depth);
+  return 0;
+}
+  if ((kind == NK_LAMBDA_EXPR)) {
+  let next_depth = (depth + 1);
+  vec_push(scopes, set_new());
+  let params = node_get_data1(n);
+  let i = 0;
+  let len = vec_length(params);
+  while ((i < len)) {
+  let param = vec_get(params, i);
+  scope_define(scopes, next_depth, get_interned_str(vec_get(param, 0)));
+  i = (i + 1);
+}
+  resolve_stmt(node_get_data2(n), globals, scopes, next_depth);
+  vec_pop(scopes);
+  return 0;
+}
+  if ((kind == NK_FN_EXPR)) {
+  let next_depth = (depth + 1);
+  vec_push(scopes, set_new());
+  let fname_idx = node_get_data1(n);
+  if ((fname_idx != 0)) {
+  scope_define(scopes, next_depth, get_interned_str(fname_idx));
+}
+  let params = node_get_data3(n);
+  let i = 0;
+  let len = vec_length(params);
+  while ((i < len)) {
+  let param = vec_get(params, i);
+  scope_define(scopes, next_depth, get_interned_str(vec_get(param, 0)));
+  i = (i + 1);
+}
+  resolve_stmt(node_get_data5(n), globals, scopes, next_depth);
+  vec_pop(scopes);
   return 0;
 }
   return 0;
@@ -4286,9 +4362,94 @@ function compile_file_with_options(inputPath, outputPath, strict_safety, lint_en
   return write_file(outputPath, js);
 }
 
+function p_has_generic_call_suffix() {
+  if ((!p_at(TK_SYMBOL, "<"))) {
+  return false;
+}
+  if ((!p_can_start_type_tok_at(1))) {
+  return false;
+}
+  let cursor = 0;
+  let depth = 0;
+  while (true) {
+  let ti = p_peek(cursor);
+  let tk = tok_kind(ti);
+  if ((tk == TK_EOF)) {
+  return false;
+}
+  if ((tk == TK_SYMBOL)) {
+  let sym = get_interned_str(tok_value(ti));
+  if (str_eq(sym, "<")) {
+  depth = (depth + 1);
+} else { if (str_eq(sym, ">")) {
+  depth = (depth - 1);
+  if ((depth == 0)) {
+  let next = p_peek((cursor + 1));
+  if ((tok_kind(next) == TK_SYMBOL)) {
+  let next_sym = get_interned_str(tok_value(next));
+  return str_eq(next_sym, "(");
+}
+  return false;
+}
+} }
+}
+  cursor = (cursor + 1);
+}
+}
+
 function p_parse_postfix(exprIn) {
   let expr = exprIn;
   while (true) {
+  if ((p_at(TK_SYMBOL, "<") && p_has_generic_call_suffix())) {
+  p_eat();
+  let type_args = vec_new();
+  if ((!p_at(TK_SYMBOL, ">"))) {
+  vec_push(type_args, p_parse_type());
+  while (p_at(TK_SYMBOL, ",")) {
+  p_eat();
+  vec_push(type_args, p_parse_type());
+}
+}
+  p_expect(TK_SYMBOL, ">", "Expected '>' after generic call type args");
+  p_expect(TK_SYMBOL, "(", "Expected '(' after generic call type args");
+  let args = vec_new();
+  if ((!p_at(TK_SYMBOL, ")"))) {
+  vec_push(args, p_parse_expression(0));
+  while (p_at(TK_SYMBOL, ",")) {
+  p_eat();
+  vec_push(args, p_parse_expression(0));
+}
+}
+  p_expect(TK_SYMBOL, ")", "Expected ')' after call args");
+  if ((node_kind(expr) == NK_MEMBER_EXPR)) {
+  let recv = node_get_data1(expr);
+  let prop = node_get_data2(expr);
+  let lowered_args = vec_new();
+  vec_push(lowered_args, recv);
+  let ai = 0;
+  let alen = vec_length(args);
+  while ((ai < alen)) {
+  vec_push(lowered_args, vec_get(args, ai));
+  ai = (ai + 1);
+}
+  let callee = node_new(NK_IDENTIFIER);
+  node_set_data1(callee, prop);
+  let call = node_new(NK_CALL_EXPR);
+  node_set_data1(call, callee);
+  node_set_data2(call, lowered_args);
+  node_set_data3(call, 1);
+  node_set_data4(call, type_args);
+  expr = call;
+} else {
+  let call = node_new(NK_CALL_EXPR);
+  node_set_data1(call, expr);
+  node_set_data2(call, args);
+  node_set_data3(call, 0);
+  node_set_data4(call, type_args);
+  expr = call;
+}
+  continue;
+}
   if (p_at(TK_SYMBOL, "(")) {
   p_eat();
   let args = vec_new();
@@ -4375,6 +4536,109 @@ function p_parse_primary() {
   let node = node_new(NK_CHAR_LIT);
   node_set_data1(node, tok_value(t));
   return p_parse_postfix(node);
+}
+  if (p_at(TK_SYMBOL, "(")) {
+  let mark = p_mark();
+  p_eat();
+  let params = vec_new();
+  let valid = true;
+  if ((!p_at(TK_SYMBOL, ")"))) {
+  while (true) {
+  if ((!p_at_kind(TK_IDENTIFIER))) {
+  valid = false;
+  break;
+}
+  let pname = p_parse_identifier();
+  let ptype = 0;
+  if (p_at(TK_SYMBOL, ":")) {
+  p_eat();
+  ptype = p_parse_type();
+}
+  let param = vec_new();
+  vec_push(param, pname);
+  vec_push(param, ptype);
+  vec_push(params, param);
+  if (p_at(TK_SYMBOL, ",")) {
+  p_eat();
+  continue;
+}
+  break;
+}
+}
+  if ((valid && p_at(TK_SYMBOL, ")"))) {
+  p_eat();
+  if (p_at(TK_SYMBOL, "=>")) {
+  p_eat();
+  let body = ((p_at(TK_SYMBOL, "{")) ? (() => {
+  return p_parse_block();
+})() : (() => {
+  return p_parse_expression(0);
+})());
+  let lam = node_new(NK_LAMBDA_EXPR);
+  node_set_data1(lam, params);
+  node_set_data2(lam, body);
+  return p_parse_postfix(lam);
+}
+}
+  p_restore(mark);
+}
+  if (p_at(TK_KEYWORD, "fn")) {
+  p_eat();
+  let fname = 0;
+  if (p_at_kind(TK_IDENTIFIER)) {
+  fname = p_parse_identifier();
+}
+  let generics = vec_new();
+  if (p_at(TK_SYMBOL, "<")) {
+  p_eat();
+  if ((!p_at(TK_SYMBOL, ">"))) {
+  vec_push(generics, p_parse_identifier());
+  while (p_at(TK_SYMBOL, ",")) {
+  p_eat();
+  vec_push(generics, p_parse_identifier());
+}
+}
+  p_expect(TK_SYMBOL, ">", "Expected '>'");
+}
+  p_expect(TK_SYMBOL, "(", "Expected '(' in function expression");
+  let params = vec_new();
+  if ((!p_at(TK_SYMBOL, ")"))) {
+  while (true) {
+  let pname = p_parse_identifier();
+  let ptype = 0;
+  if (p_at(TK_SYMBOL, ":")) {
+  p_eat();
+  ptype = p_parse_type();
+}
+  let param = vec_new();
+  vec_push(param, pname);
+  vec_push(param, ptype);
+  vec_push(params, param);
+  if ((!p_at(TK_SYMBOL, ","))) {
+  break;
+}
+  p_eat();
+}
+}
+  p_expect(TK_SYMBOL, ")", "Expected ')' after params");
+  let ret = 0;
+  if (p_at(TK_SYMBOL, ":")) {
+  p_eat();
+  ret = p_parse_type();
+}
+  p_expect(TK_SYMBOL, "=>", "Expected '=>' in function expression");
+  let body = ((p_at(TK_SYMBOL, "{")) ? (() => {
+  return p_parse_block();
+})() : (() => {
+  return p_parse_expression(0);
+})());
+  let fnexpr = node_new(NK_FN_EXPR);
+  node_set_data1(fnexpr, fname);
+  node_set_data2(fnexpr, generics);
+  node_set_data3(fnexpr, params);
+  node_set_data4(fnexpr, ret);
+  node_set_data5(fnexpr, body);
+  return p_parse_postfix(fnexpr);
 }
   if (p_at(TK_SYMBOL, "(")) {
   p_eat();
@@ -4780,6 +5044,45 @@ function emit_expr(n) {
 }
   if ((kind == NK_UNWRAP_EXPR)) {
   return emit_expr(node_get_data1(n));
+}
+  if ((kind == NK_LAMBDA_EXPR)) {
+  let params = node_get_data1(n);
+  let body = node_get_data2(n);
+  let pnames = vec_new();
+  let i = 0;
+  let len = vec_length(params);
+  while ((i < len)) {
+  let param = vec_get(params, i);
+  vec_push(pnames, get_interned_str(vec_get(param, 0)));
+  i = (i + 1);
+}
+  let args = vec_join(pnames, ", ");
+  if ((node_kind(body) == NK_BLOCK)) {
+  return str_concat(str_concat(str_concat(str_concat("((", args), ") => "), emit_fn_block(body)), ")");
+}
+  return str_concat(str_concat(str_concat(str_concat("((", args), ") => "), emit_expr(body)), ")");
+}
+  if ((kind == NK_FN_EXPR)) {
+  let fname_idx = node_get_data1(n);
+  let params = node_get_data3(n);
+  let body = node_get_data5(n);
+  let pnames = vec_new();
+  let i = 0;
+  let len = vec_length(params);
+  while ((i < len)) {
+  let param = vec_get(params, i);
+  vec_push(pnames, get_interned_str(vec_get(param, 0)));
+  i = (i + 1);
+}
+  let args = vec_join(pnames, ", ");
+  let namePart = "";
+  if ((fname_idx != 0)) {
+  namePart = str_concat(" ", get_interned_str(fname_idx));
+}
+  if ((node_kind(body) == NK_BLOCK)) {
+  return str_concat(str_concat(str_concat(str_concat(str_concat(str_concat("(function", namePart), "("), args), ") "), emit_fn_block(body)), ")");
+}
+  return str_concat(str_concat(str_concat(str_concat(str_concat(str_concat("(function", namePart), "("), args), ") { return "), emit_expr(body)), "; })");
 }
   return "undefined";
 }

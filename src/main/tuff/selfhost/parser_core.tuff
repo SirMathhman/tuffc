@@ -40,6 +40,8 @@ let NK_IF_EXPR : I32 = 31;
 let NK_MATCH_EXPR : I32 = 32;
 let NK_IS_EXPR : I32 = 33;
 let NK_UNWRAP_EXPR : I32 = 34;
+let NK_LAMBDA_EXPR : I32 = 35;
+let NK_FN_EXPR : I32 = 36;
 
 let NK_NAMED_TYPE : I32 = 40;
 let NK_POINTER_TYPE : I32 = 41;
@@ -47,6 +49,7 @@ let NK_ARRAY_TYPE : I32 = 42;
 let NK_TUPLE_TYPE : I32 = 43;
 let NK_REFINEMENT_TYPE : I32 = 44;
 let NK_UNION_TYPE : I32 = 45;
+let NK_FUNCTION_TYPE : I32 = 46;
 
 let NK_WILDCARD_PAT : I32 = 50;
 let NK_LITERAL_PAT : I32 = 51;
@@ -127,6 +130,9 @@ out fn p_peek(offset: I32) : I32 => {
         idx
     }
 }
+
+out fn p_mark() : I32 => parse_pos;
+out fn p_restore(mark: I32) : I32 => { parse_pos = mark; 0 }
 
 out fn p_at_kind(kind: I32) : Bool => tok_kind(p_peek(0)) == kind;
 
@@ -254,13 +260,35 @@ out fn p_parse_type_primary() : I32 => {
             p_eat();
             let members = vec_new();
             if (!p_at(TK_SYMBOL, ")")) {
+                if (tok_kind(p_peek(0)) == TK_IDENTIFIER && tok_kind(p_peek(1)) == TK_SYMBOL) {
+                    let sym0 = get_intern(tok_value(p_peek(1)));
+                    if (sym0.str_eq(":")) {
+                        p_eat();
+                        p_eat();
+                    }
+                }
                 members.vec_push(p_parse_type());
                 while (p_at(TK_SYMBOL, ",")) {
                     p_eat();
+                    if (tok_kind(p_peek(0)) == TK_IDENTIFIER && tok_kind(p_peek(1)) == TK_SYMBOL) {
+                        let sym = get_intern(tok_value(p_peek(1)));
+                        if (sym.str_eq(":")) {
+                            p_eat();
+                            p_eat();
+                        }
+                    }
                     members.vec_push(p_parse_type());
                 }
             }
             p_expect(TK_SYMBOL, ")", "Expected ')' in tuple type");
+            if (p_at(TK_SYMBOL, "=>")) {
+                p_eat();
+                let ret = p_parse_type();
+                let fnty = node_new(NK_FUNCTION_TYPE);
+                node_set_data1(fnty, members);
+                node_set_data2(fnty, ret);
+                return fnty;
+            }
             let node = node_new(NK_TUPLE_TYPE);
             node_set_data1(node, members);
             return node;
@@ -332,7 +360,14 @@ out fn p_parse_type() : I32 => {
     
     // Refinement predicate
     let has_refine = p_at(TK_SYMBOL, "!=") || p_at(TK_SYMBOL, "<") || p_at(TK_SYMBOL, ">") || p_at(TK_SYMBOL, "<=") || p_at(TK_SYMBOL, ">=");
-    if (has_refine && p_can_start_refinement_expr_at(1)) {
+    let starts_generic_call_suffix = false;
+    if (p_at(TK_SYMBOL, ">") && tok_kind(p_peek(1)) == TK_SYMBOL) {
+        let next_sym = get_intern(tok_value(p_peek(1)));
+        if (next_sym.str_eq("(")) {
+            starts_generic_call_suffix = true;
+        }
+    }
+    if (has_refine && p_can_start_refinement_expr_at(1) && !starts_generic_call_suffix) {
         let op = tok_value(p_eat());
         let val_expr = p_parse_expression(0);
         let refine = node_new(NK_REFINEMENT_TYPE);

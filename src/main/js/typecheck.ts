@@ -27,6 +27,10 @@ function isTypeVariableName(name) {
   return typeof name === "string" && /^[A-Z]$/.test(name);
 }
 
+function functionTypeName(paramNames, returnName) {
+  return `(${(paramNames ?? []).join(",")})=>${returnName ?? "Unknown"}`;
+}
+
 function areCompatibleNamedTypes(expected, actual) {
   if (expected === actual) return true;
 
@@ -65,6 +69,11 @@ function named(type) {
     return type.mutable ? `*mut ${inner}` : `*${inner}`;
   }
   if (type.kind === "TupleType") return "Tuple";
+  if (type.kind === "FunctionType") {
+    const params = (type.params ?? []).map((p) => named(p) ?? "Unknown");
+    const ret = named(type.returnType) ?? "Unknown";
+    return functionTypeName(params, ret);
+  }
   return undefined;
 }
 
@@ -427,6 +436,36 @@ export function typecheck(
       };
     }
 
+    if (type.kind === "FunctionType") {
+      const paramInfos = (type.params ?? []).map((p) => resolveTypeInfo(p));
+      const returnInfo = resolveTypeInfo(type.returnType);
+      return {
+        name: functionTypeName(
+          paramInfos.map((p) => p.name ?? "Unknown"),
+          returnInfo.name ?? "Unknown",
+        ),
+        min: undefined,
+        max: undefined,
+        nonZero: false,
+        typeNode: {
+          kind: "FunctionType",
+          params: paramInfos.map(
+            (p) =>
+              p.typeNode ?? {
+                kind: "NamedType",
+                name: p.name ?? "Unknown",
+                genericArgs: [],
+              },
+          ),
+          returnType: returnInfo.typeNode ?? {
+            kind: "NamedType",
+            name: returnInfo.name ?? "Unknown",
+            genericArgs: [],
+          },
+        },
+      };
+    }
+
     return {
       name: named(type) ?? "Unknown",
       min: undefined,
@@ -606,13 +645,38 @@ export function typecheck(
         if (globalScope.has(expr.name)) {
           return ok(cloneInfo(globalScope.get(expr.name)));
         }
-        if (functions.has(expr.name))
+        if (functions.has(expr.name)) {
+          const fn = functions.get(expr.name);
+          const fnParamInfos = (fn?.params ?? []).map((p) =>
+            resolveTypeInfo(p.type),
+          );
+          const fnRetInfo = resolveTypeInfo(fn?.returnType);
           return ok({
-            name: "Fn",
+            name: functionTypeName(
+              fnParamInfos.map((p) => p.name ?? "Unknown"),
+              fnRetInfo.name ?? "Unknown",
+            ),
             min: undefined,
             max: undefined,
             nonZero: false,
+            typeNode: {
+              kind: "FunctionType",
+              params: fnParamInfos.map(
+                (p) =>
+                  p.typeNode ?? {
+                    kind: "NamedType",
+                    name: p.name ?? "Unknown",
+                    genericArgs: [],
+                  },
+              ),
+              returnType: fnRetInfo.typeNode ?? {
+                kind: "NamedType",
+                name: fnRetInfo.name ?? "Unknown",
+                genericArgs: [],
+              },
+            },
           });
+        }
         if (structs.has(expr.name))
           return ok({
             name: expr.name,
@@ -1097,6 +1161,96 @@ export function typecheck(
       }
       case "UnwrapExpr":
         return inferExpr(expr.expr, scope, facts);
+      case "LambdaExpr": {
+        const lambdaScope = new Map(scope);
+        for (const p of expr.params ?? []) {
+          lambdaScope.set(p.name, resolveTypeInfo(p.type));
+        }
+        const bodyResult =
+          expr.body?.kind === "Block"
+            ? inferNode(expr.body, lambdaScope, new Map(facts))
+            : inferExpr(expr.body, lambdaScope, new Map(facts));
+        if (!bodyResult.ok) return bodyResult;
+        const bodyInfo = bodyResult.value;
+        const paramInfos = (expr.params ?? []).map((p) =>
+          resolveTypeInfo(p.type),
+        );
+        return ok({
+          name: functionTypeName(
+            paramInfos.map((p) => p.name ?? "Unknown"),
+            bodyInfo.name ?? "Unknown",
+          ),
+          min: undefined,
+          max: undefined,
+          nonZero: false,
+          typeNode: {
+            kind: "FunctionType",
+            params: paramInfos.map(
+              (p) =>
+                p.typeNode ?? {
+                  kind: "NamedType",
+                  name: p.name ?? "Unknown",
+                  genericArgs: [],
+                },
+            ),
+            returnType: bodyInfo.typeNode ?? {
+              kind: "NamedType",
+              name: bodyInfo.name ?? "Unknown",
+              genericArgs: [],
+            },
+          },
+        });
+      }
+      case "FnExpr": {
+        const fnScope = new Map(scope);
+        const paramInfos = (expr.params ?? []).map((p) =>
+          resolveTypeInfo(p.type),
+        );
+        for (let idx = 0; idx < (expr.params ?? []).length; idx += 1) {
+          fnScope.set(expr.params[idx].name, paramInfos[idx]);
+        }
+
+        const explicitReturn = expr.returnType
+          ? resolveTypeInfo(expr.returnType)
+          : undefined;
+        const bodyResult =
+          expr.body?.kind === "Block"
+            ? inferNode(
+                expr.body,
+                fnScope,
+                new Map(facts),
+                explicitReturn ?? undefined,
+              )
+            : inferExpr(expr.body, fnScope, new Map(facts));
+        if (!bodyResult.ok) return bodyResult;
+        const inferredReturn = explicitReturn ?? bodyResult.value;
+
+        return ok({
+          name: functionTypeName(
+            paramInfos.map((p) => p.name ?? "Unknown"),
+            inferredReturn.name ?? "Unknown",
+          ),
+          min: undefined,
+          max: undefined,
+          nonZero: false,
+          typeNode: {
+            kind: "FunctionType",
+            params: paramInfos.map(
+              (p) =>
+                p.typeNode ?? {
+                  kind: "NamedType",
+                  name: p.name ?? "Unknown",
+                  genericArgs: [],
+                },
+            ),
+            returnType: inferredReturn.typeNode ?? {
+              kind: "NamedType",
+              name: inferredReturn.name ?? "Unknown",
+              genericArgs: [],
+            },
+          },
+        });
+      }
       default:
         return ok({
           name: "Unknown",

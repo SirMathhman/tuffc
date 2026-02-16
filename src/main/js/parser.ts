@@ -138,6 +138,10 @@ export function parse(tokens: Token[]): ParseResult<Program> {
         const members: Expr[] = [];
         if (!at("symbol", ")")) {
           while (true) {
+            if (peek()?.type === "identifier" && peek(1)?.value === ":") {
+              eat(); // param name (ignored in function type)
+              eat(); // ':'
+            }
             const memberResult = parseType();
             if (!memberResult.ok) return memberResult;
             members.push(memberResult.value);
@@ -147,6 +151,16 @@ export function parse(tokens: Token[]): ParseResult<Program> {
         }
         const close = expect("symbol", ")", "Expected ')' for tuple type");
         if (!close.ok) return close;
+        if (at("symbol", "=>")) {
+          eat();
+          const returnTypeResult = parseType();
+          if (!returnTypeResult.ok) return returnTypeResult;
+          return ok({
+            kind: "FunctionType",
+            params: members,
+            returnType: returnTypeResult.value,
+          });
+        }
         return ok({ kind: "TupleType", members });
       }
 
@@ -221,13 +235,17 @@ export function parse(tokens: Token[]): ParseResult<Program> {
     if (!primaryResult.ok) return primaryResult;
     let typeExpr: Expr = primaryResult.value;
 
+    const startsGenericCallSuffix =
+      at("symbol", ">") && peek(1)?.type === "symbol" && peek(1)?.value === "(";
+
     if (
       (at("symbol", "!=") ||
         at("symbol", "<") ||
         at("symbol", ">") ||
         at("symbol", "<=") ||
         at("symbol", ">=")) &&
-      canStartRefinementExpr(peek(1))
+      canStartRefinementExpr(peek(1)) &&
+      !startsGenericCallSuffix
     ) {
       const op = eat().value as string;
       const valueExprResult = parseExpression();
@@ -388,6 +406,120 @@ export function parse(tokens: Token[]): ParseResult<Program> {
   const parsePostfix = (baseExpr: Expr): ParseResult<Expr> => {
     let expr = baseExpr;
     while (true) {
+      if (at("symbol", "<")) {
+        const canStartTypeToken = (tok: Token | undefined): boolean => {
+          if (!tok) return false;
+          if (tok.type === "identifier") return true;
+          if (
+            tok.type === "symbol" &&
+            ["*", "[", "("].includes(tok.value as string)
+          )
+            return true;
+          return false;
+        };
+
+        const hasGenericCallSuffix = (): boolean => {
+          if (!at("symbol", "<") || !canStartTypeToken(peek(1))) {
+            return false;
+          }
+          let j = i;
+          let depth = 0;
+          while (j < tokens.length) {
+            const t = tokens[j];
+            if (t.type === "symbol" && t.value === "<") {
+              depth += 1;
+              j += 1;
+              continue;
+            }
+            if (t.type === "symbol" && t.value === ">") {
+              depth -= 1;
+              j += 1;
+              if (depth === 0) {
+                const next = tokens[j];
+                return next?.type === "symbol" && next?.value === "(";
+              }
+              continue;
+            }
+            if (t.type === "eof") return false;
+            j += 1;
+          }
+          return false;
+        };
+
+        if (hasGenericCallSuffix()) {
+          eat(); // '<'
+          const typeArgs: Expr[] = [];
+          if (!at("symbol", ">")) {
+            while (true) {
+              const typeArgResult = parseType();
+              if (!typeArgResult.ok) return typeArgResult;
+              typeArgs.push(typeArgResult.value);
+              if (!at("symbol", ",")) break;
+              eat();
+            }
+          }
+          const closeGenericsResult = expect(
+            "symbol",
+            ">",
+            "Expected '>' after generic call type args",
+          );
+          if (!closeGenericsResult.ok) return closeGenericsResult;
+
+          const openCallResult = expect(
+            "symbol",
+            "(",
+            "Expected '(' after generic call type args",
+          );
+          if (!openCallResult.ok) return openCallResult;
+
+          const args: Expr[] = [];
+          if (!at("symbol", ")")) {
+            while (true) {
+              const argResult = parseExpression();
+              if (!argResult.ok) return argResult;
+              args.push(argResult.value);
+              if (!at("symbol", ",")) break;
+              eat();
+            }
+          }
+          const closeResult = expect(
+            "symbol",
+            ")",
+            "Expected ')' after call args",
+          );
+          if (!closeResult.ok) return closeResult;
+          const closeTok = closeResult.value;
+
+          if (expr.kind === "MemberExpr") {
+            expr = {
+              kind: "CallExpr",
+              callee: {
+                kind: "Identifier",
+                name: expr.property,
+                loc: expr.loc,
+              },
+              args: [expr.object, ...args],
+              typeArgs,
+              loc: expr.loc,
+              start: expr.start,
+              end: closeTok.end,
+              callStyle: "method-sugar",
+            };
+          } else {
+            expr = {
+              kind: "CallExpr",
+              callee: expr,
+              args,
+              typeArgs,
+              loc: expr.loc,
+              start: expr.start,
+              end: closeTok.end,
+            };
+          }
+          continue;
+        }
+      }
+
       if (at("symbol", "(")) {
         eat();
         const args: Expr[] = [];
@@ -472,6 +604,96 @@ export function parse(tokens: Token[]): ParseResult<Program> {
   };
 
   const parsePrimary = (): ParseResult<Expr> => {
+    const tryParseLambdaExpr = (): ParseResult<Expr | undefined> => {
+      if (!at("symbol", "(")) return ok(undefined);
+      const snapshot = i;
+      eat();
+      const params: { name: string; type: Expr | undefined }[] = [];
+      if (!at("symbol", ")")) {
+        while (true) {
+          if (!at("identifier")) {
+            i = snapshot;
+            return ok(undefined);
+          }
+          const paramNameTok = eat();
+          let paramType = undefined;
+          if (at("symbol", ":")) {
+            eat();
+            const pTypeResult = parseType();
+            if (!pTypeResult.ok) {
+              i = snapshot;
+              return ok(undefined);
+            }
+            paramType = pTypeResult.value;
+          }
+          params.push({ name: paramNameTok.value as string, type: paramType });
+          if (at("symbol", ",")) {
+            eat();
+            continue;
+          }
+          break;
+        }
+      }
+      const closeResult = expect("symbol", ")", "Expected ')' after params");
+      if (!closeResult.ok) {
+        i = snapshot;
+        return ok(undefined);
+      }
+      if (!at("symbol", "=>")) {
+        i = snapshot;
+        return ok(undefined);
+      }
+      eat();
+      const bodyResult = at("symbol", "{") ? parseBlock() : parseExpression();
+      if (!bodyResult.ok) return bodyResult;
+      return ok({
+        kind: "LambdaExpr",
+        params,
+        body: bodyResult.value,
+        loc: closeResult.value.loc,
+      });
+    };
+
+    const tryParseFnExpr = (): ParseResult<Expr | undefined> => {
+      if (!at("keyword", "fn")) return ok(undefined);
+      eat();
+
+      let name = undefined;
+      if (at("identifier")) {
+        const nameResult = parseIdentifier();
+        if (!nameResult.ok) return nameResult;
+        name = nameResult.value;
+      }
+
+      const genericsResult = parseGenericParams("Expected '>' after generics");
+      if (!genericsResult.ok) return genericsResult;
+      const paramsResult = parseTypedParams(
+        "Expected '(' in function expression",
+        "Expected ')' after params",
+      );
+      if (!paramsResult.ok) return paramsResult;
+      const returnTypeResult = parseOptionalReturnType();
+      if (!returnTypeResult.ok) return returnTypeResult;
+      const arrowResult = expect(
+        "symbol",
+        "=>",
+        "Expected '=>' in function expression",
+      );
+      if (!arrowResult.ok) return arrowResult;
+      const bodyResult = at("symbol", "{") ? parseBlock() : parseExpression();
+      if (!bodyResult.ok) return bodyResult;
+
+      return ok({
+        kind: "FnExpr",
+        name,
+        generics: genericsResult.value,
+        params: paramsResult.value,
+        returnType: returnTypeResult.value,
+        body: bodyResult.value,
+        loc: arrowResult.value.loc,
+      });
+    };
+
     const parseNumberLiteralToken = (t: Token): Expr => {
       const raw = String(t.value ?? "");
       const match = raw.match(/^(-?\d+(?:\.\d+)?)([A-Za-z][A-Za-z0-9]*)?$/);
@@ -521,6 +743,18 @@ export function parse(tokens: Token[]): ParseResult<Program> {
         start: t.start,
         end: t.end,
       });
+    }
+
+    const lambdaAttempt = tryParseLambdaExpr();
+    if (!lambdaAttempt.ok) return lambdaAttempt;
+    if (lambdaAttempt.value) {
+      return parsePostfix(lambdaAttempt.value);
+    }
+
+    const fnExprAttempt = tryParseFnExpr();
+    if (!fnExprAttempt.ok) return fnExprAttempt;
+    if (fnExprAttempt.value) {
+      return parsePostfix(fnExprAttempt.value);
     }
 
     if (at("symbol", "(")) {

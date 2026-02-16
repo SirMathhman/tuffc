@@ -157,6 +157,42 @@ fn resolve_expr(n: I32, globals: *mut Set, scopes: Vec, depth: I32) : I32 => {
         return 0;
     }
 
+    if (kind == NK_LAMBDA_EXPR) {
+        let next_depth = depth + 1;
+        scopes.vec_push(set_new());
+        let params = node_get_data1(n);
+        let i = 0;
+        let len = params.vec_length();
+        while (i < len) {
+            let param = params.vec_get(i);
+            scope_define(scopes, next_depth, get_interned_str(param.vec_get(0)));
+            i = i + 1;
+        }
+        resolve_stmt(node_get_data2(n), globals, scopes, next_depth);
+        scopes.vec_pop();
+        return 0;
+    }
+
+    if (kind == NK_FN_EXPR) {
+        let next_depth = depth + 1;
+        scopes.vec_push(set_new());
+        let fname_idx = node_get_data1(n);
+        if (fname_idx != 0) {
+            scope_define(scopes, next_depth, get_interned_str(fname_idx));
+        }
+        let params = node_get_data3(n);
+        let i = 0;
+        let len = params.vec_length();
+        while (i < len) {
+            let param = params.vec_get(i);
+            scope_define(scopes, next_depth, get_interned_str(param.vec_get(0)));
+            i = i + 1;
+        }
+        resolve_stmt(node_get_data5(n), globals, scopes, next_depth);
+        scopes.vec_pop();
+        return 0;
+    }
+
     0
 }
 
