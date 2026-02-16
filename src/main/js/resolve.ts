@@ -275,6 +275,20 @@ export function resolveNames(
         break;
       }
       case "CallExpr": {
+        if (expr.callee?.kind === "Identifier" && expr.callee.name === "drop") {
+          if ((expr.args?.length ?? 0) !== 1) {
+            return err(
+              new TuffError("drop expects exactly one argument", expr.loc, {
+                code: "E_RESOLVE_UNKNOWN_IDENTIFIER",
+                hint: "Use drop(value) or value.drop() with exactly one receiver value.",
+              }),
+            );
+          }
+          const argResult = visitExpr(expr.args[0], scope, currentModulePath);
+          if (!argResult.ok) return argResult;
+          break;
+        }
+
         if (
           expr.callStyle === "method-sugar" &&
           expr.callee?.kind === "Identifier" &&
@@ -629,6 +643,27 @@ export function resolveNames(
               {
                 code: "E_RESOLVE_UNKNOWN_IDENTIFIER",
                 hint: "Declare the contract before using 'into'.",
+              },
+            ),
+          );
+        }
+        break;
+      }
+      case "DropStmt": {
+        const targetResult = visitExpr(node.target, scope, modulePath);
+        if (!targetResult.ok) return targetResult;
+        if (
+          typeof node.destructorName === "string" &&
+          node.destructorName.length > 0 &&
+          !globals.has(node.destructorName)
+        ) {
+          return err(
+            new TuffError(
+              `Unknown destructor '${node.destructorName}'`,
+              node.loc ?? undefined,
+              {
+                code: "E_RESOLVE_UNKNOWN_IDENTIFIER",
+                hint: "Declare the destructor function before using alias-based drops.",
               },
             ),
           );

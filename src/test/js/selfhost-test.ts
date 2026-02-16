@@ -13,36 +13,43 @@ import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
 import { fileURLToPath } from "node:url";
-import {
-  compileFileThrow,
-  compileSourceThrow,
-} from "../../main/js/compiler.ts";
-const selfhostPath = path.join(root, "src", "main", "tuff", "selfhost.tuff");
+import * as runtime from "../../main/js/runtime.ts";
 import { compileAndLoadSelfhost } from "./selfhost-harness.ts";
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const root = path.resolve(__dirname, "../../..");
 const outDir = path.join(root, "tests", "out", "selfhost");
 
 function loadSelfhostCompilerFromJs(js) {
+  const sandbox = {
+    module: { exports: {} },
+    exports: {},
+    console,
+    ...runtime,
+  };
+  const exportedNames = [
     "compile_source",
     "compile_file",
     "compile_source_with_options",
     "compile_file_with_options",
+    "take_lint_issues",
     "main",
   ].join(", ");
+  vm.runInNewContext(`${js}\nmodule.exports = { ${exportedNames} };`, sandbox);
+  return sandbox.module.exports;
+}
+
+console.log("Compiling selfhost.tuff with Stage 0...");
+
 let selfhostPath;
 let selfhostJs;
 let selfhost;
-    exports: {},
+try {
   const loaded = compileAndLoadSelfhost(root, outDir);
   selfhostPath = loaded.selfhostPath;
   selfhostJs = loaded.selfhostJs;
   selfhost = loaded.selfhost;
-  const result = compileFileThrow(
-    selfhostPath,
-    path.join(outDir, "selfhost.js"),
-    {
-      enableModules: true,
-      modules: { moduleBaseDir: path.dirname(selfhostPath) },
-      resolve: {
+} catch (err) {
   console.error("Failed to compile selfhost.tuff with Stage 0:", err.message);
   process.exit(1);
 }
@@ -50,7 +57,6 @@ let selfhost;
 console.log("  -> Wrote selfhost.js");
 
 // Step 2 / 3: Load the compiled self-hosted compiler
-let selfhost;
 try {
   selfhost = loadSelfhostCompilerFromJs(selfhostJs);
 } catch (err) {

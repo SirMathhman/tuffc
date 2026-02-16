@@ -101,6 +101,7 @@ export function parse(tokens: Token[]): ParseResult<Program> {
       if (at("symbol", "*")) {
         eat();
         let mutable = false;
+        let move = false;
         let out = false;
         let uninit = false;
         let progressed = true;
@@ -124,12 +125,19 @@ export function parse(tokens: Token[]): ParseResult<Program> {
             progressed = true;
             continue;
           }
+          if (!move && at("keyword", "move")) {
+            eat();
+            move = true;
+            progressed = true;
+            continue;
+          }
         }
         const toResult = parseTypePrimary();
         if (!toResult.ok) return toResult;
         return ok({
           kind: "PointerType",
           mutable,
+          move,
           out,
           uninit,
           to: toResult.value,
@@ -1716,6 +1724,13 @@ export function parse(tokens: Token[]): ParseResult<Program> {
     if (!eqResult.ok) return eqResult;
     const aliasedTypeResult = parseType();
     if (!aliasedTypeResult.ok) return aliasedTypeResult;
+    let destructorName = undefined;
+    if (at("keyword", "then")) {
+      eat();
+      const dtorNameResult = parseIdentifier();
+      if (!dtorNameResult.ok) return dtorNameResult;
+      destructorName = dtorNameResult.value;
+    }
     const semiResult = expect("symbol", ";", "Expected ';' after type alias");
     if (!semiResult.ok) return semiResult;
     return ok({
@@ -1723,6 +1738,7 @@ export function parse(tokens: Token[]): ParseResult<Program> {
       name: nameResult.value,
       generics,
       aliasedType: aliasedTypeResult.value,
+      destructorName,
       isCopy,
     });
   };

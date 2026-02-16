@@ -32,6 +32,8 @@ const KEYWORDS = new Set([
   "async",
   "mut",
   "uninit",
+  "move",
+  "then",
 ]);
 
 const TWO_CHAR = new Set([

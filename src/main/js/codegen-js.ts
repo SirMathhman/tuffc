@@ -2,6 +2,14 @@ let objectCtorNames = new Set();
 let contractMethodNamesByName = new Map();
 let functionEmitStack = [];
 
+function resolveEmittedIdentifier(name) {
+  for (let i = functionEmitStack.length - 1; i >= 0; i -= 1) {
+    const map = functionEmitStack[i]?.paramRename;
+    if (map && map.has(name)) return map.get(name);
+  }
+  return name;
+}
+
 function emitPatternGuard(valueExpr, pattern) {
   switch (pattern.kind) {
     case "WildcardPattern":
@@ -30,7 +38,7 @@ function emitExpr(expr) {
       // Same for char literals
       return `"${expr.value}"`;
     case "Identifier":
-      return expr.name;
+      return resolveEmittedIdentifier(expr.name);
     case "UnaryExpr":
       if (expr.op === "&" || expr.op === "&mut") {
         if (expr.op === "&mut" && expr.expr?.kind === "Identifier") {
@@ -43,6 +51,14 @@ function emitExpr(expr) {
     case "BinaryExpr":
       return `(${emitExpr(expr.left)} ${expr.op} ${emitExpr(expr.right)})`;
     case "CallExpr":
+      if (expr.callee?.kind === "Identifier" && expr.callee.name === "drop") {
+        const target = expr.args?.[0];
+        if (target?.kind === "Identifier") {
+          return "undefined";
+        }
+        return "undefined";
+      }
+
       if (
         expr.callStyle === "method-sugar" &&
         expr.callee?.kind === "Identifier" &&
@@ -221,25 +237,49 @@ function emitStmt(stmt) {
         `};`,
       ].join("\n");
     }
+    case "DropStmt": {
+      if (stmt.target?.kind !== "Identifier" || !stmt.destructorName) {
+        return "// drop <unsupported target>";
+      }
+      const n = stmt.target.name;
+      const d = stmt.destructorName;
+      return `if (${n} !== undefined) { ${d}(({ __ptr_get: () => ${n}, __ptr_set: (__v) => { ${n} = __v; } })); ${n} = undefined; }`;
+    }
     case "Block":
       return emitBlock(stmt);
     case "FnDecl": {
       if (stmt.expectDecl === true) {
         return `// expect fn ${stmt.name}`;
       }
-      const params = stmt.params.map((p) => p.name).join(", ");
+      const paramRename = new Map();
+      const params = stmt.params
+        .map((p) => {
+          if (p.name === "this") {
+            paramRename.set("this", "__this_param");
+            return "__this_param";
+          }
+          return p.name;
+        })
+        .join(", ");
       if (stmt.body.kind === "Block") {
         const localFns = new Set(
           (stmt.body?.statements ?? [])
             .filter((s) => s?.kind === "FnDecl")
             .map((s) => s.name),
         );
-        functionEmitStack.push({ localFns, fnName: stmt.name });
+        functionEmitStack.push({ localFns, fnName: stmt.name, paramRename });
         const emittedBody = emitFunctionBlock(stmt.body);
         functionEmitStack.pop();
         return `function ${stmt.name}(${params}) ${emittedBody}`;
       }
-      return `function ${stmt.name}(${params}) { return ${emitExpr(stmt.body)}; }`;
+      functionEmitStack.push({
+        localFns: new Set(),
+        fnName: stmt.name,
+        paramRename,
+      });
+      const out = `function ${stmt.name}(${params}) { return ${emitExpr(stmt.body)}; }`;
+      functionEmitStack.pop();
+      return out;
     }
     case "StructDecl": {
       const init = stmt.fields
@@ -314,6 +354,36 @@ function emitFunctionBlock(block) {
   if (block.statements.length === 0) {
     return "{\n}";
   }
+  let trailingDrops = 0;
+  for (let i = block.statements.length - 1; i >= 0; i -= 1) {
+    if (block.statements[i]?.kind === "DropStmt") {
+      trailingDrops += 1;
+      continue;
+    }
+    break;
+  }
+
+  if (trailingDrops > 0) {
+    const retIdx = block.statements.length - trailingDrops - 1;
+    const retStmt = block.statements[retIdx];
+    if (retStmt?.kind === "ExprStmt" || retStmt?.kind === "IfStmt") {
+      const rows = [];
+      for (let i = 0; i < retIdx; i += 1) {
+        rows.push(`  ${emitStmt(block.statements[i])}`);
+      }
+      if (retStmt.kind === "ExprStmt") {
+        rows.push(`  const __ret = ${emitExpr(retStmt.expr)};`);
+      } else {
+        rows.push(`  const __ret = ${emitIfStmtConditionalExpr(retStmt)};`);
+      }
+      for (let i = retIdx + 1; i < block.statements.length; i += 1) {
+        rows.push(`  ${emitStmt(block.statements[i])}`);
+      }
+      rows.push("  return __ret;");
+      return `{\n${rows.join("\n")}\n}`;
+    }
+  }
+
   const rows = [];
   for (let idx = 0; idx < block.statements.length; idx += 1) {
     const s = block.statements[idx];

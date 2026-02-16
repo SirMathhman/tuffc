@@ -31,6 +31,7 @@ function typeNameFromNode(typeNode) {
     return typeNameFromNode(typeNode.base);
   if (typeNode.kind === "PointerType") {
     const inner = typeNameFromNode(typeNode.to);
+    if (typeNode.move) return `*move ${inner}`;
     return typeNode.mutable ? `*mut ${inner}` : `*${inner}`;
   }
   if (typeNode.kind === "UnionType") {
@@ -195,15 +196,20 @@ function inferExprTypeName(expr, envTypes, fnReturnTypes) {
 function createState() {
   return {
     moved: new Set(),
+    dropped: new Set(),
+    pendingDrops: new Set(),
     immutLoans: new Map(),
     mutLoans: new Map(),
     loanScopes: [],
+    dropScopes: [],
   };
 }
 
 function cloneState(state) {
   const out = createState();
   out.moved = new Set(state.moved);
+  out.dropped = new Set(state.dropped);
+  out.pendingDrops = new Set(state.pendingDrops);
   for (const [k, v] of state.immutLoans.entries()) {
     out.immutLoans.set(k, new Set(v));
   }
@@ -216,6 +222,7 @@ function cloneState(state) {
 
 function beginLoanScope(state) {
   state.loanScopes.push([]);
+  state.dropScopes.push([]);
 }
 
 function addLoan(state, kind, place) {
@@ -236,6 +243,17 @@ function endLoanScope(state) {
     const set = target.get(place.base);
     set.delete(place.path);
     if (set.size === 0) target.delete(place.base);
+  }
+  const droppedHere = state.dropScopes.pop() ?? [];
+  for (const name of droppedHere) {
+    state.pendingDrops.delete(name);
+  }
+}
+
+function trackPendingDrop(state, name) {
+  state.pendingDrops.add(name);
+  if (state.dropScopes.length > 0) {
+    state.dropScopes[state.dropScopes.length - 1].push(name);
   }
 }
 
@@ -288,6 +306,7 @@ export function borrowcheck(ast, options = {}): BorrowcheckResult<unknown> {
   const globalFnNames = new Set();
   const copyTypeNames = new Set();
   const copyAliasTypeByName = new Map();
+  const destructorAliasByName = new Map();
 
   for (const node of ast.body ?? []) {
     if (node.kind === "ExternTypeDecl") {
@@ -309,7 +328,12 @@ export function borrowcheck(ast, options = {}): BorrowcheckResult<unknown> {
     if (node.kind === "TypeAlias" && node.isCopy === true) {
       copyAliasTypeByName.set(node.name, node.aliasedType);
     }
+    if (node.kind === "TypeAlias" && typeof node.destructorName === "string") {
+      destructorAliasByName.set(node.name, node.destructorName);
+    }
   }
+
+  const hasDestructor = (typeName) => destructorAliasByName.has(typeName);
 
   for (const [aliasName, aliasType] of copyAliasTypeByName.entries()) {
     const okAlias = isTypeNodeCopyable(
@@ -335,6 +359,14 @@ export function borrowcheck(ast, options = {}): BorrowcheckResult<unknown> {
   }
 
   const checkNotMoved = (place, expr, state, fix): BorrowcheckResult<void> => {
+    if (state.dropped.has(place.base)) {
+      return borrowErr(
+        `Use of dropped value '${place.base}'`,
+        expr?.loc,
+        "E_BORROW_USE_AFTER_DROP",
+        "Do not use a value after explicit or implicit drop; move/copy before dropping if needed.",
+      );
+    }
     if (!state.moved.has(place.base)) {
       return ok(undefined);
     }
@@ -465,6 +497,47 @@ export function borrowcheck(ast, options = {}): BorrowcheckResult<unknown> {
         return checkExpr(expr.right, state, envTypes, "read");
       }
       case "CallExpr": {
+        if (expr.callee?.kind === "Identifier" && expr.callee.name === "drop") {
+          const target = expr.args?.[0];
+          const place = canonicalPlace(target);
+          if (!place) {
+            return borrowErr(
+              "drop target must be a place expression",
+              expr?.loc,
+              "E_BORROW_INVALID_TARGET",
+              "Call drop with a local/place value such as drop(x) or x.drop().",
+            );
+          }
+          if (state.dropped.has(place.base)) {
+            return borrowErr(
+              `Double drop of '${place.base}'`,
+              expr?.loc,
+              "E_BORROW_DOUBLE_DROP",
+              "Ensure each owned value is dropped exactly once.",
+            );
+          }
+          const targetType = inferExprTypeName(target, envTypes, fnReturnTypes);
+          if (!hasDestructor(targetType)) {
+            return borrowErr(
+              `Type '${targetType}' has no associated destructor`,
+              expr?.loc,
+              "E_BORROW_DROP_MISSING_DESTRUCTOR",
+              "Associate a destructor via 'type Alias = Base then destructorName;' and use that alias type.",
+            );
+          }
+          const movedResult = checkNotMoved(
+            place,
+            target,
+            state,
+            "Only live, non-moved values can be dropped.",
+          );
+          if (!movedResult.ok) return movedResult;
+          state.pendingDrops.delete(place.base);
+          state.dropped.add(place.base);
+          state.moved.add(place.base);
+          return ok(undefined);
+        }
+
         if (
           expr.callStyle === "method-sugar" &&
           expr.callee?.kind === "Identifier" &&
@@ -586,9 +659,21 @@ export function borrowcheck(ast, options = {}): BorrowcheckResult<unknown> {
           : inferExprTypeName(stmt.value, envTypes, fnReturnTypes);
         envTypes.set(stmt.name, ty);
         state.moved.delete(stmt.name);
+        state.dropped.delete(stmt.name);
+        if (hasDestructor(ty)) {
+          trackPendingDrop(state, stmt.name);
+        }
         return ok(undefined);
       }
       case "AssignStmt": {
+        if (stmt.target?.kind === "Identifier") {
+          const targetName = stmt.target.name;
+          const targetTy = envTypes.get(targetName) ?? "Unknown";
+          if (hasDestructor(targetTy) && state.pendingDrops.has(targetName)) {
+            state.pendingDrops.delete(targetName);
+            state.dropped.add(targetName);
+          }
+        }
         const targetPlace = canonicalPlace(stmt.target);
         if (targetPlace) {
           if (anyConflictingLoan(state, targetPlace)) {
@@ -605,6 +690,11 @@ export function borrowcheck(ast, options = {}): BorrowcheckResult<unknown> {
         if (!rhsResult.ok) return rhsResult;
         if (stmt.target?.kind === "Identifier") {
           state.moved.delete(stmt.target.name);
+          state.dropped.delete(stmt.target.name);
+          const assignedTy = envTypes.get(stmt.target.name) ?? "Unknown";
+          if (hasDestructor(assignedTy)) {
+            trackPendingDrop(state, stmt.target.name);
+          }
         }
         return ok(undefined);
       }
@@ -681,6 +771,18 @@ export function borrowcheck(ast, options = {}): BorrowcheckResult<unknown> {
       case "ContractDecl":
       case "IntoStmt":
         return ok(undefined);
+      case "DropStmt": {
+        return checkExpr(
+          {
+            kind: "CallExpr",
+            callee: { kind: "Identifier", name: "drop" },
+            args: [stmt.target],
+          },
+          state,
+          envTypes,
+          "read",
+        );
+      }
       default:
         return ok(undefined);
     }

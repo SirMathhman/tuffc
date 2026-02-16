@@ -181,12 +181,172 @@ function blockContainsInto(node: ProgramNode | undefined): boolean {
   return false;
 }
 
+function cloneScopeMap(scope: Map<string, string>): Map<string, string> {
+  return new Map(scope);
+}
+
+function isDropCallExpr(expr: ProgramNode | undefined): boolean {
+  return (
+    !!expr &&
+    expr.kind === "CallExpr" &&
+    expr.callee?.kind === "Identifier" &&
+    expr.callee?.name === "drop" &&
+    (expr.args?.length ?? 0) === 1
+  );
+}
+
+function transformBlockWithDrops(
+  block: ProgramNode,
+  aliasDestructorByName: Map<string, string>,
+  scopeDestructorByName: Map<string, string>,
+): ProgramNode {
+  const inScope = cloneScopeMap(scopeDestructorByName);
+  const localsInOrder: string[] = [];
+  const droppedLocals = new Set<string>();
+  const outStatements: ProgramNode[] = [];
+
+  const emitLiveLocalDrops = (loc: unknown = undefined): ProgramNode[] => {
+    const drops: ProgramNode[] = [];
+    for (let i = localsInOrder.length - 1; i >= 0; i -= 1) {
+      const name = localsInOrder[i];
+      if (droppedLocals.has(name)) continue;
+      drops.push({
+        kind: "DropStmt",
+        target: { kind: "Identifier", name },
+        destructorName: inScope.get(name),
+        loc,
+      });
+      droppedLocals.add(name);
+    }
+    return drops;
+  };
+
+  const registerMaybeDestructorLocal = (stmt: ProgramNode) => {
+    if (stmt.kind !== "LetDecl") return;
+    const typeName =
+      stmt.type?.kind === "NamedType" ? String(stmt.type?.name) : undefined;
+    if (!typeName) return;
+    const dtor = aliasDestructorByName.get(typeName);
+    if (!dtor) return;
+    const localName = String(stmt.name);
+    inScope.set(localName, dtor);
+    localsInOrder.push(localName);
+    droppedLocals.delete(localName);
+  };
+
+  let terminated = false;
+  for (const stmt of block.statements ?? []) {
+    if (terminated) break;
+
+    if (stmt.kind === "ExprStmt" && isDropCallExpr(stmt.expr)) {
+      const target = stmt.expr.args[0];
+      const targetName =
+        target?.kind === "Identifier" ? String(target.name) : undefined;
+      const destructorName = targetName ? inScope.get(targetName) : undefined;
+      outStatements.push({
+        kind: "DropStmt",
+        target,
+        destructorName,
+        loc: stmt.loc,
+      });
+      if (targetName && destructorName) {
+        droppedLocals.add(targetName);
+      }
+      continue;
+    }
+
+    if (stmt.kind === "AssignStmt" && stmt.target?.kind === "Identifier") {
+      const targetName = String(stmt.target.name);
+      const destructorName = inScope.get(targetName);
+      if (destructorName && !droppedLocals.has(targetName)) {
+        outStatements.push({
+          kind: "DropStmt",
+          target: stmt.target,
+          destructorName,
+          loc: stmt.loc,
+        });
+      }
+      outStatements.push(stmt);
+      if (destructorName) {
+        droppedLocals.delete(targetName);
+      }
+      continue;
+    }
+
+    if (
+      stmt.kind === "ReturnStmt" ||
+      stmt.kind === "BreakStmt" ||
+      stmt.kind === "ContinueStmt"
+    ) {
+      outStatements.push(...emitLiveLocalDrops(stmt.loc));
+      outStatements.push(stmt);
+      terminated = true;
+      continue;
+    }
+
+    if (stmt.kind === "Block") {
+      outStatements.push(
+        transformBlockWithDrops(stmt, aliasDestructorByName, inScope),
+      );
+      continue;
+    }
+
+    if (stmt.kind === "IfStmt") {
+      outStatements.push({
+        ...stmt,
+        thenBranch:
+          stmt.thenBranch?.kind === "Block"
+            ? transformBlockWithDrops(
+                stmt.thenBranch,
+                aliasDestructorByName,
+                inScope,
+              )
+            : stmt.thenBranch,
+        elseBranch:
+          stmt.elseBranch?.kind === "Block"
+            ? transformBlockWithDrops(
+                stmt.elseBranch,
+                aliasDestructorByName,
+                inScope,
+              )
+            : stmt.elseBranch,
+      });
+      continue;
+    }
+
+    if (
+      stmt.kind === "ForStmt" ||
+      stmt.kind === "WhileStmt" ||
+      stmt.kind === "LoopStmt"
+    ) {
+      outStatements.push({
+        ...stmt,
+        body:
+          stmt.body?.kind === "Block"
+            ? transformBlockWithDrops(stmt.body, aliasDestructorByName, inScope)
+            : stmt.body,
+      });
+      continue;
+    }
+
+    outStatements.push(stmt);
+    registerMaybeDestructorLocal(stmt);
+  }
+
+  if (!terminated) {
+    outStatements.push(...emitLiveLocalDrops());
+  }
+
+  return { ...block, statements: outStatements };
+}
+
 export function desugar(ast: Program): {
   kind: "Program";
   body: ProgramNode[];
 } {
   const out: ProgramNode[] = [];
   const contracts = new Map<string, ProgramNode>();
+  const aliasDestructorByName = new Map<string, string>();
   const declaredStructs = new Set<string>();
 
   for (const node of ast.body) {
@@ -195,6 +355,13 @@ export function desugar(ast: Program): {
     }
     if (node.kind === "StructDecl") {
       declaredStructs.add(String(node.name));
+    }
+    if (
+      node.kind === "TypeAlias" &&
+      typeof node.destructorName === "string" &&
+      node.destructorName.length > 0
+    ) {
+      aliasDestructorByName.set(String(node.name), String(node.destructorName));
     }
   }
 
@@ -236,13 +403,17 @@ export function desugar(ast: Program): {
         fnTypeName,
         contracts,
       );
+      const transformedWithDrops = transformBlockWithDrops(
+        transformedBody,
+        aliasDestructorByName,
+        new Map(),
+      );
 
       if (useConstructorDesugar) {
         const ctorFields = (node.params ?? []).map((p: ProgramNode) => ({
           key: p.name,
           value: { kind: "Identifier", name: p.name },
         }));
-        const ctorStatements = transformedBody.statements ?? [];
         out.push({
           ...node,
           returnType: node.returnType ?? namedType(String(node.name)),
@@ -259,7 +430,7 @@ export function desugar(ast: Program): {
                   fields: ctorFields,
                 },
               },
-              ...ctorStatements,
+              ...transformedWithDrops.statements,
               {
                 kind: "ExprStmt",
                 expr: { kind: "Identifier", name: "__this" },
@@ -272,7 +443,7 @@ export function desugar(ast: Program): {
 
       out.push({
         ...node,
-        body: transformedBody,
+        body: transformedWithDrops,
       });
       continue;
     }

@@ -75,6 +75,7 @@ function named(type) {
   if (type.kind === "ArrayType") return "Array";
   if (type.kind === "PointerType") {
     const inner = named(type.to) ?? "Unknown";
+    if (type.move) return `*move ${inner}`;
     return type.mutable ? `*mut ${inner}` : `*${inner}`;
   }
   if (type.kind === "TupleType") return "Tuple";
@@ -323,6 +324,7 @@ export function typecheck(
   const enums = new Map();
   const objects = new Map();
   const contracts = new Map();
+  const destructorsByAlias = new Map();
   const contractImplementers = new Map();
   const functions = new Map();
   const typeAliases = new Map();
@@ -379,6 +381,18 @@ export function typecheck(
     for (const contractName of intoContracts) {
       markContractImplementation(contractName, implTypeName);
     }
+  };
+
+  const isValidDestructorSignature = (fnNode, aliasName) => {
+    if (!fnNode) return false;
+    if ((fnNode.params ?? []).length !== 1) return false;
+    const p = fnNode.params[0];
+    if (p?.name !== "this") return false;
+    if (named(fnNode.returnType) !== "Void") return false;
+    const pt = p?.type;
+    if (!pt || pt.kind !== "PointerType" || !pt.move) return false;
+    const toName = named(pt.to);
+    return toName === aliasName;
   };
 
   const getContractMethod = (contractName, methodName) => {
@@ -592,6 +606,40 @@ export function typecheck(
         node.name,
         node.aliasedType ?? { kind: "NamedType", name: "Unknown" },
       );
+      if (
+        node.kind === "TypeAlias" &&
+        typeof node.destructorName === "string"
+      ) {
+        destructorsByAlias.set(node.name, node.destructorName);
+      }
+    }
+  }
+
+  for (const [aliasName, destructorName] of destructorsByAlias.entries()) {
+    const fnNode = functions.get(destructorName);
+    if (!fnNode) {
+      return err(
+        new TuffError(
+          `Destructor '${destructorName}' for alias '${aliasName}' was not found`,
+          undefined,
+          {
+            code: "E_TYPE_DESTRUCTOR_NOT_FOUND",
+            hint: "Declare the destructor function before using it in 'type Alias = ... then destructor'.",
+          },
+        ),
+      );
+    }
+    if (!isValidDestructorSignature(fnNode, aliasName)) {
+      return err(
+        new TuffError(
+          `Destructor '${destructorName}' must have signature fn ${destructorName}(this : *move ${aliasName}) : Void`,
+          fnNode.loc,
+          {
+            code: "E_TYPE_DESTRUCTOR_SIGNATURE",
+            hint: "Use exactly one receiver parameter named 'this' with type '*move AliasType' and return Void.",
+          },
+        ),
+      );
     }
   }
 
@@ -690,9 +738,11 @@ export function typecheck(
 
     if (type.kind === "PointerType") {
       const inner = resolveTypeInfo(type.to, seenAliases);
-      const pointerName = type.mutable
-        ? `*mut ${inner.name}`
-        : `*${inner.name}`;
+      const pointerName = type.move
+        ? `*move ${inner.name}`
+        : type.mutable
+          ? `*mut ${inner.name}`
+          : `*${inner.name}`;
       return {
         ...inner,
         name: pointerName,
@@ -1218,6 +1268,38 @@ export function typecheck(
         });
       }
       case "CallExpr": {
+        if (expr.callee?.kind === "Identifier" && expr.callee.name === "drop") {
+          if ((expr.args?.length ?? 0) !== 1) {
+            return err(
+              new TuffError("drop expects exactly one argument", expr.loc, {
+                code: "E_TYPE_ARG_COUNT",
+                hint: "Use drop(value) with exactly one value.",
+              }),
+            );
+          }
+          const targetResult = inferExpr(expr.args[0], scope, facts);
+          if (!targetResult.ok) return targetResult;
+          const targetType = targetResult.value;
+          if (!destructorsByAlias.has(targetType.name)) {
+            return err(
+              new TuffError(
+                `Type '${targetType.name}' does not have an associated destructor`,
+                expr.loc,
+                {
+                  code: "E_TYPE_DESTRUCTOR_NOT_FOUND",
+                  hint: "Define 'type Alias = Base then destructorName;' and use that alias type for drop.",
+                },
+              ),
+            );
+          }
+          return ok({
+            name: "Void",
+            min: undefined,
+            max: undefined,
+            nonZero: false,
+          });
+        }
+
         if (
           expr.callStyle === "method-sugar" &&
           expr.callee?.kind === "Identifier" &&
@@ -2019,7 +2101,8 @@ export function typecheck(
             value.name !== "Unknown" &&
             !areCompatibleNamedTypes(t.name, value.name) &&
             !isTypeVariableName(t.name) &&
-            !isTypeVariableName(value.name)
+            !isTypeVariableName(value.name) &&
+            !typeAliases.has(t.name)
           )
             return err(
               new TuffError(
@@ -2192,6 +2275,29 @@ export function typecheck(
             new TuffError(
               `Unknown contract '${node.contractName}' in into statement`,
               node.loc,
+            ),
+          );
+        }
+        return ok({
+          name: "Void",
+          min: undefined,
+          max: undefined,
+          nonZero: false,
+        });
+      }
+      case "DropStmt": {
+        const targetResult = inferExpr(node.target, scope, facts);
+        if (!targetResult.ok) return targetResult;
+        const targetType = targetResult.value;
+        if (!destructorsByAlias.has(targetType.name)) {
+          return err(
+            new TuffError(
+              `Cannot drop value of type '${targetType.name}' without associated destructor`,
+              node.loc,
+              {
+                code: "E_TYPE_DESTRUCTOR_NOT_FOUND",
+                hint: "Use a type alias with 'then destructorName' to associate a destructor.",
+              },
             ),
           );
         }

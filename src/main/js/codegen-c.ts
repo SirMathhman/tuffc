@@ -107,6 +107,8 @@ function toCName(name) {
 function typeToCType(typeNode, ctx) {
   if (!typeNode) return "int64_t";
   if (typeNode.kind === "PointerType") {
+    const inner = typeToCType(typeNode.to, ctx);
+    if (typeNode.move) return `${inner}*`;
     return typeToCType(typeNode.to, ctx);
   }
   if (typeNode.kind !== "NamedType") return "int64_t";
@@ -307,6 +309,9 @@ function emitExpr(expr, ctx, localTypes = new Map()) {
     case "BinaryExpr":
       return `(${emitExpr(expr.left, ctx, localTypes)} ${expr.op} ${emitExpr(expr.right, ctx, localTypes)})`;
     case "CallExpr":
+      if (expr.callee?.kind === "Identifier" && expr.callee.name === "drop") {
+        return "0";
+      }
       return `${emitExpr(expr.callee, ctx, localTypes)}(${expr.args.map((a) => emitExpr(a, ctx, localTypes)).join(", ")})`;
     case "MemberExpr": {
       if (
@@ -412,6 +417,13 @@ function emitStmt(stmt, ctx, localTypes = new Map()) {
       return "continue;";
     case "IntoStmt":
       return `/* into ${stmt.contractName} */`;
+    case "DropStmt": {
+      if (stmt.target?.kind !== "Identifier" || !stmt.destructorName) {
+        return "/* drop <unsupported target> */";
+      }
+      const n = toCName(stmt.target.name);
+      return `${toCName(stmt.destructorName)}(&${n}); ${n} = 0;`;
+    }
     case "Block":
       return emitBlock(stmt, ctx, localTypes);
     case "ImportDecl":
