@@ -86,10 +86,28 @@ fn emit_expr(n: I32) : *Str => {
         let name = get_interned_str(name_idx);
         let fields = node_get_data2(n);
         let sb = sb_new();
-        sb_append(sb, "({ __tag: ");
-        sb_append(sb, "\"".str_concat(name).str_concat("\""));
+        sb_append(sb, "((typeof ");
+        sb_append(sb, name);
+        sb_append(sb, " === \"function\") ? ");
+        sb_append(sb, name);
+        sb_append(sb, "({");
         let i = 0;
         let len = fields.vec_length();
+        while (i < len) {
+            let field = fields.vec_get(i);
+            let key_idx = field.vec_get(0);
+            let val_node = field.vec_get(1);
+            if (i > 0) {
+                sb_append(sb, ", ");
+            }
+            sb_append(sb, get_interned_str(key_idx));
+            sb_append(sb, ": ");
+            sb_append(sb, emit_expr(val_node));
+            i = i + 1;
+        }
+        sb_append(sb, "}) : ({ __tag: ");
+        sb_append(sb, "\"".str_concat(name).str_concat("\""));
+        i = 0;
         while (i < len) {
             let field = fields.vec_get(i);
             let key_idx = field.vec_get(0);
@@ -100,7 +118,7 @@ fn emit_expr(n: I32) : *Str => {
             sb_append(sb, emit_expr(val_node));
             i = i + 1;
         }
-        sb_append(sb, " })");
+        sb_append(sb, " }))");
         return sb_build(sb);
     }
     

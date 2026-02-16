@@ -200,6 +200,20 @@ const positiveCases = [
     ].join("\n"),
   },
   {
+    id: "objects:input-identity",
+    section: "3.4",
+    source: [
+      "object Wrapper {",
+      "  in let x : I32;",
+      "}",
+      "let a = &Wrapper { x: 100 };",
+      "let b = &Wrapper { x: 100 };",
+      "let c = &Wrapper { x: 120 };",
+      "(a == b) && (a != c);",
+      "",
+    ].join("\n"),
+  },
+  {
     id: "pattern:is-expression",
     section: "3.5",
     source: [

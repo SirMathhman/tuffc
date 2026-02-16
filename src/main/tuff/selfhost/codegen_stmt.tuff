@@ -164,6 +164,50 @@ fn emit_stmt(n: I32) : *Str => {
         sb_append(sb, " }; ");
         return sb_build(sb);
     }
+
+    if (kind == NK_OBJECT_DECL) {
+        let name = get_interned_str(node_get_data1(n));
+        let inputs = node_get_data3(n);
+        if (inputs == 0 || inputs.vec_length() == 0) {
+            return "const ".str_concat(name).str_concat(" = { __tag: \"").str_concat(name).str_concat("\" }; ");
+        }
+
+        let sb = sb_new();
+        sb_append(sb, "const ");
+        sb_append(sb, name);
+        sb_append(sb, " = (() => { const __cache = new Map(); return (fields = {}) => { const __key = JSON.stringify([");
+
+        let i = 0;
+        let len = inputs.vec_length();
+        while (i < len) {
+            if (i > 0) {
+                sb_append(sb, ", ");
+            }
+            let input_field = inputs.vec_get(i);
+            let fname = get_interned_str(input_field.vec_get(0));
+            sb_append(sb, "fields.");
+            sb_append(sb, fname);
+            i = i + 1;
+        }
+
+        sb_append(sb, "]); const __cached = __cache.get(__key); if (__cached !== undefined) return __cached; const __value = { __tag: \"");
+        sb_append(sb, name);
+        sb_append(sb, "\"");
+
+        i = 0;
+        while (i < len) {
+            let input_field = inputs.vec_get(i);
+            let fname = get_interned_str(input_field.vec_get(0));
+            sb_append(sb, ", ");
+            sb_append(sb, fname);
+            sb_append(sb, ": fields.");
+            sb_append(sb, fname);
+            i = i + 1;
+        }
+
+        sb_append(sb, " }; __cache.set(__key, __value); return __value; }; })();");
+        return sb_build(sb);
+    }
     
     if (kind == NK_EXTERN_FN_DECL) {
         let name_idx = node_get_data1(n);

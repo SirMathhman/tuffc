@@ -312,6 +312,7 @@ export function typecheck(
 
   const structs = new Map();
   const enums = new Map();
+  const objects = new Map();
   const functions = new Map();
   const typeAliases = new Map();
   const globalScope = new Map();
@@ -321,6 +322,8 @@ export function typecheck(
       structs.set(node.name, node);
     } else if (node.kind === "EnumDecl") {
       enums.set(node.name, node);
+    } else if (node.kind === "ObjectDecl") {
+      objects.set(node.name, node);
     } else if (node.kind === "FnDecl" || node.kind === "ExternFnDecl") {
       if (node.kind === "FnDecl" && node.expectDecl === true) {
         continue;
@@ -694,6 +697,13 @@ export function typecheck(
             max: undefined,
             nonZero: false,
           });
+        if (objects.has(expr.name))
+          return ok({
+            name: expr.name,
+            min: undefined,
+            max: undefined,
+            nonZero: false,
+          });
         return ok({
           name: "Unknown",
           min: undefined,
@@ -703,19 +713,76 @@ export function typecheck(
       }
       case "StructInit": {
         const s = structs.get(expr.name);
-        if (!s)
-          return err(new TuffError(`Unknown struct '${expr.name}'`, expr.loc));
-        const fieldMap = new Map(s.fields.map((f) => [f.name, f]));
-        for (const f of expr.fields) {
-          if (!fieldMap.has(f.key))
+        if (s) {
+          const fieldMap = new Map(s.fields.map((f) => [f.name, f]));
+          for (const f of expr.fields) {
+            if (!fieldMap.has(f.key))
+              return err(
+                new TuffError(
+                  `Unknown field '${f.key}' for struct ${expr.name}`,
+                  expr.loc,
+                ),
+              );
+            const inferResult = inferExpr(f.value, scope, facts);
+            if (!inferResult.ok) return inferResult;
+          }
+        } else {
+          const o = objects.get(expr.name);
+          if (!o)
             return err(
-              new TuffError(
-                `Unknown field '${f.key}' for struct ${expr.name}`,
-                expr.loc,
-              ),
+              new TuffError(`Unknown struct/object '${expr.name}'`, expr.loc),
             );
-          const inferResult = inferExpr(f.value, scope, facts);
-          if (!inferResult.ok) return inferResult;
+
+          const inputSpecs = o.inputs ?? [];
+          const inputByName = new Map(inputSpecs.map((f) => [f.name, f]));
+          const seen = new Set();
+
+          for (const f of expr.fields) {
+            if (!inputByName.has(f.key)) {
+              return err(
+                new TuffError(
+                  `Unknown input '${f.key}' for object ${expr.name}`,
+                  expr.loc,
+                ),
+              );
+            }
+
+            const inferResult = inferExpr(f.value, scope, facts);
+            if (!inferResult.ok) return inferResult;
+            const valueType = inferResult.value;
+            const expectedInfo = resolveTypeInfo(inputByName.get(f.key).type);
+            const expected = expectedInfo?.name ?? undefined;
+
+            if (
+              expected &&
+              valueType.name !== "Unknown" &&
+              !areCompatibleNamedTypes(expected, valueType.name) &&
+              !isTypeVariableName(expected) &&
+              !isTypeVariableName(valueType.name) &&
+              !areCompatibleNumericTypes(expected, valueType.name, valueType) &&
+              !typeAliases.has(expected)
+            ) {
+              return err(
+                new TuffError(
+                  `Type mismatch for object input ${expr.name}.${f.key}: expected ${expected}, got ${valueType.name}`,
+                  expr.loc,
+                ),
+              );
+            }
+
+            seen.add(f.key);
+          }
+
+          for (const input of inputSpecs) {
+            if (!seen.has(input.name)) {
+              return err(
+                new TuffError(
+                  `Missing input '${input.name}' for object ${expr.name}`,
+                  expr.loc,
+                ),
+              );
+            }
+          }
         }
         return ok({
           name: expr.name,

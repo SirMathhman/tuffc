@@ -404,6 +404,9 @@ export function borrowcheck(ast, options = {}): BorrowcheckResult<unknown> {
     if (expr.kind === "UnaryExpr" && (expr.op === "&" || expr.op === "&mut")) {
       const place = canonicalPlace(expr.expr);
       if (!place) {
+        if (expr.expr?.kind === "StructInit") {
+          return checkExpr(expr.expr, state, envTypes, "read");
+        }
         return borrowErr(
           `Borrow target is not a place expression`,
           expr?.loc,

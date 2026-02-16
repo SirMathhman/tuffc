@@ -1,3 +1,5 @@
+let objectCtorNames = new Set();
+
 function emitPatternGuard(valueExpr, pattern) {
   switch (pattern.kind) {
     case "WildcardPattern":
@@ -44,7 +46,12 @@ function emitExpr(expr) {
       const fields = expr.fields
         .map((f) => `${f.key}: ${emitExpr(f.value)}`)
         .join(", ");
-      return `({ __tag: ${JSON.stringify(expr.name)}, ${fields} })`;
+      const objectLiteral = `({ __tag: ${JSON.stringify(expr.name)}${fields ? `, ${fields}` : ""} })`;
+      if (objectCtorNames.has(expr.name)) {
+        const fieldsObject = `{${fields ? ` ${fields} ` : ""}}`;
+        return `${expr.name}(${fieldsObject})`;
+      }
+      return objectLiteral;
     }
     case "IfExpr": {
       const thenBody =
@@ -155,6 +162,31 @@ function emitStmt(stmt) {
         .join(", ");
       return `const ${stmt.name} = { ${entries} };`;
     }
+    case "ObjectDecl": {
+      const inputs = stmt.inputs ?? [];
+      if (inputs.length === 0) {
+        return `const ${stmt.name} = { __tag: ${JSON.stringify(stmt.name)} };`;
+      }
+
+      const keyParts = inputs.map((f) => `fields.${f.name}`).join(", ");
+      const valueFields = inputs
+        .map((f) => `${f.name}: fields.${f.name}`)
+        .join(", ");
+
+      return [
+        `const ${stmt.name} = (() => {`,
+        `  const __cache = new Map();`,
+        `  return (fields = {}) => {`,
+        `    const __key = JSON.stringify([${keyParts}]);`,
+        `    const __cached = __cache.get(__key);`,
+        `    if (__cached !== undefined) return __cached;`,
+        `    const __value = { __tag: ${JSON.stringify(stmt.name)}${valueFields ? `, ${valueFields}` : ""} };`,
+        `    __cache.set(__key, __value);`,
+        `    return __value;`,
+        `  };`,
+        `})();`,
+      ].join("\n");
+    }
     case "TypeAlias":
       return `// type ${stmt.name} = ${JSON.stringify(stmt.aliasedType.kind)}`;
     case "ExternFnDecl":
@@ -227,6 +259,14 @@ function emitIfStmtAsExpr(s) {
 }
 
 export function generateJavaScript(ast: { body: unknown[] }): string {
+  objectCtorNames = new Set();
+  for (const node of ast.body ?? []) {
+    const decl = node as any;
+    if (decl?.kind === "ObjectDecl" && (decl?.inputs ?? []).length > 0) {
+      objectCtorNames.add(decl.name);
+    }
+  }
+
   const lines = ['"use strict";', ""];
   for (const node of ast.body) {
     lines.push(emitStmt(node));

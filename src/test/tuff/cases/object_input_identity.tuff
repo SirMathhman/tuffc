@@ -1,0 +1,7 @@
+object Wrapper {
+  in let x : I32;
+}
+
+fn main() : Bool =>
+  (&Wrapper { x: 100 } == &Wrapper { x: 100 }) &&
+  (&Wrapper { x: 100 } != &Wrapper { x: 120 });

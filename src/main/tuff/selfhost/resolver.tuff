@@ -423,6 +423,7 @@ out fn resolve_names(program: I32) : I32 => {
             kind == NK_ACTUAL_FN_DECL ||
             kind == NK_STRUCT_DECL ||
             kind == NK_ENUM_DECL ||
+            kind == NK_OBJECT_DECL ||
             kind == NK_TYPE_ALIAS ||
             kind == NK_LET_DECL ||
             kind == NK_EXTERN_FN_DECL ||

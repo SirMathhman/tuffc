@@ -124,6 +124,7 @@ export function resolveNames(
         "FnDecl",
         "StructDecl",
         "EnumDecl",
+        "ObjectDecl",
         "TypeAlias",
         "ExternFnDecl",
         "ExternLetDecl",

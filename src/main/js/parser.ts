@@ -300,6 +300,11 @@ export function parse(tokens: Token[]): ParseResult<Program> {
         const genResult = parseIdentifier();
         if (!genResult.ok) return genResult;
         generics.push(genResult.value);
+        if (at("symbol", ":")) {
+          eat();
+          const constraintResult = parseType();
+          if (!constraintResult.ok) return constraintResult;
+        }
         if (!at("symbol", ",")) break;
         eat();
       }
@@ -873,6 +878,33 @@ export function parse(tokens: Token[]): ParseResult<Program> {
         let depth = 0;
         while (j < tokens.length) {
           const t = tokens[j];
+          if (
+            depth > 0 &&
+            t.type === "symbol" &&
+            [
+              ")",
+              ";",
+              "{",
+              "}",
+              "=",
+              "==",
+              "!=",
+              "<=",
+              ">=",
+              "&&",
+              "||",
+              "+",
+              "-",
+              "*",
+              "/",
+              "%",
+              "..",
+              "=>",
+              ".",
+            ].includes(t.value as string)
+          ) {
+            return false;
+          }
           if (t.type === "symbol" && t.value === "<") {
             depth += 1;
             j += 1;
@@ -893,9 +925,70 @@ export function parse(tokens: Token[]): ParseResult<Program> {
         return false;
       };
 
+      const hasGenericValueSuffix = (): boolean => {
+        if (!at("symbol", "<") || !canStartTypeToken(peek(1))) {
+          return false;
+        }
+        let j = i;
+        let depth = 0;
+        while (j < tokens.length) {
+          const t = tokens[j];
+          if (
+            depth > 0 &&
+            t.type === "symbol" &&
+            [
+              ")",
+              ";",
+              "{",
+              "}",
+              "=",
+              "==",
+              "!=",
+              "<=",
+              ">=",
+              "&&",
+              "||",
+              "+",
+              "-",
+              "*",
+              "/",
+              "%",
+              "..",
+              "=>",
+              ".",
+            ].includes(t.value as string)
+          ) {
+            return false;
+          }
+          if (t.type === "symbol" && t.value === "<") {
+            depth += 1;
+            j += 1;
+            continue;
+          }
+          if (t.type === "symbol" && t.value === ">") {
+            depth -= 1;
+            j += 1;
+            if (depth === 0) {
+              const next = tokens[j];
+              if (!next) return false;
+              if (next.type === "symbol" && next.value === "(") return false;
+              return true;
+            }
+            continue;
+          }
+          if (t.type === "eof") return false;
+          j += 1;
+        }
+        return false;
+      };
+
       const idTok = eat();
       const genericArgs: Expr[] = [];
-      if (hasGenericStructInitSuffix()) {
+      const typeLikeName = /^[A-Z]/.test(String(idTok.value ?? ""));
+      if (
+        typeLikeName &&
+        (hasGenericStructInitSuffix() || hasGenericValueSuffix())
+      ) {
         eat(); // '<'
         if (!at("symbol", ">")) {
           while (true) {
@@ -1245,6 +1338,60 @@ export function parse(tokens: Token[]): ParseResult<Program> {
     return ok({ kind: "EnumDecl", name: nameResult.value, variants });
   };
 
+  const parseObject = (): ParseResult<Stmt> => {
+    const objectResult = expect("keyword", "object", "Expected object");
+    if (!objectResult.ok) return objectResult;
+    const nameResult = parseIdentifier();
+    if (!nameResult.ok) return nameResult;
+    const genericsResult = parseGenericParams(
+      "Expected '>' after object generics",
+    );
+    if (!genericsResult.ok) return genericsResult;
+    const generics = genericsResult.value;
+    const openResult = expect("symbol", "{", "Expected '{' after object");
+    if (!openResult.ok) return openResult;
+    const inputs: { name: string; type: Expr }[] = [];
+    while (!at("symbol", "}")) {
+      const inResult = expect(
+        "keyword",
+        "in",
+        "Expected 'in' in object input declaration",
+      );
+      if (!inResult.ok) return inResult;
+      const letResult = expect(
+        "keyword",
+        "let",
+        "Expected 'let' in object input declaration",
+      );
+      if (!letResult.ok) return letResult;
+      const inputNameResult = parseIdentifier();
+      if (!inputNameResult.ok) return inputNameResult;
+      const colonResult = expect(
+        "symbol",
+        ":",
+        "Expected ':' in object input declaration",
+      );
+      if (!colonResult.ok) return colonResult;
+      const inputTypeResult = parseType();
+      if (!inputTypeResult.ok) return inputTypeResult;
+      const semiResult = expect(
+        "symbol",
+        ";",
+        "Expected ';' after object input declaration",
+      );
+      if (!semiResult.ok) return semiResult;
+      inputs.push({ name: inputNameResult.value, type: inputTypeResult.value });
+    }
+    const closeResult = expect("symbol", "}", "Expected '}' after object");
+    if (!closeResult.ok) return closeResult;
+    return ok({
+      kind: "ObjectDecl",
+      name: nameResult.value,
+      generics,
+      inputs,
+    });
+  };
+
   const parseTypeAlias = (isCopy = false): ParseResult<Stmt> => {
     const typeResult = expect("keyword", "type");
     if (!typeResult.ok) return typeResult;
@@ -1435,6 +1582,32 @@ export function parse(tokens: Token[]): ParseResult<Program> {
           );
         }
         nodeResult = parseEnum();
+      } else if (at("keyword", "object")) {
+        if (copyDecl) {
+          return err(
+            new TuffError(
+              "'copy' is only supported on struct/type declarations",
+              peek().loc,
+              {
+                code: "E_PARSE_EXPECTED_TOKEN",
+                hint: "Use 'copy struct ...' or 'copy type ...'.",
+              },
+            ),
+          );
+        }
+        if (expectDecl || actualDecl) {
+          return err(
+            new TuffError(
+              "'expect'/'actual' are currently supported only on fn declarations",
+              peek().loc,
+              {
+                code: "E_PARSE_EXPECTED_TOKEN",
+                hint: "Use expect/actual before fn declarations.",
+              },
+            ),
+          );
+        }
+        nodeResult = parseObject();
       } else if (at("keyword", "type")) {
         if (expectDecl || actualDecl) {
           return err(
@@ -1495,6 +1668,7 @@ export function parse(tokens: Token[]): ParseResult<Program> {
     if (at("keyword", "let")) return parseLetDecl();
     if (at("keyword", "struct")) return parseStruct(false);
     if (at("keyword", "enum")) return parseEnum();
+    if (at("keyword", "object")) return parseObject();
     if (at("keyword", "type")) return parseTypeAlias(false);
     if (at("keyword", "fn")) return parseFunction(false);
     if (at("keyword", "extern")) {

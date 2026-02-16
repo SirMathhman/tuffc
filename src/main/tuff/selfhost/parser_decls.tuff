@@ -1,23 +1,34 @@
 let { get_interned_str, vec_new } = selfhost::runtime_lexer;
 let { p_expect, p_parse_identifier, p_at, p_eat, p_parse_type, p_at_kind, node_kind, node_new, node_set_data1, node_set_data2, node_set_data3, node_set_data4, node_set_data5, node_get_data1, node_get_data2, node_get_data3 } = selfhost::parser_core;
 
+fn p_parse_decl_generics(close_message: *Str) : Vec => {
+    let generics = vec_new();
+    if (p_at(TK_SYMBOL, "<")) {
+        p_eat();
+        if (!p_at(TK_SYMBOL, ">")) {
+            while (true) {
+                generics.vec_push(p_parse_identifier());
+                if (p_at(TK_SYMBOL, ":")) {
+                    p_eat();
+                    p_parse_type();
+                }
+                if (!p_at(TK_SYMBOL, ",")) {
+                    break;
+                }
+                p_eat();
+            }
+        }
+        p_expect(TK_SYMBOL, ">", close_message);
+    }
+    generics
+}
+
 fn p_parse_function(is_class: I32, mode: I32) : I32 => {
     p_expect(TK_KEYWORD, "fn", "Expected 'fn'");
     let name = p_parse_identifier();
     
     // Generics
-    let generics = vec_new();
-    if (p_at(TK_SYMBOL, "<")) {
-        p_eat();
-        if (!p_at(TK_SYMBOL, ">")) {
-            generics.vec_push(p_parse_identifier());
-            while (p_at(TK_SYMBOL, ",")) {
-                p_eat();
-                generics.vec_push(p_parse_identifier());
-            }
-        }
-        p_expect(TK_SYMBOL, ">", "Expected '>'");
-    }
+    let generics = p_parse_decl_generics("Expected '>'");
     
     // Parameters
     p_expect(TK_SYMBOL, "(", "Expected '('");
@@ -93,18 +104,7 @@ fn p_parse_struct(is_copy: I32) : I32 => {
     p_expect(TK_KEYWORD, "struct", "Expected 'struct'");
     let name = p_parse_identifier();
     
-    let generics = vec_new();
-    if (p_at(TK_SYMBOL, "<")) {
-        p_eat();
-        if (!p_at(TK_SYMBOL, ">")) {
-            generics.vec_push(p_parse_identifier());
-            while (p_at(TK_SYMBOL, ",")) {
-                p_eat();
-                generics.vec_push(p_parse_identifier());
-            }
-        }
-        p_expect(TK_SYMBOL, ">", "Expected '>'");
-    }
+    let generics = p_parse_decl_generics("Expected '>'");
     
     p_expect(TK_SYMBOL, "{", "Expected '{'");
     let fields = vec_new();
@@ -148,22 +148,41 @@ fn p_parse_enum() : I32 => {
     node
 }
 
+fn p_parse_object() : I32 => {
+    p_expect(TK_KEYWORD, "object", "Expected 'object'");
+    let name = p_parse_identifier();
+
+    let generics = p_parse_decl_generics("Expected '>'");
+
+    p_expect(TK_SYMBOL, "{", "Expected '{' after object name");
+    let inputs = vec_new();
+    while (!p_at(TK_SYMBOL, "}")) {
+        p_expect(TK_KEYWORD, "in", "Expected 'in' in object input declaration");
+        p_expect(TK_KEYWORD, "let", "Expected 'let' in object input declaration");
+        let input_name = p_parse_identifier();
+        p_expect(TK_SYMBOL, ":", "Expected ':' in object input declaration");
+        let input_type = p_parse_type();
+        p_expect(TK_SYMBOL, ";", "Expected ';' after object input declaration");
+
+        let input_field = vec_new();
+        input_field.vec_push(input_name);
+        input_field.vec_push(input_type);
+        inputs.vec_push(input_field);
+    }
+    p_expect(TK_SYMBOL, "}", "Expected '}' after object body");
+
+    let node = node_new(NK_OBJECT_DECL);
+    node_set_data1(node, name);
+    node_set_data2(node, generics);
+    node_set_data3(node, inputs);
+    node
+}
+
 fn p_parse_type_alias(is_copy: I32) : I32 => {
     p_expect(TK_KEYWORD, "type", "Expected 'type'");
     let name = p_parse_identifier();
     
-    let generics = vec_new();
-    if (p_at(TK_SYMBOL, "<")) {
-        p_eat();
-        if (!p_at(TK_SYMBOL, ">")) {
-            generics.vec_push(p_parse_identifier());
-            while (p_at(TK_SYMBOL, ",")) {
-                p_eat();
-                generics.vec_push(p_parse_identifier());
-            }
-        }
-        p_expect(TK_SYMBOL, ">", "Expected '>'");
-    }
+    let generics = p_parse_decl_generics("Expected '>'");
     
     p_expect(TK_SYMBOL, "=", "Expected '='");
     let aliased = p_parse_type();
@@ -249,18 +268,7 @@ fn p_parse_extern_decl() : I32 => {
         let name = p_parse_identifier();
         
         // Generics
-        let generics = vec_new();
-        if (p_at(TK_SYMBOL, "<")) {
-            p_eat();
-            if (!p_at(TK_SYMBOL, ">")) {
-                generics.vec_push(p_parse_identifier());
-                while (p_at(TK_SYMBOL, ",")) {
-                    p_eat();
-                    generics.vec_push(p_parse_identifier());
-                }
-            }
-            p_expect(TK_SYMBOL, ">", "Expected '>'");
-        }
+        let generics = p_parse_decl_generics("Expected '>'");
         
         // Parameters
         p_expect(TK_SYMBOL, "(", "Expected '('");
@@ -327,18 +335,7 @@ fn p_parse_extern_decl() : I32 => {
     if (p_at(TK_KEYWORD, "type")) {
         p_eat();
         let name = p_parse_identifier();
-        let generics = vec_new();
-        if (p_at(TK_SYMBOL, "<")) {
-            p_eat();
-            if (!p_at(TK_SYMBOL, ">")) {
-                generics.vec_push(p_parse_identifier());
-                while (p_at(TK_SYMBOL, ",")) {
-                    p_eat();
-                    generics.vec_push(p_parse_identifier());
-                }
-            }
-            p_expect(TK_SYMBOL, ">", "Expected '>' after extern type generics");
-        }
+        let generics = p_parse_decl_generics("Expected '>' after extern type generics");
         p_expect(TK_SYMBOL, ";", "Expected ';' after extern type");
         let node = node_new(NK_EXTERN_TYPE_DECL);
         node_set_data1(node, name);
@@ -402,6 +399,14 @@ fn p_parse_statement() : I32 => {
             out_node = p_parse_struct(copy_decl);
         } else if (p_at(TK_KEYWORD, "enum")) {
             out_node = p_parse_enum();
+        } else if (p_at(TK_KEYWORD, "object")) {
+            if (copy_decl == 1) {
+                panic("'copy' is only supported on struct/type declarations");
+            }
+            if (expect_decl == 1 || actual_decl == 1) {
+                panic("'expect'/'actual' are currently supported only on fn declarations");
+            }
+            out_node = p_parse_object();
         } else if (p_at(TK_KEYWORD, "type")) {
             out_node = p_parse_type_alias(copy_decl);
         } else if (p_at(TK_KEYWORD, "fn")) {
@@ -437,6 +442,7 @@ fn p_parse_statement() : I32 => {
     if (p_at(TK_KEYWORD, "let")) { return p_parse_let(); }
     if (p_at(TK_KEYWORD, "struct")) { return p_parse_struct(0); }
     if (p_at(TK_KEYWORD, "enum")) { return p_parse_enum(); }
+    if (p_at(TK_KEYWORD, "object")) { return p_parse_object(); }
     if (p_at(TK_KEYWORD, "type")) { return p_parse_type_alias(0); }
     if (p_at(TK_KEYWORD, "fn")) { return p_parse_function(0, 0); }
     if (p_at(TK_KEYWORD, "extern")) {

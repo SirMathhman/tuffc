@@ -38,13 +38,15 @@ These are spec-described constructs that currently fail to compile.
     - `let func = () => 100;`
   - Mirrored parser support in selfhost parser for stage alignment.
 
-### 1) `object` singleton declarations
+### ✅ Resolved: `object` singleton declarations
 
 - Spec area: `2.1`, `3.4`
 - Case: `objects:singleton-generic`
-- Observed:
-  - Stage0/1: `E_PARSE_UNEXPECTED_TOKEN` (`keyword:object`)
-  - Stage2/3: `E_SELFHOST_PANIC` (`Unexpected token in expression`)
+- Status: **fixed** (no longer reported by `npm run semantics:exhaustive`)
+- Notes:
+  - Added parser support for `object Name<T> {}` declarations in Stage0 and selfhost parsers.
+  - Wired object declarations into resolver/module declaration collection.
+  - Added nominal object typing and JS/selfhost codegen singleton emission so `Name<T>` use-sites compile.
 
 ### 2) `loop {}` construct
 
@@ -102,8 +104,8 @@ These are spec-described constructs that currently fail to compile.
 - Spec area: `2.1`, `2.4`, `4.3`
 - Case: `arrays:dependent-shape`
 - Observed:
-  - Stage0/1: `E_PARSE_EXPECTED_TOKEN` (`Expected '>' after generics, got ':'`)
-  - Stage2/3: `E_SELFHOST_PANIC` (`Expected '>'`)
+  - Stage0/1: `E_RESOLVE_UNKNOWN_IDENTIFIER` (`Unknown identifier 'toStackArray'`)
+  - Stage2/3: `E_RESOLVE_UNKNOWN_IDENTIFIER` (`Unknown identifier: toStackArray`)
 
 ## B) Diagnostic contract/code alignment gaps
 
@@ -132,7 +134,7 @@ These cases fail for code-name mismatch rather than semantic pass/fail behavior.
 
 ## D) Priority suggestions
 
-1. **Parser surface parity first**: `object`, `loop`, `async`, contracts/impl.
+1. **Parser surface parity first**: `loop`, `async`, contracts/impl.
 2. **Type-system syntax/parsing fixes**: generic call forms and dependent array signatures.
 3. **Desugar/resolve collision handling**: `class fn` shadowing behavior.
 4. **Diagnostic harmonization**: align expected-vs-actual codes for overflow and match exhaustiveness.

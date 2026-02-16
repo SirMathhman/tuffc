@@ -512,6 +512,10 @@ fn check_expr(expr: I32, state: Vec, env_types: Map, fn_return_types: Map, exter
             let target = node_get_data2(expr);
             let p = canonical_place(target);
             if (!place_is_valid(p)) {
+                if (node_kind(target) == NK_STRUCT_INIT) {
+                    check_expr(target, state, env_types, fn_return_types, extern_type_names, global_fn_names, "read");
+                    return 0;
+                }
                 panic_borrow(
                     "E_BORROW_INVALID_TARGET",
                     "Borrow target is not a place expression",
