@@ -25,6 +25,7 @@
     "c:selfhost:verify": "tsx ./src/test/js/c-selfhost-progress.ts",
     "cli:verify": "tsx ./src/test/js/cli-hardening.ts",
     "selfhost:modules": "tsx ./src/test/js/selfhost-modules.ts",
+    "modules:aliases": "tsx ./src/test/js/module-package-aliases.ts",
     "selfhost:diagnostics": "tsx ./src/test/js/selfhost-diagnostics.ts",
     "selfhost:parity": "tsx ./src/test/js/selfhost-parity.ts",
     "equiv:stages": "tsx ./src/test/js/stage-equivalence.ts",

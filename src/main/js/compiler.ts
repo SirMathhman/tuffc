@@ -349,8 +349,34 @@ function getDeclName(node) {
   return undefined;
 }
 
-function modulePathToFile(modulePath, moduleBaseDir) {
-  return path.join(moduleBaseDir, ...modulePath.split("::")) + ".tuff";
+function normalizePackageAliases(moduleBaseDir, options = {}) {
+  const target = options.target ?? "";
+  const byTarget = options.packageAliasesByTarget ?? {};
+  const aliases = {
+    ...(options.packageAliases ?? {}),
+    ...(byTarget[target] ?? {}),
+  };
+
+  const normalized = {};
+  for (const [alias, root] of Object.entries(aliases)) {
+    if (typeof root !== "string" || root.length === 0) continue;
+    normalized[String(alias)] = path.isAbsolute(root)
+      ? root
+      : path.resolve(moduleBaseDir, root);
+  }
+  return normalized;
+}
+
+function modulePathToFile(modulePath, moduleBaseDir, packageAliases = {}) {
+  const parts = modulePath.split("::");
+  const head = parts[0] ?? "";
+  const tail = parts.slice(1);
+
+  if (Object.prototype.hasOwnProperty.call(packageAliases, head)) {
+    return path.join(packageAliases[head], ...tail) + ".tuff";
+  }
+
+  return path.join(moduleBaseDir, ...parts) + ".tuff";
 }
 
 function loadModuleGraph(
@@ -364,6 +390,7 @@ function loadModuleGraph(
 }> {
   const moduleBaseDir = options.moduleBaseDir ?? path.dirname(entryPath);
   const allowImportCycles = options.allowImportCycles ?? false;
+  const packageAliases = normalizePackageAliases(moduleBaseDir, options);
   const seen = new Set();
   const visiting = new Set();
   const ordered = [];
@@ -445,7 +472,11 @@ function loadModuleGraph(
     });
 
     for (const imp of gatherImports(core)) {
-      const depFile = modulePathToFile(imp.modulePath, moduleBaseDir);
+      const depFile = modulePathToFile(
+        imp.modulePath,
+        moduleBaseDir,
+        packageAliases,
+      );
       const depAbs = path.resolve(depFile);
       const visitResult = visit(depFile, [...trail, abs]);
       if (!visitResult.ok) return visitResult;
@@ -769,6 +800,7 @@ function compileFileInternal(
     const graphResult = run("load-module-graph", () =>
       loadModuleGraph(inputPath, {
         ...(options.modules ?? {}),
+        target,
         allowImportCycles,
       }),
     );
