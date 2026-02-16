@@ -1,7 +1,7 @@
 let { get_interned_str, vec_new } = selfhost::runtime_lexer;
 let { p_expect, p_parse_identifier, p_at, p_eat, p_parse_type, p_at_kind, node_kind, node_new, node_set_data1, node_set_data2, node_set_data3, node_set_data4, node_set_data5, node_get_data1, node_get_data2, node_get_data3 } = selfhost::parser_core;
 
-fn p_parse_function(is_class: I32) : I32 => {
+fn p_parse_function(is_class: I32, mode: I32) : I32 => {
     p_expect(TK_KEYWORD, "fn", "Expected 'fn'");
     let name = p_parse_identifier();
     
@@ -56,18 +56,30 @@ fn p_parse_function(is_class: I32) : I32 => {
         ret_type = p_parse_type();
     }
     
-    // Body
-    p_expect(TK_SYMBOL, "=>", "Expected '=>'");
-    let body = if (p_at(TK_SYMBOL, "{")) { p_parse_block() } else { p_parse_expression(0) };
-    
-    // Semicolon for expression body
-    if (node_kind(body) != NK_BLOCK) {
-        if (!p_at(TK_SYMBOL, "}") && !p_at_kind(TK_EOF)) {
-            p_expect(TK_SYMBOL, ";", "Expected ';'");
+    let body = 0;
+    if (mode == 1) {
+        p_expect(TK_SYMBOL, ";", "Expected ';' after expect function declaration");
+    } else {
+        // Body
+        p_expect(TK_SYMBOL, "=>", "Expected '=>'");
+        body = if (p_at(TK_SYMBOL, "{")) { p_parse_block() } else { p_parse_expression(0) };
+        
+        // Semicolon for expression body
+        if (node_kind(body) != NK_BLOCK) {
+            if (!p_at(TK_SYMBOL, "}") && !p_at_kind(TK_EOF)) {
+                p_expect(TK_SYMBOL, ";", "Expected ';'");
+            }
         }
     }
-    
-    let kind = if (is_class == 1) { NK_CLASS_FN_DECL } else { NK_FN_DECL };
+
+    let kind = NK_FN_DECL;
+    if (is_class == 1) {
+        kind = NK_CLASS_FN_DECL;
+    } else if (mode == 1) {
+        kind = NK_EXPECT_FN_DECL;
+    } else if (mode == 2) {
+        kind = NK_ACTUAL_FN_DECL;
+    }
     let node = node_new(kind);
     node_set_data1(node, name);
     node_set_data2(node, generics);
@@ -339,8 +351,17 @@ fn p_parse_extern_decl() : I32 => {
 fn p_parse_statement() : I32 => {
     let exported = 0;
     let copy_decl = 0;
+    let expect_decl = 0;
+    let actual_decl = 0;
     let consumed_modifier = 0;
-    while (p_at(TK_KEYWORD, "out") || p_at(TK_KEYWORD, "copy")) {
+    while (
+        p_at(TK_KEYWORD, "out") ||
+        p_at(TK_KEYWORD, "copy") ||
+        p_at(TK_KEYWORD, "expect") ||
+        p_at(TK_IDENTIFIER, "expect") ||
+        p_at(TK_KEYWORD, "actual") ||
+        p_at(TK_IDENTIFIER, "actual")
+    ) {
         consumed_modifier = 1;
         if (p_at(TK_KEYWORD, "out")) {
             p_eat();
@@ -348,13 +369,31 @@ fn p_parse_statement() : I32 => {
                 panic("Duplicate 'out' modifier");
             }
             exported = 1;
-        } else {
+        } else if (p_at(TK_KEYWORD, "copy")) {
             p_eat();
             if (copy_decl == 1) {
                 panic("Duplicate 'copy' modifier");
             }
             copy_decl = 1;
+        } else if (p_at(TK_KEYWORD, "expect") || p_at(TK_IDENTIFIER, "expect")) {
+            p_eat();
+            if (expect_decl == 1) {
+                panic("Duplicate 'expect' modifier");
+            }
+            expect_decl = 1;
+        } else if (p_at(TK_KEYWORD, "actual") || p_at(TK_IDENTIFIER, "actual")) {
+            p_eat();
+            if (actual_decl == 1) {
+                panic("Duplicate 'actual' modifier");
+            }
+            actual_decl = 1;
+        } else {
+            panic("Unexpected declaration modifier");
         }
+    }
+
+    if (expect_decl == 1 && actual_decl == 1) {
+        panic("Cannot combine 'expect' and 'actual' modifiers");
     }
 
     if (consumed_modifier == 1) {
@@ -369,13 +408,22 @@ fn p_parse_statement() : I32 => {
             if (copy_decl == 1) {
                 panic("'copy' is only supported on struct/type declarations");
             }
-            out_node = p_parse_function(0);
+            let mode = 0;
+            if (expect_decl == 1) {
+                mode = 1;
+            } else if (actual_decl == 1) {
+                mode = 2;
+            }
+            out_node = p_parse_function(0, mode);
         } else if (p_at(TK_KEYWORD, "class")) {
             if (copy_decl == 1) {
                 panic("'copy' is only supported on struct/type declarations");
             }
+            if (expect_decl == 1 || actual_decl == 1) {
+                panic("'expect'/'actual' are currently supported only on fn declarations");
+            }
             p_eat();
-            out_node = p_parse_function(1);
+            out_node = p_parse_function(1, 0);
         } else {
             panic("Expected declaration after modifiers");
         }
@@ -390,7 +438,7 @@ fn p_parse_statement() : I32 => {
     if (p_at(TK_KEYWORD, "struct")) { return p_parse_struct(0); }
     if (p_at(TK_KEYWORD, "enum")) { return p_parse_enum(); }
     if (p_at(TK_KEYWORD, "type")) { return p_parse_type_alias(0); }
-    if (p_at(TK_KEYWORD, "fn")) { return p_parse_function(0); }
+    if (p_at(TK_KEYWORD, "fn")) { return p_parse_function(0, 0); }
     if (p_at(TK_KEYWORD, "extern")) {
         p_eat();
         // extern fn/let/type declaration
@@ -398,7 +446,7 @@ fn p_parse_statement() : I32 => {
     }
     if (p_at(TK_KEYWORD, "class")) {
         p_eat();
-        return p_parse_function(1);
+        return p_parse_function(1, 0);
     }
     if (p_at(TK_KEYWORD, "return")) {
         p_eat();

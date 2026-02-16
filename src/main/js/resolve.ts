@@ -40,6 +40,62 @@ export function resolveNames(
   ast: { body: unknown[] },
   options: Record<string, unknown> = {},
 ): ResolveResult<{ body: unknown[] }> {
+  const signatureKey = (node) =>
+    JSON.stringify({
+      generics: node.generics ?? [],
+      params: (node.params ?? []).map((p) => ({ name: p.name, type: p.type })),
+      returnType: node.returnType ?? undefined,
+    });
+
+  const expectFnsByName = new Map();
+  const actualFnsByName = new Map();
+  for (const node of ast.body) {
+    if (node.kind !== "FnDecl") continue;
+    if (node.expectDecl === true) {
+      const group = expectFnsByName.get(node.name) ?? [];
+      group.push(node);
+      expectFnsByName.set(node.name, group);
+    }
+    if (node.actualDecl === true) {
+      const group = actualFnsByName.get(node.name) ?? [];
+      group.push(node);
+      actualFnsByName.set(node.name, group);
+    }
+  }
+
+  const pairedNames = new Set([
+    ...expectFnsByName.keys(),
+    ...actualFnsByName.keys(),
+  ]);
+  for (const name of pairedNames) {
+    const expectFns = expectFnsByName.get(name) ?? [];
+    const actualFns = actualFnsByName.get(name) ?? [];
+    if (expectFns.length !== 1 || actualFns.length !== 1) {
+      return err(
+        new TuffError(
+          `expect/actual pairing requires exactly one expect and one actual for '${name}'`,
+          undefined,
+          {
+            code: "E_EXPECT_ACTUAL_PAIRING",
+            hint: "Declare exactly one 'expect fn' and one matching 'actual fn' for each platform declaration.",
+          },
+        ),
+      );
+    }
+    if (signatureKey(expectFns[0]) !== signatureKey(actualFns[0])) {
+      return err(
+        new TuffError(
+          `expect/actual signatures do not match for '${name}'`,
+          undefined,
+          {
+            code: "E_EXPECT_ACTUAL_SIGNATURE_MISMATCH",
+            hint: "Make generic params, parameter list, and return type identical between expect and actual declarations.",
+          },
+        ),
+      );
+    }
+  }
+
   const hostBuiltins = new Set(options.hostBuiltins ?? []);
   const allowHostPrefix = options.allowHostPrefix ?? "";
   const strictModuleImports = options.strictModuleImports ?? false;
@@ -60,6 +116,9 @@ export function resolveNames(
 
   const globals = new Scope();
   for (const node of ast.body) {
+    if (node.kind === "FnDecl" && node.expectDecl === true) {
+      continue;
+    }
     if (
       [
         "FnDecl",
@@ -324,6 +383,9 @@ export function resolveNames(
         break;
       }
       case "FnDecl": {
+        if (node.expectDecl === true) {
+          break;
+        }
         const fnScope = new Scope(scope);
         for (const p of node.params) {
           const defineResult = fnScope.define(p.name);

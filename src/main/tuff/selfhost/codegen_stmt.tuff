@@ -82,7 +82,13 @@ fn emit_stmt(n: I32) : *Str => {
         return emit_block(n);
     }
     
-    if (kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL) {
+    if (kind == NK_EXPECT_FN_DECL) {
+        let name_idx = node_get_data1(n);
+        let name = get_interned_str(name_idx);
+        return "// expect fn ".str_concat(name);
+    }
+
+    if (kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL || kind == NK_ACTUAL_FN_DECL) {
         let name_idx = node_get_data1(n);
         let name = get_interned_str(name_idx);
         let params = node_get_data3(n);

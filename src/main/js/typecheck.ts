@@ -322,6 +322,9 @@ export function typecheck(
     } else if (node.kind === "EnumDecl") {
       enums.set(node.name, node);
     } else if (node.kind === "FnDecl" || node.kind === "ExternFnDecl") {
+      if (node.kind === "FnDecl" && node.expectDecl === true) {
+        continue;
+      }
       functions.set(node.name, node);
     } else if (node.kind === "TypeAlias" || node.kind === "ExternTypeDecl") {
       typeAliases.set(
@@ -1459,6 +1462,14 @@ export function typecheck(
         return inferBodyAsVoid(node.body);
       }
       case "FnDecl": {
+        if (node.expectDecl === true) {
+          return ok({
+            name: "Void",
+            min: undefined,
+            max: undefined,
+            nonZero: false,
+          });
+        }
         const fnScope = new Map(globalScope);
         const fnFacts = new Map();
         for (const p of node.params) {

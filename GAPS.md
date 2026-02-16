@@ -1,6 +1,6 @@
 # Tuff Spec Gap Report
 
-_Last updated: 2026-02-15 (from `npm run semantics:exhaustive`)_
+_Last updated: 2026-02-16 (from `npm run semantics:exhaustive`)_
 
 This document lists the current gaps between the implemented compiler behavior and `SPECIFICATION.md`, based on the failing exhaustive semantics audit in `src/test/js/spec-semantics-exhaustive.ts`.
 
@@ -77,13 +77,16 @@ These are spec-described constructs that currently fail to compile.
 - Observed:
   - Stage0/1: `E_RESOLVE_SHADOWING` (name collision on `Car`)
 
-### 6) `expect` / `actual` declarations
+### ✅ Resolved: `expect` / `actual` declarations
 
 - Spec area: `5.2`
 - Case: `platform:expect-actual`
-- Observed:
-  - Stage0/1: `E_PARSE_EXPECTED_TOKEN` (`Expected ';' ... got keyword:fn`)
-  - Stage2/3: `E_SELFHOST_PANIC` (`Expected ';'`)
+- Status: **fixed** (no longer reported by `npm run semantics:exhaustive`)
+- Notes:
+  - Added parser support for `expect fn ...;` and `actual fn ... => ...` in Stage0 and selfhost parsers.
+  - Added resolver enforcement for exact one-to-one expect/actual pairing with exact signature match.
+  - Updated typecheck/codegen behavior to skip emitting `expect` declarations and emit only runtime `actual` implementations.
+  - Implemented `expect`/`actual` as contextual modifiers (not globally reserved keywords) to avoid breaking existing identifiers.
 
 ### 7) Result union marker `|>` + unwrap ergonomics in tested form
 
@@ -128,7 +131,7 @@ These cases fail for code-name mismatch rather than semantic pass/fail behavior.
 
 ## D) Priority suggestions
 
-1. **Parser surface parity first**: `object`, `loop`, `async`, contracts/impl, expect/actual.
+1. **Parser surface parity first**: `object`, `loop`, `async`, contracts/impl.
 2. **Type-system syntax/parsing fixes**: generic call forms and dependent array signatures.
 3. **Desugar/resolve collision handling**: `class fn` shadowing behavior.
 4. **Diagnostic harmonization**: align expected-vs-actual codes for overflow and match exhaustiveness.

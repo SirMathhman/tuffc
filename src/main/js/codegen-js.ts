@@ -134,6 +134,9 @@ function emitStmt(stmt) {
     case "Block":
       return emitBlock(stmt);
     case "FnDecl": {
+      if (stmt.expectDecl === true) {
+        return `// expect fn ${stmt.name}`;
+      }
       const params = stmt.params.map((p) => p.name).join(", ");
       if (stmt.body.kind === "Block") {
         return `function ${stmt.name}(${params}) ${emitFunctionBlock(stmt.body)}`;

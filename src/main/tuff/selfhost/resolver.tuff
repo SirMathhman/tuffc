@@ -5,6 +5,111 @@
 let { get_interned_str, set_new, vec_new } = selfhost::runtime_lexer;
 let { node_kind, node_get_data1, node_get_data2, node_get_data3, node_get_data4, node_get_data5 } = selfhost::parser_core;
 
+fn fn_type_sig(t: I32) : *Str => {
+    if (t == 0) {
+        return "_";
+    }
+    let k = node_kind(t);
+    if (k == NK_NAMED_TYPE) {
+        return get_interned_str(node_get_data1(t));
+    }
+    if (k == NK_POINTER_TYPE) {
+        let mutv = node_get_data1(t);
+        let inner = fn_type_sig(node_get_data2(t));
+        if (mutv == 1) { return "*mut ".str_concat(inner); }
+        return "*".str_concat(inner);
+    }
+    if (k == NK_ARRAY_TYPE) {
+        return "Array";
+    }
+    if (k == NK_TUPLE_TYPE) {
+        return "Tuple";
+    }
+    if (k == NK_REFINEMENT_TYPE) {
+        return "Ref<".str_concat(fn_type_sig(node_get_data1(t))).str_concat(">");
+    }
+    if (k == NK_UNION_TYPE) {
+        return fn_type_sig(node_get_data1(t)).str_concat("|").str_concat(fn_type_sig(node_get_data2(t)));
+    }
+    if (k == NK_FUNCTION_TYPE) {
+        let parts = vec_new();
+        let ps = node_get_data1(t);
+        let i = 0;
+        while (i < ps.vec_length()) {
+            parts.vec_push(fn_type_sig(ps.vec_get(i)));
+            i = i + 1;
+        }
+        return "(".str_concat(parts.vec_join(",")).str_concat(")=>").str_concat(fn_type_sig(node_get_data2(t)));
+    }
+    "Unknown"
+}
+
+fn fn_decl_sig(n: I32) : *Str => {
+    let gens = node_get_data2(n);
+    let params = node_get_data3(n);
+    let ret = node_get_data4(n);
+    let pparts = vec_new();
+    let i = 0;
+    while (i < params.vec_length()) {
+        let p = params.vec_get(i);
+        let pname = get_interned_str(p.vec_get(0));
+        let ptype = fn_type_sig(p.vec_get(1));
+        pparts.vec_push(pname.str_concat(":").str_concat(ptype));
+        i = i + 1;
+    }
+    let gcount = int_to_string(gens.vec_length());
+    return "g=".str_concat(gcount).str_concat(";p=").str_concat(pparts.vec_join(",")).str_concat(";r=").str_concat(fn_type_sig(ret));
+}
+
+fn validate_expect_actual_pairs(body: Vec) : I32 => {
+    let i = 0;
+    let len = body.vec_length();
+    while (i < len) {
+        let stmt = body.vec_get(i);
+        let kind = node_kind(stmt);
+        if (kind == NK_EXPECT_FN_DECL || kind == NK_ACTUAL_FN_DECL) {
+            let name = get_interned_str(node_get_data1(stmt));
+            let expect_count = 0;
+            let actual_count = 0;
+            let expect_node = 0;
+            let actual_node = 0;
+            let j = 0;
+            while (j < len) {
+                let cand = body.vec_get(j);
+                let ck = node_kind(cand);
+                if ((ck == NK_EXPECT_FN_DECL || ck == NK_ACTUAL_FN_DECL) && get_interned_str(node_get_data1(cand)).str_eq(name)) {
+                    if (ck == NK_EXPECT_FN_DECL) {
+                        expect_count = expect_count + 1;
+                        expect_node = cand;
+                    } else {
+                        actual_count = actual_count + 1;
+                        actual_node = cand;
+                    }
+                }
+                j = j + 1;
+            }
+            if (expect_count != 1 || actual_count != 1) {
+                panic_with_code(
+                    "E_EXPECT_ACTUAL_PAIRING",
+                    "expect/actual pairing requires exactly one expect and one actual for '".str_concat(name).str_concat("'"),
+                    "Platform declarations require exactly one expect and one actual declaration for each symbol.",
+                    "Declare exactly one 'expect fn' and one matching 'actual fn' for each platform symbol."
+                );
+            }
+            if (!fn_decl_sig(expect_node).str_eq(fn_decl_sig(actual_node))) {
+                panic_with_code(
+                    "E_EXPECT_ACTUAL_SIGNATURE_MISMATCH",
+                    "expect/actual signatures do not match for '".str_concat(name).str_concat("'"),
+                    "An expect declaration and its actual implementation have different signatures.",
+                    "Make generic params, parameter list, and return type identical between expect and actual declarations."
+                );
+            }
+        }
+        i = i + 1;
+    }
+    0
+}
+
 fn scope_define(scopes: Vec, depth: I32, name: *Str) : I32 => {
     let scope = scopes.vec_get(depth);
     if (scope.set_has(name)) {
@@ -217,7 +322,11 @@ fn resolve_stmt(n: I32, globals: *mut Set, scopes: Vec, depth: I32) : I32 => {
         return 0;
     }
 
-    if (kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL) {
+    if (kind == NK_EXPECT_FN_DECL) {
+        return 0;
+    }
+
+    if (kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL || kind == NK_ACTUAL_FN_DECL) {
         let fnScopes = vec_new();
         fnScopes.vec_push(set_new());
         let params = node_get_data3(n);
@@ -300,6 +409,8 @@ out fn resolve_names(program: I32) : I32 => {
     let globals = set_new();
     let body = node_get_data1(program);
 
+    validate_expect_actual_pairs(body);
+
     // Predeclare global symbols.
     let i = 0;
     let len = body.vec_length();
@@ -309,6 +420,7 @@ out fn resolve_names(program: I32) : I32 => {
         if (
             kind == NK_FN_DECL ||
             kind == NK_CLASS_FN_DECL ||
+            kind == NK_ACTUAL_FN_DECL ||
             kind == NK_STRUCT_DECL ||
             kind == NK_ENUM_DECL ||
             kind == NK_TYPE_ALIAS ||

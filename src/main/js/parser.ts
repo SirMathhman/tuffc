@@ -1052,7 +1052,10 @@ export function parse(tokens: Token[]): ParseResult<Program> {
     });
   };
 
-  const parseFunction = (isClassSugar = false): ParseResult<Stmt> => {
+  const parseFunction = (
+    isClassSugar = false,
+    mode: "normal" | "expect" | "actual" = "normal",
+  ): ParseResult<Stmt> => {
     const fnResult = expect("keyword", "fn", "Expected fn");
     if (!fnResult.ok) return fnResult;
     const nameResult = parseIdentifier();
@@ -1068,29 +1071,47 @@ export function parse(tokens: Token[]): ParseResult<Program> {
     if (!signatureResult.ok) return signatureResult;
     const { params, returnType } = signatureResult.value;
 
-    const arrowResult = expect(
-      "symbol",
-      "=>",
-      "Expected '=>' in function declaration",
-    );
-    if (!arrowResult.ok) return arrowResult;
-    const bodyResult = at("symbol", "{") ? parseBlock() : parseExpression();
-    if (!bodyResult.ok) return bodyResult;
-    if (!at("symbol", "}") && !at("eof") && bodyResult.value.kind !== "Block") {
+    let body = undefined;
+    if (mode === "expect") {
       const semiResult = expect(
         "symbol",
         ";",
-        "Expected ';' after expression function",
+        "Expected ';' after expect function declaration",
       );
       if (!semiResult.ok) return semiResult;
+    } else {
+      const arrowResult = expect(
+        "symbol",
+        "=>",
+        "Expected '=>' in function declaration",
+      );
+      if (!arrowResult.ok) return arrowResult;
+      const bodyResult = at("symbol", "{") ? parseBlock() : parseExpression();
+      if (!bodyResult.ok) return bodyResult;
+      body = bodyResult.value;
+      if (
+        !at("symbol", "}") &&
+        !at("eof") &&
+        bodyResult.value.kind !== "Block"
+      ) {
+        const semiResult = expect(
+          "symbol",
+          ";",
+          "Expected ';' after expression function",
+        );
+        if (!semiResult.ok) return semiResult;
+      }
     }
+
     return ok({
       kind: isClassSugar ? "ClassFunctionDecl" : "FnDecl",
       name: nameResult.value,
       generics,
       params,
       returnType,
-      body: bodyResult.value,
+      body,
+      expectDecl: mode === "expect",
+      actualDecl: mode === "actual",
     });
   };
 
@@ -1216,11 +1237,25 @@ export function parse(tokens: Token[]): ParseResult<Program> {
   };
 
   const parseStatement = (): ParseResult<Stmt> => {
+    const atContextualModifier = (name: "expect" | "actual") => {
+      const t = peek();
+      return (
+        (t.type === "keyword" || t.type === "identifier") && t.value === name
+      );
+    };
+
     let exported = false;
     let copyDecl = false;
+    let expectDecl = false;
+    let actualDecl = false;
     let modifierLoc = undefined;
     let consumedModifier = false;
-    while (at("keyword", "out") || at("keyword", "copy")) {
+    while (
+      at("keyword", "out") ||
+      at("keyword", "copy") ||
+      atContextualModifier("expect") ||
+      atContextualModifier("actual")
+    ) {
       consumedModifier = true;
       const tok = eat();
       modifierLoc = modifierLoc ?? tok.loc;
@@ -1235,16 +1270,60 @@ export function parse(tokens: Token[]): ParseResult<Program> {
         }
         exported = true;
       } else {
-        if (copyDecl) {
+        if (tok.value === "copy") {
+          if (copyDecl) {
+            return err(
+              new TuffError("Duplicate 'copy' modifier", tok.loc, {
+                code: "E_PARSE_EXPECTED_TOKEN",
+                hint: "Use 'copy' at most once before a declaration.",
+              }),
+            );
+          }
+          copyDecl = true;
+        } else if (tok.value === "expect") {
+          if (expectDecl) {
+            return err(
+              new TuffError("Duplicate 'expect' modifier", tok.loc, {
+                code: "E_PARSE_EXPECTED_TOKEN",
+                hint: "Use 'expect' at most once before a declaration.",
+              }),
+            );
+          }
+          expectDecl = true;
+        } else if (tok.value === "actual") {
+          if (actualDecl) {
+            return err(
+              new TuffError("Duplicate 'actual' modifier", tok.loc, {
+                code: "E_PARSE_EXPECTED_TOKEN",
+                hint: "Use 'actual' at most once before a declaration.",
+              }),
+            );
+          }
+          actualDecl = true;
+        } else if (copyDecl) {
           return err(
             new TuffError("Duplicate 'copy' modifier", tok.loc, {
               code: "E_PARSE_EXPECTED_TOKEN",
               hint: "Use 'copy' at most once before a declaration.",
             }),
           );
+        } else {
+          copyDecl = true;
         }
-        copyDecl = true;
       }
+    }
+
+    if (expectDecl && actualDecl) {
+      return err(
+        new TuffError(
+          "Cannot combine 'expect' and 'actual' modifiers",
+          peek().loc,
+          {
+            code: "E_PARSE_EXPECTED_TOKEN",
+            hint: "Use either 'expect fn ...;' or 'actual fn ... => ...'.",
+          },
+        ),
+      );
     }
 
     if (consumedModifier) {
@@ -1262,12 +1341,51 @@ export function parse(tokens: Token[]): ParseResult<Program> {
             ),
           );
         }
-        nodeResult = parseFunction(false);
+        nodeResult = parseFunction(
+          false,
+          expectDecl ? "expect" : actualDecl ? "actual" : "normal",
+        );
       } else if (at("keyword", "struct")) {
+        if (expectDecl || actualDecl) {
+          return err(
+            new TuffError(
+              "'expect'/'actual' are currently supported only on fn declarations",
+              peek().loc,
+              {
+                code: "E_PARSE_EXPECTED_TOKEN",
+                hint: "Use expect/actual before fn declarations.",
+              },
+            ),
+          );
+        }
         nodeResult = parseStruct(copyDecl);
       } else if (at("keyword", "enum")) {
+        if (expectDecl || actualDecl) {
+          return err(
+            new TuffError(
+              "'expect'/'actual' are currently supported only on fn declarations",
+              peek().loc,
+              {
+                code: "E_PARSE_EXPECTED_TOKEN",
+                hint: "Use expect/actual before fn declarations.",
+              },
+            ),
+          );
+        }
         nodeResult = parseEnum();
       } else if (at("keyword", "type")) {
+        if (expectDecl || actualDecl) {
+          return err(
+            new TuffError(
+              "'expect'/'actual' are currently supported only on fn declarations",
+              peek().loc,
+              {
+                code: "E_PARSE_EXPECTED_TOKEN",
+                hint: "Use expect/actual before fn declarations.",
+              },
+            ),
+          );
+        }
         nodeResult = parseTypeAlias(copyDecl);
       } else if (at("keyword", "class")) {
         if (copyDecl) {
@@ -1278,6 +1396,18 @@ export function parse(tokens: Token[]): ParseResult<Program> {
               {
                 code: "E_PARSE_EXPECTED_TOKEN",
                 hint: "Use 'copy struct ...' or 'copy type ...'.",
+              },
+            ),
+          );
+        }
+        if (expectDecl || actualDecl) {
+          return err(
+            new TuffError(
+              "'expect'/'actual' are currently supported only on fn declarations",
+              peek().loc,
+              {
+                code: "E_PARSE_EXPECTED_TOKEN",
+                hint: "Use expect/actual before fn declarations.",
               },
             ),
           );
