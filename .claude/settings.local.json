@@ -11,5 +11,11 @@
         ]
       }
     ]
+  },
+  "outputStyle": "Explanatory",
+  "permissions": {
+    "allow": [
+      "Bash(wc:*)"
+    ]
   }
 }
