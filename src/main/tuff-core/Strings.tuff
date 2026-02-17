@@ -1,3 +1,1 @@
-out module Strings {
-  expect fn length(this : *Str) : USize;
-}
+out expect fn length(this : *Str) : USize;

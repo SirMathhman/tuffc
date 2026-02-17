@@ -1,8 +1,6 @@
-out module IO {
-  expect fn read_file(path : *Str) : *Str;
-  expect fn write_file(path : *Str, contents : *Str) : I32;
-  expect fn path_join(a : *Str, b : *Str) : *Str;
-  expect fn path_dirname(p : *Str) : *Str;
-  expect fn print(s : *Str) : I32;
-  expect fn print_error(s : *Str) : I32;
-}
+out expect fn read_file(path : *Str) : *Str;
+out expect fn write_file(path : *Str, contents : *Str) : I32;
+out expect fn path_join(a : *Str, b : *Str) : *Str;
+out expect fn path_dirname(p : *Str) : *Str;
+out expect fn print(s : *Str) : I32;
+out expect fn print_error(s : *Str) : I32;

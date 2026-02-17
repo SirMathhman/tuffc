@@ -5,14 +5,12 @@ extern fn sb_append(this : StringBuilder, s : *Str) : StringBuilder;
 extern fn sb_append_char(this : StringBuilder, code : I32) : StringBuilder;
 extern fn sb_build(this : StringBuilder) : *Str;
 
-out module StringBuilder {
-  expect fn sb_new() : StringBuilder;
-  expect fn sb_append(this : StringBuilder, s : *Str) : StringBuilder;
-  expect fn sb_append_char(this : StringBuilder, code : I32) : StringBuilder;
-  expect fn sb_build(this : StringBuilder) : *Str;
+out expect fn sb_new() : StringBuilder;
+out expect fn sb_append(this : StringBuilder, s : *Str) : StringBuilder;
+out expect fn sb_append_char(this : StringBuilder, code : I32) : StringBuilder;
+out expect fn sb_build(this : StringBuilder) : *Str;
 
-  actual fn sb_new() : StringBuilder => sb_new();
-  actual fn sb_append(this : StringBuilder, s : *Str) : StringBuilder => sb_append(this, s);
-  actual fn sb_append_char(this : StringBuilder, code : I32) : StringBuilder => sb_append_char(this, code);
-  actual fn sb_build(this : StringBuilder) : *Str => sb_build(this);
-}
+out actual fn sb_new() : StringBuilder => sb_new();
+out actual fn sb_append(this : StringBuilder, s : *Str) : StringBuilder => sb_append(this, s);
+out actual fn sb_append_char(this : StringBuilder, code : I32) : StringBuilder => sb_append_char(this, code);
+out actual fn sb_build(this : StringBuilder) : *Str => sb_build(this);

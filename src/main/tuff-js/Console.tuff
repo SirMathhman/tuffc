@@ -1,0 +1,9 @@
+extern type Console;
+
+extern fn log(this : *Console, message : *Str) : Void;
+
+out extern let console : Console;
+
+out actual fn println(message : *Str) : Void => {
+    console.log(message);
+}
