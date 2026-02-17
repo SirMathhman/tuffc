@@ -34,3 +34,18 @@ This log records completion of the C-runtime infrastructure execution plan and r
 - Phase-by-phase commits are complete and linear.
 - Working tree expected clean at close.
 - Follow-up work should focus on capability-group cutover execution toward eventual `tuff_runtime.*` removal.
+
+## 2026-02-17 multiplatform runtime continuation
+
+Additional phase commits:
+
+8. Phase 1 parser prep for grouped module declarations: `4236dba`
+9. Phase 2 runtime package topology + default target aliases: `1f3f7e9`
+10. Phase 3 capability split (`Strings`/`Collections`) across runtime packages: `e869a57`
+11. Phase 4 substrate API boundary naming + stdlib bridge carry-forward: `b20c091`
+
+Targeted verification executed in this continuation:
+
+- `npx tsx ./src/test/js/expect-actual-c-aliases.ts` ✅
+- `npx tsx ./src/test/js/runtime-package-default-aliases.ts` ✅
+- `npx tsx ./tests/out/stdlib-real/verify-compile.mts` ✅

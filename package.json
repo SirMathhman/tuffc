@@ -24,7 +24,7 @@
     "borrow:verify": "tsx ./src/test/js/borrow-checker.ts",
     "c:verify": "tsx ./src/test/js/c-backend-smoke.ts && tsx ./src/test/js/monomorphization-plan.ts",
     "c:native:verify": "tsx ./src/test/js/c-native-cli-e2e.ts",
-    "c:verify:full": "npm run c:verify && npm run expect:actual:verify && npm run c:native:verify",
+    "c:verify:full": "npm run c:verify && npm run expect:actual:verify && npm run runtime:aliases && npm run c:native:verify",
     "c:selfhost:verify": "tsx ./src/test/js/c-selfhost-progress.ts",
     "cli:verify": "tsx ./src/test/js/cli-hardening.ts",
     "selfhost:modules": "tsx ./src/test/js/selfhost-modules.ts",

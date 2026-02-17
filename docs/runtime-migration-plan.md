@@ -99,6 +99,30 @@ Implemented verification commands:
 - `npm run c:native:verify`
 - `npm run c:verify:full`
 
+## Milestone 3 (completed): parser/runtime topology prep for multiplatform stdlib
+
+- Added Stage0 parser support for `out module Name { ... }` declaration groups (flattened declaration semantics).
+- Added default runtime package alias topology in compiler resolution:
+  - base: `tuff_core -> src/main/tuff-core`
+  - target `c`: `tuff_core -> src/main/tuff-c`
+  - target `js`: `tuff_core -> src/main/tuff-js`
+- Kept explicit user alias config as highest precedence to preserve test harness overrides.
+- Added regression: `src/test/js/runtime-package-default-aliases.ts`.
+
+Status: ✅ completed.
+
+## Milestone 4 (completed): capability module split + substrate boundary naming
+
+- Added capability modules across runtime packages:
+  - `Strings.tuff`
+  - `Collections.tuff`
+  for `tuff-core`, `tuff-c`, and `tuff-js`.
+- Updated default alias regression to import and exercise `tuff_core::Strings` + `tuff_core::Collections`.
+- Renamed C codegen dependency to substrate-oriented API:
+  - `getEmbeddedCSubstrateSupport` (compat wrapper retained for `getEmbeddedCRuntimeSupport`).
+
+Status: ✅ completed.
+
 ## Capability cutover checkpoints
 
 Each runtime capability group may move from transitional `tuff_runtime.*` ownership to target-library ownership only when all of the following are true:

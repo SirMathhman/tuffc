@@ -30,3 +30,10 @@ This document is the authoritative removal contract for deleting:
 - Runtime behavior remains capability-group based.
 - During migration, existing call-site symbol names stay stable while ownership shifts away from handwritten runtime files.
 - Final deletion occurs only after selfhost C gate is green.
+
+## 2026-02-17 checkpoint
+
+- Runtime package topology is now active by default (`tuff-core`, `tuff-c`, `tuff-js`) with target-aware alias routing.
+- Capability modules are present for Strings and Collections across all runtime packages.
+- C codegen now references the substrate-oriented support API name (`getEmbeddedCSubstrateSupport`) while retaining compatibility wrapper naming.
+- Stable symbol policy remains in effect (`str_*`, `vec_*`, `map_*`, `set_*`, IO/path/diagnostic symbols unchanged).
