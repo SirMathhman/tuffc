@@ -15,6 +15,24 @@ import { TuffError, enrichError } from "./errors.ts";
 import { err, ok, type Result } from "./result.ts";
 import * as runtime from "./runtime.ts";
 
+const __compilerFile = fileURLToPath(import.meta.url);
+const __runtimeRoot = path.resolve(path.dirname(__compilerFile), "..");
+
+function getDefaultRuntimeAliases() {
+  const base = {
+    tuff_core: path.join(__runtimeRoot, "tuff-core"),
+  };
+  const byTarget = {
+    c: {
+      tuff_core: path.join(__runtimeRoot, "tuff-c"),
+    },
+    js: {
+      tuff_core: path.join(__runtimeRoot, "tuff-js"),
+    },
+  };
+  return { base, byTarget };
+}
+
 type CompilerResult<T> = Result<T, TuffError>;
 
 function monomorphTypeKey(typeNode): string {
@@ -632,10 +650,16 @@ function getDeclName(node) {
 
 function normalizePackageAliases(moduleBaseDir, options = {}) {
   const target = options.target ?? "";
-  const byTarget = options.packageAliasesByTarget ?? {};
+  const defaults = getDefaultRuntimeAliases();
+  const byTarget = {
+    ...(defaults.byTarget ?? {}),
+    ...(options.packageAliasesByTarget ?? {}),
+  };
   const aliases = {
-    ...(options.packageAliases ?? {}),
+    ...(defaults.base ?? {}),
     ...(byTarget[target] ?? {}),
+    ...(options.packageAliases ?? {}),
+    ...((options.packageAliasesByTarget ?? {})[target] ?? {}),
   };
 
   const normalized = {};
