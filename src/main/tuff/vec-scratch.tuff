@@ -5,10 +5,10 @@ extern let { malloc, free } = stdlib;
 extern fn malloc<T, L : USize>(bytesCount : SizeOf<T> * L) : Alloc<*[T; 0; L]> | 0;
 
 lifetime t {
-    extern fn realloc<T, L : USize>(
-        ptr : Alloc<*t [T; _; _ < L]>, 
-        bytesCount : SizeOf<T> * L
-    ) : Alloc<*t [T; _; L]> | 0;
+    extern fn realloc<T, I, L, L2 where L2 >= I>(
+        ptr : Alloc<*t [T; I; L]>,
+        bytesCount : SizeOf<T> * L2
+    ) : Alloc<*t [T; I; L2]> | 0;
 }
 
 extern fn free<T>(this : Alloc<*[T; _; _]>);
@@ -16,32 +16,35 @@ extern fn free<T>(this : Alloc<*[T; _; _]>);
 // No idea why memcpy is defined in string.h, but whatever
 extern let { memcpy } = string;
 
-/*
-This signature might need correction, it's not correct yet:
+// memcpy<T, SI, DI, DL, Count>
+// Copies Count initialized elements from source (with SI initialized) to destination (with DI init and DL capacity)
+// Preconditions enforced:
+//   - Count <= SI (don't copy uninitialized bytes from source)
+//   - DI + Count <= DL (destination has space for the copy)
+// Note: caller must manually update destination.init after calling memcpy
 
-Type,
-SourceInit,
-SourceLength,
-DestInit,
-DestLength
-BytesCount
-
-Establishing invariants as:
-
-SourceInit <= SourceLength,
-DestInit <= DestLength,
-BytesCount <= SourceInit
-*/
-extern fn memcpy<MinLength : USize, S; D : USize <= L>(
-    to : *out mut [Type; DestInit; USize >= DestInit],
-    from : *[Type; SourceInit; USize >= SourceInit],
-    bytesCount : SizeOf<T> * D
+extern fn memcpy<T, SI, DI, DL, Count where Count <= SI, DI + Count <= DL>(
+    to : *mut [T; DI; DL],
+    from : *[T; SI; _],
+    bytesCount : SizeOf<T> * Count
 ) : Void;
 
 out struct Some<T> { field : T };
 out object None<T> {};
 
 type Option<T> = Some<T> | None<T>;
+
+out module Option {
+    fn flat_map<T, U>(this : Option<T>, f : (T) => Option<U>) : Option<U> => {
+        if (this is Some<T>) {
+            // Extract the value from Some<T>
+            let someValue : Some<T> = this;
+            f(someValue.field)
+        } else {
+            None<U>
+        }
+    }
+}
 
 let DEFAULT_SIZE = 10USize;
 
@@ -113,15 +116,27 @@ out fn Vec<T>() : Option<Vec<T>> => {
         }
     
         out fn removeByIndex(*mut this, index : Index) : T => {
-            // TODO: Shift elements over
-            // Then set slice.init manually
-            // Use memcpy
+            // Save the element we're removing (guaranteed to be initialized)
+            let removed = slice[index];
 
-            /*
-            Return the removed element. This is guaranteed to produce a value.
-            Since we know that ALL elements are initialized up to this.slice.init
-            and that index is always USize < this.slice.init, there MUST be always a value
-            */
+            // If we're not removing the last element, shift elements leftward
+            let elementsToShift = slice.init - index - 1USize;
+            if (elementsToShift > 0USize) {
+                // Copy elements [index+1..init) to [index..init-1)
+                // Source: slice + index + 1 has (init - index - 1) initialized elements
+                // Dest: slice + index has init - 1 total capacity after shift
+                memcpy<T, elementsToShift, index, slice.length, elementsToShift>(
+                    slice + index,
+                    slice + index + 1,
+                    sizeOf<T>() * elementsToShift
+                );
+            }
+
+            // Decrement init after shift
+            slice.init = slice.init - 1USize;
+
+            // Return the removed element (guaranteed initialized by invariant)
+            removed
         }
     }
 
@@ -150,7 +165,7 @@ out fn Vec<T>() : Option<Vec<T>> => {
 
     out fn get_mut(*mut this, index : Index) : *mut T => {
         // Same logic applies as above
-        slice[index]
+        slice + index
     }
 
     /*
