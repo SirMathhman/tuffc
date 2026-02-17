@@ -34,7 +34,10 @@ if (!result.ok) {
 
 const plan = result.value?.monomorphizationPlan;
 if (!plan?.available) {
-  fail("Expected monomorphization plan to be available for stage0 compile", plan);
+  fail(
+    "Expected monomorphization plan to be available for stage0 compile",
+    plan,
+  );
 }
 
 const specializations = plan.specializations ?? [];
@@ -46,7 +49,10 @@ const idI32 = specializations.filter(
 );
 
 if (idI32.length !== 1) {
-  fail("Expected exactly one deduplicated id<I32> specialization", specializations);
+  fail(
+    "Expected exactly one deduplicated id<I32> specialization",
+    specializations,
+  );
 }
 
 const firstI32Bool = specializations.find(
@@ -60,8 +66,14 @@ if (!firstI32Bool) {
   fail("Expected first<I32,Bool> specialization", specializations);
 }
 
-if (typeof firstI32Bool.mangledName !== "string" || !firstI32Bool.mangledName.includes("first")) {
-  fail("Expected mangled name for first<I32,Bool> specialization", firstI32Bool);
+if (
+  typeof firstI32Bool.mangledName !== "string" ||
+  !firstI32Bool.mangledName.includes("first")
+) {
+  fail(
+    "Expected mangled name for first<I32,Bool> specialization",
+    firstI32Bool,
+  );
 }
 
 console.log("Monomorphization plan metadata checks passed");
