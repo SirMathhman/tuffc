@@ -19,8 +19,8 @@ typedef struct
 typedef struct
 {
     int64_t *data;
-    size_t len;
-    size_t cap;
+    size_t init;
+    size_t length;
 } TuffVec;
 
 typedef struct
@@ -478,16 +478,16 @@ int64_t __vec_new(void)
 
 static void vec_reserve(TuffVec *v, size_t need)
 {
-    if (v->cap >= need)
+    if (v->length >= need)
         return;
-    size_t cap = v->cap == 0 ? 4 : v->cap;
-    while (cap < need)
-        cap *= 2;
-    int64_t *next = (int64_t *)tuff_realloc_array(v->data, sizeof(int64_t), cap);
+    size_t next_len = v->length == 0 ? 4 : v->length;
+    while (next_len < need)
+        next_len *= 2;
+    int64_t *next = (int64_t *)tuff_realloc_array(v->data, sizeof(int64_t), next_len);
     if (next == NULL)
         tuff_panic("Out of memory in vec_reserve");
     v->data = next;
-    v->cap = cap;
+    v->length = next_len;
 }
 
 int64_t vec_push(int64_t thisVec, int64_t item)
@@ -495,23 +495,23 @@ int64_t vec_push(int64_t thisVec, int64_t item)
     TuffVec *v = (TuffVec *)tuff_from_val(thisVec);
     if (v == NULL)
         return thisVec;
-    vec_reserve(v, v->len + 1);
-    v->data[v->len++] = item;
+    vec_reserve(v, v->init + 1);
+    v->data[v->init++] = item;
     return thisVec;
 }
 
 int64_t vec_pop(int64_t thisVec)
 {
     TuffVec *v = (TuffVec *)tuff_from_val(thisVec);
-    if (v == NULL || v->len == 0)
+    if (v == NULL || v->init == 0)
         return 0;
-    return v->data[--v->len];
+    return v->data[--v->init];
 }
 
 int64_t vec_get(int64_t thisVec, int64_t i)
 {
     TuffVec *v = (TuffVec *)tuff_from_val(thisVec);
-    if (v == NULL || i < 0 || (size_t)i >= v->len)
+    if (v == NULL || i < 0 || (size_t)i >= v->init)
         return 0;
     return v->data[i];
 }
@@ -522,28 +522,40 @@ int64_t vec_set(int64_t thisVec, int64_t i, int64_t val)
     if (v == NULL || i < 0)
         return thisVec;
     size_t idx = (size_t)i;
-    if (idx >= v->len)
+    if (idx > v->init)
     {
-        vec_reserve(v, idx + 1);
-        for (size_t j = v->len; j <= idx; j++)
-            v->data[j] = 0;
-        v->len = idx + 1;
+        tuff_panic("vec_set index exceeds initialized size");
     }
+    vec_reserve(v, idx + 1);
     v->data[idx] = val;
+    if (idx == v->init)
+        v->init += 1;
     return thisVec;
 }
 
 int64_t vec_length(int64_t thisVec)
 {
     TuffVec *v = (TuffVec *)tuff_from_val(thisVec);
-    return v == NULL ? 0 : (int64_t)v->len;
+    return v == NULL ? 0 : (int64_t)v->init;
+}
+
+int64_t vec_init(int64_t thisVec)
+{
+    TuffVec *v = (TuffVec *)tuff_from_val(thisVec);
+    return v == NULL ? 0 : (int64_t)v->init;
+}
+
+int64_t vec_capacity(int64_t thisVec)
+{
+    TuffVec *v = (TuffVec *)tuff_from_val(thisVec);
+    return v == NULL ? 0 : (int64_t)v->length;
 }
 
 int64_t vec_clear(int64_t thisVec)
 {
     TuffVec *v = (TuffVec *)tuff_from_val(thisVec);
     if (v != NULL)
-        v->len = 0;
+        v->init = 0;
     return thisVec;
 }
 
@@ -553,11 +565,11 @@ int64_t vec_join(int64_t thisVec, int64_t sep)
     const char *ssep = tuff_str(sep);
     if (ssep == NULL)
         ssep = "";
-    if (v == NULL || v->len == 0)
+    if (v == NULL || v->init == 0)
         return tuff_to_val(tuff_strdup(""));
 
     int64_t sb = sb_new();
-    for (size_t i = 0; i < v->len; i++)
+    for (size_t i = 0; i < v->init; i++)
     {
         if (i > 0)
             sb_append(sb, sep);
@@ -571,7 +583,7 @@ int64_t vec_includes(int64_t thisVec, int64_t item)
     TuffVec *v = (TuffVec *)tuff_from_val(thisVec);
     if (v == NULL)
         return 0;
-    for (size_t i = 0; i < v->len; i++)
+    for (size_t i = 0; i < v->init; i++)
     {
         if (tuff_value_equals(v->data[i], item))
             return 1;
