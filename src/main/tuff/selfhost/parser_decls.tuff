@@ -1,36 +1,5 @@
 let { get_interned_str, vec_new } = selfhost::runtime_lexer;
-let { p_expect, p_parse_identifier, p_at, p_eat, p_parse_type, p_at_kind, node_kind, node_new, node_set_data1, node_set_data2, node_set_data3, node_set_data4, node_set_data5, node_set_data6, node_get_data1, node_get_data2, node_get_data3 } = selfhost::parser_core;
-
-fn p_parse_lifetime_params() : Vec => {
-    let lifetimes = vec_new();
-    if (p_at(TK_SYMBOL, "<")) {
-        p_eat();
-        if (!p_at(TK_SYMBOL, ">")) {
-            while (true) {
-                let name = p_parse_identifier();
-                let bounds = vec_new();
-                while (p_at(TK_SYMBOL, ":")) {
-                    p_eat();
-                    bounds.vec_push(p_parse_identifier());
-                    if (!p_at(TK_SYMBOL, "+")) {
-                        break;
-                    }
-                    p_eat();
-                }
-                let lifetime_param = vec_new();
-                lifetime_param.vec_push(name);
-                lifetime_param.vec_push(bounds);
-                lifetimes.vec_push(lifetime_param);
-                if (!p_at(TK_SYMBOL, ",")) {
-                    break;
-                }
-                p_eat();
-            }
-        }
-        p_expect(TK_SYMBOL, ">", "Expected '>' after lifetimes");
-    }
-    lifetimes
-}
+let { p_expect, p_parse_identifier, p_at, p_eat, p_parse_type, p_at_kind, node_kind, node_new, node_set_data1, node_set_data2, node_set_data3, node_set_data4, node_set_data5, node_get_data1, node_get_data2, node_get_data3 } = selfhost::parser_core;
 
 fn p_parse_decl_generics(close_message: *Str) : Vec => {
     let generics = vec_new();
@@ -57,9 +26,6 @@ fn p_parse_decl_generics(close_message: *Str) : Vec => {
 fn p_parse_function(is_class: I32, mode: I32) : I32 => {
     p_expect(TK_KEYWORD, "fn", "Expected 'fn'");
     let name = p_parse_identifier();
-    
-    // Lifetime parameters
-    let lifetimes = p_parse_lifetime_params();
     
     // Generics
     let generics = p_parse_decl_generics("Expected '>'");
@@ -131,7 +97,6 @@ fn p_parse_function(is_class: I32, mode: I32) : I32 => {
     node_set_data3(node, params);
     node_set_data4(node, ret_type);
     node_set_data5(node, body);
-    node_set_data6(node, lifetimes);
     node
 }
 
@@ -375,10 +340,15 @@ fn p_parse_for() : I32 => {
 
 fn p_parse_lifetime() : I32 => {
     p_expect(TK_KEYWORD, "lifetime", "Expected 'lifetime'");
-    let lname = p_parse_identifier();
+    let names = vec_new();
+    names.vec_push(p_parse_identifier());
+    while (p_at(TK_SYMBOL, ",")) {
+        p_eat();
+        names.vec_push(p_parse_identifier());
+    }
     let body = p_parse_block();
     let node = node_new(NK_LIFETIME_STMT);
-    node_set_data1(node, lname);
+    node_set_data1(node, names);
     node_set_data2(node, body);
     node
 }
