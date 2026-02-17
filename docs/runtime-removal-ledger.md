@@ -17,13 +17,13 @@ This document is the authoritative removal contract for deleting:
 
 ## Symbol ownership map
 
-| Capability | Symbol set | New owner |
-|---|---|---|
-| Strings | `str_length`, `str_char_at`, `str_slice`, `str_concat`, `str_eq`, `str_from_char_code`, `str_index_of`, `str_includes`, `str_starts_with`, `str_trim`, `str_replace_all`, `char_code`, `int_to_string`, `parse_int` | Compiler-emitted C support unit (consumed by target-library actuals and legacy extern call sites during migration) |
-| Builder | `sb_new`, `sb_append`, `sb_append_char`, `sb_build` | Compiler-emitted C support unit |
-| Collections | `vec_*`, `map_*`, `set_*` | Compiler-emitted C support unit + target-library wrappers |
-| IO/Path | `read_file`, `write_file`, `path_join`, `path_dirname` | Compiler-emitted C support unit |
-| Diagnostics | `tuff_panic`, `print`, `print_error`, `panic`, `panic_with_code` | Compiler-emitted C support unit |
+| Capability  | Symbol set                                                                                                                                                                                                          | New owner                                                                                                          |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Strings     | `str_length`, `str_char_at`, `str_slice`, `str_concat`, `str_eq`, `str_from_char_code`, `str_index_of`, `str_includes`, `str_starts_with`, `str_trim`, `str_replace_all`, `char_code`, `int_to_string`, `parse_int` | Compiler-emitted C support unit (consumed by target-library actuals and legacy extern call sites during migration) |
+| Builder     | `sb_new`, `sb_append`, `sb_append_char`, `sb_build`                                                                                                                                                                 | Compiler-emitted C support unit                                                                                    |
+| Collections | `vec_*`, `map_*`, `set_*`                                                                                                                                                                                           | Compiler-emitted C support unit + target-library wrappers                                                          |
+| IO/Path     | `read_file`, `write_file`, `path_join`, `path_dirname`                                                                                                                                                              | Compiler-emitted C support unit                                                                                    |
+| Diagnostics | `tuff_panic`, `print`, `print_error`, `panic`, `panic_with_code`                                                                                                                                                    | Compiler-emitted C support unit                                                                                    |
 
 ## Migration policy
 

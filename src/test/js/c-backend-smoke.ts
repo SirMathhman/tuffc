@@ -7,8 +7,6 @@ import { compileSourceResult } from "../../main/js/compiler.ts";
 
 const thisFile = fileURLToPath(import.meta.url);
 const root = path.resolve(path.dirname(thisFile), "..", "..", "..");
-const runtimeDir = path.join(root, "src", "main", "c");
-const runtimeSource = path.join(runtimeDir, "tuff_runtime.c");
 const outDir = path.join(root, "tests", "out", "c");
 
 fs.mkdirSync(outDir, { recursive: true });
@@ -98,15 +96,7 @@ const cases = [
 for (const testCase of cases) {
   const compile = spawnSync(
     selected,
-    [
-      testCase.outSource,
-      runtimeSource,
-      "-I",
-      runtimeDir,
-      "-O0",
-      "-o",
-      testCase.outExe,
-    ],
+    [testCase.outSource, "-O0", "-o", testCase.outExe],
     {
       encoding: "utf8",
     },

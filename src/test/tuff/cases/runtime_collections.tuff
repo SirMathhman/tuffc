@@ -1,18 +1,21 @@
 extern type Vec<T>;
-extern fn vec_new() : Vec<I32>;
+extern fn __vec_new() : Vec<I32>;
 extern fn vec_push(this: Vec<I32>, item: I32) : Vec<I32>;
 extern fn vec_includes(this: Vec<I32>, item: I32) : Bool;
 extern fn vec_length(this: Vec<I32>) : USize;
+fn vec_new() : Vec<I32> => __vec_new();
 
 extern type Map<K, V>;
-extern fn map_new() : Map<I32, I32>;
+extern fn __map_new() : Map<I32, I32>;
 extern fn map_set(this: Map<I32, I32>, k: I32, v: I32) : Map<I32, I32>;
 extern fn map_get(this: Map<I32, I32>, k: I32) : I32;
+fn map_new() : Map<I32, I32> => __map_new();
 
 extern type Set<T>;
-extern fn set_new() : Set<I32>;
+extern fn __set_new() : Set<I32>;
 extern fn set_add(this: Set<I32>, item: I32) : Set<I32>;
 extern fn set_has(this: Set<I32>, item: I32) : Bool;
+fn set_new() : Set<I32> => __set_new();
 
 fn main() : I32 => {
     let v = vec_new();

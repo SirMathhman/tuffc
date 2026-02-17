@@ -1,18 +1,13 @@
-#include "tuff_runtime.h"
+// @ts-nocheck
 
-#include <errno.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+export function getEmbeddedCRuntimeSupport() {
+  return String.raw`typedef int64_t TuffValue;
+typedef int64_t StringBuilder;
+typedef int64_t Vec;
+typedef int64_t Map;
+typedef int64_t Set;
 
-#ifdef _WIN32
-#include <direct.h>
-#define TUFF_MKDIR(path) _mkdir(path)
-#else
-#include <sys/stat.h>
-#include <sys/types.h>
-#define TUFF_MKDIR(path) mkdir(path, 0755)
-#endif
+void tuff_panic(const char *message);
 
 typedef struct
 {
@@ -209,7 +204,11 @@ static int tuff_ensure_parent_dir(const char *file_path)
             copy[i] = '\0';
             if (strlen(copy) > 0)
             {
-                if (TUFF_MKDIR(copy) != 0 && errno != EEXIST)
+#ifdef _WIN32
+                if (_mkdir(copy) != 0 && errno != EEXIST)
+#else
+                if (mkdir(copy, 0755) != 0 && errno != EEXIST)
+#endif
                 {
                     copy[i] = prev;
                     free(copy);
@@ -228,11 +227,11 @@ void tuff_panic(const char *message)
 {
     if (message != NULL)
     {
-        fprintf(stderr, "tuff panic: %s\n", message);
+        fprintf(stderr, "tuff panic: %s\\n", message);
     }
     else
     {
-        fprintf(stderr, "tuff panic\n");
+        fprintf(stderr, "tuff panic\\n");
     }
     abort();
 }
@@ -484,11 +483,11 @@ int64_t sb_build(int64_t sb_val)
     return tuff_register_cstring_copy(sb->buf);
 }
 
-int64_t vec_new(void)
+int64_t __vec_new(void)
 {
     TuffVec *v = (TuffVec *)calloc(1, sizeof(TuffVec));
     if (v == NULL)
-        tuff_panic("Out of memory in vec_new");
+        tuff_panic("Out of memory in __vec_new");
     return tuff_to_val(v);
 }
 
@@ -595,11 +594,11 @@ int64_t vec_includes(int64_t thisVec, int64_t item)
     return 0;
 }
 
-int64_t map_new(void)
+int64_t __map_new(void)
 {
     TuffMap *m = (TuffMap *)calloc(1, sizeof(TuffMap));
     if (m == NULL)
-        tuff_panic("Out of memory in map_new");
+        tuff_panic("Out of memory in __map_new");
     return tuff_to_val(m);
 }
 
@@ -653,11 +652,11 @@ int64_t map_has(int64_t thisMap, int64_t k)
     return tuff_map_index_of(m, k) >= 0;
 }
 
-int64_t set_new(void)
+int64_t __set_new(void)
 {
     TuffSet *s = (TuffSet *)calloc(1, sizeof(TuffSet));
     if (s == NULL)
-        tuff_panic("Out of memory in set_new");
+        tuff_panic("Out of memory in __set_new");
     return tuff_to_val(s);
 }
 
@@ -825,11 +824,12 @@ int64_t panic_with_code(int64_t code, int64_t msg, int64_t reason, int64_t fix)
     const char *m = tuff_str(msg);
     const char *r = tuff_str(reason);
     const char *f = tuff_str(fix);
-    fprintf(stderr, "panic_with_code: [%s] %s\nreason: %s\nfix: %s\n",
+    fprintf(stderr, "panic_with_code: [%s] %s\\nreason: %s\\nfix: %s\\n",
             c == NULL ? "E_SELFHOST_PANIC" : c,
             m == NULL ? "<no message>" : m,
             r == NULL ? "<no reason>" : r,
             f == NULL ? "<no fix>" : f);
     abort();
     return 0;
+}`;
 }

@@ -3,16 +3,35 @@ extern let { strlen } = stdlib;
 
 extern fn strlen(s : *Str) : USize;
 extern type Vec<T>;
-extern fn vec_new() : Vec<I32>;
+extern type Map<K, V>;
+extern type Set<T>;
+
+extern fn __vec_new() : Vec<I32>;
 extern fn vec_push(this : Vec<I32>, item : I32) : Vec<I32>;
 extern fn vec_length(this : Vec<I32>) : USize;
+
+extern fn __map_new() : Map<I32, I32>;
+extern fn map_set(this : Map<I32, I32>, k : I32, v : I32) : Map<I32, I32>;
+extern fn map_get(this : Map<I32, I32>, k : I32) : I32;
+
+extern fn __set_new() : Set<I32>;
+extern fn set_add(this : Set<I32>, item : I32) : Set<I32>;
+extern fn set_has(this : Set<I32>, item : I32) : Bool;
 
 out module Strings {
     out actual fn length(this : *Str) : USize => strlen(this);
 }
 
 out module Collections {
-    out actual fn vec_new_i32() : Vec<I32> => vec_new();
+    out actual fn vec_new_i32() : Vec<I32> => __vec_new();
     out actual fn vec_push_i32(this : Vec<I32>, item : I32) : Vec<I32> => vec_push(this, item);
     out actual fn vec_length_i32(this : Vec<I32>) : USize => vec_length(this);
+
+    out actual fn map_new_i32_i32() : Map<I32, I32> => __map_new();
+    out actual fn map_set_i32_i32(this : Map<I32, I32>, k : I32, v : I32) : Map<I32, I32> => map_set(this, k, v);
+    out actual fn map_get_i32_i32(this : Map<I32, I32>, k : I32) : I32 => map_get(this, k);
+
+    out actual fn set_new_i32() : Set<I32> => __set_new();
+    out actual fn set_add_i32(this : Set<I32>, item : I32) : Set<I32> => set_add(this, item);
+    out actual fn set_has_i32(this : Set<I32>, item : I32) : Bool => set_has(this, item);
 }

@@ -82,8 +82,6 @@ const outExe = path.join(
     ? `selfhost-${process.pid}.exe`
     : `selfhost-${process.pid}`,
 );
-const runtimeDir = path.join(root, "src", "main", "c");
-const runtimeSource = path.join(runtimeDir, "tuff_runtime.c");
 const deepHarness = process.env.TUFF_C_SELFHOST_DEEP === "1";
 const parsedTimeout = Number(process.env.TUFF_C_SELFHOST_TIMEOUT_MS ?? "");
 const requestedTimeoutMs =
@@ -98,7 +96,6 @@ console.log(
 );
 console.log(`[c-selfhost] cwd=${process.cwd()}`);
 console.log(`[c-selfhost] entry=${entry}`);
-console.log(`[c-selfhost] runtimeSource=${runtimeSource}`);
 console.log(`[c-selfhost] outDir=${outDir}`);
 console.log(`[c-selfhost] outC=${outC}`);
 console.log(`[c-selfhost] outObj=${outObj}`);
@@ -140,7 +137,6 @@ if (!fs.existsSync(outC)) {
 }
 
 debugFile("generated-c", outC);
-debugFile("runtime-c", runtimeSource);
 
 console.log("[c-selfhost] selecting C compiler...");
 
@@ -175,8 +171,6 @@ const objectCompile = runStep(selected, [
   "-Dmain=selfhost_entry",
   "-c",
   outC,
-  "-I",
-  runtimeDir,
   "-O0",
   "-o",
   outObj,
@@ -240,16 +234,7 @@ debugFile("harness-source", outHarness);
 
 console.log("[c-selfhost] linking selfhost harness executable...");
 
-const link = runStep(selected, [
-  outObj,
-  outHarness,
-  runtimeSource,
-  "-I",
-  runtimeDir,
-  "-O0",
-  "-o",
-  outExe,
-]);
+const link = runStep(selected, [outObj, outHarness, "-O0", "-o", outExe]);
 
 if (link.error) {
   console.error(`Link failed to start: ${link.error.message}`);

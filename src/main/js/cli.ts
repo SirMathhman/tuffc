@@ -45,23 +45,12 @@ function compileNativeC(
   nativeOutputPath: string,
   compiler: string,
 ): { ok: true } | { ok: false; message: string } {
-  const thisFile = fileURLToPath(import.meta.url);
-  const root = path.resolve(path.dirname(thisFile), "..", "..", "..");
-  const runtimeDir = path.join(root, "src", "main", "c");
-  const runtimeSource = path.join(runtimeDir, "tuff_runtime.c");
-
   const compile = spawnSync(
     compiler,
-    [
-      cOutputPath,
-      runtimeSource,
-      "-I",
-      runtimeDir,
-      "-O0",
-      "-o",
-      nativeOutputPath,
-    ],
-    { encoding: "utf8" },
+    [cOutputPath, "-O0", "-o", nativeOutputPath],
+    {
+      encoding: "utf8",
+    },
   );
 
   if (compile.status !== 0) {
