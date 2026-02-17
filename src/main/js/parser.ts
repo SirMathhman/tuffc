@@ -132,6 +132,11 @@ export function parse(tokens: Token[]): ParseResult<Program> {
             continue;
           }
         }
+        // Optional lifetime annotation: *'t T
+        let lifetime: string | undefined = undefined;
+        if (at("lifetime")) {
+          lifetime = eat().value as string;
+        }
         const toResult = parseTypePrimary();
         if (!toResult.ok) return toResult;
         return ok({
@@ -140,6 +145,7 @@ export function parse(tokens: Token[]): ParseResult<Program> {
           move,
           out,
           uninit,
+          lifetime,
           to: toResult.value,
         });
       }
@@ -354,6 +360,63 @@ export function parse(tokens: Token[]): ParseResult<Program> {
     const closeResult = expect("symbol", ">", closeMessage);
     if (!closeResult.ok) return closeResult;
     return ok(generics);
+  };
+
+  const parseLifetimeParams = (
+    closeMessage = "Expected '>' after lifetime params",
+    boundsOut: Record<string, string[]> | undefined = undefined,
+  ): ParseResult<string[]> => {
+    const lifetimes: string[] = [];
+    if (!at("symbol", "<")) {
+      return ok(lifetimes);
+    }
+    eat();
+    if (!at("symbol", ">")) {
+      while (true) {
+        if (!at("lifetime")) {
+          return err(
+            new TuffError("Expected lifetime parameter", peek().loc, {
+              code: "E_PARSE_EXPECTED_LIFETIME",
+              hint: "Lifetime parameters must start with ' (e.g., 'a, 'lifetime).",
+            }),
+          );
+        }
+        const lifetimeName = eat().value as string;
+        lifetimes.push(lifetimeName);
+        const bounds: string[] = [];
+        if (at("symbol", ":")) {
+          eat();
+          while (true) {
+            if (!at("lifetime")) {
+              return err(
+                new TuffError(
+                  "Expected lifetime in lifetime bound",
+                  peek().loc,
+                  {
+                    code: "E_PARSE_EXPECTED_LIFETIME_BOUND",
+                    hint: "Lifetime bounds must reference valid lifetimes (e.g., 'a: 'b).",
+                  },
+                ),
+              );
+            }
+            bounds.push(eat().value as string);
+            if (at("symbol", "+")) {
+              eat();
+            } else {
+              break;
+            }
+          }
+        }
+        if (boundsOut) {
+          boundsOut[lifetimeName] = bounds;
+        }
+        if (!at("symbol", ",")) break;
+        eat();
+      }
+    }
+    const closeResult = expect("symbol", ">", closeMessage);
+    if (!closeResult.ok) return closeResult;
+    return ok(lifetimes);
   };
 
   const parseTypedParams = (
@@ -1407,6 +1470,13 @@ export function parse(tokens: Token[]): ParseResult<Program> {
     if (!fnResult.ok) return fnResult;
     const nameResult = parseIdentifier();
     if (!nameResult.ok) return nameResult;
+    const lifetimeBounds: Record<string, string[]> = {};
+    const lifetimeParamsResult = parseLifetimeParams(
+      "Expected '>' after lifetime params",
+      lifetimeBounds,
+    );
+    if (!lifetimeParamsResult.ok) return lifetimeParamsResult;
+    const lifetimeParams = lifetimeParamsResult.value;
     const genericConstraints: Record<string, Expr> = {};
     const genericsResult = parseGenericParams(
       "Expected '>' after generics",
@@ -1462,6 +1532,8 @@ export function parse(tokens: Token[]): ParseResult<Program> {
     return ok({
       kind: isClassSugar ? "ClassFunctionDecl" : "FnDecl",
       name: nameResult.value,
+      lifetimeParams,
+      lifetimeBounds,
       generics,
       genericConstraints,
       params,
