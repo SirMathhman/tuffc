@@ -28,3 +28,9 @@ This log records completion of the C-runtime infrastructure execution plan and r
 - Runtime migration remains transitional by design (`tuff_runtime.c/.h` retained) with grouped cutover checkpoints.
 - Native C workflow is now supported directly from CLI (`--target c --native`).
 - Expect/actual C alias behavior is regression-tested, including missing-actual diagnostics.
+
+## Phase 8 closeout
+
+- Phase-by-phase commits are complete and linear.
+- Working tree expected clean at close.
+- Follow-up work should focus on capability-group cutover execution toward eventual `tuff_runtime.*` removal.
