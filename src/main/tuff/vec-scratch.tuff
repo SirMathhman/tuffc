@@ -45,7 +45,7 @@ type Option<T> = Some<T> | None<T>;
 
 let DEFAULT_SIZE = 10USize;
 
-// An iterator is just a closure that returns a tuple, where (HasNext, Element)
+// An iterator is just a closure that returns a tuple, where (hasValue, Element)
 type Iter<T> = () => (Bool, T);
 out module Iter {
     // Move this
@@ -53,25 +53,25 @@ out module Iter {
         return () => {
             /*
             Unfortunately, we can't prove that loops in general terminate
-            and that hasNext will eventually transition to true to false
+            and that hasValue will eventually transition to true to false
 
             You could stick an absurd cap like Max<I32> to prevent an infinite loop if desired
             */
             loop {
-                let (hasNext, element) = this();
+                let (hasValue, element) = this();
                 if (predicate(element)) {
-                    return (hasNext, element);
+                    return (hasValue, element);
                 } else {
                     // Don't forget to drop element if predicate does not satisfy!
-                    if (!hasElement) break;
+                    if (!hasValue) break;
                 }
             }
         };
     }
 
     fn first(this : Iter<T>) : Option<T> => {
-        let (hasNext, element) = this();
-        if (hasNext) None<T> else Some<T> { field : element }
+        let (hasValue, element) = this();
+        if (hasValue) Some<T> { field : element } else None<T>
     }
 }
 
@@ -81,8 +81,7 @@ out fn Vec<T>() : Option<Vec<T>> => {
     out type Index = USize < this.size();
 
     // Slice is private so we don't need the "out" keyword
-    // There is an implicit conversion from *[T; 0; DEFAULT_SIZE] to *[T]
-    let mut slice : *[T] = malloc<T, DEFAULT_SIZE>(sizeOf<T>() * DEFAULT_SIZE);
+    let mut slice : Alloc<*[T; 0; DEFAULT_SIZE]> | 0 = malloc<T, DEFAULT_SIZE>(sizeOf<T>() * DEFAULT_SIZE);
     if (slice == 0) return None<Vec<T>>;
 
     // Can also be `lifetime a, b, c, d`, etc. for multiple lifetimes.
@@ -93,7 +92,7 @@ out fn Vec<T>() : Option<Vec<T>> => {
         out fn set(*mut a this, index : USize <= this.size(), element : T) : Option<*mut a Vec<T>> => {
             // We don't need a while here, only an if, because index can never be > this.slice.length
             if (index == slice.length) {
-                let reallocated = realloc<T, 2USize>(slice, sizeOf<T>() * 2USize);
+                let reallocated = realloc<T, slice.length * 2>(slice, sizeOf<T>() * slice.length * 2);
                 if (reallocated == 0) return None<*mut a Vec<T>>;
 
                 slice = reallocated;
@@ -149,7 +148,7 @@ out fn Vec<T>() : Option<Vec<T>> => {
         slice + index
     }
 
-    out fn get_mut(*mut this) : *mut T => {
+    out fn get_mut(*mut this, index : Index) : *mut T => {
         // Same logic applies as above
         slice[index]
     }
