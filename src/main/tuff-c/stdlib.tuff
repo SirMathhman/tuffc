@@ -2,7 +2,17 @@
 extern let { strlen } = stdlib;
 
 extern fn strlen(s : *Str) : USize;
+extern type Vec<T>;
+extern fn vec_new() : Vec<I32>;
+extern fn vec_push(this : Vec<I32>, item : I32) : Vec<I32>;
+extern fn vec_length(this : Vec<I32>) : USize;
 
 out module Strings {
     out actual fn length(this : *Str) : USize => strlen(this);
+}
+
+out module Collections {
+    out actual fn vec_new_i32() : Vec<I32> => vec_new();
+    out actual fn vec_push_i32(this : Vec<I32>, item : I32) : Vec<I32> => vec_push(this, item);
+    out actual fn vec_length_i32(this : Vec<I32>) : USize => vec_length(this);
 }

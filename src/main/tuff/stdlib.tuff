@@ -1,3 +1,11 @@
 out module Strings {
     out expect fn length(this : *Str) : USize;
 }
+
+extern type Vec<T>;
+
+out module Collections {
+    out expect fn vec_new_i32() : Vec<I32>;
+    out expect fn vec_push_i32(this : Vec<I32>, item : I32) : Vec<I32>;
+    out expect fn vec_length_i32(this : Vec<I32>) : USize;
+}

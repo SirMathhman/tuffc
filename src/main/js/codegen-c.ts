@@ -597,6 +597,9 @@ export function generateC(ast) {
 
   for (const node of ast.body) {
     if (node.kind === "FnDecl") {
+      if (node.expectDecl === true) {
+        continue;
+      }
       fnNodes.push(node);
       continue;
     }

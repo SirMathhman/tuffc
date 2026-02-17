@@ -27,6 +27,7 @@
     "cli:verify": "tsx ./src/test/js/cli-hardening.ts",
     "selfhost:modules": "tsx ./src/test/js/selfhost-modules.ts",
     "modules:aliases": "tsx ./src/test/js/module-package-aliases.ts",
+    "expect:actual:verify": "tsx ./src/test/js/expect-actual-c-aliases.ts",
     "selfhost:diagnostics": "tsx ./src/test/js/selfhost-diagnostics.ts",
     "selfhost:parity": "tsx ./src/test/js/selfhost-parity.ts",
     "selfhost:stress": "tsx ./src/test/js/selfhost-stress.ts",
