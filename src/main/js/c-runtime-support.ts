@@ -830,3 +830,9 @@ int64_t panic_with_code(int64_t code, int64_t msg, int64_t reason, int64_t fix)
     return 0;
 }`;
 }
+
+// Preferred name: this payload is the low-level C substrate used by generated code.
+// High-level runtime APIs should be surfaced through stdlib expect/actual modules.
+export function getEmbeddedCSubstrateSupport() {
+  return getEmbeddedCRuntimeSupport();
+}
