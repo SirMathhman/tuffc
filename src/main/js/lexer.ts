@@ -201,23 +201,6 @@ export function lex(
     }
 
     if (ch === "'") {
-      // Check if this is a lifetime (e.g., 'a, 'lifetime) or a char literal (e.g., 'x')
-      const nextCh = peek(1);
-      if (isAlpha(nextCh)) {
-        // Could be a lifetime; check if it ends with an identifier or a quote
-        let j = i + 1;
-        while (j < source.length && isAlphaNum(source[j])) j++;
-        const nextAfterIdent = source[j];
-        // If next char after identifier is not a quote, it's a lifetime
-        if (nextAfterIdent !== "'") {
-          advance(); // consume '
-          let text = "";
-          while (isAlphaNum(peek())) text += advance();
-          add("lifetime", text, start, startIndex);
-          continue;
-        }
-      }
-      // Otherwise, parse as char literal
       advance();
       let text = "";
       while (i < source.length && peek() !== "'") {

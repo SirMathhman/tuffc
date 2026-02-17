@@ -73,6 +73,7 @@ let node_data2 : Vec<I32> = vec_new();  // Generic data slot 2
 let node_data3 : Vec<I32> = vec_new();  // Generic data slot 3
 let node_data4 : Vec<I32> = vec_new();  // Generic data slot 4
 let node_data5 : Vec<I32> = vec_new();  // Generic data slot 5
+let node_data6 : Vec<I32> = vec_new();  // Generic data slot 6
 let node_count : I32 = 1;
 
 out fn node_new(kind: I32) : I32 => {
@@ -83,6 +84,7 @@ out fn node_new(kind: I32) : I32 => {
     node_data3.vec_push(0);
     node_data4.vec_push(0);
     node_data5.vec_push(0);
+    node_data6.vec_push(0);
     node_count = node_count + 1;
     idx
 }
@@ -95,11 +97,13 @@ out fn node_set_data2(idx: I32, v: AnyValue) : I32 => { node_data2.vec_set(idx, 
 out fn node_set_data3(idx: I32, v: AnyValue) : I32 => { node_data3.vec_set(idx, v); 0 }
 out fn node_set_data4(idx: I32, v: AnyValue) : I32 => { node_data4.vec_set(idx, v); 0 }
 out fn node_set_data5(idx: I32, v: AnyValue) : I32 => { node_data5.vec_set(idx, v); 0 }
+out fn node_set_data6(idx: I32, v: AnyValue) : I32 => { node_data6.vec_set(idx, v); 0 }
 out fn node_get_data1(idx: I32) : I32 => node_data1.vec_get(idx);
 out fn node_get_data2(idx: I32) : I32 => node_data2.vec_get(idx);
 out fn node_get_data3(idx: I32) : I32 => node_data3.vec_get(idx);
 out fn node_get_data4(idx: I32) : I32 => node_data4.vec_get(idx);
 out fn node_get_data5(idx: I32) : I32 => node_data5.vec_get(idx);
+out fn node_get_data6(idx: I32) : I32 => node_data6.vec_get(idx);
 
 // ============================================================================
 // Parser
@@ -118,6 +122,7 @@ out fn parse_init() : I32 => {
     node_data3.vec_clear();
     node_data4.vec_clear();
     node_data5.vec_clear();
+    node_data6.vec_clear();
     // Reserve index 0 as null/sentinel node.
     node_kinds.vec_push(0);
     node_data1.vec_push(0);
@@ -125,6 +130,7 @@ out fn parse_init() : I32 => {
     node_data3.vec_push(0);
     node_data4.vec_push(0);
     node_data5.vec_push(0);
+    node_data6.vec_push(0);
     node_count = 1;
     0
 }
@@ -230,6 +236,15 @@ out fn p_parse_type_primary() : I32 => {
         // Pointer type
         if (p_at(TK_SYMBOL, "*")) {
             p_eat();
+            // Parse optional lifetime annotation: *a T or *a mut T
+            let lifetime = 0;
+            let tok0 = p_peek(0);
+            let is_identifier = tok_kind(tok0) == TK_IDENTIFIER;
+            let is_modifier = tok_value(tok0).str_eq("mut") || tok_value(tok0).str_eq("move") || 
+                              tok_value(tok0).str_eq("out") || tok_value(tok0).str_eq("uninit");
+            if (is_identifier && !is_modifier) {
+                lifetime = p_parse_identifier();
+            }
             let mutable = 0;
             let move_ptr = 0;
             if (p_at(TK_KEYWORD, "mut")) {
@@ -244,6 +259,7 @@ out fn p_parse_type_primary() : I32 => {
             node_set_data1(node, mutable);
             node_set_data2(node, inner);
             node_set_data3(node, move_ptr);
+            node_set_data4(node, lifetime);
             return node;
         }
         
