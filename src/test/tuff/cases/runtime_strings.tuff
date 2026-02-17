@@ -1,0 +1,13 @@
+extern fn str_length(this: *Str) : USize;
+extern fn str_concat(this: *Str, b: *Str) : *Str;
+extern fn str_includes(this: *Str, needle: *Str) : Bool;
+extern fn str_trim(this: *Str) : *Str;
+
+fn main() : I32 => {
+    let combined = "ab".str_concat("cd");
+    let trimmed = "  hello  ".str_trim();
+    if (combined.str_length() == 4 && combined.str_includes("bc") && trimmed.str_length() == 5) {
+        return 0;
+    }
+    return 7;
+}

@@ -1,0 +1,17 @@
+extern fn path_join(a: *Str, b: *Str) : *Str;
+extern fn path_dirname(p: *Str) : *Str;
+extern fn write_file(filePath: *Str, contents: *Str) : I32;
+extern fn read_file(filePath: *Str) : *Str;
+extern fn str_eq(this: *Str, b: *Str) : Bool;
+
+fn main() : I32 => {
+    let path = "tests/out/c".path_join("runtime_io.txt");
+    let dir = path.path_dirname();
+    let code = write_file(path, "ok");
+    let readBack = read_file(path);
+
+    if (code == 0 && readBack.str_eq("ok") && dir.str_eq("tests/out/c")) {
+        return 0;
+    }
+    return 17;
+}

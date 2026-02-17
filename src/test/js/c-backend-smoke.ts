@@ -90,6 +90,9 @@ const cases = [
   runCase("factorial"),
   runCase("enum_match"),
   runCase("option_match"),
+  runCase("runtime_strings"),
+  runCase("runtime_collections"),
+  runCase("runtime_io"),
 ];
 
 for (const testCase of cases) {

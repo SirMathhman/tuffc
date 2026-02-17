@@ -1,0 +1,32 @@
+extern type Vec<T>;
+extern fn vec_new() : Vec<I32>;
+extern fn vec_push(this: Vec<I32>, item: I32) : Vec<I32>;
+extern fn vec_includes(this: Vec<I32>, item: I32) : Bool;
+extern fn vec_length(this: Vec<I32>) : USize;
+
+extern type Map<K, V>;
+extern fn map_new() : Map<I32, I32>;
+extern fn map_set(this: Map<I32, I32>, k: I32, v: I32) : Map<I32, I32>;
+extern fn map_get(this: Map<I32, I32>, k: I32) : I32;
+
+extern type Set<T>;
+extern fn set_new() : Set<I32>;
+extern fn set_add(this: Set<I32>, item: I32) : Set<I32>;
+extern fn set_has(this: Set<I32>, item: I32) : Bool;
+
+fn main() : I32 => {
+    let v = vec_new();
+    v.vec_push(7);
+    v.vec_push(9);
+
+    let m = map_new();
+    m.map_set(5, 11);
+
+    let s = set_new();
+    s.set_add(42);
+
+    if (v.vec_length() == 2 && v.vec_includes(9) && m.map_get(5) == 11 && s.set_has(42)) {
+        return 0;
+    }
+    return 13;
+}
