@@ -64,6 +64,32 @@ expectCompileFail(
   { typecheck: { strictSafety: true } },
 );
 
+expectCompileOk(
+  "fat-array-pointer-length",
+  `fn ok(arr : *[I32]) : USize => arr.length;`,
+  { backend: "stage0", typecheck: { strictSafety: true } },
+);
+
+expectCompileOk(
+  "thin-array-pointer-init-and-length",
+  `fn ok(arr : *[I32; 3; 5]) : USize => arr.init + arr.length;`,
+  { backend: "stage0", typecheck: { strictSafety: true } },
+);
+
+expectCompileFail(
+  "thin-array-pointer-initialized-bounds",
+  `fn bad(arr : *[I32; 3; 5]) : I32 => arr[4];`,
+  "Array index may be out of bounds",
+  { backend: "stage0", typecheck: { strictSafety: true } },
+);
+
+expectCompileFail(
+  "non-array-pointer-init-member",
+  `fn bad(p : *I32) : USize => p.init;`,
+  "Member '.init' is only valid on array-pointer shapes",
+  { backend: "stage0", typecheck: { strictSafety: true } },
+);
+
 expectCompileFail(
   "extern-call-type-mismatch",
   `extern fn takesI32(x : I32) : I32;\nfn bad() : I32 => takesI32(true);`,

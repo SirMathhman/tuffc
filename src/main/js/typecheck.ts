@@ -319,9 +319,10 @@ function literalNumber(expr) {
 
 function literalUSize(expr) {
   if (expr?.kind !== "NumberLiteral") return undefined;
-  if (expr.numberType && expr.numberType !== "USize") return undefined;
   const value = Number(expr.value);
-  return Number.isFinite(value) ? value : undefined;
+  if (!Number.isFinite(value)) return undefined;
+  if (!Number.isInteger(value) || value < 0) return undefined;
+  return value;
 }
 
 function isUSizeZeroLiteralExpr(expr) {
