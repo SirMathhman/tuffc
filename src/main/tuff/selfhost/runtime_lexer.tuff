@@ -122,6 +122,8 @@ fn tok_add(kind: I32, value: I32, line: I32, col: I32) : I32 => {
 
 out fn tok_kind(idx: I32) : I32 => tok_kinds.vec_get(idx);
 out fn tok_value(idx: I32) : I32 => tok_values.vec_get(idx);
+out fn tok_line(idx: I32) : I32 => tok_lines.vec_get(idx);
+out fn tok_col(idx: I32) : I32 => tok_cols.vec_get(idx);
 
 // String intern table - stores strings by index for reverse lookup
 let intern_table : Vec<*Str> = vec_new();

@@ -462,9 +462,19 @@ export function typecheck(
     if (p?.name !== "this") return false;
     if (named(fnNode.returnType) !== "Void") return false;
     const pt = p?.type;
-    if (!pt || pt.kind !== "PointerType" || !pt.move) return false;
-    const toName = named(pt.to);
-    return toName === aliasName;
+
+    // Preferred form: alias receiver value (e.g. Alloc<...>)
+    if (pt?.kind === "NamedType") {
+      return pt.name === aliasName;
+    }
+
+    // Back-compat: *move Alias
+    if (pt?.kind === "PointerType" && pt.move) {
+      const toName = named(pt.to);
+      return toName === aliasName;
+    }
+
+    return false;
   };
 
   const getContractMethod = (contractName, methodName) => {
@@ -704,11 +714,11 @@ export function typecheck(
     if (!isValidDestructorSignature(fnNode, aliasName)) {
       return err(
         new TuffError(
-          `Destructor '${destructorName}' must have signature fn ${destructorName}(this : *move ${aliasName}) : Void`,
+          `Destructor '${destructorName}' must have signature fn ${destructorName}(this : ${aliasName}<...>) : Void`,
           fnNode.loc,
           {
             code: "E_TYPE_DESTRUCTOR_SIGNATURE",
-            hint: "Use exactly one receiver parameter named 'this' with type '*move AliasType' and return Void.",
+            hint: "Use exactly one receiver parameter named 'this' with alias type (or legacy '*move AliasType') and return Void.",
           },
         ),
       );
@@ -1351,6 +1361,14 @@ export function typecheck(
         if (["==", "!=", "<", "<=", ">", ">="].includes(expr.op)) {
           return ok({
             name: "Bool",
+            min: undefined,
+            max: undefined,
+            nonZero: false,
+          });
+        }
+        if (expr.op === "..") {
+          return ok({
+            name: "Iter",
             min: undefined,
             max: undefined,
             nonZero: false,

@@ -2,7 +2,7 @@
 // AST Node Kinds
 // ============================================================================
 
-let { tok_kind, tok_value, get_intern, vec_new, set_new } = selfhost::runtime_lexer;
+let { tok_kind, tok_value, tok_line, tok_col, get_intern, vec_new, set_new } = selfhost::runtime_lexer;
 
 let NK_PROGRAM : I32 = 1;
 let NK_FN_DECL : I32 = 2;
@@ -30,6 +30,7 @@ let NK_LOOP_STMT : I32 = 64;
 let NK_CONTRACT_DECL : I32 = 65;
 let NK_INTO_STMT : I32 = 66;
 let NK_LIFETIME_STMT : I32 = 67;
+let NK_STMT_LIST : I32 = 68;
 let NK_ENUM_DECL : I32 = 60;
 
 let NK_NUMBER_LIT : I32 = 20;
@@ -49,6 +50,7 @@ let NK_IS_EXPR : I32 = 33;
 let NK_UNWRAP_EXPR : I32 = 34;
 let NK_LAMBDA_EXPR : I32 = 35;
 let NK_FN_EXPR : I32 = 36;
+let NK_TUPLE_EXPR : I32 = 37;
 
 let NK_NAMED_TYPE : I32 = 40;
 let NK_POINTER_TYPE : I32 = 41;
@@ -156,16 +158,67 @@ out fn p_eat() : I32 => {
     t
 }
 
+fn p_token_kind_name(knd: I32) : *Str => {
+    if (knd == TK_EOF) { return "eof"; }
+    if (knd == TK_KEYWORD) { return "keyword"; }
+    if (knd == TK_IDENTIFIER) { return "identifier"; }
+    if (knd == TK_NUMBER) { return "number"; }
+    if (knd == TK_STRING) { return "string"; }
+    if (knd == TK_BOOL) { return "bool"; }
+    if (knd == TK_SYMBOL) { return "symbol"; }
+    if (knd == TK_CHAR) { return "char"; }
+    "token"
+}
+
+fn p_token_value_for_error(t: I32) : *Str => {
+    let knd = tok_kind(t);
+    if (knd == TK_BOOL) {
+        if (tok_value(t) == 0) { return "false"; }
+        return "true";
+    }
+    if (
+        knd == TK_KEYWORD ||
+        knd == TK_IDENTIFIER ||
+        knd == TK_NUMBER ||
+        knd == TK_STRING ||
+        knd == TK_SYMBOL ||
+        knd == TK_CHAR ||
+        knd == TK_EOF
+    ) {
+        return get_intern(tok_value(t));
+    }
+    "<unknown>"
+}
+
+out fn p_error_with_token_context(msg: *Str) : I32 => {
+    let t = p_peek(0);
+    let found_kind = p_token_kind_name(tok_kind(t));
+    let value = p_token_value_for_error(t);
+    let line = int_to_string(tok_line(t));
+    let col = int_to_string(tok_col(t));
+    panic(msg
+        .str_concat(" (found ")
+        .str_concat(found_kind)
+        .str_concat(":")
+        .str_concat(value)
+        .str_concat(" at ")
+        .str_concat(line)
+        .str_concat(":")
+        .str_concat(col)
+        .str_concat(")"));
+    0
+}
+
 out fn p_expect_kind(kind: I32, msg: *Str) : I32 => {
     if (!p_at_kind(kind)) {
-        panic(msg);
+        p_error_with_token_context(msg);
     }
     p_eat()
 }
 
 out fn p_expect(kind: I32, val: *Str, msg: *Str) : I32 => {
     if (!p_at(kind, val)) {
-        panic(msg);
+        p_error_with_token_context(msg);
     }
     p_eat()
 }
@@ -338,12 +391,12 @@ out fn p_parse_type_primary() : I32 => {
             return node;
         }
 
-        // Type-level nullable pointer sentinel: 0USize
+        // Type-level nullable pointer sentinel: 0 or 0USize
         if (p_at_kind(TK_NUMBER)) {
             let t = p_eat();
             let raw = get_intern(tok_value(t));
-            if (!raw.str_eq("0USize")) {
-                panic("Only 0USize is supported as a type-level numeric sentinel");
+            if (!(raw.str_eq("0USize") || raw.str_eq("0"))) {
+                panic("Only 0 or 0USize is supported as a type-level numeric sentinel");
             }
             let base = node_new(NK_NAMED_TYPE);
             node_set_data1(base, intern("USize"));
@@ -420,6 +473,23 @@ out fn p_parse_type() : I32 => {
         node_set_data3(refine, val_expr);
         type_node = refine;
     }
+
+    // Arithmetic type/value expressions used in annotations (e.g. SizeOf<T> * L)
+    while (
+        p_at(TK_SYMBOL, "+") ||
+        p_at(TK_SYMBOL, "-") ||
+        p_at(TK_SYMBOL, "*") ||
+        p_at(TK_SYMBOL, "/") ||
+        p_at(TK_SYMBOL, "%")
+    ) {
+        let op = tok_value(p_eat());
+        let right = p_parse_type_primary();
+        let bin = node_new(NK_BINARY_EXPR);
+        node_set_data1(bin, op);
+        node_set_data2(bin, type_node);
+        node_set_data3(bin, right);
+        type_node = bin;
+    }
     
     // Union types
     while (p_at(TK_SYMBOL, "|") || p_at(TK_SYMBOL, "|>")) {
@@ -464,6 +534,19 @@ out fn p_parse_pattern() : I32 => {
     
     // Name or struct pattern
     let name = p_parse_identifier();
+
+    // Optional generic qualifiers in pattern position: Some<T>, Foo<A, B>
+    if (p_at(TK_SYMBOL, "<") && p_can_start_type_tok_at(1)) {
+        p_eat();
+        if (!p_at(TK_SYMBOL, ">")) {
+            p_parse_type();
+            while (p_at(TK_SYMBOL, ",")) {
+                p_eat();
+                p_parse_type();
+            }
+        }
+        p_expect(TK_SYMBOL, ">", "Expected '>' in pattern generic args");
+    }
     
     if (p_at(TK_SYMBOL, "{")) {
         p_eat();

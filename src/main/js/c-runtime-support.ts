@@ -822,7 +822,7 @@ int64_t panic_with_code(int64_t code, int64_t msg, int64_t reason, int64_t fix)
     const char *r = tuff_str(reason);
     const char *f = tuff_str(fix);
     fprintf(stderr, "panic_with_code: [%s] %s\\nreason: %s\\nfix: %s\\n",
-            c == NULL ? "E_SELFHOST_PANIC" : c,
+            c == NULL ? "E_SELFHOST_INTERNAL_ERROR" : c,
             m == NULL ? "<no message>" : m,
             r == NULL ? "<no reason>" : r,
             f == NULL ? "<no fix>" : f);

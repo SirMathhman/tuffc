@@ -8,7 +8,7 @@ This document lists the current gaps between the implemented compiler behavior a
 
 - Exhaustive semantics audit: **failing**
 - Gap pattern: mostly **parsing/feature support gaps** and a few **diagnostic code naming mismatches**
-- Stage impact: most feature gaps fail consistently on Stage0/1/2/3 (with Stage2/3 often surfacing `E_SELFHOST_PANIC`)
+- Stage impact: most feature gaps fail consistently on Stage0/1/2/3 (with Stage2/3 previously surfacing generic selfhost internal diagnostics)
 
 ## A) Missing or incomplete language feature support
 
@@ -64,7 +64,7 @@ These are spec-described constructs that currently fail to compile.
 - Case: `async:syntax-cps`
 - Observed:
   - Stage0/1: `E_PARSE_UNEXPECTED_TOKEN` (`keyword:async`)
-  - Stage2/3: `E_SELFHOST_PANIC` (`Unexpected token in expression`)
+  - Stage2/3: parser diagnostic (`E_PARSE_UNEXPECTED_TOKEN`, `Unexpected token in expression`)
 
 ### ✅ Resolved: `contract` keyword + Stage0 static dispatch checks
 
@@ -155,7 +155,7 @@ These cases fail for code-name mismatch rather than semantic pass/fail behavior.
 ## C) Cross-stage behavior notes
 
 - Unsupported syntax/features generally fail similarly across stages.
-- Stage2/Stage3 often collapse parser/resolver/type errors into `E_SELFHOST_PANIC`, reducing diagnostic specificity versus Stage0/Stage1.
+- Stage2/Stage3 may still emit `E_SELFHOST_INTERNAL_ERROR` for uncovered frontend paths; continue replacing remaining generic paths with specific parse/lex/type/module codes.
 
 ## D) Priority suggestions
 

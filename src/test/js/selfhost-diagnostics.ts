@@ -17,15 +17,25 @@ if (typeof selfhost.compile_source !== "function") {
   process.exit(1);
 }
 
-function expectSelfhostPanic(run: () => void, label: string) {
+function expectSelfhostDiagnostic(
+  run: () => void,
+  label: string,
+  expectedCodePrefixes: string[],
+) {
   try {
     run();
     console.error(`Expected ${label} to fail`);
     process.exit(1);
   } catch (error) {
     const diag = toDiagnostic(error);
-    if (diag.code !== "E_SELFHOST_PANIC") {
-      console.error(`Expected E_SELFHOST_PANIC for ${label}, got ${diag.code}`);
+    const code = String(diag.code ?? "");
+    const matches = expectedCodePrefixes.some((prefix) =>
+      code.startsWith(prefix),
+    );
+    if (!matches) {
+      console.error(
+        `Expected one of [${expectedCodePrefixes.join(", ")}]* diagnostics for ${label}, got ${diag.code}`,
+      );
       process.exit(1);
     }
     assertDiagnosticContract(diag, `${label} diagnostic`);
@@ -33,9 +43,10 @@ function expectSelfhostPanic(run: () => void, label: string) {
 }
 
 // 1) Invalid syntax should produce structured diagnostics via toDiagnostic.
-expectSelfhostPanic(
+expectSelfhostDiagnostic(
   () => selfhost.compile_source("fn broken( : I32 => 0;"),
   "selfhost compile_source invalid syntax",
+  ["E_PARSE_"],
 );
 
 // 2) Missing module path should also produce the same diagnostics contract.
@@ -47,9 +58,10 @@ fs.writeFileSync(
   "utf8",
 );
 
-expectSelfhostPanic(
+expectSelfhostDiagnostic(
   () => selfhost.compile_file(missingModuleEntry, missingModuleOut),
   "selfhost compile_file missing module",
+  ["E_MODULE_", "E_SELFHOST_IO_"],
 );
 
 console.log("Selfhost diagnostics contract checks passed");

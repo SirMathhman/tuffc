@@ -151,6 +151,24 @@ fn bc_type_node_is_copyable(t: I32, extern_type_names: *mut Set, visiting_aliase
     false
 }
 
+fn bc_type_node_is_destructor_receiver(t: I32, alias_name: *Str) : Bool => {
+    if (t == 0) {
+        return false;
+    }
+
+    // Preferred form: alias receiver value (e.g. Alloc<...>)
+    if (node_kind(t) == NK_NAMED_TYPE && get_interned_str(node_get_data1(t)).str_eq(alias_name)) {
+        return true;
+    }
+
+    // Back-compat: *move Alias
+    if (node_kind(t) == NK_POINTER_TYPE && node_get_data3(t) == 1) {
+        return bc_type_name_from_type_node(node_get_data2(t)).str_eq(alias_name);
+    }
+
+    false
+}
+
 fn bc_infer_expr_type_name(n: I32, env_types: Map, fn_return_types: Map) : *Str => {
     if (n == 0) {
         return "Unknown";
@@ -541,6 +559,13 @@ fn consume_place(expr: I32, state: Vec, env_types: Map, fn_return_types: Map, ex
     let base = place_base(p);
     let path = place_path(p);
 
+    // Parser-generated tuple destructuring temporaries are read multiple times
+    // by design (e.g. __tuple_tmp_n[0], __tuple_tmp_n[1]). Treat them as
+    // ephemeral compiler temps, not user-visible move-tracked values.
+    if (base.str_starts_with("__tuple_tmp_")) {
+        return 0;
+    }
+
     if (bc_global_value_types.map_has(base)) {
         return 0;
     }
@@ -754,6 +779,17 @@ fn check_expr(expr: I32, state: Vec, env_types: Map, fn_return_types: Map, exter
         return 0;
     }
 
+    if (kind == NK_TUPLE_EXPR) {
+        let items = node_get_data1(expr);
+        let i = 0;
+        let len = items.vec_length();
+        while (i < len) {
+            check_expr(items.vec_get(i), state, env_types, fn_return_types, extern_type_names, global_fn_names, "read");
+            i = i + 1;
+        }
+        return 0;
+    }
+
     if (kind == NK_IF_EXPR) {
         check_expr(node_get_data1(expr), state, env_types, fn_return_types, extern_type_names, global_fn_names, "read");
 
@@ -823,7 +859,11 @@ fn check_stmt(stmt: I32, state: Vec, env_types: Map, fn_return_types: Map, exter
         let mode = "read";
         let p = canonical_place(rhs);
         if (place_is_valid(p)) {
-            mode = "move";
+            if (node_kind(rhs) == NK_IDENTIFIER) {
+                mode = "move";
+            } else {
+                mode = "read";
+            }
         }
         check_expr(rhs, state, env_types, fn_return_types, extern_type_names, global_fn_names, mode);
 
@@ -1032,7 +1072,8 @@ out fn borrowcheck_program(program: I32) : I32 => {
         let j = 0;
         while (j < len) {
             let stmt = body.vec_get(j);
-            if (node_kind(stmt) == NK_FN_DECL && get_interned_str(node_get_data1(stmt)).str_eq(destructor_name)) {
+            let sk = node_kind(stmt);
+            if ((sk == NK_FN_DECL || sk == NK_EXTERN_FN_DECL) && get_interned_str(node_get_data1(stmt)).str_eq(destructor_name)) {
                 found = true;
                 let valid = true;
                 let params = node_get_data3(stmt);
@@ -1045,7 +1086,7 @@ out fn borrowcheck_program(program: I32) : I32 => {
                     if (!pname.str_eq("this")) {
                         valid = false;
                     }
-                    if (ptype == 0 || node_kind(ptype) != NK_POINTER_TYPE || node_get_data3(ptype) != 1 || !bc_type_name_from_type_node(node_get_data2(ptype)).str_eq(alias_name)) {
+                    if (!bc_type_node_is_destructor_receiver(ptype, alias_name)) {
                         valid = false;
                     }
                 }
@@ -1057,9 +1098,9 @@ out fn borrowcheck_program(program: I32) : I32 => {
                 if (!valid) {
                     panic_with_code(
                         "E_TYPE_DESTRUCTOR_SIGNATURE",
-                        "Destructor '".str_concat(destructor_name).str_concat("' must have signature fn ").str_concat(destructor_name).str_concat("(this : *move ").str_concat(alias_name).str_concat(") : Void"),
-                        "Destructor signatures must use a move receiver of the alias type and return Void.",
-                        "Use exactly one receiver parameter named 'this' with type '*move AliasType' and return Void."
+                        "Destructor '".str_concat(destructor_name).str_concat("' must have signature fn ").str_concat(destructor_name).str_concat("(this : ").str_concat(alias_name).str_concat("<...>) : Void"),
+                        "Destructor signatures must use the alias receiver type (or legacy '*move Alias') and return Void.",
+                        "Use exactly one receiver parameter named 'this' with alias type and return Void."
                     );
                 }
                 break;

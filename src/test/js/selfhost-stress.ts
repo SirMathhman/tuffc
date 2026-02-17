@@ -232,7 +232,8 @@ function compareProgramCase(name, source, expectedMain) {
       stage0Code &&
       selfhostCode &&
       stage0Code !== selfhostCode &&
-      (selfhostCode === "E_GENERIC" || selfhostCode === "E_SELFHOST_PANIC")
+      (selfhostCode === "E_GENERIC" ||
+        selfhostCode === "E_SELFHOST_INTERNAL_ERROR")
     ) {
       gaps.push(
         `Diagnostic specificity gap: stage0=${stage0Code}, selfhost=${selfhostCode}`,
@@ -400,47 +401,53 @@ const cHazardCases = [
   {
     name: "hazard-div-by-zero-strict",
     source: "fn bad(x : I32) : I32 => 100 / x;\n",
-    expectedCodes: ["E_SAFETY_DIV_BY_ZERO", "E_SELFHOST_PANIC"],
+    expectedCodes: ["E_SAFETY_DIV_BY_ZERO", "E_SELFHOST_INTERNAL_ERROR"],
   },
   {
     name: "hazard-mod-by-zero-strict",
     source: "fn bad(x : I32) : I32 => 10 % x;\n",
-    expectedCodes: ["E_SAFETY_MOD_BY_ZERO", "E_SELFHOST_PANIC"],
+    expectedCodes: ["E_SAFETY_MOD_BY_ZERO", "E_SELFHOST_INTERNAL_ERROR"],
   },
   {
     name: "hazard-overflow-strict",
     source: "fn bad() : I32 => 2147483647 + 1;\n",
-    expectedCodes: ["E_SAFETY_OVERFLOW", "E_SELFHOST_PANIC"],
+    expectedCodes: ["E_SAFETY_OVERFLOW", "E_SELFHOST_INTERNAL_ERROR"],
   },
   {
     name: "hazard-nullable-pointer-unguarded",
     source: "fn bad(p : *I32 | 0USize) : I32 => p[0];\n",
-    expectedCodes: ["E_SAFETY_NULLABLE_POINTER_GUARD", "E_SELFHOST_PANIC"],
+    expectedCodes: [
+      "E_SAFETY_NULLABLE_POINTER_GUARD",
+      "E_SELFHOST_INTERNAL_ERROR",
+    ],
   },
   {
     name: "hazard-array-oob-literal",
     source: "fn bad(arr : *[I32; 3; 3]) : I32 => arr[4];\n",
-    expectedCodes: ["E_SAFETY_ARRAY_BOUNDS", "E_SELFHOST_PANIC"],
+    expectedCodes: ["E_SAFETY_ARRAY_BOUNDS", "E_SELFHOST_INTERNAL_ERROR"],
   },
   {
     name: "hazard-array-bounds-unproven",
     source: "fn bad(arr : *[I32; 3; 3], i : USize) : I32 => arr[i];\n",
-    expectedCodes: ["E_SAFETY_ARRAY_BOUNDS_UNPROVEN", "E_SELFHOST_PANIC"],
+    expectedCodes: [
+      "E_SAFETY_ARRAY_BOUNDS_UNPROVEN",
+      "E_SELFHOST_INTERNAL_ERROR",
+    ],
   },
   {
     name: "hazard-div-by-zero-self-cancel",
     source: "fn bad(x : I32) : I32 => 100 / (x - x);\n",
-    expectedCodes: ["E_SAFETY_DIV_BY_ZERO", "E_SELFHOST_PANIC"],
+    expectedCodes: ["E_SAFETY_DIV_BY_ZERO", "E_SELFHOST_INTERNAL_ERROR"],
   },
   {
     name: "hazard-mod-by-zero-self-cancel",
     source: "fn bad(x : I32) : I32 => 10 % (x - x);\n",
-    expectedCodes: ["E_SAFETY_MOD_BY_ZERO", "E_SELFHOST_PANIC"],
+    expectedCodes: ["E_SAFETY_MOD_BY_ZERO", "E_SELFHOST_INTERNAL_ERROR"],
   },
   {
     name: "hazard-overflow-multiply-strict",
     source: "fn bad() : I32 => 50000 * 50000;\n",
-    expectedCodes: ["E_SAFETY_OVERFLOW", "E_SELFHOST_PANIC"],
+    expectedCodes: ["E_SAFETY_OVERFLOW", "E_SELFHOST_INTERNAL_ERROR"],
   },
   {
     name: "hazard-nullable-pointer-guard-alias-bypass",
@@ -451,7 +458,10 @@ const cHazardCases = [
       "}",
       "",
     ].join("\n"),
-    expectedCodes: ["E_SAFETY_NULLABLE_POINTER_GUARD", "E_SELFHOST_PANIC"],
+    expectedCodes: [
+      "E_SAFETY_NULLABLE_POINTER_GUARD",
+      "E_SELFHOST_INTERNAL_ERROR",
+    ],
   },
   {
     name: "hazard-borrow-use-after-move",
@@ -464,7 +474,7 @@ const cHazardCases = [
       "}",
       "",
     ].join("\n"),
-    expectedCodes: ["E_BORROW_USE_AFTER_MOVE", "E_SELFHOST_PANIC"],
+    expectedCodes: ["E_BORROW_USE_AFTER_MOVE", "E_SELFHOST_INTERNAL_ERROR"],
   },
   {
     name: "hazard-borrow-move-while-borrowed",
@@ -478,7 +488,10 @@ const cHazardCases = [
       "}",
       "",
     ].join("\n"),
-    expectedCodes: ["E_BORROW_MOVE_WHILE_BORROWED", "E_SELFHOST_PANIC"],
+    expectedCodes: [
+      "E_BORROW_MOVE_WHILE_BORROWED",
+      "E_SELFHOST_INTERNAL_ERROR",
+    ],
   },
   {
     name: "hazard-borrow-mut-conflict",
@@ -492,7 +505,7 @@ const cHazardCases = [
       "}",
       "",
     ].join("\n"),
-    expectedCodes: ["E_BORROW_MUT_CONFLICT", "E_SELFHOST_PANIC"],
+    expectedCodes: ["E_BORROW_MUT_CONFLICT", "E_SELFHOST_INTERNAL_ERROR"],
   },
   {
     name: "hazard-borrow-immut-while-mut",
@@ -506,7 +519,7 @@ const cHazardCases = [
       "}",
       "",
     ].join("\n"),
-    expectedCodes: ["E_BORROW_IMMUT_WHILE_MUT", "E_SELFHOST_PANIC"],
+    expectedCodes: ["E_BORROW_IMMUT_WHILE_MUT", "E_SELFHOST_INTERNAL_ERROR"],
   },
   {
     name: "hazard-borrow-assign-while-borrowed",
@@ -520,7 +533,10 @@ const cHazardCases = [
       "}",
       "",
     ].join("\n"),
-    expectedCodes: ["E_BORROW_ASSIGN_WHILE_BORROWED", "E_SELFHOST_PANIC"],
+    expectedCodes: [
+      "E_BORROW_ASSIGN_WHILE_BORROWED",
+      "E_SELFHOST_INTERNAL_ERROR",
+    ],
   },
   {
     name: "hazard-borrow-invalid-target",
@@ -532,7 +548,7 @@ const cHazardCases = [
       "}",
       "",
     ].join("\n"),
-    expectedCodes: ["E_BORROW_INVALID_TARGET", "E_SELFHOST_PANIC"],
+    expectedCodes: ["E_BORROW_INVALID_TARGET", "E_SELFHOST_INTERNAL_ERROR"],
   },
   {
     name: "hazard-borrow-invalid-copy-alias",
@@ -542,7 +558,7 @@ const cHazardCases = [
       "fn main() : I32 => 0;",
       "",
     ].join("\n"),
-    expectedCodes: ["E_BORROW_INVALID_COPY_ALIAS", "E_SELFHOST_PANIC"],
+    expectedCodes: ["E_BORROW_INVALID_COPY_ALIAS", "E_SELFHOST_INTERNAL_ERROR"],
   },
   {
     name: "hazard-borrow-use-after-drop",
@@ -557,7 +573,7 @@ const cHazardCases = [
       "}",
       "",
     ].join("\n"),
-    expectedCodes: ["E_BORROW_USE_AFTER_DROP", "E_SELFHOST_PANIC"],
+    expectedCodes: ["E_BORROW_USE_AFTER_DROP", "E_SELFHOST_INTERNAL_ERROR"],
   },
   {
     name: "hazard-borrow-double-drop",
@@ -572,7 +588,7 @@ const cHazardCases = [
       "}",
       "",
     ].join("\n"),
-    expectedCodes: ["E_BORROW_DOUBLE_DROP", "E_SELFHOST_PANIC"],
+    expectedCodes: ["E_BORROW_DOUBLE_DROP", "E_SELFHOST_INTERNAL_ERROR"],
   },
 ];
 
@@ -678,7 +694,8 @@ if (!moduleSelfhost.ok) {
     stage0Code &&
     selfhostCode &&
     stage0Code !== selfhostCode &&
-    (selfhostCode === "E_GENERIC" || selfhostCode === "E_SELFHOST_PANIC")
+    (selfhostCode === "E_GENERIC" ||
+      selfhostCode === "E_SELFHOST_INTERNAL_ERROR")
   ) {
     moduleGaps.push(
       `Diagnostic specificity gap: stage0=${stage0Code}, selfhost=${selfhostCode}`,

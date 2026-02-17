@@ -151,6 +151,10 @@ function tok_kind(idx) { return (() => { const __recv = tok_kinds; const __dyn =
 
 function tok_value(idx) { return (() => { const __recv = tok_values; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, idx) : vec_get(__recv, idx); })(); }
 
+function tok_line(idx) { return (() => { const __recv = tok_lines; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, idx) : vec_get(__recv, idx); })(); }
+
+function tok_col(idx) { return (() => { const __recv = tok_cols; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, idx) : vec_get(__recv, idx); })(); }
+
 let intern_table = vec_new();
 
 let intern_map = map_new();
@@ -578,6 +582,8 @@ let NK_INTO_STMT = 66;
 
 let NK_LIFETIME_STMT = 67;
 
+let NK_STMT_LIST = 68;
+
 let NK_ENUM_DECL = 60;
 
 let NK_NUMBER_LIT = 20;
@@ -613,6 +619,8 @@ let NK_UNWRAP_EXPR = 34;
 let NK_LAMBDA_EXPR = 35;
 
 let NK_FN_EXPR = 36;
+
+let NK_TUPLE_EXPR = 37;
 
 let NK_NAMED_TYPE = 40;
 
@@ -755,16 +763,68 @@ function p_eat() {
   return t;
 }
 
+function p_token_kind_name(knd) {
+  if ((knd == TK_EOF)) {
+  return "eof";
+}
+  if ((knd == TK_KEYWORD)) {
+  return "keyword";
+}
+  if ((knd == TK_IDENTIFIER)) {
+  return "identifier";
+}
+  if ((knd == TK_NUMBER)) {
+  return "number";
+}
+  if ((knd == TK_STRING)) {
+  return "string";
+}
+  if ((knd == TK_BOOL)) {
+  return "bool";
+}
+  if ((knd == TK_SYMBOL)) {
+  return "symbol";
+}
+  if ((knd == TK_CHAR)) {
+  return "char";
+}
+  return "token";
+}
+
+function p_token_value_for_error(t) {
+  let knd = tok_kind(t);
+  if ((knd == TK_BOOL)) {
+  if ((tok_value(t) == 0)) {
+  return "false";
+}
+  return "true";
+}
+  if ((((((((knd == TK_KEYWORD) || (knd == TK_IDENTIFIER)) || (knd == TK_NUMBER)) || (knd == TK_STRING)) || (knd == TK_SYMBOL)) || (knd == TK_CHAR)) || (knd == TK_EOF))) {
+  return get_intern(tok_value(t));
+}
+  return "<unknown>";
+}
+
+function p_error_with_token_context(msg) {
+  let t = p_peek(0);
+  let found_kind = p_token_kind_name(tok_kind(t));
+  let value = p_token_value_for_error(t);
+  let line = int_to_string(tok_line(t));
+  let col = int_to_string(tok_col(t));
+  panic((() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = msg; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " (found ") : str_concat(__recv, " (found "); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, found_kind) : str_concat(__recv, found_kind); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ":") : str_concat(__recv, ":"); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, value) : str_concat(__recv, value); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " at ") : str_concat(__recv, " at "); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, line) : str_concat(__recv, line); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ":") : str_concat(__recv, ":"); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, col) : str_concat(__recv, col); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ")") : str_concat(__recv, ")"); })());
+  return 0;
+}
+
 function p_expect_kind(kind, msg) {
   if ((!p_at_kind(kind))) {
-  panic(msg);
+  p_error_with_token_context(msg);
 }
   return p_eat();
 }
 
 function p_expect(kind, val, msg) {
   if ((!p_at(kind, val))) {
-  panic(msg);
+  p_error_with_token_context(msg);
 }
   return p_eat();
 }
@@ -954,8 +1014,8 @@ function p_parse_type_primary() {
   if (p_at_kind(TK_NUMBER)) {
   let t = p_eat();
   let raw = get_intern(tok_value(t));
-  if ((!(() => { const __recv = raw; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "0USize") : str_eq(__recv, "0USize"); })())) {
-  panic("Only 0USize is supported as a type-level numeric sentinel");
+  if ((!((() => { const __recv = raw; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "0USize") : str_eq(__recv, "0USize"); })() || (() => { const __recv = raw; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "0") : str_eq(__recv, "0"); })()))) {
+  panic("Only 0 or 0USize is supported as a type-level numeric sentinel");
 }
   let base = node_new(NK_NAMED_TYPE);
   node_set_data1(base, intern("USize"));
@@ -1021,6 +1081,15 @@ function p_parse_type() {
   node_set_data3(refine, val_expr);
   type_node = refine;
 }
+  while (((((p_at(TK_SYMBOL, "+") || p_at(TK_SYMBOL, "-")) || p_at(TK_SYMBOL, "*")) || p_at(TK_SYMBOL, "/")) || p_at(TK_SYMBOL, "%"))) {
+  let op = tok_value(p_eat());
+  let right = p_parse_type_primary();
+  let bin = node_new(NK_BINARY_EXPR);
+  node_set_data1(bin, op);
+  node_set_data2(bin, type_node);
+  node_set_data3(bin, right);
+  type_node = bin;
+}
   while ((p_at(TK_SYMBOL, "|") || p_at(TK_SYMBOL, "|>"))) {
   let is_extract = 0;
   if (p_at(TK_SYMBOL, "|>")) {
@@ -1055,6 +1124,17 @@ function p_parse_pattern() {
   return node;
 }
   let name = p_parse_identifier();
+  if ((p_at(TK_SYMBOL, "<") && p_can_start_type_tok_at(1))) {
+  p_eat();
+  if ((!p_at(TK_SYMBOL, ">"))) {
+  p_parse_type();
+  while (p_at(TK_SYMBOL, ",")) {
+  p_eat();
+  p_parse_type();
+}
+}
+  p_expect(TK_SYMBOL, ">", "Expected '>' in pattern generic args");
+}
   if (p_at(TK_SYMBOL, "{")) {
   p_eat();
   let fields = vec_new();
@@ -1078,6 +1158,103 @@ function p_parse_pattern() {
 
 function selfhost_parser_core_marker() { return 0; }
 
+let parse_temp_counter = 0;
+
+function p_new_temp_name(prefix) {
+  parse_temp_counter = (parse_temp_counter + 1);
+  return intern((() => { const __recv = prefix; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(parse_temp_counter)) : str_concat(__recv, int_to_string(parse_temp_counter)); })());
+}
+
+function p_new_stmt_list(stmts) {
+  let n = node_new(NK_STMT_LIST);
+  node_set_data1(n, stmts);
+  return n;
+}
+
+function p_parse_constraint_value_atom() {
+  if (p_at_kind(TK_IDENTIFIER)) {
+  let n = node_new(NK_IDENTIFIER);
+  node_set_data1(n, tok_value(p_eat()));
+  return n;
+}
+  if (p_at_kind(TK_NUMBER)) {
+  let n = node_new(NK_NUMBER_LIT);
+  node_set_data1(n, tok_value(p_eat()));
+  return n;
+}
+  if (p_at_kind(TK_BOOL)) {
+  let n = node_new(NK_BOOL_LIT);
+  node_set_data1(n, tok_value(p_eat()));
+  return n;
+}
+  if (p_at_kind(TK_STRING)) {
+  let n = node_new(NK_STRING_LIT);
+  node_set_data1(n, tok_value(p_eat()));
+  return n;
+}
+  if (p_at_kind(TK_CHAR)) {
+  let n = node_new(NK_CHAR_LIT);
+  node_set_data1(n, tok_value(p_eat()));
+  return n;
+}
+  if (p_at(TK_SYMBOL, "(")) {
+  p_eat();
+  let inner = p_parse_expression(0);
+  p_expect(TK_SYMBOL, ")", "Expected ')' in generic constraint expression");
+  return inner;
+}
+  return p_parse_type_primary();
+}
+
+function p_parse_constraint_value_expr() {
+  let left = p_parse_constraint_value_atom();
+  while (((((p_at(TK_SYMBOL, "+") || p_at(TK_SYMBOL, "-")) || p_at(TK_SYMBOL, "*")) || p_at(TK_SYMBOL, "/")) || p_at(TK_SYMBOL, "%"))) {
+  let op = tok_value(p_eat());
+  let right = p_parse_constraint_value_atom();
+  let bin = node_new(NK_BINARY_EXPR);
+  node_set_data1(bin, op);
+  node_set_data2(bin, left);
+  node_set_data3(bin, right);
+  left = bin;
+}
+  return left;
+}
+
+function p_parse_generic_constraint_type() {
+  let type_node = p_parse_type_primary();
+  let starts_generic_call_suffix = false;
+  if ((p_at(TK_SYMBOL, ">") && (tok_kind(p_peek(1)) == TK_SYMBOL))) {
+  let next_sym = get_intern(tok_value(p_peek(1)));
+  if ((() => { const __recv = next_sym; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "(") : str_eq(__recv, "("); })()) {
+  starts_generic_call_suffix = true;
+}
+}
+  let has_refine = ((((((p_at(TK_SYMBOL, "!=") || p_at(TK_SYMBOL, "<")) || p_at(TK_SYMBOL, ">")) || p_at(TK_SYMBOL, "<=")) || p_at(TK_SYMBOL, ">=")) && p_can_start_refinement_expr_at(1)) && (!starts_generic_call_suffix));
+  if (has_refine) {
+  let op = tok_value(p_eat());
+  let value = p_parse_constraint_value_expr();
+  let refine = node_new(NK_REFINEMENT_TYPE);
+  node_set_data1(refine, type_node);
+  node_set_data2(refine, op);
+  node_set_data3(refine, value);
+  type_node = refine;
+}
+  while ((p_at(TK_SYMBOL, "|") || p_at(TK_SYMBOL, "|>"))) {
+  let is_extract = 0;
+  if (p_at(TK_SYMBOL, "|>")) {
+  is_extract = 1;
+}
+  p_eat();
+  let right = p_parse_type_primary();
+  let union_node = node_new(NK_UNION_TYPE);
+  node_set_data1(union_node, type_node);
+  node_set_data2(union_node, right);
+  node_set_data3(union_node, is_extract);
+  type_node = union_node;
+}
+  return type_node;
+}
+
 function p_parse_decl_generics(close_message) {
   let generics = vec_new();
   if (p_at(TK_SYMBOL, "<")) {
@@ -1087,7 +1264,7 @@ function p_parse_decl_generics(close_message) {
   (() => { const __recv = generics; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, p_parse_identifier()) : vec_push(__recv, p_parse_identifier()); })();
   if (p_at(TK_SYMBOL, ":")) {
   p_eat();
-  p_parse_type();
+  p_parse_generic_constraint_type();
 }
   if ((!p_at(TK_SYMBOL, ","))) {
   break;
@@ -1107,28 +1284,45 @@ function p_parse_function(is_class, mode) {
   p_expect(TK_SYMBOL, "(", "Expected '('");
   let params = vec_new();
   if ((!p_at(TK_SYMBOL, ")"))) {
-  let pname = p_parse_identifier();
+  while (true) {
+  let pname = 0;
   let ptype = 0;
+  if (p_at(TK_SYMBOL, "*")) {
+  ptype = p_parse_type();
+  if (p_at_kind(TK_IDENTIFIER)) {
+  pname = p_parse_identifier();
+} else {
+  if ((node_kind(ptype) == NK_POINTER_TYPE)) {
+  let inner = node_get_data2(ptype);
+  if (((inner != 0) && (node_kind(inner) == NK_NAMED_TYPE))) {
+  let inner_name = node_get_data1(inner);
+  if ((() => { const __recv = get_intern(inner_name); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "this") : str_eq(__recv, "this"); })()) {
+  pname = inner_name;
+} else {
+  p_expect_kind(TK_IDENTIFIER, "Expected identifier");
+}
+} else {
+  p_expect_kind(TK_IDENTIFIER, "Expected identifier");
+}
+} else {
+  p_expect_kind(TK_IDENTIFIER, "Expected identifier");
+}
+}
+} else {
+  pname = p_parse_identifier();
   if (p_at(TK_SYMBOL, ":")) {
   p_eat();
   ptype = p_parse_type();
+}
 }
   let param = vec_new();
   (() => { const __recv = param; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, pname) : vec_push(__recv, pname); })();
   (() => { const __recv = param; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, ptype) : vec_push(__recv, ptype); })();
   (() => { const __recv = params; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, param) : vec_push(__recv, param); })();
-  while (p_at(TK_SYMBOL, ",")) {
-  p_eat();
-  let pname2 = p_parse_identifier();
-  let ptype2 = 0;
-  if (p_at(TK_SYMBOL, ":")) {
-  p_eat();
-  ptype2 = p_parse_type();
+  if ((!p_at(TK_SYMBOL, ","))) {
+  break;
 }
-  let param2 = vec_new();
-  (() => { const __recv = param2; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, pname2) : vec_push(__recv, pname2); })();
-  (() => { const __recv = param2; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, ptype2) : vec_push(__recv, ptype2); })();
-  (() => { const __recv = params; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, param2) : vec_push(__recv, param2); })();
+  p_eat();
 }
 }
   p_expect(TK_SYMBOL, ")", "Expected ')'");
@@ -1327,6 +1521,9 @@ function p_parse_type_alias(is_copy) {
 
 function p_parse_let() {
   p_expect(TK_KEYWORD, "let", "Expected 'let'");
+  if (p_at(TK_KEYWORD, "mut")) {
+  p_eat();
+}
   if (p_at(TK_SYMBOL, "{")) {
   p_eat();
   let names = vec_new();
@@ -1350,6 +1547,45 @@ function p_parse_let() {
   node_set_data1(node, names);
   node_set_data2(node, parts);
   return node;
+}
+  if (p_at(TK_SYMBOL, "(")) {
+  p_eat();
+  let names = vec_new();
+  if ((!p_at(TK_SYMBOL, ")"))) {
+  (() => { const __recv = names; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, p_parse_identifier()) : vec_push(__recv, p_parse_identifier()); })();
+  while (p_at(TK_SYMBOL, ",")) {
+  p_eat();
+  (() => { const __recv = names; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, p_parse_identifier()) : vec_push(__recv, p_parse_identifier()); })();
+}
+}
+  p_expect(TK_SYMBOL, ")", "Expected ')' in tuple let destructuring");
+  p_expect(TK_SYMBOL, "=", "Expected '=' in tuple let destructuring");
+  let rhs = p_parse_expression(0);
+  p_expect(TK_SYMBOL, ";", "Expected ';' after tuple let destructuring");
+  let lowered = vec_new();
+  let tmp_name = p_new_temp_name("__tuple_tmp_");
+  let tmp_decl = node_new(NK_LET_DECL);
+  node_set_data1(tmp_decl, tmp_name);
+  node_set_data2(tmp_decl, 0);
+  node_set_data3(tmp_decl, rhs);
+  (() => { const __recv = lowered; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, tmp_decl) : vec_push(__recv, tmp_decl); })();
+  let i = 0;
+  while ((i < (() => { const __recv = names; const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })())) {
+  let tmp_ident = node_new(NK_IDENTIFIER);
+  node_set_data1(tmp_ident, tmp_name);
+  let idx_lit = node_new(NK_NUMBER_LIT);
+  node_set_data1(idx_lit, intern(int_to_string(i)));
+  let idx_expr = node_new(NK_INDEX_EXPR);
+  node_set_data1(idx_expr, tmp_ident);
+  node_set_data2(idx_expr, idx_lit);
+  let elem_decl = node_new(NK_LET_DECL);
+  node_set_data1(elem_decl, (() => { const __recv = names; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })());
+  node_set_data2(elem_decl, 0);
+  node_set_data3(elem_decl, idx_expr);
+  (() => { const __recv = lowered; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, elem_decl) : vec_push(__recv, elem_decl); })();
+  i = (i + 1);
+}
+  return p_new_stmt_list(lowered);
 }
   let name = p_parse_identifier();
   let vtype = 0;
@@ -1400,6 +1636,62 @@ function p_parse_lifetime() {
   return node;
 }
 
+function p_parse_template_wrapper() {
+  p_eat();
+  p_parse_identifier();
+  if (p_at(TK_SYMBOL, ":")) {
+  p_eat();
+  p_parse_type();
+}
+  while (p_at(TK_SYMBOL, ",")) {
+  p_eat();
+  p_parse_identifier();
+  if (p_at(TK_SYMBOL, ":")) {
+  p_eat();
+  p_parse_type();
+}
+}
+  p_expect(TK_SYMBOL, "{", "Expected '{' after template declaration");
+  let stmts = vec_new();
+  while ((!p_at(TK_SYMBOL, "}"))) {
+  let stmt = p_parse_statement();
+  if ((node_kind(stmt) == NK_BLOCK)) {
+  let inner = node_get_data1(stmt);
+  let j = 0;
+  while ((j < (() => { const __recv = inner; const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })())) {
+  (() => { const __recv = stmts; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, (() => { const __recv = inner; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, j) : vec_get(__recv, j); })()) : vec_push(__recv, (() => { const __recv = inner; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, j) : vec_get(__recv, j); })()); })();
+  j = (j + 1);
+}
+} else {
+  (() => { const __recv = stmts; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, stmt) : vec_push(__recv, stmt); })();
+}
+}
+  p_expect(TK_SYMBOL, "}", "Expected '}' after template block");
+  return p_new_stmt_list(stmts);
+}
+
+function p_parse_module_wrapper() {
+  p_expect(TK_KEYWORD, "module", "Expected 'module'");
+  p_parse_identifier();
+  p_expect(TK_SYMBOL, "{", "Expected '{' after module name");
+  let stmts = vec_new();
+  while ((!p_at(TK_SYMBOL, "}"))) {
+  let stmt = p_parse_statement();
+  if ((node_kind(stmt) == NK_BLOCK)) {
+  let inner = node_get_data1(stmt);
+  let j = 0;
+  while ((j < (() => { const __recv = inner; const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })())) {
+  (() => { const __recv = stmts; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, (() => { const __recv = inner; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, j) : vec_get(__recv, j); })()) : vec_push(__recv, (() => { const __recv = inner; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, j) : vec_get(__recv, j); })()); })();
+  j = (j + 1);
+}
+} else {
+  (() => { const __recv = stmts; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, stmt) : vec_push(__recv, stmt); })();
+}
+}
+  p_expect(TK_SYMBOL, "}", "Expected '}' after module body");
+  return p_new_stmt_list(stmts);
+}
+
 function p_parse_extern_decl() {
   if (p_at(TK_KEYWORD, "fn")) {
   p_eat();
@@ -1408,28 +1700,27 @@ function p_parse_extern_decl() {
   p_expect(TK_SYMBOL, "(", "Expected '('");
   let params = vec_new();
   if ((!p_at(TK_SYMBOL, ")"))) {
-  let pname = p_parse_identifier();
+  while (true) {
+  let pname = 0;
   let ptype = 0;
+  if (p_at(TK_SYMBOL, "*")) {
+  ptype = p_parse_type();
+  pname = p_parse_identifier();
+} else {
+  pname = p_parse_identifier();
   if (p_at(TK_SYMBOL, ":")) {
   p_eat();
   ptype = p_parse_type();
+}
 }
   let param = vec_new();
   (() => { const __recv = param; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, pname) : vec_push(__recv, pname); })();
   (() => { const __recv = param; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, ptype) : vec_push(__recv, ptype); })();
   (() => { const __recv = params; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, param) : vec_push(__recv, param); })();
-  while (p_at(TK_SYMBOL, ",")) {
-  p_eat();
-  let pname2 = p_parse_identifier();
-  let ptype2 = 0;
-  if (p_at(TK_SYMBOL, ":")) {
-  p_eat();
-  ptype2 = p_parse_type();
+  if ((!p_at(TK_SYMBOL, ","))) {
+  break;
 }
-  let param2 = vec_new();
-  (() => { const __recv = param2; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, pname2) : vec_push(__recv, pname2); })();
-  (() => { const __recv = param2; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, ptype2) : vec_push(__recv, ptype2); })();
-  (() => { const __recv = params; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, param2) : vec_push(__recv, param2); })();
+  p_eat();
 }
 }
   p_expect(TK_SYMBOL, ")", "Expected ')'");
@@ -1448,6 +1739,26 @@ function p_parse_extern_decl() {
 }
   if (p_at(TK_KEYWORD, "let")) {
   p_eat();
+  if (p_at(TK_SYMBOL, "{")) {
+  p_eat();
+  if ((!p_at(TK_SYMBOL, "}"))) {
+  p_parse_identifier();
+  while (p_at(TK_SYMBOL, ",")) {
+  p_eat();
+  p_parse_identifier();
+}
+}
+  p_expect(TK_SYMBOL, "}", "Expected '}' after extern let bindings");
+  p_expect(TK_SYMBOL, "=", "Expected '=' in extern let bindings");
+  p_parse_identifier();
+  while (p_at(TK_SYMBOL, "::")) {
+  p_eat();
+  p_parse_identifier();
+}
+  p_expect(TK_SYMBOL, ";", "Expected ';' after extern let bindings");
+  let noop = p_new_stmt_list(vec_new());
+  return noop;
+}
   let name = p_parse_identifier();
   let typ = 0;
   if (p_at(TK_SYMBOL, ":")) {
@@ -1556,11 +1867,22 @@ function p_parse_statement() {
 }
   p_eat();
   out_node = p_parse_function(1, 0);
+} else { if (p_at(TK_KEYWORD, "module")) {
+  if ((copy_decl == 1)) {
+  panic("'copy' is only supported on struct/type declarations");
+}
+  if (((expect_decl == 1) || (actual_decl == 1))) {
+  panic("'expect'/'actual' are currently supported only on fn declarations");
+}
+  out_node = p_parse_module_wrapper();
 } else {
   panic("Expected declaration after modifiers");
-} } } } } } }
-  if ((exported == 1)) {
+} } } } } } } }
+  if (((exported == 1) && (node_kind(out_node) != NK_STMT_LIST))) {
   (() => { const __recv = parse_exports; const __dyn = __recv?.table?.set_add; return __dyn ? __dyn(__recv.ref, get_interned_str(node_get_data1(out_node))) : set_add(__recv, get_interned_str(node_get_data1(out_node))); })();
+}
+  if (p_at(TK_SYMBOL, ";")) {
+  p_eat();
 }
   return out_node;
 }
@@ -1568,22 +1890,60 @@ function p_parse_statement() {
   return p_parse_let();
 }
   if (p_at(TK_KEYWORD, "struct")) {
-  return p_parse_struct(0);
+  let node = p_parse_struct(0);
+  if (p_at(TK_SYMBOL, ";")) {
+  p_eat();
+}
+  return node;
 }
   if (p_at(TK_KEYWORD, "enum")) {
-  return p_parse_enum();
+  let node = p_parse_enum();
+  if (p_at(TK_SYMBOL, ";")) {
+  p_eat();
+}
+  return node;
 }
   if (p_at(TK_KEYWORD, "object")) {
-  return p_parse_object();
+  let node = p_parse_object();
+  if (p_at(TK_SYMBOL, ";")) {
+  p_eat();
+}
+  return node;
+}
+  if (p_at(TK_KEYWORD, "module")) {
+  let node = p_parse_module_wrapper();
+  if (p_at(TK_SYMBOL, ";")) {
+  p_eat();
+}
+  return node;
+}
+  if ((p_at(TK_KEYWORD, "template") || p_at(TK_IDENTIFIER, "template"))) {
+  let node = p_parse_template_wrapper();
+  if (p_at(TK_SYMBOL, ";")) {
+  p_eat();
+}
+  return node;
 }
   if (p_at(TK_KEYWORD, "contract")) {
-  return p_parse_contract();
+  let node = p_parse_contract();
+  if (p_at(TK_SYMBOL, ";")) {
+  p_eat();
+}
+  return node;
 }
   if (p_at(TK_KEYWORD, "type")) {
-  return p_parse_type_alias(0);
+  let node = p_parse_type_alias(0);
+  if (p_at(TK_SYMBOL, ";")) {
+  p_eat();
+}
+  return node;
 }
   if (p_at(TK_KEYWORD, "fn")) {
-  return p_parse_function(0, 0);
+  let node = p_parse_function(0, 0);
+  if (p_at(TK_SYMBOL, ";")) {
+  p_eat();
+}
+  return node;
 }
   if (p_at(TK_KEYWORD, "extern")) {
   p_eat();
@@ -1591,7 +1951,11 @@ function p_parse_statement() {
 }
   if (p_at(TK_KEYWORD, "class")) {
   p_eat();
-  return p_parse_function(1, 0);
+  let node = p_parse_function(1, 0);
+  if (p_at(TK_SYMBOL, ";")) {
+  p_eat();
+}
+  return node;
 }
   if (p_at(TK_KEYWORD, "return")) {
   p_eat();
@@ -1605,17 +1969,52 @@ function p_parse_statement() {
   return node;
 }
   if (p_at(TK_KEYWORD, "if")) {
-  let expr = p_parse_primary();
-  if (((node_get_data2(expr) != 0) && (node_kind(node_get_data2(expr)) == NK_BLOCK))) {
+  p_eat();
+  p_expect(TK_SYMBOL, "(", "Expected '(' after if");
+  let cond = p_parse_expression(0);
+  p_expect(TK_SYMBOL, ")", "Expected ')' after condition");
+  if (((((((((p_at(TK_SYMBOL, "{") || p_at(TK_KEYWORD, "break")) || p_at(TK_KEYWORD, "continue")) || p_at(TK_KEYWORD, "return")) || p_at(TK_KEYWORD, "if")) || p_at(TK_KEYWORD, "while")) || p_at(TK_KEYWORD, "for")) || p_at(TK_KEYWORD, "loop")) || p_at(TK_KEYWORD, "let"))) {
+  let then_branch = ((p_at(TK_SYMBOL, "{")) ? (() => {
+  return p_parse_block();
+})() : (() => {
+  return p_parse_statement();
+})());
+  let else_branch = 0;
+  if (p_at(TK_KEYWORD, "else")) {
+  p_eat();
+  else_branch = ((p_at(TK_SYMBOL, "{")) ? (() => {
+  return p_parse_block();
+})() : (() => {
+  return p_parse_statement();
+})());
+}
   let stmt = node_new(NK_IF_STMT);
-  node_set_data1(stmt, node_get_data1(expr));
-  node_set_data2(stmt, node_get_data2(expr));
-  node_set_data3(stmt, node_get_data3(expr));
+  node_set_data1(stmt, cond);
+  node_set_data2(stmt, then_branch);
+  node_set_data3(stmt, else_branch);
   return stmt;
 }
-  p_expect(TK_SYMBOL, ";", "Expected ';' after if expression");
+  let then_expr = p_parse_expression(0);
+  let else_expr = 0;
+  if (p_at(TK_KEYWORD, "else")) {
+  p_eat();
+  else_expr = ((p_at(TK_SYMBOL, "{")) ? (() => {
+  return p_parse_block();
+})() : (() => {
+  return p_parse_expression(0);
+})());
+}
+  let if_expr = node_new(NK_IF_EXPR);
+  node_set_data1(if_expr, cond);
+  node_set_data2(if_expr, then_expr);
+  node_set_data3(if_expr, else_expr);
+  if (p_at(TK_SYMBOL, ";")) {
+  p_eat();
+} else { if ((!p_at(TK_SYMBOL, "}"))) {
+  p_expect(TK_SYMBOL, ";", "Expected ';'");
+} }
   let estmt = node_new(NK_EXPR_STMT);
-  node_set_data1(estmt, expr);
+  node_set_data1(estmt, if_expr);
   return estmt;
 }
   if (p_at(TK_KEYWORD, "while")) {
@@ -1686,7 +2085,17 @@ function p_parse_statement() {
 function p_parse_program() {
   let stmts = vec_new();
   while ((!p_at_kind(TK_EOF))) {
-  (() => { const __recv = stmts; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, p_parse_statement()) : vec_push(__recv, p_parse_statement()); })();
+  let stmt = p_parse_statement();
+  if ((node_kind(stmt) == NK_STMT_LIST)) {
+  let inner = node_get_data1(stmt);
+  let i = 0;
+  while ((i < (() => { const __recv = inner; const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })())) {
+  (() => { const __recv = stmts; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, (() => { const __recv = inner; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })()) : vec_push(__recv, (() => { const __recv = inner; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })()); })();
+  i = (i + 1);
+}
+} else {
+  (() => { const __recv = stmts; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, stmt) : vec_push(__recv, stmt); })();
+}
 }
   let node = node_new(NK_PROGRAM);
   node_set_data1(node, stmts);
@@ -1884,6 +2293,10 @@ function scope_has(scopes, depth, name) {
   return false;
 }
 
+function is_host_builtin_name(name) {
+  return (((((((((() => { const __recv = name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "sizeOf") : str_eq(__recv, "sizeOf"); })() || (() => { const __recv = name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "malloc") : str_eq(__recv, "malloc"); })()) || (() => { const __recv = name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "realloc") : str_eq(__recv, "realloc"); })()) || (() => { const __recv = name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "free") : str_eq(__recv, "free"); })()) || (() => { const __recv = name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "memcpy") : str_eq(__recv, "memcpy"); })()) || (() => { const __recv = name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "memset") : str_eq(__recv, "memset"); })()) || (() => { const __recv = name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "drop") : str_eq(__recv, "drop"); })()) || (() => { const __recv = name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "panic") : str_eq(__recv, "panic"); })()) || (() => { const __recv = name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "this") : str_eq(__recv, "this"); })());
+}
+
 function resolve_expr(n, globals, scopes, depth) {
   if ((n == 0)) {
   return 0;
@@ -1891,7 +2304,7 @@ function resolve_expr(n, globals, scopes, depth) {
   let kind = node_kind(n);
   if ((kind == NK_IDENTIFIER)) {
   let name = get_interned_str(node_get_data1(n));
-  if (((!scope_has(scopes, depth, name)) && (!(() => { const __recv = globals; const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, name) : set_has(__recv, name); })()))) {
+  if ((((!scope_has(scopes, depth, name)) && (!(() => { const __recv = globals; const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, name) : set_has(__recv, name); })())) && (!is_host_builtin_name(name)))) {
   panic_with_code("E_RESOLVE_UNKNOWN_IDENTIFIER", (() => { const __recv = "Unknown identifier: "; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, name) : str_concat(__recv, name); })(), "The identifier is not declared in local scope, global declarations, or imports.", "Declare the identifier before use or import it from the correct module.");
 }
   return 0;
@@ -1978,6 +2391,16 @@ function resolve_expr(n, globals, scopes, depth) {
   while ((i < len)) {
   let field = (() => { const __recv = fields; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })();
   resolve_expr((() => { const __recv = field; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 1) : vec_get(__recv, 1); })(), globals, scopes, depth);
+  i = (i + 1);
+}
+  return 0;
+}
+  if ((kind == NK_TUPLE_EXPR)) {
+  let items = node_get_data1(n);
+  let i = 0;
+  let len = (() => { const __recv = items; const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })();
+  while ((i < len)) {
+  resolve_expr((() => { const __recv = items; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(), globals, scopes, depth);
   i = (i + 1);
 }
   return 0;
@@ -2074,6 +2497,15 @@ function resolve_stmt(n, globals, scopes, depth) {
   let i = 0;
   let len = (() => { const __recv = stmts; const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })();
   while ((i < len)) {
+  let stmt = (() => { const __recv = stmts; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })();
+  let stmt_kind = node_kind(stmt);
+  if ((((stmt_kind == NK_FN_DECL) || (stmt_kind == NK_CLASS_FN_DECL)) || (stmt_kind == NK_ACTUAL_FN_DECL))) {
+  scope_define(scopes, next_depth, get_interned_str(node_get_data1(stmt)));
+}
+  i = (i + 1);
+}
+  i = 0;
+  while ((i < len)) {
   resolve_stmt((() => { const __recv = stmts; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(), globals, scopes, next_depth);
   i = (i + 1);
 }
@@ -2087,19 +2519,20 @@ function resolve_stmt(n, globals, scopes, depth) {
   return 0;
 }
   if ((((kind == NK_FN_DECL) || (kind == NK_CLASS_FN_DECL)) || (kind == NK_ACTUAL_FN_DECL))) {
-  let fnScopes = vec_new();
-  (() => { const __recv = fnScopes; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, set_new()) : vec_push(__recv, set_new()); })();
+  let next_depth = (depth + 1);
+  (() => { const __recv = scopes; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, set_new()) : vec_push(__recv, set_new()); })();
   let params = node_get_data3(n);
   let i = 0;
   let len = (() => { const __recv = params; const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })();
   while ((i < len)) {
   let param = (() => { const __recv = params; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })();
-  scope_define(fnScopes, 0, get_interned_str((() => { const __recv = param; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })()));
+  scope_define(scopes, next_depth, get_interned_str((() => { const __recv = param; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })()));
   resolve_type_lifetimes((() => { const __recv = param; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 1) : vec_get(__recv, 1); })());
   i = (i + 1);
 }
   resolve_type_lifetimes(node_get_data4(n));
-  resolve_stmt(node_get_data5(n), globals, fnScopes, 0);
+  resolve_stmt(node_get_data5(n), globals, scopes, next_depth);
+  (() => { const __recv = scopes; const __dyn = __recv?.table?.vec_pop; return __dyn ? __dyn(__recv.ref) : vec_pop(__recv); })();
   return 0;
 }
   if ((kind == NK_LET_DECL)) {
@@ -2435,6 +2868,9 @@ function infer_expr_type_name(n, fn_return_types, local_types) {
   if (((((((((() => { const __recv = op; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "==") : str_eq(__recv, "=="); })() || (() => { const __recv = op; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "!=") : str_eq(__recv, "!="); })()) || (() => { const __recv = op; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "<") : str_eq(__recv, "<"); })()) || (() => { const __recv = op; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "<=") : str_eq(__recv, "<="); })()) || (() => { const __recv = op; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, ">") : str_eq(__recv, ">"); })()) || (() => { const __recv = op; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, ">=") : str_eq(__recv, ">="); })()) || (() => { const __recv = op; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "&&") : str_eq(__recv, "&&"); })()) || (() => { const __recv = op; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "||") : str_eq(__recv, "||"); })())) {
   return "Bool";
 }
+  if ((() => { const __recv = op; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "..") : str_eq(__recv, ".."); })()) {
+  return "Iter";
+}
   return infer_expr_type_name(node_get_data2(n), fn_return_types, local_types);
 }
   if ((kind == 27)) {
@@ -2453,6 +2889,9 @@ function infer_expr_type_name(n, fn_return_types, local_types) {
   return (() => { const __recv = fn_return_types; const __dyn = __recv?.table?.map_get; return __dyn ? __dyn(__recv.ref, fname) : map_get(__recv, fname); })();
 }
 }
+}
+  if ((kind == NK_TUPLE_EXPR)) {
+  return "Unknown";
 }
   return "Unknown";
 }
@@ -2514,14 +2953,17 @@ let tc_destructor_alias_by_alias = map_new();
 
 let tc_destructor_alias_names = vec_new();
 
-function type_node_is_move_pointer_to_alias(t, alias_name) {
-  if (((t == 0) || (node_kind(t) != NK_POINTER_TYPE))) {
+function type_node_is_destructor_receiver(t, alias_name) {
+  if ((t == 0)) {
   return false;
 }
-  if ((node_get_data3(t) != 1)) {
-  return false;
+  if (((node_kind(t) == NK_NAMED_TYPE) && (() => { const __recv = get_interned_str(node_get_data1(t)); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, alias_name) : str_eq(__recv, alias_name); })())) {
+  return true;
 }
+  if (((node_kind(t) == NK_POINTER_TYPE) && (node_get_data3(t) == 1))) {
   return (() => { const __recv = type_name_from_type_node(node_get_data2(t)); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, alias_name) : str_eq(__recv, alias_name); })();
+}
+  return false;
 }
 
 function collect_union_named_tags(type_node, tags) {
@@ -2830,6 +3272,16 @@ function typecheck_expr(n, fn_arities, fn_param_types, fn_return_types, local_ty
 }
   return 0;
 }
+  if ((kind == NK_TUPLE_EXPR)) {
+  let items = node_get_data1(n);
+  let i = 0;
+  let len = (() => { const __recv = items; const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })();
+  while ((i < len)) {
+  typecheck_expr((() => { const __recv = items; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety);
+  i = (i + 1);
+}
+  return 0;
+}
   if ((kind == NK_IF_EXPR)) {
   let cond = node_get_data1(n);
   typecheck_expr(cond, fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety);
@@ -3062,7 +3514,30 @@ function typecheck_stmt(n, fn_arities, fn_param_types, fn_return_types, local_ty
   if ((!copied_else)) {
   else_nonnull = nonnull_ptrs;
 }
+  let narrowed_ident = "";
+  let had_prev_narrowed = 0;
+  let prev_narrowed_type = "";
+  if ((node_kind(cond) == NK_IS_EXPR)) {
+  let subject = node_get_data1(cond);
+  let pat = node_get_data2(cond);
+  if (((node_kind(subject) == NK_IDENTIFIER) && ((node_kind(pat) == NK_NAME_PAT) || (node_kind(pat) == NK_STRUCT_PAT)))) {
+  narrowed_ident = get_interned_str(node_get_data1(subject));
+  let narrowed_type = get_interned_str(node_get_data1(pat));
+  if ((() => { const __recv = local_types; const __dyn = __recv?.table?.map_has; return __dyn ? __dyn(__recv.ref, narrowed_ident) : map_has(__recv, narrowed_ident); })()) {
+  had_prev_narrowed = 1;
+  prev_narrowed_type = (() => { const __recv = local_types; const __dyn = __recv?.table?.map_get; return __dyn ? __dyn(__recv.ref, narrowed_ident) : map_get(__recv, narrowed_ident); })();
+}
+  (() => { const __recv = local_types; const __dyn = __recv?.table?.map_set; return __dyn ? __dyn(__recv.ref, narrowed_ident, narrowed_type) : map_set(__recv, narrowed_ident, narrowed_type); })();
+}
+}
   typecheck_stmt(node_get_data2(n), fn_arities, fn_param_types, fn_return_types, local_types, then_nonnull, strict_safety, expected_return_type);
+  if ((!(() => { const __recv = narrowed_ident; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "") : str_eq(__recv, ""); })())) {
+  if ((had_prev_narrowed == 1)) {
+  (() => { const __recv = local_types; const __dyn = __recv?.table?.map_set; return __dyn ? __dyn(__recv.ref, narrowed_ident, prev_narrowed_type) : map_set(__recv, narrowed_ident, prev_narrowed_type); })();
+} else {
+  (() => { const __recv = local_types; const __dyn = __recv?.table?.map_set; return __dyn ? __dyn(__recv.ref, narrowed_ident, "Unknown") : map_set(__recv, narrowed_ident, "Unknown"); })();
+}
+}
   if ((node_get_data3(n) != 0)) {
   typecheck_stmt(node_get_data3(n), fn_arities, fn_param_types, fn_return_types, local_types, else_nonnull, strict_safety, expected_return_type);
 }
@@ -3196,7 +3671,7 @@ function typecheck_program_with_options(program, strict_safety) {
   if ((!(() => { const __recv = pname; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "this") : str_eq(__recv, "this"); })())) {
   valid = false;
 }
-  if ((!type_node_is_move_pointer_to_alias(ptype, alias_name))) {
+  if ((!type_node_is_destructor_receiver(ptype, alias_name))) {
   valid = false;
 }
 }
@@ -3205,7 +3680,7 @@ function typecheck_program_with_options(program, strict_safety) {
   valid = false;
 }
   if ((!valid)) {
-  panic_with_code("E_TYPE_DESTRUCTOR_SIGNATURE", (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = "Destructor '"; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, destructor_name) : str_concat(__recv, destructor_name); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "' must have signature fn ") : str_concat(__recv, "' must have signature fn "); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, destructor_name) : str_concat(__recv, destructor_name); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "(this : *move ") : str_concat(__recv, "(this : *move "); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, alias_name) : str_concat(__recv, alias_name); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ") : Void") : str_concat(__recv, ") : Void"); })(), "Destructor signatures must follow the required receiver and return type contract.", "Use exactly one receiver parameter named 'this' with type '*move AliasType' and return Void.");
+  panic_with_code("E_TYPE_DESTRUCTOR_SIGNATURE", (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = "Destructor '"; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, destructor_name) : str_concat(__recv, destructor_name); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "' must have signature fn ") : str_concat(__recv, "' must have signature fn "); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, destructor_name) : str_concat(__recv, destructor_name); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "(this : ") : str_concat(__recv, "(this : "); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, alias_name) : str_concat(__recv, alias_name); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "<...>) : Void") : str_concat(__recv, "<...>) : Void"); })(), "Destructor signatures must follow the required receiver and return type contract.", "Use exactly one receiver parameter named 'this' with the alias type (or legacy '*move AliasType') and return Void.");
 }
   i = (i + 1);
 }
@@ -3367,6 +3842,19 @@ function bc_type_node_is_copyable(t, extern_type_names, visiting_aliases) {
   i = (i + 1);
 }
   return true;
+}
+  return false;
+}
+
+function bc_type_node_is_destructor_receiver(t, alias_name) {
+  if ((t == 0)) {
+  return false;
+}
+  if (((node_kind(t) == NK_NAMED_TYPE) && (() => { const __recv = get_interned_str(node_get_data1(t)); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, alias_name) : str_eq(__recv, alias_name); })())) {
+  return true;
+}
+  if (((node_kind(t) == NK_POINTER_TYPE) && (node_get_data3(t) == 1))) {
+  return (() => { const __recv = bc_type_name_from_type_node(node_get_data2(t)); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, alias_name) : str_eq(__recv, alias_name); })();
 }
   return false;
 }
@@ -3742,6 +4230,9 @@ function consume_place(expr, state, env_types, fn_return_types, extern_type_name
 }
   let base = place_base(p);
   let path = place_path(p);
+  if ((() => { const __recv = base; const __dyn = __recv?.table?.str_starts_with; return __dyn ? __dyn(__recv.ref, "__tuple_tmp_") : str_starts_with(__recv, "__tuple_tmp_"); })()) {
+  return 0;
+}
   if ((() => { const __recv = bc_global_value_types; const __dyn = __recv?.table?.map_has; return __dyn ? __dyn(__recv.ref, base) : map_has(__recv, base); })()) {
   return 0;
 }
@@ -3891,6 +4382,16 @@ function check_expr(expr, state, env_types, fn_return_types, extern_type_names, 
 }
   return 0;
 }
+  if ((kind == NK_TUPLE_EXPR)) {
+  let items = node_get_data1(expr);
+  let i = 0;
+  let len = (() => { const __recv = items; const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })();
+  while ((i < len)) {
+  check_expr((() => { const __recv = items; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(), state, env_types, fn_return_types, extern_type_names, global_fn_names, "read");
+  i = (i + 1);
+}
+  return 0;
+}
   if ((kind == NK_IF_EXPR)) {
   check_expr(node_get_data1(expr), state, env_types, fn_return_types, extern_type_names, global_fn_names, "read");
   let then_state = state_clone(state);
@@ -3953,7 +4454,11 @@ function check_stmt(stmt, state, env_types, fn_return_types, extern_type_names, 
   let mode = "read";
   let p = canonical_place(rhs);
   if (place_is_valid(p)) {
+  if ((node_kind(rhs) == NK_IDENTIFIER)) {
   mode = "move";
+} else {
+  mode = "read";
+}
 }
   check_expr(rhs, state, env_types, fn_return_types, extern_type_names, global_fn_names, mode);
   let name = get_interned_str(node_get_data1(stmt));
@@ -4132,7 +4637,8 @@ function borrowcheck_program(program) {
   let j = 0;
   while ((j < len)) {
   let stmt = (() => { const __recv = body; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, j) : vec_get(__recv, j); })();
-  if (((node_kind(stmt) == NK_FN_DECL) && (() => { const __recv = get_interned_str(node_get_data1(stmt)); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, destructor_name) : str_eq(__recv, destructor_name); })())) {
+  let sk = node_kind(stmt);
+  if ((((sk == NK_FN_DECL) || (sk == NK_EXTERN_FN_DECL)) && (() => { const __recv = get_interned_str(node_get_data1(stmt)); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, destructor_name) : str_eq(__recv, destructor_name); })())) {
   found = true;
   let valid = true;
   let params = node_get_data3(stmt);
@@ -4145,7 +4651,7 @@ function borrowcheck_program(program) {
   if ((!(() => { const __recv = pname; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "this") : str_eq(__recv, "this"); })())) {
   valid = false;
 }
-  if (((((ptype == 0) || (node_kind(ptype) != NK_POINTER_TYPE)) || (node_get_data3(ptype) != 1)) || (!(() => { const __recv = bc_type_name_from_type_node(node_get_data2(ptype)); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, alias_name) : str_eq(__recv, alias_name); })()))) {
+  if ((!bc_type_node_is_destructor_receiver(ptype, alias_name))) {
   valid = false;
 }
 }
@@ -4153,7 +4659,7 @@ function borrowcheck_program(program) {
   valid = false;
 }
   if ((!valid)) {
-  panic_with_code("E_TYPE_DESTRUCTOR_SIGNATURE", (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = "Destructor '"; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, destructor_name) : str_concat(__recv, destructor_name); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "' must have signature fn ") : str_concat(__recv, "' must have signature fn "); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, destructor_name) : str_concat(__recv, destructor_name); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "(this : *move ") : str_concat(__recv, "(this : *move "); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, alias_name) : str_concat(__recv, alias_name); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ") : Void") : str_concat(__recv, ") : Void"); })(), "Destructor signatures must use a move receiver of the alias type and return Void.", "Use exactly one receiver parameter named 'this' with type '*move AliasType' and return Void.");
+  panic_with_code("E_TYPE_DESTRUCTOR_SIGNATURE", (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = "Destructor '"; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, destructor_name) : str_concat(__recv, destructor_name); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "' must have signature fn ") : str_concat(__recv, "' must have signature fn "); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, destructor_name) : str_concat(__recv, destructor_name); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "(this : ") : str_concat(__recv, "(this : "); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, alias_name) : str_concat(__recv, alias_name); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "<...>) : Void") : str_concat(__recv, "<...>) : Void"); })(), "Destructor signatures must use the alias receiver type (or legacy '*move Alias') and return Void.", "Use exactly one receiver parameter named 'this' with alias type and return Void.");
 }
   break;
 }
@@ -4190,11 +4696,18 @@ function borrowcheck_program(program) {
 
 function selfhost_borrowcheck_marker() { return 0; }
 
+function js_ident_stmt(name) {
+  if ((() => { const __recv = name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "this") : str_eq(__recv, "this"); })()) {
+  return "_this";
+}
+  return name;
+}
+
 function emit_stmt(n) {
   let kind = node_kind(n);
   if ((kind == NK_LET_DECL)) {
   let name_idx = node_get_data1(n);
-  let name = get_interned_str(name_idx);
+  let name = js_ident_stmt(get_interned_str(name_idx));
   let value = emit_expr(node_get_data3(n));
   return (() => { const __recv = (() => { const __recv = (() => { const __recv = "let "; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, name) : str_concat(__recv, name); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " = ") : str_concat(__recv, " = "); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, (() => { const __recv = value; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ";") : str_concat(__recv, ";"); })()) : str_concat(__recv, (() => { const __recv = value; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ";") : str_concat(__recv, ";"); })()); })();
 }
@@ -4242,7 +4755,7 @@ function emit_stmt(n) {
 }
   if ((kind == NK_FOR_STMT)) {
   let iter_idx = node_get_data1(n);
-  let iter = get_interned_str(iter_idx);
+  let iter = js_ident_stmt(get_interned_str(iter_idx));
   let start = emit_expr(node_get_data2(n));
   let end = emit_expr(node_get_data3(n));
   let body = emit_block(node_get_data4(n));
@@ -4283,7 +4796,7 @@ function emit_stmt(n) {
   let len = (() => { const __recv = params; const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })();
   while ((i < len)) {
   let param = (() => { const __recv = params; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })();
-  (() => { const __recv = param_names; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, get_interned_str((() => { const __recv = param; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })())) : vec_push(__recv, get_interned_str((() => { const __recv = param; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })())); })();
+  (() => { const __recv = param_names; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, js_ident_stmt(get_interned_str((() => { const __recv = param; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })()))) : vec_push(__recv, js_ident_stmt(get_interned_str((() => { const __recv = param; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })()))); })();
   i = (i + 1);
 }
   let params_str = (() => { const __recv = param_names; const __dyn = __recv?.table?.vec_join; return __dyn ? __dyn(__recv.ref, ", ") : vec_join(__recv, ", "); })();
@@ -4806,6 +5319,17 @@ function module_loader_sanitize_max_effective_lines(max_effective_lines) {
 })());
 }
 
+function module_emit_target_output(typed, merged_source, target) {
+  if ((() => { const __recv = target; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "js") : str_eq(__recv, "js"); })()) {
+  return generate_js(typed);
+}
+  if ((() => { const __recv = target; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "c") : str_eq(__recv, "c"); })()) {
+  return __host_emit_target_from_source(merged_source, target);
+}
+  panic_with_code("E_UNSUPPORTED_TARGET", (() => { const __recv = "Unsupported codegen target: "; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, target) : str_concat(__recv, target); })(), "The compiler was asked to emit code for a target that is not implemented.", "Use target 'js' or target 'c'.");
+  return "";
+}
+
 function module_loader_normalize_flag(value) {
   return (((value == 0)) ? (() => {
   return 0;
@@ -5212,10 +5736,10 @@ function gather_module_sources(filePath, moduleBasePath, seen, visiting, sources
 }
 
 function compile_file(inputPath, outputPath) {
-  return compile_file_with_options(inputPath, outputPath, 1, 0, 500, 1);
+  return compile_file_with_options(inputPath, outputPath, 1, 0, 500, 1, "js");
 }
 
-function compile_file_with_options(inputPath, outputPath, strict_safety, lint_enabled, max_effective_lines, borrow_enabled) {
+function compile_file_with_options(inputPath, outputPath, strict_safety, lint_enabled, max_effective_lines, borrow_enabled, target) {
   let max_lines = module_loader_sanitize_max_effective_lines(max_effective_lines);
   let strict = module_loader_normalize_flag(strict_safety);
   let lint = module_loader_normalize_flag(lint_enabled);
@@ -5252,8 +5776,8 @@ function compile_file_with_options(inputPath, outputPath, strict_safety, lint_en
   i = (i + 1);
 }
 }
-  let js = generate_js(typed);
-  return write_file(outputPath, js);
+  let emitted = module_emit_target_output(typed, merged, target);
+  return write_file(outputPath, emitted);
 }
 
 function p_has_generic_call_suffix() {
@@ -5270,12 +5794,6 @@ function p_has_generic_call_suffix() {
   let tk = tok_kind(ti);
   if ((tk == TK_EOF)) {
   return false;
-}
-  if (((depth > 0) && (tk == TK_SYMBOL))) {
-  let stop_sym = get_interned_str(tok_value(ti));
-  if ((((((((((((((((((((() => { const __recv = stop_sym; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, ")") : str_eq(__recv, ")"); })() || (() => { const __recv = stop_sym; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, ";") : str_eq(__recv, ";"); })()) || (() => { const __recv = stop_sym; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "{") : str_eq(__recv, "{"); })()) || (() => { const __recv = stop_sym; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "}") : str_eq(__recv, "}"); })()) || (() => { const __recv = stop_sym; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "=") : str_eq(__recv, "="); })()) || (() => { const __recv = stop_sym; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "==") : str_eq(__recv, "=="); })()) || (() => { const __recv = stop_sym; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "!=") : str_eq(__recv, "!="); })()) || (() => { const __recv = stop_sym; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "<=") : str_eq(__recv, "<="); })()) || (() => { const __recv = stop_sym; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, ">=") : str_eq(__recv, ">="); })()) || (() => { const __recv = stop_sym; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "&&") : str_eq(__recv, "&&"); })()) || (() => { const __recv = stop_sym; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "||") : str_eq(__recv, "||"); })()) || (() => { const __recv = stop_sym; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "+") : str_eq(__recv, "+"); })()) || (() => { const __recv = stop_sym; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "-") : str_eq(__recv, "-"); })()) || (() => { const __recv = stop_sym; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "*") : str_eq(__recv, "*"); })()) || (() => { const __recv = stop_sym; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "/") : str_eq(__recv, "/"); })()) || (() => { const __recv = stop_sym; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "%") : str_eq(__recv, "%"); })()) || (() => { const __recv = stop_sym; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "..") : str_eq(__recv, ".."); })()) || (() => { const __recv = stop_sym; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "=>") : str_eq(__recv, "=>"); })()) || (() => { const __recv = stop_sym; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, ".") : str_eq(__recv, "."); })())) {
-  return false;
-}
 }
   if ((tk == TK_SYMBOL)) {
   let sym = get_interned_str(tok_value(ti));
@@ -5311,12 +5829,6 @@ function p_has_generic_struct_init_suffix() {
   let tk = tok_kind(ti);
   if ((tk == TK_EOF)) {
   return false;
-}
-  if (((depth > 0) && (tk == TK_SYMBOL))) {
-  let stop_sym = get_interned_str(tok_value(ti));
-  if ((((((((((((((((((((() => { const __recv = stop_sym; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, ")") : str_eq(__recv, ")"); })() || (() => { const __recv = stop_sym; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, ";") : str_eq(__recv, ";"); })()) || (() => { const __recv = stop_sym; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "{") : str_eq(__recv, "{"); })()) || (() => { const __recv = stop_sym; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "}") : str_eq(__recv, "}"); })()) || (() => { const __recv = stop_sym; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "=") : str_eq(__recv, "="); })()) || (() => { const __recv = stop_sym; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "==") : str_eq(__recv, "=="); })()) || (() => { const __recv = stop_sym; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "!=") : str_eq(__recv, "!="); })()) || (() => { const __recv = stop_sym; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "<=") : str_eq(__recv, "<="); })()) || (() => { const __recv = stop_sym; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, ">=") : str_eq(__recv, ">="); })()) || (() => { const __recv = stop_sym; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "&&") : str_eq(__recv, "&&"); })()) || (() => { const __recv = stop_sym; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "||") : str_eq(__recv, "||"); })()) || (() => { const __recv = stop_sym; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "+") : str_eq(__recv, "+"); })()) || (() => { const __recv = stop_sym; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "-") : str_eq(__recv, "-"); })()) || (() => { const __recv = stop_sym; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "*") : str_eq(__recv, "*"); })()) || (() => { const __recv = stop_sym; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "/") : str_eq(__recv, "/"); })()) || (() => { const __recv = stop_sym; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "%") : str_eq(__recv, "%"); })()) || (() => { const __recv = stop_sym; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "..") : str_eq(__recv, ".."); })()) || (() => { const __recv = stop_sym; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "=>") : str_eq(__recv, "=>"); })()) || (() => { const __recv = stop_sym; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, ".") : str_eq(__recv, "."); })())) {
-  return false;
-}
 }
   if ((tk == TK_SYMBOL)) {
   let sym = get_interned_str(tok_value(ti));
@@ -5375,6 +5887,48 @@ function p_has_generic_value_suffix() {
 }
 }
 
+function p_parse_generic_arg_value_or_type() {
+  let t0 = p_peek(0);
+  if (((tok_kind(t0) == TK_IDENTIFIER) && (tok_kind(p_peek(1)) == TK_SYMBOL))) {
+  let s1 = get_interned_str(tok_value(p_peek(1)));
+  if ((() => { const __recv = s1; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, ".") : str_eq(__recv, "."); })()) {
+  return p_parse_expression(5);
+}
+}
+  let cursor = 0;
+  let paren_depth = 0;
+  let bracket_depth = 0;
+  while (true) {
+  let ti = p_peek(cursor);
+  let tk = tok_kind(ti);
+  if ((tk == TK_EOF)) {
+  break;
+}
+  if ((tk == TK_SYMBOL)) {
+  let sym = get_interned_str(tok_value(ti));
+  if ((() => { const __recv = sym; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "(") : str_eq(__recv, "("); })()) {
+  paren_depth = (paren_depth + 1);
+} else { if ((() => { const __recv = sym; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, ")") : str_eq(__recv, ")"); })()) {
+  if ((paren_depth > 0)) {
+  paren_depth = (paren_depth - 1);
+}
+} else { if ((() => { const __recv = sym; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "[") : str_eq(__recv, "["); })()) {
+  bracket_depth = (bracket_depth + 1);
+} else { if ((() => { const __recv = sym; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "]") : str_eq(__recv, "]"); })()) {
+  if ((bracket_depth > 0)) {
+  bracket_depth = (bracket_depth - 1);
+}
+} else { if ((((paren_depth == 0) && (bracket_depth == 0)) && ((() => { const __recv = sym; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, ",") : str_eq(__recv, ","); })() || (() => { const __recv = sym; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, ">") : str_eq(__recv, ">"); })()))) {
+  break;
+} else { if ((((paren_depth == 0) && (bracket_depth == 0)) && (((((((cursor > 0) && (() => { const __recv = sym; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, ".") : str_eq(__recv, "."); })()) || ((cursor > 0) && (() => { const __recv = sym; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "+") : str_eq(__recv, "+"); })())) || ((cursor > 0) && (() => { const __recv = sym; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "-") : str_eq(__recv, "-"); })())) || ((cursor > 0) && (() => { const __recv = sym; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "*") : str_eq(__recv, "*"); })())) || ((cursor > 0) && (() => { const __recv = sym; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "/") : str_eq(__recv, "/"); })())) || ((cursor > 0) && (() => { const __recv = sym; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "%") : str_eq(__recv, "%"); })())))) {
+  return p_parse_expression(5);
+} } } } } }
+}
+  cursor = (cursor + 1);
+}
+  return p_parse_type();
+}
+
 function p_parse_postfix(exprIn) {
   let expr = exprIn;
   while (true) {
@@ -5382,10 +5936,10 @@ function p_parse_postfix(exprIn) {
   p_eat();
   let type_args = vec_new();
   if ((!p_at(TK_SYMBOL, ">"))) {
-  (() => { const __recv = type_args; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, p_parse_type()) : vec_push(__recv, p_parse_type()); })();
+  (() => { const __recv = type_args; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, p_parse_generic_arg_value_or_type()) : vec_push(__recv, p_parse_generic_arg_value_or_type()); })();
   while (p_at(TK_SYMBOL, ",")) {
   p_eat();
-  (() => { const __recv = type_args; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, p_parse_type()) : vec_push(__recv, p_parse_type()); })();
+  (() => { const __recv = type_args; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, p_parse_generic_arg_value_or_type()) : vec_push(__recv, p_parse_generic_arg_value_or_type()); })();
 }
 }
   p_expect(TK_SYMBOL, ">", "Expected '>' after into type args");
@@ -5408,10 +5962,10 @@ function p_parse_postfix(exprIn) {
   p_eat();
   let type_args = vec_new();
   if ((!p_at(TK_SYMBOL, ">"))) {
-  (() => { const __recv = type_args; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, p_parse_type()) : vec_push(__recv, p_parse_type()); })();
+  (() => { const __recv = type_args; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, p_parse_generic_arg_value_or_type()) : vec_push(__recv, p_parse_generic_arg_value_or_type()); })();
   while (p_at(TK_SYMBOL, ",")) {
   p_eat();
-  (() => { const __recv = type_args; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, p_parse_type()) : vec_push(__recv, p_parse_type()); })();
+  (() => { const __recv = type_args; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, p_parse_generic_arg_value_or_type()) : vec_push(__recv, p_parse_generic_arg_value_or_type()); })();
 }
 }
   p_expect(TK_SYMBOL, ">", "Expected '>' after generic call type args");
@@ -5500,7 +6054,7 @@ function p_parse_postfix(exprIn) {
 } else { if (p_at_kind(TK_KEYWORD)) {
   prop = tok_value(p_eat());
 } else {
-  panic("Expected member name after '.'");
+  p_error_with_token_context("Expected member name after '.'");
 } }
   let member = node_new(NK_MEMBER_EXPR);
   node_set_data1(member, expr);
@@ -5664,11 +6218,41 @@ function p_parse_primary() {
   node_set_data5(fnexpr, body);
   return p_parse_postfix(fnexpr);
 }
+  if (((p_at_kind(TK_IDENTIFIER) && (tok_kind(p_peek(1)) == TK_SYMBOL)) && (() => { const __recv = get_interned_str(tok_value(p_peek(1))); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "=>") : str_eq(__recv, "=>"); })())) {
+  let pname = p_parse_identifier();
+  p_expect(TK_SYMBOL, "=>", "Expected '=>' in lambda expression");
+  let param = vec_new();
+  (() => { const __recv = param; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, pname) : vec_push(__recv, pname); })();
+  (() => { const __recv = param; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, 0) : vec_push(__recv, 0); })();
+  let params = vec_new();
+  (() => { const __recv = params; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, param) : vec_push(__recv, param); })();
+  let body = ((p_at(TK_SYMBOL, "{")) ? (() => {
+  return p_parse_block();
+})() : (() => {
+  return p_parse_expression(0);
+})());
+  let lam = node_new(NK_LAMBDA_EXPR);
+  node_set_data1(lam, params);
+  node_set_data2(lam, body);
+  return p_parse_postfix(lam);
+}
   if (p_at(TK_SYMBOL, "(")) {
   p_eat();
-  let expr = p_parse_expression(0);
+  let first = p_parse_expression(0);
+  if (p_at(TK_SYMBOL, ",")) {
+  let items = vec_new();
+  (() => { const __recv = items; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, first) : vec_push(__recv, first); })();
+  while (p_at(TK_SYMBOL, ",")) {
+  p_eat();
+  (() => { const __recv = items; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, p_parse_expression(0)) : vec_push(__recv, p_parse_expression(0)); })();
+}
+  p_expect(TK_SYMBOL, ")", "Expected ')' after tuple expression");
+  let tuple = node_new(NK_TUPLE_EXPR);
+  node_set_data1(tuple, items);
+  return p_parse_postfix(tuple);
+}
   p_expect(TK_SYMBOL, ")", "Expected ')'");
-  return p_parse_postfix(expr);
+  return p_parse_postfix(first);
 }
   if (p_at(TK_KEYWORD, "if")) {
   p_eat();
@@ -5739,10 +6323,10 @@ function p_parse_primary() {
   if (((is_type_like && p_at(TK_SYMBOL, "<")) && (p_has_generic_struct_init_suffix() || p_has_generic_value_suffix()))) {
   p_eat();
   if ((!p_at(TK_SYMBOL, ">"))) {
-  (() => { const __recv = generic_args; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, p_parse_type()) : vec_push(__recv, p_parse_type()); })();
+  (() => { const __recv = generic_args; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, p_parse_generic_arg_value_or_type()) : vec_push(__recv, p_parse_generic_arg_value_or_type()); })();
   while (p_at(TK_SYMBOL, ",")) {
   p_eat();
-  (() => { const __recv = generic_args; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, p_parse_type()) : vec_push(__recv, p_parse_type()); })();
+  (() => { const __recv = generic_args; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, p_parse_generic_arg_value_or_type()) : vec_push(__recv, p_parse_generic_arg_value_or_type()); })();
 }
 }
   p_expect(TK_SYMBOL, ">", "Expected '>' in generic struct initializer");
@@ -5779,7 +6363,7 @@ function p_parse_primary() {
 }
   return p_parse_postfix(expr);
 }
-  panic("Unexpected token in expression");
+  p_error_with_token_context("Unexpected token in expression");
   return 0;
 }
 
@@ -5823,6 +6407,9 @@ function p_get_precedence(op) {
   return 4;
 }
   if (((() => { const __recv = intern_map; const __dyn = __recv?.table?.map_has; return __dyn ? __dyn(__recv.ref, ">=") : map_has(__recv, ">="); })() && (op == (() => { const __recv = intern_map; const __dyn = __recv?.table?.map_get; return __dyn ? __dyn(__recv.ref, ">=") : map_get(__recv, ">="); })()))) {
+  return 4;
+}
+  if (((() => { const __recv = intern_map; const __dyn = __recv?.table?.map_has; return __dyn ? __dyn(__recv.ref, "..") : map_has(__recv, ".."); })() && (op == (() => { const __recv = intern_map; const __dyn = __recv?.table?.map_get; return __dyn ? __dyn(__recv.ref, "..") : map_get(__recv, ".."); })()))) {
   return 4;
 }
   if (((() => { const __recv = intern_map; const __dyn = __recv?.table?.map_has; return __dyn ? __dyn(__recv.ref, "+") : map_has(__recv, "+"); })() && (op == (() => { const __recv = intern_map; const __dyn = __recv?.table?.map_get; return __dyn ? __dyn(__recv.ref, "+") : map_get(__recv, "+"); })()))) {
@@ -5875,6 +6462,9 @@ function p_is_binary_op() {
   return true;
 }
   if (p_at(TK_SYMBOL, ">=")) {
+  return true;
+}
+  if (p_at(TK_SYMBOL, "..")) {
   return true;
 }
   if (p_at(TK_SYMBOL, "&&")) {
@@ -5955,7 +6545,17 @@ function p_parse_block() {
   p_expect(TK_SYMBOL, "{", "Expected '{'");
   let stmts = vec_new();
   while (((!p_at(TK_SYMBOL, "}")) && (!p_at_kind(TK_EOF)))) {
-  (() => { const __recv = stmts; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, p_parse_statement()) : vec_push(__recv, p_parse_statement()); })();
+  let stmt = p_parse_statement();
+  if ((node_kind(stmt) == NK_STMT_LIST)) {
+  let inner = node_get_data1(stmt);
+  let i = 0;
+  while ((i < (() => { const __recv = inner; const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })())) {
+  (() => { const __recv = stmts; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, (() => { const __recv = inner; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })()) : vec_push(__recv, (() => { const __recv = inner; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })()); })();
+  i = (i + 1);
+}
+} else {
+  (() => { const __recv = stmts; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, stmt) : vec_push(__recv, stmt); })();
+}
 }
   p_expect(TK_SYMBOL, "}", "Expected '}'");
   let node = node_new(NK_BLOCK);
@@ -5964,6 +6564,13 @@ function p_parse_block() {
 }
 
 function selfhost_parser_expr_marker() { return 0; }
+
+function js_ident_expr(name) {
+  if ((() => { const __recv = name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "this") : str_eq(__recv, "this"); })()) {
+  return "_this";
+}
+  return name;
+}
 
 function emit_expr(n) {
   let kind = node_kind(n);
@@ -5990,7 +6597,7 @@ function emit_expr(n) {
 }
   if ((kind == NK_IDENTIFIER)) {
   let name_idx = node_get_data1(n);
-  return get_interned_str(name_idx);
+  return js_ident_expr(get_interned_str(name_idx));
 }
   if ((kind == NK_UNARY_EXPR)) {
   let op = get_interned_str(node_get_data1(n));
@@ -6135,6 +6742,17 @@ function emit_expr(n) {
   sb_append(sb, " }))");
   return sb_build(sb);
 }
+  if ((kind == NK_TUPLE_EXPR)) {
+  let items = node_get_data1(n);
+  let parts = vec_new();
+  let i = 0;
+  let len = (() => { const __recv = items; const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })();
+  while ((i < len)) {
+  (() => { const __recv = parts; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, emit_expr((() => { const __recv = items; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })())) : vec_push(__recv, emit_expr((() => { const __recv = items; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })())); })();
+  i = (i + 1);
+}
+  return (() => { const __recv = (() => { const __recv = "["; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, (() => { const __recv = parts; const __dyn = __recv?.table?.vec_join; return __dyn ? __dyn(__recv.ref, ", ") : vec_join(__recv, ", "); })()) : str_concat(__recv, (() => { const __recv = parts; const __dyn = __recv?.table?.vec_join; return __dyn ? __dyn(__recv.ref, ", ") : vec_join(__recv, ", "); })()); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "]") : str_concat(__recv, "]"); })();
+}
   if ((kind == NK_IF_EXPR)) {
   let cond = emit_expr(node_get_data1(n));
   let then_b = node_get_data2(n);
@@ -6205,7 +6823,7 @@ function emit_expr(n) {
   let len = (() => { const __recv = params; const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })();
   while ((i < len)) {
   let param = (() => { const __recv = params; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })();
-  (() => { const __recv = pnames; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, get_interned_str((() => { const __recv = param; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })())) : vec_push(__recv, get_interned_str((() => { const __recv = param; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })())); })();
+  (() => { const __recv = pnames; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, js_ident_expr(get_interned_str((() => { const __recv = param; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })()))) : vec_push(__recv, js_ident_expr(get_interned_str((() => { const __recv = param; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })()))); })();
   i = (i + 1);
 }
   let args = (() => { const __recv = pnames; const __dyn = __recv?.table?.vec_join; return __dyn ? __dyn(__recv.ref, ", ") : vec_join(__recv, ", "); })();
@@ -6223,7 +6841,7 @@ function emit_expr(n) {
   let len = (() => { const __recv = params; const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })();
   while ((i < len)) {
   let param = (() => { const __recv = params; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })();
-  (() => { const __recv = pnames; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, get_interned_str((() => { const __recv = param; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })())) : vec_push(__recv, get_interned_str((() => { const __recv = param; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })())); })();
+  (() => { const __recv = pnames; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, js_ident_expr(get_interned_str((() => { const __recv = param; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })()))) : vec_push(__recv, js_ident_expr(get_interned_str((() => { const __recv = param; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })()))); })();
   i = (i + 1);
 }
   let args = (() => { const __recv = pnames; const __dyn = __recv?.table?.vec_join; return __dyn ? __dyn(__recv.ref, ", ") : vec_join(__recv, ", "); })();
@@ -6289,6 +6907,8 @@ function emit_pattern_bindings(value_expr, pat) {
 
 function selfhost_codegen_expr_marker() { return 0; }
 
+// extern fn __host_emit_target_from_source
+
 function sanitize_max_effective_lines(max_effective_lines) {
   return (((max_effective_lines <= 0)) ? (() => {
   return 500;
@@ -6305,7 +6925,18 @@ function normalize_flag(value) {
 })());
 }
 
-function compile_source_with_options(source, strict_safety, lint_enabled, max_effective_lines, borrow_enabled) {
+function emit_target_output(typed, source, target) {
+  if ((() => { const __recv = target; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "js") : str_eq(__recv, "js"); })()) {
+  return generate_js(typed);
+}
+  if ((() => { const __recv = target; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "c") : str_eq(__recv, "c"); })()) {
+  return __host_emit_target_from_source(source, target);
+}
+  panic_with_code("E_UNSUPPORTED_TARGET", (() => { const __recv = "Unsupported codegen target: "; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, target) : str_concat(__recv, target); })(), "The compiler was asked to emit code for a target that is not implemented.", "Use target 'js' or target 'c'.");
+  return "";
+}
+
+function compile_source_with_options(source, strict_safety, lint_enabled, max_effective_lines, borrow_enabled, target) {
   let max_lines = sanitize_max_effective_lines(max_effective_lines);
   let strict = normalize_flag(strict_safety);
   let lint = normalize_flag(lint_enabled);
@@ -6324,12 +6955,12 @@ function compile_source_with_options(source, strict_safety, lint_enabled, max_ef
   if ((lint == 1)) {
   lint_program(typed, "<memory>", max_lines);
 }
-  return generate_js(typed);
+  return emit_target_output(typed, source, target);
 }
 
 function take_lint_issues() { return lint_take_issues(); }
 
-function compile_source(source) { return compile_source_with_options(source, 1, 0, 500, 1); }
+function compile_source(source) { return compile_source_with_options(source, 1, 0, 500, 1, "js"); }
 
 function main() {
   print("Self-hosted Tuff compiler loaded");

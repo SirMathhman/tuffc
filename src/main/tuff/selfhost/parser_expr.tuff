@@ -1,4 +1,4 @@
-let { p_at, p_eat, p_expect, p_parse_identifier, p_at_kind, p_peek, p_mark, p_restore, p_parse_pattern, p_parse_type, p_can_start_type_tok_at, node_kind, node_new, node_set_data1, node_set_data2, node_set_data3, node_set_data4, node_set_data5, node_get_data1, node_get_data2, node_get_data3 } = selfhost::parser_core;
+let { p_at, p_eat, p_expect, p_parse_identifier, p_at_kind, p_peek, p_mark, p_restore, p_parse_pattern, p_parse_type, p_can_start_type_tok_at, p_error_with_token_context, node_kind, node_new, node_set_data1, node_set_data2, node_set_data3, node_set_data4, node_set_data5, node_get_data1, node_get_data2, node_get_data3 } = selfhost::parser_core;
 let { tok_kind, tok_value, get_interned_str, vec_new } = selfhost::runtime_lexer;
 
 fn p_has_generic_call_suffix() : Bool => {
@@ -15,32 +15,6 @@ fn p_has_generic_call_suffix() : Bool => {
         let tk = tok_kind(ti);
         if (tk == TK_EOF) {
             return false;
-        }
-        if (depth > 0 && tk == TK_SYMBOL) {
-            let stop_sym = get_interned_str(tok_value(ti));
-            if (
-                stop_sym.str_eq(")") ||
-                stop_sym.str_eq(";") ||
-                stop_sym.str_eq("{") ||
-                stop_sym.str_eq("}") ||
-                stop_sym.str_eq("=") ||
-                stop_sym.str_eq("==") ||
-                stop_sym.str_eq("!=") ||
-                stop_sym.str_eq("<=") ||
-                stop_sym.str_eq(">=") ||
-                stop_sym.str_eq("&&") ||
-                stop_sym.str_eq("||") ||
-                stop_sym.str_eq("+") ||
-                stop_sym.str_eq("-") ||
-                stop_sym.str_eq("*") ||
-                stop_sym.str_eq("/") ||
-                stop_sym.str_eq("%") ||
-                stop_sym.str_eq("..") ||
-                stop_sym.str_eq("=>") ||
-                stop_sym.str_eq(".")
-            ) {
-                return false;
-            }
         }
         if (tk == TK_SYMBOL) {
             let sym = get_interned_str(tok_value(ti));
@@ -76,32 +50,6 @@ fn p_has_generic_struct_init_suffix() : Bool => {
         let tk = tok_kind(ti);
         if (tk == TK_EOF) {
             return false;
-        }
-        if (depth > 0 && tk == TK_SYMBOL) {
-            let stop_sym = get_interned_str(tok_value(ti));
-            if (
-                stop_sym.str_eq(")") ||
-                stop_sym.str_eq(";") ||
-                stop_sym.str_eq("{") ||
-                stop_sym.str_eq("}") ||
-                stop_sym.str_eq("=") ||
-                stop_sym.str_eq("==") ||
-                stop_sym.str_eq("!=") ||
-                stop_sym.str_eq("<=") ||
-                stop_sym.str_eq(">=") ||
-                stop_sym.str_eq("&&") ||
-                stop_sym.str_eq("||") ||
-                stop_sym.str_eq("+") ||
-                stop_sym.str_eq("-") ||
-                stop_sym.str_eq("*") ||
-                stop_sym.str_eq("/") ||
-                stop_sym.str_eq("%") ||
-                stop_sym.str_eq("..") ||
-                stop_sym.str_eq("=>") ||
-                stop_sym.str_eq(".")
-            ) {
-                return false;
-            }
         }
         if (tk == TK_SYMBOL) {
             let sym = get_interned_str(tok_value(ti));
@@ -160,6 +108,56 @@ fn p_has_generic_value_suffix() : Bool => {
     }
 }
 
+fn p_parse_generic_arg_value_or_type() : I32 => {
+    let t0 = p_peek(0);
+    if (tok_kind(t0) == TK_IDENTIFIER && tok_kind(p_peek(1)) == TK_SYMBOL) {
+        let s1 = get_interned_str(tok_value(p_peek(1)));
+        if (s1.str_eq(".")) {
+            return p_parse_expression(5);
+        }
+    }
+
+    let cursor = 0;
+    let paren_depth = 0;
+    let bracket_depth = 0;
+    while (true) {
+        let ti = p_peek(cursor);
+        let tk = tok_kind(ti);
+        if (tk == TK_EOF) {
+            break;
+        }
+        if (tk == TK_SYMBOL) {
+            let sym = get_interned_str(tok_value(ti));
+            if (sym.str_eq("(")) {
+                paren_depth = paren_depth + 1;
+            } else if (sym.str_eq(")")) {
+                if (paren_depth > 0) { paren_depth = paren_depth - 1; }
+            } else if (sym.str_eq("[")) {
+                bracket_depth = bracket_depth + 1;
+            } else if (sym.str_eq("]")) {
+                if (bracket_depth > 0) { bracket_depth = bracket_depth - 1; }
+            } else if (paren_depth == 0 && bracket_depth == 0 && (sym.str_eq(",") || sym.str_eq(">"))) {
+                break;
+            } else if (
+                paren_depth == 0 &&
+                bracket_depth == 0 &&
+                (
+                    (cursor > 0 && sym.str_eq(".")) ||
+                    (cursor > 0 && sym.str_eq("+")) ||
+                    (cursor > 0 && sym.str_eq("-")) ||
+                    (cursor > 0 && sym.str_eq("*")) ||
+                    (cursor > 0 && sym.str_eq("/")) ||
+                    (cursor > 0 && sym.str_eq("%"))
+                )
+            ) {
+                return p_parse_expression(5);
+            }
+        }
+        cursor = cursor + 1;
+    }
+    p_parse_type()
+}
+
 fn p_parse_postfix(exprIn: I32) : I32 => {
     let expr = exprIn;
     while (true) {
@@ -167,10 +165,10 @@ fn p_parse_postfix(exprIn: I32) : I32 => {
             p_eat();
             let type_args = vec_new();
             if (!p_at(TK_SYMBOL, ">")) {
-                type_args.vec_push(p_parse_type());
+                type_args.vec_push(p_parse_generic_arg_value_or_type());
                 while (p_at(TK_SYMBOL, ",")) {
                     p_eat();
-                    type_args.vec_push(p_parse_type());
+                    type_args.vec_push(p_parse_generic_arg_value_or_type());
                 }
             }
             p_expect(TK_SYMBOL, ">", "Expected '>' after into type args");
@@ -196,10 +194,10 @@ fn p_parse_postfix(exprIn: I32) : I32 => {
             p_eat();
             let type_args = vec_new();
             if (!p_at(TK_SYMBOL, ">")) {
-                type_args.vec_push(p_parse_type());
+                type_args.vec_push(p_parse_generic_arg_value_or_type());
                 while (p_at(TK_SYMBOL, ",")) {
                     p_eat();
-                    type_args.vec_push(p_parse_type());
+                    type_args.vec_push(p_parse_generic_arg_value_or_type());
                 }
             }
             p_expect(TK_SYMBOL, ">", "Expected '>' after generic call type args");
@@ -294,7 +292,7 @@ fn p_parse_postfix(exprIn: I32) : I32 => {
             } else if (p_at_kind(TK_KEYWORD)) {
                 prop = tok_value(p_eat());
             } else {
-                panic("Expected member name after '.'");
+                p_error_with_token_context("Expected member name after '.'");
             }
             let member = node_new(NK_MEMBER_EXPR);
             node_set_data1(member, expr);
@@ -467,12 +465,40 @@ fn p_parse_primary() : I32 => {
         return p_parse_postfix(fnexpr);
     }
 
+    // Lambda shorthand: x => body
+    if (p_at_kind(TK_IDENTIFIER) && tok_kind(p_peek(1)) == TK_SYMBOL && get_interned_str(tok_value(p_peek(1))).str_eq("=>")) {
+        let pname = p_parse_identifier();
+        p_expect(TK_SYMBOL, "=>", "Expected '=>' in lambda expression");
+        let param = vec_new();
+        param.vec_push(pname);
+        param.vec_push(0);
+        let params = vec_new();
+        params.vec_push(param);
+        let body = if (p_at(TK_SYMBOL, "{")) { p_parse_block() } else { p_parse_expression(0) };
+        let lam = node_new(NK_LAMBDA_EXPR);
+        node_set_data1(lam, params);
+        node_set_data2(lam, body);
+        return p_parse_postfix(lam);
+    }
+
     // Parenthesized expression
     if (p_at(TK_SYMBOL, "(")) {
         p_eat();
-        let expr = p_parse_expression(0);
+        let first = p_parse_expression(0);
+        if (p_at(TK_SYMBOL, ",")) {
+            let items = vec_new();
+            items.vec_push(first);
+            while (p_at(TK_SYMBOL, ",")) {
+                p_eat();
+                items.vec_push(p_parse_expression(0));
+            }
+            p_expect(TK_SYMBOL, ")", "Expected ')' after tuple expression");
+            let tuple = node_new(NK_TUPLE_EXPR);
+            node_set_data1(tuple, items);
+            return p_parse_postfix(tuple);
+        }
         p_expect(TK_SYMBOL, ")", "Expected ')'");
-        return p_parse_postfix(expr);
+        return p_parse_postfix(first);
     }
     
     // If expression
@@ -538,10 +564,10 @@ fn p_parse_primary() : I32 => {
         if (is_type_like && p_at(TK_SYMBOL, "<") && (p_has_generic_struct_init_suffix() || p_has_generic_value_suffix())) {
             p_eat();
             if (!p_at(TK_SYMBOL, ">")) {
-                generic_args.vec_push(p_parse_type());
+                generic_args.vec_push(p_parse_generic_arg_value_or_type());
                 while (p_at(TK_SYMBOL, ",")) {
                     p_eat();
-                    generic_args.vec_push(p_parse_type());
+                    generic_args.vec_push(p_parse_generic_arg_value_or_type());
                 }
             }
             p_expect(TK_SYMBOL, ">", "Expected '>' in generic struct initializer");
@@ -582,7 +608,7 @@ fn p_parse_primary() : I32 => {
         return p_parse_postfix(expr);
     }
     
-    panic("Unexpected token in expression");
+    p_error_with_token_context("Unexpected token in expression");
     0
 }
 
@@ -614,6 +640,7 @@ fn p_get_precedence(op: I32) : I32 => {
     if (intern_map.map_has("<=") && op == intern_map.map_get("<=")) { return 4; }
     if (intern_map.map_has(">") && op == intern_map.map_get(">")) { return 4; }
     if (intern_map.map_has(">=") && op == intern_map.map_get(">=")) { return 4; }
+    if (intern_map.map_has("..") && op == intern_map.map_get("..")) { return 4; }
     if (intern_map.map_has("+") && op == intern_map.map_get("+")) { return 5; }
     if (intern_map.map_has("-") && op == intern_map.map_get("-")) { return 5; }
     if (intern_map.map_has("*") && op == intern_map.map_get("*")) { return 6; }
@@ -634,6 +661,7 @@ fn p_is_binary_op() : Bool => {
     if (p_at(TK_SYMBOL, "<=")) { return true; }
     if (p_at(TK_SYMBOL, ">")) { return true; }
     if (p_at(TK_SYMBOL, ">=")) { return true; }
+    if (p_at(TK_SYMBOL, "..")) { return true; }
     if (p_at(TK_SYMBOL, "&&")) { return true; }
     if (p_at(TK_SYMBOL, "||")) { return true; }
     if (p_at(TK_KEYWORD, "is")) { return true; }
@@ -714,7 +742,17 @@ fn p_parse_block() : I32 => {
     p_expect(TK_SYMBOL, "{", "Expected '{'");
     let stmts = vec_new();
     while (!p_at(TK_SYMBOL, "}") && !p_at_kind(TK_EOF)) {
-        stmts.vec_push(p_parse_statement());
+        let stmt = p_parse_statement();
+        if (node_kind(stmt) == NK_STMT_LIST) {
+            let inner = node_get_data1(stmt);
+            let i = 0;
+            while (i < inner.vec_length()) {
+                stmts.vec_push(inner.vec_get(i));
+                i = i + 1;
+            }
+        } else {
+            stmts.vec_push(stmt);
+        }
     }
     p_expect(TK_SYMBOL, "}", "Expected '}'");
     let node = node_new(NK_BLOCK);

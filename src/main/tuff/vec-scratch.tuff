@@ -11,7 +11,7 @@ lifetime t {
     ) : Alloc<*t [T; I; L2]> | 0;
 }
 
-extern fn free<T>(this : Alloc<*[T; _; _]>);
+extern fn free<T>(this : Alloc<*[T; _; _]>) : Void;
 
 // No idea why memcpy is defined in string.h, but whatever
 extern let { memcpy } = string;

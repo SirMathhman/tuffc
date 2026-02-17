@@ -217,7 +217,7 @@ runPositiveCase(
 
 runNegativeCase("neg:parse", "fn broken( : I32 => 0;", [
   "E_PARSE_EXPECTED_TOKEN",
-  "E_SELFHOST_PANIC",
+  "E_SELFHOST_INTERNAL_ERROR",
 ]);
 runNegativeCase("neg:unknown-id", "fn main() : I32 => missing_symbol;", [
   "E_RESOLVE_UNKNOWN_IDENTIFIER",
@@ -234,11 +234,11 @@ runNegativeCase(
 );
 runNegativeCase("neg:copy-alias-invalid", COPY_ALIAS_INVALID_BOX_SOURCE, [
   "E_BORROW_INVALID_COPY_ALIAS",
-  "E_SELFHOST_PANIC",
+  "E_SELFHOST_INTERNAL_ERROR",
 ]);
 runNegativeCase("neg:use-after-move", MOVE_AFTER_MOVE_BOX_SOURCE, [
   "E_BORROW_USE_AFTER_MOVE",
-  "E_SELFHOST_PANIC",
+  "E_SELFHOST_INTERNAL_ERROR",
 ]);
 
 console.log(

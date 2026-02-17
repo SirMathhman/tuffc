@@ -186,6 +186,18 @@ fn emit_expr(n: I32) : *Str => {
         sb_append(sb, " }))");
         return sb_build(sb);
     }
+
+    if (kind == NK_TUPLE_EXPR) {
+        let items = node_get_data1(n);
+        let parts = vec_new();
+        let i = 0;
+        let len = items.vec_length();
+        while (i < len) {
+            parts.vec_push(emit_expr(items.vec_get(i)));
+            i = i + 1;
+        }
+        return "[".str_concat(parts.vec_join(", ")).str_concat("]");
+    }
     
     if (kind == NK_IF_EXPR) {
         let cond = emit_expr(node_get_data1(n));

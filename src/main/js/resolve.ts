@@ -256,10 +256,14 @@ export function resolveNames(
         }
 
         return err(
-          new TuffError(`Unknown identifier '${expr.name}'`, undefined, {
-            code: "E_RESOLVE_UNKNOWN_IDENTIFIER",
-            hint: "Declare the identifier in scope or import it from a module.",
-          }),
+          new TuffError(
+            `Unknown identifier '${expr.name}'`,
+            expr.loc ?? undefined,
+            {
+              code: "E_RESOLVE_UNKNOWN_IDENTIFIER",
+              hint: "Declare the identifier in scope or import it from a module.",
+            },
+          ),
         );
       case "BinaryExpr": {
         const leftResult = visitExpr(expr.left, scope, currentModulePath);

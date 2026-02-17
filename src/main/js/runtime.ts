@@ -373,7 +373,7 @@ export function read_file(filePath: string): string {
     return fs.readFileSync(filePath, "utf8");
   } catch (error: unknown) {
     throw new TuffError(`Failed to read file: ${filePath}`, undefined, {
-      code: "E_SELFHOST_PANIC",
+      code: "E_SELFHOST_IO_READ_FAILED",
       reason:
         "The self-hosted compiler could not load a required source file while resolving inputs/modules.",
       fix: "Verify the file path and module layout, then retry compilation.",
@@ -389,7 +389,7 @@ export function write_file(filePath: string, contents: string): number {
     return 0;
   } catch (error: unknown) {
     throw new TuffError(`Failed to write file: ${filePath}`, undefined, {
-      code: "E_SELFHOST_PANIC",
+      code: "E_SELFHOST_IO_WRITE_FAILED",
       reason:
         "The self-hosted compiler could not persist generated output to disk.",
       fix: "Verify output path permissions and directory accessibility, then retry.",
@@ -424,12 +424,49 @@ export function print_error(s: unknown): void {
 }
 
 // === Misc ===
+function inferSelfhostDiagnosticCode(msg: string): string {
+  if (msg.startsWith("Expected ")) return "E_PARSE_EXPECTED_TOKEN";
+  if (msg.includes("Unexpected token in expression")) {
+    return "E_PARSE_UNEXPECTED_TOKEN";
+  }
+  if (msg.includes("type-level numeric sentinel")) {
+    return "E_PARSE_INVALID_NUMERIC_TYPE_LITERAL";
+  }
+  if (msg.includes("Unterminated string")) return "E_LEX_UNTERMINATED_STRING";
+  if (msg.includes("Unterminated char")) return "E_LEX_UNTERMINATED_CHAR";
+  if (msg.includes("Unterminated block comment")) {
+    return "E_LEX_UNTERMINATED_BLOCK_COMMENT";
+  }
+  if (msg.startsWith("Unexpected character:")) return "E_LEX_UNEXPECTED_CHAR";
+  return "E_SELFHOST_INTERNAL_ERROR";
+}
+
+function inferSelfhostDiagnosticReason(code: string): string {
+  if (code.startsWith("E_PARSE_")) {
+    return "The self-hosted frontend rejected the input while parsing syntax.";
+  }
+  if (code.startsWith("E_LEX_")) {
+    return "The self-hosted frontend rejected the input while lexing source text.";
+  }
+  return "The self-hosted compiler encountered an internal error outside normal user-facing diagnostics.";
+}
+
+function inferSelfhostDiagnosticFix(code: string): string {
+  if (code.startsWith("E_PARSE_")) {
+    return "Check nearby syntax and token boundaries; if source is valid, add a focused parser regression test and patch the selfhost parser.";
+  }
+  if (code.startsWith("E_LEX_")) {
+    return "Check literals/operators near the reported location; if source is valid, add a lexer regression test and patch the selfhost lexer.";
+  }
+  return "Capture a minimal repro and patch the failing selfhost pass to emit a specific diagnostic code via panic_with_code.";
+}
+
 export function panic(msg: string): never {
+  const code = inferSelfhostDiagnosticCode(msg);
   throw new TuffError(msg, undefined, {
-    code: "E_SELFHOST_PANIC",
-    reason:
-      "The self-hosted compiler encountered an unrecoverable internal parse/compile condition.",
-    fix: "Check the reported source construct and simplify or correct the syntax; if valid, add a targeted selfhost frontend test and patch the selfhost parser pipeline.",
+    code,
+    reason: inferSelfhostDiagnosticReason(code),
+    fix: inferSelfhostDiagnosticFix(code),
   });
 }
 
@@ -439,14 +476,12 @@ export function panic_with_code(
   reason: string | undefined,
   fix: string | undefined,
 ): never {
+  const resolvedCode =
+    code && code.length > 0 ? code : inferSelfhostDiagnosticCode(msg);
   throw new TuffError(msg, undefined, {
-    code: code ?? "E_SELFHOST_PANIC",
-    reason:
-      reason ??
-      "The self-hosted compiler encountered an unrecoverable internal parse/compile condition.",
-    fix:
-      fix ??
-      "Check the reported source construct and simplify or correct the syntax; if valid, add a targeted selfhost frontend test and patch the selfhost parser pipeline.",
+    code: resolvedCode,
+    reason: reason ?? inferSelfhostDiagnosticReason(resolvedCode),
+    fix: fix ?? inferSelfhostDiagnosticFix(resolvedCode),
   });
 }
 

@@ -483,7 +483,7 @@ const negativeCases = [
   {
     id: "reject:use-after-move",
     section: "2.3/4.8/9.4",
-    expectedCodes: ["E_BORROW_USE_AFTER_MOVE", "E_SELFHOST_PANIC"],
+    expectedCodes: ["E_BORROW_USE_AFTER_MOVE", "E_SELFHOST_INTERNAL_ERROR"],
     source: [
       "struct Box { v : I32 }",
       "fn bad() : I32 => {",
@@ -497,7 +497,7 @@ const negativeCases = [
   {
     id: "reject:invalid-copy-alias",
     section: "2.3",
-    expectedCodes: ["E_BORROW_INVALID_COPY_ALIAS", "E_SELFHOST_PANIC"],
+    expectedCodes: ["E_BORROW_INVALID_COPY_ALIAS", "E_SELFHOST_INTERNAL_ERROR"],
     source: ["struct Box { v : I32 }", "copy type BoxAlias = Box;", ""].join(
       "\n",
     ),
@@ -506,28 +506,31 @@ const negativeCases = [
     id: "reject:division-by-zero-strict",
     section: "4.1/9.2",
     options: { typecheck: { strictSafety: true } },
-    expectedCodes: ["E_SAFETY_DIV_BY_ZERO", "E_SELFHOST_PANIC"],
+    expectedCodes: ["E_SAFETY_DIV_BY_ZERO", "E_SELFHOST_INTERNAL_ERROR"],
     source: ["fn bad(x : I32) : I32 => 100 / x;", ""].join("\n"),
   },
   {
     id: "reject:overflow-strict",
     section: "4.2/9.2",
     options: { typecheck: { strictSafety: true } },
-    expectedCodes: ["E_SAFETY_INTEGER_OVERFLOW", "E_SELFHOST_PANIC"],
+    expectedCodes: ["E_SAFETY_INTEGER_OVERFLOW", "E_SELFHOST_INTERNAL_ERROR"],
     source: ["fn overflow() : I32 => 2147483647 + 1;", ""].join("\n"),
   },
   {
     id: "reject:unguarded-nullable-pointer",
     section: "4.5/9.2",
     options: { typecheck: { strictSafety: true } },
-    expectedCodes: ["E_SAFETY_NULLABLE_POINTER_GUARD", "E_SELFHOST_PANIC"],
+    expectedCodes: [
+      "E_SAFETY_NULLABLE_POINTER_GUARD",
+      "E_SELFHOST_INTERNAL_ERROR",
+    ],
     source: ["fn bad(p : *I32 | 0USize) : I32 => p[0];", ""].join("\n"),
   },
   {
     id: "reject:non-exhaustive-match",
     section: "3.5/9.1",
     options: { typecheck: { strictSafety: true } },
-    expectedCodes: ["E_TYPE_MATCH_NON_EXHAUSTIVE", "E_SELFHOST_PANIC"],
+    expectedCodes: ["E_TYPE_MATCH_NON_EXHAUSTIVE", "E_SELFHOST_INTERNAL_ERROR"],
     source: [
       "struct Some<T> { value : I32 }",
       "struct None<T> {}",
@@ -541,7 +544,10 @@ const negativeCases = [
   {
     id: "reject:move-while-immut-borrowed",
     section: "2.3/4.8",
-    expectedCodes: ["E_BORROW_MOVE_WHILE_BORROWED", "E_SELFHOST_PANIC"],
+    expectedCodes: [
+      "E_BORROW_MOVE_WHILE_BORROWED",
+      "E_SELFHOST_INTERNAL_ERROR",
+    ],
     source: [
       "struct Box { v : I32 }",
       "fn bad() : I32 => {",
@@ -556,7 +562,7 @@ const negativeCases = [
   {
     id: "reject:borrow-mut-conflict",
     section: "2.3/4.8",
-    expectedCodes: ["E_BORROW_MUT_CONFLICT", "E_SELFHOST_PANIC"],
+    expectedCodes: ["E_BORROW_MUT_CONFLICT", "E_SELFHOST_INTERNAL_ERROR"],
     source: [
       "struct Box { v : I32 }",
       "fn bad() : I32 => {",
@@ -571,7 +577,7 @@ const negativeCases = [
   {
     id: "reject:borrow-immut-while-mut",
     section: "2.3/4.8",
-    expectedCodes: ["E_BORROW_IMMUT_WHILE_MUT", "E_SELFHOST_PANIC"],
+    expectedCodes: ["E_BORROW_IMMUT_WHILE_MUT", "E_SELFHOST_INTERNAL_ERROR"],
     source: [
       "struct Box { v : I32 }",
       "fn bad() : I32 => {",
@@ -586,7 +592,10 @@ const negativeCases = [
   {
     id: "reject:assign-while-borrowed",
     section: "2.3/4.8",
-    expectedCodes: ["E_BORROW_ASSIGN_WHILE_BORROWED", "E_SELFHOST_PANIC"],
+    expectedCodes: [
+      "E_BORROW_ASSIGN_WHILE_BORROWED",
+      "E_SELFHOST_INTERNAL_ERROR",
+    ],
     source: [
       "struct Box { v : I32 }",
       "fn bad() : I32 => {",
@@ -601,7 +610,7 @@ const negativeCases = [
   {
     id: "reject:borrow-invalid-target",
     section: "2.4/4.8",
-    expectedCodes: ["E_BORROW_INVALID_TARGET", "E_SELFHOST_PANIC"],
+    expectedCodes: ["E_BORROW_INVALID_TARGET", "E_SELFHOST_INTERNAL_ERROR"],
     source: [
       "fn bad() : I32 => {",
       "  let x : I32 = 1;",
