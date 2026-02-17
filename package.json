@@ -28,6 +28,7 @@
     "modules:aliases": "tsx ./src/test/js/module-package-aliases.ts",
     "selfhost:diagnostics": "tsx ./src/test/js/selfhost-diagnostics.ts",
     "selfhost:parity": "tsx ./src/test/js/selfhost-parity.ts",
+    "selfhost:stress": "tsx ./src/test/js/selfhost-stress.ts",
     "equiv:stages": "tsx ./src/test/js/stage-equivalence.ts",
     "semantics:exhaustive": "tsx ./src/test/js/spec-semantics-exhaustive.ts",
     "web:verify": "tsx ./src/test/js/web-compiler-api.ts",
