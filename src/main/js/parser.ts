@@ -1822,7 +1822,27 @@ export function parse(tokens: Token[]): ParseResult<Program> {
     });
   };
 
+  const queuedStatements: Stmt[] = [];
+
+  const isDeclarationStatement = (node: Stmt): boolean =>
+    [
+      "FnDecl",
+      "ClassFunctionDecl",
+      "StructDecl",
+      "EnumDecl",
+      "ObjectDecl",
+      "ContractDecl",
+      "TypeAlias",
+      "ExternFnDecl",
+      "ExternLetDecl",
+      "ExternTypeDecl",
+    ].includes(node?.kind as string);
+
   const parseStatement = (): ParseResult<Stmt> => {
+    if (queuedStatements.length > 0) {
+      return ok(queuedStatements.shift() as Stmt);
+    }
+
     const atContextualModifier = (name: "expect" | "actual") => {
       const t = peek();
       return (
@@ -2052,6 +2072,76 @@ export function parse(tokens: Token[]): ParseResult<Program> {
         }
         eat();
         nodeResult = parseFunction(true);
+      } else if (at("keyword", "module")) {
+        if (copyDecl || expectDecl || actualDecl) {
+          return err(
+            new TuffError(
+              "Only 'out' may be used with 'module' declarations",
+              peek().loc,
+              {
+                code: "E_PARSE_EXPECTED_TOKEN",
+                hint: "Use 'out module Name { ... }' and place expect/actual/copy on declarations inside the module body.",
+              },
+            ),
+          );
+        }
+
+        eat(); // module
+        const moduleNameResult = parseIdentifier();
+        if (!moduleNameResult.ok) return moduleNameResult;
+        const openResult = expect(
+          "symbol",
+          "{",
+          "Expected '{' after module declaration",
+        );
+        if (!openResult.ok) return openResult;
+
+        const moduleDecls: Stmt[] = [];
+        while (!at("symbol", "}") && !at("eof")) {
+          const innerResult = parseStatement();
+          if (!innerResult.ok) return innerResult;
+          const inner = innerResult.value;
+          if (!isDeclarationStatement(inner)) {
+            return err(
+              new TuffError(
+                "Only declarations are allowed inside module bodies",
+                inner?.loc ?? peek().loc,
+                {
+                  code: "E_PARSE_EXPECTED_TOKEN",
+                  hint: "Use fn/struct/enum/object/contract/type/extern declarations inside 'module { ... }'.",
+                },
+              ),
+            );
+          }
+          if (exported && inner.exported !== true) {
+            inner.exported = true;
+          }
+          inner.moduleName = moduleNameResult.value;
+          moduleDecls.push(inner);
+        }
+
+        const closeResult = expect(
+          "symbol",
+          "}",
+          "Expected '}' after module body",
+        );
+        if (!closeResult.ok) return closeResult;
+
+        if (moduleDecls.length === 0) {
+          return err(
+            new TuffError(
+              `Module '${moduleNameResult.value}' must contain at least one declaration`,
+              openResult.value.loc,
+              {
+                code: "E_PARSE_EXPECTED_TOKEN",
+                hint: "Add declarations inside the module block.",
+              },
+            ),
+          );
+        }
+
+        queuedStatements.push(...moduleDecls.slice(1));
+        nodeResult = ok(moduleDecls[0]);
       } else {
         return err(
           new TuffError("Expected declaration after modifiers", peek().loc, {
@@ -2256,7 +2346,7 @@ export function parse(tokens: Token[]): ParseResult<Program> {
   };
 
   const body: Stmt[] = [];
-  while (!at("eof")) {
+  while (!at("eof") || queuedStatements.length > 0) {
     const stmtResult = parseStatement();
     if (!stmtResult.ok) return stmtResult;
     body.push(stmtResult.value);

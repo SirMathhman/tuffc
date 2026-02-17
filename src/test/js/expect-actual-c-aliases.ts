@@ -50,15 +50,22 @@ fs.writeFileSync(
 
 fs.writeFileSync(
   path.join(coreDir, "Strings.tuff"),
-  ["out expect fn length(this : *Str) : USize;", ""].join("\n"),
+  [
+    "out module Strings {",
+    "  expect fn length(this : *Str) : USize;",
+    "}",
+    "",
+  ].join("\n"),
   "utf8",
 );
 
 fs.writeFileSync(
   path.join(cDir, "Strings.tuff"),
   [
-    "out expect fn length(this : *Str) : USize;",
-    "out actual fn length(this : *Str) : USize => 3USize;",
+    "out module Strings {",
+    "  expect fn length(this : *Str) : USize;",
+    "  actual fn length(this : *Str) : USize => 3USize;",
+    "}",
     "",
   ].join("\n"),
   "utf8",
