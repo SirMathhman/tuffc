@@ -17,6 +17,285 @@ import * as runtime from "./runtime.ts";
 
 type CompilerResult<T> = Result<T, TuffError>;
 
+function monomorphTypeKey(typeNode): string {
+  if (!typeNode || typeof typeNode !== "object") return "Unknown";
+
+  if (typeNode.kind === "NamedType") {
+    const args = (typeNode.genericArgs ?? []).map((arg) =>
+      monomorphTypeKey(arg),
+    );
+    if (args.length === 0) return typeNode.name ?? "Unknown";
+    return `${typeNode.name ?? "Unknown"}<${args.join(",")}>`;
+  }
+
+  if (typeNode.kind === "PointerType") {
+    const inner = monomorphTypeKey(typeNode.to);
+    if (typeNode.move) return `*move ${inner}`;
+    return typeNode.mutable ? `*mut ${inner}` : `*${inner}`;
+  }
+
+  if (typeNode.kind === "ArrayType") {
+    const elem = monomorphTypeKey(typeNode.element);
+    if (typeNode.init !== undefined && typeNode.total !== undefined) {
+      const init =
+        typeNode.init?.kind === "NumberLiteral"
+          ? Number(typeNode.init.value)
+          : "init";
+      const total =
+        typeNode.total?.kind === "NumberLiteral"
+          ? Number(typeNode.total.value)
+          : "length";
+      return `[${elem};${init};${total}]`;
+    }
+    return `[${elem}]`;
+  }
+
+  if (typeNode.kind === "TupleType") {
+    const members = (typeNode.members ?? []).map((m) => monomorphTypeKey(m));
+    return `(${members.join(",")})`;
+  }
+
+  if (typeNode.kind === "RefinementType") {
+    return monomorphTypeKey(typeNode.base);
+  }
+
+  if (typeNode.kind === "UnionType") {
+    return `${monomorphTypeKey(typeNode.left)}|${monomorphTypeKey(typeNode.right)}`;
+  }
+
+  return "Unknown";
+}
+
+function sanitizeMonomorphToken(value: string): string {
+  return String(value)
+    .replaceAll("*move ", "pmove_")
+    .replaceAll("*mut ", "pmut_")
+    .replaceAll("*", "p_")
+    .replaceAll("<", "_of_")
+    .replaceAll(">", "")
+    .replaceAll("[", "arr_")
+    .replaceAll("]", "")
+    .replaceAll("(", "tup_")
+    .replaceAll(")", "")
+    .replaceAll("|", "_or_")
+    .replaceAll(";", "_")
+    .replaceAll(",", "_")
+    .replaceAll(" ", "_")
+    .replaceAll(/[^A-Za-z0-9_]/g, "_")
+    .replaceAll(/_+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function makeMonomorphizedName(
+  functionName: string,
+  typeKeys: string[],
+): string {
+  const suffix = typeKeys
+    .map((key) => sanitizeMonomorphToken(key))
+    .filter((token) => token.length > 0)
+    .join("__");
+  return suffix.length > 0
+    ? `__mono_${functionName}__${suffix}`
+    : `__mono_${functionName}`;
+}
+
+function makeEmptyMonomorphizationPlan(reason = "no-stage0-ast") {
+  return {
+    available: false,
+    reason,
+    specializations: [],
+    byFunction: {},
+  };
+}
+
+function collectMonomorphizationPlan(program) {
+  if (!program || program.kind !== "Program" || !Array.isArray(program.body)) {
+    return makeEmptyMonomorphizationPlan("missing-program");
+  }
+
+  const genericFunctions = new Map();
+  for (const node of program.body) {
+    if (node?.kind !== "FnDecl") continue;
+    const generics = node.generics ?? [];
+    if (!Array.isArray(generics) || generics.length === 0) continue;
+    genericFunctions.set(node.name, generics);
+  }
+
+  if (genericFunctions.size === 0) {
+    return {
+      available: true,
+      reason: "no-generic-functions",
+      specializations: [],
+      byFunction: {},
+    };
+  }
+
+  const specializations = [];
+  const dedupe = new Set();
+
+  const recordCall = (callExpr) => {
+    if (!callExpr || callExpr.kind !== "CallExpr") return;
+    if (callExpr.callee?.kind !== "Identifier") return;
+    const fnName = callExpr.callee.name;
+    const generics = genericFunctions.get(fnName);
+    if (!generics || generics.length === 0) return;
+
+    const resolvedTypeArgs =
+      Array.isArray(callExpr.__resolvedTypeArgs) &&
+      callExpr.__resolvedTypeArgs.length === generics.length
+        ? callExpr.__resolvedTypeArgs
+        : undefined;
+    const explicitTypeArgs =
+      Array.isArray(callExpr.typeArgs) &&
+      callExpr.typeArgs.length === generics.length
+        ? callExpr.typeArgs
+        : undefined;
+    const chosenTypeArgs = resolvedTypeArgs ?? explicitTypeArgs;
+    if (!chosenTypeArgs) return;
+
+    const typeKeys = chosenTypeArgs.map((typeArg) => monomorphTypeKey(typeArg));
+    if (typeKeys.some((key) => !key || key === "Unknown")) return;
+
+    const key = `${fnName}<${typeKeys.join(",")}>`;
+    if (dedupe.has(key)) return;
+    dedupe.add(key);
+
+    specializations.push({
+      key,
+      functionName: fnName,
+      typeArgs: typeKeys,
+      mangledName: makeMonomorphizedName(fnName, typeKeys),
+      source: resolvedTypeArgs ? "inferred" : "explicit",
+    });
+  };
+
+  const visitExpr = (expr) => {
+    if (!expr || typeof expr !== "object") return;
+    if (expr.kind === "CallExpr") {
+      recordCall(expr);
+      visitExpr(expr.callee);
+      for (const arg of expr.args ?? []) visitExpr(arg);
+      for (const typeArg of expr.typeArgs ?? []) visitExpr(typeArg);
+      for (const typeArg of expr.__resolvedTypeArgs ?? []) visitExpr(typeArg);
+      return;
+    }
+    if (expr.kind === "BinaryExpr") {
+      visitExpr(expr.left);
+      visitExpr(expr.right);
+      return;
+    }
+    if (expr.kind === "UnaryExpr") {
+      visitExpr(expr.expr);
+      return;
+    }
+    if (expr.kind === "MemberExpr") {
+      visitExpr(expr.object);
+      return;
+    }
+    if (expr.kind === "IndexExpr") {
+      visitExpr(expr.target);
+      visitExpr(expr.index);
+      return;
+    }
+    if (expr.kind === "IfExpr") {
+      visitExpr(expr.condition);
+      visitNode(expr.thenBranch);
+      visitNode(expr.elseBranch);
+      return;
+    }
+    if (expr.kind === "MatchExpr") {
+      visitExpr(expr.subject);
+      for (const arm of expr.arms ?? []) {
+        visitNode(arm.body);
+      }
+      return;
+    }
+    if (expr.kind === "StructInitExpr") {
+      for (const field of expr.fields ?? []) {
+        visitExpr(field.value);
+      }
+      for (const typeArg of expr.typeArgs ?? []) visitExpr(typeArg);
+      return;
+    }
+    if (expr.kind === "TupleExpr") {
+      for (const item of expr.items ?? []) visitExpr(item);
+      return;
+    }
+    if (expr.kind === "Block") {
+      visitNode(expr);
+    }
+  };
+
+  const visitNode = (node) => {
+    if (!node || typeof node !== "object") return;
+    switch (node.kind) {
+      case "Program":
+        for (const stmt of node.body ?? []) visitNode(stmt);
+        break;
+      case "FnDecl":
+      case "ClassFunctionDecl":
+        visitNode(node.body);
+        break;
+      case "Block":
+        for (const stmt of node.statements ?? []) visitNode(stmt);
+        break;
+      case "ExprStmt":
+        visitExpr(node.expr);
+        break;
+      case "LetDecl":
+        visitExpr(node.value);
+        break;
+      case "AssignStmt":
+        visitExpr(node.target);
+        visitExpr(node.value);
+        break;
+      case "ReturnStmt":
+        visitExpr(node.value);
+        break;
+      case "IfStmt":
+        visitExpr(node.condition);
+        visitNode(node.thenBranch);
+        visitNode(node.elseBranch);
+        break;
+      case "ForStmt":
+        visitExpr(node.start);
+        visitExpr(node.end);
+        visitNode(node.body);
+        break;
+      case "WhileStmt":
+        visitExpr(node.condition);
+        visitNode(node.body);
+        break;
+      case "LoopStmt":
+        visitNode(node.body);
+        break;
+      case "IntoStmt":
+      case "DropStmt":
+        visitExpr(node.target);
+        break;
+      default:
+        break;
+    }
+  };
+
+  visitNode(program);
+
+  const byFunction = {};
+  for (const specialization of specializations) {
+    if (!byFunction[specialization.functionName]) {
+      byFunction[specialization.functionName] = [];
+    }
+    byFunction[specialization.functionName].push(specialization);
+  }
+
+  return {
+    available: true,
+    reason: "stage0-ast",
+    specializations,
+    byFunction,
+  };
+}
+
 let cachedSelfhost = undefined;
 
 function decodeSelfhostLintIssues(payload): unknown[] {
@@ -277,6 +556,7 @@ function makeSelfhostCompileResult(source, js, target, lintIssues, outputPath) {
     output: js,
     target,
     lintIssues,
+    monomorphizationPlan: makeEmptyMonomorphizationPlan("selfhost-backend"),
     lintFixesApplied: 0,
     lintFixedSource: source,
     ...(outputPath ? { outputPath } : {}),
@@ -669,6 +949,7 @@ export function compileSource(
   }
 
   return ok({
+    monomorphizationPlan: collectMonomorphizationPlan(core),
     tokens,
     cst,
     core,
@@ -885,6 +1166,7 @@ function compileFileInternal(
       tokens: graph.ordered.at(-1)?.tokens ?? [],
       cst: graph.ordered.at(-1)?.cst ?? { kind: "Program", body: [] },
       core: graph.merged,
+      monomorphizationPlan: collectMonomorphizationPlan(graph.merged),
       js: target === "js" ? output : undefined,
       c: target === "c" ? output : undefined,
       output,

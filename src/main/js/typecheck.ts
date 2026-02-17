@@ -262,6 +262,14 @@ function bindGenericsFromTypes(paramType, argType, genericNames, bindings) {
   }
 }
 
+function resolveGenericBindingTypeNode(genericName, genericBindings) {
+  if (!genericBindings.has(genericName)) {
+    return { kind: "NamedType", name: genericName, genericArgs: [] };
+  }
+  const bound = genericBindings.get(genericName);
+  return substituteType(bound, genericBindings);
+}
+
 function collectTypeVariables(type, knownTypeNames, out) {
   if (!type) return;
 
@@ -1546,6 +1554,13 @@ export function typecheck(
                 ),
               );
             }
+
+            if ((fn.generics ?? []).length > 0) {
+              expr.__resolvedTypeArgs = (fn.generics ?? []).map((genericName) =>
+                resolveGenericBindingTypeNode(genericName, genericBindings),
+              );
+            }
+
             for (let idx = 0; idx < expr.args.length; idx++) {
               const argType = argTypes[idx];
               const expectedInfo = resolveTypeInfo(fn.params[idx].type);

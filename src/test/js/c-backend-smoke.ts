@@ -11,6 +11,44 @@ const outDir = path.join(root, "tests", "out", "c");
 
 fs.mkdirSync(outDir, { recursive: true });
 
+const monoProbeSource = `
+fn id<T>(x: T): T => x;
+fn pair<A, B>(a: A, b: B): A => a;
+fn main(): I32 {
+  let x: I32 = id<I32>(41);
+  let y: I32 = id(1);
+  let z: I32 = pair<I32, Bool>(x, true);
+  x + y + z
+}
+`;
+
+const monoProbe = compileSourceResult(monoProbeSource, "<c-monomorph-probe>", {
+  backend: "stage0",
+  target: "c",
+});
+
+if (!monoProbe.ok) {
+  console.error("Monomorphization probe compile failed:");
+  console.error(monoProbe.error.message);
+  process.exit(1);
+}
+
+const monoPlan = monoProbe.value?.monomorphizationPlan;
+const monoSpecializations = monoPlan?.specializations ?? [];
+const hasIdI32 = monoSpecializations.some(
+  (s) => s?.functionName === "id" && (s?.typeArgs ?? []).join(",") === "I32",
+);
+const hasPairI32Bool = monoSpecializations.some(
+  (s) =>
+    s?.functionName === "pair" && (s?.typeArgs ?? []).join(",") === "I32,Bool",
+);
+
+if (!hasIdI32 || !hasPairI32Bool) {
+  console.error("Expected monomorphization specializations were not collected");
+  console.error(JSON.stringify(monoPlan, null, 2));
+  process.exit(1);
+}
+
 function runCase(caseName) {
   const sourcePath = path.join(
     root,
