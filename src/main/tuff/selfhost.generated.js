@@ -805,6 +805,27 @@ function p_can_start_type_tok_at(offset) {
   return false;
 }
 
+function p_can_start_type_after_lifetime_tok_at(offset) {
+  let idx = p_peek(offset);
+  let k = tok_kind(idx);
+  if ((k == TK_IDENTIFIER)) {
+  return true;
+}
+  if ((k == TK_SYMBOL)) {
+  let s = get_intern(tok_value(idx));
+  if ((((() => { const __recv = s; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "*") : str_eq(__recv, "*"); })() || (() => { const __recv = s; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "[") : str_eq(__recv, "["); })()) || (() => { const __recv = s; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "(") : str_eq(__recv, "("); })())) {
+  return true;
+}
+}
+  if ((k == TK_KEYWORD)) {
+  let kw = get_intern(tok_value(idx));
+  if (((((() => { const __recv = kw; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "mut") : str_eq(__recv, "mut"); })() || (() => { const __recv = kw; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "move") : str_eq(__recv, "move"); })()) || (() => { const __recv = kw; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "out") : str_eq(__recv, "out"); })()) || (() => { const __recv = kw; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "uninit") : str_eq(__recv, "uninit"); })())) {
+  return true;
+}
+}
+  return false;
+}
+
 function p_can_start_refinement_expr() {
   if (p_at_kind(TK_NUMBER)) {
   return true;
@@ -850,18 +871,29 @@ function p_parse_type_primary() {
   p_eat();
   let mutable = 0;
   let move_ptr = 0;
-  if (p_at(TK_KEYWORD, "mut")) {
+  let life_name = 0;
+  let progressed = true;
+  while (progressed) {
+  progressed = false;
+  if (((mutable == 0) && p_at(TK_KEYWORD, "mut"))) {
   p_eat();
   mutable = 1;
-} else { if (p_at(TK_KEYWORD, "move")) {
+  progressed = true;
+} else { if (((move_ptr == 0) && p_at(TK_KEYWORD, "move"))) {
   p_eat();
   move_ptr = 1;
-} }
+  progressed = true;
+} else { if ((((life_name == 0) && p_at_kind(TK_IDENTIFIER)) && p_can_start_type_after_lifetime_tok_at(1))) {
+  life_name = tok_value(p_eat());
+  progressed = true;
+} } }
+}
   let inner = p_parse_type_primary();
   let node = node_new(NK_POINTER_TYPE);
   node_set_data1(node, mutable);
   node_set_data2(node, inner);
   node_set_data3(node, move_ptr);
+  node_set_data4(node, life_name);
   return node;
 }
   if (p_at(TK_SYMBOL, "[")) {
@@ -1355,10 +1387,15 @@ function p_parse_for() {
 
 function p_parse_lifetime() {
   p_expect(TK_KEYWORD, "lifetime", "Expected 'lifetime'");
-  let lname = p_parse_identifier();
+  let names = vec_new();
+  (() => { const __recv = names; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, p_parse_identifier()) : vec_push(__recv, p_parse_identifier()); })();
+  while (p_at(TK_SYMBOL, ",")) {
+  p_eat();
+  (() => { const __recv = names; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, p_parse_identifier()) : vec_push(__recv, p_parse_identifier()); })();
+}
   let body = p_parse_block();
   let node = node_new(NK_LIFETIME_STMT);
-  node_set_data1(node, lname);
+  node_set_data1(node, names);
   node_set_data2(node, body);
   return node;
 }
@@ -1660,6 +1697,71 @@ function desugar(program) { return program; }
 
 function selfhost_parser_decls_marker() { return 0; }
 
+let resolve_lifetime_scopes = vec_new();
+
+function lifetime_scope_has(name) {
+  let i = ((() => { const __recv = resolve_lifetime_scopes; const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })() - 1);
+  while ((i >= 0)) {
+  if ((() => { const __recv = (() => { const __recv = resolve_lifetime_scopes; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(); const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, name) : set_has(__recv, name); })()) {
+  return true;
+}
+  i = (i - 1);
+}
+  return false;
+}
+
+function resolve_type_lifetimes(t) {
+  if ((t == 0)) {
+  return 0;
+}
+  let k = node_kind(t);
+  if ((k == NK_POINTER_TYPE)) {
+  let life_idx = node_get_data4(t);
+  if ((life_idx != 0)) {
+  let lname = get_interned_str(life_idx);
+  if ((!lifetime_scope_has(lname))) {
+  panic_with_code("E_RESOLVE_UNDEFINED_LIFETIME", (() => { const __recv = (() => { const __recv = "Undefined lifetime '"; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, lname) : str_concat(__recv, lname); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "'") : str_concat(__recv, "'"); })(), "A pointer type annotation references a lifetime name that is not declared in any active lifetime block.", "Declare the lifetime in an enclosing `lifetime ... { ... }` block before using it in pointer types.");
+}
+}
+  resolve_type_lifetimes(node_get_data2(t));
+  return 0;
+}
+  if ((k == NK_ARRAY_TYPE)) {
+  resolve_type_lifetimes(node_get_data1(t));
+  return 0;
+}
+  if ((k == NK_REFINEMENT_TYPE)) {
+  resolve_type_lifetimes(node_get_data1(t));
+  return 0;
+}
+  if ((k == NK_UNION_TYPE)) {
+  resolve_type_lifetimes(node_get_data1(t));
+  resolve_type_lifetimes(node_get_data2(t));
+  return 0;
+}
+  if ((k == NK_TUPLE_TYPE)) {
+  let members = node_get_data1(t);
+  let i = 0;
+  let len = (() => { const __recv = members; const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })();
+  while ((i < len)) {
+  resolve_type_lifetimes((() => { const __recv = members; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })());
+  i = (i + 1);
+}
+  return 0;
+}
+  if ((k == NK_FUNCTION_TYPE)) {
+  let ps = node_get_data1(t);
+  let i = 0;
+  while ((i < (() => { const __recv = ps; const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })())) {
+  resolve_type_lifetimes((() => { const __recv = ps; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })());
+  i = (i + 1);
+}
+  resolve_type_lifetimes(node_get_data2(t));
+  return 0;
+}
+  return 0;
+}
+
 function fn_type_sig(t) {
   if ((t == 0)) {
   return "_";
@@ -1671,10 +1773,15 @@ function fn_type_sig(t) {
   if ((k == NK_POINTER_TYPE)) {
   let mutv = node_get_data1(t);
   let inner = fn_type_sig(node_get_data2(t));
-  if ((mutv == 1)) {
-  return (() => { const __recv = "*mut "; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, inner) : str_concat(__recv, inner); })();
+  let life_idx = node_get_data4(t);
+  let life_prefix = "";
+  if ((life_idx != 0)) {
+  life_prefix = (() => { const __recv = get_interned_str(life_idx); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " ") : str_concat(__recv, " "); })();
 }
-  return (() => { const __recv = "*"; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, inner) : str_concat(__recv, inner); })();
+  if ((mutv == 1)) {
+  return (() => { const __recv = (() => { const __recv = (() => { const __recv = "*"; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, life_prefix) : str_concat(__recv, life_prefix); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "mut ") : str_concat(__recv, "mut "); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, inner) : str_concat(__recv, inner); })();
+}
+  return (() => { const __recv = (() => { const __recv = "*"; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, life_prefix) : str_concat(__recv, life_prefix); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, inner) : str_concat(__recv, inner); })();
 }
   if ((k == NK_ARRAY_TYPE)) {
   return "Array";
@@ -1988,12 +2095,17 @@ function resolve_stmt(n, globals, scopes, depth) {
   while ((i < len)) {
   let param = (() => { const __recv = params; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })();
   scope_define(fnScopes, 0, get_interned_str((() => { const __recv = param; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })()));
+  resolve_type_lifetimes((() => { const __recv = param; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 1) : vec_get(__recv, 1); })());
   i = (i + 1);
 }
+  resolve_type_lifetimes(node_get_data4(n));
   resolve_stmt(node_get_data5(n), globals, fnScopes, 0);
   return 0;
 }
   if ((kind == NK_LET_DECL)) {
+  if ((node_get_data2(n) != 0)) {
+  resolve_type_lifetimes(node_get_data2(n));
+}
   resolve_expr(node_get_data3(n), globals, scopes, depth);
   scope_define(scopes, depth, get_interned_str(node_get_data1(n)));
   return 0;
@@ -2051,8 +2163,22 @@ function resolve_stmt(n, globals, scopes, depth) {
   if ((kind == NK_LIFETIME_STMT)) {
   let next_depth = (depth + 1);
   (() => { const __recv = scopes; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, set_new()) : vec_push(__recv, set_new()); })();
-  scope_define(scopes, next_depth, get_interned_str(node_get_data1(n)));
+  let lifetime_names = node_get_data1(n);
+  let lifetime_scope = set_new();
+  let i = 0;
+  let len = (() => { const __recv = lifetime_names; const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })();
+  while ((i < len)) {
+  let lname = get_interned_str((() => { const __recv = lifetime_names; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })());
+  if ((() => { const __recv = lifetime_scope; const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, lname) : set_has(__recv, lname); })()) {
+  panic_with_code("E_RESOLVE_DUPLICATE_LIFETIME", (() => { const __recv = (() => { const __recv = "Duplicate lifetime name '"; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, lname) : str_concat(__recv, lname); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "' in lifetime block") : str_concat(__recv, "' in lifetime block"); })(), "A lifetime block contains duplicate lifetime names.", "Use unique lifetime names within a lifetime declaration block.");
+}
+  (() => { const __recv = lifetime_scope; const __dyn = __recv?.table?.set_add; return __dyn ? __dyn(__recv.ref, lname) : set_add(__recv, lname); })();
+  scope_define(scopes, next_depth, lname);
+  i = (i + 1);
+}
+  (() => { const __recv = resolve_lifetime_scopes; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, lifetime_scope) : vec_push(__recv, lifetime_scope); })();
   resolve_stmt(node_get_data2(n), globals, scopes, next_depth);
+  (() => { const __recv = resolve_lifetime_scopes; const __dyn = __recv?.table?.vec_pop; return __dyn ? __dyn(__recv.ref) : vec_pop(__recv); })();
   (() => { const __recv = scopes; const __dyn = __recv?.table?.vec_pop; return __dyn ? __dyn(__recv.ref) : vec_pop(__recv); })();
   return 0;
 }
@@ -2068,6 +2194,7 @@ function resolve_stmt(n, globals, scopes, depth) {
 }
 
 function resolve_names(program) {
+  (() => { const __recv = resolve_lifetime_scopes; const __dyn = __recv?.table?.vec_clear; return __dyn ? __dyn(__recv.ref) : vec_clear(__recv); })();
   let globals = set_new();
   let body = node_get_data1(program);
   validate_expect_actual_pairs(body);
@@ -2109,13 +2236,18 @@ function type_name_from_type_node(t) {
   let mutable = node_get_data1(t);
   let inner = type_name_from_type_node(node_get_data2(t));
   let move_ptr = node_get_data3(t);
+  let life_idx = node_get_data4(t);
+  let life_prefix = "";
+  if ((life_idx != 0)) {
+  life_prefix = (() => { const __recv = get_interned_str(life_idx); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " ") : str_concat(__recv, " "); })();
+}
   if ((move_ptr == 1)) {
-  return (() => { const __recv = "*move "; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, inner) : str_concat(__recv, inner); })();
+  return (() => { const __recv = (() => { const __recv = (() => { const __recv = "*"; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, life_prefix) : str_concat(__recv, life_prefix); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "move ") : str_concat(__recv, "move "); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, inner) : str_concat(__recv, inner); })();
 }
   if ((mutable == 1)) {
-  return (() => { const __recv = "*mut "; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, inner) : str_concat(__recv, inner); })();
+  return (() => { const __recv = (() => { const __recv = (() => { const __recv = "*"; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, life_prefix) : str_concat(__recv, life_prefix); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "mut ") : str_concat(__recv, "mut "); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, inner) : str_concat(__recv, inner); })();
 }
-  return (() => { const __recv = "*"; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, inner) : str_concat(__recv, inner); })();
+  return (() => { const __recv = (() => { const __recv = "*"; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, life_prefix) : str_concat(__recv, life_prefix); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, inner) : str_concat(__recv, inner); })();
 }
   if ((k == 44)) {
   return type_name_from_type_node(node_get_data1(t));
@@ -2137,10 +2269,40 @@ function pointer_types_compatible(expected, actual) {
   return true;
 }
 }
-  if ((((() => { const __recv = expected; const __dyn = __recv?.table?.str_starts_with; return __dyn ? __dyn(__recv.ref, "*") : str_starts_with(__recv, "*"); })() && (!(() => { const __recv = expected; const __dyn = __recv?.table?.str_starts_with; return __dyn ? __dyn(__recv.ref, "*mut ") : str_starts_with(__recv, "*mut "); })())) && (() => { const __recv = actual; const __dyn = __recv?.table?.str_starts_with; return __dyn ? __dyn(__recv.ref, "*mut ") : str_starts_with(__recv, "*mut "); })())) {
-  let expected_inner = (() => { const __recv = expected; const __dyn = __recv?.table?.str_slice; return __dyn ? __dyn(__recv.ref, 1, (() => { const __recv = expected; const __dyn = __recv?.table?.str_length; return __dyn ? __dyn(__recv.ref) : str_length(__recv); })()) : str_slice(__recv, 1, (() => { const __recv = expected; const __dyn = __recv?.table?.str_length; return __dyn ? __dyn(__recv.ref) : str_length(__recv); })()); })();
-  let actual_inner = (() => { const __recv = actual; const __dyn = __recv?.table?.str_slice; return __dyn ? __dyn(__recv.ref, 5, (() => { const __recv = actual; const __dyn = __recv?.table?.str_length; return __dyn ? __dyn(__recv.ref) : str_length(__recv); })()) : str_slice(__recv, 5, (() => { const __recv = actual; const __dyn = __recv?.table?.str_length; return __dyn ? __dyn(__recv.ref) : str_length(__recv); })()); })();
+  if (((() => { const __recv = expected; const __dyn = __recv?.table?.str_starts_with; return __dyn ? __dyn(__recv.ref, "*") : str_starts_with(__recv, "*"); })() && (() => { const __recv = actual; const __dyn = __recv?.table?.str_starts_with; return __dyn ? __dyn(__recv.ref, "*") : str_starts_with(__recv, "*"); })())) {
+  let expected_body = (() => { const __recv = expected; const __dyn = __recv?.table?.str_slice; return __dyn ? __dyn(__recv.ref, 1, (() => { const __recv = expected; const __dyn = __recv?.table?.str_length; return __dyn ? __dyn(__recv.ref) : str_length(__recv); })()) : str_slice(__recv, 1, (() => { const __recv = expected; const __dyn = __recv?.table?.str_length; return __dyn ? __dyn(__recv.ref) : str_length(__recv); })()); })();
+  let actual_body = (() => { const __recv = actual; const __dyn = __recv?.table?.str_slice; return __dyn ? __dyn(__recv.ref, 1, (() => { const __recv = actual; const __dyn = __recv?.table?.str_length; return __dyn ? __dyn(__recv.ref) : str_length(__recv); })()) : str_slice(__recv, 1, (() => { const __recv = actual; const __dyn = __recv?.table?.str_length; return __dyn ? __dyn(__recv.ref) : str_length(__recv); })()); })();
+  let expected_has_life = (((!(() => { const __recv = expected_body; const __dyn = __recv?.table?.str_starts_with; return __dyn ? __dyn(__recv.ref, "mut ") : str_starts_with(__recv, "mut "); })()) && (!(() => { const __recv = expected_body; const __dyn = __recv?.table?.str_starts_with; return __dyn ? __dyn(__recv.ref, "move ") : str_starts_with(__recv, "move "); })())) && (() => { const __recv = expected_body; const __dyn = __recv?.table?.str_includes; return __dyn ? __dyn(__recv.ref, " ") : str_includes(__recv, " "); })());
+  let actual_has_life = (((!(() => { const __recv = actual_body; const __dyn = __recv?.table?.str_starts_with; return __dyn ? __dyn(__recv.ref, "mut ") : str_starts_with(__recv, "mut "); })()) && (!(() => { const __recv = actual_body; const __dyn = __recv?.table?.str_starts_with; return __dyn ? __dyn(__recv.ref, "move ") : str_starts_with(__recv, "move "); })())) && (() => { const __recv = actual_body; const __dyn = __recv?.table?.str_includes; return __dyn ? __dyn(__recv.ref, " ") : str_includes(__recv, " "); })());
+  if (expected_has_life) {
+  let i = 0;
+  let n = (() => { const __recv = expected_body; const __dyn = __recv?.table?.str_length; return __dyn ? __dyn(__recv.ref) : str_length(__recv); })();
+  while (((i < n) && ((() => { const __recv = expected_body; const __dyn = __recv?.table?.str_char_at; return __dyn ? __dyn(__recv.ref, i) : str_char_at(__recv, i); })() != 32))) {
+  i = (i + 1);
+}
+  if ((i < n)) {
+  expected_body = (() => { const __recv = expected_body; const __dyn = __recv?.table?.str_slice; return __dyn ? __dyn(__recv.ref, (i + 1), n) : str_slice(__recv, (i + 1), n); })();
+}
+}
+  if (actual_has_life) {
+  let j = 0;
+  let m = (() => { const __recv = actual_body; const __dyn = __recv?.table?.str_length; return __dyn ? __dyn(__recv.ref) : str_length(__recv); })();
+  while (((j < m) && ((() => { const __recv = actual_body; const __dyn = __recv?.table?.str_char_at; return __dyn ? __dyn(__recv.ref, j) : str_char_at(__recv, j); })() != 32))) {
+  j = (j + 1);
+}
+  if ((j < m)) {
+  actual_body = (() => { const __recv = actual_body; const __dyn = __recv?.table?.str_slice; return __dyn ? __dyn(__recv.ref, (j + 1), m) : str_slice(__recv, (j + 1), m); })();
+}
+}
+  if (((!(() => { const __recv = expected_body; const __dyn = __recv?.table?.str_starts_with; return __dyn ? __dyn(__recv.ref, "mut ") : str_starts_with(__recv, "mut "); })()) && (() => { const __recv = actual_body; const __dyn = __recv?.table?.str_starts_with; return __dyn ? __dyn(__recv.ref, "mut ") : str_starts_with(__recv, "mut "); })())) {
+  let expected_inner = expected_body;
+  let actual_inner = (() => { const __recv = actual_body; const __dyn = __recv?.table?.str_slice; return __dyn ? __dyn(__recv.ref, 4, (() => { const __recv = actual_body; const __dyn = __recv?.table?.str_length; return __dyn ? __dyn(__recv.ref) : str_length(__recv); })()) : str_slice(__recv, 4, (() => { const __recv = actual_body; const __dyn = __recv?.table?.str_length; return __dyn ? __dyn(__recv.ref) : str_length(__recv); })()); })();
   return (() => { const __recv = expected_inner; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, actual_inner) : str_eq(__recv, actual_inner); })();
+}
+  if (((() => { const __recv = expected_body; const __dyn = __recv?.table?.str_starts_with; return __dyn ? __dyn(__recv.ref, "mut ") : str_starts_with(__recv, "mut "); })() && (!(() => { const __recv = actual_body; const __dyn = __recv?.table?.str_starts_with; return __dyn ? __dyn(__recv.ref, "mut ") : str_starts_with(__recv, "mut "); })()))) {
+  return false;
+}
+  return (() => { const __recv = expected_body; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, actual_body) : str_eq(__recv, actual_body); })();
 }
   return false;
 }
@@ -3100,13 +3262,18 @@ function bc_type_name_from_type_node(t) {
   let mutable = node_get_data1(t);
   let inner = bc_type_name_from_type_node(node_get_data2(t));
   let move_ptr = node_get_data3(t);
+  let life_idx = node_get_data4(t);
+  let life_prefix = "";
+  if ((life_idx != 0)) {
+  life_prefix = (() => { const __recv = get_interned_str(life_idx); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " ") : str_concat(__recv, " "); })();
+}
   if ((move_ptr == 1)) {
-  return (() => { const __recv = "*move "; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, inner) : str_concat(__recv, inner); })();
+  return (() => { const __recv = (() => { const __recv = (() => { const __recv = "*"; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, life_prefix) : str_concat(__recv, life_prefix); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "move ") : str_concat(__recv, "move "); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, inner) : str_concat(__recv, inner); })();
 }
   if ((mutable == 1)) {
-  return (() => { const __recv = "*mut "; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, inner) : str_concat(__recv, inner); })();
+  return (() => { const __recv = (() => { const __recv = (() => { const __recv = "*"; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, life_prefix) : str_concat(__recv, life_prefix); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "mut ") : str_concat(__recv, "mut "); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, inner) : str_concat(__recv, inner); })();
 }
-  return (() => { const __recv = "*"; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, inner) : str_concat(__recv, inner); })();
+  return (() => { const __recv = (() => { const __recv = "*"; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, life_prefix) : str_concat(__recv, life_prefix); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, inner) : str_concat(__recv, inner); })();
 }
   if ((k == NK_UNION_TYPE)) {
   let left = bc_type_name_from_type_node(node_get_data1(t));

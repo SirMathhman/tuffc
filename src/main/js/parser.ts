@@ -100,24 +100,11 @@ export function parse(tokens: Token[]): ParseResult<Program> {
     const parseTypePrimary = (): ParseResult<Expr> => {
       if (at("symbol", "*")) {
         eat();
-        // Parse optional lifetime annotation: *a T or *a mut T
-        let lifetime: string | undefined = undefined;
-        if (peek()?.type === "identifier" && !at("keyword")) {
-          const nextIsModifier =
-            peek()?.value === "mut" ||
-            peek()?.value === "move" ||
-            peek()?.value === "out" ||
-            peek()?.value === "uninit";
-          if (!nextIsModifier) {
-            const lifeResult = parseIdentifier();
-            if (!lifeResult.ok) return lifeResult;
-            lifetime = lifeResult.value;
-          }
-        }
         let mutable = false;
         let move = false;
         let out = false;
         let uninit = false;
+        let lifetime: string | undefined = undefined;
         let progressed = true;
         while (progressed) {
           progressed = false;
@@ -144,6 +131,20 @@ export function parse(tokens: Token[]): ParseResult<Program> {
             move = true;
             progressed = true;
             continue;
+          }
+          if (!lifetime && at("identifier")) {
+            const nextToken = peek(1);
+            const canStartType =
+              nextToken &&
+              (nextToken.type === "identifier" ||
+                (nextToken.type === "symbol" &&
+                  ["*", "[", "("].includes(nextToken.value as string)) ||
+                nextToken.type === "keyword");
+            if (canStartType) {
+              lifetime = eat().value as string;
+              progressed = true;
+              continue;
+            }
           }
         }
         const toResult = parseTypePrimary();
@@ -369,37 +370,6 @@ export function parse(tokens: Token[]): ParseResult<Program> {
     const closeResult = expect("symbol", ">", closeMessage);
     if (!closeResult.ok) return closeResult;
     return ok(generics);
-  };
-
-  const parseLifetimeParams = (): ParseResult<
-    { name: string; bounds: string[] }[]
-  > => {
-    const lifetimes: { name: string; bounds: string[] }[] = [];
-    if (!at("symbol", "<")) {
-      return ok(lifetimes);
-    }
-    eat();
-    if (!at("symbol", ">")) {
-      while (true) {
-        const nameResult = parseIdentifier();
-        if (!nameResult.ok) return nameResult;
-        const bounds: string[] = [];
-        while (at("symbol", ":")) {
-          eat();
-          const boundResult = parseIdentifier();
-          if (!boundResult.ok) return boundResult;
-          bounds.push(boundResult.value);
-          if (!at("symbol", "+")) break;
-          eat();
-        }
-        lifetimes.push({ name: nameResult.value, bounds });
-        if (!at("symbol", ",")) break;
-        eat();
-      }
-    }
-    const closeResult = expect("symbol", ">", "Expected '>' after lifetimes");
-    if (!closeResult.ok) return closeResult;
-    return ok(lifetimes);
   };
 
   const parseTypedParams = (
@@ -1453,9 +1423,6 @@ export function parse(tokens: Token[]): ParseResult<Program> {
     if (!fnResult.ok) return fnResult;
     const nameResult = parseIdentifier();
     if (!nameResult.ok) return nameResult;
-    const lifetimesResult = parseLifetimeParams();
-    if (!lifetimesResult.ok) return lifetimesResult;
-    const lifetimes = lifetimesResult.value;
     const genericConstraints: Record<string, Expr> = {};
     const genericsResult = parseGenericParams(
       "Expected '>' after generics",
@@ -1511,7 +1478,6 @@ export function parse(tokens: Token[]): ParseResult<Program> {
     return ok({
       kind: isClassSugar ? "ClassFunctionDecl" : "FnDecl",
       name: nameResult.value,
-      lifetimes,
       generics,
       genericConstraints,
       params,
@@ -1704,6 +1670,7 @@ export function parse(tokens: Token[]): ParseResult<Program> {
               type: {
                 kind: "PointerType",
                 mutable,
+                lifetime: undefined,
                 to: { kind: "NamedType", name: "This", genericArgs: [] },
               },
             });
@@ -1835,13 +1802,21 @@ export function parse(tokens: Token[]): ParseResult<Program> {
   const parseLifetimeStmt = (): ParseResult<Stmt> => {
     const startResult = expect("keyword", "lifetime", "Expected lifetime");
     if (!startResult.ok) return startResult;
-    const nameResult = parseIdentifier();
-    if (!nameResult.ok) return nameResult;
+    const names: string[] = [];
+    const firstNameResult = parseIdentifier();
+    if (!firstNameResult.ok) return firstNameResult;
+    names.push(firstNameResult.value);
+    while (at("symbol", ",")) {
+      eat();
+      const nextNameResult = parseIdentifier();
+      if (!nextNameResult.ok) return nextNameResult;
+      names.push(nextNameResult.value);
+    }
     const bodyResult = parseBlock();
     if (!bodyResult.ok) return bodyResult;
     return ok({
       kind: "LifetimeStmt",
-      name: nameResult.value,
+      names,
       body: bodyResult.value,
       loc: startResult.value.loc,
     });

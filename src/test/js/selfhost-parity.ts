@@ -245,6 +245,94 @@ expectBothFail(
   "lifetime-missing-binder parity",
 );
 
+const lifetimeMultiBinderSource = [
+  "fn main() : I32 => {",
+  "  let x : I32 = 1;",
+  "  let y : I32 = 2;",
+  "  lifetime a, b {",
+  "    let p : *a I32 = &x;",
+  "    let q : *b mut I32 = &mut y;",
+  "  }",
+  "  x",
+  "}",
+  "",
+].join("\n");
+const lifetimeMultiStage0 = compileSourceResult(
+  lifetimeMultiBinderSource,
+  "<lifetime-multi-stage0>",
+  { backend: "stage0" },
+);
+const lifetimeMultiSelfhost = compileSourceResult(
+  lifetimeMultiBinderSource,
+  "<lifetime-multi-selfhost>",
+  { backend: "selfhost" },
+);
+if (!lifetimeMultiStage0.ok || !lifetimeMultiSelfhost.ok) {
+  throw new Error(
+    "lifetime multi-binder parity: expected both backends to compile",
+  );
+}
+
+expectBothFail(
+  () =>
+    compileSourceResult(
+      [
+        "fn main() : I32 => {",
+        "  let x : I32 = 1;",
+        "  let p : *a I32 = &x;",
+        "  x",
+        "}",
+        "",
+      ].join("\n"),
+      "<lifetime-undefined-stage0>",
+      { backend: "stage0" },
+    ),
+  () =>
+    selfhost.compile_source(
+      [
+        "fn main() : I32 => {",
+        "  let x : I32 = 1;",
+        "  let p : *a I32 = &x;",
+        "  x",
+        "}",
+        "",
+      ].join("\n"),
+    ),
+  "lifetime-undefined parity",
+  "E_RESOLVE_UNDEFINED_LIFETIME",
+);
+
+expectBothFail(
+  () =>
+    compileSourceResult(
+      [
+        "fn main() : I32 => {",
+        "  lifetime a, a {",
+        "    1;",
+        "  }",
+        "  0",
+        "}",
+        "",
+      ].join("\n"),
+      "<lifetime-dup-stage0>",
+      { backend: "stage0" },
+    ),
+  () =>
+    selfhost.compile_source(
+      [
+        "fn main() : I32 => {",
+        "  lifetime a, a {",
+        "    1;",
+        "  }",
+        "  0",
+        "}",
+        "",
+      ].join("\n"),
+    ),
+  "lifetime-duplicate parity",
+  "E_RESOLVE_DUPLICATE_LIFETIME",
+);
+
 // 4) Missing module failure parity (both must fail with diagnostics contract).
 const missingEntry = path.join(outDir, "missing-module-entry.tuff");
 const missingJsOut = path.join(outDir, "missing-module-js.js");

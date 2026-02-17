@@ -65,6 +65,52 @@ expectFailCode(
   { backend: "stage0" },
 );
 
+expectOk(
+  "lifetime-multi-binders-stage0-ok",
+  [
+    "fn main() : I32 => {",
+    "  let seed : I32 = 41;",
+    "  let alt : I32 = 5;",
+    "  lifetime a, b {",
+    "    let p : *a I32 = &seed;",
+    "    let q : *b mut I32 = &mut alt;",
+    "  }",
+    "  seed + 1",
+    "}",
+    "",
+  ].join("\n"),
+  { backend: "stage0" },
+);
+
+expectFailCode(
+  "lifetime-undefined-in-pointer-stage0",
+  [
+    "fn main() : I32 => {",
+    "  let seed : I32 = 41;",
+    "  let p : *a I32 = &seed;",
+    "  seed",
+    "}",
+    "",
+  ].join("\n"),
+  "E_RESOLVE_UNDEFINED_LIFETIME",
+  { backend: "stage0" },
+);
+
+expectFailCode(
+  "lifetime-duplicate-binders-stage0",
+  [
+    "fn main() : I32 => {",
+    "  lifetime a, a {",
+    "    1;",
+    "  }",
+    "  0",
+    "}",
+    "",
+  ].join("\n"),
+  "E_RESOLVE_DUPLICATE_LIFETIME",
+  { backend: "stage0" },
+);
+
 expectFailCode(
   "contracts-static-dispatch-missing-into",
   [

@@ -234,53 +234,36 @@ fn compare<T : Comparable<T>>(a : T, b : T) => { ... }
 - References cannot outlive their referents
 - Enforced at compile time through lifetime analysis
 
-**Lifetime Block Syntax**:
+**Lifetime Block Syntax (current model)**:
 
 ```tuff
-lifetime t {
-    // statements scoped to manual lifetime region `t`
+lifetime a {
+    fn borrow(x : *a I32) : *a I32 => x;
+}
+
+lifetime a, b {
+    fn two_refs(x : *a I32, y : *b I32) : *a I32 => x;
 }
 ```
 
-**Function Lifetime Parameters** (Rust-style):
-
-Declare lifetime parameters on functions using `<a, b: a>` syntax (no quotes on lifetime names):
-
-```tuff
-fn<a, b: a> borrow_two(x: *a I32, y: *b I32) : I32 => {
-    // x refers to lifetime 'a', y refers to lifetime 'b'
-    // b: a indicates that 'b' outlives 'a'
-    0
-}
-```
+Within a `lifetime` block, listed names are in scope for nested declarations.
 
 **Pointer Lifetime Annotations** (optional):
 
-Pointers can carry lifetime information using `*a Type` or `*a mut Type` syntax (no quotes):
-
 ```tuff
-let x : *a I32 = ...;        // Pointer to I32 with lifetime 'a'
-let y : *a mut I32 = ...;   // Mutable pointer to I32 with lifetime 'a'
-let z : *I32 = ...;         // Pointer to I32 (no lifetime annotation)
+let p : *a I32 = ...;
+let q : *a mut I32 = ...;
+let r : *I32 = ...; // lifetime annotation omitted
 ```
 
-Both annotated and unannotated pointers are valid. Unannotated pointers (`*T`) default to an implicit lifetime scope.
-
-**Lifetime Bounds**:
-
-Use colon notation to express lifetime outlives relationships:
-
-```tuff
-fn<a, b: a> foo(...) => { ... }  // 'a outlives 'b (b: a)
-fn<a, b: a + c: b> bar(...) => { ... }  // 'a > 'b > 'c in outlives chain
-```
+- `*T` and `*a T` are both valid syntax.
+- Lifetimes are compile-time only and are erased during code generation.
+- A pointer lifetime name must be declared in an enclosing `lifetime` block.
 
 Notes:
 
-- The keyword `lifetime` is singular (for lifetime blocks).
-- `lifetimes` is not a reserved keyword and is treated as a normal identifier.
-- Lifetime parameters are optional; both explicit and inferred lifetimes are supported.
-- Lifetime elision rules (Rust-style) apply when lifetimes are omitted.
+- The keyword is singular: `lifetime`.
+- `lifetimes` is not a keyword and is treated as a normal identifier.
 
 ### 2.4 Entities and Relationships
 

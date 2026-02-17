@@ -31,8 +31,10 @@ function typeNameFromNode(typeNode) {
     return typeNameFromNode(typeNode.base);
   if (typeNode.kind === "PointerType") {
     const inner = typeNameFromNode(typeNode.to);
-    if (typeNode.move) return `*move ${inner}`;
-    return typeNode.mutable ? `*mut ${inner}` : `*${inner}`;
+    if (typeNode.move) return `*${typeNode.lifetime ? `${typeNode.lifetime} ` : ""}move ${inner}`;
+    return typeNode.mutable
+      ? `*${typeNode.lifetime ? `${typeNode.lifetime} ` : ""}mut ${inner}`
+      : `*${typeNode.lifetime ? `${typeNode.lifetime} ` : ""}${inner}`;
   }
   if (typeNode.kind === "UnionType") {
     return `${typeNameFromNode(typeNode.left)}|${typeNameFromNode(typeNode.right)}`;
