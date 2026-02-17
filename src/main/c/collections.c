@@ -1,4 +1,5 @@
 // Tuff C Vec/Map/Set operations. Depends on substrate.c and string-builder.c (vec_join uses sb_*).
+#include "collections.h"
 
 int64_t __vec_new(void)
 {
