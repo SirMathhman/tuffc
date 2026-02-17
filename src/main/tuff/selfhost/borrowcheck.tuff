@@ -32,13 +32,18 @@ fn bc_type_name_from_type_node(t: I32) : *Str => {
         let mutable = node_get_data1(t);
         let inner = bc_type_name_from_type_node(node_get_data2(t));
         let move_ptr = node_get_data3(t);
+        let life_idx = node_get_data4(t);
+        let life_prefix = "";
+        if (life_idx != 0) {
+            life_prefix = get_interned_str(life_idx).str_concat(" ");
+        }
         if (move_ptr == 1) {
-            return "*move ".str_concat(inner);
+            return "*".str_concat(life_prefix).str_concat("move ").str_concat(inner);
         }
         if (mutable == 1) {
-            return "*mut ".str_concat(inner);
+            return "*".str_concat(life_prefix).str_concat("mut ").str_concat(inner);
         }
-        return "*".str_concat(inner);
+        return "*".str_concat(life_prefix).str_concat(inner);
     }
     if (k == NK_UNION_TYPE) {
         let left = bc_type_name_from_type_node(node_get_data1(t));

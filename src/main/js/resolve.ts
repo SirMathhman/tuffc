@@ -511,6 +511,56 @@ export function resolveNames(
     return ok(undefined);
   };
 
+  const lifetimeScopeStack: Set<string>[] = [];
+
+  const hasActiveLifetime = (name: string): boolean => {
+    for (let idx = lifetimeScopeStack.length - 1; idx >= 0; idx -= 1) {
+      if (lifetimeScopeStack[idx].has(name)) return true;
+    }
+    return false;
+  };
+
+  const validatePointerTypeLifetime = (typeNode): ResolveResult<void> => {
+    if (!typeNode) return ok(undefined);
+    if (typeNode.kind === "PointerType") {
+      if (typeNode.lifetime) {
+        if (!hasActiveLifetime(typeNode.lifetime)) {
+          return err(
+            new TuffError(
+              `Undefined lifetime '${typeNode.lifetime}'`,
+              typeNode.loc ?? undefined,
+              {
+                code: "E_RESOLVE_UNDEFINED_LIFETIME",
+                hint: "Declare this lifetime in an enclosing 'lifetime' block.",
+              },
+            ),
+          );
+        }
+      }
+      return validatePointerTypeLifetime(typeNode.to);
+    }
+    if (typeNode.kind === "ArrayType") {
+      const elemResult = validatePointerTypeLifetime(typeNode.element);
+      if (!elemResult.ok) return elemResult;
+      return ok(undefined);
+    }
+    if (typeNode.kind === "UnionType") {
+      const leftResult = validatePointerTypeLifetime(typeNode.left);
+      if (!leftResult.ok) return leftResult;
+      const rightResult = validatePointerTypeLifetime(typeNode.right);
+      if (!rightResult.ok) return rightResult;
+      return ok(undefined);
+    }
+    if (typeNode.kind === "TupleType") {
+      for (const member of typeNode.members ?? []) {
+        const memberResult = validatePointerTypeLifetime(member);
+        if (!memberResult.ok) return memberResult;
+      }
+      return ok(undefined);
+    }
+    return ok(undefined);
+  };
+
   const visitNode = (
     node,
     scope,
@@ -547,7 +597,11 @@ export function resolveNames(
         for (const p of node.params) {
           const defineResult = fnScope.define(p.name);
           if (!defineResult.ok) return defineResult;
+          const paramTypeResult = validatePointerTypeLifetime(p.type);
+          if (!paramTypeResult.ok) return paramTypeResult;
         }
+        const returnTypeResult = validatePointerTypeLifetime(node.returnType);
+        if (!returnTypeResult.ok) return returnTypeResult;
         if (node.body?.kind === "Block") {
           const result = visitNode(node.body, fnScope, modulePath);
           if (!result.ok) return result;
@@ -558,6 +612,10 @@ export function resolveNames(
         break;
       }
       case "LetDecl": {
+        if (node.type) {
+          const typeResult = validatePointerTypeLifetime(node.type);
+          if (!typeResult.ok) return typeResult;
+        }
         if (node.value) {
           const valueResult = visitExpr(node.value, scope, modulePath);
           if (!valueResult.ok) return valueResult;
@@ -635,7 +693,25 @@ export function resolveNames(
         break;
       }
       case "LifetimeStmt": {
+        const lifetimes = new Set<string>();
+        for (const name of node.names ?? []) {
+          if (lifetimes.has(name)) {
+            return err(
+              new TuffError(
+                `Duplicate lifetime name '${name}' in lifetime block`,
+                node.loc ?? undefined,
+                {
+                  code: "E_RESOLVE_DUPLICATE_LIFETIME",
+                  hint: "Each lifetime name in a block must be unique.",
+                },
+              ),
+            );
+          }
+          lifetimes.add(name);
+        }
+        lifetimeScopeStack.push(lifetimes);
         const bodyResult = visitNode(node.body, new Scope(scope), modulePath);
+        lifetimeScopeStack.pop();
         if (!bodyResult.ok) return bodyResult;
         break;
       }

@@ -40,6 +40,28 @@ function functionTypeName(paramNames, returnName) {
   return `(${(paramNames ?? []).join(",")})=>${returnName ?? "Unknown"}`;
 }
 
+function parsePointerShape(typeName) {
+  if (typeof typeName !== "string" || !typeName.startsWith("*")) {
+    return undefined;
+  }
+  let body = typeName.slice(1).trimStart();
+  const hasLeadingLifetime =
+    !body.startsWith("mut ") &&
+    !body.startsWith("move ") &&
+    !body.startsWith("[") &&
+    /^[A-Za-z_][A-Za-z0-9_]*\s+/.test(body);
+  if (hasLeadingLifetime) {
+    body = body.replace(/^[A-Za-z_][A-Za-z0-9_]*\s+/, "");
+  }
+  const move = body.startsWith("move ");
+  if (move) {
+    return { mutable: false, move: true, inner: body.slice(5) };
+  }
+  const mutable = body.startsWith("mut ");
+  const inner = mutable ? body.slice(4) : body;
+  return { mutable, move: false, inner };
+}
+
 function areCompatibleNamedTypes(expected, actual) {
   if (expected === actual) return true;
 
@@ -54,12 +76,17 @@ function areCompatibleNamedTypes(expected, actual) {
     typeof expected === "string" &&
     typeof actual === "string" &&
     expected.startsWith("*") &&
-    !expected.startsWith("*mut ") &&
-    actual.startsWith("*mut ")
+    actual.startsWith("*")
   ) {
-    const expectedInner = expected.slice(1);
-    const actualInner = actual.slice(5);
-    return expectedInner === actualInner;
+    const exp = parsePointerShape(expected);
+    const act = parsePointerShape(actual);
+    if (exp && act) {
+      if (exp.move !== act.move) return false;
+      if (exp.mutable === false && act.mutable === true) {
+        return exp.inner === act.inner;
+      }
+      return exp.mutable === act.mutable && exp.inner === act.inner;
+    }
   }
 
   return false;
@@ -93,14 +120,17 @@ function named(type) {
         const init = literalNumber(arr.init);
         const total = literalNumber(arr.total);
         if (init !== undefined && total !== undefined) {
-          return `*[${elem};${init};${total}]`;
+          return `*${type.lifetime ? `${type.lifetime} ` : ""}[${elem};${init};${total}]`;
         }
-        return `*[${elem};init;length]`;
+        return `*${type.lifetime ? `${type.lifetime} ` : ""}[${elem};init;length]`;
       }
-      return `*[${elem}]`;
+      return `*${type.lifetime ? `${type.lifetime} ` : ""}[${elem}]`;
     }
-    if (type.move) return `*move ${inner}`;
-    return type.mutable ? `*mut ${inner}` : `*${inner}`;
+    if (type.move)
+      return `*${type.lifetime ? `${type.lifetime} ` : ""}move ${inner}`;
+    return type.mutable
+      ? `*${type.lifetime ? `${type.lifetime} ` : ""}mut ${inner}`
+      : `*${type.lifetime ? `${type.lifetime} ` : ""}${inner}`;
   }
   if (type.kind === "TupleType") return "Tuple";
   if (type.kind === "FunctionType") {
@@ -791,10 +821,11 @@ export function typecheck(
         const elementName = elementInfo?.name ?? "Unknown";
         const arrayInit = literalUSize(type.to.init);
         const arrayTotal = literalUSize(type.to.total);
+        const lifePrefix = type.lifetime ? `${type.lifetime} ` : "";
         const pointerName =
           arrayInit !== undefined && arrayTotal !== undefined
-            ? `*[${elementName};${arrayInit};${arrayTotal}]`
-            : `*[${elementName}]`;
+            ? `*${lifePrefix}[${elementName};${arrayInit};${arrayTotal}]`
+            : `*${lifePrefix}[${elementName}]`;
         return {
           name: pointerName,
           min: undefined,
@@ -812,11 +843,12 @@ export function typecheck(
       }
 
       const inner = resolveTypeInfo(type.to, seenAliases);
+      const lifePrefix = type.lifetime ? `${type.lifetime} ` : "";
       const pointerName = type.move
-        ? `*move ${inner.name}`
+        ? `*${lifePrefix}move ${inner.name}`
         : type.mutable
-          ? `*mut ${inner.name}`
-          : `*${inner.name}`;
+          ? `*${lifePrefix}mut ${inner.name}`
+          : `*${lifePrefix}${inner.name}`;
       return {
         ...inner,
         name: pointerName,
