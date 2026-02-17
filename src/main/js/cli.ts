@@ -2,13 +2,58 @@
 // @ts-nocheck
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { compileFileResult } from "./compiler.ts";
 import { formatDiagnostic, toDiagnostic } from "./errors.ts";
 
 function printUsage(): void {
   console.log(
-    "Usage:\n  tuff compile <input.tuff> [-o output.js|output.c] [--target <js|c>] [--modules] [--module-base <dir>] [--selfhost|--stage0] [--lint] [--lint-fix] [--lint-strict] [--json-errors] [--trace-passes]",
+    "Usage:\n  tuffc <input.tuff> [options]\n\nOptions:\n  -o, --out <file>          Write output to file\n  --target <js|c>           Output target (default: js)\n  -I, --module-base <dir>   Module root directory\n  --modules                 Enable module loading\n  --no-modules              Disable module loading\n  --selfhost                Use selfhost backend\n  --stage0                  Use stage0 backend\n  --backend <name>          Explicit backend name (stage0|selfhost, default: stage0)\n  -Wall                     Enable common warnings (maps to lint warnings)\n  -Wextra                   Enable extra warnings (maps to lint warnings)\n  -Werror                   Treat warnings as errors (maps to lint strict mode)\n  -Werror=<group>           Treat warning group as errors (e.g. lint, all, extra)\n  -Wno-error                Disable warning-as-error mode\n  -Wno-error=<group>        Disable warning group as errors\n  -Wno-lint, -w             Disable warning/lint compatibility mapping\n  --lint                    Run lint checks\n  --lint-fix                Apply lint auto-fixes\n  --lint-strict             Treat lint findings as errors\n  -O0|-O1|-O2|-O3|-Os      Optimization level (accepted; reserved for optimizer)\n  -g                        Emit debug info (accepted; reserved for debug metadata)\n  -c                        Compile only (default behavior; accepted for compatibility)\n  -std=<dialect>            Language dialect (e.g. -std=tuff2024)\n  --color=<auto|always|never>\n                            Diagnostics color policy\n  -fdiagnostics-color[=always|never|auto]\n                            Diagnostics color policy (clang-style)\n  @<file>                   Read additional args from response file\n  --json-errors             Emit diagnostics as JSON\n  -v, --verbose             Trace compiler passes\n  --trace-passes            Trace compiler passes\n  --version                 Print tuffc version\n  -h, --help                Show help\n  --help=<topic>            Show topic help (warnings|diagnostics|optimizers)\n\nDeprecated:\n  tuffc compile <input.tuff> [options]",
   );
+}
+
+function printHelpTopic(topic: string): boolean {
+  if (topic === "warnings") {
+    console.log(
+      "Warning options:\n  -Wall, -Wextra, -Werror, -Werror=<group>, -Wno-error, -Wno-error=<group>, -Wno-lint, -w\n\nGroups:\n  lint, all, extra (aliases for lint compatibility mapping).",
+    );
+    return true;
+  }
+  if (topic === "diagnostics") {
+    console.log(
+      "Diagnostics options:\n  --json-errors\n  --color=<auto|always|never>\n  -fdiagnostics-color\n  -fdiagnostics-color=<auto|always|never>",
+    );
+    return true;
+  }
+  if (topic === "optimizers") {
+    console.log(
+      "Optimization options:\n  -O0, -O1, -O2, -O3, -Os\n\nNote: options are currently accepted for compatibility and reserved for optimizer pipeline rollout.",
+    );
+    return true;
+  }
+  return false;
+}
+
+function readVersion(): string {
+  try {
+    if (
+      typeof __TUFFC_VERSION__ === "string" &&
+      __TUFFC_VERSION__ !== "__TUFFC_VERSION__"
+    ) {
+      return __TUFFC_VERSION__;
+    }
+    if (typeof process.env.TUFFC_VERSION === "string") {
+      return process.env.TUFFC_VERSION;
+    }
+    const thisFile = fileURLToPath(import.meta.url);
+    const root = path.resolve(path.dirname(thisFile), "..", "..", "..");
+    const pkg = JSON.parse(
+      fs.readFileSync(path.join(root, "package.json"), "utf8"),
+    );
+    return String(pkg.version ?? "0.0.0");
+  } catch {
+    return "0.0.0";
+  }
 }
 
 function printLintIssues(issues: unknown[]): void {
@@ -20,27 +65,155 @@ function printLintIssues(issues: unknown[]): void {
   }
 }
 
+function shouldUseColor(mode: "auto" | "always" | "never"): boolean {
+  if (mode === "always") return true;
+  if (mode === "never") return false;
+  if (process.env.NO_COLOR) return false;
+  return Boolean(process.stderr.isTTY);
+}
+
+function colorize(text: string, code: number, enabled: boolean): string {
+  if (!enabled) return text;
+  return `\u001b[${code}m${text}\u001b[0m`;
+}
+
+function tokenizeResponseArgs(content: string): string[] {
+  const tokens = [];
+  let current = "";
+  let quote: string | undefined;
+
+  for (let i = 0; i < content.length; i += 1) {
+    const ch = content[i];
+
+    if (quote) {
+      if (ch === quote) {
+        quote = undefined;
+        continue;
+      }
+      if (ch === "\\" && i + 1 < content.length) {
+        i += 1;
+        current += content[i];
+        continue;
+      }
+      current += ch;
+      continue;
+    }
+
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      continue;
+    }
+    if (ch === "#") {
+      while (i < content.length && content[i] !== "\n") i += 1;
+      continue;
+    }
+    if (/\s/.test(ch)) {
+      if (current.length > 0) {
+        tokens.push(current);
+        current = "";
+      }
+      continue;
+    }
+    current += ch;
+  }
+
+  if (quote) {
+    throw new Error("Unterminated quote in response file");
+  }
+  if (current.length > 0) tokens.push(current);
+  return tokens;
+}
+
+function expandResponseArgs(
+  args: string[],
+  cwd: string,
+  depth = 0,
+  trail: Set<string> = new Set(),
+): string[] {
+  if (depth > 16) {
+    throw new Error("Response file nesting is too deep");
+  }
+
+  const expanded = [];
+  for (const arg of args) {
+    if (arg.startsWith("@@")) {
+      expanded.push(arg.slice(1));
+      continue;
+    }
+    if (!arg.startsWith("@") || arg.length <= 1) {
+      expanded.push(arg);
+      continue;
+    }
+
+    const responsePath = path.resolve(cwd, arg.slice(1));
+    if (trail.has(responsePath)) {
+      throw new Error(`Recursive response file detected: ${responsePath}`);
+    }
+
+    let content = "";
+    try {
+      content = fs.readFileSync(responsePath, "utf8");
+    } catch {
+      throw new Error(`Unable to read response file: ${responsePath}`);
+    }
+
+    const nested = tokenizeResponseArgs(content);
+    const nextTrail = new Set(trail);
+    nextTrail.add(responsePath);
+    expanded.push(
+      ...expandResponseArgs(
+        nested,
+        path.dirname(responsePath),
+        depth + 1,
+        nextTrail,
+      ),
+    );
+  }
+
+  return expanded;
+}
+
 function main(argv: string[]): void {
-  const args = argv.slice(2);
-  const command = args[0];
-  if (!command || command === "-h" || command === "--help") {
-    printUsage();
-    return;
-  }
-
-  if (command !== "compile") {
-    console.error(`Unknown command: ${command}`);
-    printUsage();
+  let rawArgs = argv.slice(2);
+  try {
+    rawArgs = expandResponseArgs(rawArgs, process.cwd());
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(message);
     process.exitCode = 1;
     return;
   }
 
-  const input = args[1];
-  if (!input) {
-    console.error("Missing input file");
-    printUsage();
-    process.exitCode = 1;
+  if (rawArgs.includes("--version")) {
+    console.log(`tuffc ${readVersion()}`);
     return;
+  }
+
+  const helpTopicArg = rawArgs.find((arg) => arg.startsWith("--help="));
+  if (helpTopicArg) {
+    const topic = helpTopicArg.slice("--help=".length).trim().toLowerCase();
+    if (!printHelpTopic(topic)) {
+      console.error(`Unknown help topic: ${topic}`);
+      process.exitCode = 1;
+    }
+    return;
+  }
+
+  if (
+    rawArgs.length === 0 ||
+    rawArgs.includes("-h") ||
+    rawArgs.includes("--help")
+  ) {
+    printUsage();
+    return;
+  }
+
+  const args = [...rawArgs];
+  if (args[0] === "compile") {
+    console.warn(
+      "Deprecated: 'tuffc compile <input>' is supported for compatibility; prefer 'tuffc <input>'.",
+    );
+    args.shift();
   }
 
   let output = undefined;
@@ -53,8 +226,30 @@ function main(argv: string[]): void {
   let lintStrict = false;
   let tracePasses = false;
   let target = "js";
+  let warningFlagsRequested = false;
+  let warningFlagsStrict = false;
+  const warningGroups = new Set<string>();
+  const warningErrorGroups = new Set<string>();
+  let optimizationLevel = "O0";
+  let emitDebugInfo = false;
+  let compileOnly = false;
+  let languageStandard = "tuff2024";
+  let diagnosticsColor: "auto" | "always" | "never" = "auto";
+  let afterDoubleDash = false;
+  const inputs = [];
   const unknownFlags = [];
-  for (let i = 2; i < args.length; i++) {
+
+  for (let i = 0; i < args.length; i++) {
+    if (afterDoubleDash || !args[i].startsWith("-")) {
+      inputs.push(args[i]);
+      continue;
+    }
+
+    if (args[i] === "--") {
+      afterDoubleDash = true;
+      continue;
+    }
+
     if (args[i] === "-o" || args[i] === "--out") {
       if (!args[i + 1] || args[i + 1].startsWith("-")) {
         console.error("Missing value for --out/-o");
@@ -69,11 +264,137 @@ function main(argv: string[]): void {
       continue;
     }
 
+    if (
+      args[i] === "-Wall" ||
+      args[i] === "-Wextra" ||
+      args[i] === "--warnings"
+    ) {
+      warningFlagsRequested = true;
+      if (args[i] === "-Wall" || args[i] === "--warnings") {
+        warningGroups.add("all");
+      }
+      if (args[i] === "-Wextra") {
+        warningGroups.add("extra");
+      }
+      continue;
+    }
+    if (args[i] === "-Wlint") {
+      warningFlagsRequested = true;
+      warningGroups.add("lint");
+      continue;
+    }
+    if (args[i] === "-Werror") {
+      warningFlagsRequested = true;
+      warningFlagsStrict = true;
+      continue;
+    }
+    if (args[i].startsWith("-Werror=")) {
+      const group = args[i].slice("-Werror=".length).trim().toLowerCase();
+      if (group === "lint" || group === "all" || group === "extra") {
+        warningFlagsRequested = true;
+        warningGroups.add(group);
+        warningErrorGroups.add(group);
+        continue;
+      }
+      unknownFlags.push(args[i]);
+      continue;
+    }
+    if (args[i] === "-Wno-error") {
+      warningFlagsStrict = false;
+      lintStrict = false;
+      continue;
+    }
+    if (args[i].startsWith("-Wno-error=")) {
+      const group = args[i].slice("-Wno-error=".length).trim().toLowerCase();
+      if (group === "lint" || group === "all" || group === "extra") {
+        warningErrorGroups.delete(group);
+        continue;
+      }
+      unknownFlags.push(args[i]);
+      continue;
+    }
+    if (args[i].startsWith("-Wno-")) {
+      const group = args[i].slice("-Wno-".length).trim().toLowerCase();
+      if (group === "lint" || group === "all" || group === "extra") {
+        warningGroups.delete(group);
+        warningErrorGroups.delete(group);
+        warningFlagsRequested = warningGroups.size > 0;
+        continue;
+      }
+      unknownFlags.push(args[i]);
+      continue;
+    }
+    if (args[i].startsWith("-W")) {
+      const group = args[i].slice(2).trim().toLowerCase();
+      if (group === "lint" || group === "all" || group === "extra") {
+        warningFlagsRequested = true;
+        warningGroups.add(group);
+        continue;
+      }
+      unknownFlags.push(args[i]);
+      continue;
+    }
+    if (args[i] === "-w" || args[i] === "-Wno-lint") {
+      warningFlagsRequested = false;
+      warningFlagsStrict = false;
+      lint = false;
+      lintStrict = false;
+      continue;
+    }
+    if (args[i] === "-c") {
+      compileOnly = true;
+      continue;
+    }
+    if (args[i] === "-g") {
+      emitDebugInfo = true;
+      continue;
+    }
+    if (
+      args[i] === "-O0" ||
+      args[i] === "-O1" ||
+      args[i] === "-O2" ||
+      args[i] === "-O3" ||
+      args[i] === "-Os"
+    ) {
+      optimizationLevel = args[i].slice(1);
+      continue;
+    }
+    if (args[i].startsWith("-std=")) {
+      const std = args[i].slice("-std=".length).trim();
+      if (!std) {
+        console.error("Missing value for -std");
+        process.exitCode = 1;
+        return;
+      }
+      languageStandard = std;
+      continue;
+    }
+    if (args[i] === "-fdiagnostics-color") {
+      diagnosticsColor = "always";
+      continue;
+    }
+    if (args[i].startsWith("-fdiagnostics-color=")) {
+      const mode = args[i]
+        .slice("-fdiagnostics-color=".length)
+        .trim()
+        .toLowerCase();
+      if (mode === "always" || mode === "never" || mode === "auto") {
+        diagnosticsColor = mode;
+        continue;
+      }
+      unknownFlags.push(args[i]);
+      continue;
+    }
+
     if (args[i] === "--modules") {
       modules = true;
       continue;
     }
-    if (args[i] === "--module-base") {
+    if (args[i] === "--no-modules") {
+      modules = false;
+      continue;
+    }
+    if (args[i] === "--module-base" || args[i] === "-I") {
       if (!args[i + 1] || args[i + 1].startsWith("-")) {
         console.error("Missing value for --module-base");
         process.exitCode = 1;
@@ -87,12 +408,55 @@ function main(argv: string[]): void {
       jsonErrors = true;
       continue;
     }
+    if (args[i] === "--color") {
+      if (!args[i + 1] || args[i + 1].startsWith("-")) {
+        console.error("Missing value for --color");
+        process.exitCode = 1;
+        return;
+      }
+      const colorValue = args[i + 1].trim().toLowerCase();
+      if (
+        colorValue !== "always" &&
+        colorValue !== "never" &&
+        colorValue !== "auto"
+      ) {
+        unknownFlags.push(`--color=${args[i + 1]}`);
+        i += 1;
+        continue;
+      }
+      diagnosticsColor = colorValue;
+      i += 1;
+      continue;
+    }
+    if (args[i].startsWith("--color=")) {
+      const colorValue = args[i].slice("--color=".length).trim().toLowerCase();
+      if (
+        colorValue !== "always" &&
+        colorValue !== "never" &&
+        colorValue !== "auto"
+      ) {
+        unknownFlags.push(args[i]);
+        continue;
+      }
+      diagnosticsColor = colorValue;
+      continue;
+    }
     if (args[i] === "--selfhost") {
       requestedBackend = "selfhost";
       continue;
     }
     if (args[i] === "--stage0") {
       requestedBackend = "stage0";
+      continue;
+    }
+    if (args[i] === "--backend") {
+      if (!args[i + 1] || args[i + 1].startsWith("-")) {
+        console.error("Missing value for --backend");
+        process.exitCode = 1;
+        return;
+      }
+      requestedBackend = args[i + 1];
+      i += 1;
       continue;
     }
     if (args[i] === "--lint") {
@@ -109,7 +473,11 @@ function main(argv: string[]): void {
       lintStrict = true;
       continue;
     }
-    if (args[i] === "--trace-passes") {
+    if (
+      args[i] === "--trace-passes" ||
+      args[i] === "-v" ||
+      args[i] === "--verbose"
+    ) {
       tracePasses = true;
       continue;
     }
@@ -128,6 +496,22 @@ function main(argv: string[]): void {
     }
   }
 
+  if (inputs.length === 0) {
+    console.error("Missing input file");
+    printUsage();
+    process.exitCode = 1;
+    return;
+  }
+  if (inputs.length > 1) {
+    console.error(
+      `Expected exactly one input file, got ${inputs.length}. Multi-file linking is not available yet.`,
+    );
+    process.exitCode = 1;
+    return;
+  }
+
+  const input = inputs[0];
+
   if (unknownFlags.length > 0) {
     console.error(`Unknown option(s): ${unknownFlags.join(", ")}`);
     printUsage();
@@ -144,7 +528,44 @@ function main(argv: string[]): void {
     return;
   }
 
-  const backend = requestedBackend ?? "selfhost";
+  const backend = requestedBackend ?? "stage0";
+  const strictViaGroups = [...warningErrorGroups].some(
+    (group) => group === "lint" || group === "all" || group === "extra",
+  );
+
+  if (backend === "selfhost") {
+    if (warningFlagsRequested || warningGroups.size > 0) lint = true;
+    if (warningFlagsStrict || strictViaGroups) lintStrict = true;
+  }
+
+  if (tracePasses) {
+    if (compileOnly) {
+      console.log("info: -c accepted (compile-only is default behavior)");
+    }
+    if (emitDebugInfo) {
+      console.log("info: -g accepted (debug metadata emission is reserved)");
+    }
+    if (optimizationLevel !== "O0") {
+      console.log(
+        `info: -${optimizationLevel} accepted (optimization pipeline reserved)`,
+      );
+    }
+    if (languageStandard !== "tuff2024") {
+      console.log(
+        `info: -std=${languageStandard} accepted (dialect checks are reserved)`,
+      );
+    }
+    if (backend !== "selfhost" && warningFlagsRequested) {
+      console.log(
+        "info: -W* flags accepted on stage0 as compatibility options (selfhost backend enables lint-backed warnings)",
+      );
+    }
+    if (diagnosticsColor !== "auto") {
+      console.log(
+        `info: diagnostics color mode set to '${diagnosticsColor}' (rendering policy hook active)`,
+      );
+    }
+  }
 
   const result = compileFileResult(path.resolve(input), output, {
     backend,
@@ -164,10 +585,11 @@ function main(argv: string[]): void {
 
   if (!result.ok) {
     const diag = toDiagnostic(result.error);
+    const useColor = shouldUseColor(diagnosticsColor);
     if (jsonErrors) {
       console.error(JSON.stringify(diag, undefined, 2));
     } else {
-      console.error(formatDiagnostic(diag));
+      console.error(colorize(formatDiagnostic(diag), 31, useColor));
     }
     process.exitCode = 1;
     return;
@@ -188,7 +610,13 @@ function main(argv: string[]): void {
 
   console.log(`Compiled ${input} -> ${outputPath}`);
   if (lint) {
+    const useColor = shouldUseColor(diagnosticsColor);
     printLintIssues(lintIssues);
+    if (lintIssues.length > 0) {
+      console.warn(
+        colorize(`tuffc: ${lintIssues.length} warning(s) generated.`, 33, useColor),
+      );
+    }
     if (lintStrict && lintIssues.length > 0) {
       process.exitCode = 1;
     }
