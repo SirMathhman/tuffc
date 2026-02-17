@@ -326,21 +326,6 @@ int64_t str_index_of(int64_t s, int64_t needle)
     return (int64_t)(pos - hay);
 }
 
-int64_t str_includes(int64_t s, int64_t needle)
-{
-    return str_index_of(s, needle) >= 0;
-}
-
-int64_t str_starts_with(int64_t s, int64_t prefix)
-{
-    const char *hay = tuff_str(s);
-    const char *pre = tuff_str(prefix);
-    if (hay == NULL || pre == NULL)
-        return 0;
-    size_t n = strlen(pre);
-    return strncmp(hay, pre, n) == 0;
-}
-
 int64_t str_trim(int64_t s)
 {
     const char *p = tuff_str(s);

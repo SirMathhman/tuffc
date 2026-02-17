@@ -1,7 +1,9 @@
 extern fn str_length(this: *Str) : USize;
 extern fn str_concat(this: *Str, b: *Str) : *Str;
-extern fn str_includes(this: *Str, needle: *Str) : Bool;
+extern fn str_index_of(this: *Str, needle: *Str) : I32;
 extern fn str_trim(this: *Str) : *Str;
+
+fn str_includes(this: *Str, needle: *Str) : Bool => this.str_index_of(needle) >= 0;
 
 fn main() : I32 => {
     let combined = "ab".str_concat("cd");

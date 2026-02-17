@@ -21,8 +21,15 @@ extern fn str_eq(this: *Str, b: *Str) : Bool;
 extern fn str_from_char_code(code: I32) : *Str;
 
 extern fn str_index_of(this: *Str, needle: *Str) : I32;
-extern fn str_includes(this: *Str, needle: *Str) : Bool;
-extern fn str_starts_with(this: *Str, prefix: *Str) : Bool;
+out fn str_includes(this: *Str, needle: *Str) : Bool => this.str_index_of(needle) >= 0;
+out fn str_starts_with(this: *Str, prefix: *Str) : Bool => {
+    let plen = prefix.str_length();
+    if (this.str_length() < plen) {
+        false
+    } else {
+        this.str_slice(0, plen).str_eq(prefix)
+    }
+}
 extern fn str_trim(this: *Str) : *Str;
 extern fn str_replace_all(this: *Str, from: *Str, to: *Str) : *Str;
 extern fn char_code(ch: *Str) : I32;
