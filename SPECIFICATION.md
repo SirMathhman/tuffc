@@ -234,7 +234,7 @@ fn compare<T : Comparable<T>>(a : T, b : T) => { ... }
 - References cannot outlive their referents
 - Enforced at compile time through lifetime analysis
 
-**Manual Lifetime Block Syntax (current keyword)**:
+**Lifetime Block Syntax**:
 
 ```tuff
 lifetime t {
@@ -242,10 +242,45 @@ lifetime t {
 }
 ```
 
+**Function Lifetime Parameters** (Rust-style):
+
+Declare lifetime parameters on functions using `<a, b: a>` syntax (no quotes on lifetime names):
+
+```tuff
+fn<a, b: a> borrow_two(x: *a I32, y: *b I32) : I32 => {
+    // x refers to lifetime 'a', y refers to lifetime 'b'
+    // b: a indicates that 'b' outlives 'a'
+    0
+}
+```
+
+**Pointer Lifetime Annotations** (optional):
+
+Pointers can carry lifetime information using `*a Type` or `*a mut Type` syntax (no quotes):
+
+```tuff
+let x : *a I32 = ...;        // Pointer to I32 with lifetime 'a'
+let y : *a mut I32 = ...;   // Mutable pointer to I32 with lifetime 'a'
+let z : *I32 = ...;         // Pointer to I32 (no lifetime annotation)
+```
+
+Both annotated and unannotated pointers are valid. Unannotated pointers (`*T`) default to an implicit lifetime scope.
+
+**Lifetime Bounds**:
+
+Use colon notation to express lifetime outlives relationships:
+
+```tuff
+fn<a, b: a> foo(...) => { ... }  // 'a outlives 'b (b: a)
+fn<a, b: a + c: b> bar(...) => { ... }  // 'a > 'b > 'c in outlives chain
+```
+
 Notes:
 
-- The keyword is singular: `lifetime`.
-- `lifetimes` is not a keyword and is treated as a normal identifier.
+- The keyword `lifetime` is singular (for lifetime blocks).
+- `lifetimes` is not a reserved keyword and is treated as a normal identifier.
+- Lifetime parameters are optional; both explicit and inferred lifetimes are supported.
+- Lifetime elision rules (Rust-style) apply when lifetimes are omitted.
 
 ### 2.4 Entities and Relationships
 
