@@ -100,6 +100,21 @@ expectFail(
   "unsupported-target",
 );
 expectFail(
+  ["./src/test/tuff/cases/factorial.tuff", "--native", "--target", "js"],
+  "--native is only supported when --target c is selected",
+  "native-js-target-rejected",
+);
+expectFail(
+  ["./src/test/tuff/cases/factorial.tuff", "--native-out"],
+  "Missing value for --native-out",
+  "missing-native-out-value",
+);
+expectFail(
+  ["./src/test/tuff/cases/factorial.tuff", "--cc"],
+  "Missing value for --cc",
+  "missing-cc-value",
+);
+expectFail(
   [
     "compile",
     "./src/test/tuff/cases/factorial.tuff",
@@ -188,6 +203,20 @@ expectPass(
     path.join(outDir, "diagnostics-color-flags.js"),
   ],
   "diagnostics-color-flags",
+);
+expectPassContains(
+  [
+    "./src/test/tuff/cases/factorial.tuff",
+    "--target",
+    "c",
+    "--native",
+    "-o",
+    path.join(outDir, "native-factorial.c"),
+    "--native-out",
+    path.join(outDir, process.platform === "win32" ? "native-factorial.exe" : "native-factorial"),
+  ],
+  "Native build succeeded:",
+  "native-c-build-success",
 );
 expectPassContains(
   ["--help=warnings"],

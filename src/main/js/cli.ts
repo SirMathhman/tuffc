@@ -2,14 +2,68 @@
 // @ts-nocheck
 import fs from "node:fs";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { compileFileResult } from "./compiler.ts";
 import { formatDiagnostic, toDiagnostic } from "./errors.ts";
 
 function printUsage(): void {
   console.log(
-    "Usage:\n  tuffc <input.tuff> [options]\n\nOptions:\n  -o, --out <file>          Write output to file\n  --target <js|c>           Output target (default: js)\n  -I, --module-base <dir>   Module root directory\n  --modules                 Enable module loading\n  --no-modules              Disable module loading\n  --selfhost                Use selfhost backend\n  --stage0                  Use stage0 backend\n  --backend <name>          Explicit backend name (stage0|selfhost, default: stage0)\n  -Wall                     Enable common warnings (maps to lint warnings)\n  -Wextra                   Enable extra warnings (maps to lint warnings)\n  -Werror                   Treat warnings as errors (maps to lint strict mode)\n  -Werror=<group>           Treat warning group as errors (e.g. lint, all, extra)\n  -Wno-error                Disable warning-as-error mode\n  -Wno-error=<group>        Disable warning group as errors\n  -Wno-lint, -w             Disable warning/lint compatibility mapping\n  --lint                    Run lint checks\n  --lint-fix                Apply lint auto-fixes\n  --lint-strict             Treat lint findings as errors\n  -O0|-O1|-O2|-O3|-Os      Optimization level (accepted; reserved for optimizer)\n  -g                        Emit debug info (accepted; reserved for debug metadata)\n  -c                        Compile only (default behavior; accepted for compatibility)\n  -std=<dialect>            Language dialect (e.g. -std=tuff2024)\n  --color=<auto|always|never>\n                            Diagnostics color policy\n  -fdiagnostics-color[=always|never|auto]\n                            Diagnostics color policy (clang-style)\n  @<file>                   Read additional args from response file\n  --json-errors             Emit diagnostics as JSON\n  -v, --verbose             Trace compiler passes\n  --trace-passes            Trace compiler passes\n  --version                 Print tuffc version\n  -h, --help                Show help\n  --help=<topic>            Show topic help (warnings|diagnostics|optimizers)\n\nDeprecated:\n  tuffc compile <input.tuff> [options]",
+    "Usage:\n  tuffc <input.tuff> [options]\n\nOptions:\n  -o, --out <file>          Write output to file\n  --target <js|c>           Output target (default: js)\n  --native                  For target c, compile+link generated C to native executable\n  --native-out <file>       Native executable output path when using --native\n  --cc <compiler>           Native C compiler command (default: auto-detect clang/gcc/cc)\n  -I, --module-base <dir>   Module root directory\n  --modules                 Enable module loading\n  --no-modules              Disable module loading\n  --selfhost                Use selfhost backend\n  --stage0                  Use stage0 backend\n  --backend <name>          Explicit backend name (stage0|selfhost, default: stage0)\n  -Wall                     Enable common warnings (maps to lint warnings)\n  -Wextra                   Enable extra warnings (maps to lint warnings)\n  -Werror                   Treat warnings as errors (maps to lint strict mode)\n  -Werror=<group>           Treat warning group as errors (e.g. lint, all, extra)\n  -Wno-error                Disable warning-as-error mode\n  -Wno-error=<group>        Disable warning group as errors\n  -Wno-lint, -w             Disable warning/lint compatibility mapping\n  --lint                    Run lint checks\n  --lint-fix                Apply lint auto-fixes\n  --lint-strict             Treat lint findings as errors\n  -O0|-O1|-O2|-O3|-Os      Optimization level (accepted; reserved for optimizer)\n  -g                        Emit debug info (accepted; reserved for debug metadata)\n  -c                        Compile only (default behavior; accepted for compatibility)\n  -std=<dialect>            Language dialect (e.g. -std=tuff2024)\n  --color=<auto|always|never>\n                            Diagnostics color policy\n  -fdiagnostics-color[=always|never|auto]\n                            Diagnostics color policy (clang-style)\n  @<file>                   Read additional args from response file\n  --json-errors             Emit diagnostics as JSON\n  -v, --verbose             Trace compiler passes\n  --trace-passes            Trace compiler passes\n  --version                 Print tuffc version\n  -h, --help                Show help\n  --help=<topic>            Show topic help (warnings|diagnostics|optimizers)\n\nDeprecated:\n  tuffc compile <input.tuff> [options]",
   );
+}
+
+function findNativeCompiler(requested: string | undefined): string | undefined {
+  const candidates = requested
+    ? [requested]
+    : process.platform === "win32"
+      ? ["clang", "gcc", "cc"]
+      : ["clang", "cc", "gcc"];
+
+  for (const candidate of candidates) {
+    const check = spawnSync(candidate, ["--version"], { encoding: "utf8" });
+    if (check.status === 0) return candidate;
+  }
+
+  return undefined;
+}
+
+function defaultNativeOutputPath(cOutputPath: string): string {
+  if (/\.c$/i.test(cOutputPath)) {
+    if (process.platform === "win32") {
+      return cOutputPath.replace(/\.c$/i, ".exe");
+    }
+    return cOutputPath.replace(/\.c$/i, "");
+  }
+  return process.platform === "win32" ? `${cOutputPath}.exe` : `${cOutputPath}.out`;
+}
+
+function compileNativeC(
+  cOutputPath: string,
+  nativeOutputPath: string,
+  compiler: string,
+): { ok: true } | { ok: false; message: string } {
+  const thisFile = fileURLToPath(import.meta.url);
+  const root = path.resolve(path.dirname(thisFile), "..", "..", "..");
+  const runtimeDir = path.join(root, "src", "main", "c");
+  const runtimeSource = path.join(runtimeDir, "tuff_runtime.c");
+
+  const compile = spawnSync(
+    compiler,
+    [cOutputPath, runtimeSource, "-I", runtimeDir, "-O0", "-o", nativeOutputPath],
+    { encoding: "utf8" },
+  );
+
+  if (compile.status !== 0) {
+    return {
+      ok: false,
+      message:
+        `Native C build failed with compiler '${compiler}'.\n` +
+        `${compile.stdout ?? ""}\n${compile.stderr ?? ""}`,
+    };
+  }
+
+  return { ok: true };
 }
 
 function printHelpTopic(topic: string): boolean {
@@ -235,6 +289,9 @@ function main(argv: string[]): void {
   let compileOnly = false;
   let languageStandard = "tuff2024";
   let diagnosticsColor: "auto" | "always" | "never" = "auto";
+  let nativeBuild = false;
+  let nativeOutput = undefined;
+  let requestedCompiler = undefined;
   let afterDoubleDash = false;
   const inputs = [];
   const unknownFlags = [];
@@ -343,6 +400,30 @@ function main(argv: string[]): void {
     }
     if (args[i] === "-c") {
       compileOnly = true;
+      continue;
+    }
+    if (args[i] === "--native") {
+      nativeBuild = true;
+      continue;
+    }
+    if (args[i] === "--native-out") {
+      if (!args[i + 1] || args[i + 1].startsWith("-")) {
+        console.error("Missing value for --native-out");
+        process.exitCode = 1;
+        return;
+      }
+      nativeOutput = path.resolve(args[i + 1]);
+      i += 1;
+      continue;
+    }
+    if (args[i] === "--cc") {
+      if (!args[i + 1] || args[i + 1].startsWith("-")) {
+        console.error("Missing value for --cc");
+        process.exitCode = 1;
+        return;
+      }
+      requestedCompiler = args[i + 1];
+      i += 1;
       continue;
     }
     if (args[i] === "-g") {
@@ -609,6 +690,36 @@ function main(argv: string[]): void {
   }
 
   console.log(`Compiled ${input} -> ${outputPath}`);
+
+  if (nativeBuild) {
+    if (target !== "c") {
+      console.error("--native is only supported when --target c is selected");
+      process.exitCode = 1;
+      return;
+    }
+
+    const compiler = findNativeCompiler(requestedCompiler);
+    if (!compiler) {
+      console.error(
+        requestedCompiler
+          ? `Requested C compiler '${requestedCompiler}' was not found in PATH.`
+          : "No C compiler found in PATH. Install clang/gcc or pass --cc <compiler>.",
+      );
+      process.exitCode = 1;
+      return;
+    }
+
+    const nativeOut = nativeOutput ?? defaultNativeOutputPath(outputPath);
+    const nativeResult = compileNativeC(outputPath, nativeOut, compiler);
+    if (!nativeResult.ok) {
+      console.error(nativeResult.message);
+      process.exitCode = 1;
+      return;
+    }
+
+    console.log(`Native build succeeded: ${nativeOut}`);
+  }
+
   if (lint) {
     const useColor = shouldUseColor(diagnosticsColor);
     printLintIssues(lintIssues);
