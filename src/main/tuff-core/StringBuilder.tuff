@@ -1,0 +1,8 @@
+extern type StringBuilder;
+
+out module StringBuilder {
+  expect fn sb_new() : StringBuilder;
+  expect fn sb_append(this : StringBuilder, s : *Str) : StringBuilder;
+  expect fn sb_append_char(this : StringBuilder, code : I32) : StringBuilder;
+  expect fn sb_build(this : StringBuilder) : *Str;
+}

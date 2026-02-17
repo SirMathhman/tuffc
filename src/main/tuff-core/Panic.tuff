@@ -1,0 +1,4 @@
+out module Panic {
+  expect fn panic(msg : *Str) : I32;
+  expect fn panic_with_code(code : *Str, msg : *Str, reason : *Str, fix : *Str) : I32;
+}

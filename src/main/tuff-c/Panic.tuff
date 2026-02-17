@@ -1,0 +1,10 @@
+extern fn panic(msg : *Str) : I32;
+extern fn panic_with_code(code : *Str, msg : *Str, reason : *Str, fix : *Str) : I32;
+
+out module Panic {
+  expect fn panic(msg : *Str) : I32;
+  expect fn panic_with_code(code : *Str, msg : *Str, reason : *Str, fix : *Str) : I32;
+
+  actual fn panic(msg : *Str) : I32 => panic(msg);
+  actual fn panic_with_code(code : *Str, msg : *Str, reason : *Str, fix : *Str) : I32 => panic_with_code(code, msg, reason, fix);
+}

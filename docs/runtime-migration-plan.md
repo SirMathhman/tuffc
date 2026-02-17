@@ -116,7 +116,7 @@ Status: ✅ completed.
 - Added capability modules across runtime packages:
   - `Strings.tuff`
   - `Collections.tuff`
-  for `tuff-core`, `tuff-c`, and `tuff-js`.
+    for `tuff-core`, `tuff-c`, and `tuff-js`.
 - Updated default alias regression to import and exercise `tuff_core::Strings` + `tuff_core::Collections`.
 - Renamed C codegen dependency to substrate-oriented API:
   - `getEmbeddedCSubstrateSupport` (compat wrapper retained for `getEmbeddedCRuntimeSupport`).
