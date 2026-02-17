@@ -105,8 +105,54 @@
 - Full regression: `npm test`
 - Targeted checks: `npm run stage2:verify`, `npm run stage4:verify`, `npm run borrow:verify`
 - Selfhost checks: `npm run selfhost:modules`, `npm run selfhost:diagnostics`, `npm run selfhost:parity`
+- **C backend**: `npm run c:verify:full` (smoke + e2e + alias checks); `npm run c:native:verify` (requires clang/gcc)
 - Lint/type tooling: `npm run lint:eslint`, `npm run lint:throws`, `npm run typecheck`
 - Browser bundle/API: `npm run build:web`, `npm run build:web:esm`, `npm run web:verify`
+
+## C Backend
+
+The Stage0 compiler has a second codegen target: `target: "c"` (in addition to the default JS target).
+
+### C substrate layout
+
+- **`src/main/c/`** — low-level C runtime: 6 headers + 6 implementations assembled in dependency order:
+  - `substrate.h/.c` — ABI types (TuffValue, Vec, Map, Set, StringBuilder), tagged-value encoding, managed string registry, `tuff_panic`
+  - `strings.h/.c` — string operations (`str_length`, `str_concat`, `str_eq`, etc.)
+  - `string-builder.h/.c` — `sb_new`, `sb_append`, `sb_build`
+  - `collections.h/.c` — Vec/Map/Set operations (`__vec_new`, `vec_push`, `map_set`, `set_add`, etc.)
+  - `io.h/.c` — `read_file`, `write_file`, `path_join`, `path_dirname`, `print`, `print_error`
+  - `panic.h/.c` — `panic`, `panic_with_code`
+- Assembly is concatenated in that order (headers first, then implementations) by `src/main/js/c-runtime-support.ts`. All 12 files form **one translation unit**.
+- **`src/main/tuff-c/`** — capability modules (`.tuff` files only): `Collections.tuff`, `IO.tuff`, `Panic.tuff`, `StringBuilder.tuff`, `Strings.tuff`, `stdlib.tuff`, `Console.tuff`. Each exposes C functions to Tuff via `extern fn` + `out expect fn` / `out actual fn` flat pattern.
+
+### `extern let` attribution rules
+
+Every `extern fn` declaration in a `.tuff` file MUST be preceded by an `extern let { ... } = module;` statement attributing the source module. The module name must match the actual C file name (without extension), using underscores instead of hyphens:
+
+```tuff
+extern let { sb_new, sb_append, sb_append_char, sb_build } = string_builder;
+extern fn sb_new() : StringBuilder;
+```
+
+- `= collections`, `= io`, `= panic`, `= string_builder`, `= strings` for tuff-c functions
+- `= string` (C stdlib `<string.h>`) for `strlen` etc.
+- `= stdlib` for libc functions like `printf`
+- Codegen validates attribution at compile time — missing attribution is a hard error.
+
+### C verification scripts
+
+- **`npm run c:verify`** — C backend smoke tests + monomorphization plan checks
+- **`npm run c:native:verify`** — end-to-end: compile `.tuff` → `.c` → native binary via clang/gcc, run it, compare output (skips if no C compiler found)
+- **`npm run c:verify:full`** — full C suite: `c:verify` + `expect:actual:verify` + `runtime:aliases` + `c:native:verify`
+- **`npm run expect:actual:verify`** — validates `out expect fn` / `out actual fn` alias resolution in tuff-c modules
+- **`npm run runtime:aliases`** — validates runtime package default alias resolution
+
+### Key files for C backend changes
+
+- Code generation: `src/main/js/codegen-c.ts`
+- C runtime loader: `src/main/js/c-runtime-support.ts`
+- Capability modules: `src/main/tuff-c/*.tuff`
+- C source files: `src/main/c/*.h` + `src/main/c/*.c`
 
 ## Integration points
 
