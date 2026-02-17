@@ -13,15 +13,15 @@ This matrix is the Phase 0 source-of-truth for runtime surface area used by C-ta
 
 ## Capability groups
 
-| Group | C ABI Symbols | Primary Consumers | Current Status |
-|---|---|---|---|
-| Strings | `str_length`, `str_char_at`, `str_slice`, `str_concat`, `str_eq`, `str_from_char_code`, `str_index_of`, `str_includes`, `str_starts_with`, `str_trim`, `str_replace_all`, `char_code`, `int_to_string`, `parse_int` | `src/main/tuff/selfhost/runtime_lexer.tuff`, generated C | Implemented in `tuff_runtime.c`; declaration drift noted in header comment for `str_length`. |
-| Builders | `sb_new`, `sb_append`, `sb_append_char`, `sb_build` | selfhost runtime lexer and diagnostics flows | Implemented; ownership semantics must stay explicit (builder consumed by `sb_build`). |
-| Vec | `vec_new`, `vec_push`, `vec_pop`, `vec_get`, `vec_set`, `vec_length`, `vec_clear`, `vec_join`, `vec_includes` | selfhost lexer/token storage, generated C | Implemented; semantics are dynamic array over `int64_t` values. |
-| Map | `map_new`, `map_set`, `map_get`, `map_has` | selfhost interning + lookup tables | Implemented; string keys canonicalized via managed string registry. |
-| Set | `set_new`, `set_add`, `set_has`, `set_delete` | selfhost keyword set and membership tests | Implemented; string item canonicalization mirrors map behavior. |
-| IO / Path | `read_file`, `write_file`, `path_join`, `path_dirname` | selfhost file/module operations | Implemented; parent directory creation is runtime-assisted in `write_file`. |
-| Diagnostics / Panic | `tuff_panic`, `print`, `print_error`, `panic`, `panic_with_code` | all runtime consumers | Implemented; panic path aborts process and surfaces diagnostic context. |
+| Group               | C ABI Symbols                                                                                                                                                                                                       | Primary Consumers                                        | Current Status                                                                               |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| Strings             | `str_length`, `str_char_at`, `str_slice`, `str_concat`, `str_eq`, `str_from_char_code`, `str_index_of`, `str_includes`, `str_starts_with`, `str_trim`, `str_replace_all`, `char_code`, `int_to_string`, `parse_int` | `src/main/tuff/selfhost/runtime_lexer.tuff`, generated C | Implemented in `tuff_runtime.c`; declaration drift noted in header comment for `str_length`. |
+| Builders            | `sb_new`, `sb_append`, `sb_append_char`, `sb_build`                                                                                                                                                                 | selfhost runtime lexer and diagnostics flows             | Implemented; ownership semantics must stay explicit (builder consumed by `sb_build`).        |
+| Vec                 | `vec_new`, `vec_push`, `vec_pop`, `vec_get`, `vec_set`, `vec_length`, `vec_clear`, `vec_join`, `vec_includes`                                                                                                       | selfhost lexer/token storage, generated C                | Implemented; semantics are dynamic array over `int64_t` values.                              |
+| Map                 | `map_new`, `map_set`, `map_get`, `map_has`                                                                                                                                                                          | selfhost interning + lookup tables                       | Implemented; string keys canonicalized via managed string registry.                          |
+| Set                 | `set_new`, `set_add`, `set_has`, `set_delete`                                                                                                                                                                       | selfhost keyword set and membership tests                | Implemented; string item canonicalization mirrors map behavior.                              |
+| IO / Path           | `read_file`, `write_file`, `path_join`, `path_dirname`                                                                                                                                                              | selfhost file/module operations                          | Implemented; parent directory creation is runtime-assisted in `write_file`.                  |
+| Diagnostics / Panic | `tuff_panic`, `print`, `print_error`, `panic`, `panic_with_code`                                                                                                                                                    | all runtime consumers                                    | Implemented; panic path aborts process and surfaces diagnostic context.                      |
 
 ## Current declaration map
 
@@ -40,10 +40,13 @@ This matrix is the Phase 0 source-of-truth for runtime surface area used by C-ta
 
 1. `str_length` is actively used in selfhost extern declarations and runtime code paths, but header comment claims it is no longer needed.
 2. Runtime contracts are currently represented in multiple places (C header, selfhost extern declarations, expect/actual stdlib) and must stay synchronized.
-3. C backend currently emits source and relies on external compile/link harnesses; one-command native build is still pending.
+3. Transitional runtime ownership still spans C runtime symbols and target-library boundaries; capability cutover should remain grouped and gate-driven.
 
-## Baseline verification command
+## Verification commands
 
 - `npm run c:verify`
+- `npm run expect:actual:verify`
+- `npm run c:native:verify`
+- `npm run c:verify:full`
 
-Expected baseline result before migration work: smoke suite passes and compiles generated C with runtime linkage.
+Expected result: smoke/runtime/expect-actual/native CLI checks pass with runtime linkage.
