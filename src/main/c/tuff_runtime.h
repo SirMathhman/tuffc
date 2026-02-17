@@ -18,7 +18,7 @@ extern "C"
     void tuff_panic(const char *message);
 
     /* String operations (string values are passed as int64_t pointer handles) */
-    int64_t str_length(int64_t s);
+    int64_t str_length(int64_t s); // We don't need this function anymore
     int64_t str_char_at(int64_t s, int64_t i);
     int64_t str_slice(int64_t s, int64_t start, int64_t end);
     int64_t str_concat(int64_t a, int64_t b);

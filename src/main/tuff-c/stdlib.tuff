@@ -1,0 +1,8 @@
+// #include <stdlib.h>
+extern let { strlen } = stdlib;
+
+extern fn strlen(s : *Str) : USize;
+
+out module Strings {
+    out actual fn length(this : *Str) : USize => strlen(this);
+}
