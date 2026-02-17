@@ -120,13 +120,21 @@ export function buildStageChain(root, outDir) {
 
   const stage3Path = path.join(outDir, "stage3.js");
   if (typeof stage2.compile_file_with_options === "function") {
-    stage2.compile_file_with_options(selfhostPath, stage3Path, 0, 0, 500, 1);
+    stage2.compile_file_with_options(
+      selfhostPath,
+      stage3Path,
+      0,
+      0,
+      500,
+      1,
+      "js",
+    );
   } else if (typeof stage2.compile_file === "function") {
     stage2.compile_file(selfhostPath, stage3Path);
   } else {
     const stage3JsFromSource =
       typeof stage2.compile_source_with_options === "function"
-        ? stage2.compile_source_with_options(selfhostSource, 0, 0, 500, 1)
+        ? stage2.compile_source_with_options(selfhostSource, 0, 0, 500, 1, "js")
         : stage2.compile_source(selfhostSource);
     fs.writeFileSync(stage3Path, stage3JsFromSource, "utf8");
   }

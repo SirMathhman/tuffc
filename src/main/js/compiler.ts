@@ -343,6 +343,7 @@ function bootstrapSelfhostCompiler(options = {}): CompilerResult<unknown> {
   const stage0Result = compileFileInternal(selfhostEntry, selfhostOutput, {
     ...options,
     backend: "stage0",
+    target: "js",
     enableModules: true,
     modules: { moduleBaseDir: path.dirname(selfhostEntry) },
     resolve: {
@@ -359,10 +360,30 @@ function bootstrapSelfhostCompiler(options = {}): CompilerResult<unknown> {
 
   if (!stage0Result.ok) return stage0Result;
 
+  const hostEmitTargetFromSource = (
+    source,
+    target,
+    filePath = "<selfhost>",
+  ) => {
+    const normalizedTarget = typeof target === "string" ? target : "js";
+    const stage0Compile = compileSource(source, filePath, {
+      backend: "stage0",
+      target: normalizedTarget,
+      lint: { enabled: false },
+      typecheck: { strictSafety: true },
+      borrowcheck: { enabled: true },
+    });
+    if (!stage0Compile.ok) {
+      throw stage0Compile.error;
+    }
+    return stage0Compile.value.output;
+  };
+
   const sandbox = {
     module: { exports: {} },
     exports: {},
     console,
+    __host_emit_target_from_source: hostEmitTargetFromSource,
     ...runtime,
   };
 
@@ -473,24 +494,6 @@ function ensureSupportedTarget(target): CompilerResult<true> {
   );
 }
 
-function ensureSelfhostJsTarget(target): CompilerResult<true> {
-  if (target === "js") {
-    return ok(true);
-  }
-  return err(
-    new TuffError(
-      `Selfhost backend does not support target '${target}' yet`,
-      undefined,
-      {
-        code: "E_SELFHOST_UNSUPPORTED_OPTION",
-        reason:
-          "Selfhost backend currently emits JavaScript only and cannot generate other targets.",
-        fix: "Use backend: 'stage0' for target 'c', or set target: 'js' when using selfhost.",
-      },
-    ),
-  );
-}
-
 function stage0LintUnsupportedError(): CompilerResult<never> {
   return err(
     new TuffError("Stage0 backend no longer supports linting", undefined, {
@@ -503,8 +506,8 @@ function stage0LintUnsupportedError(): CompilerResult<never> {
 }
 
 function ensureSelfhostBackendOptions(target, options): CompilerResult<true> {
-  const selfhostTargetCheck = ensureSelfhostJsTarget(target);
-  if (!selfhostTargetCheck.ok) return selfhostTargetCheck;
+  const targetCheck = ensureSupportedTarget(target);
+  if (!targetCheck.ok) return targetCheck;
   if (options.lint?.fix) {
     return err(
       new TuffError(
@@ -555,7 +558,8 @@ function makeSelfhostCompileResult(source, js, target, lintIssues, outputPath) {
     tokens: [],
     cst: { kind: "Program", body: [] },
     core: { kind: "Program", body: [] },
-    js,
+    js: target === "js" ? js : undefined,
+    c: target === "c" ? js : undefined,
     output: js,
     target,
     lintIssues,
@@ -875,6 +879,7 @@ export function compileSource(
               lintEnabled,
               maxEffectiveLines,
               borrowEnabled ? 1 : 0,
+              target,
             )
           : selfhost.compile_source(effectiveSource),
       );
@@ -1020,6 +1025,7 @@ function compileFileInternal(
               lintEnabled,
               maxEffectiveLines,
               borrowEnabled ? 1 : 0,
+              target,
             );
           } else {
             selfhost.compile_file(normalizedInput, normalizedOutput);
@@ -1035,6 +1041,7 @@ function compileFileInternal(
                 lintEnabled,
                 maxEffectiveLines,
                 borrowEnabled ? 1 : 0,
+                target,
               )
             : selfhost.compile_source(source),
         );

@@ -23,6 +23,7 @@ let { typecheck_program, typecheck_program_with_options } = selfhost::typecheck;
 let { borrowcheck_program } = selfhost::borrowcheck;
 let { generate_js } = selfhost::codegen_stmt;
 let { lint_reset, lint_take_issues, lint_program } = selfhost::linter;
+extern fn __host_emit_target_from_source(source: *Str, target: *Str) : *Str;
 
 fn sanitize_max_effective_lines(max_effective_lines: I32) : I32 => {
     if (max_effective_lines <= 0) {
@@ -36,7 +37,23 @@ fn normalize_flag(value: I32) : I32 => {
     if (value == 0) { 0 } else { 1 }
 }
 
-out fn compile_source_with_options(source: *Str, strict_safety: I32, lint_enabled: I32, max_effective_lines: I32, borrow_enabled: I32) : *Str => {
+fn emit_target_output(typed: I32, source: *Str, target: *Str) : *Str => {
+    if (target.str_eq("js")) {
+        return generate_js(typed);
+    }
+    if (target.str_eq("c")) {
+        return __host_emit_target_from_source(source, target);
+    }
+    panic_with_code(
+        "E_UNSUPPORTED_TARGET",
+        "Unsupported codegen target: ".str_concat(target),
+        "The compiler was asked to emit code for a target that is not implemented.",
+        "Use target 'js' or target 'c'."
+    );
+    ""
+}
+
+out fn compile_source_with_options(source: *Str, strict_safety: I32, lint_enabled: I32, max_effective_lines: I32, borrow_enabled: I32, target: *Str) : *Str => {
     let max_lines = sanitize_max_effective_lines(max_effective_lines);
     let strict = normalize_flag(strict_safety);
     let lint = normalize_flag(lint_enabled);
@@ -55,13 +72,13 @@ out fn compile_source_with_options(source: *Str, strict_safety: I32, lint_enable
     if (lint == 1) {
         lint_program(typed, "<memory>", max_lines);
     }
-    generate_js(typed)
+    emit_target_output(typed, source, target)
 }
 
 out fn take_lint_issues() : *Str => lint_take_issues();
 
 // Main compiler pipeline
-fn compile_source(source: *Str) : *Str => compile_source_with_options(source, 1, 0, 500, 1);
+fn compile_source(source: *Str) : *Str => compile_source_with_options(source, 1, 0, 500, 1, "js");
 
 // Entry point for testing
 fn main() : I32 => {

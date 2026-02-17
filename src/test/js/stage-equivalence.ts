@@ -64,6 +64,7 @@ const stageById = {
                 lintEnabled,
                 maxEffectiveLines,
                 borrowEnabled,
+                "js",
               )
             : chain.stage2.compile_source(source);
         return { ok: true, js };
@@ -89,6 +90,7 @@ const stageById = {
                 lintEnabled,
                 maxEffectiveLines,
                 borrowEnabled,
+                "js",
               )
             : chain.stage3.compile_source(source);
         return { ok: true, js };

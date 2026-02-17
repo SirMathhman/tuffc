@@ -131,7 +131,15 @@ try {
 console.log("Testing bootstrap (self-compilation)...");
 try {
   const selfhostBPath = path.join(outDir, "selfhost_b.js");
-  selfhost.compile_file_with_options(selfhostPath, selfhostBPath, 0, 0, 500);
+  selfhost.compile_file_with_options(
+    selfhostPath,
+    selfhostBPath,
+    0,
+    0,
+    500,
+    1,
+    "js",
+  );
   const selfhostB = fs.readFileSync(selfhostBPath, "utf8");
   fs.writeFileSync(path.join(outDir, "selfhost_b.js"), selfhostB, "utf8");
   console.log("  -> Self-hosted compiler compiled itself!");
@@ -151,6 +159,8 @@ try {
     0,
     0,
     500,
+    1,
+    "js",
   );
   const selfhostC = fs.readFileSync(selfhostCPath, "utf8");
   fs.writeFileSync(path.join(outDir, "selfhost_c.js"), selfhostC, "utf8");

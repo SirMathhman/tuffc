@@ -18,6 +18,22 @@ fn module_loader_sanitize_max_effective_lines(max_effective_lines: I32) : I32 =>
     }
 }
 
+fn module_emit_target_output(typed: I32, merged_source: *Str, target: *Str) : *Str => {
+    if (target.str_eq("js")) {
+        return generate_js(typed);
+    }
+    if (target.str_eq("c")) {
+        return __host_emit_target_from_source(merged_source, target);
+    }
+    panic_with_code(
+        "E_UNSUPPORTED_TARGET",
+        "Unsupported codegen target: ".str_concat(target),
+        "The compiler was asked to emit code for a target that is not implemented.",
+        "Use target 'js' or target 'c'."
+    );
+    ""
+}
+
     fn module_loader_normalize_flag(value: I32) : I32 => {
         if (value == 0) { 0 } else { 1 }
     }
@@ -495,10 +511,10 @@ fn gather_module_sources(filePath: *Str, moduleBasePath: *Str, seen: *mut Set, v
 }
 
 out fn compile_file(inputPath: *Str, outputPath: *Str) : I32 => {
-    compile_file_with_options(inputPath, outputPath, 1, 0, 500, 1)
+    compile_file_with_options(inputPath, outputPath, 1, 0, 500, 1, "js")
 }
 
-out fn compile_file_with_options(inputPath: *Str, outputPath: *Str, strict_safety: I32, lint_enabled: I32, max_effective_lines: I32, borrow_enabled: I32) : I32 => {
+out fn compile_file_with_options(inputPath: *Str, outputPath: *Str, strict_safety: I32, lint_enabled: I32, max_effective_lines: I32, borrow_enabled: I32, target: *Str) : I32 => {
     let max_lines = module_loader_sanitize_max_effective_lines(max_effective_lines);
     let strict = module_loader_normalize_flag(strict_safety);
     let lint = module_loader_normalize_flag(lint_enabled);
@@ -535,7 +551,7 @@ out fn compile_file_with_options(inputPath: *Str, outputPath: *Str, strict_safet
             i = i + 1;
         }
     }
-    let js = generate_js(typed);
-    write_file(outputPath, js)
+    let emitted = module_emit_target_output(typed, merged, target);
+    write_file(outputPath, emitted)
 }
 
