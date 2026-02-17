@@ -614,7 +614,11 @@ function main(argv: string[]): void {
     printLintIssues(lintIssues);
     if (lintIssues.length > 0) {
       console.warn(
-        colorize(`tuffc: ${lintIssues.length} warning(s) generated.`, 33, useColor),
+        colorize(
+          `tuffc: ${lintIssues.length} warning(s) generated.`,
+          33,
+          useColor,
+        ),
       );
     }
     if (lintStrict && lintIssues.length > 0) {
