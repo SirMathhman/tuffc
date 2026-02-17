@@ -1,43 +1,6 @@
-// Tuff C substrate: ABI types, tagged-value encoding, managed string registry, tuff_panic.
-// This file is included first in generated C output.
-// All other tuff-c/*.c files depend on types and helpers defined here.
-
-typedef int64_t TuffValue;
-typedef int64_t StringBuilder;
-typedef int64_t Vec;
-typedef int64_t Map;
-typedef int64_t Set;
-
-void tuff_panic(const char *message);
-
-typedef struct
-{
-    char *buf;
-    size_t len;
-    size_t cap;
-} TuffStringBuilder;
-
-typedef struct
-{
-    int64_t *data;
-    size_t init;
-    size_t length;
-} TuffVec;
-
-typedef struct
-{
-    int64_t *keys;
-    int64_t *vals;
-    size_t len;
-    size_t cap;
-} TuffMap;
-
-typedef struct
-{
-    int64_t *items;
-    size_t len;
-    size_t cap;
-} TuffSet;
+// Tuff C substrate: managed string registry, tagged-value helpers, and tuff_panic.
+// Types declared in substrate.h (included before this file in the concatenated assembly).
+// Concatenated before strings.c, string-builder.c, collections.c, io.c, panic.c.
 
 static char **g_managed_strings = NULL;
 static size_t g_managed_strings_len = 0;

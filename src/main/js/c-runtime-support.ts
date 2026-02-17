@@ -4,24 +4,32 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __thisFile = fileURLToPath(import.meta.url);
-// Resolve sibling tuff-c package relative to this compiler file's location.
-// Layout: src/main/js/c-runtime-support.ts -> src/main/tuff-c/
-const __tuffCDir = path.resolve(path.dirname(__thisFile), "..", "tuff-c");
+// Resolve sibling c package relative to this compiler file's location.
+// Layout: src/main/js/c-runtime-support.ts -> src/main/c/
+const __cDir = path.resolve(path.dirname(__thisFile), "..", "c");
 
-function readTuffC(name) {
-  return fs.readFileSync(path.join(__tuffCDir, name), "utf8");
+function readC(name) {
+  return fs.readFileSync(path.join(__cDir, name), "utf8");
 }
 
 // Load the C substrate files in dependency order.
-// Each file's comments describe its dependencies.
+// Headers first (type definitions and forward declarations), then implementations.
 function assembleCSubstrate() {
   return [
-    readTuffC("substrate.c"),
-    readTuffC("strings.c"),
-    readTuffC("string-builder.c"),
-    readTuffC("collections.c"),
-    readTuffC("io.c"),
-    readTuffC("panic.c"),
+    // Headers: types and forward declarations
+    readC("substrate.h"),
+    readC("strings.h"),
+    readC("string-builder.h"),
+    readC("collections.h"),
+    readC("io.h"),
+    readC("panic.h"),
+    // Implementations
+    readC("substrate.c"),
+    readC("strings.c"),
+    readC("string-builder.c"),
+    readC("collections.c"),
+    readC("io.c"),
+    readC("panic.c"),
   ].join("\n");
 }
 

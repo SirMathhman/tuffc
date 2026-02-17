@@ -1,4 +1,4 @@
-extern let { sb_new, sb_append, sb_append_char, sb_build } = tuff_c;
+extern let { sb_new, sb_append, sb_append_char, sb_build } = string_builder;
 
 extern type StringBuilder;
 

@@ -1,4 +1,4 @@
-extern let { read_file, write_file, path_join, path_dirname, print, print_error } = tuff_c;
+extern let { read_file, write_file, path_join, path_dirname, print, print_error } = io;
 
 extern fn read_file(path : *Str) : *Str;
 extern fn write_file(path : *Str, contents : *Str) : I32;

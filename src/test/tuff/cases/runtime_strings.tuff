@@ -1,4 +1,4 @@
-extern let { str_length, str_concat, str_index_of, str_trim } = tuff_c;
+extern let { str_length, str_concat, str_index_of, str_trim } = strings;
 
 extern fn str_length(this: *Str) : USize;
 extern fn str_concat(this: *Str, b: *Str) : *Str;
