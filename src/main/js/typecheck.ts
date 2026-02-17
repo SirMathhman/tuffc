@@ -72,9 +72,33 @@ function named(type) {
   if (type.kind === "RefinementType") return named(type.base);
   if (type.kind === "UnionType")
     return `${named(type.left)}|${named(type.right)}`;
-  if (type.kind === "ArrayType") return "Array";
+  if (type.kind === "ArrayType") {
+    const elementName = named(type.element) ?? "Unknown";
+    if (type.init !== undefined && type.total !== undefined) {
+      const init = literalNumber(type.init);
+      const total = literalNumber(type.total);
+      if (init !== undefined && total !== undefined) {
+        return `[${elementName};${init};${total}]`;
+      }
+      return `[${elementName};init;length]`;
+    }
+    return `[${elementName}]`;
+  }
   if (type.kind === "PointerType") {
     const inner = named(type.to) ?? "Unknown";
+    if (type.to?.kind === "ArrayType") {
+      const arr = type.to;
+      const elem = named(arr.element) ?? "Unknown";
+      if (arr.init !== undefined && arr.total !== undefined) {
+        const init = literalNumber(arr.init);
+        const total = literalNumber(arr.total);
+        if (init !== undefined && total !== undefined) {
+          return `*[${elem};${init};${total}]`;
+        }
+        return `*[${elem};init;length]`;
+      }
+      return `*[${elem}]`;
+    }
     if (type.move) return `*move ${inner}`;
     return type.mutable ? `*mut ${inner}` : `*${inner}`;
   }
@@ -99,6 +123,8 @@ function cloneInfo(info) {
     nonZero: !!info?.nonZero,
     arrayInit: info?.arrayInit ?? undefined,
     arrayTotal: info?.arrayTotal ?? undefined,
+    arrayElementName: info?.arrayElementName ?? undefined,
+    pointerShape: info?.pointerShape ?? undefined,
     unionTags: info?.unionTags ? [...info.unionTags] : undefined,
     typeNode: info?.typeNode ?? undefined,
   };
@@ -281,6 +307,13 @@ function collectTypeVariables(type, knownTypeNames, out) {
 
 function literalNumber(expr) {
   return expr?.kind === "NumberLiteral" ? expr.value : undefined;
+}
+
+function literalUSize(expr) {
+  if (expr?.kind !== "NumberLiteral") return undefined;
+  if (expr.numberType && expr.numberType !== "USize") return undefined;
+  const value = Number(expr.value);
+  return Number.isFinite(value) ? value : undefined;
 }
 
 function isUSizeZeroLiteralExpr(expr) {
@@ -725,18 +758,50 @@ export function typecheck(
     }
 
     if (type.kind === "ArrayType") {
+      const elementName = named(type.element) ?? "Unknown";
+      const arrayInit = literalUSize(type.init);
+      const arrayTotal = literalUSize(type.total);
       return {
-        name: "Array",
+        name:
+          arrayInit !== undefined && arrayTotal !== undefined
+            ? `[${elementName};${arrayInit};${arrayTotal}]`
+            : `[${elementName}]`,
         min: undefined,
         max: undefined,
         nonZero: false,
-        arrayInit: literalNumber(type.init),
-        arrayTotal: literalNumber(type.total),
+        arrayInit,
+        arrayTotal,
+        arrayElementName: elementName,
         typeNode: type,
       };
     }
 
     if (type.kind === "PointerType") {
+      if (type.to?.kind === "ArrayType") {
+        const elementInfo = resolveTypeInfo(type.to.element, seenAliases);
+        const elementName = elementInfo?.name ?? "Unknown";
+        const arrayInit = literalUSize(type.to.init);
+        const arrayTotal = literalUSize(type.to.total);
+        const pointerName =
+          arrayInit !== undefined && arrayTotal !== undefined
+            ? `*[${elementName};${arrayInit};${arrayTotal}]`
+            : `*[${elementName}]`;
+        return {
+          name: pointerName,
+          min: undefined,
+          max: undefined,
+          nonZero: false,
+          arrayInit,
+          arrayTotal,
+          arrayElementName: elementName,
+          pointerShape:
+            arrayInit !== undefined && arrayTotal !== undefined
+              ? "thin-array"
+              : "fat-array",
+          typeNode: type,
+        };
+      }
+
       const inner = resolveTypeInfo(type.to, seenAliases);
       const pointerName = type.move
         ? `*move ${inner.name}`
@@ -1607,8 +1672,37 @@ export function typecheck(
           );
         }
         if (expr.property === "length" || expr.property === "init") {
-          const max = t.arrayTotal ?? t.arrayInit ?? undefined;
-          return ok({ name: "USize", min: 0, max, nonZero: false });
+          if (t.pointerShape === "fat-array") {
+            const max = t.arrayTotal ?? undefined;
+            return ok({ name: "USize", min: 0, max, nonZero: false });
+          }
+          if (t.pointerShape === "thin-array") {
+            const value = expr.property === "init" ? t.arrayInit : t.arrayTotal;
+            return ok({
+              name: "USize",
+              min: value,
+              max: value,
+              nonZero: value !== 0,
+            });
+          }
+
+          const hasArrayMeta =
+            t.arrayInit !== undefined || t.arrayTotal !== undefined;
+          if (hasArrayMeta) {
+            const max = t.arrayTotal ?? t.arrayInit ?? undefined;
+            return ok({ name: "USize", min: 0, max, nonZero: false });
+          }
+
+          return err(
+            new TuffError(
+              `Member '.${expr.property}' is only valid on array-pointer shapes`,
+              expr.loc,
+              {
+                code: "E_TYPE_MEMBER_INVALID",
+                hint: "Use '.init/.length' on *[T] or *[T;I;L] values.",
+              },
+            ),
+          );
         }
         return ok({
           name: "Unknown",
