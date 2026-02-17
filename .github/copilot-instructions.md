@@ -15,22 +15,90 @@
 - Borrow semantics and copy-type rules: `src/main/js/borrowcheck.ts`
 - Selfhost parity baseline: `src/test/js/selfhost-parity.ts`
 - Production diagnostics contract: `src/test/js/phase4-production.ts`
+- Result<T,E> error model: `src/main/js/result.ts`
 
 ## Critical project conventions
 
-- Prefer `Result<T, E>` (`ok/err`) in compiler internals (`src/main/js/result.ts`); do not add new exception-based control flow.
-- Preserve stable diagnostic codes and the 4-part contract (`source`, `cause`, `reason`, `fix`); tests assert both.
-- Keep compiler pass boundaries explicit; avoid cross-pass refactors unless necessary.
+### Error Handling (Zero-Throw Policy)
+
+- ALL compiler code uses `Result<T, E>` (`ok/err`) from `src/main/js/result.ts`; **never throw exceptions**.
+- `npm run lint:throws` enforces this in CI—new throws will fail the build.
+- Use `flatMap`, `mapError`, `unwrapOr` combinators for error propagation.
+- Why: Enables Tuff-in-Tuff portability, explicit control flow, testable error paths.
+
+### Diagnostic Contract (4-Part Structure)
+
+- Every `TuffError` MUST have: `code`, `source`, `cause`, `reason`, `fix`.
+- Tests assert both diagnostic codes AND all 4 fields (`diagnostic-contract-utils.ts`).
+- Stable codes (e.g., `E_SAFETY_DIV_BY_ZERO`, `E_RESOLVE_SHADOWING`) are part of the API contract.
+- Never rename diagnostic codes without updating all affected tests.
+
+### Pass Boundaries
+
+- Each pass has strict input/output types (tokens → CST → Core AST → modified Core).
+- Passes stop on first error (no error accumulation across passes).
+- Cross-pass refactors should be avoided unless semantically necessary.
 - Keep local ESM imports with explicit `.ts` extensions.
-- Stage0 and selfhost changes should be mirrored when semantics overlap (parser/typecheck/borrow/module behavior).
+
+### Stage0 ↔ Selfhost Alignment
+
+- When changing parser, typecheck, borrow, module, or lint semantics in Stage0, mirror the change in selfhost.
+- `npm run selfhost:parity` enforces behavioral equivalence.
+- Selfhost is preferred by default for JS target; Stage0 is used for C backend and bootstrap.
 
 ## Language semantics that tests depend on
 
-- Resolver forbids shadowing (`E_RESOLVE_SHADOWING`).
-- Strict safety is opt-in (`--stage2` / `typecheck.strictSafety`).
-- Borrow is move-by-default; primitives are copy; enums are copy-by-default; `copy struct` and validated `copy type` aliases are copy-capable.
-- Lint modes matter: warn mode keeps compilation successful with `lintIssues`; strict/error mode fails on first issue.
-- Module cycles are `E_MODULE_CYCLE` unless lint-warn flow intentionally surfaces `E_LINT_CIRCULAR_IMPORT`.
+### Shadowing is Forbidden
+
+- Resolver always emits `E_RESOLVE_SHADOWING` for variable redeclaration.
+- Why: Safety proofs require unambiguous variable identity for borrow tracking and refinement types.
+
+### Strict Safety is Opt-In (Library API) but Always-On (CLI)
+
+- CLI always passes `typecheck: { strictSafety: true }`.
+- Library tests must explicitly enable: `compileSourceResult(src, file, { typecheck: { strictSafety: true } })`.
+- Strict mode enforces: div-by-zero proofs, overflow checks, array bounds, match exhaustiveness.
+
+### Borrow Checker: Move-by-Default with Copy Escape Hatches
+
+- **Primitives** (I32, Bool, etc.) are always copy.
+- **Enums** are copy-by-default (no annotation needed).
+- **Structs** are move-by-default; must mark `copy struct X { ... }` to enable copy.
+- **Type aliases** (`copy type Alias = T`) are only copy if base type `T` is copyable.
+- Use-after-move errors are `E_BORROW_USE_AFTER_MOVE`.
+
+### Lint Modes
+
+- **warn mode** (`--lint`): Compilation succeeds; issues collected in `lintIssues` array.
+- **error mode** (`--lint-strict`): First lint issue causes compile failure (like type errors).
+- Module cycles in warn mode emit `E_LINT_CIRCULAR_IMPORT`; strict mode emits `E_MODULE_CYCLE`.
+
+### Module System
+
+- Java-style package paths: `com::org::Module` → `com/org/Module.tuff`.
+- Package aliases are target-aware (resolved in `compiler.ts`).
+- Cycles are hard errors unless lint-warn mode is enabled.
+
+## Testing conventions
+
+### Test Case Structure
+
+- Runtime tests: `src/test/tuff/cases/*.tuff` + matching `*.result.json` files.
+- Test discovery: `run-tests.ts` auto-finds all `.tuff` files, compiles them, runs `main()`, compares JSON output.
+- To add a test: create `foo.tuff`, add expected output to `foo.result.json`, run `npm run test:update` to snapshot.
+
+### Verification Scripts
+
+- **`stage1:bootstrap`**: Triple-compilation equivalence (Stage0 → Stage1 → Stage1 must match).
+- **`stage2:verify`**: Safety proofs (div-by-zero, overflow, bounds checks, match exhaustiveness).
+- **`stage4:verify`**: Diagnostic code stability and 4-part contract validation.
+- **`borrow:verify`**: Ownership tracking, use-after-move, copy semantics.
+- **`selfhost:parity`**: Stage0 and selfhost must produce identical runtime output for same input.
+
+### Test Utilities
+
+- Use helpers from `compile-test-utils.ts`: `expectCompileOk`, `expectCompileFailCode`, `expectCompileFailMessage`.
+- Use `assertDiagnosticContract` (from `diagnostic-contract-utils.ts`) when testing error paths.
 
 ## Workflows (authoritative scripts from `package.json`)
 
@@ -42,6 +110,7 @@
 
 ## Integration points
 
-- Browser embedding is through `src/main/js/web-compiler.ts` and must avoid Node-only module loading.
-- Runtime/extern integration is centralized in `src/main/js/runtime.ts` and mirrored in selfhost runtime declarations.
-- When changing CLI flags, diagnostics, borrow, lint, or module semantics, update matching tests in `src/test/js/*` in the same change.
+- **Browser embedding**: `src/main/js/web-compiler.ts` must avoid Node-only modules (`fs`, `path`, `vm`).
+- **Runtime/extern integration**: Centralized in `src/main/js/runtime.ts`; mirrored in selfhost runtime declarations.
+- **Selfhost bootstrap**: Lazy-cached on first use; runs Stage0-compiled selfhost in VM sandbox with host builtins.
+- **When changing semantics**: Update matching tests in `src/test/js/*` in the same commit.
