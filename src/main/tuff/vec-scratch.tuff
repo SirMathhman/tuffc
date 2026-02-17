@@ -5,7 +5,7 @@ extern let { malloc, free } = stdlib;
 extern fn malloc<T, L : USize>(bytesCount : SizeOf<T> * L) : Alloc<*[T; 0; L]> | 0;
 
 lifetime t {
-    extern fn realloc<T, I, L, L2 where L2 >= I>(
+    extern fn realloc<T, I : USize, L : USize, L2 : USize >= I>(
         ptr : Alloc<*t [T; I; L]>,
         bytesCount : SizeOf<T> * L2
     ) : Alloc<*t [T; I; L2]> | 0;
@@ -23,7 +23,7 @@ extern let { memcpy } = string;
 //   - DI + Count <= DL (destination has space for the copy)
 // Note: caller must manually update destination.init after calling memcpy
 
-extern fn memcpy<T, SI, DI, DL, Count where Count <= SI, DI + Count <= DL>(
+extern fn memcpy<T, SI : USize, DI : USize, Count : USize <= SI, DL : USize >= DI + Count>(
     to : *mut [T; DI; DL],
     from : *[T; SI; _],
     bytesCount : SizeOf<T> * Count
