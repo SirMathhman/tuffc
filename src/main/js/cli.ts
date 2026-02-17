@@ -35,7 +35,9 @@ function defaultNativeOutputPath(cOutputPath: string): string {
     }
     return cOutputPath.replace(/\.c$/i, "");
   }
-  return process.platform === "win32" ? `${cOutputPath}.exe` : `${cOutputPath}.out`;
+  return process.platform === "win32"
+    ? `${cOutputPath}.exe`
+    : `${cOutputPath}.out`;
 }
 
 function compileNativeC(
@@ -50,7 +52,15 @@ function compileNativeC(
 
   const compile = spawnSync(
     compiler,
-    [cOutputPath, runtimeSource, "-I", runtimeDir, "-O0", "-o", nativeOutputPath],
+    [
+      cOutputPath,
+      runtimeSource,
+      "-I",
+      runtimeDir,
+      "-O0",
+      "-o",
+      nativeOutputPath,
+    ],
     { encoding: "utf8" },
   );
 

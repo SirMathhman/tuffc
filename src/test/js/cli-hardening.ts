@@ -213,7 +213,12 @@ expectPassContains(
     "-o",
     path.join(outDir, "native-factorial.c"),
     "--native-out",
-    path.join(outDir, process.platform === "win32" ? "native-factorial.exe" : "native-factorial"),
+    path.join(
+      outDir,
+      process.platform === "win32"
+        ? "native-factorial.exe"
+        : "native-factorial",
+    ),
   ],
   "Native build succeeded:",
   "native-c-build-success",

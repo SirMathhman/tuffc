@@ -42,7 +42,7 @@ fs.writeFileSync(
   path.join(cDir, "Entry.tuff"),
   [
     "let { length } = tuff_core::Strings;",
-    "out fn value() : I32 => if (\"abc\".length() == 3USize) 42 else 0;",
+    'out fn value() : I32 => if ("abc".length() == 3USize) 42 else 0;',
     "",
   ].join("\n"),
   "utf8",
@@ -50,10 +50,7 @@ fs.writeFileSync(
 
 fs.writeFileSync(
   path.join(coreDir, "Strings.tuff"),
-  [
-    "out expect fn length(this : *Str) : USize;",
-    "",
-  ].join("\n"),
+  ["out expect fn length(this : *Str) : USize;", ""].join("\n"),
   "utf8",
 );
 

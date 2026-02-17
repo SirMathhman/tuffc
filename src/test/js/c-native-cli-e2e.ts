@@ -7,7 +7,10 @@ const root = getRepoRootFromImportMeta(import.meta.url);
 const tsxCli = getTsxCliPath(root);
 
 const hasCompiler = (() => {
-  const candidates = process.platform === "win32" ? ["clang", "gcc", "cc"] : ["clang", "cc", "gcc"];
+  const candidates =
+    process.platform === "win32"
+      ? ["clang", "gcc", "cc"]
+      : ["clang", "cc", "gcc"];
   for (const c of candidates) {
     const probe = spawnSync(c, ["--version"], { encoding: "utf8" });
     if (probe.status === 0) return true;
