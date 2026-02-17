@@ -22,7 +22,7 @@
     "stage2:verify": "tsx ./src/test/js/phase3-stage2.ts",
     "stage4:verify": "tsx ./src/test/js/phase4-production.ts",
     "borrow:verify": "tsx ./src/test/js/borrow-checker.ts",
-    "c:verify": "tsx ./src/test/js/c-backend-smoke.ts",
+    "c:verify": "tsx ./src/test/js/c-backend-smoke.ts && tsx ./src/test/js/monomorphization-plan.ts",
     "c:native:verify": "tsx ./src/test/js/c-native-cli-e2e.ts",
     "c:verify:full": "npm run c:verify && npm run expect:actual:verify && npm run c:native:verify",
     "c:selfhost:verify": "tsx ./src/test/js/c-selfhost-progress.ts",
