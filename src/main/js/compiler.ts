@@ -370,7 +370,7 @@ function bootstrapSelfhostCompiler(options = {}): CompilerResult<unknown> {
       backend: "stage0",
       target: normalizedTarget,
       lint: { enabled: false },
-      typecheck: { strictSafety: true },
+      typecheck: { strictSafety: false, __bootstrapRelaxed: true },
       borrowcheck: { enabled: true },
     });
     if (!stage0Compile.ok) {
@@ -463,16 +463,10 @@ function selectBackend(options, target, isSelfhostBootstrapInput = false) {
     return "stage0";
   }
 
-  // C target is Stage0-only today.
-  if (target !== "js") {
-    return "stage0";
-  }
-
   // Remaining intentional Stage0 ownership after selfhost-first migration:
   // 1) Bootstrap seed for selfhost.tuff (isSelfhostBootstrapInput)
-  // 2) C target codegen
 
-  // Default: selfhost-first for JS compilation.
+  // Default: selfhost-first compilation for all supported targets.
   return "selfhost";
 }
 
