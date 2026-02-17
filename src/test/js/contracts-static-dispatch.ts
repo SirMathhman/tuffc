@@ -25,6 +25,46 @@ expectOk(
   { backend: "stage0" },
 );
 
+expectOk(
+  "lifetime-keyword-stage0-ok",
+  [
+    "fn main() : I32 => {",
+    "  let seed : I32 = 41;",
+    "  lifetime t {",
+    "    let bump : I32 = seed + 1;",
+    "  }",
+    "  seed + 1",
+    "}",
+    "",
+  ].join("\n"),
+  { backend: "stage0" },
+);
+
+expectOk(
+  "lifetimes-remains-identifier-stage0",
+  [
+    "fn lifetimes(value : I32) : I32 => value + 1;",
+    "fn main() : I32 => lifetimes(41);",
+    "",
+  ].join("\n"),
+  { backend: "stage0" },
+);
+
+expectFailCode(
+  "lifetime-missing-binder-stage0",
+  [
+    "fn main() : I32 => {",
+    "  lifetime {",
+    "    1;",
+    "  }",
+    "  0",
+    "}",
+    "",
+  ].join("\n"),
+  "E_PARSE_EXPECTED_TOKEN",
+  { backend: "stage0" },
+);
+
 expectFailCode(
   "contracts-static-dispatch-missing-into",
   [

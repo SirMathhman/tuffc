@@ -151,6 +151,17 @@ function transformIntoInBlock(
       continue;
     }
 
+    if (stmt.kind === "LifetimeStmt") {
+      outStatements.push({
+        ...stmt,
+        body:
+          stmt.body?.kind === "Block"
+            ? transformIntoInBlock(stmt.body, fnTypeName, contractMap)
+            : stmt.body,
+      });
+      continue;
+    }
+
     outStatements.push(stmt);
   }
 
@@ -176,6 +187,9 @@ function blockContainsInto(node: ProgramNode | undefined): boolean {
     node.kind === "WhileStmt" ||
     node.kind === "LoopStmt"
   ) {
+    return blockContainsInto(node.body as ProgramNode);
+  }
+  if (node.kind === "LifetimeStmt") {
     return blockContainsInto(node.body as ProgramNode);
   }
   return false;
@@ -319,6 +333,17 @@ function transformBlockWithDrops(
       stmt.kind === "WhileStmt" ||
       stmt.kind === "LoopStmt"
     ) {
+      outStatements.push({
+        ...stmt,
+        body:
+          stmt.body?.kind === "Block"
+            ? transformBlockWithDrops(stmt.body, aliasDestructorByName, inScope)
+            : stmt.body,
+      });
+      continue;
+    }
+
+    if (stmt.kind === "LifetimeStmt") {
       outStatements.push({
         ...stmt,
         body:

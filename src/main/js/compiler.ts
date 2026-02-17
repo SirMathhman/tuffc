@@ -269,6 +269,9 @@ function collectMonomorphizationPlan(program) {
       case "LoopStmt":
         visitNode(node.body);
         break;
+      case "LifetimeStmt":
+        visitNode(node.body);
+        break;
       case "IntoStmt":
       case "DropStmt":
         visitExpr(node.target);

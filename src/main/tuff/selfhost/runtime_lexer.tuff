@@ -179,6 +179,7 @@ fn init_keywords() : I32 => {
     keywords.set_add("mut");
     keywords.set_add("move");
     keywords.set_add("then");
+    keywords.set_add("lifetime");
     0
 }
 

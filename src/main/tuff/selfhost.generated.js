@@ -14,9 +14,16 @@
 
 // extern fn str_index_of
 
-// extern fn str_includes
+function str_includes(__this_param, needle) { return ((() => { const __recv = __this_param; const __dyn = __recv?.table?.str_index_of; return __dyn ? __dyn(__recv.ref, needle) : str_index_of(__recv, needle); })() >= 0); }
 
-// extern fn str_starts_with
+function str_starts_with(__this_param, prefix) {
+  let plen = (() => { const __recv = prefix; const __dyn = __recv?.table?.str_length; return __dyn ? __dyn(__recv.ref) : str_length(__recv); })();
+  return ((((() => { const __recv = __this_param; const __dyn = __recv?.table?.str_length; return __dyn ? __dyn(__recv.ref) : str_length(__recv); })() < plen)) ? (() => {
+  return false;
+})() : (() => {
+  return (() => { const __recv = (() => { const __recv = __this_param; const __dyn = __recv?.table?.str_slice; return __dyn ? __dyn(__recv.ref, 0, plen) : str_slice(__recv, 0, plen); })(); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, prefix) : str_eq(__recv, prefix); })();
+})());
+}
 
 // extern fn str_trim
 
@@ -53,6 +60,10 @@ function vec_new() { return __vec_new(); }
 // extern fn vec_set
 
 // extern fn vec_length
+
+// extern fn vec_init
+
+// extern fn vec_capacity
 
 // extern fn vec_clear
 
@@ -195,6 +206,7 @@ function init_keywords() {
   (() => { const __recv = keywords; const __dyn = __recv?.table?.set_add; return __dyn ? __dyn(__recv.ref, "mut") : set_add(__recv, "mut"); })();
   (() => { const __recv = keywords; const __dyn = __recv?.table?.set_add; return __dyn ? __dyn(__recv.ref, "move") : set_add(__recv, "move"); })();
   (() => { const __recv = keywords; const __dyn = __recv?.table?.set_add; return __dyn ? __dyn(__recv.ref, "then") : set_add(__recv, "then"); })();
+  (() => { const __recv = keywords; const __dyn = __recv?.table?.set_add; return __dyn ? __dyn(__recv.ref, "lifetime") : set_add(__recv, "lifetime"); })();
   return 0;
 }
 
@@ -563,6 +575,8 @@ let NK_LOOP_STMT = 64;
 let NK_CONTRACT_DECL = 65;
 
 let NK_INTO_STMT = 66;
+
+let NK_LIFETIME_STMT = 67;
 
 let NK_ENUM_DECL = 60;
 
@@ -1339,6 +1353,16 @@ function p_parse_for() {
   return node;
 }
 
+function p_parse_lifetime() {
+  p_expect(TK_KEYWORD, "lifetime", "Expected 'lifetime'");
+  let lname = p_parse_identifier();
+  let body = p_parse_block();
+  let node = node_new(NK_LIFETIME_STMT);
+  node_set_data1(node, lname);
+  node_set_data2(node, body);
+  return node;
+}
+
 function p_parse_extern_decl() {
   if (p_at(TK_KEYWORD, "fn")) {
   p_eat();
@@ -1577,6 +1601,9 @@ function p_parse_statement() {
   let node = node_new(NK_LOOP_STMT);
   node_set_data1(node, body);
   return node;
+}
+  if (p_at(TK_KEYWORD, "lifetime")) {
+  return p_parse_lifetime();
 }
   if (p_at(TK_KEYWORD, "into")) {
   p_eat();
@@ -2019,6 +2046,14 @@ function resolve_stmt(n, globals, scopes, depth) {
 }
   if ((kind == NK_LOOP_STMT)) {
   resolve_stmt(node_get_data1(n), globals, scopes, depth);
+  return 0;
+}
+  if ((kind == NK_LIFETIME_STMT)) {
+  let next_depth = (depth + 1);
+  (() => { const __recv = scopes; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, set_new()) : vec_push(__recv, set_new()); })();
+  scope_define(scopes, next_depth, get_interned_str(node_get_data1(n)));
+  resolve_stmt(node_get_data2(n), globals, scopes, next_depth);
+  (() => { const __recv = scopes; const __dyn = __recv?.table?.vec_pop; return __dyn ? __dyn(__recv.ref) : vec_pop(__recv); })();
   return 0;
 }
   if ((kind == NK_INTO_STMT)) {
@@ -2889,6 +2924,10 @@ function typecheck_stmt(n, fn_arities, fn_param_types, fn_return_types, local_ty
 }
   if ((kind == NK_LOOP_STMT)) {
   typecheck_stmt(node_get_data1(n), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety, expected_return_type);
+  return 0;
+}
+  if ((kind == NK_LIFETIME_STMT)) {
+  typecheck_stmt(node_get_data2(n), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety, expected_return_type);
   return 0;
 }
   if ((kind == NK_INTO_STMT)) {
@@ -3839,6 +3878,10 @@ function check_stmt(stmt, state, env_types, fn_return_types, extern_type_names, 
   check_block(stmt, state, env_types, fn_return_types, extern_type_names, global_fn_names);
   return 0;
 }
+  if ((kind == NK_LIFETIME_STMT)) {
+  check_stmt(node_get_data2(stmt), state, env_types, fn_return_types, extern_type_names, global_fn_names);
+  return 0;
+}
   if (((kind == NK_CONTRACT_DECL) || (kind == NK_INTO_STMT))) {
   return 0;
 }
@@ -4051,6 +4094,9 @@ function emit_stmt(n) {
   if ((kind == NK_INTO_STMT)) {
   let cname = get_interned_str(node_get_data1(n));
   return (() => { const __recv = "// into "; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, cname) : str_concat(__recv, cname); })();
+}
+  if ((kind == NK_LIFETIME_STMT)) {
+  return emit_block(node_get_data2(n));
 }
   if ((kind == NK_BLOCK)) {
   return emit_block(n);

@@ -166,6 +166,85 @@ expectBothFail(
   "parse-failure parity",
 );
 
+const lifetimeSource = [
+  "fn main() : I32 => {",
+  "  let x : I32 = 41;",
+  "  lifetime t {",
+  "    let y : I32 = x + 1;",
+  "  }",
+  "  x + 1",
+  "}",
+  "",
+].join("\n");
+const lifetimeStage0 = compileSourceResult(
+  lifetimeSource,
+  "<lifetime-stage0>",
+  {
+    backend: "stage0",
+  },
+);
+const lifetimeSelfhost = compileSourceResult(
+  lifetimeSource,
+  "<lifetime-selfhost>",
+  {
+    backend: "selfhost",
+  },
+);
+if (!lifetimeStage0.ok || !lifetimeSelfhost.ok) {
+  throw new Error("lifetime keyword parity: expected both backends to compile");
+}
+
+const lifetimesIdentifierSource = [
+  "fn lifetimes(v : I32) : I32 => v + 1;",
+  "fn main() : I32 => lifetimes(41);",
+  "",
+].join("\n");
+const lifetimesIdentifierStage0 = compileSourceResult(
+  lifetimesIdentifierSource,
+  "<lifetimes-ident-stage0>",
+  { backend: "stage0" },
+);
+const lifetimesIdentifierSelfhost = compileSourceResult(
+  lifetimesIdentifierSource,
+  "<lifetimes-ident-selfhost>",
+  { backend: "selfhost" },
+);
+if (!lifetimesIdentifierStage0.ok || !lifetimesIdentifierSelfhost.ok) {
+  throw new Error(
+    "lifetimes identifier parity: expected both backends to treat it as identifier",
+  );
+}
+
+expectBothFail(
+  () =>
+    compileSourceResult(
+      [
+        "fn main() : I32 => {",
+        "  lifetime {",
+        "    1;",
+        "  }",
+        "  0",
+        "}",
+        "",
+      ].join("\n"),
+      "<lifetime-missing-binder-stage0>",
+      { backend: "stage0" },
+    ),
+  () =>
+    selfhost.compile_source(
+      [
+        "fn main() : I32 => {",
+        "  lifetime {",
+        "    1;",
+        "  }",
+        "  0",
+        "}",
+        "",
+      ].join("\n"),
+    ),
+  "lifetime-missing-binder parity",
+);
+
 // 4) Missing module failure parity (both must fail with diagnostics contract).
 const missingEntry = path.join(outDir, "missing-module-entry.tuff");
 const missingJsOut = path.join(outDir, "missing-module-js.js");

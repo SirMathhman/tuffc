@@ -34,6 +34,7 @@ const KEYWORDS = new Set([
   "uninit",
   "move",
   "then",
+  "lifetime",
 ]);
 
 const TWO_CHAR = new Set([

@@ -460,6 +460,15 @@ fn resolve_stmt(n: I32, globals: *mut Set, scopes: Vec, depth: I32) : I32 => {
         return 0;
     }
 
+    if (kind == NK_LIFETIME_STMT) {
+        let next_depth = depth + 1;
+        scopes.vec_push(set_new());
+        scope_define(scopes, next_depth, get_interned_str(node_get_data1(n)));
+        resolve_stmt(node_get_data2(n), globals, scopes, next_depth);
+        scopes.vec_pop();
+        return 0;
+    }
+
     if (kind == NK_INTO_STMT) {
         let cname = get_interned_str(node_get_data1(n));
         if (!globals.set_has(cname)) {

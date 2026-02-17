@@ -338,6 +338,16 @@ fn p_parse_for() : I32 => {
     node
 }
 
+fn p_parse_lifetime() : I32 => {
+    p_expect(TK_KEYWORD, "lifetime", "Expected 'lifetime'");
+    let lname = p_parse_identifier();
+    let body = p_parse_block();
+    let node = node_new(NK_LIFETIME_STMT);
+    node_set_data1(node, lname);
+    node_set_data2(node, body);
+    node
+}
+
 // Parse extern fn/let/type declarations
 fn p_parse_extern_decl() : I32 => {
     if (p_at(TK_KEYWORD, "fn")) {
@@ -583,6 +593,9 @@ fn p_parse_statement() : I32 => {
         let node = node_new(NK_LOOP_STMT);
         node_set_data1(node, body);
         return node;
+    }
+    if (p_at(TK_KEYWORD, "lifetime")) {
+        return p_parse_lifetime();
     }
     if (p_at(TK_KEYWORD, "into")) {
         p_eat();

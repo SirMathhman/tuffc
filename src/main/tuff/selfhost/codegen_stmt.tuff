@@ -87,6 +87,10 @@ fn emit_stmt(n: I32) : *Str => {
         let cname = get_interned_str(node_get_data1(n));
         return "// into ".str_concat(cname);
     }
+
+    if (kind == NK_LIFETIME_STMT) {
+        return emit_block(node_get_data2(n));
+    }
     
     if (kind == NK_BLOCK) {
         return emit_block(n);

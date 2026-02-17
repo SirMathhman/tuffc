@@ -634,6 +634,11 @@ export function resolveNames(
         if (!bodyResult.ok) return bodyResult;
         break;
       }
+      case "LifetimeStmt": {
+        const bodyResult = visitNode(node.body, new Scope(scope), modulePath);
+        if (!bodyResult.ok) return bodyResult;
+        break;
+      }
       case "IntoStmt": {
         if (!contractNames.has(node.contractName)) {
           return err(

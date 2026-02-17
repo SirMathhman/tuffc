@@ -1782,6 +1782,21 @@ export function parse(tokens: Token[]): ParseResult<Program> {
     });
   };
 
+  const parseLifetimeStmt = (): ParseResult<Stmt> => {
+    const startResult = expect("keyword", "lifetime", "Expected lifetime");
+    if (!startResult.ok) return startResult;
+    const nameResult = parseIdentifier();
+    if (!nameResult.ok) return nameResult;
+    const bodyResult = parseBlock();
+    if (!bodyResult.ok) return bodyResult;
+    return ok({
+      kind: "LifetimeStmt",
+      name: nameResult.value,
+      body: bodyResult.value,
+      loc: startResult.value.loc,
+    });
+  };
+
   const parseStatement = (): ParseResult<Stmt> => {
     const atContextualModifier = (name: "expect" | "actual") => {
       const t = peek();
@@ -2164,6 +2179,7 @@ export function parse(tokens: Token[]): ParseResult<Program> {
     }
     if (at("keyword", "for")) return parseForStmt();
     if (at("keyword", "loop")) return parseLoopStmt();
+    if (at("keyword", "lifetime")) return parseLifetimeStmt();
     if (at("keyword", "into")) {
       eat();
       const contractNameResult = parseIdentifier();

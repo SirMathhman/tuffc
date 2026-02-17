@@ -237,6 +237,10 @@ function emitStmt(stmt) {
         `};`,
       ].join("\n");
     }
+    case "LifetimeStmt":
+      return stmt.body?.kind === "Block"
+        ? emitBlock(stmt.body)
+        : emitStmtOrBlock(stmt.body);
     case "DropStmt": {
       if (stmt.target?.kind !== "Identifier" || !stmt.destructorName) {
         return "// drop <unsupported target>";

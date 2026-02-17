@@ -757,6 +757,9 @@ export function borrowcheck(ast, options = {}): BorrowcheckResult<unknown> {
       }
       case "Block":
         return checkBlock(stmt, state, envTypes);
+      case "LifetimeStmt": {
+        return checkNode(stmt.body, state, new Map(envTypes));
+      }
       case "FnDecl": {
         const fnState = createState();
         const fnEnv = new Map(globalTypeByName);

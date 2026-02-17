@@ -928,6 +928,11 @@ fn check_stmt(stmt: I32, state: Vec, env_types: Map, fn_return_types: Map, exter
         return 0;
     }
 
+    if (kind == NK_LIFETIME_STMT) {
+        check_stmt(node_get_data2(stmt), state, env_types, fn_return_types, extern_type_names, global_fn_names);
+        return 0;
+    }
+
     if (kind == NK_CONTRACT_DECL || kind == NK_INTO_STMT) {
         return 0;
     }

@@ -418,6 +418,10 @@ function emitStmt(stmt, ctx, localTypes = new Map()) {
       return "continue;";
     case "IntoStmt":
       return `/* into ${stmt.contractName} */`;
+    case "LifetimeStmt":
+      return stmt.body?.kind === "Block"
+        ? emitBlock(stmt.body, ctx, localTypes)
+        : emitStmtOrBlock(stmt.body, ctx, localTypes);
     case "DropStmt": {
       if (stmt.target?.kind !== "Identifier" || !stmt.destructorName) {
         return "/* drop <unsupported target> */";

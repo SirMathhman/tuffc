@@ -2316,6 +2316,9 @@ export function typecheck(
       case "LoopStmt": {
         return inferBodyAsVoid(node.body);
       }
+      case "LifetimeStmt": {
+        return inferBodyAsVoid(node.body);
+      }
       case "WhileStmt": {
         const condResult = inferExpr(node.condition, scope, facts);
         if (!condResult.ok) return condResult;

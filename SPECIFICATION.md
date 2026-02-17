@@ -234,6 +234,19 @@ fn compare<T : Comparable<T>>(a : T, b : T) => { ... }
 - References cannot outlive their referents
 - Enforced at compile time through lifetime analysis
 
+**Manual Lifetime Block Syntax (current keyword)**:
+
+```tuff
+lifetime t {
+    // statements scoped to manual lifetime region `t`
+}
+```
+
+Notes:
+
+- The keyword is singular: `lifetime`.
+- `lifetimes` is not a keyword and is treated as a normal identifier.
+
 ### 2.4 Entities and Relationships
 
 **Key Language Entities**:
