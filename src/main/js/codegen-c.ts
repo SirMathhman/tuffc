@@ -489,6 +489,8 @@ function emitStmt(stmt, ctx, localTypes = new Map()) {
       );
     case "ExternLetDecl":
       return `extern ${typeToCType(stmt.type, ctx)} ${toCName(stmt.name)};`;
+    case "ExternImportDecl":
+      return `/* extern from ${stmt.source} */`;
     case "ExternTypeDecl":
       return `/* extern type ${stmt.name} */`;
     case "ClassFunctionDecl":
@@ -567,6 +569,28 @@ export function generateC(ast) {
     (ast.body ?? []).filter((n) => n.kind === "TypeAlias").map((n) => n.name),
   );
   const namedTypes = new Set();
+
+  // Collect extern fn names covered by ExternImportDecl attributions.
+  const coveredExternFns = new Set();
+  for (const node of ast.body ?? []) {
+    if (node.kind === "ExternImportDecl") {
+      for (const name of node.names) coveredExternFns.add(name);
+    }
+  }
+
+  // Validate every extern fn declaration has a source attribution.
+  for (const node of ast.body ?? []) {
+    if (node.kind === "ExternFnDecl" && !coveredExternFns.has(node.name)) {
+      throw new TuffError(
+        `extern fn '${node.name}' has no source attribution`,
+        node.loc,
+        {
+          code: "E_EXTERN_NO_SOURCE",
+          hint: `Add 'extern let { ${node.name} } = <module>;' before the declaration.`,
+        },
+      );
+    }
+  }
 
   for (const node of ast.body ?? []) {
     if (node.kind === "FnDecl" || node.kind === "ExternFnDecl") {

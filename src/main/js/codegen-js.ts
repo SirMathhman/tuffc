@@ -331,6 +331,8 @@ function emitStmt(stmt) {
       return `// extern fn ${stmt.name}`;
     case "ExternLetDecl":
       return `// extern let ${stmt.name}`;
+    case "ExternImportDecl":
+      return `// extern from ${stmt.source}`;
     case "ExternTypeDecl":
       return `// extern type ${stmt.name}`;
     default:

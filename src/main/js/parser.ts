@@ -2202,6 +2202,47 @@ export function parse(tokens: Token[]): ParseResult<Program> {
         const startResult = expect("keyword", "let");
         if (!startResult.ok) return startResult;
         const start = startResult.value.loc;
+        // extern let { name1, name2, ... } = module;  -- source attribution
+        if (at("symbol", "{")) {
+          eat();
+          const names: string[] = [];
+          if (!at("symbol", "}")) {
+            while (true) {
+              const nameResult = parseIdentifier();
+              if (!nameResult.ok) return nameResult;
+              names.push(nameResult.value);
+              if (!at("symbol", ",")) break;
+              eat();
+            }
+          }
+          const closeResult = expect(
+            "symbol",
+            "}",
+            "Expected '}' in extern import",
+          );
+          if (!closeResult.ok) return closeResult;
+          const eqResult = expect(
+            "symbol",
+            "=",
+            "Expected '=' in extern import",
+          );
+          if (!eqResult.ok) return eqResult;
+          const sourceResult = parseIdentifier();
+          if (!sourceResult.ok) return sourceResult;
+          const semiResult = expect(
+            "symbol",
+            ";",
+            "Expected ';' after extern import",
+          );
+          if (!semiResult.ok) return semiResult;
+          return ok({
+            kind: "ExternImportDecl",
+            names,
+            source: sourceResult.value,
+            loc: start,
+          });
+        }
+        // extern let name : Type;  -- typed external binding
         const nameResult = parseIdentifier();
         if (!nameResult.ok) return nameResult;
         const colonResult = expect("symbol", ":", "Expected ':' in extern let");

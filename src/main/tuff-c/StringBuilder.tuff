@@ -1,3 +1,5 @@
+extern let { sb_new, sb_append, sb_append_char, sb_build } = tuff_c;
+
 extern type StringBuilder;
 
 extern fn sb_new() : StringBuilder;

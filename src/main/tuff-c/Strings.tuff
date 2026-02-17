@@ -1,4 +1,5 @@
-// #include <stdlib.h>
+extern let { strlen } = string;
+
 extern fn strlen(s : *Str) : USize;
 
 out expect fn length(this : *Str) : USize;

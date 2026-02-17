@@ -1,3 +1,5 @@
+extern let { panic, panic_with_code } = tuff_c;
+
 extern fn panic(msg : *Str) : I32;
 extern fn panic_with_code(code : *Str, msg : *Str, reason : *Str, fix : *Str) : I32;
 

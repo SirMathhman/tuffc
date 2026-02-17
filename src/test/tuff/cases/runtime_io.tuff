@@ -1,3 +1,5 @@
+extern let { path_join, path_dirname, write_file, read_file, str_eq } = tuff_c;
+
 extern fn path_join(a: *Str, b: *Str) : *Str;
 extern fn path_dirname(p: *Str) : *Str;
 extern fn write_file(filePath: *Str, contents: *Str) : I32;

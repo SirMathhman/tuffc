@@ -1,3 +1,5 @@
+extern let { __vec_new, vec_push, vec_get, vec_set, vec_init, vec_capacity, vec_length, __map_new, map_set, map_get, __set_new, set_add, set_has } = tuff_c;
+
 extern type Vec<T>;
 extern type Map<K, V>;
 extern type Set<T>;
