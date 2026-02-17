@@ -1,0 +1,40 @@
+// Generic Vec<T> backed by the C substrate __vec_* ABI.
+// All element values are lowered to int64_t by the C codegen, so the
+// monomorphized I32 substrate works uniformly for any element type T.
+
+extern let { __vec_new, __vec_push, __vec_pop, __vec_get, __vec_set, __vec_init, __vec_capacity, __vec_length, __vec_includes, __vec_clear } = collections;
+
+extern type Vec<T>;
+
+extern fn __vec_new() : Vec<I32>;
+extern fn __vec_push(this : Vec<I32>, item : I32) : Vec<I32>;
+extern fn __vec_pop(this : Vec<I32>) : I32;
+extern fn __vec_get(this : Vec<I32>, index : USize) : I32;
+extern fn __vec_set(this : Vec<I32>, index : USize, item : I32) : Vec<I32>;
+extern fn __vec_init(this : Vec<I32>) : USize;
+extern fn __vec_capacity(this : Vec<I32>) : USize;
+extern fn __vec_length(this : Vec<I32>) : USize;
+extern fn __vec_includes(this : Vec<I32>, item : I32) : Bool;
+extern fn __vec_clear(this : Vec<I32>) : Vec<I32>;
+
+out expect fn vec_new<T>() : Vec<T>;
+out expect fn vec_push<T>(this : Vec<T>, item : T) : Vec<T>;
+out expect fn vec_pop<T>(this : Vec<T>) : T;
+out expect fn vec_get<T>(this : Vec<T>, index : USize) : T;
+out expect fn vec_set<T>(this : Vec<T>, index : USize, item : T) : Vec<T>;
+out expect fn vec_init<T>(this : Vec<T>) : USize;
+out expect fn vec_capacity<T>(this : Vec<T>) : USize;
+out expect fn vec_length<T>(this : Vec<T>) : USize;
+out expect fn vec_includes<T>(this : Vec<T>, item : T) : Bool;
+out expect fn vec_clear<T>(this : Vec<T>) : Vec<T>;
+
+out actual fn vec_new<T>() : Vec<T> => __vec_new();
+out actual fn vec_push<T>(this : Vec<T>, item : T) : Vec<T> => __vec_push(this, item);
+out actual fn vec_pop<T>(this : Vec<T>) : T => __vec_pop(this);
+out actual fn vec_get<T>(this : Vec<T>, index : USize) : T => __vec_get(this, index);
+out actual fn vec_set<T>(this : Vec<T>, index : USize, item : T) : Vec<T> => __vec_set(this, index, item);
+out actual fn vec_init<T>(this : Vec<T>) : USize => __vec_init(this);
+out actual fn vec_capacity<T>(this : Vec<T>) : USize => __vec_capacity(this);
+out actual fn vec_length<T>(this : Vec<T>) : USize => __vec_length(this);
+out actual fn vec_includes<T>(this : Vec<T>, item : T) : Bool => __vec_includes(this, item);
+out actual fn vec_clear<T>(this : Vec<T>) : Vec<T> => __vec_clear(this);

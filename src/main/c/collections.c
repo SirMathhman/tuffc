@@ -23,7 +23,7 @@ static void vec_reserve(TuffVec *v, size_t need)
     v->length = next_len;
 }
 
-int64_t vec_push(int64_t thisVec, int64_t item)
+int64_t __vec_push(int64_t thisVec, int64_t item)
 {
     TuffVec *v = (TuffVec *)tuff_from_val(thisVec);
     if (v == NULL)
@@ -33,7 +33,7 @@ int64_t vec_push(int64_t thisVec, int64_t item)
     return thisVec;
 }
 
-int64_t vec_pop(int64_t thisVec)
+int64_t __vec_pop(int64_t thisVec)
 {
     TuffVec *v = (TuffVec *)tuff_from_val(thisVec);
     if (v == NULL || v->init == 0)
@@ -41,7 +41,7 @@ int64_t vec_pop(int64_t thisVec)
     return v->data[--v->init];
 }
 
-int64_t vec_get(int64_t thisVec, int64_t i)
+int64_t __vec_get(int64_t thisVec, int64_t i)
 {
     TuffVec *v = (TuffVec *)tuff_from_val(thisVec);
     if (v == NULL || i < 0 || (size_t)i >= v->init)
@@ -49,7 +49,7 @@ int64_t vec_get(int64_t thisVec, int64_t i)
     return v->data[i];
 }
 
-int64_t vec_set(int64_t thisVec, int64_t i, int64_t val)
+int64_t __vec_set(int64_t thisVec, int64_t i, int64_t val)
 {
     TuffVec *v = (TuffVec *)tuff_from_val(thisVec);
     if (v == NULL || i < 0)
@@ -66,25 +66,25 @@ int64_t vec_set(int64_t thisVec, int64_t i, int64_t val)
     return thisVec;
 }
 
-int64_t vec_length(int64_t thisVec)
+int64_t __vec_length(int64_t thisVec)
 {
     TuffVec *v = (TuffVec *)tuff_from_val(thisVec);
     return v == NULL ? 0 : (int64_t)v->init;
 }
 
-int64_t vec_init(int64_t thisVec)
+int64_t __vec_init(int64_t thisVec)
 {
     TuffVec *v = (TuffVec *)tuff_from_val(thisVec);
     return v == NULL ? 0 : (int64_t)v->init;
 }
 
-int64_t vec_capacity(int64_t thisVec)
+int64_t __vec_capacity(int64_t thisVec)
 {
     TuffVec *v = (TuffVec *)tuff_from_val(thisVec);
     return v == NULL ? 0 : (int64_t)v->length;
 }
 
-int64_t vec_clear(int64_t thisVec)
+int64_t __vec_clear(int64_t thisVec)
 {
     TuffVec *v = (TuffVec *)tuff_from_val(thisVec);
     if (v != NULL)
@@ -92,7 +92,7 @@ int64_t vec_clear(int64_t thisVec)
     return thisVec;
 }
 
-int64_t vec_join(int64_t thisVec, int64_t sep)
+int64_t __vec_join(int64_t thisVec, int64_t sep)
 {
     TuffVec *v = (TuffVec *)tuff_from_val(thisVec);
     const char *ssep = tuff_str(sep);
@@ -111,7 +111,7 @@ int64_t vec_join(int64_t thisVec, int64_t sep)
     return sb_build(sb);
 }
 
-int64_t vec_includes(int64_t thisVec, int64_t item)
+int64_t __vec_includes(int64_t thisVec, int64_t item)
 {
     TuffVec *v = (TuffVec *)tuff_from_val(thisVec);
     if (v == NULL)

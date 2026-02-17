@@ -1,15 +1,22 @@
-extern let { __vec_new, vec_push, vec_get, vec_set, vec_init, vec_capacity, vec_includes, vec_length, __map_new, map_set, map_get, __set_new, set_add, set_has } = collections;
+extern let { __vec_new, __vec_push, __vec_get, __vec_set, __vec_init, __vec_capacity, __vec_includes, __vec_length, __map_new, map_set, map_get, __set_new, set_add, set_has } = collections;
 
 extern type Vec<T>;
 extern fn __vec_new() : Vec<I32>;
-extern fn vec_push(this: Vec<I32>, item: I32) : Vec<I32>;
-extern fn vec_get(this: Vec<I32>, index: USize) : I32;
-extern fn vec_set(this: Vec<I32>, index: USize, item: I32) : Vec<I32>;
-extern fn vec_init(this: Vec<I32>) : USize;
-extern fn vec_capacity(this: Vec<I32>) : USize;
-extern fn vec_includes(this: Vec<I32>, item: I32) : Bool;
-extern fn vec_length(this: Vec<I32>) : USize;
+extern fn __vec_push(this: Vec<I32>, item: I32) : Vec<I32>;
+extern fn __vec_get(this: Vec<I32>, index: USize) : I32;
+extern fn __vec_set(this: Vec<I32>, index: USize, item: I32) : Vec<I32>;
+extern fn __vec_init(this: Vec<I32>) : USize;
+extern fn __vec_capacity(this: Vec<I32>) : USize;
+extern fn __vec_includes(this: Vec<I32>, item: I32) : Bool;
+extern fn __vec_length(this: Vec<I32>) : USize;
 fn vec_new() : Vec<I32> => __vec_new();
+fn vec_push(this: Vec<I32>, item: I32) : Vec<I32> => __vec_push(this, item);
+fn vec_get(this: Vec<I32>, index: USize) : I32 => __vec_get(this, index);
+fn vec_set(this: Vec<I32>, index: USize, item: I32) : Vec<I32> => __vec_set(this, index, item);
+fn vec_init(this: Vec<I32>) : USize => __vec_init(this);
+fn vec_capacity(this: Vec<I32>) : USize => __vec_capacity(this);
+fn vec_includes(this: Vec<I32>, item: I32) : Bool => __vec_includes(this, item);
+fn vec_length(this: Vec<I32>) : USize => __vec_length(this);
 
 extern type Map<K, V>;
 extern fn __map_new() : Map<I32, I32>;
