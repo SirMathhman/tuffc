@@ -54,6 +54,8 @@ extern fn vec_get(this: Vec<T>, i: I32) : T;
 
 extern fn vec_set(this: Vec<T>, i: I32, v: T) : Vec<T>;
 extern fn vec_length(this: Vec<T>) : USize;
+extern fn vec_init(this: Vec<T>) : USize;
+extern fn vec_capacity(this: Vec<T>) : USize;
 extern fn vec_clear(this: Vec<T>) : Vec<T>;
 extern fn vec_join(this: Vec<T>, sep: *Str) : *Str;
 extern fn vec_includes(this: Vec<T>, item: T) : Bool;

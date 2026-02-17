@@ -8,6 +8,10 @@ extern type Set<T>;
 
 extern fn __vec_new() : Vec<I32>;
 extern fn vec_push(this : Vec<I32>, item : I32) : Vec<I32>;
+extern fn vec_get(this : Vec<I32>, index : USize) : I32;
+extern fn vec_set(this : Vec<I32>, index : USize, item : I32) : Vec<I32>;
+extern fn vec_init(this : Vec<I32>) : USize;
+extern fn vec_capacity(this : Vec<I32>) : USize;
 extern fn vec_length(this : Vec<I32>) : USize;
 
 extern fn __map_new() : Map<I32, I32>;
@@ -25,6 +29,10 @@ out module Strings {
 out module Collections {
     out actual fn vec_new_i32() : Vec<I32> => __vec_new();
     out actual fn vec_push_i32(this : Vec<I32>, item : I32) : Vec<I32> => vec_push(this, item);
+    out actual fn vec_get_i32(this : Vec<I32>, index : USize) : I32 => vec_get(this, index);
+    out actual fn vec_set_i32(this : Vec<I32>, index : USize, item : I32) : Vec<I32> => vec_set(this, index, item);
+    out actual fn vec_init_i32(this : Vec<I32>) : USize => vec_init(this);
+    out actual fn vec_capacity_i32(this : Vec<I32>) : USize => vec_capacity(this);
     out actual fn vec_length_i32(this : Vec<I32>) : USize => vec_length(this);
 
     out actual fn map_new_i32_i32() : Map<I32, I32> => __map_new();

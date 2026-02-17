@@ -115,7 +115,11 @@ function isVecState<T>(value: unknown): value is VecState<T> {
 
 function asVecState<T>(value: VecState<T> | T[]): VecState<T> {
   if (isVecState<T>(value)) return value;
-  return { data: value as T[], init: (value as T[]).length, length: (value as T[]).length };
+  return {
+    data: value as T[],
+    init: (value as T[]).length,
+    length: (value as T[]).length,
+  };
 }
 
 function vecEnsureCapacity<T>(vec: VecState<T>, need: number): void {
@@ -127,7 +131,8 @@ function vecEnsureCapacity<T>(vec: VecState<T>, need: number): void {
 }
 
 export function vec_new<T = unknown>(capacity = 0): VecState<T> {
-  const safeCap = Number.isFinite(capacity) && capacity > 0 ? Math.floor(capacity) : 0;
+  const safeCap =
+    Number.isFinite(capacity) && capacity > 0 ? Math.floor(capacity) : 0;
   return {
     data: new Array<T | undefined>(safeCap),
     init: 0,
@@ -159,7 +164,11 @@ export function vec_get<T>(input: VecState<T> | T[], i: number): T | undefined {
   return vec.data[idx] as T | undefined;
 }
 
-export function vec_set<T>(input: VecState<T> | T[], i: number, v: T): VecState<T> {
+export function vec_set<T>(
+  input: VecState<T> | T[],
+  i: number,
+  v: T,
+): VecState<T> {
   const vec = asVecState(input);
   const idx = Math.floor(i);
   if (idx < 0) {
@@ -203,19 +212,29 @@ export function vec_clear<T>(input: VecState<T> | T[]): VecState<T> {
   return vec;
 }
 
-export function vec_slice<T>(input: VecState<T> | T[], start: number, end: number): T[] {
+export function vec_slice<T>(
+  input: VecState<T> | T[],
+  start: number,
+  end: number,
+): T[] {
   const vec = asVecState(input);
   const s = Math.max(0, Math.floor(start));
   const e = Math.min(vec.init, Math.floor(end));
   return vec.data.slice(s, e) as T[];
 }
 
-export function vec_join(input: VecState<string> | string[], sep: string): string {
+export function vec_join(
+  input: VecState<string> | string[],
+  sep: string,
+): string {
   const vec = asVecState<string>(input);
   return (vec.data.slice(0, vec.init) as string[]).join(sep);
 }
 
-export function vec_concat<T>(aInput: VecState<T> | T[], bInput: VecState<T> | T[]): VecState<T> {
+export function vec_concat<T>(
+  aInput: VecState<T> | T[],
+  bInput: VecState<T> | T[],
+): VecState<T> {
   const a = asVecState(aInput);
   const b = asVecState(bInput);
   const out = vec_new<T>(a.init + b.init);
@@ -228,7 +247,10 @@ export function vec_concat<T>(aInput: VecState<T> | T[], bInput: VecState<T> | T
   return out;
 }
 
-export function vec_map<T, U>(input: VecState<T> | T[], fn: (item: T) => U): VecState<U> {
+export function vec_map<T, U>(
+  input: VecState<T> | T[],
+  fn: (item: T) => U,
+): VecState<U> {
   const vec = asVecState(input);
   const out = vec_new<U>(vec.init);
   for (let i = 0; i < vec.init; i += 1) {
@@ -237,7 +259,10 @@ export function vec_map<T, U>(input: VecState<T> | T[], fn: (item: T) => U): Vec
   return out;
 }
 
-export function vec_filter<T>(input: VecState<T> | T[], fn: (item: T) => boolean): VecState<T> {
+export function vec_filter<T>(
+  input: VecState<T> | T[],
+  fn: (item: T) => boolean,
+): VecState<T> {
   const vec = asVecState(input);
   const out = vec_new<T>(vec.init);
   for (let i = 0; i < vec.init; i += 1) {
@@ -247,7 +272,10 @@ export function vec_filter<T>(input: VecState<T> | T[], fn: (item: T) => boolean
   return out;
 }
 
-export function vec_find<T>(input: VecState<T> | T[], fn: (item: T) => boolean): T | undefined {
+export function vec_find<T>(
+  input: VecState<T> | T[],
+  fn: (item: T) => boolean,
+): T | undefined {
   const vec = asVecState(input);
   for (let i = 0; i < vec.init; i += 1) {
     const item = vec.data[i] as T;
@@ -256,7 +284,10 @@ export function vec_find<T>(input: VecState<T> | T[], fn: (item: T) => boolean):
   return undefined;
 }
 
-export function vec_some<T>(input: VecState<T> | T[], fn: (item: T) => boolean): boolean {
+export function vec_some<T>(
+  input: VecState<T> | T[],
+  fn: (item: T) => boolean,
+): boolean {
   return vec_find(input, fn) !== undefined;
 }
 

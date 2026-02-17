@@ -1,6 +1,10 @@
 extern type Vec<T>;
 extern fn __vec_new() : Vec<I32>;
 extern fn vec_push(this: Vec<I32>, item: I32) : Vec<I32>;
+extern fn vec_get(this: Vec<I32>, index: USize) : I32;
+extern fn vec_set(this: Vec<I32>, index: USize, item: I32) : Vec<I32>;
+extern fn vec_init(this: Vec<I32>) : USize;
+extern fn vec_capacity(this: Vec<I32>) : USize;
 extern fn vec_includes(this: Vec<I32>, item: I32) : Bool;
 extern fn vec_length(this: Vec<I32>) : USize;
 fn vec_new() : Vec<I32> => __vec_new();
@@ -21,6 +25,7 @@ fn main() : I32 => {
     let v = vec_new();
     v.vec_push(7);
     v.vec_push(9);
+    v.vec_set(v.vec_length(), 11);
 
     let m = map_new();
     m.map_set(5, 11);
@@ -28,7 +33,15 @@ fn main() : I32 => {
     let s = set_new();
     s.set_add(42);
 
-    if (v.vec_length() == 2 && v.vec_includes(9) && m.map_get(5) == 11 && s.set_has(42)) {
+    if (
+        v.vec_length() == 3 &&
+        v.vec_init() == 3 &&
+        v.vec_capacity() >= v.vec_init() &&
+        v.vec_get(2) == 11 &&
+        v.vec_includes(9) &&
+        m.map_get(5) == 11 &&
+        s.set_has(42)
+    ) {
         return 0;
     }
     return 13;
