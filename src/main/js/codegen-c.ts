@@ -105,17 +105,52 @@ function toCName(name) {
   return name === "main" ? "tuff_main" : name;
 }
 
+// C stdlib functions already declared via substrate.h — suppress re-declaration.
+const C_STDLIB_BUILTINS = new Set([
+  "malloc",
+  "free",
+  "realloc",
+  "memcpy",
+  "memmove",
+  "printf",
+  "fprintf",
+  "strlen",
+  "strdup",
+  "strcmp",
+  "exit",
+  "abort",
+]);
+
 function typeToCType(typeNode, ctx) {
   if (!typeNode) return "int64_t";
   if (typeNode.kind === "PointerType") {
+    // *[T; I; L] (array slice pointer) → TuffVec* (fat pointer, already in substrate)
+    if (typeNode.to?.kind === "ArrayType") return "TuffVec*";
     const inner = typeToCType(typeNode.to, ctx);
     if (typeNode.move) return `${inner}*`;
     return typeToCType(typeNode.to, ctx);
+  }
+  // Bare array type (element type only) — seldom appears standalone.
+  if (typeNode.kind === "ArrayType") return "int64_t";
+  // Nullable pointer union: T | 0 / T | 0USize → lower to T (null represented as NULL/0).
+  if (typeNode.kind === "UnionType") {
+    if (typeNode.right?.kind === "RefinementType")
+      return typeToCType(typeNode.left, ctx);
+    return "int64_t";
   }
   if (typeNode.kind !== "NamedType") return "int64_t";
   const n = typeNode.name;
   if (/^[A-Z]$/.test(n)) {
     return "int64_t";
+  }
+  // SizeOf<T> (byte-count type) → size_t
+  if (n === "SizeOf") return "size_t";
+  // Void → void
+  if (n === "Void") return "void";
+  // Alloc<T> erases to T (destructor wrapper — codegen handles drops separately).
+  if (n === "Alloc") {
+    const inner = typeNode.genericArgs?.[0];
+    return inner ? typeToCType(inner, ctx) : "int64_t";
   }
   if (n === "I32" || n === "I64" || n === "Bool" || n === "USize") {
     return "int64_t";
@@ -190,7 +225,10 @@ function inferExprType(expr, ctx, localTypes) {
       return localTypes.get(expr.name) ?? "int64_t";
     case "CallExpr":
       if (expr.callee?.kind === "Identifier") {
-        return ctx.fnReturnTypeByName.get(expr.callee.name) ?? "int64_t";
+        const cn = expr.callee.name;
+        // malloc/realloc return a TuffVec* fat slice pointer (special-cased in emitExpr).
+        if (cn === "malloc" || cn === "realloc") return "TuffVec*";
+        return ctx.fnReturnTypeByName.get(cn) ?? "int64_t";
       }
       return "int64_t";
     case "StructInit": {
@@ -307,13 +345,68 @@ function emitExpr(expr, ctx, localTypes = new Map()) {
         return emitExpr(expr.expr, ctx, localTypes);
       }
       return `(${expr.op}${emitExpr(expr.expr, ctx, localTypes)})`;
-    case "BinaryExpr":
+    case "BinaryExpr": {
+      // Pointer arithmetic on TuffVec* slice: slice + offset → slice->data + offset
+      if (
+        expr.op === "+" &&
+        expr.left?.kind === "Identifier" &&
+        localTypes.get(expr.left.name) === "TuffVec*"
+      ) {
+        const ptrStr = emitExpr(expr.left, ctx, localTypes);
+        const offStr = emitExpr(expr.right, ctx, localTypes);
+        return `(${ptrStr}->data + ${offStr})`;
+      }
       return `(${emitExpr(expr.left, ctx, localTypes)} ${expr.op} ${emitExpr(expr.right, ctx, localTypes)})`;
-    case "CallExpr":
+    }
+    case "CallExpr": {
       if (expr.callee?.kind === "Identifier" && expr.callee.name === "drop") {
         return "0";
       }
-      return `${emitExpr(expr.callee, ctx, localTypes)}(${expr.args.map((a) => emitExpr(a, ctx, localTypes)).join(", ")})`;
+      // sizeOf<T>() → sizeof(C_type) cast to int64_t
+      if (
+        expr.callee?.kind === "Identifier" &&
+        expr.callee.name === "sizeOf" &&
+        (expr.typeArgs?.length ?? 0) > 0
+      ) {
+        const cType = typeToCType(expr.typeArgs[0], ctx);
+        return `(int64_t)sizeof(${cType})`;
+      }
+      // malloc<T, L>(byteCount) → allocate TuffVec fat slice (data + metadata).
+      if (
+        expr.callee?.kind === "Identifier" &&
+        expr.callee.name === "malloc" &&
+        (expr.args?.length ?? 0) >= 1
+      ) {
+        const bytesStr = emitExpr(expr.args[0], ctx, localTypes);
+        const nbytes = nextTemp("malloc_nbytes");
+        const vec = nextTemp("malloc_vec");
+        return `({ size_t ${nbytes} = (size_t)(${bytesStr}); TuffVec* ${vec} = (TuffVec*)malloc(sizeof(TuffVec)); if (${vec}) { ${vec}->data = (int64_t*)malloc(${nbytes}); ${vec}->init = 0; ${vec}->length = ${nbytes} / sizeof(int64_t); if (!${vec}->data) { free(${vec}); ${vec} = NULL; } } ${vec}; })`;
+      }
+      // realloc<T, ...>(ptr, byteCount) → grow TuffVec data in-place.
+      if (
+        expr.callee?.kind === "Identifier" &&
+        expr.callee.name === "realloc" &&
+        (expr.args?.length ?? 0) >= 2
+      ) {
+        const ptrStr = emitExpr(expr.args[0], ctx, localTypes);
+        const bytesStr = emitExpr(expr.args[1], ctx, localTypes);
+        const nbytes = nextTemp("realloc_nbytes");
+        const vec = nextTemp("realloc_vec");
+        const data = nextTemp("realloc_data");
+        return `({ size_t ${nbytes} = (size_t)(${bytesStr}); TuffVec* ${vec} = (TuffVec*)(${ptrStr}); if (${vec}) { int64_t* ${data} = (int64_t*)realloc(${vec}->data, ${nbytes}); if (${data}) { ${vec}->data = ${data}; ${vec}->length = ${nbytes} / sizeof(int64_t); } else { ${vec} = NULL; } } ${vec}; })`;
+      }
+      // free(ptr) → free TuffVec data then the struct itself.
+      if (
+        expr.callee?.kind === "Identifier" &&
+        expr.callee.name === "free" &&
+        (expr.args?.length ?? 0) >= 1
+      ) {
+        const ptrStr = emitExpr(expr.args[0], ctx, localTypes);
+        const vec = nextTemp("free_vec");
+        return `({ TuffVec* ${vec} = (TuffVec*)(${ptrStr}); if (${vec}) { free(${vec}->data); free(${vec}); } 0; })`;
+      }
+      return `${emitExpr(expr.callee, ctx, localTypes)}(${(expr.args ?? []).map((a) => emitExpr(a, ctx, localTypes)).join(", ")})`;
+    }
     case "MemberExpr": {
       if (
         expr.object?.kind === "Identifier" &&
@@ -321,8 +414,15 @@ function emitExpr(expr, ctx, localTypes = new Map()) {
       ) {
         return `${expr.object.name}_${expr.property}`;
       }
-      unsupported(expr, "non-enum member access");
-      return "0";
+      // General struct / TuffVec* field access.
+      {
+        const objStr = emitExpr(expr.object, ctx, localTypes);
+        const isSlicePtr =
+          expr.object?.kind === "Identifier" &&
+          localTypes.get(expr.object.name) === "TuffVec*";
+        if (isSlicePtr) return `${objStr}->${expr.property}`;
+        return `${objStr}.${expr.property}`;
+      }
     }
     case "IfExpr":
       if (
@@ -362,6 +462,15 @@ function emitExpr(expr, ctx, localTypes = new Map()) {
     case "IndexExpr":
     case "StructInit":
     case "MatchExpr":
+      if (expr.kind === "IndexExpr") {
+        const objStr = emitExpr(expr.object, ctx, localTypes);
+        const idxStr = emitExpr(expr.index, ctx, localTypes);
+        const isSlicePtr =
+          expr.object?.kind === "Identifier" &&
+          localTypes.get(expr.object.name) === "TuffVec*";
+        if (isSlicePtr) return `${objStr}->data[${idxStr}]`;
+        return `${objStr}[${idxStr}]`;
+      }
       if (expr.kind === "MatchExpr") {
         return emitMatchExpr(expr, ctx, localTypes);
       }
@@ -427,6 +536,14 @@ function emitStmt(stmt, ctx, localTypes = new Map()) {
         return "/* drop <unsupported target> */";
       }
       const n = toCName(stmt.target.name);
+      // TuffVec* slices need data freed first, then the struct (no address-of).
+      if (
+        localTypes.get(stmt.target.name) === "TuffVec*" &&
+        stmt.destructorName === "free"
+      ) {
+        const tmp = nextTemp("drop_vec");
+        return `{ TuffVec* ${tmp} = ${n}; if (${tmp}) { free(${tmp}->data); free(${tmp}); } ${n} = NULL; }`;
+      }
       return `${toCName(stmt.destructorName)}(&${n}); ${n} = 0;`;
     }
     case "Block":
@@ -448,6 +565,8 @@ function emitStmt(stmt, ctx, localTypes = new Map()) {
       }
       return `${returnType} ${fnName}(${params}) { return ${emitExpr(stmt.body, ctx, fnLocals)}; }`;
     }
+    case "ObjectDecl":
+      return `/* object ${stmt.name} */`;
     case "StructDecl":
       return `/* struct ${stmt.name} lowered via union aliases when applicable */`;
     case "EnumDecl": {
@@ -482,6 +601,10 @@ function emitStmt(stmt, ctx, localTypes = new Map()) {
     case "ContractDecl":
       return `/* contract ${stmt.name} */`;
     case "ExternFnDecl":
+      // Standard C library functions are already declared via substrate.h includes.
+      if (C_STDLIB_BUILTINS.has(stmt.name)) {
+        return `/* extern ${stmt.name} — declared via C stdlib headers in substrate.h */`;
+      }
       return emitPrototype(
         `extern ${typeToCType(stmt.returnType, ctx)}`,
         stmt.name,

@@ -9,7 +9,17 @@ const __thisFile = fileURLToPath(import.meta.url);
 const __cDir = path.resolve(path.dirname(__thisFile), "..", "c");
 
 function readC(name) {
-  return fs.readFileSync(path.join(__cDir, name), "utf8");
+  const content = fs.readFileSync(path.join(__cDir, name), "utf8");
+  // Strip relative #include "*.h" lines from .c implementation files — the
+  // substrate assembler embeds all headers first, so these would cause the
+  // compiler to look for them relative to the generated output directory.
+  if (name.endsWith(".c")) {
+    return content
+      .split("\n")
+      .filter((line) => !/^#include\s+"[^"]+\.h"/.test(line))
+      .join("\n");
+  }
+  return content;
 }
 
 // Load the C substrate files in dependency order.

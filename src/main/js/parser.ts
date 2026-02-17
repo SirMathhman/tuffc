@@ -225,7 +225,8 @@ export function parse(tokens: Token[]): ParseResult<Program> {
         if (!match) return numericTypeLiteralError("invalid", raw, t.loc);
         const value = Number(match[1]);
         const suffix = match[2] ?? undefined;
-        if (suffix !== "USize" || value !== 0) {
+        // Accept both `0USize` and bare `0` as the null-sentinel type literal.
+        if (value !== 0 || (suffix !== undefined && suffix !== "USize")) {
           return numericTypeLiteralError("unsupported", raw, t.loc);
         }
         const base = { kind: "NamedType", name: "USize", genericArgs: [] };
