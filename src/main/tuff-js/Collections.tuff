@@ -49,3 +49,4 @@ out actual fn map_get_i32_i32(this : Map<I32, I32>, k : I32) : I32 => map_get(th
 out actual fn set_new_i32() : Set<I32> => __set_new();
 out actual fn set_add_i32(this : Set<I32>, item : I32) : Set<I32> => set_add(this, item);
 out actual fn set_has_i32(this : Set<I32>, item : I32) : Bool => set_has(this, item);
+k
