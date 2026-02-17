@@ -1,16 +1,21 @@
-# Runtime Migration Plan: Remove `tuff_runtime.c`
+# Runtime Migration Plan: Transition from `tuff_runtime.c`
 
 _Date: 2026-02-16_
 
-This document captures the agreed direction for fully migrating runtime functionality from hand-written C (`src/main/c/tuff_runtime.c`) to Tuff-defined platform libraries.
+This document captures the active migration direction for moving runtime functionality from hand-written C (`src/main/c/tuff_runtime.c`) to Tuff-defined platform libraries.
 
-## Agreed end-state
+## Target end-state
 
 - No `tuff_runtime.c` or `tuff_runtime.h` as required runtime artifacts.
 - C target runtime is expressed via Tuff libraries using `expect` / `actual`.
-- Selfhost C bootstrap is the hard acceptance gate.
 - Correctness parity is prioritized over deletion speed.
-- No long-running dual-runtime mode; switch should be coherent once ready.
+
+## Current migration policy (active)
+
+- Use a **transitional dual-runtime** path while parity is being built.
+- Keep `src/main/c/tuff_runtime.c` + `src/main/c/tuff_runtime.h` as required runtime artifacts for current native C execution.
+- Move behavior by capability groups into `expect/actual` target libraries with explicit verification gates.
+- Defer removal of C runtime artifacts until all checkpoints are satisfied.
 
 ## Architectural decisions
 
@@ -32,7 +37,7 @@ This document captures the agreed direction for fully migrating runtime function
    - `*Str` lowers to `char*`.
    - `Str[L]` lowers to fixed-size `char[L]` at the ABI boundary.
 
-## Milestone 1 (starting now)
+## Milestone 1 (completed)
 
 Introduce target-aware package alias resolution in Stage0 module loading:
 
@@ -75,6 +80,42 @@ Resolution precedence:
 - New focused test proves target-specific alias mapping works.
 - Behavior is backward-compatible when alias config is omitted.
 
-## Overall removal gate
+Status: ✅ completed (`src/test/js/module-package-aliases.ts`).
 
-`selfhost C bootstrap passes` with no dependency on `tuff_runtime.c`.
+## Milestone 2 (in progress): capability-group runtime alignment
+
+Capability groups and baseline coverage are tracked in `docs/runtime-abi-matrix.md`.
+
+Current gates:
+
+- Strings / Collections / IO smoke coverage in C backend checks.
+- Expect/actual target-alias pairing checks for C target.
+- Native CLI end-to-end C build/run gate.
+
+Implemented verification commands:
+
+- `npm run c:verify`
+- `npm run expect:actual:verify`
+- `npm run c:native:verify`
+- `npm run c:verify:full`
+
+## Capability cutover checkpoints
+
+Each runtime capability group may move from transitional `tuff_runtime.*` ownership to target-library ownership only when all of the following are true:
+
+1. **Contract parity**: expect/actual signatures and semantics are validated for the group.
+2. **Codegen parity**: generated C paths using that group pass targeted and aggregate verification.
+3. **Diagnostics parity**: errors remain actionable and stable.
+4. **Regression safety**: existing C verification suites remain green.
+
+## Final removal gate
+
+Remove `tuff_runtime.c/.h` only after:
+
+- capability-group checkpoints pass for all required runtime surfaces,
+- native C workflows are stable without direct dependency on transitional runtime symbols, and
+- selfhost-C progress gates no longer require transitional runtime artifacts.
+
+## Historical note
+
+Earlier drafts specified immediate removal and no dual-runtime transition. Current implementation intentionally uses a transitional path to reduce risk while expanding C-target parity and verification coverage.
