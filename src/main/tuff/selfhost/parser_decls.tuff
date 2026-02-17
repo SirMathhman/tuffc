@@ -34,28 +34,31 @@ fn p_parse_function(is_class: I32, mode: I32) : I32 => {
     p_expect(TK_SYMBOL, "(", "Expected '('");
     let params = vec_new();
     if (!p_at(TK_SYMBOL, ")")) {
-        let pname = p_parse_identifier();
-        let ptype = 0;
-        if (p_at(TK_SYMBOL, ":")) {
-            p_eat();
-            ptype = p_parse_type();
-        }
-        let param = vec_new();
-        param.vec_push(pname);
-        param.vec_push(ptype);
-        params.vec_push(param);
-        while (p_at(TK_SYMBOL, ",")) {
-            p_eat();
-            let pname2 = p_parse_identifier();
-            let ptype2 = 0;
-            if (p_at(TK_SYMBOL, ":")) {
-                p_eat();
-                ptype2 = p_parse_type();
+        while (true) {
+            let pname = 0;
+            let ptype = 0;
+
+            // Receiver/typed-first shorthand: *mut this, *a mut this, etc.
+            if (p_at(TK_SYMBOL, "*")) {
+                ptype = p_parse_type();
+                pname = p_parse_identifier();
+            } else {
+                pname = p_parse_identifier();
+                if (p_at(TK_SYMBOL, ":")) {
+                    p_eat();
+                    ptype = p_parse_type();
+                }
             }
-            let param2 = vec_new();
-            param2.vec_push(pname2);
-            param2.vec_push(ptype2);
-            params.vec_push(param2);
+
+            let param = vec_new();
+            param.vec_push(pname);
+            param.vec_push(ptype);
+            params.vec_push(param);
+
+            if (!p_at(TK_SYMBOL, ",")) {
+                break;
+            }
+            p_eat();
         }
     }
     p_expect(TK_SYMBOL, ")", "Expected ')'");
@@ -275,6 +278,11 @@ fn p_parse_type_alias(is_copy: I32) : I32 => {
 
 fn p_parse_let() : I32 => {
     p_expect(TK_KEYWORD, "let", "Expected 'let'");
+
+    // Accept mutability marker for Stage0 parity; mut semantics are enforced later.
+    if (p_at(TK_KEYWORD, "mut")) {
+        p_eat();
+    }
     
     // Destructuring import
     if (p_at(TK_SYMBOL, "{")) {
@@ -412,6 +420,32 @@ fn p_parse_extern_decl() : I32 => {
     }
     if (p_at(TK_KEYWORD, "let")) {
         p_eat();
+
+        // Accept extern destructuring bindings used for host symbol groups:
+        // extern let { malloc, free } = stdlib;
+        // We treat this as declaration-only metadata and emit no runtime node.
+        if (p_at(TK_SYMBOL, "{")) {
+            p_eat();
+            if (!p_at(TK_SYMBOL, "}")) {
+                p_parse_identifier();
+                while (p_at(TK_SYMBOL, ",")) {
+                    p_eat();
+                    p_parse_identifier();
+                }
+            }
+            p_expect(TK_SYMBOL, "}", "Expected '}' after extern let bindings");
+            p_expect(TK_SYMBOL, "=", "Expected '=' in extern let bindings");
+            p_parse_identifier();
+            while (p_at(TK_SYMBOL, "::")) {
+                p_eat();
+                p_parse_identifier();
+            }
+            p_expect(TK_SYMBOL, ";", "Expected ';' after extern let bindings");
+            let noop = node_new(NK_BLOCK);
+            node_set_data1(noop, vec_new());
+            return noop;
+        }
+
         let name = p_parse_identifier();
         let typ = 0;
         if (p_at(TK_SYMBOL, ":")) {
