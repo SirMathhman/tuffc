@@ -1,31 +1,64 @@
-# Tuff Stage 0 Bootstrap Compiler (JavaScript)
+# Tuff Bootstrap Compiler
 
-Implements Phase 1 / Stage 0 from `SELF-HOST.md`:
+_Last updated: 2026-02-17_
+
+Multi-stage Tuff compiler with a JavaScript/TypeScript Stage 0 bootstrap, a self-hosted Stage 1/2/3 pipeline, a C codegen backend, and a browser bundle. See `SELF-HOST.md` for the full bootstrap roadmap.
+
+## Current implementation status
+
+| Component                               | Status           | Notes                                                                           |
+| --------------------------------------- | ---------------- | ------------------------------------------------------------------------------- |
+| Stage 0 (JS bootstrap)                  | ✅ Complete      | Full pipeline: lex/parse/desugar/resolve/typecheck/borrowcheck/JS codegen       |
+| Stage 1 (Tuff-lite bootstrap)           | ✅ Complete      | Bootstrap equivalence passes (`stage1:bootstrap`)                               |
+| Stage 2 (Full Tuff strict mode)         | ✅ Complete      | Refinement types, ownership, proof checks                                       |
+| Stage 3 (Selfhost from `selfhost.tuff`) | ✅ Strong parity | See `docs/stage0-vs-stage3-implementation-status.md`                            |
+| C backend                               | 🔄 Active        | M2 capability-group alignment in progress; see `docs/runtime-migration-plan.md` |
+| Web bundle                              | ✅ Complete      | `tuff-compiler.esm.js` / `.min.js` for browser use                              |
+
+### Stage 0 features implemented
 
 - Lexer with source positions
-- Recursive-descent parser for Tuff-lite
-- Desugaring pass (`class fn` support)
+- Recursive-descent parser (Tuff-lite + extensions)
+- Desugaring pass (`class fn`, closures, `loop {}`, `object` singletons)
 - Name resolution with no-shadowing checks
-- Basic bidirectional-ish type checking for Tuff-lite
-- JavaScript code generation
-- CLI: `tuff compile file.tuff`
-- Snapshot and runtime test harness
+- Bidirectional type checking with generics
+- Borrow checker (move/copy semantics, drop lifecycle, `*move` qualifier)
+- JavaScript codegen
+- C codegen backend with substrate support unit
+- Module graph with target-aware package aliases (`tuff-core`, `tuff-c`, `tuff-js`)
+- `contract` / `into` — static dispatch and dynamic dispatch lowering
+- `expect` / `actual` declarations for cross-platform stdlib
+- `Result` / `Option` with `?` unwrap and pipe-union forms
+- Structured 4-part diagnostics (`source`, `cause`, `reason`, `fix`)
+- Browser bundle API (`compileTuffToJs`, `compileTuffToJsResult`, `compileTuffToJsDiagnostics`)
+
+### Known gaps (see `GAPS.md` for details)
+
+- `async fn` / CPS surface — not yet parsed
+- `class fn` desugar — constructor/return typing mismatch
+- Dependent array signature form (`toStackArray`) — not yet resolved
+- Diagnostic code name mismatches (`E_SAFETY_OVERFLOW` vs. `E_SAFETY_INTEGER_OVERFLOW`, `E_MATCH_NON_EXHAUSTIVE` vs. `E_TYPE_MATCH_NON_EXHAUSTIVE`)
 
 ## Repository layout (Gradle-like, multi-language)
 
-- `src/main/js` — bootstrap/runtime JavaScript implementation
-- `src/main/tuff` — main Tuff compiler sources (self-hosted stages)
-- `src/main/rust` — Rust experiments/runtime tooling
+- `src/main/js` — Stage 0 TypeScript bootstrap compiler
+- `src/main/tuff` — Tuff compiler sources (Stage 1 / selfhost stages)
+- `src/main/tuff-core` — Cross-platform `expect` API definitions
+- `src/main/tuff-c` — C target `actual` implementations
+- `src/main/tuff-js` — JS target `actual` implementations
+- `src/main/c` — Transitional C runtime (`tuff_runtime.c`, substrate support unit)
 - `src/test/js` — JS test harnesses
 - `src/test/tuff` — Tuff test programs and module fixtures
 
 ## Quick start
 
-1. Run the fast default test command: `npm run test`
-2. Run lint pass: `npm run lint`
-3. Run JS throw-ban lint gate: `npm run lint:throws`
-4. Run typecheck: `npm run typecheck`
-5. Run combined local gate (lint + typecheck + fast tests): `npm run check`
+> **Note:** Both `npm` and `bun` work interchangeably for all scripts below.
+
+1. Run the fast default test command: `bun run test` (or `npm run test`)
+2. Run lint pass: `bun run lint`
+3. Run JS throw-ban lint gate: `bun run lint:throws`
+4. Run typecheck: `bun run typecheck`
+5. Run combined local gate (lint + typecheck + fast tests): `bun run check`
 6. Compile file: `tsx ./src/main/js/cli.ts compile ./src/test/tuff/cases/factorial.tuff -o ./tests/out/factorial.js`
 
 ### Test command tiers

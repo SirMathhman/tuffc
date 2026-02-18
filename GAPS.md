@@ -1,6 +1,6 @@
 # Tuff Spec Gap Report
 
-_Last updated: 2026-02-16 (from `npm run semantics:exhaustive`)_
+_Last updated: 2026-02-17 (from `bun run semantics:exhaustive`)_
 
 This document lists the current gaps between the implemented compiler behavior and `SPECIFICATION.md`, based on the failing exhaustive semantics audit in `src/test/js/spec-semantics-exhaustive.ts`.
 

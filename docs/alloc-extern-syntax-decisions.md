@@ -1,6 +1,6 @@
 # Alloc/Extern Syntax Decisions
 
-_Date: 2026-02-15_
+_Date: 2026-02-17_
 
 This document records language-design decisions for the proposed syntax:
 

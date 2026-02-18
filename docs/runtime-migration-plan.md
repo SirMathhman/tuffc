@@ -1,6 +1,6 @@
 # Runtime Migration Plan: Transition from `tuff_runtime.c`
 
-_Date: 2026-02-16_
+_Date: 2026-02-17_
 
 This document captures the active migration direction for moving runtime functionality from hand-written C (`src/main/c/tuff_runtime.c`) to Tuff-defined platform libraries.
 
@@ -92,12 +92,12 @@ Current gates:
 - Expect/actual target-alias pairing checks for C target.
 - Native CLI end-to-end C build/run gate.
 
-Implemented verification commands:
+Implemented verification commands (use `bun run` or `npm run` interchangeably):
 
-- `npm run c:verify`
-- `npm run expect:actual:verify`
-- `npm run c:native:verify`
-- `npm run c:verify:full`
+- `bun run c:verify`
+- `bun run expect:actual:verify`
+- `bun run c:native:verify`
+- `bun run c:verify:full`
 
 ## Milestone 3 (completed): parser/runtime topology prep for multiplatform stdlib
 

@@ -1,13 +1,24 @@
-# Plan: Tuff Self-Hosted Compiler
+# Tuff Self-Hosted Compiler — Bootstrap Roadmap
+
+_Last updated: 2026-02-17_
 
 Build a self-hosted Tuff compiler using JavaScript as the bootstrap language, targeting JavaScript output, with focus on self-hosting speed over feature completeness.
 
 **Bootstrap Path**:
 Stage 0 (JS) → compiles → Stage 1 (Tuff-lite) → compiles → Stage 2 (Full Tuff) → self-hosted
 
+## Status summary (2026-02-17)
+
+| Phase                                | Status                                                 |
+| ------------------------------------ | ------------------------------------------------------ |
+| Phase 1 — Stage 0 JS Bootstrap       | ✅ Complete                                            |
+| Phase 2 — Stage 1 Tuff-lite compiler | ✅ Complete (bootstrap equivalence passes)             |
+| Phase 3 — Stage 2 Full Tuff          | ✅ Complete (strict mode active)                       |
+| Phase 4 — Production readiness       | 🔄 Active (diagnostics done; C backend M2 in progress) |
+
 ---
 
-## Phase 1: Stage 0 — JavaScript Bootstrap Compiler
+## Phase 1: Stage 0 — JavaScript Bootstrap Compiler ✅
 
 **Goal**: JavaScript compiler that handles "Tuff-lite" subset sufficient to write a compiler.
 
@@ -31,11 +42,13 @@ Stage 0 (JS) → compiles → Stage 1 (Tuff-lite) → compiles → Stage 2 (Full
 - Pattern matching (`match`/`case`, `is`)
 - Arrays `[T; N; N]` with basic bounds (runtime checks ok for Stage 0)
 - Basic operators, control flow
-- **No** refinement types, dependent types, ownership/borrowing, `async`
+- **No** refinement types, dependent types, `async`
+
+All Stage 0 steps above are complete. See `README.md` for the full feature list and `GAPS.md` for remaining language-spec gaps.
 
 ---
 
-## Phase 2: Stage 1 — Tuff Compiler in Tuff-lite
+## Phase 2: Stage 1 — Tuff Compiler in Tuff-lite ✅
 
 **Goal**: Rewrite the Stage 0 compiler in Tuff-lite, compile it using Stage 0.
 
@@ -51,9 +64,11 @@ Stage 0 (JS) → compiles → Stage 1 (Tuff-lite) → compiles → Stage 2 (Full
 
 **Validation**: `stage0(stage1.tuff) == stage1_a.js` and `stage1_a(stage1.tuff) == stage1_b.js` should produce equivalent output.
 
+Bootstrap equivalence passes. Run: `bun run stage1:bootstrap`
+
 ---
 
-## Phase 3: Stage 2 — Full Tuff Compiler
+## Phase 3: Stage 2 — Full Tuff Compiler ✅
 
 **Goal**: Add remaining language features to the self-hosted compiler.
 
@@ -67,66 +82,71 @@ Stage 0 (JS) → compiles → Stage 1 (Tuff-lite) → compiles → Stage 2 (Full
 6. **Ownership & Borrowing** — Borrow checker: track borrows, enforce one-mut-xor-many-shared rule. Model as dataflow analysis. (_parallel with steps 4-5_)
 7. **Lifetime Analysis** — Ensure references don't outlive referents. Simple region-based approach initially. (_depends on step 6_)
 8. **Full Pattern Matching** — Exhaustiveness checker, range patterns, nested destructuring. (_parallel with step 1_)
-9. **Async/Await Desugaring** — CPS transformation as specified. Pure syntactic transform. (_parallel with step 1_)
+9. **Async/Await Desugaring** — CPS transformation as specified. Pure syntactic transform. (_parallel with step 1_) — **pending**
+
+Stage 2 strict mode is active (`--stage2` flag). Ownership/borrowing, safety proofs, module graph, and match exhaustiveness are all implemented. `async fn` CPS surface remains pending.
+
+Run: `bun run stage2:verify`
 
 ---
 
-## Phase 4: Production Readiness
+## Phase 4: Production Readiness 🔄
 
 **Steps**:
 
-1. **Error Messages** — Counterexample-guided diagnostics from SMT failures. Show concrete failing values. (_depends on Phase 3 steps 4-5_)
-2. **LLVM Backend** — Emit LLVM IR for native compilation. Share frontend with JS backend. (_parallel with step 1_)
-3. **Standard Library** — Core types: `String`, `Vec`, `HashMap`, I/O, etc. (_parallel with step 1_)
-4. **Build System** — Dependency management, incremental compilation, package registry integration. (_parallel with step 3_)
-5. **Tooling** — Formatter, linter, language server for IDE support. (_after steps 1-4_)
+1. **Error Messages** — Counterexample-guided diagnostics from SMT failures. Show concrete failing values. ✅ Structured 4-part diagnostics (`source`/`cause`/`reason`/`fix`) and stable error codes are implemented.
+2. **LLVM Backend** — Emit LLVM IR for native compilation. Share frontend with JS backend. (_pending_)
+3. **Standard Library** — Core types: `String`, `Vec`, `HashMap`, I/O, etc. (_in progress via `tuff-core`/`tuff-c`/`tuff-js`_)
+4. **Build System** — Dependency management, incremental compilation, package registry integration. (_pending_)
+5. **Tooling** — Formatter, linter, language server for IDE support. (_linter shipped; LSP pending_)
 
 ---
 
 ## File Structure
 
-- `src/main/js/lexer.ts` (then `src/main/tuff/lexer.tuff`) — Tokenization logic
+- `src/main/js/lexer.ts` → `src/main/tuff/lexer.tuff` — Tokenization logic
 - `src/main/js/parser.ts` → `.tuff` — Recursive descent parser
-- `src/main/js/ast.js` → `.tuff` — AST node definitions (structs/enums)
 - `src/main/js/desugar.ts` → `.tuff` — CST to Core transformation
 - `src/main/js/resolve.ts` → `.tuff` — Name resolution, scope analysis
 - `src/main/js/typecheck.ts` → `.tuff` — Type inference, constraint generation
-- `src/main/js/constraints.js` → `.tuff` — Refinement constraint representation
-- `src/main/js/solver.js` → `.tuff` — SMT integration / decision procedure
-- `src/main/js/borrow.js` → `.tuff` — Ownership and borrow checking
-- `src/main/js/codegen/js.js` → `.tuff` — JavaScript code generation
-- `src/main/js/codegen/llvm.tuff` — LLVM IR generation (Phase 4)
+- `src/main/js/borrowcheck.ts` → `.tuff` — Ownership and borrow checking
+- `src/main/js/codegen-js.ts` → `.tuff` — JavaScript code generation
+- `src/main/js/codegen-c.ts` → `.tuff` — C code generation
+- `src/main/tuff-core/` — Cross-platform `expect` API definitions
+- `src/main/tuff-c/` — C target `actual` implementations
+- `src/main/tuff-js/` — JS target `actual` implementations
 - `src/test/` — Organized by language (`js`, `tuff`) and feature coverage
 
 ---
 
 ## Verification
 
-**Phase 1**:
+**Phase 1** ✅:
 
 - Unit tests per phase using snapshot/golden testing
 - Parse all syntax examples from SPECIFICATION.md
 - Type-check valid programs, reject invalid ones with correct errors
 - Compile and execute: `factorial(5) == 120`
 
-**Phase 2**:
+**Phase 2** ✅:
 
 - **Bootstrap equivalence**: Stage 0 and Stage 1 produce identical output for test suite
 - **Self-compilation**: Stage 1 compiles itself successfully
 - Triple compilation: `stage1(stage1) == stage1(stage1(stage1))`
 
-**Phase 3**:
+**Phase 3** ✅:
 
 - Property-based tests: generate programs violating safety, verify rejection
 - Specific tests per SPECIFICATION.md Appendix B examples
 - `safeDivide`, `getElement`, `safeAdd` examples must type-check
 - Programs with division-by-zero potential must fail compilation
 
-**Phase 4**:
+**Phase 4** 🔄:
 
-- Native binaries execute correctly
-- Performance benchmarks vs C for compute-heavy code
-- Full test suite passes on both JS and native backends
+- Structured diagnostics: ✅ complete
+- Native binaries: pending LLVM backend
+- Performance benchmarks vs C: pending
+- Full test suite passes on both JS and native backends: JS ✅, native 🔄
 
 ---
 
@@ -134,22 +154,23 @@ Stage 0 (JS) → compiles → Stage 1 (Tuff-lite) → compiles → Stage 2 (Full
 
 - **Bootstrap in JavaScript** targeting JS output for fastest iteration
 - **Defer refinement types, ownership, borrowing until Stage 2** — not needed for bootstrap
-- **Use Z3 via WebAssembly** for SMT solving (can be swapped for custom solver later)
+- **No Z3 / SMT solver** — proof obligations handled by the type-level constraint system in the compiler directly; no external solver dependency planned
 - **Monomorphize generics** in JS codegen (no runtime generic dispatch)
-- **Runtime array bounds checks in Stage 0/1** — proof-based checks added in Stage 2
-- **Single-file programs until Phase 2 step 1** — module system not needed for bootstrap
+- **Runtime array bounds checks in Stage 0/1** — proof-based checks in Stage 2
+- **Single-file programs until Phase 2 step 1** — module system added in Phase 2
+- **No `throw` in compiler code** — ESLint enforces throw-ban; use `Result<T,E>` from `src/main/js/result.ts`
 - **Exclude**: macros, attributes, standard library design (per spec: deferred)
 
 ---
 
 ## Estimated Timeline
 
-Working full-time:
+These were the original estimates. All phases through Phase 3 are complete.
 
-- **Phase 1**: ~4-5 weeks
-- **Phase 2**: ~3-4 weeks
-- **Phase 3**: ~6-8 weeks
-- **Phase 4**: ~8-12 weeks
+- **Phase 1**: ~4-5 weeks — ✅ Done
+- **Phase 2**: ~3-4 weeks — ✅ Done
+- **Phase 3**: ~6-8 weeks — ✅ Done
+- **Phase 4**: ~8-12 weeks — 🔄 In progress (diagnostics done; C backend active; LLVM pending)
 
-**Self-hosting achieved** at end of Phase 2 (~8-9 weeks).  
-**Full safety guarantees** at end of Phase 3.
+**Self-hosting achieved** (Phase 2 complete).
+**Full safety guarantees** (Phase 3 complete).

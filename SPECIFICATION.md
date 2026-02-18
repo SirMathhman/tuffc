@@ -1,5 +1,7 @@
 # System Specification: Tuff Programming Language
 
+_Last updated: 2026-02-17_
+
 ## 1. Purpose and Scope
 
 ### Core Purpose

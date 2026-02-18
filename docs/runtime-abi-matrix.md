@@ -1,6 +1,6 @@
 # Runtime ABI Matrix (Transitional C Runtime)
 
-_Date: 2026-02-16_
+_Date: 2026-02-17_
 
 This matrix is the Phase 0 source-of-truth for runtime surface area used by C-target compilation while we keep a **transitional dual-runtime path** (`tuff_runtime.c/.h` + growing `expect/actual` target libraries).
 

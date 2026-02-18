@@ -1,5 +1,7 @@
 # Vec / Array Pointer Lowering Contract
 
+_Date: 2026-02-17_
+
 This document freezes the pointer-shape lowering law used by the compiler and stdlib migration.
 
 ## Pointer shapes

@@ -1,4 +1,4 @@
-# Stage0 vs Stage3 Implementation Status (2026-02-16)
+# Stage0 vs Stage3 Implementation Status (2026-02-17)
 
 This note records current feature parity status between:
 
