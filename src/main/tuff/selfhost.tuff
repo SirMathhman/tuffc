@@ -14,6 +14,7 @@ let { selfhost_typecheck_marker } = selfhost::typecheck;
 let { selfhost_borrowcheck_marker } = selfhost::borrowcheck;
 let { selfhost_codegen_expr_marker } = selfhost::codegen_expr;
 let { selfhost_codegen_stmt_marker } = selfhost::codegen_stmt;
+let { selfhost_codegen_c_marker } = selfhost::codegen_c;
 let { selfhost_linter_marker } = selfhost::linter;
 let { lex_init, lex_all } = selfhost::runtime_lexer;
 let { parse_init } = selfhost::parser_core;
@@ -22,7 +23,10 @@ let { resolve_names } = selfhost::resolver;
 let { typecheck_program, typecheck_program_with_options } = selfhost::typecheck;
 let { borrowcheck_program } = selfhost::borrowcheck;
 let { generate_js } = selfhost::codegen_stmt;
+let { generate_c } = selfhost::codegen_c;
 let { lint_reset, lint_take_issues, lint_program } = selfhost::linter;
+extern let { __host_get_c_substrate } = globalThis;
+extern fn __host_get_c_substrate() : *Str;
 extern fn __host_emit_target_from_source(source: *Str, target: *Str) : *Str;
 
 fn sanitize_max_effective_lines(max_effective_lines: I32) : I32 => {
@@ -42,7 +46,7 @@ fn emit_target_output(typed: I32, source: *Str, target: *Str) : *Str => {
         return generate_js(typed);
     }
     if (target.str_eq("c")) {
-        return __host_emit_target_from_source(source, target);
+        return generate_c(typed, __host_get_c_substrate());
     }
     panic_with_code(
         "E_UNSUPPORTED_TARGET",

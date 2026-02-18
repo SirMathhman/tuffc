@@ -31,6 +31,7 @@
     "c:native:verify": "tsx ./src/test/js/c-native-cli-e2e.ts",
     "c:verify:full": "npm run c:verify && npm run expect:actual:verify && npm run runtime:aliases && npm run c:native:verify && npm run c:selfhost:verify",
     "c:selfhost:verify": "tsx ./src/test/js/c-selfhost-progress.ts",
+    "native:codegen": "tsx ./src/test/js/tuff-native-compiler.ts",
     "cli:verify": "tsx ./src/test/js/cli-hardening.ts",
     "selfhost:modules": "tsx ./src/test/js/selfhost-modules.ts",
     "modules:aliases": "tsx ./src/test/js/module-package-aliases.ts",

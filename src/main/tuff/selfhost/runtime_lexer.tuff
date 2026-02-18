@@ -2,6 +2,15 @@
 // Extern declarations - these come from runtime.js
 // ============================================================================
 
+// Source attributions satisfy the E_EXTERN_NO_SOURCE gate for C codegen.
+// The actual implementations come from the always-embedded C substrate.
+extern let { str_length, str_char_at, str_slice, str_concat, str_eq, str_from_char_code, str_index_of, str_trim, str_replace_all, char_code, int_to_string, parse_int } = globalThis;
+extern let { sb_new, sb_append, sb_append_char, sb_build } = globalThis;
+extern let { __vec_new, vec_push, vec_pop, vec_get, vec_set, vec_length, vec_init, vec_capacity, vec_clear, vec_join, vec_includes } = globalThis;
+extern let { __map_new, map_set, map_get, map_has } = globalThis;
+extern let { __set_new, set_add, set_has, set_delete } = globalThis;
+extern let { read_file, write_file, path_join, path_dirname, print, print_error } = globalThis;
+extern let { panic, panic_with_code } = globalThis;
 
 extern fn str_length(this: *Str) : USize;
 extern fn str_char_at(this: *Str, index : USize < this.str_length()) : Char;

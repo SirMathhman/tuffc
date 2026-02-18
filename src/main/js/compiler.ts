@@ -11,6 +11,7 @@ import { typecheck } from "./typecheck.ts";
 import { borrowcheck } from "./borrowcheck.ts";
 import { generateJavaScript } from "./codegen-js.ts";
 import { generateC } from "./codegen-c.ts";
+import { getEmbeddedCSubstrateSupport } from "./c-runtime-support.ts";
 import { TuffError, enrichError } from "./errors.ts";
 import { err, ok, type Result } from "./result.ts";
 import * as runtime from "./runtime.ts";
@@ -402,6 +403,7 @@ function bootstrapSelfhostCompiler(options = {}): CompilerResult<unknown> {
     exports: {},
     console,
     __host_emit_target_from_source: hostEmitTargetFromSource,
+    __host_get_c_substrate: getEmbeddedCSubstrateSupport,
     ...runtime,
   };
 
