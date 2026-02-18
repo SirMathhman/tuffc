@@ -68,6 +68,20 @@ fn join_sources(sources: Vec<*Str>) : *Str => {
     sb_build(sb)
 }
 
+fn module_with_c_runtime_prelude(source: *Str, target: *Str) : *Str => {
+    if (!target.str_eq("c")) {
+        return source;
+    }
+    if (source.str_includes("fn tuff_runtime_panic(")) {
+        return source;
+    }
+    let prelude = __host_get_c_runtime_prelude_source();
+    if (prelude.str_eq("")) {
+        return source;
+    }
+    source.str_concat("\n\n").str_concat(prelude)
+}
+
 fn strip_import_decls(program: I32) : I32 => {
     let stmts = node_get_data1(program);
     let filtered = vec_new();
@@ -531,7 +545,7 @@ out fn compile_file_with_options(inputPath: *Str, outputPath: *Str, strict_safet
     let module_cycles = vec_new();
     lint_reset();
     gather_module_sources(inputPath, moduleBasePath, seen, visiting, sources, module_declared_map, all_declared_names, all_exported_declared_names, all_extern_declared_names, lint, max_lines, module_cycles);
-    let merged = join_sources(sources);
+    let merged = module_with_c_runtime_prelude(join_sources(sources), target);
     lex_init(merged);
     lex_all();
     parse_init();

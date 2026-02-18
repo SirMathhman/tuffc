@@ -598,6 +598,8 @@ let NK_LIFETIME_STMT = 67;
 
 let NK_STMT_LIST = 68;
 
+let NK_EXTERN_IMPORT_DECL = 69;
+
 let NK_ENUM_DECL = 60;
 
 let NK_NUMBER_LIT = 20;
@@ -1755,23 +1757,27 @@ function p_parse_extern_decl() {
   p_eat();
   if (p_at(TK_SYMBOL, "{")) {
   p_eat();
+  let names = vec_new();
   if ((!p_at(TK_SYMBOL, "}"))) {
-  p_parse_identifier();
+  (() => { const __recv = names; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, p_parse_identifier()) : vec_push(__recv, p_parse_identifier()); })();
   while (p_at(TK_SYMBOL, ",")) {
   p_eat();
-  p_parse_identifier();
+  (() => { const __recv = names; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, p_parse_identifier()) : vec_push(__recv, p_parse_identifier()); })();
 }
 }
   p_expect(TK_SYMBOL, "}", "Expected '}' after extern let bindings");
   p_expect(TK_SYMBOL, "=", "Expected '=' in extern let bindings");
-  p_parse_identifier();
+  let source_parts = vec_new();
+  (() => { const __recv = source_parts; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, p_parse_identifier()) : vec_push(__recv, p_parse_identifier()); })();
   while (p_at(TK_SYMBOL, "::")) {
   p_eat();
-  p_parse_identifier();
+  (() => { const __recv = source_parts; const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, p_parse_identifier()) : vec_push(__recv, p_parse_identifier()); })();
 }
   p_expect(TK_SYMBOL, ";", "Expected ';' after extern let bindings");
-  let noop = p_new_stmt_list(vec_new());
-  return noop;
+  let node = node_new(NK_EXTERN_IMPORT_DECL);
+  node_set_data1(node, names);
+  node_set_data2(node, source_parts);
+  return node;
 }
   let name = p_parse_identifier();
   let typ = 0;
@@ -2565,6 +2571,9 @@ function resolve_stmt(n, globals, scopes, depth) {
   scope_define(scopes, depth, get_interned_str((() => { const __recv = names; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })()));
   i = (i + 1);
 }
+  return 0;
+}
+  if ((kind == NK_EXTERN_IMPORT_DECL)) {
   return 0;
 }
   if ((kind == NK_EXPR_STMT)) {
@@ -3444,6 +3453,9 @@ function typecheck_stmt(n, fn_arities, fn_param_types, fn_return_types, local_ty
 } else { if ((!(() => { const __recv = rhs_name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "Unknown") : str_eq(__recv, "Unknown"); })())) {
   (() => { const __recv = local_types; const __dyn = __recv?.table?.map_set; return __dyn ? __dyn(__recv.ref, get_interned_str(node_get_data1(n)), rhs_name) : map_set(__recv, get_interned_str(node_get_data1(n)), rhs_name); })();
 } }
+  return 0;
+}
+  if ((kind == NK_EXTERN_IMPORT_DECL)) {
   return 0;
 }
   if ((kind == NK_EXPR_STMT)) {
@@ -4486,6 +4498,9 @@ function check_stmt(stmt, state, env_types, fn_return_types, extern_type_names, 
   state_dropped_delete(state, name);
   return 0;
 }
+  if ((kind == NK_EXTERN_IMPORT_DECL)) {
+  return 0;
+}
   if ((kind == NK_ASSIGN_STMT)) {
   let target = node_get_data1(stmt);
   let tplace = canonical_place(target);
@@ -4928,6 +4943,19 @@ function emit_stmt(n) {
   let name = get_interned_str(name_idx);
   return (() => { const __recv = "// extern type "; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, name) : str_concat(__recv, name); })();
 }
+  if ((kind == NK_EXTERN_IMPORT_DECL)) {
+  let parts = node_get_data2(n);
+  let i = 0;
+  let source = "";
+  while ((i < (() => { const __recv = parts; const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })())) {
+  if ((i > 0)) {
+  source = (() => { const __recv = source; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "::") : str_concat(__recv, "::"); })();
+}
+  source = (() => { const __recv = source; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, get_interned_str((() => { const __recv = parts; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })())) : str_concat(__recv, get_interned_str((() => { const __recv = parts; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })())); })();
+  i = (i + 1);
+}
+  return (() => { const __recv = "// extern from "; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, source) : str_concat(__recv, source); })();
+}
   return "";
 }
 
@@ -5098,6 +5126,26 @@ let cc_alias_by_variant = map_new();
 
 let cc_union_alias_info = map_new();
 
+let cc_covered_extern_fns = set_new();
+
+let cc_inc_stdint = 1;
+
+let cc_inc_stddef = 0;
+
+let cc_inc_stdio = 0;
+
+let cc_inc_stdlib = 0;
+
+let cc_inc_string = 0;
+
+let cc_inc_errno = 0;
+
+let cc_inc_direct = 0;
+
+let cc_inc_sys_stat = 0;
+
+let cc_inc_sys_types = 0;
+
 function cc_next_temp(prefix) {
   cc_temp_counter = (cc_temp_counter + 1);
   return (() => { const __recv = (() => { const __recv = (() => { const __recv = "__"; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, prefix) : str_concat(__recv, prefix); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "_") : str_concat(__recv, "_"); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(cc_temp_counter)) : str_concat(__recv, int_to_string(cc_temp_counter)); })();
@@ -5109,6 +5157,87 @@ function cc_to_name(name) {
 })() : (() => {
   return name;
 })());
+}
+
+function cc_join_parts(parts) {
+  let sb = sb_new();
+  let i = 0;
+  let len = (() => { const __recv = parts; const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })();
+  while ((i < len)) {
+  if ((i > 0)) {
+  sb_append(sb, "::");
+}
+  sb_append(sb, get_interned_str((() => { const __recv = parts; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })()));
+  i = (i + 1);
+}
+  return sb_build(sb);
+}
+
+function cc_mark_header_from_source(source) {
+  if ((() => { const __recv = source; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "stdio") : str_eq(__recv, "stdio"); })()) {
+  cc_inc_stdio = 1;
+  return 0;
+}
+  if ((() => { const __recv = source; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "stdlib") : str_eq(__recv, "stdlib"); })()) {
+  cc_inc_stdlib = 1;
+  return 0;
+}
+  if ((() => { const __recv = source; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "string") : str_eq(__recv, "string"); })()) {
+  cc_inc_string = 1;
+  return 0;
+}
+  if ((() => { const __recv = source; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "stdint") : str_eq(__recv, "stdint"); })()) {
+  cc_inc_stdint = 1;
+  return 0;
+}
+  if ((() => { const __recv = source; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "stddef") : str_eq(__recv, "stddef"); })()) {
+  cc_inc_stddef = 1;
+  return 0;
+}
+  if ((() => { const __recv = source; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "errno") : str_eq(__recv, "errno"); })()) {
+  cc_inc_errno = 1;
+  return 0;
+}
+  if ((() => { const __recv = source; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "direct") : str_eq(__recv, "direct"); })()) {
+  cc_inc_direct = 1;
+  return 0;
+}
+  if ((() => { const __recv = source; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "sys::stat") : str_eq(__recv, "sys::stat"); })()) {
+  cc_inc_sys_stat = 1;
+  return 0;
+}
+  if ((() => { const __recv = source; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "sys::types") : str_eq(__recv, "sys::types"); })()) {
+  cc_inc_sys_types = 1;
+  return 0;
+}
+  if ((((() => { const __recv = source; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "globalThis") : str_eq(__recv, "globalThis"); })() || (() => { const __recv = source; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "substrate") : str_eq(__recv, "substrate"); })()) || (() => { const __recv = source; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "host_c") : str_eq(__recv, "host_c"); })())) {
+  return 0;
+}
+  return panic_with_code("E_EXTERN_UNKNOWN_SOURCE", (() => { const __recv = (() => { const __recv = "Unknown extern source attribution: '"; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, source) : str_concat(__recv, source); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "'") : str_concat(__recv, "'"); })(), "The C backend only supports a built-in set of extern source aliases for header mapping.", "Use a supported source alias (stdio, stdlib, string, stdint, stddef, errno, direct, sys::stat, sys::types) or one of the runtime buckets (globalThis, substrate, host_c).");
+}
+
+function cc_require_substrate_headers() {
+  cc_inc_stddef = 1;
+  cc_inc_stdio = 1;
+  cc_inc_stdlib = 1;
+  cc_inc_string = 1;
+  cc_inc_errno = 1;
+  cc_inc_direct = 1;
+  cc_inc_sys_stat = 1;
+  cc_inc_sys_types = 1;
+  return 0;
+}
+
+function cc_emit_minimal_runtime_prelude() {
+  let sb = sb_new();
+  sb_append(sb, "/* Built-in minimal runtime prelude (substrate-free path) */\n");
+  sb_append(sb, "static inline int64_t tuff_to_val(const void* p) { return (int64_t)(intptr_t)p; }\n");
+  sb_append(sb, "static inline void* tuff_from_val(int64_t v) { return (void*)(intptr_t)v; }\n");
+  sb_append(sb, "static inline const char* tuff_str(int64_t v) { return v == 0 ? NULL : (const char*)(intptr_t)v; }\n");
+  sb_append(sb, "static inline const char* tuff_str_or_empty(int64_t v) { const char* s = tuff_str(v); return s ? s : \"\"; }\n");
+  sb_append(sb, "typedef struct TuffVec { int64_t* data; int64_t init; int64_t length; } TuffVec;\n");
+  sb_append(sb, "static void tuff_panic(const char* msg) { fprintf(stderr, \"[tuff panic] %s\\n\", msg); abort(); }\n");
+  return sb_build(sb);
 }
 
 function cc_type_to_c(type_node) {
@@ -5194,6 +5323,16 @@ function cc_init_context(program) {
 }
   (() => { const __recv = cc_union_alias_info; const __dyn = __recv?.table?.map_set; return __dyn ? __dyn(__recv.ref, alias_name, variants) : map_set(__recv, alias_name, variants); })();
 }
+}
+  if ((kind == NK_EXTERN_IMPORT_DECL)) {
+  let names = node_get_data1(n);
+  let j = 0;
+  let nlen = (() => { const __recv = names; const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })();
+  while ((j < nlen)) {
+  (() => { const __recv = cc_covered_extern_fns; const __dyn = __recv?.table?.set_add; return __dyn ? __dyn(__recv.ref, get_interned_str((() => { const __recv = names; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, j) : vec_get(__recv, j); })())) : set_add(__recv, get_interned_str((() => { const __recv = names; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, j) : vec_get(__recv, j); })())); })();
+  j = (j + 1);
+}
+  cc_mark_header_from_source(cc_join_parts(node_get_data2(n)));
 }
   i = (i + 1);
 }
@@ -5900,6 +6039,9 @@ function cc_emit_stmt(n) {
   let name = get_interned_str(node_get_data1(n));
   return (() => { const __recv = (() => { const __recv = "/* extern type "; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, name) : str_concat(__recv, name); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " */") : str_concat(__recv, " */"); })();
 }
+  if ((kind == NK_EXTERN_IMPORT_DECL)) {
+  return "";
+}
   if ((kind == NK_STMT_LIST)) {
   return "";
 }
@@ -5913,27 +6055,77 @@ function generate_c(typed, substrate) {
   cc_struct_fields = map_new();
   cc_alias_by_variant = map_new();
   cc_union_alias_info = map_new();
+  cc_covered_extern_fns = set_new();
+  cc_inc_stdint = 1;
+  cc_inc_stddef = 0;
+  cc_inc_stdio = 0;
+  cc_inc_stdlib = 0;
+  cc_inc_string = 0;
+  cc_inc_errno = 0;
+  cc_inc_direct = 0;
+  cc_inc_sys_stat = 0;
+  cc_inc_sys_types = 0;
   cc_init_context(typed);
+  if ((!(() => { const __recv = substrate; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "") : str_eq(__recv, ""); })())) {
+  cc_require_substrate_headers();
+} else {
+  cc_inc_stddef = 1;
+  cc_inc_stdio = 1;
+  cc_inc_stdlib = 1;
+}
   let stmts = node_get_data1(typed);
   let len = (() => { const __recv = stmts; const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })();
+  let cvi = 0;
+  while ((cvi < len)) {
+  let cvn = (() => { const __recv = stmts; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, cvi) : vec_get(__recv, cvi); })();
+  if ((node_kind(cvn) == NK_EXTERN_FN_DECL)) {
+  let fname = get_interned_str(node_get_data1(cvn));
+  if ((!(() => { const __recv = cc_covered_extern_fns; const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, fname) : set_has(__recv, fname); })())) {
+  panic_with_code("E_EXTERN_NO_SOURCE", (() => { const __recv = (() => { const __recv = "extern fn '"; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, fname) : str_concat(__recv, fname); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "' has no source attribution") : str_concat(__recv, "' has no source attribution"); })(), "C codegen requires each extern function to be attributed to a source via extern let destructuring.", (() => { const __recv = (() => { const __recv = "Add 'extern let { "; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, fname) : str_concat(__recv, fname); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " } = <header>;' before the declaration.") : str_concat(__recv, " } = <header>;' before the declaration."); })());
+}
+}
+  cvi = (cvi + 1);
+}
   let fn_nodes = vec_new();
   let init_rows = vec_new();
   let sb = sb_new();
+  if ((cc_inc_stdint == 1)) {
   sb_append(sb, "#include <stdint.h>\n");
+}
+  if ((cc_inc_stddef == 1)) {
   sb_append(sb, "#include <stddef.h>\n");
+}
+  if ((cc_inc_stdio == 1)) {
   sb_append(sb, "#include <stdio.h>\n");
+}
+  if ((cc_inc_stdlib == 1)) {
   sb_append(sb, "#include <stdlib.h>\n");
+}
+  if ((cc_inc_string == 1)) {
   sb_append(sb, "#include <string.h>\n");
+}
+  if ((cc_inc_errno == 1)) {
   sb_append(sb, "#include <errno.h>\n");
+}
   sb_append(sb, "#ifdef _WIN32\n");
+  if ((cc_inc_direct == 1)) {
   sb_append(sb, "#include <direct.h>\n");
+}
   sb_append(sb, "#else\n");
+  if ((cc_inc_sys_stat == 1)) {
   sb_append(sb, "#include <sys/stat.h>\n");
+}
+  if ((cc_inc_sys_types == 1)) {
   sb_append(sb, "#include <sys/types.h>\n");
+}
   sb_append(sb, "#endif\n\n");
   sb_append(sb, "/* Generated by Tuff selfhost C backend. */\n\n");
+  if ((!(() => { const __recv = substrate; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "") : str_eq(__recv, ""); })())) {
   sb_append(sb, "/* Embedded C substrate support */\n");
   sb_append(sb, substrate);
+} else {
+  sb_append(sb, cc_emit_minimal_runtime_prelude());
+}
   sb_append(sb, "\n\n");
   let i = 0;
   while ((i < len)) {
@@ -6159,6 +6351,9 @@ function lint_collect_stmt(stmt, receiver_extern_fns, reads, declared_set, decla
   lint_collect_expr(node_get_data1(stmt), receiver_extern_fns, reads);
   return 0;
 }
+  if ((kind == NK_EXTERN_IMPORT_DECL)) {
+  return 0;
+}
   if ((kind == NK_ASSIGN_STMT)) {
   lint_collect_expr(node_get_data1(stmt), receiver_extern_fns, reads);
   lint_collect_expr(node_get_data2(stmt), receiver_extern_fns, reads);
@@ -6297,6 +6492,20 @@ function join_sources(sources) {
   i = (i + 1);
 }
   return sb_build(sb);
+}
+
+function module_with_c_runtime_prelude(source, target) {
+  if ((!(() => { const __recv = target; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "c") : str_eq(__recv, "c"); })())) {
+  return source;
+}
+  if ((() => { const __recv = source; const __dyn = __recv?.table?.str_includes; return __dyn ? __dyn(__recv.ref, "fn tuff_runtime_panic(") : str_includes(__recv, "fn tuff_runtime_panic("); })()) {
+  return source;
+}
+  let prelude = __host_get_c_runtime_prelude_source();
+  if ((() => { const __recv = prelude; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "") : str_eq(__recv, ""); })()) {
+  return source;
+}
+  return (() => { const __recv = (() => { const __recv = source; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "\n\n") : str_concat(__recv, "\n\n"); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, prelude) : str_concat(__recv, prelude); })();
 }
 
 function strip_import_decls(program) {
@@ -6687,7 +6896,7 @@ function compile_file_with_options(inputPath, outputPath, strict_safety, lint_en
   let module_cycles = vec_new();
   lint_reset();
   gather_module_sources(inputPath, moduleBasePath, seen, visiting, sources, module_declared_map, all_declared_names, all_exported_declared_names, all_extern_declared_names, lint, max_lines, module_cycles);
-  let merged = join_sources(sources);
+  let merged = module_with_c_runtime_prelude(join_sources(sources), target);
   lex_init(merged);
   lex_all();
   parse_init();
@@ -7841,7 +8050,11 @@ function selfhost_codegen_expr_marker() { return 0; }
 
 const { __host_get_c_substrate } = globalThis;
 
+const { __host_get_c_runtime_prelude_source } = globalThis;
+
 // extern fn __host_get_c_substrate
+
+// extern fn __host_get_c_runtime_prelude_source
 
 // extern fn __host_emit_target_from_source
 
@@ -7861,6 +8074,20 @@ function normalize_flag(value) {
 })());
 }
 
+function with_c_runtime_prelude(source, target) {
+  if ((!(() => { const __recv = target; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "c") : str_eq(__recv, "c"); })())) {
+  return source;
+}
+  if ((() => { const __recv = source; const __dyn = __recv?.table?.str_includes; return __dyn ? __dyn(__recv.ref, "fn tuff_runtime_panic(") : str_includes(__recv, "fn tuff_runtime_panic("); })()) {
+  return source;
+}
+  let prelude = __host_get_c_runtime_prelude_source();
+  if ((() => { const __recv = prelude; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "") : str_eq(__recv, ""); })()) {
+  return source;
+}
+  return (() => { const __recv = (() => { const __recv = source; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "\n\n") : str_concat(__recv, "\n\n"); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, prelude) : str_concat(__recv, prelude); })();
+}
+
 function emit_target_output(typed, source, target) {
   if ((() => { const __recv = target; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "js") : str_eq(__recv, "js"); })()) {
   return generate_js(typed);
@@ -7873,12 +8100,13 @@ function emit_target_output(typed, source, target) {
 }
 
 function compile_source_with_options(source, strict_safety, lint_enabled, max_effective_lines, borrow_enabled, target) {
+  let effective_source = with_c_runtime_prelude(source, target);
   let max_lines = sanitize_max_effective_lines(max_effective_lines);
   let strict = normalize_flag(strict_safety);
   let lint = normalize_flag(lint_enabled);
   let borrow = normalize_flag(borrow_enabled);
   lint_reset();
-  lex_init(source);
+  lex_init(effective_source);
   lex_all();
   parse_init();
   let program = p_parse_program();
@@ -7891,7 +8119,7 @@ function compile_source_with_options(source, strict_safety, lint_enabled, max_ef
   if ((lint == 1)) {
   lint_program(typed, "<memory>", max_lines);
 }
-  return emit_target_output(typed, source, target);
+  return emit_target_output(typed, effective_source, target);
 }
 
 function take_lint_issues() { return lint_take_issues(); }

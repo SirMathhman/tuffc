@@ -196,6 +196,10 @@ fn lint_collect_stmt(stmt: I32, receiver_extern_fns: *mut Set, reads: *mut Set, 
         return 0;
     }
 
+    if (kind == NK_EXTERN_IMPORT_DECL) {
+        return 0;
+    }
+
     if (kind == NK_ASSIGN_STMT) {
         lint_collect_expr(node_get_data1(stmt), receiver_extern_fns, reads);
         lint_collect_expr(node_get_data2(stmt), receiver_extern_fns, reads);

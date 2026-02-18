@@ -1,24 +1,37 @@
-extern let { __vec_new, __vec_push, __vec_get, __vec_set, __vec_init, __vec_capacity, __vec_length, __map_new, map_set, map_get, __set_new, set_add, set_has } = collections;
+extern let { malloc, free } = stdlib;
 
-extern type Vec<T>;
-extern type Map<K, V>;
-extern type Set<T>;
+type Alloc<T> = T then free;
+type Vec<T> = Alloc<*[T; _; _]> | 0;
+type Map<K, V> = Vec<I32>;
+type Set<T> = Vec<I32>;
 
-extern fn __vec_new() : Vec<I32>;
-extern fn __vec_push(this : Vec<I32>, item : I32) : Vec<I32>;
-extern fn __vec_get(this : Vec<I32>, index : USize) : I32;
-extern fn __vec_set(this : Vec<I32>, index : USize, item : I32) : Vec<I32>;
-extern fn __vec_init(this : Vec<I32>) : USize;
-extern fn __vec_capacity(this : Vec<I32>) : USize;
-extern fn __vec_length(this : Vec<I32>) : USize;
+extern fn malloc<T, L : USize>(bytesCount : SizeOf<T> * L) : Alloc<*[T; 0; L]> | 0;
 
-extern fn __map_new() : Map<I32, I32>;
-extern fn map_set(this : Map<I32, I32>, k : I32, v : I32) : Map<I32, I32>;
-extern fn map_get(this : Map<I32, I32>, k : I32) : I32;
+lifetime t {
+	extern fn realloc<T, I : USize, L : USize, L2 : USize >= I>(
+		ptr : Alloc<*t [T; I; L]>,
+		bytesCount : SizeOf<T> * L2
+	) : Alloc<*t [T; I; L2]> | 0;
+}
 
-extern fn __set_new() : Set<I32>;
-extern fn set_add(this : Set<I32>, item : I32) : Set<I32>;
-extern fn set_has(this : Set<I32>, item : I32) : Bool;
+extern fn free<T>(this : Alloc<*[T; _; _]>) : Void;
+
+let DEFAULT_SIZE = 10USize;
+let EMPTY_VEC_I32 : Vec<I32> = 0;
+
+fn vec_i32_ensure_capacity(this : Vec<I32>, need : USize) : Vec<I32> => {
+	if (this == 0) return this;
+	if (this.length >= need) return this;
+
+	let mut next_len = if (this.length == 0USize) 4USize else this.length;
+	while (next_len < need) {
+		next_len = next_len * 2USize;
+	}
+
+	let grown = realloc<I32, next_len>(this, sizeOf<I32>() * next_len);
+	if (grown == 0) return this;
+	grown
+}
 
 out expect fn vec_new_i32() : Vec<I32>;
 out expect fn vec_push_i32(this : Vec<I32>, item : I32) : Vec<I32>;
@@ -36,18 +49,86 @@ out expect fn set_new_i32() : Set<I32>;
 out expect fn set_add_i32(this : Set<I32>, item : I32) : Set<I32>;
 out expect fn set_has_i32(this : Set<I32>, item : I32) : Bool;
 
-out actual fn vec_new_i32() : Vec<I32> => __vec_new();
-out actual fn vec_push_i32(this : Vec<I32>, item : I32) : Vec<I32> => __vec_push(this, item);
-out actual fn vec_get_i32(this : Vec<I32>, index : USize) : I32 => __vec_get(this, index);
-out actual fn vec_set_i32(this : Vec<I32>, index : USize, item : I32) : Vec<I32> => __vec_set(this, index, item);
-out actual fn vec_init_i32(this : Vec<I32>) : USize => __vec_init(this);
-out actual fn vec_capacity_i32(this : Vec<I32>) : USize => __vec_capacity(this);
-out actual fn vec_length_i32(this : Vec<I32>) : USize => __vec_length(this);
+out actual fn vec_new_i32() : Vec<I32> => {
+	let out_ptr = malloc<I32, DEFAULT_SIZE>(sizeOf<I32>() * DEFAULT_SIZE);
+	if (out_ptr == 0) return EMPTY_VEC_I32;
+	out_ptr
+};
 
-out actual fn map_new_i32_i32() : Map<I32, I32> => __map_new();
-out actual fn map_set_i32_i32(this : Map<I32, I32>, k : I32, v : I32) : Map<I32, I32> => map_set(this, k, v);
-out actual fn map_get_i32_i32(this : Map<I32, I32>, k : I32) : I32 => map_get(this, k);
+out actual fn vec_push_i32(this : Vec<I32>, item : I32) : Vec<I32> => {
+	let mut slice = this;
+	if (slice == 0) return this;
 
-out actual fn set_new_i32() : Set<I32> => __set_new();
-out actual fn set_add_i32(this : Set<I32>, item : I32) : Set<I32> => set_add(this, item);
-out actual fn set_has_i32(this : Set<I32>, item : I32) : Bool => set_has(this, item);
+	slice = vec_i32_ensure_capacity(slice, slice.init + 1USize);
+	slice[slice.init] = item;
+	slice.init = slice.init + 1USize;
+	slice
+};
+
+out actual fn vec_get_i32(this : Vec<I32>, index : USize) : I32 => {
+	if (this == 0 || index >= this.init) return 0;
+	this[index]
+};
+
+out actual fn vec_set_i32(this : Vec<I32>, index : USize, item : I32) : Vec<I32> => {
+	if (this == 0) return this;
+	if (index > this.init) return this;
+	let mut slice = vec_i32_ensure_capacity(this, index + 1USize);
+	slice[index] = item;
+	if (index == slice.init) {
+		slice.init = slice.init + 1USize;
+	}
+	slice
+};
+
+out actual fn vec_init_i32(this : Vec<I32>) : USize => if (this == 0) 0USize else this.init;
+out actual fn vec_capacity_i32(this : Vec<I32>) : USize => if (this == 0) 0USize else this.length;
+out actual fn vec_length_i32(this : Vec<I32>) : USize => vec_init_i32(this);
+
+out actual fn map_new_i32_i32() : Map<I32, I32> => vec_new_i32();
+
+out actual fn map_set_i32_i32(this : Map<I32, I32>, k : I32, v : I32) : Map<I32, I32> => {
+	let mut m = this;
+	if (m == 0) return m;
+
+	let mut i = 0USize;
+	while (i + 1USize < m.init) {
+		if (m[i] == k) {
+			m[i + 1USize] = v;
+			return m;
+		}
+		i = i + 2USize;
+	}
+
+	m = vec_push_i32(m, k);
+	vec_push_i32(m, v)
+};
+
+out actual fn map_get_i32_i32(this : Map<I32, I32>, k : I32) : I32 => {
+	if (this == 0) return 0;
+	let mut i = 0USize;
+	while (i + 1USize < this.init) {
+		if (this[i] == k) {
+			return this[i + 1USize];
+		}
+		i = i + 2USize;
+	}
+	0
+};
+
+out actual fn set_new_i32() : Set<I32> => vec_new_i32();
+
+out actual fn set_add_i32(this : Set<I32>, item : I32) : Set<I32> => {
+	if (set_has_i32(this, item)) return this;
+	vec_push_i32(this, item)
+};
+
+out actual fn set_has_i32(this : Set<I32>, item : I32) : Bool => {
+	if (this == 0) return false;
+	let mut i = 0USize;
+	while (i < this.init) {
+		if (this[i] == item) return true;
+		i = i + 1USize;
+	}
+	false
+};

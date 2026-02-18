@@ -879,6 +879,10 @@ fn check_stmt(stmt: I32, state: Vec, env_types: Map, fn_return_types: Map, exter
         return 0;
     }
 
+    if (kind == NK_EXTERN_IMPORT_DECL) {
+        return 0;
+    }
+
     if (kind == NK_ASSIGN_STMT) {
         let target = node_get_data1(stmt);
         let tplace = canonical_place(target);

@@ -18,6 +18,17 @@ let cc_enum_variant_consts : Map = map_new();  // variant → "EnumName_Variant"
 let cc_struct_fields : Map = map_new();        // struct name → Vec<*Str> of field names
 let cc_alias_by_variant : Map = map_new();     // variant struct name → union alias name
 let cc_union_alias_info : Map = map_new();     // alias name → Vec<*Str> of variant names
+let cc_covered_extern_fns : *mut Set = set_new();
+
+let cc_inc_stdint : I32 = 1;
+let cc_inc_stddef : I32 = 0;
+let cc_inc_stdio : I32 = 0;
+let cc_inc_stdlib : I32 = 0;
+let cc_inc_string : I32 = 0;
+let cc_inc_errno : I32 = 0;
+let cc_inc_direct : I32 = 0;
+let cc_inc_sys_stat : I32 = 0;
+let cc_inc_sys_types : I32 = 0;
 
 // ============================================================================
 // Helpers
@@ -30,6 +41,67 @@ fn cc_next_temp(prefix: *Str) : *Str => {
 
 fn cc_to_name(name: *Str) : *Str => {
     if (name.str_eq("main")) { "tuff_main" } else { name }
+}
+
+fn cc_join_parts(parts: Vec) : *Str => {
+    let sb = sb_new();
+    let i = 0;
+    let len = parts.vec_length();
+    while (i < len) {
+        if (i > 0) {
+            sb_append(sb, "::");
+        }
+        sb_append(sb, get_interned_str(parts.vec_get(i)));
+        i = i + 1;
+    }
+    sb_build(sb)
+}
+
+fn cc_mark_header_from_source(source: *Str) : I32 => {
+    if (source.str_eq("stdio")) { cc_inc_stdio = 1; return 0; }
+    if (source.str_eq("stdlib")) { cc_inc_stdlib = 1; return 0; }
+    if (source.str_eq("string")) { cc_inc_string = 1; return 0; }
+    if (source.str_eq("stdint")) { cc_inc_stdint = 1; return 0; }
+    if (source.str_eq("stddef")) { cc_inc_stddef = 1; return 0; }
+    if (source.str_eq("errno")) { cc_inc_errno = 1; return 0; }
+    if (source.str_eq("direct")) { cc_inc_direct = 1; return 0; }
+    if (source.str_eq("sys::stat")) { cc_inc_sys_stat = 1; return 0; }
+    if (source.str_eq("sys::types")) { cc_inc_sys_types = 1; return 0; }
+    // Known non-header attribution buckets used for host/substrate symbols.
+    if (source.str_eq("globalThis") || source.str_eq("substrate") || source.str_eq("host_c")) {
+        return 0;
+    }
+    panic_with_code(
+        "E_EXTERN_UNKNOWN_SOURCE",
+        "Unknown extern source attribution: '".str_concat(source).str_concat("'"),
+        "The C backend only supports a built-in set of extern source aliases for header mapping.",
+        "Use a supported source alias (stdio, stdlib, string, stdint, stddef, errno, direct, sys::stat, sys::types) or one of the runtime buckets (globalThis, substrate, host_c)."
+    )
+}
+
+fn cc_require_substrate_headers() : I32 => {
+    // Embedded substrate code depends on this baseline C runtime header set.
+    cc_inc_stddef = 1;
+    cc_inc_stdio = 1;
+    cc_inc_stdlib = 1;
+    cc_inc_string = 1;
+    cc_inc_errno = 1;
+    cc_inc_direct = 1;
+    cc_inc_sys_stat = 1;
+    cc_inc_sys_types = 1;
+    0
+}
+
+fn cc_emit_minimal_runtime_prelude() : *Str => {
+    let sb = sb_new();
+    sb_append(sb, "/* Built-in minimal runtime prelude (substrate-free path) */\n");
+    sb_append(sb, "static inline int64_t tuff_to_val(const void* p) { return (int64_t)(intptr_t)p; }\n");
+    sb_append(sb, "static inline void* tuff_from_val(int64_t v) { return (void*)(intptr_t)v; }\n");
+    sb_append(sb, "static inline const char* tuff_str(int64_t v) { return v == 0 ? NULL : (const char*)(intptr_t)v; }\n");
+    sb_append(sb, "static inline const char* tuff_str_or_empty(int64_t v) { const char* s = tuff_str(v); return s ? s : \"\"; }\n");
+    sb_append(sb, "typedef struct TuffVec { int64_t* data; int64_t init; int64_t length; } TuffVec;\n");
+    sb_append(sb, "static void tuff_panic(const char* msg) { fprintf(stderr, \"[tuff panic] %s\\n\", msg); abort(); }\n");
+    sb_build(sb)
 }
 
 // All Tuff types lower to int64_t, except Void → void.
@@ -120,6 +192,17 @@ fn cc_init_context(program: I32) : I32 => {
                 }
                 cc_union_alias_info.map_set(alias_name, variants);
             }
+        }
+
+        if (kind == NK_EXTERN_IMPORT_DECL) {
+            let names = node_get_data1(n);
+            let j = 0;
+            let nlen = names.vec_length();
+            while (j < nlen) {
+                cc_covered_extern_fns.set_add(get_interned_str(names.vec_get(j)));
+                j = j + 1;
+            }
+            cc_mark_header_from_source(cc_join_parts(node_get_data2(n)));
         }
 
         i = i + 1;
@@ -876,6 +959,10 @@ fn cc_emit_stmt(n: I32) : *Str => {
         return "/* extern type ".str_concat(name).str_concat(" */");
     }
 
+    if (kind == NK_EXTERN_IMPORT_DECL) {
+        return "";
+    }
+
     // NK_STMT_LIST (noop from extern let { } = source; parsing) — emit nothing
     if (kind == NK_STMT_LIST) {
         return "";
@@ -896,12 +983,52 @@ out fn generate_c(typed: I32, substrate: *Str) : *Str => {
     cc_struct_fields = map_new();
     cc_alias_by_variant = map_new();
     cc_union_alias_info = map_new();
+    cc_covered_extern_fns = set_new();
+
+    cc_inc_stdint = 1;
+    cc_inc_stddef = 0;
+    cc_inc_stdio = 0;
+    cc_inc_stdlib = 0;
+    cc_inc_string = 0;
+    cc_inc_errno = 0;
+    cc_inc_direct = 0;
+    cc_inc_sys_stat = 0;
+    cc_inc_sys_types = 0;
 
     // Pre-scan AST to build context maps
     cc_init_context(typed);
 
+    // While substrate is still embedded, preserve its required header baseline.
+    // Once substrate is removed, includes become fully extern-source driven,
+    // except for the tiny built-in fallback prelude emitted below.
+    if (!substrate.str_eq("")) {
+        cc_require_substrate_headers();
+    } else {
+        cc_inc_stddef = 1;
+        cc_inc_stdio = 1;
+        cc_inc_stdlib = 1;
+    }
+
     let stmts = node_get_data1(typed);
     let len = stmts.vec_length();
+
+    // Enforce extern source attribution coverage for extern fns.
+    let cvi = 0;
+    while (cvi < len) {
+        let cvn = stmts.vec_get(cvi);
+        if (node_kind(cvn) == NK_EXTERN_FN_DECL) {
+            let fname = get_interned_str(node_get_data1(cvn));
+            if (!cc_covered_extern_fns.set_has(fname)) {
+                panic_with_code(
+                    "E_EXTERN_NO_SOURCE",
+                    "extern fn '".str_concat(fname).str_concat("' has no source attribution"),
+                    "C codegen requires each extern function to be attributed to a source via extern let destructuring.",
+                    "Add 'extern let { ".str_concat(fname).str_concat(" } = <header>;' before the declaration.")
+                );
+            }
+        }
+        cvi = cvi + 1;
+    }
 
     // Collect fn nodes for two-pass emit (prototypes then bodies)
     let fn_nodes : Vec<I32> = vec_new();
@@ -911,21 +1038,25 @@ out fn generate_c(typed: I32, substrate: *Str) : *Str => {
     let sb = sb_new();
 
     // ── Preamble: fixed C includes ──────────────────────────────────────────
-    sb_append(sb, "#include <stdint.h>\n");
-    sb_append(sb, "#include <stddef.h>\n");
-    sb_append(sb, "#include <stdio.h>\n");
-    sb_append(sb, "#include <stdlib.h>\n");
-    sb_append(sb, "#include <string.h>\n");
-    sb_append(sb, "#include <errno.h>\n");
+    if (cc_inc_stdint == 1) { sb_append(sb, "#include <stdint.h>\n"); }
+    if (cc_inc_stddef == 1) { sb_append(sb, "#include <stddef.h>\n"); }
+    if (cc_inc_stdio == 1) { sb_append(sb, "#include <stdio.h>\n"); }
+    if (cc_inc_stdlib == 1) { sb_append(sb, "#include <stdlib.h>\n"); }
+    if (cc_inc_string == 1) { sb_append(sb, "#include <string.h>\n"); }
+    if (cc_inc_errno == 1) { sb_append(sb, "#include <errno.h>\n"); }
     sb_append(sb, "#ifdef _WIN32\n");
-    sb_append(sb, "#include <direct.h>\n");
+    if (cc_inc_direct == 1) { sb_append(sb, "#include <direct.h>\n"); }
     sb_append(sb, "#else\n");
-    sb_append(sb, "#include <sys/stat.h>\n");
-    sb_append(sb, "#include <sys/types.h>\n");
+    if (cc_inc_sys_stat == 1) { sb_append(sb, "#include <sys/stat.h>\n"); }
+    if (cc_inc_sys_types == 1) { sb_append(sb, "#include <sys/types.h>\n"); }
     sb_append(sb, "#endif\n\n");
     sb_append(sb, "/* Generated by Tuff selfhost C backend. */\n\n");
-    sb_append(sb, "/* Embedded C substrate support */\n");
-    sb_append(sb, substrate);
+    if (!substrate.str_eq("")) {
+        sb_append(sb, "/* Embedded C substrate support */\n");
+        sb_append(sb, substrate);
+    } else {
+        sb_append(sb, cc_emit_minimal_runtime_prelude());
+    }
     sb_append(sb, "\n\n");
 
     // ── First pass: non-fn top-level declarations ────────────────────────────

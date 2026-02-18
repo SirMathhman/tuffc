@@ -667,28 +667,32 @@ fn p_parse_extern_decl() : I32 => {
     if (p_at(TK_KEYWORD, "let")) {
         p_eat();
 
-        // Accept extern destructuring bindings used for host symbol groups:
+        // Extern source attribution metadata:
         // extern let { malloc, free } = stdlib;
-        // We treat this as declaration-only metadata and emit no runtime node.
+        // Keep this metadata in the AST so C codegen can enforce coverage and map headers.
         if (p_at(TK_SYMBOL, "{")) {
             p_eat();
+            let names = vec_new();
             if (!p_at(TK_SYMBOL, "}")) {
-                p_parse_identifier();
+                names.vec_push(p_parse_identifier());
                 while (p_at(TK_SYMBOL, ",")) {
                     p_eat();
-                    p_parse_identifier();
+                    names.vec_push(p_parse_identifier());
                 }
             }
             p_expect(TK_SYMBOL, "}", "Expected '}' after extern let bindings");
             p_expect(TK_SYMBOL, "=", "Expected '=' in extern let bindings");
-            p_parse_identifier();
+            let source_parts = vec_new();
+            source_parts.vec_push(p_parse_identifier());
             while (p_at(TK_SYMBOL, "::")) {
                 p_eat();
-                p_parse_identifier();
+                source_parts.vec_push(p_parse_identifier());
             }
             p_expect(TK_SYMBOL, ";", "Expected ';' after extern let bindings");
-            let noop = p_new_stmt_list(vec_new());
-            return noop;
+            let node = node_new(NK_EXTERN_IMPORT_DECL);
+            node_set_data1(node, names);
+            node_set_data2(node, source_parts);
+            return node;
         }
 
         let name = p_parse_identifier();

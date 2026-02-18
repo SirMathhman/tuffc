@@ -252,6 +252,20 @@ fn emit_stmt(n: I32) : *Str => {
         let name = get_interned_str(name_idx);
         return "// extern type ".str_concat(name);
     }
+
+    if (kind == NK_EXTERN_IMPORT_DECL) {
+        let parts = node_get_data2(n);
+        let i = 0;
+        let source = "";
+        while (i < parts.vec_length()) {
+            if (i > 0) {
+                source = source.str_concat("::");
+            }
+            source = source.str_concat(get_interned_str(parts.vec_get(i)));
+            i = i + 1;
+        }
+        return "// extern from ".str_concat(source);
+    }
     
     ""
 }

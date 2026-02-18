@@ -63,6 +63,7 @@ type TestCase = {
   source: string;
   expectedExitCode?: number;
   expectedOutput?: string;
+  compileOptions?: Record<string, unknown>;
 };
 
 const cases: TestCase[] = [
@@ -146,6 +147,21 @@ fn main() : I32 => {
 `,
     expectedExitCode: 0,
   },
+  {
+    name: "substrate-free-basic",
+    source: `
+fn triple(x: I32) : I32 => x + x + x;
+
+fn main() : I32 => {
+    let v = triple(14);
+    v - 42
+}
+`,
+    expectedExitCode: 0,
+    compileOptions: {
+      cSubstrate: "",
+    },
+  },
 ];
 
 // ─── Runner ───────────────────────────────────────────────────────────────────
@@ -164,6 +180,7 @@ for (const tc of cases) {
     typecheck: { strictSafety: false, __bootstrapRelaxed: true },
     lint: { enabled: false },
     borrowcheck: { enabled: false },
+    ...(tc.compileOptions ?? {}),
   });
 
   if (!result.ok) {

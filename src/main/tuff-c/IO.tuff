@@ -1,11 +1,16 @@
-extern let { read_file, write_file, path_join, path_dirname, print, print_error } = io;
+extern let { printf, fopen, fclose, fwrite } = stdio;
+extern let { malloc, free } = stdlib;
+extern let { strlen, strcpy, strcat } = string;
 
-extern fn read_file(path : *Str) : *Str;
-extern fn write_file(path : *Str, contents : *Str) : I32;
-extern fn path_join(a : *Str, b : *Str) : *Str;
-extern fn path_dirname(p : *Str) : *Str;
-extern fn print(s : *Str) : I32;
-extern fn print_error(s : *Str) : I32;
+extern fn printf(fmt : *Str, msg : *Str) : I32;
+extern fn fopen(path : *Str, mode : *Str) : I32;
+extern fn fclose(file : I32) : I32;
+extern fn fwrite(data : *Str, itemSize : USize, itemCount : USize, file : I32) : USize;
+extern fn malloc(size : USize) : I32;
+extern fn free(ptr : I32) : Void;
+extern fn strlen(s : *Str) : USize;
+extern fn strcpy(dst : I32, src : *Str) : I32;
+extern fn strcat(dst : I32, src : *Str) : I32;
 
 out expect fn read_file(path : *Str) : *Str;
 out expect fn write_file(path : *Str, contents : *Str) : I32;
@@ -14,9 +19,32 @@ out expect fn path_dirname(p : *Str) : *Str;
 out expect fn print(s : *Str) : I32;
 out expect fn print_error(s : *Str) : I32;
 
-out actual fn read_file(path : *Str) : *Str => read_file(path);
-out actual fn write_file(path : *Str, contents : *Str) : I32 => write_file(path, contents);
-out actual fn path_join(a : *Str, b : *Str) : *Str => path_join(a, b);
-out actual fn path_dirname(p : *Str) : *Str => path_dirname(p);
-out actual fn print(s : *Str) : I32 => print(s);
-out actual fn print_error(s : *Str) : I32 => print_error(s);
+// Temporary fallback until full stdlib-only file read support is completed.
+out actual fn read_file(path : *Str) : *Str => "";
+
+out actual fn write_file(path : *Str, contents : *Str) : I32 => {
+	let file = fopen(path, "wb");
+	if (file == 0) return 0;
+	let len = strlen(contents);
+	fwrite(contents, 1USize, len, file);
+	fclose(file)
+};
+
+out actual fn path_join(a : *Str, b : *Str) : *Str => {
+	let alen = strlen(a);
+	let blen = strlen(b);
+	let cap = alen + blen + 2USize;
+	let out_ptr = malloc(cap);
+	if (out_ptr == 0) return "";
+	strcpy(out_ptr, a);
+	if (alen > 0USize) {
+		strcat(out_ptr, "/");
+	}
+	strcat(out_ptr, b);
+	out_ptr
+};
+
+out actual fn path_dirname(p : *Str) : *Str => p;
+
+out actual fn print(s : *Str) : I32 => printf("%s\n", s);
+out actual fn print_error(s : *Str) : I32 => printf("[error] %s\n", s);

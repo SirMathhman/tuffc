@@ -18,6 +18,11 @@ import * as runtime from "./runtime.ts";
 
 const __compilerFile = fileURLToPath(import.meta.url);
 const __runtimeRoot = path.resolve(path.dirname(__compilerFile), "..");
+const __cRuntimePreludePath = path.join(
+  __runtimeRoot,
+  "tuff-c",
+  "RuntimePrelude.tuff",
+);
 
 function getDefaultRuntimeAliases() {
   const base = {
@@ -319,6 +324,27 @@ function collectMonomorphizationPlan(program) {
 }
 
 let cachedSelfhost = undefined;
+let runtimeCSubstrateOverride = undefined;
+let runtimeCPreludeSourceCache = undefined;
+
+function resolveCSubstrate() {
+  if (typeof runtimeCSubstrateOverride === "string") {
+    return runtimeCSubstrateOverride;
+  }
+  return getEmbeddedCSubstrateSupport();
+}
+
+function getCRuntimePreludeSource() {
+  if (typeof runtimeCPreludeSourceCache === "string") {
+    return runtimeCPreludeSourceCache;
+  }
+  try {
+    runtimeCPreludeSourceCache = fs.readFileSync(__cRuntimePreludePath, "utf8");
+  } catch {
+    runtimeCPreludeSourceCache = "";
+  }
+  return runtimeCPreludeSourceCache;
+}
 
 function decodeSelfhostLintIssues(payload): unknown[] {
   if (typeof payload !== "string" || payload.length === 0) return [];
@@ -403,7 +429,8 @@ function bootstrapSelfhostCompiler(options = {}): CompilerResult<unknown> {
     exports: {},
     console,
     __host_emit_target_from_source: hostEmitTargetFromSource,
-    __host_get_c_substrate: getEmbeddedCSubstrateSupport,
+    __host_get_c_substrate: resolveCSubstrate,
+    __host_get_c_runtime_prelude_source: getCRuntimePreludeSource,
     ...runtime,
   };
 
@@ -450,6 +477,14 @@ function createTracer(enabled) {
 
 function getCodegenTarget(options): string {
   return options.target ?? "js";
+}
+
+function setSubstrateOverrideFromOptions(options) {
+  if (typeof options?.cSubstrate === "string") {
+    runtimeCSubstrateOverride = options.cSubstrate;
+  } else {
+    runtimeCSubstrateOverride = undefined;
+  }
 }
 
 function selectBackendWithTargetCheck(
@@ -890,6 +925,7 @@ export function compileSource(
 
     // Selfhost can throw, wrap in try/catch but return Result
     let js;
+    setSubstrateOverrideFromOptions(options);
     try {
       js = run("selfhost-compile-source", () =>
         typeof selfhost.compile_source_with_options === "function"
@@ -910,6 +946,8 @@ export function compileSource(
           ? enriched
           : new TuffError(String(error), undefined),
       );
+    } finally {
+      runtimeCSubstrateOverride = undefined;
     }
     const lintIssuesResult = handleSelfhostLintIssues(
       selfhost,
@@ -1031,6 +1069,7 @@ function compileFileInternal(
     const source = fs.readFileSync(absInput, "utf8");
 
     let js;
+    setSubstrateOverrideFromOptions(options);
     try {
       if (options.enableModules) {
         // Selfhost handles the full module pipeline: load, resolve, typecheck, codegen.
@@ -1080,6 +1119,8 @@ function compileFileInternal(
           ? enriched
           : new TuffError(String(error), undefined),
       );
+    } finally {
+      runtimeCSubstrateOverride = undefined;
     }
 
     const lintIssuesResult = handleSelfhostLintIssues(

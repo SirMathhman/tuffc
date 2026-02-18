@@ -15,6 +15,13 @@ const nodeExec = getNodeExecPath();
 const suiteScripts: Record<SuiteName, string[]> = {
   core: [
     "./src/test/js/result-migration.ts",
+    "./src/test/js/extern-source-attribution.ts",
+    "./src/test/js/selfhost-c-empty-substrate.ts",
+    "./src/test/js/runtime-prelude-from-tuff.ts",
+    "./src/test/js/panic-module-stdlib-only.ts",
+    "./src/test/js/io-module-stdlib-only.ts",
+    "./src/test/js/collections-module-stdlib-only.ts",
+    "./src/test/js/tuff-c-extern-sources-policy.ts",
     "./src/test/js/run-tests.ts",
     "./src/test/js/stage1-bootstrap.ts",
     "./src/test/js/phase3-stage2.ts",
