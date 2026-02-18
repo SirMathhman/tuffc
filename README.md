@@ -21,14 +21,23 @@ Implements Phase 1 / Stage 0 from `SELF-HOST.md`:
 
 ## Quick start
 
-1. Build self-hosted compiler artifacts: `bun run build`
-2. Run tests: `bun run test`
-3. Run lint pass: `bun run lint`
-4. Run JS throw-ban lint gate: `bun run lint:throws`
-5. Run selfhost module verification only: `bun run selfhost:modules`
-6. Run selfhost diagnostics verification only: `bun run selfhost:diagnostics`
-7. Run selfhost differential parity gate: `bun run selfhost:parity`
+1. Run the fast default test command: `npm run test`
+2. Run lint pass: `npm run lint`
+3. Run JS throw-ban lint gate: `npm run lint:throws`
+4. Run typecheck: `npm run typecheck`
+5. Run combined local gate (lint + typecheck + fast tests): `npm run check`
 8. Compile file: `tsx ./src/main/js/cli.ts compile ./src/test/tuff/cases/factorial.tuff -o ./tests/out/factorial.js`
+
+### Test command tiers
+
+- `npm run test` / `npm run test:core` — canonical fast local loop (default).
+- `npm run test:native` — C/native validation suite.
+- `npm run test:stress` — heavy exhaustive/stress checks.
+- `npm run test:all` — runs all tiers in deterministic order.
+
+Native tier policy is fail-hard: if required native toolchain dependencies (for
+example `clang`/`gcc`) are missing, native tests fail with actionable guidance
+instead of silently skipping.
 
 ## Phase 2 / Stage 1
 
@@ -40,7 +49,7 @@ Stage 1 source is in `src/main/tuff/compiler.tuff`.
 
 Run only Stage 1 bootstrap validation:
 
-- `bun run stage1:bootstrap`
+- `npm run stage1:bootstrap`
 
 Implementation note:
 
@@ -72,7 +81,7 @@ Example:
 
 Run Phase 3 verification only:
 
-- `bun run stage2:verify`
+- `npm run stage2:verify`
 
 ## Phase 4 (current focus)
 
@@ -96,7 +105,7 @@ Example:
 
 Run Phase 4 verification only:
 
-- `bun run stage4:verify`
+- `npm run stage4:verify`
 
 ## Browser/website tech-demo bundle
 
