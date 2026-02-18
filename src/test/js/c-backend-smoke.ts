@@ -115,11 +115,13 @@ const selected = compilerCandidates.find((candidate) => {
 });
 
 if (!selected) {
-  console.warn(
-    "No C compiler found (clang/gcc/cc). Skipping native compile/run verification.",
+  console.error(
+    "No C compiler found (clang/gcc/cc). Native compile/run verification cannot continue.",
   );
-  console.log(`Generated C outputs at ${outDir}`);
-  process.exit(0);
+  console.error(
+    "Install clang or gcc and ensure it is available on PATH before running native tiers.",
+  );
+  process.exit(1);
 }
 
 const cases = [

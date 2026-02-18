@@ -160,11 +160,13 @@ for (const candidate of candidates) {
 }
 
 if (!selected) {
-  console.warn(
-    "No C compiler found (clang/gcc/cc). Skipping object compile check.",
+  console.error(
+    "No C compiler found (clang/gcc/cc). C selfhost verification cannot continue.",
   );
-  console.log(`Generated ${outC}`);
-  process.exit(0);
+  console.error(
+    "Install clang or gcc and ensure it is available on PATH before running native tiers.",
+  );
+  process.exit(1);
 }
 
 const objectCompile = runStep(selected, [

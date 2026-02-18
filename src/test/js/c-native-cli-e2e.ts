@@ -19,8 +19,11 @@ const hasCompiler = (() => {
 })();
 
 if (!hasCompiler) {
-  console.warn("No C compiler available for native CLI e2e check; skipping.");
-  process.exit(0);
+  console.error("No C compiler available for native CLI e2e check.");
+  console.error(
+    "Install clang or gcc and ensure it is available on PATH before running native tiers.",
+  );
+  process.exit(1);
 }
 
 const outDir = path.join(root, "tests", "out", "c-native-cli-e2e");
