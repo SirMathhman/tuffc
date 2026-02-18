@@ -1,14 +1,19 @@
 import path from "node:path";
 import fs from "node:fs";
 import { spawnSync } from "node:child_process";
-import { getRepoRootFromImportMeta, getTsxCliPath } from "./path-test-utils.ts";
+import {
+  getNodeExecPath,
+  getRepoRootFromImportMeta,
+  getTsxCliPath,
+} from "./path-test-utils.ts";
 
 const root = getRepoRootFromImportMeta(import.meta.url);
 const tsxCli = getTsxCliPath(root);
+const nodeExec = getNodeExecPath();
 
 function expectFail(args, expectedText, label) {
   const result = spawnSync(
-    process.execPath,
+    nodeExec,
     [tsxCli, "./src/main/js/cli.ts", ...args],
     {
       cwd: root,
@@ -32,7 +37,7 @@ function expectFail(args, expectedText, label) {
 
 function expectPass(args, label) {
   const result = spawnSync(
-    process.execPath,
+    nodeExec,
     [tsxCli, "./src/main/js/cli.ts", ...args],
     {
       cwd: root,
@@ -50,7 +55,7 @@ function expectPass(args, label) {
 
 function expectPassContains(args, expectedText, label) {
   const result = spawnSync(
-    process.execPath,
+    nodeExec,
     [tsxCli, "./src/main/js/cli.ts", ...args],
     {
       cwd: root,

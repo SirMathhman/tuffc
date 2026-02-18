@@ -2,42 +2,31 @@
 import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
+import * as runtime from "../../main/js/runtime.ts";
 
 const collections = {
-  __vec_new: () => [],
-  __vec_push: (v, item) => {
-    v.push(item);
-    return v;
-  },
-  __vec_get: (v, idx) => v[idx],
-  __vec_set: (v, idx, item) => {
-    v[idx] = item;
-    return v;
-  },
-  __vec_init: (v) => v.length,
-  __vec_capacity: (v) => v.length,
-  __vec_includes: (v, item) => v.includes(item),
-  __vec_length: (v) => v.length,
-  __map_new: () => new Map(),
-  map_set: (m, k, v) => {
-    m.set(k, v);
-    return m;
-  },
-  map_get: (m, k) => m.get(k),
-  __set_new: () => new Set(),
-  set_add: (s, item) => {
-    s.add(item);
-    return s;
-  },
-  set_has: (s, item) => s.has(item),
+  __vec_new: runtime.__vec_new,
+  __vec_push: runtime.vec_push,
+  __vec_get: runtime.vec_get,
+  __vec_set: runtime.vec_set,
+  __vec_init: runtime.vec_init,
+  __vec_capacity: runtime.vec_capacity,
+  __vec_includes: runtime.vec_includes,
+  __vec_length: runtime.vec_length,
+  __map_new: runtime.__map_new,
+  map_set: runtime.map_set,
+  map_get: runtime.map_get,
+  __set_new: runtime.__set_new,
+  set_add: runtime.set_add,
+  set_has: runtime.set_has,
 };
 
 const strings = {
-  str_eq: (a, b) => a === b,
-  str_length: (s) => s.length,
-  str_concat: (a, b) => `${a}${b}`,
-  str_index_of: (s, needle) => s.indexOf(needle),
-  str_trim: (s) => s.trim(),
+  str_eq: runtime.str_eq,
+  str_length: runtime.str_length,
+  str_concat: runtime.str_concat,
+  str_index_of: runtime.str_index_of,
+  str_trim: runtime.str_trim,
 };
 
 const io = {
@@ -52,11 +41,31 @@ const io = {
   read_file: (filePath) => fs.readFileSync(filePath, "utf8"),
 };
 
+const legacyIntrinsicAliases = {
+  __vec_push: runtime.vec_push,
+  __vec_get: runtime.vec_get,
+  __vec_set: runtime.vec_set,
+  __vec_init: runtime.vec_init,
+  __vec_capacity: runtime.vec_capacity,
+  __vec_includes: runtime.vec_includes,
+  __vec_length: runtime.vec_length,
+  __map_set: runtime.map_set,
+  __map_get: runtime.map_get,
+  __set_add: runtime.set_add,
+  __set_has: runtime.set_has,
+};
+
 export function runMainFromJs(js, label) {
   const sandbox = {
     module: { exports: {} },
     exports: {},
     console,
+    ...runtime,
+    ...legacyIntrinsicAliases,
+    path_join: io.path_join,
+    path_dirname: io.path_dirname,
+    write_file: io.write_file,
+    read_file: io.read_file,
     collections,
     strings,
     io,

@@ -1,11 +1,16 @@
 import { spawnSync } from "node:child_process";
 import path from "node:path";
-import { getRepoRootFromImportMeta, getTsxCliPath } from "./path-test-utils.ts";
+import {
+  getNodeExecPath,
+  getRepoRootFromImportMeta,
+  getTsxCliPath,
+} from "./path-test-utils.ts";
 
 type SuiteName = "core" | "native" | "stress";
 
 const root = getRepoRootFromImportMeta(import.meta.url);
 const tsxCli = getTsxCliPath(root);
+const nodeExec = getNodeExecPath();
 
 const suiteScripts: Record<SuiteName, string[]> = {
   core: [
@@ -49,7 +54,11 @@ function parseSuites(argv: string[]): SuiteName[] {
 
   const suites: SuiteName[] = [];
   for (const candidate of selected) {
-    if (candidate !== "core" && candidate !== "native" && candidate !== "stress") {
+    if (
+      candidate !== "core" &&
+      candidate !== "native" &&
+      candidate !== "stress"
+    ) {
       console.error(
         `Unknown suite '${candidate}'. Valid suites: core,native,stress`,
       );
@@ -70,14 +79,16 @@ function executeScript(scriptPath: string, updateSnapshots: boolean): void {
   const relative = path.relative(root, scriptPath).replaceAll("\\", "/");
   console.log(`\n[test] ▶ ${relative}`);
 
-  const result = spawnSync(process.execPath, args, {
+  const result = spawnSync(nodeExec, args, {
     cwd: root,
     encoding: "utf8",
     stdio: "inherit",
   });
 
   if (result.error) {
-    console.error(`[test] Failed to start ${relative}: ${result.error.message}`);
+    console.error(
+      `[test] Failed to start ${relative}: ${result.error.message}`,
+    );
     process.exit(1);
   }
   if (result.status !== 0) {

@@ -1,10 +1,15 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { getRepoRootFromImportMeta, getTsxCliPath } from "./path-test-utils.ts";
+import {
+  getNodeExecPath,
+  getRepoRootFromImportMeta,
+  getTsxCliPath,
+} from "./path-test-utils.ts";
 
 const root = getRepoRootFromImportMeta(import.meta.url);
 const tsxCli = getTsxCliPath(root);
+const nodeExec = getNodeExecPath();
 
 const hasCompiler = (() => {
   const candidates =
@@ -36,7 +41,7 @@ const exeOut = path.join(
 );
 
 const compile = spawnSync(
-  process.execPath,
+  nodeExec,
   [
     tsxCli,
     "./src/main/js/cli.ts",

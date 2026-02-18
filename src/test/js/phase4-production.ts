@@ -8,7 +8,11 @@ import {
 import { toDiagnostic } from "../../main/js/errors.ts";
 import { expectDiagnosticCode } from "./compile-test-utils.ts";
 import { assertDiagnosticContract } from "./diagnostic-contract-utils.ts";
-import { getRepoRootFromImportMeta, getTsxCliPath } from "./path-test-utils.ts";
+import {
+  getNodeExecPath,
+  getRepoRootFromImportMeta,
+  getTsxCliPath,
+} from "./path-test-utils.ts";
 import {
   NULLABLE_POINTER_UNGUARDED_SOURCE,
   STRICT_DIV_BY_ZERO_SOURCE,
@@ -28,6 +32,7 @@ function unwrapErr(result: ResultUnknown): unknown {
 
 const root = getRepoRootFromImportMeta(import.meta.url);
 const tsxCli = getTsxCliPath(root);
+const nodeExec = getNodeExecPath();
 const outDir = path.join(root, "tests", "out", "stage4");
 fs.mkdirSync(outDir, { recursive: true });
 
@@ -132,7 +137,7 @@ const failingFile = path.join(outDir, "cli-fail.tuff");
 fs.writeFileSync(failingFile, `fn bad(x : I32) : I32 => 100 / x;`, "utf8");
 
 const cli = spawnSync(
-  process.execPath,
+  nodeExec,
   [
     tsxCli,
     "./src/main/js/cli.ts",
@@ -179,7 +184,7 @@ fs.writeFileSync(
 );
 
 const lintCli = spawnSync(
-  process.execPath,
+  nodeExec,
   [
     tsxCli,
     "./src/main/js/cli.ts",
@@ -269,7 +274,7 @@ fs.writeFileSync(
 );
 
 const lintFixCli = spawnSync(
-  process.execPath,
+  nodeExec,
   [
     tsxCli,
     "./src/main/js/cli.ts",
