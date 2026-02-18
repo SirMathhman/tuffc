@@ -70,6 +70,12 @@ function areCompatibleNamedTypes(expected, actual) {
     if (parts.includes(actual)) return true;
   }
 
+  // Allow assigning a union-typed value to a specific variant (type narrowing after `is` checks)
+  if (typeof actual === "string" && actual.includes("|")) {
+    const parts = actual.split("|").map((p) => p.trim());
+    if (parts.includes(expected)) return true;
+  }
+
   // Mutable pointer can be used where immutable pointer is expected.
   // expected: *T, actual: *mut T  => allowed
   if (
@@ -1013,11 +1019,28 @@ export function typecheck(
     return ok(cond);
   };
 
+  const isNumericName = (name) => {
+    if (NUMERIC.has(name) || name === "Unknown") return true;
+    if (!typeAliases.has(name)) return false;
+    const resolved = resolveTypeInfo(typeAliases.get(name));
+    return NUMERIC.has(resolved.name) || resolved.name === "Unknown";
+  };
+
   const validateBinaryOperands = (leftType, rightType, expr, kind) => {
     const isValid =
       kind === "numeric"
-        ? (name) => NUMERIC.has(name) || name === "Unknown"
+        ? (name) => isNumericName(name)
         : (name) => name === "Bool" || name === "Unknown";
+    // Allow pointer arithmetic: (pointer/opaque + numeric) or (pointer/opaque - numeric)
+    if (kind === "numeric" && (expr.op === "+" || expr.op === "-")) {
+      if (
+        isNumericName(rightType.name) &&
+        !isValid(leftType.name) &&
+        leftType.name !== "Bool"
+      ) {
+        return ok(undefined); // pointer arithmetic
+      }
+    }
     if (!isValid(leftType.name) || !isValid(rightType.name)) {
       return err(
         new TuffError(
@@ -1264,6 +1287,20 @@ export function typecheck(
         if (!rResult.ok) return rResult;
         const r = rResult.value;
         if (["+", "-", "*", "/", "%"].includes(expr.op)) {
+          // Pointer arithmetic: non-numeric pointer/opaque left + numeric right → Unknown
+          if (
+            (expr.op === "+" || expr.op === "-") &&
+            !isNumericName(l.name) &&
+            l.name !== "Bool" &&
+            isNumericName(r.name)
+          ) {
+            return ok({
+              name: "Unknown",
+              min: undefined,
+              max: undefined,
+              nonZero: false,
+            });
+          }
           const operandsOk = validateBinaryOperands(l, r, expr, "numeric");
           if (!operandsOk.ok) return operandsOk;
 
@@ -1597,7 +1634,13 @@ export function typecheck(
               if (!contractResult.ok) return contractResult;
             }
 
-            if (expr.args.length !== fn.params.length) {
+            // Allow implicit `this` when first param is named "this" and caller omits it
+            const firstParamIsThis = fn.params[0]?.name === "this";
+            const implicitThisCount =
+              firstParamIsThis && expr.args.length === fn.params.length - 1
+                ? 1
+                : 0;
+            if (expr.args.length !== fn.params.length - implicitThisCount) {
               return err(
                 new TuffError(
                   `Function ${fn.name} expects ${fn.params.length} args, got ${expr.args.length}`,
@@ -1614,7 +1657,9 @@ export function typecheck(
 
             for (let idx = 0; idx < expr.args.length; idx++) {
               const argType = argTypes[idx];
-              const expectedInfo = resolveTypeInfo(fn.params[idx].type);
+              const expectedInfo = resolveTypeInfo(
+                fn.params[idx + implicitThisCount].type,
+              );
               const expected = expectedInfo.name ?? argType.name;
               if (
                 strictSafety &&
@@ -1635,11 +1680,13 @@ export function typecheck(
               if (
                 expected &&
                 argType.name !== "Unknown" &&
+                !argType.name.includes("Unknown") &&
                 !areCompatibleNamedTypes(expected, argType.name) &&
                 !isTypeVariableName(expected) &&
                 !isTypeVariableName(argType.name) &&
                 !areCompatibleNumericTypes(expected, argType.name, argType) &&
-                !typeAliases.has(expected)
+                !typeAliases.has(expected) &&
+                !typeAliases.has(argType.name)
               ) {
                 return err(
                   new TuffError(
@@ -1759,16 +1806,10 @@ export function typecheck(
             return ok({ name: "USize", min: 0, max, nonZero: false });
           }
 
-          return err(
-            new TuffError(
-              `Member '.${expr.property}' is only valid on array-pointer shapes`,
-              expr.loc,
-              {
-                code: "E_TYPE_MEMBER_INVALID",
-                hint: "Use '.init/.length' on *[T] or *[T;I;L] values.",
-              },
-            ),
-          );
+          // For opaque or complex types (Alloc<*[T;I;L]>, union types, etc.),
+          // allow .length/.init to return USize rather than hard-erroring.
+          // Proper array-shape analysis is not available for generic wrappers.
+          return ok({ name: "USize", min: 0, max: undefined, nonZero: false });
         }
         return ok({
           name: "Unknown",
@@ -2147,6 +2188,12 @@ export function typecheck(
         const local = new Map(scope);
         const localFacts = new Map(facts);
         for (const s of node.statements ?? []) {
+          if (s.kind === "TypeAlias" || s.kind === "ExternTypeDecl") {
+            typeAliases.set(
+              s.name,
+              s.aliasedType ?? { kind: "NamedType", name: "Unknown" },
+            );
+          }
           if (s.kind === "FnDecl") {
             const paramInfos = (s.params ?? []).map((p) =>
               resolveTypeInfo(p.type),
@@ -2222,7 +2269,8 @@ export function typecheck(
           !isTypeVariableName(expected) &&
           !isTypeVariableName(valueType.name) &&
           !areCompatibleNumericTypes(expected, valueType.name, valueType) &&
-          !typeAliases.has(expected)
+          !typeAliases.has(expected) &&
+          !typeAliases.has(valueType.name)
         ) {
           return err(
             new TuffError(
@@ -2298,7 +2346,11 @@ export function typecheck(
           t.name !== "Unknown" &&
           !areCompatibleNamedTypes(expectedReturn.name, t.name) &&
           !isTypeVariableName(expectedReturn.name) &&
-          !isTypeVariableName(t.name)
+          !isTypeVariableName(t.name) &&
+          !typeAliases.has(expectedReturn.name) &&
+          !typeAliases.has(t.name) &&
+          !expectedReturn.name.startsWith("(") &&
+          !t.name.startsWith("(")
         ) {
           return err(
             new TuffError(
@@ -2408,7 +2460,11 @@ export function typecheck(
           bodyType.name !== "Void" &&
           !areCompatibleNamedTypes(expected, bodyType.name) &&
           !isTypeVariableName(expected) &&
-          !isTypeVariableName(bodyType.name)
+          !isTypeVariableName(bodyType.name) &&
+          !typeAliases.has(expected) &&
+          !typeAliases.has(bodyType.name) &&
+          !expected.startsWith("(") &&
+          !bodyType.name.startsWith("(")
         ) {
           return err(
             new TuffError(

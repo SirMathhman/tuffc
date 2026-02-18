@@ -35,7 +35,7 @@ function str_starts_with(__this_param, prefix) {
 
 // extern fn parse_int
 
-// extern type StringBuilder
+// type alias: StringBuilder
 
 // extern fn sb_new
 
@@ -45,7 +45,7 @@ function str_starts_with(__this_param, prefix) {
 
 // extern fn sb_build
 
-// extern type Vec
+// type alias: Vec
 
 // extern fn __vec_new
 
@@ -71,7 +71,7 @@ function vec_new() { return __vec_new(); }
 
 // extern fn vec_includes
 
-// extern type Map
+// type alias: Map
 
 // extern fn __map_new
 
@@ -83,7 +83,7 @@ function vec_new() { return __vec_new(); }
 
 function map_new() { return __map_new(); }
 
-// extern type Set
+// type alias: Set
 
 // extern fn __set_new
 
@@ -672,7 +672,7 @@ function node_new(kind) {
 
 function node_kind(idx) { return (() => { const __recv = node_kinds; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, idx) : vec_get(__recv, idx); })(); }
 
-// extern type AnyValue
+// type alias: AnyValue
 
 function node_set_data1(idx, v) {
   (() => { const __recv = node_data1; const __dyn = __recv?.table?.vec_set; return __dyn ? __dyn(__recv.ref, idx, v) : vec_set(__recv, idx, v); })();

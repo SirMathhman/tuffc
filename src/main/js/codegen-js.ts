@@ -182,18 +182,34 @@ function emitExpr(expr) {
       }
       return `(function${name}(${params}) { return ${emitExpr(expr.body)}; })`;
     }
+    case "TupleExpr":
+      return `[${(expr.elements ?? []).map(emitExpr).join(", ")}]`;
+    case "RangeExpr":
+      return `{ start: ${emitExpr(expr.start)}, end: ${emitExpr(expr.end)} }`;
     default:
       return "undefined";
   }
 }
 
+let __tupleCounter = 0;
 function emitStmt(stmt) {
   switch (stmt.kind) {
+    case "TupleDestructure": {
+      const tmp = `__tup${__tupleCounter++}`;
+      const lines = [`const ${tmp} = ${emitExpr(stmt.value)};`];
+      for (let i = 0; i < stmt.names.length; i++) {
+        lines.push(`let ${stmt.names[i]} = ${tmp}[${i}];`);
+      }
+      return lines.join("\n");
+    }
     case "LetDecl":
       // Use 'let' to allow reassignment during bootstrap
       return stmt.value
         ? `let ${stmt.name} = ${emitExpr(stmt.value)};`
         : `let ${stmt.name};`;
+    case "TypeAlias":
+    case "ExternTypeDecl":
+      return `// type alias: ${stmt.name}`;
     case "ImportDecl":
       return `// module import placeholder: { ${stmt.names.join(", ")} } = ${stmt.modulePath}`;
     case "ExprStmt":
@@ -332,7 +348,7 @@ function emitStmt(stmt) {
     case "ExternLetDecl":
       return `// extern let ${stmt.name}`;
     case "ExternImportDecl":
-      return `// extern from ${stmt.source}`;
+      return `const { ${(stmt.names ?? []).join(", ")} } = ${stmt.source};`;
     case "ExternTypeDecl":
       return `// extern type ${stmt.name}`;
     default:

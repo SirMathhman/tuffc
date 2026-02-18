@@ -404,7 +404,11 @@ export function borrowcheck(ast, options = {}): BorrowcheckResult<unknown> {
 
     const ty = inferExprTypeName(expr, envTypes, fnReturnTypes);
     if (!isCopyTypeWithRegistry(ty, externTypeNames, copyTypeNames)) {
-      state.moved.add(place.base);
+      // Don't mark the base pointer as moved when indexing through it (slice[i]).
+      // The allocation itself isn't consumed; only the individual element is moved.
+      if (!place.path.includes("[]")) {
+        state.moved.add(place.base);
+      }
     }
     return ok(undefined);
   };

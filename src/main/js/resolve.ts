@@ -109,7 +109,11 @@ export function resolveNames(
   const externGlobalNames = new Set();
   const contractNames = new Set();
 
+  // Language-level intrinsics — always allowed regardless of options
+  const langBuiltins = new Set(["sizeOf", "uninit", "drop", "assert", "this"]);
+
   const isHostBuiltin = (name) => {
+    if (langBuiltins.has(name)) return true;
     if (hostBuiltins.has(name)) return true;
     if (allowHostPrefix && name.startsWith(allowHostPrefix)) return true;
     return false;
@@ -140,63 +144,77 @@ export function resolveNames(
     return (existingIsValue && nextIsType) || (existingIsType && nextIsValue);
   };
 
-  for (const node of ast.body) {
-    if (node.kind === "FnDecl" && node.expectDecl === true) {
-      continue;
-    }
-    if (
-      [
-        "FnDecl",
-        "StructDecl",
-        "EnumDecl",
-        "ObjectDecl",
-        "ContractDecl",
-        "TypeAlias",
-        "ExternFnDecl",
-        "ExternLetDecl",
-        "ExternTypeDecl",
-        "LetDecl",
-      ].includes(node.kind)
-    ) {
-      if (globals.bindings.has(node.name)) {
-        const existingKind = globalDeclKindByName.get(node.name);
-        if (!canCoexistGlobalName(existingKind, node.kind)) {
-          return err(
-            new TuffError(
-              `Variable shadowing/redeclaration is not allowed: ${node.name}`,
-              node.loc,
-              {
-                code: "E_RESOLVE_SHADOWING",
-                hint: "Rename one of the declarations; shadowing is disallowed in Tuff.",
-              },
-            ),
-          );
-        }
-      } else {
-        const defineResult = globals.define(node.name);
-        if (!defineResult.ok) return defineResult;
+  // Collect top-level nodes into globals, including those nested inside LifetimeStmt blocks
+  const collectGlobalNodes = (nodes: any[]) => {
+    for (const node of nodes) {
+      if (node.kind === "LifetimeStmt" && node.body) {
+        // Declarations inside lifetime blocks should be visible globally
+        const inner = node.body.statements ?? node.body.body ?? [node.body];
+        const innerResult = collectGlobalNodes(inner);
+        if (innerResult && !innerResult.ok) return innerResult;
+        continue;
       }
-      if (!globalDeclKindByName.has(node.name)) {
-        globalDeclKindByName.set(node.name, node.kind);
-      }
-      if (node.exported === true) {
-        exportedGlobalNames.add(node.name);
+      if (node.kind === "FnDecl" && node.expectDecl === true) {
+        continue;
       }
       if (
-        node.kind === "ExternFnDecl" ||
-        node.kind === "ExternLetDecl" ||
-        node.kind === "ExternTypeDecl"
+        [
+          "FnDecl",
+          "StructDecl",
+          "EnumDecl",
+          "ObjectDecl",
+          "ContractDecl",
+          "TypeAlias",
+          "ExternFnDecl",
+          "ExternLetDecl",
+          "ExternTypeDecl",
+          "LetDecl",
+        ].includes(node.kind)
       ) {
-        externGlobalNames.add(node.name);
-      }
-      if (!globalDeclModuleByName.has(node.name)) {
-        globalDeclModuleByName.set(node.name, node.__modulePath ?? undefined);
-      }
-      if (node.kind === "ContractDecl") {
-        contractNames.add(node.name);
+        if (globals.bindings.has(node.name)) {
+          const existingKind = globalDeclKindByName.get(node.name);
+          if (!canCoexistGlobalName(existingKind, node.kind)) {
+            return err(
+              new TuffError(
+                `Variable shadowing/redeclaration is not allowed: ${node.name}`,
+                node.loc,
+                {
+                  code: "E_RESOLVE_SHADOWING",
+                  hint: "Rename one of the declarations; shadowing is disallowed in Tuff.",
+                },
+              ),
+            );
+          }
+        } else {
+          const defineResult = globals.define(node.name);
+          if (!defineResult.ok) return defineResult;
+        }
+        if (!globalDeclKindByName.has(node.name)) {
+          globalDeclKindByName.set(node.name, node.kind);
+        }
+        if (node.exported === true) {
+          exportedGlobalNames.add(node.name);
+        }
+        if (
+          node.kind === "ExternFnDecl" ||
+          node.kind === "ExternLetDecl" ||
+          node.kind === "ExternTypeDecl"
+        ) {
+          externGlobalNames.add(node.name);
+        }
+        if (!globalDeclModuleByName.has(node.name)) {
+          globalDeclModuleByName.set(node.name, node.__modulePath ?? undefined);
+        }
+        if (node.kind === "ContractDecl") {
+          contractNames.add(node.name);
+        }
       }
     }
-  }
+    return ok(undefined);
+  };
+
+  const collectResult = collectGlobalNodes(ast.body);
+  if (collectResult && !collectResult.ok) return collectResult;
 
   const hasNonGlobalBinding = (scope, name) => {
     let cursor = scope;
@@ -755,6 +773,21 @@ export function resolveNames(
         }
         break;
       }
+      case "TupleDestructure": {
+        const tupleValueResult = visitExpr(node.value, scope, modulePath);
+        if (!tupleValueResult.ok) return tupleValueResult;
+        for (const name of node.names) {
+          const defineResult = scope.define(name, node.loc);
+          if (!defineResult.ok) return defineResult;
+        }
+        break;
+      }
+      case "TemplateDecl":
+        for (const stmt of node.body ?? []) {
+          const stmtResult = visitNode(stmt, scope, modulePath);
+          if (!stmtResult.ok) return stmtResult;
+        }
+        break;
       default:
         break;
     }

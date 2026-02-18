@@ -1,21 +1,29 @@
-// Generic Vec<T> backed by the C substrate __vec_* ABI.
-// All element values are lowered to int64_t by the C codegen, so the
-// monomorphized I32 substrate works uniformly for any element type T.
+// Real generic Vec<T> implementation for C backend using allocator-backed fat slices.
+// This is the production path replacing thin monomorphic C ABI wrappers.
 
-extern let { __vec_new, __vec_push, __vec_pop, __vec_get, __vec_set, __vec_init, __vec_capacity, __vec_length, __vec_includes, __vec_clear } = collections;
+type Alloc<T> = T then free;
+type Vec<T> = Alloc<*[T; _; _]> | 0;
 
-extern type Vec<T>;
+extern let { malloc, free } = stdlib;
+extern fn malloc<T, L : USize>(bytesCount : SizeOf<T> * L) : Alloc<*[T; 0; L]> | 0;
 
-extern fn __vec_new() : Vec<I32>;
-extern fn __vec_push(this : Vec<I32>, item : I32) : Vec<I32>;
-extern fn __vec_pop(this : Vec<I32>) : I32;
-extern fn __vec_get(this : Vec<I32>, index : USize) : I32;
-extern fn __vec_set(this : Vec<I32>, index : USize, item : I32) : Vec<I32>;
-extern fn __vec_init(this : Vec<I32>) : USize;
-extern fn __vec_capacity(this : Vec<I32>) : USize;
-extern fn __vec_length(this : Vec<I32>) : USize;
-extern fn __vec_includes(this : Vec<I32>, item : I32) : Bool;
-extern fn __vec_clear(this : Vec<I32>) : Vec<I32>;
+lifetime t {
+    extern fn realloc<T, I : USize, L : USize, L2 : USize >= I>(
+        ptr : Alloc<*t [T; I; L]>,
+        bytesCount : SizeOf<T> * L2
+    ) : Alloc<*t [T; I; L2]> | 0;
+}
+
+extern fn free<T>(this : Alloc<*[T; _; _]>) : Void;
+
+extern let { memcpy } = string;
+extern fn memcpy<T, SI : USize, DI : USize, Count : USize <= SI, DL : USize >= DI + Count>(
+    to : *mut [T; DI; DL],
+    from : *[T; SI; _],
+    bytesCount : SizeOf<T> * Count
+) : Void;
+
+let DEFAULT_SIZE = 10USize;
 
 out expect fn vec_new<T>() : Vec<T>;
 out expect fn vec_push<T>(this : Vec<T>, item : T) : Vec<T>;
@@ -28,13 +36,77 @@ out expect fn vec_length<T>(this : Vec<T>) : USize;
 out expect fn vec_includes<T>(this : Vec<T>, item : T) : Bool;
 out expect fn vec_clear<T>(this : Vec<T>) : Vec<T>;
 
-out actual fn vec_new<T>() : Vec<T> => __vec_new();
-out actual fn vec_push<T>(this : Vec<T>, item : T) : Vec<T> => __vec_push(this, item);
-out actual fn vec_pop<T>(this : Vec<T>) : T => __vec_pop(this);
-out actual fn vec_get<T>(this : Vec<T>, index : USize) : T => __vec_get(this, index);
-out actual fn vec_set<T>(this : Vec<T>, index : USize, item : T) : Vec<T> => __vec_set(this, index, item);
-out actual fn vec_init<T>(this : Vec<T>) : USize => __vec_init(this);
-out actual fn vec_capacity<T>(this : Vec<T>) : USize => __vec_capacity(this);
-out actual fn vec_length<T>(this : Vec<T>) : USize => __vec_length(this);
-out actual fn vec_includes<T>(this : Vec<T>, item : T) : Bool => __vec_includes(this, item);
-out actual fn vec_clear<T>(this : Vec<T>) : Vec<T> => __vec_clear(this);
+fn ensure_capacity<T>(slice : Vec<T>, need : USize) : Vec<T> => {
+    if (slice.length >= need) return slice;
+
+    let mut next_len = if (slice.length == 0USize) 4USize else slice.length;
+    while (next_len < need) {
+        next_len = next_len * 2USize;
+    }
+
+    let grown = realloc<T, next_len>(slice, sizeOf<T>() * next_len);
+    if (grown == 0) return slice;
+    grown
+};
+
+out actual fn vec_new<T>() : Vec<T> => {
+    let out = malloc<T, DEFAULT_SIZE>(sizeOf<T>() * DEFAULT_SIZE);
+    if (out == 0) return 0;
+    out
+};
+
+out actual fn vec_push<T>(this : Vec<T>, item : T) : Vec<T> => {
+    let mut slice = this;
+    if (slice == 0) return this;
+
+    slice = ensure_capacity(slice, slice.init + 1USize);
+    slice[slice.init] = item;
+    slice.init = slice.init + 1USize;
+    slice
+};
+
+out actual fn vec_pop<T>(this : Vec<T>) : T => {
+    if (this == 0 || this.init == 0USize) return 0;
+    let idx = this.init - 1USize;
+    let out = this[idx];
+    this.init = idx;
+    out
+};
+
+out actual fn vec_get<T>(this : Vec<T>, index : USize) : T => {
+    if (this == 0 || index >= this.init) return 0;
+    this[index]
+};
+
+out actual fn vec_set<T>(this : Vec<T>, index : USize, item : T) : Vec<T> => {
+    if (this == 0) return this;
+
+    let mut slice = this;
+    if (index > slice.init) return slice;
+
+    slice = ensure_capacity(slice, index + 1USize);
+    slice[index] = item;
+    if (index == slice.init) {
+        slice.init = slice.init + 1USize;
+    }
+    slice
+};
+
+out actual fn vec_init<T>(this : Vec<T>) : USize => if (this == 0) 0USize else this.init;
+out actual fn vec_capacity<T>(this : Vec<T>) : USize => if (this == 0) 0USize else this.length;
+out actual fn vec_length<T>(this : Vec<T>) : USize => vec_init(this);
+
+out actual fn vec_includes<T>(this : Vec<T>, item : T) : Bool => {
+    if (this == 0) return false;
+    let mut i = 0USize;
+    while (i < this.init) {
+        if (this[i] == item) return true;
+        i = i + 1USize;
+    }
+    false
+};
+
+out actual fn vec_clear<T>(this : Vec<T>) : Vec<T> => {
+    if (this != 0) this.init = 0USize;
+    this
+};

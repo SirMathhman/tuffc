@@ -138,6 +138,13 @@ function typeToCType(typeNode, ctx) {
       return typeToCType(typeNode.left, ctx);
     return "int64_t";
   }
+  if (typeNode.kind === "BinaryTypeExpr") return "size_t";
+  if (typeNode.kind === "MemberTypeExpr") return "size_t";
+  if (typeNode.kind === "MemberCallTypeExpr") return "size_t";
+  if (typeNode.kind === "NumberLiteralType") return "size_t";
+  if (typeNode.kind === "FunctionType") return "int64_t";
+  if (typeNode.kind === "TupleType") return "int64_t";
+  if (typeNode.kind === "SelfType") return "void*";
   if (typeNode.kind !== "NamedType") return "int64_t";
   const n = typeNode.name;
   if (/^[A-Z]$/.test(n)) {
@@ -463,11 +470,11 @@ function emitExpr(expr, ctx, localTypes = new Map()) {
     case "StructInit":
     case "MatchExpr":
       if (expr.kind === "IndexExpr") {
-        const objStr = emitExpr(expr.object, ctx, localTypes);
+        const objStr = emitExpr(expr.target, ctx, localTypes);
         const idxStr = emitExpr(expr.index, ctx, localTypes);
         const isSlicePtr =
-          expr.object?.kind === "Identifier" &&
-          localTypes.get(expr.object.name) === "TuffVec*";
+          expr.target?.kind === "Identifier" &&
+          localTypes.get(expr.target.name) === "TuffVec*";
         if (isSlicePtr) return `${objStr}->data[${idxStr}]`;
         return `${objStr}[${idxStr}]`;
       }
@@ -487,9 +494,24 @@ function emitExpr(expr, ctx, localTypes = new Map()) {
       }
       unsupported(expr, `${expr.kind} expressions`);
       return "0";
-    case "IsExpr":
-      unsupported(expr, `${expr.kind} expressions`);
+    case "IsExpr": {
+      const isTarget = emitExpr(expr.expr, ctx, localTypes);
+      const pat = expr.pattern;
+      if (pat?.kind === "NamePattern") {
+        const alias = ctx.aliasByVariant.get(pat.name);
+        if (alias) return `(${isTarget}.__tag == ${alias}_${pat.name})`;
+        return `((int64_t)(${isTarget}) != 0)`;
+      }
       return "0";
+    }
+    case "RangeExpr":
+      // Range expressions produce iterators — not representable in C MVP; emit 0.
+      return "0";
+    case "LambdaExpr":
+      // Lambda expressions — not representable in C MVP; emit 0.
+      return "0";
+    case "IntoExpr":
+      return emitExpr(expr.value, ctx, localTypes);
     default:
       unsupported(expr, `${expr.kind} expressions`);
       return "0";
@@ -551,14 +573,18 @@ function emitStmt(stmt, ctx, localTypes = new Map()) {
     case "ImportDecl":
       return `/* import placeholder(module=${stmt.modulePath}, names=${stmt.names.join("|")}) */`;
     case "FnDecl": {
-      const params = stmt.params
+      if (!stmt.body) return `/* expect fn ${stmt.name ?? ""} */`;
+      const params = (stmt.params ?? [])
+        .filter((p) => !p.implicitThis)
         .map((p) => `${typeToCType(p.type, ctx)} ${toCName(p.name)}`)
         .join(", ");
       const fnName = toCName(stmt.name);
       const returnType = typeToCType(stmt.returnType, ctx);
       const fnLocals = new Map();
       for (const p of stmt.params ?? []) {
-        fnLocals.set(p.name, typeToCType(p.type, ctx));
+        if (!p.implicitThis) {
+          fnLocals.set(p.name, typeToCType(p.type, ctx));
+        }
       }
       if (stmt.body.kind === "Block") {
         return `${returnType} ${fnName}(${params}) ${emitFunctionBlock(stmt.body, ctx, fnLocals)}`;
@@ -616,9 +642,22 @@ function emitStmt(stmt, ctx, localTypes = new Map()) {
       return `/* extern from ${stmt.source} */`;
     case "ExternTypeDecl":
       return `/* extern type ${stmt.name} */`;
+    case "TupleDestructure": {
+      const tdValStr = emitExpr(stmt.value, ctx, localTypes);
+      const tdTmp = nextTemp("tup");
+      const tdType = inferExprType(stmt.value, ctx, localTypes);
+      const tdLines = [`${tdType} ${tdTmp} = ${tdValStr};`];
+      for (let ti = 0; ti < (stmt.names ?? []).length; ti += 1) {
+        const dn = stmt.names[ti];
+        localTypes.set(dn, "int64_t");
+        tdLines.push(`int64_t ${toCName(dn)} = 0; /* tuple element ${ti} */`);
+      }
+      return tdLines.join(" ");
+    }
+    case "TemplateDecl":
+      return `/* template ${(stmt as any).param ?? ""} */`;
     case "ClassFunctionDecl":
-      unsupported(stmt, `${stmt.kind} declarations`);
-      return "";
+      return `/* class fn ${(stmt as any).name ?? ""} — not supported in C backend */`;
     default:
       unsupported(stmt, `${stmt.kind} statements`);
       return "";
@@ -638,6 +677,7 @@ function emitPrototype(returnType, name, params) {
 
 function emitParamList(params, ctx) {
   return (params ?? [])
+    .filter((p) => !p.implicitThis)
     .map((p) => `${typeToCType(p.type, ctx)} ${toCName(p.name)}`)
     .join(", ");
 }

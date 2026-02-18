@@ -68,6 +68,7 @@ export function parse(tokens: Token[]): ParseResult<Program> {
       if (!tok) return false;
       if (["number", "identifier", "bool", "string", "char"].includes(tok.type))
         return true;
+      if (tok.type === "keyword") return true;
       if (
         tok.type === "symbol" &&
         ["(", "-", "!"].includes(tok.value as string)
@@ -205,7 +206,11 @@ export function parse(tokens: Token[]): ParseResult<Program> {
         }
         const close = expect("symbol", ")", "Expected ')' for tuple type");
         if (!close.ok) return close;
-        if (at("symbol", "=>")) {
+        // `=>` is a function-type arrow unless it's followed by `{` (function body)
+        if (
+          at("symbol", "=>") &&
+          !(peek(1)?.type === "symbol" && peek(1)?.value === "{")
+        ) {
           eat();
           const returnTypeResult = parseType();
           if (!returnTypeResult.ok) return returnTypeResult;
@@ -225,20 +230,29 @@ export function parse(tokens: Token[]): ParseResult<Program> {
         if (!match) return numericTypeLiteralError("invalid", raw, t.loc);
         const value = Number(match[1]);
         const suffix = match[2] ?? undefined;
-        // Accept both `0USize` and bare `0` as the null-sentinel type literal.
-        if (value !== 0 || (suffix !== undefined && suffix !== "USize")) {
-          return numericTypeLiteralError("unsupported", raw, t.loc);
+        // 0USize / bare 0 → null-sentinel type literal (RefinementType == 0).
+        if (value === 0 && (suffix === undefined || suffix === "USize")) {
+          const base = { kind: "NamedType", name: "USize", genericArgs: [] };
+          const valueExpr = {
+            kind: "NumberLiteral",
+            value: 0,
+            numberType: "USize",
+            loc: t.loc,
+            start: t.start,
+            end: t.end,
+          };
+          return ok({ kind: "RefinementType", base, op: "==", valueExpr });
         }
-        const base = { kind: "NamedType", name: "USize", genericArgs: [] };
-        const valueExpr = {
-          kind: "NumberLiteral",
-          value: 0,
-          numberType: "USize",
+        // Any other numeric literal (e.g. 2, 10) — allowed as a type-level numeric value.
+        return ok({
+          kind: "NumberLiteralType",
+          value,
+          suffix,
+          raw,
           loc: t.loc,
           start: t.start,
           end: t.end,
-        };
-        return ok({ kind: "RefinementType", base, op: "==", valueExpr });
+        });
       }
 
       const firstIdResult = expect(
@@ -290,6 +304,71 @@ export function parse(tokens: Token[]): ParseResult<Program> {
     if (!primaryResult.ok) return primaryResult;
     let typeExpr: Expr = primaryResult.value;
 
+    // Type-level member access: slice.length, this.size(), etc.
+    while (at("symbol", ".")) {
+      eat();
+      let typePropName: string;
+      if (at("identifier")) {
+        typePropName = eat().value as string;
+      } else if (at("keyword")) {
+        typePropName = eat().value as string;
+      } else {
+        return expect(
+          "identifier",
+          undefined,
+          "Expected property name after '.' in type",
+        ) as any;
+      }
+      if (at("symbol", "(")) {
+        eat();
+        const typeCallArgs: Expr[] = [];
+        if (!at("symbol", ")")) {
+          while (true) {
+            const tcaResult = parseExpression();
+            if (!tcaResult.ok) return tcaResult;
+            typeCallArgs.push(tcaResult.value);
+            if (!at("symbol", ",")) break;
+            eat();
+          }
+        }
+        const tcaClose = expect(
+          "symbol",
+          ")",
+          "Expected ')' after type-level call args",
+        );
+        if (!tcaClose.ok) return tcaClose;
+        typeExpr = {
+          kind: "MemberCallTypeExpr",
+          object: typeExpr,
+          method: typePropName,
+          args: typeCallArgs,
+        };
+      } else {
+        typeExpr = {
+          kind: "MemberTypeExpr",
+          object: typeExpr,
+          property: typePropName,
+        };
+      }
+    }
+    // Type-level binary arithmetic: SizeOf<T> * L, SizeOf<T> * L * 2, slice.length * 2, etc.
+    while (
+      at("symbol", "*") ||
+      at("symbol", "/") ||
+      at("symbol", "+") ||
+      at("symbol", "-")
+    ) {
+      const typeArithOp = eat().value as string;
+      const typeArithRight = parseTypePrimary();
+      if (!typeArithRight.ok) return typeArithRight;
+      typeExpr = {
+        kind: "BinaryTypeExpr",
+        op: typeArithOp,
+        left: typeExpr,
+        right: typeArithRight.value,
+      };
+    }
+
     const startsGenericCallSuffix =
       at("symbol", ">") && peek(1)?.type === "symbol" && peek(1)?.value === "(";
 
@@ -303,7 +382,8 @@ export function parse(tokens: Token[]): ParseResult<Program> {
       !startsGenericCallSuffix
     ) {
       const op = eat().value as string;
-      const valueExprResult = parseExpression();
+      // Use prec=5 to avoid consuming '>' (prec 4) which may close a generic param list.
+      const valueExprResult = parseExpression(5);
       if (!valueExprResult.ok) return valueExprResult;
       typeExpr = {
         kind: "RefinementType",
@@ -382,6 +462,49 @@ export function parse(tokens: Token[]): ParseResult<Program> {
     const params: { name: string; type: Expr | undefined }[] = [];
     if (!at("symbol", ")")) {
       while (true) {
+        // Handle *[mut] [lifetime] name implicit-receiver params (e.g. *mut a this, *mut this)
+        if (at("symbol", "*")) {
+          eat();
+          let receiverMutable = false;
+          if (at("keyword", "mut")) {
+            eat();
+            receiverMutable = true;
+          }
+          // Two name-like tokens in a row → first is a lifetime identifier
+          const p0 = peek(),
+            p1 = peek(1);
+          const isNameLike = (t: Token | undefined): boolean =>
+            t?.type === "identifier" ||
+            (t?.type === "keyword" && t?.value === "this");
+          let receiverLifetime: string | undefined = undefined;
+          if (isNameLike(p0) && isNameLike(p1) && p0?.type === "identifier") {
+            receiverLifetime = eat().value as string;
+          }
+          let receiverName: string;
+          if (at("identifier")) {
+            receiverName = eat().value as string;
+          } else if (at("keyword")) {
+            receiverName = eat().value as string;
+          } else {
+            const rErr = expect(
+              "identifier",
+              undefined,
+              "Expected receiver name after '*'",
+            );
+            if (!rErr.ok) return rErr;
+            receiverName = "this";
+          }
+          params.push({
+            name: receiverName,
+            implicitThis: true,
+            mutable: receiverMutable,
+            lifetime: receiverLifetime,
+            type: { kind: "SelfType" },
+          });
+          if (!at("symbol", ",")) break;
+          eat();
+          continue;
+        }
         const paramNameResult = parseIdentifier();
         if (!paramNameResult.ok) return paramNameResult;
         let paramType = undefined;
@@ -448,6 +571,26 @@ export function parse(tokens: Token[]): ParseResult<Program> {
     const nameResult = parseIdentifier();
     if (!nameResult.ok) return nameResult;
     const name = nameResult.value;
+    // Consume optional generic type args in pattern position: is Some<T>, is None<U>, etc.
+    if (at("symbol", "<")) {
+      const patSnapshot = i;
+      eat(); // '<'
+      let patGenOk = true;
+      while (!at("symbol", ">") && !at("eof")) {
+        const patArgResult = parseType();
+        if (!patArgResult.ok) {
+          patGenOk = false;
+          break;
+        }
+        if (!at("symbol", ",")) break;
+        eat();
+      }
+      if (patGenOk && at("symbol", ">")) {
+        eat(); // '>'
+      } else {
+        i = patSnapshot; // backtrack
+      }
+    }
     if (at("symbol", "{")) {
       eat();
       const fields: { field: string; bind: string }[] = [];
@@ -764,6 +907,49 @@ export function parse(tokens: Token[]): ParseResult<Program> {
 
   const parsePrimary = (): ParseResult<Expr> => {
     const tryParseLambdaExpr = (): ParseResult<Expr | undefined> => {
+      // Single-parameter shorthand: ident => body  (no parens)
+      if (
+        at("identifier") &&
+        peek(1)?.type === "symbol" &&
+        peek(1)?.value === "=>"
+      ) {
+        const paramName = eat().value as string;
+        eat(); // '=>'
+        const bodyResult = at("symbol", "{") ? parseBlock() : parseExpression();
+        if (!bodyResult.ok) return bodyResult;
+        return ok({
+          kind: "LambdaExpr",
+          params: [{ name: paramName, type: undefined }],
+          body: bodyResult.value,
+        });
+      }
+      // Rust-style pipe lambda: |x, y| body
+      if (at("symbol", "|")) {
+        const pipeSnapshot = i;
+        eat(); // '|'
+        const pipeParams: { name: string; type: Expr | undefined }[] = [];
+        while (!at("symbol", "|") && !at("eof")) {
+          if (!at("identifier")) {
+            i = pipeSnapshot;
+            break;
+          }
+          pipeParams.push({ name: eat().value as string, type: undefined });
+          if (at("symbol", ",")) eat();
+        }
+        if (at("symbol", "|")) {
+          eat(); // closing '|'
+          const bodyResult = at("symbol", "{")
+            ? parseBlock()
+            : parseExpression();
+          if (!bodyResult.ok) return bodyResult;
+          return ok({
+            kind: "LambdaExpr",
+            params: pipeParams,
+            body: bodyResult.value,
+          });
+        }
+        i = pipeSnapshot; // backtrack
+      }
       if (!at("symbol", "(")) return ok(undefined);
       const snapshot = i;
       eat();
@@ -925,6 +1111,24 @@ export function parse(tokens: Token[]): ParseResult<Program> {
       eat();
       const exprResult = parseExpression();
       if (!exprResult.ok) return exprResult;
+      // Tuple expression: (a, b, ...)
+      if (at("symbol", ",")) {
+        const elems: Expr[] = [exprResult.value];
+        while (at("symbol", ",")) {
+          eat();
+          if (at("symbol", ")")) break; // trailing comma
+          const elemResult = parseExpression();
+          if (!elemResult.ok) return elemResult;
+          elems.push(elemResult.value);
+        }
+        const close = expect(
+          "symbol",
+          ")",
+          "Expected ')' after tuple expression",
+        );
+        if (!close.ok) return close;
+        return parsePostfix({ kind: "TupleExpr", elements: elems });
+      }
       const close = expect("symbol", ")", "Expected ')' after expression");
       if (!close.ok) return close;
       return parsePostfix(exprResult.value);
@@ -942,7 +1146,19 @@ export function parse(tokens: Token[]): ParseResult<Program> {
         "Expected ')' after if condition",
       );
       if (!closeResult.ok) return closeResult;
-      const thenResult = at("symbol", "{") ? parseBlock() : parseExpression();
+      let thenResult;
+      if (at("symbol", "{")) {
+        thenResult = parseBlock();
+      } else if (
+        at("keyword", "return") ||
+        at("keyword", "break") ||
+        at("keyword", "continue")
+      ) {
+        // Statement-forming keywords in then-branch: parse as a statement node
+        thenResult = parseStatement();
+      } else {
+        thenResult = parseExpression();
+      }
       if (!thenResult.ok) return thenResult;
       let elseBranch = undefined;
       if (at("keyword", "else")) {
@@ -1006,6 +1222,17 @@ export function parse(tokens: Token[]): ParseResult<Program> {
       });
     }
 
+    if (at("keyword", "this")) {
+      const thisTok = eat();
+      return parsePostfix({
+        kind: "Identifier",
+        name: "this",
+        loc: thisTok.loc,
+        start: thisTok.start,
+        end: thisTok.end,
+      });
+    }
+
     if (at("identifier")) {
       const canStartTypeToken = (tok: Token | undefined): boolean => {
         if (!tok) return false;
@@ -1041,14 +1268,8 @@ export function parse(tokens: Token[]): ParseResult<Program> {
               ">=",
               "&&",
               "||",
-              "+",
-              "-",
-              "*",
-              "/",
-              "%",
               "..",
               "=>",
-              ".",
             ].includes(t.value as string)
           ) {
             return false;
@@ -1096,14 +1317,8 @@ export function parse(tokens: Token[]): ParseResult<Program> {
               ">=",
               "&&",
               "||",
-              "+",
-              "-",
-              "*",
-              "/",
-              "%",
               "..",
               "=>",
-              ".",
             ].includes(t.value as string)
           ) {
             return false;
@@ -1163,6 +1378,18 @@ export function parse(tokens: Token[]): ParseResult<Program> {
         start: idTok.start,
         end: idTok.end,
       };
+
+      // TypeName<Args> without {} in expression position → unit struct init
+      if (typeLikeName && genericArgs.length > 0 && !at("symbol", "{")) {
+        expr = {
+          kind: "StructInit",
+          name: idTok.value as string,
+          fields: [],
+          genericArgs,
+          loc: idTok.loc,
+        };
+        return ok(expr);
+      }
 
       if (at("symbol", "{")) {
         eat();
@@ -1276,6 +1503,21 @@ export function parse(tokens: Token[]): ParseResult<Program> {
         continue;
       }
 
+      // Range expression: start..end (lowest precedence, left-associative)
+      if (minPrec <= 0 && at("symbol", "..")) {
+        const rangeTok = eat();
+        const rangeRight = parseExpression(1);
+        if (!rangeRight.ok) return rangeRight;
+        left = {
+          kind: "RangeExpr",
+          from: left,
+          to: rangeRight.value,
+          loc: left.loc ?? rangeTok.loc,
+          start: (left as any)?.start,
+          end: (rangeRight.value as any)?.end ?? rangeTok.end,
+        };
+        continue;
+      }
       const t = peek();
       const op =
         t.type === "keyword" ? (t.value as string) : (t.value as string);
@@ -1363,6 +1605,47 @@ export function parse(tokens: Token[]): ParseResult<Program> {
       });
     }
 
+    // Tuple destructuring: let (a, b) = expr; / let mut (a, b) = expr;
+    if (at("symbol", "(")) {
+      eat();
+      const tupleNames: string[] = [];
+      if (!at("symbol", ")")) {
+        while (true) {
+          const tnResult = parseIdentifier();
+          if (!tnResult.ok) return tnResult;
+          tupleNames.push(tnResult.value);
+          if (!at("symbol", ",")) break;
+          eat();
+        }
+      }
+      const tCloseResult = expect(
+        "symbol",
+        ")",
+        "Expected ')' in tuple destructuring",
+      );
+      if (!tCloseResult.ok) return tCloseResult;
+      const tEqResult = expect(
+        "symbol",
+        "=",
+        "Expected '=' in tuple destructuring",
+      );
+      if (!tEqResult.ok) return tEqResult;
+      const tValueResult = parseExpression();
+      if (!tValueResult.ok) return tValueResult;
+      const tSemiResult = expect(
+        "symbol",
+        ";",
+        "Expected ';' after tuple destructuring",
+      );
+      if (!tSemiResult.ok) return tSemiResult;
+      return ok({
+        kind: "TupleDestructure",
+        names: tupleNames,
+        mutable,
+        value: tValueResult.value,
+        loc: start,
+      });
+    }
     const nameResult = parseIdentifier();
     if (!nameResult.ok) return nameResult;
     let type = undefined;
@@ -1770,12 +2053,22 @@ export function parse(tokens: Token[]): ParseResult<Program> {
     if (!iteratorResult.ok) return iteratorResult;
     const inResult = expect("keyword", "in", "Expected 'in' in for loop");
     if (!inResult.ok) return inResult;
-    const startResult = parseExpression();
-    if (!startResult.ok) return startResult;
-    const dotdotResult = expect("symbol", "..", "Expected '..' in for range");
-    if (!dotdotResult.ok) return dotdotResult;
-    const endResult = parseExpression();
-    if (!endResult.ok) return endResult;
+    // parseExpression now consumes start..end as a RangeExpr
+    const rangeExprResult = parseExpression();
+    if (!rangeExprResult.ok) return rangeExprResult;
+    let forStart: Expr, forEnd: Expr;
+    if (rangeExprResult.value.kind === "RangeExpr") {
+      forStart = (rangeExprResult.value as any).from;
+      forEnd = (rangeExprResult.value as any).to;
+    } else {
+      // Fallback: explicit start .. end (old style)
+      const dotdotResult = expect("symbol", "..", "Expected '..' in for range");
+      if (!dotdotResult.ok) return dotdotResult;
+      const endResult = parseExpression();
+      if (!endResult.ok) return endResult;
+      forStart = rangeExprResult.value;
+      forEnd = endResult.value;
+    }
     const closeResult = expect("symbol", ")", "Expected ')' after for header");
     if (!closeResult.ok) return closeResult;
     const bodyResult = parseBlock();
@@ -1783,8 +2076,8 @@ export function parse(tokens: Token[]): ParseResult<Program> {
     return ok({
       kind: "ForStmt",
       iterator: iteratorResult.value,
-      start: startResult.value,
-      end: endResult.value,
+      start: forStart,
+      end: forEnd,
       body: bodyResult.value,
     });
   };
@@ -2156,6 +2449,7 @@ export function parse(tokens: Token[]): ParseResult<Program> {
       const node = nodeResult.value;
       if (exported) node.exported = true;
       node.loc = node.loc ?? modifierLoc;
+      if (at("symbol", ";")) eat(); // optional trailing ';' after declarations like 'out struct Foo {};'
       return ok(node);
     }
 
@@ -2310,12 +2604,28 @@ export function parse(tokens: Token[]): ParseResult<Program> {
       if (expr.thenBranch?.kind === "Block") {
         return ok({ ...expr, kind: "IfStmt" });
       }
-      const semiResult = expect(
-        "symbol",
-        ";",
-        "Expected ';' after if expression statement",
-      );
-      if (!semiResult.ok) return semiResult;
+      // Statement-like then-branches (ReturnStmt, BreakStmt, ContinueStmt) → IfStmt
+      const stmtLikeKinds = ["ReturnStmt", "BreakStmt", "ContinueStmt"];
+      if (stmtLikeKinds.includes(expr.thenBranch?.kind)) {
+        return ok({
+          kind: "IfStmt",
+          condition: expr.condition,
+          thenBranch: { kind: "Block", statements: [expr.thenBranch] },
+          elseBranch: expr.elseBranch,
+          loc: expr.loc,
+        });
+      }
+      // Optional semicolon — omit at end of block
+      if (at("symbol", ";")) {
+        eat();
+      } else if (!at("symbol", "}") && !at("eof")) {
+        const semiResult = expect(
+          "symbol",
+          ";",
+          "Expected ';' after if expression statement",
+        );
+        if (!semiResult.ok) return semiResult;
+      }
       return ok({ kind: "ExprStmt", expr });
     }
     if (at("keyword", "while")) {
@@ -2361,6 +2671,51 @@ export function parse(tokens: Token[]): ParseResult<Program> {
       if (!semiResult.ok) return semiResult;
       return ok({ kind: "ContinueStmt" });
     }
+    // template T : Contract { ... } — template-constrained declarations
+    if (at("identifier", "template")) {
+      eat(); // 'template'
+      const tplParamResult = parseIdentifier();
+      if (!tplParamResult.ok) return tplParamResult;
+      const tplColonResult = expect(
+        "symbol",
+        ":",
+        "Expected ':' after template param",
+      );
+      if (!tplColonResult.ok) return tplColonResult;
+      const tplContractResult = parseType();
+      if (!tplContractResult.ok) return tplContractResult;
+      const tplOpenResult = expect(
+        "symbol",
+        "{",
+        "Expected '{' for template block",
+      );
+      if (!tplOpenResult.ok) return tplOpenResult;
+      const tplDecls: Stmt[] = [];
+      while (!at("symbol", "}") && !at("eof")) {
+        const tplInnerResult = parseStatement();
+        if (!tplInnerResult.ok) return tplInnerResult;
+        const tplInner = tplInnerResult.value as any;
+        tplInner.templateParam = tplParamResult.value;
+        tplInner.templateContract = tplContractResult.value;
+        tplDecls.push(tplInner);
+      }
+      const tplCloseResult = expect(
+        "symbol",
+        "}",
+        "Expected '}' after template block",
+      );
+      if (!tplCloseResult.ok) return tplCloseResult;
+      if (tplDecls.length === 0) {
+        return ok({
+          kind: "TemplateDecl",
+          param: tplParamResult.value,
+          contract: tplContractResult.value,
+        } as any);
+      }
+      queuedStatements.push(...tplDecls.slice(1));
+      return ok(tplDecls[0]);
+    }
+
     if (at("symbol", "{")) return parseBlock();
 
     const exprResult = parseExpression();
