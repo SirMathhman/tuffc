@@ -5286,7 +5286,28 @@ function cc_type_to_c(type_node) {
   if ((() => { const __recv = name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "Void") : str_eq(__recv, "Void"); })()) {
   return "void";
 }
+  if ((() => { const __recv = cc_union_alias_info; const __dyn = __recv?.table?.map_has; return __dyn ? __dyn(__recv.ref, name) : map_has(__recv, name); })()) {
+  return name;
+}
+  if ((() => { const __recv = cc_alias_by_variant; const __dyn = __recv?.table?.map_has; return __dyn ? __dyn(__recv.ref, name) : map_has(__recv, name); })()) {
+  return (() => { const __recv = cc_alias_by_variant; const __dyn = __recv?.table?.map_get; return __dyn ? __dyn(__recv.ref, name) : map_get(__recv, name); })();
+}
   return "int64_t";
+}
+  return "int64_t";
+}
+
+function cc_infer_expr_ctype(n) {
+  if ((n == 0)) {
+  return "int64_t";
+}
+  let kind = node_kind(n);
+  if ((kind == NK_STRUCT_INIT)) {
+  let vname = get_interned_str(node_get_data1(n));
+  if ((() => { const __recv = cc_alias_by_variant; const __dyn = __recv?.table?.map_has; return __dyn ? __dyn(__recv.ref, vname) : map_has(__recv, vname); })()) {
+  return (() => { const __recv = cc_alias_by_variant; const __dyn = __recv?.table?.map_get; return __dyn ? __dyn(__recv.ref, vname) : map_get(__recv, vname); })();
+}
+  return vname;
 }
   return "int64_t";
 }
@@ -5744,7 +5765,24 @@ function cc_emit_match_expr(n) {
   let body_str = (((node_kind(body) == NK_BLOCK)) ? (() => {
   return cc_emit_block_as_expr(body);
 })() : (() => {
+  return ((((node_kind(pat) == NK_STRUCT_PAT) && (node_kind(body) == NK_IDENTIFIER))) ? (() => {
+  let pfields = node_get_data2(pat);
+  return ((((pfields != 0) && ((() => { const __recv = pfields; const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })() == 1))) ? (() => {
+  let pfield = (() => { const __recv = pfields; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })();
+  let field_name = get_interned_str(pfield);
+  let bind_name = field_name;
+  let body_name = get_interned_str(node_get_data1(body));
+  return (((() => { const __recv = body_name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, bind_name) : str_eq(__recv, bind_name); })()) ? (() => {
+  return (() => { const __recv = (() => { const __recv = target_str; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ".") : str_concat(__recv, "."); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, field_name) : str_concat(__recv, field_name); })();
+})() : (() => {
   return cc_emit_expr(body);
+})());
+})() : (() => {
+  return cc_emit_expr(body);
+})());
+})() : (() => {
+  return cc_emit_expr(body);
+})());
 })());
   chain = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = "(("; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, guard) : str_concat(__recv, guard); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ") ? (") : str_concat(__recv, ") ? ("); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, body_str) : str_concat(__recv, body_str); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ") : (") : str_concat(__recv, ") : ("); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, chain) : str_concat(__recv, chain); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "))") : str_concat(__recv, "))"); })();
   i = (i - 1);
@@ -5940,8 +5978,10 @@ function cc_emit_stmt(n) {
   let kind = node_kind(n);
   if ((kind == NK_LET_DECL)) {
   let name = cc_to_name(get_interned_str(node_get_data1(n)));
-  let value = cc_emit_expr(node_get_data3(n));
-  return (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = "int64_t "; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, name) : str_concat(__recv, name); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " = ") : str_concat(__recv, " = "); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, value) : str_concat(__recv, value); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ";") : str_concat(__recv, ";"); })();
+  let val_node = node_get_data3(n);
+  let ctype = cc_infer_expr_ctype(val_node);
+  let value = cc_emit_expr(val_node);
+  return (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = ctype; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " ") : str_concat(__recv, " "); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, name) : str_concat(__recv, name); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " = ") : str_concat(__recv, " = "); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, value) : str_concat(__recv, value); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ";") : str_concat(__recv, ";"); })();
 }
   if ((kind == NK_IMPORT_DECL)) {
   return "/* import placeholder */";

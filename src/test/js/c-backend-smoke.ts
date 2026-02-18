@@ -127,7 +127,7 @@ if (!selected) {
 const cases = [
   runCase("factorial", { backend: "selfhost" }),
   runCase("enum_match", { backend: "selfhost" }),
-  runCase("option_match", { backend: "stage0" }),
+  runCase("option_match", { backend: "selfhost" }),
   runCase("runtime_strings", { backend: "selfhost" }),
   runCase("runtime_collections", { backend: "stage0" }),
   runCase("runtime_io", { backend: "stage0" }),

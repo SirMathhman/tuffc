@@ -126,7 +126,22 @@ fn cc_type_to_c(type_node: I32) : *Str => {
     if (kind == NK_NAMED_TYPE) {
         let name = get_interned_str(node_get_data1(type_node));
         if (name.str_eq("Void")) { return "void"; }
+        if (cc_union_alias_info.map_has(name)) { return name; }
+        if (cc_alias_by_variant.map_has(name)) { return cc_alias_by_variant.map_get(name); }
         return "int64_t";
+    }
+    "int64_t"
+}
+
+fn cc_infer_expr_ctype(n: I32) : *Str => {
+    if (n == 0) { return "int64_t"; }
+    let kind = node_kind(n);
+    if (kind == NK_STRUCT_INIT) {
+        let vname = get_interned_str(node_get_data1(n));
+        if (cc_alias_by_variant.map_has(vname)) {
+            return cc_alias_by_variant.map_get(vname);
+        }
+        return vname;
     }
     "int64_t"
 }
@@ -621,7 +636,24 @@ fn cc_emit_match_expr(n: I32) : *Str => {
         let body_str = if (node_kind(body) == NK_BLOCK) {
             cc_emit_block_as_expr(body)
         } else {
-            cc_emit_expr(body)
+            if (node_kind(pat) == NK_STRUCT_PAT && node_kind(body) == NK_IDENTIFIER) {
+                let pfields = node_get_data2(pat);
+                if (pfields != 0 && pfields.vec_length() == 1) {
+                    let pfield = pfields.vec_get(0);
+                    let field_name = get_interned_str(pfield);
+                    let bind_name = field_name;
+                    let body_name = get_interned_str(node_get_data1(body));
+                    if (body_name.str_eq(bind_name)) {
+                        target_str.str_concat(".").str_concat(field_name)
+                    } else {
+                        cc_emit_expr(body)
+                    }
+                } else {
+                    cc_emit_expr(body)
+                }
+            } else {
+                cc_emit_expr(body)
+            }
         };
         chain = "((".str_concat(guard).str_concat(") ? (").str_concat(body_str).str_concat(") : (").str_concat(chain).str_concat("))");
         i = i - 1;
@@ -824,8 +856,10 @@ fn cc_emit_stmt(n: I32) : *Str => {
 
     if (kind == NK_LET_DECL) {
         let name = cc_to_name(get_interned_str(node_get_data1(n)));
-        let value = cc_emit_expr(node_get_data3(n));
-        return "int64_t ".str_concat(name).str_concat(" = ").str_concat(value).str_concat(";");
+        let val_node = node_get_data3(n);
+        let ctype = cc_infer_expr_ctype(val_node);
+        let value = cc_emit_expr(val_node);
+        return ctype.str_concat(" ").str_concat(name).str_concat(" = ").str_concat(value).str_concat(";");
     }
 
     if (kind == NK_IMPORT_DECL) {
