@@ -27,6 +27,7 @@ let { generate_c } = selfhost::codegen_c;
 let { lint_reset, lint_take_issues, lint_program } = selfhost::linter;
 extern let { __host_get_c_substrate } = globalThis;
 extern let { __host_get_c_runtime_prelude_source } = globalThis;
+extern let { __host_emit_target_from_source } = globalThis;
 extern fn __host_get_c_substrate() : *Str;
 extern fn __host_get_c_runtime_prelude_source() : *Str;
 extern fn __host_emit_target_from_source(source: *Str, target: *Str) : *Str;

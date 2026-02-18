@@ -5,17 +5,7 @@
 extern let { malloc, free, realloc } = stdlib;
 extern let { memcpy } = string;
 
-extern fn malloc(size : USize) : I32;
-extern fn realloc(ptr : I32, size : USize) : I32;
-extern fn free(ptr : I32) : Void;
-extern fn memcpy(to : I32, from : I32, size : USize) : Void;
-
-out expect fn malloc(size : USize) : I32;
-out expect fn realloc(ptr : I32, size : USize) : I32;
-out expect fn free(ptr : I32) : Void;
-out expect fn memcpy(to : I32, from : I32, size : USize) : Void;
-
-out actual fn malloc(size : USize) : I32 => malloc(size);
-out actual fn realloc(ptr : I32, size : USize) : I32 => realloc(ptr, size);
-out actual fn free(ptr : I32) : Void => free(ptr);
-out actual fn memcpy(to : I32, from : I32, size : USize) : Void => memcpy(to, from, size);
+out extern fn malloc(size : USize) : I32;
+out extern fn realloc(ptr : I32, size : USize) : I32;
+out extern fn free(ptr : I32) : Void;
+out extern fn memcpy(to : I32, from : I32, size : USize) : Void;

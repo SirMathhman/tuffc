@@ -12,17 +12,11 @@ extern fn strlen(s : *Str) : USize;
 extern fn strcpy(dst : I32, src : *Str) : I32;
 extern fn strcat(dst : I32, src : *Str) : I32;
 
-out expect fn read_file(path : *Str) : *Str;
-out expect fn write_file(path : *Str, contents : *Str) : I32;
-out expect fn path_join(a : *Str, b : *Str) : *Str;
-out expect fn path_dirname(p : *Str) : *Str;
-out expect fn print(s : *Str) : I32;
-out expect fn print_error(s : *Str) : I32;
 
 // Temporary fallback until full stdlib-only file read support is completed.
-out actual fn read_file(path : *Str) : *Str => "";
+out fn read_file(path : *Str) : *Str => "";
 
-out actual fn write_file(path : *Str, contents : *Str) : I32 => {
+out fn write_file(path : *Str, contents : *Str) : I32 => {
 	let file = fopen(path, "wb");
 	if (file == 0) return 0;
 	let len = strlen(contents);
@@ -30,7 +24,7 @@ out actual fn write_file(path : *Str, contents : *Str) : I32 => {
 	fclose(file)
 };
 
-out actual fn path_join(a : *Str, b : *Str) : *Str => {
+out fn path_join(a : *Str, b : *Str) : *Str => {
 	let alen = strlen(a);
 	let blen = strlen(b);
 	let cap = alen + blen + 2USize;
@@ -44,7 +38,7 @@ out actual fn path_join(a : *Str, b : *Str) : *Str => {
 	out_ptr
 };
 
-out actual fn path_dirname(p : *Str) : *Str => p;
+out fn path_dirname(p : *Str) : *Str => p;
 
-out actual fn print(s : *Str) : I32 => printf("%s\n", s);
-out actual fn print_error(s : *Str) : I32 => printf("[error] %s\n", s);
+out fn print(s : *Str) : I32 => printf("%s\n", s);
+out fn print_error(s : *Str) : I32 => printf("[error] %s\n", s);

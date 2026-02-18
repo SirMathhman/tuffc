@@ -303,6 +303,17 @@ export function __vec_new<T = unknown>(): VecState<T> {
   return vec_new<T>();
 }
 
+export const __vec_push = vec_push;
+export const __vec_pop = vec_pop;
+export const __vec_get = vec_get;
+export const __vec_set = vec_set;
+export const __vec_length = vec_length;
+export const __vec_init = vec_init;
+export const __vec_capacity = vec_capacity;
+export const __vec_clear = vec_clear;
+export const __vec_join = vec_join;
+export const __vec_includes = vec_includes;
+
 // === Map operations ===
 export function map_new<K = unknown, V = unknown>(): Map<K, V> {
   return new Map<K, V>();

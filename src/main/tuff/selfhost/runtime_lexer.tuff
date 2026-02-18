@@ -6,7 +6,7 @@
 // The actual implementations come from the always-embedded C substrate.
 extern let { str_length, str_char_at, str_slice, str_concat, str_eq, str_from_char_code, str_index_of, str_trim, str_replace_all, char_code, int_to_string, parse_int } = globalThis;
 extern let { sb_new, sb_append, sb_append_char, sb_build } = globalThis;
-extern let { __vec_new, vec_push, vec_pop, vec_get, vec_set, vec_length, vec_init, vec_capacity, vec_clear, vec_join, vec_includes } = globalThis;
+extern let { __vec_new, __vec_push, __vec_pop, __vec_get, __vec_set, __vec_length, __vec_init, __vec_capacity, __vec_clear, __vec_join, __vec_includes } = globalThis;
 extern let { __map_new, map_set, map_get, map_has } = globalThis;
 extern let { __set_new, set_add, set_has, set_delete } = globalThis;
 extern let { read_file, write_file, path_join, path_dirname, print, print_error } = globalThis;
@@ -15,7 +15,7 @@ extern let { panic, panic_with_code } = globalThis;
 extern fn str_length(this: *Str) : USize;
 extern fn str_char_at(this: *Str, index : USize < this.str_length()) : Char;
 
-extern fn str_slice(this: *Str, start: I32, end: I32) : *Str;
+extern fn str_slice(this: *Str, start: USize, end: USize) : *Str;
 
 /*
 We'll need this eventually.
@@ -55,19 +55,29 @@ extern fn sb_build(sb: StringBuilder) : *Str;
 
 extern type Vec<T>;
 extern fn __vec_new() : Vec<T>;
-extern fn vec_push(this: Vec<T>, item: T) : Vec<T>;
-extern fn vec_pop(this: Vec<T>) : I32;
+extern fn __vec_push(this: Vec<T>, item: T) : Vec<T>;
+extern fn __vec_pop(this: Vec<T>) : I32;
 out fn vec_new() : Vec<T> => __vec_new();
+fn vec_push(this: Vec<T>, item: T) : Vec<T> => __vec_push(this, item);
+fn vec_pop(this: Vec<T>) : I32 => __vec_pop(this);
 
-extern fn vec_get(this: Vec<T>, i: I32) : T;
+extern fn __vec_get(this: Vec<T>, i: I32) : T;
+fn vec_get(this: Vec<T>, i: I32) : T => __vec_get(this, i);
 
-extern fn vec_set(this: Vec<T>, i: I32, v: T) : Vec<T>;
-extern fn vec_length(this: Vec<T>) : USize;
-extern fn vec_init(this: Vec<T>) : USize;
-extern fn vec_capacity(this: Vec<T>) : USize;
-extern fn vec_clear(this: Vec<T>) : Vec<T>;
-extern fn vec_join(this: Vec<T>, sep: *Str) : *Str;
-extern fn vec_includes(this: Vec<T>, item: T) : Bool;
+extern fn __vec_set(this: Vec<T>, i: I32, v: T) : Vec<T>;
+extern fn __vec_length(this: Vec<T>) : USize;
+extern fn __vec_init(this: Vec<T>) : USize;
+extern fn __vec_capacity(this: Vec<T>) : USize;
+extern fn __vec_clear(this: Vec<T>) : Vec<T>;
+extern fn __vec_join(this: Vec<T>, sep: *Str) : *Str;
+extern fn __vec_includes(this: Vec<T>, item: T) : Bool;
+fn vec_set(this: Vec<T>, i: I32, v: T) : Vec<T> => __vec_set(this, i, v);
+fn vec_length(this: Vec<T>) : USize => __vec_length(this);
+fn vec_init(this: Vec<T>) : USize => __vec_init(this);
+fn vec_capacity(this: Vec<T>) : USize => __vec_capacity(this);
+fn vec_clear(this: Vec<T>) : Vec<T> => __vec_clear(this);
+fn vec_join(this: Vec<T>, sep: *Str) : *Str => __vec_join(this, sep);
+fn vec_includes(this: Vec<T>, item: T) : Bool => __vec_includes(this, item);
 
 extern type Map<K, V>;
 extern fn __map_new() : Map<K, V>;

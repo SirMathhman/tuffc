@@ -4,16 +4,13 @@ extern let { abort } = stdlib;
 extern fn printf(fmt : *Str, msg : *Str) : I32;
 extern fn abort() : I32;
 
-out expect fn panic(msg : *Str) : I32;
-out expect fn panic_with_code(code : *Str, msg : *Str, reason : *Str, fix : *Str) : I32;
-
-out actual fn panic(msg : *Str) : I32 => {
+out fn panic(msg : *Str) : I32 => {
 	printf("%s\n", msg);
 	abort();
 	0
 };
 
-out actual fn panic_with_code(code : *Str, msg : *Str, reason : *Str, fix : *Str) : I32 => {
+out fn panic_with_code(code : *Str, msg : *Str, reason : *Str, fix : *Str) : I32 => {
 	printf("panic code: %s\n", code);
 	printf("message: %s\n", msg);
 	printf("reason: %s\n", reason);

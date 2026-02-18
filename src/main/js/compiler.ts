@@ -479,12 +479,25 @@ function getCodegenTarget(options): string {
   return options.target ?? "js";
 }
 
-function setSubstrateOverrideFromOptions(options) {
+function setSubstrateOverrideFromOptions(options, target, backend) {
   if (typeof options?.cSubstrate === "string") {
     runtimeCSubstrateOverride = options.cSubstrate;
-  } else {
-    runtimeCSubstrateOverride = undefined;
+    return;
   }
+
+  // Migration step: default selfhost C emission to substrate-free mode so
+  // runtime behavior comes from Tuff-authored prelude/modules, not src/main/c.
+  // Stage0/native legacy paths remain unchanged unless explicitly overridden.
+  if (
+    target === "c" &&
+    backend === "selfhost" &&
+    options?.cSubstrateMode !== "legacy"
+  ) {
+    runtimeCSubstrateOverride = "";
+    return;
+  }
+
+  runtimeCSubstrateOverride = undefined;
 }
 
 function selectBackendWithTargetCheck(
@@ -925,7 +938,7 @@ export function compileSource(
 
     // Selfhost can throw, wrap in try/catch but return Result
     let js;
-    setSubstrateOverrideFromOptions(options);
+    setSubstrateOverrideFromOptions(options, target, "selfhost");
     try {
       js = run("selfhost-compile-source", () =>
         typeof selfhost.compile_source_with_options === "function"
@@ -1069,7 +1082,7 @@ function compileFileInternal(
     const source = fs.readFileSync(absInput, "utf8");
 
     let js;
-    setSubstrateOverrideFromOptions(options);
+    setSubstrateOverrideFromOptions(options, target, "selfhost");
     try {
       if (options.enableModules) {
         // Selfhost handles the full module pipeline: load, resolve, typecheck, codegen.

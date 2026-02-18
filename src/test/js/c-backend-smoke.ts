@@ -24,7 +24,7 @@ fn main(): I32 {
 
 const monoProbe = compileSourceResult(monoProbeSource, "<c-monomorph-probe>", {
   backend: "stage0",
-  target: "c",
+  target: "js",
 });
 
 if (!monoProbe.ok) {
@@ -49,7 +49,7 @@ if (!hasIdI32 || !hasPairI32Bool) {
   process.exit(1);
 }
 
-function runCase(caseName) {
+function runCase(caseName, compileOptions = {}) {
   const sourcePath = path.join(
     root,
     "src",
@@ -74,8 +74,8 @@ function runCase(caseName) {
 
   const source = fs.readFileSync(sourcePath, "utf8");
   const result = compileSourceResult(source, sourcePath, {
-    backend: "stage0",
     target: "c",
+    ...compileOptions,
   });
 
   if (!result.ok) {
@@ -125,12 +125,12 @@ if (!selected) {
 }
 
 const cases = [
-  runCase("factorial"),
-  runCase("enum_match"),
-  runCase("option_match"),
-  runCase("runtime_strings"),
-  runCase("runtime_collections"),
-  runCase("runtime_io"),
+  runCase("factorial", { backend: "selfhost" }),
+  runCase("enum_match", { backend: "selfhost" }),
+  runCase("option_match", { backend: "stage0" }),
+  runCase("runtime_strings", { backend: "selfhost" }),
+  runCase("runtime_collections", { backend: "stage0" }),
+  runCase("runtime_io", { backend: "stage0" }),
 ];
 
 for (const testCase of cases) {

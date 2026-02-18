@@ -4,7 +4,7 @@ const { str_length, str_char_at, str_slice, str_concat, str_eq, str_from_char_co
 
 const { sb_new, sb_append, sb_append_char, sb_build } = globalThis;
 
-const { __vec_new, vec_push, vec_pop, vec_get, vec_set, vec_length, vec_init, vec_capacity, vec_clear, vec_join, vec_includes } = globalThis;
+const { __vec_new, __vec_push, __vec_pop, __vec_get, __vec_set, __vec_length, __vec_init, __vec_capacity, __vec_clear, __vec_join, __vec_includes } = globalThis;
 
 const { __map_new, map_set, map_get, map_has } = globalThis;
 
@@ -63,27 +63,47 @@ function str_starts_with(__this_param, prefix) {
 
 // extern fn __vec_new
 
-// extern fn vec_push
+// extern fn __vec_push
 
-// extern fn vec_pop
+// extern fn __vec_pop
 
 function vec_new() { return __vec_new(); }
 
-// extern fn vec_get
+function vec_push(__this_param, item) { return __vec_push(__this_param, item); }
 
-// extern fn vec_set
+function vec_pop(__this_param) { return __vec_pop(__this_param); }
 
-// extern fn vec_length
+// extern fn __vec_get
 
-// extern fn vec_init
+function vec_get(__this_param, i) { return __vec_get(__this_param, i); }
 
-// extern fn vec_capacity
+// extern fn __vec_set
 
-// extern fn vec_clear
+// extern fn __vec_length
 
-// extern fn vec_join
+// extern fn __vec_init
 
-// extern fn vec_includes
+// extern fn __vec_capacity
+
+// extern fn __vec_clear
+
+// extern fn __vec_join
+
+// extern fn __vec_includes
+
+function vec_set(__this_param, i, v) { return __vec_set(__this_param, i, v); }
+
+function vec_length(__this_param) { return __vec_length(__this_param); }
+
+function vec_init(__this_param) { return __vec_init(__this_param); }
+
+function vec_capacity(__this_param) { return __vec_capacity(__this_param); }
+
+function vec_clear(__this_param) { return __vec_clear(__this_param); }
+
+function vec_join(__this_param, sep) { return __vec_join(__this_param, sep); }
+
+function vec_includes(__this_param, item) { return __vec_includes(__this_param, item); }
 
 // type alias: Map
 
@@ -5138,6 +5158,8 @@ let cc_inc_stdlib = 0;
 
 let cc_inc_string = 0;
 
+let cc_inc_ctype = 0;
+
 let cc_inc_errno = 0;
 
 let cc_inc_direct = 0;
@@ -5182,7 +5204,7 @@ function cc_mark_header_from_source(source) {
   cc_inc_stdlib = 1;
   return 0;
 }
-  if ((() => { const __recv = source; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "string") : str_eq(__recv, "string"); })()) {
+  if (((() => { const __recv = source; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "string") : str_eq(__recv, "string"); })() || (() => { const __recv = source; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "strings") : str_eq(__recv, "strings"); })())) {
   cc_inc_string = 1;
   return 0;
 }
@@ -5213,7 +5235,7 @@ function cc_mark_header_from_source(source) {
   if ((((() => { const __recv = source; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "globalThis") : str_eq(__recv, "globalThis"); })() || (() => { const __recv = source; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "substrate") : str_eq(__recv, "substrate"); })()) || (() => { const __recv = source; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "host_c") : str_eq(__recv, "host_c"); })())) {
   return 0;
 }
-  return panic_with_code("E_EXTERN_UNKNOWN_SOURCE", (() => { const __recv = (() => { const __recv = "Unknown extern source attribution: '"; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, source) : str_concat(__recv, source); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "'") : str_concat(__recv, "'"); })(), "The C backend only supports a built-in set of extern source aliases for header mapping.", "Use a supported source alias (stdio, stdlib, string, stdint, stddef, errno, direct, sys::stat, sys::types) or one of the runtime buckets (globalThis, substrate, host_c).");
+  return panic_with_code("E_EXTERN_UNKNOWN_SOURCE", (() => { const __recv = (() => { const __recv = "Unknown extern source attribution: '"; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, source) : str_concat(__recv, source); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "'") : str_concat(__recv, "'"); })(), "The C backend only supports a built-in set of extern source aliases for header mapping.", "Use a supported source alias (stdio, stdlib, string/strings, stdint, stddef, errno, direct, sys::stat, sys::types) or one of the runtime buckets (globalThis, substrate, host_c).");
 }
 
 function cc_require_substrate_headers() {
@@ -5221,6 +5243,7 @@ function cc_require_substrate_headers() {
   cc_inc_stdio = 1;
   cc_inc_stdlib = 1;
   cc_inc_string = 1;
+  cc_inc_ctype = 1;
   cc_inc_errno = 1;
   cc_inc_direct = 1;
   cc_inc_sys_stat = 1;
@@ -5237,6 +5260,19 @@ function cc_emit_minimal_runtime_prelude() {
   sb_append(sb, "static inline const char* tuff_str_or_empty(int64_t v) { const char* s = tuff_str(v); return s ? s : \"\"; }\n");
   sb_append(sb, "typedef struct TuffVec { int64_t* data; int64_t init; int64_t length; } TuffVec;\n");
   sb_append(sb, "static void tuff_panic(const char* msg) { fprintf(stderr, \"[tuff panic] %s\\n\", msg); abort(); }\n");
+  sb_append(sb, "\n/* String runtime function declarations and minimal implementations */\n");
+  sb_append(sb, "int64_t str_length(int64_t this) { return (int64_t)strlen(tuff_str_or_empty(this)); }\n");
+  sb_append(sb, "int64_t str_char_at(int64_t this, int64_t index) { const char* s = tuff_str(this); if (!s || index < 0 || index >= (int64_t)strlen(s)) return 0; return (int64_t)s[index]; }\n");
+  sb_append(sb, "int64_t str_slice(int64_t this, int64_t start, int64_t end) { const char* s = tuff_str(this); if (!s || start < 0 || end < start) return 0; size_t len = strlen(s); if ((size_t)end > len) end = (int64_t)len; size_t n = (size_t)(end - start); char* out = (char*)malloc(n + 1); if (!out) return 0; strncpy(out, s + start, n); out[n] = '\\0'; return (int64_t)(intptr_t)out; }\n");
+  sb_append(sb, "int64_t str_concat(int64_t a, int64_t b) { const char* as = tuff_str_or_empty(a); const char* bs = tuff_str_or_empty(b); size_t alen = strlen(as); size_t blen = strlen(bs); char* out = (char*)malloc(alen + blen + 1); if (!out) return 0; strcpy(out, as); strcat(out, bs); return (int64_t)(intptr_t)out; }\n");
+  sb_append(sb, "int64_t str_eq(int64_t a, int64_t b) { const char* as = tuff_str_or_empty(a); const char* bs = tuff_str_or_empty(b); return strcmp(as, bs) == 0 ? 1 : 0; }\n");
+  sb_append(sb, "int64_t str_from_char_code(int64_t code) { char* out = (char*)malloc(2); if (!out) return 0; out[0] = (char)(code & 0xFF); out[1] = '\\0'; return (int64_t)(intptr_t)out; }\n");
+  sb_append(sb, "int64_t str_index_of(int64_t s, int64_t needle) { const char* str = tuff_str(s); const char* ndl = tuff_str(needle); if (!str || !ndl) return -1; const char* found = strstr(str, ndl); if (!found) return -1; return (int64_t)(found - str); }\n");
+  sb_append(sb, "int64_t str_trim(int64_t s) { const char* str = tuff_str_or_empty(s); while (isspace(*str)) str++; const char* end = str + strlen(str); while (end > str && isspace(*(end - 1))) end--; size_t len = end - str; if (len == 0) return (int64_t)(intptr_t)\"\"; char* out = (char*)malloc(len + 1); if (!out) return 0; strncpy(out, str, len); out[len] = '\\0'; return (int64_t)(intptr_t)out; }\n");
+  sb_append(sb, "int64_t str_replace_all(int64_t s, int64_t from, int64_t to) { const char* str = tuff_str_or_empty(s); const char* f = tuff_str_or_empty(from); const char* t = tuff_str_or_empty(to); if (strlen(f) == 0) return s; size_t buf_size = strlen(str) * 2 + 1; char* out = (char*)malloc(buf_size); if (!out) return 0; char* p = out; const char* q = str; while ((q = strstr(q, f)) != NULL) { strncat(p, str, q - str); strncat(p, t, strlen(t)); str = q + strlen(f); q = str; } strcat(p, str); return (int64_t)(intptr_t)out; }\n");
+  sb_append(sb, "int64_t char_code(int64_t ch) { const char* s = tuff_str(ch); return s && *s ? (int64_t)*s : 0; }\n");
+  sb_append(sb, "int64_t int_to_string(int64_t n) { char* out = (char*)malloc(32); if (!out) return 0; snprintf(out, 32, \"%lld\", (long long)n); return (int64_t)(intptr_t)out; }\n");
+  sb_append(sb, "int64_t parse_int(int64_t s) { const char* str = tuff_str_or_empty(s); return (int64_t)atoll(str); }\n");
   return sb_build(sb);
 }
 
@@ -6061,6 +6097,7 @@ function generate_c(typed, substrate) {
   cc_inc_stdio = 0;
   cc_inc_stdlib = 0;
   cc_inc_string = 0;
+  cc_inc_ctype = 0;
   cc_inc_errno = 0;
   cc_inc_direct = 0;
   cc_inc_sys_stat = 0;
@@ -6072,6 +6109,8 @@ function generate_c(typed, substrate) {
   cc_inc_stddef = 1;
   cc_inc_stdio = 1;
   cc_inc_stdlib = 1;
+  cc_inc_string = 1;
+  cc_inc_ctype = 1;
 }
   let stmts = node_get_data1(typed);
   let len = (() => { const __recv = stmts; const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })();
@@ -6103,6 +6142,9 @@ function generate_c(typed, substrate) {
 }
   if ((cc_inc_string == 1)) {
   sb_append(sb, "#include <string.h>\n");
+}
+  if ((cc_inc_ctype == 1)) {
+  sb_append(sb, "#include <ctype.h>\n");
 }
   if ((cc_inc_errno == 1)) {
   sb_append(sb, "#include <errno.h>\n");
@@ -8051,6 +8093,8 @@ function selfhost_codegen_expr_marker() { return 0; }
 const { __host_get_c_substrate } = globalThis;
 
 const { __host_get_c_runtime_prelude_source } = globalThis;
+
+const { __host_emit_target_from_source } = globalThis;
 
 // extern fn __host_get_c_substrate
 

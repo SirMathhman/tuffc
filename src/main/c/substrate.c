@@ -199,3 +199,14 @@ void tuff_panic(const char *message)
     }
     abort();
 }
+
+// Native selfhost harness stubs for host-side callbacks that exist only in JS runtime.
+int64_t __host_get_c_substrate(void)
+{
+    return tuff_register_cstring_copy("");
+}
+
+int64_t __host_get_c_runtime_prelude_source(void)
+{
+    return tuff_register_cstring_copy("");
+}
