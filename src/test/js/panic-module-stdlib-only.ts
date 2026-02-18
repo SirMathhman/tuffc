@@ -4,6 +4,17 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { compileSourceResult } from "../../main/js/compiler.ts";
 
+function formatCompileError(error: any): string {
+  const code = error?.code ?? "E_UNKNOWN";
+  const message = error?.message ?? String(error);
+  const loc = error?.loc
+    ? `${error.loc.file ?? "<memory>"}:${error.loc.line ?? "?"}:${error.loc.column ?? "?"}`
+    : "<no-loc>";
+  const reason = error?.reason ? `\nreason: ${error.reason}` : "";
+  const fix = error?.fix ? `\nfix: ${error.fix}` : "";
+  return `[${code}] ${message}\nloc: ${loc}${reason}${fix}`;
+}
+
 const thisFile = fileURLToPath(import.meta.url);
 const root = path.resolve(path.dirname(thisFile), "..", "..", "..");
 const panicPath = path.join(root, "src", "main", "tuff-c", "Panic.tuff");
@@ -27,7 +38,7 @@ const result = compileSourceResult(source, "<panic-module-stdlib-only>", {
 
 if (!result.ok) {
   console.error(
-    `Expected Panic.tuff to compile via selfhost backend, got: ${result.error.message}`,
+    `Expected Panic.tuff to compile via selfhost backend, got:\n${formatCompileError(result.error)}`,
   );
   process.exit(1);
 }

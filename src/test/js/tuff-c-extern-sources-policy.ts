@@ -24,6 +24,11 @@ const files = fs
   .filter((name) => name.endsWith(".tuff"))
   .sort();
 
+function lineFromOffset(source: string, offset: number): number {
+  if (offset <= 0) return 1;
+  return source.slice(0, offset).split(/\r?\n/).length;
+}
+
 for (const name of files) {
   const filePath = path.join(tuffCDir, name);
   const source = fs.readFileSync(filePath, "utf8");
@@ -32,8 +37,13 @@ for (const name of files) {
   for (const match of matches) {
     const bucket = String(match[1]).trim();
     if (!allowedSources.has(bucket)) {
+      const at =
+        typeof match.index === "number"
+          ? lineFromOffset(source, match.index)
+          : -1;
+      const allowed = [...allowedSources].sort().join(", ");
       console.error(
-        `Forbidden extern source bucket '${bucket}' in ${name}. Only C stdlib/source aliases are allowed.`,
+        `Forbidden extern source bucket '${bucket}' in ${name}:${at}. Allowed buckets: ${allowed}.`,
       );
       process.exit(1);
     }
