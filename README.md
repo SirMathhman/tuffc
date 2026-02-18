@@ -26,7 +26,7 @@ Implements Phase 1 / Stage 0 from `SELF-HOST.md`:
 3. Run JS throw-ban lint gate: `npm run lint:throws`
 4. Run typecheck: `npm run typecheck`
 5. Run combined local gate (lint + typecheck + fast tests): `npm run check`
-8. Compile file: `tsx ./src/main/js/cli.ts compile ./src/test/tuff/cases/factorial.tuff -o ./tests/out/factorial.js`
+6. Compile file: `tsx ./src/main/js/cli.ts compile ./src/test/tuff/cases/factorial.tuff -o ./tests/out/factorial.js`
 
 ### Test command tiers
 

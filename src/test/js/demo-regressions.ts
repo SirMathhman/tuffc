@@ -81,7 +81,10 @@ for (const testCase of compileSuccessCases) {
   }
 
   if (typeof testCase.expectedMainResult !== "undefined") {
-    const got = runMainFromJs(result.value.js, `demo-regression:${testCase.file}`);
+    const got = runMainFromJs(
+      result.value.js,
+      `demo-regression:${testCase.file}`,
+    );
     if (got !== testCase.expectedMainResult) {
       console.error(
         `Expected main() for ${testCase.file} to return ${testCase.expectedMainResult}, got ${got}`,
