@@ -836,6 +836,21 @@ fn check_expr(expr: I32, state: Vec, env_types: Map, fn_return_types: Map, exter
     0
 }
 
+// Returns true if the stmt or block definitely diverges (ends with a return).
+// Used to avoid propagating moved-state from dead branches into the parent scope.
+fn bc_stmt_diverges(stmt: I32) : Bool => {
+    if (stmt == 0) { return false; }
+    let k = node_kind(stmt);
+    if (k == NK_RETURN_STMT) { return true; }
+    if (k == NK_BLOCK) {
+        let stmts = node_get_data1(stmt);
+        let len = stmts.vec_length();
+        if (len == 0) { return false; }
+        return bc_stmt_diverges(stmts.vec_get(len - 1));
+    }
+    false
+}
+
 fn check_block(block: I32, state: Vec, env_types: Map, fn_return_types: Map, extern_type_names: *mut Set, global_fn_names: *mut Set) : I32 => {
     state_begin_scope(state);
     let stmts = node_get_data1(block);
@@ -934,15 +949,36 @@ fn check_stmt(stmt: I32, state: Vec, env_types: Map, fn_return_types: Map, exter
     if (kind == NK_IF_STMT) {
         check_expr(node_get_data1(stmt), state, env_types, fn_return_types, extern_type_names, global_fn_names, "read");
 
+        let then_branch = node_get_data2(stmt);
+        let else_branch = node_get_data3(stmt);
         let then_state = state_clone(state);
-        check_stmt(node_get_data2(stmt), then_state, env_types, fn_return_types, extern_type_names, global_fn_names);
+        check_stmt(then_branch, then_state, env_types, fn_return_types, extern_type_names, global_fn_names);
 
-        if (node_get_data3(stmt) != 0) {
+        let then_diverges = bc_stmt_diverges(then_branch);
+
+        if (else_branch != 0) {
             let else_state = state_clone(state);
-            check_stmt(node_get_data3(stmt), else_state, env_types, fn_return_types, extern_type_names, global_fn_names);
-            state_merge_moved_from_branches(state, then_state, else_state);
+            check_stmt(else_branch, else_state, env_types, fn_return_types, extern_type_names, global_fn_names);
+            let else_diverges = bc_stmt_diverges(else_branch);
+            if (then_diverges && else_diverges) {
+                // Both branches diverge — mark outer state as having all moves from either branch
+                state_merge_moved_from_branches(state, then_state, else_state);
+            } else if (then_diverges) {
+                // Then diverges — only else's state survives to the continuation
+                state_merge_moved_from_branches(state, else_state, else_state);
+            } else if (else_diverges) {
+                // Else diverges — only then's state survives to the continuation
+                state_merge_moved_from_branches(state, then_state, then_state);
+            } else {
+                state_merge_moved_from_branches(state, then_state, else_state);
+            }
         } else {
-            state_merge_moved_from_branches(state, then_state, state);
+            if (then_diverges) {
+                // No else branch, then diverges — outer state unchanged (no merge needed)
+                0;
+            } else {
+                state_merge_moved_from_branches(state, then_state, state);
+            }
         }
         return 0;
     }

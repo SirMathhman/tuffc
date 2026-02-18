@@ -4478,6 +4478,25 @@ function check_expr(expr, state, env_types, fn_return_types, extern_type_names, 
   return 0;
 }
 
+function bc_stmt_diverges(stmt) {
+  if ((stmt == 0)) {
+  return false;
+}
+  let k = node_kind(stmt);
+  if ((k == NK_RETURN_STMT)) {
+  return true;
+}
+  if ((k == NK_BLOCK)) {
+  let stmts = node_get_data1(stmt);
+  let len = (() => { const __recv = stmts; const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })();
+  if ((len == 0)) {
+  return false;
+}
+  return bc_stmt_diverges((() => { const __recv = stmts; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, (len - 1)) : vec_get(__recv, (len - 1)); })());
+}
+  return false;
+}
+
 function check_block(block, state, env_types, fn_return_types, extern_type_names, global_fn_names) {
   state_begin_scope(state);
   let stmts = node_get_data1(block);
@@ -4562,14 +4581,30 @@ function check_stmt(stmt, state, env_types, fn_return_types, extern_type_names, 
 }
   if ((kind == NK_IF_STMT)) {
   check_expr(node_get_data1(stmt), state, env_types, fn_return_types, extern_type_names, global_fn_names, "read");
+  let then_branch = node_get_data2(stmt);
+  let else_branch = node_get_data3(stmt);
   let then_state = state_clone(state);
-  check_stmt(node_get_data2(stmt), then_state, env_types, fn_return_types, extern_type_names, global_fn_names);
-  if ((node_get_data3(stmt) != 0)) {
+  check_stmt(then_branch, then_state, env_types, fn_return_types, extern_type_names, global_fn_names);
+  let then_diverges = bc_stmt_diverges(then_branch);
+  if ((else_branch != 0)) {
   let else_state = state_clone(state);
-  check_stmt(node_get_data3(stmt), else_state, env_types, fn_return_types, extern_type_names, global_fn_names);
+  check_stmt(else_branch, else_state, env_types, fn_return_types, extern_type_names, global_fn_names);
+  let else_diverges = bc_stmt_diverges(else_branch);
+  if ((then_diverges && else_diverges)) {
   state_merge_moved_from_branches(state, then_state, else_state);
+} else { if (then_diverges) {
+  state_merge_moved_from_branches(state, else_state, else_state);
+} else { if (else_diverges) {
+  state_merge_moved_from_branches(state, then_state, then_state);
+} else {
+  state_merge_moved_from_branches(state, then_state, else_state);
+} } }
+} else {
+  if (then_diverges) {
+  0;
 } else {
   state_merge_moved_from_branches(state, then_state, state);
+}
 }
   return 0;
 }
@@ -5148,6 +5183,8 @@ let cc_union_alias_info = map_new();
 
 let cc_covered_extern_fns = set_new();
 
+let cc_local_types = map_new();
+
 let cc_inc_stdint = 1;
 
 let cc_inc_stddef = 0;
@@ -5235,6 +5272,16 @@ function cc_mark_header_from_source(source) {
   if ((((() => { const __recv = source; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "globalThis") : str_eq(__recv, "globalThis"); })() || (() => { const __recv = source; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "substrate") : str_eq(__recv, "substrate"); })()) || (() => { const __recv = source; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "host_c") : str_eq(__recv, "host_c"); })())) {
   return 0;
 }
+  if ((() => { const __recv = source; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "collections") : str_eq(__recv, "collections"); })()) {
+  cc_inc_stdlib = 1;
+  return 0;
+}
+  if ((() => { const __recv = source; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "io") : str_eq(__recv, "io"); })()) {
+  cc_inc_stdio = 1;
+  cc_inc_stdlib = 1;
+  cc_inc_string = 1;
+  return 0;
+}
   return panic_with_code("E_EXTERN_UNKNOWN_SOURCE", (() => { const __recv = (() => { const __recv = "Unknown extern source attribution: '"; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, source) : str_concat(__recv, source); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "'") : str_concat(__recv, "'"); })(), "The C backend only supports a built-in set of extern source aliases for header mapping.", "Use a supported source alias (stdio, stdlib, string/strings, stdint, stddef, errno, direct, sys::stat, sys::types) or one of the runtime buckets (globalThis, substrate, host_c).");
 }
 
@@ -5281,10 +5328,24 @@ function cc_type_to_c(type_node) {
   return "int64_t";
 }
   let kind = node_kind(type_node);
+  if ((kind == NK_POINTER_TYPE)) {
+  let inner = node_get_data2(type_node);
+  if (((inner != 0) && (node_kind(inner) == NK_ARRAY_TYPE))) {
+  return "TuffVec*";
+}
+  return "int64_t";
+}
   if ((kind == NK_NAMED_TYPE)) {
   let name = get_interned_str(node_get_data1(type_node));
   if ((() => { const __recv = name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "Void") : str_eq(__recv, "Void"); })()) {
   return "void";
+}
+  if ((() => { const __recv = name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "Alloc") : str_eq(__recv, "Alloc"); })()) {
+  let generics = node_get_data2(type_node);
+  if (((generics != 0) && ((() => { const __recv = generics; const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })() > 0))) {
+  return cc_type_to_c((() => { const __recv = generics; const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })());
+}
+  return "int64_t";
 }
   if ((() => { const __recv = cc_union_alias_info; const __dyn = __recv?.table?.map_has; return __dyn ? __dyn(__recv.ref, name) : map_has(__recv, name); })()) {
   return name;
@@ -5309,11 +5370,20 @@ function cc_infer_expr_ctype(n) {
 }
   return vname;
 }
+  if ((kind == NK_CALL_EXPR)) {
+  let callee = node_get_data1(n);
+  if ((node_kind(callee) == NK_IDENTIFIER)) {
+  let cname = get_interned_str(node_get_data1(callee));
+  if (((() => { const __recv = cname; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "malloc") : str_eq(__recv, "malloc"); })() || (() => { const __recv = cname; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "realloc") : str_eq(__recv, "realloc"); })())) {
+  return "TuffVec*";
+}
+}
+}
   return "int64_t";
 }
 
 function cc_is_stdlib_builtin(name) {
-  return ((((((((((((() => { const __recv = name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "malloc") : str_eq(__recv, "malloc"); })() || (() => { const __recv = name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "free") : str_eq(__recv, "free"); })()) || (() => { const __recv = name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "realloc") : str_eq(__recv, "realloc"); })()) || (() => { const __recv = name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "memcpy") : str_eq(__recv, "memcpy"); })()) || (() => { const __recv = name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "memmove") : str_eq(__recv, "memmove"); })()) || (() => { const __recv = name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "printf") : str_eq(__recv, "printf"); })()) || (() => { const __recv = name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "fprintf") : str_eq(__recv, "fprintf"); })()) || (() => { const __recv = name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "strlen") : str_eq(__recv, "strlen"); })()) || (() => { const __recv = name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "strdup") : str_eq(__recv, "strdup"); })()) || (() => { const __recv = name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "strcmp") : str_eq(__recv, "strcmp"); })()) || (() => { const __recv = name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "exit") : str_eq(__recv, "exit"); })()) || (() => { const __recv = name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "abort") : str_eq(__recv, "abort"); })());
+  return ((((((((((((((((((((((((((() => { const __recv = name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "malloc") : str_eq(__recv, "malloc"); })() || (() => { const __recv = name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "free") : str_eq(__recv, "free"); })()) || (() => { const __recv = name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "realloc") : str_eq(__recv, "realloc"); })()) || (() => { const __recv = name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "calloc") : str_eq(__recv, "calloc"); })()) || (() => { const __recv = name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "memcpy") : str_eq(__recv, "memcpy"); })()) || (() => { const __recv = name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "memmove") : str_eq(__recv, "memmove"); })()) || (() => { const __recv = name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "memset") : str_eq(__recv, "memset"); })()) || (() => { const __recv = name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "printf") : str_eq(__recv, "printf"); })()) || (() => { const __recv = name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "fprintf") : str_eq(__recv, "fprintf"); })()) || (() => { const __recv = name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "fopen") : str_eq(__recv, "fopen"); })()) || (() => { const __recv = name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "fclose") : str_eq(__recv, "fclose"); })()) || (() => { const __recv = name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "fwrite") : str_eq(__recv, "fwrite"); })()) || (() => { const __recv = name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "fread") : str_eq(__recv, "fread"); })()) || (() => { const __recv = name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "fseek") : str_eq(__recv, "fseek"); })()) || (() => { const __recv = name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "ftell") : str_eq(__recv, "ftell"); })()) || (() => { const __recv = name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "strlen") : str_eq(__recv, "strlen"); })()) || (() => { const __recv = name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "strdup") : str_eq(__recv, "strdup"); })()) || (() => { const __recv = name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "strcpy") : str_eq(__recv, "strcpy"); })()) || (() => { const __recv = name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "strcat") : str_eq(__recv, "strcat"); })()) || (() => { const __recv = name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "strncpy") : str_eq(__recv, "strncpy"); })()) || (() => { const __recv = name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "strncat") : str_eq(__recv, "strncat"); })()) || (() => { const __recv = name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "strcmp") : str_eq(__recv, "strcmp"); })()) || (() => { const __recv = name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "strstr") : str_eq(__recv, "strstr"); })()) || (() => { const __recv = name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "strrchr") : str_eq(__recv, "strrchr"); })()) || (() => { const __recv = name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "exit") : str_eq(__recv, "exit"); })()) || (() => { const __recv = name; const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "abort") : str_eq(__recv, "abort"); })());
 }
 
 function cc_flatten_union_variants(type_node, names_vec) {
@@ -5670,6 +5740,9 @@ function cc_emit_expr(n) {
   if ((() => { const __recv = cc_enum_names; const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, obj_name) : set_has(__recv, obj_name); })()) {
   return (() => { const __recv = (() => { const __recv = obj_name; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "_") : str_concat(__recv, "_"); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, prop) : str_concat(__recv, prop); })();
 }
+  if (((() => { const __recv = cc_local_types; const __dyn = __recv?.table?.map_has; return __dyn ? __dyn(__recv.ref, obj_name) : map_has(__recv, obj_name); })() && (() => { const __recv = (() => { const __recv = cc_local_types; const __dyn = __recv?.table?.map_get; return __dyn ? __dyn(__recv.ref, obj_name) : map_get(__recv, obj_name); })(); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "TuffVec*") : str_eq(__recv, "TuffVec*"); })())) {
+  return (() => { const __recv = (() => { const __recv = cc_to_name(obj_name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "->") : str_concat(__recv, "->"); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, prop) : str_concat(__recv, prop); })();
+}
 }
   let obj = cc_emit_expr(obj_node);
   return (() => { const __recv = (() => { const __recv = obj; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ".") : str_concat(__recv, "."); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, prop) : str_concat(__recv, prop); })();
@@ -5814,6 +5887,7 @@ function cc_emit_stmt_or_block(n) {
 }
 
 function cc_emit_fn_block(n) {
+  cc_local_types = map_new();
   let stmts = node_get_data1(n);
   let len = (() => { const __recv = stmts; const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })();
   if ((len == 0)) {
@@ -5981,6 +6055,7 @@ function cc_emit_stmt(n) {
   let val_node = node_get_data3(n);
   let ctype = cc_infer_expr_ctype(val_node);
   let value = cc_emit_expr(val_node);
+  (() => { const __recv = cc_local_types; const __dyn = __recv?.table?.map_set; return __dyn ? __dyn(__recv.ref, name, ctype) : map_set(__recv, name, ctype); })();
   return (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = ctype; const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " ") : str_concat(__recv, " "); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, name) : str_concat(__recv, name); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " = ") : str_concat(__recv, " = "); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, value) : str_concat(__recv, value); })(); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ";") : str_concat(__recv, ";"); })();
 }
   if ((kind == NK_IMPORT_DECL)) {
@@ -6132,6 +6207,7 @@ function generate_c(typed, substrate) {
   cc_alias_by_variant = map_new();
   cc_union_alias_info = map_new();
   cc_covered_extern_fns = set_new();
+  cc_local_types = map_new();
   cc_inc_stdint = 1;
   cc_inc_stddef = 0;
   cc_inc_stdio = 0;

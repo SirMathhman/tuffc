@@ -19,6 +19,7 @@ let cc_struct_fields : Map = map_new();        // struct name → Vec<*Str> of f
 let cc_alias_by_variant : Map = map_new();     // variant struct name → union alias name
 let cc_union_alias_info : Map = map_new();     // alias name → Vec<*Str> of variant names
 let cc_covered_extern_fns : *mut Set = set_new();
+let cc_local_types : Map = map_new();          // local var name → C type string (e.g. "TuffVec*")
 
 let cc_inc_stdint : I32 = 1;
 let cc_inc_stddef : I32 = 0;
@@ -72,6 +73,9 @@ fn cc_mark_header_from_source(source: *Str) : I32 => {
     if (source.str_eq("globalThis") || source.str_eq("substrate") || source.str_eq("host_c")) {
         return 0;
     }
+    // Runtime module buckets — mark required headers, no special flags needed.
+    if (source.str_eq("collections")) { cc_inc_stdlib = 1; return 0; }
+    if (source.str_eq("io")) { cc_inc_stdio = 1; cc_inc_stdlib = 1; cc_inc_string = 1; return 0; }
     panic_with_code(
         "E_EXTERN_UNKNOWN_SOURCE",
         "Unknown extern source attribution: '".str_concat(source).str_concat("'"),
@@ -119,13 +123,31 @@ fn cc_emit_minimal_runtime_prelude() : *Str => {
     sb_build(sb)
 }
 
-// All Tuff types lower to int64_t, except Void → void.
+// All Tuff types lower to int64_t, except:
+//   *[T; init; cap]  → TuffVec* (fat slice pointer)
+//   Alloc<T>         → transparent; recurse into T
+//   Void             → void
 fn cc_type_to_c(type_node: I32) : *Str => {
     if (type_node == 0) { return "int64_t"; }
     let kind = node_kind(type_node);
+    if (kind == NK_POINTER_TYPE) {
+        let inner = node_get_data2(type_node);
+        if (inner != 0 && node_kind(inner) == NK_ARRAY_TYPE) {
+            return "TuffVec*";
+        }
+        return "int64_t";
+    }
     if (kind == NK_NAMED_TYPE) {
         let name = get_interned_str(node_get_data1(type_node));
         if (name.str_eq("Void")) { return "void"; }
+        // Alloc<T> is a transparent ownership wrapper — lower to T
+        if (name.str_eq("Alloc")) {
+            let generics = node_get_data2(type_node);
+            if (generics != 0 && generics.vec_length() > 0) {
+                return cc_type_to_c(generics.vec_get(0));
+            }
+            return "int64_t";
+        }
         if (cc_union_alias_info.map_has(name)) { return name; }
         if (cc_alias_by_variant.map_has(name)) { return cc_alias_by_variant.map_get(name); }
         return "int64_t";
@@ -143,14 +165,29 @@ fn cc_infer_expr_ctype(n: I32) : *Str => {
         }
         return vname;
     }
+    // malloc / realloc calls produce TuffVec* fat slice pointers
+    if (kind == NK_CALL_EXPR) {
+        let callee = node_get_data1(n);
+        if (node_kind(callee) == NK_IDENTIFIER) {
+            let cname = get_interned_str(node_get_data1(callee));
+            if (cname.str_eq("malloc") || cname.str_eq("realloc")) {
+                return "TuffVec*";
+            }
+        }
+    }
     "int64_t"
 }
 
 fn cc_is_stdlib_builtin(name: *Str) : Bool => {
-    name.str_eq("malloc") || name.str_eq("free") || name.str_eq("realloc") ||
-    name.str_eq("memcpy") || name.str_eq("memmove") || name.str_eq("printf") ||
-    name.str_eq("fprintf") || name.str_eq("strlen") || name.str_eq("strdup") ||
-    name.str_eq("strcmp") || name.str_eq("exit") || name.str_eq("abort")
+    name.str_eq("malloc") || name.str_eq("free") || name.str_eq("realloc") || name.str_eq("calloc") ||
+    name.str_eq("memcpy") || name.str_eq("memmove") || name.str_eq("memset") ||
+    name.str_eq("printf") || name.str_eq("fprintf") ||
+    name.str_eq("fopen") || name.str_eq("fclose") || name.str_eq("fwrite") ||
+    name.str_eq("fread") || name.str_eq("fseek") || name.str_eq("ftell") ||
+    name.str_eq("strlen") || name.str_eq("strdup") || name.str_eq("strcpy") ||
+    name.str_eq("strcat") || name.str_eq("strncpy") || name.str_eq("strncat") ||
+    name.str_eq("strcmp") || name.str_eq("strstr") || name.str_eq("strrchr") ||
+    name.str_eq("exit") || name.str_eq("abort")
 }
 
 // ============================================================================
@@ -533,6 +570,10 @@ fn cc_emit_expr(n: I32) : *Str => {
             if (cc_enum_names.set_has(obj_name)) {
                 return obj_name.str_concat("_").str_concat(prop);
             }
+            // TuffVec* locals use -> for field access
+            if (cc_local_types.map_has(obj_name) && cc_local_types.map_get(obj_name).str_eq("TuffVec*")) {
+                return cc_to_name(obj_name).str_concat("->").str_concat(prop);
+            }
         }
         let obj = cc_emit_expr(obj_node);
         return obj.str_concat(".").str_concat(prop);
@@ -689,6 +730,8 @@ fn cc_emit_stmt_or_block(n: I32) : *Str => {
 }
 
 fn cc_emit_fn_block(n: I32) : *Str => {
+    // Reset local type map for this function scope
+    cc_local_types = map_new();
     let stmts = node_get_data1(n);
     let len = stmts.vec_length();
     if (len == 0) {
@@ -859,6 +902,7 @@ fn cc_emit_stmt(n: I32) : *Str => {
         let val_node = node_get_data3(n);
         let ctype = cc_infer_expr_ctype(val_node);
         let value = cc_emit_expr(val_node);
+        cc_local_types.map_set(name, ctype);
         return ctype.str_concat(" ").str_concat(name).str_concat(" = ").str_concat(value).str_concat(";");
     }
 
@@ -1033,6 +1077,7 @@ out fn generate_c(typed: I32, substrate: *Str) : *Str => {
     cc_alias_by_variant = map_new();
     cc_union_alias_info = map_new();
     cc_covered_extern_fns = set_new();
+    cc_local_types = map_new();
 
     cc_inc_stdint = 1;
     cc_inc_stddef = 0;
