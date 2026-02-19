@@ -70,10 +70,31 @@ public class Main {
 		private final Map<String, List<MapNode>> nodeLists = new HashMap<String, List<MapNode>>();
 		private Optional<String> maybeType = Optional.empty();
 
+		public MapNode(String type) {
+			this.maybeType = Optional.of(type);
+		}
+
+		public MapNode() {
+		}
+
 		@Override
 		public String toString() {
-			return "MapNode{" + "maybeType=" + this.maybeType + ", strings=" + this.strings + ", nodeLists=" +
-						 this.nodeLists + '}';
+			final var s = this.maybeType.map(type -> "maybeType=" + type + ", ").orElse("");
+			final String s1;
+			if (this.strings.isEmpty()) {
+				s1 = "";
+			} else {
+				s1 = "strings=" + this.strings + ", ";
+			}
+
+			final String s2;
+			if (this.nodeLists.isEmpty()) {
+				s2 = "";
+			} else {
+				s2 = "nodeLists=" + this.nodeLists;
+			}
+
+			return "MapNode {" + s + s1 + s2 + '}';
 		}
 
 		private MapNode withString(String key, String value) {
@@ -690,7 +711,7 @@ public class Main {
 	}
 
 	private static Result<MapNode, CompileError> transformAST(MapNode node) {
-		final var children = node
+		final var oldChildren = node
 				.findNodeList("children")
 				.orElse(Collections.emptyList())
 				.stream()
@@ -698,7 +719,19 @@ public class Main {
 				.flatMap(Optional::stream)
 				.toList();
 
-		return new Ok<MapNode, CompileError>(node.withNodeList("children", children));
+		final var newChildren = new ArrayList<MapNode>();
+		imports.forEach((key, value) -> {
+			final var children = value.stream().map(child -> new MapNode().withString("child", child)).toList();
+			final var namespace = key.stream().map(segment -> new MapNode().withString("segment", segment)).toList();
+
+			newChildren.add(new MapNode("extern let")
+													.withNodeList("children", children)
+													.withNodeList("namespace", namespace));
+		});
+
+		newChildren.addAll(oldChildren);
+
+		return new Ok<MapNode, CompileError>(node.withNodeList("children", newChildren));
 	}
 
 	private static Optional<MapNode> transformRootSegment(MapNode node) {
@@ -721,6 +754,10 @@ public class Main {
 
 			imports.get(namespace).add(segments.getLast());
 			return Optional.empty();
+		}
+
+		if (node.is("class")) {
+			return Optional.of(node.retype("object"));
 		}
 
 		return Optional.of(node);
