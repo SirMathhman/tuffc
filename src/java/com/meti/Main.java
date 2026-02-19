@@ -650,7 +650,15 @@ public class Main {
 				return "\n\t\t\tif (node.is(\"" + s1 + "\")) return " + aClass + ".deserialize(node);";
 			}).collect(Collectors.joining(""));
 
-			segments.add("\tpublic sealed interface " + name + " permits " + joined + " {\n\t\tstatic " + name +
+			final var superTypes = new ArrayList<String>();
+			for (var entry : variants.entrySet()) {
+				if (entry.getValue().contains(name)) {
+					superTypes.add(entry.getKey());
+				}
+			}
+
+			final var s1 = superTypes.isEmpty() ? "" : " extends " + String.join(", ", superTypes);
+			segments.add("\tpublic sealed interface " + name + s1 + " permits " + joined + " {\n\t\tstatic " + name +
 									 " deserialize(MapNode node) {" + s + "\n\t\t\treturn null;\n" + "\t\t}\n\t}");
 			return;
 		}

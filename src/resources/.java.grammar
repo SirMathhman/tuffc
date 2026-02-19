@@ -1,4 +1,5 @@
-RootChild = Class | Interface | Record
+RootChild = Package | Import | Structure
+Structure = Class | Interface | Record
 
 Type = name
 
@@ -7,5 +8,9 @@ Declaration = name, Type type
 Class = name
 Interface = name
 Record = name, [Declaration params]
+
+NamespaceSegment = segment
+Import = [NamespaceSegment segments]
+Package = [NamespaceSegment segments]
 
 Root = [RootChild children]
