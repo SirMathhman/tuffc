@@ -46,6 +46,10 @@ public class Main {
 		String display();
 	}
 
+	public interface Folder {
+		State fold(State state, char c);
+	}
+
 	private record CompileError(String message, Context context, List<CompileError> children) implements Error {
 		public CompileError(String message, Context context) {
 			this(message, context, new ArrayList<CompileError>());
@@ -256,7 +260,7 @@ public class Main {
 	}
 
 	private record NodeListRule(String key, Rule rule) implements Rule {
-		private static List<String> split(String input) {
+		private static List<String> split(String input, Folder folder) {
 			var current = new State(input);
 			while (true) {
 				final var maybeNext = current.pop();
@@ -264,32 +268,15 @@ public class Main {
 					break;
 				}
 
-				current = fold(current, maybeNext.get());
+				current = folder.fold(current, maybeNext.get());
 			}
 
 			return current.advance().segments;
 		}
 
-		private static State fold(State state, char c) {
-			final var appended = state.append(c);
-			if (c == ';' && appended.isLevel()) {
-				return appended.advance();
-			}
-			if (c == '}' && appended.isShallow()) {
-				return appended.exit().advance();
-			}
-			if (c == '{') {
-				return appended.enter();
-			}
-			if (c == '}') {
-				return appended.exit();
-			}
-			return appended;
-		}
-
 		@Override
 		public Result<MapNode, CompileError> lex(String value) {
-			return split(value)
+			return split(value, new StatementFolder())
 					.stream()
 					.<Result<List<MapNode>, CompileError>>reduce(new Ok<List<MapNode>, CompileError>(new ArrayList<MapNode>()),
 																											 (listCompileErrorResult, segment) -> listCompileErrorResult
@@ -489,6 +476,47 @@ public class Main {
 		private boolean isLevel() {
 			return this.depth == 0;
 		}
+
+		public Optional<Tuple<State, Character>> popAndAppendToTuple() {
+			return this.pop().map(c -> {
+				final var appended = this.append(c);
+				return new Tuple<State, Character>(appended, c);
+			});
+		}
+
+		public Optional<State> popAndAppendToOption() {
+			return this.popAndAppendToTuple().map(Tuple::left);
+		}
+	}
+
+	public static class StatementFolder implements Folder {
+		@Override
+		public State fold(State state, char c) {
+			if (c == '\'') {
+				return state.popAndAppendToTuple().flatMap(tuple -> {
+					if (tuple.right == '\'') {
+						return tuple.left.popAndAppendToOption();
+					} else {
+						return Optional.of(tuple.left);
+					}
+				}).flatMap(State::popAndAppendToOption).orElse(state);
+			}
+
+			final var appended = state.append(c);
+			if (c == ';' && appended.isLevel()) {
+				return appended.advance();
+			}
+			if (c == '}' && appended.isShallow()) {
+				return appended.exit().advance();
+			}
+			if (c == '{') {
+				return appended.enter();
+			}
+			if (c == '}') {
+				return appended.exit();
+			}
+			return appended;
+		}
 	}
 
 	private static final Map<List<String>, List<String>> imports = new HashMap<List<String>, List<String>>();
@@ -555,7 +583,7 @@ public class Main {
 	}
 
 	private static Result<String, CompileError> compile(String input) {
-		final var segments = NodeListRule.split(input);
+		final var segments = NodeListRule.split(input, new StatementFolder());
 
 		final var joinedRoot = new ArrayList<String>();
 		for (var segment : segments) {

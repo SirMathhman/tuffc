@@ -1,6 +1,6 @@
 extern let { BiFunction, Function, Supplier } = java::util::function;
 extern let { Collectors } = java::util::stream;
-extern let { IOException } = java::io;
+extern let { IOException, PrintWriter, StringWriter } = java::io;
 extern let { Files, Path, Paths } = java::nio::file;
 extern let { ArrayList, Arrays, Collections, HashMap, List, Map, Optional } = java::util;
 extern let { Pattern } = java::util::regex;
@@ -21,7 +21,8 @@ extern let { Pattern } = java::util::regex;
 
 
 
+
+
 /*???*/
-/*???*/
-/*???*/
+
 Main::main(__args__)
