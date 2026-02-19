@@ -16,7 +16,6 @@ import java.util.Optional;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 public class Main {
@@ -70,6 +69,12 @@ public class Main {
 		private final Map<String, String> strings = new HashMap<String, String>();
 		private final Map<String, List<MapNode>> nodeLists = new HashMap<String, List<MapNode>>();
 		private Optional<String> maybeType = Optional.empty();
+
+		@Override
+		public String toString() {
+			return "MapNode{" + "maybeType=" + this.maybeType + ", strings=" + this.strings + ", nodeLists=" +
+						 this.nodeLists + '}';
+		}
 
 		private MapNode withString(String key, String value) {
 			this.strings.put(key, value);
@@ -559,6 +564,23 @@ public class Main {
 		}
 	}
 
+	private static class EmptyRule implements Rule {
+		public EmptyRule() {}
+
+		@Override
+		public Result<MapNode, CompileError> lex(String value) {
+			if (value.isEmpty()) {
+				return new Ok<MapNode, CompileError>(new MapNode());
+			}
+			return new Err<MapNode, CompileError>(new CompileError("Not empty", new StringContext(value)));
+		}
+
+		@Override
+		public Result<String, CompileError> generate(MapNode node) {
+			return new Ok<String, CompileError>("");
+		}
+	}
+
 	private static final Map<List<String>, List<String>> imports = new HashMap<List<String>, List<String>>();
 
 	private static List<MapNode> getMapNodes(Tuple<List<MapNode>, MapNode> tuple) {
@@ -627,15 +649,16 @@ public class Main {
 		classSegmentRule.set(createClassSegmentRule(classSegmentRule));
 
 		final var moduleMemberRule = new LazyRule();
-		moduleMemberRule.set(OrRule.from(createObjectRule(moduleMemberRule), new PlaceholderRule()));
+		moduleMemberRule.set(OrRule.from(createObjectRule(moduleMemberRule), getPlaceholderRule()));
 
 		final var classRule = createClassRule(classSegmentRule);
 		final var sourceRootRule =
-				new NodeListRule("children", OrRule.from(createNamespacedRule("package"), classRule), new RegexSplitter("."));
+				new NodeListRule("children", createJavaRootSegmentRule(classRule), new FoldingSplitter(new StatementFolder()));
 
 		final var targetRootRule =
 				new NodeListRule("children", OrRule.from(moduleMemberRule), new FoldingSplitter(new StatementFolder()));
-		return sourceRootRule.lex(input).flatMapValue(targetRootRule::generate);
+
+		return sourceRootRule.lex(input).flatMapValue(Main::transformAST).flatMapValue(targetRootRule::generate);
 //
 //
 //		final var segments = NodeListRule.split(input, new StatementFolder());
@@ -666,56 +689,62 @@ public class Main {
 //																						.collect(Collectors.joining()));
 	}
 
+	private static Result<MapNode, CompileError> transformAST(MapNode node) {
+		final var children = node
+				.findNodeList("children")
+				.orElse(Collections.emptyList())
+				.stream()
+				.map(Main::transformRootSegment)
+				.flatMap(Optional::stream)
+				.toList();
+
+		return new Ok<MapNode, CompileError>(node.withNodeList("children", children));
+	}
+
+	private static Optional<MapNode> transformRootSegment(MapNode node) {
+		if (node.is("whitespace") || node.is("package")) {
+			return Optional.empty();
+		}
+
+		if (node.is("import")) {
+			final var segments = node
+					.findNodeList("segments")
+					.orElse(Collections.emptyList())
+					.stream()
+					.map(segment -> segment.findString("segment").orElse(""))
+					.toList();
+
+			final var namespace = segments.subList(0, segments.size() - 1);
+			if (!imports.containsKey(namespace)) {
+				imports.put(namespace, new ArrayList<String>());
+			}
+
+			imports.get(namespace).add(segments.getLast());
+			return Optional.empty();
+		}
+
+		return Optional.of(node);
+	}
+
+	private static Rule createJavaRootSegmentRule(Rule classRule) {
+		return OrRule.from(createWhitespaceRule(),
+											 createNamespacedRule("package"),
+											 createNamespacedRule("import"),
+											 classRule);
+	}
+
+	private static Rule getPlaceholderRule() {
+		return new TypeRule("placeholder", new PlaceholderRule());
+	}
+
+	private static TypeRule createWhitespaceRule() {
+		return new TypeRule("whitespace", new StripRule(new EmptyRule()));
+	}
+
 	private static TypeRule createNamespacedRule(String type) {
 		final var segments =
 				new NodeListRule("segments", new StringRule("segment"), new FoldingSplitter(new StatementFolder()));
 		return new TypeRule(type, new StripRule(new PrefixRule(type + " ", new SuffixRule(segments, ";"))));
-	}
-
-	private static Result<String, CompileError> compileRootSegment(String input) {
-		final var stripped = input.strip();
-		if (stripped.isEmpty() || stripped.startsWith("package ")) {
-			return new Ok<String, CompileError>("");
-		}
-
-		if (stripped.startsWith("import ") && stripped.endsWith(";")) {
-			final var i = stripped.lastIndexOf(".");
-			if (i >= 0) {
-				final var substring = stripped.substring("import ".length(), i);
-				final var leaf = stripped.substring(i + 1, stripped.length() - 1);
-				final var split = substring.split(Pattern.quote("."));
-				final var namespace = Arrays.asList(split);
-				if (!imports.containsKey(namespace)) {
-					imports.put(namespace, new ArrayList<String>());
-				}
-
-				imports.get(namespace).add(leaf);
-				return new Ok<String, CompileError>("");
-			}
-		}
-
-		final var classSegmentRule = new LazyRule();
-		classSegmentRule.set(createClassSegmentRule(classSegmentRule));
-
-		final var moduleMemberRule = new LazyRule();
-		moduleMemberRule.set(OrRule.from(createObjectRule(moduleMemberRule), new PlaceholderRule()));
-
-		return createClassRule(classSegmentRule)
-				.lex(stripped)
-				.mapValue(Main::transformRootSegment)
-				.flatMapValue(moduleMemberRule::generate);
-	}
-
-	private static MapNode transformRootSegment(MapNode node) {
-		if (node.is("class")) {
-			return node.retype("object");
-		}
-
-		if (node.is("interface")) {
-			return node.retype("contact");
-		}
-
-		return node;
 	}
 
 	private static Rule createClassRule(Rule classSegmentRule) {
@@ -734,7 +763,7 @@ public class Main {
 		return OrRule.from(createStructureRule("interface", classMemberRule),
 											 createStructureRule("record", classMemberRule),
 											 createClassRule(classMemberRule),
-											 new PlaceholderRule());
+											 getPlaceholderRule());
 	}
 
 	private static Rule createObjectRule(LazyRule moduleMemberRule) {
