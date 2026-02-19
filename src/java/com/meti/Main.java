@@ -15,24 +15,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.BiFunction;
-import java.util.function.Function;
-import java.util.function.Supplier;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 public class Main {
-	private sealed interface Result<T, X> permits Err, Ok {
-		<R> Result<R, X> mapValue(Function<T, R> mapper);
-
-		<R> Result<R, X> flatMapValue(Function<T, Result<R, X>> mapper);
-
-		<R> R match(Function<T, R> whenOk, Function<X, R> whenErr);
-
-		<R> Result<Tuple<T, R>, X> and(Supplier<Result<R, X>> mapper);
-
-		<R> Result<T, R> mapErr(Function<X, R> mapper);
-	}
-
 	private interface Rule {
 		Result<MapNode, CompileError> lex(String value);
 
@@ -81,65 +67,6 @@ public class Main {
 		}
 	}
 
-	private record Tuple<A, B>(A left, B right) {}
-
-	private record Ok<T, X>(T value) implements Result<T, X> {
-		@Override
-		public <R> Result<R, X> mapValue(Function<T, R> mapper) {
-			return new Ok<R, X>(mapper.apply(this.value));
-		}
-
-		@Override
-		public <R> Result<R, X> flatMapValue(Function<T, Result<R, X>> mapper) {
-			return mapper.apply(this.value);
-		}
-
-		@Override
-		public <R> R match(Function<T, R> whenOk, Function<X, R> whenErr) {
-			return whenOk.apply(this.value);
-
-		}
-
-		@Override
-		public <R> Result<Tuple<T, R>, X> and(Supplier<Result<R, X>> supplier) {
-			return supplier.get().mapValue(otherValue -> new Tuple<T, R>(this.value, otherValue));
-		}
-
-		@Override
-		public <R> Result<T, R> mapErr(Function<X, R> mapper) {
-			return new Ok<T, R>(this.value);
-		}
-
-	}
-
-	private record Err<T, X>(X error) implements Result<T, X> {
-		@Override
-		public <R> Result<R, X> mapValue(Function<T, R> mapper) {
-			return new Err<R, X>(this.error);
-		}
-
-		@Override
-		public <R> Result<R, X> flatMapValue(Function<T, Result<R, X>> mapper) {
-			return new Err<R, X>(this.error);
-		}
-
-		@Override
-		public <R> R match(Function<T, R> whenOk, Function<X, R> whenErr) {
-			return whenErr.apply(this.error);
-		}
-
-		@Override
-		public <R> Result<Tuple<T, R>, X> and(Supplier<Result<R, X>> mapper) {
-			return new Err<Tuple<T, R>, X>(this.error);
-		}
-
-		@Override
-		public <R> Result<T, R> mapErr(Function<X, R> mapper) {
-			return new Err<T, R>(mapper.apply(this.error));
-		}
-
-	}
-
 	private record NodeContext(MapNode node) implements Context {
 		@Override
 		public String display() {
@@ -166,7 +93,8 @@ public class Main {
 		@Override
 		public Result<MapNode, CompileError> lex(String slice) {
 			if (!slice.endsWith(this.suffix())) {
-				final var error = new CompileError("Suffix '" + this.suffix + "' not present", new StringContext(slice));
+				final var error = new CompileError("Suffix '" + this.suffix + "' not present",
+						new StringContext(slice));
 
 				return new Err<MapNode, CompileError>(error);
 			}
@@ -226,7 +154,7 @@ public class Main {
 				return this.rule.lex(value.substring(this.prefix.length()));
 			}
 			return new Err<MapNode, CompileError>(new CompileError("Prefix '" + this.prefix + "' not present",
-																														 new StringContext(value)));
+					new StringContext(value)));
 		}
 
 		@Override
@@ -241,11 +169,12 @@ public class Main {
 			return this.splitter
 					.split(value)
 					.stream()
-					.<Result<List<MapNode>, CompileError>>reduce(new Ok<List<MapNode>, CompileError>(new ArrayList<MapNode>()),
-																											 (listCompileErrorResult, segment) -> listCompileErrorResult
-																													 .and(() -> this.rule.lex(segment))
-																													 .mapValue(Main::getMapNodes),
-																											 (_, next) -> next)
+					.<Result<List<MapNode>, CompileError>>reduce(
+							new Ok<List<MapNode>, CompileError>(new ArrayList<MapNode>()),
+							(listCompileErrorResult, segment) -> listCompileErrorResult
+									.and(() -> this.rule.lex(segment))
+									.mapValue(Main::getMapNodes),
+							(_, next) -> next)
 					.mapValue(segments -> new MapNode().withNodeList(this.key, segments));
 		}
 
@@ -258,13 +187,14 @@ public class Main {
 		}
 
 		private Result<String, CompileError> reduceChildren(List<MapNode> list) {
-			return list.stream().map(this.rule::generate).reduce(new Ok<String, CompileError>(""), optionally((s, s2) -> {
-				if (s.isEmpty()) {
-					return s2;
-				}
+			return list.stream().map(this.rule::generate).reduce(new Ok<String, CompileError>(""),
+					optionally((s, s2) -> {
+						if (s.isEmpty()) {
+							return s2;
+						}
 
-				return s + this.splitter.createDelimiter() + s2;
-			}), (_, next) -> next);
+						return s + this.splitter.createDelimiter() + s2;
+					}), (_, next) -> next);
 		}
 	}
 
@@ -278,8 +208,9 @@ public class Main {
 			return this.rules
 					.stream()
 					.reduce(new Accumulator<MapNode>(),
-									(accumulator, rule) -> rule.lex(value).match(accumulator::withValue, accumulator::withError),
-									(_, next) -> next)
+							(accumulator, rule) -> rule.lex(value).match(accumulator::withValue,
+									accumulator::withError),
+							(_, next) -> next)
 					.toResult()
 					.mapErr(children -> new CompileError("No rule matched", new StringContext(value), children));
 		}
@@ -289,8 +220,9 @@ public class Main {
 			return this.rules
 					.stream()
 					.reduce(new Accumulator<String>(),
-									(accumulator, rule) -> rule.generate(node).match(accumulator::withValue, accumulator::withError),
-									(_, next) -> next)
+							(accumulator, rule) -> rule.generate(node).match(accumulator::withValue,
+									accumulator::withError),
+							(_, next) -> next)
 					.toResult()
 					.mapErr(children -> new CompileError("No rule matched", new NodeContext(node), children));
 		}
@@ -320,14 +252,16 @@ public class Main {
 		public Result<MapNode, CompileError> lex(String value) {
 			return this.maybeRule
 					.map(rule -> rule.lex(value))
-					.orElseGet(() -> new Err<MapNode, CompileError>(new CompileError("Rule not set", new StringContext(value))));
+					.orElseGet(() -> new Err<MapNode, CompileError>(
+							new CompileError("Rule not set", new StringContext(value))));
 		}
 
 		@Override
 		public Result<String, CompileError> generate(MapNode node) {
 			return this.maybeRule
 					.map(rule -> rule.generate(node))
-					.orElseGet(() -> new Err<String, CompileError>(new CompileError("Rule not set", new NodeContext(node))));
+					.orElseGet(() -> new Err<String, CompileError>(
+							new CompileError("Rule not set", new NodeContext(node))));
 		}
 	}
 
@@ -344,7 +278,7 @@ public class Main {
 			}
 
 			return new Err<String, CompileError>(new CompileError("Type '" + this.type + "' not present",
-																														new NodeContext(node)));
+					new NodeContext(node)));
 		}
 	}
 
@@ -461,10 +395,10 @@ public class Main {
 			final var appended = state.append(c);
 			if (c == '\'') {
 				return appended.popAndAppendToTuple().flatMap(tuple -> {
-					if (tuple.right == '\\') {
-						return tuple.left.popAndAppendToOption();
+					if (tuple.right() == '\\') {
+						return tuple.left().popAndAppendToOption();
 					} else {
-						return Optional.of(tuple.left);
+						return Optional.of(tuple.left());
 					}
 				}).flatMap(State::popAndAppendToOption).orElse(appended);
 			}
@@ -561,14 +495,15 @@ public class Main {
 	private static final Map<List<String>, List<String>> imports = new HashMap<List<String>, List<String>>();
 
 	private static List<MapNode> getMapNodes(Tuple<List<MapNode>, MapNode> tuple) {
-		final var left = tuple.left;
-		left.add(tuple.right);
+		final var left = tuple.left();
+		left.add(tuple.right());
 		return left;
 	}
 
 	private static <C, T> BiFunction<Result<C, CompileError>, Result<T, CompileError>, Result<C, CompileError>> optionally(
 			BiFunction<C, T, C> mapper) {
-		return (mapNodes, mapNode) -> mapNodes.flatMapValue(list -> mapNode.mapValue(inner -> mapper.apply(list, inner)));
+		return (mapNodes, mapNode) -> mapNodes
+				.flatMapValue(list -> mapNode.mapValue(inner -> mapper.apply(list, inner)));
 	}
 
 	public static void main(String[] args) {
@@ -576,26 +511,28 @@ public class Main {
 	}
 
 	private static Optional<Error> run() {
-		writeNodes("JavaAST", Paths.get(".", "src", "resources", ".java.grammar"),
-							 Paths.get(".", "src", "java", "com", "meti", "JavaAST.java"));
+		writeNodes("JavaAST",
+				Paths.get(".", "src", "resources", ".java.grammar"),
+				Paths.get(".", "src", "java", "com", "meti", "JavaAST.java"));
 
-		writeNodes("TuffAST", Paths.get(".", "src", "resources", ".tuff.grammar"),
-							 Paths.get(".", "src", "java", "com", "meti", "TuffAST.java"));
+		writeNodes("TuffAST",
+				Paths.get(".", "src", "resources", ".tuff.grammar"),
+				Paths.get(".", "src", "java", "com", "meti", "TuffAST.java"));
 
 		final var javaSource = createPath("java");
 		final var tuffSource = createPath("tuff");
 
 		return switch (readString(javaSource)) {
-			case Err<String, Error> v -> Optional.of(v.error);
+			case Err<String, Error> v -> Optional.of(v.error());
 			case Ok<String, Error> ok -> {
 				final var parent = tuffSource.getParent();
 				if (!Files.exists(parent)) {
 					yield createDirectories(parent).map(JavaError::new);
 				}
 
-				yield switch (compile(ok.value)) {
-					case Err<String, CompileError> v -> Optional.of(v.error);
-					case Ok<String, CompileError> v -> writeString(tuffSource, v.value);
+				yield switch (compile(ok.value())) {
+					case Err<String, CompileError> v -> Optional.of(v.error());
+					case Ok<String, CompileError> v -> writeString(tuffSource, v.value());
 				};
 			}
 		};
@@ -610,34 +547,53 @@ public class Main {
 			segments.add("package com.meti;");
 
 			final var tuple = toLines(slices);
-			if (!tuple.left.contains("java.util.Optional")) {
-				tuple.left.add("java.util.Optional");
+			if (!tuple.left().contains("java.util.Optional")) {
+				tuple.left().add("java.util.Optional");
 			}
-			if (!tuple.left.contains("java.util.function.Function")) {
-				tuple.left.add("java.util.function.Function");
+			if (!tuple.left().contains("java.util.function.Function")) {
+				tuple.left().add("java.util.function.Function");
 			}
-			if (!tuple.left.contains("java.util.List")) {
-				tuple.left.add("java.util.List");
+			if (!tuple.left().contains("java.util.List")) {
+				tuple.left().add("java.util.List");
 			}
-			if (!tuple.left.contains("java.util.ArrayList")) {
-				tuple.left.add("java.util.ArrayList");
+			if (!tuple.left().contains("java.util.ArrayList")) {
+				tuple.left().add("java.util.ArrayList");
 			}
-			tuple.left.stream().map(slice -> "import " + slice + ";").forEach(segments::add);
+			tuple.left().stream().map(slice -> "import " + slice + ";").forEach(segments::add);
 
 			segments.add("public class " + name + " {");
 			segments.add(
-					"\tprivate static <T> Optional<List<T>> deserializeList(Optional<List<MapNode>> maybeNodes, " +
-					"Function<MapNode, Optional<T>> deserializer) {");
+					"\tprivate static <T> Result<List<T>, String> deserializeList(Optional<List<MapNode>> maybeNodes, "
+							+
+							"Function<MapNode, Result<T, String>> deserializer, String ownerType, String key) {");
 			segments.add("\t\tfinal var nodes = maybeNodes.orElse(new ArrayList<MapNode>());");
 			segments.add("\t\tfinal var list = new ArrayList<T>();");
-			segments.add("\t\tfor (var child : nodes) {");
-			segments.add("\t\t\tfinal var maybeItem = deserializer.apply(child);");
-			segments.add("\t\t\tif (maybeItem.isEmpty()) return Optional.empty();");
-			segments.add("\t\t\tlist.add(maybeItem.get());");
+			segments.add("\t\tfor (var i = 0; i < nodes.size(); i++) {");
+			segments.add("\t\t\tfinal var index = i;");
+			segments.add("\t\t\tfinal var itemResult = deserializer.apply(nodes.get(i));");
+			segments.add("\t\t\tfinal var maybeError = itemResult.match(");
+			segments.add("\t\t\t\t\tvalue -> { list.add(value); return Optional.<String>empty(); },");
+			segments.add(
+					"\t\t\t\t\terror -> Optional.of(\"Failed to deserialize list field '\" + key + \"' on '\" + ownerType + \"' at index \" + index + \": \" + error));");
+			segments.add("\t\t\tif (maybeError.isPresent()) return new Err<List<T>, String>(maybeError.get());");
 			segments.add("\t\t}");
-			segments.add("\t\treturn Optional.of(list);");
+			segments.add("\t\treturn new Ok<List<T>, String>(list);");
 			segments.add("\t}");
-			segments.addAll(tuple.right);
+			segments.add("\tprivate static <T> Result<List<MapNode>, String> serializeList(List<T> list, " +
+					"Function<T, Result<MapNode, String>> serializer, String ownerType, String key) {");
+			segments.add("\t\tfinal var nodes = new ArrayList<MapNode>();");
+			segments.add("\t\tfor (var i = 0; i < list.size(); i++) {");
+			segments.add("\t\t\tfinal var index = i;");
+			segments.add("\t\t\tfinal var itemResult = serializer.apply(list.get(i));");
+			segments.add("\t\t\tfinal var maybeError = itemResult.match(");
+			segments.add("\t\t\t\t\tvalue -> { nodes.add(value); return Optional.<String>empty(); },");
+			segments.add(
+					"\t\t\t\t\terror -> Optional.of(\"Failed to serialize list field '\" + key + \"' on '\" + ownerType + \"' at index \" + index + \": \" + error));");
+			segments.add("\t\t\tif (maybeError.isPresent()) return new Err<List<MapNode>, String>(maybeError.get());");
+			segments.add("\t\t}");
+			segments.add("\t\treturn new Ok<List<MapNode>, String>(nodes);");
+			segments.add("\t}");
+			segments.addAll(tuple.right());
 			segments.add("}");
 
 			writeString(target, String.join(System.lineSeparator(), segments));
@@ -662,21 +618,22 @@ public class Main {
 	}
 
 	private static void extracted(String value,
-																HashMap<String, List<String>> variants,
-																String name,
-																ArrayList<String> segments,
-																ArrayList<String> imports) {
+			HashMap<String, List<String>> variants,
+			String name,
+			ArrayList<String> segments,
+			ArrayList<String> imports) {
 		if (value.contains("|")) {
 			final var split = value.split(Pattern.quote("|"));
 			final var list = Arrays.stream(split).map(String::strip).filter(member -> !member.isEmpty()).toList();
 			variants.put(name, list);
 
 			final var joined = String.join(", ", list);
-			final var head = list.getFirst() + ".deserialize(node).map(value -> (" + name + ") value)";
+			final var head = list.getFirst() + ".deserialize(node).mapValue(value -> (" + name + ") value)";
 			final var tail = list
 					.stream()
 					.skip(1)
-					.map(element -> "\n\t\t\t\t.or(() -> " + element + ".deserialize(node).map(value -> (" + name + ") value))")
+					.map(element -> "\n\t\t\t\t.or(() -> " + element + ".deserialize(node).mapValue(value -> (" + name
+							+ ") value))")
 					.collect(Collectors.joining(""));
 
 			final var superTypes = new ArrayList<String>();
@@ -686,10 +643,15 @@ public class Main {
 				}
 			}
 
-			final var s1 = superTypes.isEmpty() ? "" : " extends " + String.join(", ", superTypes);
-			segments.add("\tpublic sealed interface " + name + s1 + " permits " + joined + " {\n\t\tstatic Optional<" + name +
-									 "> deserialize(MapNode node) {\n\t\t\treturn " + head + tail + ";\n" +
-									 "\t\t}\n\n\t\tMapNode serialize();\n\t}");
+			final String s1;
+			if (superTypes.isEmpty())
+				s1 = "";
+			else
+				s1 = " extends " + String.join(", ", superTypes);
+			segments.add(
+					"\tpublic sealed interface " + name + s1 + " permits " + joined + " {\n\t\tstatic Result<" + name +
+							", String> deserialize(MapNode node) {\n\t\t\treturn " + head + tail + ";\n" +
+							"\t\t}\n\n\t\tResult<MapNode, String> serialize();\n\t}");
 			return;
 		}
 
@@ -697,7 +659,7 @@ public class Main {
 		final var outputParams = new ArrayList<String>();
 		final var maybeArgNames = new ArrayList<String>();
 		final var maybeArgValues = new ArrayList<String>();
-		final var serializerLines = new ArrayList<String>();
+		final var serializerSteps = new ArrayList<String>();
 		for (var arg : inputParams) {
 			final var arg1 = arg.strip();
 			if (arg1.startsWith("[") && arg1.endsWith("]")) {
@@ -707,22 +669,33 @@ public class Main {
 					outputParams.add("List<" + split[0] + "> " + split[1]);
 					maybeArgNames.add("maybe" + split[1].substring(0, 1).toUpperCase() + split[1].substring(1));
 					maybeArgValues.add("deserializeList(node.findNodeList(\"" + split[1] + "\"), " + split[0] +
-														 "::deserialize)");
-					serializerLines.add(
-							"\n\t\t\t\t.withNodeList(\"" + split[1] + "\", this." + split[1] + ".stream().map(" + split[0] +
-							"::serialize).toList())");
+							"::deserialize, \"" + name + "\", \"" + split[1] + "\")");
+					serializerSteps.add("\n\t\t\t\t.flatMapValue(resultNode -> serializeList(this." + split[1] + "(), "
+							+
+							split[0] + "::serialize, \"" + name + "\", \"" + split[1] +
+							"\").mapValue(children -> resultNode.withNodeList(\"" + split[1] + "\", children)))");
 				}
 			} else if (arg1.contains(" ")) {
 				final var split = arg1.strip().split(" ");
 				outputParams.add(split[0] + " " + split[1]);
 				maybeArgNames.add("maybe" + split[1].substring(0, 1).toUpperCase() + split[1].substring(1));
-				maybeArgValues.add("node.findNode(\"" + split[1] + "\").flatMap(" + split[0] + "::deserialize)");
-				serializerLines.add("\n\t\t\t\t.withNode(\"" + split[1] + "\", this." + split[1] + "().serialize())");
+				maybeArgValues.add("node.findNode(\"" + split[1] + "\")" +
+						".map(" + split[0] + "::deserialize)" +
+						".orElseGet(() -> new Err<" + split[0] + ", String>(\"Missing node field '" +
+						split[1] + "' for type '" + name + "'\"))");
+				serializerSteps.add("\n\t\t\t\t.flatMapValue(resultNode -> this." + split[1] + "().serialize()" +
+						".mapErr(error -> \"Failed to serialize field '" + split[1] + "' for type '" + name +
+						"': \" + error)" +
+						".mapValue(child -> resultNode.withNode(\"" + split[1] + "\", child)))");
 			} else {
 				outputParams.add("String " + arg1);
 				maybeArgNames.add("maybe" + arg1.substring(0, 1).toUpperCase() + arg1.substring(1));
-				maybeArgValues.add("node.findString(\"" + arg1 + "\")");
-				serializerLines.add("\n\t\t\t\t.withString(\"" + arg1 + "\", this." + arg1 + "())");
+				maybeArgValues.add("node.findString(\"" + arg1 + "\")" +
+						".<Result<String, String>>map(Ok::new)" +
+						".orElseGet(() -> new Err<String, String>(\"Missing string field '" + arg1 +
+						"' for type '" + name + "'\"))");
+				serializerSteps.add("\n\t\t\t\t.mapValue(resultNode -> resultNode.withString(\"" + arg1 + "\", this." +
+						arg1 + "()))");
 			}
 		}
 
@@ -743,18 +716,22 @@ public class Main {
 		final var deserializerLines = new ArrayList<String>();
 		for (var i = 0; i < maybeArgNames.size(); i++) {
 			deserializerLines.add("\n\t\t\tfinal var " + maybeArgNames.get(i) + " = " + maybeArgValues.get(i) + ";");
-			deserializerLines.add("\n\t\t\tif (" + maybeArgNames.get(i) + ".isEmpty()) return Optional.empty();");
+			deserializerLines.add(
+					"\n\t\t\tif (" + maybeArgNames.get(i) + " instanceof Err<?, String>(var error)) return new Err<" +
+							name + ", String>(error);");
 		}
 
-		final var constructorArgs =
-				maybeArgNames.stream().map(maybe -> maybe + ".get()").collect(Collectors.joining(",\n\t\t\t\t"));
+		final var constructorArgs = maybeArgNames.stream().map(maybe -> maybe + ".match(value -> value, error -> null)")
+				.collect(Collectors.joining(",\n\t\t\t\t"));
 
 		segments.add("\tpublic record " + name + "(" + String.join(", ", outputParams) + ")" + joinedSuperTypes + " {" +
-								 "\n\t\tpublic static Optional<" + name + "> deserialize(MapNode node){\n\t\t\tif (!node.is(\"" +
-								 name.toLowerCase() + "\")) return Optional.empty();" + String.join("", deserializerLines) +
-								 "\n\t\t\treturn Optional.of(new " + name + "(" + constructorArgs + "));\n\t\t}" +
-								 "\n\t\tpublic MapNode serialize() {\n\t\t\treturn new MapNode(\"" + name.toLowerCase() + "\")" +
-								 String.join("", serializerLines) + ";\n\t\t}" + "\n\t}");
+				"\n\t\tpublic static Result<" + name + ", String> deserialize(MapNode node){\n\t\t\tif (!node.is(\"" +
+				name.toLowerCase() + "\")) return new Err<" + name + ", String>(\"Expected type '" +
+				name.toLowerCase() + "'\");" + String.join("", deserializerLines) +
+				"\n\t\t\treturn new Ok<" + name + ", String>(new " + name + "(" + constructorArgs + "));\n\t\t}" +
+				"\n\t\t@Override\n\t\tpublic Result<MapNode, String> serialize() {\n\t\t\treturn new Ok<MapNode, String>(new MapNode(\""
+				+ name.toLowerCase() + "\"))" +
+				String.join("", serializerSteps) + ";\n\t\t}" + "\n\t}");
 	}
 
 	private static Optional<Error> writeString(Path target, String output) {
@@ -791,14 +768,17 @@ public class Main {
 		moduleMemberRule.set(OrRule.from(createExternLetRule(), createObjectRule(moduleMemberRule)));
 
 		final var classRule = createClassRule(classSegmentRule);
-		final var sourceRootRule =
-				new NodeListRule("children", createJavaRootSegmentRule(classRule), new FoldingSplitter(new StatementFolder()));
+		final var sourceRootRule = new NodeListRule("children", createJavaRootSegmentRule(classRule),
+				new FoldingSplitter(new StatementFolder()));
 
 		final var targetRootRule = new NodeListRule("children",
-																								new SuffixRule(OrRule.from(moduleMemberRule), System.lineSeparator()),
-																								new FoldingSplitter(new StatementFolder()));
+				new SuffixRule(OrRule.from(moduleMemberRule), System.lineSeparator()),
+				new FoldingSplitter(new StatementFolder()));
 
-		return sourceRootRule.lex(input).flatMapValue(Main::transformAST).flatMapValue(targetRootRule::generate);
+		return sourceRootRule
+				.lex(input)
+				.flatMapValue(Main::transformAST)
+				.flatMapValue(targetRootRule::generate);
 	}
 
 	private static TypeRule createExternLetRule() {
@@ -806,8 +786,8 @@ public class Main {
 		final var namespace = new NodeListRule("namespace", new StringRule("segment"), new DelimiterSplitter("::"));
 
 		return new TypeRule("extern let",
-												new PrefixRule("extern let { ",
-																			 new InfixRule(children, " } = ", new SuffixRule(namespace, ";"))));
+				new PrefixRule("extern let { ",
+						new InfixRule(children, " } = ", new SuffixRule(namespace, ";"))));
 	}
 
 	private static Result<MapNode, CompileError> transformAST(MapNode node) {
@@ -825,8 +805,8 @@ public class Main {
 			final var namespace = key.stream().map(segment -> new MapNode().withString("segment", segment)).toList();
 
 			newChildren.add(new MapNode("extern let")
-													.withNodeList("children", children)
-													.withNodeList("namespace", namespace));
+					.withNodeList("children", children)
+					.withNodeList("namespace", namespace));
 		});
 
 		newChildren.addAll(oldChildren);
@@ -865,9 +845,9 @@ public class Main {
 
 	private static Rule createJavaRootSegmentRule(Rule classRule) {
 		return OrRule.from(createWhitespaceRule(),
-											 createNamespacedRule("package"),
-											 createNamespacedRule("import"),
-											 classRule);
+				createNamespacedRule("package"),
+				createNamespacedRule("import"),
+				classRule);
 	}
 
 	private static TypeRule createWhitespaceRule() {
@@ -893,14 +873,15 @@ public class Main {
 
 	private static Rule createClassSegmentRule(Rule classMemberRule) {
 		return OrRule.from(createStructureRule("interface", classMemberRule),
-											 createStructureRule("record", classMemberRule),
-											 createClassRule(classMemberRule));
+				createStructureRule("record", classMemberRule),
+				createClassRule(classMemberRule));
 	}
 
 	private static Rule createObjectRule(LazyRule moduleMemberRule) {
 		final var name = new StringRule("name");
 		final var body = new NodeListRule("body", moduleMemberRule, new FoldingSplitter(new StatementFolder()));
-		return new TypeRule("object", new PrefixRule("out object ", new InfixRule(name, " {", new SuffixRule(body, "}"))));
+		return new TypeRule("object",
+				new PrefixRule("out object ", new InfixRule(name, " {", new SuffixRule(body, "}"))));
 	}
 
 	private static Path createPath(String extension) {

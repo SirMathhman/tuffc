@@ -1,151 +1,234 @@
 package com.meti;
+
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
-import java.util.List;
-import java.util.ArrayList;
+
 public class JavaAST {
-	private static <T> Optional<List<T>> deserializeList(Optional<List<MapNode>> maybeNodes, Function<MapNode, Optional<T>> deserializer) {
-		final var nodes = maybeNodes.orElse(new ArrayList<MapNode>());
-		final var list = new ArrayList<T>();
-		for (var child : nodes) {
-			final var maybeItem = deserializer.apply(child);
-			if (maybeItem.isEmpty()) return Optional.empty();
-			list.add(maybeItem.get());
-		}
-		return Optional.of(list);
-	}
-	public sealed interface RootChild permits Package, Import, Structure {
-		static Optional<RootChild> deserialize(MapNode node) {
-			return Package.deserialize(node).map(value -> (RootChild) value)
-				.or(() -> Import.deserialize(node).map(value -> (RootChild) value))
-				.or(() -> Structure.deserialize(node).map(value -> (RootChild) value));
-		}
+    private static <T> Result<List<T>, String> deserializeList(Optional<List<MapNode>> maybeNodes,
+            Function<MapNode, Result<T, String>> deserializer,
+            String ownerType,
+            String key) {
+        final var nodes = maybeNodes.orElse(new ArrayList<MapNode>());
+        final var values = new ArrayList<T>();
+        for (var i = 0; i < nodes.size(); i++) {
+            final var index = i;
+            final var itemResult = deserializer.apply(nodes.get(i));
+            final var maybeError = itemResult.match(value -> {
+                values.add(value);
+                return Optional.<String>empty();
+            }, error -> Optional.of(
+                    "Failed to deserialize list field '" + key + "' on '" + ownerType + "' at index " + index + ": "
+                            + error));
+            if (maybeError.isPresent()) {
+                return new Err<List<T>, String>(maybeError.get());
+            }
+        }
+        return new Ok<List<T>, String>(values);
+    }
 
-		MapNode serialize();
-	}
-	public sealed interface Structure extends RootChild permits Class, Interface, Record {
-		static Optional<Structure> deserialize(MapNode node) {
-			return Class.deserialize(node).map(value -> (Structure) value)
-				.or(() -> Interface.deserialize(node).map(value -> (Structure) value))
-				.or(() -> Record.deserialize(node).map(value -> (Structure) value));
-		}
+    private static <T> Result<List<MapNode>, String> serializeList(List<T> list,
+            Function<T, Result<MapNode, String>> serializer,
+            String ownerType,
+            String key) {
+        final var nodes = new ArrayList<MapNode>();
+        for (var i = 0; i < list.size(); i++) {
+            final var index = i;
+            final var itemResult = serializer.apply(list.get(i));
+            final var maybeError = itemResult.match(value -> {
+                nodes.add(value);
+                return Optional.<String>empty();
+            }, error -> Optional.of(
+                    "Failed to serialize list field '" + key + "' on '" + ownerType + "' at index " + index + ": "
+                            + error));
+            if (maybeError.isPresent()) {
+                return new Err<List<MapNode>, String>(maybeError.get());
+            }
+        }
+        return new Ok<List<MapNode>, String>(nodes);
+    }
 
-		MapNode serialize();
-	}
-	public record Type(String name) {
-		public static Optional<Type> deserialize(MapNode node){
-			if (!node.is("type")) return Optional.empty();
-			final var maybeName = node.findString("name");
-			if (maybeName.isEmpty()) return Optional.empty();
-			return Optional.of(new Type(maybeName.get()));
-		}
-		public MapNode serialize() {
-			return new MapNode("type")
-				.withString("name", this.name());
-		}
-	}
-	public record Declaration(String name, Type type) {
-		public static Optional<Declaration> deserialize(MapNode node){
-			if (!node.is("declaration")) return Optional.empty();
-			final var maybeName = node.findString("name");
-			if (maybeName.isEmpty()) return Optional.empty();
-			final var maybeType = node.findNode("type").flatMap(Type::deserialize);
-			if (maybeType.isEmpty()) return Optional.empty();
-			return Optional.of(new Declaration(maybeName.get(),
-				maybeType.get()));
-		}
-		public MapNode serialize() {
-			return new MapNode("declaration")
-				.withString("name", this.name())
-				.withNode("type", this.type().serialize());
-		}
-	}
-	public record Class(String name) implements Structure {
-		public static Optional<Class> deserialize(MapNode node){
-			if (!node.is("class")) return Optional.empty();
-			final var maybeName = node.findString("name");
-			if (maybeName.isEmpty()) return Optional.empty();
-			return Optional.of(new Class(maybeName.get()));
-		}
-		public MapNode serialize() {
-			return new MapNode("class")
-				.withString("name", this.name());
-		}
-	}
-	public record Interface(String name) implements Structure {
-		public static Optional<Interface> deserialize(MapNode node){
-			if (!node.is("interface")) return Optional.empty();
-			final var maybeName = node.findString("name");
-			if (maybeName.isEmpty()) return Optional.empty();
-			return Optional.of(new Interface(maybeName.get()));
-		}
-		public MapNode serialize() {
-			return new MapNode("interface")
-				.withString("name", this.name());
-		}
-	}
-	public record Record(String name, List<Declaration> params) implements Structure {
-		public static Optional<Record> deserialize(MapNode node){
-			if (!node.is("record")) return Optional.empty();
-			final var maybeName = node.findString("name");
-			if (maybeName.isEmpty()) return Optional.empty();
-			final var maybeParams = deserializeList(node.findNodeList("params"), Declaration::deserialize);
-			if (maybeParams.isEmpty()) return Optional.empty();
-			return Optional.of(new Record(maybeName.get(),
-				maybeParams.get()));
-		}
-		public MapNode serialize() {
-			return new MapNode("record")
-				.withString("name", this.name())
-				.withNodeList("params", this.params.stream().map(Declaration::serialize).toList());
-		}
-	}
-	public record NamespaceSegment(String segment) {
-		public static Optional<NamespaceSegment> deserialize(MapNode node){
-			if (!node.is("namespacesegment")) return Optional.empty();
-			final var maybeSegment = node.findString("segment");
-			if (maybeSegment.isEmpty()) return Optional.empty();
-			return Optional.of(new NamespaceSegment(maybeSegment.get()));
-		}
-		public MapNode serialize() {
-			return new MapNode("namespacesegment")
-				.withString("segment", this.segment());
-		}
-	}
-	public record Import(List<NamespaceSegment> segments) implements RootChild {
-		public static Optional<Import> deserialize(MapNode node){
-			if (!node.is("import")) return Optional.empty();
-			final var maybeSegments = deserializeList(node.findNodeList("segments"), NamespaceSegment::deserialize);
-			if (maybeSegments.isEmpty()) return Optional.empty();
-			return Optional.of(new Import(maybeSegments.get()));
-		}
-		public MapNode serialize() {
-			return new MapNode("import")
-				.withNodeList("segments", this.segments.stream().map(NamespaceSegment::serialize).toList());
-		}
-	}
-	public record Package(List<NamespaceSegment> segments) implements RootChild {
-		public static Optional<Package> deserialize(MapNode node){
-			if (!node.is("package")) return Optional.empty();
-			final var maybeSegments = deserializeList(node.findNodeList("segments"), NamespaceSegment::deserialize);
-			if (maybeSegments.isEmpty()) return Optional.empty();
-			return Optional.of(new Package(maybeSegments.get()));
-		}
-		public MapNode serialize() {
-			return new MapNode("package")
-				.withNodeList("segments", this.segments.stream().map(NamespaceSegment::serialize).toList());
-		}
-	}
-	public record Root(List<RootChild> children) {
-		public static Optional<Root> deserialize(MapNode node){
-			if (!node.is("root")) return Optional.empty();
-			final var maybeChildren = deserializeList(node.findNodeList("children"), RootChild::deserialize);
-			if (maybeChildren.isEmpty()) return Optional.empty();
-			return Optional.of(new Root(maybeChildren.get()));
-		}
-		public MapNode serialize() {
-			return new MapNode("root")
-				.withNodeList("children", this.children.stream().map(RootChild::serialize).toList());
-		}
-	}
+    public sealed interface RootChild permits Package, Import, Structure {
+        static Result<RootChild, String> deserialize(MapNode node) {
+            return Package.deserialize(node).mapValue(value -> (RootChild) value)
+                    .or(() -> Import.deserialize(node).mapValue(value -> (RootChild) value))
+                    .or(() -> Structure.deserialize(node).mapValue(value -> (RootChild) value));
+        }
+
+        Result<MapNode, String> serialize();
+    }
+
+    public sealed interface Structure extends RootChild permits Class, Interface, Record {
+        static Result<Structure, String> deserialize(MapNode node) {
+            return Class.deserialize(node).mapValue(value -> (Structure) value)
+                    .or(() -> Interface.deserialize(node).mapValue(value -> (Structure) value))
+                    .or(() -> Record.deserialize(node).mapValue(value -> (Structure) value));
+        }
+    }
+
+    public record Type(String name) {
+        public static Result<Type, String> deserialize(MapNode node) {
+            if (!node.is("type")) {
+                return new Err<Type, String>("Expected type 'type'");
+            }
+            final var nameResult = node.findString("name")
+                    .<Result<String, String>>map(Ok::new)
+                    .orElseGet(() -> new Err<String, String>("Missing string field 'name' for type 'Type'"));
+            return nameResult.mapValue(Type::new);
+        }
+
+        public Result<MapNode, String> serialize() {
+            return new Ok<MapNode, String>(new MapNode("type").withString("name", this.name()));
+        }
+    }
+
+    public record Declaration(String name, Type type) {
+        public static Result<Declaration, String> deserialize(MapNode node) {
+            if (!node.is("declaration")) {
+                return new Err<Declaration, String>("Expected type 'declaration'");
+            }
+            final var nameResult = node.findString("name")
+                    .<Result<String, String>>map(Ok::new)
+                    .orElseGet(() -> new Err<String, String>("Missing string field 'name' for type 'Declaration'"));
+            final var typeResult = node.findNode("type")
+                    .map(Type::deserialize)
+                    .orElseGet(() -> new Err<Type, String>("Missing node field 'type' for type 'Declaration'"))
+                    .mapErr(error -> "Failed to deserialize field 'type' for type 'Declaration': " + error);
+            return nameResult
+                    .flatMapValue(nameValue -> typeResult.mapValue(typeValue -> new Declaration(nameValue, typeValue)));
+        }
+
+        public Result<MapNode, String> serialize() {
+            return this.type().serialize()
+                    .mapErr(error -> "Failed to serialize field 'type' for type 'Declaration': " + error)
+                    .mapValue(typeNode -> new MapNode("declaration")
+                            .withString("name", this.name())
+                            .withNode("type", typeNode));
+        }
+    }
+
+    public record Class(String name) implements Structure {
+        public static Result<Class, String> deserialize(MapNode node) {
+            if (!node.is("class")) {
+                return new Err<Class, String>("Expected type 'class'");
+            }
+            final var nameResult = node.findString("name")
+                    .<Result<String, String>>map(Ok::new)
+                    .orElseGet(() -> new Err<String, String>("Missing string field 'name' for type 'Class'"));
+            return nameResult.mapValue(Class::new);
+        }
+
+        @Override
+        public Result<MapNode, String> serialize() {
+            return new Ok<MapNode, String>(new MapNode("class").withString("name", this.name()));
+        }
+    }
+
+    public record Interface(String name) implements Structure {
+        public static Result<Interface, String> deserialize(MapNode node) {
+            if (!node.is("interface")) {
+                return new Err<Interface, String>("Expected type 'interface'");
+            }
+            final var nameResult = node.findString("name")
+                    .<Result<String, String>>map(Ok::new)
+                    .orElseGet(() -> new Err<String, String>("Missing string field 'name' for type 'Interface'"));
+            return nameResult.mapValue(Interface::new);
+        }
+
+        @Override
+        public Result<MapNode, String> serialize() {
+            return new Ok<MapNode, String>(new MapNode("interface").withString("name", this.name()));
+        }
+    }
+
+    public record Record(String name, List<Declaration> params) implements Structure {
+        public static Result<Record, String> deserialize(MapNode node) {
+            if (!node.is("record")) {
+                return new Err<Record, String>("Expected type 'record'");
+            }
+            final var nameResult = node.findString("name")
+                    .<Result<String, String>>map(Ok::new)
+                    .orElseGet(() -> new Err<String, String>("Missing string field 'name' for type 'Record'"));
+            final var paramsResult = deserializeList(node.findNodeList("params"), Declaration::deserialize, "Record",
+                    "params");
+            return nameResult.flatMapValue(
+                    nameValue -> paramsResult.mapValue(paramValues -> new Record(nameValue, paramValues)));
+        }
+
+        @Override
+        public Result<MapNode, String> serialize() {
+            return serializeList(this.params(), Declaration::serialize, "Record", "params")
+                    .mapValue(paramNodes -> new MapNode("record")
+                            .withString("name", this.name())
+                            .withNodeList("params", paramNodes));
+        }
+    }
+
+    public record NamespaceSegment(String segment) {
+        public static Result<NamespaceSegment, String> deserialize(MapNode node) {
+            if (!node.is("namespacesegment")) {
+                return new Err<NamespaceSegment, String>("Expected type 'namespacesegment'");
+            }
+            final var segmentResult = node.findString("segment")
+                    .<Result<String, String>>map(Ok::new)
+                    .orElseGet(() -> new Err<String, String>(
+                            "Missing string field 'segment' for type 'NamespaceSegment'"));
+            return segmentResult.mapValue(NamespaceSegment::new);
+        }
+
+        public Result<MapNode, String> serialize() {
+            return new Ok<MapNode, String>(new MapNode("namespacesegment").withString("segment", this.segment()));
+        }
+    }
+
+    public record Import(List<NamespaceSegment> segments) implements RootChild {
+        public static Result<Import, String> deserialize(MapNode node) {
+            if (!node.is("import")) {
+                return new Err<Import, String>("Expected type 'import'");
+            }
+            final var segmentsResult = deserializeList(node.findNodeList("segments"), NamespaceSegment::deserialize,
+                    "Import", "segments");
+            return segmentsResult.mapValue(Import::new);
+        }
+
+        @Override
+        public Result<MapNode, String> serialize() {
+            return serializeList(this.segments(), NamespaceSegment::serialize, "Import", "segments")
+                    .mapValue(segmentNodes -> new MapNode("import").withNodeList("segments", segmentNodes));
+        }
+    }
+
+    public record Package(List<NamespaceSegment> segments) implements RootChild {
+        public static Result<Package, String> deserialize(MapNode node) {
+            if (!node.is("package")) {
+                return new Err<Package, String>("Expected type 'package'");
+            }
+            final var segmentsResult = deserializeList(node.findNodeList("segments"), NamespaceSegment::deserialize,
+                    "Package", "segments");
+            return segmentsResult.mapValue(Package::new);
+        }
+
+        @Override
+        public Result<MapNode, String> serialize() {
+            return serializeList(this.segments(), NamespaceSegment::serialize, "Package", "segments")
+                    .mapValue(segmentNodes -> new MapNode("package").withNodeList("segments", segmentNodes));
+        }
+    }
+
+    public record Root(List<RootChild> children) {
+        public static Result<Root, String> deserialize(MapNode node) {
+            if (!node.is("root")) {
+                return new Err<Root, String>("Expected type 'root'");
+            }
+            final var childrenResult = deserializeList(node.findNodeList("children"), RootChild::deserialize, "Root",
+                    "children");
+            return childrenResult.mapValue(Root::new);
+        }
+
+        public Result<MapNode, String> serialize() {
+            return serializeList(this.children(), RootChild::serialize, "Root", "children")
+                    .mapValue(childNodes -> new MapNode("root").withNodeList("children", childNodes));
+        }
+    }
 }
