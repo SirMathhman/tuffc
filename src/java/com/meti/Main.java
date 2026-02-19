@@ -16,6 +16,7 @@ import java.util.Optional;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 public class Main {
@@ -51,6 +52,8 @@ public class Main {
 
 	private interface Splitter {
 		List<String> split(String input);
+
+		String createDelimiter();
 	}
 
 	private record CompileError(String message, Context context, List<CompileError> children) implements Error {
@@ -293,7 +296,6 @@ public class Main {
 	}
 
 	private record NodeListRule(String key, Rule rule, Splitter splitter) implements Rule {
-
 		@Override
 		public Result<MapNode, CompileError> lex(String value) {
 			return this.splitter
@@ -316,10 +318,13 @@ public class Main {
 		}
 
 		private Result<String, CompileError> reduceChildren(List<MapNode> list) {
-			return list
-					.stream()
-					.map(this.rule::generate)
-					.reduce(new Ok<String, CompileError>(""), optionally((s, s2) -> s + s2), (_, next) -> next);
+			return list.stream().map(this.rule::generate).reduce(new Ok<String, CompileError>(""), optionally((s, s2) -> {
+				if (s.isEmpty()) {
+					return s2;
+				}
+
+				return s + this.splitter.createDelimiter() + s2;
+			}), (_, next) -> next);
 		}
 	}
 
@@ -576,12 +581,22 @@ public class Main {
 
 			return current.advance().segments;
 		}
+
+		@Override
+		public String createDelimiter() {
+			return "";
+		}
 	}
 
-	private record RegexSplitter(String regex) implements Splitter {
+	private record DelimiterSplitter(String delimiter) implements Splitter {
 		@Override
 		public List<String> split(String input) {
-			return Arrays.asList(input.split(this.regex));
+			return Arrays.asList(input.split(Pattern.quote(this.delimiter)));
+		}
+
+		@Override
+		public String createDelimiter() {
+			return this.delimiter;
 		}
 	}
 
@@ -670,14 +685,15 @@ public class Main {
 		classSegmentRule.set(createClassSegmentRule(classSegmentRule));
 
 		final var moduleMemberRule = new LazyRule();
-		moduleMemberRule.set(OrRule.from(createObjectRule(moduleMemberRule), getPlaceholderRule()));
+		moduleMemberRule.set(OrRule.from(createExternLetRule(), createObjectRule(moduleMemberRule), getPlaceholderRule()));
 
 		final var classRule = createClassRule(classSegmentRule);
 		final var sourceRootRule =
 				new NodeListRule("children", createJavaRootSegmentRule(classRule), new FoldingSplitter(new StatementFolder()));
 
-		final var targetRootRule =
-				new NodeListRule("children", OrRule.from(moduleMemberRule), new FoldingSplitter(new StatementFolder()));
+		final var targetRootRule = new NodeListRule("children",
+																								new SuffixRule(OrRule.from(moduleMemberRule), System.lineSeparator()),
+																								new FoldingSplitter(new StatementFolder()));
 
 		return sourceRootRule.lex(input).flatMapValue(Main::transformAST).flatMapValue(targetRootRule::generate);
 //
@@ -708,6 +724,15 @@ public class Main {
 //																						.stream()
 //																						.map(slice -> slice + System.lineSeparator())
 //																						.collect(Collectors.joining()));
+	}
+
+	private static TypeRule createExternLetRule() {
+		final var children = new NodeListRule("children", new StringRule("child"), new DelimiterSplitter(", "));
+		final var namespace = new NodeListRule("namespace", new StringRule("segment"), new DelimiterSplitter("::"));
+
+		return new TypeRule("extern let",
+												new PrefixRule("extern let { ",
+																			 new InfixRule(children, " } = ", new SuffixRule(namespace, ";"))));
 	}
 
 	private static Result<MapNode, CompileError> transformAST(MapNode node) {
@@ -779,8 +804,7 @@ public class Main {
 	}
 
 	private static TypeRule createNamespacedRule(String type) {
-		final var segments =
-				new NodeListRule("segments", new StringRule("segment"), new FoldingSplitter(new StatementFolder()));
+		final var segments = new NodeListRule("segments", new StringRule("segment"), new DelimiterSplitter("."));
 		return new TypeRule(type, new StripRule(new PrefixRule(type + " ", new SuffixRule(segments, ";"))));
 	}
 
