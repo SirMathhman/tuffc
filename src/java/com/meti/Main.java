@@ -492,17 +492,38 @@ public class Main {
 	public static class StatementFolder implements Folder {
 		@Override
 		public State fold(State state, char c) {
+			final var appended = state.append(c);
 			if (c == '\'') {
-				return state.popAndAppendToTuple().flatMap(tuple -> {
-					if (tuple.right == '\'') {
+				return appended.popAndAppendToTuple().flatMap(tuple -> {
+					if (tuple.right == '\\') {
 						return tuple.left.popAndAppendToOption();
 					} else {
 						return Optional.of(tuple.left);
 					}
-				}).flatMap(State::popAndAppendToOption).orElse(state);
+				}).flatMap(State::popAndAppendToOption).orElse(appended);
 			}
 
-			final var appended = state.append(c);
+			if (c == '\"') {
+				var current = appended;
+				while (true) {
+					final var maybeNext = current.pop();
+					if (maybeNext.isEmpty()) {
+						break;
+					}
+
+					final char next = maybeNext.orElse('\0');
+					current = current.append(next);
+					if (next == '\\') {
+						current = current.popAndAppendToOption().orElse(current);
+					}
+					if (next == '\"') {
+						break;
+					}
+				}
+
+				return current;
+			}
+
 			if (c == ';' && appended.isLevel()) {
 				return appended.advance();
 			}
