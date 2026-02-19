@@ -81,79 +81,6 @@ public class Main {
 		}
 	}
 
-	private static final class MapNode {
-		private final Map<String, String> strings = new HashMap<String, String>();
-		private final Map<String, List<MapNode>> nodeLists = new HashMap<String, List<MapNode>>();
-		private Optional<String> maybeType = Optional.empty();
-
-		public MapNode(String type) {
-			this.maybeType = Optional.of(type);
-		}
-
-		public MapNode() {
-		}
-
-		@Override
-		public String toString() {
-			final var s = this.maybeType.map(type -> "maybeType=" + type + ", ").orElse("");
-			final String s1;
-			if (this.strings.isEmpty()) {
-				s1 = "";
-			} else {
-				s1 = "strings=" + this.strings + ", ";
-			}
-
-			final String s2;
-			if (this.nodeLists.isEmpty()) {
-				s2 = "";
-			} else {
-				s2 = "nodeLists=" + this.nodeLists;
-			}
-
-			return "MapNode {" + s + s1 + s2 + '}';
-		}
-
-		private MapNode withString(String key, String value) {
-			this.strings.put(key, value);
-			return this;
-		}
-
-		private Optional<String> findString(String key) {
-			return Optional.ofNullable(this.strings.get(key));
-		}
-
-		public MapNode merge(MapNode other) {
-			this.strings.putAll(other.strings);
-			this.nodeLists.putAll(other.nodeLists);
-			return this;
-		}
-
-		public MapNode withNodeList(String key, List<MapNode> nodes) {
-			this.nodeLists.put(key, nodes);
-			return this;
-		}
-
-		public Optional<List<MapNode>> findNodeList(String key) {
-			return Optional.ofNullable(this.nodeLists.get(key));
-		}
-
-		public boolean is(String type) {
-			return this.maybeType.isPresent() && this.maybeType.get().equals(type);
-		}
-
-		public MapNode retype(String type) {
-			this.maybeType = Optional.of(type);
-			return this;
-		}
-
-		public String display() {
-			/*
-			TODO: something better
-			*/
-			return this.toString();
-		}
-	}
-
 	private record Tuple<A, B>(A left, B right) {}
 
 	private record Ok<T, X>(T value) implements Result<T, X> {
@@ -459,7 +386,7 @@ public class Main {
 		}
 	}
 
-	public static class State {
+	private static class State {
 		private final String input;
 		private final ArrayList<String> segments;
 		private int index;
@@ -528,7 +455,7 @@ public class Main {
 		}
 	}
 
-	public static class StatementFolder implements Folder {
+	private static class StatementFolder implements Folder {
 		@Override
 		public State fold(State state, char c) {
 			final var appended = state.append(c);
@@ -721,9 +648,10 @@ public class Main {
 			return;
 		}
 
-		final var args = value.split(Pattern.quote(","));
-		final var params = new ArrayList<String>();
-		for (var arg : args) {
+		final var inputParams = value.split(Pattern.quote(","));
+		final var outputParams = new ArrayList<String>();
+		final var outputArgs = new ArrayList<String>();
+		for (var arg : inputParams) {
 			final var arg1 = arg.strip();
 			if (arg1.startsWith("[") && arg1.endsWith("]")) {
 				final var substring = arg1.substring(1, arg1.length() - 1).strip();
@@ -733,13 +661,14 @@ public class Main {
 						imports.add("java.util.List");
 					}
 
-					params.add("List<" + split[0] + "> " + split[1]);
+					outputParams.add("List<" + split[0] + "> " + split[1]);
 				}
 			} else if (arg1.contains(" ")) {
 				final var split = arg1.strip().split(" ");
-				params.add(split[0] + " " + split[1]);
+				outputParams.add(split[0] + " " + split[1]);
 			} else {
-				params.add("String " + arg1);
+				outputParams.add("String " + arg1);
+				outputArgs.add("node.findString(\"" + arg1 + "\").orElse(\"?\")");
 			}
 		}
 
@@ -757,7 +686,11 @@ public class Main {
 			joinedSuperTypes = " implements " + String.join(", ", superTypes);
 		}
 
-		segments.add("\tpublic record " + name + "(" + String.join(", ", params) + ")" + joinedSuperTypes + " {}");
+		segments.add("\tpublic record " + name + "(" + String.join(", ", outputParams) + ")" + joinedSuperTypes + " {" +
+								 "\n\t\tpublic static void /*" +
+								 name +
+								 " */deserialize(MapNode node){\n\t\t\t// return new " + name + "(" +
+								 String.join(", ", outputArgs) + ");\n\t\t}" + "\n\t}");
 	}
 
 	private static Optional<Error> writeString(Path target, String output) {
