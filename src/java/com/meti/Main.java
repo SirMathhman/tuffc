@@ -204,7 +204,7 @@ public class Main {
 
 	private static PrefixRule createObjectRule() {
 		return new PrefixRule("out object ",
-													new InfixRule(new StringRule("name"), "{", new SuffixRule(new StringRule("body"), "}")));
+													new InfixRule(new StringRule("name"), " {", new SuffixRule(new StringRule("body"), "}")));
 	}
 
 	private static Path createPath(String extension) {
