@@ -135,13 +135,19 @@ public class Main {
 				if (c == ';' && depth == 0) {
 					segments.add(buffer.toString());
 					buffer = new StringBuilder();
-				} else {
-					if (c == '{') {
-						depth++;
-					}
-					if (c == '}') {
-						depth--;
-					}
+					continue;
+				}
+				if (c == '}' && depth == 1) {
+					depth--;
+					segments.add(buffer.toString());
+					buffer = new StringBuilder();
+					continue;
+				}
+				if (c == '{') {
+					depth++;
+				}
+				if (c == '}') {
+					depth--;
 				}
 			}
 			if (!buffer.isEmpty()) {
