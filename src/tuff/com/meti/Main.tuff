@@ -3,7 +3,7 @@ extern let { IOException } = java::io;
 extern let { Files, Path, Paths } = java::nio::file;
 extern let { ArrayList, Arrays, HashMap, List, Map, Optional } = java::util;
 extern let { Pattern } = java::util::regex;
-public class Main {
+out object Main {
 	private static final Map<List<String>, List<String>> imports = new HashMap<List<String>, List<String>>();
 
 	public static void main(String[] args) {
@@ -77,6 +77,19 @@ public class Main {
 
 				imports.get(namespace).add(leaf);
 				return Optional.empty();
+			}
+		}
+
+		final var i = stripped.indexOf("class ");
+		if (i >= 0) {
+			final var afterKeyword = stripped.substring(i + "class ".length()).strip();
+			final var i1 = afterKeyword.indexOf("{");
+			if (i1 >= 0) {
+				final var name = afterKeyword.substring(0, i1).strip();
+				if (afterKeyword.endsWith("}")) {
+					final var body = afterKeyword.substring(i1 + 1, afterKeyword.length() - 1);
+					return Optional.of("out object " + name + " {" + body + "}");
+				}
 			}
 		}
 

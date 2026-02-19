@@ -14,6 +14,19 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 public class Main {
+	private static final class MapNode {
+		private final Map<String, String> strings = new HashMap<String, String>();
+
+		private MapNode withString(String key, String value) {
+			this.strings.put(key, value);
+			return this;
+		}
+
+		private Optional<String> findString(String key) {
+			return Optional.ofNullable(this.strings.get(key));
+		}
+	}
+
 	private static final Map<List<String>, List<String>> imports = new HashMap<List<String>, List<String>>();
 
 	public static void main(String[] args) {
@@ -90,7 +103,30 @@ public class Main {
 			}
 		}
 
+		final var i = stripped.indexOf("class ");
+		if (i >= 0) {
+			final var afterKeyword = stripped.substring(i + "class ".length()).strip();
+			final var i1 = afterKeyword.indexOf("{");
+			if (i1 >= 0) {
+				final var name = afterKeyword.substring(0, i1).strip();
+				if (afterKeyword.endsWith("}")) {
+					final var body = afterKeyword.substring(i1 + 1, afterKeyword.length() - 1);
+					return generateObject(new MapNode().withString("name", name).withString("body", body));
+				}
+			}
+		}
+
 		return Optional.of(stripped);
+	}
+
+	private static Optional<String> generateObject(MapNode mapNode) {
+		final var maybeName = mapNode.findString("name");
+		final var maybeBody = mapNode.findString("body");
+		return maybeName.flatMap(name -> {
+			return maybeBody.flatMap(body -> {
+				return Optional.of("out object " + name + " {" + body + "}");
+			});
+		});
 	}
 
 	private static Path createPath(String extension) {
