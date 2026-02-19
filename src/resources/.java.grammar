@@ -1,4 +1,4 @@
-RootChild = Class | Interface
+RootChild = Class | Interface | Record
 
 Class = name
 Interface = name

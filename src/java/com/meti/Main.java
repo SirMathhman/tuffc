@@ -699,48 +699,62 @@ public class Main {
 			if (i >= 0) {
 				final var name = slice.substring(0, i).strip();
 				final var value = slice.substring(i + 1).strip();
-				if (value.contains("|")) {
-					final var split = value.split(Pattern.quote("|"));
-					final var list = Arrays.stream(split).map(String::strip).filter(member -> !member.isEmpty()).toList();
-					variants.put(name, list);
-
-					final var joined = String.join(", ", list);
-					segments.add("\tpublic sealed interface " + name + " permits " + joined + " {}");
-					continue;
-				}
-
-				final var args = value.split(Pattern.quote(","));
-				final var params = new ArrayList<String>();
-				for (var arg : args) {
-					final var arg1 = arg.strip();
-					if (arg1.startsWith("[") && arg1.endsWith("]")) {
-						final var substring = arg1.substring(1, arg1.length() - 1).strip();
-						final var split = substring.split(" ");
-						if (split.length >= 2) {
-							if (!imports.contains("java.util.List")) {
-								imports.add("java.util.List");
-							}
-
-							params.add("List<" + split[0] + "> " + split[1]);
-						}
-					} else {
-						params.add("String " + arg1);
-					}
-				}
-
-				final var superTypes = new ArrayList<String>();
-				for (var entry : variants.entrySet()) {
-					if (entry.getValue().contains(name)) {
-						superTypes.add(entry.getKey());
-					}
-				}
-
-				final var joinedSuperTypes = superTypes.isEmpty() ? "" : " implements " + String.join(", ", superTypes);
-				segments.add("\tpublic record " + name + "(" + String.join(", ", params) + ")" + joinedSuperTypes + " {}");
+				extracted(value, variants, name, segments, imports);
 			}
 		}
 
 		return new Tuple<List<String>, List<String>>(imports, segments);
+	}
+
+	private static void extracted(String value,
+																HashMap<String, List<String>> variants,
+																String name,
+																ArrayList<String> segments,
+																ArrayList<String> imports) {
+		if (value.contains("|")) {
+			final var split = value.split(Pattern.quote("|"));
+			final var list = Arrays.stream(split).map(String::strip).filter(member -> !member.isEmpty()).toList();
+			variants.put(name, list);
+
+			final var joined = String.join(", ", list);
+			segments.add("\tpublic sealed interface " + name + " permits " + joined + " {}");
+			return;
+		}
+
+		final var args = value.split(Pattern.quote(","));
+		final var params = new ArrayList<String>();
+		for (var arg : args) {
+			final var arg1 = arg.strip();
+			if (arg1.startsWith("[") && arg1.endsWith("]")) {
+				final var substring = arg1.substring(1, arg1.length() - 1).strip();
+				final var split = substring.split(" ");
+				if (split.length >= 2) {
+					if (!imports.contains("java.util.List")) {
+						imports.add("java.util.List");
+					}
+
+					params.add("List<" + split[0] + "> " + split[1]);
+				}
+			} else {
+				params.add("String " + arg1);
+			}
+		}
+
+		final var superTypes = new ArrayList<String>();
+		for (var entry : variants.entrySet()) {
+			if (entry.getValue().contains(name)) {
+				superTypes.add(entry.getKey());
+			}
+		}
+
+		final String joinedSuperTypes;
+		if (superTypes.isEmpty()) {
+			joinedSuperTypes = "";
+		} else {
+			joinedSuperTypes = " implements " + String.join(", ", superTypes);
+		}
+
+		segments.add("\tpublic record " + name + "(" + String.join(", ", params) + ")" + joinedSuperTypes + " {}");
 	}
 
 	private static Optional<Error> writeString(Path target, String output) {
