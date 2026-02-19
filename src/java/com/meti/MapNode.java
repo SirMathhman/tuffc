@@ -7,6 +7,7 @@ import java.util.Optional;
 
 final class MapNode {
 	private final Map<String, String> strings = new HashMap<String, String>();
+	private final Map<String, MapNode> nodes = new HashMap<String, MapNode>();
 	private final Map<String, List<MapNode>> nodeLists = new HashMap<String, List<MapNode>>();
 	private Optional<String> maybeType = Optional.empty();
 
@@ -75,5 +76,9 @@ final class MapNode {
 		TODO: something better
 		*/
 		return this.toString();
+	}
+
+	public Optional<MapNode> findNode(String key) {
+		return Optional.ofNullable(this.nodes.get(key));
 	}
 }

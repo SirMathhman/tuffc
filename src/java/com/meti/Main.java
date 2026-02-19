@@ -644,7 +644,14 @@ public class Main {
 			variants.put(name, list);
 
 			final var joined = String.join(", ", list);
-			segments.add("\tpublic sealed interface " + name + " permits " + joined + " {}");
+			final var s = list.stream().map(element -> {
+				final var s1 = element.toLowerCase();
+				final var aClass = element;
+				return "\n\t\t\tif (node.is(\"" + s1 + "\")) return " + aClass + ".deserialize(node);";
+			}).collect(Collectors.joining(""));
+
+			segments.add("\tpublic sealed interface " + name + " permits " + joined + " {\n\t\tstatic " + name +
+									 " deserialize(MapNode node) {" + s + "\n\t\t\treturn null;\n" + "\t\t}\n\t}");
 			return;
 		}
 
@@ -659,13 +666,18 @@ public class Main {
 				if (split.length >= 2) {
 					if (!imports.contains("java.util.List")) {
 						imports.add("java.util.List");
+						imports.add("java.util.ArrayList");
 					}
 
 					outputParams.add("List<" + split[0] + "> " + split[1]);
+					outputArgs.add(
+							"node.findNodeList(\"" + split[1] + "\").orElse(new ArrayList<MapNode>()).stream().map(" + split[0] +
+							"::deserialize).toList()");
 				}
 			} else if (arg1.contains(" ")) {
 				final var split = arg1.strip().split(" ");
 				outputParams.add(split[0] + " " + split[1]);
+				outputArgs.add(split[0] + ".deserialize(node.findNode(\"" + split[1] + "\").orElse(new MapNode()))");
 			} else {
 				outputParams.add("String " + arg1);
 				outputArgs.add("node.findString(\"" + arg1 + "\").orElse(\"?\")");
@@ -687,10 +699,8 @@ public class Main {
 		}
 
 		segments.add("\tpublic record " + name + "(" + String.join(", ", outputParams) + ")" + joinedSuperTypes + " {" +
-								 "\n\t\tpublic static void /*" +
-								 name +
-								 " */deserialize(MapNode node){\n\t\t\t// return new " + name + "(" +
-								 String.join(", ", outputArgs) + ");\n\t\t}" + "\n\t}");
+								 "\n\t\tpublic static " + name + " deserialize(MapNode node){\n\t\t\treturn new " + name + "(" +
+								 String.join(",\n\t\t\t\t", outputArgs) + ");\n\t\t}" + "\n\t}");
 	}
 
 	private static Optional<Error> writeString(Path target, String output) {
