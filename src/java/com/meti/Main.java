@@ -4,6 +4,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.stream.Collectors;
 
 public class Main {
 	public static void main(String[] args) {
@@ -14,11 +16,34 @@ public class Main {
 			if (!Files.exists(parent)) {
 				Files.createDirectories(parent);
 			}
-			Files.writeString(tuff, input);
+			Files.writeString(tuff, compile(input));
 		} catch (IOException e) {
 			//noinspection CallToPrintStackTrace
 			e.printStackTrace();
 		}
+	}
+
+	private static String compile(String input) {
+		final var segments = new ArrayList<String>();
+		var buffer = new StringBuilder();
+		for (var i = 0; i < input.length(); i++) {
+			final var c = input.charAt(i);
+			buffer.append(c);
+			if (c == ';') {
+				segments.add(buffer.toString());
+				buffer = new StringBuilder();
+			}
+		}
+		if (!buffer.isEmpty()) {
+			segments.add(buffer.toString());
+		}
+
+		return segments
+				.stream()
+				.filter(slice -> !slice.startsWith("package "))
+				.map(String::strip)
+				.map(slice -> slice + System.lineSeparator())
+				.collect(Collectors.joining());
 	}
 
 	private static Path createPath(String extension) {
