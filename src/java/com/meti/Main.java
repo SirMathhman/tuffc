@@ -648,6 +648,8 @@ public class Main {
 	}
 
 	private static Optional<Error> run() {
+		writeNodes();
+
 		final var javaSource = createPath("java");
 		final var tuffSource = createPath("tuff");
 
@@ -665,6 +667,45 @@ public class Main {
 				};
 			}
 		};
+	}
+
+	private static void writeNodes() {
+		final var javaGrammar = readString(Paths.get(".", "src", "resources", ".java.grammar"));
+		if (javaGrammar instanceof Ok<String, Error>(var input)) {
+			final var slices = input.split(Pattern.quote("\n"));
+
+			final var segments = new ArrayList<String>();
+			segments.add("package com.meti;");
+			segments.add("public class JavaAST {");
+			for (var slice : slices) {
+				final var i = slice.indexOf("=");
+				if (i >= 0) {
+					final var name = slice.substring(0, i).strip();
+					final var value = slice.substring(i + 1).strip();
+					final var args = value.split(Pattern.quote(","));
+					final var params = new ArrayList<String>();
+					for (var arg : args) {
+						final var arg1 = arg.strip();
+						if (arg1.startsWith("[") && arg1.endsWith("]")) {
+							final var substring = arg1.substring(1, arg1.length() - 1).strip();
+							final var split = substring.split(" ");
+							if (split.length >= 2) {
+								params.add("List<" + split[0] + "> " + split[1]);
+							}
+						} else {
+							params.add("String " + arg1);
+						}
+					}
+
+					segments.add("\tpublic record " + name + "(" + String.join(", ", params) + "){}");
+				}
+			}
+
+			segments.add("}");
+
+			writeString(Paths.get(".", "src", "java", "com", "meti", "JavaAST.java"),
+									String.join(System.lineSeparator(), segments));
+		}
 	}
 
 	private static Optional<Error> writeString(Path target, String output) {
