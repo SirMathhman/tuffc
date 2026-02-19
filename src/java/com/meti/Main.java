@@ -171,6 +171,36 @@ public class Main {
 		}
 	}
 
+	private record OrRule(List<Rule> rules) implements Rule {
+		public static Rule from(Rule... rules) {
+			return new OrRule(Arrays.asList(rules));
+		}
+
+		@Override
+		public Optional<MapNode> lex(String value) {
+			for (var rule : this.rules) {
+				final var lex = rule.lex(value);
+				if (lex.isPresent()) {
+					return lex;
+				}
+			}
+
+			return Optional.empty();
+		}
+
+		@Override
+		public Optional<String> generate(MapNode node) {
+			for (var rule : this.rules) {
+				final var generate = rule.generate(node);
+				if (generate.isPresent()) {
+					return generate;
+				}
+			}
+
+			return Optional.empty();
+		}
+	}
+
 	private static final Map<List<String>, List<String>> imports = new HashMap<List<String>, List<String>>();
 
 	private static <C, T> BiFunction<Optional<C>, Optional<T>, Optional<C>> optionally(BiFunction<C, T, C> mapper) {
@@ -244,7 +274,8 @@ public class Main {
 	private static InfixRule createClassRule() {
 		final var modifiers = new StringRule("modifiers");
 		final var name = new StripRule(new StringRule("name"));
-		final var body = new NodeListRule("body", new StringRule("?"));
+		final var body = new NodeListRule("body", OrRule.from(new StringRule("?")));
+
 		return new InfixRule(modifiers, "class ", new InfixRule(name, "{", new SuffixRule(body, "}")));
 	}
 
