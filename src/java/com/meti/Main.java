@@ -81,7 +81,8 @@ public class Main {
 		}
 	}
 
-	private record Tuple<A, B>(A left, B right) {}
+	private record Tuple<A, B>(A left, B right) {
+	}
 
 	private record Ok<T, X>(T value) implements Result<T, X> {
 		@Override
@@ -166,7 +167,8 @@ public class Main {
 		@Override
 		public Result<MapNode, CompileError> lex(String slice) {
 			if (!slice.endsWith(this.suffix())) {
-				final var error = new CompileError("Suffix '" + this.suffix + "' not present", new StringContext(slice));
+				final var error = new CompileError("Suffix '" + this.suffix + "' not present",
+						new StringContext(slice));
 
 				return new Err<MapNode, CompileError>(error);
 			}
@@ -226,7 +228,7 @@ public class Main {
 				return this.rule.lex(value.substring(this.prefix.length()));
 			}
 			return new Err<MapNode, CompileError>(new CompileError("Prefix '" + this.prefix + "' not present",
-																														 new StringContext(value)));
+					new StringContext(value)));
 		}
 
 		@Override
@@ -241,11 +243,12 @@ public class Main {
 			return this.splitter
 					.split(value)
 					.stream()
-					.<Result<List<MapNode>, CompileError>>reduce(new Ok<List<MapNode>, CompileError>(new ArrayList<MapNode>()),
-																											 (listCompileErrorResult, segment) -> listCompileErrorResult
-																													 .and(() -> this.rule.lex(segment))
-																													 .mapValue(Main::getMapNodes),
-																											 (_, next) -> next)
+					.<Result<List<MapNode>, CompileError>>reduce(
+							new Ok<List<MapNode>, CompileError>(new ArrayList<MapNode>()),
+							(listCompileErrorResult, segment) -> listCompileErrorResult
+									.and(() -> this.rule.lex(segment))
+									.mapValue(Main::getMapNodes),
+							(_, next) -> next)
 					.mapValue(segments -> new MapNode().withNodeList(this.key, segments));
 		}
 
@@ -258,13 +261,14 @@ public class Main {
 		}
 
 		private Result<String, CompileError> reduceChildren(List<MapNode> list) {
-			return list.stream().map(this.rule::generate).reduce(new Ok<String, CompileError>(""), optionally((s, s2) -> {
-				if (s.isEmpty()) {
-					return s2;
-				}
+			return list.stream().map(this.rule::generate).reduce(new Ok<String, CompileError>(""),
+					optionally((s, s2) -> {
+						if (s.isEmpty()) {
+							return s2;
+						}
 
-				return s + this.splitter.createDelimiter() + s2;
-			}), (_, next) -> next);
+						return s + this.splitter.createDelimiter() + s2;
+					}), (_, next) -> next);
 		}
 	}
 
@@ -278,8 +282,9 @@ public class Main {
 			return this.rules
 					.stream()
 					.reduce(new Accumulator<MapNode>(),
-									(accumulator, rule) -> rule.lex(value).match(accumulator::withValue, accumulator::withError),
-									(_, next) -> next)
+							(accumulator, rule) -> rule.lex(value).match(accumulator::withValue,
+									accumulator::withError),
+							(_, next) -> next)
 					.toResult()
 					.mapErr(children -> new CompileError("No rule matched", new StringContext(value), children));
 		}
@@ -289,8 +294,9 @@ public class Main {
 			return this.rules
 					.stream()
 					.reduce(new Accumulator<String>(),
-									(accumulator, rule) -> rule.generate(node).match(accumulator::withValue, accumulator::withError),
-									(_, next) -> next)
+							(accumulator, rule) -> rule.generate(node).match(accumulator::withValue,
+									accumulator::withError),
+							(_, next) -> next)
 					.toResult()
 					.mapErr(children -> new CompileError("No rule matched", new NodeContext(node), children));
 		}
@@ -320,14 +326,16 @@ public class Main {
 		public Result<MapNode, CompileError> lex(String value) {
 			return this.maybeRule
 					.map(rule -> rule.lex(value))
-					.orElseGet(() -> new Err<MapNode, CompileError>(new CompileError("Rule not set", new StringContext(value))));
+					.orElseGet(() -> new Err<MapNode, CompileError>(
+							new CompileError("Rule not set", new StringContext(value))));
 		}
 
 		@Override
 		public Result<String, CompileError> generate(MapNode node) {
 			return this.maybeRule
 					.map(rule -> rule.generate(node))
-					.orElseGet(() -> new Err<String, CompileError>(new CompileError("Rule not set", new NodeContext(node))));
+					.orElseGet(() -> new Err<String, CompileError>(
+							new CompileError("Rule not set", new NodeContext(node))));
 		}
 	}
 
@@ -344,7 +352,7 @@ public class Main {
 			}
 
 			return new Err<String, CompileError>(new CompileError("Type '" + this.type + "' not present",
-																														new NodeContext(node)));
+					new NodeContext(node)));
 		}
 	}
 
@@ -541,7 +549,8 @@ public class Main {
 	}
 
 	private static class EmptyRule implements Rule {
-		public EmptyRule() {}
+		public EmptyRule() {
+		}
 
 		@Override
 		public Result<MapNode, CompileError> lex(String value) {
@@ -567,7 +576,8 @@ public class Main {
 
 	private static <C, T> BiFunction<Result<C, CompileError>, Result<T, CompileError>, Result<C, CompileError>> optionally(
 			BiFunction<C, T, C> mapper) {
-		return (mapNodes, mapNode) -> mapNodes.flatMapValue(list -> mapNode.mapValue(inner -> mapper.apply(list, inner)));
+		return (mapNodes, mapNode) -> mapNodes
+				.flatMapValue(list -> mapNode.mapValue(inner -> mapper.apply(list, inner)));
 	}
 
 	public static void main(String[] args) {
@@ -605,14 +615,37 @@ public class Main {
 			segments.add("package com.meti;");
 
 			final var tuple = toLines(slices);
+			if (!tuple.left.contains("java.util.Optional")) {
+				tuple.left.add("java.util.Optional");
+			}
+			if (!tuple.left.contains("java.util.function.Function")) {
+				tuple.left.add("java.util.function.Function");
+			}
+			if (!tuple.left.contains("java.util.List")) {
+				tuple.left.add("java.util.List");
+			}
+			if (!tuple.left.contains("java.util.ArrayList")) {
+				tuple.left.add("java.util.ArrayList");
+			}
 			tuple.left.stream().map(slice -> "import " + slice + ";").forEach(segments::add);
 
 			segments.add("public class JavaAST {");
+			segments.add(
+					"\tprivate static <T> Optional<List<T>> deserializeList(Optional<List<MapNode>> maybeNodes, Function<MapNode, Optional<T>> deserializer) {");
+			segments.add("\t\tfinal var nodes = maybeNodes.orElse(new ArrayList<MapNode>());");
+			segments.add("\t\tfinal var list = new ArrayList<T>();");
+			segments.add("\t\tfor (var child : nodes) {");
+			segments.add("\t\t\tfinal var maybeItem = deserializer.apply(child);");
+			segments.add("\t\t\tif (maybeItem.isEmpty()) return Optional.empty();");
+			segments.add("\t\t\tlist.add(maybeItem.get());");
+			segments.add("\t\t}");
+			segments.add("\t\treturn Optional.of(list);");
+			segments.add("\t}");
 			segments.addAll(tuple.right);
 			segments.add("}");
 
 			writeString(Paths.get(".", "src", "java", "com", "meti", "JavaAST.java"),
-									String.join(System.lineSeparator(), segments));
+					String.join(System.lineSeparator(), segments));
 		}
 	}
 
@@ -634,21 +667,23 @@ public class Main {
 	}
 
 	private static void extracted(String value,
-																HashMap<String, List<String>> variants,
-																String name,
-																ArrayList<String> segments,
-																ArrayList<String> imports) {
+			HashMap<String, List<String>> variants,
+			String name,
+			ArrayList<String> segments,
+			ArrayList<String> imports) {
 		if (value.contains("|")) {
 			final var split = value.split(Pattern.quote("|"));
 			final var list = Arrays.stream(split).map(String::strip).filter(member -> !member.isEmpty()).toList();
 			variants.put(name, list);
 
 			final var joined = String.join(", ", list);
-			final var s = list.stream().map(element -> {
-				final var s1 = element.toLowerCase();
-				final var aClass = element;
-				return "\n\t\t\tif (node.is(\"" + s1 + "\")) return " + aClass + ".deserialize(node);";
-			}).collect(Collectors.joining(""));
+			final var head = list.getFirst() + ".deserialize(node).map(value -> (" + name + ") value)";
+			final var tail = list
+					.stream()
+					.skip(1)
+					.map(element -> "\n\t\t\t\t.or(() -> " + element +
+							".deserialize(node).map(value -> (" + name + ") value))")
+					.collect(Collectors.joining(""));
 
 			final var superTypes = new ArrayList<String>();
 			for (var entry : variants.entrySet()) {
@@ -658,37 +693,36 @@ public class Main {
 			}
 
 			final var s1 = superTypes.isEmpty() ? "" : " extends " + String.join(", ", superTypes);
-			segments.add("\tpublic sealed interface " + name + s1 + " permits " + joined + " {\n\t\tstatic " + name +
-									 " deserialize(MapNode node) {" + s + "\n\t\t\treturn null;\n" + "\t\t}\n\t}");
+			segments.add("\tpublic sealed interface " + name + s1 + " permits " + joined + " {\n\t\tstatic Optional<" +
+					name + "> deserialize(MapNode node) {\n\t\t\treturn " + head + tail + ";\n" +
+					"\t\t}\n\t}");
 			return;
 		}
 
 		final var inputParams = value.split(Pattern.quote(","));
 		final var outputParams = new ArrayList<String>();
-		final var outputArgs = new ArrayList<String>();
+		final var maybeArgNames = new ArrayList<String>();
+		final var maybeArgValues = new ArrayList<String>();
 		for (var arg : inputParams) {
 			final var arg1 = arg.strip();
 			if (arg1.startsWith("[") && arg1.endsWith("]")) {
 				final var substring = arg1.substring(1, arg1.length() - 1).strip();
 				final var split = substring.split(" ");
 				if (split.length >= 2) {
-					if (!imports.contains("java.util.List")) {
-						imports.add("java.util.List");
-						imports.add("java.util.ArrayList");
-					}
-
 					outputParams.add("List<" + split[0] + "> " + split[1]);
-					outputArgs.add(
-							"node.findNodeList(\"" + split[1] + "\").orElse(new ArrayList<MapNode>()).stream().map(" + split[0] +
-							"::deserialize).toList()");
+					maybeArgNames.add("maybe" + split[1].substring(0, 1).toUpperCase() + split[1].substring(1));
+					maybeArgValues.add(
+							"deserializeList(node.findNodeList(\"" + split[1] + "\"), " + split[0] + "::deserialize)");
 				}
 			} else if (arg1.contains(" ")) {
 				final var split = arg1.strip().split(" ");
 				outputParams.add(split[0] + " " + split[1]);
-				outputArgs.add(split[0] + ".deserialize(node.findNode(\"" + split[1] + "\").orElse(new MapNode()))");
+				maybeArgNames.add("maybe" + split[1].substring(0, 1).toUpperCase() + split[1].substring(1));
+				maybeArgValues.add("node.findNode(\"" + split[1] + "\").flatMap(" + split[0] + "::deserialize)");
 			} else {
 				outputParams.add("String " + arg1);
-				outputArgs.add("node.findString(\"" + arg1 + "\").orElse(\"?\")");
+				maybeArgNames.add("maybe" + arg1.substring(0, 1).toUpperCase() + arg1.substring(1));
+				maybeArgValues.add("node.findString(\"" + arg1 + "\")");
 			}
 		}
 
@@ -706,9 +740,21 @@ public class Main {
 			joinedSuperTypes = " implements " + String.join(", ", superTypes);
 		}
 
+		final var deserializerLines = new ArrayList<String>();
+		for (var i = 0; i < maybeArgNames.size(); i++) {
+			deserializerLines.add("\n\t\t\tfinal var " + maybeArgNames.get(i) + " = " + maybeArgValues.get(i) + ";");
+			deserializerLines.add("\n\t\t\tif (" + maybeArgNames.get(i) + ".isEmpty()) return Optional.empty();");
+		}
+
+		final var constructorArgs = maybeArgNames.stream().map(maybe -> maybe + ".get()")
+				.collect(Collectors.joining(",\n\t\t\t\t"));
+
 		segments.add("\tpublic record " + name + "(" + String.join(", ", outputParams) + ")" + joinedSuperTypes + " {" +
-								 "\n\t\tpublic static " + name + " deserialize(MapNode node){\n\t\t\treturn new " + name + "(" +
-								 String.join(",\n\t\t\t\t", outputArgs) + ");\n\t\t}" + "\n\t}");
+				"\n\t\tpublic static Optional<" + name + "> deserialize(MapNode node){\n\t\t\tif (!node.is(\""
+				+ name.toLowerCase() +
+				"\")) return Optional.empty();"
+				+ String.join("", deserializerLines) +
+				"\n\t\t\treturn Optional.of(new " + name + "(" + constructorArgs + "));\n\t\t}" + "\n\t}");
 	}
 
 	private static Optional<Error> writeString(Path target, String output) {
@@ -745,12 +791,12 @@ public class Main {
 		moduleMemberRule.set(OrRule.from(createExternLetRule(), createObjectRule(moduleMemberRule)));
 
 		final var classRule = createClassRule(classSegmentRule);
-		final var sourceRootRule =
-				new NodeListRule("children", createJavaRootSegmentRule(classRule), new FoldingSplitter(new StatementFolder()));
+		final var sourceRootRule = new NodeListRule("children", createJavaRootSegmentRule(classRule),
+				new FoldingSplitter(new StatementFolder()));
 
 		final var targetRootRule = new NodeListRule("children",
-																								new SuffixRule(OrRule.from(moduleMemberRule), System.lineSeparator()),
-																								new FoldingSplitter(new StatementFolder()));
+				new SuffixRule(OrRule.from(moduleMemberRule), System.lineSeparator()),
+				new FoldingSplitter(new StatementFolder()));
 
 		return sourceRootRule.lex(input).flatMapValue(Main::transformAST).flatMapValue(targetRootRule::generate);
 	}
@@ -760,8 +806,8 @@ public class Main {
 		final var namespace = new NodeListRule("namespace", new StringRule("segment"), new DelimiterSplitter("::"));
 
 		return new TypeRule("extern let",
-												new PrefixRule("extern let { ",
-																			 new InfixRule(children, " } = ", new SuffixRule(namespace, ";"))));
+				new PrefixRule("extern let { ",
+						new InfixRule(children, " } = ", new SuffixRule(namespace, ";"))));
 	}
 
 	private static Result<MapNode, CompileError> transformAST(MapNode node) {
@@ -779,8 +825,8 @@ public class Main {
 			final var namespace = key.stream().map(segment -> new MapNode().withString("segment", segment)).toList();
 
 			newChildren.add(new MapNode("extern let")
-													.withNodeList("children", children)
-													.withNodeList("namespace", namespace));
+					.withNodeList("children", children)
+					.withNodeList("namespace", namespace));
 		});
 
 		newChildren.addAll(oldChildren);
@@ -819,9 +865,9 @@ public class Main {
 
 	private static Rule createJavaRootSegmentRule(Rule classRule) {
 		return OrRule.from(createWhitespaceRule(),
-											 createNamespacedRule("package"),
-											 createNamespacedRule("import"),
-											 classRule);
+				createNamespacedRule("package"),
+				createNamespacedRule("import"),
+				classRule);
 	}
 
 	private static TypeRule createWhitespaceRule() {
@@ -847,14 +893,15 @@ public class Main {
 
 	private static Rule createClassSegmentRule(Rule classMemberRule) {
 		return OrRule.from(createStructureRule("interface", classMemberRule),
-											 createStructureRule("record", classMemberRule),
-											 createClassRule(classMemberRule));
+				createStructureRule("record", classMemberRule),
+				createClassRule(classMemberRule));
 	}
 
 	private static Rule createObjectRule(LazyRule moduleMemberRule) {
 		final var name = new StringRule("name");
 		final var body = new NodeListRule("body", moduleMemberRule, new FoldingSplitter(new StatementFolder()));
-		return new TypeRule("object", new PrefixRule("out object ", new InfixRule(name, " {", new SuffixRule(body, "}"))));
+		return new TypeRule("object",
+				new PrefixRule("out object ", new InfixRule(name, " {", new SuffixRule(body, "}"))));
 	}
 
 	private static Path createPath(String extension) {
