@@ -236,6 +236,18 @@ function transformBlockWithDrops(
   };
 
   const registerMaybeDestructorLocal = (stmt: ProgramNode) => {
+    // Register local type aliases with destructors into the shared map
+    if (
+      stmt.kind === "TypeAlias" &&
+      typeof (stmt as any).destructorName === "string" &&
+      (stmt as any).destructorName.length > 0
+    ) {
+      aliasDestructorByName.set(
+        String((stmt as any).name),
+        String((stmt as any).destructorName),
+      );
+      return;
+    }
     if (stmt.kind !== "LetDecl") return;
     const typeName =
       stmt.type?.kind === "NamedType" ? String(stmt.type?.name) : undefined;

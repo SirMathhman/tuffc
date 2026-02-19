@@ -1107,6 +1107,35 @@ export function parse(tokens: Token[]): ParseResult<Program> {
       return parsePostfix(fnExprAttempt.value);
     }
 
+    // Array literal: [a, b, c]
+    if (at("symbol", "[")) {
+      const startTok = eat();
+      const elements: Expr[] = [];
+      if (!at("symbol", "]")) {
+        while (true) {
+          const elemResult = parseExpression();
+          if (!elemResult.ok) return elemResult;
+          elements.push(elemResult.value);
+          if (!at("symbol", ",")) break;
+          eat();
+          if (at("symbol", "]")) break; // trailing comma
+        }
+      }
+      const closeResult = expect(
+        "symbol",
+        "]",
+        "Expected ']' after array literal",
+      );
+      if (!closeResult.ok) return closeResult;
+      return parsePostfix({
+        kind: "ArrayExpr",
+        elements,
+        loc: startTok.loc,
+        start: startTok.start,
+        end: closeResult.value.end,
+      });
+    }
+
     if (at("symbol", "(")) {
       eat();
       const exprResult = parseExpression();
@@ -1523,6 +1552,14 @@ export function parse(tokens: Token[]): ParseResult<Program> {
         t.type === "keyword" ? (t.value as string) : (t.value as string);
       const prec = precedence[op];
       if (prec === undefined || prec < minPrec) break;
+      // Don't consume op= sequences (+=, -=, etc.) as binary operators; let statement parser handle them
+      if (
+        t.type === "symbol" &&
+        ["+", "-", "*", "/", "%", "&", "|", "^"].includes(op) &&
+        peek(1).type === "symbol" &&
+        peek(1).value === "="
+      )
+        break;
       eat();
       if (op === "is") {
         const patternResult = parsePattern();
@@ -1624,6 +1661,14 @@ export function parse(tokens: Token[]): ParseResult<Program> {
         "Expected ')' in tuple destructuring",
       );
       if (!tCloseResult.ok) return tCloseResult;
+      // Optional type annotation: let (a, b) : (T1, T2) = expr;
+      let tupleType = undefined;
+      if (at("symbol", ":")) {
+        eat();
+        const tupleTypeResult = parseType();
+        if (!tupleTypeResult.ok) return tupleTypeResult;
+        tupleType = tupleTypeResult.value;
+      }
       const tEqResult = expect(
         "symbol",
         "=",
@@ -2728,6 +2773,36 @@ export function parse(tokens: Token[]): ParseResult<Program> {
       const semiResult = expect("symbol", ";", "Expected ';' after assignment");
       if (!semiResult.ok) return semiResult;
       return ok({ kind: "AssignStmt", target: expr, value: valueResult.value });
+    }
+    // Compound assignment: x += v, x -= v, etc. (lexed as two tokens: op then =)
+    const COMPOUND_OPS = new Set(["+", "-", "*", "/", "%", "&", "|", "^"]);
+    if (
+      COMPOUND_OPS.has(peek().value as string) &&
+      at("symbol", peek().value as string) &&
+      peek(1).type === "symbol" &&
+      peek(1).value === "="
+    ) {
+      const op = eat().value as string;
+      eat(); // consume '='
+      const valueResult = parseExpression();
+      if (!valueResult.ok) return valueResult;
+      const semiResult = expect(
+        "symbol",
+        ";",
+        "Expected ';' after compound assignment",
+      );
+      if (!semiResult.ok) return semiResult;
+      return ok({
+        kind: "AssignStmt",
+        target: expr,
+        value: {
+          kind: "BinaryExpr",
+          op,
+          left: expr,
+          right: valueResult.value,
+          loc: expr.loc,
+        },
+      });
     }
     if (at("symbol", ";")) {
       eat();

@@ -781,6 +781,16 @@ export function borrowcheck(ast, options = {}): BorrowcheckResult<unknown> {
       case "ContractDecl":
       case "IntoStmt":
         return ok(undefined);
+      case "TypeAlias": {
+        // Register local destructor aliases (e.g. defined inside function bodies)
+        if (
+          typeof stmt.destructorName === "string" &&
+          stmt.destructorName.length > 0
+        ) {
+          destructorAliasByName.set(stmt.name, stmt.destructorName);
+        }
+        return ok(undefined);
+      }
       case "DropStmt": {
         return checkExpr(
           {

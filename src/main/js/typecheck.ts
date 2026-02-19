@@ -466,12 +466,18 @@ export function typecheck(
     if ((fnNode.params ?? []).length !== 1) return false;
     const p = fnNode.params[0];
     if (p?.name !== "this") return false;
-    if (named(fnNode.returnType) !== "Void") return false;
     const pt = p?.type;
 
     // Preferred form: alias receiver value (e.g. Alloc<...>)
-    if (pt?.kind === "NamedType") {
-      return pt.name === aliasName;
+    if (pt?.kind === "NamedType" && pt.name === aliasName) {
+      return true;
+    }
+
+    // Also accept the underlying (aliased) type as the receiver
+    const aliasInfo = typeAliases.get(aliasName);
+    if (aliasInfo && pt?.kind === "NamedType") {
+      const underlyingName = named(aliasInfo);
+      if (underlyingName && pt.name === underlyingName) return true;
     }
 
     // Back-compat: *move Alias
@@ -671,6 +677,53 @@ export function typecheck(
 
     return ok(true);
   };
+
+  // This-shape analysis: compute which fields each function's `this` contains.
+  // Used to type-check member access on values that are the `this` of a specific fn.
+  const fnThisShapes = new Map();
+  const fnThisReturner = new Set();
+  const collectFnThisShapes = (nodes) => {
+    for (const node of nodes ?? []) {
+      if (node?.kind !== "FnDecl" || node.expectDecl === true) continue;
+      const shape = new Set();
+      for (const p of node.params ?? []) {
+        shape.add(p.name);
+      }
+      for (const stmt of node.body?.statements ?? []) {
+        if (stmt.kind === "LetDecl") shape.add(stmt.name);
+        if (stmt.kind === "FnDecl") shape.add(stmt.name);
+      }
+      fnThisShapes.set(node.name, shape);
+      const body = node.body;
+      const bodyStmts = body?.kind === "Block" ? (body.statements ?? []) : [];
+      const lastStmt = bodyStmts[bodyStmts.length - 1];
+      const returnsThis =
+        (body?.kind === "Identifier" && body.name === "this") ||
+        (lastStmt?.kind === "ExprStmt" &&
+          lastStmt.expr?.kind === "Identifier" &&
+          lastStmt.expr.name === "this");
+      if (returnsThis) {
+        fnThisReturner.add(node.name);
+        if (!node.returnType) {
+          node.returnType = {
+            kind: "NamedType",
+            name: `__this_${node.name}`,
+            genericArgs: [],
+          };
+        }
+      }
+      collectFnThisShapes(node.body?.statements);
+    }
+  };
+  collectFnThisShapes(ast.body);
+  // Register this-returning functions as type aliases so annotations like `let x: func = func(...)` work.
+  for (const fnName of fnThisReturner) {
+    typeAliases.set(fnName, {
+      kind: "NamedType",
+      name: `__this_${fnName}`,
+      genericArgs: [],
+    });
+  }
 
   for (const node of ast.body) {
     if (node.kind === "StructDecl") {
@@ -995,13 +1048,49 @@ export function typecheck(
     return out;
   };
 
+  const NUMERIC_WIDTH = new Map([
+    ["I8", 8],
+    ["U8", 8],
+    ["I16", 16],
+    ["U16", 16],
+    ["I32", 32],
+    ["U32", 32],
+    ["I64", 64],
+    ["U64", 64],
+    ["I128", 128],
+    ["U128", 128],
+    ["USize", 64],
+    ["F32", 32],
+    ["F64", 64],
+  ]);
   const areCompatibleNumericTypes = (expected, actual, actualInfo) => {
     if (expected === actual) return true;
     if (!NUMERIC.has(expected) || !NUMERIC.has(actual)) return false;
-    if (UNSIGNED.has(expected)) {
-      return actualInfo.min !== undefined && actualInfo.min >= 0;
+    // Default I32 (no explicit suffix): use old value-range logic
+    if (actual === "I32") {
+      if (UNSIGNED.has(expected)) {
+        return actualInfo.min !== undefined && actualInfo.min >= 0;
+      }
+      return true;
     }
-    return true;
+    // Explicit suffix: reject narrowing (where actual is strictly wider than expected)
+    const expectedWidth = NUMERIC_WIDTH.get(expected) ?? 0;
+    const actualWidth = NUMERIC_WIDTH.get(actual) ?? 0;
+    const expectedSigned = !UNSIGNED.has(expected);
+    const actualSigned = !UNSIGNED.has(actual);
+    // Same signedness: allow widening (actual_width ≤ expected_width)
+    if (expectedSigned === actualSigned) return actualWidth <= expectedWidth;
+    // Cross-signedness: allow U→I widening only when actual is strictly narrower
+    if (!actualSigned && expectedSigned) return actualWidth < expectedWidth;
+    // Signed → unsigned: check value range
+    if (actualSigned && !expectedSigned) {
+      return (
+        actualInfo.min !== undefined &&
+        actualInfo.min >= 0 &&
+        actualWidth <= expectedWidth
+      );
+    }
+    return false;
   };
 
   const ensureBoolCondition = (condition, scope, facts, fallbackLoc) => {
@@ -1055,7 +1144,28 @@ export function typecheck(
   const inferExpr = (expr, scope, facts): TypecheckResult<unknown> => {
     switch (expr.kind) {
       case "NumberLiteral": {
-        const numberName = expr.numberType === "USize" ? "USize" : "I32";
+        // If an explicit type suffix is given (e.g. 0U16, 100U8), use it as the inferred type
+        const NUMERIC_SUFFIXES = new Set([
+          "I8",
+          "I16",
+          "I32",
+          "I64",
+          "I128",
+          "U8",
+          "U16",
+          "U32",
+          "U64",
+          "U128",
+          "USize",
+          "F32",
+          "F64",
+        ]);
+        const explicitType =
+          expr.numberType && NUMERIC_SUFFIXES.has(expr.numberType)
+            ? expr.numberType
+            : undefined;
+        const numberName =
+          explicitType ?? (expr.numberType === "USize" ? "USize" : "I32");
         return ok({
           name: numberName,
           min: expr.value,
@@ -1636,11 +1746,26 @@ export function typecheck(
 
             // Allow implicit `this` when first param is named "this" and caller omits it
             const firstParamIsThis = fn.params[0]?.name === "this";
+            const receiverIsThisKeyword =
+              expr.callStyle === "method-sugar" &&
+              expr.args[0]?.kind === "Identifier" &&
+              expr.args[0]?.name === "this";
+            // implicitThisCount: fn params omitted by caller (e.g. calling fn(this,x) as obj.fn(x))
             const implicitThisCount =
               firstParamIsThis && expr.args.length === fn.params.length - 1
                 ? 1
                 : 0;
-            if (expr.args.length !== fn.params.length - implicitThisCount) {
+            // extraReceiverCount: extra `this` receiver that fn doesn't expect as param
+            const extraReceiverCount =
+              receiverIsThisKeyword &&
+              fn.params.length === 0 &&
+              expr.args.length === 1
+                ? 1
+                : 0;
+            if (
+              expr.args.length - extraReceiverCount !==
+              fn.params.length - implicitThisCount
+            ) {
               return err(
                 new TuffError(
                   `Function ${fn.name} expects ${fn.params.length} args, got ${expr.args.length}`,
@@ -1655,7 +1780,11 @@ export function typecheck(
               );
             }
 
-            for (let idx = 0; idx < expr.args.length; idx++) {
+            for (
+              let idx = 0;
+              idx < expr.args.length - extraReceiverCount;
+              idx++
+            ) {
               const argType = argTypes[idx];
               const expectedInfo = resolveTypeInfo(
                 fn.params[idx + implicitThisCount].type,
@@ -1759,6 +1888,48 @@ export function typecheck(
               return ok(resolveTypeInfo(methodReturn));
             }
           }
+
+          // Handle __this_<fn> receiver — typed this-scope member access
+          if (
+            typeof receiverName === "string" &&
+            receiverName.startsWith("__this_")
+          ) {
+            const receiverFnName = receiverName.slice(7);
+            const shape = fnThisShapes.get(receiverFnName);
+            if (shape !== undefined) {
+              const methodName = expr.callee.name;
+              if (!shape.has(methodName)) {
+                return err(
+                  new TuffError(
+                    `'${methodName}' is not a member of this context for function '${receiverFnName}'`,
+                    expr.loc,
+                    {
+                      code: "E_TYPE_MEMBER_NOT_FOUND",
+                      hint: `'${methodName}' is not declared in '${receiverFnName}'. Available members: ${[...shape].join(", ") || "(none)"}.`,
+                    },
+                  ),
+                );
+              }
+              for (const a of expr.args ?? []) {
+                const argResult = inferExpr(a, scope, facts);
+                if (!argResult.ok) return argResult;
+              }
+              if (fnThisReturner.has(methodName)) {
+                return ok({
+                  name: `__this_${methodName}`,
+                  min: undefined,
+                  max: undefined,
+                  nonZero: false,
+                });
+              }
+              return ok({
+                name: "Unknown",
+                min: undefined,
+                max: undefined,
+                nonZero: false,
+              });
+            }
+          }
         }
 
         for (const a of expr.args) {
@@ -1783,6 +1954,29 @@ export function typecheck(
               hint: "Use if (p != 0USize) or if (0USize != p) before accessing members.",
             }),
           );
+        }
+        // Handle __this_<fn> type — check property exists in function's this-scope
+        if (typeof t.name === "string" && t.name.startsWith("__this_")) {
+          const fnName = t.name.slice(7);
+          const shape = fnThisShapes.get(fnName);
+          if (
+            shape !== undefined &&
+            expr.property !== "length" &&
+            expr.property !== "init"
+          ) {
+            if (!shape.has(expr.property)) {
+              return err(
+                new TuffError(
+                  `Property '${expr.property}' does not exist in this context for function '${fnName}'`,
+                  expr.loc,
+                  {
+                    code: "E_TYPE_MEMBER_NOT_FOUND",
+                    hint: `'${expr.property}' is not declared in '${fnName}'. Available members: ${[...shape].join(", ") || "(none)"}.`,
+                  },
+                ),
+              );
+            }
+          }
         }
         if (expr.property === "length" || expr.property === "init") {
           if (t.pointerShape === "fat-array") {
@@ -2193,6 +2387,12 @@ export function typecheck(
               s.name,
               s.aliasedType ?? { kind: "NamedType", name: "Unknown" },
             );
+            if (
+              s.kind === "TypeAlias" &&
+              typeof s.destructorName === "string"
+            ) {
+              destructorsByAlias.set(s.name, s.destructorName);
+            }
           }
           if (s.kind === "FnDecl") {
             const paramInfos = (s.params ?? []).map((p) =>
@@ -2456,6 +2656,7 @@ export function typecheck(
         const expected = expectedInfo.name;
         if (
           expected &&
+          expected !== "Unknown" &&
           bodyType.name !== "Unknown" &&
           bodyType.name !== "Void" &&
           !areCompatibleNamedTypes(expected, bodyType.name) &&
@@ -2537,8 +2738,10 @@ export function typecheck(
     }
   };
 
+  // Share scope across top-level statements so `let x = f(); x.prop` works.
+  const topLevelScope = new Map();
   for (const node of ast.body) {
-    const result = inferNode(node, new Map(), new Map());
+    const result = inferNode(node, topLevelScope, new Map());
     if (!result.ok) return result;
   }
 

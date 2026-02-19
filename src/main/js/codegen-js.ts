@@ -10,6 +10,14 @@ function resolveEmittedIdentifier(name) {
   return name;
 }
 
+function resolveThisExpression() {
+  for (let i = functionEmitStack.length - 1; i >= 0; i -= 1) {
+    const value = functionEmitStack[i]?.thisExpr;
+    if (typeof value === "string" && value.length > 0) return value;
+  }
+  return "this";
+}
+
 function emitPatternGuard(valueExpr, pattern) {
   switch (pattern.kind) {
     case "WildcardPattern":
@@ -38,6 +46,7 @@ function emitExpr(expr) {
       // Same for char literals
       return `"${expr.value}"`;
     case "Identifier":
+      if (expr.name === "this") return resolveThisExpression();
       return resolveEmittedIdentifier(expr.name);
     case "UnaryExpr":
       if (expr.op === "&" || expr.op === "&mut") {
@@ -91,7 +100,9 @@ function emitExpr(expr) {
         const staticArgs = [`__recv`, rest]
           .filter((x) => x.length > 0)
           .join(", ");
-        return `(() => { const __recv = ${receiver}; const __dyn = __recv?.table?.${expr.callee.name}; return __dyn ? __dyn(${dynArgs}) : ${emitExpr(expr.callee)}(${staticArgs}); })()`;
+        const methodKey = JSON.stringify(expr.callee.name);
+        // Priority: (1) direct property fn (this-captured), (2) vtable, (3) global static
+        return `(() => { const __recv = ${receiver}; const __prop = __recv?.[${methodKey}]; if (typeof __prop === "function") return __prop(${rest}); const __dyn = __recv?.table?.${expr.callee.name}; return __dyn ? __dyn(${dynArgs}) : ${emitExpr(expr.callee)}(${staticArgs}); })()`;
       }
       return `${emitExpr(expr.callee)}(${expr.args.map(emitExpr).join(", ")})`;
     case "MemberExpr":
@@ -184,8 +195,15 @@ function emitExpr(expr) {
     }
     case "TupleExpr":
       return `[${(expr.elements ?? []).map(emitExpr).join(", ")}]`;
-    case "RangeExpr":
-      return `{ start: ${emitExpr(expr.start)}, end: ${emitExpr(expr.end)} }`;
+    case "ArrayExpr": {
+      const elems = (expr.elements ?? []).map(emitExpr).join(", ");
+      return `(function() { const __a = [${elems}]; Object.defineProperty(__a, 'init', { get() { return __a.length; } }); return __a; })()`;
+    }
+    case "RangeExpr": {
+      const lo = emitExpr(expr.from);
+      const hi = emitExpr(expr.to);
+      return `(function() { let __cur = ${lo}, __hi = ${hi}; return function() { if (__cur > __hi) return [true, __hi]; let __val = __cur++; return [false, __val]; }; })()`;
+    }
     default:
       return "undefined";
   }
@@ -202,11 +220,21 @@ function emitStmt(stmt) {
       }
       return lines.join("\n");
     }
-    case "LetDecl":
+    case "LetDecl": {
       // Use 'let' to allow reassignment during bootstrap
-      return stmt.value
+      const decl = stmt.value
         ? `let ${stmt.name} = ${emitExpr(stmt.value)};`
         : `let ${stmt.name};`;
+      const fnCtx = functionEmitStack[functionEmitStack.length - 1];
+      if (
+        fnCtx?.thisExpr === "__tuff_this" &&
+        stmt.name !== "__tuff_this" &&
+        stmt.name !== "__this_param"
+      ) {
+        return `${decl} __tuff_this.${stmt.name} = ${stmt.name};`;
+      }
+      return decl;
+    }
     case "TypeAlias":
     case "ExternTypeDecl":
       return `// type alias: ${stmt.name}`;
@@ -214,8 +242,28 @@ function emitStmt(stmt) {
       return `// module import placeholder: { ${stmt.names.join(", ")} } = ${stmt.modulePath}`;
     case "ExprStmt":
       return `${emitExpr(stmt.expr)};`;
-    case "AssignStmt":
-      return `${emitExpr(stmt.target)} = ${emitExpr(stmt.value)};`;
+    case "AssignStmt": {
+      const assign = `${emitExpr(stmt.target)} = ${emitExpr(stmt.value)};`;
+      const fnCtx = functionEmitStack[functionEmitStack.length - 1];
+      if (
+        fnCtx?.thisExpr === "__tuff_this" &&
+        stmt.target?.kind === "Identifier"
+      ) {
+        return `${assign} __tuff_this.${stmt.target.name} = ${stmt.target.name};`;
+      }
+      // this.x = value → also update local var x
+      if (
+        fnCtx?.thisExpr === "__tuff_this" &&
+        stmt.target?.kind === "MemberExpr" &&
+        stmt.target.object?.kind === "Identifier" &&
+        stmt.target.object.name === "this"
+      ) {
+        const propName = stmt.target.property;
+        const val = emitExpr(stmt.value);
+        return `${propName} = ${val}; __tuff_this.${propName} = ${propName};`;
+      }
+      return assign;
+    }
     case "ReturnStmt":
       return stmt.value ? `return ${emitExpr(stmt.value)};` : "return;";
     case "IfStmt":
@@ -263,7 +311,8 @@ function emitStmt(stmt) {
       }
       const n = stmt.target.name;
       const d = stmt.destructorName;
-      return `if (${n} !== undefined) { ${d}(({ __ptr_get: () => ${n}, __ptr_set: (__v) => { ${n} = __v; } })); ${n} = undefined; }`;
+      // Pass value directly (not a pointer wrapper) since destructors consume the value
+      return `if (${n} !== undefined) { ${d}(${n}); ${n} = undefined; }`;
     }
     case "Block":
       return emitBlock(stmt);
@@ -281,25 +330,79 @@ function emitStmt(stmt) {
           return p.name;
         })
         .join(", ");
+      const hasExplicitThisParam = (stmt.params ?? []).some(
+        (p) => p?.name === "this",
+      );
+      const visibleParamNames = (stmt.params ?? [])
+        .filter((p) => p?.name !== "this")
+        .map((p) => p?.name)
+        .filter((name) => typeof name === "string" && name.length > 0);
+      // Check if the enclosing function has a synthetic this.
+      // If so, we capture it BEFORE declaring this function (in outer scope) to avoid
+      // JavaScript TDZ issues caused by inner's own `let __tuff_this` shadowing the outer.
+      const enclosingCtx = functionEmitStack[functionEmitStack.length - 1];
+      const outerHasTuffThis = enclosingCtx?.thisExpr === "__tuff_this";
+      const captureVar = `__tuff_outer_for_${stmt.name}`;
+      // Preamble runs in OUTER scope — captures outer's __tuff_this before shadowing.
+      const outerCapturePreamble =
+        outerHasTuffThis && !hasExplicitThisParam
+          ? `const ${captureVar} = __tuff_this;\n`
+          : "";
+      const buildSyntheticThisInit = () => {
+        if (hasExplicitThisParam) return "";
+        const fields = visibleParamNames.map((n) => `${n}: ${n}`).join(", ");
+        if (outerHasTuffThis) {
+          const outerField = fields
+            ? `, this: ${captureVar}`
+            : `this: ${captureVar}`;
+          return `let __tuff_this = { ${fields}${outerField} };`;
+        }
+        return `let __tuff_this = { ${fields} };`;
+      };
+      const syntheticThisInit = buildSyntheticThisInit();
+      const registrationSuffix =
+        outerHasTuffThis &&
+        stmt.name !== "__tuff_this" &&
+        stmt.name !== "__this_param"
+          ? `\n__tuff_this.${stmt.name} = ${stmt.name};`
+          : "";
       if (stmt.body.kind === "Block") {
         const localFns = new Set(
           (stmt.body?.statements ?? [])
             .filter((s) => s?.kind === "FnDecl")
             .map((s) => s.name),
         );
-        functionEmitStack.push({ localFns, fnName: stmt.name, paramRename });
+        functionEmitStack.push({
+          localFns,
+          fnName: stmt.name,
+          paramRename,
+          thisExpr: hasExplicitThisParam ? "__this_param" : "__tuff_this",
+        });
         const emittedBody = emitFunctionBlock(stmt.body);
         functionEmitStack.pop();
-        return `function ${stmt.name}(${params}) ${emittedBody}`;
+        let fnStr;
+        if (!hasExplicitThisParam) {
+          const bodyWithThis = emittedBody.replace(
+            "{\n",
+            `{\n  ${syntheticThisInit}\n`,
+          );
+          fnStr = `function ${stmt.name}(${params}) ${bodyWithThis}`;
+        } else {
+          fnStr = `function ${stmt.name}(${params}) ${emittedBody}`;
+        }
+        return `${outerCapturePreamble}${fnStr}${registrationSuffix}`;
       }
       functionEmitStack.push({
         localFns: new Set(),
         fnName: stmt.name,
         paramRename,
+        thisExpr: hasExplicitThisParam ? "__this_param" : "__tuff_this",
       });
-      const out = `function ${stmt.name}(${params}) { return ${emitExpr(stmt.body)}; }`;
+      const out = hasExplicitThisParam
+        ? `function ${stmt.name}(${params}) { return ${emitExpr(stmt.body)}; }`
+        : `function ${stmt.name}(${params}) { ${syntheticThisInit} return ${emitExpr(stmt.body)}; }`;
       functionEmitStack.pop();
-      return out;
+      return `${outerCapturePreamble}${out}${registrationSuffix}`;
     }
     case "StructDecl": {
       const init = stmt.fields
@@ -393,15 +496,15 @@ function emitFunctionBlock(block) {
       for (let i = 0; i < retIdx; i += 1) {
         rows.push(`  ${emitStmt(block.statements[i])}`);
       }
-      if (retStmt.kind === "ExprStmt") {
-        rows.push(`  const __ret = ${emitExpr(retStmt.expr)};`);
-      } else {
-        rows.push(`  const __ret = ${emitIfStmtConditionalExpr(retStmt)};`);
-      }
+      // Run drops first, then evaluate return expression (so drops can affect return value)
       for (let i = retIdx + 1; i < block.statements.length; i += 1) {
         rows.push(`  ${emitStmt(block.statements[i])}`);
       }
-      rows.push("  return __ret;");
+      if (retStmt.kind === "ExprStmt") {
+        rows.push(`  return ${emitExpr(retStmt.expr)};`);
+      } else {
+        rows.push(`  return ${emitIfStmtConditionalExpr(retStmt)};`);
+      }
       return `{\n${rows.join("\n")}\n}`;
     }
   }

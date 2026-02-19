@@ -758,7 +758,8 @@ export function resolveNames(
         if (
           typeof node.destructorName === "string" &&
           node.destructorName.length > 0 &&
-          !globals.has(node.destructorName)
+          !globals.has(node.destructorName) &&
+          !scope.has(node.destructorName)
         ) {
           return err(
             new TuffError(

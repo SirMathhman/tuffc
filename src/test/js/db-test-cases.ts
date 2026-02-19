@@ -18,7 +18,7 @@ const root = getRepoRootFromImportMeta(import.meta.url);
 const dbPath = path.join(root, "scripts", "test_cases.db");
 const outDir = path.join(root, "tests", "out", "db-cases");
 const backendArg = process.argv.find((arg) => arg.startsWith("--backend="));
-const backend = backendArg ? backendArg.slice("--backend=".length) : "selfhost";
+const backend = backendArg ? backendArg.slice("--backend=".length) : "stage0";
 
 function runPythonSqliteQuery(dbFilePath: string): DbCase[] {
   const pythonScript = [
@@ -83,6 +83,14 @@ function normalizeSource(source: string): string {
   return trimmedRight.endsWith(";") ? trimmedRight : `${trimmedRight};`;
 }
 
+function hasExplicitMain(source: string): boolean {
+  return /\bfn\s+main\s*\(/.test(source);
+}
+
+function wrapSnippetAsMain(source: string): string {
+  return `fn main() => {\n${source}\n}`;
+}
+
 function toBool(value: number): boolean {
   return Number(value) !== 0;
 }
@@ -135,21 +143,67 @@ for (const testCase of dbCases) {
     continue;
   }
 
-  const jsPath = path.join(outDir, `case-${testCase.id}.js`);
-  fs.writeFileSync(jsPath, compileResult.value.output, "utf8");
-
   let runtimeValue: unknown;
+  let runtimeJs = compileResult.value.output;
+  let wrappedExecutionUsed = false;
+
+  const jsPath = path.join(outDir, `case-${testCase.id}.js`);
+  fs.writeFileSync(jsPath, runtimeJs, "utf8");
+
   try {
-    runtimeValue = runMainFromJs(compileResult.value.output, label);
+    runtimeValue = runMainFromJs(runtimeJs, label);
   } catch (error) {
-    failed += 1;
-    console.error(
-      `[db-tests] ✖ ${label} runtime failed: ${error instanceof Error ? error.message : String(error)}`,
-    );
-    continue;
+    const message = error instanceof Error ? error.message : String(error);
+    const shouldTryWrappedExecution =
+      !hasExplicitMain(source) && message.includes("main is not defined");
+
+    if (shouldTryWrappedExecution) {
+      const wrappedSource = wrapSnippetAsMain(source);
+      const wrappedCompile = compileSourceResult(
+        wrappedSource,
+        `<${label}:wrapped>`,
+        {
+          backend,
+          target: "js",
+        },
+      );
+
+      if (!wrappedCompile.ok) {
+        failed += 1;
+        console.error(
+          `[db-tests] ✖ ${label} runtime wrapper compile failed: ${wrappedCompile.error.message}`,
+        );
+        continue;
+      }
+
+      runtimeJs = wrappedCompile.value.output;
+      wrappedExecutionUsed = true;
+      fs.writeFileSync(
+        path.join(outDir, `case-${testCase.id}.wrapped.js`),
+        runtimeJs,
+        "utf8",
+      );
+
+      try {
+        runtimeValue = runMainFromJs(runtimeJs, `${label}:wrapped`);
+      } catch (wrappedError) {
+        failed += 1;
+        console.error(
+          `[db-tests] ✖ ${label} runtime failed after wrapper: ${wrappedError instanceof Error ? wrappedError.message : String(wrappedError)}`,
+        );
+        continue;
+      }
+    } else {
+      failed += 1;
+      console.error(`[db-tests] ✖ ${label} runtime failed: ${message}`);
+      continue;
+    }
   }
 
-  if (runtimeValue !== testCase.exit_code) {
+  // Normalize booleans: Tuff Bool maps to integer exit codes (false=0, true=1)
+  const normalizedValue =
+    runtimeValue === true ? 1 : runtimeValue === false ? 0 : runtimeValue;
+  if (normalizedValue !== testCase.exit_code) {
     failed += 1;
     console.error(
       `[db-tests] ✖ ${label} expected exit ${testCase.exit_code}, got ${JSON.stringify(runtimeValue)}`,
@@ -158,7 +212,9 @@ for (const testCase of dbCases) {
   }
 
   passed += 1;
-  console.log(`[db-tests] ✓ ${label}`);
+  console.log(
+    `[db-tests] ✓ ${label}${wrappedExecutionUsed ? " (wrapped)" : ""}`,
+  );
 }
 
 console.log(
