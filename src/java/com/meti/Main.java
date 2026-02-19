@@ -17,6 +17,8 @@ public class Main {
 	private interface Rule {
 
 		Optional<MapNode> lex(String value);
+
+		Optional<String> generate(MapNode node);
 	}
 
 	private static final class MapNode {
@@ -42,6 +44,11 @@ public class Main {
 		public Optional<MapNode> lex(String value) {
 			return Optional.of(new MapNode().withString(this.key(), value));
 		}
+
+		@Override
+		public Optional<String> generate(MapNode node) {
+			return node.findString(this.key);
+		}
 	}
 
 	private record SuffixRule(StringRule childRule, String suffix) implements Rule {
@@ -51,12 +58,22 @@ public class Main {
 			final var body = slice.substring(0, slice.length() - this.suffix().length());
 			return this.childRule().lex(body);
 		}
+
+		@Override
+		public Optional<String> generate(MapNode node) {
+			return this.childRule.generate(node).map(slice -> slice + this.suffix());
+		}
 	}
 
 	private record StripRule(StringRule childRule) implements Rule {
 		@Override
 		public Optional<MapNode> lex(String substring) {
 			return this.childRule().lex(substring.strip());
+		}
+
+		@Override
+		public Optional<String> generate(MapNode node) {
+			return this.childRule.generate(node);
 		}
 	}
 
@@ -68,6 +85,30 @@ public class Main {
 			final var substring = input.substring(0, i1);
 			final var afterName = input.substring(i1 + this.infix().length());
 			return this.leftRule().lex(substring).flatMap(inner -> this.rightRule().lex(afterName).map(inner::merge));
+		}
+
+		@Override
+		public Optional<String> generate(MapNode node) {
+			return this.leftRule.generate(node).flatMap(leftResult -> {
+				return this.rightRule.generate(node).map(rightResult -> {
+					return leftResult + this.infix + rightResult;
+				});
+			});
+		}
+	}
+
+	private record PrefixRule(String prefix, InfixRule rule) implements Rule {
+		@Override
+		public Optional<MapNode> lex(String value) {
+			if (value.startsWith(this.prefix)) {
+				return this.rule.lex(value.substring(this.prefix.length()));
+			}
+			return Optional.empty();
+		}
+
+		@Override
+		public Optional<String> generate(MapNode node) {
+			return this.rule.generate(node).map(slice -> this.prefix + slice);
 		}
 	}
 
@@ -151,28 +192,19 @@ public class Main {
 	}
 
 	private static Optional<String> compileClass(String stripped) {
-		return getString(stripped).flatMap(Main::generateObject);
+		return createClassRule().lex(stripped).flatMap(mapNode -> createObjectRule().generate(mapNode));
 	}
 
-	private static Optional<MapNode> getString(String stripped) {
-		return getRule().lex(stripped);
-	}
-
-	private static InfixRule getRule() {
+	private static InfixRule createClassRule() {
 		final var modifiers = new StringRule("modifiers");
 		final var name = new StripRule(new StringRule("name"));
 		final var body = new StringRule("body");
 		return new InfixRule(modifiers, "class ", new InfixRule(name, "{", new SuffixRule(body, "}")));
 	}
 
-	private static Optional<String> generateObject(MapNode mapNode) {
-		final var maybeName = mapNode.findString("name");
-		final var maybeBody = mapNode.findString("body");
-		return maybeName.flatMap(name -> {
-			return maybeBody.flatMap(body -> {
-				return Optional.of("out object " + name + " {" + body + "}");
-			});
-		});
+	private static PrefixRule createObjectRule() {
+		return new PrefixRule("out object ",
+													new InfixRule(new StringRule("name"), "{", new SuffixRule(new StringRule("body"), "}")));
 	}
 
 	private static Path createPath(String extension) {
