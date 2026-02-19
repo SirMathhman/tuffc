@@ -4,7 +4,7 @@ extern let { IOException } = java::io;
 extern let { Files, Path, Paths } = java::nio::file;
 extern let { ArrayList, Arrays, HashMap, List, Map, Optional } = java::util;
 extern let { Pattern } = java::util::regex;
-public class Main {
+out object Main {/*
 	private interface Rule {
 
 		Optional<MapNode> lex(String value);
@@ -27,6 +27,7 @@ public class Main {
 
 		public MapNode merge(MapNode other) {
 			this.strings.putAll(other.strings);
+			this.nodeLists.putAll(other.nodeLists);
 			return this;
 		}
 
@@ -191,7 +192,19 @@ public class Main {
 		}
 	}
 
-	private static final Map<List<String>, List<String>> imports = new HashMap<List<String>, List<String>>();
+	private static class PlaceholderRule implements Rule {
+		@Override
+		public Optional<MapNode> lex(String value) {
+			return Optional.of(new MapNode().withString("content", value));
+		}
+
+		@Override
+		public Optional<String> generate(MapNode node) {
+			return node.findString("content").map(slice -> "/*" + slice + "*/");
+		}
+	}
+
+	private static final Map<List<String>, List<String>> imports = new HashMap<List<String>, List<String>>();*//*
 
 	private static <C, T> BiFunction<Optional<C>, Optional<T>, Optional<C>> optionally(BiFunction<C, T, C> mapper) {
 		return (mapNodes, mapNode) -> mapNodes.flatMap(list -> mapNode.map(inner -> mapper.apply(list, inner)));
@@ -264,18 +277,22 @@ public class Main {
 	private static InfixRule createClassRule() {
 		final var modifiers = new StringRule("modifiers");
 		final var name = new StripRule(new StringRule("name"));
-		final var body = new NodeListRule("body", OrRule.from(new StringRule("?")));
-
+		final var body = new NodeListRule("body", OrRule.from(createClassSegmentRule()));
 		return new InfixRule(modifiers, "class ", new InfixRule(name, "{", new SuffixRule(body, "}")));
 	}
 
+	private static Rule createClassSegmentRule() {
+		return new PlaceholderRule();
+	}
+
 	private static PrefixRule createObjectRule() {
-		return new PrefixRule("out object ",
-													new InfixRule(new StringRule("name"), " {", new SuffixRule(new StringRule("body"), "}")));
+		final var name = new StringRule("name");
+		final var body = new NodeListRule("body", new PlaceholderRule());
+		return new PrefixRule("out object ", new InfixRule(name, " {", new SuffixRule(body, "}")));
 	}
 
 	private static Path createPath(String extension) {
 		return Paths.get(".", "src", extension, "com", "meti", "Main." + extension);
 	}
-}
+*/}
 Main::main(__args__)
