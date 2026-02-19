@@ -1,7 +1,11 @@
 RootChild = Class | Interface | Record
 
+Type = name
+
+Declaration = name, Type type
+
 Class = name
 Interface = name
-Record = name
+Record = name, [Declaration params]
 
 Root = [RootChild children]

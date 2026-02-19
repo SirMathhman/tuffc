@@ -735,6 +735,9 @@ public class Main {
 
 					params.add("List<" + split[0] + "> " + split[1]);
 				}
+			} else if (arg1.contains(" ")) {
+				final var split = arg1.strip().split(" ");
+				params.add(split[0] + " " + split[1]);
 			} else {
 				params.add("String " + arg1);
 			}
