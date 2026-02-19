@@ -64,6 +64,7 @@ public class Main {
 
 		final var outputSegments = new ArrayList<String>(newImports);
 		outputSegments.addAll(joinedRoot);
+		outputSegments.add("Main::main(__args__)");
 		return outputSegments.stream().map(slice -> slice + System.lineSeparator()).collect(Collectors.joining());
 	}
 
@@ -89,7 +90,7 @@ public class Main {
 			}
 		}
 
-		return Optional.of(stripped + System.lineSeparator());
+		return Optional.of(stripped);
 	}
 
 	private static Path createPath(String extension) {
