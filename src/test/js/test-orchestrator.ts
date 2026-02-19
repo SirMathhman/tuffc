@@ -14,6 +14,7 @@ const nodeExec = getNodeExecPath();
 
 const suiteScripts: Record<SuiteName, string[]> = {
   core: [
+    "./src/test/js/db-test-cases.ts",
     "./src/test/js/result-migration.ts",
     "./src/test/js/extern-source-attribution.ts",
     "./src/test/js/selfhost-c-empty-substrate.ts",
