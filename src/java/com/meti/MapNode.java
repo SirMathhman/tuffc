@@ -5,7 +5,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-final class MapNode {
+public final class MapNode {
 	private final Map<String, String> strings = new HashMap<String, String>();
 	private final Map<String, MapNode> nodes = new HashMap<String, MapNode>();
 	private final Map<String, List<MapNode>> nodeLists = new HashMap<String, List<MapNode>>();
