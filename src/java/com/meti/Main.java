@@ -678,9 +678,7 @@ public class Main {
 			segments.add("package com.meti;");
 
 			final var tuple = toLines(slices);
-			tuple.left.stream()
-					.map(slice -> "import " + slice + ";")
-					.forEach(segments::add);
+			tuple.left.stream().map(slice -> "import " + slice + ";").forEach(segments::add);
 
 			segments.add("public class JavaAST {");
 			segments.addAll(tuple.right);
@@ -695,11 +693,22 @@ public class Main {
 		final var imports = new ArrayList<String>();
 		final var segments = new ArrayList<String>();
 
+		final var variants = new HashMap<String, List<String>>();
 		for (var slice : slices) {
 			final var i = slice.indexOf("=");
 			if (i >= 0) {
 				final var name = slice.substring(0, i).strip();
 				final var value = slice.substring(i + 1).strip();
+				if (value.contains("|")) {
+					final var split = value.split(Pattern.quote("|"));
+					final var list = Arrays.stream(split).map(String::strip).filter(member -> !member.isEmpty()).toList();
+					variants.put(name, list);
+
+					final var joined = String.join(", ", list);
+					segments.add("\tpublic sealed interface " + name + " permits " + joined + " {}");
+					continue;
+				}
+
 				final var args = value.split(Pattern.quote(","));
 				final var params = new ArrayList<String>();
 				for (var arg : args) {
@@ -719,11 +728,19 @@ public class Main {
 					}
 				}
 
-				segments.add("\tpublic record " + name + "(" + String.join(", ", params) + "){}");
+				final var superTypes = new ArrayList<String>();
+				for (var entry : variants.entrySet()) {
+					if (entry.getValue().contains(name)) {
+						superTypes.add(entry.getKey());
+					}
+				}
+
+				final var joinedSuperTypes = superTypes.isEmpty() ? "" : " implements " + String.join(", ", superTypes);
+				segments.add("\tpublic record " + name + "(" + String.join(", ", params) + ")" + joinedSuperTypes + " {}");
 			}
 		}
 
-		return new Tuple<>(imports, segments);
+		return new Tuple<List<String>, List<String>>(imports, segments);
 	}
 
 	private static Optional<Error> writeString(Path target, String output) {

@@ -1,2 +1,4 @@
+Segment = Class | Interface
 Class = name, type
+Interface = name
 Root = [Class classes]
