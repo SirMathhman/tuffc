@@ -72,6 +72,127 @@ function createContext(ast) {
     );
   }
 
+  // Detect this-returning functions (method-sugar pattern).
+  // Helper: detect uses of this.this.X (outer context access) in an AST node.
+  const hasThisThisAccess = (node) => {
+    if (!node || typeof node !== "object") return false;
+    if (
+      node.kind === "MemberExpr" &&
+      node.object?.kind === "MemberExpr" &&
+      node.object.object?.kind === "Identifier" &&
+      node.object.object.name === "this" &&
+      node.object.property === "this"
+    )
+      return true;
+    for (const val of Object.values(node)) {
+      if (val === null || typeof val !== "object") continue;
+      if (Array.isArray(val)) {
+        if (val.some((v) => hasThisThisAccess(v))) return true;
+      } else if (hasThisThisAccess(val)) return true;
+    }
+    return false;
+  };
+  // Names of nested fns that need outer context as first param.
+  const contextualFnNames = new Set();
+  const thisReturners = new Map();
+  for (const node of ast.body ?? []) {
+    if (node?.kind !== "FnDecl") continue;
+    const body = node.body;
+    let returnsThis = false;
+    let bodyStmts = [];
+    const isThisExpr = (n) =>
+      (n?.kind === "ExprStmt" &&
+        n.expr?.kind === "Identifier" &&
+        n.expr.name === "this") ||
+      (n?.kind === "Identifier" && n.name === "this");
+    if (body?.kind === "Identifier" && body.name === "this") {
+      returnsThis = true;
+      bodyStmts = [];
+    } else if (body?.kind === "Block") {
+      const stmts = body.statements ?? [];
+      if (stmts.length > 0 && isThisExpr(stmts[stmts.length - 1])) {
+        returnsThis = true;
+        bodyStmts = stmts.slice(0, -1);
+      }
+    }
+    if (returnsThis) {
+      const fields = [];
+      for (const p of (node.params ?? []).filter((p) => !p.implicitThis)) {
+        fields.push({ name: p.name, isFnPtr: false });
+      }
+      for (const s of bodyStmts) {
+        if (s.kind === "LetDecl") fields.push({ name: s.name, isFnPtr: false });
+        if (s.kind === "FnDecl") {
+          // Check if nested fn is itself a thisReturner (body ends with `this`).
+          const nestedBody = s.body;
+          const nestedBodyStmts =
+            nestedBody?.kind === "Block" ? (nestedBody.statements ?? []) : [];
+          const nestedLastIsThis =
+            (nestedBody?.kind === "Identifier" && nestedBody.name === "this") ||
+            (nestedBodyStmts.length > 0 &&
+              isThisExpr(nestedBodyStmts[nestedBodyStmts.length - 1]));
+          if (nestedLastIsThis) {
+            // Register nested fn as its own thisReturner.
+            const nestedBodyMinusLast =
+              nestedBody?.kind === "Identifier"
+                ? []
+                : nestedBodyStmts.slice(0, -1);
+            const nestedFields = [];
+            for (const p of (s.params ?? []).filter((p) => !p.implicitThis)) {
+              nestedFields.push({ name: p.name, isFnPtr: false });
+            }
+            for (const ns of nestedBodyMinusLast) {
+              if (ns.kind === "LetDecl")
+                nestedFields.push({ name: ns.name, isFnPtr: false });
+            }
+            thisReturners.set(s.name, {
+              fields: nestedFields,
+              bodyStmts: nestedBodyMinusLast,
+              params: s.params ?? [],
+            });
+            fnReturnTypeByName.set(s.name, `__TuffThis_${s.name}`);
+            const nestedParams = (s.params ?? [])
+              .filter((p) => !p.implicitThis)
+              .map(() => "int64_t")
+              .join(", ");
+            fields.push({
+              name: s.name,
+              isFnPtr: true,
+              fnPtrParams: nestedParams || "void",
+              fnPtrRetType: `__TuffThis_${s.name}`,
+            });
+          } else {
+            // Nested fn: becomes a function pointer field in the struct.
+            // Check if it uses this.this.X (needs outer context as first param).
+            const needsOuterCtx = hasThisThisAccess(s.body);
+            const outerStructType = `__TuffThis_${node.name}`;
+            const nestedParams = (s.params ?? [])
+              .filter((p) => !p.implicitThis)
+              .map(() => "int64_t")
+              .join(", ");
+            const fnPtrParams = needsOuterCtx
+              ? `${outerStructType}*${nestedParams ? `, ${nestedParams}` : ""}`
+              : nestedParams || "void";
+            if (needsOuterCtx) contextualFnNames.add(s.name);
+            fields.push({
+              name: s.name,
+              isFnPtr: true,
+              fnPtrParams,
+              needsOuterCtx: needsOuterCtx ? outerStructType : null,
+            });
+          }
+        }
+      }
+      thisReturners.set(node.name, {
+        fields,
+        bodyStmts,
+        params: node.params ?? [],
+      });
+      // Override return type to struct type.
+      fnReturnTypeByName.set(node.name, `__TuffThis_${node.name}`);
+    }
+  }
+
   for (const aliasInfo of unionAliasByName.values()) {
     const allFields = new Set();
     for (const variant of aliasInfo.variants) {
@@ -82,6 +203,40 @@ function createContext(ast) {
     aliasInfo.fields = [...allFields];
   }
 
+  // Detect function-returning functions (fn body ends with ExprStmt(Identifier(nestedFnName))
+  // where that nestedFnName is a nested FnDecl in the body).
+  const fnReturners = new Map(); // fnName → { retFnName, typedefName }
+  for (const node of ast.body ?? []) {
+    if (node?.kind !== "FnDecl") continue;
+    if (thisReturners.has(node.name)) continue;
+    const body = node.body;
+    const bodyStmts = body?.kind === "Block" ? (body.statements ?? []) : [];
+    if (bodyStmts.length === 0) continue;
+    const lastStmt = bodyStmts[bodyStmts.length - 1];
+    const retName =
+      lastStmt?.kind === "ExprStmt" && lastStmt.expr?.kind === "Identifier"
+        ? lastStmt.expr.name
+        : lastStmt?.kind === "Identifier"
+          ? lastStmt.name
+          : null;
+    if (!retName) continue;
+    const nestedFn = bodyStmts.find(
+      (s) => s.kind === "FnDecl" && s.name === retName,
+    );
+    if (!nestedFn) continue;
+    const typedefName = `__FnPtr_${retName}`;
+    const nestedParams = (nestedFn.params ?? [])
+      .filter((p) => !p.implicitThis)
+      .map(() => "int64_t")
+      .join(", ");
+    fnReturners.set(node.name, {
+      retFnName: retName,
+      typedefName,
+      nestedParamTypes: nestedParams || "void",
+    });
+    fnReturnTypeByName.set(node.name, typedefName);
+  }
+
   return {
     enumNames,
     enumVariantConstByName,
@@ -89,6 +244,9 @@ function createContext(ast) {
     aliasByVariant,
     unionAliasByName,
     fnReturnTypeByName,
+    thisReturners,
+    fnReturners,
+    contextualFnNames,
   };
 }
 
@@ -223,16 +381,39 @@ function inferExprType(expr, ctx, localTypes) {
     case "BoolLiteral":
     case "CharLiteral":
     case "BinaryExpr":
-    case "UnaryExpr":
     case "MatchExpr":
       return "int64_t";
     case "StringLiteral":
       return "int64_t";
     case "Identifier":
-      return localTypes.get(expr.name) ?? "int64_t";
+      if (localTypes.has(expr.name)) return localTypes.get(expr.name);
+      // If it refers to a known function, treat as function pointer.
+      if (ctx.fnReturnTypeByName.has(expr.name)) {
+        return `${ctx.fnReturnTypeByName.get(expr.name)}(*)()`;
+      }
+      return "int64_t";
+    case "TupleExpr":
+    case "ArrayExpr":
+      return "__tuff_vec_t";
+    case "RangeExpr":
+      return "__tuff_range_t";
+    case "UnaryExpr":
+      // &x propagates the type of x (slice refs).
+      if (expr.op === "&" || expr.op === "&mut")
+        return inferExprType(expr.expr, ctx, localTypes);
+      return "int64_t";
     case "CallExpr":
+      // RangeExpr or range variable call → produces a tuple-like vec
+      if (expr.callee?.kind === "RangeExpr") return "__tuff_range_result_t";
+      if (
+        expr.callee?.kind === "Identifier" &&
+        localTypes.get(expr.callee.name) === "__tuff_range_t"
+      )
+        return "__tuff_range_result_t";
       if (expr.callee?.kind === "Identifier") {
         const cn = expr.callee.name;
+        // If it's a this-returning function, return struct type.
+        if (ctx.thisReturners?.has(cn)) return `__TuffThis_${cn}`;
         // malloc/realloc return a TuffVec* fat slice pointer (special-cased in emitExpr).
         if (cn === "malloc" || cn === "realloc") return "TuffVec*";
         return ctx.fnReturnTypeByName.get(cn) ?? "int64_t";
@@ -402,6 +583,20 @@ function emitExpr(expr, ctx, localTypes = new Map()) {
         const data = nextTemp("realloc_data");
         return `({ size_t ${nbytes} = (size_t)(${bytesStr}); TuffVec* ${vec} = (TuffVec*)(${ptrStr}); if (${vec}) { int64_t* ${data} = (int64_t*)realloc(${vec}->data, ${nbytes}); if (${data}) { ${vec}->data = ${data}; ${vec}->length = ${nbytes} / sizeof(int64_t); } else { ${vec} = NULL; } } ${vec}; })`;
       }
+      // Range/generator call: callee is a RangeExpr directly → immediate next
+      if (expr.callee?.kind === "RangeExpr") {
+        const rangeHandle = emitExpr(expr.callee, ctx, localTypes);
+        return `__tuff_range_next(${rangeHandle})`;
+      }
+      // Generator call: callee is an identifier of type __tuff_range_t
+      if (
+        expr.callee?.kind === "Identifier" &&
+        (localTypes.get(expr.callee.name) === "__tuff_range_t" ||
+          (ctx.topLevelTypes &&
+            ctx.topLevelTypes.get(expr.callee.name) === "__tuff_range_t"))
+      ) {
+        return `__tuff_range_next(${emitExpr(expr.callee, ctx, localTypes)})`;
+      }
       // free(ptr) → free TuffVec data then the struct itself.
       if (
         expr.callee?.kind === "Identifier" &&
@@ -412,9 +607,46 @@ function emitExpr(expr, ctx, localTypes = new Map()) {
         const vec = nextTemp("free_vec");
         return `({ TuffVec* ${vec} = (TuffVec*)(${ptrStr}); if (${vec}) { free(${vec}->data); free(${vec}); } 0; })`;
       }
+      // Method-sugar calls: receiver is args[0]. In C, if receiver is `this`,
+      // skip it and call the function directly (module-level scope).
+      if (expr.callStyle === "method-sugar") {
+        const [receiver, ...restArgs] = expr.args ?? [];
+        if (receiver?.kind === "Identifier" && receiver.name === "this") {
+          // this.fn(args...) → fn(args...)
+          const cArgs = restArgs
+            .map((a) => emitExpr(a, ctx, localTypes))
+            .join(", ");
+          return `${emitExpr(expr.callee, ctx, localTypes)}(${cArgs})`;
+        }
+        // obj.fn(args...) → obj.fn(restArgs...) — function pointer field call
+        // If fn needs outer context (uses this.this.X), also pass receiver as first arg.
+        const recvC = emitExpr(receiver, ctx, localTypes);
+        const cArgs = restArgs
+          .map((a) => emitExpr(a, ctx, localTypes))
+          .join(", ");
+        const callee = emitExpr(expr.callee, ctx, localTypes);
+        if (ctx.contextualFnNames?.has(expr.callee?.name)) {
+          const ctxArgs = cArgs ? `&${recvC}, ${cArgs}` : `&${recvC}`;
+          return `${recvC}.${callee}(${ctxArgs})`;
+        }
+        return `${recvC}.${callee}(${cArgs})`;
+      }
       return `${emitExpr(expr.callee, ctx, localTypes)}(${(expr.args ?? []).map((a) => emitExpr(a, ctx, localTypes)).join(", ")})`;
     }
     case "MemberExpr": {
+      // this.this.field → outer_ctx->field (outer context access in nested fn, via pointer)
+      if (
+        expr.object?.kind === "MemberExpr" &&
+        expr.object.object?.kind === "Identifier" &&
+        expr.object.object.name === "this" &&
+        expr.object.property === "this"
+      ) {
+        return `outer_ctx->${toCName(expr.property)}`;
+      }
+      // this.field → direct local variable access in C
+      if (expr.object?.kind === "Identifier" && expr.object.name === "this") {
+        return toCName(expr.property);
+      }
       if (
         expr.object?.kind === "Identifier" &&
         ctx.enumNames.has(expr.object.name)
@@ -424,10 +656,20 @@ function emitExpr(expr, ctx, localTypes = new Map()) {
       // General struct / TuffVec* field access.
       {
         const objStr = emitExpr(expr.object, ctx, localTypes);
-        const isSlicePtr =
-          expr.object?.kind === "Identifier" &&
-          localTypes.get(expr.object.name) === "TuffVec*";
+        const objType =
+          expr.object?.kind === "Identifier"
+            ? localTypes.get(expr.object.name)
+            : inferExprType(expr.object, ctx, localTypes);
+        const isSlicePtr = objType === "TuffVec*";
+        // int64_t vec handles (.length, .init, .capacity)
+        const isVecHandle =
+          objType === "__tuff_vec_t" || objType === "__tuff_range_result_t";
         if (isSlicePtr) return `${objStr}->${expr.property}`;
+        if (isVecHandle) {
+          if (expr.property === "length" || expr.property === "init")
+            return `__vec_length(${objStr})`;
+          if (expr.property === "capacity") return `__vec_capacity(${objStr})`;
+        }
         return `${objStr}.${expr.property}`;
       }
     }
@@ -472,10 +714,17 @@ function emitExpr(expr, ctx, localTypes = new Map()) {
       if (expr.kind === "IndexExpr") {
         const objStr = emitExpr(expr.target, ctx, localTypes);
         const idxStr = emitExpr(expr.index, ctx, localTypes);
-        const isSlicePtr =
-          expr.target?.kind === "Identifier" &&
-          localTypes.get(expr.target.name) === "TuffVec*";
-        if (isSlicePtr) return `${objStr}->data[${idxStr}]`;
+        const targetType =
+          expr.target?.kind === "Identifier"
+            ? localTypes.get(expr.target.name)
+            : inferExprType(expr.target, ctx, localTypes);
+        if (targetType === "TuffVec*") return `${objStr}->data[${idxStr}]`;
+        // Tuples, arrays, and range results are int64_t vec handles — use __vec_get.
+        if (
+          targetType === "__tuff_vec_t" ||
+          targetType === "__tuff_range_result_t"
+        )
+          return `__vec_get(${objStr}, ${idxStr})`;
         return `${objStr}[${idxStr}]`;
       }
       if (expr.kind === "MatchExpr") {
@@ -504,9 +753,21 @@ function emitExpr(expr, ctx, localTypes = new Map()) {
       }
       return "0";
     }
+    case "TupleExpr": {
+      // Tuples are heap-allocated TuffVec handles.
+      const pushes = (expr.elements ?? [])
+        .map((e) => `__vec_push(__tv, ${emitExpr(e, ctx, localTypes)}); `)
+        .join("");
+      return `({ int64_t __tv = __vec_new(); ${pushes}__tv; })`;
+    }
+    case "ArrayExpr": {
+      const pushes = (expr.elements ?? [])
+        .map((e) => `__vec_push(__tv, ${emitExpr(e, ctx, localTypes)}); `)
+        .join("");
+      return `({ int64_t __tv = __vec_new(); ${pushes}__tv; })`;
+    }
     case "RangeExpr":
-      // Range expressions produce iterators — not representable in C MVP; emit 0.
-      return "0";
+      return `__tuff_range_new(${emitExpr(expr.from, ctx, localTypes)}, ${emitExpr(expr.to, ctx, localTypes)})`;
     case "LambdaExpr":
       // Lambda expressions — not representable in C MVP; emit 0.
       return "0";
@@ -522,12 +783,42 @@ function emitStmt(stmt, ctx, localTypes = new Map()) {
   switch (stmt.kind) {
     case "LetDecl": {
       const inferred = inferExprType(stmt.value, ctx, localTypes);
+      // Map special vec/range types to int64_t in C declarations.
+      const cType =
+        inferred === "__tuff_vec_t" ||
+        inferred === "__tuff_range_t" ||
+        inferred === "__tuff_range_result_t"
+          ? "int64_t"
+          : inferred;
       localTypes.set(stmt.name, inferred);
-      return `${inferred} ${toCName(stmt.name)} = ${emitExpr(stmt.value, ctx, localTypes)};`;
+      return `${cType} ${toCName(stmt.name)} = ${emitExpr(stmt.value, ctx, localTypes)};`;
+    }
+    case "TupleDestructure": {
+      // let (x, y) = tuple; → int64_t x = __vec_get(tmp, 0); int64_t y = __vec_get(tmp, 1);
+      const tmp = nextTemp("tup");
+      const valExpr = emitExpr(stmt.value, ctx, localTypes);
+      const inferred = inferExprType(stmt.value, ctx, localTypes);
+      localTypes.set("__tup_tmp__", inferred);
+      const lines = [`int64_t ${tmp} = ${valExpr};`];
+      for (let i = 0; i < (stmt.names ?? []).length; i++) {
+        const name = stmt.names[i];
+        if (!name || name === "_") continue;
+        localTypes.set(name, "int64_t");
+        lines.push(`int64_t ${toCName(name)} = __vec_get(${tmp}, ${i});`);
+      }
+      return lines.join(" ");
     }
     case "ExprStmt":
       return `${emitExpr(stmt.expr, ctx, localTypes)};`;
     case "AssignStmt":
+      // this.field = val → field = val (direct local variable in C)
+      if (
+        stmt.target?.kind === "MemberExpr" &&
+        stmt.target.object?.kind === "Identifier" &&
+        stmt.target.object.name === "this"
+      ) {
+        return `${toCName(stmt.target.property)} = ${emitExpr(stmt.value, ctx, localTypes)};`;
+      }
       return `${emitExpr(stmt.target, ctx, localTypes)} = ${emitExpr(stmt.value, ctx, localTypes)};`;
     case "ReturnStmt":
       return stmt.value
@@ -574,6 +865,166 @@ function emitStmt(stmt, ctx, localTypes = new Map()) {
       return `/* import placeholder(module=${stmt.modulePath}, names=${stmt.names.join("|")}) */`;
     case "FnDecl": {
       if (!stmt.body) return `/* expect fn ${stmt.name ?? ""} */`;
+      // Check if this function returns `this` (method-sugar struct pattern).
+      // Check if this function returns a nested function (fnReturner pattern).
+      const fnRetInfo = ctx.fnReturners?.get(stmt.name);
+      if (fnRetInfo) {
+        const { retFnName, typedefName } = fnRetInfo;
+        const fnName = toCName(stmt.name);
+        const params = (stmt.params ?? [])
+          .filter((p) => !p.implicitThis)
+          .map((p) => `int64_t ${toCName(p.name)}`)
+          .join(", ");
+        const rawStmts =
+          stmt.body?.kind === "Block" ? (stmt.body.statements ?? []) : [];
+        const fnLocals = new Map();
+        for (const p of (stmt.params ?? []).filter((p) => !p.implicitThis)) {
+          fnLocals.set(p.name, "int64_t");
+        }
+        // Hoist nested FnDecls; collect other body stmts (skip the return expr)
+        const hoisted = rawStmts
+          .filter((s) => s.kind === "FnDecl")
+          .map((s) => emitStmt(s, ctx, fnLocals))
+          .join("\n\n");
+        const bodyLines = [];
+        for (const s of rawStmts) {
+          if (s.kind === "FnDecl") continue; // hoisted
+          const isReturnExpr =
+            (s.kind === "ExprStmt" &&
+              s.expr?.kind === "Identifier" &&
+              s.expr?.name === retFnName) ||
+            (s.kind === "Identifier" && s.name === retFnName);
+          if (isReturnExpr) continue; // handled below
+          bodyLines.push(`  ${emitStmt(s, ctx, fnLocals)}`);
+        }
+        bodyLines.push(`  return (${typedefName})${toCName(retFnName)};`);
+        const outerFn = `${typedefName} ${fnName}(${params || "void"}) {\n${bodyLines.join("\n")}\n}`;
+        return hoisted ? `${hoisted}\n\n${outerFn}` : outerFn;
+      }
+      const thisInfo = ctx.thisReturners?.get(stmt.name);
+      if (thisInfo) {
+        const structName = `__TuffThis_${stmt.name}`;
+        const fnName = toCName(stmt.name);
+        const params = (stmt.params ?? [])
+          .filter((p) => !p.implicitThis)
+          .map((p) => `int64_t ${toCName(p.name)}`)
+          .join(", ");
+        const fnLocals = new Map();
+        for (const p of (stmt.params ?? []).filter((p) => !p.implicitThis)) {
+          fnLocals.set(p.name, "int64_t");
+        }
+        // Determine body statements (exclude the trailing `this` expression).
+        const rawStmts =
+          stmt.body?.kind === "Block" ? (stmt.body.statements ?? []) : [];
+        const isThisExpr = (n) =>
+          (n?.kind === "ExprStmt" &&
+            n.expr?.kind === "Identifier" &&
+            n.expr.name === "this") ||
+          (n?.kind === "Identifier" && n.name === "this");
+        const bodyStmts = isThisExpr(rawStmts[rawStmts.length - 1])
+          ? rawStmts.slice(0, -1)
+          : rawStmts;
+        const bodyLines = [];
+        bodyLines.push(`  ${structName} __tuff_this = {0};`);
+        for (const p of (stmt.params ?? []).filter((p) => !p.implicitThis)) {
+          bodyLines.push(
+            `  __tuff_this.${toCName(p.name)} = ${toCName(p.name)};`,
+          );
+        }
+        for (const s of bodyStmts) {
+          if (s.kind === "FnDecl") {
+            // Nested fn: hoist declaration and set as function pointer field.
+            // We emit it separately above the outer fn; here just assign the ptr.
+            bodyLines.push(
+              `  __tuff_this.${toCName(s.name)} = ${toCName(s.name)};`,
+            );
+          } else {
+            bodyLines.push(`  ${emitStmt(s, ctx, fnLocals)}`);
+          }
+          if (s.kind === "LetDecl") {
+            fnLocals.set(s.name, "int64_t");
+            bodyLines.push(
+              `  __tuff_this.${toCName(s.name)} = ${toCName(s.name)};`,
+            );
+          }
+        }
+        bodyLines.push(`  return __tuff_this;`);
+        // Hoist nested FnDecls to file scope (emit them before the outer fn).
+        const isNestedThisReturnerFn = (s) => {
+          const rt = s.returnType;
+          if (
+            rt?.kind === "NamedType" &&
+            typeof rt.name === "string" &&
+            rt.name.startsWith("__this_")
+          )
+            return true;
+          const b = s.body;
+          if (b?.kind === "Identifier" && b.name === "this") return true;
+          if (b?.kind === "Block") {
+            const ss = b.statements ?? [];
+            const last = ss[ss.length - 1];
+            return (
+              (last?.kind === "ExprStmt" &&
+                last.expr?.kind === "Identifier" &&
+                last.expr.name === "this") ||
+              (last?.kind === "Identifier" && last.name === "this")
+            );
+          }
+          return false;
+        };
+        const hoisted = bodyStmts
+          .filter(
+            (s) => s.kind === "FnDecl" && !ctx.contextualFnNames?.has(s.name),
+          )
+          .map((s) => {
+            // If nested fn is a known thisReturner, emit it fully via recursive call.
+            if (ctx.thisReturners?.has(s.name)) {
+              return emitStmt(s, ctx, fnLocals);
+            }
+            // If nested fn returns `this` but is not registered, emit as stub.
+            if (isNestedThisReturnerFn(s)) {
+              const np =
+                (s.params ?? [])
+                  .filter((p) => !p.implicitThis)
+                  .map((p) => `int64_t ${toCName(p.name)}`)
+                  .join(", ") || "void";
+              return `int64_t ${toCName(s.name)}(${np}) { return 0; }`;
+            }
+            return emitStmt(s, ctx, fnLocals);
+          })
+          .join("\n\n");
+        // Emit contextual nested fns (those that use this.this.X) with outer_ctx param.
+        const hoistedFinal = bodyStmts
+          .filter(
+            (s) => s.kind === "FnDecl" && ctx.contextualFnNames?.has(s.name),
+          )
+          .map((s) => {
+            // Build info about this fn's field entry to get the outer struct type.
+            const field = thisInfo.fields.find((f) => f.name === s.name);
+            const outerType = field?.needsOuterCtx ?? structName;
+            const np = (s.params ?? [])
+              .filter((p) => !p.implicitThis)
+              .map((p) => `int64_t ${toCName(p.name)}`)
+              .join(", ");
+            const allParams = np
+              ? `struct ${outerType}_s* outer_ctx, ${np}`
+              : `struct ${outerType}_s* outer_ctx`;
+            const bodyLocals = new Map(fnLocals);
+            for (const p of (s.params ?? []).filter((p) => !p.implicitThis)) {
+              bodyLocals.set(p.name, "int64_t");
+            }
+            const body =
+              s.body?.kind === "Block"
+                ? emitFunctionBlock(s.body, ctx, bodyLocals)
+                : `{ return ${emitExpr(s.body, ctx, bodyLocals)}; }`;
+            return `int64_t ${toCName(s.name)}(${allParams}) ${body}`;
+          })
+          .join("\n\n");
+        // Merge all hoisted fns (thisReturners/stubs + contextuals).
+        const allHoisted = [hoisted, hoistedFinal].filter(Boolean).join("\n\n");
+        const outerFn = `${structName} ${fnName}(${params}) {\n${bodyLines.join("\n")}\n}`;
+        return allHoisted ? `${allHoisted}\n\n${outerFn}` : outerFn;
+      }
       const params = (stmt.params ?? [])
         .filter((p) => !p.implicitThis)
         .map((p) => `${typeToCType(p.type, ctx)} ${toCName(p.name)}`)
@@ -724,6 +1175,7 @@ export function generateC(ast) {
   const ctx = createContext(ast);
   const topLevelTypes = new Map();
   const initRows = [];
+  const mainRows = [];
   const fnNodes = [];
   const enumTypeNames = new Set(
     (ast.body ?? []).filter((n) => n.kind === "EnumDecl").map((n) => n.name),
@@ -785,6 +1237,19 @@ export function generateC(ast) {
     "/* Embedded C substrate support */",
     getEmbeddedCSubstrateSupport(),
     "",
+    // Tuff runtime helpers for tuples and ranges.
+    "static int64_t __tuff_range_new(int64_t start, int64_t end) {",
+    "  int64_t r = __vec_new(); __vec_push(r, start); __vec_push(r, end); return r;",
+    "}",
+    "static int64_t __tuff_range_next(int64_t range) {",
+    "  TuffVec* rv = (TuffVec*)tuff_from_val(range);",
+    "  if (!rv || rv->init < 2) { int64_t t = __vec_new(); __vec_push(t, 1); __vec_push(t, 0); return t; }",
+    "  int64_t cur = rv->data[0], end = rv->data[1];",
+    "  if (cur > end) { int64_t t = __vec_new(); __vec_push(t, 1); __vec_push(t, end); return t; }",
+    "  rv->data[0] = cur + 1;",
+    "  int64_t t = __vec_new(); __vec_push(t, 0); __vec_push(t, cur); return t;",
+    "}",
+    "",
   ];
 
   for (const t of [...namedTypes].sort()) {
@@ -796,6 +1261,66 @@ export function generateC(ast) {
   }
   lines.push("");
 
+  // Emit function pointer typedefs for fn-returning functions.
+  for (const [, { typedefName, nestedParamTypes }] of ctx.fnReturners) {
+    lines.push(`typedef int64_t (*${typedefName})(${nestedParamTypes});`);
+  }
+  if (ctx.fnReturners.size > 0) lines.push("");
+
+  // Emit struct typedefs for this-returning functions early (before globals use them).
+  // Use topological order so nested struct types are emitted before their parents.
+  {
+    const emittedStructs = new Set();
+    const emitStructTypedef = (fnName) => {
+      if (emittedStructs.has(fnName)) return;
+      const info = ctx.thisReturners.get(fnName);
+      if (!info) return;
+      // Emit dependencies first.
+      for (const f of info.fields) {
+        if (f.fnPtrRetType?.startsWith("__TuffThis_")) {
+          const depFn = f.fnPtrRetType.slice("__TuffThis_".length);
+          emitStructTypedef(depFn);
+        }
+      }
+      emittedStructs.add(fnName);
+      const structName = `__TuffThis_${fnName}`;
+      // Check if any fn ptr field references this struct itself (self-referential).
+      const selfRefTag = `__TuffThis_${fnName}_s`;
+      const isSelfRef = info.fields.some(
+        (f) =>
+          f.isFnPtr &&
+          f.fnPtrParams != null &&
+          f.fnPtrParams.includes(structName),
+      );
+      const fieldDecls = info.fields
+        .map((f) => {
+          if (!f.isFnPtr) return `int64_t ${toCName(f.name)};`;
+          // Replace self-referential type with tagged struct pointer.
+          const fp = isSelfRef
+            ? f.fnPtrParams.replace(
+                new RegExp(structName, "g"),
+                `struct ${selfRefTag}`,
+              )
+            : f.fnPtrParams;
+          const retT = f.fnPtrRetType ?? "int64_t";
+          return `${retT} (*${toCName(f.name)})(${fp});`;
+        })
+        .join(" ");
+      if (isSelfRef) {
+        lines.push(`struct ${selfRefTag};`);
+        lines.push(
+          `typedef struct ${selfRefTag} { ${fieldDecls} } ${structName};`,
+        );
+      } else {
+        lines.push(`typedef struct { ${fieldDecls} } ${structName};`);
+      }
+    };
+    for (const fnName of ctx.thisReturners.keys()) {
+      emitStructTypedef(fnName);
+    }
+  }
+  if (ctx.thisReturners.size > 0) lines.push("");
+
   for (const node of ast.body) {
     if (node.kind === "FnDecl") {
       if (node.expectDecl === true) {
@@ -806,20 +1331,77 @@ export function generateC(ast) {
     }
     if (node.kind === "LetDecl") {
       const inferred = inferExprType(node.value, ctx, topLevelTypes);
-      topLevelTypes.set(node.name, inferred);
-      lines.push(`${inferred} ${toCName(node.name)};`);
+      // If the value is a direct function reference, emit as a function pointer.
+      const isFnRef =
+        node.value?.kind === "Identifier" &&
+        ctx.fnReturnTypeByName.has(node.value.name);
+      if (isFnRef) {
+        const retType =
+          ctx.fnReturnTypeByName.get(node.value.name) ?? "int64_t";
+        const fnNode = (ast.body ?? []).find(
+          (n) => n.kind === "FnDecl" && n.name === node.value.name,
+        );
+        const paramTypes = (fnNode?.params ?? [])
+          .filter((p) => !p.implicitThis)
+          .map(() => "int64_t")
+          .join(", ");
+        const fnPtrType = `${retType} (*)(${paramTypes || "void"})`;
+        topLevelTypes.set(node.name, fnPtrType);
+        lines.push(
+          `${retType} (*${toCName(node.name)})(${paramTypes || "void"});`,
+        );
+      } else if (inferred.startsWith("__FnPtr_")) {
+        // fn-returning function call — declare as function pointer typedef
+        topLevelTypes.set(node.name, inferred);
+        lines.push(`${inferred} ${toCName(node.name)};`);
+      } else if (
+        inferred === "__tuff_vec_t" ||
+        inferred === "__tuff_range_t" ||
+        inferred === "__tuff_range_result_t"
+      ) {
+        // Tuples, arrays, ranges all stored as int64_t handles.
+        topLevelTypes.set(node.name, inferred);
+        lines.push(`int64_t ${toCName(node.name)};`);
+      } else {
+        topLevelTypes.set(node.name, inferred);
+        lines.push(`${inferred} ${toCName(node.name)};`);
+      }
       initRows.push(
         `${toCName(node.name)} = ${emitExpr(node.value, ctx, topLevelTypes)};`,
       );
       lines.push("");
       continue;
     }
-    lines.push(emitStmt(node, ctx, topLevelTypes));
-    lines.push("");
+    // Only truly executable statements go into tuff_main; declarations stay at file level.
+    const executableKinds = new Set([
+      "ExprStmt",
+      "AssignStmt",
+      "ReturnStmt",
+      "WhileStmt",
+      "IfStmt",
+      "BreakStmt",
+      "ContinueStmt",
+      "ForStmt",
+      "TupleDestructure",
+    ]);
+    if (executableKinds.has(node.kind)) {
+      mainRows.push(`  ${emitStmt(node, ctx, topLevelTypes)}`);
+    } else {
+      lines.push(emitStmt(node, ctx, topLevelTypes));
+      lines.push("");
+    }
   }
 
+  // Also emit any top-level declaration nodes that shouldn't go into mainRows.
+  // These are type-level constructs that were previously caught by the catch-all
+  // but now need explicit file-level placement since mainRows is for executables.
+  // (FnDecl and LetDecl are already handled above; ExprStmt/AssignStmt go to mainRows.)
+
   for (const node of fnNodes) {
-    const returnType = typeToCType(node.returnType, ctx);
+    // Use fnReturnTypeByName which has struct overrides for this-returning fns.
+    const returnType =
+      ctx.fnReturnTypeByName.get(node.name) ??
+      typeToCType(node.returnType, ctx);
     const params = emitParamList(node.params, ctx);
     lines.push(emitPrototype(returnType, toCName(node.name), params));
   }
@@ -836,6 +1418,21 @@ export function generateC(ast) {
   }
   lines.push("}");
   lines.push("");
+
+  const hasDeclaredMain = fnNodes.some((n) => n.name === "main");
+  if (!hasDeclaredMain) {
+    if (mainRows.length > 0) {
+      const bodyRows = mainRows.slice(0, -1);
+      const lastRow = mainRows[mainRows.length - 1].trim().replace(/;$/, "");
+      lines.push("TuffValue tuff_main(void) {");
+      for (const r of bodyRows) lines.push(r);
+      lines.push(`  return (TuffValue)(${lastRow});`);
+      lines.push("}");
+    } else {
+      lines.push("TuffValue tuff_main(void) { return 0; }");
+    }
+    lines.push("");
+  }
 
   lines.push("int main(void) {");
   lines.push("  tuff_init_globals();");
