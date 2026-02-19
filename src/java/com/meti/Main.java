@@ -25,6 +25,25 @@ public class Main {
 		private Optional<String> findString(String key) {
 			return Optional.ofNullable(this.strings.get(key));
 		}
+
+		public MapNode merge(MapNode other) {
+			this.strings.putAll(other.strings);
+			return this;
+		}
+	}
+
+	private record StringRule(String key) {
+		private Optional<MapNode> lex(String value) {
+			return Optional.of(new MapNode().withString(this.key(), value));
+		}
+	}
+
+	private record SuffixRule(StringRule childRule, String suffix) {
+		private Optional<MapNode> lex(String slice) {
+			if (!slice.endsWith(this.suffix())) {return Optional.empty();}
+			final var body = slice.substring(0, slice.length() - this.suffix().length());
+			return this.childRule().lex(body);
+		}
 	}
 
 	private static final Map<List<String>, List<String>> imports = new HashMap<List<String>, List<String>>();
@@ -103,20 +122,21 @@ public class Main {
 			}
 		}
 
-		final var i = stripped.indexOf("class ");
-		if (i >= 0) {
-			final var afterKeyword = stripped.substring(i + "class ".length()).strip();
-			final var i1 = afterKeyword.indexOf("{");
-			if (i1 >= 0) {
-				final var name = afterKeyword.substring(0, i1).strip();
-				if (afterKeyword.endsWith("}")) {
-					final var body = afterKeyword.substring(i1 + 1, afterKeyword.length() - 1);
-					return generateObject(new MapNode().withString("name", name).withString("body", body));
-				}
-			}
-		}
+		return compileClass(stripped).or(() -> Optional.of(stripped));
+	}
 
-		return Optional.of(stripped);
+	private static Optional<String> compileClass(String stripped) {
+		final var i = stripped.indexOf("class ");
+		if (i < 0) {return Optional.empty();}
+		final var afterKeyword = stripped.substring(i + "class ".length()).strip();
+		final var i1 = afterKeyword.indexOf("{");
+		if (i1 < 0) {return Optional.empty();}
+		final var name = afterKeyword.substring(0, i1).strip();
+		final var afterName = afterKeyword.substring(i1 + 1);
+		final var name1 = new MapNode().withString("name", name);
+		return new SuffixRule(new StringRule("body"), "}").lex(afterName).flatMap(node -> {
+			return generateObject(name1.merge(node));
+		});
 	}
 
 	private static Optional<String> generateObject(MapNode mapNode) {
