@@ -696,34 +696,6 @@ public class Main {
 																								new FoldingSplitter(new StatementFolder()));
 
 		return sourceRootRule.lex(input).flatMapValue(Main::transformAST).flatMapValue(targetRootRule::generate);
-//
-//
-//		final var segments = NodeListRule.split(input, new StatementFolder());
-//
-//		final var joinedRoot = new ArrayList<String>();
-//		for (var segment : segments) {
-//			final var result = compileRootSegment(segment);
-//			switch (result) {
-//				case Err<String, CompileError> v -> {
-//					return new Err<String, CompileError>(v.error);
-//				}
-//				case Ok<String, CompileError> v -> joinedRoot.add(v.value);
-//			}
-//		}
-//
-//		final var newImports = imports.entrySet().stream().map(entry -> {
-//			final var key = entry.getKey();
-//			final var values = entry.getValue();
-//			return "extern let { " + String.join(", ", values) + " } = " + String.join("::", key) + ";";
-//		}).toList();
-//
-//		final var outputSegments = new ArrayList<String>(newImports);
-//		outputSegments.addAll(joinedRoot);
-//		outputSegments.add("Main::main(__args__)");
-//		return new Ok<String, CompileError>(outputSegments
-//																						.stream()
-//																						.map(slice -> slice + System.lineSeparator())
-//																						.collect(Collectors.joining()));
 	}
 
 	private static TypeRule createExternLetRule() {
