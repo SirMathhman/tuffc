@@ -231,7 +231,6 @@ public class Main {
 			final var i1 = input.indexOf(this.infix());
 			if (i1 < 0) {
 				final var error = new CompileError("Infix '" + this.infix + "' not present", new StringContext(input));
-
 				return new Err<MapNode, CompileError>(error);
 			}
 
@@ -602,6 +601,7 @@ public class Main {
 
 	private static Rule createClassSegmentRule(Rule classMemberRule) {
 		return OrRule.from(createStructureRule("interface", classMemberRule),
+											 createStructureRule("record", classMemberRule),
 											 createClassRule(classMemberRule),
 											 new PlaceholderRule());
 	}
