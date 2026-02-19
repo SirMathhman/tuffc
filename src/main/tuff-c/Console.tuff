@@ -1,7 +1,0 @@
-extern let { printf } = stdlib;
-
-out extern fn printf(format : *Str, ...args : [_; _; _]) : Void;
-
-out fn println(message : *Str) : Void => {
-    printf("%s", message);
-}
