@@ -9,6 +9,7 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -57,8 +58,20 @@ public class Main {
 	}
 
 	private record CompileError(String message, Context context, List<CompileError> children) implements Error {
+		private CompileError(String message, Context context, List<CompileError> children) {
+			this.message = message;
+			this.context = context;
+			this.children = children;
+
+			this.children.sort(Comparator.comparingInt(CompileError::computeDepth));
+		}
+
 		public CompileError(String message, Context context) {
 			this(message, context, new ArrayList<CompileError>());
+		}
+
+		private int computeDepth() {
+			return 1 + this.children.stream().mapToInt(CompileError::computeDepth).max().orElse(0);
 		}
 
 		@Override
@@ -685,7 +698,7 @@ public class Main {
 		classSegmentRule.set(createClassSegmentRule(classSegmentRule));
 
 		final var moduleMemberRule = new LazyRule();
-		moduleMemberRule.set(OrRule.from(createExternLetRule(), createObjectRule(moduleMemberRule), getPlaceholderRule()));
+		moduleMemberRule.set(OrRule.from(createExternLetRule(), createObjectRule(moduleMemberRule)));
 
 		final var classRule = createClassRule(classSegmentRule);
 		final var sourceRootRule =
@@ -767,10 +780,6 @@ public class Main {
 											 classRule);
 	}
 
-	private static Rule getPlaceholderRule() {
-		return new TypeRule("placeholder", new PlaceholderRule());
-	}
-
 	private static TypeRule createWhitespaceRule() {
 		return new TypeRule("whitespace", new StripRule(new EmptyRule()));
 	}
@@ -795,8 +804,7 @@ public class Main {
 	private static Rule createClassSegmentRule(Rule classMemberRule) {
 		return OrRule.from(createStructureRule("interface", classMemberRule),
 											 createStructureRule("record", classMemberRule),
-											 createClassRule(classMemberRule),
-											 getPlaceholderRule());
+											 createClassRule(classMemberRule));
 	}
 
 	private static Rule createObjectRule(LazyRule moduleMemberRule) {
