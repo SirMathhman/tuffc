@@ -220,6 +220,24 @@ public class Main {
 		}
 	}
 
+	private static class LazyRule implements Rule {
+		private Optional<Rule> maybeRule = Optional.empty();
+
+		public void set(Rule other) {
+			this.maybeRule = Optional.of(other);
+		}
+
+		@Override
+		public Optional<MapNode> lex(String value) {
+			return this.maybeRule.flatMap(rule -> rule.lex(value));
+		}
+
+		@Override
+		public Optional<String> generate(MapNode node) {
+			return this.maybeRule.flatMap(rule -> rule.generate(node));
+		}
+	}
+
 	private static final Map<List<String>, List<String>> imports = new HashMap<List<String>, List<String>>();
 
 	private static <C, T> BiFunction<Optional<C>, Optional<T>, Optional<C>> optionally(BiFunction<C, T, C> mapper) {
@@ -287,23 +305,35 @@ public class Main {
 	}
 
 	private static Optional<String> compileClass(String stripped) {
-		return createClassRule().lex(stripped).flatMap(mapNode -> createObjectRule().generate(mapNode));
+		final var classSegmentRule = new LazyRule();
+		classSegmentRule.set(createClassSegmentRule(classSegmentRule));
+
+		final var moduleMemberRule = new LazyRule();
+		moduleMemberRule.set(OrRule.from(createObjectRule(moduleMemberRule), new PlaceholderRule()));
+
+		return createClassRule(classSegmentRule).lex(stripped).flatMap(moduleMemberRule::generate);
 	}
 
-	private static InfixRule createClassRule() {
+	private static InfixRule createClassRule(Rule classSegmentRule) {
+		return createStructureRule("class", classSegmentRule);
+	}
+
+	private static InfixRule createStructureRule(String type, Rule classSegmentRule) {
 		final var modifiers = new StringRule("modifiers");
 		final var name = new StripRule(new StringRule("name"));
-		final var body = new NodeListRule("body", OrRule.from(createClassSegmentRule()));
-		return new InfixRule(modifiers, "class ", new InfixRule(name, "{", new SuffixRule(body, "}")));
+		final var body = new NodeListRule("body", classSegmentRule);
+		return new InfixRule(modifiers, type + " ", new InfixRule(name, "{", new SuffixRule(new StripRule(body), "}")));
 	}
 
-	private static Rule createClassSegmentRule() {
-		return new PlaceholderRule();
+	private static Rule createClassSegmentRule(Rule classMemberRule) {
+		return OrRule.from(createStructureRule("interface", classMemberRule),
+											 createClassRule(classMemberRule),
+											 new PlaceholderRule());
 	}
 
-	private static PrefixRule createObjectRule() {
+	private static PrefixRule createObjectRule(LazyRule moduleMemberRule) {
 		final var name = new StringRule("name");
-		final var body = new NodeListRule("body", new PlaceholderRule());
+		final var body = new NodeListRule("body", moduleMemberRule);
 		return new PrefixRule("out object ", new InfixRule(name, " {", new SuffixRule(body, "}")));
 	}
 

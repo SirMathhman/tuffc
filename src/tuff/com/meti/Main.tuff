@@ -4,42 +4,34 @@ extern let { IOException } = java::io;
 extern let { Files, Path, Paths } = java::nio::file;
 extern let { ArrayList, Arrays, HashMap, List, Map, Optional } = java::util;
 extern let { Pattern } = java::util::regex;
-out object Main {/*
-	private interface Rule {
+out object Main {out object Rule {/*Optional<MapNode> lex(String value);*//*
 
-		Optional<MapNode> lex(String value);
-
-		Optional<String> generate(MapNode node);
-	}*//*
-
-	private static final class MapNode {
-		private final Map<String, String> strings = new HashMap<String, String>();
-		private final Map<String, List<MapNode>> nodeLists = new HashMap<String, List<MapNode>>();
+		Optional<String> generate(MapNode node);*/}out object MapNode {/*private final Map<String, String> strings = new HashMap<String, String>();*//*
+		private final Map<String, List<MapNode>> nodeLists = new HashMap<String, List<MapNode>>();*//*
 
 		private MapNode withString(String key, String value) {
 			this.strings.put(key, value);
 			return this;
-		}
+		}*//*
 
 		private Optional<String> findString(String key) {
 			return Optional.ofNullable(this.strings.get(key));
-		}
+		}*//*
 
 		public MapNode merge(MapNode other) {
 			this.strings.putAll(other.strings);
 			this.nodeLists.putAll(other.nodeLists);
 			return this;
-		}
+		}*//*
 
 		public MapNode withNodeList(String key, ArrayList<MapNode> nodes) {
 			this.nodeLists.put(key, nodes);
 			return this;
-		}
+		}*//*
 
 		public Optional<List<MapNode>> findNodeList(String key) {
 			return Optional.ofNullable(this.nodeLists.get(key));
-		}
-	}*//*
+		}*/}/*
 
 	private record StringRule(String key) implements Rule {
 		@Override
@@ -128,9 +120,9 @@ out object Main {/*
 					continue;
 				}
 				if (c == '}' && depth == 1) {
+					depth--;
 					segments.add(buffer.toString());
 					buffer = new StringBuilder();
-					depth--;
 					continue;
 				}
 				if (c == '{') {
@@ -165,8 +157,7 @@ out object Main {/*
 							.stream()
 							.map(this.rule::generate)
 							.reduce(Optional.of(""), optionally((s, s2) -> s + s2), (_, next) -> next));
-		}*//*
-	*/}
+		}*/}
 private record OrRule(List<Rule> rules) implements Rule {
 		public static Rule from(Rule... rules) {
 			return new OrRule(Arrays.asList(rules));
@@ -196,8 +187,7 @@ private record OrRule(List<Rule> rules) implements Rule {
 			return Optional.empty();
 		}
 	}
-out object PlaceholderRule implements Rule {/*
-		@Override
+out object PlaceholderRule implements Rule {/*@Override
 		public Optional<MapNode> lex(String value) {
 			return Optional.of(new MapNode().withString("content", value));
 		}*//*
@@ -205,8 +195,22 @@ out object PlaceholderRule implements Rule {/*
 		@Override
 		public Optional<String> generate(MapNode node) {
 			return node.findString("content").map(slice -> "/*" + slice + "*/");
+		}*/}
+out object LazyRule implements Rule {/*private Optional<Rule> maybeRule = Optional.empty();*//*
+
+		public void set(Rule other) {
+			this.maybeRule = Optional.of(other);
 		}*//*
-	*/}
+
+		@Override
+		public Optional<MapNode> lex(String value) {
+			return this.maybeRule.flatMap(rule -> rule.lex(value));
+		}*//*
+
+		@Override
+		public Optional<String> generate(MapNode node) {
+			return this.maybeRule.flatMap(rule -> rule.generate(node));
+		}*/}
 private static final Map<List<String>, List<String>> imports = new HashMap<List<String>, List<String>>();
 private static <C, T> BiFunction<Optional<C>, Optional<T>, Optional<C>> optionally(BiFunction<C, T, C> mapper) {
 		return (mapNodes, mapNode) -> mapNodes.flatMap(list -> mapNode.map(inner -> mapper.apply(list, inner)));
@@ -268,16 +272,31 @@ private static Optional<String> compileRootSegment(String input) {
 		return compileClass(stripped).or(() -> Optional.of(stripped));
 	}
 private static Optional<String> compileClass(String stripped) {
-		return createClassRule().lex(stripped).flatMap(mapNode -> createObjectRule().generate(mapNode));
+		final var classSegmentRule = new LazyRule();
+		classSegmentRule.set(createClassSegmentRule(classSegmentRule));
+
+		final var moduleMemberRule = new LazyRule();
+		moduleMemberRule.set(OrRule.from(createObjectRule(moduleMemberRule), new PlaceholderRule()));
+
+		return createClassRule(classSegmentRule).lex(stripped).flatMap(moduleMemberRule::generate);
 	}
-out object ", new InfixRule(name, " {/*", new SuffixRule(body, "}")));
-	*/}
-private static Rule createClassSegmentRule() {
-		return new PlaceholderRule();
+private static InfixRule createClassRule(Rule classSegmentRule) {
+		return createStructureRule("class", classSegmentRule);
 	}
-private static PrefixRule createObjectRule() {
+private static InfixRule createStructureRule(String type, Rule classSegmentRule) {
+		final var modifiers = new StringRule("modifiers");
+		final var name = new StripRule(new StringRule("name"));
+		final var body = new NodeListRule("body", classSegmentRule);
+		return new InfixRule(modifiers, type + " ", new InfixRule(name, "{", new SuffixRule(new StripRule(body), "}")));
+	}
+private static Rule createClassSegmentRule(Rule classMemberRule) {
+		return OrRule.from(createStructureRule("interface", classMemberRule),
+											 createClassRule(classMemberRule),
+											 new PlaceholderRule());
+	}
+private static PrefixRule createObjectRule(LazyRule moduleMemberRule) {
 		final var name = new StringRule("name");
-		final var body = new NodeListRule("body", new PlaceholderRule());
+		final var body = new NodeListRule("body", moduleMemberRule);
 		return new PrefixRule("out object ", new InfixRule(name, " {", new SuffixRule(body, "}")));
 	}
 private static Path createPath(String extension) {
