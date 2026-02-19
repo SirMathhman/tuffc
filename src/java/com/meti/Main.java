@@ -10,6 +10,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.BiFunction;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -23,6 +24,7 @@ public class Main {
 
 	private static final class MapNode {
 		private final Map<String, String> strings = new HashMap<String, String>();
+		private final Map<String, List<MapNode>> nodeLists = new HashMap<String, List<MapNode>>();
 
 		private MapNode withString(String key, String value) {
 			this.strings.put(key, value);
@@ -36,6 +38,15 @@ public class Main {
 		public MapNode merge(MapNode other) {
 			this.strings.putAll(other.strings);
 			return this;
+		}
+
+		public MapNode withNodeList(String key, ArrayList<MapNode> nodes) {
+			this.nodeLists.put(key, nodes);
+			return this;
+		}
+
+		public Optional<List<MapNode>> findNodeList(String key) {
+			return Optional.ofNullable(this.nodeLists.get(key));
 		}
 	}
 
@@ -51,7 +62,7 @@ public class Main {
 		}
 	}
 
-	private record SuffixRule(StringRule childRule, String suffix) implements Rule {
+	private record SuffixRule(Rule childRule, String suffix) implements Rule {
 		@Override
 		public Optional<MapNode> lex(String slice) {
 			if (!slice.endsWith(this.suffix())) {return Optional.empty();}
@@ -65,7 +76,7 @@ public class Main {
 		}
 	}
 
-	private record StripRule(StringRule childRule) implements Rule {
+	private record StripRule(Rule childRule) implements Rule {
 		@Override
 		public Optional<MapNode> lex(String substring) {
 			return this.childRule().lex(substring.strip());
@@ -112,7 +123,64 @@ public class Main {
 		}
 	}
 
+	private record NodeListRule(String key, Rule rule) implements Rule {
+		private static ArrayList<String> split(String input) {
+			final var segments = new ArrayList<String>();
+			var buffer = new StringBuilder();
+			var depth = 0;
+			for (var i = 0; i < input.length(); i++) {
+				final var c = input.charAt(i);
+				buffer.append(c);
+				if (c == ';' && depth == 0) {
+					segments.add(buffer.toString());
+					buffer = new StringBuilder();
+				} else {
+					if (c == '{') {
+						depth++;
+					}
+					if (c == '}') {
+						depth--;
+					}
+				}
+			}
+			if (!buffer.isEmpty()) {
+				segments.add(buffer.toString());
+			}
+			return segments;
+		}
+
+		@Override
+		public Optional<MapNode> lex(String value) {
+			return split(value)
+					.stream()
+					.map(this.rule::lex)
+					.reduce(Optional.of(new ArrayList<MapNode>()), optionally(Main::add), (_, next) -> next)
+					.map(segments -> {
+						return new MapNode().withNodeList(this.key, segments);
+					});
+		}
+
+		@Override
+		public Optional<String> generate(MapNode node) {
+			return node
+					.findNodeList(this.key)
+					.flatMap(list -> list
+							.stream()
+							.map(this.rule::generate)
+							.reduce(Optional.of(""), optionally((s, s2) -> s + s2), (_, next) -> next));
+		}
+	}
+
 	private static final Map<List<String>, List<String>> imports = new HashMap<List<String>, List<String>>();
+
+	private static <C, T> BiFunction<Optional<C>, Optional<T>, Optional<C>> optionally(BiFunction<C, T, C> mapper) {
+		return (mapNodes, mapNode) -> mapNodes.flatMap(list -> mapNode.map(inner -> mapper.apply(list, inner)));
+	}
+
+	private static ArrayList<MapNode> add(ArrayList<MapNode> list, MapNode inner) {
+		list.add(inner);
+		return list;
+	}
 
 	public static void main(String[] args) {
 		try {
@@ -130,30 +198,8 @@ public class Main {
 	}
 
 	private static String compile(String input) {
-		final var segments = new ArrayList<String>();
-		var buffer = new StringBuilder();
-		var depth = 0;
-		for (var i = 0; i < input.length(); i++) {
-			final var c = input.charAt(i);
-			buffer.append(c);
-			if (c == ';' && depth == 0) {
-				segments.add(buffer.toString());
-				buffer = new StringBuilder();
-			} else {
-				if (c == '{') {
-					depth++;
-				}
-				if (c == '}') {
-					depth--;
-				}
-			}
-		}
-		if (!buffer.isEmpty()) {
-			segments.add(buffer.toString());
-		}
-
+		final var segments = NodeListRule.split(input);
 		final var joinedRoot = segments.stream().map(Main::compileRootSegment).flatMap(Optional::stream).toList();
-
 		final var newImports = imports.entrySet().stream().map(entry -> {
 			final var key = entry.getKey();
 			final var values = entry.getValue();
@@ -198,7 +244,7 @@ public class Main {
 	private static InfixRule createClassRule() {
 		final var modifiers = new StringRule("modifiers");
 		final var name = new StripRule(new StringRule("name"));
-		final var body = new StringRule("body");
+		final var body = new NodeListRule("body", new StringRule("?"));
 		return new InfixRule(modifiers, "class ", new InfixRule(name, "{", new SuffixRule(body, "}")));
 	}
 
