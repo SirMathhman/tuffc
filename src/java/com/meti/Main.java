@@ -23,7 +23,7 @@ public class Main {
 	private sealed interface Result<T, X> permits Err, Ok {
 		<R> Result<R, X> mapValue(Function<T, R> mapper);
 
-		<R> Result<R, X> flatMap(Function<T, Result<R, X>> mapper);
+		<R> Result<R, X> flatMapValue(Function<T, Result<R, X>> mapper);
 
 		<R> R match(Function<T, R> whenOk, Function<X, R> whenErr);
 
@@ -58,7 +58,7 @@ public class Main {
 		@Override
 		public String display() {
 			final var joined = this.children.stream().map(CompileError::display).collect(Collectors.joining());
-			return this.message + ": " + this.context.display() + joined;
+			return this.message + ": '" + this.context.display() + "'" + System.lineSeparator() + joined;
 		}
 	}
 
@@ -117,7 +117,7 @@ public class Main {
 		}
 
 		@Override
-		public <R> Result<R, X> flatMap(Function<T, Result<R, X>> mapper) {
+		public <R> Result<R, X> flatMapValue(Function<T, Result<R, X>> mapper) {
 			return mapper.apply(this.value);
 		}
 
@@ -146,7 +146,7 @@ public class Main {
 		}
 
 		@Override
-		public <R> Result<R, X> flatMap(Function<T, Result<R, X>> mapper) {
+		public <R> Result<R, X> flatMapValue(Function<T, Result<R, X>> mapper) {
 			return new Err<R, X>(this.error);
 		}
 
@@ -230,14 +230,14 @@ public class Main {
 
 			final var substring = input.substring(0, i1);
 			final var afterName = input.substring(i1 + this.infix().length());
-			return this.leftRule().lex(substring).flatMap(inner -> this.rightRule().lex(afterName).mapValue(inner::merge));
+			return this.leftRule().lex(substring).flatMapValue(inner -> this.rightRule().lex(afterName).mapValue(inner::merge));
 		}
 
 		@Override
 		public Result<String, CompileError> generate(MapNode node) {
 			return this.leftRule
 					.generate(node)
-					.flatMap(leftResult -> this.rightRule
+					.flatMapValue(leftResult -> this.rightRule
 							.generate(node)
 							.mapValue(rightResult -> leftResult + this.infix + rightResult));
 		}
@@ -550,7 +550,7 @@ public class Main {
 
 	private static <C, T> BiFunction<Result<C, CompileError>, Result<T, CompileError>, Result<C, CompileError>> optionally(
 			BiFunction<C, T, C> mapper) {
-		return (mapNodes, mapNode) -> mapNodes.flatMap(list -> mapNode.mapValue(inner -> mapper.apply(list, inner)));
+		return (mapNodes, mapNode) -> mapNodes.flatMapValue(list -> mapNode.mapValue(inner -> mapper.apply(list, inner)));
 	}
 
 	public static void main(String[] args) {
@@ -604,32 +604,47 @@ public class Main {
 	}
 
 	private static Result<String, CompileError> compile(String input) {
-		final var segments = NodeListRule.split(input, new StatementFolder());
+		final var classSegmentRule = new LazyRule();
+		classSegmentRule.set(createClassSegmentRule(classSegmentRule));
 
-		final var joinedRoot = new ArrayList<String>();
-		for (var segment : segments) {
-			final var result = compileRootSegment(segment);
-			switch (result) {
-				case Err<String, CompileError> v -> {
-					return new Err<String, CompileError>(v.error);
-				}
-				case Ok<String, CompileError> v -> joinedRoot.add(v.value);
-			}
-		}
+		final var moduleMemberRule = new LazyRule();
+		moduleMemberRule.set(OrRule.from(createObjectRule(moduleMemberRule), new PlaceholderRule()));
 
-		final var newImports = imports.entrySet().stream().map(entry -> {
-			final var key = entry.getKey();
-			final var values = entry.getValue();
-			return "extern let { " + String.join(", ", values) + " } = " + String.join("::", key) + ";";
-		}).toList();
+		final var classRule = createClassRule(classSegmentRule);
+		final var sourceRootRule = new NodeListRule("children", OrRule.from(classRule));
 
-		final var outputSegments = new ArrayList<String>(newImports);
-		outputSegments.addAll(joinedRoot);
-		outputSegments.add("Main::main(__args__)");
-		return new Ok<String, CompileError>(outputSegments
-																						.stream()
-																						.map(slice -> slice + System.lineSeparator())
-																						.collect(Collectors.joining()));
+		final var targetRootRule = new NodeListRule("children", OrRule.from(moduleMemberRule));
+		return sourceRootRule
+				.lex(input)
+				.flatMapValue(targetRootRule::generate);
+//
+//
+//		final var segments = NodeListRule.split(input, new StatementFolder());
+//
+//		final var joinedRoot = new ArrayList<String>();
+//		for (var segment : segments) {
+//			final var result = compileRootSegment(segment);
+//			switch (result) {
+//				case Err<String, CompileError> v -> {
+//					return new Err<String, CompileError>(v.error);
+//				}
+//				case Ok<String, CompileError> v -> joinedRoot.add(v.value);
+//			}
+//		}
+//
+//		final var newImports = imports.entrySet().stream().map(entry -> {
+//			final var key = entry.getKey();
+//			final var values = entry.getValue();
+//			return "extern let { " + String.join(", ", values) + " } = " + String.join("::", key) + ";";
+//		}).toList();
+//
+//		final var outputSegments = new ArrayList<String>(newImports);
+//		outputSegments.addAll(joinedRoot);
+//		outputSegments.add("Main::main(__args__)");
+//		return new Ok<String, CompileError>(outputSegments
+//																						.stream()
+//																						.map(slice -> slice + System.lineSeparator())
+//																						.collect(Collectors.joining()));
 	}
 
 	private static Result<String, CompileError> compileRootSegment(String input) {
@@ -654,10 +669,6 @@ public class Main {
 			}
 		}
 
-		return compileClass(stripped);
-	}
-
-	private static Result<String, CompileError> compileClass(String stripped) {
 		final var classSegmentRule = new LazyRule();
 		classSegmentRule.set(createClassSegmentRule(classSegmentRule));
 
@@ -667,7 +678,7 @@ public class Main {
 		return createClassRule(classSegmentRule)
 				.lex(stripped)
 				.mapValue(Main::transformRootSegment)
-				.flatMap(moduleMemberRule::generate);
+				.flatMapValue(moduleMemberRule::generate);
 	}
 
 	private static MapNode transformRootSegment(MapNode node) {
