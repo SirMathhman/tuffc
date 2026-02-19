@@ -30,8 +30,6 @@ public class Main {
 		<R> Result<Tuple<T, R>, X> and(Supplier<Result<R, X>> mapper);
 
 		<R> Result<T, R> mapErr(Function<X, R> mapper);
-
-		Optional<T> findValue();
 	}
 
 	private interface Rule {
@@ -135,10 +133,6 @@ public class Main {
 			return new Ok<T, R>(this.value);
 		}
 
-		@Override
-		public Optional<T> findValue() {
-			return Optional.of(this.value);
-		}
 	}
 
 	private record Err<T, X>(X error) implements Result<T, X> {
@@ -167,10 +161,6 @@ public class Main {
 			return new Err<T, R>(mapper.apply(this.error));
 		}
 
-		@Override
-		public Optional<T> findValue() {
-			return Optional.empty();
-		}
 	}
 
 	private record NodeContext(MapNode node) implements Context {
@@ -241,11 +231,11 @@ public class Main {
 
 		@Override
 		public Result<String, CompileError> generate(MapNode node) {
-			return this.leftRule.generate(node).flatMap(leftResult -> {
-				return this.rightRule.generate(node).mapValue(rightResult -> {
-					return leftResult + this.infix + rightResult;
-				});
-			});
+			return this.leftRule
+					.generate(node)
+					.flatMap(leftResult -> this.rightRule
+							.generate(node)
+							.mapValue(rightResult -> leftResult + this.infix + rightResult));
 		}
 	}
 
@@ -266,35 +256,35 @@ public class Main {
 	}
 
 	private record NodeListRule(String key, Rule rule) implements Rule {
-		private static ArrayList<String> split(String input) {
-			final var segments = new ArrayList<String>();
-			var buffer = new StringBuilder();
-			var depth = 0;
-			for (var i = 0; i < input.length(); i++) {
-				final var c = input.charAt(i);
-				buffer.append(c);
-				if (c == ';' && depth == 0) {
-					segments.add(buffer.toString());
-					buffer = new StringBuilder();
-					continue;
+		private static List<String> split(String input) {
+			var current = new State(input);
+			while (true) {
+				final var maybeNext = current.pop();
+				if (maybeNext.isEmpty()) {
+					break;
 				}
-				if (c == '}' && depth == 1) {
-					depth--;
-					segments.add(buffer.toString());
-					buffer = new StringBuilder();
-					continue;
-				}
-				if (c == '{') {
-					depth++;
-				}
-				if (c == '}') {
-					depth--;
-				}
+
+				current = fold(current, maybeNext.get());
 			}
-			if (!buffer.isEmpty()) {
-				segments.add(buffer.toString());
+
+			return current.advance().segments;
+		}
+
+		private static State fold(State state, char c) {
+			final var appended = state.append(c);
+			if (c == ';' && appended.isLevel()) {
+				return appended.advance();
 			}
-			return segments;
+			if (c == '}' && appended.isShallow()) {
+				return appended.exit().advance();
+			}
+			if (c == '{') {
+				return appended.enter();
+			}
+			if (c == '}') {
+				return appended.exit();
+			}
+			return appended;
 		}
 
 		@Override
@@ -443,6 +433,64 @@ public class Main {
 		}
 	}
 
+	public static class State {
+		private final String input;
+		private final ArrayList<String> segments;
+		private int index;
+		private StringBuilder buffer;
+		private int depth;
+
+		public State(String input, int index, StringBuilder buffer, int depth, ArrayList<String> segments) {
+			this.input = input;
+			this.index = index;
+			this.buffer = buffer;
+			this.depth = depth;
+			this.segments = segments;
+		}
+
+		public State(String input) {
+			this(input, 0, new StringBuilder(), 0, new ArrayList<String>());
+		}
+
+		private boolean isShallow() {
+			return this.depth == 1;
+		}
+
+		private State exit() {
+			this.depth = this.depth - 1;
+			return this;
+		}
+
+		private State advance() {
+			this.segments.add(this.buffer.toString());
+			this.buffer = new StringBuilder();
+			return this;
+		}
+
+		private State append(char c) {
+			this.buffer.append(c);
+			return this;
+		}
+
+		private Optional<Character> pop() {
+			if (this.index >= this.input.length()) {
+				return Optional.empty();
+			}
+			final var c = this.input.charAt(this.index);
+			this.index = this.index + 1;
+			return Optional.of(c);
+		}
+
+		private State enter() {
+			this.depth = this.depth + 1;
+			return this;
+		}
+
+		private boolean isLevel() {
+			return this.depth == 0;
+		}
+	}
+
 	private static final Map<List<String>, List<String>> imports = new HashMap<List<String>, List<String>>();
 
 	private static List<MapNode> getMapNodes(Tuple<List<MapNode>, MapNode> tuple) {
@@ -516,9 +564,7 @@ public class Main {
 				case Err<String, CompileError> v -> {
 					return new Err<String, CompileError>(v.error);
 				}
-				case Ok<String, CompileError> v -> {
-					joinedRoot.add(v.value);
-				}
+				case Ok<String, CompileError> v -> joinedRoot.add(v.value);
 			}
 		}
 
