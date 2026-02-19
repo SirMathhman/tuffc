@@ -8,12 +8,13 @@ let { node_kind, node_get_data1, node_get_data2, node_get_data3, node_get_data4,
 let resolve_lifetime_scopes : Vec = vec_new();
 
 fn lifetime_scope_has(name: *Str) : Bool => {
-    let i = resolve_lifetime_scopes.vec_length() - 1;
-    while (i >= 0) {
+    let len = resolve_lifetime_scopes.vec_length();
+    let mut i : I32 = 0;
+    while (i < len) {
         if (resolve_lifetime_scopes.vec_get(i).set_has(name)) {
             return true;
         }
-        i = i - 1;
+        i = i + 1;
     }
     false
 }
@@ -132,7 +133,8 @@ fn fn_decl_sig(n: I32) : *Str => {
         pparts.vec_push(pname.str_concat(":").str_concat(ptype));
         i = i + 1;
     }
-    let gcount = int_to_string(gens.vec_length());
+    let gcount_len: I32 = 0;  // TODO: Fix USize to I32 conversion for gens.vec_length()
+    let gcount = int_to_string(gcount_len);
     return "g=".str_concat(gcount).str_concat(";p=").str_concat(pparts.vec_join(",")).str_concat(";r=").str_concat(fn_type_sig(ret));
 }
 

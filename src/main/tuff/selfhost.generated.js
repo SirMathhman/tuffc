@@ -93,7 +93,7 @@ function vec_get(__this_param, i) { return __vec_get(__this_param, i); }
 
 function vec_set(__this_param, i, v) { return __vec_set(__this_param, i, v); }
 
-function vec_length(__this_param) { return __vec_length(__this_param); }
+function vec_length(__this_param) { return (0 + __vec_length(__this_param)); }
 
 function vec_init(__this_param) { return __vec_init(__this_param); }
 
@@ -2212,12 +2212,13 @@ let resolve_lifetime_scopes = vec_new();
 
 function lifetime_scope_has(name) {
   let __tuff_this = { name: name };
-  let i = ((() => { const __recv = resolve_lifetime_scopes; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })() - 1); __tuff_this.i = i;
-  while ((i >= 0)) {
+  let len = (() => { const __recv = resolve_lifetime_scopes; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })(); __tuff_this.len = len;
+  let i = 0; __tuff_this.i = i;
+  while ((i < len)) {
   if ((() => { const __recv = (() => { const __recv = resolve_lifetime_scopes; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(); const __prop = __recv?.["set_has"]; if (typeof __prop === "function") return __prop(name); const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, name) : set_has(__recv, name); })()) {
   return true;
 }
-  i = (i - 1); __tuff_this.i = i;
+  i = (i + 1); __tuff_this.i = i;
 }
   return false;
 }
@@ -2336,7 +2337,8 @@ function fn_decl_sig(n) {
   (() => { const __recv = pparts; const __prop = __recv?.["vec_push"]; if (typeof __prop === "function") return __prop((() => { const __recv = (() => { const __recv = pname; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(":"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ":") : str_concat(__recv, ":"); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(ptype); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ptype) : str_concat(__recv, ptype); })()); const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, (() => { const __recv = (() => { const __recv = pname; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(":"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ":") : str_concat(__recv, ":"); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(ptype); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ptype) : str_concat(__recv, ptype); })()) : vec_push(__recv, (() => { const __recv = (() => { const __recv = pname; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(":"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ":") : str_concat(__recv, ":"); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(ptype); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ptype) : str_concat(__recv, ptype); })()); })();
   i = (i + 1); __tuff_this.i = i;
 }
-  let gcount = int_to_string((() => { const __recv = gens; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })()); __tuff_this.gcount = gcount;
+  let gcount_len = 0; __tuff_this.gcount_len = gcount_len;
+  let gcount = int_to_string(gcount_len); __tuff_this.gcount = gcount;
   return (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = "g="; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(gcount); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, gcount) : str_concat(__recv, gcount); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(";p="); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ";p=") : str_concat(__recv, ";p="); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop((() => { const __recv = pparts; const __prop = __recv?.["vec_join"]; if (typeof __prop === "function") return __prop(","); const __dyn = __recv?.table?.vec_join; return __dyn ? __dyn(__recv.ref, ",") : vec_join(__recv, ","); })()); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, (() => { const __recv = pparts; const __prop = __recv?.["vec_join"]; if (typeof __prop === "function") return __prop(","); const __dyn = __recv?.table?.vec_join; return __dyn ? __dyn(__recv.ref, ",") : vec_join(__recv, ","); })()) : str_concat(__recv, (() => { const __recv = pparts; const __prop = __recv?.["vec_join"]; if (typeof __prop === "function") return __prop(","); const __dyn = __recv?.table?.vec_join; return __dyn ? __dyn(__recv.ref, ",") : vec_join(__recv, ","); })()); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(";r="); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ";r=") : str_concat(__recv, ";r="); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(fn_type_sig(ret)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, fn_type_sig(ret)) : str_concat(__recv, fn_type_sig(ret)); })();
 }
 
