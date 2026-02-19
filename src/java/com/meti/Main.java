@@ -760,7 +760,7 @@ public class Main {
 				"\")) return Optional.empty();"
 				+ String.join("", deserializerLines) +
 				"\n\t\t\treturn Optional.of(new " + name + "(" + constructorArgs + "));\n\t\t}" +
-				"\n\n\t\t@Override\n\t\tpublic MapNode serialize() {\n\t\t\treturn new MapNode(\"" + name.toLowerCase()
+				"\n\t\tpublic MapNode serialize() {\n\t\t\treturn new MapNode(\"" + name.toLowerCase()
 				+
 				"\")" + String.join("", serializerLines) + ";\n\t\t}" + "\n\t}");
 	}
