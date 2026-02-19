@@ -25,6 +25,7 @@ public class Main {
 	private static final class MapNode {
 		private final Map<String, String> strings = new HashMap<String, String>();
 		private final Map<String, List<MapNode>> nodeLists = new HashMap<String, List<MapNode>>();
+		private Optional<String> maybeType = Optional.empty();
 
 		private MapNode withString(String key, String value) {
 			this.strings.put(key, value);
@@ -48,6 +49,15 @@ public class Main {
 
 		public Optional<List<MapNode>> findNodeList(String key) {
 			return Optional.ofNullable(this.nodeLists.get(key));
+		}
+
+		public boolean is(String type) {
+			return this.maybeType.isPresent() && this.maybeType.get().equals(type);
+		}
+
+		public MapNode retype(String type) {
+			this.maybeType = Optional.of(type);
+			return this;
 		}
 	}
 
@@ -238,6 +248,22 @@ public class Main {
 		}
 	}
 
+	private record TypeRule(String type, Rule rule) implements Rule {
+		@Override
+		public Optional<MapNode> lex(String value) {
+			return this.rule.lex(value).map(node -> node.retype(this.type));
+		}
+
+		@Override
+		public Optional<String> generate(MapNode node) {
+			if (node.is(this.type)) {
+				return this.rule.generate(node);
+			}
+
+			return Optional.empty();
+		}
+	}
+
 	private static final Map<List<String>, List<String>> imports = new HashMap<List<String>, List<String>>();
 
 	private static <C, T> BiFunction<Optional<C>, Optional<T>, Optional<C>> optionally(BiFunction<C, T, C> mapper) {
@@ -311,18 +337,34 @@ public class Main {
 		final var moduleMemberRule = new LazyRule();
 		moduleMemberRule.set(OrRule.from(createObjectRule(moduleMemberRule), new PlaceholderRule()));
 
-		return createClassRule(classSegmentRule).lex(stripped).flatMap(moduleMemberRule::generate);
+		return createClassRule(classSegmentRule)
+				.lex(stripped)
+				.map(Main::transformRootSegment)
+				.flatMap(moduleMemberRule::generate);
 	}
 
-	private static InfixRule createClassRule(Rule classSegmentRule) {
+	private static MapNode transformRootSegment(MapNode node) {
+		if (node.is("class")) {
+			return node.retype("object");
+		}
+
+		if (node.is("interface")) {
+			return node.retype("contact");
+		}
+
+		return node;
+	}
+
+	private static Rule createClassRule(Rule classSegmentRule) {
 		return createStructureRule("class", classSegmentRule);
 	}
 
-	private static InfixRule createStructureRule(String type, Rule classSegmentRule) {
+	private static Rule createStructureRule(String type, Rule classSegmentRule) {
 		final var modifiers = new StringRule("modifiers");
 		final var name = new StripRule(new StringRule("name"));
 		final var body = new NodeListRule("body", classSegmentRule);
-		return new InfixRule(modifiers, type + " ", new InfixRule(name, "{", new SuffixRule(new StripRule(body), "}")));
+		final var rightRule = new InfixRule(name, "{", new SuffixRule(new StripRule(body), "}"));
+		return new TypeRule(type, new InfixRule(modifiers, type + " ", rightRule));
 	}
 
 	private static Rule createClassSegmentRule(Rule classMemberRule) {
@@ -331,10 +373,10 @@ public class Main {
 											 new PlaceholderRule());
 	}
 
-	private static PrefixRule createObjectRule(LazyRule moduleMemberRule) {
+	private static Rule createObjectRule(LazyRule moduleMemberRule) {
 		final var name = new StringRule("name");
 		final var body = new NodeListRule("body", moduleMemberRule);
-		return new PrefixRule("out object ", new InfixRule(name, " {", new SuffixRule(body, "}")));
+		return new TypeRule("object", new PrefixRule("out object ", new InfixRule(name, " {", new SuffixRule(body, "}"))));
 	}
 
 	private static Path createPath(String extension) {
