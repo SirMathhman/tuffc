@@ -1,0 +1,4 @@
+RootChild = Object | Contract
+Object = name
+Contract = name
+Root = [RootChild children]
