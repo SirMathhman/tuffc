@@ -50,6 +50,10 @@ public class Main {
 		State fold(State state, char c);
 	}
 
+	private interface Splitter {
+		List<String> split(String input);
+	}
+
 	private record CompileError(String message, Context context, List<CompileError> children) implements Error {
 		public CompileError(String message, Context context) {
 			this(message, context, new ArrayList<CompileError>());
@@ -230,7 +234,10 @@ public class Main {
 
 			final var substring = input.substring(0, i1);
 			final var afterName = input.substring(i1 + this.infix().length());
-			return this.leftRule().lex(substring).flatMapValue(inner -> this.rightRule().lex(afterName).mapValue(inner::merge));
+			return this
+					.leftRule()
+					.lex(substring)
+					.flatMapValue(inner -> this.rightRule().lex(afterName).mapValue(inner::merge));
 		}
 
 		@Override
@@ -243,7 +250,7 @@ public class Main {
 		}
 	}
 
-	private record PrefixRule(String prefix, InfixRule rule) implements Rule {
+	private record PrefixRule(String prefix, Rule rule) implements Rule {
 		@Override
 		public Result<MapNode, CompileError> lex(String value) {
 			if (value.startsWith(this.prefix)) {
@@ -259,24 +266,12 @@ public class Main {
 		}
 	}
 
-	private record NodeListRule(String key, Rule rule) implements Rule {
-		private static List<String> split(String input, Folder folder) {
-			var current = new State(input);
-			while (true) {
-				final var maybeNext = current.pop();
-				if (maybeNext.isEmpty()) {
-					break;
-				}
-
-				current = folder.fold(current, maybeNext.get());
-			}
-
-			return current.advance().segments;
-		}
+	private record NodeListRule(String key, Rule rule, Splitter splitter) implements Rule {
 
 		@Override
 		public Result<MapNode, CompileError> lex(String value) {
-			return split(value, new StatementFolder())
+			return this.splitter
+					.split(value)
 					.stream()
 					.<Result<List<MapNode>, CompileError>>reduce(new Ok<List<MapNode>, CompileError>(new ArrayList<MapNode>()),
 																											 (listCompileErrorResult, segment) -> listCompileErrorResult
@@ -540,6 +535,30 @@ public class Main {
 		}
 	}
 
+	public record FoldingSplitter(Folder folder) implements Splitter {
+		@Override
+		public List<String> split(String input) {
+			var current = new State(input);
+			while (true) {
+				final var maybeNext = current.pop();
+				if (maybeNext.isEmpty()) {
+					break;
+				}
+
+				current = this.folder().fold(current, maybeNext.get());
+			}
+
+			return current.advance().segments;
+		}
+	}
+
+	private record RegexSplitter(String regex) implements Splitter {
+		@Override
+		public List<String> split(String input) {
+			return Arrays.asList(input.split(this.regex));
+		}
+	}
+
 	private static final Map<List<String>, List<String>> imports = new HashMap<List<String>, List<String>>();
 
 	private static List<MapNode> getMapNodes(Tuple<List<MapNode>, MapNode> tuple) {
@@ -611,12 +630,12 @@ public class Main {
 		moduleMemberRule.set(OrRule.from(createObjectRule(moduleMemberRule), new PlaceholderRule()));
 
 		final var classRule = createClassRule(classSegmentRule);
-		final var sourceRootRule = new NodeListRule("children", OrRule.from(classRule));
+		final var sourceRootRule =
+				new NodeListRule("children", OrRule.from(createNamespacedRule("package"), classRule), new RegexSplitter("."));
 
-		final var targetRootRule = new NodeListRule("children", OrRule.from(moduleMemberRule));
-		return sourceRootRule
-				.lex(input)
-				.flatMapValue(targetRootRule::generate);
+		final var targetRootRule =
+				new NodeListRule("children", OrRule.from(moduleMemberRule), new FoldingSplitter(new StatementFolder()));
+		return sourceRootRule.lex(input).flatMapValue(targetRootRule::generate);
 //
 //
 //		final var segments = NodeListRule.split(input, new StatementFolder());
@@ -645,6 +664,12 @@ public class Main {
 //																						.stream()
 //																						.map(slice -> slice + System.lineSeparator())
 //																						.collect(Collectors.joining()));
+	}
+
+	private static TypeRule createNamespacedRule(String type) {
+		final var segments =
+				new NodeListRule("segments", new StringRule("segment"), new FoldingSplitter(new StatementFolder()));
+		return new TypeRule(type, new StripRule(new PrefixRule(type + " ", new SuffixRule(segments, ";"))));
 	}
 
 	private static Result<String, CompileError> compileRootSegment(String input) {
@@ -700,7 +725,7 @@ public class Main {
 	private static Rule createStructureRule(String type, Rule classSegmentRule) {
 		final var modifiers = new StringRule("modifiers");
 		final var name = new StripRule(new StringRule("name"));
-		final var body = new NodeListRule("body", classSegmentRule);
+		final var body = new NodeListRule("body", classSegmentRule, new FoldingSplitter(new StatementFolder()));
 		final var rightRule = new InfixRule(name, "{", new SuffixRule(new StripRule(body), "}"));
 		return new TypeRule(type, new InfixRule(modifiers, type + " ", rightRule));
 	}
@@ -714,7 +739,7 @@ public class Main {
 
 	private static Rule createObjectRule(LazyRule moduleMemberRule) {
 		final var name = new StringRule("name");
-		final var body = new NodeListRule("body", moduleMemberRule);
+		final var body = new NodeListRule("body", moduleMemberRule, new FoldingSplitter(new StatementFolder()));
 		return new TypeRule("object", new PrefixRule("out object ", new InfixRule(name, " {", new SuffixRule(body, "}"))));
 	}
 
