@@ -676,36 +676,54 @@ public class Main {
 
 			final var segments = new ArrayList<String>();
 			segments.add("package com.meti;");
+
+			final var tuple = toLines(slices);
+			tuple.left.stream()
+					.map(slice -> "import " + slice + ";")
+					.forEach(segments::add);
+
 			segments.add("public class JavaAST {");
-			for (var slice : slices) {
-				final var i = slice.indexOf("=");
-				if (i >= 0) {
-					final var name = slice.substring(0, i).strip();
-					final var value = slice.substring(i + 1).strip();
-					final var args = value.split(Pattern.quote(","));
-					final var params = new ArrayList<String>();
-					for (var arg : args) {
-						final var arg1 = arg.strip();
-						if (arg1.startsWith("[") && arg1.endsWith("]")) {
-							final var substring = arg1.substring(1, arg1.length() - 1).strip();
-							final var split = substring.split(" ");
-							if (split.length >= 2) {
-								params.add("List<" + split[0] + "> " + split[1]);
-							}
-						} else {
-							params.add("String " + arg1);
-						}
-					}
-
-					segments.add("\tpublic record " + name + "(" + String.join(", ", params) + "){}");
-				}
-			}
-
+			segments.addAll(tuple.right);
 			segments.add("}");
 
 			writeString(Paths.get(".", "src", "java", "com", "meti", "JavaAST.java"),
 									String.join(System.lineSeparator(), segments));
 		}
+	}
+
+	private static Tuple<List<String>, List<String>> toLines(String[] slices) {
+		final var imports = new ArrayList<String>();
+		final var segments = new ArrayList<String>();
+
+		for (var slice : slices) {
+			final var i = slice.indexOf("=");
+			if (i >= 0) {
+				final var name = slice.substring(0, i).strip();
+				final var value = slice.substring(i + 1).strip();
+				final var args = value.split(Pattern.quote(","));
+				final var params = new ArrayList<String>();
+				for (var arg : args) {
+					final var arg1 = arg.strip();
+					if (arg1.startsWith("[") && arg1.endsWith("]")) {
+						final var substring = arg1.substring(1, arg1.length() - 1).strip();
+						final var split = substring.split(" ");
+						if (split.length >= 2) {
+							if (!imports.contains("java.util.List")) {
+								imports.add("java.util.List");
+							}
+
+							params.add("List<" + split[0] + "> " + split[1]);
+						}
+					} else {
+						params.add("String " + arg1);
+					}
+				}
+
+				segments.add("\tpublic record " + name + "(" + String.join(", ", params) + "){}");
+			}
+		}
+
+		return new Tuple<>(imports, segments);
 	}
 
 	private static Optional<Error> writeString(Path target, String output) {

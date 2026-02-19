@@ -1,2 +1,2 @@
 Class = name, type
-Root = []
+Root = [Class classes]
