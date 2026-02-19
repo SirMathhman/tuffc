@@ -695,7 +695,7 @@ public class Main {
 			final var s1 = superTypes.isEmpty() ? "" : " extends " + String.join(", ", superTypes);
 			segments.add("\tpublic sealed interface " + name + s1 + " permits " + joined + " {\n\t\tstatic Optional<" +
 					name + "> deserialize(MapNode node) {\n\t\t\treturn " + head + tail + ";\n" +
-					"\t\t}\n\t}");
+					"\t\t}\n\n\t\tMapNode serialize();\n\t}");
 			return;
 		}
 
@@ -703,6 +703,7 @@ public class Main {
 		final var outputParams = new ArrayList<String>();
 		final var maybeArgNames = new ArrayList<String>();
 		final var maybeArgValues = new ArrayList<String>();
+		final var serializerLines = new ArrayList<String>();
 		for (var arg : inputParams) {
 			final var arg1 = arg.strip();
 			if (arg1.startsWith("[") && arg1.endsWith("]")) {
@@ -713,16 +714,20 @@ public class Main {
 					maybeArgNames.add("maybe" + split[1].substring(0, 1).toUpperCase() + split[1].substring(1));
 					maybeArgValues.add(
 							"deserializeList(node.findNodeList(\"" + split[1] + "\"), " + split[0] + "::deserialize)");
+					serializerLines.add("\n\t\t\t\t.withNodeList(\"" + split[1] + "\", this." + split[1] +
+							".stream().map(" + split[0] + "::serialize).toList())");
 				}
 			} else if (arg1.contains(" ")) {
 				final var split = arg1.strip().split(" ");
 				outputParams.add(split[0] + " " + split[1]);
 				maybeArgNames.add("maybe" + split[1].substring(0, 1).toUpperCase() + split[1].substring(1));
 				maybeArgValues.add("node.findNode(\"" + split[1] + "\").flatMap(" + split[0] + "::deserialize)");
+				serializerLines.add("\n\t\t\t\t.withNode(\"" + split[1] + "\", this." + split[1] + "().serialize())");
 			} else {
 				outputParams.add("String " + arg1);
 				maybeArgNames.add("maybe" + arg1.substring(0, 1).toUpperCase() + arg1.substring(1));
 				maybeArgValues.add("node.findString(\"" + arg1 + "\")");
+				serializerLines.add("\n\t\t\t\t.withString(\"" + arg1 + "\", this." + arg1 + "())");
 			}
 		}
 
@@ -754,7 +759,10 @@ public class Main {
 				+ name.toLowerCase() +
 				"\")) return Optional.empty();"
 				+ String.join("", deserializerLines) +
-				"\n\t\t\treturn Optional.of(new " + name + "(" + constructorArgs + "));\n\t\t}" + "\n\t}");
+				"\n\t\t\treturn Optional.of(new " + name + "(" + constructorArgs + "));\n\t\t}" +
+				"\n\n\t\t@Override\n\t\tpublic MapNode serialize() {\n\t\t\treturn new MapNode(\"" + name.toLowerCase()
+				+
+				"\")" + String.join("", serializerLines) + ";\n\t\t}" + "\n\t}");
 	}
 
 	private static Optional<Error> writeString(Path target, String output) {

@@ -73,12 +73,17 @@ public final class MapNode {
 
 	public String display() {
 		/*
-		TODO: something better
-		*/
+		 * TODO: something better
+		 */
 		return this.toString();
 	}
 
 	public Optional<MapNode> findNode(String key) {
 		return Optional.ofNullable(this.nodes.get(key));
+	}
+
+	public MapNode withNode(String key, MapNode node) {
+		this.nodes.put(key, node);
+		return this;
 	}
 }
