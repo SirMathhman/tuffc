@@ -1,8 +1,9 @@
 package com.meti;
 import java.util.List;
 public class JavaAST {
-	public sealed interface Segment permits Class, Interface {}
-	public record Class(String name, String type) implements Segment {}
-	public record Interface(String name) implements Segment {}
-	public record Root(List<Class> classes) {}
+	public sealed interface RootChild permits Class, Interface {}
+	public record Class(String name) implements RootChild {}
+	public record Interface(String name) implements RootChild {}
+	public record Record(String name) {}
+	public record Root(List<RootChild> children) {}
 }

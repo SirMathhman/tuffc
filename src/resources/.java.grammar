@@ -1,4 +1,7 @@
-Segment = Class | Interface
-Class = name, type
+RootChild = Class | Interface
+
+Class = name
 Interface = name
-Root = [Class classes]
+Record = name
+
+Root = [RootChild children]
