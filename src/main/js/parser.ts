@@ -2691,6 +2691,43 @@ export function parse(tokens: Token[]): ParseResult<Program> {
     }
     if (at("keyword", "for")) return parseForStmt();
     if (at("keyword", "loop")) return parseLoopStmt();
+    if (at("keyword", "then")) {
+      eat();
+      const openResult = expect(
+        "symbol",
+        "(",
+        "Expected '(' after then in then-statement",
+      );
+      if (!openResult.ok) return openResult;
+      const closeResult = expect(
+        "symbol",
+        ")",
+        "Expected ')' in then-statement parameter list",
+      );
+      if (!closeResult.ok) return closeResult;
+      const arrowResult = expect(
+        "symbol",
+        "=>",
+        "Expected '=>' in then-statement",
+      );
+      if (!arrowResult.ok) return arrowResult;
+
+      if (at("symbol", "{")) {
+        const bodyResult = parseBlock();
+        if (!bodyResult.ok) return bodyResult;
+        return bodyResult;
+      }
+
+      const exprResult = parseExpression();
+      if (!exprResult.ok) return exprResult;
+      const semiResult = expect(
+        "symbol",
+        ";",
+        "Expected ';' after then-statement expression",
+      );
+      if (!semiResult.ok) return semiResult;
+      return ok({ kind: "ExprStmt", expr: exprResult.value });
+    }
     if (at("keyword", "lifetime")) return parseLifetimeStmt();
     if (at("keyword", "into")) {
       eat();

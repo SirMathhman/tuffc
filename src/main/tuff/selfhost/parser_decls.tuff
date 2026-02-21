@@ -969,6 +969,22 @@ fn p_parse_statement() : I32 => {
         node_set_data1(node, body);
         return node;
     }
+    if (p_at(TK_KEYWORD, "then")) {
+        p_eat();
+        p_expect(TK_SYMBOL, "(", "Expected '(' after then in then-statement");
+        p_expect(TK_SYMBOL, ")", "Expected ')' in then-statement parameter list");
+        p_expect(TK_SYMBOL, "=>", "Expected '=>' in then-statement");
+
+        if (p_at(TK_SYMBOL, "{")) {
+            return p_parse_block();
+        }
+
+        let expr = p_parse_expression(0);
+        p_expect(TK_SYMBOL, ";", "Expected ';' after then-statement expression");
+        let estmt = node_new(NK_EXPR_STMT);
+        node_set_data1(estmt, expr);
+        return estmt;
+    }
     if (p_at(TK_KEYWORD, "lifetime")) {
         return p_parse_lifetime();
     }
@@ -1003,6 +1019,28 @@ fn p_parse_statement() : I32 => {
         let node = node_new(NK_ASSIGN_STMT);
         node_set_data1(node, expr);
         node_set_data2(node, value);
+        return node;
+    }
+
+    // Compound assignment: x += v, x -= v, etc. (lexed as op token followed by '=')
+    if (
+        (p_at(TK_SYMBOL, "+") || p_at(TK_SYMBOL, "-") || p_at(TK_SYMBOL, "*") || p_at(TK_SYMBOL, "/") || p_at(TK_SYMBOL, "%") || p_at(TK_SYMBOL, "&") || p_at(TK_SYMBOL, "|") || p_at(TK_SYMBOL, "^")) &&
+        tok_kind(p_peek(1)) == TK_SYMBOL &&
+        get_interned_str(tok_value(p_peek(1))).str_eq("=")
+    ) {
+        let op_tok = p_eat();
+        p_eat();
+        let rhs = p_parse_expression(0);
+        p_expect(TK_SYMBOL, ";", "Expected ';'");
+
+        let bin = node_new(NK_BINARY_EXPR);
+        node_set_data1(bin, tok_value(op_tok));
+        node_set_data2(bin, expr);
+        node_set_data3(bin, rhs);
+
+        let node = node_new(NK_ASSIGN_STMT);
+        node_set_data1(node, expr);
+        node_set_data2(node, bin);
         return node;
     }
     

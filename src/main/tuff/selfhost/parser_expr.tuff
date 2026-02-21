@@ -725,6 +725,24 @@ fn p_parse_expression(minPrec: I32) : I32 => {
         if (prec < minPrec) {
             break;
         }
+
+        // Don't consume op= sequences (+=, -=, etc.) as binary operators;
+        // statement parser handles them as compound assignments.
+        if (
+            (intern_map.map_has("+") && op == intern_map.map_get("+")) ||
+            (intern_map.map_has("-") && op == intern_map.map_get("-")) ||
+            (intern_map.map_has("*") && op == intern_map.map_get("*")) ||
+            (intern_map.map_has("/") && op == intern_map.map_get("/")) ||
+            (intern_map.map_has("%") && op == intern_map.map_get("%")) ||
+            (intern_map.map_has("&") && op == intern_map.map_get("&")) ||
+            (intern_map.map_has("|") && op == intern_map.map_get("|")) ||
+            (intern_map.map_has("^") && op == intern_map.map_get("^"))
+        ) {
+            let next = p_peek(1);
+            if (tok_kind(next) == TK_SYMBOL && get_interned_str(tok_value(next)).str_eq("=")) {
+                break;
+            }
+        }
         
         p_eat();
         let right = p_parse_expression(prec + 1);

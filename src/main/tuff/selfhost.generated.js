@@ -2139,6 +2139,20 @@ function p_parse_statement() {
   node_set_data1(node, body);
   return node;
 }
+  if (p_at(TK_KEYWORD, "then")) {
+  p_eat();
+  p_expect(TK_SYMBOL, "(", "Expected '(' after then in then-statement");
+  p_expect(TK_SYMBOL, ")", "Expected ')' in then-statement parameter list");
+  p_expect(TK_SYMBOL, "=>", "Expected '=>' in then-statement");
+  if (p_at(TK_SYMBOL, "{")) {
+  return p_parse_block();
+}
+  let expr = p_parse_expression(0); __tuff_this.expr = expr;
+  p_expect(TK_SYMBOL, ";", "Expected ';' after then-statement expression");
+  let estmt = node_new(NK_EXPR_STMT); __tuff_this.estmt = estmt;
+  node_set_data1(estmt, expr);
+  return estmt;
+}
   if (p_at(TK_KEYWORD, "lifetime")) {
   return p_parse_lifetime();
 }
@@ -2171,6 +2185,20 @@ function p_parse_statement() {
   let node = node_new(NK_ASSIGN_STMT); __tuff_this.node = node;
   node_set_data1(node, expr);
   node_set_data2(node, value);
+  return node;
+}
+  if ((((((((((p_at(TK_SYMBOL, "+") || p_at(TK_SYMBOL, "-")) || p_at(TK_SYMBOL, "*")) || p_at(TK_SYMBOL, "/")) || p_at(TK_SYMBOL, "%")) || p_at(TK_SYMBOL, "&")) || p_at(TK_SYMBOL, "|")) || p_at(TK_SYMBOL, "^")) && (tok_kind(p_peek(1)) == TK_SYMBOL)) && (() => { const __recv = get_interned_str(tok_value(p_peek(1))); const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("="); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "=") : str_eq(__recv, "="); })())) {
+  let op_tok = p_eat(); __tuff_this.op_tok = op_tok;
+  p_eat();
+  let rhs = p_parse_expression(0); __tuff_this.rhs = rhs;
+  p_expect(TK_SYMBOL, ";", "Expected ';'");
+  let bin = node_new(NK_BINARY_EXPR); __tuff_this.bin = bin;
+  node_set_data1(bin, tok_value(op_tok));
+  node_set_data2(bin, expr);
+  node_set_data3(bin, rhs);
+  let node = node_new(NK_ASSIGN_STMT); __tuff_this.node = node;
+  node_set_data1(node, expr);
+  node_set_data2(node, bin);
   return node;
 }
   if (p_at(TK_SYMBOL, ";")) {
@@ -4923,9 +4951,6 @@ function selfhost_borrowcheck_marker() { let __tuff_this = {  }; return 0; }
 
 function js_ident_stmt(name) {
   let __tuff_this = { name: name };
-  if ((() => { const __recv = name; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("this"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "this") : str_eq(__recv, "this"); })()) {
-  return "_this";
-}
   return name;
 }
 
@@ -8040,6 +8065,12 @@ function p_parse_expression(minPrec) {
   if ((prec < minPrec)) {
   break;
 }
+  if ((((((((((() => { const __recv = intern_map; const __prop = __recv?.["map_has"]; if (typeof __prop === "function") return __prop("+"); const __dyn = __recv?.table?.map_has; return __dyn ? __dyn(__recv.ref, "+") : map_has(__recv, "+"); })() && (op == (() => { const __recv = intern_map; const __prop = __recv?.["map_get"]; if (typeof __prop === "function") return __prop("+"); const __dyn = __recv?.table?.map_get; return __dyn ? __dyn(__recv.ref, "+") : map_get(__recv, "+"); })())) || ((() => { const __recv = intern_map; const __prop = __recv?.["map_has"]; if (typeof __prop === "function") return __prop("-"); const __dyn = __recv?.table?.map_has; return __dyn ? __dyn(__recv.ref, "-") : map_has(__recv, "-"); })() && (op == (() => { const __recv = intern_map; const __prop = __recv?.["map_get"]; if (typeof __prop === "function") return __prop("-"); const __dyn = __recv?.table?.map_get; return __dyn ? __dyn(__recv.ref, "-") : map_get(__recv, "-"); })()))) || ((() => { const __recv = intern_map; const __prop = __recv?.["map_has"]; if (typeof __prop === "function") return __prop("*"); const __dyn = __recv?.table?.map_has; return __dyn ? __dyn(__recv.ref, "*") : map_has(__recv, "*"); })() && (op == (() => { const __recv = intern_map; const __prop = __recv?.["map_get"]; if (typeof __prop === "function") return __prop("*"); const __dyn = __recv?.table?.map_get; return __dyn ? __dyn(__recv.ref, "*") : map_get(__recv, "*"); })()))) || ((() => { const __recv = intern_map; const __prop = __recv?.["map_has"]; if (typeof __prop === "function") return __prop("/"); const __dyn = __recv?.table?.map_has; return __dyn ? __dyn(__recv.ref, "/") : map_has(__recv, "/"); })() && (op == (() => { const __recv = intern_map; const __prop = __recv?.["map_get"]; if (typeof __prop === "function") return __prop("/"); const __dyn = __recv?.table?.map_get; return __dyn ? __dyn(__recv.ref, "/") : map_get(__recv, "/"); })()))) || ((() => { const __recv = intern_map; const __prop = __recv?.["map_has"]; if (typeof __prop === "function") return __prop("%"); const __dyn = __recv?.table?.map_has; return __dyn ? __dyn(__recv.ref, "%") : map_has(__recv, "%"); })() && (op == (() => { const __recv = intern_map; const __prop = __recv?.["map_get"]; if (typeof __prop === "function") return __prop("%"); const __dyn = __recv?.table?.map_get; return __dyn ? __dyn(__recv.ref, "%") : map_get(__recv, "%"); })()))) || ((() => { const __recv = intern_map; const __prop = __recv?.["map_has"]; if (typeof __prop === "function") return __prop("&"); const __dyn = __recv?.table?.map_has; return __dyn ? __dyn(__recv.ref, "&") : map_has(__recv, "&"); })() && (op == (() => { const __recv = intern_map; const __prop = __recv?.["map_get"]; if (typeof __prop === "function") return __prop("&"); const __dyn = __recv?.table?.map_get; return __dyn ? __dyn(__recv.ref, "&") : map_get(__recv, "&"); })()))) || ((() => { const __recv = intern_map; const __prop = __recv?.["map_has"]; if (typeof __prop === "function") return __prop("|"); const __dyn = __recv?.table?.map_has; return __dyn ? __dyn(__recv.ref, "|") : map_has(__recv, "|"); })() && (op == (() => { const __recv = intern_map; const __prop = __recv?.["map_get"]; if (typeof __prop === "function") return __prop("|"); const __dyn = __recv?.table?.map_get; return __dyn ? __dyn(__recv.ref, "|") : map_get(__recv, "|"); })()))) || ((() => { const __recv = intern_map; const __prop = __recv?.["map_has"]; if (typeof __prop === "function") return __prop("^"); const __dyn = __recv?.table?.map_has; return __dyn ? __dyn(__recv.ref, "^") : map_has(__recv, "^"); })() && (op == (() => { const __recv = intern_map; const __prop = __recv?.["map_get"]; if (typeof __prop === "function") return __prop("^"); const __dyn = __recv?.table?.map_get; return __dyn ? __dyn(__recv.ref, "^") : map_get(__recv, "^"); })())))) {
+  let next = p_peek(1); __tuff_this.next = next;
+  if (((tok_kind(next) == TK_SYMBOL) && (() => { const __recv = get_interned_str(tok_value(next)); const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("="); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "=") : str_eq(__recv, "="); })())) {
+  break;
+}
+}
   p_eat();
   let right = p_parse_expression((prec + 1)); __tuff_this.right = right;
   let bin = node_new(NK_BINARY_EXPR); __tuff_this.bin = bin;
@@ -8078,9 +8109,6 @@ function selfhost_parser_expr_marker() { let __tuff_this = {  }; return 0; }
 
 function js_ident_expr(name) {
   let __tuff_this = { name: name };
-  if ((() => { const __recv = name; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("this"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "this") : str_eq(__recv, "this"); })()) {
-  return "_this";
-}
   return name;
 }
 
