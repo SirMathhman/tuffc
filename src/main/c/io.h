@@ -9,3 +9,8 @@ int64_t path_join(int64_t a, int64_t b);
 int64_t path_dirname(int64_t p);
 int64_t print(int64_t s);
 int64_t print_error(int64_t s);
+
+// argv access — stashed from main() before tuff_main() runs.
+void tuff_set_argv(int argc, char **argv);
+int64_t get_argc(void);
+int64_t get_argv(int64_t i);

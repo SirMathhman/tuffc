@@ -43,6 +43,7 @@ const suiteScripts: Record<SuiteName, string[]> = {
     "./src/test/js/monomorphization-plan.ts",
     "./src/test/js/c-native-cli-e2e.ts",
     "./src/test/js/c-selfhost-progress.ts",
+    "./src/test/js/c-bootstrap-parity.ts",
   ],
   stress: [
     "./src/test/js/spec-semantics-exhaustive.ts",

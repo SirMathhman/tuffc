@@ -11,6 +11,7 @@ extern let { __map_new, map_set, map_get, map_has } = globalThis;
 extern let { __set_new, set_add, set_has, set_delete } = globalThis;
 extern let { read_file, write_file, path_join, path_dirname, print, print_error } = globalThis;
 extern let { panic, panic_with_code } = globalThis;
+extern let { get_argc, get_argv } = globalThis;
 
 extern fn str_length(this: *Str) : USize;
 extern fn str_char_at(this: *Str, index : USize < this.str_length()) : Char;
@@ -103,6 +104,9 @@ extern fn print(s: *Str) : I32;
 extern fn print_error(s: *Str) : I32;
 extern fn panic(msg: *Str) : I32;
 extern fn panic_with_code(code: *Str, msg: *Str, reason: *Str, fix: *Str) : I32;
+
+extern fn get_argc() : I32;
+extern fn get_argv(i: I32) : *Str;
 
 // ============================================================================
 // Token Kinds
@@ -233,11 +237,11 @@ out fn lex_init(source: *Str) : I32 => {
 
 fn lex_peek(offset: I32) : I32 => {
     let p = lex_pos + offset;
-    if (p < 0 || p >= lex_len) {
+    let bounded_len = 0 + lex_len;
+    if (p < 0 || p >= bounded_len) {
         0
     } else {
-        let bounded : USize < lex_source.str_length() = p;
-        lex_source.str_char_at(bounded)
+        lex_source.str_char_at(p)
     }
 }
 
@@ -330,7 +334,12 @@ fn lex_read_string() : *Str => {
         }
     }
     if (lex_peek(0) != 34) {
-        panic("Unterminated string");
+        panic_with_code(
+            "E_LEX_UNTERMINATED_STRING",
+            "Unterminated string literal at ".str_concat(int_to_string(lex_line)).str_concat(":").str_concat(int_to_string(lex_col)),
+            "The lexer reached end-of-line or end-of-file before finding the closing quote delimiter for this string.",
+            "Close the string with a matching quote delimiter, or escape embedded quotes."
+        );
     }
     lex_advance();  // skip closing "
     sb_build(sb)
@@ -343,7 +352,12 @@ fn lex_read_char() : *Str => {
         sb_append_char(sb, lex_advance());
     }
     if (lex_peek(0) != 39) {
-        panic("Unterminated char");
+        panic_with_code(
+            "E_LEX_UNTERMINATED_CHAR",
+            "Unterminated char literal at ".str_concat(int_to_string(lex_line)).str_concat(":").str_concat(int_to_string(lex_col)),
+            "The lexer reached end-of-line or end-of-file before finding the closing apostrophe delimiter for this char literal.",
+            "Close the char literal with a matching apostrophe and ensure only one character (or valid escape) is inside."
+        );
     }
     lex_advance();  // skip closing '
     sb_build(sb)
@@ -381,7 +395,12 @@ out fn lex_all() : I32 => {
                 lex_advance();
             }
             if (lex_pos >= lex_len) {
-                panic("Unterminated block comment");
+                panic_with_code(
+                    "E_LEX_UNTERMINATED_BLOCK_COMMENT",
+                    "Unterminated block comment near ".str_concat(int_to_string(lex_line)).str_concat(":").str_concat(int_to_string(lex_col)),
+                    "A block comment started with '/*' but the lexer did not find a matching '*/' before end-of-file.",
+                    "Add a closing '*/' for this comment, or remove the unmatched opening '/*'."
+                );
             }
             lex_advance();
             lex_advance();
@@ -455,7 +474,12 @@ out fn lex_all() : I32 => {
             continue;
         }
         
-        panic("Unexpected character: ".str_concat(str_from_char_code(ch)));
+        panic_with_code(
+            "E_LEX_UNEXPECTED_CHARACTER",
+            "Unexpected character '".str_concat(str_from_char_code(ch)).str_concat("' at ").str_concat(int_to_string(start_line)).str_concat(":").str_concat(int_to_string(start_col)),
+            "This character is not valid in the current lexical context and cannot be tokenized.",
+            "Replace or remove the character, or use valid Tuff syntax (identifiers, numbers, strings, comments, and supported symbols)."
+        );
     }
     
     tok_add(TK_EOF, intern("<eof>"), lex_line, lex_col);

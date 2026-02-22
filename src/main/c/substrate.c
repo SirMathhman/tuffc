@@ -5,8 +5,70 @@
 static char **g_managed_strings = NULL;
 static size_t g_managed_strings_len = 0;
 static size_t g_managed_strings_cap = 0;
+static const char **g_managed_ptr_index = NULL;
+static size_t g_managed_ptr_index_cap = 0;
+
+static size_t tuff_ptr_hash(const char *p)
+{
+    uintptr_t x = (uintptr_t)p;
+    // Mix pointer bits; right-shift to reduce allocator alignment bias.
+    x ^= (x >> 33);
+    x *= (uintptr_t)0xff51afd7ed558ccdULL;
+    x ^= (x >> 33);
+    return (size_t)x;
+}
+
+static void tuff_managed_index_rebuild(size_t new_cap)
+{
+    if (new_cap < 64)
+        new_cap = 64;
+    size_t cap = 1;
+    while (cap < new_cap)
+        cap <<= 1;
+
+    const char **next = (const char **)calloc(cap, sizeof(const char *));
+    if (next == NULL)
+        tuff_panic("Out of memory in managed string index");
+
+    for (size_t i = 0; i < g_managed_strings_len; i++)
+    {
+        const char *p = g_managed_strings[i];
+        if (p == NULL)
+            continue;
+        size_t mask = cap - 1;
+        size_t idx = tuff_ptr_hash(p) & mask;
+        while (next[idx] != NULL)
+            idx = (idx + 1) & mask;
+        next[idx] = p;
+    }
+
+    free((void *)g_managed_ptr_index);
+    g_managed_ptr_index = next;
+    g_managed_ptr_index_cap = cap;
+}
+
+static void tuff_managed_index_insert(const char *p)
+{
+    if (p == NULL)
+        return;
+    if (g_managed_ptr_index_cap == 0 || (g_managed_strings_len * 10) >= (g_managed_ptr_index_cap * 7))
+    {
+        size_t target = g_managed_ptr_index_cap == 0 ? 64 : g_managed_ptr_index_cap * 2;
+        tuff_managed_index_rebuild(target);
+    }
+    size_t mask = g_managed_ptr_index_cap - 1;
+    size_t idx = tuff_ptr_hash(p) & mask;
+    while (g_managed_ptr_index[idx] != NULL)
+    {
+        if (g_managed_ptr_index[idx] == p)
+            return;
+        idx = (idx + 1) & mask;
+    }
+    g_managed_ptr_index[idx] = p;
+}
 
 static int tuff_is_small_int(int64_t v);
+static int tuff_is_managed_string_ptr(const char *p);
 static char *tuff_strdup(const char *s);
 
 static inline int64_t tuff_to_val(const void *p)
@@ -23,9 +85,16 @@ static inline const char *tuff_str(int64_t v)
 {
     if (v == 0)
         return NULL;
-    if (tuff_is_small_int(v))
-        return NULL;
-    return (const char *)(intptr_t)v;
+    // Fast path: most real pointers are outside the small-int tagged range.
+    if (!tuff_is_small_int(v))
+        return (const char *)(intptr_t)v;
+
+    // Slow-path guard: if a managed pointer ever lands in small-int range,
+    // treat it as string; otherwise this is a numeric value, not a string.
+    const char *p = (const char *)(intptr_t)v;
+    if (tuff_is_managed_string_ptr(p))
+        return p;
+    return NULL;
 }
 
 static inline const char *tuff_str_or_empty(int64_t v)
@@ -38,6 +107,18 @@ static int tuff_is_managed_string_ptr(const char *p)
 {
     if (p == NULL)
         return 0;
+    if (g_managed_ptr_index_cap > 0)
+    {
+        size_t mask = g_managed_ptr_index_cap - 1;
+        size_t idx = tuff_ptr_hash(p) & mask;
+        while (g_managed_ptr_index[idx] != NULL)
+        {
+            if (g_managed_ptr_index[idx] == p)
+                return 1;
+            idx = (idx + 1) & mask;
+        }
+        return 0;
+    }
     for (size_t i = 0; i < g_managed_strings_len; i++)
     {
         if (g_managed_strings[i] == p)
@@ -62,6 +143,7 @@ static int64_t tuff_register_owned_string(char *owned)
             g_managed_strings_cap = next_cap;
         }
         g_managed_strings[g_managed_strings_len++] = owned;
+        tuff_managed_index_insert(owned);
     }
     return tuff_to_val(owned);
 }
@@ -200,13 +282,47 @@ void tuff_panic(const char *message)
     abort();
 }
 
-// Native selfhost harness stubs for host-side callbacks that exist only in JS runtime.
+// Native selfhost helpers: read file contents as a managed Tuff string.
+// Returns a managed string with the file contents, or "" on failure.
+static int64_t tuff_read_file_as_string(const char *path)
+{
+    if (path == NULL)
+        return tuff_register_cstring_copy("");
+    FILE *f = fopen(path, "rb");
+    if (f == NULL)
+        return tuff_register_cstring_copy("");
+    fseek(f, 0, SEEK_END);
+    long sz = ftell(f);
+    rewind(f);
+    if (sz <= 0)
+    {
+        fclose(f);
+        return tuff_register_cstring_copy("");
+    }
+    char *buf = (char *)malloc((size_t)sz + 1);
+    if (buf == NULL)
+    {
+        fclose(f);
+        return tuff_register_cstring_copy("");
+    }
+    size_t nread = fread(buf, 1, (size_t)sz, f);
+    fclose(f);
+    buf[nread] = '\0';
+    int64_t result = tuff_register_cstring_copy(buf);
+    free(buf);
+    return result;
+}
+
+// Host callbacks: in native binary, read content from env-var-specified paths.
+// Set TUFFC_SUBSTRATE_PATH to the path of the substrate bundle text file.
+// Set TUFFC_PRELUDE_PATH to the path of RuntimePrelude.tuff.
+// If the env var is not set, returns "".
 int64_t __host_get_c_substrate(void)
 {
-    return tuff_register_cstring_copy("");
+    return tuff_read_file_as_string(getenv("TUFFC_SUBSTRATE_PATH"));
 }
 
 int64_t __host_get_c_runtime_prelude_source(void)
 {
-    return tuff_register_cstring_copy("");
+    return tuff_read_file_as_string(getenv("TUFFC_PRELUDE_PATH"));
 }

@@ -1,5 +1,26 @@
 // Tuff C I/O operations. Depends on substrate.c.
 
+static int _tuff_argc = 0;
+static char **_tuff_argv = NULL;
+
+void tuff_set_argv(int argc, char **argv)
+{
+    _tuff_argc = argc;
+    _tuff_argv = argv;
+}
+
+int64_t get_argc(void)
+{
+    return (int64_t)_tuff_argc;
+}
+
+int64_t get_argv(int64_t i)
+{
+    if (i < 0 || i >= _tuff_argc || _tuff_argv == NULL)
+        return tuff_register_cstring_copy("");
+    return tuff_register_cstring_copy(_tuff_argv[(int)i]);
+}
+
 int64_t read_file(int64_t filePath)
 {
     const char *p = tuff_str(filePath);

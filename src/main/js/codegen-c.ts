@@ -4,6 +4,34 @@ import { getEmbeddedCSubstrateSupport } from "./c-runtime-support.ts";
 
 let tempCounter = 0;
 
+/** Encode a raw Tuff string token value as a C double-quoted string literal.
+ * The input is the raw lexer value with Tuff escape sequences in source form
+ * (two chars: `\` + escape letter). C uses the same sequences for \n, \r, \t,
+ * \\, \", and \0. Tuff \uXXXX sequences are not valid in C string literals
+ * (C's \u is restricted to identifier contexts), so we decode them to UTF-8
+ * bytes stored as octal escapes. */
+function toCStringLiteral(raw) {
+  // Only rewrite \uXXXX sequences; everything else passes through identically.
+  const cStr = raw.replace(/\\u([0-9a-fA-F]{4})/g, (_match, hex) => {
+    const cp = parseInt(hex, 16);
+    // UTF-8 encode the codepoint into octal escape sequences.
+    let bytes;
+    if (cp < 0x80) {
+      bytes = [cp];
+    } else if (cp < 0x800) {
+      bytes = [0xc0 | (cp >> 6), 0x80 | (cp & 0x3f)];
+    } else {
+      bytes = [
+        0xe0 | (cp >> 12),
+        0x80 | ((cp >> 6) & 0x3f),
+        0x80 | (cp & 0x3f),
+      ];
+    }
+    return bytes.map((b) => `\\${b.toString(8).padStart(3, "0")}`).join("");
+  });
+  return `"${cStr}"`;
+}
+
 function nextTemp(prefix) {
   tempCounter += 1;
   return `__${prefix}_${tempCounter}`;
@@ -607,29 +635,22 @@ function emitExpr(expr, ctx, localTypes = new Map()) {
         const vec = nextTemp("free_vec");
         return `({ TuffVec* ${vec} = (TuffVec*)(${ptrStr}); if (${vec}) { free(${vec}->data); free(${vec}); } 0; })`;
       }
-      // Method-sugar calls: receiver is args[0]. In C, if receiver is `this`,
-      // skip it and call the function directly (module-level scope).
+      // Method-sugar calls: receiver is args[0]. In C, all Tuff methods are
+      // free functions and the receiver is always their first argument.
       if (expr.callStyle === "method-sugar") {
         const [receiver, ...restArgs] = expr.args ?? [];
-        if (receiver?.kind === "Identifier" && receiver.name === "this") {
-          // this.fn(args...) → fn(args...)
-          const cArgs = restArgs
-            .map((a) => emitExpr(a, ctx, localTypes))
-            .join(", ");
-          return `${emitExpr(expr.callee, ctx, localTypes)}(${cArgs})`;
-        }
-        // obj.fn(args...) → obj.fn(restArgs...) — function pointer field call
-        // If fn needs outer context (uses this.this.X), also pass receiver as first arg.
         const recvC = emitExpr(receiver, ctx, localTypes);
         const cArgs = restArgs
           .map((a) => emitExpr(a, ctx, localTypes))
           .join(", ");
         const callee = emitExpr(expr.callee, ctx, localTypes);
         if (ctx.contextualFnNames?.has(expr.callee?.name)) {
+          // Contextual (closure-capturing) fn: pass pointer to receiver struct.
           const ctxArgs = cArgs ? `&${recvC}, ${cArgs}` : `&${recvC}`;
-          return `${recvC}.${callee}(${ctxArgs})`;
+          return `${callee}(${ctxArgs})`;
         }
-        return `${recvC}.${callee}(${cArgs})`;
+        const fullArgs = cArgs ? `${recvC}, ${cArgs}` : recvC;
+        return `${callee}(${fullArgs})`;
       }
       return `${emitExpr(expr.callee, ctx, localTypes)}(${(expr.args ?? []).map((a) => emitExpr(a, ctx, localTypes)).join(", ")})`;
     }
@@ -695,8 +716,12 @@ function emitExpr(expr, ctx, localTypes = new Map()) {
       return `((${emitExpr(expr.condition, ctx, localTypes)}) ? (${emitExpr(expr.thenBranch, ctx, localTypes)}) : (${expr.elseBranch ? emitExpr(expr.elseBranch, ctx, localTypes) : "0"}))`;
     case "UnwrapExpr":
       return emitExpr(expr.expr, ctx, localTypes);
-    case "StringLiteral":
-      return `((int64_t)(intptr_t)${JSON.stringify(expr.value)})`;
+    case "StringLiteral": {
+      // Must produce a valid C string literal (not JSON). JSON.stringify would
+      // double-escape actual newlines as \\n.
+      const cStr = toCStringLiteral(expr.value ?? "");
+      return `((int64_t)(intptr_t)${cStr})`;
+    }
     case "CharLiteral": {
       const c = expr.value ?? "\0";
       if (c.length === 1) {
@@ -1434,7 +1459,8 @@ export function generateC(ast) {
     lines.push("");
   }
 
-  lines.push("int main(void) {");
+  lines.push("int main(int argc, char **argv) {");
+  lines.push("  tuff_set_argv(argc, argv);");
   lines.push("  tuff_init_globals();");
   lines.push("  return (int)tuff_main();");
   lines.push("}");

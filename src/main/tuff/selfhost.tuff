@@ -102,8 +102,94 @@ out fn take_lint_issues() : *Str => lint_take_issues();
 // Main compiler pipeline
 fn compile_source(source: *Str) : *Str => compile_source_with_options(source, 1, 0, 500, 1, "js");
 
-// Entry point for testing
+// Main compiler CLI entry point
 fn main() : I32 => {
-    print("Self-hosted Tuff compiler loaded");
+    let argc = get_argc();
+    // argv[0] is the executable name; we need at least argv[1] (input file).
+    if (argc < 2) {
+        print_error("Usage: tuffc <input.tuff> [-o <output>] [--target <js|c>] [--modules --module-base <dir>]");
+        return 1;
+    }
+
+    // Fast-path: handle flags-only commands before any file parsing.
+    let first_arg = get_argv(1);
+    if (first_arg.str_eq("--version")) {
+        print("tuffc (stage3 native)");
+        return 0;
+    }
+    if (first_arg.str_eq("-h") || first_arg.str_eq("--help")) {
+        print("Usage: tuffc <input.tuff> [-o <output>] [--target <js|c>] [--modules --module-base <dir>] [--version]");
+        return 0;
+    }
+
+    let input_file = first_arg;
+    let output_file = "";
+    let target = "js";
+    let use_modules = 0;
+    let i = 2;
+    let had_error = 0;
+
+    while (i < argc) {
+        let arg = get_argv(i);
+        if (arg.str_eq("-o") || arg.str_eq("--out")) {
+            i = i + 1;
+            if (i < argc) {
+                output_file = get_argv(i);
+            } else {
+                print_error("Missing value for -o/--out");
+                had_error = 1;
+            }
+        } else if (arg.str_eq("--target")) {
+            i = i + 1;
+            if (i < argc) {
+                target = get_argv(i);
+            } else {
+                print_error("Missing value for --target");
+                had_error = 1;
+            }
+        } else if (arg.str_eq("--modules")) {
+            use_modules = 1;
+        } else if (arg.str_eq("--module-base")) {
+            // compile_file_with_options derives the base from path_dirname(inputPath);
+            // consume the arg but don't need to do anything with it.
+            i = i + 1;
+            if (i >= argc) {
+                print_error("Missing value for --module-base");
+                had_error = 1;
+            }
+        }
+        i = i + 1;
+    }
+
+    if (had_error == 1) {
+        return 1;
+    }
+
+    if (use_modules == 1) {
+        if (output_file.str_eq("")) {
+            print_error("--modules requires -o <output_file>");
+            return 1;
+        }
+        print_error("[dbg] calling compile_file_with_options");
+        print_error("[dbg] input_file=".str_concat(input_file));
+        print_error("[dbg] output_file=".str_concat(output_file));
+        print_error("[dbg] target=".str_concat(target));
+        let result_code = compile_file_with_options(input_file, output_file, 1, 0, 500, 1, target);
+        print_error("[dbg] compile_file_with_options returned ".str_concat(int_to_string(result_code)));
+        return result_code;
+    }
+
+    print_error("[dbg] single-file mode");
+    print_error("[dbg] input_file=".str_concat(input_file));
+    let source = read_file(input_file);
+    let result = compile_source_with_options(source, 1, 0, 500, 1, target);
+
+    if (output_file.str_eq("")) {
+        print(result);
+    } else {
+        write_file(output_file, result);
+        print("Compiled ".str_concat(input_file).str_concat(" -> ").str_concat(output_file));
+    }
+
     0
 }

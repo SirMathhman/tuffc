@@ -31,6 +31,7 @@ let cc_inc_errno : I32 = 0;
 let cc_inc_direct : I32 = 0;
 let cc_inc_sys_stat : I32 = 0;
 let cc_inc_sys_types : I32 = 0;
+let cc_disable_unicode_escape : I32 = 0;
 
 // ============================================================================
 // Helpers
@@ -359,6 +360,8 @@ fn cc_emit_if_as_c_expr(n: I32) : *Str => {
     let tmp = cc_next_temp("ifexpr");
     let then_body = if (node_kind(then_b) == NK_BLOCK) {
         cc_emit_block_to_assign(then_b, tmp)
+    } else if (node_kind(then_b) == NK_IF_STMT || node_kind(then_b) == NK_IF_EXPR) {
+        tmp.str_concat(" = ").str_concat(cc_emit_if_as_c_expr(then_b)).str_concat(";")
     } else {
         tmp.str_concat(" = ").str_concat(cc_emit_expr(then_b)).str_concat(";")
     };
@@ -366,6 +369,8 @@ fn cc_emit_if_as_c_expr(n: I32) : *Str => {
         tmp.str_concat(" = 0;")
     } else if (node_kind(else_b) == NK_BLOCK) {
         cc_emit_block_to_assign(else_b, tmp)
+    } else if (node_kind(else_b) == NK_IF_STMT || node_kind(else_b) == NK_IF_EXPR) {
+        tmp.str_concat(" = ").str_concat(cc_emit_if_as_c_expr(else_b)).str_concat(";")
     } else {
         tmp.str_concat(" = ").str_concat(cc_emit_expr(else_b)).str_concat(";")
     };
@@ -375,6 +380,47 @@ fn cc_emit_if_as_c_expr(n: I32) : *Str => {
 // ============================================================================
 // Expression Emitter
 // ============================================================================
+
+// Translate \uXXXX escape sequences for Unicode control characters (U+0000–U+001F)
+// to C octal byte escapes.  C does not allow \uXXXX in string literals and
+// outright rejects control codepoints as universal character names.
+// We enumerate all 32 control-character patterns to avoid index-arithmetic
+// type issues while staying fully general for the selfhost string corpus.
+fn cc_escape_unicode_in_string(raw: *Str) : *Str => {
+    raw
+        .str_replace_all("\\u0000", "\\000")
+        .str_replace_all("\\u0001", "\\001")
+        .str_replace_all("\\u0002", "\\002")
+        .str_replace_all("\\u0003", "\\003")
+        .str_replace_all("\\u0004", "\\004")
+        .str_replace_all("\\u0005", "\\005")
+        .str_replace_all("\\u0006", "\\006")
+        .str_replace_all("\\u0007", "\\007")
+        .str_replace_all("\\u0008", "\\010")
+        .str_replace_all("\\u0009", "\\011")
+        .str_replace_all("\\u000a", "\\012").str_replace_all("\\u000A", "\\012")
+        .str_replace_all("\\u000b", "\\013").str_replace_all("\\u000B", "\\013")
+        .str_replace_all("\\u000c", "\\014").str_replace_all("\\u000C", "\\014")
+        .str_replace_all("\\u000d", "\\015").str_replace_all("\\u000D", "\\015")
+        .str_replace_all("\\u000e", "\\016").str_replace_all("\\u000E", "\\016")
+        .str_replace_all("\\u000f", "\\017").str_replace_all("\\u000F", "\\017")
+        .str_replace_all("\\u0010", "\\020")
+        .str_replace_all("\\u0011", "\\021")
+        .str_replace_all("\\u0012", "\\022")
+        .str_replace_all("\\u0013", "\\023")
+        .str_replace_all("\\u0014", "\\024")
+        .str_replace_all("\\u0015", "\\025")
+        .str_replace_all("\\u0016", "\\026")
+        .str_replace_all("\\u0017", "\\027")
+        .str_replace_all("\\u0018", "\\030")
+        .str_replace_all("\\u0019", "\\031")
+        .str_replace_all("\\u001a", "\\032").str_replace_all("\\u001A", "\\032")
+        .str_replace_all("\\u001b", "\\033").str_replace_all("\\u001B", "\\033")
+        .str_replace_all("\\u001c", "\\034").str_replace_all("\\u001C", "\\034")
+        .str_replace_all("\\u001d", "\\035").str_replace_all("\\u001D", "\\035")
+        .str_replace_all("\\u001e", "\\036").str_replace_all("\\u001E", "\\036")
+        .str_replace_all("\\u001f", "\\037").str_replace_all("\\u001F", "\\037")
+}
 
 fn cc_emit_expr(n: I32) : *Str => {
     let kind = node_kind(n);
@@ -390,7 +436,8 @@ fn cc_emit_expr(n: I32) : *Str => {
 
     if (kind == NK_STRING_LIT) {
         let s = get_interned_str(node_get_data1(n));
-        return "((int64_t)(intptr_t)\"".str_concat(s).str_concat("\")");
+        let s_c = if (cc_disable_unicode_escape == 1) { s } else { cc_escape_unicode_in_string(s) };
+        return "((int64_t)(intptr_t)\"".str_concat(s_c).str_concat("\")");
     }
 
     if (kind == NK_CHAR_LIT) {
@@ -976,7 +1023,8 @@ fn cc_emit_stmt(n: I32) : *Str => {
     }
 
     if (kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL || kind == NK_ACTUAL_FN_DECL) {
-        let name = cc_to_name(get_interned_str(node_get_data1(n)));
+        let source_name = get_interned_str(node_get_data1(n));
+        let name = cc_to_name(source_name);
         let params = node_get_data3(n);
         let ret_type = cc_type_to_c(node_get_data4(n));
         let body = node_get_data5(n);
@@ -984,10 +1032,17 @@ fn cc_emit_stmt(n: I32) : *Str => {
         if (body == 0) {
             return "/* fn ".str_concat(name).str_concat(" has no body */");
         }
-        if (node_kind(body) == NK_BLOCK) {
-            return ret_type.str_concat(" ").str_concat(name).str_concat("(").str_concat(params_str).str_concat(") ").str_concat(cc_emit_fn_block(body));
+        let prev_disable_escape = cc_disable_unicode_escape;
+        if (source_name.str_eq("cc_escape_unicode_in_string")) {
+            cc_disable_unicode_escape = 1;
         }
-        return ret_type.str_concat(" ").str_concat(name).str_concat("(").str_concat(params_str).str_concat(") { return ").str_concat(cc_emit_expr(body)).str_concat("; }");
+        let emitted = if (node_kind(body) == NK_BLOCK) {
+            ret_type.str_concat(" ").str_concat(name).str_concat("(").str_concat(params_str).str_concat(") ").str_concat(cc_emit_fn_block(body))
+        } else {
+            ret_type.str_concat(" ").str_concat(name).str_concat("(").str_concat(params_str).str_concat(") { return ").str_concat(cc_emit_expr(body)).str_concat("; }")
+        };
+        cc_disable_unicode_escape = prev_disable_escape;
+        return emitted;
     }
 
     if (kind == NK_STRUCT_DECL) {
@@ -1071,6 +1126,7 @@ fn cc_emit_stmt(n: I32) : *Str => {
 out fn generate_c(typed: I32, substrate: *Str) : *Str => {
     // Reset global state for this compilation
     cc_temp_counter = 0;
+    cc_disable_unicode_escape = 0;
     cc_enum_names = set_new();
     cc_enum_variant_consts = map_new();
     cc_struct_fields = map_new();

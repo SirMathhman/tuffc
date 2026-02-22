@@ -14,6 +14,8 @@ const { read_file, write_file, path_join, path_dirname, print, print_error } = g
 
 const { panic, panic_with_code } = globalThis;
 
+const { get_argc, get_argv } = globalThis;
+
 // extern fn str_length
 
 // extern fn str_char_at
@@ -144,6 +146,10 @@ function set_new() { let __tuff_this = {  }; return __set_new(); }
 // extern fn panic
 
 // extern fn panic_with_code
+
+// extern fn get_argc
+
+// extern fn get_argv
 
 let TK_EOF = 0;
 
@@ -282,11 +288,10 @@ function lex_init(source) {
 function lex_peek(offset) {
   let __tuff_this = { offset: offset };
   let p = (lex_pos + offset); __tuff_this.p = p;
-  return ((((p < 0) || (p >= lex_len))) ? (() => {
+  return ((((p < 0) || (p >= (() => { const __recv = lex_source; const __prop = __recv?.["str_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.str_length; return __dyn ? __dyn(__recv.ref) : str_length(__recv); })()))) ? (() => {
   return 0;
 })() : (() => {
-  let bounded = p; __tuff_this.bounded = bounded;
-  return (() => { const __recv = lex_source; const __prop = __recv?.["str_char_at"]; if (typeof __prop === "function") return __prop(bounded); const __dyn = __recv?.table?.str_char_at; return __dyn ? __dyn(__recv.ref, bounded) : str_char_at(__recv, bounded); })();
+  return (() => { const __recv = lex_source; const __prop = __recv?.["str_char_at"]; if (typeof __prop === "function") return __prop(p); const __dyn = __recv?.table?.str_char_at; return __dyn ? __dyn(__recv.ref, p) : str_char_at(__recv, p); })();
 })());
 }
 
@@ -8549,6 +8554,53 @@ function compile_source(source) { let __tuff_this = { source: source }; return c
 
 function main() {
   let __tuff_this = {  };
-  print("Self-hosted Tuff compiler loaded");
+  let argc = get_argc(); __tuff_this.argc = argc;
+  if ((argc < 2)) {
+  print_error("Usage: tuffc <input.tuff> [-o <output>] [--target <js|c>]");
+  return 1;
+}
+  let input_file = get_argv(1); __tuff_this.input_file = input_file;
+  let output_file = ""; __tuff_this.output_file = output_file;
+  let target = "js"; __tuff_this.target = target;
+  let i = 2; __tuff_this.i = i;
+  let had_error = 0; __tuff_this.had_error = had_error;
+  while ((i < argc)) {
+  let arg = get_argv(i); __tuff_this.arg = arg;
+  if (((() => { const __recv = arg; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("-o"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "-o") : str_eq(__recv, "-o"); })() || (() => { const __recv = arg; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("--out"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "--out") : str_eq(__recv, "--out"); })())) {
+  i = (i + 1); __tuff_this.i = i;
+  if ((i < argc)) {
+  output_file = get_argv(i); __tuff_this.output_file = output_file;
+} else {
+  print_error("Missing value for -o/--out");
+  had_error = 1; __tuff_this.had_error = had_error;
+}
+} else { if ((() => { const __recv = arg; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("--target"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "--target") : str_eq(__recv, "--target"); })()) {
+  i = (i + 1); __tuff_this.i = i;
+  if ((i < argc)) {
+  target = get_argv(i); __tuff_this.target = target;
+} else {
+  print_error("Missing value for --target");
+  had_error = 1; __tuff_this.had_error = had_error;
+}
+} else { if ((() => { const __recv = arg; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("--version"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "--version") : str_eq(__recv, "--version"); })()) {
+  print("tuffc (stage3 native)");
+  return 0;
+} else { if (((() => { const __recv = arg; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("-h"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "-h") : str_eq(__recv, "-h"); })() || (() => { const __recv = arg; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("--help"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "--help") : str_eq(__recv, "--help"); })())) {
+  print("Usage: tuffc <input.tuff> [-o <output>] [--target <js|c>] [--version]");
+  return 0;
+} } } }
+  i = (i + 1); __tuff_this.i = i;
+}
+  if ((had_error == 1)) {
+  return 1;
+}
+  let source = read_file(input_file); __tuff_this.source = source;
+  let result = compile_source_with_options(source, 1, 0, 500, 1, target); __tuff_this.result = result;
+  if ((() => { const __recv = output_file; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop(""); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "") : str_eq(__recv, ""); })()) {
+  print(result);
+} else {
+  write_file(output_file, result);
+  print((() => { const __recv = (() => { const __recv = (() => { const __recv = "Compiled "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(input_file); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, input_file) : str_concat(__recv, input_file); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(" -> "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " -> ") : str_concat(__recv, " -> "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(output_file); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, output_file) : str_concat(__recv, output_file); })());
+}
   return 0;
 }

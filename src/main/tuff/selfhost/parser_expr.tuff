@@ -1,5 +1,5 @@
 let { p_at, p_eat, p_expect, p_parse_identifier, p_at_kind, p_peek, p_mark, p_restore, p_parse_pattern, p_parse_type, p_can_start_type_tok_at, p_error_with_token_context, node_kind, node_new, node_set_data1, node_set_data2, node_set_data3, node_set_data4, node_set_data5, node_get_data1, node_get_data2, node_get_data3 } = selfhost::parser_core;
-let { tok_kind, tok_value, get_interned_str, vec_new } = selfhost::runtime_lexer;
+let { tok_kind, tok_value, tok_line, tok_col, get_interned_str, vec_new } = selfhost::runtime_lexer;
 
 fn p_has_generic_call_suffix() : Bool => {
     if (!p_at(TK_SYMBOL, "<")) {
@@ -11,6 +11,9 @@ fn p_has_generic_call_suffix() : Bool => {
     let cursor = 0;
     let depth = 0;
     while (true) {
+        if (cursor > 200000) {
+            p_error_with_token_context("Parser watchdog: generic-call suffix scan exceeded 200000 tokens");
+        }
         let ti = p_peek(cursor);
         let tk = tok_kind(ti);
         if (tk == TK_EOF) {
@@ -46,6 +49,9 @@ fn p_has_generic_struct_init_suffix() : Bool => {
     let cursor = 0;
     let depth = 0;
     while (true) {
+        if (cursor > 200000) {
+            p_error_with_token_context("Parser watchdog: generic-struct-init suffix scan exceeded 200000 tokens");
+        }
         let ti = p_peek(cursor);
         let tk = tok_kind(ti);
         if (tk == TK_EOF) {
@@ -81,6 +87,9 @@ fn p_has_generic_value_suffix() : Bool => {
     let cursor = 0;
     let depth = 0;
     while (true) {
+        if (cursor > 200000) {
+            p_error_with_token_context("Parser watchdog: generic-value suffix scan exceeded 200000 tokens");
+        }
         let ti = p_peek(cursor);
         let tk = tok_kind(ti);
         if (tk == TK_EOF) {
@@ -121,6 +130,9 @@ fn p_parse_generic_arg_value_or_type() : I32 => {
     let paren_depth = 0;
     let bracket_depth = 0;
     while (true) {
+        if (cursor > 200000) {
+            p_error_with_token_context("Parser watchdog: generic-arg scan exceeded 200000 tokens");
+        }
         let ti = p_peek(cursor);
         let tk = tok_kind(ti);
         if (tk == TK_EOF) {
@@ -160,7 +172,12 @@ fn p_parse_generic_arg_value_or_type() : I32 => {
 
 fn p_parse_postfix(exprIn: I32) : I32 => {
     let expr = exprIn;
+    let postfix_watchdog = 0;
     while (true) {
+        postfix_watchdog = postfix_watchdog + 1;
+        if (postfix_watchdog > 10000) {
+            p_error_with_token_context("Parser watchdog: postfix loop exceeded 10000 iterations");
+        }
         if (node_kind(expr) == NK_MEMBER_EXPR && get_interned_str(node_get_data2(expr)).str_eq("into") && p_at(TK_SYMBOL, "<") && p_has_generic_value_suffix()) {
             p_eat();
             let type_args = vec_new();
@@ -671,8 +688,13 @@ fn p_is_binary_op() : Bool => {
 
 fn p_parse_expression(minPrec: I32) : I32 => {
     let left = p_parse_unary();
+    let watchdog = 0;
     
     while (p_is_binary_op()) {
+        watchdog = watchdog + 1;
+        if (watchdog > 200000) {
+            p_error_with_token_context("Parser watchdog: binary-expression loop exceeded 200000 iterations");
+        }
         if (minPrec <= 0 && p_at(TK_KEYWORD, "into")) {
             p_eat();
             let contract_name = p_parse_identifier();
@@ -760,7 +782,12 @@ fn p_parse_block() : I32 => {
     p_expect(TK_SYMBOL, "{", "Expected '{'");
     let stmts = vec_new();
     while (!p_at(TK_SYMBOL, "}") && !p_at_kind(TK_EOF)) {
+        let before = p_mark();
         let stmt = p_parse_statement();
+        let after = p_mark();
+        if (after == before) {
+            p_error_with_token_context("Parser made no progress while parsing block statement");
+        }
         if (node_kind(stmt) == NK_STMT_LIST) {
             let inner = node_get_data1(stmt);
             let i = 0;
