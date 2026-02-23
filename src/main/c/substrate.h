@@ -39,15 +39,19 @@ typedef struct
 {
     int64_t *keys;
     int64_t *vals;
+    uint8_t *states; // 0=empty, 1=occupied, 2=tombstone
     size_t len;
     size_t cap;
+    size_t tombstones;
 } TuffMap;
 
 typedef struct
 {
     int64_t *items;
+    uint8_t *states; // 0=empty, 1=occupied, 2=tombstone
     size_t len;
     size_t cap;
+    size_t tombstones;
 } TuffSet;
 
 void tuff_panic(const char *message);

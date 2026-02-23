@@ -132,20 +132,114 @@ int64_t __map_new(void)
     return tuff_to_val(m);
 }
 
-static void map_reserve(TuffMap *m, size_t need)
+static size_t tuff_hash_mix64(uint64_t x)
 {
-    if (m->cap >= need)
-        return;
-    size_t cap = m->cap == 0 ? 4 : m->cap;
-    while (cap < need)
-        cap *= 2;
-    int64_t *next_keys = (int64_t *)tuff_realloc_array(m->keys, sizeof(int64_t), cap);
-    int64_t *next_vals = (int64_t *)tuff_realloc_array(m->vals, sizeof(int64_t), cap);
-    if (next_keys == NULL || next_vals == NULL)
-        tuff_panic("Out of memory in map_reserve");
-    m->keys = next_keys;
-    m->vals = next_vals;
+    x ^= x >> 33;
+    x *= UINT64_C(0xff51afd7ed558ccd);
+    x ^= x >> 33;
+    x *= UINT64_C(0xc4ceb9fe1a85ec53);
+    x ^= x >> 33;
+    return (size_t)x;
+}
+
+static size_t tuff_hash_value(int64_t key)
+{
+    if (key > -2147483648LL && key < 2147483648LL)
+    {
+        return tuff_hash_mix64((uint64_t)(uint32_t)key);
+    }
+    return tuff_hash_mix64((uint64_t)(uintptr_t)tuff_from_val(key));
+}
+
+static void map_allocate(TuffMap *m, size_t cap)
+{
+    int64_t *keys = (int64_t *)calloc(cap, sizeof(int64_t));
+    int64_t *vals = (int64_t *)calloc(cap, sizeof(int64_t));
+    uint8_t *states = (uint8_t *)calloc(cap, sizeof(uint8_t));
+    if (keys == NULL || vals == NULL || states == NULL)
+        tuff_panic("Out of memory in map_allocate");
+    m->keys = keys;
+    m->vals = vals;
+    m->states = states;
     m->cap = cap;
+    m->len = 0;
+    m->tombstones = 0;
+}
+
+static size_t map_find_slot(TuffMap *m, int64_t key, int *found)
+{
+    size_t mask = m->cap - 1;
+    size_t idx = tuff_hash_value(key) & mask;
+    size_t first_tomb = (size_t)-1;
+    for (;;)
+    {
+        uint8_t state = m->states[idx];
+        if (state == 0)
+        {
+            if (found != NULL)
+                *found = 0;
+            return first_tomb != (size_t)-1 ? first_tomb : idx;
+        }
+        if (state == 2)
+        {
+            if (first_tomb == (size_t)-1)
+                first_tomb = idx;
+        }
+        else if (tuff_value_equals(m->keys[idx], key))
+        {
+            if (found != NULL)
+                *found = 1;
+            return idx;
+        }
+        idx = (idx + 1) & mask;
+    }
+}
+
+static void map_rehash(TuffMap *m, size_t new_cap)
+{
+    if (new_cap < 16)
+        new_cap = 16;
+    size_t cap = 1;
+    while (cap < new_cap)
+        cap <<= 1;
+
+    TuffMap next = {0};
+    map_allocate(&next, cap);
+
+    for (size_t i = 0; i < m->cap; i++)
+    {
+        if (m->states[i] != 1)
+            continue;
+        int found = 0;
+        size_t slot = map_find_slot(&next, m->keys[i], &found);
+        next.states[slot] = 1;
+        next.keys[slot] = m->keys[i];
+        next.vals[slot] = m->vals[i];
+        next.len += 1;
+    }
+
+    free(m->keys);
+    free(m->vals);
+    free(m->states);
+    *m = next;
+}
+
+static void map_ensure_capacity(TuffMap *m)
+{
+    if (m->cap == 0)
+    {
+        map_allocate(m, 16);
+        return;
+    }
+    size_t used = m->len + m->tombstones;
+    if ((used + 1) * 10 >= m->cap * 7)
+    {
+        map_rehash(m, m->cap * 2);
+    }
+    else if (m->tombstones > m->len && m->cap > 16)
+    {
+        map_rehash(m, m->cap);
+    }
 }
 
 int64_t map_set(int64_t thisMap, int64_t k, int64_t v)
@@ -154,15 +248,20 @@ int64_t map_set(int64_t thisMap, int64_t k, int64_t v)
     k = tuff_canonicalize_key(k);
     if (m == NULL)
         return thisMap;
-    int64_t found = tuff_map_index_of(m, k);
-    if (found >= 0)
+    map_ensure_capacity(m);
+
+    int found = 0;
+    size_t slot = map_find_slot(m, k, &found);
+    if (found)
     {
-        m->vals[(size_t)found] = v;
+        m->vals[slot] = v;
         return thisMap;
     }
-    map_reserve(m, m->len + 1);
-    m->keys[m->len] = k;
-    m->vals[m->len] = v;
+    if (m->states[slot] == 2 && m->tombstones > 0)
+        m->tombstones -= 1;
+    m->states[slot] = 1;
+    m->keys[slot] = k;
+    m->vals[slot] = v;
     m->len += 1;
     return thisMap;
 }
@@ -170,34 +269,42 @@ int64_t map_set(int64_t thisMap, int64_t k, int64_t v)
 int64_t map_get(int64_t thisMap, int64_t k)
 {
     TuffMap *m = (TuffMap *)tuff_from_val(thisMap);
+    if (m == NULL || m->cap == 0)
+        return 0;
     k = tuff_canonicalize_key(k);
-    int64_t idx = tuff_map_index_of(m, k);
-    return idx >= 0 ? m->vals[(size_t)idx] : 0;
+    int found = 0;
+    size_t slot = map_find_slot(m, k, &found);
+    return found ? m->vals[slot] : 0;
 }
 
 int64_t map_has(int64_t thisMap, int64_t k)
 {
     TuffMap *m = (TuffMap *)tuff_from_val(thisMap);
+    if (m == NULL || m->cap == 0)
+        return 0;
     k = tuff_canonicalize_key(k);
-    return tuff_map_index_of(m, k) >= 0;
+    int found = 0;
+    (void)map_find_slot(m, k, &found);
+    return found;
 }
 
 int64_t map_delete(int64_t thisMap, int64_t k)
 {
     TuffMap *m = (TuffMap *)tuff_from_val(thisMap);
-    if (m == NULL)
+    if (m == NULL || m->cap == 0)
         return 0;
     k = tuff_canonicalize_key(k);
-    int64_t idx = tuff_map_index_of(m, k);
-    if (idx < 0)
+    int found = 0;
+    size_t slot = map_find_slot(m, k, &found);
+    if (!found)
         return 0;
-    size_t i = (size_t)idx;
-    for (size_t j = i + 1; j < m->len; j++)
-    {
-        m->keys[j - 1] = m->keys[j];
-        m->vals[j - 1] = m->vals[j];
-    }
+    m->states[slot] = 2;
     m->len -= 1;
+    m->tombstones += 1;
+    if (m->tombstones > m->len && m->cap > 16)
+    {
+        map_rehash(m, m->cap);
+    }
     return 1;
 }
 
@@ -216,11 +323,98 @@ static void set_reserve(TuffSet *s, size_t need)
     size_t cap = s->cap == 0 ? 4 : s->cap;
     while (cap < need)
         cap *= 2;
-    int64_t *next = (int64_t *)tuff_realloc_array(s->items, sizeof(int64_t), cap);
-    if (next == NULL)
+    int64_t *next_items = (int64_t *)tuff_realloc_array(s->items, sizeof(int64_t), cap);
+    uint8_t *next_states = (uint8_t *)realloc(s->states, sizeof(uint8_t) * cap);
+    if (next_items == NULL || next_states == NULL)
         tuff_panic("Out of memory in set_reserve");
-    s->items = next;
+    memset(next_states + s->cap, 0, cap - s->cap);
+    s->items = next_items;
+    s->states = next_states;
     s->cap = cap;
+}
+
+static void set_allocate(TuffSet *s, size_t cap)
+{
+    s->items = (int64_t *)calloc(cap, sizeof(int64_t));
+    s->states = (uint8_t *)calloc(cap, sizeof(uint8_t));
+    if (s->items == NULL || s->states == NULL)
+        tuff_panic("Out of memory in set_allocate");
+    s->cap = cap;
+    s->len = 0;
+    s->tombstones = 0;
+}
+
+static size_t set_find_slot(TuffSet *s, int64_t item, int *found)
+{
+    size_t mask = s->cap - 1;
+    size_t idx = tuff_hash_value(item) & mask;
+    size_t first_tomb = (size_t)-1;
+    for (;;)
+    {
+        uint8_t state = s->states[idx];
+        if (state == 0)
+        {
+            if (found != NULL)
+                *found = 0;
+            return first_tomb != (size_t)-1 ? first_tomb : idx;
+        }
+        if (state == 2)
+        {
+            if (first_tomb == (size_t)-1)
+                first_tomb = idx;
+        }
+        else if (tuff_value_equals(s->items[idx], item))
+        {
+            if (found != NULL)
+                *found = 1;
+            return idx;
+        }
+        idx = (idx + 1) & mask;
+    }
+}
+
+static void set_rehash(TuffSet *s, size_t new_cap)
+{
+    if (new_cap < 16)
+        new_cap = 16;
+    size_t cap = 1;
+    while (cap < new_cap)
+        cap <<= 1;
+
+    TuffSet next = {0};
+    set_allocate(&next, cap);
+    for (size_t i = 0; i < s->cap; i++)
+    {
+        if (s->states[i] != 1)
+            continue;
+        int found = 0;
+        size_t slot = set_find_slot(&next, s->items[i], &found);
+        next.states[slot] = 1;
+        next.items[slot] = s->items[i];
+        next.len += 1;
+    }
+
+    free(s->items);
+    free(s->states);
+    *s = next;
+}
+
+static void set_ensure_capacity(TuffSet *s)
+{
+    if (s->cap == 0)
+    {
+        set_allocate(s, 16);
+        return;
+    }
+    size_t used = s->len + s->tombstones;
+    if ((used + 1) * 10 >= s->cap * 7)
+    {
+        set_rehash(s, s->cap * 2);
+    }
+    else if (s->tombstones > s->len && s->cap > 16)
+    {
+        set_rehash(s, s->cap);
+    }
 }
 
 int64_t set_add(int64_t thisSet, int64_t item)
@@ -229,29 +423,46 @@ int64_t set_add(int64_t thisSet, int64_t item)
     item = tuff_canonicalize_key(item);
     if (s == NULL)
         return thisSet;
-    if (tuff_set_index_of(s, item) >= 0)
+    set_ensure_capacity(s);
+    int found = 0;
+    size_t slot = set_find_slot(s, item, &found);
+    if (found)
         return thisSet;
-    set_reserve(s, s->len + 1);
-    s->items[s->len++] = item;
+    if (s->states[slot] == 2 && s->tombstones > 0)
+        s->tombstones -= 1;
+    s->states[slot] = 1;
+    s->items[slot] = item;
+    s->len += 1;
     return thisSet;
 }
 
 int64_t set_has(int64_t thisSet, int64_t item)
 {
     TuffSet *s = (TuffSet *)tuff_from_val(thisSet);
+    if (s == NULL || s->cap == 0)
+        return 0;
     item = tuff_canonicalize_key(item);
-    return tuff_set_index_of(s, item) >= 0;
+    int found = 0;
+    (void)set_find_slot(s, item, &found);
+    return found;
 }
 
 int64_t set_delete(int64_t thisSet, int64_t item)
 {
     TuffSet *s = (TuffSet *)tuff_from_val(thisSet);
-    item = tuff_canonicalize_key(item);
-    int64_t idx = tuff_set_index_of(s, item);
-    if (idx < 0)
+    if (s == NULL || s->cap == 0)
         return 0;
-    for (size_t j = (size_t)idx + 1; j < s->len; j++)
-        s->items[j - 1] = s->items[j];
-    s->len--;
+    item = tuff_canonicalize_key(item);
+    int found = 0;
+    size_t slot = set_find_slot(s, item, &found);
+    if (!found)
+        return 0;
+    s->states[slot] = 2;
+    s->len -= 1;
+    s->tombstones += 1;
+    if (s->tombstones > s->len && s->cap > 16)
+    {
+        set_rehash(s, s->cap);
+    }
     return 1;
 }
