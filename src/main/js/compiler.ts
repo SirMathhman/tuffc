@@ -473,7 +473,12 @@ export function compileSource(
           target,
         );
       } catch (error) {
-        return err(wrapTuffError(error, { source }));
+        return err(
+          wrapTuffError(error, {
+            source,
+            filePath,
+          }),
+        );
       } finally {
         runtimeCSubstrateOverride = undefined;
       }
@@ -635,6 +640,7 @@ function compileFileInternal(
     } catch (error) {
       return err(
         wrapTuffError(error, {
+          filePath: absInput,
           sourceByFile: new Map([
             [absInput, fs.readFileSync(absInput, "utf8")],
           ]),

@@ -35,7 +35,10 @@ function getLine(source, lineNumber) {
 }
 
 function createSourceExcerpt(source, loc) {
-  if (!source || !loc?.line) return undefined;
+  if (!source) return undefined;
+  if (!loc?.line) {
+    return source;
+  }
   const lineText = getLine(source, loc.line);
   if (lineText == undefined) return undefined;
 
@@ -49,9 +52,17 @@ export function enrichError(
   context: {
     sourceByFile?: Map<string, string>;
     source?: string | undefined;
+    filePath?: string | undefined;
   } = {},
 ): unknown {
   if (!(error instanceof TuffError)) return error;
+
+  if (!error.loc?.filePath && context.filePath) {
+    error.loc = {
+      ...(error.loc ?? {}),
+      filePath: context.filePath,
+    };
+  }
 
   if (error.source) return error;
 
