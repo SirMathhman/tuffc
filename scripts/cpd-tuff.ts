@@ -18,6 +18,7 @@ export type CpdOptions = {
   includeTests: boolean;
   failOnDupes: boolean;
   json: boolean;
+  maxReports: number;
   normalizeIdentifiers: boolean;
   normalizeLiterals: boolean;
   exclude: string[];
@@ -88,7 +89,7 @@ const HASH_BASE = 911_382_323;
 
 function printHelp(): void {
   console.log(
-    `Usage: tsx ./scripts/cpd-tuff.ts [options]\n\nOptions:\n  --dir <path>               Scan root (default: src/main/tuff)\n  --min-tokens <n>           Minimum token window (default: 100)\n  --include-tests            Include src/test/tuff as well\n  --exclude <glob-like>      Exclude paths containing this substring (repeatable)\n  --normalize-identifiers    Treat all identifiers as one canonical token\n  --normalize-literals       Treat all literals as one canonical token\n  --fail-on-duplicates       Exit non-zero when findings > 0\n  --json                     Emit JSON summary\n  -h, --help                 Show this help\n`,
+    `Usage: tsx ./scripts/cpd-tuff.ts [options]\n\nOptions:\n  --dir <path>               Scan root (default: src/main/tuff)\n  --min-tokens <n>           Minimum token window (default: 100)\n  --max-reports <n>          Max findings to print (default: 50)\n  --include-tests            Include src/test/tuff as well\n  --exclude <glob-like>      Exclude paths containing this substring (repeatable)\n  --normalize-identifiers    Treat all identifiers as one canonical token\n  --normalize-literals       Treat all literals as one canonical token\n  --fail-on-duplicates       Exit non-zero when findings > 0\n  --json                     Emit JSON summary\n  -h, --help                 Show this help\n`,
   );
 }
 
@@ -110,6 +111,7 @@ export function parseArgs(argv: string[]): CpdOptions {
     includeTests: false,
     failOnDupes: false,
     json: false,
+    maxReports: 50,
     normalizeIdentifiers: false,
     normalizeLiterals: false,
     exclude: [".generated.", "selfhost.js", "selfhost.generated.js"],
@@ -140,6 +142,17 @@ export function parseArgs(argv: string[]): CpdOptions {
         process.exit(1);
       }
       options.targetDir = path.resolve(root, raw);
+      i++;
+      continue;
+    }
+
+    if (arg === "--max-reports") {
+      const raw = argv[i + 1];
+      if (raw == null) {
+        console.error("[cpd:tuff] Missing value for --max-reports");
+        process.exit(1);
+      }
+      options.maxReports = parsePositiveInt(raw, "--max-reports");
       i++;
       continue;
     }
@@ -461,8 +474,8 @@ function toFindings(fileTokens: CpdFileTokens[], matches: WindowMatch[]): Findin
   return consolidated;
 }
 
-function printSummary(summary: CpdSummary, json: boolean): void {
-  if (json) {
+function printSummary(summary: CpdSummary, options: CpdOptions): void {
+  if (options.json) {
     console.log(JSON.stringify(summary, null, 2));
     return;
   }
@@ -472,7 +485,7 @@ function printSummary(summary: CpdSummary, json: boolean): void {
   console.log(`[cpd:tuff] findings      : ${summary.findings.length}`);
   console.log(`[cpd:tuff] mode          : ${summary.mode}`);
 
-  const previewCount = Math.min(summary.findings.length, 50);
+  const previewCount = Math.min(summary.findings.length, options.maxReports);
   for (let i = 0; i < previewCount; i++) {
     const f = summary.findings[i];
     console.log(
@@ -510,9 +523,12 @@ function run(): void {
     mode: options.failOnDupes ? "strict" : "informational",
   };
 
-  printSummary(summary, options.json);
+  printSummary(summary, options);
 
   if (summary.findings.length > 0 && options.failOnDupes) {
+    console.error(
+      `[cpd:tuff] strict mode failed: found ${summary.findings.length} duplicate block(s) at threshold ${summary.minTokens}`,
+    );
     process.exit(2);
   }
   process.exit(0);
