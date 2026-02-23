@@ -68,11 +68,7 @@ function profileCompile(file: string): CompileResult {
 
     const result = spawnSync(
       nativeCliPath,
-      [
-        file,
-        "-o",
-        path.join(OUT_DIR, `${path.basename(file, ".tuff")}.js`),
-      ],
+      [file, "-o", path.join(OUT_DIR, `${path.basename(file, ".tuff")}.js`)],
       { cwd: root, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] },
     );
 
@@ -169,9 +165,7 @@ async function main() {
 
   for (const test of TEST_FILES) {
     if (!fs.existsSync(test.path)) {
-      console.log(
-        `[profile:compiler] ⊘ skipped ${test.name} (file not found)`,
-      );
+      console.log(`[profile:compiler] ⊘ skipped ${test.name} (file not found)`);
       results.push({
         file: test.path,
         successful: false,
@@ -203,7 +197,9 @@ async function main() {
   // Save report
   const reportPath = path.join(OUT_DIR, "profile-report.txt");
   fs.writeFileSync(reportPath, report);
-  console.log(`[profile:compiler] Report saved: ${path.relative(root, reportPath)}`);
+  console.log(
+    `[profile:compiler] Report saved: ${path.relative(root, reportPath)}`,
+  );
 
   // Save raw JSON
   const jsonPath = path.join(OUT_DIR, "profile-data.json");
@@ -220,7 +216,9 @@ async function main() {
       2,
     ),
   );
-  console.log(`[profile:compiler] Raw data saved: ${path.relative(root, jsonPath)}`);
+  console.log(
+    `[profile:compiler] Raw data saved: ${path.relative(root, jsonPath)}`,
+  );
 }
 
 main().catch((err) => {

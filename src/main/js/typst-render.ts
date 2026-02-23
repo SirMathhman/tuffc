@@ -21,7 +21,10 @@ function renderTypstSource(cert: VerificationCertificate): string {
     .join("\n");
 
   const sourceRows = cert.sourceFiles
-    .map((f) => `  [${escapeTypst(path.basename(f.path))}], [#raw("${f.sha256}")],`)
+    .map(
+      (f) =>
+        `  [${escapeTypst(path.basename(f.path))}], [#raw("${f.sha256}")],`,
+    )
     .join("\n");
 
   const outcomeText = cert.compilationOutcome.success
@@ -101,7 +104,9 @@ export function writeTypstSource(
     fs.writeFileSync(typPath, renderTypstSource(cert), "utf8");
     return typPath;
   } catch (e) {
-    console.error(`tuffc: warning: could not write Typst source to ${typPath}: ${e}`);
+    console.error(
+      `tuffc: warning: could not write Typst source to ${typPath}: ${e}`,
+    );
     return null;
   }
 }

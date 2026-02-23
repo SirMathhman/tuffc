@@ -31,7 +31,9 @@ function runCli(args: string[]) {
 
 function assertEq<T>(actual: T, expected: T, label: string): void {
   if (actual !== expected) {
-    console.error(`${label}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
+    console.error(
+      `${label}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`,
+    );
     process.exit(1);
   }
 }
@@ -64,8 +66,10 @@ function readCert(certPath: string): Record<string, unknown> {
 
   const r = runCli([
     "./src/test/tuff/cases/factorial.tuff",
-    "-o", jsOut,
-    "--emit-certificate", certPath,
+    "-o",
+    jsOut,
+    "--emit-certificate",
+    certPath,
   ]);
 
   if (r.status !== 0) {
@@ -74,37 +78,61 @@ function readCert(certPath: string): Record<string, unknown> {
   }
 
   const combined = `${r.stdout ?? ""}\n${r.stderr ?? ""}`;
-  assertTrue(combined.includes("Certificate written to"), `${label}: stdout mentions certificate`);
+  assertTrue(
+    combined.includes("Certificate written to"),
+    `${label}: stdout mentions certificate`,
+  );
 
   const cert = readCert(certPath);
 
   // Schema version and title
   assertEq(cert["schemaVersion"], "1.0", `${label}: schemaVersion`);
-  assertEq(cert["documentTitle"], "Tuff Verification Certificate", `${label}: documentTitle`);
+  assertEq(
+    cert["documentTitle"],
+    "Tuff Verification Certificate",
+    `${label}: documentTitle`,
+  );
 
   // Compiler version present and non-empty
   assertTrue(
-    typeof cert["compilerVersion"] === "string" && (cert["compilerVersion"] as string).length > 0,
+    typeof cert["compilerVersion"] === "string" &&
+      (cert["compilerVersion"] as string).length > 0,
     `${label}: compilerVersion present`,
   );
 
   // Timestamp looks like ISO 8601
   assertTrue(
-    typeof cert["timestamp"] === "string" && /^\d{4}-\d{2}-\d{2}T/.test(cert["timestamp"] as string),
+    typeof cert["timestamp"] === "string" &&
+      /^\d{4}-\d{2}-\d{2}T/.test(cert["timestamp"] as string),
     `${label}: timestamp is ISO 8601`,
   );
 
   // Source files hashes
-  const sourceFiles = cert["sourceFiles"] as Array<{ path: string; sha256: string }>;
-  assertTrue(Array.isArray(sourceFiles) && sourceFiles.length === 1, `${label}: one source file`);
-  assertTrue(/^[0-9a-f]{64}$/.test(sourceFiles[0].sha256), `${label}: per-file sha256 is 64-char hex`);
+  const sourceFiles = cert["sourceFiles"] as Array<{
+    path: string;
+    sha256: string;
+  }>;
+  assertTrue(
+    Array.isArray(sourceFiles) && sourceFiles.length === 1,
+    `${label}: one source file`,
+  );
+  assertTrue(
+    /^[0-9a-f]{64}$/.test(sourceFiles[0].sha256),
+    `${label}: per-file sha256 is 64-char hex`,
+  );
 
   // Combined hash
-  assertTrue(/^[0-9a-f]{64}$/.test(cert["combinedSha256"] as string), `${label}: combinedSha256 is 64-char hex`);
+  assertTrue(
+    /^[0-9a-f]{64}$/.test(cert["combinedSha256"] as string),
+    `${label}: combinedSha256 is 64-char hex`,
+  );
 
   // Eight properties
   const properties = cert["properties"] as Array<{ id: string }>;
-  assertTrue(Array.isArray(properties) && properties.length === 8, `${label}: 8 properties`);
+  assertTrue(
+    Array.isArray(properties) && properties.length === 8,
+    `${label}: 8 properties`,
+  );
 
   const expectedIds = [
     "no-buffer-overflows",
@@ -124,13 +152,24 @@ function readCert(certPath: string): Record<string, unknown> {
   }
 
   // Compilation outcome
-  const outcome = cert["compilationOutcome"] as { success: boolean; diagnosticCodes: string[] };
+  const outcome = cert["compilationOutcome"] as {
+    success: boolean;
+    diagnosticCodes: string[];
+  };
   assertEq(outcome.success, true, `${label}: outcome.success`);
   assertEq(outcome.diagnosticCodes.length, 0, `${label}: no diagnostic codes`);
 
   // certifies / doesNotCertify strings
-  assertTrue(typeof cert["certifies"] === "string" && (cert["certifies"] as string).length > 0, `${label}: certifies present`);
-  assertTrue(typeof cert["doesNotCertify"] === "string" && (cert["doesNotCertify"] as string).length > 0, `${label}: doesNotCertify present`);
+  assertTrue(
+    typeof cert["certifies"] === "string" &&
+      (cert["certifies"] as string).length > 0,
+    `${label}: certifies present`,
+  );
+  assertTrue(
+    typeof cert["doesNotCertify"] === "string" &&
+      (cert["doesNotCertify"] as string).length > 0,
+    `${label}: doesNotCertify present`,
+  );
 
   console.log(`${label}: PASS`);
 }
@@ -143,10 +182,19 @@ function readCert(certPath: string): Record<string, unknown> {
   const certPath = path.join(outDir, "success.cert.json");
   const typPath = certPath.replace(/\.json$/, ".typ");
 
-  assertTrue(fs.existsSync(typPath), `${label}: .typ file exists at ${typPath}`);
+  assertTrue(
+    fs.existsSync(typPath),
+    `${label}: .typ file exists at ${typPath}`,
+  );
   const typContent = fs.readFileSync(typPath, "utf8");
-  assertTrue(typContent.includes("Tuff Verification Certificate"), `${label}: .typ contains document title`);
-  assertTrue(typContent.includes("No Buffer Overflows"), `${label}: .typ contains property names`);
+  assertTrue(
+    typContent.includes("Tuff Verification Certificate"),
+    `${label}: .typ contains document title`,
+  );
+  assertTrue(
+    typContent.includes("No Buffer Overflows"),
+    `${label}: .typ contains property names`,
+  );
 
   console.log(`${label}: PASS`);
 }
@@ -159,7 +207,11 @@ function readCert(certPath: string): Record<string, unknown> {
 
   // Write a .tuff source that contains a deliberate type error (safe syntax error)
   const badSrc = path.join(outDir, "bad.tuff");
-  fs.writeFileSync(badSrc, "fn main() -> i32 {\n  let x: i32 = \"not a number\";\n  return x;\n}\n", "utf8");
+  fs.writeFileSync(
+    badSrc,
+    'fn main() -> i32 {\n  let x: i32 = "not a number";\n  return x;\n}\n',
+    "utf8",
+  );
 
   const certPath = path.join(outDir, "failure.cert.json");
   const r = runCli([badSrc, "--emit-certificate", certPath]);
@@ -167,7 +219,10 @@ function readCert(certPath: string): Record<string, unknown> {
   assertTrue(r.status !== 0, `${label}: expected non-zero exit`);
 
   const cert = readCert(certPath);
-  const outcome = cert["compilationOutcome"] as { success: boolean; diagnosticCodes: string[] };
+  const outcome = cert["compilationOutcome"] as {
+    success: boolean;
+    diagnosticCodes: string[];
+  };
   assertEq(outcome.success, false, `${label}: outcome.success is false`);
 
   console.log(`${label}: PASS`);
@@ -178,10 +233,15 @@ function readCert(certPath: string): Record<string, unknown> {
 // ---------------------------------------------------------------------------
 {
   const label = "missing-value";
-  const r = runCli(["./src/test/tuff/cases/factorial.tuff", "--emit-certificate"]);
+  const r = runCli([
+    "./src/test/tuff/cases/factorial.tuff",
+    "--emit-certificate",
+  ]);
   assertTrue(r.status !== 0, `${label}: expected non-zero exit`);
   assertTrue(
-    `${r.stdout ?? ""}\n${r.stderr ?? ""}`.includes("Missing value for --emit-certificate"),
+    `${r.stdout ?? ""}\n${r.stderr ?? ""}`.includes(
+      "Missing value for --emit-certificate",
+    ),
     `${label}: error message`,
   );
   console.log(`${label}: PASS`);
