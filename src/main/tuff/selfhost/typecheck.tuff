@@ -528,7 +528,7 @@ fn typecheck_expr(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types:
                     }
                     let witness = left_desc.str_concat(" ").str_concat(op).str_concat(" ").str_concat(right_desc).str_concat(" = ").str_concat(int_to_string(result)).str_concat(", which is outside I32 range [-2147483648, 2147483647]");
                     panic_with_code(
-                        "E_SAFETY_OVERFLOW",
+                        "E_SAFETY_INTEGER_OVERFLOW",
                         "Integer overflow/underflow proven possible for '".str_concat(op).str_concat("'"),
                         witness,
                         "Constrain operands or use a wider intermediate type before narrowing."
@@ -788,8 +788,8 @@ fn typecheck_expr(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types:
         if (!cond_name.str_eq("Bool") && !cond_name.str_eq("Unknown")) {
             panic_with_code(
                 "E_TYPE_IF_CONDITION",
-                "if condition must be Bool",
-                "Conditional branches require a boolean predicate.",
+                "if condition must be Bool, got ".str_concat(cond_name),
+                "Conditional branches require a boolean predicate, but the given expression has a non-Bool type.",
                 "Return or compute a Bool expression in the if condition."
             );
         }
@@ -878,7 +878,7 @@ fn typecheck_expr(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types:
                 let tag = expected_tags.vec_get(j);
                 if (!seen_tags.set_has(tag)) {
                     panic_with_code(
-                        "E_MATCH_NON_EXHAUSTIVE",
+                        "E_TYPE_MATCH_NON_EXHAUSTIVE",
                         "Non-exhaustive match: missing case for ".str_concat(tag),
                         "A match expression over a known union type does not handle all variants.",
                         "Add missing case arms or include a wildcard case '_'."
@@ -1083,8 +1083,8 @@ fn typecheck_stmt(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types:
         if (!cond_name.str_eq("Bool") && !cond_name.str_eq("Unknown")) {
             panic_with_code(
                 "E_TYPE_IF_CONDITION",
-                "if condition must be Bool",
-                "Conditional branches require a boolean predicate.",
+                "if condition must be Bool, got ".str_concat(cond_name),
+                "Conditional branches require a boolean predicate, but the given expression has a non-Bool type.",
                 "Return or compute a Bool expression in the if condition."
             );
         }
@@ -1181,8 +1181,8 @@ fn typecheck_stmt(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types:
         if (!cond_name.str_eq("Bool") && !cond_name.str_eq("Unknown")) {
             panic_with_code(
                 "E_TYPE_IF_CONDITION",
-                "if condition must be Bool",
-                "Conditional branches require a boolean predicate.",
+                "if condition must be Bool, got ".str_concat(cond_name),
+                "Conditional branches require a boolean predicate, but the given expression has a non-Bool type.",
                 "Return or compute a Bool expression in the condition."
             );
         }

@@ -98,7 +98,11 @@ if (strictOverflowResult.ok) {
   process.exit(1);
 }
 const overflowDiag = toDiagnostic(unwrapErr(strictOverflowResult));
-expectDiagnosticCode(overflowDiag, "E_SAFETY_OVERFLOW", "phase4 overflow");
+expectDiagnosticCode(
+  overflowDiag,
+  "E_SAFETY_INTEGER_OVERFLOW",
+  "phase4 overflow",
+);
 if (!overflowDiag.reason || !overflowDiag.reason.includes("2147483648")) {
   console.error(
     `Expected selfhost overflow reason to include computed value '2147483648', got: ${overflowDiag.reason}`,
@@ -120,7 +124,7 @@ if (overflowVarResult.ok) {
 const overflowVarDiag = toDiagnostic(unwrapErr(overflowVarResult));
 expectDiagnosticCode(
   overflowVarDiag,
-  "E_SAFETY_OVERFLOW",
+  "E_SAFETY_INTEGER_OVERFLOW",
   "phase4 overflow-var",
 );
 if (
@@ -141,7 +145,9 @@ const guardResult = compileSourceResult(
   { backend: "selfhost", typecheck: { strictSafety: true } },
 );
 if (!guardResult.ok) {
-  const guardDiag = toDiagnostic(unwrapErr(guardResult as { ok: false; error: unknown }));
+  const guardDiag = toDiagnostic(
+    unwrapErr(guardResult as { ok: false; error: unknown }),
+  );
   console.error(
     `Phase C: if-guard pattern should compile safely, got error: ${guardDiag.code} — ${guardDiag.reason}`,
   );

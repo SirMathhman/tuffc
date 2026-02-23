@@ -2542,6 +2542,85 @@ if (typeof __tuff_this !== 'undefined') __tuff_this.selfhost_parser_decls_marker
 
 let resolve_lifetime_scopes = vec_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.resolve_lifetime_scopes = resolve_lifetime_scopes;
 
+let resolve_global_names_list = vec_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.resolve_global_names_list = resolve_global_names_list;
+
+const __tuff_outer_for_levenshtein_distance = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function levenshtein_distance(a, b) {
+  let __tuff_this = { a: a, b: b, this: __tuff_outer_for_levenshtein_distance };
+  let an = (0 + (() => { const __recv = a; const __prop = __recv?.["str_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.str_length; return __dyn ? __dyn(__recv.ref) : str_length(__recv); })()); if (typeof __tuff_this !== 'undefined') __tuff_this.an = an;
+  let bn = (0 + (() => { const __recv = b; const __prop = __recv?.["str_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.str_length; return __dyn ? __dyn(__recv.ref) : str_length(__recv); })()); if (typeof __tuff_this !== 'undefined') __tuff_this.bn = bn;
+  if ((an === 0)) {
+  return bn;
+}
+  if ((bn === 0)) {
+  return an;
+}
+  let prev = vec_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.prev = prev;
+  let curr = vec_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.curr = curr;
+  let j = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.j = j;
+  while ((j <= bn)) {
+  (() => { const __recv = prev; const __prop = __recv?.["vec_push"]; if (typeof __prop === "function") return __prop(j); const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, j) : vec_push(__recv, j); })();
+  (() => { const __recv = curr; const __prop = __recv?.["vec_push"]; if (typeof __prop === "function") return __prop(0); const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, 0) : vec_push(__recv, 0); })();
+  j = (j + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.j = j;
+}
+  let i = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
+  while ((i <= an)) {
+  (() => { const __recv = curr; const __prop = __recv?.["vec_set"]; if (typeof __prop === "function") return __prop(0, i); const __dyn = __recv?.table?.vec_set; return __dyn ? __dyn(__recv.ref, 0, i) : vec_set(__recv, 0, i); })();
+  let j2 = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.j2 = j2;
+  while ((j2 <= bn)) {
+  let cost = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.cost = cost;
+  if (((() => { const __recv = a; const __prop = __recv?.["str_char_at"]; if (typeof __prop === "function") return __prop((i - 1)); const __dyn = __recv?.table?.str_char_at; return __dyn ? __dyn(__recv.ref, (i - 1)) : str_char_at(__recv, (i - 1)); })() !== (() => { const __recv = b; const __prop = __recv?.["str_char_at"]; if (typeof __prop === "function") return __prop((j2 - 1)); const __dyn = __recv?.table?.str_char_at; return __dyn ? __dyn(__recv.ref, (j2 - 1)) : str_char_at(__recv, (j2 - 1)); })())) {
+  cost = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.cost = cost;
+}
+  let del_cost = ((() => { const __recv = prev; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(j2); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, j2) : vec_get(__recv, j2); })() + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.del_cost = del_cost;
+  let ins_cost = ((() => { const __recv = curr; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop((j2 - 1)); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, (j2 - 1)) : vec_get(__recv, (j2 - 1)); })() + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.ins_cost = ins_cost;
+  let rep_cost = ((() => { const __recv = prev; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop((j2 - 1)); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, (j2 - 1)) : vec_get(__recv, (j2 - 1)); })() + cost); if (typeof __tuff_this !== 'undefined') __tuff_this.rep_cost = rep_cost;
+  let best = del_cost; if (typeof __tuff_this !== 'undefined') __tuff_this.best = best;
+  if ((ins_cost < best)) {
+  best = ins_cost; if (typeof __tuff_this !== 'undefined') __tuff_this.best = best;
+}
+  if ((rep_cost < best)) {
+  best = rep_cost; if (typeof __tuff_this !== 'undefined') __tuff_this.best = best;
+}
+  (() => { const __recv = curr; const __prop = __recv?.["vec_set"]; if (typeof __prop === "function") return __prop(j2, best); const __dyn = __recv?.table?.vec_set; return __dyn ? __dyn(__recv.ref, j2, best) : vec_set(__recv, j2, best); })();
+  j2 = (j2 + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.j2 = j2;
+}
+  let k = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.k = k;
+  while ((k <= bn)) {
+  (() => { const __recv = prev; const __prop = __recv?.["vec_set"]; if (typeof __prop === "function") return __prop(k, (() => { const __recv = curr; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(k); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, k) : vec_get(__recv, k); })()); const __dyn = __recv?.table?.vec_set; return __dyn ? __dyn(__recv.ref, k, (() => { const __recv = curr; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(k); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, k) : vec_get(__recv, k); })()) : vec_set(__recv, k, (() => { const __recv = curr; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(k); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, k) : vec_get(__recv, k); })()); })();
+  k = (k + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.k = k;
+}
+  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
+}
+  return (() => { const __recv = prev; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(bn); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, bn) : vec_get(__recv, bn); })();
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.levenshtein_distance = levenshtein_distance;
+
+const __tuff_outer_for_find_did_you_mean = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function find_did_you_mean(name, candidates) {
+  let __tuff_this = { name: name, candidates: candidates, this: __tuff_outer_for_find_did_you_mean };
+  let best = ""; if (typeof __tuff_this !== 'undefined') __tuff_this.best = best;
+  let best_dist = 9999; if (typeof __tuff_this !== 'undefined') __tuff_this.best_dist = best_dist;
+  let name_len = (0 + (() => { const __recv = name; const __prop = __recv?.["str_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.str_length; return __dyn ? __dyn(__recv.ref) : str_length(__recv); })()); if (typeof __tuff_this !== 'undefined') __tuff_this.name_len = name_len;
+  let threshold = ((name_len / 3) + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.threshold = threshold;
+  if ((threshold > 3)) {
+  threshold = 3; if (typeof __tuff_this !== 'undefined') __tuff_this.threshold = threshold;
+}
+  let n = (() => { const __recv = candidates; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.n = n;
+  let ci = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.ci = ci;
+  while ((ci < n)) {
+  let cand = (() => { const __recv = candidates; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(ci); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, ci) : vec_get(__recv, ci); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.cand = cand;
+  let dist = levenshtein_distance(name, cand); if (typeof __tuff_this !== 'undefined') __tuff_this.dist = dist;
+  if (((dist <= threshold) && (dist < best_dist))) {
+  best_dist = dist; if (typeof __tuff_this !== 'undefined') __tuff_this.best_dist = best_dist;
+  best = cand; if (typeof __tuff_this !== 'undefined') __tuff_this.best = best;
+}
+  ci = (ci + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.ci = ci;
+}
+  return best;
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.find_did_you_mean = find_did_you_mean;
+
 const __tuff_outer_for_lifetime_scope_has = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
 function lifetime_scope_has(name) {
   let __tuff_this = { name: name, this: __tuff_outer_for_lifetime_scope_has };
@@ -2767,7 +2846,12 @@ function resolve_expr(n, globals, scopes, depth) {
   if ((kind === NK_IDENTIFIER)) {
   let name = get_interned_str(node_get_data1(n)); if (typeof __tuff_this !== 'undefined') __tuff_this.name = name;
   if ((((!scope_has(scopes, depth, name)) && (!(() => { const __recv = globals; const __prop = __recv?.["set_has"]; if (typeof __prop === "function") return __prop(name); const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, name) : set_has(__recv, name); })())) && (!is_host_builtin_name(name)))) {
-  panic_with_code("E_RESOLVE_UNKNOWN_IDENTIFIER", (() => { const __recv = "Unknown identifier: "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, name) : str_concat(__recv, name); })(), "The identifier is not declared in local scope, global declarations, or imports.", "Declare the identifier before use or import it from the correct module.");
+  let suggestion = find_did_you_mean(name, resolve_global_names_list); if (typeof __tuff_this !== 'undefined') __tuff_this.suggestion = suggestion;
+  let fix_msg = "Declare the identifier before use or import it from the correct module."; if (typeof __tuff_this !== 'undefined') __tuff_this.fix_msg = fix_msg;
+  if ((!(() => { const __recv = suggestion; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop(""); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "") : str_eq(__recv, ""); })())) {
+  fix_msg = (() => { const __recv = (() => { const __recv = "Did you mean '"; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(suggestion); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, suggestion) : str_concat(__recv, suggestion); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("'? Declare or import it from the correct module."); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "'? Declare or import it from the correct module.") : str_concat(__recv, "'? Declare or import it from the correct module."); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.fix_msg = fix_msg;
+}
+  panic_with_code("E_RESOLVE_UNKNOWN_IDENTIFIER", (() => { const __recv = "Unknown identifier: "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, name) : str_concat(__recv, name); })(), "The identifier is not declared in local scope, global declarations, or imports.", fix_msg);
 }
   return 0;
 }
@@ -3097,6 +3181,7 @@ const __tuff_outer_for_resolve_names = typeof __tuff_this !== 'undefined' ? __tu
 function resolve_names(program) {
   let __tuff_this = { program: program, this: __tuff_outer_for_resolve_names };
   (() => { const __recv = resolve_lifetime_scopes; const __prop = __recv?.["vec_clear"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_clear; return __dyn ? __dyn(__recv.ref) : vec_clear(__recv); })();
+  (() => { const __recv = resolve_global_names_list; const __prop = __recv?.["vec_clear"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_clear; return __dyn ? __dyn(__recv.ref) : vec_clear(__recv); })();
   let globals = set_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.globals = globals;
   let body = node_get_data1(program); if (typeof __tuff_this !== 'undefined') __tuff_this.body = body;
   validate_expect_actual_pairs(body);
@@ -3111,6 +3196,7 @@ function resolve_names(program) {
   panic_with_code("E_RESOLVE_SHADOWING", (() => { const __recv = "Variable shadowing/redeclaration is not allowed: "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(gname); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, gname) : str_concat(__recv, gname); })(), "A global declaration with the same name already exists.", "Rename one of the global declarations or split conflicting declarations into separate modules.");
 }
   (() => { const __recv = globals; const __prop = __recv?.["set_add"]; if (typeof __prop === "function") return __prop(gname); const __dyn = __recv?.table?.set_add; return __dyn ? __dyn(__recv.ref, gname) : set_add(__recv, gname); })();
+  (() => { const __recv = resolve_global_names_list; const __prop = __recv?.["vec_push"]; if (typeof __prop === "function") return __prop(gname); const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, gname) : vec_push(__recv, gname); })();
 }
   i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
 }
@@ -3703,7 +3789,7 @@ function typecheck_expr(n, fn_arities, fn_param_types, fn_return_types, local_ty
   right_desc = (() => { const __recv = (() => { const __recv = get_interned_str(node_get_data1(rnode)); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("="); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "=") : str_concat(__recv, "="); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string(right)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(right)) : str_concat(__recv, int_to_string(right)); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.right_desc = right_desc;
 }
   let witness = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = left_desc; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(" "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " ") : str_concat(__recv, " "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(op); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, op) : str_concat(__recv, op); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(" "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " ") : str_concat(__recv, " "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(right_desc); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, right_desc) : str_concat(__recv, right_desc); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(" = "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " = ") : str_concat(__recv, " = "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string(result)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(result)) : str_concat(__recv, int_to_string(result)); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(", which is outside I32 range [-2147483648, 2147483647]"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ", which is outside I32 range [-2147483648, 2147483647]") : str_concat(__recv, ", which is outside I32 range [-2147483648, 2147483647]"); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.witness = witness;
-  panic_with_code("E_SAFETY_OVERFLOW", (() => { const __recv = (() => { const __recv = "Integer overflow/underflow proven possible for '"; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(op); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, op) : str_concat(__recv, op); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("'"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "'") : str_concat(__recv, "'"); })(), witness, "Constrain operands or use a wider intermediate type before narrowing.");
+  panic_with_code("E_SAFETY_INTEGER_OVERFLOW", (() => { const __recv = (() => { const __recv = "Integer overflow/underflow proven possible for '"; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(op); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, op) : str_concat(__recv, op); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("'"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "'") : str_concat(__recv, "'"); })(), witness, "Constrain operands or use a wider intermediate type before narrowing.");
 }
 }
 }
@@ -3876,7 +3962,7 @@ function typecheck_expr(n, fn_arities, fn_param_types, fn_return_types, local_ty
   typecheck_expr(cond, fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety);
   let cond_name = infer_expr_type_name(cond, fn_return_types, local_types); if (typeof __tuff_this !== 'undefined') __tuff_this.cond_name = cond_name;
   if (((!(() => { const __recv = cond_name; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("Bool"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "Bool") : str_eq(__recv, "Bool"); })()) && (!(() => { const __recv = cond_name; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("Unknown"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "Unknown") : str_eq(__recv, "Unknown"); })()))) {
-  panic_with_code("E_TYPE_IF_CONDITION", "if condition must be Bool", "Conditional branches require a boolean predicate.", "Return or compute a Bool expression in the if condition.");
+  panic_with_code("E_TYPE_IF_CONDITION", (() => { const __recv = "if condition must be Bool, got "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(cond_name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, cond_name) : str_concat(__recv, cond_name); })(), "Conditional branches require a boolean predicate, but the given expression has a non-Bool type.", "Return or compute a Bool expression in the if condition.");
 }
   let ie_then_key = ""; if (typeof __tuff_this !== 'undefined') __tuff_this.ie_then_key = ie_then_key;
   let ie_else_key = ""; if (typeof __tuff_this !== 'undefined') __tuff_this.ie_else_key = ie_else_key;
@@ -3954,7 +4040,7 @@ function typecheck_expr(n, fn_arities, fn_param_types, fn_return_types, local_ty
   while ((j < jlen)) {
   let tag = (() => { const __recv = expected_tags; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(j); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, j) : vec_get(__recv, j); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.tag = tag;
   if ((!(() => { const __recv = seen_tags; const __prop = __recv?.["set_has"]; if (typeof __prop === "function") return __prop(tag); const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, tag) : set_has(__recv, tag); })())) {
-  panic_with_code("E_MATCH_NON_EXHAUSTIVE", (() => { const __recv = "Non-exhaustive match: missing case for "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(tag); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, tag) : str_concat(__recv, tag); })(), "A match expression over a known union type does not handle all variants.", "Add missing case arms or include a wildcard case '_'.");
+  panic_with_code("E_TYPE_MATCH_NON_EXHAUSTIVE", (() => { const __recv = "Non-exhaustive match: missing case for "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(tag); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, tag) : str_concat(__recv, tag); })(), "A match expression over a known union type does not handle all variants.", "Add missing case arms or include a wildcard case '_'.");
 }
   j = (j + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.j = j;
 }
@@ -4110,7 +4196,7 @@ function typecheck_stmt(n, fn_arities, fn_param_types, fn_return_types, local_ty
   typecheck_expr(cond, fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety);
   let cond_name = infer_expr_type_name(cond, fn_return_types, local_types); if (typeof __tuff_this !== 'undefined') __tuff_this.cond_name = cond_name;
   if (((!(() => { const __recv = cond_name; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("Bool"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "Bool") : str_eq(__recv, "Bool"); })()) && (!(() => { const __recv = cond_name; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("Unknown"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "Unknown") : str_eq(__recv, "Unknown"); })()))) {
-  panic_with_code("E_TYPE_IF_CONDITION", "if condition must be Bool", "Conditional branches require a boolean predicate.", "Return or compute a Bool expression in the if condition.");
+  panic_with_code("E_TYPE_IF_CONDITION", (() => { const __recv = "if condition must be Bool, got "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(cond_name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, cond_name) : str_concat(__recv, cond_name); })(), "Conditional branches require a boolean predicate, but the given expression has a non-Bool type.", "Return or compute a Bool expression in the if condition.");
 }
   let then_inject_key = ""; if (typeof __tuff_this !== 'undefined') __tuff_this.then_inject_key = then_inject_key;
   let else_inject_key = ""; if (typeof __tuff_this !== 'undefined') __tuff_this.else_inject_key = else_inject_key;
@@ -4191,7 +4277,7 @@ function typecheck_stmt(n, fn_arities, fn_param_types, fn_return_types, local_ty
   typecheck_expr(cond, fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety);
   let cond_name = infer_expr_type_name(cond, fn_return_types, local_types); if (typeof __tuff_this !== 'undefined') __tuff_this.cond_name = cond_name;
   if (((!(() => { const __recv = cond_name; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("Bool"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "Bool") : str_eq(__recv, "Bool"); })()) && (!(() => { const __recv = cond_name; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("Unknown"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "Unknown") : str_eq(__recv, "Unknown"); })()))) {
-  panic_with_code("E_TYPE_IF_CONDITION", "if condition must be Bool", "Conditional branches require a boolean predicate.", "Return or compute a Bool expression in the condition.");
+  panic_with_code("E_TYPE_IF_CONDITION", (() => { const __recv = "if condition must be Bool, got "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(cond_name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, cond_name) : str_concat(__recv, cond_name); })(), "Conditional branches require a boolean predicate, but the given expression has a non-Bool type.", "Return or compute a Bool expression in the condition.");
 }
   typecheck_stmt(node_get_data2(n), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety, expected_return_type);
   return 0;

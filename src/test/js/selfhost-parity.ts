@@ -630,12 +630,12 @@ const overflowStage0Diag = toDiagnostic(overflowStage0.error);
 const overflowSelfhostDiag = toDiagnostic(overflowSelfhostStrict.error);
 assertDiagCode(
   overflowStage0Diag,
-  "E_SAFETY_OVERFLOW",
+  "E_SAFETY_INTEGER_OVERFLOW",
   "overflow strict-safety parity (stage0)",
 );
 assertDiagCode(
   overflowSelfhostDiag,
-  "E_SAFETY_OVERFLOW",
+  "E_SAFETY_INTEGER_OVERFLOW",
   "overflow strict-safety parity (selfhost)",
 );
 

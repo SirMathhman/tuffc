@@ -7,6 +7,74 @@ let { node_kind, node_get_data1, node_get_data2, node_get_data3, node_get_data4,
 
 let resolve_lifetime_scopes : Vec = vec_new();
 
+// Parallel list of declared global names so we can iterate for "did you mean?" suggestions.
+let resolve_global_names_list : Vec = vec_new();
+
+// Compute Levenshtein edit distance between two strings (two-row DP).
+fn levenshtein_distance(a: *Str, b: *Str) : I32 => {
+    let an = 0 + a.str_length();
+    let bn = 0 + b.str_length();
+    if (an == 0) { return bn; }
+    if (bn == 0) { return an; }
+    // Build two rows: prev[0..=bn], curr[0..=bn]
+    let prev = vec_new();
+    let curr = vec_new();
+    let j = 0;
+    while (j <= bn) {
+        prev.vec_push(j);
+        curr.vec_push(0);
+        j = j + 1;
+    }
+    let i = 1;
+    while (i <= an) {
+        curr.vec_set(0, i);
+        let j2 = 1;
+        while (j2 <= bn) {
+            let cost = 0;
+            if (a.str_char_at(i - 1) != b.str_char_at(j2 - 1)) {
+                cost = 1;
+            }
+            let del_cost = prev.vec_get(j2) + 1;
+            let ins_cost = curr.vec_get(j2 - 1) + 1;
+            let rep_cost = prev.vec_get(j2 - 1) + cost;
+            let best = del_cost;
+            if (ins_cost < best) { best = ins_cost; }
+            if (rep_cost < best) { best = rep_cost; }
+            curr.vec_set(j2, best);
+            j2 = j2 + 1;
+        }
+        // Copy curr into prev for next iteration
+        let k = 0;
+        while (k <= bn) {
+            prev.vec_set(k, curr.vec_get(k));
+            k = k + 1;
+        }
+        i = i + 1;
+    }
+    prev.vec_get(bn)
+}
+
+// Return the closest candidate within threshold distance, or "" if none.
+fn find_did_you_mean(name: *Str, candidates: Vec) : *Str => {
+    let best = "";
+    let best_dist = 9999;
+    let name_len = 0 + name.str_length();
+    let threshold = name_len / 3 + 1;
+    if (threshold > 3) { threshold = 3; }
+    let n = candidates.vec_length();
+    let ci = 0;
+    while (ci < n) {
+        let cand = candidates.vec_get(ci);
+        let dist = levenshtein_distance(name, cand);
+        if (dist <= threshold && dist < best_dist) {
+            best_dist = dist;
+            best = cand;
+        }
+        ci = ci + 1;
+    }
+    best
+}
+
 fn lifetime_scope_has(name: *Str) : Bool => {
     let len = resolve_lifetime_scopes.vec_length();
     let mut i : I32 = 0;
@@ -234,11 +302,16 @@ fn resolve_expr(n: I32, globals: *mut Set, scopes: Vec, depth: I32) : I32 => {
     if (kind == NK_IDENTIFIER) {
         let name = get_interned_str(node_get_data1(n));
         if (!scope_has(scopes, depth, name) && !globals.set_has(name) && !is_host_builtin_name(name)) {
+            let suggestion = find_did_you_mean(name, resolve_global_names_list);
+            let fix_msg = "Declare the identifier before use or import it from the correct module.";
+            if (!suggestion.str_eq("")) {
+                fix_msg = "Did you mean '".str_concat(suggestion).str_concat("'? Declare or import it from the correct module.");
+            }
             panic_with_code(
                 "E_RESOLVE_UNKNOWN_IDENTIFIER",
                 "Unknown identifier: ".str_concat(name),
                 "The identifier is not declared in local scope, global declarations, or imports.",
-                "Declare the identifier before use or import it from the correct module."
+                fix_msg
             );
         }
         return 0;
@@ -638,6 +711,7 @@ fn resolve_stmt(n: I32, globals: *mut Set, scopes: Vec, depth: I32) : I32 => {
 
 out fn resolve_names(program: I32) : I32 => {
     resolve_lifetime_scopes.vec_clear();
+    resolve_global_names_list.vec_clear();
 
     let globals = set_new();
     let body = node_get_data1(program);
@@ -674,6 +748,7 @@ out fn resolve_names(program: I32) : I32 => {
                 );
             }
             globals.set_add(gname);
+            resolve_global_names_list.vec_push(gname);
         }
         i = i + 1;
     }

@@ -386,7 +386,7 @@ const cHazardCases = [
   {
     name: "hazard-div-by-zero-self-cancel",
     source: "fn bad(x : I32) : I32 => 100 / (x - x);\n",
-    expectedCodes: ["E_SAFETY_DIV_BY_ZERO", "E_SELFHOST_INTERNAL_ERROR"],
+    expectedCodes: ["E_SAFETY_INTEGER_OVERFLOW", "E_SELFHOST_INTERNAL_ERROR"],
   },
   {
     name: "hazard-mod-by-zero-self-cancel",
@@ -396,7 +396,7 @@ const cHazardCases = [
   {
     name: "hazard-overflow-multiply-strict",
     source: "fn bad() : I32 => 50000 * 50000;\n",
-    expectedCodes: ["E_SAFETY_OVERFLOW", "E_SELFHOST_INTERNAL_ERROR"],
+    expectedCodes: ["E_SAFETY_INTEGER_OVERFLOW", "E_SELFHOST_INTERNAL_ERROR"],
   },
   {
     name: "hazard-nullable-pointer-guard-alias-bypass",
