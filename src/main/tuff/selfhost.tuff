@@ -75,26 +75,61 @@ fn emit_target_output(typed: I32, source: *Str, target: *Str) : *Str => {
 }
 
 out fn compile_source_with_options(source: *Str, strict_safety: I32, lint_enabled: I32, max_effective_lines: I32, borrow_enabled: I32, target: *Str) : *Str => {
+    let t_start = perf_now();
     let effective_source = with_c_runtime_prelude(source, target);
     let max_lines = sanitize_max_effective_lines(max_effective_lines);
     let strict = normalize_flag(strict_safety);
     let lint = normalize_flag(lint_enabled);
     let borrow = normalize_flag(borrow_enabled);
     lint_reset();
+    
+    let t0 = perf_now();
     lex_init(effective_source);
     lex_all();
+    let t1 = perf_now();
+    profile_mark("lex", t1 - t0);
+    
+    let t1_parse = perf_now();
     parse_init();
     let program = p_parse_program();
+    let t2_parse = perf_now();
+    profile_mark("parse", t2_parse - t1_parse);
+    
+    let t2_desugar = perf_now();
     let desugared = desugar(program);
+    let t3_desugar = perf_now();
+    profile_mark("desugar", t3_desugar - t2_desugar);
+    
+    let t3_resolve = perf_now();
     let resolved = resolve_names(desugared);
+    let t4_resolve = perf_now();
+    profile_mark("resolve", t4_resolve - t3_resolve);
+    
+    let t4_typecheck = perf_now();
     let typed = typecheck_program_with_options(resolved, strict);
+    let t5_typecheck = perf_now();
+    profile_mark("typecheck", t5_typecheck - t4_typecheck);
+    
+    let t5_borrow = perf_now();
     if (borrow == 1) {
         borrowcheck_program(typed);
     }
+    let t6_borrow = perf_now();
+    profile_mark("borrowcheck", t6_borrow - t5_borrow);
+    
     if (lint == 1) {
         lint_program(typed, "<memory>", max_lines);
     }
-    emit_target_output(typed, effective_source, target)
+    
+    let t6_emit = perf_now();
+    let output = emit_target_output(typed, effective_source, target);
+    let t7_emit = perf_now();
+    profile_mark("emit", t7_emit - t6_emit);
+    
+    let t_end = perf_now();
+    profile_mark("total", t_end - t_start);
+    
+    output
 }
 
 out fn take_lint_issues() : *Str => lint_take_issues();

@@ -12,6 +12,7 @@ extern let { __set_new, set_add, set_has, set_delete } = globalThis;
 extern let { read_file, write_file, path_join, path_dirname, print, print_error } = globalThis;
 extern let { panic, panic_with_code } = globalThis;
 extern let { get_argc, get_argv } = globalThis;
+extern let { perf_now, profile_mark, profile_take_json } = globalThis;
 
 extern fn str_length(this: *Str) : USize;
 extern fn str_char_at(this: *Str, index: I32) : Char;
@@ -109,6 +110,11 @@ extern fn panic_with_code_loc(code: *Str, msg: *Str, reason: *Str, fix: *Str, li
 
 extern fn get_argc() : I32;
 extern fn get_argv(i: I32) : *Str;
+
+// Performance profiling
+extern fn perf_now() : I32;
+extern fn profile_mark(label: *Str, duration_ms: I32) : I32;
+extern fn profile_take_json() : *Str;
 
 // ============================================================================
 // Token Kinds

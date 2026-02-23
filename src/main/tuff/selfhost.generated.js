@@ -16,6 +16,8 @@
 
 // extern from globalThis
 
+// extern from globalThis
+
 // extern fn str_length
 
 // extern fn str_char_at
@@ -203,6 +205,12 @@ if (typeof __tuff_this !== 'undefined') __tuff_this.set_new = set_new;
 // extern fn get_argc
 
 // extern fn get_argv
+
+// extern fn perf_now
+
+// extern fn profile_mark
+
+// extern fn profile_take_json
 
 let TK_EOF = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.TK_EOF = TK_EOF;
 
@@ -9681,26 +9689,51 @@ if (typeof __tuff_this !== 'undefined') __tuff_this.emit_target_output = emit_ta
 const __tuff_outer_for_compile_source_with_options = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
 function compile_source_with_options(source, strict_safety, lint_enabled, max_effective_lines, borrow_enabled, target) {
   let __tuff_this = { source: source, strict_safety: strict_safety, lint_enabled: lint_enabled, max_effective_lines: max_effective_lines, borrow_enabled: borrow_enabled, target: target, this: __tuff_outer_for_compile_source_with_options };
+  let t_start = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t_start = t_start;
   let effective_source = with_c_runtime_prelude(source, target); if (typeof __tuff_this !== 'undefined') __tuff_this.effective_source = effective_source;
   let max_lines = sanitize_max_effective_lines(max_effective_lines); if (typeof __tuff_this !== 'undefined') __tuff_this.max_lines = max_lines;
   let strict = normalize_flag(strict_safety); if (typeof __tuff_this !== 'undefined') __tuff_this.strict = strict;
   let lint = normalize_flag(lint_enabled); if (typeof __tuff_this !== 'undefined') __tuff_this.lint = lint;
   let borrow = normalize_flag(borrow_enabled); if (typeof __tuff_this !== 'undefined') __tuff_this.borrow = borrow;
   lint_reset();
+  let t0 = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t0 = t0;
   lex_init(effective_source);
   lex_all();
+  let t1 = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t1 = t1;
+  profile_mark("lex", (t1 - t0));
+  let t1_parse = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t1_parse = t1_parse;
   parse_init();
   let program = p_parse_program(); if (typeof __tuff_this !== 'undefined') __tuff_this.program = program;
+  let t2_parse = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t2_parse = t2_parse;
+  profile_mark("parse", (t2_parse - t1_parse));
+  let t2_desugar = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t2_desugar = t2_desugar;
   let desugared = desugar(program); if (typeof __tuff_this !== 'undefined') __tuff_this.desugared = desugared;
+  let t3_desugar = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t3_desugar = t3_desugar;
+  profile_mark("desugar", (t3_desugar - t2_desugar));
+  let t3_resolve = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t3_resolve = t3_resolve;
   let resolved = resolve_names(desugared); if (typeof __tuff_this !== 'undefined') __tuff_this.resolved = resolved;
+  let t4_resolve = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t4_resolve = t4_resolve;
+  profile_mark("resolve", (t4_resolve - t3_resolve));
+  let t4_typecheck = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t4_typecheck = t4_typecheck;
   let typed = typecheck_program_with_options(resolved, strict); if (typeof __tuff_this !== 'undefined') __tuff_this.typed = typed;
+  let t5_typecheck = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t5_typecheck = t5_typecheck;
+  profile_mark("typecheck", (t5_typecheck - t4_typecheck));
+  let t5_borrow = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t5_borrow = t5_borrow;
   if ((borrow === 1)) {
   borrowcheck_program(typed);
 }
+  let t6_borrow = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t6_borrow = t6_borrow;
+  profile_mark("borrowcheck", (t6_borrow - t5_borrow));
   if ((lint === 1)) {
   lint_program(typed, "<memory>", max_lines);
 }
-  return emit_target_output(typed, effective_source, target);
+  let t6_emit = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t6_emit = t6_emit;
+  let output = emit_target_output(typed, effective_source, target); if (typeof __tuff_this !== 'undefined') __tuff_this.output = output;
+  let t7_emit = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t7_emit = t7_emit;
+  profile_mark("emit", (t7_emit - t6_emit));
+  let t_end = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t_end = t_end;
+  profile_mark("total", (t_end - t_start));
+  return output;
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.compile_source_with_options = compile_source_with_options;
 

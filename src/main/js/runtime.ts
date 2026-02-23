@@ -555,3 +555,25 @@ export function assert(cond: boolean, msg: string): void {
 export function assert_eq(a: unknown, b: unknown, msg: string): void {
   if (a !== b) throw new Error(`Assertion failed: ${msg} (${a} !== ${b})`);
 }
+
+// === Performance profiling ===
+const profileMarks: Array<{ label: string; ms: number }> = [];
+
+export function perf_now(): number {
+  // Return milliseconds as I32-compatible value
+  return Math.floor(performance.now());
+}
+
+export function profile_mark(label: string, duration_ms: number): number {
+  profileMarks.push({ label, ms: duration_ms });
+  return 0;
+}
+
+export function profile_take_json(): string {
+  const result = JSON.stringify({
+    profiles: profileMarks.map((m) => ({ label: m.label, ms: m.ms })),
+    total_ms: profileMarks.reduce((sum, m) => sum + m.ms, 0),
+  });
+  profileMarks.length = 0; // Clear for next run
+  return result;
+}
