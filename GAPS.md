@@ -7,8 +7,8 @@ This document lists the current gaps between the implemented compiler behavior a
 ## Summary
 
 - Exhaustive semantics audit: **failing**
-- Gap pattern: mostly **parsing/feature support gaps** and a few **diagnostic code naming mismatches**
-- Stage impact: most feature gaps fail consistently on Stage0/1/2/3 (with Stage2/3 previously surfacing generic selfhost internal diagnostics)
+- Gap pattern: mostly **parsing/feature support gaps**; diagnostic code naming mismatches in section B are resolved
+- Stage impact: most feature gaps fail consistently on stage1/2/3
 
 ## A) Missing or incomplete language feature support
 
@@ -134,23 +134,19 @@ These are spec-described constructs that currently fail to compile.
 
 ## B) Diagnostic contract/code alignment gaps
 
-These cases fail for code-name mismatch rather than semantic pass/fail behavior.
-
-### 1) Overflow strict-safety diagnostic code
+### ✅ Resolved: Overflow strict-safety diagnostic code
 
 - Spec area: `4.2`, `9.2`
 - Case: `reject:overflow-strict`
-- Expected in test: `E_SAFETY_INTEGER_OVERFLOW` (or selfhost panic)
-- Actual stage1/2/3: `E_SAFETY_OVERFLOW`
-- Gap type: **diagnostic code naming mismatch**
+- Expected: `E_SAFETY_INTEGER_OVERFLOW`
+- Fixed in Phase A: renamed `E_SAFETY_OVERFLOW` → `E_SAFETY_INTEGER_OVERFLOW` in `typecheck.tuff`.
 
-### 2) Non-exhaustive match diagnostic code
+### ✅ Resolved: Non-exhaustive match diagnostic code
 
 - Spec area: `3.5`, `9.1`
 - Case: `reject:non-exhaustive-match`
-- Expected in test: `E_TYPE_MATCH_NON_EXHAUSTIVE` (or selfhost panic)
-- Actual stage1/2/3: `E_MATCH_NON_EXHAUSTIVE`
-- Gap type: **diagnostic code naming mismatch**
+- Expected: `E_TYPE_MATCH_NON_EXHAUSTIVE`
+- Fixed in Phase A: renamed `E_MATCH_NON_EXHAUSTIVE` → `E_TYPE_MATCH_NON_EXHAUSTIVE` in `typecheck.tuff`.
 
 ## C) Cross-stage behavior notes
 

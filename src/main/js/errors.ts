@@ -142,7 +142,9 @@ export function formatDiagnostic(
     : rawSource;
 
   const lines = [
-    boldRed(`error[${diag.code}]`) + " " + bold(diag.cause ?? diag.message ?? "<unknown>"),
+    boldRed(`error[${diag.code}]`) +
+      " " +
+      bold(diag.cause ?? diag.message ?? "<unknown>"),
     "  " + dim("-->") + " " + bold(where),
     "  " + cyan("source:"),
     `    ${coloredSource.replaceAll("\n", "\n    ")}`,

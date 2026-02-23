@@ -22,9 +22,9 @@ Examples:
 
 ## Stage0 status
 
-Stage0 is no longer used by default package entrypoints or build commands.
+Stage 0 TypeScript compiler code has been removed. `src/main/js/` now contains
+only the JS harness (CLI, error types, runtime bindings). All compilation routes
+through the self-hosted native compiler.
 
-- Package bin entrypoints (`tuff`, `tuffc`) now route to native selfhost launcher.
+- Package bin entrypoints (`tuff`, `tuffc`) route to the native selfhost launcher.
 - `build:binary` packages the native selfhost CLI artifact.
-
-Residual Stage0 TypeScript sources remain in-repo only as historical/bootstrap implementation material until final archival/removal.

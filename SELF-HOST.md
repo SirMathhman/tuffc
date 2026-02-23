@@ -2,49 +2,29 @@
 
 _Last updated: 2026-02-17_
 
-Build a self-hosted Tuff compiler using JavaScript as the bootstrap language, targeting JavaScript output, with focus on self-hosting speed over feature completeness.
+The Tuff compiler is fully self-hosted. The canonical source is `src/main/tuff/selfhost.tuff`,
+compiled to a native CLI by the prior stage. The bootstrap path was:
 
-**Bootstrap Path**:
-Stage 0 (JS) → compiles → Stage 1 (Tuff-lite) → compiles → Stage 2 (Full Tuff) → self-hosted
+**Bootstrap Path (completed)**:
+Stage 0 (JS, now removed) → Stage 1 (Tuff-lite) → Stage 2 (Full Tuff) → Stage 3 (selfhost.tuff, current)
 
 ## Status summary (2026-02-17)
 
 | Phase                                | Status                                                 |
 | ------------------------------------ | ------------------------------------------------------ |
-| Phase 1 — Stage 0 JS Bootstrap       | ✅ Complete                                            |
+| Phase 1 — Stage 0 JS Bootstrap       | ✅ Complete (Stage 0 code removed)                     |
 | Phase 2 — Stage 1 Tuff-lite compiler | ✅ Complete (bootstrap equivalence passes)             |
 | Phase 3 — Stage 2 Full Tuff          | ✅ Complete (strict mode active)                       |
 | Phase 4 — Production readiness       | 🔄 Active (diagnostics done; C backend M2 in progress) |
 
 ---
 
-## Phase 1: Stage 0 — JavaScript Bootstrap Compiler ✅
+## Phase 1: Stage 0 — JavaScript Bootstrap Compiler ✅ (removed)
 
-**Goal**: JavaScript compiler that handles "Tuff-lite" subset sufficient to write a compiler.
-
-**Steps**:
-
-1. **Lexer** — Tokenize Tuff source: identifiers, keywords, literals, operators, punctuation. Track source positions for error reporting. (~2-3 days)
-2. **Parser** — Recursive descent parser producing CST. Support: `fn`, `let`, `struct`, `type` aliases, `match`/`case`, `if`/`else`, `for`/`while`, generics. (~1 week)
-3. **Desugaring** — Transform CST to Core AST. Expand `class fn` syntax, simplify pattern matching to decision trees. (~3-4 days)
-4. **Name Resolution** — Scope analysis, detect shadowing errors (per spec), resolve imports. Single-file initially. (~2-3 days)
-5. **Type Inference** — Bidirectional type checking for structs, functions, generics. **Skip refinement types and ownership** for Stage 0. (~1.5 weeks)
-6. **JavaScript Codegen** — Emit JavaScript: functions→functions, structs→classes, match→switch/if chains, generics→monomorphization or erasure. (~1 week)
-7. **CLI & Test Harness** — `tuff compile file.tuff`, basic test runner with snapshot testing. (~2-3 days)
-
-**Tuff-lite Subset** (sufficient for writing a compiler):
-
-- Primitives: `I32`, `Bool`, `*Str`, `USize`
-- `fn` definitions (including generics)
-- `struct` with fields
-- `type` aliases and union types (`|`)
-- `Option<T>`, `Result<T, E>` pattern
-- Pattern matching (`match`/`case`, `is`)
-- Arrays `[T; N; N]` with basic bounds (runtime checks ok for Stage 0)
-- Basic operators, control flow
-- **No** refinement types, dependent types, `async`
-
-All Stage 0 steps above are complete. See `README.md` for the full feature list and `GAPS.md` for remaining language-spec gaps.
+Stage 0 was a TypeScript compiler covering the Tuff-lite subset. It bootstrapped
+Stage 1 and has now been removed from the repository. `src/main/js/` retains only
+the thin JS harness (CLI, error types, runtime bindings). See git history for the
+original Stage 0 implementation.
 
 ---
 

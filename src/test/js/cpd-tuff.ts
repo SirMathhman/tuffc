@@ -1,4 +1,4 @@
-// @ts-nocheck
+                                                                                                                                                                                                                                                                                        // @ts-nocheck
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import {

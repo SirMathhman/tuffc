@@ -2,18 +2,18 @@
 
 _Last updated: 2026-02-17_
 
-Native-first, self-hosted Tuff compiler with bootstrap history preserved in-repo. The default execution path is the generated native Stage 3 CLI, with legacy Stage0 TypeScript sources retained only for transitional/testing coverage. See `docs/native-selfhost-transition.md` and `SELF-HOST.md` for roadmap details.
+Fully self-hosted Tuff compiler. The canonical source is `src/main/tuff/selfhost.tuff`; the execution path is the generated native CLI (`stage3_selfhost_cli`). `src/main/js/` contains a thin JS harness (CLI, error types, runtime bindings) — Stage 0 TypeScript compiler code has been removed. See `docs/native-selfhost-transition.md` and `SELF-HOST.md` for full history.
 
 ## Current implementation status
 
-| Component                               | Status           | Notes                                                                           |
-| --------------------------------------- | ---------------- | ------------------------------------------------------------------------------- |
-| Stage 0 (JS bootstrap, legacy)          | ♻️ Transitional  | Kept for historical/bootstrap references while native-first migration completes |
-| Stage 1 (Tuff-lite bootstrap)           | ✅ Complete      | Bootstrap equivalence passes (`stage1:bootstrap`)                               |
-| Stage 2 (Full Tuff strict mode)         | ✅ Complete      | Refinement types, ownership, proof checks                                       |
-| Stage 3 (Selfhost from `selfhost.tuff`) | ✅ Strong parity | See `docs/stage0-vs-stage3-implementation-status.md`                            |
-| C backend                               | 🔄 Active        | M2 capability-group alignment in progress; see `docs/runtime-migration-plan.md` |
-| Web bundle                              | ✅ Complete      | `tuff-compiler.esm.js` / `.min.js` for browser use                              |
+| Component                               | Status      | Notes                                                                           |
+| --------------------------------------- | ----------- | ------------------------------------------------------------------------------- |
+| Stage 0 (JS bootstrap)                  | ✅ Removed  | Fully replaced by self-hosted native compiler                                   |
+| Stage 1 (Tuff-lite bootstrap)           | ✅ Complete | Bootstrap equivalence passes (`stage1:bootstrap`)                               |
+| Stage 2 (Full Tuff strict mode)         | ✅ Complete | Refinement types, ownership, proof checks                                       |
+| Stage 3 (Selfhost from `selfhost.tuff`) | ✅ Complete | Triple-bootstrap equivalence verified                                           |
+| C backend                               | 🔄 Active   | M2 capability-group alignment in progress; see `docs/runtime-migration-plan.md` |
+| Web bundle                              | ✅ Complete | `tuff-compiler.esm.js` / `.min.js` for browser use                              |
 
 ### Compiler capabilities currently available
 
@@ -41,7 +41,7 @@ Native-first, self-hosted Tuff compiler with bootstrap history preserved in-repo
 
 ## Repository layout (Gradle-like, multi-language)
 
-- `src/main/js` — Legacy Stage 0 TypeScript bootstrap/compiler utilities (transitional)
+- `src/main/js` — JS harness: CLI (`cli.ts`), error types (`errors.ts`), runtime bindings (`runtime.ts`). No compiler logic.
 - `src/main/tuff` — Tuff compiler sources (Stage 1 / selfhost stages)
 - `src/main/tuff-core` — Cross-platform `expect` API definitions
 - `src/main/tuff-c` — C target `actual` implementations
@@ -76,18 +76,13 @@ instead of silently skipping.
 
 Stage 1 source is in `src/main/tuff/compiler.tuff`.
 
-- Stage 0 compiles `src/main/tuff/compiler.tuff` to `tests/out/stage1/stage1_a.js`
+- The native selfhost CLI compiles `src/main/tuff/compiler.tuff` to `tests/out/stage1/stage1_a.js`
 - `stage1_a.js` then compiles the same Stage 1 source to `stage1_b.js`
 - The bootstrap check verifies normalized equivalence between `stage1_a.js` and `stage1_b.js`
 
 Run only Stage 1 bootstrap validation:
 
 - `npm run stage1:bootstrap`
-
-Implementation note:
-
-- Stage 1 runtime hooks are exposed via `__host_*` functions in the bootstrap harness.
-- This keeps Stage 1 authored in Tuff-lite while preserving deterministic bootstrap equivalence during Phase 2.
 
 ## Phase 3 / Stage 2
 
@@ -142,8 +137,7 @@ Run Phase 4 verification only:
 
 ## Browser/website tech-demo bundle
 
-You can ship the legacy Stage 0 web compiler bundle and compile Tuff source
-directly in a website.
+You can ship the selfhost web compiler bundle and compile Tuff source directly in a website.
 
 Build outputs:
 
@@ -181,9 +175,7 @@ Sanity-check the browser API locally:
 
 ## Porting policy: no `throw` in compiler code
 
-For Tuff-portability, compiler/runtime implementation code is migrating from exception-based
-control flow to `Result<T, E>` values.
+For Tuff-portability, the JS harness uses `Result<T, E>` rather than exceptions.
 
 - ESLint enforces a throw-ban rule (`ThrowStatement`) across TypeScript sources.
-- The throw-ban is enforced across compiler TypeScript sources, including transitional Stage0 code.
-- New and migrated code should use helpers in `src/main/js/result.ts` or equivalent selfhost diagnostic/result flows.
+- Use helpers in `src/main/js/result.ts` or selfhost diagnostic/result flows.
