@@ -2,7 +2,16 @@
 import fs from "node:fs";
 import path from "node:path";
 import { assertDiagnosticContract } from "./diagnostic-contract-utils.ts";
-import { buildStageChain } from "./stage-matrix-harness.ts";
+import {
+  buildStageChain,
+  normalizeDiag,
+  buildStageById,
+} from "./stage-matrix-harness.ts";
+
+function pushSpecFailure(failures, testCase, stage, msg) {
+  failures.push(`${testCase.id} (${testCase.section}) ${msg} on ${stage.id}`);
+}
+
 import {
   getRepoRootFromImportMeta,
   getTestsOutDir,
@@ -14,90 +23,7 @@ fs.mkdirSync(outDir, { recursive: true });
 
 const chain = buildStageChain(root, path.join(outDir, "bootstrap"));
 
-function normalizeDiag(error) {
-  const e = error && typeof error === "object" ? error : {};
-  const code =
-    typeof e.code === "string"
-      ? e.code
-      : typeof e.errorCode === "string"
-        ? e.errorCode
-        : "E_SELFHOST_INTERNAL_ERROR";
-  const message =
-    typeof e.message === "string" && e.message.length > 0
-      ? e.message
-      : "selfhost compilation failed";
-  const source =
-    typeof e.source === "string" && e.source.length > 0
-      ? e.source
-      : "<unknown source>";
-  const cause =
-    typeof e.cause === "string" && e.cause.length > 0 ? e.cause : message;
-  const reason =
-    typeof e.reason === "string" && e.reason.length > 0
-      ? e.reason
-      : "compiler reported an error";
-  const fix =
-    typeof e.fix === "string" && e.fix.length > 0
-      ? e.fix
-      : "Review the source and retry compilation.";
-  return { code, message, source, cause, reason, fix };
-}
-
-const stageById = {
-  stage2: {
-    id: "stage2",
-    allowNegativeSkip: false,
-    compileSource(source, _filePath, options = {}) {
-      try {
-        const strictSafety = options.typecheck?.strictSafety ? 1 : 0;
-        const lintEnabled = options.lint?.enabled ? 1 : 0;
-        const maxEffectiveLines = options.lint?.maxEffectiveLines ?? 500;
-        const borrowEnabled = options.borrowcheck?.enabled === false ? 0 : 1;
-        const js =
-          typeof chain.stage2.compile_source_with_options === "function"
-            ? chain.stage2.compile_source_with_options(
-                source,
-                strictSafety,
-                lintEnabled,
-                maxEffectiveLines,
-                borrowEnabled,
-                "js",
-              )
-            : chain.stage2.compile_source(source);
-        return { ok: true, js };
-      } catch (error) {
-        return { ok: false, error };
-      }
-    },
-  },
-  stage3: {
-    id: "stage3",
-    allowNegativeSkip: false,
-    compileSource(source, _filePath, options = {}) {
-      try {
-        const strictSafety = options.typecheck?.strictSafety ? 1 : 0;
-        const lintEnabled = options.lint?.enabled ? 1 : 0;
-        const maxEffectiveLines = options.lint?.maxEffectiveLines ?? 500;
-        const borrowEnabled = options.borrowcheck?.enabled === false ? 0 : 1;
-        const js =
-          typeof chain.stage3.compile_source_with_options === "function"
-            ? chain.stage3.compile_source_with_options(
-                source,
-                strictSafety,
-                lintEnabled,
-                maxEffectiveLines,
-                borrowEnabled,
-                "js",
-              )
-            : chain.stage3.compile_source(source);
-        return { ok: true, js };
-      } catch (error) {
-        return { ok: false, error };
-      }
-    },
-  },
-};
-
+const stageById = buildStageById(chain);
 const allStages = [stageById.stage2, stageById.stage3];
 const negativeStages = allStages;
 
@@ -618,8 +544,11 @@ for (const testCase of positiveCases) {
 
     const diag = normalizeDiag(result.error);
     assertDiagnosticContract(diag, `${testCase.id}:${stage.id}`);
-    failures.push(
-      `${testCase.id} (${testCase.section}) expected compile success on ${stage.id}, got ${diag.code}: ${diag.message}`,
+    pushSpecFailure(
+      failures,
+      testCase,
+      stage,
+      `expected compile success, got ${diag.code}: ${diag.message}`,
     );
   }
 }
@@ -642,8 +571,11 @@ for (const testCase of negativeCases) {
       continue;
     }
 
-    failures.push(
-      `${testCase.id} (${testCase.section}) expected compile failure on ${stage.id}, but compilation succeeded`,
+    pushSpecFailure(
+      failures,
+      testCase,
+      stage,
+      `expected compile failure, but compilation succeeded`,
     );
   }
 }

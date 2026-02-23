@@ -3,12 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
 import * as runtime from "../../main/js/runtime.ts";
-import { compileAndLoadSelfhost } from "./selfhost-harness.ts";
-
-function timingEnabled(): boolean {
-  const v = process.env.TUFFC_DEBUG_TIMING;
-  return v === "1" || v?.toLowerCase() === "true";
-}
+import { compileAndLoadSelfhost, timingEnabled } from "./selfhost-harness.ts";
 
 function tlog(msg: string): void {
   if (timingEnabled()) {
@@ -20,25 +15,30 @@ function nowMs(): number {
   return Date.now();
 }
 
-function loadStageCompilerFromJs(js) {
+const STAGE_EXPORT_NAMES = [
+  "compile_source",
+  "compile_file",
+  "compile_source_with_options",
+  "compile_file_with_options",
+  "take_lint_issues",
+  "main",
+];
+const STAGE_EXPORTS_SNIPPET =
+  `\nconst __exports = {};\n` +
+  STAGE_EXPORT_NAMES.map(
+    (n) => `if (typeof ${n} !== "undefined") __exports.${n} = ${n};`,
+  ).join("\n") +
+  `\nmodule.exports = __exports;`;
+
+export function loadStageCompilerFromJs(js, extraSandbox = {}) {
   const sandbox = {
     module: { exports: {} },
     exports: {},
     console,
     ...runtime,
+    ...extraSandbox,
   };
-  vm.runInNewContext(
-    `${js}
-const __exports = {};
-if (typeof compile_source !== "undefined") __exports.compile_source = compile_source;
-if (typeof compile_file !== "undefined") __exports.compile_file = compile_file;
-if (typeof compile_source_with_options !== "undefined") __exports.compile_source_with_options = compile_source_with_options;
-if (typeof compile_file_with_options !== "undefined") __exports.compile_file_with_options = compile_file_with_options;
-if (typeof take_lint_issues !== "undefined") __exports.take_lint_issues = take_lint_issues;
-if (typeof main !== "undefined") __exports.main = main;
-module.exports = __exports;`,
-    sandbox,
-  );
+  vm.runInNewContext(`${js}${STAGE_EXPORTS_SNIPPET}`, sandbox);
   return sandbox.module.exports;
 }
 
@@ -93,5 +93,70 @@ export function buildStageChain(root, outDir) {
     selfhostPath,
     stage2Path,
     stage3Path,
+  };
+}
+
+export function normalizeDiag(error) {
+  const e = error && typeof error === "object" ? error : {};
+  const code =
+    typeof e.code === "string"
+      ? e.code
+      : typeof e.errorCode === "string"
+        ? e.errorCode
+        : "E_SELFHOST_INTERNAL_ERROR";
+  const message =
+    typeof e.message === "string" && e.message.length > 0
+      ? e.message
+      : "selfhost compilation failed";
+  const source =
+    typeof e.source === "string" && e.source.length > 0
+      ? e.source
+      : "<unknown source>";
+  const cause =
+    typeof e.cause === "string" && e.cause.length > 0 ? e.cause : message;
+  const reason =
+    typeof e.reason === "string" && e.reason.length > 0
+      ? e.reason
+      : "compiler reported an error";
+  const fix =
+    typeof e.fix === "string" && e.fix.length > 0
+      ? e.fix
+      : "Review the source and retry compilation.";
+  return { code, message, source, cause, reason, fix };
+}
+
+export function buildStageById(chain) {
+  function makeStageCompiler(stageId) {
+    return {
+      id: stageId,
+      allowNegativeSkip: false,
+      compileSource(source, _filePath, options = {}) {
+        try {
+          const strictSafety = options.typecheck?.strictSafety ? 1 : 0;
+          const lintEnabled = options.lint?.enabled ? 1 : 0;
+          const maxEffectiveLines = options.lint?.maxEffectiveLines ?? 500;
+          const borrowEnabled = options.borrowcheck?.enabled === false ? 0 : 1;
+          const stageCompiler = chain[stageId];
+          const js =
+            typeof stageCompiler.compile_source_with_options === "function"
+              ? stageCompiler.compile_source_with_options(
+                  source,
+                  strictSafety,
+                  lintEnabled,
+                  maxEffectiveLines,
+                  borrowEnabled,
+                  "js",
+                )
+              : stageCompiler.compile_source(source);
+          return { ok: true, js };
+        } catch (error) {
+          return { ok: false, error };
+        }
+      },
+    };
+  }
+  return {
+    stage2: makeStageCompiler("stage2"),
+    stage3: makeStageCompiler("stage3"),
   };
 }

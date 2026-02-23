@@ -1,11 +1,19 @@
 // @ts-nocheck
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { compileFileResult } from "../../main/js/compiler.ts";
+import { getRepoRootFromImportMeta } from "./path-test-utils.ts";
 
-const thisFile = fileURLToPath(import.meta.url);
-const root = path.resolve(path.dirname(thisFile), "..", "..", "..");
+function assertDefaultAliasCompile(result, label) {
+  if (!result.ok) {
+    console.error(
+      `Expected ${label} compile with default runtime aliases, got: ${result.error.message}`,
+    );
+    process.exit(1);
+  }
+}
+
+const root = getRepoRootFromImportMeta(import.meta.url);
 const outDir = path.join(
   root,
   "tests",
@@ -42,12 +50,7 @@ const jsResult = compileFileResult(entry, jsOut, {
   },
 });
 
-if (!jsResult.ok) {
-  console.error(
-    `Expected JS compile with default runtime aliases, got: ${jsResult.error.message}`,
-  );
-  process.exit(1);
-}
+assertDefaultAliasCompile(jsResult, "JS");
 
 if (
   typeof jsResult.value.js !== "string" ||
@@ -68,12 +71,7 @@ const cResult = compileFileResult(entry, cOut, {
   },
 });
 
-if (!cResult.ok) {
-  console.error(
-    `Expected C compile with default runtime aliases, got: ${cResult.error.message}`,
-  );
-  process.exit(1);
-}
+assertDefaultAliasCompile(cResult, "C");
 
 if (
   typeof cResult.value.c !== "string" ||

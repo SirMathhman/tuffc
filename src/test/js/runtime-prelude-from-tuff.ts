@@ -1,11 +1,10 @@
 // @ts-nocheck
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { compileSourceResult } from "../../main/js/compiler.ts";
+import { compileToCEmpty } from "./compile-test-utils.ts";
 
-const thisFile = fileURLToPath(import.meta.url);
-const root = path.resolve(path.dirname(thisFile), "..", "..", "..");
+const root = getRepoRootFromImportMeta(import.meta.url);
 const preludePath = path.join(
   root,
   "src",
@@ -16,23 +15,11 @@ const preludePath = path.join(
 
 const source = fs.readFileSync(preludePath, "utf8");
 
-const result = compileSourceResult(source, "<runtime-prelude-from-tuff>", {
-  backend: "selfhost",
-  target: "c",
-  cSubstrate: "",
-  lint: { enabled: false },
-  borrowcheck: { enabled: false },
-  typecheck: { strictSafety: false },
-});
-
-if (!result.ok) {
-  console.error(
-    `Expected RuntimePrelude.tuff to compile to C, got: ${result.error.message}`,
-  );
-  process.exit(1);
-}
-
-const output = result.value.output;
+const output = compileToCEmpty(
+  compileSourceResult,
+  source,
+  "RuntimePrelude.tuff to compile to C",
+);
 if (!output.includes("tuff_runtime_panic")) {
   console.error(
     "Expected generated C from RuntimePrelude.tuff to include tuff_runtime_panic symbol",

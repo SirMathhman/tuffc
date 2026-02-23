@@ -10,6 +10,7 @@ import { compileAndLoadSelfhost } from "./selfhost-harness.ts";
 import {
   COPY_ALIAS_INVALID_BOX_SOURCE,
   COPY_STRUCT_VEC2_PROGRAM,
+  FACTORIAL_PROGRAM,
   makeImmutBorrowedBoxProgram,
   MOVE_AFTER_MOVE_BOX_SOURCE,
 } from "./test-fixtures.ts";
@@ -38,7 +39,8 @@ function loadSelfhost() {
 }
 
 function assertContract(diag, label) {
-  for (const key of ["source", "cause", "reason", "fix"]) {
+  const diagFields = ["source", "cause", "reason", "fix"];
+  for (const key of diagFields) {
     if (!diag[key] || typeof diag[key] !== "string") {
       throw new Error(
         `${label}: diagnostic field '${key}' must be a non-empty string`,
@@ -77,15 +79,13 @@ function expectBothFail(
   assertContract(jsDiag, `${label} (js)`);
   assertContract(selfhostDiag, `${label} (selfhost)`);
   if (expectedCode) {
+    const diagCodeMsg = (be, actual) =>
+      `${label} (${be}): expected diagnostic code ${expectedCode}, got ${actual}`;
     if (jsDiag.code !== expectedCode) {
-      throw new Error(
-        `${label} (js): expected diagnostic code ${expectedCode}, got ${jsDiag.code}`,
-      );
+      throw new Error(diagCodeMsg("js", jsDiag.code));
     }
     if (selfhostDiag.code !== expectedCode) {
-      throw new Error(
-        `${label} (selfhost): expected diagnostic code ${expectedCode}, got ${selfhostDiag.code}`,
-      );
+      throw new Error(diagCodeMsg("selfhost", selfhostDiag.code));
     }
   }
 }
@@ -93,12 +93,7 @@ function expectBothFail(
 const selfhost = loadSelfhost();
 
 // 1) Runtime parity on in-memory source.
-const factorialSource = `
-fn factorial(n: I32) : I32 => {
-  if (n <= 1) { 1 } else { n * factorial(n - 1) }
-}
-fn main() : I32 => factorial(5);
-`;
+const factorialSource = FACTORIAL_PROGRAM;
 
 const jsFactorialResultObj = compileSourceResult(
   factorialSource,
@@ -710,11 +705,13 @@ expectBothFail(
   "E_BORROW_INVALID_COPY_ALIAS",
 );
 
-const destructorSignatureMismatchSource = `
-type DroppableI32 = I32 then myDestructor;
-fn myDestructor(this : *move DroppableI32) : I32 => 1;
-fn main() : I32 => 0;
-`;
+const DROPPABLE_I32_TYPE_DECL = `type DroppableI32 = I32 then myDestructor;`;
+
+const destructorSignatureMismatchSource = [
+  "type DroppableI32 = I32 then myDestructor;",
+  "fn myDestructor(this : *move DroppableI32) : I32 => 1;",
+  "fn main() : I32 => 0;",
+].join("\n");
 expectBothFail(
   () =>
     compileSourceResult(
@@ -727,12 +724,16 @@ expectBothFail(
   "E_TYPE_DESTRUCTOR_SIGNATURE",
 );
 
-const dropDoubleDropSource = `
-type DroppableI32 = I32 then myDestructor;
-fn myDestructor(this : *move DroppableI32) : Void => {}
+const DROPPABLE_I32_PREFIX_DECLS = `${DROPPABLE_I32_TYPE_DECL}
+fn myDestructor(this : *move DroppableI32) : Void => {}`;
+
+const droppableI32Prefix = `${DROPPABLE_I32_PREFIX_DECLS}
 fn main() : I32 => {
   let x : DroppableI32 = 1;
-  drop(x);
+  drop(x);`;
+
+const dropDoubleDropSource = `
+${droppableI32Prefix}
   drop(x);
   0
 }
@@ -748,11 +749,7 @@ expectBothFail(
 );
 
 const dropUseAfterDropSource = `
-type DroppableI32 = I32 then myDestructor;
-fn myDestructor(this : *move DroppableI32) : Void => {}
-fn main() : I32 => {
-  let x : DroppableI32 = 1;
-  drop(x);
+${droppableI32Prefix}
   let y : DroppableI32 = x;
   0
 }
@@ -768,8 +765,7 @@ expectBothFail(
 );
 
 const dropCallResultSource = `
-type DroppableI32 = I32 then myDestructor;
-fn myDestructor(this : *move DroppableI32) : Void => {}
+${DROPPABLE_I32_PREFIX_DECLS}
 extern fn mk() : DroppableI32;
 fn main() : I32 => {
   drop(mk());

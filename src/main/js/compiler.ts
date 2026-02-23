@@ -141,12 +141,8 @@ function bootstrapSelfhostFromNativeExe(
     "embedded_c_substrate.c",
   );
   const preludePath = __cRuntimePreludePath;
-  if (fs.existsSync(substratePath)) {
-    env.TUFFC_SUBSTRATE_PATH = substratePath;
-  }
-  if (fs.existsSync(preludePath)) {
-    env.TUFFC_PRELUDE_PATH = preludePath;
-  }
+  setEnvIfExists(env, "TUFFC_SUBSTRATE_PATH", substratePath);
+  setEnvIfExists(env, "TUFFC_PRELUDE_PATH", preludePath);
 
   const compile = spawnSync(
     nativeExe,
@@ -171,7 +167,7 @@ function bootstrapSelfhostFromNativeExe(
     return err(
       new TuffError("Native selfhost bootstrap compilation failed", undefined, {
         code: "E_SELFHOST_BOOTSTRAP_FAILED",
-        reason: `exit=${compile.status ?? "unknown"}, signal=${compile.signal ?? "none"}, output_exists=${fs.existsSync(selfhostOutput)}`,
+        reason: `exit=${compile.status ?? "unknown"}, signal=${compile.signal ?? "none"}, artifact=${fs.existsSync(selfhostOutput) ? "present" : "absent"}`,
         fix: "Investigate native compiler issues and regenerate via `npm run native:selfhost:parity`.",
       }),
     );
@@ -394,11 +390,20 @@ function defaultOutputPath(inputPath, target): string {
   return inputPath.replace(/\.tuff$/i, extensionForTarget(target));
 }
 
-export function compileSource(
-  source: string,
-  filePath: string = "<memory>",
-  options: Record<string, unknown> = {},
-): CompilerResult<Record<string, unknown>> {
+type SelfhostCompileContext = {
+  target: string;
+  run: ReturnType<typeof createTracer>;
+  borrowEnabled: boolean;
+  selfhost: Record<string, unknown>;
+  strictSafety: number;
+  lintEnabled: number;
+  maxEffectiveLines: number;
+  lintMode: unknown;
+};
+
+function initializeCompileContext(
+  options: Record<string, unknown>,
+): CompilerResult<SelfhostCompileContext> {
   const target = getCodegenTarget(options);
   const targetCheck = ensureSupportedTarget(target);
   if (!targetCheck.ok) return targetCheck;
@@ -412,38 +417,139 @@ export function compileSource(
   if (!selfhostContextResult.ok) return selfhostContextResult;
   const { selfhost, strictSafety, lintEnabled, maxEffectiveLines, lintMode } =
     selfhostContextResult.value;
+  return ok({
+    target,
+    run,
+    borrowEnabled,
+    selfhost,
+    strictSafety,
+    lintEnabled,
+    maxEffectiveLines,
+    lintMode,
+  });
+}
 
-  let js;
-  setSubstrateOverrideFromOptions(options, target, "selfhost");
-  try {
-    js = run("selfhost-compile-source", () =>
-      typeof selfhost.compile_source_with_options === "function"
-        ? selfhost.compile_source_with_options(
-            source,
-            strictSafety,
-            lintEnabled,
-            maxEffectiveLines,
-            borrowEnabled ? 1 : 0,
-            target,
-          )
-        : selfhost.compile_source(source),
-    );
-  } catch (error) {
-    const enriched = enrichError(error, { source });
-    return err(
-      enriched instanceof TuffError
-        ? enriched
-        : new TuffError(String(error), undefined),
-    );
-  } finally {
-    runtimeCSubstrateOverride = undefined;
-  }
+function withCompileContext<T>(
+  options: Record<string, unknown>,
+  fn: (ctx: SelfhostCompileContext) => CompilerResult<T>,
+): CompilerResult<T> {
+  const ctxResult = initializeCompileContext(options);
+  if (!ctxResult.ok) return ctxResult;
+  return fn(ctxResult.value);
+}
+
+export function compileSource(
+  source: string,
+  filePath: string = "<memory>",
+  options: Record<string, unknown> = {},
+): CompilerResult<Record<string, unknown>> {
+  return withCompileContext(
+    options,
+    ({
+      target,
+      run,
+      borrowEnabled,
+      selfhost,
+      strictSafety,
+      lintEnabled,
+      maxEffectiveLines,
+      lintMode,
+    }) => {
+      let js;
+      setSubstrateOverrideFromOptions(options, target, "selfhost");
+      try {
+        js = runSelfhostCompileSource(
+          run,
+          selfhost,
+          source,
+          strictSafety,
+          lintEnabled,
+          maxEffectiveLines,
+          borrowEnabled ? 1 : 0,
+          target,
+        );
+      } catch (error) {
+        return err(wrapTuffError(error, { source }));
+      } finally {
+        runtimeCSubstrateOverride = undefined;
+      }
+      return finalizeSelfhostCompile(selfhost, source, js, lintMode, target);
+    },
+  );
+}
+
+function runSelfhostCompileSource(
+  run: (label: string, fn: () => string) => string,
+  selfhost: Record<string, unknown>,
+  source: string,
+  strictSafety: unknown,
+  lintEnabled: unknown,
+  maxEffectiveLines: unknown,
+  borrowEnabled: unknown,
+  target: unknown,
+): string {
+  return run("selfhost-compile-source", () =>
+    typeof selfhost.compile_source_with_options === "function"
+      ? (
+          selfhost.compile_source_with_options as (
+            src: string,
+            ss: unknown,
+            le: unknown,
+            mel: unknown,
+            be: unknown,
+            t: unknown,
+          ) => string
+        )(
+          source,
+          strictSafety,
+          lintEnabled,
+          maxEffectiveLines,
+          borrowEnabled,
+          target,
+        )
+      : (selfhost.compile_source as (src: string) => string)(source),
+  );
+}
+
+function finalizeSelfhostCompile(
+  selfhost: Record<string, unknown>,
+  source: string,
+  js: string,
+  lintMode: unknown,
+  target: unknown,
+  outputPath?: string,
+): CompilerResult<Record<string, unknown>> {
   const lintIssuesResult = handleSelfhostLintIssues(selfhost, source, lintMode);
   if (!lintIssuesResult.ok) return lintIssuesResult;
-
   return ok(
-    makeSelfhostCompileResult(source, js, target, lintIssuesResult.value),
+    makeSelfhostCompileResult(
+      source,
+      js,
+      target,
+      lintIssuesResult.value,
+      outputPath,
+    ),
   );
+}
+
+function setEnvIfExists(
+  env: Record<string, string | undefined>,
+  key: string,
+  filePath: string,
+): void {
+  if (fs.existsSync(filePath)) {
+    env[key] = filePath;
+  }
+}
+
+function wrapTuffError(
+  error: unknown,
+  enrichCtx: Record<string, unknown>,
+): TuffError {
+  const enriched = enrichError(error, enrichCtx);
+  return enriched instanceof TuffError
+    ? enriched
+    : new TuffError(String(error), undefined);
 }
 
 function compileFileInternal(
@@ -451,94 +557,85 @@ function compileFileInternal(
   outputPath: string | undefined = undefined,
   options: Record<string, unknown> = {},
 ): CompilerResult<Record<string, unknown>> {
-  const target = getCodegenTarget(options);
-  const targetCheck = ensureSupportedTarget(target);
-  if (!targetCheck.ok) return targetCheck;
+  return withCompileContext(options, (ctx) => {
+    const {
+      target,
+      run,
+      borrowEnabled,
+      selfhost,
+      strictSafety,
+      lintEnabled,
+      maxEffectiveLines,
+      lintMode,
+    } = ctx;
+    const absInput = path.resolve(inputPath);
+    const finalOutput = outputPath ?? defaultOutputPath(absInput, target);
+    const source = fs.readFileSync(absInput, "utf8");
 
-  const run = createTracer(options.tracePasses);
-  const borrowEnabled = isBorrowcheckEnabled(options);
-  const selfhostOptionsCheck = ensureSelfhostBackendOptions(target, options);
-  if (!selfhostOptionsCheck.ok) return selfhostOptionsCheck;
-
-  const absInput = path.resolve(inputPath);
-  const finalOutput = outputPath ?? defaultOutputPath(absInput, target);
-  const selfhostContextResult = initializeSelfhostCompileContext(run, options);
-  if (!selfhostContextResult.ok) return selfhostContextResult;
-  const { selfhost, strictSafety, lintEnabled, maxEffectiveLines, lintMode } =
-    selfhostContextResult.value;
-  const source = fs.readFileSync(absInput, "utf8");
-
-  let js;
-  setSubstrateOverrideFromOptions(options, target, "selfhost");
-  try {
-    if (options.enableModules) {
-      const normalizedInput = toPosixPath(absInput);
-      const normalizedOutput = toPosixPath(finalOutput);
-      run("selfhost-compile-file", () => {
-        if (typeof selfhost.compile_file_with_options === "function") {
-          selfhost.compile_file_with_options(
-            normalizedInput,
-            normalizedOutput,
-            strictSafety,
-            lintEnabled,
-            maxEffectiveLines,
-            borrowEnabled ? 1 : 0,
-            target,
-          );
-        } else {
-          selfhost.compile_file(normalizedInput, normalizedOutput);
-        }
-      });
-      js = fs.readFileSync(finalOutput, "utf8");
-    } else {
-      js = run("selfhost-compile-source", () =>
-        typeof selfhost.compile_source_with_options === "function"
-          ? selfhost.compile_source_with_options(
-              source,
+    let js;
+    setSubstrateOverrideFromOptions(options, target, "selfhost");
+    try {
+      if (options.enableModules) {
+        const normalizedInput = toPosixPath(absInput);
+        const normalizedOutput = toPosixPath(finalOutput);
+        run("selfhost-compile-file", () => {
+          if (typeof selfhost.compile_file_with_options === "function") {
+            selfhost.compile_file_with_options(
+              normalizedInput,
+              normalizedOutput,
               strictSafety,
               lintEnabled,
               maxEffectiveLines,
               borrowEnabled ? 1 : 0,
               target,
-            )
-          : selfhost.compile_source(source),
+            );
+          } else {
+            selfhost.compile_file(normalizedInput, normalizedOutput);
+          }
+        });
+        js = fs.readFileSync(finalOutput, "utf8");
+      } else {
+        js = runSelfhostCompileSource(
+          run,
+          selfhost,
+          source,
+          strictSafety,
+          lintEnabled,
+          maxEffectiveLines,
+          borrowEnabled ? 1 : 0,
+          target,
+        );
+        fs.mkdirSync(path.dirname(finalOutput), { recursive: true });
+        fs.writeFileSync(finalOutput, js, "utf8");
+      }
+    } catch (error) {
+      return err(
+        wrapTuffError(error, {
+          sourceByFile: new Map([
+            [absInput, fs.readFileSync(absInput, "utf8")],
+          ]),
+          source: fs.existsSync(absInput)
+            ? fs.readFileSync(absInput, "utf8")
+            : undefined,
+        }),
       );
-      fs.mkdirSync(path.dirname(finalOutput), { recursive: true });
-      fs.writeFileSync(finalOutput, js, "utf8");
+    } finally {
+      runtimeCSubstrateOverride = undefined;
     }
-  } catch (error) {
-    const enriched = enrichError(error, {
-      sourceByFile: new Map([[absInput, fs.readFileSync(absInput, "utf8")]]),
-      source: fs.existsSync(absInput)
-        ? fs.readFileSync(absInput, "utf8")
-        : undefined,
-    });
-    return err(
-      enriched instanceof TuffError
-        ? enriched
-        : new TuffError(String(error), undefined),
-    );
-  } finally {
-    runtimeCSubstrateOverride = undefined;
-  }
-
-  const lintIssuesResult = handleSelfhostLintIssues(selfhost, source, lintMode);
-  if (!lintIssuesResult.ok) return lintIssuesResult;
-
-  return ok(
-    makeSelfhostCompileResult(
+    return finalizeSelfhostCompile(
+      selfhost,
       source,
       js,
+      lintMode,
       target,
-      lintIssuesResult.value,
       finalOutput,
-    ),
-  );
+    );
+  });
 }
 
 export function compileFile(
   inputPath: string,
-  outputPath: string | undefined = undefined,
+  outputPath?: string,
   options: Record<string, unknown> = {},
 ): CompilerResult<Record<string, unknown>> {
   return compileFileInternal(inputPath, outputPath, options);

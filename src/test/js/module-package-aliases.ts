@@ -1,12 +1,12 @@
 // @ts-nocheck
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { compileFileResult } from "../../main/js/compiler.ts";
 import { runMainFromJs } from "./js-runtime-test-utils.ts";
+import { getRepoRootFromImportMeta } from "./path-test-utils.ts";
+import { assertCOutput } from "./compile-test-utils.ts";
 
-const thisFile = fileURLToPath(import.meta.url);
-const root = path.resolve(path.dirname(thisFile), "..", "..", "..");
+const root = getRepoRootFromImportMeta(import.meta.url);
 const outDir = path.join(root, "tests", "out", "module-package-aliases");
 
 const appDir = path.join(outDir, "app");
@@ -76,24 +76,26 @@ if (fallbackValue !== 41) {
   process.exit(1);
 }
 
+const allTargetsModuleConfig = {
+  moduleBaseDir: appDir,
+  packageAliases: {
+    tuff_core: coreDir,
+  },
+  packageAliasesByTarget: {
+    js: {
+      tuff_core: jsDir,
+    },
+    c: {
+      tuff_core: cDir,
+    },
+  },
+};
+
 const targetedJs = compileFileResult(entry, outJsTargeted, {
   backend: "selfhost",
   target: "js",
   enableModules: true,
-  modules: {
-    moduleBaseDir: appDir,
-    packageAliases: {
-      tuff_core: coreDir,
-    },
-    packageAliasesByTarget: {
-      js: {
-        tuff_core: jsDir,
-      },
-      c: {
-        tuff_core: cDir,
-      },
-    },
-  },
+  modules: allTargetsModuleConfig,
 });
 if (!targetedJs.ok) {
   console.error(
@@ -117,34 +119,8 @@ const targetedC = compileFileResult(entry, outC, {
   backend: "selfhost",
   target: "c",
   enableModules: true,
-  modules: {
-    moduleBaseDir: appDir,
-    packageAliases: {
-      tuff_core: coreDir,
-    },
-    packageAliasesByTarget: {
-      js: {
-        tuff_core: jsDir,
-      },
-      c: {
-        tuff_core: cDir,
-      },
-    },
-  },
+  modules: allTargetsModuleConfig,
 });
-if (!targetedC.ok) {
-  console.error(
-    `Expected targeted C alias compile success, got: ${targetedC.error.message}`,
-  );
-  process.exit(1);
-}
-
-if (
-  typeof targetedC.value.c !== "string" ||
-  !targetedC.value.c.includes("int main(void)")
-) {
-  console.error("Expected C output for targeted C alias compile");
-  process.exit(1);
-}
+assertCOutput(targetedC, "module package alias");
 
 console.log("Module package-alias resolution checks passed");

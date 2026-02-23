@@ -1,11 +1,11 @@
 // @ts-nocheck
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { assertCOutput } from "./compile-test-utils.ts";
 import { compileFileResult } from "../../main/js/compiler.ts";
+import { getRepoRootFromImportMeta } from "./path-test-utils.ts";
 
-const thisFile = fileURLToPath(import.meta.url);
-const root = path.resolve(path.dirname(thisFile), "..", "..", "..");
+const root = getRepoRootFromImportMeta(import.meta.url);
 const outDir = path.join(root, "tests", "out", "expect-actual-c-aliases");
 
 const appDir = path.join(outDir, "app");
@@ -88,20 +88,7 @@ const targetedC = compileFileResult(entry, outC, {
   },
 });
 
-if (!targetedC.ok) {
-  console.error(
-    `Expected C-target alias expect/actual compile success, got: ${targetedC.error.message}`,
-  );
-  process.exit(1);
-}
-
-if (
-  typeof targetedC.value.c !== "string" ||
-  !targetedC.value.c.includes("int main(void)")
-) {
-  console.error("Expected C output for targeted expect/actual alias compile");
-  process.exit(1);
-}
+assertCOutput(targetedC, "expect/actual alias");
 
 if (targetedC.value.c.includes("expect fn")) {
   console.error("C output should not include expect declaration artifacts");

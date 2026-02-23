@@ -4,8 +4,7 @@ import path from "node:path";
 import vm from "node:vm";
 import * as runtime from "../../main/js/runtime.ts";
 
-const collections = {
-  __vec_new: runtime.__vec_new,
+const vecBindings = {
   __vec_push: runtime.vec_push,
   __vec_get: runtime.vec_get,
   __vec_set: runtime.vec_set,
@@ -13,6 +12,11 @@ const collections = {
   __vec_capacity: runtime.vec_capacity,
   __vec_includes: runtime.vec_includes,
   __vec_length: runtime.vec_length,
+};
+
+const collections = {
+  __vec_new: runtime.__vec_new,
+  ...vecBindings,
   __map_new: runtime.__map_new,
   map_set: runtime.map_set,
   map_get: runtime.map_get,
@@ -42,13 +46,7 @@ const io = {
 };
 
 const legacyIntrinsicAliases = {
-  __vec_push: runtime.vec_push,
-  __vec_get: runtime.vec_get,
-  __vec_set: runtime.vec_set,
-  __vec_init: runtime.vec_init,
-  __vec_capacity: runtime.vec_capacity,
-  __vec_includes: runtime.vec_includes,
-  __vec_length: runtime.vec_length,
+  ...vecBindings,
   __map_set: runtime.map_set,
   __map_get: runtime.map_get,
   __set_add: runtime.set_add,

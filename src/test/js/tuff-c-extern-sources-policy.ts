@@ -1,10 +1,9 @@
 // @ts-nocheck
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { getRepoRootFromImportMeta } from "./path-test-utils.ts";
 
-const thisFile = fileURLToPath(import.meta.url);
-const root = path.resolve(path.dirname(thisFile), "..", "..", "..");
+const root = getRepoRootFromImportMeta(import.meta.url);
 const tuffCDir = path.join(root, "src", "main", "tuff-c");
 
 const allowedSources = new Set([

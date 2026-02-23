@@ -16,21 +16,32 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import vm from "node:vm";
-import { buildStageChain } from "./stage-matrix-harness.ts";
+import {
+  buildStageChain,
+  loadStageCompilerFromJs,
+} from "./stage-matrix-harness.ts";
 import { getEmbeddedCSubstrateSupport } from "../../main/js/c-runtime-support.ts";
 import { compileSource } from "../../main/js/compiler.ts";
 import * as runtime from "../../main/js/runtime.ts";
+import {
+  selectCCompiler,
+  getRepoRootFromImportMeta,
+  createBuildRunUtils,
+} from "./path-test-utils.ts";
+import {
+  SELFHOST_EXTERN_ENTRY,
+  COMPILE_OPTIONS_PARAMS_C,
+  SELFHOST_MAIN_BODY,
+} from "./c-harness-utils.ts";
 
 // ─── Paths ───────────────────────────────────────────────────────────────────
 
-const thisFile = fileURLToPath(import.meta.url);
-const root = path.resolve(path.dirname(thisFile), "..", "..", "..");
+const root = getRepoRootFromImportMeta(import.meta.url);
 const outDir = path.join(root, "tests", "out", "c-bootstrap");
 fs.mkdirSync(outDir, { recursive: true });
+const { formatBytes, debugFile, runStep } = createBuildRunUtils("bootstrap");
 
 const cPreludePath = path.join(
   root,
@@ -69,47 +80,6 @@ const fixpointExe = path.join(
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function nowMs() {
-  return Date.now();
-}
-
-function formatBytes(n: number) {
-  if (!Number.isFinite(n)) return "unknown";
-  if (n < 1024) return `${n}B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)}KiB`;
-  return `${(n / (1024 * 1024)).toFixed(2)}MiB`;
-}
-
-function debugFile(label: string, filePath: string) {
-  const exists = fs.existsSync(filePath);
-  if (!exists) {
-    console.log(`[bootstrap][debug] ${label}: missing (${filePath})`);
-    return;
-  }
-  const stat = fs.statSync(filePath);
-  console.log(
-    `[bootstrap][debug] ${label}: ${filePath} size=${formatBytes(stat.size)} mtime=${stat.mtime.toISOString()}`,
-  );
-}
-
-function runStep(
-  command: string,
-  args: string[],
-  opts: Record<string, unknown> = {},
-) {
-  const started = nowMs();
-  console.log(`[bootstrap][run] ${command} ${args.join(" ")}`);
-  const result = spawnSync(command, args, { encoding: "utf8", ...opts });
-  const elapsed = nowMs() - started;
-  console.log(
-    `[bootstrap][run] done exit=${result.status} signal=${result.signal ?? "none"} ms=${elapsed}`,
-  );
-  if (result.error) {
-    console.log(`[bootstrap][run] error: ${result.error.message}`);
-  }
-  return result;
-}
-
 function decodeProcessExit(status: number | null): string {
   if (status == null) return "unknown";
   const hex = `0x${status.toString(16).toUpperCase()}`;
@@ -130,23 +100,42 @@ function getFixpointTimeoutMs(): number {
   return Math.floor(parsed);
 }
 
-function selectCCompiler(): string {
-  const candidates =
-    process.platform === "win32"
-      ? ["clang", "gcc", "cc"]
-      : ["cc", "clang", "gcc"];
-  for (const c of candidates) {
-    const r = spawnSync(c, ["--version"], { encoding: "utf8" });
-    if (r.status === 0) {
-      const v = (r.stdout ?? "").split(/\r?\n/)[0] ?? "";
-      console.log(`[bootstrap] C compiler: ${c}  (${v})`);
-      return c;
-    }
+function selectCCompilerLocal(): string {
+  const result = selectCCompiler("[bootstrap] ");
+  if (!result) {
+    console.error(
+      "[bootstrap] no C compiler found (clang/gcc/cc) — skipping native phases",
+    );
   }
-  console.error(
-    "[bootstrap] no C compiler found (clang/gcc/cc) — skipping native phases",
-  );
-  return "";
+  return result;
+}
+
+function printBootstrapSummaryExit(phase4msg: string) {
+  console.log("\n[bootstrap] ═══ Summary ═══");
+  console.log("  Phase 1 ✔  Stage3-JS  → stage3_selfhost.c");
+  console.log("  Phase 2 ✔  cc         → stage3_native_exe");
+  console.log("  Phase 3 ✔  smoke      → OK");
+  console.log(`  Phase 4 ✖  ${phase4msg}`);
+  console.log("  Phase 5 —  skipped");
+  process.exit(0);
+}
+
+function checkBootstrapRun(run, phase: string) {
+  if (run.error) {
+    console.error(`[bootstrap] FAIL: ${phase} error: ${run.error.message}`);
+    process.exit(1);
+  }
+  const runOut = `${run.stdout ?? ""}\n${run.stderr ?? ""}`;
+  if (run.signal) {
+    console.error(`[bootstrap] FAIL: ${phase} killed by signal: ${run.signal}`);
+    console.error(runOut);
+    process.exit(1);
+  }
+  if (run.status !== 0) {
+    console.error(`[bootstrap] FAIL: ${phase} exit ${run.status}`);
+    console.error(runOut);
+    process.exit(1);
+  }
 }
 
 function sha256(filePath: string): string {
@@ -176,8 +165,8 @@ console.log("\n[bootstrap] ═══ Phase 1: Stage3-JS → stage3_selfhost.c �
 let stageChain: ReturnType<typeof buildStageChain>;
 try {
   stageChain = buildStageChain(root, path.join(outDir, "chain"));
-} catch (e) {
-  console.error(`[bootstrap] FAIL: could not build stage chain: ${e}`);
+} catch (chainErr) {
+  console.error(`[bootstrap] FAIL: could not build stage chain: ${chainErr}`);
   process.exit(1);
 }
 
@@ -207,36 +196,20 @@ function loadStage3WithCSupport(stage3JsPath: string) {
     return r.value.output;
   };
 
-  const sandbox = {
-    module: { exports: {} },
-    exports: {},
-    console,
+  return loadStageCompilerFromJs(stage3Js, {
     __host_get_c_substrate: () => cSubstrate,
     __host_get_c_runtime_prelude_source: () => cPrelude,
     __host_emit_target_from_source: hostEmitTargetFromSource,
-    ...runtime,
-  };
-
-  vm.runInNewContext(
-    `${stage3Js}
-const __exports = {};
-if (typeof compile_source !== "undefined") __exports.compile_source = compile_source;
-if (typeof compile_file !== "undefined") __exports.compile_file = compile_file;
-if (typeof compile_source_with_options !== "undefined") __exports.compile_source_with_options = compile_source_with_options;
-if (typeof compile_file_with_options !== "undefined") __exports.compile_file_with_options = compile_file_with_options;
-if (typeof take_lint_issues !== "undefined") __exports.take_lint_issues = take_lint_issues;
-if (typeof main !== "undefined") __exports.main = main;
-module.exports = __exports;`,
-    sandbox,
-  );
-  return sandbox.module.exports;
+  });
 }
 
 let stage3cHost: ReturnType<typeof loadStage3WithCSupport>;
 try {
   stage3cHost = loadStage3WithCSupport(stage3Path);
-} catch (e) {
-  console.error(`[bootstrap] FAIL: could not load stage3 with C support: ${e}`);
+} catch (hostErr) {
+  console.error(
+    `[bootstrap] FAIL: could not load stage3 with C support: ${hostErr}`,
+  );
   process.exit(1);
 }
 
@@ -271,9 +244,7 @@ try {
   process.exit(1);
 }
 
-console.log(
-  `[bootstrap] compile_file_with_options returned: ${stage3EmitResult}`,
-);
+console.log(`[bootstrap] Phase 1 emit result: ${stage3EmitResult}`);
 
 if (!fs.existsSync(stage3outC)) {
   console.error(
@@ -285,7 +256,7 @@ if (!fs.existsSync(stage3outC)) {
 const stage3CSize = fs.statSync(stage3outC).size;
 if (stage3CSize < 100) {
   console.error(
-    `[bootstrap] FAIL: stage3_selfhost.c is suspiciously small (${stage3CSize} bytes)`,
+    `[bootstrap] FAIL: generated C is too small (${stage3CSize} bytes)`,
   );
   process.exit(1);
 }
@@ -297,7 +268,7 @@ console.log("[bootstrap] ✔ Phase 1 passed — stage3_selfhost.c written");
 
 console.log("\n[bootstrap] ═══ Phase 2: cc → stage3_native_exe ═══");
 
-const CC = selectCCompiler();
+const CC = selectCCompilerLocal();
 if (!CC) {
   console.warn("[bootstrap] SKIP: no C compiler — phases 2-5 skipped");
   process.exit(0);
@@ -321,12 +292,13 @@ if (objResult.error || objResult.status !== 0) {
 debugFile("stage3_selfhost.o", stage3outObj);
 
 // Smoke harness: just call selfhost_entry() and check it returns 0.
-const smokeHarnessSource = `
-#include <stdint.h>
-#include <stdio.h>
+const selfhostEntryDecls = `#include <stdint.h>
 
-extern int64_t selfhost_entry(void);
-extern void tuff_set_argv(int argc, char **argv);
+${SELFHOST_EXTERN_ENTRY}`;
+
+const smokeHarnessSource = `
+${selfhostEntryDecls}
+#include <stdio.h>
 
 int main(void) {
     char *argv0 = "tuffc";
@@ -344,16 +316,10 @@ debugFile("stage3_smoke_harness.c", stage3smokeHarness);
 // CLI harness: forwards actual argv into selfhost_entry, producing a usable
 // native compiler executable (not just smoke-test binary).
 const cliHarnessSource = `
-#include <stdint.h>
-
-extern int64_t selfhost_entry(void);
-extern void tuff_set_argv(int argc, char **argv);
+${selfhostEntryDecls}
 
 int main(int argc, char **argv) {
-  tuff_set_argv(argc, argv);
-  return (int)selfhost_entry();
-}
-`;
+${SELFHOST_MAIN_BODY}`;
 fs.writeFileSync(stage3cliHarness, cliHarnessSource, "utf8");
 debugFile("stage3_cli_harness.c", stage3cliHarness);
 
@@ -396,24 +362,7 @@ console.log(
 
 const smokeRun = runStep(stage3outExe, [], { timeout: 15_000 });
 
-if (smokeRun.error) {
-  console.error(`[bootstrap] FAIL: smoke run error: ${smokeRun.error.message}`);
-  process.exit(1);
-}
-if (smokeRun.signal) {
-  console.error(
-    `[bootstrap] FAIL: smoke run killed by signal: ${smokeRun.signal}`,
-  );
-  console.error(smokeRun.stdout ?? "");
-  console.error(smokeRun.stderr ?? "");
-  process.exit(1);
-}
-if (smokeRun.status !== 0) {
-  console.error(`[bootstrap] FAIL: smoke run exit ${smokeRun.status}`);
-  console.error(smokeRun.stdout ?? "");
-  console.error(smokeRun.stderr ?? "");
-  process.exit(1);
-}
+checkBootstrapRun(smokeRun, "smoke run");
 
 const smokeOutput = `${smokeRun.stdout ?? ""}\n${smokeRun.stderr ?? ""}`;
 console.log(`[bootstrap] smoke output: ${smokeOutput.trim()}`);
@@ -451,22 +400,11 @@ const fixpointHarnessSource = `
 extern int64_t compile_file_with_options(
     int64_t inputPath,
     int64_t outputPath,
-    int64_t strictSafety,
-    int64_t lintEnabled,
-    int64_t maxEffectiveLines,
-    int64_t borrowEnabled,
-    int64_t target
-);
+${COMPILE_OPTIONS_PARAMS_C}
 extern int64_t compile_source_with_options(
     int64_t source,
-    int64_t strictSafety,
-    int64_t lintEnabled,
-    int64_t maxEffectiveLines,
-    int64_t borrowEnabled,
-    int64_t target
-);
-extern int64_t selfhost_entry(void);
-extern void tuff_set_argv(int argc, char **argv);
+${COMPILE_OPTIONS_PARAMS_C}
+${selfhostEntryDecls.split("\n").slice(2).join("\n")}
 extern int64_t get_argv(int64_t i);
 
 /* Sanity-check: compile a trivial single-file Tuff program to C.  This
@@ -476,7 +414,7 @@ static int smoke_compile_source(void) {
   int64_t target = get_argv(4);
     int64_t out = compile_source_with_options(
     src, 0, 0, 500, 0, target);
-    if (out == 0) {
+    if (!out) {
         fprintf(stderr, "[fixpoint] FAIL: compile_source_with_options returned NULL\\n");
         return 1;
     }
@@ -529,7 +467,7 @@ int main(void) {
       get_argv(4)
     );
 
-    fprintf(stderr, "[fixpoint] compile_file_with_options returned %" PRId64 "\\n", r);
+    fprintf(stderr, "[fixpoint] cfo returned %" PRId64 "\\n", r);
     return (int)r;
 }
 `;
@@ -557,13 +495,7 @@ if (fixpointLinkResult.error || fixpointLinkResult.status !== 0) {
   );
   console.warn(fixpointLinkResult.stdout ?? "");
   console.warn(fixpointLinkResult.stderr ?? "");
-  console.log("\n[bootstrap] ═══ Summary ═══");
-  console.log("  Phase 1 ✔  Stage3-JS  → stage3_selfhost.c");
-  console.log("  Phase 2 ✔  cc         → stage3_native_exe");
-  console.log("  Phase 3 ✔  smoke      → OK");
-  console.log("  Phase 4 ✖  fixpoint link failed (non-fatal)");
-  console.log("  Phase 5 —  skipped");
-  process.exit(0);
+  printBootstrapSummaryExit("fixpoint link failed (non-fatal)");
 }
 debugFile("fixpoint_exe", fixpointExe);
 debugFile("embedded_c_substrate.c", cSubstrateBundlePath);
@@ -591,13 +523,7 @@ if (fixpointRun.error) {
   console.warn(
     `[bootstrap] WARN: fixpoint run threw: ${fixpointRun.error.message}`,
   );
-  console.log("\n[bootstrap] ═══ Summary ═══");
-  console.log("  Phase 1 ✔  Stage3-JS  → stage3_selfhost.c");
-  console.log("  Phase 2 ✔  cc         → stage3_native_exe");
-  console.log("  Phase 3 ✔  smoke      → OK");
-  console.log("  Phase 4 ✖  fixpoint run error (non-fatal)");
-  console.log("  Phase 5 —  skipped");
-  process.exit(0);
+  printBootstrapSummaryExit("fixpoint run error (non-fatal)");
 }
 
 if (fixpointRun.status !== 0 || !fs.existsSync(fixpointOutC)) {
@@ -608,13 +534,7 @@ if (fixpointRun.status !== 0 || !fs.existsSync(fixpointOutC)) {
   console.warn(
     `[bootstrap] WARN: ${reason} — bootstrap fixpoint not yet achieved (non-fatal)`,
   );
-  console.log("\n[bootstrap] ═══ Summary ═══");
-  console.log("  Phase 1 ✔  Stage3-JS  → stage3_selfhost.c");
-  console.log("  Phase 2 ✔  cc         → stage3_native_exe");
-  console.log("  Phase 3 ✔  smoke      → OK");
-  console.log(`  Phase 4 ✖  fixpoint emit failed: ${reason} (non-fatal)`);
-  console.log("  Phase 5 —  skipped");
-  process.exit(0);
+  printBootstrapSummaryExit(`fixpoint emit failed: ${reason} (non-fatal)`);
 }
 
 debugFile("stage4_selfhost.c", fixpointOutC);

@@ -213,7 +213,7 @@ const dynamicConverterValueResult = compileSourceResult(
 );
 if (!dynamicConverterValueResult.ok) {
   console.error(
-    `Expected converter-value dispatch sample to compile, got: ${dynamicConverterValueResult.error.message}`,
+    `Dynamic dispatch compile failed: ${dynamicConverterValueResult.error.message}`,
   );
   process.exit(1);
 }

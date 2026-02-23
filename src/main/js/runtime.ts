@@ -276,9 +276,9 @@ export function vec_find<T>(
   input: VecState<T> | T[],
   fn: (item: T) => boolean,
 ): T | undefined {
-  const vec = asVecState(input);
-  for (let i = 0; i < vec.init; i += 1) {
-    const item = vec.data[i] as T;
+  const source = asVecState(input);
+  for (let i = 0; i < source.init; i += 1) {
+    const item = source.data[i] as T;
     if (fn(item)) return item;
   }
   return undefined;

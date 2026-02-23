@@ -11,33 +11,15 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import vm from "node:vm";
-import { fileURLToPath } from "node:url";
 import * as runtime from "../../main/js/runtime.ts";
 import { compileAndLoadSelfhost } from "./selfhost-harness.ts";
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const root = path.resolve(__dirname, "../../..");
+import { loadStageCompilerFromJs } from "./stage-matrix-harness.ts";
+import { getRepoRootFromImportMeta } from "./path-test-utils.ts";
+import { FACTORIAL_PROGRAM } from "./test-fixtures.ts";
+const root = getRepoRootFromImportMeta(import.meta.url);
 const outDir = path.join(root, "tests", "out", "selfhost");
 
-function loadSelfhostCompilerFromJs(js) {
-  const sandbox = {
-    module: { exports: {} },
-    exports: {},
-    console,
-    ...runtime,
-  };
-  const exportedNames = [
-    "compile_source",
-    "compile_file",
-    "compile_source_with_options",
-    "compile_file_with_options",
-    "take_lint_issues",
-    "main",
-  ].join(", ");
-  vm.runInNewContext(`${js}\nmodule.exports = { ${exportedNames} };`, sandbox);
-  return sandbox.module.exports;
-}
+const loadSelfhostCompilerFromJs = loadStageCompilerFromJs;
 
 console.log("Compiling selfhost.tuff with native selfhost executable...");
 
@@ -78,7 +60,7 @@ if (typeof selfhost.compile_file_with_options !== "function") {
 console.log("  -> Self-hosted compiler loaded successfully");
 
 // Step 4: Test compiling a simple program
-const simpleProgram = `fn add(a: I32, b: I32) : I32 => a + b;
+const simpleProgram = `fn add(x: I32, y: I32) : I32 => x + y;
 fn main() : I32 => add(40, 2);`;
 
 console.log("Testing simple program compilation...");
@@ -101,17 +83,7 @@ try {
 }
 
 // Step 5: Test compiling a more complex program (factorial)
-const factorialProgram = `
-fn factorial(n: I32) : I32 => {
-    if (n <= 1) {
-        1
-    } else {
-        n * factorial(n - 1)
-    }
-}
-
-fn main() : I32 => factorial(5);
-`;
+const factorialProgram = FACTORIAL_PROGRAM;
 
 console.log("Testing factorial program compilation...");
 try {

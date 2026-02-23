@@ -3,9 +3,14 @@ import fs from "node:fs";
 import path from "node:path";
 import { runMainFromJs } from "./js-runtime-test-utils.ts";
 import { assertDiagnosticContract } from "./diagnostic-contract-utils.ts";
-import { buildStageChain } from "./stage-matrix-harness.ts";
+import {
+  buildStageChain,
+  normalizeDiag,
+  buildStageById,
+} from "./stage-matrix-harness.ts";
 import {
   COPY_ALIAS_INVALID_BOX_SOURCE,
+  COPY_STRUCT_VEC2_PROGRAM,
   MOVE_AFTER_MOVE_BOX_SOURCE,
 } from "./test-fixtures.ts";
 import {
@@ -26,90 +31,7 @@ const stageEquivalenceCaseSkips = new Set([
 
 const chain = buildStageChain(root, path.join(outDir, "bootstrap"));
 
-function normalizeDiag(error) {
-  const e = error && typeof error === "object" ? error : {};
-  const code =
-    typeof e.code === "string"
-      ? e.code
-      : typeof e.errorCode === "string"
-        ? e.errorCode
-        : "E_SELFHOST_INTERNAL_ERROR";
-  const message =
-    typeof e.message === "string" && e.message.length > 0
-      ? e.message
-      : "selfhost compilation failed";
-  const source =
-    typeof e.source === "string" && e.source.length > 0
-      ? e.source
-      : "<unknown source>";
-  const cause =
-    typeof e.cause === "string" && e.cause.length > 0 ? e.cause : message;
-  const reason =
-    typeof e.reason === "string" && e.reason.length > 0
-      ? e.reason
-      : "compiler reported an error";
-  const fix =
-    typeof e.fix === "string" && e.fix.length > 0
-      ? e.fix
-      : "Review the source and retry compilation.";
-  return { code, message, source, cause, reason, fix };
-}
-
-const stageById = {
-  stage2: {
-    id: "stage2",
-    allowNegativeSkip: false,
-    compileSource(source, _filePath, options = {}) {
-      try {
-        const strictSafety = options.typecheck?.strictSafety ? 1 : 0;
-        const lintEnabled = options.lint?.enabled ? 1 : 0;
-        const maxEffectiveLines = options.lint?.maxEffectiveLines ?? 500;
-        const borrowEnabled = options.borrowcheck?.enabled === false ? 0 : 1;
-        const js =
-          typeof chain.stage2.compile_source_with_options === "function"
-            ? chain.stage2.compile_source_with_options(
-                source,
-                strictSafety,
-                lintEnabled,
-                maxEffectiveLines,
-                borrowEnabled,
-                "js",
-              )
-            : chain.stage2.compile_source(source);
-        return { ok: true, js };
-      } catch (error) {
-        return { ok: false, error };
-      }
-    },
-  },
-  stage3: {
-    id: "stage3",
-    allowNegativeSkip: false,
-    compileSource(source, _filePath, options = {}) {
-      try {
-        const strictSafety = options.typecheck?.strictSafety ? 1 : 0;
-        const lintEnabled = options.lint?.enabled ? 1 : 0;
-        const maxEffectiveLines = options.lint?.maxEffectiveLines ?? 500;
-        const borrowEnabled = options.borrowcheck?.enabled === false ? 0 : 1;
-        const js =
-          typeof chain.stage3.compile_source_with_options === "function"
-            ? chain.stage3.compile_source_with_options(
-                source,
-                strictSafety,
-                lintEnabled,
-                maxEffectiveLines,
-                borrowEnabled,
-                "js",
-              )
-            : chain.stage3.compile_source(source);
-        return { ok: true, js };
-      } catch (error) {
-        return { ok: false, error };
-      }
-    },
-  },
-};
-
+const stageById = buildStageById(chain);
 const stages = [stageById.stage2, stageById.stage3];
 
 function assertEqual(actual, expected, label) {
@@ -193,11 +115,7 @@ for (const name of fs
   runPositiveCase(`case:${name}`, source, expected);
 }
 
-runPositiveCase(
-  "positive:copy-struct",
-  `copy struct Vec2 { x : F32, y : F32 }\nfn main() : I32 => { let a : Vec2 = Vec2 { x: 1, y: 2 }; let b : Vec2 = a; let c : Vec2 = a; 0 }`,
-  0,
-);
+runPositiveCase("positive:copy-struct", COPY_STRUCT_VEC2_PROGRAM.trim(), 0);
 runPositiveCase(
   "positive:simple-arith",
   `fn sq(x : I32) : I32 => x * x;\nfn main() : I32 => sq(6);`,

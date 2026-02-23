@@ -5,7 +5,7 @@ import vm from "node:vm";
 import { spawnSync } from "node:child_process";
 import * as runtime from "../../main/js/runtime.ts";
 
-function timingEnabled(): boolean {
+export function timingEnabled(): boolean {
   const v = process.env.TUFFC_DEBUG_TIMING;
   return v === "1" || v?.toLowerCase() === "true";
 }

@@ -1,17 +1,15 @@
 // @ts-nocheck
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { compileSourceThrow } from "../../main/js/compiler.ts";
 import { runMainFromJs } from "./js-runtime-test-utils.ts";
+import { getRepoRootFromImportMeta, getBackendArg } from "./path-test-utils.ts";
 
-const thisFile = fileURLToPath(import.meta.url);
-const root = path.resolve(path.dirname(thisFile), "..", "..", "..");
+const root = getRepoRootFromImportMeta(import.meta.url);
 const casesDir = path.join(root, "src", "test", "tuff", "cases");
 const outDir = path.join(root, "tests", "out");
 const updateSnapshots = process.argv.includes("--update");
-const backendArg = process.argv.find((arg) => arg.startsWith("--backend="));
-const backend = backendArg ? backendArg.slice("--backend=".length) : "selfhost";
+const backend = getBackendArg();
 
 fs.mkdirSync(outDir, { recursive: true });
 

@@ -1,0 +1,306 @@
+Found a 2 line (46 tokens) duplication in the following files: 
+Starting at line 416 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\c-bootstrap-parity.ts
+Starting at line 421 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\c-bootstrap-parity.ts
+
+    if (!out) {
+        fprintf(stderr, "[fixpoint] FAIL: compile_source_with_options returned NULL\\n");
+
+=====================================================================
+Found a 2 line (45 tokens) duplication in the following files: 
+Starting at line 402 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\c-bootstrap-parity.ts
+Starting at line 175 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\c-selfhost-progress.ts
+
+${COMPILE_OPTIONS_PARAMS_C}
+extern int64_t compile_source_with_options(
+
+=====================================================================
+Found a 3 line (43 tokens) duplication in the following files: 
+Starting at line 248 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\c-bootstrap-parity.ts
+Starting at line 256 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\c-bootstrap-parity.ts
+
+if (!fs.existsSync(stage3outC)) {
+  console.error(
+    `[bootstrap] FAIL: stage3_selfhost.c was not written to ${stage3outC}`,
+
+=====================================================================
+Found a 5 line (42 tokens) duplication in the following files: 
+Starting at line 135 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\c-bootstrap-parity.ts
+Starting at line 82 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\c-native-cli-e2e.ts
+
+    console.error(`[bootstrap] FAIL: ${phase} exit ${run.status}`);
+    console.error(run.stdout ?? "");
+    console.error(run.stderr ?? "");
+    process.exit(1);
+  }
+
+=====================================================================
+Found a 2 line (41 tokens) duplication in the following files: 
+Starting at line 118 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\main\js\compiler.ts
+Starting at line 63 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\selfhost-harness.ts
+
+      new TuffError(
+        `Missing native selfhost executable: ${nativeExe}`,
+
+=====================================================================
+Found a 3 line (41 tokens) duplication in the following files: 
+Starting at line 15 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\c-backend-smoke.ts
+Starting at line 15 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\monomorphization-plan.ts
+
+fn pair<A, B>(a: A, b: B): A => a;
+fn main(): I32 {
+  let x: I32 = id<I32>(41);
+
+=====================================================================
+Found a 6 line (41 tokens) duplication in the following files: 
+Starting at line 210 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\db-test-cases.ts
+Starting at line 321 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\db-test-cases.ts
+
+      if (skipKnownGap("expected compile error but compiled")) {
+        continue;
+      }
+      failed += 1;
+      console.error(
+        `[db-tests] Γ£û ${label} expected compile error, but compilation succeeded`,
+
+=====================================================================
+Found a 6 line (40 tokens) duplication in the following files: 
+Starting at line 4 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\expect-actual-c-aliases.ts
+Starting at line 5 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\module-package-aliases.ts
+
+import { compileFileResult } from "../../main/js/compiler.ts";
+import { getRepoRootFromImportMeta } from "./path-test-utils.ts";
+import { assertCOutput } from "./compile-test-utils.ts";
+
+const root = getRepoRootFromImportMeta(import.meta.url);
+const outDir = path.join(root, "tests", "out", "expect-actual-c-aliases");
+
+=====================================================================
+Found a 6 line (39 tokens) duplication in the following files: 
+Starting at line 19 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\c-backend-smoke.ts
+Starting at line 19 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\monomorphization-plan.ts
+
+  let z: I32 = pair<I32, Bool>(x, true);
+  x + y + z
+}
+`;
+
+const monoProbe = compileSourceResult(monoProbeSource, "<c-monomorph-probe>", {
+
+=====================================================================
+Found a 3 line (39 tokens) duplication in the following files: 
+Starting at line 93 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\c-backend-smoke.ts
+Starting at line 99 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\c-backend-smoke.ts
+
+    !result.value.c.includes("int main(int argc, char **argv)")
+  ) {
+    console.error(`Generated C for ${caseName} is missing process entrypoint`);
+
+=====================================================================
+Found a 3 line (39 tokens) duplication in the following files: 
+Starting at line 146 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\c-backend-smoke.ts
+Starting at line 155 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\c-selfhost-progress.ts
+
+  if (compile.status !== 0) {
+    console.error(
+      `Failed to compile generated C for ${testCase.caseName} with ${selected}`,
+
+=====================================================================
+Found a 3 line (39 tokens) duplication in the following files: 
+Starting at line 24 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\db-test-cases.ts
+Starting at line 11 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\run-tests.ts
+
+const nativeTmpDir = path.join(outDir, "native-cli");
+const backendArg = process.argv.find((arg) => arg.startsWith("--backend="));
+const backend = backendArg ? backendArg.slice("--backend=".length) : "selfhost";
+
+=====================================================================
+Found a 1 line (38 tokens) duplication in the following files: 
+Starting at line 170 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\main\js\compiler.ts
+Starting at line 132 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\selfhost-harness.ts
+
+        reason: `exit=${compile.status ?? "unknown"}, signal=${compile.signal ?? "none"}, output=${fs.existsSync(selfhostOutput) ? "exists" : "missing"}`,
+
+=====================================================================
+Found a 5 line (38 tokens) duplication in the following files: 
+Starting at line 130 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\c-bootstrap-parity.ts
+Starting at line 248 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\c-selfhost-progress.ts
+
+    console.error(run.stdout ?? "");
+    console.error(run.stderr ?? "");
+    process.exit(1);
+  }
+  if (run.status !== 0) {
+
+=====================================================================
+Found a 4 line (38 tokens) duplication in the following files: 
+Starting at line 7 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\selfhost-c-empty-substrate.ts
+Starting at line 68 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\tuff-native-compiler.ts
+
+extern fn printf(fmt: *Str, value: I32) : I32;
+
+fn main() : I32 => {
+  printf("value=%d\\n", 7);
+
+=====================================================================
+Found a 1 line (38 tokens) duplication in the following files: 
+Starting at line 83 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\selfhost-parity.ts
+Starting at line 88 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\selfhost-parity.ts
+
+        `${label} (js): expected diagnostic code ${expectedCode}, got ${jsDiag.code}`,
+
+=====================================================================
+Found a 2 line (38 tokens) duplication in the following files: 
+Starting at line 6 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\test-fixtures.ts
+Starting at line 45 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\test-fixtures.ts
+
+  let a : Vec2 = Vec2 { x: 1, y: 2 };
+  let b : Vec2 = a;
+
+=====================================================================
+Found a 1 line (37 tokens) duplication in the following files: 
+Starting at line 417 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\c-bootstrap-parity.ts
+Starting at line 185 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\c-selfhost-progress.ts
+
+        fprintf(stderr, "[fixpoint] FAIL: compile_source_with_options returned NULL\\n");
+
+=====================================================================
+Found a 9 line (37 tokens) duplication in the following files: 
+Starting at line 3 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\demo-regressions.ts
+Starting at line 16 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\selfhost-parity.ts
+Starting at line 9 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\selfhost-stress.ts
+
+import { compileFileResult } from "../../main/js/compiler.ts";
+import { runMainFromJs } from "./js-runtime-test-utils.ts";
+import {
+  getRepoRootFromImportMeta,
+  getTestsOutDir,
+} from "./path-test-utils.ts";
+
+const root = getRepoRootFromImportMeta(import.meta.url);
+const outDir = getTestsOutDir(root, "demo-regressions");
+
+=====================================================================
+Found a 3 line (37 tokens) duplication in the following files: 
+Starting at line 225 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\tuff-native-compiler.ts
+Starting at line 234 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\tuff-native-compiler.ts
+
+  if (actualExit !== expectedExit) {
+    console.error(
+      `[native-codegen][${label}] FAIL: exit ${actualExit}, expected ${expectedExit}`,
+
+=====================================================================
+Found a 5 line (36 tokens) duplication in the following files: 
+Starting at line 5 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\c-backend-smoke.ts
+Starting at line 6 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\vec-generic-smoke.ts
+
+import { compileSourceResult } from "../../main/js/compiler.ts";
+import { getRepoRootFromImportMeta } from "./path-test-utils.ts";
+
+const root = getRepoRootFromImportMeta(import.meta.url);
+const outDir = path.join(root, "tests", "out", "c");
+
+=====================================================================
+Found a 5 line (36 tokens) duplication in the following files: 
+Starting at line 129 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\c-bootstrap-parity.ts
+Starting at line 135 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\c-bootstrap-parity.ts
+Starting at line 82 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\c-native-cli-e2e.ts
+
+    console.error(`[bootstrap] FAIL: ${phase} killed by signal: ${run.signal}`);
+    console.error(run.stdout ?? "");
+    console.error(run.stderr ?? "");
+    process.exit(1);
+  }
+
+=====================================================================
+Found a 3 line (36 tokens) duplication in the following files: 
+Starting at line 455 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\c-bootstrap-parity.ts
+Starting at line 467 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\c-bootstrap-parity.ts
+
+    if (smoke_compile_source() != 0) return 1;
+
+    fprintf(stderr, "[fixpoint] compiling %s -> %s\\n", input, output);
+
+=====================================================================
+Found a 3 line (36 tokens) duplication in the following files: 
+Starting at line 4 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\test-fixtures.ts
+Starting at line 43 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\test-fixtures.ts
+
+copy struct Vec2 { x : F32, y : F32 }
+fn main() : I32 => {
+  let a : Vec2 = Vec2 { x: 1, y: 2 };
+
+=====================================================================
+Found a 6 line (36 tokens) duplication in the following files: 
+Starting at line 106 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\test-orchestrator.ts
+Starting at line 29 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\tuff-native-compiler.ts
+
+      `[test] Failed to start ${relative}: ${result.error.message}`,
+    );
+    process.exit(1);
+  }
+  if (result.status !== 0) {
+    console.error(`[test] Γ£û ${relative} exited with status ${result.status}`);
+
+=====================================================================
+Found a 6 line (35 tokens) duplication in the following files: 
+Starting at line 159 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\c-backend-smoke.ts
+Starting at line 135 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\c-bootstrap-parity.ts
+
+    );
+    console.error(run.stdout ?? "");
+    console.error(run.stderr ?? "");
+    process.exit(1);
+  }
+}
+
+=====================================================================
+Found a 2 line (35 tokens) duplication in the following files: 
+Starting at line 169 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\c-bootstrap-parity.ts
+Starting at line 210 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\c-bootstrap-parity.ts
+
+} catch (chainErr) {
+  console.error(`[bootstrap] FAIL: could not build stage chain: ${chainErr}`);
+
+=====================================================================
+Found a 2 line (35 tokens) duplication in the following files: 
+Starting at line 178 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\c-selfhost-progress.ts
+Starting at line 182 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\c-selfhost-progress.ts
+
+int main(void) {
+  fprintf(stderr, "[deep] calling selfhost_entry\\n");
+
+=====================================================================
+Found a 4 line (35 tokens) duplication in the following files: 
+Starting at line 11 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\cli-hardening.ts
+Starting at line 34 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\phase4-production.ts
+
+const root = getRepoRootFromImportMeta(import.meta.url);
+const tsxCli = getTsxCliPath(root);
+const nodeExec = getNodeExecPath();
+const nativeCli = getNativeCliWrapperPath(root);
+
+=====================================================================
+Found a 1 line (35 tokens) duplication in the following files: 
+Starting at line 175 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\contracts-static-dispatch.ts
+Starting at line 216 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\contracts-static-dispatch.ts
+
+    `Expected dynamic dispatch sample to compile, got: ${dynamicResult.error.message}`,
+
+=====================================================================
+Found a 3 line (35 tokens) duplication in the following files: 
+Starting at line 3 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\diagnostic-contract-utils.ts
+Starting at line 41 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\selfhost-parity.ts
+
+export function assertDiagnosticContract(diag, label = "diagnostic") {
+  for (const key of ["source", "cause", "reason", "fix"]) {
+    if (!diag[key] || typeof diag[key] !== "string") {
+
+=====================================================================
+Found a 3 line (35 tokens) duplication in the following files: 
+Starting at line 9 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\extern-source-attribution.ts
+Starting at line 68 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\test\js\tuff-native-compiler.ts
+
+const strlenExternDecl = `extern fn strlen(src: *Str) : I32;
+
+fn main() : I32 => strlen("abc")`;
+

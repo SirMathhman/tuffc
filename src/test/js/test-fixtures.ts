@@ -38,7 +38,23 @@ fn main() : I32 => 0;
 `;
 
 export const STRICT_DIV_BY_ZERO_SOURCE = `fn bad(x : I32) : I32 => 100 / x;`;
+export const COPY_VEC2_ALIAS_PROGRAM = `
+copy struct Vec3 { x : F32, y : F32, z : F32 }
+copy type Vec3Alias = Vec3;
+fn main() : I32 => {
+  let a : Vec3Alias = Vec3 { x: 1, y: 2, z: 3 };
+  let b : Vec3Alias = a;
+  let c : Vec3Alias = a;
+  0
+}
+`;
 export const NULLABLE_POINTER_UNGUARDED_SOURCE = `fn bad(p : *I32 | 0USize) : I32 => p[0];`;
+export const FACTORIAL_PROGRAM = `
+fn factorial(n: I32) : I32 => {
+  if (n <= 1) { 1 } else { n * factorial(n - 1) }
+}
+fn main() : I32 => factorial(5);
+`;
 export const NULLABLE_POINTER_GUARDED_SOURCE = `fn good(p : *I32 | 0USize) : I32 => { if (p != 0USize) { p[0] } else { 0 } }`;
 export const NULLABLE_POINTER_GUARDED_REVERSED_SOURCE =
   NULLABLE_POINTER_GUARDED_SOURCE.replace("p != 0USize", "0USize != p");

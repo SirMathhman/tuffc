@@ -1,51 +1,18 @@
 // @ts-nocheck
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { compileFileResult } from "../../main/js/compiler.ts";
+import {
+  getRepoRootFromImportMeta,
+  createBuildRunUtils,
+} from "./path-test-utils.ts";
+import {
+  SELFHOST_EXTERN_ENTRY,
+  SELFHOST_MAIN_BODY,
+} from "./c-harness-utils.ts";
 
 const MAX_HARNESS_TIMEOUT_MS = 15_000;
-
-function nowMs() {
-  return Date.now();
-}
-
-function formatBytes(value) {
-  if (!Number.isFinite(value)) return "unknown";
-  if (value < 1024) return `${value}B`;
-  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)}KiB`;
-  return `${(value / (1024 * 1024)).toFixed(2)}MiB`;
-}
-
-function debugFile(label, filePath) {
-  const exists = fs.existsSync(filePath);
-  if (!exists) {
-    console.log(`[c-selfhost][debug] ${label}: missing (${filePath})`);
-    return;
-  }
-  const stat = fs.statSync(filePath);
-  console.log(
-    `[c-selfhost][debug] ${label}: ${filePath} size=${formatBytes(stat.size)} mtime=${stat.mtime.toISOString()}`,
-  );
-}
-
-function runStep(command, args, options = {}) {
-  const started = nowMs();
-  console.log(`[c-selfhost][debug] run: ${command} ${args.join(" ")}`);
-  const result = spawnSync(command, args, {
-    encoding: "utf8",
-    ...options,
-  });
-  const elapsed = nowMs() - started;
-  console.log(
-    `[c-selfhost][debug] done: ${command} exit=${result.status} signal=${result.signal ?? "none"} ms=${elapsed}`,
-  );
-  if (result.error) {
-    console.log(`[c-selfhost][debug] error: ${result.error.message}`);
-  }
-  return result;
-}
 
 function isSegfaultLikeRun(result) {
   const signal = result?.signal ?? null;
@@ -69,8 +36,8 @@ function isSegfaultLikeRun(result) {
   return false;
 }
 
-const thisFile = fileURLToPath(import.meta.url);
-const root = path.resolve(path.dirname(thisFile), "..", "..", "..");
+const root = getRepoRootFromImportMeta(import.meta.url);
+const { formatBytes, debugFile, runStep } = createBuildRunUtils("c-selfhost");
 const entry = path.join(root, "src", "main", "tuff", "selfhost.tuff");
 const outDir = path.join(root, "tests", "out", "c");
 const outC = path.join(outDir, "selfhost.c");
@@ -189,8 +156,7 @@ if (objectCompile.status !== 0) {
   console.error(
     `Failed to compile generated selfhost.c to object with ${selected}`,
   );
-  console.error(objectCompile.stdout ?? "");
-  console.error(objectCompile.stderr ?? "");
+  console.error(`${objectCompile.stdout ?? ""}\n${objectCompile.stderr ?? ""}`);
   process.exit(1);
 }
 
@@ -198,15 +164,15 @@ debugFile("object", outObj);
 
 const SELFHOST_ENTRY_DECL = `#include <stdio.h>
 
-extern int64_t selfhost_entry(void);`;
+${SELFHOST_EXTERN_ENTRY.split("\n")[0]}`;
 
 const harnessSource = deepHarness
   ? `#include <stdint.h>
-#include <inttypes.h>
 #include <string.h>
 #include <stdio.h>
+#include <inttypes.h>
 ${SELFHOST_ENTRY_DECL.split("\n").slice(2).join("\n")}
-extern int64_t compile_source_with_options(int64_t source, int64_t strict_safety, int64_t lint_enabled, int64_t max_effective_lines, int64_t borrow_enabled, int64_t target);
+extern int64_t compile_source_with_options(int64_t, int64_t, int64_t, int64_t, int64_t, int64_t);
 
 int main(void) {
   fprintf(stderr, "[deep] calling selfhost_entry\\n");
@@ -214,10 +180,10 @@ int main(void) {
   fprintf(stderr, "[deep] selfhost_entry done\\n");
   const char* src = "fn main() : I32 => 7;";
   fprintf(stderr, "[deep] calling compile_source_with_options\\n");
-  int64_t out = compile_source_with_options((int64_t)(intptr_t)src, 0, 0, 500, 1, (int64_t)(intptr_t)"js");
+  int64_t cOut = compile_source_with_options((int64_t)(intptr_t)src, 0, 0, 500, 1, (int64_t)(intptr_t)"js");
   fprintf(stderr, "[deep] compile_source_with_options returned\\n");
-  const char* js = (const char*)(intptr_t)out;
-  if (js == 0) return 2;
+  const char* js = (const char*)(intptr_t)cOut;
+  if (cOut == 0) return 2;
   if (strstr(js, "function main") == 0) return 3;
   fprintf(stderr, "[deep] deep harness success\\n");
   return 0;
@@ -227,9 +193,7 @@ int main(void) {
 
 ${SELFHOST_ENTRY_DECL.split("\n").slice(2).join("\n")}
 
-int main(void) {
-  return (int)selfhost_entry();
-}
+int main(void) { return (int)selfhost_entry(); }
 `;
 fs.writeFileSync(outHarness, harnessSource, "utf8");
 debugFile("harness-source", outHarness);

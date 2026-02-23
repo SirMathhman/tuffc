@@ -101,7 +101,7 @@ function executeScript(scriptPath: string, updateSnapshots: boolean): void {
     stdio: "inherit",
   });
 
-  if (result.error) {
+  if (result.error != null) {
     console.error(
       `[test] Failed to start ${relative}: ${result.error.message}`,
     );

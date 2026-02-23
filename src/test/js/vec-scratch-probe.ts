@@ -2,10 +2,9 @@
 import { compileSourceResult } from "../../main/js/compiler.ts";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { getRepoRootFromImportMeta } from "./path-test-utils.ts";
 
-const thisFile = fileURLToPath(import.meta.url);
-const root = path.resolve(path.dirname(thisFile), "..", "..", "..");
+const root = getRepoRootFromImportMeta(import.meta.url);
 const src = fs.readFileSync(
   path.join(root, "src", "main", "tuff", "vec-scratch.tuff"),
   "utf8",
@@ -20,4 +19,8 @@ if (!r.ok) {
   if (r.error.meta) console.error("META:", JSON.stringify(r.error.meta));
   process.exit(1);
 }
-console.log("OK, C length:", r.value.c?.length ?? "no C output");
+const selfhost = process.argv.includes("--selfhost");
+console.log(
+  `OK${selfhost ? " (selfhost)" : ""}, C length:`,
+  r.value.c?.length ?? "no C output",
+);

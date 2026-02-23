@@ -3,11 +3,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
 import { compileFileResult } from "../../main/js/compiler.ts";
+import { getRepoRootFromImportMeta } from "./path-test-utils.ts";
 
-const thisFile = fileURLToPath(import.meta.url);
-const root = path.resolve(path.dirname(thisFile), "..", "..", "..");
+const root = getRepoRootFromImportMeta(import.meta.url);
 const outDir = path.join(root, "tests", "out", "vec-generic-smoke");
 const appDir = path.join(outDir, "app");
 const entry = path.join(appDir, "Main.tuff");

@@ -9,12 +9,14 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { compileSourceResult } from "../../main/js/compiler.ts";
+import {
+  selectCCompiler,
+  getRepoRootFromImportMeta,
+} from "./path-test-utils.ts";
 
-const thisFile = fileURLToPath(import.meta.url);
-const root = path.resolve(path.dirname(thisFile), "..", "..", "..");
+const root = getRepoRootFromImportMeta(import.meta.url);
 const outDir = path.join(root, "tests", "out", "c-native");
 fs.mkdirSync(outDir, { recursive: true });
 
@@ -38,20 +40,12 @@ function runCC(args: string[], label: string) {
 }
 
 function selectCompiler() {
-  const candidates =
-    process.platform === "win32"
-      ? ["clang", "gcc", "cc"]
-      : ["cc", "clang", "gcc"];
-  for (const c of candidates) {
-    const r = spawnSync(c, ["--version"], { encoding: "utf8" });
-    if (r.status === 0) {
-      const v = (r.stdout ?? "").split(/\r?\n/)[0] ?? "";
-      console.log(`[native-codegen] using C compiler: ${c}  (${v})`);
-      return c;
-    }
+  const c = selectCCompiler("[native-codegen] using ");
+  if (!c) {
+    console.error("[native-codegen] no C compiler found (clang/gcc/cc)");
+    process.exit(1);
   }
-  console.error("[native-codegen] no C compiler found (clang/gcc/cc)");
-  process.exit(1);
+  return c;
 }
 
 const COMPILER = selectCompiler();
@@ -239,7 +233,7 @@ for (const tc of cases) {
 
   if (tc.expectedOutput && !actualOutput.includes(tc.expectedOutput)) {
     console.error(
-      `[native-codegen][${label}] FAIL: expected output to contain "${tc.expectedOutput}"`,
+      `[native-codegen:output][${label}] FAIL: expected to contain "${tc.expectedOutput}"`,
     );
     console.error(`actual: ${actualOutput}`);
     failed++;

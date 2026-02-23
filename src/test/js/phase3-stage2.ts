@@ -11,6 +11,7 @@ import {
   getRepoRootFromImportMeta,
   getTestsOutDir,
 } from "./path-test-utils.ts";
+import { STRICT_DIV_BY_ZERO_SOURCE } from "./test-fixtures.ts";
 import {
   NULLABLE_POINTER_GUARDED_REVERSED_SOURCE,
   NULLABLE_POINTER_GUARDED_SOURCE,
@@ -29,7 +30,7 @@ expectCompileOk(
 
 expectCompileFail(
   "division-proof-fail",
-  `fn bad(x : I32) : I32 => 100 / x;`,
+  STRICT_DIV_BY_ZERO_SOURCE,
   "Division by zero",
   { typecheck: { strictSafety: true } },
 );

@@ -8,6 +8,7 @@ import {
   getNativeCliWrapperPath,
   getNodeExecPath,
   getRepoRootFromImportMeta,
+  getBackendArg,
 } from "./path-test-utils.ts";
 
 type DbCase = {
@@ -22,8 +23,7 @@ const root = getRepoRootFromImportMeta(import.meta.url);
 const dbPath = path.join(root, "scripts", "test_cases.db");
 const outDir = path.join(root, "tests", "out", "db-cases");
 const nativeTmpDir = path.join(outDir, "native-cli");
-const backendArg = process.argv.find((arg) => arg.startsWith("--backend="));
-const backend = backendArg ? backendArg.slice("--backend=".length) : "selfhost";
+const backend = getBackendArg();
 const allowKnownGaps = process.argv.includes("--allow-known-gaps");
 const nodeExec = getNodeExecPath();
 const nativeCli = getNativeCliWrapperPath(root);
@@ -207,13 +207,12 @@ for (const testCase of dbCases) {
 
   if (expectsCompileError) {
     if (compileResult.ok) {
-      if (skipKnownGap("expected compile error but compiled")) {
-        continue;
+      if (!skipKnownGap("expected compile error but compiled")) {
+        failed++;
+        console.error(
+          `[db-tests] ✖ ${label} expected compile error, but compilation succeeded`,
+        );
       }
-      failed += 1;
-      console.error(
-        `[db-tests] ✖ ${label} expected compile error, but compilation succeeded`,
-      );
       continue;
     }
 
@@ -273,17 +272,12 @@ for (const testCase of dbCases) {
               };
 
       if (!wrappedViaBackend.ok) {
-        if (
-          skipKnownGap(
-            `runtime wrapper compile failed: ${wrappedViaBackend.errorMessage}`,
-          )
-        ) {
+        const compileFailMsg = `runtime wrapper compile failed: ${wrappedViaBackend.errorMessage}`;
+        if (skipKnownGap(compileFailMsg)) {
           continue;
         }
         failed += 1;
-        console.error(
-          `[db-tests] ✖ ${label} runtime wrapper compile failed: ${wrappedViaBackend.errorMessage}`,
-        );
+        console.error(`[db-tests] ✖ ${label} ${compileFailMsg}`);
         continue;
       }
 
@@ -298,17 +292,12 @@ for (const testCase of dbCases) {
       try {
         runtimeValue = runMainFromJs(runtimeJs, `${label}:wrapped`);
       } catch (wrappedError) {
-        if (
-          skipKnownGap(
-            `runtime failed after wrapper: ${wrappedError instanceof Error ? wrappedError.message : String(wrappedError)}`,
-          )
-        ) {
+        const wrapRunMsg = `runtime failed after wrapper: ${wrappedError instanceof Error ? wrappedError.message : String(wrappedError)}`;
+        if (skipKnownGap(wrapRunMsg)) {
           continue;
         }
         failed += 1;
-        console.error(
-          `[db-tests] ✖ ${label} runtime failed after wrapper: ${wrappedError instanceof Error ? wrappedError.message : String(wrappedError)}`,
-        );
+        console.error(`[db-tests] ✖ ${label} ${wrapRunMsg}`);
         continue;
       }
     } else {
@@ -326,16 +315,15 @@ for (const testCase of dbCases) {
     runtimeValue === true ? 1 : runtimeValue === false ? 0 : runtimeValue;
   if (normalizedValue !== testCase.exit_code) {
     if (
-      skipKnownGap(
+      !skipKnownGap(
         `exit mismatch expected ${testCase.exit_code} got ${JSON.stringify(runtimeValue)}`,
       )
     ) {
-      continue;
+      failed += 1;
+      console.error(
+        `[db-tests] ✖ ${label} expected exit ${testCase.exit_code}, got ${JSON.stringify(runtimeValue)}`,
+      );
     }
-    failed += 1;
-    console.error(
-      `[db-tests] ✖ ${label} expected exit ${testCase.exit_code}, got ${JSON.stringify(runtimeValue)}`,
-    );
     continue;
   }
 

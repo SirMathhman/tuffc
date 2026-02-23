@@ -382,7 +382,9 @@ function main(argv: string[]): void {
     }
     if (args[i].startsWith("-W")) {
       const group = args[i].slice(2).trim().toLowerCase();
-      if (group === "lint" || group === "all" || group === "extra") {
+      const isKnownWarnGroup =
+        group === "lint" || group === "all" || group === "extra";
+      if (isKnownWarnGroup) {
         warningFlagsRequested = true;
         warningGroups.add(group);
         continue;

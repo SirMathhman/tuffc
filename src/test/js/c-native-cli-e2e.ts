@@ -5,37 +5,15 @@ import {
   getNativeCliWrapperPath,
   getNodeExecPath,
   getRepoRootFromImportMeta,
+  selectCCompiler,
 } from "./path-test-utils.ts";
 
 const root = getRepoRootFromImportMeta(import.meta.url);
 const nodeExec = getNodeExecPath();
 const nativeCli = getNativeCliWrapperPath(root);
 
-const hasCompiler = (() => {
-  const candidates =
-    process.platform === "win32"
-      ? ["clang", "gcc", "cc"]
-      : ["clang", "cc", "gcc"];
-  for (const c of candidates) {
-    const probe = spawnSync(c, ["--version"], { encoding: "utf8" });
-    if (probe.status === 0) return true;
-  }
-  return false;
-})();
-
-function selectCompiler(): string {
-  const candidates =
-    process.platform === "win32"
-      ? ["clang", "gcc", "cc"]
-      : ["clang", "cc", "gcc"];
-  for (const c of candidates) {
-    const probe = spawnSync(c, ["--version"], { encoding: "utf8" });
-    if (probe.status === 0) return c;
-  }
-  return "";
-}
-
-if (!hasCompiler) {
+const COMPILER = selectCCompiler("[c-native-cli-e2e] ");
+if (!COMPILER) {
   console.error("No C compiler available for native CLI e2e check.");
   console.error(
     "Install clang or gcc and ensure it is available on PATH before running native tiers.",
@@ -79,7 +57,7 @@ if (compile.status !== 0) {
 }
 
 if (!fs.existsSync(exeOut)) {
-  const cc = selectCompiler();
+  const cc = COMPILER;
   if (!cc) {
     console.error(
       `Expected native executable at ${exeOut}, and no C compiler found for fallback link`,

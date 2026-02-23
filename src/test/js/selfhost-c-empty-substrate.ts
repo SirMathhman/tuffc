@@ -1,33 +1,23 @@
 // @ts-nocheck
 import { compileSourceResult } from "../../main/js/compiler.ts";
+import { compileToCEmpty } from "./compile-test-utils.ts";
 
 const program = `
 extern let { printf } = stdio;
 extern fn printf(fmt: *Str, value: I32) : I32;
 
+fn double(n: I32) : I32 => n * 2;
 fn main() : I32 => {
-  printf("value=%d\\n", 7);
+  printf("value=%d\\n", double(4));
   7
 }
 `;
 
-const result = compileSourceResult(program, "<selfhost-c-empty-substrate>", {
-  backend: "selfhost",
-  target: "c",
-  cSubstrate: "",
-  lint: { enabled: false },
-  borrowcheck: { enabled: false },
-  typecheck: { strictSafety: false },
-});
-
-if (!result.ok) {
-  console.error(
-    `Expected selfhost C compile success with empty substrate override, got: ${result.error.message}`,
-  );
-  process.exit(1);
-}
-
-const output = result.value.output;
+const output = compileToCEmpty(
+  compileSourceResult,
+  program,
+  "selfhost C compile with empty substrate override",
+);
 if (!output.includes("Built-in minimal runtime prelude")) {
   console.error(
     "Expected generated C to include minimal runtime prelude marker when substrate override is empty",

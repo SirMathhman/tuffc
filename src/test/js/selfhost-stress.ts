@@ -48,66 +48,44 @@ function timed(label, fn) {
   }
 }
 
-function compileSourceWithBackend(source, filePath, backend, options = {}) {
-  const result = timed(`${backend}:${filePath}`, () =>
-    compileSourceResult(source, filePath, {
-      backend,
-      ...options,
-    }),
-  );
-
+function unwrapTimedResult(result) {
   if (!result.ok) {
-    return {
-      ok: false,
-      ms: result.ms,
-      crash: normalizeError(result.error),
-    };
+    return { ok: false, ms: result.ms, crash: normalizeError(result.error) };
   }
-
   if (!result.value.ok) {
-    return {
-      ok: false,
-      ms: result.ms,
-      error: normalizeError(result.value.error),
-    };
+    return { ok: false, ms: result.ms, error: normalizeError(result.value.error) };
   }
+  return { ok: true, ms: result.ms, js: result.value.value.js };
+}
 
-  return {
-    ok: true,
-    ms: result.ms,
-    js: result.value.value.js,
-  };
+function compileSourceWithBackend(source, filePath, backend, options = {}) {
+  return unwrapTimedResult(
+    timed(`${backend}:${filePath}`, () =>
+      compileSourceResult(source, filePath, {
+        backend,
+        ...options,
+      }),
+    ),
+  );
 }
 
 function compileFileWithBackend(inputPath, outputPath, backend, options = {}) {
-  const result = timed(`${backend}:${inputPath}`, () =>
-    compileFileResult(inputPath, outputPath, {
-      backend,
-      ...options,
-    }),
+  return unwrapTimedResult(
+    timed(`${backend}:${inputPath}`, () =>
+      compileFileResult(inputPath, outputPath, {
+        backend,
+        ...options,
+      }),
+    ),
   );
+}
 
-  if (!result.ok) {
-    return {
-      ok: false,
-      ms: result.ms,
-      crash: normalizeError(result.error),
-    };
-  }
+function runtimeExecGap(who, error) {
+  return `${who} runtime execution failed: ${normalizeError(error).code} (${normalizeError(error).message})`;
+}
 
-  if (!result.value.ok) {
-    return {
-      ok: false,
-      ms: result.ms,
-      error: normalizeError(result.value.error),
-    };
-  }
-
-  return {
-    ok: true,
-    ms: result.ms,
-    js: result.value.value.js,
-  };
+function diagnosticSpecificityGap(stage0Code, selfhostCode) {
+  return `Diagnostic specificity gap: stage0=${stage0Code}, selfhost=${selfhostCode}`;
 }
 
 function makeWideAddProgram(width) {
@@ -176,17 +154,13 @@ function compareProgramCase(name, source, expectedMain) {
     try {
       stage0Result = runMainFromJs(stage0.js, `${name}:stage0`);
     } catch (error) {
-      gaps.push(
-        `Stage0 runtime execution failed: ${normalizeError(error).code} (${normalizeError(error).message})`,
-      );
+      gaps.push(runtimeExecGap("Stage0", error));
       return { name, stage0, selfhost, gaps };
     }
     try {
       selfhostResult = runMainFromJs(selfhost.js, `${name}:selfhost`);
     } catch (error) {
-      gaps.push(
-        `Selfhost runtime execution failed: ${normalizeError(error).code} (${normalizeError(error).message})`,
-      );
+      gaps.push(runtimeExecGap("Selfhost", error));
       return { name, stage0, selfhost, gaps };
     }
     if (stage0Result !== selfhostResult) {
@@ -199,15 +173,8 @@ function compareProgramCase(name, source, expectedMain) {
         `Unexpected runtime result: got ${selfhostResult}, expected ${expectedMain}`,
       );
     }
-  } else if (stage0.ok && !selfhost.ok) {
-    gaps.push(
-      `Selfhost failed while stage0 succeeded (${selfhost.error?.code ?? selfhost.crash?.code ?? "unknown"})`,
-    );
-  } else if (!stage0.ok && selfhost.ok) {
-    gaps.push(
-      `Selfhost accepted input that stage0 rejected (${stage0.error?.code ?? stage0.crash?.code ?? "unknown"})`,
-    );
   }
+  pushParityGaps(gaps, stage0, selfhost);
 
   if (
     selfhost.ok &&
@@ -235,13 +202,8 @@ function compareProgramCase(name, source, expectedMain) {
       (selfhostCode === "E_GENERIC" ||
         selfhostCode === "E_SELFHOST_INTERNAL_ERROR")
     ) {
-      gaps.push(
-        `Diagnostic specificity gap: stage0=${stage0Code}, selfhost=${selfhostCode}`,
-      );
+      gaps.push(diagnosticSpecificityGap(stage0Code, selfhostCode));
     }
-  }
-
-  return { name, stage0, selfhost, gaps };
 }
 
 function compareCompileOnlyCase(name, source) {
@@ -256,34 +218,47 @@ function compareCompileOnlyCase(name, source) {
     "selfhost",
   );
   const gaps = [];
+  pushParityGaps(gaps, stage0, selfhost, "compile-only case");
+  pushCompileOnlyQualityGap(gaps, stage0, "Stage0");
+  pushCompileOnlyQualityGap(gaps, selfhost, "Selfhost");
 
+  return { name, stage0, selfhost, gaps };
+}
+
+function pushParityGaps(gaps, stage0, selfhost, label = "") {
+  const suffix = label ? ` ${label}` : "";
   if (stage0.ok && !selfhost.ok) {
     gaps.push(
-      `Selfhost failed compile-only case while stage0 succeeded (${selfhost.error?.code ?? selfhost.crash?.code ?? "unknown"})`,
+      `Selfhost failed${suffix} while stage0 succeeded (${selfhost.error?.code ?? selfhost.crash?.code ?? "unknown"})`,
     );
   } else if (!stage0.ok && selfhost.ok) {
     gaps.push(
-      `Selfhost accepted compile-only case that stage0 rejected (${stage0.error?.code ?? stage0.crash?.code ?? "unknown"})`,
+      `Selfhost accepted${suffix} input that stage0 rejected (${stage0.error?.code ?? stage0.crash?.code ?? "unknown"})`,
     );
   }
+}
 
-  if (!stage0.ok) {
-    const code = stage0.error?.code ?? stage0.crash?.code;
+function pushCompileOnlyQualityGap(gaps, result, who) {
+  if (!result.ok) {
+    const code = result.error?.code ?? result.crash?.code;
     if (code === "E_UNKNOWN" || code === "E_GENERIC") {
-      gaps.push(`Stage0 diagnostic quality gap in compile-only case (${code})`);
+      gaps.push(`${who} diagnostic quality gap in compile-only case (${code})`);
     }
   }
+}
 
-  if (!selfhost.ok) {
-    const code = selfhost.error?.code ?? selfhost.crash?.code;
-    if (code === "E_UNKNOWN" || code === "E_GENERIC") {
-      gaps.push(
-        `Selfhost diagnostic quality gap in compile-only case (${code})`,
-      );
-    }
+function checkHazardResult(result, stageName, gaps, genericCodes, expectedCodes) {
+  if (result.ok) {
+    gaps.push(`Critical safety gap: ${stageName} accepted hazard under strict safety`);
+    return;
   }
-
-  return { name, stage0, selfhost, gaps };
+  const code = result.error?.code ?? result.crash?.code;
+  if (genericCodes.has(code)) {
+    gaps.push(`Critical diagnostic gap (${stageName}): strict-safety hazard produced generic code ${code}`);
+  }
+  if (expectedCodes.length > 0 && !expectedCodes.includes(code)) {
+    gaps.push(`Diagnostic specificity gap (${stageName}): expected one of [${expectedCodes.join(", ")}], got ${code ?? "unknown"}`);
+  }
 }
 
 function checkCRuntimeHazardRejection(name, source, expectedCodes = []) {
@@ -314,36 +289,10 @@ function checkCRuntimeHazardRejection(name, source, expectedCodes = []) {
       "Critical safety gap: stage0 accepted hazard under strict safety for C target",
     );
   } else {
-    const code = stage0.error?.code ?? stage0.crash?.code;
-    if (genericCodes.has(code)) {
-      gaps.push(
-        `Critical diagnostic gap (stage0): strict-safety hazard produced generic code ${code}`,
-      );
-    }
-    if (expectedCodes.length > 0 && !expectedCodes.includes(code)) {
-      gaps.push(
-        `Diagnostic specificity gap (stage0): expected one of [${expectedCodes.join(", ")}], got ${code ?? "unknown"}`,
-      );
-    }
+    checkHazardResult(stage0, "stage0", gaps, genericCodes, expectedCodes);
   }
 
-  if (selfhost.ok) {
-    gaps.push(
-      "Critical safety gap: selfhost accepted hazard under strict safety",
-    );
-  } else {
-    const code = selfhost.error?.code ?? selfhost.crash?.code;
-    if (genericCodes.has(code)) {
-      gaps.push(
-        `Critical diagnostic gap (selfhost): strict-safety hazard produced generic code ${code}`,
-      );
-    }
-    if (expectedCodes.length > 0 && !expectedCodes.includes(code)) {
-      gaps.push(
-        `Diagnostic specificity gap (selfhost): expected one of [${expectedCodes.join(", ")}], got ${code ?? "unknown"}`,
-      );
-    }
-  }
+  checkHazardResult(selfhost, "selfhost", gaps, genericCodes, expectedCodes);
 
   return { name, stage0, selfhost, gaps };
 }
@@ -649,16 +598,12 @@ if (moduleStage0.ok && moduleSelfhost.ok) {
   try {
     s0 = runMainFromJs(moduleStage0.js, "module-fanout-stage0");
   } catch (error) {
-    moduleGaps.push(
-      `Stage0 module runtime execution failed: ${normalizeError(error).code} (${normalizeError(error).message})`,
-    );
+    moduleGaps.push(runtimeExecGap("Stage0 module", error));
   }
   try {
     sh = runMainFromJs(moduleSelfhost.js, "module-fanout-selfhost");
   } catch (error) {
-    moduleGaps.push(
-      `Selfhost module runtime execution failed: ${normalizeError(error).code} (${normalizeError(error).message})`,
-    );
+    moduleGaps.push(runtimeExecGap("Selfhost module", error));
   }
   if (s0 !== sh) {
     moduleGaps.push(`Runtime divergence: stage0=${s0}, selfhost=${sh}`);
@@ -697,9 +642,7 @@ if (!moduleSelfhost.ok) {
     (selfhostCode === "E_GENERIC" ||
       selfhostCode === "E_SELFHOST_INTERNAL_ERROR")
   ) {
-    moduleGaps.push(
-      `Diagnostic specificity gap: stage0=${stage0Code}, selfhost=${selfhostCode}`,
-    );
+    moduleGaps.push(diagnosticSpecificityGap(stage0Code, selfhostCode));
   }
 }
 

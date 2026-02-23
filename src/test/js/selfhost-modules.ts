@@ -2,11 +2,17 @@
 import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
-import { fileURLToPath } from "node:url";
 import { compileAndLoadSelfhost } from "./selfhost-harness.ts";
+import { getRepoRootFromImportMeta } from "./path-test-utils.ts";
 
-const thisFile = fileURLToPath(import.meta.url);
-const root = path.resolve(path.dirname(thisFile), "..", "..", "..");
+function assertModuleResult(val, label) {
+  if (val !== 42) {
+    console.error(`${label} test failed: expected 42, got ${val}`);
+    process.exit(1);
+  }
+}
+
+const root = getRepoRootFromImportMeta(import.meta.url);
 const modulesEntry = path.join(
   root,
   "src",
@@ -52,10 +58,7 @@ if (typeof moduleSandbox.module.exports.main !== "function") {
 }
 
 const result = moduleSandbox.module.exports.main();
-if (result !== 42) {
-  console.error(`Selfhost module test failed: expected 42, got ${result}`);
-  process.exit(1);
-}
+assertModuleResult(result, "Selfhost module");
 
 try {
   selfhost.compile_file(rootResolutionEntry, rootResolutionOutJs);
@@ -74,11 +77,6 @@ if (typeof rootSandbox.module.exports.main !== "function") {
 }
 
 const rootResult = rootSandbox.module.exports.main();
-if (rootResult !== 42) {
-  console.error(
-    `Selfhost root-resolution module test failed: expected 42, got ${rootResult}`,
-  );
-  process.exit(1);
-}
+assertModuleResult(rootResult, "Selfhost root-resolution module");
 
 console.log("Selfhost module checks passed");

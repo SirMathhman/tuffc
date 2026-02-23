@@ -1,24 +1,31 @@
 // @ts-nocheck
 import { compileSourceResult } from "../../main/js/compiler.ts";
 import { toDiagnostic } from "../../main/js/errors.ts";
-import { expectDiagnosticCode } from "./compile-test-utils.ts";
+import {
+  expectDiagnosticCode,
+  assertCompileSuccessGetOutput,
+} from "./compile-test-utils.ts";
+
+const strlenExternDecl = `extern fn strlen(src: *Str) : I32;
+
+fn main() : I32 => strlen("hello")`;
+
+const C_COMPILE_OPTS = {
+  backend: "selfhost",
+  target: "c",
+  lint: { enabled: false },
+  borrowcheck: { enabled: false },
+  typecheck: { strictSafety: false },
+};
 
 const missingAttribution = `
-extern fn strlen(s: *Str) : I32;
-
-fn main() : I32 => strlen("abc");
+${strlenExternDecl};
 `;
 
 const missingResult = compileSourceResult(
   missingAttribution,
   "<extern-missing-attribution>",
-  {
-    backend: "selfhost",
-    target: "c",
-    lint: { enabled: false },
-    borrowcheck: { enabled: false },
-    typecheck: { strictSafety: false },
-  },
+  C_COMPILE_OPTS,
 );
 
 if (missingResult.ok) {
@@ -36,28 +43,18 @@ expectDiagnosticCode(
 
 const coveredAttribution = `
 extern let { strlen } = string;
-extern fn strlen(s: *Str) : I32;
-
-fn main() : I32 => strlen("abc") - 3;
+${strlenExternDecl} - 3;
 `;
 
 const coveredResult = compileSourceResult(
   coveredAttribution,
   "<extern-covered-attribution>",
-  {
-    backend: "selfhost",
-    target: "c",
-    lint: { enabled: false },
-    borrowcheck: { enabled: false },
-    typecheck: { strictSafety: false },
-  },
+  C_COMPILE_OPTS,
 );
 
-if (!coveredResult.ok) {
-  console.error(
-    `Expected compile success for covered extern source attribution, got: ${coveredResult.error.message}`,
-  );
-  process.exit(1);
-}
+assertCompileSuccessGetOutput(
+  coveredResult,
+  "covered extern source attribution",
+);
 
 console.log("Extern source attribution checks passed");

@@ -8,6 +8,7 @@ import {
   BORROW_INVALID_TARGET_SOURCE,
   COPY_ALIAS_INVALID_BOX_SOURCE,
   COPY_STRUCT_VEC2_PROGRAM,
+  COPY_VEC2_ALIAS_PROGRAM,
   makeBoxProgram,
   makeImmutBorrowedBoxProgram,
   MOVE_AFTER_MOVE_BOX_SOURCE,
@@ -30,19 +31,7 @@ fn main() : I32 => {
 `,
 );
 
-expectOk(
-  "borrow-copy-type-alias",
-  `
-copy struct Vec2 {x : F32, y : F32}
-copy type Vec2Alias = Vec2;
-fn main() : I32 => {
-  let a : Vec2Alias = Vec2 { x: 1, y: 2 };
-  let b : Vec2Alias = a;
-  let c : Vec2Alias = a;
-  0
-}
-`,
-);
+expectOk("borrow-copy-type-alias", COPY_VEC2_ALIAS_PROGRAM);
 
 expectFailCode(
   "borrow-copy-type-alias-invalid",

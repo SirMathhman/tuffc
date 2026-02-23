@@ -2,11 +2,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
 import { compileSourceResult } from "../../main/js/compiler.ts";
+import { getRepoRootFromImportMeta } from "./path-test-utils.ts";
 
-const thisFile = fileURLToPath(import.meta.url);
-const root = path.resolve(path.dirname(thisFile), "..", "..", "..");
+const root = getRepoRootFromImportMeta(import.meta.url);
 const outDir = path.join(root, "tests", "out", "c");
 
 fs.mkdirSync(outDir, { recursive: true });
@@ -15,10 +14,11 @@ const monoProbeSource = `
 fn id<T>(x: T): T => x;
 fn pair<A, B>(a: A, b: B): A => a;
 fn main(): I32 {
+  let w: I32 = 0;
   let x: I32 = id<I32>(41);
   let y: I32 = id(1);
   let z: I32 = pair<I32, Bool>(x, true);
-  x + y + z
+  x + y + z + w
 }
 `;
 
@@ -98,7 +98,8 @@ function runCase(caseName, compileOptions = {}) {
   }
 
   if (!result.value.c.includes("tuff_main")) {
-    console.error(`Generated C for ${caseName} is missing tuff_main symbol`);
+    const sym = "tuff_main";
+    console.error(`Generated C for ${caseName} is missing ${sym} symbol`);
     process.exit(1);
   }
 

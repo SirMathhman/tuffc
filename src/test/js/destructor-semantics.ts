@@ -2,6 +2,7 @@
 import {
   expectCompileFailCode as expectFailCode,
   expectCompileOk as expectOk,
+  assertCompileOk,
 } from "./compile-test-utils.ts";
 import { compileSourceResult } from "../../main/js/compiler.ts";
 import { runMainFromJs } from "./js-runtime-test-utils.ts";
@@ -49,14 +50,12 @@ const implicitScopeDropResult = compileSourceResult(
   "<destructor-implicit-scope-drop>",
   { backend: "selfhost" },
 );
-if (!implicitScopeDropResult.ok) {
-  console.error(
-    `Expected implicit scope drop sample to compile, got: ${implicitScopeDropResult.error.message}`,
-  );
-  process.exit(1);
-}
+const implicitScopeDropOutput = assertCompileOk(
+  implicitScopeDropResult,
+  "implicit scope drop sample",
+);
 const implicitScopeDropValue = runMainFromJs(
-  implicitScopeDropResult.value.js,
+  implicitScopeDropOutput.js,
   "destructor-implicit-scope-drop",
 );
 if (implicitScopeDropValue !== 1) {
@@ -85,14 +84,12 @@ const overwriteDropResult = compileSourceResult(
   "<destructor-overwrite-drop>",
   { backend: "selfhost" },
 );
-if (!overwriteDropResult.ok) {
-  console.error(
-    `Expected overwrite drop sample to compile, got: ${overwriteDropResult.error.message}`,
-  );
-  process.exit(1);
-}
+const overwriteDropOutput = assertCompileOk(
+  overwriteDropResult,
+  "overwrite drop sample",
+);
 const overwriteDropValue = runMainFromJs(
-  overwriteDropResult.value.js,
+  overwriteDropOutput.js,
   "destructor-overwrite-drop",
 );
 if (overwriteDropValue !== 1) {

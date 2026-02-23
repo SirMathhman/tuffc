@@ -1,17 +1,9 @@
 import path from "node:path";
 import fs from "node:fs";
 import { spawnSync } from "node:child_process";
-import {
-  getNativeCliWrapperPath,
-  getNodeExecPath,
-  getRepoRootFromImportMeta,
-  getTsxCliPath,
-} from "./path-test-utils.ts";
+import { getCLIPaths } from "./path-test-utils.ts";
 
-const root = getRepoRootFromImportMeta(import.meta.url);
-const tsxCli = getTsxCliPath(root);
-const nodeExec = getNodeExecPath();
-const nativeCli = getNativeCliWrapperPath(root);
+const { root, tsxCli, nodeExec, nativeCli } = getCLIPaths(import.meta.url);
 
 function runTsCli(args) {
   return spawnSync(nodeExec, [tsxCli, "./src/main/js/cli.ts", ...args], {
@@ -27,51 +19,47 @@ function runNativeCli(args) {
   });
 }
 
-function expectFail(args, expectedText, label, runner = runTsCli) {
+function runAndCheck(
+  args,
+  label,
+  runner,
+): { status: number; combined: string } {
   const result = runner(args);
+  const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+  return { status: result.status, combined };
+}
 
-  if (result.status === 0) {
+function assertContainsText(combined, expectedText, label) {
+  if (!combined.includes(expectedText)) {
+    console.error(
+      `${label}: expected output to include '${expectedText}', got:\n${combined}`,
+    );
+    process.exit(1);
+  }
+}
+
+function expectFail(args, expectedText, label, runner = runTsCli) {
+  const { status, combined } = runAndCheck(args, label, runner);
+  if (status === 0) {
     console.error(`${label}: expected non-zero exit status`);
     process.exit(1);
   }
-
-  const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
-  if (!combined.includes(expectedText)) {
-    console.error(
-      `${label}: expected output to include '${expectedText}', got:\n${combined}`,
-    );
-    process.exit(1);
-  }
+  assertContainsText(combined, expectedText, label);
 }
 
 function expectPass(args, label, runner = runTsCli) {
-  const result = runner(args);
-
-  if (result.status !== 0) {
-    const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
-    console.error(`${label}: expected zero exit status, got ${result.status}`);
+  const { status, combined } = runAndCheck(args, label, runner);
+  if (status !== 0) {
+    console.error(`${label}: expected zero exit status, got ${status}`);
     console.error(combined);
     process.exit(1);
   }
+  return combined;
 }
 
 function expectPassContains(args, expectedText, label, runner = runTsCli) {
-  const result = runner(args);
-
-  if (result.status !== 0) {
-    const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
-    console.error(`${label}: expected zero exit status, got ${result.status}`);
-    console.error(combined);
-    process.exit(1);
-  }
-
-  const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
-  if (!combined.includes(expectedText)) {
-    console.error(
-      `${label}: expected output to include '${expectedText}', got:\n${combined}`,
-    );
-    process.exit(1);
-  }
+  const combined = expectPass(args, label, runner);
+  assertContainsText(combined, expectedText, label);
 }
 
 // Native CLI smoke checks (supported subset): direct-file mode and generic help.
