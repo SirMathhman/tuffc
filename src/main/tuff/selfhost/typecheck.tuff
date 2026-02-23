@@ -284,6 +284,36 @@ fn try_get_decimal_literal_value(n: I32) : I32 => {
     parse_int(text)
 }
 
+// Returns the known I32 value for a node: either a decimal literal or a variable with a tracked
+// literal assignment. Returns a sentinel value of -2147483649 (impossible I32) when unknown.
+fn try_get_known_int_value(n: I32) : I32 => {
+    if (n == 0) {
+        return -2147483649;
+    }
+    let k = node_kind(n);
+    if (k == NK_NUMBER_LIT) {
+        let text = get_interned_str(node_get_data1(n));
+        if (is_decimal_digits(text)) {
+            return parse_int(text);
+        }
+        return -2147483649;
+    }
+    if (k == NK_IDENTIFIER) {
+        let vname = get_interned_str(node_get_data1(n));
+        if (tc_var_literal_values.map_has(vname)) {
+            return tc_var_literal_values.map_get(vname);
+        }
+    }
+    -2147483649
+}
+
+fn known_int_value_is_valid(v: I32) : Bool => {
+    // The sentinel -2147483649 cannot be represented as I32 in JS (it's a float), but
+    // we use it as a distinct out-of-band marker. In JS, parseInt returns it fine.
+    // A simpler check: any value in [-2147483648, 2147483647] is a valid I32.
+    v >= -2147483648 && v <= 2147483647
+}
+
 fn is_decimal_zero_literal(n: I32) : Bool => {
     if (n == 0 || node_kind(n) != NK_NUMBER_LIT) {
         return false;
@@ -294,6 +324,8 @@ fn is_decimal_zero_literal(n: I32) : Bool => {
 // Temporary typecheck context maps used for strict array bounds proofs.
 let tc_array_init_bounds : Map = map_new();
 let tc_index_upper_bounds : Map = map_new();
+// Maps variable names to their known literal I32 values for richer overflow diagnostics.
+let tc_var_literal_values : Map = map_new();
 let tc_global_value_types : Map = map_new();
 let tc_alias_union_tags : Map = map_new();
 let tc_type_alias_names : *mut Set = set_new();
@@ -472,29 +504,35 @@ fn typecheck_expr(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types:
         if (op.str_eq("+") || op.str_eq("-") || op.str_eq("*")) {
             let lnode = node_get_data2(n);
             let rnode = node_get_data3(n);
-            let left = try_get_decimal_literal_value(lnode);
-            let right = try_get_decimal_literal_value(rnode);
+            let left = try_get_known_int_value(lnode);
+            let right = try_get_known_int_value(rnode);
 
-            if (left != 0 || is_decimal_zero_literal(lnode)) {
-                if (right != 0 || is_decimal_zero_literal(rnode)) {
-                    let result = 0;
-                    if (op.str_eq("+")) {
-                        result = left + right;
-                    } else if (op.str_eq("-")) {
-                        result = left - right;
-                    } else {
-                        result = left * right;
-                    }
+            if (known_int_value_is_valid(left) && known_int_value_is_valid(right)) {
+                let result = 0;
+                if (op.str_eq("+")) {
+                    result = left + right;
+                } else if (op.str_eq("-")) {
+                    result = left - right;
+                } else {
+                    result = left * right;
+                }
 
-                    if (result < -2147483648 || result > 2147483647) {
-                        let witness = int_to_string(left).str_concat(" ").str_concat(op).str_concat(" ").str_concat(int_to_string(right)).str_concat(" = ").str_concat(int_to_string(result)).str_concat(", which is outside I32 range [-2147483648, 2147483647]");
-                        panic_with_code(
-                            "E_SAFETY_OVERFLOW",
-                            "Integer overflow/underflow proven possible for '".str_concat(op).str_concat("'"),
-                            witness,
-                            "Constrain operands or use a wider intermediate type before narrowing."
-                        );
+                if (result < -2147483648 || result > 2147483647) {
+                    let left_desc = int_to_string(left);
+                    let right_desc = int_to_string(right);
+                    if (node_kind(lnode) == NK_IDENTIFIER) {
+                        left_desc = get_interned_str(node_get_data1(lnode)).str_concat("=").str_concat(int_to_string(left));
                     }
+                    if (node_kind(rnode) == NK_IDENTIFIER) {
+                        right_desc = get_interned_str(node_get_data1(rnode)).str_concat("=").str_concat(int_to_string(right));
+                    }
+                    let witness = left_desc.str_concat(" ").str_concat(op).str_concat(" ").str_concat(right_desc).str_concat(" = ").str_concat(int_to_string(result)).str_concat(", which is outside I32 range [-2147483648, 2147483647]");
+                    panic_with_code(
+                        "E_SAFETY_OVERFLOW",
+                        "Integer overflow/underflow proven possible for '".str_concat(op).str_concat("'"),
+                        witness,
+                        "Constrain operands or use a wider intermediate type before narrowing."
+                    );
                 }
             }
         }
@@ -846,8 +884,10 @@ fn typecheck_stmt(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types:
     if (kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL || kind == NK_ACTUAL_FN_DECL) {
         let prev_array_bounds = tc_array_init_bounds;
         let prev_index_bounds = tc_index_upper_bounds;
+        let prev_var_literals = tc_var_literal_values;
         tc_array_init_bounds = map_new();
         tc_index_upper_bounds = map_new();
+        tc_var_literal_values = map_new();
 
         let fn_local_types = map_new();
         let fn_nonnull_ptrs = map_new();
@@ -897,6 +937,7 @@ fn typecheck_stmt(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types:
 
         tc_array_init_bounds = prev_array_bounds;
         tc_index_upper_bounds = prev_index_bounds;
+        tc_var_literal_values = prev_var_literals;
         return 0;
     }
 
@@ -932,6 +973,12 @@ fn typecheck_stmt(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types:
             }
         } else if (!rhs_name.str_eq("Unknown")) {
             local_types.map_set(get_interned_str(node_get_data1(n)), rhs_name);
+        }
+
+        // Track literal assignments for richer overflow witness messages.
+        let lit_val = try_get_known_int_value(rhs);
+        if (known_int_value_is_valid(lit_val)) {
+            tc_var_literal_values.map_set(get_interned_str(node_get_data1(n)), lit_val);
         }
         return 0;
     }

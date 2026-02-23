@@ -3442,6 +3442,37 @@ function try_get_decimal_literal_value(n) {
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.try_get_decimal_literal_value = try_get_decimal_literal_value;
 
+const __tuff_outer_for_try_get_known_int_value = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function try_get_known_int_value(n) {
+  let __tuff_this = { n: n, this: __tuff_outer_for_try_get_known_int_value };
+  if ((n === 0)) {
+  return (-2147483649);
+}
+  let k = node_kind(n); if (typeof __tuff_this !== 'undefined') __tuff_this.k = k;
+  if ((k === NK_NUMBER_LIT)) {
+  let text = get_interned_str(node_get_data1(n)); if (typeof __tuff_this !== 'undefined') __tuff_this.text = text;
+  if (is_decimal_digits(text)) {
+  return parse_int(text);
+}
+  return (-2147483649);
+}
+  if ((k === NK_IDENTIFIER)) {
+  let vname = get_interned_str(node_get_data1(n)); if (typeof __tuff_this !== 'undefined') __tuff_this.vname = vname;
+  if ((() => { const __recv = tc_var_literal_values; const __prop = __recv?.["map_has"]; if (typeof __prop === "function") return __prop(vname); const __dyn = __recv?.table?.map_has; return __dyn ? __dyn(__recv.ref, vname) : map_has(__recv, vname); })()) {
+  return (() => { const __recv = tc_var_literal_values; const __prop = __recv?.["map_get"]; if (typeof __prop === "function") return __prop(vname); const __dyn = __recv?.table?.map_get; return __dyn ? __dyn(__recv.ref, vname) : map_get(__recv, vname); })();
+}
+}
+  return (-2147483649);
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.try_get_known_int_value = try_get_known_int_value;
+
+const __tuff_outer_for_known_int_value_is_valid = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function known_int_value_is_valid(v) {
+  let __tuff_this = { v: v, this: __tuff_outer_for_known_int_value_is_valid };
+  return ((v >= (-2147483648)) && (v <= 2147483647));
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.known_int_value_is_valid = known_int_value_is_valid;
+
 const __tuff_outer_for_is_decimal_zero_literal = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
 function is_decimal_zero_literal(n) {
   let __tuff_this = { n: n, this: __tuff_outer_for_is_decimal_zero_literal };
@@ -3455,6 +3486,8 @@ if (typeof __tuff_this !== 'undefined') __tuff_this.is_decimal_zero_literal = is
 let tc_array_init_bounds = map_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.tc_array_init_bounds = tc_array_init_bounds;
 
 let tc_index_upper_bounds = map_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.tc_index_upper_bounds = tc_index_upper_bounds;
+
+let tc_var_literal_values = map_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.tc_var_literal_values = tc_var_literal_values;
 
 let tc_global_value_types = map_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.tc_global_value_types = tc_global_value_types;
 
@@ -3647,10 +3680,9 @@ function typecheck_expr(n, fn_arities, fn_param_types, fn_return_types, local_ty
   if ((((() => { const __recv = op; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("+"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "+") : str_eq(__recv, "+"); })() || (() => { const __recv = op; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("-"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "-") : str_eq(__recv, "-"); })()) || (() => { const __recv = op; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("*"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "*") : str_eq(__recv, "*"); })())) {
   let lnode = node_get_data2(n); if (typeof __tuff_this !== 'undefined') __tuff_this.lnode = lnode;
   let rnode = node_get_data3(n); if (typeof __tuff_this !== 'undefined') __tuff_this.rnode = rnode;
-  let left = try_get_decimal_literal_value(lnode); if (typeof __tuff_this !== 'undefined') __tuff_this.left = left;
-  let right = try_get_decimal_literal_value(rnode); if (typeof __tuff_this !== 'undefined') __tuff_this.right = right;
-  if (((left !== 0) || is_decimal_zero_literal(lnode))) {
-  if (((right !== 0) || is_decimal_zero_literal(rnode))) {
+  let left = try_get_known_int_value(lnode); if (typeof __tuff_this !== 'undefined') __tuff_this.left = left;
+  let right = try_get_known_int_value(rnode); if (typeof __tuff_this !== 'undefined') __tuff_this.right = right;
+  if ((known_int_value_is_valid(left) && known_int_value_is_valid(right))) {
   let result = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.result = result;
   if ((() => { const __recv = op; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("+"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "+") : str_eq(__recv, "+"); })()) {
   result = (left + right); if (typeof __tuff_this !== 'undefined') __tuff_this.result = result;
@@ -3660,9 +3692,16 @@ function typecheck_expr(n, fn_arities, fn_param_types, fn_return_types, local_ty
   result = (left * right); if (typeof __tuff_this !== 'undefined') __tuff_this.result = result;
 } }
   if (((result < (-2147483648)) || (result > 2147483647))) {
-  let witness = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = int_to_string(left); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(" "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " ") : str_concat(__recv, " "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(op); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, op) : str_concat(__recv, op); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(" "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " ") : str_concat(__recv, " "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string(right)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(right)) : str_concat(__recv, int_to_string(right)); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(" = "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " = ") : str_concat(__recv, " = "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string(result)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(result)) : str_concat(__recv, int_to_string(result)); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(", which is outside I32 range [-2147483648, 2147483647]"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ", which is outside I32 range [-2147483648, 2147483647]") : str_concat(__recv, ", which is outside I32 range [-2147483648, 2147483647]"); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.witness = witness;
-  panic_with_code("E_SAFETY_OVERFLOW", (() => { const __recv = (() => { const __recv = "Integer overflow/underflow proven possible for '"; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(op); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, op) : str_concat(__recv, op); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("'"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "'") : str_concat(__recv, "'"); })(), witness, "Constrain operands or use a wider intermediate type before narrowing.");
+  let left_desc = int_to_string(left); if (typeof __tuff_this !== 'undefined') __tuff_this.left_desc = left_desc;
+  let right_desc = int_to_string(right); if (typeof __tuff_this !== 'undefined') __tuff_this.right_desc = right_desc;
+  if ((node_kind(lnode) === NK_IDENTIFIER)) {
+  left_desc = (() => { const __recv = (() => { const __recv = get_interned_str(node_get_data1(lnode)); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("="); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "=") : str_concat(__recv, "="); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string(left)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(left)) : str_concat(__recv, int_to_string(left)); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.left_desc = left_desc;
 }
+  if ((node_kind(rnode) === NK_IDENTIFIER)) {
+  right_desc = (() => { const __recv = (() => { const __recv = get_interned_str(node_get_data1(rnode)); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("="); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "=") : str_concat(__recv, "="); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string(right)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(right)) : str_concat(__recv, int_to_string(right)); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.right_desc = right_desc;
+}
+  let witness = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = left_desc; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(" "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " ") : str_concat(__recv, " "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(op); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, op) : str_concat(__recv, op); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(" "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " ") : str_concat(__recv, " "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(right_desc); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, right_desc) : str_concat(__recv, right_desc); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(" = "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " = ") : str_concat(__recv, " = "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string(result)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(result)) : str_concat(__recv, int_to_string(result)); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(", which is outside I32 range [-2147483648, 2147483647]"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ", which is outside I32 range [-2147483648, 2147483647]") : str_concat(__recv, ", which is outside I32 range [-2147483648, 2147483647]"); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.witness = witness;
+  panic_with_code("E_SAFETY_OVERFLOW", (() => { const __recv = (() => { const __recv = "Integer overflow/underflow proven possible for '"; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(op); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, op) : str_concat(__recv, op); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("'"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "'") : str_concat(__recv, "'"); })(), witness, "Constrain operands or use a wider intermediate type before narrowing.");
 }
 }
 }
@@ -3915,8 +3954,10 @@ function typecheck_stmt(n, fn_arities, fn_param_types, fn_return_types, local_ty
   if ((((kind === NK_FN_DECL) || (kind === NK_CLASS_FN_DECL)) || (kind === NK_ACTUAL_FN_DECL))) {
   let prev_array_bounds = tc_array_init_bounds; if (typeof __tuff_this !== 'undefined') __tuff_this.prev_array_bounds = prev_array_bounds;
   let prev_index_bounds = tc_index_upper_bounds; if (typeof __tuff_this !== 'undefined') __tuff_this.prev_index_bounds = prev_index_bounds;
+  let prev_var_literals = tc_var_literal_values; if (typeof __tuff_this !== 'undefined') __tuff_this.prev_var_literals = prev_var_literals;
   tc_array_init_bounds = map_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.tc_array_init_bounds = tc_array_init_bounds;
   tc_index_upper_bounds = map_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.tc_index_upper_bounds = tc_index_upper_bounds;
+  tc_var_literal_values = map_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.tc_var_literal_values = tc_var_literal_values;
   let fn_local_types = map_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.fn_local_types = fn_local_types;
   let fn_nonnull_ptrs = map_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.fn_nonnull_ptrs = fn_nonnull_ptrs;
   let params = node_get_data3(n); if (typeof __tuff_this !== 'undefined') __tuff_this.params = params;
@@ -3954,6 +3995,7 @@ function typecheck_stmt(n, fn_arities, fn_param_types, fn_return_types, local_ty
 }
   tc_array_init_bounds = prev_array_bounds; if (typeof __tuff_this !== 'undefined') __tuff_this.tc_array_init_bounds = tc_array_init_bounds;
   tc_index_upper_bounds = prev_index_bounds; if (typeof __tuff_this !== 'undefined') __tuff_this.tc_index_upper_bounds = tc_index_upper_bounds;
+  tc_var_literal_values = prev_var_literals; if (typeof __tuff_this !== 'undefined') __tuff_this.tc_var_literal_values = tc_var_literal_values;
   return 0;
 }
   if ((kind === NK_LET_DECL)) {
@@ -3981,6 +4023,10 @@ function typecheck_stmt(n, fn_arities, fn_param_types, fn_return_types, local_ty
 } else { if ((!(() => { const __recv = rhs_name; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("Unknown"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "Unknown") : str_eq(__recv, "Unknown"); })())) {
   (() => { const __recv = local_types; const __prop = __recv?.["map_set"]; if (typeof __prop === "function") return __prop(get_interned_str(node_get_data1(n)), rhs_name); const __dyn = __recv?.table?.map_set; return __dyn ? __dyn(__recv.ref, get_interned_str(node_get_data1(n)), rhs_name) : map_set(__recv, get_interned_str(node_get_data1(n)), rhs_name); })();
 } }
+  let lit_val = try_get_known_int_value(rhs); if (typeof __tuff_this !== 'undefined') __tuff_this.lit_val = lit_val;
+  if (known_int_value_is_valid(lit_val)) {
+  (() => { const __recv = tc_var_literal_values; const __prop = __recv?.["map_set"]; if (typeof __prop === "function") return __prop(get_interned_str(node_get_data1(n)), lit_val); const __dyn = __recv?.table?.map_set; return __dyn ? __dyn(__recv.ref, get_interned_str(node_get_data1(n)), lit_val) : map_set(__recv, get_interned_str(node_get_data1(n)), lit_val); })();
+}
   return 0;
 }
   if ((kind === NK_EXTERN_IMPORT_DECL)) {

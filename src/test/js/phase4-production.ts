@@ -13,6 +13,7 @@ import {
   NULLABLE_POINTER_UNGUARDED_SOURCE,
   STRICT_DIV_BY_ZERO_SOURCE,
   STRICT_OVERFLOW_SOURCE,
+  STRICT_OVERFLOW_VAR_SOURCE,
 } from "./test-fixtures.ts";
 
 type ResultUnknown =
@@ -104,6 +105,26 @@ if (!overflowDiag.reason || !overflowDiag.reason.includes("2147483648")) {
   process.exit(1);
 }
 assertDiagnosticContract(overflowDiag, "overflow witness diagnostic");
+
+// 1b-overflow-var) Selfhost: overflow from variable with known literal value should also show witness.
+const overflowVarResult = compileSourceResult(
+  STRICT_OVERFLOW_VAR_SOURCE,
+  "<phase4-selfhost-overflow-var>",
+  { backend: "selfhost", typecheck: { strictSafety: true } },
+);
+if (overflowVarResult.ok) {
+  console.error("Selfhost overflow-var witness test expected compile failure");
+  process.exit(1);
+}
+const overflowVarDiag = toDiagnostic(unwrapErr(overflowVarResult));
+expectDiagnosticCode(overflowVarDiag, "E_SAFETY_OVERFLOW", "phase4 overflow-var");
+if (!overflowVarDiag.reason || !overflowVarDiag.reason.includes("x=2147483647")) {
+  console.error(
+    `Expected selfhost overflow-var reason to include variable witness 'x=2147483647', got: ${overflowVarDiag.reason}`,
+  );
+  process.exit(1);
+}
+assertDiagnosticContract(overflowVarDiag, "overflow-var witness diagnostic");
 
 // 1b) Selfhost backend should also enforce strict-safety diagnostics contract.
 const strictSelfhostResult = compileSourceResult(

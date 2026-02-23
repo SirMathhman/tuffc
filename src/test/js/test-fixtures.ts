@@ -39,6 +39,8 @@ fn main() : I32 => 0;
 
 export const STRICT_DIV_BY_ZERO_SOURCE = `fn bad(x : I32) : I32 => 100 / x;`;
 export const STRICT_OVERFLOW_SOURCE = `fn bad() : I32 => 2147483647 + 1;`;
+export const STRICT_OVERFLOW_VAR_SOURCE = `fn bad() : I32 => { let x : I32 = 2147483647; x + 1 }`;
+
 export const COPY_VEC2_ALIAS_PROGRAM = `
 copy struct Vec3 { x : F32, y : F32, z : F32 }
 copy type Vec3Alias = Vec3;

@@ -23,6 +23,11 @@ const compileFailureCases = [
     file: "demo-nullable-pointer.tuff",
     expectedMessagePart: "Unexpected token",
   },
+  // Phase B: variable literal tracking now catches x=2147483647, y=1 => x+y overflows.
+  {
+    file: "demo-overflow.tuff",
+    expectedMessagePart: "overflow",
+  },
 ];
 
 const compileSuccessCases = [
@@ -35,9 +40,6 @@ const compileSuccessCases = [
   {
     file: "demo-div-by-zero-safe.tuff",
     expectedMainResult: 5,
-  },
-  {
-    file: "demo-overflow.tuff",
   },
   {
     file: "demo-overflow-call.tuff",
