@@ -1,0 +1,5 @@
+fn main() => {
+let array = [1, 2, 3];
+let slice = &array;
+slice.length
+}

@@ -4,13 +4,13 @@
 
 // Source attributions satisfy the E_EXTERN_NO_SOURCE gate for C codegen.
 // The actual implementations come from the always-embedded C substrate.
-extern let { str_length, str_char_at, str_slice, str_concat, str_eq, str_from_char_code, str_index_of, str_trim, str_replace_all, char_code, int_to_string, parse_int } = globalThis;
+extern let { str_length, str_char_at, str_slice, str_mut_slice, str_concat, str_eq, str_from_char_code, str_index_of, str_trim, str_replace_all, char_code, int_to_string, parse_int } = globalThis;
 extern let { sb_new, sb_append, sb_append_char, sb_build } = globalThis;
 extern let { __vec_new, __vec_push, __vec_pop, __vec_get, __vec_set, __vec_length, __vec_init, __vec_capacity, __vec_clear, __vec_join, __vec_includes } = globalThis;
-extern let { __map_new, map_set, map_get, map_has } = globalThis;
+extern let { __map_new, map_set, map_get, map_has, map_delete } = globalThis;
 extern let { __set_new, set_add, set_has, set_delete } = globalThis;
 extern let { read_file, write_file, path_join, path_dirname, print, print_error } = globalThis;
-extern let { panic, panic_with_code } = globalThis;
+extern let { panic, panic_with_code, panic_with_code_loc } = globalThis;
 extern let { get_argc, get_argv } = globalThis;
 extern let { perf_now, profile_mark, profile_take_json } = globalThis;
 

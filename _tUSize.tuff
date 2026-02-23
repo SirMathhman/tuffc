@@ -1,0 +1,1 @@
+fn main() => { let x : USize = 0USize; x }

@@ -1,0 +1,10 @@
+fn outer() => {
+ let x = 100;
+ fn inner() => {
+  this
+ }
+ this
+}
+let outerVal = outer();
+let innerVal = outerVal.inner();
+innerVal.x;

@@ -19,6 +19,7 @@ int64_t __map_new(void);
 int64_t map_set(int64_t thisMap, int64_t k, int64_t v);
 int64_t map_get(int64_t thisMap, int64_t k);
 int64_t map_has(int64_t thisMap, int64_t k);
+int64_t map_delete(int64_t thisMap, int64_t k);
 
 int64_t __set_new(void);
 int64_t set_add(int64_t thisSet, int64_t item);

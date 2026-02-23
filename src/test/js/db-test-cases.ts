@@ -28,18 +28,7 @@ const allowKnownGaps = process.argv.includes("--allow-known-gaps");
 const nodeExec = getNodeExecPath();
 const nativeCli = getNativeCliWrapperPath(root);
 
-const selfhostKnownGapCaseIds = new Set<number>([
-  // Let: coercion/subtype (8), compile-error gap (7)
-  7, 8,
-  // Destructor: signature mismatch at compile time (9)
-  9,
-  // Tuple: type-annotated destructuring parse gap (13)
-  13,
-  // Slice: slice literal syntax not yet supported (43, 44)
-  43, 44,
-  // This: member-access field-not-found check regressed in rebuilt binary (37)
-  37,
-]);
+const selfhostKnownGapCaseIds = new Set<number>([]);
 
 function shouldSkipKnownGap(testCase: DbCase): boolean {
   return (
@@ -138,10 +127,14 @@ function compileViaNativeCli(
   const outputPath = path.join(nativeTmpDir, `${base}.js`);
   fs.writeFileSync(inputPath, source, "utf8");
 
-  const run = spawnSync(nodeExec, [nativeCli, inputPath, "-o", outputPath], {
-    cwd: root,
-    encoding: "utf8",
-  });
+  const run = spawnSync(
+    nodeExec,
+    [nativeCli, inputPath, "--stage2", "-o", outputPath],
+    {
+      cwd: root,
+      encoding: "utf8",
+    },
+  );
 
   if (run.status !== 0 || !fs.existsSync(outputPath)) {
     return {

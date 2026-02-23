@@ -182,6 +182,25 @@ int64_t map_has(int64_t thisMap, int64_t k)
     return tuff_map_index_of(m, k) >= 0;
 }
 
+int64_t map_delete(int64_t thisMap, int64_t k)
+{
+    TuffMap *m = (TuffMap *)tuff_from_val(thisMap);
+    if (m == NULL)
+        return 0;
+    k = tuff_canonicalize_key(k);
+    int64_t idx = tuff_map_index_of(m, k);
+    if (idx < 0)
+        return 0;
+    size_t i = (size_t)idx;
+    for (size_t j = i + 1; j < m->len; j++)
+    {
+        m->keys[j - 1] = m->keys[j];
+        m->vals[j - 1] = m->vals[j];
+    }
+    m->len -= 1;
+    return 1;
+}
+
 int64_t __set_new(void)
 {
     TuffSet *s = (TuffSet *)calloc(1, sizeof(TuffSet));

@@ -138,6 +138,35 @@ out fn map_get_i32_i32(this : Map<I32, I32>, k : I32) : I32 => {
 	0
 };
 
+out fn map_has_i32_i32(this : Map<I32, I32>, k : I32) : Bool => {
+	if (this == 0) return false;
+	let mut i = 0USize;
+	while (i + 1USize < this.init) {
+		if (this[i] == k) return true;
+		i = i + 2USize;
+	}
+	false
+};
+
+out fn map_delete_i32_i32(this : Map<I32, I32>, k : I32) : Bool => {
+	if (this == 0) return false;
+	let mut i = 0USize;
+	while (i + 1USize < this.init) {
+		if (this[i] == k) {
+			let mut j = i;
+			while (j + 3USize <= this.init) {
+				this[j] = this[j + 2USize];
+				this[j + 1USize] = this[j + 3USize];
+				j = j + 2USize;
+			}
+			this.init = this.init - 2USize;
+			return true;
+		}
+		i = i + 2USize;
+	}
+	false
+};
+
 out fn set_new_i32() : Set<I32> => {
 	let out_ptr = malloc<I32, DEFAULT_SIZE>(sizeOf<I32>() * DEFAULT_SIZE);
 	if (out_ptr == 0) return EMPTY_SET_I32;

@@ -13,7 +13,7 @@ const outDir = getTestsOutDir(root, "demo-regressions");
 const compileFailureCases = [
   {
     file: "demo-array-bounds-fixed.tuff",
-    expectedMessagePart: "Unexpected token",
+    expectedMessagePart: "Cannot prove array index bound safety",
   },
   {
     file: "demo-div-by-zero.tuff",

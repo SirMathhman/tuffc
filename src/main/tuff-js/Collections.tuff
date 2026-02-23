@@ -26,9 +26,14 @@ out expect fn vec_init_i32(this : Vec<I32>) : USize;
 out expect fn vec_capacity_i32(this : Vec<I32>) : USize;
 out expect fn vec_length_i32(this : Vec<I32>) : USize;
 
+extern fn map_has(this : Map<I32, I32>, k : I32) : Bool;
+extern fn map_delete(this : Map<I32, I32>, k : I32) : Bool;
+
 out expect fn map_new_i32_i32() : Map<I32, I32>;
 out expect fn map_set_i32_i32(this : Map<I32, I32>, k : I32, v : I32) : Map<I32, I32>;
 out expect fn map_get_i32_i32(this : Map<I32, I32>, k : I32) : I32;
+out expect fn map_has_i32_i32(this : Map<I32, I32>, k : I32) : Bool;
+out expect fn map_delete_i32_i32(this : Map<I32, I32>, k : I32) : Bool;
 
 out expect fn set_new_i32() : Set<I32>;
 out expect fn set_add_i32(this : Set<I32>, item : I32) : Set<I32>;
@@ -45,6 +50,8 @@ out actual fn vec_length_i32(this : Vec<I32>) : USize => vec_length(this);
 out actual fn map_new_i32_i32() : Map<I32, I32> => __map_new();
 out actual fn map_set_i32_i32(this : Map<I32, I32>, k : I32, v : I32) : Map<I32, I32> => map_set(this, k, v);
 out actual fn map_get_i32_i32(this : Map<I32, I32>, k : I32) : I32 => map_get(this, k);
+out actual fn map_has_i32_i32(this : Map<I32, I32>, k : I32) : Bool => map_has(this, k);
+out actual fn map_delete_i32_i32(this : Map<I32, I32>, k : I32) : Bool => map_delete(this, k);
 
 out actual fn set_new_i32() : Set<I32> => __set_new();
 out actual fn set_add_i32(this : Set<I32>, item : I32) : Set<I32> => set_add(this, item);

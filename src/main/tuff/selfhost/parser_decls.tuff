@@ -460,6 +460,11 @@ fn p_parse_let() : I32 => {
             }
         }
         p_expect(TK_SYMBOL, ")", "Expected ')' in tuple let destructuring");
+        // Optional type annotation on tuple destructuring: let (a, b) : (T1, T2) = ...
+        if (p_at(TK_SYMBOL, ":")) {
+            p_eat();
+            p_parse_type(); // parse and discard — type is validated per-element
+        }
         p_expect(TK_SYMBOL, "=", "Expected '=' in tuple let destructuring");
         let rhs = p_parse_expression(0);
         p_expect(TK_SYMBOL, ";", "Expected ';' after tuple let destructuring");

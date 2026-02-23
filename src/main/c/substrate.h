@@ -51,3 +51,6 @@ typedef struct
 } TuffSet;
 
 void tuff_panic(const char *message);
+int64_t perf_now(void);
+int64_t profile_mark(int64_t label, int64_t duration_ms);
+int64_t profile_take_json(void);

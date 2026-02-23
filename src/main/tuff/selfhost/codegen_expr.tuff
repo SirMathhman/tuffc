@@ -13,13 +13,30 @@ fn js_ident_expr(name: *Str) : *Str => {
     name
 }
 
+fn cg_strip_num_suffix(s: *Str) : *Str => {
+    let n = s.str_length();
+    if (n > 5 && s.str_slice(n - 5, n).str_eq("USize")) { return s.str_slice(0, n - 5); }
+    if (n > 5 && s.str_slice(n - 5, n).str_eq("ISize")) { return s.str_slice(0, n - 5); }
+    if (n > 4 && s.str_slice(n - 4, n).str_eq("U128")) { return s.str_slice(0, n - 4); }
+    if (n > 4 && s.str_slice(n - 4, n).str_eq("I128")) { return s.str_slice(0, n - 4); }
+    if (n > 3 && s.str_slice(n - 3, n).str_eq("U64")) { return s.str_slice(0, n - 3); }
+    if (n > 3 && s.str_slice(n - 3, n).str_eq("I64")) { return s.str_slice(0, n - 3); }
+    if (n > 3 && s.str_slice(n - 3, n).str_eq("U32")) { return s.str_slice(0, n - 3); }
+    if (n > 3 && s.str_slice(n - 3, n).str_eq("I32")) { return s.str_slice(0, n - 3); }
+    if (n > 3 && s.str_slice(n - 3, n).str_eq("U16")) { return s.str_slice(0, n - 3); }
+    if (n > 3 && s.str_slice(n - 3, n).str_eq("I16")) { return s.str_slice(0, n - 3); }
+    if (n > 2 && s.str_slice(n - 2, n).str_eq("U8")) { return s.str_slice(0, n - 2); }
+    if (n > 2 && s.str_slice(n - 2, n).str_eq("I8")) { return s.str_slice(0, n - 2); }
+    s
+}
+
 fn emit_expr(n: I32) : *Str => {
     let kind = node_kind(n);
     
     if (kind == NK_NUMBER_LIT) {
         let val = node_get_data1(n);
-        // Get the number string from intern
-        return get_interned_str(val);
+        // Get the number string, stripping any type suffix for valid JS output
+        return cg_strip_num_suffix(get_interned_str(val));
     }
     
     if (kind == NK_BOOL_LIT) {
@@ -194,6 +211,8 @@ fn emit_expr(n: I32) : *Str => {
     if (kind == NK_MEMBER_EXPR) {
         let obj = emit_expr(node_get_data1(n));
         let prop = get_interned_str(node_get_data2(n));
+        // .init on a slice/array emits as .length (JS arrays track initialized count = length)
+        if (prop.str_eq("init")) { return obj.str_concat(".length"); }
         return obj.str_concat(".").str_concat(prop);
     }
     

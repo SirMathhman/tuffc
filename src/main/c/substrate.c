@@ -326,3 +326,13 @@ int64_t __host_get_c_runtime_prelude_source(void)
 {
     return tuff_read_file_as_string(getenv("TUFFC_PRELUDE_PATH"));
 }
+
+// Profiling stubs: no-op in the native C binary.
+int64_t perf_now(void) { return 0; }
+int64_t profile_mark(int64_t label, int64_t duration_ms)
+{
+    (void)label;
+    (void)duration_ms;
+    return 0;
+}
+int64_t profile_take_json(void) { return tuff_to_val("{}"); }

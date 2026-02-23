@@ -1,0 +1,8 @@
+let mut x = 0;
+fn drop_i32(this : I32) => {
+ x += this;
+}
+
+type DroppableI32 = I32 then drop_i32;
+let temp : DroppableI32 = 100;
+x

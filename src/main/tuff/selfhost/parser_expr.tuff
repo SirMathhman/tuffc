@@ -340,6 +340,24 @@ fn p_parse_postfix(exprIn: I32) : I32 => {
 }
 
 fn p_parse_primary() : I32 => {
+    // Array literal: [expr, expr, ...]
+    if (p_at(TK_SYMBOL, "[")) {
+        p_eat();
+        let items = vec_new();
+        if (!p_at(TK_SYMBOL, "]")) {
+            items.vec_push(p_parse_expression(0));
+            while (p_at(TK_SYMBOL, ",")) {
+                p_eat();
+                if (p_at(TK_SYMBOL, "]")) { break; }
+                items.vec_push(p_parse_expression(0));
+            }
+        }
+        p_expect(TK_SYMBOL, "]", "Expected ']' in array literal");
+        let node = node_new(NK_TUPLE_EXPR);
+        node_set_data1(node, items);
+        return p_parse_postfix(node);
+    }
+
     // Number
     if (p_at_kind(TK_NUMBER)) {
         let t = p_eat();
