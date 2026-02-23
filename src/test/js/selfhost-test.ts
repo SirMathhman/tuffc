@@ -11,6 +11,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import vm from "node:vm";
 import * as runtime from "../../main/js/runtime.ts";
 import { compileAndLoadSelfhost } from "./selfhost-harness.ts";
 import { loadStageCompilerFromJs } from "./stage-matrix-harness.ts";

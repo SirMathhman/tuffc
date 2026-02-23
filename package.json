@@ -9,7 +9,8 @@
     "tuffc": "./scripts/tuffc-native.mjs"
   },
   "scripts": {
-    "build": "npm run test:core",
+    "build": "npm run native:selfhost:parity && npm run build:selfhost:js",
+    "build:selfhost:js": "tsx ./scripts/build-selfhost-js.ts",
     "test": "npm run test:core",
     "test:core": "tsx ./src/test/js/test-orchestrator.ts --suite=core",
     "test:native": "tsx ./src/test/js/test-orchestrator.ts --suite=native",

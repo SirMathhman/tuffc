@@ -2,7 +2,6 @@
 import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
-import { spawnSync } from "node:child_process";
 import * as runtime from "../../main/js/runtime.ts";
 
 export function timingEnabled(): boolean {
@@ -20,123 +19,50 @@ function nowMs(): number {
   return Date.now();
 }
 
-function summarizeText(text: string | null | undefined, max = 300): string {
-  if (!text) return "";
-  if (text.length <= max) return text;
-  return `${text.slice(0, max)}…`;
+/**
+ * The canonical pre-built selfhost JS artifact produced by `npm run build`.
+ * All selfhost-consuming tests load from here — never recompile on their own.
+ */
+export function getCanonicalSelfhostJsPath(root: string): string {
+  return path.join(root, "tests", "out", "build", "selfhost.js");
 }
 
 export function compileAndLoadSelfhost(root: string, outDir: string) {
   const t0 = nowMs();
   const selfhostPath = path.join(root, "src", "main", "tuff", "selfhost.tuff");
-  const outputPath = path.join(outDir, "selfhost.js");
-  const relInput = path.relative(root, selfhostPath).replaceAll("\\", "/");
-  const relOutput = path.relative(root, outputPath).replaceAll("\\", "/");
-  const relModuleBase = "./src/main";
-  fs.mkdirSync(outDir, { recursive: true });
+  const buildArtifact = getCanonicalSelfhostJsPath(root);
 
-  const nativeExe = path.join(
-    root,
-    "tests",
-    "out",
-    "c-bootstrap",
-    process.platform === "win32"
-      ? "stage3_selfhost_cli.exe"
-      : "stage3_selfhost_cli",
-  );
-  const substratePath = path.join(
-    root,
-    "tests",
-    "out",
-    "c-bootstrap",
-    "embedded_c_substrate.c",
-  );
-  const preludePath = path.join(
-    root,
-    "src",
-    "main",
-    "tuff-c",
-    "RuntimePrelude.tuff",
-  );
-
-  if (!fs.existsSync(nativeExe)) {
+  if (!fs.existsSync(buildArtifact)) {
     throw new Error(
-      `Missing native selfhost executable: ${nativeExe}. Run 'npm run native:selfhost:parity' first.`,
+      `[selfhost-harness] Build artifact not found: ${buildArtifact}\n` +
+        `Run 'npm run build' to produce it, then re-run tests.`,
     );
   }
 
-  const env: NodeJS.ProcessEnv = { ...process.env };
-  if (fs.existsSync(substratePath)) {
-    env.TUFFC_SUBSTRATE_PATH = substratePath;
-  }
-  if (fs.existsSync(preludePath)) {
-    env.TUFFC_PRELUDE_PATH = preludePath;
-  }
+  tlog(`loading selfhost JS from build artifact`);
+  const tReadStart = nowMs();
+  const selfhostJs = fs.readFileSync(buildArtifact, "utf8");
+  tlog(`read ${selfhostJs.length} chars in ${nowMs() - tReadStart}ms`);
 
-  const compile = spawnSync(
-    nativeExe,
-    [
-      `./${relInput}`,
-      "--modules",
-      "--module-base",
-      relModuleBase,
-      "--target",
-      "js",
-      "-o",
-      `./${relOutput}`,
-    ],
-    {
-      cwd: root,
-      env,
-      encoding: "utf8",
-    },
-  );
-
-  tlog(
-    `native compile finished in ${nowMs() - t0}ms (status=${compile.status}, signal=${compile.signal ?? "none"}, error=${compile.error ? compile.error.message : "none"})`,
-  );
-
-  let selfhostJs = "";
-  let nativeOk =
-    !compile.error && compile.status === 0 && fs.existsSync(outputPath);
-  if (!nativeOk) {
-    tlog(
-      `native output not usable; stdout='${summarizeText(compile.stdout)}' stderr='${summarizeText(compile.stderr)}'`,
-    );
-  }
-  if (nativeOk) {
-    const tReadStart = nowMs();
-    selfhostJs = fs.readFileSync(outputPath, "utf8");
-    tlog(
-      `read native selfhost JS (${selfhostJs.length} chars) in ${nowMs() - tReadStart}ms`,
-    );
-    try {
-      const tParseStart = nowMs();
-      new vm.Script(selfhostJs);
-      tlog(
-        `native selfhost JS VM parse succeeded in ${nowMs() - tParseStart}ms`,
-      );
-    } catch {
-      nativeOk = false;
-      tlog("native selfhost JS VM parse failed");
-    }
-  }
-
-  if (!nativeOk) {
-    const stderr = summarizeText(compile.stderr, 1000);
-    const stdout = summarizeText(compile.stdout, 1000);
+  const tParseStart = nowMs();
+  try {
+    new vm.Script(selfhostJs);
+  } catch (parseErr) {
     throw new Error(
-      [
-        "Native selfhost compile produced unusable JS output.",
-        `subject: ${selfhostPath}`,
-        `reason: exit=${compile.status ?? "unknown"}, signal=${compile.signal ?? "none"}, output_exists=${fs.existsSync(outputPath)}`,
-        "fix: Investigate native JS emitter/parsing issues and regenerate stage3_selfhost_cli via `npm run native:selfhost:parity`.",
-        `stderr: ${stderr}`,
-        `stdout: ${stdout}`,
-      ].join("\n"),
+      `[selfhost-harness] Build artifact failed VM parse: ${parseErr}\n` +
+        `Artifact: ${buildArtifact}\n` +
+        `Re-run 'npm run build' to regenerate it.`,
     );
   }
+  tlog(`VM parse succeeded in ${nowMs() - tParseStart}ms`);
 
+  const selfhost = buildSelfhostSandbox(selfhostJs);
+  tlog(`total compileAndLoadSelfhost time: ${nowMs() - t0}ms`);
+
+  return { selfhostPath, selfhostJs, selfhost };
+}
+
+function buildSelfhostSandbox(selfhostJs: string): Record<string, unknown> {
   const sandbox = {
     module: { exports: {} },
     exports: {},
@@ -153,17 +79,9 @@ export function compileAndLoadSelfhost(root: string, outDir: string) {
     "main",
   ].join(", ");
 
-  const tVmLoadStart = nowMs();
   vm.runInNewContext(
     `${selfhostJs}\nmodule.exports = { ${exportedNames} };`,
     sandbox,
   );
-  tlog(`loaded selfhost module exports in ${nowMs() - tVmLoadStart}ms`);
-  tlog(`total compileAndLoadSelfhost time: ${nowMs() - t0}ms`);
-
-  return {
-    selfhostPath,
-    selfhostJs,
-    selfhost: sandbox.module.exports,
-  };
+  return sandbox.module.exports;
 }

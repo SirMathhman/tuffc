@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import {
@@ -126,7 +127,32 @@ if (dedupedScripts.length === 0) {
   process.exit(1);
 }
 
-console.log(`[test] Running suites: ${suites.join(", ")}`);
+// Suites that require the selfhost JS build artifact
+const selfhostSuites: SuiteName[] = ["core", "stress", "parity"];
+const needsSelfhostArtifact = suites.some((s) => selfhostSuites.includes(s));
+
+if (needsSelfhostArtifact) {
+  const exeArtifact = path.join(
+    root,
+    "tests",
+    "out",
+    "c-bootstrap",
+    process.platform === "win32"
+      ? "stage3_selfhost_cli.exe"
+      : "stage3_selfhost_cli",
+  );
+  const jsArtifact = path.join(root, "tests", "out", "build", "selfhost.js");
+  const missing = [exeArtifact, jsArtifact].filter((p) => !fs.existsSync(p));
+  if (missing.length > 0) {
+    console.error("[test] Missing build artifacts:");
+    for (const p of missing) {
+      console.error(`  ${path.relative(root, p).replaceAll("\\", "/")}`);
+    }
+    console.error("[test] Run 'npm run build' first.");
+    process.exit(1);
+  }
+}
+
 console.log(`[test] Script count: ${dedupedScripts.length}`);
 
 for (const script of dedupedScripts) {

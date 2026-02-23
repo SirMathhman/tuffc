@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { compileSourceResult } from "../../main/js/compiler.ts";
 import { compileToCEmpty } from "./compile-test-utils.ts";
+import { getRepoRootFromImportMeta } from "./path-test-utils.ts";
 
 const root = getRepoRootFromImportMeta(import.meta.url);
 const preludePath = path.join(
