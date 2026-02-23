@@ -63,6 +63,8 @@ type Finding = {
 type CpdSummary = {
   scannedFiles: number;
   minTokens: number;
+  totalTokens: number;
+  elapsedMs: number;
   findings: Finding[];
   mode: "strict" | "informational";
 };
@@ -481,9 +483,11 @@ function printSummary(summary: CpdSummary, options: CpdOptions): void {
   }
 
   console.log(`[cpd:tuff] scanned files : ${summary.scannedFiles}`);
+  console.log(`[cpd:tuff] total tokens  : ${summary.totalTokens}`);
   console.log(`[cpd:tuff] min tokens    : ${summary.minTokens}`);
   console.log(`[cpd:tuff] findings      : ${summary.findings.length}`);
   console.log(`[cpd:tuff] mode          : ${summary.mode}`);
+  console.log(`[cpd:tuff] elapsed ms    : ${summary.elapsedMs}`);
 
   const previewCount = Math.min(summary.findings.length, options.maxReports);
   for (let i = 0; i < previewCount; i++) {
@@ -500,6 +504,7 @@ function printSummary(summary: CpdSummary, options: CpdOptions): void {
 }
 
 function run(): void {
+  const started = Date.now();
   const options = parseArgs(process.argv.slice(2));
   const files = collectFiles(options);
   const { selfhost } = compileAndLoadSelfhost(
@@ -519,6 +524,8 @@ function run(): void {
   const summary: CpdSummary = {
     scannedFiles: files.length,
     minTokens: options.minTokens,
+    totalTokens: fileTokens.reduce((acc, cur) => acc + cur.tokens.length, 0),
+    elapsedMs: Date.now() - started,
     findings,
     mode: options.failOnDupes ? "strict" : "informational",
   };
