@@ -113,7 +113,7 @@ fs.mkdirSync(outDir, { recursive: true });
 console.log("[c-selfhost] generating selfhost.c via Stage0 target=c...");
 
 const compile = compileFileResult(entry, outC, {
-  backend: "stage0",
+  backend: "selfhost",
   target: "c",
   enableModules: true,
   modules: { moduleBaseDir: path.dirname(entry) },
@@ -285,7 +285,7 @@ if (run.signal) {
   process.exit(1);
 }
 
-if (run.status !== 0) {
+if (run.status !== (deepHarness ? 0 : 1)) {
   console.error(`Linked selfhost executable exited with ${run.status}`);
   if (isSegfaultLikeRun(run)) {
     console.error(
@@ -304,10 +304,8 @@ if (run.status !== 0) {
 
 if (!deepHarness) {
   const combined = `${run.stdout ?? ""}\n${run.stderr ?? ""}`;
-  if (!combined.includes("Self-hosted Tuff compiler loaded")) {
-    console.error(
-      "Expected startup output to include 'Self-hosted Tuff compiler loaded'",
-    );
+  if (!combined.includes("Usage: tuffc")) {
+    console.error("Expected startup output to include 'Usage: tuffc'");
     console.error(combined);
     process.exit(1);
   }

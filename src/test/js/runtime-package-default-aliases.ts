@@ -34,7 +34,7 @@ const jsOut = path.join(outDir, "main.js");
 const cOut = path.join(outDir, "main.c");
 
 const jsResult = compileFileResult(entry, jsOut, {
-  backend: "stage0",
+  backend: "selfhost",
   target: "js",
   enableModules: true,
   modules: {
@@ -60,7 +60,7 @@ if (
 }
 
 const cResult = compileFileResult(entry, cOut, {
-  backend: "stage0",
+  backend: "selfhost",
   target: "c",
   enableModules: true,
   modules: {

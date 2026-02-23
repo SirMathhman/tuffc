@@ -51,7 +51,7 @@ fs.writeFileSync(
 );
 
 const fallback = compileFileResult(entry, outJsDefault, {
-  backend: "stage0",
+  backend: "selfhost",
   target: "js",
   enableModules: true,
   modules: {
@@ -77,7 +77,7 @@ if (fallbackValue !== 41) {
 }
 
 const targetedJs = compileFileResult(entry, outJsTargeted, {
-  backend: "stage0",
+  backend: "selfhost",
   target: "js",
   enableModules: true,
   modules: {
@@ -114,7 +114,7 @@ if (targetedJsValue !== 43) {
 }
 
 const targetedC = compileFileResult(entry, outC, {
-  backend: "stage0",
+  backend: "selfhost",
   target: "c",
   enableModules: true,
   modules: {

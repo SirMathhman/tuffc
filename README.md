@@ -1,21 +1,21 @@
-# Tuff Bootstrap Compiler
+# Tuff Compiler Toolchain
 
 _Last updated: 2026-02-17_
 
-Multi-stage Tuff compiler with a JavaScript/TypeScript Stage 0 bootstrap, a self-hosted Stage 1/2/3 pipeline, a C codegen backend, and a browser bundle. See `SELF-HOST.md` for the full bootstrap roadmap.
+Native-first, self-hosted Tuff compiler with bootstrap history preserved in-repo. The default execution path is the generated native Stage 3 CLI, with legacy Stage0 TypeScript sources retained only for transitional/testing coverage. See `docs/native-selfhost-transition.md` and `SELF-HOST.md` for roadmap details.
 
 ## Current implementation status
 
 | Component                               | Status           | Notes                                                                           |
 | --------------------------------------- | ---------------- | ------------------------------------------------------------------------------- |
-| Stage 0 (JS bootstrap)                  | ✅ Complete      | Full pipeline: lex/parse/desugar/resolve/typecheck/borrowcheck/JS codegen       |
+| Stage 0 (JS bootstrap, legacy)          | ♻️ Transitional  | Kept for historical/bootstrap references while native-first migration completes |
 | Stage 1 (Tuff-lite bootstrap)           | ✅ Complete      | Bootstrap equivalence passes (`stage1:bootstrap`)                               |
 | Stage 2 (Full Tuff strict mode)         | ✅ Complete      | Refinement types, ownership, proof checks                                       |
 | Stage 3 (Selfhost from `selfhost.tuff`) | ✅ Strong parity | See `docs/stage0-vs-stage3-implementation-status.md`                            |
 | C backend                               | 🔄 Active        | M2 capability-group alignment in progress; see `docs/runtime-migration-plan.md` |
 | Web bundle                              | ✅ Complete      | `tuff-compiler.esm.js` / `.min.js` for browser use                              |
 
-### Stage 0 features implemented
+### Compiler capabilities currently available
 
 - Lexer with source positions
 - Recursive-descent parser (Tuff-lite + extensions)
@@ -41,7 +41,7 @@ Multi-stage Tuff compiler with a JavaScript/TypeScript Stage 0 bootstrap, a self
 
 ## Repository layout (Gradle-like, multi-language)
 
-- `src/main/js` — Stage 0 TypeScript bootstrap compiler
+- `src/main/js` — Legacy Stage 0 TypeScript bootstrap/compiler utilities (transitional)
 - `src/main/tuff` — Tuff compiler sources (Stage 1 / selfhost stages)
 - `src/main/tuff-core` — Cross-platform `expect` API definitions
 - `src/main/tuff-c` — C target `actual` implementations
@@ -59,7 +59,7 @@ Multi-stage Tuff compiler with a JavaScript/TypeScript Stage 0 bootstrap, a self
 3. Run JS throw-ban lint gate: `bun run lint:throws`
 4. Run typecheck: `bun run typecheck`
 5. Run combined local gate (lint + typecheck + fast tests): `bun run check`
-6. Compile file: `tsx ./src/main/js/cli.ts compile ./src/test/tuff/cases/factorial.tuff -o ./tests/out/factorial.js`
+6. Compile file (native default): `npm run native:selfhost:run -- ./src/test/tuff/cases/factorial.tuff -o ./tests/out/factorial.js`
 
 ### Test command tiers
 
@@ -110,7 +110,7 @@ CLI options:
 
 Example:
 
-- `tsx ./src/main/js/cli.ts compile ./src/test/tuff/modules/app.tuff --modules --module-base ./src/test/tuff/modules -o ./tests/out/stage2/app.js`
+- `npm run native:selfhost:run -- ./src/test/tuff/modules/app.tuff --modules --module-base ./src/test/tuff/modules -o ./tests/out/stage2/app.js`
 
 Run Phase 3 verification only:
 
@@ -132,9 +132,9 @@ Production-readiness diagnostics are now available:
 
 Example:
 
-- `tsx ./src/main/js/cli.ts compile ./tests/out/stage4/cli-fail.tuff --stage2 --json-errors`
-- `tsx ./src/main/js/cli.ts compile ./tests/out/stage4/cli-fail.tuff --lint --json-errors`
-- `tsx ./src/main/js/cli.ts compile ./src/test/tuff/cases/factorial.tuff --trace-passes`
+- `npm run native:selfhost:run -- ./tests/out/stage4/cli-fail.tuff --stage2 --json-errors`
+- `npm run native:selfhost:run -- ./tests/out/stage4/cli-fail.tuff --lint --json-errors`
+- `npm run native:selfhost:run -- ./src/test/tuff/cases/factorial.tuff --trace-passes`
 
 Run Phase 4 verification only:
 
@@ -142,7 +142,7 @@ Run Phase 4 verification only:
 
 ## Browser/website tech-demo bundle
 
-You can ship the Stage 0 compiler as a browser bundle and compile Tuff source
+You can ship the legacy Stage 0 web compiler bundle and compile Tuff source
 directly in a website.
 
 Build outputs:
@@ -181,9 +181,9 @@ Sanity-check the browser API locally:
 
 ## Porting policy: no `throw` in compiler code
 
-For Tuff-portability, compiler code is migrating from exception-based
+For Tuff-portability, compiler/runtime implementation code is migrating from exception-based
 control flow to `Result<T, E>` values.
 
 - ESLint enforces a throw-ban rule (`ThrowStatement`) across TypeScript sources.
-- The throw-ban is now enforced across `src/main/js` without legacy allowlists.
-- New and migrated code should use helpers in `src/main/js/result.ts`.
+- The throw-ban is enforced across compiler TypeScript sources, including transitional Stage0 code.
+- New and migrated code should use helpers in `src/main/js/result.ts` or equivalent selfhost diagnostic/result flows.

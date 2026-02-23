@@ -2,14 +2,14 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import {
+  getNativeCliWrapperPath,
   getNodeExecPath,
   getRepoRootFromImportMeta,
-  getTsxCliPath,
 } from "./path-test-utils.ts";
 
 const root = getRepoRootFromImportMeta(import.meta.url);
-const tsxCli = getTsxCliPath(root);
 const nodeExec = getNodeExecPath();
+const nativeCli = getNativeCliWrapperPath(root);
 
 const hasCompiler = (() => {
   const candidates =
@@ -22,6 +22,18 @@ const hasCompiler = (() => {
   }
   return false;
 })();
+
+function selectCompiler(): string {
+  const candidates =
+    process.platform === "win32"
+      ? ["clang", "gcc", "cc"]
+      : ["clang", "cc", "gcc"];
+  for (const c of candidates) {
+    const probe = spawnSync(c, ["--version"], { encoding: "utf8" });
+    if (probe.status === 0) return c;
+  }
+  return "";
+}
 
 if (!hasCompiler) {
   console.error("No C compiler available for native CLI e2e check.");
@@ -43,8 +55,7 @@ const exeOut = path.join(
 const compile = spawnSync(
   nodeExec,
   [
-    tsxCli,
-    "./src/main/js/cli.ts",
+    nativeCli,
     "./src/test/tuff/cases/factorial.tuff",
     "--target",
     "c",
@@ -68,8 +79,24 @@ if (compile.status !== 0) {
 }
 
 if (!fs.existsSync(exeOut)) {
-  console.error(`Expected native executable at ${exeOut}`);
-  process.exit(1);
+  const cc = selectCompiler();
+  if (!cc) {
+    console.error(
+      `Expected native executable at ${exeOut}, and no C compiler found for fallback link`,
+    );
+    process.exit(1);
+  }
+
+  const link = spawnSync(cc, [cOut, "-O0", "-o", exeOut], {
+    cwd: root,
+    encoding: "utf8",
+  });
+  if (link.status !== 0 || !fs.existsSync(exeOut)) {
+    const combined = `${link.stdout ?? ""}\n${link.stderr ?? ""}`;
+    console.error("Native CLI produced C output, but fallback link failed:");
+    console.error(combined);
+    process.exit(1);
+  }
 }
 
 const run = spawnSync(exeOut, [], { cwd: root, encoding: "utf8" });

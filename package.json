@@ -1,12 +1,12 @@
 {
-  "name": "tuff-stage0",
+  "name": "tuffc",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Stage 0 JavaScript bootstrap compiler for Tuff-lite",
+  "description": "Self-hosted Tuff compiler (native-first workflow; Stage0 fallback only)",
   "bin": {
-    "tuff": "./src/main/js/cli.ts",
-    "tuffc": "./src/main/js/cli.ts"
+    "tuff": "./scripts/tuffc-native.mjs",
+    "tuffc": "./scripts/tuffc-native.mjs"
   },
   "scripts": {
     "build": "npm run test:core",
@@ -14,15 +14,16 @@
     "test:core": "tsx ./src/test/js/test-orchestrator.ts --suite=core",
     "test:native": "tsx ./src/test/js/test-orchestrator.ts --suite=native",
     "test:stress": "tsx ./src/test/js/test-orchestrator.ts --suite=stress",
+    "test:parity": "tsx ./src/test/js/test-orchestrator.ts --suite=parity",
     "test:all": "tsx ./src/test/js/test-orchestrator.ts --suite=core,native,stress",
     "check": "npm run lint:eslint && npm run typecheck && npm run test",
-    "lint": "tsx ./src/main/js/cli.ts ./src/test/tuff/cases/factorial.tuff --selfhost --lint -o ./tests/out/lint/factorial.js",
+    "lint": "npm run native:selfhost:run -- ./src/test/tuff/cases/factorial.tuff --selfhost --lint -o ./tests/out/lint/factorial.js",
     "lint:eslint": "eslint .",
     "lint:throws": "eslint src/main/js src/test/js",
     "lint:fix": "tsx ./src/test/js/lint-fix-all.ts",
     "typecheck": "tsc -p tsconfig.json",
     "test:update": "tsx ./src/test/js/test-orchestrator.ts --suite=core --update",
-    "compile:sample": "tsx ./src/main/js/cli.ts ./src/test/tuff/cases/factorial.tuff -o ./tests/out/factorial.js",
+    "compile:sample": "npm run native:selfhost:run -- ./src/test/tuff/cases/factorial.tuff -o ./tests/out/factorial.js",
     "stage1:bootstrap": "tsx ./src/test/js/stage1-bootstrap.ts",
     "stage2:verify": "tsx ./src/test/js/phase3-stage2.ts",
     "stage4:verify": "tsx ./src/test/js/phase4-production.ts",
@@ -39,6 +40,8 @@
     "expect:actual:verify": "tsx ./src/test/js/expect-actual-c-aliases.ts",
     "selfhost:diagnostics": "tsx ./src/test/js/selfhost-diagnostics.ts",
     "selfhost:parity": "tsx ./src/test/js/selfhost-parity.ts",
+    "native:selfhost:parity": "tsx ./src/test/js/c-bootstrap-parity.ts",
+    "native:selfhost:run": "tsx ./scripts/run-native-selfhost.ts",
     "selfhost:stress": "tsx ./src/test/js/selfhost-stress.ts",
     "equiv:stages": "tsx ./src/test/js/stage-equivalence.ts",
     "semantics:exhaustive": "tsx ./src/test/js/spec-semantics-exhaustive.ts",
@@ -46,8 +49,8 @@
     "web:verify": "tsx ./src/test/js/web-compiler-api.ts",
     "build:web": "esbuild ./src/main/js/web-compiler.ts --bundle --platform=browser --format=iife --global-name=TuffCompiler --target=es2020 --minify --sourcemap --outfile=./tests/out/web/tuff-compiler.min.js",
     "build:web:esm": "esbuild ./src/main/js/web-compiler.ts --bundle --platform=browser --format=esm --target=es2020 --minify --sourcemap --outfile=./tests/out/web/tuff-compiler.esm.js",
-    "build:binary": "tsx ./scripts/build-binary.ts",
-    "build:exe": "tsx ./scripts/build-binary.ts --out=./dist/tuffc.exe"
+    "build:binary": "npm run native:selfhost:parity && tsx ./scripts/build-native-binary.ts",
+    "build:exe": "npm run native:selfhost:parity && tsx ./scripts/build-native-binary.ts --out=./dist/tuffc.exe"
   },
   "devDependencies": {
     "@types/node": "^25.2.3",

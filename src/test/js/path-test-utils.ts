@@ -10,6 +10,10 @@ export function getTsxCliPath(root: string): string {
   return path.join(root, "node_modules", "tsx", "dist", "cli.mjs");
 }
 
+export function getNativeCliWrapperPath(root: string): string {
+  return path.join(root, "scripts", "tuffc-native.mjs");
+}
+
 export function getNodeExecPath(): string {
   // Bun can execute this harness, but tsx child scripts are most stable when
   // launched under Node directly.

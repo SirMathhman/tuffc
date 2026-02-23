@@ -405,7 +405,12 @@ fn p_parse_primary() : I32 => {
             p_eat();
             if (p_at(TK_SYMBOL, "=>")) {
                 p_eat();
-                let body = if (p_at(TK_SYMBOL, "{")) { p_parse_block() } else { p_parse_expression(0) };
+                let body = 0;
+                if (p_at(TK_SYMBOL, "{")) {
+                    body = p_parse_block();
+                } else {
+                    body = p_parse_expression(0);
+                }
                 let lam = node_new(NK_LAMBDA_EXPR);
                 node_set_data1(lam, params);
                 node_set_data2(lam, body);
@@ -471,7 +476,12 @@ fn p_parse_primary() : I32 => {
         }
 
         p_expect(TK_SYMBOL, "=>", "Expected '=>' in function expression");
-        let body = if (p_at(TK_SYMBOL, "{")) { p_parse_block() } else { p_parse_expression(0) };
+        let body = 0;
+        if (p_at(TK_SYMBOL, "{")) {
+            body = p_parse_block();
+        } else {
+            body = p_parse_expression(0);
+        }
 
         let fnexpr = node_new(NK_FN_EXPR);
         node_set_data1(fnexpr, fname);
@@ -491,7 +501,12 @@ fn p_parse_primary() : I32 => {
         param.vec_push(0);
         let params = vec_new();
         params.vec_push(param);
-        let body = if (p_at(TK_SYMBOL, "{")) { p_parse_block() } else { p_parse_expression(0) };
+        let body = 0;
+        if (p_at(TK_SYMBOL, "{")) {
+            body = p_parse_block();
+        } else {
+            body = p_parse_expression(0);
+        }
         let lam = node_new(NK_LAMBDA_EXPR);
         node_set_data1(lam, params);
         node_set_data2(lam, body);
@@ -524,11 +539,20 @@ fn p_parse_primary() : I32 => {
         p_expect(TK_SYMBOL, "(", "Expected '(' after if");
         let cond = p_parse_expression(0);
         p_expect(TK_SYMBOL, ")", "Expected ')' after condition");
-        let then_branch = if (p_at(TK_SYMBOL, "{")) { p_parse_block() } else { p_parse_expression(0) };
+        let then_branch = 0;
+        if (p_at(TK_SYMBOL, "{")) {
+            then_branch = p_parse_block();
+        } else {
+            then_branch = p_parse_expression(0);
+        }
         let else_branch = 0;
         if (p_at(TK_KEYWORD, "else")) {
             p_eat();
-            else_branch = if (p_at(TK_SYMBOL, "{")) { p_parse_block() } else { p_parse_expression(0) };
+            if (p_at(TK_SYMBOL, "{")) {
+                else_branch = p_parse_block();
+            } else {
+                else_branch = p_parse_expression(0);
+            }
         }
         let node = node_new(NK_IF_EXPR);
         node_set_data1(node, cond);
@@ -549,7 +573,12 @@ fn p_parse_primary() : I32 => {
             p_expect(TK_KEYWORD, "case", "Expected 'case'");
             let pat = p_parse_pattern();
             p_expect(TK_SYMBOL, "=", "Expected '='");
-            let body = if (p_at(TK_SYMBOL, "{")) { p_parse_block() } else { p_parse_expression(0) };
+            let body = 0;
+            if (p_at(TK_SYMBOL, "{")) {
+                body = p_parse_block();
+            } else {
+                body = p_parse_expression(0);
+            }
             p_expect(TK_SYMBOL, ";", "Expected ';' after case");
             let case_node = vec_new();
             case_node.vec_push(pat);

@@ -12,7 +12,7 @@ const src = fs.readFileSync(
 );
 
 const r = compileSourceResult(src, "vec-scratch.tuff", {
-  backend: "stage0",
+  backend: "selfhost",
   target: "c",
 });
 if (!r.ok) {

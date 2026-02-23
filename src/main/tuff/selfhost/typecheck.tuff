@@ -545,10 +545,14 @@ fn typecheck_expr(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types:
                 if (type_args.vec_length() == 1 && node_kind(type_args.vec_get(0)) == NK_NAMED_TYPE) {
                     cname = get_interned_str(node_get_data1(type_args.vec_get(0)));
                 }
+                let cname_label = cname;
+                if (cname_label.str_eq("")) {
+                    cname_label = "<missing>";
+                }
                 if (cname.str_eq("") || !tc_contract_names.set_has(cname)) {
                     panic_with_code(
                         "E_TYPE_INTO_UNKNOWN_CONTRACT",
-                        "Unknown contract '".str_concat(if (cname.str_eq("")) { "<missing>" } else { cname }).str_concat("' in into conversion"),
+                        "Unknown contract '".str_concat(cname_label).str_concat("' in into conversion"),
                         "An into conversion referenced a contract that is not declared.",
                         "Declare the contract before converting with into."
                     );

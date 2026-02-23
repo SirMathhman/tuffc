@@ -3,7 +3,7 @@
  * Test harness for the self-hosted Tuff compiler.
  *
  * Steps:
- * 1. Compile selfhost.tuff using Stage 0 (JS compiler)
+ * 1. Compile selfhost.tuff using native selfhost executable
  * 2. Load the resulting JS with runtime.js utilities
  * 3. Use the self-hosted compiler to compile a test program
  * 4. Use the self-hosted compiler to compile itself (bootstrap test)
@@ -39,7 +39,7 @@ function loadSelfhostCompilerFromJs(js) {
   return sandbox.module.exports;
 }
 
-console.log("Compiling selfhost.tuff with Stage 0...");
+console.log("Compiling selfhost.tuff with native selfhost executable...");
 
 let selfhostPath;
 let selfhostJs;
@@ -50,7 +50,10 @@ try {
   selfhostJs = loaded.selfhostJs;
   selfhost = loaded.selfhost;
 } catch (err) {
-  console.error("Failed to compile selfhost.tuff with Stage 0:", err.message);
+  console.error(
+    "Failed to compile selfhost.tuff with native selfhost:",
+    err.message,
+  );
   process.exit(1);
 }
 

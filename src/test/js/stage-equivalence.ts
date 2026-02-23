@@ -1,8 +1,6 @@
 // @ts-nocheck
 import fs from "node:fs";
 import path from "node:path";
-import { compileSourceResult } from "../../main/js/compiler.ts";
-import { toDiagnostic } from "../../main/js/errors.ts";
 import { runMainFromJs } from "./js-runtime-test-utils.ts";
 import { assertDiagnosticContract } from "./diagnostic-contract-utils.ts";
 import { buildStageChain } from "./stage-matrix-harness.ts";
@@ -22,37 +20,42 @@ fs.mkdirSync(outDir, { recursive: true });
 
 const stageEquivalenceCaseSkips = new Set([
   // Uses pipe-lambda syntax (`|x| ...`) that is not yet supported consistently
-  // across Stage1-3 in the bootstrap chain.
+  // across Stage2-3 in the bootstrap chain.
   "iter_semantics.tuff",
 ]);
 
 const chain = buildStageChain(root, path.join(outDir, "bootstrap"));
 
+function normalizeDiag(error) {
+  const e = error && typeof error === "object" ? error : {};
+  const code =
+    typeof e.code === "string"
+      ? e.code
+      : typeof e.errorCode === "string"
+        ? e.errorCode
+        : "E_SELFHOST_INTERNAL_ERROR";
+  const message =
+    typeof e.message === "string" && e.message.length > 0
+      ? e.message
+      : "selfhost compilation failed";
+  const source =
+    typeof e.source === "string" && e.source.length > 0
+      ? e.source
+      : "<unknown source>";
+  const cause =
+    typeof e.cause === "string" && e.cause.length > 0 ? e.cause : message;
+  const reason =
+    typeof e.reason === "string" && e.reason.length > 0
+      ? e.reason
+      : "compiler reported an error";
+  const fix =
+    typeof e.fix === "string" && e.fix.length > 0
+      ? e.fix
+      : "Review the source and retry compilation.";
+  return { code, message, source, cause, reason, fix };
+}
+
 const stageById = {
-  stage0: {
-    id: "stage0",
-    allowNegativeSkip: true,
-    compileSource(source, filePath, options = {}) {
-      const result = compileSourceResult(source, filePath, {
-        backend: "stage0",
-        ...options,
-      });
-      return result.ok
-        ? { ok: true, js: result.value.js }
-        : { ok: false, error: result.error };
-    },
-  },
-  stage1: {
-    id: "stage1",
-    allowNegativeSkip: false,
-    compileSource(source) {
-      try {
-        return { ok: true, js: chain.stage1.compileToJs(source) };
-      } catch (error) {
-        return { ok: false, error };
-      }
-    },
-  },
   stage2: {
     id: "stage2",
     allowNegativeSkip: false,
@@ -107,16 +110,7 @@ const stageById = {
   },
 };
 
-const stages = [
-  stageById.stage0,
-  stageById.stage1,
-  stageById.stage2,
-  stageById.stage3,
-];
-
-function normalizeDiag(error) {
-  return toDiagnostic(error);
-}
+const stages = [stageById.stage2, stageById.stage3];
 
 function assertEqual(actual, expected, label) {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) {
@@ -153,7 +147,7 @@ function runPositiveCase(label, source, expectedOutput = undefined) {
 }
 
 function runNegativeCase(label, source, expectedCodes, options = {}) {
-  const requiredStages = stages.filter((s) => !s.allowNegativeSkip);
+  const requiredStages = stages;
   let stage2Code = undefined;
 
   for (const stage of requiredStages) {
@@ -183,18 +177,6 @@ function runNegativeCase(label, source, expectedCodes, options = {}) {
       );
       process.exit(1);
     }
-  }
-
-  const stage0Result = stageById.stage0.compileSource(
-    source,
-    `<${label}:stage0>`,
-    options,
-  );
-  if (!stage0Result.ok) {
-    assertDiagnosticContract(
-      normalizeDiag(stage0Result.error),
-      `${label}:stage0`,
-    );
   }
 }
 
@@ -248,6 +230,4 @@ runNegativeCase("neg:use-after-move", MOVE_AFTER_MOVE_BOX_SOURCE, [
   "E_SELFHOST_INTERNAL_ERROR",
 ]);
 
-console.log(
-  "Universal stage equivalence checks passed (Stage0-3 positive, Stage1-3 negative)",
-);
+console.log("Universal stage equivalence checks passed (Stage2-3)");

@@ -22,7 +22,7 @@ fn main(): I32 {
 `;
 
 const result = compileSourceResult(source, "<monomorphization-plan>", {
-  backend: "stage0",
+  backend: "selfhost",
   target: "js",
 });
 

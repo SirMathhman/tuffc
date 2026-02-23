@@ -14,7 +14,7 @@ extern let { panic, panic_with_code } = globalThis;
 extern let { get_argc, get_argv } = globalThis;
 
 extern fn str_length(this: *Str) : USize;
-extern fn str_char_at(this: *Str, index : USize < this.str_length()) : Char;
+extern fn str_char_at(this: *Str, index: I32) : Char;
 
 extern fn str_slice(this: *Str, start: USize, end: USize) : *Str;
 

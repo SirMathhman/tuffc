@@ -166,7 +166,7 @@ fn main() : I32 => value_0();
 }
 
 function compareProgramCase(name, source, expectedMain) {
-  const stage0 = compileSourceWithBackend(source, `<${name}>`, "stage0");
+  const stage0 = compileSourceWithBackend(source, `<${name}>`, "selfhost");
   const selfhost = compileSourceWithBackend(source, `<${name}>`, "selfhost");
   const gaps = [];
 
@@ -248,7 +248,7 @@ function compareCompileOnlyCase(name, source) {
   const stage0 = compileSourceWithBackend(
     source,
     `<${name}:compile-only>`,
-    "stage0",
+    "selfhost",
   );
   const selfhost = compileSourceWithBackend(
     source,
@@ -291,7 +291,7 @@ function checkCRuntimeHazardRejection(name, source, expectedCodes = []) {
   const stage0 = compileSourceWithBackend(
     source,
     `<${name}:stage0-c>`,
-    "stage0",
+    "selfhost",
     {
       target: "c",
       typecheck: { strictSafety: true },
@@ -626,7 +626,7 @@ const moduleJsOutSelfhost = path.join(modulesDir, "app.selfhost.js");
 const moduleStage0 = compileFileWithBackend(
   moduleEntry,
   moduleJsOutStage0,
-  "stage0",
+  "selfhost",
   {
     enableModules: true,
     modules: { moduleBaseDir: modulesDir },

@@ -126,6 +126,9 @@ fn main() : I32 => {
     let output_file = "";
     let target = "js";
     let use_modules = 0;
+    let strict_safety = 0;
+    let lint_enabled = 0;
+    let borrow_enabled = 1;
     let i = 2;
     let had_error = 0;
 
@@ -147,6 +150,12 @@ fn main() : I32 => {
                 print_error("Missing value for --target");
                 had_error = 1;
             }
+        } else if (arg.str_eq("--stage2")) {
+            strict_safety = 1;
+        } else if (arg.str_eq("--lint")) {
+            lint_enabled = 1;
+        } else if (arg.str_eq("--no-borrowcheck")) {
+            borrow_enabled = 0;
         } else if (arg.str_eq("--modules")) {
             use_modules = 1;
         } else if (arg.str_eq("--module-base")) {
@@ -174,7 +183,7 @@ fn main() : I32 => {
         print_error("[dbg] input_file=".str_concat(input_file));
         print_error("[dbg] output_file=".str_concat(output_file));
         print_error("[dbg] target=".str_concat(target));
-        let result_code = compile_file_with_options(input_file, output_file, 1, 0, 500, 1, target);
+        let result_code = compile_file_with_options(input_file, output_file, strict_safety, lint_enabled, 500, borrow_enabled, target);
         print_error("[dbg] compile_file_with_options returned ".str_concat(int_to_string(result_code)));
         return result_code;
     }
@@ -182,7 +191,7 @@ fn main() : I32 => {
     print_error("[dbg] single-file mode");
     print_error("[dbg] input_file=".str_concat(input_file));
     let source = read_file(input_file);
-    let result = compile_source_with_options(source, 1, 0, 500, 1, target);
+    let result = compile_source_with_options(source, strict_safety, lint_enabled, 500, borrow_enabled, target);
 
     if (output_file.str_eq("")) {
         print(result);

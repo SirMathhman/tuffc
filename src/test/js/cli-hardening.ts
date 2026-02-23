@@ -2,6 +2,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { spawnSync } from "node:child_process";
 import {
+  getNativeCliWrapperPath,
   getNodeExecPath,
   getRepoRootFromImportMeta,
   getTsxCliPath,
@@ -10,16 +11,24 @@ import {
 const root = getRepoRootFromImportMeta(import.meta.url);
 const tsxCli = getTsxCliPath(root);
 const nodeExec = getNodeExecPath();
+const nativeCli = getNativeCliWrapperPath(root);
 
-function expectFail(args, expectedText, label) {
-  const result = spawnSync(
-    nodeExec,
-    [tsxCli, "./src/main/js/cli.ts", ...args],
-    {
-      cwd: root,
-      encoding: "utf8",
-    },
-  );
+function runTsCli(args) {
+  return spawnSync(nodeExec, [tsxCli, "./src/main/js/cli.ts", ...args], {
+    cwd: root,
+    encoding: "utf8",
+  });
+}
+
+function runNativeCli(args) {
+  return spawnSync(nodeExec, [nativeCli, ...args], {
+    cwd: root,
+    encoding: "utf8",
+  });
+}
+
+function expectFail(args, expectedText, label, runner = runTsCli) {
+  const result = runner(args);
 
   if (result.status === 0) {
     console.error(`${label}: expected non-zero exit status`);
@@ -35,15 +44,8 @@ function expectFail(args, expectedText, label) {
   }
 }
 
-function expectPass(args, label) {
-  const result = spawnSync(
-    nodeExec,
-    [tsxCli, "./src/main/js/cli.ts", ...args],
-    {
-      cwd: root,
-      encoding: "utf8",
-    },
-  );
+function expectPass(args, label, runner = runTsCli) {
+  const result = runner(args);
 
   if (result.status !== 0) {
     const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
@@ -53,15 +55,8 @@ function expectPass(args, label) {
   }
 }
 
-function expectPassContains(args, expectedText, label) {
-  const result = spawnSync(
-    nodeExec,
-    [tsxCli, "./src/main/js/cli.ts", ...args],
-    {
-      cwd: root,
-      encoding: "utf8",
-    },
-  );
+function expectPassContains(args, expectedText, label, runner = runTsCli) {
+  const result = runner(args);
 
   if (result.status !== 0) {
     const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
@@ -77,6 +72,22 @@ function expectPassContains(args, expectedText, label) {
     );
     process.exit(1);
   }
+}
+
+// Native CLI smoke checks (supported subset): direct-file mode and generic help.
+expectPass(["--help"], "native-help", runNativeCli);
+
+const nativeOutDir = path.join(root, "tests", "out", "cli-hardening", "native");
+fs.mkdirSync(nativeOutDir, { recursive: true });
+const nativeJsOut = path.join(nativeOutDir, "factorial.native.js");
+expectPass(
+  ["./src/test/tuff/cases/factorial.tuff", "-o", nativeJsOut],
+  "native-direct-compile",
+  runNativeCli,
+);
+if (!fs.existsSync(nativeJsOut)) {
+  console.error(`native-direct-compile: expected output file ${nativeJsOut}`);
+  process.exit(1);
 }
 
 expectFail(

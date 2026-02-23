@@ -14,7 +14,7 @@ expectOk(
     "fn main() : I32 => 0;",
     "",
   ].join("\n"),
-  { backend: "stage0" },
+  { backend: "selfhost" },
 );
 
 expectFailCode(
@@ -26,7 +26,7 @@ expectFailCode(
     "",
   ].join("\n"),
   "E_TYPE_DESTRUCTOR_SIGNATURE",
-  { backend: "stage0" },
+  { backend: "selfhost" },
 );
 
 const implicitScopeDropSource = [
@@ -47,7 +47,7 @@ const implicitScopeDropSource = [
 const implicitScopeDropResult = compileSourceResult(
   implicitScopeDropSource,
   "<destructor-implicit-scope-drop>",
-  { backend: "stage0" },
+  { backend: "selfhost" },
 );
 if (!implicitScopeDropResult.ok) {
   console.error(
@@ -83,7 +83,7 @@ const overwriteDropSource = [
 const overwriteDropResult = compileSourceResult(
   overwriteDropSource,
   "<destructor-overwrite-drop>",
-  { backend: "stage0" },
+  { backend: "selfhost" },
 );
 if (!overwriteDropResult.ok) {
   console.error(
@@ -119,7 +119,7 @@ const explicitDropNoImplicitDoubleSource = [
 const explicitDropNoImplicitDoubleResult = compileSourceResult(
   explicitDropNoImplicitDoubleSource,
   "<destructor-explicit-drop-no-implicit-double>",
-  { backend: "stage0" },
+  { backend: "selfhost" },
 );
 if (!explicitDropNoImplicitDoubleResult.ok) {
   console.error(
@@ -158,7 +158,7 @@ const returnPathDropSource = [
 const returnPathDropResult = compileSourceResult(
   returnPathDropSource,
   "<destructor-return-path-drop>",
-  { backend: "stage0" },
+  { backend: "selfhost" },
 );
 if (!returnPathDropResult.ok) {
   console.error(
@@ -191,7 +191,7 @@ expectFailCode(
     "",
   ].join("\n"),
   "E_BORROW_USE_AFTER_DROP",
-  { backend: "stage0" },
+  { backend: "selfhost" },
 );
 
 expectFailCode(
@@ -208,7 +208,7 @@ expectFailCode(
     "",
   ].join("\n"),
   "E_BORROW_DOUBLE_DROP",
-  { backend: "stage0" },
+  { backend: "selfhost" },
 );
 
 console.log("Destructor semantics checks passed");

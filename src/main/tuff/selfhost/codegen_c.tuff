@@ -334,9 +334,13 @@ fn cc_emit_block_to_assign(block_node: I32, tmp_var: *Str) : *Str => {
             sb_append(sb, ";");
         } else if (is_last && skind == NK_RETURN_STMT) {
             let val = node_get_data1(stmt);
+            let val_code = "0";
+            if (val != 0) {
+                val_code = cc_emit_expr(val);
+            }
             sb_append(sb, tmp_var);
             sb_append(sb, " = ");
-            sb_append(sb, if (val == 0) { "0" } else { cc_emit_expr(val) });
+            sb_append(sb, val_code);
             sb_append(sb, ";");
         } else {
             sb_append(sb, cc_emit_stmt(stmt));
@@ -358,22 +362,24 @@ fn cc_emit_if_as_c_expr(n: I32) : *Str => {
     let then_b = node_get_data2(n);
     let else_b = node_get_data3(n);
     let tmp = cc_next_temp("ifexpr");
-    let then_body = if (node_kind(then_b) == NK_BLOCK) {
-        cc_emit_block_to_assign(then_b, tmp)
+    let then_body = "";
+    if (node_kind(then_b) == NK_BLOCK) {
+        then_body = cc_emit_block_to_assign(then_b, tmp);
     } else if (node_kind(then_b) == NK_IF_STMT || node_kind(then_b) == NK_IF_EXPR) {
-        tmp.str_concat(" = ").str_concat(cc_emit_if_as_c_expr(then_b)).str_concat(";")
+        then_body = tmp.str_concat(" = ").str_concat(cc_emit_if_as_c_expr(then_b)).str_concat(";");
     } else {
-        tmp.str_concat(" = ").str_concat(cc_emit_expr(then_b)).str_concat(";")
-    };
-    let else_body = if (else_b == 0) {
-        tmp.str_concat(" = 0;")
+        then_body = tmp.str_concat(" = ").str_concat(cc_emit_expr(then_b)).str_concat(";");
+    }
+    let else_body = "";
+    if (else_b == 0) {
+        else_body = tmp.str_concat(" = 0;");
     } else if (node_kind(else_b) == NK_BLOCK) {
-        cc_emit_block_to_assign(else_b, tmp)
+        else_body = cc_emit_block_to_assign(else_b, tmp);
     } else if (node_kind(else_b) == NK_IF_STMT || node_kind(else_b) == NK_IF_EXPR) {
-        tmp.str_concat(" = ").str_concat(cc_emit_if_as_c_expr(else_b)).str_concat(";")
+        else_body = tmp.str_concat(" = ").str_concat(cc_emit_if_as_c_expr(else_b)).str_concat(";");
     } else {
-        tmp.str_concat(" = ").str_concat(cc_emit_expr(else_b)).str_concat(";")
-    };
+        else_body = tmp.str_concat(" = ").str_concat(cc_emit_expr(else_b)).str_concat(";");
+    }
     "({ int64_t ".str_concat(tmp).str_concat(" = 0; if (").str_concat(cond).str_concat(") { ").str_concat(then_body).str_concat(" } else { ").str_concat(else_body).str_concat(" } ").str_concat(tmp).str_concat("; })")
 }
 
@@ -436,7 +442,10 @@ fn cc_emit_expr(n: I32) : *Str => {
 
     if (kind == NK_STRING_LIT) {
         let s = get_interned_str(node_get_data1(n));
-        let s_c = if (cc_disable_unicode_escape == 1) { s } else { cc_escape_unicode_in_string(s) };
+        let s_c = s;
+        if (cc_disable_unicode_escape != 1) {
+            s_c = cc_escape_unicode_in_string(s);
+        }
         return "((int64_t)(intptr_t)\"".str_concat(s_c).str_concat("\")");
     }
 
@@ -642,7 +651,10 @@ fn cc_emit_expr(n: I32) : *Str => {
         }
         // Simple ternary
         let then_str = cc_emit_expr(then_b);
-        let else_str = if (else_b == 0) { "0" } else { cc_emit_expr(else_b) };
+        let else_str = "0";
+        if (else_b != 0) {
+            else_str = cc_emit_expr(else_b);
+        }
         return "((".str_concat(cond).str_concat(") ? (").str_concat(then_str).str_concat(") : (").str_concat(else_str).str_concat("))");
     }
 
@@ -721,8 +733,9 @@ fn cc_emit_match_expr(n: I32) : *Str => {
         let pat = case_node.vec_get(0);
         let body = case_node.vec_get(1);
         let guard = cc_emit_pattern_guard(target_str, pat);
-        let body_str = if (node_kind(body) == NK_BLOCK) {
-            cc_emit_block_as_expr(body)
+        let body_str = "";
+        if (node_kind(body) == NK_BLOCK) {
+            body_str = cc_emit_block_as_expr(body);
         } else {
             if (node_kind(pat) == NK_STRUCT_PAT && node_kind(body) == NK_IDENTIFIER) {
                 let pfields = node_get_data2(pat);
@@ -732,17 +745,17 @@ fn cc_emit_match_expr(n: I32) : *Str => {
                     let bind_name = field_name;
                     let body_name = get_interned_str(node_get_data1(body));
                     if (body_name.str_eq(bind_name)) {
-                        target_str.str_concat(".").str_concat(field_name)
+                        body_str = target_str.str_concat(".").str_concat(field_name);
                     } else {
-                        cc_emit_expr(body)
+                        body_str = cc_emit_expr(body);
                     }
                 } else {
-                    cc_emit_expr(body)
+                    body_str = cc_emit_expr(body);
                 }
             } else {
-                cc_emit_expr(body)
+                body_str = cc_emit_expr(body);
             }
-        };
+        }
         chain = "((".str_concat(guard).str_concat(") ? (").str_concat(body_str).str_concat(") : (").str_concat(chain).str_concat("))");
         i = i - 1;
     }
@@ -901,7 +914,10 @@ fn cc_emit_type_alias(n: I32) : *Str => {
     j = 0;
     while (j < vlen) {
         let v = variants.vec_get(j);
-        let vfields = if (cc_struct_fields.map_has(v)) { cc_struct_fields.map_get(v) } else { vec_new() };
+        let vfields = vec_new();
+        if (cc_struct_fields.map_has(v)) {
+            vfields = cc_struct_fields.map_get(v);
+        }
         let params_sb = sb_new();
         let assigns_sb = sb_new();
         let k = 0;
@@ -1036,11 +1052,12 @@ fn cc_emit_stmt(n: I32) : *Str => {
         if (source_name.str_eq("cc_escape_unicode_in_string")) {
             cc_disable_unicode_escape = 1;
         }
-        let emitted = if (node_kind(body) == NK_BLOCK) {
-            ret_type.str_concat(" ").str_concat(name).str_concat("(").str_concat(params_str).str_concat(") ").str_concat(cc_emit_fn_block(body))
+        let emitted = "";
+        if (node_kind(body) == NK_BLOCK) {
+            emitted = ret_type.str_concat(" ").str_concat(name).str_concat("(").str_concat(params_str).str_concat(") ").str_concat(cc_emit_fn_block(body));
         } else {
-            ret_type.str_concat(" ").str_concat(name).str_concat("(").str_concat(params_str).str_concat(") { return ").str_concat(cc_emit_expr(body)).str_concat("; }")
-        };
+            emitted = ret_type.str_concat(" ").str_concat(name).str_concat("(").str_concat(params_str).str_concat(") { return ").str_concat(cc_emit_expr(body)).str_concat("; }");
+        }
         cc_disable_unicode_escape = prev_disable_escape;
         return emitted;
     }

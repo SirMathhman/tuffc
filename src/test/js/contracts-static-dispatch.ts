@@ -22,7 +22,7 @@ expectOk(
     'fn main() : I32 => use(makeCar("Roadster"));',
     "",
   ].join("\n"),
-  { backend: "stage0" },
+  { backend: "selfhost" },
 );
 
 expectOk(
@@ -37,7 +37,7 @@ expectOk(
     "}",
     "",
   ].join("\n"),
-  { backend: "stage0" },
+  { backend: "selfhost" },
 );
 
 expectOk(
@@ -47,7 +47,7 @@ expectOk(
     "fn main() : I32 => lifetimes(41);",
     "",
   ].join("\n"),
-  { backend: "stage0" },
+  { backend: "selfhost" },
 );
 
 expectFailCode(
@@ -62,7 +62,7 @@ expectFailCode(
     "",
   ].join("\n"),
   "E_PARSE_EXPECTED_TOKEN",
-  { backend: "stage0" },
+  { backend: "selfhost" },
 );
 
 expectOk(
@@ -79,7 +79,7 @@ expectOk(
     "}",
     "",
   ].join("\n"),
-  { backend: "stage0" },
+  { backend: "selfhost" },
 );
 
 expectFailCode(
@@ -93,7 +93,7 @@ expectFailCode(
     "",
   ].join("\n"),
   "E_RESOLVE_UNDEFINED_LIFETIME",
-  { backend: "stage0" },
+  { backend: "selfhost" },
 );
 
 expectFailCode(
@@ -108,7 +108,7 @@ expectFailCode(
     "",
   ].join("\n"),
   "E_RESOLVE_DUPLICATE_LIFETIME",
-  { backend: "stage0" },
+  { backend: "selfhost" },
 );
 
 expectFailCode(
@@ -125,7 +125,7 @@ expectFailCode(
     "",
   ].join("\n"),
   "E_TYPE_CONTRACT_NOT_IMPLEMENTED",
-  { backend: "stage0" },
+  { backend: "selfhost" },
 );
 
 expectFailCode(
@@ -145,7 +145,7 @@ expectFailCode(
     "",
   ].join("\n"),
   "E_TYPE_CONTRACT_METHOD_MISSING",
-  { backend: "stage0" },
+  { backend: "selfhost" },
 );
 
 const dynamicDispatchSource = [
@@ -168,7 +168,7 @@ const dynamicDispatchSource = [
 const dynamicResult = compileSourceResult(
   dynamicDispatchSource,
   "<contracts-dynamic-dispatch-runtime>",
-  { backend: "stage0" },
+  { backend: "selfhost" },
 );
 if (!dynamicResult.ok) {
   console.error(
@@ -209,7 +209,7 @@ const dynamicConverterValueSource = [
 const dynamicConverterValueResult = compileSourceResult(
   dynamicConverterValueSource,
   "<contracts-dynamic-dispatch-converter-value-runtime>",
-  { backend: "stage0" },
+  { backend: "selfhost" },
 );
 if (!dynamicConverterValueResult.ok) {
   console.error(
@@ -248,7 +248,7 @@ expectFailCode(
     "",
   ].join("\n"),
   "E_BORROW_USE_AFTER_MOVE",
-  { backend: "stage0" },
+  { backend: "selfhost" },
 );
 
 expectFailCode(
@@ -269,7 +269,7 @@ expectFailCode(
     "",
   ].join("\n"),
   "E_BORROW_USE_AFTER_MOVE",
-  { backend: "stage0" },
+  { backend: "selfhost" },
 );
 
 console.log("Contract static-dispatch checks passed");

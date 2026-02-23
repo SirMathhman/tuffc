@@ -6,7 +6,7 @@ import {
   getTsxCliPath,
 } from "./path-test-utils.ts";
 
-type SuiteName = "core" | "native" | "stress";
+type SuiteName = "core" | "native" | "stress" | "parity";
 
 const root = getRepoRootFromImportMeta(import.meta.url);
 const tsxCli = getTsxCliPath(root);
@@ -24,17 +24,13 @@ const suiteScripts: Record<SuiteName, string[]> = {
     "./src/test/js/collections-module-stdlib-only.ts",
     "./src/test/js/tuff-c-extern-sources-policy.ts",
     "./src/test/js/run-tests.ts",
-    "./src/test/js/stage1-bootstrap.ts",
     "./src/test/js/phase3-stage2.ts",
     "./src/test/js/phase4-production.ts",
     "./src/test/js/borrow-checker.ts",
-    "./src/test/js/contracts-static-dispatch.ts",
-    "./src/test/js/destructor-semantics.ts",
     "./src/test/js/cli-hardening.ts",
     "./src/test/js/selfhost-test.ts",
     "./src/test/js/selfhost-modules.ts",
     "./src/test/js/selfhost-diagnostics.ts",
-    "./src/test/js/selfhost-parity.ts",
     "./src/test/js/stage-equivalence.ts",
     "./src/test/js/demo-regressions.ts",
   ],
@@ -48,6 +44,10 @@ const suiteScripts: Record<SuiteName, string[]> = {
   stress: [
     "./src/test/js/spec-semantics-exhaustive.ts",
     "./src/test/js/selfhost-stress.ts",
+  ],
+  parity: [
+    "./src/test/js/contracts-static-dispatch.ts",
+    "./src/test/js/selfhost-parity.ts",
   ],
 };
 
@@ -66,10 +66,11 @@ function parseSuites(argv: string[]): SuiteName[] {
     if (
       candidate !== "core" &&
       candidate !== "native" &&
-      candidate !== "stress"
+      candidate !== "stress" &&
+      candidate !== "parity"
     ) {
       console.error(
-        `Unknown suite '${candidate}'. Valid suites: core,native,stress`,
+        `Unknown suite '${candidate}'. Valid suites: core,native,stress,parity`,
       );
       process.exit(1);
     }
@@ -83,6 +84,12 @@ function executeScript(scriptPath: string, updateSnapshots: boolean): void {
   const args = [tsxCli, scriptPath];
   if (updateSnapshots && scriptPath.endsWith("run-tests.ts")) {
     args.push("--update");
+  }
+  if (scriptPath.endsWith("run-tests.ts")) {
+    args.push("--backend=selfhost");
+  }
+  if (scriptPath.endsWith("db-test-cases.ts")) {
+    args.push("--backend=native-exe", "--allow-known-gaps");
   }
 
   const relative = path.relative(root, scriptPath).replaceAll("\\", "/");

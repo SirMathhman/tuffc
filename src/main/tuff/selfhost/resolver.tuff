@@ -290,11 +290,15 @@ fn resolve_expr(n: I32, globals: *mut Set, scopes: Vec, depth: I32) : I32 => {
             if (type_args.vec_length() == 1 && node_kind(type_args.vec_get(0)) == NK_NAMED_TYPE) {
                 contract_name = get_interned_str(node_get_data1(type_args.vec_get(0)));
             }
+            let contract_label = contract_name;
+            if (contract_label.str_eq("")) {
+                contract_label = "<missing>";
+            }
 
             if (contract_name.str_eq("") || !globals.set_has(contract_name)) {
                 panic_with_code(
                     "E_RESOLVE_UNKNOWN_IDENTIFIER",
-                    "Unknown contract '".str_concat(if (contract_name.str_eq("")) { "<missing>" } else { contract_name }).str_concat("'"),
+                    "Unknown contract '".str_concat(contract_label).str_concat("'"),
                     "An into conversion referenced a contract that is not declared in scope.",
                     "Use value.into<Contract>(...) with a declared contract name."
                 );
@@ -310,7 +314,9 @@ fn resolve_expr(n: I32, globals: *mut Set, scopes: Vec, depth: I32) : I32 => {
             return 0;
         }
 
-        resolve_expr(node_get_data1(n), globals, scopes, depth);
+        if (node_get_data3(n) != 1) {
+            resolve_expr(node_get_data1(n), globals, scopes, depth);
+        }
         let args = node_get_data2(n);
         let i = 0;
         let len = args.vec_length();

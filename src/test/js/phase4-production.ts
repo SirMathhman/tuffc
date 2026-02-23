@@ -9,6 +9,7 @@ import { toDiagnostic } from "../../main/js/errors.ts";
 import { expectDiagnosticCode } from "./compile-test-utils.ts";
 import { assertDiagnosticContract } from "./diagnostic-contract-utils.ts";
 import {
+  getNativeCliWrapperPath,
   getNodeExecPath,
   getRepoRootFromImportMeta,
   getTsxCliPath,
@@ -33,8 +34,23 @@ function unwrapErr(result: ResultUnknown): unknown {
 const root = getRepoRootFromImportMeta(import.meta.url);
 const tsxCli = getTsxCliPath(root);
 const nodeExec = getNodeExecPath();
+const nativeCli = getNativeCliWrapperPath(root);
 const outDir = path.join(root, "tests", "out", "stage4");
 fs.mkdirSync(outDir, { recursive: true });
+
+function runTsCli(args: string[]) {
+  return spawnSync(nodeExec, [tsxCli, "./src/main/js/cli.ts", ...args], {
+    cwd: root,
+    encoding: "utf8",
+  });
+}
+
+function runNativeCli(args: string[]) {
+  return spawnSync(nodeExec, [nativeCli, ...args], {
+    cwd: root,
+    encoding: "utf8",
+  });
+}
 
 // 1) Ensure internal diagnostics contain codes/hints for strict safety failures.
 const strictResult = compileSourceResult(
@@ -136,21 +152,28 @@ assertDiagnosticContract(copyAliasDiag, "copy-alias diagnostic");
 const failingFile = path.join(outDir, "cli-fail.tuff");
 fs.writeFileSync(failingFile, `fn bad(x : I32) : I32 => 100 / x;`, "utf8");
 
-const cli = spawnSync(
-  nodeExec,
-  [
-    tsxCli,
-    "./src/main/js/cli.ts",
-    "compile",
-    failingFile,
-    "--stage2",
-    "--json-errors",
-  ],
-  {
-    cwd: root,
-    encoding: "utf8",
-  },
-);
+// 2a) Native CLI smoke checks (supported subset only).
+const nativeHelp = runNativeCli(["--help"]);
+if (nativeHelp.status !== 0) {
+  console.error("Native CLI --help expected success");
+  console.error(`${nativeHelp.stdout ?? ""}\n${nativeHelp.stderr ?? ""}`);
+  process.exit(1);
+}
+
+const nativeStrict = runNativeCli([failingFile, "--stage2"]);
+if (nativeStrict.status === 0) {
+  console.error("Native CLI strict-safety probe expected failure");
+  process.exit(1);
+}
+const nativeStrictOut = `${nativeStrict.stdout ?? ""}\n${nativeStrict.stderr ?? ""}`;
+if (!nativeStrictOut.includes("E_SAFETY_DIV_BY_ZERO")) {
+  console.error(
+    `Expected native strict-safety output to include E_SAFETY_DIV_BY_ZERO, got:\n${nativeStrictOut}`,
+  );
+  process.exit(1);
+}
+
+const cli = runTsCli(["compile", failingFile, "--stage2", "--json-errors"]);
 
 if (cli.status === 0) {
   console.error("CLI expected failure status for invalid strict-safety input");
@@ -183,22 +206,13 @@ fs.writeFileSync(
   "utf8",
 );
 
-const lintCli = spawnSync(
-  nodeExec,
-  [
-    tsxCli,
-    "./src/main/js/cli.ts",
-    "compile",
-    lintFailingFile,
-    "--lint",
-    "--lint-strict",
-    "--json-errors",
-  ],
-  {
-    cwd: root,
-    encoding: "utf8",
-  },
-);
+const lintCli = runTsCli([
+  "compile",
+  lintFailingFile,
+  "--lint",
+  "--lint-strict",
+  "--json-errors",
+]);
 
 if (lintCli.status === 0) {
   console.error("CLI expected lint failure status when --lint is enabled");
@@ -273,24 +287,15 @@ fs.writeFileSync(
   "utf8",
 );
 
-const lintFixCli = spawnSync(
-  nodeExec,
-  [
-    tsxCli,
-    "./src/main/js/cli.ts",
-    "compile",
-    lintFixFile,
-    "--lint",
-    "--lint-fix",
-    "-o",
-    path.join(outDir, "cli-lint-fix.js"),
-    "--json-errors",
-  ],
-  {
-    cwd: root,
-    encoding: "utf8",
-  },
-);
+const lintFixCli = runTsCli([
+  "compile",
+  lintFixFile,
+  "--lint",
+  "--lint-fix",
+  "-o",
+  path.join(outDir, "cli-lint-fix.js"),
+  "--json-errors",
+]);
 
 if (lintFixCli.status === 0) {
   console.error("Expected CLI lint-fix command to be unsupported");

@@ -48,7 +48,7 @@ function compileDemo(fileName: string) {
   const inputPath = path.join(root, "tests", fileName);
   const outputPath = path.join(outDir, fileName.replace(/\.tuff$/, ".js"));
   return compileFileResult(inputPath, outputPath, {
-    backend: "stage0",
+    backend: "selfhost",
     typecheck: { strictSafety: true },
   });
 }

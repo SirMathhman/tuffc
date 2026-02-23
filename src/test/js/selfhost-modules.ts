@@ -27,7 +27,7 @@ const outDir = path.join(root, "tests", "out", "selfhost", "modules");
 const moduleOutJs = path.join(outDir, "app.js");
 const rootResolutionOutJs = path.join(outDir, "app-root-resolution.js");
 
-console.log("Compiling selfhost.tuff with Stage 0...");
+console.log("Compiling selfhost.tuff with native selfhost executable...");
 const { selfhost } = compileAndLoadSelfhost(root, outDir);
 if (typeof selfhost.compile_file !== "function") {
   console.error("selfhost.compile_file not exported");

@@ -210,7 +210,11 @@ fn p_parse_function(is_class: I32, mode: I32) : I32 => {
     } else {
         // Body
         p_expect(TK_SYMBOL, "=>", "Expected '=>'");
-        body = if (p_at(TK_SYMBOL, "{")) { p_parse_block() } else { p_parse_expression(0) };
+        if (p_at(TK_SYMBOL, "{")) {
+            body = p_parse_block();
+        } else {
+            body = p_parse_expression(0);
+        }
         
         // Semicolon for expression body
         if (node_kind(body) != NK_BLOCK) {
@@ -919,11 +923,20 @@ fn p_parse_statement() : I32 => {
             p_at(TK_KEYWORD, "loop") ||
             p_at(TK_KEYWORD, "let")
         ) {
-            let then_branch = if (p_at(TK_SYMBOL, "{")) { p_parse_block() } else { p_parse_statement() };
+            let then_branch = 0;
+            if (p_at(TK_SYMBOL, "{")) {
+                then_branch = p_parse_block();
+            } else {
+                then_branch = p_parse_statement();
+            }
             let else_branch = 0;
             if (p_at(TK_KEYWORD, "else")) {
                 p_eat();
-                else_branch = if (p_at(TK_SYMBOL, "{")) { p_parse_block() } else { p_parse_statement() };
+                if (p_at(TK_SYMBOL, "{")) {
+                    else_branch = p_parse_block();
+                } else {
+                    else_branch = p_parse_statement();
+                }
             }
 
             let stmt = node_new(NK_IF_STMT);
@@ -938,7 +951,11 @@ fn p_parse_statement() : I32 => {
         let else_expr = 0;
         if (p_at(TK_KEYWORD, "else")) {
             p_eat();
-            else_expr = if (p_at(TK_SYMBOL, "{")) { p_parse_block() } else { p_parse_expression(0) };
+            if (p_at(TK_SYMBOL, "{")) {
+                else_expr = p_parse_block();
+            } else {
+                else_expr = p_parse_expression(0);
+            }
         }
         let if_expr = node_new(NK_IF_EXPR);
         node_set_data1(if_expr, cond);

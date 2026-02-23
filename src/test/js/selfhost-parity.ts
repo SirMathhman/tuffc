@@ -180,7 +180,7 @@ const lifetimeStage0 = compileSourceResult(
   lifetimeSource,
   "<lifetime-stage0>",
   {
-    backend: "stage0",
+    backend: "selfhost",
   },
 );
 const lifetimeSelfhost = compileSourceResult(
@@ -202,7 +202,7 @@ const lifetimesIdentifierSource = [
 const lifetimesIdentifierStage0 = compileSourceResult(
   lifetimesIdentifierSource,
   "<lifetimes-ident-stage0>",
-  { backend: "stage0" },
+  { backend: "selfhost" },
 );
 const lifetimesIdentifierSelfhost = compileSourceResult(
   lifetimesIdentifierSource,
@@ -228,7 +228,7 @@ expectBothFail(
         "",
       ].join("\n"),
       "<lifetime-missing-binder-stage0>",
-      { backend: "stage0" },
+      { backend: "selfhost" },
     ),
   () =>
     selfhost.compile_source(
@@ -260,7 +260,7 @@ const lifetimeMultiBinderSource = [
 const lifetimeMultiStage0 = compileSourceResult(
   lifetimeMultiBinderSource,
   "<lifetime-multi-stage0>",
-  { backend: "stage0" },
+  { backend: "selfhost" },
 );
 const lifetimeMultiSelfhost = compileSourceResult(
   lifetimeMultiBinderSource,
@@ -285,7 +285,7 @@ expectBothFail(
         "",
       ].join("\n"),
       "<lifetime-undefined-stage0>",
-      { backend: "stage0" },
+      { backend: "selfhost" },
     ),
   () =>
     selfhost.compile_source(
@@ -315,7 +315,7 @@ expectBothFail(
         "",
       ].join("\n"),
       "<lifetime-dup-stage0>",
-      { backend: "stage0" },
+      { backend: "selfhost" },
     ),
   () =>
     selfhost.compile_source(
@@ -720,7 +720,7 @@ expectBothFail(
     compileSourceResult(
       destructorSignatureMismatchSource,
       "<destructor-signature-mismatch-js>",
-      { backend: "stage0" },
+      { backend: "selfhost" },
     ),
   () => selfhost.compile_source(destructorSignatureMismatchSource),
   "destructor-signature-mismatch parity",
@@ -740,7 +740,7 @@ fn main() : I32 => {
 expectBothFail(
   () =>
     compileSourceResult(dropDoubleDropSource, "<drop-double-drop-js>", {
-      backend: "stage0",
+      backend: "selfhost",
     }),
   () => selfhost.compile_source(dropDoubleDropSource),
   "drop-double-drop parity",
@@ -760,7 +760,7 @@ fn main() : I32 => {
 expectBothFail(
   () =>
     compileSourceResult(dropUseAfterDropSource, "<drop-use-after-drop-js>", {
-      backend: "stage0",
+      backend: "selfhost",
     }),
   () => selfhost.compile_source(dropUseAfterDropSource),
   "drop-use-after-drop parity",
@@ -779,7 +779,7 @@ fn main() : I32 => {
 expectBothFail(
   () =>
     compileSourceResult(dropCallResultSource, "<drop-call-result-js>", {
-      backend: "stage0",
+      backend: "selfhost",
     }),
   () => selfhost.compile_source(dropCallResultSource),
   "drop-call-result parity",
@@ -807,7 +807,7 @@ const intoCallStage0 = compileSourceResult(
   intoCallFormSource,
   "<into-call-stage0>",
   {
-    backend: "stage0",
+    backend: "selfhost",
   },
 );
 const intoCallSelfhost = compileSourceResult(
@@ -839,7 +839,7 @@ const intoValueUseAfterMoveSource = [
 expectBothFail(
   () =>
     compileSourceResult(intoValueUseAfterMoveSource, "<into-value-uam-js>", {
-      backend: "stage0",
+      backend: "selfhost",
     }),
   () => selfhost.compile_source(intoValueUseAfterMoveSource),
   "into-value-use-after-move parity",
@@ -855,7 +855,7 @@ fn main() : I32 => {
 expectBothFail(
   () =>
     compileSourceResult(dropZeroArgsSource, "<drop-zero-args-js>", {
-      backend: "stage0",
+      backend: "selfhost",
     }),
   () => selfhost.compile_source(dropZeroArgsSource),
   "drop-zero-args parity",
@@ -871,7 +871,7 @@ fn main() : I32 => {
 expectBothFail(
   () =>
     compileSourceResult(dropTwoArgsSource, "<drop-two-args-js>", {
-      backend: "stage0",
+      backend: "selfhost",
     }),
   () => selfhost.compile_source(dropTwoArgsSource),
   "drop-two-args parity",

@@ -32,7 +32,13 @@ const root = path.resolve(path.dirname(thisFile), "..", "..", "..");
 const outDir = path.join(root, "tests", "out", "c-bootstrap");
 fs.mkdirSync(outDir, { recursive: true });
 
-const cPreludePath = path.join(root, "src", "main", "tuff-c", "RuntimePrelude.tuff");
+const cPreludePath = path.join(
+  root,
+  "src",
+  "main",
+  "tuff-c",
+  "RuntimePrelude.tuff",
+);
 const cSubstrateBundlePath = path.join(outDir, "embedded_c_substrate.c");
 const embeddedCSubstrate = getEmbeddedCSubstrateSupport();
 fs.writeFileSync(cSubstrateBundlePath, embeddedCSubstrate, "utf8");
@@ -45,6 +51,13 @@ const stage3outObj = path.join(outDir, "stage3_selfhost.o");
 const stage3outExe = path.join(
   outDir,
   process.platform === "win32" ? "stage3_selfhost.exe" : "stage3_selfhost",
+);
+const stage3cliHarness = path.join(outDir, "stage3_cli_harness.c");
+const stage3cliExe = path.join(
+  outDir,
+  process.platform === "win32"
+    ? "stage3_selfhost_cli.exe"
+    : "stage3_selfhost_cli",
 );
 const stage3smokeHarness = path.join(outDir, "stage3_smoke_harness.c");
 const fixpointOutC = path.join(outDir, "stage4_selfhost.c");
@@ -185,7 +198,7 @@ function loadStage3WithCSupport(stage3JsPath: string) {
 
   const hostEmitTargetFromSource = (source: string, target: string) => {
     const r = compileSource(source, "<bootstrap-host>", {
-      backend: "stage0",
+      backend: "selfhost",
       target: target as "js" | "c",
       lint: { enabled: false },
       typecheck: { strictSafety: false },
@@ -328,6 +341,22 @@ int main(void) {
 fs.writeFileSync(stage3smokeHarness, smokeHarnessSource, "utf8");
 debugFile("stage3_smoke_harness.c", stage3smokeHarness);
 
+// CLI harness: forwards actual argv into selfhost_entry, producing a usable
+// native compiler executable (not just smoke-test binary).
+const cliHarnessSource = `
+#include <stdint.h>
+
+extern int64_t selfhost_entry(void);
+extern void tuff_set_argv(int argc, char **argv);
+
+int main(int argc, char **argv) {
+  tuff_set_argv(argc, argv);
+  return (int)selfhost_entry();
+}
+`;
+fs.writeFileSync(stage3cliHarness, cliHarnessSource, "utf8");
+debugFile("stage3_cli_harness.c", stage3cliHarness);
+
 const linkResult = runStep(CC, [
   stage3outObj,
   stage3smokeHarness,
@@ -343,6 +372,21 @@ if (linkResult.error || linkResult.status !== 0) {
 }
 debugFile("stage3_selfhost_exe", stage3outExe);
 console.log("[bootstrap] ✔ Phase 2 passed — stage3_native_exe linked");
+
+const cliLinkResult = runStep(CC, [
+  stage3outObj,
+  stage3cliHarness,
+  "-O0",
+  "-o",
+  stage3cliExe,
+]);
+if (cliLinkResult.error || cliLinkResult.status !== 0) {
+  console.error("[bootstrap] FAIL: link failed for stage3 CLI exe");
+  console.error(cliLinkResult.stdout ?? "");
+  console.error(cliLinkResult.stderr ?? "");
+  process.exit(1);
+}
+debugFile("stage3_selfhost_cli_exe", stage3cliExe);
 
 // ─── Phase 3: smoke — run exe --version ──────────────────────────────────────
 

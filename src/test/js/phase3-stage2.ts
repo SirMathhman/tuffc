@@ -67,26 +67,26 @@ expectCompileFail(
 expectCompileOk(
   "fat-array-pointer-length",
   `fn ok(arr : *[I32]) : USize => arr.length;`,
-  { backend: "stage0", typecheck: { strictSafety: true } },
+  { typecheck: { strictSafety: true } },
 );
 
 expectCompileOk(
   "thin-array-pointer-init-and-length",
   `fn ok(arr : *[I32; 3; 5]) : USize => arr.init + arr.length;`,
-  { backend: "stage0", typecheck: { strictSafety: true } },
+  { typecheck: { strictSafety: true } },
 );
 
 expectCompileFail(
   "thin-array-pointer-initialized-bounds",
   `fn bad(arr : *[I32; 3; 5]) : I32 => arr[4];`,
   "Array index may be out of bounds",
-  { backend: "stage0", typecheck: { strictSafety: true } },
+  { typecheck: { strictSafety: true } },
 );
 
 expectCompileOk(
   "non-array-pointer-init-member",
   `fn bad(p : *I32) : USize => p.init;`,
-  { backend: "stage0", typecheck: { strictSafety: true } },
+  { typecheck: { strictSafety: true } },
 );
 
 expectCompileFail(

@@ -23,7 +23,7 @@ fn main(): I32 {
 `;
 
 const monoProbe = compileSourceResult(monoProbeSource, "<c-monomorph-probe>", {
-  backend: "stage0",
+  backend: "selfhost",
   target: "js",
 });
 
@@ -89,7 +89,10 @@ function runCase(caseName, compileOptions = {}) {
     process.exit(1);
   }
 
-  if (!result.value.c.includes("int main(void)")) {
+  if (
+    !result.value.c.includes("int main(void)") &&
+    !result.value.c.includes("int main(int argc, char **argv)")
+  ) {
     console.error(`Generated C for ${caseName} is missing process entrypoint`);
     process.exit(1);
   }
@@ -129,8 +132,8 @@ const cases = [
   runCase("enum_match", { backend: "selfhost" }),
   runCase("option_match", { backend: "selfhost" }),
   runCase("runtime_strings", { backend: "selfhost" }),
-  runCase("runtime_collections", { backend: "stage0" }),
-  runCase("runtime_io", { backend: "stage0" }),
+  runCase("runtime_collections", { backend: "selfhost" }),
+  runCase("runtime_io", { backend: "selfhost" }),
 ];
 
 for (const testCase of cases) {

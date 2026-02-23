@@ -9,7 +9,7 @@ import { formatDiagnostic, toDiagnostic } from "./errors.ts";
 
 function printUsage(): void {
   console.log(
-    "Usage:\n  tuffc <input.tuff> [options]\n\nOptions:\n  -o, --out <file>          Write output to file\n  --target <js|c>           Output target (default: js)\n  --native                  For target c, compile+link generated C to native executable\n  --native-out <file>       Native executable output path when using --native\n  --cc <compiler>           Native C compiler command (default: auto-detect clang/gcc/cc)\n  -I, --module-base <dir>   Module root directory\n  --modules                 Enable module loading\n  --no-modules              Disable module loading\n  --selfhost                Use selfhost backend\n  --stage0                  Use stage0 backend\n  --backend <name>          Explicit backend name (stage0|selfhost, default: selfhost)\n  -Wall                     Enable common warnings (maps to lint warnings)\n  -Wextra                   Enable extra warnings (maps to lint warnings)\n  -Werror                   Treat warnings as errors (maps to lint strict mode)\n  -Werror=<group>           Treat warning group as errors (e.g. lint, all, extra)\n  -Wno-error                Disable warning-as-error mode\n  -Wno-error=<group>        Disable warning group as errors\n  -Wno-lint, -w             Disable warning/lint compatibility mapping\n  --lint                    Run lint checks\n  --lint-fix                Apply lint auto-fixes\n  --lint-strict             Treat lint findings as errors\n  -O0|-O1|-O2|-O3|-Os      Optimization level (accepted; reserved for optimizer)\n  -g                        Emit debug info (accepted; reserved for debug metadata)\n  -c                        Compile only (default behavior; accepted for compatibility)\n  -std=<dialect>            Language dialect (e.g. -std=tuff2024)\n  --color=<auto|always|never>\n                            Diagnostics color policy\n  -fdiagnostics-color[=always|never|auto]\n                            Diagnostics color policy (clang-style)\n  @<file>                   Read additional args from response file\n  --json-errors             Emit diagnostics as JSON\n  -v, --verbose             Trace compiler passes\n  --trace-passes            Trace compiler passes\n  --version                 Print tuffc version\n  -h, --help                Show help\n  --help=<topic>            Show topic help (warnings|diagnostics|optimizers)\n\nDeprecated:\n  tuffc compile <input.tuff> [options]",
+    "Usage:\n  tuffc <input.tuff> [options]\n\nOptions:\n  -o, --out <file>          Write output to file\n  --target <js|c>           Output target (default: js)\n  --native                  For target c, compile+link generated C to native executable\n  --native-out <file>       Native executable output path when using --native\n  --cc <compiler>           Native C compiler command (default: auto-detect clang/gcc/cc)\n  -I, --module-base <dir>   Module root directory\n  --modules                 Enable module loading\n  --no-modules              Disable module loading\n  --selfhost                Use selfhost backend (default, only backend)\n  --backend <name>          Explicit backend name (default: selfhost)\n  -Wall                     Enable common warnings (maps to lint warnings)\n  -Wextra                   Enable extra warnings (maps to lint warnings)\n  -Werror                   Treat warnings as errors (maps to lint strict mode)\n  -Werror=<group>           Treat warning group as errors (e.g. lint, all, extra)\n  -Wno-error                Disable warning-as-error mode\n  -Wno-error=<group>        Disable warning group as errors\n  -Wno-lint, -w             Disable warning/lint compatibility mapping\n  --lint                    Run lint checks\n  --lint-fix                Apply lint auto-fixes\n  --lint-strict             Treat lint findings as errors\n  -O0|-O1|-O2|-O3|-Os      Optimization level (accepted; reserved for optimizer)\n  -g                        Emit debug info (accepted; reserved for debug metadata)\n  -c                        Compile only (default behavior; accepted for compatibility)\n  -std=<dialect>            Language dialect (e.g. -std=tuff2024)\n  --color=<auto|always|never>\n                            Diagnostics color policy\n  -fdiagnostics-color[=always|never|auto]\n                            Diagnostics color policy (clang-style)\n  @<file>                   Read additional args from response file\n  --json-errors             Emit diagnostics as JSON\n  -v, --verbose             Trace compiler passes\n  --trace-passes            Trace compiler passes\n  --version                 Print tuffc version\n  -h, --help                Show help\n  --help=<topic>            Show topic help (warnings|diagnostics|optimizers)\n\nDeprecated:\n  tuffc compile <input.tuff> [options]",
   );
 }
 
@@ -526,8 +526,11 @@ function main(argv: string[]): void {
       continue;
     }
     if (args[i] === "--stage0") {
-      requestedBackend = "stage0";
-      continue;
+      console.error(
+        "--stage0 is no longer supported; the selfhost backend is now the only backend.",
+      );
+      process.exitCode = 1;
+      return;
     }
     if (args[i] === "--backend") {
       if (!args[i + 1] || args[i + 1].startsWith("-")) {
@@ -599,15 +602,6 @@ function main(argv: string[]): void {
     return;
   }
 
-  const selfhostRequested = args.includes("--selfhost");
-  const stage0Requested = args.includes("--stage0");
-  if (selfhostRequested && stage0Requested) {
-    console.error("Options --selfhost and --stage0 are mutually exclusive");
-    printUsage();
-    process.exitCode = 1;
-    return;
-  }
-
   const backend = requestedBackend ?? "selfhost";
   const strictViaGroups = [...warningErrorGroups].some(
     (group) => group === "lint" || group === "all" || group === "extra",
@@ -637,7 +631,7 @@ function main(argv: string[]): void {
     }
     if (backend !== "selfhost" && warningFlagsRequested) {
       console.log(
-        "info: -W* flags accepted on stage0 as compatibility options (selfhost backend enables lint-backed warnings)",
+        "info: -W* flags accepted as compatibility options (selfhost backend enables lint-backed warnings)",
       );
     }
     if (diagnosticsColor !== "auto") {
