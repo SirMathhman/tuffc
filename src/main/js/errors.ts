@@ -110,27 +110,45 @@ export function toDiagnostic(error: unknown): {
   };
 }
 
-export function formatDiagnostic(diag: {
-  loc?: { filePath?: string; line?: number; column?: number } | undefined;
-  source?: string | undefined;
-  cause?: string | undefined;
-  message?: string | undefined;
-  reason?: string | undefined;
-  fix?: string | undefined;
-  code?: string;
-}): string {
+export function formatDiagnostic(
+  diag: {
+    loc?: { filePath?: string; line?: number; column?: number } | undefined;
+    source?: string | undefined;
+    cause?: string | undefined;
+    message?: string | undefined;
+    reason?: string | undefined;
+    fix?: string | undefined;
+    code?: string;
+  },
+  useColor = false,
+): string {
+  const c = (text: string, ansi: number) =>
+    useColor ? `\u001b[${ansi}m${text}\u001b[0m` : text;
+  const bold = (t: string) => c(t, 1);
+  const red = (t: string) => c(t, 31);
+  const boldRed = (t: string) => (useColor ? `\u001b[1;31m${t}\u001b[0m` : t);
+  const cyan = (t: string) => c(t, 36);
+  const yellow = (t: string) => c(t, 33);
+  const dim = (t: string) => c(t, 2);
+
   const where = diag.loc
     ? `${diag.loc.filePath ?? "<memory>"}:${diag.loc.line}:${diag.loc.column}`
     : "<unknown>";
+
+  // Highlight the caret line within the source excerpt
+  const rawSource = diag.source ?? "<unavailable>";
+  const coloredSource = useColor
+    ? rawSource.replace(/^(\s*)\^/m, (_m, pad) => pad + boldRed("^"))
+    : rawSource;
+
   const lines = [
-    `${diag.code} ${where}`,
-    "  source:",
-    `    ${(diag.source ?? "<unavailable>").replaceAll("\n", "\n    ")}`,
-    "  cause:",
-    `    ${diag.cause ?? diag.message ?? "<unknown>"}`,
-    "  reason:",
+    boldRed(`error[${diag.code}]`) + " " + bold(diag.cause ?? diag.message ?? "<unknown>"),
+    "  " + dim("-->") + " " + bold(where),
+    "  " + cyan("source:"),
+    `    ${coloredSource.replaceAll("\n", "\n    ")}`,
+    "  " + cyan("reason:"),
     `    ${diag.reason ?? "This violates the language rules or safety guarantees."}`,
-    "  fix:",
+    "  " + yellow("fix:"),
     `    ${diag.fix ?? "Adjust the code at this location to satisfy the expected syntax/type/safety contract."}`,
   ];
   return lines.join("\n");

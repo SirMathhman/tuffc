@@ -2,7 +2,7 @@
 // Name Resolution - skip for now, minimal implementation
 // ============================================================================
 
-let { get_interned_str, set_new, vec_new } = selfhost::runtime_lexer;
+let { get_interned_str, set_new, vec_new, map_new } = selfhost::runtime_lexer;
 let { node_kind, node_get_data1, node_get_data2, node_get_data3, node_get_data4, node_get_data5, node_get_line, node_get_col } = selfhost::parser_core;
 
 // Current AST node being resolved — set at each resolve_expr/resolve_stmt entry.
@@ -12,6 +12,9 @@ fn rslv_panic_loc(code: *Str, msg: *Str, reason: *Str, fix: *Str) : I32 =>
     panic_with_code_loc(code, msg, reason, fix, node_get_line(rslv_current_node), node_get_col(rslv_current_node));
 
 let resolve_lifetime_scopes : Vec = vec_new();
+
+// Track first declaration node for each global name (for shadowing error messages).
+let resolve_global_decl_nodes : Map = map_new();
 
 // Parallel list of declared global names so we can iterate for "did you mean?" suggestions.
 let resolve_global_names_list : Vec = vec_new();
@@ -720,6 +723,7 @@ fn resolve_stmt(n: I32, globals: *mut Set, scopes: Vec, depth: I32) : I32 => {
 out fn resolve_names(program: I32) : I32 => {
     resolve_lifetime_scopes.vec_clear();
     resolve_global_names_list.vec_clear();
+    resolve_global_decl_nodes = map_new();
 
     let globals = set_new();
     let body = node_get_data1(program);
@@ -748,15 +752,19 @@ out fn resolve_names(program: I32) : I32 => {
         ) {
             let gname = get_interned_str(node_get_data1(stmt));
             if (globals.set_has(gname)) {
+                let first_node = resolve_global_decl_nodes.map_get(gname);
+                let first_line = int_to_string(node_get_line(first_node));
+                let first_col = int_to_string(node_get_col(first_node));
                 rslv_panic_loc(
                     "E_RESOLVE_SHADOWING",
-                    "Variable shadowing/redeclaration is not allowed: ".str_concat(gname),
-                    "A global declaration with the same name already exists.",
+                    "Duplicate global declaration: ".str_concat(gname),
+                    "First declared at line ".str_concat(first_line).str_concat(", col ").str_concat(first_col).str_concat("."),
                     "Rename one of the global declarations or split conflicting declarations into separate modules."
                 );
             }
             globals.set_add(gname);
             resolve_global_names_list.vec_push(gname);
+            resolve_global_decl_nodes.map_set(gname, stmt);
         }
         i = i + 1;
     }

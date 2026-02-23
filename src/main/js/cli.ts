@@ -665,7 +665,7 @@ function main(argv: string[]): void {
     if (jsonErrors) {
       console.error(JSON.stringify(diag, undefined, 2));
     } else {
-      console.error(colorize(formatDiagnostic(diag), 31, useColor));
+      console.error(formatDiagnostic(diag, useColor));
     }
     process.exitCode = 1;
     return;

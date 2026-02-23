@@ -2572,6 +2572,8 @@ if (typeof __tuff_this !== 'undefined') __tuff_this.rslv_panic_loc = rslv_panic_
 
 let resolve_lifetime_scopes = vec_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.resolve_lifetime_scopes = resolve_lifetime_scopes;
 
+let resolve_global_decl_nodes = map_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.resolve_global_decl_nodes = resolve_global_decl_nodes;
+
 let resolve_global_names_list = vec_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.resolve_global_names_list = resolve_global_names_list;
 
 const __tuff_outer_for_levenshtein_distance = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
@@ -3214,6 +3216,7 @@ function resolve_names(program) {
   let __tuff_this = { program: program, this: __tuff_outer_for_resolve_names };
   (() => { const __recv = resolve_lifetime_scopes; const __prop = __recv?.["vec_clear"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_clear; return __dyn ? __dyn(__recv.ref) : vec_clear(__recv); })();
   (() => { const __recv = resolve_global_names_list; const __prop = __recv?.["vec_clear"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_clear; return __dyn ? __dyn(__recv.ref) : vec_clear(__recv); })();
+  resolve_global_decl_nodes = map_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.resolve_global_decl_nodes = resolve_global_decl_nodes;
   let globals = set_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.globals = globals;
   let body = node_get_data1(program); if (typeof __tuff_this !== 'undefined') __tuff_this.body = body;
   validate_expect_actual_pairs(body);
@@ -3225,10 +3228,14 @@ function resolve_names(program) {
   if (((((((((((((kind === NK_FN_DECL) || (kind === NK_CLASS_FN_DECL)) || (kind === NK_ACTUAL_FN_DECL)) || (kind === NK_STRUCT_DECL)) || (kind === NK_ENUM_DECL)) || (kind === NK_OBJECT_DECL)) || (kind === NK_CONTRACT_DECL)) || (kind === NK_TYPE_ALIAS)) || (kind === NK_LET_DECL)) || (kind === NK_EXTERN_FN_DECL)) || (kind === NK_EXTERN_LET_DECL)) || (kind === NK_EXTERN_TYPE_DECL))) {
   let gname = get_interned_str(node_get_data1(stmt)); if (typeof __tuff_this !== 'undefined') __tuff_this.gname = gname;
   if ((() => { const __recv = globals; const __prop = __recv?.["set_has"]; if (typeof __prop === "function") return __prop(gname); const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, gname) : set_has(__recv, gname); })()) {
-  rslv_panic_loc("E_RESOLVE_SHADOWING", (() => { const __recv = "Variable shadowing/redeclaration is not allowed: "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(gname); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, gname) : str_concat(__recv, gname); })(), "A global declaration with the same name already exists.", "Rename one of the global declarations or split conflicting declarations into separate modules.");
+  let first_node = (() => { const __recv = resolve_global_decl_nodes; const __prop = __recv?.["map_get"]; if (typeof __prop === "function") return __prop(gname); const __dyn = __recv?.table?.map_get; return __dyn ? __dyn(__recv.ref, gname) : map_get(__recv, gname); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.first_node = first_node;
+  let first_line = int_to_string(node_get_line(first_node)); if (typeof __tuff_this !== 'undefined') __tuff_this.first_line = first_line;
+  let first_col = int_to_string(node_get_col(first_node)); if (typeof __tuff_this !== 'undefined') __tuff_this.first_col = first_col;
+  rslv_panic_loc("E_RESOLVE_SHADOWING", (() => { const __recv = "Duplicate global declaration: "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(gname); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, gname) : str_concat(__recv, gname); })(), (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = "First declared at line "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(first_line); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, first_line) : str_concat(__recv, first_line); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(", col "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ", col ") : str_concat(__recv, ", col "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(first_col); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, first_col) : str_concat(__recv, first_col); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("."); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ".") : str_concat(__recv, "."); })(), "Rename one of the global declarations or split conflicting declarations into separate modules.");
 }
   (() => { const __recv = globals; const __prop = __recv?.["set_add"]; if (typeof __prop === "function") return __prop(gname); const __dyn = __recv?.table?.set_add; return __dyn ? __dyn(__recv.ref, gname) : set_add(__recv, gname); })();
   (() => { const __recv = resolve_global_names_list; const __prop = __recv?.["vec_push"]; if (typeof __prop === "function") return __prop(gname); const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, gname) : vec_push(__recv, gname); })();
+  (() => { const __recv = resolve_global_decl_nodes; const __prop = __recv?.["map_set"]; if (typeof __prop === "function") return __prop(gname, stmt); const __dyn = __recv?.table?.map_set; return __dyn ? __dyn(__recv.ref, gname, stmt) : map_set(__recv, gname, stmt); })();
 }
   i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
 }
@@ -4479,6 +4486,8 @@ function selfhost_typecheck_marker() {
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.selfhost_typecheck_marker = selfhost_typecheck_marker;
 
+let bc_current_node = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.bc_current_node = bc_current_node;
+
 let bc_global_value_types = map_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.bc_global_value_types = bc_global_value_types;
 
 let bc_copy_types = set_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.bc_copy_types = bc_copy_types;
@@ -5109,7 +5118,7 @@ if (typeof __tuff_this !== 'undefined') __tuff_this.state_merge_moved_from_branc
 const __tuff_outer_for_panic_borrow = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
 function panic_borrow(code, message, fix) {
   let __tuff_this = { code: code, message: message, fix: fix, this: __tuff_outer_for_panic_borrow };
-  return panic_with_code(code, message, "Borrowing and ownership rules require exclusive mutable access or shared immutable access, and disallow use-after-move.", fix);
+  return panic_with_code_loc(code, message, "Borrowing and ownership rules require exclusive mutable access or shared immutable access, and disallow use-after-move.", fix, node_get_line(bc_current_node), node_get_col(bc_current_node));
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.panic_borrow = panic_borrow;
 
@@ -5172,6 +5181,7 @@ function check_expr(expr, state, env_types, fn_return_types, extern_type_names, 
   if ((expr === 0)) {
   return 0;
 }
+  bc_current_node = expr; if (typeof __tuff_this !== 'undefined') __tuff_this.bc_current_node = bc_current_node;
   if (((() => { const __recv = mode; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("move"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "move") : str_eq(__recv, "move"); })() && (node_kind(expr) === NK_IDENTIFIER))) {
   let nm = get_interned_str(node_get_data1(expr)); if (typeof __tuff_this !== 'undefined') __tuff_this.nm = nm;
   if ((() => { const __recv = global_fn_names; const __prop = __recv?.["set_has"]; if (typeof __prop === "function") return __prop(nm); const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, nm) : set_has(__recv, nm); })()) {
@@ -5392,6 +5402,7 @@ function check_stmt(stmt, state, env_types, fn_return_types, extern_type_names, 
   if ((stmt === 0)) {
   return 0;
 }
+  bc_current_node = stmt; if (typeof __tuff_this !== 'undefined') __tuff_this.bc_current_node = bc_current_node;
   let kind = node_kind(stmt); if (typeof __tuff_this !== 'undefined') __tuff_this.kind = kind;
   if ((kind === NK_LET_DECL)) {
   let rhs = node_get_data3(stmt); if (typeof __tuff_this !== 'undefined') __tuff_this.rhs = rhs;
