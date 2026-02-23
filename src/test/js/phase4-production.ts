@@ -12,6 +12,7 @@ import { getCLIPaths } from "./path-test-utils.ts";
 import {
   NULLABLE_POINTER_UNGUARDED_SOURCE,
   STRICT_DIV_BY_ZERO_SOURCE,
+  STRICT_OVERFLOW_SOURCE,
 } from "./test-fixtures.ts";
 
 type ResultUnknown =
@@ -65,6 +66,44 @@ if (!strictDiag.hint || !strictDiag.hint.includes("denominator")) {
   process.exit(1);
 }
 assertDiagnosticContract(strictDiag);
+
+// 1a-witness) Selfhost: div-zero reason should name the identifier denominator.
+const strictSelfhostDivWitness = compileSourceResult(
+  STRICT_DIV_BY_ZERO_SOURCE,
+  "<phase4-selfhost-div-witness>",
+  { backend: "selfhost", typecheck: { strictSafety: true } },
+);
+if (strictSelfhostDivWitness.ok) {
+  console.error("Selfhost div-zero witness test expected compile failure");
+  process.exit(1);
+}
+const divWitnessDiag = toDiagnostic(unwrapErr(strictSelfhostDivWitness));
+if (!divWitnessDiag.reason || !divWitnessDiag.reason.includes("`x`")) {
+  console.error(
+    `Expected selfhost div-zero reason to name denominator identifier 'x', got: ${divWitnessDiag.reason}`,
+  );
+  process.exit(1);
+}
+
+// 1a-overflow) Selfhost: overflow reason should show computed witness value.
+const strictOverflowResult = compileSourceResult(
+  STRICT_OVERFLOW_SOURCE,
+  "<phase4-selfhost-overflow>",
+  { backend: "selfhost", typecheck: { strictSafety: true } },
+);
+if (strictOverflowResult.ok) {
+  console.error("Selfhost overflow witness test expected compile failure");
+  process.exit(1);
+}
+const overflowDiag = toDiagnostic(unwrapErr(strictOverflowResult));
+expectDiagnosticCode(overflowDiag, "E_SAFETY_OVERFLOW", "phase4 overflow");
+if (!overflowDiag.reason || !overflowDiag.reason.includes("2147483648")) {
+  console.error(
+    `Expected selfhost overflow reason to include computed value '2147483648', got: ${overflowDiag.reason}`,
+  );
+  process.exit(1);
+}
+assertDiagnosticContract(overflowDiag, "overflow witness diagnostic");
 
 // 1b) Selfhost backend should also enforce strict-safety diagnostics contract.
 const strictSelfhostResult = compileSourceResult(

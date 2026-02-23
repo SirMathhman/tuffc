@@ -191,3 +191,9 @@ const size = fs.statSync(OUT_JS).size;
 console.log(
   `[build:selfhost-js] ✓ built ${relOutput} (${(size / 1024).toFixed(0)} KB) in ${elapsed}ms`,
 );
+
+// Also sync to selfhost.generated.js so compiler.ts's backend:"selfhost" path stays current.
+const GENERATED_JS = path.join(root, "src", "main", "tuff", "selfhost.generated.js");
+fs.copyFileSync(OUT_JS, GENERATED_JS);
+const genRel = path.relative(root, GENERATED_JS).replaceAll("\\", "/");
+console.log(`[build:selfhost-js] ✓ synced → ${genRel}`);

@@ -3629,10 +3629,20 @@ function typecheck_expr(n, fn_arities, fn_param_types, fn_return_types, local_ty
   typecheck_expr(node_get_data3(n), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety);
   let op = get_interned_str(node_get_data1(n)); if (typeof __tuff_this !== 'undefined') __tuff_this.op = op;
   if (((() => { const __recv = op; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("/"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "/") : str_eq(__recv, "/"); })() && (!expr_is_proven_nonzero(node_get_data3(n), nonnull_ptrs)))) {
-  panic_with_code("E_SAFETY_DIV_BY_ZERO", "Division by zero cannot be ruled out at compile time", "The denominator is not proven non-zero under safety checks.", "Prove denominator != 0 via refinement type or control-flow guard.");
+  let denom_node = node_get_data3(n); if (typeof __tuff_this !== 'undefined') __tuff_this.denom_node = denom_node;
+  let denom_desc = "denominator"; if (typeof __tuff_this !== 'undefined') __tuff_this.denom_desc = denom_desc;
+  if ((node_kind(denom_node) === NK_IDENTIFIER)) {
+  denom_desc = (() => { const __recv = (() => { const __recv = "denominator `"; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(get_interned_str(node_get_data1(denom_node))); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, get_interned_str(node_get_data1(denom_node))) : str_concat(__recv, get_interned_str(node_get_data1(denom_node))); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("`"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "`") : str_concat(__recv, "`"); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.denom_desc = denom_desc;
+}
+  panic_with_code("E_SAFETY_DIV_BY_ZERO", "Division by zero cannot be ruled out at compile time", (() => { const __recv = (() => { const __recv = "The "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(denom_desc); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, denom_desc) : str_concat(__recv, denom_desc); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(" is not proven non-zero; any value including 0 is possible."); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " is not proven non-zero; any value including 0 is possible.") : str_concat(__recv, " is not proven non-zero; any value including 0 is possible."); })(), "Prove denominator != 0 via refinement type or control-flow guard.");
 }
   if (((() => { const __recv = op; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("%"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "%") : str_eq(__recv, "%"); })() && (!expr_is_proven_nonzero(node_get_data3(n), nonnull_ptrs)))) {
-  panic_with_code("E_SAFETY_MOD_BY_ZERO", "Modulo by zero cannot be ruled out at compile time", "The modulo denominator is not proven non-zero under safety checks.", "Prove denominator != 0 via refinement type or control-flow guard.");
+  let mod_node = node_get_data3(n); if (typeof __tuff_this !== 'undefined') __tuff_this.mod_node = mod_node;
+  let mod_desc = "modulo denominator"; if (typeof __tuff_this !== 'undefined') __tuff_this.mod_desc = mod_desc;
+  if ((node_kind(mod_node) === NK_IDENTIFIER)) {
+  mod_desc = (() => { const __recv = (() => { const __recv = "modulo denominator `"; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(get_interned_str(node_get_data1(mod_node))); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, get_interned_str(node_get_data1(mod_node))) : str_concat(__recv, get_interned_str(node_get_data1(mod_node))); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("`"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "`") : str_concat(__recv, "`"); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.mod_desc = mod_desc;
+}
+  panic_with_code("E_SAFETY_MOD_BY_ZERO", "Modulo by zero cannot be ruled out at compile time", (() => { const __recv = (() => { const __recv = "The "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(mod_desc); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, mod_desc) : str_concat(__recv, mod_desc); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(" is not proven non-zero; any value including 0 is possible."); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " is not proven non-zero; any value including 0 is possible.") : str_concat(__recv, " is not proven non-zero; any value including 0 is possible."); })(), "Prove denominator != 0 via refinement type or control-flow guard.");
 }
   if ((((() => { const __recv = op; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("+"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "+") : str_eq(__recv, "+"); })() || (() => { const __recv = op; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("-"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "-") : str_eq(__recv, "-"); })()) || (() => { const __recv = op; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("*"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "*") : str_eq(__recv, "*"); })())) {
   let lnode = node_get_data2(n); if (typeof __tuff_this !== 'undefined') __tuff_this.lnode = lnode;
@@ -3650,7 +3660,8 @@ function typecheck_expr(n, fn_arities, fn_param_types, fn_return_types, local_ty
   result = (left * right); if (typeof __tuff_this !== 'undefined') __tuff_this.result = result;
 } }
   if (((result < (-2147483648)) || (result > 2147483647))) {
-  panic_with_code("E_SAFETY_OVERFLOW", (() => { const __recv = (() => { const __recv = "Integer overflow/underflow proven possible for '"; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(op); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, op) : str_concat(__recv, op); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("'"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "'") : str_concat(__recv, "'"); })(), "Arithmetic is proven to exceed I32 range under safety checks.", "Constrain operands or use a wider intermediate type before narrowing.");
+  let witness = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = int_to_string(left); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(" "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " ") : str_concat(__recv, " "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(op); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, op) : str_concat(__recv, op); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(" "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " ") : str_concat(__recv, " "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string(right)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(right)) : str_concat(__recv, int_to_string(right)); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(" = "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " = ") : str_concat(__recv, " = "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string(result)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(result)) : str_concat(__recv, int_to_string(result)); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(", which is outside I32 range [-2147483648, 2147483647]"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ", which is outside I32 range [-2147483648, 2147483647]") : str_concat(__recv, ", which is outside I32 range [-2147483648, 2147483647]"); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.witness = witness;
+  panic_with_code("E_SAFETY_OVERFLOW", (() => { const __recv = (() => { const __recv = "Integer overflow/underflow proven possible for '"; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(op); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, op) : str_concat(__recv, op); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("'"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "'") : str_concat(__recv, "'"); })(), witness, "Constrain operands or use a wider intermediate type before narrowing.");
 }
 }
 }
@@ -9476,6 +9487,55 @@ function take_lint_issues() {
   return lint_take_issues();
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.take_lint_issues = take_lint_issues;
+
+const __tuff_outer_for_cpd_lex_init = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function cpd_lex_init(source) {
+  let __tuff_this = { source: source, this: __tuff_outer_for_cpd_lex_init };
+  return lex_init(source);
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.cpd_lex_init = cpd_lex_init;
+
+const __tuff_outer_for_cpd_lex_all = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function cpd_lex_all() {
+  let __tuff_this = { this: __tuff_outer_for_cpd_lex_all };
+  return lex_all();
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.cpd_lex_all = cpd_lex_all;
+
+const __tuff_outer_for_cpd_tok_kind = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function cpd_tok_kind(idx) {
+  let __tuff_this = { idx: idx, this: __tuff_outer_for_cpd_tok_kind };
+  return tok_kind(idx);
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.cpd_tok_kind = cpd_tok_kind;
+
+const __tuff_outer_for_cpd_tok_value = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function cpd_tok_value(idx) {
+  let __tuff_this = { idx: idx, this: __tuff_outer_for_cpd_tok_value };
+  return tok_value(idx);
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.cpd_tok_value = cpd_tok_value;
+
+const __tuff_outer_for_cpd_tok_line = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function cpd_tok_line(idx) {
+  let __tuff_this = { idx: idx, this: __tuff_outer_for_cpd_tok_line };
+  return tok_line(idx);
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.cpd_tok_line = cpd_tok_line;
+
+const __tuff_outer_for_cpd_tok_col = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function cpd_tok_col(idx) {
+  let __tuff_this = { idx: idx, this: __tuff_outer_for_cpd_tok_col };
+  return tok_col(idx);
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.cpd_tok_col = cpd_tok_col;
+
+const __tuff_outer_for_cpd_get_interned_str = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function cpd_get_interned_str(idx) {
+  let __tuff_this = { idx: idx, this: __tuff_outer_for_cpd_get_interned_str };
+  return get_interned_str(idx);
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.cpd_get_interned_str = cpd_get_interned_str;
 
 const __tuff_outer_for_compile_source = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
 function compile_source(source) {

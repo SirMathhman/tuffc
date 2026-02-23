@@ -443,18 +443,28 @@ fn typecheck_expr(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types:
         typecheck_expr(node_get_data3(n), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety);
         let op = get_interned_str(node_get_data1(n));
         if (op.str_eq("/") && !expr_is_proven_nonzero(node_get_data3(n), nonnull_ptrs)) {
+            let denom_node = node_get_data3(n);
+            let denom_desc = "denominator";
+            if (node_kind(denom_node) == NK_IDENTIFIER) {
+                denom_desc = "denominator `".str_concat(get_interned_str(node_get_data1(denom_node))).str_concat("`");
+            }
             panic_with_code(
                 "E_SAFETY_DIV_BY_ZERO",
                 "Division by zero cannot be ruled out at compile time",
-                "The denominator is not proven non-zero under safety checks.",
+                "The ".str_concat(denom_desc).str_concat(" is not proven non-zero; any value including 0 is possible."),
                 "Prove denominator != 0 via refinement type or control-flow guard."
             );
         }
         if (op.str_eq("%") && !expr_is_proven_nonzero(node_get_data3(n), nonnull_ptrs)) {
+            let mod_node = node_get_data3(n);
+            let mod_desc = "modulo denominator";
+            if (node_kind(mod_node) == NK_IDENTIFIER) {
+                mod_desc = "modulo denominator `".str_concat(get_interned_str(node_get_data1(mod_node))).str_concat("`");
+            }
             panic_with_code(
                 "E_SAFETY_MOD_BY_ZERO",
                 "Modulo by zero cannot be ruled out at compile time",
-                "The modulo denominator is not proven non-zero under safety checks.",
+                "The ".str_concat(mod_desc).str_concat(" is not proven non-zero; any value including 0 is possible."),
                 "Prove denominator != 0 via refinement type or control-flow guard."
             );
         }
@@ -477,10 +487,11 @@ fn typecheck_expr(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types:
                     }
 
                     if (result < -2147483648 || result > 2147483647) {
+                        let witness = int_to_string(left).str_concat(" ").str_concat(op).str_concat(" ").str_concat(int_to_string(right)).str_concat(" = ").str_concat(int_to_string(result)).str_concat(", which is outside I32 range [-2147483648, 2147483647]");
                         panic_with_code(
                             "E_SAFETY_OVERFLOW",
                             "Integer overflow/underflow proven possible for '".str_concat(op).str_concat("'"),
-                            "Arithmetic is proven to exceed I32 range under safety checks.",
+                            witness,
                             "Constrain operands or use a wider intermediate type before narrowing."
                         );
                     }
