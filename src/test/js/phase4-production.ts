@@ -14,6 +14,7 @@ import {
   STRICT_DIV_BY_ZERO_SOURCE,
   STRICT_OVERFLOW_SOURCE,
   STRICT_OVERFLOW_VAR_SOURCE,
+  SAFE_DIV_WITH_GUARD_SOURCE,
 } from "./test-fixtures.ts";
 
 type ResultUnknown =
@@ -117,14 +118,35 @@ if (overflowVarResult.ok) {
   process.exit(1);
 }
 const overflowVarDiag = toDiagnostic(unwrapErr(overflowVarResult));
-expectDiagnosticCode(overflowVarDiag, "E_SAFETY_OVERFLOW", "phase4 overflow-var");
-if (!overflowVarDiag.reason || !overflowVarDiag.reason.includes("x=2147483647")) {
+expectDiagnosticCode(
+  overflowVarDiag,
+  "E_SAFETY_OVERFLOW",
+  "phase4 overflow-var",
+);
+if (
+  !overflowVarDiag.reason ||
+  !overflowVarDiag.reason.includes("x=2147483647")
+) {
   console.error(
     `Expected selfhost overflow-var reason to include variable witness 'x=2147483647', got: ${overflowVarDiag.reason}`,
   );
   process.exit(1);
 }
 assertDiagnosticContract(overflowVarDiag, "overflow-var witness diagnostic");
+
+// 1c) Selfhost: if-guard pattern should compile successfully (no false positive div-zero).
+const guardResult = compileSourceResult(
+  SAFE_DIV_WITH_GUARD_SOURCE,
+  "<phase4-safe-div-guard>",
+  { backend: "selfhost", typecheck: { strictSafety: true } },
+);
+if (!guardResult.ok) {
+  const guardDiag = toDiagnostic(unwrapErr(guardResult as { ok: false; error: unknown }));
+  console.error(
+    `Phase C: if-guard pattern should compile safely, got error: ${guardDiag.code} — ${guardDiag.reason}`,
+  );
+  process.exit(1);
+}
 
 // 1b) Selfhost backend should also enforce strict-safety diagnostics contract.
 const strictSelfhostResult = compileSourceResult(

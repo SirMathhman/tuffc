@@ -85,6 +85,7 @@ extern fn __map_new() : Map<K, V>;
 extern fn map_set(this: Map<K, V>, k: K, v: V) : Map<K, V>;
 extern fn map_get(this: Map<K, V>, k: K) : V;
 extern fn map_has(this: Map<K, V>, k: K) : Bool;
+extern fn map_delete(this: Map<K, V>, k: K) : Bool;
 
 out fn map_new() : Map<K, V> => __map_new();
 
