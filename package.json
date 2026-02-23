@@ -9,8 +9,10 @@
     "tuffc": "./scripts/tuffc-native.mjs"
   },
   "scripts": {
-    "build": "npm run native:selfhost:parity && npm run build:selfhost:js",
+    "build": "tsx ./scripts/build-selfhost-js.ts",
     "build:selfhost:js": "tsx ./scripts/build-selfhost-js.ts",
+    "cpd:tuff": "tsx ./scripts/cpd-tuff.ts",
+    "cpd:tuff:strict": "tsx ./scripts/cpd-tuff.ts --fail-on-duplicates",
     "test": "npm run test:core",
     "test:core": "tsx ./src/test/js/test-orchestrator.ts --suite=core",
     "test:native": "tsx ./src/test/js/test-orchestrator.ts --suite=native",
