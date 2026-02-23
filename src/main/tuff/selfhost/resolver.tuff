@@ -3,7 +3,13 @@
 // ============================================================================
 
 let { get_interned_str, set_new, vec_new } = selfhost::runtime_lexer;
-let { node_kind, node_get_data1, node_get_data2, node_get_data3, node_get_data4, node_get_data5 } = selfhost::parser_core;
+let { node_kind, node_get_data1, node_get_data2, node_get_data3, node_get_data4, node_get_data5, node_get_line, node_get_col } = selfhost::parser_core;
+
+// Current AST node being resolved — set at each resolve_expr/resolve_stmt entry.
+let rslv_current_node : I32 = 0;
+
+fn rslv_panic_loc(code: *Str, msg: *Str, reason: *Str, fix: *Str) : I32 =>
+    panic_with_code_loc(code, msg, reason, fix, node_get_line(rslv_current_node), node_get_col(rslv_current_node));
 
 let resolve_lifetime_scopes : Vec = vec_new();
 
@@ -97,7 +103,7 @@ fn resolve_type_lifetimes(t: I32) : I32 => {
         if (life_idx != 0) {
             let lname = get_interned_str(life_idx);
             if (!lifetime_scope_has(lname)) {
-                panic_with_code(
+                rslv_panic_loc(
                     "E_RESOLVE_UNDEFINED_LIFETIME",
                     "Undefined lifetime '".str_concat(lname).str_concat("'"),
                     "A pointer type annotation references a lifetime name that is not declared in any active lifetime block.",
@@ -234,7 +240,7 @@ fn validate_expect_actual_pairs(body: Vec) : I32 => {
                 j = j + 1;
             }
             if (expect_count != 1 || actual_count != 1) {
-                panic_with_code(
+                rslv_panic_loc(
                     "E_EXPECT_ACTUAL_PAIRING",
                     "expect/actual pairing requires exactly one expect and one actual for '".str_concat(name).str_concat("'"),
                     "Platform declarations require exactly one expect and one actual declaration for each symbol.",
@@ -242,7 +248,7 @@ fn validate_expect_actual_pairs(body: Vec) : I32 => {
                 );
             }
             if (!fn_decl_sig(expect_node).str_eq(fn_decl_sig(actual_node))) {
-                panic_with_code(
+                rslv_panic_loc(
                     "E_EXPECT_ACTUAL_SIGNATURE_MISMATCH",
                     "expect/actual signatures do not match for '".str_concat(name).str_concat("'"),
                     "An expect declaration and its actual implementation have different signatures.",
@@ -258,7 +264,7 @@ fn validate_expect_actual_pairs(body: Vec) : I32 => {
 fn scope_define(scopes: Vec, depth: I32, name: *Str) : I32 => {
     let scope = scopes.vec_get(depth);
     if (scope.set_has(name)) {
-        panic_with_code(
+        rslv_panic_loc(
             "E_RESOLVE_SHADOWING",
             "Variable shadowing/redeclaration is not allowed: ".str_concat(name),
             "A name was declared multiple times in the same lexical scope.",
@@ -296,6 +302,7 @@ fn resolve_expr(n: I32, globals: *mut Set, scopes: Vec, depth: I32) : I32 => {
     if (n == 0) {
         return 0;
     }
+    rslv_current_node = n;
 
     let kind = node_kind(n);
 
@@ -307,7 +314,7 @@ fn resolve_expr(n: I32, globals: *mut Set, scopes: Vec, depth: I32) : I32 => {
             if (!suggestion.str_eq("")) {
                 fix_msg = "Did you mean '".str_concat(suggestion).str_concat("'? Declare or import it from the correct module.");
             }
-            panic_with_code(
+            rslv_panic_loc(
                 "E_RESOLVE_UNKNOWN_IDENTIFIER",
                 "Unknown identifier: ".str_concat(name),
                 "The identifier is not declared in local scope, global declarations, or imports.",
@@ -336,7 +343,7 @@ fn resolve_expr(n: I32, globals: *mut Set, scopes: Vec, depth: I32) : I32 => {
         if (node_kind(callee) == NK_IDENTIFIER && get_interned_str(node_get_data1(callee)).str_eq("drop")) {
             let args = node_get_data2(n);
             if (args.vec_length() != 1) {
-                panic_with_code(
+                rslv_panic_loc(
                     "E_RESOLVE_UNKNOWN_IDENTIFIER",
                     "drop expects exactly one argument",
                     "Built-in drop requires exactly one receiver value.",
@@ -350,7 +357,7 @@ fn resolve_expr(n: I32, globals: *mut Set, scopes: Vec, depth: I32) : I32 => {
         if (node_kind(callee) == NK_IDENTIFIER && get_interned_str(node_get_data1(callee)).str_eq("into") && node_get_data3(n) == 1) {
             let args = node_get_data2(n);
             if (args.vec_length() < 1) {
-                panic_with_code(
+                rslv_panic_loc(
                     "E_RESOLVE_UNKNOWN_IDENTIFIER",
                     "into conversion requires a receiver",
                     "Method-sugar into conversion requires a source value as receiver.",
@@ -369,7 +376,7 @@ fn resolve_expr(n: I32, globals: *mut Set, scopes: Vec, depth: I32) : I32 => {
             }
 
             if (contract_name.str_eq("") || !globals.set_has(contract_name)) {
-                panic_with_code(
+                rslv_panic_loc(
                     "E_RESOLVE_UNKNOWN_IDENTIFIER",
                     "Unknown contract '".str_concat(contract_label).str_concat("'"),
                     "An into conversion referenced a contract that is not declared in scope.",
@@ -414,7 +421,7 @@ fn resolve_expr(n: I32, globals: *mut Set, scopes: Vec, depth: I32) : I32 => {
     if (kind == NK_STRUCT_INIT) {
         let type_name = get_interned_str(node_get_data1(n));
         if (!globals.set_has(type_name)) {
-            panic_with_code(
+            rslv_panic_loc(
                 "E_RESOLVE_UNKNOWN_STRUCT",
                 "Unknown struct/type in initializer: ".str_concat(type_name),
                 "A struct initializer referenced a type that is not declared in the merged module scope.",
@@ -535,6 +542,7 @@ fn resolve_stmt(n: I32, globals: *mut Set, scopes: Vec, depth: I32) : I32 => {
     if (n == 0) {
         return 0;
     }
+    rslv_current_node = n;
 
     let kind = node_kind(n);
 
@@ -672,7 +680,7 @@ fn resolve_stmt(n: I32, globals: *mut Set, scopes: Vec, depth: I32) : I32 => {
         while (i < len) {
             let lname = get_interned_str(lifetime_names.vec_get(i));
             if (lifetime_scope.set_has(lname)) {
-                panic_with_code(
+                rslv_panic_loc(
                     "E_RESOLVE_DUPLICATE_LIFETIME",
                     "Duplicate lifetime name '".str_concat(lname).str_concat("' in lifetime block"),
                     "A lifetime block contains duplicate lifetime names.",
@@ -694,7 +702,7 @@ fn resolve_stmt(n: I32, globals: *mut Set, scopes: Vec, depth: I32) : I32 => {
     if (kind == NK_INTO_STMT) {
         let cname = get_interned_str(node_get_data1(n));
         if (!globals.set_has(cname)) {
-            panic_with_code(
+            rslv_panic_loc(
                 "E_RESOLVE_UNKNOWN_IDENTIFIER",
                 "Unknown contract: ".str_concat(cname),
                 "An into statement referenced a contract that is not declared in scope.",
@@ -740,7 +748,7 @@ out fn resolve_names(program: I32) : I32 => {
         ) {
             let gname = get_interned_str(node_get_data1(stmt));
             if (globals.set_has(gname)) {
-                panic_with_code(
+                rslv_panic_loc(
                     "E_RESOLVE_SHADOWING",
                     "Variable shadowing/redeclaration is not allowed: ".str_concat(gname),
                     "A global declaration with the same name already exists.",

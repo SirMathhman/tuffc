@@ -496,6 +496,27 @@ export function panic_with_code(
   });
 }
 
+export function panic_with_code_loc(
+  code: string | undefined,
+  msg: string,
+  reason: string | undefined,
+  fix: string | undefined,
+  line: number,
+  col: number,
+): never {
+  const resolvedCode =
+    code && code.length > 0 ? code : inferSelfhostDiagnosticCode(msg);
+  throw new TuffError(
+    msg,
+    { line: line > 0 ? line : undefined, column: col > 0 ? col : undefined },
+    {
+      code: resolvedCode,
+      reason: reason ?? inferSelfhostDiagnosticReason(resolvedCode),
+      fix: fix ?? inferSelfhostDiagnosticFix(resolvedCode),
+    },
+  );
+}
+
 // === String Vector (for intern table) ===
 export function str_vec_new(): string[] {
   return [];

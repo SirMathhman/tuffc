@@ -76,6 +76,7 @@ let node_data2 : Vec<I32> = vec_new();  // Generic data slot 2
 let node_data3 : Vec<I32> = vec_new();  // Generic data slot 3
 let node_data4 : Vec<I32> = vec_new();  // Generic data slot 4
 let node_data5 : Vec<I32> = vec_new();  // Generic data slot 5
+let node_toks  : Vec<I32> = vec_new();  // Token index at parse time (for line/col)
 let node_count : I32 = 1;
 
 out fn node_new(kind: I32) : I32 => {
@@ -86,6 +87,7 @@ out fn node_new(kind: I32) : I32 => {
     node_data3.vec_push(0);
     node_data4.vec_push(0);
     node_data5.vec_push(0);
+    node_toks.vec_push(parse_pos);
     node_count = node_count + 1;
     idx
 }
@@ -103,6 +105,8 @@ out fn node_get_data2(idx: I32) : I32 => node_data2.vec_get(idx);
 out fn node_get_data3(idx: I32) : I32 => node_data3.vec_get(idx);
 out fn node_get_data4(idx: I32) : I32 => node_data4.vec_get(idx);
 out fn node_get_data5(idx: I32) : I32 => node_data5.vec_get(idx);
+out fn node_get_line(idx: I32) : I32 => tok_line(node_toks.vec_get(idx));
+out fn node_get_col(idx: I32) : I32 => tok_col(node_toks.vec_get(idx));
 
 // ============================================================================
 // Parser
@@ -121,6 +125,7 @@ out fn parse_init() : I32 => {
     node_data3.vec_clear();
     node_data4.vec_clear();
     node_data5.vec_clear();
+    node_toks.vec_clear();
     // Reserve index 0 as null/sentinel node.
     node_kinds.vec_push(0);
     node_data1.vec_push(0);
@@ -128,6 +133,7 @@ out fn parse_init() : I32 => {
     node_data3.vec_push(0);
     node_data4.vec_push(0);
     node_data5.vec_push(0);
+    node_toks.vec_push(0);
     node_count = 1;
     0
 }

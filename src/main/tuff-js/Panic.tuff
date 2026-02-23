@@ -1,8 +1,11 @@
 extern fn panic(msg : *Str) : I32;
 extern fn panic_with_code(code : *Str, msg : *Str, reason : *Str, fix : *Str) : I32;
+extern fn panic_with_code_loc(code : *Str, msg : *Str, reason : *Str, fix : *Str, line : I32, col : I32) : I32;
 
 out expect fn panic(msg : *Str) : I32;
 out expect fn panic_with_code(code : *Str, msg : *Str, reason : *Str, fix : *Str) : I32;
+out expect fn panic_with_code_loc(code : *Str, msg : *Str, reason : *Str, fix : *Str, line : I32, col : I32) : I32;
 
 out actual fn panic(msg : *Str) : I32 => panic(msg);
 out actual fn panic_with_code(code : *Str, msg : *Str, reason : *Str, fix : *Str) : I32 => panic_with_code(code, msg, reason, fix);
+out actual fn panic_with_code_loc(code : *Str, msg : *Str, reason : *Str, fix : *Str, line : I32, col : I32) : I32 => panic_with_code_loc(code, msg, reason, fix, line, col);

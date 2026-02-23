@@ -105,6 +105,7 @@ extern fn print(s: *Str) : I32;
 extern fn print_error(s: *Str) : I32;
 extern fn panic(msg: *Str) : I32;
 extern fn panic_with_code(code: *Str, msg: *Str, reason: *Str, fix: *Str) : I32;
+extern fn panic_with_code_loc(code: *Str, msg: *Str, reason: *Str, fix: *Str, line: I32, col: I32) : I32;
 
 extern fn get_argc() : I32;
 extern fn get_argv(i: I32) : *Str;

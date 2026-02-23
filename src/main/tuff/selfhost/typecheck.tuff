@@ -3,7 +3,14 @@
 // ============================================================================
 
 let { get_interned_str, map_new, set_new, vec_new, str_includes, str_starts_with } = selfhost::runtime_lexer;
-let { node_kind, node_get_data1, node_get_data2, node_get_data3, node_get_data4, node_get_data5 } = selfhost::parser_core;
+let { node_kind, node_get_data1, node_get_data2, node_get_data3, node_get_data4, node_get_data5, node_get_line, node_get_col } = selfhost::parser_core;
+
+// Current AST node being type-checked — set at each typecheck_expr/typecheck_stmt entry
+// so that tc_panic_loc can report the source location of the error.
+let tc_current_node : I32 = 0;
+
+fn tc_panic_loc(code: *Str, msg: *Str, reason: *Str, fix: *Str) : I32 =>
+    panic_with_code_loc(code, msg, reason, fix, node_get_line(tc_current_node), node_get_col(tc_current_node));
 
 fn type_name_from_type_node(t: I32) : *Str => {
     if (t == 0) {
@@ -467,6 +474,7 @@ fn typecheck_expr(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types:
     if (n == 0) {
         return 0;
     }
+    tc_current_node = n;
 
     let kind = node_kind(n);
 
@@ -480,7 +488,7 @@ fn typecheck_expr(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types:
             if (node_kind(denom_node) == NK_IDENTIFIER) {
                 denom_desc = "denominator `".str_concat(get_interned_str(node_get_data1(denom_node))).str_concat("`");
             }
-            panic_with_code(
+            tc_panic_loc(
                 "E_SAFETY_DIV_BY_ZERO",
                 "Division by zero cannot be ruled out at compile time",
                 "The ".str_concat(denom_desc).str_concat(" is not proven non-zero; any value including 0 is possible."),
@@ -493,7 +501,7 @@ fn typecheck_expr(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types:
             if (node_kind(mod_node) == NK_IDENTIFIER) {
                 mod_desc = "modulo denominator `".str_concat(get_interned_str(node_get_data1(mod_node))).str_concat("`");
             }
-            panic_with_code(
+            tc_panic_loc(
                 "E_SAFETY_MOD_BY_ZERO",
                 "Modulo by zero cannot be ruled out at compile time",
                 "The ".str_concat(mod_desc).str_concat(" is not proven non-zero; any value including 0 is possible."),
@@ -527,7 +535,7 @@ fn typecheck_expr(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types:
                         right_desc = get_interned_str(node_get_data1(rnode)).str_concat("=").str_concat(int_to_string(right));
                     }
                     let witness = left_desc.str_concat(" ").str_concat(op).str_concat(" ").str_concat(right_desc).str_concat(" = ").str_concat(int_to_string(result)).str_concat(", which is outside I32 range [-2147483648, 2147483647]");
-                    panic_with_code(
+                    tc_panic_loc(
                         "E_SAFETY_INTEGER_OVERFLOW",
                         "Integer overflow/underflow proven possible for '".str_concat(op).str_concat("'"),
                         witness,
@@ -559,7 +567,7 @@ fn typecheck_expr(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types:
 
             if (fname.str_eq("drop")) {
                 if (arg_count != 1) {
-                    panic_with_code(
+                    tc_panic_loc(
                         "E_TYPE_ARG_COUNT",
                         "drop expects exactly one argument",
                         "The drop builtin requires one argument representing the value to drop.",
@@ -569,7 +577,7 @@ fn typecheck_expr(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types:
                 let target = args.vec_get(0);
                 let target_name = infer_expr_type_name(target, fn_return_types, local_types);
                 if (!tc_destructor_alias_by_alias.map_has(target_name)) {
-                    panic_with_code(
+                    tc_panic_loc(
                         "E_TYPE_DESTRUCTOR_NOT_FOUND",
                         "Type '".str_concat(target_name).str_concat("' does not have an associated destructor"),
                         "drop can only be called for values whose alias type declares a destructor.",
@@ -581,7 +589,7 @@ fn typecheck_expr(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types:
 
             if (fname.str_eq("into") && node_get_data3(n) == 1) {
                 if (arg_count < 1) {
-                    panic_with_code(
+                    tc_panic_loc(
                         "E_TYPE_ARG_COUNT",
                         "into conversion requires a receiver",
                         "Method-sugar into conversion requires a source value as receiver.",
@@ -599,7 +607,7 @@ fn typecheck_expr(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types:
                     cname_label = "<missing>";
                 }
                 if (cname.str_eq("") || !tc_contract_names.set_has(cname)) {
-                    panic_with_code(
+                    tc_panic_loc(
                         "E_TYPE_INTO_UNKNOWN_CONTRACT",
                         "Unknown contract '".str_concat(cname_label).str_concat("' in into conversion"),
                         "An into conversion referenced a contract that is not declared.",
@@ -620,7 +628,7 @@ fn typecheck_expr(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types:
                 let expected = fn_arities.map_get(fname);
                 if (expected != arg_count) {
                     let msg = "Function ".str_concat(fname).str_concat(" expects ".str_concat(int_to_string(expected))).str_concat(" args, got ".str_concat(int_to_string(arg_count)));
-                    panic_with_code(
+                    tc_panic_loc(
                         "E_TYPE_ARG_COUNT",
                         msg,
                         "A function call provided a different number of arguments than the function signature requires.",
@@ -641,7 +649,7 @@ fn typecheck_expr(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types:
                         expected_name.str_starts_with("*") &&
                         is_nullable_pointer_type_name(arg_name)
                     ) {
-                        panic_with_code(
+                        tc_panic_loc(
                             "E_SAFETY_NULLABLE_POINTER_GUARD",
                             "Call requires nullable pointer guard",
                             "A nullable pointer argument must be proven non-null before pointer-consuming calls.",
@@ -654,7 +662,7 @@ fn typecheck_expr(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types:
                             .str_concat(" arg ").str_concat(int_to_string(j + 1))
                             .str_concat(": expected ").str_concat(expected_name)
                             .str_concat(", got ").str_concat(arg_name);
-                        panic_with_code(
+                        tc_panic_loc(
                             "E_TYPE_ARG_MISMATCH",
                             msg,
                             "A function argument type does not match the corresponding parameter type.",
@@ -686,7 +694,7 @@ fn typecheck_expr(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types:
                 guarded = nonnull_ptrs.map_has(oname);
             }
             if (!guarded) {
-                panic_with_code(
+                tc_panic_loc(
                     "E_SAFETY_NULLABLE_POINTER_GUARD",
                     "Nullable pointer access requires guard",
                     "A nullable pointer must be proven non-null before pointer-consuming operations.",
@@ -708,7 +716,7 @@ fn typecheck_expr(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types:
                 guarded = nonnull_ptrs.map_has(tname);
             }
             if (!guarded) {
-                panic_with_code(
+                tc_panic_loc(
                     "E_SAFETY_NULLABLE_POINTER_GUARD",
                     "Nullable pointer indexing requires guard",
                     "A nullable pointer must be proven non-null before pointer-consuming operations.",
@@ -734,7 +742,7 @@ fn typecheck_expr(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types:
                         index_max = try_get_nonnegative_integer_literal(index_node);
                     }
                     if (index_max < 0) {
-                        panic_with_code(
+                        tc_panic_loc(
                             "E_SAFETY_ARRAY_BOUNDS_UNPROVEN",
                             "Cannot prove array index bound safety",
                             "The array index does not have a proven upper bound under strict safety checks.",
@@ -742,7 +750,7 @@ fn typecheck_expr(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types:
                         );
                     }
                     if (index_max >= bound) {
-                        panic_with_code(
+                        tc_panic_loc(
                             "E_SAFETY_ARRAY_BOUNDS",
                             "Array index may be out of bounds",
                             "The proven index upper bound can exceed initialized array length.",
@@ -786,7 +794,7 @@ fn typecheck_expr(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types:
         typecheck_expr(cond, fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety);
         let cond_name = infer_expr_type_name(cond, fn_return_types, local_types);
         if (!cond_name.str_eq("Bool") && !cond_name.str_eq("Unknown")) {
-            panic_with_code(
+            tc_panic_loc(
                 "E_TYPE_IF_CONDITION",
                 "if condition must be Bool, got ".str_concat(cond_name),
                 "Conditional branches require a boolean predicate, but the given expression has a non-Bool type.",
@@ -877,7 +885,7 @@ fn typecheck_expr(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types:
             while (j < jlen) {
                 let tag = expected_tags.vec_get(j);
                 if (!seen_tags.set_has(tag)) {
-                    panic_with_code(
+                    tc_panic_loc(
                         "E_TYPE_MATCH_NON_EXHAUSTIVE",
                         "Non-exhaustive match: missing case for ".str_concat(tag),
                         "A match expression over a known union type does not handle all variants.",
@@ -902,6 +910,7 @@ fn typecheck_stmt(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types:
     if (n == 0) {
         return 0;
     }
+    tc_current_node = n;
 
     let kind = node_kind(n);
 
@@ -969,7 +978,7 @@ fn typecheck_stmt(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types:
             let body_name = infer_expr_type_name(body, fn_return_types, fn_local_types);
             if (!type_names_compatible(expected_name, body_name, body)) {
                 let fname = get_interned_str(node_get_data1(n));
-                panic_with_code(
+                tc_panic_loc(
                     "E_TYPE_RETURN_MISMATCH",
                     "Function ".str_concat(fname).str_concat(" return type mismatch: expected ").str_concat(expected_name).str_concat(", got ").str_concat(body_name),
                     "The function body expression type does not match the declared return type.",
@@ -995,7 +1004,7 @@ fn typecheck_stmt(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types:
             if (!declared_name.str_eq("Unknown") && !rhs_name.str_eq("Unknown") && !pointer_types_compatible(declared_name, rhs_name) && !numeric_types_compatible(declared_name, rhs_name, rhs) && !tc_type_alias_names.set_has(declared_name)) {
                 let vname = get_interned_str(node_get_data1(n));
                 let msg = "Type mismatch for let ".str_concat(vname).str_concat(": expected ").str_concat(declared_name).str_concat(", got ").str_concat(rhs_name);
-                panic_with_code(
+                tc_panic_loc(
                     "E_TYPE_LET_MISMATCH",
                     msg,
                     "An explicit let type annotation does not match the assigned RHS expression type.",
@@ -1047,7 +1056,7 @@ fn typecheck_stmt(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types:
                 let expected_name = local_types.map_get(tname);
                 let value_name = infer_expr_type_name(value, fn_return_types, local_types);
                 if (!type_names_compatible(expected_name, value_name, value) && !tc_type_alias_names.set_has(expected_name)) {
-                    panic_with_code(
+                    tc_panic_loc(
                         "E_TYPE_ASSIGN_MISMATCH",
                         "Assignment mismatch for ".str_concat(tname).str_concat(": expected ").str_concat(expected_name).str_concat(", got ").str_concat(value_name),
                         "The assigned value type is incompatible with the declared variable type.",
@@ -1065,7 +1074,7 @@ fn typecheck_stmt(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types:
         if (!expected_return_type.str_eq("Unknown")) {
             let value_name = infer_expr_type_name(value, fn_return_types, local_types);
             if (!type_names_compatible(expected_return_type, value_name, value)) {
-                panic_with_code(
+                tc_panic_loc(
                     "E_TYPE_RETURN_MISMATCH",
                     "Return type mismatch: expected ".str_concat(expected_return_type).str_concat(", got ").str_concat(value_name),
                     "A return statement produced a value incompatible with the function's declared return type.",
@@ -1081,7 +1090,7 @@ fn typecheck_stmt(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types:
         typecheck_expr(cond, fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety);
         let cond_name = infer_expr_type_name(cond, fn_return_types, local_types);
         if (!cond_name.str_eq("Bool") && !cond_name.str_eq("Unknown")) {
-            panic_with_code(
+            tc_panic_loc(
                 "E_TYPE_IF_CONDITION",
                 "if condition must be Bool, got ".str_concat(cond_name),
                 "Conditional branches require a boolean predicate, but the given expression has a non-Bool type.",
@@ -1179,7 +1188,7 @@ fn typecheck_stmt(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types:
         typecheck_expr(cond, fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety);
         let cond_name = infer_expr_type_name(cond, fn_return_types, local_types);
         if (!cond_name.str_eq("Bool") && !cond_name.str_eq("Unknown")) {
-            panic_with_code(
+            tc_panic_loc(
                 "E_TYPE_IF_CONDITION",
                 "if condition must be Bool, got ".str_concat(cond_name),
                 "Conditional branches require a boolean predicate, but the given expression has a non-Bool type.",
@@ -1203,7 +1212,7 @@ fn typecheck_stmt(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types:
     if (kind == NK_INTO_STMT) {
         let cname = get_interned_str(node_get_data1(n));
         if (!tc_contract_names.set_has(cname)) {
-            panic_with_code(
+            tc_panic_loc(
                 "E_TYPE_UNKNOWN_CONTRACT",
                 "Unknown contract '".str_concat(cname).str_concat("' in into statement"),
                 "An into statement referenced a contract that is not declared.",
@@ -1304,7 +1313,7 @@ out fn typecheck_program_with_options(program: I32, strict_safety: I32) : I32 =>
         let alias_name = tc_destructor_alias_names.vec_get(i);
         let destructor_name = tc_destructor_alias_by_alias.map_get(alias_name);
         if (!fn_nodes.map_has(destructor_name)) {
-            panic_with_code(
+            tc_panic_loc(
                 "E_TYPE_DESTRUCTOR_NOT_FOUND",
                 "Destructor '".str_concat(destructor_name).str_concat("' for alias '").str_concat(alias_name).str_concat("' was not found"),
                 "A type alias referenced a destructor function that does not exist.",
@@ -1335,7 +1344,7 @@ out fn typecheck_program_with_options(program: I32, strict_safety: I32) : I32 =>
         }
 
         if (!valid) {
-            panic_with_code(
+            tc_panic_loc(
                 "E_TYPE_DESTRUCTOR_SIGNATURE",
                 "Destructor '".str_concat(destructor_name).str_concat("' must have signature fn ").str_concat(destructor_name).str_concat("(this : ").str_concat(alias_name).str_concat("<...>) : Void"),
                 "Destructor signatures must follow the required receiver and return type contract.",
