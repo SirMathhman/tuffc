@@ -173,6 +173,7 @@ fn main() : I32 => {
     let strict_safety = 0;
     let lint_enabled = 0;
     let borrow_enabled = 1;
+    let profile_enabled = 0;
     let i = 2;
     let had_error = 0;
 
@@ -198,6 +199,8 @@ fn main() : I32 => {
             strict_safety = 1;
         } else if (arg.str_eq("--lint")) {
             lint_enabled = 1;
+        } else if (arg.str_eq("--profile")) {
+            profile_enabled = 1;
         } else if (arg.str_eq("--no-borrowcheck")) {
             borrow_enabled = 0;
         } else if (arg.str_eq("--modules")) {
@@ -223,17 +226,13 @@ fn main() : I32 => {
             print_error("--modules requires -o <output_file>");
             return 1;
         }
-        print_error("[dbg] calling compile_file_with_options");
-        print_error("[dbg] input_file=".str_concat(input_file));
-        print_error("[dbg] output_file=".str_concat(output_file));
-        print_error("[dbg] target=".str_concat(target));
         let result_code = compile_file_with_options(input_file, output_file, strict_safety, lint_enabled, 500, borrow_enabled, target);
-        print_error("[dbg] compile_file_with_options returned ".str_concat(int_to_string(result_code)));
+        if (profile_enabled == 1) {
+            print_error("[profile] ".str_concat(profile_take_json()));
+        }
         return result_code;
     }
 
-    print_error("[dbg] single-file mode");
-    print_error("[dbg] input_file=".str_concat(input_file));
     let source = read_file(input_file);
     let result = compile_source_with_options(source, strict_safety, lint_enabled, 500, borrow_enabled, target);
 
@@ -242,6 +241,10 @@ fn main() : I32 => {
     } else {
         write_file(output_file, result);
         print("Compiled ".str_concat(input_file).str_concat(" -> ").str_concat(output_file));
+    }
+
+    if (profile_enabled == 1) {
+        print_error("[profile] ".str_concat(profile_take_json()));
     }
 
     0

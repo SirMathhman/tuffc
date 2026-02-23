@@ -339,6 +339,8 @@ function makeSelfhostCompileResult(
   target,
   lintIssues,
   outputPath?,
+  profileJson?,
+  profile?,
 ) {
   return {
     source,
@@ -350,6 +352,8 @@ function makeSelfhostCompileResult(
     output: js,
     target,
     lintIssues,
+    profileJson,
+    profile,
     monomorphizationPlan: makeEmptyMonomorphizationPlan("selfhost-backend"),
     lintFixesApplied: 0,
     lintFixedSource: source,
@@ -519,6 +523,18 @@ function finalizeSelfhostCompile(
   target: unknown,
   outputPath?: string,
 ): CompilerResult<Record<string, unknown>> {
+  let profileJson = "";
+  let profile = undefined;
+  if (typeof runtime.profile_take_json === "function") {
+    profileJson = runtime.profile_take_json();
+    if (typeof profileJson === "string" && profileJson.length > 0) {
+      try {
+        profile = JSON.parse(profileJson);
+      } catch {
+        profile = undefined;
+      }
+    }
+  }
   const lintIssuesResult = handleSelfhostLintIssues(selfhost, source, lintMode);
   if (!lintIssuesResult.ok) return lintIssuesResult;
   return ok(
@@ -528,6 +544,8 @@ function finalizeSelfhostCompile(
       target,
       lintIssuesResult.value,
       outputPath,
+      profileJson,
+      profile,
     ),
   );
 }
@@ -573,6 +591,12 @@ function compileFileInternal(
     const source = fs.readFileSync(absInput, "utf8");
 
     let js;
+    if (typeof runtime.profile_take_json === "function") {
+      runtime.profile_take_json();
+    }
+    if (typeof runtime.profile_take_json === "function") {
+      runtime.profile_take_json();
+    }
     setSubstrateOverrideFromOptions(options, target, "selfhost");
     try {
       if (options.enableModules) {

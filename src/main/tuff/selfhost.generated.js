@@ -10094,6 +10094,7 @@ function main() {
   let strict_safety = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.strict_safety = strict_safety;
   let lint_enabled = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.lint_enabled = lint_enabled;
   let borrow_enabled = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.borrow_enabled = borrow_enabled;
+  let profile_enabled = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.profile_enabled = profile_enabled;
   let i = 2; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
   let had_error = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.had_error = had_error;
   while ((i < argc)) {
@@ -10118,6 +10119,8 @@ function main() {
   strict_safety = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.strict_safety = strict_safety;
 } else { if ((() => { const __recv = arg; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("--lint"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "--lint") : str_eq(__recv, "--lint"); })()) {
   lint_enabled = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.lint_enabled = lint_enabled;
+} else { if ((() => { const __recv = arg; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("--profile"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "--profile") : str_eq(__recv, "--profile"); })()) {
+  profile_enabled = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.profile_enabled = profile_enabled;
 } else { if ((() => { const __recv = arg; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("--no-borrowcheck"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "--no-borrowcheck") : str_eq(__recv, "--no-borrowcheck"); })()) {
   borrow_enabled = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.borrow_enabled = borrow_enabled;
 } else { if ((() => { const __recv = arg; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("--modules"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "--modules") : str_eq(__recv, "--modules"); })()) {
@@ -10128,7 +10131,7 @@ function main() {
   print_error("Missing value for --module-base");
   had_error = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.had_error = had_error;
 }
-} } } } } } }
+} } } } } } } }
   i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
 }
   if ((had_error === 1)) {
@@ -10139,16 +10142,12 @@ function main() {
   print_error("--modules requires -o <output_file>");
   return 1;
 }
-  print_error("[dbg] calling compile_file_with_options");
-  print_error((() => { const __recv = "[dbg] input_file="; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(input_file); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, input_file) : str_concat(__recv, input_file); })());
-  print_error((() => { const __recv = "[dbg] output_file="; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(output_file); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, output_file) : str_concat(__recv, output_file); })());
-  print_error((() => { const __recv = "[dbg] target="; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(target); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, target) : str_concat(__recv, target); })());
   let result_code = compile_file_with_options(input_file, output_file, strict_safety, lint_enabled, 500, borrow_enabled, target); if (typeof __tuff_this !== 'undefined') __tuff_this.result_code = result_code;
-  print_error((() => { const __recv = "[dbg] compile_file_with_options returned "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string(result_code)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(result_code)) : str_concat(__recv, int_to_string(result_code)); })());
+  if ((profile_enabled === 1)) {
+  print_error((() => { const __recv = "[profile] "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(profile_take_json()); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, profile_take_json()) : str_concat(__recv, profile_take_json()); })());
+}
   return result_code;
 }
-  print_error("[dbg] single-file mode");
-  print_error((() => { const __recv = "[dbg] input_file="; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(input_file); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, input_file) : str_concat(__recv, input_file); })());
   let source = read_file(input_file); if (typeof __tuff_this !== 'undefined') __tuff_this.source = source;
   let result = compile_source_with_options(source, strict_safety, lint_enabled, 500, borrow_enabled, target); if (typeof __tuff_this !== 'undefined') __tuff_this.result = result;
   if ((() => { const __recv = output_file; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop(""); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "") : str_eq(__recv, ""); })()) {
@@ -10156,6 +10155,9 @@ function main() {
 } else {
   write_file(output_file, result);
   print((() => { const __recv = (() => { const __recv = (() => { const __recv = "Compiled "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(input_file); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, input_file) : str_concat(__recv, input_file); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(" -> "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " -> ") : str_concat(__recv, " -> "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(output_file); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, output_file) : str_concat(__recv, output_file); })());
+}
+  if ((profile_enabled === 1)) {
+  print_error((() => { const __recv = "[profile] "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(profile_take_json()); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, profile_take_json()) : str_concat(__recv, profile_take_json()); })());
 }
   return 0;
 }
