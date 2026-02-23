@@ -76,6 +76,13 @@ function buildSelfhostSandbox(selfhostJs: string): Record<string, unknown> {
     "compile_source_with_options",
     "compile_file_with_options",
     "take_lint_issues",
+    "cpd_lex_init",
+    "cpd_lex_all",
+    "cpd_tok_kind",
+    "cpd_tok_value",
+    "cpd_tok_line",
+    "cpd_tok_col",
+    "cpd_get_interned_str",
     "main",
   ].join(", ");
 
