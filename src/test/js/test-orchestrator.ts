@@ -117,6 +117,33 @@ function executeScript(scriptPath: string, updateSnapshots: boolean): void {
   console.log(`[test] ✓ ${relative}`);
 }
 
+function ensureSelfhostBuiltOnceAtStart(): void {
+  const buildScript = path.join(root, "scripts", "build-selfhost-js.ts");
+  const relative = path.relative(root, buildScript).replaceAll("\\", "/");
+  console.log(`\n[test] ▶ build-once: ${relative}`);
+
+  const result = spawnSync(nodeExec, [tsxCli, buildScript], {
+    cwd: root,
+    encoding: "utf8",
+    stdio: "inherit",
+  });
+
+  if (result.error != null) {
+    console.error(
+      `[test] Failed to start build step ${relative}: ${result.error.message}`,
+    );
+    process.exit(1);
+  }
+  if (result.status !== 0) {
+    console.error(
+      `[test] ✖ build step ${relative} exited with status ${result.status}`,
+    );
+    process.exit(result.status ?? 1);
+  }
+
+  console.log(`[test] ✓ build-once complete`);
+}
+
 const suites = parseSuites(process.argv.slice(2));
 const updateSnapshots = process.argv.includes("--update");
 
@@ -133,6 +160,8 @@ const selfhostSuites: SuiteName[] = ["core", "stress", "parity"];
 const needsSelfhostArtifact = suites.some((s) => selfhostSuites.includes(s));
 
 if (needsSelfhostArtifact) {
+  ensureSelfhostBuiltOnceAtStart();
+
   const exeArtifact = path.join(
     root,
     "tests",

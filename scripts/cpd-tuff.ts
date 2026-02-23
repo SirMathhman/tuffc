@@ -256,14 +256,21 @@ function modPow(base: number, exponent: number, mod: number): number {
   return result;
 }
 
-function buildTokenId(kind: number, value: number, options: CpdOptions): number {
+function buildTokenId(
+  kind: number,
+  value: number,
+  options: CpdOptions,
+): number {
   const canonicalValue = (() => {
     if (options.normalizeIdentifiers && kind === TK_IDENTIFIER) {
       return 1;
     }
     if (
       options.normalizeLiterals &&
-      (kind === TK_NUMBER || kind === TK_STRING || kind === TK_CHAR || kind === TK_BOOL)
+      (kind === TK_NUMBER ||
+        kind === TK_STRING ||
+        kind === TK_CHAR ||
+        kind === TK_BOOL)
     ) {
       return 1;
     }
@@ -323,9 +330,16 @@ function computePrefixHashes(tokens: CpdToken[]): number[] {
   return prefix;
 }
 
-function windowHash(prefix: number[], start: number, length: number, basePow: number): number {
+function windowHash(
+  prefix: number[],
+  start: number,
+  length: number,
+  basePow: number,
+): number {
   const end = start + length;
-  const raw = (prefix[end] - (prefix[start] * basePow) % HASH_MOD + HASH_MOD) % HASH_MOD;
+  const raw =
+    (prefix[end] - ((prefix[start] * basePow) % HASH_MOD) + HASH_MOD) %
+    HASH_MOD;
   return raw;
 }
 
@@ -346,8 +360,14 @@ function extendMatchLength(
   return length;
 }
 
-function findWindowMatches(fileTokens: CpdFileTokens[], minTokens: number): WindowMatch[] {
-  const hashBuckets = new Map<number, Array<{ fileIndex: number; start: number }>>();
+function findWindowMatches(
+  fileTokens: CpdFileTokens[],
+  minTokens: number,
+): WindowMatch[] {
+  const hashBuckets = new Map<
+    number,
+    Array<{ fileIndex: number; start: number }>
+  >();
   const prefixByFile = fileTokens.map((x) => computePrefixHashes(x.tokens));
   const basePow = modPow(HASH_BASE, minTokens, HASH_MOD);
   const matches: WindowMatch[] = [];
@@ -370,13 +390,17 @@ function findWindowMatches(fileTokens: CpdFileTokens[], minTokens: number): Wind
         if (candidate.fileIndex === fileIndex) {
           const left = candidate.start;
           const right = start;
-          const overlaps = !(left + minTokens <= right || right + minTokens <= left);
+          const overlaps = !(
+            left + minTokens <= right || right + minTokens <= left
+          );
           if (overlaps) {
             continue;
           }
         }
 
-        if (!tokensEqual(otherTokens, candidate.start, tokens, start, minTokens)) {
+        if (
+          !tokensEqual(otherTokens, candidate.start, tokens, start, minTokens)
+        ) {
           continue;
         }
 
@@ -417,7 +441,10 @@ function findWindowMatches(fileTokens: CpdFileTokens[], minTokens: number): Wind
   return matches;
 }
 
-function toFindings(fileTokens: CpdFileTokens[], matches: WindowMatch[]): Finding[] {
+function toFindings(
+  fileTokens: CpdFileTokens[],
+  matches: WindowMatch[],
+): Finding[] {
   const findings: Finding[] = [];
   for (const m of matches) {
     const a = fileTokens[m.fileIndexA];
@@ -455,9 +482,11 @@ function toFindings(fileTokens: CpdFileTokens[], matches: WindowMatch[]): Findin
         return false;
       }
       const aCovered =
-        kept.startLineA <= candidate.startLineA && kept.endLineA >= candidate.endLineA;
+        kept.startLineA <= candidate.startLineA &&
+        kept.endLineA >= candidate.endLineA;
       const bCovered =
-        kept.startLineB <= candidate.startLineB && kept.endLineB >= candidate.endLineB;
+        kept.startLineB <= candidate.startLineB &&
+        kept.endLineB >= candidate.endLineB;
       return aCovered && bCovered;
     });
     if (!subsumed) {

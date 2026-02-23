@@ -50,7 +50,9 @@ if (!Array.isArray(informativeJson.findings)) {
   process.exit(1);
 }
 if (informativeJson.findings.length === 0) {
-  console.error("Expected duplicate findings in CPD fixture set at min-tokens=10");
+  console.error(
+    "Expected duplicate findings in CPD fixture set at min-tokens=10",
+  );
   process.exit(1);
 }
 
