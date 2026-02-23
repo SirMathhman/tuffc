@@ -15,6 +15,7 @@
     "cpd:tuff:strict": "tsx ./scripts/cpd-tuff.ts --fail-on-duplicates",
     "cpd:tuff:35": "tsx ./scripts/cpd-tuff.ts --min-tokens 35",
     "cpd:tuff:json": "tsx ./scripts/cpd-tuff.ts --json",
+    "test:cpd": "tsx ./src/test/js/cpd-tuff.ts",
     "test": "npm run test:core",
     "test:core": "tsx ./src/test/js/test-orchestrator.ts --suite=core",
     "test:native": "tsx ./src/test/js/test-orchestrator.ts --suite=native",

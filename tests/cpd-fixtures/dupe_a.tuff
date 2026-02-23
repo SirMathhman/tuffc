@@ -1,0 +1,12 @@
+fn alpha(a: I32, b: I32, c: I32) : I32 => {
+    let sum = a + b + c;
+    let product = a * b * c;
+    let delta = product - sum;
+    if (delta > 100) {
+        return delta - 7;
+    }
+    if (delta < -100) {
+        return delta + 7;
+    }
+    sum + product + delta
+}

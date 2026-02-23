@@ -1,0 +1,12 @@
+fn beta(x: I32, y: I32, z: I32) : I32 => {
+    let sum = x + y + z;
+    let product = x * y * z;
+    let delta = product - sum;
+    if (delta > 100) {
+        return delta - 7;
+    }
+    if (delta < -100) {
+        return delta + 7;
+    }
+    sum + product + delta
+}

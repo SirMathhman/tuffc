@@ -1,0 +1,8 @@
+fn only_once(v: I32) : I32 => {
+    if (v == 0) {
+        return 42;
+    }
+    let next = v + 13;
+    let spin = next * 3;
+    spin - 1
+}
