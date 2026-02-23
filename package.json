@@ -56,7 +56,10 @@
     "build:web": "esbuild ./src/main/js/web-compiler.ts --bundle --platform=browser --format=iife --global-name=TuffCompiler --target=es2020 --minify --sourcemap --outfile=./tests/out/web/tuff-compiler.min.js",
     "build:web:esm": "esbuild ./src/main/js/web-compiler.ts --bundle --platform=browser --format=esm --target=es2020 --minify --sourcemap --outfile=./tests/out/web/tuff-compiler.esm.js",
     "build:binary": "npm run native:selfhost:parity && tsx ./scripts/build-native-binary.ts",
-    "build:exe": "npm run native:selfhost:parity && tsx ./scripts/build-native-binary.ts --out=./dist/tuffc.exe"
+    "build:exe": "npm run native:selfhost:parity && tsx ./scripts/build-native-binary.ts --out=./dist/tuffc.exe",
+    "profile:compiler": "tsx ./scripts/profile-compiler.ts",
+    "profile:compiler:verbose": "tsx ./scripts/profile-compiler.ts --verbose",
+    "profile:compiler:json": "tsx ./scripts/profile-compiler.ts --json"
   },
   "devDependencies": {
     "@types/node": "^25.2.3",
