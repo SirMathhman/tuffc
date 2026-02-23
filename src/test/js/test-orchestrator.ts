@@ -29,6 +29,7 @@ const suiteScripts: Record<SuiteName, string[]> = {
     "./src/test/js/phase4-production.ts",
     "./src/test/js/borrow-checker.ts",
     "./src/test/js/cli-hardening.ts",
+    "./src/test/js/certificate.ts",
     "./src/test/js/cpd-tuff.ts",
     "./src/test/js/selfhost-test.ts",
     "./src/test/js/selfhost-modules.ts",
