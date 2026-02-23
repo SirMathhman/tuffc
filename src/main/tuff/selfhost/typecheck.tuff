@@ -8,17 +8,50 @@ let { node_kind, node_get_data1, node_get_data2, node_get_data3, node_get_data4,
 // Current AST node being type-checked — set at each typecheck_expr/typecheck_stmt entry
 // so that tc_panic_loc can report the source location of the error.
 let tc_current_node : I32 = 0;
+let tc_type_name_cache : Map = map_new();
 
 fn tc_panic_loc(code: *Str, msg: *Str, reason: *Str, fix: *Str) : I32 =>
     panic_with_code_loc(code, msg, reason, fix, node_get_line(tc_current_node), node_get_col(tc_current_node));
 
+fn union_type_contains(union_name: *Str, candidate: *Str) : Bool => {
+    let n = union_name.str_length();
+    let start = 0;
+    let i = 0;
+    while (i <= n) {
+        if (i == n || union_name.str_char_at(i) == 124) {
+            if (union_name.str_slice(start, i).str_eq(candidate)) {
+                return true;
+            }
+            start = i + 1;
+        }
+        i = i + 1;
+    }
+    false
+}
+
+fn is_this_return_type_for(actual: *Str, declared: *Str) : Bool => {
+    if (!actual.str_starts_with("__this_")) {
+        return false;
+    }
+    let n = actual.str_length();
+    actual.str_slice(7, n).str_eq(declared)
+}
+
 fn type_name_from_type_node(t: I32) : *Str => {
+    if (tc_type_name_cache.map_has(t)) {
+        return tc_type_name_cache.map_get(t);
+    }
     if (t == 0) {
+        tc_type_name_cache.map_set(t, "Unknown");
         return "Unknown";
     }
+
+    let result = "Unknown";
     let k = node_kind(t);
     if (k == 40) {
-        return get_interned_str(node_get_data1(t));
+        result = get_interned_str(node_get_data1(t));
+        tc_type_name_cache.map_set(t, result);
+        return result;
     }
     if (k == 41) {
         let mutable = node_get_data1(t);
@@ -30,22 +63,33 @@ fn type_name_from_type_node(t: I32) : *Str => {
             life_prefix = get_interned_str(life_idx).str_concat(" ");
         }
         if (move_ptr == 1) {
-            return "*".str_concat(life_prefix).str_concat("move ").str_concat(inner);
+            result = "*".str_concat(life_prefix).str_concat("move ").str_concat(inner);
+            tc_type_name_cache.map_set(t, result);
+            return result;
         }
         if (mutable == 1) {
-            return "*".str_concat(life_prefix).str_concat("mut ").str_concat(inner);
+            result = "*".str_concat(life_prefix).str_concat("mut ").str_concat(inner);
+            tc_type_name_cache.map_set(t, result);
+            return result;
         }
-        return "*".str_concat(life_prefix).str_concat(inner);
+        result = "*".str_concat(life_prefix).str_concat(inner);
+        tc_type_name_cache.map_set(t, result);
+        return result;
     }
     if (k == 44) {
-        return type_name_from_type_node(node_get_data1(t));
+        result = type_name_from_type_node(node_get_data1(t));
+        tc_type_name_cache.map_set(t, result);
+        return result;
     }
     if (k == 45) {
         let left = type_name_from_type_node(node_get_data1(t));
         let right = type_name_from_type_node(node_get_data2(t));
-        return left.str_concat("|").str_concat(right);
+        result = left.str_concat("|").str_concat(right);
+        tc_type_name_cache.map_set(t, result);
+        return result;
     }
-    "Unknown"
+    tc_type_name_cache.map_set(t, result);
+    result
 }
 
 fn pointer_types_compatible(expected: *Str, actual: *Str) : Bool => {
@@ -54,7 +98,7 @@ fn pointer_types_compatible(expected: *Str, actual: *Str) : Bool => {
     }
 
     if (expected.str_includes("|")) {
-        if (expected.str_starts_with(actual.str_concat("|")) || str_ends_with_local(expected, "|".str_concat(actual)) || expected.str_includes("|".str_concat(actual).str_concat("|"))) {
+        if (union_type_contains(expected, actual)) {
             return true;
         }
     }
@@ -170,6 +214,13 @@ fn is_type_variable_name(name: *Str) : Bool => {
     (ch >= 65 && ch <= 90)
 }
 
+fn runtime_opaque_handle_compatible(expected: *Str, actual: *Str) : Bool => {
+    if (!actual.str_eq("I32")) {
+        return false;
+    }
+    expected.str_eq("Vec") || expected.str_eq("Map") || expected.str_eq("Set")
+}
+
 fn type_names_compatible(expected: *Str, actual: *Str, rhs: I32) : Bool => {
     if (expected.str_eq("Unknown") || actual.str_eq("Unknown")) {
         return true;
@@ -181,6 +232,9 @@ fn type_names_compatible(expected: *Str, actual: *Str, rhs: I32) : Bool => {
         return true;
     }
     if (is_type_variable_name(expected) || is_type_variable_name(actual)) {
+        return true;
+    }
+    if (runtime_opaque_handle_compatible(expected, actual)) {
         return true;
     }
     if (pointer_types_compatible(expected, actual)) {
@@ -653,11 +707,7 @@ fn typecheck_expr(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types:
 
             if (fn_arities.map_has(fname)) {
                 let expected = fn_arities.map_get(fname);
-                let effective_arg_count = arg_count;
-                if (node_get_data3(n) == 1) {
-                    effective_arg_count = arg_count - 1;
-                }
-                if (expected != effective_arg_count) {
+                if (expected != arg_count) {
                     let msg = "Function ".str_concat(fname).str_concat(" expects ".str_concat(int_to_string(expected))).str_concat(" args, got ".str_concat(int_to_string(arg_count)));
                     tc_panic_loc(
                         "E_TYPE_ARG_COUNT",
@@ -1114,7 +1164,7 @@ fn typecheck_stmt(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types:
         let rhs_name = infer_expr_type_name(rhs, fn_return_types, local_types);
         if (declared_type != 0) {
             let declared_name = type_name_from_type_node(declared_type);
-            if (!declared_name.str_eq("Unknown") && !rhs_name.str_eq("Unknown") && !pointer_types_compatible(declared_name, rhs_name) && !numeric_types_compatible(declared_name, rhs_name, rhs) && !tc_type_alias_names.set_has(declared_name) && !rhs_name.str_eq("__this_".str_concat(declared_name))) {
+            if (!declared_name.str_eq("Unknown") && !rhs_name.str_eq("Unknown") && !pointer_types_compatible(declared_name, rhs_name) && !numeric_types_compatible(declared_name, rhs_name, rhs) && !tc_type_alias_names.set_has(declared_name) && !is_this_return_type_for(rhs_name, declared_name)) {
                 let vname = get_interned_str(node_get_data1(n));
                 let msg = "Type mismatch for let ".str_concat(vname).str_concat(": expected ").str_concat(declared_name).str_concat(", got ").str_concat(rhs_name);
                 tc_panic_loc(
@@ -1367,6 +1417,7 @@ out fn typecheck_program_with_options(program: I32, strict_safety: I32) : I32 =>
     tc_destructor_alias_names = vec_new();
     tc_fn_this_fields = map_new();
     tc_alias_base_type = map_new();
+    tc_type_name_cache = map_new();
     let body = node_get_data1(program);
 
     // Collect function signatures (including extern fns).

@@ -740,9 +740,9 @@ fn p_parse_statement() : I32 => {
         p_at(TK_KEYWORD, "out") ||
         p_at(TK_KEYWORD, "copy") ||
         p_at(TK_KEYWORD, "expect") ||
-        p_at(TK_IDENTIFIER, "expect") ||
+        (p_at(TK_IDENTIFIER, "expect") && (tok_kind(p_peek(1)) == TK_KEYWORD || tok_kind(p_peek(1)) == TK_IDENTIFIER)) ||
         p_at(TK_KEYWORD, "actual") ||
-        p_at(TK_IDENTIFIER, "actual")
+        (p_at(TK_IDENTIFIER, "actual") && (tok_kind(p_peek(1)) == TK_KEYWORD || tok_kind(p_peek(1)) == TK_IDENTIFIER))
     ) {
         modifier_watchdog = modifier_watchdog + 1;
         if (modifier_watchdog > 1000) {
@@ -761,13 +761,13 @@ fn p_parse_statement() : I32 => {
                 panic("Duplicate 'copy' modifier");
             }
             copy_decl = 1;
-        } else if (p_at(TK_KEYWORD, "expect") || p_at(TK_IDENTIFIER, "expect")) {
+        } else if (p_at(TK_KEYWORD, "expect") || (p_at(TK_IDENTIFIER, "expect") && (tok_kind(p_peek(1)) == TK_KEYWORD || tok_kind(p_peek(1)) == TK_IDENTIFIER))) {
             p_eat();
             if (expect_decl == 1) {
                 panic("Duplicate 'expect' modifier");
             }
             expect_decl = 1;
-        } else if (p_at(TK_KEYWORD, "actual") || p_at(TK_IDENTIFIER, "actual")) {
+        } else if (p_at(TK_KEYWORD, "actual") || (p_at(TK_IDENTIFIER, "actual") && (tok_kind(p_peek(1)) == TK_KEYWORD || tok_kind(p_peek(1)) == TK_IDENTIFIER))) {
             p_eat();
             if (actual_decl == 1) {
                 panic("Duplicate 'actual' modifier");
@@ -835,7 +835,7 @@ fn p_parse_statement() : I32 => {
             }
             out_node = p_parse_module_wrapper();
         } else {
-            panic("Expected declaration after modifiers");
+            p_error_with_token_context("Expected declaration after modifiers");
         }
 
         if (exported == 1 && node_kind(out_node) != NK_STMT_LIST) {

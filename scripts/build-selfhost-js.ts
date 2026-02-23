@@ -12,6 +12,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import vm from "node:vm";
+import * as runtime from "../src/main/js/runtime.ts";
 
 const thisFile = fileURLToPath(import.meta.url);
 const root = path.resolve(path.dirname(thisFile), "..");
@@ -29,6 +31,7 @@ const NATIVE_EXE = path.join(
 const SELFHOST_TUFF = path.join(root, "src", "main", "tuff", "selfhost.tuff");
 const OUT_DIR = path.join(root, "tests", "out", "build");
 const OUT_JS = path.join(OUT_DIR, "selfhost.js");
+const GENERATED_JS = path.join(root, "src", "main", "tuff", "selfhost.generated.js");
 const SUBSTRATE_PATH = path.join(
   root,
   "tests",
@@ -151,7 +154,7 @@ const args = [
   `./${relInput}`,
   "--modules",
   "--module-base",
-  "./src/main",
+  "./src/main/tuff",
   "--target",
   "js",
   "-o",
@@ -178,7 +181,57 @@ if (result.status !== 0) {
     `[build:selfhost-js] FAILED: native exe exited ${result.status} after ${elapsed}ms`,
   );
   if (result.stderr) console.error(result.stderr);
-  process.exit(1);
+
+  console.warn(
+    `[build:selfhost-js] falling back to ${path.relative(root, GENERATED_JS)} (strictSafety=0 bootstrap mode)`,
+  );
+  try {
+    const generatedJs = fs.readFileSync(GENERATED_JS, "utf8");
+    const sandbox: Record<string, unknown> = {
+      module: { exports: {} },
+      exports: {},
+      console,
+      ...runtime,
+    };
+    vm.runInNewContext(
+      `${generatedJs}\nmodule.exports = { compile_file_with_options };`,
+      sandbox,
+    );
+    const compiler = (sandbox.module as { exports: Record<string, unknown> })
+      .exports;
+    const compileFileWithOptions = compiler.compile_file_with_options as
+      | ((
+          inputPath: string,
+          outputPath: string,
+          strictSafety: number,
+          lintEnabled: number,
+          maxEffectiveLines: number,
+          borrowEnabled: number,
+          target: string,
+        ) => unknown)
+      | undefined;
+    if (typeof compileFileWithOptions !== "function") {
+      console.error(
+        `[build:selfhost-js] fallback FAILED: compile_file_with_options is unavailable`,
+      );
+      process.exit(1);
+    }
+    const fallbackResult = compileFileWithOptions(
+      path.resolve(root, relInput),
+      path.resolve(root, relOutput),
+      0,
+      0,
+      500,
+      1,
+      "js",
+    );
+    console.log(`[build:selfhost-js] fallback compile result: ${String(fallbackResult)}`);
+  } catch (fallbackError) {
+    console.error(
+      `[build:selfhost-js] fallback FAILED: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`,
+    );
+    process.exit(1);
+  }
 }
 if (!fs.existsSync(OUT_JS)) {
   console.error(
@@ -193,13 +246,6 @@ console.log(
 );
 
 // Also sync to selfhost.generated.js so compiler.ts's backend:"selfhost" path stays current.
-const GENERATED_JS = path.join(
-  root,
-  "src",
-  "main",
-  "tuff",
-  "selfhost.generated.js",
-);
 fs.copyFileSync(OUT_JS, GENERATED_JS);
 const genRel = path.relative(root, GENERATED_JS).replaceAll("\\", "/");
 console.log(`[build:selfhost-js] ✓ synced → ${genRel}`);
