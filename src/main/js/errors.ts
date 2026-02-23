@@ -24,7 +24,7 @@ export class TuffError extends Error {
     this.fix = options.fix ?? options.hint ?? undefined;
     // Backward compatibility with existing diagnostics/tests.
     this.hint = this.fix;
-    this.details = this.reason;
+    this.details = options.details ?? this.reason;
   }
 }
 
@@ -37,7 +37,12 @@ function getLine(source, lineNumber) {
 function createSourceExcerpt(source, loc) {
   if (!source) return undefined;
   if (!loc?.line) {
-    return source;
+    const lines = source.split(/\r?\n/);
+    const head = lines.slice(0, 10).join("\n");
+    if (lines.length <= 10) {
+      return head;
+    }
+    return `${head}\n... (${lines.length - 10} more line(s) omitted; location unavailable)`;
   }
   const lineText = getLine(source, loc.line);
   if (lineText == undefined) return undefined;
@@ -129,6 +134,7 @@ export function formatDiagnostic(
     message?: string | undefined;
     reason?: string | undefined;
     fix?: string | undefined;
+    details?: string | undefined;
     code?: string;
   },
   useColor = false,
@@ -164,5 +170,9 @@ export function formatDiagnostic(
     "  " + yellow("fix:"),
     `    ${diag.fix ?? "Adjust the code at this location to satisfy the expected syntax/type/safety contract."}`,
   ];
+  if (diag.details && diag.details !== diag.reason) {
+    lines.push("  " + cyan("details:"));
+    lines.push(`    ${diag.details}`);
+  }
   return lines.join("\n");
 }

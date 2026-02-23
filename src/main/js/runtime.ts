@@ -383,12 +383,28 @@ export function read_file(filePath: string): string {
   try {
     return fs.readFileSync(filePath, "utf8");
   } catch (error: unknown) {
+    const detail = error instanceof Error ? error.message : String(error);
+    const code =
+      error && typeof error === "object" && "code" in error
+        ? String((error as { code?: unknown }).code ?? "")
+        : "";
+    let reason = `The compiler could not read required file '${filePath}'.`;
+    if (detail.length > 0) {
+      reason = `${reason} Underlying error: ${detail}`;
+    }
+    let fix = "Verify the file path and module layout, then retry compilation.";
+    if (code === "ENOENT") {
+      fix =
+        "The file does not exist at the resolved path. Verify --module-base, import/module paths, and current working directory.";
+    } else if (code === "EACCES" || code === "EPERM") {
+      fix =
+        "Permission denied while reading the file. Adjust file permissions or run with sufficient access rights.";
+    }
     throw new TuffError(`Failed to read file: ${filePath}`, undefined, {
       code: "E_SELFHOST_IO_READ_FAILED",
-      reason:
-        "The self-hosted compiler could not load a required source file while resolving inputs/modules.",
-      fix: "Verify the file path and module layout, then retry compilation.",
-      details: error instanceof Error ? error.message : String(error),
+      reason,
+      fix,
+      details: detail,
     });
   }
 }
@@ -399,12 +415,12 @@ export function write_file(filePath: string, contents: string): number {
     fs.writeFileSync(filePath, contents, "utf8");
     return 0;
   } catch (error: unknown) {
+    const detail = error instanceof Error ? error.message : String(error);
     throw new TuffError(`Failed to write file: ${filePath}`, undefined, {
       code: "E_SELFHOST_IO_WRITE_FAILED",
-      reason:
-        "The self-hosted compiler could not persist generated output to disk.",
+      reason: `The compiler could not write output file '${filePath}'. Underlying error: ${detail}`,
       fix: "Verify output path permissions and directory accessibility, then retry.",
-      details: error instanceof Error ? error.message : String(error),
+      details: detail,
     });
   }
 }
@@ -452,7 +468,50 @@ function inferSelfhostDiagnosticCode(msg: string): string {
   return "E_SELFHOST_INTERNAL_ERROR";
 }
 
-function inferSelfhostDiagnosticReason(code: string): string {
+function parseSelfhostTokenContext(msg: string):
+  | {
+      expected: string;
+      foundKind: string;
+      foundValue: string;
+      line: string;
+      col: string;
+    }
+  | undefined {
+  const m = msg.match(/^(.*?) \(found ([^:]+):(.+) at (\d+):(\d+)\)\s*$/);
+  if (!m) return undefined;
+  return {
+    expected: m[1]!.trim(),
+    foundKind: m[2]!.trim(),
+    foundValue: m[3]!.trim(),
+    line: m[4]!.trim(),
+    col: m[5]!.trim(),
+  };
+}
+
+function parseSelfhostLoc(
+  msg: string,
+): { line?: number; column?: number } | undefined {
+  const ctx = parseSelfhostTokenContext(msg);
+  if (!ctx) return undefined;
+  const line = Number(ctx.line);
+  const column = Number(ctx.col);
+  return {
+    line: Number.isFinite(line) && line > 0 ? line : undefined,
+    column: Number.isFinite(column) && column > 0 ? column : undefined,
+  };
+}
+
+function inferSelfhostDiagnosticReason(code: string, msg: string): string {
+  const ctx = parseSelfhostTokenContext(msg);
+  if (code === "E_PARSE_EXPECTED_TOKEN" && ctx) {
+    const expected = ctx.expected.startsWith("Expected ")
+      ? ctx.expected.slice("Expected ".length)
+      : ctx.expected;
+    return `Parser expected ${expected} but found ${ctx.foundKind}:${ctx.foundValue} at ${ctx.line}:${ctx.col}.`;
+  }
+  if (code === "E_PARSE_UNEXPECTED_TOKEN" && ctx) {
+    return `Parser encountered an unexpected ${ctx.foundKind}:${ctx.foundValue} at ${ctx.line}:${ctx.col} while parsing an expression.`;
+  }
   if (code.startsWith("E_PARSE_")) {
     return "The self-hosted frontend rejected the input while parsing syntax.";
   }
@@ -462,7 +521,17 @@ function inferSelfhostDiagnosticReason(code: string): string {
   return "The self-hosted compiler encountered an internal error outside normal user-facing diagnostics.";
 }
 
-function inferSelfhostDiagnosticFix(code: string): string {
+function inferSelfhostDiagnosticFix(code: string, msg: string): string {
+  const ctx = parseSelfhostTokenContext(msg);
+  if (
+    code === "E_PARSE_EXPECTED_TOKEN" &&
+    msg.startsWith("Expected declaration after modifiers")
+  ) {
+    return "After modifiers like out/copy/expect/actual, the next token must start a declaration (struct/enum/object/contract/type/fn/class/module). Remove stray modifiers or move statement-level code (like let/if/return) outside modifier context.";
+  }
+  if (code === "E_PARSE_EXPECTED_TOKEN" && ctx) {
+    return `Replace ${ctx.foundKind}:${ctx.foundValue} with the expected syntax near ${ctx.line}:${ctx.col}, or insert the missing token before it.`;
+  }
   if (code.startsWith("E_PARSE_")) {
     return "Check nearby syntax and token boundaries; if source is valid, add a focused parser regression test and patch the selfhost parser.";
   }
@@ -474,10 +543,10 @@ function inferSelfhostDiagnosticFix(code: string): string {
 
 export function panic(msg: string): never {
   const code = inferSelfhostDiagnosticCode(msg);
-  throw new TuffError(msg, undefined, {
+  throw new TuffError(msg, parseSelfhostLoc(msg), {
     code,
-    reason: inferSelfhostDiagnosticReason(code),
-    fix: inferSelfhostDiagnosticFix(code),
+    reason: inferSelfhostDiagnosticReason(code, msg),
+    fix: inferSelfhostDiagnosticFix(code, msg),
   });
 }
 
@@ -489,10 +558,10 @@ export function panic_with_code(
 ): never {
   const resolvedCode =
     code && code.length > 0 ? code : inferSelfhostDiagnosticCode(msg);
-  throw new TuffError(msg, undefined, {
+  throw new TuffError(msg, parseSelfhostLoc(msg), {
     code: resolvedCode,
-    reason: reason ?? inferSelfhostDiagnosticReason(resolvedCode),
-    fix: fix ?? inferSelfhostDiagnosticFix(resolvedCode),
+    reason: reason ?? inferSelfhostDiagnosticReason(resolvedCode, msg),
+    fix: fix ?? inferSelfhostDiagnosticFix(resolvedCode, msg),
   });
 }
 
@@ -511,8 +580,8 @@ export function panic_with_code_loc(
     { line: line > 0 ? line : undefined, column: col > 0 ? col : undefined },
     {
       code: resolvedCode,
-      reason: reason ?? inferSelfhostDiagnosticReason(resolvedCode),
-      fix: fix ?? inferSelfhostDiagnosticFix(resolvedCode),
+      reason: reason ?? inferSelfhostDiagnosticReason(resolvedCode, msg),
+      fix: fix ?? inferSelfhostDiagnosticFix(resolvedCode, msg),
     },
   );
 }
