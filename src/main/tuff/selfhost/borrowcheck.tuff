@@ -73,6 +73,9 @@ fn is_copy_type(type_name: *Str, extern_type_names: *mut Set) : Bool => {
     if (is_copy_primitive(type_name)) {
         return true;
     }
+    if (bc_destructor_aliases.map_has(type_name)) {
+        return false;
+    }
     if (type_name.str_eq("Vec") || type_name.str_eq("Map") || type_name.str_eq("Set")) {
         return true;
     }
@@ -100,6 +103,9 @@ fn bc_type_node_is_copyable(t: I32, extern_type_names: *mut Set, visiting_aliase
     let k = node_kind(t);
     if (k == NK_NAMED_TYPE) {
         let name = get_interned_str(node_get_data1(t));
+        if (bc_destructor_aliases.map_has(name)) {
+            return false;
+        }
         if (is_copy_primitive(name)) {
             return true;
         }
@@ -1106,6 +1112,12 @@ out fn borrowcheck_program(program: I32) : I32 => {
             bc_destructor_aliases.map_set(alias_name, destructor_name);
             bc_destructor_alias_names.vec_push(alias_name);
         }
+        if (kind == NK_EXTERN_TYPE_DECL && node_get_data5(stmt) != 0) {
+            let alias_name = get_interned_str(node_get_data1(stmt));
+            let destructor_name = get_interned_str(node_get_data5(stmt));
+            bc_destructor_aliases.map_set(alias_name, destructor_name);
+            bc_destructor_alias_names.vec_push(alias_name);
+        }
         i = i + 1;
     }
 
@@ -1159,8 +1171,8 @@ out fn borrowcheck_program(program: I32) : I32 => {
             panic_with_code(
                 "E_TYPE_DESTRUCTOR_NOT_FOUND",
                 "Destructor '".str_concat(destructor_name).str_concat("' for alias '").str_concat(alias_name).str_concat("' was not found"),
-                "A type alias referenced a destructor function that does not exist.",
-                "Declare the destructor function before using it in 'type Alias = ... then destructor'."
+                "A type declaration referenced a destructor function that does not exist.",
+                "Declare the destructor function before using it in 'type Alias = ... then destructor' or 'extern type Alias then destructor'."
             );
         }
 
