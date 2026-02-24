@@ -41,7 +41,8 @@ if (monoPlan?.available !== false || monoPlan?.reason !== "selfhost-backend") {
   );
   const hasPairI32Bool = monoSpecializations.some(
     (s) =>
-      s?.functionName === "pair" && (s?.typeArgs ?? []).join(",") === "I32,Bool",
+      s?.functionName === "pair" &&
+      (s?.typeArgs ?? []).join(",") === "I32,Bool",
   );
 
   if (!hasIdI32 || !hasPairI32Bool) {

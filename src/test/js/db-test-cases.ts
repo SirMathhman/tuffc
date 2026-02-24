@@ -319,19 +319,10 @@ function compileFileWithBackend(
   | { ok: true; output: string }
   | { ok: false; errorMessage: string; errorCode?: string } {
   if (backend === "native-exe") {
-    const run = spawnSync(
-      nodeExec,
-      [
-        nativeCli,
-        inputPath,
-        "-o",
-        outputPath,
-      ],
-      {
-        cwd: root,
-        encoding: "utf8",
-      },
-    );
+    const run = spawnSync(nodeExec, [nativeCli, inputPath, "-o", outputPath], {
+      cwd: root,
+      encoding: "utf8",
+    });
     if (run.status !== 0 || !fs.existsSync(outputPath)) {
       return {
         ok: false,
@@ -372,8 +363,8 @@ function materializeCaseFiles(testCase: DbCase): {
   }
 
   const entryRelative =
-    testCase.entry_path ??
     testCase.files.find((f) => f.role === "entry")?.file_path ??
+    testCase.entry_path ??
     testCase.files[0]?.file_path;
 
   if (!entryRelative) {

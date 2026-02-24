@@ -406,24 +406,13 @@ class TestCaseManagerApp:
         self.execution_mode_combo.grid(row=3, column=0, sticky="w", pady=(2, 10))
 
         ttk.Label(
-            form, text="Entry path (multi-file)", font=("Segoe UI", 10, "bold")
-        ).grid(row=3, column=1, sticky="w", padx=(12, 0))
-        self.entry_path_var = tk.StringVar(value="")
-        self.entry_path_entry = ttk.Entry(
-            form, textvariable=self.entry_path_var, width=36
-        )
-        self.entry_path_entry.grid(
-            row=4, column=1, sticky="w", padx=(12, 0), pady=(2, 10)
-        )
-
-        ttk.Label(
             form,
             text="Source files (tab per file)",
             font=("Segoe UI", 10, "bold"),
-        ).grid(row=5, column=0, columnspan=2, sticky="w")
+        ).grid(row=4, column=0, columnspan=2, sticky="w")
 
         files_actions = ttk.Frame(form)
-        files_actions.grid(row=5, column=1, sticky="e")
+        files_actions.grid(row=4, column=1, sticky="e")
         self.add_file_btn = ttk.Button(
             files_actions, text="+ Add file", command=self.add_file_tab
         )
@@ -442,7 +431,7 @@ class TestCaseManagerApp:
         self.use_entry_btn.pack(side=tk.LEFT, padx=(8, 0))
 
         files_frame = ttk.Frame(form)
-        files_frame.grid(row=6, column=0, columnspan=2, sticky="nsew", pady=(4, 10))
+        files_frame.grid(row=5, column=0, columnspan=2, sticky="nsew", pady=(4, 10))
 
         self.files_notebook = ttk.Notebook(files_frame)
         self.files_notebook.grid(row=0, column=0, sticky="nsew")
@@ -451,7 +440,7 @@ class TestCaseManagerApp:
         files_frame.columnconfigure(0, weight=1)
 
         actions = ttk.Frame(form)
-        actions.grid(row=7, column=0, columnspan=2, sticky="ew")
+        actions.grid(row=6, column=0, columnspan=2, sticky="ew")
 
         self.new_btn = ttk.Button(actions, text="New", command=self.clear_form)
         self.create_btn = ttk.Button(actions, text="Create", command=self.create_case)
@@ -465,12 +454,12 @@ class TestCaseManagerApp:
 
         self.status_var = tk.StringVar(value="Ready")
         ttk.Label(form, textvariable=self.status_var, foreground="#2d6a4f").grid(
-            row=8, column=0, columnspan=2, sticky="w", pady=(10, 0)
+            row=7, column=0, columnspan=2, sticky="w", pady=(10, 0)
         )
 
         form.columnconfigure(0, weight=1)
         form.columnconfigure(1, weight=0)
-        form.rowconfigure(6, weight=1)
+        form.rowconfigure(5, weight=1)
 
         self.blank_menu = tk.Menu(self.root, tearoff=False)
         self.blank_menu.add_command(
@@ -629,9 +618,17 @@ class TestCaseManagerApp:
         meta = self.file_tabs.get(tab)
         if meta is None:
             return
-        path_value = str(meta["path_var"].get()).strip().replace("\\", "/")
-        if path_value:
-            self.entry_path_var.set(path_value)
+        selected_path = str(meta["path_var"].get()).strip().replace("\\", "/")
+        if selected_path == "":
+            return
+
+        for existing_meta in self.file_tabs.values():
+            existing_path = (
+                str(existing_meta["path_var"].get()).strip().replace("\\", "/")
+            )
+            existing_meta["role_var"].set(
+                "entry" if existing_path == selected_path else "module"
+            )
 
     def _collect_files_from_tabs(self) -> list[tuple[str, str, str, int]] | None:
         files: list[tuple[str, str, str, int]] = []
@@ -678,14 +675,25 @@ class TestCaseManagerApp:
     def _load_file_tabs_from_case(self, case_id: int) -> None:
         self._clear_file_tabs()
         case_files = self.repo.list_case_files(case_id)
+        case = self.repo.get_case(case_id)
+        entry_path_fallback = (
+            str(case["entry_path"]).replace("\\", "/")
+            if case is not None and case["entry_path"]
+            else None
+        )
+
+        has_entry_role = any(str(row["role"]) == "entry" for row in case_files)
         for row in case_files:
+            file_path = str(row["file_path"]).replace("\\", "/")
+            role = str(row["role"])
+            if not has_entry_role and entry_path_fallback is not None:
+                role = "entry" if file_path == entry_path_fallback else "module"
             self._add_file_tab_internal(
-                file_path=str(row["file_path"]),
+                file_path=file_path,
                 source_code=str(row["source_code"]),
-                role=str(row["role"]),
+                role=role,
             )
         if len(case_files) == 0:
-            case = self.repo.get_case(case_id)
             fallback_path = "main.tuff"
             if case is not None and case["entry_path"]:
                 fallback_path = str(case["entry_path"])
@@ -698,12 +706,14 @@ class TestCaseManagerApp:
 
     def _get_form_data(
         self,
-    ) -> tuple[int, str, int, bool, str, str | None, list[tuple[str, str, str, int]]] | None:
+    ) -> (
+        tuple[int, str, int, bool, str, str | None, list[tuple[str, str, str, int]]]
+        | None
+    ):
         category_name = self.category_var.get().strip()
         exit_code_raw = self.exit_code_var.get().strip()
         expects_compile_error = self.expects_compile_error_var.get()
         execution_mode = self.execution_mode_var.get().strip() or "js-runtime"
-        entry_path_raw = self.entry_path_var.get().strip().replace("\\", "/")
 
         files = self._collect_files_from_tabs()
         if files is None:
@@ -729,13 +739,19 @@ class TestCaseManagerApp:
             )
             return None
 
-        if len(files) > 0 and entry_path_raw == "":
-            entry_path_raw = files[0][0]
-
-        if len(files) > 0 and not any(f[0] == entry_path_raw for f in files):
+        entry_role_paths = [
+            file_path for file_path, _src, role, _idx in files if role == "entry"
+        ]
+        if len(entry_role_paths) == 0:
             messagebox.showwarning(
-                "Invalid entry path",
-                "Entry path must match one of the embedded file paths.",
+                "Missing entry file",
+                "Mark exactly one file with Role = 'entry'.",
+            )
+            return None
+        if len(entry_role_paths) > 1:
+            messagebox.showwarning(
+                "Multiple entry files",
+                "Only one file can have Role = 'entry'.",
             )
             return None
 
@@ -751,7 +767,7 @@ class TestCaseManagerApp:
                 )
                 return None
 
-        entry_path = entry_path_raw if entry_path_raw != "" else None
+        entry_path = entry_role_paths[0]
         source_code = self._derive_primary_source_from_files(files, entry_path)
 
         return (
@@ -781,7 +797,6 @@ class TestCaseManagerApp:
         self.exit_code_var.set("0")
         self.expects_compile_error_var.set(False)
         self.execution_mode_var.set("js-runtime")
-        self.entry_path_var.set("")
         self.on_expected_compile_error_toggle()
 
         if self.pending_category_id is not None:
@@ -819,7 +834,6 @@ class TestCaseManagerApp:
         self.exit_code_var.set(str(case["exit_code"]))
         self.expects_compile_error_var.set(bool(case["expects_compile_error"]))
         self.execution_mode_var.set(case["execution_mode"])
-        self.entry_path_var.set(case["entry_path"] or "")
         self.on_expected_compile_error_toggle()
         self._load_file_tabs_from_case(case_id)
         self.status_var.set(f"Loaded test case #{self.selected_case_id}")
