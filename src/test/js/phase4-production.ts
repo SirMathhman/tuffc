@@ -526,7 +526,6 @@ fs.writeFileSync(
 );
 
 const implicitResult = compileFileResult(implicitConsumerModule, undefined, {
-  enableModules: true,
   modules: { moduleBaseDir: strictModuleDir },
 });
 if (implicitResult.ok) {
@@ -547,7 +546,6 @@ const implicitSelfhostNoBridge = compileFileResult(
   undefined,
   {
     backend: "selfhost",
-    enableModules: true,
     modules: { moduleBaseDir: strictModuleDir },
     borrowcheck: { enabled: false },
   },
@@ -568,7 +566,6 @@ expectDiagnosticCode(
 );
 
 const explicitResult = compileFileResult(explicitConsumerModule, undefined, {
-  enableModules: true,
   modules: { moduleBaseDir: strictModuleDir },
 });
 if (!explicitResult.ok) {
@@ -583,7 +580,6 @@ const moduleLintFixUnsupported = compileFileResult(
   undefined,
   {
     backend: "selfhost",
-    enableModules: true,
     modules: { moduleBaseDir: strictModuleDir },
     lint: { enabled: true, fix: true, mode: "warn" },
   },
@@ -626,7 +622,6 @@ fs.writeFileSync(
 
 const cycleLintWarn = compileFileResult(cycleLintA, undefined, {
   backend: "selfhost",
-  enableModules: true,
   modules: { moduleBaseDir: cycleLintDir },
   lint: { enabled: true, mode: "warn" },
 });
@@ -655,7 +650,6 @@ if (cycleLintWarn.ok) {
 }
 
 const cycleNoLint = compileFileResult(cycleLintA, undefined, {
-  enableModules: true,
   modules: { moduleBaseDir: cycleLintDir },
 });
 if (cycleNoLint.ok) {

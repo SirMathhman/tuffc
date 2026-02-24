@@ -167,7 +167,6 @@ const moduleEntry = path.join(
 );
 const moduleOut = path.join(outDir, "module-app.js");
 const moduleResult = compileFileResult(moduleEntry, moduleOut, {
-  enableModules: true,
   modules: { moduleBaseDir: path.join(root, "src", "test", "tuff", "modules") },
   typecheck: { strictSafety: false },
 });
@@ -197,7 +196,6 @@ const rootResolutionResult = compileFileResult(
   rootResolutionEntry,
   rootResolutionOut,
   {
-    enableModules: true,
     modules: {
       moduleBaseDir: path.join(root, "src", "test", "tuff", "modules"),
     },
@@ -236,7 +234,6 @@ fs.writeFileSync(
 );
 
 const privateImportResult = compileFileResult(privateMain, privateOut, {
-  enableModules: true,
   modules: { moduleBaseDir: privateModuleDir },
   typecheck: { strictSafety: false },
 });

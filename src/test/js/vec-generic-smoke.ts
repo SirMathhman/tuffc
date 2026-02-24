@@ -40,7 +40,6 @@ fs.writeFileSync(
 const result = compileFileResult(entry, outC, {
   backend: "selfhost",
   target: "c",
-  enableModules: true,
   modules: { moduleBaseDir: appDir },
 });
 

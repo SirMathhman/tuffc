@@ -324,9 +324,6 @@ function compileFileWithBackend(
       [
         nativeCli,
         inputPath,
-        "--modules",
-        "--module-base",
-        path.dirname(inputPath),
         "-o",
         outputPath,
       ],
@@ -348,7 +345,6 @@ function compileFileWithBackend(
     ...caseOptions,
     backend,
     target: "js",
-    enableModules: true,
   });
   if (!result.ok) {
     return {

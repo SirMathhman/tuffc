@@ -158,7 +158,6 @@ if (fs.existsSync(PRELUDE_PATH)) env.TUFFC_PRELUDE_PATH = PRELUDE_PATH;
 
 const args = [
   `./${relInput}`,
-  "--modules",
   "--module-base",
   "./src/main/tuff",
   "--target",

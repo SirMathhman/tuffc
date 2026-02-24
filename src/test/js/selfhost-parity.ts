@@ -139,7 +139,6 @@ const jsModuleOut = path.join(outDir, "module-js.js");
 const selfhostModuleOut = path.join(outDir, "module-selfhost.js");
 
 const jsModule = compileFileResult(moduleEntry, jsModuleOut, {
-  enableModules: true,
   modules: { moduleBaseDir: modulesBase },
 });
 if (!jsModule.ok) throw jsModule.error;
@@ -341,7 +340,6 @@ fs.writeFileSync(
 expectBothFail(
   () =>
     compileFileResult(missingEntry, missingJsOut, {
-      enableModules: true,
       modules: { moduleBaseDir: path.dirname(missingEntry) },
     }),
   () => selfhost.compile_file(missingEntry, missingSelfhostOut),
@@ -361,7 +359,6 @@ fs.writeFileSync(cycleB, "let { a } = A;\nfn b() : I32 => a();\n", "utf8");
 expectBothFail(
   () =>
     compileFileResult(cycleA, cycleJsOut, {
-      enableModules: true,
       modules: { moduleBaseDir: cycleDir },
     }),
   () => selfhost.compile_file(cycleA, cycleSelfhostOut),
@@ -482,7 +479,6 @@ fs.writeFileSync(
 expectBothFail(
   () =>
     compileFileResult(privateEntry, privateJsOut, {
-      enableModules: true,
       modules: { moduleBaseDir: privateDir },
     }),
   () => selfhost.compile_file(privateEntry, privateSelfhostOut),
@@ -511,7 +507,6 @@ fs.writeFileSync(
 expectBothFail(
   () =>
     compileFileResult(implicitEntry, implicitJsOut, {
-      enableModules: true,
       modules: { moduleBaseDir: implicitDir },
     }),
   () => selfhost.compile_file(implicitEntry, implicitSelfhostOut),

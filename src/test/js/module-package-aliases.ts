@@ -53,7 +53,6 @@ fs.writeFileSync(
 const fallback = compileFileResult(entry, outJsDefault, {
   backend: "selfhost",
   target: "js",
-  enableModules: true,
   modules: {
     moduleBaseDir: appDir,
     packageAliases: {
@@ -94,7 +93,6 @@ const allTargetsModuleConfig = {
 const targetedJs = compileFileResult(entry, outJsTargeted, {
   backend: "selfhost",
   target: "js",
-  enableModules: true,
   modules: allTargetsModuleConfig,
 });
 if (!targetedJs.ok) {
@@ -118,7 +116,6 @@ if (targetedJsValue !== 43) {
 const targetedC = compileFileResult(entry, outC, {
   backend: "selfhost",
   target: "c",
-  enableModules: true,
   modules: allTargetsModuleConfig,
 });
 assertCOutput(targetedC, "module package alias");

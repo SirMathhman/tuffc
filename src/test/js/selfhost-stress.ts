@@ -577,7 +577,6 @@ const moduleStage0 = compileFileWithBackend(
   moduleJsOutStage0,
   "selfhost",
   {
-    enableModules: true,
     modules: { moduleBaseDir: modulesDir },
   },
 );
@@ -586,7 +585,6 @@ const moduleSelfhost = compileFileWithBackend(
   moduleJsOutSelfhost,
   "selfhost",
   {
-    enableModules: true,
     modules: { moduleBaseDir: modulesDir },
   },
 );

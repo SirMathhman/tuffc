@@ -74,7 +74,6 @@ fs.writeFileSync(
 const targetedC = compileFileResult(entry, outC, {
   backend: "selfhost",
   target: "c",
-  enableModules: true,
   modules: {
     moduleBaseDir: appDir,
     packageAliases: {
@@ -98,7 +97,6 @@ if (targetedC.value.c.includes("expect fn")) {
 const missingActual = compileFileResult(entry, outMissingActual, {
   backend: "selfhost",
   target: "c",
-  enableModules: true,
   modules: {
     moduleBaseDir: appDir,
     packageAliases: {

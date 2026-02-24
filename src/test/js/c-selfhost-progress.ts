@@ -82,7 +82,6 @@ console.log("[c-selfhost] generating selfhost.c via Stage0 target=c...");
 const compile = compileFileResult(entry, outC, {
   backend: "selfhost",
   target: "c",
-  enableModules: true,
   modules: { moduleBaseDir: path.dirname(entry) },
   lint: { enabled: false },
   typecheck: { strictSafety: false },
