@@ -408,6 +408,11 @@ fn is_decimal_zero_literal(n: I32) : Bool => {
 // Temporary typecheck context maps used for strict array bounds proofs.
 let tc_array_init_bounds : Map = map_new();
 let tc_index_upper_bounds : Map = map_new();
+// Path-sensitive call-bound facts: varName -> "fnName:argK" (e.g. "p" -> "str_length:s").
+// Populated by if-condition narrowing for patterns like `if (i < str_length(s))`.
+let tc_call_bounds : Map = map_new();
+// Maps function name -> Vec<*Str> of per-param call-bound constraints ("fnName:refParamIdx" or "").
+let fn_param_call_bounds : Map = map_new();
 // Maps variable names to their known literal I32 values for richer overflow diagnostics.
 let tc_var_literal_values : Map = map_new();
 let tc_global_value_types : Map = map_new();
@@ -527,6 +532,45 @@ fn is_zero_numeric_literal_node(n: I32) : Bool => {
     }
     let text = get_interned_str(node_get_data1(n));
     text.str_eq("0") || text.str_eq("0USize")
+}
+
+// If `t` is a refinement type of the form `USize < fnName(paramName)`,
+// returns "fnName:paramName"; otherwise returns "".
+fn try_extract_fn_call_constraint(t: I32) : *Str => {
+    if (t == 0 || node_kind(t) != NK_REFINEMENT_TYPE) {
+        return "";
+    }
+    let base = node_get_data1(t);
+    if (base == 0 || node_kind(base) != NK_NAMED_TYPE) {
+        return "";
+    }
+    let base_name = get_interned_str(node_get_data1(base));
+    if (!base_name.str_eq("USize") && !base_name.str_eq("I32") && !base_name.str_eq("ISize")) {
+        return "";
+    }
+    let op = get_interned_str(node_get_data2(t));
+    if (!op.str_eq("<") && !op.str_eq("<=")) {
+        return "";
+    }
+    let constraint_expr = node_get_data3(t);
+    if (constraint_expr == 0 || node_kind(constraint_expr) != NK_CALL_EXPR) {
+        return "";
+    }
+    let callee = node_get_data1(constraint_expr);
+    let args = node_get_data2(constraint_expr);
+    if (callee == 0 || node_kind(callee) != NK_IDENTIFIER) {
+        return "";
+    }
+    if (args.vec_length() != 1) {
+        return "";
+    }
+    let arg0 = args.vec_get(0);
+    if (arg0 == 0 || node_kind(arg0) != NK_IDENTIFIER) {
+        return "";
+    }
+    let fn_name = get_interned_str(node_get_data1(callee));
+    let ref_param_name = get_interned_str(node_get_data1(arg0));
+    fn_name.str_concat(":").str_concat(ref_param_name)
 }
 
 fn expr_is_proven_nonzero(n: I32, nonnull_ptrs: Map) : Bool => {
@@ -1418,6 +1462,8 @@ out fn typecheck_program_with_options(program: I32, strict_safety: I32) : I32 =>
     tc_fn_this_fields = map_new();
     tc_alias_base_type = map_new();
     tc_type_name_cache = map_new();
+    tc_call_bounds = map_new();
+    fn_param_call_bounds = map_new();
     let body = node_get_data1(program);
 
     // Collect function signatures (including extern fns).
@@ -1433,14 +1479,39 @@ out fn typecheck_program_with_options(program: I32, strict_safety: I32) : I32 =>
             fn_arities.map_set(name, params.vec_length());
 
             let param_types = vec_new();
+            let param_call_bounds_vec = vec_new();
             let p = 0;
             while (p < params.vec_length()) {
                 let param = params.vec_get(p);
                 let param_type_node = param.vec_get(1);
                 param_types.vec_push(type_name_from_type_node(param_type_node));
+                let raw_constraint = try_extract_fn_call_constraint(param_type_node);
+                if (!raw_constraint.str_eq("")) {
+                    // Resolve ref param name to its index within this function's params.
+                    let sep = raw_constraint.str_index_of(":");
+                    let fn_part = raw_constraint.str_slice(0, sep);
+                    let ref_name = raw_constraint.str_slice(sep + 1, raw_constraint.str_length());
+                    let ref_idx = -1;
+                    let pi = 0;
+                    while (pi < params.vec_length()) {
+                        let pi_name = get_interned_str(params.vec_get(pi).vec_get(0));
+                        if (pi_name.str_eq(ref_name)) {
+                            ref_idx = pi;
+                        }
+                        pi = pi + 1;
+                    }
+                    if (ref_idx >= 0) {
+                        param_call_bounds_vec.vec_push(fn_part.str_concat(":").str_concat(int_to_string(ref_idx)));
+                    } else {
+                        param_call_bounds_vec.vec_push("");
+                    }
+                } else {
+                    param_call_bounds_vec.vec_push("");
+                }
                 p = p + 1;
             }
             fn_param_types.map_set(name, param_types);
+            fn_param_call_bounds.map_set(name, param_call_bounds_vec);
 
             let ret_type = node_get_data4(stmt);
             fn_return_types.map_set(name, type_name_from_type_node(ret_type));
