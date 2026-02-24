@@ -1,3 +1,4 @@
+import json
 import sqlite3
 import tkinter as tk
 from pathlib import Path
@@ -391,12 +392,34 @@ class TestCaseManagerApp:
         )
         self.compile_error_check.grid(row=2, column=1, sticky="w", padx=(12, 0))
 
+        ttk.Label(form, text="Execution mode", font=("Segoe UI", 10, "bold")).grid(
+            row=2, column=0, sticky="w"
+        )
+        self.execution_mode_var = tk.StringVar(value="js-runtime")
+        self.execution_mode_combo = ttk.Combobox(
+            form,
+            textvariable=self.execution_mode_var,
+            state="readonly",
+            values=["js-runtime", "compile-only"],
+            width=24,
+        )
+        self.execution_mode_combo.grid(row=3, column=0, sticky="w", pady=(2, 10))
+
+        ttk.Label(form, text="Entry path (multi-file)", font=("Segoe UI", 10, "bold")).grid(
+            row=3, column=1, sticky="w", padx=(12, 0)
+        )
+        self.entry_path_var = tk.StringVar(value="")
+        self.entry_path_entry = ttk.Entry(
+            form, textvariable=self.entry_path_var, width=36
+        )
+        self.entry_path_entry.grid(row=4, column=1, sticky="w", padx=(12, 0), pady=(2, 10))
+
         ttk.Label(form, text="Source code", font=("Segoe UI", 10, "bold")).grid(
-            row=3, column=0, columnspan=2, sticky="w"
+            row=5, column=0, columnspan=2, sticky="w"
         )
 
         editor_frame = ttk.Frame(form)
-        editor_frame.grid(row=4, column=0, columnspan=2, sticky="nsew", pady=(4, 10))
+        editor_frame.grid(row=6, column=0, columnspan=2, sticky="nsew", pady=(4, 10))
 
         self.source_text = tk.Text(
             editor_frame, wrap="none", undo=True, font=("Consolas", 10)
@@ -418,8 +441,37 @@ class TestCaseManagerApp:
         editor_frame.rowconfigure(0, weight=1)
         editor_frame.columnconfigure(0, weight=1)
 
+        ttk.Label(
+            form,
+            text="Embedded files (JSON array)",
+            font=("Segoe UI", 10, "bold"),
+        ).grid(row=7, column=0, columnspan=2, sticky="w")
+
+        files_frame = ttk.Frame(form)
+        files_frame.grid(row=8, column=0, columnspan=2, sticky="nsew", pady=(4, 10))
+
+        self.files_text = tk.Text(
+            files_frame, wrap="none", undo=True, font=("Consolas", 10), height=8
+        )
+        files_yscroll = ttk.Scrollbar(
+            files_frame, orient="vertical", command=self.files_text.yview
+        )
+        files_xscroll = ttk.Scrollbar(
+            files_frame, orient="horizontal", command=self.files_text.xview
+        )
+        self.files_text.configure(
+            yscrollcommand=files_yscroll.set, xscrollcommand=files_xscroll.set
+        )
+
+        self.files_text.grid(row=0, column=0, sticky="nsew")
+        files_yscroll.grid(row=0, column=1, sticky="ns")
+        files_xscroll.grid(row=1, column=0, sticky="ew")
+
+        files_frame.rowconfigure(0, weight=1)
+        files_frame.columnconfigure(0, weight=1)
+
         actions = ttk.Frame(form)
-        actions.grid(row=5, column=0, columnspan=2, sticky="ew")
+        actions.grid(row=9, column=0, columnspan=2, sticky="ew")
 
         self.new_btn = ttk.Button(actions, text="New", command=self.clear_form)
         self.create_btn = ttk.Button(actions, text="Create", command=self.create_case)
@@ -433,12 +485,13 @@ class TestCaseManagerApp:
 
         self.status_var = tk.StringVar(value="Ready")
         ttk.Label(form, textvariable=self.status_var, foreground="#2d6a4f").grid(
-            row=6, column=0, columnspan=2, sticky="w", pady=(10, 0)
+            row=10, column=0, columnspan=2, sticky="w", pady=(10, 0)
         )
 
         form.columnconfigure(0, weight=1)
         form.columnconfigure(1, weight=0)
-        form.rowconfigure(4, weight=1)
+        form.rowconfigure(6, weight=2)
+        form.rowconfigure(8, weight=1)
 
         self.blank_menu = tk.Menu(self.root, tearoff=False)
         self.blank_menu.add_command(
@@ -512,11 +565,86 @@ class TestCaseManagerApp:
             self.update_btn.state(["!disabled"])
             self.delete_btn.state(["!disabled"])
 
-    def _get_form_data(self) -> tuple[int, str, int, bool] | None:
+    def _parse_files_editor(
+        self,
+    ) -> list[tuple[str, str, str, int]] | None:
+        raw = self.files_text.get("1.0", tk.END).strip()
+        if raw == "":
+            return []
+
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError as error:
+            messagebox.showwarning(
+                "Invalid embedded files JSON",
+                f"Could not parse embedded files JSON: {error}",
+            )
+            return None
+
+        if not isinstance(payload, list):
+            messagebox.showwarning(
+                "Invalid embedded files JSON",
+                "Embedded files must be a JSON array of objects.",
+            )
+            return None
+
+        files: list[tuple[str, str, str, int]] = []
+        for idx, item in enumerate(payload):
+            if not isinstance(item, dict):
+                messagebox.showwarning(
+                    "Invalid embedded files JSON",
+                    f"Embedded file #{idx + 1} must be an object.",
+                )
+                return None
+
+            file_path = str(item.get("file_path", "")).strip().replace("\\", "/")
+            source_code = str(item.get("source_code", ""))
+            role = str(item.get("role", "module") or "module")
+            sort_order_raw = item.get("sort_order", idx)
+            try:
+                sort_order = int(sort_order_raw)
+            except (TypeError, ValueError):
+                sort_order = idx
+
+            if file_path == "":
+                messagebox.showwarning(
+                    "Invalid embedded files JSON",
+                    f"Embedded file #{idx + 1} is missing 'file_path'.",
+                )
+                return None
+
+            files.append((file_path, source_code, role, sort_order))
+
+        return files
+
+    def _set_files_editor_from_case(self, case_id: int) -> None:
+        files = self.repo.list_case_files(case_id)
+        payload = [
+            {
+                "file_path": row["file_path"],
+                "source_code": row["source_code"],
+                "role": row["role"],
+                "sort_order": row["sort_order"],
+            }
+            for row in files
+        ]
+        self.files_text.delete("1.0", tk.END)
+        if payload:
+            self.files_text.insert("1.0", json.dumps(payload, indent=2))
+
+    def _get_form_data(
+        self,
+    ) -> tuple[int, str, int, bool, str, str | None, list[tuple[str, str, str, int]]] | None:
         category_name = self.category_var.get().strip()
         source_code = self.source_text.get("1.0", tk.END).rstrip("\n")
         exit_code_raw = self.exit_code_var.get().strip()
         expects_compile_error = self.expects_compile_error_var.get()
+        execution_mode = self.execution_mode_var.get().strip() or "js-runtime"
+        entry_path_raw = self.entry_path_var.get().strip().replace("\\", "/")
+
+        files = self._parse_files_editor()
+        if files is None:
+            return None
 
         if not category_name:
             messagebox.showwarning(
@@ -531,9 +659,19 @@ class TestCaseManagerApp:
             )
             return None
 
-        if source_code == "":
+        if source_code == "" and len(files) == 0:
             messagebox.showwarning(
-                "Missing source", "Please provide source code for the test case."
+                "Missing source", "Provide source code or embedded files for the test case."
+            )
+            return None
+
+        if len(files) > 0 and entry_path_raw == "":
+            entry_path_raw = files[0][0]
+
+        if len(files) > 0 and not any(f[0] == entry_path_raw for f in files):
+            messagebox.showwarning(
+                "Invalid entry path",
+                "Entry path must match one of the embedded file paths.",
             )
             return None
 
@@ -549,7 +687,15 @@ class TestCaseManagerApp:
                 )
                 return None
 
-        return category_id, source_code, exit_code, expects_compile_error
+        return (
+            category_id,
+            source_code,
+            exit_code,
+            expects_compile_error,
+            execution_mode,
+            entry_path_raw if entry_path_raw != "" else None,
+            files,
+        )
 
     def on_expected_compile_error_toggle(self) -> None:
         if self.expects_compile_error_var.get():
@@ -564,8 +710,11 @@ class TestCaseManagerApp:
     def clear_form(self) -> None:
         self.selected_case_id = None
         self.source_text.delete("1.0", tk.END)
+        self.files_text.delete("1.0", tk.END)
         self.exit_code_var.set("0")
         self.expects_compile_error_var.set(False)
+        self.execution_mode_var.set("js-runtime")
+        self.entry_path_var.set("")
         self.on_expected_compile_error_toggle()
 
         if self.pending_category_id is not None:
@@ -602,9 +751,12 @@ class TestCaseManagerApp:
         self.category_var.set(case["category_name"])
         self.exit_code_var.set(str(case["exit_code"]))
         self.expects_compile_error_var.set(bool(case["expects_compile_error"]))
+        self.execution_mode_var.set(case["execution_mode"])
+        self.entry_path_var.set(case["entry_path"] or "")
         self.on_expected_compile_error_toggle()
         self.source_text.delete("1.0", tk.END)
         self.source_text.insert("1.0", case["source_code"])
+        self._set_files_editor_from_case(case_id)
         self.status_var.set(f"Loaded test case #{self.selected_case_id}")
         self._set_action_button_states()
 
@@ -613,10 +765,24 @@ class TestCaseManagerApp:
         if form_data is None:
             return
 
-        category_id, source_code, exit_code, expects_compile_error = form_data
+        (
+            category_id,
+            source_code,
+            exit_code,
+            expects_compile_error,
+            execution_mode,
+            entry_path,
+            files,
+        ) = form_data
         new_id = self.repo.create_case(
-            category_id, source_code, exit_code, expects_compile_error
+            category_id,
+            source_code,
+            exit_code,
+            expects_compile_error,
+            execution_mode=execution_mode,
+            entry_path=entry_path,
         )
+        self.repo.replace_case_files(new_id, files)
         self.refresh_all()
         self._select_tree_item(f"case:{new_id}")
         self.status_var.set(f"Created test case #{new_id}")
@@ -630,14 +796,25 @@ class TestCaseManagerApp:
         if form_data is None:
             return
 
-        category_id, source_code, exit_code, expects_compile_error = form_data
+        (
+            category_id,
+            source_code,
+            exit_code,
+            expects_compile_error,
+            execution_mode,
+            entry_path,
+            files,
+        ) = form_data
         self.repo.update_case(
             self.selected_case_id,
             category_id,
             source_code,
             exit_code,
             expects_compile_error,
+            execution_mode=execution_mode,
+            entry_path=entry_path,
         )
+        self.repo.replace_case_files(self.selected_case_id, files)
         updated_id = self.selected_case_id
         self.refresh_all()
         self._select_tree_item(f"case:{updated_id}")
