@@ -393,7 +393,48 @@ fn p_parse_contract() : I32 => {
 fn p_parse_type_alias(is_copy: I32) : I32 => {
     p_expect(TK_KEYWORD, "type", "Expected 'type'");
     let name = p_parse_identifier();
-    
+
+    // Value-parameterized dependent type alias: type Foo(p: T, ...) = ...
+    // When the name is immediately followed by '(' (not '<'), parse value params.
+    if (p_at(TK_SYMBOL, "(")) {
+        p_eat();
+        let value_params = vec_new();
+        if (!p_at(TK_SYMBOL, ")")) {
+            while (true) {
+                let pname = p_parse_identifier();
+                let ptype = 0;
+                if (p_at(TK_SYMBOL, ":")) {
+                    p_eat();
+                    ptype = p_parse_type();
+                }
+                let param = vec_new();
+                param.vec_push(pname);
+                param.vec_push(ptype);
+                value_params.vec_push(param);
+                if (!p_at(TK_SYMBOL, ",")) {
+                    break;
+                }
+                p_eat();
+            }
+        }
+        p_expect(TK_SYMBOL, ")", "Expected ')' after dep-type-alias value params");
+        p_expect(TK_SYMBOL, "=", "Expected '=' in dep-type-alias");
+        let aliased = p_parse_type();
+        let destructor_name = 0;
+        if (p_at(TK_KEYWORD, "then")) {
+            p_eat();
+            destructor_name = p_parse_identifier();
+        }
+        p_expect(TK_SYMBOL, ";", "Expected ';' after dep-type-alias");
+        let node = node_new(NK_DEP_TYPE_ALIAS);
+        node_set_data1(node, name);
+        node_set_data2(node, value_params);
+        node_set_data3(node, aliased);
+        node_set_data4(node, is_copy);
+        node_set_data5(node, destructor_name);
+        return node;
+    }
+
     let generics = p_parse_decl_generics("Expected '>'");
     
     p_expect(TK_SYMBOL, "=", "Expected '='");
