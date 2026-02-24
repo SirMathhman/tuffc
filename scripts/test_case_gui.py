@@ -219,7 +219,7 @@ class TestCaseRepository:
                 expected_snapshot,
                 skip_reason
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
             """,
             (
                 category_id,
