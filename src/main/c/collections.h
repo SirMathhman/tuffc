@@ -12,6 +12,7 @@ int64_t __vec_length(int64_t thisVec);
 int64_t __vec_init(int64_t thisVec);
 int64_t __vec_capacity(int64_t thisVec);
 int64_t __vec_clear(int64_t thisVec);
+void drop_vec(int64_t thisVec);
 int64_t __vec_join(int64_t thisVec, int64_t sep);
 int64_t __vec_includes(int64_t thisVec, int64_t item);
 

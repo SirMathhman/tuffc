@@ -6,7 +6,7 @@
 // The actual implementations come from the always-embedded C substrate.
 extern let { str_length, str_char_at, str_slice, str_mut_slice, str_concat, str_eq, str_from_char_code, str_index_of, str_trim, str_replace_all, char_code, int_to_string, parse_int } = globalThis;
 extern let { sb_new, sb_append, sb_append_char, sb_build } = globalThis;
-extern let { __vec_new, __vec_push, __vec_pop, __vec_get, __vec_set, __vec_length, __vec_init, __vec_capacity, __vec_clear, __vec_join, __vec_includes } = globalThis;
+extern let { __vec_new, __vec_push, __vec_pop, __vec_get, __vec_set, __vec_length, __vec_init, __vec_capacity, __vec_clear, __vec_join, __vec_includes, drop_vec } = globalThis;
 extern let { __map_new, map_set, map_get, map_has, map_delete } = globalThis;
 extern let { __set_new, set_add, set_has, set_delete } = globalThis;
 extern let { read_file, write_file, path_join, path_dirname, print, print_error } = globalThis;
@@ -58,14 +58,9 @@ extern fn sb_append_char(this: StringBuilder, code: I32) : StringBuilder;
 // Take ownership of the builder
 extern fn sb_build(sb: StringBuilder) : *Str;
 
-/*
-Doesn't a Vec<T> need a destructor?
-
 extern type Vec<T> then drop_vec;
-
 extern fn drop_vec(this : Vec<T>) : Void;
-*/
-extern type Vec<T>;
+
 extern fn __vec_new() : Vec<T>;
 extern fn __vec_push(this: Vec<T>, item: T) : Vec<T>;
 extern fn __vec_pop(this: Vec<T>) : I32;

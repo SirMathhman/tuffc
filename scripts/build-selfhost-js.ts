@@ -183,13 +183,16 @@ if (result.error) {
   process.exit(1);
 }
 if (result.status !== 0) {
-  console.error(
-    `[build:selfhost-js] FAILED: native exe exited ${result.status} after ${elapsed}ms`,
+  console.warn(
+    `[build:selfhost-js] native exe exited ${result.status} after ${elapsed}ms; using JS fallback bootstrap compiler`,
   );
-  if (result.stderr) console.error(result.stderr);
+  if (result.stderr) console.warn(result.stderr);
 
   console.warn(
-    `[build:selfhost-js] falling back to ${path.relative(root, GENERATED_JS)} (strictSafety=0 bootstrap mode)`,
+    `[build:selfhost-js] fallback compiler: ${path.relative(root, GENERATED_JS)} (bootstrap mode)`,
+  );
+  console.warn(
+    `[build:selfhost-js] tip: run \"pnpm run native:selfhost:parity\" to refresh tests/out/c-bootstrap/stage3_selfhost_cli.exe`,
   );
   try {
     const generatedJs = fs.readFileSync(GENERATED_JS, "utf8");

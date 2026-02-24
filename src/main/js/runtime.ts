@@ -314,6 +314,11 @@ export const __vec_clear = vec_clear;
 export const __vec_join = vec_join;
 export const __vec_includes = vec_includes;
 
+// Destructor hook for `extern type Vec<T> then drop_vec;`
+export function drop_vec<T = unknown>(thisVec: VecState<T> | T[]): void {
+  vec_clear(thisVec);
+}
+
 // === Map operations ===
 export function map_new<K = unknown, V = unknown>(): Map<K, V> {
   return new Map<K, V>();

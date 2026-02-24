@@ -92,6 +92,11 @@ int64_t __vec_clear(int64_t thisVec)
     return thisVec;
 }
 
+void drop_vec(int64_t thisVec)
+{
+    (void)__vec_clear(thisVec);
+}
+
 int64_t __vec_join(int64_t thisVec, int64_t sep)
 {
     TuffVec *v = (TuffVec *)tuff_from_val(thisVec);

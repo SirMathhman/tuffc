@@ -71,6 +71,8 @@ function str_starts_with(__this_param, prefix) {
 
 // extern type Vec
 
+// extern fn drop_vec
+
 // extern fn __vec_new
 
 // extern fn __vec_push
@@ -8140,7 +8142,9 @@ function generate_c(typed, substrate) {
   sb_append(sb, "  tuff_init_globals();\n");
   sb_append(sb, "  return (int)tuff_main();\n");
   sb_append(sb, "}\n");
-  return sb_build(sb);
+  drop_vec(init_rows);
+  drop_vec(fn_nodes);
+    return sb_build(sb);
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.generate_c = generate_c;
 
