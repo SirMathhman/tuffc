@@ -147,11 +147,32 @@ static size_t tuff_hash_mix64(uint64_t x)
     return (size_t)x;
 }
 
+static uint64_t tuff_hash_cstr(const char *s)
+{
+    // FNV-1a 64-bit
+    uint64_t h = UINT64_C(1469598103934665603);
+    if (s == NULL)
+        return h;
+    const unsigned char *p = (const unsigned char *)s;
+    while (*p != 0)
+    {
+        h ^= (uint64_t)(*p);
+        h *= UINT64_C(1099511628211);
+        p++;
+    }
+    return h;
+}
+
 static size_t tuff_hash_value(int64_t key)
 {
     if (key > -2147483648LL && key < 2147483648LL)
     {
         return tuff_hash_mix64((uint64_t)(uint32_t)key);
+    }
+    const char *s = tuff_str(key);
+    if (s != NULL)
+    {
+        return tuff_hash_mix64(tuff_hash_cstr(s));
     }
     return tuff_hash_mix64((uint64_t)(uintptr_t)tuff_from_val(key));
 }

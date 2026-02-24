@@ -562,6 +562,16 @@ function lex_all() {
   init_keywords();
   while ((lex_pos < lex_len)) {
   let ch = lex_peek(0); if (typeof __tuff_this !== 'undefined') __tuff_this.ch = ch;
+  if (((((lex_pos === 0) && (ch === 239)) && (lex_peek(1) === 187)) && (lex_peek(2) === 191))) {
+  lex_advance();
+  lex_advance();
+  lex_advance();
+  continue;
+}
+  if (((lex_pos === 0) && ((ch === 65279) || (ch === 65534)))) {
+  lex_advance();
+  continue;
+}
   if (is_whitespace(ch)) {
   lex_advance();
   continue;
@@ -682,12 +692,17 @@ function lex_all() {
   tok_add(TK_CHAR, intern(text), start_line, start_col);
   continue;
 }
-  if ((() => { const __recv = "(){}[],:;+-*/%<>=.!?|&"; const __prop = __recv?.["str_includes"]; if (typeof __prop === "function") return __prop(str_from_char_code(ch)); const __dyn = __recv?.table?.str_includes; return __dyn ? __dyn(__recv.ref, str_from_char_code(ch)) : str_includes(__recv, str_from_char_code(ch)); })()) {
+  let sym_text = str_from_char_code(ch); if (typeof __tuff_this !== 'undefined') __tuff_this.sym_text = sym_text;
+  if ((((() => { const __recv = sym_text; const __prop = __recv?.["str_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.str_length; return __dyn ? __dyn(__recv.ref) : str_length(__recv); })() === 1) && (() => { const __recv = "(){}[],:;+-*/%<>=.!?|&"; const __prop = __recv?.["str_includes"]; if (typeof __prop === "function") return __prop(sym_text); const __dyn = __recv?.table?.str_includes; return __dyn ? __dyn(__recv.ref, sym_text) : str_includes(__recv, sym_text); })())) {
   lex_advance();
-  tok_add(TK_SYMBOL, intern(str_from_char_code(ch)), start_line, start_col);
+  tok_add(TK_SYMBOL, intern(sym_text), start_line, start_col);
   continue;
 }
-  panic_with_code("E_LEX_UNEXPECTED_CHARACTER", (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = "Unexpected character '"; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(str_from_char_code(ch)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, str_from_char_code(ch)) : str_concat(__recv, str_from_char_code(ch)); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("' at "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "' at ") : str_concat(__recv, "' at "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string(start_line)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(start_line)) : str_concat(__recv, int_to_string(start_line)); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(":"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ":") : str_concat(__recv, ":"); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string(start_col)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(start_col)) : str_concat(__recv, int_to_string(start_col)); })(), "This character is not valid in the current lexical context and cannot be tokenized.", "Replace or remove the character, or use valid Tuff syntax (identifiers, numbers, strings, comments, and supported symbols).");
+  let display_char = sym_text; if (typeof __tuff_this !== 'undefined') __tuff_this.display_char = display_char;
+  if (((() => { const __recv = display_char; const __prop = __recv?.["str_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.str_length; return __dyn ? __dyn(__recv.ref) : str_length(__recv); })() === 0)) {
+  display_char = "<non-printable>"; if (typeof __tuff_this !== 'undefined') __tuff_this.display_char = display_char;
+}
+  panic_with_code("E_LEX_UNEXPECTED_CHARACTER", (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = "Unexpected character '"; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(display_char); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, display_char) : str_concat(__recv, display_char); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("' (code "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "' (code ") : str_concat(__recv, "' (code "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string(ch)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(ch)) : str_concat(__recv, int_to_string(ch)); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(") at "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ") at ") : str_concat(__recv, ") at "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string(start_line)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(start_line)) : str_concat(__recv, int_to_string(start_line)); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(":"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ":") : str_concat(__recv, ":"); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string(start_col)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(start_col)) : str_concat(__recv, int_to_string(start_col)); })(), "This character is not valid in the current lexical context and cannot be tokenized as part of Tuff syntax.", "Remove/replace the character, save source as UTF-8 without BOM, and use only supported symbols/identifiers in source text.");
 }
   tok_add(TK_EOF, intern("<eof>"), lex_line, lex_col);
   return tok_count;
@@ -1117,21 +1132,45 @@ function p_token_value_for_error(t) {
   return "true";
 }
   if ((((((((knd === TK_KEYWORD) || (knd === TK_IDENTIFIER)) || (knd === TK_NUMBER)) || (knd === TK_STRING)) || (knd === TK_SYMBOL)) || (knd === TK_CHAR)) || (knd === TK_EOF))) {
-  return get_intern(tok_value(t));
+  let raw = get_intern(tok_value(t)); if (typeof __tuff_this !== 'undefined') __tuff_this.raw = raw;
+  if (((knd === TK_SYMBOL) && ((() => { const __recv = raw; const __prop = __recv?.["str_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.str_length; return __dyn ? __dyn(__recv.ref) : str_length(__recv); })() === 0))) {
+  return "<empty-symbol>";
+}
+  return raw;
 }
   return "<unknown>";
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.p_token_value_for_error = p_token_value_for_error;
 
+const __tuff_outer_for_p_token_debug_at = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function p_token_debug_at(i) {
+  let __tuff_this = { i: i, this: __tuff_outer_for_p_token_debug_at };
+  if (((i < 0) || (i >= tok_count))) {
+  return "<none>";
+}
+  let kname = p_token_kind_name(tok_kind(i)); if (typeof __tuff_this !== 'undefined') __tuff_this.kname = kname;
+  let val = p_token_value_for_error(i); if (typeof __tuff_this !== 'undefined') __tuff_this.val = val;
+  let line = int_to_string(tok_line(i)); if (typeof __tuff_this !== 'undefined') __tuff_this.line = line;
+  let col = int_to_string(tok_col(i)); if (typeof __tuff_this !== 'undefined') __tuff_this.col = col;
+  return (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = kname; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(":"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ":") : str_concat(__recv, ":"); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(val); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, val) : str_concat(__recv, val); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(" @"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " @") : str_concat(__recv, " @"); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(line); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, line) : str_concat(__recv, line); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(":"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ":") : str_concat(__recv, ":"); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(col); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, col) : str_concat(__recv, col); })();
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.p_token_debug_at = p_token_debug_at;
+
 const __tuff_outer_for_p_error_with_token_context = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
 function p_error_with_token_context(msg) {
   let __tuff_this = { msg: msg, this: __tuff_outer_for_p_error_with_token_context };
   let t = p_peek(0); if (typeof __tuff_this !== 'undefined') __tuff_this.t = t;
-  let found_kind = p_token_kind_name(tok_kind(t)); if (typeof __tuff_this !== 'undefined') __tuff_this.found_kind = found_kind;
-  let value = p_token_value_for_error(t); if (typeof __tuff_this !== 'undefined') __tuff_this.value = value;
-  let line = int_to_string(tok_line(t)); if (typeof __tuff_this !== 'undefined') __tuff_this.line = line;
-  let col = int_to_string(tok_col(t)); if (typeof __tuff_this !== 'undefined') __tuff_this.col = col;
-  panic((() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = msg; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(" (found "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " (found ") : str_concat(__recv, " (found "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(found_kind); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, found_kind) : str_concat(__recv, found_kind); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(":"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ":") : str_concat(__recv, ":"); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(value); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, value) : str_concat(__recv, value); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(" at "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " at ") : str_concat(__recv, " at "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(line); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, line) : str_concat(__recv, line); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(":"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ":") : str_concat(__recv, ":"); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(col); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, col) : str_concat(__recv, col); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(")"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ")") : str_concat(__recv, ")"); })());
+  let cur_idx = t; if (typeof __tuff_this !== 'undefined') __tuff_this.cur_idx = cur_idx;
+  let prev_idx = (parse_pos - 1); if (typeof __tuff_this !== 'undefined') __tuff_this.prev_idx = prev_idx;
+  let next_idx = (parse_pos + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.next_idx = next_idx;
+  let found_kind = p_token_kind_name(tok_kind(cur_idx)); if (typeof __tuff_this !== 'undefined') __tuff_this.found_kind = found_kind;
+  let value = p_token_value_for_error(cur_idx); if (typeof __tuff_this !== 'undefined') __tuff_this.value = value;
+  let line = int_to_string(tok_line(cur_idx)); if (typeof __tuff_this !== 'undefined') __tuff_this.line = line;
+  let col = int_to_string(tok_col(cur_idx)); if (typeof __tuff_this !== 'undefined') __tuff_this.col = col;
+  let prev_tok = p_token_debug_at(prev_idx); if (typeof __tuff_this !== 'undefined') __tuff_this.prev_tok = prev_tok;
+  let cur_tok = p_token_debug_at(cur_idx); if (typeof __tuff_this !== 'undefined') __tuff_this.cur_tok = cur_tok;
+  let next_tok = p_token_debug_at(next_idx); if (typeof __tuff_this !== 'undefined') __tuff_this.next_tok = next_tok;
+  panic((() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = msg; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(" (found "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " (found ") : str_concat(__recv, " (found "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(found_kind); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, found_kind) : str_concat(__recv, found_kind); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(":"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ":") : str_concat(__recv, ":"); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(value); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, value) : str_concat(__recv, value); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(" at "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " at ") : str_concat(__recv, " at "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(line); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, line) : str_concat(__recv, line); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(":"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ":") : str_concat(__recv, ":"); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(col); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, col) : str_concat(__recv, col); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("; context: [prev="); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "; context: [prev=") : str_concat(__recv, "; context: [prev="); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(prev_tok); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, prev_tok) : str_concat(__recv, prev_tok); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(", current="); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ", current=") : str_concat(__recv, ", current="); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(cur_tok); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, cur_tok) : str_concat(__recv, cur_tok); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(", next="); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ", next=") : str_concat(__recv, ", next="); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(next_tok); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, next_tok) : str_concat(__recv, next_tok); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("]"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "]") : str_concat(__recv, "]"); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(")"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ")") : str_concat(__recv, ")"); })());
   return 0;
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.p_error_with_token_context = p_error_with_token_context;
@@ -9626,7 +9665,7 @@ function p_parse_primary() {
 }
   return p_parse_postfix(expr);
 }
-  p_error_with_token_context("Unexpected token in expression");
+  p_error_with_token_context("Expected expression start (identifier, literal, '(', '[', 'if', 'match', or 'fn')");
   return 0;
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.p_parse_primary = p_parse_primary;

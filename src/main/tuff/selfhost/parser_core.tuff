@@ -194,17 +194,44 @@ fn p_token_value_for_error(t: I32) : *Str => {
         knd == TK_CHAR ||
         knd == TK_EOF
     ) {
-        return get_intern(tok_value(t));
+        let raw = get_intern(tok_value(t));
+        if (knd == TK_SYMBOL && raw.str_length() == 0) {
+            return "<empty-symbol>";
+        }
+        return raw;
     }
     "<unknown>"
 }
 
+fn p_token_debug_at(i: I32) : *Str => {
+    if (i < 0 || i >= tok_count) {
+        return "<none>";
+    }
+    let kname = p_token_kind_name(tok_kind(i));
+    let val = p_token_value_for_error(i);
+    let line = int_to_string(tok_line(i));
+    let col = int_to_string(tok_col(i));
+    kname
+        .str_concat(":")
+        .str_concat(val)
+        .str_concat(" @")
+        .str_concat(line)
+        .str_concat(":")
+        .str_concat(col)
+}
+
 out fn p_error_with_token_context(msg: *Str) : I32 => {
     let t = p_peek(0);
-    let found_kind = p_token_kind_name(tok_kind(t));
-    let value = p_token_value_for_error(t);
-    let line = int_to_string(tok_line(t));
-    let col = int_to_string(tok_col(t));
+    let cur_idx = t;
+    let prev_idx = parse_pos - 1;
+    let next_idx = parse_pos + 1;
+    let found_kind = p_token_kind_name(tok_kind(cur_idx));
+    let value = p_token_value_for_error(cur_idx);
+    let line = int_to_string(tok_line(cur_idx));
+    let col = int_to_string(tok_col(cur_idx));
+    let prev_tok = p_token_debug_at(prev_idx);
+    let cur_tok = p_token_debug_at(cur_idx);
+    let next_tok = p_token_debug_at(next_idx);
     panic(msg
         .str_concat(" (found ")
         .str_concat(found_kind)
@@ -214,6 +241,13 @@ out fn p_error_with_token_context(msg: *Str) : I32 => {
         .str_concat(line)
         .str_concat(":")
         .str_concat(col)
+        .str_concat("; context: [prev=")
+        .str_concat(prev_tok)
+        .str_concat(", current=")
+        .str_concat(cur_tok)
+        .str_concat(", next=")
+        .str_concat(next_tok)
+        .str_concat("]")
         .str_concat(")"));
     0
 }

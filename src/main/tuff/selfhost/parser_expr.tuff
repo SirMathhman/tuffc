@@ -672,7 +672,7 @@ fn p_parse_primary() : I32 => {
         return p_parse_postfix(expr);
     }
     
-    p_error_with_token_context("Unexpected token in expression");
+    p_error_with_token_context("Expected expression start (identifier, literal, '(', '[', 'if', 'match', or 'fn')");
     0
 }
 

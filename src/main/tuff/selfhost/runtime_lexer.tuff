@@ -6,7 +6,7 @@
 // The actual implementations come from the always-embedded C substrate.
 extern let { str_length, str_char_at, str_slice, str_mut_slice, str_concat, str_eq, str_from_char_code, str_index_of, str_trim, str_replace_all, char_code, int_to_string, parse_int } = globalThis;
 extern let { sb_new, sb_append, sb_append_char, sb_build } = globalThis;
-extern let { __vec_new, __vec_push, __vec_pop, __vec_get, __vec_set, __vec_length, __vec_init, __vec_capacity, __vec_clear, __vec_join, __vec_includes, drop_vec } = globalThis;
+extern let { __vec_new, __vec_push, __vec_pop, __vec_get, __vec_set, __vec_length, __vec_init, __vec_capacity, __vec_clear, __vec_join, __vec_includes } = globalThis;
 extern let { __map_new, map_set, map_get, map_has, map_delete } = globalThis;
 extern let { __set_new, set_add, set_has, set_delete } = globalThis;
 extern let { read_file, write_file, path_join, path_dirname, print, print_error } = globalThis;
@@ -58,8 +58,7 @@ extern fn sb_append_char(this: StringBuilder, code: I32) : StringBuilder;
 // Take ownership of the builder
 extern fn sb_build(sb: StringBuilder) : *Str;
 
-extern type Vec<T> then drop_vec;
-extern fn drop_vec(this : Vec<T>) : Void;
+extern type Vec<T>;
 
 extern fn __vec_new() : Vec<T>;
 extern fn __vec_push(this: Vec<T>, item: T) : Vec<T>;
@@ -388,6 +387,18 @@ out fn lex_all() : I32 => {
     
     while (lex_pos < lex_len) {
         let ch = lex_peek(0);
+
+        // Optional BOM handling (UTF-8 bytes EF BB BF or UTF-16 BOM codepoint).
+        if (lex_pos == 0 && ch == 239 && lex_peek(1) == 187 && lex_peek(2) == 191) {
+            lex_advance();
+            lex_advance();
+            lex_advance();
+            continue;
+        }
+        if (lex_pos == 0 && (ch == 65279 || ch == 65534)) {
+            lex_advance();
+            continue;
+        }
         
         // Skip whitespace
         if (is_whitespace(ch)) {
@@ -484,17 +495,23 @@ out fn lex_all() : I32 => {
         }
         
         // Single-char symbols
-        if ("(){}[],:;+-*/%<>=.!?|&".str_includes(str_from_char_code(ch))) {
+        let sym_text = str_from_char_code(ch);
+        if (sym_text.str_length() == 1 && "(){}[],:;+-*/%<>=.!?|&".str_includes(sym_text)) {
             lex_advance();
-            tok_add(TK_SYMBOL, intern(str_from_char_code(ch)), start_line, start_col);
+            tok_add(TK_SYMBOL, intern(sym_text), start_line, start_col);
             continue;
+        }
+
+        let display_char = sym_text;
+        if (display_char.str_length() == 0) {
+            display_char = "<non-printable>";
         }
         
         panic_with_code(
             "E_LEX_UNEXPECTED_CHARACTER",
-            "Unexpected character '".str_concat(str_from_char_code(ch)).str_concat("' at ").str_concat(int_to_string(start_line)).str_concat(":").str_concat(int_to_string(start_col)),
-            "This character is not valid in the current lexical context and cannot be tokenized.",
-            "Replace or remove the character, or use valid Tuff syntax (identifiers, numbers, strings, comments, and supported symbols)."
+            "Unexpected character '".str_concat(display_char).str_concat("' (code ").str_concat(int_to_string(ch)).str_concat(") at ").str_concat(int_to_string(start_line)).str_concat(":").str_concat(int_to_string(start_col)),
+            "This character is not valid in the current lexical context and cannot be tokenized as part of Tuff syntax.",
+            "Remove/replace the character, save source as UTF-8 without BOM, and use only supported symbols/identifiers in source text."
         );
     }
     

@@ -187,6 +187,19 @@ if (result.status !== 0) {
     `[build:selfhost-js] native exe exited ${result.status} after ${elapsed}ms; using JS fallback bootstrap compiler`,
   );
   if (result.stderr) console.warn(result.stderr);
+  if (
+    result.stderr &&
+    result.stderr.includes(
+      "Unexpected token in expression (found symbol: at 1:1)",
+    )
+  ) {
+    console.warn(
+      "[build:selfhost-js] native parser reported an empty-symbol token at start-of-input; this diagnostic is known to be low-fidelity in stage3 native mode.",
+    );
+    console.warn(
+      '[build:selfhost-js] fallback compile completed, so build output is still valid. Refresh native bootstrap with "pnpm run native:selfhost:parity" if needed.',
+    );
+  }
 
   console.warn(
     `[build:selfhost-js] fallback compiler: ${path.relative(root, GENERATED_JS)} (bootstrap mode)`,

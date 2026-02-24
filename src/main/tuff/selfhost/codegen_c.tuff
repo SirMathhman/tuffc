@@ -340,6 +340,11 @@ fn cc_emit_block_to_assign(block_node: I32, tmp_var: *Str) : *Str => {
             sb_append(sb, " = ");
             sb_append(sb, cc_emit_expr(node_get_data1(stmt)));
             sb_append(sb, ";");
+        } else if (is_last && (skind == NK_IF_STMT || skind == NK_IF_EXPR)) {
+            sb_append(sb, tmp_var);
+            sb_append(sb, " = ");
+            sb_append(sb, cc_emit_if_as_c_expr(stmt));
+            sb_append(sb, ";");
         } else if (is_last && skind == NK_RETURN_STMT) {
             let val = node_get_data1(stmt);
             let val_code = "0";
