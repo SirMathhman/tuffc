@@ -10508,7 +10508,7 @@ function main() {
   let __tuff_this = { this: __tuff_outer_for_main };
   let argc = get_argc(); if (typeof __tuff_this !== 'undefined') __tuff_this.argc = argc;
   if ((argc < 2)) {
-  print_error("Usage: tuffc <input.tuff> -o <output> [--target <js|c>] [--module-base <dir>]");
+  print_error("Usage: tuffc <input.tuff> -o <output> [--target <js|c>] [--module-base <dir> (legacy)]");
   return 1;
 }
   let first_arg = get_argv(1); if (typeof __tuff_this !== 'undefined') __tuff_this.first_arg = first_arg;
@@ -10517,7 +10517,7 @@ function main() {
   return 0;
 }
   if (((() => { const __recv = first_arg; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("-h"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "-h") : str_eq(__recv, "-h"); })() || (() => { const __recv = first_arg; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("--help"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "--help") : str_eq(__recv, "--help"); })())) {
-  print("Usage: tuffc <input.tuff> -o <output> [--target <js|c>] [--module-base <dir>] [--version]");
+  print("Usage: tuffc <input.tuff> -o <output> [--target <js|c>] [--module-base <dir> (legacy)] [--version]");
   return 0;
 }
   let input_file = first_arg; if (typeof __tuff_this !== 'undefined') __tuff_this.input_file = input_file;

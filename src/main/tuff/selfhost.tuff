@@ -150,7 +150,7 @@ fn main() : I32 => {
     let argc = get_argc();
     // argv[0] is the executable name; we need at least argv[1] (input file).
     if (argc < 2) {
-        print_error("Usage: tuffc <input.tuff> -o <output> [--target <js|c>] [--module-base <dir>]");
+        print_error("Usage: tuffc <input.tuff> -o <output> [--target <js|c>] [--module-base <dir> (legacy)]");
         return 1;
     }
 
@@ -161,7 +161,7 @@ fn main() : I32 => {
         return 0;
     }
     if (first_arg.str_eq("-h") || first_arg.str_eq("--help")) {
-        print("Usage: tuffc <input.tuff> -o <output> [--target <js|c>] [--module-base <dir>] [--version]");
+        print("Usage: tuffc <input.tuff> -o <output> [--target <js|c>] [--module-base <dir> (legacy)] [--version]");
         return 0;
     }
 

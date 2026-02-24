@@ -400,7 +400,7 @@ export function read_file(filePath: string): string {
     let fix = "Verify the file path and module layout, then retry compilation.";
     if (code === "ENOENT") {
       fix =
-        "The file does not exist at the resolved path. Verify --module-base, import/module paths, and current working directory.";
+        "The file does not exist at the resolved path. Verify import/module paths and current working directory (if you still pass --module-base, note it is a legacy compatibility option).";
     } else if (code === "EACCES" || code === "EPERM") {
       fix =
         "Permission denied while reading the file. Adjust file permissions or run with sufficient access rights.";
