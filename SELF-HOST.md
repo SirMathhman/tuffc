@@ -1,6 +1,6 @@
 # Tuff Self-Hosted Compiler — Bootstrap Roadmap
 
-_Last updated: 2026-02-17_
+_Last updated: 2026-02-24_
 
 The Tuff compiler is fully self-hosted. The canonical source is `src/main/tuff/selfhost.tuff`,
 compiled to a native CLI by the prior stage. The bootstrap path was:
@@ -64,9 +64,9 @@ Bootstrap equivalence passes. Run: `bun run stage1:bootstrap`
 8. **Full Pattern Matching** — Exhaustiveness checker, range patterns, nested destructuring. (_parallel with step 1_)
 9. **Async/Await Desugaring** — CPS transformation as specified. Pure syntactic transform. (_parallel with step 1_) — **pending**
 
-Stage 2 strict mode is active (`--stage2` flag). Ownership/borrowing, safety proofs, module graph, and match exhaustiveness are all implemented. `async fn` CPS surface remains pending.
+Safety checks (refinement types, ownership/borrowing, proof checks, match exhaustiveness) are always active — no flag required. `async fn` CPS surface remains pending.
 
-Run: `bun run stage2:verify`
+Run: `npm run stage2:verify`
 
 ---
 

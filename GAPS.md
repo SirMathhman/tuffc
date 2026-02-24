@@ -1,6 +1,6 @@
 # Tuff Spec Gap Report
 
-_Last updated: 2026-02-17 (from `bun run semantics:exhaustive`)_
+_Last updated: 2026-02-24 (from `npm run semantics:exhaustive`)_
 
 This document lists the current gaps between the implemented compiler behavior and `SPECIFICATION.md`, based on the failing exhaustive semantics audit in `src/test/js/spec-semantics-exhaustive.ts`.
 
@@ -139,14 +139,16 @@ These are spec-described constructs that currently fail to compile.
 - Spec area: `4.2`, `9.2`
 - Case: `reject:overflow-strict`
 - Expected: `E_SAFETY_INTEGER_OVERFLOW`
-- Fixed in Phase A: renamed `E_SAFETY_OVERFLOW` → `E_SAFETY_INTEGER_OVERFLOW` in `typecheck.tuff`.
+- Fixed: renamed `E_SAFETY_OVERFLOW` → `E_SAFETY_INTEGER_OVERFLOW` in `typecheck.tuff`.
+- Note: `strict_safety` flag has been removed; overflow checks now always run unconditionally.
 
 ### ✅ Resolved: Non-exhaustive match diagnostic code
 
 - Spec area: `3.5`, `9.1`
 - Case: `reject:non-exhaustive-match`
 - Expected: `E_TYPE_MATCH_NON_EXHAUSTIVE`
-- Fixed in Phase A: renamed `E_MATCH_NON_EXHAUSTIVE` → `E_TYPE_MATCH_NON_EXHAUSTIVE` in `typecheck.tuff`.
+- Fixed: renamed `E_MATCH_NON_EXHAUSTIVE` → `E_TYPE_MATCH_NON_EXHAUSTIVE` in `typecheck.tuff`.
+- Note: match exhaustiveness checks now always run unconditionally (no longer gated on `strict_safety`).
 
 ## C) Cross-stage behavior notes
 
@@ -158,7 +160,6 @@ These are spec-described constructs that currently fail to compile.
 1. **Parser surface parity first**: `async`.
 2. **Type-system syntax/parsing fixes**: generic call forms and dependent array signatures.
 3. **Desugar/resolve collision handling**: `class fn` shadowing behavior.
-4. **Diagnostic harmonization**: align expected-vs-actual codes for overflow and match exhaustiveness.
 
 ## E) Related non-spec test pipeline issue (separate)
 

@@ -1,6 +1,6 @@
 # Tuff Compiler Toolchain
 
-_Last updated: 2026-02-17_
+_Last updated: 2026-02-24_
 
 Fully self-hosted Tuff compiler. The canonical source is `src/main/tuff/selfhost.tuff`; the execution path is the generated native CLI (`stage3_selfhost_cli`). `src/main/js/` contains a thin JS harness (CLI, error types, runtime bindings) — Stage 0 TypeScript compiler code has been removed. See `docs/native-selfhost-transition.md` and `SELF-HOST.md` for full history.
 
@@ -10,7 +10,7 @@ Fully self-hosted Tuff compiler. The canonical source is `src/main/tuff/selfhost
 | --------------------------------------- | ----------- | ------------------------------------------------------------------------------- |
 | Stage 0 (JS bootstrap)                  | ✅ Removed  | Fully replaced by self-hosted native compiler                                   |
 | Stage 1 (Tuff-lite bootstrap)           | ✅ Complete | Bootstrap equivalence passes (`stage1:bootstrap`)                               |
-| Stage 2 (Full Tuff strict mode)         | ✅ Complete | Refinement types, ownership, proof checks                                       |
+| Stage 2 (Full Tuff)                      | ✅ Complete | Refinement types, ownership, proof checks — always active                       |
 | Stage 3 (Selfhost from `selfhost.tuff`) | ✅ Complete | Triple-bootstrap equivalence verified                                           |
 | C backend                               | 🔄 Active   | M2 capability-group alignment in progress; see `docs/runtime-migration-plan.md` |
 | Web bundle                              | ✅ Complete | `tuff-compiler.esm.js` / `.min.js` for browser use                              |
@@ -37,7 +37,6 @@ Fully self-hosted Tuff compiler. The canonical source is `src/main/tuff/selfhost
 - `async fn` / CPS surface — not yet parsed
 - `class fn` desugar — constructor/return typing mismatch
 - Dependent array signature form (`toStackArray`) — not yet resolved
-- Diagnostic code name mismatches (`E_SAFETY_OVERFLOW` vs. `E_SAFETY_INTEGER_OVERFLOW`, `E_MATCH_NON_EXHAUSTIVE` vs. `E_TYPE_MATCH_NON_EXHAUSTIVE`)
 
 ## Repository layout (Gradle-like, multi-language)
 
@@ -86,7 +85,7 @@ Run only Stage 1 bootstrap validation:
 
 ## Phase 3 / Stage 2
 
-Stage 2 capabilities are available in strict mode:
+Stage 2 safety checks are always active (no flag required):
 
 - Refinement type parsing (e.g. `I32 != 0`, `USize < 100`)
 - Flow-sensitive narrowing in `if` branches
@@ -99,7 +98,6 @@ Stage 2 capabilities are available in strict mode:
 
 CLI options:
 
-- `--stage2` enables strict safety checks
 - `--modules` enables module graph loading
 - `--module-base <dir>` sets the module root directory
 
@@ -127,7 +125,7 @@ Production-readiness diagnostics are now available:
 
 Example:
 
-- `npm run native:selfhost:run -- ./tests/out/stage4/cli-fail.tuff --stage2 --json-errors`
+- `npm run native:selfhost:run -- ./tests/out/stage4/cli-fail.tuff --json-errors`
 - `npm run native:selfhost:run -- ./tests/out/stage4/cli-fail.tuff --lint --json-errors`
 - `npm run native:selfhost:run -- ./src/test/tuff/cases/factorial.tuff --trace-passes`
 
@@ -162,7 +160,6 @@ Example (`build:web` global bundle):
 <script>
   const tuffCode = `fn main() : I32 => 42;`;
   const jsCode = window.TuffCompiler.compileTuffToJs(tuffCode, {
-    typecheck: { strictSafety: true },
     lint: { enabled: true, mode: "warn" },
   });
   console.log(jsCode);

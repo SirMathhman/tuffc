@@ -53,10 +53,10 @@
 - Resolver always emits `E_RESOLVE_SHADOWING` for variable redeclaration.
 - Why: Safety proofs require unambiguous variable identity for borrow tracking and refinement types.
 
-### Strict Safety is Opt-In (Library API) but Always-On (CLI)
+### Strict Safety is Always On
 
-- CLI always passes `typecheck: { strictSafety: true }`.
-- Library tests must explicitly enable: `compileSourceResult(src, file, { typecheck: { strictSafety: true } })`.
+- All safety checks (div-by-zero proofs, overflow, array bounds, match exhaustiveness) run unconditionally.
+- The `strictSafety` option and `--stage2` CLI flag have been removed. Do not pass them.
 - Strict mode enforces: div-by-zero proofs, overflow checks, array bounds, match exhaustiveness.
 
 ### Borrow Checker: Move-by-Default with Copy Escape Hatches
@@ -90,7 +90,7 @@
 ### Verification Scripts
 
 - **`stage1:bootstrap`**: Triple-compilation equivalence (Stage0 → Stage1 → Stage1 must match).
-- **`stage2:verify`**: Safety proofs (div-by-zero, overflow, bounds checks, match exhaustiveness).
+- **`stage2:verify`**: Safety proofs (div-by-zero, overflow, bounds checks, match exhaustiveness) — always active.
 - **`stage4:verify`**: Diagnostic code stability and 4-part contract validation.
 - **`borrow:verify`**: Ownership tracking, use-after-move, copy semantics.
 - **`selfhost:parity`**: Stage0 and selfhost must produce identical runtime output for same input.
