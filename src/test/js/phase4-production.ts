@@ -726,4 +726,25 @@ if (cycleNoLintDiag.code !== "E_MODULE_CYCLE") {
   process.exit(1);
 }
 
+// 10) parser_decls.tuff should stay under the 500 effective-line budget.
+const parserDeclsPath = path.join(
+  root,
+  "src",
+  "main",
+  "tuff",
+  "selfhost",
+  "parser_decls.tuff",
+);
+const parserDeclsSource = fs.readFileSync(parserDeclsPath, "utf8");
+const parserDeclsEffectiveLines = parserDeclsSource
+  .split(/\r?\n/)
+  .map((line) => line.trim())
+  .filter((line) => line.length > 0 && !line.startsWith("//")).length;
+if (parserDeclsEffectiveLines >= 500) {
+  console.error(
+    `Expected parser_decls.tuff to stay under 500 effective lines, got ${parserDeclsEffectiveLines}`,
+  );
+  process.exit(1);
+}
+
 console.log("Phase 4 production diagnostics checks passed");

@@ -1587,14 +1587,14 @@ function p_new_temp_name(prefix) {
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.p_new_temp_name = p_new_temp_name;
 
-const __tuff_outer_for_p_new_stmt_list = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
-function p_new_stmt_list(stmts) {
-  let __tuff_this = { stmts: stmts, this: __tuff_outer_for_p_new_stmt_list };
+const __tuff_outer_for_p_decls_helpers_new_stmt_list = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function p_decls_helpers_new_stmt_list(stmts) {
+  let __tuff_this = { stmts: stmts, this: __tuff_outer_for_p_decls_helpers_new_stmt_list };
   let n = node_new(NK_STMT_LIST); if (typeof __tuff_this !== 'undefined') __tuff_this.n = n;
   node_set_data1(n, stmts);
   return n;
 }
-if (typeof __tuff_this !== 'undefined') __tuff_this.p_new_stmt_list = p_new_stmt_list;
+if (typeof __tuff_this !== 'undefined') __tuff_this.p_decls_helpers_new_stmt_list = p_decls_helpers_new_stmt_list;
 
 const __tuff_outer_for_p_parse_constraint_value_atom = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
 function p_parse_constraint_value_atom() {
@@ -2084,7 +2084,7 @@ function p_parse_let() {
   (() => { const __recv = lowered; const __prop = __recv?.["vec_push"]; if (typeof __prop === "function") return __prop(elem_decl); const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, elem_decl) : vec_push(__recv, elem_decl); })();
   i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
 }
-  return p_new_stmt_list(lowered);
+  return p_decls_helpers_new_stmt_list(lowered);
 }
   let name = p_parse_identifier(); if (typeof __tuff_this !== 'undefined') __tuff_this.name = name;
   let vtype = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.vtype = vtype;
@@ -2141,68 +2141,6 @@ function p_parse_lifetime() {
   return node;
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.p_parse_lifetime = p_parse_lifetime;
-
-const __tuff_outer_for_p_parse_template_wrapper = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
-function p_parse_template_wrapper() {
-  let __tuff_this = { this: __tuff_outer_for_p_parse_template_wrapper };
-  p_eat();
-  p_parse_identifier();
-  if (p_at(TK_SYMBOL, ":")) {
-  p_eat();
-  p_parse_type();
-}
-  while (p_at(TK_SYMBOL, ",")) {
-  p_eat();
-  p_parse_identifier();
-  if (p_at(TK_SYMBOL, ":")) {
-  p_eat();
-  p_parse_type();
-}
-}
-  p_expect(TK_SYMBOL, "{", "Expected '{' after template declaration");
-  let stmts = vec_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.stmts = stmts;
-  while ((!p_at(TK_SYMBOL, "}"))) {
-  let stmt = p_parse_statement(); if (typeof __tuff_this !== 'undefined') __tuff_this.stmt = stmt;
-  if ((node_kind(stmt) === NK_BLOCK)) {
-  let inner = node_get_data1(stmt); if (typeof __tuff_this !== 'undefined') __tuff_this.inner = inner;
-  let j = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.j = j;
-  while ((j < (() => { const __recv = inner; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })())) {
-  (() => { const __recv = stmts; const __prop = __recv?.["vec_push"]; if (typeof __prop === "function") return __prop((() => { const __recv = inner; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(j); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, j) : vec_get(__recv, j); })()); const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, (() => { const __recv = inner; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(j); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, j) : vec_get(__recv, j); })()) : vec_push(__recv, (() => { const __recv = inner; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(j); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, j) : vec_get(__recv, j); })()); })();
-  j = (j + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.j = j;
-}
-} else {
-  (() => { const __recv = stmts; const __prop = __recv?.["vec_push"]; if (typeof __prop === "function") return __prop(stmt); const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, stmt) : vec_push(__recv, stmt); })();
-}
-}
-  p_expect(TK_SYMBOL, "}", "Expected '}' after template block");
-  return p_new_stmt_list(stmts);
-}
-if (typeof __tuff_this !== 'undefined') __tuff_this.p_parse_template_wrapper = p_parse_template_wrapper;
-
-const __tuff_outer_for_p_parse_module_wrapper = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
-function p_parse_module_wrapper() {
-  let __tuff_this = { this: __tuff_outer_for_p_parse_module_wrapper };
-  p_expect(TK_KEYWORD, "module", "Expected 'module'");
-  p_parse_identifier();
-  p_expect(TK_SYMBOL, "{", "Expected '{' after module name");
-  let stmts = vec_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.stmts = stmts;
-  while ((!p_at(TK_SYMBOL, "}"))) {
-  let stmt = p_parse_statement(); if (typeof __tuff_this !== 'undefined') __tuff_this.stmt = stmt;
-  if ((node_kind(stmt) === NK_BLOCK)) {
-  let inner = node_get_data1(stmt); if (typeof __tuff_this !== 'undefined') __tuff_this.inner = inner;
-  let j = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.j = j;
-  while ((j < (() => { const __recv = inner; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })())) {
-  (() => { const __recv = stmts; const __prop = __recv?.["vec_push"]; if (typeof __prop === "function") return __prop((() => { const __recv = inner; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(j); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, j) : vec_get(__recv, j); })()); const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, (() => { const __recv = inner; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(j); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, j) : vec_get(__recv, j); })()) : vec_push(__recv, (() => { const __recv = inner; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(j); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, j) : vec_get(__recv, j); })()); })();
-  j = (j + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.j = j;
-}
-} else {
-  (() => { const __recv = stmts; const __prop = __recv?.["vec_push"]; if (typeof __prop === "function") return __prop(stmt); const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, stmt) : vec_push(__recv, stmt); })();
-}
-}
-  p_expect(TK_SYMBOL, "}", "Expected '}' after module body");
-  return p_new_stmt_list(stmts);
-}
-if (typeof __tuff_this !== 'undefined') __tuff_this.p_parse_module_wrapper = p_parse_module_wrapper;
 
 const __tuff_outer_for_p_parse_extern_decl = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
 function p_parse_extern_decl() {
@@ -2308,6 +2246,84 @@ function p_parse_extern_decl() {
   return panic("Expected fn, let, or type after extern");
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.p_parse_extern_decl = p_parse_extern_decl;
+
+const __tuff_outer_for_selfhost_parser_decls_helpers_marker = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function selfhost_parser_decls_helpers_marker() {
+  let __tuff_this = { this: __tuff_outer_for_selfhost_parser_decls_helpers_marker };
+  return 0;
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.selfhost_parser_decls_helpers_marker = selfhost_parser_decls_helpers_marker;
+
+const __tuff_outer_for_p_new_stmt_list = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function p_new_stmt_list(stmts) {
+  let __tuff_this = { stmts: stmts, this: __tuff_outer_for_p_new_stmt_list };
+  let n = node_new(NK_STMT_LIST); if (typeof __tuff_this !== 'undefined') __tuff_this.n = n;
+  node_set_data1(n, stmts);
+  return n;
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.p_new_stmt_list = p_new_stmt_list;
+
+const __tuff_outer_for_p_parse_template_wrapper = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function p_parse_template_wrapper() {
+  let __tuff_this = { this: __tuff_outer_for_p_parse_template_wrapper };
+  p_eat();
+  p_parse_identifier();
+  if (p_at(TK_SYMBOL, ":")) {
+  p_eat();
+  p_parse_type();
+}
+  while (p_at(TK_SYMBOL, ",")) {
+  p_eat();
+  p_parse_identifier();
+  if (p_at(TK_SYMBOL, ":")) {
+  p_eat();
+  p_parse_type();
+}
+}
+  p_expect(TK_SYMBOL, "{", "Expected '{' after template declaration");
+  let stmts = vec_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.stmts = stmts;
+  while ((!p_at(TK_SYMBOL, "}"))) {
+  let stmt = p_parse_statement(); if (typeof __tuff_this !== 'undefined') __tuff_this.stmt = stmt;
+  if ((node_kind(stmt) === NK_BLOCK)) {
+  let inner = node_get_data1(stmt); if (typeof __tuff_this !== 'undefined') __tuff_this.inner = inner;
+  let j = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.j = j;
+  while ((j < (() => { const __recv = inner; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })())) {
+  (() => { const __recv = stmts; const __prop = __recv?.["vec_push"]; if (typeof __prop === "function") return __prop((() => { const __recv = inner; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(j); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, j) : vec_get(__recv, j); })()); const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, (() => { const __recv = inner; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(j); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, j) : vec_get(__recv, j); })()) : vec_push(__recv, (() => { const __recv = inner; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(j); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, j) : vec_get(__recv, j); })()); })();
+  j = (j + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.j = j;
+}
+} else {
+  (() => { const __recv = stmts; const __prop = __recv?.["vec_push"]; if (typeof __prop === "function") return __prop(stmt); const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, stmt) : vec_push(__recv, stmt); })();
+}
+}
+  p_expect(TK_SYMBOL, "}", "Expected '}' after template block");
+  return p_new_stmt_list(stmts);
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.p_parse_template_wrapper = p_parse_template_wrapper;
+
+const __tuff_outer_for_p_parse_module_wrapper = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function p_parse_module_wrapper() {
+  let __tuff_this = { this: __tuff_outer_for_p_parse_module_wrapper };
+  p_expect(TK_KEYWORD, "module", "Expected 'module'");
+  p_parse_identifier();
+  p_expect(TK_SYMBOL, "{", "Expected '{' after module name");
+  let stmts = vec_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.stmts = stmts;
+  while ((!p_at(TK_SYMBOL, "}"))) {
+  let stmt = p_parse_statement(); if (typeof __tuff_this !== 'undefined') __tuff_this.stmt = stmt;
+  if ((node_kind(stmt) === NK_BLOCK)) {
+  let inner = node_get_data1(stmt); if (typeof __tuff_this !== 'undefined') __tuff_this.inner = inner;
+  let j = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.j = j;
+  while ((j < (() => { const __recv = inner; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })())) {
+  (() => { const __recv = stmts; const __prop = __recv?.["vec_push"]; if (typeof __prop === "function") return __prop((() => { const __recv = inner; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(j); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, j) : vec_get(__recv, j); })()); const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, (() => { const __recv = inner; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(j); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, j) : vec_get(__recv, j); })()) : vec_push(__recv, (() => { const __recv = inner; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(j); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, j) : vec_get(__recv, j); })()); })();
+  j = (j + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.j = j;
+}
+} else {
+  (() => { const __recv = stmts; const __prop = __recv?.["vec_push"]; if (typeof __prop === "function") return __prop(stmt); const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, stmt) : vec_push(__recv, stmt); })();
+}
+}
+  p_expect(TK_SYMBOL, "}", "Expected '}' after module body");
+  return p_new_stmt_list(stmts);
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.p_parse_module_wrapper = p_parse_module_wrapper;
 
 const __tuff_outer_for_p_parse_statement = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
 function p_parse_statement() {
@@ -2688,20 +2704,12 @@ function selfhost_parser_decls_marker() {
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.selfhost_parser_decls_marker = selfhost_parser_decls_marker;
 
-let rslv_current_node = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.rslv_current_node = rslv_current_node;
-
-const __tuff_outer_for_rslv_panic_loc = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
-function rslv_panic_loc(code, msg, reason, fix) {
-  let __tuff_this = { code: code, msg: msg, reason: reason, fix: fix, this: __tuff_outer_for_rslv_panic_loc };
-  return panic_with_code_loc(code, msg, reason, fix, node_get_line(rslv_current_node), node_get_col(rslv_current_node));
+const __tuff_outer_for_rslv_utils_panic_node = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function rslv_utils_panic_node(err_node, code, msg, reason, fix) {
+  let __tuff_this = { err_node: err_node, code: code, msg: msg, reason: reason, fix: fix, this: __tuff_outer_for_rslv_utils_panic_node };
+  return panic_with_code_loc(code, msg, reason, fix, node_get_line(err_node), node_get_col(err_node));
 }
-if (typeof __tuff_this !== 'undefined') __tuff_this.rslv_panic_loc = rslv_panic_loc;
-
-let resolve_lifetime_scopes = vec_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.resolve_lifetime_scopes = resolve_lifetime_scopes;
-
-let resolve_global_decl_nodes = map_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.resolve_global_decl_nodes = resolve_global_decl_nodes;
-
-let resolve_global_names_list = vec_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.resolve_global_names_list = resolve_global_names_list;
+if (typeof __tuff_this !== 'undefined') __tuff_this.rslv_utils_panic_node = rslv_utils_panic_node;
 
 const __tuff_outer_for_levenshtein_distance = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
 function levenshtein_distance(a, b) {
@@ -2755,9 +2763,9 @@ function levenshtein_distance(a, b) {
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.levenshtein_distance = levenshtein_distance;
 
-const __tuff_outer_for_find_did_you_mean = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
-function find_did_you_mean(name, candidates) {
-  let __tuff_this = { name: name, candidates: candidates, this: __tuff_outer_for_find_did_you_mean };
+const __tuff_outer_for_rslv_utils_find_did_you_mean = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function rslv_utils_find_did_you_mean(name, candidates) {
+  let __tuff_this = { name: name, candidates: candidates, this: __tuff_outer_for_rslv_utils_find_did_you_mean };
   let best = ""; if (typeof __tuff_this !== 'undefined') __tuff_this.best = best;
   let best_dist = 9999; if (typeof __tuff_this !== 'undefined') __tuff_this.best_dist = best_dist;
   let name_len = (0 + (() => { const __recv = name; const __prop = __recv?.["str_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.str_length; return __dyn ? __dyn(__recv.ref) : str_length(__recv); })()); if (typeof __tuff_this !== 'undefined') __tuff_this.name_len = name_len;
@@ -2778,77 +2786,7 @@ function find_did_you_mean(name, candidates) {
 }
   return best;
 }
-if (typeof __tuff_this !== 'undefined') __tuff_this.find_did_you_mean = find_did_you_mean;
-
-const __tuff_outer_for_lifetime_scope_has = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
-function lifetime_scope_has(name) {
-  let __tuff_this = { name: name, this: __tuff_outer_for_lifetime_scope_has };
-  let len = (() => { const __recv = resolve_lifetime_scopes; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.len = len;
-  let i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-  while ((i < len)) {
-  if ((() => { const __recv = (() => { const __recv = resolve_lifetime_scopes; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(); const __prop = __recv?.["set_has"]; if (typeof __prop === "function") return __prop(name); const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, name) : set_has(__recv, name); })()) {
-  return true;
-}
-  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-}
-  return false;
-}
-if (typeof __tuff_this !== 'undefined') __tuff_this.lifetime_scope_has = lifetime_scope_has;
-
-const __tuff_outer_for_resolve_type_lifetimes = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
-function resolve_type_lifetimes(t) {
-  let __tuff_this = { t: t, this: __tuff_outer_for_resolve_type_lifetimes };
-  if ((t === 0)) {
-  return 0;
-}
-  let k = node_kind(t); if (typeof __tuff_this !== 'undefined') __tuff_this.k = k;
-  if ((k === NK_POINTER_TYPE)) {
-  let life_idx = node_get_data4(t); if (typeof __tuff_this !== 'undefined') __tuff_this.life_idx = life_idx;
-  if ((life_idx !== 0)) {
-  let lname = get_interned_str(life_idx); if (typeof __tuff_this !== 'undefined') __tuff_this.lname = lname;
-  if ((!lifetime_scope_has(lname))) {
-  rslv_panic_loc("E_RESOLVE_UNDEFINED_LIFETIME", (() => { const __recv = (() => { const __recv = "Undefined lifetime '"; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(lname); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, lname) : str_concat(__recv, lname); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("'"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "'") : str_concat(__recv, "'"); })(), "A pointer type annotation references a lifetime name that is not declared in any active lifetime block.", "Declare the lifetime in an enclosing `lifetime ... { ... }` block before using it in pointer types.");
-}
-}
-  resolve_type_lifetimes(node_get_data2(t));
-  return 0;
-}
-  if ((k === NK_ARRAY_TYPE)) {
-  resolve_type_lifetimes(node_get_data1(t));
-  return 0;
-}
-  if ((k === NK_REFINEMENT_TYPE)) {
-  resolve_type_lifetimes(node_get_data1(t));
-  return 0;
-}
-  if ((k === NK_UNION_TYPE)) {
-  resolve_type_lifetimes(node_get_data1(t));
-  resolve_type_lifetimes(node_get_data2(t));
-  return 0;
-}
-  if ((k === NK_TUPLE_TYPE)) {
-  let members = node_get_data1(t); if (typeof __tuff_this !== 'undefined') __tuff_this.members = members;
-  let i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-  let len = (() => { const __recv = members; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.len = len;
-  while ((i < len)) {
-  resolve_type_lifetimes((() => { const __recv = members; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })());
-  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-}
-  return 0;
-}
-  if ((k === NK_FUNCTION_TYPE)) {
-  let ps = node_get_data1(t); if (typeof __tuff_this !== 'undefined') __tuff_this.ps = ps;
-  let i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-  while ((i < (() => { const __recv = ps; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })())) {
-  resolve_type_lifetimes((() => { const __recv = ps; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })());
-  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-}
-  resolve_type_lifetimes(node_get_data2(t));
-  return 0;
-}
-  return 0;
-}
-if (typeof __tuff_this !== 'undefined') __tuff_this.resolve_type_lifetimes = resolve_type_lifetimes;
+if (typeof __tuff_this !== 'undefined') __tuff_this.rslv_utils_find_did_you_mean = rslv_utils_find_did_you_mean;
 
 const __tuff_outer_for_fn_type_sig = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
 function fn_type_sig(t) {
@@ -2923,9 +2861,9 @@ function fn_decl_sig(n) {
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.fn_decl_sig = fn_decl_sig;
 
-const __tuff_outer_for_validate_expect_actual_pairs = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
-function validate_expect_actual_pairs(body) {
-  let __tuff_this = { body: body, this: __tuff_outer_for_validate_expect_actual_pairs };
+const __tuff_outer_for_rslv_utils_validate_expect_actual_pairs = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function rslv_utils_validate_expect_actual_pairs(body) {
+  let __tuff_this = { body: body, this: __tuff_outer_for_rslv_utils_validate_expect_actual_pairs };
   let i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
   let len = (() => { const __recv = body; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.len = len;
   while ((i < len)) {
@@ -2953,33 +2891,33 @@ function validate_expect_actual_pairs(body) {
   j = (j + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.j = j;
 }
   if (((expect_count !== 1) || (actual_count !== 1))) {
-  rslv_panic_loc("E_EXPECT_ACTUAL_PAIRING", (() => { const __recv = (() => { const __recv = "expect/actual pairing requires exactly one expect and one actual for '"; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, name) : str_concat(__recv, name); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("'"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "'") : str_concat(__recv, "'"); })(), "Platform declarations require exactly one expect and one actual declaration for each symbol.", "Declare exactly one 'expect fn' and one matching 'actual fn' for each platform symbol.");
+  rslv_utils_panic_node(stmt, "E_EXPECT_ACTUAL_PAIRING", (() => { const __recv = (() => { const __recv = "expect/actual pairing requires exactly one expect and one actual for '"; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, name) : str_concat(__recv, name); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("'"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "'") : str_concat(__recv, "'"); })(), "Platform declarations require exactly one expect and one actual declaration for each symbol.", "Declare exactly one 'expect fn' and one matching 'actual fn' for each platform symbol.");
 }
   if ((!(() => { const __recv = fn_decl_sig(expect_node); const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop(fn_decl_sig(actual_node)); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, fn_decl_sig(actual_node)) : str_eq(__recv, fn_decl_sig(actual_node)); })())) {
-  rslv_panic_loc("E_EXPECT_ACTUAL_SIGNATURE_MISMATCH", (() => { const __recv = (() => { const __recv = "expect/actual signatures do not match for '"; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, name) : str_concat(__recv, name); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("'"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "'") : str_concat(__recv, "'"); })(), "An expect declaration and its actual implementation have different signatures.", "Make generic params, parameter list, and return type identical between expect and actual declarations.");
+  rslv_utils_panic_node(stmt, "E_EXPECT_ACTUAL_SIGNATURE_MISMATCH", (() => { const __recv = (() => { const __recv = "expect/actual signatures do not match for '"; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, name) : str_concat(__recv, name); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("'"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "'") : str_concat(__recv, "'"); })(), "An expect declaration and its actual implementation have different signatures.", "Make generic params, parameter list, and return type identical between expect and actual declarations.");
 }
 }
   i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
 }
   return 0;
 }
-if (typeof __tuff_this !== 'undefined') __tuff_this.validate_expect_actual_pairs = validate_expect_actual_pairs;
+if (typeof __tuff_this !== 'undefined') __tuff_this.rslv_utils_validate_expect_actual_pairs = rslv_utils_validate_expect_actual_pairs;
 
-const __tuff_outer_for_scope_define = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
-function scope_define(scopes, depth, name) {
-  let __tuff_this = { scopes: scopes, depth: depth, name: name, this: __tuff_outer_for_scope_define };
+const __tuff_outer_for_rslv_utils_scope_define = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function rslv_utils_scope_define(scopes, depth, name, err_node) {
+  let __tuff_this = { scopes: scopes, depth: depth, name: name, err_node: err_node, this: __tuff_outer_for_rslv_utils_scope_define };
   let scope = (() => { const __recv = scopes; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(depth); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, depth) : vec_get(__recv, depth); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.scope = scope;
   if ((() => { const __recv = scope; const __prop = __recv?.["set_has"]; if (typeof __prop === "function") return __prop(name); const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, name) : set_has(__recv, name); })()) {
-  rslv_panic_loc("E_RESOLVE_SHADOWING", (() => { const __recv = "Variable shadowing/redeclaration is not allowed: "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, name) : str_concat(__recv, name); })(), "A name was declared multiple times in the same lexical scope.", "Rename one of the bindings or move it to a different scope.");
+  rslv_utils_panic_node(err_node, "E_RESOLVE_SHADOWING", (() => { const __recv = "Variable shadowing/redeclaration is not allowed: "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, name) : str_concat(__recv, name); })(), "A name was declared multiple times in the same lexical scope.", "Rename one of the bindings or move it to a different scope.");
 }
   (() => { const __recv = scope; const __prop = __recv?.["set_add"]; if (typeof __prop === "function") return __prop(name); const __dyn = __recv?.table?.set_add; return __dyn ? __dyn(__recv.ref, name) : set_add(__recv, name); })();
   return 0;
 }
-if (typeof __tuff_this !== 'undefined') __tuff_this.scope_define = scope_define;
+if (typeof __tuff_this !== 'undefined') __tuff_this.rslv_utils_scope_define = rslv_utils_scope_define;
 
-const __tuff_outer_for_scope_has = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
-function scope_has(scopes, depth, name) {
-  let __tuff_this = { scopes: scopes, depth: depth, name: name, this: __tuff_outer_for_scope_has };
+const __tuff_outer_for_rslv_utils_scope_has = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function rslv_utils_scope_has(scopes, depth, name) {
+  let __tuff_this = { scopes: scopes, depth: depth, name: name, this: __tuff_outer_for_rslv_utils_scope_has };
   let i = depth; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
   while ((i >= 0)) {
   if ((() => { const __recv = (() => { const __recv = scopes; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(); const __prop = __recv?.["set_has"]; if (typeof __prop === "function") return __prop(name); const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, name) : set_has(__recv, name); })()) {
@@ -2989,14 +2927,106 @@ function scope_has(scopes, depth, name) {
 }
   return false;
 }
-if (typeof __tuff_this !== 'undefined') __tuff_this.scope_has = scope_has;
+if (typeof __tuff_this !== 'undefined') __tuff_this.rslv_utils_scope_has = rslv_utils_scope_has;
 
-const __tuff_outer_for_is_host_builtin_name = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
-function is_host_builtin_name(name) {
-  let __tuff_this = { name: name, this: __tuff_outer_for_is_host_builtin_name };
+const __tuff_outer_for_rslv_utils_is_host_builtin_name = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function rslv_utils_is_host_builtin_name(name) {
+  let __tuff_this = { name: name, this: __tuff_outer_for_rslv_utils_is_host_builtin_name };
   return (((((((((() => { const __recv = name; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("sizeOf"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "sizeOf") : str_eq(__recv, "sizeOf"); })() || (() => { const __recv = name; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("malloc"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "malloc") : str_eq(__recv, "malloc"); })()) || (() => { const __recv = name; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("realloc"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "realloc") : str_eq(__recv, "realloc"); })()) || (() => { const __recv = name; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("free"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "free") : str_eq(__recv, "free"); })()) || (() => { const __recv = name; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("memcpy"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "memcpy") : str_eq(__recv, "memcpy"); })()) || (() => { const __recv = name; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("memset"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "memset") : str_eq(__recv, "memset"); })()) || (() => { const __recv = name; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("drop"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "drop") : str_eq(__recv, "drop"); })()) || (() => { const __recv = name; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("panic"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "panic") : str_eq(__recv, "panic"); })()) || (() => { const __recv = name; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("this"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "this") : str_eq(__recv, "this"); })());
 }
-if (typeof __tuff_this !== 'undefined') __tuff_this.is_host_builtin_name = is_host_builtin_name;
+if (typeof __tuff_this !== 'undefined') __tuff_this.rslv_utils_is_host_builtin_name = rslv_utils_is_host_builtin_name;
+
+const __tuff_outer_for_lifetime_scope_has = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function lifetime_scope_has(resolve_lifetime_scopes, name) {
+  let __tuff_this = { resolve_lifetime_scopes: resolve_lifetime_scopes, name: name, this: __tuff_outer_for_lifetime_scope_has };
+  let len = (() => { const __recv = resolve_lifetime_scopes; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.len = len;
+  let i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
+  while ((i < len)) {
+  if ((() => { const __recv = (() => { const __recv = resolve_lifetime_scopes; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(); const __prop = __recv?.["set_has"]; if (typeof __prop === "function") return __prop(name); const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, name) : set_has(__recv, name); })()) {
+  return true;
+}
+  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
+}
+  return false;
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.lifetime_scope_has = lifetime_scope_has;
+
+const __tuff_outer_for_rslv_utils_resolve_type_lifetimes = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function rslv_utils_resolve_type_lifetimes(t, resolve_lifetime_scopes, err_node) {
+  let __tuff_this = { t: t, resolve_lifetime_scopes: resolve_lifetime_scopes, err_node: err_node, this: __tuff_outer_for_rslv_utils_resolve_type_lifetimes };
+  if ((t === 0)) {
+  return 0;
+}
+  let k = node_kind(t); if (typeof __tuff_this !== 'undefined') __tuff_this.k = k;
+  if ((k === NK_POINTER_TYPE)) {
+  let life_idx = node_get_data4(t); if (typeof __tuff_this !== 'undefined') __tuff_this.life_idx = life_idx;
+  if ((life_idx !== 0)) {
+  let lname = get_interned_str(life_idx); if (typeof __tuff_this !== 'undefined') __tuff_this.lname = lname;
+  if ((!lifetime_scope_has(resolve_lifetime_scopes, lname))) {
+  rslv_utils_panic_node(err_node, "E_RESOLVE_UNDEFINED_LIFETIME", (() => { const __recv = (() => { const __recv = "Undefined lifetime '"; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(lname); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, lname) : str_concat(__recv, lname); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("'"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "'") : str_concat(__recv, "'"); })(), "A pointer type annotation references a lifetime name that is not declared in any active lifetime block.", "Declare the lifetime in an enclosing `lifetime ... { ... }` block before using it in pointer types.");
+}
+}
+  rslv_utils_resolve_type_lifetimes(node_get_data2(t), resolve_lifetime_scopes, err_node);
+  return 0;
+}
+  if ((k === NK_ARRAY_TYPE)) {
+  rslv_utils_resolve_type_lifetimes(node_get_data1(t), resolve_lifetime_scopes, err_node);
+  return 0;
+}
+  if ((k === NK_REFINEMENT_TYPE)) {
+  rslv_utils_resolve_type_lifetimes(node_get_data1(t), resolve_lifetime_scopes, err_node);
+  return 0;
+}
+  if ((k === NK_UNION_TYPE)) {
+  rslv_utils_resolve_type_lifetimes(node_get_data1(t), resolve_lifetime_scopes, err_node);
+  rslv_utils_resolve_type_lifetimes(node_get_data2(t), resolve_lifetime_scopes, err_node);
+  return 0;
+}
+  if ((k === NK_TUPLE_TYPE)) {
+  let members = node_get_data1(t); if (typeof __tuff_this !== 'undefined') __tuff_this.members = members;
+  let i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
+  let len = (() => { const __recv = members; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.len = len;
+  while ((i < len)) {
+  rslv_utils_resolve_type_lifetimes((() => { const __recv = members; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(), resolve_lifetime_scopes, err_node);
+  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
+}
+  return 0;
+}
+  if ((k === NK_FUNCTION_TYPE)) {
+  let ps = node_get_data1(t); if (typeof __tuff_this !== 'undefined') __tuff_this.ps = ps;
+  let i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
+  while ((i < (() => { const __recv = ps; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })())) {
+  rslv_utils_resolve_type_lifetimes((() => { const __recv = ps; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(), resolve_lifetime_scopes, err_node);
+  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
+}
+  rslv_utils_resolve_type_lifetimes(node_get_data2(t), resolve_lifetime_scopes, err_node);
+  return 0;
+}
+  return 0;
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.rslv_utils_resolve_type_lifetimes = rslv_utils_resolve_type_lifetimes;
+
+const __tuff_outer_for_selfhost_resolver_utils_marker = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function selfhost_resolver_utils_marker() {
+  let __tuff_this = { this: __tuff_outer_for_selfhost_resolver_utils_marker };
+  return 0;
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.selfhost_resolver_utils_marker = selfhost_resolver_utils_marker;
+
+let rslv_current_node = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.rslv_current_node = rslv_current_node;
+
+const __tuff_outer_for_rslv_panic_loc = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function rslv_panic_loc(code, msg, reason, fix) {
+  let __tuff_this = { code: code, msg: msg, reason: reason, fix: fix, this: __tuff_outer_for_rslv_panic_loc };
+  return panic_with_code_loc(code, msg, reason, fix, node_get_line(rslv_current_node), node_get_col(rslv_current_node));
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.rslv_panic_loc = rslv_panic_loc;
+
+let resolve_lifetime_scopes = vec_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.resolve_lifetime_scopes = resolve_lifetime_scopes;
+
+let resolve_global_decl_nodes = map_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.resolve_global_decl_nodes = resolve_global_decl_nodes;
+
+let resolve_global_names_list = vec_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.resolve_global_names_list = resolve_global_names_list;
 
 const __tuff_outer_for_resolve_expr = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
 function resolve_expr(n, globals, scopes, depth) {
@@ -3008,8 +3038,8 @@ function resolve_expr(n, globals, scopes, depth) {
   let kind = node_kind(n); if (typeof __tuff_this !== 'undefined') __tuff_this.kind = kind;
   if ((kind === NK_IDENTIFIER)) {
   let name = get_interned_str(node_get_data1(n)); if (typeof __tuff_this !== 'undefined') __tuff_this.name = name;
-  if ((((!scope_has(scopes, depth, name)) && (!(() => { const __recv = globals; const __prop = __recv?.["set_has"]; if (typeof __prop === "function") return __prop(name); const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, name) : set_has(__recv, name); })())) && (!is_host_builtin_name(name)))) {
-  let suggestion = find_did_you_mean(name, resolve_global_names_list); if (typeof __tuff_this !== 'undefined') __tuff_this.suggestion = suggestion;
+  if ((((!rslv_utils_scope_has(scopes, depth, name)) && (!(() => { const __recv = globals; const __prop = __recv?.["set_has"]; if (typeof __prop === "function") return __prop(name); const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, name) : set_has(__recv, name); })())) && (!rslv_utils_is_host_builtin_name(name)))) {
+  let suggestion = rslv_utils_find_did_you_mean(name, resolve_global_names_list); if (typeof __tuff_this !== 'undefined') __tuff_this.suggestion = suggestion;
   let fix_msg = "Declare the identifier before use or import it from the correct module."; if (typeof __tuff_this !== 'undefined') __tuff_this.fix_msg = fix_msg;
   if ((!(() => { const __recv = suggestion; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop(""); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "") : str_eq(__recv, ""); })())) {
   fix_msg = (() => { const __recv = (() => { const __recv = "Did you mean '"; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(suggestion); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, suggestion) : str_concat(__recv, suggestion); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("'? Declare or import it from the correct module."); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "'? Declare or import it from the correct module.") : str_concat(__recv, "'? Declare or import it from the correct module."); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.fix_msg = fix_msg;
@@ -3136,13 +3166,13 @@ function resolve_expr(n, globals, scopes, depth) {
   let j = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.j = j;
   let fLen = (() => { const __recv = fields; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.fLen = fLen;
   while ((j < fLen)) {
-  scope_define(scopes, next_depth, get_interned_str((() => { const __recv = fields; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(j); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, j) : vec_get(__recv, j); })()));
+  rslv_utils_scope_define(scopes, next_depth, get_interned_str((() => { const __recv = fields; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(j); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, j) : vec_get(__recv, j); })()), pat);
   j = (j + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.j = j;
 }
 } else { if ((node_kind(pat) === NK_NAME_PAT)) {
   let pat_name = get_interned_str(node_get_data1(pat)); if (typeof __tuff_this !== 'undefined') __tuff_this.pat_name = pat_name;
   if ((!(() => { const __recv = globals; const __prop = __recv?.["set_has"]; if (typeof __prop === "function") return __prop(pat_name); const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, pat_name) : set_has(__recv, pat_name); })())) {
-  scope_define(scopes, next_depth, pat_name);
+  rslv_utils_scope_define(scopes, next_depth, pat_name, pat);
 }
 } }
   resolve_stmt(body, globals, scopes, next_depth);
@@ -3163,7 +3193,7 @@ function resolve_expr(n, globals, scopes, depth) {
   let len = (() => { const __recv = params; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.len = len;
   while ((i < len)) {
   let param = (() => { const __recv = params; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.param = param;
-  scope_define(scopes, next_depth, get_interned_str((() => { const __recv = param; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(0); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })()));
+  rslv_utils_scope_define(scopes, next_depth, get_interned_str((() => { const __recv = param; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(0); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })()), n);
   i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
 }
   resolve_stmt(node_get_data2(n), globals, scopes, next_depth);
@@ -3175,14 +3205,14 @@ function resolve_expr(n, globals, scopes, depth) {
   (() => { const __recv = scopes; const __prop = __recv?.["vec_push"]; if (typeof __prop === "function") return __prop(set_new()); const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, set_new()) : vec_push(__recv, set_new()); })();
   let fname_idx = node_get_data1(n); if (typeof __tuff_this !== 'undefined') __tuff_this.fname_idx = fname_idx;
   if ((fname_idx !== 0)) {
-  scope_define(scopes, next_depth, get_interned_str(fname_idx));
+  rslv_utils_scope_define(scopes, next_depth, get_interned_str(fname_idx), n);
 }
   let params = node_get_data3(n); if (typeof __tuff_this !== 'undefined') __tuff_this.params = params;
   let i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
   let len = (() => { const __recv = params; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.len = len;
   while ((i < len)) {
   let param = (() => { const __recv = params; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.param = param;
-  scope_define(scopes, next_depth, get_interned_str((() => { const __recv = param; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(0); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })()));
+  rslv_utils_scope_define(scopes, next_depth, get_interned_str((() => { const __recv = param; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(0); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })()), n);
   i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
 }
   resolve_stmt(node_get_data5(n), globals, scopes, next_depth);
@@ -3211,7 +3241,7 @@ function resolve_stmt(n, globals, scopes, depth) {
   let stmt = (() => { const __recv = stmts; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.stmt = stmt;
   let stmt_kind = node_kind(stmt); if (typeof __tuff_this !== 'undefined') __tuff_this.stmt_kind = stmt_kind;
   if ((((stmt_kind === NK_FN_DECL) || (stmt_kind === NK_CLASS_FN_DECL)) || (stmt_kind === NK_ACTUAL_FN_DECL))) {
-  scope_define(scopes, next_depth, get_interned_str(node_get_data1(stmt)));
+  rslv_utils_scope_define(scopes, next_depth, get_interned_str(node_get_data1(stmt)), stmt);
 }
   i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
 }
@@ -3237,21 +3267,21 @@ function resolve_stmt(n, globals, scopes, depth) {
   let len = (() => { const __recv = params; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.len = len;
   while ((i < len)) {
   let param = (() => { const __recv = params; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.param = param;
-  scope_define(scopes, next_depth, get_interned_str((() => { const __recv = param; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(0); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })()));
-  resolve_type_lifetimes((() => { const __recv = param; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(1); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 1) : vec_get(__recv, 1); })());
+  rslv_utils_scope_define(scopes, next_depth, get_interned_str((() => { const __recv = param; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(0); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })()), n);
+  rslv_utils_resolve_type_lifetimes((() => { const __recv = param; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(1); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 1) : vec_get(__recv, 1); })(), resolve_lifetime_scopes, n);
   i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
 }
-  resolve_type_lifetimes(node_get_data4(n));
+  rslv_utils_resolve_type_lifetimes(node_get_data4(n), resolve_lifetime_scopes, n);
   resolve_stmt(node_get_data5(n), globals, scopes, next_depth);
   (() => { const __recv = scopes; const __prop = __recv?.["vec_pop"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_pop; return __dyn ? __dyn(__recv.ref) : vec_pop(__recv); })();
   return 0;
 }
   if ((kind === NK_LET_DECL)) {
   if ((node_get_data2(n) !== 0)) {
-  resolve_type_lifetimes(node_get_data2(n));
+  rslv_utils_resolve_type_lifetimes(node_get_data2(n), resolve_lifetime_scopes, n);
 }
   resolve_expr(node_get_data3(n), globals, scopes, depth);
-  scope_define(scopes, depth, get_interned_str(node_get_data1(n)));
+  rslv_utils_scope_define(scopes, depth, get_interned_str(node_get_data1(n)), n);
   return 0;
 }
   if ((kind === NK_IMPORT_DECL)) {
@@ -3259,7 +3289,7 @@ function resolve_stmt(n, globals, scopes, depth) {
   let i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
   let len = (() => { const __recv = names; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.len = len;
   while ((i < len)) {
-  scope_define(scopes, depth, get_interned_str((() => { const __recv = names; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })()));
+  rslv_utils_scope_define(scopes, depth, get_interned_str((() => { const __recv = names; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })()), n);
   i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
 }
   return 0;
@@ -3291,7 +3321,7 @@ function resolve_stmt(n, globals, scopes, depth) {
   if ((kind === NK_FOR_STMT)) {
   let next_depth = (depth + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.next_depth = next_depth;
   (() => { const __recv = scopes; const __prop = __recv?.["vec_push"]; if (typeof __prop === "function") return __prop(set_new()); const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, set_new()) : vec_push(__recv, set_new()); })();
-  scope_define(scopes, next_depth, get_interned_str(node_get_data1(n)));
+  rslv_utils_scope_define(scopes, next_depth, get_interned_str(node_get_data1(n)), n);
   resolve_expr(node_get_data2(n), globals, scopes, next_depth);
   resolve_expr(node_get_data3(n), globals, scopes, next_depth);
   resolve_stmt(node_get_data4(n), globals, scopes, next_depth);
@@ -3320,7 +3350,7 @@ function resolve_stmt(n, globals, scopes, depth) {
   rslv_panic_loc("E_RESOLVE_DUPLICATE_LIFETIME", (() => { const __recv = (() => { const __recv = "Duplicate lifetime name '"; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(lname); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, lname) : str_concat(__recv, lname); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("' in lifetime block"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "' in lifetime block") : str_concat(__recv, "' in lifetime block"); })(), "A lifetime block contains duplicate lifetime names.", "Use unique lifetime names within a lifetime declaration block.");
 }
   (() => { const __recv = lifetime_scope; const __prop = __recv?.["set_add"]; if (typeof __prop === "function") return __prop(lname); const __dyn = __recv?.table?.set_add; return __dyn ? __dyn(__recv.ref, lname) : set_add(__recv, lname); })();
-  scope_define(scopes, next_depth, lname);
+  rslv_utils_scope_define(scopes, next_depth, lname, n);
   i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
 }
   (() => { const __recv = resolve_lifetime_scopes; const __prop = __recv?.["vec_push"]; if (typeof __prop === "function") return __prop(lifetime_scope); const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, lifetime_scope) : vec_push(__recv, lifetime_scope); })();
@@ -3352,7 +3382,7 @@ function resolve_names(program) {
   resolve_global_decl_nodes = map_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.resolve_global_decl_nodes = resolve_global_decl_nodes;
   let globals = set_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.globals = globals;
   let body = node_get_data1(program); if (typeof __tuff_this !== 'undefined') __tuff_this.body = body;
-  validate_expect_actual_pairs(body);
+  rslv_utils_validate_expect_actual_pairs(body);
   let i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
   let len = (() => { const __recv = body; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.len = len;
   while ((i < len)) {
