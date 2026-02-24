@@ -1,6 +1,10 @@
 import tseslint from "typescript-eslint";
 
 export default [
+  // Ignore build artifacts
+  {
+    ignores: ["tests/out/**", "tests/**/*.js"],
+  },
   // Main compiler code - strict no-throw rule
   {
     files: ["src/main/js/**/*.ts"],
