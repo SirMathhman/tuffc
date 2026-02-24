@@ -4100,7 +4100,7 @@ function typecheck_expr(n, fn_arities, fn_param_types, fn_return_types, local_ty
   j = (j + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.j = j;
 }
 }
-  if (((strict_safety === 1) && (() => { const __recv = fn_param_call_bounds; const __prop = __recv?.["map_has"]; if (typeof __prop === "function") return __prop(fname); const __dyn = __recv?.table?.map_has; return __dyn ? __dyn(__recv.ref, fname) : map_has(__recv, fname); })())) {
+  if ((() => { const __recv = fn_param_call_bounds; const __prop = __recv?.["map_has"]; if (typeof __prop === "function") return __prop(fname); const __dyn = __recv?.table?.map_has; return __dyn ? __dyn(__recv.ref, fname) : map_has(__recv, fname); })()) {
   let call_bounds_vec = (() => { const __recv = fn_param_call_bounds; const __prop = __recv?.["map_get"]; if (typeof __prop === "function") return __prop(fname); const __dyn = __recv?.table?.map_get; return __dyn ? __dyn(__recv.ref, fname) : map_get(__recv, fname); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.call_bounds_vec = call_bounds_vec;
   let cj = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.cj = cj;
   while (((cj < (() => { const __recv = call_bounds_vec; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })()) && (cj < arg_count))) {
@@ -4175,7 +4175,7 @@ function typecheck_expr(n, fn_arities, fn_param_types, fn_return_types, local_ty
   tc_panic_loc("E_SAFETY_NULLABLE_POINTER_GUARD", "Nullable pointer indexing requires guard", "A nullable pointer must be proven non-null before pointer-consuming operations.", "Guard with if (p != 0USize) or if (0USize != p) before indexing.");
 }
 }
-  if (((strict_safety === 1) && (node_kind(target_node) === NK_IDENTIFIER))) {
+  if ((node_kind(target_node) === NK_IDENTIFIER)) {
   let tname = get_interned_str(node_get_data1(target_node)); if (typeof __tuff_this !== 'undefined') __tuff_this.tname = tname;
   if ((() => { const __recv = tc_array_init_bounds; const __prop = __recv?.["map_has"]; if (typeof __prop === "function") return __prop(tname); const __dyn = __recv?.table?.map_has; return __dyn ? __dyn(__recv.ref, tname) : map_has(__recv, tname); })()) {
   let bound = (() => { const __recv = tc_array_init_bounds; const __prop = __recv?.["map_get"]; if (typeof __prop === "function") return __prop(tname); const __dyn = __recv?.table?.map_get; return __dyn ? __dyn(__recv.ref, tname) : map_get(__recv, tname); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.bound = bound;

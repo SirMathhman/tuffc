@@ -802,10 +802,10 @@ fn typecheck_expr(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types:
                 }
             }
 
-            // Call-bound constraint verification (strict_safety only).
+            // Call-bound constraint verification.
             // For each parameter with a call-bound constraint (e.g. index: USize < str_length(this)),
             // verify the corresponding argument has a proven bound matching the constraint via tc_call_bounds.
-            if (strict_safety == 1 && fn_param_call_bounds.map_has(fname)) {
+            if (fn_param_call_bounds.map_has(fname)) {
                 let call_bounds_vec = fn_param_call_bounds.map_get(fname);
                 let cj = 0;
                 while (cj < call_bounds_vec.vec_length() && cj < arg_count) {
@@ -910,7 +910,7 @@ fn typecheck_expr(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types:
             }
         }
 
-        if (strict_safety == 1 && node_kind(target_node) == NK_IDENTIFIER) {
+        if (node_kind(target_node) == NK_IDENTIFIER) {
             let tname = get_interned_str(node_get_data1(target_node));
             if (tc_array_init_bounds.map_has(tname)) {
                 let bound = tc_array_init_bounds.map_get(tname);
