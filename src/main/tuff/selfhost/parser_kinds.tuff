@@ -1,0 +1,65 @@
+let NK_PROGRAM : I32 = 1;
+let NK_FN_DECL : I32 = 2;
+let NK_STRUCT_DECL : I32 = 3;
+let NK_TYPE_ALIAS : I32 = 4;
+let NK_LET_DECL : I32 = 5;
+let NK_IMPORT_DECL : I32 = 6;
+let NK_EXPR_STMT : I32 = 7;
+let NK_RETURN_STMT : I32 = 8;
+let NK_IF_STMT : I32 = 9;
+let NK_WHILE_STMT : I32 = 10;
+let NK_FOR_STMT : I32 = 11;
+let NK_BLOCK : I32 = 12;
+let NK_ASSIGN_STMT : I32 = 13;
+let NK_BREAK_STMT : I32 = 14;
+let NK_CONTINUE_STMT : I32 = 15;
+let NK_CLASS_FN_DECL : I32 = 16;
+let NK_EXTERN_FN_DECL : I32 = 17;
+let NK_EXTERN_LET_DECL : I32 = 18;
+let NK_EXTERN_TYPE_DECL : I32 = 19;
+let NK_EXPECT_FN_DECL : I32 = 61;
+let NK_ACTUAL_FN_DECL : I32 = 62;
+let NK_OBJECT_DECL : I32 = 63;
+let NK_LOOP_STMT : I32 = 64;
+let NK_CONTRACT_DECL : I32 = 65;
+let NK_INTO_STMT : I32 = 66;
+let NK_LIFETIME_STMT : I32 = 67;
+let NK_STMT_LIST : I32 = 68;
+let NK_EXTERN_IMPORT_DECL : I32 = 69;
+let NK_ENUM_DECL : I32 = 60;
+let NK_DEP_TYPE_ALIAS : I32 = 70;   // type Foo(p: T) = ...  (value-param dep alias)
+let NK_APPLIED_TYPE : I32 = 71;     // Foo(expr)             (type application)
+
+let NK_NUMBER_LIT : I32 = 20;
+let NK_BOOL_LIT : I32 = 21;
+let NK_STRING_LIT : I32 = 22;
+let NK_CHAR_LIT : I32 = 23;
+let NK_IDENTIFIER : I32 = 24;
+let NK_BINARY_EXPR : I32 = 25;
+let NK_UNARY_EXPR : I32 = 26;
+let NK_CALL_EXPR : I32 = 27;
+let NK_MEMBER_EXPR : I32 = 28;
+let NK_INDEX_EXPR : I32 = 29;
+let NK_STRUCT_INIT : I32 = 30;
+let NK_IF_EXPR : I32 = 31;
+let NK_MATCH_EXPR : I32 = 32;
+let NK_IS_EXPR : I32 = 33;
+let NK_UNWRAP_EXPR : I32 = 34;
+let NK_LAMBDA_EXPR : I32 = 35;
+let NK_FN_EXPR : I32 = 36;
+let NK_TUPLE_EXPR : I32 = 37;
+
+let NK_NAMED_TYPE : I32 = 40;
+let NK_POINTER_TYPE : I32 = 41;
+let NK_ARRAY_TYPE : I32 = 42;
+let NK_TUPLE_TYPE : I32 = 43;
+let NK_REFINEMENT_TYPE : I32 = 44;
+let NK_UNION_TYPE : I32 = 45;
+let NK_FUNCTION_TYPE : I32 = 46;
+
+let NK_WILDCARD_PAT : I32 = 50;
+let NK_LITERAL_PAT : I32 = 51;
+let NK_NAME_PAT : I32 = 52;
+let NK_STRUCT_PAT : I32 = 53;
+
+out fn selfhost_parser_kinds_marker() : I32 => 0;

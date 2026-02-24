@@ -1,0 +1,62 @@
+let { get_interned_str, str_includes } = selfhost::runtime_lexer;
+
+out fn module_loader_sanitize_max_effective_lines(max_effective_lines: I32) : I32 => {
+    if (max_effective_lines <= 0) {
+        500
+    } else {
+        max_effective_lines
+    }
+}
+
+out fn module_loader_normalize_flag(value: I32) : I32 => {
+    if (value == 0) { 0 } else { 1 }
+}
+
+out fn module_parts_to_relative_path(parts: Vec) : *Str => {
+    let sb = sb_new();
+    let i = 0;
+    let len = parts.vec_length();
+    while (i < len) {
+        if (i > 0) {
+            sb_append(sb, "/");
+        }
+        sb_append(sb, get_interned_str(parts.vec_get(i)));
+        i = i + 1;
+    }
+    sb_append(sb, ".tuff");
+    sb_build(sb)
+}
+
+out fn module_normalize_path(p: *Str) : *Str => {
+    p.str_replace_all("\\", "/")
+}
+
+out fn join_sources(sources: Vec<*Str>) : *Str => {
+    let sb = sb_new();
+    let i = 0;
+    let len = sources.vec_length();
+    while (i < len) {
+        if (i > 0) {
+            sb_append(sb, "\n\n");
+        }
+        sb_append(sb, sources.vec_get(i));
+        i = i + 1;
+    }
+    sb_build(sb)
+}
+
+out fn module_with_c_runtime_prelude(source: *Str, target: *Str) : *Str => {
+    if (!target.str_eq("c")) {
+        return source;
+    }
+    if (source.str_includes("fn tuff_runtime_panic(")) {
+        return source;
+    }
+    let prelude = __host_get_c_runtime_prelude_source();
+    if (prelude.str_eq("")) {
+        return source;
+    }
+    source.str_concat("\n\n").str_concat(prelude)
+}
+
+out fn selfhost_module_loader_utils_marker() : I32 => 0;

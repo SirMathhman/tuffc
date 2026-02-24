@@ -1,0 +1,102 @@
+let { get_interned_str } = selfhost::runtime_lexer;
+let { node_get_data1, node_get_data2, node_get_data3 } = selfhost::parser_core;
+
+out fn js_emit_struct_decl(n: I32) : *Str => {
+    let name_idx = node_get_data1(n);
+    let name = get_interned_str(name_idx);
+    let fields = node_get_data3(n);
+    let sb = sb_new();
+    sb_append(sb, "function ");
+    sb_append(sb, name);
+    sb_append(sb, "(fields = {}) { return { __tag: \"");
+    sb_append(sb, name);
+    sb_append(sb, "\"");
+    let i = 0;
+    let len = fields.vec_length();
+    while (i < len) {
+        let field = fields.vec_get(i);
+        let fname = get_interned_str(field.vec_get(0));
+        sb_append(sb, ", ");
+        sb_append(sb, fname);
+        sb_append(sb, ": fields.");
+        sb_append(sb, fname);
+        i = i + 1;
+    }
+    sb_append(sb, " }; }");
+    sb_build(sb)
+}
+
+out fn js_emit_enum_decl(n: I32) : *Str => {
+    let name = get_interned_str(node_get_data1(n));
+    let variants = node_get_data2(n);
+    let sb = sb_new();
+    sb_append(sb, "const ");
+    sb_append(sb, name);
+    sb_append(sb, " = { ");
+    let i = 0;
+    let len = variants.vec_length();
+    while (i < len) {
+        if (i > 0) {
+            sb_append(sb, ", ");
+        }
+        let v = get_interned_str(variants.vec_get(i));
+        sb_append(sb, v);
+        sb_append(sb, ": { __tag: \"");
+        sb_append(sb, v);
+        sb_append(sb, "\" }");
+        i = i + 1;
+    }
+    sb_append(sb, " }; ");
+    sb_build(sb)
+}
+
+out fn js_emit_object_decl(n: I32) : *Str => {
+    let name = get_interned_str(node_get_data1(n));
+    let inputs = node_get_data3(n);
+    if (inputs == 0 || inputs.vec_length() == 0) {
+        return "const ".str_concat(name).str_concat(" = { __tag: \"").str_concat(name).str_concat("\" }; ");
+    }
+
+    let sb = sb_new();
+    sb_append(sb, "const ");
+    sb_append(sb, name);
+    sb_append(sb, " = (() => { const __cache = new Map(); return (fields = {}) => { const __key = JSON.stringify([");
+
+    let i = 0;
+    let len = inputs.vec_length();
+    while (i < len) {
+        if (i > 0) {
+            sb_append(sb, ", ");
+        }
+        let input_field = inputs.vec_get(i);
+        let fname = get_interned_str(input_field.vec_get(0));
+        sb_append(sb, "fields.");
+        sb_append(sb, fname);
+        i = i + 1;
+    }
+
+    sb_append(sb, "]); const __cached = __cache.get(__key); if (__cached !== undefined) return __cached; const __value = { __tag: \"");
+    sb_append(sb, name);
+    sb_append(sb, "\"");
+
+    i = 0;
+    while (i < len) {
+        let input_field = inputs.vec_get(i);
+        let fname = get_interned_str(input_field.vec_get(0));
+        sb_append(sb, ", ");
+        sb_append(sb, fname);
+        sb_append(sb, ": fields.");
+        sb_append(sb, fname);
+        i = i + 1;
+    }
+
+    sb_append(sb, " }; __cache.set(__key, __value); return __value; }; })();");
+    sb_build(sb)
+}
+
+out fn js_emit_contract_decl(n: I32) : *Str => {
+    let name = get_interned_str(node_get_data1(n));
+    "// contract ".str_concat(name)
+}
+
+out fn selfhost_codegen_stmt_decl_emitters_marker() : I32 => 0;
