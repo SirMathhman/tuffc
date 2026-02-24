@@ -1,5 +1,5 @@
 let { get_interned_str, lint_effective_line_count, set_new, vec_new, str_starts_with } = selfhost::runtime_lexer;
-let { node_kind, node_get_data1, node_get_data2, node_get_data3, node_get_data4, node_get_data5 } = selfhost::parser_core;
+let { node_kind, node_get_data1, node_get_data2, node_get_data3, node_get_data4, node_get_data5, node_get_line } = selfhost::parser_core;
 
 let lint_issue_records : Vec<*Str> = vec_new();
 
@@ -37,11 +37,241 @@ fn lint_check_file_length(file_path: *Str, max_effective_lines: I32) : I32 => {
     if (count > max_effective_lines) {
         lint_add_issue(
             "E_LINT_FILE_TOO_LONG",
-            "File exceeds ".str_concat(int_to_string(max_effective_lines)).str_concat(" effective lines (").str_concat(int_to_string(count)).str_concat(")"),
+            "File '".str_concat(file_path).str_concat("' exceeds ").str_concat(int_to_string(max_effective_lines)).str_concat(" effective lines (").str_concat(int_to_string(count)).str_concat(")"),
             "Large files are harder to review and maintain; this file exceeds the maximum effective line budget after excluding comments and blank lines.",
             "Split this file into smaller modules so each file has at most ".str_concat(int_to_string(max_effective_lines)).str_concat(" non-comment, non-whitespace lines.")
         );
     }
+    0
+}
+
+out fn lint_check_current_file_length(file_path: *Str, max_effective_lines: I32) : I32 => {
+    lint_check_file_length(file_path, max_effective_lines)
+}
+
+fn lint_mark_line(lines: *mut Set, line: I32) : I32 => {
+    let key = int_to_string(line);
+    if (!lines.set_has(key)) {
+        lines.set_add(key);
+        return 1;
+    }
+    0
+}
+
+fn lint_collect_effective_lines_expr(expr: I32, lines: *mut Set) : I32 => {
+    if (expr == 0) {
+        return 0;
+    }
+
+    let added = lint_mark_line(lines, node_get_line(expr));
+    let kind = node_kind(expr);
+
+    if (kind == NK_UNARY_EXPR || kind == NK_UNWRAP_EXPR) {
+        added = added + lint_collect_effective_lines_expr(node_get_data2(expr), lines);
+        if (kind == NK_UNWRAP_EXPR) {
+            added = added + lint_collect_effective_lines_expr(node_get_data1(expr), lines);
+        }
+        return added;
+    }
+
+    if (kind == NK_BINARY_EXPR) {
+        added = added + lint_collect_effective_lines_expr(node_get_data2(expr), lines);
+        added = added + lint_collect_effective_lines_expr(node_get_data3(expr), lines);
+        return added;
+    }
+
+    if (kind == NK_CALL_EXPR) {
+        added = added + lint_collect_effective_lines_expr(node_get_data1(expr), lines);
+        let args = node_get_data2(expr);
+        let i = 0;
+        while (i < args.vec_length()) {
+            added = added + lint_collect_effective_lines_expr(args.vec_get(i), lines);
+            i = i + 1;
+        }
+        return added;
+    }
+
+    if (kind == NK_MEMBER_EXPR) {
+        return added + lint_collect_effective_lines_expr(node_get_data1(expr), lines);
+    }
+
+    if (kind == NK_INDEX_EXPR) {
+        added = added + lint_collect_effective_lines_expr(node_get_data1(expr), lines);
+        added = added + lint_collect_effective_lines_expr(node_get_data2(expr), lines);
+        return added;
+    }
+
+    if (kind == NK_STRUCT_INIT) {
+        let fields = node_get_data2(expr);
+        let i = 0;
+        while (i < fields.vec_length()) {
+            let field = fields.vec_get(i);
+            added = added + lint_collect_effective_lines_expr(field.vec_get(1), lines);
+            i = i + 1;
+        }
+        return added;
+    }
+
+    if (kind == NK_IF_EXPR) {
+        added = added + lint_collect_effective_lines_expr(node_get_data1(expr), lines);
+        added = added + lint_collect_effective_lines_stmt(node_get_data2(expr), lines);
+        if (node_get_data3(expr) != 0) {
+            added = added + lint_collect_effective_lines_stmt(node_get_data3(expr), lines);
+        }
+        return added;
+    }
+
+    if (kind == NK_MATCH_EXPR) {
+        added = added + lint_collect_effective_lines_expr(node_get_data1(expr), lines);
+        let cases = node_get_data2(expr);
+        let i = 0;
+        while (i < cases.vec_length()) {
+            let c = cases.vec_get(i);
+            added = added + lint_collect_effective_lines_stmt(c.vec_get(1), lines);
+            i = i + 1;
+        }
+        return added;
+    }
+
+    if (kind == NK_IS_EXPR) {
+        return added + lint_collect_effective_lines_expr(node_get_data1(expr), lines);
+    }
+
+    if (kind == NK_FN_EXPR) {
+        return added + lint_collect_effective_lines_stmt(node_get_data5(expr), lines);
+    }
+
+    if (kind == NK_LAMBDA_EXPR) {
+        return added + lint_collect_effective_lines_stmt(node_get_data2(expr), lines);
+    }
+
+    if (kind == NK_TUPLE_EXPR) {
+        let items = node_get_data1(expr);
+        let i = 0;
+        while (i < items.vec_length()) {
+            added = added + lint_collect_effective_lines_expr(items.vec_get(i), lines);
+            i = i + 1;
+        }
+        return added;
+    }
+
+    added
+}
+
+fn lint_collect_effective_lines_stmt(stmt: I32, lines: *mut Set) : I32 => {
+    if (stmt == 0) {
+        return 0;
+    }
+
+    let added = lint_mark_line(lines, node_get_line(stmt));
+    let kind = node_kind(stmt);
+
+    if (kind == NK_LET_DECL) {
+        added = added + lint_collect_effective_lines_expr(node_get_data2(stmt), lines);
+        added = added + lint_collect_effective_lines_expr(node_get_data3(stmt), lines);
+        return added;
+    }
+
+    if (kind == NK_BLOCK) {
+        let stmts = node_get_data1(stmt);
+        let i = 0;
+        while (i < stmts.vec_length()) {
+            added = added + lint_collect_effective_lines_stmt(stmts.vec_get(i), lines);
+            i = i + 1;
+        }
+        return added;
+    }
+
+    if (kind == NK_EXPR_STMT) {
+        return added + lint_collect_effective_lines_expr(node_get_data1(stmt), lines);
+    }
+
+    if (kind == NK_ASSIGN_STMT) {
+        added = added + lint_collect_effective_lines_expr(node_get_data1(stmt), lines);
+        added = added + lint_collect_effective_lines_expr(node_get_data2(stmt), lines);
+        return added;
+    }
+
+    if (kind == NK_RETURN_STMT) {
+        return added + lint_collect_effective_lines_expr(node_get_data1(stmt), lines);
+    }
+
+    if (kind == NK_IF_STMT) {
+        added = added + lint_collect_effective_lines_expr(node_get_data1(stmt), lines);
+        added = added + lint_collect_effective_lines_stmt(node_get_data2(stmt), lines);
+        added = added + lint_collect_effective_lines_stmt(node_get_data3(stmt), lines);
+        return added;
+    }
+
+    if (kind == NK_FOR_STMT) {
+        added = added + lint_collect_effective_lines_expr(node_get_data2(stmt), lines);
+        added = added + lint_collect_effective_lines_expr(node_get_data3(stmt), lines);
+        added = added + lint_collect_effective_lines_stmt(node_get_data4(stmt), lines);
+        return added;
+    }
+
+    if (kind == NK_WHILE_STMT) {
+        added = added + lint_collect_effective_lines_expr(node_get_data1(stmt), lines);
+        added = added + lint_collect_effective_lines_stmt(node_get_data2(stmt), lines);
+        return added;
+    }
+
+    if (kind == NK_LOOP_STMT) {
+        return added + lint_collect_effective_lines_stmt(node_get_data1(stmt), lines);
+    }
+
+    if (kind == NK_LIFETIME_STMT) {
+        return added + lint_collect_effective_lines_stmt(node_get_data2(stmt), lines);
+    }
+
+    if (kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL || kind == NK_ACTUAL_FN_DECL) {
+        added = added + lint_collect_effective_lines_expr(node_get_data4(stmt), lines);
+        added = added + lint_collect_effective_lines_stmt(node_get_data5(stmt), lines);
+        return added;
+    }
+
+    if (kind == NK_STMT_LIST) {
+        let items = node_get_data1(stmt);
+        let i = 0;
+        while (i < items.vec_length()) {
+            added = added + lint_collect_effective_lines_stmt(items.vec_get(i), lines);
+            i = i + 1;
+        }
+        return added;
+    }
+
+    if (kind == NK_INTO_STMT || kind == NK_BREAK_STMT || kind == NK_CONTINUE_STMT || kind == NK_EXTERN_IMPORT_DECL || kind == NK_EXTERN_FN_DECL || kind == NK_EXTERN_LET_DECL || kind == NK_EXTERN_TYPE_DECL) {
+        return added;
+    }
+
+    added + lint_collect_effective_lines_expr(stmt, lines)
+}
+
+fn lint_check_function_length(stmt: I32, max_effective_lines: I32) : I32 => {
+    let kind = node_kind(stmt);
+    if (!(kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL || kind == NK_ACTUAL_FN_DECL)) {
+        return 0;
+    }
+
+    let body = node_get_data5(stmt);
+    if (body == 0) {
+        return 0;
+    }
+
+    let lines = set_new();
+    let count = lint_mark_line(lines, node_get_line(stmt));
+    count = count + lint_collect_effective_lines_stmt(body, lines);
+
+    if (count > max_effective_lines) {
+        let fn_name = get_interned_str(node_get_data1(stmt));
+        lint_add_issue(
+            "E_LINT_FUNCTION_TOO_LONG",
+            "Function '".str_concat(fn_name).str_concat("' exceeds ").str_concat(int_to_string(max_effective_lines)).str_concat(" effective lines (").str_concat(int_to_string(count)).str_concat(")"),
+            "This function has more than ".str_concat(int_to_string(max_effective_lines)).str_concat(" non-comment, non-whitespace lines, which increases complexity and reduces readability."),
+            "Split function '".str_concat(fn_name).str_concat("' into smaller helper functions so each function stays at or below ").str_concat(int_to_string(max_effective_lines)).str_concat(" effective lines.")
+        );
+    }
+
     0
 }
 
@@ -258,8 +488,10 @@ out fn lint_add_circular_import_issue(cycle_text: *Str) : I32 => {
     )
 }
 
-out fn lint_program(program: I32, file_path: *Str, max_effective_lines: I32) : I32 => {
-    lint_check_file_length(file_path, max_effective_lines);
+out fn lint_program(program: I32, file_path: *Str, max_effective_lines: I32, enforce_file_length: I32) : I32 => {
+    if (enforce_file_length == 1) {
+        lint_check_file_length(file_path, max_effective_lines);
+    }
 
     let receiver_extern_fns = set_new();
     let reads = set_new();
@@ -286,7 +518,9 @@ out fn lint_program(program: I32, file_path: *Str, max_effective_lines: I32) : I
 
     i = 0;
     while (i < len) {
-        lint_collect_stmt(body.vec_get(i), receiver_extern_fns, reads, declared_set, declared_names);
+        let stmt = body.vec_get(i);
+        lint_check_function_length(stmt, 100);
+        lint_collect_stmt(stmt, receiver_extern_fns, reads, declared_set, declared_names);
         i = i + 1;
     }
 

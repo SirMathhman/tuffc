@@ -117,7 +117,7 @@ out fn compile_source_with_options(source: *Str, lint_enabled: I32, max_effectiv
     profile_mark("borrowcheck", t6_borrow - t5_borrow);
     
     if (lint == 1) {
-        lint_program(typed, "<memory>", max_lines);
+        lint_program(typed, "<memory>", max_lines, 1);
     }
     
     let t6_emit = perf_now();

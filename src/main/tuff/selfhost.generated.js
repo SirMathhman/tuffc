@@ -8248,11 +8248,218 @@ function lint_check_file_length(file_path, max_effective_lines) {
   let __tuff_this = { file_path: file_path, max_effective_lines: max_effective_lines, this: __tuff_outer_for_lint_check_file_length };
   let count = lint_effective_line_count(); if (typeof __tuff_this !== 'undefined') __tuff_this.count = count;
   if ((count > max_effective_lines)) {
-  lint_add_issue("E_LINT_FILE_TOO_LONG", (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = "File exceeds "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string(max_effective_lines)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(max_effective_lines)) : str_concat(__recv, int_to_string(max_effective_lines)); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(" effective lines ("); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " effective lines (") : str_concat(__recv, " effective lines ("); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string(count)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(count)) : str_concat(__recv, int_to_string(count)); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(")"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ")") : str_concat(__recv, ")"); })(), "Large files are harder to review and maintain; this file exceeds the maximum effective line budget after excluding comments and blank lines.", (() => { const __recv = (() => { const __recv = "Split this file into smaller modules so each file has at most "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string(max_effective_lines)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(max_effective_lines)) : str_concat(__recv, int_to_string(max_effective_lines)); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(" non-comment, non-whitespace lines."); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " non-comment, non-whitespace lines.") : str_concat(__recv, " non-comment, non-whitespace lines."); })());
+  lint_add_issue("E_LINT_FILE_TOO_LONG", (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = "File '"; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(file_path); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, file_path) : str_concat(__recv, file_path); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("' exceeds "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "' exceeds ") : str_concat(__recv, "' exceeds "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string(max_effective_lines)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(max_effective_lines)) : str_concat(__recv, int_to_string(max_effective_lines)); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(" effective lines ("); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " effective lines (") : str_concat(__recv, " effective lines ("); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string(count)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(count)) : str_concat(__recv, int_to_string(count)); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(")"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ")") : str_concat(__recv, ")"); })(), "Large files are harder to review and maintain; this file exceeds the maximum effective line budget after excluding comments and blank lines.", (() => { const __recv = (() => { const __recv = "Split this file into smaller modules so each file has at most "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string(max_effective_lines)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(max_effective_lines)) : str_concat(__recv, int_to_string(max_effective_lines)); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(" non-comment, non-whitespace lines."); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " non-comment, non-whitespace lines.") : str_concat(__recv, " non-comment, non-whitespace lines."); })());
 }
   return 0;
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.lint_check_file_length = lint_check_file_length;
+
+const __tuff_outer_for_lint_check_current_file_length = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function lint_check_current_file_length(file_path, max_effective_lines) {
+  let __tuff_this = { file_path: file_path, max_effective_lines: max_effective_lines, this: __tuff_outer_for_lint_check_current_file_length };
+  return lint_check_file_length(file_path, max_effective_lines);
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.lint_check_current_file_length = lint_check_current_file_length;
+
+const __tuff_outer_for_lint_mark_line = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function lint_mark_line(lines, line) {
+  let __tuff_this = { lines: lines, line: line, this: __tuff_outer_for_lint_mark_line };
+  let key = int_to_string(line); if (typeof __tuff_this !== 'undefined') __tuff_this.key = key;
+  if ((!(() => { const __recv = lines; const __prop = __recv?.["set_has"]; if (typeof __prop === "function") return __prop(key); const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, key) : set_has(__recv, key); })())) {
+  (() => { const __recv = lines; const __prop = __recv?.["set_add"]; if (typeof __prop === "function") return __prop(key); const __dyn = __recv?.table?.set_add; return __dyn ? __dyn(__recv.ref, key) : set_add(__recv, key); })();
+  return 1;
+}
+  return 0;
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.lint_mark_line = lint_mark_line;
+
+const __tuff_outer_for_lint_collect_effective_lines_expr = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function lint_collect_effective_lines_expr(expr, lines) {
+  let __tuff_this = { expr: expr, lines: lines, this: __tuff_outer_for_lint_collect_effective_lines_expr };
+  if ((expr === 0)) {
+  return 0;
+}
+  let added = lint_mark_line(lines, node_get_line(expr)); if (typeof __tuff_this !== 'undefined') __tuff_this.added = added;
+  let kind = node_kind(expr); if (typeof __tuff_this !== 'undefined') __tuff_this.kind = kind;
+  if (((kind === NK_UNARY_EXPR) || (kind === NK_UNWRAP_EXPR))) {
+  added = (added + lint_collect_effective_lines_expr(node_get_data2(expr), lines)); if (typeof __tuff_this !== 'undefined') __tuff_this.added = added;
+  if ((kind === NK_UNWRAP_EXPR)) {
+  added = (added + lint_collect_effective_lines_expr(node_get_data1(expr), lines)); if (typeof __tuff_this !== 'undefined') __tuff_this.added = added;
+}
+  return added;
+}
+  if ((kind === NK_BINARY_EXPR)) {
+  added = (added + lint_collect_effective_lines_expr(node_get_data2(expr), lines)); if (typeof __tuff_this !== 'undefined') __tuff_this.added = added;
+  added = (added + lint_collect_effective_lines_expr(node_get_data3(expr), lines)); if (typeof __tuff_this !== 'undefined') __tuff_this.added = added;
+  return added;
+}
+  if ((kind === NK_CALL_EXPR)) {
+  added = (added + lint_collect_effective_lines_expr(node_get_data1(expr), lines)); if (typeof __tuff_this !== 'undefined') __tuff_this.added = added;
+  let args = node_get_data2(expr); if (typeof __tuff_this !== 'undefined') __tuff_this.args = args;
+  let i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
+  while ((i < (() => { const __recv = args; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })())) {
+  added = (added + lint_collect_effective_lines_expr((() => { const __recv = args; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(), lines)); if (typeof __tuff_this !== 'undefined') __tuff_this.added = added;
+  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
+}
+  return added;
+}
+  if ((kind === NK_MEMBER_EXPR)) {
+  return (added + lint_collect_effective_lines_expr(node_get_data1(expr), lines));
+}
+  if ((kind === NK_INDEX_EXPR)) {
+  added = (added + lint_collect_effective_lines_expr(node_get_data1(expr), lines)); if (typeof __tuff_this !== 'undefined') __tuff_this.added = added;
+  added = (added + lint_collect_effective_lines_expr(node_get_data2(expr), lines)); if (typeof __tuff_this !== 'undefined') __tuff_this.added = added;
+  return added;
+}
+  if ((kind === NK_STRUCT_INIT)) {
+  let fields = node_get_data2(expr); if (typeof __tuff_this !== 'undefined') __tuff_this.fields = fields;
+  let i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
+  while ((i < (() => { const __recv = fields; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })())) {
+  let field = (() => { const __recv = fields; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.field = field;
+  added = (added + lint_collect_effective_lines_expr((() => { const __recv = field; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(1); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 1) : vec_get(__recv, 1); })(), lines)); if (typeof __tuff_this !== 'undefined') __tuff_this.added = added;
+  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
+}
+  return added;
+}
+  if ((kind === NK_IF_EXPR)) {
+  added = (added + lint_collect_effective_lines_expr(node_get_data1(expr), lines)); if (typeof __tuff_this !== 'undefined') __tuff_this.added = added;
+  added = (added + lint_collect_effective_lines_stmt(node_get_data2(expr), lines)); if (typeof __tuff_this !== 'undefined') __tuff_this.added = added;
+  if ((node_get_data3(expr) !== 0)) {
+  added = (added + lint_collect_effective_lines_stmt(node_get_data3(expr), lines)); if (typeof __tuff_this !== 'undefined') __tuff_this.added = added;
+}
+  return added;
+}
+  if ((kind === NK_MATCH_EXPR)) {
+  added = (added + lint_collect_effective_lines_expr(node_get_data1(expr), lines)); if (typeof __tuff_this !== 'undefined') __tuff_this.added = added;
+  let cases = node_get_data2(expr); if (typeof __tuff_this !== 'undefined') __tuff_this.cases = cases;
+  let i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
+  while ((i < (() => { const __recv = cases; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })())) {
+  let c = (() => { const __recv = cases; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.c = c;
+  added = (added + lint_collect_effective_lines_stmt((() => { const __recv = c; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(1); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 1) : vec_get(__recv, 1); })(), lines)); if (typeof __tuff_this !== 'undefined') __tuff_this.added = added;
+  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
+}
+  return added;
+}
+  if ((kind === NK_IS_EXPR)) {
+  return (added + lint_collect_effective_lines_expr(node_get_data1(expr), lines));
+}
+  if ((kind === NK_FN_EXPR)) {
+  return (added + lint_collect_effective_lines_stmt(node_get_data5(expr), lines));
+}
+  if ((kind === NK_LAMBDA_EXPR)) {
+  return (added + lint_collect_effective_lines_stmt(node_get_data2(expr), lines));
+}
+  if ((kind === NK_TUPLE_EXPR)) {
+  let items = node_get_data1(expr); if (typeof __tuff_this !== 'undefined') __tuff_this.items = items;
+  let i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
+  while ((i < (() => { const __recv = items; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })())) {
+  added = (added + lint_collect_effective_lines_expr((() => { const __recv = items; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(), lines)); if (typeof __tuff_this !== 'undefined') __tuff_this.added = added;
+  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
+}
+  return added;
+}
+  return added;
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.lint_collect_effective_lines_expr = lint_collect_effective_lines_expr;
+
+const __tuff_outer_for_lint_collect_effective_lines_stmt = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function lint_collect_effective_lines_stmt(stmt, lines) {
+  let __tuff_this = { stmt: stmt, lines: lines, this: __tuff_outer_for_lint_collect_effective_lines_stmt };
+  if ((stmt === 0)) {
+  return 0;
+}
+  let added = lint_mark_line(lines, node_get_line(stmt)); if (typeof __tuff_this !== 'undefined') __tuff_this.added = added;
+  let kind = node_kind(stmt); if (typeof __tuff_this !== 'undefined') __tuff_this.kind = kind;
+  if ((kind === NK_LET_DECL)) {
+  added = (added + lint_collect_effective_lines_expr(node_get_data2(stmt), lines)); if (typeof __tuff_this !== 'undefined') __tuff_this.added = added;
+  added = (added + lint_collect_effective_lines_expr(node_get_data3(stmt), lines)); if (typeof __tuff_this !== 'undefined') __tuff_this.added = added;
+  return added;
+}
+  if ((kind === NK_BLOCK)) {
+  let stmts = node_get_data1(stmt); if (typeof __tuff_this !== 'undefined') __tuff_this.stmts = stmts;
+  let i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
+  while ((i < (() => { const __recv = stmts; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })())) {
+  added = (added + lint_collect_effective_lines_stmt((() => { const __recv = stmts; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(), lines)); if (typeof __tuff_this !== 'undefined') __tuff_this.added = added;
+  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
+}
+  return added;
+}
+  if ((kind === NK_EXPR_STMT)) {
+  return (added + lint_collect_effective_lines_expr(node_get_data1(stmt), lines));
+}
+  if ((kind === NK_ASSIGN_STMT)) {
+  added = (added + lint_collect_effective_lines_expr(node_get_data1(stmt), lines)); if (typeof __tuff_this !== 'undefined') __tuff_this.added = added;
+  added = (added + lint_collect_effective_lines_expr(node_get_data2(stmt), lines)); if (typeof __tuff_this !== 'undefined') __tuff_this.added = added;
+  return added;
+}
+  if ((kind === NK_RETURN_STMT)) {
+  return (added + lint_collect_effective_lines_expr(node_get_data1(stmt), lines));
+}
+  if ((kind === NK_IF_STMT)) {
+  added = (added + lint_collect_effective_lines_expr(node_get_data1(stmt), lines)); if (typeof __tuff_this !== 'undefined') __tuff_this.added = added;
+  added = (added + lint_collect_effective_lines_stmt(node_get_data2(stmt), lines)); if (typeof __tuff_this !== 'undefined') __tuff_this.added = added;
+  added = (added + lint_collect_effective_lines_stmt(node_get_data3(stmt), lines)); if (typeof __tuff_this !== 'undefined') __tuff_this.added = added;
+  return added;
+}
+  if ((kind === NK_FOR_STMT)) {
+  added = (added + lint_collect_effective_lines_expr(node_get_data2(stmt), lines)); if (typeof __tuff_this !== 'undefined') __tuff_this.added = added;
+  added = (added + lint_collect_effective_lines_expr(node_get_data3(stmt), lines)); if (typeof __tuff_this !== 'undefined') __tuff_this.added = added;
+  added = (added + lint_collect_effective_lines_stmt(node_get_data4(stmt), lines)); if (typeof __tuff_this !== 'undefined') __tuff_this.added = added;
+  return added;
+}
+  if ((kind === NK_WHILE_STMT)) {
+  added = (added + lint_collect_effective_lines_expr(node_get_data1(stmt), lines)); if (typeof __tuff_this !== 'undefined') __tuff_this.added = added;
+  added = (added + lint_collect_effective_lines_stmt(node_get_data2(stmt), lines)); if (typeof __tuff_this !== 'undefined') __tuff_this.added = added;
+  return added;
+}
+  if ((kind === NK_LOOP_STMT)) {
+  return (added + lint_collect_effective_lines_stmt(node_get_data1(stmt), lines));
+}
+  if ((kind === NK_LIFETIME_STMT)) {
+  return (added + lint_collect_effective_lines_stmt(node_get_data2(stmt), lines));
+}
+  if ((((kind === NK_FN_DECL) || (kind === NK_CLASS_FN_DECL)) || (kind === NK_ACTUAL_FN_DECL))) {
+  added = (added + lint_collect_effective_lines_expr(node_get_data4(stmt), lines)); if (typeof __tuff_this !== 'undefined') __tuff_this.added = added;
+  added = (added + lint_collect_effective_lines_stmt(node_get_data5(stmt), lines)); if (typeof __tuff_this !== 'undefined') __tuff_this.added = added;
+  return added;
+}
+  if ((kind === NK_STMT_LIST)) {
+  let items = node_get_data1(stmt); if (typeof __tuff_this !== 'undefined') __tuff_this.items = items;
+  let i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
+  while ((i < (() => { const __recv = items; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })())) {
+  added = (added + lint_collect_effective_lines_stmt((() => { const __recv = items; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(), lines)); if (typeof __tuff_this !== 'undefined') __tuff_this.added = added;
+  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
+}
+  return added;
+}
+  if ((((((((kind === NK_INTO_STMT) || (kind === NK_BREAK_STMT)) || (kind === NK_CONTINUE_STMT)) || (kind === NK_EXTERN_IMPORT_DECL)) || (kind === NK_EXTERN_FN_DECL)) || (kind === NK_EXTERN_LET_DECL)) || (kind === NK_EXTERN_TYPE_DECL))) {
+  return added;
+}
+  return (added + lint_collect_effective_lines_expr(stmt, lines));
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.lint_collect_effective_lines_stmt = lint_collect_effective_lines_stmt;
+
+const __tuff_outer_for_lint_check_function_length = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function lint_check_function_length(stmt, max_effective_lines) {
+  let __tuff_this = { stmt: stmt, max_effective_lines: max_effective_lines, this: __tuff_outer_for_lint_check_function_length };
+  let kind = node_kind(stmt); if (typeof __tuff_this !== 'undefined') __tuff_this.kind = kind;
+  if ((!(((kind === NK_FN_DECL) || (kind === NK_CLASS_FN_DECL)) || (kind === NK_ACTUAL_FN_DECL)))) {
+  return 0;
+}
+  let body = node_get_data5(stmt); if (typeof __tuff_this !== 'undefined') __tuff_this.body = body;
+  if ((body === 0)) {
+  return 0;
+}
+  let lines = set_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.lines = lines;
+  let count = lint_mark_line(lines, node_get_line(stmt)); if (typeof __tuff_this !== 'undefined') __tuff_this.count = count;
+  count = (count + lint_collect_effective_lines_stmt(body, lines)); if (typeof __tuff_this !== 'undefined') __tuff_this.count = count;
+  if ((count > max_effective_lines)) {
+  let fn_name = get_interned_str(node_get_data1(stmt)); if (typeof __tuff_this !== 'undefined') __tuff_this.fn_name = fn_name;
+  lint_add_issue("E_LINT_FUNCTION_TOO_LONG", (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = "Function '"; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(fn_name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, fn_name) : str_concat(__recv, fn_name); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("' exceeds "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "' exceeds ") : str_concat(__recv, "' exceeds "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string(max_effective_lines)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(max_effective_lines)) : str_concat(__recv, int_to_string(max_effective_lines)); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(" effective lines ("); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " effective lines (") : str_concat(__recv, " effective lines ("); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string(count)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(count)) : str_concat(__recv, int_to_string(count)); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(")"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ")") : str_concat(__recv, ")"); })(), (() => { const __recv = (() => { const __recv = "This function has more than "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string(max_effective_lines)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(max_effective_lines)) : str_concat(__recv, int_to_string(max_effective_lines)); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(" non-comment, non-whitespace lines, which increases complexity and reduces readability."); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " non-comment, non-whitespace lines, which increases complexity and reduces readability.") : str_concat(__recv, " non-comment, non-whitespace lines, which increases complexity and reduces readability."); })(), (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = "Split function '"; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(fn_name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, fn_name) : str_concat(__recv, fn_name); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("' into smaller helper functions so each function stays at or below "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "' into smaller helper functions so each function stays at or below ") : str_concat(__recv, "' into smaller helper functions so each function stays at or below "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string(max_effective_lines)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(max_effective_lines)) : str_concat(__recv, int_to_string(max_effective_lines)); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(" effective lines."); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " effective lines.") : str_concat(__recv, " effective lines."); })());
+}
+  return 0;
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.lint_check_function_length = lint_check_function_length;
 
 const __tuff_outer_for_lint_collect_expr = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
 function lint_collect_expr(expr, receiver_extern_fns, reads) {
@@ -8430,9 +8637,11 @@ function lint_add_circular_import_issue(cycle_text) {
 if (typeof __tuff_this !== 'undefined') __tuff_this.lint_add_circular_import_issue = lint_add_circular_import_issue;
 
 const __tuff_outer_for_lint_program = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
-function lint_program(program, file_path, max_effective_lines) {
-  let __tuff_this = { program: program, file_path: file_path, max_effective_lines: max_effective_lines, this: __tuff_outer_for_lint_program };
+function lint_program(program, file_path, max_effective_lines, enforce_file_length) {
+  let __tuff_this = { program: program, file_path: file_path, max_effective_lines: max_effective_lines, enforce_file_length: enforce_file_length, this: __tuff_outer_for_lint_program };
+  if ((enforce_file_length === 1)) {
   lint_check_file_length(file_path, max_effective_lines);
+}
   let receiver_extern_fns = set_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.receiver_extern_fns = receiver_extern_fns;
   let reads = set_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.reads = reads;
   let declared_set = set_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.declared_set = declared_set;
@@ -8456,7 +8665,9 @@ function lint_program(program, file_path, max_effective_lines) {
 }
   i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
   while ((i < len)) {
-  lint_collect_stmt((() => { const __recv = body; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(), receiver_extern_fns, reads, declared_set, declared_names);
+  let stmt = (() => { const __recv = body; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.stmt = stmt;
+  lint_check_function_length(stmt, 100);
+  lint_collect_stmt(stmt, receiver_extern_fns, reads, declared_set, declared_names);
   i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
 }
   i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
@@ -8882,6 +9093,9 @@ function gather_module_sources(filePath, moduleBasePath, seen, visiting, sources
   let source = read_file(filePath); if (typeof __tuff_this !== 'undefined') __tuff_this.source = source;
   lex_init(source);
   lex_all();
+  if ((lint_enabled === 1)) {
+  lint_check_current_file_length(filePath, max_effective_lines);
+}
   parse_init();
   let program = p_parse_program(); if (typeof __tuff_this !== 'undefined') __tuff_this.program = program;
   let stmts = node_get_data1(program); if (typeof __tuff_this !== 'undefined') __tuff_this.stmts = stmts;
@@ -9013,7 +9227,7 @@ function compile_file_with_options(inputPath, outputPath, lint_enabled, max_effe
   borrowcheck_program(typed);
 }
   if ((lint === 1)) {
-  lint_program(typed, inputPath, max_lines);
+  lint_program(typed, inputPath, max_lines, 0);
   let i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
   let len = (() => { const __recv = module_cycles; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.len = len;
   while ((i < len)) {
@@ -10428,7 +10642,7 @@ function compile_source_with_options(source, lint_enabled, max_effective_lines, 
   let t6_borrow = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t6_borrow = t6_borrow;
   profile_mark("borrowcheck", (t6_borrow - t5_borrow));
   if ((lint === 1)) {
-  lint_program(typed, "<memory>", max_lines);
+  lint_program(typed, "<memory>", max_lines, 1);
 }
   let t6_emit = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t6_emit = t6_emit;
   let output = emit_target_output(typed, effective_source, target); if (typeof __tuff_this !== 'undefined') __tuff_this.output = output;

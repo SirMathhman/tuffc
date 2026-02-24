@@ -1,6 +1,5 @@
 let { get_interned_str, map_new, set_new, vec_new } = selfhost::runtime_lexer;
 let { lex_init, lex_all } = selfhost::runtime_lexer;
-let { lint_assert_file_length } = selfhost::runtime_lexer;
 let { str_includes } = selfhost::runtime_lexer;
 let { parse_init, node_kind, node_get_data1, node_get_data2, node_get_data3, node_get_data4, node_get_data5, node_set_data1 } = selfhost::parser_core;
 let { p_parse_program, desugar } = selfhost::parser_decls;
@@ -9,7 +8,7 @@ let { typecheck_program, typecheck_program_with_options } = selfhost::typecheck;
 let { borrowcheck_program } = selfhost::borrowcheck;
 let { generate_js } = selfhost::codegen_stmt;
 let { generate_c } = selfhost::codegen_c;
-let { lint_reset, lint_take_issues, lint_program, lint_add_circular_import_issue } = selfhost::linter;
+let { lint_reset, lint_take_issues, lint_program, lint_add_circular_import_issue, lint_check_current_file_length } = selfhost::linter;
 
 fn module_loader_sanitize_max_effective_lines(max_effective_lines: I32) : I32 => {
     if (max_effective_lines <= 0) {
@@ -419,6 +418,9 @@ fn gather_module_sources(filePath: *Str, moduleBasePath: *Str, seen: *mut Set, v
     let source = read_file(filePath);
     lex_init(source);
     lex_all();
+    if (lint_enabled == 1) {
+        lint_check_current_file_length(filePath, max_effective_lines);
+    }
     parse_init();
     let program = p_parse_program();
     let stmts = node_get_data1(program);
@@ -565,7 +567,8 @@ out fn compile_file_with_options(inputPath: *Str, outputPath: *Str, lint_enabled
         borrowcheck_program(typed);
     }
     if (lint == 1) {
-        lint_program(typed, inputPath, max_lines);
+        // File-length lint already ran per module file during gather_module_sources.
+        lint_program(typed, inputPath, max_lines, 0);
         let i = 0;
         let len = module_cycles.vec_length();
         while (i < len) {

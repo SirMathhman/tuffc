@@ -489,6 +489,66 @@ if (!commentsSourceResult.ok) {
   process.exit(1);
 }
 
+// 7b) Function-level lint should enforce <=100 non-comment/non-whitespace lines per function.
+const tooLongFunctionSource = [
+  "fn too_long() : I32 => {",
+  "  // comment line should not count",
+  "",
+  ...Array.from({ length: 101 }, (_, i) => `  let _v${i} : I32 = ${i};`),
+  "  0",
+  "}",
+  "fn main() : I32 => too_long();",
+  "",
+].join("\n");
+
+const tooLongFunctionResult = compileSourceResult(
+  tooLongFunctionSource,
+  "<lint-function-too-long>",
+  {
+    backend: "selfhost",
+    lint: { enabled: true, mode: "error" },
+  },
+);
+if (tooLongFunctionResult.ok) {
+  console.error(
+    "Expected strict lint failure for function exceeding 100 effective lines",
+  );
+  process.exit(1);
+}
+const tooLongFunctionDiag = toDiagnostic(unwrapErr(tooLongFunctionResult));
+if (tooLongFunctionDiag.code !== "E_LINT_FUNCTION_TOO_LONG") {
+  console.error(
+    `Expected E_LINT_FUNCTION_TOO_LONG, got ${tooLongFunctionDiag.code}`,
+  );
+  process.exit(1);
+}
+
+const commentHeavyFunctionSource = [
+  "fn mostly_comments() : I32 => {",
+  ...Array.from({ length: 200 }, () => "  // comment-only line"),
+  "",
+  "  let x : I32 = 1;",
+  "  x",
+  "}",
+  "fn main() : I32 => mostly_comments();",
+  "",
+].join("\n");
+
+const commentHeavyFunctionResult = compileSourceResult(
+  commentHeavyFunctionSource,
+  "<lint-function-comments>",
+  {
+    backend: "selfhost",
+    lint: { enabled: true, mode: "error" },
+  },
+);
+if (!commentHeavyFunctionResult.ok) {
+  console.error(
+    `Expected comments/blank lines to be excluded from function-length lint, got: ${String(unwrapErr(commentHeavyFunctionResult))}`,
+  );
+  process.exit(1);
+}
+
 // 8) Strict module-mode resolve should reject implicit cross-module references.
 const strictModuleDir = path.join(outDir, "strict-modules");
 fs.mkdirSync(strictModuleDir, { recursive: true });
