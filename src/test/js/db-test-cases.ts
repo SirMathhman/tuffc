@@ -2,7 +2,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { compileSourceResult } from "../../main/js/compiler.ts";
+import {
+  compileFileResult,
+  compileSourceResult,
+} from "../../main/js/compiler.ts";
 import { runMainFromJs } from "./js-runtime-test-utils.ts";
 import {
   getNativeCliWrapperPath,
@@ -11,35 +14,45 @@ import {
   getBackendArg,
 } from "./path-test-utils.ts";
 
+type DbCaseFile = {
+  file_path: string;
+  source_code: string;
+  role: string;
+  sort_order: number;
+};
+
 type DbCase = {
   id: number;
   category: string;
   source_code: string;
   exit_code: number;
   expects_compile_error: number;
+  execution_mode: "js-runtime" | "compile-only";
+  backend: string;
+  target: "js" | "c";
+  compile_options_json: string;
+  entry_path: string | null;
+  expected_diagnostic_code: string | null;
+  expected_runtime_json: string;
+  expected_snapshot: string | null;
+  skip_reason: string | null;
+  files: DbCaseFile[];
 };
 
 const root = getRepoRootFromImportMeta(import.meta.url);
 const dbPath = path.join(root, "scripts", "test_cases.db");
+const legacyRootDbPath = path.join(root, "test_cases.db");
 const outDir = path.join(root, "tests", "out", "db-cases");
 const nativeTmpDir = path.join(outDir, "native-cli");
 const backend = getBackendArg();
 const allowKnownGaps = process.argv.includes("--allow-known-gaps");
+const updateSnapshots = process.argv.includes("--update");
+const categoryArg = process.argv.find((arg) => arg.startsWith("--category="));
+const categoryFilter = categoryArg
+  ? categoryArg.slice("--category=".length).trim().toLowerCase()
+  : "";
 const nodeExec = getNodeExecPath();
 const nativeCli = getNativeCliWrapperPath(root);
-
-// Cases 46-50, 52, 53, 54, 56-59: constraint:parameter-function-calls feature (not yet implemented in parser/resolver).
-const selfhostKnownGapCaseIds = new Set<number>([
-  46, 47, 48, 49, 50, 52, 53, 54, 56, 57, 58, 59,
-]);
-
-function shouldSkipKnownGap(testCase: DbCase): boolean {
-  return (
-    allowKnownGaps &&
-    (backend === "selfhost" || backend === "native-exe") &&
-    selfhostKnownGapCaseIds.has(testCase.id)
-  );
-}
 
 function runPythonSqliteQuery(dbFilePath: string): DbCase[] {
   const pythonScript = [
@@ -47,12 +60,64 @@ function runPythonSqliteQuery(dbFilePath: string): DbCase[] {
     "db = sys.argv[1]",
     "con = sqlite3.connect(db)",
     "cur = con.cursor()",
+    "existing = {r[1] for r in cur.execute('PRAGMA table_info(test_cases)').fetchall()}",
+    "needed = [",
+    "  ('expects_compile_error', 'INTEGER NOT NULL DEFAULT 0'),",
+    "  ('execution_mode', \"TEXT NOT NULL DEFAULT 'js-runtime'\"),",
+    "  ('backend', \"TEXT NOT NULL DEFAULT 'selfhost'\"),",
+    "  ('target', \"TEXT NOT NULL DEFAULT 'js'\"),",
+    "  ('compile_options_json', \"TEXT NOT NULL DEFAULT ''\"),",
+    "  ('entry_path', 'TEXT'),",
+    "  ('expected_diagnostic_code', 'TEXT'),",
+    "  ('expected_runtime_json', \"TEXT NOT NULL DEFAULT ''\"),",
+    "  ('expected_snapshot', 'TEXT'),",
+    "  ('skip_reason', 'TEXT'),",
+    "]",
+    "for (name, ddl) in needed:",
+    "  if name not in existing:",
+    "    cur.execute(f'ALTER TABLE test_cases ADD COLUMN {name} {ddl}')",
+    "cur.execute('''",
+    "CREATE TABLE IF NOT EXISTS test_case_files (",
+    "  id INTEGER PRIMARY KEY AUTOINCREMENT,",
+    "  case_id INTEGER NOT NULL,",
+    "  file_path TEXT NOT NULL,",
+    "  source_code TEXT NOT NULL,",
+    "  role TEXT NOT NULL DEFAULT 'module',",
+    "  sort_order INTEGER NOT NULL DEFAULT 0,",
+    "  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,",
+    "  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,",
+    "  UNIQUE(case_id, file_path)",
+    ")",
+    "''')",
     "rows = cur.execute('''",
-    "SELECT tc.id, c.name, tc.source_code, tc.exit_code, tc.expects_compile_error",
+    "SELECT tc.id, c.name, tc.source_code, tc.exit_code, tc.expects_compile_error,",
+    "       COALESCE(tc.execution_mode, 'js-runtime'),",
+    "       COALESCE(tc.backend, 'selfhost'),",
+    "       COALESCE(tc.target, 'js'),",
+    "       COALESCE(tc.compile_options_json, ''),",
+    "       tc.entry_path,",
+    "       tc.expected_diagnostic_code,",
+    "       COALESCE(tc.expected_runtime_json, ''),",
+    "       tc.expected_snapshot,",
+    "       tc.skip_reason",
     "FROM test_cases tc",
     "LEFT JOIN categories c ON c.id = tc.category_id",
-    "ORDER BY tc.id",
+    "ORDER BY c.name COLLATE NOCASE, tc.id",
     "''').fetchall()",
+    "file_rows = cur.execute('''",
+    "SELECT case_id, file_path, source_code, role, sort_order",
+    "FROM test_case_files",
+    "ORDER BY case_id, sort_order, id",
+    "''').fetchall()",
+    "files_by_case = {}",
+    "for fr in file_rows:",
+    "  case_id = int(fr[0])",
+    "  files_by_case.setdefault(case_id, []).append({",
+    "    'file_path': '' if fr[1] is None else str(fr[1]),",
+    "    'source_code': '' if fr[2] is None else str(fr[2]),",
+    "    'role': '' if fr[3] is None else str(fr[3]),",
+    "    'sort_order': int(fr[4] if fr[4] is not None else 0),",
+    "  })",
     "payload = [",
     "  {",
     "    'id': int(r[0]),",
@@ -60,6 +125,16 @@ function runPythonSqliteQuery(dbFilePath: string): DbCase[] {
     "    'source_code': '' if r[2] is None else str(r[2]),",
     "    'exit_code': int(r[3]),",
     "    'expects_compile_error': int(r[4]),",
+    "    'execution_mode': '' if r[5] is None else str(r[5]),",
+    "    'backend': '' if r[6] is None else str(r[6]),",
+    "    'target': '' if r[7] is None else str(r[7]),",
+    "    'compile_options_json': '' if r[8] is None else str(r[8]),",
+    "    'entry_path': None if r[9] is None else str(r[9]),",
+    "    'expected_diagnostic_code': None if r[10] is None else str(r[10]),",
+    "    'expected_runtime_json': '' if r[11] is None else str(r[11]),",
+    "    'expected_snapshot': None if r[12] is None else str(r[12]),",
+    "    'skip_reason': None if r[13] is None else str(r[13]),",
+    "    'files': files_by_case.get(int(r[0]), []),",
     "  }",
     "  for r in rows",
     "]",
@@ -104,6 +179,32 @@ function normalizeSource(source: string): string {
   return trimmedRight.endsWith(";") ? trimmedRight : `${trimmedRight};`;
 }
 
+function normalizeText(value: string): string {
+  return value.replace(/\r\n/g, "\n");
+}
+
+function parseExpectedRuntimeValue(testCase: DbCase): unknown {
+  const raw = testCase.expected_runtime_json?.trim() ?? "";
+  if (raw.length === 0) return testCase.exit_code;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return raw;
+  }
+}
+
+function parseCompileOptions(testCase: DbCase): Record<string, unknown> {
+  const raw = testCase.compile_options_json?.trim() ?? "";
+  if (raw.length === 0) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object") return parsed;
+  } catch {
+    // ignore malformed case options; runner will fallback to defaults.
+  }
+  return {};
+}
+
 function hasExplicitMain(source: string): boolean {
   return /\bfn\s+main\s*\(/.test(source);
 }
@@ -118,6 +219,41 @@ function toBool(value: number): boolean {
 
 function sanitizeForPath(text: string): string {
   return text.replace(/[^a-zA-Z0-9._-]+/g, "_");
+}
+
+function updateCaseSnapshot(caseId: number, snapshot: string): void {
+  const pythonScript = [
+    "import sqlite3, sys",
+    "db = sys.argv[1]",
+    "case_id = int(sys.argv[2])",
+    "snapshot = sys.argv[3]",
+    "con = sqlite3.connect(db)",
+    "cur = con.cursor()",
+    "cur.execute('UPDATE test_cases SET expected_snapshot = ? WHERE id = ?', (snapshot, case_id))",
+    "con.commit()",
+  ].join("\n");
+
+  const result = spawnSync(
+    "python",
+    ["-c", pythonScript, dbPath, String(caseId), snapshot],
+    {
+      encoding: "utf8",
+      cwd: root,
+    },
+  );
+  if (result.status === 0) return;
+
+  const fallback = spawnSync(
+    "py",
+    ["-3", "-c", pythonScript, dbPath, String(caseId), snapshot],
+    {
+      encoding: "utf8",
+      cwd: root,
+    },
+  );
+  if (fallback.status !== 0) {
+    throw new Error("Unable to update expected_snapshot in DB");
+  }
 }
 
 function compileViaNativeCli(
@@ -148,12 +284,16 @@ function compileViaNativeCli(
 function compileWithBackend(
   source: string,
   label: string,
-): { ok: true; output: string } | { ok: false; errorMessage: string } {
+  caseOptions: Record<string, unknown>,
+):
+  | { ok: true; output: string }
+  | { ok: false; errorMessage: string; errorCode?: string } {
   if (backend === "native-exe") {
     return compileViaNativeCli(source, label);
   }
 
   const result = compileSourceResult(source, `<${label}>`, {
+    ...caseOptions,
     backend,
     target: "js",
   });
@@ -161,9 +301,89 @@ function compileWithBackend(
     return {
       ok: false,
       errorMessage: String(result.error?.message ?? "<unknown compile error>"),
+      errorCode: String(result.error?.code ?? ""),
     };
   }
   return { ok: true, output: result.value.output };
+}
+
+function compileFileWithBackend(
+  inputPath: string,
+  outputPath: string,
+  label: string,
+  caseOptions: Record<string, unknown>,
+):
+  | { ok: true; output: string }
+  | { ok: false; errorMessage: string; errorCode?: string } {
+  if (backend === "native-exe") {
+    const run = spawnSync(
+      nodeExec,
+      [
+        nativeCli,
+        inputPath,
+        "--modules",
+        "--module-base",
+        path.dirname(inputPath),
+        "-o",
+        outputPath,
+      ],
+      {
+        cwd: root,
+        encoding: "utf8",
+      },
+    );
+    if (run.status !== 0 || !fs.existsSync(outputPath)) {
+      return {
+        ok: false,
+        errorMessage: `${run.stderr ?? ""}\n${run.stdout ?? ""}`.trim(),
+      };
+    }
+    return { ok: true, output: fs.readFileSync(outputPath, "utf8") };
+  }
+
+  const result = compileFileResult(inputPath, outputPath, {
+    ...caseOptions,
+    backend,
+    target: "js",
+    enableModules: true,
+  });
+  if (!result.ok) {
+    return {
+      ok: false,
+      errorMessage: String(result.error?.message ?? "<unknown compile error>"),
+      errorCode: String(result.error?.code ?? ""),
+    };
+  }
+  return { ok: true, output: result.value.output };
+}
+
+function materializeCaseFiles(testCase: DbCase): {
+  inputPath: string;
+  outputPath: string;
+} {
+  const caseDir = path.join(outDir, "multi", `case-${testCase.id}`);
+  fs.rmSync(caseDir, { recursive: true, force: true });
+  fs.mkdirSync(caseDir, { recursive: true });
+
+  for (const file of testCase.files) {
+    const relPath = file.file_path.replaceAll("\\", "/");
+    const absPath = path.join(caseDir, relPath);
+    fs.mkdirSync(path.dirname(absPath), { recursive: true });
+    fs.writeFileSync(absPath, file.source_code, "utf8");
+  }
+
+  const entryRelative =
+    testCase.entry_path ??
+    testCase.files.find((f) => f.role === "entry")?.file_path ??
+    testCase.files[0]?.file_path;
+
+  if (!entryRelative) {
+    throw new Error("Case has embedded files but no entry_path");
+  }
+
+  const inputPath = path.join(caseDir, entryRelative.replaceAll("\\", "/"));
+  const outputPath = path.join(caseDir, "out.js");
+  return { inputPath, outputPath };
 }
 
 if (!fs.existsSync(dbPath)) {
@@ -171,8 +391,20 @@ if (!fs.existsSync(dbPath)) {
   process.exit(1);
 }
 
+if (fs.existsSync(legacyRootDbPath)) {
+  console.error(
+    `[db-tests] Legacy DB detected at ${legacyRootDbPath}. Use canonical ${dbPath} only.`,
+  );
+  process.exit(1);
+}
+
 const dbCases = runPythonSqliteQuery(dbPath);
-if (dbCases.length === 0) {
+const selectedCases =
+  categoryFilter.length > 0
+    ? dbCases.filter((c) => c.category.toLowerCase() === categoryFilter)
+    : dbCases;
+
+if (selectedCases.length === 0) {
   console.log("[db-tests] No rows found in scripts/test_cases.db");
   process.exit(0);
 }
@@ -183,19 +415,45 @@ let passed = 0;
 let failed = 0;
 let skipped = 0;
 
-for (const testCase of dbCases) {
+for (const testCase of selectedCases) {
   const label = `db:${testCase.id}:${testCase.category || "uncategorized"}`;
   const source = normalizeSource(testCase.source_code ?? "");
+  const caseOptions = parseCompileOptions(testCase);
   const expectsCompileError = toBool(testCase.expects_compile_error);
 
-  const compileResult = compileWithBackend(source, label);
-
   const skipKnownGap = (reason: string): boolean => {
-    if (!shouldSkipKnownGap(testCase)) return false;
+    if (!(allowKnownGaps && testCase.skip_reason)) return false;
     skipped += 1;
-    console.log(`[db-tests] ~ ${label} skipped known selfhost gap: ${reason}`);
+    console.log(
+      `[db-tests] ~ ${label} skipped: ${reason} (${testCase.skip_reason})`,
+    );
     return true;
   };
+
+  let compileResult:
+    | { ok: true; output: string }
+    | { ok: false; errorMessage: string; errorCode?: string };
+  if (testCase.files.length > 0) {
+    try {
+      const { inputPath, outputPath } = materializeCaseFiles(testCase);
+      compileResult = compileFileWithBackend(
+        inputPath,
+        outputPath,
+        label,
+        caseOptions,
+      );
+    } catch (error) {
+      if (!skipKnownGap(String(error))) {
+        failed += 1;
+        console.error(
+          `[db-tests] ✖ ${label} failed to materialize files: ${String(error)}`,
+        );
+      }
+      continue;
+    }
+  } else {
+    compileResult = compileWithBackend(source, label, caseOptions);
+  }
 
   if (expectsCompileError) {
     if (compileResult.ok) {
@@ -206,6 +464,22 @@ for (const testCase of dbCases) {
         );
       }
       continue;
+    }
+
+    if (testCase.expected_diagnostic_code) {
+      if (compileResult.errorCode !== testCase.expected_diagnostic_code) {
+        if (
+          !skipKnownGap(
+            `expected diagnostic ${testCase.expected_diagnostic_code}, got ${compileResult.errorCode || "<none>"}`,
+          )
+        ) {
+          failed += 1;
+          console.error(
+            `[db-tests] ✖ ${label} expected diagnostic code ${testCase.expected_diagnostic_code}, got ${compileResult.errorCode || "<none>"}`,
+          );
+        }
+        continue;
+      }
     }
 
     passed += 1;
@@ -221,6 +495,35 @@ for (const testCase of dbCases) {
     console.error(
       `[db-tests] ✖ ${label} failed to compile: ${compileResult.errorMessage}`,
     );
+    continue;
+  }
+
+  if (typeof testCase.expected_snapshot === "string") {
+    const got = normalizeText(compileResult.output);
+    const expected = normalizeText(testCase.expected_snapshot);
+    if (got !== expected) {
+      if (updateSnapshots) {
+        try {
+          updateCaseSnapshot(testCase.id, compileResult.output);
+          console.log(`[db-tests] ↺ ${label} snapshot updated in DB`);
+        } catch (error) {
+          failed += 1;
+          console.error(
+            `[db-tests] ✖ ${label} failed to update DB snapshot: ${String(error)}`,
+          );
+          continue;
+        }
+      } else {
+        failed += 1;
+        console.error(`[db-tests] ✖ ${label} snapshot mismatch`);
+        continue;
+      }
+    }
+  }
+
+  if (testCase.execution_mode === "compile-only") {
+    passed += 1;
+    console.log(`[db-tests] ✓ ${label} (compile-only)`);
     continue;
   }
 
@@ -305,15 +608,16 @@ for (const testCase of dbCases) {
   // Normalize booleans: Tuff Bool maps to integer exit codes (false=0, true=1)
   const normalizedValue =
     runtimeValue === true ? 1 : runtimeValue === false ? 0 : runtimeValue;
-  if (normalizedValue !== testCase.exit_code) {
+  const expectedValue = parseExpectedRuntimeValue(testCase);
+  if (normalizedValue !== expectedValue) {
     if (
       !skipKnownGap(
-        `exit mismatch expected ${testCase.exit_code} got ${JSON.stringify(runtimeValue)}`,
+        `runtime mismatch expected ${JSON.stringify(expectedValue)} got ${JSON.stringify(runtimeValue)}`,
       )
     ) {
       failed += 1;
       console.error(
-        `[db-tests] ✖ ${label} expected exit ${testCase.exit_code}, got ${JSON.stringify(runtimeValue)}`,
+        `[db-tests] ✖ ${label} expected runtime ${JSON.stringify(expectedValue)}, got ${JSON.stringify(runtimeValue)}`,
       );
     }
     continue;
@@ -326,7 +630,7 @@ for (const testCase of dbCases) {
 }
 
 console.log(
-  `\n[db-tests] Completed ${dbCases.length} case(s): ${passed} passed, ${failed} failed, ${skipped} skipped (backend=${backend})`,
+  `\n[db-tests] Completed ${selectedCases.length} case(s): ${passed} passed, ${failed} failed, ${skipped} skipped (backend=${backend}${categoryFilter ? `, category=${categoryFilter}` : ""})`,
 );
 
 if (failed > 0) {

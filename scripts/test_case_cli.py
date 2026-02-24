@@ -122,6 +122,7 @@ def cmd_show(repo: TestCaseRepository, args) -> None:
         print(f"execution_mode:        {case['execution_mode']}")
         print(f"backend:               {case['backend']}")
         print(f"target:                {case['target']}")
+        print(f"compile_options_json:  {case['compile_options_json']}")
         print(f"entry_path:            {case['entry_path']}")
         print(f"expected_diag_code:    {case['expected_diagnostic_code']}")
         print(f"expected_runtime_json: {case['expected_runtime_json']}")
@@ -193,6 +194,7 @@ def cmd_add(repo: TestCaseRepository, args) -> None:
             execution_mode=args.execution_mode,
             backend=args.backend,
             target=args.target,
+            compile_options_json=args.compile_options_json,
             entry_path=args.entry_path,
             expected_diagnostic_code=args.expected_diag_code,
             expected_runtime_json=args.expected_runtime_json,
@@ -225,6 +227,7 @@ def cmd_edit(repo: TestCaseRepository, args) -> None:
             execution_mode=case["execution_mode"],
             backend=case["backend"],
             target=case["target"],
+            compile_options_json=case["compile_options_json"],
             entry_path=case["entry_path"],
             expected_diagnostic_code=case["expected_diagnostic_code"],
             expected_runtime_json=case["expected_runtime_json"],
@@ -299,6 +302,12 @@ def main() -> None:
             type=str,
             default=None,
             help="Entry file path for multi-file test cases",
+        )
+        p_add.add_argument(
+            "--compile-options-json",
+            type=str,
+            default="",
+            help="Compiler options JSON merged into backend/target defaults",
         )
         p_add.add_argument(
             "--expected-diag-code",
