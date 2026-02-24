@@ -1,4 +1,3 @@
-import json
 import sqlite3
 import tkinter as tk
 from pathlib import Path
@@ -332,6 +331,7 @@ class TestCaseManagerApp:
         self.repo = repo
         self.selected_case_id: int | None = None
         self.pending_category_id: int | None = None
+        self.file_tabs: dict[ttk.Frame, dict[str, object]] = {}
 
         root.title("Tuff Compiler Test Case Manager")
         root.geometry("1200x700")
@@ -405,14 +405,16 @@ class TestCaseManagerApp:
         )
         self.execution_mode_combo.grid(row=3, column=0, sticky="w", pady=(2, 10))
 
-        ttk.Label(form, text="Entry path (multi-file)", font=("Segoe UI", 10, "bold")).grid(
-            row=3, column=1, sticky="w", padx=(12, 0)
-        )
+        ttk.Label(
+            form, text="Entry path (multi-file)", font=("Segoe UI", 10, "bold")
+        ).grid(row=3, column=1, sticky="w", padx=(12, 0))
         self.entry_path_var = tk.StringVar(value="")
         self.entry_path_entry = ttk.Entry(
             form, textvariable=self.entry_path_var, width=36
         )
-        self.entry_path_entry.grid(row=4, column=1, sticky="w", padx=(12, 0), pady=(2, 10))
+        self.entry_path_entry.grid(
+            row=4, column=1, sticky="w", padx=(12, 0), pady=(2, 10)
+        )
 
         ttk.Label(form, text="Source code", font=("Segoe UI", 10, "bold")).grid(
             row=5, column=0, columnspan=2, sticky="w"
@@ -443,29 +445,34 @@ class TestCaseManagerApp:
 
         ttk.Label(
             form,
-            text="Embedded files (JSON array)",
+            text="Embedded files (tab per file)",
             font=("Segoe UI", 10, "bold"),
         ).grid(row=7, column=0, columnspan=2, sticky="w")
+
+        files_actions = ttk.Frame(form)
+        files_actions.grid(row=7, column=1, sticky="e")
+        self.add_file_btn = ttk.Button(
+            files_actions, text="+ Add file", command=self.add_file_tab
+        )
+        self.remove_file_btn = ttk.Button(
+            files_actions,
+            text="- Remove selected",
+            command=self.remove_selected_file_tab,
+        )
+        self.use_entry_btn = ttk.Button(
+            files_actions,
+            text="Use selected as entry",
+            command=self.use_selected_tab_as_entry,
+        )
+        self.add_file_btn.pack(side=tk.LEFT)
+        self.remove_file_btn.pack(side=tk.LEFT, padx=(8, 0))
+        self.use_entry_btn.pack(side=tk.LEFT, padx=(8, 0))
 
         files_frame = ttk.Frame(form)
         files_frame.grid(row=8, column=0, columnspan=2, sticky="nsew", pady=(4, 10))
 
-        self.files_text = tk.Text(
-            files_frame, wrap="none", undo=True, font=("Consolas", 10), height=8
-        )
-        files_yscroll = ttk.Scrollbar(
-            files_frame, orient="vertical", command=self.files_text.yview
-        )
-        files_xscroll = ttk.Scrollbar(
-            files_frame, orient="horizontal", command=self.files_text.xview
-        )
-        self.files_text.configure(
-            yscrollcommand=files_yscroll.set, xscrollcommand=files_xscroll.set
-        )
-
-        self.files_text.grid(row=0, column=0, sticky="nsew")
-        files_yscroll.grid(row=0, column=1, sticky="ns")
-        files_xscroll.grid(row=1, column=0, sticky="ew")
+        self.files_notebook = ttk.Notebook(files_frame)
+        self.files_notebook.grid(row=0, column=0, sticky="nsew")
 
         files_frame.rowconfigure(0, weight=1)
         files_frame.columnconfigure(0, weight=1)
@@ -565,76 +572,139 @@ class TestCaseManagerApp:
             self.update_btn.state(["!disabled"])
             self.delete_btn.state(["!disabled"])
 
-    def _parse_files_editor(
+    def _sync_file_tab_title(self, frame: ttk.Frame) -> None:
+        meta = self.file_tabs.get(frame)
+        if meta is None:
+            return
+        path_value = str(meta["path_var"].get()).strip().replace("\\", "/")
+        self.files_notebook.tab(frame, text=path_value if path_value else "(new file)")
+
+    def _add_file_tab_internal(
         self,
-    ) -> list[tuple[str, str, str, int]] | None:
-        raw = self.files_text.get("1.0", tk.END).strip()
-        if raw == "":
-            return []
+        file_path: str = "",
+        source_code: str = "",
+        role: str = "module",
+    ) -> ttk.Frame:
+        tab = ttk.Frame(self.files_notebook)
+        self.files_notebook.add(tab, text=file_path if file_path else "(new file)")
 
-        try:
-            payload = json.loads(raw)
-        except json.JSONDecodeError as error:
-            messagebox.showwarning(
-                "Invalid embedded files JSON",
-                f"Could not parse embedded files JSON: {error}",
-            )
-            return None
+        path_var = tk.StringVar(value=file_path)
+        role_var = tk.StringVar(value=role if role in ("entry", "module") else "module")
 
-        if not isinstance(payload, list):
-            messagebox.showwarning(
-                "Invalid embedded files JSON",
-                "Embedded files must be a JSON array of objects.",
-            )
-            return None
+        top = ttk.Frame(tab)
+        top.pack(fill=tk.X, padx=6, pady=(6, 4))
+        ttk.Label(top, text="File path").pack(side=tk.LEFT)
+        path_entry = ttk.Entry(top, textvariable=path_var, width=50)
+        path_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(8, 8))
+        ttk.Label(top, text="Role").pack(side=tk.LEFT)
+        role_combo = ttk.Combobox(
+            top,
+            textvariable=role_var,
+            state="readonly",
+            values=["entry", "module"],
+            width=10,
+        )
+        role_combo.pack(side=tk.LEFT)
 
+        editor_frame = ttk.Frame(tab)
+        editor_frame.pack(fill=tk.BOTH, expand=True, padx=6, pady=(0, 6))
+        text = tk.Text(editor_frame, wrap="none", undo=True, font=("Consolas", 10))
+        yscroll = ttk.Scrollbar(editor_frame, orient="vertical", command=text.yview)
+        xscroll = ttk.Scrollbar(editor_frame, orient="horizontal", command=text.xview)
+        text.configure(yscrollcommand=yscroll.set, xscrollcommand=xscroll.set)
+        text.grid(row=0, column=0, sticky="nsew")
+        yscroll.grid(row=0, column=1, sticky="ns")
+        xscroll.grid(row=1, column=0, sticky="ew")
+        editor_frame.rowconfigure(0, weight=1)
+        editor_frame.columnconfigure(0, weight=1)
+
+        if source_code:
+            text.insert("1.0", source_code)
+
+        self.file_tabs[tab] = {
+            "path_var": path_var,
+            "role_var": role_var,
+            "text": text,
+        }
+        path_var.trace_add("write", lambda *_: self._sync_file_tab_title(tab))
+        self._sync_file_tab_title(tab)
+        self.files_notebook.select(tab)
+        return tab
+
+    def _clear_file_tabs(self) -> None:
+        for tab_id in list(self.files_notebook.tabs()):
+            self.files_notebook.forget(tab_id)
+        self.file_tabs.clear()
+
+    def add_file_tab(self) -> None:
+        self._add_file_tab_internal()
+
+    def remove_selected_file_tab(self) -> None:
+        selected = self.files_notebook.select()
+        if not selected:
+            return
+        tab = self.root.nametowidget(selected)
+        if not isinstance(tab, ttk.Frame):
+            return
+        self.files_notebook.forget(tab)
+        self.file_tabs.pop(tab, None)
+
+    def use_selected_tab_as_entry(self) -> None:
+        selected = self.files_notebook.select()
+        if not selected:
+            return
+        tab = self.root.nametowidget(selected)
+        meta = self.file_tabs.get(tab)
+        if meta is None:
+            return
+        path_value = str(meta["path_var"].get()).strip().replace("\\", "/")
+        if path_value:
+            self.entry_path_var.set(path_value)
+
+    def _collect_files_from_tabs(self) -> list[tuple[str, str, str, int]] | None:
         files: list[tuple[str, str, str, int]] = []
-        for idx, item in enumerate(payload):
-            if not isinstance(item, dict):
+        seen: set[str] = set()
+        for idx, tab_id in enumerate(self.files_notebook.tabs()):
+            tab = self.root.nametowidget(tab_id)
+            meta = self.file_tabs.get(tab)
+            if meta is None:
+                continue
+            path_value = str(meta["path_var"].get()).strip().replace("\\", "/")
+            if path_value == "":
                 messagebox.showwarning(
-                    "Invalid embedded files JSON",
-                    f"Embedded file #{idx + 1} must be an object.",
+                    "Invalid embedded files",
+                    f"File tab #{idx + 1} is missing a file path.",
                 )
                 return None
-
-            file_path = str(item.get("file_path", "")).strip().replace("\\", "/")
-            source_code = str(item.get("source_code", ""))
-            role = str(item.get("role", "module") or "module")
-            sort_order_raw = item.get("sort_order", idx)
-            try:
-                sort_order = int(sort_order_raw)
-            except (TypeError, ValueError):
-                sort_order = idx
-
-            if file_path == "":
+            if path_value in seen:
                 messagebox.showwarning(
-                    "Invalid embedded files JSON",
-                    f"Embedded file #{idx + 1} is missing 'file_path'.",
+                    "Invalid embedded files",
+                    f"Duplicate embedded file path: {path_value}",
                 )
                 return None
+            seen.add(path_value)
 
-            files.append((file_path, source_code, role, sort_order))
+            source_code = str(meta["text"].get("1.0", tk.END).rstrip("\n"))
+            role_value = str(meta["role_var"].get() or "module")
+            files.append((path_value, source_code, role_value, idx))
 
         return files
 
-    def _set_files_editor_from_case(self, case_id: int) -> None:
-        files = self.repo.list_case_files(case_id)
-        payload = [
-            {
-                "file_path": row["file_path"],
-                "source_code": row["source_code"],
-                "role": row["role"],
-                "sort_order": row["sort_order"],
-            }
-            for row in files
-        ]
-        self.files_text.delete("1.0", tk.END)
-        if payload:
-            self.files_text.insert("1.0", json.dumps(payload, indent=2))
+    def _load_file_tabs_from_case(self, case_id: int) -> None:
+        self._clear_file_tabs()
+        for row in self.repo.list_case_files(case_id):
+            self._add_file_tab_internal(
+                file_path=str(row["file_path"]),
+                source_code=str(row["source_code"]),
+                role=str(row["role"]),
+            )
 
     def _get_form_data(
         self,
-    ) -> tuple[int, str, int, bool, str, str | None, list[tuple[str, str, str, int]]] | None:
+    ) -> (
+        tuple[int, str, int, bool, str, str | None, list[tuple[str, str, str, int]]]
+        | None
+    ):
         category_name = self.category_var.get().strip()
         source_code = self.source_text.get("1.0", tk.END).rstrip("\n")
         exit_code_raw = self.exit_code_var.get().strip()
@@ -642,7 +712,7 @@ class TestCaseManagerApp:
         execution_mode = self.execution_mode_var.get().strip() or "js-runtime"
         entry_path_raw = self.entry_path_var.get().strip().replace("\\", "/")
 
-        files = self._parse_files_editor()
+        files = self._collect_files_from_tabs()
         if files is None:
             return None
 
@@ -661,7 +731,8 @@ class TestCaseManagerApp:
 
         if source_code == "" and len(files) == 0:
             messagebox.showwarning(
-                "Missing source", "Provide source code or embedded files for the test case."
+                "Missing source",
+                "Provide source code or embedded files for the test case.",
             )
             return None
 
@@ -710,7 +781,7 @@ class TestCaseManagerApp:
     def clear_form(self) -> None:
         self.selected_case_id = None
         self.source_text.delete("1.0", tk.END)
-        self.files_text.delete("1.0", tk.END)
+        self._clear_file_tabs()
         self.exit_code_var.set("0")
         self.expects_compile_error_var.set(False)
         self.execution_mode_var.set("js-runtime")
@@ -756,7 +827,7 @@ class TestCaseManagerApp:
         self.on_expected_compile_error_toggle()
         self.source_text.delete("1.0", tk.END)
         self.source_text.insert("1.0", case["source_code"])
-        self._set_files_editor_from_case(case_id)
+        self._load_file_tabs_from_case(case_id)
         self.status_var.set(f"Loaded test case #{self.selected_case_id}")
         self._set_action_button_states()
 
