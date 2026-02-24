@@ -587,37 +587,23 @@ function compileFileInternal(
     }
     setSubstrateOverrideFromOptions(options, target, "selfhost");
     try {
-      if (options.enableModules) {
-        const normalizedInput = toPosixPath(absInput);
-        const normalizedOutput = toPosixPath(finalOutput);
-        run("selfhost-compile-file", () => {
-          if (typeof selfhost.compile_file_with_options === "function") {
-            selfhost.compile_file_with_options(
-              normalizedInput,
-              normalizedOutput,
-              lintEnabled,
-              maxEffectiveLines,
-              borrowEnabled ? 1 : 0,
-              target,
-            );
-          } else {
-            selfhost.compile_file(normalizedInput, normalizedOutput);
-          }
-        });
-        js = fs.readFileSync(finalOutput, "utf8");
-      } else {
-        js = runSelfhostCompileSource(
-          run,
-          selfhost,
-          source,
-          lintEnabled,
-          maxEffectiveLines,
-          borrowEnabled ? 1 : 0,
-          target,
-        );
-        fs.mkdirSync(path.dirname(finalOutput), { recursive: true });
-        fs.writeFileSync(finalOutput, js, "utf8");
-      }
+      const normalizedInput = toPosixPath(absInput);
+      const normalizedOutput = toPosixPath(finalOutput);
+      run("selfhost-compile-file", () => {
+        if (typeof selfhost.compile_file_with_options === "function") {
+          selfhost.compile_file_with_options(
+            normalizedInput,
+            normalizedOutput,
+            lintEnabled,
+            maxEffectiveLines,
+            borrowEnabled ? 1 : 0,
+            target,
+          );
+        } else {
+          selfhost.compile_file(normalizedInput, normalizedOutput);
+        }
+      });
+      js = fs.readFileSync(finalOutput, "utf8");
     } catch (error) {
       return err(
         wrapTuffError(error, {
