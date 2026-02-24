@@ -231,7 +231,6 @@ try {
   stage3EmitResult = stage3cHost.compile_file_with_options(
     selfhostPath,
     stage3outC,
-    0, // strictSafety=0  (bootstrap-relaxed)
     0, // lintEnabled=0
     500, // maxEffectiveLines
     1, // borrowEnabled=1
@@ -385,7 +384,7 @@ console.log(
 );
 
 // Embed the actual paths as string literals into a harness that calls
-// compile_file_with_options(selfhostPath, fixpointOutC, 0, 0, 500, 1, "c").
+// compile_file_with_options(selfhostPath, fixpointOutC, 0, 500, 1, "c").
 // The path strings must use forward slashes (or escaped backslashes) for C.
 function toCStringLiteral(p: string): string {
   return `"${p.replace(/\\/g, "\\\\")}"`;
@@ -413,7 +412,7 @@ static int smoke_compile_source(void) {
   int64_t src = get_argv(1);
   int64_t target = get_argv(4);
     int64_t out = compile_source_with_options(
-    src, 0, 0, 500, 0, target);
+    src, 0, 500, 0, target);
     if (!out) {
         fprintf(stderr, "[fixpoint] FAIL: compile_source_with_options returned NULL\\n");
         return 1;
@@ -460,7 +459,6 @@ int main(void) {
     int64_t r = compile_file_with_options(
       get_argv(2),
       get_argv(3),
-        0,    /* strictSafety  = 0 (bootstrap-relaxed, matches Phase 1) */
         0,    /* lintEnabled   = 0 */
         500,  /* maxEffectiveLines */
         1,    /* borrowEnabled = 1 */

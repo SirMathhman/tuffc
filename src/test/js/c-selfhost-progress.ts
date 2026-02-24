@@ -172,7 +172,7 @@ const harnessSource = deepHarness
 #include <stdio.h>
 #include <inttypes.h>
 ${SELFHOST_ENTRY_DECL.split("\n").slice(2).join("\n")}
-extern int64_t compile_source_with_options(int64_t, int64_t, int64_t, int64_t, int64_t, int64_t);
+extern int64_t compile_source_with_options(int64_t, int64_t, int64_t, int64_t, int64_t);
 
 int main(void) {
   fprintf(stderr, "[deep] calling selfhost_entry\\n");
@@ -180,7 +180,7 @@ int main(void) {
   fprintf(stderr, "[deep] selfhost_entry done\\n");
   const char* src = "fn main() : I32 => 7;";
   fprintf(stderr, "[deep] calling compile_source_with_options\\n");
-  int64_t cOut = compile_source_with_options((int64_t)(intptr_t)src, 0, 0, 500, 1, (int64_t)(intptr_t)"js");
+  int64_t cOut = compile_source_with_options((int64_t)(intptr_t)src, 0, 500, 1, (int64_t)(intptr_t)"js");
   fprintf(stderr, "[deep] compile_source_with_options returned\\n");
   const char* js = (const char*)(intptr_t)cOut;
   if (cOut == 0) return 2;
