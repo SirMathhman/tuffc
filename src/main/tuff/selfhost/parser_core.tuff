@@ -33,6 +33,8 @@ let NK_LIFETIME_STMT : I32 = 67;
 let NK_STMT_LIST : I32 = 68;
 let NK_EXTERN_IMPORT_DECL : I32 = 69;
 let NK_ENUM_DECL : I32 = 60;
+let NK_DEP_TYPE_ALIAS : I32 = 70;   // type Foo(p: T) = ...  (value-param dep alias)
+let NK_APPLIED_TYPE : I32 = 71;     // Foo(expr)             (type application)
 
 let NK_NUMBER_LIT : I32 = 20;
 let NK_BOOL_LIT : I32 = 21;
