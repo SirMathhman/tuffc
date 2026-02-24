@@ -58,6 +58,13 @@ extern fn sb_append_char(this: StringBuilder, code: I32) : StringBuilder;
 // Take ownership of the builder
 extern fn sb_build(sb: StringBuilder) : *Str;
 
+/*
+Doesn't a Vec<T> need a destructor?
+
+extern type Vec<T> then drop_vec;
+
+extern fn drop_vec(this : Vec<T>) : Void;
+*/
 extern type Vec<T>;
 extern fn __vec_new() : Vec<T>;
 extern fn __vec_push(this: Vec<T>, item: T) : Vec<T>;

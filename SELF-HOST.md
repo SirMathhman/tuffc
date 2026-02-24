@@ -138,7 +138,7 @@ Run: `npm run stage2:verify`
 - **Monomorphize generics** in JS codegen (no runtime generic dispatch)
 - **Runtime array bounds checks in Stage 0/1** — proof-based checks in Stage 2
 - **Single-file programs until Phase 2 step 1** — module system added in Phase 2
-- **No `throw` in compiler code** — ESLint enforces throw-ban; use `Result<T,E>` from `src/main/js/result.ts`
+- **No `throw` in compiler code** — use `Result<T,E>` from `src/main/js/result.ts`
 - **Exclude**: macros, attributes, standard library design (per spec: deferred)
 
 ---

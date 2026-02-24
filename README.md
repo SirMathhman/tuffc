@@ -174,5 +174,4 @@ Sanity-check the browser API locally:
 
 For Tuff-portability, the JS harness uses `Result<T, E>` rather than exceptions.
 
-- ESLint enforces a throw-ban rule (`ThrowStatement`) across TypeScript sources.
 - Use helpers in `src/main/js/result.ts` or selfhost diagnostic/result flows.

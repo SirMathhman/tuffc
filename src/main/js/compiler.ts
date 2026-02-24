@@ -659,7 +659,6 @@ export function compileSourceThrow(
 ): Record<string, unknown> {
   const result = compileSource(source, filePath, options);
   if (!result.ok) {
-    // eslint-disable-next-line no-restricted-syntax -- intentional throw wrapper
     throw result.error;
   }
   return result.value;
@@ -672,7 +671,6 @@ export function compileFileThrow(
 ): Record<string, unknown> {
   const result = compileFile(inputPath, outputPath, options);
   if (!result.ok) {
-    // eslint-disable-next-line no-restricted-syntax -- intentional throw wrapper
     throw result.error;
   }
   return result.value;

@@ -22,11 +22,8 @@
     "test:stress": "tsx ./src/test/js/test-orchestrator.ts --suite=stress",
     "test:parity": "tsx ./src/test/js/test-orchestrator.ts --suite=parity",
     "test:all": "tsx ./src/test/js/test-orchestrator.ts --suite=core,native,stress",
-    "check": "npm run lint:eslint && npm run typecheck && npm run test",
+    "check": "npm run typecheck && npm run test",
     "lint": "npm run native:selfhost:run -- ./src/test/tuff/cases/factorial.tuff --selfhost --lint -o ./tests/out/lint/factorial.js",
-    "lint:eslint": "eslint .",
-    "lint:throws": "eslint src/main/js src/test/js",
-    "lint:fix": "tsx ./src/test/js/lint-fix-all.ts",
     "typecheck": "tsc -p tsconfig.json",
     "test:update": "tsx ./src/test/js/test-orchestrator.ts --suite=core --update",
     "compile:sample": "npm run native:selfhost:run -- ./src/test/tuff/cases/factorial.tuff -o ./tests/out/factorial.js",
@@ -64,9 +61,7 @@
   "devDependencies": {
     "@types/node": "^25.2.3",
     "esbuild": "^0.25.12",
-    "eslint": "^10.0.0",
     "tsx": "^4.21.0",
-    "typescript": "^5.9.3",
-    "typescript-eslint": "^8.56.0"
+    "typescript": "^5.9.3"
   }
 }

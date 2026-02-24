@@ -106,7 +106,7 @@
 - Targeted checks: `npm run stage2:verify`, `npm run stage4:verify`, `npm run borrow:verify`
 - Selfhost checks: `npm run selfhost:modules`, `npm run selfhost:diagnostics`, `npm run selfhost:parity`
 - **C backend**: `npm run c:verify:full` (smoke + e2e + alias checks); `npm run c:native:verify` (requires clang/gcc)
-- Lint/type tooling: `npm run lint:eslint`, `npm run lint:throws`, `npm run typecheck`
+- Type tooling: `npm run typecheck`
 - Browser bundle/API: `npm run build:web`, `npm run build:web:esm`, `npm run web:verify`
 
 ## C Backend
