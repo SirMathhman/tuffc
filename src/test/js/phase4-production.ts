@@ -523,6 +523,39 @@ if (tooLongFunctionDiag.code !== "E_LINT_FUNCTION_TOO_LONG") {
   process.exit(1);
 }
 
+const exactlyHundredFunctionSource = [
+  "fn exactly_hundred() : I32 => {",
+  ...Array.from({ length: 100 }, (_, i) => `  let _v${i} : I32 = ${i};`),
+  "  0",
+  "}",
+  "fn main() : I32 => exactly_hundred();",
+  "",
+].join("\n");
+
+const exactlyHundredFunctionResult = compileSourceResult(
+  exactlyHundredFunctionSource,
+  "<lint-function-exactly-100>",
+  {
+    backend: "selfhost",
+    lint: { enabled: true, mode: "error" },
+  },
+);
+if (exactlyHundredFunctionResult.ok) {
+  console.error(
+    "Expected strict lint failure for function with exactly 100 effective lines",
+  );
+  process.exit(1);
+}
+const exactlyHundredFunctionDiag = toDiagnostic(
+  unwrapErr(exactlyHundredFunctionResult),
+);
+if (exactlyHundredFunctionDiag.code !== "E_LINT_FUNCTION_TOO_LONG") {
+  console.error(
+    `Expected E_LINT_FUNCTION_TOO_LONG at exactly 100 lines, got ${exactlyHundredFunctionDiag.code}`,
+  );
+  process.exit(1);
+}
+
 const commentHeavyFunctionSource = [
   "fn mostly_comments() : I32 => {",
   ...Array.from({ length: 200 }, () => "  // comment-only line"),

@@ -262,13 +262,13 @@ fn lint_check_function_length(stmt: I32, max_effective_lines: I32) : I32 => {
     let count = lint_mark_line(lines, node_get_line(stmt));
     count = count + lint_collect_effective_lines_stmt(body, lines);
 
-    if (count > max_effective_lines) {
+    if (count >= max_effective_lines) {
         let fn_name = get_interned_str(node_get_data1(stmt));
         lint_add_issue(
             "E_LINT_FUNCTION_TOO_LONG",
-            "Function '".str_concat(fn_name).str_concat("' exceeds ").str_concat(int_to_string(max_effective_lines)).str_concat(" effective lines (").str_concat(int_to_string(count)).str_concat(")"),
-            "This function has more than ".str_concat(int_to_string(max_effective_lines)).str_concat(" non-comment, non-whitespace lines, which increases complexity and reduces readability."),
-            "Split function '".str_concat(fn_name).str_concat("' into smaller helper functions so each function stays at or below ").str_concat(int_to_string(max_effective_lines)).str_concat(" effective lines.")
+            "Function '".str_concat(fn_name).str_concat("' has ").str_concat(int_to_string(max_effective_lines)).str_concat(" or more effective lines (").str_concat(int_to_string(count)).str_concat(")"),
+            "This function has at least ".str_concat(int_to_string(max_effective_lines)).str_concat(" non-comment, non-whitespace lines, which increases complexity and reduces readability."),
+            "Split function '".str_concat(fn_name).str_concat("' into smaller helper functions so each function stays below ").str_concat(int_to_string(max_effective_lines)).str_concat(" effective lines.")
         );
     }
 
