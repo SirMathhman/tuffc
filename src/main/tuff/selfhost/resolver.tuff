@@ -150,6 +150,8 @@ fn resolve_type_lifetimes(t: I32) : I32 => {
         resolve_type_lifetimes(node_get_data2(t));
         return 0;
     }
+    // NK_APPLIED_TYPE: type application — arg expressions are value exprs, not types;
+    // no lifetime resolution needed here (the arg exprs are resolved later in resolve_stmt).
     0
 }
 
@@ -180,6 +182,9 @@ fn fn_type_sig(t: I32) : *Str => {
     }
     if (k == NK_REFINEMENT_TYPE) {
         return "Ref<".str_concat(fn_type_sig(node_get_data1(t))).str_concat(">");
+    }
+    if (k == NK_APPLIED_TYPE) {
+        return get_interned_str(node_get_data1(t)).str_concat("(...)");
     }
     if (k == NK_UNION_TYPE) {
         return fn_type_sig(node_get_data1(t)).str_concat("|").str_concat(fn_type_sig(node_get_data2(t)));
@@ -702,6 +707,15 @@ fn resolve_stmt(n: I32, globals: *mut Set, scopes: Vec, depth: I32) : I32 => {
         return 0;
     }
 
+    if (kind == NK_TYPE_ALIAS || kind == NK_DEP_TYPE_ALIAS ||
+        kind == NK_STRUCT_DECL || kind == NK_ENUM_DECL ||
+        kind == NK_EXTERN_FN_DECL || kind == NK_EXTERN_LET_DECL ||
+        kind == NK_EXTERN_TYPE_DECL || kind == NK_EXTERN_IMPORT_DECL ||
+        kind == NK_OBJECT_DECL || kind == NK_CONTRACT_DECL ||
+        kind == NK_EXPECT_FN_DECL) {
+        return 0;
+    }
+
     if (kind == NK_INTO_STMT) {
         let cname = get_interned_str(node_get_data1(n));
         if (!globals.set_has(cname)) {
@@ -745,6 +759,7 @@ out fn resolve_names(program: I32) : I32 => {
             kind == NK_OBJECT_DECL ||
             kind == NK_CONTRACT_DECL ||
             kind == NK_TYPE_ALIAS ||
+            kind == NK_DEP_TYPE_ALIAS ||
             kind == NK_LET_DECL ||
             kind == NK_EXTERN_FN_DECL ||
             kind == NK_EXTERN_LET_DECL ||
