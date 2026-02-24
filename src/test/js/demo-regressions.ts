@@ -1,101 +1,34 @@
 // @ts-nocheck
 import path from "node:path";
-import { compileFileResult } from "../../main/js/compiler.ts";
-import { runMainFromJs } from "./js-runtime-test-utils.ts";
+import { spawnSync } from "node:child_process";
 import {
+  getNodeExecPath,
   getRepoRootFromImportMeta,
-  getTestsOutDir,
+  getTsxCliPath,
 } from "./path-test-utils.ts";
 
 const root = getRepoRootFromImportMeta(import.meta.url);
-const outDir = getTestsOutDir(root, "demo-regressions");
+const tsxCli = getTsxCliPath(root);
+const nodeExec = getNodeExecPath();
 
-const compileFailureCases = [
-  {
-    file: "demo-array-bounds-fixed.tuff",
-    expectedMessagePart: "Cannot prove array index bound safety",
-  },
-  {
-    file: "demo-div-by-zero.tuff",
-    expectedMessagePart: "Division by zero",
-  },
-  {
-    file: "demo-nullable-pointer.tuff",
-    expectedMessagePart: "Unexpected token",
-  },
-  // Phase B: variable literal tracking now catches x=2147483647, y=1 => x+y overflows.
-  {
-    file: "demo-overflow.tuff",
-    expectedMessagePart: "overflow",
-  },
-];
-
-const compileSuccessCases = [
-  {
-    file: "demo-array-bounds.tuff",
-  },
-  {
-    file: "demo-c-interop.tuff",
-  },
-  {
-    file: "demo-div-by-zero-safe.tuff",
-    expectedMainResult: 5,
-  },
-  {
-    file: "demo-overflow-call.tuff",
-  },
-];
-
-function compileDemo(fileName: string) {
-  const inputPath = path.join(root, "tests", fileName);
-  const outputPath = path.join(outDir, fileName.replace(/\.tuff$/, ".js"));
-  return compileFileResult(inputPath, outputPath, {
-    backend: "selfhost",
-    typecheck: { strictSafety: true },
+function runScript(script: string, extraArgs: string[] = []): void {
+  const result = spawnSync(nodeExec, [tsxCli, script, ...extraArgs], {
+    cwd: root,
+    encoding: "utf8",
+    stdio: "inherit",
   });
-}
-
-for (const testCase of compileFailureCases) {
-  const result = compileDemo(testCase.file);
-  if (result.ok) {
+  if (result.error || result.status !== 0) {
     console.error(
-      `Expected ${testCase.file} to fail compile under strict safety, but it compiled`,
+      `[demo-regressions] failed running ${script}: ${result.error?.message ?? `exit ${result.status}`}`,
     );
-    process.exit(1);
-  }
-
-  const message = String(result.error?.message ?? "");
-  if (!message.includes(testCase.expectedMessagePart)) {
-    console.error(
-      `Expected ${testCase.file} failure to include '${testCase.expectedMessagePart}', got: ${message}`,
-    );
-    process.exit(1);
+    process.exit(result.status ?? 1);
   }
 }
 
-for (const testCase of compileSuccessCases) {
-  const result = compileDemo(testCase.file);
-  if (!result.ok) {
-    console.error(
-      `Expected ${testCase.file} to compile under strict safety, but failed: ${result.error?.message ?? "<unknown>"}`,
-    );
-    process.exit(1);
-  }
+runScript(path.join(root, "scripts", "seed-demo-regressions-db.ts"));
+runScript(path.join(root, "src", "test", "js", "db-test-cases.ts"), [
+  "--backend=selfhost",
+  "--category=migrated:demo-regressions",
+]);
 
-  if (typeof testCase.expectedMainResult !== "undefined") {
-    const got = runMainFromJs(
-      result.value.js,
-      `demo-regression:${testCase.file}`,
-    );
-    if (got !== testCase.expectedMainResult) {
-      console.error(
-        `Expected main() for ${testCase.file} to return ${testCase.expectedMainResult}, got ${got}`,
-      );
-      process.exit(1);
-    }
-  }
-}
-
-console.log(
-  `Demo regression checks passed (${compileFailureCases.length} compile-fail, ${compileSuccessCases.length} compile-pass)`,
-);
+console.log("Demo regressions passed via DB-backed suite");
