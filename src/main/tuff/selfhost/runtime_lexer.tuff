@@ -20,7 +20,7 @@ type Index(this: *Str) = USize < str_length(this);
 
 extern fn str_char_at(this: *Str, index: Index(this)) : Char;
 
-extern fn str_slice(this: *Str, start: USize, end: USize) : *Str;
+extern fn str_slice(this: *Str, start: Index(this) <= end, end: Index(this)) : *Str;
 
 /*
 We'll need this eventually.
