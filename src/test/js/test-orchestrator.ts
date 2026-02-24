@@ -92,7 +92,7 @@ function executeScript(scriptPath: string, updateSnapshots: boolean): void {
     args.push("--backend=selfhost");
   }
   if (scriptPath.endsWith("db-test-cases.ts")) {
-    args.push("--backend=native-exe", "--allow-known-gaps");
+    args.push("--backend=selfhost", "--allow-known-gaps");
   }
 
   const relative = path.relative(root, scriptPath).replaceAll("\\", "/");

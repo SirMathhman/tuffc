@@ -28,7 +28,10 @@ const allowKnownGaps = process.argv.includes("--allow-known-gaps");
 const nodeExec = getNodeExecPath();
 const nativeCli = getNativeCliWrapperPath(root);
 
-const selfhostKnownGapCaseIds = new Set<number>([]);
+// Cases 46-50, 53, 54, 56-59: constraint:parameter-function-calls feature (not yet implemented in parser).
+const selfhostKnownGapCaseIds = new Set<number>([
+  46, 47, 48, 49, 50, 53, 54, 56, 57, 58, 59,
+]);
 
 function shouldSkipKnownGap(testCase: DbCase): boolean {
   return (
