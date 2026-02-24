@@ -16,11 +16,11 @@ extern let { perf_now, profile_mark, profile_take_json } = globalThis;
 
 extern fn str_length(this: *Str) : USize;
 
-type Index(this: *Str) = USize < str_length(this);
+type StrIndex(this: *Str) = USize < str_length(this);
 
-extern fn str_char_at(this: *Str, index: Index(this)) : Char;
+extern fn str_char_at(this: *Str, index: StrIndex(this)) : Char;
 
-extern fn str_slice(this: *Str, start: Index(this) <= end, end: Index(this)) : *Str;
+extern fn str_slice(this: *Str, start: StrIndex(this) <= end, end: StrIndex(this)) : *Str;
 
 /*
 We'll need this eventually.

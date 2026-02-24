@@ -20,7 +20,7 @@
 
 // extern fn str_length
 
-// type Index(...) = ...
+// type StrIndex(...) = ...
 
 // extern fn str_char_at
 
