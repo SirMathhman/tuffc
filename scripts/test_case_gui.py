@@ -416,41 +416,14 @@ class TestCaseManagerApp:
             row=4, column=1, sticky="w", padx=(12, 0), pady=(2, 10)
         )
 
-        ttk.Label(form, text="Source code", font=("Segoe UI", 10, "bold")).grid(
-            row=5, column=0, columnspan=2, sticky="w"
-        )
-
-        editor_frame = ttk.Frame(form)
-        editor_frame.grid(row=6, column=0, columnspan=2, sticky="nsew", pady=(4, 10))
-
-        self.source_text = tk.Text(
-            editor_frame, wrap="none", undo=True, font=("Consolas", 10)
-        )
-        src_yscroll = ttk.Scrollbar(
-            editor_frame, orient="vertical", command=self.source_text.yview
-        )
-        src_xscroll = ttk.Scrollbar(
-            editor_frame, orient="horizontal", command=self.source_text.xview
-        )
-        self.source_text.configure(
-            yscrollcommand=src_yscroll.set, xscrollcommand=src_xscroll.set
-        )
-
-        self.source_text.grid(row=0, column=0, sticky="nsew")
-        src_yscroll.grid(row=0, column=1, sticky="ns")
-        src_xscroll.grid(row=1, column=0, sticky="ew")
-
-        editor_frame.rowconfigure(0, weight=1)
-        editor_frame.columnconfigure(0, weight=1)
-
         ttk.Label(
             form,
-            text="Embedded files (tab per file)",
+            text="Source files (tab per file)",
             font=("Segoe UI", 10, "bold"),
-        ).grid(row=7, column=0, columnspan=2, sticky="w")
+        ).grid(row=5, column=0, columnspan=2, sticky="w")
 
         files_actions = ttk.Frame(form)
-        files_actions.grid(row=7, column=1, sticky="e")
+        files_actions.grid(row=5, column=1, sticky="e")
         self.add_file_btn = ttk.Button(
             files_actions, text="+ Add file", command=self.add_file_tab
         )
@@ -469,7 +442,7 @@ class TestCaseManagerApp:
         self.use_entry_btn.pack(side=tk.LEFT, padx=(8, 0))
 
         files_frame = ttk.Frame(form)
-        files_frame.grid(row=8, column=0, columnspan=2, sticky="nsew", pady=(4, 10))
+        files_frame.grid(row=6, column=0, columnspan=2, sticky="nsew", pady=(4, 10))
 
         self.files_notebook = ttk.Notebook(files_frame)
         self.files_notebook.grid(row=0, column=0, sticky="nsew")
@@ -478,7 +451,7 @@ class TestCaseManagerApp:
         files_frame.columnconfigure(0, weight=1)
 
         actions = ttk.Frame(form)
-        actions.grid(row=9, column=0, columnspan=2, sticky="ew")
+        actions.grid(row=7, column=0, columnspan=2, sticky="ew")
 
         self.new_btn = ttk.Button(actions, text="New", command=self.clear_form)
         self.create_btn = ttk.Button(actions, text="Create", command=self.create_case)
@@ -492,13 +465,12 @@ class TestCaseManagerApp:
 
         self.status_var = tk.StringVar(value="Ready")
         ttk.Label(form, textvariable=self.status_var, foreground="#2d6a4f").grid(
-            row=10, column=0, columnspan=2, sticky="w", pady=(10, 0)
+            row=8, column=0, columnspan=2, sticky="w", pady=(10, 0)
         )
 
         form.columnconfigure(0, weight=1)
         form.columnconfigure(1, weight=0)
-        form.rowconfigure(6, weight=2)
-        form.rowconfigure(8, weight=1)
+        form.rowconfigure(6, weight=1)
 
         self.blank_menu = tk.Menu(self.root, tearoff=False)
         self.blank_menu.add_command(
@@ -528,7 +500,6 @@ class TestCaseManagerApp:
     def _bind_events(self) -> None:
         self.tree.bind("<<TreeviewSelect>>", self.on_tree_select)
         self.tree.bind("<Button-3>", self.on_tree_right_click)
-        self.source_text.bind("<Control-Return>", self.on_source_ctrl_enter_create)
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
 
     def refresh_all(self) -> None:
@@ -620,6 +591,7 @@ class TestCaseManagerApp:
 
         if source_code:
             text.insert("1.0", source_code)
+        text.bind("<Control-Return>", self.on_source_ctrl_enter_create)
 
         self.file_tabs[tab] = {
             "path_var": path_var,
@@ -637,7 +609,7 @@ class TestCaseManagerApp:
         self.file_tabs.clear()
 
     def add_file_tab(self) -> None:
-        self._add_file_tab_internal()
+        self._add_file_tab_internal(file_path="main.tuff")
 
     def remove_selected_file_tab(self) -> None:
         selected = self.files_notebook.select()
@@ -690,23 +662,44 @@ class TestCaseManagerApp:
 
         return files
 
+    @staticmethod
+    def _derive_primary_source_from_files(
+        files: list[tuple[str, str, str, int]],
+        entry_path: str | None,
+    ) -> str:
+        if len(files) == 0:
+            return ""
+        if entry_path is not None:
+            for file_path, source_code, _role, _sort in files:
+                if file_path == entry_path:
+                    return source_code
+        return files[0][1]
+
     def _load_file_tabs_from_case(self, case_id: int) -> None:
         self._clear_file_tabs()
-        for row in self.repo.list_case_files(case_id):
+        case_files = self.repo.list_case_files(case_id)
+        for row in case_files:
             self._add_file_tab_internal(
                 file_path=str(row["file_path"]),
                 source_code=str(row["source_code"]),
                 role=str(row["role"]),
             )
+        if len(case_files) == 0:
+            case = self.repo.get_case(case_id)
+            fallback_path = "main.tuff"
+            if case is not None and case["entry_path"]:
+                fallback_path = str(case["entry_path"])
+            fallback_source = str(case["source_code"] if case is not None else "")
+            self._add_file_tab_internal(
+                file_path=fallback_path,
+                source_code=fallback_source,
+                role="entry",
+            )
 
     def _get_form_data(
         self,
-    ) -> (
-        tuple[int, str, int, bool, str, str | None, list[tuple[str, str, str, int]]]
-        | None
-    ):
+    ) -> tuple[int, str, int, bool, str, str | None, list[tuple[str, str, str, int]]] | None:
         category_name = self.category_var.get().strip()
-        source_code = self.source_text.get("1.0", tk.END).rstrip("\n")
         exit_code_raw = self.exit_code_var.get().strip()
         expects_compile_error = self.expects_compile_error_var.get()
         execution_mode = self.execution_mode_var.get().strip() or "js-runtime"
@@ -729,10 +722,10 @@ class TestCaseManagerApp:
             )
             return None
 
-        if source_code == "" and len(files) == 0:
+        if len(files) == 0:
             messagebox.showwarning(
-                "Missing source",
-                "Provide source code or embedded files for the test case.",
+                "Missing files",
+                "Add at least one source file tab for the test case.",
             )
             return None
 
@@ -758,13 +751,16 @@ class TestCaseManagerApp:
                 )
                 return None
 
+        entry_path = entry_path_raw if entry_path_raw != "" else None
+        source_code = self._derive_primary_source_from_files(files, entry_path)
+
         return (
             category_id,
             source_code,
             exit_code,
             expects_compile_error,
             execution_mode,
-            entry_path_raw if entry_path_raw != "" else None,
+            entry_path,
             files,
         )
 
@@ -780,8 +776,8 @@ class TestCaseManagerApp:
 
     def clear_form(self) -> None:
         self.selected_case_id = None
-        self.source_text.delete("1.0", tk.END)
         self._clear_file_tabs()
+        self._add_file_tab_internal(file_path="main.tuff", role="entry")
         self.exit_code_var.set("0")
         self.expects_compile_error_var.set(False)
         self.execution_mode_var.set("js-runtime")
@@ -825,8 +821,6 @@ class TestCaseManagerApp:
         self.execution_mode_var.set(case["execution_mode"])
         self.entry_path_var.set(case["entry_path"] or "")
         self.on_expected_compile_error_toggle()
-        self.source_text.delete("1.0", tk.END)
-        self.source_text.insert("1.0", case["source_code"])
         self._load_file_tabs_from_case(case_id)
         self.status_var.set(f"Loaded test case #{self.selected_case_id}")
         self._set_action_button_states()
@@ -983,7 +977,12 @@ class TestCaseManagerApp:
 
         self.pending_category_id = category_id
         self.clear_form()
-        self.source_text.focus_set()
+        selected = self.files_notebook.select()
+        if selected:
+            tab = self.root.nametowidget(selected)
+            meta = self.file_tabs.get(tab)
+            if meta is not None:
+                meta["text"].focus_set()
         self.status_var.set("Ready to create a new test case in selected category")
 
     def delete_selected_case_from_tree(self) -> None:
