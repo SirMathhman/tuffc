@@ -4,6 +4,7 @@
 
 let { get_interned_str, set_new, vec_new, map_new } = selfhost::runtime_lexer;
 let { node_kind, node_get_data1, node_get_data2, node_get_data3, node_get_data4, node_get_data5, node_get_line, node_get_col } = selfhost::parser_core;
+let { rslv_utils_find_did_you_mean, rslv_utils_validate_expect_actual_pairs, rslv_utils_scope_define, rslv_utils_scope_has, rslv_utils_is_host_builtin_name, rslv_utils_resolve_type_lifetimes } = selfhost::resolver_utils;
 
 // Current AST node being resolved — set at each resolve_expr/resolve_stmt entry.
 let rslv_current_node : I32 = 0;
@@ -19,293 +20,6 @@ let resolve_global_decl_nodes : Map = map_new();
 // Parallel list of declared global names so we can iterate for "did you mean?" suggestions.
 let resolve_global_names_list : Vec = vec_new();
 
-// Compute Levenshtein edit distance between two strings (two-row DP).
-fn levenshtein_distance(a: *Str, b: *Str) : I32 => {
-    let an = 0 + a.str_length();
-    let bn = 0 + b.str_length();
-    if (an == 0) { return bn; }
-    if (bn == 0) { return an; }
-    // Build two rows: prev[0..=bn], curr[0..=bn]
-    let prev = vec_new();
-    let curr = vec_new();
-    let j = 0;
-    while (j <= bn) {
-        prev.vec_push(j);
-        curr.vec_push(0);
-        j = j + 1;
-    }
-    let i = 1;
-    while (i <= an) {
-        curr.vec_set(0, i);
-        let j2 = 1;
-        while (j2 <= bn) {
-            let cost = 0;
-            if (a.str_char_at(i - 1) != b.str_char_at(j2 - 1)) {
-                cost = 1;
-            }
-            let del_cost = prev.vec_get(j2) + 1;
-            let ins_cost = curr.vec_get(j2 - 1) + 1;
-            let rep_cost = prev.vec_get(j2 - 1) + cost;
-            let best = del_cost;
-            if (ins_cost < best) { best = ins_cost; }
-            if (rep_cost < best) { best = rep_cost; }
-            curr.vec_set(j2, best);
-            j2 = j2 + 1;
-        }
-        // Copy curr into prev for next iteration
-        let k = 0;
-        while (k <= bn) {
-            prev.vec_set(k, curr.vec_get(k));
-            k = k + 1;
-        }
-        i = i + 1;
-    }
-    prev.vec_get(bn)
-}
-
-// Return the closest candidate within threshold distance, or "" if none.
-fn find_did_you_mean(name: *Str, candidates: Vec) : *Str => {
-    let best = "";
-    let best_dist = 9999;
-    let name_len = 0 + name.str_length();
-    let threshold = name_len / 3 + 1;
-    if (threshold > 3) { threshold = 3; }
-    let n = candidates.vec_length();
-    let ci = 0;
-    while (ci < n) {
-        let cand = candidates.vec_get(ci);
-        let dist = levenshtein_distance(name, cand);
-        if (dist <= threshold && dist < best_dist) {
-            best_dist = dist;
-            best = cand;
-        }
-        ci = ci + 1;
-    }
-    best
-}
-
-fn lifetime_scope_has(name: *Str) : Bool => {
-    let len = resolve_lifetime_scopes.vec_length();
-    let mut i : I32 = 0;
-    while (i < len) {
-        if (resolve_lifetime_scopes.vec_get(i).set_has(name)) {
-            return true;
-        }
-        i = i + 1;
-    }
-    false
-}
-
-fn resolve_type_lifetimes(t: I32) : I32 => {
-    if (t == 0) {
-        return 0;
-    }
-    let k = node_kind(t);
-    if (k == NK_POINTER_TYPE) {
-        let life_idx = node_get_data4(t);
-        if (life_idx != 0) {
-            let lname = get_interned_str(life_idx);
-            if (!lifetime_scope_has(lname)) {
-                rslv_panic_loc(
-                    "E_RESOLVE_UNDEFINED_LIFETIME",
-                    "Undefined lifetime '".str_concat(lname).str_concat("'"),
-                    "A pointer type annotation references a lifetime name that is not declared in any active lifetime block.",
-                    "Declare the lifetime in an enclosing `lifetime ... { ... }` block before using it in pointer types."
-                );
-            }
-        }
-        resolve_type_lifetimes(node_get_data2(t));
-        return 0;
-    }
-    if (k == NK_ARRAY_TYPE) {
-        resolve_type_lifetimes(node_get_data1(t));
-        return 0;
-    }
-    if (k == NK_REFINEMENT_TYPE) {
-        resolve_type_lifetimes(node_get_data1(t));
-        return 0;
-    }
-    if (k == NK_UNION_TYPE) {
-        resolve_type_lifetimes(node_get_data1(t));
-        resolve_type_lifetimes(node_get_data2(t));
-        return 0;
-    }
-    if (k == NK_TUPLE_TYPE) {
-        let members = node_get_data1(t);
-        let i = 0;
-        let len = members.vec_length();
-        while (i < len) {
-            resolve_type_lifetimes(members.vec_get(i));
-            i = i + 1;
-        }
-        return 0;
-    }
-    if (k == NK_FUNCTION_TYPE) {
-        let ps = node_get_data1(t);
-        let i = 0;
-        while (i < ps.vec_length()) {
-            resolve_type_lifetimes(ps.vec_get(i));
-            i = i + 1;
-        }
-        resolve_type_lifetimes(node_get_data2(t));
-        return 0;
-    }
-    // NK_APPLIED_TYPE: type application — arg expressions are value exprs, not types;
-    // no lifetime resolution needed here (the arg exprs are resolved later in resolve_stmt).
-    0
-}
-
-fn fn_type_sig(t: I32) : *Str => {
-    if (t == 0) {
-        return "_";
-    }
-    let k = node_kind(t);
-    if (k == NK_NAMED_TYPE) {
-        return get_interned_str(node_get_data1(t));
-    }
-    if (k == NK_POINTER_TYPE) {
-        let mutv = node_get_data1(t);
-        let inner = fn_type_sig(node_get_data2(t));
-        let life_idx = node_get_data4(t);
-        let life_prefix = "";
-        if (life_idx != 0) {
-            life_prefix = get_interned_str(life_idx).str_concat(" ");
-        }
-        if (mutv == 1) { return "*".str_concat(life_prefix).str_concat("mut ").str_concat(inner); }
-        return "*".str_concat(life_prefix).str_concat(inner);
-    }
-    if (k == NK_ARRAY_TYPE) {
-        return "Array";
-    }
-    if (k == NK_TUPLE_TYPE) {
-        return "Tuple";
-    }
-    if (k == NK_REFINEMENT_TYPE) {
-        return "Ref<".str_concat(fn_type_sig(node_get_data1(t))).str_concat(">");
-    }
-    if (k == NK_APPLIED_TYPE) {
-        return get_interned_str(node_get_data1(t)).str_concat("(...)");
-    }
-    if (k == NK_UNION_TYPE) {
-        return fn_type_sig(node_get_data1(t)).str_concat("|").str_concat(fn_type_sig(node_get_data2(t)));
-    }
-    if (k == NK_FUNCTION_TYPE) {
-        let parts = vec_new();
-        let ps = node_get_data1(t);
-        let i = 0;
-        while (i < ps.vec_length()) {
-            parts.vec_push(fn_type_sig(ps.vec_get(i)));
-            i = i + 1;
-        }
-        return "(".str_concat(parts.vec_join(",")).str_concat(")=>").str_concat(fn_type_sig(node_get_data2(t)));
-    }
-    "Unknown"
-}
-
-fn fn_decl_sig(n: I32) : *Str => {
-    let gens = node_get_data2(n);
-    let params = node_get_data3(n);
-    let ret = node_get_data4(n);
-    let pparts = vec_new();
-    let i = 0;
-    while (i < params.vec_length()) {
-        let p = params.vec_get(i);
-        let pname = get_interned_str(p.vec_get(0));
-        let ptype = fn_type_sig(p.vec_get(1));
-        pparts.vec_push(pname.str_concat(":").str_concat(ptype));
-        i = i + 1;
-    }
-    let gcount_len: I32 = 0;  // TODO: Fix USize to I32 conversion for gens.vec_length()
-    let gcount = int_to_string(gcount_len);
-    return "g=".str_concat(gcount).str_concat(";p=").str_concat(pparts.vec_join(",")).str_concat(";r=").str_concat(fn_type_sig(ret));
-}
-
-fn validate_expect_actual_pairs(body: Vec) : I32 => {
-    let i = 0;
-    let len = body.vec_length();
-    while (i < len) {
-        let stmt = body.vec_get(i);
-        let kind = node_kind(stmt);
-        if (kind == NK_EXPECT_FN_DECL || kind == NK_ACTUAL_FN_DECL) {
-            let name = get_interned_str(node_get_data1(stmt));
-            let expect_count = 0;
-            let actual_count = 0;
-            let expect_node = 0;
-            let actual_node = 0;
-            let j = 0;
-            while (j < len) {
-                let cand = body.vec_get(j);
-                let ck = node_kind(cand);
-                if ((ck == NK_EXPECT_FN_DECL || ck == NK_ACTUAL_FN_DECL) && get_interned_str(node_get_data1(cand)).str_eq(name)) {
-                    if (ck == NK_EXPECT_FN_DECL) {
-                        expect_count = expect_count + 1;
-                        expect_node = cand;
-                    } else {
-                        actual_count = actual_count + 1;
-                        actual_node = cand;
-                    }
-                }
-                j = j + 1;
-            }
-            if (expect_count != 1 || actual_count != 1) {
-                rslv_panic_loc(
-                    "E_EXPECT_ACTUAL_PAIRING",
-                    "expect/actual pairing requires exactly one expect and one actual for '".str_concat(name).str_concat("'"),
-                    "Platform declarations require exactly one expect and one actual declaration for each symbol.",
-                    "Declare exactly one 'expect fn' and one matching 'actual fn' for each platform symbol."
-                );
-            }
-            if (!fn_decl_sig(expect_node).str_eq(fn_decl_sig(actual_node))) {
-                rslv_panic_loc(
-                    "E_EXPECT_ACTUAL_SIGNATURE_MISMATCH",
-                    "expect/actual signatures do not match for '".str_concat(name).str_concat("'"),
-                    "An expect declaration and its actual implementation have different signatures.",
-                    "Make generic params, parameter list, and return type identical between expect and actual declarations."
-                );
-            }
-        }
-        i = i + 1;
-    }
-    0
-}
-
-fn scope_define(scopes: Vec, depth: I32, name: *Str) : I32 => {
-    let scope = scopes.vec_get(depth);
-    if (scope.set_has(name)) {
-        rslv_panic_loc(
-            "E_RESOLVE_SHADOWING",
-            "Variable shadowing/redeclaration is not allowed: ".str_concat(name),
-            "A name was declared multiple times in the same lexical scope.",
-            "Rename one of the bindings or move it to a different scope."
-        );
-    }
-    scope.set_add(name);
-    0
-}
-
-fn scope_has(scopes: Vec, depth: I32, name: *Str) : Bool => {
-    let i = depth;
-    while (i >= 0) {
-        if (scopes.vec_get(i).set_has(name)) {
-            return true;
-        }
-        i = i - 1;
-    }
-    false
-}
-
-fn is_host_builtin_name(name: *Str) : Bool => {
-    name.str_eq("sizeOf") ||
-    name.str_eq("malloc") ||
-    name.str_eq("realloc") ||
-    name.str_eq("free") ||
-    name.str_eq("memcpy") ||
-    name.str_eq("memset") ||
-    name.str_eq("drop") ||
-    name.str_eq("panic") ||
-    name.str_eq("this")
-}
-
 fn resolve_expr(n: I32, globals: *mut Set, scopes: Vec, depth: I32) : I32 => {
     if (n == 0) {
         return 0;
@@ -316,8 +30,8 @@ fn resolve_expr(n: I32, globals: *mut Set, scopes: Vec, depth: I32) : I32 => {
 
     if (kind == NK_IDENTIFIER) {
         let name = get_interned_str(node_get_data1(n));
-        if (!scope_has(scopes, depth, name) && !globals.set_has(name) && !is_host_builtin_name(name)) {
-            let suggestion = find_did_you_mean(name, resolve_global_names_list);
+        if (!rslv_utils_scope_has(scopes, depth, name) && !globals.set_has(name) && !rslv_utils_is_host_builtin_name(name)) {
+            let suggestion = rslv_utils_find_did_you_mean(name, resolve_global_names_list);
             let fix_msg = "Declare the identifier before use or import it from the correct module.";
             if (!suggestion.str_eq("")) {
                 fix_msg = "Did you mean '".str_concat(suggestion).str_concat("'? Declare or import it from the correct module.");
@@ -485,13 +199,13 @@ fn resolve_expr(n: I32, globals: *mut Set, scopes: Vec, depth: I32) : I32 => {
                 let j = 0;
                 let fLen = fields.vec_length();
                 while (j < fLen) {
-                    scope_define(scopes, next_depth, get_interned_str(fields.vec_get(j)));
+                    rslv_utils_scope_define(scopes, next_depth, get_interned_str(fields.vec_get(j)), pat);
                     j = j + 1;
                 }
             } else if (node_kind(pat) == NK_NAME_PAT) {
                 let pat_name = get_interned_str(node_get_data1(pat));
                 if (!globals.set_has(pat_name)) {
-                    scope_define(scopes, next_depth, pat_name);
+                    rslv_utils_scope_define(scopes, next_depth, pat_name, pat);
                 }
             }
 
@@ -515,7 +229,7 @@ fn resolve_expr(n: I32, globals: *mut Set, scopes: Vec, depth: I32) : I32 => {
         let len = params.vec_length();
         while (i < len) {
             let param = params.vec_get(i);
-            scope_define(scopes, next_depth, get_interned_str(param.vec_get(0)));
+            rslv_utils_scope_define(scopes, next_depth, get_interned_str(param.vec_get(0)), n);
             i = i + 1;
         }
         resolve_stmt(node_get_data2(n), globals, scopes, next_depth);
@@ -528,14 +242,14 @@ fn resolve_expr(n: I32, globals: *mut Set, scopes: Vec, depth: I32) : I32 => {
         scopes.vec_push(set_new());
         let fname_idx = node_get_data1(n);
         if (fname_idx != 0) {
-            scope_define(scopes, next_depth, get_interned_str(fname_idx));
+            rslv_utils_scope_define(scopes, next_depth, get_interned_str(fname_idx), n);
         }
         let params = node_get_data3(n);
         let i = 0;
         let len = params.vec_length();
         while (i < len) {
             let param = params.vec_get(i);
-            scope_define(scopes, next_depth, get_interned_str(param.vec_get(0)));
+            rslv_utils_scope_define(scopes, next_depth, get_interned_str(param.vec_get(0)), n);
             i = i + 1;
         }
         resolve_stmt(node_get_data5(n), globals, scopes, next_depth);
@@ -566,7 +280,7 @@ fn resolve_stmt(n: I32, globals: *mut Set, scopes: Vec, depth: I32) : I32 => {
             let stmt = stmts.vec_get(i);
             let stmt_kind = node_kind(stmt);
             if (stmt_kind == NK_FN_DECL || stmt_kind == NK_CLASS_FN_DECL || stmt_kind == NK_ACTUAL_FN_DECL) {
-                scope_define(scopes, next_depth, get_interned_str(node_get_data1(stmt)));
+                rslv_utils_scope_define(scopes, next_depth, get_interned_str(node_get_data1(stmt)), stmt);
             }
             i = i + 1;
         }
@@ -596,11 +310,11 @@ fn resolve_stmt(n: I32, globals: *mut Set, scopes: Vec, depth: I32) : I32 => {
         let len = params.vec_length();
         while (i < len) {
             let param = params.vec_get(i);
-            scope_define(scopes, next_depth, get_interned_str(param.vec_get(0)));
-            resolve_type_lifetimes(param.vec_get(1));
+            rslv_utils_scope_define(scopes, next_depth, get_interned_str(param.vec_get(0)), n);
+            rslv_utils_resolve_type_lifetimes(param.vec_get(1), resolve_lifetime_scopes, n);
             i = i + 1;
         }
-        resolve_type_lifetimes(node_get_data4(n));
+        rslv_utils_resolve_type_lifetimes(node_get_data4(n), resolve_lifetime_scopes, n);
         resolve_stmt(node_get_data5(n), globals, scopes, next_depth);
         scopes.vec_pop();
         return 0;
@@ -608,10 +322,10 @@ fn resolve_stmt(n: I32, globals: *mut Set, scopes: Vec, depth: I32) : I32 => {
 
     if (kind == NK_LET_DECL) {
         if (node_get_data2(n) != 0) {
-            resolve_type_lifetimes(node_get_data2(n));
+            rslv_utils_resolve_type_lifetimes(node_get_data2(n), resolve_lifetime_scopes, n);
         }
         resolve_expr(node_get_data3(n), globals, scopes, depth);
-        scope_define(scopes, depth, get_interned_str(node_get_data1(n)));
+        rslv_utils_scope_define(scopes, depth, get_interned_str(node_get_data1(n)), n);
         return 0;
     }
 
@@ -620,7 +334,7 @@ fn resolve_stmt(n: I32, globals: *mut Set, scopes: Vec, depth: I32) : I32 => {
         let i = 0;
         let len = names.vec_length();
         while (i < len) {
-            scope_define(scopes, depth, get_interned_str(names.vec_get(i)));
+            rslv_utils_scope_define(scopes, depth, get_interned_str(names.vec_get(i)), n);
             i = i + 1;
         }
         return 0;
@@ -658,7 +372,7 @@ fn resolve_stmt(n: I32, globals: *mut Set, scopes: Vec, depth: I32) : I32 => {
     if (kind == NK_FOR_STMT) {
         let next_depth = depth + 1;
         scopes.vec_push(set_new());
-        scope_define(scopes, next_depth, get_interned_str(node_get_data1(n)));
+        rslv_utils_scope_define(scopes, next_depth, get_interned_str(node_get_data1(n)), n);
         resolve_expr(node_get_data2(n), globals, scopes, next_depth);
         resolve_expr(node_get_data3(n), globals, scopes, next_depth);
         resolve_stmt(node_get_data4(n), globals, scopes, next_depth);
@@ -696,7 +410,7 @@ fn resolve_stmt(n: I32, globals: *mut Set, scopes: Vec, depth: I32) : I32 => {
                 );
             }
             lifetime_scope.set_add(lname);
-            scope_define(scopes, next_depth, lname);
+            rslv_utils_scope_define(scopes, next_depth, lname, n);
             i = i + 1;
         }
 
@@ -742,7 +456,7 @@ out fn resolve_names(program: I32) : I32 => {
     let globals = set_new();
     let body = node_get_data1(program);
 
-    validate_expect_actual_pairs(body);
+    rslv_utils_validate_expect_actual_pairs(body);
 
     // Predeclare global symbols.
     let i = 0;
