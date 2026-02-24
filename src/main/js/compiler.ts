@@ -326,7 +326,6 @@ function handleSelfhostLintIssues(
 
 function getSelfhostLintConfig(options) {
   return {
-    strictSafety: 1,
     lintEnabled: options.lint?.enabled ? 1 : 0,
     maxEffectiveLines: options.lint?.maxEffectiveLines ?? 500,
     lintMode: options.lint?.mode ?? "error",
@@ -366,7 +365,6 @@ function initializeSelfhostCompileContext(
   options,
 ): CompilerResult<{
   selfhost: unknown;
-  strictSafety: number;
   lintEnabled: number;
   maxEffectiveLines: number;
   lintMode: string;
@@ -375,11 +373,10 @@ function initializeSelfhostCompileContext(
     bootstrapSelfhostCompiler(options),
   );
   if (!selfhostResult.ok) return selfhostResult;
-  const { strictSafety, lintEnabled, maxEffectiveLines, lintMode } =
+  const { lintEnabled, maxEffectiveLines, lintMode } =
     getSelfhostLintConfig(options);
   return ok({
     selfhost: selfhostResult.value,
-    strictSafety,
     lintEnabled,
     maxEffectiveLines,
     lintMode,
@@ -399,7 +396,6 @@ type SelfhostCompileContext = {
   run: ReturnType<typeof createTracer>;
   borrowEnabled: boolean;
   selfhost: Record<string, unknown>;
-  strictSafety: number;
   lintEnabled: number;
   maxEffectiveLines: number;
   lintMode: unknown;
@@ -419,14 +415,13 @@ function initializeCompileContext(
 
   const selfhostContextResult = initializeSelfhostCompileContext(run, options);
   if (!selfhostContextResult.ok) return selfhostContextResult;
-  const { selfhost, strictSafety, lintEnabled, maxEffectiveLines, lintMode } =
+  const { selfhost, lintEnabled, maxEffectiveLines, lintMode } =
     selfhostContextResult.value;
   return ok({
     target,
     run,
     borrowEnabled,
     selfhost,
-    strictSafety,
     lintEnabled,
     maxEffectiveLines,
     lintMode,
@@ -454,7 +449,6 @@ export function compileSource(
       run,
       borrowEnabled,
       selfhost,
-      strictSafety,
       lintEnabled,
       maxEffectiveLines,
       lintMode,
@@ -466,7 +460,6 @@ export function compileSource(
           run,
           selfhost,
           source,
-          strictSafety,
           lintEnabled,
           maxEffectiveLines,
           borrowEnabled ? 1 : 0,
@@ -491,7 +484,6 @@ function runSelfhostCompileSource(
   run: (label: string, fn: () => string) => string,
   selfhost: Record<string, unknown>,
   source: string,
-  strictSafety: unknown,
   lintEnabled: unknown,
   maxEffectiveLines: unknown,
   borrowEnabled: unknown,
@@ -502,20 +494,12 @@ function runSelfhostCompileSource(
       ? (
           selfhost.compile_source_with_options as (
             src: string,
-            ss: unknown,
             le: unknown,
             mel: unknown,
             be: unknown,
             t: unknown,
           ) => string
-        )(
-          source,
-          strictSafety,
-          lintEnabled,
-          maxEffectiveLines,
-          borrowEnabled,
-          target,
-        )
+        )(source, lintEnabled, maxEffectiveLines, borrowEnabled, target)
       : (selfhost.compile_source as (src: string) => string)(source),
   );
 }
@@ -586,7 +570,6 @@ function compileFileInternal(
       run,
       borrowEnabled,
       selfhost,
-      strictSafety,
       lintEnabled,
       maxEffectiveLines,
       lintMode,
@@ -612,7 +595,6 @@ function compileFileInternal(
             selfhost.compile_file_with_options(
               normalizedInput,
               normalizedOutput,
-              strictSafety,
               lintEnabled,
               maxEffectiveLines,
               borrowEnabled ? 1 : 0,
@@ -628,7 +610,6 @@ function compileFileInternal(
           run,
           selfhost,
           source,
-          strictSafety,
           lintEnabled,
           maxEffectiveLines,
           borrowEnabled ? 1 : 0,

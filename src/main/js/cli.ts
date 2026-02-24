@@ -667,7 +667,6 @@ function main(argv: string[]): void {
     modules: {
       moduleBaseDir: moduleBaseDir ?? path.dirname(path.resolve(input)),
     },
-    typecheck: { strictSafety: true },
     lint: {
       enabled: lint,
       fix: lintFix,

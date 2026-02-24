@@ -74,11 +74,10 @@ fn emit_target_output(typed: I32, source: *Str, target: *Str) : *Str => {
     ""
 }
 
-out fn compile_source_with_options(source: *Str, strict_safety: I32, lint_enabled: I32, max_effective_lines: I32, borrow_enabled: I32, target: *Str) : *Str => {
+out fn compile_source_with_options(source: *Str, lint_enabled: I32, max_effective_lines: I32, borrow_enabled: I32, target: *Str) : *Str => {
     let t_start = perf_now();
     let effective_source = with_c_runtime_prelude(source, target);
     let max_lines = sanitize_max_effective_lines(max_effective_lines);
-    let strict = normalize_flag(strict_safety);
     let lint = normalize_flag(lint_enabled);
     let borrow = normalize_flag(borrow_enabled);
     lint_reset();
@@ -106,7 +105,7 @@ out fn compile_source_with_options(source: *Str, strict_safety: I32, lint_enable
     profile_mark("resolve", t4_resolve - t3_resolve);
     
     let t4_typecheck = perf_now();
-    let typed = typecheck_program_with_options(resolved, strict);
+    let typed = typecheck_program_with_options(resolved);
     let t5_typecheck = perf_now();
     profile_mark("typecheck", t5_typecheck - t4_typecheck);
     
@@ -144,7 +143,7 @@ out fn cpd_tok_col(idx: I32) : I32 => tok_col(idx);
 out fn cpd_get_interned_str(idx: I32) : *Str => get_interned_str(idx);
 
 // Main compiler pipeline
-fn compile_source(source: *Str) : *Str => compile_source_with_options(source, 1, 0, 500, 1, "js");
+fn compile_source(source: *Str) : *Str => compile_source_with_options(source, 0, 500, 1, "js");
 
 // Main compiler CLI entry point
 fn main() : I32 => {
@@ -170,7 +169,6 @@ fn main() : I32 => {
     let output_file = "";
     let target = "js";
     let use_modules = 0;
-    let strict_safety = 0;
     let lint_enabled = 0;
     let borrow_enabled = 1;
     let profile_enabled = 0;
@@ -195,8 +193,6 @@ fn main() : I32 => {
                 print_error("Missing value for --target");
                 had_error = 1;
             }
-        } else if (arg.str_eq("--stage2")) {
-            strict_safety = 1;
         } else if (arg.str_eq("--lint")) {
             lint_enabled = 1;
         } else if (arg.str_eq("--profile")) {
@@ -226,7 +222,7 @@ fn main() : I32 => {
             print_error("--modules requires -o <output_file>");
             return 1;
         }
-        let result_code = compile_file_with_options(input_file, output_file, strict_safety, lint_enabled, 500, borrow_enabled, target);
+        let result_code = compile_file_with_options(input_file, output_file, lint_enabled, 500, borrow_enabled, target);
         if (profile_enabled == 1) {
             print_error("[profile] ".str_concat(profile_take_json()));
         }
@@ -234,7 +230,7 @@ fn main() : I32 => {
     }
 
     let source = read_file(input_file);
-    let result = compile_source_with_options(source, strict_safety, lint_enabled, 500, borrow_enabled, target);
+    let result = compile_source_with_options(source, lint_enabled, 500, borrow_enabled, target);
 
     if (output_file.str_eq("")) {
         print(result);

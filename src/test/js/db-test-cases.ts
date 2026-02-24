@@ -17,7 +17,6 @@ type DbCase = {
   source_code: string;
   exit_code: number;
   expects_compile_error: number;
-  strict_safety: number;
 };
 
 const root = getRepoRootFromImportMeta(import.meta.url);
@@ -49,7 +48,7 @@ function runPythonSqliteQuery(dbFilePath: string): DbCase[] {
     "con = sqlite3.connect(db)",
     "cur = con.cursor()",
     "rows = cur.execute('''",
-    "SELECT tc.id, c.name, tc.source_code, tc.exit_code, tc.expects_compile_error, COALESCE(tc.strict_safety, 0)",
+    "SELECT tc.id, c.name, tc.source_code, tc.exit_code, tc.expects_compile_error",
     "FROM test_cases tc",
     "LEFT JOIN categories c ON c.id = tc.category_id",
     "ORDER BY tc.id",
@@ -61,7 +60,6 @@ function runPythonSqliteQuery(dbFilePath: string): DbCase[] {
     "    'source_code': '' if r[2] is None else str(r[2]),",
     "    'exit_code': int(r[3]),",
     "    'expects_compile_error': int(r[4]),",
-    "    'strict_safety': int(r[5]),",
     "  }",
     "  for r in rows",
     "]",
@@ -132,14 +130,10 @@ function compileViaNativeCli(
   const outputPath = path.join(nativeTmpDir, `${base}.js`);
   fs.writeFileSync(inputPath, source, "utf8");
 
-  const run = spawnSync(
-    nodeExec,
-    [nativeCli, inputPath, "--stage2", "-o", outputPath],
-    {
-      cwd: root,
-      encoding: "utf8",
-    },
-  );
+  const run = spawnSync(nodeExec, [nativeCli, inputPath, "-o", outputPath], {
+    cwd: root,
+    encoding: "utf8",
+  });
 
   if (run.status !== 0 || !fs.existsSync(outputPath)) {
     return {
@@ -154,7 +148,6 @@ function compileViaNativeCli(
 function compileWithBackend(
   source: string,
   label: string,
-  strictSafety: boolean = false,
 ): { ok: true; output: string } | { ok: false; errorMessage: string } {
   if (backend === "native-exe") {
     return compileViaNativeCli(source, label);
@@ -163,7 +156,6 @@ function compileWithBackend(
   const result = compileSourceResult(source, `<${label}>`, {
     backend,
     target: "js",
-    strictSafety: strictSafety ? 1 : 0,
   });
   if (!result.ok) {
     return {
@@ -196,11 +188,7 @@ for (const testCase of dbCases) {
   const source = normalizeSource(testCase.source_code ?? "");
   const expectsCompileError = toBool(testCase.expects_compile_error);
 
-  const compileResult = compileWithBackend(
-    source,
-    label,
-    toBool(testCase.strict_safety),
-  );
+  const compileResult = compileWithBackend(source, label);
 
   const skipKnownGap = (reason: string): boolean => {
     if (!shouldSkipKnownGap(testCase)) return false;

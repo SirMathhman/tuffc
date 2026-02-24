@@ -145,8 +145,8 @@ const TUFF_SAFETY_PROPERTIES: PropertyRecord[] = [
 
 const CERTIFIES_STATEMENT =
   "This certificate records that the Tuff compiler successfully parsed, " +
-  "type-checked, and borrow-checked the listed source file(s) under the " +
-  "strictSafety=true compilation mode. If compilationOutcome.success is true, " +
+  "type-checked, and borrow-checked the listed source file(s). " +
+  "Safety checks are always applied. If compilationOutcome.success is true, " +
   "the source satisfies all eight safety properties listed in this document as " +
   "defined by the Tuff language specification §9.2.";
 

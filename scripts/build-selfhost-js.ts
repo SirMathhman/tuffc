@@ -31,7 +31,13 @@ const NATIVE_EXE = path.join(
 const SELFHOST_TUFF = path.join(root, "src", "main", "tuff", "selfhost.tuff");
 const OUT_DIR = path.join(root, "tests", "out", "build");
 const OUT_JS = path.join(OUT_DIR, "selfhost.js");
-const GENERATED_JS = path.join(root, "src", "main", "tuff", "selfhost.generated.js");
+const GENERATED_JS = path.join(
+  root,
+  "src",
+  "main",
+  "tuff",
+  "selfhost.generated.js",
+);
 const SUBSTRATE_PATH = path.join(
   root,
   "tests",
@@ -203,7 +209,6 @@ if (result.status !== 0) {
       | ((
           inputPath: string,
           outputPath: string,
-          strictSafety: number,
           lintEnabled: number,
           maxEffectiveLines: number,
           borrowEnabled: number,
@@ -220,12 +225,13 @@ if (result.status !== 0) {
       path.resolve(root, relInput),
       path.resolve(root, relOutput),
       0,
-      0,
       500,
       1,
       "js",
     );
-    console.log(`[build:selfhost-js] fallback compile result: ${String(fallbackResult)}`);
+    console.log(
+      `[build:selfhost-js] fallback compile result: ${String(fallbackResult)}`,
+    );
   } catch (fallbackError) {
     console.error(
       `[build:selfhost-js] fallback FAILED: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`,

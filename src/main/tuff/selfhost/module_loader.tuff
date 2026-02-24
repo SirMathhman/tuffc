@@ -532,12 +532,11 @@ fn gather_module_sources(filePath: *Str, moduleBasePath: *Str, seen: *mut Set, v
 }
 
 out fn compile_file(inputPath: *Str, outputPath: *Str) : I32 => {
-    compile_file_with_options(inputPath, outputPath, 1, 0, 500, 1, "js")
+    compile_file_with_options(inputPath, outputPath, 0, 500, 1, "js")
 }
 
-out fn compile_file_with_options(inputPath: *Str, outputPath: *Str, strict_safety: I32, lint_enabled: I32, max_effective_lines: I32, borrow_enabled: I32, target: *Str) : I32 => {
+out fn compile_file_with_options(inputPath: *Str, outputPath: *Str, lint_enabled: I32, max_effective_lines: I32, borrow_enabled: I32, target: *Str) : I32 => {
     let max_lines = module_loader_sanitize_max_effective_lines(max_effective_lines);
-    let strict = module_loader_normalize_flag(strict_safety);
     let lint = module_loader_normalize_flag(lint_enabled);
     let borrow = module_loader_normalize_flag(borrow_enabled);
     inputPath = module_normalize_path(inputPath);
@@ -561,7 +560,7 @@ out fn compile_file_with_options(inputPath: *Str, outputPath: *Str, strict_safet
     program = strip_import_decls(program);
     let desugared = desugar(program);
     let resolved = resolve_names(desugared);
-    let typed = typecheck_program_with_options(resolved, strict);
+    let typed = typecheck_program_with_options(resolved);
     if (borrow == 1) {
         borrowcheck_program(typed);
     }

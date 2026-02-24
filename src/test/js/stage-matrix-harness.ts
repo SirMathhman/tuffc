@@ -61,21 +61,13 @@ export function buildStageChain(root, outDir) {
   const stage3Path = path.join(outDir, "stage3.js");
   const tStage3EmitStart = nowMs();
   if (typeof stage2.compile_file_with_options === "function") {
-    stage2.compile_file_with_options(
-      selfhostPath,
-      stage3Path,
-      0,
-      0,
-      500,
-      1,
-      "js",
-    );
+    stage2.compile_file_with_options(selfhostPath, stage3Path, 0, 500, 1, "js");
   } else if (typeof stage2.compile_file === "function") {
     stage2.compile_file(selfhostPath, stage3Path);
   } else {
     const stage3JsFromSource =
       typeof stage2.compile_source_with_options === "function"
-        ? stage2.compile_source_with_options(selfhostSource, 0, 0, 500, 1, "js")
+        ? stage2.compile_source_with_options(selfhostSource, 0, 500, 1, "js")
         : stage2.compile_source(selfhostSource);
     fs.writeFileSync(stage3Path, stage3JsFromSource, "utf8");
   }
@@ -132,7 +124,6 @@ export function buildStageById(chain) {
       allowNegativeSkip: false,
       compileSource(source, _filePath, options = {}) {
         try {
-          const strictSafety = options.typecheck?.strictSafety ? 1 : 0;
           const lintEnabled = options.lint?.enabled ? 1 : 0;
           const maxEffectiveLines = options.lint?.maxEffectiveLines ?? 500;
           const borrowEnabled = options.borrowcheck?.enabled === false ? 0 : 1;
@@ -141,7 +132,6 @@ export function buildStageById(chain) {
             typeof stageCompiler.compile_source_with_options === "function"
               ? stageCompiler.compile_source_with_options(
                   source,
-                  strictSafety,
                   lintEnabled,
                   maxEffectiveLines,
                   borrowEnabled,

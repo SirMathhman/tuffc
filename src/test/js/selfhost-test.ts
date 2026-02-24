@@ -111,7 +111,6 @@ try {
     selfhostPath,
     selfhostBPath,
     0,
-    0,
     500,
     1,
     "js",
@@ -132,7 +131,6 @@ try {
   selfhostB_compiler.compile_file_with_options(
     selfhostPath,
     selfhostCPath,
-    0,
     0,
     500,
     1,
