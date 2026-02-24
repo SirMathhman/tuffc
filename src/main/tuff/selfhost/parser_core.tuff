@@ -457,6 +457,27 @@ out fn p_parse_type_primary() : I32 => {
         let type_node = node_new(NK_NAMED_TYPE);
         node_set_data1(type_node, name);
         node_set_data2(type_node, generics);
+
+        // Type application: TypeName(expr, ...) — dep-type-alias instantiation.
+        // Only triggered in pure type-parse position (not inside refinement expressions,
+        // where `str_length(this)` appears as a call within a constraint).
+        if (p_at(TK_SYMBOL, "(") && generics.vec_length() == 0) {
+            p_eat();
+            let args = vec_new();
+            if (!p_at(TK_SYMBOL, ")")) {
+                args.vec_push(p_parse_expression(0));
+                while (p_at(TK_SYMBOL, ",")) {
+                    p_eat();
+                    args.vec_push(p_parse_expression(0));
+                }
+            }
+            p_expect(TK_SYMBOL, ")", "Expected ')' after type-application arguments");
+            let applied = node_new(NK_APPLIED_TYPE);
+            node_set_data1(applied, name);
+            node_set_data2(applied, args);
+            return applied;
+        }
+
         return type_node;
 }
 
