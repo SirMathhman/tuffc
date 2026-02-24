@@ -761,10 +761,16 @@ fn p_parse_extern_decl() : I32 => {
         p_eat();
         let name = p_parse_identifier();
         let generics = p_parse_decl_generics("Expected '>' after extern type generics");
+        let destructor_name = 0;
+        if (p_at(TK_KEYWORD, "then")) {
+            p_eat();
+            destructor_name = p_parse_identifier();
+        }
         p_expect(TK_SYMBOL, ";", "Expected ';' after extern type");
         let node = node_new(NK_EXTERN_TYPE_DECL);
         node_set_data1(node, name);
         node_set_data2(node, generics);
+        node_set_data5(node, destructor_name);
         return node;
     }
     panic("Expected fn, let, or type after extern")
