@@ -10,7 +10,7 @@ Fully self-hosted Tuff compiler. The canonical source is `src/main/tuff/selfhost
 | --------------------------------------- | ----------- | ------------------------------------------------------------------------------- |
 | Stage 0 (JS bootstrap)                  | ✅ Removed  | Fully replaced by self-hosted native compiler                                   |
 | Stage 1 (Tuff-lite bootstrap)           | ✅ Complete | Bootstrap equivalence passes (`stage1:bootstrap`)                               |
-| Stage 2 (Full Tuff)                      | ✅ Complete | Refinement types, ownership, proof checks — always active                       |
+| Stage 2 (Full Tuff)                     | ✅ Complete | Refinement types, ownership, proof checks — always active                       |
 | Stage 3 (Selfhost from `selfhost.tuff`) | ✅ Complete | Triple-bootstrap equivalence verified                                           |
 | C backend                               | 🔄 Active   | M2 capability-group alignment in progress; see `docs/runtime-migration-plan.md` |
 | Web bundle                              | ✅ Complete | `tuff-compiler.esm.js` / `.min.js` for browser use                              |
