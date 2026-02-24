@@ -798,6 +798,47 @@ fn typecheck_expr(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types:
                     j = j + 1;
                 }
             }
+
+            // Call-bound constraint verification (strict_safety only).
+            // For each parameter with a call-bound constraint (e.g. index: USize < str_length(this)),
+            // verify the corresponding argument has a proven bound matching the constraint via tc_call_bounds.
+            if (strict_safety == 1 && fn_param_call_bounds.map_has(fname)) {
+                let call_bounds_vec = fn_param_call_bounds.map_get(fname);
+                let cj = 0;
+                while (cj < call_bounds_vec.vec_length() && cj < arg_count) {
+                    let cb = call_bounds_vec.vec_get(cj);
+                    if (!cb.str_eq("")) {
+                        // cb = "fnName:refParamIdx"
+                        let cb_sep = cb.str_index_of(":");
+                        let cb_fn = cb.str_slice(0, cb_sep);
+                        let cb_ref_idx = parse_int(cb.str_slice(cb_sep + 1, cb.str_length()));
+                        let constrained_arg = args.vec_get(cj);
+                        if (node_kind(constrained_arg) == NK_IDENTIFIER && cb_ref_idx >= 0 && cb_ref_idx < arg_count) {
+                            let constrained_name = get_interned_str(node_get_data1(constrained_arg));
+                            let ref_arg = args.vec_get(cb_ref_idx);
+                            if (node_kind(ref_arg) == NK_IDENTIFIER) {
+                                let ref_arg_name = get_interned_str(node_get_data1(ref_arg));
+                                let expected_bound = cb_fn.str_concat(":").str_concat(ref_arg_name);
+                                let proven = tc_call_bounds.map_has(constrained_name) && tc_call_bounds.map_get(constrained_name).str_eq(expected_bound);
+                                if (!proven) {
+                                    let msg = "Call to '".str_concat(fname)
+                                        .str_concat("' argument ").str_concat(int_to_string(cj + 1))
+                                        .str_concat(" ('").str_concat(constrained_name).str_concat("')")
+                                        .str_concat(" must be proven < ").str_concat(cb_fn)
+                                        .str_concat("(").str_concat(ref_arg_name).str_concat(")");
+                                    tc_panic_loc(
+                                        "E_SAFETY_STR_BOUNDS_UNPROVEN",
+                                        msg,
+                                        "The argument does not have a proven upper bound matching the parameter constraint.",
+                                        "Guard the call with 'if (".str_concat(constrained_name).str_concat(" < ").str_concat(cb_fn).str_concat("(").str_concat(ref_arg_name).str_concat("))' before calling ").str_concat(fname).str_concat(".")
+                                    );
+                                }
+                            }
+                        }
+                    }
+                    cj = cj + 1;
+                }
+            }
         }
 
         typecheck_expr(callee, fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety);
