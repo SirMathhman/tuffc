@@ -435,7 +435,7 @@ out fn p_parse_type_primary() : I32 => {
             let k2 = tok_kind(p_peek(2));
             if (k1 == TK_IDENTIFIER && k2 == TK_SYMBOL) {
                 let s2 = get_intern(tok_value(p_peek(2)));
-                if (s2.str_eq(".")) {
+                if (s2.str_eq(".") || s2.str_eq("(")) {
                     would_be_member_refine = true;
                 }
             }

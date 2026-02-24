@@ -15,7 +15,7 @@ extern let { get_argc, get_argv } = globalThis;
 extern let { perf_now, profile_mark, profile_take_json } = globalThis;
 
 extern fn str_length(this: *Str) : USize;
-extern fn str_char_at(this: *Str, index: USize) : Char;
+extern fn str_char_at(this: *Str, index: USize < str_length(this)) : Char;
 
 extern fn str_slice(this: *Str, start: USize, end: USize) : *Str;
 

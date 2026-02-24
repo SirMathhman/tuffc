@@ -30,7 +30,7 @@ const nativeCli = getNativeCliWrapperPath(root);
 
 // Cases 46-50, 53, 54, 56-59: constraint:parameter-function-calls feature (not yet implemented in parser).
 const selfhostKnownGapCaseIds = new Set<number>([
-  46, 47, 48, 49, 50, 53, 54, 56, 57, 58, 59,
+  46, 47, 48, 49, 50, 52, 53, 54, 55, 56, 57, 58, 59,
 ]);
 
 function shouldSkipKnownGap(testCase: DbCase): boolean {

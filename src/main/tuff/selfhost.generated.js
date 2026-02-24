@@ -1376,7 +1376,7 @@ function p_parse_type_primary() {
   let k2 = tok_kind(p_peek(2)); if (typeof __tuff_this !== 'undefined') __tuff_this.k2 = k2;
   if (((k1 === TK_IDENTIFIER) && (k2 === TK_SYMBOL))) {
   let s2 = get_intern(tok_value(p_peek(2))); if (typeof __tuff_this !== 'undefined') __tuff_this.s2 = s2;
-  if ((() => { const __recv = s2; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("."); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, ".") : str_eq(__recv, "."); })()) {
+  if (((() => { const __recv = s2; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("."); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, ".") : str_eq(__recv, "."); })() || (() => { const __recv = s2; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("("); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "(") : str_eq(__recv, "("); })())) {
   would_be_member_refine = true; if (typeof __tuff_this !== 'undefined') __tuff_this.would_be_member_refine = would_be_member_refine;
 }
 }
