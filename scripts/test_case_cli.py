@@ -119,8 +119,53 @@ def cmd_show(repo: TestCaseRepository, args) -> None:
     print(f"category:              {case['category_name']}")
     print(f"exit_code:             {case['exit_code']}")
     print(f"expects_compile_error: {case['expects_compile_error']}")
+        print(f"execution_mode:        {case['execution_mode']}")
+        print(f"backend:               {case['backend']}")
+        print(f"target:                {case['target']}")
+        print(f"entry_path:            {case['entry_path']}")
+        print(f"expected_diag_code:    {case['expected_diagnostic_code']}")
+        print(f"expected_runtime_json: {case['expected_runtime_json']}")
+        print(f"expected_snapshot:     {('<set>' if case['expected_snapshot'] else '')}")
+        print(f"skip_reason:           {case['skip_reason']}")
     print("source:")
     print("  " + case["source_code"].replace("\n", "\n  "))
+        files = repo.list_case_files(case["id"])
+        print(f"files:                 {len(files)}")
+        for f in files:
+            print(
+                f"  - {f['file_path']} (role={f['role']}, sort={f['sort_order']}, bytes={len(f['source_code'])})"
+            )
+
+
+    def _parse_inline_file(value: str) -> tuple[str, str]:
+        sep = "::"
+        idx = value.find(sep)
+        if idx <= 0:
+            raise ValueError("inline file must be in format <path>::<source>")
+        file_path = value[:idx].strip()
+        source = value[idx + len(sep) :]
+        if not file_path:
+            raise ValueError("inline file path cannot be empty")
+        return (file_path, source)
+
+
+    def _collect_case_files(args) -> list[tuple[str, str, str, int]]:
+        files: list[tuple[str, str, str, int]] = []
+        sort = 0
+        for file_spec in args.file_from_disk or []:
+            relative = file_spec.strip().replace("\\", "/")
+            if not relative:
+                continue
+            content = Path(relative).read_text(encoding="utf-8")
+            files.append((relative, content, "module", sort))
+            sort += 1
+
+        for inline_spec in args.inline_file or []:
+            rel, content = _parse_inline_file(inline_spec)
+            files.append((rel.strip().replace("\\", "/"), content, "module", sort))
+            sort += 1
+
+        return files
 
 
 def cmd_add(repo: TestCaseRepository, args) -> None:
@@ -145,7 +190,18 @@ def cmd_add(repo: TestCaseRepository, args) -> None:
         source_code=source,
         exit_code=args.exit_code,
         expects_compile_error=args.fail,
+            execution_mode=args.execution_mode,
+            backend=args.backend,
+            target=args.target,
+            entry_path=args.entry_path,
+            expected_diagnostic_code=args.expected_diag_code,
+            expected_runtime_json=args.expected_runtime_json,
+            expected_snapshot=args.expected_snapshot,
+            skip_reason=args.skip_reason,
     )
+        files = _collect_case_files(args)
+        if files:
+            repo.replace_case_files(case_id, files)
     flag = "  [expects_compile_error]" if args.fail else ""
     print(f"added case #{case_id} to {args.category!r}{flag}")
 
@@ -166,6 +222,14 @@ def cmd_edit(repo: TestCaseRepository, args) -> None:
         source_code=source,
         exit_code=case["exit_code"],
         expects_compile_error=bool(case["expects_compile_error"]),
+            execution_mode=case["execution_mode"],
+            backend=case["backend"],
+            target=case["target"],
+            entry_path=case["entry_path"],
+            expected_diagnostic_code=case["expected_diagnostic_code"],
+            expected_runtime_json=case["expected_runtime_json"],
+            expected_snapshot=case["expected_snapshot"],
+            skip_reason=case["skip_reason"],
     )
     print(f"updated case #{args.case_id}")
 
@@ -211,6 +275,68 @@ def main() -> None:
                        help="Expected process exit code (default 0)")
     p_add.add_argument("--source", type=str, default=None,
                        help="Inline source code; use \\\\n for newlines. Omit to open $EDITOR.")
+        p_add.add_argument(
+            "--execution-mode",
+            type=str,
+            default="js-runtime",
+            choices=["js-runtime", "compile-only"],
+            help="How to execute this DB case",
+        )
+        p_add.add_argument(
+            "--backend",
+            type=str,
+            default="selfhost",
+            help="Compiler backend (default: selfhost)",
+        )
+        p_add.add_argument(
+            "--target",
+            type=str,
+            default="js",
+            help="Compiler target (default: js)",
+        )
+        p_add.add_argument(
+            "--entry-path",
+            type=str,
+            default=None,
+            help="Entry file path for multi-file test cases",
+        )
+        p_add.add_argument(
+            "--expected-diag-code",
+            type=str,
+            default=None,
+            dest="expected_diag_code",
+            help="Exact expected diagnostic code when compile fails",
+        )
+        p_add.add_argument(
+            "--expected-runtime-json",
+            type=str,
+            default="",
+            help="Expected runtime value encoded as JSON",
+        )
+        p_add.add_argument(
+            "--expected-snapshot",
+            type=str,
+            default=None,
+            help="Expected emitted output snapshot text",
+        )
+        p_add.add_argument(
+            "--skip-reason",
+            type=str,
+            default=None,
+            help="Optional known-gap skip reason",
+        )
+        p_add.add_argument(
+            "--file-from-disk",
+            action="append",
+            default=[],
+            help="Embed a module file from disk path (repeatable)",
+        )
+        p_add.add_argument(
+            "--inline-file",
+            action="append",
+            default=[],
+            help="Embed module file as '<path>::<source>' (repeatable)",
+        )
 
     # edit
     p_edit = sub.add_parser("edit", help="Edit an existing test case source in $EDITOR")

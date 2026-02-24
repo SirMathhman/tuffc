@@ -8,6 +8,10 @@ DB_FILENAME = "test_cases.db"
 CASE_PREVIEW_LENGTH = 80
 
 
+def _ensure_json_string(value: str | None) -> str:
+    return value if value is not None else ""
+
+
 class TestCaseRepository:
     def __init__(self, db_path: Path):
         self.db_path = db_path
@@ -30,10 +34,40 @@ class TestCaseRepository:
                 source_code TEXT NOT NULL,
                 exit_code INTEGER NOT NULL,
                 expects_compile_error INTEGER NOT NULL DEFAULT 0,
+                execution_mode TEXT NOT NULL DEFAULT 'js-runtime',
+                backend TEXT NOT NULL DEFAULT 'selfhost',
+                target TEXT NOT NULL DEFAULT 'js',
+                entry_path TEXT,
+                expected_diagnostic_code TEXT,
+                expected_runtime_json TEXT,
+                expected_snapshot TEXT,
+                skip_reason TEXT,
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
             );
+
+            CREATE TABLE IF NOT EXISTS test_case_files (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                case_id INTEGER NOT NULL,
+                file_path TEXT NOT NULL,
+                source_code TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'module',
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (case_id) REFERENCES test_cases(id) ON DELETE CASCADE,
+                UNIQUE (case_id, file_path)
+            );
+
+            CREATE TRIGGER IF NOT EXISTS trg_test_case_files_updated
+            AFTER UPDATE ON test_case_files
+            FOR EACH ROW
+            BEGIN
+                UPDATE test_case_files
+                SET updated_at = CURRENT_TIMESTAMP
+                WHERE id = NEW.id;
+            END;
 
             CREATE TRIGGER IF NOT EXISTS trg_test_cases_updated
             AFTER UPDATE ON test_cases
@@ -56,6 +90,22 @@ class TestCaseRepository:
             self.conn.execute(
                 "ALTER TABLE test_cases ADD COLUMN expects_compile_error INTEGER NOT NULL DEFAULT 0"
             )
+
+        added_columns: list[tuple[str, str]] = [
+            ("execution_mode", "TEXT NOT NULL DEFAULT 'js-runtime'"),
+            ("backend", "TEXT NOT NULL DEFAULT 'selfhost'"),
+            ("target", "TEXT NOT NULL DEFAULT 'js'"),
+            ("entry_path", "TEXT"),
+            ("expected_diagnostic_code", "TEXT"),
+            ("expected_runtime_json", "TEXT"),
+            ("expected_snapshot", "TEXT"),
+            ("skip_reason", "TEXT"),
+        ]
+        for column_name, column_sql in added_columns:
+            if column_name not in existing_columns:
+                self.conn.execute(
+                    f"ALTER TABLE test_cases ADD COLUMN {column_name} {column_sql}"
+                )
 
         self.conn.commit()
 
@@ -87,10 +137,21 @@ class TestCaseRepository:
     def list_cases_for_category(self, category_id: int) -> list[sqlite3.Row]:
         cur = self.conn.execute(
             """
-            SELECT id, source_code, exit_code, expects_compile_error
+            SELECT id,
+                   source_code,
+                   exit_code,
+                   expects_compile_error,
+                   execution_mode,
+                   backend,
+                   target,
+                   entry_path,
+                   expected_diagnostic_code,
+                   expected_runtime_json,
+                   expected_snapshot,
+                   skip_reason
             FROM test_cases
             WHERE category_id = ?
-            ORDER BY id DESC;
+            ORDER BY id ASC;
             """,
             (category_id,),
         )
@@ -103,6 +164,14 @@ class TestCaseRepository:
                    tc.source_code,
                    tc.exit_code,
                      tc.expects_compile_error,
+                     tc.execution_mode,
+                     tc.backend,
+                     tc.target,
+                     tc.entry_path,
+                     tc.expected_diagnostic_code,
+                     tc.expected_runtime_json,
+                     tc.expected_snapshot,
+                     tc.skip_reason,
                    c.id AS category_id,
                    c.name AS category_name
             FROM test_cases tc
@@ -119,13 +188,47 @@ class TestCaseRepository:
         source_code: str,
         exit_code: int,
         expects_compile_error: bool,
+        execution_mode: str = "js-runtime",
+        backend: str = "selfhost",
+        target: str = "js",
+        entry_path: str | None = None,
+        expected_diagnostic_code: str | None = None,
+        expected_runtime_json: str | None = None,
+        expected_snapshot: str | None = None,
+        skip_reason: str | None = None,
     ) -> int:
         cur = self.conn.execute(
             """
-            INSERT INTO test_cases(category_id, source_code, exit_code, expects_compile_error)
-            VALUES (?, ?, ?, ?);
+            INSERT INTO test_cases(
+                category_id,
+                source_code,
+                exit_code,
+                expects_compile_error,
+                execution_mode,
+                backend,
+                target,
+                entry_path,
+                expected_diagnostic_code,
+                expected_runtime_json,
+                expected_snapshot,
+                skip_reason
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
             """,
-            (category_id, source_code, exit_code, 1 if expects_compile_error else 0),
+            (
+                category_id,
+                source_code,
+                exit_code,
+                1 if expects_compile_error else 0,
+                execution_mode,
+                backend,
+                target,
+                entry_path,
+                expected_diagnostic_code,
+                _ensure_json_string(expected_runtime_json),
+                expected_snapshot,
+                skip_reason,
+            ),
         )
         self.conn.commit()
         return int(cur.lastrowid)
@@ -137,11 +240,30 @@ class TestCaseRepository:
         source_code: str,
         exit_code: int,
         expects_compile_error: bool,
+        execution_mode: str = "js-runtime",
+        backend: str = "selfhost",
+        target: str = "js",
+        entry_path: str | None = None,
+        expected_diagnostic_code: str | None = None,
+        expected_runtime_json: str | None = None,
+        expected_snapshot: str | None = None,
+        skip_reason: str | None = None,
     ) -> None:
         self.conn.execute(
             """
             UPDATE test_cases
-            SET category_id = ?, source_code = ?, exit_code = ?, expects_compile_error = ?
+            SET category_id = ?,
+                source_code = ?,
+                exit_code = ?,
+                expects_compile_error = ?,
+                execution_mode = ?,
+                backend = ?,
+                target = ?,
+                entry_path = ?,
+                expected_diagnostic_code = ?,
+                expected_runtime_json = ?,
+                expected_snapshot = ?,
+                skip_reason = ?
             WHERE id = ?;
             """,
             (
@@ -149,9 +271,43 @@ class TestCaseRepository:
                 source_code,
                 exit_code,
                 1 if expects_compile_error else 0,
+                execution_mode,
+                backend,
+                target,
+                entry_path,
+                expected_diagnostic_code,
+                _ensure_json_string(expected_runtime_json),
+                expected_snapshot,
+                skip_reason,
                 case_id,
             ),
         )
+        self.conn.commit()
+
+    def list_case_files(self, case_id: int) -> list[sqlite3.Row]:
+        cur = self.conn.execute(
+            """
+            SELECT id, case_id, file_path, source_code, role, sort_order
+            FROM test_case_files
+            WHERE case_id = ?
+            ORDER BY sort_order ASC, id ASC;
+            """,
+            (case_id,),
+        )
+        return list(cur.fetchall())
+
+    def replace_case_files(
+        self, case_id: int, files: list[tuple[str, str, str, int]]
+    ) -> None:
+        self.conn.execute("DELETE FROM test_case_files WHERE case_id = ?", (case_id,))
+        for file_path, source_code, role, sort_order in files:
+            self.conn.execute(
+                """
+                INSERT INTO test_case_files(case_id, file_path, source_code, role, sort_order)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (case_id, file_path, source_code, role, sort_order),
+            )
         self.conn.commit()
 
     def delete_case(self, case_id: int) -> None:
