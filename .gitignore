@@ -2,3 +2,16 @@ node_modules/
 dist/
 tests/out/
 build
+
+# Local scratch/debug artifacts
+/_t*.tuff
+/_t*.js
+/test_id*.tuff
+/test_db9.tuff
+/test_this.tuff
+/out.js
+/cpd_out*.txt
+/debug-kind.mjs
+/factorial.cert.json
+/factorial.cert.typ
+/factorial.cert.pdf
