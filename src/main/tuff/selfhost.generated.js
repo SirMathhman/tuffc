@@ -390,11 +390,14 @@ const __tuff_outer_for_lex_peek = typeof __tuff_this !== 'undefined' ? __tuff_th
 function lex_peek(offset) {
   let __tuff_this = { offset: offset, this: __tuff_outer_for_lex_peek };
   let p = (lex_pos + offset); if (typeof __tuff_this !== 'undefined') __tuff_this.p = p;
-  let bounded_len = (0 + lex_len); if (typeof __tuff_this !== 'undefined') __tuff_this.bounded_len = bounded_len;
-  return ((((p < 0) || (p >= bounded_len))) ? (() => {
-    return 0;
-  })() : (() => {
+  return (((p >= 0)) ? (() => {
+    return (((p < (() => { const __recv = lex_source; const __prop = __recv?.["str_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.str_length; return __dyn ? __dyn(__recv.ref) : str_length(__recv); })())) ? (() => {
     return (() => { const __recv = lex_source; const __prop = __recv?.["str_char_at"]; if (typeof __prop === "function") return __prop(p); const __dyn = __recv?.table?.str_char_at; return __dyn ? __dyn(__recv.ref, p) : str_char_at(__recv, p); })();
+  })() : (() => {
+    return 0;
+  })());
+  })() : (() => {
+    return 0;
   })());
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.lex_peek = lex_peek;
@@ -3283,11 +3286,10 @@ if (typeof __tuff_this !== 'undefined') __tuff_this.tc_panic_loc = tc_panic_loc;
 const __tuff_outer_for_union_type_contains = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
 function union_type_contains(union_name, candidate) {
   let __tuff_this = { union_name: union_name, candidate: candidate, this: __tuff_outer_for_union_type_contains };
-  let n = (() => { const __recv = union_name; const __prop = __recv?.["str_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.str_length; return __dyn ? __dyn(__recv.ref) : str_length(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.n = n;
   let start = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.start = start;
   let i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-  while ((i <= n)) {
-  if (((i === n) || ((() => { const __recv = union_name; const __prop = __recv?.["str_char_at"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.str_char_at; return __dyn ? __dyn(__recv.ref, i) : str_char_at(__recv, i); })() === 124))) {
+  while ((i < (() => { const __recv = union_name; const __prop = __recv?.["str_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.str_length; return __dyn ? __dyn(__recv.ref) : str_length(__recv); })())) {
+  if (((() => { const __recv = union_name; const __prop = __recv?.["str_char_at"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.str_char_at; return __dyn ? __dyn(__recv.ref, i) : str_char_at(__recv, i); })() === 124)) {
   if ((() => { const __recv = (() => { const __recv = union_name; const __prop = __recv?.["str_slice"]; if (typeof __prop === "function") return __prop(start, i); const __dyn = __recv?.table?.str_slice; return __dyn ? __dyn(__recv.ref, start, i) : str_slice(__recv, start, i); })(); const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop(candidate); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, candidate) : str_eq(__recv, candidate); })()) {
   return true;
 }
@@ -3295,7 +3297,7 @@ function union_type_contains(union_name, candidate) {
 }
   i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
 }
-  return false;
+  return (() => { const __recv = (() => { const __recv = union_name; const __prop = __recv?.["str_slice"]; if (typeof __prop === "function") return __prop(start, (() => { const __recv = union_name; const __prop = __recv?.["str_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.str_length; return __dyn ? __dyn(__recv.ref) : str_length(__recv); })()); const __dyn = __recv?.table?.str_slice; return __dyn ? __dyn(__recv.ref, start, (() => { const __recv = union_name; const __prop = __recv?.["str_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.str_length; return __dyn ? __dyn(__recv.ref) : str_length(__recv); })()) : str_slice(__recv, start, (() => { const __recv = union_name; const __prop = __recv?.["str_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.str_length; return __dyn ? __dyn(__recv.ref) : str_length(__recv); })()); })(); const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop(candidate); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, candidate) : str_eq(__recv, candidate); })();
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.union_type_contains = union_type_contains;
 
@@ -3385,22 +3387,26 @@ function pointer_types_compatible(expected, actual) {
   let actual_has_life = (((!(() => { const __recv = actual_body; const __prop = __recv?.["str_starts_with"]; if (typeof __prop === "function") return __prop("mut "); const __dyn = __recv?.table?.str_starts_with; return __dyn ? __dyn(__recv.ref, "mut ") : str_starts_with(__recv, "mut "); })()) && (!(() => { const __recv = actual_body; const __prop = __recv?.["str_starts_with"]; if (typeof __prop === "function") return __prop("move "); const __dyn = __recv?.table?.str_starts_with; return __dyn ? __dyn(__recv.ref, "move ") : str_starts_with(__recv, "move "); })())) && (() => { const __recv = actual_body; const __prop = __recv?.["str_includes"]; if (typeof __prop === "function") return __prop(" "); const __dyn = __recv?.table?.str_includes; return __dyn ? __dyn(__recv.ref, " ") : str_includes(__recv, " "); })()); if (typeof __tuff_this !== 'undefined') __tuff_this.actual_has_life = actual_has_life;
   if (expected_has_life) {
   let i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-  let n = (() => { const __recv = expected_body; const __prop = __recv?.["str_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.str_length; return __dyn ? __dyn(__recv.ref) : str_length(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.n = n;
-  while (((i < n) && ((() => { const __recv = expected_body; const __prop = __recv?.["str_char_at"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.str_char_at; return __dyn ? __dyn(__recv.ref, i) : str_char_at(__recv, i); })() !== 32))) {
+  while ((i < (() => { const __recv = expected_body; const __prop = __recv?.["str_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.str_length; return __dyn ? __dyn(__recv.ref) : str_length(__recv); })())) {
+  if (((() => { const __recv = expected_body; const __prop = __recv?.["str_char_at"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.str_char_at; return __dyn ? __dyn(__recv.ref, i) : str_char_at(__recv, i); })() === 32)) {
+  break;
+}
   i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
 }
-  if ((i < n)) {
-  expected_body = (() => { const __recv = expected_body; const __prop = __recv?.["str_slice"]; if (typeof __prop === "function") return __prop((i + 1), n); const __dyn = __recv?.table?.str_slice; return __dyn ? __dyn(__recv.ref, (i + 1), n) : str_slice(__recv, (i + 1), n); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.expected_body = expected_body;
+  if ((i < (() => { const __recv = expected_body; const __prop = __recv?.["str_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.str_length; return __dyn ? __dyn(__recv.ref) : str_length(__recv); })())) {
+  expected_body = (() => { const __recv = expected_body; const __prop = __recv?.["str_slice"]; if (typeof __prop === "function") return __prop((i + 1), (() => { const __recv = expected_body; const __prop = __recv?.["str_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.str_length; return __dyn ? __dyn(__recv.ref) : str_length(__recv); })()); const __dyn = __recv?.table?.str_slice; return __dyn ? __dyn(__recv.ref, (i + 1), (() => { const __recv = expected_body; const __prop = __recv?.["str_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.str_length; return __dyn ? __dyn(__recv.ref) : str_length(__recv); })()) : str_slice(__recv, (i + 1), (() => { const __recv = expected_body; const __prop = __recv?.["str_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.str_length; return __dyn ? __dyn(__recv.ref) : str_length(__recv); })()); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.expected_body = expected_body;
 }
 }
   if (actual_has_life) {
   let j = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.j = j;
-  let m = (() => { const __recv = actual_body; const __prop = __recv?.["str_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.str_length; return __dyn ? __dyn(__recv.ref) : str_length(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.m = m;
-  while (((j < m) && ((() => { const __recv = actual_body; const __prop = __recv?.["str_char_at"]; if (typeof __prop === "function") return __prop(j); const __dyn = __recv?.table?.str_char_at; return __dyn ? __dyn(__recv.ref, j) : str_char_at(__recv, j); })() !== 32))) {
+  while ((j < (() => { const __recv = actual_body; const __prop = __recv?.["str_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.str_length; return __dyn ? __dyn(__recv.ref) : str_length(__recv); })())) {
+  if (((() => { const __recv = actual_body; const __prop = __recv?.["str_char_at"]; if (typeof __prop === "function") return __prop(j); const __dyn = __recv?.table?.str_char_at; return __dyn ? __dyn(__recv.ref, j) : str_char_at(__recv, j); })() === 32)) {
+  break;
+}
   j = (j + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.j = j;
 }
-  if ((j < m)) {
-  actual_body = (() => { const __recv = actual_body; const __prop = __recv?.["str_slice"]; if (typeof __prop === "function") return __prop((j + 1), m); const __dyn = __recv?.table?.str_slice; return __dyn ? __dyn(__recv.ref, (j + 1), m) : str_slice(__recv, (j + 1), m); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.actual_body = actual_body;
+  if ((j < (() => { const __recv = actual_body; const __prop = __recv?.["str_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.str_length; return __dyn ? __dyn(__recv.ref) : str_length(__recv); })())) {
+  actual_body = (() => { const __recv = actual_body; const __prop = __recv?.["str_slice"]; if (typeof __prop === "function") return __prop((j + 1), (() => { const __recv = actual_body; const __prop = __recv?.["str_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.str_length; return __dyn ? __dyn(__recv.ref) : str_length(__recv); })()); const __dyn = __recv?.table?.str_slice; return __dyn ? __dyn(__recv.ref, (j + 1), (() => { const __recv = actual_body; const __prop = __recv?.["str_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.str_length; return __dyn ? __dyn(__recv.ref) : str_length(__recv); })()) : str_slice(__recv, (j + 1), (() => { const __recv = actual_body; const __prop = __recv?.["str_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.str_length; return __dyn ? __dyn(__recv.ref) : str_length(__recv); })()); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.actual_body = actual_body;
 }
 }
   if (((!(() => { const __recv = expected_body; const __prop = __recv?.["str_starts_with"]; if (typeof __prop === "function") return __prop("mut "); const __dyn = __recv?.table?.str_starts_with; return __dyn ? __dyn(__recv.ref, "mut ") : str_starts_with(__recv, "mut "); })()) && (() => { const __recv = actual_body; const __prop = __recv?.["str_starts_with"]; if (typeof __prop === "function") return __prop("mut "); const __dyn = __recv?.table?.str_starts_with; return __dyn ? __dyn(__recv.ref, "mut ") : str_starts_with(__recv, "mut "); })())) {
@@ -3678,11 +3684,10 @@ const __tuff_outer_for_is_decimal_digits = typeof __tuff_this !== 'undefined' ? 
 function is_decimal_digits(s) {
   let __tuff_this = { s: s, this: __tuff_outer_for_is_decimal_digits };
   let i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-  let n = (() => { const __recv = s; const __prop = __recv?.["str_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.str_length; return __dyn ? __dyn(__recv.ref) : str_length(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.n = n;
-  if ((n === 0)) {
+  if (((() => { const __recv = s; const __prop = __recv?.["str_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.str_length; return __dyn ? __dyn(__recv.ref) : str_length(__recv); })() === 0)) {
   return false;
 }
-  while ((i < n)) {
+  while ((i < (() => { const __recv = s; const __prop = __recv?.["str_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.str_length; return __dyn ? __dyn(__recv.ref) : str_length(__recv); })())) {
   let ch = (() => { const __recv = s; const __prop = __recv?.["str_char_at"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.str_char_at; return __dyn ? __dyn(__recv.ref, i) : str_char_at(__recv, i); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.ch = ch;
   if (((ch < 48) || (ch > 57))) {
   return false;

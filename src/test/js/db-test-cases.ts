@@ -17,6 +17,7 @@ type DbCase = {
   source_code: string;
   exit_code: number;
   expects_compile_error: number;
+  strict_safety: number;
 };
 
 const root = getRepoRootFromImportMeta(import.meta.url);
@@ -28,9 +29,9 @@ const allowKnownGaps = process.argv.includes("--allow-known-gaps");
 const nodeExec = getNodeExecPath();
 const nativeCli = getNativeCliWrapperPath(root);
 
-// Cases 46-50, 53, 54, 56-59: constraint:parameter-function-calls feature (not yet implemented in parser).
+// Cases 46-50, 52, 53, 54, 56-59: constraint:parameter-function-calls feature (not yet implemented in parser/resolver).
 const selfhostKnownGapCaseIds = new Set<number>([
-  46, 47, 48, 49, 50, 52, 53, 54, 55, 56, 57, 58, 59,
+  46, 47, 48, 49, 50, 52, 53, 54, 56, 57, 58, 59,
 ]);
 
 function shouldSkipKnownGap(testCase: DbCase): boolean {
@@ -48,7 +49,7 @@ function runPythonSqliteQuery(dbFilePath: string): DbCase[] {
     "con = sqlite3.connect(db)",
     "cur = con.cursor()",
     "rows = cur.execute('''",
-    "SELECT tc.id, c.name, tc.source_code, tc.exit_code, tc.expects_compile_error",
+    "SELECT tc.id, c.name, tc.source_code, tc.exit_code, tc.expects_compile_error, COALESCE(tc.strict_safety, 0)",
     "FROM test_cases tc",
     "LEFT JOIN categories c ON c.id = tc.category_id",
     "ORDER BY tc.id",
@@ -60,6 +61,7 @@ function runPythonSqliteQuery(dbFilePath: string): DbCase[] {
     "    'source_code': '' if r[2] is None else str(r[2]),",
     "    'exit_code': int(r[3]),",
     "    'expects_compile_error': int(r[4]),",
+    "    'strict_safety': int(r[5]),",
     "  }",
     "  for r in rows",
     "]",
@@ -152,6 +154,7 @@ function compileViaNativeCli(
 function compileWithBackend(
   source: string,
   label: string,
+  strictSafety: boolean = false,
 ): { ok: true; output: string } | { ok: false; errorMessage: string } {
   if (backend === "native-exe") {
     return compileViaNativeCli(source, label);
@@ -160,6 +163,7 @@ function compileWithBackend(
   const result = compileSourceResult(source, `<${label}>`, {
     backend,
     target: "js",
+    strictSafety: strictSafety ? 1 : 0,
   });
   if (!result.ok) {
     return {
@@ -192,7 +196,11 @@ for (const testCase of dbCases) {
   const source = normalizeSource(testCase.source_code ?? "");
   const expectsCompileError = toBool(testCase.expects_compile_error);
 
-  const compileResult = compileWithBackend(source, label);
+  const compileResult = compileWithBackend(
+    source,
+    label,
+    toBool(testCase.strict_safety),
+  );
 
   const skipKnownGap = (reason: string): boolean => {
     if (!shouldSkipKnownGap(testCase)) return false;

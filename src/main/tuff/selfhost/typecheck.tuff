@@ -14,11 +14,10 @@ fn tc_panic_loc(code: *Str, msg: *Str, reason: *Str, fix: *Str) : I32 =>
     panic_with_code_loc(code, msg, reason, fix, node_get_line(tc_current_node), node_get_col(tc_current_node));
 
 fn union_type_contains(union_name: *Str, candidate: *Str) : Bool => {
-    let n = union_name.str_length();
     let start = 0;
     let i = 0;
-    while (i <= n) {
-        if (i == n || union_name.str_char_at(i) == 124) {
+    while (i < union_name.str_length()) {
+        if (union_name.str_char_at(i) == 124) {
             if (union_name.str_slice(start, i).str_eq(candidate)) {
                 return true;
             }
@@ -26,7 +25,8 @@ fn union_type_contains(union_name: *Str, candidate: *Str) : Bool => {
         }
         i = i + 1;
     }
-    false
+    // Check the last segment (after the final '|' delimiter or the entire string).
+    union_name.str_slice(start, union_name.str_length()).str_eq(candidate)
 }
 
 fn is_this_return_type_for(actual: *Str, declared: *Str) : Bool => {
@@ -113,23 +113,27 @@ fn pointer_types_compatible(expected: *Str, actual: *Str) : Bool => {
 
         if (expected_has_life) {
             let i = 0;
-            let n = expected_body.str_length();
-            while (i < n && expected_body.str_char_at(i) != 32) {
+            while (i < expected_body.str_length()) {
+                if (expected_body.str_char_at(i) == 32) {
+                    break;
+                }
                 i = i + 1;
             }
-            if (i < n) {
-                expected_body = expected_body.str_slice(i + 1, n);
+            if (i < expected_body.str_length()) {
+                expected_body = expected_body.str_slice(i + 1, expected_body.str_length());
             }
         }
 
         if (actual_has_life) {
             let j = 0;
-            let m = actual_body.str_length();
-            while (j < m && actual_body.str_char_at(j) != 32) {
+            while (j < actual_body.str_length()) {
+                if (actual_body.str_char_at(j) == 32) {
+                    break;
+                }
                 j = j + 1;
             }
-            if (j < m) {
-                actual_body = actual_body.str_slice(j + 1, m);
+            if (j < actual_body.str_length()) {
+                actual_body = actual_body.str_slice(j + 1, actual_body.str_length());
             }
         }
 
@@ -343,11 +347,10 @@ fn expr_is_number_literal_nonzero(n: I32) : Bool => {
 
 fn is_decimal_digits(s: *Str) : Bool => {
     let i = 0;
-    let n = s.str_length();
-    if (n == 0) {
+    if (s.str_length() == 0) {
         return false;
     }
-    while (i < n) {
+    while (i < s.str_length()) {
         let ch = s.str_char_at(i);
         if (ch < 48 || ch > 57) {
             return false;

@@ -245,11 +245,14 @@ out fn lex_init(source: *Str) : I32 => {
 
 fn lex_peek(offset: I32) : I32 => {
     let p = lex_pos + offset;
-    let bounded_len = 0 + lex_len;
-    if (p < 0 || p >= bounded_len) {
-        0
+    if (p >= 0) {
+        if (p < lex_source.str_length()) {
+            lex_source.str_char_at(p)
+        } else {
+            0
+        }
     } else {
-        lex_source.str_char_at(p)
+        0
     }
 }
 
