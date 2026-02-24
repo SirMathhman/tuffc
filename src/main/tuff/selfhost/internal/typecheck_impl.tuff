@@ -97,11 +97,13 @@ false }
 fn is_type_variable_name(name: *Str) : Bool => { if (name.str_length() != 1) { return false; }
 let ch = char_code(name); (ch >= 65 && ch <= 90) }
 
-fn runtime_opaque_handle_compatible(expected: *Str, actual: *Str) : Bool => { if (!actual.str_eq("I32")) { return false; }
-expected.str_eq("Vec") || expected.str_eq("Map") || expected.str_eq("Set") }
+fn runtime_opaque_handle_compatible(expected: *Str, actual: *Str) : Bool => {
+if (actual.str_eq("I32") && (expected.str_eq("Vec") || expected.str_eq("Map") || expected.str_eq("Set"))) { return true; }
+if (expected.str_eq("I32") && (actual.str_eq("Vec") || actual.str_eq("Map") || actual.str_eq("Set"))) { return true; }
+false }
 
 fn type_names_compatible(expected: *Str, actual: *Str, rhs: I32) : Bool => { if (expected.str_eq("Unknown") || actual.str_eq("Unknown")) { return true; }
-if (expected.str_eq("AnyValue") || actual.str_eq("AnyValue")) { return true; } if (expected.str_eq(actual)) {
+if (expected.str_eq(actual)) {
 return true; } if (is_type_variable_name(expected) || is_type_variable_name(actual)) { return true;
 } if (runtime_opaque_handle_compatible(expected, actual)) { return true; }
 if (pointer_types_compatible(expected, actual)) { return true; } if (numeric_types_compatible(expected, actual, rhs)) {

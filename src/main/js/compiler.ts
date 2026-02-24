@@ -76,6 +76,116 @@ function toPosixPath(value) {
   return value.replaceAll("\\", "/");
 }
 
+function parseModuleImportSpecs(source) {
+  const specs = [];
+  const re =
+    /let\s*\{[^}]*\}\s*=\s*([A-Za-z_][A-Za-z0-9_]*(?:::[A-Za-z_][A-Za-z0-9_]*)*)\s*;/g;
+  let m;
+  while ((m = re.exec(source)) !== null) {
+    const spec = m[1]?.trim();
+    if (spec) specs.push(spec);
+  }
+  return specs;
+}
+
+function moduleSpecToRelativePath(spec) {
+  return `${spec.replaceAll("::", "/")}.tuff`;
+}
+
+function buildModuleSourceOrder(entryAbsPath, moduleBaseAbsPath) {
+  const seen = new Set();
+  const visiting = new Set();
+  const order = [];
+  const sourceByFile = new Map();
+
+  function visit(fileAbsPath) {
+    const norm = toPosixPath(path.resolve(fileAbsPath));
+    if (seen.has(norm)) return;
+    if (visiting.has(norm)) return;
+    visiting.add(norm);
+
+    let source = "";
+    try {
+      source = fs.readFileSync(norm, "utf8");
+    } catch {
+      source = "";
+    }
+    sourceByFile.set(norm, source);
+
+    const imports = parseModuleImportSpecs(source);
+    for (const spec of imports) {
+      const depRel = moduleSpecToRelativePath(spec);
+      const depAbs = toPosixPath(path.resolve(moduleBaseAbsPath, depRel));
+      visit(depAbs);
+    }
+
+    visiting.delete(norm);
+    seen.add(norm);
+    order.push(norm);
+  }
+
+  visit(entryAbsPath);
+  return { order, sourceByFile };
+}
+
+function countLines(source) {
+  if (source.length === 0) return 1;
+  return source.split(/\r?\n/).length;
+}
+
+function mapMergedLineToModuleLoc(mergedLine, moduleOrder, sourceByFile) {
+  let cursor = 1;
+  for (let i = 0; i < moduleOrder.length; i += 1) {
+    const filePath = moduleOrder[i];
+    const src = sourceByFile.get(filePath) ?? "";
+    const lineCount = countLines(src);
+    const start = cursor;
+    const end = start + lineCount - 1;
+    if (mergedLine >= start && mergedLine <= end) {
+      return {
+        filePath,
+        line: mergedLine - start + 1,
+      };
+    }
+    cursor = end + 1;
+    if (i < moduleOrder.length - 1) {
+      cursor += 2; // join_sources inserts "\n\n" between modules
+    }
+  }
+  return undefined;
+}
+
+function remapSelfhostModuleErrorLoc(error, absInput, options) {
+  if (!(error instanceof TuffError)) {
+    return undefined;
+  }
+  const mergedLine = Number(error.loc?.line ?? 0);
+  if (!Number.isFinite(mergedLine) || mergedLine <= 0) {
+    return undefined;
+  }
+
+  const moduleBaseDir = options?.modules?.moduleBaseDir
+    ? path.resolve(options.modules.moduleBaseDir)
+    : path.dirname(absInput);
+
+  const { order, sourceByFile } = buildModuleSourceOrder(
+    absInput,
+    moduleBaseDir,
+  );
+  const mapped = mapMergedLineToModuleLoc(mergedLine, order, sourceByFile);
+  if (!mapped) {
+    return { sourceByFile };
+  }
+
+  error.loc = {
+    ...(error.loc ?? {}),
+    filePath: mapped.filePath,
+    line: mapped.line,
+  };
+
+  return { sourceByFile };
+}
+
 function getSelfhostEntryPath() {
   const thisFile = fileURLToPath(import.meta.url);
   return path.resolve(path.dirname(thisFile), "..", "tuff", "selfhost.tuff");
@@ -605,12 +715,13 @@ function compileFileInternal(
       });
       js = fs.readFileSync(finalOutput, "utf8");
     } catch (error) {
+      const remap = remapSelfhostModuleErrorLoc(error, absInput, options);
       return err(
         wrapTuffError(error, {
           filePath: absInput,
-          sourceByFile: new Map([
-            [absInput, fs.readFileSync(absInput, "utf8")],
-          ]),
+          sourceByFile:
+            remap?.sourceByFile ??
+            new Map([[absInput, fs.readFileSync(absInput, "utf8")]]),
           source: fs.existsSync(absInput)
             ? fs.readFileSync(absInput, "utf8")
             : undefined,

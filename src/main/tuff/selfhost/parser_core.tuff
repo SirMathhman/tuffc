@@ -33,12 +33,11 @@ out fn node_new(kind: I32) : I32 => {
 
 out fn node_kind(idx: I32) : I32 => node_kinds.vec_get(idx);
 
-extern type AnyValue;
-out fn node_set_data1(idx: I32, v: AnyValue) : I32 => { node_data1.vec_set(idx, v); 0 }
-out fn node_set_data2(idx: I32, v: AnyValue) : I32 => { node_data2.vec_set(idx, v); 0 }
-out fn node_set_data3(idx: I32, v: AnyValue) : I32 => { node_data3.vec_set(idx, v); 0 }
-out fn node_set_data4(idx: I32, v: AnyValue) : I32 => { node_data4.vec_set(idx, v); 0 }
-out fn node_set_data5(idx: I32, v: AnyValue) : I32 => { node_data5.vec_set(idx, v); 0 }
+out fn node_set_data1<T>(idx: I32, v: T) : I32 => { node_data1.vec_set(idx, v); 0 }
+out fn node_set_data2<T>(idx: I32, v: T) : I32 => { node_data2.vec_set(idx, v); 0 }
+out fn node_set_data3<T>(idx: I32, v: T) : I32 => { node_data3.vec_set(idx, v); 0 }
+out fn node_set_data4<T>(idx: I32, v: T) : I32 => { node_data4.vec_set(idx, v); 0 }
+out fn node_set_data5<T>(idx: I32, v: T) : I32 => { node_data5.vec_set(idx, v); 0 }
 out fn node_get_data1(idx: I32) : I32 => node_data1.vec_get(idx);
 out fn node_get_data2(idx: I32) : I32 => node_data2.vec_get(idx);
 out fn node_get_data3(idx: I32) : I32 => node_data3.vec_get(idx);
