@@ -4202,6 +4202,8 @@ function typecheck_expr(n, fn_arities, fn_param_types, fn_return_types, local_ty
 }
   let ie_then_key = ""; if (typeof __tuff_this !== 'undefined') __tuff_this.ie_then_key = ie_then_key;
   let ie_else_key = ""; if (typeof __tuff_this !== 'undefined') __tuff_this.ie_else_key = ie_else_key;
+  let ie_cb_key = ""; if (typeof __tuff_this !== 'undefined') __tuff_this.ie_cb_key = ie_cb_key;
+  let ie_cb_value = ""; if (typeof __tuff_this !== 'undefined') __tuff_this.ie_cb_value = ie_cb_value;
   if ((node_kind(cond) === NK_BINARY_EXPR)) {
   let bop = get_interned_str(node_get_data1(cond)); if (typeof __tuff_this !== 'undefined') __tuff_this.bop = bop;
   let bleft = node_get_data2(cond); if (typeof __tuff_this !== 'undefined') __tuff_this.bleft = bleft;
@@ -4222,15 +4224,31 @@ function typecheck_expr(n, fn_arities, fn_param_types, fn_return_types, local_ty
   ie_else_key = get_interned_str(node_get_data1(bright)); if (typeof __tuff_this !== 'undefined') __tuff_this.ie_else_key = ie_else_key;
 }
 }
+  if (((((() => { const __recv = bop; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("<"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "<") : str_eq(__recv, "<"); })() || (() => { const __recv = bop; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("<="); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "<=") : str_eq(__recv, "<="); })()) && (node_kind(bleft) === NK_IDENTIFIER)) && (node_kind(bright) === NK_CALL_EXPR))) {
+  let ie_cb_callee = node_get_data1(bright); if (typeof __tuff_this !== 'undefined') __tuff_this.ie_cb_callee = ie_cb_callee;
+  let ie_cb_args = node_get_data2(bright); if (typeof __tuff_this !== 'undefined') __tuff_this.ie_cb_args = ie_cb_args;
+  if ((((node_kind(ie_cb_callee) === NK_IDENTIFIER) && ((() => { const __recv = ie_cb_args; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })() === 1)) && (node_kind((() => { const __recv = ie_cb_args; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(0); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })()) === NK_IDENTIFIER))) {
+  ie_cb_key = get_interned_str(node_get_data1(bleft)); if (typeof __tuff_this !== 'undefined') __tuff_this.ie_cb_key = ie_cb_key;
+  ie_cb_value = (() => { const __recv = (() => { const __recv = get_interned_str(node_get_data1(ie_cb_callee)); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(":"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ":") : str_concat(__recv, ":"); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(get_interned_str(node_get_data1((() => { const __recv = ie_cb_args; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(0); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })()))); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, get_interned_str(node_get_data1((() => { const __recv = ie_cb_args; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(0); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })()))) : str_concat(__recv, get_interned_str(node_get_data1((() => { const __recv = ie_cb_args; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(0); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })()))); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.ie_cb_value = ie_cb_value;
+}
+}
 }
   let ie_then_present = false; if (typeof __tuff_this !== 'undefined') __tuff_this.ie_then_present = ie_then_present;
   if ((!(() => { const __recv = ie_then_key; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop(""); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "") : str_eq(__recv, ""); })())) {
   ie_then_present = (() => { const __recv = nonnull_ptrs; const __prop = __recv?.["map_has"]; if (typeof __prop === "function") return __prop(ie_then_key); const __dyn = __recv?.table?.map_has; return __dyn ? __dyn(__recv.ref, ie_then_key) : map_has(__recv, ie_then_key); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.ie_then_present = ie_then_present;
   (() => { const __recv = nonnull_ptrs; const __prop = __recv?.["map_set"]; if (typeof __prop === "function") return __prop(ie_then_key, 1); const __dyn = __recv?.table?.map_set; return __dyn ? __dyn(__recv.ref, ie_then_key, 1) : map_set(__recv, ie_then_key, 1); })();
 }
+  let ie_cb_was_present = false; if (typeof __tuff_this !== 'undefined') __tuff_this.ie_cb_was_present = ie_cb_was_present;
+  if ((!(() => { const __recv = ie_cb_key; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop(""); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "") : str_eq(__recv, ""); })())) {
+  ie_cb_was_present = (() => { const __recv = tc_call_bounds; const __prop = __recv?.["map_has"]; if (typeof __prop === "function") return __prop(ie_cb_key); const __dyn = __recv?.table?.map_has; return __dyn ? __dyn(__recv.ref, ie_cb_key) : map_has(__recv, ie_cb_key); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.ie_cb_was_present = ie_cb_was_present;
+  (() => { const __recv = tc_call_bounds; const __prop = __recv?.["map_set"]; if (typeof __prop === "function") return __prop(ie_cb_key, ie_cb_value); const __dyn = __recv?.table?.map_set; return __dyn ? __dyn(__recv.ref, ie_cb_key, ie_cb_value) : map_set(__recv, ie_cb_key, ie_cb_value); })();
+}
   typecheck_stmt(node_get_data2(n), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety, "Unknown");
   if (((!(() => { const __recv = ie_then_key; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop(""); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "") : str_eq(__recv, ""); })()) && (!ie_then_present))) {
   (() => { const __recv = nonnull_ptrs; const __prop = __recv?.["map_delete"]; if (typeof __prop === "function") return __prop(ie_then_key); const __dyn = __recv?.table?.map_delete; return __dyn ? __dyn(__recv.ref, ie_then_key) : map_delete(__recv, ie_then_key); })();
+}
+  if (((!(() => { const __recv = ie_cb_key; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop(""); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "") : str_eq(__recv, ""); })()) && (!ie_cb_was_present))) {
+  (() => { const __recv = tc_call_bounds; const __prop = __recv?.["map_delete"]; if (typeof __prop === "function") return __prop(ie_cb_key); const __dyn = __recv?.table?.map_delete; return __dyn ? __dyn(__recv.ref, ie_cb_key) : map_delete(__recv, ie_cb_key); })();
 }
   if ((node_get_data3(n) !== 0)) {
   let ie_else_present = false; if (typeof __tuff_this !== 'undefined') __tuff_this.ie_else_present = ie_else_present;
@@ -4497,6 +4515,8 @@ function typecheck_stmt(n, fn_arities, fn_param_types, fn_return_types, local_ty
 }
   let then_inject_key = ""; if (typeof __tuff_this !== 'undefined') __tuff_this.then_inject_key = then_inject_key;
   let else_inject_key = ""; if (typeof __tuff_this !== 'undefined') __tuff_this.else_inject_key = else_inject_key;
+  let cb_then_key = ""; if (typeof __tuff_this !== 'undefined') __tuff_this.cb_then_key = cb_then_key;
+  let cb_then_value = ""; if (typeof __tuff_this !== 'undefined') __tuff_this.cb_then_value = cb_then_value;
   if ((node_kind(cond) === NK_BINARY_EXPR)) {
   let bop = get_interned_str(node_get_data1(cond)); if (typeof __tuff_this !== 'undefined') __tuff_this.bop = bop;
   let bleft = node_get_data2(cond); if (typeof __tuff_this !== 'undefined') __tuff_this.bleft = bleft;
@@ -4515,6 +4535,14 @@ function typecheck_stmt(n, fn_arities, fn_param_types, fn_return_types, local_ty
 }
   if ((((() => { const __recv = else_inject_key; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop(""); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "") : str_eq(__recv, ""); })() && (node_kind(bright) === NK_IDENTIFIER)) && is_zero_numeric_literal_node(bleft))) {
   else_inject_key = get_interned_str(node_get_data1(bright)); if (typeof __tuff_this !== 'undefined') __tuff_this.else_inject_key = else_inject_key;
+}
+}
+  if (((((() => { const __recv = bop; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("<"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "<") : str_eq(__recv, "<"); })() || (() => { const __recv = bop; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("<="); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "<=") : str_eq(__recv, "<="); })()) && (node_kind(bleft) === NK_IDENTIFIER)) && (node_kind(bright) === NK_CALL_EXPR))) {
+  let cb_callee = node_get_data1(bright); if (typeof __tuff_this !== 'undefined') __tuff_this.cb_callee = cb_callee;
+  let cb_args = node_get_data2(bright); if (typeof __tuff_this !== 'undefined') __tuff_this.cb_args = cb_args;
+  if ((((node_kind(cb_callee) === NK_IDENTIFIER) && ((() => { const __recv = cb_args; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })() === 1)) && (node_kind((() => { const __recv = cb_args; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(0); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })()) === NK_IDENTIFIER))) {
+  cb_then_key = get_interned_str(node_get_data1(bleft)); if (typeof __tuff_this !== 'undefined') __tuff_this.cb_then_key = cb_then_key;
+  cb_then_value = (() => { const __recv = (() => { const __recv = get_interned_str(node_get_data1(cb_callee)); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(":"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ":") : str_concat(__recv, ":"); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(get_interned_str(node_get_data1((() => { const __recv = cb_args; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(0); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })()))); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, get_interned_str(node_get_data1((() => { const __recv = cb_args; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(0); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })()))) : str_concat(__recv, get_interned_str(node_get_data1((() => { const __recv = cb_args; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(0); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })()))); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.cb_then_value = cb_then_value;
 }
 }
 }
@@ -4539,9 +4567,17 @@ function typecheck_stmt(n, fn_arities, fn_param_types, fn_return_types, local_ty
   then_was_present = (() => { const __recv = nonnull_ptrs; const __prop = __recv?.["map_has"]; if (typeof __prop === "function") return __prop(then_inject_key); const __dyn = __recv?.table?.map_has; return __dyn ? __dyn(__recv.ref, then_inject_key) : map_has(__recv, then_inject_key); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.then_was_present = then_was_present;
   (() => { const __recv = nonnull_ptrs; const __prop = __recv?.["map_set"]; if (typeof __prop === "function") return __prop(then_inject_key, 1); const __dyn = __recv?.table?.map_set; return __dyn ? __dyn(__recv.ref, then_inject_key, 1) : map_set(__recv, then_inject_key, 1); })();
 }
+  let cb_then_was_present = false; if (typeof __tuff_this !== 'undefined') __tuff_this.cb_then_was_present = cb_then_was_present;
+  if ((!(() => { const __recv = cb_then_key; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop(""); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "") : str_eq(__recv, ""); })())) {
+  cb_then_was_present = (() => { const __recv = tc_call_bounds; const __prop = __recv?.["map_has"]; if (typeof __prop === "function") return __prop(cb_then_key); const __dyn = __recv?.table?.map_has; return __dyn ? __dyn(__recv.ref, cb_then_key) : map_has(__recv, cb_then_key); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.cb_then_was_present = cb_then_was_present;
+  (() => { const __recv = tc_call_bounds; const __prop = __recv?.["map_set"]; if (typeof __prop === "function") return __prop(cb_then_key, cb_then_value); const __dyn = __recv?.table?.map_set; return __dyn ? __dyn(__recv.ref, cb_then_key, cb_then_value) : map_set(__recv, cb_then_key, cb_then_value); })();
+}
   typecheck_stmt(node_get_data2(n), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety, expected_return_type);
   if (((!(() => { const __recv = then_inject_key; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop(""); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "") : str_eq(__recv, ""); })()) && (!then_was_present))) {
   (() => { const __recv = nonnull_ptrs; const __prop = __recv?.["map_delete"]; if (typeof __prop === "function") return __prop(then_inject_key); const __dyn = __recv?.table?.map_delete; return __dyn ? __dyn(__recv.ref, then_inject_key) : map_delete(__recv, then_inject_key); })();
+}
+  if (((!(() => { const __recv = cb_then_key; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop(""); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "") : str_eq(__recv, ""); })()) && (!cb_then_was_present))) {
+  (() => { const __recv = tc_call_bounds; const __prop = __recv?.["map_delete"]; if (typeof __prop === "function") return __prop(cb_then_key); const __dyn = __recv?.table?.map_delete; return __dyn ? __dyn(__recv.ref, cb_then_key) : map_delete(__recv, cb_then_key); })();
 }
   if ((!(() => { const __recv = narrowed_ident; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop(""); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "") : str_eq(__recv, ""); })())) {
   if ((had_prev_narrowed === 1)) {
@@ -4576,7 +4612,30 @@ function typecheck_stmt(n, fn_arities, fn_param_types, fn_return_types, local_ty
   if (((!(() => { const __recv = cond_name; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("Bool"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "Bool") : str_eq(__recv, "Bool"); })()) && (!(() => { const __recv = cond_name; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("Unknown"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "Unknown") : str_eq(__recv, "Unknown"); })()))) {
   tc_panic_loc("E_TYPE_IF_CONDITION", (() => { const __recv = "if condition must be Bool, got "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(cond_name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, cond_name) : str_concat(__recv, cond_name); })(), "Conditional branches require a boolean predicate, but the given expression has a non-Bool type.", "Return or compute a Bool expression in the condition.");
 }
+  let wh_cb_key = ""; if (typeof __tuff_this !== 'undefined') __tuff_this.wh_cb_key = wh_cb_key;
+  let wh_cb_value = ""; if (typeof __tuff_this !== 'undefined') __tuff_this.wh_cb_value = wh_cb_value;
+  if ((node_kind(cond) === NK_BINARY_EXPR)) {
+  let wh_bop = get_interned_str(node_get_data1(cond)); if (typeof __tuff_this !== 'undefined') __tuff_this.wh_bop = wh_bop;
+  let wh_bleft = node_get_data2(cond); if (typeof __tuff_this !== 'undefined') __tuff_this.wh_bleft = wh_bleft;
+  let wh_bright = node_get_data3(cond); if (typeof __tuff_this !== 'undefined') __tuff_this.wh_bright = wh_bright;
+  if (((((() => { const __recv = wh_bop; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("<"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "<") : str_eq(__recv, "<"); })() || (() => { const __recv = wh_bop; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("<="); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "<=") : str_eq(__recv, "<="); })()) && (node_kind(wh_bleft) === NK_IDENTIFIER)) && (node_kind(wh_bright) === NK_CALL_EXPR))) {
+  let wh_callee = node_get_data1(wh_bright); if (typeof __tuff_this !== 'undefined') __tuff_this.wh_callee = wh_callee;
+  let wh_args = node_get_data2(wh_bright); if (typeof __tuff_this !== 'undefined') __tuff_this.wh_args = wh_args;
+  if ((((node_kind(wh_callee) === NK_IDENTIFIER) && ((() => { const __recv = wh_args; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })() === 1)) && (node_kind((() => { const __recv = wh_args; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(0); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })()) === NK_IDENTIFIER))) {
+  wh_cb_key = get_interned_str(node_get_data1(wh_bleft)); if (typeof __tuff_this !== 'undefined') __tuff_this.wh_cb_key = wh_cb_key;
+  wh_cb_value = (() => { const __recv = (() => { const __recv = get_interned_str(node_get_data1(wh_callee)); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(":"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ":") : str_concat(__recv, ":"); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(get_interned_str(node_get_data1((() => { const __recv = wh_args; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(0); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })()))); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, get_interned_str(node_get_data1((() => { const __recv = wh_args; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(0); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })()))) : str_concat(__recv, get_interned_str(node_get_data1((() => { const __recv = wh_args; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(0); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })()))); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.wh_cb_value = wh_cb_value;
+}
+}
+}
+  let wh_cb_was_present = false; if (typeof __tuff_this !== 'undefined') __tuff_this.wh_cb_was_present = wh_cb_was_present;
+  if ((!(() => { const __recv = wh_cb_key; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop(""); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "") : str_eq(__recv, ""); })())) {
+  wh_cb_was_present = (() => { const __recv = tc_call_bounds; const __prop = __recv?.["map_has"]; if (typeof __prop === "function") return __prop(wh_cb_key); const __dyn = __recv?.table?.map_has; return __dyn ? __dyn(__recv.ref, wh_cb_key) : map_has(__recv, wh_cb_key); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.wh_cb_was_present = wh_cb_was_present;
+  (() => { const __recv = tc_call_bounds; const __prop = __recv?.["map_set"]; if (typeof __prop === "function") return __prop(wh_cb_key, wh_cb_value); const __dyn = __recv?.table?.map_set; return __dyn ? __dyn(__recv.ref, wh_cb_key, wh_cb_value) : map_set(__recv, wh_cb_key, wh_cb_value); })();
+}
   typecheck_stmt(node_get_data2(n), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, strict_safety, expected_return_type);
+  if (((!(() => { const __recv = wh_cb_key; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop(""); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "") : str_eq(__recv, ""); })()) && (!wh_cb_was_present))) {
+  (() => { const __recv = tc_call_bounds; const __prop = __recv?.["map_delete"]; if (typeof __prop === "function") return __prop(wh_cb_key); const __dyn = __recv?.table?.map_delete; return __dyn ? __dyn(__recv.ref, wh_cb_key) : map_delete(__recv, wh_cb_key); })();
+}
   return 0;
 }
   if ((kind === NK_LOOP_STMT)) {
