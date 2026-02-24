@@ -5,7 +5,7 @@
 - This repo has two compiler paths: Stage0 TypeScript (`src/main/js/*`) and selfhost Tuff (`src/main/tuff/selfhost*`). Keep them behaviorally aligned.
 - Canonical pass pipeline in `src/main/js/compiler.ts`: `lex -> parse -> desugar -> resolve -> typecheck -> borrowcheck -> lint -> codegen`.
 - `compileSourceResult` / `compileFileResult` are the non-throw APIs used by tests; throw wrappers are legacy compatibility only.
-- Module graph mode (`enableModules`) is part of `compiler.ts` and uses `let { symbol } = module::path` imports.
+- File-based compilation always uses module graph loading in `compiler.ts` and uses `let { symbol } = module::path` imports.
 
 ## Files to read first for most changes
 
@@ -77,6 +77,7 @@
 
 - Java-style package paths: `com::org::Module` → `com/org/Module.tuff`.
 - Package aliases are target-aware (resolved in `compiler.ts`).
+- Module toggles `--modules` / `--no-modules` are retired; file compilation always resolves via module graph.
 - Cycles are hard errors unless lint-warn mode is enabled.
 
 ## Testing conventions

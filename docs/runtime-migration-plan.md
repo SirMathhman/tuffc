@@ -49,7 +49,6 @@ Introduce target-aware package alias resolution in Stage0 module loading:
 
 ```ts
 compileFileResult(entry, out, {
-  enableModules: true,
   target: "c",
   modules: {
     moduleBaseDir: "...",

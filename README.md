@@ -98,12 +98,16 @@ Stage 2 safety checks are always active (no flag required):
 
 CLI options:
 
-- `--modules` enables module graph loading
-- `--module-base <dir>` sets the module root directory
+- Module graph loading is enabled by default for file compilation
+- `--module-base <dir>` is a legacy compatibility option for module root hints
 
 Example:
 
-- `npm run native:selfhost:run -- ./src/test/tuff/modules/app.tuff --modules --module-base ./src/test/tuff/modules -o ./tests/out/stage2/app.js`
+- `npm run native:selfhost:run -- ./src/test/tuff/modules/app.tuff -o ./tests/out/stage2/app.js`
+
+Migration note:
+
+- `--modules` / `--no-modules` are retired; remove them from scripts and command lines.
 
 Run Phase 3 verification only:
 

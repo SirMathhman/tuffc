@@ -15,5 +15,5 @@ CLI usage:
 
 ```
 npx tsx src/main/js/cli.ts <input.tuff> -o <output.js>
-npx tsx src/main/js/cli.ts <input.tuff> --modules --module-base ./src/main -o <output.js>
+npx tsx src/main/js/cli.ts <input.tuff> --module-base ./src/main -o <output.js>  # legacy compatibility option
 ```
