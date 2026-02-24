@@ -81,6 +81,26 @@ fn type_name_from_type_node(t: I32) : *Str => {
         tc_type_name_cache.map_set(t, result);
         return result;
     }
+    // NK_APPLIED_TYPE (71) — erase to alias name; also check arity if alias is registered.
+    if (k == 71) {
+        let alias_name = get_interned_str(node_get_data1(t));
+        let args = node_get_data2(t);
+        let actual_arity = args.vec_length();
+        if (tc_dep_type_alias_params.map_has(alias_name)) {
+            let expected_arity = tc_dep_type_alias_params.map_get(alias_name);
+            if (actual_arity != expected_arity) {
+                tc_panic_loc(
+                    "E_TYPE_APPLIED_ARITY",
+                    "'".str_concat(alias_name).str_concat("' applied with ").str_concat(int_to_string(actual_arity)).str_concat(" argument(s), expected ").str_concat(int_to_string(expected_arity)),
+                    "Dependent type aliases must be applied with exactly the number of arguments declared in the type parameter list.",
+                    "Provide exactly ".str_concat(int_to_string(expected_arity)).str_concat(" argument(s) to '").str_concat(alias_name).str_concat("'.")        
+                );
+            }
+        }
+        result = alias_name;
+        tc_type_name_cache.map_set(t, result);
+        return result;
+    }
     if (k == 45) {
         let left = type_name_from_type_node(node_get_data1(t));
         let right = type_name_from_type_node(node_get_data2(t));
@@ -427,6 +447,7 @@ let tc_var_literal_values : Map = map_new();
 let tc_global_value_types : Map = map_new();
 let tc_alias_union_tags : Map = map_new();
 let tc_type_alias_names : *mut Set = set_new();
+let tc_dep_type_alias_params : Map = map_new();  // alias_name -> expected arg count (I32)
 let tc_contract_names : *mut Set = set_new();
 let tc_destructor_alias_by_alias : Map = map_new();
 let tc_destructor_alias_names : Vec = vec_new();
@@ -1553,6 +1574,14 @@ fn typecheck_stmt(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types:
         return 0;
     }
 
+    if (kind == NK_DEP_TYPE_ALIAS) {
+        let alias_name = get_interned_str(node_get_data1(n));
+        tc_type_alias_names.set_add(alias_name);
+        let value_params = node_get_data2(n);
+        tc_dep_type_alias_params.map_set(alias_name, value_params.vec_length());
+        return 0;
+    }
+
     // Fallback: treat unmatched nodes as expressions.
     typecheck_expr(n, fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs);
     0
@@ -1567,6 +1596,7 @@ out fn typecheck_program_with_options(program: I32) : I32 => {
     tc_global_value_types = map_new();
     tc_alias_union_tags = map_new();
     tc_type_alias_names = set_new();
+    tc_dep_type_alias_params = map_new();
     tc_contract_names = set_new();
     tc_destructor_alias_by_alias = map_new();
     tc_destructor_alias_names = vec_new();
@@ -1655,6 +1685,12 @@ out fn typecheck_program_with_options(program: I32) : I32 => {
             if (!alias_base_type_name.str_eq("Unknown")) {
                 tc_alias_base_type.map_set(alias_name, alias_base_type_name);
             }
+        }
+        if (kind == NK_DEP_TYPE_ALIAS) {
+            let alias_name = get_interned_str(node_get_data1(stmt));
+            tc_type_alias_names.set_add(alias_name);
+            let value_params = node_get_data2(stmt);
+            tc_dep_type_alias_params.map_set(alias_name, value_params.vec_length());
         }
         if (kind == NK_EXTERN_TYPE_DECL) {
             tc_type_alias_names.set_add(get_interned_str(node_get_data1(stmt)));
