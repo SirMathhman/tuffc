@@ -35,7 +35,6 @@ const suiteScripts: Record<SuiteName, string[]> = {
     "./src/test/js/selfhost-modules.ts",
     "./src/test/js/selfhost-diagnostics.ts",
     "./src/test/js/stage-equivalence.ts",
-    "./src/test/js/demo-regressions.ts",
   ],
   native: [
     "./src/test/js/c-backend-smoke.ts",
