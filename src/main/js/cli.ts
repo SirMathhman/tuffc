@@ -11,7 +11,7 @@ import { writeTypstSource, compileTypstToPdf } from "./typst-render.ts";
 
 function printUsage(): void {
   console.log(
-    "Usage:\n  tuffc <input.tuff> [options]\n\nOptions:\n  -o, --out <file>          Write output to file\n  --target <js|c>           Output target (default: js)\n  --native                  For target c, compile+link generated C to native executable\n  --native-out <file>       Native executable output path when using --native\n  --cc <compiler>           Native C compiler command (default: auto-detect clang/gcc/cc)\n  -I, --module-base <dir>   Module root directory\n  --modules                 Enable module loading\n  --no-modules              Disable module loading\n  --selfhost                Use selfhost backend (default, only backend)\n  --backend <name>          Explicit backend name (default: selfhost)\n  --profile                 Emit per-phase compiler timing JSON\n  -Wall                     Enable common warnings (maps to lint warnings)\n  -Wextra                   Enable extra warnings (maps to lint warnings)\n  -Werror                   Treat warnings as errors (maps to lint strict mode)\n  -Werror=<group>           Treat warning group as errors (e.g. lint, all, extra)\n  -Wno-error                Disable warning-as-error mode\n  -Wno-error=<group>        Disable warning group as errors\n  -Wno-lint, -w             Disable warning/lint compatibility mapping\n  --lint                    Run lint checks\n  --lint-fix                Apply lint auto-fixes\n  --lint-strict             Treat lint findings as errors\n  -O0|-O1|-O2|-O3|-Os      Optimization level (accepted; reserved for optimizer)\n  -g                        Emit debug info (accepted; reserved for debug metadata)\n  -c                        Compile only (default behavior; accepted for compatibility)\n  -std=<dialect>            Language dialect (e.g. -std=tuff2024)\n  --color=<auto|always|never>\n                            Diagnostics color policy\n  -fdiagnostics-color[=always|never|auto]\n                            Diagnostics color policy (clang-style)\n  @<file>                   Read additional args from response file\n  --json-errors             Emit diagnostics as JSON\n  --emit-certificate <file> Write a Tuff Verification Certificate (JSON) to file\n  -v, --verbose             Trace compiler passes\n  --trace-passes            Trace compiler passes\n  --version                 Print tuffc version\n  -h, --help                Show help\n  --help=<topic>            Show topic help (warnings|diagnostics|optimizers)\n\nDeprecated:\n  tuffc compile <input.tuff> [options]",
+    "Usage:\n  tuffc <input.tuff> [options]\n\nOptions:\n  -o, --out <file>          Write output to file\n  --target <js|c>           Output target (default: js)\n  --native                  For target c, compile+link generated C to native executable\n  --native-out <file>       Native executable output path when using --native\n  --cc <compiler>           Native C compiler command (default: auto-detect clang/gcc/cc)\n  -I, --module-base <dir>   Module root directory (legacy compatibility; may be deprecated)\n  --selfhost                Use selfhost backend (default, only backend)\n  --backend <name>          Explicit backend name (default: selfhost)\n  --profile                 Emit per-phase compiler timing JSON\n  -Wall                     Enable common warnings (maps to lint warnings)\n  -Wextra                   Enable extra warnings (maps to lint warnings)\n  -Werror                   Treat warnings as errors (maps to lint strict mode)\n  -Werror=<group>           Treat warning group as errors (e.g. lint, all, extra)\n  -Wno-error                Disable warning-as-error mode\n  -Wno-error=<group>        Disable warning group as errors\n  -Wno-lint, -w             Disable warning/lint compatibility mapping\n  --lint                    Run lint checks\n  --lint-fix                Apply lint auto-fixes\n  --lint-strict             Treat lint findings as errors\n  -O0|-O1|-O2|-O3|-Os      Optimization level (accepted; reserved for optimizer)\n  -g                        Emit debug info (accepted; reserved for debug metadata)\n  -c                        Compile only (default behavior; accepted for compatibility)\n  -std=<dialect>            Language dialect (e.g. -std=tuff2024)\n  --color=<auto|always|never>\n                            Diagnostics color policy\n  -fdiagnostics-color[=always|never|auto]\n                            Diagnostics color policy (clang-style)\n  @<file>                   Read additional args from response file\n  --json-errors             Emit diagnostics as JSON\n  --emit-certificate <file> Write a Tuff Verification Certificate (JSON) to file\n  -v, --verbose             Trace compiler passes\n  --trace-passes            Trace compiler passes\n  --version                 Print tuffc version\n  -h, --help                Show help\n  --help=<topic>            Show topic help (warnings|diagnostics|optimizers)\n\nNotes:\n  Module graph loading is always enabled for file compilation.\n\nDeprecated:\n  tuffc compile <input.tuff> [options]",
   );
 }
 
@@ -272,7 +272,6 @@ function main(argv: string[]): void {
   }
 
   let output = undefined;
-  let modules = false;
   let moduleBaseDir = undefined;
   let jsonErrors = false;
   let requestedBackend = undefined;
@@ -486,14 +485,6 @@ function main(argv: string[]): void {
       continue;
     }
 
-    if (args[i] === "--modules") {
-      modules = true;
-      continue;
-    }
-    if (args[i] === "--no-modules") {
-      modules = false;
-      continue;
-    }
     if (args[i] === "--module-base" || args[i] === "-I") {
       if (!args[i + 1] || args[i + 1].startsWith("-")) {
         console.error("Missing value for --module-base");
@@ -616,6 +607,16 @@ function main(argv: string[]): void {
   const input = inputs[0];
 
   if (unknownFlags.length > 0) {
+    const legacyModuleFlags = unknownFlags.filter(
+      (flag) => flag === "--modules" || flag === "--no-modules",
+    );
+    if (legacyModuleFlags.length > 0) {
+      console.error(
+        `Legacy option(s): ${legacyModuleFlags.join(", ")}\nModule graph loading is always enabled for file compilation; remove these option(s).`,
+      );
+      process.exitCode = 1;
+      return;
+    }
     console.error(`Unknown option(s): ${unknownFlags.join(", ")}`);
     printUsage();
     process.exitCode = 1;
@@ -663,7 +664,7 @@ function main(argv: string[]): void {
 
   const result = compileFileResult(path.resolve(input), output, {
     backend,
-    enableModules: modules,
+    enableModules: true,
     modules: {
       moduleBaseDir: moduleBaseDir ?? path.dirname(path.resolve(input)),
     },
@@ -731,7 +732,7 @@ function main(argv: string[]): void {
     profile: profileData = undefined,
   } = result.value;
 
-  if (lintFix && !modules && typeof lintFixedSource === "string") {
+  if (lintFix && typeof lintFixedSource === "string") {
     const absInput = path.resolve(input);
     fs.writeFileSync(absInput, lintFixedSource, "utf8");
     console.log(`Applied ${lintFixesApplied} lint auto-fix(es) to ${input}`);
