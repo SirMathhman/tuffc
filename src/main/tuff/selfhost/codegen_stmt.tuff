@@ -44,34 +44,22 @@ fn js_ident_stmt(name: *Str) : *Str => {
     name
 }
 
-fn emit_stmt(n: I32) : *Str => {
+fn emit_stmt_let_or_assign(n: I32) : *Str => {
     let kind = node_kind(n);
-    
     if (kind == NK_LET_DECL) {
         let name_idx = node_get_data1(n);
         let name = js_ident_stmt(get_interned_str(name_idx));
         let value = emit_expr(node_get_data3(n));
         let decl = "let ".str_concat(name).str_concat(" = ").str_concat(value.str_concat(";"));
-        if (name.str_eq("__this_param")) {
-            return decl;
-        }
+        if (name.str_eq("__this_param")) { return decl; }
         return decl.str_concat(" if (typeof __tuff_this !== 'undefined') __tuff_this.").str_concat(name).str_concat(" = ").str_concat(name).str_concat(";");
     }
-    
-    if (kind == NK_IMPORT_DECL) {
-        return "// import placeholder";
-    }
-    
-    if (kind == NK_EXPR_STMT) {
-        return emit_expr(node_get_data1(n)).str_concat(";");
-    }
-    
     if (kind == NK_ASSIGN_STMT) {
         let target_node = node_get_data1(n);
         let target = emit_expr(target_node);
         let value = emit_expr(node_get_data2(n));
         let assign = target.str_concat(" = ").str_concat(value).str_concat(";");
-        
+
         if (node_kind(target_node) == NK_IDENTIFIER) {
             let name = get_interned_str(node_get_data1(target_node));
             let js_name = js_ident_stmt(name);
@@ -79,7 +67,7 @@ fn emit_stmt(n: I32) : *Str => {
                 return assign.str_concat(" if (typeof __tuff_this !== 'undefined') __tuff_this.").str_concat(js_name).str_concat(" = ").str_concat(js_name).str_concat(";");
             }
         }
-        
+
         if (node_kind(target_node) == NK_MEMBER_EXPR) {
             let obj_node = node_get_data1(target_node);
             if (node_kind(obj_node) == NK_IDENTIFIER) {
@@ -90,204 +78,127 @@ fn emit_stmt(n: I32) : *Str => {
                 }
             }
         }
-        
         return assign;
     }
-    
+    ""
+}
+
+fn emit_stmt_flow(n: I32) : *Str => {
+    let kind = node_kind(n);
+    if (kind == NK_IMPORT_DECL) { return "// import placeholder"; }
+    if (kind == NK_EXPR_STMT) { return emit_expr(node_get_data1(n)).str_concat(";"); }
     if (kind == NK_RETURN_STMT) {
         let value = node_get_data1(n);
-        if (value == 0) {
-            return "return;";
-        }
+        if (value == 0) { return "return;"; }
         return "return ".str_concat(emit_expr(value).str_concat(";"));
     }
-    
     if (kind == NK_IF_STMT) {
         let cond = emit_expr(node_get_data1(n));
         let then_b = emit_block(node_get_data2(n));
         let else_b = node_get_data3(n);
-        if (else_b == 0) {
-            return "if (".str_concat(cond).str_concat(") ".str_concat(then_b));
-        }
+        if (else_b == 0) { return "if (".str_concat(cond).str_concat(") ".str_concat(then_b)); }
         return str_concat("if (".str_concat(cond).str_concat(") ").str_concat(then_b), " else ".str_concat(emit_stmt_or_block(else_b)));
     }
-    
-    // IfExpr used as statement (e.g., in else-if chains)
     if (kind == NK_IF_EXPR) {
         let cond = emit_expr(node_get_data1(n));
         let then_b = node_get_data2(n);
         let else_b = node_get_data3(n);
         let then_str = emit_stmt_or_block(then_b);
-        if (else_b == 0) {
-            return "if (".str_concat(cond).str_concat(") ".str_concat(then_str));
-        }
+        if (else_b == 0) { return "if (".str_concat(cond).str_concat(") ".str_concat(then_str)); }
         return str_concat("if (".str_concat(cond).str_concat(") ").str_concat(then_str), " else ".str_concat(emit_stmt_or_block(else_b)));
     }
-    
-    if (kind == NK_WHILE_STMT) {
-        let cond = emit_expr(node_get_data1(n));
-        let body = emit_block(node_get_data2(n));
-        return "while (".str_concat(cond).str_concat(") ".str_concat(body));
-    }
-    
+    if (kind == NK_WHILE_STMT) { return "while (".str_concat(emit_expr(node_get_data1(n))).str_concat(") ".str_concat(emit_block(node_get_data2(n)))); }
     if (kind == NK_FOR_STMT) {
-        let iter_idx = node_get_data1(n);
-        let iter = js_ident_stmt(get_interned_str(iter_idx));
+        let iter = js_ident_stmt(get_interned_str(node_get_data1(n)));
         let start = emit_expr(node_get_data2(n));
         let end = emit_expr(node_get_data3(n));
         let body = emit_block(node_get_data4(n));
         return str_concat(str_concat(str_concat(str_concat("for (let ".str_concat(iter).str_concat(" = ").str_concat(start), "; ".str_concat(iter)), " < ".str_concat(end)), "; ".str_concat(iter.str_concat("++) "))), body);
     }
+    if (kind == NK_LOOP_STMT) { return "while (true) ".str_concat(emit_block(node_get_data1(n))); }
+    if (kind == NK_BREAK_STMT) { return "break;"; }
+    if (kind == NK_CONTINUE_STMT) { return "continue;"; }
+    if (kind == NK_INTO_STMT) { return "// into ".str_concat(get_interned_str(node_get_data1(n))); }
+    if (kind == NK_LIFETIME_STMT) { return emit_block(node_get_data2(n)); }
+    if (kind == NK_BLOCK) { return emit_block(n); }
+    ""
+}
 
-    if (kind == NK_LOOP_STMT) {
-        let body = emit_block(node_get_data1(n));
-        return "while (true) ".str_concat(body);
-    }
-    
-    if (kind == NK_BREAK_STMT) {
-        return "break;";
-    }
-    
-    if (kind == NK_CONTINUE_STMT) {
-        return "continue;";
-    }
+fn emit_stmt_fn_decl(n: I32) : *Str => {
+    let name = get_interned_str(node_get_data1(n));
+    let params = node_get_data3(n);
+    let body = node_get_data5(n);
 
-    if (kind == NK_INTO_STMT) {
-        let cname = get_interned_str(node_get_data1(n));
-        return "// into ".str_concat(cname);
+    let param_names = vec_new();
+    let has_explicit_this = 0;
+    let i = 0;
+    let len = params.vec_length();
+    while (i < len) {
+        let pname = get_interned_str(params.vec_get(i).vec_get(0));
+        if (pname.str_eq("this")) { has_explicit_this = 1; param_names.vec_push("__this_param"); } else { param_names.vec_push(pname); }
+        i = i + 1;
     }
+    let params_str = param_names.vec_join(", ");
 
-    if (kind == NK_LIFETIME_STMT) {
-        return emit_block(node_get_data2(n));
-    }
-    
-    if (kind == NK_BLOCK) {
-        return emit_block(n);
-    }
-    
-    if (kind == NK_EXPECT_FN_DECL) {
-        let name_idx = node_get_data1(n);
-        let name = get_interned_str(name_idx);
-        return "// expect fn ".str_concat(name);
-    }
-
-    if (kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL || kind == NK_ACTUAL_FN_DECL) {
-        let name_idx = node_get_data1(n);
-        let name = get_interned_str(name_idx);
-        let params = node_get_data3(n);
-        let body = node_get_data5(n);
-        
-        let param_names = vec_new();
-        let has_explicit_this = 0;
-        let i = 0;
-        let len = params.vec_length();
-        while (i < len) {
-            let param = params.vec_get(i);
-            let pname = get_interned_str(param.vec_get(0));
-            if (pname.str_eq("this")) {
-                has_explicit_this = 1;
-                // Explicit this param always becomes __this_param in JS signature
-                param_names.vec_push("__this_param");
-            } else {
-                param_names.vec_push(pname);
-            }
-            i = i + 1;
+    let capture_var = "__tuff_outer_for_".str_concat(name);
+    let preamble = "";
+    let init_this = "";
+    let suffix = "";
+    if (has_explicit_this == 1) {
+        init_this = "let __tuff_this = undefined;\n";
+    } else {
+        preamble = "const ".str_concat(capture_var).str_concat(" = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;\n");
+        let fields = vec_new();
+        let j = 0;
+        while (j < len) {
+            let pname = get_interned_str(params.vec_get(j).vec_get(0));
+            if (!pname.str_eq("this")) { fields.vec_push(pname.str_concat(": ").str_concat(pname)); }
+            j = j + 1;
         }
-        let params_str = param_names.vec_join(", ");
-        
-        let capture_var = "__tuff_outer_for_".str_concat(name);
-        let preamble = "";
-        let init_this = "";
-        let suffix = "";
-        
-        if (has_explicit_this == 1) {
-            // Alias __tuff_this to __this_param so body 'this' refs work,
-            // but mark as non-mirrorable by using typeof undefined check below.
-            init_this = "let __tuff_this = undefined;\n";
-        } else {
-            preamble = "const ".str_concat(capture_var).str_concat(" = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;\n");
-            let fields = vec_new();
-            let j = 0;
-            while (j < len) {
-                let param = params.vec_get(j);
-                let pname = get_interned_str(param.vec_get(0));
-                if (!pname.str_eq("this")) {
-                    fields.vec_push(pname.str_concat(": ").str_concat(pname));
-                }
-                j = j + 1;
-            }
-            fields.vec_push("this: ".str_concat(capture_var));
-            init_this = "let __tuff_this = { ".str_concat(fields.vec_join(", ")).str_concat(" };\n");
-            suffix = "\nif (typeof __tuff_this !== 'undefined') __tuff_this.".str_concat(name).str_concat(" = ").str_concat(name).str_concat(";");
-        }
-        
-        if (node_kind(body) == NK_BLOCK) {
-            return preamble.str_concat("function ".str_concat(name).str_concat("(".str_concat(params_str)).str_concat(") ".str_concat(emit_fn_block_with_init(body, init_this)))).str_concat(suffix);
-        }
-        return preamble.str_concat("function ".str_concat(name).str_concat("(".str_concat(params_str)).str_concat(") {\n  ").str_concat(init_this).str_concat("  return ").str_concat(emit_expr(body)).str_concat(";\n}")).str_concat(suffix);
-    }
-    
-    if (kind == NK_STRUCT_DECL) {
-        return js_emit_struct_decl(n);
-    }
-    
-    if (kind == NK_TYPE_ALIAS) {
-        let name_idx = node_get_data1(n);
-        let name = get_interned_str(name_idx);
-        return "// type ".str_concat(name).str_concat(" = ...");
+        fields.vec_push("this: ".str_concat(capture_var));
+        init_this = "let __tuff_this = { ".str_concat(fields.vec_join(", ")).str_concat(" };\n");
+        suffix = "\nif (typeof __tuff_this !== 'undefined') __tuff_this.".str_concat(name).str_concat(" = ").str_concat(name).str_concat(";");
     }
 
-    if (kind == NK_DEP_TYPE_ALIAS) {
-        let name_idx = node_get_data1(n);
-        let name = get_interned_str(name_idx);
-        return "// type ".str_concat(name).str_concat("(...) = ...");
+    if (node_kind(body) == NK_BLOCK) {
+        return preamble.str_concat("function ".str_concat(name).str_concat("(".str_concat(params_str)).str_concat(") ".str_concat(emit_fn_block_with_init(body, init_this)))).str_concat(suffix);
     }
+    preamble.str_concat("function ".str_concat(name).str_concat("(".str_concat(params_str)).str_concat(") {\n  ").str_concat(init_this).str_concat("  return ").str_concat(emit_expr(body)).str_concat(";\n}")).str_concat(suffix)
+}
 
-    if (kind == NK_ENUM_DECL) {
-        return js_emit_enum_decl(n);
-    }
-
-    if (kind == NK_OBJECT_DECL) {
-        return js_emit_object_decl(n);
-    }
-
-    if (kind == NK_CONTRACT_DECL) {
-        return js_emit_contract_decl(n);
-    }
-    
-    if (kind == NK_EXTERN_FN_DECL) {
-        let name_idx = node_get_data1(n);
-        let name = get_interned_str(name_idx);
-        return "// extern fn ".str_concat(name);
-    }
-    
-    if (kind == NK_EXTERN_LET_DECL) {
-        let name_idx = node_get_data1(n);
-        let name = get_interned_str(name_idx);
-        return "// extern let ".str_concat(name);
-    }
-    
-    if (kind == NK_EXTERN_TYPE_DECL) {
-        let name_idx = node_get_data1(n);
-        let name = get_interned_str(name_idx);
-        return "// extern type ".str_concat(name);
-    }
-
+fn emit_stmt_decls(n: I32) : *Str => {
+    let kind = node_kind(n);
+    if (kind == NK_EXPECT_FN_DECL) { return "// expect fn ".str_concat(get_interned_str(node_get_data1(n))); }
+    if (kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL || kind == NK_ACTUAL_FN_DECL) { return emit_stmt_fn_decl(n); }
+    if (kind == NK_STRUCT_DECL) { return js_emit_struct_decl(n); }
+    if (kind == NK_TYPE_ALIAS) { return "// type ".str_concat(get_interned_str(node_get_data1(n))).str_concat(" = ..."); }
+    if (kind == NK_DEP_TYPE_ALIAS) { return "// type ".str_concat(get_interned_str(node_get_data1(n))).str_concat("(...) = ..."); }
+    if (kind == NK_ENUM_DECL) { return js_emit_enum_decl(n); }
+    if (kind == NK_OBJECT_DECL) { return js_emit_object_decl(n); }
+    if (kind == NK_CONTRACT_DECL) { return js_emit_contract_decl(n); }
+    if (kind == NK_EXTERN_FN_DECL) { return "// extern fn ".str_concat(get_interned_str(node_get_data1(n))); }
+    if (kind == NK_EXTERN_LET_DECL) { return "// extern let ".str_concat(get_interned_str(node_get_data1(n))); }
+    if (kind == NK_EXTERN_TYPE_DECL) { return "// extern type ".str_concat(get_interned_str(node_get_data1(n))); }
     if (kind == NK_EXTERN_IMPORT_DECL) {
         let parts = node_get_data2(n);
         let i = 0;
         let source = "";
         while (i < parts.vec_length()) {
-            if (i > 0) {
-                source = source.str_concat("::");
-            }
+            if (i > 0) { source = source.str_concat("::"); }
             source = source.str_concat(get_interned_str(parts.vec_get(i)));
             i = i + 1;
         }
         return "// extern from ".str_concat(source);
     }
-    
     ""
+}
+
+fn emit_stmt(n: I32) : *Str => {
+    let code = emit_stmt_let_or_assign(n);
+    if (!code.str_eq("")) { return code; }
+    code = emit_stmt_flow(n);
+    if (!code.str_eq("")) { return code; }
+    emit_stmt_decls(n)
 }
 
 fn emit_stmt_or_block(n: I32) : *Str => {

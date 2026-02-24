@@ -170,6 +170,156 @@ fn p_parse_generic_arg_value_or_type() : I32 => {
     p_parse_type()
 }
 
+fn p_try_parse_into_generic_value_call(expr: I32) : I32 => {
+    if (!(node_kind(expr) == NK_MEMBER_EXPR && get_interned_str(node_get_data2(expr)).str_eq("into") && p_at(TK_SYMBOL, "<") && p_has_generic_value_suffix())) {
+        return 0;
+    }
+    p_eat();
+    let type_args = vec_new();
+    if (!p_at(TK_SYMBOL, ">")) {
+        type_args.vec_push(p_parse_generic_arg_value_or_type());
+        while (p_at(TK_SYMBOL, ",")) {
+            p_eat();
+            type_args.vec_push(p_parse_generic_arg_value_or_type());
+        }
+    }
+    p_expect(TK_SYMBOL, ">", "Expected '>' after into type args");
+
+    let recv = node_get_data1(expr);
+    let prop = node_get_data2(expr);
+    let args = vec_new();
+    args.vec_push(recv);
+    let callee = node_new(NK_IDENTIFIER);
+    node_set_data1(callee, prop);
+
+    let into_value = node_new(NK_CALL_EXPR);
+    node_set_data1(into_value, callee);
+    node_set_data2(into_value, args);
+    node_set_data3(into_value, 1);
+    node_set_data4(into_value, type_args);
+    node_set_data5(into_value, 1);
+    into_value
+}
+
+fn p_parse_call_args() : Vec => {
+    let args = vec_new();
+    if (!p_at(TK_SYMBOL, ")")) {
+        args.vec_push(p_parse_expression(0));
+        while (p_at(TK_SYMBOL, ",")) {
+            p_eat();
+            args.vec_push(p_parse_expression(0));
+        }
+    }
+    args
+}
+
+fn p_lower_member_call(expr: I32, args: Vec, type_args: Vec, has_type_args: I32) : I32 => {
+    let recv = node_get_data1(expr);
+    let prop = node_get_data2(expr);
+    let lowered_args = vec_new();
+    lowered_args.vec_push(recv);
+    let ai = 0;
+    let alen = args.vec_length();
+    while (ai < alen) {
+        lowered_args.vec_push(args.vec_get(ai));
+        ai = ai + 1;
+    }
+    let callee = node_new(NK_IDENTIFIER);
+    node_set_data1(callee, prop);
+    let call = node_new(NK_CALL_EXPR);
+    node_set_data1(call, callee);
+    node_set_data2(call, lowered_args);
+    node_set_data3(call, 1);
+    if (has_type_args == 1) {
+        node_set_data4(call, type_args);
+    }
+    call
+}
+
+fn p_try_parse_generic_call(expr: I32) : I32 => {
+    if (!(p_at(TK_SYMBOL, "<") && p_has_generic_call_suffix())) {
+        return 0;
+    }
+    p_eat();
+    let type_args = vec_new();
+    if (!p_at(TK_SYMBOL, ">")) {
+        type_args.vec_push(p_parse_generic_arg_value_or_type());
+        while (p_at(TK_SYMBOL, ",")) {
+            p_eat();
+            type_args.vec_push(p_parse_generic_arg_value_or_type());
+        }
+    }
+    p_expect(TK_SYMBOL, ">", "Expected '>' after generic call type args");
+    p_expect(TK_SYMBOL, "(", "Expected '(' after generic call type args");
+    let args = p_parse_call_args();
+    p_expect(TK_SYMBOL, ")", "Expected ')' after call args");
+
+    if (node_kind(expr) == NK_MEMBER_EXPR) {
+        return p_lower_member_call(expr, args, type_args, 1);
+    }
+    let call = node_new(NK_CALL_EXPR);
+    node_set_data1(call, expr);
+    node_set_data2(call, args);
+    node_set_data3(call, 0);
+    node_set_data4(call, type_args);
+    call
+}
+
+fn p_try_parse_call(expr: I32) : I32 => {
+    if (!p_at(TK_SYMBOL, "(")) {
+        return 0;
+    }
+    p_eat();
+    let args = p_parse_call_args();
+    p_expect(TK_SYMBOL, ")", "Expected ')'");
+    if (node_kind(expr) == NK_MEMBER_EXPR) {
+        return p_lower_member_call(expr, args, vec_new(), 0);
+    }
+    let call = node_new(NK_CALL_EXPR);
+    node_set_data1(call, expr);
+    node_set_data2(call, args);
+    node_set_data3(call, 0);
+    call
+}
+
+fn p_try_parse_member(expr: I32) : I32 => {
+    if (!p_at(TK_SYMBOL, ".")) {
+        return 0;
+    }
+    p_eat();
+    let prop = 0;
+    if (p_at_kind(TK_IDENTIFIER)) {
+        prop = p_parse_identifier();
+    } else if (p_at_kind(TK_KEYWORD)) {
+        prop = tok_value(p_eat());
+    } else {
+        p_error_with_token_context("Expected member name after '.'");
+    }
+    let member = node_new(NK_MEMBER_EXPR);
+    node_set_data1(member, expr);
+    node_set_data2(member, prop);
+    member
+}
+
+fn p_try_parse_index_or_unwrap(expr: I32) : I32 => {
+    if (p_at(TK_SYMBOL, "[")) {
+        p_eat();
+        let idx_expr = p_parse_expression(0);
+        p_expect(TK_SYMBOL, "]", "Expected ']'");
+        let idx_node = node_new(NK_INDEX_EXPR);
+        node_set_data1(idx_node, expr);
+        node_set_data2(idx_node, idx_expr);
+        return idx_node;
+    }
+    if (p_at(TK_SYMBOL, "?")) {
+        p_eat();
+        let unwrap = node_new(NK_UNWRAP_EXPR);
+        node_set_data1(unwrap, expr);
+        return unwrap;
+    }
+    0
+}
+
 out fn p_parse_postfix(exprIn: I32) : I32 => {
     let expr = exprIn;
     let postfix_watchdog = 0;
@@ -178,160 +328,16 @@ out fn p_parse_postfix(exprIn: I32) : I32 => {
         if (postfix_watchdog > 10000) {
             p_error_with_token_context("Parser watchdog: postfix loop exceeded 10000 iterations");
         }
-        if (node_kind(expr) == NK_MEMBER_EXPR && get_interned_str(node_get_data2(expr)).str_eq("into") && p_at(TK_SYMBOL, "<") && p_has_generic_value_suffix()) {
-            p_eat();
-            let type_args = vec_new();
-            if (!p_at(TK_SYMBOL, ">")) {
-                type_args.vec_push(p_parse_generic_arg_value_or_type());
-                while (p_at(TK_SYMBOL, ",")) {
-                    p_eat();
-                    type_args.vec_push(p_parse_generic_arg_value_or_type());
-                }
-            }
-            p_expect(TK_SYMBOL, ">", "Expected '>' after into type args");
-
-            let recv = node_get_data1(expr);
-            let prop = node_get_data2(expr);
-            let args = vec_new();
-            args.vec_push(recv);
-            let callee = node_new(NK_IDENTIFIER);
-            node_set_data1(callee, prop);
-
-            let into_value = node_new(NK_CALL_EXPR);
-            node_set_data1(into_value, callee);
-            node_set_data2(into_value, args);
-            node_set_data3(into_value, 1);
-            node_set_data4(into_value, type_args);
-            node_set_data5(into_value, 1);
-            expr = into_value;
-            continue;
-        }
-
-        if (p_at(TK_SYMBOL, "<") && p_has_generic_call_suffix()) {
-            p_eat();
-            let type_args = vec_new();
-            if (!p_at(TK_SYMBOL, ">")) {
-                type_args.vec_push(p_parse_generic_arg_value_or_type());
-                while (p_at(TK_SYMBOL, ",")) {
-                    p_eat();
-                    type_args.vec_push(p_parse_generic_arg_value_or_type());
-                }
-            }
-            p_expect(TK_SYMBOL, ">", "Expected '>' after generic call type args");
-            p_expect(TK_SYMBOL, "(", "Expected '(' after generic call type args");
-
-            let args = vec_new();
-            if (!p_at(TK_SYMBOL, ")")) {
-                args.vec_push(p_parse_expression(0));
-                while (p_at(TK_SYMBOL, ",")) {
-                    p_eat();
-                    args.vec_push(p_parse_expression(0));
-                }
-            }
-            p_expect(TK_SYMBOL, ")", "Expected ')' after call args");
-
-            if (node_kind(expr) == NK_MEMBER_EXPR) {
-                let recv = node_get_data1(expr);
-                let prop = node_get_data2(expr);
-                let lowered_args = vec_new();
-                lowered_args.vec_push(recv);
-                let ai = 0;
-                let alen = args.vec_length();
-                while (ai < alen) {
-                    lowered_args.vec_push(args.vec_get(ai));
-                    ai = ai + 1;
-                }
-                let callee = node_new(NK_IDENTIFIER);
-                node_set_data1(callee, prop);
-                let call = node_new(NK_CALL_EXPR);
-                node_set_data1(call, callee);
-                node_set_data2(call, lowered_args);
-                node_set_data3(call, 1);
-                node_set_data4(call, type_args);
-                expr = call;
-            } else {
-                let call = node_new(NK_CALL_EXPR);
-                node_set_data1(call, expr);
-                node_set_data2(call, args);
-                node_set_data3(call, 0);
-                node_set_data4(call, type_args);
-                expr = call;
-            }
-            continue;
-        }
-
-        if (p_at(TK_SYMBOL, "(")) {
-            p_eat();
-            let args = vec_new();
-            if (!p_at(TK_SYMBOL, ")")) {
-                args.vec_push(p_parse_expression(0));
-                while (p_at(TK_SYMBOL, ",")) {
-                    p_eat();
-                    args.vec_push(p_parse_expression(0));
-                }
-            }
-            p_expect(TK_SYMBOL, ")", "Expected ')'");
-
-            if (node_kind(expr) == NK_MEMBER_EXPR) {
-                let recv = node_get_data1(expr);
-                let prop = node_get_data2(expr);
-                let lowered_args = vec_new();
-                lowered_args.vec_push(recv);
-                let ai = 0;
-                let alen = args.vec_length();
-                while (ai < alen) {
-                    lowered_args.vec_push(args.vec_get(ai));
-                    ai = ai + 1;
-                }
-                let callee = node_new(NK_IDENTIFIER);
-                node_set_data1(callee, prop);
-                let call = node_new(NK_CALL_EXPR);
-                node_set_data1(call, callee);
-                node_set_data2(call, lowered_args);
-                node_set_data3(call, 1);
-                expr = call;
-            } else {
-                let call = node_new(NK_CALL_EXPR);
-                node_set_data1(call, expr);
-                node_set_data2(call, args);
-                node_set_data3(call, 0);
-                expr = call;
-            }
-            continue;
-        }
-        if (p_at(TK_SYMBOL, ".")) {
-            p_eat();
-            let prop = 0;
-            if (p_at_kind(TK_IDENTIFIER)) {
-                prop = p_parse_identifier();
-            } else if (p_at_kind(TK_KEYWORD)) {
-                prop = tok_value(p_eat());
-            } else {
-                p_error_with_token_context("Expected member name after '.'");
-            }
-            let member = node_new(NK_MEMBER_EXPR);
-            node_set_data1(member, expr);
-            node_set_data2(member, prop);
-            expr = member;
-            continue;
-        }
-        if (p_at(TK_SYMBOL, "[")) {
-            p_eat();
-            let idx_expr = p_parse_expression(0);
-            p_expect(TK_SYMBOL, "]", "Expected ']'");
-            let idx_node = node_new(NK_INDEX_EXPR);
-            node_set_data1(idx_node, expr);
-            node_set_data2(idx_node, idx_expr);
-            expr = idx_node;
-            continue;
-        }
-        if (p_at(TK_SYMBOL, "?")) {
-            p_eat();
-            let unwrap = node_new(NK_UNWRAP_EXPR);
-            node_set_data1(unwrap, expr);
-            expr = unwrap;
-            continue;
-        }
+        let next = p_try_parse_into_generic_value_call(expr);
+        if (next != 0) { expr = next; continue; }
+        next = p_try_parse_generic_call(expr);
+        if (next != 0) { expr = next; continue; }
+        next = p_try_parse_call(expr);
+        if (next != 0) { expr = next; continue; }
+        next = p_try_parse_member(expr);
+        if (next != 0) { expr = next; continue; }
+        next = p_try_parse_index_or_unwrap(expr);
+        if (next != 0) { expr = next; continue; }
         break;
     }
     expr

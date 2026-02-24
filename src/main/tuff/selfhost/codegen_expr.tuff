@@ -30,6 +30,189 @@ fn cg_strip_num_suffix(s: *Str) : *Str => {
     s
 }
 
+fn emit_expr_call_into(n: I32, callee_node: I32) : *Str => {
+    let callee_name = get_interned_str(node_get_data1(callee_node));
+    if (!(callee_name.str_eq("into") && node_get_data3(n) == 1)) {
+        return "";
+    }
+    let args = node_get_data2(n);
+    if (args.vec_length() < 1) { return "undefined"; }
+
+    let type_args = node_get_data4(n);
+    let contract_name = "";
+    if (type_args.vec_length() == 1 && node_kind(type_args.vec_get(0)) == NK_NAMED_TYPE) { contract_name = get_interned_str(node_get_data1(type_args.vec_get(0))); }
+    let src_node = args.vec_get(0);
+    let src = emit_expr(src_node);
+    let consume_source = "";
+    let contract_label = contract_name;
+    if (contract_label.str_eq("")) { contract_label = "<unknown>"; }
+    if (node_kind(src_node) == NK_IDENTIFIER) { consume_source = get_interned_str(node_get_data1(src_node)).str_concat(" = undefined;"); }
+
+    if (node_get_data5(n) == 1) {
+        return "(() => { const __src = ".str_concat(src).str_concat("; const __conv = __src?.__into?.[").str_concat("\"").str_concat(contract_name).str_concat("\"").str_concat("]; if (!__conv) { throw new Error(\"Missing into converter for ").str_concat(contract_label).str_concat("\"); } ").str_concat(consume_source).str_concat(" let __used = false; return (...__intoArgs) => { if (__used) { throw new Error(\"Into converter already consumed for ").str_concat(contract_label).str_concat("\"); } __used = true; return __conv(...__intoArgs); }; })()");
+    }
+
+    let arg_strs = vec_new();
+    let i = 1;
+    let len = args.vec_length();
+    while (i < len) { arg_strs.vec_push(emit_expr(args.vec_get(i))); i = i + 1; }
+    let rest_args = arg_strs.vec_join(", ");
+    "(() => { const __src = ".str_concat(src).str_concat("; const __conv = __src?.__into?.[").str_concat("\"").str_concat(contract_name).str_concat("\"").str_concat("]; if (!__conv) { throw new Error(\"Missing into converter for ").str_concat(contract_label).str_concat("\"); } const __out = __conv(").str_concat(rest_args).str_concat("); ").str_concat(consume_source).str_concat(" return __out; })()")
+}
+
+fn emit_expr_call_method(n: I32, callee_node: I32) : *Str => {
+    if (!(node_get_data3(n) == 1 && node_kind(callee_node) == NK_IDENTIFIER)) {
+        return "";
+    }
+    let args = node_get_data2(n);
+    if (args.vec_length() < 1) { return ""; }
+    let callee_name = get_interned_str(node_get_data1(callee_node));
+    let receiver = emit_expr(args.vec_get(0));
+    let rest_args = vec_new();
+    let i = 1;
+    let len = args.vec_length();
+    while (i < len) { rest_args.vec_push(emit_expr(args.vec_get(i))); i = i + 1; }
+    let rest_str = rest_args.vec_join(", ");
+    let dyn_args = "";
+    if (rest_str.str_eq("")) { dyn_args = "__recv.ref"; } else { dyn_args = "__recv.ref, ".str_concat(rest_str); }
+    let static_args = "";
+    if (rest_str.str_eq("")) { static_args = "__recv"; } else { static_args = "__recv, ".str_concat(rest_str); }
+    let method_key = "\"".str_concat(callee_name).str_concat("\"");
+    "(() => { const __recv = ".str_concat(receiver).str_concat("; const __prop = __recv?.[").str_concat(method_key).str_concat("]; if (typeof __prop === \"function\") return __prop(").str_concat(rest_str).str_concat("); const __dyn = __recv?.table?.").str_concat(callee_name).str_concat("; return __dyn ? __dyn(").str_concat(dyn_args).str_concat(") : ").str_concat(emit_expr(callee_node)).str_concat("(").str_concat(static_args).str_concat("); })()")
+}
+
+fn emit_expr_call_expr(n: I32) : *Str => {
+    let callee_node = node_get_data1(n);
+    if (node_kind(callee_node) == NK_IDENTIFIER && get_interned_str(node_get_data1(callee_node)).str_eq("drop")) { return "undefined"; }
+    let into_call = emit_expr_call_into(n, callee_node);
+    if (!into_call.str_eq("")) { return into_call; }
+    let method = emit_expr_call_method(n, callee_node);
+    if (!method.str_eq("")) { return method; }
+    let callee = emit_expr(node_get_data1(n));
+    let args = node_get_data2(n);
+    let arg_strs = vec_new();
+    let i = 0;
+    let len = args.vec_length();
+    while (i < len) {
+        arg_strs.vec_push(emit_expr(args.vec_get(i)));
+        i = i + 1;
+    }
+    let args_str = arg_strs.vec_join(", ");
+    callee.str_concat("(").str_concat(args_str.str_concat(")"))
+}
+
+fn emit_expr_struct_init(n: I32) : *Str => {
+    let name = get_interned_str(node_get_data1(n));
+    let fields = node_get_data2(n);
+    let sb = sb_new();
+    sb_append(sb, "((typeof ");
+    sb_append(sb, name);
+    sb_append(sb, " === \"function\") ? ");
+    sb_append(sb, name);
+    sb_append(sb, "({");
+    let i = 0;
+    let len = fields.vec_length();
+    while (i < len) {
+        let field = fields.vec_get(i);
+        if (i > 0) { sb_append(sb, ", "); }
+        sb_append(sb, get_interned_str(field.vec_get(0)));
+        sb_append(sb, ": ");
+        sb_append(sb, emit_expr(field.vec_get(1)));
+        i = i + 1;
+    }
+    sb_append(sb, "}) : ({ __tag: ");
+    sb_append(sb, "\"".str_concat(name).str_concat("\""));
+    i = 0;
+    while (i < len) {
+        let field = fields.vec_get(i);
+        sb_append(sb, ", ");
+        sb_append(sb, get_interned_str(field.vec_get(0)));
+        sb_append(sb, ": ");
+        sb_append(sb, emit_expr(field.vec_get(1)));
+        i = i + 1;
+    }
+    sb_append(sb, " }))");
+    sb_build(sb)
+}
+
+fn emit_expr_complex(n: I32) : *Str => {
+    let kind = node_kind(n);
+    if (kind == NK_IF_EXPR) {
+        let cond = emit_expr(node_get_data1(n));
+        let then_b = node_get_data2(n);
+        let else_b = node_get_data3(n);
+        let then_str = "";
+        if (node_kind(then_b) == NK_BLOCK) { then_str = emit_block_as_iife(then_b); } else { then_str = emit_expr(then_b); }
+        let else_str = "undefined";
+        if (else_b != 0) {
+            if (node_kind(else_b) == NK_BLOCK) { else_str = emit_block_as_iife(else_b); } else { else_str = emit_expr(else_b); }
+        }
+        return str_concat("((".str_concat(cond).str_concat(") ? ").str_concat(then_str.str_concat(" : ")), else_str.str_concat(")"));
+    }
+    if (kind == NK_MATCH_EXPR) {
+        let target = emit_expr(node_get_data1(n));
+        let cases = node_get_data2(n);
+        let sb = sb_new();
+        sb_append(sb, "(() => { const __m = ");
+        sb_append(sb, target);
+        sb_append(sb, "; ");
+        let i = 0;
+        let len = cases.vec_length();
+        while (i < len) {
+            let case_node = cases.vec_get(i);
+            let pat = case_node.vec_get(0);
+            let body = case_node.vec_get(1);
+            let guard = emit_pattern_guard("__m", pat);
+            if (i == 0) { sb_append(sb, "if ("); } else { sb_append(sb, "else if ("); }
+            sb_append(sb, guard);
+            sb_append(sb, ") { ");
+            sb_append(sb, emit_pattern_bindings("__m", pat));
+            sb_append(sb, "return ");
+            let body_js = "";
+            if (node_kind(body) == NK_BLOCK) { body_js = emit_block(body); } else { body_js = emit_expr(body); }
+            sb_append(sb, body_js);
+            sb_append(sb, "; } ");
+            i = i + 1;
+        }
+        sb_append(sb, "else { throw new Error(\"Non-exhaustive match\"); } })()");
+        return sb_build(sb);
+    }
+    if (kind == NK_IS_EXPR) { return "(".str_concat(emit_pattern_guard(emit_expr(node_get_data1(n)), node_get_data2(n))).str_concat(")"); }
+    if (kind == NK_UNWRAP_EXPR) { return emit_expr(node_get_data1(n)); }
+    if (kind == NK_LAMBDA_EXPR) {
+        let params = node_get_data1(n);
+        let body = node_get_data2(n);
+        let pnames = vec_new();
+        let i = 0;
+        let len = params.vec_length();
+        while (i < len) {
+            pnames.vec_push(js_ident_expr(get_interned_str(params.vec_get(i).vec_get(0))));
+            i = i + 1;
+        }
+        let args = pnames.vec_join(", ");
+        if (node_kind(body) == NK_BLOCK) { return "((".str_concat(args).str_concat(") => ").str_concat(emit_fn_block(body)).str_concat(")"); }
+        return "((".str_concat(args).str_concat(") => ").str_concat(emit_expr(body)).str_concat(")");
+    }
+    if (kind == NK_FN_EXPR) {
+        let fname_idx = node_get_data1(n);
+        let params = node_get_data3(n);
+        let body = node_get_data5(n);
+        let pnames = vec_new();
+        let i = 0;
+        let len = params.vec_length();
+        while (i < len) {
+            pnames.vec_push(js_ident_expr(get_interned_str(params.vec_get(i).vec_get(0))));
+            i = i + 1;
+        }
+        let args = pnames.vec_join(", ");
+        let namePart = "";
+        if (fname_idx != 0) { namePart = " ".str_concat(get_interned_str(fname_idx)); }
+        if (node_kind(body) == NK_BLOCK) { return "(function".str_concat(namePart).str_concat("(").str_concat(args).str_concat(") ").str_concat(emit_fn_block(body)).str_concat(")"); }
+        return "(function".str_concat(namePart).str_concat("(").str_concat(args).str_concat(") { return ").str_concat(emit_expr(body)).str_concat("; })");
+    }
+    ""
+}
+
 fn emit_expr(n: I32) : *Str => {
     let kind = node_kind(n);
     
@@ -86,126 +269,7 @@ fn emit_expr(n: I32) : *Str => {
     }
     
     if (kind == NK_CALL_EXPR) {
-        let callee_node = node_get_data1(n);
-        if (node_kind(callee_node) == NK_IDENTIFIER) {
-            let callee_name = get_interned_str(node_get_data1(callee_node));
-            if (callee_name.str_eq("drop")) {
-                return "undefined";
-            }
-            if (callee_name.str_eq("into") && node_get_data3(n) == 1) {
-                let args = node_get_data2(n);
-                if (args.vec_length() < 1) {
-                    return "undefined";
-                }
-
-                let type_args = node_get_data4(n);
-                let contract_name = "";
-                if (type_args.vec_length() == 1 && node_kind(type_args.vec_get(0)) == NK_NAMED_TYPE) {
-                    contract_name = get_interned_str(node_get_data1(type_args.vec_get(0)));
-                }
-
-                let src_node = args.vec_get(0);
-                let src = emit_expr(src_node);
-                let consume_source = "";
-                let contract_label = contract_name;
-                if (contract_label.str_eq("")) {
-                    contract_label = "<unknown>";
-                }
-                if (node_kind(src_node) == NK_IDENTIFIER) {
-                    consume_source = get_interned_str(node_get_data1(src_node)).str_concat(" = undefined;");
-                }
-
-                if (node_get_data5(n) == 1) {
-                    return "(() => { const __src = ".str_concat(src)
-                        .str_concat("; const __conv = __src?.__into?.[")
-                        .str_concat("\"").str_concat(contract_name).str_concat("\"")
-                        .str_concat("]; if (!__conv) { throw new Error(\"Missing into converter for ")
-                        .str_concat(contract_label)
-                        .str_concat("\"); } ")
-                        .str_concat(consume_source)
-                        .str_concat(" let __used = false; return (...__intoArgs) => { if (__used) { throw new Error(\"Into converter already consumed for ")
-                        .str_concat(contract_label)
-                        .str_concat("\"); } __used = true; return __conv(...__intoArgs); }; })()");
-                }
-
-                let arg_strs = vec_new();
-                let i = 1;
-                let len = args.vec_length();
-                while (i < len) {
-                    arg_strs.vec_push(emit_expr(args.vec_get(i)));
-                    i = i + 1;
-                }
-                let rest_args = arg_strs.vec_join(", ");
-                return "(() => { const __src = ".str_concat(src)
-                    .str_concat("; const __conv = __src?.__into?.[")
-                    .str_concat("\"").str_concat(contract_name).str_concat("\"")
-                    .str_concat("]; if (!__conv) { throw new Error(\"Missing into converter for ")
-                    .str_concat(contract_label)
-                    .str_concat("\"); } const __out = __conv(")
-                    .str_concat(rest_args)
-                    .str_concat("); ")
-                    .str_concat(consume_source)
-                    .str_concat(" return __out; })()");
-            }
-        }
-        if (node_get_data3(n) == 1 && node_kind(callee_node) == NK_IDENTIFIER) {
-            let args = node_get_data2(n);
-            if (args.vec_length() >= 1) {
-                let callee_name = get_interned_str(node_get_data1(callee_node));
-                let receiver = emit_expr(args.vec_get(0));
-                let rest_args = vec_new();
-                let i = 1;
-                let len = args.vec_length();
-                while (i < len) {
-                    rest_args.vec_push(emit_expr(args.vec_get(i)));
-                    i = i + 1;
-                }
-                let rest_str = rest_args.vec_join(", ");
-                
-                let dyn_args = "";
-                if (rest_str.str_eq("")) {
-                    dyn_args = "__recv.ref";
-                } else {
-                    dyn_args = "__recv.ref, ".str_concat(rest_str);
-                }
-                
-                let static_args = "";
-                if (rest_str.str_eq("")) {
-                    static_args = "__recv";
-                } else {
-                    static_args = "__recv, ".str_concat(rest_str);
-                }
-                
-                let method_key = "\"".str_concat(callee_name).str_concat("\"");
-                
-                return "(() => { const __recv = ".str_concat(receiver)
-                    .str_concat("; const __prop = __recv?.[")
-                    .str_concat(method_key)
-                    .str_concat("]; if (typeof __prop === \"function\") return __prop(")
-                    .str_concat(rest_str)
-                    .str_concat("); const __dyn = __recv?.table?.")
-                    .str_concat(callee_name)
-                    .str_concat("; return __dyn ? __dyn(")
-                    .str_concat(dyn_args)
-                    .str_concat(") : ")
-                    .str_concat(emit_expr(callee_node))
-                    .str_concat("(")
-                    .str_concat(static_args)
-                    .str_concat("); })()");
-            }
-        }
-
-        let callee = emit_expr(node_get_data1(n));
-        let args = node_get_data2(n);
-        let arg_strs = vec_new();
-        let i = 0;
-        let len = args.vec_length();
-        while (i < len) {
-            arg_strs.vec_push(emit_expr(args.vec_get(i)));
-            i = i + 1;
-        }
-        let args_str = arg_strs.vec_join(", ");
-        return callee.str_concat("(").str_concat(args_str.str_concat(")"));
+        return emit_expr_call_expr(n);
     }
     
     if (kind == NK_MEMBER_EXPR) {
@@ -222,46 +286,7 @@ fn emit_expr(n: I32) : *Str => {
         return target.str_concat("[").str_concat(idx_expr).str_concat("]");
     }
     
-    if (kind == NK_STRUCT_INIT) {
-        let name_idx = node_get_data1(n);
-        let name = get_interned_str(name_idx);
-        let fields = node_get_data2(n);
-        let sb = sb_new();
-        sb_append(sb, "((typeof ");
-        sb_append(sb, name);
-        sb_append(sb, " === \"function\") ? ");
-        sb_append(sb, name);
-        sb_append(sb, "({");
-        let i = 0;
-        let len = fields.vec_length();
-        while (i < len) {
-            let field = fields.vec_get(i);
-            let key_idx = field.vec_get(0);
-            let val_node = field.vec_get(1);
-            if (i > 0) {
-                sb_append(sb, ", ");
-            }
-            sb_append(sb, get_interned_str(key_idx));
-            sb_append(sb, ": ");
-            sb_append(sb, emit_expr(val_node));
-            i = i + 1;
-        }
-        sb_append(sb, "}) : ({ __tag: ");
-        sb_append(sb, "\"".str_concat(name).str_concat("\""));
-        i = 0;
-        while (i < len) {
-            let field = fields.vec_get(i);
-            let key_idx = field.vec_get(0);
-            let val_node = field.vec_get(1);
-            sb_append(sb, ", ");
-            sb_append(sb, get_interned_str(key_idx));
-            sb_append(sb, ": ");
-            sb_append(sb, emit_expr(val_node));
-            i = i + 1;
-        }
-        sb_append(sb, " }))");
-        return sb_build(sb);
-    }
+    if (kind == NK_STRUCT_INIT) { return emit_expr_struct_init(n); }
 
     if (kind == NK_TUPLE_EXPR) {
         let items = node_get_data1(n);
@@ -275,113 +300,9 @@ fn emit_expr(n: I32) : *Str => {
         return "[".str_concat(parts.vec_join(", ")).str_concat("]");
     }
     
-    if (kind == NK_IF_EXPR) {
-        let cond = emit_expr(node_get_data1(n));
-        let then_b = node_get_data2(n);
-        let else_b = node_get_data3(n);
-        let then_str = "";
-        if (node_kind(then_b) == NK_BLOCK) {
-            then_str = emit_block_as_iife(then_b);
-        } else {
-            then_str = emit_expr(then_b);
-        }
-        let else_str = "undefined";
-        if (else_b != 0) {
-            if (node_kind(else_b) == NK_BLOCK) {
-                else_str = emit_block_as_iife(else_b);
-            } else {
-                else_str = emit_expr(else_b);
-            }
-        }
-        return str_concat("((".str_concat(cond).str_concat(") ? ").str_concat(then_str.str_concat(" : ")), else_str.str_concat(")"));
-    }
-    
-    if (kind == NK_MATCH_EXPR) {
-        let target = emit_expr(node_get_data1(n));
-        let cases = node_get_data2(n);
-        let sb = sb_new();
-        sb_append(sb, "(() => { const __m = ");
-        sb_append(sb, target);
-        sb_append(sb, "; ");
-        let i = 0;
-        let len = cases.vec_length();
-        while (i < len) {
-            let case_node = cases.vec_get(i);
-            let pat = case_node.vec_get(0);
-            let body = case_node.vec_get(1);
-            let guard = emit_pattern_guard("__m", pat);
-            if (i == 0) {
-                sb_append(sb, "if (");
-            } else {
-                sb_append(sb, "else if (");
-            }
-            sb_append(sb, guard);
-            sb_append(sb, ") { ");
-            sb_append(sb, emit_pattern_bindings("__m", pat));
-            sb_append(sb, "return ");
-            let body_js = "";
-            if (node_kind(body) == NK_BLOCK) {
-                body_js = emit_block(body);
-            } else {
-                body_js = emit_expr(body);
-            }
-            sb_append(sb, body_js);
-            sb_append(sb, "; } ");
-            i = i + 1;
-        }
-        sb_append(sb, "else { throw new Error(\"Non-exhaustive match\"); } })()");
-        return sb_build(sb);
-    }
-    
-    if (kind == NK_IS_EXPR) {
-        let inner = emit_expr(node_get_data1(n));
-        let pat = node_get_data2(n);
-        return "(".str_concat(emit_pattern_guard(inner, pat)).str_concat(")");
-    }
-    
-    if (kind == NK_UNWRAP_EXPR) {
-        return emit_expr(node_get_data1(n));
-    }
-
-    if (kind == NK_LAMBDA_EXPR) {
-        let params = node_get_data1(n);
-        let body = node_get_data2(n);
-        let pnames = vec_new();
-        let i = 0;
-        let len = params.vec_length();
-        while (i < len) {
-            let param = params.vec_get(i);
-            pnames.vec_push(js_ident_expr(get_interned_str(param.vec_get(0))));
-            i = i + 1;
-        }
-        let args = pnames.vec_join(", ");
-        if (node_kind(body) == NK_BLOCK) {
-            return "((".str_concat(args).str_concat(") => ").str_concat(emit_fn_block(body)).str_concat(")");
-        }
-        return "((".str_concat(args).str_concat(") => ").str_concat(emit_expr(body)).str_concat(")");
-    }
-
-    if (kind == NK_FN_EXPR) {
-        let fname_idx = node_get_data1(n);
-        let params = node_get_data3(n);
-        let body = node_get_data5(n);
-        let pnames = vec_new();
-        let i = 0;
-        let len = params.vec_length();
-        while (i < len) {
-            let param = params.vec_get(i);
-            pnames.vec_push(js_ident_expr(get_interned_str(param.vec_get(0))));
-            i = i + 1;
-        }
-        let args = pnames.vec_join(", ");
-        let namePart = "";
-        if (fname_idx != 0) {
-            namePart = " ".str_concat(get_interned_str(fname_idx));
-        }
-        if (node_kind(body) == NK_BLOCK) {
-            return "(function".str_concat(namePart).str_concat("(").str_concat(args).str_concat(") ").str_concat(emit_fn_block(body)).str_concat(")");
-        }
-        return "(function".str_concat(namePart).str_concat("(").str_concat(args).str_concat(") { return ").str_concat(emit_expr(body)).str_concat("; })");
+    let complex = emit_expr_complex(n);
+    if (!complex.str_eq("")) {
+        return complex;
     }
     
     "undefined"

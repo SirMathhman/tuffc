@@ -280,176 +280,173 @@ out fn p_can_start_refinement_expr_at(offset: I32) : Bool => {
     false
 }
 
-out fn p_parse_type_primary() : I32 => {
-        // Pointer type
-        if (p_at(TK_SYMBOL, "*")) {
+fn p_parse_type_primary_pointer() : I32 => {
+    p_eat();
+    let mutable = 0;
+    let move_ptr = 0;
+    let life_name = 0;
+    let progressed = true;
+    while (progressed) {
+        progressed = false;
+        if (mutable == 0 && p_at(TK_KEYWORD, "mut")) {
             p_eat();
-            let mutable = 0;
-            let move_ptr = 0;
-            let life_name = 0;
-            let progressed = true;
-            while (progressed) {
-                progressed = false;
-                if (mutable == 0 && p_at(TK_KEYWORD, "mut")) {
-                    p_eat();
-                    mutable = 1;
-                    progressed = true;
-                } else if (move_ptr == 0 && p_at(TK_KEYWORD, "move")) {
-                    p_eat();
-                    move_ptr = 1;
-                    progressed = true;
-                } else if (life_name == 0 && p_at_kind(TK_IDENTIFIER) && p_can_start_type_after_lifetime_tok_at(1)) {
-                    life_name = tok_value(p_eat());
-                    progressed = true;
-                }
-            }
-            let inner = p_parse_type_primary();
-            let node = node_new(NK_POINTER_TYPE);
-            node_set_data1(node, mutable);
-            node_set_data2(node, inner);
-            node_set_data3(node, move_ptr);
-            node_set_data4(node, life_name);
-            return node;
-        }
-        
-        // Array type
-        if (p_at(TK_SYMBOL, "[")) {
+            mutable = 1;
+            progressed = true;
+        } else if (move_ptr == 0 && p_at(TK_KEYWORD, "move")) {
             p_eat();
-            let elem = p_parse_type();
-            let init = 0;
-            let total = 0;
-            if (p_at(TK_SYMBOL, ";")) {
-                p_eat();
-                init = p_parse_expression(0);
-                p_expect(TK_SYMBOL, ";", "Expected ';' in array type");
-                total = p_parse_expression(0);
-            }
-            p_expect(TK_SYMBOL, "]", "Expected ']'");
-            let node = node_new(NK_ARRAY_TYPE);
-            node_set_data1(node, elem);
-            node_set_data2(node, init);
-            node_set_data3(node, total);
-            return node;
+            move_ptr = 1;
+            progressed = true;
+        } else if (life_name == 0 && p_at_kind(TK_IDENTIFIER) && p_can_start_type_after_lifetime_tok_at(1)) {
+            life_name = tok_value(p_eat());
+            progressed = true;
         }
-        
-        // Tuple type
-        if (p_at(TK_SYMBOL, "(")) {
-            p_eat();
-            let members = vec_new();
-            if (!p_at(TK_SYMBOL, ")")) {
-                if (tok_kind(p_peek(0)) == TK_IDENTIFIER && tok_kind(p_peek(1)) == TK_SYMBOL) {
-                    let sym0 = get_intern(tok_value(p_peek(1)));
-                    if (sym0.str_eq(":")) {
-                        p_eat();
-                        p_eat();
-                    }
-                }
-                members.vec_push(p_parse_type());
-                while (p_at(TK_SYMBOL, ",")) {
-                    p_eat();
-                    if (tok_kind(p_peek(0)) == TK_IDENTIFIER && tok_kind(p_peek(1)) == TK_SYMBOL) {
-                        let sym = get_intern(tok_value(p_peek(1)));
-                        if (sym.str_eq(":")) {
-                            p_eat();
-                            p_eat();
-                        }
-                    }
-                    members.vec_push(p_parse_type());
-                }
-            }
-            p_expect(TK_SYMBOL, ")", "Expected ')' in tuple type");
-            if (p_at(TK_SYMBOL, "=>")) {
-                p_eat();
-                let ret = p_parse_type();
-                let fnty = node_new(NK_FUNCTION_TYPE);
-                node_set_data1(fnty, members);
-                node_set_data2(fnty, ret);
-                return fnty;
-            }
-            let node = node_new(NK_TUPLE_TYPE);
-            node_set_data1(node, members);
-            return node;
-        }
+    }
+    let inner = p_parse_type_primary();
+    let node = node_new(NK_POINTER_TYPE);
+    node_set_data1(node, mutable);
+    node_set_data2(node, inner);
+    node_set_data3(node, move_ptr);
+    node_set_data4(node, life_name);
+    node
+}
 
-        // Type-level nullable pointer sentinel: 0 or 0USize
-        if (p_at_kind(TK_NUMBER)) {
-            let t = p_eat();
-            let raw = get_intern(tok_value(t));
-            if (!(raw.str_eq("0USize") || raw.str_eq("0"))) {
-                panic("Only 0 or 0USize is supported as a type-level numeric sentinel");
-            }
-            let base = node_new(NK_NAMED_TYPE);
-            node_set_data1(base, intern("USize"));
-            node_set_data2(base, vec_new());
-            let lit = node_new(NK_NUMBER_LIT);
-            node_set_data1(lit, tok_value(t));
-            let refine = node_new(NK_REFINEMENT_TYPE);
-            node_set_data1(refine, base);
-            node_set_data2(refine, intern("=="));
-            node_set_data3(refine, lit);
-            return refine;
-        }
-        
-        // Named type with optional generics
-        let name = p_parse_identifier();
-        let generics = vec_new();
-        
-        // Handle :: path
-        while (p_at(TK_SYMBOL, "::")) {
+fn p_parse_type_primary_array() : I32 => {
+    p_eat();
+    let elem = p_parse_type();
+    let init = 0;
+    let total = 0;
+    if (p_at(TK_SYMBOL, ";")) {
+        p_eat();
+        init = p_parse_expression(0);
+        p_expect(TK_SYMBOL, ";", "Expected ';' in array type");
+        total = p_parse_expression(0);
+    }
+    p_expect(TK_SYMBOL, "]", "Expected ']'");
+    let node = node_new(NK_ARRAY_TYPE);
+    node_set_data1(node, elem);
+    node_set_data2(node, init);
+    node_set_data3(node, total);
+    node
+}
+
+fn p_try_skip_named_tuple_member_label() : I32 => {
+    if (tok_kind(p_peek(0)) == TK_IDENTIFIER && tok_kind(p_peek(1)) == TK_SYMBOL) {
+        let sym = get_intern(tok_value(p_peek(1)));
+        if (sym.str_eq(":")) {
             p_eat();
-            let part = p_parse_identifier();
-            // Combine names - for now just track them
+            p_eat();
         }
-        
-        // Generic args
-        let would_be_member_refine = false;
-        if (p_at(TK_SYMBOL, "<")) {
-            let k1 = tok_kind(p_peek(1));
-            let k2 = tok_kind(p_peek(2));
-            if (k1 == TK_IDENTIFIER && k2 == TK_SYMBOL) {
-                let s2 = get_intern(tok_value(p_peek(2)));
-                if (s2.str_eq(".") || s2.str_eq("(")) {
-                    would_be_member_refine = true;
-                }
+    }
+    0
+}
+
+fn p_parse_type_primary_tuple_or_fn() : I32 => {
+    p_eat();
+    let members = vec_new();
+    if (!p_at(TK_SYMBOL, ")")) {
+        p_try_skip_named_tuple_member_label();
+        members.vec_push(p_parse_type());
+        while (p_at(TK_SYMBOL, ",")) {
+            p_eat();
+            p_try_skip_named_tuple_member_label();
+            members.vec_push(p_parse_type());
+        }
+    }
+    p_expect(TK_SYMBOL, ")", "Expected ')' in tuple type");
+    if (p_at(TK_SYMBOL, "=>")) {
+        p_eat();
+        let ret = p_parse_type();
+        let fnty = node_new(NK_FUNCTION_TYPE);
+        node_set_data1(fnty, members);
+        node_set_data2(fnty, ret);
+        return fnty;
+    }
+    let node = node_new(NK_TUPLE_TYPE);
+    node_set_data1(node, members);
+    node
+}
+
+fn p_parse_type_primary_numeric_sentinel() : I32 => {
+    let t = p_eat();
+    let raw = get_intern(tok_value(t));
+    if (!(raw.str_eq("0USize") || raw.str_eq("0"))) {
+        panic("Only 0 or 0USize is supported as a type-level numeric sentinel");
+    }
+    let base = node_new(NK_NAMED_TYPE);
+    node_set_data1(base, intern("USize"));
+    node_set_data2(base, vec_new());
+    let lit = node_new(NK_NUMBER_LIT);
+    node_set_data1(lit, tok_value(t));
+    let refine = node_new(NK_REFINEMENT_TYPE);
+    node_set_data1(refine, base);
+    node_set_data2(refine, intern("=="));
+    node_set_data3(refine, lit);
+    refine
+}
+
+fn p_parse_type_primary_named_or_applied() : I32 => {
+    let name = p_parse_identifier();
+    let generics = vec_new();
+
+    while (p_at(TK_SYMBOL, "::")) {
+        p_eat();
+        p_parse_identifier();
+    }
+
+    let would_be_member_refine = false;
+    if (p_at(TK_SYMBOL, "<")) {
+        let k1 = tok_kind(p_peek(1));
+        let k2 = tok_kind(p_peek(2));
+        if (k1 == TK_IDENTIFIER && k2 == TK_SYMBOL) {
+            let s2 = get_intern(tok_value(p_peek(2)));
+            if (s2.str_eq(".") || s2.str_eq("(")) {
+                would_be_member_refine = true;
             }
         }
-        if (p_at(TK_SYMBOL, "<") && p_can_start_type_tok_at(1) && !would_be_member_refine) {
-            p_eat();
-            if (!p_at(TK_SYMBOL, ">")) {
+    }
+
+    if (p_at(TK_SYMBOL, "<") && p_can_start_type_tok_at(1) && !would_be_member_refine) {
+        p_eat();
+        if (!p_at(TK_SYMBOL, ">")) {
+            generics.vec_push(p_parse_type());
+            while (p_at(TK_SYMBOL, ",")) {
+                p_eat();
                 generics.vec_push(p_parse_type());
-                while (p_at(TK_SYMBOL, ",")) {
-                    p_eat();
-                    generics.vec_push(p_parse_type());
-                }
             }
-            p_expect(TK_SYMBOL, ">", "Expected '>' in generic args");
         }
-        
-        let type_node = node_new(NK_NAMED_TYPE);
-        node_set_data1(type_node, name);
-        node_set_data2(type_node, generics);
+        p_expect(TK_SYMBOL, ">", "Expected '>' in generic args");
+    }
 
-        // Type application: TypeName(expr, ...) — dep-type-alias instantiation.
-        // Only triggered in pure type-parse position (not inside refinement expressions,
-        // where `str_length(this)` appears as a call within a constraint).
-        if (p_at(TK_SYMBOL, "(") && generics.vec_length() == 0) {
-            p_eat();
-            let args = vec_new();
-            if (!p_at(TK_SYMBOL, ")")) {
+    let type_node = node_new(NK_NAMED_TYPE);
+    node_set_data1(type_node, name);
+    node_set_data2(type_node, generics);
+
+    if (p_at(TK_SYMBOL, "(") && generics.vec_length() == 0) {
+        p_eat();
+        let args = vec_new();
+        if (!p_at(TK_SYMBOL, ")")) {
+            args.vec_push(p_parse_expression(0));
+            while (p_at(TK_SYMBOL, ",")) {
+                p_eat();
                 args.vec_push(p_parse_expression(0));
-                while (p_at(TK_SYMBOL, ",")) {
-                    p_eat();
-                    args.vec_push(p_parse_expression(0));
-                }
             }
-            p_expect(TK_SYMBOL, ")", "Expected ')' after type-application arguments");
-            let applied = node_new(NK_APPLIED_TYPE);
-            node_set_data1(applied, name);
-            node_set_data2(applied, args);
-            return applied;
         }
+        p_expect(TK_SYMBOL, ")", "Expected ')' after type-application arguments");
+        let applied = node_new(NK_APPLIED_TYPE);
+        node_set_data1(applied, name);
+        node_set_data2(applied, args);
+        return applied;
+    }
 
-        return type_node;
+    type_node
+}
+
+out fn p_parse_type_primary() : I32 => {
+    if (p_at(TK_SYMBOL, "*")) { return p_parse_type_primary_pointer(); }
+    if (p_at(TK_SYMBOL, "[")) { return p_parse_type_primary_array(); }
+    if (p_at(TK_SYMBOL, "(")) { return p_parse_type_primary_tuple_or_fn(); }
+    if (p_at_kind(TK_NUMBER)) { return p_parse_type_primary_numeric_sentinel(); }
+    p_parse_type_primary_named_or_applied()
 }
 
 out fn p_parse_type() : I32 => {
