@@ -1,6 +1,9 @@
 let { get_interned_str, vec_new, map_new } = selfhost::runtime_lexer;
 let { node_kind, node_get_data1, node_get_data2, node_get_data3, node_get_data4, node_get_data5 } = selfhost::parser_core;
 
+// Top-level type/external-type destructor map: alias/type name -> destructor function name.
+let js_global_dtor_type_map : Map = map_new();
+
 // === JS emit context stack for tracking 'this' ===
 // Each frame: [has_explicit_this: I32, fn_name: *Str]
 let js_fn_stack = vec_new();
@@ -451,6 +454,9 @@ fn emit_fn_block_with_init(n: I32, init_this: *Str) : *Str => {
         si = si + 1;
     }
 
+    // Merge top-level map entries for any let annotation lookup that isn't locally shadowed.
+    // map iteration is unavailable; direct lookups are done against global map below when needed.
+
     // Pass 2: collect let-declared variables that have a destructor type
     let dtor_var_names = vec_new();
     let dtor_var_dtors = vec_new();
@@ -461,9 +467,13 @@ fn emit_fn_block_with_init(n: I32, init_this: *Str) : *Str => {
             let type_node = node_get_data2(stmt);
             if (type_node != 0 && node_kind(type_node) == 40) {
                 let type_name = get_interned_str(node_get_data1(type_node));
-                if (dtor_type_map.map_has(type_name)) {
+                if (dtor_type_map.map_has(type_name) || js_global_dtor_type_map.map_has(type_name)) {
                     dtor_var_names.vec_push(get_interned_str(node_get_data1(stmt)));
-                    dtor_var_dtors.vec_push(dtor_type_map.map_get(type_name));
+                    if (dtor_type_map.map_has(type_name)) {
+                        dtor_var_dtors.vec_push(dtor_type_map.map_get(type_name));
+                    } else {
+                        dtor_var_dtors.vec_push(js_global_dtor_type_map.map_get(type_name));
+                    }
                 }
             }
         }
@@ -615,6 +625,17 @@ fn emit_branch_as_expr(n: I32) : *Str => {
 
 out fn generate_js(program: I32) : *Str => {
     let stmts = node_get_data1(program);
+    js_global_dtor_type_map = map_new();
+    let gi = 0;
+    let glen = stmts.vec_length();
+    while (gi < glen) {
+        let s = stmts.vec_get(gi);
+        let k = node_kind(s);
+        if ((k == NK_TYPE_ALIAS || k == NK_EXTERN_TYPE_DECL) && node_get_data5(s) != 0) {
+            js_global_dtor_type_map.map_set(get_interned_str(node_get_data1(s)), get_interned_str(node_get_data5(s)));
+        }
+        gi = gi + 1;
+    }
     let sb = sb_new();
     sb_append(sb, "\"use strict\";\n\n");
     let i = 0;
