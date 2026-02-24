@@ -153,6 +153,14 @@ fn cc_type_to_c(type_node: I32) : *Str => {
         if (cc_alias_by_variant.map_has(name)) { return cc_alias_by_variant.map_get(name); }
         return "int64_t";
     }
+    // NK_REFINEMENT_TYPE (44): erase refinement, lower base type.
+    if (kind == 44) {
+        return cc_type_to_c(node_get_data1(type_node));
+    }
+    // NK_APPLIED_TYPE (71): dep-type-alias application \u2014 erase to int64_t (alias name is not a C type).
+    if (kind == 71) {
+        return "int64_t";
+    }
     "int64_t"
 }
 
@@ -1069,6 +1077,11 @@ fn cc_emit_stmt(n: I32) : *Str => {
 
     if (kind == NK_TYPE_ALIAS) {
         return cc_emit_type_alias(n);
+    }
+
+    if (kind == NK_DEP_TYPE_ALIAS) {
+        let name = get_interned_str(node_get_data1(n));
+        return "/* type ".str_concat(name).str_concat("(...) = ... */");
     }
 
     if (kind == NK_ENUM_DECL) {
