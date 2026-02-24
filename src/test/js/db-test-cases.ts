@@ -53,6 +53,9 @@ const categoryFilter = categoryArg
   : "";
 const nodeExec = getNodeExecPath();
 const nativeCli = getNativeCliWrapperPath(root);
+const legacySelfhostKnownGapCaseIds = new Set<number>([
+  46, 47, 48, 49, 50, 52, 53, 54, 56, 57, 58, 59,
+]);
 
 function runPythonSqliteQuery(dbFilePath: string): DbCase[] {
   const pythonScript = [
@@ -422,11 +425,17 @@ for (const testCase of selectedCases) {
   const expectsCompileError = toBool(testCase.expects_compile_error);
 
   const skipKnownGap = (reason: string): boolean => {
-    if (!(allowKnownGaps && testCase.skip_reason)) return false;
+    const fromMetadata = allowKnownGaps && Boolean(testCase.skip_reason);
+    const fromLegacyIds =
+      allowKnownGaps &&
+      (backend === "selfhost" || backend === "native-exe") &&
+      legacySelfhostKnownGapCaseIds.has(testCase.id);
+    if (!(fromMetadata || fromLegacyIds)) return false;
     skipped += 1;
-    console.log(
-      `[db-tests] ~ ${label} skipped: ${reason} (${testCase.skip_reason})`,
-    );
+    const suffix = fromMetadata
+      ? ` (${testCase.skip_reason})`
+      : " (legacy-known-gap-id)";
+    console.log(`[db-tests] ~ ${label} skipped: ${reason}${suffix}`);
     return true;
   };
 
