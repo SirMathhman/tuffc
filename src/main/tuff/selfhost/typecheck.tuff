@@ -792,6 +792,20 @@ fn typecheck_expr(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types:
                 }
             }
 
+            // Dep-alias type application in expression position: arity check.
+            // e.g. str_char_at(s, Index())  — Index is a dep alias, not a function.
+            if (!fn_arities.map_has(fname) && tc_dep_type_alias_params.map_has(fname)) {
+                let expected_arity = tc_dep_type_alias_params.map_get(fname);
+                if (arg_count != expected_arity) {
+                    tc_panic_loc(
+                        "E_TYPE_APPLIED_ARITY",
+                        "'".str_concat(fname).str_concat("' applied with ").str_concat(int_to_string(arg_count)).str_concat(" argument(s), expected ").str_concat(int_to_string(expected_arity)),
+                        "Dependent type aliases must be applied with exactly the number of arguments declared in the type parameter list.",
+                        "Provide exactly ".str_concat(int_to_string(expected_arity)).str_concat(" argument(s) to '").str_concat(fname).str_concat("'.")
+                    );
+                }
+            }
+
             if (fn_param_types.map_has(fname)) {
                 let expected_types = fn_param_types.map_get(fname);
                 let j = 0;
@@ -812,7 +826,7 @@ fn typecheck_expr(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types:
                         );
                     }
 
-                    if (!type_names_compatible(expected_name, arg_name, arg_node)) {
+                    if (!type_names_compatible(expected_name, arg_name, arg_node) && !tc_type_alias_names.set_has(expected_name)) {
                         let msg = "Type mismatch in call to ".str_concat(fname)
                             .str_concat(" arg ").str_concat(int_to_string(j + 1))
                             .str_concat(": expected ").str_concat(expected_name)
