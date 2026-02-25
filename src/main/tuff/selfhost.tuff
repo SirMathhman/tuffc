@@ -246,6 +246,7 @@ fn main() : I32 => {
     let output_file = "";
     let target = "js";
     let lint_enabled = 0;
+    let lint_strict = 0;
     let borrow_enabled = 1;
     let profile_enabled = 0;
     let i = 2;
@@ -274,6 +275,10 @@ fn main() : I32 => {
         }
         else if (arg.str_eq("--lint")) {
             lint_enabled = 1;
+        }
+        else if (arg.str_eq("--lint-strict")) {
+            lint_enabled = 1;
+            lint_strict = 1;
         }
         else if (arg.str_eq("--profile")) {
             profile_enabled = 1;
@@ -307,6 +312,15 @@ fn main() : I32 => {
     borrow_enabled, target);
     if (result_code == 0) {
         print("Compiled ".str_concat(input_file).str_concat(" -> ").str_concat(output_file));
+    }
+    if (lint_enabled == 1) {
+        let issues = take_lint_issues();
+        if (issues.str_length() > 0) {
+            print_error("[lint] ".str_concat(issues));
+            if (lint_strict == 1) {
+                result_code = 1;
+            }
+        }
     }
     if (profile_enabled == 1) {
         print_error("[profile] ".str_concat(profile_take_json()));

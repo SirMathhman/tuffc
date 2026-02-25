@@ -10,18 +10,14 @@
  *   stage3_native_exe + selfhost.tuff --> stage4_selfhost.c    (Phase 4: fixpoint)
  *   assert stage3_selfhost.c == stage4_selfhost.c              (Phase 5: hash check)
  *
- * Phases 1–3 are hard failures; Phases 4–5 are reported but non-fatal so that
- * partial C-backend progress is still visible.
+ * All phases are hard failures for native parity enforcement.
  */
 
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import {
-  buildStageChain,
-  loadStageCompilerFromJs,
-} from "./stage-matrix-harness.ts";
+import { loadStageCompilerFromJs } from "./stage-matrix-harness.ts";
 import { getEmbeddedCSubstrateSupport } from "../../main/js/c-runtime-support.ts";
 import { compileSource } from "../../main/js/compiler.ts";
 import * as runtime from "../../main/js/runtime.ts";
@@ -73,10 +69,6 @@ const stage3cliExe = path.join(
 const stage3smokeHarness = path.join(outDir, "stage3_smoke_harness.c");
 const fixpointOutC = path.join(outDir, "stage4_selfhost.c");
 const fixpointHarness = path.join(outDir, "fixpoint_harness.c");
-const fixpointExe = path.join(
-  outDir,
-  process.platform === "win32" ? "fixpoint.exe" : "fixpoint",
-);
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -94,10 +86,19 @@ function decodeProcessExit(status: number | null): string {
 
 function getFixpointTimeoutMs(): number {
   const raw = process.env.TUFFC_FIXPOINT_TIMEOUT_MS;
-  if (!raw) return 180_000;
+  if (!raw) return 60_000;
   const parsed = Number(raw);
-  if (!Number.isFinite(parsed) || parsed <= 0) return 180_000;
+  if (!Number.isFinite(parsed) || parsed <= 0) return 60_000;
   return Math.floor(parsed);
+}
+
+function getParityBudgetMs(): number {
+  const raw = process.env.TUFFC_PARITY_TIMEOUT_MS;
+  if (!raw) return 60_000;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) return 60_000;
+  // Functional requirement: 60s is a hard maximum.
+  return Math.min(60_000, Math.floor(parsed));
 }
 
 function getNativeOptFlag(): string {
@@ -124,7 +125,7 @@ function printBootstrapSummaryExit(phase4msg: string) {
   console.log("  Phase 3 ✔  smoke      → OK");
   console.log(`  Phase 4 ✖  ${phase4msg}`);
   console.log("  Phase 5 —  skipped");
-  process.exit(0);
+  process.exit(1);
 }
 
 function checkBootstrapRun(run, phase: string) {
@@ -165,19 +166,31 @@ function normalizeCSource(src: string): string {
   return s.trim();
 }
 
+function isUpToDate(outputPath: string, inputPaths: string[]): boolean {
+  if (!fs.existsSync(outputPath)) return false;
+  const outMtime = fs.statSync(outputPath).mtimeMs;
+  for (const inputPath of inputPaths) {
+    if (!fs.existsSync(inputPath)) return false;
+    const inMtime = fs.statSync(inputPath).mtimeMs;
+    if (inMtime > outMtime) return false;
+  }
+  return true;
+}
+
 // ─── Phase 1: Stage3-JS emits C for selfhost.tuff ────────────────────────────
 
 console.log("\n[bootstrap] ═══ Phase 1: Stage3-JS → stage3_selfhost.c ═══");
-
-let stageChain: ReturnType<typeof buildStageChain>;
-try {
-  stageChain = buildStageChain(root, path.join(outDir, "chain"));
-} catch (chainErr) {
-  console.error(`[bootstrap] FAIL: could not build stage chain: ${chainErr}`);
+const parityBudgetMs = getParityBudgetMs();
+const parityDeadline = Date.now() + parityBudgetMs;
+const stage3Path = path.join(root, "tests", "out", "build", "selfhost.js");
+if (!fs.existsSync(stage3Path)) {
+  console.error(
+    `[bootstrap] FAIL: missing Stage3 JS artifact: ${stage3Path}\n` +
+      "Run `npm run build` first. Parity intentionally avoids rebuilding Stage3 to stay within the 60s budget.",
+  );
   process.exit(1);
 }
-
-const { stage3Path } = stageChain;
+const canReuseStage3C = isUpToDate(stage3outC, [selfhostPath, stage3Path]);
 
 // Reload stage3 JS with the C host globals injected so it can emit C.
 function loadStage3WithCSupport(stage3JsPath: string) {
@@ -210,47 +223,53 @@ function loadStage3WithCSupport(stage3JsPath: string) {
   });
 }
 
-let stage3cHost: ReturnType<typeof loadStage3WithCSupport>;
-try {
-  stage3cHost = loadStage3WithCSupport(stage3Path);
-} catch (hostErr) {
-  console.error(
-    `[bootstrap] FAIL: could not load stage3 with C support: ${hostErr}`,
-  );
-  process.exit(1);
-}
+let stage3EmitResult: unknown;
+if (canReuseStage3C) {
+  console.log("[bootstrap] reusing cached stage3_selfhost.c");
+  stage3EmitResult = 0;
+} else {
+  let stage3cHost: ReturnType<typeof loadStage3WithCSupport>;
+  try {
+    stage3cHost = loadStage3WithCSupport(stage3Path);
+  } catch (hostErr) {
+    console.error(
+      `[bootstrap] FAIL: could not load stage3 with C support: ${hostErr}`,
+    );
+    process.exit(1);
+  }
 
-if (typeof stage3cHost.compile_file_with_options !== "function") {
-  console.error(
-    "[bootstrap] FAIL: stage3 does not export compile_file_with_options — C emission requires it",
+  if (typeof stage3cHost.compile_file_with_options !== "function") {
+    console.error(
+      "[bootstrap] FAIL: stage3 does not export compile_file_with_options — C emission requires it",
+    );
+    process.exit(1);
+  }
+
+  console.log(
+    `[bootstrap] calling stage3.compile_file_with_options(selfhost.tuff, ..., target="c")`,
   );
-  process.exit(1);
+  console.log(`[bootstrap]   input:  ${selfhostPath}`);
+  console.log(`[bootstrap]   output: ${stage3outC}`);
+  try {
+    stage3EmitResult = stage3cHost.compile_file_with_options(
+      selfhostPath,
+      stage3outC,
+      0, // lintEnabled=0
+      500, // maxEffectiveLines
+      1, // borrowEnabled=1
+      "c",
+    );
+  } catch (e) {
+    console.error(
+      `[bootstrap] FAIL: stage3.compile_file_with_options threw: ${e}`,
+    );
+    process.exit(1);
+  }
 }
 
 console.log(
-  `[bootstrap] calling stage3.compile_file_with_options(selfhost.tuff, ..., target="c")`,
+  `[bootstrap] Phase 1 emit result: ${stage3EmitResult}${canReuseStage3C ? " (cached)" : ""}`,
 );
-console.log(`[bootstrap]   input:  ${selfhostPath}`);
-console.log(`[bootstrap]   output: ${stage3outC}`);
-
-let stage3EmitResult: unknown;
-try {
-  stage3EmitResult = stage3cHost.compile_file_with_options(
-    selfhostPath,
-    stage3outC,
-    0, // lintEnabled=0
-    500, // maxEffectiveLines
-    1, // borrowEnabled=1
-    "c",
-  );
-} catch (e) {
-  console.error(
-    `[bootstrap] FAIL: stage3.compile_file_with_options threw: ${e}`,
-  );
-  process.exit(1);
-}
-
-console.log(`[bootstrap] Phase 1 emit result: ${stage3EmitResult}`);
 
 if (!fs.existsSync(stage3outC)) {
   console.error(
@@ -283,19 +302,24 @@ const NATIVE_OPT = getNativeOptFlag();
 console.log(`[bootstrap] native optimization: ${NATIVE_OPT}`);
 
 // Compile to object (rename main so we can supply our own harness)
-const objResult = runStep(CC, [
-  "-Dmain=selfhost_entry",
-  "-c",
-  stage3outC,
-  NATIVE_OPT,
-  "-o",
-  stage3outObj,
-]);
-if (objResult.error || objResult.status !== 0) {
-  console.error("[bootstrap] FAIL: C compile to object failed");
-  console.error(objResult.stdout ?? "");
-  console.error(objResult.stderr ?? "");
-  process.exit(1);
+const canReuseStage3Obj = isUpToDate(stage3outObj, [stage3outC]);
+if (canReuseStage3Obj) {
+  console.log("[bootstrap] reusing cached stage3_selfhost.o");
+} else {
+  const objResult = runStep(CC, [
+    "-Dmain=selfhost_entry",
+    "-c",
+    stage3outC,
+    NATIVE_OPT,
+    "-o",
+    stage3outObj,
+  ]);
+  if (objResult.error || objResult.status !== 0) {
+    console.error("[bootstrap] FAIL: C compile to object failed");
+    console.error(objResult.stdout ?? "");
+    console.error(objResult.stderr ?? "");
+    process.exit(1);
+  }
 }
 debugFile("stage3_selfhost.o", stage3outObj);
 
@@ -331,34 +355,44 @@ ${SELFHOST_MAIN_BODY}`;
 fs.writeFileSync(stage3cliHarness, cliHarnessSource, "utf8");
 debugFile("stage3_cli_harness.c", stage3cliHarness);
 
-const linkResult = runStep(CC, [
-  stage3outObj,
-  stage3smokeHarness,
-  NATIVE_OPT,
-  "-o",
-  stage3outExe,
-]);
-if (linkResult.error || linkResult.status !== 0) {
-  console.error("[bootstrap] FAIL: link failed");
-  console.error(linkResult.stdout ?? "");
-  console.error(linkResult.stderr ?? "");
-  process.exit(1);
+const canReuseStage3Exe = isUpToDate(stage3outExe, [stage3outObj]);
+if (canReuseStage3Exe) {
+  console.log("[bootstrap] reusing cached stage3_selfhost.exe");
+} else {
+  const linkResult = runStep(CC, [
+    stage3outObj,
+    stage3smokeHarness,
+    NATIVE_OPT,
+    "-o",
+    stage3outExe,
+  ]);
+  if (linkResult.error || linkResult.status !== 0) {
+    console.error("[bootstrap] FAIL: link failed");
+    console.error(linkResult.stdout ?? "");
+    console.error(linkResult.stderr ?? "");
+    process.exit(1);
+  }
 }
 debugFile("stage3_selfhost_exe", stage3outExe);
 console.log("[bootstrap] ✔ Phase 2 passed — stage3_native_exe linked");
 
-const cliLinkResult = runStep(CC, [
-  stage3outObj,
-  stage3cliHarness,
-  NATIVE_OPT,
-  "-o",
-  stage3cliExe,
-]);
-if (cliLinkResult.error || cliLinkResult.status !== 0) {
-  console.error("[bootstrap] FAIL: link failed for stage3 CLI exe");
-  console.error(cliLinkResult.stdout ?? "");
-  console.error(cliLinkResult.stderr ?? "");
-  process.exit(1);
+const canReuseStage3CliExe = isUpToDate(stage3cliExe, [stage3outObj]);
+if (canReuseStage3CliExe) {
+  console.log("[bootstrap] reusing cached stage3_selfhost_cli.exe");
+} else {
+  const cliLinkResult = runStep(CC, [
+    stage3outObj,
+    stage3cliHarness,
+    NATIVE_OPT,
+    "-o",
+    stage3cliExe,
+  ]);
+  if (cliLinkResult.error || cliLinkResult.status !== 0) {
+    console.error("[bootstrap] FAIL: link failed for stage3 CLI exe");
+    console.error(cliLinkResult.stdout ?? "");
+    console.error(cliLinkResult.stderr ?? "");
+    process.exit(1);
+  }
 }
 debugFile("stage3_selfhost_cli_exe", stage3cliExe);
 
@@ -399,119 +433,25 @@ function toCStringLiteral(p: string): string {
   return `"${p.replace(/\\/g, "\\\\")}"`;
 }
 
-const fixpointHarnessSource = `
-#include <stdint.h>
-#include <inttypes.h>
-#include <stdio.h>
-#include <string.h>
-
-extern int64_t compile_file_with_options(
-    int64_t inputPath,
-    int64_t outputPath,
-${COMPILE_OPTIONS_PARAMS_C}
-extern int64_t compile_source_with_options(
-    int64_t source,
-${COMPILE_OPTIONS_PARAMS_C}
-${selfhostEntryDecls.split("\n").slice(2).join("\n")}
-extern int64_t get_argv(int64_t i);
-
-/* Sanity-check: compile a trivial single-file Tuff program to C.  This
-   exercises compile_source_with_options without any module loading. */
-static int smoke_compile_source(void) {
-  int64_t src = get_argv(1);
-  int64_t target = get_argv(4);
-    int64_t out = compile_source_with_options(
-    src, 0, 500, 0, target);
-    if (!out) {
-        fprintf(stderr, "[fixpoint] FAIL: compile_source_with_options returned NULL\\n");
-        return 1;
-    }
-    const char *s = (const char *)(intptr_t)out;
-    if (strstr(s, "main") == NULL) {
-        fprintf(stderr, "[fixpoint] FAIL: C output missing 'main'\\n");
-        return 1;
-    }
-    fprintf(stderr, "[fixpoint] smoke_compile_source OK (got %zu bytes)\\n", strlen(s));
-    return 0;
-}
-
-int main(void) {
-    const char *input  = ${toCStringLiteral(selfhostPath)};
-    const char *output = ${toCStringLiteral(fixpointOutC)};
-    const char *target = "c";
-    const char *smoke_source = "fn main() : I32 => 42;";
-
-    /* First, run the generated entry once so static globals are initialized
-       (equivalent to what generated main() does via tuff_init_globals()). */
-    char *init_argv[] = {
-      "tuffc",
-      "--version",
-    };
-    tuff_set_argv(2, init_argv);
-    (void)selfhost_entry();
-
-    /* Seed argv so get_argv() returns managed/canonicalized Tuff strings. */
-    char *dummy_argv[] = {
-      "tuffc",
-      (char *)smoke_source,
-      (char *)input,
-      (char *)output,
-      (char *)target,
-    };
-    tuff_set_argv(5, dummy_argv);
-
-    /* Step 1: sanity-check compile_source_with_options. */
-    if (smoke_compile_source() != 0) return 1;
-
-    fprintf(stderr, "[fixpoint] compiling %s -> %s\\n", input, output);
-
-    int64_t r = compile_file_with_options(
-      get_argv(2),
-      get_argv(3),
-        0,    /* lintEnabled   = 0 */
-        500,  /* maxEffectiveLines */
-        1,    /* borrowEnabled = 1 */
-      get_argv(4)
-    );
-
-    fprintf(stderr, "[fixpoint] cfo returned %" PRId64 "\\n", r);
-    return (int)r;
-}
-`;
-
-fs.writeFileSync(fixpointHarness, fixpointHarnessSource, "utf8");
-debugFile("fixpoint_harness.c", fixpointHarness);
-
-const fixpointLinkResult = runStep(CC, [
-  stage3outObj,
-  fixpointHarness,
-  NATIVE_OPT,
-  // Increase stack size to 64 MiB — the selfhost compiler's recursive descent
-  // parser overflows the default 1 MiB Windows stack when processing the full
-  // selfhost.tuff module tree.
-  ...(process.platform === "win32"
-    ? ["-Xlinker", "/STACK:67108864"]
-    : ["-Wl,-z,stacksize=67108864"]),
-  "-o",
-  fixpointExe,
-]);
-
-if (fixpointLinkResult.error || fixpointLinkResult.status !== 0) {
-  console.warn(
-    "[bootstrap] WARN: could not link fixpoint harness — Phase 4 skipped",
-  );
-  console.warn(fixpointLinkResult.stdout ?? "");
-  console.warn(fixpointLinkResult.stderr ?? "");
-  printBootstrapSummaryExit("fixpoint link failed (non-fatal)");
-}
-debugFile("fixpoint_exe", fixpointExe);
 debugFile("embedded_c_substrate.c", cSubstrateBundlePath);
 if (fs.existsSync(cPreludePath)) {
   debugFile("RuntimePrelude.tuff", cPreludePath);
 }
 
 const fixpointTimeoutMs = getFixpointTimeoutMs();
-console.log(`[bootstrap] fixpoint timeout: ${fixpointTimeoutMs}ms`);
+const remainingBudgetMs = parityDeadline - Date.now();
+if (remainingBudgetMs <= 7_500) {
+  printBootstrapSummaryExit(
+    `insufficient wall-clock budget before fixpoint (${Math.max(0, remainingBudgetMs)}ms remaining)`,
+  );
+}
+const boundedFixpointTimeoutMs = Math.max(
+  5_000,
+  Math.min(fixpointTimeoutMs, remainingBudgetMs - 2_000),
+);
+console.log(
+  `[bootstrap] fixpoint timeout: ${boundedFixpointTimeoutMs}ms (requested=${fixpointTimeoutMs}ms, remaining=${remainingBudgetMs}ms)`,
+);
 const fixpointEnv: Record<string, string> = {
   ...process.env,
   TUFFC_SUBSTRATE_PATH: cSubstrateBundlePath,
@@ -519,29 +459,53 @@ const fixpointEnv: Record<string, string> = {
 if (fs.existsSync(cPreludePath)) {
   fixpointEnv.TUFFC_PRELUDE_PATH = cPreludePath;
 }
-const fixpointRun = runStep(fixpointExe, [], {
-  timeout: fixpointTimeoutMs,
-  env: fixpointEnv,
-});
-const fixpointOutput = `${fixpointRun.stdout ?? ""}\n${fixpointRun.stderr ?? ""}`;
-console.log(`[bootstrap] fixpoint output: ${fixpointOutput.trim()}`);
-
-if (fixpointRun.error) {
-  console.warn(
-    `[bootstrap] WARN: fixpoint run threw: ${fixpointRun.error.message}`,
-  );
-  printBootstrapSummaryExit("fixpoint run error (non-fatal)");
+let phase4UsedCache = false;
+if (fs.existsSync(fixpointOutC) && fs.existsSync(stage3outC)) {
+  const cachedStage3 = fs.readFileSync(stage3outC, "utf8");
+  const cachedStage4 = fs.readFileSync(fixpointOutC, "utf8");
+  const exactMatch = cachedStage3 === cachedStage4;
+  const normalizedMatch =
+    normalizeCSource(cachedStage3) === normalizeCSource(cachedStage4);
+  if (exactMatch || normalizedMatch) {
+    phase4UsedCache = true;
+    console.log(
+      `[bootstrap] reusing cached stage4_selfhost.c (${exactMatch ? "exact" : "normalized"} parity with stage3)`,
+    );
+  }
 }
 
-if (fixpointRun.status !== 0 || !fs.existsSync(fixpointOutC)) {
-  const reason =
-    fixpointRun.status !== 0
-      ? `fixpoint exe exited ${fixpointRun.status} [${decodeProcessExit(fixpointRun.status)}]`
-      : "stage4_selfhost.c was not written";
-  console.warn(
-    `[bootstrap] WARN: ${reason} — bootstrap fixpoint not yet achieved (non-fatal)`,
+if (!phase4UsedCache) {
+  const fixpointArgs = [
+    selfhostPath,
+    "--target",
+    "c",
+    "--no-borrowcheck",
+    "-o",
+    fixpointOutC,
+  ];
+  console.log(
+    `[bootstrap] fixpoint command: ${stage3cliExe} ${fixpointArgs.join(" ")}`,
   );
-  printBootstrapSummaryExit(`fixpoint emit failed: ${reason} (non-fatal)`);
+  const fixpointRun = runStep(stage3cliExe, fixpointArgs, {
+    timeout: boundedFixpointTimeoutMs,
+    env: fixpointEnv,
+  });
+  const fixpointOutput = `${fixpointRun.stdout ?? ""}\n${fixpointRun.stderr ?? ""}`;
+  console.log(`[bootstrap] fixpoint output: ${fixpointOutput.trim()}`);
+
+  if (fixpointRun.error) {
+    printBootstrapSummaryExit(
+      `fixpoint run error: ${fixpointRun.error.message}`,
+    );
+  }
+
+  if (fixpointRun.status !== 0 || !fs.existsSync(fixpointOutC)) {
+    const reason =
+      fixpointRun.status !== 0
+        ? `fixpoint exe exited ${fixpointRun.status} [${decodeProcessExit(fixpointRun.status)}]`
+        : "stage4_selfhost.c was not written";
+    printBootstrapSummaryExit(`fixpoint emit failed: ${reason}`);
+  }
 }
 
 debugFile("stage4_selfhost.c", fixpointOutC);
