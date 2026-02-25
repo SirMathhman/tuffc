@@ -10026,6 +10026,40 @@ function module_emit_target_output(typed, merged_source, target) {
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.module_emit_target_output = module_emit_target_output;
 
+let gather_prof_modules = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.gather_prof_modules = gather_prof_modules;
+
+let gather_prof_import_edges = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.gather_prof_import_edges = gather_prof_import_edges;
+
+let gather_prof_read_file_ms = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.gather_prof_read_file_ms = gather_prof_read_file_ms;
+
+let gather_prof_lex_parse_ms = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.gather_prof_lex_parse_ms = gather_prof_lex_parse_ms;
+
+let gather_prof_decl_collect_ms = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.gather_prof_decl_collect_ms = gather_prof_decl_collect_ms;
+
+let gather_prof_import_snapshot_ms = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.gather_prof_import_snapshot_ms = gather_prof_import_snapshot_ms;
+
+let gather_prof_import_walk_ms = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.gather_prof_import_walk_ms = gather_prof_import_walk_ms;
+
+let gather_prof_import_recurse_ms = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.gather_prof_import_recurse_ms = gather_prof_import_recurse_ms;
+
+let gather_prof_implicit_check_ms = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.gather_prof_implicit_check_ms = gather_prof_implicit_check_ms;
+
+const __tuff_outer_for_gather_prof_reset = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function gather_prof_reset() {
+  let __tuff_this = { this: __tuff_outer_for_gather_prof_reset };
+  gather_prof_modules = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.gather_prof_modules = gather_prof_modules;
+  gather_prof_import_edges = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.gather_prof_import_edges = gather_prof_import_edges;
+  gather_prof_read_file_ms = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.gather_prof_read_file_ms = gather_prof_read_file_ms;
+  gather_prof_lex_parse_ms = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.gather_prof_lex_parse_ms = gather_prof_lex_parse_ms;
+  gather_prof_decl_collect_ms = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.gather_prof_decl_collect_ms = gather_prof_decl_collect_ms;
+  gather_prof_import_snapshot_ms = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.gather_prof_import_snapshot_ms = gather_prof_import_snapshot_ms;
+  gather_prof_import_walk_ms = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.gather_prof_import_walk_ms = gather_prof_import_walk_ms;
+  gather_prof_import_recurse_ms = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.gather_prof_import_recurse_ms = gather_prof_import_recurse_ms;
+  gather_prof_implicit_check_ms = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.gather_prof_implicit_check_ms = gather_prof_implicit_check_ms;
+  return 0;
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.gather_prof_reset = gather_prof_reset;
+
 const __tuff_outer_for_strip_import_decls = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
 function strip_import_decls(program) {
   let __tuff_this = { program: program, this: __tuff_outer_for_strip_import_decls };
@@ -10094,26 +10128,26 @@ function module_scope_has(scopes, depth, name) {
 if (typeof __tuff_this !== 'undefined') __tuff_this.module_scope_has = module_scope_has;
 
 const __tuff_outer_for_module_check_expr_call_like = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
-function module_check_expr_call_like(n, declared, imported, all_exported_declared, all_extern_declared, scopes, depth) {
-  let __tuff_this = { n: n, declared: declared, imported: imported, all_exported_declared: all_exported_declared, all_extern_declared: all_extern_declared, scopes: scopes, depth: depth, this: __tuff_outer_for_module_check_expr_call_like };
+function module_check_expr_call_like(n, declared, imported, scopes, depth, implicit_candidates, implicit_candidate_set) {
+  let __tuff_this = { n: n, declared: declared, imported: imported, scopes: scopes, depth: depth, implicit_candidates: implicit_candidates, implicit_candidate_set: implicit_candidate_set, this: __tuff_outer_for_module_check_expr_call_like };
   if ((node_kind(n) === 27)) {
-  module_check_expr_implicit_imports(node_get_data1(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+  module_check_expr_implicit_imports(node_get_data1(n), declared, imported, scopes, depth, implicit_candidates, implicit_candidate_set);
   let args = node_get_data2(n); if (typeof __tuff_this !== 'undefined') __tuff_this.args = args;
   let i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
   let len = (() => { const __recv = args; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.len = len;
   while ((i < len)) {
-  module_check_expr_implicit_imports((() => { const __recv = args; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+  module_check_expr_implicit_imports((() => { const __recv = args; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(), declared, imported, scopes, depth, implicit_candidates, implicit_candidate_set);
   i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
 }
   return 1;
 }
   if ((node_kind(n) === 28)) {
-  module_check_expr_implicit_imports(node_get_data1(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+  module_check_expr_implicit_imports(node_get_data1(n), declared, imported, scopes, depth, implicit_candidates, implicit_candidate_set);
   return 1;
 }
   if ((node_kind(n) === 29)) {
-  module_check_expr_implicit_imports(node_get_data1(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
-  module_check_expr_implicit_imports(node_get_data2(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+  module_check_expr_implicit_imports(node_get_data1(n), declared, imported, scopes, depth, implicit_candidates, implicit_candidate_set);
+  module_check_expr_implicit_imports(node_get_data2(n), declared, imported, scopes, depth, implicit_candidates, implicit_candidate_set);
   return 1;
 }
   return 0;
@@ -10121,21 +10155,21 @@ function module_check_expr_call_like(n, declared, imported, all_exported_declare
 if (typeof __tuff_this !== 'undefined') __tuff_this.module_check_expr_call_like = module_check_expr_call_like;
 
 const __tuff_outer_for_module_check_expr_composites = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
-function module_check_expr_composites(n, declared, imported, all_exported_declared, all_extern_declared, scopes, depth) {
-  let __tuff_this = { n: n, declared: declared, imported: imported, all_exported_declared: all_exported_declared, all_extern_declared: all_extern_declared, scopes: scopes, depth: depth, this: __tuff_outer_for_module_check_expr_composites };
+function module_check_expr_composites(n, declared, imported, scopes, depth, implicit_candidates, implicit_candidate_set) {
+  let __tuff_this = { n: n, declared: declared, imported: imported, scopes: scopes, depth: depth, implicit_candidates: implicit_candidates, implicit_candidate_set: implicit_candidate_set, this: __tuff_outer_for_module_check_expr_composites };
   if ((node_kind(n) === 30)) {
   let fields = node_get_data2(n); if (typeof __tuff_this !== 'undefined') __tuff_this.fields = fields;
   let i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
   let len = (() => { const __recv = fields; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.len = len;
   while ((i < len)) {
   let f = (() => { const __recv = fields; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.f = f;
-  module_check_expr_implicit_imports((() => { const __recv = f; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(1); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 1) : vec_get(__recv, 1); })(), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+  module_check_expr_implicit_imports((() => { const __recv = f; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(1); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 1) : vec_get(__recv, 1); })(), declared, imported, scopes, depth, implicit_candidates, implicit_candidate_set);
   i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
 }
   return 1;
 }
   if ((node_kind(n) === 33)) {
-  module_check_expr_implicit_imports(node_get_data1(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+  module_check_expr_implicit_imports(node_get_data1(n), declared, imported, scopes, depth, implicit_candidates, implicit_candidate_set);
   return 1;
 }
   return 0;
@@ -10143,12 +10177,12 @@ function module_check_expr_composites(n, declared, imported, all_exported_declar
 if (typeof __tuff_this !== 'undefined') __tuff_this.module_check_expr_composites = module_check_expr_composites;
 
 const __tuff_outer_for_module_check_expr_match = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
-function module_check_expr_match(n, declared, imported, all_exported_declared, all_extern_declared, scopes, depth) {
-  let __tuff_this = { n: n, declared: declared, imported: imported, all_exported_declared: all_exported_declared, all_extern_declared: all_extern_declared, scopes: scopes, depth: depth, this: __tuff_outer_for_module_check_expr_match };
+function module_check_expr_match(n, declared, imported, scopes, depth, implicit_candidates, implicit_candidate_set) {
+  let __tuff_this = { n: n, declared: declared, imported: imported, scopes: scopes, depth: depth, implicit_candidates: implicit_candidates, implicit_candidate_set: implicit_candidate_set, this: __tuff_outer_for_module_check_expr_match };
   if ((node_kind(n) !== 32)) {
   return 0;
 }
-  module_check_expr_implicit_imports(node_get_data1(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+  module_check_expr_implicit_imports(node_get_data1(n), declared, imported, scopes, depth, implicit_candidates, implicit_candidate_set);
   let cases = node_get_data2(n); if (typeof __tuff_this !== 'undefined') __tuff_this.cases = cases;
   let i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
   let len = (() => { const __recv = cases; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.len = len;
@@ -10172,7 +10206,7 @@ function module_check_expr_match(n, declared, imported, all_exported_declared, a
   module_scope_define(scopes, next_depth, pat_name);
 }
 } }
-  module_check_stmt_implicit_imports(body, declared, imported, all_exported_declared, all_extern_declared, scopes, next_depth);
+  module_check_stmt_implicit_imports(body, declared, imported, scopes, next_depth, implicit_candidates, implicit_candidate_set);
   (() => { const __recv = scopes; const __prop = __recv?.["vec_pop"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_pop; return __dyn ? __dyn(__recv.ref) : vec_pop(__recv); })();
   i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
 }
@@ -10181,11 +10215,13 @@ function module_check_expr_match(n, declared, imported, all_exported_declared, a
 if (typeof __tuff_this !== 'undefined') __tuff_this.module_check_expr_match = module_check_expr_match;
 
 const __tuff_outer_for_module_collect_declared_sets = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
-function module_collect_declared_sets(source, program, module_declared_map, filePath, all_declared_names, all_exported_declared_names, all_extern_declared_names) {
-  let __tuff_this = { source: source, program: program, module_declared_map: module_declared_map, filePath: filePath, all_declared_names: all_declared_names, all_exported_declared_names: all_exported_declared_names, all_extern_declared_names: all_extern_declared_names, this: __tuff_outer_for_module_collect_declared_sets };
+function module_collect_declared_sets(source, program, module_declared_map, module_exported_map, filePath, all_declared_names, all_exported_declared_names, all_extern_declared_names) {
+  let __tuff_this = { source: source, program: program, module_declared_map: module_declared_map, module_exported_map: module_exported_map, filePath: filePath, all_declared_names: all_declared_names, all_exported_declared_names: all_exported_declared_names, all_extern_declared_names: all_extern_declared_names, this: __tuff_outer_for_module_collect_declared_sets };
   let stmts = node_get_data1(program); if (typeof __tuff_this !== 'undefined') __tuff_this.stmts = stmts;
   let declared = collect_module_declarations(stmts); if (typeof __tuff_this !== 'undefined') __tuff_this.declared = declared;
+  let exported = set_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.exported = exported;
   (() => { const __recv = module_declared_map; const __prop = __recv?.["map_set"]; if (typeof __prop === "function") return __prop(filePath, declared); const __dyn = __recv?.table?.map_set; return __dyn ? __dyn(__recv.ref, filePath, declared) : map_set(__recv, filePath, declared); })();
+  (() => { const __recv = module_exported_map; const __prop = __recv?.["map_set"]; if (typeof __prop === "function") return __prop(filePath, exported); const __dyn = __recv?.table?.map_set; return __dyn ? __dyn(__recv.ref, filePath, exported) : map_set(__recv, filePath, exported); })();
   let di = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.di = di;
   let dlen = (() => { const __recv = stmts; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.dlen = dlen;
   while ((di < dlen)) {
@@ -10198,6 +10234,7 @@ function module_collect_declared_sets(source, program, module_declared_map, file
   (() => { const __recv = all_extern_declared_names; const __prop = __recv?.["set_add"]; if (typeof __prop === "function") return __prop(dname); const __dyn = __recv?.table?.set_add; return __dyn ? __dyn(__recv.ref, dname) : set_add(__recv, dname); })();
 }
   if (module_has_out_export(source, dname)) {
+  (() => { const __recv = exported; const __prop = __recv?.["set_add"]; if (typeof __prop === "function") return __prop(dname); const __dyn = __recv?.table?.set_add; return __dyn ? __dyn(__recv.ref, dname) : set_add(__recv, dname); })();
   (() => { const __recv = all_exported_declared_names; const __prop = __recv?.["set_add"]; if (typeof __prop === "function") return __prop(dname); const __dyn = __recv?.table?.set_add; return __dyn ? __dyn(__recv.ref, dname) : set_add(__recv, dname); })();
 }
 }
@@ -10208,8 +10245,9 @@ function module_collect_declared_sets(source, program, module_declared_map, file
 if (typeof __tuff_this !== 'undefined') __tuff_this.module_collect_declared_sets = module_collect_declared_sets;
 
 const __tuff_outer_for_module_snapshot_import_specs = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
-function module_snapshot_import_specs(stmts, moduleBasePath) {
-  let __tuff_this = { stmts: stmts, moduleBasePath: moduleBasePath, this: __tuff_outer_for_module_snapshot_import_specs };
+function module_snapshot_import_specs(stmts, moduleBasePath, import_path_cache) {
+  let __tuff_this = { stmts: stmts, moduleBasePath: moduleBasePath, import_path_cache: import_path_cache, this: __tuff_outer_for_module_snapshot_import_specs };
+  let t0 = perf_now_out(); if (typeof __tuff_this !== 'undefined') __tuff_this.t0 = t0;
   let imports = vec_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.imports = imports;
   let i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
   let len = (() => { const __recv = stmts; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.len = len;
@@ -10218,7 +10256,13 @@ function module_snapshot_import_specs(stmts, moduleBasePath) {
   if ((node_kind(stmt) === 6)) {
   let parts = node_get_data2(stmt); if (typeof __tuff_this !== 'undefined') __tuff_this.parts = parts;
   let rel = module_parts_to_relative_path(parts); if (typeof __tuff_this !== 'undefined') __tuff_this.rel = rel;
-  let depPath = module_normalize_path(path_join(moduleBasePath, rel)); if (typeof __tuff_this !== 'undefined') __tuff_this.depPath = depPath;
+  let depPath = ""; if (typeof __tuff_this !== 'undefined') __tuff_this.depPath = depPath;
+  if ((() => { const __recv = import_path_cache; const __prop = __recv?.["map_has"]; if (typeof __prop === "function") return __prop(rel); const __dyn = __recv?.table?.map_has; return __dyn ? __dyn(__recv.ref, rel) : map_has(__recv, rel); })()) {
+  depPath = (() => { const __recv = import_path_cache; const __prop = __recv?.["map_get"]; if (typeof __prop === "function") return __prop(rel); const __dyn = __recv?.table?.map_get; return __dyn ? __dyn(__recv.ref, rel) : map_get(__recv, rel); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.depPath = depPath;
+} else {
+  depPath = module_normalize_path(path_join(moduleBasePath, rel)); if (typeof __tuff_this !== 'undefined') __tuff_this.depPath = depPath;
+  (() => { const __recv = import_path_cache; const __prop = __recv?.["map_set"]; if (typeof __prop === "function") return __prop(rel, depPath); const __dyn = __recv?.table?.map_set; return __dyn ? __dyn(__recv.ref, rel, depPath) : map_set(__recv, rel, depPath); })();
+}
   let importNamesRaw = node_get_data1(stmt); if (typeof __tuff_this !== 'undefined') __tuff_this.importNamesRaw = importNamesRaw;
   let importNames = vec_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.importNames = importNames;
   let j = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.j = j;
@@ -10231,30 +10275,39 @@ function module_snapshot_import_specs(stmts, moduleBasePath) {
   (() => { const __recv = importSpec; const __prop = __recv?.["vec_push"]; if (typeof __prop === "function") return __prop(depPath); const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, depPath) : vec_push(__recv, depPath); })();
   (() => { const __recv = importSpec; const __prop = __recv?.["vec_push"]; if (typeof __prop === "function") return __prop(importNames); const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, importNames) : vec_push(__recv, importNames); })();
   (() => { const __recv = imports; const __prop = __recv?.["vec_push"]; if (typeof __prop === "function") return __prop(importSpec); const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, importSpec) : vec_push(__recv, importSpec); })();
+  gather_prof_import_edges = (gather_prof_import_edges + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.gather_prof_import_edges = gather_prof_import_edges;
 }
   i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
 }
+  gather_prof_import_snapshot_ms = (gather_prof_import_snapshot_ms + (perf_now_out() - t0)); if (typeof __tuff_this !== 'undefined') __tuff_this.gather_prof_import_snapshot_ms = gather_prof_import_snapshot_ms;
   return imports;
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.module_snapshot_import_specs = module_snapshot_import_specs;
 
 const __tuff_outer_for_module_walk_imports = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
-function module_walk_imports(imports, moduleBasePath, seen, visiting, sources, module_paths, module_declared_map, all_declared_names, all_exported_declared_names, all_extern_declared_names, lint_enabled, max_effective_lines, module_cycles) {
-  let __tuff_this = { imports: imports, moduleBasePath: moduleBasePath, seen: seen, visiting: visiting, sources: sources, module_paths: module_paths, module_declared_map: module_declared_map, all_declared_names: all_declared_names, all_exported_declared_names: all_exported_declared_names, all_extern_declared_names: all_extern_declared_names, lint_enabled: lint_enabled, max_effective_lines: max_effective_lines, module_cycles: module_cycles, this: __tuff_outer_for_module_walk_imports };
+function module_walk_imports(imports, moduleBasePath, seen, visiting, sources, module_paths, module_declared_map, module_exported_map, module_source_cache, import_path_cache, all_declared_names, all_exported_declared_names, all_extern_declared_names, lint_enabled, max_effective_lines, module_cycles, recursion_depth) {
+  let __tuff_this = { imports: imports, moduleBasePath: moduleBasePath, seen: seen, visiting: visiting, sources: sources, module_paths: module_paths, module_declared_map: module_declared_map, module_exported_map: module_exported_map, module_source_cache: module_source_cache, import_path_cache: import_path_cache, all_declared_names: all_declared_names, all_exported_declared_names: all_exported_declared_names, all_extern_declared_names: all_extern_declared_names, lint_enabled: lint_enabled, max_effective_lines: max_effective_lines, module_cycles: module_cycles, recursion_depth: recursion_depth, this: __tuff_outer_for_module_walk_imports };
   let i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
   let len = (() => { const __recv = imports; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.len = len;
   while ((i < len)) {
   let spec = (() => { const __recv = imports; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.spec = spec;
-  let depPath = module_normalize_path((() => { const __recv = spec; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(0); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })()); if (typeof __tuff_this !== 'undefined') __tuff_this.depPath = depPath;
+  let depPath = (() => { const __recv = spec; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(0); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.depPath = depPath;
   let importNames = (() => { const __recv = spec; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(1); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 1) : vec_get(__recv, 1); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.importNames = importNames;
-  gather_module_sources(depPath, moduleBasePath, seen, visiting, sources, module_paths, module_declared_map, all_declared_names, all_exported_declared_names, all_extern_declared_names, lint_enabled, max_effective_lines, module_cycles);
+  if ((!(() => { const __recv = seen; const __prop = __recv?.["set_has"]; if (typeof __prop === "function") return __prop(depPath); const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, depPath) : set_has(__recv, depPath); })())) {
+  let t_recurse_0 = perf_now_out(); if (typeof __tuff_this !== 'undefined') __tuff_this.t_recurse_0 = t_recurse_0;
+  gather_module_sources(depPath, moduleBasePath, seen, visiting, sources, module_paths, module_declared_map, module_exported_map, module_source_cache, import_path_cache, all_declared_names, all_exported_declared_names, all_extern_declared_names, lint_enabled, max_effective_lines, module_cycles, (recursion_depth + 1));
+  if ((recursion_depth === 0)) {
+  gather_prof_import_recurse_ms = (gather_prof_import_recurse_ms + (perf_now_out() - t_recurse_0)); if (typeof __tuff_this !== 'undefined') __tuff_this.gather_prof_import_recurse_ms = gather_prof_import_recurse_ms;
+}
+}
+  let t_walk_local_0 = perf_now_out(); if (typeof __tuff_this !== 'undefined') __tuff_this.t_walk_local_0 = t_walk_local_0;
   let depDeclared = (() => { const __recv = module_declared_map; const __prop = __recv?.["map_get"]; if (typeof __prop === "function") return __prop(depPath); const __dyn = __recv?.table?.map_get; return __dyn ? __dyn(__recv.ref, depPath) : map_get(__recv, depPath); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.depDeclared = depDeclared;
-  let depSource = read_file(depPath); if (typeof __tuff_this !== 'undefined') __tuff_this.depSource = depSource;
+  let depExported = (() => { const __recv = module_exported_map; const __prop = __recv?.["map_get"]; if (typeof __prop === "function") return __prop(depPath); const __dyn = __recv?.table?.map_get; return __dyn ? __dyn(__recv.ref, depPath) : map_get(__recv, depPath); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.depExported = depExported;
   let j = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.j = j;
   let jLen = (() => { const __recv = importNames; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.jLen = jLen;
   while ((j < jLen)) {
   let importedName = (() => { const __recv = importNames; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(j); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, j) : vec_get(__recv, j); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.importedName = importedName;
-  if ((!module_has_out_export(depSource, importedName))) {
+  if ((!(() => { const __recv = depExported; const __prop = __recv?.["set_has"]; if (typeof __prop === "function") return __prop(importedName); const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, importedName) : set_has(__recv, importedName); })())) {
   if ((() => { const __recv = depDeclared; const __prop = __recv?.["set_has"]; if (typeof __prop === "function") return __prop(importedName); const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, importedName) : set_has(__recv, importedName); })()) {
   panic_with_code("E_MODULE_PRIVATE_IMPORT", (() => { const __recv = (() => { const __recv = "Cannot import '"; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(importedName); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, importedName) : str_concat(__recv, importedName); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("' from module: symbol is not exported with 'out'"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "' from module: symbol is not exported with 'out'") : str_concat(__recv, "' from module: symbol is not exported with 'out'"); })(), "A module import referenced a declaration that exists but is not visible outside its module.", "Mark the declaration with 'out' in the target module, or remove it from the import list.");
 }
@@ -10262,6 +10315,7 @@ function module_walk_imports(imports, moduleBasePath, seen, visiting, sources, m
 }
   j = (j + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.j = j;
 }
+  gather_prof_import_walk_ms = (gather_prof_import_walk_ms + (perf_now_out() - t_walk_local_0)); if (typeof __tuff_this !== 'undefined') __tuff_this.gather_prof_import_walk_ms = gather_prof_import_walk_ms;
   i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
 }
   return 0;
@@ -10290,8 +10344,8 @@ function module_collect_imported_names(imports) {
 if (typeof __tuff_this !== 'undefined') __tuff_this.module_collect_imported_names = module_collect_imported_names;
 
 const __tuff_outer_for_module_check_expr_implicit_imports = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
-function module_check_expr_implicit_imports(n, declared, imported, all_exported_declared, all_extern_declared, scopes, depth) {
-  let __tuff_this = { n: n, declared: declared, imported: imported, all_exported_declared: all_exported_declared, all_extern_declared: all_extern_declared, scopes: scopes, depth: depth, this: __tuff_outer_for_module_check_expr_implicit_imports };
+function module_check_expr_implicit_imports(n, declared, imported, scopes, depth, implicit_candidates, implicit_candidate_set) {
+  let __tuff_this = { n: n, declared: declared, imported: imported, scopes: scopes, depth: depth, implicit_candidates: implicit_candidates, implicit_candidate_set: implicit_candidate_set, this: __tuff_outer_for_module_check_expr_implicit_imports };
   if ((n === 0)) {
   return 0;
 }
@@ -10299,39 +10353,40 @@ function module_check_expr_implicit_imports(n, declared, imported, all_exported_
   if ((kind === 24)) {
   let name = get_interned_str(node_get_data1(n)); if (typeof __tuff_this !== 'undefined') __tuff_this.name = name;
   if ((((!module_scope_has(scopes, depth, name)) && (!(() => { const __recv = declared; const __prop = __recv?.["set_has"]; if (typeof __prop === "function") return __prop(name); const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, name) : set_has(__recv, name); })())) && (!(() => { const __recv = imported; const __prop = __recv?.["set_has"]; if (typeof __prop === "function") return __prop(name); const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, name) : set_has(__recv, name); })()))) {
-  if (((() => { const __recv = all_exported_declared; const __prop = __recv?.["set_has"]; if (typeof __prop === "function") return __prop(name); const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, name) : set_has(__recv, name); })() && (!(() => { const __recv = all_extern_declared; const __prop = __recv?.["set_has"]; if (typeof __prop === "function") return __prop(name); const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, name) : set_has(__recv, name); })()))) {
-  panic_with_code("E_MODULE_IMPLICIT_IMPORT", (() => { const __recv = (() => { const __recv = "Strict module imports require explicit import for symbol '"; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, name) : str_concat(__recv, name); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("'"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "'") : str_concat(__recv, "'"); })(), "A module referenced a symbol declared in another module without importing it explicitly.", "Add the symbol to the module import list (for example: let { symbol } = moduleName;).");
+  if ((!(() => { const __recv = implicit_candidate_set; const __prop = __recv?.["set_has"]; if (typeof __prop === "function") return __prop(name); const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, name) : set_has(__recv, name); })())) {
+  (() => { const __recv = implicit_candidate_set; const __prop = __recv?.["set_add"]; if (typeof __prop === "function") return __prop(name); const __dyn = __recv?.table?.set_add; return __dyn ? __dyn(__recv.ref, name) : set_add(__recv, name); })();
+  (() => { const __recv = implicit_candidates; const __prop = __recv?.["vec_push"]; if (typeof __prop === "function") return __prop(name); const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, name) : vec_push(__recv, name); })();
 }
 }
   return 0;
 }
   if ((kind === 25)) {
-  module_check_expr_implicit_imports(node_get_data2(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
-  module_check_expr_implicit_imports(node_get_data3(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+  module_check_expr_implicit_imports(node_get_data2(n), declared, imported, scopes, depth, implicit_candidates, implicit_candidate_set);
+  module_check_expr_implicit_imports(node_get_data3(n), declared, imported, scopes, depth, implicit_candidates, implicit_candidate_set);
   return 0;
 }
   if (((kind === 26) || (kind === 34))) {
-  module_check_expr_implicit_imports(node_get_data2(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+  module_check_expr_implicit_imports(node_get_data2(n), declared, imported, scopes, depth, implicit_candidates, implicit_candidate_set);
   if ((kind === 34)) {
-  module_check_expr_implicit_imports(node_get_data1(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+  module_check_expr_implicit_imports(node_get_data1(n), declared, imported, scopes, depth, implicit_candidates, implicit_candidate_set);
 }
   return 0;
 }
-  if ((module_check_expr_call_like(n, declared, imported, all_exported_declared, all_extern_declared, scopes, depth) === 1)) {
+  if ((module_check_expr_call_like(n, declared, imported, scopes, depth, implicit_candidates, implicit_candidate_set) === 1)) {
   return 0;
 }
-  if ((module_check_expr_composites(n, declared, imported, all_exported_declared, all_extern_declared, scopes, depth) === 1)) {
+  if ((module_check_expr_composites(n, declared, imported, scopes, depth, implicit_candidates, implicit_candidate_set) === 1)) {
   return 0;
 }
   if ((kind === 31)) {
-  module_check_expr_implicit_imports(node_get_data1(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
-  module_check_stmt_implicit_imports(node_get_data2(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+  module_check_expr_implicit_imports(node_get_data1(n), declared, imported, scopes, depth, implicit_candidates, implicit_candidate_set);
+  module_check_stmt_implicit_imports(node_get_data2(n), declared, imported, scopes, depth, implicit_candidates, implicit_candidate_set);
   if ((node_get_data3(n) !== 0)) {
-  module_check_stmt_implicit_imports(node_get_data3(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+  module_check_stmt_implicit_imports(node_get_data3(n), declared, imported, scopes, depth, implicit_candidates, implicit_candidate_set);
 }
   return 0;
 }
-  if ((module_check_expr_match(n, declared, imported, all_exported_declared, all_extern_declared, scopes, depth) === 1)) {
+  if ((module_check_expr_match(n, declared, imported, scopes, depth, implicit_candidates, implicit_candidate_set) === 1)) {
   return 0;
 }
   return 0;
@@ -10339,8 +10394,8 @@ function module_check_expr_implicit_imports(n, declared, imported, all_exported_
 if (typeof __tuff_this !== 'undefined') __tuff_this.module_check_expr_implicit_imports = module_check_expr_implicit_imports;
 
 const __tuff_outer_for_module_check_stmt_implicit_imports = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
-function module_check_stmt_implicit_imports(n, declared, imported, all_exported_declared, all_extern_declared, scopes, depth) {
-  let __tuff_this = { n: n, declared: declared, imported: imported, all_exported_declared: all_exported_declared, all_extern_declared: all_extern_declared, scopes: scopes, depth: depth, this: __tuff_outer_for_module_check_stmt_implicit_imports };
+function module_check_stmt_implicit_imports(n, declared, imported, scopes, depth, implicit_candidates, implicit_candidate_set) {
+  let __tuff_this = { n: n, declared: declared, imported: imported, scopes: scopes, depth: depth, implicit_candidates: implicit_candidates, implicit_candidate_set: implicit_candidate_set, this: __tuff_outer_for_module_check_stmt_implicit_imports };
   if ((n === 0)) {
   return 0;
 }
@@ -10352,7 +10407,7 @@ function module_check_stmt_implicit_imports(n, declared, imported, all_exported_
   let i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
   let len = (() => { const __recv = stmts; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.len = len;
   while ((i < len)) {
-  module_check_stmt_implicit_imports((() => { const __recv = stmts; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(), declared, imported, all_exported_declared, all_extern_declared, scopes, next_depth);
+  module_check_stmt_implicit_imports((() => { const __recv = stmts; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(), declared, imported, scopes, next_depth, implicit_candidates, implicit_candidate_set);
   i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
 }
   (() => { const __recv = scopes; const __prop = __recv?.["vec_pop"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_pop; return __dyn ? __dyn(__recv.ref) : vec_pop(__recv); })();
@@ -10369,11 +10424,11 @@ function module_check_stmt_implicit_imports(n, declared, imported, all_exported_
   module_scope_define(fnScopes, 0, get_interned_str((() => { const __recv = p; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(0); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })()));
   i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
 }
-  module_check_stmt_implicit_imports(node_get_data5(n), declared, imported, all_exported_declared, all_extern_declared, fnScopes, 0);
+  module_check_stmt_implicit_imports(node_get_data5(n), declared, imported, fnScopes, 0, implicit_candidates, implicit_candidate_set);
   return 0;
 }
   if ((kind === 5)) {
-  module_check_expr_implicit_imports(node_get_data3(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+  module_check_expr_implicit_imports(node_get_data3(n), declared, imported, scopes, depth, implicit_candidates, implicit_candidate_set);
   module_scope_define(scopes, depth, get_interned_str(node_get_data1(n)));
   return 0;
 }
@@ -10388,23 +10443,23 @@ function module_check_stmt_implicit_imports(n, declared, imported, all_exported_
   return 0;
 }
   if ((kind === 7)) {
-  module_check_expr_implicit_imports(node_get_data1(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+  module_check_expr_implicit_imports(node_get_data1(n), declared, imported, scopes, depth, implicit_candidates, implicit_candidate_set);
   return 0;
 }
   if ((kind === 13)) {
-  module_check_expr_implicit_imports(node_get_data1(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
-  module_check_expr_implicit_imports(node_get_data2(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+  module_check_expr_implicit_imports(node_get_data1(n), declared, imported, scopes, depth, implicit_candidates, implicit_candidate_set);
+  module_check_expr_implicit_imports(node_get_data2(n), declared, imported, scopes, depth, implicit_candidates, implicit_candidate_set);
   return 0;
 }
   if ((kind === 8)) {
-  module_check_expr_implicit_imports(node_get_data1(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+  module_check_expr_implicit_imports(node_get_data1(n), declared, imported, scopes, depth, implicit_candidates, implicit_candidate_set);
   return 0;
 }
   if ((kind === 9)) {
-  module_check_expr_implicit_imports(node_get_data1(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
-  module_check_stmt_implicit_imports(node_get_data2(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+  module_check_expr_implicit_imports(node_get_data1(n), declared, imported, scopes, depth, implicit_candidates, implicit_candidate_set);
+  module_check_stmt_implicit_imports(node_get_data2(n), declared, imported, scopes, depth, implicit_candidates, implicit_candidate_set);
   if ((node_get_data3(n) !== 0)) {
-  module_check_stmt_implicit_imports(node_get_data3(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+  module_check_stmt_implicit_imports(node_get_data3(n), declared, imported, scopes, depth, implicit_candidates, implicit_candidate_set);
 }
   return 0;
 }
@@ -10412,36 +10467,50 @@ function module_check_stmt_implicit_imports(n, declared, imported, all_exported_
   let next_depth = (depth + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.next_depth = next_depth;
   (() => { const __recv = scopes; const __prop = __recv?.["vec_push"]; if (typeof __prop === "function") return __prop(set_new()); const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, set_new()) : vec_push(__recv, set_new()); })();
   module_scope_define(scopes, next_depth, get_interned_str(node_get_data1(n)));
-  module_check_expr_implicit_imports(node_get_data2(n), declared, imported, all_exported_declared, all_extern_declared, scopes, next_depth);
-  module_check_expr_implicit_imports(node_get_data3(n), declared, imported, all_exported_declared, all_extern_declared, scopes, next_depth);
-  module_check_stmt_implicit_imports(node_get_data4(n), declared, imported, all_exported_declared, all_extern_declared, scopes, next_depth);
+  module_check_expr_implicit_imports(node_get_data2(n), declared, imported, scopes, next_depth, implicit_candidates, implicit_candidate_set);
+  module_check_expr_implicit_imports(node_get_data3(n), declared, imported, scopes, next_depth, implicit_candidates, implicit_candidate_set);
+  module_check_stmt_implicit_imports(node_get_data4(n), declared, imported, scopes, next_depth, implicit_candidates, implicit_candidate_set);
   (() => { const __recv = scopes; const __prop = __recv?.["vec_pop"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_pop; return __dyn ? __dyn(__recv.ref) : vec_pop(__recv); })();
   return 0;
 }
   if ((kind === 10)) {
-  module_check_expr_implicit_imports(node_get_data1(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
-  module_check_stmt_implicit_imports(node_get_data2(n), declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+  module_check_expr_implicit_imports(node_get_data1(n), declared, imported, scopes, depth, implicit_candidates, implicit_candidate_set);
+  module_check_stmt_implicit_imports(node_get_data2(n), declared, imported, scopes, depth, implicit_candidates, implicit_candidate_set);
   return 0;
 }
-  module_check_expr_implicit_imports(n, declared, imported, all_exported_declared, all_extern_declared, scopes, depth);
+  module_check_expr_implicit_imports(n, declared, imported, scopes, depth, implicit_candidates, implicit_candidate_set);
   return 0;
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.module_check_stmt_implicit_imports = module_check_stmt_implicit_imports;
 
-const __tuff_outer_for_module_assert_no_implicit_imports = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
-function module_assert_no_implicit_imports(source, declared, imported, all_exported_declared, all_extern_declared) {
-  let __tuff_this = { source: source, declared: declared, imported: imported, all_exported_declared: all_exported_declared, all_extern_declared: all_extern_declared, this: __tuff_outer_for_module_assert_no_implicit_imports };
-  lex_init(source);
-  lex_all();
-  parse_init();
-  let program = p_parse_program(); if (typeof __tuff_this !== 'undefined') __tuff_this.program = program;
+const __tuff_outer_for_module_collect_implicit_import_candidates = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function module_collect_implicit_import_candidates(program, declared, imported) {
+  let __tuff_this = { program: program, declared: declared, imported: imported, this: __tuff_outer_for_module_collect_implicit_import_candidates };
+  let implicit_candidates = vec_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.implicit_candidates = implicit_candidates;
+  let implicit_candidate_set = set_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.implicit_candidate_set = implicit_candidate_set;
   let topScopes = vec_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.topScopes = topScopes;
   (() => { const __recv = topScopes; const __prop = __recv?.["vec_push"]; if (typeof __prop === "function") return __prop(set_new()); const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, set_new()) : vec_push(__recv, set_new()); })();
   let body = node_get_data1(program); if (typeof __tuff_this !== 'undefined') __tuff_this.body = body;
   let i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
   let len = (() => { const __recv = body; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.len = len;
   while ((i < len)) {
-  module_check_stmt_implicit_imports((() => { const __recv = body; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(), declared, imported, all_exported_declared, all_extern_declared, topScopes, 0);
+  module_check_stmt_implicit_imports((() => { const __recv = body; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(), declared, imported, topScopes, 0, implicit_candidates, implicit_candidate_set);
+  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
+}
+  return implicit_candidates;
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.module_collect_implicit_import_candidates = module_collect_implicit_import_candidates;
+
+const __tuff_outer_for_module_assert_no_implicit_imports = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function module_assert_no_implicit_imports(implicit_candidates, all_exported_declared, all_extern_declared) {
+  let __tuff_this = { implicit_candidates: implicit_candidates, all_exported_declared: all_exported_declared, all_extern_declared: all_extern_declared, this: __tuff_outer_for_module_assert_no_implicit_imports };
+  let i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
+  let len = (() => { const __recv = implicit_candidates; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.len = len;
+  while ((i < len)) {
+  let name = (() => { const __recv = implicit_candidates; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.name = name;
+  if (((() => { const __recv = all_exported_declared; const __prop = __recv?.["set_has"]; if (typeof __prop === "function") return __prop(name); const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, name) : set_has(__recv, name); })() && (!(() => { const __recv = all_extern_declared; const __prop = __recv?.["set_has"]; if (typeof __prop === "function") return __prop(name); const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, name) : set_has(__recv, name); })()))) {
+  panic_with_code("E_MODULE_IMPLICIT_IMPORT", (() => { const __recv = (() => { const __recv = "Strict module imports require explicit import for symbol '"; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, name) : str_concat(__recv, name); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("'"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "'") : str_concat(__recv, "'"); })(), "A module referenced a symbol declared in another module without importing it explicitly.", "Add the symbol to the module import list (for example: let { symbol } = moduleName;).");
+}
   i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
 }
   return 0;
@@ -10456,8 +10525,8 @@ function module_has_out_export(source, name) {
 if (typeof __tuff_this !== 'undefined') __tuff_this.module_has_out_export = module_has_out_export;
 
 const __tuff_outer_for_gather_module_sources = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
-function gather_module_sources(filePath, moduleBasePath, seen, visiting, sources, module_paths, module_declared_map, all_declared_names, all_exported_declared_names, all_extern_declared_names, lint_enabled, max_effective_lines, module_cycles) {
-  let __tuff_this = { filePath: filePath, moduleBasePath: moduleBasePath, seen: seen, visiting: visiting, sources: sources, module_paths: module_paths, module_declared_map: module_declared_map, all_declared_names: all_declared_names, all_exported_declared_names: all_exported_declared_names, all_extern_declared_names: all_extern_declared_names, lint_enabled: lint_enabled, max_effective_lines: max_effective_lines, module_cycles: module_cycles, this: __tuff_outer_for_gather_module_sources };
+function gather_module_sources(filePath, moduleBasePath, seen, visiting, sources, module_paths, module_declared_map, module_exported_map, module_source_cache, import_path_cache, all_declared_names, all_exported_declared_names, all_extern_declared_names, lint_enabled, max_effective_lines, module_cycles, recursion_depth) {
+  let __tuff_this = { filePath: filePath, moduleBasePath: moduleBasePath, seen: seen, visiting: visiting, sources: sources, module_paths: module_paths, module_declared_map: module_declared_map, module_exported_map: module_exported_map, module_source_cache: module_source_cache, import_path_cache: import_path_cache, all_declared_names: all_declared_names, all_exported_declared_names: all_exported_declared_names, all_extern_declared_names: all_extern_declared_names, lint_enabled: lint_enabled, max_effective_lines: max_effective_lines, module_cycles: module_cycles, recursion_depth: recursion_depth, this: __tuff_outer_for_gather_module_sources };
   filePath = module_normalize_path(filePath); if (typeof __tuff_this !== 'undefined') __tuff_this.filePath = filePath;
   moduleBasePath = module_normalize_path(moduleBasePath); if (typeof __tuff_this !== 'undefined') __tuff_this.moduleBasePath = moduleBasePath;
   if ((() => { const __recv = seen; const __prop = __recv?.["set_has"]; if (typeof __prop === "function") return __prop(filePath); const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, filePath) : set_has(__recv, filePath); })()) {
@@ -10471,7 +10540,17 @@ function gather_module_sources(filePath, moduleBasePath, seen, visiting, sources
   panic_with_code("E_MODULE_CYCLE", (() => { const __recv = "Module import cycle detected at "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(filePath); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, filePath) : str_concat(__recv, filePath); })(), "A module was revisited while still being loaded, which means the import graph contains a cycle.", "Break the cycle by extracting shared declarations into a third module imported by both sides.");
 }
   (() => { const __recv = visiting; const __prop = __recv?.["set_add"]; if (typeof __prop === "function") return __prop(filePath); const __dyn = __recv?.table?.set_add; return __dyn ? __dyn(__recv.ref, filePath) : set_add(__recv, filePath); })();
-  let source = read_file(filePath); if (typeof __tuff_this !== 'undefined') __tuff_this.source = source;
+  gather_prof_modules = (gather_prof_modules + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.gather_prof_modules = gather_prof_modules;
+  let source = ""; if (typeof __tuff_this !== 'undefined') __tuff_this.source = source;
+  if ((() => { const __recv = module_source_cache; const __prop = __recv?.["map_has"]; if (typeof __prop === "function") return __prop(filePath); const __dyn = __recv?.table?.map_has; return __dyn ? __dyn(__recv.ref, filePath) : map_has(__recv, filePath); })()) {
+  source = (() => { const __recv = module_source_cache; const __prop = __recv?.["map_get"]; if (typeof __prop === "function") return __prop(filePath); const __dyn = __recv?.table?.map_get; return __dyn ? __dyn(__recv.ref, filePath) : map_get(__recv, filePath); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.source = source;
+} else {
+  let t_read_0 = perf_now_out(); if (typeof __tuff_this !== 'undefined') __tuff_this.t_read_0 = t_read_0;
+  source = read_file(filePath); if (typeof __tuff_this !== 'undefined') __tuff_this.source = source;
+  gather_prof_read_file_ms = (gather_prof_read_file_ms + (perf_now_out() - t_read_0)); if (typeof __tuff_this !== 'undefined') __tuff_this.gather_prof_read_file_ms = gather_prof_read_file_ms;
+  (() => { const __recv = module_source_cache; const __prop = __recv?.["map_set"]; if (typeof __prop === "function") return __prop(filePath, source); const __dyn = __recv?.table?.map_set; return __dyn ? __dyn(__recv.ref, filePath, source) : map_set(__recv, filePath, source); })();
+}
+  let t_parse_0 = perf_now_out(); if (typeof __tuff_this !== 'undefined') __tuff_this.t_parse_0 = t_parse_0;
   lex_init(source);
   lex_all();
   if ((lint_enabled === 1)) {
@@ -10479,12 +10558,18 @@ function gather_module_sources(filePath, moduleBasePath, seen, visiting, sources
 }
   parse_init();
   let program = p_parse_program(); if (typeof __tuff_this !== 'undefined') __tuff_this.program = program;
+  gather_prof_lex_parse_ms = (gather_prof_lex_parse_ms + (perf_now_out() - t_parse_0)); if (typeof __tuff_this !== 'undefined') __tuff_this.gather_prof_lex_parse_ms = gather_prof_lex_parse_ms;
   let stmts = node_get_data1(program); if (typeof __tuff_this !== 'undefined') __tuff_this.stmts = stmts;
-  let declared = module_collect_declared_sets(source, program, module_declared_map, filePath, all_declared_names, all_exported_declared_names, all_extern_declared_names); if (typeof __tuff_this !== 'undefined') __tuff_this.declared = declared;
-  let imports = module_snapshot_import_specs(stmts, moduleBasePath); if (typeof __tuff_this !== 'undefined') __tuff_this.imports = imports;
-  module_walk_imports(imports, moduleBasePath, seen, visiting, sources, module_paths, module_declared_map, all_declared_names, all_exported_declared_names, all_extern_declared_names, lint_enabled, max_effective_lines, module_cycles);
+  let t_decl_0 = perf_now_out(); if (typeof __tuff_this !== 'undefined') __tuff_this.t_decl_0 = t_decl_0;
+  let declared = module_collect_declared_sets(source, program, module_declared_map, module_exported_map, filePath, all_declared_names, all_exported_declared_names, all_extern_declared_names); if (typeof __tuff_this !== 'undefined') __tuff_this.declared = declared;
+  gather_prof_decl_collect_ms = (gather_prof_decl_collect_ms + (perf_now_out() - t_decl_0)); if (typeof __tuff_this !== 'undefined') __tuff_this.gather_prof_decl_collect_ms = gather_prof_decl_collect_ms;
+  let imports = module_snapshot_import_specs(stmts, moduleBasePath, import_path_cache); if (typeof __tuff_this !== 'undefined') __tuff_this.imports = imports;
   let imported_names = module_collect_imported_names(imports); if (typeof __tuff_this !== 'undefined') __tuff_this.imported_names = imported_names;
-  module_assert_no_implicit_imports(source, declared, imported_names, all_exported_declared_names, all_extern_declared_names);
+  let implicit_candidates = module_collect_implicit_import_candidates(program, declared, imported_names); if (typeof __tuff_this !== 'undefined') __tuff_this.implicit_candidates = implicit_candidates;
+  module_walk_imports(imports, moduleBasePath, seen, visiting, sources, module_paths, module_declared_map, module_exported_map, module_source_cache, import_path_cache, all_declared_names, all_exported_declared_names, all_extern_declared_names, lint_enabled, max_effective_lines, module_cycles, recursion_depth);
+  let t_implicit_0 = perf_now_out(); if (typeof __tuff_this !== 'undefined') __tuff_this.t_implicit_0 = t_implicit_0;
+  module_assert_no_implicit_imports(implicit_candidates, all_exported_declared_names, all_extern_declared_names);
+  gather_prof_implicit_check_ms = (gather_prof_implicit_check_ms + (perf_now_out() - t_implicit_0)); if (typeof __tuff_this !== 'undefined') __tuff_this.gather_prof_implicit_check_ms = gather_prof_implicit_check_ms;
   (() => { const __recv = visiting; const __prop = __recv?.["set_delete"]; if (typeof __prop === "function") return __prop(filePath); const __dyn = __recv?.table?.set_delete; return __dyn ? __dyn(__recv.ref, filePath) : set_delete(__recv, filePath); })();
   (() => { const __recv = seen; const __prop = __recv?.["set_add"]; if (typeof __prop === "function") return __prop(filePath); const __dyn = __recv?.table?.set_add; return __dyn ? __dyn(__recv.ref, filePath) : set_add(__recv, filePath); })();
   (() => { const __recv = sources; const __prop = __recv?.["vec_push"]; if (typeof __prop === "function") return __prop(source); const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, source) : vec_push(__recv, source); })();
@@ -10513,16 +10598,28 @@ function compile_file_with_options(inputPath, outputPath, lint_enabled, max_effe
   let sources = vec_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.sources = sources;
   let module_paths = vec_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.module_paths = module_paths;
   let module_declared_map = map_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.module_declared_map = module_declared_map;
+  let module_exported_map = map_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.module_exported_map = module_exported_map;
+  let module_source_cache = map_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.module_source_cache = module_source_cache;
+  let import_path_cache = map_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.import_path_cache = import_path_cache;
   let all_declared_names = set_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.all_declared_names = all_declared_names;
   let all_exported_declared_names = set_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.all_exported_declared_names = all_exported_declared_names;
   let all_extern_declared_names = set_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.all_extern_declared_names = all_extern_declared_names;
   let module_cycles = vec_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.module_cycles = module_cycles;
+  gather_prof_reset();
   lint_reset();
   sourcemap_init();
   let t0 = perf_now_out(); if (typeof __tuff_this !== 'undefined') __tuff_this.t0 = t0;
-  gather_module_sources(inputPath, moduleBasePath, seen, visiting, sources, module_paths, module_declared_map, all_declared_names, all_exported_declared_names, all_extern_declared_names, lint, max_lines, module_cycles);
+  gather_module_sources(inputPath, moduleBasePath, seen, visiting, sources, module_paths, module_declared_map, module_exported_map, module_source_cache, import_path_cache, all_declared_names, all_exported_declared_names, all_extern_declared_names, lint, max_lines, module_cycles, 0);
   let t1 = perf_now_out(); if (typeof __tuff_this !== 'undefined') __tuff_this.t1 = t1;
   print_error_out((() => { const __recv = (() => { const __recv = "[tuffc:phase] gather_module_sources "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string_out((t1 - t0))); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string_out((t1 - t0))) : str_concat(__recv, int_to_string_out((t1 - t0))); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("ms"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "ms") : str_concat(__recv, "ms"); })());
+  print_error_out((() => { const __recv = (() => { const __recv = (() => { const __recv = "[tuffc:gather] modules "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string_out(gather_prof_modules)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string_out(gather_prof_modules)) : str_concat(__recv, int_to_string_out(gather_prof_modules)); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(" imports "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " imports ") : str_concat(__recv, " imports "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string_out(gather_prof_import_edges)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string_out(gather_prof_import_edges)) : str_concat(__recv, int_to_string_out(gather_prof_import_edges)); })());
+  print_error_out((() => { const __recv = (() => { const __recv = "[tuffc:gather] read_file "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string_out(gather_prof_read_file_ms)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string_out(gather_prof_read_file_ms)) : str_concat(__recv, int_to_string_out(gather_prof_read_file_ms)); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("ms"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "ms") : str_concat(__recv, "ms"); })());
+  print_error_out((() => { const __recv = (() => { const __recv = "[tuffc:gather] lex_parse "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string_out(gather_prof_lex_parse_ms)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string_out(gather_prof_lex_parse_ms)) : str_concat(__recv, int_to_string_out(gather_prof_lex_parse_ms)); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("ms"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "ms") : str_concat(__recv, "ms"); })());
+  print_error_out((() => { const __recv = (() => { const __recv = "[tuffc:gather] decl_collect "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string_out(gather_prof_decl_collect_ms)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string_out(gather_prof_decl_collect_ms)) : str_concat(__recv, int_to_string_out(gather_prof_decl_collect_ms)); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("ms"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "ms") : str_concat(__recv, "ms"); })());
+  print_error_out((() => { const __recv = (() => { const __recv = "[tuffc:gather] import_snapshot "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string_out(gather_prof_import_snapshot_ms)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string_out(gather_prof_import_snapshot_ms)) : str_concat(__recv, int_to_string_out(gather_prof_import_snapshot_ms)); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("ms"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "ms") : str_concat(__recv, "ms"); })());
+  print_error_out((() => { const __recv = (() => { const __recv = "[tuffc:gather] import_walk "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string_out(gather_prof_import_walk_ms)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string_out(gather_prof_import_walk_ms)) : str_concat(__recv, int_to_string_out(gather_prof_import_walk_ms)); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("ms"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "ms") : str_concat(__recv, "ms"); })());
+  print_error_out((() => { const __recv = (() => { const __recv = "[tuffc:gather] import_recurse "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string_out(gather_prof_import_recurse_ms)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string_out(gather_prof_import_recurse_ms)) : str_concat(__recv, int_to_string_out(gather_prof_import_recurse_ms)); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("ms"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "ms") : str_concat(__recv, "ms"); })());
+  print_error_out((() => { const __recv = (() => { const __recv = "[tuffc:gather] implicit_check "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string_out(gather_prof_implicit_check_ms)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string_out(gather_prof_implicit_check_ms)) : str_concat(__recv, int_to_string_out(gather_prof_implicit_check_ms)); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("ms"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "ms") : str_concat(__recv, "ms"); })());
   let sm_i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.sm_i = sm_i;
   let sm_line = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.sm_line = sm_line;
   while ((sm_i < (() => { const __recv = module_paths; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })())) {

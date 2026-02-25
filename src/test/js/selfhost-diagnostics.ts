@@ -64,4 +64,64 @@ expectSelfhostDiagnostic(
   ["E_MODULE_", "E_SELFHOST_IO_"],
 );
 
+const moduleRoot = path.join(outDir, "com", "meti");
+fs.mkdirSync(moduleRoot, { recursive: true });
+
+function writeModuleFixture(fileName: string, source: string): string {
+  const fullPath = path.join(moduleRoot, fileName);
+  fs.writeFileSync(fullPath, source, "utf8");
+  return fullPath;
+}
+
+// 3) Private import should fail with E_MODULE_PRIVATE_IMPORT.
+writeModuleFixture("Private.tuff", "fn hidden() : I32 => 1;\n");
+const privateImportEntry = path.join(outDir, "private-import-app.tuff");
+const privateImportOut = path.join(outDir, "private-import-app.js");
+fs.writeFileSync(
+  privateImportEntry,
+  "let { hidden } = com::meti::Private;\nfn main() : I32 => hidden();\n",
+  "utf8",
+);
+
+expectSelfhostDiagnostic(
+  () => selfhost.compile_file(privateImportEntry, privateImportOut),
+  "selfhost compile_file private import",
+  ["E_MODULE_PRIVATE_IMPORT"],
+);
+
+// 4) Unknown export should fail with E_MODULE_UNKNOWN_EXPORT.
+writeModuleFixture("Known.tuff", "out fn known() : I32 => 1;\n");
+const unknownExportEntry = path.join(outDir, "unknown-export-app.tuff");
+const unknownExportOut = path.join(outDir, "unknown-export-app.js");
+fs.writeFileSync(
+  unknownExportEntry,
+  "let { missing } = com::meti::Known;\nfn main() : I32 => missing();\n",
+  "utf8",
+);
+
+expectSelfhostDiagnostic(
+  () => selfhost.compile_file(unknownExportEntry, unknownExportOut),
+  "selfhost compile_file unknown export",
+  ["E_MODULE_UNKNOWN_EXPORT"],
+);
+
+// 5) Implicit import should fail with E_MODULE_IMPLICIT_IMPORT.
+writeModuleFixture(
+  "Library.tuff",
+  "out fn sentinel() : I32 => 1;\nout fn shared() : I32 => 2;\n",
+);
+const implicitImportEntry = path.join(outDir, "implicit-import-app.tuff");
+const implicitImportOut = path.join(outDir, "implicit-import-app.js");
+fs.writeFileSync(
+  implicitImportEntry,
+  "let { sentinel } = com::meti::Library;\nfn main() : I32 => shared() + sentinel();\n",
+  "utf8",
+);
+
+expectSelfhostDiagnostic(
+  () => selfhost.compile_file(implicitImportEntry, implicitImportOut),
+  "selfhost compile_file implicit import",
+  ["E_MODULE_IMPLICIT_IMPORT"],
+);
+
 console.log("Selfhost diagnostics contract checks passed");

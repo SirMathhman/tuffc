@@ -69,7 +69,12 @@ function profileCompile(file: string): CompileResult {
     const result = spawnSync(
       nativeCliPath,
       [file, "-o", path.join(OUT_DIR, `${path.basename(file, ".tuff")}.js`)],
-      { cwd: root, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] },
+      {
+        cwd: root,
+        encoding: "utf8",
+        stdio: ["pipe", "pipe", "pipe"],
+        timeout: 120_000,
+      },
     );
 
     const duration_ms = Date.now() - t0;

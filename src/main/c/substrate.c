@@ -327,8 +327,27 @@ int64_t __host_get_c_runtime_prelude_source(void)
     return tuff_read_file_as_string(getenv("TUFFC_PRELUDE_PATH"));
 }
 
-// Profiling stubs: no-op in the native C binary.
-int64_t perf_now(void) { return 0; }
+// Profiling clock: monotonic milliseconds.
+int64_t perf_now(void)
+{
+#ifdef _WIN32
+    static LARGE_INTEGER freq = {0};
+    if (freq.QuadPart == 0)
+    {
+        QueryPerformanceFrequency(&freq);
+        if (freq.QuadPart == 0)
+            return 0;
+    }
+    LARGE_INTEGER now;
+    QueryPerformanceCounter(&now);
+    return (int64_t)((now.QuadPart * 1000LL) / freq.QuadPart);
+#else
+    struct timespec ts;
+    if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0)
+        return 0;
+    return (int64_t)ts.tv_sec * 1000LL + (int64_t)(ts.tv_nsec / 1000000LL);
+#endif
+}
 int64_t profile_mark(int64_t label, int64_t duration_ms)
 {
     (void)label;

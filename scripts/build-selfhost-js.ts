@@ -1,16 +1,15 @@
 /**
  * Build step: compile selfhost.tuff → tests/out/build/selfhost.js using the
- * pre-built native selfhost exe (stage3_selfhost_cli).
+ * JS bootstrap compiler (selfhost.generated.js).
  *
  * Uses mtime-based caching: skips recompilation when selfhost.js is strictly
- * newer than all inputs (native exe + every .tuff source file).
+ * newer than all inputs (bootstrap JS + every .tuff source file).
  *
  * Usage:
  *   npx tsx ./scripts/build-selfhost-js.ts [--force]
  */
 import fs from "node:fs";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 import * as runtime from "../src/main/js/runtime.ts";
@@ -19,15 +18,6 @@ const thisFile = fileURLToPath(import.meta.url);
 const root = path.resolve(path.dirname(thisFile), "..");
 const force = process.argv.includes("--force");
 
-const NATIVE_EXE = path.join(
-  root,
-  "tests",
-  "out",
-  "c-bootstrap",
-  process.platform === "win32"
-    ? "stage3_selfhost_cli.exe"
-    : "stage3_selfhost_cli",
-);
 const SELFHOST_TUFF = path.join(root, "src", "main", "tuff", "selfhost.tuff");
 const OUT_DIR = path.join(root, "tests", "out", "build");
 const OUT_JS = path.join(OUT_DIR, "selfhost.js");
@@ -80,7 +70,7 @@ function collectTuffMaxMtime(dir: string): number {
 
 function computeInputsMaxMtime(): { maxMtime: number; newestFile: string } {
   let maxMtime = 0;
-  let newestFile = NATIVE_EXE;
+  let newestFile = GENERATED_JS;
 
   const tryFile = (p: string, label?: string) => {
     try {
@@ -94,7 +84,7 @@ function computeInputsMaxMtime(): { maxMtime: number; newestFile: string } {
     }
   };
 
-  tryFile(NATIVE_EXE);
+  tryFile(GENERATED_JS);
 
   for (const dir of [
     path.join(root, "src", "main", "tuff"),
@@ -112,12 +102,12 @@ function computeInputsMaxMtime(): { maxMtime: number; newestFile: string } {
 
 // ── Main ─────────────────────────────────────────────────────────────────────
 
-if (!fs.existsSync(NATIVE_EXE)) {
+if (!fs.existsSync(GENERATED_JS)) {
   console.error(
-    `[build:selfhost-js] ERROR: native exe not found: ${NATIVE_EXE}`,
+    `[build:selfhost-js] ERROR: bootstrap compiler not found: ${GENERATED_JS}`,
   );
   console.error(
-    `[build:selfhost-js] Run 'npm run native:selfhost:parity' first.`,
+    `[build:selfhost-js] Regenerate it from source control or restore the file to continue.`,
   );
   process.exit(1);
 }
@@ -167,93 +157,78 @@ const args = [
 ];
 
 console.log(`[build:selfhost-js] compiling selfhost.tuff → ${relOutput}`);
-console.log(`[build:selfhost-js] exe: ${path.relative(root, NATIVE_EXE)}`);
+console.log(
+  `[build:selfhost-js] compiler: ${path.relative(root, GENERATED_JS)} (bootstrap JS)`,
+);
+
+const COMPILE_TIMEOUT_MS = 120_000; // 2 minutes
 
 const t0 = Date.now();
-const result = spawnSync(NATIVE_EXE, args, {
-  cwd: root,
-  env,
-  encoding: "utf8",
-});
-const elapsed = Date.now() - t0;
-
-if (result.error) {
-  console.error(`[build:selfhost-js] FAILED to start: ${result.error.message}`);
-  process.exit(1);
-}
-if (result.status !== 0) {
-  console.warn(
-    `[build:selfhost-js] native exe exited ${result.status} after ${elapsed}ms; using JS fallback bootstrap compiler`,
+try {
+  const generatedJs = fs.readFileSync(GENERATED_JS, "utf8");
+  const sandbox: Record<string, unknown> = {
+    module: { exports: {} },
+    exports: {},
+    console,
+    ...runtime,
+  };
+  vm.runInNewContext(
+    `${generatedJs}\nmodule.exports = { compile_file_with_options };`,
+    sandbox,
+    { timeout: COMPILE_TIMEOUT_MS },
   );
-  if (result.stderr) console.warn(result.stderr);
-  if (
-    result.stderr &&
-    result.stderr.includes(
-      "Unexpected token in expression (found symbol: at 1:1)",
-    )
-  ) {
-    console.warn(
-      "[build:selfhost-js] native parser reported an empty-symbol token at start-of-input; this diagnostic is known to be low-fidelity in stage3 native mode.",
-    );
-    console.warn(
-      '[build:selfhost-js] fallback compile completed, so build output is still valid. Refresh native bootstrap with "pnpm run native:selfhost:parity" if needed.',
-    );
-  }
-
-  console.warn(
-    `[build:selfhost-js] fallback compiler: ${path.relative(root, GENERATED_JS)} (bootstrap mode)`,
-  );
-  console.warn(
-    `[build:selfhost-js] tip: run \"pnpm run native:selfhost:parity\" to refresh tests/out/c-bootstrap/stage3_selfhost_cli.exe`,
-  );
-  try {
-    const generatedJs = fs.readFileSync(GENERATED_JS, "utf8");
-    const sandbox: Record<string, unknown> = {
-      module: { exports: {} },
-      exports: {},
-      console,
-      ...runtime,
-    };
-    vm.runInNewContext(
-      `${generatedJs}\nmodule.exports = { compile_file_with_options };`,
-      sandbox,
-    );
-    const compiler = (sandbox.module as { exports: Record<string, unknown> })
-      .exports;
-    const compileFileWithOptions = compiler.compile_file_with_options as
-      | ((
-          inputPath: string,
-          outputPath: string,
-          lintEnabled: number,
-          maxEffectiveLines: number,
-          borrowEnabled: number,
-          target: string,
-        ) => unknown)
-      | undefined;
-    if (typeof compileFileWithOptions !== "function") {
-      console.error(
-        `[build:selfhost-js] fallback FAILED: compile_file_with_options is unavailable`,
-      );
-      process.exit(1);
-    }
-    const fallbackResult = compileFileWithOptions(
-      path.resolve(root, relInput),
-      path.resolve(root, relOutput),
-      0,
-      500,
-      1,
-      "js",
-    );
-    console.log(
-      `[build:selfhost-js] fallback compile result: ${String(fallbackResult)}`,
-    );
-  } catch (fallbackError) {
+  const compiler = (sandbox.module as { exports: Record<string, unknown> })
+    .exports;
+  const compileFileWithOptions = compiler.compile_file_with_options as
+    | ((
+        inputPath: string,
+        outputPath: string,
+        lintEnabled: number,
+        maxEffectiveLines: number,
+        borrowEnabled: number,
+        target: string,
+      ) => unknown)
+    | undefined;
+  if (typeof compileFileWithOptions !== "function") {
     console.error(
-      `[build:selfhost-js] fallback FAILED: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`,
+      `[build:selfhost-js] FAILED: compile_file_with_options is unavailable in ${path.relative(root, GENERATED_JS)}`,
     );
     process.exit(1);
   }
+
+  // Watchdog timer: kill process if compilation hangs
+  const watchdog = setTimeout(() => {
+    console.error(
+      `[build:selfhost-js] TIMEOUT: compilation exceeded ${COMPILE_TIMEOUT_MS / 1000}s — aborting`,
+    );
+    process.exit(1);
+  }, COMPILE_TIMEOUT_MS);
+  watchdog.unref(); // don't keep event loop alive if compile finishes
+
+  const compileResult = compileFileWithOptions(
+    path.resolve(root, relInput),
+    path.resolve(root, relOutput),
+    0,
+    500,
+    1,
+    "js",
+  );
+
+  clearTimeout(watchdog);
+  console.log(`[build:selfhost-js] compile result: ${String(compileResult)}`);
+} catch (compileError) {
+  const msg =
+    compileError instanceof Error ? compileError.message : String(compileError);
+  if (msg.includes("Script execution timed out")) {
+    console.error(
+      `[build:selfhost-js] TIMEOUT: vm.runInNewContext exceeded ${COMPILE_TIMEOUT_MS / 1000}s`,
+    );
+  } else {
+    console.error(`[build:selfhost-js] FAILED: ${msg}`);
+  }
+  process.exit(1);
 }
+const elapsed = Date.now() - t0;
 if (!fs.existsSync(OUT_JS)) {
   console.error(
     `[build:selfhost-js] FAILED: output file not produced: ${OUT_JS}`,

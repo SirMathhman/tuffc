@@ -94,10 +94,17 @@ function decodeProcessExit(status: number | null): string {
 
 function getFixpointTimeoutMs(): number {
   const raw = process.env.TUFFC_FIXPOINT_TIMEOUT_MS;
-  if (!raw) return 30_000;
+  if (!raw) return 180_000;
   const parsed = Number(raw);
-  if (!Number.isFinite(parsed) || parsed <= 0) return 30_000;
+  if (!Number.isFinite(parsed) || parsed <= 0) return 180_000;
   return Math.floor(parsed);
+}
+
+function getNativeOptFlag(): string {
+  const raw = (process.env.TUFFC_NATIVE_OPT ?? "O3").trim();
+  const allowed = new Set(["O0", "O1", "O2", "O3"]);
+  if (!allowed.has(raw)) return "-O3";
+  return `-${raw}`;
 }
 
 function selectCCompilerLocal(): string {
@@ -272,13 +279,15 @@ if (!CC) {
   console.warn("[bootstrap] SKIP: no C compiler — phases 2-5 skipped");
   process.exit(0);
 }
+const NATIVE_OPT = getNativeOptFlag();
+console.log(`[bootstrap] native optimization: ${NATIVE_OPT}`);
 
 // Compile to object (rename main so we can supply our own harness)
 const objResult = runStep(CC, [
   "-Dmain=selfhost_entry",
   "-c",
   stage3outC,
-  "-O0",
+  NATIVE_OPT,
   "-o",
   stage3outObj,
 ]);
@@ -325,7 +334,7 @@ debugFile("stage3_cli_harness.c", stage3cliHarness);
 const linkResult = runStep(CC, [
   stage3outObj,
   stage3smokeHarness,
-  "-O0",
+  NATIVE_OPT,
   "-o",
   stage3outExe,
 ]);
@@ -341,7 +350,7 @@ console.log("[bootstrap] ✔ Phase 2 passed — stage3_native_exe linked");
 const cliLinkResult = runStep(CC, [
   stage3outObj,
   stage3cliHarness,
-  "-O0",
+  NATIVE_OPT,
   "-o",
   stage3cliExe,
 ]);
@@ -476,7 +485,7 @@ debugFile("fixpoint_harness.c", fixpointHarness);
 const fixpointLinkResult = runStep(CC, [
   stage3outObj,
   fixpointHarness,
-  "-O0",
+  NATIVE_OPT,
   // Increase stack size to 64 MiB — the selfhost compiler's recursive descent
   // parser overflows the default 1 MiB Windows stack when processing the full
   // selfhost.tuff module tree.

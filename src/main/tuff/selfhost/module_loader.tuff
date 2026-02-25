@@ -76,6 +76,7 @@ let gather_prof_lex_parse_ms : I32 = 0;
 let gather_prof_decl_collect_ms : I32 = 0;
 let gather_prof_import_snapshot_ms : I32 = 0;
 let gather_prof_import_walk_ms : I32 = 0;
+let gather_prof_import_recurse_ms : I32 = 0;
 let gather_prof_implicit_check_ms : I32 = 0;
 fn gather_prof_reset() : I32 => {
     gather_prof_modules = 0;
@@ -85,6 +86,7 @@ fn gather_prof_reset() : I32 => {
     gather_prof_decl_collect_ms = 0;
     gather_prof_import_snapshot_ms = 0;
     gather_prof_import_walk_ms = 0;
+    gather_prof_import_recurse_ms = 0;
     gather_prof_implicit_check_ms = 0;
     0
 }
@@ -147,36 +149,36 @@ fn module_scope_has(scopes: Vec, depth: I32, name: *Str) : Bool => {
     false
 }
 fn module_check_expr_call_like(n: I32, declared: *mut Set, imported: *mut Set,
-scopes: Vec, depth: I32, implicit_candidates: Vec) : I32 => {
+scopes: Vec, depth: I32, implicit_candidates: Vec, implicit_candidate_set: *mut Set) : I32 => {
     if (node_kind(n) == 27) {
         module_check_expr_implicit_imports(node_get_data1(n), declared, imported,
-        scopes, depth, implicit_candidates);
+        scopes, depth, implicit_candidates, implicit_candidate_set);
         let args = node_get_data2(n);
         let i = 0;
         let len = args.vec_length();
         while (i < len) {
             module_check_expr_implicit_imports(args.vec_get(i), declared, imported,
-            scopes, depth, implicit_candidates);
+            scopes, depth, implicit_candidates, implicit_candidate_set);
             i = i + 1;
         }
         return 1;
     }
     if (node_kind(n) == 28) {
         module_check_expr_implicit_imports(node_get_data1(n), declared, imported,
-        scopes, depth, implicit_candidates);
+        scopes, depth, implicit_candidates, implicit_candidate_set);
         return 1;
     }
     if (node_kind(n) == 29) {
         module_check_expr_implicit_imports(node_get_data1(n), declared, imported,
-        scopes, depth, implicit_candidates);
+        scopes, depth, implicit_candidates, implicit_candidate_set);
         module_check_expr_implicit_imports(node_get_data2(n), declared, imported,
-        scopes, depth, implicit_candidates);
+        scopes, depth, implicit_candidates, implicit_candidate_set);
         return 1;
     }
     0
 }
 fn module_check_expr_composites(n: I32, declared: *mut Set, imported: *mut Set,
-scopes: Vec, depth: I32, implicit_candidates: Vec) : I32 => {
+scopes: Vec, depth: I32, implicit_candidates: Vec, implicit_candidate_set: *mut Set) : I32 => {
     if (node_kind(n) == 30) {
         let fields = node_get_data2(n);
         let i = 0;
@@ -184,25 +186,25 @@ scopes: Vec, depth: I32, implicit_candidates: Vec) : I32 => {
         while (i < len) {
             let f = fields.vec_get(i);
             module_check_expr_implicit_imports(f.vec_get(1), declared, imported,
-            scopes, depth, implicit_candidates);
+            scopes, depth, implicit_candidates, implicit_candidate_set);
             i = i + 1;
         }
         return 1;
     }
     if (node_kind(n) == 33) {
         module_check_expr_implicit_imports(node_get_data1(n), declared, imported,
-        scopes, depth, implicit_candidates);
+        scopes, depth, implicit_candidates, implicit_candidate_set);
         return 1;
     }
     0
 }
 fn module_check_expr_match (n: I32, declared: *mut Set, imported: *mut Set, scopes: Vec,
-depth: I32, implicit_candidates: Vec) : I32 => {
+depth: I32, implicit_candidates: Vec, implicit_candidate_set: *mut Set) : I32 => {
     if (node_kind(n) != 32) {
         return 0;
     }
     module_check_expr_implicit_imports(node_get_data1(n), declared, imported,
-    scopes, depth, implicit_candidates);
+    scopes, depth, implicit_candidates, implicit_candidate_set);
     let cases = node_get_data2(n);
     let i = 0;
     let len = cases.vec_length();
@@ -228,7 +230,7 @@ depth: I32, implicit_candidates: Vec) : I32 => {
             }
         }
         module_check_stmt_implicit_imports(body, declared, imported, scopes, next_depth,
-        implicit_candidates);
+        implicit_candidates, implicit_candidate_set);
         scopes.vec_pop();
         i = i + 1;
     }
@@ -303,17 +305,25 @@ fn module_walk_imports(imports: Vec, moduleBasePath: *Str, seen: *mut Set, visit
 sources: Vec<*Str>, module_paths: Vec<*Str>, module_declared_map: Map, module_exported_map: Map,
 module_source_cache: Map, import_path_cache: Map, all_declared_names: *mut Set,
 all_exported_declared_names: *mut Set, all_extern_declared_names: *mut Set, lint_enabled: I32,
-max_effective_lines: I32, module_cycles: Vec<*Str>) : I32 => {
+max_effective_lines: I32, module_cycles: Vec<*Str>, recursion_depth: I32) : I32 => {
     let i = 0;
     let len = imports.vec_length();
     while (i < len) {
         let spec = imports.vec_get(i);
-        let depPath = module_normalize_path(spec.vec_get(0));
+        let depPath = spec.vec_get(0);
         let importNames = spec.vec_get(1);
-        gather_module_sources(depPath, moduleBasePath, seen, visiting, sources, module_paths,
-        module_declared_map, module_exported_map, module_source_cache, import_path_cache,
-        all_declared_names, all_exported_declared_names, all_extern_declared_names, lint_enabled,
-        max_effective_lines, module_cycles);
+        if (!seen.set_has(depPath)) {
+            let t_recurse_0 = perf_now_out();
+            gather_module_sources(depPath, moduleBasePath, seen, visiting, sources, module_paths,
+            module_declared_map, module_exported_map, module_source_cache, import_path_cache,
+            all_declared_names, all_exported_declared_names, all_extern_declared_names, lint_enabled,
+            max_effective_lines, module_cycles, recursion_depth + 1);
+            if (recursion_depth == 0) {
+                gather_prof_import_recurse_ms = gather_prof_import_recurse_ms +
+                (perf_now_out() - t_recurse_0);
+            }
+        }
+        let t_walk_local_0 = perf_now_out();
         let depDeclared = module_declared_map.map_get(depPath);
         let depExported = module_exported_map.map_get(depPath);
         let j = 0;
@@ -328,6 +338,8 @@ max_effective_lines: I32, module_cycles: Vec<*Str>) : I32 => {
             }
             j = j + 1;
         }
+        gather_prof_import_walk_ms = gather_prof_import_walk_ms +
+        (perf_now_out() - t_walk_local_0);
         i = i + 1;
     }
     0
@@ -350,7 +362,7 @@ fn module_collect_imported_names(imports: Vec) : *mut Set => {
     imported_names
 }
 fn module_check_expr_implicit_imports(n: I32, declared: *mut Set, imported: *mut Set,
-scopes: Vec, depth: I32, implicit_candidates: Vec) : I32 => {
+scopes: Vec, depth: I32, implicit_candidates: Vec, implicit_candidate_set: *mut Set) : I32 => {
     if (n == 0) {
         return 0;
     }
@@ -359,7 +371,8 @@ scopes: Vec, depth: I32, implicit_candidates: Vec) : I32 => {
         let name = get_interned_str(node_get_data1(n));
         if (!module_scope_has(scopes, depth, name) && !declared.set_has(name) &&
         !imported.set_has(name)) {
-            if (!implicit_candidates.vec_includes(name)) {
+            if (!implicit_candidate_set.set_has(name)) {
+                implicit_candidate_set.set_add(name);
                 implicit_candidates.vec_push(name);
             }
         }
@@ -367,47 +380,47 @@ scopes: Vec, depth: I32, implicit_candidates: Vec) : I32 => {
     }
     if (kind == 25) {
         module_check_expr_implicit_imports(node_get_data2(n), declared, imported,
-        scopes, depth, implicit_candidates);
+        scopes, depth, implicit_candidates, implicit_candidate_set);
         module_check_expr_implicit_imports(node_get_data3(n), declared, imported,
-        scopes, depth, implicit_candidates);
+        scopes, depth, implicit_candidates, implicit_candidate_set);
         return 0;
     }
     if (kind == 26 || kind == 34) {
         module_check_expr_implicit_imports(node_get_data2(n), declared, imported,
-        scopes, depth, implicit_candidates);
+        scopes, depth, implicit_candidates, implicit_candidate_set);
         if (kind == 34) {
             module_check_expr_implicit_imports(node_get_data1(n), declared, imported,
-            scopes, depth, implicit_candidates);
+            scopes, depth, implicit_candidates, implicit_candidate_set);
         }
         return 0;
     }
     if (module_check_expr_call_like(n, declared, imported, scopes, depth,
-    implicit_candidates) == 1) {
+    implicit_candidates, implicit_candidate_set) == 1) {
         return 0;
     }
     if (module_check_expr_composites(n, declared, imported, scopes, depth,
-    implicit_candidates) == 1) {
+    implicit_candidates, implicit_candidate_set) == 1) {
         return 0;
     }
     if (kind == 31) {
         module_check_expr_implicit_imports(node_get_data1(n), declared, imported,
-        scopes, depth, implicit_candidates);
+        scopes, depth, implicit_candidates, implicit_candidate_set);
         module_check_stmt_implicit_imports(node_get_data2(n), declared, imported,
-        scopes, depth, implicit_candidates);
+        scopes, depth, implicit_candidates, implicit_candidate_set);
         if (node_get_data3(n) != 0) {
             module_check_stmt_implicit_imports(node_get_data3(n), declared, imported,
-            scopes, depth, implicit_candidates);
+            scopes, depth, implicit_candidates, implicit_candidate_set);
         }
         return 0;
     }
     if (module_check_expr_match (n, declared, imported, scopes, depth,
-    implicit_candidates) == 1) {
+    implicit_candidates, implicit_candidate_set) == 1) {
         return 0;
     }
     0
 }
 fn module_check_stmt_implicit_imports(n: I32, declared: *mut Set, imported: *mut Set,
-scopes: Vec, depth: I32, implicit_candidates: Vec) : I32 => {
+scopes: Vec, depth: I32, implicit_candidates: Vec, implicit_candidate_set: *mut Set) : I32 => {
     if (n == 0) {
         return 0;
     }
@@ -420,7 +433,7 @@ scopes: Vec, depth: I32, implicit_candidates: Vec) : I32 => {
         let len = stmts.vec_length();
         while (i < len) {
             module_check_stmt_implicit_imports(stmts.vec_get(i), declared, imported,
-            scopes, next_depth, implicit_candidates);
+            scopes, next_depth, implicit_candidates, implicit_candidate_set);
             i = i + 1;
         }
         scopes.vec_pop();
@@ -438,12 +451,12 @@ scopes: Vec, depth: I32, implicit_candidates: Vec) : I32 => {
             i = i + 1;
         }
         module_check_stmt_implicit_imports(node_get_data5(n), declared, imported,
-        fnScopes, 0, implicit_candidates);
+        fnScopes, 0, implicit_candidates, implicit_candidate_set);
         return 0;
     }
     if (kind == 5) {
         module_check_expr_implicit_imports(node_get_data3(n), declared, imported,
-        scopes, depth, implicit_candidates);
+        scopes, depth, implicit_candidates, implicit_candidate_set);
         module_scope_define(scopes, depth, get_interned_str(node_get_data1(n)));
         return 0;
     }
@@ -459,29 +472,29 @@ scopes: Vec, depth: I32, implicit_candidates: Vec) : I32 => {
     }
     if (kind == 7) {
         module_check_expr_implicit_imports(node_get_data1(n), declared, imported,
-        scopes, depth, implicit_candidates);
+        scopes, depth, implicit_candidates, implicit_candidate_set);
         return 0;
     }
     if (kind == 13) {
         module_check_expr_implicit_imports(node_get_data1(n), declared, imported,
-        scopes, depth, implicit_candidates);
+        scopes, depth, implicit_candidates, implicit_candidate_set);
         module_check_expr_implicit_imports(node_get_data2(n), declared, imported,
-        scopes, depth, implicit_candidates);
+        scopes, depth, implicit_candidates, implicit_candidate_set);
         return 0;
     }
     if (kind == 8) {
         module_check_expr_implicit_imports(node_get_data1(n), declared, imported,
-        scopes, depth, implicit_candidates);
+        scopes, depth, implicit_candidates, implicit_candidate_set);
         return 0;
     }
     if (kind == 9) {
         module_check_expr_implicit_imports(node_get_data1(n), declared, imported,
-        scopes, depth, implicit_candidates);
+        scopes, depth, implicit_candidates, implicit_candidate_set);
         module_check_stmt_implicit_imports(node_get_data2(n), declared, imported,
-        scopes, depth, implicit_candidates);
+        scopes, depth, implicit_candidates, implicit_candidate_set);
         if (node_get_data3(n) != 0) {
             module_check_stmt_implicit_imports(node_get_data3(n), declared, imported,
-            scopes, depth, implicit_candidates);
+            scopes, depth, implicit_candidates, implicit_candidate_set);
         }
         return 0;
     }
@@ -490,28 +503,29 @@ scopes: Vec, depth: I32, implicit_candidates: Vec) : I32 => {
         scopes.vec_push(set_new());
         module_scope_define(scopes, next_depth, get_interned_str(node_get_data1(n)));
         module_check_expr_implicit_imports(node_get_data2(n), declared, imported,
-        scopes, next_depth, implicit_candidates);
+        scopes, next_depth, implicit_candidates, implicit_candidate_set);
         module_check_expr_implicit_imports(node_get_data3(n), declared, imported,
-        scopes, next_depth, implicit_candidates);
+        scopes, next_depth, implicit_candidates, implicit_candidate_set);
         module_check_stmt_implicit_imports(node_get_data4(n), declared, imported,
-        scopes, next_depth, implicit_candidates);
+        scopes, next_depth, implicit_candidates, implicit_candidate_set);
         scopes.vec_pop();
         return 0;
     }
     if (kind == 10) {
         module_check_expr_implicit_imports(node_get_data1(n), declared, imported,
-        scopes, depth, implicit_candidates);
+        scopes, depth, implicit_candidates, implicit_candidate_set);
         module_check_stmt_implicit_imports(node_get_data2(n), declared, imported,
-        scopes, depth, implicit_candidates);
+        scopes, depth, implicit_candidates, implicit_candidate_set);
         return 0;
     }
     module_check_expr_implicit_imports(n, declared, imported, scopes, depth,
-    implicit_candidates);
+    implicit_candidates, implicit_candidate_set);
     0
 }
 fn module_collect_implicit_import_candidates(program: I32, declared: *mut Set,
 imported: *mut Set) : Vec => {
     let implicit_candidates = vec_new();
+    let implicit_candidate_set = set_new();
     let topScopes = vec_new();
     topScopes.vec_push(set_new());
     let body = node_get_data1(program);
@@ -519,7 +533,7 @@ imported: *mut Set) : Vec => {
     let len = body.vec_length();
     while (i < len) {
         module_check_stmt_implicit_imports(body.vec_get(i), declared, imported, topScopes, 0,
-        implicit_candidates);
+        implicit_candidates, implicit_candidate_set);
         i = i + 1;
     }
     implicit_candidates
@@ -559,7 +573,7 @@ fn gather_module_sources(filePath: *Str, moduleBasePath: *Str, seen: *mut Set, v
 sources: Vec<*Str>, module_paths: Vec<*Str>, module_declared_map: Map, module_exported_map: Map,
 module_source_cache: Map, import_path_cache: Map, all_declared_names: *mut Set,
 all_exported_declared_names: *mut Set, all_extern_declared_names: *mut Set, lint_enabled: I32,
-max_effective_lines: I32, module_cycles: Vec<*Str>) : I32 => {
+max_effective_lines: I32, module_cycles: Vec<*Str>, recursion_depth: I32) : I32 => {
     filePath = module_normalize_path(filePath);
     moduleBasePath = module_normalize_path(moduleBasePath);
     if (seen.set_has(filePath)) {
@@ -610,12 +624,10 @@ max_effective_lines: I32, module_cycles: Vec<*Str>) : I32 => {
     let imported_names = module_collect_imported_names(imports);
     let implicit_candidates = module_collect_implicit_import_candidates(program, declared,
     imported_names);
-    let t_walk_0 = perf_now_out();
     module_walk_imports(imports, moduleBasePath, seen, visiting, sources, module_paths,
     module_declared_map, module_exported_map, module_source_cache, import_path_cache,
     all_declared_names, all_exported_declared_names, all_extern_declared_names, lint_enabled,
-    max_effective_lines, module_cycles);
-    gather_prof_import_walk_ms = gather_prof_import_walk_ms + (perf_now_out() - t_walk_0);
+    max_effective_lines, module_cycles, recursion_depth);
     let t_implicit_0 = perf_now_out();
     module_assert_no_implicit_imports(implicit_candidates, all_exported_declared_names,
     all_extern_declared_names);
@@ -655,7 +667,7 @@ max_effective_lines: I32, borrow_enabled: I32, target: *Str) : I32 => {
     gather_module_sources(inputPath, moduleBasePath, seen, visiting, sources, module_paths,
     module_declared_map, module_exported_map, module_source_cache, import_path_cache,
     all_declared_names, all_exported_declared_names, all_extern_declared_names, lint, max_lines,
-    module_cycles);
+    module_cycles, 0);
     let t1 = perf_now_out();
     print_error_out("[tuffc:phase] gather_module_sources ".str_concat(int_to_string_out(t1 - t0)).str_concat("ms"));
     print_error_out("[tuffc:gather] modules ".str_concat(int_to_string_out(gather_prof_modules)).str_concat(" imports ").str_concat(int_to_string_out(gather_prof_import_edges)));
@@ -664,6 +676,7 @@ max_effective_lines: I32, borrow_enabled: I32, target: *Str) : I32 => {
     print_error_out("[tuffc:gather] decl_collect ".str_concat(int_to_string_out(gather_prof_decl_collect_ms)).str_concat("ms"));
     print_error_out("[tuffc:gather] import_snapshot ".str_concat(int_to_string_out(gather_prof_import_snapshot_ms)).str_concat("ms"));
     print_error_out("[tuffc:gather] import_walk ".str_concat(int_to_string_out(gather_prof_import_walk_ms)).str_concat("ms"));
+    print_error_out("[tuffc:gather] import_recurse ".str_concat(int_to_string_out(gather_prof_import_recurse_ms)).str_concat("ms"));
     print_error_out("[tuffc:gather] implicit_check ".str_concat(int_to_string_out(gather_prof_implicit_check_ms)).str_concat("ms"));
     let sm_i = 0;
     let sm_line = 1;

@@ -10,9 +10,11 @@
 #include <errno.h>
 #ifdef _WIN32
 #include <direct.h>
+#include <windows.h>
 #else
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <time.h>
 #endif
 
 typedef int64_t TuffValue;

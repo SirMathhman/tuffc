@@ -22,7 +22,7 @@
     "typecheck": "tsc -p tsconfig.json",
     "format": "tsx ./scripts/with-timeout.ts 60000 tsx ./src/main/js/cli.ts format ./src/main/tuff --write",
     "cpd:tuff": "tsx ./scripts/cpd-tuff.ts",
-    "native:selfhost:parity": "tsx ./src/test/js/c-bootstrap-parity.ts",
+    "native:selfhost:parity": "tsx ./scripts/with-timeout.ts 300000 tsx ./src/test/js/c-bootstrap-parity.ts",
     "native:selfhost:run": "tsx ./scripts/run-native-selfhost.ts",
     "build:binary": "npm run native:selfhost:parity && tsx ./scripts/build-native-binary.ts",
     "build:web": "esbuild ./src/main/js/web-compiler.ts --bundle --platform=browser --format=iife --global-name=TuffCompiler --target=es2020 --minify --sourcemap --outfile=./tests/out/web/tuff-compiler.min.js",

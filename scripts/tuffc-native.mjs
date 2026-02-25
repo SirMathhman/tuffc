@@ -35,11 +35,25 @@ const env = { ...process.env };
 if (fs.existsSync(substratePath)) env.TUFFC_SUBSTRATE_PATH = substratePath;
 if (fs.existsSync(preludePath)) env.TUFFC_PRELUDE_PATH = preludePath;
 
+const TIMEOUT_MS = 120_000; // 2 minutes
+
 const args = process.argv.slice(2);
 const run = spawnSync(exePath, args, {
   cwd: root,
   stdio: "inherit",
   env,
+  timeout: TIMEOUT_MS,
 });
+
+if (run.error) {
+  if (run.error.code === "ETIMEDOUT") {
+    console.error(
+      `[tuffc-native] TIMEOUT: process exceeded ${TIMEOUT_MS / 1000}s — killed`,
+    );
+    process.exit(124);
+  }
+  console.error(`[tuffc-native] ERROR: ${run.error.message}`);
+  process.exit(1);
+}
 
 process.exit(run.status ?? 1);
