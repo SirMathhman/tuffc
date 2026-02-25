@@ -31,6 +31,12 @@ function makeEmptyMonomorphizationPlan(reason = "no-ast") {
 let cachedSelfhost = undefined;
 let runtimeCSubstrateOverride = undefined;
 let runtimeCPreludeSourceCache = undefined;
+let compilerQuietMode = false;
+
+export function setCompilerQuietMode(quiet: boolean): void {
+  compilerQuietMode = quiet;
+  runtime.setRuntimeQuietMode(quiet);
+}
 
 function resolveCSubstrate() {
   if (typeof runtimeCSubstrateOverride === "string") {
@@ -288,9 +294,11 @@ function bootstrapSelfhostFromNativeExe(
 
 function loadSelfhostFromDisk(selfhostOutput): CompilerResult<unknown> {
   const selfhostJs = fs.readFileSync(selfhostOutput, "utf8");
-  process.stderr.write(
-    `[tuffc] loading selfhost compiler (${(selfhostJs.length / 1024).toFixed(0)} KB)...\n`,
-  );
+  if (!compilerQuietMode) {
+    process.stderr.write(
+      `[tuffc] loading selfhost compiler (${(selfhostJs.length / 1024).toFixed(0)} KB)...\n`,
+    );
+  }
   const loadStart = Date.now();
 
   const sandbox = {
@@ -308,9 +316,11 @@ function loadSelfhostFromDisk(selfhostOutput): CompilerResult<unknown> {
       sandbox,
       { filename: toPosixPath(selfhostOutput) },
     );
-    process.stderr.write(
-      `[tuffc] selfhost compiler loaded in ${Date.now() - loadStart}ms\n`,
-    );
+    if (!compilerQuietMode) {
+      process.stderr.write(
+        `[tuffc] selfhost compiler loaded in ${Date.now() - loadStart}ms\n`,
+      );
+    }
   } catch (loadErr) {
     return err(
       new TuffError(
@@ -703,20 +713,25 @@ function compileFileInternal(
       runtime.profile_take_json();
     }
     setSubstrateOverrideFromOptions(options, target, "selfhost");
+    const quiet = compilerQuietMode || Boolean(options.quiet);
     try {
       const normalizedInput = toPosixPath(absInput);
       const normalizedOutput = toPosixPath(finalOutput);
-      process.stderr.write(
-        `[tuffc] compiling ${path.basename(absInput)} (lint=${lintEnabled}, borrow=${borrowEnabled ? 1 : 0}, target=${target})...\n`,
-      );
+      if (!quiet) {
+        process.stderr.write(
+          `[tuffc] compiling ${path.basename(absInput)} (lint=${lintEnabled}, borrow=${borrowEnabled ? 1 : 0}, target=${target})...\n`,
+        );
+      }
       const compileStart = Date.now();
       let heartbeatTick = 0;
       const heartbeat = setInterval(() => {
         heartbeatTick++;
         const elapsed = Date.now() - compileStart;
-        process.stderr.write(
-          `[tuffc]   still running... ${elapsed}ms elapsed (tick ${heartbeatTick})\n`,
-        );
+        if (!quiet) {
+          process.stderr.write(
+            `[tuffc]   still running... ${elapsed}ms elapsed (tick ${heartbeatTick})\n`,
+          );
+        }
       }, 5000);
       try {
         run("selfhost-compile-file", () => {
@@ -736,9 +751,11 @@ function compileFileInternal(
       } finally {
         clearInterval(heartbeat);
       }
-      process.stderr.write(
-        `[tuffc] compilation done in ${Date.now() - compileStart}ms\n`,
-      );
+      if (!quiet) {
+        process.stderr.write(
+          `[tuffc] compilation done in ${Date.now() - compileStart}ms\n`,
+        );
+      }
       js = fs.readFileSync(finalOutput, "utf8");
     } catch (error) {
       const remap = remapSelfhostModuleErrorLoc(error, absInput, options);

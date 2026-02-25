@@ -451,7 +451,13 @@ export function print(s: unknown): void {
   console.log(s);
 }
 
+let _runtimeQuietMode = false;
+export function setRuntimeQuietMode(quiet: boolean): void {
+  _runtimeQuietMode = quiet;
+}
+
 export function print_error(s: unknown): void {
+  if (_runtimeQuietMode) return;
   console.error(s);
 }
 

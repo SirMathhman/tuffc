@@ -4,7 +4,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { compileFileResult, formatTuffSource } from "./compiler.ts";
+import {
+  compileFileResult,
+  formatTuffSource,
+  setCompilerQuietMode,
+} from "./compiler.ts";
 import { formatDiagnostic, toDiagnostic } from "./errors.ts";
 import { buildCertificate } from "./certificate.ts";
 import { writeTypstSource, compileTypstToPdf } from "./typst-render.ts";
@@ -772,7 +776,12 @@ function main(argv: string[]): void {
   }
 
   const _cliStart = Date.now();
-  process.stderr.write(`[tuffc] starting: ${input}\n`);
+  if (jsonErrors) {
+    setCompilerQuietMode(true);
+  }
+  if (!jsonErrors) {
+    process.stderr.write(`[tuffc] starting: ${input}\n`);
+  }
   const result = compileFileResult(path.resolve(input), output, {
     backend,
     enableModules: true,
@@ -788,9 +797,11 @@ function main(argv: string[]): void {
     tracePasses,
   });
 
-  process.stderr.write(
-    `[tuffc] finished in ${Date.now() - _cliStart}ms (${result.ok ? "ok" : "error"})\n`,
-  );
+  if (!jsonErrors) {
+    process.stderr.write(
+      `[tuffc] finished in ${Date.now() - _cliStart}ms (${result.ok ? "ok" : "error"})\n`,
+    );
+  }
   if (!result.ok) {
     const diag = toDiagnostic(result.error);
     const useColor = shouldUseColor(diagnosticsColor);
