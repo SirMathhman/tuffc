@@ -25,6 +25,7 @@ Fully self-hosted Tuff compiler. The canonical source is `src/main/tuff/selfhost
 - Borrow checker (move/copy semantics, drop lifecycle, `*move` qualifier)
 - JavaScript codegen
 - C codegen backend with substrate support unit
+- Canonical `.tuff` emission target (`--target tuff`) with trivia-preserving source pipeline
 - Module graph with target-aware package aliases (`tuff-core`, `tuff-c`, `tuff-js`)
 - `contract` / `into` — static dispatch and dynamic dispatch lowering
 - `expect` / `actual` declarations for cross-platform stdlib
@@ -126,12 +127,20 @@ Production-readiness diagnostics are now available:
 - Human-readable CLI diagnostics by default
 - Machine-readable diagnostics with `--json-errors`
 - Optional lint pass with `--lint`
+- Deterministic lint auto-fix subset with `--lint --lint-fix`
 
 Example:
 
 - `npm run native:selfhost:run -- ./tests/out/stage4/cli-fail.tuff --json-errors`
 - `npm run native:selfhost:run -- ./tests/out/stage4/cli-fail.tuff --lint --json-errors`
+- `npm run native:selfhost:run -- ./src/test/tuff/cases/factorial.tuff --target tuff -o ./tests/out/factorial.reemit.tuff`
 - `npm run native:selfhost:run -- ./src/test/tuff/cases/factorial.tuff --trace-passes`
+
+### `.tuff` emission + lint-fix rollout notes
+
+- `--target tuff` emits canonical `.tuff` output and preserves comment trivia payloads captured during lexing.
+- `--lint-fix` currently enables a deterministic safe subset (receiver-call extern rewrite), and reports applied fix counts.
+- Lint auto-fix runs in warn-mode workflows and is intentionally conservative: ambiguous edits are left unchanged.
 
 Run Phase 4 verification only:
 
