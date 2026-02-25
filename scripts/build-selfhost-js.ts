@@ -10,13 +10,24 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import vm from "node:vm";
-import * as runtime from "../src/main/js/runtime.ts";
 
 const thisFile = fileURLToPath(import.meta.url);
 const root = path.resolve(path.dirname(thisFile), "..");
 const force = process.argv.includes("--force");
+
+process.on("uncaughtException", (err) => {
+  console.error(`[build:selfhost-js] FATAL uncaughtException: ${err.message}`);
+  console.error(err.stack ?? String(err));
+  process.exit(1);
+});
+process.on("unhandledRejection", (reason) => {
+  console.error(
+    `[build:selfhost-js] FATAL unhandledRejection: ${String(reason)}`,
+  );
+  process.exit(1);
+});
 
 const SELFHOST_TUFF = path.join(root, "src", "main", "tuff", "selfhost.tuff");
 const OUT_DIR = path.join(root, "tests", "out", "build");
@@ -100,6 +111,16 @@ function computeInputsMaxMtime(): { maxMtime: number; newestFile: string } {
   return { maxMtime, newestFile };
 }
 
+function tailText(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  return `…${text.slice(text.length - maxChars)}`;
+}
+
+function formatElapsed(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  return `${(ms / 1000).toFixed(2)}s`;
+}
+
 // ── Main ─────────────────────────────────────────────────────────────────────
 
 if (!fs.existsSync(GENERATED_JS)) {
@@ -147,6 +168,7 @@ if (fs.existsSync(SUBSTRATE_PATH)) env.TUFFC_SUBSTRATE_PATH = SUBSTRATE_PATH;
 if (fs.existsSync(PRELUDE_PATH)) env.TUFFC_PRELUDE_PATH = PRELUDE_PATH;
 
 const args = [
+  `./src/main/js/cli.ts`,
   `./${relInput}`,
   "--module-base",
   "./src/main/tuff",
@@ -157,78 +179,86 @@ const args = [
 ];
 
 console.log(`[build:selfhost-js] compiling selfhost.tuff → ${relOutput}`);
-console.log(
-  `[build:selfhost-js] compiler: ${path.relative(root, GENERATED_JS)} (bootstrap JS)`,
-);
+console.log(`[build:selfhost-js] compiler: tsx ./src/main/js/cli.ts`);
 
 const COMPILE_TIMEOUT_MS = 120_000; // 2 minutes
 
 const t0 = Date.now();
-try {
-  const generatedJs = fs.readFileSync(GENERATED_JS, "utf8");
-  const sandbox: Record<string, unknown> = {
-    module: { exports: {} },
-    exports: {},
-    console,
-    ...runtime,
-  };
-  vm.runInNewContext(
-    `${generatedJs}\nmodule.exports = { compile_file_with_options };`,
-    sandbox,
-    { timeout: COMPILE_TIMEOUT_MS },
+const startedAtIso = new Date(t0).toISOString();
+const tsxCli = path.join(root, "node_modules", "tsx", "dist", "cli.mjs");
+if (!fs.existsSync(tsxCli)) {
+  console.error(
+    `[build:selfhost-js] ERROR: tsx CLI not found at ${tsxCli}. Run npm install in Tuffc/.`,
   );
-  const compiler = (sandbox.module as { exports: Record<string, unknown> })
-    .exports;
-  const compileFileWithOptions = compiler.compile_file_with_options as
-    | ((
-        inputPath: string,
-        outputPath: string,
-        lintEnabled: number,
-        maxEffectiveLines: number,
-        borrowEnabled: number,
-        target: string,
-      ) => unknown)
-    | undefined;
-  if (typeof compileFileWithOptions !== "function") {
-    console.error(
-      `[build:selfhost-js] FAILED: compile_file_with_options is unavailable in ${path.relative(root, GENERATED_JS)}`,
-    );
-    process.exit(1);
-  }
+  process.exit(1);
+}
+console.log(`[build:selfhost-js] started: ${startedAtIso}`);
+console.log(`[build:selfhost-js] cwd: ${root}`);
+console.log(`[build:selfhost-js] timeout: ${COMPILE_TIMEOUT_MS / 1000}s`);
+console.log(
+  `[build:selfhost-js] command: ${process.execPath} ${path.relative(root, tsxCli).replaceAll("\\", "/")} ${args.join(" ")}`,
+);
+const compileProc = spawnSync(process.execPath, [tsxCli, ...args], {
+  cwd: root,
+  env,
+  encoding: "utf8",
+  timeout: COMPILE_TIMEOUT_MS,
+  maxBuffer: 16 * 1024 * 1024,
+});
 
-  // Watchdog timer: kill process if compilation hangs
-  const watchdog = setTimeout(() => {
-    console.error(
-      `[build:selfhost-js] TIMEOUT: compilation exceeded ${COMPILE_TIMEOUT_MS / 1000}s — aborting`,
-    );
-    process.exit(1);
-  }, COMPILE_TIMEOUT_MS);
-  watchdog.unref(); // don't keep event loop alive if compile finishes
+console.log(
+  `[build:selfhost-js] compiler result: status=${String(compileProc.status)} signal=${String(compileProc.signal)} error=${compileProc.error ? "yes" : "no"}`,
+);
 
-  const compileResult = compileFileWithOptions(
-    path.resolve(root, relInput),
-    path.resolve(root, relOutput),
-    0,
-    500,
-    1,
-    "js",
-  );
+if (compileProc.stdout && compileProc.stdout.length > 0) {
+  process.stdout.write(compileProc.stdout);
+}
+if (compileProc.stderr && compileProc.stderr.length > 0) {
+  process.stderr.write(compileProc.stderr);
+}
 
-  clearTimeout(watchdog);
-  console.log(`[build:selfhost-js] compile result: ${String(compileResult)}`);
-} catch (compileError) {
-  const msg =
-    compileError instanceof Error ? compileError.message : String(compileError);
-  if (msg.includes("Script execution timed out")) {
+const elapsed = Date.now() - t0;
+
+if (compileProc.error) {
+  const errno = compileProc.error as NodeJS.ErrnoException;
+  if (errno.code === "ETIMEDOUT") {
+    const stdoutTail = tailText(compileProc.stdout ?? "", 1200);
+    const stderrTail = tailText(compileProc.stderr ?? "", 1200);
     console.error(
-      `[build:selfhost-js] TIMEOUT: vm.runInNewContext exceeded ${COMPILE_TIMEOUT_MS / 1000}s`,
+      `[build:selfhost-js] TIMEOUT: compilation exceeded ${COMPILE_TIMEOUT_MS / 1000}s after ${formatElapsed(elapsed)} — process terminated`,
     );
+    if (stdoutTail.length > 0) {
+      console.error(`[build:selfhost-js] TIMEOUT stdout tail:`);
+      console.error(stdoutTail);
+    }
+    if (stderrTail.length > 0) {
+      console.error(`[build:selfhost-js] TIMEOUT stderr tail:`);
+      console.error(stderrTail);
+    }
   } else {
-    console.error(`[build:selfhost-js] FAILED: ${msg}`);
+    console.error(
+      `[build:selfhost-js] FAILED after ${formatElapsed(elapsed)}: ${errno.message}`,
+    );
   }
   process.exit(1);
 }
-const elapsed = Date.now() - t0;
+
+if (compileProc.status !== 0) {
+  const stdoutTail = tailText(compileProc.stdout ?? "", 1200);
+  const stderrTail = tailText(compileProc.stderr ?? "", 1200);
+  console.error(
+    `[build:selfhost-js] FAILED after ${formatElapsed(elapsed)}: compiler exited with code ${String(compileProc.status)}`,
+  );
+  if (stdoutTail.length > 0) {
+    console.error(`[build:selfhost-js] exit stdout tail:`);
+    console.error(stdoutTail);
+  }
+  if (stderrTail.length > 0) {
+    console.error(`[build:selfhost-js] exit stderr tail:`);
+    console.error(stderrTail);
+  }
+  process.exit(1);
+}
 if (!fs.existsSync(OUT_JS)) {
   console.error(
     `[build:selfhost-js] FAILED: output file not produced: ${OUT_JS}`,

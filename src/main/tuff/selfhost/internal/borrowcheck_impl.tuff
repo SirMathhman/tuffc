@@ -975,7 +975,7 @@ out fn borrowcheck_program_impl(program: I32) : I32 => {
         if (kind == NK_EXTERN_TYPE_DECL) {
             extern_type_names.set_add(get_interned_str(node_get_data1(stmt)));
         }
-        if (kind == NK_FN_DECL || kind == NK_EXTERN_FN_DECL) {
+        if (kind == NK_FN_DECL) {
             let fname = get_interned_str(node_get_data1(stmt));
             global_fn_names.set_add(fname);
             fn_return_types.map_set(fname, bc_type_name_from_type_node(node_get_data4(stmt)));
@@ -1020,7 +1020,7 @@ out fn borrowcheck_program_impl(program: I32) : I32 => {
         while (j < len) {
             let stmt = body.vec_get(j);
             let sk = node_kind(stmt);
-            if ((sk == NK_FN_DECL || sk == NK_EXTERN_FN_DECL) &&
+            if ((sk == NK_FN_DECL) &&
             get_interned_str(node_get_data1(stmt)).str_eq(destructor_name)) {
                 found = true;
                 let valid = true;

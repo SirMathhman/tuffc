@@ -1537,7 +1537,7 @@ out fn typecheck_program_with_options_impl(program: I32) : I32 => {
     while (i < len) {
         let stmt = body.vec_get(i);
         let kind = node_kind(stmt);
-        if (kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL || kind == NK_EXTERN_FN_DECL || kind ==
+        if (kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL || kind ==
         NK_ACTUAL_FN_DECL) {
             let name = get_interned_str(node_get_data1(stmt));
             fn_nodes.map_set(name, stmt);

@@ -961,7 +961,7 @@ fn cc_emit_type_alias(n: I32) : *Str => {
 }
 fn cc_is_extern_fn_decl(n: I32) : Bool => {
     let kind = node_kind(n);
-    kind == NK_EXTERN_FN_DECL || (kind == NK_FN_DECL && node_get_data5(n) == 0)
+    kind == NK_FN_DECL && node_get_data5(n) == 0
 }
 fn cc_emit_stmt(n: I32) : *Str => {
     let kind = node_kind(n);

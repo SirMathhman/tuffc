@@ -115,14 +115,12 @@ fn is_module_decl_kind(kind: I32) : Bool => {
     kind == 65 || // NK_CONTRACT_DECL
     kind == 4 || // NK_TYPE_ALIAS
     kind == 5 || // NK_LET_DECL
-    kind == 17 || // NK_EXTERN_FN_DECL
     kind == 18 || // NK_EXTERN_LET_DECL
     kind == 19 // NK_EXTERN_TYPE_DECL
 }
 fn module_is_extern_decl(stmt: I32) : Bool => {
     let kind = node_kind(stmt);
     (kind == 2 && node_get_data5(stmt) == 0) || // NK_FN_DECL with no body
-    kind == 17 || // NK_EXTERN_FN_DECL (back-compat)
     kind == 18 || // NK_EXTERN_LET_DECL
     kind == 19 // NK_EXTERN_TYPE_DECL
 }
@@ -601,6 +599,7 @@ max_effective_lines: I32, module_cycles: Vec<*Str>, recursion_depth: I32) : I32 
         );
     }
     visiting.set_add(filePath);
+    let module_t0 = perf_now_out();
     gather_prof_modules = gather_prof_modules + 1;
     let source = "";
     if (module_source_cache.map_has(filePath)) {
@@ -678,15 +677,6 @@ max_effective_lines: I32, borrow_enabled: I32, target: *Str) : I32 => {
     all_declared_names, all_exported_declared_names, all_extern_declared_names, lint, max_lines,
     module_cycles, 0);
     let t1 = perf_now_out();
-    print_error_out("[tuffc:phase] gather_module_sources ".str_concat(int_to_string_out(t1 - t0)).str_concat("ms"));
-    print_error_out("[tuffc:gather] modules ".str_concat(int_to_string_out(gather_prof_modules)).str_concat(" imports ").str_concat(int_to_string_out(gather_prof_import_edges)));
-    print_error_out("[tuffc:gather] read_file ".str_concat(int_to_string_out(gather_prof_read_file_ms)).str_concat("ms"));
-    print_error_out("[tuffc:gather] lex_parse ".str_concat(int_to_string_out(gather_prof_lex_parse_ms)).str_concat("ms"));
-    print_error_out("[tuffc:gather] decl_collect ".str_concat(int_to_string_out(gather_prof_decl_collect_ms)).str_concat("ms"));
-    print_error_out("[tuffc:gather] import_snapshot ".str_concat(int_to_string_out(gather_prof_import_snapshot_ms)).str_concat("ms"));
-    print_error_out("[tuffc:gather] import_walk ".str_concat(int_to_string_out(gather_prof_import_walk_ms)).str_concat("ms"));
-    print_error_out("[tuffc:gather] import_recurse ".str_concat(int_to_string_out(gather_prof_import_recurse_ms)).str_concat("ms"));
-    print_error_out("[tuffc:gather] implicit_check ".str_concat(int_to_string_out(gather_prof_implicit_check_ms)).str_concat("ms"));
     let sm_i = 0;
     let sm_line = 1;
     while (sm_i < module_paths.vec_length()) {
@@ -705,19 +695,15 @@ max_effective_lines: I32, borrow_enabled: I32, target: *Str) : I32 => {
     let program = p_parse_program();
     program = strip_import_decls(program);
     let t3 = perf_now_out();
-    print_error_out("[tuffc:phase] lex+parse ".str_concat(int_to_string_out(t3 - t2)).str_concat("ms"));
     let desugared = desugar(program);
     let resolved = resolve_names(desugared);
     let t4 = perf_now_out();
-    print_error_out("[tuffc:phase] desugar+resolve ".str_concat(int_to_string_out(t4 - t3)).str_concat("ms"));
     let typed = typecheck_program_with_options(resolved);
     let t5 = perf_now_out();
-    print_error_out("[tuffc:phase] typecheck ".str_concat(int_to_string_out(t5 - t4)).str_concat("ms"));
     if (borrow == 1) {
         borrowcheck_program(typed);
     }
     let t6 = perf_now_out();
-    print_error_out("[tuffc:phase] borrowcheck ".str_concat(int_to_string_out(t6 - t5)).str_concat("ms"));
     if (lint == 1) {
          // File-length lint already ran per module file during gather_module_sources.
         lint_program(typed, inputPath, max_lines, 0);
@@ -729,10 +715,7 @@ max_effective_lines: I32, borrow_enabled: I32, target: *Str) : I32 => {
         }
     }
     let t7 = perf_now_out();
-    print_error_out("[tuffc:phase] lint ".str_concat(int_to_string_out(t7 - t6)).str_concat("ms"));
     let emitted = module_emit_target_output(typed, merged, target);
     let t8 = perf_now_out();
-    print_error_out("[tuffc:phase] emit ".str_concat(int_to_string_out(t8 - t7)).str_concat("ms"));
-    print_error_out("[tuffc:phase] total ".str_concat(int_to_string_out(t8 - t0)).str_concat("ms"));
     write_file(outputPath, emitted)
 }

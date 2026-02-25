@@ -25,7 +25,7 @@ const result = spawnSync(cmd[0], cmd.slice(1), {
 
 if (result.error) {
   if ((result.error as NodeJS.ErrnoException).code === "ETIMEDOUT") {
-    process.stderr.write(`\nERROR: command timed out after ${timeoutMs}ms\n`);
+    process.stderr.write(`\nERROR: command timed out after ${timeoutMs}ms. If you are seeing this message, this means that the process has likely encountered an infinite loop or has incredibly bad performance. Add logging to diagnose this issue. Do not necessarily asusume more time is needed, one minute should be the maximum of acceptability.\n`);
     process.exit(124);
   }
   process.stderr.write(`ERROR: ${result.error.message}\n`);

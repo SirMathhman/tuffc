@@ -33,6 +33,73 @@ let runtimeCSubstrateOverride = undefined;
 let runtimeCPreludeSourceCache = undefined;
 let compilerQuietMode = false;
 
+const hostRuntimeBridgeFns = [
+  "str_length",
+  "str_char_at",
+  "str_slice",
+  "str_mut_slice",
+  "str_concat",
+  "str_eq",
+  "str_from_char_code",
+  "str_index_of",
+  "str_trim",
+  "str_replace_all",
+  "char_code",
+  "int_to_string",
+  "parse_int",
+  "sb_new",
+  "sb_append",
+  "sb_append_char",
+  "sb_build",
+  "__vec_new",
+  "__vec_push",
+  "__vec_pop",
+  "__vec_get",
+  "__vec_set",
+  "__vec_length",
+  "__vec_init",
+  "__vec_capacity",
+  "__vec_clear",
+  "__vec_join",
+  "__vec_includes",
+  "__map_new",
+  "map_set",
+  "map_get",
+  "map_has",
+  "map_delete",
+  "__set_new",
+  "set_add",
+  "set_has",
+  "set_delete",
+  "read_file",
+  "write_file",
+  "path_join",
+  "path_dirname",
+  "panic",
+  "panic_with_code",
+  "panic_with_code_loc",
+  "get_argc",
+  "get_argv",
+  "perf_now",
+  "profile_mark",
+  "profile_take_json",
+];
+
+function patchExternStubsToHostRuntime(jsSource: string): string {
+  let out = jsSource;
+  for (const name of hostRuntimeBridgeFns) {
+    const re = new RegExp(
+      `function\\s+${name}\\s*\\([^)]*\\)\\s*\\{[\\s\\S]*?return\\s+undefined;\\s*\\}`,
+      "m",
+    );
+    out = out.replace(
+      re,
+      `function ${name}(...__args) { return __host_runtime.${name}(...__args); }`,
+    );
+  }
+  return out;
+}
+
 export function setCompilerQuietMode(quiet: boolean): void {
   compilerQuietMode = quiet;
   runtime.setRuntimeQuietMode(quiet);
@@ -293,7 +360,8 @@ function bootstrapSelfhostFromNativeExe(
 }
 
 function loadSelfhostFromDisk(selfhostOutput): CompilerResult<unknown> {
-  const selfhostJs = fs.readFileSync(selfhostOutput, "utf8");
+  const selfhostJsRaw = fs.readFileSync(selfhostOutput, "utf8");
+  const selfhostJs = patchExternStubsToHostRuntime(selfhostJsRaw);
   if (!compilerQuietMode) {
     process.stderr.write(
       `[tuffc] loading selfhost compiler (${(selfhostJs.length / 1024).toFixed(0)} KB)...\n`,
@@ -305,8 +373,11 @@ function loadSelfhostFromDisk(selfhostOutput): CompilerResult<unknown> {
     module: { exports: {} },
     exports: {},
     console,
+    __host_runtime: runtime,
     __host_get_c_substrate: resolveCSubstrate,
     __host_get_c_runtime_prelude_source: getCRuntimePreludeSource,
+    __host_runtime_print: runtime.print,
+    __host_runtime_print_error: runtime.print_error,
     ...runtime,
   };
 
@@ -316,6 +387,67 @@ function loadSelfhostFromDisk(selfhostOutput): CompilerResult<unknown> {
       sandbox,
       { filename: toPosixPath(selfhostOutput) },
     );
+    vm.runInNewContext(
+      `
+const __bridgeFns = [
+  "str_length", "str_char_at", "str_slice", "str_mut_slice", "str_concat", "str_eq",
+  "str_from_char_code", "str_index_of", "str_trim", "str_replace_all", "char_code",
+  "int_to_string", "parse_int", "sb_new", "sb_append", "sb_append_char", "sb_build",
+  "__vec_new", "__vec_push", "__vec_pop", "__vec_get", "__vec_set", "__vec_length",
+  "__vec_init", "__vec_capacity", "__vec_clear", "__vec_join", "__vec_includes",
+  "__map_new", "map_set", "map_get", "map_has", "map_delete", "__set_new", "set_add",
+  "set_has", "set_delete", "read_file", "write_file", "path_join", "path_dirname",
+  "panic", "panic_with_code", "panic_with_code_loc", "get_argc", "get_argv", "perf_now",
+  "profile_mark", "profile_take_json"
+];
+for (const __name of __bridgeFns) {
+  try {
+    const __fn = __host_runtime[__name];
+    if (typeof __fn === "function") {
+      globalThis[__name] = __fn;
+      eval(__name + ' = __host_runtime["' + __name + '"]');
+    }
+  } catch {}
+}
+if (typeof __host_runtime_print === "function") {
+  try { print = (s) => { __host_runtime_print(s); return 0; }; } catch {}
+}
+if (typeof __host_runtime_print_error === "function") {
+  try { print_error = (s) => { __host_runtime_print_error(s); return 0; }; } catch {}
+  try { print_error_out = (s) => { __host_runtime_print_error(s); return 0; }; } catch {}
+}
+      `,
+      sandbox,
+      { filename: `${toPosixPath(selfhostOutput)}#host-bridge` },
+    );
+    const bridgeProbe = vm.runInNewContext(
+      `(() => {
+  try {
+    return {
+      str_replace_all: typeof str_replace_all,
+      int_to_string: typeof int_to_string,
+      module_normalize_path: typeof module_normalize_path,
+      sample_norm:
+        typeof module_normalize_path === "function"
+          ? String(module_normalize_path("a\\\\b"))
+          : "<no-module-normalize-path>",
+      sample_i2s:
+        typeof int_to_string_out === "function"
+          ? String(int_to_string_out(0))
+          : "<no-int-to-string-out>",
+    };
+  } catch (e) {
+    return { probe_error: String(e) };
+  }
+})()`,
+      sandbox,
+      { filename: `${toPosixPath(selfhostOutput)}#bridge-probe` },
+    );
+    if (!compilerQuietMode) {
+      process.stderr.write(
+        `[tuffc] bridge probe ${JSON.stringify(bridgeProbe)}\n`,
+      );
+    }
     if (!compilerQuietMode) {
       process.stderr.write(
         `[tuffc] selfhost compiler loaded in ${Date.now() - loadStart}ms\n`,
@@ -758,6 +890,12 @@ function compileFileInternal(
       }
       js = fs.readFileSync(finalOutput, "utf8");
     } catch (error) {
+      if (!quiet) {
+        const raw = error as Error;
+        process.stderr.write(
+          `[tuffc] internal error raw: ${raw?.stack ?? String(error)}\n`,
+        );
+      }
       const remap = remapSelfhostModuleErrorLoc(error, absInput, options);
       return err(
         wrapTuffError(error, {

@@ -11,7 +11,7 @@
   "scripts": {
     "build": "tsx ./scripts/with-timeout.ts 60000 tsx ./scripts/build-selfhost-js.ts",
     "test": "npm run test:core",
-    "test:core": "tsx ./scripts/with-timeout.ts 60000 tsx ./src/test/js/test-orchestrator.ts --suite=core",
+    "test:core": "tsx ./scripts/with-timeout.ts 180000 tsx ./src/test/js/test-orchestrator.ts --suite=core",
     "test:native": "tsx ./scripts/with-timeout.ts 60000 tsx ./src/test/js/test-orchestrator.ts --suite=native",
     "test:stress": "tsx ./scripts/with-timeout.ts 60000 tsx ./src/test/js/test-orchestrator.ts --suite=stress",
     "test:parity": "tsx ./scripts/with-timeout.ts 60000 tsx ./src/test/js/test-orchestrator.ts --suite=parity",

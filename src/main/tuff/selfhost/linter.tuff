@@ -52,7 +52,7 @@ out fn lint_check_current_file_length(file_path: *Str, max_effective_lines: I32)
 }
 fn lint_is_extern_fn_decl(stmt: I32) : Bool => {
     let kind = node_kind(stmt);
-    kind == NK_EXTERN_FN_DECL || (kind == NK_FN_DECL && node_get_data5(stmt) == 0)
+    kind == NK_FN_DECL && node_get_data5(stmt) == 0
 }
 fn lint_mark_line(lines: *mut Set, line: I32) : I32 => {
     let key = int_to_string(line);
@@ -873,7 +873,7 @@ fn lint_astdup_fp(n: I32, fp_cache: Map, size_cache: Map, seen_nodes: Vec) : *St
         size = size + lint_astdup_params_size(node_get_data1(n), size_cache);
         size = size + size_cache.map_get(node_get_data2(n));
     }
-    else if (kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL || kind == NK_ACTUAL_FN_DECL || kind == NK_EXPECT_FN_DECL || kind == NK_EXTERN_FN_DECL) {
+    else if (kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL || kind == NK_ACTUAL_FN_DECL || kind == NK_EXPECT_FN_DECL) {
         fp = fp
             .str_concat("(name:ID:g:")
             .str_concat(int_to_string(node_get_data2(n).vec_length()))
