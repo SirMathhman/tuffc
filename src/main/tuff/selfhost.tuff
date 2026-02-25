@@ -59,11 +59,16 @@ let {
 }
  = selfhost::formatter;
 let {
+    emit_tuff_from_typed, selfhost_tuff_printer_marker
+}
+ = selfhost::tuff_printer;
+let {
     selfhost_module_sourcemap_marker
 }
  = selfhost::module_sourcemap;
 let {
-    lex_init, lex_all, tok_kind, tok_value, tok_line, tok_col, get_interned_str, str_includes
+    lex_init, lex_all, tok_kind, tok_value, tok_line, tok_col, get_interned_str, str_includes,
+    lex_take_trivia
 }
  = selfhost::runtime_lexer;
 let {
@@ -149,11 +154,14 @@ fn emit_target_output(typed: I32, source: *Str, target: *Str) : *Str => {
     if (target.str_eq("c")) {
         return generate_c(typed, __host_get_c_substrate());
     }
+    if (target.str_eq("tuff")) {
+        return emit_tuff_from_typed(typed, source, lex_take_trivia());
+    }
     panic_with_code(
     "E_UNSUPPORTED_TARGET",
     "Unsupported codegen target: ".str_concat(target),
     "The compiler was asked to emit code for a target that is not implemented.",
-    "Use target 'js' or target 'c'."
+    "Use target 'js', target 'c', or target 'tuff'."
     );
     ""
 }
@@ -221,7 +229,7 @@ fn main() : I32 => {
     let argc = get_argc();
      // argv[0] is the executable name; we need at least argv[1] (input file).
     if (argc < 2) {
-        print_error("Usage: tuffc <input.tuff> -o <output> [--target <js|c>] [--module-base <dir> (legacy)]");
+        print_error("Usage: tuffc <input.tuff> -o <output> [--target <js|c|tuff>] [--module-base <dir> (legacy)]");
         return 1;
     }
      // Fast-path: handle flags-only commands before any file parsing.
@@ -231,7 +239,7 @@ fn main() : I32 => {
         return 0;
     }
     if (first_arg.str_eq("-h") || first_arg.str_eq("--help")) {
-        print("Usage: tuffc <input.tuff> -o <output> [--target <js|c>] [--module-base <dir> (legacy)] [--version]");
+        print("Usage: tuffc <input.tuff> -o <output> [--target <js|c|tuff>] [--module-base <dir> (legacy)] [--version]");
         return 0;
     }
     let input_file = first_arg;

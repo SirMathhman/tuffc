@@ -1,8 +1,3 @@
-let {
-    str_trim
-}
- = selfhost::runtime_lexer;
-
 fn ensure_trailing_newline(text: *Str) : *Str => {
     if (text.str_length() == 0) {
         return "\n";
@@ -21,7 +16,7 @@ fn ensure_trailing_newline(text: *Str) : *Str => {
 out fn emit_tuff_from_typed_impl(typed: I32, source: *Str, trivia_payload: *Str) : *Str => {
     let _typed_guard = typed;
     let _trivia_guard = trivia_payload.str_length();
-    let _source_guard = source.str_trim();
+    let _source_guard = source.str_length();
     ensure_trailing_newline(source)
 }
 

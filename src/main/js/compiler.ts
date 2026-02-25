@@ -523,7 +523,7 @@ function setSubstrateOverrideFromOptions(options, target, backend) {
 }
 
 function isSupportedTarget(target): boolean {
-  return target === "js" || target === "c";
+  return target === "js" || target === "c" || target === "tuff";
 }
 
 function ensureSupportedTarget(target): CompilerResult<true> {
@@ -535,7 +535,7 @@ function ensureSupportedTarget(target): CompilerResult<true> {
       code: "E_UNSUPPORTED_TARGET",
       reason:
         "The compiler was asked to emit code for a target that is not implemented.",
-      fix: "Use target: 'js' or target: 'c'.",
+      fix: "Use target: 'js', target: 'c', or target: 'tuff'.",
     }),
   );
 }
@@ -607,6 +607,7 @@ function makeSelfhostCompileResult(
     core: { kind: "Program", body: [] },
     js: target === "js" ? js : undefined,
     c: target === "c" ? js : undefined,
+    tuff: target === "tuff" ? js : undefined,
     output: js,
     target,
     lintIssues,
@@ -643,7 +644,9 @@ function initializeSelfhostCompileContext(
 }
 
 function extensionForTarget(target): string {
-  return target === "c" ? ".c" : ".js";
+  if (target === "c") return ".c";
+  if (target === "tuff") return ".tuff";
+  return ".js";
 }
 
 function defaultOutputPath(inputPath, target): string {
