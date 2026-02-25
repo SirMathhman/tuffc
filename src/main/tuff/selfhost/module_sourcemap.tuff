@@ -1,0 +1,47 @@
+let {
+    int_to_string, vec_new
+}
+ = selfhost::runtime_lexer;
+let sm_paths : Vec<*Str> = vec_new();
+let sm_start_lines : Vec<I32> = vec_new();
+out fn sourcemap_init() : I32 => {
+    while (sm_paths.vec_length() > 0) {
+        sm_paths.vec_pop();
+        sm_start_lines.vec_pop();
+    }
+    0
+}
+out fn sourcemap_add(path: *Str, start_line: I32) : I32 => {
+    sm_paths.vec_push(path);
+    sm_start_lines.vec_push(start_line);
+    0
+}
+out fn sourcemap_count_lines(s: *Str) : I32 => {
+    let count = 1;
+    let found = s.str_index_of("\n");
+    while (found >= 0) {
+        count = count + 1;
+        s = s.str_slice(found + 1, s.str_length());
+        found = s.str_index_of("\n");
+    }
+    count
+}
+out fn sourcemap_lookup(merged_line: I32) : *Str => {
+    let len = sm_paths.vec_length();
+    if (len == 0) {
+        return "<unknown>";
+    }
+    let best_i = 0;
+    let i = 0;
+    while (i < len) {
+        if (sm_start_lines.vec_get(i) <= merged_line) {
+            best_i = i;
+        }
+        i = i + 1;
+    }
+    let path = sm_paths.vec_get(best_i);
+    let start = sm_start_lines.vec_get(best_i);
+    let local_line = merged_line - start + 1;
+    path.str_concat(":L").str_concat(int_to_string(local_line))
+}
+out fn selfhost_module_sourcemap_marker() : I32 => 0;

@@ -59,6 +59,10 @@ let {
 }
  = selfhost::formatter;
 let {
+    selfhost_module_sourcemap_marker
+}
+ = selfhost::module_sourcemap;
+let {
     lex_init, lex_all, tok_kind, tok_value, tok_line, tok_col, get_interned_str, str_includes
 }
  = selfhost::runtime_lexer;

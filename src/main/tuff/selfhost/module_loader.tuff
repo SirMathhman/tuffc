@@ -50,6 +50,10 @@ let {
     module_parts_to_relative_path, module_normalize_path, join_sources, module_with_c_runtime_prelude
 }
  = selfhost::module_loader_utils;
+let {
+    sourcemap_init, sourcemap_add, sourcemap_count_lines, sourcemap_lookup
+}
+ = selfhost::module_sourcemap;
 fn module_emit_target_output(typed: I32, merged_source: *Str, target: *Str) : *Str => {
     if (target.str_eq("js")) {
         return generate_js(typed);
@@ -263,14 +267,14 @@ fn module_snapshot_import_specs(stmts: Vec, moduleBasePath: *Str) : Vec => {
     imports
 }
 fn module_walk_imports(imports: Vec, moduleBasePath: *Str, seen: *mut Set, visiting: *mut Set,
-sources: Vec<*Str>, module_declared_map: Map, all_declared_names: *mut Set, all_exported_declared_names: *mut Set, all_extern_declared_names: *mut Set, lint_enabled: I32, max_effective_lines: I32, module_cycles: Vec<*Str>) : I32 => {
+sources: Vec<*Str>, module_paths: Vec<*Str>, module_declared_map: Map, all_declared_names: *mut Set, all_exported_declared_names: *mut Set, all_extern_declared_names: *mut Set, lint_enabled: I32, max_effective_lines: I32, module_cycles: Vec<*Str>) : I32 => {
     let i = 0;
     let len = imports.vec_length();
     while (i < len) {
         let spec = imports.vec_get(i);
         let depPath = module_normalize_path(spec.vec_get(0));
         let importNames = spec.vec_get(1);
-        gather_module_sources(depPath, moduleBasePath, seen, visiting, sources, module_declared_map,
+        gather_module_sources(depPath, moduleBasePath, seen, visiting, sources, module_paths, module_declared_map,
         all_declared_names, all_exported_declared_names, all_extern_declared_names, lint_enabled, max_effective_lines, module_cycles);
         let depDeclared = module_declared_map.map_get(depPath);
         let depSource = read_file(depPath);
@@ -504,7 +508,7 @@ fn module_has_out_export(source: *Str, name: *Str) : Bool => {
     source.str_includes("out class fn ".str_concat(name))
 }
 fn gather_module_sources(filePath: *Str, moduleBasePath: *Str, seen: *mut Set, visiting: *mut Set,
-sources: Vec<*Str>, module_declared_map: Map, all_declared_names: *mut Set, all_exported_declared_names: *mut Set, all_extern_declared_names: *mut Set, lint_enabled: I32, max_effective_lines: I32, module_cycles: Vec<*Str>) : I32 => {
+sources: Vec<*Str>, module_paths: Vec<*Str>, module_declared_map: Map, all_declared_names: *mut Set, all_exported_declared_names: *mut Set, all_extern_declared_names: *mut Set, lint_enabled: I32, max_effective_lines: I32, module_cycles: Vec<*Str>) : I32 => {
     filePath = module_normalize_path(filePath);
     moduleBasePath = module_normalize_path(moduleBasePath);
     if (seen.set_has(filePath)) {
@@ -537,7 +541,7 @@ sources: Vec<*Str>, module_declared_map: Map, all_declared_names: *mut Set, all_
      // IMPORTANT: snapshot imports before recursive calls, because parse_init()
      // in child modules clears global AST storage arrays.
     let imports = module_snapshot_import_specs(stmts, moduleBasePath);
-    module_walk_imports(imports, moduleBasePath, seen, visiting, sources, module_declared_map,
+    module_walk_imports(imports, moduleBasePath, seen, visiting, sources, module_paths, module_declared_map,
     all_declared_names, all_exported_declared_names, all_extern_declared_names, lint_enabled, max_effective_lines, module_cycles);
     let imported_names = module_collect_imported_names(imports);
     module_assert_no_implicit_imports(source, declared, imported_names, all_exported_declared_names,
@@ -545,6 +549,7 @@ sources: Vec<*Str>, module_declared_map: Map, all_declared_names: *mut Set, all_
     visiting.set_delete(filePath);
     seen.set_add(filePath);
     sources.vec_push(source);
+    module_paths.vec_push(filePath);
     0
 }
 out fn compile_file(inputPath: *Str, outputPath: *Str) : I32 => {
@@ -560,17 +565,28 @@ max_effective_lines: I32, borrow_enabled: I32, target: *Str) : I32 => {
     let seen = set_new();
     let visiting = set_new();
     let sources = vec_new();
+    let module_paths = vec_new();
     let module_declared_map = map_new();
     let all_declared_names = set_new();
     let all_exported_declared_names = set_new();
     let all_extern_declared_names = set_new();
     let module_cycles = vec_new();
     lint_reset();
+    sourcemap_init();
     let t0 = perf_now_out();
-    gather_module_sources(inputPath, moduleBasePath, seen, visiting, sources, module_declared_map,
+    gather_module_sources(inputPath, moduleBasePath, seen, visiting, sources, module_paths, module_declared_map,
     all_declared_names, all_exported_declared_names, all_extern_declared_names, lint, max_lines, module_cycles);
     let t1 = perf_now_out();
     print_error_out("[tuffc:phase] gather_module_sources ".str_concat(int_to_string_out(t1 - t0)).str_concat("ms"));
+    let sm_i = 0;
+    let sm_line = 1;
+    while (sm_i < module_paths.vec_length()) {
+        let sm_path = module_paths.vec_get(sm_i);
+        let sm_src = sources.vec_get(sm_i);
+        sourcemap_add(sm_path, sm_line);
+        sm_line = sm_line + sourcemap_count_lines(sm_src) + 2;
+        sm_i = sm_i + 1;
+    }
     let joined = join_sources(sources);
     let merged = module_with_c_runtime_prelude(joined, target);
     let t2 = perf_now_out();

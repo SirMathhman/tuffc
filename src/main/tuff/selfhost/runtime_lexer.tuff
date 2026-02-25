@@ -69,6 +69,7 @@ extern fn str_replace_all(this: *Str, from: *Str, to: *Str) : *Str;
 extern fn char_code(ch: *Str) : I32;
 extern fn int_to_string(n: I32) : *Str;
 out fn int_to_string_out(n: I32) : *Str => int_to_string(n);
+out fn str_index_of_out(this: *Str, needle: *Str) : I32 => str_index_of(this, needle);
 extern fn parse_int(s: *Str) : I32;
 extern type StringBuilder;
 extern fn sb_new() : StringBuilder;

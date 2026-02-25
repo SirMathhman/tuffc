@@ -6,6 +6,10 @@ let {
     node_kind, node_get_data1, node_get_data2, node_get_data3, node_get_data4, node_get_data5, node_get_line, node_get_col
 }
  = selfhost::parser_core;
+let {
+    sourcemap_lookup
+}
+ = selfhost::module_sourcemap;
 let lint_issue_records : Vec<*Str> = vec_new();
 fn lint_issue_sep_field() : *Str => "\u001f";
 fn lint_issue_sep_record() : *Str => "\u001e";
@@ -477,7 +481,7 @@ fn lint_astdup_kind_name(kind: I32) : *Str => {
 }
 
 fn lint_astdup_loc(n: I32) : *Str => {
-    int_to_string(node_get_line(n)).str_concat(":").str_concat(int_to_string(node_get_col(n)))
+    sourcemap_lookup(node_get_line(n)).str_concat(":").str_concat(int_to_string(node_get_col(n)))
 }
 
 fn lint_astdup_preview(fp: *Str) : *Str => {
@@ -1224,7 +1228,7 @@ fn lint_astdup_fallback_binary(program: I32) : I32 => {
     let k = 0;
     while (k < keys.vec_length() && emitted < 5) {
         let count = counts.vec_get(k);
-        if (count > 1) {
+        if (count >= 3) {
             let key = keys.vec_get(k);
             let first = first_nodes.vec_get(k);
             let second = second_nodes.vec_get(k);
@@ -1266,7 +1270,7 @@ fn lint_check_ast_duplicates(program: I32) : I32 => {
         let n = seen_nodes.vec_get(i);
         let kind = node_kind(n);
         let size = size_cache.map_get(n);
-        if (size > 1 && lint_astdup_reportable_kind(kind)) {
+        if (size >= 6 && lint_astdup_reportable_kind(kind)) {
             let fp = fp_cache.map_get(n);
             let found = -1;
             let j = 0;
