@@ -69,6 +69,25 @@ fn module_emit_target_output(typed: I32, merged_source: *Str, target: *Str) : *S
     );
     ""
 }
+let gather_prof_modules : I32 = 0;
+let gather_prof_import_edges : I32 = 0;
+let gather_prof_read_file_ms : I32 = 0;
+let gather_prof_lex_parse_ms : I32 = 0;
+let gather_prof_decl_collect_ms : I32 = 0;
+let gather_prof_import_snapshot_ms : I32 = 0;
+let gather_prof_import_walk_ms : I32 = 0;
+let gather_prof_implicit_check_ms : I32 = 0;
+fn gather_prof_reset() : I32 => {
+    gather_prof_modules = 0;
+    gather_prof_import_edges = 0;
+    gather_prof_read_file_ms = 0;
+    gather_prof_lex_parse_ms = 0;
+    gather_prof_decl_collect_ms = 0;
+    gather_prof_import_snapshot_ms = 0;
+    gather_prof_import_walk_ms = 0;
+    gather_prof_implicit_check_ms = 0;
+    0
+}
 fn strip_import_decls(program: I32) : I32 => {
     let stmts = node_get_data1(program);
     let filtered = vec_new();
@@ -240,6 +259,7 @@ fn module_collect_declared_sets(source: *Str, program: I32, module_declared_map:
     declared
 }
 fn module_snapshot_import_specs(stmts: Vec, moduleBasePath: *Str) : Vec => {
+    let t0 = perf_now_out();
     let imports = vec_new();
     let i = 0;
     let len = stmts.vec_length();
@@ -261,9 +281,11 @@ fn module_snapshot_import_specs(stmts: Vec, moduleBasePath: *Str) : Vec => {
             importSpec.vec_push(depPath);
             importSpec.vec_push(importNames);
             imports.vec_push(importSpec);
+            gather_prof_import_edges = gather_prof_import_edges + 1;
         }
         i = i + 1;
     }
+    gather_prof_import_snapshot_ms = gather_prof_import_snapshot_ms + (perf_now_out() - t0);
     imports
 }
 fn module_walk_imports(imports: Vec, moduleBasePath: *Str, seen: *mut Set, visiting: *mut Set,
@@ -527,7 +549,11 @@ sources: Vec<*Str>, module_paths: Vec<*Str>, module_declared_map: Map, all_decla
         );
     }
     visiting.set_add(filePath);
+    gather_prof_modules = gather_prof_modules + 1;
+    let t_read_0 = perf_now_out();
     let source = read_file(filePath);
+    gather_prof_read_file_ms = gather_prof_read_file_ms + (perf_now_out() - t_read_0);
+    let t_parse_0 = perf_now_out();
     lex_init(source);
     lex_all();
     if (lint_enabled == 1) {
@@ -535,17 +561,24 @@ sources: Vec<*Str>, module_paths: Vec<*Str>, module_declared_map: Map, all_decla
     }
     parse_init();
     let program = p_parse_program();
+    gather_prof_lex_parse_ms = gather_prof_lex_parse_ms + (perf_now_out() - t_parse_0);
     let stmts = node_get_data1(program);
+    let t_decl_0 = perf_now_out();
     let declared = module_collect_declared_sets(source, program, module_declared_map, filePath,
     all_declared_names, all_exported_declared_names, all_extern_declared_names);
+    gather_prof_decl_collect_ms = gather_prof_decl_collect_ms + (perf_now_out() - t_decl_0);
      // IMPORTANT: snapshot imports before recursive calls, because parse_init()
      // in child modules clears global AST storage arrays.
     let imports = module_snapshot_import_specs(stmts, moduleBasePath);
+    let t_walk_0 = perf_now_out();
     module_walk_imports(imports, moduleBasePath, seen, visiting, sources, module_paths, module_declared_map,
     all_declared_names, all_exported_declared_names, all_extern_declared_names, lint_enabled, max_effective_lines, module_cycles);
+    gather_prof_import_walk_ms = gather_prof_import_walk_ms + (perf_now_out() - t_walk_0);
     let imported_names = module_collect_imported_names(imports);
+    let t_implicit_0 = perf_now_out();
     module_assert_no_implicit_imports(source, declared, imported_names, all_exported_declared_names,
     all_extern_declared_names);
+    gather_prof_implicit_check_ms = gather_prof_implicit_check_ms + (perf_now_out() - t_implicit_0);
     visiting.set_delete(filePath);
     seen.set_add(filePath);
     sources.vec_push(source);
@@ -571,6 +604,7 @@ max_effective_lines: I32, borrow_enabled: I32, target: *Str) : I32 => {
     let all_exported_declared_names = set_new();
     let all_extern_declared_names = set_new();
     let module_cycles = vec_new();
+    gather_prof_reset();
     lint_reset();
     sourcemap_init();
     let t0 = perf_now_out();
@@ -578,6 +612,13 @@ max_effective_lines: I32, borrow_enabled: I32, target: *Str) : I32 => {
     all_declared_names, all_exported_declared_names, all_extern_declared_names, lint, max_lines, module_cycles);
     let t1 = perf_now_out();
     print_error_out("[tuffc:phase] gather_module_sources ".str_concat(int_to_string_out(t1 - t0)).str_concat("ms"));
+    print_error_out("[tuffc:gather] modules ".str_concat(int_to_string_out(gather_prof_modules)).str_concat(" imports ").str_concat(int_to_string_out(gather_prof_import_edges)));
+    print_error_out("[tuffc:gather] read_file ".str_concat(int_to_string_out(gather_prof_read_file_ms)).str_concat("ms"));
+    print_error_out("[tuffc:gather] lex_parse ".str_concat(int_to_string_out(gather_prof_lex_parse_ms)).str_concat("ms"));
+    print_error_out("[tuffc:gather] decl_collect ".str_concat(int_to_string_out(gather_prof_decl_collect_ms)).str_concat("ms"));
+    print_error_out("[tuffc:gather] import_snapshot ".str_concat(int_to_string_out(gather_prof_import_snapshot_ms)).str_concat("ms"));
+    print_error_out("[tuffc:gather] import_walk ".str_concat(int_to_string_out(gather_prof_import_walk_ms)).str_concat("ms"));
+    print_error_out("[tuffc:gather] implicit_check ".str_concat(int_to_string_out(gather_prof_implicit_check_ms)).str_concat("ms"));
     let sm_i = 0;
     let sm_line = 1;
     while (sm_i < module_paths.vec_length()) {
