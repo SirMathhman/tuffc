@@ -34,7 +34,7 @@ for (const filePath of tuffFiles) {
     },
     lint: {
       enabled: true,
-      fix: false,
+      fix: true,
       mode: "warn",
     },
   });
@@ -48,14 +48,16 @@ for (const filePath of tuffFiles) {
 
   const okResult = result as {
     ok: true;
-    value: { lintIssues?: unknown[] };
+    value: { lintIssues?: unknown[]; lintFixesApplied?: number };
   };
   const issues = okResult.value.lintIssues ?? [];
+  const fixes = okResult.value.lintFixesApplied ?? 0;
   issueTotal += issues.length;
+  fixedTotal += fixes;
   if (issues.length > 0) {
-    console.log(`Lint issues (${issues.length}) in ${rel}`);
+    console.log(`Lint issues (${issues.length}) in ${rel}; fixes applied: ${fixes}`);
   } else {
-    console.log(`Lint clean: ${rel}`);
+    console.log(`Lint clean: ${rel}; fixes applied: ${fixes}`);
   }
 }
 
@@ -63,5 +65,5 @@ console.log(
   `\nDone. Selfhost lint reported ${issueTotal} issue(s) across ${tuffFiles.length} .tuff file(s).`,
 );
 console.log(
-  "Note: lint auto-fix rewriting is currently unsupported in the selfhost-only lint pipeline.",
+  `Deterministic lint fixes applied: ${fixedTotal}`,
 );

@@ -390,34 +390,15 @@ const lintFixCli = runTsCli([
   "--json-errors",
 ]);
 
-if (lintFixCli.status === 0) {
-  console.error("Expected CLI lint-fix command to be unsupported");
+if (lintFixCli.status !== 0) {
+  console.error("Expected CLI lint-fix command to succeed");
+  console.error(`${lintFixCli.stdout ?? ""}\n${lintFixCli.stderr ?? ""}`);
   process.exit(1);
 }
-
-let lintFixParsed;
-try {
-  lintFixParsed = JSON.parse((lintFixCli.stderr ?? "").trim());
-} catch {
-  console.error("CLI did not emit valid JSON diagnostics for lint-fix failure");
-  console.error(lintFixCli.stderr);
-  process.exit(1);
-}
-
-expectDiagnosticCode(
-  lintFixParsed,
-  "E_SELFHOST_UNSUPPORTED_OPTION",
-  "lint-fix",
-);
 
 const lintFixUpdated = fs.readFileSync(lintFixFile, "utf8");
-const lintFixOriginal = [
-  "extern fn str_length(this: *Str) : I32;",
-  'fn main() : I32 => str_length("abcd");',
-  "",
-].join("\n");
-if (lintFixUpdated !== lintFixOriginal) {
-  console.error("Expected lint-fix unsupported flow to leave source unchanged");
+if (!lintFixUpdated.includes('fn main() : I32 => "abcd".str_length();')) {
+  console.error("Expected lint-fix to rewrite receiver-style call");
   console.error(lintFixUpdated);
   process.exit(1);
 }
@@ -734,18 +715,15 @@ const moduleLintFixUnsupported = compileFileResult(
     lint: { enabled: true, fix: true, mode: "warn" },
   },
 );
-if (moduleLintFixUnsupported.ok) {
-  console.error("Expected module lint-fix to be rejected in selfhost mode");
+if (!moduleLintFixUnsupported.ok) {
+  const moduleLintFixDiag = toDiagnostic(
+    unwrapErr(moduleLintFixUnsupported),
+  );
+  console.error(
+    `Expected module lint-fix to be accepted in selfhost mode, got ${moduleLintFixDiag.code}`,
+  );
   process.exit(1);
 }
-const moduleLintFixUnsupportedDiag = toDiagnostic(
-  unwrapErr(moduleLintFixUnsupported),
-);
-expectDiagnosticCode(
-  moduleLintFixUnsupportedDiag,
-  "E_SELFHOST_UNSUPPORTED_OPTION",
-  "module lint-fix",
-);
 
 // 9) Circular module imports should produce deterministic diagnostics in warn mode.
 const cycleLintDir = path.join(outDir, "lint-cycle-modules");

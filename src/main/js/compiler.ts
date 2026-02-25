@@ -543,20 +543,6 @@ function ensureSupportedTarget(target): CompilerResult<true> {
 function ensureSelfhostBackendOptions(target, options): CompilerResult<true> {
   const targetCheck = ensureSupportedTarget(target);
   if (!targetCheck.ok) return targetCheck;
-  if (options.lint?.fix) {
-    return err(
-      new TuffError(
-        "Selfhost backend does not support lint auto-fix yet",
-        undefined,
-        {
-          code: "E_SELFHOST_UNSUPPORTED_OPTION",
-          reason:
-            "The Tuff-based linter currently supports diagnostics only and does not rewrite source automatically.",
-          fix: "Run without --lint-fix, or apply lint suggestions manually.",
-        },
-      ),
-    );
-  }
   return ok(true);
 }
 
@@ -583,9 +569,152 @@ function handleSelfhostLintIssues(
   return ok(lintIssues);
 }
 
+function collectReceiverExternFunctionNames(source): string[] {
+  const names = new Set<string>();
+  const re = /extern\s+fn\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(\s*this\s*:[^)]*\)\s*:/g;
+  let m;
+  while ((m = re.exec(source)) !== null) {
+    const fnName = m[1]?.trim();
+    if (fnName) names.add(fnName);
+  }
+  return [...names];
+}
+
+function parseCallArgs(source: string, openParenIndex: number) {
+  let i = openParenIndex + 1;
+  let depth = 1;
+  let inStr = false;
+  let inChar = false;
+  let escaped = false;
+  let firstSplit = -1;
+  while (i < source.length) {
+    const ch = source[i];
+    if (inStr) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inStr = false;
+      i += 1;
+      continue;
+    }
+    if (inChar) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === "'") inChar = false;
+      i += 1;
+      continue;
+    }
+    if (ch === '"') {
+      inStr = true;
+      i += 1;
+      continue;
+    }
+    if (ch === "'") {
+      inChar = true;
+      i += 1;
+      continue;
+    }
+    if (ch === "(") {
+      depth += 1;
+      i += 1;
+      continue;
+    }
+    if (ch === ")") {
+      depth -= 1;
+      if (depth === 0) {
+        const allArgs = source.slice(openParenIndex + 1, i);
+        if (firstSplit < 0) {
+          return {
+            ok: allArgs.trim().length > 0,
+            receiver: allArgs.trim(),
+            rest: "",
+            closeParenIndex: i,
+          };
+        }
+        return {
+          ok: true,
+          receiver: source.slice(openParenIndex + 1, firstSplit).trim(),
+          rest: source.slice(firstSplit + 1, i).trim(),
+          closeParenIndex: i,
+        };
+      }
+      i += 1;
+      continue;
+    }
+    if (ch === "," && depth === 1 && firstSplit < 0) {
+      firstSplit = i;
+      i += 1;
+      continue;
+    }
+    i += 1;
+  }
+  return { ok: false, receiver: "", rest: "", closeParenIndex: -1 };
+}
+
+function applyReceiverCallFixes(source: string, fnNames: string[]) {
+  if (fnNames.length === 0) return { source, fixes: 0 };
+  let out = source;
+  let totalFixes = 0;
+
+  for (const fnName of fnNames) {
+    const re = new RegExp(`\\b${fnName}\\s*\\(`, "g");
+    let next = "";
+    let cursor = 0;
+    let m;
+    let localFixes = 0;
+    while ((m = re.exec(out)) !== null) {
+      const matchStart = m.index;
+      const openParenIndex = out.indexOf("(", matchStart + fnName.length);
+      if (openParenIndex < 0) continue;
+
+      let j = matchStart - 1;
+      while (j >= 0 && /\s/.test(out[j])) j -= 1;
+      if (j >= 0 && (out[j] === "." || out[j] === ":")) {
+        continue;
+      }
+
+      const parsed = parseCallArgs(out, openParenIndex);
+      if (!parsed.ok || parsed.receiver.length === 0) continue;
+
+      next += out.slice(cursor, matchStart);
+      const rebuilt =
+        parsed.rest.length > 0
+          ? `${parsed.receiver}.${fnName}(${parsed.rest})`
+          : `${parsed.receiver}.${fnName}()`;
+      next += rebuilt;
+      cursor = parsed.closeParenIndex + 1;
+      localFixes += 1;
+      re.lastIndex = cursor;
+    }
+    if (localFixes > 0) {
+      next += out.slice(cursor);
+      out = next;
+      totalFixes += localFixes;
+    }
+  }
+
+  return { source: out, fixes: totalFixes };
+}
+
+function applyDeterministicLintFixes(source: string, lintIssues: unknown[]) {
+  const hasReceiverLint = lintIssues.some(
+    (issue: unknown) =>
+      issue instanceof TuffError && issue.code === "E_LINT_PREFER_RECEIVER_CALL",
+  );
+  if (!hasReceiverLint) {
+    return { lintFixesApplied: 0, lintFixedSource: source };
+  }
+  const receiverNames = collectReceiverExternFunctionNames(source);
+  const fixed = applyReceiverCallFixes(source, receiverNames);
+  return {
+    lintFixesApplied: fixed.fixes,
+    lintFixedSource: fixed.source,
+  };
+}
+
 function getSelfhostLintConfig(options) {
   return {
     lintEnabled: options.lint?.enabled ? 1 : 0,
+    lintFix: options.lint?.fix === true,
     maxEffectiveLines: options.lint?.maxEffectiveLines ?? 500,
     lintMode: options.lint?.mode ?? "error",
   };
@@ -596,6 +725,8 @@ function makeSelfhostCompileResult(
   js,
   target,
   lintIssues,
+  lintFixesApplied,
+  lintFixedSource,
   outputPath?,
   profileJson?,
   profile?,
@@ -614,8 +745,8 @@ function makeSelfhostCompileResult(
     profileJson,
     profile,
     monomorphizationPlan: makeEmptyMonomorphizationPlan("selfhost-backend"),
-    lintFixesApplied: 0,
-    lintFixedSource: source,
+    lintFixesApplied,
+    lintFixedSource,
     ...(outputPath ? { outputPath } : {}),
   };
 }
@@ -626,6 +757,7 @@ function initializeSelfhostCompileContext(
 ): CompilerResult<{
   selfhost: unknown;
   lintEnabled: number;
+  lintFix: boolean;
   maxEffectiveLines: number;
   lintMode: string;
 }> {
@@ -633,11 +765,12 @@ function initializeSelfhostCompileContext(
     bootstrapSelfhostCompiler(options),
   );
   if (!selfhostResult.ok) return selfhostResult;
-  const { lintEnabled, maxEffectiveLines, lintMode } =
+  const { lintEnabled, lintFix, maxEffectiveLines, lintMode } =
     getSelfhostLintConfig(options);
   return ok({
     selfhost: selfhostResult.value,
     lintEnabled,
+    lintFix,
     maxEffectiveLines,
     lintMode,
   });
@@ -659,6 +792,7 @@ type SelfhostCompileContext = {
   borrowEnabled: boolean;
   selfhost: Record<string, unknown>;
   lintEnabled: number;
+  lintFix: boolean;
   maxEffectiveLines: number;
   lintMode: unknown;
 };
@@ -677,7 +811,7 @@ function initializeCompileContext(
 
   const selfhostContextResult = initializeSelfhostCompileContext(run, options);
   if (!selfhostContextResult.ok) return selfhostContextResult;
-  const { selfhost, lintEnabled, maxEffectiveLines, lintMode } =
+  const { selfhost, lintEnabled, lintFix, maxEffectiveLines, lintMode } =
     selfhostContextResult.value;
   return ok({
     target,
@@ -685,6 +819,7 @@ function initializeCompileContext(
     borrowEnabled,
     selfhost,
     lintEnabled,
+    lintFix,
     maxEffectiveLines,
     lintMode,
   });
@@ -712,6 +847,7 @@ export function compileSource(
       borrowEnabled,
       selfhost,
       lintEnabled,
+      lintFix,
       maxEffectiveLines,
       lintMode,
     }) => {
@@ -737,7 +873,14 @@ export function compileSource(
       } finally {
         runtimeCSubstrateOverride = undefined;
       }
-      return finalizeSelfhostCompile(selfhost, source, js, lintMode, target);
+      return finalizeSelfhostCompile(
+        selfhost,
+        source,
+        js,
+        lintMode,
+        target,
+        lintFix,
+      );
     },
   );
 }
@@ -772,6 +915,7 @@ function finalizeSelfhostCompile(
   js: string,
   lintMode: unknown,
   target: unknown,
+  lintFixEnabled: boolean,
   outputPath?: string,
 ): CompilerResult<Record<string, unknown>> {
   let profileJson = "";
@@ -788,12 +932,17 @@ function finalizeSelfhostCompile(
   }
   const lintIssuesResult = handleSelfhostLintIssues(selfhost, source, lintMode);
   if (!lintIssuesResult.ok) return lintIssuesResult;
+  const lintFixResult = lintFixEnabled
+    ? applyDeterministicLintFixes(source, lintIssuesResult.value)
+    : { lintFixesApplied: 0, lintFixedSource: source };
   return ok(
     makeSelfhostCompileResult(
       source,
       js,
       target,
       lintIssuesResult.value,
+      lintFixResult.lintFixesApplied,
+      lintFixResult.lintFixedSource,
       outputPath,
       profileJson,
       profile,
@@ -833,6 +982,7 @@ function compileFileInternal(
       borrowEnabled,
       selfhost,
       lintEnabled,
+      lintFix,
       maxEffectiveLines,
       lintMode,
     } = ctx;
@@ -920,6 +1070,7 @@ function compileFileInternal(
       js,
       lintMode,
       target,
+      lintFix,
       finalOutput,
     );
   });
