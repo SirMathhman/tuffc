@@ -11,7 +11,7 @@ let {
 }
  = selfhost::parser_decls_helpers;
 let {
-    p_parse_let, p_parse_extern_decl
+    p_parse_let, p_parse_extern_decl, p_parse_extern_fn_decl
 }
  = selfhost::parser_decls_let_extern;
 fn p_new_stmt_list(stmts: Vec) : I32 => {
@@ -78,6 +78,7 @@ fn p_parse_module_wrapper() : I32 => {
 }
 fn p_parse_decl_modifiers() : Vec => {
     let exported = 0;
+    let extern_decl = 0;
     let copy_decl = 0;
     let expect_decl = 0;
     let actual_decl = 0;
@@ -85,6 +86,7 @@ fn p_parse_decl_modifiers() : Vec => {
     let modifier_watchdog = 0;
     while (
     p_at(TK_KEYWORD, "out") ||
+    p_at(TK_KEYWORD, "extern") ||
     p_at(TK_KEYWORD, "copy") ||
     p_at(TK_KEYWORD, "expect") ||
     (p_at(TK_IDENTIFIER, "expect") && (tok_kind(p_peek(1)) == TK_KEYWORD || tok_kind(p_peek(1)) == TK_IDENTIFIER)) ||
@@ -102,6 +104,13 @@ fn p_parse_decl_modifiers() : Vec => {
                 panic("Duplicate 'out' modifier");
             }
             exported = 1;
+        }
+        else if (p_at(TK_KEYWORD, "extern")) {
+            p_eat();
+            if (extern_decl == 1) {
+                panic("Duplicate 'extern' modifier");
+            }
+            extern_decl = 1;
         }
         else if (p_at(TK_KEYWORD, "copy")) {
             p_eat();
@@ -130,29 +139,32 @@ fn p_parse_decl_modifiers() : Vec => {
     }
     let mods = vec_new();
     mods.vec_push(exported);
+    mods.vec_push(extern_decl);
     mods.vec_push(copy_decl);
     mods.vec_push(expect_decl);
     mods.vec_push(actual_decl);
     mods.vec_push(consumed_modifier);
     mods
 }
-fn p_parse_after_modifiers(exported: I32, copy_decl: I32, expect_decl: I32, actual_decl: I32) : I32 => {
+fn p_parse_after_modifiers(exported: I32, extern_decl: I32, copy_decl: I32, expect_decl: I32, actual_decl: I32) : I32 => {
     if (expect_decl == 1 && actual_decl == 1) {
         panic("Cannot combine 'expect' and 'actual' modifiers");
     }
     let out_node = 0;
-    if (p_at(TK_KEYWORD, "extern")) {
+    if (extern_decl == 1) {
         if (copy_decl == 1) {
             panic("'copy' is not supported on extern declarations");
         }
         if (expect_decl == 1 || actual_decl == 1) {
             panic("'expect'/'actual' are not supported on extern declarations");
         }
-        p_eat();
-        out_node = p_parse_extern_decl();
-        if (exported == 1 && node_kind(out_node) != NK_EXTERN_FN_DECL) {
-            panic("'out extern' is currently supported only for extern fn declarations");
+        if (p_at(TK_KEYWORD, "extern")) {
+            p_eat();
         }
+        if (!p_at(TK_KEYWORD, "fn")) {
+            panic("'extern' modifier is currently supported only on fn declarations");
+        }
+        out_node = p_parse_extern_fn_decl();
     }
     else if (p_at(TK_KEYWORD, "struct")) {
         out_node = p_parse_struct(copy_decl);
@@ -440,8 +452,8 @@ fn p_try_parse_plain_control_statement() : I32 => {
 }
 fn p_parse_statement() : I32 => {
     let mods = p_parse_decl_modifiers();
-    if (mods.vec_get(4) == 1) {
-        return p_parse_after_modifiers(mods.vec_get(0), mods.vec_get(1), mods.vec_get(2), mods.vec_get(3));
+    if (mods.vec_get(5) == 1) {
+        return p_parse_after_modifiers(mods.vec_get(0), mods.vec_get(1), mods.vec_get(2), mods.vec_get(3), mods.vec_get(4));
     }
     let node = p_try_parse_plain_decl_statement();
     if (node != 0) {
