@@ -234,11 +234,14 @@ fn module_check_expr_match (n: I32, declared: *mut Set, imported: *mut Set, all_
     }
     1
 }
-fn module_collect_declared_sets(source: *Str, program: I32, module_declared_map: Map, filePath:
-*Str, all_declared_names: *mut Set, all_exported_declared_names: *mut Set, all_extern_declared_names: *mut Set) : *mut Set => {
+fn module_collect_declared_sets(source: *Str, program: I32, module_declared_map: Map,
+module_exported_map: Map, filePath: *Str, all_declared_names: *mut Set,
+all_exported_declared_names: *mut Set, all_extern_declared_names: *mut Set) : *mut Set => {
     let stmts = node_get_data1(program);
     let declared = collect_module_declarations(stmts);
+    let exported = set_new();
     module_declared_map.map_set(filePath, declared);
+    module_exported_map.map_set(filePath, exported);
     let di = 0;
     let dlen = stmts.vec_length();
     while (di < dlen) {
@@ -251,6 +254,7 @@ fn module_collect_declared_sets(source: *Str, program: I32, module_declared_map:
                 all_extern_declared_names.set_add(dname);
             }
             if (module_has_out_export(source, dname)) {
+                exported.set_add(dname);
                 all_exported_declared_names.set_add(dname);
             }
         }
@@ -258,7 +262,7 @@ fn module_collect_declared_sets(source: *Str, program: I32, module_declared_map:
     }
     declared
 }
-fn module_snapshot_import_specs(stmts: Vec, moduleBasePath: *Str) : Vec => {
+fn module_snapshot_import_specs(stmts: Vec, moduleBasePath: *Str, import_path_cache: Map) : Vec => {
     let t0 = perf_now_out();
     let imports = vec_new();
     let i = 0;
@@ -268,7 +272,14 @@ fn module_snapshot_import_specs(stmts: Vec, moduleBasePath: *Str) : Vec => {
         if (node_kind(stmt) == 6) {
             let parts = node_get_data2(stmt);
             let rel = module_parts_to_relative_path(parts);
-            let depPath = module_normalize_path(path_join(moduleBasePath, rel));
+            let depPath = "";
+            if (import_path_cache.map_has(rel)) {
+                depPath = import_path_cache.map_get(rel);
+            }
+            else {
+                depPath = module_normalize_path(path_join(moduleBasePath, rel));
+                import_path_cache.map_set(rel, depPath);
+            }
             let importNamesRaw = node_get_data1(stmt);
             let importNames = vec_new();
             let j = 0;
@@ -289,22 +300,27 @@ fn module_snapshot_import_specs(stmts: Vec, moduleBasePath: *Str) : Vec => {
     imports
 }
 fn module_walk_imports(imports: Vec, moduleBasePath: *Str, seen: *mut Set, visiting: *mut Set,
-sources: Vec<*Str>, module_paths: Vec<*Str>, module_declared_map: Map, all_declared_names: *mut Set, all_exported_declared_names: *mut Set, all_extern_declared_names: *mut Set, lint_enabled: I32, max_effective_lines: I32, module_cycles: Vec<*Str>) : I32 => {
+sources: Vec<*Str>, module_paths: Vec<*Str>, module_declared_map: Map, module_exported_map: Map,
+module_source_cache: Map, import_path_cache: Map, all_declared_names: *mut Set,
+all_exported_declared_names: *mut Set, all_extern_declared_names: *mut Set, lint_enabled: I32,
+max_effective_lines: I32, module_cycles: Vec<*Str>) : I32 => {
     let i = 0;
     let len = imports.vec_length();
     while (i < len) {
         let spec = imports.vec_get(i);
         let depPath = module_normalize_path(spec.vec_get(0));
         let importNames = spec.vec_get(1);
-        gather_module_sources(depPath, moduleBasePath, seen, visiting, sources, module_paths, module_declared_map,
-        all_declared_names, all_exported_declared_names, all_extern_declared_names, lint_enabled, max_effective_lines, module_cycles);
+        gather_module_sources(depPath, moduleBasePath, seen, visiting, sources, module_paths,
+        module_declared_map, module_exported_map, module_source_cache, import_path_cache,
+        all_declared_names, all_exported_declared_names, all_extern_declared_names, lint_enabled,
+        max_effective_lines, module_cycles);
         let depDeclared = module_declared_map.map_get(depPath);
-        let depSource = read_file(depPath);
+        let depExported = module_exported_map.map_get(depPath);
         let j = 0;
         let jLen = importNames.vec_length();
         while (j < jLen) {
             let importedName = importNames.vec_get(j);
-            if (!module_has_out_export(depSource, importedName)) {
+            if (!depExported.set_has(importedName)) {
                 if (depDeclared.set_has(importedName)) {
                     panic_with_code("E_MODULE_PRIVATE_IMPORT", "Cannot import '".str_concat(importedName).str_concat("' from module: symbol is not exported with 'out'"), "A module import referenced a declaration that exists but is not visible outside its module.", "Mark the declaration with 'out' in the target module, or remove it from the import list.");
                 }
@@ -530,7 +546,10 @@ fn module_has_out_export(source: *Str, name: *Str) : Bool => {
     source.str_includes("out class fn ".str_concat(name))
 }
 fn gather_module_sources(filePath: *Str, moduleBasePath: *Str, seen: *mut Set, visiting: *mut Set,
-sources: Vec<*Str>, module_paths: Vec<*Str>, module_declared_map: Map, all_declared_names: *mut Set, all_exported_declared_names: *mut Set, all_extern_declared_names: *mut Set, lint_enabled: I32, max_effective_lines: I32, module_cycles: Vec<*Str>) : I32 => {
+sources: Vec<*Str>, module_paths: Vec<*Str>, module_declared_map: Map, module_exported_map: Map,
+module_source_cache: Map, import_path_cache: Map, all_declared_names: *mut Set,
+all_exported_declared_names: *mut Set, all_extern_declared_names: *mut Set, lint_enabled: I32,
+max_effective_lines: I32, module_cycles: Vec<*Str>) : I32 => {
     filePath = module_normalize_path(filePath);
     moduleBasePath = module_normalize_path(moduleBasePath);
     if (seen.set_has(filePath)) {
@@ -550,9 +569,16 @@ sources: Vec<*Str>, module_paths: Vec<*Str>, module_declared_map: Map, all_decla
     }
     visiting.set_add(filePath);
     gather_prof_modules = gather_prof_modules + 1;
-    let t_read_0 = perf_now_out();
-    let source = read_file(filePath);
-    gather_prof_read_file_ms = gather_prof_read_file_ms + (perf_now_out() - t_read_0);
+    let source = "";
+    if (module_source_cache.map_has(filePath)) {
+        source = module_source_cache.map_get(filePath);
+    }
+    else {
+        let t_read_0 = perf_now_out();
+        source = read_file(filePath);
+        gather_prof_read_file_ms = gather_prof_read_file_ms + (perf_now_out() - t_read_0);
+        module_source_cache.map_set(filePath, source);
+    }
     let t_parse_0 = perf_now_out();
     lex_init(source);
     lex_all();
@@ -564,15 +590,18 @@ sources: Vec<*Str>, module_paths: Vec<*Str>, module_declared_map: Map, all_decla
     gather_prof_lex_parse_ms = gather_prof_lex_parse_ms + (perf_now_out() - t_parse_0);
     let stmts = node_get_data1(program);
     let t_decl_0 = perf_now_out();
-    let declared = module_collect_declared_sets(source, program, module_declared_map, filePath,
-    all_declared_names, all_exported_declared_names, all_extern_declared_names);
+    let declared = module_collect_declared_sets(source, program, module_declared_map,
+    module_exported_map, filePath, all_declared_names, all_exported_declared_names,
+    all_extern_declared_names);
     gather_prof_decl_collect_ms = gather_prof_decl_collect_ms + (perf_now_out() - t_decl_0);
      // IMPORTANT: snapshot imports before recursive calls, because parse_init()
      // in child modules clears global AST storage arrays.
-    let imports = module_snapshot_import_specs(stmts, moduleBasePath);
+    let imports = module_snapshot_import_specs(stmts, moduleBasePath, import_path_cache);
     let t_walk_0 = perf_now_out();
-    module_walk_imports(imports, moduleBasePath, seen, visiting, sources, module_paths, module_declared_map,
-    all_declared_names, all_exported_declared_names, all_extern_declared_names, lint_enabled, max_effective_lines, module_cycles);
+    module_walk_imports(imports, moduleBasePath, seen, visiting, sources, module_paths,
+    module_declared_map, module_exported_map, module_source_cache, import_path_cache,
+    all_declared_names, all_exported_declared_names, all_extern_declared_names, lint_enabled,
+    max_effective_lines, module_cycles);
     gather_prof_import_walk_ms = gather_prof_import_walk_ms + (perf_now_out() - t_walk_0);
     let imported_names = module_collect_imported_names(imports);
     let t_implicit_0 = perf_now_out();
@@ -600,6 +629,9 @@ max_effective_lines: I32, borrow_enabled: I32, target: *Str) : I32 => {
     let sources = vec_new();
     let module_paths = vec_new();
     let module_declared_map = map_new();
+    let module_exported_map = map_new();
+    let module_source_cache = map_new();
+    let import_path_cache = map_new();
     let all_declared_names = set_new();
     let all_exported_declared_names = set_new();
     let all_extern_declared_names = set_new();
@@ -608,8 +640,10 @@ max_effective_lines: I32, borrow_enabled: I32, target: *Str) : I32 => {
     lint_reset();
     sourcemap_init();
     let t0 = perf_now_out();
-    gather_module_sources(inputPath, moduleBasePath, seen, visiting, sources, module_paths, module_declared_map,
-    all_declared_names, all_exported_declared_names, all_extern_declared_names, lint, max_lines, module_cycles);
+    gather_module_sources(inputPath, moduleBasePath, seen, visiting, sources, module_paths,
+    module_declared_map, module_exported_map, module_source_cache, import_path_cache,
+    all_declared_names, all_exported_declared_names, all_extern_declared_names, lint, max_lines,
+    module_cycles);
     let t1 = perf_now_out();
     print_error_out("[tuffc:phase] gather_module_sources ".str_concat(int_to_string_out(t1 - t0)).str_concat("ms"));
     print_error_out("[tuffc:gather] modules ".str_concat(int_to_string_out(gather_prof_modules)).str_concat(" imports ").str_concat(int_to_string_out(gather_prof_import_edges)));
