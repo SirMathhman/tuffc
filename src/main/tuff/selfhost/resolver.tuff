@@ -20,12 +20,12 @@ let rslv_current_node : I32 = 0;
 fn rslv_panic_loc(code: *Str, msg: *Str, reason: *Str, fix: *Str) : I32 =>
 panic_with_code_loc(code, msg, reason, fix, node_get_line(rslv_current_node),
 node_get_col(rslv_current_node));
-let resolve_lifetime_scopes : Vec = vec_new();
+let resolve_lifetime_scopes : Vec<I32> = vec_new();
  // Track first declaration node for each global name (for shadowing error messages).
-let resolve_global_decl_nodes : Map = map_new();
+let resolve_global_decl_nodes : Map<I32, I32> = map_new();
  // Parallel list of declared global names so we can iterate for "did you mean?" suggestions.
-let resolve_global_names_list : Vec = vec_new();
-fn resolve_expr_identifier(n: I32, globals: *mut Set, scopes: Vec, depth: I32) : I32 => {
+let resolve_global_names_list : Vec<I32> = vec_new();
+fn resolve_expr_identifier(n: I32, globals: *mut Set<I32>, scopes: Vec<I32>, depth: I32) : I32 => {
     let name = get_interned_str(node_get_data1(n));
     if (!rslv_utils_scope_has(scopes, depth, name) && !globals.set_has(name) &&
     !rslv_utils_is_host_builtin_name(name)) {
@@ -43,7 +43,7 @@ fn resolve_expr_identifier(n: I32, globals: *mut Set, scopes: Vec, depth: I32) :
     }
     0
 }
-fn resolve_expr_call(n: I32, globals: *mut Set, scopes: Vec, depth: I32) : I32 => {
+fn resolve_expr_call(n: I32, globals: *mut Set<I32>, scopes: Vec<I32>, depth: I32) : I32 => {
     let callee = node_get_data1(n);
     if (node_kind(callee) == NK_IDENTIFIER && get_interned_str(node_get_data1(callee)).str_eq("drop")) {
         let args = node_get_data2(n);
@@ -91,7 +91,7 @@ fn resolve_expr_call(n: I32, globals: *mut Set, scopes: Vec, depth: I32) : I32 =
     }
     0
 }
-fn resolve_expr_match (n: I32, globals: *mut Set, scopes: Vec, depth: I32) : I32 => {
+fn resolve_expr_match (n: I32, globals: *mut Set<I32>, scopes: Vec<I32>, depth: I32) : I32 => {
     resolve_expr(node_get_data1(n), globals, scopes, depth);
     let cases = node_get_data2(n);
     let i = 0;
@@ -124,7 +124,7 @@ fn resolve_expr_match (n: I32, globals: *mut Set, scopes: Vec, depth: I32) : I32
     }
     0
 }
-fn resolve_expr_lambda(n: I32, globals: *mut Set, scopes: Vec, depth: I32) : I32 => {
+fn resolve_expr_lambda(n: I32, globals: *mut Set<I32>, scopes: Vec<I32>, depth: I32) : I32 => {
     let next_depth = depth + 1;
     scopes.vec_push(set_new());
     let params = node_get_data1(n);
@@ -139,7 +139,7 @@ fn resolve_expr_lambda(n: I32, globals: *mut Set, scopes: Vec, depth: I32) : I32
     scopes.vec_pop();
     0
 }
-fn resolve_expr_fn_expr(n: I32, globals: *mut Set, scopes: Vec, depth: I32) : I32 => {
+fn resolve_expr_fn_expr(n: I32, globals: *mut Set<I32>, scopes: Vec<I32>, depth: I32) : I32 => {
     let next_depth = depth + 1;
     scopes.vec_push(set_new());
     let fname_idx = node_get_data1(n);
@@ -158,7 +158,7 @@ fn resolve_expr_fn_expr(n: I32, globals: *mut Set, scopes: Vec, depth: I32) : I3
     scopes.vec_pop();
     0
 }
-fn resolve_stmt_block(n: I32, globals: *mut Set, scopes: Vec, depth: I32) : I32 => {
+fn resolve_stmt_block(n: I32, globals: *mut Set<I32>, scopes: Vec<I32>, depth: I32) : I32 => {
     let next_depth = depth + 1;
     scopes.vec_push(set_new());
     let stmts = node_get_data1(n);
@@ -182,7 +182,7 @@ fn resolve_stmt_block(n: I32, globals: *mut Set, scopes: Vec, depth: I32) : I32 
     scopes.vec_pop();
     0
 }
-fn resolve_stmt_fn_decl(n: I32, globals: *mut Set, scopes: Vec, depth: I32) : I32 => {
+fn resolve_stmt_fn_decl(n: I32, globals: *mut Set<I32>, scopes: Vec<I32>, depth: I32) : I32 => {
     let next_depth = depth + 1;
     scopes.vec_push(set_new());
     let params = node_get_data3(n);
@@ -199,7 +199,7 @@ fn resolve_stmt_fn_decl(n: I32, globals: *mut Set, scopes: Vec, depth: I32) : I3
     scopes.vec_pop();
     0
 }
-fn resolve_stmt_let_or_import(n: I32, globals: *mut Set, scopes: Vec, depth: I32) : I32 => {
+fn resolve_stmt_let_or_import(n: I32, globals: *mut Set<I32>, scopes: Vec<I32>, depth: I32) : I32 => {
     let kind = node_kind(n);
     if (kind == NK_LET_DECL) {
         if (node_get_data2(n) != 0) {
@@ -224,7 +224,7 @@ fn resolve_stmt_let_or_import(n: I32, globals: *mut Set, scopes: Vec, depth: I32
     }
     0
 }
-fn resolve_stmt_flow(n: I32, globals: *mut Set, scopes: Vec, depth: I32) : I32 => {
+fn resolve_stmt_flow(n: I32, globals: *mut Set<I32>, scopes: Vec<I32>, depth: I32) : I32 => {
     let kind = node_kind(n);
     if (kind == NK_EXPR_STMT) {
         resolve_expr(node_get_data1(n), globals, scopes, depth);
@@ -268,7 +268,7 @@ fn resolve_stmt_flow(n: I32, globals: *mut Set, scopes: Vec, depth: I32) : I32 =
     }
     0
 }
-fn resolve_stmt_lifetime_or_into(n: I32, globals: *mut Set, scopes: Vec, depth: I32) : I32 => {
+fn resolve_stmt_lifetime_or_into(n: I32, globals: *mut Set<I32>, scopes: Vec<I32>, depth: I32) : I32 => {
     let kind = node_kind(n);
     if (kind == NK_LIFETIME_STMT) {
         let next_depth = depth + 1;
@@ -306,7 +306,7 @@ fn resolve_stmt_lifetime_or_into(n: I32, globals: *mut Set, scopes: Vec, depth: 
     }
     0
 }
-fn resolve_expr(n: I32, globals: *mut Set, scopes: Vec, depth: I32) : I32 => {
+fn resolve_expr(n: I32, globals: *mut Set<I32>, scopes: Vec<I32>, depth: I32) : I32 => {
     if (n == 0) {
         return 0;
     }
@@ -392,7 +392,7 @@ fn resolve_expr(n: I32, globals: *mut Set, scopes: Vec, depth: I32) : I32 => {
     }
     0
 }
-fn resolve_stmt(n: I32, globals: *mut Set, scopes: Vec, depth: I32) : I32 => {
+fn resolve_stmt(n: I32, globals: *mut Set<I32>, scopes: Vec<I32>, depth: I32) : I32 => {
     if (n == 0) {
         return 0;
     }

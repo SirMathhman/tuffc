@@ -44,7 +44,7 @@ fn fmt_count_char(line: *Str, target: I32) : I32 => {
     }
     count
 }
-fn fmt_count_structural_braces(line: *Str) : Vec => {
+fn fmt_count_structural_braces(line: *Str) : Vec<I32> => {
     let i = 0;
     let len = line.str_length();
     let opens = 0;

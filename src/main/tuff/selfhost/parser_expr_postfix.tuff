@@ -211,7 +211,7 @@ fn p_try_parse_into_generic_value_call(expr: I32) : I32 => {
     node_set_data5(into_value, 1);
     into_value
 }
-fn p_parse_call_args() : Vec => {
+fn p_parse_call_args() : Vec<I32> => {
     let args = vec_new();
     if (!p_at(TK_SYMBOL, ")")) {
         args.vec_push(p_parse_expression(0));
@@ -222,7 +222,7 @@ fn p_parse_call_args() : Vec => {
     }
     args
 }
-fn p_lower_member_call(expr: I32, args: Vec, type_args: Vec, has_type_args: I32) : I32 => {
+fn p_lower_member_call(expr: I32, args: Vec<I32>, type_args: Vec<I32>, has_type_args: I32) : I32 => {
     let recv = node_get_data1(expr);
     let prop = node_get_data2(expr);
     let lowered_args = vec_new();

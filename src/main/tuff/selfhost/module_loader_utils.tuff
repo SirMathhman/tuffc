@@ -18,7 +18,7 @@ out fn module_loader_normalize_flag(value: I32) : I32 => {
         1
     }
 }
-out fn module_parts_to_relative_path(parts: Vec) : *Str => {
+out fn module_parts_to_relative_path(parts: Vec<I32>) : *Str => {
     let sb = sb_new();
     let i = 0;
     let len = parts.vec_length();

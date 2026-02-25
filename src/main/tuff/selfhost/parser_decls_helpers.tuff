@@ -101,7 +101,7 @@ fn p_parse_generic_constraint_type() : I32 => {
     }
     type_node
 }
-fn p_parse_decl_generics(close_message: *Str) : Vec => {
+fn p_parse_decl_generics(close_message: *Str) : Vec<I32> => {
     let generics = vec_new();
     if (p_at(TK_SYMBOL, "<")) {
         p_eat();

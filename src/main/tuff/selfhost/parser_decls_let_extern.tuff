@@ -12,7 +12,7 @@ fn p_new_temp_name(prefix: *Str) : I32 => {
     parse_temp_counter = parse_temp_counter + 1;
     intern(prefix.str_concat(int_to_string(parse_temp_counter)))
 }
-fn p_decls_let_extern_new_stmt_list(stmts: Vec) : I32 => {
+fn p_decls_let_extern_new_stmt_list(stmts: Vec<I32>) : I32 => {
     let n = node_new(NK_STMT_LIST);
     node_set_data1(n, stmts);
     n
@@ -198,7 +198,7 @@ fn p_le_parse_generic_constraint_type() : I32 => {
     }
     type_node
 }
-fn p_le_parse_decl_generics(close_message: *Str) : Vec => {
+fn p_le_parse_decl_generics(close_message: *Str) : Vec<I32> => {
     let generics = vec_new();
     if (p_at(TK_SYMBOL, "<")) {
         p_eat();

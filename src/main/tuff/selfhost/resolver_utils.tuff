@@ -58,7 +58,7 @@ fn levenshtein_distance(a: *Str, b: *Str) : I32 => {
     }
     prev.vec_get(bn)
 }
-out fn rslv_utils_find_did_you_mean(name: *Str, candidates: Vec) : *Str => {
+out fn rslv_utils_find_did_you_mean(name: *Str, candidates: Vec<I32>) : *Str => {
     let best = "";
     let best_dist = 9999;
     let name_len = 0 + name.str_length();
@@ -144,7 +144,7 @@ fn fn_decl_sig(n: I32) : *Str => {
     let gcount = int_to_string(gcount_len);
     return "g=".str_concat(gcount).str_concat(";p=").str_concat(pparts.vec_join(",")).str_concat(";r=").str_concat(fn_type_sig(ret));
 }
-out fn rslv_utils_validate_expect_actual_pairs(body: Vec) : I32 => {
+out fn rslv_utils_validate_expect_actual_pairs(body: Vec<I32>) : I32 => {
     let i = 0;
     let len = body.vec_length();
     while (i < len) {
@@ -196,7 +196,7 @@ out fn rslv_utils_validate_expect_actual_pairs(body: Vec) : I32 => {
     }
     0
 }
-out fn rslv_utils_scope_define(scopes: Vec, depth: I32, name: *Str, err_node: I32) : I32 => {
+out fn rslv_utils_scope_define(scopes: Vec<I32>, depth: I32, name: *Str, err_node: I32) : I32 => {
     let scope = scopes.vec_get(depth);
     if (scope.set_has(name)) {
         rslv_utils_panic_node(
@@ -210,7 +210,7 @@ out fn rslv_utils_scope_define(scopes: Vec, depth: I32, name: *Str, err_node: I3
     scope.set_add(name);
     0
 }
-out fn rslv_utils_scope_has(scopes: Vec, depth: I32, name: *Str) : Bool => {
+out fn rslv_utils_scope_has(scopes: Vec<I32>, depth: I32, name: *Str) : Bool => {
     let i = depth;
     while (i >= 0) {
         if (scopes.vec_get(i).set_has(name)) {
@@ -231,7 +231,7 @@ out fn rslv_utils_is_host_builtin_name(name: *Str) : Bool => {
     name.str_eq("panic") ||
     name.str_eq("this")
 }
-fn lifetime_scope_has(resolve_lifetime_scopes: Vec, name: *Str) : Bool => {
+fn lifetime_scope_has(resolve_lifetime_scopes: Vec<I32>, name: *Str) : Bool => {
     let len = resolve_lifetime_scopes.vec_length();
     let mut i : I32 = 0;
     while (i < len) {
@@ -242,7 +242,7 @@ fn lifetime_scope_has(resolve_lifetime_scopes: Vec, name: *Str) : Bool => {
     }
     false
 }
-out fn rslv_utils_resolve_type_lifetimes(t: I32, resolve_lifetime_scopes: Vec, err_node: I32) : I32
+out fn rslv_utils_resolve_type_lifetimes(t: I32, resolve_lifetime_scopes: Vec<I32>, err_node: I32) : I32
 => {
     if (t == 0) {
         return 0;

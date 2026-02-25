@@ -131,7 +131,7 @@ fn module_is_extern_decl(stmt: I32) : Bool => {
     kind == 18 || // NK_EXTERN_LET_DECL
     kind == 19 // NK_EXTERN_TYPE_DECL
 }
-fn collect_module_declarations(stmts: Vec) : *mut Set<*Str> => {
+fn collect_module_declarations(stmts: Vec<I32>) : *mut Set<*Str> => {
     let declared = set_new();
     let i = 0;
     let len = stmts.vec_length();
@@ -145,12 +145,12 @@ fn collect_module_declarations(stmts: Vec) : *mut Set<*Str> => {
     }
     declared
 }
-fn module_scope_define(scopes: Vec, depth: I32, name: *Str) : I32 => {
+fn module_scope_define(scopes: Vec<I32>, depth: I32, name: *Str) : I32 => {
     let scope = scopes.vec_get(depth);
     scope.set_add(name);
     0
 }
-fn module_scope_has(scopes: Vec, depth: I32, name: *Str) : Bool => {
+fn module_scope_has(scopes: Vec<I32>, depth: I32, name: *Str) : Bool => {
     let i = depth;
     while (i >= 0) {
         if (scopes.vec_get(i).set_has(name)) {
@@ -160,8 +160,8 @@ fn module_scope_has(scopes: Vec, depth: I32, name: *Str) : Bool => {
     }
     false
 }
-fn module_check_expr_call_like(n: I32, declared: *mut Set, imported: *mut Set,
-scopes: Vec, depth: I32, implicit_candidates: Vec, implicit_candidate_set: *mut Set) : I32 => {
+fn module_check_expr_call_like(n: I32, declared: *mut Set<I32>, imported: *mut Set<I32>,
+scopes: Vec<I32>, depth: I32, implicit_candidates: Vec<I32>, implicit_candidate_set: *mut Set<I32>) : I32 => {
     if (node_kind(n) == 27) {
         module_check_expr_implicit_imports(node_get_data1(n), declared, imported,
         scopes, depth, implicit_candidates, implicit_candidate_set);
@@ -189,8 +189,8 @@ scopes: Vec, depth: I32, implicit_candidates: Vec, implicit_candidate_set: *mut 
     }
     0
 }
-fn module_check_expr_composites(n: I32, declared: *mut Set, imported: *mut Set,
-scopes: Vec, depth: I32, implicit_candidates: Vec, implicit_candidate_set: *mut Set) : I32 => {
+fn module_check_expr_composites(n: I32, declared: *mut Set<I32>, imported: *mut Set<I32>,
+scopes: Vec<I32>, depth: I32, implicit_candidates: Vec<I32>, implicit_candidate_set: *mut Set<I32>) : I32 => {
     if (node_kind(n) == 30) {
         let fields = node_get_data2(n);
         let i = 0;
@@ -210,8 +210,8 @@ scopes: Vec, depth: I32, implicit_candidates: Vec, implicit_candidate_set: *mut 
     }
     0
 }
-fn module_check_expr_match (n: I32, declared: *mut Set, imported: *mut Set, scopes: Vec,
-depth: I32, implicit_candidates: Vec, implicit_candidate_set: *mut Set) : I32 => {
+fn module_check_expr_match (n: I32, declared: *mut Set<I32>, imported: *mut Set<I32>, scopes: Vec<I32>,
+depth: I32, implicit_candidates: Vec<I32>, implicit_candidate_set: *mut Set<I32>) : I32 => {
     if (node_kind(n) != 32) {
         return 0;
     }
@@ -248,9 +248,9 @@ depth: I32, implicit_candidates: Vec, implicit_candidate_set: *mut Set) : I32 =>
     }
     1
 }
-fn module_collect_declared_sets(source: *Str, program: I32, module_declared_map: Map,
-module_exported_map: Map, filePath: *Str, all_declared_names: *mut Set,
-all_exported_declared_names: *mut Set, all_extern_declared_names: *mut Set) : *mut Set => {
+fn module_collect_declared_sets(source: *Str, program: I32, module_declared_map: Map<I32, I32>,
+module_exported_map: Map<I32, I32>, filePath: *Str, all_declared_names: *mut Set<I32>,
+all_exported_declared_names: *mut Set<I32>, all_extern_declared_names: *mut Set<I32>) : *mut Set<I32> => {
     let stmts = node_get_data1(program);
     let declared = collect_module_declarations(stmts);
     let exported = set_new();
@@ -276,7 +276,7 @@ all_exported_declared_names: *mut Set, all_extern_declared_names: *mut Set) : *m
     }
     declared
 }
-fn module_snapshot_import_specs(stmts: Vec, moduleBasePath: *Str, import_path_cache: Map) : Vec => {
+fn module_snapshot_import_specs(stmts: Vec<I32>, moduleBasePath: *Str, import_path_cache: Map<I32, I32>) : Vec<I32> => {
     let t0 = perf_now_out();
     let imports = vec_new();
     let i = 0;
@@ -313,10 +313,10 @@ fn module_snapshot_import_specs(stmts: Vec, moduleBasePath: *Str, import_path_ca
     gather_prof_import_snapshot_ms = gather_prof_import_snapshot_ms + (perf_now_out() - t0);
     imports
 }
-fn module_walk_imports(imports: Vec, moduleBasePath: *Str, seen: *mut Set, visiting: *mut Set,
-sources: Vec<*Str>, module_paths: Vec<*Str>, module_declared_map: Map, module_exported_map: Map,
-module_source_cache: Map, import_path_cache: Map, all_declared_names: *mut Set,
-all_exported_declared_names: *mut Set, all_extern_declared_names: *mut Set, lint_enabled: I32,
+fn module_walk_imports(imports: Vec<I32>, moduleBasePath: *Str, seen: *mut Set<I32>, visiting: *mut Set<I32>,
+sources: Vec<*Str>, module_paths: Vec<*Str>, module_declared_map: Map<I32, I32>, module_exported_map: Map<I32, I32>,
+module_source_cache: Map<I32, I32>, import_path_cache: Map<I32, I32>, all_declared_names: *mut Set<I32>,
+all_exported_declared_names: *mut Set<I32>, all_extern_declared_names: *mut Set<I32>, lint_enabled: I32,
 max_effective_lines: I32, module_cycles: Vec<*Str>, recursion_depth: I32) : I32 => {
     let i = 0;
     let len = imports.vec_length();
@@ -356,7 +356,7 @@ max_effective_lines: I32, module_cycles: Vec<*Str>, recursion_depth: I32) : I32 
     }
     0
 }
-fn module_collect_imported_names(imports: Vec) : *mut Set => {
+fn module_collect_imported_names(imports: Vec<I32>) : *mut Set<I32> => {
     let imported_names = set_new();
     let i = 0;
     let len = imports.vec_length();
@@ -373,8 +373,8 @@ fn module_collect_imported_names(imports: Vec) : *mut Set => {
     }
     imported_names
 }
-fn module_check_expr_implicit_imports(n: I32, declared: *mut Set, imported: *mut Set,
-scopes: Vec, depth: I32, implicit_candidates: Vec, implicit_candidate_set: *mut Set) : I32 => {
+fn module_check_expr_implicit_imports(n: I32, declared: *mut Set<I32>, imported: *mut Set<I32>,
+scopes: Vec<I32>, depth: I32, implicit_candidates: Vec<I32>, implicit_candidate_set: *mut Set<I32>) : I32 => {
     if (n == 0) {
         return 0;
     }
@@ -431,8 +431,8 @@ scopes: Vec, depth: I32, implicit_candidates: Vec, implicit_candidate_set: *mut 
     }
     0
 }
-fn module_check_stmt_implicit_imports(n: I32, declared: *mut Set, imported: *mut Set,
-scopes: Vec, depth: I32, implicit_candidates: Vec, implicit_candidate_set: *mut Set) : I32 => {
+fn module_check_stmt_implicit_imports(n: I32, declared: *mut Set<I32>, imported: *mut Set<I32>,
+scopes: Vec<I32>, depth: I32, implicit_candidates: Vec<I32>, implicit_candidate_set: *mut Set<I32>) : I32 => {
     if (n == 0) {
         return 0;
     }
@@ -534,8 +534,8 @@ scopes: Vec, depth: I32, implicit_candidates: Vec, implicit_candidate_set: *mut 
     implicit_candidates, implicit_candidate_set);
     0
 }
-fn module_collect_implicit_import_candidates(program: I32, declared: *mut Set,
-imported: *mut Set) : Vec => {
+fn module_collect_implicit_import_candidates(program: I32, declared: *mut Set<I32>,
+imported: *mut Set<I32>) : Vec<I32> => {
     let implicit_candidates = vec_new();
     let implicit_candidate_set = set_new();
     let topScopes = vec_new();
@@ -550,8 +550,8 @@ imported: *mut Set) : Vec => {
     }
     implicit_candidates
 }
-fn module_assert_no_implicit_imports(implicit_candidates: Vec, all_exported_declared: *mut Set,
-all_extern_declared: *mut Set) : I32 => {
+fn module_assert_no_implicit_imports(implicit_candidates: Vec<I32>, all_exported_declared: *mut Set<I32>,
+all_extern_declared: *mut Set<I32>) : I32 => {
     let i = 0;
     let len = implicit_candidates.vec_length();
     while (i < len) {
@@ -583,10 +583,10 @@ fn module_has_out_export(source: *Str, name: *Str) : Bool => {
     source.str_includes("copy out type ".str_concat(name)) ||
     source.str_includes("out class fn ".str_concat(name))
 }
-fn gather_module_sources(filePath: *Str, moduleBasePath: *Str, seen: *mut Set, visiting: *mut Set,
-sources: Vec<*Str>, module_paths: Vec<*Str>, module_declared_map: Map, module_exported_map: Map,
-module_source_cache: Map, import_path_cache: Map, all_declared_names: *mut Set,
-all_exported_declared_names: *mut Set, all_extern_declared_names: *mut Set, lint_enabled: I32,
+fn gather_module_sources(filePath: *Str, moduleBasePath: *Str, seen: *mut Set<I32>, visiting: *mut Set<I32>,
+sources: Vec<*Str>, module_paths: Vec<*Str>, module_declared_map: Map<I32, I32>, module_exported_map: Map<I32, I32>,
+module_source_cache: Map<I32, I32>, import_path_cache: Map<I32, I32>, all_declared_names: *mut Set<I32>,
+all_exported_declared_names: *mut Set<I32>, all_extern_declared_names: *mut Set<I32>, lint_enabled: I32,
 max_effective_lines: I32, module_cycles: Vec<*Str>, recursion_depth: I32) : I32 => {
     filePath = module_normalize_path(filePath);
     moduleBasePath = module_normalize_path(moduleBasePath);

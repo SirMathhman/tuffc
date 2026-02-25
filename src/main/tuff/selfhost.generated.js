@@ -3896,6 +3896,14 @@ function type_name_from_type_node(t) {
   let k = node_kind(t); if (typeof __tuff_this !== 'undefined') __tuff_this.k = k;
   if ((k === 40)) {
   result = get_interned_str(node_get_data1(t)); if (typeof __tuff_this !== 'undefined') __tuff_this.result = result;
+  let generic_args = node_get_data2(t); if (typeof __tuff_this !== 'undefined') __tuff_this.generic_args = generic_args;
+  let named_actual_arity = (() => { const __recv = generic_args; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.named_actual_arity = named_actual_arity;
+  if ((() => { const __recv = tc_extern_type_params; const __prop = __recv?.["map_has"]; if (typeof __prop === "function") return __prop(result); const __dyn = __recv?.table?.map_has; return __dyn ? __dyn(__recv.ref, result) : map_has(__recv, result); })()) {
+  let extern_expected_arity = (() => { const __recv = tc_extern_type_params; const __prop = __recv?.["map_get"]; if (typeof __prop === "function") return __prop(result); const __dyn = __recv?.table?.map_get; return __dyn ? __dyn(__recv.ref, result) : map_get(__recv, result); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.extern_expected_arity = extern_expected_arity;
+  if ((named_actual_arity !== extern_expected_arity)) {
+  tc_panic_loc("E_TYPE_APPLIED_ARITY", (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = "'"; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(result); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, result) : str_concat(__recv, result); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("' applied with "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "' applied with ") : str_concat(__recv, "' applied with "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string(named_actual_arity)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(named_actual_arity)) : str_concat(__recv, int_to_string(named_actual_arity)); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(" argument(s), expected "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " argument(s), expected ") : str_concat(__recv, " argument(s), expected "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string(extern_expected_arity)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(extern_expected_arity)) : str_concat(__recv, int_to_string(extern_expected_arity)); })(), "Extern types must be applied with exactly the number of generic parameters declared by their extern type declaration.", (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = "Provide exactly "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string(extern_expected_arity)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(extern_expected_arity)) : str_concat(__recv, int_to_string(extern_expected_arity)); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(" argument(s) to '"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " argument(s) to '") : str_concat(__recv, " argument(s) to '"); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(result); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, result) : str_concat(__recv, result); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("'."); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "'.") : str_concat(__recv, "'."); })());
+}
+}
   (() => { const __recv = tc_type_name_cache; const __prop = __recv?.["map_set"]; if (typeof __prop === "function") return __prop(t, result); const __dyn = __recv?.table?.map_set; return __dyn ? __dyn(__recv.ref, t, result) : map_set(__recv, t, result); })();
   return result;
 }
@@ -3931,6 +3939,12 @@ function type_name_from_type_node(t) {
   let alias_name = get_interned_str(node_get_data1(t)); if (typeof __tuff_this !== 'undefined') __tuff_this.alias_name = alias_name;
   let args = node_get_data2(t); if (typeof __tuff_this !== 'undefined') __tuff_this.args = args;
   let actual_arity = (() => { const __recv = args; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.actual_arity = actual_arity;
+  if ((() => { const __recv = tc_extern_type_params; const __prop = __recv?.["map_has"]; if (typeof __prop === "function") return __prop(alias_name); const __dyn = __recv?.table?.map_has; return __dyn ? __dyn(__recv.ref, alias_name) : map_has(__recv, alias_name); })()) {
+  let extern_expected_arity = (() => { const __recv = tc_extern_type_params; const __prop = __recv?.["map_get"]; if (typeof __prop === "function") return __prop(alias_name); const __dyn = __recv?.table?.map_get; return __dyn ? __dyn(__recv.ref, alias_name) : map_get(__recv, alias_name); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.extern_expected_arity = extern_expected_arity;
+  if ((actual_arity !== extern_expected_arity)) {
+  tc_panic_loc("E_TYPE_APPLIED_ARITY", (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = "'"; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(alias_name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, alias_name) : str_concat(__recv, alias_name); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("' applied with "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "' applied with ") : str_concat(__recv, "' applied with "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string(actual_arity)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(actual_arity)) : str_concat(__recv, int_to_string(actual_arity)); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(" argument(s), expected "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " argument(s), expected ") : str_concat(__recv, " argument(s), expected "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string(extern_expected_arity)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(extern_expected_arity)) : str_concat(__recv, int_to_string(extern_expected_arity)); })(), "Extern types must be applied with exactly the number of generic parameters declared by their extern type declaration.", (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = "Provide exactly "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string(extern_expected_arity)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(extern_expected_arity)) : str_concat(__recv, int_to_string(extern_expected_arity)); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(" argument(s) to '"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " argument(s) to '") : str_concat(__recv, " argument(s) to '"); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(alias_name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, alias_name) : str_concat(__recv, alias_name); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("'."); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "'.") : str_concat(__recv, "'."); })());
+}
+}
   if ((() => { const __recv = tc_dep_type_alias_params; const __prop = __recv?.["map_has"]; if (typeof __prop === "function") return __prop(alias_name); const __dyn = __recv?.table?.map_has; return __dyn ? __dyn(__recv.ref, alias_name) : map_has(__recv, alias_name); })()) {
   let expected_arity = (() => { const __recv = tc_dep_type_alias_params; const __prop = __recv?.["map_get"]; if (typeof __prop === "function") return __prop(alias_name); const __dyn = __recv?.table?.map_get; return __dyn ? __dyn(__recv.ref, alias_name) : map_get(__recv, alias_name); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.expected_arity = expected_arity;
   if ((actual_arity !== expected_arity)) {
@@ -4384,6 +4398,8 @@ let tc_alias_union_tags = map_new(); if (typeof __tuff_this !== 'undefined') __t
 let tc_type_alias_names = set_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.tc_type_alias_names = tc_type_alias_names;
 
 let tc_dep_type_alias_params = map_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.tc_dep_type_alias_params = tc_dep_type_alias_params;
+
+let tc_extern_type_params = map_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.tc_extern_type_params = tc_extern_type_params;
 
 let tc_contract_names = set_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.tc_contract_names = tc_contract_names;
 
@@ -5368,6 +5384,8 @@ function typecheck_stmt(n, fn_arities, fn_param_types, fn_return_types, local_ty
   if ((kind === NK_EXTERN_TYPE_DECL)) {
   let alias_name = get_interned_str(node_get_data1(n)); if (typeof __tuff_this !== 'undefined') __tuff_this.alias_name = alias_name;
   (() => { const __recv = tc_type_alias_names; const __prop = __recv?.["set_add"]; if (typeof __prop === "function") return __prop(alias_name); const __dyn = __recv?.table?.set_add; return __dyn ? __dyn(__recv.ref, alias_name) : set_add(__recv, alias_name); })();
+  let value_params = node_get_data2(n); if (typeof __tuff_this !== 'undefined') __tuff_this.value_params = value_params;
+  (() => { const __recv = tc_extern_type_params; const __prop = __recv?.["map_set"]; if (typeof __prop === "function") return __prop(alias_name, (() => { const __recv = value_params; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })()); const __dyn = __recv?.table?.map_set; return __dyn ? __dyn(__recv.ref, alias_name, (() => { const __recv = value_params; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })()) : map_set(__recv, alias_name, (() => { const __recv = value_params; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })()); })();
   let destructor_name_idx = node_get_data5(n); if (typeof __tuff_this !== 'undefined') __tuff_this.destructor_name_idx = destructor_name_idx;
   if ((destructor_name_idx !== 0)) {
   let destructor_name = get_interned_str(destructor_name_idx); if (typeof __tuff_this !== 'undefined') __tuff_this.destructor_name = destructor_name;
@@ -5393,6 +5411,7 @@ function typecheck_program_with_options_impl(program) {
   tc_alias_union_tags = map_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.tc_alias_union_tags = tc_alias_union_tags;
   tc_type_alias_names = set_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.tc_type_alias_names = tc_type_alias_names;
   tc_dep_type_alias_params = map_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.tc_dep_type_alias_params = tc_dep_type_alias_params;
+  tc_extern_type_params = map_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.tc_extern_type_params = tc_extern_type_params;
   tc_contract_names = set_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.tc_contract_names = tc_contract_names;
   tc_destructor_alias_by_alias = map_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.tc_destructor_alias_by_alias = tc_destructor_alias_by_alias;
   tc_destructor_alias_names = vec_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.tc_destructor_alias_names = tc_destructor_alias_names;
@@ -5402,6 +5421,25 @@ function typecheck_program_with_options_impl(program) {
   tc_call_bounds = map_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.tc_call_bounds = tc_call_bounds;
   fn_param_call_bounds = map_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.fn_param_call_bounds = fn_param_call_bounds;
   let body = node_get_data1(program); if (typeof __tuff_this !== 'undefined') __tuff_this.body = body;
+  let pre_i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.pre_i = pre_i;
+  let pre_len = (() => { const __recv = body; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.pre_len = pre_len;
+  while ((pre_i < pre_len)) {
+  let pre_stmt = (() => { const __recv = body; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(pre_i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, pre_i) : vec_get(__recv, pre_i); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.pre_stmt = pre_stmt;
+  let pre_kind = node_kind(pre_stmt); if (typeof __tuff_this !== 'undefined') __tuff_this.pre_kind = pre_kind;
+  if ((pre_kind === NK_EXTERN_TYPE_DECL)) {
+  let alias_name = get_interned_str(node_get_data1(pre_stmt)); if (typeof __tuff_this !== 'undefined') __tuff_this.alias_name = alias_name;
+  (() => { const __recv = tc_type_alias_names; const __prop = __recv?.["set_add"]; if (typeof __prop === "function") return __prop(alias_name); const __dyn = __recv?.table?.set_add; return __dyn ? __dyn(__recv.ref, alias_name) : set_add(__recv, alias_name); })();
+  let value_params = node_get_data2(pre_stmt); if (typeof __tuff_this !== 'undefined') __tuff_this.value_params = value_params;
+  (() => { const __recv = tc_extern_type_params; const __prop = __recv?.["map_set"]; if (typeof __prop === "function") return __prop(alias_name, (() => { const __recv = value_params; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })()); const __dyn = __recv?.table?.map_set; return __dyn ? __dyn(__recv.ref, alias_name, (() => { const __recv = value_params; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })()) : map_set(__recv, alias_name, (() => { const __recv = value_params; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })()); })();
+}
+  if ((pre_kind === NK_DEP_TYPE_ALIAS)) {
+  let alias_name = get_interned_str(node_get_data1(pre_stmt)); if (typeof __tuff_this !== 'undefined') __tuff_this.alias_name = alias_name;
+  (() => { const __recv = tc_type_alias_names; const __prop = __recv?.["set_add"]; if (typeof __prop === "function") return __prop(alias_name); const __dyn = __recv?.table?.set_add; return __dyn ? __dyn(__recv.ref, alias_name) : set_add(__recv, alias_name); })();
+  let value_params = node_get_data2(pre_stmt); if (typeof __tuff_this !== 'undefined') __tuff_this.value_params = value_params;
+  (() => { const __recv = tc_dep_type_alias_params; const __prop = __recv?.["map_set"]; if (typeof __prop === "function") return __prop(alias_name, (() => { const __recv = value_params; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })()); const __dyn = __recv?.table?.map_set; return __dyn ? __dyn(__recv.ref, alias_name, (() => { const __recv = value_params; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })()) : map_set(__recv, alias_name, (() => { const __recv = value_params; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })()); })();
+}
+  pre_i = (pre_i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.pre_i = pre_i;
+}
   let i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
   let len = (() => { const __recv = body; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.len = len;
   while ((i < len)) {
@@ -5490,6 +5528,8 @@ function typecheck_program_with_options_impl(program) {
   if ((kind === NK_EXTERN_TYPE_DECL)) {
   let alias_name = get_interned_str(node_get_data1(stmt)); if (typeof __tuff_this !== 'undefined') __tuff_this.alias_name = alias_name;
   (() => { const __recv = tc_type_alias_names; const __prop = __recv?.["set_add"]; if (typeof __prop === "function") return __prop(alias_name); const __dyn = __recv?.table?.set_add; return __dyn ? __dyn(__recv.ref, alias_name) : set_add(__recv, alias_name); })();
+  let value_params = node_get_data2(stmt); if (typeof __tuff_this !== 'undefined') __tuff_this.value_params = value_params;
+  (() => { const __recv = tc_extern_type_params; const __prop = __recv?.["map_set"]; if (typeof __prop === "function") return __prop(alias_name, (() => { const __recv = value_params; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })()); const __dyn = __recv?.table?.map_set; return __dyn ? __dyn(__recv.ref, alias_name, (() => { const __recv = value_params; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })()) : map_set(__recv, alias_name, (() => { const __recv = value_params; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })()); })();
   let destructor_name_idx = node_get_data5(stmt); if (typeof __tuff_this !== 'undefined') __tuff_this.destructor_name_idx = destructor_name_idx;
   if ((destructor_name_idx !== 0)) {
   let destructor_name = get_interned_str(destructor_name_idx); if (typeof __tuff_this !== 'undefined') __tuff_this.destructor_name = destructor_name;
@@ -12997,6 +13037,7 @@ function main() {
   let output_file = ""; if (typeof __tuff_this !== 'undefined') __tuff_this.output_file = output_file;
   let target = "js"; if (typeof __tuff_this !== 'undefined') __tuff_this.target = target;
   let lint_enabled = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.lint_enabled = lint_enabled;
+  let lint_strict = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.lint_strict = lint_strict;
   let borrow_enabled = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.borrow_enabled = borrow_enabled;
   let profile_enabled = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.profile_enabled = profile_enabled;
   let i = 2; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
@@ -13021,6 +13062,9 @@ function main() {
 }
 } else { if ((() => { const __recv = arg; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("--lint"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "--lint") : str_eq(__recv, "--lint"); })()) {
   lint_enabled = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.lint_enabled = lint_enabled;
+} else { if ((() => { const __recv = arg; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("--lint-strict"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "--lint-strict") : str_eq(__recv, "--lint-strict"); })()) {
+  lint_enabled = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.lint_enabled = lint_enabled;
+  lint_strict = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.lint_strict = lint_strict;
 } else { if ((() => { const __recv = arg; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("--profile"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "--profile") : str_eq(__recv, "--profile"); })()) {
   profile_enabled = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.profile_enabled = profile_enabled;
 } else { if ((() => { const __recv = arg; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("--no-borrowcheck"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "--no-borrowcheck") : str_eq(__recv, "--no-borrowcheck"); })()) {
@@ -13034,7 +13078,7 @@ function main() {
   print_error("Missing value for --module-base");
   had_error = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.had_error = had_error;
 }
-} } } } } } }
+} } } } } } } }
   i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
 }
   if ((had_error === 1)) {
@@ -13047,6 +13091,15 @@ function main() {
   let result_code = compile_file_with_options(input_file, output_file, lint_enabled, 500, borrow_enabled, target); if (typeof __tuff_this !== 'undefined') __tuff_this.result_code = result_code;
   if ((result_code === 0)) {
   print((() => { const __recv = (() => { const __recv = (() => { const __recv = "Compiled "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(input_file); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, input_file) : str_concat(__recv, input_file); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(" -> "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " -> ") : str_concat(__recv, " -> "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(output_file); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, output_file) : str_concat(__recv, output_file); })());
+}
+  if ((lint_enabled === 1)) {
+  let issues = take_lint_issues(); if (typeof __tuff_this !== 'undefined') __tuff_this.issues = issues;
+  if (((() => { const __recv = issues; const __prop = __recv?.["str_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.str_length; return __dyn ? __dyn(__recv.ref) : str_length(__recv); })() > 0)) {
+  print_error((() => { const __recv = "[lint] "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(issues); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, issues) : str_concat(__recv, issues); })());
+  if ((lint_strict === 1)) {
+  result_code = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.result_code = result_code;
+}
+}
 }
   if ((profile_enabled === 1)) {
   print_error((() => { const __recv = "[profile] "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(profile_take_json()); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, profile_take_json()) : str_concat(__recv, profile_take_json()); })());

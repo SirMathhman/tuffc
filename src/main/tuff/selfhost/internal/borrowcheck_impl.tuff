@@ -9,13 +9,13 @@ let {
  = selfhost::parser_core;
  // Current AST node being borrow-checked; updated at check_expr/check_stmt entry.
 let bc_current_node : I32 = 0;
-let bc_global_value_types : Map = map_new();
-let bc_copy_types : *mut Set = set_new();
-let bc_copy_alias_types : Map = map_new();
-let bc_copy_alias_names : Vec = vec_new();
+let bc_global_value_types : Map<I32, I32> = map_new();
+let bc_copy_types : *mut Set<I32> = set_new();
+let bc_copy_alias_types : Map<I32, I32> = map_new();
+let bc_copy_alias_names : Vec<*Str> = vec_new();
 
-let bc_destructor_aliases : Map = map_new();
-let bc_destructor_alias_names : Vec = vec_new();
+let bc_destructor_aliases : Map<I32, I32> = map_new();
+let bc_destructor_alias_names : Vec<*Str> = vec_new();
 fn bc_str_ends_with_local(s: *Str, suffix: *Str) : Bool => {
     let ns = s.str_length();
     let nf = suffix.str_length();
@@ -63,7 +63,7 @@ fn is_copy_primitive(name: *Str) : Bool => {
     name.str_eq("I8") || name.str_eq("I16") || name.str_eq("I32") || name.str_eq("I64") || name.str_eq("I128") || name.str_eq("U8") || name.str_eq("U16") || name.str_eq("U32") || name.str_eq("U64") || name.str_eq("U128") || name.str_eq("USize") || name.str_eq("ISize") || name.str_eq("F32") || name.str_eq("F64") ||
     name.str_eq("Bool") || name.str_eq("Char")
 }
-fn is_copy_type(type_name: *Str, extern_type_names: *mut Set) : Bool => {
+fn is_copy_type(type_name: *Str, extern_type_names: *mut Set<I32>) : Bool => {
     if (type_name.str_eq("Unknown")) {
         return false;
     }
@@ -93,7 +93,7 @@ fn bc_find_copy_alias_type(name: *Str) : I32 => {
     }
     0
 }
-fn bc_type_node_is_copyable(t: I32, extern_type_names: *mut Set, visiting_aliases: *mut Set) : Bool
+fn bc_type_node_is_copyable(t: I32, extern_type_names: *mut Set<I32>, visiting_aliases: *mut Set<I32>) : Bool
 => {
     if (t == 0) {
         return false;
@@ -167,7 +167,7 @@ fn bc_type_node_is_destructor_receiver(t: I32, alias_name: *Str) : Bool => {
     }
     false
 }
-fn bc_infer_expr_type_name(n: I32, env_types: Map, fn_return_types: Map) : *Str => {
+fn bc_infer_expr_type_name(n: I32, env_types: Map<I32, I32>, fn_return_types: Map<I32, I32>) : *Str => {
     if (n == 0) {
         return "Unknown";
     }
@@ -233,16 +233,16 @@ fn bc_infer_expr_type_name(n: I32, env_types: Map, fn_return_types: Map) : *Str 
     }
     "Unknown"
 }
-fn place_new(base: *Str, path: *Str) : Vec => {
+fn place_new(base: *Str, path: *Str) : Vec<I32> => {
     let p = vec_new();
     p.vec_push(base);
     p.vec_push(path);
     p
 }
-fn place_is_valid(p: Vec) : Bool => p.vec_length() == 2;
-fn place_base(p: Vec) : *Str => p.vec_get(0);
-fn place_path(p: Vec) : *Str => p.vec_get(1);
-fn canonical_place(n: I32) : Vec => {
+fn place_is_valid(p: Vec<I32>) : Bool => p.vec_length() == 2;
+fn place_base(p: Vec<I32>) : *Str => p.vec_get(0);
+fn place_path(p: Vec<I32>) : *Str => p.vec_get(1);
+fn canonical_place(n: I32) : Vec<I32> => {
     if (n == 0) {
         return vec_new();
     }
@@ -280,7 +280,7 @@ fn places_conflict(a_base: *Str, a_path: *Str, b_base: *Str, b_path: *Str) : Boo
     }
     a_path.str_starts_with(b_path.str_concat(".")) || b_path.str_starts_with(a_path.str_concat("."))
 }
-fn state_new() : Vec => {
+fn state_new() : Vec<I32> => {
      // [moved_set, moved_vec, loans_vec, scope_starts, dropped_set, dropped_vec]
     let s = vec_new();
     s.vec_push(set_new());
@@ -291,41 +291,41 @@ fn state_new() : Vec => {
     s.vec_push(vec_new());
     s
 }
-fn state_moved_set(state: Vec) : *mut Set => state.vec_get(0);
-fn state_moved_vec(state: Vec) : Vec => state.vec_get(1);
-fn state_loans(state: Vec) : Vec => state.vec_get(2);
-fn state_scope_starts(state: Vec) : Vec => state.vec_get(3);
-fn state_dropped_set(state: Vec) : *mut Set => state.vec_get(4);
-fn state_dropped_vec(state: Vec) : Vec => state.vec_get(5);
-fn state_moved_has(state: Vec, name: *Str) : Bool => state_moved_set(state).set_has(name);
-fn state_dropped_has(state: Vec, name: *Str) : Bool => state_dropped_set(state).set_has(name);
-fn state_moved_add(state: Vec, name: *Str) : I32 => {
+fn state_moved_set(state: Vec<I32>) : *mut Set<I32> => state.vec_get(0);
+fn state_moved_vec(state: Vec<I32>) : Vec<I32> => state.vec_get(1);
+fn state_loans(state: Vec<I32>) : Vec<I32> => state.vec_get(2);
+fn state_scope_starts(state: Vec<I32>) : Vec<I32> => state.vec_get(3);
+fn state_dropped_set(state: Vec<I32>) : *mut Set<I32> => state.vec_get(4);
+fn state_dropped_vec(state: Vec<I32>) : Vec<I32> => state.vec_get(5);
+fn state_moved_has(state: Vec<I32>, name: *Str) : Bool => state_moved_set(state).set_has(name);
+fn state_dropped_has(state: Vec<I32>, name: *Str) : Bool => state_dropped_set(state).set_has(name);
+fn state_moved_add(state: Vec<I32>, name: *Str) : I32 => {
     if (!state_moved_set(state).set_has(name)) {
         state_moved_set(state).set_add(name);
         state_moved_vec(state).vec_push(name);
     }
     0
 }
-fn state_moved_delete(state: Vec, name: *Str) : I32 => {
+fn state_moved_delete(state: Vec<I32>, name: *Str) : I32 => {
     state_moved_set(state).set_delete(name);
     0
 }
-fn state_dropped_add(state: Vec, name: *Str) : I32 => {
+fn state_dropped_add(state: Vec<I32>, name: *Str) : I32 => {
     if (!state_dropped_set(state).set_has(name)) {
         state_dropped_set(state).set_add(name);
         state_dropped_vec(state).vec_push(name);
     }
     0
 }
-fn state_dropped_delete(state: Vec, name: *Str) : I32 => {
+fn state_dropped_delete(state: Vec<I32>, name: *Str) : I32 => {
     state_dropped_set(state).set_delete(name);
     0
 }
-fn state_begin_scope(state: Vec) : I32 => {
+fn state_begin_scope(state: Vec<I32>) : I32 => {
     state_scope_starts(state).vec_push(state_loans(state).vec_length());
     0
 }
-fn state_end_scope(state: Vec) : I32 => {
+fn state_end_scope(state: Vec<I32>) : I32 => {
     let starts = state_scope_starts(state);
     if (starts.vec_length() == 0) {
         return 0;
@@ -337,7 +337,7 @@ fn state_end_scope(state: Vec) : I32 => {
     }
     0
 }
-fn state_add_loan(state: Vec, kind: I32, base: *Str, path: *Str) : I32 => {
+fn state_add_loan(state: Vec<I32>, kind: I32, base: *Str, path: *Str) : I32 => {
     let entry = vec_new();
     entry.vec_push(kind);
     entry.vec_push(base);
@@ -345,7 +345,7 @@ fn state_add_loan(state: Vec, kind: I32, base: *Str, path: *Str) : I32 => {
     state_loans(state).vec_push(entry);
     0
 }
-fn state_any_conflicting_loan(state: Vec, base: *Str, path: *Str) : Bool => {
+fn state_any_conflicting_loan(state: Vec<I32>, base: *Str, path: *Str) : Bool => {
     let loans = state_loans(state);
     let i = 0;
     let len = loans.vec_length();
@@ -360,7 +360,7 @@ fn state_any_conflicting_loan(state: Vec, base: *Str, path: *Str) : Bool => {
     }
     false
 }
-fn state_conflicting_mut_loan(state: Vec, base: *Str, path: *Str) : Bool => {
+fn state_conflicting_mut_loan(state: Vec<I32>, base: *Str, path: *Str) : Bool => {
     let loans = state_loans(state);
     let i = 0;
     let len = loans.vec_length();
@@ -377,7 +377,7 @@ fn state_conflicting_mut_loan(state: Vec, base: *Str, path: *Str) : Bool => {
     }
     false
 }
-fn state_conflicting_immut_loan(state: Vec, base: *Str, path: *Str) : Bool => {
+fn state_conflicting_immut_loan(state: Vec<I32>, base: *Str, path: *Str) : Bool => {
     let loans = state_loans(state);
     let i = 0;
     let len = loans.vec_length();
@@ -394,7 +394,7 @@ fn state_conflicting_immut_loan(state: Vec, base: *Str, path: *Str) : Bool => {
     }
     false
 }
-fn state_clone(src: Vec) : Vec => {
+fn state_clone(src: Vec<I32>) : Vec<I32> => {
     let dst = state_new();
     let srcMoved = state_moved_vec(src);
     let i = 0;
@@ -427,7 +427,7 @@ fn state_clone(src: Vec) : Vec => {
     }
     dst
 }
-fn state_merge_moved_from_branches(dst: Vec, a: Vec, b: Vec) : I32 => {
+fn state_merge_moved_from_branches(dst: Vec<I32>, a: Vec<I32>, b: Vec<I32>) : I32 => {
     let newSet = set_new();
     let newVec = vec_new();
     let av = state_moved_vec(a);
@@ -487,7 +487,7 @@ fn panic_borrow(code: *Str, message: *Str, fix: *Str) : I32 => {
     "Borrowing and ownership rules require exclusive mutable access or shared immutable access, and disallow use-after-move.", fix, node_get_line(bc_current_node), node_get_col(bc_current_node)
     )
 }
-fn ensure_readable(expr: I32, state: Vec) : I32 => {
+fn ensure_readable(expr: I32, state: Vec<I32>) : I32 => {
     let p = canonical_place(expr);
     if (!place_is_valid(p)) {
         return 0;
@@ -506,8 +506,8 @@ fn ensure_readable(expr: I32, state: Vec) : I32 => {
     }
     0
 }
-fn consume_place(expr: I32, state: Vec, env_types: Map, fn_return_types: Map, extern_type_names:
-*mut Set) : I32 => {
+fn consume_place(expr: I32, state: Vec<I32>, env_types: Map<I32, I32>, fn_return_types: Map<I32, I32>, extern_type_names:
+*mut Set<I32>) : I32 => {
     let p = canonical_place(expr);
     if (!place_is_valid(p)) {
         return 0;
@@ -541,8 +541,8 @@ fn consume_place(expr: I32, state: Vec, env_types: Map, fn_return_types: Map, ex
     }
     0
 }
-fn check_expr(expr: I32, state: Vec, env_types: Map, fn_return_types: Map, extern_type_names: *mut
-Set, global_fn_names: *mut Set, mode: *Str) : I32 => {
+fn check_expr(expr: I32, state: Vec<I32>, env_types: Map<I32, I32>, fn_return_types: Map<I32, I32>, extern_type_names: *mut
+Set<I32>, global_fn_names: *mut Set<I32>, mode: *Str) : I32 => {
     if (expr == 0) {
         return 0;
     }
@@ -759,8 +759,8 @@ fn bc_stmt_diverges(stmt: I32) : Bool => {
     }
     false
 }
-fn check_block(block: I32, state: Vec, env_types: Map, fn_return_types: Map, extern_type_names: *mut
-Set, global_fn_names: *mut Set) : I32 => {
+fn check_block(block: I32, state: Vec<I32>, env_types: Map<I32, I32>, fn_return_types: Map<I32, I32>, extern_type_names: *mut
+Set<I32>, global_fn_names: *mut Set<I32>) : I32 => {
     state_begin_scope(state);
     let stmts = node_get_data1(block);
     let i = 0;
@@ -772,8 +772,8 @@ Set, global_fn_names: *mut Set) : I32 => {
     }
     state_end_scope(state)
 }
-fn check_stmt(stmt: I32, state: Vec, env_types: Map, fn_return_types: Map, extern_type_names: *mut
-Set, global_fn_names: *mut Set) : I32 => {
+fn check_stmt(stmt: I32, state: Vec<I32>, env_types: Map<I32, I32>, fn_return_types: Map<I32, I32>, extern_type_names: *mut
+Set<I32>, global_fn_names: *mut Set<I32>) : I32 => {
     if (stmt == 0) {
         return 0;
     }

@@ -188,7 +188,7 @@ out fn tok_line(idx: I32) : I32 => tok_lines.vec_get(idx);
 out fn tok_col(idx: I32) : I32 => tok_cols.vec_get(idx);
  // String intern table - stores strings by index for reverse lookup
 let intern_table : Vec<*Str> = vec_new();
-let intern_map : Map = map_new();
+let intern_map : Map<I32, I32> = map_new();
 fn intern(s: *Str) : I32 => {
     if (intern_map.map_has(s)) {
         intern_map.map_get(s)
@@ -205,7 +205,7 @@ out fn get_intern(idx: I32) : *Str => {
 }
 out fn get_interned_str(idx: I32) : *Str => get_intern(idx);
  // Keywords set
-let keywords : *mut Set = set_new();
+let keywords : *mut Set<I32> = set_new();
 fn init_keywords() : I32 => {
     keywords.set_add("fn");
     keywords.set_add("let");

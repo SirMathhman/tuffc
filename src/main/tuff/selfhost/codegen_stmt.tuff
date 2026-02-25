@@ -11,7 +11,7 @@ let {
 }
  = selfhost::codegen_stmt_decl_emitters;
  // Top-level type/external-type destructor map: alias/type name -> destructor function name.
-let js_global_dtor_type_map : Map = map_new();
+let js_global_dtor_type_map : Map<I32, I32> = map_new();
  // === JS emit context stack for tracking 'this' ===
  // Each frame: [has_explicit_this: I32, fn_name: *Str]
 let js_fn_stack = vec_new();

@@ -16,17 +16,17 @@ let {
  // Global mutable state — reset at the start of each generate_c call
  // ============================================================================
 let cc_temp_counter : I32 = 0;
-let cc_enum_names : *mut Set = set_new();
-let cc_enum_variant_consts : Map = map_new();
+let cc_enum_names : *mut Set<I32> = set_new();
+let cc_enum_variant_consts : Map<I32, I32> = map_new();
  // variant → "EnumName_Variant"
-let cc_struct_fields : Map = map_new();
+let cc_struct_fields : Map<I32, I32> = map_new();
  // struct name → Vec<*Str> of field names
-let cc_alias_by_variant : Map = map_new();
+let cc_alias_by_variant : Map<I32, I32> = map_new();
  // variant struct name → union alias name
-let cc_union_alias_info : Map = map_new();
+let cc_union_alias_info : Map<I32, I32> = map_new();
  // alias name → Vec<*Str> of variant names
-let cc_covered_extern_fns : *mut Set = set_new();
-let cc_local_types : Map = map_new();
+let cc_covered_extern_fns : *mut Set<I32> = set_new();
+let cc_local_types : Map<I32, I32> = map_new();
  // local var name → C type string (e.g. "TuffVec*")
 let cc_inc_stdint : I32 = 1;
 let cc_inc_stddef : I32 = 0;
@@ -54,7 +54,7 @@ fn cc_to_name(name: *Str) : *Str => {
         name
     }
 }
-fn cc_join_parts(parts: Vec) : *Str => {
+fn cc_join_parts(parts: Vec<I32>) : *Str => {
     let sb = sb_new();
     let i = 0;
     let len = parts.vec_length();
@@ -238,7 +238,7 @@ fn cc_is_stdlib_builtin(name: *Str) : Bool => {
  // ============================================================================
  // Context Pre-scan
  // ============================================================================
-fn cc_flatten_union_variants(type_node: I32, names_vec: Vec) : I32 => {
+fn cc_flatten_union_variants(type_node: I32, names_vec: Vec<I32>) : I32 => {
     if (type_node == 0) {
         return 0;
     }
@@ -830,7 +830,7 @@ fn cc_emit_fn_block(n: I32) : *Str => {
     sb_append(sb, "}");
     sb_build(sb)
 }
-fn cc_emit_param_list(params: Vec) : *Str => {
+fn cc_emit_param_list(params: Vec<I32>) : *Str => {
     let parts = vec_new();
     let i = 0;
     let len = params.vec_length();

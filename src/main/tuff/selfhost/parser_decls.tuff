@@ -14,7 +14,7 @@ let {
     p_parse_let, p_parse_extern_decl
 }
  = selfhost::parser_decls_let_extern;
-fn p_new_stmt_list(stmts: Vec) : I32 => {
+fn p_new_stmt_list(stmts: Vec<I32>) : I32 => {
     let n = node_new(NK_STMT_LIST);
     node_set_data1(n, stmts);
     n
@@ -76,7 +76,7 @@ fn p_parse_module_wrapper() : I32 => {
     p_expect(TK_SYMBOL, "}", "Expected '}' after module body");
     p_new_stmt_list(stmts)
 }
-fn p_parse_decl_modifiers() : Vec => {
+fn p_parse_decl_modifiers() : Vec<I32> => {
     let exported = 0;
     let extern_decl = 0;
     let copy_decl = 0;

@@ -54,7 +54,7 @@ fn lint_is_extern_fn_decl(stmt: I32) : Bool => {
     let kind = node_kind(stmt);
     kind == NK_FN_DECL && node_get_data5(stmt) == 0
 }
-fn lint_mark_line(lines: *mut Set, line: I32) : I32 => {
+fn lint_mark_line(lines: *mut Set<I32>, line: I32) : I32 => {
     let key = int_to_string(line);
     if (!lines.set_has(key)) {
         lines.set_add(key);
@@ -62,7 +62,7 @@ fn lint_mark_line(lines: *mut Set, line: I32) : I32 => {
     }
     0
 }
-fn lint_collect_effective_lines_expr(expr: I32, lines: *mut Set) : I32 => {
+fn lint_collect_effective_lines_expr(expr: I32, lines: *mut Set<I32>) : I32 => {
     if (expr == 0) {
         return 0;
     }
@@ -147,7 +147,7 @@ fn lint_collect_effective_lines_expr(expr: I32, lines: *mut Set) : I32 => {
     }
     added
 }
-fn lint_collect_effective_lines_stmt(stmt: I32, lines: *mut Set) : I32 => {
+fn lint_collect_effective_lines_stmt(stmt: I32, lines: *mut Set<I32>) : I32 => {
     if (stmt == 0) {
         return 0;
     }
@@ -244,7 +244,7 @@ fn lint_check_function_length(stmt: I32, max_effective_lines: I32) : I32 => {
     }
     0
 }
-fn lint_collect_expr(expr: I32, receiver_extern_fns: *mut Set, reads: *mut Set) : I32 => {
+fn lint_collect_expr(expr: I32, receiver_extern_fns: *mut Set<I32>, reads: *mut Set<I32>) : I32 => {
     if (expr == 0) {
         return 0;
     }
@@ -344,8 +344,8 @@ fn lint_collect_expr(expr: I32, receiver_extern_fns: *mut Set, reads: *mut Set) 
     }
     0
 }
-fn lint_collect_stmt(stmt: I32, receiver_extern_fns: *mut Set, reads: *mut Set, declared_set: *mut
-Set, declared_names: Vec) : I32 => {
+fn lint_collect_stmt(stmt: I32, receiver_extern_fns: *mut Set<I32>, reads: *mut Set<I32>, declared_set: *mut
+Set<I32>, declared_names: Vec<I32>) : I32 => {
     if (stmt == 0) {
         return 0;
     }
@@ -520,7 +520,7 @@ fn lint_astdup_reportable_kind(kind: I32) : Bool => {
     kind == NK_FN_EXPR
 }
 
-fn lint_astdup_vec_fp(vec_nodes: Vec, fp_cache: Map, size_cache: Map, seen_nodes: Vec) : *Str => {
+fn lint_astdup_vec_fp(vec_nodes: Vec<I32>, fp_cache: Map<I32, I32>, size_cache: Map<I32, I32>, seen_nodes: Vec<I32>) : *Str => {
     let i = 0;
     let acc = "[";
     while (i < vec_nodes.vec_length()) {
@@ -533,7 +533,7 @@ fn lint_astdup_vec_fp(vec_nodes: Vec, fp_cache: Map, size_cache: Map, seen_nodes
     acc.str_concat("]")
 }
 
-fn lint_astdup_vec_size(vec_nodes: Vec, size_cache: Map) : I32 => {
+fn lint_astdup_vec_size(vec_nodes: Vec<I32>, size_cache: Map<I32, I32>) : I32 => {
     let i = 0;
     let total = 0;
     while (i < vec_nodes.vec_length()) {
@@ -546,7 +546,7 @@ fn lint_astdup_vec_size(vec_nodes: Vec, size_cache: Map) : I32 => {
     total
 }
 
-fn lint_astdup_params_fp(params: Vec, fp_cache: Map, size_cache: Map, seen_nodes: Vec) : *Str => {
+fn lint_astdup_params_fp(params: Vec<I32>, fp_cache: Map<I32, I32>, size_cache: Map<I32, I32>, seen_nodes: Vec<I32>) : *Str => {
     let i = 0;
     let acc = "(";
     while (i < params.vec_length()) {
@@ -564,7 +564,7 @@ fn lint_astdup_params_fp(params: Vec, fp_cache: Map, size_cache: Map, seen_nodes
     acc.str_concat(")")
 }
 
-fn lint_astdup_params_size(params: Vec, size_cache: Map) : I32 => {
+fn lint_astdup_params_size(params: Vec<I32>, size_cache: Map<I32, I32>) : I32 => {
     let i = 0;
     let total = 0;
     while (i < params.vec_length()) {
@@ -578,7 +578,7 @@ fn lint_astdup_params_size(params: Vec, size_cache: Map) : I32 => {
     total
 }
 
-fn lint_astdup_named_type_fields_fp(fields: Vec, fp_cache: Map, size_cache: Map, seen_nodes: Vec)
+fn lint_astdup_named_type_fields_fp(fields: Vec<I32>, fp_cache: Map<I32, I32>, size_cache: Map<I32, I32>, seen_nodes: Vec<I32>)
 : *Str => {
     let i = 0;
     let acc = "{";
@@ -596,7 +596,7 @@ fn lint_astdup_named_type_fields_fp(fields: Vec, fp_cache: Map, size_cache: Map,
     acc.str_concat("}")
 }
 
-fn lint_astdup_named_type_fields_size(fields: Vec, size_cache: Map) : I32 => {
+fn lint_astdup_named_type_fields_size(fields: Vec<I32>, size_cache: Map<I32, I32>) : I32 => {
     let i = 0;
     let total = 0;
     while (i < fields.vec_length()) {
@@ -610,7 +610,7 @@ fn lint_astdup_named_type_fields_size(fields: Vec, size_cache: Map) : I32 => {
     total
 }
 
-fn lint_astdup_struct_init_fields_fp(fields: Vec, fp_cache: Map, size_cache: Map, seen_nodes: Vec)
+fn lint_astdup_struct_init_fields_fp(fields: Vec<I32>, fp_cache: Map<I32, I32>, size_cache: Map<I32, I32>, seen_nodes: Vec<I32>)
 : *Str => {
     let i = 0;
     let acc = "{";
@@ -628,7 +628,7 @@ fn lint_astdup_struct_init_fields_fp(fields: Vec, fp_cache: Map, size_cache: Map
     acc.str_concat("}")
 }
 
-fn lint_astdup_struct_init_fields_size(fields: Vec, size_cache: Map) : I32 => {
+fn lint_astdup_struct_init_fields_size(fields: Vec<I32>, size_cache: Map<I32, I32>) : I32 => {
     let i = 0;
     let total = 0;
     while (i < fields.vec_length()) {
@@ -642,7 +642,7 @@ fn lint_astdup_struct_init_fields_size(fields: Vec, size_cache: Map) : I32 => {
     total
 }
 
-fn lint_astdup_cases_fp(cases: Vec, fp_cache: Map, size_cache: Map, seen_nodes: Vec) : *Str => {
+fn lint_astdup_cases_fp(cases: Vec<I32>, fp_cache: Map<I32, I32>, size_cache: Map<I32, I32>, seen_nodes: Vec<I32>) : *Str => {
     let i = 0;
     let acc = "[";
     while (i < cases.vec_length()) {
@@ -661,7 +661,7 @@ fn lint_astdup_cases_fp(cases: Vec, fp_cache: Map, size_cache: Map, seen_nodes: 
     acc.str_concat("]")
 }
 
-fn lint_astdup_cases_size(cases: Vec, size_cache: Map) : I32 => {
+fn lint_astdup_cases_size(cases: Vec<I32>, size_cache: Map<I32, I32>) : I32 => {
     let i = 0;
     let total = 0;
     while (i < cases.vec_length()) {
@@ -679,7 +679,7 @@ fn lint_astdup_cases_size(cases: Vec, size_cache: Map) : I32 => {
     total
 }
 
-fn lint_astdup_contract_methods_fp(methods: Vec, fp_cache: Map, size_cache: Map, seen_nodes: Vec)
+fn lint_astdup_contract_methods_fp(methods: Vec<I32>, fp_cache: Map<I32, I32>, size_cache: Map<I32, I32>, seen_nodes: Vec<I32>)
 : *Str => {
     let i = 0;
     let acc = "[";
@@ -701,7 +701,7 @@ fn lint_astdup_contract_methods_fp(methods: Vec, fp_cache: Map, size_cache: Map,
     acc.str_concat("]")
 }
 
-fn lint_astdup_contract_methods_size(methods: Vec, size_cache: Map) : I32 => {
+fn lint_astdup_contract_methods_size(methods: Vec<I32>, size_cache: Map<I32, I32>) : I32 => {
     let i = 0;
     let total = 0;
     while (i < methods.vec_length()) {
@@ -716,7 +716,7 @@ fn lint_astdup_contract_methods_size(methods: Vec, size_cache: Map) : I32 => {
     total
 }
 
-fn lint_astdup_fp(n: I32, fp_cache: Map, size_cache: Map, seen_nodes: Vec) : *Str => {
+fn lint_astdup_fp(n: I32, fp_cache: Map<I32, I32>, size_cache: Map<I32, I32>, seen_nodes: Vec<I32>) : *Str => {
     if (n == 0) {
         return "0";
     }

@@ -203,7 +203,7 @@ out module Vec {
             index_of(this, value).flat_map(index => this.removeByIndex(index))
         }
         out fn contains(this : *Vec<T>, element : *T) : Bool => index_of(element) is Some;
-        out fn index_of(this : *Vec<T>, element : *T) : Option<Vec::Index> => {
+        out fn index_of(this : *Vec<T>, element : *T) : Option<Vec<I32>::Index> => {
             this.iterIndices()
             .filter(index => this.get(index).equalsTo(element))
             .first()
