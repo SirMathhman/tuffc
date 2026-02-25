@@ -13,6 +13,7 @@ let bc_global_value_types : Map = map_new();
 let bc_copy_types : *mut Set = set_new();
 let bc_copy_alias_types : Map = map_new();
 let bc_copy_alias_names : Vec = vec_new();
+
 let bc_destructor_aliases : Map = map_new();
 let bc_destructor_alias_names : Vec = vec_new();
 fn bc_str_ends_with_local(s: *Str, suffix: *Str) : Bool => {
