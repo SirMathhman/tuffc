@@ -30,46 +30,46 @@ fn p_parse_unary() : I32 => {
 fn p_get_precedence(op: I32) : I32 => {
      // Map operator to precedence
      // We use intern indices, so we need to check against known values
-    if (intern_map.map_has("||") && op = = intern_map.map_get("||")) {
+    if (intern_map.map_has("||") && op == intern_map.map_get("||")) {
         return 1;
     }
-    if (intern_map.map_has("&&") && op = = intern_map.map_get("&&")) {
+    if (intern_map.map_has("&&") && op == intern_map.map_get("&&")) {
         return 2;
     }
-    if (intern_map.map_has("==") && op = = intern_map.map_get("==")) {
+    if (intern_map.map_has("==") && op == intern_map.map_get("==")) {
         return 3;
     }
-    if (intern_map.map_has("!=") && op = = intern_map.map_get("!=")) {
+    if (intern_map.map_has("!=") && op == intern_map.map_get("!=")) {
         return 3;
     }
-    if (intern_map.map_has("<") && op = = intern_map.map_get("<")) {
+    if (intern_map.map_has("<") && op == intern_map.map_get("<")) {
         return 4;
     }
-    if (intern_map.map_has("<=") && op = = intern_map.map_get("<=")) {
+    if (intern_map.map_has("<=") && op == intern_map.map_get("<=")) {
         return 4;
     }
-    if (intern_map.map_has(">") && op = = intern_map.map_get(">")) {
+    if (intern_map.map_has(">") && op == intern_map.map_get(">")) {
         return 4;
     }
-    if (intern_map.map_has(">=") && op = = intern_map.map_get(">=")) {
+    if (intern_map.map_has(">=") && op == intern_map.map_get(">=")) {
         return 4;
     }
-    if (intern_map.map_has("..") && op = = intern_map.map_get("..")) {
+    if (intern_map.map_has("..") && op == intern_map.map_get("..")) {
         return 4;
     }
-    if (intern_map.map_has("+") && op = = intern_map.map_get("+")) {
+    if (intern_map.map_has("+") && op == intern_map.map_get("+")) {
         return 5;
     }
-    if (intern_map.map_has("-") && op = = intern_map.map_get("-")) {
+    if (intern_map.map_has("-") && op == intern_map.map_get("-")) {
         return 5;
     }
-    if (intern_map.map_has("*") && op = = intern_map.map_get("*")) {
+    if (intern_map.map_has("*") && op == intern_map.map_get("*")) {
         return 6;
     }
-    if (intern_map.map_has("/") && op = = intern_map.map_get("/")) {
+    if (intern_map.map_has("/") && op == intern_map.map_get("/")) {
         return 6;
     }
-    if (intern_map.map_has("%") && op = = intern_map.map_get("%")) {
+    if (intern_map.map_has("%") && op == intern_map.map_get("%")) {
         return 6;
     }
     0
@@ -182,17 +182,17 @@ fn p_parse_expression(minPrec: I32) : I32 => {
          // Don't consume op= sequences (+=, -=, etc.) as binary operators;
          // statement parser handles them as compound assignments.
         if (
-        (intern_map.map_has("+") && op = = intern_map.map_get("+")) ||
-        (intern_map.map_has("-") && op = = intern_map.map_get("-")) ||
-        (intern_map.map_has("*") && op = = intern_map.map_get("*")) ||
-        (intern_map.map_has("/") && op = = intern_map.map_get("/")) ||
-        (intern_map.map_has("%") && op = = intern_map.map_get("%")) ||
-        (intern_map.map_has("&") && op = = intern_map.map_get("&")) ||
-        (intern_map.map_has("|") && op = = intern_map.map_get("|")) ||
-        (intern_map.map_has("^") && op = = intern_map.map_get("^"))
+        (intern_map.map_has("+") && op == intern_map.map_get("+")) ||
+        (intern_map.map_has("-") && op == intern_map.map_get("-")) ||
+        (intern_map.map_has("*") && op == intern_map.map_get("*")) ||
+        (intern_map.map_has("/") && op == intern_map.map_get("/")) ||
+        (intern_map.map_has("%") && op == intern_map.map_get("%")) ||
+        (intern_map.map_has("&") && op == intern_map.map_get("&")) ||
+        (intern_map.map_has("|") && op == intern_map.map_get("|")) ||
+        (intern_map.map_has("^") && op == intern_map.map_get("^"))
         ) {
             let next = p_peek(1);
-            if (tok_kind(next) = = TK_SYMBOL && get_interned_str(tok_value(next)).str_eq("=")) {
+            if (tok_kind(next) == TK_SYMBOL && get_interned_str(tok_value(next)).str_eq("=")) {
                 break;
             }
         }
@@ -213,10 +213,10 @@ fn p_parse_block() : I32 => {
         let before = p_mark();
         let stmt = p_parse_statement();
         let after = p_mark();
-        if (after = = before) {
+        if (after == before) {
             p_error_with_token_context("Parser made no progress while parsing block statement");
         }
-        if (node_kind(stmt) = = NK_STMT_LIST) {
+        if (node_kind(stmt) == NK_STMT_LIST) {
             let inner = node_get_data1(stmt);
             let i = 0;
             while (i < inner.vec_length()) {

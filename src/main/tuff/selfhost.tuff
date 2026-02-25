@@ -118,7 +118,7 @@ fn sanitize_max_effective_lines(max_effective_lines: I32) : I32 => {
     }
 }
 fn normalize_flag(value: I32) : I32 => {
-    if (value = = 0) {
+    if (value == 0) {
         0
     }
     else {
@@ -184,12 +184,12 @@ borrow_enabled: I32, target: *Str) : *Str => {
     let t5_typecheck = perf_now();
     profile_mark("typecheck", t5_typecheck - t4_typecheck);
     let t5_borrow = perf_now();
-    if (borrow = = 1) {
+    if (borrow == 1) {
         borrowcheck_program(typed);
     }
     let t6_borrow = perf_now();
     profile_mark("borrowcheck", t6_borrow - t5_borrow);
-    if (lint = = 1) {
+    if (lint == 1) {
         lint_program(typed, "<memory>", max_lines, 1);
     }
     let t6_emit = perf_now();
@@ -284,7 +284,7 @@ fn main() : I32 => {
         }
         i = i + 1;
     }
-    if (had_error = = 1) {
+    if (had_error == 1) {
         return 1;
     }
     if (output_file.str_eq("")) {
@@ -293,10 +293,10 @@ fn main() : I32 => {
     }
     let result_code = compile_file_with_options(input_file, output_file, lint_enabled, 500,
     borrow_enabled, target);
-    if (result_code = = 0) {
+    if (result_code == 0) {
         print("Compiled ".str_concat(input_file).str_concat(" -> ").str_concat(output_file));
     }
-    if (profile_enabled = = 1) {
+    if (profile_enabled == 1) {
         print_error("[profile] ".str_concat(profile_take_json()));
     }
     result_code

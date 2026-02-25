@@ -153,7 +153,7 @@ fn p_parse_primary_fn_expr() : I32 => {
     p_parse_postfix(fnexpr)
 }
 fn p_try_parse_identifier_lambda() : I32 => {
-    if (!(p_at_kind(TK_IDENTIFIER) && tok_kind(p_peek(1)) = = TK_SYMBOL && get_interned_str(tok_value(p_peek(1))).str_eq("=>"))) {
+    if (!(p_at_kind(TK_IDENTIFIER) && tok_kind(p_peek(1)) == TK_SYMBOL && get_interned_str(tok_value(p_peek(1))).str_eq("=>"))) {
         return 0;
     }
     let pname = p_parse_identifier();

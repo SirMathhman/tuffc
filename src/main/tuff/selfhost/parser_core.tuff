@@ -107,10 +107,10 @@ out fn p_restore(mark: I32) : I32 => {
     parse_pos = mark;
     0
 }
-out fn p_at_kind(kind: I32) : Bool => tok_kind(p_peek(0)) = = kind;
+out fn p_at_kind(kind: I32) : Bool => tok_kind(p_peek(0)) == kind;
 out fn p_at_value(val: *Str) : Bool => {
     let v = tok_value(p_peek(0));
-    intern_map.map_has(val) && intern_map.map_get(val) = = v
+    intern_map.map_has(val) && intern_map.map_get(val) == v
 }
 out fn p_at(kind: I32, val: *Str) : Bool => p_at_kind(kind) && p_at_value(val);
 out fn p_eat() : I32 => {
@@ -119,51 +119,51 @@ out fn p_eat() : I32 => {
     t
 }
 fn p_token_kind_name(knd: I32) : *Str => {
-    if (knd = = TK_EOF) {
+    if (knd == TK_EOF) {
         return "eof";
     }
-    if (knd = = TK_KEYWORD) {
+    if (knd == TK_KEYWORD) {
         return "keyword";
     }
-    if (knd = = TK_IDENTIFIER) {
+    if (knd == TK_IDENTIFIER) {
         return "identifier";
     }
-    if (knd = = TK_NUMBER) {
+    if (knd == TK_NUMBER) {
         return "number";
     }
-    if (knd = = TK_STRING) {
+    if (knd == TK_STRING) {
         return "string";
     }
-    if (knd = = TK_BOOL) {
+    if (knd == TK_BOOL) {
         return "bool";
     }
-    if (knd = = TK_SYMBOL) {
+    if (knd == TK_SYMBOL) {
         return "symbol";
     }
-    if (knd = = TK_CHAR) {
+    if (knd == TK_CHAR) {
         return "char";
     }
     "token"
 }
 fn p_token_value_for_error(t: I32) : *Str => {
     let knd = tok_kind(t);
-    if (knd = = TK_BOOL) {
-        if (tok_value(t) = = 0) {
+    if (knd == TK_BOOL) {
+        if (tok_value(t) == 0) {
             return "false";
         }
         return "true";
     }
     if (
-    knd = = TK_KEYWORD ||
-    knd = = TK_IDENTIFIER ||
-    knd = = TK_NUMBER ||
-    knd = = TK_STRING ||
-    knd = = TK_SYMBOL ||
-    knd = = TK_CHAR ||
-    knd = = TK_EOF
+    knd == TK_KEYWORD ||
+    knd == TK_IDENTIFIER ||
+    knd == TK_NUMBER ||
+    knd == TK_STRING ||
+    knd == TK_SYMBOL ||
+    knd == TK_CHAR ||
+    knd == TK_EOF
     ) {
         let raw = get_intern(tok_value(t));
-        if (knd = = TK_SYMBOL && raw.str_length() = = 0) {
+        if (knd == TK_SYMBOL && raw.str_length() == 0) {
             return "<empty-symbol>";
         }
         return raw;
@@ -252,10 +252,10 @@ out fn p_can_start_type_tok() : Bool => {
 out fn p_can_start_type_tok_at(offset: I32) : Bool => {
     let idx = p_peek(offset);
     let k = tok_kind(idx);
-    if (k = = TK_IDENTIFIER) {
+    if (k == TK_IDENTIFIER) {
         return true;
     }
-    if (k = = TK_SYMBOL) {
+    if (k == TK_SYMBOL) {
         let s = get_intern(tok_value(idx));
         if (s.str_eq("*") || s.str_eq("[") || s.str_eq("(")) {
             return true;
@@ -266,16 +266,16 @@ out fn p_can_start_type_tok_at(offset: I32) : Bool => {
 out fn p_can_start_type_after_lifetime_tok_at(offset: I32) : Bool => {
     let idx = p_peek(offset);
     let k = tok_kind(idx);
-    if (k = = TK_IDENTIFIER) {
+    if (k == TK_IDENTIFIER) {
         return true;
     }
-    if (k = = TK_SYMBOL) {
+    if (k == TK_SYMBOL) {
         let s = get_intern(tok_value(idx));
         if (s.str_eq("*") || s.str_eq("[") || s.str_eq("(")) {
             return true;
         }
     }
-    if (k = = TK_KEYWORD) {
+    if (k == TK_KEYWORD) {
         let kw = get_intern(tok_value(idx));
         if (kw.str_eq("mut") || kw.str_eq("move") || kw.str_eq("out") || kw.str_eq("uninit")) {
             return true;
@@ -310,10 +310,10 @@ out fn p_can_start_refinement_expr() : Bool => {
 out fn p_can_start_refinement_expr_at(offset: I32) : Bool => {
     let idx = p_peek(offset);
     let k = tok_kind(idx);
-    if (k = = TK_NUMBER || k = = TK_IDENTIFIER || k = = TK_BOOL || k = = TK_STRING || k = = TK_CHAR) {
+    if (k == TK_NUMBER || k == TK_IDENTIFIER || k == TK_BOOL || k == TK_STRING || k == TK_CHAR) {
         return true;
     }
-    if (k = = TK_SYMBOL) {
+    if (k == TK_SYMBOL) {
         let s = get_intern(tok_value(idx));
         if (s.str_eq("(") || s.str_eq("-") || s.str_eq("!")) {
             return true;
@@ -329,17 +329,17 @@ fn p_parse_type_primary_pointer() : I32 => {
     let progressed = true;
     while (progressed) {
         progressed = false;
-        if (mutable = = 0 && p_at(TK_KEYWORD, "mut")) {
+        if (mutable == 0 && p_at(TK_KEYWORD, "mut")) {
             p_eat();
             mutable = 1;
             progressed = true;
         }
-        else if (move_ptr = = 0 && p_at(TK_KEYWORD, "move")) {
+        else if (move_ptr == 0 && p_at(TK_KEYWORD, "move")) {
             p_eat();
             move_ptr = 1;
             progressed = true;
         }
-        else if (life_name = = 0 && p_at_kind(TK_IDENTIFIER) &&
+        else if (life_name == 0 && p_at_kind(TK_IDENTIFIER) &&
         p_can_start_type_after_lifetime_tok_at(1)) {
             life_name = tok_value(p_eat());
             progressed = true;
@@ -372,7 +372,7 @@ fn p_parse_type_primary_array() : I32 => {
     node
 }
 fn p_try_skip_named_tuple_member_label() : I32 => {
-    if (tok_kind(p_peek(0)) = = TK_IDENTIFIER && tok_kind(p_peek(1)) = = TK_SYMBOL) {
+    if (tok_kind(p_peek(0)) == TK_IDENTIFIER && tok_kind(p_peek(1)) == TK_SYMBOL) {
         let sym = get_intern(tok_value(p_peek(1)));
         if (sym.str_eq(":")) {
             p_eat();
@@ -434,7 +434,7 @@ fn p_parse_type_primary_named_or_applied() : I32 => {
     if (p_at(TK_SYMBOL, "<")) {
         let k1 = tok_kind(p_peek(1));
         let k2 = tok_kind(p_peek(2));
-        if (k1 = = TK_IDENTIFIER && k2 = = TK_SYMBOL) {
+        if (k1 == TK_IDENTIFIER && k2 == TK_SYMBOL) {
             let s2 = get_intern(tok_value(p_peek(2)));
             if (s2.str_eq(".") || s2.str_eq("(")) {
                 would_be_member_refine = true;
@@ -455,7 +455,7 @@ fn p_parse_type_primary_named_or_applied() : I32 => {
     let type_node = node_new(NK_NAMED_TYPE);
     node_set_data1(type_node, name);
     node_set_data2(type_node, generics);
-    if (p_at(TK_SYMBOL, "(") && generics.vec_length() = = 0) {
+    if (p_at(TK_SYMBOL, "(") && generics.vec_length() == 0) {
         p_eat();
         let args = vec_new();
         if (!p_at(TK_SYMBOL, ")")) {
@@ -493,7 +493,7 @@ out fn p_parse_type() : I32 => {
      // Refinement predicate
     let has_refine = p_at(TK_SYMBOL, "!=") || p_at(TK_SYMBOL, "<") || p_at(TK_SYMBOL, ">") || p_at(TK_SYMBOL, "<=") || p_at(TK_SYMBOL, ">=");
     let starts_generic_call_suffix = false;
-    if (p_at(TK_SYMBOL, ">") && tok_kind(p_peek(1)) = = TK_SYMBOL) {
+    if (p_at(TK_SYMBOL, ">") && tok_kind(p_peek(1)) == TK_SYMBOL) {
         let next_sym = get_intern(tok_value(p_peek(1)));
         if (next_sym.str_eq("(")) {
             starts_generic_call_suffix = true;

@@ -11,7 +11,7 @@ out fn module_loader_sanitize_max_effective_lines(max_effective_lines: I32) : I3
     }
 }
 out fn module_loader_normalize_flag(value: I32) : I32 => {
-    if (value = = 0) {
+    if (value == 0) {
         0
     }
     else {

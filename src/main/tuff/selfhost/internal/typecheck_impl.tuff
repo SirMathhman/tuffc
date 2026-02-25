@@ -20,7 +20,7 @@ fn union_type_contains(union_name: *Str, candidate: *Str) : Bool => {
     let start = 0;
     let i = 0;
     while (i < union_name.str_length()) {
-        if (union_name.str_char_at(i) = = 124) {
+        if (union_name.str_char_at(i) == 124) {
             if (union_name.str_slice(start, i).str_eq(candidate)) {
                 return true;
             }
@@ -42,18 +42,18 @@ fn type_name_from_type_node(t: I32) : *Str => {
     if (tc_type_name_cache.map_has(t)) {
         return tc_type_name_cache.map_get(t);
     }
-    if (t = = 0) {
+    if (t == 0) {
         tc_type_name_cache.map_set(t, "Unknown");
         return "Unknown";
     }
     let result = "Unknown";
     let k = node_kind(t);
-    if (k = = 40) {
+    if (k == 40) {
         result = get_interned_str(node_get_data1(t));
         tc_type_name_cache.map_set(t, result);
         return result;
     }
-    if (k = = 41) {
+    if (k == 41) {
         let mutable = node_get_data1(t);
         let inner = type_name_from_type_node(node_get_data2(t));
         let move_ptr = node_get_data3(t);
@@ -62,12 +62,12 @@ fn type_name_from_type_node(t: I32) : *Str => {
         if (life_idx != 0) {
             life_prefix = get_interned_str(life_idx).str_concat(" ");
         }
-        if (move_ptr = = 1) {
+        if (move_ptr == 1) {
             result = "*".str_concat(life_prefix).str_concat("move ").str_concat(inner);
             tc_type_name_cache.map_set(t, result);
             return result;
         }
-        if (mutable = = 1) {
+        if (mutable == 1) {
             result = "*".str_concat(life_prefix).str_concat("mut ").str_concat(inner);
             tc_type_name_cache.map_set(t, result);
             return result;
@@ -76,13 +76,13 @@ fn type_name_from_type_node(t: I32) : *Str => {
         tc_type_name_cache.map_set(t, result);
         return result;
     }
-    if (k = = 44) {
+    if (k == 44) {
         result = type_name_from_type_node(node_get_data1(t));
         tc_type_name_cache.map_set(t, result);
         return result;
     }
      // NK_APPLIED_TYPE (71) — erase to alias name; also check arity if alias is registered.
-    if (k = = 71) {
+    if (k == 71) {
         let alias_name = get_interned_str(node_get_data1(t));
         let args = node_get_data2(t);
         let actual_arity = args.vec_length();
@@ -98,7 +98,7 @@ fn type_name_from_type_node(t: I32) : *Str => {
         tc_type_name_cache.map_set(t, result);
         return result;
     }
-    if (k = = 45) {
+    if (k == 45) {
         let left = type_name_from_type_node(node_get_data1(t));
         let right = type_name_from_type_node(node_get_data2(t));
         result = left.str_concat("|").str_concat(right);
@@ -126,7 +126,7 @@ fn pointer_types_compatible(expected: *Str, actual: *Str) : Bool => {
         if (expected_has_life) {
             let i = 0;
             while (i < expected_body.str_length()) {
-                if (expected_body.str_char_at(i) = = 32) {
+                if (expected_body.str_char_at(i) == 32) {
                     break;
                 }
                 i = i + 1;
@@ -138,7 +138,7 @@ fn pointer_types_compatible(expected: *Str, actual: *Str) : Bool => {
         if (actual_has_life) {
             let j = 0;
             while (j < actual_body.str_length()) {
-                if (actual_body.str_char_at(j) = = 32) {
+                if (actual_body.str_char_at(j) == 32) {
                     break;
                 }
                 j = j + 1;
@@ -168,7 +168,7 @@ fn str_ends_with_local(s: *Str, suffix: *Str) : Bool => {
     s.str_slice(ns - nf, ns).str_eq(suffix)
 }
 fn is_number_literal_with_suffix(n: I32, suffix: *Str) : Bool => {
-    if (n = = 0 || node_kind(n) != NK_NUMBER_LIT) {
+    if (n == 0 || node_kind(n) != NK_NUMBER_LIT) {
         return false;
     }
     let text = get_interned_str(node_get_data1(n));
@@ -197,7 +197,7 @@ fn numeric_types_compatible(expected: *Str, actual: *Str, rhs: I32) : Bool => {
         return true;
     }
      // Allow unsigned targets from non-negative numeric literals.
-    if (expected.str_eq("USize") && actual.str_eq("I32") && rhs != 0 && node_kind(rhs) = = NK_NUMBER_LIT) {
+    if (expected.str_eq("USize") && actual.str_eq("I32") && rhs != 0 && node_kind(rhs) == NK_NUMBER_LIT) {
         let lit = get_interned_str(node_get_data1(rhs));
         return !lit.str_starts_with("-");
     }
@@ -262,11 +262,11 @@ fn type_names_compatible(expected: *Str, actual: *Str, rhs: I32) : Bool => {
     false
 }
 fn infer_expr_type_name(n: I32, fn_return_types: Map, local_types: Map) : *Str => {
-    if (n = = 0) {
+    if (n == 0) {
         return "Unknown";
     }
     let kind = node_kind(n);
-    if (kind = = 20) {
+    if (kind == 20) {
         let text = get_interned_str(node_get_data1(n));
         if (str_ends_with_local(text, "USize")) {
             return "USize";
@@ -306,16 +306,16 @@ fn infer_expr_type_name(n: I32, fn_return_types: Map, local_types: Map) : *Str =
         }
         return "I32";
     }
-    if (kind = = 21) {
+    if (kind == 21) {
         return "Bool";
     }
-    if (kind = = 22) {
+    if (kind == 22) {
         return "*Str";
     }
-    if (kind = = 23) {
+    if (kind == 23) {
         return "Char";
     }
-    if (kind = = 24) {
+    if (kind == 24) {
         let name = get_interned_str(node_get_data1(n));
         if (local_types.map_has(name)) {
             return local_types.map_get(name);
@@ -325,7 +325,7 @@ fn infer_expr_type_name(n: I32, fn_return_types: Map, local_types: Map) : *Str =
         }
         return "Unknown";
     }
-    if (kind = = 26) {
+    if (kind == 26) {
         let op = get_interned_str(node_get_data1(n));
         let inner = infer_expr_type_name(node_get_data2(n), fn_return_types, local_types);
         if (op.str_eq("&")) {
@@ -339,7 +339,7 @@ fn infer_expr_type_name(n: I32, fn_return_types: Map, local_types: Map) : *Str =
         }
         return inner;
     }
-    if (kind = = 25) {
+    if (kind == 25) {
         let op = get_interned_str(node_get_data1(n));
         if (op.str_eq("==") || op.str_eq("!=") || op.str_eq("<") || op.str_eq("<=") || op.str_eq(">") || op.str_eq(">=") || op.str_eq("&&") || op.str_eq("||")) {
             return "Bool";
@@ -349,13 +349,13 @@ fn infer_expr_type_name(n: I32, fn_return_types: Map, local_types: Map) : *Str =
         }
         return infer_expr_type_name(node_get_data2(n), fn_return_types, local_types);
     }
-    if (kind = = 27) {
+    if (kind == 27) {
         let callee = node_get_data1(n);
-        if (node_kind(callee) = = 24) {
+        if (node_kind(callee) == 24) {
             let fname = get_interned_str(node_get_data1(callee));
-            if (fname.str_eq("into") && node_get_data3(n) = = 1) {
+            if (fname.str_eq("into") && node_get_data3(n) == 1) {
                 let type_args = node_get_data4(n);
-                if (type_args.vec_length() = = 1 && node_kind(type_args.vec_get(0)) = = NK_NAMED_TYPE)
+                if (type_args.vec_length() == 1 && node_kind(type_args.vec_get(0)) == NK_NAMED_TYPE)
                 {
                     let cname = get_interned_str(node_get_data1(type_args.vec_get(0)));
                     return "__dyn_".str_concat(cname);
@@ -367,27 +367,27 @@ fn infer_expr_type_name(n: I32, fn_return_types: Map, local_types: Map) : *Str =
             }
         }
          // Handle method calls: obj.method() → look up method's return type
-        if (node_kind(callee) = = NK_MEMBER_EXPR) {
+        if (node_kind(callee) == NK_MEMBER_EXPR) {
             let method_name = get_interned_str(node_get_data2(callee));
             if (fn_return_types.map_has(method_name)) {
                 return fn_return_types.map_get(method_name);
             }
         }
     }
-    if (kind = = NK_TUPLE_EXPR) {
+    if (kind == NK_TUPLE_EXPR) {
         return "Unknown";
     }
     "Unknown"
 }
 fn expr_is_number_literal_nonzero(n: I32) : Bool => {
-    if (n = = 0 || node_kind(n) != NK_NUMBER_LIT) {
+    if (n == 0 || node_kind(n) != NK_NUMBER_LIT) {
         return false;
     }
     !get_interned_str(node_get_data1(n)).str_eq("0")
 }
 fn is_decimal_digits(s: *Str) : Bool => {
     let i = 0;
-    if (s.str_length() = = 0) {
+    if (s.str_length() == 0) {
         return false;
     }
     while (i < s.str_length()) {
@@ -400,7 +400,7 @@ fn is_decimal_digits(s: *Str) : Bool => {
     true
 }
 fn try_get_decimal_literal_value(n: I32) : I32 => {
-    if (n = = 0 || node_kind(n) != NK_NUMBER_LIT) {
+    if (n == 0 || node_kind(n) != NK_NUMBER_LIT) {
         return 0;
     }
     let text = get_interned_str(node_get_data1(n));
@@ -412,18 +412,18 @@ fn try_get_decimal_literal_value(n: I32) : I32 => {
  // Returns the known I32 value for a node: either a decimal literal or a variable with a tracked
  // literal assignment. Returns a sentinel value of -2147483649 (impossible I32) when unknown.
 fn try_get_known_int_value(n: I32) : I32 => {
-    if (n = = 0) {
+    if (n == 0) {
         return - 2147483649;
     }
     let k = node_kind(n);
-    if (k = = NK_NUMBER_LIT) {
+    if (k == NK_NUMBER_LIT) {
         let text = get_interned_str(node_get_data1(n));
         if (is_decimal_digits(text)) {
             return parse_int(text);
         }
         return - 2147483649;
     }
-    if (k = = NK_IDENTIFIER) {
+    if (k == NK_IDENTIFIER) {
         let vname = get_interned_str(node_get_data1(n));
         if (tc_var_literal_values.map_has(vname)) {
             return tc_var_literal_values.map_get(vname);
@@ -438,7 +438,7 @@ fn known_int_value_is_valid(v: I32) : Bool => {
     v >= -2147483648 && v <= 2147483647
 }
 fn is_decimal_zero_literal(n: I32) : Bool => {
-    if (n = = 0 || node_kind(n) != NK_NUMBER_LIT) {
+    if (n == 0 || node_kind(n) != NK_NUMBER_LIT) {
         return false;
     }
     get_interned_str(node_get_data1(n)).str_eq("0")
@@ -466,40 +466,40 @@ let tc_alias_base_type : Map = map_new();
  // Only populated for functions that implicitly return `this` (no explicit return type).
 let tc_fn_this_fields : Map = map_new();
 fn type_node_is_destructor_receiver(t: I32, alias_name: *Str) : Bool => {
-    if (t = = 0) {
+    if (t == 0) {
         return false;
     }
      // Preferred form: alias receiver value (e.g. Alloc<...>)
-    if (node_kind(t) = = NK_NAMED_TYPE && get_interned_str(node_get_data1(t)).str_eq(alias_name)) {
+    if (node_kind(t) == NK_NAMED_TYPE && get_interned_str(node_get_data1(t)).str_eq(alias_name)) {
         return true;
     }
      // Back-compat: *move Alias
-    if (node_kind(t) = = NK_POINTER_TYPE && node_get_data3(t) = = 1) {
+    if (node_kind(t) == NK_POINTER_TYPE && node_get_data3(t) == 1) {
         return type_name_from_type_node(node_get_data2(t)).str_eq(alias_name);
     }
     false
 }
 fn collect_union_named_tags(type_node: I32, tags: Vec) : I32 => {
-    if (type_node = = 0) {
+    if (type_node == 0) {
         return 0;
     }
     let kind = node_kind(type_node);
-    if (kind = = NK_UNION_TYPE) {
+    if (kind == NK_UNION_TYPE) {
         collect_union_named_tags(node_get_data1(type_node), tags);
         collect_union_named_tags(node_get_data2(type_node), tags);
         return 0;
     }
-    if (kind = = NK_NAMED_TYPE) {
+    if (kind == NK_NAMED_TYPE) {
         tags.vec_push(get_interned_str(node_get_data1(type_node)));
         return 0;
     }
-    if (kind = = NK_REFINEMENT_TYPE) {
+    if (kind == NK_REFINEMENT_TYPE) {
         collect_union_named_tags(node_get_data1(type_node), tags);
     }
     0
 }
 fn try_get_nonnegative_integer_literal(n: I32) : I32 => {
-    if (n = = 0 || node_kind(n) != NK_NUMBER_LIT) {
+    if (n == 0 || node_kind(n) != NK_NUMBER_LIT) {
         return - 1;
     }
     let text = get_interned_str(node_get_data1(n));
@@ -517,27 +517,27 @@ fn try_get_nonnegative_integer_literal(n: I32) : I32 => {
     parse_int(text)
 }
 fn try_get_array_init_bound_from_type_node(t: I32) : I32 => {
-    if (t = = 0) {
+    if (t == 0) {
         return - 1;
     }
     let k = node_kind(t);
-    if (k = = NK_REFINEMENT_TYPE) {
+    if (k == NK_REFINEMENT_TYPE) {
         return try_get_array_init_bound_from_type_node(node_get_data1(t));
     }
-    if (k = = NK_POINTER_TYPE) {
+    if (k == NK_POINTER_TYPE) {
         return try_get_array_init_bound_from_type_node(node_get_data2(t));
     }
-    if (k = = NK_ARRAY_TYPE) {
+    if (k == NK_ARRAY_TYPE) {
         return try_get_nonnegative_integer_literal(node_get_data2(t));
     }
     -1
 }
 fn try_get_index_upper_bound_from_type_node(t: I32) : I32 => {
-    if (t = = 0 || node_kind(t) != NK_REFINEMENT_TYPE) {
+    if (t == 0 || node_kind(t) != NK_REFINEMENT_TYPE) {
         return - 1;
     }
     let base = node_get_data1(t);
-    if (base = = 0 || node_kind(base) != NK_NAMED_TYPE) {
+    if (base == 0 || node_kind(base) != NK_NAMED_TYPE) {
         return - 1;
     }
     let base_name = get_interned_str(node_get_data1(base));
@@ -558,7 +558,7 @@ fn try_get_index_upper_bound_from_type_node(t: I32) : I32 => {
     -1
 }
 fn is_zero_numeric_literal_node(n: I32) : Bool => {
-    if (n = = 0 || node_kind(n) != NK_NUMBER_LIT) {
+    if (n == 0 || node_kind(n) != NK_NUMBER_LIT) {
         return false;
     }
     let text = get_interned_str(node_get_data1(n));
@@ -567,11 +567,11 @@ fn is_zero_numeric_literal_node(n: I32) : Bool => {
  // If `t` is a refinement type of the form `USize < fnName(paramName)`,
  // returns "fnName:paramName"; otherwise returns "".
 fn try_extract_fn_call_constraint(t: I32) : *Str => {
-    if (t = = 0 || node_kind(t) != NK_REFINEMENT_TYPE) {
+    if (t == 0 || node_kind(t) != NK_REFINEMENT_TYPE) {
         return "";
     }
     let base = node_get_data1(t);
-    if (base = = 0 || node_kind(base) != NK_NAMED_TYPE) {
+    if (base == 0 || node_kind(base) != NK_NAMED_TYPE) {
         return "";
     }
     let base_name = get_interned_str(node_get_data1(base));
@@ -583,19 +583,19 @@ fn try_extract_fn_call_constraint(t: I32) : *Str => {
         return "";
     }
     let constraint_expr = node_get_data3(t);
-    if (constraint_expr = = 0 || node_kind(constraint_expr) != NK_CALL_EXPR) {
+    if (constraint_expr == 0 || node_kind(constraint_expr) != NK_CALL_EXPR) {
         return "";
     }
     let callee = node_get_data1(constraint_expr);
     let args = node_get_data2(constraint_expr);
-    if (callee = = 0 || node_kind(callee) != NK_IDENTIFIER) {
+    if (callee == 0 || node_kind(callee) != NK_IDENTIFIER) {
         return "";
     }
     if (args.vec_length() != 1) {
         return "";
     }
     let arg0 = args.vec_get(0);
-    if (arg0 = = 0 || node_kind(arg0) != NK_IDENTIFIER) {
+    if (arg0 == 0 || node_kind(arg0) != NK_IDENTIFIER) {
         return "";
     }
     let fn_name = get_interned_str(node_get_data1(callee));
@@ -606,14 +606,14 @@ fn expr_is_proven_nonzero(n: I32, nonnull_ptrs: Map) : Bool => {
     if (expr_is_number_literal_nonzero(n)) {
         return true;
     }
-    if (n != 0 && node_kind(n) = = NK_IDENTIFIER) {
+    if (n != 0 && node_kind(n) == NK_IDENTIFIER) {
         let name = get_interned_str(node_get_data1(n));
         return nonnull_ptrs.map_has(name);
     }
     false
 }
 fn type_node_proves_nonzero(t: I32) : Bool => {
-    if (t = = 0 || node_kind(t) != NK_REFINEMENT_TYPE) {
+    if (t == 0 || node_kind(t) != NK_REFINEMENT_TYPE) {
         return false;
     }
     let op = get_interned_str(node_get_data2(t));
@@ -634,31 +634,31 @@ local_types: Map, nonnull_ptrs: Map) : I32 => {
     let ie_else_key = "";
     let ie_cb_key = "";
     let ie_cb_value = "";
-    if (node_kind(cond) = = NK_BINARY_EXPR) {
+    if (node_kind(cond) == NK_BINARY_EXPR) {
         let bop = get_interned_str(node_get_data1(cond));
         let bleft = node_get_data2(cond);
         let bright = node_get_data3(cond);
         if (bop.str_eq("!=")) {
-            if (ie_then_key.str_eq("") && node_kind(bleft) = = NK_IDENTIFIER && (is_usize_zero_literal_node(bright) || is_zero_numeric_literal_node(bright))) {
+            if (ie_then_key.str_eq("") && node_kind(bleft) == NK_IDENTIFIER && (is_usize_zero_literal_node(bright) || is_zero_numeric_literal_node(bright))) {
                 ie_then_key = get_interned_str(node_get_data1(bleft));
             }
-            if (ie_then_key.str_eq("") && node_kind(bright) = = NK_IDENTIFIER && (is_usize_zero_literal_node(bleft) || is_zero_numeric_literal_node(bleft))) {
+            if (ie_then_key.str_eq("") && node_kind(bright) == NK_IDENTIFIER && (is_usize_zero_literal_node(bleft) || is_zero_numeric_literal_node(bleft))) {
                 ie_then_key = get_interned_str(node_get_data1(bright));
             }
         }
         if (bop.str_eq("==")) {
-            if (ie_else_key.str_eq("") && node_kind(bleft) = = NK_IDENTIFIER && is_zero_numeric_literal_node(bright)) {
+            if (ie_else_key.str_eq("") && node_kind(bleft) == NK_IDENTIFIER && is_zero_numeric_literal_node(bright)) {
                 ie_else_key = get_interned_str(node_get_data1(bleft));
             }
-            if (ie_else_key.str_eq("") && node_kind(bright) = = NK_IDENTIFIER && is_zero_numeric_literal_node(bleft)) {
+            if (ie_else_key.str_eq("") && node_kind(bright) == NK_IDENTIFIER && is_zero_numeric_literal_node(bleft)) {
                 ie_else_key = get_interned_str(node_get_data1(bright));
             }
         }
-        if ((bop.str_eq("<") || bop.str_eq("<=")) && node_kind(bleft) = = NK_IDENTIFIER && node_kind(bright) = = NK_CALL_EXPR) {
+        if ((bop.str_eq("<") || bop.str_eq("<=")) && node_kind(bleft) == NK_IDENTIFIER && node_kind(bright) == NK_CALL_EXPR) {
             let ie_cb_callee = node_get_data1(bright);
             let ie_cb_args = node_get_data2(bright);
-            if (node_kind(ie_cb_callee) = = NK_IDENTIFIER && ie_cb_args.vec_length() = = 1 &&
-            node_kind(ie_cb_args.vec_get(0)) = = NK_IDENTIFIER) {
+            if (node_kind(ie_cb_callee) == NK_IDENTIFIER && ie_cb_args.vec_length() == 1 &&
+            node_kind(ie_cb_args.vec_get(0)) == NK_IDENTIFIER) {
                 ie_cb_key = get_interned_str(node_get_data1(bleft));
                 ie_cb_value = get_interned_str(node_get_data1(ie_cb_callee)).str_concat(":").str_concat(get_interned_str(node_get_data1(ie_cb_args.vec_get(0))));
             }
@@ -711,10 +711,10 @@ local_types: Map, nonnull_ptrs: Map) : I32 => {
     while (i < len) {
         let case_node = cases.vec_get(i);
         let pat = case_node.vec_get(0);
-        if (node_kind(pat) = = NK_WILDCARD_PAT) {
+        if (node_kind(pat) == NK_WILDCARD_PAT) {
             has_wildcard = true;
         }
-        if (node_kind(pat) = = NK_NAME_PAT || node_kind(pat) = = NK_STRUCT_PAT) {
+        if (node_kind(pat) == NK_NAME_PAT || node_kind(pat) == NK_STRUCT_PAT) {
             seen_tags.set_add(get_interned_str(node_get_data1(pat)));
         }
         typecheck_stmt(case_node.vec_get(1), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, "Unknown");
@@ -747,31 +747,31 @@ local_types: Map, nonnull_ptrs: Map, expected_return_type: *Str) : I32 => {
     let else_inject_key = "";
     let cb_then_key = "";
     let cb_then_value = "";
-    if (node_kind(cond) = = NK_BINARY_EXPR) {
+    if (node_kind(cond) == NK_BINARY_EXPR) {
         let bop = get_interned_str(node_get_data1(cond));
         let bleft = node_get_data2(cond);
         let bright = node_get_data3(cond);
         if (bop.str_eq("!=")) {
-            if (then_inject_key.str_eq("") && node_kind(bleft) = = NK_IDENTIFIER && (is_usize_zero_literal_node(bright) || is_zero_numeric_literal_node(bright))) {
+            if (then_inject_key.str_eq("") && node_kind(bleft) == NK_IDENTIFIER && (is_usize_zero_literal_node(bright) || is_zero_numeric_literal_node(bright))) {
                 then_inject_key = get_interned_str(node_get_data1(bleft));
             }
-            if (then_inject_key.str_eq("") && node_kind(bright) = = NK_IDENTIFIER && (is_usize_zero_literal_node(bleft) || is_zero_numeric_literal_node(bleft))) {
+            if (then_inject_key.str_eq("") && node_kind(bright) == NK_IDENTIFIER && (is_usize_zero_literal_node(bleft) || is_zero_numeric_literal_node(bleft))) {
                 then_inject_key = get_interned_str(node_get_data1(bright));
             }
         }
         if (bop.str_eq("==")) {
-            if (else_inject_key.str_eq("") && node_kind(bleft) = = NK_IDENTIFIER && is_zero_numeric_literal_node(bright)) {
+            if (else_inject_key.str_eq("") && node_kind(bleft) == NK_IDENTIFIER && is_zero_numeric_literal_node(bright)) {
                 else_inject_key = get_interned_str(node_get_data1(bleft));
             }
-            if (else_inject_key.str_eq("") && node_kind(bright) = = NK_IDENTIFIER && is_zero_numeric_literal_node(bleft)) {
+            if (else_inject_key.str_eq("") && node_kind(bright) == NK_IDENTIFIER && is_zero_numeric_literal_node(bleft)) {
                 else_inject_key = get_interned_str(node_get_data1(bright));
             }
         }
-        if ((bop.str_eq("<") || bop.str_eq("<=")) && node_kind(bleft) = = NK_IDENTIFIER && node_kind(bright) = = NK_CALL_EXPR) {
+        if ((bop.str_eq("<") || bop.str_eq("<=")) && node_kind(bleft) == NK_IDENTIFIER && node_kind(bright) == NK_CALL_EXPR) {
             let cb_callee = node_get_data1(bright);
             let cb_args = node_get_data2(bright);
-            if (node_kind(cb_callee) = = NK_IDENTIFIER && cb_args.vec_length() = = 1 &&
-            node_kind(cb_args.vec_get(0)) = = NK_IDENTIFIER) {
+            if (node_kind(cb_callee) == NK_IDENTIFIER && cb_args.vec_length() == 1 &&
+            node_kind(cb_args.vec_get(0)) == NK_IDENTIFIER) {
                 cb_then_key = get_interned_str(node_get_data1(bleft));
                 cb_then_value = get_interned_str(node_get_data1(cb_callee)).str_concat(":").str_concat(get_interned_str(node_get_data1(cb_args.vec_get(0))));
             }
@@ -780,11 +780,11 @@ local_types: Map, nonnull_ptrs: Map, expected_return_type: *Str) : I32 => {
     let narrowed_ident = "";
     let had_prev_narrowed = 0;
     let prev_narrowed_type = "";
-    if (node_kind(cond) = = NK_IS_EXPR) {
+    if (node_kind(cond) == NK_IS_EXPR) {
         let subject = node_get_data1(cond);
         let pat = node_get_data2(cond);
-        if (node_kind(subject) = = NK_IDENTIFIER && (node_kind(pat) = = NK_NAME_PAT || node_kind(pat)
-        = = NK_STRUCT_PAT)) {
+        if (node_kind(subject) == NK_IDENTIFIER && (node_kind(pat) == NK_NAME_PAT || node_kind(pat)
+        == NK_STRUCT_PAT)) {
             narrowed_ident = get_interned_str(node_get_data1(subject));
             let narrowed_type = get_interned_str(node_get_data1(pat));
             if (local_types.map_has(narrowed_ident)) {
@@ -813,7 +813,7 @@ local_types: Map, nonnull_ptrs: Map, expected_return_type: *Str) : I32 => {
         tc_call_bounds.map_delete(cb_then_key);
     }
     if (!narrowed_ident.str_eq("")) {
-        if (had_prev_narrowed = = 1) {
+        if (had_prev_narrowed == 1) {
             local_types.map_set(narrowed_ident, prev_narrowed_type);
         }
         else {
@@ -837,12 +837,12 @@ local_types: Map, nonnull_ptrs: Map, expected_return_type: *Str) : I32 => {
 fn typecheck_member_or_index_expr(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types:
 Map, local_types: Map, nonnull_ptrs: Map) : I32 => {
     let kind = node_kind(n);
-    if (kind = = NK_MEMBER_EXPR) {
+    if (kind == NK_MEMBER_EXPR) {
         let obj = node_get_data1(n);
         let obj_name = infer_expr_type_name(obj, fn_return_types, local_types);
         if (is_nullable_pointer_type_name(obj_name)) {
             let guarded = false;
-            if (node_kind(obj) = = NK_IDENTIFIER) {
+            if (node_kind(obj) == NK_IDENTIFIER) {
                 let oname = get_interned_str(node_get_data1(obj));
                 guarded = nonnull_ptrs.map_has(oname);
             }
@@ -864,12 +864,12 @@ Map, local_types: Map, nonnull_ptrs: Map) : I32 => {
         nonnull_ptrs);
         return 1;
     }
-    if (kind = = NK_INDEX_EXPR) {
+    if (kind == NK_INDEX_EXPR) {
         let target_node = node_get_data1(n);
         let target_name = infer_expr_type_name(target_node, fn_return_types, local_types);
         if (is_nullable_pointer_type_name(target_name)) {
             let guarded = false;
-            if (node_kind(target_node) = = NK_IDENTIFIER) {
+            if (node_kind(target_node) == NK_IDENTIFIER) {
                 let tname = get_interned_str(node_get_data1(target_node));
                 guarded = nonnull_ptrs.map_has(tname);
             }
@@ -877,14 +877,14 @@ Map, local_types: Map, nonnull_ptrs: Map) : I32 => {
                 tc_panic_loc( "E_SAFETY_NULLABLE_POINTER_GUARD", "Nullable pointer indexing requires guard", "A nullable pointer must be proven non-null before pointer-consuming operations.", "Guard with if (p != 0USize) or if (0USize != p) before indexing." );
             }
         }
-        if (node_kind(target_node) = = NK_IDENTIFIER) {
+        if (node_kind(target_node) == NK_IDENTIFIER) {
             let tname = get_interned_str(node_get_data1(target_node));
             if (tc_array_init_bounds.map_has(tname)) {
                 let bound = tc_array_init_bounds.map_get(tname);
                 if (bound >= 0) {
                     let index_node = node_get_data2(n);
                     let index_max = -1;
-                    if (node_kind(index_node) = = NK_IDENTIFIER) {
+                    if (node_kind(index_node) == NK_IDENTIFIER) {
                         let iname = get_interned_str(node_get_data1(index_node));
                         if (tc_index_upper_bounds.map_has(iname)) {
                             index_max = tc_index_upper_bounds.map_get(iname);
@@ -912,12 +912,12 @@ Map, local_types: Map, nonnull_ptrs: Map) : I32 => {
 }
 fn typecheck_expr(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types: Map, local_types:
 Map, nonnull_ptrs: Map) : I32 => {
-    if (n = = 0) {
+    if (n == 0) {
         return 0;
     }
     tc_current_node = n;
     let kind = node_kind(n);
-    if (kind = = NK_BINARY_EXPR) {
+    if (kind == NK_BINARY_EXPR) {
         typecheck_expr(node_get_data2(n), fn_arities, fn_param_types, fn_return_types, local_types,
         nonnull_ptrs);
         typecheck_expr(node_get_data3(n), fn_arities, fn_param_types, fn_return_types, local_types,
@@ -926,7 +926,7 @@ Map, nonnull_ptrs: Map) : I32 => {
         if (op.str_eq("/") && !expr_is_proven_nonzero(node_get_data3(n), nonnull_ptrs)) {
             let denom_node = node_get_data3(n);
             let denom_desc = "denominator";
-            if (node_kind(denom_node) = = NK_IDENTIFIER) {
+            if (node_kind(denom_node) == NK_IDENTIFIER) {
                 denom_desc = "denominator `".str_concat(get_interned_str(node_get_data1(denom_node))).str_concat("`");
             }
             tc_panic_loc( "E_SAFETY_DIV_BY_ZERO",
@@ -935,7 +935,7 @@ Map, nonnull_ptrs: Map) : I32 => {
         if (op.str_eq("%") && !expr_is_proven_nonzero(node_get_data3(n), nonnull_ptrs)) {
             let mod_node = node_get_data3(n);
             let mod_desc = "modulo denominator";
-            if (node_kind(mod_node) = = NK_IDENTIFIER) {
+            if (node_kind(mod_node) == NK_IDENTIFIER) {
                 mod_desc = "modulo denominator `".str_concat(get_interned_str(node_get_data1(mod_node))).str_concat("`");
             }
             tc_panic_loc(
@@ -961,10 +961,10 @@ Map, nonnull_ptrs: Map) : I32 => {
                 if (result < -2147483648 || result > 2147483647) {
                     let left_desc = int_to_string(left);
                     let right_desc = int_to_string(right);
-                    if (node_kind(lnode) = = NK_IDENTIFIER) {
+                    if (node_kind(lnode) == NK_IDENTIFIER) {
                         left_desc = get_interned_str(node_get_data1(lnode)).str_concat("=").str_concat(int_to_string(left));
                     }
-                    if (node_kind(rnode) = = NK_IDENTIFIER) {
+                    if (node_kind(rnode) == NK_IDENTIFIER) {
                         right_desc = get_interned_str(node_get_data1(rnode)).str_concat("=").str_concat(int_to_string(right));
                     }
                     let witness = left_desc.str_concat(" ").str_concat(op).str_concat(" ").str_concat(right_desc).str_concat(" = ").str_concat(int_to_string(result)).str_concat(", which is outside I32 range [-2147483648, 2147483647]");
@@ -975,8 +975,8 @@ Map, nonnull_ptrs: Map) : I32 => {
         }
         return 0;
     }
-    if (kind = = NK_UNARY_EXPR || kind = = NK_UNWRAP_EXPR) {
-        if (kind = = NK_UNARY_EXPR) {
+    if (kind == NK_UNARY_EXPR || kind == NK_UNWRAP_EXPR) {
+        if (kind == NK_UNARY_EXPR) {
             typecheck_expr(node_get_data2(n), fn_arities, fn_param_types, fn_return_types,
             local_types, nonnull_ptrs);
         }
@@ -986,12 +986,12 @@ Map, nonnull_ptrs: Map) : I32 => {
         }
         return 0;
     }
-    if (kind = = NK_CALL_EXPR) {
+    if (kind == NK_CALL_EXPR) {
         let callee = node_get_data1(n);
         let args = node_get_data2(n);
         let arg_count = args.vec_length();
         let fname = "";
-        if (node_kind(callee) = = NK_IDENTIFIER) {
+        if (node_kind(callee) == NK_IDENTIFIER) {
             fname = get_interned_str(node_get_data1(callee));
             if (fname.str_eq("drop")) {
                 if (arg_count != 1) {
@@ -1006,14 +1006,14 @@ Map, nonnull_ptrs: Map) : I32 => {
                 }
                 return 0;
             }
-            if (fname.str_eq("into") && node_get_data3(n) = = 1) {
+            if (fname.str_eq("into") && node_get_data3(n) == 1) {
                 if (arg_count < 1) {
                     tc_panic_loc( "E_TYPE_ARG_COUNT",
                     "into conversion requires a receiver", "Method-sugar into conversion requires a source value as receiver.", "Use value.into<Contract>(...) with a receiver value." );
                 }
                 let type_args = node_get_data4(n);
                 let cname = "";
-                if (type_args.vec_length() = = 1 && node_kind(type_args.vec_get(0)) = = NK_NAMED_TYPE)
+                if (type_args.vec_length() == 1 && node_kind(type_args.vec_get(0)) == NK_NAMED_TYPE)
                 {
                     cname = get_interned_str(node_get_data1(type_args.vec_get(0)));
                 }
@@ -1088,12 +1088,12 @@ Map, nonnull_ptrs: Map) : I32 => {
                         let cb_fn = cb.str_slice(0, cb_sep);
                         let cb_ref_idx = parse_int(cb.str_slice(cb_sep + 1, cb.str_length()));
                         let constrained_arg = args.vec_get(cj);
-                        if (node_kind(constrained_arg) = = NK_IDENTIFIER && cb_ref_idx >= 0 &&
+                        if (node_kind(constrained_arg) == NK_IDENTIFIER && cb_ref_idx >= 0 &&
                         cb_ref_idx < arg_count) {
                             let constrained_name =
                             get_interned_str(node_get_data1(constrained_arg));
                             let ref_arg = args.vec_get(cb_ref_idx);
-                            if (node_kind(ref_arg) = = NK_IDENTIFIER) {
+                            if (node_kind(ref_arg) == NK_IDENTIFIER) {
                                 let ref_arg_name = get_interned_str(node_get_data1(ref_arg));
                                 let expected_bound = cb_fn.str_concat(":").str_concat(ref_arg_name);
                                 let proven = tc_call_bounds.map_has(constrained_name) &&
@@ -1122,10 +1122,10 @@ Map, nonnull_ptrs: Map) : I32 => {
         return 0;
     }
     if (typecheck_member_or_index_expr(n, fn_arities, fn_param_types, fn_return_types, local_types,
-    nonnull_ptrs) = = 1) {
+    nonnull_ptrs) == 1) {
         return 0;
     }
-    if (kind = = NK_STRUCT_INIT) {
+    if (kind == NK_STRUCT_INIT) {
         let fields = node_get_data2(n);
         let i = 0;
         let len = fields.vec_length();
@@ -1137,7 +1137,7 @@ Map, nonnull_ptrs: Map) : I32 => {
         }
         return 0;
     }
-    if (kind = = NK_TUPLE_EXPR) {
+    if (kind == NK_TUPLE_EXPR) {
         let items = node_get_data1(n);
         let i = 0;
         let len = items.vec_length();
@@ -1148,17 +1148,17 @@ Map, nonnull_ptrs: Map) : I32 => {
         }
         return 0;
     }
-    if (kind = = NK_IF_EXPR) {
+    if (kind == NK_IF_EXPR) {
         typecheck_if_expr_branch(n, fn_arities, fn_param_types, fn_return_types, local_types,
         nonnull_ptrs);
         return 0;
     }
-    if (kind = = NK_MATCH_EXPR) {
+    if (kind == NK_MATCH_EXPR) {
         typecheck_match_expr_branch(n, fn_arities, fn_param_types, fn_return_types, local_types,
         nonnull_ptrs);
         return 0;
     }
-    if (kind = = NK_IS_EXPR) {
+    if (kind == NK_IS_EXPR) {
         typecheck_expr(node_get_data1(n), fn_arities, fn_param_types, fn_return_types, local_types,
         nonnull_ptrs);
         return 0;
@@ -1167,12 +1167,12 @@ Map, nonnull_ptrs: Map) : I32 => {
 }
 fn typecheck_stmt(n: I32, fn_arities: Map, fn_param_types: Map, fn_return_types: Map, local_types:
 Map, nonnull_ptrs: Map, expected_return_type: *Str) : I32 => {
-    if (n = = 0) {
+    if (n == 0) {
         return 0;
     }
     tc_current_node = n;
     let kind = node_kind(n);
-    if (kind = = NK_BLOCK) {
+    if (kind == NK_BLOCK) {
         let stmts = node_get_data1(n);
         let i = 0;
         let len = stmts.vec_length();
@@ -1183,13 +1183,13 @@ Map, nonnull_ptrs: Map, expected_return_type: *Str) : I32 => {
         }
         return 0;
     }
-    if (kind = = NK_EXPECT_FN_DECL) {
+    if (kind == NK_EXPECT_FN_DECL) {
         return 0;
     }
-    if (kind = = NK_CONTRACT_DECL) {
+    if (kind == NK_CONTRACT_DECL) {
         return 0;
     }
-    if (kind = = NK_FN_DECL || kind = = NK_CLASS_FN_DECL || kind = = NK_ACTUAL_FN_DECL) {
+    if (kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL || kind == NK_ACTUAL_FN_DECL) {
         let prev_array_bounds = tc_array_init_bounds;
         let prev_index_bounds = tc_index_upper_bounds;
         let prev_var_literals = tc_var_literal_values;
@@ -1234,22 +1234,22 @@ Map, nonnull_ptrs: Map, expected_return_type: *Str) : I32 => {
             }
             pi = pi + 1;
         }
-        if (!has_this_param && node_get_data4(n) = = 0) {
+        if (!has_this_param && node_get_data4(n) == 0) {
             let terminates_with_this = false;
-            if (node_kind(fn_body) = = NK_BLOCK) {
+            if (node_kind(fn_body) == NK_BLOCK) {
                 let body_stmts = node_get_data1(fn_body);
                 let blen = body_stmts.vec_length();
                 if (blen > 0) {
                     let last_stmt = body_stmts.vec_get(blen - 1);
-                    if (node_kind(last_stmt) = = NK_EXPR_STMT) {
+                    if (node_kind(last_stmt) == NK_EXPR_STMT) {
                         let last_expr = node_get_data1(last_stmt);
-                        if (node_kind(last_expr) = = NK_IDENTIFIER && get_interned_str(node_get_data1(last_expr)).str_eq("this")) {
+                        if (node_kind(last_expr) == NK_IDENTIFIER && get_interned_str(node_get_data1(last_expr)).str_eq("this")) {
                             terminates_with_this = true;
                         }
                     }
                 }
             }
-            else if (node_kind(fn_body) = = NK_IDENTIFIER) {
+            else if (node_kind(fn_body) == NK_IDENTIFIER) {
                 if (get_interned_str(node_get_data1(fn_body)).str_eq("this")) {
                     terminates_with_this = true;
                 }
@@ -1267,17 +1267,17 @@ Map, nonnull_ptrs: Map, expected_return_type: *Str) : I32 => {
                     qi = qi + 1;
                 }
                  // Add declared names from function body
-                if (node_kind(fn_body) = = NK_BLOCK) {
+                if (node_kind(fn_body) == NK_BLOCK) {
                     let body_stmts = node_get_data1(fn_body);
                     let bi = 0;
                     let blen2 = body_stmts.vec_length();
                     while (bi < blen2) {
                         let bstmt = body_stmts.vec_get(bi);
                         let bkind = node_kind(bstmt);
-                        if (bkind = = NK_LET_DECL) {
+                        if (bkind == NK_LET_DECL) {
                             this_fields.set_add(get_interned_str(node_get_data1(bstmt)));
                         }
-                        if (bkind = = NK_FN_DECL || bkind = = NK_CLASS_FN_DECL) {
+                        if (bkind == NK_FN_DECL || bkind == NK_CLASS_FN_DECL) {
                             this_fields.set_add(get_interned_str(node_get_data1(bstmt)));
                         }
                         bi = bi + 1;
@@ -1303,7 +1303,7 @@ Map, nonnull_ptrs: Map, expected_return_type: *Str) : I32 => {
         tc_var_literal_values = prev_var_literals;
         return 0;
     }
-    if (kind = = NK_LET_DECL) {
+    if (kind == NK_LET_DECL) {
         let declared_type = node_get_data2(n);
         let rhs = node_get_data3(n);
         typecheck_expr(rhs, fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs);
@@ -1337,22 +1337,22 @@ Map, nonnull_ptrs: Map, expected_return_type: *Str) : I32 => {
         }
         return 0;
     }
-    if (kind = = NK_EXTERN_IMPORT_DECL) {
+    if (kind == NK_EXTERN_IMPORT_DECL) {
         return 0;
     }
-    if (kind = = NK_EXPR_STMT) {
+    if (kind == NK_EXPR_STMT) {
         typecheck_expr(node_get_data1(n), fn_arities, fn_param_types, fn_return_types, local_types,
         nonnull_ptrs);
         return 0;
     }
-    if (kind = = NK_ASSIGN_STMT) {
+    if (kind == NK_ASSIGN_STMT) {
         let target = node_get_data1(n);
         let value = node_get_data2(n);
         typecheck_expr(target, fn_arities, fn_param_types, fn_return_types, local_types,
         nonnull_ptrs);
         typecheck_expr(value, fn_arities, fn_param_types, fn_return_types, local_types,
         nonnull_ptrs);
-        if (node_kind(target) = = NK_IDENTIFIER) {
+        if (node_kind(target) == NK_IDENTIFIER) {
             let tname = get_interned_str(node_get_data1(target));
             if (local_types.map_has(tname)) {
                 let expected_name = local_types.map_get(tname);
@@ -1366,7 +1366,7 @@ Map, nonnull_ptrs: Map, expected_return_type: *Str) : I32 => {
         }
         return 0;
     }
-    if (kind = = NK_RETURN_STMT) {
+    if (kind == NK_RETURN_STMT) {
         let value = node_get_data1(n);
         typecheck_expr(value, fn_arities, fn_param_types, fn_return_types, local_types,
         nonnull_ptrs);
@@ -1379,12 +1379,12 @@ Map, nonnull_ptrs: Map, expected_return_type: *Str) : I32 => {
         }
         return 0;
     }
-    if (kind = = NK_IF_STMT) {
+    if (kind == NK_IF_STMT) {
         typecheck_if_stmt_branch(n, fn_arities, fn_param_types, fn_return_types, local_types,
         nonnull_ptrs, expected_return_type);
         return 0;
     }
-    if (kind = = NK_FOR_STMT) {
+    if (kind == NK_FOR_STMT) {
         typecheck_expr(node_get_data2(n), fn_arities, fn_param_types, fn_return_types, local_types,
         nonnull_ptrs);
         typecheck_expr(node_get_data3(n), fn_arities, fn_param_types, fn_return_types, local_types,
@@ -1393,7 +1393,7 @@ Map, nonnull_ptrs: Map, expected_return_type: *Str) : I32 => {
         nonnull_ptrs, expected_return_type);
         return 0;
     }
-    if (kind = = NK_WHILE_STMT) {
+    if (kind == NK_WHILE_STMT) {
         let cond = node_get_data1(n);
         typecheck_expr(cond, fn_arities, fn_param_types, fn_return_types, local_types,
         nonnull_ptrs);
@@ -1405,15 +1405,15 @@ Map, nonnull_ptrs: Map, expected_return_type: *Str) : I32 => {
          // Call-bound narrowing: inject `i < fnName(s)` fact into while body.
         let wh_cb_key = "";
         let wh_cb_value = "";
-        if (node_kind(cond) = = NK_BINARY_EXPR) {
+        if (node_kind(cond) == NK_BINARY_EXPR) {
             let wh_bop = get_interned_str(node_get_data1(cond));
             let wh_bleft = node_get_data2(cond);
             let wh_bright = node_get_data3(cond);
-            if ((wh_bop.str_eq("<") || wh_bop.str_eq("<=")) && node_kind(wh_bleft) = = NK_IDENTIFIER && node_kind(wh_bright) = = NK_CALL_EXPR) {
+            if ((wh_bop.str_eq("<") || wh_bop.str_eq("<=")) && node_kind(wh_bleft) == NK_IDENTIFIER && node_kind(wh_bright) == NK_CALL_EXPR) {
                 let wh_callee = node_get_data1(wh_bright);
                 let wh_args = node_get_data2(wh_bright);
-                if (node_kind(wh_callee) = = NK_IDENTIFIER && wh_args.vec_length() = = 1 &&
-                node_kind(wh_args.vec_get(0)) = = NK_IDENTIFIER) {
+                if (node_kind(wh_callee) == NK_IDENTIFIER && wh_args.vec_length() == 1 &&
+                node_kind(wh_args.vec_get(0)) == NK_IDENTIFIER) {
                     wh_cb_key = get_interned_str(node_get_data1(wh_bleft));
                     wh_cb_value = get_interned_str(node_get_data1(wh_callee)).str_concat(":").str_concat(get_interned_str(node_get_data1(wh_args.vec_get(0))));
                 }
@@ -1431,17 +1431,17 @@ Map, nonnull_ptrs: Map, expected_return_type: *Str) : I32 => {
         }
         return 0;
     }
-    if (kind = = NK_LOOP_STMT) {
+    if (kind == NK_LOOP_STMT) {
         typecheck_stmt(node_get_data1(n), fn_arities, fn_param_types, fn_return_types, local_types,
         nonnull_ptrs, expected_return_type);
         return 0;
     }
-    if (kind = = NK_LIFETIME_STMT) {
+    if (kind == NK_LIFETIME_STMT) {
         typecheck_stmt(node_get_data2(n), fn_arities, fn_param_types, fn_return_types, local_types,
         nonnull_ptrs, expected_return_type);
         return 0;
     }
-    if (kind = = NK_INTO_STMT) {
+    if (kind == NK_INTO_STMT) {
         let cname = get_interned_str(node_get_data1(n));
         if (!tc_contract_names.set_has(cname)) {
             tc_panic_loc(
@@ -1451,7 +1451,7 @@ Map, nonnull_ptrs: Map, expected_return_type: *Str) : I32 => {
         return 0;
     }
      // Register nested type aliases (e.g. inside fn body) so let-mismatch check recognises them.
-    if (kind = = NK_TYPE_ALIAS) {
+    if (kind == NK_TYPE_ALIAS) {
         let alias_name = get_interned_str(node_get_data1(n));
         tc_type_alias_names.set_add(alias_name);
         let destructor_name_idx = node_get_data5(n);
@@ -1462,14 +1462,14 @@ Map, nonnull_ptrs: Map, expected_return_type: *Str) : I32 => {
         }
         return 0;
     }
-    if (kind = = NK_DEP_TYPE_ALIAS) {
+    if (kind == NK_DEP_TYPE_ALIAS) {
         let alias_name = get_interned_str(node_get_data1(n));
         tc_type_alias_names.set_add(alias_name);
         let value_params = node_get_data2(n);
         tc_dep_type_alias_params.map_set(alias_name, value_params.vec_length());
         return 0;
     }
-    if (kind = = NK_EXTERN_TYPE_DECL) {
+    if (kind == NK_EXTERN_TYPE_DECL) {
         let alias_name = get_interned_str(node_get_data1(n));
         tc_type_alias_names.set_add(alias_name);
         let destructor_name_idx = node_get_data5(n);
@@ -1509,7 +1509,7 @@ out fn typecheck_program_with_options_impl(program: I32) : I32 => {
     while (i < len) {
         let stmt = body.vec_get(i);
         let kind = node_kind(stmt);
-        if (kind = = NK_FN_DECL || kind = = NK_CLASS_FN_DECL || kind = = NK_EXTERN_FN_DECL || kind = =
+        if (kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL || kind == NK_EXTERN_FN_DECL || kind ==
         NK_ACTUAL_FN_DECL) {
             let name = get_interned_str(node_get_data1(stmt));
             fn_nodes.map_set(name, stmt);
@@ -1554,14 +1554,14 @@ out fn typecheck_program_with_options_impl(program: I32) : I32 => {
             let ret_type = node_get_data4(stmt);
             fn_return_types.map_set(name, type_name_from_type_node(ret_type));
         }
-        if (kind = = NK_EXTERN_LET_DECL) {
+        if (kind == NK_EXTERN_LET_DECL) {
             let vname = get_interned_str(node_get_data1(stmt));
             let vtype = node_get_data2(stmt);
             let tname = type_name_from_type_node(vtype);
             local_types.map_set(vname, tname);
             tc_global_value_types.map_set(vname, tname);
         }
-        if (kind = = NK_TYPE_ALIAS) {
+        if (kind == NK_TYPE_ALIAS) {
             let alias_name = get_interned_str(node_get_data1(stmt));
             tc_type_alias_names.set_add(alias_name);
             let alias_type = node_get_data3(stmt);
@@ -1582,13 +1582,13 @@ out fn typecheck_program_with_options_impl(program: I32) : I32 => {
                 tc_alias_base_type.map_set(alias_name, alias_base_type_name);
             }
         }
-        if (kind = = NK_DEP_TYPE_ALIAS) {
+        if (kind == NK_DEP_TYPE_ALIAS) {
             let alias_name = get_interned_str(node_get_data1(stmt));
             tc_type_alias_names.set_add(alias_name);
             let value_params = node_get_data2(stmt);
             tc_dep_type_alias_params.map_set(alias_name, value_params.vec_length());
         }
-        if (kind = = NK_EXTERN_TYPE_DECL) {
+        if (kind == NK_EXTERN_TYPE_DECL) {
             let alias_name = get_interned_str(node_get_data1(stmt));
             tc_type_alias_names.set_add(alias_name);
             let destructor_name_idx = node_get_data5(stmt);
@@ -1598,10 +1598,10 @@ out fn typecheck_program_with_options_impl(program: I32) : I32 => {
                 tc_destructor_alias_names.vec_push(alias_name);
             }
         }
-        if (kind = = NK_CONTRACT_DECL) {
+        if (kind == NK_CONTRACT_DECL) {
             tc_contract_names.set_add(get_interned_str(node_get_data1(stmt)));
         }
-        if (kind = = NK_LET_DECL) {
+        if (kind == NK_LET_DECL) {
             let vname = get_interned_str(node_get_data1(stmt));
             let vtype = node_get_data2(stmt);
             if (vtype != 0) {

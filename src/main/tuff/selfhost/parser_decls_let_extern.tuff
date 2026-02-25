@@ -160,7 +160,7 @@ fn p_le_parse_constraint_value_expr() : I32 => {
 fn p_le_parse_generic_constraint_type() : I32 => {
     let type_node = p_parse_type_primary();
     let starts_generic_call_suffix = false;
-    if (p_at(TK_SYMBOL, ">") && tok_kind(p_peek(1)) = = TK_SYMBOL) {
+    if (p_at(TK_SYMBOL, ">") && tok_kind(p_peek(1)) == TK_SYMBOL) {
         let next_sym = get_intern(tok_value(p_peek(1)));
         if (next_sym.str_eq("(")) {
             starts_generic_call_suffix = true;

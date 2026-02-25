@@ -68,6 +68,7 @@ extern fn str_trim(this: *Str) : *Str;
 extern fn str_replace_all(this: *Str, from: *Str, to: *Str) : *Str;
 extern fn char_code(ch: *Str) : I32;
 extern fn int_to_string(n: I32) : *Str;
+out fn int_to_string_out(n: I32) : *Str => int_to_string(n);
 extern fn parse_int(s: *Str) : I32;
 extern type StringBuilder;
 extern fn sb_new() : StringBuilder;
@@ -118,6 +119,7 @@ extern fn path_join(a: *Str, b: *Str) : *Str;
 extern fn path_dirname(p: *Str) : *Str;
 extern fn print(s: *Str) : I32;
 extern fn print_error(s: *Str) : I32;
+out fn print_error_out(s: *Str) : I32 => print_error(s);
 extern fn panic(msg: *Str) : I32;
 extern fn panic_with_code(code: *Str, msg: *Str, reason: *Str, fix: *Str) : I32;
 extern fn panic_with_code_loc(code: *Str, msg: *Str, reason: *Str, fix: *Str, line: I32, col: I32) :
@@ -126,6 +128,7 @@ extern fn get_argc() : I32;
 extern fn get_argv(i: I32) : *Str;
  // Performance profiling
 extern fn perf_now() : I32;
+out fn perf_now_out() : I32 => perf_now();
 extern fn profile_mark(label: *Str, duration_ms: I32) : I32;
 extern fn profile_take_json() : *Str;
  // ============================================================================
@@ -257,7 +260,7 @@ fn lex_peek(offset: I32) : I32 => {
 fn lex_advance() : I32 => {
     let ch = lex_peek(0);
     lex_pos = lex_pos + 1;
-    if (ch = = 10) {
+    if (ch == 10) {
         lex_line = lex_line + 1;
         lex_col = 1;
         ch
@@ -274,7 +277,7 @@ fn is_alpha(ch: I32) : Bool => {
     else if (ch >= 97 && ch <= 122) {
         true
     }
-    else if (ch = = 95) {
+    else if (ch == 95) {
         true
     }
     else {
@@ -284,7 +287,7 @@ fn is_alpha(ch: I32) : Bool => {
 fn is_digit(ch: I32) : Bool => ch >= 48 && ch <= 57;
 fn is_alnum(ch: I32) : Bool => is_alpha(ch) || is_digit(ch);
 fn is_whitespace(ch: I32) : Bool => {
-    ch = = 32 || ch = = 9 || ch = = 13 || ch = = 10
+    ch == 32 || ch == 9 || ch == 13 || ch == 10
 }
 fn lex_read_ident() : *Str => {
     let sb = sb_new();
@@ -296,12 +299,12 @@ fn lex_read_ident() : *Str => {
 fn lex_read_number() : *Str => {
     let sb = sb_new();
      // Handle 0x, 0b, 0o
-    if (lex_peek(0) = = 48) {
+    if (lex_peek(0) == 48) {
         let next = lex_peek(1);
-        if (next = = 120 || next = = 98 || next = = 111) {
+        if (next == 120 || next == 98 || next == 111) {
             sb_append_char(sb, lex_advance());
             sb_append_char(sb, lex_advance());
-            while (is_alnum(lex_peek(0)) || lex_peek(0) = = 95) {
+            while (is_alnum(lex_peek(0)) || lex_peek(0) == 95) {
                 let ch = lex_advance();
                 if (ch != 95) {
                     sb_append_char(sb, ch);
@@ -310,22 +313,22 @@ fn lex_read_number() : *Str => {
             return sb_build(sb);
         }
     }
-    while (is_digit(lex_peek(0)) || lex_peek(0) = = 95) {
+    while (is_digit(lex_peek(0)) || lex_peek(0) == 95) {
         let ch = lex_advance();
         if (ch != 95) {
             sb_append_char(sb, ch);
         }
     }
-    if (lex_peek(0) = = 46 && is_digit(lex_peek(1))) {
+    if (lex_peek(0) == 46 && is_digit(lex_peek(1))) {
         sb_append_char(sb, lex_advance());
-        while (is_digit(lex_peek(0)) || lex_peek(0) = = 95) {
+        while (is_digit(lex_peek(0)) || lex_peek(0) == 95) {
             let ch = lex_advance();
             if (ch != 95) {
                 sb_append_char(sb, ch);
             }
         }
     }
-    while (is_alnum(lex_peek(0)) || lex_peek(0) = = 95) {
+    while (is_alnum(lex_peek(0)) || lex_peek(0) == 95) {
         let ch = lex_advance();
         if (ch != 95) {
             sb_append_char(sb, ch);
@@ -338,7 +341,7 @@ fn lex_read_string() : *Str => {
      // skip opening "
     let sb = sb_new();
     while (lex_pos < lex_len && lex_peek(0) != 34) {
-        if (lex_peek(0) = = 92) {
+        if (lex_peek(0) == 92) {
             sb_append_char(sb, lex_advance());
             sb_append_char(sb, lex_advance());
         }
@@ -378,16 +381,16 @@ fn lex_read_char() : *Str => {
     sb_build(sb)
 }
 fn lex_check_two(a: I32, b: I32) : Bool => {
-    lex_peek(0) = = a && lex_peek(1) = = b
+    lex_peek(0) == a && lex_peek(1) == b
 }
 fn lex_try_consume_bom(ch: I32) : Bool => {
-    if (lex_pos = = 0 && ch = = 239 && lex_peek(1) = = 187 && lex_peek(2) = = 191) {
+    if (lex_pos == 0 && ch == 239 && lex_peek(1) == 187 && lex_peek(2) == 191) {
         lex_advance();
         lex_advance();
         lex_advance();
         return true;
     }
-    if (lex_pos = = 0 && (ch = = 65279 || ch = = 65534)) {
+    if (lex_pos == 0 && (ch == 65279 || ch == 65534)) {
         lex_advance();
         return true;
     }
@@ -398,16 +401,16 @@ fn lex_try_skip_whitespace_or_comment(ch: I32) : Bool => {
         lex_advance();
         return true;
     }
-    if (ch = = 47 && lex_peek(1) = = 47) {
+    if (ch == 47 && lex_peek(1) == 47) {
         while (lex_pos < lex_len && lex_peek(0) != 10) {
             lex_advance();
         }
         return true;
     }
-    if (ch = = 47 && lex_peek(1) = = 42) {
+    if (ch == 47 && lex_peek(1) == 42) {
         lex_advance();
         lex_advance();
-        while (lex_pos < lex_len && !(lex_peek(0) = = 42 && lex_peek(1) = = 47)) {
+        while (lex_pos < lex_len && !(lex_peek(0) == 42 && lex_peek(1) == 47)) {
             lex_advance();
         }
         if (lex_pos >= lex_len) {
@@ -425,7 +428,7 @@ fn lex_try_skip_whitespace_or_comment(ch: I32) : Bool => {
     false
 }
 fn lex_try_emit_three_char_symbol(start_line: I32, start_col: I32) : Bool => {
-    if (lex_peek(0) = = 46 && lex_peek(1) = = 46 && lex_peek(2) = = 46) {
+    if (lex_peek(0) == 46 && lex_peek(1) == 46 && lex_peek(2) == 46) {
         lex_advance();
         lex_advance();
         lex_advance();
@@ -534,26 +537,26 @@ out fn lex_all() : I32 => {
             continue;
         }
          // String
-        if (ch = = 34) {
+        if (ch == 34) {
             let text = lex_read_string();
             tok_add(TK_STRING, intern(text), start_line, start_col);
             continue;
         }
          // Char
-        if (ch = = 39) {
+        if (ch == 39) {
             let text = lex_read_char();
             tok_add(TK_CHAR, intern(text), start_line, start_col);
             continue;
         }
          // Single-char symbols
         let sym_text = str_from_char_code(ch);
-        if (sym_text.str_length() = = 1 && "(){}[],:;+-*/%<>=.!?|&".str_includes(sym_text)) {
+        if (sym_text.str_length() == 1 && "(){}[],:;+-*/%<>=.!?|&".str_includes(sym_text)) {
             lex_advance();
             tok_add(TK_SYMBOL, intern(sym_text), start_line, start_col);
             continue;
         }
         let display_char = sym_text;
-        if (display_char.str_length() = = 0) {
+        if (display_char.str_length() == 0) {
             display_char = "<non-printable>";
         }
         panic_with_code(

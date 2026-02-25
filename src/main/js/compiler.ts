@@ -288,6 +288,10 @@ function bootstrapSelfhostFromNativeExe(
 
 function loadSelfhostFromDisk(selfhostOutput): CompilerResult<unknown> {
   const selfhostJs = fs.readFileSync(selfhostOutput, "utf8");
+  process.stderr.write(
+    `[tuffc] loading selfhost compiler (${(selfhostJs.length / 1024).toFixed(0)} KB)...\n`,
+  );
+  const loadStart = Date.now();
 
   const sandbox = {
     module: { exports: {} },
@@ -303,6 +307,9 @@ function loadSelfhostFromDisk(selfhostOutput): CompilerResult<unknown> {
       `${selfhostJs}\nmodule.exports = { compile_source, compile_file, compile_source_with_options, compile_file_with_options, take_lint_issues, main, ...(typeof format_source_tuff === \"function\" ? { format_source_tuff } : {}) };`,
       sandbox,
       { filename: toPosixPath(selfhostOutput) },
+    );
+    process.stderr.write(
+      `[tuffc] selfhost compiler loaded in ${Date.now() - loadStart}ms\n`,
     );
   } catch (loadErr) {
     return err(
@@ -699,20 +706,39 @@ function compileFileInternal(
     try {
       const normalizedInput = toPosixPath(absInput);
       const normalizedOutput = toPosixPath(finalOutput);
-      run("selfhost-compile-file", () => {
-        if (typeof selfhost.compile_file_with_options === "function") {
-          selfhost.compile_file_with_options(
-            normalizedInput,
-            normalizedOutput,
-            lintEnabled,
-            maxEffectiveLines,
-            borrowEnabled ? 1 : 0,
-            target,
-          );
-        } else {
-          selfhost.compile_file(normalizedInput, normalizedOutput);
-        }
-      });
+      process.stderr.write(
+        `[tuffc] compiling ${path.basename(absInput)} (lint=${lintEnabled}, borrow=${borrowEnabled ? 1 : 0}, target=${target})...\n`,
+      );
+      const compileStart = Date.now();
+      let heartbeatTick = 0;
+      const heartbeat = setInterval(() => {
+        heartbeatTick++;
+        const elapsed = Date.now() - compileStart;
+        process.stderr.write(
+          `[tuffc]   still running... ${elapsed}ms elapsed (tick ${heartbeatTick})\n`,
+        );
+      }, 5000);
+      try {
+        run("selfhost-compile-file", () => {
+          if (typeof selfhost.compile_file_with_options === "function") {
+            selfhost.compile_file_with_options(
+              normalizedInput,
+              normalizedOutput,
+              lintEnabled,
+              maxEffectiveLines,
+              borrowEnabled ? 1 : 0,
+              target,
+            );
+          } else {
+            selfhost.compile_file(normalizedInput, normalizedOutput);
+          }
+        });
+      } finally {
+        clearInterval(heartbeat);
+      }
+      process.stderr.write(
+        `[tuffc] compilation done in ${Date.now() - compileStart}ms\n`,
+      );
       js = fs.readFileSync(finalOutput, "utf8");
     } catch (error) {
       const remap = remapSelfhostModuleErrorLoc(error, absInput, options);

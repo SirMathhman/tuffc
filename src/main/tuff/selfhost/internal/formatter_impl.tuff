@@ -15,7 +15,7 @@ fn fmt_trim_right(line: *Str) : *Str => {
     let end = line.str_length();
     while (end > 0) {
         let ch = line.str_char_at(end - 1);
-        if (ch = = 32 || ch = = 9 || ch = = 13) {
+        if (ch == 32 || ch == 9 || ch == 13) {
             end = end - 1;
         }
         else {
@@ -27,7 +27,7 @@ fn fmt_trim_right(line: *Str) : *Str => {
 fn fmt_count_leading_closes(line: *Str) : I32 => {
     let i = 0;
     let len = line.str_length();
-    while (i < len && line.str_char_at(i) = = 125) {
+    while (i < len && line.str_char_at(i) == 125) {
         i = i + 1;
     }
     i
@@ -37,7 +37,7 @@ fn fmt_count_char(line: *Str, target: I32) : I32 => {
     let len = line.str_length();
     let count = 0;
     while (i < len) {
-        if (line.str_char_at(i) = = target) {
+        if (line.str_char_at(i) == target) {
             count = count + 1;
         }
         i = i + 1;
@@ -53,45 +53,45 @@ fn fmt_count_structural_braces(line: *Str) : Vec => {
     let in_char = 0;
     while (i < len) {
         let ch = line.str_char_at(i);
-        if (in_string = = 1) {
-            if (ch = = 92 && i + 1 < len) {
+        if (in_string == 1) {
+            if (ch == 92 && i + 1 < len) {
                 i = i + 2;
                 continue;
             }
-            if (ch = = 34) {
+            if (ch == 34) {
                 in_string = 0;
             }
             i = i + 1;
             continue;
         }
-        if (in_char = = 1) {
-            if (ch = = 92 && i + 1 < len) {
+        if (in_char == 1) {
+            if (ch == 92 && i + 1 < len) {
                 i = i + 2;
                 continue;
             }
-            if (ch = = 39) {
+            if (ch == 39) {
                 in_char = 0;
             }
             i = i + 1;
             continue;
         }
-        if (ch = = 47 && i + 1 < len && line.str_char_at(i + 1) = = 47) {
+        if (ch == 47 && i + 1 < len && line.str_char_at(i + 1) == 47) {
             break;
         }
-        if (ch = = 34) {
+        if (ch == 34) {
             in_string = 1;
             i = i + 1;
             continue;
         }
-        if (ch = = 39) {
+        if (ch == 39) {
             in_char = 1;
             i = i + 1;
             continue;
         }
-        if (ch = = 123) {
+        if (ch == 123) {
             opens = opens + 1;
         }
-        if (ch = = 125) {
+        if (ch == 125) {
             closes = closes + 1;
         }
         i = i + 1;
@@ -101,12 +101,12 @@ fn fmt_count_structural_braces(line: *Str) : Vec => {
     r.vec_push(closes);
     r
 }
-fn fmt_is_space(ch: I32) : Bool => ch = = 32 || ch = = 9;
+fn fmt_is_space(ch: I32) : Bool => ch == 32 || ch == 9;
 fn fmt_is_ident_char(ch: I32) : Bool =>
 (ch >= 65 && ch <= 90) ||
 (ch >= 97 && ch <= 122) ||
 (ch >= 48 && ch <= 57) ||
-ch = = 95;
+ch == 95;
 fn fmt_prev_non_space_char(text: *Str) : I32 => {
     let i = text.str_length() - 1;
     while (i >= 0) {
@@ -145,49 +145,49 @@ fn fmt_normalize_line_spacing(line: *Str) : *Str => {
     let in_char = 0;
     while (i < len) {
         let ch = line.str_char_at(i);
-        if (in_string = = 1) {
+        if (in_string == 1) {
             acc = acc.str_concat(str_from_char_code(0 + ch));
-            if (ch = = 92 && i + 1 < len) {
+            if (ch == 92 && i + 1 < len) {
                 acc = acc.str_concat(str_from_char_code(0 + line.str_char_at(i + 1)));
                 i = i + 2;
                 continue;
             }
-            if (ch = = 34) {
+            if (ch == 34) {
                 in_string = 0;
             }
             i = i + 1;
             continue;
         }
-        if (in_char = = 1) {
+        if (in_char == 1) {
             acc = acc.str_concat(str_from_char_code(0 + ch));
-            if (ch = = 92 && i + 1 < len) {
+            if (ch == 92 && i + 1 < len) {
                 acc = acc.str_concat(str_from_char_code(0 + line.str_char_at(i + 1)));
                 i = i + 2;
                 continue;
             }
-            if (ch = = 39) {
+            if (ch == 39) {
                 in_char = 0;
             }
             i = i + 1;
             continue;
         }
-        if (ch = = 47 && i + 1 < len && line.str_char_at(i + 1) = = 47) {
+        if (ch == 47 && i + 1 < len && line.str_char_at(i + 1) == 47) {
             acc = fmt_trim_right_spaces_text(acc).str_concat(" ").str_concat(line.str_slice(i, len));
             break;
         }
-        if (ch = = 34) {
+        if (ch == 34) {
             acc = acc.str_concat("\"");
             in_string = 1;
             i = i + 1;
             continue;
         }
-        if (ch = = 39) {
+        if (ch == 39) {
             acc = acc.str_concat("'");
             in_char = 1;
             i = i + 1;
             continue;
         }
-        if (ch = = 44) {
+        if (ch == 44) {
             acc = fmt_trim_right_spaces_text(acc).str_concat(",");
             let next = fmt_next_non_space_char(line, i + 1);
             if (next != 0 && next != 41 && next != 93 && next != 125) {
@@ -196,7 +196,7 @@ fn fmt_normalize_line_spacing(line: *Str) : *Str => {
             i = i + 1;
             continue;
         }
-        if (ch = = 123) {
+        if (ch == 123) {
             let prev = fmt_prev_non_space_char(acc);
             acc = fmt_trim_right_spaces_text(acc);
             if (prev != 0 && prev != 123 && prev != 40 && prev != 91) {
@@ -207,9 +207,9 @@ fn fmt_normalize_line_spacing(line: *Str) : *Str => {
             continue;
         }
         if (
-        ch = = 61 &&
-        !(i + 1 < len && (line.str_char_at(i + 1) = = 61 || line.str_char_at(i + 1) = = 62)) &&
-        !(i > 0 && (line.str_char_at(i - 1) = = 33 || line.str_char_at(i - 1) = = 60 || line.str_char_at(i - 1) = = 62))
+        ch == 61 &&
+        !(i + 1 < len && (line.str_char_at(i + 1) == 61 || line.str_char_at(i + 1) == 62)) &&
+        !(i > 0 && (line.str_char_at(i - 1) == 33 || line.str_char_at(i - 1) == 60 || line.str_char_at(i - 1) == 62))
         ) {
             acc = fmt_trim_right_spaces_text(acc).str_concat(" = ");
             i = i + 1;
@@ -218,12 +218,12 @@ fn fmt_normalize_line_spacing(line: *Str) : *Str => {
             }
             continue;
         }
-        if (ch = = 43 || ch = = 45 || ch = = 47 || ch = = 37) {
+        if (ch == 43 || ch == 45 || ch == 47 || ch == 37) {
             let prev = fmt_prev_non_space_char(acc);
             let next = fmt_next_non_space_char(line, i + 1);
             let binary =
-            (fmt_is_ident_char(prev) || prev = = 41 || prev = = 93 || prev = = 125 || prev = = 34 || prev = = 39) &&
-            (fmt_is_ident_char(next) || next = = 40 || next = = 91 || next = = 34 || next = = 39);
+            (fmt_is_ident_char(prev) || prev == 41 || prev == 93 || prev == 125 || prev == 34 || prev == 39) &&
+            (fmt_is_ident_char(next) || next == 40 || next == 91 || next == 34 || next == 39);
             if (binary) {
                 acc = fmt_trim_right_spaces_text(acc)
                 .str_concat(" ")
@@ -295,91 +295,91 @@ fn fmt_stage1_split(source: *Str) : *Str => {
     let in_char = 0;
     while (i < len) {
         let ch = source.str_char_at(i);
-        if (in_line_comment = = 1) {
+        if (in_line_comment == 1) {
             sink.sb_append_char(0 + ch);
             i = i + 1;
-            if (ch = = 10) {
+            if (ch == 10) {
                 in_line_comment = 0;
             }
             continue;
         }
-        if (in_block_comment = = 1) {
+        if (in_block_comment == 1) {
             sink.sb_append_char(0 + ch);
             i = i + 1;
-            if (ch = = 42 && i < len && source.str_char_at(i) = = 47) {
+            if (ch == 42 && i < len && source.str_char_at(i) == 47) {
                 sink.sb_append_char(47);
                 i = i + 1;
                 in_block_comment = 0;
             }
             continue;
         }
-        if (in_string = = 1) {
+        if (in_string == 1) {
             sink.sb_append_char(0 + ch);
-            if (ch = = 92 && i + 1 < len) {
+            if (ch == 92 && i + 1 < len) {
                 sink.sb_append_char(0 + source.str_char_at(i + 1));
                 i = i + 2;
                 continue;
             }
             i = i + 1;
-            if (ch = = 34) {
+            if (ch == 34) {
                 in_string = 0;
             }
             continue;
         }
-        if (in_char = = 1) {
+        if (in_char == 1) {
             sink.sb_append_char(0 + ch);
-            if (ch = = 92 && i + 1 < len) {
+            if (ch == 92 && i + 1 < len) {
                 sink.sb_append_char(0 + source.str_char_at(i + 1));
                 i = i + 2;
                 continue;
             }
             i = i + 1;
-            if (ch = = 39) {
+            if (ch == 39) {
                 in_char = 0;
             }
             continue;
         }
-        if (ch = = 47 && i + 1 < len && source.str_char_at(i + 1) = = 47) {
+        if (ch == 47 && i + 1 < len && source.str_char_at(i + 1) == 47) {
             sink.sb_append("//");
             in_line_comment = 1;
             i = i + 2;
             continue;
         }
-        if (ch = = 47 && i + 1 < len && source.str_char_at(i + 1) = = 42) {
+        if (ch == 47 && i + 1 < len && source.str_char_at(i + 1) == 42) {
             sink.sb_append("/*");
             in_block_comment = 1;
             i = i + 2;
             continue;
         }
-        if (ch = = 34) {
+        if (ch == 34) {
             sink.sb_append_char(0 + ch);
             in_string = 1;
             i = i + 1;
             continue;
         }
-        if (ch = = 39) {
+        if (ch == 39) {
             sink.sb_append_char(0 + ch);
             in_char = 1;
             i = i + 1;
             continue;
         }
-        if (ch = = 13) {
+        if (ch == 13) {
             i = i + 1;
             continue;
         }
-        if (ch = = 59) {
+        if (ch == 59) {
             sink.sb_append_char(0 + ch);
             sink.sb_append("\n");
             i = i + 1;
             continue;
         }
-        if (ch = = 123) {
+        if (ch == 123) {
             sink.sb_append_char(0 + ch);
             sink.sb_append("\n");
             i = i + 1;
             continue;
         }
-        if (ch = = 125) {
+        if (ch == 125) {
             sink.sb_append("\n");
             sink.sb_append_char(0 + ch);
             sink.sb_append("\n");
@@ -400,11 +400,11 @@ out fn format_tuff_source_impl(source: *Str) : *Str => {
     let len = stage1.str_length();
     while (i < len) {
         let ch = stage1.str_char_at(i);
-        if (ch = = 13) {
+        if (ch == 13) {
             i = i + 1;
             continue;
         }
-        if (ch = = 10) {
+        if (ch == 10) {
             let line = line_sb.sb_build();
             line_sb = sb_new();
             indent = fmt_emit_processed_line(sink, line, indent);
@@ -417,7 +417,7 @@ out fn format_tuff_source_impl(source: *Str) : *Str => {
     let tail = line_sb.sb_build();
     fmt_emit_processed_line(sink, tail, indent);
     let result = sink.sb_build();
-    if (result.str_length() > 0 && result.str_char_at(result.str_length() - 1) = = 10) {
+    if (result.str_length() > 0 && result.str_char_at(result.str_length() - 1) == 10) {
         return result;
     }
     result.str_concat("\n")

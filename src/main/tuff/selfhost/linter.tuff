@@ -1,10 +1,9 @@
 let {
-    get_interned_str, lint_effective_line_count, set_new, vec_new, str_starts_with
+    get_interned_str, lint_effective_line_count, map_new, set_new, vec_new, str_starts_with
 }
  = selfhost::runtime_lexer;
 let {
-    node_kind, node_get_data1, node_get_data2, node_get_data3, node_get_data4, node_get_data5,
-    node_get_line
+    node_kind, node_get_data1, node_get_data2, node_get_data3, node_get_data4, node_get_data5, node_get_line, node_get_col
 }
  = selfhost::parser_core;
 let lint_issue_records : Vec<*Str> = vec_new();
@@ -56,24 +55,24 @@ fn lint_mark_line(lines: *mut Set, line: I32) : I32 => {
     0
 }
 fn lint_collect_effective_lines_expr(expr: I32, lines: *mut Set) : I32 => {
-    if (expr = = 0) {
+    if (expr == 0) {
         return 0;
     }
     let added = lint_mark_line(lines, node_get_line(expr));
     let kind = node_kind(expr);
-    if (kind = = NK_UNARY_EXPR || kind = = NK_UNWRAP_EXPR) {
+    if (kind == NK_UNARY_EXPR || kind == NK_UNWRAP_EXPR) {
         added = added + lint_collect_effective_lines_expr(node_get_data2(expr), lines);
-        if (kind = = NK_UNWRAP_EXPR) {
+        if (kind == NK_UNWRAP_EXPR) {
             added = added + lint_collect_effective_lines_expr(node_get_data1(expr), lines);
         }
         return added;
     }
-    if (kind = = NK_BINARY_EXPR) {
+    if (kind == NK_BINARY_EXPR) {
         added = added + lint_collect_effective_lines_expr(node_get_data2(expr), lines);
         added = added + lint_collect_effective_lines_expr(node_get_data3(expr), lines);
         return added;
     }
-    if (kind = = NK_CALL_EXPR) {
+    if (kind == NK_CALL_EXPR) {
         added = added + lint_collect_effective_lines_expr(node_get_data1(expr), lines);
         let args = node_get_data2(expr);
         let i = 0;
@@ -83,15 +82,15 @@ fn lint_collect_effective_lines_expr(expr: I32, lines: *mut Set) : I32 => {
         }
         return added;
     }
-    if (kind = = NK_MEMBER_EXPR) {
+    if (kind == NK_MEMBER_EXPR) {
         return added + lint_collect_effective_lines_expr(node_get_data1(expr), lines);
     }
-    if (kind = = NK_INDEX_EXPR) {
+    if (kind == NK_INDEX_EXPR) {
         added = added + lint_collect_effective_lines_expr(node_get_data1(expr), lines);
         added = added + lint_collect_effective_lines_expr(node_get_data2(expr), lines);
         return added;
     }
-    if (kind = = NK_STRUCT_INIT) {
+    if (kind == NK_STRUCT_INIT) {
         let fields = node_get_data2(expr);
         let i = 0;
         while (i < fields.vec_length()) {
@@ -101,7 +100,7 @@ fn lint_collect_effective_lines_expr(expr: I32, lines: *mut Set) : I32 => {
         }
         return added;
     }
-    if (kind = = NK_IF_EXPR) {
+    if (kind == NK_IF_EXPR) {
         added = added + lint_collect_effective_lines_expr(node_get_data1(expr), lines);
         added = added + lint_collect_effective_lines_stmt(node_get_data2(expr), lines);
         if (node_get_data3(expr) != 0) {
@@ -109,7 +108,7 @@ fn lint_collect_effective_lines_expr(expr: I32, lines: *mut Set) : I32 => {
         }
         return added;
     }
-    if (kind = = NK_MATCH_EXPR) {
+    if (kind == NK_MATCH_EXPR) {
         added = added + lint_collect_effective_lines_expr(node_get_data1(expr), lines);
         let cases = node_get_data2(expr);
         let i = 0;
@@ -120,16 +119,16 @@ fn lint_collect_effective_lines_expr(expr: I32, lines: *mut Set) : I32 => {
         }
         return added;
     }
-    if (kind = = NK_IS_EXPR) {
+    if (kind == NK_IS_EXPR) {
         return added + lint_collect_effective_lines_expr(node_get_data1(expr), lines);
     }
-    if (kind = = NK_FN_EXPR) {
+    if (kind == NK_FN_EXPR) {
         return added + lint_collect_effective_lines_stmt(node_get_data5(expr), lines);
     }
-    if (kind = = NK_LAMBDA_EXPR) {
+    if (kind == NK_LAMBDA_EXPR) {
         return added + lint_collect_effective_lines_stmt(node_get_data2(expr), lines);
     }
-    if (kind = = NK_TUPLE_EXPR) {
+    if (kind == NK_TUPLE_EXPR) {
         let items = node_get_data1(expr);
         let i = 0;
         while (i < items.vec_length()) {
@@ -141,17 +140,17 @@ fn lint_collect_effective_lines_expr(expr: I32, lines: *mut Set) : I32 => {
     added
 }
 fn lint_collect_effective_lines_stmt(stmt: I32, lines: *mut Set) : I32 => {
-    if (stmt = = 0) {
+    if (stmt == 0) {
         return 0;
     }
     let added = lint_mark_line(lines, node_get_line(stmt));
     let kind = node_kind(stmt);
-    if (kind = = NK_LET_DECL) {
+    if (kind == NK_LET_DECL) {
         added = added + lint_collect_effective_lines_expr(node_get_data2(stmt), lines);
         added = added + lint_collect_effective_lines_expr(node_get_data3(stmt), lines);
         return added;
     }
-    if (kind = = NK_BLOCK) {
+    if (kind == NK_BLOCK) {
         let stmts = node_get_data1(stmt);
         let i = 0;
         while (i < stmts.vec_length()) {
@@ -160,46 +159,46 @@ fn lint_collect_effective_lines_stmt(stmt: I32, lines: *mut Set) : I32 => {
         }
         return added;
     }
-    if (kind = = NK_EXPR_STMT) {
+    if (kind == NK_EXPR_STMT) {
         return added + lint_collect_effective_lines_expr(node_get_data1(stmt), lines);
     }
-    if (kind = = NK_ASSIGN_STMT) {
+    if (kind == NK_ASSIGN_STMT) {
         added = added + lint_collect_effective_lines_expr(node_get_data1(stmt), lines);
         added = added + lint_collect_effective_lines_expr(node_get_data2(stmt), lines);
         return added;
     }
-    if (kind = = NK_RETURN_STMT) {
+    if (kind == NK_RETURN_STMT) {
         return added + lint_collect_effective_lines_expr(node_get_data1(stmt), lines);
     }
-    if (kind = = NK_IF_STMT) {
+    if (kind == NK_IF_STMT) {
         added = added + lint_collect_effective_lines_expr(node_get_data1(stmt), lines);
         added = added + lint_collect_effective_lines_stmt(node_get_data2(stmt), lines);
         added = added + lint_collect_effective_lines_stmt(node_get_data3(stmt), lines);
         return added;
     }
-    if (kind = = NK_FOR_STMT) {
+    if (kind == NK_FOR_STMT) {
         added = added + lint_collect_effective_lines_expr(node_get_data2(stmt), lines);
         added = added + lint_collect_effective_lines_expr(node_get_data3(stmt), lines);
         added = added + lint_collect_effective_lines_stmt(node_get_data4(stmt), lines);
         return added;
     }
-    if (kind = = NK_WHILE_STMT) {
+    if (kind == NK_WHILE_STMT) {
         added = added + lint_collect_effective_lines_expr(node_get_data1(stmt), lines);
         added = added + lint_collect_effective_lines_stmt(node_get_data2(stmt), lines);
         return added;
     }
-    if (kind = = NK_LOOP_STMT) {
+    if (kind == NK_LOOP_STMT) {
         return added + lint_collect_effective_lines_stmt(node_get_data1(stmt), lines);
     }
-    if (kind = = NK_LIFETIME_STMT) {
+    if (kind == NK_LIFETIME_STMT) {
         return added + lint_collect_effective_lines_stmt(node_get_data2(stmt), lines);
     }
-    if (kind = = NK_FN_DECL || kind = = NK_CLASS_FN_DECL || kind = = NK_ACTUAL_FN_DECL) {
+    if (kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL || kind == NK_ACTUAL_FN_DECL) {
         added = added + lint_collect_effective_lines_expr(node_get_data4(stmt), lines);
         added = added + lint_collect_effective_lines_stmt(node_get_data5(stmt), lines);
         return added;
     }
-    if (kind = = NK_STMT_LIST) {
+    if (kind == NK_STMT_LIST) {
         let items = node_get_data1(stmt);
         let i = 0;
         while (i < items.vec_length()) {
@@ -208,19 +207,19 @@ fn lint_collect_effective_lines_stmt(stmt: I32, lines: *mut Set) : I32 => {
         }
         return added;
     }
-    if (kind = = NK_INTO_STMT || kind = = NK_BREAK_STMT || kind = = NK_CONTINUE_STMT || kind = =
-    NK_EXTERN_IMPORT_DECL || kind = = NK_EXTERN_FN_DECL || kind = = NK_EXTERN_LET_DECL || kind = = NK_EXTERN_TYPE_DECL) {
+    if (kind == NK_INTO_STMT || kind == NK_BREAK_STMT || kind == NK_CONTINUE_STMT || kind ==
+    NK_EXTERN_IMPORT_DECL || kind == NK_EXTERN_FN_DECL || kind == NK_EXTERN_LET_DECL || kind == NK_EXTERN_TYPE_DECL) {
         return added;
     }
     added + lint_collect_effective_lines_expr(stmt, lines)
 }
 fn lint_check_function_length(stmt: I32, max_effective_lines: I32) : I32 => {
     let kind = node_kind(stmt);
-    if (!(kind = = NK_FN_DECL || kind = = NK_CLASS_FN_DECL || kind = = NK_ACTUAL_FN_DECL)) {
+    if (!(kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL || kind == NK_ACTUAL_FN_DECL)) {
         return 0;
     }
     let body = node_get_data5(stmt);
-    if (body = = 0) {
+    if (body == 0) {
         return 0;
     }
     let lines = set_new();
@@ -238,30 +237,30 @@ fn lint_check_function_length(stmt: I32, max_effective_lines: I32) : I32 => {
     0
 }
 fn lint_collect_expr(expr: I32, receiver_extern_fns: *mut Set, reads: *mut Set) : I32 => {
-    if (expr = = 0) {
+    if (expr == 0) {
         return 0;
     }
     let kind = node_kind(expr);
-    if (kind = = NK_IDENTIFIER) {
+    if (kind == NK_IDENTIFIER) {
         reads.set_add(get_interned_str(node_get_data1(expr)));
         return 0;
     }
-    if (kind = = NK_UNARY_EXPR || kind = = NK_UNWRAP_EXPR) {
+    if (kind == NK_UNARY_EXPR || kind == NK_UNWRAP_EXPR) {
         lint_collect_expr(node_get_data2(expr), receiver_extern_fns, reads);
-        if (kind = = NK_UNWRAP_EXPR) {
+        if (kind == NK_UNWRAP_EXPR) {
             lint_collect_expr(node_get_data1(expr), receiver_extern_fns, reads);
         }
         return 0;
     }
-    if (kind = = NK_BINARY_EXPR) {
+    if (kind == NK_BINARY_EXPR) {
         lint_collect_expr(node_get_data2(expr), receiver_extern_fns, reads);
         lint_collect_expr(node_get_data3(expr), receiver_extern_fns, reads);
         return 0;
     }
-    if (kind = = NK_CALL_EXPR) {
+    if (kind == NK_CALL_EXPR) {
         let callee = node_get_data1(expr);
         let args = node_get_data2(expr);
-        if (node_kind(callee) = = NK_IDENTIFIER && args.vec_length() > 0) {
+        if (node_kind(callee) == NK_IDENTIFIER && args.vec_length() > 0) {
             let name = get_interned_str(node_get_data1(callee));
             let call_style = node_get_data3(expr);
             if (receiver_extern_fns.set_has(name) && call_style != 1) {
@@ -282,16 +281,16 @@ fn lint_collect_expr(expr: I32, receiver_extern_fns: *mut Set, reads: *mut Set) 
         }
         return 0;
     }
-    if (kind = = NK_MEMBER_EXPR) {
+    if (kind == NK_MEMBER_EXPR) {
         lint_collect_expr(node_get_data1(expr), receiver_extern_fns, reads);
         return 0;
     }
-    if (kind = = NK_INDEX_EXPR) {
+    if (kind == NK_INDEX_EXPR) {
         lint_collect_expr(node_get_data1(expr), receiver_extern_fns, reads);
         lint_collect_expr(node_get_data2(expr), receiver_extern_fns, reads);
         return 0;
     }
-    if (kind = = NK_STRUCT_INIT) {
+    if (kind == NK_STRUCT_INIT) {
         let fields = node_get_data2(expr);
         let i = 0;
         let len = fields.vec_length();
@@ -302,9 +301,9 @@ fn lint_collect_expr(expr: I32, receiver_extern_fns: *mut Set, reads: *mut Set) 
         }
         return 0;
     }
-    if (kind = = NK_IF_EXPR) {
+    if (kind == NK_IF_EXPR) {
         let cond = node_get_data1(expr);
-        if (node_kind(cond) = = NK_BOOL_LIT) {
+        if (node_kind(cond) == NK_BOOL_LIT) {
             lint_add_issue(
             "E_LINT_CONSTANT_CONDITION",
             "Constant condition in if-expression/statement",
@@ -320,7 +319,7 @@ fn lint_collect_expr(expr: I32, receiver_extern_fns: *mut Set, reads: *mut Set) 
         }
         return 0;
     }
-    if (kind = = NK_MATCH_EXPR) {
+    if (kind == NK_MATCH_EXPR) {
         lint_collect_expr(node_get_data1(expr), receiver_extern_fns, reads);
         let cases = node_get_data2(expr);
         let i = 0;
@@ -332,18 +331,18 @@ fn lint_collect_expr(expr: I32, receiver_extern_fns: *mut Set, reads: *mut Set) 
         }
         return 0;
     }
-    if (kind = = NK_IS_EXPR) {
+    if (kind == NK_IS_EXPR) {
         lint_collect_expr(node_get_data1(expr), receiver_extern_fns, reads);
     }
     0
 }
 fn lint_collect_stmt(stmt: I32, receiver_extern_fns: *mut Set, reads: *mut Set, declared_set: *mut
 Set, declared_names: Vec) : I32 => {
-    if (stmt = = 0) {
+    if (stmt == 0) {
         return 0;
     }
     let kind = node_kind(stmt);
-    if (kind = = NK_LET_DECL) {
+    if (kind == NK_LET_DECL) {
         let name = get_interned_str(node_get_data1(stmt));
         if (!declared_set.set_has(name)) {
             declared_set.set_add(name);
@@ -352,9 +351,9 @@ Set, declared_names: Vec) : I32 => {
         lint_collect_expr(node_get_data3(stmt), receiver_extern_fns, reads);
         return 0;
     }
-    if (kind = = NK_BLOCK) {
+    if (kind == NK_BLOCK) {
         let stmts = node_get_data1(stmt);
-        if (stmts.vec_length() = = 0) {
+        if (stmts.vec_length() == 0) {
             lint_add_issue(
             "E_LINT_EMPTY_BLOCK",
             "Empty block has no effect",
@@ -371,25 +370,25 @@ Set, declared_names: Vec) : I32 => {
         }
         return 0;
     }
-    if (kind = = NK_EXPR_STMT) {
+    if (kind == NK_EXPR_STMT) {
         lint_collect_expr(node_get_data1(stmt), receiver_extern_fns, reads);
         return 0;
     }
-    if (kind = = NK_EXTERN_IMPORT_DECL) {
+    if (kind == NK_EXTERN_IMPORT_DECL) {
         return 0;
     }
-    if (kind = = NK_ASSIGN_STMT) {
+    if (kind == NK_ASSIGN_STMT) {
         lint_collect_expr(node_get_data1(stmt), receiver_extern_fns, reads);
         lint_collect_expr(node_get_data2(stmt), receiver_extern_fns, reads);
         return 0;
     }
-    if (kind = = NK_RETURN_STMT) {
+    if (kind == NK_RETURN_STMT) {
         lint_collect_expr(node_get_data1(stmt), receiver_extern_fns, reads);
         return 0;
     }
-    if (kind = = NK_IF_STMT) {
+    if (kind == NK_IF_STMT) {
         let cond = node_get_data1(stmt);
-        if (node_kind(cond) = = NK_BOOL_LIT) {
+        if (node_kind(cond) == NK_BOOL_LIT) {
             lint_add_issue(
             "E_LINT_CONSTANT_CONDITION",
             "Constant condition in if-expression/statement",
@@ -404,20 +403,20 @@ Set, declared_names: Vec) : I32 => {
         declared_names);
         return 0;
     }
-    if (kind = = NK_FOR_STMT) {
+    if (kind == NK_FOR_STMT) {
         lint_collect_expr(node_get_data2(stmt), receiver_extern_fns, reads);
         lint_collect_expr(node_get_data3(stmt), receiver_extern_fns, reads);
         lint_collect_stmt(node_get_data4(stmt), receiver_extern_fns, reads, declared_set,
         declared_names);
         return 0;
     }
-    if (kind = = NK_WHILE_STMT) {
+    if (kind == NK_WHILE_STMT) {
         lint_collect_expr(node_get_data1(stmt), receiver_extern_fns, reads);
         lint_collect_stmt(node_get_data2(stmt), receiver_extern_fns, reads, declared_set,
         declared_names);
         return 0;
     }
-    if (kind = = NK_FN_DECL || kind = = NK_CLASS_FN_DECL) {
+    if (kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL) {
         lint_collect_stmt(node_get_data5(stmt), receiver_extern_fns, reads, declared_set,
         declared_names);
         return 0;
@@ -433,9 +432,897 @@ out fn lint_add_circular_import_issue(cycle_text: *Str) : I32 => {
     "Refactor shared declarations into a third module and have each side import that shared module instead."
     )
 }
+
+fn lint_astdup_kind_name(kind: I32) : *Str => {
+    if (kind == NK_BLOCK) {
+        return "block";
+    }
+    if (kind == NK_IF_STMT) {
+        return "if-stmt";
+    }
+    if (kind == NK_WHILE_STMT) {
+        return "while-stmt";
+    }
+    if (kind == NK_FOR_STMT) {
+        return "for-stmt";
+    }
+    if (kind == NK_LOOP_STMT) {
+        return "loop-stmt";
+    }
+    if (kind == NK_ASSIGN_STMT) {
+        return "assign-stmt";
+    }
+    if (kind == NK_RETURN_STMT) {
+        return "return-stmt";
+    }
+    if (kind == NK_BINARY_EXPR) {
+        return "binary-expr";
+    }
+    if (kind == NK_CALL_EXPR) {
+        return "call-expr";
+    }
+    if (kind == NK_IF_EXPR) {
+        return "if-expr";
+    }
+    if (kind == NK_MATCH_EXPR) {
+        return "match-expr";
+    }
+    if (kind == NK_STRUCT_INIT) {
+        return "struct-init";
+    }
+    if (kind == NK_LAMBDA_EXPR) {
+        return "lambda-expr";
+    }
+    "node-kind-".str_concat(int_to_string(kind))
+}
+
+fn lint_astdup_loc(n: I32) : *Str => {
+    int_to_string(node_get_line(n)).str_concat(":").str_concat(int_to_string(node_get_col(n)))
+}
+
+fn lint_astdup_preview(fp: *Str) : *Str => {
+    let max_len = 120;
+    if (fp.str_length() <= max_len) {
+        return fp;
+    }
+    fp.str_slice(0, max_len).str_concat("...")
+}
+
+fn lint_astdup_reportable_kind(kind: I32) : Bool => {
+    kind == NK_BLOCK ||
+    kind == NK_IF_STMT ||
+    kind == NK_WHILE_STMT ||
+    kind == NK_FOR_STMT ||
+    kind == NK_LOOP_STMT ||
+    kind == NK_ASSIGN_STMT ||
+    kind == NK_EXPR_STMT ||
+    kind == NK_RETURN_STMT ||
+    kind == NK_BINARY_EXPR ||
+    kind == NK_UNARY_EXPR ||
+    kind == NK_CALL_EXPR ||
+    kind == NK_MEMBER_EXPR ||
+    kind == NK_INDEX_EXPR ||
+    kind == NK_STRUCT_INIT ||
+    kind == NK_IF_EXPR ||
+    kind == NK_MATCH_EXPR ||
+    kind == NK_IS_EXPR ||
+    kind == NK_UNWRAP_EXPR ||
+    kind == NK_TUPLE_EXPR ||
+    kind == NK_LAMBDA_EXPR ||
+    kind == NK_FN_EXPR
+}
+
+fn lint_astdup_vec_fp(vec_nodes: Vec, fp_cache: Map, size_cache: Map, seen_nodes: Vec) : *Str => {
+    let i = 0;
+    let acc = "[";
+    while (i < vec_nodes.vec_length()) {
+        acc = acc.str_concat(lint_astdup_fp(vec_nodes.vec_get(i), fp_cache, size_cache, seen_nodes));
+        if (i + 1 < vec_nodes.vec_length()) {
+            acc = acc.str_concat(",");
+        }
+        i = i + 1;
+    }
+    acc.str_concat("]")
+}
+
+fn lint_astdup_vec_size(vec_nodes: Vec, size_cache: Map) : I32 => {
+    let i = 0;
+    let total = 0;
+    while (i < vec_nodes.vec_length()) {
+        let node = vec_nodes.vec_get(i);
+        if (node != 0 && size_cache.map_has(node)) {
+            total = total + size_cache.map_get(node);
+        }
+        i = i + 1;
+    }
+    total
+}
+
+fn lint_astdup_params_fp(params: Vec, fp_cache: Map, size_cache: Map, seen_nodes: Vec) : *Str => {
+    let i = 0;
+    let acc = "(";
+    while (i < params.vec_length()) {
+        let p = params.vec_get(i);
+        let ptype = p.vec_get(1);
+        acc = acc
+            .str_concat("{p:ID:t:")
+            .str_concat(lint_astdup_fp(ptype, fp_cache, size_cache, seen_nodes))
+            .str_concat("}");
+        if (i + 1 < params.vec_length()) {
+            acc = acc.str_concat(",");
+        }
+        i = i + 1;
+    }
+    acc.str_concat(")")
+}
+
+fn lint_astdup_params_size(params: Vec, size_cache: Map) : I32 => {
+    let i = 0;
+    let total = 0;
+    while (i < params.vec_length()) {
+        let p = params.vec_get(i);
+        let ptype = p.vec_get(1);
+        if (ptype != 0 && size_cache.map_has(ptype)) {
+            total = total + size_cache.map_get(ptype);
+        }
+        i = i + 1;
+    }
+    total
+}
+
+fn lint_astdup_named_type_fields_fp(fields: Vec, fp_cache: Map, size_cache: Map, seen_nodes: Vec)
+: *Str => {
+    let i = 0;
+    let acc = "{";
+    while (i < fields.vec_length()) {
+        let f = fields.vec_get(i);
+        acc = acc
+            .str_concat("{n:ID:t:")
+            .str_concat(lint_astdup_fp(f.vec_get(1), fp_cache, size_cache, seen_nodes))
+            .str_concat("}");
+        if (i + 1 < fields.vec_length()) {
+            acc = acc.str_concat(",");
+        }
+        i = i + 1;
+    }
+    acc.str_concat("}")
+}
+
+fn lint_astdup_named_type_fields_size(fields: Vec, size_cache: Map) : I32 => {
+    let i = 0;
+    let total = 0;
+    while (i < fields.vec_length()) {
+        let f = fields.vec_get(i);
+        let t = f.vec_get(1);
+        if (t != 0 && size_cache.map_has(t)) {
+            total = total + size_cache.map_get(t);
+        }
+        i = i + 1;
+    }
+    total
+}
+
+fn lint_astdup_struct_init_fields_fp(fields: Vec, fp_cache: Map, size_cache: Map, seen_nodes: Vec)
+: *Str => {
+    let i = 0;
+    let acc = "{";
+    while (i < fields.vec_length()) {
+        let f = fields.vec_get(i);
+        acc = acc
+            .str_concat("{n:ID:v:")
+            .str_concat(lint_astdup_fp(f.vec_get(1), fp_cache, size_cache, seen_nodes))
+            .str_concat("}");
+        if (i + 1 < fields.vec_length()) {
+            acc = acc.str_concat(",");
+        }
+        i = i + 1;
+    }
+    acc.str_concat("}")
+}
+
+fn lint_astdup_struct_init_fields_size(fields: Vec, size_cache: Map) : I32 => {
+    let i = 0;
+    let total = 0;
+    while (i < fields.vec_length()) {
+        let f = fields.vec_get(i);
+        let v = f.vec_get(1);
+        if (v != 0 && size_cache.map_has(v)) {
+            total = total + size_cache.map_get(v);
+        }
+        i = i + 1;
+    }
+    total
+}
+
+fn lint_astdup_cases_fp(cases: Vec, fp_cache: Map, size_cache: Map, seen_nodes: Vec) : *Str => {
+    let i = 0;
+    let acc = "[";
+    while (i < cases.vec_length()) {
+        let c = cases.vec_get(i);
+        acc = acc
+            .str_concat("{p:")
+            .str_concat(lint_astdup_fp(c.vec_get(0), fp_cache, size_cache, seen_nodes))
+            .str_concat(":b:")
+            .str_concat(lint_astdup_fp(c.vec_get(1), fp_cache, size_cache, seen_nodes))
+            .str_concat("}");
+        if (i + 1 < cases.vec_length()) {
+            acc = acc.str_concat(",");
+        }
+        i = i + 1;
+    }
+    acc.str_concat("]")
+}
+
+fn lint_astdup_cases_size(cases: Vec, size_cache: Map) : I32 => {
+    let i = 0;
+    let total = 0;
+    while (i < cases.vec_length()) {
+        let c = cases.vec_get(i);
+        let p = c.vec_get(0);
+        let b = c.vec_get(1);
+        if (p != 0 && size_cache.map_has(p)) {
+            total = total + size_cache.map_get(p);
+        }
+        if (b != 0 && size_cache.map_has(b)) {
+            total = total + size_cache.map_get(b);
+        }
+        i = i + 1;
+    }
+    total
+}
+
+fn lint_astdup_contract_methods_fp(methods: Vec, fp_cache: Map, size_cache: Map, seen_nodes: Vec)
+: *Str => {
+    let i = 0;
+    let acc = "[";
+    while (i < methods.vec_length()) {
+        let m = methods.vec_get(i);
+        acc = acc
+            .str_concat("{m:ID:g:")
+            .str_concat(int_to_string(m.vec_get(1).vec_length()))
+            .str_concat(":p:")
+            .str_concat(lint_astdup_params_fp(m.vec_get(2), fp_cache, size_cache, seen_nodes))
+            .str_concat(":r:")
+            .str_concat(lint_astdup_fp(m.vec_get(3), fp_cache, size_cache, seen_nodes))
+            .str_concat("}");
+        if (i + 1 < methods.vec_length()) {
+            acc = acc.str_concat(",");
+        }
+        i = i + 1;
+    }
+    acc.str_concat("]")
+}
+
+fn lint_astdup_contract_methods_size(methods: Vec, size_cache: Map) : I32 => {
+    let i = 0;
+    let total = 0;
+    while (i < methods.vec_length()) {
+        let m = methods.vec_get(i);
+        total = total + lint_astdup_params_size(m.vec_get(2), size_cache);
+        let ret = m.vec_get(3);
+        if (ret != 0 && size_cache.map_has(ret)) {
+            total = total + size_cache.map_get(ret);
+        }
+        i = i + 1;
+    }
+    total
+}
+
+fn lint_astdup_fp(n: I32, fp_cache: Map, size_cache: Map, seen_nodes: Vec) : *Str => {
+    if (n == 0) {
+        return "0";
+    }
+    if (fp_cache.map_has(n)) {
+        return fp_cache.map_get(n);
+    }
+
+    let kind = node_kind(n);
+    let fp = "K".str_concat(int_to_string(kind));
+    let size = 1;
+
+    if (kind == NK_IDENTIFIER || kind == NK_NAME_PAT || kind == NK_NAMED_TYPE) {
+        fp = fp.str_concat("(ID)");
+    }
+    else if (kind == NK_NUMBER_LIT || kind == NK_STRING_LIT || kind == NK_CHAR_LIT || kind == NK_LITERAL_PAT) {
+        fp = fp.str_concat("(LIT)");
+    }
+    else if (kind == NK_BOOL_LIT) {
+        fp = fp.str_concat("(BOOL)");
+    }
+    else if (kind == NK_WILDCARD_PAT || kind == NK_BREAK_STMT || kind == NK_CONTINUE_STMT) {
+        fp = fp.str_concat("()");
+    }
+    else if (kind == NK_UNARY_EXPR) {
+        fp = fp
+            .str_concat("(")
+            .str_concat(get_interned_str(node_get_data1(n)))
+            .str_concat(":")
+            .str_concat(lint_astdup_fp(node_get_data2(n), fp_cache, size_cache, seen_nodes))
+            .str_concat(")");
+        size = size + size_cache.map_get(node_get_data2(n));
+    }
+    else if (kind == NK_UNWRAP_EXPR) {
+        fp = fp
+            .str_concat("(")
+            .str_concat(lint_astdup_fp(node_get_data1(n), fp_cache, size_cache, seen_nodes))
+            .str_concat(")");
+        size = size + size_cache.map_get(node_get_data1(n));
+    }
+    else if (kind == NK_BINARY_EXPR) {
+        fp = fp
+            .str_concat("(")
+            .str_concat(get_interned_str(node_get_data1(n)))
+            .str_concat(":")
+            .str_concat(lint_astdup_fp(node_get_data2(n), fp_cache, size_cache, seen_nodes))
+            .str_concat(":")
+            .str_concat(lint_astdup_fp(node_get_data3(n), fp_cache, size_cache, seen_nodes))
+            .str_concat(")");
+        size = size + size_cache.map_get(node_get_data2(n)) + size_cache.map_get(node_get_data3(n));
+    }
+    else if (kind == NK_CALL_EXPR) {
+        fp = fp
+            .str_concat("(callee:")
+            .str_concat(lint_astdup_fp(node_get_data1(n), fp_cache, size_cache, seen_nodes))
+            .str_concat(":args:")
+            .str_concat(lint_astdup_vec_fp(node_get_data2(n), fp_cache, size_cache, seen_nodes))
+            .str_concat(":style:")
+            .str_concat(int_to_string(node_get_data3(n)))
+            .str_concat(":targs:")
+            .str_concat(lint_astdup_vec_fp(node_get_data4(n), fp_cache, size_cache, seen_nodes))
+            .str_concat(")");
+        size = size + size_cache.map_get(node_get_data1(n));
+        size = size + lint_astdup_vec_size(node_get_data2(n), size_cache);
+        size = size + lint_astdup_vec_size(node_get_data4(n), size_cache);
+    }
+    else if (kind == NK_MEMBER_EXPR) {
+        fp = fp
+            .str_concat("(obj:")
+            .str_concat(lint_astdup_fp(node_get_data1(n), fp_cache, size_cache, seen_nodes))
+            .str_concat(":member:ID)");
+        size = size + size_cache.map_get(node_get_data1(n));
+    }
+    else if (kind == NK_INDEX_EXPR) {
+        fp = fp
+            .str_concat("(target:")
+            .str_concat(lint_astdup_fp(node_get_data1(n), fp_cache, size_cache, seen_nodes))
+            .str_concat(":index:")
+            .str_concat(lint_astdup_fp(node_get_data2(n), fp_cache, size_cache, seen_nodes))
+            .str_concat(")");
+        size = size + size_cache.map_get(node_get_data1(n)) + size_cache.map_get(node_get_data2(n));
+    }
+    else if (kind == NK_STRUCT_INIT) {
+        fp = fp
+            .str_concat("(name:ID:fields:")
+            .str_concat(lint_astdup_struct_init_fields_fp(node_get_data2(n), fp_cache, size_cache, seen_nodes))
+            .str_concat(":targs:")
+            .str_concat(lint_astdup_vec_fp(node_get_data3(n), fp_cache, size_cache, seen_nodes))
+            .str_concat(")");
+        size = size + lint_astdup_struct_init_fields_size(node_get_data2(n), size_cache);
+        size = size + lint_astdup_vec_size(node_get_data3(n), size_cache);
+    }
+    else if (kind == NK_IF_EXPR || kind == NK_IF_STMT) {
+        fp = fp
+            .str_concat("(c:")
+            .str_concat(lint_astdup_fp(node_get_data1(n), fp_cache, size_cache, seen_nodes))
+            .str_concat(":t:")
+            .str_concat(lint_astdup_fp(node_get_data2(n), fp_cache, size_cache, seen_nodes))
+            .str_concat(":e:")
+            .str_concat(lint_astdup_fp(node_get_data3(n), fp_cache, size_cache, seen_nodes))
+            .str_concat(")");
+        size = size + size_cache.map_get(node_get_data1(n));
+        size = size + size_cache.map_get(node_get_data2(n));
+        if (node_get_data3(n) != 0) {
+            size = size + size_cache.map_get(node_get_data3(n));
+        }
+    }
+    else if (kind == NK_MATCH_EXPR) {
+        fp = fp
+            .str_concat("(target:")
+            .str_concat(lint_astdup_fp(node_get_data1(n), fp_cache, size_cache, seen_nodes))
+            .str_concat(":cases:")
+            .str_concat(lint_astdup_cases_fp(node_get_data2(n), fp_cache, size_cache, seen_nodes))
+            .str_concat(")");
+        size = size + size_cache.map_get(node_get_data1(n));
+        size = size + lint_astdup_cases_size(node_get_data2(n), size_cache);
+    }
+    else if (kind == NK_IS_EXPR) {
+        fp = fp
+            .str_concat("(subject:")
+            .str_concat(lint_astdup_fp(node_get_data1(n), fp_cache, size_cache, seen_nodes))
+            .str_concat(":pat:")
+            .str_concat(lint_astdup_fp(node_get_data2(n), fp_cache, size_cache, seen_nodes))
+            .str_concat(")");
+        size = size + size_cache.map_get(node_get_data1(n)) + size_cache.map_get(node_get_data2(n));
+    }
+    else if (kind == NK_TUPLE_EXPR || kind == NK_TUPLE_TYPE || kind == NK_BLOCK || kind == NK_STMT_LIST || kind == NK_PROGRAM) {
+        fp = fp.str_concat(lint_astdup_vec_fp(node_get_data1(n), fp_cache, size_cache, seen_nodes));
+        size = size + lint_astdup_vec_size(node_get_data1(n), size_cache);
+    }
+    else if (kind == NK_FN_EXPR) {
+        fp = fp
+            .str_concat("(name:ID:g:")
+            .str_concat(int_to_string(node_get_data2(n).vec_length()))
+            .str_concat(":p:")
+            .str_concat(lint_astdup_params_fp(node_get_data3(n), fp_cache, size_cache, seen_nodes))
+            .str_concat(":r:")
+            .str_concat(lint_astdup_fp(node_get_data4(n), fp_cache, size_cache, seen_nodes))
+            .str_concat(":b:")
+            .str_concat(lint_astdup_fp(node_get_data5(n), fp_cache, size_cache, seen_nodes))
+            .str_concat(")");
+        size = size + lint_astdup_params_size(node_get_data3(n), size_cache);
+        if (node_get_data4(n) != 0) {
+            size = size + size_cache.map_get(node_get_data4(n));
+        }
+        size = size + size_cache.map_get(node_get_data5(n));
+    }
+    else if (kind == NK_LAMBDA_EXPR) {
+        fp = fp
+            .str_concat("(p:")
+            .str_concat(lint_astdup_params_fp(node_get_data1(n), fp_cache, size_cache, seen_nodes))
+            .str_concat(":b:")
+            .str_concat(lint_astdup_fp(node_get_data2(n), fp_cache, size_cache, seen_nodes))
+            .str_concat(")");
+        size = size + lint_astdup_params_size(node_get_data1(n), size_cache);
+        size = size + size_cache.map_get(node_get_data2(n));
+    }
+    else if (kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL || kind == NK_ACTUAL_FN_DECL || kind == NK_EXPECT_FN_DECL || kind == NK_EXTERN_FN_DECL) {
+        fp = fp
+            .str_concat("(name:ID:g:")
+            .str_concat(int_to_string(node_get_data2(n).vec_length()))
+            .str_concat(":p:")
+            .str_concat(lint_astdup_params_fp(node_get_data3(n), fp_cache, size_cache, seen_nodes))
+            .str_concat(":r:")
+            .str_concat(lint_astdup_fp(node_get_data4(n), fp_cache, size_cache, seen_nodes))
+            .str_concat(":b:")
+            .str_concat(lint_astdup_fp(node_get_data5(n), fp_cache, size_cache, seen_nodes))
+            .str_concat(")");
+        size = size + lint_astdup_params_size(node_get_data3(n), size_cache);
+        if (node_get_data4(n) != 0) {
+            size = size + size_cache.map_get(node_get_data4(n));
+        }
+        if (node_get_data5(n) != 0) {
+            size = size + size_cache.map_get(node_get_data5(n));
+        }
+    }
+    else if (kind == NK_LET_DECL || kind == NK_EXTERN_LET_DECL) {
+        fp = fp
+            .str_concat("(name:ID:t:")
+            .str_concat(lint_astdup_fp(node_get_data2(n), fp_cache, size_cache, seen_nodes))
+            .str_concat(":v:")
+            .str_concat(lint_astdup_fp(node_get_data3(n), fp_cache, size_cache, seen_nodes))
+            .str_concat(")");
+        if (node_get_data2(n) != 0) {
+            size = size + size_cache.map_get(node_get_data2(n));
+        }
+        if (node_get_data3(n) != 0) {
+            size = size + size_cache.map_get(node_get_data3(n));
+        }
+    }
+    else if (kind == NK_FOR_STMT) {
+        fp = fp
+            .str_concat("(iter:ID:s:")
+            .str_concat(lint_astdup_fp(node_get_data2(n), fp_cache, size_cache, seen_nodes))
+            .str_concat(":e:")
+            .str_concat(lint_astdup_fp(node_get_data3(n), fp_cache, size_cache, seen_nodes))
+            .str_concat(":b:")
+            .str_concat(lint_astdup_fp(node_get_data4(n), fp_cache, size_cache, seen_nodes))
+            .str_concat(")");
+        size = size + size_cache.map_get(node_get_data2(n));
+        size = size + size_cache.map_get(node_get_data3(n));
+        size = size + size_cache.map_get(node_get_data4(n));
+    }
+    else if (kind == NK_WHILE_STMT || kind == NK_LOOP_STMT || kind == NK_RETURN_STMT || kind == NK_EXPR_STMT) {
+        fp = fp
+            .str_concat("(")
+            .str_concat(lint_astdup_fp(node_get_data1(n), fp_cache, size_cache, seen_nodes))
+            .str_concat(")");
+        if (node_get_data1(n) != 0) {
+            size = size + size_cache.map_get(node_get_data1(n));
+        }
+    }
+    else if (kind == NK_ASSIGN_STMT) {
+        fp = fp
+            .str_concat("(t:")
+            .str_concat(lint_astdup_fp(node_get_data1(n), fp_cache, size_cache, seen_nodes))
+            .str_concat(":v:")
+            .str_concat(lint_astdup_fp(node_get_data2(n), fp_cache, size_cache, seen_nodes))
+            .str_concat(")");
+        size = size + size_cache.map_get(node_get_data1(n)) + size_cache.map_get(node_get_data2(n));
+    }
+    else if (kind == NK_LIFETIME_STMT) {
+        fp = fp
+            .str_concat("(names:")
+            .str_concat(int_to_string(node_get_data1(n).vec_length()))
+            .str_concat(":b:")
+            .str_concat(lint_astdup_fp(node_get_data2(n), fp_cache, size_cache, seen_nodes))
+            .str_concat(")");
+        size = size + size_cache.map_get(node_get_data2(n));
+    }
+    else if (kind == NK_POINTER_TYPE) {
+        fp = fp
+            .str_concat("(mut:")
+            .str_concat(int_to_string(node_get_data1(n)))
+            .str_concat(":inner:")
+            .str_concat(lint_astdup_fp(node_get_data2(n), fp_cache, size_cache, seen_nodes))
+            .str_concat(":move:")
+            .str_concat(int_to_string(node_get_data3(n)))
+            .str_concat(":life:ID)");
+        size = size + size_cache.map_get(node_get_data2(n));
+    }
+    else if (kind == NK_ARRAY_TYPE) {
+        fp = fp
+            .str_concat("(e:")
+            .str_concat(lint_astdup_fp(node_get_data1(n), fp_cache, size_cache, seen_nodes))
+            .str_concat(":i:")
+            .str_concat(lint_astdup_fp(node_get_data2(n), fp_cache, size_cache, seen_nodes))
+            .str_concat(":t:")
+            .str_concat(lint_astdup_fp(node_get_data3(n), fp_cache, size_cache, seen_nodes))
+            .str_concat(")");
+        size = size + size_cache.map_get(node_get_data1(n));
+        if (node_get_data2(n) != 0) {
+            size = size + size_cache.map_get(node_get_data2(n));
+        }
+        if (node_get_data3(n) != 0) {
+            size = size + size_cache.map_get(node_get_data3(n));
+        }
+    }
+    else if (kind == NK_REFINEMENT_TYPE) {
+        fp = fp
+            .str_concat("(b:")
+            .str_concat(lint_astdup_fp(node_get_data1(n), fp_cache, size_cache, seen_nodes))
+            .str_concat(":op:")
+            .str_concat(get_interned_str(node_get_data2(n)))
+            .str_concat(":v:")
+            .str_concat(lint_astdup_fp(node_get_data3(n), fp_cache, size_cache, seen_nodes))
+            .str_concat(")");
+        size = size + size_cache.map_get(node_get_data1(n));
+        size = size + size_cache.map_get(node_get_data3(n));
+    }
+    else if (kind == NK_UNION_TYPE) {
+        fp = fp
+            .str_concat("(l:")
+            .str_concat(lint_astdup_fp(node_get_data1(n), fp_cache, size_cache, seen_nodes))
+            .str_concat(":r:")
+            .str_concat(lint_astdup_fp(node_get_data2(n), fp_cache, size_cache, seen_nodes))
+            .str_concat(":x:")
+            .str_concat(int_to_string(node_get_data3(n)))
+            .str_concat(")");
+        size = size + size_cache.map_get(node_get_data1(n)) + size_cache.map_get(node_get_data2(n));
+    }
+    else if (kind == NK_FUNCTION_TYPE) {
+        fp = fp
+            .str_concat("(p:")
+            .str_concat(lint_astdup_vec_fp(node_get_data1(n), fp_cache, size_cache, seen_nodes))
+            .str_concat(":r:")
+            .str_concat(lint_astdup_fp(node_get_data2(n), fp_cache, size_cache, seen_nodes))
+            .str_concat(")");
+        size = size + lint_astdup_vec_size(node_get_data1(n), size_cache);
+        size = size + size_cache.map_get(node_get_data2(n));
+    }
+    else if (kind == NK_APPLIED_TYPE) {
+        fp = fp
+            .str_concat("(name:ID:args:")
+            .str_concat(lint_astdup_vec_fp(node_get_data2(n), fp_cache, size_cache, seen_nodes))
+            .str_concat(")");
+        size = size + lint_astdup_vec_size(node_get_data2(n), size_cache);
+    }
+    else if (kind == NK_IMPORT_DECL || kind == NK_EXTERN_IMPORT_DECL) {
+        fp = fp
+            .str_concat("(names:")
+            .str_concat(int_to_string(node_get_data1(n).vec_length()))
+            .str_concat(":parts:")
+            .str_concat(int_to_string(node_get_data2(n).vec_length()))
+            .str_concat(")");
+    }
+    else if (kind == NK_STRUCT_DECL) {
+        fp = fp
+            .str_concat("(name:ID:g:")
+            .str_concat(int_to_string(node_get_data2(n).vec_length()))
+            .str_concat(":f:")
+            .str_concat(lint_astdup_named_type_fields_fp(node_get_data3(n), fp_cache, size_cache, seen_nodes))
+            .str_concat(":copy:")
+            .str_concat(int_to_string(node_get_data4(n)))
+            .str_concat(")");
+        size = size + lint_astdup_named_type_fields_size(node_get_data3(n), size_cache);
+    }
+    else if (kind == NK_OBJECT_DECL) {
+        fp = fp
+            .str_concat("(name:ID:g:")
+            .str_concat(int_to_string(node_get_data2(n).vec_length()))
+            .str_concat(":in:")
+            .str_concat(lint_astdup_named_type_fields_fp(node_get_data3(n), fp_cache, size_cache, seen_nodes))
+            .str_concat(")");
+        size = size + lint_astdup_named_type_fields_size(node_get_data3(n), size_cache);
+    }
+    else if (kind == NK_CONTRACT_DECL) {
+        fp = fp
+            .str_concat("(name:ID:m:")
+            .str_concat(lint_astdup_contract_methods_fp(node_get_data2(n), fp_cache, size_cache, seen_nodes))
+            .str_concat(")");
+        size = size + lint_astdup_contract_methods_size(node_get_data2(n), size_cache);
+    }
+    else if (kind == NK_ENUM_DECL) {
+        fp = fp
+            .str_concat("(name:ID:v:")
+            .str_concat(int_to_string(node_get_data2(n).vec_length()))
+            .str_concat(")");
+    }
+    else if (kind == NK_TYPE_ALIAS) {
+        fp = fp
+            .str_concat("(name:ID:g:")
+            .str_concat(int_to_string(node_get_data2(n).vec_length()))
+            .str_concat(":a:")
+            .str_concat(lint_astdup_fp(node_get_data3(n), fp_cache, size_cache, seen_nodes))
+            .str_concat(":copy:")
+            .str_concat(int_to_string(node_get_data4(n)))
+            .str_concat(":d:ID)");
+        size = size + size_cache.map_get(node_get_data3(n));
+    }
+    else if (kind == NK_DEP_TYPE_ALIAS) {
+        fp = fp
+            .str_concat("(name:ID:p:")
+            .str_concat(lint_astdup_params_fp(node_get_data2(n), fp_cache, size_cache, seen_nodes))
+            .str_concat(":a:")
+            .str_concat(lint_astdup_fp(node_get_data3(n), fp_cache, size_cache, seen_nodes))
+            .str_concat(":copy:")
+            .str_concat(int_to_string(node_get_data4(n)))
+            .str_concat(":d:ID)");
+        size = size + lint_astdup_params_size(node_get_data2(n), size_cache);
+        size = size + size_cache.map_get(node_get_data3(n));
+    }
+    else if (kind == NK_EXTERN_TYPE_DECL) {
+        fp = fp
+            .str_concat("(name:ID:g:")
+            .str_concat(int_to_string(node_get_data2(n).vec_length()))
+            .str_concat(":d:ID)");
+    }
+    else if (kind == NK_STRUCT_PAT) {
+        fp = fp
+            .str_concat("(name:ID:fields:")
+            .str_concat(int_to_string(node_get_data2(n).vec_length()))
+            .str_concat(")");
+    }
+    else {
+        fp = fp
+            .str_concat("(d1:")
+            .str_concat(int_to_string(node_get_data1(n)))
+            .str_concat(":d2:")
+            .str_concat(int_to_string(node_get_data2(n)))
+            .str_concat(":d3:")
+            .str_concat(int_to_string(node_get_data3(n)))
+            .str_concat(":d4:")
+            .str_concat(int_to_string(node_get_data4(n)))
+            .str_concat(":d5:")
+            .str_concat(int_to_string(node_get_data5(n)))
+            .str_concat(")");
+    }
+
+    fp_cache.map_set(n, fp);
+    size_cache.map_set(n, size);
+    seen_nodes.vec_push(n);
+    fp
+}
+
+fn lint_astdup_norm_leaf_kind(kind: I32) : *Str => {
+    if (kind == NK_IDENTIFIER || kind == NK_NAME_PAT || kind == NK_NAMED_TYPE) {
+        return "ID";
+    }
+    if (kind == NK_NUMBER_LIT || kind == NK_STRING_LIT || kind == NK_CHAR_LIT || kind == NK_LITERAL_PAT) {
+        return "LIT";
+    }
+    if (kind == NK_BOOL_LIT) {
+        return "BOOL";
+    }
+    int_to_string(kind)
+}
+
+fn lint_astdup_fallback_binary(program: I32) : I32 => {
+    let body = node_get_data1(program);
+    let stack = vec_new();
+    let i = 0;
+    while (i < body.vec_length()) {
+        stack.vec_push(body.vec_get(i));
+        i = i + 1;
+    }
+
+    let keys = vec_new();
+    let counts = vec_new();
+    let first_nodes = vec_new();
+    let second_nodes = vec_new();
+
+    while (stack.vec_length() > 0) {
+        let n = stack.vec_get(stack.vec_length() - 1);
+        stack.vec_pop();
+        if (n == 0) {
+            continue;
+        }
+        let kind = node_kind(n);
+
+        if (kind == NK_BINARY_EXPR) {
+            let op = get_interned_str(node_get_data1(n));
+            let left_kind = lint_astdup_norm_leaf_kind(node_kind(node_get_data2(n)));
+            let right_kind = lint_astdup_norm_leaf_kind(node_kind(node_get_data3(n)));
+            let key = op.str_concat(":").str_concat(left_kind).str_concat(":").str_concat(right_kind);
+
+            let found = -1;
+            let k = 0;
+            while (k < keys.vec_length()) {
+                if (keys.vec_get(k).str_eq(key)) {
+                    found = k;
+                    break;
+                }
+                k = k + 1;
+            }
+            if (found == -1) {
+                keys.vec_push(key);
+                counts.vec_push(1);
+                first_nodes.vec_push(n);
+                second_nodes.vec_push(0);
+            }
+            else {
+                let next_count = counts.vec_get(found) + 1;
+                counts.vec_set(found, next_count);
+                if (second_nodes.vec_get(found) == 0) {
+                    second_nodes.vec_set(found, n);
+                }
+            }
+        }
+
+        if (kind == NK_PROGRAM || kind == NK_BLOCK || kind == NK_STMT_LIST || kind == NK_TUPLE_EXPR || kind == NK_TUPLE_TYPE) {
+            let items = node_get_data1(n);
+            let j = 0;
+            while (j < items.vec_length()) {
+                stack.vec_push(items.vec_get(j));
+                j = j + 1;
+            }
+            continue;
+        }
+
+        if (kind == NK_LET_DECL || kind == NK_ASSIGN_STMT || kind == NK_BINARY_EXPR || kind == NK_INDEX_EXPR || kind == NK_IS_EXPR) {
+            stack.vec_push(node_get_data1(n));
+            stack.vec_push(node_get_data2(n));
+            if (kind == NK_LET_DECL || kind == NK_BINARY_EXPR) {
+                stack.vec_push(node_get_data3(n));
+            }
+            continue;
+        }
+
+        if (kind == NK_EXPR_STMT || kind == NK_RETURN_STMT || kind == NK_WHILE_STMT || kind == NK_LOOP_STMT || kind == NK_UNARY_EXPR || kind == NK_UNWRAP_EXPR || kind == NK_MEMBER_EXPR) {
+            stack.vec_push(node_get_data1(n));
+            if (kind == NK_UNARY_EXPR || kind == NK_UNWRAP_EXPR) {
+                stack.vec_push(node_get_data2(n));
+            }
+            continue;
+        }
+
+        if (kind == NK_IF_STMT || kind == NK_IF_EXPR) {
+            stack.vec_push(node_get_data1(n));
+            stack.vec_push(node_get_data2(n));
+            stack.vec_push(node_get_data3(n));
+            continue;
+        }
+
+        if (kind == NK_FOR_STMT) {
+            stack.vec_push(node_get_data2(n));
+            stack.vec_push(node_get_data3(n));
+            stack.vec_push(node_get_data4(n));
+            continue;
+        }
+
+        if (kind == NK_CALL_EXPR) {
+            stack.vec_push(node_get_data1(n));
+            let args = node_get_data2(n);
+            let a = 0;
+            while (a < args.vec_length()) {
+                stack.vec_push(args.vec_get(a));
+                a = a + 1;
+            }
+        }
+    }
+
+    let emitted = 0;
+    let k = 0;
+    while (k < keys.vec_length() && emitted < 5) {
+        let count = counts.vec_get(k);
+        if (count > 1) {
+            let key = keys.vec_get(k);
+            let first = first_nodes.vec_get(k);
+            let second = second_nodes.vec_get(k);
+            let first_loc = lint_astdup_loc(first);
+            let second_loc = "unknown";
+            if (second != 0) {
+                second_loc = lint_astdup_loc(second);
+            }
+            lint_add_issue(
+                "E_LINT_AST_DUPLICATE_SUBTREE",
+                "Duplicate AST subtree detected (binary-expr) with ".str_concat(int_to_string(count)).str_concat(" occurrences"),
+                "Normalized shape '".str_concat(key).str_concat("' repeats (identifier/literal values normalized), indicating copy-paste structure that is likely extractable."),
+                "Consider extracting the repeated expression shape into a helper/local binding. Example locations: ".str_concat(first_loc).str_concat(" and ").str_concat(second_loc).str_concat(".")
+            );
+            emitted = emitted + 1;
+        }
+        k = k + 1;
+    }
+    0
+}
+
+fn lint_check_ast_duplicates(program: I32) : I32 => {
+    let fp_cache = map_new();
+    let size_cache = map_new();
+    let seen_nodes = vec_new();
+
+    let body = node_get_data1(program);
+    let scan_i = 0;
+    while (scan_i < body.vec_length()) {
+        lint_astdup_fp(body.vec_get(scan_i), fp_cache, size_cache, seen_nodes);
+        scan_i = scan_i + 1;
+    }
+
+    let keys = vec_new();
+    let buckets = vec_new();
+
+    let i = 0;
+    while (i < seen_nodes.vec_length()) {
+        let n = seen_nodes.vec_get(i);
+        let kind = node_kind(n);
+        let size = size_cache.map_get(n);
+        if (size > 1 && lint_astdup_reportable_kind(kind)) {
+            let fp = fp_cache.map_get(n);
+            let found = -1;
+            let j = 0;
+            while (j < keys.vec_length()) {
+                if (keys.vec_get(j).str_eq(fp)) {
+                    found = j;
+                    break;
+                }
+                j = j + 1;
+            }
+            if (found == -1) {
+                keys.vec_push(fp);
+                let bucket = vec_new();
+                bucket.vec_push(n);
+                buckets.vec_push(bucket);
+            }
+            else {
+                let bucket = buckets.vec_get(found);
+                bucket.vec_push(n);
+                buckets.vec_set(found, bucket);
+            }
+        }
+        i = i + 1;
+    }
+
+    i = 0;
+    while (i < keys.vec_length()) {
+        let fp = keys.vec_get(i);
+        let bucket = buckets.vec_get(i);
+        if (bucket.vec_length() > 1) {
+            let first = bucket.vec_get(0);
+            let second = bucket.vec_get(1);
+            let kind_name = lint_astdup_kind_name(node_kind(first));
+            let count = bucket.vec_length();
+            let first_loc = lint_astdup_loc(first);
+            let second_loc = lint_astdup_loc(second);
+            let shape = lint_astdup_preview(fp);
+
+            lint_add_issue(
+                "E_LINT_AST_DUPLICATE_SUBTREE",
+                "Duplicate AST subtree detected (".str_concat(kind_name).str_concat(") with ").str_concat(int_to_string(count)).str_concat(" occurrences"),
+                "A structurally identical subtree appears multiple times (identifier/literal values normalized). Shape preview: '".str_concat(shape).str_concat("'."),
+                "Extract shared logic into a helper function. Example locations: ".str_concat(first_loc).str_concat(" and ").str_concat(second_loc).str_concat(".")
+            );
+        }
+        i = i + 1;
+    }
+
+    lint_astdup_fallback_binary(program);
+
+    0
+}
+
 out fn lint_program(program: I32, file_path: *Str, max_effective_lines: I32, enforce_file_length:
 I32) : I32 => {
-    if (enforce_file_length = = 1) {
+    if (enforce_file_length == 1) {
         lint_check_file_length(file_path, max_effective_lines);
     }
     let receiver_extern_fns = set_new();
@@ -447,7 +1334,7 @@ I32) : I32 => {
     let len = body.vec_length();
     while (i < len) {
         let stmt = body.vec_get(i);
-        if (node_kind(stmt) = = NK_EXTERN_FN_DECL) {
+        if (node_kind(stmt) == NK_EXTERN_FN_DECL) {
             let params = node_get_data3(stmt);
             if (params.vec_length() > 0) {
                 let p0 = params.vec_get(0);
@@ -480,6 +1367,9 @@ I32) : I32 => {
         }
         i = i + 1;
     }
+
+    lint_check_ast_duplicates(program);
+
     0
 }
 out fn selfhost_linter_marker() : I32 => 0;

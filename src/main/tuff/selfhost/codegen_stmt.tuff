@@ -27,19 +27,19 @@ fn js_fn_stack_pop() : Void => {
 }
 fn js_stack_in_synthetic_this() : Bool => {
     let h = js_fn_stack.vec_length();
-    if (h = = 0) {
+    if (h == 0) {
         return false;
     }
     let frame = js_fn_stack.vec_get(h - 1);
-    frame.vec_get(0) = = 0
+    frame.vec_get(0) == 0
 }
 fn js_this_expr() : *Str => {
     let h = js_fn_stack.vec_length();
-    if (h = = 0) {
+    if (h == 0) {
         return "__tuff_this";
     }
     let frame = js_fn_stack.vec_get(h - 1);
-    if (frame.vec_get(0) = = 1) {
+    if (frame.vec_get(0) == 1) {
         return "__this_param";
     }
     "__tuff_this"
@@ -53,7 +53,7 @@ fn js_ident_stmt(name: *Str) : *Str => {
 }
 fn emit_stmt_let_or_assign(n: I32) : *Str => {
     let kind = node_kind(n);
-    if (kind = = NK_LET_DECL) {
+    if (kind == NK_LET_DECL) {
         let name_idx = node_get_data1(n);
         let name = js_ident_stmt(get_interned_str(name_idx));
         let value = emit_expr(node_get_data3(n));
@@ -63,21 +63,21 @@ fn emit_stmt_let_or_assign(n: I32) : *Str => {
         }
         return decl.str_concat(" if (typeof __tuff_this !== 'undefined') __tuff_this.").str_concat(name).str_concat(" = ").str_concat(name).str_concat(";");
     }
-    if (kind = = NK_ASSIGN_STMT) {
+    if (kind == NK_ASSIGN_STMT) {
         let target_node = node_get_data1(n);
         let target = emit_expr(target_node);
         let value = emit_expr(node_get_data2(n));
         let assign = target.str_concat(" = ").str_concat(value).str_concat(";");
-        if (node_kind(target_node) = = NK_IDENTIFIER) {
+        if (node_kind(target_node) == NK_IDENTIFIER) {
             let name = get_interned_str(node_get_data1(target_node));
             let js_name = js_ident_stmt(name);
             if (!js_name.str_eq("__this_param")) {
                 return assign.str_concat(" if (typeof __tuff_this !== 'undefined') __tuff_this.").str_concat(js_name).str_concat(" = ").str_concat(js_name).str_concat(";");
             }
         }
-        if (node_kind(target_node) = = NK_MEMBER_EXPR) {
+        if (node_kind(target_node) == NK_MEMBER_EXPR) {
             let obj_node = node_get_data1(target_node);
-            if (node_kind(obj_node) = = NK_IDENTIFIER) {
+            if (node_kind(obj_node) == NK_IDENTIFIER) {
                 let obj_name = get_interned_str(node_get_data1(obj_node));
                 if (obj_name.str_eq("this")) {
                     let prop = get_interned_str(node_get_data2(target_node));
@@ -91,64 +91,64 @@ fn emit_stmt_let_or_assign(n: I32) : *Str => {
 }
 fn emit_stmt_flow(n: I32) : *Str => {
     let kind = node_kind(n);
-    if (kind = = NK_IMPORT_DECL) {
+    if (kind == NK_IMPORT_DECL) {
         return "// import placeholder";
     }
-    if (kind = = NK_EXPR_STMT) {
+    if (kind == NK_EXPR_STMT) {
         return emit_expr(node_get_data1(n)).str_concat(";");
     }
-    if (kind = = NK_RETURN_STMT) {
+    if (kind == NK_RETURN_STMT) {
         let value = node_get_data1(n);
-        if (value = = 0) {
+        if (value == 0) {
             return "return;";
         }
         return "return ".str_concat(emit_expr(value).str_concat(";"));
     }
-    if (kind = = NK_IF_STMT) {
+    if (kind == NK_IF_STMT) {
         let cond = emit_expr(node_get_data1(n));
         let then_b = emit_block(node_get_data2(n));
         let else_b = node_get_data3(n);
-        if (else_b = = 0) {
+        if (else_b == 0) {
             return "if (".str_concat(cond).str_concat(") ".str_concat(then_b));
         }
         return str_concat("if (".str_concat(cond).str_concat(") ").str_concat(then_b), " else ".str_concat(emit_stmt_or_block(else_b)));
     }
-    if (kind = = NK_IF_EXPR) {
+    if (kind == NK_IF_EXPR) {
         let cond = emit_expr(node_get_data1(n));
         let then_b = node_get_data2(n);
         let else_b = node_get_data3(n);
         let then_str = emit_stmt_or_block(then_b);
-        if (else_b = = 0) {
+        if (else_b == 0) {
             return "if (".str_concat(cond).str_concat(") ".str_concat(then_str));
         }
         return str_concat("if (".str_concat(cond).str_concat(") ").str_concat(then_str), " else ".str_concat(emit_stmt_or_block(else_b)));
     }
-    if (kind = = NK_WHILE_STMT) {
+    if (kind == NK_WHILE_STMT) {
         return "while (".str_concat(emit_expr(node_get_data1(n))).str_concat(") ".str_concat(emit_block(node_get_data2(n))));
     }
-    if (kind = = NK_FOR_STMT) {
+    if (kind == NK_FOR_STMT) {
         let iter = js_ident_stmt(get_interned_str(node_get_data1(n)));
         let start = emit_expr(node_get_data2(n));
         let end = emit_expr(node_get_data3(n));
         let body = emit_block(node_get_data4(n));
         return str_concat(str_concat(str_concat(str_concat("for (let ".str_concat(iter).str_concat(" = ").str_concat(start), "; ".str_concat(iter)), " < ".str_concat(end)), "; ".str_concat(iter.str_concat("++) "))), body);
     }
-    if (kind = = NK_LOOP_STMT) {
+    if (kind == NK_LOOP_STMT) {
         return "while (true) ".str_concat(emit_block(node_get_data1(n)));
     }
-    if (kind = = NK_BREAK_STMT) {
+    if (kind == NK_BREAK_STMT) {
         return "break;";
     }
-    if (kind = = NK_CONTINUE_STMT) {
+    if (kind == NK_CONTINUE_STMT) {
         return "continue;";
     }
-    if (kind = = NK_INTO_STMT) {
+    if (kind == NK_INTO_STMT) {
         return "// into ".str_concat(get_interned_str(node_get_data1(n)));
     }
-    if (kind = = NK_LIFETIME_STMT) {
+    if (kind == NK_LIFETIME_STMT) {
         return emit_block(node_get_data2(n));
     }
-    if (kind = = NK_BLOCK) {
+    if (kind == NK_BLOCK) {
         return emit_block(n);
     }
     ""
@@ -177,7 +177,7 @@ fn emit_stmt_fn_decl(n: I32) : *Str => {
     let preamble = "";
     let init_this = "";
     let suffix = "";
-    if (has_explicit_this = = 1) {
+    if (has_explicit_this == 1) {
         init_this = "let __tuff_this = undefined;\n";
     }
     else {
@@ -195,47 +195,47 @@ fn emit_stmt_fn_decl(n: I32) : *Str => {
         init_this = "let __tuff_this = { ".str_concat(fields.vec_join(", ")).str_concat(" };\n");
         suffix = "\nif (typeof __tuff_this !== 'undefined') __tuff_this.".str_concat(name).str_concat(" = ").str_concat(name).str_concat(";");
     }
-    if (node_kind(body) = = NK_BLOCK) {
+    if (node_kind(body) == NK_BLOCK) {
         return preamble.str_concat("function ".str_concat(name).str_concat("(".str_concat(params_str)).str_concat(") ".str_concat(emit_fn_block_with_init(body, init_this)))).str_concat(suffix);
     }
     preamble.str_concat("function ".str_concat(name).str_concat("(".str_concat(params_str)).str_concat(") {\n  ").str_concat(init_this).str_concat("  return ").str_concat(emit_expr(body)).str_concat(";\n}")).str_concat(suffix)
 }
 fn emit_stmt_decls(n: I32) : *Str => {
     let kind = node_kind(n);
-    if (kind = = NK_EXPECT_FN_DECL) {
+    if (kind == NK_EXPECT_FN_DECL) {
         return "// expect fn ".str_concat(get_interned_str(node_get_data1(n)));
     }
-    if (kind = = NK_FN_DECL || kind = = NK_CLASS_FN_DECL || kind = = NK_ACTUAL_FN_DECL) {
+    if (kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL || kind == NK_ACTUAL_FN_DECL) {
         return emit_stmt_fn_decl(n);
     }
-    if (kind = = NK_STRUCT_DECL) {
+    if (kind == NK_STRUCT_DECL) {
         return js_emit_struct_decl(n);
     }
-    if (kind = = NK_TYPE_ALIAS) {
+    if (kind == NK_TYPE_ALIAS) {
         return "// type ".str_concat(get_interned_str(node_get_data1(n))).str_concat(" = ...");
     }
-    if (kind = = NK_DEP_TYPE_ALIAS) {
+    if (kind == NK_DEP_TYPE_ALIAS) {
         return "// type ".str_concat(get_interned_str(node_get_data1(n))).str_concat("(...) = ...");
     }
-    if (kind = = NK_ENUM_DECL) {
+    if (kind == NK_ENUM_DECL) {
         return js_emit_enum_decl(n);
     }
-    if (kind = = NK_OBJECT_DECL) {
+    if (kind == NK_OBJECT_DECL) {
         return js_emit_object_decl(n);
     }
-    if (kind = = NK_CONTRACT_DECL) {
+    if (kind == NK_CONTRACT_DECL) {
         return js_emit_contract_decl(n);
     }
-    if (kind = = NK_EXTERN_FN_DECL) {
+    if (kind == NK_EXTERN_FN_DECL) {
         return "// extern fn ".str_concat(get_interned_str(node_get_data1(n)));
     }
-    if (kind = = NK_EXTERN_LET_DECL) {
+    if (kind == NK_EXTERN_LET_DECL) {
         return "// extern let ".str_concat(get_interned_str(node_get_data1(n)));
     }
-    if (kind = = NK_EXTERN_TYPE_DECL) {
+    if (kind == NK_EXTERN_TYPE_DECL) {
         return "// extern type ".str_concat(get_interned_str(node_get_data1(n)));
     }
-    if (kind = = NK_EXTERN_IMPORT_DECL) {
+    if (kind == NK_EXTERN_IMPORT_DECL) {
         let parts = node_get_data2(n);
         let i = 0;
         let source = "";
@@ -262,7 +262,7 @@ fn emit_stmt(n: I32) : *Str => {
     emit_stmt_decls(n)
 }
 fn emit_stmt_or_block(n: I32) : *Str => {
-    if (node_kind(n) = = NK_BLOCK) {
+    if (node_kind(n) == NK_BLOCK) {
         return emit_block(n);
     }
     "{ ".str_concat(emit_stmt(n).str_concat(" }"))
@@ -286,7 +286,7 @@ fn emit_block(n: I32) : *Str => {
 fn emit_block_as_iife(n: I32) : *Str => {
     let stmts = node_get_data1(n);
     let len = stmts.vec_length();
-    if (len = = 0) {
+    if (len == 0) {
         return "(() => undefined)()";
     }
     let sb = sb_new();
@@ -294,14 +294,14 @@ fn emit_block_as_iife(n: I32) : *Str => {
     let i = 0;
     while (i < len) {
         let stmt = stmts.vec_get(i);
-        let is_last = i = = len - 1;
+        let is_last = i == len - 1;
         let kind = node_kind(stmt);
-        if (is_last && kind = = NK_EXPR_STMT) {
+        if (is_last && kind == NK_EXPR_STMT) {
             sb_append(sb, "  return ");
             sb_append(sb, emit_expr(node_get_data1(stmt)));
             sb_append(sb, ";\n");
         }
-        else if (is_last && (kind = = NK_IF_STMT || kind = = NK_IF_EXPR)) {
+        else if (is_last && (kind == NK_IF_STMT || kind == NK_IF_EXPR)) {
             sb_append(sb, "  return ");
             sb_append(sb, emit_if_as_expr(stmt));
             sb_append(sb, ";\n");
@@ -325,7 +325,7 @@ fn emit_fn_block_with_init(n: I32, init_this: *Str) : *Str => {
         sb_append(sb, "  ");
         sb_append(sb, init_this);
     }
-    if (len = = 0) {
+    if (len == 0) {
         sb_append(sb, "}");
         return sb_build(sb);
     }
@@ -334,7 +334,7 @@ fn emit_fn_block_with_init(n: I32, init_this: *Str) : *Str => {
     let si = 0;
     while (si < len) {
         let stmt = stmts.vec_get(si);
-        if (node_kind(stmt) = = NK_TYPE_ALIAS && node_get_data5(stmt) != 0) {
+        if (node_kind(stmt) == NK_TYPE_ALIAS && node_get_data5(stmt) != 0) {
             let alias_name = get_interned_str(node_get_data1(stmt));
             let dtor_name = get_interned_str(node_get_data5(stmt));
             dtor_type_map.map_set(alias_name, dtor_name);
@@ -349,9 +349,9 @@ fn emit_fn_block_with_init(n: I32, init_this: *Str) : *Str => {
     si = 0;
     while (si < len) {
         let stmt = stmts.vec_get(si);
-        if (node_kind(stmt) = = NK_LET_DECL) {
+        if (node_kind(stmt) == NK_LET_DECL) {
             let type_node = node_get_data2(stmt);
-            if (type_node != 0 && node_kind(type_node) = = 40) {
+            if (type_node != 0 && node_kind(type_node) == 40) {
                 let type_name = get_interned_str(node_get_data1(type_node));
                 if (dtor_type_map.map_has(type_name) || js_global_dtor_type_map.map_has(type_name)) {
                     dtor_var_names.vec_push(get_interned_str(node_get_data1(stmt)));
@@ -381,9 +381,9 @@ fn emit_fn_block_with_init(n: I32, init_this: *Str) : *Str => {
     let i = 0;
     while (i < len) {
         let stmt = stmts.vec_get(i);
-        let is_last = i = = len - 1;
+        let is_last = i == len - 1;
         let kind = node_kind(stmt);
-        if (is_last && kind = = NK_EXPR_STMT) {
+        if (is_last && kind == NK_EXPR_STMT) {
             if (!dtor_calls.str_eq("")) {
                 sb_append(sb, "  ");
                 sb_append(sb, dtor_calls);
@@ -392,7 +392,7 @@ fn emit_fn_block_with_init(n: I32, init_this: *Str) : *Str => {
             sb_append(sb, emit_expr(node_get_data1(stmt)));
             sb_append(sb, ";\n");
         }
-        else if (is_last && (kind = = NK_IF_STMT || kind = = NK_IF_EXPR)) {
+        else if (is_last && (kind == NK_IF_STMT || kind == NK_IF_EXPR)) {
              // Return the result of the if expression
             if (!dtor_calls.str_eq("")) {
                 sb_append(sb, "  ");
@@ -415,7 +415,7 @@ fn emit_fn_block_with_init(n: I32, init_this: *Str) : *Str => {
 fn emit_fn_block_with_preamble(n: I32, preamble: *Str) : *Str => {
     let stmts = node_get_data1(n);
     let len = stmts.vec_length();
-    if (len = = 0) {
+    if (len == 0) {
         if (preamble.str_eq("")) {
             return "{\n}";
         }
@@ -431,14 +431,14 @@ fn emit_fn_block_with_preamble(n: I32, preamble: *Str) : *Str => {
     let i = 0;
     while (i < len) {
         let stmt = stmts.vec_get(i);
-        let is_last = i = = len - 1;
+        let is_last = i == len - 1;
         let kind = node_kind(stmt);
-        if (is_last && kind = = NK_EXPR_STMT) {
+        if (is_last && kind == NK_EXPR_STMT) {
             sb_append(sb, "  return ");
             sb_append(sb, emit_expr(node_get_data1(stmt)));
             sb_append(sb, ";\n");
         }
-        else if (is_last && (kind = = NK_IF_STMT || kind = = NK_IF_EXPR)) {
+        else if (is_last && (kind == NK_IF_STMT || kind == NK_IF_EXPR)) {
             sb_append(sb, "  return ");
             sb_append(sb, emit_if_as_expr(stmt));
             sb_append(sb, ";\n");
@@ -468,11 +468,11 @@ fn emit_if_as_expr(n: I32) : *Str => {
 }
 fn emit_branch_as_expr(n: I32) : *Str => {
     let kind = node_kind(n);
-    if (kind = = NK_BLOCK) {
+    if (kind == NK_BLOCK) {
          // Wrap block in IIFE
         let stmts = node_get_data1(n);
         let len = stmts.vec_length();
-        if (len = = 0) {
+        if (len == 0) {
             return "undefined";
         }
         let sb = sb_new();
@@ -480,14 +480,14 @@ fn emit_branch_as_expr(n: I32) : *Str => {
         let i = 0;
         while (i < len) {
             let stmt = stmts.vec_get(i);
-            let is_last = i = = len - 1;
+            let is_last = i == len - 1;
             let stmt_kind = node_kind(stmt);
-            if (is_last && stmt_kind = = NK_EXPR_STMT) {
+            if (is_last && stmt_kind == NK_EXPR_STMT) {
                 sb_append(sb, "    return ");
                 sb_append(sb, emit_expr(node_get_data1(stmt)));
                 sb_append(sb, ";\n");
             }
-            else if (is_last && (stmt_kind = = NK_IF_STMT || stmt_kind = = NK_IF_EXPR)) {
+            else if (is_last && (stmt_kind == NK_IF_STMT || stmt_kind == NK_IF_EXPR)) {
                 sb_append(sb, "    return ");
                 sb_append(sb, emit_if_as_expr(stmt));
                 sb_append(sb, ";\n");
@@ -502,7 +502,7 @@ fn emit_branch_as_expr(n: I32) : *Str => {
         sb_append(sb, "  })()");
         return sb_build(sb);
     }
-    if (kind = = NK_IF_STMT || kind = = NK_IF_EXPR) {
+    if (kind == NK_IF_STMT || kind == NK_IF_EXPR) {
         return emit_if_as_expr(n);
     }
     emit_expr(n)
@@ -515,7 +515,7 @@ out fn generate_js(program: I32) : *Str => {
     while (gi < glen) {
         let s = stmts.vec_get(gi);
         let k = node_kind(s);
-        if ((k = = NK_TYPE_ALIAS || k = = NK_EXTERN_TYPE_DECL) && node_get_data5(s) != 0) {
+        if ((k == NK_TYPE_ALIAS || k == NK_EXTERN_TYPE_DECL) && node_get_data5(s) != 0) {
             js_global_dtor_type_map.map_set(get_interned_str(node_get_data1(s)), get_interned_str(node_get_data5(s)));
         }
         gi = gi + 1;

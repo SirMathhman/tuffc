@@ -771,6 +771,8 @@ function main(argv: string[]): void {
     }
   }
 
+  const _cliStart = Date.now();
+  process.stderr.write(`[tuffc] starting: ${input}\n`);
   const result = compileFileResult(path.resolve(input), output, {
     backend,
     enableModules: true,
@@ -786,6 +788,9 @@ function main(argv: string[]): void {
     tracePasses,
   });
 
+  process.stderr.write(
+    `[tuffc] finished in ${Date.now() - _cliStart}ms (${result.ok ? "ok" : "error"})\n`,
+  );
   if (!result.ok) {
     const diag = toDiagnostic(result.error);
     const useColor = shouldUseColor(diagnosticsColor);

@@ -39,7 +39,7 @@ fn p_parse_template_wrapper() : I32 => {
     let stmts = vec_new();
     while (!p_at(TK_SYMBOL, "}")) {
         let stmt = p_parse_statement();
-        if (node_kind(stmt) = = NK_BLOCK) {
+        if (node_kind(stmt) == NK_BLOCK) {
             let inner = node_get_data1(stmt);
             let j = 0;
             while (j < inner.vec_length()) {
@@ -61,7 +61,7 @@ fn p_parse_module_wrapper() : I32 => {
     let stmts = vec_new();
     while (!p_at(TK_SYMBOL, "}")) {
         let stmt = p_parse_statement();
-        if (node_kind(stmt) = = NK_BLOCK) {
+        if (node_kind(stmt) == NK_BLOCK) {
             let inner = node_get_data1(stmt);
             let j = 0;
             while (j < inner.vec_length()) {
@@ -87,9 +87,9 @@ fn p_parse_decl_modifiers() : Vec => {
     p_at(TK_KEYWORD, "out") ||
     p_at(TK_KEYWORD, "copy") ||
     p_at(TK_KEYWORD, "expect") ||
-    (p_at(TK_IDENTIFIER, "expect") && (tok_kind(p_peek(1)) = = TK_KEYWORD || tok_kind(p_peek(1)) = = TK_IDENTIFIER)) ||
+    (p_at(TK_IDENTIFIER, "expect") && (tok_kind(p_peek(1)) == TK_KEYWORD || tok_kind(p_peek(1)) == TK_IDENTIFIER)) ||
     p_at(TK_KEYWORD, "actual") ||
-    (p_at(TK_IDENTIFIER, "actual") && (tok_kind(p_peek(1)) = = TK_KEYWORD || tok_kind(p_peek(1)) = = TK_IDENTIFIER))
+    (p_at(TK_IDENTIFIER, "actual") && (tok_kind(p_peek(1)) == TK_KEYWORD || tok_kind(p_peek(1)) == TK_IDENTIFIER))
     ) {
         modifier_watchdog = modifier_watchdog + 1;
         if (modifier_watchdog > 1000) {
@@ -98,28 +98,28 @@ fn p_parse_decl_modifiers() : Vec => {
         consumed_modifier = 1;
         if (p_at(TK_KEYWORD, "out")) {
             p_eat();
-            if (exported = = 1) {
+            if (exported == 1) {
                 panic("Duplicate 'out' modifier");
             }
             exported = 1;
         }
         else if (p_at(TK_KEYWORD, "copy")) {
             p_eat();
-            if (copy_decl = = 1) {
+            if (copy_decl == 1) {
                 panic("Duplicate 'copy' modifier");
             }
             copy_decl = 1;
         }
-        else if (p_at(TK_KEYWORD, "expect") || (p_at(TK_IDENTIFIER, "expect") && (tok_kind(p_peek(1)) = = TK_KEYWORD || tok_kind(p_peek(1)) = = TK_IDENTIFIER))) {
+        else if (p_at(TK_KEYWORD, "expect") || (p_at(TK_IDENTIFIER, "expect") && (tok_kind(p_peek(1)) == TK_KEYWORD || tok_kind(p_peek(1)) == TK_IDENTIFIER))) {
             p_eat();
-            if (expect_decl = = 1) {
+            if (expect_decl == 1) {
                 panic("Duplicate 'expect' modifier");
             }
             expect_decl = 1;
         }
-        else if (p_at(TK_KEYWORD, "actual") || (p_at(TK_IDENTIFIER, "actual") && (tok_kind(p_peek(1)) = = TK_KEYWORD || tok_kind(p_peek(1)) = = TK_IDENTIFIER))) {
+        else if (p_at(TK_KEYWORD, "actual") || (p_at(TK_IDENTIFIER, "actual") && (tok_kind(p_peek(1)) == TK_KEYWORD || tok_kind(p_peek(1)) == TK_IDENTIFIER))) {
             p_eat();
-            if (actual_decl = = 1) {
+            if (actual_decl == 1) {
                 panic("Duplicate 'actual' modifier");
             }
             actual_decl = 1;
@@ -137,7 +137,7 @@ fn p_parse_decl_modifiers() : Vec => {
     mods
 }
 fn p_parse_after_modifiers(exported: I32, copy_decl: I32, expect_decl: I32, actual_decl: I32) : I32 => {
-    if (expect_decl = = 1 && actual_decl = = 1) {
+    if (expect_decl == 1 && actual_decl == 1) {
         panic("Cannot combine 'expect' and 'actual' modifiers");
     }
     let out_node = 0;
@@ -148,19 +148,19 @@ fn p_parse_after_modifiers(exported: I32, copy_decl: I32, expect_decl: I32, actu
         out_node = p_parse_enum();
     }
     else if (p_at(TK_KEYWORD, "object")) {
-        if (copy_decl = = 1) {
+        if (copy_decl == 1) {
             panic("'copy' is only supported on struct/type declarations");
         }
-        if (expect_decl = = 1 || actual_decl = = 1) {
+        if (expect_decl == 1 || actual_decl == 1) {
             panic("'expect'/'actual' are currently supported only on fn declarations");
         }
         out_node = p_parse_object();
     }
     else if (p_at(TK_KEYWORD, "contract")) {
-        if (copy_decl = = 1) {
+        if (copy_decl == 1) {
             panic("'copy' is only supported on struct/type declarations");
         }
-        if (expect_decl = = 1 || actual_decl = = 1) {
+        if (expect_decl == 1 || actual_decl == 1) {
             panic("'expect'/'actual' are currently supported only on fn declarations");
         }
         out_node = p_parse_contract();
@@ -169,33 +169,33 @@ fn p_parse_after_modifiers(exported: I32, copy_decl: I32, expect_decl: I32, actu
         out_node = p_parse_type_alias(copy_decl);
     }
     else if (p_at(TK_KEYWORD, "fn")) {
-        if (copy_decl = = 1) {
+        if (copy_decl == 1) {
             panic("'copy' is only supported on struct/type declarations");
         }
         let mode = 0;
-        if (expect_decl = = 1) {
+        if (expect_decl == 1) {
             mode = 1;
         }
-        else if (actual_decl = = 1) {
+        else if (actual_decl == 1) {
             mode = 2;
         }
         out_node = p_parse_function(0, mode);
     }
     else if (p_at(TK_KEYWORD, "class")) {
-        if (copy_decl = = 1) {
+        if (copy_decl == 1) {
             panic("'copy' is only supported on struct/type declarations");
         }
-        if (expect_decl = = 1 || actual_decl = = 1) {
+        if (expect_decl == 1 || actual_decl == 1) {
             panic("'expect'/'actual' are currently supported only on fn declarations");
         }
         p_eat();
         out_node = p_parse_function(1, 0);
     }
     else if (p_at(TK_KEYWORD, "module")) {
-        if (copy_decl = = 1) {
+        if (copy_decl == 1) {
             panic("'copy' is only supported on struct/type declarations");
         }
-        if (expect_decl = = 1 || actual_decl = = 1) {
+        if (expect_decl == 1 || actual_decl == 1) {
             panic("'expect'/'actual' are currently supported only on fn declarations");
         }
         out_node = p_parse_module_wrapper();
@@ -203,7 +203,7 @@ fn p_parse_after_modifiers(exported: I32, copy_decl: I32, expect_decl: I32, actu
     else {
         p_error_with_token_context("Expected declaration after modifiers");
     }
-    if (exported = = 1 && node_kind(out_node) != NK_STMT_LIST) {
+    if (exported == 1 && node_kind(out_node) != NK_STMT_LIST) {
         parse_exports.set_add(get_interned_str(node_get_data1(out_node)));
     }
     if (p_at(TK_SYMBOL, ";")) {
@@ -427,7 +427,7 @@ fn p_try_parse_plain_control_statement() : I32 => {
 }
 fn p_parse_statement() : I32 => {
     let mods = p_parse_decl_modifiers();
-    if (mods.vec_get(4) = = 1) {
+    if (mods.vec_get(4) == 1) {
         return p_parse_after_modifiers(mods.vec_get(0), mods.vec_get(1), mods.vec_get(2), mods.vec_get(3));
     }
     let node = p_try_parse_plain_decl_statement();
@@ -453,7 +453,7 @@ fn p_parse_statement() : I32 => {
      // Compound assignment: x += v, x -= v, etc. (lexed as op token followed by '=')
     if (
     (p_at(TK_SYMBOL, "+") || p_at(TK_SYMBOL, "-") || p_at(TK_SYMBOL, "*") || p_at(TK_SYMBOL, "/") || p_at(TK_SYMBOL, "%") || p_at(TK_SYMBOL, "&") || p_at(TK_SYMBOL, "|") || p_at(TK_SYMBOL, "^")) &&
-    tok_kind(p_peek(1)) = = TK_SYMBOL &&
+    tok_kind(p_peek(1)) == TK_SYMBOL &&
     get_interned_str(tok_value(p_peek(1))).str_eq("=")
     ) {
         let op_tok = p_eat();
@@ -486,10 +486,10 @@ out fn p_parse_program() : I32 => {
         let before = p_mark();
         let stmt = p_parse_statement();
         let after = p_mark();
-        if (after = = before) {
+        if (after == before) {
             p_error_with_token_context("Parser made no progress while parsing top-level statement");
         }
-        if (node_kind(stmt) = = NK_STMT_LIST) {
+        if (node_kind(stmt) == NK_STMT_LIST) {
             let inner = node_get_data1(stmt);
             let i = 0;
             while (i < inner.vec_length()) {
