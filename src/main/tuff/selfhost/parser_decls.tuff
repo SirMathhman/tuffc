@@ -11,7 +11,7 @@ let {
 }
  = selfhost::parser_decls_helpers;
 let {
-    p_parse_let, p_parse_extern_decl, p_parse_extern_fn_decl
+    p_parse_let, p_parse_extern_decl
 }
  = selfhost::parser_decls_let_extern;
 fn p_new_stmt_list(stmts: Vec) : I32 => {
@@ -161,10 +161,10 @@ fn p_parse_after_modifiers(exported: I32, extern_decl: I32, copy_decl: I32, expe
         if (p_at(TK_KEYWORD, "extern")) {
             p_eat();
         }
-        if (!p_at(TK_KEYWORD, "fn")) {
-            panic("'extern' modifier is currently supported only on fn declarations");
+        if (!(p_at(TK_KEYWORD, "fn") || p_at(TK_KEYWORD, "let") || p_at(TK_KEYWORD, "type"))) {
+            panic("'extern' modifier must be followed by fn, let, or type declaration");
         }
-        out_node = p_parse_extern_fn_decl();
+        out_node = p_parse_extern_decl();
     }
     else if (p_at(TK_KEYWORD, "struct")) {
         out_node = p_parse_struct(copy_decl);

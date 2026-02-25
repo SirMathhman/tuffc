@@ -959,6 +959,10 @@ fn cc_emit_type_alias(n: I32) : *Str => {
     }
     sb_build(sb)
 }
+fn cc_is_extern_fn_decl(n: I32) : Bool => {
+    let kind = node_kind(n);
+    kind == NK_EXTERN_FN_DECL || (kind == NK_FN_DECL && node_get_data5(n) == 0)
+}
 fn cc_emit_stmt(n: I32) : *Str => {
     let kind = node_kind(n);
     if (kind == NK_LET_DECL) {
@@ -1031,6 +1035,16 @@ fn cc_emit_stmt(n: I32) : *Str => {
     if (kind == NK_EXPECT_FN_DECL) {
         return "/* expect fn ".str_concat(get_interned_str(node_get_data1(n))).str_concat(" */");
     }
+    if (cc_is_extern_fn_decl(n)) {
+        let name = get_interned_str(node_get_data1(n));
+        if (cc_is_stdlib_builtin(name)) {
+            return "/* extern ".str_concat(name).str_concat(" — declared via C stdlib headers */");
+        }
+        let params = node_get_data3(n);
+        let ret_type = cc_type_to_c(node_get_data4(n));
+        let params_str = cc_emit_param_list(params);
+        return cc_emit_prototype("extern ".str_concat(ret_type), name, params_str);
+    }
     if (kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL || kind == NK_ACTUAL_FN_DECL) {
         let source_name = get_interned_str(node_get_data1(n));
         let name = cc_to_name(source_name);
@@ -1097,16 +1111,6 @@ fn cc_emit_stmt(n: I32) : *Str => {
     if (kind == NK_CONTRACT_DECL) {
         return "/* contract ".str_concat(get_interned_str(node_get_data1(n))).str_concat(" */");
     }
-    if (kind == NK_EXTERN_FN_DECL) {
-        let name = get_interned_str(node_get_data1(n));
-        if (cc_is_stdlib_builtin(name)) {
-            return "/* extern ".str_concat(name).str_concat(" — declared via C stdlib headers */");
-        }
-        let params = node_get_data3(n);
-        let ret_type = cc_type_to_c(node_get_data4(n));
-        let params_str = cc_emit_param_list(params);
-        return cc_emit_prototype("extern ".str_concat(ret_type), name, params_str);
-    }
     if (kind == NK_EXTERN_LET_DECL) {
         let name = get_interned_str(node_get_data1(n));
         return "/* extern let ".str_concat(name).str_concat(" */");
@@ -1171,7 +1175,7 @@ out fn generate_c_impl(typed: I32, substrate: *Str) : *Str => {
     let cvi = 0;
     while (cvi < len) {
         let cvn = stmts.vec_get(cvi);
-        if (node_kind(cvn) == NK_EXTERN_FN_DECL) {
+        if (cc_is_extern_fn_decl(cvn)) {
             let fname = get_interned_str(node_get_data1(cvn));
             if (!cc_covered_extern_fns.set_has(fname)) {
                 panic_with_code( "E_EXTERN_NO_SOURCE",

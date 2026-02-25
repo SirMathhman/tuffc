@@ -50,6 +50,10 @@ fn lint_check_file_length(file_path: *Str, max_effective_lines: I32) : I32 => {
 out fn lint_check_current_file_length(file_path: *Str, max_effective_lines: I32) : I32 => {
     lint_check_file_length(file_path, max_effective_lines)
 }
+fn lint_is_extern_fn_decl(stmt: I32) : Bool => {
+    let kind = node_kind(stmt);
+    kind == NK_EXTERN_FN_DECL || (kind == NK_FN_DECL && node_get_data5(stmt) == 0)
+}
 fn lint_mark_line(lines: *mut Set, line: I32) : I32 => {
     let key = int_to_string(line);
     if (!lines.set_has(key)) {
@@ -212,7 +216,7 @@ fn lint_collect_effective_lines_stmt(stmt: I32, lines: *mut Set) : I32 => {
         return added;
     }
     if (kind == NK_INTO_STMT || kind == NK_BREAK_STMT || kind == NK_CONTINUE_STMT || kind ==
-    NK_EXTERN_IMPORT_DECL || kind == NK_EXTERN_FN_DECL || kind == NK_EXTERN_LET_DECL || kind == NK_EXTERN_TYPE_DECL) {
+    NK_EXTERN_IMPORT_DECL || lint_is_extern_fn_decl(stmt) || kind == NK_EXTERN_LET_DECL || kind == NK_EXTERN_TYPE_DECL) {
         return added;
     }
     added + lint_collect_effective_lines_expr(stmt, lines)
@@ -1338,7 +1342,7 @@ I32) : I32 => {
     let len = body.vec_length();
     while (i < len) {
         let stmt = body.vec_get(i);
-        if (node_kind(stmt) == NK_EXTERN_FN_DECL) {
+        if (lint_is_extern_fn_decl(stmt)) {
             let params = node_get_data3(stmt);
             if (params.vec_length() > 0) {
                 let p0 = params.vec_get(0);

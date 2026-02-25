@@ -200,10 +200,17 @@ fn emit_stmt_fn_decl(n: I32) : *Str => {
     }
     preamble.str_concat("function ".str_concat(name).str_concat("(".str_concat(params_str)).str_concat(") {\n  ").str_concat(init_this).str_concat("  return ").str_concat(emit_expr(body)).str_concat(";\n}")).str_concat(suffix)
 }
+fn js_is_extern_fn_decl(n: I32) : Bool => {
+    let kind = node_kind(n);
+    kind == NK_EXTERN_FN_DECL || (kind == NK_FN_DECL && node_get_data5(n) == 0)
+}
 fn emit_stmt_decls(n: I32) : *Str => {
     let kind = node_kind(n);
     if (kind == NK_EXPECT_FN_DECL) {
         return "// expect fn ".str_concat(get_interned_str(node_get_data1(n)));
+    }
+    if (js_is_extern_fn_decl(n)) {
+        return "// extern fn ".str_concat(get_interned_str(node_get_data1(n)));
     }
     if (kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL || kind == NK_ACTUAL_FN_DECL) {
         return emit_stmt_fn_decl(n);
@@ -225,9 +232,6 @@ fn emit_stmt_decls(n: I32) : *Str => {
     }
     if (kind == NK_CONTRACT_DECL) {
         return js_emit_contract_decl(n);
-    }
-    if (kind == NK_EXTERN_FN_DECL) {
-        return "// extern fn ".str_concat(get_interned_str(node_get_data1(n)));
     }
     if (kind == NK_EXTERN_LET_DECL) {
         return "// extern let ".str_concat(get_interned_str(node_get_data1(n)));

@@ -119,6 +119,13 @@ fn is_module_decl_kind(kind: I32) : Bool => {
     kind == 18 || // NK_EXTERN_LET_DECL
     kind == 19 // NK_EXTERN_TYPE_DECL
 }
+fn module_is_extern_decl(stmt: I32) : Bool => {
+    let kind = node_kind(stmt);
+    (kind == 2 && node_get_data5(stmt) == 0) || // NK_FN_DECL with no body
+    kind == 17 || // NK_EXTERN_FN_DECL (back-compat)
+    kind == 18 || // NK_EXTERN_LET_DECL
+    kind == 19 // NK_EXTERN_TYPE_DECL
+}
 fn collect_module_declarations(stmts: Vec) : *mut Set<*Str> => {
     let declared = set_new();
     let i = 0;
@@ -252,7 +259,7 @@ all_exported_declared_names: *mut Set, all_extern_declared_names: *mut Set) : *m
         if (is_module_decl_kind(dkind)) {
             let dname = get_interned_str(node_get_data1(dstmt));
             all_declared_names.set_add(dname);
-            if (dkind == 17 || dkind == 18 || dkind == 19) {
+            if (module_is_extern_decl(dstmt)) {
                 all_extern_declared_names.set_add(dname);
             }
             if (module_has_out_export(source, dname)) {
@@ -558,6 +565,7 @@ all_extern_declared: *mut Set) : I32 => {
 }
 fn module_has_out_export(source: *Str, name: *Str) : Bool => {
     source.str_includes("out extern fn ".str_concat(name)) ||
+    source.str_includes("extern out fn ".str_concat(name)) ||
     source.str_includes("out fn ".str_concat(name)) ||
     source.str_includes("out struct ".str_concat(name)) ||
     source.str_includes("out copy struct ".str_concat(name)) ||
