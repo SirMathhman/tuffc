@@ -426,8 +426,8 @@ if (lintFixUpdated !== lintFixOriginal) {
 // should be surfaced as lint diagnostics in strict mode.
 const astDuplicateSource = [
   "fn main() : I32 => {",
-  "  let a : I32 = 1 + 2;",
-  "  let b : I32 = 3 + 4;",
+  "  let a : I32 = (1 + 2) * (3 - 4);",
+  "  let b : I32 = (5 + 6) * (7 - 8);",
   "  a + b",
   "}",
   "",
