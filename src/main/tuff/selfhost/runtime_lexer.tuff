@@ -153,6 +153,26 @@ let tok_values : Vec<I32> = vec_new();
 let tok_lines : Vec<I32> = vec_new();
 let tok_cols : Vec<I32> = vec_new();
 let tok_count : I32 = 0;
+let trivia_records : Vec<*Str> = vec_new();
+fn trivia_sep_field() : *Str => "\u001f";
+fn trivia_sep_record() : *Str => "\u001e";
+fn trivia_add(kind: *Str, text: *Str, line: I32, col: I32) : I32 => {
+    trivia_records.vec_push(
+    kind
+    .str_concat(trivia_sep_field())
+    .str_concat(text)
+    .str_concat(trivia_sep_field())
+    .str_concat(int_to_string(line))
+    .str_concat(trivia_sep_field())
+    .str_concat(int_to_string(col))
+    );
+    0
+}
+out fn lex_take_trivia() : *Str => {
+    let payload = trivia_records.vec_join(trivia_sep_record());
+    trivia_records.vec_clear();
+    payload
+}
 fn tok_add(kind: I32, value: I32, line: I32, col: I32) : I32 => {
     let idx = tok_count;
     tok_kinds.vec_push(kind);
@@ -241,6 +261,7 @@ out fn lex_init(source: *Str) : I32 => {
     tok_values.vec_clear();
     tok_lines.vec_clear();
     tok_cols.vec_clear();
+    trivia_records.vec_clear();
     tok_count = 0;
     0
 }
@@ -403,16 +424,23 @@ fn lex_try_skip_whitespace_or_comment(ch: I32) : Bool => {
         return true;
     }
     if (ch == 47 && lex_peek(1) == 47) {
+        let start_line = lex_line;
+        let start_col = lex_col;
+        let sb = sb_new();
         while (lex_pos < lex_len && lex_peek(0) != 10) {
-            lex_advance();
+            sb_append_char(sb, lex_advance());
         }
+        trivia_add("line_comment", sb_build(sb), start_line, start_col);
         return true;
     }
     if (ch == 47 && lex_peek(1) == 42) {
-        lex_advance();
-        lex_advance();
+        let start_line = lex_line;
+        let start_col = lex_col;
+        let sb = sb_new();
+        sb_append_char(sb, lex_advance());
+        sb_append_char(sb, lex_advance());
         while (lex_pos < lex_len && !(lex_peek(0) == 42 && lex_peek(1) == 47)) {
-            lex_advance();
+            sb_append_char(sb, lex_advance());
         }
         if (lex_pos >= lex_len) {
             panic_with_code(
@@ -422,8 +450,9 @@ fn lex_try_skip_whitespace_or_comment(ch: I32) : Bool => {
             "Add a closing '*/' for this comment, or remove the unmatched opening '/*'."
             );
         }
-        lex_advance();
-        lex_advance();
+        sb_append_char(sb, lex_advance());
+        sb_append_char(sb, lex_advance());
+        trivia_add("block_comment", sb_build(sb), start_line, start_col);
         return true;
     }
     false
