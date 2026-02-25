@@ -20,7 +20,7 @@ const timeoutMs = parseInt(rawTimeout, 10);
 const result = spawnSync(cmd[0], cmd.slice(1), {
   stdio: "inherit",
   timeout: timeoutMs,
-  shell: false,
+  shell: true,
 });
 
 if (result.error) {
