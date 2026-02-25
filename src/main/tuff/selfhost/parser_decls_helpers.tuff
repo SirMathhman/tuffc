@@ -1,6 +1,12 @@
-let { get_intern, tok_kind, tok_value, vec_new } = selfhost::runtime_lexer;
-let { p_expect, p_expect_kind, p_parse_identifier, p_at, p_eat, p_parse_type, p_parse_type_primary, p_at_kind, p_can_start_refinement_expr_at, p_peek, node_kind, node_new, node_set_data1, node_set_data2, node_set_data3, node_set_data4, node_set_data5, node_get_data1, node_get_data2 } = selfhost::parser_core;
-
+let {
+    get_intern, tok_kind, tok_value, vec_new
+}
+ = selfhost::runtime_lexer;
+let {
+    p_expect, p_expect_kind, p_parse_identifier, p_at, p_eat, p_parse_type, p_parse_type_primary,
+    p_at_kind, p_can_start_refinement_expr_at, p_peek, node_kind, node_new, node_set_data1, node_set_data2, node_set_data3, node_set_data4, node_set_data5, node_get_data1, node_get_data2
+}
+ = selfhost::parser_core;
 fn p_parse_constraint_value_atom() : I32 => {
     if (p_at_kind(TK_IDENTIFIER)) {
         let n = node_new(NK_IDENTIFIER);
@@ -35,15 +41,14 @@ fn p_parse_constraint_value_atom() : I32 => {
     }
     p_parse_type_primary()
 }
-
 fn p_parse_constraint_value_expr() : I32 => {
     let left = p_parse_constraint_value_atom();
     while (
-        p_at(TK_SYMBOL, "+") ||
-        p_at(TK_SYMBOL, "-") ||
-        p_at(TK_SYMBOL, "*") ||
-        p_at(TK_SYMBOL, "/") ||
-        p_at(TK_SYMBOL, "%")
+    p_at(TK_SYMBOL, "+") ||
+    p_at(TK_SYMBOL, "-") ||
+    p_at(TK_SYMBOL, "*") ||
+    p_at(TK_SYMBOL, "/") ||
+    p_at(TK_SYMBOL, "%")
     ) {
         let op = tok_value(p_eat());
         let right = p_parse_constraint_value_atom();
@@ -55,27 +60,23 @@ fn p_parse_constraint_value_expr() : I32 => {
     }
     left
 }
-
 fn p_parse_generic_constraint_type() : I32 => {
     let type_node = p_parse_type_primary();
-
     let starts_generic_call_suffix = false;
-    if (p_at(TK_SYMBOL, ">") && tok_kind(p_peek(1)) == TK_SYMBOL) {
+    if (p_at(TK_SYMBOL, ">") && tok_kind(p_peek(1)) = = TK_SYMBOL) {
         let next_sym = get_intern(tok_value(p_peek(1)));
         if (next_sym.str_eq("(")) {
             starts_generic_call_suffix = true;
         }
     }
-
     let has_refine =
-        (p_at(TK_SYMBOL, "!=") ||
-        p_at(TK_SYMBOL, "<") ||
-        p_at(TK_SYMBOL, ">") ||
-        p_at(TK_SYMBOL, "<=") ||
-        p_at(TK_SYMBOL, ">=")) &&
-        p_can_start_refinement_expr_at(1) &&
-        !starts_generic_call_suffix;
-
+    (p_at(TK_SYMBOL, "!=") ||
+    p_at(TK_SYMBOL, "<") ||
+    p_at(TK_SYMBOL, ">") ||
+    p_at(TK_SYMBOL, "<=") ||
+    p_at(TK_SYMBOL, ">=")) &&
+    p_can_start_refinement_expr_at(1) &&
+    !starts_generic_call_suffix;
     if (has_refine) {
         let op = tok_value(p_eat());
         let value = p_parse_constraint_value_expr();
@@ -85,7 +86,6 @@ fn p_parse_generic_constraint_type() : I32 => {
         node_set_data3(refine, value);
         type_node = refine;
     }
-
     while (p_at(TK_SYMBOL, "|") || p_at(TK_SYMBOL, "|>")) {
         let is_extract = 0;
         if (p_at(TK_SYMBOL, "|>")) {
@@ -99,10 +99,8 @@ fn p_parse_generic_constraint_type() : I32 => {
         node_set_data3(union_node, is_extract);
         type_node = union_node;
     }
-
     type_node
 }
-
 fn p_parse_decl_generics(close_message: *Str) : Vec => {
     let generics = vec_new();
     if (p_at(TK_SYMBOL, "<")) {
@@ -124,54 +122,53 @@ fn p_parse_decl_generics(close_message: *Str) : Vec => {
     }
     generics
 }
-
 out fn p_parse_function(is_class: I32, mode: I32) : I32 => {
     p_expect(TK_KEYWORD, "fn", "Expected 'fn'");
     let name = p_parse_identifier();
-
     let generics = p_parse_decl_generics("Expected '>'");
-
     p_expect(TK_SYMBOL, "(", "Expected '('");
     let params = vec_new();
     if (!p_at(TK_SYMBOL, ")")) {
         while (true) {
             let pname = 0;
             let ptype = 0;
-
             if (p_at(TK_SYMBOL, "*")) {
                 ptype = p_parse_type();
                 if (p_at_kind(TK_IDENTIFIER)) {
                     pname = p_parse_identifier();
-                } else {
-                    if (node_kind(ptype) == NK_POINTER_TYPE) {
+                }
+                else {
+                    if (node_kind(ptype) = = NK_POINTER_TYPE) {
                         let inner = node_get_data2(ptype);
-                        if (inner != 0 && node_kind(inner) == NK_NAMED_TYPE) {
+                        if (inner != 0 && node_kind(inner) = = NK_NAMED_TYPE) {
                             let inner_name = node_get_data1(inner);
                             if (get_intern(inner_name).str_eq("this")) {
                                 pname = inner_name;
-                            } else {
+                            }
+                            else {
                                 p_expect_kind(TK_IDENTIFIER, "Expected identifier");
                             }
-                        } else {
+                        }
+                        else {
                             p_expect_kind(TK_IDENTIFIER, "Expected identifier");
                         }
-                    } else {
+                    }
+                    else {
                         p_expect_kind(TK_IDENTIFIER, "Expected identifier");
                     }
                 }
-            } else {
+            }
+            else {
                 pname = p_parse_identifier();
                 if (p_at(TK_SYMBOL, ":")) {
                     p_eat();
                     ptype = p_parse_type();
                 }
             }
-
             let param = vec_new();
             param.vec_push(pname);
             param.vec_push(ptype);
             params.vec_push(param);
-
             if (!p_at(TK_SYMBOL, ",")) {
                 break;
             }
@@ -179,37 +176,37 @@ out fn p_parse_function(is_class: I32, mode: I32) : I32 => {
         }
     }
     p_expect(TK_SYMBOL, ")", "Expected ')'");
-
     let ret_type = 0;
     if (p_at(TK_SYMBOL, ":")) {
         p_eat();
         ret_type = p_parse_type();
     }
-
     let body = 0;
-    if (mode == 1) {
+    if (mode = = 1) {
         p_expect(TK_SYMBOL, ";", "Expected ';' after expect function declaration");
-    } else {
+    }
+    else {
         p_expect(TK_SYMBOL, "=>", "Expected '=>'");
         if (p_at(TK_SYMBOL, "{")) {
             body = p_parse_block();
-        } else {
+        }
+        else {
             body = p_parse_expression(0);
         }
-
         if (node_kind(body) != NK_BLOCK) {
             if (!p_at(TK_SYMBOL, "}") && !p_at_kind(TK_EOF)) {
                 p_expect(TK_SYMBOL, ";", "Expected ';'");
             }
         }
     }
-
     let kind = NK_FN_DECL;
-    if (is_class == 1) {
+    if (is_class = = 1) {
         kind = NK_CLASS_FN_DECL;
-    } else if (mode == 1) {
+    }
+    else if (mode = = 1) {
         kind = NK_EXPECT_FN_DECL;
-    } else if (mode == 2) {
+    }
+    else if (mode = = 2) {
         kind = NK_ACTUAL_FN_DECL;
     }
     let node = node_new(kind);
@@ -220,13 +217,10 @@ out fn p_parse_function(is_class: I32, mode: I32) : I32 => {
     node_set_data5(node, body);
     node
 }
-
 out fn p_parse_struct(is_copy: I32) : I32 => {
     p_expect(TK_KEYWORD, "struct", "Expected 'struct'");
     let name = p_parse_identifier();
-
     let generics = p_parse_decl_generics("Expected '>'");
-
     p_expect(TK_SYMBOL, "{", "Expected '{'");
     let fields = vec_new();
     while (!p_at(TK_SYMBOL, "}")) {
@@ -242,7 +236,6 @@ out fn p_parse_struct(is_copy: I32) : I32 => {
         }
     }
     p_expect(TK_SYMBOL, "}", "Expected '}'");
-
     let node = node_new(NK_STRUCT_DECL);
     node_set_data1(node, name);
     node_set_data2(node, generics);
@@ -250,7 +243,6 @@ out fn p_parse_struct(is_copy: I32) : I32 => {
     node_set_data4(node, is_copy);
     node
 }
-
 out fn p_parse_enum() : I32 => {
     p_expect(TK_KEYWORD, "enum", "Expected 'enum'");
     let name = p_parse_identifier();
@@ -268,13 +260,10 @@ out fn p_parse_enum() : I32 => {
     node_set_data2(node, variants);
     node
 }
-
 out fn p_parse_object() : I32 => {
     p_expect(TK_KEYWORD, "object", "Expected 'object'");
     let name = p_parse_identifier();
-
     let generics = p_parse_decl_generics("Expected '>'");
-
     p_expect(TK_SYMBOL, "{", "Expected '{' after object name");
     let inputs = vec_new();
     while (!p_at(TK_SYMBOL, "}")) {
@@ -284,32 +273,27 @@ out fn p_parse_object() : I32 => {
         p_expect(TK_SYMBOL, ":", "Expected ':' in object input declaration");
         let input_type = p_parse_type();
         p_expect(TK_SYMBOL, ";", "Expected ';' after object input declaration");
-
         let input_field = vec_new();
         input_field.vec_push(input_name);
         input_field.vec_push(input_type);
         inputs.vec_push(input_field);
     }
     p_expect(TK_SYMBOL, "}", "Expected '}' after object body");
-
     let node = node_new(NK_OBJECT_DECL);
     node_set_data1(node, name);
     node_set_data2(node, generics);
     node_set_data3(node, inputs);
     node
 }
-
 out fn p_parse_contract() : I32 => {
     p_expect(TK_KEYWORD, "contract", "Expected 'contract'");
     let name = p_parse_identifier();
     p_expect(TK_SYMBOL, "{", "Expected '{' after contract name");
-
     let methods = vec_new();
     while (!p_at(TK_SYMBOL, "}")) {
         p_expect(TK_KEYWORD, "fn", "Expected 'fn' in contract declaration");
         let mname = p_parse_identifier();
         let mgenerics = p_parse_decl_generics("Expected '>' after contract method generics");
-
         p_expect(TK_SYMBOL, "(", "Expected '(' in contract method signature");
         let params = vec_new();
         if (!p_at(TK_SYMBOL, ")")) {
@@ -317,7 +301,6 @@ out fn p_parse_contract() : I32 => {
                 let pname = 0;
                 let ptype = 0;
                 let implicit_this = 0;
-
                 if (p_at(TK_SYMBOL, "*")) {
                     p_eat();
                     if (p_at(TK_KEYWORD, "mut")) {
@@ -326,20 +309,19 @@ out fn p_parse_contract() : I32 => {
                     pname = p_parse_identifier();
                     ptype = 0;
                     implicit_this = 1;
-                } else {
+                }
+                else {
                     pname = p_parse_identifier();
                     if (p_at(TK_SYMBOL, ":")) {
                         p_eat();
                         ptype = p_parse_type();
                     }
                 }
-
                 let param = vec_new();
                 param.vec_push(pname);
                 param.vec_push(ptype);
                 param.vec_push(implicit_this);
                 params.vec_push(param);
-
                 if (!p_at(TK_SYMBOL, ",")) {
                     break;
                 }
@@ -347,14 +329,12 @@ out fn p_parse_contract() : I32 => {
             }
         }
         p_expect(TK_SYMBOL, ")", "Expected ')' after contract method params");
-
         let ret = 0;
         if (p_at(TK_SYMBOL, ":")) {
             p_eat();
             ret = p_parse_type();
         }
         p_expect(TK_SYMBOL, ";", "Expected ';' after contract method signature");
-
         let method = vec_new();
         method.vec_push(mname);
         method.vec_push(mgenerics);
@@ -362,18 +342,15 @@ out fn p_parse_contract() : I32 => {
         method.vec_push(ret);
         methods.vec_push(method);
     }
-
     p_expect(TK_SYMBOL, "}", "Expected '}' after contract body");
     let node = node_new(NK_CONTRACT_DECL);
     node_set_data1(node, name);
     node_set_data2(node, methods);
     node
 }
-
 out fn p_parse_type_alias(is_copy: I32) : I32 => {
     p_expect(TK_KEYWORD, "type", "Expected 'type'");
     let name = p_parse_identifier();
-
     if (p_at(TK_SYMBOL, "(")) {
         p_eat();
         let value_params = vec_new();
@@ -412,9 +389,7 @@ out fn p_parse_type_alias(is_copy: I32) : I32 => {
         node_set_data5(node, destructor_name);
         return node;
     }
-
     let generics = p_parse_decl_generics("Expected '>'");
-
     p_expect(TK_SYMBOL, "=", "Expected '='");
     let aliased = p_parse_type();
     let destructor_name = 0;
@@ -423,7 +398,6 @@ out fn p_parse_type_alias(is_copy: I32) : I32 => {
         destructor_name = p_parse_identifier();
     }
     p_expect(TK_SYMBOL, ";", "Expected ';'");
-
     let node = node_new(NK_TYPE_ALIAS);
     node_set_data1(node, name);
     node_set_data2(node, generics);
@@ -432,9 +406,7 @@ out fn p_parse_type_alias(is_copy: I32) : I32 => {
     node_set_data5(node, destructor_name);
     node
 }
-
-
-out fn p_parse_for() : I32 => {
+out fn p_parse_for () : I32 => {
     p_expect(TK_KEYWORD, "for", "Expected 'for'");
     p_expect(TK_SYMBOL, "(", "Expected '('");
     let iter = p_parse_identifier();
@@ -444,7 +416,6 @@ out fn p_parse_for() : I32 => {
     let end = p_parse_expression(0);
     p_expect(TK_SYMBOL, ")", "Expected ')'");
     let body = p_parse_block();
-
     let node = node_new(NK_FOR_STMT);
     node_set_data1(node, iter);
     node_set_data2(node, start);
@@ -452,7 +423,6 @@ out fn p_parse_for() : I32 => {
     node_set_data4(node, body);
     node
 }
-
 out fn p_parse_lifetime() : I32 => {
     p_expect(TK_KEYWORD, "lifetime", "Expected 'lifetime'");
     let names = vec_new();
@@ -467,5 +437,4 @@ out fn p_parse_lifetime() : I32 => {
     node_set_data2(node, body);
     node
 }
-
 out fn selfhost_parser_decls_helpers_marker() : I32 => 0;

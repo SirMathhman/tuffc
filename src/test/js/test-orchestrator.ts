@@ -8,6 +8,9 @@ import {
 } from "./path-test-utils.ts";
 
 type SuiteName = "core" | "native" | "stress" | "parity";
+type ScriptOutcome = "passed" | "timed_out";
+
+const TEST_TIMEOUT_MS = 60_000;
 
 const root = getRepoRootFromImportMeta(import.meta.url);
 const tsxCli = getTsxCliPath(root);
@@ -30,6 +33,7 @@ const suiteScripts: Record<SuiteName, string[]> = {
     "./src/test/js/phase4-production.ts",
     "./src/test/js/borrow-checker.ts",
     "./src/test/js/cli-hardening.ts",
+    "./src/test/js/formatter.ts",
     "./src/test/js/certificate.ts",
     "./src/test/js/cpd-tuff.ts",
     "./src/test/js/selfhost-test.ts",
@@ -83,7 +87,10 @@ function parseSuites(argv: string[]): SuiteName[] {
   return suites.length > 0 ? suites : ["core"];
 }
 
-function executeScript(scriptPath: string, updateSnapshots: boolean): void {
+function executeScript(
+  scriptPath: string,
+  updateSnapshots: boolean,
+): ScriptOutcome {
   const args = [tsxCli, scriptPath];
   if (updateSnapshots && scriptPath.endsWith("run-tests.ts")) {
     args.push("--update");
@@ -102,7 +109,17 @@ function executeScript(scriptPath: string, updateSnapshots: boolean): void {
     cwd: root,
     encoding: "utf8",
     stdio: "inherit",
+    timeout: TEST_TIMEOUT_MS,
   });
+
+  if (
+    (result.error as NodeJS.ErrnoException | undefined)?.code === "ETIMEDOUT"
+  ) {
+    console.error(
+      `[test] ⚠ ${relative} timed out after ${TEST_TIMEOUT_MS / 1000}s; continuing with remaining scripts`,
+    );
+    return "timed_out";
+  }
 
   if (result.error != null) {
     console.error(
@@ -116,6 +133,7 @@ function executeScript(scriptPath: string, updateSnapshots: boolean): void {
   }
 
   console.log(`[test] ✓ ${relative}`);
+  return "passed";
 }
 
 function ensureSelfhostBuiltOnceAtStart(): void {
@@ -186,8 +204,21 @@ if (needsSelfhostArtifact) {
 
 console.log(`[test] Script count: ${dedupedScripts.length}`);
 
+const timedOutScripts: string[] = [];
+
 for (const script of dedupedScripts) {
-  executeScript(script, updateSnapshots);
+  const outcome = executeScript(script, updateSnapshots);
+  if (outcome === "timed_out") {
+    timedOutScripts.push(path.relative(root, script).replaceAll("\\", "/"));
+  }
+}
+
+if (timedOutScripts.length > 0) {
+  console.error("\n[test] Timed out script(s):");
+  for (const script of timedOutScripts) {
+    console.error(`  ${script}`);
+  }
+  process.exit(124);
 }
 
 console.log(`\n[test] ✅ Completed suites: ${suites.join(", ")}`);

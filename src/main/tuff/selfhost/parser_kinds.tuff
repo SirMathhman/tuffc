@@ -27,9 +27,10 @@ let NK_LIFETIME_STMT : I32 = 67;
 let NK_STMT_LIST : I32 = 68;
 let NK_EXTERN_IMPORT_DECL : I32 = 69;
 let NK_ENUM_DECL : I32 = 60;
-let NK_DEP_TYPE_ALIAS : I32 = 70;   // type Foo(p: T) = ...  (value-param dep alias)
-let NK_APPLIED_TYPE : I32 = 71;     // Foo(expr)             (type application)
-
+let NK_DEP_TYPE_ALIAS : I32 = 70;
+ // type Foo(p: T) = ...  (value-param dep alias)
+let NK_APPLIED_TYPE : I32 = 71;
+ // Foo(expr)             (type application)
 let NK_NUMBER_LIT : I32 = 20;
 let NK_BOOL_LIT : I32 = 21;
 let NK_STRING_LIT : I32 = 22;
@@ -48,7 +49,6 @@ let NK_UNWRAP_EXPR : I32 = 34;
 let NK_LAMBDA_EXPR : I32 = 35;
 let NK_FN_EXPR : I32 = 36;
 let NK_TUPLE_EXPR : I32 = 37;
-
 let NK_NAMED_TYPE : I32 = 40;
 let NK_POINTER_TYPE : I32 = 41;
 let NK_ARRAY_TYPE : I32 = 42;
@@ -56,10 +56,8 @@ let NK_TUPLE_TYPE : I32 = 43;
 let NK_REFINEMENT_TYPE : I32 = 44;
 let NK_UNION_TYPE : I32 = 45;
 let NK_FUNCTION_TYPE : I32 = 46;
-
 let NK_WILDCARD_PAT : I32 = 50;
 let NK_LITERAL_PAT : I32 = 51;
 let NK_NAME_PAT : I32 = 52;
 let NK_STRUCT_PAT : I32 = 53;
-
 out fn selfhost_parser_kinds_marker() : I32 => 0;

@@ -300,7 +300,7 @@ function loadSelfhostFromDisk(selfhostOutput): CompilerResult<unknown> {
 
   try {
     vm.runInNewContext(
-      `${selfhostJs}\nmodule.exports = { compile_source, compile_file, compile_source_with_options, compile_file_with_options, take_lint_issues, main };`,
+      `${selfhostJs}\nmodule.exports = { compile_source, compile_file, compile_source_with_options, compile_file_with_options, take_lint_issues, main, ...(typeof format_source_tuff === \"function\" ? { format_source_tuff } : {}) };`,
       sandbox,
       { filename: toPosixPath(selfhostOutput) },
     );
@@ -771,6 +771,40 @@ export function compileFileThrow(
     throw result.error;
   }
   return result.value;
+}
+
+export function formatTuffSource(
+  source: string,
+  options: Record<string, unknown> = {},
+): CompilerResult<string> {
+  const run = createTracer(options.tracePasses);
+  const selfhostResult = run("selfhost-bootstrap", () =>
+    bootstrapSelfhostCompiler(options),
+  );
+  if (!selfhostResult.ok) return selfhostResult;
+  const selfhost = selfhostResult.value as Record<string, unknown>;
+
+  try {
+    if (typeof selfhost.format_source_tuff === "function") {
+      return ok(
+        (selfhost.format_source_tuff as (src: string) => string)(source),
+      );
+    }
+    return err(
+      new TuffError("Selfhost formatter export not available", undefined, {
+        code: "E_SELFHOST_FORMATTER_UNAVAILABLE",
+        reason:
+          "The loaded selfhost artifact does not expose format_source_tuff.",
+        fix: "Rebuild selfhost artifacts and retry formatting.",
+      }),
+    );
+  } catch (error) {
+    return err(
+      wrapTuffError(error, {
+        source,
+      }),
+    );
+  }
 }
 
 export const compileSourceResult = compileSource;

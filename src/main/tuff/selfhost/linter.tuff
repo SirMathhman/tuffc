@@ -1,54 +1,52 @@
-let { get_interned_str, lint_effective_line_count, set_new, vec_new, str_starts_with } = selfhost::runtime_lexer;
-let { node_kind, node_get_data1, node_get_data2, node_get_data3, node_get_data4, node_get_data5, node_get_line } = selfhost::parser_core;
-
+let {
+    get_interned_str, lint_effective_line_count, set_new, vec_new, str_starts_with
+}
+ = selfhost::runtime_lexer;
+let {
+    node_kind, node_get_data1, node_get_data2, node_get_data3, node_get_data4, node_get_data5,
+    node_get_line
+}
+ = selfhost::parser_core;
 let lint_issue_records : Vec<*Str> = vec_new();
-
 fn lint_issue_sep_field() : *Str => "\u001f";
 fn lint_issue_sep_record() : *Str => "\u001e";
-
 fn lint_issue_encode(code: *Str, message: *Str, reason: *Str, fix: *Str) : *Str => {
     code
-        .str_concat(lint_issue_sep_field())
-        .str_concat(message)
-        .str_concat(lint_issue_sep_field())
-        .str_concat(reason)
-        .str_concat(lint_issue_sep_field())
-        .str_concat(fix)
+    .str_concat(lint_issue_sep_field())
+    .str_concat(message)
+    .str_concat(lint_issue_sep_field())
+    .str_concat(reason)
+    .str_concat(lint_issue_sep_field())
+    .str_concat(fix)
 }
-
 fn lint_add_issue(code: *Str, message: *Str, reason: *Str, fix: *Str) : I32 => {
     lint_issue_records.vec_push(lint_issue_encode(code, message, reason, fix));
     0
 }
-
 out fn lint_reset() : I32 => {
     lint_issue_records.vec_clear();
     0
 }
-
 out fn lint_take_issues() : *Str => {
     let s = lint_issue_records.vec_join(lint_issue_sep_record());
     lint_issue_records.vec_clear();
     s
 }
-
 fn lint_check_file_length(file_path: *Str, max_effective_lines: I32) : I32 => {
     let count = lint_effective_line_count();
     if (count > max_effective_lines) {
         lint_add_issue(
-            "E_LINT_FILE_TOO_LONG",
-            "File '".str_concat(file_path).str_concat("' exceeds ").str_concat(int_to_string(max_effective_lines)).str_concat(" effective lines (").str_concat(int_to_string(count)).str_concat(")"),
-            "Large files are harder to review and maintain; this file exceeds the maximum effective line budget after excluding comments and blank lines.",
-            "Split this file into smaller modules so each file has at most ".str_concat(int_to_string(max_effective_lines)).str_concat(" non-comment, non-whitespace lines.")
+        "E_LINT_FILE_TOO_LONG",
+        "File '".str_concat(file_path).str_concat("' exceeds ").str_concat(int_to_string(max_effective_lines)).str_concat(" effective lines (").str_concat(int_to_string(count)).str_concat(")"),
+        "Large files are harder to review and maintain; this file exceeds the maximum effective line budget after excluding comments and blank lines.",
+        "Split this file into smaller modules so each file has at most ".str_concat(int_to_string(max_effective_lines)).str_concat(" non-comment, non-whitespace lines.")
         );
     }
     0
 }
-
 out fn lint_check_current_file_length(file_path: *Str, max_effective_lines: I32) : I32 => {
     lint_check_file_length(file_path, max_effective_lines)
 }
-
 fn lint_mark_line(lines: *mut Set, line: I32) : I32 => {
     let key = int_to_string(line);
     if (!lines.set_has(key)) {
@@ -57,30 +55,25 @@ fn lint_mark_line(lines: *mut Set, line: I32) : I32 => {
     }
     0
 }
-
 fn lint_collect_effective_lines_expr(expr: I32, lines: *mut Set) : I32 => {
-    if (expr == 0) {
+    if (expr = = 0) {
         return 0;
     }
-
     let added = lint_mark_line(lines, node_get_line(expr));
     let kind = node_kind(expr);
-
-    if (kind == NK_UNARY_EXPR || kind == NK_UNWRAP_EXPR) {
+    if (kind = = NK_UNARY_EXPR || kind = = NK_UNWRAP_EXPR) {
         added = added + lint_collect_effective_lines_expr(node_get_data2(expr), lines);
-        if (kind == NK_UNWRAP_EXPR) {
+        if (kind = = NK_UNWRAP_EXPR) {
             added = added + lint_collect_effective_lines_expr(node_get_data1(expr), lines);
         }
         return added;
     }
-
-    if (kind == NK_BINARY_EXPR) {
+    if (kind = = NK_BINARY_EXPR) {
         added = added + lint_collect_effective_lines_expr(node_get_data2(expr), lines);
         added = added + lint_collect_effective_lines_expr(node_get_data3(expr), lines);
         return added;
     }
-
-    if (kind == NK_CALL_EXPR) {
+    if (kind = = NK_CALL_EXPR) {
         added = added + lint_collect_effective_lines_expr(node_get_data1(expr), lines);
         let args = node_get_data2(expr);
         let i = 0;
@@ -90,18 +83,15 @@ fn lint_collect_effective_lines_expr(expr: I32, lines: *mut Set) : I32 => {
         }
         return added;
     }
-
-    if (kind == NK_MEMBER_EXPR) {
+    if (kind = = NK_MEMBER_EXPR) {
         return added + lint_collect_effective_lines_expr(node_get_data1(expr), lines);
     }
-
-    if (kind == NK_INDEX_EXPR) {
+    if (kind = = NK_INDEX_EXPR) {
         added = added + lint_collect_effective_lines_expr(node_get_data1(expr), lines);
         added = added + lint_collect_effective_lines_expr(node_get_data2(expr), lines);
         return added;
     }
-
-    if (kind == NK_STRUCT_INIT) {
+    if (kind = = NK_STRUCT_INIT) {
         let fields = node_get_data2(expr);
         let i = 0;
         while (i < fields.vec_length()) {
@@ -111,8 +101,7 @@ fn lint_collect_effective_lines_expr(expr: I32, lines: *mut Set) : I32 => {
         }
         return added;
     }
-
-    if (kind == NK_IF_EXPR) {
+    if (kind = = NK_IF_EXPR) {
         added = added + lint_collect_effective_lines_expr(node_get_data1(expr), lines);
         added = added + lint_collect_effective_lines_stmt(node_get_data2(expr), lines);
         if (node_get_data3(expr) != 0) {
@@ -120,8 +109,7 @@ fn lint_collect_effective_lines_expr(expr: I32, lines: *mut Set) : I32 => {
         }
         return added;
     }
-
-    if (kind == NK_MATCH_EXPR) {
+    if (kind = = NK_MATCH_EXPR) {
         added = added + lint_collect_effective_lines_expr(node_get_data1(expr), lines);
         let cases = node_get_data2(expr);
         let i = 0;
@@ -132,20 +120,16 @@ fn lint_collect_effective_lines_expr(expr: I32, lines: *mut Set) : I32 => {
         }
         return added;
     }
-
-    if (kind == NK_IS_EXPR) {
+    if (kind = = NK_IS_EXPR) {
         return added + lint_collect_effective_lines_expr(node_get_data1(expr), lines);
     }
-
-    if (kind == NK_FN_EXPR) {
+    if (kind = = NK_FN_EXPR) {
         return added + lint_collect_effective_lines_stmt(node_get_data5(expr), lines);
     }
-
-    if (kind == NK_LAMBDA_EXPR) {
+    if (kind = = NK_LAMBDA_EXPR) {
         return added + lint_collect_effective_lines_stmt(node_get_data2(expr), lines);
     }
-
-    if (kind == NK_TUPLE_EXPR) {
+    if (kind = = NK_TUPLE_EXPR) {
         let items = node_get_data1(expr);
         let i = 0;
         while (i < items.vec_length()) {
@@ -154,25 +138,20 @@ fn lint_collect_effective_lines_expr(expr: I32, lines: *mut Set) : I32 => {
         }
         return added;
     }
-
     added
 }
-
 fn lint_collect_effective_lines_stmt(stmt: I32, lines: *mut Set) : I32 => {
-    if (stmt == 0) {
+    if (stmt = = 0) {
         return 0;
     }
-
     let added = lint_mark_line(lines, node_get_line(stmt));
     let kind = node_kind(stmt);
-
-    if (kind == NK_LET_DECL) {
+    if (kind = = NK_LET_DECL) {
         added = added + lint_collect_effective_lines_expr(node_get_data2(stmt), lines);
         added = added + lint_collect_effective_lines_expr(node_get_data3(stmt), lines);
         return added;
     }
-
-    if (kind == NK_BLOCK) {
+    if (kind = = NK_BLOCK) {
         let stmts = node_get_data1(stmt);
         let i = 0;
         while (i < stmts.vec_length()) {
@@ -181,56 +160,46 @@ fn lint_collect_effective_lines_stmt(stmt: I32, lines: *mut Set) : I32 => {
         }
         return added;
     }
-
-    if (kind == NK_EXPR_STMT) {
+    if (kind = = NK_EXPR_STMT) {
         return added + lint_collect_effective_lines_expr(node_get_data1(stmt), lines);
     }
-
-    if (kind == NK_ASSIGN_STMT) {
+    if (kind = = NK_ASSIGN_STMT) {
         added = added + lint_collect_effective_lines_expr(node_get_data1(stmt), lines);
         added = added + lint_collect_effective_lines_expr(node_get_data2(stmt), lines);
         return added;
     }
-
-    if (kind == NK_RETURN_STMT) {
+    if (kind = = NK_RETURN_STMT) {
         return added + lint_collect_effective_lines_expr(node_get_data1(stmt), lines);
     }
-
-    if (kind == NK_IF_STMT) {
+    if (kind = = NK_IF_STMT) {
         added = added + lint_collect_effective_lines_expr(node_get_data1(stmt), lines);
         added = added + lint_collect_effective_lines_stmt(node_get_data2(stmt), lines);
         added = added + lint_collect_effective_lines_stmt(node_get_data3(stmt), lines);
         return added;
     }
-
-    if (kind == NK_FOR_STMT) {
+    if (kind = = NK_FOR_STMT) {
         added = added + lint_collect_effective_lines_expr(node_get_data2(stmt), lines);
         added = added + lint_collect_effective_lines_expr(node_get_data3(stmt), lines);
         added = added + lint_collect_effective_lines_stmt(node_get_data4(stmt), lines);
         return added;
     }
-
-    if (kind == NK_WHILE_STMT) {
+    if (kind = = NK_WHILE_STMT) {
         added = added + lint_collect_effective_lines_expr(node_get_data1(stmt), lines);
         added = added + lint_collect_effective_lines_stmt(node_get_data2(stmt), lines);
         return added;
     }
-
-    if (kind == NK_LOOP_STMT) {
+    if (kind = = NK_LOOP_STMT) {
         return added + lint_collect_effective_lines_stmt(node_get_data1(stmt), lines);
     }
-
-    if (kind == NK_LIFETIME_STMT) {
+    if (kind = = NK_LIFETIME_STMT) {
         return added + lint_collect_effective_lines_stmt(node_get_data2(stmt), lines);
     }
-
-    if (kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL || kind == NK_ACTUAL_FN_DECL) {
+    if (kind = = NK_FN_DECL || kind = = NK_CLASS_FN_DECL || kind = = NK_ACTUAL_FN_DECL) {
         added = added + lint_collect_effective_lines_expr(node_get_data4(stmt), lines);
         added = added + lint_collect_effective_lines_stmt(node_get_data5(stmt), lines);
         return added;
     }
-
-    if (kind == NK_STMT_LIST) {
+    if (kind = = NK_STMT_LIST) {
         let items = node_get_data1(stmt);
         let i = 0;
         while (i < items.vec_length()) {
@@ -239,83 +208,71 @@ fn lint_collect_effective_lines_stmt(stmt: I32, lines: *mut Set) : I32 => {
         }
         return added;
     }
-
-    if (kind == NK_INTO_STMT || kind == NK_BREAK_STMT || kind == NK_CONTINUE_STMT || kind == NK_EXTERN_IMPORT_DECL || kind == NK_EXTERN_FN_DECL || kind == NK_EXTERN_LET_DECL || kind == NK_EXTERN_TYPE_DECL) {
+    if (kind = = NK_INTO_STMT || kind = = NK_BREAK_STMT || kind = = NK_CONTINUE_STMT || kind = =
+    NK_EXTERN_IMPORT_DECL || kind = = NK_EXTERN_FN_DECL || kind = = NK_EXTERN_LET_DECL || kind = = NK_EXTERN_TYPE_DECL) {
         return added;
     }
-
     added + lint_collect_effective_lines_expr(stmt, lines)
 }
-
 fn lint_check_function_length(stmt: I32, max_effective_lines: I32) : I32 => {
     let kind = node_kind(stmt);
-    if (!(kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL || kind == NK_ACTUAL_FN_DECL)) {
+    if (!(kind = = NK_FN_DECL || kind = = NK_CLASS_FN_DECL || kind = = NK_ACTUAL_FN_DECL)) {
         return 0;
     }
-
     let body = node_get_data5(stmt);
-    if (body == 0) {
+    if (body = = 0) {
         return 0;
     }
-
     let lines = set_new();
     let count = lint_mark_line(lines, node_get_line(stmt));
     count = count + lint_collect_effective_lines_stmt(body, lines);
-
     if (count >= max_effective_lines) {
         let fn_name = get_interned_str(node_get_data1(stmt));
         lint_add_issue(
-            "E_LINT_FUNCTION_TOO_LONG",
-            "Function '".str_concat(fn_name).str_concat("' has ").str_concat(int_to_string(max_effective_lines)).str_concat(" or more effective lines (").str_concat(int_to_string(count)).str_concat(")"),
-            "This function has at least ".str_concat(int_to_string(max_effective_lines)).str_concat(" non-comment, non-whitespace lines, which increases complexity and reduces readability."),
-            "Split function '".str_concat(fn_name).str_concat("' into smaller helper functions so each function stays below ").str_concat(int_to_string(max_effective_lines)).str_concat(" effective lines.")
+        "E_LINT_FUNCTION_TOO_LONG",
+        "Function '".str_concat(fn_name).str_concat("' has ").str_concat(int_to_string(max_effective_lines)).str_concat(" or more effective lines (").str_concat(int_to_string(count)).str_concat(")"),
+        "This function has at least ".str_concat(int_to_string(max_effective_lines)).str_concat(" non-comment, non-whitespace lines, which increases complexity and reduces readability."),
+        "Split function '".str_concat(fn_name).str_concat("' into smaller helper functions so each function stays below ").str_concat(int_to_string(max_effective_lines)).str_concat(" effective lines.")
         );
     }
-
     0
 }
-
 fn lint_collect_expr(expr: I32, receiver_extern_fns: *mut Set, reads: *mut Set) : I32 => {
-    if (expr == 0) {
+    if (expr = = 0) {
         return 0;
     }
-
     let kind = node_kind(expr);
-    if (kind == NK_IDENTIFIER) {
+    if (kind = = NK_IDENTIFIER) {
         reads.set_add(get_interned_str(node_get_data1(expr)));
         return 0;
     }
-
-    if (kind == NK_UNARY_EXPR || kind == NK_UNWRAP_EXPR) {
+    if (kind = = NK_UNARY_EXPR || kind = = NK_UNWRAP_EXPR) {
         lint_collect_expr(node_get_data2(expr), receiver_extern_fns, reads);
-        if (kind == NK_UNWRAP_EXPR) {
+        if (kind = = NK_UNWRAP_EXPR) {
             lint_collect_expr(node_get_data1(expr), receiver_extern_fns, reads);
         }
         return 0;
     }
-
-    if (kind == NK_BINARY_EXPR) {
+    if (kind = = NK_BINARY_EXPR) {
         lint_collect_expr(node_get_data2(expr), receiver_extern_fns, reads);
         lint_collect_expr(node_get_data3(expr), receiver_extern_fns, reads);
         return 0;
     }
-
-    if (kind == NK_CALL_EXPR) {
+    if (kind = = NK_CALL_EXPR) {
         let callee = node_get_data1(expr);
         let args = node_get_data2(expr);
-        if (node_kind(callee) == NK_IDENTIFIER && args.vec_length() > 0) {
+        if (node_kind(callee) = = NK_IDENTIFIER && args.vec_length() > 0) {
             let name = get_interned_str(node_get_data1(callee));
             let call_style = node_get_data3(expr);
             if (receiver_extern_fns.set_has(name) && call_style != 1) {
                 lint_add_issue(
-                    "E_LINT_PREFER_RECEIVER_CALL",
-                    "Prefer receiver-call syntax for '".str_concat(name).str_concat("'"),
-                    "This extern function declares a receiver as its first 'this' parameter, so calling it as a free function is less idiomatic.",
-                    "Rewrite '".str_concat(name).str_concat("(x, ...)' as 'x.").str_concat(name).str_concat("(...)'.")
+                "E_LINT_PREFER_RECEIVER_CALL",
+                "Prefer receiver-call syntax for '".str_concat(name).str_concat("'"),
+                "This extern function declares a receiver as its first 'this' parameter, so calling it as a free function is less idiomatic.",
+                "Rewrite '".str_concat(name).str_concat("(x, ...)' as 'x.").str_concat(name).str_concat("(...)'.")
                 );
             }
         }
-
         lint_collect_expr(callee, receiver_extern_fns, reads);
         let i = 0;
         let len = args.vec_length();
@@ -325,19 +282,16 @@ fn lint_collect_expr(expr: I32, receiver_extern_fns: *mut Set, reads: *mut Set) 
         }
         return 0;
     }
-
-    if (kind == NK_MEMBER_EXPR) {
+    if (kind = = NK_MEMBER_EXPR) {
         lint_collect_expr(node_get_data1(expr), receiver_extern_fns, reads);
         return 0;
     }
-
-    if (kind == NK_INDEX_EXPR) {
+    if (kind = = NK_INDEX_EXPR) {
         lint_collect_expr(node_get_data1(expr), receiver_extern_fns, reads);
         lint_collect_expr(node_get_data2(expr), receiver_extern_fns, reads);
         return 0;
     }
-
-    if (kind == NK_STRUCT_INIT) {
+    if (kind = = NK_STRUCT_INIT) {
         let fields = node_get_data2(expr);
         let i = 0;
         let len = fields.vec_length();
@@ -348,26 +302,25 @@ fn lint_collect_expr(expr: I32, receiver_extern_fns: *mut Set, reads: *mut Set) 
         }
         return 0;
     }
-
-    if (kind == NK_IF_EXPR) {
+    if (kind = = NK_IF_EXPR) {
         let cond = node_get_data1(expr);
-        if (node_kind(cond) == NK_BOOL_LIT) {
+        if (node_kind(cond) = = NK_BOOL_LIT) {
             lint_add_issue(
-                "E_LINT_CONSTANT_CONDITION",
-                "Constant condition in if-expression/statement",
-                "A constant condition means one branch is unreachable, which usually indicates dead or unintended code.",
-                "Use a non-constant condition, or simplify by keeping only the branch that will execute."
+            "E_LINT_CONSTANT_CONDITION",
+            "Constant condition in if-expression/statement",
+            "A constant condition means one branch is unreachable, which usually indicates dead or unintended code.",
+            "Use a non-constant condition, or simplify by keeping only the branch that will execute."
             );
         }
         lint_collect_expr(cond, receiver_extern_fns, reads);
         lint_collect_stmt(node_get_data2(expr), receiver_extern_fns, reads, set_new(), vec_new());
         if (node_get_data3(expr) != 0) {
-            lint_collect_stmt(node_get_data3(expr), receiver_extern_fns, reads, set_new(), vec_new());
+            lint_collect_stmt(node_get_data3(expr), receiver_extern_fns, reads, set_new(),
+            vec_new());
         }
         return 0;
     }
-
-    if (kind == NK_MATCH_EXPR) {
+    if (kind = = NK_MATCH_EXPR) {
         lint_collect_expr(node_get_data1(expr), receiver_extern_fns, reads);
         let cases = node_get_data2(expr);
         let i = 0;
@@ -379,20 +332,18 @@ fn lint_collect_expr(expr: I32, receiver_extern_fns: *mut Set, reads: *mut Set) 
         }
         return 0;
     }
-
-    if (kind == NK_IS_EXPR) {
+    if (kind = = NK_IS_EXPR) {
         lint_collect_expr(node_get_data1(expr), receiver_extern_fns, reads);
     }
     0
 }
-
-fn lint_collect_stmt(stmt: I32, receiver_extern_fns: *mut Set, reads: *mut Set, declared_set: *mut Set, declared_names: Vec) : I32 => {
-    if (stmt == 0) {
+fn lint_collect_stmt(stmt: I32, receiver_extern_fns: *mut Set, reads: *mut Set, declared_set: *mut
+Set, declared_names: Vec) : I32 => {
+    if (stmt = = 0) {
         return 0;
     }
-
     let kind = node_kind(stmt);
-    if (kind == NK_LET_DECL) {
+    if (kind = = NK_LET_DECL) {
         let name = get_interned_str(node_get_data1(stmt));
         if (!declared_set.set_has(name)) {
             declared_set.set_add(name);
@@ -401,109 +352,102 @@ fn lint_collect_stmt(stmt: I32, receiver_extern_fns: *mut Set, reads: *mut Set, 
         lint_collect_expr(node_get_data3(stmt), receiver_extern_fns, reads);
         return 0;
     }
-
-    if (kind == NK_BLOCK) {
+    if (kind = = NK_BLOCK) {
         let stmts = node_get_data1(stmt);
-        if (stmts.vec_length() == 0) {
+        if (stmts.vec_length() = = 0) {
             lint_add_issue(
-                "E_LINT_EMPTY_BLOCK",
-                "Empty block has no effect",
-                "An empty block executes no statements, which is often accidental and can hide incomplete logic.",
-                "Add the intended statements to the block, or remove the block if it is unnecessary."
+            "E_LINT_EMPTY_BLOCK",
+            "Empty block has no effect",
+            "An empty block executes no statements, which is often accidental and can hide incomplete logic.",
+            "Add the intended statements to the block, or remove the block if it is unnecessary."
             );
         }
         let i = 0;
         let len = stmts.vec_length();
         while (i < len) {
-            lint_collect_stmt(stmts.vec_get(i), receiver_extern_fns, reads, declared_set, declared_names);
+            lint_collect_stmt(stmts.vec_get(i), receiver_extern_fns, reads, declared_set,
+            declared_names);
             i = i + 1;
         }
         return 0;
     }
-
-    if (kind == NK_EXPR_STMT) {
+    if (kind = = NK_EXPR_STMT) {
         lint_collect_expr(node_get_data1(stmt), receiver_extern_fns, reads);
         return 0;
     }
-
-    if (kind == NK_EXTERN_IMPORT_DECL) {
+    if (kind = = NK_EXTERN_IMPORT_DECL) {
         return 0;
     }
-
-    if (kind == NK_ASSIGN_STMT) {
+    if (kind = = NK_ASSIGN_STMT) {
         lint_collect_expr(node_get_data1(stmt), receiver_extern_fns, reads);
         lint_collect_expr(node_get_data2(stmt), receiver_extern_fns, reads);
         return 0;
     }
-
-    if (kind == NK_RETURN_STMT) {
+    if (kind = = NK_RETURN_STMT) {
         lint_collect_expr(node_get_data1(stmt), receiver_extern_fns, reads);
         return 0;
     }
-
-    if (kind == NK_IF_STMT) {
+    if (kind = = NK_IF_STMT) {
         let cond = node_get_data1(stmt);
-        if (node_kind(cond) == NK_BOOL_LIT) {
+        if (node_kind(cond) = = NK_BOOL_LIT) {
             lint_add_issue(
-                "E_LINT_CONSTANT_CONDITION",
-                "Constant condition in if-expression/statement",
-                "A constant condition means one branch is unreachable, which usually indicates dead or unintended code.",
-                "Use a non-constant condition, or simplify by keeping only the branch that will execute."
+            "E_LINT_CONSTANT_CONDITION",
+            "Constant condition in if-expression/statement",
+            "A constant condition means one branch is unreachable, which usually indicates dead or unintended code.",
+            "Use a non-constant condition, or simplify by keeping only the branch that will execute."
             );
         }
         lint_collect_expr(cond, receiver_extern_fns, reads);
-        lint_collect_stmt(node_get_data2(stmt), receiver_extern_fns, reads, declared_set, declared_names);
-        lint_collect_stmt(node_get_data3(stmt), receiver_extern_fns, reads, declared_set, declared_names);
+        lint_collect_stmt(node_get_data2(stmt), receiver_extern_fns, reads, declared_set,
+        declared_names);
+        lint_collect_stmt(node_get_data3(stmt), receiver_extern_fns, reads, declared_set,
+        declared_names);
         return 0;
     }
-
-    if (kind == NK_FOR_STMT) {
+    if (kind = = NK_FOR_STMT) {
         lint_collect_expr(node_get_data2(stmt), receiver_extern_fns, reads);
         lint_collect_expr(node_get_data3(stmt), receiver_extern_fns, reads);
-        lint_collect_stmt(node_get_data4(stmt), receiver_extern_fns, reads, declared_set, declared_names);
+        lint_collect_stmt(node_get_data4(stmt), receiver_extern_fns, reads, declared_set,
+        declared_names);
         return 0;
     }
-
-    if (kind == NK_WHILE_STMT) {
+    if (kind = = NK_WHILE_STMT) {
         lint_collect_expr(node_get_data1(stmt), receiver_extern_fns, reads);
-        lint_collect_stmt(node_get_data2(stmt), receiver_extern_fns, reads, declared_set, declared_names);
+        lint_collect_stmt(node_get_data2(stmt), receiver_extern_fns, reads, declared_set,
+        declared_names);
         return 0;
     }
-
-    if (kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL) {
-        lint_collect_stmt(node_get_data5(stmt), receiver_extern_fns, reads, declared_set, declared_names);
+    if (kind = = NK_FN_DECL || kind = = NK_CLASS_FN_DECL) {
+        lint_collect_stmt(node_get_data5(stmt), receiver_extern_fns, reads, declared_set,
+        declared_names);
         return 0;
     }
-
     lint_collect_expr(stmt, receiver_extern_fns, reads);
     0
 }
-
 out fn lint_add_circular_import_issue(cycle_text: *Str) : I32 => {
     lint_add_issue(
-        "E_LINT_CIRCULAR_IMPORT",
-        "Circular import detected: ".str_concat(cycle_text),
-        "Circular dependencies between modules make dependency flow harder to understand and maintain.",
-        "Refactor shared declarations into a third module and have each side import that shared module instead."
+    "E_LINT_CIRCULAR_IMPORT",
+    "Circular import detected: ".str_concat(cycle_text),
+    "Circular dependencies between modules make dependency flow harder to understand and maintain.",
+    "Refactor shared declarations into a third module and have each side import that shared module instead."
     )
 }
-
-out fn lint_program(program: I32, file_path: *Str, max_effective_lines: I32, enforce_file_length: I32) : I32 => {
-    if (enforce_file_length == 1) {
+out fn lint_program(program: I32, file_path: *Str, max_effective_lines: I32, enforce_file_length:
+I32) : I32 => {
+    if (enforce_file_length = = 1) {
         lint_check_file_length(file_path, max_effective_lines);
     }
-
     let receiver_extern_fns = set_new();
     let reads = set_new();
     let declared_set = set_new();
     let declared_names = vec_new();
-
     let body = node_get_data1(program);
     let i = 0;
     let len = body.vec_length();
     while (i < len) {
         let stmt = body.vec_get(i);
-        if (node_kind(stmt) == NK_EXTERN_FN_DECL) {
+        if (node_kind(stmt) = = NK_EXTERN_FN_DECL) {
             let params = node_get_data3(stmt);
             if (params.vec_length() > 0) {
                 let p0 = params.vec_get(0);
@@ -515,7 +459,6 @@ out fn lint_program(program: I32, file_path: *Str, max_effective_lines: I32, enf
         }
         i = i + 1;
     }
-
     i = 0;
     while (i < len) {
         let stmt = body.vec_get(i);
@@ -523,23 +466,20 @@ out fn lint_program(program: I32, file_path: *Str, max_effective_lines: I32, enf
         lint_collect_stmt(stmt, receiver_extern_fns, reads, declared_set, declared_names);
         i = i + 1;
     }
-
     i = 0;
     let dlen = declared_names.vec_length();
     while (i < dlen) {
         let name = declared_names.vec_get(i);
         if (!name.str_starts_with("_") && !reads.set_has(name)) {
             lint_add_issue(
-                "E_LINT_UNUSED_BINDING",
-                "Unused binding '".str_concat(name).str_concat("'"),
-                "Unused bindings increase cognitive load and can indicate leftover or incomplete code paths.",
-                "Remove the binding if unused, use it intentionally, or rename it to start with '_' to mark it as intentionally unused."
+            "E_LINT_UNUSED_BINDING",
+            "Unused binding '".str_concat(name).str_concat("'"),
+            "Unused bindings increase cognitive load and can indicate leftover or incomplete code paths.",
+            "Remove the binding if unused, use it intentionally, or rename it to start with '_' to mark it as intentionally unused."
             );
         }
         i = i + 1;
     }
-
     0
 }
-
 out fn selfhost_linter_marker() : I32 => 0;

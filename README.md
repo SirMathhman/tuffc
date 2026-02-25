@@ -54,8 +54,8 @@ Fully self-hosted Tuff compiler. The canonical source is `src/main/tuff/selfhost
 > **Note:** Both `npm` and `bun` work interchangeably for all scripts below.
 
 1. Run the fast default test command: `bun run test` (or `npm run test`)
-2. Run lint pass: `bun run lint`
-3. Run JS throw-ban lint gate: `bun run lint:throws`
+2. Run formatter pass for `.tuff` sources: `bun run format`
+3. Run lint pass: `bun run lint`
 4. Run typecheck: `bun run typecheck`
 5. Run combined local gate (lint + typecheck + fast tests): `bun run check`
 6. Compile file (native default): `npm run native:selfhost:run -- ./src/test/tuff/cases/factorial.tuff -o ./tests/out/factorial.js`

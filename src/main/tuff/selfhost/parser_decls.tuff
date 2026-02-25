@@ -1,16 +1,27 @@
-let { get_interned_str, tok_kind, tok_value, vec_new } = selfhost::runtime_lexer;
-let { p_expect, p_parse_identifier, p_at, p_eat, p_parse_type, p_at_kind, p_peek, p_mark, p_error_with_token_context, node_kind, node_new, node_set_data1, node_set_data2, node_set_data3, node_get_data1 } = selfhost::parser_core;
-let { p_parse_function, p_parse_struct, p_parse_enum, p_parse_object, p_parse_contract, p_parse_type_alias, p_parse_for, p_parse_lifetime } = selfhost::parser_decls_helpers;
-let { p_parse_let, p_parse_extern_decl } = selfhost::parser_decls_let_extern;
-
+let {
+    get_interned_str, tok_kind, tok_value, vec_new
+}
+ = selfhost::runtime_lexer;
+let {
+    p_expect, p_parse_identifier, p_at, p_eat, p_parse_type, p_at_kind, p_peek, p_mark, p_error_with_token_context, node_kind, node_new, node_set_data1, node_set_data2, node_set_data3, node_get_data1
+}
+ = selfhost::parser_core;
+let {
+    p_parse_function, p_parse_struct, p_parse_enum, p_parse_object, p_parse_contract, p_parse_type_alias, p_parse_for, p_parse_lifetime
+}
+ = selfhost::parser_decls_helpers;
+let {
+    p_parse_let, p_parse_extern_decl
+}
+ = selfhost::parser_decls_let_extern;
 fn p_new_stmt_list(stmts: Vec) : I32 => {
     let n = node_new(NK_STMT_LIST);
     node_set_data1(n, stmts);
     n
 }
-
 fn p_parse_template_wrapper() : I32 => {
-    p_eat(); // template
+    p_eat();
+     // template
     p_parse_identifier();
     if (p_at(TK_SYMBOL, ":")) {
         p_eat();
@@ -24,51 +35,47 @@ fn p_parse_template_wrapper() : I32 => {
             p_parse_type();
         }
     }
-
     p_expect(TK_SYMBOL, "{", "Expected '{' after template declaration");
     let stmts = vec_new();
     while (!p_at(TK_SYMBOL, "}")) {
         let stmt = p_parse_statement();
-        if (node_kind(stmt) == NK_BLOCK) {
+        if (node_kind(stmt) = = NK_BLOCK) {
             let inner = node_get_data1(stmt);
             let j = 0;
             while (j < inner.vec_length()) {
                 stmts.vec_push(inner.vec_get(j));
                 j = j + 1;
             }
-        } else {
+        }
+        else {
             stmts.vec_push(stmt);
         }
     }
     p_expect(TK_SYMBOL, "}", "Expected '}' after template block");
-
     p_new_stmt_list(stmts)
 }
-
 fn p_parse_module_wrapper() : I32 => {
     p_expect(TK_KEYWORD, "module", "Expected 'module'");
     p_parse_identifier();
     p_expect(TK_SYMBOL, "{", "Expected '{' after module name");
-
     let stmts = vec_new();
     while (!p_at(TK_SYMBOL, "}")) {
         let stmt = p_parse_statement();
-        if (node_kind(stmt) == NK_BLOCK) {
+        if (node_kind(stmt) = = NK_BLOCK) {
             let inner = node_get_data1(stmt);
             let j = 0;
             while (j < inner.vec_length()) {
                 stmts.vec_push(inner.vec_get(j));
                 j = j + 1;
             }
-        } else {
+        }
+        else {
             stmts.vec_push(stmt);
         }
     }
     p_expect(TK_SYMBOL, "}", "Expected '}' after module body");
-
     p_new_stmt_list(stmts)
 }
-
 fn p_parse_decl_modifiers() : Vec => {
     let exported = 0;
     let copy_decl = 0;
@@ -77,12 +84,12 @@ fn p_parse_decl_modifiers() : Vec => {
     let consumed_modifier = 0;
     let modifier_watchdog = 0;
     while (
-        p_at(TK_KEYWORD, "out") ||
-        p_at(TK_KEYWORD, "copy") ||
-        p_at(TK_KEYWORD, "expect") ||
-        (p_at(TK_IDENTIFIER, "expect") && (tok_kind(p_peek(1)) == TK_KEYWORD || tok_kind(p_peek(1)) == TK_IDENTIFIER)) ||
-        p_at(TK_KEYWORD, "actual") ||
-        (p_at(TK_IDENTIFIER, "actual") && (tok_kind(p_peek(1)) == TK_KEYWORD || tok_kind(p_peek(1)) == TK_IDENTIFIER))
+    p_at(TK_KEYWORD, "out") ||
+    p_at(TK_KEYWORD, "copy") ||
+    p_at(TK_KEYWORD, "expect") ||
+    (p_at(TK_IDENTIFIER, "expect") && (tok_kind(p_peek(1)) = = TK_KEYWORD || tok_kind(p_peek(1)) = = TK_IDENTIFIER)) ||
+    p_at(TK_KEYWORD, "actual") ||
+    (p_at(TK_IDENTIFIER, "actual") && (tok_kind(p_peek(1)) = = TK_KEYWORD || tok_kind(p_peek(1)) = = TK_IDENTIFIER))
     ) {
         modifier_watchdog = modifier_watchdog + 1;
         if (modifier_watchdog > 1000) {
@@ -91,25 +98,36 @@ fn p_parse_decl_modifiers() : Vec => {
         consumed_modifier = 1;
         if (p_at(TK_KEYWORD, "out")) {
             p_eat();
-            if (exported == 1) { panic("Duplicate 'out' modifier"); }
+            if (exported = = 1) {
+                panic("Duplicate 'out' modifier");
+            }
             exported = 1;
-        } else if (p_at(TK_KEYWORD, "copy")) {
+        }
+        else if (p_at(TK_KEYWORD, "copy")) {
             p_eat();
-            if (copy_decl == 1) { panic("Duplicate 'copy' modifier"); }
+            if (copy_decl = = 1) {
+                panic("Duplicate 'copy' modifier");
+            }
             copy_decl = 1;
-        } else if (p_at(TK_KEYWORD, "expect") || (p_at(TK_IDENTIFIER, "expect") && (tok_kind(p_peek(1)) == TK_KEYWORD || tok_kind(p_peek(1)) == TK_IDENTIFIER))) {
+        }
+        else if (p_at(TK_KEYWORD, "expect") || (p_at(TK_IDENTIFIER, "expect") && (tok_kind(p_peek(1)) = = TK_KEYWORD || tok_kind(p_peek(1)) = = TK_IDENTIFIER))) {
             p_eat();
-            if (expect_decl == 1) { panic("Duplicate 'expect' modifier"); }
+            if (expect_decl = = 1) {
+                panic("Duplicate 'expect' modifier");
+            }
             expect_decl = 1;
-        } else if (p_at(TK_KEYWORD, "actual") || (p_at(TK_IDENTIFIER, "actual") && (tok_kind(p_peek(1)) == TK_KEYWORD || tok_kind(p_peek(1)) == TK_IDENTIFIER))) {
+        }
+        else if (p_at(TK_KEYWORD, "actual") || (p_at(TK_IDENTIFIER, "actual") && (tok_kind(p_peek(1)) = = TK_KEYWORD || tok_kind(p_peek(1)) = = TK_IDENTIFIER))) {
             p_eat();
-            if (actual_decl == 1) { panic("Duplicate 'actual' modifier"); }
+            if (actual_decl = = 1) {
+                panic("Duplicate 'actual' modifier");
+            }
             actual_decl = 1;
-        } else {
+        }
+        else {
             panic("Unexpected declaration modifier");
         }
     }
-
     let mods = vec_new();
     mods.vec_push(exported);
     mods.vec_push(copy_decl);
@@ -118,90 +136,187 @@ fn p_parse_decl_modifiers() : Vec => {
     mods.vec_push(consumed_modifier);
     mods
 }
-
 fn p_parse_after_modifiers(exported: I32, copy_decl: I32, expect_decl: I32, actual_decl: I32) : I32 => {
-    if (expect_decl == 1 && actual_decl == 1) {
+    if (expect_decl = = 1 && actual_decl = = 1) {
         panic("Cannot combine 'expect' and 'actual' modifiers");
     }
-
     let out_node = 0;
     if (p_at(TK_KEYWORD, "struct")) {
         out_node = p_parse_struct(copy_decl);
-    } else if (p_at(TK_KEYWORD, "enum")) {
+    }
+    else if (p_at(TK_KEYWORD, "enum")) {
         out_node = p_parse_enum();
-    } else if (p_at(TK_KEYWORD, "object")) {
-        if (copy_decl == 1) { panic("'copy' is only supported on struct/type declarations"); }
-        if (expect_decl == 1 || actual_decl == 1) { panic("'expect'/'actual' are currently supported only on fn declarations"); }
+    }
+    else if (p_at(TK_KEYWORD, "object")) {
+        if (copy_decl = = 1) {
+            panic("'copy' is only supported on struct/type declarations");
+        }
+        if (expect_decl = = 1 || actual_decl = = 1) {
+            panic("'expect'/'actual' are currently supported only on fn declarations");
+        }
         out_node = p_parse_object();
-    } else if (p_at(TK_KEYWORD, "contract")) {
-        if (copy_decl == 1) { panic("'copy' is only supported on struct/type declarations"); }
-        if (expect_decl == 1 || actual_decl == 1) { panic("'expect'/'actual' are currently supported only on fn declarations"); }
+    }
+    else if (p_at(TK_KEYWORD, "contract")) {
+        if (copy_decl = = 1) {
+            panic("'copy' is only supported on struct/type declarations");
+        }
+        if (expect_decl = = 1 || actual_decl = = 1) {
+            panic("'expect'/'actual' are currently supported only on fn declarations");
+        }
         out_node = p_parse_contract();
-    } else if (p_at(TK_KEYWORD, "type")) {
+    }
+    else if (p_at(TK_KEYWORD, "type")) {
         out_node = p_parse_type_alias(copy_decl);
-    } else if (p_at(TK_KEYWORD, "fn")) {
-        if (copy_decl == 1) { panic("'copy' is only supported on struct/type declarations"); }
+    }
+    else if (p_at(TK_KEYWORD, "fn")) {
+        if (copy_decl = = 1) {
+            panic("'copy' is only supported on struct/type declarations");
+        }
         let mode = 0;
-        if (expect_decl == 1) { mode = 1; } else if (actual_decl == 1) { mode = 2; }
+        if (expect_decl = = 1) {
+            mode = 1;
+        }
+        else if (actual_decl = = 1) {
+            mode = 2;
+        }
         out_node = p_parse_function(0, mode);
-    } else if (p_at(TK_KEYWORD, "class")) {
-        if (copy_decl == 1) { panic("'copy' is only supported on struct/type declarations"); }
-        if (expect_decl == 1 || actual_decl == 1) { panic("'expect'/'actual' are currently supported only on fn declarations"); }
+    }
+    else if (p_at(TK_KEYWORD, "class")) {
+        if (copy_decl = = 1) {
+            panic("'copy' is only supported on struct/type declarations");
+        }
+        if (expect_decl = = 1 || actual_decl = = 1) {
+            panic("'expect'/'actual' are currently supported only on fn declarations");
+        }
         p_eat();
         out_node = p_parse_function(1, 0);
-    } else if (p_at(TK_KEYWORD, "module")) {
-        if (copy_decl == 1) { panic("'copy' is only supported on struct/type declarations"); }
-        if (expect_decl == 1 || actual_decl == 1) { panic("'expect'/'actual' are currently supported only on fn declarations"); }
+    }
+    else if (p_at(TK_KEYWORD, "module")) {
+        if (copy_decl = = 1) {
+            panic("'copy' is only supported on struct/type declarations");
+        }
+        if (expect_decl = = 1 || actual_decl = = 1) {
+            panic("'expect'/'actual' are currently supported only on fn declarations");
+        }
         out_node = p_parse_module_wrapper();
-    } else {
+    }
+    else {
         p_error_with_token_context("Expected declaration after modifiers");
     }
-
-    if (exported == 1 && node_kind(out_node) != NK_STMT_LIST) {
+    if (exported = = 1 && node_kind(out_node) != NK_STMT_LIST) {
         parse_exports.set_add(get_interned_str(node_get_data1(out_node)));
     }
-    if (p_at(TK_SYMBOL, ";")) { p_eat(); }
+    if (p_at(TK_SYMBOL, ";")) {
+        p_eat();
+    }
     out_node
 }
-
 fn p_try_parse_plain_decl_statement() : I32 => {
-    if (p_at(TK_KEYWORD, "let")) { return p_parse_let(); }
-    if (p_at(TK_KEYWORD, "struct")) { let node = p_parse_struct(0); if (p_at(TK_SYMBOL, ";")) { p_eat(); } return node; }
-    if (p_at(TK_KEYWORD, "enum")) { let node = p_parse_enum(); if (p_at(TK_SYMBOL, ";")) { p_eat(); } return node; }
-    if (p_at(TK_KEYWORD, "object")) { let node = p_parse_object(); if (p_at(TK_SYMBOL, ";")) { p_eat(); } return node; }
-    if (p_at(TK_KEYWORD, "module")) { let node = p_parse_module_wrapper(); if (p_at(TK_SYMBOL, ";")) { p_eat(); } return node; }
-    if (p_at(TK_KEYWORD, "template") || p_at(TK_IDENTIFIER, "template")) { let node = p_parse_template_wrapper(); if (p_at(TK_SYMBOL, ";")) { p_eat(); } return node; }
-    if (p_at(TK_KEYWORD, "contract")) { let node = p_parse_contract(); if (p_at(TK_SYMBOL, ";")) { p_eat(); } return node; }
-    if (p_at(TK_KEYWORD, "type")) { let node = p_parse_type_alias(0); if (p_at(TK_SYMBOL, ";")) { p_eat(); } return node; }
-    if (p_at(TK_KEYWORD, "fn")) { let node = p_parse_function(0, 0); if (p_at(TK_SYMBOL, ";")) { p_eat(); } return node; }
-    if (p_at(TK_KEYWORD, "extern")) { p_eat(); return p_parse_extern_decl(); }
-    if (p_at(TK_KEYWORD, "class")) { p_eat(); let node = p_parse_function(1, 0); if (p_at(TK_SYMBOL, ";")) { p_eat(); } return node; }
+    if (p_at(TK_KEYWORD, "let")) {
+        return p_parse_let();
+    }
+    if (p_at(TK_KEYWORD, "struct")) {
+        let node = p_parse_struct(0);
+        if (p_at(TK_SYMBOL, ";")) {
+            p_eat();
+        }
+        return node;
+    }
+    if (p_at(TK_KEYWORD, "enum")) {
+        let node = p_parse_enum();
+        if (p_at(TK_SYMBOL, ";")) {
+            p_eat();
+        }
+        return node;
+    }
+    if (p_at(TK_KEYWORD, "object")) {
+        let node = p_parse_object();
+        if (p_at(TK_SYMBOL, ";")) {
+            p_eat();
+        }
+        return node;
+    }
+    if (p_at(TK_KEYWORD, "module")) {
+        let node = p_parse_module_wrapper();
+        if (p_at(TK_SYMBOL, ";")) {
+            p_eat();
+        }
+        return node;
+    }
+    if (p_at(TK_KEYWORD, "template") || p_at(TK_IDENTIFIER, "template")) {
+        let node = p_parse_template_wrapper();
+        if (p_at(TK_SYMBOL, ";")) {
+            p_eat();
+        }
+        return node;
+    }
+    if (p_at(TK_KEYWORD, "contract")) {
+        let node = p_parse_contract();
+        if (p_at(TK_SYMBOL, ";")) {
+            p_eat();
+        }
+        return node;
+    }
+    if (p_at(TK_KEYWORD, "type")) {
+        let node = p_parse_type_alias(0);
+        if (p_at(TK_SYMBOL, ";")) {
+            p_eat();
+        }
+        return node;
+    }
+    if (p_at(TK_KEYWORD, "fn")) {
+        let node = p_parse_function(0, 0);
+        if (p_at(TK_SYMBOL, ";")) {
+            p_eat();
+        }
+        return node;
+    }
+    if (p_at(TK_KEYWORD, "extern")) {
+        p_eat();
+        return p_parse_extern_decl();
+    }
+    if (p_at(TK_KEYWORD, "class")) {
+        p_eat();
+        let node = p_parse_function(1, 0);
+        if (p_at(TK_SYMBOL, ";")) {
+            p_eat();
+        }
+        return node;
+    }
     0
 }
-
 fn p_parse_if_stmt_or_expr_stmt() : I32 => {
     p_eat();
     p_expect(TK_SYMBOL, "(", "Expected '(' after if");
     let cond = p_parse_expression(0);
     p_expect(TK_SYMBOL, ")", "Expected ')' after condition");
-
     if (
-        p_at(TK_SYMBOL, "{") ||
-        p_at(TK_KEYWORD, "break") ||
-        p_at(TK_KEYWORD, "continue") ||
-        p_at(TK_KEYWORD, "return") ||
-        p_at(TK_KEYWORD, "if") ||
-        p_at(TK_KEYWORD, "while") ||
-        p_at(TK_KEYWORD, "for") ||
-        p_at(TK_KEYWORD, "loop") ||
-        p_at(TK_KEYWORD, "let")
+    p_at(TK_SYMBOL, "{") ||
+    p_at(TK_KEYWORD, "break") ||
+    p_at(TK_KEYWORD, "continue") ||
+    p_at(TK_KEYWORD, "return") ||
+    p_at(TK_KEYWORD, "if") ||
+    p_at(TK_KEYWORD, "while") ||
+    p_at(TK_KEYWORD, "for") ||
+    p_at(TK_KEYWORD, "loop") ||
+    p_at(TK_KEYWORD, "let")
     ) {
         let then_branch = 0;
-        if (p_at(TK_SYMBOL, "{")) { then_branch = p_parse_block(); } else { then_branch = p_parse_statement(); }
+        if (p_at(TK_SYMBOL, "{")) {
+            then_branch = p_parse_block();
+        }
+        else {
+            then_branch = p_parse_statement();
+        }
         let else_branch = 0;
         if (p_at(TK_KEYWORD, "else")) {
             p_eat();
-            if (p_at(TK_SYMBOL, "{")) { else_branch = p_parse_block(); } else { else_branch = p_parse_statement(); }
+            if (p_at(TK_SYMBOL, "{")) {
+                else_branch = p_parse_block();
+            }
+            else {
+                else_branch = p_parse_statement();
+            }
         }
         let stmt = node_new(NK_IF_STMT);
         node_set_data1(stmt, cond);
@@ -209,35 +324,46 @@ fn p_parse_if_stmt_or_expr_stmt() : I32 => {
         node_set_data3(stmt, else_branch);
         return stmt;
     }
-
     let then_expr = p_parse_expression(0);
     let else_expr = 0;
     if (p_at(TK_KEYWORD, "else")) {
         p_eat();
-        if (p_at(TK_SYMBOL, "{")) { else_expr = p_parse_block(); } else { else_expr = p_parse_expression(0); }
+        if (p_at(TK_SYMBOL, "{")) {
+            else_expr = p_parse_block();
+        }
+        else {
+            else_expr = p_parse_expression(0);
+        }
     }
     let if_expr = node_new(NK_IF_EXPR);
     node_set_data1(if_expr, cond);
     node_set_data2(if_expr, then_expr);
     node_set_data3(if_expr, else_expr);
-
-    if (p_at(TK_SYMBOL, ";")) { p_eat(); } else if (!p_at(TK_SYMBOL, "}")) { p_expect(TK_SYMBOL, ";", "Expected ';'"); }
+    if (p_at(TK_SYMBOL, ";")) {
+        p_eat();
+    }
+    else if (!p_at(TK_SYMBOL, "}")) {
+        p_expect(TK_SYMBOL, ";", "Expected ';'");
+    }
     let estmt = node_new(NK_EXPR_STMT);
     node_set_data1(estmt, if_expr);
     estmt
 }
-
 fn p_try_parse_plain_control_statement() : I32 => {
     if (p_at(TK_KEYWORD, "return")) {
         p_eat();
         let value = 0;
-        if (!p_at(TK_SYMBOL, ";")) { value = p_parse_expression(0); }
+        if (!p_at(TK_SYMBOL, ";")) {
+            value = p_parse_expression(0);
+        }
         p_expect(TK_SYMBOL, ";", "Expected ';'");
         let node = node_new(NK_RETURN_STMT);
         node_set_data1(node, value);
         return node;
     }
-    if (p_at(TK_KEYWORD, "if")) { return p_parse_if_stmt_or_expr_stmt(); }
+    if (p_at(TK_KEYWORD, "if")) {
+        return p_parse_if_stmt_or_expr_stmt();
+    }
     if (p_at(TK_KEYWORD, "while")) {
         p_eat();
         p_expect(TK_SYMBOL, "(", "Expected '('");
@@ -249,45 +375,72 @@ fn p_try_parse_plain_control_statement() : I32 => {
         node_set_data2(node, body);
         return node;
     }
-    if (p_at(TK_KEYWORD, "for")) { return p_parse_for(); }
-    if (p_at(TK_KEYWORD, "loop")) { p_eat(); let body = p_parse_block(); let node = node_new(NK_LOOP_STMT); node_set_data1(node, body); return node; }
+    if (p_at(TK_KEYWORD, "for")) {
+        return p_parse_for ();
+    }
+    if (p_at(TK_KEYWORD, "loop")) {
+        p_eat();
+        let body = p_parse_block();
+        let node = node_new(NK_LOOP_STMT);
+        node_set_data1(node, body);
+        return node;
+    }
     if (p_at(TK_KEYWORD, "then")) {
         p_eat();
         p_expect(TK_SYMBOL, "(", "Expected '(' after then in then-statement");
         p_expect(TK_SYMBOL, ")", "Expected ')' in then-statement parameter list");
         p_expect(TK_SYMBOL, "=>", "Expected '=>' in then-statement");
-        if (p_at(TK_SYMBOL, "{")) { return p_parse_block(); }
+        if (p_at(TK_SYMBOL, "{")) {
+            return p_parse_block();
+        }
         let expr = p_parse_expression(0);
         p_expect(TK_SYMBOL, ";", "Expected ';' after then-statement expression");
         let estmt = node_new(NK_EXPR_STMT);
         node_set_data1(estmt, expr);
         return estmt;
     }
-    if (p_at(TK_KEYWORD, "lifetime")) { return p_parse_lifetime(); }
-    if (p_at(TK_KEYWORD, "into")) { p_eat(); let cname = p_parse_identifier(); p_expect(TK_SYMBOL, ";", "Expected ';' after into statement"); let node = node_new(NK_INTO_STMT); node_set_data1(node, cname); return node; }
-    if (p_at(TK_KEYWORD, "break")) { p_eat(); p_expect(TK_SYMBOL, ";", "Expected ';'"); return node_new(NK_BREAK_STMT); }
-    if (p_at(TK_KEYWORD, "continue")) { p_eat(); p_expect(TK_SYMBOL, ";", "Expected ';'"); return node_new(NK_CONTINUE_STMT); }
-    if (p_at(TK_SYMBOL, "{")) { return p_parse_block(); }
+    if (p_at(TK_KEYWORD, "lifetime")) {
+        return p_parse_lifetime();
+    }
+    if (p_at(TK_KEYWORD, "into")) {
+        p_eat();
+        let cname = p_parse_identifier();
+        p_expect(TK_SYMBOL, ";", "Expected ';' after into statement");
+        let node = node_new(NK_INTO_STMT);
+        node_set_data1(node, cname);
+        return node;
+    }
+    if (p_at(TK_KEYWORD, "break")) {
+        p_eat();
+        p_expect(TK_SYMBOL, ";", "Expected ';'");
+        return node_new(NK_BREAK_STMT);
+    }
+    if (p_at(TK_KEYWORD, "continue")) {
+        p_eat();
+        p_expect(TK_SYMBOL, ";", "Expected ';'");
+        return node_new(NK_CONTINUE_STMT);
+    }
+    if (p_at(TK_SYMBOL, "{")) {
+        return p_parse_block();
+    }
     0
 }
-
-
-
 fn p_parse_statement() : I32 => {
     let mods = p_parse_decl_modifiers();
-    if (mods.vec_get(4) == 1) {
+    if (mods.vec_get(4) = = 1) {
         return p_parse_after_modifiers(mods.vec_get(0), mods.vec_get(1), mods.vec_get(2), mods.vec_get(3));
     }
-
     let node = p_try_parse_plain_decl_statement();
-    if (node != 0) { return node; }
+    if (node != 0) {
+        return node;
+    }
     node = p_try_parse_plain_control_statement();
-    if (node != 0) { return node; }
-    
-    // Expression statement
+    if (node != 0) {
+        return node;
+    }
+     // Expression statement
     let expr = p_parse_expression(0);
-    
-    // Assignment
+     // Assignment
     if (p_at(TK_SYMBOL, "=")) {
         p_eat();
         let value = p_parse_expression(0);
@@ -297,40 +450,35 @@ fn p_parse_statement() : I32 => {
         node_set_data2(node, value);
         return node;
     }
-
-    // Compound assignment: x += v, x -= v, etc. (lexed as op token followed by '=')
+     // Compound assignment: x += v, x -= v, etc. (lexed as op token followed by '=')
     if (
-        (p_at(TK_SYMBOL, "+") || p_at(TK_SYMBOL, "-") || p_at(TK_SYMBOL, "*") || p_at(TK_SYMBOL, "/") || p_at(TK_SYMBOL, "%") || p_at(TK_SYMBOL, "&") || p_at(TK_SYMBOL, "|") || p_at(TK_SYMBOL, "^")) &&
-        tok_kind(p_peek(1)) == TK_SYMBOL &&
-        get_interned_str(tok_value(p_peek(1))).str_eq("=")
+    (p_at(TK_SYMBOL, "+") || p_at(TK_SYMBOL, "-") || p_at(TK_SYMBOL, "*") || p_at(TK_SYMBOL, "/") || p_at(TK_SYMBOL, "%") || p_at(TK_SYMBOL, "&") || p_at(TK_SYMBOL, "|") || p_at(TK_SYMBOL, "^")) &&
+    tok_kind(p_peek(1)) = = TK_SYMBOL &&
+    get_interned_str(tok_value(p_peek(1))).str_eq("=")
     ) {
         let op_tok = p_eat();
         p_eat();
         let rhs = p_parse_expression(0);
         p_expect(TK_SYMBOL, ";", "Expected ';'");
-
         let bin = node_new(NK_BINARY_EXPR);
         node_set_data1(bin, tok_value(op_tok));
         node_set_data2(bin, expr);
         node_set_data3(bin, rhs);
-
         let node = node_new(NK_ASSIGN_STMT);
         node_set_data1(node, expr);
         node_set_data2(node, bin);
         return node;
     }
-    
     if (p_at(TK_SYMBOL, ";")) {
         p_eat();
-    } else if (!p_at(TK_SYMBOL, "}")) {
+    }
+    else if (!p_at(TK_SYMBOL, "}")) {
         p_expect(TK_SYMBOL, ";", "Expected ';'");
     }
-    
     let stmt = node_new(NK_EXPR_STMT);
     node_set_data1(stmt, expr);
     stmt
 }
-
 out fn p_parse_program() : I32 => {
     let stmts = vec_new();
     let at_eof = p_at_kind(TK_EOF);
@@ -338,17 +486,18 @@ out fn p_parse_program() : I32 => {
         let before = p_mark();
         let stmt = p_parse_statement();
         let after = p_mark();
-        if (after == before) {
+        if (after = = before) {
             p_error_with_token_context("Parser made no progress while parsing top-level statement");
         }
-        if (node_kind(stmt) == NK_STMT_LIST) {
+        if (node_kind(stmt) = = NK_STMT_LIST) {
             let inner = node_get_data1(stmt);
             let i = 0;
             while (i < inner.vec_length()) {
                 stmts.vec_push(inner.vec_get(i));
                 i = i + 1;
             }
-        } else {
+        }
+        else {
             stmts.vec_push(stmt);
         }
         at_eof = p_at_kind(TK_EOF);
@@ -357,11 +506,8 @@ out fn p_parse_program() : I32 => {
     node_set_data1(node, stmts);
     node
 }
-
-// ============================================================================
-// Desugar - skip for now, minimal implementation
-// ============================================================================
-
+ // ============================================================================
+ // Desugar - skip for now, minimal implementation
+ // ============================================================================
 out fn desugar(program: I32) : I32 => program;
-
 out fn selfhost_parser_decls_marker() : I32 => 0;

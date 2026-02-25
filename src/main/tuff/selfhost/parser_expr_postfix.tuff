@@ -1,6 +1,12 @@
-let { p_at, p_eat, p_expect, p_parse_identifier, p_at_kind, p_peek, p_parse_type, p_can_start_type_tok_at, p_error_with_token_context, node_kind, node_new, node_set_data1, node_set_data2, node_set_data3, node_set_data4, node_set_data5, node_get_data1, node_get_data2 } = selfhost::parser_core;
-let { tok_kind, tok_value, get_interned_str, vec_new } = selfhost::runtime_lexer;
-
+let {
+    p_at, p_eat, p_expect, p_parse_identifier, p_at_kind, p_peek, p_parse_type,
+    p_can_start_type_tok_at, p_error_with_token_context, node_kind, node_new, node_set_data1, node_set_data2, node_set_data3, node_set_data4, node_set_data5, node_get_data1, node_get_data2
+}
+ = selfhost::parser_core;
+let {
+    tok_kind, tok_value, get_interned_str, vec_new
+}
+ = selfhost::runtime_lexer;
 fn p_has_generic_call_suffix() : Bool => {
     if (!p_at(TK_SYMBOL, "<")) {
         return false;
@@ -16,18 +22,19 @@ fn p_has_generic_call_suffix() : Bool => {
         }
         let ti = p_peek(cursor);
         let tk = tok_kind(ti);
-        if (tk == TK_EOF) {
+        if (tk = = TK_EOF) {
             return false;
         }
-        if (tk == TK_SYMBOL) {
+        if (tk = = TK_SYMBOL) {
             let sym = get_interned_str(tok_value(ti));
             if (sym.str_eq("<")) {
                 depth = depth + 1;
-            } else if (sym.str_eq(">")) {
+            }
+            else if (sym.str_eq(">")) {
                 depth = depth - 1;
-                if (depth == 0) {
+                if (depth = = 0) {
                     let next = p_peek(cursor + 1);
-                    if (tok_kind(next) == TK_SYMBOL) {
+                    if (tok_kind(next) = = TK_SYMBOL) {
                         let next_sym = get_interned_str(tok_value(next));
                         return next_sym.str_eq("(");
                     }
@@ -38,7 +45,6 @@ fn p_has_generic_call_suffix() : Bool => {
         cursor = cursor + 1;
     }
 }
-
 fn p_has_generic_struct_init_suffix() : Bool => {
     if (!p_at(TK_SYMBOL, "<")) {
         return false;
@@ -54,18 +60,19 @@ fn p_has_generic_struct_init_suffix() : Bool => {
         }
         let ti = p_peek(cursor);
         let tk = tok_kind(ti);
-        if (tk == TK_EOF) {
+        if (tk = = TK_EOF) {
             return false;
         }
-        if (tk == TK_SYMBOL) {
+        if (tk = = TK_SYMBOL) {
             let sym = get_interned_str(tok_value(ti));
             if (sym.str_eq("<")) {
                 depth = depth + 1;
-            } else if (sym.str_eq(">")) {
+            }
+            else if (sym.str_eq(">")) {
                 depth = depth - 1;
-                if (depth == 0) {
+                if (depth = = 0) {
                     let next = p_peek(cursor + 1);
-                    if (tok_kind(next) == TK_SYMBOL) {
+                    if (tok_kind(next) = = TK_SYMBOL) {
                         let next_sym = get_interned_str(tok_value(next));
                         return next_sym.str_eq("{");
                     }
@@ -76,7 +83,6 @@ fn p_has_generic_struct_init_suffix() : Bool => {
         cursor = cursor + 1;
     }
 }
-
 fn p_has_generic_value_suffix() : Bool => {
     if (!p_at(TK_SYMBOL, "<")) {
         return false;
@@ -92,18 +98,19 @@ fn p_has_generic_value_suffix() : Bool => {
         }
         let ti = p_peek(cursor);
         let tk = tok_kind(ti);
-        if (tk == TK_EOF) {
+        if (tk = = TK_EOF) {
             return false;
         }
-        if (tk == TK_SYMBOL) {
+        if (tk = = TK_SYMBOL) {
             let sym = get_interned_str(tok_value(ti));
             if (sym.str_eq("<")) {
                 depth = depth + 1;
-            } else if (sym.str_eq(">")) {
+            }
+            else if (sym.str_eq(">")) {
                 depth = depth - 1;
-                if (depth == 0) {
+                if (depth = = 0) {
                     let next = p_peek(cursor + 1);
-                    if (tok_kind(next) == TK_SYMBOL) {
+                    if (tok_kind(next) = = TK_SYMBOL) {
                         let next_sym = get_interned_str(tok_value(next));
                         if (next_sym.str_eq("(")) {
                             return false;
@@ -116,16 +123,14 @@ fn p_has_generic_value_suffix() : Bool => {
         cursor = cursor + 1;
     }
 }
-
 fn p_parse_generic_arg_value_or_type() : I32 => {
     let t0 = p_peek(0);
-    if (tok_kind(t0) == TK_IDENTIFIER && tok_kind(p_peek(1)) == TK_SYMBOL) {
+    if (tok_kind(t0) = = TK_IDENTIFIER && tok_kind(p_peek(1)) = = TK_SYMBOL) {
         let s1 = get_interned_str(tok_value(p_peek(1)));
         if (s1.str_eq(".")) {
             return p_parse_expression(5);
         }
     }
-
     let cursor = 0;
     let paren_depth = 0;
     let bracket_depth = 0;
@@ -135,32 +140,41 @@ fn p_parse_generic_arg_value_or_type() : I32 => {
         }
         let ti = p_peek(cursor);
         let tk = tok_kind(ti);
-        if (tk == TK_EOF) {
+        if (tk = = TK_EOF) {
             break;
         }
-        if (tk == TK_SYMBOL) {
+        if (tk = = TK_SYMBOL) {
             let sym = get_interned_str(tok_value(ti));
             if (sym.str_eq("(")) {
                 paren_depth = paren_depth + 1;
-            } else if (sym.str_eq(")")) {
-                if (paren_depth > 0) { paren_depth = paren_depth - 1; }
-            } else if (sym.str_eq("[")) {
+            }
+            else if (sym.str_eq(")")) {
+                if (paren_depth > 0) {
+                    paren_depth = paren_depth - 1;
+                }
+            }
+            else if (sym.str_eq("[")) {
                 bracket_depth = bracket_depth + 1;
-            } else if (sym.str_eq("]")) {
-                if (bracket_depth > 0) { bracket_depth = bracket_depth - 1; }
-            } else if (paren_depth == 0 && bracket_depth == 0 && (sym.str_eq(",") || sym.str_eq(">"))) {
+            }
+            else if (sym.str_eq("]")) {
+                if (bracket_depth > 0) {
+                    bracket_depth = bracket_depth - 1;
+                }
+            }
+            else if (paren_depth = = 0 && bracket_depth = = 0 && (sym.str_eq(",") || sym.str_eq(">"))) {
                 break;
-            } else if (
-                paren_depth == 0 &&
-                bracket_depth == 0 &&
-                (
-                    (cursor > 0 && sym.str_eq(".")) ||
-                    (cursor > 0 && sym.str_eq("+")) ||
-                    (cursor > 0 && sym.str_eq("-")) ||
-                    (cursor > 0 && sym.str_eq("*")) ||
-                    (cursor > 0 && sym.str_eq("/")) ||
-                    (cursor > 0 && sym.str_eq("%"))
-                )
+            }
+            else if (
+            paren_depth = = 0 &&
+            bracket_depth = = 0 &&
+            (
+            (cursor > 0 && sym.str_eq(".")) ||
+            (cursor > 0 && sym.str_eq("+")) ||
+            (cursor > 0 && sym.str_eq("-")) ||
+            (cursor > 0 && sym.str_eq("*")) ||
+            (cursor > 0 && sym.str_eq("/")) ||
+            (cursor > 0 && sym.str_eq("%"))
+            )
             ) {
                 return p_parse_expression(5);
             }
@@ -169,9 +183,8 @@ fn p_parse_generic_arg_value_or_type() : I32 => {
     }
     p_parse_type()
 }
-
 fn p_try_parse_into_generic_value_call(expr: I32) : I32 => {
-    if (!(node_kind(expr) == NK_MEMBER_EXPR && get_interned_str(node_get_data2(expr)).str_eq("into") && p_at(TK_SYMBOL, "<") && p_has_generic_value_suffix())) {
+    if (!(node_kind(expr) = = NK_MEMBER_EXPR && get_interned_str(node_get_data2(expr)).str_eq("into") && p_at(TK_SYMBOL, "<") && p_has_generic_value_suffix())) {
         return 0;
     }
     p_eat();
@@ -184,14 +197,12 @@ fn p_try_parse_into_generic_value_call(expr: I32) : I32 => {
         }
     }
     p_expect(TK_SYMBOL, ">", "Expected '>' after into type args");
-
     let recv = node_get_data1(expr);
     let prop = node_get_data2(expr);
     let args = vec_new();
     args.vec_push(recv);
     let callee = node_new(NK_IDENTIFIER);
     node_set_data1(callee, prop);
-
     let into_value = node_new(NK_CALL_EXPR);
     node_set_data1(into_value, callee);
     node_set_data2(into_value, args);
@@ -200,7 +211,6 @@ fn p_try_parse_into_generic_value_call(expr: I32) : I32 => {
     node_set_data5(into_value, 1);
     into_value
 }
-
 fn p_parse_call_args() : Vec => {
     let args = vec_new();
     if (!p_at(TK_SYMBOL, ")")) {
@@ -212,7 +222,6 @@ fn p_parse_call_args() : Vec => {
     }
     args
 }
-
 fn p_lower_member_call(expr: I32, args: Vec, type_args: Vec, has_type_args: I32) : I32 => {
     let recv = node_get_data1(expr);
     let prop = node_get_data2(expr);
@@ -230,12 +239,11 @@ fn p_lower_member_call(expr: I32, args: Vec, type_args: Vec, has_type_args: I32)
     node_set_data1(call, callee);
     node_set_data2(call, lowered_args);
     node_set_data3(call, 1);
-    if (has_type_args == 1) {
+    if (has_type_args = = 1) {
         node_set_data4(call, type_args);
     }
     call
 }
-
 fn p_try_parse_generic_call(expr: I32) : I32 => {
     if (!(p_at(TK_SYMBOL, "<") && p_has_generic_call_suffix())) {
         return 0;
@@ -253,8 +261,7 @@ fn p_try_parse_generic_call(expr: I32) : I32 => {
     p_expect(TK_SYMBOL, "(", "Expected '(' after generic call type args");
     let args = p_parse_call_args();
     p_expect(TK_SYMBOL, ")", "Expected ')' after call args");
-
-    if (node_kind(expr) == NK_MEMBER_EXPR) {
+    if (node_kind(expr) = = NK_MEMBER_EXPR) {
         return p_lower_member_call(expr, args, type_args, 1);
     }
     let call = node_new(NK_CALL_EXPR);
@@ -264,7 +271,6 @@ fn p_try_parse_generic_call(expr: I32) : I32 => {
     node_set_data4(call, type_args);
     call
 }
-
 fn p_try_parse_call(expr: I32) : I32 => {
     if (!p_at(TK_SYMBOL, "(")) {
         return 0;
@@ -272,7 +278,7 @@ fn p_try_parse_call(expr: I32) : I32 => {
     p_eat();
     let args = p_parse_call_args();
     p_expect(TK_SYMBOL, ")", "Expected ')'");
-    if (node_kind(expr) == NK_MEMBER_EXPR) {
+    if (node_kind(expr) = = NK_MEMBER_EXPR) {
         return p_lower_member_call(expr, args, vec_new(), 0);
     }
     let call = node_new(NK_CALL_EXPR);
@@ -281,7 +287,6 @@ fn p_try_parse_call(expr: I32) : I32 => {
     node_set_data3(call, 0);
     call
 }
-
 fn p_try_parse_member(expr: I32) : I32 => {
     if (!p_at(TK_SYMBOL, ".")) {
         return 0;
@@ -290,9 +295,11 @@ fn p_try_parse_member(expr: I32) : I32 => {
     let prop = 0;
     if (p_at_kind(TK_IDENTIFIER)) {
         prop = p_parse_identifier();
-    } else if (p_at_kind(TK_KEYWORD)) {
+    }
+    else if (p_at_kind(TK_KEYWORD)) {
         prop = tok_value(p_eat());
-    } else {
+    }
+    else {
         p_error_with_token_context("Expected member name after '.'");
     }
     let member = node_new(NK_MEMBER_EXPR);
@@ -300,7 +307,6 @@ fn p_try_parse_member(expr: I32) : I32 => {
     node_set_data2(member, prop);
     member
 }
-
 fn p_try_parse_index_or_unwrap(expr: I32) : I32 => {
     if (p_at(TK_SYMBOL, "[")) {
         p_eat();
@@ -319,7 +325,6 @@ fn p_try_parse_index_or_unwrap(expr: I32) : I32 => {
     }
     0
 }
-
 out fn p_parse_postfix(exprIn: I32) : I32 => {
     let expr = exprIn;
     let postfix_watchdog = 0;
@@ -329,18 +334,32 @@ out fn p_parse_postfix(exprIn: I32) : I32 => {
             p_error_with_token_context("Parser watchdog: postfix loop exceeded 10000 iterations");
         }
         let next = p_try_parse_into_generic_value_call(expr);
-        if (next != 0) { expr = next; continue; }
+        if (next != 0) {
+            expr = next;
+            continue;
+        }
         next = p_try_parse_generic_call(expr);
-        if (next != 0) { expr = next; continue; }
+        if (next != 0) {
+            expr = next;
+            continue;
+        }
         next = p_try_parse_call(expr);
-        if (next != 0) { expr = next; continue; }
+        if (next != 0) {
+            expr = next;
+            continue;
+        }
         next = p_try_parse_member(expr);
-        if (next != 0) { expr = next; continue; }
+        if (next != 0) {
+            expr = next;
+            continue;
+        }
         next = p_try_parse_index_or_unwrap(expr);
-        if (next != 0) { expr = next; continue; }
+        if (next != 0) {
+            expr = next;
+            continue;
+        }
         break;
     }
     expr
 }
-
 out fn selfhost_parser_expr_postfix_marker() : I32 => 0;

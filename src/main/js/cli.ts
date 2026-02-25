@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { compileFileResult } from "./compiler.ts";
+import { compileFileResult, formatTuffSource } from "./compiler.ts";
 import { formatDiagnostic, toDiagnostic } from "./errors.ts";
 import { buildCertificate } from "./certificate.ts";
 import { writeTypstSource, compileTypstToPdf } from "./typst-render.ts";
@@ -269,6 +269,115 @@ function main(argv: string[]): void {
       "Deprecated: 'tuffc compile <input>' is supported for compatibility; prefer 'tuffc <input>'.",
     );
     args.shift();
+  }
+
+  if (args[0] === "format") {
+    const formatArgs = args.slice(1);
+    let write = true;
+    let check = false;
+    let tracePasses = false;
+    const targets: string[] = [];
+    const unknown: string[] = [];
+
+    for (let i = 0; i < formatArgs.length; i += 1) {
+      const arg = formatArgs[i];
+      if (arg === "--write") {
+        write = true;
+        check = false;
+        continue;
+      }
+      if (arg === "--check") {
+        write = false;
+        check = true;
+        continue;
+      }
+      if (arg === "--trace-passes" || arg === "-v" || arg === "--verbose") {
+        tracePasses = true;
+        continue;
+      }
+      if (arg.startsWith("-")) {
+        unknown.push(arg);
+        continue;
+      }
+      targets.push(arg);
+    }
+
+    if (unknown.length > 0) {
+      console.error(`Unknown format option(s): ${unknown.join(", ")}`);
+      process.exitCode = 1;
+      return;
+    }
+
+    const resolvedTargets =
+      targets.length > 0
+        ? targets.map((t) => path.resolve(t))
+        : [path.resolve("./src/main/tuff")];
+
+    function collectTuffFiles(targetPath: string): string[] {
+      if (!fs.existsSync(targetPath)) return [];
+      const stat = fs.statSync(targetPath);
+      if (stat.isFile()) {
+        return targetPath.endsWith(".tuff") ? [targetPath] : [];
+      }
+      if (!stat.isDirectory()) return [];
+      const files: string[] = [];
+      for (const entry of fs.readdirSync(targetPath, { withFileTypes: true })) {
+        const full = path.join(targetPath, entry.name);
+        if (entry.isDirectory()) {
+          files.push(...collectTuffFiles(full));
+          continue;
+        }
+        if (entry.isFile() && full.endsWith(".tuff")) {
+          files.push(full);
+        }
+      }
+      return files;
+    }
+
+    const files = [
+      ...new Set(resolvedTargets.flatMap((t) => collectTuffFiles(t))),
+    ];
+    if (files.length === 0) {
+      console.error("No .tuff files found for format command");
+      process.exitCode = 1;
+      return;
+    }
+
+    let changed = 0;
+    for (const filePath of files) {
+      const source = fs.readFileSync(filePath, "utf8");
+      const formattedResult = formatTuffSource(source, { tracePasses });
+      if (!formattedResult.ok) {
+        const diag = toDiagnostic(formattedResult.error);
+        console.error(formatDiagnostic(diag));
+        process.exitCode = 1;
+        return;
+      }
+      const formatted = formattedResult.value;
+      if (formatted !== source) {
+        changed += 1;
+        if (write) {
+          fs.writeFileSync(filePath, formatted, "utf8");
+        }
+      }
+    }
+
+    if (check) {
+      if (changed > 0) {
+        console.error(
+          `format check failed: ${changed} file(s) require formatting`,
+        );
+        process.exitCode = 1;
+        return;
+      }
+      console.log(`format check passed: ${files.length} file(s)`);
+      return;
+    }
+
+    console.log(
+      `Formatted ${files.length} file(s); updated ${changed} file(s)`,
+    );
+    return;
   }
 
   let output = undefined;

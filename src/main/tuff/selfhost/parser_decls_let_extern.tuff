@@ -1,26 +1,27 @@
-let { get_intern, tok_kind, tok_value, vec_new } = selfhost::runtime_lexer;
-let { p_expect, p_parse_identifier, p_at, p_eat, p_parse_type, p_parse_type_primary, p_at_kind, p_can_start_refinement_expr_at, p_peek, node_new, node_set_data1, node_set_data2, node_set_data3, node_set_data4, node_set_data5 } = selfhost::parser_core;
-
+let {
+    get_intern, tok_kind, tok_value, vec_new
+}
+ = selfhost::runtime_lexer;
+let {
+    p_expect, p_parse_identifier, p_at, p_eat, p_parse_type, p_parse_type_primary, p_at_kind,
+    p_can_start_refinement_expr_at, p_peek, node_new, node_set_data1, node_set_data2, node_set_data3, node_set_data4, node_set_data5
+}
+ = selfhost::parser_core;
 let parse_temp_counter : I32 = 0;
-
 fn p_new_temp_name(prefix: *Str) : I32 => {
     parse_temp_counter = parse_temp_counter + 1;
     intern(prefix.str_concat(int_to_string(parse_temp_counter)))
 }
-
 fn p_decls_let_extern_new_stmt_list(stmts: Vec) : I32 => {
     let n = node_new(NK_STMT_LIST);
     node_set_data1(n, stmts);
     n
 }
-
 out fn p_parse_let() : I32 => {
     p_expect(TK_KEYWORD, "let", "Expected 'let'");
-
     if (p_at(TK_KEYWORD, "mut")) {
         p_eat();
     }
-
     if (p_at(TK_SYMBOL, "{")) {
         p_eat();
         let names = vec_new();
@@ -45,7 +46,6 @@ out fn p_parse_let() : I32 => {
         node_set_data2(node, parts);
         return node;
     }
-
     if (p_at(TK_SYMBOL, "(")) {
         p_eat();
         let names = vec_new();
@@ -64,40 +64,31 @@ out fn p_parse_let() : I32 => {
         p_expect(TK_SYMBOL, "=", "Expected '=' in tuple let destructuring");
         let rhs = p_parse_expression(0);
         p_expect(TK_SYMBOL, ";", "Expected ';' after tuple let destructuring");
-
         let lowered = vec_new();
         let tmp_name = p_new_temp_name("__tuple_tmp_");
-
         let tmp_decl = node_new(NK_LET_DECL);
         node_set_data1(tmp_decl, tmp_name);
         node_set_data2(tmp_decl, 0);
         node_set_data3(tmp_decl, rhs);
         lowered.vec_push(tmp_decl);
-
         let i = 0;
         while (i < names.vec_length()) {
             let tmp_ident = node_new(NK_IDENTIFIER);
             node_set_data1(tmp_ident, tmp_name);
-
             let idx_lit = node_new(NK_NUMBER_LIT);
             node_set_data1(idx_lit, intern(int_to_string(i)));
-
             let idx_expr = node_new(NK_INDEX_EXPR);
             node_set_data1(idx_expr, tmp_ident);
             node_set_data2(idx_expr, idx_lit);
-
             let elem_decl = node_new(NK_LET_DECL);
             node_set_data1(elem_decl, names.vec_get(i));
             node_set_data2(elem_decl, 0);
             node_set_data3(elem_decl, idx_expr);
             lowered.vec_push(elem_decl);
-
             i = i + 1;
         }
-
         return p_decls_let_extern_new_stmt_list(lowered);
     }
-
     let name = p_parse_identifier();
     let vtype = 0;
     if (p_at(TK_SYMBOL, ":")) {
@@ -107,14 +98,12 @@ out fn p_parse_let() : I32 => {
     p_expect(TK_SYMBOL, "=", "Expected '='");
     let value = p_parse_expression(0);
     p_expect(TK_SYMBOL, ";", "Expected ';'");
-
     let node = node_new(NK_LET_DECL);
     node_set_data1(node, name);
     node_set_data2(node, vtype);
     node_set_data3(node, value);
     node
 }
-
 fn p_le_parse_constraint_value_atom() : I32 => {
     if (p_at_kind(TK_IDENTIFIER)) {
         let n = node_new(NK_IDENTIFIER);
@@ -149,15 +138,14 @@ fn p_le_parse_constraint_value_atom() : I32 => {
     }
     p_parse_type_primary()
 }
-
 fn p_le_parse_constraint_value_expr() : I32 => {
     let left = p_le_parse_constraint_value_atom();
     while (
-        p_at(TK_SYMBOL, "+") ||
-        p_at(TK_SYMBOL, "-") ||
-        p_at(TK_SYMBOL, "*") ||
-        p_at(TK_SYMBOL, "/") ||
-        p_at(TK_SYMBOL, "%")
+    p_at(TK_SYMBOL, "+") ||
+    p_at(TK_SYMBOL, "-") ||
+    p_at(TK_SYMBOL, "*") ||
+    p_at(TK_SYMBOL, "/") ||
+    p_at(TK_SYMBOL, "%")
     ) {
         let op = tok_value(p_eat());
         let right = p_le_parse_constraint_value_atom();
@@ -169,27 +157,23 @@ fn p_le_parse_constraint_value_expr() : I32 => {
     }
     left
 }
-
 fn p_le_parse_generic_constraint_type() : I32 => {
     let type_node = p_parse_type_primary();
-
     let starts_generic_call_suffix = false;
-    if (p_at(TK_SYMBOL, ">") && tok_kind(p_peek(1)) == TK_SYMBOL) {
+    if (p_at(TK_SYMBOL, ">") && tok_kind(p_peek(1)) = = TK_SYMBOL) {
         let next_sym = get_intern(tok_value(p_peek(1)));
         if (next_sym.str_eq("(")) {
             starts_generic_call_suffix = true;
         }
     }
-
     let has_refine =
-        (p_at(TK_SYMBOL, "!=") ||
-        p_at(TK_SYMBOL, "<") ||
-        p_at(TK_SYMBOL, ">") ||
-        p_at(TK_SYMBOL, "<=") ||
-        p_at(TK_SYMBOL, ">=")) &&
-        p_can_start_refinement_expr_at(1) &&
-        !starts_generic_call_suffix;
-
+    (p_at(TK_SYMBOL, "!=") ||
+    p_at(TK_SYMBOL, "<") ||
+    p_at(TK_SYMBOL, ">") ||
+    p_at(TK_SYMBOL, "<=") ||
+    p_at(TK_SYMBOL, ">=")) &&
+    p_can_start_refinement_expr_at(1) &&
+    !starts_generic_call_suffix;
     if (has_refine) {
         let op = tok_value(p_eat());
         let value = p_le_parse_constraint_value_expr();
@@ -199,7 +183,6 @@ fn p_le_parse_generic_constraint_type() : I32 => {
         node_set_data3(refine, value);
         type_node = refine;
     }
-
     while (p_at(TK_SYMBOL, "|") || p_at(TK_SYMBOL, "|>")) {
         let is_extract = 0;
         if (p_at(TK_SYMBOL, "|>")) {
@@ -213,10 +196,8 @@ fn p_le_parse_generic_constraint_type() : I32 => {
         node_set_data3(union_node, is_extract);
         type_node = union_node;
     }
-
     type_node
 }
-
 fn p_le_parse_decl_generics(close_message: *Str) : Vec => {
     let generics = vec_new();
     if (p_at(TK_SYMBOL, "<")) {
@@ -238,37 +219,32 @@ fn p_le_parse_decl_generics(close_message: *Str) : Vec => {
     }
     generics
 }
-
 out fn p_parse_extern_decl() : I32 => {
     if (p_at(TK_KEYWORD, "fn")) {
         p_eat();
         let name = p_parse_identifier();
-
         let generics = p_le_parse_decl_generics("Expected '>'");
-
         p_expect(TK_SYMBOL, "(", "Expected '('");
         let params = vec_new();
         if (!p_at(TK_SYMBOL, ")")) {
             while (true) {
                 let pname = 0;
                 let ptype = 0;
-
                 if (p_at(TK_SYMBOL, "*")) {
                     ptype = p_parse_type();
                     pname = p_parse_identifier();
-                } else {
+                }
+                else {
                     pname = p_parse_identifier();
                     if (p_at(TK_SYMBOL, ":")) {
                         p_eat();
                         ptype = p_parse_type();
                     }
                 }
-
                 let param = vec_new();
                 param.vec_push(pname);
                 param.vec_push(ptype);
                 params.vec_push(param);
-
                 if (!p_at(TK_SYMBOL, ",")) {
                     break;
                 }
@@ -276,15 +252,12 @@ out fn p_parse_extern_decl() : I32 => {
             }
         }
         p_expect(TK_SYMBOL, ")", "Expected ')'");
-
         let ret_type = 0;
         if (p_at(TK_SYMBOL, ":")) {
             p_eat();
             ret_type = p_parse_type();
         }
-
         p_expect(TK_SYMBOL, ";", "Expected ';' after extern fn");
-
         let node = node_new(NK_EXTERN_FN_DECL);
         node_set_data1(node, name);
         node_set_data2(node, generics);
@@ -294,7 +267,6 @@ out fn p_parse_extern_decl() : I32 => {
     }
     if (p_at(TK_KEYWORD, "let")) {
         p_eat();
-
         if (p_at(TK_SYMBOL, "{")) {
             p_eat();
             let names = vec_new();
@@ -319,7 +291,6 @@ out fn p_parse_extern_decl() : I32 => {
             node_set_data2(node, source_parts);
             return node;
         }
-
         let name = p_parse_identifier();
         let typ = 0;
         if (p_at(TK_SYMBOL, ":")) {
@@ -350,5 +321,4 @@ out fn p_parse_extern_decl() : I32 => {
     }
     panic("Expected fn, let, or type after extern")
 }
-
 out fn selfhost_parser_decls_let_extern_marker() : I32 => 0;

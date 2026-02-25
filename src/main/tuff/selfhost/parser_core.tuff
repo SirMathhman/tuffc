@@ -1,23 +1,31 @@
-// ============================================================================
-// AST Node Kinds
-// ============================================================================
-
-let { tok_kind, tok_value, tok_line, tok_col, get_intern, vec_new, set_new } = selfhost::runtime_lexer;
-let { selfhost_parser_kinds_marker } = selfhost::parser_kinds;
-
-// ============================================================================
-// AST Storage (array-based)
-// ============================================================================
-
+ // ============================================================================
+ // AST Node Kinds
+ // ============================================================================
+let {
+    tok_kind, tok_value, tok_line, tok_col, get_intern, vec_new, set_new
+}
+ = selfhost::runtime_lexer;
+let {
+    selfhost_parser_kinds_marker
+}
+ = selfhost::parser_kinds;
+ // ============================================================================
+ // AST Storage (array-based)
+ // ============================================================================
 let node_kinds : Vec<I32> = vec_new();
-let node_data1 : Vec<I32> = vec_new();  // Generic data slot 1
-let node_data2 : Vec<I32> = vec_new();  // Generic data slot 2
-let node_data3 : Vec<I32> = vec_new();  // Generic data slot 3
-let node_data4 : Vec<I32> = vec_new();  // Generic data slot 4
-let node_data5 : Vec<I32> = vec_new();  // Generic data slot 5
-let node_toks  : Vec<I32> = vec_new();  // Token index at parse time (for line/col)
+let node_data1 : Vec<I32> = vec_new();
+ // Generic data slot 1
+let node_data2 : Vec<I32> = vec_new();
+ // Generic data slot 2
+let node_data3 : Vec<I32> = vec_new();
+ // Generic data slot 3
+let node_data4 : Vec<I32> = vec_new();
+ // Generic data slot 4
+let node_data5 : Vec<I32> = vec_new();
+ // Generic data slot 5
+let node_toks : Vec<I32> = vec_new();
+ // Token index at parse time (for line/col)
 let node_count : I32 = 1;
-
 out fn node_new(kind: I32) : I32 => {
     let idx = node_count;
     node_kinds.vec_push(kind);
@@ -30,14 +38,27 @@ out fn node_new(kind: I32) : I32 => {
     node_count = node_count + 1;
     idx
 }
-
 out fn node_kind(idx: I32) : I32 => node_kinds.vec_get(idx);
-
-out fn node_set_data1<T>(idx: I32, v: T) : I32 => { node_data1.vec_set(idx, v); 0 }
-out fn node_set_data2<T>(idx: I32, v: T) : I32 => { node_data2.vec_set(idx, v); 0 }
-out fn node_set_data3<T>(idx: I32, v: T) : I32 => { node_data3.vec_set(idx, v); 0 }
-out fn node_set_data4<T>(idx: I32, v: T) : I32 => { node_data4.vec_set(idx, v); 0 }
-out fn node_set_data5<T>(idx: I32, v: T) : I32 => { node_data5.vec_set(idx, v); 0 }
+out fn node_set_data1<T>(idx: I32, v: T) : I32 => {
+    node_data1.vec_set(idx, v);
+    0
+}
+out fn node_set_data2<T>(idx: I32, v: T) : I32 => {
+    node_data2.vec_set(idx, v);
+    0
+}
+out fn node_set_data3<T>(idx: I32, v: T) : I32 => {
+    node_data3.vec_set(idx, v);
+    0
+}
+out fn node_set_data4<T>(idx: I32, v: T) : I32 => {
+    node_data4.vec_set(idx, v);
+    0
+}
+out fn node_set_data5<T>(idx: I32, v: T) : I32 => {
+    node_data5.vec_set(idx, v);
+    0
+}
 out fn node_get_data1(idx: I32) : I32 => node_data1.vec_get(idx);
 out fn node_get_data2(idx: I32) : I32 => node_data2.vec_get(idx);
 out fn node_get_data3(idx: I32) : I32 => node_data3.vec_get(idx);
@@ -45,18 +66,15 @@ out fn node_get_data4(idx: I32) : I32 => node_data4.vec_get(idx);
 out fn node_get_data5(idx: I32) : I32 => node_data5.vec_get(idx);
 out fn node_get_line(idx: I32) : I32 => tok_line(node_toks.vec_get(idx));
 out fn node_get_col(idx: I32) : I32 => tok_col(node_toks.vec_get(idx));
-
-// ============================================================================
-// Parser
-// ============================================================================
-
+ // ============================================================================
+ // Parser
+ // ============================================================================
 let parse_pos : I32 = 0;
 let parse_exports : *mut Set<*Str> = set_new();
-
 out fn parse_init() : I32 => {
     parse_pos = 0;
     parse_exports = set_new();
-    // Clear node arrays for fresh compilation
+     // Clear node arrays for fresh compilation
     node_kinds.vec_clear();
     node_data1.vec_clear();
     node_data2.vec_clear();
@@ -64,7 +82,7 @@ out fn parse_init() : I32 => {
     node_data4.vec_clear();
     node_data5.vec_clear();
     node_toks.vec_clear();
-    // Reserve index 0 as null/sentinel node.
+     // Reserve index 0 as null/sentinel node.
     node_kinds.vec_push(0);
     node_data1.vec_push(0);
     node_data2.vec_push(0);
@@ -75,70 +93,83 @@ out fn parse_init() : I32 => {
     node_count = 1;
     0
 }
-
 out fn p_peek(offset: I32) : I32 => {
     let idx = parse_pos + offset;
     if (idx >= tok_count) {
         tok_count - 1
-    } else {
+    }
+    else {
         idx
     }
 }
-
 out fn p_mark() : I32 => parse_pos;
-out fn p_restore(mark: I32) : I32 => { parse_pos = mark; 0 }
-
-out fn p_at_kind(kind: I32) : Bool => tok_kind(p_peek(0)) == kind;
-
+out fn p_restore(mark: I32) : I32 => {
+    parse_pos = mark;
+    0
+}
+out fn p_at_kind(kind: I32) : Bool => tok_kind(p_peek(0)) = = kind;
 out fn p_at_value(val: *Str) : Bool => {
     let v = tok_value(p_peek(0));
-    intern_map.map_has(val) && intern_map.map_get(val) == v
+    intern_map.map_has(val) && intern_map.map_get(val) = = v
 }
-
 out fn p_at(kind: I32, val: *Str) : Bool => p_at_kind(kind) && p_at_value(val);
-
 out fn p_eat() : I32 => {
     let t = p_peek(0);
     parse_pos = parse_pos + 1;
     t
 }
-
 fn p_token_kind_name(knd: I32) : *Str => {
-    if (knd == TK_EOF) { return "eof"; }
-    if (knd == TK_KEYWORD) { return "keyword"; }
-    if (knd == TK_IDENTIFIER) { return "identifier"; }
-    if (knd == TK_NUMBER) { return "number"; }
-    if (knd == TK_STRING) { return "string"; }
-    if (knd == TK_BOOL) { return "bool"; }
-    if (knd == TK_SYMBOL) { return "symbol"; }
-    if (knd == TK_CHAR) { return "char"; }
+    if (knd = = TK_EOF) {
+        return "eof";
+    }
+    if (knd = = TK_KEYWORD) {
+        return "keyword";
+    }
+    if (knd = = TK_IDENTIFIER) {
+        return "identifier";
+    }
+    if (knd = = TK_NUMBER) {
+        return "number";
+    }
+    if (knd = = TK_STRING) {
+        return "string";
+    }
+    if (knd = = TK_BOOL) {
+        return "bool";
+    }
+    if (knd = = TK_SYMBOL) {
+        return "symbol";
+    }
+    if (knd = = TK_CHAR) {
+        return "char";
+    }
     "token"
 }
-
 fn p_token_value_for_error(t: I32) : *Str => {
     let knd = tok_kind(t);
-    if (knd == TK_BOOL) {
-        if (tok_value(t) == 0) { return "false"; }
+    if (knd = = TK_BOOL) {
+        if (tok_value(t) = = 0) {
+            return "false";
+        }
         return "true";
     }
     if (
-        knd == TK_KEYWORD ||
-        knd == TK_IDENTIFIER ||
-        knd == TK_NUMBER ||
-        knd == TK_STRING ||
-        knd == TK_SYMBOL ||
-        knd == TK_CHAR ||
-        knd == TK_EOF
+    knd = = TK_KEYWORD ||
+    knd = = TK_IDENTIFIER ||
+    knd = = TK_NUMBER ||
+    knd = = TK_STRING ||
+    knd = = TK_SYMBOL ||
+    knd = = TK_CHAR ||
+    knd = = TK_EOF
     ) {
         let raw = get_intern(tok_value(t));
-        if (knd == TK_SYMBOL && raw.str_length() == 0) {
+        if (knd = = TK_SYMBOL && raw.str_length() = = 0) {
             return "<empty-symbol>";
         }
         return raw;
     }
     "<unknown>"
 }
-
 fn p_token_debug_at(i: I32) : *Str => {
     if (i < 0 || i >= tok_count) {
         return "<none>";
@@ -148,14 +179,13 @@ fn p_token_debug_at(i: I32) : *Str => {
     let line = int_to_string(tok_line(i));
     let col = int_to_string(tok_col(i));
     kname
-        .str_concat(":")
-        .str_concat(val)
-        .str_concat(" @")
-        .str_concat(line)
-        .str_concat(":")
-        .str_concat(col)
+    .str_concat(":")
+    .str_concat(val)
+    .str_concat(" @")
+    .str_concat(line)
+    .str_concat(":")
+    .str_concat(col)
 }
-
 out fn p_error_with_token_context(msg: *Str) : I32 => {
     let t = p_peek(0);
     let cur_idx = t;
@@ -169,61 +199,63 @@ out fn p_error_with_token_context(msg: *Str) : I32 => {
     let cur_tok = p_token_debug_at(cur_idx);
     let next_tok = p_token_debug_at(next_idx);
     panic(msg
-        .str_concat(" (found ")
-        .str_concat(found_kind)
-        .str_concat(":")
-        .str_concat(value)
-        .str_concat(" at ")
-        .str_concat(line)
-        .str_concat(":")
-        .str_concat(col)
-        .str_concat("; context: [prev=")
-        .str_concat(prev_tok)
-        .str_concat(", current=")
-        .str_concat(cur_tok)
-        .str_concat(", next=")
-        .str_concat(next_tok)
-        .str_concat("]")
-        .str_concat(")"));
+    .str_concat(" (found ")
+    .str_concat(found_kind)
+    .str_concat(":")
+    .str_concat(value)
+    .str_concat(" at ")
+    .str_concat(line)
+    .str_concat(":")
+    .str_concat(col)
+    .str_concat("; context: [prev=")
+    .str_concat(prev_tok)
+    .str_concat(", current=")
+    .str_concat(cur_tok)
+    .str_concat(", next=")
+    .str_concat(next_tok)
+    .str_concat("]")
+    .str_concat(")"));
     0
 }
-
 out fn p_expect_kind(kind: I32, msg: *Str) : I32 => {
     if (!p_at_kind(kind)) {
         p_error_with_token_context(msg);
     }
     p_eat()
 }
-
 out fn p_expect(kind: I32, val: *Str, msg: *Str) : I32 => {
     if (!p_at(kind, val)) {
         p_error_with_token_context(msg);
     }
     p_eat()
 }
-
 out fn p_parse_identifier() : I32 => {
     let t = p_expect_kind(TK_IDENTIFIER, "Expected identifier");
     tok_value(t)
 }
-
-// Note: No forward declarations needed - JS hoists functions
-
+ // Note: No forward declarations needed - JS hoists functions
 out fn p_can_start_type_tok() : Bool => {
-    if (p_at_kind(TK_IDENTIFIER)) { return true; }
-    if (p_at(TK_SYMBOL, "*")) { return true; }
-    if (p_at(TK_SYMBOL, "[")) { return true; }
-    if (p_at(TK_SYMBOL, "(")) { return true; }
+    if (p_at_kind(TK_IDENTIFIER)) {
+        return true;
+    }
+    if (p_at(TK_SYMBOL, "*")) {
+        return true;
+    }
+    if (p_at(TK_SYMBOL, "[")) {
+        return true;
+    }
+    if (p_at(TK_SYMBOL, "(")) {
+        return true;
+    }
     false
 }
-
 out fn p_can_start_type_tok_at(offset: I32) : Bool => {
     let idx = p_peek(offset);
     let k = tok_kind(idx);
-    if (k == TK_IDENTIFIER) {
+    if (k = = TK_IDENTIFIER) {
         return true;
     }
-    if (k == TK_SYMBOL) {
+    if (k = = TK_SYMBOL) {
         let s = get_intern(tok_value(idx));
         if (s.str_eq("*") || s.str_eq("[") || s.str_eq("(")) {
             return true;
@@ -231,20 +263,19 @@ out fn p_can_start_type_tok_at(offset: I32) : Bool => {
     }
     false
 }
-
 out fn p_can_start_type_after_lifetime_tok_at(offset: I32) : Bool => {
     let idx = p_peek(offset);
     let k = tok_kind(idx);
-    if (k == TK_IDENTIFIER) {
+    if (k = = TK_IDENTIFIER) {
         return true;
     }
-    if (k == TK_SYMBOL) {
+    if (k = = TK_SYMBOL) {
         let s = get_intern(tok_value(idx));
         if (s.str_eq("*") || s.str_eq("[") || s.str_eq("(")) {
             return true;
         }
     }
-    if (k == TK_KEYWORD) {
+    if (k = = TK_KEYWORD) {
         let kw = get_intern(tok_value(idx));
         if (kw.str_eq("mut") || kw.str_eq("move") || kw.str_eq("out") || kw.str_eq("uninit")) {
             return true;
@@ -252,25 +283,37 @@ out fn p_can_start_type_after_lifetime_tok_at(offset: I32) : Bool => {
     }
     false
 }
-
 out fn p_can_start_refinement_expr() : Bool => {
-    if (p_at_kind(TK_NUMBER)) { return true; }
-    if (p_at_kind(TK_IDENTIFIER)) { return true; }
-    if (p_at_kind(TK_BOOL)) { return true; }
-    if (p_at_kind(TK_STRING)) { return true; }
-    if (p_at(TK_SYMBOL, "(")) { return true; }
-    if (p_at(TK_SYMBOL, "-")) { return true; }
-    if (p_at(TK_SYMBOL, "!")) { return true; }
+    if (p_at_kind(TK_NUMBER)) {
+        return true;
+    }
+    if (p_at_kind(TK_IDENTIFIER)) {
+        return true;
+    }
+    if (p_at_kind(TK_BOOL)) {
+        return true;
+    }
+    if (p_at_kind(TK_STRING)) {
+        return true;
+    }
+    if (p_at(TK_SYMBOL, "(")) {
+        return true;
+    }
+    if (p_at(TK_SYMBOL, "-")) {
+        return true;
+    }
+    if (p_at(TK_SYMBOL, "!")) {
+        return true;
+    }
     false
 }
-
 out fn p_can_start_refinement_expr_at(offset: I32) : Bool => {
     let idx = p_peek(offset);
     let k = tok_kind(idx);
-    if (k == TK_NUMBER || k == TK_IDENTIFIER || k == TK_BOOL || k == TK_STRING || k == TK_CHAR) {
+    if (k = = TK_NUMBER || k = = TK_IDENTIFIER || k = = TK_BOOL || k = = TK_STRING || k = = TK_CHAR) {
         return true;
     }
-    if (k == TK_SYMBOL) {
+    if (k = = TK_SYMBOL) {
         let s = get_intern(tok_value(idx));
         if (s.str_eq("(") || s.str_eq("-") || s.str_eq("!")) {
             return true;
@@ -278,7 +321,6 @@ out fn p_can_start_refinement_expr_at(offset: I32) : Bool => {
     }
     false
 }
-
 fn p_parse_type_primary_pointer() : I32 => {
     p_eat();
     let mutable = 0;
@@ -287,15 +329,18 @@ fn p_parse_type_primary_pointer() : I32 => {
     let progressed = true;
     while (progressed) {
         progressed = false;
-        if (mutable == 0 && p_at(TK_KEYWORD, "mut")) {
+        if (mutable = = 0 && p_at(TK_KEYWORD, "mut")) {
             p_eat();
             mutable = 1;
             progressed = true;
-        } else if (move_ptr == 0 && p_at(TK_KEYWORD, "move")) {
+        }
+        else if (move_ptr = = 0 && p_at(TK_KEYWORD, "move")) {
             p_eat();
             move_ptr = 1;
             progressed = true;
-        } else if (life_name == 0 && p_at_kind(TK_IDENTIFIER) && p_can_start_type_after_lifetime_tok_at(1)) {
+        }
+        else if (life_name = = 0 && p_at_kind(TK_IDENTIFIER) &&
+        p_can_start_type_after_lifetime_tok_at(1)) {
             life_name = tok_value(p_eat());
             progressed = true;
         }
@@ -308,7 +353,6 @@ fn p_parse_type_primary_pointer() : I32 => {
     node_set_data4(node, life_name);
     node
 }
-
 fn p_parse_type_primary_array() : I32 => {
     p_eat();
     let elem = p_parse_type();
@@ -327,9 +371,8 @@ fn p_parse_type_primary_array() : I32 => {
     node_set_data3(node, total);
     node
 }
-
 fn p_try_skip_named_tuple_member_label() : I32 => {
-    if (tok_kind(p_peek(0)) == TK_IDENTIFIER && tok_kind(p_peek(1)) == TK_SYMBOL) {
+    if (tok_kind(p_peek(0)) = = TK_IDENTIFIER && tok_kind(p_peek(1)) = = TK_SYMBOL) {
         let sym = get_intern(tok_value(p_peek(1)));
         if (sym.str_eq(":")) {
             p_eat();
@@ -338,7 +381,6 @@ fn p_try_skip_named_tuple_member_label() : I32 => {
     }
     0
 }
-
 fn p_parse_type_primary_tuple_or_fn() : I32 => {
     p_eat();
     let members = vec_new();
@@ -364,7 +406,6 @@ fn p_parse_type_primary_tuple_or_fn() : I32 => {
     node_set_data1(node, members);
     node
 }
-
 fn p_parse_type_primary_numeric_sentinel() : I32 => {
     let t = p_eat();
     let raw = get_intern(tok_value(t));
@@ -382,28 +423,24 @@ fn p_parse_type_primary_numeric_sentinel() : I32 => {
     node_set_data3(refine, lit);
     refine
 }
-
 fn p_parse_type_primary_named_or_applied() : I32 => {
     let name = p_parse_identifier();
     let generics = vec_new();
-
     while (p_at(TK_SYMBOL, "::")) {
         p_eat();
         p_parse_identifier();
     }
-
     let would_be_member_refine = false;
     if (p_at(TK_SYMBOL, "<")) {
         let k1 = tok_kind(p_peek(1));
         let k2 = tok_kind(p_peek(2));
-        if (k1 == TK_IDENTIFIER && k2 == TK_SYMBOL) {
+        if (k1 = = TK_IDENTIFIER && k2 = = TK_SYMBOL) {
             let s2 = get_intern(tok_value(p_peek(2)));
             if (s2.str_eq(".") || s2.str_eq("(")) {
                 would_be_member_refine = true;
             }
         }
     }
-
     if (p_at(TK_SYMBOL, "<") && p_can_start_type_tok_at(1) && !would_be_member_refine) {
         p_eat();
         if (!p_at(TK_SYMBOL, ">")) {
@@ -415,12 +452,10 @@ fn p_parse_type_primary_named_or_applied() : I32 => {
         }
         p_expect(TK_SYMBOL, ">", "Expected '>' in generic args");
     }
-
     let type_node = node_new(NK_NAMED_TYPE);
     node_set_data1(type_node, name);
     node_set_data2(type_node, generics);
-
-    if (p_at(TK_SYMBOL, "(") && generics.vec_length() == 0) {
+    if (p_at(TK_SYMBOL, "(") && generics.vec_length() = = 0) {
         p_eat();
         let args = vec_new();
         if (!p_at(TK_SYMBOL, ")")) {
@@ -436,26 +471,29 @@ fn p_parse_type_primary_named_or_applied() : I32 => {
         node_set_data2(applied, args);
         return applied;
     }
-
     type_node
 }
-
 out fn p_parse_type_primary() : I32 => {
-    if (p_at(TK_SYMBOL, "*")) { return p_parse_type_primary_pointer(); }
-    if (p_at(TK_SYMBOL, "[")) { return p_parse_type_primary_array(); }
-    if (p_at(TK_SYMBOL, "(")) { return p_parse_type_primary_tuple_or_fn(); }
-    if (p_at_kind(TK_NUMBER)) { return p_parse_type_primary_numeric_sentinel(); }
+    if (p_at(TK_SYMBOL, "*")) {
+        return p_parse_type_primary_pointer();
+    }
+    if (p_at(TK_SYMBOL, "[")) {
+        return p_parse_type_primary_array();
+    }
+    if (p_at(TK_SYMBOL, "(")) {
+        return p_parse_type_primary_tuple_or_fn();
+    }
+    if (p_at_kind(TK_NUMBER)) {
+        return p_parse_type_primary_numeric_sentinel();
+    }
     p_parse_type_primary_named_or_applied()
 }
-
 out fn p_parse_type() : I32 => {
-
     let type_node = p_parse_type_primary();
-    
-    // Refinement predicate
+     // Refinement predicate
     let has_refine = p_at(TK_SYMBOL, "!=") || p_at(TK_SYMBOL, "<") || p_at(TK_SYMBOL, ">") || p_at(TK_SYMBOL, "<=") || p_at(TK_SYMBOL, ">=");
     let starts_generic_call_suffix = false;
-    if (p_at(TK_SYMBOL, ">") && tok_kind(p_peek(1)) == TK_SYMBOL) {
+    if (p_at(TK_SYMBOL, ">") && tok_kind(p_peek(1)) = = TK_SYMBOL) {
         let next_sym = get_intern(tok_value(p_peek(1)));
         if (next_sym.str_eq("(")) {
             starts_generic_call_suffix = true;
@@ -470,14 +508,13 @@ out fn p_parse_type() : I32 => {
         node_set_data3(refine, val_expr);
         type_node = refine;
     }
-
-    // Arithmetic type/value expressions used in annotations (e.g. SizeOf<T> * L)
+     // Arithmetic type/value expressions used in annotations (e.g. SizeOf<T> * L)
     while (
-        p_at(TK_SYMBOL, "+") ||
-        p_at(TK_SYMBOL, "-") ||
-        p_at(TK_SYMBOL, "*") ||
-        p_at(TK_SYMBOL, "/") ||
-        p_at(TK_SYMBOL, "%")
+    p_at(TK_SYMBOL, "+") ||
+    p_at(TK_SYMBOL, "-") ||
+    p_at(TK_SYMBOL, "*") ||
+    p_at(TK_SYMBOL, "/") ||
+    p_at(TK_SYMBOL, "%")
     ) {
         let op = tok_value(p_eat());
         let right = p_parse_type_primary();
@@ -487,8 +524,7 @@ out fn p_parse_type() : I32 => {
         node_set_data3(bin, right);
         type_node = bin;
     }
-    
-    // Union types
+     // Union types
     while (p_at(TK_SYMBOL, "|") || p_at(TK_SYMBOL, "|>")) {
         let is_extract = 0;
         if (p_at(TK_SYMBOL, "|>")) {
@@ -502,37 +538,31 @@ out fn p_parse_type() : I32 => {
         node_set_data3(union_node, is_extract);
         type_node = union_node;
     }
-    
     type_node
 }
-
 out fn p_parse_pattern() : I32 => {
-    // Wildcard
+     // Wildcard
     if (p_at(TK_SYMBOL, "_") || p_at(TK_IDENTIFIER, "_")) {
         p_eat();
         return node_new(NK_WILDCARD_PAT);
     }
-    
-    // Number literal
+     // Number literal
     if (p_at_kind(TK_NUMBER)) {
         let t = p_eat();
         let node = node_new(NK_LITERAL_PAT);
         node_set_data1(node, tok_value(t));
         return node;
     }
-    
-    // Bool literal
+     // Bool literal
     if (p_at_kind(TK_BOOL)) {
         let t = p_eat();
         let node = node_new(NK_LITERAL_PAT);
         node_set_data1(node, tok_value(t));
         return node;
     }
-    
-    // Name or struct pattern
+     // Name or struct pattern
     let name = p_parse_identifier();
-
-    // Optional generic qualifiers in pattern position: Some<T>, Foo<A, B>
+     // Optional generic qualifiers in pattern position: Some<T>, Foo<A, B>
     if (p_at(TK_SYMBOL, "<") && p_can_start_type_tok_at(1)) {
         p_eat();
         if (!p_at(TK_SYMBOL, ">")) {
@@ -544,7 +574,6 @@ out fn p_parse_pattern() : I32 => {
         }
         p_expect(TK_SYMBOL, ">", "Expected '>' in pattern generic args");
     }
-    
     if (p_at(TK_SYMBOL, "{")) {
         p_eat();
         let fields = vec_new();
@@ -561,10 +590,8 @@ out fn p_parse_pattern() : I32 => {
         node_set_data2(node, fields);
         return node;
     }
-    
     let node = node_new(NK_NAME_PAT);
     node_set_data1(node, name);
     node
 }
-
 out fn selfhost_parser_core_marker() : I32 => 0;

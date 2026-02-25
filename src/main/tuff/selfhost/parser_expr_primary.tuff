@@ -1,7 +1,16 @@
-let { p_at, p_eat, p_expect, p_parse_identifier, p_at_kind, p_peek, p_mark, p_restore, p_parse_pattern, p_parse_type, p_error_with_token_context, node_new, node_set_data1, node_set_data2, node_set_data3, node_set_data4, node_set_data5 } = selfhost::parser_core;
-let { tok_kind, tok_value, get_interned_str, vec_new } = selfhost::runtime_lexer;
-let { p_parse_postfix } = selfhost::parser_expr_postfix;
-
+let {
+    p_at, p_eat, p_expect, p_parse_identifier, p_at_kind, p_peek, p_mark, p_restore,
+    p_parse_pattern, p_parse_type, p_error_with_token_context, node_new, node_set_data1, node_set_data2, node_set_data3, node_set_data4, node_set_data5
+}
+ = selfhost::parser_core;
+let {
+    tok_kind, tok_value, get_interned_str, vec_new
+}
+ = selfhost::runtime_lexer;
+let {
+    p_parse_postfix
+}
+ = selfhost::parser_expr_postfix;
 fn p_parse_primary_array() : I32 => {
     p_eat();
     let items = vec_new();
@@ -9,7 +18,9 @@ fn p_parse_primary_array() : I32 => {
         items.vec_push(p_parse_expression(0));
         while (p_at(TK_SYMBOL, ",")) {
             p_eat();
-            if (p_at(TK_SYMBOL, "]")) { break; }
+            if (p_at(TK_SYMBOL, "]")) {
+                break;
+            }
             items.vec_push(p_parse_expression(0));
         }
     }
@@ -18,14 +29,12 @@ fn p_parse_primary_array() : I32 => {
     node_set_data1(node, items);
     p_parse_postfix(node)
 }
-
 fn p_parse_primary_basic_literal(kind: I32) : I32 => {
     let t = p_eat();
     let node = node_new(kind);
     node_set_data1(node, tok_value(t));
     p_parse_postfix(node)
 }
-
 fn p_try_parse_paren_lambda() : I32 => {
     if (!p_at(TK_SYMBOL, "(")) {
         return 0;
@@ -36,15 +45,24 @@ fn p_try_parse_paren_lambda() : I32 => {
     let valid = true;
     if (!p_at(TK_SYMBOL, ")")) {
         while (true) {
-            if (!p_at_kind(TK_IDENTIFIER)) { valid = false; break; }
+            if (!p_at_kind(TK_IDENTIFIER)) {
+                valid = false;
+                break;
+            }
             let pname = p_parse_identifier();
             let ptype = 0;
-            if (p_at(TK_SYMBOL, ":")) { p_eat(); ptype = p_parse_type(); }
+            if (p_at(TK_SYMBOL, ":")) {
+                p_eat();
+                ptype = p_parse_type();
+            }
             let param = vec_new();
             param.vec_push(pname);
             param.vec_push(ptype);
             params.vec_push(param);
-            if (p_at(TK_SYMBOL, ",")) { p_eat(); continue; }
+            if (p_at(TK_SYMBOL, ",")) {
+                p_eat();
+                continue;
+            }
             break;
         }
     }
@@ -53,7 +71,12 @@ fn p_try_parse_paren_lambda() : I32 => {
         if (p_at(TK_SYMBOL, "=>")) {
             p_eat();
             let body = 0;
-            if (p_at(TK_SYMBOL, "{")) { body = p_parse_block(); } else { body = p_parse_expression(0); }
+            if (p_at(TK_SYMBOL, "{")) {
+                body = p_parse_block();
+            }
+            else {
+                body = p_parse_expression(0);
+            }
             let lam = node_new(NK_LAMBDA_EXPR);
             node_set_data1(lam, params);
             node_set_data2(lam, body);
@@ -63,50 +86,64 @@ fn p_try_parse_paren_lambda() : I32 => {
     p_restore(mark);
     0
 }
-
 fn p_parse_primary_fn_expr() : I32 => {
     p_eat();
     let fname = 0;
-    if (p_at_kind(TK_IDENTIFIER)) { fname = p_parse_identifier(); }
-
+    if (p_at_kind(TK_IDENTIFIER)) {
+        fname = p_parse_identifier();
+    }
     let generics = vec_new();
     if (p_at(TK_SYMBOL, "<")) {
         p_eat();
         if (!p_at(TK_SYMBOL, ">")) {
             while (true) {
                 generics.vec_push(p_parse_identifier());
-                if (p_at(TK_SYMBOL, ":")) { p_eat(); p_parse_type(); }
-                if (!p_at(TK_SYMBOL, ",")) { break; }
+                if (p_at(TK_SYMBOL, ":")) {
+                    p_eat();
+                    p_parse_type();
+                }
+                if (!p_at(TK_SYMBOL, ",")) {
+                    break;
+                }
                 p_eat();
             }
         }
         p_expect(TK_SYMBOL, ">", "Expected '>'");
     }
-
     p_expect(TK_SYMBOL, "(", "Expected '(' in function expression");
     let params = vec_new();
     if (!p_at(TK_SYMBOL, ")")) {
         while (true) {
             let pname = p_parse_identifier();
             let ptype = 0;
-            if (p_at(TK_SYMBOL, ":")) { p_eat(); ptype = p_parse_type(); }
+            if (p_at(TK_SYMBOL, ":")) {
+                p_eat();
+                ptype = p_parse_type();
+            }
             let param = vec_new();
             param.vec_push(pname);
             param.vec_push(ptype);
             params.vec_push(param);
-            if (!p_at(TK_SYMBOL, ",")) { break; }
+            if (!p_at(TK_SYMBOL, ",")) {
+                break;
+            }
             p_eat();
         }
     }
     p_expect(TK_SYMBOL, ")", "Expected ')' after params");
-
     let ret = 0;
-    if (p_at(TK_SYMBOL, ":")) { p_eat(); ret = p_parse_type(); }
-
+    if (p_at(TK_SYMBOL, ":")) {
+        p_eat();
+        ret = p_parse_type();
+    }
     p_expect(TK_SYMBOL, "=>", "Expected '=>' in function expression");
     let body = 0;
-    if (p_at(TK_SYMBOL, "{")) { body = p_parse_block(); } else { body = p_parse_expression(0); }
-
+    if (p_at(TK_SYMBOL, "{")) {
+        body = p_parse_block();
+    }
+    else {
+        body = p_parse_expression(0);
+    }
     let fnexpr = node_new(NK_FN_EXPR);
     node_set_data1(fnexpr, fname);
     node_set_data2(fnexpr, generics);
@@ -115,9 +152,8 @@ fn p_parse_primary_fn_expr() : I32 => {
     node_set_data5(fnexpr, body);
     p_parse_postfix(fnexpr)
 }
-
 fn p_try_parse_identifier_lambda() : I32 => {
-    if (!(p_at_kind(TK_IDENTIFIER) && tok_kind(p_peek(1)) == TK_SYMBOL && get_interned_str(tok_value(p_peek(1))).str_eq("=>"))) {
+    if (!(p_at_kind(TK_IDENTIFIER) && tok_kind(p_peek(1)) = = TK_SYMBOL && get_interned_str(tok_value(p_peek(1))).str_eq("=>"))) {
         return 0;
     }
     let pname = p_parse_identifier();
@@ -128,13 +164,17 @@ fn p_try_parse_identifier_lambda() : I32 => {
     let params = vec_new();
     params.vec_push(param);
     let body = 0;
-    if (p_at(TK_SYMBOL, "{")) { body = p_parse_block(); } else { body = p_parse_expression(0); }
+    if (p_at(TK_SYMBOL, "{")) {
+        body = p_parse_block();
+    }
+    else {
+        body = p_parse_expression(0);
+    }
     let lam = node_new(NK_LAMBDA_EXPR);
     node_set_data1(lam, params);
     node_set_data2(lam, body);
     p_parse_postfix(lam)
 }
-
 fn p_parse_primary_paren_or_tuple() : I32 => {
     p_eat();
     let first = p_parse_expression(0);
@@ -153,18 +193,27 @@ fn p_parse_primary_paren_or_tuple() : I32 => {
     p_expect(TK_SYMBOL, ")", "Expected ')'");
     p_parse_postfix(first)
 }
-
 fn p_parse_primary_if_expr() : I32 => {
     p_eat();
     p_expect(TK_SYMBOL, "(", "Expected '(' after if");
     let cond = p_parse_expression(0);
     p_expect(TK_SYMBOL, ")", "Expected ')' after condition");
     let then_branch = 0;
-    if (p_at(TK_SYMBOL, "{")) { then_branch = p_parse_block(); } else { then_branch = p_parse_expression(0); }
+    if (p_at(TK_SYMBOL, "{")) {
+        then_branch = p_parse_block();
+    }
+    else {
+        then_branch = p_parse_expression(0);
+    }
     let else_branch = 0;
     if (p_at(TK_KEYWORD, "else")) {
         p_eat();
-        if (p_at(TK_SYMBOL, "{")) { else_branch = p_parse_block(); } else { else_branch = p_parse_expression(0); }
+        if (p_at(TK_SYMBOL, "{")) {
+            else_branch = p_parse_block();
+        }
+        else {
+            else_branch = p_parse_expression(0);
+        }
     }
     let node = node_new(NK_IF_EXPR);
     node_set_data1(node, cond);
@@ -172,7 +221,6 @@ fn p_parse_primary_if_expr() : I32 => {
     node_set_data3(node, else_branch);
     p_parse_postfix(node)
 }
-
 fn p_parse_primary_match_expr() : I32 => {
     p_eat();
     p_expect(TK_SYMBOL, "(", "Expected '(' after match");
@@ -185,7 +233,12 @@ fn p_parse_primary_match_expr() : I32 => {
         let pat = p_parse_pattern();
         p_expect(TK_SYMBOL, "=", "Expected '='");
         let body = 0;
-        if (p_at(TK_SYMBOL, "{")) { body = p_parse_block(); } else { body = p_parse_expression(0); }
+        if (p_at(TK_SYMBOL, "{")) {
+            body = p_parse_block();
+        }
+        else {
+            body = p_parse_expression(0);
+        }
         p_expect(TK_SYMBOL, ";", "Expected ';' after case");
         let case_node = vec_new();
         case_node.vec_push(pat);
@@ -198,18 +251,18 @@ fn p_parse_primary_match_expr() : I32 => {
     node_set_data2(node, cases);
     node
 }
-
 fn p_parse_primary_identifier_expr() : I32 => {
     let name = p_parse_identifier();
     let expr = node_new(NK_IDENTIFIER);
     node_set_data1(expr, name);
-
     let generic_args = vec_new();
     let is_type_like = false;
     let name_text = get_interned_str(name);
     if (name_text.str_length() > 0) {
         let c0 = name_text.str_char_at(0);
-        if (c0 >= 65 && c0 <= 90) { is_type_like = true; }
+        if (c0 >= 65 && c0 <= 90) {
+            is_type_like = true;
+        }
     }
     if (is_type_like && p_at(TK_SYMBOL, "<") && (p_has_generic_struct_init_suffix() || p_has_generic_value_suffix())) {
         p_eat();
@@ -223,7 +276,6 @@ fn p_parse_primary_identifier_expr() : I32 => {
         p_expect(TK_SYMBOL, ">", "Expected '>' in generic struct initializer");
         node_set_data2(expr, generic_args);
     }
-
     if (p_at(TK_SYMBOL, "{")) {
         p_eat();
         let fields = vec_new();
@@ -253,31 +305,48 @@ fn p_parse_primary_identifier_expr() : I32 => {
         node_set_data3(init_node, generic_args);
         expr = init_node;
     }
-
     p_parse_postfix(expr)
 }
 out fn p_parse_primary() : I32 => {
-    if (p_at(TK_SYMBOL, "[")) { return p_parse_primary_array(); }
-    if (p_at_kind(TK_NUMBER)) { return p_parse_primary_basic_literal(NK_NUMBER_LIT); }
-    if (p_at_kind(TK_BOOL)) { return p_parse_primary_basic_literal(NK_BOOL_LIT); }
-    if (p_at_kind(TK_STRING)) { return p_parse_primary_basic_literal(NK_STRING_LIT); }
-    if (p_at_kind(TK_CHAR)) { return p_parse_primary_basic_literal(NK_CHAR_LIT); }
-
+    if (p_at(TK_SYMBOL, "[")) {
+        return p_parse_primary_array();
+    }
+    if (p_at_kind(TK_NUMBER)) {
+        return p_parse_primary_basic_literal(NK_NUMBER_LIT);
+    }
+    if (p_at_kind(TK_BOOL)) {
+        return p_parse_primary_basic_literal(NK_BOOL_LIT);
+    }
+    if (p_at_kind(TK_STRING)) {
+        return p_parse_primary_basic_literal(NK_STRING_LIT);
+    }
+    if (p_at_kind(TK_CHAR)) {
+        return p_parse_primary_basic_literal(NK_CHAR_LIT);
+    }
     let paren_lambda = p_try_parse_paren_lambda();
-    if (paren_lambda != 0) { return paren_lambda; }
-
-    if (p_at(TK_KEYWORD, "fn")) { return p_parse_primary_fn_expr(); }
-
+    if (paren_lambda != 0) {
+        return paren_lambda;
+    }
+    if (p_at(TK_KEYWORD, "fn")) {
+        return p_parse_primary_fn_expr();
+    }
     let id_lambda = p_try_parse_identifier_lambda();
-    if (id_lambda != 0) { return id_lambda; }
-
-    if (p_at(TK_SYMBOL, "(")) { return p_parse_primary_paren_or_tuple(); }
-    if (p_at(TK_KEYWORD, "if")) { return p_parse_primary_if_expr(); }
-    if (p_at(TK_KEYWORD, "match")) { return p_parse_primary_match_expr(); }
-    if (p_at_kind(TK_IDENTIFIER)) { return p_parse_primary_identifier_expr(); }
-
+    if (id_lambda != 0) {
+        return id_lambda;
+    }
+    if (p_at(TK_SYMBOL, "(")) {
+        return p_parse_primary_paren_or_tuple();
+    }
+    if (p_at(TK_KEYWORD, "if")) {
+        return p_parse_primary_if_expr();
+    }
+    if (p_at(TK_KEYWORD, "match")) {
+        return p_parse_primary_match_expr();
+    }
+    if (p_at_kind(TK_IDENTIFIER)) {
+        return p_parse_primary_identifier_expr();
+    }
     p_error_with_token_context("Expected expression start (identifier, literal, '(', '[', 'if', 'match', or 'fn')");
     0
 }
-
 out fn selfhost_parser_expr_primary_marker() : I32 => 0;

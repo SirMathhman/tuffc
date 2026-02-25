@@ -1,4 +1,6 @@
-let { generate_c_impl, selfhost_codegen_c_impl_marker } = selfhost::internal::codegen_c_impl;
-
+let {
+    generate_c_impl, selfhost_codegen_c_impl_marker
+}
+ = selfhost::internal::codegen_c_impl;
 out fn generate_c(typed: I32, substrate: *Str) : *Str => generate_c_impl(typed, substrate);
 out fn selfhost_codegen_c_marker() : I32 => selfhost_codegen_c_impl_marker();

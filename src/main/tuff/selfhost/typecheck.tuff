@@ -1,5 +1,8 @@
-let { typecheck_program_with_options_impl, typecheck_program_impl, selfhost_typecheck_impl_marker } = selfhost::internal::typecheck_impl;
-
-out fn typecheck_program_with_options(program: I32) : I32 => typecheck_program_with_options_impl(program);
+let {
+    typecheck_program_with_options_impl, typecheck_program_impl, selfhost_typecheck_impl_marker
+}
+ = selfhost::internal::typecheck_impl;
+out fn typecheck_program_with_options(program: I32) : I32 =>
+typecheck_program_with_options_impl(program);
 out fn typecheck_program(program: I32) : I32 => typecheck_program_impl(program);
 out fn selfhost_typecheck_marker() : I32 => selfhost_typecheck_impl_marker();

@@ -1,4 +1,6 @@
-let { borrowcheck_program_impl, selfhost_borrowcheck_impl_marker } = selfhost::internal::borrowcheck_impl;
-
+let {
+    borrowcheck_program_impl, selfhost_borrowcheck_impl_marker
+}
+ = selfhost::internal::borrowcheck_impl;
 out fn borrowcheck_program(program: I32) : I32 => borrowcheck_program_impl(program);
 out fn selfhost_borrowcheck_marker() : I32 => selfhost_borrowcheck_impl_marker();
