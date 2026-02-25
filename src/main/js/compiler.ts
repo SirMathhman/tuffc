@@ -571,7 +571,8 @@ function handleSelfhostLintIssues(
 
 function collectReceiverExternFunctionNames(source): string[] {
   const names = new Set<string>();
-  const re = /extern\s+fn\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(\s*this\s*:[^)]*\)\s*:/g;
+  const re =
+    /extern\s+fn\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(\s*this\s*:[^)]*\)\s*:/g;
   let m;
   while ((m = re.exec(source)) !== null) {
     const fnName = m[1]?.trim();
@@ -698,7 +699,8 @@ function applyReceiverCallFixes(source: string, fnNames: string[]) {
 function applyDeterministicLintFixes(source: string, lintIssues: unknown[]) {
   const hasReceiverLint = lintIssues.some(
     (issue: unknown) =>
-      issue instanceof TuffError && issue.code === "E_LINT_PREFER_RECEIVER_CALL",
+      issue instanceof TuffError &&
+      issue.code === "E_LINT_PREFER_RECEIVER_CALL",
   );
   if (!hasReceiverLint) {
     return { lintFixesApplied: 0, lintFixedSource: source };

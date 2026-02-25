@@ -55,7 +55,9 @@ for (const filePath of tuffFiles) {
   issueTotal += issues.length;
   fixedTotal += fixes;
   if (issues.length > 0) {
-    console.log(`Lint issues (${issues.length}) in ${rel}; fixes applied: ${fixes}`);
+    console.log(
+      `Lint issues (${issues.length}) in ${rel}; fixes applied: ${fixes}`,
+    );
   } else {
     console.log(`Lint clean: ${rel}; fixes applied: ${fixes}`);
   }
@@ -64,6 +66,4 @@ for (const filePath of tuffFiles) {
 console.log(
   `\nDone. Selfhost lint reported ${issueTotal} issue(s) across ${tuffFiles.length} .tuff file(s).`,
 );
-console.log(
-  `Deterministic lint fixes applied: ${fixedTotal}`,
-);
+console.log(`Deterministic lint fixes applied: ${fixedTotal}`);

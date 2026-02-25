@@ -266,6 +266,39 @@ let tok_cols = vec_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.to
 
 let tok_count = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.tok_count = tok_count;
 
+let trivia_records = vec_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.trivia_records = trivia_records;
+
+const __tuff_outer_for_trivia_sep_field = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function trivia_sep_field() {
+  let __tuff_this = { this: __tuff_outer_for_trivia_sep_field };
+  return "\u001f";
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.trivia_sep_field = trivia_sep_field;
+
+const __tuff_outer_for_trivia_sep_record = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function trivia_sep_record() {
+  let __tuff_this = { this: __tuff_outer_for_trivia_sep_record };
+  return "\u001e";
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.trivia_sep_record = trivia_sep_record;
+
+const __tuff_outer_for_trivia_add = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function trivia_add(kind, text, line, col) {
+  let __tuff_this = { kind: kind, text: text, line: line, col: col, this: __tuff_outer_for_trivia_add };
+  (() => { const __recv = trivia_records; const __prop = __recv?.["vec_push"]; if (typeof __prop === "function") return __prop((() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = kind; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(trivia_sep_field()); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, trivia_sep_field()) : str_concat(__recv, trivia_sep_field()); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(text); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, text) : str_concat(__recv, text); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(trivia_sep_field()); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, trivia_sep_field()) : str_concat(__recv, trivia_sep_field()); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string(line)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(line)) : str_concat(__recv, int_to_string(line)); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(trivia_sep_field()); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, trivia_sep_field()) : str_concat(__recv, trivia_sep_field()); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string(col)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(col)) : str_concat(__recv, int_to_string(col)); })()); const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = kind; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(trivia_sep_field()); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, trivia_sep_field()) : str_concat(__recv, trivia_sep_field()); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(text); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, text) : str_concat(__recv, text); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(trivia_sep_field()); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, trivia_sep_field()) : str_concat(__recv, trivia_sep_field()); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string(line)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(line)) : str_concat(__recv, int_to_string(line)); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(trivia_sep_field()); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, trivia_sep_field()) : str_concat(__recv, trivia_sep_field()); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string(col)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(col)) : str_concat(__recv, int_to_string(col)); })()) : vec_push(__recv, (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = kind; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(trivia_sep_field()); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, trivia_sep_field()) : str_concat(__recv, trivia_sep_field()); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(text); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, text) : str_concat(__recv, text); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(trivia_sep_field()); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, trivia_sep_field()) : str_concat(__recv, trivia_sep_field()); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string(line)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(line)) : str_concat(__recv, int_to_string(line)); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(trivia_sep_field()); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, trivia_sep_field()) : str_concat(__recv, trivia_sep_field()); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string(col)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(col)) : str_concat(__recv, int_to_string(col)); })()); })();
+  return 0;
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.trivia_add = trivia_add;
+
+const __tuff_outer_for_lex_take_trivia = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function lex_take_trivia() {
+  let __tuff_this = { this: __tuff_outer_for_lex_take_trivia };
+  let payload = (() => { const __recv = trivia_records; const __prop = __recv?.["vec_join"]; if (typeof __prop === "function") return __prop(trivia_sep_record()); const __dyn = __recv?.table?.vec_join; return __dyn ? __dyn(__recv.ref, trivia_sep_record()) : vec_join(__recv, trivia_sep_record()); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.payload = payload;
+  (() => { const __recv = trivia_records; const __prop = __recv?.["vec_clear"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_clear; return __dyn ? __dyn(__recv.ref) : vec_clear(__recv); })();
+  return payload;
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.lex_take_trivia = lex_take_trivia;
+
 const __tuff_outer_for_tok_add = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
 function tok_add(kind, value, line, col) {
   let __tuff_this = { kind: kind, value: value, line: line, col: col, this: __tuff_outer_for_tok_add };
@@ -409,6 +442,7 @@ function lex_init(source) {
   (() => { const __recv = tok_values; const __prop = __recv?.["vec_clear"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_clear; return __dyn ? __dyn(__recv.ref) : vec_clear(__recv); })();
   (() => { const __recv = tok_lines; const __prop = __recv?.["vec_clear"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_clear; return __dyn ? __dyn(__recv.ref) : vec_clear(__recv); })();
   (() => { const __recv = tok_cols; const __prop = __recv?.["vec_clear"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_clear; return __dyn ? __dyn(__recv.ref) : vec_clear(__recv); })();
+  (() => { const __recv = trivia_records; const __prop = __recv?.["vec_clear"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_clear; return __dyn ? __dyn(__recv.ref) : vec_clear(__recv); })();
   tok_count = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.tok_count = tok_count;
   return 0;
 }
@@ -605,22 +639,30 @@ function lex_try_skip_whitespace_or_comment(ch) {
   return true;
 }
   if (((ch === 47) && (lex_peek(1) === 47))) {
+  let start_line = lex_line; if (typeof __tuff_this !== 'undefined') __tuff_this.start_line = start_line;
+  let start_col = lex_col; if (typeof __tuff_this !== 'undefined') __tuff_this.start_col = start_col;
+  let sb = sb_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.sb = sb;
   while (((lex_pos < lex_len) && (lex_peek(0) !== 10))) {
-  lex_advance();
+  sb_append_char(sb, lex_advance());
 }
+  trivia_add("line_comment", sb_build(sb), start_line, start_col);
   return true;
 }
   if (((ch === 47) && (lex_peek(1) === 42))) {
-  lex_advance();
-  lex_advance();
+  let start_line = lex_line; if (typeof __tuff_this !== 'undefined') __tuff_this.start_line = start_line;
+  let start_col = lex_col; if (typeof __tuff_this !== 'undefined') __tuff_this.start_col = start_col;
+  let sb = sb_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.sb = sb;
+  sb_append_char(sb, lex_advance());
+  sb_append_char(sb, lex_advance());
   while (((lex_pos < lex_len) && (!((lex_peek(0) === 42) && (lex_peek(1) === 47))))) {
-  lex_advance();
+  sb_append_char(sb, lex_advance());
 }
   if ((lex_pos >= lex_len)) {
   panic_with_code("E_LEX_UNTERMINATED_BLOCK_COMMENT", (() => { const __recv = (() => { const __recv = (() => { const __recv = "Unterminated block comment near "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string(lex_line)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(lex_line)) : str_concat(__recv, int_to_string(lex_line)); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(":"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ":") : str_concat(__recv, ":"); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string(lex_col)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(lex_col)) : str_concat(__recv, int_to_string(lex_col)); })(), "A block comment started with '/*' but the lexer did not find a matching '*/' before end-of-file.", "Add a closing '*/' for this comment, or remove the unmatched opening '/*'.");
 }
-  lex_advance();
-  lex_advance();
+  sb_append_char(sb, lex_advance());
+  sb_append_char(sb, lex_advance());
+  trivia_add("block_comment", sb_build(sb), start_line, start_col);
   return true;
 }
   return false;
@@ -8802,6 +8844,50 @@ function selfhost_codegen_c_marker() {
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.selfhost_codegen_c_marker = selfhost_codegen_c_marker;
 
+const __tuff_outer_for_ensure_trailing_newline = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function ensure_trailing_newline(text) {
+  let __tuff_this = { text: text, this: __tuff_outer_for_ensure_trailing_newline };
+  if (((() => { const __recv = text; const __prop = __recv?.["str_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.str_length; return __dyn ? __dyn(__recv.ref) : str_length(__recv); })() === 0)) {
+  return "\n";
+}
+  if (((() => { const __recv = text; const __prop = __recv?.["str_char_at"]; if (typeof __prop === "function") return __prop(((() => { const __recv = text; const __prop = __recv?.["str_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.str_length; return __dyn ? __dyn(__recv.ref) : str_length(__recv); })() - 1)); const __dyn = __recv?.table?.str_char_at; return __dyn ? __dyn(__recv.ref, ((() => { const __recv = text; const __prop = __recv?.["str_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.str_length; return __dyn ? __dyn(__recv.ref) : str_length(__recv); })() - 1)) : str_char_at(__recv, ((() => { const __recv = text; const __prop = __recv?.["str_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.str_length; return __dyn ? __dyn(__recv.ref) : str_length(__recv); })() - 1)); })() === 10)) {
+  return text;
+}
+  return (() => { const __recv = text; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("\n"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "\n") : str_concat(__recv, "\n"); })();
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.ensure_trailing_newline = ensure_trailing_newline;
+
+const __tuff_outer_for_emit_tuff_from_typed_impl = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function emit_tuff_from_typed_impl(typed, source, trivia_payload) {
+  let __tuff_this = { typed: typed, source: source, trivia_payload: trivia_payload, this: __tuff_outer_for_emit_tuff_from_typed_impl };
+  let _typed_guard = typed; if (typeof __tuff_this !== 'undefined') __tuff_this._typed_guard = _typed_guard;
+  let _trivia_guard = (() => { const __recv = trivia_payload; const __prop = __recv?.["str_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.str_length; return __dyn ? __dyn(__recv.ref) : str_length(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this._trivia_guard = _trivia_guard;
+  let _source_guard = (() => { const __recv = source; const __prop = __recv?.["str_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.str_length; return __dyn ? __dyn(__recv.ref) : str_length(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this._source_guard = _source_guard;
+  return ensure_trailing_newline(source);
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.emit_tuff_from_typed_impl = emit_tuff_from_typed_impl;
+
+const __tuff_outer_for_selfhost_tuff_printer_impl_marker = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function selfhost_tuff_printer_impl_marker() {
+  let __tuff_this = { this: __tuff_outer_for_selfhost_tuff_printer_impl_marker };
+  return 0;
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.selfhost_tuff_printer_impl_marker = selfhost_tuff_printer_impl_marker;
+
+const __tuff_outer_for_emit_tuff_from_typed = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function emit_tuff_from_typed(typed, source, trivia_payload) {
+  let __tuff_this = { typed: typed, source: source, trivia_payload: trivia_payload, this: __tuff_outer_for_emit_tuff_from_typed };
+  return emit_tuff_from_typed_impl(typed, source, trivia_payload);
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.emit_tuff_from_typed = emit_tuff_from_typed;
+
+const __tuff_outer_for_selfhost_tuff_printer_marker = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function selfhost_tuff_printer_marker() {
+  let __tuff_this = { this: __tuff_outer_for_selfhost_tuff_printer_marker };
+  return selfhost_tuff_printer_impl_marker();
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.selfhost_tuff_printer_marker = selfhost_tuff_printer_marker;
+
 let sm_paths = vec_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.sm_paths = sm_paths;
 
 let sm_start_lines = vec_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.sm_start_lines = sm_start_lines;
@@ -10110,7 +10196,10 @@ function module_emit_target_output(typed, merged_source, target) {
   if ((() => { const __recv = target; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("c"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "c") : str_eq(__recv, "c"); })()) {
   return generate_c(typed, __host_get_c_substrate());
 }
-  panic_with_code("E_UNSUPPORTED_TARGET", (() => { const __recv = "Unsupported codegen target: "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(target); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, target) : str_concat(__recv, target); })(), "The compiler was asked to emit code for a target that is not implemented.", "Use target 'js' or target 'c'.");
+  if ((() => { const __recv = target; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("tuff"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "tuff") : str_eq(__recv, "tuff"); })()) {
+  return emit_tuff_from_typed(typed, merged_source, lex_take_trivia());
+}
+  panic_with_code("E_UNSUPPORTED_TARGET", (() => { const __recv = "Unsupported codegen target: "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(target); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, target) : str_concat(__recv, target); })(), "The compiler was asked to emit code for a target that is not implemented.", "Use target 'js', target 'c', or target 'tuff'.");
   return "";
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.module_emit_target_output = module_emit_target_output;
@@ -12759,7 +12848,10 @@ function emit_target_output(typed, source, target) {
   if ((() => { const __recv = target; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("c"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "c") : str_eq(__recv, "c"); })()) {
   return generate_c(typed, __host_get_c_substrate());
 }
-  panic_with_code("E_UNSUPPORTED_TARGET", (() => { const __recv = "Unsupported codegen target: "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(target); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, target) : str_concat(__recv, target); })(), "The compiler was asked to emit code for a target that is not implemented.", "Use target 'js' or target 'c'.");
+  if ((() => { const __recv = target; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("tuff"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "tuff") : str_eq(__recv, "tuff"); })()) {
+  return emit_tuff_from_typed(typed, source, lex_take_trivia());
+}
+  panic_with_code("E_UNSUPPORTED_TARGET", (() => { const __recv = "Unsupported codegen target: "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(target); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, target) : str_concat(__recv, target); })(), "The compiler was asked to emit code for a target that is not implemented.", "Use target 'js', target 'c', or target 'tuff'.");
   return "";
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.emit_target_output = emit_target_output;
@@ -12889,7 +12981,7 @@ function main() {
   let __tuff_this = { this: __tuff_outer_for_main };
   let argc = get_argc(); if (typeof __tuff_this !== 'undefined') __tuff_this.argc = argc;
   if ((argc < 2)) {
-  print_error("Usage: tuffc <input.tuff> -o <output> [--target <js|c>] [--module-base <dir> (legacy)]");
+  print_error("Usage: tuffc <input.tuff> -o <output> [--target <js|c|tuff>] [--module-base <dir> (legacy)]");
   return 1;
 }
   let first_arg = get_argv(1); if (typeof __tuff_this !== 'undefined') __tuff_this.first_arg = first_arg;
@@ -12898,7 +12990,7 @@ function main() {
   return 0;
 }
   if (((() => { const __recv = first_arg; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("-h"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "-h") : str_eq(__recv, "-h"); })() || (() => { const __recv = first_arg; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("--help"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "--help") : str_eq(__recv, "--help"); })())) {
-  print("Usage: tuffc <input.tuff> -o <output> [--target <js|c>] [--module-base <dir> (legacy)] [--version]");
+  print("Usage: tuffc <input.tuff> -o <output> [--target <js|c|tuff>] [--module-base <dir> (legacy)] [--version]");
   return 0;
 }
   let input_file = first_arg; if (typeof __tuff_this !== 'undefined') __tuff_this.input_file = input_file;

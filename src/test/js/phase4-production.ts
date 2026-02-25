@@ -716,9 +716,7 @@ const moduleLintFixUnsupported = compileFileResult(
   },
 );
 if (!moduleLintFixUnsupported.ok) {
-  const moduleLintFixDiag = toDiagnostic(
-    unwrapErr(moduleLintFixUnsupported),
-  );
+  const moduleLintFixDiag = toDiagnostic(unwrapErr(moduleLintFixUnsupported));
   console.error(
     `Expected module lint-fix to be accepted in selfhost mode, got ${moduleLintFixDiag.code}`,
   );
