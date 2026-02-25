@@ -141,7 +141,20 @@ fn p_parse_after_modifiers(exported: I32, copy_decl: I32, expect_decl: I32, actu
         panic("Cannot combine 'expect' and 'actual' modifiers");
     }
     let out_node = 0;
-    if (p_at(TK_KEYWORD, "struct")) {
+    if (p_at(TK_KEYWORD, "extern")) {
+        if (copy_decl == 1) {
+            panic("'copy' is not supported on extern declarations");
+        }
+        if (expect_decl == 1 || actual_decl == 1) {
+            panic("'expect'/'actual' are not supported on extern declarations");
+        }
+        p_eat();
+        out_node = p_parse_extern_decl();
+        if (exported == 1 && node_kind(out_node) != NK_EXTERN_FN_DECL) {
+            panic("'out extern' is currently supported only for extern fn declarations");
+        }
+    }
+    else if (p_at(TK_KEYWORD, "struct")) {
         out_node = p_parse_struct(copy_decl);
     }
     else if (p_at(TK_KEYWORD, "enum")) {

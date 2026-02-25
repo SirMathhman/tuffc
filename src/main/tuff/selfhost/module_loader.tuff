@@ -557,6 +557,7 @@ all_extern_declared: *mut Set) : I32 => {
     0
 }
 fn module_has_out_export(source: *Str, name: *Str) : Bool => {
+    source.str_includes("out extern fn ".str_concat(name)) ||
     source.str_includes("out fn ".str_concat(name)) ||
     source.str_includes("out struct ".str_concat(name)) ||
     source.str_includes("out copy struct ".str_concat(name)) ||

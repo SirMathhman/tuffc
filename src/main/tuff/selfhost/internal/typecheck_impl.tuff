@@ -206,6 +206,9 @@ fn numeric_types_compatible(expected: *Str, actual: *Str, rhs: I32) : Bool => {
     if (expected.str_eq("USize") && actual.str_eq("I32")) {
         return true;
     }
+    if (expected.str_eq("I32") && actual.str_eq("USize")) {
+        return true;
+    }
      // Unsigned integer widening: smaller types are safely assignable to larger types.
     if (expected.str_eq("U16") && actual.str_eq("U8")) {
         return true;
@@ -240,6 +243,12 @@ fn runtime_opaque_handle_compatible(expected: *Str, actual: *Str) : Bool => {
     }
     false
 }
+fn type_name_with_alias_base(name: *Str) : *Str => {
+    if (tc_alias_base_type.map_has(name)) {
+        return tc_alias_base_type.map_get(name);
+    }
+    name
+}
 fn type_names_compatible(expected: *Str, actual: *Str, rhs: I32) : Bool => {
     if (expected.str_eq("Unknown") || actual.str_eq("Unknown")) {
         return true;
@@ -248,6 +257,20 @@ fn type_names_compatible(expected: *Str, actual: *Str, rhs: I32) : Bool => {
         return true;
     }
     if (is_type_variable_name(expected) || is_type_variable_name(actual)) {
+        return true;
+    }
+    let expected_base = type_name_with_alias_base(expected);
+    let actual_base = type_name_with_alias_base(actual);
+    if (expected_base.str_eq(actual_base)) {
+        return true;
+    }
+    if (runtime_opaque_handle_compatible(expected_base, actual_base)) {
+        return true;
+    }
+    if (pointer_types_compatible(expected_base, actual_base)) {
+        return true;
+    }
+    if (numeric_types_compatible(expected_base, actual_base, rhs)) {
         return true;
     }
     if (runtime_opaque_handle_compatible(expected, actual)) {
@@ -1310,7 +1333,7 @@ Map, nonnull_ptrs: Map, expected_return_type: *Str) : I32 => {
         let rhs_name = infer_expr_type_name(rhs, fn_return_types, local_types);
         if (declared_type != 0) {
             let declared_name = type_name_from_type_node(declared_type);
-            if (!declared_name.str_eq("Unknown") && !rhs_name.str_eq("Unknown") && !pointer_types_compatible(declared_name, rhs_name) && !numeric_types_compatible(declared_name, rhs_name, rhs) && !tc_type_alias_names.set_has(declared_name) && !is_this_return_type_for (rhs_name, declared_name)) {
+            if (!type_names_compatible(declared_name, rhs_name, rhs) && !tc_type_alias_names.set_has(declared_name) && !is_this_return_type_for (rhs_name, declared_name)) {
                 let vname = get_interned_str(node_get_data1(n));
                 let msg = "Type mismatch for let ".str_concat(vname).str_concat(": expected ").str_concat(declared_name).str_concat(", got ").str_concat(rhs_name);
                 tc_panic_loc( "E_TYPE_LET_MISMATCH",
@@ -1467,6 +1490,11 @@ Map, nonnull_ptrs: Map, expected_return_type: *Str) : I32 => {
         tc_type_alias_names.set_add(alias_name);
         let value_params = node_get_data2(n);
         tc_dep_type_alias_params.map_set(alias_name, value_params.vec_length());
+        let alias_base_type = node_get_data3(n);
+        let alias_base_type_name = type_name_from_type_node(alias_base_type);
+        if (!alias_base_type_name.str_eq("Unknown")) {
+            tc_alias_base_type.map_set(alias_name, alias_base_type_name);
+        }
         return 0;
     }
     if (kind == NK_EXTERN_TYPE_DECL) {
@@ -1587,6 +1615,11 @@ out fn typecheck_program_with_options_impl(program: I32) : I32 => {
             tc_type_alias_names.set_add(alias_name);
             let value_params = node_get_data2(stmt);
             tc_dep_type_alias_params.map_set(alias_name, value_params.vec_length());
+            let alias_base_type = node_get_data3(stmt);
+            let alias_base_type_name = type_name_from_type_node(alias_base_type);
+            if (!alias_base_type_name.str_eq("Unknown")) {
+                tc_alias_base_type.map_set(alias_name, alias_base_type_name);
+            }
         }
         if (kind == NK_EXTERN_TYPE_DECL) {
             let alias_name = get_interned_str(node_get_data1(stmt));

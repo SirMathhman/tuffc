@@ -32,6 +32,10 @@ const rootResolutionEntry = path.join(
 const outDir = path.join(root, "tests", "out", "selfhost", "modules");
 const moduleOutJs = path.join(outDir, "app.js");
 const rootResolutionOutJs = path.join(outDir, "app-root-resolution.js");
+const externOutEntry = path.join(outDir, "extern-out-app.tuff");
+const externOutOutJs = path.join(outDir, "extern-out-app.js");
+const depReturnEntry = path.join(outDir, "dep-return-app.tuff");
+const depReturnOutJs = path.join(outDir, "dep-return-app.js");
 
 console.log("Compiling selfhost.tuff with native selfhost executable...");
 const { selfhost } = compileAndLoadSelfhost(root, outDir);
@@ -78,5 +82,53 @@ if (typeof rootSandbox.module.exports.main !== "function") {
 
 const rootResult = rootSandbox.module.exports.main();
 assertModuleResult(rootResult, "Selfhost root-resolution module");
+
+// Regression: `out extern fn` must be importable from another module.
+const externModuleDir = path.join(outDir, "com", "meti");
+fs.mkdirSync(externModuleDir, { recursive: true });
+fs.writeFileSync(
+  path.join(externModuleDir, "ExternApi.tuff"),
+  "out extern fn host_api() : I32;\n",
+  "utf8",
+);
+fs.writeFileSync(
+  externOutEntry,
+  "let { host_api } = com::meti::ExternApi;\nfn main() : I32 => 0;\n",
+  "utf8",
+);
+
+try {
+  selfhost.compile_file(externOutEntry, externOutOutJs);
+} catch (err) {
+  console.error("selfhost out extern module compile_file failed:", err.message);
+  process.exit(1);
+}
+
+// Regression: extern fn return type may use a dependent alias over `this` directly.
+fs.writeFileSync(
+  depReturnEntry,
+  [
+    "extern fn str_length(this: *Str) : USize;",
+    "type StrIndex(this: *Str) = USize < str_length(this);",
+    "extern fn str_index_of(this: *Str, needle: *Str) : StrIndex(this);",
+    "fn main() : I32 => {",
+    '  let s = "abc";',
+    '  let idx : I32 = str_index_of(s, "b");',
+    "  idx",
+    "}",
+    "",
+  ].join("\n"),
+  "utf8",
+);
+
+try {
+  selfhost.compile_file(depReturnEntry, depReturnOutJs);
+} catch (err) {
+  console.error(
+    "selfhost dependent-return extern compile_file failed:",
+    err.message,
+  );
+  process.exit(1);
+}
 
 console.log("Selfhost module checks passed");
