@@ -1,7 +1,7 @@
 // Code generation error type for backend failures
 // Used during JavaScript and C code emission
 
-struct CodegenError {
+out struct CodegenError {
     code: *Str,      // Error code (E_CODEGEN_* or E_EXTERN_*)
     message: *Str,   // User-facing error summary
     reason: *Str,    // Why this is an error (educational)

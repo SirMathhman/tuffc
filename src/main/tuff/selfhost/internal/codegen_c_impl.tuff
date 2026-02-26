@@ -5,6 +5,14 @@
  // The C substrate (substrate.h/c, strings.c, etc.) is always embedded inline.
  // ============================================================================
 let {
+    Ok, Err, Result
+}
+ = selfhost::Result;
+let {
+    CodegenError
+}
+ = selfhost::errors::CodegenError;
+let {
     get_interned_str, vec_new, map_new, set_new
 }
  = selfhost::runtime_lexer;

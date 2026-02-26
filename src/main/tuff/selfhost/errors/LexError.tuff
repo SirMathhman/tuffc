@@ -1,7 +1,7 @@
 // Lexer error type for tokenization failures
 // Used when converting source text to tokens
 
-struct LexError {
+out struct LexError {
     code: *Str,      // Error code (E_LEX_*)
     message: *Str,   // User-facing error summary
     reason: *Str,    // Why this is an error (educational)

@@ -1,7 +1,7 @@
 // Borrow checker error type for ownership violations
 // Enforces Tuff's ownership and borrowing rules
 
-struct BorrowError {
+out struct BorrowError {
     code: *Str,      // Error code (E_BORROW_*)
     message: *Str,   // User-facing error summary
     reason: *Str,    // Why this is an error (educational)
