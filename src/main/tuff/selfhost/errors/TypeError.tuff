@@ -1,7 +1,7 @@
 // Type checker error type for type system violations
 // Includes both type mismatches and safety property violations
 
-struct TypeError {
+out struct TypeError {
     code: *Str,      // Error code (E_TYPE_* or E_SAFETY_*)
     message: *Str,   // User-facing error summary
     reason: *Str,    // Why this is an error (educational)
