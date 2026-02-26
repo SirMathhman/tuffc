@@ -22,7 +22,7 @@ fn bc_str_ends_with_local(s: *Str, suffix: *Str) : Bool => {
     if (nf > ns) {
         return false;
     }
-    s.str_slice(ns - nf, ns).str_eq(suffix)
+    s.str_slice_window(ns - nf, ns).str_eq(suffix)
 }
 fn bc_type_name_from_type_node(t: I32) : *Str => {
     if (t == 0) {

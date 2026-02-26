@@ -21,7 +21,7 @@ out fn sourcemap_count_lines(s: *Str) : I32 => {
     let found = s.str_index_of("\n");
     while (found >= 0) {
         count = count + 1;
-        s = s.str_slice(found + 1, s.str_length());
+        s = s.str_slice_window(found + 1, s.str_length()).str_copy();
         found = s.str_index_of("\n");
     }
     count

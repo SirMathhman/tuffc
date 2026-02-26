@@ -493,7 +493,7 @@ fn lint_astdup_preview(fp: *Str) : *Str => {
     if (fp.str_length() <= max_len) {
         return fp;
     }
-    fp.str_slice(0, max_len).str_concat("...")
+    fp.str_slice_window(0, max_len).str_concat("...")
 }
 
 fn lint_astdup_reportable_kind(kind: I32) : Bool => {

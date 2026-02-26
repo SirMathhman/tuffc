@@ -19,7 +19,7 @@ fn fmt_trim_right(line: *Str) : *Str => {
             end = end - 1;
         }
         else {
-            return line.str_slice(0, end);
+            return line.str_slice_window(0, end);
         }
     }
     ""
@@ -135,7 +135,7 @@ fn fmt_trim_right_spaces_text(text: *Str) : *Str => {
     while (end > 0 && fmt_is_space(0 + text.str_char_at(end - 1))) {
         end = end - 1;
     }
-    text.str_slice(0, end)
+    text.str_slice_window(0, end)
 }
 fn fmt_normalize_line_spacing(line: *Str) : *Str => {
     let acc = "";
@@ -172,7 +172,7 @@ fn fmt_normalize_line_spacing(line: *Str) : *Str => {
             continue;
         }
         if (ch == 47 && i + 1 < len && line.str_char_at(i + 1) == 47) {
-            acc = fmt_trim_right_spaces_text(acc).str_concat(" ").str_concat(line.str_slice(i, len));
+            acc = fmt_trim_right_spaces_text(acc).str_concat(" ").str_concat(line.str_slice_window(i, len));
             break;
         }
         if (ch == 34) {
