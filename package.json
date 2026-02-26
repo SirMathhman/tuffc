@@ -27,7 +27,8 @@
     "build:binary": "npm run native:selfhost:parity && tsx ./scripts/build-native-binary.ts",
     "build:web": "esbuild ./src/main/js/web-compiler.ts --bundle --platform=browser --format=iife --global-name=TuffCompiler --target=es2020 --minify --sourcemap --outfile=./tests/out/web/tuff-compiler.min.js",
     "build:web:esm": "esbuild ./src/main/js/web-compiler.ts --bundle --platform=browser --format=esm --target=es2020 --minify --sourcemap --outfile=./tests/out/web/tuff-compiler.esm.js",
-    "profile:compiler": "tsx ./scripts/profile-compiler.ts"
+    "profile:compiler": "tsx ./scripts/profile-compiler.ts",
+    "seed:db:unions": "tsx ./scripts/seed-db-union-features.ts"
   },
   "devDependencies": {
     "@types/node": "^25.3.0",

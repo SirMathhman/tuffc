@@ -11,6 +11,6 @@ out struct Err<E> {
     error: E
 }
 
-// Result type using union syntax with extract operator (|>)
-// The |> allows the ? operator to extract Ok values or propagate Err
-out type Result<T, E> = Ok<T> |> Err<E>;
+// Result type using inline struct union syntax (consistent with struct declarations).
+// Inline struct variants are parsed as named variant references for exhaustiveness/type narrowing.
+out type Result<T, E> = struct Ok { value: T; } | struct Err { error: E; };

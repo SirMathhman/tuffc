@@ -384,6 +384,22 @@ fn p_parse_type_primary_pointer() : I32 => {
     node_set_data4(node, life_name);
     node
 }
+fn p_parse_type_primary_inline_struct_variant() : I32 => {
+    p_expect(TK_KEYWORD, "struct", "Expected 'struct' in inline union variant");
+    let name = p_parse_identifier();
+    p_expect(TK_SYMBOL, "{", "Expected '{' after inline struct variant name");
+    while (!p_at(TK_SYMBOL, "}")) {
+        p_parse_identifier();
+        p_expect(TK_SYMBOL, ":", "Expected ':' after inline struct field name");
+        p_parse_type();
+        p_expect(TK_SYMBOL, ";", "Expected ';' after inline struct field type");
+    }
+    p_expect(TK_SYMBOL, "}", "Expected '}' after inline struct variant");
+    let type_node = node_new(NK_NAMED_TYPE);
+    node_set_data1(type_node, name);
+    node_set_data2(type_node, vec_new());
+    type_node
+}
 fn p_parse_type_primary_array() : I32 => {
     p_eat();
     let elem = p_parse_type();
@@ -510,6 +526,9 @@ fn p_parse_type_primary_named_or_applied() : I32 => {
     type_node
 }
 out fn p_parse_type_primary() : I32 => {
+    if (p_at(TK_KEYWORD, "struct")) {
+        return p_parse_type_primary_inline_struct_variant();
+    }
     if (p_at(TK_SYMBOL, "*")) {
         return p_parse_type_primary_pointer();
     }
@@ -596,7 +615,12 @@ out fn p_parse_pattern() : I32 => {
         node_set_data1(node, tok_value(t));
         return node;
     }
-     // Name or struct pattern
+    // Name or struct pattern (supports optional leading 'struct')
+    let has_struct_keyword = false;
+    if (p_at(TK_KEYWORD, "struct")) {
+        p_eat();
+        has_struct_keyword = true;
+    }
     let name = p_parse_identifier();
      // Optional generic qualifiers in pattern position: Some<T>, Foo<A, B>
     if (p_at(TK_SYMBOL, "<") && p_can_start_type_tok_at(1)) {
@@ -624,6 +648,12 @@ out fn p_parse_pattern() : I32 => {
         let node = node_new(NK_STRUCT_PAT);
         node_set_data1(node, name);
         node_set_data2(node, fields);
+        return node;
+    }
+    if (has_struct_keyword) {
+        let node = node_new(NK_STRUCT_PAT);
+        node_set_data1(node, name);
+        node_set_data2(node, vec_new());
         return node;
     }
     let node = node_new(NK_NAME_PAT);

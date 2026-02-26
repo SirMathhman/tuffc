@@ -558,12 +558,15 @@ fn p_try_parse_plain_control_statement() : I32 => {
 fn p_parse_statement() : I32 => {
     let mods = p_parse_decl_modifiers();
     if (mods.vec_get(5) == 1) {
-        let mod_result = match (p_parse_after_modifiers(mods.vec_get(0), mods.vec_get(1), mods.vec_get(2), mods.vec_get(3), mods.vec_get(4))) {
-            case Ok { value } = value;
-            case Err { error } = panic_with_code_loc(error.code, error.message, error.reason, error.fix, error.line, error.col);
-            case _ = panic("Unexpected parser result");
-        };
-        return mod_result;
+        let mod_result_any = p_parse_after_modifiers(mods.vec_get(0), mods.vec_get(1), mods.vec_get(2), mods.vec_get(3), mods.vec_get(4));
+        if (mod_result_any is struct Err) {
+            panic_with_code_loc(mod_result_any.error.code, mod_result_any.error.message, mod_result_any.error.reason, mod_result_any.error.fix, mod_result_any.error.line, mod_result_any.error.col);
+        }
+        if (mod_result_any is struct Ok) {
+            return mod_result_any.value;
+        }
+        panic("Unexpected parser result variant");
+        return 0;
     }
     let node = p_try_parse_plain_decl_statement();
     if (node != 0) {

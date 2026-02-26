@@ -732,29 +732,33 @@ max_effective_lines: I32, borrow_enabled: I32, target: *Str) : I32 => {
     let desugared = desugar(program);
     print_error("[selfhost] phase: resolve:start");
     let resolved_result_any = resolve_names(desugared);
-    let resolved_result = match (resolved_result_any) {
-        case Ok { value } = value;
-        case Err { error } = 
-            panic("Resolver error: ".str_concat(error.message));
-        case _ = resolved_result_any;
-    };
-    let resolved = resolved_result;
+    if (resolved_result_any is struct Err) {
+        panic("Resolver error: ".str_concat(resolved_result_any.error.message));
+    }
+    let resolved = 0;
+    if (resolved_result_any is struct Ok) {
+        resolved = resolved_result_any.value;
+    }
+    else {
+        panic("Resolver returned unexpected result variant");
+    }
     let t4 = perf_now();
     print_error("[selfhost] phase: typecheck:start");
     let typed_result_any = typecheck_program_with_options(resolved);
-    let typed_result = match (typed_result_any) {
-        case Ok { value } = value;
-        case Err { error } = 
-            panic("Typechecker error: ".str_concat(error.message));
-        case _ = typed_result_any;
-    };
-    let typed = typed_result;
+    if (typed_result_any is struct Err) {
+        panic("Typechecker error: ".str_concat(typed_result_any.error.message));
+    }
+    let typed = 0;
+    if (typed_result_any is struct Ok) {
+        typed = typed_result_any.value;
+    }
+    else {
+        panic("Typechecker returned unexpected result variant");
+    }
     let t5 = perf_now();
-     // TEMPORARY: Disable borrowcheck for bootstrap build (old borrowchecker has false positive on Result types)
-     // TODO: Re-enable after bootstrap completes
-     // if (borrow == 1) {
-     //     borrowcheck_program(typed);
-     // }
+    if (borrow == 1) {
+        borrowcheck_program(typed);
+    }
     let t6 = perf_now();
     if (lint == 1) {
          // File-length lint already ran per module file during gather_module_sources.
