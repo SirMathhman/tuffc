@@ -406,6 +406,43 @@ const positiveCases = [
       "",
     ].join("\n"),
   },
+  {
+    id: "is:basic-type-discrimination",
+    section: "4.7/6.2",
+    source: [
+      "struct Ok<T> { value : T }",
+      "struct Err<E> { error : E }",
+      "type Result<T, E> = Ok<T> |> Err<E>;",
+      "struct MyError { code : I32 }",
+      "fn test_is(r : Result<I32, MyError>) : I32 => {",
+      "  if (r is Ok) {",
+      "    r.value",
+      "  } else {",
+      "    r.error.code",
+      "  }",
+      "}",
+      "test_is(Ok<I32> { value: 42 });",
+      "",
+    ].join("\n"),
+  },
+  {
+    id: "is:type-narrowing-branches",
+    section: "4.7/6.2",
+    source: [
+      "struct Ok<T> { value : T }",
+      "struct Err<E> { error : E }",
+      "type Result<T, E> = Ok<T> |> Err<E>;",
+      "fn unwrap_or<T, E>(result : Result<T, E>, default : T) : T => {",
+      "  if (result is Ok) {",
+      "    result.value",
+      "  } else {",
+      "    default",
+      "  }",
+      "}",
+      "unwrap_or(Ok<I32> { value: 10 }, 0);",
+      "",
+    ].join("\n"),
+  },
 ];
 
 const negativeCases = [
