@@ -63,7 +63,9 @@ extern fn str_copy(this : *Str) : *Str;
 */
 
 extern fn str_slice(this: *Str, start: StrIndex(this) <= end, end: StrIndex(this)) : *Str;
-extern fn str_slice_window(this: *Str, start: StrIndex(this) <= end, end: StrIndex(this)) : *Str;
+lifetime t {
+    extern fn str_slice_window(this: *t Str, start: StrIndex(this) <= end, end: StrIndex(this)) : *t Str;
+}
 extern fn str_copy(this: *Str) : *Str;
 
 /*
