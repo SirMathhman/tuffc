@@ -15,16 +15,19 @@ This document tracks the elimination of `panic()` calls in favor of structured `
 ## Migration Phases
 
 ### Phase 0: Result Infrastructure ✅
+
 - Created `selfhost/Result.tuff` with `Ok<T>`, `Err<E>`, `Result<T,E>` types
 - Established error struct pattern with informative 4-part messages (code, message, reason, fix)
 
 ### Phase 1: Resolver ✅ (8 sites)
+
 - **Status:** Fully tested and working
 - **Module:** `selfhost/resolver.tuff`
 - **Pattern:** `Result<I32, ResolveError>`
 - **Validation:** All tests pass, pattern proven sound
 
 ### Phase 2: Typechecker ✅ (33 sites)
+
 - **Status:** Architecture complete, awaiting bootstrap validation
 - **Modules:** `selfhost/internal/typecheck_impl.tuff`, `selfhost/typecheck.tuff`
 - **Pattern:** Dual-function approach
@@ -42,6 +45,7 @@ This document tracks the elimination of `panic()` calls in favor of structured `
 - **Workaround:** Added `--no-borrow` CLI flag for bootstrap limitations
 
 ### Phase 3: Parser ✅ (14 sites)
+
 - **Status:** Architecture complete, awaiting bootstrap validation
 - **Modules:** `selfhost/parser_core.tuff`, `selfhost/parser_decls.tuff`, `selfhost/parser_decls_let_extern.tuff`
 - **Pattern:** Dual-function approach
@@ -55,6 +59,7 @@ This document tracks the elimination of `panic()` calls in favor of structured `
   - 1 extern declaration error
 
 ### Phase 4: Infrastructure ✅
+
 - **Status:** All error types ready, imports prepared
 - **Error types with `out` exports:**
   - `BorrowError` ✅
@@ -69,13 +74,13 @@ This document tracks the elimination of `panic()` calls in favor of structured `
 
 ### By Module
 
-| Module | Sites | Error Type | Status |
-|--------|-------|-----------|--------|
-| `runtime_lexer.tuff` | 5 | LexError | 🔄 Infrastructure ready |
-| `codegen_c_impl.tuff` | 2 | CodegenError | 🔄 Imports added |
-| `borrowcheck_impl.tuff` | 4 | BorrowError | 🔄 Infrastructure ready |
-| `module_loader.tuff` | 2 | ModuleError | 🔄 Infrastructure ready |
-| `resolver_utils.tuff` | 1 | ResolveError | 🔄 Infrastructure ready |
+| Module                  | Sites | Error Type   | Status                  |
+| ----------------------- | ----- | ------------ | ----------------------- |
+| `runtime_lexer.tuff`    | 5     | LexError     | 🔄 Infrastructure ready |
+| `codegen_c_impl.tuff`   | 2     | CodegenError | 🔄 Imports added        |
+| `borrowcheck_impl.tuff` | 4     | BorrowError  | 🔄 Infrastructure ready |
+| `module_loader.tuff`    | 2     | ModuleError  | 🔄 Infrastructure ready |
+| `resolver_utils.tuff`   | 1     | ResolveError | 🔄 Infrastructure ready |
 
 ### Mechanical Steps (Per Module)
 
@@ -105,6 +110,7 @@ The **old compiler** (`selfhost.generated.js`) has incomplete Result type suppor
 ### Solution
 
 **Native C Bootstrap (Milestone 2):**
+
 - Native compiler will use the new Result-based code
 - No self-referential bootstrap cycle
 - Can properly validate all Result types
@@ -115,6 +121,7 @@ The **old compiler** (`selfhost.generated.js`) has incomplete Result type suppor
 ### Pattern Proven
 
 Phase 1 (resolver) is **fully tested and working**, proving:
+
 - Result type infrastructure is sound
 - Error propagation with `?` operator works
 - Match expressions handle Results correctly
@@ -131,6 +138,7 @@ Phase 1 (resolver) is **fully tested and working**, proving:
 ## Migration Tools
 
 Created automated migration scripts:
+
 - `scripts/migrate-typecheck-to-result.ts` - Phase 2 automation
 - `scripts/migrate-parser-to-result.ts` - Phase 3 automation
 - `scripts/migrate-remaining-to-result.ts` - Phase 4 preparation
@@ -151,10 +159,12 @@ All conversions follow the **4-part informative error standard**:
 ## Files Modified
 
 ### Core Infrastructure
+
 - `selfhost/Result.tuff` - Result type definitions
 - `selfhost/errors/*.tuff` - All error types (7 files)
 
 ### Migrated Modules
+
 - `selfhost/resolver.tuff` ✅ Tested
 - `selfhost/internal/typecheck_impl.tuff` ✅ Architecture complete
 - `selfhost/typecheck.tuff` ✅ Architecture complete
@@ -163,20 +173,24 @@ All conversions follow the **4-part informative error standard**:
 - `selfhost/parser_decls_let_extern.tuff` ✅ Architecture complete
 
 ### Entry Points Updated
+
 - `selfhost.tuff` - Match expressions for Results
 - `selfhost/module_loader.tuff` - Match expressions for Results
 
 ### Build System
+
 - `src/main/js/cli.ts` - `--no-borrow` flag
 - `scripts/build-selfhost-js.ts` - Uses `--no-borrow`
 
 ## Testing Strategy
 
 ### Current
+
 - Phase 1: ✅ Full test suite passes
 - Phases 2-4: ⏳ Architecture validated, runtime blocked
 
 ### Post-Bootstrap
+
 1. Remove `--no-borrow` flag from build scripts
 2. Remove commented-out borrowcheck calls
 3. Remove default match cases (should be unnecessary)
@@ -205,6 +219,7 @@ All conversions follow the **4-part informative error standard**:
 **Proceed with Milestone 2 (Native Bootstrap)** OR **Complete remaining 14 sites**
 
 Both paths are valid:
+
 - Native bootstrap provides clean validation environment
 - Completing now achieves 100% architectural coverage
 
