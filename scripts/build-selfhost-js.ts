@@ -132,7 +132,8 @@ if (!fs.existsSync(GENERATED_JS)) {
 if (!force && fs.existsSync(OUT_JS)) {
   const outMtime = fs.statSync(OUT_JS).mtimeMs;
   const { maxMtime, newestFile } = computeInputsMaxMtime();
-  if (outMtime > maxMtime) {
+  const MTIME_EPSILON_MS = 2;
+  if (outMtime + MTIME_EPSILON_MS >= maxMtime) {
     const rel = path.relative(root, OUT_JS);
     const newestRel = newestFile.startsWith(root)
       ? path.relative(root, newestFile.split(" ")[0]) +
@@ -243,3 +244,12 @@ console.log(
 fs.copyFileSync(OUT_JS, GENERATED_JS);
 const genRel = path.relative(root, GENERATED_JS).replaceAll("\\", "/");
 console.log(`[build:selfhost-js] ✓ synced → ${genRel}`);
+
+// Keep OUT_JS mtime aligned with GENERATED_JS so cache checks don't self-invalidate
+// immediately after sync (GENERATED_JS is part of input freshness checks).
+try {
+  const gStat = fs.statSync(GENERATED_JS);
+  fs.utimesSync(OUT_JS, gStat.atime, gStat.mtime);
+} catch {
+  // Best-effort only; cache still works but may miss more often if this fails.
+}

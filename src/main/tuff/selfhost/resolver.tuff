@@ -2,7 +2,7 @@
  // Name Resolution - skip for now, minimal implementation
  // ============================================================================
 let {
-    get_interned_str, set_new, vec_new, map_new, int_to_string
+    get_interned_str, set_new, vec_new, map_new, int_to_string, perf_now, print_error
 }
  = selfhost::runtime_lexer;
 let {
@@ -43,6 +43,80 @@ let resolve_lifetime_scopes : Vec<I32> = vec_new();
 let resolve_global_decl_nodes : Map<I32, I32> = map_new();
  // Parallel list of declared global names so we can iterate for "did you mean?" suggestions.
 let resolve_global_names_list : Vec<I32> = vec_new();
+let resolve_stmt_total_calls : I32 = 0;
+let resolve_stmt_total_ms : I32 = 0;
+let resolve_stmt_block_calls : I32 = 0;
+let resolve_stmt_block_ms : I32 = 0;
+let resolve_stmt_fn_calls : I32 = 0;
+let resolve_stmt_fn_ms : I32 = 0;
+let resolve_stmt_let_import_calls : I32 = 0;
+let resolve_stmt_let_import_ms : I32 = 0;
+let resolve_stmt_flow_calls : I32 = 0;
+let resolve_stmt_flow_ms : I32 = 0;
+let resolve_stmt_lifetime_into_calls : I32 = 0;
+let resolve_stmt_lifetime_into_ms : I32 = 0;
+let resolve_stmt_decl_skip_calls : I32 = 0;
+let resolve_stmt_decl_skip_ms : I32 = 0;
+let resolve_stmt_fallback_expr_calls : I32 = 0;
+let resolve_stmt_fallback_expr_ms : I32 = 0;
+let resolve_block_predeclare_ms : I32 = 0;
+let resolve_block_body_ms : I32 = 0;
+let resolve_expr_identifier_calls : I32 = 0;
+let resolve_expr_binary_calls : I32 = 0;
+let resolve_expr_unary_or_unwrap_calls : I32 = 0;
+let resolve_expr_call_calls : I32 = 0;
+let resolve_expr_member_calls : I32 = 0;
+let resolve_expr_index_calls : I32 = 0;
+let resolve_expr_struct_init_calls : I32 = 0;
+let resolve_expr_tuple_calls : I32 = 0;
+let resolve_expr_if_calls : I32 = 0;
+let resolve_expr_match_calls : I32 = 0;
+let resolve_expr_is_calls : I32 = 0;
+let resolve_expr_lambda_calls : I32 = 0;
+let resolve_expr_fn_expr_calls : I32 = 0;
+let resolve_expr_other_calls : I32 = 0;
+let resolve_expr_other_kind_counts : Map<I32, I32> = map_new();
+let resolve_expr_other_kind_keys : Vec<I32> = vec_new();
+fn resolve_log_step(name: *Str, step_start: I32, total_start: I32) : I32 => {
+    let now = perf_now();
+    let step_dt = now - step_start;
+    let total_dt = now - total_start;
+    print_error(
+        "[selfhost][resolve] ".str_concat(name)
+        .str_concat(" dt=")
+        .str_concat(int_to_string(step_dt))
+        .str_concat("ms total=")
+        .str_concat(int_to_string(total_dt))
+        .str_concat("ms\n")
+    );
+    now
+}
+fn resolve_log_bucket(name: *Str, calls: I32, ms: I32) : I32 => {
+    if (calls <= 0) {
+        return 0;
+    }
+    print_error(
+        "[selfhost][resolve][bucket] ".str_concat(name)
+        .str_concat(" calls=")
+        .str_concat(int_to_string(calls))
+        .str_concat(" ms=")
+        .str_concat(int_to_string(ms))
+        .str_concat("\n")
+    );
+    0
+}
+fn resolve_log_count(name: *Str, count: I32) : I32 => {
+    if (count <= 0) {
+        return 0;
+    }
+    print_error(
+        "[selfhost][resolve][count] ".str_concat(name)
+        .str_concat(" calls=")
+        .str_concat(int_to_string(count))
+        .str_concat("\n")
+    );
+    0
+}
 fn resolve_expr_identifier(n: I32, globals: *mut Set<I32>, scopes: Vec<I32>, depth: I32) : Result<I32, ResolveError> => {
     let name = get_interned_str(node_get_data1(n))?;
     if (!rslv_utils_scope_has(scopes, depth, name) && !globals.set_has(name) &&
@@ -179,6 +253,7 @@ fn resolve_stmt_block(n: I32, globals: *mut Set<I32>, scopes: Vec<I32>, depth: I
     let stmts = node_get_data1(n);
     let i = 0;
     let len = stmts.vec_length();
+    let predeclare_t0 = perf_now();
     while (i < len) {
         let stmt = stmts.vec_get(i);
         let stmt_kind = node_kind(stmt);
@@ -189,11 +264,14 @@ fn resolve_stmt_block(n: I32, globals: *mut Set<I32>, scopes: Vec<I32>, depth: I
         }
         i = i + 1;
     }
+    resolve_block_predeclare_ms = resolve_block_predeclare_ms + (perf_now() - predeclare_t0);
+    let body_t0 = perf_now();
     i = 0;
     while (i < len) {
         resolve_stmt(stmts.vec_get(i), globals, scopes, next_depth)?;
         i = i + 1;
     }
+    resolve_block_body_ms = resolve_block_body_ms + (perf_now() - body_t0);
     scopes.vec_pop();
     Ok<I32> { value: 0 }
 }
@@ -324,14 +402,17 @@ fn resolve_expr(n: I32, globals: *mut Set<I32>, scopes: Vec<I32>, depth: I32) : 
     rslv_current_node = n;
     let kind = node_kind(n);
     if (kind == NK_IDENTIFIER) {
+        resolve_expr_identifier_calls = resolve_expr_identifier_calls + 1;
         return resolve_expr_identifier(n, globals, scopes, depth);
     }
     if (kind == NK_BINARY_EXPR) {
+        resolve_expr_binary_calls = resolve_expr_binary_calls + 1;
         resolve_expr(node_get_data2(n), globals, scopes, depth)?;
         resolve_expr(node_get_data3(n), globals, scopes, depth)?;
         return Ok<I32> { value: 0 };
     }
     if (kind == NK_UNARY_EXPR || kind == NK_UNWRAP_EXPR) {
+        resolve_expr_unary_or_unwrap_calls = resolve_expr_unary_or_unwrap_calls + 1;
         resolve_expr(node_get_data2(n), globals, scopes, depth)?;
         if (kind == NK_UNWRAP_EXPR) {
             resolve_expr(node_get_data1(n), globals, scopes, depth)?;
@@ -339,18 +420,22 @@ fn resolve_expr(n: I32, globals: *mut Set<I32>, scopes: Vec<I32>, depth: I32) : 
         return Ok<I32> { value: 0 };
     }
     if (kind == NK_CALL_EXPR) {
+        resolve_expr_call_calls = resolve_expr_call_calls + 1;
         return resolve_expr_call(n, globals, scopes, depth);
     }
     if (kind == NK_MEMBER_EXPR) {
+        resolve_expr_member_calls = resolve_expr_member_calls + 1;
         resolve_expr(node_get_data1(n), globals, scopes, depth)?;
         return Ok<I32> { value: 0 };
     }
     if (kind == NK_INDEX_EXPR) {
+        resolve_expr_index_calls = resolve_expr_index_calls + 1;
         resolve_expr(node_get_data1(n), globals, scopes, depth)?;
         resolve_expr(node_get_data2(n), globals, scopes, depth)?;
         return Ok<I32> { value: 0 };
     }
     if (kind == NK_STRUCT_INIT) {
+        resolve_expr_struct_init_calls = resolve_expr_struct_init_calls + 1;
         let type_name = get_interned_str(node_get_data1(n));
         if (!globals.set_has(type_name)) {
             return rslv_panic_loc("E_RESOLVE_UNKNOWN_STRUCT", "Unknown struct/type in initializer: ".str_concat(type_name), "A struct initializer referenced a type that is not declared in the merged module scope.", "Declare the struct/type first or import the module that defines it."
@@ -367,6 +452,7 @@ fn resolve_expr(n: I32, globals: *mut Set<I32>, scopes: Vec<I32>, depth: I32) : 
         return Ok<I32> { value: 0 };
     }
     if (kind == NK_TUPLE_EXPR) {
+        resolve_expr_tuple_calls = resolve_expr_tuple_calls + 1;
         let items = node_get_data1(n);
         let i = 0;
         let len = items.vec_length();
@@ -377,53 +463,97 @@ fn resolve_expr(n: I32, globals: *mut Set<I32>, scopes: Vec<I32>, depth: I32) : 
         return Ok<I32> { value: 0 };
     }
     if (kind == NK_IF_EXPR) {
+        resolve_expr_if_calls = resolve_expr_if_calls + 1;
         resolve_expr(node_get_data1(n), globals, scopes, depth)?;
         resolve_stmt(node_get_data2(n), globals, scopes, depth)?;
         if (node_get_data3(n) != 0) {
+    let kind_key = int_to_string(kind);
+    if (!resolve_expr_other_kind_counts.map_has(kind_key)) {
+        resolve_expr_other_kind_counts.map_set(kind_key, 0);
+        resolve_expr_other_kind_keys.vec_push(kind_key);
+    }
+    resolve_expr_other_kind_counts.map_set(kind_key, resolve_expr_other_kind_counts.map_get(kind_key) + 1);
             resolve_stmt(node_get_data3(n), globals, scopes, depth)?;
         }
         return Ok<I32> { value: 0 };
     }
     if (kind == NK_MATCH_EXPR) {
+        resolve_expr_match_calls = resolve_expr_match_calls + 1;
         return resolve_expr_match (n, globals, scopes, depth);
     }
     if (kind == NK_IS_EXPR) {
+        resolve_expr_is_calls = resolve_expr_is_calls + 1;
         resolve_expr(node_get_data1(n), globals, scopes, depth)?;
         return Ok<I32> { value: 0 };
     }
     if (kind == NK_LAMBDA_EXPR) {
+        resolve_expr_lambda_calls = resolve_expr_lambda_calls + 1;
         return resolve_expr_lambda(n, globals, scopes, depth);
     }
     if (kind == NK_FN_EXPR) {
+        resolve_expr_fn_expr_calls = resolve_expr_fn_expr_calls + 1;
         return resolve_expr_fn_expr(n, globals, scopes, depth);
     }
+    resolve_expr_other_calls = resolve_expr_other_calls + 1;
     Ok<I32> { value: 0 }
 }
 fn resolve_stmt(n: I32, globals: *mut Set<I32>, scopes: Vec<I32>, depth: I32) : Result<I32, ResolveError> => {
     if (n == 0) {
         return Ok<I32> { value: 0 };
     }
+    let stmt_t0 = perf_now();
+    resolve_stmt_total_calls = resolve_stmt_total_calls + 1;
     rslv_current_node = n;
     let kind = node_kind(n);
     if (kind == NK_BLOCK) {
-        return resolve_stmt_block(n, globals, scopes, depth);
+        let v = resolve_stmt_block(n, globals, scopes, depth)?;
+        let dt = perf_now() - stmt_t0;
+        resolve_stmt_total_ms = resolve_stmt_total_ms + dt;
+        resolve_stmt_block_calls = resolve_stmt_block_calls + 1;
+        resolve_stmt_block_ms = resolve_stmt_block_ms + dt;
+        return Ok<I32> { value: v };
     }
     if (kind == NK_EXPECT_FN_DECL) {
+        let dt = perf_now() - stmt_t0;
+        resolve_stmt_total_ms = resolve_stmt_total_ms + dt;
+        resolve_stmt_decl_skip_calls = resolve_stmt_decl_skip_calls + 1;
+        resolve_stmt_decl_skip_ms = resolve_stmt_decl_skip_ms + dt;
         return Ok<I32> { value: 0 };
     }
     if (kind == NK_CONTRACT_DECL) {
+        let dt = perf_now() - stmt_t0;
+        resolve_stmt_total_ms = resolve_stmt_total_ms + dt;
+        resolve_stmt_decl_skip_calls = resolve_stmt_decl_skip_calls + 1;
+        resolve_stmt_decl_skip_ms = resolve_stmt_decl_skip_ms + dt;
         return Ok<I32> { value: 0 };
     }
     if (kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL || kind == NK_ACTUAL_FN_DECL) {
-        return resolve_stmt_fn_decl(n, globals, scopes, depth);
+        let v = resolve_stmt_fn_decl(n, globals, scopes, depth)?;
+        let dt = perf_now() - stmt_t0;
+        resolve_stmt_total_ms = resolve_stmt_total_ms + dt;
+        resolve_stmt_fn_calls = resolve_stmt_fn_calls + 1;
+        resolve_stmt_fn_ms = resolve_stmt_fn_ms + dt;
+        return Ok<I32> { value: v };
     }
     if (resolve_stmt_let_or_import(n, globals, scopes, depth) == 1) {
+        let dt = perf_now() - stmt_t0;
+        resolve_stmt_total_ms = resolve_stmt_total_ms + dt;
+        resolve_stmt_let_import_calls = resolve_stmt_let_import_calls + 1;
+        resolve_stmt_let_import_ms = resolve_stmt_let_import_ms + dt;
         return Ok<I32> { value: 0 };
     }
     if (resolve_stmt_flow(n, globals, scopes, depth) == 1) {
+        let dt = perf_now() - stmt_t0;
+        resolve_stmt_total_ms = resolve_stmt_total_ms + dt;
+        resolve_stmt_flow_calls = resolve_stmt_flow_calls + 1;
+        resolve_stmt_flow_ms = resolve_stmt_flow_ms + dt;
         return Ok<I32> { value: 0 };
     }
     if (resolve_stmt_lifetime_or_into(n, globals, scopes, depth) == 1) {
+        let dt = perf_now() - stmt_t0;
+        resolve_stmt_total_ms = resolve_stmt_total_ms + dt;
+        resolve_stmt_lifetime_into_calls = resolve_stmt_lifetime_into_calls + 1;
+        resolve_stmt_lifetime_into_ms = resolve_stmt_lifetime_into_ms + dt;
         return Ok<I32> { value: 0 };
     }
     if (kind == NK_TYPE_ALIAS || kind == NK_DEP_TYPE_ALIAS ||
@@ -432,19 +562,65 @@ fn resolve_stmt(n: I32, globals: *mut Set<I32>, scopes: Vec<I32>, depth: I32) : 
     kind == NK_EXTERN_TYPE_DECL || kind == NK_EXTERN_IMPORT_DECL ||
     kind == NK_OBJECT_DECL || kind == NK_CONTRACT_DECL ||
     kind == NK_EXPECT_FN_DECL) {
+        let dt = perf_now() - stmt_t0;
+        resolve_stmt_total_ms = resolve_stmt_total_ms + dt;
+        resolve_stmt_decl_skip_calls = resolve_stmt_decl_skip_calls + 1;
+        resolve_stmt_decl_skip_ms = resolve_stmt_decl_skip_ms + dt;
         return Ok<I32> { value: 0 };
     }
      // Fallback: treat unmatched nodes as expressions.
     resolve_expr(n, globals, scopes, depth)?;
+    let dt = perf_now() - stmt_t0;
+    resolve_stmt_total_ms = resolve_stmt_total_ms + dt;
+    resolve_stmt_fallback_expr_calls = resolve_stmt_fallback_expr_calls + 1;
+    resolve_stmt_fallback_expr_ms = resolve_stmt_fallback_expr_ms + dt;
     Ok<I32> { value: 0 }
 }
 out fn resolve_names(program: I32) : Result<I32, ResolveError> => {
+    let resolve_total_start = perf_now();
+    let resolve_step_start = resolve_total_start;
     resolve_lifetime_scopes.vec_clear();
     resolve_global_names_list.vec_clear();
     resolve_global_decl_nodes = map_new();
+    resolve_stmt_total_calls = 0;
+    resolve_stmt_total_ms = 0;
+    resolve_stmt_block_calls = 0;
+    resolve_stmt_block_ms = 0;
+    resolve_stmt_fn_calls = 0;
+    resolve_stmt_fn_ms = 0;
+    resolve_stmt_let_import_calls = 0;
+    resolve_stmt_let_import_ms = 0;
+    resolve_stmt_flow_calls = 0;
+    resolve_stmt_flow_ms = 0;
+    resolve_stmt_lifetime_into_calls = 0;
+    resolve_stmt_lifetime_into_ms = 0;
+    resolve_stmt_decl_skip_calls = 0;
+    resolve_stmt_decl_skip_ms = 0;
+    resolve_stmt_fallback_expr_calls = 0;
+    resolve_stmt_fallback_expr_ms = 0;
+    resolve_block_predeclare_ms = 0;
+    resolve_block_body_ms = 0;
+    resolve_expr_identifier_calls = 0;
+    resolve_expr_binary_calls = 0;
+    resolve_expr_unary_or_unwrap_calls = 0;
+    resolve_expr_call_calls = 0;
+    resolve_expr_member_calls = 0;
+    resolve_expr_index_calls = 0;
+    resolve_expr_struct_init_calls = 0;
+    resolve_expr_tuple_calls = 0;
+    resolve_expr_if_calls = 0;
+    resolve_expr_match_calls = 0;
+    resolve_expr_is_calls = 0;
+    resolve_expr_lambda_calls = 0;
+    resolve_expr_fn_expr_calls = 0;
+    resolve_expr_other_calls = 0;
+    resolve_expr_other_kind_counts = map_new();
+    resolve_expr_other_kind_keys.vec_clear();
+    resolve_step_start = resolve_log_step("reset-state", resolve_step_start, resolve_total_start);
     let globals = set_new();
     let body = node_get_data1(program);
     rslv_utils_validate_expect_actual_pairs(body);
+    resolve_step_start = resolve_log_step("validate-expect-actual", resolve_step_start, resolve_total_start);
      // Predeclare global symbols.
     let i = 0;
     let len = body.vec_length();
@@ -483,13 +659,48 @@ out fn resolve_names(program: I32) : Result<I32, ResolveError> => {
         }
         i = i + 1;
     }
+    resolve_step_start = resolve_log_step("predeclare-globals", resolve_step_start, resolve_total_start);
      // Resolve top-level statements.
     let topScopes = vec_new();
     topScopes.vec_push(set_new());
+    resolve_step_start = resolve_log_step("init-top-scope", resolve_step_start, resolve_total_start);
     i = 0;
     while (i < len) {
         resolve_stmt(body.vec_get(i), globals, topScopes, 0)?;
         i = i + 1;
+    }
+    resolve_step_start = resolve_log_step("resolve-top-level", resolve_step_start, resolve_total_start);
+    resolve_log_bucket("stmt-total", resolve_stmt_total_calls, resolve_stmt_total_ms);
+    resolve_log_bucket("stmt-block", resolve_stmt_block_calls, resolve_stmt_block_ms);
+    resolve_log_bucket("stmt-fn-decl", resolve_stmt_fn_calls, resolve_stmt_fn_ms);
+    resolve_log_bucket("stmt-let-import", resolve_stmt_let_import_calls, resolve_stmt_let_import_ms);
+    resolve_log_bucket("stmt-flow", resolve_stmt_flow_calls, resolve_stmt_flow_ms);
+    resolve_log_bucket("stmt-lifetime-into", resolve_stmt_lifetime_into_calls, resolve_stmt_lifetime_into_ms);
+    resolve_log_bucket("stmt-decl-skip", resolve_stmt_decl_skip_calls, resolve_stmt_decl_skip_ms);
+    resolve_log_bucket("stmt-fallback-expr", resolve_stmt_fallback_expr_calls, resolve_stmt_fallback_expr_ms);
+    resolve_log_bucket("block-predeclare", resolve_stmt_block_calls, resolve_block_predeclare_ms);
+    resolve_log_bucket("block-body", resolve_stmt_block_calls, resolve_block_body_ms);
+    resolve_log_count("expr-identifier", resolve_expr_identifier_calls);
+    resolve_log_count("expr-binary", resolve_expr_binary_calls);
+    resolve_log_count("expr-unary-or-unwrap", resolve_expr_unary_or_unwrap_calls);
+    resolve_log_count("expr-call", resolve_expr_call_calls);
+    resolve_log_count("expr-member", resolve_expr_member_calls);
+    resolve_log_count("expr-index", resolve_expr_index_calls);
+    resolve_log_count("expr-struct-init", resolve_expr_struct_init_calls);
+    resolve_log_count("expr-tuple", resolve_expr_tuple_calls);
+    resolve_log_count("expr-if", resolve_expr_if_calls);
+    resolve_log_count("expr-match", resolve_expr_match_calls);
+    resolve_log_count("expr-is", resolve_expr_is_calls);
+    resolve_log_count("expr-lambda", resolve_expr_lambda_calls);
+    resolve_log_count("expr-fn-expr", resolve_expr_fn_expr_calls);
+    resolve_log_count("expr-other", resolve_expr_other_calls);
+    let j = 0;
+    let j_len = resolve_expr_other_kind_keys.vec_length();
+    while (j < j_len) {
+        let kind_key = resolve_expr_other_kind_keys.vec_get(j);
+        let kind_count = resolve_expr_other_kind_counts.map_get(kind_key);
+        resolve_log_count("expr-other-kind=".str_concat(int_to_string(kind_key)), kind_count);
+        j = j + 1;
     }
     Ok<I32> { value: program }
 }
