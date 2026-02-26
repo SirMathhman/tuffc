@@ -28,6 +28,9 @@ const collections = {
 const strings = {
   str_eq: runtime.str_eq,
   str_length: runtime.str_length,
+  str_slice: runtime.str_slice,
+  str_slice_window: runtime.str_slice_window,
+  str_copy: runtime.str_copy,
   str_concat: runtime.str_concat,
   str_index_of: runtime.str_index_of,
   str_trim: runtime.str_trim,

@@ -1,0 +1,22 @@
+extern let { str_length, str_slice_window, str_copy, str_concat } = globalThis;
+
+extern fn str_length(this: *Str) : USize;
+type StrIndex(this: *Str) = USize < str_length(this);
+
+lifetime t {
+    extern fn str_slice_window(this: *t Str, start: StrIndex(this) <= end, end: StrIndex(this)) : *t Str;
+}
+extern fn str_copy(this: *Str) : *Str;
+extern fn str_concat(this: *Str, b: *Str) : *Str;
+
+fn main() : I32 => {
+    let src = "hello";
+    let window = src.str_slice_window(1, 4);
+    let owned = window.str_copy();
+    let combined = owned.str_concat("!");
+
+    if (window.str_length() == 3 && owned.str_length() == 3 && combined.str_length() == 4) {
+        return 0;
+    }
+    return 13;
+}

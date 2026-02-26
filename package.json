@@ -28,7 +28,8 @@
     "build:web": "esbuild ./src/main/js/web-compiler.ts --bundle --platform=browser --format=iife --global-name=TuffCompiler --target=es2020 --minify --sourcemap --outfile=./tests/out/web/tuff-compiler.min.js",
     "build:web:esm": "esbuild ./src/main/js/web-compiler.ts --bundle --platform=browser --format=esm --target=es2020 --minify --sourcemap --outfile=./tests/out/web/tuff-compiler.esm.js",
     "profile:compiler": "tsx ./scripts/profile-compiler.ts",
-    "seed:db:unions": "tsx ./scripts/seed-db-union-features.ts"
+    "seed:db:unions": "tsx ./scripts/seed-db-union-features.ts",
+    "seed:db:strings": "tsx ./scripts/seed-db-string-slice-lifetime.ts"
   },
   "devDependencies": {
     "@types/node": "^25.3.0",
