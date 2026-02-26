@@ -3,104 +3,93 @@
  * Transforms typechecker functions from panic-based to Result-based error handling
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
-import { fileURLToPath } from 'url';
+import * as fs from "fs";
+import * as path from "path";
+import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const TYPECHECK_FILE = path.join(__dirname, '../src/main/tuff/selfhost/internal/typecheck_impl.tuff');
-const BACKUP_FILE = TYPECHECK_FILE + '.backup3';
+const TYPECHECK_FILE = path.join(
+  __dirname,
+  "../src/main/tuff/selfhost/internal/typecheck_impl.tuff",
+);
+const BACKUP_FILE = TYPECHECK_FILE + ".backup4";
 
 function migrate() {
-    let source = fs.readFileSync(TYPECHECK_FILE, 'utf-8');
-    
-    // Backup original
-    fs.writeFileSync(BACKUP_FILE, source, 'utf-8');
-    console.log(`✓ Backed up to ${path.basename(BACKUP_FILE)}`);
+  let source = fs.readFileSync(TYPECHECK_FILE, "utf-8");
 
-    // Step 1: Update function signatures from `: I32 =>` to `: Result<I32, TypeError> =>`
-    // Match functions that likely call tc_panic_loc (type*, check*, validate*, etc.)
-    source = source.replace(
-        /^(fn (typecheck_expr|typecheck_stmt|typecheck_|check_|validate_|verify_)[a-z_]*\([^)]*\)) : I32 =>/gm,
-        '$1 : Result<I32, TypeError> =>'
-    );
+  // Backup original
+  fs.writeFileSync(BACKUP_FILE, source, "utf-8");
+  console.log(`✓ Backed up to ${path.basename(BACKUP_FILE)}`);
 
-    // Step 2: Convert direct tc_panic_loc calls to returns with ?
-    // Pattern: tc_panic_loc(...); → return tc_panic_loc(...)?;
-    source = source.replace(
-        /(\s+)tc_panic_loc\(/g,
-        '$1return tc_panic_loc('
-    );
+  // Step 1: Convert all tc_panic_loc calls to return statements (multiline support)
+  // Match tc_panic_loc( ... ); across multiple lines
+  source = source.replace(
+    /(\s+)tc_panic_loc\(\s*"([^"]+)"[^)]+\);/gs,
+    '$1return tc_panic_loc( "$2"'
+  );
+  
+  // More comprehensive: find all tc_panic_loc calls and add return
+  source = source.replace(
+    /^(\s+)(tc_panic_loc\s*\()/gm,
+    '$1return $2'
+  );
 
-    // Step 3: Wrap bare return values with Ok
-    // Pattern: return 0; → return Ok<I32> { value: 0 };
-    source = source.replace(
-        /return (\d+);/g,
-        'return Ok<I32> { value: $1 };'
-    );
+  // Step 2: Add ? operator to typecheck_expr and typecheck_stmt recursive calls  
+  // Pattern: typecheck_expr(...); → typecheck_expr(...)?;
+  source = source.replace(
+    /^(\s+)(typecheck_expr|typecheck_stmt)\(([^;]+)\);$/gm,
+    '$1$2($3)?;'
+  );
 
-    // Pattern: return <identifier>; → return Ok<I32> { value: <identifier> };
-    source = source.replace(
-        /return ([a-z_][a-z0-9_]*);/g,
-        'return Ok<I32> { value: $1 };'
-    );
+  // Step 3: Wrap bare "return 0" with Ok
+  source = source.replace(
+    /^(\s+)return 0;$/gm,
+    '$1return Ok<I32> { value: 0 };'
+  );
+  
+  // Also handle return statements with variables
+  source = source.replace(
+    /^(\s+)return ([a-z_][a-z0-9_]*);$/gm,
+    '$1return Ok<I32> { value: $2 };'
+  );
 
-    // Step 4: Add ? operator to Result-returning function calls
-    // Pattern: typecheck_expr(...); → typecheck_expr(...)?;
-    source = source.replace(
-        /(\s+)(typecheck_expr|typecheck_stmt|check_[a-z_]+|validate_[a-z_]+)\(/g,
-        (match, indent, funcName) => {
-            // Don't add ? if it's already there or if it's in a return statement
-            return `${indent}${funcName}(`;
-        }
-    );
+  // Step 4: Update helper function signatures that call tc_panic_loc
+  const helperFns = [
+    'typecheck_if_expr_branch',
+    'check_match_exhaustiveness',
+    'verify_destructor_signature'
+  ];
+  
+  for (const fn of helperFns) {
+    const regex = new RegExp(`(fn ${fn}\\([^)]+\\)) : I32 =>`, 'g');
+    source = source.replace(regex, '$1  : Result<I32, TypeError> =>');
+  }
 
-    // More specific: add ? to statement-position calls
-    source = source.replace(
-        /(\s+)(typecheck_expr|typecheck_stmt)\(([^;]+)\);/g,
-        '$1$2($3)?;'
-    );
+  // Step 5: Fix "return tc_panic_loc(...)?;" - remove the ? since it already returns Result
+  source = source.replace(
+    /return tc_panic_loc\(([^;]+)\)\?;/gs,
+    'return tc_panic_loc($1);'
+  );
 
-    // Step 5: Fix "return Ok { value: funcName() }" → "return funcName()"
-    // When function already returns Result, don't wrap
-    source = source.replace(
-        /return Ok<I32> \{ value: (typecheck_expr|typecheck_stmt|check_[a-z_]+|validate_[a-z_]+)\(([^}]+)\) \};/g,
-        'return $1($2);'
-    );
+  // Step 6: Handle final returns at end of functions (those without explicit return)
+  // This is tricky, so we'll skip for now and fix manually
 
-    // Step 6: Fix "return Ok { value: 0 }?;" → "return Ok { value: 0 };"
-    source = source.replace(
-        /return Ok<I32> \{ value: ([^}]+) \}\?;/g,
-        'return Ok<I32> { value: $1 };'
-    );
-
-    // Step 7: Ensure final returns in functions are wrapped
-    source = source.replace(
-        /^(\s+)([a-z_][a-z0-9_]*)(\s*)$/gm,
-        (match, indent, ident, trailing) => {
-            // Heuristic: if it's indented and looks like an identifier at end of block
-            if (indent.length >= 4 && !/^(if|else|while|let|fn|struct|type|out)$/.test(ident)) {
-                return `${indent}Ok<I32> { value: ${ident} }${trailing}`;
-            }
-            return match;
-        }
-    );
-
-    fs.writeFileSync(TYPECHECK_FILE, source, 'utf-8');
-    console.log('✓ Applied typecheck migration transformations');
-    console.log('  - Updated function signatures to return Result');
-    console.log('  - Converted tc_panic_loc calls to returns');
-    console.log('  - Wrapped success returns with Ok');
-    console.log('  - Added ? operators for error propagation');
-    console.log('  - Fixed Result-returning function calls');
+  fs.writeFileSync(TYPECHECK_FILE, source, "utf-8");
+  console.log("✓ Applied typecheck migration transformations");
+  console.log("  - Converted tc_panic_loc calls to return statements");
+  console.log("  - Added ? operators to typecheck recursive calls");
+  console.log("  - Wrapped return 0 with Ok<I32>");
+  console.log("  - Updated helper function signatures");
 }
 
 try {
-    migrate();
-    console.log('\n✅ Migration complete! Review typecheck_impl.tuff for any manual fixes needed.');
+  migrate();
+  console.log(
+    "\n✅ Migration complete! Review typecheck_impl.tuff for any manual fixes needed.",
+  );
 } catch (error) {
-    console.error('❌ Migration failed:', error);
-    process.exit(1);
+  console.error("❌ Migration failed:", error);
+  process.exit(1);
 }
