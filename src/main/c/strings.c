@@ -45,6 +45,19 @@ int64_t str_slice(int64_t s, int64_t start, int64_t end)
     return tuff_register_owned_string(out);
 }
 
+int64_t str_slice_window(int64_t s, int64_t start, int64_t end)
+{
+    // Compatibility-first implementation.
+    // This remains copy-based until lifetime-window ABI lands end-to-end.
+    return str_slice(s, start, end);
+}
+
+int64_t str_copy(int64_t s)
+{
+    const char *p = tuff_str_or_empty(s);
+    return tuff_register_cstring_copy(p);
+}
+
 int64_t str_concat(int64_t a, int64_t b)
 {
     const char *sa = tuff_str_or_empty(a);

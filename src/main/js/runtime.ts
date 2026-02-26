@@ -25,6 +25,22 @@ export function str_slice(s: string, start: number, end: number): string {
   return s.slice(start, end);
 }
 
+export function str_slice_window(
+  s: string,
+  start: number,
+  end: number,
+): string {
+  // Compatibility-first implementation: same observable result as str_slice.
+  // This symbol is reserved for future lifetime-window semantics in selfhost.
+  return str_slice(s, start, end);
+}
+
+export function str_copy(s: string): string {
+  // Explicit copy marker for migration call sites.
+  // JS strings are immutable, so this remains semantically equivalent.
+  return s.slice(0);
+}
+
 export function str_concat(a: string, b: string): string {
   return a + b;
 }

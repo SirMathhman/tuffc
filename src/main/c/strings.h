@@ -6,6 +6,8 @@
 int64_t str_length(int64_t s);
 int64_t str_char_at(int64_t s, int64_t i);
 int64_t str_slice(int64_t s, int64_t start, int64_t end);
+int64_t str_slice_window(int64_t s, int64_t start, int64_t end);
+int64_t str_copy(int64_t s);
 int64_t str_concat(int64_t a, int64_t b);
 int64_t str_eq(int64_t a, int64_t b);
 int64_t str_from_char_code(int64_t code);
