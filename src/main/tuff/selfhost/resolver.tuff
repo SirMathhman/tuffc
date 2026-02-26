@@ -439,7 +439,7 @@ fn resolve_stmt(n: I32, globals: *mut Set<I32>, scopes: Vec<I32>, depth: I32) : 
     Ok<I32> { value: 0 }
 }
 out fn resolve_names(program: I32) : Result<I32, ResolveError> => {
-    resolve_lifetime_scopes.vec_clear()?;
+    resolve_lifetime_scopes.vec_clear();
     resolve_global_names_list.vec_clear();
     resolve_global_decl_nodes = map_new();
     let globals = set_new();
@@ -491,6 +491,6 @@ out fn resolve_names(program: I32) : Result<I32, ResolveError> => {
         resolve_stmt(body.vec_get(i), globals, topScopes, 0)?;
         i = i + 1;
     }
-    program
+    Ok<I32> { value: program }
 }
 out fn selfhost_resolver_marker() : I32 => 0;

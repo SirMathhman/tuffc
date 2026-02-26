@@ -3813,7 +3813,7 @@ function resolve_names(program) {
   resolve_stmt((() => { const __recv = body; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(), globals, topScopes, 0);
   i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
 }
-  return program;
+  return ((typeof Ok === "function") ? Ok({value: program}) : ({ __tag: "Ok", value: program }));
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.resolve_names = resolve_names;
 
