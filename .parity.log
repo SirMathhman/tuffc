@@ -1,9 +1,0 @@
-
-> tuffc@0.1.0 native:selfhost:parity C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc
-> tsx ./src/test/js/c-bootstrap-parity.ts
-
-
-[bootstrap] ΓòÉΓòÉΓòÉ Phase 1: Stage3-JS ΓåÆ stage3_selfhost.c ΓòÉΓòÉΓòÉ
-[bootstrap] calling stage3.compile_file_with_options(selfhost.tuff, ..., target="c")
-[bootstrap]   input:  C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\src\main\tuff\selfhost.tuff
-[bootstrap]   output: C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\tests\out\c-bootstrap\stage3_selfhost.c

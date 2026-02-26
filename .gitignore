@@ -15,3 +15,10 @@ build
 /factorial.cert.json
 /factorial.cert.typ
 /factorial.cert.pdf
+
+# Temporary logs and one-off debug dumps
+/*.log
+/diag-*.err
+/tmp-*.log
+/tmp_*.log
+/tmp_*.py

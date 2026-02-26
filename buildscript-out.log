@@ -1,6 +1,0 @@
-[build:selfhost-js] compiling selfhost.tuff ΓåÆ tests/out/build/selfhost.js
-[build:selfhost-js] compiler: tsx ./src/main/js/cli.ts
-[build:selfhost-js] started: 2026-02-26T05:10:23.837Z
-[build:selfhost-js] cwd: C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc
-[build:selfhost-js] timeout: 300s
-[build:selfhost-js] command: C:\Program Files\nodejs\node.exe node_modules/tsx/dist/cli.mjs ./src/main/js/cli.ts ./src/main/tuff/selfhost.tuff --module-base ./src/main/tuff --target js --no-borrow -o ./tests/out/build/selfhost.js
