@@ -27,7 +27,7 @@ Union types in Tuff are discriminated via a compiler-injected `__tag` field:
 const my_result = { __tag: "Ok", value: 42 };
 
 // `result is Ok` becomes:
-my_result && my_result.__tag === "Ok"  // true
+my_result && my_result.__tag === "Ok"; // true
 ```
 
 For C targets, the `__tag` field is emitted as an enum or string constant in the generated struct.
@@ -104,7 +104,7 @@ fn example<T, E>(result: Result<T, E>) => {
     if (result is Ok) {
         let x = result.value;  // OK: result is Ok<T> here
     }
-    
+
     // ERROR: result is Result<T, E> again here (not narrowed)
     // let y = result.value;  // Compile error: Result<T, E> has no .value field
 }
@@ -160,16 +160,16 @@ Type narrowing implementation in `typecheck_impl.tuff` (lines 826-843):
 if (cond is NK_IS_EXPR) {
     let ident = node_get_data1(cond);  // Get checked identifier
     let pattern = node_get_data2(cond);
-    
+
     // Narrow type in true branch:
     let narrowed_type = extract_type_from_pattern(pattern);
     local_types.map_set(ident_name, narrowed_type);
-    
+
     typecheck_block(then_branch);
-    
+
     // Restore original type after branch:
     local_types.map_remove(ident_name);
-    
+
     typecheck_block(else_branch);
 }
 ```
@@ -267,12 +267,12 @@ Type narrowing only affects the immediate variable being checked:
 ```tuff
 fn example<T>(opt1: Option<T>, opt2: Option<T>) => {
     let both_some = (opt1 is Some) && (opt2 is Some);
-    
+
     if (both_some) {
         // ERROR: narrowing doesn't propagate through intermediate variables
         // let x = opt1.value;  // Compile error
     }
-    
+
     // CORRECT:
     if ((opt1 is Some) && (opt2 is Some)) {
         let x = opt1.value;  // OK: opt1 narrowed to Some<T>
@@ -289,9 +289,9 @@ If a narrowed variable is reassigned, the narrowing is invalidated:
 fn mutation_example<T, E>(result: Result<T, E>) => {
     if (result is Ok) {
         let x = result.value;  // OK
-        
+
         result = Err { error: some_error };  // Reassignment
-        
+
         // ERROR: result is no longer guaranteed to be Ok<T>
         // let y = result.value;  // Compile error
     }

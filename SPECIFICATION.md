@@ -121,11 +121,13 @@ fn process<T, E>(result: Result<T, E>) => {
 ```
 
 The type narrowing is:
+
 - **Flow-sensitive**: Applies only within the control flow branch where the check succeeds
 - **Runtime-safe**: Union discrimination uses the `__tag` field injected by the compiler
 - **Compile-time verified**: The typechecker tracks narrowed types in the local scope map
 
 Supported contexts:
+
 - `if (expr is Type)` narrows in the true branch
 - `if (!(expr is Type))` narrows in the false branch (type subtraction)
 - Works with nested if/else chains
