@@ -5,7 +5,7 @@
  // The actual implementations come from the always-embedded C substrate.
 extern let {
     str_length, str_char_at, str_slice, str_mut_slice, str_concat, str_eq, str_from_char_code,
-    str_index_of, str_trim, str_replace_all, char_code, int_to_string, parse_int
+    __str_index_of, str_trim, str_replace_all, char_code, __int_to_string, parse_int
 }
  = globalThis;
 extern let {
@@ -26,7 +26,7 @@ extern let {
 }
  = globalThis;
 extern let {
-    read_file, write_file, path_join, path_dirname, print, print_error
+    read_file, write_file, path_join, path_dirname, print, __print_error
 }
  = globalThis;
 extern let {
@@ -38,7 +38,7 @@ extern let {
 }
  = globalThis;
 extern let {
-    perf_now, profile_mark, profile_take_json
+    __perf_now, profile_mark, __profile_take_json
 }
  = globalThis;
 extern fn str_length(this: *Str) : USize;
@@ -53,7 +53,8 @@ extern fn str_mut_slice(this: **mut Str, start: I32, end: I32) : *mut Str;
 extern fn str_concat(this: *Str, b: *Str) : *Str;
 extern fn str_eq(this: *Str, b: *Str) : Bool;
 extern fn str_from_char_code(code: I32) : *Str;
-out extern fn str_index_of(this: *Str, needle: *Str) : StrIndex(this);
+extern fn __str_index_of(this: *Str, needle: *Str) : StrIndex(this);
+out fn str_index_of(this: *Str, needle: *Str) : StrIndex(this) => __str_index_of(this, needle);
 out fn str_includes(this: *Str, needle: *Str) : Bool => this.str_index_of(needle) >= 0;
 out fn str_starts_with(this: *Str, prefix: *Str) : Bool => {
     let plen = prefix.str_length();
@@ -67,7 +68,8 @@ out fn str_starts_with(this: *Str, prefix: *Str) : Bool => {
 extern fn str_trim(this: *Str) : *Str;
 extern fn str_replace_all(this: *Str, from: *Str, to: *Str) : *Str;
 extern fn char_code(ch: *Str) : I32;
-out extern fn int_to_string(n: I32) : *Str;
+extern fn __int_to_string(n: I32) : *Str;
+out fn int_to_string(n: I32) : *Str => __int_to_string(n);
 extern fn parse_int(s: *Str) : I32;
 extern type StringBuilder;
 extern fn sb_new() : StringBuilder;
@@ -117,7 +119,9 @@ extern fn write_file(filePath: *Str, contents: *Str) : I32;
 extern fn path_join(a: *Str, b: *Str) : *Str;
 extern fn path_dirname(p: *Str) : *Str;
 extern fn print(s: *Str) : I32;
-out extern fn print_error(s: *Str) : I32;
+extern fn print_error(s: *Str) : I32;
+extern fn __print_error(s: *Str) : I32;
+out fn print_error(s: *Str) : I32 => __print_error(s);
 extern fn panic(msg: *Str) : I32;
 extern fn panic_with_code(code: *Str, msg: *Str, reason: *Str, fix: *Str) : I32;
 extern fn panic_with_code_loc(code: *Str, msg: *Str, reason: *Str, fix: *Str, line: I32, col: I32) :
@@ -125,9 +129,12 @@ I32;
 extern fn get_argc() : I32;
 extern fn get_argv(i: I32) : *Str;
  // Performance profiling
-out extern fn perf_now() : I32;
+extern fn perf_now() : I32;
+extern fn __perf_now() : I32;
+out fn perf_now() : I32 => __perf_now();
 extern fn profile_mark(label: *Str, duration_ms: I32) : I32;
-extern fn profile_take_json() : *Str;
+extern fn __profile_take_json() : *Str;
+out fn profile_take_json() : *Str => __profile_take_json();
  // ============================================================================
  // Token Kinds
  // ============================================================================

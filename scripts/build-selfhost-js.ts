@@ -111,11 +111,6 @@ function computeInputsMaxMtime(): { maxMtime: number; newestFile: string } {
   return { maxMtime, newestFile };
 }
 
-function tailText(text: string, maxChars: number): string {
-  if (text.length <= maxChars) return text;
-  return `…${text.slice(text.length - maxChars)}`;
-}
-
 function formatElapsed(ms: number): string {
   if (ms < 1000) return `${ms}ms`;
   return `${(ms / 1000).toFixed(2)}s`;
@@ -182,7 +177,7 @@ const args = [
 console.log(`[build:selfhost-js] compiling selfhost.tuff → ${relOutput}`);
 console.log(`[build:selfhost-js] compiler: tsx ./src/main/js/cli.ts`);
 
-const COMPILE_TIMEOUT_MS = 120_000; // 2 minutes
+const COMPILE_TIMEOUT_MS = 300_000; // 5 minutes
 
 const t0 = Date.now();
 const startedAtIso = new Date(t0).toISOString();
@@ -202,40 +197,22 @@ console.log(
 const compileProc = spawnSync(process.execPath, [tsxCli, ...args], {
   cwd: root,
   env,
-  encoding: "utf8",
+  stdio: "inherit",
   timeout: COMPILE_TIMEOUT_MS,
-  maxBuffer: 16 * 1024 * 1024,
 });
 
 console.log(
   `[build:selfhost-js] compiler result: status=${String(compileProc.status)} signal=${String(compileProc.signal)} error=${compileProc.error ? "yes" : "no"}`,
 );
 
-if (compileProc.stdout && compileProc.stdout.length > 0) {
-  process.stdout.write(compileProc.stdout);
-}
-if (compileProc.stderr && compileProc.stderr.length > 0) {
-  process.stderr.write(compileProc.stderr);
-}
-
 const elapsed = Date.now() - t0;
 
 if (compileProc.error) {
   const errno = compileProc.error as NodeJS.ErrnoException;
   if (errno.code === "ETIMEDOUT") {
-    const stdoutTail = tailText(compileProc.stdout ?? "", 1200);
-    const stderrTail = tailText(compileProc.stderr ?? "", 1200);
     console.error(
       `[build:selfhost-js] TIMEOUT: compilation exceeded ${COMPILE_TIMEOUT_MS / 1000}s after ${formatElapsed(elapsed)} — process terminated`,
     );
-    if (stdoutTail.length > 0) {
-      console.error(`[build:selfhost-js] TIMEOUT stdout tail:`);
-      console.error(stdoutTail);
-    }
-    if (stderrTail.length > 0) {
-      console.error(`[build:selfhost-js] TIMEOUT stderr tail:`);
-      console.error(stderrTail);
-    }
   } else {
     console.error(
       `[build:selfhost-js] FAILED after ${formatElapsed(elapsed)}: ${errno.message}`,
@@ -245,19 +222,9 @@ if (compileProc.error) {
 }
 
 if (compileProc.status !== 0) {
-  const stdoutTail = tailText(compileProc.stdout ?? "", 1200);
-  const stderrTail = tailText(compileProc.stderr ?? "", 1200);
   console.error(
     `[build:selfhost-js] FAILED after ${formatElapsed(elapsed)}: compiler exited with code ${String(compileProc.status)}`,
   );
-  if (stdoutTail.length > 0) {
-    console.error(`[build:selfhost-js] exit stdout tail:`);
-    console.error(stdoutTail);
-  }
-  if (stderrTail.length > 0) {
-    console.error(`[build:selfhost-js] exit stderr tail:`);
-    console.error(stderrTail);
-  }
   process.exit(1);
 }
 if (!fs.existsSync(OUT_JS)) {

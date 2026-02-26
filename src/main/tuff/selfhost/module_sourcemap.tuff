@@ -1,5 +1,5 @@
 let {
-    int_to_string, vec_new
+    int_to_string, vec_new, str_index_of
 }
  = selfhost::runtime_lexer;
 let sm_paths : Vec<*Str> = vec_new();

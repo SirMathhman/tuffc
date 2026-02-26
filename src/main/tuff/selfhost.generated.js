@@ -1,38 +1,43 @@
 "use strict";
 
-// extern from globalThis
 
-// extern from globalThis
 
-// extern from globalThis
 
-// extern from globalThis
 
-// extern from globalThis
 
-// extern from globalThis
 
-// extern from globalThis
 
-// extern from globalThis
 
-// extern from globalThis
 
-// extern fn str_length
+
+
+
+
+
+
+
+
+
+
 
 // type StrIndex(...) = ...
 
-// extern fn str_char_at
 
-// extern fn str_slice
 
-// extern fn str_concat
 
-// extern fn str_eq
 
-// extern fn str_from_char_code
 
-// extern fn str_index_of
+
+
+
+
+
+
+
+function str_index_of(__this_param, needle) {
+  let __tuff_this = undefined;
+  return __str_index_of((typeof __this_param !== 'undefined' ? __this_param : (typeof __tuff_this !== 'undefined' ? __tuff_this : this)), needle);
+}
 
 function str_includes(__this_param, needle) {
   let __tuff_this = undefined;
@@ -49,33 +54,40 @@ function str_starts_with(__this_param, prefix) {
   })());
 }
 
-// extern fn str_trim
 
-// extern fn str_replace_all
 
-// extern fn char_code
 
-// extern fn int_to_string
 
-// extern fn parse_int
 
-// extern type StringBuilder
 
-// extern fn sb_new
 
-// extern fn sb_append
 
-// extern fn sb_append_char
+const __tuff_outer_for_int_to_string = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function int_to_string(n) {
+  let __tuff_this = { n: n, this: __tuff_outer_for_int_to_string };
+  return __int_to_string(n);
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.int_to_string = int_to_string;
 
-// extern fn sb_build
 
-// extern type Vec
 
-// extern fn __vec_new
 
-// extern fn __vec_push
 
-// extern fn __vec_pop
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 const __tuff_outer_for_vec_new = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
 function vec_new() {
@@ -94,26 +106,26 @@ function vec_pop(__this_param) {
   return __vec_pop((typeof __this_param !== 'undefined' ? __this_param : (typeof __tuff_this !== 'undefined' ? __tuff_this : this)));
 }
 
-// extern fn __vec_get
+
 
 function vec_get(__this_param, i) {
   let __tuff_this = undefined;
   return __vec_get((typeof __this_param !== 'undefined' ? __this_param : (typeof __tuff_this !== 'undefined' ? __tuff_this : this)), i);
 }
 
-// extern fn __vec_set
 
-// extern fn __vec_length
 
-// extern fn __vec_init
 
-// extern fn __vec_capacity
 
-// extern fn __vec_clear
 
-// extern fn __vec_join
 
-// extern fn __vec_includes
+
+
+
+
+
+
+
 
 function vec_set(__this_param, i, v) {
   let __tuff_this = undefined;
@@ -150,17 +162,17 @@ function vec_includes(__this_param, item) {
   return __vec_includes((typeof __this_param !== 'undefined' ? __this_param : (typeof __tuff_this !== 'undefined' ? __tuff_this : this)), item);
 }
 
-// extern type Map
 
-// extern fn __map_new
 
-// extern fn map_set
 
-// extern fn map_get
 
-// extern fn map_has
 
-// extern fn map_delete
+
+
+
+
+
+
 
 const __tuff_outer_for_map_new = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
 function map_new() {
@@ -169,15 +181,15 @@ function map_new() {
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.map_new = map_new;
 
-// extern type Set
 
-// extern fn __set_new
 
-// extern fn set_add
 
-// extern fn set_has
 
-// extern fn set_delete
+
+
+
+
+
 
 const __tuff_outer_for_set_new = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
 function set_new() {
@@ -186,33 +198,58 @@ function set_new() {
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.set_new = set_new;
 
-// extern fn read_file
 
-// extern fn write_file
 
-// extern fn path_join
 
-// extern fn path_dirname
 
-// extern fn print
 
-// extern fn print_error
 
-// extern fn panic
 
-// extern fn panic_with_code
 
-// extern fn panic_with_code_loc
 
-// extern fn get_argc
 
-// extern fn get_argv
 
-// extern fn perf_now
 
-// extern fn profile_mark
 
-// extern fn profile_take_json
+
+const __tuff_outer_for_print_error = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function print_error(s) {
+  let __tuff_this = { s: s, this: __tuff_outer_for_print_error };
+  return __print_error(s);
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.print_error = print_error;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+const __tuff_outer_for_perf_now = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function perf_now() {
+  let __tuff_this = { this: __tuff_outer_for_perf_now };
+  return __perf_now();
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.perf_now = perf_now;
+
+
+
+
+
+const __tuff_outer_for_profile_take_json = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function profile_take_json() {
+  let __tuff_this = { this: __tuff_outer_for_profile_take_json };
+  return __profile_take_json();
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.profile_take_json = profile_take_json;
 
 let TK_EOF = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.TK_EOF = TK_EOF;
 
@@ -961,6 +998,8 @@ function selfhost_parser_kinds_marker() {
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.selfhost_parser_kinds_marker = selfhost_parser_kinds_marker;
 
+function ParseError(fields = {}) { return { __tag: "ParseError", code: fields.code, message: fields.message, reason: fields.reason, fix: fields.fix, line: fields.line, col: fields.col }; }
+
 let node_kinds = vec_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.node_kinds = node_kinds;
 
 let node_data1 = vec_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.node_data1 = node_data1;
@@ -1260,6 +1299,24 @@ function p_error_with_token_context(msg) {
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.p_error_with_token_context = p_error_with_token_context;
 
+const __tuff_outer_for_p_panic_loc = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function p_panic_loc(code, message, reason, fix) {
+  let __tuff_this = { code: code, message: message, reason: reason, fix: fix, this: __tuff_outer_for_p_panic_loc };
+  let t = p_peek(0); if (typeof __tuff_this !== 'undefined') __tuff_this.t = t;
+  panic_with_code_loc(code, message, reason, fix, tok_line(t), tok_col(t));
+  return 0;
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.p_panic_loc = p_panic_loc;
+
+const __tuff_outer_for_p_result_error = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function p_result_error(code, message, reason, fix) {
+  let __tuff_this = { code: code, message: message, reason: reason, fix: fix, this: __tuff_outer_for_p_result_error };
+  let t = p_peek(0); if (typeof __tuff_this !== 'undefined') __tuff_this.t = t;
+  let err = ((typeof ParseError === "function") ? ParseError({code: code, message: message, reason: reason, fix: fix, line: tok_line(t), col: tok_col(t)}) : ({ __tag: "ParseError", code: code, message: message, reason: reason, fix: fix, line: tok_line(t), col: tok_col(t) })); if (typeof __tuff_this !== 'undefined') __tuff_this.err = err;
+  return ((typeof Err === "function") ? Err({error: err}) : ({ __tag: "Err", error: err }));
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.p_result_error = p_result_error;
+
 const __tuff_outer_for_p_expect_kind = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
 function p_expect_kind(kind, msg) {
   let __tuff_this = { kind: kind, msg: msg, this: __tuff_outer_for_p_expect_kind };
@@ -1499,7 +1556,7 @@ function p_parse_type_primary_numeric_sentinel() {
   let t = p_eat(); if (typeof __tuff_this !== 'undefined') __tuff_this.t = t;
   let raw = get_intern(tok_value(t)); if (typeof __tuff_this !== 'undefined') __tuff_this.raw = raw;
   if ((!((() => { const __recv = raw; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("0USize"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "0USize") : str_eq(__recv, "0USize"); })() || (() => { const __recv = raw; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("0"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "0") : str_eq(__recv, "0"); })()))) {
-  panic("Only 0 or 0USize is supported as a type-level numeric sentinel");
+  return p_result_error("E_PARSE_INVALID_LITERAL", "Only 0 or 0USize is supported as a type-level numeric sentinel", "Type-level numeric literals are restricted to zero sentinels", "Use 0 or 0USize for type-level numeric sentinels");
 }
   let base = node_new(NK_NAMED_TYPE); if (typeof __tuff_this !== 'undefined') __tuff_this.base = base;
   node_set_data1(base, intern("USize"));
@@ -2437,7 +2494,7 @@ const __tuff_outer_for_p_parse_extern_decl = typeof __tuff_this !== 'undefined' 
 function p_parse_extern_decl() {
   let __tuff_this = { this: __tuff_outer_for_p_parse_extern_decl };
   if (p_at(TK_KEYWORD, "fn")) {
-  return p_parse_extern_fn_decl();
+  return ((typeof Ok === "function") ? Ok({value: p_parse_extern_fn_decl()}) : ({ __tag: "Ok", value: p_parse_extern_fn_decl() }));
 }
   if (p_at(TK_KEYWORD, "let")) {
   p_eat();
@@ -2463,7 +2520,7 @@ function p_parse_extern_decl() {
   let node = node_new(NK_EXTERN_IMPORT_DECL); if (typeof __tuff_this !== 'undefined') __tuff_this.node = node;
   node_set_data1(node, names);
   node_set_data2(node, source_parts);
-  return node;
+  return ((typeof Ok === "function") ? Ok({value: node}) : ({ __tag: "Ok", value: node }));
 }
   let name = p_parse_identifier(); if (typeof __tuff_this !== 'undefined') __tuff_this.name = name;
   let typ = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.typ = typ;
@@ -2475,7 +2532,7 @@ function p_parse_extern_decl() {
   let node = node_new(NK_EXTERN_LET_DECL); if (typeof __tuff_this !== 'undefined') __tuff_this.node = node;
   node_set_data1(node, name);
   node_set_data2(node, typ);
-  return node;
+  return ((typeof Ok === "function") ? Ok({value: node}) : ({ __tag: "Ok", value: node }));
 }
   if (p_at(TK_KEYWORD, "type")) {
   p_eat();
@@ -2491,9 +2548,9 @@ function p_parse_extern_decl() {
   node_set_data1(node, name);
   node_set_data2(node, generics);
   node_set_data5(node, destructor_name);
-  return node;
+  return ((typeof Ok === "function") ? Ok({value: node}) : ({ __tag: "Ok", value: node }));
 }
-  return panic("Expected fn, let, or type after extern");
+  return p_result_error("E_PARSE_EXPECTED_TOKEN", "Expected fn, let, or type after extern", "External declarations must be functions, variables, or types", "Add fn, let, or type keyword after extern");
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.p_parse_extern_decl = p_parse_extern_decl;
 
@@ -2594,35 +2651,35 @@ function p_parse_decl_modifiers() {
   if (p_at(TK_KEYWORD, "out")) {
   p_eat();
   if ((exported === 1)) {
-  panic("Duplicate 'out' modifier");
+  p_panic_loc("E_PARSE_DUPLICATE_MODIFIER", "Duplicate 'out' modifier", "The 'out' modifier was specified more than once", "Remove duplicate 'out' modifiers, keeping only one");
 }
   exported = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.exported = exported;
 } else { if (p_at(TK_KEYWORD, "extern")) {
   p_eat();
   if ((extern_decl === 1)) {
-  panic("Duplicate 'extern' modifier");
+  p_panic_loc("E_PARSE_DUPLICATE_MODIFIER", "Duplicate 'extern' modifier", "The 'extern' modifier was specified more than once", "Remove duplicate 'extern' modifiers, keeping only one");
 }
   extern_decl = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.extern_decl = extern_decl;
 } else { if (p_at(TK_KEYWORD, "copy")) {
   p_eat();
   if ((copy_decl === 1)) {
-  panic("Duplicate 'copy' modifier");
+  p_panic_loc("E_PARSE_DUPLICATE_MODIFIER", "Duplicate 'copy' modifier", "The 'copy' modifier was specified more than once", "Remove duplicate 'copy' modifiers, keeping only one");
 }
   copy_decl = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.copy_decl = copy_decl;
 } else { if ((p_at(TK_KEYWORD, "expect") || (p_at(TK_IDENTIFIER, "expect") && ((tok_kind(p_peek(1)) === TK_KEYWORD) || (tok_kind(p_peek(1)) === TK_IDENTIFIER))))) {
   p_eat();
   if ((expect_decl === 1)) {
-  panic("Duplicate 'expect' modifier");
+  p_panic_loc("E_PARSE_DUPLICATE_MODIFIER", "Duplicate 'expect' modifier", "The 'expect' modifier was specified more than once", "Remove duplicate 'expect' modifiers, keeping only one");
 }
   expect_decl = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.expect_decl = expect_decl;
 } else { if ((p_at(TK_KEYWORD, "actual") || (p_at(TK_IDENTIFIER, "actual") && ((tok_kind(p_peek(1)) === TK_KEYWORD) || (tok_kind(p_peek(1)) === TK_IDENTIFIER))))) {
   p_eat();
   if ((actual_decl === 1)) {
-  panic("Duplicate 'actual' modifier");
+  p_panic_loc("E_PARSE_DUPLICATE_MODIFIER", "Duplicate 'actual' modifier", "The 'actual' modifier was specified more than once", "Remove duplicate 'actual' modifiers, keeping only one");
 }
   actual_decl = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.actual_decl = actual_decl;
 } else {
-  panic("Unexpected declaration modifier");
+  p_panic_loc("E_PARSE_INVALID_MODIFIER", "Unexpected declaration modifier", "Encountered an unrecognized or invalid modifier", "Use only valid modifiers: out, extern, copy, expect, actual");
 } } } } }
 }
   let mods = vec_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.mods = mods;
@@ -2640,21 +2697,21 @@ const __tuff_outer_for_p_parse_after_modifiers = typeof __tuff_this !== 'undefin
 function p_parse_after_modifiers(exported, extern_decl, copy_decl, expect_decl, actual_decl) {
   let __tuff_this = { exported: exported, extern_decl: extern_decl, copy_decl: copy_decl, expect_decl: expect_decl, actual_decl: actual_decl, this: __tuff_outer_for_p_parse_after_modifiers };
   if (((expect_decl === 1) && (actual_decl === 1))) {
-  panic("Cannot combine 'expect' and 'actual' modifiers");
+  return p_result_error("E_PARSE_CONFLICTING_MODIFIERS", "Cannot combine 'expect' and 'actual' modifiers", "These modifiers are mutually exclusive", "Use either 'expect' or 'actual', not both");
 }
   let out_node = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.out_node = out_node;
   if ((extern_decl === 1)) {
   if ((copy_decl === 1)) {
-  panic("'copy' is not supported on extern declarations");
+  return p_result_error("E_PARSE_INVALID_MODIFIER", "'copy' is not supported on extern declarations", "External declarations cannot use the copy modifier", "Remove the 'copy' modifier from extern declarations");
 }
   if (((expect_decl === 1) || (actual_decl === 1))) {
-  panic("'expect'/'actual' are not supported on extern declarations");
+  return p_result_error("E_PARSE_INVALID_MODIFIER", "'expect'/'actual' are not supported on extern declarations", "External declarations cannot use expect/actual modifiers", "Remove the 'expect'/'actual' modifiers from extern declarations");
 }
   if (p_at(TK_KEYWORD, "extern")) {
   p_eat();
 }
   if ((!((p_at(TK_KEYWORD, "fn") || p_at(TK_KEYWORD, "let")) || p_at(TK_KEYWORD, "type")))) {
-  panic("'extern' modifier must be followed by fn, let, or type declaration");
+  return p_result_error("E_PARSE_INVALID_MODIFIER", "'extern' modifier must be followed by fn, let, or type declaration", "The extern modifier can only be used with function, variable, or type declarations", "Add fn, let, or type after extern");
 }
   out_node = p_parse_extern_decl(); if (typeof __tuff_this !== 'undefined') __tuff_this.out_node = out_node;
 } else { if (p_at(TK_KEYWORD, "struct")) {
@@ -2663,25 +2720,25 @@ function p_parse_after_modifiers(exported, extern_decl, copy_decl, expect_decl, 
   out_node = p_parse_enum(); if (typeof __tuff_this !== 'undefined') __tuff_this.out_node = out_node;
 } else { if (p_at(TK_KEYWORD, "object")) {
   if ((copy_decl === 1)) {
-  panic("'copy' is only supported on struct/type declarations");
+  return p_result_error("E_PARSE_INVALID_MODIFIER", "'copy' is only supported on struct/type declarations", "The copy modifier can only be used with struct or type declarations", "Remove 'copy' or use it with struct/type declarations");
 }
   if (((expect_decl === 1) || (actual_decl === 1))) {
-  panic("'expect'/'actual' are currently supported only on fn declarations");
+  return p_result_error("E_PARSE_INVALID_MODIFIER", "'expect'/'actual' are currently supported only on fn declarations", "These modifiers are only available for function declarations", "Remove 'expect'/'actual' or use them with fn declarations");
 }
   out_node = p_parse_object(); if (typeof __tuff_this !== 'undefined') __tuff_this.out_node = out_node;
 } else { if (p_at(TK_KEYWORD, "contract")) {
   if ((copy_decl === 1)) {
-  panic("'copy' is only supported on struct/type declarations");
+  return p_result_error("E_PARSE_INVALID_MODIFIER", "'copy' is only supported on struct/type declarations", "The copy modifier can only be used with struct or type declarations", "Remove 'copy' or use it with struct/type declarations");
 }
   if (((expect_decl === 1) || (actual_decl === 1))) {
-  panic("'expect'/'actual' are currently supported only on fn declarations");
+  return p_result_error("E_PARSE_INVALID_MODIFIER", "'expect'/'actual' are currently supported only on fn declarations", "These modifiers are only available for function declarations", "Remove 'expect'/'actual' or use them with fn declarations");
 }
   out_node = p_parse_contract(); if (typeof __tuff_this !== 'undefined') __tuff_this.out_node = out_node;
 } else { if (p_at(TK_KEYWORD, "type")) {
   out_node = p_parse_type_alias(copy_decl); if (typeof __tuff_this !== 'undefined') __tuff_this.out_node = out_node;
 } else { if (p_at(TK_KEYWORD, "fn")) {
   if ((copy_decl === 1)) {
-  panic("'copy' is only supported on struct/type declarations");
+  return p_result_error("E_PARSE_INVALID_MODIFIER", "'copy' is only supported on struct/type declarations", "The copy modifier can only be used with struct or type declarations", "Remove 'copy' or use it with struct/type declarations");
 }
   let mode = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.mode = mode;
   if ((expect_decl === 1)) {
@@ -2692,23 +2749,24 @@ function p_parse_after_modifiers(exported, extern_decl, copy_decl, expect_decl, 
   out_node = p_parse_function(0, mode); if (typeof __tuff_this !== 'undefined') __tuff_this.out_node = out_node;
 } else { if (p_at(TK_KEYWORD, "class")) {
   if ((copy_decl === 1)) {
-  panic("'copy' is only supported on struct/type declarations");
+  return p_result_error("E_PARSE_INVALID_MODIFIER", "'copy' is only supported on struct/type declarations", "The copy modifier can only be used with struct or type declarations", "Remove 'copy' or use it with struct/type declarations");
 }
   if (((expect_decl === 1) || (actual_decl === 1))) {
-  panic("'expect'/'actual' are currently supported only on fn declarations");
+  return p_result_error("E_PARSE_INVALID_MODIFIER", "'expect'/'actual' are currently supported only on fn declarations", "These modifiers are only available for function declarations", "Remove 'expect'/'actual' or use them with fn declarations");
 }
   p_eat();
   out_node = p_parse_function(1, 0); if (typeof __tuff_this !== 'undefined') __tuff_this.out_node = out_node;
 } else { if (p_at(TK_KEYWORD, "module")) {
   if ((copy_decl === 1)) {
-  panic("'copy' is only supported on struct/type declarations");
+  return p_result_error("E_PARSE_INVALID_MODIFIER", "'copy' is only supported on struct/type declarations", "The copy modifier can only be used with struct or type declarations", "Remove 'copy' or use it with struct/type declarations");
 }
   if (((expect_decl === 1) || (actual_decl === 1))) {
-  panic("'expect'/'actual' are currently supported only on fn declarations");
+  return p_result_error("E_PARSE_INVALID_MODIFIER", "'expect'/'actual' are currently supported only on fn declarations", "These modifiers are only available for function declarations", "Remove 'expect'/'actual' or use them with fn declarations");
 }
   out_node = p_parse_module_wrapper(); if (typeof __tuff_this !== 'undefined') __tuff_this.out_node = out_node;
 } else {
   p_error_with_token_context("Expected declaration after modifiers");
+  return ((typeof Err === "function") ? Err({error: ((typeof ParseError === "function") ? ParseError({code: "E_PARSE_UNEXPECTED_TOKEN", message: "Unreachable", reason: "", fix: "", line: 0, col: 0}) : ({ __tag: "ParseError", code: "E_PARSE_UNEXPECTED_TOKEN", message: "Unreachable", reason: "", fix: "", line: 0, col: 0 }))}) : ({ __tag: "Err", error: ((typeof ParseError === "function") ? ParseError({code: "E_PARSE_UNEXPECTED_TOKEN", message: "Unreachable", reason: "", fix: "", line: 0, col: 0}) : ({ __tag: "ParseError", code: "E_PARSE_UNEXPECTED_TOKEN", message: "Unreachable", reason: "", fix: "", line: 0, col: 0 })) }));
 } } } } } } } } }
   if (((exported === 1) && (node_kind(out_node) !== NK_STMT_LIST))) {
   (() => { const __recv = parse_exports; const __prop = __recv?.["set_add"]; if (typeof __prop === "function") return __prop(get_interned_str(node_get_data1(out_node))); const __dyn = __recv?.table?.set_add; return __dyn ? __dyn(__recv.ref, get_interned_str(node_get_data1(out_node))) : set_add(__recv, get_interned_str(node_get_data1(out_node))); })();
@@ -2716,7 +2774,8 @@ function p_parse_after_modifiers(exported, extern_decl, copy_decl, expect_decl, 
   if (p_at(TK_SYMBOL, ";")) {
   p_eat();
 }
-  return out_node;
+  let success_result = ((typeof Ok === "function") ? Ok({value: out_node}) : ({ __tag: "Ok", value: out_node })); if (typeof __tuff_this !== 'undefined') __tuff_this.success_result = success_result;
+  return success_result;
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.p_parse_after_modifiers = p_parse_after_modifiers;
 
@@ -2937,7 +2996,8 @@ function p_parse_statement() {
   let __tuff_this = { this: __tuff_outer_for_p_parse_statement };
   let mods = p_parse_decl_modifiers(); if (typeof __tuff_this !== 'undefined') __tuff_this.mods = mods;
   if (((() => { const __recv = mods; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(5); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 5) : vec_get(__recv, 5); })() === 1)) {
-  return p_parse_after_modifiers((() => { const __recv = mods; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(0); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })(), (() => { const __recv = mods; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(1); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 1) : vec_get(__recv, 1); })(), (() => { const __recv = mods; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(2); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 2) : vec_get(__recv, 2); })(), (() => { const __recv = mods; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(3); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 3) : vec_get(__recv, 3); })(), (() => { const __recv = mods; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(4); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 4) : vec_get(__recv, 4); })());
+  let mod_result = (() => { const __m = p_parse_after_modifiers((() => { const __recv = mods; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(0); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })(), (() => { const __recv = mods; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(1); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 1) : vec_get(__recv, 1); })(), (() => { const __recv = mods; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(2); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 2) : vec_get(__recv, 2); })(), (() => { const __recv = mods; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(3); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 3) : vec_get(__recv, 3); })(), (() => { const __recv = mods; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(4); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 4) : vec_get(__recv, 4); })()); if (__m && __m.__tag === "Ok") { const value = __m.value; return value; } else if (__m && __m.__tag === "Err") { const error = __m.error; return panic_with_code_loc(error.code, error.message, error.reason, error.fix, error.line, error.col); } else if (true) { return panic("Unexpected parser result"); } else { throw new Error("Non-exhaustive match"); } })(); if (typeof __tuff_this !== 'undefined') __tuff_this.mod_result = mod_result;
+  return mod_result;
 }
   let node = p_try_parse_plain_decl_statement(); if (typeof __tuff_this !== 'undefined') __tuff_this.node = node;
   if ((node !== 0)) {
@@ -7543,6 +7603,8 @@ function selfhost_codegen_stmt_marker() {
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.selfhost_codegen_stmt_marker = selfhost_codegen_stmt_marker;
 
+function CodegenError(fields = {}) { return { __tag: "CodegenError", code: fields.code, message: fields.message, reason: fields.reason, fix: fields.fix, line: fields.line, col: fields.col }; }
+
 let cc_temp_counter = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.cc_temp_counter = cc_temp_counter;
 
 let cc_enum_names = set_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.cc_enum_names = cc_enum_names;
@@ -10218,6 +10280,12 @@ function selfhost_module_loader_utils_marker() {
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.selfhost_module_loader_utils_marker = selfhost_module_loader_utils_marker;
 
+let MODULE_WATCHDOG_MAX_RECURSION_DEPTH = 2048; if (typeof __tuff_this !== 'undefined') __tuff_this.MODULE_WATCHDOG_MAX_RECURSION_DEPTH = MODULE_WATCHDOG_MAX_RECURSION_DEPTH;
+
+let MODULE_WATCHDOG_MAX_IMPORTS_PER_MODULE = 200000; if (typeof __tuff_this !== 'undefined') __tuff_this.MODULE_WATCHDOG_MAX_IMPORTS_PER_MODULE = MODULE_WATCHDOG_MAX_IMPORTS_PER_MODULE;
+
+let MODULE_WATCHDOG_MAX_SOURCEMAP_ENTRIES = 200000; if (typeof __tuff_this !== 'undefined') __tuff_this.MODULE_WATCHDOG_MAX_SOURCEMAP_ENTRIES = MODULE_WATCHDOG_MAX_SOURCEMAP_ENTRIES;
+
 const __tuff_outer_for_module_emit_target_output = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
 function module_emit_target_output(typed, merged_source, target) {
   let __tuff_this = { typed: typed, merged_source: merged_source, target: target, this: __tuff_outer_for_module_emit_target_output };
@@ -10506,6 +10574,9 @@ function module_walk_imports(imports, moduleBasePath, seen, visiting, sources, m
   let __tuff_this = { imports: imports, moduleBasePath: moduleBasePath, seen: seen, visiting: visiting, sources: sources, module_paths: module_paths, module_declared_map: module_declared_map, module_exported_map: module_exported_map, module_source_cache: module_source_cache, import_path_cache: import_path_cache, all_declared_names: all_declared_names, all_exported_declared_names: all_exported_declared_names, all_extern_declared_names: all_extern_declared_names, lint_enabled: lint_enabled, max_effective_lines: max_effective_lines, module_cycles: module_cycles, recursion_depth: recursion_depth, this: __tuff_outer_for_module_walk_imports };
   let i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
   let len = (() => { const __recv = imports; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.len = len;
+  if ((len > MODULE_WATCHDOG_MAX_IMPORTS_PER_MODULE)) {
+  panic_with_code("E_MODULE_LOADER_WATCHDOG_IMPORTS", "Import fan-out exceeded safety limit while walking module imports", "A single module produced too many import edges, indicating malformed AST or a loader loop.", "Inspect the module import list and parser output for duplicate or non-terminating import expansion.");
+}
   while ((i < len)) {
   let spec = (() => { const __recv = imports; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.spec = spec;
   let depPath = (() => { const __recv = spec; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(0); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.depPath = depPath;
@@ -10744,6 +10815,9 @@ if (typeof __tuff_this !== 'undefined') __tuff_this.module_has_out_export = modu
 const __tuff_outer_for_gather_module_sources = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
 function gather_module_sources(filePath, moduleBasePath, seen, visiting, sources, module_paths, module_declared_map, module_exported_map, module_source_cache, import_path_cache, all_declared_names, all_exported_declared_names, all_extern_declared_names, lint_enabled, max_effective_lines, module_cycles, recursion_depth) {
   let __tuff_this = { filePath: filePath, moduleBasePath: moduleBasePath, seen: seen, visiting: visiting, sources: sources, module_paths: module_paths, module_declared_map: module_declared_map, module_exported_map: module_exported_map, module_source_cache: module_source_cache, import_path_cache: import_path_cache, all_declared_names: all_declared_names, all_exported_declared_names: all_exported_declared_names, all_extern_declared_names: all_extern_declared_names, lint_enabled: lint_enabled, max_effective_lines: max_effective_lines, module_cycles: module_cycles, recursion_depth: recursion_depth, this: __tuff_outer_for_gather_module_sources };
+  if ((recursion_depth > MODULE_WATCHDOG_MAX_RECURSION_DEPTH)) {
+  panic_with_code("E_MODULE_LOADER_WATCHDOG_RECURSION", (() => { const __recv = "Module loader recursion depth exceeded while loading "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(filePath); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, filePath) : str_concat(__recv, filePath); })(), "The module graph walk did not converge and exceeded the recursion safety limit.", "Check import cycles and path normalization; ensure modules are de-duplicated by normalized absolute path.");
+}
   filePath = module_normalize_path(filePath); if (typeof __tuff_this !== 'undefined') __tuff_this.filePath = filePath;
   moduleBasePath = module_normalize_path(moduleBasePath); if (typeof __tuff_this !== 'undefined') __tuff_this.moduleBasePath = moduleBasePath;
   if ((() => { const __recv = seen; const __prop = __recv?.["set_has"]; if (typeof __prop === "function") return __prop(filePath); const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, filePath) : set_has(__recv, filePath); })()) {
@@ -10826,11 +10900,16 @@ function compile_file_with_options(inputPath, outputPath, lint_enabled, max_effe
   gather_prof_reset();
   lint_reset();
   sourcemap_init();
+  print_error("[selfhost] phase: gather-modules:start");
   let t0 = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t0 = t0;
   gather_module_sources(inputPath, moduleBasePath, seen, visiting, sources, module_paths, module_declared_map, module_exported_map, module_source_cache, import_path_cache, all_declared_names, all_exported_declared_names, all_extern_declared_names, lint, max_lines, module_cycles, 0);
   let t1 = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t1 = t1;
+  print_error((() => { const __recv = (() => { const __recv = (() => { const __recv = "[selfhost] phase: gather-modules:done modules="; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string(gather_prof_modules)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(gather_prof_modules)) : str_concat(__recv, int_to_string(gather_prof_modules)); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(" ms="); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " ms=") : str_concat(__recv, " ms="); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string((t1 - t0))); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string((t1 - t0))) : str_concat(__recv, int_to_string((t1 - t0))); })());
   let sm_i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.sm_i = sm_i;
   let sm_line = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.sm_line = sm_line;
+  if (((() => { const __recv = module_paths; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })() > MODULE_WATCHDOG_MAX_SOURCEMAP_ENTRIES)) {
+  panic_with_code("E_MODULE_LOADER_WATCHDOG_SOURCEMAP", "Sourcemap entry count exceeded safety limit", "Module collection produced an unexpectedly large number of source segments.", "Inspect module graph expansion and ensure duplicate modules are not repeatedly re-added.");
+}
   while ((sm_i < (() => { const __recv = module_paths; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })())) {
   let sm_path = (() => { const __recv = module_paths; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(sm_i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, sm_i) : vec_get(__recv, sm_i); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.sm_path = sm_path;
   let sm_src = (() => { const __recv = sources; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(sm_i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, sm_i) : vec_get(__recv, sm_i); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.sm_src = sm_src;
@@ -10841,17 +10920,23 @@ function compile_file_with_options(inputPath, outputPath, lint_enabled, max_effe
   let joined = join_sources(sources); if (typeof __tuff_this !== 'undefined') __tuff_this.joined = joined;
   let merged = module_with_c_runtime_prelude(joined, target); if (typeof __tuff_this !== 'undefined') __tuff_this.merged = merged;
   let t2 = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t2 = t2;
+  print_error("[selfhost] phase: lex-parse-merged:start");
   lex_init(merged);
   lex_all();
   parse_init();
   let program = p_parse_program(); if (typeof __tuff_this !== 'undefined') __tuff_this.program = program;
   program = strip_import_decls(program); if (typeof __tuff_this !== 'undefined') __tuff_this.program = program;
   let t3 = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t3 = t3;
+  print_error("[selfhost] phase: desugar:start");
   let desugared = desugar(program); if (typeof __tuff_this !== 'undefined') __tuff_this.desugared = desugared;
-  let resolved_result = (() => { const __m = resolve_names(desugared); if (__m && __m.__tag === "Ok") { const value = __m.value; return value; } else if (__m && __m.__tag === "Err") { const error = __m.error; return panic((() => { const __recv = "Resolver error: "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(error.message); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, error.message) : str_concat(__recv, error.message); })()); } else { throw new Error("Non-exhaustive match"); } })(); if (typeof __tuff_this !== 'undefined') __tuff_this.resolved_result = resolved_result;
+  print_error("[selfhost] phase: resolve:start");
+  let resolved_result_any = resolve_names(desugared); if (typeof __tuff_this !== 'undefined') __tuff_this.resolved_result_any = resolved_result_any;
+  let resolved_result = (() => { const __m = resolved_result_any; if (__m && __m.__tag === "Ok") { const value = __m.value; return value; } else if (__m && __m.__tag === "Err") { const error = __m.error; return panic((() => { const __recv = "Resolver error: "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(error.message); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, error.message) : str_concat(__recv, error.message); })()); } else if (true) { return resolved_result_any; } else { throw new Error("Non-exhaustive match"); } })(); if (typeof __tuff_this !== 'undefined') __tuff_this.resolved_result = resolved_result;
   let resolved = resolved_result; if (typeof __tuff_this !== 'undefined') __tuff_this.resolved = resolved;
   let t4 = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t4 = t4;
-  let typed_result = (() => { const __m = typecheck_program_with_options(resolved); if (__m && __m.__tag === "Ok") { const value = __m.value; return value; } else if (__m && __m.__tag === "Err") { const error = __m.error; return panic((() => { const __recv = "Typechecker error: "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(error.message); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, error.message) : str_concat(__recv, error.message); })()); } else { throw new Error("Non-exhaustive match"); } })(); if (typeof __tuff_this !== 'undefined') __tuff_this.typed_result = typed_result;
+  print_error("[selfhost] phase: typecheck:start");
+  let typed_result_any = typecheck_program_with_options(resolved); if (typeof __tuff_this !== 'undefined') __tuff_this.typed_result_any = typed_result_any;
+  let typed_result = (() => { const __m = typed_result_any; if (__m && __m.__tag === "Ok") { const value = __m.value; return value; } else if (__m && __m.__tag === "Err") { const error = __m.error; return panic((() => { const __recv = "Typechecker error: "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(error.message); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, error.message) : str_concat(__recv, error.message); })()); } else if (true) { return typed_result_any; } else { throw new Error("Non-exhaustive match"); } })(); if (typeof __tuff_this !== 'undefined') __tuff_this.typed_result = typed_result;
   let typed = typed_result; if (typeof __tuff_this !== 'undefined') __tuff_this.typed = typed;
   let t5 = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t5 = t5;
   let t6 = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t6 = t6;
@@ -10865,8 +10950,10 @@ function compile_file_with_options(inputPath, outputPath, lint_enabled, max_effe
 }
 }
   let t7 = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t7 = t7;
+  print_error((() => { const __recv = "[selfhost] phase: emit:start target="; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(target); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, target) : str_concat(__recv, target); })());
   let emitted = module_emit_target_output(typed, merged, target); if (typeof __tuff_this !== 'undefined') __tuff_this.emitted = emitted;
   let t8 = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t8 = t8;
+  print_error((() => { const __recv = "[selfhost] phase: done total-ms="; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string((t8 - t0))); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string((t8 - t0))) : str_concat(__recv, int_to_string((t8 - t0))); })());
   return write_file(outputPath, emitted);
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.compile_file_with_options = compile_file_with_options;
@@ -12818,17 +12905,17 @@ function selfhost_formatter_marker() {
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.selfhost_formatter_marker = selfhost_formatter_marker;
 
-// extern from globalThis
 
-// extern from globalThis
 
-// extern from globalThis
 
-// extern fn __host_get_c_substrate
 
-// extern fn __host_get_c_runtime_prelude_source
 
-// extern fn __host_emit_target_from_source
+
+
+
+
+
+
 
 const __tuff_outer_for_sanitize_max_effective_lines = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
 function sanitize_max_effective_lines(max_effective_lines) {
@@ -12910,12 +12997,14 @@ function compile_source_with_options(source, lint_enabled, max_effective_lines, 
   let t3_desugar = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t3_desugar = t3_desugar;
   profile_mark("desugar", (t3_desugar - t2_desugar));
   let t3_resolve = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t3_resolve = t3_resolve;
-  let resolved_result = (() => { const __m = resolve_names(desugared); if (__m && __m.__tag === "Ok") { const value = __m.value; return value; } else if (__m && __m.__tag === "Err") { const error = __m.error; return panic((() => { const __recv = "Resolver error: "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(error.message); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, error.message) : str_concat(__recv, error.message); })()); } else { throw new Error("Non-exhaustive match"); } })(); if (typeof __tuff_this !== 'undefined') __tuff_this.resolved_result = resolved_result;
+  let resolved_result_any = resolve_names(desugared); if (typeof __tuff_this !== 'undefined') __tuff_this.resolved_result_any = resolved_result_any;
+  let resolved_result = (() => { const __m = resolved_result_any; if (__m && __m.__tag === "Ok") { const value = __m.value; return value; } else if (__m && __m.__tag === "Err") { const error = __m.error; return panic((() => { const __recv = "Resolver error: "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(error.message); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, error.message) : str_concat(__recv, error.message); })()); } else if (true) { return resolved_result_any; } else { throw new Error("Non-exhaustive match"); } })(); if (typeof __tuff_this !== 'undefined') __tuff_this.resolved_result = resolved_result;
   let resolved = resolved_result; if (typeof __tuff_this !== 'undefined') __tuff_this.resolved = resolved;
   let t4_resolve = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t4_resolve = t4_resolve;
   profile_mark("resolve", (t4_resolve - t3_resolve));
   let t4_typecheck = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t4_typecheck = t4_typecheck;
-  let typed_result = (() => { const __m = typecheck_program_with_options(resolved); if (__m && __m.__tag === "Ok") { const value = __m.value; return value; } else if (__m && __m.__tag === "Err") { const error = __m.error; return panic((() => { const __recv = "Typechecker error: "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(error.message); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, error.message) : str_concat(__recv, error.message); })()); } else { throw new Error("Non-exhaustive match"); } })(); if (typeof __tuff_this !== 'undefined') __tuff_this.typed_result = typed_result;
+  let typed_result_any = typecheck_program_with_options(resolved); if (typeof __tuff_this !== 'undefined') __tuff_this.typed_result_any = typed_result_any;
+  let typed_result = (() => { const __m = typed_result_any; if (__m && __m.__tag === "Ok") { const value = __m.value; return value; } else if (__m && __m.__tag === "Err") { const error = __m.error; return panic((() => { const __recv = "Typechecker error: "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(error.message); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, error.message) : str_concat(__recv, error.message); })()); } else if (true) { return typed_result_any; } else { throw new Error("Non-exhaustive match"); } })(); if (typeof __tuff_this !== 'undefined') __tuff_this.typed_result = typed_result;
   let typed = typed_result; if (typeof __tuff_this !== 'undefined') __tuff_this.typed = typed;
   let t5_typecheck = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t5_typecheck = t5_typecheck;
   profile_mark("typecheck", (t5_typecheck - t4_typecheck));

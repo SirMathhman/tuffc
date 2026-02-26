@@ -19,7 +19,7 @@ let {
 }
  = selfhost::errors::ResolveError;
 let {
-    selfhost_runtime_lexer_marker
+    selfhost_runtime_lexer_marker, perf_now, print_error, profile_take_json
 }
  = selfhost::runtime_lexer;
 let {
@@ -196,21 +196,23 @@ borrow_enabled: I32, target: *Str) : *Str => {
     let t3_desugar = perf_now();
     profile_mark("desugar", t3_desugar - t2_desugar);
     let t3_resolve = perf_now();
-    let resolved_result = match (resolve_names(desugared)) {
+    let resolved_result_any = resolve_names(desugared);
+    let resolved_result = match (resolved_result_any) {
         case Ok { value } = value;
         case Err { error } = 
             panic("Resolver error: ".str_concat(error.message));
-        case _ = panic("Unexpected resolver result");
+        case _ = resolved_result_any;
     };
     let resolved = resolved_result;
     let t4_resolve = perf_now();
     profile_mark("resolve", t4_resolve - t3_resolve);
     let t4_typecheck = perf_now();
-    let typed_result = match (typecheck_program_with_options(resolved)) {
+    let typed_result_any = typecheck_program_with_options(resolved);
+    let typed_result = match (typed_result_any) {
         case Ok { value } = value;
         case Err { error } = 
             panic("Typechecker error: ".str_concat(error.message));
-        case _ = panic("Unexpected typecheck result");
+        case _ = typed_result_any;
     };
     let typed = typed_result;
     let t5_typecheck = perf_now();

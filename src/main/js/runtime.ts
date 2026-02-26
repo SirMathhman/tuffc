@@ -41,6 +41,13 @@ export function str_index_of(s: string, needle: string): number {
   return s.indexOf(needle);
 }
 
+export function __str_index_of(s: string, needle: string): number {
+  return str_index_of(s, needle);
+}
+export function __profile_take_json(): string {
+  return profile_take_json();
+}
+
 export function str_includes(s: string, needle: string): boolean {
   return s.includes(needle);
 }
@@ -63,6 +70,10 @@ export function char_code(ch: string): number {
 
 export function int_to_string(n: number): string {
   return String(n);
+}
+
+export function __int_to_string(n: number): string {
+  return int_to_string(n);
 }
 
 export function parse_int(s: string): number {
@@ -461,6 +472,11 @@ export function print_error(s: unknown): void {
   console.error(s);
 }
 
+export function __print_error(s: unknown): number {
+  print_error(s);
+  return 0;
+}
+
 // === Misc ===
 function inferSelfhostDiagnosticCode(msg: string): string {
   if (msg.startsWith("Expected ")) return "E_PARSE_EXPECTED_TOKEN";
@@ -734,6 +750,10 @@ const profileMarks: Array<{ label: string; ms: number }> = [];
 export function perf_now(): number {
   // Return milliseconds as I32-compatible value
   return Math.floor(performance.now());
+}
+
+export function __perf_now(): number {
+  return perf_now();
 }
 
 export function profile_mark(label: string, duration_ms: number): number {

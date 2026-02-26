@@ -1,0 +1,79 @@
+// Test: Result with compiler error types
+// Demonstrates using the compiler's ParseError type
+
+struct Ok<T> {
+    value: T
+}
+
+struct Err<E> {
+    error: E
+}
+
+type Result<T, E> = Ok<T> | Err<E>;
+
+struct ParseError {
+    code: *Str,
+    message: *Str,
+    reason: *Str,
+    fix: *Str,
+    line: I32,
+    col: I32
+}
+
+// Function that validates identifier format
+fn validate_identifier(name: *Str) : Result<I32, ParseError> => {
+    let len = name.str_length();
+    if (len == 0) {
+        return Err<ParseError> {
+            error: ParseError {
+                code: "E_PARSE_EMPTY_IDENTIFIER",
+                message: "Identifier cannot be empty",
+                reason: "Identifiers must contain at least one character",
+                fix: "Provide a non-empty identifier name",
+                line: 0,
+                col: 0
+            }
+        };
+    }
+    
+    // Simulate success - return some node ID
+    return Ok<I32> {
+        value: 42
+    };
+}
+
+// Test valid identifier
+fn test_valid_identifier() : I32 => {
+    let result = validate_identifier("myVar");
+    match (result) {
+        case Ok { value } = value;
+        case Err { error } = -999;
+    }
+}
+
+// Test empty identifier
+fn test_empty_identifier() : I32 => {
+    let result = validate_identifier("");
+    match (result) {
+        case Ok { value } = -998;
+        case Err { error } = if (error.code == "E_PARSE_EMPTY_IDENTIFIER") {
+            -1
+        } else {
+            -997
+        };
+    }
+}
+
+out fn main() : I32 => {
+    let valid = test_valid_identifier();
+    if (valid != 42) {
+        panic("Expected test_valid_identifier() to return 42");
+    }
+    
+    let invalid = test_empty_identifier();
+    if (invalid != -1) {
+        panic("Expected test_empty_identifier() to return -1");
+    }
+    
+    0
+}

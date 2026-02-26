@@ -1,5 +1,5 @@
 let {
-    get_intern, tok_kind, tok_value, vec_new
+    get_intern, tok_kind, tok_value, vec_new, int_to_string
 }
  = selfhost::runtime_lexer;
 let {

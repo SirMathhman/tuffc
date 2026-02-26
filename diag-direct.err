@@ -1,0 +1,15 @@
+[tuffc] starting: ./src/main/tuff/selfhost.tuff
+[tuffc] loading selfhost compiler (2297 KB)...
+[tuffc] bridge probe {"str_replace_all":"function","int_to_string":"function","module_normalize_path":"function","sample_norm":"a/b","sample_i2s":"<no-int-to-string-out>"}
+[tuffc] selfhost compiler loaded in 24ms
+[tuffc] compiling selfhost.tuff (lint=0, borrow=0, target=js)...
+[selfhost] phase: gather-modules:start
+[selfhost] phase: gather-modules:done modules=34 ms=3595
+[selfhost] phase: lex-parse-merged:start
+[selfhost] phase: desugar:start
+[selfhost] phase: resolve:start
+[selfhost] phase: typecheck:start
+[selfhost] phase: emit:start target=js
+[selfhost] phase: done total-ms=117040
+[tuffc] compilation done in 117045ms
+[tuffc] finished in 117114ms (ok)

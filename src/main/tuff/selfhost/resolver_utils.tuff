@@ -1,5 +1,5 @@
 let {
-    get_interned_str, vec_new
+    get_interned_str, vec_new, int_to_string
 }
  = selfhost::runtime_lexer;
 let {

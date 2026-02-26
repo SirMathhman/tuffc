@@ -210,7 +210,6 @@ function loadStage3WithCSupport(stage3JsPath: string) {
       backend: "selfhost",
       target: target as "js" | "c",
       lint: { enabled: false },
-      typecheck: { strictSafety: false },
     });
     if (!r.ok) throw r.error;
     return r.value.output;

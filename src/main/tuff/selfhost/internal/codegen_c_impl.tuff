@@ -13,7 +13,7 @@ let {
 }
  = selfhost::errors::CodegenError;
 let {
-    get_interned_str, vec_new, map_new, set_new
+    get_interned_str, vec_new, map_new, set_new, int_to_string
 }
  = selfhost::runtime_lexer;
 let {

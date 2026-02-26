@@ -2,7 +2,7 @@
  // Name Resolution - skip for now, minimal implementation
  // ============================================================================
 let {
-    get_interned_str, set_new, vec_new, map_new
+    get_interned_str, set_new, vec_new, map_new, int_to_string
 }
  = selfhost::runtime_lexer;
 let {

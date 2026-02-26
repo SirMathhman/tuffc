@@ -1,0 +1,64 @@
+// Test: Result<T, E> basic usage
+// Tests that the compiler can parse, typecheck, and compile Result types
+
+struct Ok<T> {
+    value: T
+}
+
+struct Err<E> {
+    error: E
+}
+
+type Result<T, E> = Ok<T> | Err<E>;
+
+// Define a simple error type for testing
+struct OperationError {
+    message: *Str
+}
+
+// Function that returns Result - can fail
+fn safe_compute(a: I32, b: I32) : Result<I32, OperationError> => {
+    if (b == 0) {
+        return Err<OperationError> {
+            error: OperationError {
+                message: "Zero input is not allowed"
+            }
+        };
+    }
+    return Ok<I32> {
+        value: a + b
+    };
+}
+
+// Function that handles Result with match
+fn test_division() : I32 => {
+    let result = safe_compute(10, 2);
+    match (result) {
+        case Ok { value } = if (value == 12) 12 else -1;
+        case Err { error } = -1;
+    }
+}
+
+// Test division by zero case
+fn test_division_by_zero() : I32 => {
+    let result = safe_compute(10, 0);
+    match (result) {
+        case Ok { value } = value;
+        case Err { error } = -1;
+    }
+}
+
+// Main entry point
+out fn main() : I32 => {
+    let success = test_division();
+    if (success != 12) {
+        panic("Expected test_division() to return 12");
+    }
+    
+    let error_case = test_division_by_zero();
+    if (error_case != -1) {
+        panic("Expected test_division_by_zero() to return -1");
+    }
+    
+    0
+}

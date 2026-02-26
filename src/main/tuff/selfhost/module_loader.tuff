@@ -1,8 +1,4 @@
-let {
-    get_interned_str, map_new, set_new, vec_new,
-    perf_now, print_error, int_to_string, lex_take_trivia
-}
- = selfhost::runtime_lexer;
+let { get_interned_str, map_new, set_new, vec_new, perf_now, print_error, int_to_string, lex_take_trivia, lex_init, lex_all, str_includes } = selfhost::runtime_lexer;
 let {
     Ok, Err, Result
 }
@@ -11,14 +7,6 @@ let {
     ResolveError
 }
  = selfhost::errors::ResolveError;
-let {
-    lex_init, lex_all
-}
- = selfhost::runtime_lexer;
-let {
-    str_includes
-}
- = selfhost::runtime_lexer;
 let {
     parse_init, node_kind, node_get_data1, node_get_data2, node_get_data3, node_get_data4,
     node_get_data5, node_set_data1
@@ -62,6 +50,9 @@ let {
     module_parts_to_relative_path, module_normalize_path, join_sources, module_with_c_runtime_prelude
 }
  = selfhost::module_loader_utils;
+let MODULE_WATCHDOG_MAX_RECURSION_DEPTH : I32 = 2048;
+let MODULE_WATCHDOG_MAX_IMPORTS_PER_MODULE : I32 = 200000;
+let MODULE_WATCHDOG_MAX_SOURCEMAP_ENTRIES : I32 = 200000;
 let {
     sourcemap_init, sourcemap_add, sourcemap_count_lines, sourcemap_lookup
 }
@@ -328,6 +319,14 @@ all_exported_declared_names: *mut Set<I32>, all_extern_declared_names: *mut Set<
 max_effective_lines: I32, module_cycles: Vec<*Str>, recursion_depth: I32) : I32 => {
     let i = 0;
     let len = imports.vec_length();
+    if (len > MODULE_WATCHDOG_MAX_IMPORTS_PER_MODULE) {
+        panic_with_code(
+        "E_MODULE_LOADER_WATCHDOG_IMPORTS",
+        "Import fan-out exceeded safety limit while walking module imports",
+        "A single module produced too many import edges, indicating malformed AST or a loader loop.",
+        "Inspect the module import list and parser output for duplicate or non-terminating import expansion."
+        );
+    }
     while (i < len) {
         let spec = imports.vec_get(i);
         let depPath = spec.vec_get(0);
@@ -596,6 +595,14 @@ sources: Vec<*Str>, module_paths: Vec<*Str>, module_declared_map: Map<I32, I32>,
 module_source_cache: Map<I32, I32>, import_path_cache: Map<I32, I32>, all_declared_names: *mut Set<I32>,
 all_exported_declared_names: *mut Set<I32>, all_extern_declared_names: *mut Set<I32>, lint_enabled: I32,
 max_effective_lines: I32, module_cycles: Vec<*Str>, recursion_depth: I32) : I32 => {
+    if (recursion_depth > MODULE_WATCHDOG_MAX_RECURSION_DEPTH) {
+        panic_with_code(
+        "E_MODULE_LOADER_WATCHDOG_RECURSION",
+        "Module loader recursion depth exceeded while loading ".str_concat(filePath),
+        "The module graph walk did not converge and exceeded the recursion safety limit.",
+        "Check import cycles and path normalization; ensure modules are de-duplicated by normalized absolute path."
+        );
+    }
     filePath = module_normalize_path(filePath);
     moduleBasePath = module_normalize_path(moduleBasePath);
     if (seen.set_has(filePath)) {
@@ -686,14 +693,24 @@ max_effective_lines: I32, borrow_enabled: I32, target: *Str) : I32 => {
     gather_prof_reset();
     lint_reset();
     sourcemap_init();
+    print_error("[selfhost] phase: gather-modules:start");
     let t0 = perf_now();
     gather_module_sources(inputPath, moduleBasePath, seen, visiting, sources, module_paths,
     module_declared_map, module_exported_map, module_source_cache, import_path_cache,
     all_declared_names, all_exported_declared_names, all_extern_declared_names, lint, max_lines,
     module_cycles, 0);
     let t1 = perf_now();
+    print_error("[selfhost] phase: gather-modules:done modules=".str_concat(int_to_string(gather_prof_modules)).str_concat(" ms=").str_concat(int_to_string(t1 - t0)));
     let sm_i = 0;
     let sm_line = 1;
+    if (module_paths.vec_length() > MODULE_WATCHDOG_MAX_SOURCEMAP_ENTRIES) {
+        panic_with_code(
+        "E_MODULE_LOADER_WATCHDOG_SOURCEMAP",
+        "Sourcemap entry count exceeded safety limit",
+        "Module collection produced an unexpectedly large number of source segments.",
+        "Inspect module graph expansion and ensure duplicate modules are not repeatedly re-added."
+        );
+    }
     while (sm_i < module_paths.vec_length()) {
         let sm_path = module_paths.vec_get(sm_i);
         let sm_src = sources.vec_get(sm_i);
@@ -704,26 +721,32 @@ max_effective_lines: I32, borrow_enabled: I32, target: *Str) : I32 => {
     let joined = join_sources(sources);
     let merged = module_with_c_runtime_prelude(joined, target);
     let t2 = perf_now();
+    print_error("[selfhost] phase: lex-parse-merged:start");
     lex_init(merged);
     lex_all();
     parse_init();
     let program = p_parse_program();
     program = strip_import_decls(program);
     let t3 = perf_now();
+    print_error("[selfhost] phase: desugar:start");
     let desugared = desugar(program);
-    let resolved_result = match (resolve_names(desugared)) {
+    print_error("[selfhost] phase: resolve:start");
+    let resolved_result_any = resolve_names(desugared);
+    let resolved_result = match (resolved_result_any) {
         case Ok { value } = value;
         case Err { error } = 
             panic("Resolver error: ".str_concat(error.message));
-        case _ = panic("Unexpected resolver result");
+        case _ = resolved_result_any;
     };
     let resolved = resolved_result;
     let t4 = perf_now();
-    let typed_result = match (typecheck_program_with_options(resolved)) {
+    print_error("[selfhost] phase: typecheck:start");
+    let typed_result_any = typecheck_program_with_options(resolved);
+    let typed_result = match (typed_result_any) {
         case Ok { value } = value;
         case Err { error } = 
             panic("Typechecker error: ".str_concat(error.message));
-        case _ = panic("Unexpected typecheck result");
+        case _ = typed_result_any;
     };
     let typed = typed_result;
     let t5 = perf_now();
@@ -744,7 +767,9 @@ max_effective_lines: I32, borrow_enabled: I32, target: *Str) : I32 => {
         }
     }
     let t7 = perf_now();
+    print_error("[selfhost] phase: emit:start target=".str_concat(target));
     let emitted = module_emit_target_output(typed, merged, target);
     let t8 = perf_now();
+    print_error("[selfhost] phase: done total-ms=".str_concat(int_to_string(t8 - t0)));
     write_file(outputPath, emitted)
 }
