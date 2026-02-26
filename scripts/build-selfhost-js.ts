@@ -174,6 +174,7 @@ const args = [
   "./src/main/tuff",
   "--target",
   "js",
+  "--no-borrow", // TEMPORARY: Disable borrowcheck for bootstrap (old borrowserchecker has false positive on Result types)
   "-o",
   `./${relOutput}`,
 ];

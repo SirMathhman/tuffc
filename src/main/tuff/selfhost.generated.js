@@ -3824,6 +3824,8 @@ function selfhost_resolver_marker() {
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.selfhost_resolver_marker = selfhost_resolver_marker;
 
+function TypeError(fields = {}) { return { __tag: "TypeError", code: fields.code, message: fields.message, reason: fields.reason, fix: fields.fix, line: fields.line, col: fields.col }; }
+
 let tc_current_node = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.tc_current_node = tc_current_node;
 
 let tc_type_name_cache = map_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.tc_type_name_cache = tc_type_name_cache;
@@ -3834,6 +3836,13 @@ function tc_panic_loc(code, msg, reason, fix) {
   return panic_with_code_loc(code, msg, reason, fix, node_get_line(tc_current_node), node_get_col(tc_current_node));
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.tc_panic_loc = tc_panic_loc;
+
+const __tuff_outer_for_tc_result_error = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function tc_result_error(code, msg, reason, fix) {
+  let __tuff_this = { code: code, msg: msg, reason: reason, fix: fix, this: __tuff_outer_for_tc_result_error };
+  return ((typeof Err === "function") ? Err({error: ((typeof TypeError === "function") ? TypeError({code: code, message: msg, reason: reason, fix: fix, line: node_get_line(tc_current_node), col: node_get_col(tc_current_node)}) : ({ __tag: "TypeError", code: code, message: msg, reason: reason, fix: fix, line: node_get_line(tc_current_node), col: node_get_col(tc_current_node) }))}) : ({ __tag: "Err", error: ((typeof TypeError === "function") ? TypeError({code: code, message: msg, reason: reason, fix: fix, line: node_get_line(tc_current_node), col: node_get_col(tc_current_node)}) : ({ __tag: "TypeError", code: code, message: msg, reason: reason, fix: fix, line: node_get_line(tc_current_node), col: node_get_col(tc_current_node) })) }));
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.tc_result_error = tc_result_error;
 
 const __tuff_outer_for_union_type_contains = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
 function union_type_contains(union_name, candidate) {
@@ -4589,7 +4598,7 @@ function typecheck_if_expr_branch(n, fn_arities, fn_param_types, fn_return_types
   typecheck_expr(cond, fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs);
   let cond_name = infer_expr_type_name(cond, fn_return_types, local_types); if (typeof __tuff_this !== 'undefined') __tuff_this.cond_name = cond_name;
   if (((!(() => { const __recv = cond_name; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("Bool"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "Bool") : str_eq(__recv, "Bool"); })()) && (!(() => { const __recv = cond_name; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("Unknown"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "Unknown") : str_eq(__recv, "Unknown"); })()))) {
-  tc_panic_loc("E_TYPE_IF_CONDITION", (() => { const __recv = "if condition must be Bool, got "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(cond_name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, cond_name) : str_concat(__recv, cond_name); })(), "Conditional branches require a boolean predicate, but the given expression has a non-Bool type.", "Return or compute a Bool expression in the if condition.");
+  return tc_result_error("E_TYPE_IF_CONDITION", (() => { const __recv = "if condition must be Bool, got "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(cond_name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, cond_name) : str_concat(__recv, cond_name); })(), "Conditional branches require a boolean predicate, but the given expression has a non-Bool type.", "Return or compute a Bool expression in the if condition.");
 }
   let ie_then_key = ""; if (typeof __tuff_this !== 'undefined') __tuff_this.ie_then_key = ie_then_key;
   let ie_else_key = ""; if (typeof __tuff_this !== 'undefined') __tuff_this.ie_else_key = ie_else_key;
@@ -4652,7 +4661,7 @@ function typecheck_if_expr_branch(n, fn_arities, fn_param_types, fn_return_types
   (() => { const __recv = nonnull_ptrs; const __prop = __recv?.["map_delete"]; if (typeof __prop === "function") return __prop(ie_else_key); const __dyn = __recv?.table?.map_delete; return __dyn ? __dyn(__recv.ref, ie_else_key) : map_delete(__recv, ie_else_key); })();
 }
 }
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.typecheck_if_expr_branch = typecheck_if_expr_branch;
 
@@ -4689,12 +4698,12 @@ function typecheck_match_expr_branch(n, fn_arities, fn_param_types, fn_return_ty
   while ((j < jlen)) {
   let tag = (() => { const __recv = expected_tags; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(j); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, j) : vec_get(__recv, j); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.tag = tag;
   if ((!(() => { const __recv = seen_tags; const __prop = __recv?.["set_has"]; if (typeof __prop === "function") return __prop(tag); const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, tag) : set_has(__recv, tag); })())) {
-  tc_panic_loc("E_TYPE_MATCH_NON_EXHAUSTIVE", (() => { const __recv = "Non-exhaustive match: missing case for "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(tag); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, tag) : str_concat(__recv, tag); })(), "A match expression over a known union type does not handle all variants.", "Add missing case arms or include a wildcard case '_'.");
+  return tc_result_error("E_TYPE_MATCH_NON_EXHAUSTIVE", (() => { const __recv = "Non-exhaustive match: missing case for "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(tag); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, tag) : str_concat(__recv, tag); })(), "A match expression over a known union type does not handle all variants.", "Add missing case arms or include a wildcard case '_'.");
 }
   j = (j + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.j = j;
 }
 }
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.typecheck_match_expr_branch = typecheck_match_expr_branch;
 
@@ -4705,7 +4714,7 @@ function typecheck_if_stmt_branch(n, fn_arities, fn_param_types, fn_return_types
   typecheck_expr(cond, fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs);
   let cond_name = infer_expr_type_name(cond, fn_return_types, local_types); if (typeof __tuff_this !== 'undefined') __tuff_this.cond_name = cond_name;
   if (((!(() => { const __recv = cond_name; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("Bool"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "Bool") : str_eq(__recv, "Bool"); })()) && (!(() => { const __recv = cond_name; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("Unknown"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "Unknown") : str_eq(__recv, "Unknown"); })()))) {
-  tc_panic_loc("E_TYPE_IF_CONDITION", (() => { const __recv = "if condition must be Bool, got "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(cond_name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, cond_name) : str_concat(__recv, cond_name); })(), "Conditional branches require a boolean predicate, but the given expression has a non-Bool type.", "Return or compute a Bool expression in the if condition.");
+  return tc_result_error("E_TYPE_IF_CONDITION", (() => { const __recv = "if condition must be Bool, got "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(cond_name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, cond_name) : str_concat(__recv, cond_name); })(), "Conditional branches require a boolean predicate, but the given expression has a non-Bool type.", "Return or compute a Bool expression in the if condition.");
 }
   let then_inject_key = ""; if (typeof __tuff_this !== 'undefined') __tuff_this.then_inject_key = then_inject_key;
   let else_inject_key = ""; if (typeof __tuff_this !== 'undefined') __tuff_this.else_inject_key = else_inject_key;
@@ -4791,7 +4800,7 @@ function typecheck_if_stmt_branch(n, fn_arities, fn_param_types, fn_return_types
   (() => { const __recv = nonnull_ptrs; const __prop = __recv?.["map_delete"]; if (typeof __prop === "function") return __prop(else_inject_key); const __dyn = __recv?.table?.map_delete; return __dyn ? __dyn(__recv.ref, else_inject_key) : map_delete(__recv, else_inject_key); })();
 }
 }
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.typecheck_if_stmt_branch = typecheck_if_stmt_branch;
 
@@ -4809,7 +4818,7 @@ function typecheck_member_or_index_expr(n, fn_arities, fn_param_types, fn_return
   guarded = (() => { const __recv = nonnull_ptrs; const __prop = __recv?.["map_has"]; if (typeof __prop === "function") return __prop(oname); const __dyn = __recv?.table?.map_has; return __dyn ? __dyn(__recv.ref, oname) : map_has(__recv, oname); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.guarded = guarded;
 }
   if ((!guarded)) {
-  tc_panic_loc("E_SAFETY_NULLABLE_POINTER_GUARD", "Nullable pointer access requires guard", "A nullable pointer must be proven non-null before pointer-consuming operations.", "Guard with if (p != 0USize) or if (0USize != p) before member access.");
+  return tc_result_error("E_SAFETY_NULLABLE_POINTER_GUARD", "Nullable pointer access requires guard", "A nullable pointer must be proven non-null before pointer-consuming operations.", "Guard with if (p != 0USize) or if (0USize != p) before member access.");
 }
 }
   if ((() => { const __recv = obj_name; const __prop = __recv?.["str_starts_with"]; if (typeof __prop === "function") return __prop("__this_"); const __dyn = __recv?.table?.str_starts_with; return __dyn ? __dyn(__recv.ref, "__this_") : str_starts_with(__recv, "__this_"); })()) {
@@ -4818,12 +4827,12 @@ function typecheck_member_or_index_expr(n, fn_arities, fn_param_types, fn_return
   let field_names = (() => { const __recv = tc_fn_this_fields; const __prop = __recv?.["map_get"]; if (typeof __prop === "function") return __prop(fn_name); const __dyn = __recv?.table?.map_get; return __dyn ? __dyn(__recv.ref, fn_name) : map_get(__recv, fn_name); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.field_names = field_names;
   let field = get_interned_str(node_get_data2(n)); if (typeof __tuff_this !== 'undefined') __tuff_this.field = field;
   if ((!(() => { const __recv = field_names; const __prop = __recv?.["set_has"]; if (typeof __prop === "function") return __prop(field); const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, field) : set_has(__recv, field); })())) {
-  tc_panic_loc("E_TYPE_MEMBER_NOT_FOUND", (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = "Field '"; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(field); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, field) : str_concat(__recv, field); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("' does not exist on '"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "' does not exist on '") : str_concat(__recv, "' does not exist on '"); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(fn_name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, fn_name) : str_concat(__recv, fn_name); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("' scope"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "' scope") : str_concat(__recv, "' scope"); })(), "The function's 'this' struct does not declare the accessed field.", "Check that the field is declared in the function body or use a different access path.");
+  return tc_result_error("E_TYPE_MEMBER_NOT_FOUND", (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = "Field '"; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(field); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, field) : str_concat(__recv, field); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("' does not exist on '"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "' does not exist on '") : str_concat(__recv, "' does not exist on '"); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(fn_name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, fn_name) : str_concat(__recv, fn_name); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("' scope"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "' scope") : str_concat(__recv, "' scope"); })(), "The function's 'this' struct does not declare the accessed field.", "Check that the field is declared in the function body or use a different access path.");
 }
 }
 }
   typecheck_expr(node_get_data1(n), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs);
-  return 1;
+  return ((typeof Ok === "function") ? Ok({value: 1}) : ({ __tag: "Ok", value: 1 }));
 }
   if ((kind === NK_INDEX_EXPR)) {
   let target_node = node_get_data1(n); if (typeof __tuff_this !== 'undefined') __tuff_this.target_node = target_node;
@@ -4835,7 +4844,7 @@ function typecheck_member_or_index_expr(n, fn_arities, fn_param_types, fn_return
   guarded = (() => { const __recv = nonnull_ptrs; const __prop = __recv?.["map_has"]; if (typeof __prop === "function") return __prop(tname); const __dyn = __recv?.table?.map_has; return __dyn ? __dyn(__recv.ref, tname) : map_has(__recv, tname); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.guarded = guarded;
 }
   if ((!guarded)) {
-  tc_panic_loc("E_SAFETY_NULLABLE_POINTER_GUARD", "Nullable pointer indexing requires guard", "A nullable pointer must be proven non-null before pointer-consuming operations.", "Guard with if (p != 0USize) or if (0USize != p) before indexing.");
+  return tc_result_error("E_SAFETY_NULLABLE_POINTER_GUARD", "Nullable pointer indexing requires guard", "A nullable pointer must be proven non-null before pointer-consuming operations.", "Guard with if (p != 0USize) or if (0USize != p) before indexing.");
 }
 }
   if ((node_kind(target_node) === NK_IDENTIFIER)) {
@@ -4855,19 +4864,19 @@ function typecheck_member_or_index_expr(n, fn_arities, fn_param_types, fn_return
   index_max = try_get_nonnegative_integer_literal(index_node); if (typeof __tuff_this !== 'undefined') __tuff_this.index_max = index_max;
 }
   if ((index_max < 0)) {
-  tc_panic_loc("E_SAFETY_ARRAY_BOUNDS_UNPROVEN", "Cannot prove array index bound safety", "The array index does not have a proven upper bound under strict safety checks.", "Guard index with 'if (i < arr.length)' before indexing.");
+  return tc_result_error("E_SAFETY_ARRAY_BOUNDS_UNPROVEN", "Cannot prove array index bound safety", "The array index does not have a proven upper bound under strict safety checks.", "Guard index with 'if (i < arr.length)' before indexing.");
 }
   if ((index_max >= bound)) {
-  tc_panic_loc("E_SAFETY_ARRAY_BOUNDS", "Array index may be out of bounds", "The proven index upper bound can exceed initialized array length.", "Ensure 0 <= index < initialized length.");
+  return tc_result_error("E_SAFETY_ARRAY_BOUNDS", "Array index may be out of bounds", "The proven index upper bound can exceed initialized array length.", "Ensure 0 <= index < initialized length.");
 }
 }
 }
 }
   typecheck_expr(node_get_data1(n), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs);
   typecheck_expr(node_get_data2(n), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs);
-  return 1;
+  return ((typeof Ok === "function") ? Ok({value: 1}) : ({ __tag: "Ok", value: 1 }));
 }
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.typecheck_member_or_index_expr = typecheck_member_or_index_expr;
 
@@ -4875,7 +4884,7 @@ const __tuff_outer_for_typecheck_expr = typeof __tuff_this !== 'undefined' ? __t
 function typecheck_expr(n, fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs) {
   let __tuff_this = { n: n, fn_arities: fn_arities, fn_param_types: fn_param_types, fn_return_types: fn_return_types, local_types: local_types, nonnull_ptrs: nonnull_ptrs, this: __tuff_outer_for_typecheck_expr };
   if ((n === 0)) {
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
   tc_current_node = n; if (typeof __tuff_this !== 'undefined') __tuff_this.tc_current_node = tc_current_node;
   let kind = node_kind(n); if (typeof __tuff_this !== 'undefined') __tuff_this.kind = kind;
@@ -4889,7 +4898,7 @@ function typecheck_expr(n, fn_arities, fn_param_types, fn_return_types, local_ty
   if ((node_kind(denom_node) === NK_IDENTIFIER)) {
   denom_desc = (() => { const __recv = (() => { const __recv = "denominator `"; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(get_interned_str(node_get_data1(denom_node))); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, get_interned_str(node_get_data1(denom_node))) : str_concat(__recv, get_interned_str(node_get_data1(denom_node))); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("`"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "`") : str_concat(__recv, "`"); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.denom_desc = denom_desc;
 }
-  tc_panic_loc("E_SAFETY_DIV_BY_ZERO", "Division by zero cannot be ruled out at compile time", (() => { const __recv = (() => { const __recv = "The "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(denom_desc); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, denom_desc) : str_concat(__recv, denom_desc); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(" is not proven non-zero; any value including 0 is possible."); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " is not proven non-zero; any value including 0 is possible.") : str_concat(__recv, " is not proven non-zero; any value including 0 is possible."); })(), "Prove denominator != 0 via refinement type or control-flow guard.");
+  return tc_result_error("E_SAFETY_DIV_BY_ZERO", "Division by zero cannot be ruled out at compile time", (() => { const __recv = (() => { const __recv = "The "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(denom_desc); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, denom_desc) : str_concat(__recv, denom_desc); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(" is not proven non-zero; any value including 0 is possible."); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " is not proven non-zero; any value including 0 is possible.") : str_concat(__recv, " is not proven non-zero; any value including 0 is possible."); })(), "Prove denominator != 0 via refinement type or control-flow guard.");
 }
   if (((() => { const __recv = op; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("%"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "%") : str_eq(__recv, "%"); })() && (!expr_is_proven_nonzero(node_get_data3(n), nonnull_ptrs)))) {
   let mod_node = node_get_data3(n); if (typeof __tuff_this !== 'undefined') __tuff_this.mod_node = mod_node;
@@ -4897,7 +4906,7 @@ function typecheck_expr(n, fn_arities, fn_param_types, fn_return_types, local_ty
   if ((node_kind(mod_node) === NK_IDENTIFIER)) {
   mod_desc = (() => { const __recv = (() => { const __recv = "modulo denominator `"; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(get_interned_str(node_get_data1(mod_node))); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, get_interned_str(node_get_data1(mod_node))) : str_concat(__recv, get_interned_str(node_get_data1(mod_node))); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("`"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "`") : str_concat(__recv, "`"); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.mod_desc = mod_desc;
 }
-  tc_panic_loc("E_SAFETY_MOD_BY_ZERO", "Modulo by zero cannot be ruled out at compile time", (() => { const __recv = (() => { const __recv = "The "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(mod_desc); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, mod_desc) : str_concat(__recv, mod_desc); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(" is not proven non-zero; any value including 0 is possible."); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " is not proven non-zero; any value including 0 is possible.") : str_concat(__recv, " is not proven non-zero; any value including 0 is possible."); })(), "Prove denominator != 0 via refinement type or control-flow guard.");
+  return tc_result_error("E_SAFETY_MOD_BY_ZERO", "Modulo by zero cannot be ruled out at compile time", (() => { const __recv = (() => { const __recv = "The "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(mod_desc); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, mod_desc) : str_concat(__recv, mod_desc); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(" is not proven non-zero; any value including 0 is possible."); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " is not proven non-zero; any value including 0 is possible.") : str_concat(__recv, " is not proven non-zero; any value including 0 is possible."); })(), "Prove denominator != 0 via refinement type or control-flow guard.");
 }
   if ((((() => { const __recv = op; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("+"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "+") : str_eq(__recv, "+"); })() || (() => { const __recv = op; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("-"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "-") : str_eq(__recv, "-"); })()) || (() => { const __recv = op; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("*"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "*") : str_eq(__recv, "*"); })())) {
   let lnode = node_get_data2(n); if (typeof __tuff_this !== 'undefined') __tuff_this.lnode = lnode;
@@ -4923,11 +4932,11 @@ function typecheck_expr(n, fn_arities, fn_param_types, fn_return_types, local_ty
   right_desc = (() => { const __recv = (() => { const __recv = get_interned_str(node_get_data1(rnode)); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("="); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "=") : str_concat(__recv, "="); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string(right)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(right)) : str_concat(__recv, int_to_string(right)); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.right_desc = right_desc;
 }
   let witness = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = left_desc; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(" "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " ") : str_concat(__recv, " "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(op); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, op) : str_concat(__recv, op); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(" "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " ") : str_concat(__recv, " "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(right_desc); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, right_desc) : str_concat(__recv, right_desc); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(" = "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " = ") : str_concat(__recv, " = "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string(result)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(result)) : str_concat(__recv, int_to_string(result)); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(", which is outside I32 range [-2147483648, 2147483647]"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ", which is outside I32 range [-2147483648, 2147483647]") : str_concat(__recv, ", which is outside I32 range [-2147483648, 2147483647]"); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.witness = witness;
-  tc_panic_loc("E_SAFETY_INTEGER_OVERFLOW", (() => { const __recv = (() => { const __recv = "Integer overflow/underflow proven possible for '"; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(op); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, op) : str_concat(__recv, op); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("'"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "'") : str_concat(__recv, "'"); })(), witness, "Constrain operands or use a wider intermediate type before narrowing.");
+  return tc_result_error("E_SAFETY_INTEGER_OVERFLOW", (() => { const __recv = (() => { const __recv = "Integer overflow/underflow proven possible for '"; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(op); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, op) : str_concat(__recv, op); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("'"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "'") : str_concat(__recv, "'"); })(), witness, "Constrain operands or use a wider intermediate type before narrowing.");
 }
 }
 }
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
   if (((kind === NK_UNARY_EXPR) || (kind === NK_UNWRAP_EXPR))) {
   if ((kind === NK_UNARY_EXPR)) {
@@ -4935,7 +4944,7 @@ function typecheck_expr(n, fn_arities, fn_param_types, fn_return_types, local_ty
 } else {
   typecheck_expr(node_get_data1(n), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs);
 }
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
   if ((kind === NK_CALL_EXPR)) {
   let callee = node_get_data1(n); if (typeof __tuff_this !== 'undefined') __tuff_this.callee = callee;
@@ -4946,18 +4955,18 @@ function typecheck_expr(n, fn_arities, fn_param_types, fn_return_types, local_ty
   fname = get_interned_str(node_get_data1(callee)); if (typeof __tuff_this !== 'undefined') __tuff_this.fname = fname;
   if ((() => { const __recv = fname; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("drop"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "drop") : str_eq(__recv, "drop"); })()) {
   if ((arg_count !== 1)) {
-  tc_panic_loc("E_TYPE_ARG_COUNT", "drop expects exactly one argument", "The drop builtin requires one argument representing the value to drop.", "Call drop(value) with exactly one argument.");
+  return tc_result_error("E_TYPE_ARG_COUNT", "drop expects exactly one argument", "The drop builtin requires one argument representing the value to drop.", "Call drop(value) with exactly one argument.");
 }
   let target = (() => { const __recv = args; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(0); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.target = target;
   let target_name = infer_expr_type_name(target, fn_return_types, local_types); if (typeof __tuff_this !== 'undefined') __tuff_this.target_name = target_name;
   if ((!(() => { const __recv = tc_destructor_alias_by_alias; const __prop = __recv?.["map_has"]; if (typeof __prop === "function") return __prop(target_name); const __dyn = __recv?.table?.map_has; return __dyn ? __dyn(__recv.ref, target_name) : map_has(__recv, target_name); })())) {
-  tc_panic_loc("E_TYPE_DESTRUCTOR_NOT_FOUND", (() => { const __recv = (() => { const __recv = "Type '"; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(target_name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, target_name) : str_concat(__recv, target_name); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("' does not have an associated destructor"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "' does not have an associated destructor") : str_concat(__recv, "' does not have an associated destructor"); })(), "drop can only be called for values whose alias type declares a destructor.", "Define `type Alias = Base then destructorName;` and use that alias for dropped values.");
+  return tc_result_error("E_TYPE_DESTRUCTOR_NOT_FOUND", (() => { const __recv = (() => { const __recv = "Type '"; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(target_name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, target_name) : str_concat(__recv, target_name); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("' does not have an associated destructor"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "' does not have an associated destructor") : str_concat(__recv, "' does not have an associated destructor"); })(), "drop can only be called for values whose alias type declares a destructor.", "Define `type Alias = Base then destructorName;` and use that alias for dropped values.");
 }
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
   if (((() => { const __recv = fname; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("into"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "into") : str_eq(__recv, "into"); })() && (node_get_data3(n) === 1))) {
   if ((arg_count < 1)) {
-  tc_panic_loc("E_TYPE_ARG_COUNT", "into conversion requires a receiver", "Method-sugar into conversion requires a source value as receiver.", "Use value.into<Contract>(...) with a receiver value.");
+  return tc_result_error("E_TYPE_ARG_COUNT", "into conversion requires a receiver", "Method-sugar into conversion requires a source value as receiver.", "Use value.into<Contract>(...) with a receiver value.");
 }
   let type_args = node_get_data4(n); if (typeof __tuff_this !== 'undefined') __tuff_this.type_args = type_args;
   let cname = ""; if (typeof __tuff_this !== 'undefined') __tuff_this.cname = cname;
@@ -4969,7 +4978,7 @@ function typecheck_expr(n, fn_arities, fn_param_types, fn_return_types, local_ty
   cname_label = "<missing>"; if (typeof __tuff_this !== 'undefined') __tuff_this.cname_label = cname_label;
 }
   if (((() => { const __recv = cname; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop(""); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "") : str_eq(__recv, ""); })() || (!(() => { const __recv = tc_contract_names; const __prop = __recv?.["set_has"]; if (typeof __prop === "function") return __prop(cname); const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, cname) : set_has(__recv, cname); })()))) {
-  tc_panic_loc("E_TYPE_INTO_UNKNOWN_CONTRACT", (() => { const __recv = (() => { const __recv = "Unknown contract '"; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(cname_label); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, cname_label) : str_concat(__recv, cname_label); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("' in into conversion"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "' in into conversion") : str_concat(__recv, "' in into conversion"); })(), "An into conversion referenced a contract that is not declared.", "Declare the contract before converting with into.");
+  return tc_result_error("E_TYPE_INTO_UNKNOWN_CONTRACT", (() => { const __recv = (() => { const __recv = "Unknown contract '"; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(cname_label); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, cname_label) : str_concat(__recv, cname_label); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("' in into conversion"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "' in into conversion") : str_concat(__recv, "' in into conversion"); })(), "An into conversion referenced a contract that is not declared.", "Declare the contract before converting with into.");
 }
   typecheck_expr((() => { const __recv = args; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(0); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })(), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs);
   let j = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.j = j;
@@ -4977,19 +4986,19 @@ function typecheck_expr(n, fn_arities, fn_param_types, fn_return_types, local_ty
   typecheck_expr((() => { const __recv = args; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(j); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, j) : vec_get(__recv, j); })(), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs);
   j = (j + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.j = j;
 }
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
   if ((() => { const __recv = fn_arities; const __prop = __recv?.["map_has"]; if (typeof __prop === "function") return __prop(fname); const __dyn = __recv?.table?.map_has; return __dyn ? __dyn(__recv.ref, fname) : map_has(__recv, fname); })()) {
   let expected = (() => { const __recv = fn_arities; const __prop = __recv?.["map_get"]; if (typeof __prop === "function") return __prop(fname); const __dyn = __recv?.table?.map_get; return __dyn ? __dyn(__recv.ref, fname) : map_get(__recv, fname); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.expected = expected;
   if ((expected !== arg_count)) {
   let msg = (() => { const __recv = (() => { const __recv = (() => { const __recv = "Function "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(fname); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, fname) : str_concat(__recv, fname); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop((() => { const __recv = " expects "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string(expected)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(expected)) : str_concat(__recv, int_to_string(expected)); })()); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, (() => { const __recv = " expects "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string(expected)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(expected)) : str_concat(__recv, int_to_string(expected)); })()) : str_concat(__recv, (() => { const __recv = " expects "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string(expected)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(expected)) : str_concat(__recv, int_to_string(expected)); })()); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop((() => { const __recv = " args, got "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string(arg_count)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(arg_count)) : str_concat(__recv, int_to_string(arg_count)); })()); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, (() => { const __recv = " args, got "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string(arg_count)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(arg_count)) : str_concat(__recv, int_to_string(arg_count)); })()) : str_concat(__recv, (() => { const __recv = " args, got "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string(arg_count)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(arg_count)) : str_concat(__recv, int_to_string(arg_count)); })()); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.msg = msg;
-  tc_panic_loc("E_TYPE_ARG_COUNT", msg, "A function call provided a different number of arguments than the function signature requires.", "Pass exactly the number of parameters declared by the function.");
+  return tc_result_error("E_TYPE_ARG_COUNT", msg, "A function call provided a different number of arguments than the function signature requires.", "Pass exactly the number of parameters declared by the function.");
 }
 }
   if (((!(() => { const __recv = fn_arities; const __prop = __recv?.["map_has"]; if (typeof __prop === "function") return __prop(fname); const __dyn = __recv?.table?.map_has; return __dyn ? __dyn(__recv.ref, fname) : map_has(__recv, fname); })()) && (() => { const __recv = tc_dep_type_alias_params; const __prop = __recv?.["map_has"]; if (typeof __prop === "function") return __prop(fname); const __dyn = __recv?.table?.map_has; return __dyn ? __dyn(__recv.ref, fname) : map_has(__recv, fname); })())) {
   let expected_arity = (() => { const __recv = tc_dep_type_alias_params; const __prop = __recv?.["map_get"]; if (typeof __prop === "function") return __prop(fname); const __dyn = __recv?.table?.map_get; return __dyn ? __dyn(__recv.ref, fname) : map_get(__recv, fname); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.expected_arity = expected_arity;
   if ((arg_count !== expected_arity)) {
-  tc_panic_loc("E_TYPE_APPLIED_ARITY", (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = "'"; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(fname); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, fname) : str_concat(__recv, fname); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("' applied with "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "' applied with ") : str_concat(__recv, "' applied with "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string(arg_count)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(arg_count)) : str_concat(__recv, int_to_string(arg_count)); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(" argument(s), expected "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " argument(s), expected ") : str_concat(__recv, " argument(s), expected "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string(expected_arity)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(expected_arity)) : str_concat(__recv, int_to_string(expected_arity)); })(), "Dependent type aliases must be applied with exactly the number of arguments declared in the type parameter list.", (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = "Provide exactly "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string(expected_arity)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(expected_arity)) : str_concat(__recv, int_to_string(expected_arity)); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(" argument(s) to '"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " argument(s) to '") : str_concat(__recv, " argument(s) to '"); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(fname); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, fname) : str_concat(__recv, fname); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("'."); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "'.") : str_concat(__recv, "'."); })());
+  return tc_result_error("E_TYPE_APPLIED_ARITY", (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = "'"; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(fname); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, fname) : str_concat(__recv, fname); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("' applied with "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "' applied with ") : str_concat(__recv, "' applied with "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string(arg_count)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(arg_count)) : str_concat(__recv, int_to_string(arg_count)); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(" argument(s), expected "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " argument(s), expected ") : str_concat(__recv, " argument(s), expected "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string(expected_arity)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(expected_arity)) : str_concat(__recv, int_to_string(expected_arity)); })(), "Dependent type aliases must be applied with exactly the number of arguments declared in the type parameter list.", (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = "Provide exactly "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string(expected_arity)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(expected_arity)) : str_concat(__recv, int_to_string(expected_arity)); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(" argument(s) to '"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " argument(s) to '") : str_concat(__recv, " argument(s) to '"); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(fname); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, fname) : str_concat(__recv, fname); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("'."); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "'.") : str_concat(__recv, "'."); })());
 }
 }
   if ((() => { const __recv = fn_param_types; const __prop = __recv?.["map_has"]; if (typeof __prop === "function") return __prop(fname); const __dyn = __recv?.table?.map_has; return __dyn ? __dyn(__recv.ref, fname) : map_has(__recv, fname); })()) {
@@ -5000,11 +5009,11 @@ function typecheck_expr(n, fn_arities, fn_param_types, fn_return_types, local_ty
   let arg_name = infer_expr_type_name(arg_node, fn_return_types, local_types); if (typeof __tuff_this !== 'undefined') __tuff_this.arg_name = arg_name;
   let expected_name = (() => { const __recv = expected_types; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(j); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, j) : vec_get(__recv, j); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.expected_name = expected_name;
   if (((() => { const __recv = expected_name; const __prop = __recv?.["str_starts_with"]; if (typeof __prop === "function") return __prop("*"); const __dyn = __recv?.table?.str_starts_with; return __dyn ? __dyn(__recv.ref, "*") : str_starts_with(__recv, "*"); })() && is_nullable_pointer_type_name(arg_name))) {
-  tc_panic_loc("E_SAFETY_NULLABLE_POINTER_GUARD", "Call requires nullable pointer guard", "A nullable pointer argument must be proven non-null before pointer-consuming calls.", "Guard pointer use with if (p != 0USize) or if (0USize != p) before the call.");
+  return tc_result_error("E_SAFETY_NULLABLE_POINTER_GUARD", "Call requires nullable pointer guard", "A nullable pointer argument must be proven non-null before pointer-consuming calls.", "Guard pointer use with if (p != 0USize) or if (0USize != p) before the call.");
 }
   if (((!type_names_compatible(expected_name, arg_name, arg_node)) && (!(() => { const __recv = tc_type_alias_names; const __prop = __recv?.["set_has"]; if (typeof __prop === "function") return __prop(expected_name); const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, expected_name) : set_has(__recv, expected_name); })()))) {
   let msg = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = "Type mismatch in call to "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(fname); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, fname) : str_concat(__recv, fname); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(" arg "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " arg ") : str_concat(__recv, " arg "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string((j + 1))); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string((j + 1))) : str_concat(__recv, int_to_string((j + 1))); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(": expected "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ": expected ") : str_concat(__recv, ": expected "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(expected_name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, expected_name) : str_concat(__recv, expected_name); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(", got "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ", got ") : str_concat(__recv, ", got "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(arg_name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, arg_name) : str_concat(__recv, arg_name); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.msg = msg;
-  tc_panic_loc("E_TYPE_ARG_MISMATCH", msg, "A function argument type does not match the corresponding parameter type.", "Update the call argument or function parameter type so both sides are compatible.");
+  return tc_result_error("E_TYPE_ARG_MISMATCH", msg, "A function argument type does not match the corresponding parameter type.", "Update the call argument or function parameter type so both sides are compatible.");
 }
   j = (j + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.j = j;
 }
@@ -5028,7 +5037,7 @@ function typecheck_expr(n, fn_arities, fn_param_types, fn_return_types, local_ty
   let proven = ((() => { const __recv = tc_call_bounds; const __prop = __recv?.["map_has"]; if (typeof __prop === "function") return __prop(constrained_name); const __dyn = __recv?.table?.map_has; return __dyn ? __dyn(__recv.ref, constrained_name) : map_has(__recv, constrained_name); })() && (() => { const __recv = (() => { const __recv = tc_call_bounds; const __prop = __recv?.["map_get"]; if (typeof __prop === "function") return __prop(constrained_name); const __dyn = __recv?.table?.map_get; return __dyn ? __dyn(__recv.ref, constrained_name) : map_get(__recv, constrained_name); })(); const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop(expected_bound); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, expected_bound) : str_eq(__recv, expected_bound); })()); if (typeof __tuff_this !== 'undefined') __tuff_this.proven = proven;
   if ((!proven)) {
   let msg = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = "Call to '"; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(fname); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, fname) : str_concat(__recv, fname); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("' argument "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "' argument ") : str_concat(__recv, "' argument "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string((cj + 1))); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string((cj + 1))) : str_concat(__recv, int_to_string((cj + 1))); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(" ('"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " ('") : str_concat(__recv, " ('"); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(constrained_name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, constrained_name) : str_concat(__recv, constrained_name); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("')"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "')") : str_concat(__recv, "')"); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(" must be proven < "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " must be proven < ") : str_concat(__recv, " must be proven < "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(cb_fn); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, cb_fn) : str_concat(__recv, cb_fn); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("("); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "(") : str_concat(__recv, "("); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(ref_arg_name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ref_arg_name) : str_concat(__recv, ref_arg_name); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(")"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ")") : str_concat(__recv, ")"); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.msg = msg;
-  tc_panic_loc("E_SAFETY_STR_BOUNDS_UNPROVEN", msg, "The argument does not have a proven upper bound matching the parameter constraint.", (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = "Guard the call with 'if ("; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(constrained_name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, constrained_name) : str_concat(__recv, constrained_name); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(" < "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " < ") : str_concat(__recv, " < "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(cb_fn); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, cb_fn) : str_concat(__recv, cb_fn); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("("); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "(") : str_concat(__recv, "("); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(ref_arg_name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ref_arg_name) : str_concat(__recv, ref_arg_name); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("))' before calling "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "))' before calling ") : str_concat(__recv, "))' before calling "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(fname); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, fname) : str_concat(__recv, fname); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("."); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ".") : str_concat(__recv, "."); })());
+  return tc_result_error("E_SAFETY_STR_BOUNDS_UNPROVEN", msg, "The argument does not have a proven upper bound matching the parameter constraint.", (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = "Guard the call with 'if ("; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(constrained_name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, constrained_name) : str_concat(__recv, constrained_name); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(" < "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " < ") : str_concat(__recv, " < "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(cb_fn); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, cb_fn) : str_concat(__recv, cb_fn); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("("); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "(") : str_concat(__recv, "("); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(ref_arg_name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ref_arg_name) : str_concat(__recv, ref_arg_name); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("))' before calling "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "))' before calling ") : str_concat(__recv, "))' before calling "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(fname); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, fname) : str_concat(__recv, fname); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("."); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ".") : str_concat(__recv, "."); })());
 }
 }
 }
@@ -5043,10 +5052,10 @@ function typecheck_expr(n, fn_arities, fn_param_types, fn_return_types, local_ty
   typecheck_expr((() => { const __recv = args; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs);
   i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
 }
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
   if ((typecheck_member_or_index_expr(n, fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs) === 1)) {
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
   if ((kind === NK_STRUCT_INIT)) {
   let fields = node_get_data2(n); if (typeof __tuff_this !== 'undefined') __tuff_this.fields = fields;
@@ -5057,7 +5066,7 @@ function typecheck_expr(n, fn_arities, fn_param_types, fn_return_types, local_ty
   typecheck_expr((() => { const __recv = field; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(1); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 1) : vec_get(__recv, 1); })(), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs);
   i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
 }
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
   if ((kind === NK_TUPLE_EXPR)) {
   let items = node_get_data1(n); if (typeof __tuff_this !== 'undefined') __tuff_this.items = items;
@@ -5067,21 +5076,21 @@ function typecheck_expr(n, fn_arities, fn_param_types, fn_return_types, local_ty
   typecheck_expr((() => { const __recv = items; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs);
   i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
 }
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
   if ((kind === NK_IF_EXPR)) {
   typecheck_if_expr_branch(n, fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs);
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
   if ((kind === NK_MATCH_EXPR)) {
   typecheck_match_expr_branch(n, fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs);
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
   if ((kind === NK_IS_EXPR)) {
   typecheck_expr(node_get_data1(n), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs);
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.typecheck_expr = typecheck_expr;
 
@@ -5089,7 +5098,7 @@ const __tuff_outer_for_typecheck_stmt = typeof __tuff_this !== 'undefined' ? __t
 function typecheck_stmt(n, fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, expected_return_type) {
   let __tuff_this = { n: n, fn_arities: fn_arities, fn_param_types: fn_param_types, fn_return_types: fn_return_types, local_types: local_types, nonnull_ptrs: nonnull_ptrs, expected_return_type: expected_return_type, this: __tuff_outer_for_typecheck_stmt };
   if ((n === 0)) {
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
   tc_current_node = n; if (typeof __tuff_this !== 'undefined') __tuff_this.tc_current_node = tc_current_node;
   let kind = node_kind(n); if (typeof __tuff_this !== 'undefined') __tuff_this.kind = kind;
@@ -5101,13 +5110,13 @@ function typecheck_stmt(n, fn_arities, fn_param_types, fn_return_types, local_ty
   typecheck_stmt((() => { const __recv = stmts; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, expected_return_type);
   i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
 }
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
   if ((kind === NK_EXPECT_FN_DECL)) {
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
   if ((kind === NK_CONTRACT_DECL)) {
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
   if ((((kind === NK_FN_DECL) || (kind === NK_CLASS_FN_DECL)) || (kind === NK_ACTUAL_FN_DECL))) {
   let prev_array_bounds = tc_array_init_bounds; if (typeof __tuff_this !== 'undefined') __tuff_this.prev_array_bounds = prev_array_bounds;
@@ -5208,13 +5217,13 @@ function typecheck_stmt(n, fn_arities, fn_param_types, fn_return_types, local_ty
   let body_name = infer_expr_type_name(body, fn_return_types, fn_local_types); if (typeof __tuff_this !== 'undefined') __tuff_this.body_name = body_name;
   if ((!type_names_compatible(expected_name, body_name, body))) {
   let fname = get_interned_str(node_get_data1(n)); if (typeof __tuff_this !== 'undefined') __tuff_this.fname = fname;
-  tc_panic_loc("E_TYPE_RETURN_MISMATCH", (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = "Function "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(fname); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, fname) : str_concat(__recv, fname); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(" return type mismatch: expected "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " return type mismatch: expected ") : str_concat(__recv, " return type mismatch: expected "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(expected_name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, expected_name) : str_concat(__recv, expected_name); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(", got "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ", got ") : str_concat(__recv, ", got "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(body_name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, body_name) : str_concat(__recv, body_name); })(), "The function body expression type does not match the declared return type.", "Update the function return type annotation or adjust the returned expression.");
+  return tc_result_error("E_TYPE_RETURN_MISMATCH", (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = "Function "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(fname); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, fname) : str_concat(__recv, fname); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(" return type mismatch: expected "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " return type mismatch: expected ") : str_concat(__recv, " return type mismatch: expected "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(expected_name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, expected_name) : str_concat(__recv, expected_name); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(", got "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ", got ") : str_concat(__recv, ", got "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(body_name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, body_name) : str_concat(__recv, body_name); })(), "The function body expression type does not match the declared return type.", "Update the function return type annotation or adjust the returned expression.");
 }
 }
   tc_array_init_bounds = prev_array_bounds; if (typeof __tuff_this !== 'undefined') __tuff_this.tc_array_init_bounds = tc_array_init_bounds;
   tc_index_upper_bounds = prev_index_bounds; if (typeof __tuff_this !== 'undefined') __tuff_this.tc_index_upper_bounds = tc_index_upper_bounds;
   tc_var_literal_values = prev_var_literals; if (typeof __tuff_this !== 'undefined') __tuff_this.tc_var_literal_values = tc_var_literal_values;
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
   if ((kind === NK_LET_DECL)) {
   let declared_type = node_get_data2(n); if (typeof __tuff_this !== 'undefined') __tuff_this.declared_type = declared_type;
@@ -5226,7 +5235,7 @@ function typecheck_stmt(n, fn_arities, fn_param_types, fn_return_types, local_ty
   if ((((!type_names_compatible(declared_name, rhs_name, rhs)) && (!(() => { const __recv = tc_type_alias_names; const __prop = __recv?.["set_has"]; if (typeof __prop === "function") return __prop(declared_name); const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, declared_name) : set_has(__recv, declared_name); })())) && (!is_this_return_type_for(rhs_name, declared_name)))) {
   let vname = get_interned_str(node_get_data1(n)); if (typeof __tuff_this !== 'undefined') __tuff_this.vname = vname;
   let msg = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = "Type mismatch for let "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(vname); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, vname) : str_concat(__recv, vname); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(": expected "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ": expected ") : str_concat(__recv, ": expected "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(declared_name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, declared_name) : str_concat(__recv, declared_name); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(", got "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ", got ") : str_concat(__recv, ", got "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(rhs_name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, rhs_name) : str_concat(__recv, rhs_name); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.msg = msg;
-  tc_panic_loc("E_TYPE_LET_MISMATCH", msg, "An explicit let type annotation does not match the assigned RHS expression type.", "Update the explicit type annotation or change the RHS expression to match.");
+  return tc_result_error("E_TYPE_LET_MISMATCH", msg, "An explicit let type annotation does not match the assigned RHS expression type.", "Update the explicit type annotation or change the RHS expression to match.");
 }
   let lname = get_interned_str(node_get_data1(n)); if (typeof __tuff_this !== 'undefined') __tuff_this.lname = lname;
   (() => { const __recv = local_types; const __prop = __recv?.["map_set"]; if (typeof __prop === "function") return __prop(lname, declared_name); const __dyn = __recv?.table?.map_set; return __dyn ? __dyn(__recv.ref, lname, declared_name) : map_set(__recv, lname, declared_name); })();
@@ -5245,14 +5254,14 @@ function typecheck_stmt(n, fn_arities, fn_param_types, fn_return_types, local_ty
   if (known_int_value_is_valid(lit_val)) {
   (() => { const __recv = tc_var_literal_values; const __prop = __recv?.["map_set"]; if (typeof __prop === "function") return __prop(get_interned_str(node_get_data1(n)), lit_val); const __dyn = __recv?.table?.map_set; return __dyn ? __dyn(__recv.ref, get_interned_str(node_get_data1(n)), lit_val) : map_set(__recv, get_interned_str(node_get_data1(n)), lit_val); })();
 }
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
   if ((kind === NK_EXTERN_IMPORT_DECL)) {
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
   if ((kind === NK_EXPR_STMT)) {
   typecheck_expr(node_get_data1(n), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs);
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
   if ((kind === NK_ASSIGN_STMT)) {
   let target = node_get_data1(n); if (typeof __tuff_this !== 'undefined') __tuff_this.target = target;
@@ -5265,11 +5274,11 @@ function typecheck_stmt(n, fn_arities, fn_param_types, fn_return_types, local_ty
   let expected_name = (() => { const __recv = local_types; const __prop = __recv?.["map_get"]; if (typeof __prop === "function") return __prop(tname); const __dyn = __recv?.table?.map_get; return __dyn ? __dyn(__recv.ref, tname) : map_get(__recv, tname); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.expected_name = expected_name;
   let value_name = infer_expr_type_name(value, fn_return_types, local_types); if (typeof __tuff_this !== 'undefined') __tuff_this.value_name = value_name;
   if (((!type_names_compatible(expected_name, value_name, value)) && (!(() => { const __recv = tc_type_alias_names; const __prop = __recv?.["set_has"]; if (typeof __prop === "function") return __prop(expected_name); const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, expected_name) : set_has(__recv, expected_name); })()))) {
-  tc_panic_loc("E_TYPE_ASSIGN_MISMATCH", (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = "Assignment mismatch for "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(tname); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, tname) : str_concat(__recv, tname); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(": expected "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ": expected ") : str_concat(__recv, ": expected "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(expected_name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, expected_name) : str_concat(__recv, expected_name); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(", got "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ", got ") : str_concat(__recv, ", got "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(value_name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, value_name) : str_concat(__recv, value_name); })(), "The assigned value type is incompatible with the declared variable type.", "Assign a compatible value or change the variable type declaration.");
+  return tc_result_error("E_TYPE_ASSIGN_MISMATCH", (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = "Assignment mismatch for "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(tname); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, tname) : str_concat(__recv, tname); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(": expected "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ": expected ") : str_concat(__recv, ": expected "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(expected_name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, expected_name) : str_concat(__recv, expected_name); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(", got "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ", got ") : str_concat(__recv, ", got "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(value_name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, value_name) : str_concat(__recv, value_name); })(), "The assigned value type is incompatible with the declared variable type.", "Assign a compatible value or change the variable type declaration.");
 }
 }
 }
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
   if ((kind === NK_RETURN_STMT)) {
   let value = node_get_data1(n); if (typeof __tuff_this !== 'undefined') __tuff_this.value = value;
@@ -5277,27 +5286,27 @@ function typecheck_stmt(n, fn_arities, fn_param_types, fn_return_types, local_ty
   if ((!(() => { const __recv = expected_return_type; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("Unknown"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "Unknown") : str_eq(__recv, "Unknown"); })())) {
   let value_name = infer_expr_type_name(value, fn_return_types, local_types); if (typeof __tuff_this !== 'undefined') __tuff_this.value_name = value_name;
   if ((!type_names_compatible(expected_return_type, value_name, value))) {
-  tc_panic_loc("E_TYPE_RETURN_MISMATCH", (() => { const __recv = (() => { const __recv = (() => { const __recv = "Return type mismatch: expected "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(expected_return_type); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, expected_return_type) : str_concat(__recv, expected_return_type); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(", got "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ", got ") : str_concat(__recv, ", got "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(value_name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, value_name) : str_concat(__recv, value_name); })(), "A return statement produced a value incompatible with the function's declared return type.", "Return a value of the declared type or adjust the function return annotation.");
+  return tc_result_error("E_TYPE_RETURN_MISMATCH", (() => { const __recv = (() => { const __recv = (() => { const __recv = "Return type mismatch: expected "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(expected_return_type); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, expected_return_type) : str_concat(__recv, expected_return_type); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(", got "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ", got ") : str_concat(__recv, ", got "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(value_name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, value_name) : str_concat(__recv, value_name); })(), "A return statement produced a value incompatible with the function's declared return type.", "Return a value of the declared type or adjust the function return annotation.");
 }
 }
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
   if ((kind === NK_IF_STMT)) {
   typecheck_if_stmt_branch(n, fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, expected_return_type);
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
   if ((kind === NK_FOR_STMT)) {
   typecheck_expr(node_get_data2(n), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs);
   typecheck_expr(node_get_data3(n), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs);
   typecheck_stmt(node_get_data4(n), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, expected_return_type);
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
   if ((kind === NK_WHILE_STMT)) {
   let cond = node_get_data1(n); if (typeof __tuff_this !== 'undefined') __tuff_this.cond = cond;
   typecheck_expr(cond, fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs);
   let cond_name = infer_expr_type_name(cond, fn_return_types, local_types); if (typeof __tuff_this !== 'undefined') __tuff_this.cond_name = cond_name;
   if (((!(() => { const __recv = cond_name; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("Bool"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "Bool") : str_eq(__recv, "Bool"); })()) && (!(() => { const __recv = cond_name; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("Unknown"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "Unknown") : str_eq(__recv, "Unknown"); })()))) {
-  tc_panic_loc("E_TYPE_IF_CONDITION", (() => { const __recv = "if condition must be Bool, got "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(cond_name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, cond_name) : str_concat(__recv, cond_name); })(), "Conditional branches require a boolean predicate, but the given expression has a non-Bool type.", "Return or compute a Bool expression in the condition.");
+  return tc_result_error("E_TYPE_IF_CONDITION", (() => { const __recv = "if condition must be Bool, got "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(cond_name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, cond_name) : str_concat(__recv, cond_name); })(), "Conditional branches require a boolean predicate, but the given expression has a non-Bool type.", "Return or compute a Bool expression in the condition.");
 }
   let wh_cb_key = ""; if (typeof __tuff_this !== 'undefined') __tuff_this.wh_cb_key = wh_cb_key;
   let wh_cb_value = ""; if (typeof __tuff_this !== 'undefined') __tuff_this.wh_cb_value = wh_cb_value;
@@ -5323,22 +5332,22 @@ function typecheck_stmt(n, fn_arities, fn_param_types, fn_return_types, local_ty
   if (((!(() => { const __recv = wh_cb_key; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop(""); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "") : str_eq(__recv, ""); })()) && (!wh_cb_was_present))) {
   (() => { const __recv = tc_call_bounds; const __prop = __recv?.["map_delete"]; if (typeof __prop === "function") return __prop(wh_cb_key); const __dyn = __recv?.table?.map_delete; return __dyn ? __dyn(__recv.ref, wh_cb_key) : map_delete(__recv, wh_cb_key); })();
 }
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
   if ((kind === NK_LOOP_STMT)) {
   typecheck_stmt(node_get_data1(n), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, expected_return_type);
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
   if ((kind === NK_LIFETIME_STMT)) {
   typecheck_stmt(node_get_data2(n), fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs, expected_return_type);
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
   if ((kind === NK_INTO_STMT)) {
   let cname = get_interned_str(node_get_data1(n)); if (typeof __tuff_this !== 'undefined') __tuff_this.cname = cname;
   if ((!(() => { const __recv = tc_contract_names; const __prop = __recv?.["set_has"]; if (typeof __prop === "function") return __prop(cname); const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, cname) : set_has(__recv, cname); })())) {
-  tc_panic_loc("E_TYPE_UNKNOWN_CONTRACT", (() => { const __recv = (() => { const __recv = "Unknown contract '"; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(cname); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, cname) : str_concat(__recv, cname); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("' in into statement"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "' in into statement") : str_concat(__recv, "' in into statement"); })(), "An into statement referenced a contract that is not declared.", "Declare the contract before using 'into'.");
+  return tc_result_error("E_TYPE_UNKNOWN_CONTRACT", (() => { const __recv = (() => { const __recv = "Unknown contract '"; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(cname); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, cname) : str_concat(__recv, cname); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("' in into statement"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "' in into statement") : str_concat(__recv, "' in into statement"); })(), "An into statement referenced a contract that is not declared.", "Declare the contract before using 'into'.");
 }
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
   if ((kind === NK_TYPE_ALIAS)) {
   let alias_name = get_interned_str(node_get_data1(n)); if (typeof __tuff_this !== 'undefined') __tuff_this.alias_name = alias_name;
@@ -5349,7 +5358,7 @@ function typecheck_stmt(n, fn_arities, fn_param_types, fn_return_types, local_ty
   (() => { const __recv = tc_destructor_alias_by_alias; const __prop = __recv?.["map_set"]; if (typeof __prop === "function") return __prop(alias_name, destructor_name); const __dyn = __recv?.table?.map_set; return __dyn ? __dyn(__recv.ref, alias_name, destructor_name) : map_set(__recv, alias_name, destructor_name); })();
   (() => { const __recv = tc_destructor_alias_names; const __prop = __recv?.["vec_push"]; if (typeof __prop === "function") return __prop(alias_name); const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, alias_name) : vec_push(__recv, alias_name); })();
 }
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
   if ((kind === NK_DEP_TYPE_ALIAS)) {
   let alias_name = get_interned_str(node_get_data1(n)); if (typeof __tuff_this !== 'undefined') __tuff_this.alias_name = alias_name;
@@ -5361,7 +5370,7 @@ function typecheck_stmt(n, fn_arities, fn_param_types, fn_return_types, local_ty
   if ((!(() => { const __recv = alias_base_type_name; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("Unknown"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "Unknown") : str_eq(__recv, "Unknown"); })())) {
   (() => { const __recv = tc_alias_base_type; const __prop = __recv?.["map_set"]; if (typeof __prop === "function") return __prop(alias_name, alias_base_type_name); const __dyn = __recv?.table?.map_set; return __dyn ? __dyn(__recv.ref, alias_name, alias_base_type_name) : map_set(__recv, alias_name, alias_base_type_name); })();
 }
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
   if ((kind === NK_EXTERN_TYPE_DECL)) {
   let alias_name = get_interned_str(node_get_data1(n)); if (typeof __tuff_this !== 'undefined') __tuff_this.alias_name = alias_name;
@@ -5374,10 +5383,10 @@ function typecheck_stmt(n, fn_arities, fn_param_types, fn_return_types, local_ty
   (() => { const __recv = tc_destructor_alias_by_alias; const __prop = __recv?.["map_set"]; if (typeof __prop === "function") return __prop(alias_name, destructor_name); const __dyn = __recv?.table?.map_set; return __dyn ? __dyn(__recv.ref, alias_name, destructor_name) : map_set(__recv, alias_name, destructor_name); })();
   (() => { const __recv = tc_destructor_alias_names; const __prop = __recv?.["vec_push"]; if (typeof __prop === "function") return __prop(alias_name); const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, alias_name) : vec_push(__recv, alias_name); })();
 }
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
   typecheck_expr(n, fn_arities, fn_param_types, fn_return_types, local_types, nonnull_ptrs);
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.typecheck_stmt = typecheck_stmt;
 
@@ -5537,7 +5546,7 @@ function typecheck_program_with_options_impl(program) {
   let alias_name = (() => { const __recv = tc_destructor_alias_names; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.alias_name = alias_name;
   let destructor_name = (() => { const __recv = tc_destructor_alias_by_alias; const __prop = __recv?.["map_get"]; if (typeof __prop === "function") return __prop(alias_name); const __dyn = __recv?.table?.map_get; return __dyn ? __dyn(__recv.ref, alias_name) : map_get(__recv, alias_name); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.destructor_name = destructor_name;
   if ((!(() => { const __recv = fn_nodes; const __prop = __recv?.["map_has"]; if (typeof __prop === "function") return __prop(destructor_name); const __dyn = __recv?.table?.map_has; return __dyn ? __dyn(__recv.ref, destructor_name) : map_has(__recv, destructor_name); })())) {
-  tc_panic_loc("E_TYPE_DESTRUCTOR_NOT_FOUND", (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = "Destructor '"; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(destructor_name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, destructor_name) : str_concat(__recv, destructor_name); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("' for alias '"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "' for alias '") : str_concat(__recv, "' for alias '"); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(alias_name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, alias_name) : str_concat(__recv, alias_name); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("' was not found"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "' was not found") : str_concat(__recv, "' was not found"); })(), "A type alias referenced a destructor function that does not exist.", "Declare the destructor function before using it in 'type Alias = ... then destructor'.");
+  return tc_result_error("E_TYPE_DESTRUCTOR_NOT_FOUND", (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = "Destructor '"; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(destructor_name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, destructor_name) : str_concat(__recv, destructor_name); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("' for alias '"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "' for alias '") : str_concat(__recv, "' for alias '"); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(alias_name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, alias_name) : str_concat(__recv, alias_name); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("' was not found"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "' was not found") : str_concat(__recv, "' was not found"); })(), "A type alias referenced a destructor function that does not exist.", "Declare the destructor function before using it in 'type Alias = ... then destructor'.");
 }
   let fn_node = (() => { const __recv = fn_nodes; const __prop = __recv?.["map_get"]; if (typeof __prop === "function") return __prop(destructor_name); const __dyn = __recv?.table?.map_get; return __dyn ? __dyn(__recv.ref, destructor_name) : map_get(__recv, destructor_name); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.fn_node = fn_node;
   let params = node_get_data3(fn_node); if (typeof __tuff_this !== 'undefined') __tuff_this.params = params;
@@ -5564,7 +5573,7 @@ function typecheck_program_with_options_impl(program) {
   valid = false; if (typeof __tuff_this !== 'undefined') __tuff_this.valid = valid;
 }
   if ((!valid)) {
-  tc_panic_loc("E_TYPE_DESTRUCTOR_SIGNATURE", (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = "Destructor '"; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(destructor_name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, destructor_name) : str_concat(__recv, destructor_name); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("' must have signature fn "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "' must have signature fn ") : str_concat(__recv, "' must have signature fn "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(destructor_name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, destructor_name) : str_concat(__recv, destructor_name); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("(this : "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "(this : ") : str_concat(__recv, "(this : "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(alias_name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, alias_name) : str_concat(__recv, alias_name); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("<...>) : Void"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "<...>) : Void") : str_concat(__recv, "<...>) : Void"); })(), "Destructor signatures must follow the required receiver and return type contract.", "Use exactly one receiver parameter named 'this' with the alias type (or legacy '*move AliasType') and return Void.");
+  return tc_result_error("E_TYPE_DESTRUCTOR_SIGNATURE", (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = "Destructor '"; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(destructor_name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, destructor_name) : str_concat(__recv, destructor_name); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("' must have signature fn "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "' must have signature fn ") : str_concat(__recv, "' must have signature fn "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(destructor_name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, destructor_name) : str_concat(__recv, destructor_name); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("(this : "); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "(this : ") : str_concat(__recv, "(this : "); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(alias_name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, alias_name) : str_concat(__recv, alias_name); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("<...>) : Void"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "<...>) : Void") : str_concat(__recv, "<...>) : Void"); })(), "Destructor signatures must follow the required receiver and return type contract.", "Use exactly one receiver parameter named 'this' with the alias type (or legacy '*move AliasType') and return Void.");
 }
   i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
 }
@@ -10839,13 +10848,12 @@ function compile_file_with_options(inputPath, outputPath, lint_enabled, max_effe
   program = strip_import_decls(program); if (typeof __tuff_this !== 'undefined') __tuff_this.program = program;
   let t3 = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t3 = t3;
   let desugared = desugar(program); if (typeof __tuff_this !== 'undefined') __tuff_this.desugared = desugared;
-  let resolved = (() => { const __m = resolve_names(desugared); if (__m && __m.__tag === "Ok") { const value = __m.value; return value; } else if (__m && __m.__tag === "Err") { const error = __m.error; return panic((() => { const __recv = "Resolver error: "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(error.message); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, error.message) : str_concat(__recv, error.message); })()); } else { throw new Error("Non-exhaustive match"); } })(); if (typeof __tuff_this !== 'undefined') __tuff_this.resolved = resolved;
+  let resolved_result = (() => { const __m = resolve_names(desugared); if (__m && __m.__tag === "Ok") { const value = __m.value; return value; } else if (__m && __m.__tag === "Err") { const error = __m.error; return panic((() => { const __recv = "Resolver error: "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(error.message); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, error.message) : str_concat(__recv, error.message); })()); } else { throw new Error("Non-exhaustive match"); } })(); if (typeof __tuff_this !== 'undefined') __tuff_this.resolved_result = resolved_result;
+  let resolved = resolved_result; if (typeof __tuff_this !== 'undefined') __tuff_this.resolved = resolved;
   let t4 = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t4 = t4;
-  let typed = typecheck_program_with_options(resolved); if (typeof __tuff_this !== 'undefined') __tuff_this.typed = typed;
+  let typed_result = (() => { const __m = typecheck_program_with_options(resolved); if (__m && __m.__tag === "Ok") { const value = __m.value; return value; } else if (__m && __m.__tag === "Err") { const error = __m.error; return panic((() => { const __recv = "Typechecker error: "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(error.message); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, error.message) : str_concat(__recv, error.message); })()); } else { throw new Error("Non-exhaustive match"); } })(); if (typeof __tuff_this !== 'undefined') __tuff_this.typed_result = typed_result;
+  let typed = typed_result; if (typeof __tuff_this !== 'undefined') __tuff_this.typed = typed;
   let t5 = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t5 = t5;
-  if ((borrow === 1)) {
-  borrowcheck_program(typed);
-}
   let t6 = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t6 = t6;
   if ((lint === 1)) {
   lint_program(typed, inputPath, max_lines, 0);
@@ -12902,17 +12910,16 @@ function compile_source_with_options(source, lint_enabled, max_effective_lines, 
   let t3_desugar = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t3_desugar = t3_desugar;
   profile_mark("desugar", (t3_desugar - t2_desugar));
   let t3_resolve = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t3_resolve = t3_resolve;
-  let resolved = (() => { const __m = resolve_names(desugared); if (__m && __m.__tag === "Ok") { const value = __m.value; return value; } else if (__m && __m.__tag === "Err") { const error = __m.error; return panic((() => { const __recv = "Resolver error: "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(error.message); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, error.message) : str_concat(__recv, error.message); })()); } else { throw new Error("Non-exhaustive match"); } })(); if (typeof __tuff_this !== 'undefined') __tuff_this.resolved = resolved;
+  let resolved_result = (() => { const __m = resolve_names(desugared); if (__m && __m.__tag === "Ok") { const value = __m.value; return value; } else if (__m && __m.__tag === "Err") { const error = __m.error; return panic((() => { const __recv = "Resolver error: "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(error.message); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, error.message) : str_concat(__recv, error.message); })()); } else { throw new Error("Non-exhaustive match"); } })(); if (typeof __tuff_this !== 'undefined') __tuff_this.resolved_result = resolved_result;
+  let resolved = resolved_result; if (typeof __tuff_this !== 'undefined') __tuff_this.resolved = resolved;
   let t4_resolve = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t4_resolve = t4_resolve;
   profile_mark("resolve", (t4_resolve - t3_resolve));
   let t4_typecheck = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t4_typecheck = t4_typecheck;
-  let typed = typecheck_program_with_options(resolved); if (typeof __tuff_this !== 'undefined') __tuff_this.typed = typed;
+  let typed_result = (() => { const __m = typecheck_program_with_options(resolved); if (__m && __m.__tag === "Ok") { const value = __m.value; return value; } else if (__m && __m.__tag === "Err") { const error = __m.error; return panic((() => { const __recv = "Typechecker error: "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(error.message); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, error.message) : str_concat(__recv, error.message); })()); } else { throw new Error("Non-exhaustive match"); } })(); if (typeof __tuff_this !== 'undefined') __tuff_this.typed_result = typed_result;
+  let typed = typed_result; if (typeof __tuff_this !== 'undefined') __tuff_this.typed = typed;
   let t5_typecheck = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t5_typecheck = t5_typecheck;
   profile_mark("typecheck", (t5_typecheck - t4_typecheck));
   let t5_borrow = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t5_borrow = t5_borrow;
-  if ((borrow === 1)) {
-  borrowcheck_program(typed);
-}
   let t6_borrow = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t6_borrow = t6_borrow;
   profile_mark("borrowcheck", (t6_borrow - t5_borrow));
   if ((lint === 1)) {
