@@ -4,9 +4,17 @@ let {
  = selfhost::runtime_lexer;
 let {
     p_expect, p_parse_identifier, p_at, p_eat, p_parse_type, p_parse_type_primary, p_at_kind,
-    p_can_start_refinement_expr_at, p_peek, node_new, node_set_data1, node_set_data2, node_set_data3, node_set_data4, node_set_data5
+    p_can_start_refinement_expr_at, p_peek, node_new, node_set_data1, node_set_data2, node_set_data3, node_set_data4, node_set_data5, p_result_error
 }
  = selfhost::parser_core;
+let {
+    Ok, Err, Result
+}
+ = selfhost::Result;
+let {
+    ParseError
+}
+ = selfhost::errors::ParseError;
 let parse_temp_counter : I32 = 0;
 fn p_new_temp_name(prefix: *Str) : I32 => {
     parse_temp_counter = parse_temp_counter + 1;
@@ -265,9 +273,9 @@ out fn p_parse_extern_fn_decl() : I32 => {
     node_set_data5(node, 0);
     node
 }
-out fn p_parse_extern_decl() : I32 => {
+out fn p_parse_extern_decl() : Result<I32, ParseError> => {
     if (p_at(TK_KEYWORD, "fn")) {
-        return p_parse_extern_fn_decl();
+        return Ok<I32> { value: p_parse_extern_fn_decl() };
     }
     if (p_at(TK_KEYWORD, "let")) {
         p_eat();
@@ -293,7 +301,7 @@ out fn p_parse_extern_decl() : I32 => {
             let node = node_new(NK_EXTERN_IMPORT_DECL);
             node_set_data1(node, names);
             node_set_data2(node, source_parts);
-            return node;
+            return Ok<I32> { value: node };
         }
         let name = p_parse_identifier();
         let typ = 0;
@@ -305,7 +313,7 @@ out fn p_parse_extern_decl() : I32 => {
         let node = node_new(NK_EXTERN_LET_DECL);
         node_set_data1(node, name);
         node_set_data2(node, typ);
-        return node;
+        return Ok<I32> { value: node };
     }
     if (p_at(TK_KEYWORD, "type")) {
         p_eat();
@@ -321,8 +329,13 @@ out fn p_parse_extern_decl() : I32 => {
         node_set_data1(node, name);
         node_set_data2(node, generics);
         node_set_data5(node, destructor_name);
-        return node;
+        return Ok<I32> { value: node };
     }
-    panic("Expected fn, let, or type after extern")
+    return p_result_error(
+        "E_PARSE_EXPECTED_TOKEN",
+        "Expected fn, let, or type after extern",
+        "External declarations must be functions, variables, or types",
+        "Add fn, let, or type keyword after extern"
+    );
 }
 out fn selfhost_parser_decls_let_extern_marker() : I32 => 0;

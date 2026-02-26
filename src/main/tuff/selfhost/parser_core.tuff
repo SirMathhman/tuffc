@@ -9,6 +9,14 @@ let {
     selfhost_parser_kinds_marker
 }
  = selfhost::parser_kinds;
+let {
+    Ok, Err, Result
+}
+ = selfhost::Result;
+let {
+    ParseError
+}
+ = selfhost::errors::ParseError;
  // ============================================================================
  // AST Storage (array-based)
  // ============================================================================
@@ -217,6 +225,29 @@ out fn p_error_with_token_context(msg: *Str) : I32 => {
     .str_concat(")"));
     0
 }
+
+// Parse error helpers - dual pattern for Result migration
+// p_panic_loc: For non-Result helper functions - returns I32, panics
+out fn p_panic_loc(code: *Str, message: *Str, reason: *Str, fix: *Str) : I32 => {
+    let t = p_peek(0);
+    panic_with_code_loc(code, message, reason, fix, tok_line(t), tok_col(t));
+    0
+}
+
+// p_result_error: For Result-returning functions - returns Result<I32, ParseError>
+out fn p_result_error(code: *Str, message: *Str, reason: *Str, fix: *Str) : Result<I32, ParseError> => {
+    let t = p_peek(0);
+    let err = ParseError {
+        code: code,
+        message: message,
+        reason: reason,
+        fix: fix,
+        line: tok_line(t),
+        col: tok_col(t)
+    };
+    Err<ParseError> { error: err }
+}
+
 out fn p_expect_kind(kind: I32, msg: *Str) : I32 => {
     if (!p_at_kind(kind)) {
         p_error_with_token_context(msg);
@@ -410,7 +441,12 @@ fn p_parse_type_primary_numeric_sentinel() : I32 => {
     let t = p_eat();
     let raw = get_intern(tok_value(t));
     if (!(raw.str_eq("0USize") || raw.str_eq("0"))) {
-        panic("Only 0 or 0USize is supported as a type-level numeric sentinel");
+        return p_result_error(
+        "E_PARSE_INVALID_LITERAL",
+        "Only 0 or 0USize is supported as a type-level numeric sentinel",
+        "Type-level numeric literals are restricted to zero sentinels",
+        "Use 0 or 0USize for type-level numeric sentinels"
+    );
     }
     let base = node_new(NK_NAMED_TYPE);
     node_set_data1(base, intern("USize"));

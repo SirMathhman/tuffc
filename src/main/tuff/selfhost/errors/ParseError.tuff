@@ -1,7 +1,7 @@
 // Parser error type for syntax analysis failures
 // Used when converting tokens to AST
 
-struct ParseError {
+out struct ParseError {
     code: *Str,      // Error code (E_PARSE_*)
     message: *Str,   // User-facing error summary
     reason: *Str,    // Why this is an error (educational)

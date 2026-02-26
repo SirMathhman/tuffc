@@ -3,7 +3,7 @@ let {
 }
  = selfhost::runtime_lexer;
 let {
-    p_expect, p_parse_identifier, p_at, p_eat, p_parse_type, p_at_kind, p_peek, p_mark, p_error_with_token_context, node_kind, node_new, node_set_data1, node_set_data2, node_set_data3, node_get_data1
+    p_expect, p_parse_identifier, p_at, p_eat, p_parse_type, p_at_kind, p_peek, p_mark, p_error_with_token_context, node_kind, node_new, node_set_data1, node_set_data2, node_set_data3, node_get_data1, p_panic_loc, p_result_error
 }
  = selfhost::parser_core;
 let {
@@ -14,6 +14,14 @@ let {
     p_parse_let, p_parse_extern_decl
 }
  = selfhost::parser_decls_let_extern;
+let {
+    Ok, Err, Result
+}
+ = selfhost::Result;
+let {
+    ParseError
+}
+ = selfhost::errors::ParseError;
 fn p_new_stmt_list(stmts: Vec<I32>) : I32 => {
     let n = node_new(NK_STMT_LIST);
     node_set_data1(n, stmts);
@@ -101,40 +109,70 @@ fn p_parse_decl_modifiers() : Vec<I32> => {
         if (p_at(TK_KEYWORD, "out")) {
             p_eat();
             if (exported == 1) {
-                panic("Duplicate 'out' modifier");
+                p_panic_loc(
+        "E_PARSE_DUPLICATE_MODIFIER",
+        "Duplicate 'out' modifier",
+        "The 'out' modifier was specified more than once",
+        "Remove duplicate 'out' modifiers, keeping only one"
+    );
             }
             exported = 1;
         }
         else if (p_at(TK_KEYWORD, "extern")) {
             p_eat();
             if (extern_decl == 1) {
-                panic("Duplicate 'extern' modifier");
+                p_panic_loc(
+        "E_PARSE_DUPLICATE_MODIFIER",
+        "Duplicate 'extern' modifier",
+        "The 'extern' modifier was specified more than once",
+        "Remove duplicate 'extern' modifiers, keeping only one"
+    );
             }
             extern_decl = 1;
         }
         else if (p_at(TK_KEYWORD, "copy")) {
             p_eat();
             if (copy_decl == 1) {
-                panic("Duplicate 'copy' modifier");
+                p_panic_loc(
+        "E_PARSE_DUPLICATE_MODIFIER",
+        "Duplicate 'copy' modifier",
+        "The 'copy' modifier was specified more than once",
+        "Remove duplicate 'copy' modifiers, keeping only one"
+    );
             }
             copy_decl = 1;
         }
         else if (p_at(TK_KEYWORD, "expect") || (p_at(TK_IDENTIFIER, "expect") && (tok_kind(p_peek(1)) == TK_KEYWORD || tok_kind(p_peek(1)) == TK_IDENTIFIER))) {
             p_eat();
             if (expect_decl == 1) {
-                panic("Duplicate 'expect' modifier");
+                p_panic_loc(
+        "E_PARSE_DUPLICATE_MODIFIER",
+        "Duplicate 'expect' modifier",
+        "The 'expect' modifier was specified more than once",
+        "Remove duplicate 'expect' modifiers, keeping only one"
+    );
             }
             expect_decl = 1;
         }
         else if (p_at(TK_KEYWORD, "actual") || (p_at(TK_IDENTIFIER, "actual") && (tok_kind(p_peek(1)) == TK_KEYWORD || tok_kind(p_peek(1)) == TK_IDENTIFIER))) {
             p_eat();
             if (actual_decl == 1) {
-                panic("Duplicate 'actual' modifier");
+                p_panic_loc(
+        "E_PARSE_DUPLICATE_MODIFIER",
+        "Duplicate 'actual' modifier",
+        "The 'actual' modifier was specified more than once",
+        "Remove duplicate 'actual' modifiers, keeping only one"
+    );
             }
             actual_decl = 1;
         }
         else {
-            panic("Unexpected declaration modifier");
+            p_panic_loc(
+        "E_PARSE_INVALID_MODIFIER",
+        "Unexpected declaration modifier",
+        "Encountered an unrecognized or invalid modifier",
+        "Use only valid modifiers: out, extern, copy, expect, actual"
+    );
         }
     }
     let mods = vec_new();
@@ -146,25 +184,45 @@ fn p_parse_decl_modifiers() : Vec<I32> => {
     mods.vec_push(consumed_modifier);
     mods
 }
-fn p_parse_after_modifiers(exported: I32, extern_decl: I32, copy_decl: I32, expect_decl: I32, actual_decl: I32) : I32 => {
+fn p_parse_after_modifiers(exported: I32, extern_decl: I32, copy_decl: I32, expect_decl: I32, actual_decl: I32) : Result<I32, ParseError> => {
     if (expect_decl == 1 && actual_decl == 1) {
-        panic("Cannot combine 'expect' and 'actual' modifiers");
+        return p_result_error(
+        "E_PARSE_CONFLICTING_MODIFIERS",
+        "Cannot combine 'expect' and 'actual' modifiers",
+        "These modifiers are mutually exclusive",
+        "Use either 'expect' or 'actual', not both"
+    );
     }
     let out_node = 0;
     if (extern_decl == 1) {
         if (copy_decl == 1) {
-            panic("'copy' is not supported on extern declarations");
+            return p_result_error(
+        "E_PARSE_INVALID_MODIFIER",
+        "'copy' is not supported on extern declarations",
+        "External declarations cannot use the copy modifier",
+        "Remove the 'copy' modifier from extern declarations"
+    );
         }
         if (expect_decl == 1 || actual_decl == 1) {
-            panic("'expect'/'actual' are not supported on extern declarations");
+            return p_result_error(
+        "E_PARSE_INVALID_MODIFIER",
+        "'expect'/'actual' are not supported on extern declarations",
+        "External declarations cannot use expect/actual modifiers",
+        "Remove the 'expect'/'actual' modifiers from extern declarations"
+    );
         }
         if (p_at(TK_KEYWORD, "extern")) {
             p_eat();
         }
         if (!(p_at(TK_KEYWORD, "fn") || p_at(TK_KEYWORD, "let") || p_at(TK_KEYWORD, "type"))) {
-            panic("'extern' modifier must be followed by fn, let, or type declaration");
+            return p_result_error(
+        "E_PARSE_INVALID_MODIFIER",
+        "'extern' modifier must be followed by fn, let, or type declaration",
+        "The extern modifier can only be used with function, variable, or type declarations",
+        "Add fn, let, or type after extern"
+    );
         }
-        out_node = p_parse_extern_decl();
+        out_node = p_parse_extern_decl()?;
     }
     else if (p_at(TK_KEYWORD, "struct")) {
         out_node = p_parse_struct(copy_decl);
@@ -174,19 +232,39 @@ fn p_parse_after_modifiers(exported: I32, extern_decl: I32, copy_decl: I32, expe
     }
     else if (p_at(TK_KEYWORD, "object")) {
         if (copy_decl == 1) {
-            panic("'copy' is only supported on struct/type declarations");
+            return p_result_error(
+        "E_PARSE_INVALID_MODIFIER",
+        "'copy' is only supported on struct/type declarations",
+        "The copy modifier can only be used with struct or type declarations",
+        "Remove 'copy' or use it with struct/type declarations"
+    );
         }
         if (expect_decl == 1 || actual_decl == 1) {
-            panic("'expect'/'actual' are currently supported only on fn declarations");
+            return p_result_error(
+        "E_PARSE_INVALID_MODIFIER",
+        "'expect'/'actual' are currently supported only on fn declarations",
+        "These modifiers are only available for function declarations",
+        "Remove 'expect'/'actual' or use them with fn declarations"
+    );
         }
         out_node = p_parse_object();
     }
     else if (p_at(TK_KEYWORD, "contract")) {
         if (copy_decl == 1) {
-            panic("'copy' is only supported on struct/type declarations");
+            return p_result_error(
+        "E_PARSE_INVALID_MODIFIER",
+        "'copy' is only supported on struct/type declarations",
+        "The copy modifier can only be used with struct or type declarations",
+        "Remove 'copy' or use it with struct/type declarations"
+    );
         }
         if (expect_decl == 1 || actual_decl == 1) {
-            panic("'expect'/'actual' are currently supported only on fn declarations");
+            return p_result_error(
+        "E_PARSE_INVALID_MODIFIER",
+        "'expect'/'actual' are currently supported only on fn declarations",
+        "These modifiers are only available for function declarations",
+        "Remove 'expect'/'actual' or use them with fn declarations"
+    );
         }
         out_node = p_parse_contract();
     }
@@ -195,7 +273,12 @@ fn p_parse_after_modifiers(exported: I32, extern_decl: I32, copy_decl: I32, expe
     }
     else if (p_at(TK_KEYWORD, "fn")) {
         if (copy_decl == 1) {
-            panic("'copy' is only supported on struct/type declarations");
+            return p_result_error(
+        "E_PARSE_INVALID_MODIFIER",
+        "'copy' is only supported on struct/type declarations",
+        "The copy modifier can only be used with struct or type declarations",
+        "Remove 'copy' or use it with struct/type declarations"
+    );
         }
         let mode = 0;
         if (expect_decl == 1) {
@@ -208,25 +291,46 @@ fn p_parse_after_modifiers(exported: I32, extern_decl: I32, copy_decl: I32, expe
     }
     else if (p_at(TK_KEYWORD, "class")) {
         if (copy_decl == 1) {
-            panic("'copy' is only supported on struct/type declarations");
+            return p_result_error(
+        "E_PARSE_INVALID_MODIFIER",
+        "'copy' is only supported on struct/type declarations",
+        "The copy modifier can only be used with struct or type declarations",
+        "Remove 'copy' or use it with struct/type declarations"
+    );
         }
         if (expect_decl == 1 || actual_decl == 1) {
-            panic("'expect'/'actual' are currently supported only on fn declarations");
+            return p_result_error(
+        "E_PARSE_INVALID_MODIFIER",
+        "'expect'/'actual' are currently supported only on fn declarations",
+        "These modifiers are only available for function declarations",
+        "Remove 'expect'/'actual' or use them with fn declarations"
+    );
         }
         p_eat();
         out_node = p_parse_function(1, 0);
     }
     else if (p_at(TK_KEYWORD, "module")) {
         if (copy_decl == 1) {
-            panic("'copy' is only supported on struct/type declarations");
+            return p_result_error(
+        "E_PARSE_INVALID_MODIFIER",
+        "'copy' is only supported on struct/type declarations",
+        "The copy modifier can only be used with struct or type declarations",
+        "Remove 'copy' or use it with struct/type declarations"
+    );
         }
         if (expect_decl == 1 || actual_decl == 1) {
-            panic("'expect'/'actual' are currently supported only on fn declarations");
+            return p_result_error(
+        "E_PARSE_INVALID_MODIFIER",
+        "'expect'/'actual' are currently supported only on fn declarations",
+        "These modifiers are only available for function declarations",
+        "Remove 'expect'/'actual' or use them with fn declarations"
+    );
         }
         out_node = p_parse_module_wrapper();
     }
     else {
         p_error_with_token_context("Expected declaration after modifiers");
+        return Err<ParseError> { error: ParseError { code: "E_PARSE_UNEXPECTED_TOKEN", message: "Unreachable", reason: "", fix: "", line: 0, col: 0 } };
     }
     if (exported == 1 && node_kind(out_node) != NK_STMT_LIST) {
         parse_exports.set_add(get_interned_str(node_get_data1(out_node)));
@@ -234,7 +338,8 @@ fn p_parse_after_modifiers(exported: I32, extern_decl: I32, copy_decl: I32, expe
     if (p_at(TK_SYMBOL, ";")) {
         p_eat();
     }
-    out_node
+    let success_result = Ok<I32> { value: out_node };
+    return success_result;
 }
 fn p_try_parse_plain_decl_statement() : I32 => {
     if (p_at(TK_KEYWORD, "let")) {
@@ -453,7 +558,12 @@ fn p_try_parse_plain_control_statement() : I32 => {
 fn p_parse_statement() : I32 => {
     let mods = p_parse_decl_modifiers();
     if (mods.vec_get(5) == 1) {
-        return p_parse_after_modifiers(mods.vec_get(0), mods.vec_get(1), mods.vec_get(2), mods.vec_get(3), mods.vec_get(4));
+        let mod_result = match (p_parse_after_modifiers(mods.vec_get(0), mods.vec_get(1), mods.vec_get(2), mods.vec_get(3), mods.vec_get(4))) {
+            case Ok { value } = value;
+            case Err { error } = panic_with_code_loc(error.code, error.message, error.reason, error.fix, error.line, error.col);
+            case _ = panic("Unexpected parser result");
+        };
+        return mod_result;
     }
     let node = p_try_parse_plain_decl_statement();
     if (node != 0) {
