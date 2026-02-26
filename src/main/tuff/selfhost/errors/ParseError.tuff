@@ -1,0 +1,20 @@
+// Parser error type for syntax analysis failures
+// Used when converting tokens to AST
+
+struct ParseError {
+    code: *Str,      // Error code (E_PARSE_*)
+    message: *Str,   // User-facing error summary
+    reason: *Str,    // Why this is an error (educational)
+    fix: *Str,       // How to fix it (actionable)
+    line: I32,       // Source line number
+    col: I32         // Source column number
+}
+
+// Common parser error codes:
+// - E_PARSE_UNEXPECTED_TOKEN: Unexpected token in syntax
+// - E_PARSE_EXPECTED_TOKEN: Expected specific token not found
+// - E_PARSE_INVALID_MODIFIER: Invalid modifier combination
+// - E_PARSE_DUPLICATE_MODIFIER: Modifier used multiple times
+// - E_PARSE_CONFLICTING_MODIFIERS: Incompatible modifiers
+// - E_PARSE_MISSING_TYPE: Type annotation required
+// - E_PARSE_EOF: Unexpected end of file

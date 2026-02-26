@@ -1,0 +1,59 @@
+// Result<T, E> type for error handling without panics
+// Uses Ok<T> |> Err<E> union syntax for graceful error propagation
+
+// Ok variant - represents successful computation
+struct Ok<T> {
+    value: T
+}
+
+// Err variant - represents failed computation with error
+struct Err<E> {
+    error: E
+}
+
+// Result type using union syntax with extract operator (|>)
+// The |> allows the ? operator to extract Ok values or propagate Err
+type Result<T, E> = Ok<T> |> Err<E>;
+
+// Helper functions for Result types
+
+// Create an Ok value
+fn ok<T>(value: T) => Ok<T> {
+    Ok<T> { value: value }
+}
+
+// Create an Err value
+fn err<E>(error: E) => Err<E> {
+    Err<E> { error: error }
+}
+
+// Check if Result is Ok
+fn is_ok<T, E>(result: Result<T, E>) => Bool {
+    // In current implementation, would need pattern matching or type checking
+    // This is a placeholder - actual implementation depends on runtime support
+    false
+}
+
+// Check if Result is Err
+fn is_err<T, E>(result: Result<T, E>) => Bool {
+    // Placeholder - needs runtime type discrimination support
+    false
+}
+
+// Extract value from Ok or panic on Err
+// Use only when you're certain the Result is Ok
+fn unwrap<T, E>(result: Result<T, E>) => T {
+    // The ? operator can be used on Ok<T> |> Err<E> unions
+    // This unwrap function panics if Err - use ? operator in practice
+    result?
+}
+
+// Extract value from Ok or return default on Err
+fn unwrap_or<T, E>(result: Result<T, E>, default: T) => T {
+    // Placeholder - needs match expression support
+    // match result {
+    //     Ok { value } => value,
+    //     Err { .. } => default
+    // }
+    default
+}

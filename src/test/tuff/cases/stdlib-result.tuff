@@ -1,0 +1,105 @@
+// Test: Result<T, E> standard library type
+// Validates Ok/Err construction, unwrap operator, and basic Result usage
+
+struct SimpleError {
+    msg: *Str
+}
+
+// Helper to create errors
+fn make_error(msg: *Str) : SimpleError => {
+    SimpleError { msg: msg }
+}
+
+// Test 1: Ok construction and unwrap
+fn test_ok_unwrap() : I32 => {
+    let result: Ok<I32> = Ok<I32> { value: 42 };
+    let value: I32 = result?;
+    value
+}
+
+// Test 2: Function returning Ok
+fn returns_ok() : Ok<I32> => {
+    Ok<I32> { value: 100 }
+}
+
+fn test_returns_ok() : I32 => {
+    let result: Ok<I32> = returns_ok();
+    result?
+}
+
+// Test 3: Function returning Result (Ok<T> |> Err<E> union)
+fn divide(a: I32, b: I32) : Result<I32, SimpleError> => {
+    if (b == 0) {
+        Err<SimpleError> { error: make_error("division by zero") }
+    } else {
+        Ok<I32> { value: a / b }
+    }
+}
+
+fn test_divide_ok() : I32 => {
+    let result: Result<I32, SimpleError> = divide(10, 2);
+    result?  // Should extract 5
+}
+
+// Test 4: Error propagation with ?
+fn safe_divide(a: I32, b: I32) : Result<I32, SimpleError> => {
+    // The ? operator propagates Err automatically
+    let quotient: I32 = divide(a, b)?;
+    Ok<I32> { value: quotient * 2 }
+}
+
+fn test_safe_divide_propagates() : I32 => {
+    let result: Result<I32, SimpleError> = safe_divide(20, 4);
+    result?  // Should extract 10 (20/4 * 2)
+}
+
+// Test 5: Nested Result propagation (3 levels deep)
+fn level3(x: I32) : Result<I32, SimpleError> => {
+    let result: I32 = divide(x, 2)?;
+    Ok<I32> { value: result + 1 }
+}
+
+fn level2(x: I32) : Result<I32, SimpleError> => {
+    let result: I32 = level3(x)?;
+    Ok<I32> { value: result * 3 }
+}
+
+fn level1(x: I32) : Result<I32, SimpleError> => {
+    let result: I32 = level2(x)?;
+    Ok<I32> { value: result - 5 }
+}
+
+fn test_nested_propagation() : I32 => {
+    let result: Result<I32, SimpleError> = level1(20);
+    result?  // Should extract ((20/2 + 1) * 3 - 5) = 28
+}
+
+// Test 6: Multiple Result operations in sequence
+fn complex_computation(x: I32, y: I32) : Result<I32, SimpleError> => {
+    let a: I32 = divide(x, 2)?;
+    let b: I32 = divide(y, 3)?;
+    let sum: I32 = a + b;
+    Ok<I32> { value: sum }
+}
+
+fn test_multiple_results() : I32 => {
+    let result: Result<I32, SimpleError> = complex_computation(10, 9);
+    result?  // Should extract (10/2 + 9/3) = 8
+}
+
+// Main entry point - run all tests
+fn main() : I32 => {
+    let t1: I32 = test_ok_unwrap();
+    let t2: I32 = test_returns_ok();
+    let t3: I32 = test_divide_ok();
+    let t4: I32 = test_safe_divide_propagates();
+    let t5: I32 = test_nested_propagation();
+    let t6: I32 = test_multiple_results();
+    
+    // All tests passed if we got here without Err propagation
+    if (t1 == 42 && t2 == 100 && t3 == 5 && t4 == 10 && t5 == 28 && t6 == 8) {
+        0  // Success
+    } else {
+        1  // Failure
+    }
+}

@@ -1,0 +1,32 @@
+// Type checker error type for type system violations
+// Includes both type mismatches and safety property violations
+
+struct TypeError {
+    code: *Str,      // Error code (E_TYPE_* or E_SAFETY_*)
+    message: *Str,   // User-facing error summary
+    reason: *Str,    // Why this is an error (educational)
+    fix: *Str,       // How to fix it (actionable)
+    line: I32,       // Source line number
+    col: I32         // Source column number
+}
+
+// Common type error codes:
+// - E_TYPE_MISMATCH: Type does not match expected type
+// - E_TYPE_ARG_COUNT: Wrong number of arguments
+// - E_TYPE_ARG_MISMATCH: Argument type mismatch
+// - E_TYPE_RETURN_MISMATCH: Return type mismatch
+// - E_TYPE_IF_CONDITION: If condition must be Bool
+// - E_TYPE_MEMBER_NOT_FOUND: Struct member not found
+// - E_TYPE_NOT_CALLABLE: Expression is not a function
+// - E_TYPE_NOT_INDEXABLE: Type does not support indexing
+// - E_TYPE_MATCH_NON_EXHAUSTIVE: Match expression missing cases
+//
+// Common safety error codes (E_SAFETY_*):
+// - E_SAFETY_DIV_BY_ZERO: Division by zero not proven safe
+// - E_SAFETY_INTEGER_OVERFLOW: Integer overflow not proven safe
+// - E_SAFETY_ARRAY_BOUNDS: Array index not proven in bounds
+// - E_SAFETY_NULLABLE_POINTER_GUARD: Nullable pointer access requires guard
+// - E_SAFETY_STR_BOUNDS_UNPROVEN: String slice bounds not proven safe
+// - E_SAFETY_BUFFER_OVERFLOW: Buffer overflow risk detected
+// - E_SAFETY_USE_AFTER_FREE: Pointer used after deallocation
+// - E_SAFETY_DATA_RACE: Concurrent access without synchronization

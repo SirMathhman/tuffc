@@ -370,6 +370,42 @@ const positiveCases = [
       "",
     ].join("\n"),
   },
+  {
+    id: "result:stdlib-basic-unwrap",
+    section: "2.1/4.7",
+    source: [
+      "struct Ok<T> { value : T }",
+      "struct Err<E> { error : E }",
+      "type Result<T, E> = Ok<T> |> Err<E>;",
+      "fn returns_ok() : Ok<I32> => Ok<I32> { value: 42 };",
+      "fn use_result() : I32 => returns_ok()?;",
+      "use_result();",
+      "",
+    ].join("\n"),
+  },
+  {
+    id: "result:error-propagation",
+    section: "2.1/4.7",
+    source: [
+      "struct Ok<T> { value : T }",
+      "struct Err<E> { error : E }",
+      "type Result<T, E> = Ok<T> |> Err<E>;",
+      "struct MyError { code : I32 }",
+      "fn divide(a : I32, b : I32) : Result<I32, MyError> => {",
+      "  if (b == 0) {",
+      "    Err<MyError> { error: MyError { code: 1 } }",
+      "  } else {",
+      "    Ok<I32> { value: a / b }",
+      "  }",
+      "}",
+      "fn safe_divide(a : I32, b : I32) : Result<I32, MyError> => {",
+      "  let quotient : I32 = divide(a, b)?;",
+      "  Ok<I32> { value: quotient * 2 }",
+      "}",
+      "safe_divide(10, 2);",
+      "",
+    ].join("\n"),
+  },
 ];
 
 const negativeCases = [

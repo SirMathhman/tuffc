@@ -53,7 +53,7 @@ extern fn str_mut_slice(this: **mut Str, start: I32, end: I32) : *mut Str;
 extern fn str_concat(this: *Str, b: *Str) : *Str;
 extern fn str_eq(this: *Str, b: *Str) : Bool;
 extern fn str_from_char_code(code: I32) : *Str;
-extern fn str_index_of(this: *Str, needle: *Str) : StrIndex(this);
+out extern fn str_index_of(this: *Str, needle: *Str) : StrIndex(this);
 out fn str_includes(this: *Str, needle: *Str) : Bool => this.str_index_of(needle) >= 0;
 out fn str_starts_with(this: *Str, prefix: *Str) : Bool => {
     let plen = prefix.str_length();
@@ -67,9 +67,7 @@ out fn str_starts_with(this: *Str, prefix: *Str) : Bool => {
 extern fn str_trim(this: *Str) : *Str;
 extern fn str_replace_all(this: *Str, from: *Str, to: *Str) : *Str;
 extern fn char_code(ch: *Str) : I32;
-extern fn int_to_string(n: I32) : *Str;
-out fn int_to_string_out(n: I32) : *Str => int_to_string(n);
-out fn str_index_of_out(this: *Str, needle: *Str) : StrIndex(this) => str_index_of(this, needle);
+out extern fn int_to_string(n: I32) : *Str;
 extern fn parse_int(s: *Str) : I32;
 extern type StringBuilder;
 extern fn sb_new() : StringBuilder;
@@ -119,8 +117,7 @@ extern fn write_file(filePath: *Str, contents: *Str) : I32;
 extern fn path_join(a: *Str, b: *Str) : *Str;
 extern fn path_dirname(p: *Str) : *Str;
 extern fn print(s: *Str) : I32;
-extern fn print_error(s: *Str) : I32;
-out fn print_error_out(s: *Str) : I32 => print_error(s);
+out extern fn print_error(s: *Str) : I32;
 extern fn panic(msg: *Str) : I32;
 extern fn panic_with_code(code: *Str, msg: *Str, reason: *Str, fix: *Str) : I32;
 extern fn panic_with_code_loc(code: *Str, msg: *Str, reason: *Str, fix: *Str, line: I32, col: I32) :
@@ -128,8 +125,7 @@ I32;
 extern fn get_argc() : I32;
 extern fn get_argv(i: I32) : *Str;
  // Performance profiling
-extern fn perf_now() : I32;
-out fn perf_now_out() : I32 => perf_now();
+out extern fn perf_now() : I32;
 extern fn profile_mark(label: *Str, duration_ms: I32) : I32;
 extern fn profile_take_json() : *Str;
  // ============================================================================

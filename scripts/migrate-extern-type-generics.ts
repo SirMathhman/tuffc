@@ -57,7 +57,10 @@ function inferParamsFromAppliedTypes(source: string, name: string): string[] {
   return order;
 }
 
-function migrateExternTypeDecls(source: string): { output: string; changed: boolean } {
+function migrateExternTypeDecls(source: string): {
+  output: string;
+  changed: boolean;
+} {
   let output = source;
   let changed = false;
 
@@ -77,7 +80,10 @@ function migrateExternTypeDecls(source: string): { output: string; changed: bool
   return { output, changed };
 }
 
-function migrateBareGenericTypeUsages(source: string): { output: string; changed: boolean } {
+function migrateBareGenericTypeUsages(source: string): {
+  output: string;
+  changed: boolean;
+} {
   let output = source;
   let changed = false;
 

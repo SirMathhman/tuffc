@@ -1,0 +1,18 @@
+// Lexer error type for tokenization failures
+// Used when converting source text to tokens
+
+struct LexError {
+    code: *Str,      // Error code (E_LEX_*)
+    message: *Str,   // User-facing error summary
+    reason: *Str,    // Why this is an error (educational)
+    fix: *Str,       // How to fix it (actionable)
+    line: I32,       // Source line number
+    col: I32         // Source column number
+}
+
+// Common lexer error codes:
+// - E_LEX_UNEXPECTED_CHAR: Encountered unexpected character
+// - E_LEX_UNTERMINATED_STRING: String literal not closed
+// - E_LEX_UNTERMINATED_COMMENT: Block comment not closed
+// - E_LEX_INVALID_NUMBER: Malformed number literal
+// - E_LEX_INVALID_ESCAPE: Invalid escape sequence in string

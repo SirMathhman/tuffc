@@ -597,6 +597,98 @@ export function panic_with_code_loc(
   );
 }
 
+// === Result Type Bridge ===
+// Converts Tuff Result<T, E> (Ok/Err union) to TuffError when crossing JS boundary
+// Used when compiler functions return Result but JS runtime expects exceptions
+
+/**
+ * Check if a value is an Ok result.
+ * In Tuff runtime, Ok<T> is represented as { value: T }
+ */
+export function result_is_ok<T>(result: {
+  value?: T;
+  error?: unknown;
+}): boolean {
+  return result !== null && result !== undefined && "value" in result;
+}
+
+/**
+ * Check if a value is an Err result.
+ * In Tuff runtime, Err<E> is represented as { error: E }
+ */
+export function result_is_err<E>(result: {
+  value?: unknown;
+  error?: E;
+}): boolean {
+  return result !== null && result !== undefined && "error" in result;
+}
+
+/**
+ * Extract value from Ok<T> or throw if Err<E>.
+ * This is the bridge function for when Tuff Result crosses into JS exception-based code.
+ */
+export function result_unwrap_or_throw<T>(result: {
+  value?: T;
+  error?: unknown;
+}): T {
+  if (result_is_ok(result)) {
+    return result.value as T;
+  }
+
+  // Err case - convert to TuffError
+  const error = (result as { error: unknown }).error;
+
+  // If error object has the 4-part diagnostic structure, use it
+  if (typeof error === "object" && error !== null) {
+    const errObj = error as {
+      code?: string;
+      message?: string;
+      reason?: string;
+      fix?: string;
+      line?: number;
+      col?: number;
+    };
+
+    const code = errObj.code ?? "E_UNKNOWN";
+    const message = errObj.message ?? "Unknown error";
+    const loc = {
+      line:
+        errObj.line !== undefined && errObj.line > 0 ? errObj.line : undefined,
+      column:
+        errObj.col !== undefined && errObj.col > 0 ? errObj.col : undefined,
+    };
+
+    throw new TuffError(message, loc, {
+      code,
+      reason: errObj.reason,
+      fix: errObj.fix,
+    });
+  }
+
+  // Fallback for unexpected error types
+  throw new TuffError(String(error), undefined, {
+    code: "E_UNKNOWN",
+    reason: undefined,
+    fix: undefined,
+  });
+}
+
+/**
+ * Create Ok<T> variant.
+ * In Tuff runtime: Ok<T> { value: T }
+ */
+export function result_ok<T>(value: T): { value: T } {
+  return { value };
+}
+
+/**
+ * Create Err<E> variant.
+ * In Tuff runtime: Err<E> { error: E }
+ */
+export function result_err<E>(error: E): { error: E } {
+  return { error };
+}
+
 // === String Vector (for intern table) ===
 export function str_vec_new(): string[] {
   return [];

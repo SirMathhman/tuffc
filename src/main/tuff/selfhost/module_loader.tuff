@@ -1,6 +1,6 @@
 let {
     get_interned_str, map_new, set_new, vec_new,
-    perf_now_out, print_error_out, int_to_string_out, lex_take_trivia
+    perf_now, print_error, int_to_string, lex_take_trivia
 }
  = selfhost::runtime_lexer;
 let {
@@ -277,7 +277,7 @@ all_exported_declared_names: *mut Set<I32>, all_extern_declared_names: *mut Set<
     declared
 }
 fn module_snapshot_import_specs(stmts: Vec<I32>, moduleBasePath: *Str, import_path_cache: Map<I32, I32>) : Vec<I32> => {
-    let t0 = perf_now_out();
+    let t0 = perf_now();
     let imports = vec_new();
     let i = 0;
     let len = stmts.vec_length();
@@ -310,7 +310,7 @@ fn module_snapshot_import_specs(stmts: Vec<I32>, moduleBasePath: *Str, import_pa
         }
         i = i + 1;
     }
-    gather_prof_import_snapshot_ms = gather_prof_import_snapshot_ms + (perf_now_out() - t0);
+    gather_prof_import_snapshot_ms = gather_prof_import_snapshot_ms + (perf_now() - t0);
     imports
 }
 fn module_walk_imports(imports: Vec<I32>, moduleBasePath: *Str, seen: *mut Set<I32>, visiting: *mut Set<I32>,
@@ -325,17 +325,17 @@ max_effective_lines: I32, module_cycles: Vec<*Str>, recursion_depth: I32) : I32 
         let depPath = spec.vec_get(0);
         let importNames = spec.vec_get(1);
         if (!seen.set_has(depPath)) {
-            let t_recurse_0 = perf_now_out();
+            let t_recurse_0 = perf_now();
             gather_module_sources(depPath, moduleBasePath, seen, visiting, sources, module_paths,
             module_declared_map, module_exported_map, module_source_cache, import_path_cache,
             all_declared_names, all_exported_declared_names, all_extern_declared_names, lint_enabled,
             max_effective_lines, module_cycles, recursion_depth + 1);
             if (recursion_depth == 0) {
                 gather_prof_import_recurse_ms = gather_prof_import_recurse_ms +
-                (perf_now_out() - t_recurse_0);
+                (perf_now() - t_recurse_0);
             }
         }
-        let t_walk_local_0 = perf_now_out();
+        let t_walk_local_0 = perf_now();
         let depDeclared = module_declared_map.map_get(depPath);
         let depExported = module_exported_map.map_get(depPath);
         let j = 0;
@@ -351,7 +351,7 @@ max_effective_lines: I32, module_cycles: Vec<*Str>, recursion_depth: I32) : I32 
             j = j + 1;
         }
         gather_prof_import_walk_ms = gather_prof_import_walk_ms +
-        (perf_now_out() - t_walk_local_0);
+        (perf_now() - t_walk_local_0);
         i = i + 1;
     }
     0
@@ -606,19 +606,19 @@ max_effective_lines: I32, module_cycles: Vec<*Str>, recursion_depth: I32) : I32 
         );
     }
     visiting.set_add(filePath);
-    let module_t0 = perf_now_out();
+    let module_t0 = perf_now();
     gather_prof_modules = gather_prof_modules + 1;
     let source = "";
     if (module_source_cache.map_has(filePath)) {
         source = module_source_cache.map_get(filePath);
     }
     else {
-        let t_read_0 = perf_now_out();
+        let t_read_0 = perf_now();
         source = read_file(filePath);
-        gather_prof_read_file_ms = gather_prof_read_file_ms + (perf_now_out() - t_read_0);
+        gather_prof_read_file_ms = gather_prof_read_file_ms + (perf_now() - t_read_0);
         module_source_cache.map_set(filePath, source);
     }
-    let t_parse_0 = perf_now_out();
+    let t_parse_0 = perf_now();
     lex_init(source);
     lex_all();
     if (lint_enabled == 1) {
@@ -626,13 +626,13 @@ max_effective_lines: I32, module_cycles: Vec<*Str>, recursion_depth: I32) : I32 
     }
     parse_init();
     let program = p_parse_program();
-    gather_prof_lex_parse_ms = gather_prof_lex_parse_ms + (perf_now_out() - t_parse_0);
+    gather_prof_lex_parse_ms = gather_prof_lex_parse_ms + (perf_now() - t_parse_0);
     let stmts = node_get_data1(program);
-    let t_decl_0 = perf_now_out();
+    let t_decl_0 = perf_now();
     let declared = module_collect_declared_sets(source, program, module_declared_map,
     module_exported_map, filePath, all_declared_names, all_exported_declared_names,
     all_extern_declared_names);
-    gather_prof_decl_collect_ms = gather_prof_decl_collect_ms + (perf_now_out() - t_decl_0);
+    gather_prof_decl_collect_ms = gather_prof_decl_collect_ms + (perf_now() - t_decl_0);
      // IMPORTANT: snapshot imports before recursive calls, because parse_init()
      // in child modules clears global AST storage arrays.
     let imports = module_snapshot_import_specs(stmts, moduleBasePath, import_path_cache);
@@ -643,10 +643,10 @@ max_effective_lines: I32, module_cycles: Vec<*Str>, recursion_depth: I32) : I32 
     module_declared_map, module_exported_map, module_source_cache, import_path_cache,
     all_declared_names, all_exported_declared_names, all_extern_declared_names, lint_enabled,
     max_effective_lines, module_cycles, recursion_depth);
-    let t_implicit_0 = perf_now_out();
+    let t_implicit_0 = perf_now();
     module_assert_no_implicit_imports(implicit_candidates, all_exported_declared_names,
     all_extern_declared_names);
-    gather_prof_implicit_check_ms = gather_prof_implicit_check_ms + (perf_now_out() - t_implicit_0);
+    gather_prof_implicit_check_ms = gather_prof_implicit_check_ms + (perf_now() - t_implicit_0);
     visiting.set_delete(filePath);
     seen.set_add(filePath);
     sources.vec_push(source);
@@ -678,12 +678,12 @@ max_effective_lines: I32, borrow_enabled: I32, target: *Str) : I32 => {
     gather_prof_reset();
     lint_reset();
     sourcemap_init();
-    let t0 = perf_now_out();
+    let t0 = perf_now();
     gather_module_sources(inputPath, moduleBasePath, seen, visiting, sources, module_paths,
     module_declared_map, module_exported_map, module_source_cache, import_path_cache,
     all_declared_names, all_exported_declared_names, all_extern_declared_names, lint, max_lines,
     module_cycles, 0);
-    let t1 = perf_now_out();
+    let t1 = perf_now();
     let sm_i = 0;
     let sm_line = 1;
     while (sm_i < module_paths.vec_length()) {
@@ -695,22 +695,22 @@ max_effective_lines: I32, borrow_enabled: I32, target: *Str) : I32 => {
     }
     let joined = join_sources(sources);
     let merged = module_with_c_runtime_prelude(joined, target);
-    let t2 = perf_now_out();
+    let t2 = perf_now();
     lex_init(merged);
     lex_all();
     parse_init();
     let program = p_parse_program();
     program = strip_import_decls(program);
-    let t3 = perf_now_out();
+    let t3 = perf_now();
     let desugared = desugar(program);
     let resolved = resolve_names(desugared);
-    let t4 = perf_now_out();
+    let t4 = perf_now();
     let typed = typecheck_program_with_options(resolved);
-    let t5 = perf_now_out();
+    let t5 = perf_now();
     if (borrow == 1) {
         borrowcheck_program(typed);
     }
-    let t6 = perf_now_out();
+    let t6 = perf_now();
     if (lint == 1) {
          // File-length lint already ran per module file during gather_module_sources.
         lint_program(typed, inputPath, max_lines, 0);
@@ -721,8 +721,8 @@ max_effective_lines: I32, borrow_enabled: I32, target: *Str) : I32 => {
             i = i + 1;
         }
     }
-    let t7 = perf_now_out();
+    let t7 = perf_now();
     let emitted = module_emit_target_output(typed, merged, target);
-    let t8 = perf_now_out();
+    let t8 = perf_now();
     write_file(outputPath, emitted)
 }
