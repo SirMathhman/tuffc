@@ -37,6 +37,8 @@ const hostRuntimeBridgeFns = [
   "str_length",
   "str_char_at",
   "str_slice",
+  "str_slice_window",
+  "str_copy",
   "str_mut_slice",
   "str_concat",
   "str_eq",
@@ -390,7 +392,7 @@ function loadSelfhostFromDisk(selfhostOutput): CompilerResult<unknown> {
     vm.runInNewContext(
       `
 const __bridgeFns = [
-  "str_length", "str_char_at", "str_slice", "str_mut_slice", "str_concat", "str_eq",
+  "str_length", "str_char_at", "str_slice", "str_slice_window", "str_copy", "str_mut_slice", "str_concat", "str_eq",
   "str_from_char_code", "str_index_of", "str_trim", "str_replace_all", "char_code",
   "int_to_string", "parse_int", "sb_new", "sb_append", "sb_append_char", "sb_build",
   "__vec_new", "__vec_push", "__vec_pop", "__vec_get", "__vec_set", "__vec_length",

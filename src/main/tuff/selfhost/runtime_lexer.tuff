@@ -4,7 +4,7 @@
  // Source attributions satisfy the E_EXTERN_NO_SOURCE gate for C codegen.
  // The actual implementations come from the always-embedded C substrate.
 extern let {
-    str_length, str_char_at, str_slice, str_mut_slice, str_concat, str_eq, str_from_char_code,
+    str_length, str_char_at, str_slice, str_slice_window, str_copy, str_mut_slice, str_concat, str_eq, str_from_char_code,
     __str_index_of, str_trim, str_replace_all, char_code, __int_to_string, parse_int
 }
  = globalThis;
@@ -44,7 +44,28 @@ extern let {
 extern fn str_length(this: *Str) : USize;
 type StrIndex(this: *Str) = USize < str_length(this);
 extern fn str_char_at(this: *Str, index: StrIndex(this)) : Char;
+
+/*
+TODO: change underlying implementation of string slicing for performance reasons.
+We do a LOT of string slicing, but this enforces correctness.
+
+Should become:
+
+lifetime t {
+    extern fn str_slice(this: *t Str, start: StrIndex(this) <= end, end: StrIndex(this)) : *t Str;
+}
+
+Because the slice will only exist as long as the underlying string exists, and the slice should be a window.
+
+We will also therefore need a "copy" function:
+
+extern fn str_copy(this : *Str) : *Str;
+*/
+
 extern fn str_slice(this: *Str, start: StrIndex(this) <= end, end: StrIndex(this)) : *Str;
+extern fn str_slice_window(this: *Str, start: StrIndex(this) <= end, end: StrIndex(this)) : *Str;
+extern fn str_copy(this: *Str) : *Str;
+
 /*
 We'll need this eventually.
 extern fn str_mut_slice(this: **mut Str, start: I32, end: I32) : *mut Str;
