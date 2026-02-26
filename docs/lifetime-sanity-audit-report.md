@@ -15,21 +15,21 @@ The Tuff lifetime system exists **syntactically but NOT semantically**. While `l
 
 ## Test Results
 
-| ID | Test Name | Expected | Actual | Gap |
-|----|-----------|----------|--------|-----|
-| db:142 | valid-basic-window-use | ✓ compile | ✓ compile | - |
-| db:143 | invalid-window-escape-no-copy | ✗ compile error | ✓ compile | **Lifetime escape not enforced** |
-| db:144 | valid-escape-via-copy | ✓ compile | ✓ compile | - |
-| db:145 | valid-multiple-overlapping-windows | ✓ compile | ✓ compile | - |
-| db:146 | valid-empty-window | ✓ compile | ✓ compile | - |
+| ID     | Test Name                          | Expected        | Actual    | Gap                                     |
+| ------ | ---------------------------------- | --------------- | --------- | --------------------------------------- |
+| db:142 | valid-basic-window-use             | ✓ compile       | ✓ compile | -                                       |
+| db:143 | invalid-window-escape-no-copy      | ✗ compile error | ✓ compile | **Lifetime escape not enforced**        |
+| db:144 | valid-escape-via-copy              | ✓ compile       | ✓ compile | -                                       |
+| db:145 | valid-multiple-overlapping-windows | ✓ compile       | ✓ compile | -                                       |
+| db:146 | valid-empty-window                 | ✓ compile       | ✓ compile | -                                       |
 | db:147 | invalid-window-out-of-bounds-start | ✗ compile error | ✓ compile | **Refinement constraints not enforced** |
-| db:148 | invalid-window-end-before-start | ✗ compile error | ✓ compile | **Refinement constraints not enforced** |
-| db:149 | valid-window-in-closure | ✓ compile | ✓ compile | - |
-| db:150 | invalid-return-window-from-closure | ✗ compile error | ✓ compile | **Lifetime escape not enforced** |
-| db:151 | valid-window-chaining | ✓ compile | ✓ compile | - |
-| db:152 | invalid-use-after-source-move | ✗ compile error | ✓ compile | **Lifetime escape not enforced** |
-| db:153 | valid-window-after-copy | ✓ compile | ✓ compile | - |
-| db:154 | valid-window-in-struct | ✓ compile | ✓ compile | - |
+| db:148 | invalid-window-end-before-start    | ✗ compile error | ✓ compile | **Refinement constraints not enforced** |
+| db:149 | valid-window-in-closure            | ✓ compile       | ✓ compile | -                                       |
+| db:150 | invalid-return-window-from-closure | ✗ compile error | ✓ compile | **Lifetime escape not enforced**        |
+| db:151 | valid-window-chaining              | ✓ compile       | ✓ compile | -                                       |
+| db:152 | invalid-use-after-source-move      | ✗ compile error | ✓ compile | **Lifetime escape not enforced**        |
+| db:153 | valid-window-after-copy            | ✓ compile       | ✓ compile | -                                       |
+| db:154 | valid-window-in-struct             | ✓ compile       | ✓ compile | -                                       |
 
 **Passed:** 8
 **Failed:** 5
@@ -45,6 +45,7 @@ The Tuff lifetime system exists **syntactically but NOT semantically**. While `l
 **Issue:** The borrowchecker does not track lifetime relationships between a value and its references. When a `*t Str` window is created from a source string `s`, the compiler does not enforce that the window cannot outlive `s` or be used after `s` is moved.
 
 **Example (db:143):**
+
 ```tuff
 fn make_window() : *Str => {
   let s = "hello";
@@ -56,6 +57,7 @@ fn make_window() : *Str => {
 **Actual:** Compiles successfully
 
 **Current Borrowchecker Support:**
+
 - `E_BORROW_USE_AFTER_MOVE` - detects use of moved values
 - `E_BORROW_MOVE_WHILE_BORROWED` - detects moving while borrowed
 - `E_BORROW_MUT_CONFLICT` - detects conflicting mutable borrows
@@ -69,6 +71,7 @@ fn make_window() : *Str => {
 **Issue:** Refinement types like `StrIndex(this) = USize < str_length(this)` and constraints like `start: StrIndex(this) <= end` are parsed and stored in the AST but are **not evaluated** at compile time.
 
 **Example (db:147):**
+
 ```tuff
 type StrIndex(this: *Str) = USize < str_length(this);
 fn main() => {
@@ -81,6 +84,7 @@ fn main() => {
 **Actual:** Compiles successfully (runtime clamps bounds instead)
 
 **Current Status:**
+
 - Parser: Parses refinement type syntax
 - Typechecker: Stores refinement constraints in AST
 - Borrowchecker: Ignores constraints entirely
@@ -128,21 +132,23 @@ fn main() => {
 
 The lifetime system was designed with **Rust-like semantics** but only implemented partially:
 
-| Feature | Rust | Tuff Current |
-|---------|------|--------------|
-| Syntax | `fn foo<'a>(x: &'a str) -> &'a str` | `lifetime a { fn foo(x: *a Str) : *a Str }` |
-| Parsing | ✓ | ✓ |
-| Typechecking | ✓ (lifetimes in type signature) | ✓ (lifetimes in AST) |
-| Borrowchecker | ✓ (lifetime variance, escape analysis) | ✗ (no lifetime tracking) |
-| Refinement | N/A | ✓ (syntax only) |
-| Constraint Solving | N/A | ✗ (constraints not evaluated) |
+| Feature            | Rust                                   | Tuff Current                                |
+| ------------------ | -------------------------------------- | ------------------------------------------- |
+| Syntax             | `fn foo<'a>(x: &'a str) -> &'a str`    | `lifetime a { fn foo(x: *a Str) : *a Str }` |
+| Parsing            | ✓                                      | ✓                                           |
+| Typechecking       | ✓ (lifetimes in type signature)        | ✓ (lifetimes in AST)                        |
+| Borrowchecker      | ✓ (lifetime variance, escape analysis) | ✗ (no lifetime tracking)                    |
+| Refinement         | N/A                                    | ✓ (syntax only)                             |
+| Constraint Solving | N/A                                    | ✗ (constraints not evaluated)               |
 
 The borrowchecker (`borrowcheck_impl.tuff`) operates on a **value-based move/borrow model**:
+
 - Tracks which values have been moved
 - Tracks active borrows (mut vs immut)
 - Detects conflicts
 
 But it has **no concept of lifetime hierarchies**:
+
 - Doesn't know that `*t Str` refers to `s`
 - Doesn't know when `t` ends (scope analysis not implemented)
 - Doesn't prevent `*t Str` from escaping `t`'s scope
@@ -201,6 +207,7 @@ But it has **no concept of lifetime hierarchies**:
    - In C: The window pointer is valid as long as the source string is alive (which is true for all current usage patterns in selfhost)
 
 2. **But not provably safe by the compiler** — The compiler currently does not prevent you from writing:
+
    ```tuff
    fn escape() : *Str {
      let s = "hello";
@@ -230,6 +237,7 @@ But it has **no concept of lifetime hierarchies**:
 ## Appendix: Current Error Codes
 
 ### Borrowchecker Errors (Implemented)
+
 - `E_BORROW_USE_AFTER_MOVE` — Use of moved value
 - `E_BORROW_MOVE_WHILE_BORROWED` — Moving while borrowed
 - `E_BORROW_MUT_CONFLICT` — Conflicting mutable borrows
@@ -239,11 +247,14 @@ But it has **no concept of lifetime hierarchies**:
 - `E_BORROW_DROP_MISSING_DESTRUCTOR` — Type without destructor
 
 ### Lifetime Errors (Partially Implemented)
+
 - `E_RESOLVE_DUPLICATE_LIFETIME` — Duplicate lifetime name in block (implemented in resolver)
 
 ### Lifetime Errors (Not Yet Implemented)
+
 - `E_LIFETIME_ESCAPE` — Lifetime-qualified value escapes its scope
 - `E_LIFETIME_RETURN_VIOLATION` — Returning a value with non-function lifetime
 
 ### Typechecker Errors (Partially Implemented)
+
 - `E_TYPE_REFINEMENT_VIOLATION` — Refinement constraint violated (not yet implemented)

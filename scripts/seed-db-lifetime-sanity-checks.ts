@@ -41,7 +41,8 @@ const CASES = [
   },
   {
     key: "invalid-window-escape-no-copy",
-    description: "Attempting to escape a window from a function without copy (should fail but currently doesn't)",
+    description:
+      "Attempting to escape a window from a function without copy (should fail but currently doesn't)",
     source: [
       "extern let { str_length, str_slice_window } = globalThis;",
       "extern fn str_length(this: *Str) : USize;",
@@ -86,7 +87,8 @@ const CASES = [
   },
   {
     key: "valid-multiple-overlapping-windows",
-    description: "Multiple overlapping windows into same source (valid: immutable borrows)",
+    description:
+      "Multiple overlapping windows into same source (valid: immutable borrows)",
     source: [
       "extern let { str_length, str_slice_window } = globalThis;",
       "extern fn str_length(this: *Str) : USize;",
@@ -127,7 +129,8 @@ const CASES = [
   },
   {
     key: "invalid-window-out-of-bounds-start",
-    description: "Window start beyond string length (type-level constraint violation, not yet enforced)",
+    description:
+      "Window start beyond string length (type-level constraint violation, not yet enforced)",
     source: [
       "extern let { str_length, str_slice_window } = globalThis;",
       "extern fn str_length(this: *Str) : USize;",
@@ -146,7 +149,8 @@ const CASES = [
   },
   {
     key: "invalid-window-end-before-start",
-    description: "Window end before start (type-level constraint violation, not yet enforced)",
+    description:
+      "Window end before start (type-level constraint violation, not yet enforced)",
     source: [
       "extern let { str_length, str_slice_window } = globalThis;",
       "extern fn str_length(this: *Str) : USize;",
@@ -187,7 +191,8 @@ const CASES = [
   },
   {
     key: "invalid-return-window-from-closure",
-    description: "Returning a window from a closure (lifetime violation, not yet enforced)",
+    description:
+      "Returning a window from a closure (lifetime violation, not yet enforced)",
     source: [
       "extern let { str_length, str_slice_window } = globalThis;",
       "extern fn str_length(this: *Str) : USize;",
@@ -230,7 +235,8 @@ const CASES = [
   },
   {
     key: "invalid-use-after-source-move",
-    description: "Using a window after source is moved (borrow violation, not yet enforced)",
+    description:
+      "Using a window after source is moved (borrow violation, not yet enforced)",
     source: [
       "extern let { str_length, str_slice_window, str_copy } = globalThis;",
       "extern fn str_length(this: *Str) : USize;",
@@ -326,7 +332,9 @@ function runPython(args: string[]): {
 }
 
 function main() {
-  console.log(`Seeding ${CASES.length} lifetime sanity check cases into ${category}...`);
+  console.log(
+    `Seeding ${CASES.length} lifetime sanity check cases into ${category}...`,
+  );
 
   const payloadJson = JSON.stringify(
     CASES.map((c) => ({
@@ -334,7 +342,7 @@ function main() {
       source: c.source,
       expectsCompileError: c.expectsCompileError,
       expectedDiagnosticCode: c.expectedDiagnosticCode,
-    }))
+    })),
   );
 
   const pythonScript = [

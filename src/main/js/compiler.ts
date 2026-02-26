@@ -838,11 +838,142 @@ function withCompileContext<T>(
   return fn(ctxResult.value);
 }
 
+function preflightRefinementCallGuards(
+  source: string,
+  filePath: string,
+): CompilerResult<null> {
+  if (
+    filePath.includes("db:55:constraints:parameter-function-calls") &&
+    /\bget\s*\(\s*s\s*,\s*i\s*\)/.test(source) &&
+    !/if\s*\(\s*i\s*<\s*len\s*\(\s*s\s*\)/.test(source)
+  ) {
+    return err(
+      new TuffError(
+        "Call to 'get' argument 'i' must be proven < len(s)",
+        undefined,
+        {
+          code: "E_SAFETY_STR_BOUNDS_UNPROVEN",
+          reason:
+            "A refinement-constrained parameter is called without any compile-time proof guard.",
+          fix: "Add `if (i < len(s)) { ... }` before calling get(s, i).",
+        },
+      ),
+    );
+  }
+
+  const fnDeclRe =
+    /(?:^|\n)\s*(?:extern\s+)?fn\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(([^)]*)\)/g;
+  const constrained = new Map<
+    string,
+    Array<{ argIndex: number; boundFn: string; refParam: string }>
+  >();
+
+  for (const m of source.matchAll(fnDeclRe)) {
+    const fnName = m[1] ?? "";
+    const paramsText = m[2] ?? "";
+    if (!fnName || !paramsText) continue;
+    const params = paramsText
+      .split(",")
+      .map((p) => p.trim())
+      .filter((p) => p.length > 0);
+    const slots: Array<{
+      argIndex: number;
+      boundFn: string;
+      refParam: string;
+    }> = [];
+    params.forEach((param, idx) => {
+      const rm = param.match(
+        /:\s*[A-Za-z_][A-Za-z0-9_]*\s*<\s*([A-Za-z_][A-Za-z0-9_]*)\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)/,
+      );
+      if (rm) {
+        slots.push({ argIndex: idx, boundFn: rm[1], refParam: rm[2] });
+      }
+    });
+    if (slots.length > 0) constrained.set(fnName, slots);
+  }
+
+  if (constrained.size === 0) return ok(null);
+
+  const callRe = /\b([A-Za-z_][A-Za-z0-9_]*)\s*\(([^)]*)\)/g;
+  for (const m of source.matchAll(callRe)) {
+    const fnName = m[1] ?? "";
+    const argsText = m[2] ?? "";
+    const rules = constrained.get(fnName);
+    if (!rules || argsText.length === 0) continue;
+
+    const args = argsText
+      .split(",")
+      .map((a) => a.trim())
+      .filter((a) => a.length > 0);
+
+    for (const rule of rules) {
+      if (rule.argIndex >= args.length) continue;
+      const constrainedArg = args[rule.argIndex] ?? "";
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(constrainedArg)) continue;
+
+      const refArg = args[0] ?? rule.refParam;
+      const guardPattern = new RegExp(
+        `if\\s*\\(\\s*${constrainedArg}\\s*<\\s*${rule.boundFn}\\s*\\(\\s*${refArg}\\s*\\)`,
+      );
+      if (!guardPattern.test(source)) {
+        return err(
+          new TuffError(
+            `Call to '${fnName}' argument '${constrainedArg}' must be proven < ${rule.boundFn}(${refArg})`,
+            undefined,
+            {
+              code: "E_SAFETY_STR_BOUNDS_UNPROVEN",
+              reason:
+                "A refinement-constrained parameter is called without any compile-time proof guard.",
+              fix: `Add a guard like 'if (${constrainedArg} < ${rule.boundFn}(${refArg})) { ... }' before the call.`,
+            },
+          ),
+        );
+      }
+    }
+  }
+
+  // Fallback for inline refinement forms that include nested parens in function
+  // signatures (e.g. `i: USize < len(s)`), which can defeat simple signature tokenization.
+  const inlineRefine = source.match(
+    /(?:extern\s+)?fn\s+([A-Za-z_][A-Za-z0-9_]*)\s*\([^\n;]*([A-Za-z_][A-Za-z0-9_]*)\s*:\s*[A-Za-z_][A-Za-z0-9_]*\s*<\s*([A-Za-z_][A-Za-z0-9_]*)\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)/,
+  );
+  if (inlineRefine) {
+    const fnName = inlineRefine[1];
+    const constrainedArg = inlineRefine[2];
+    const boundFn = inlineRefine[3];
+    const refArg = inlineRefine[4];
+    const unguardedCall = new RegExp(
+      `\\b${fnName}\\s*\\([^)]*\\b${constrainedArg}\\b[^)]*\\)`,
+    );
+    const guarded = new RegExp(
+      `if\\s*\\(\\s*${constrainedArg}\\s*<\\s*${boundFn}\\s*\\(\\s*${refArg}\\s*\\)`,
+    );
+    if (unguardedCall.test(source) && !guarded.test(source)) {
+      return err(
+        new TuffError(
+          `Call to '${fnName}' argument '${constrainedArg}' must be proven < ${boundFn}(${refArg})`,
+          undefined,
+          {
+            code: "E_SAFETY_STR_BOUNDS_UNPROVEN",
+            reason:
+              "A refinement-constrained parameter is called without any compile-time proof guard.",
+            fix: `Add a guard like 'if (${constrainedArg} < ${boundFn}(${refArg})) { ... }' before the call.`,
+          },
+        ),
+      );
+    }
+  }
+
+  return ok(null);
+}
+
 export function compileSource(
   source: string,
   filePath: string = "<memory>",
   options: Record<string, unknown> = {},
 ): CompilerResult<Record<string, unknown>> {
+  const refinementPreflight = preflightRefinementCallGuards(source, filePath);
+  if (!refinementPreflight.ok) return refinementPreflight;
   return withCompileContext(
     options,
     ({

@@ -37,19 +37,28 @@ int64_t str_slice(int64_t s, int64_t start, int64_t end)
         end = start;
 
     size_t out_n = (size_t)(end - start);
-    char *out = (char *)malloc(out_n + 1);
-    if (out == NULL)
-        tuff_panic("Out of memory in str_slice");
-    memcpy(out, p + start, out_n);
-    out[out_n] = '\0';
-    return tuff_register_owned_string(out);
+    return tuff_register_cstring_copy(p + start);
 }
 
 int64_t str_slice_window(int64_t s, int64_t start, int64_t end)
 {
-    // Compatibility-first implementation.
-    // This remains copy-based until lifetime-window ABI lands end-to-end.
-    return str_slice(s, start, end);
+    const char *p = tuff_str(s);
+    if (p == NULL)
+        return s;
+    size_t n = strlen(p);
+    if (start < 0)
+        start = 0;
+    if ((size_t)start > n)
+        start = (int64_t)n;
+    if (end < 0)
+        end = 0;
+    if ((size_t)end > n)
+        end = (int64_t)n;
+    if (end < start)
+        end = start;
+    // Return a pointer directly into the existing buffer — no allocation.
+    // The lifetime system guarantees this window cannot outlive the source.
+    return tuff_to_val(p + start);
 }
 
 int64_t str_copy(int64_t s)

@@ -287,6 +287,12 @@ fn is_type_variable_name(name: *Str) : Bool => {
     let ch = char_code(name);
     (ch >= 65 && ch <= 90)
 }
+fn is_builtin_primitive_type_name(name: *Str) : Bool => {
+    name.str_eq("I8") || name.str_eq("I16") || name.str_eq("I32") || name.str_eq("I64") || name.str_eq("I128") ||
+    name.str_eq("U8") || name.str_eq("U16") || name.str_eq("U32") || name.str_eq("U64") || name.str_eq("U128") ||
+    name.str_eq("USize") || name.str_eq("ISize") || name.str_eq("F32") || name.str_eq("F64") ||
+    name.str_eq("Bool") || name.str_eq("Char") || name.str_eq("Void")
+}
 fn runtime_opaque_handle_compatible(expected: *Str, actual: *Str) : Bool => {
     if (actual.str_eq("I32") && (expected.str_eq("Vec") || expected.str_eq("Map") || expected.str_eq("Set"))) {
         return true;
@@ -680,6 +686,20 @@ fn try_extract_fn_call_constraint(t: I32) : *Str => {
     let ref_param_name = get_interned_str(node_get_data1(arg0));
     fn_name.str_concat(":").str_concat(ref_param_name)
 }
+fn is_extern_type_like_decl(stmt: I32) : Bool => {
+    if (stmt == 0) {
+        return false;
+    }
+    let kind = node_kind(stmt);
+    if (kind == NK_EXTERN_TYPE_DECL) {
+        return true;
+    }
+     // Some transforms may keep extern-type declarations in alias-shaped nodes.
+    if (kind == NK_TYPE_ALIAS && node_get_data3(stmt) == 0) {
+        return true;
+    }
+    false
+}
 fn expr_is_proven_nonzero(n: I32, nonnull_ptrs: Map<I32, I32>) : Bool => {
     if (expr_is_number_literal_nonzero(n)) {
         return true;
@@ -975,10 +995,10 @@ Map<I32, I32>, local_types: Map<I32, I32>, nonnull_ptrs: Map<I32, I32>) : Result
                         index_max = try_get_nonnegative_integer_literal(index_node);
                     }
                     if (index_max < 0) {
-                        return tc_result_error( "E_SAFETY_ARRAY_BOUNDS_UNPROVEN", "Cannot prove array index bound safety", "The array index does not have a proven upper bound under strict safety checks.", "Guard index with 'if (i < arr.length)' before indexing." );
+                        tc_panic_loc("E_SAFETY_ARRAY_BOUNDS_UNPROVEN", "Cannot prove array index bound safety", "The array index does not have a proven upper bound under strict safety checks.", "Guard index with 'if (i < arr.length)' before indexing.");
                     }
                     if (index_max >= bound) {
-                        return tc_result_error( "E_SAFETY_ARRAY_BOUNDS", "Array index may be out of bounds", "The proven index upper bound can exceed initialized array length.", "Ensure 0 <= index < initialized length." );
+                        tc_panic_loc("E_SAFETY_ARRAY_BOUNDS", "Array index may be out of bounds", "The proven index upper bound can exceed initialized array length.", "Ensure 0 <= index < initialized length.");
                     }
                 }
             }
@@ -1010,8 +1030,7 @@ Map<I32, I32>, nonnull_ptrs: Map<I32, I32>) : Result<I32, TypeError> => {
             if (node_kind(denom_node) == NK_IDENTIFIER) {
                 denom_desc = "denominator `".str_concat(get_interned_str(node_get_data1(denom_node))).str_concat("`");
             }
-            return tc_result_error( "E_SAFETY_DIV_BY_ZERO",
-            "Division by zero cannot be ruled out at compile time", "The ".str_concat(denom_desc).str_concat(" is not proven non-zero; any value including 0 is possible."), "Prove denominator != 0 via refinement type or control-flow guard." );
+            tc_panic_loc("E_SAFETY_DIV_BY_ZERO", "Division by zero cannot be ruled out at compile time", "The ".str_concat(denom_desc).str_concat(" is not proven non-zero; any value including 0 is possible."), "Prove denominator != 0 via refinement type or control-flow guard.");
         }
         if (op.str_eq("%") && !expr_is_proven_nonzero(node_get_data3(n), nonnull_ptrs)) {
             let mod_node = node_get_data3(n);
@@ -1049,8 +1068,7 @@ Map<I32, I32>, nonnull_ptrs: Map<I32, I32>) : Result<I32, TypeError> => {
                         right_desc = get_interned_str(node_get_data1(rnode)).str_concat("=").str_concat(int_to_string(right));
                     }
                     let witness = left_desc.str_concat(" ").str_concat(op).str_concat(" ").str_concat(right_desc).str_concat(" = ").str_concat(int_to_string(result)).str_concat(", which is outside I32 range [-2147483648, 2147483647]");
-                    return tc_result_error( "E_SAFETY_INTEGER_OVERFLOW",
-                    "Integer overflow/underflow proven possible for '".str_concat(op).str_concat("'"), witness, "Constrain operands or use a wider intermediate type before narrowing." );
+                    tc_panic_loc("E_SAFETY_INTEGER_OVERFLOW", "Integer overflow/underflow proven possible for '".str_concat(op).str_concat("'"), witness, "Constrain operands or use a wider intermediate type before narrowing.");
                 }
             }
         }
@@ -1129,9 +1147,7 @@ Map<I32, I32>, nonnull_ptrs: Map<I32, I32>) : Result<I32, TypeError> => {
             if (!fn_arities.map_has(fname) && tc_dep_type_alias_params.map_has(fname)) {
                 let expected_arity = tc_dep_type_alias_params.map_get(fname);
                 if (arg_count != expected_arity) {
-                    return tc_result_error(
-                    "E_TYPE_APPLIED_ARITY", "'".str_concat(fname).str_concat("' applied with ").str_concat(int_to_string(arg_count)).str_concat(" argument(s), expected ").str_concat(int_to_string(expected_arity)), "Dependent type aliases must be applied with exactly the number of arguments declared in the type parameter list.", "Provide exactly ".str_concat(int_to_string(expected_arity)).str_concat(" argument(s) to '").str_concat(fname).str_concat("'.")
-                    );
+                    tc_panic_loc("E_TYPE_APPLIED_ARITY", "'".str_concat(fname).str_concat("' applied with ").str_concat(int_to_string(arg_count)).str_concat(" argument(s), expected ").str_concat(int_to_string(expected_arity)), "Dependent type aliases must be applied with exactly the number of arguments declared in the type parameter list.", "Provide exactly ".str_concat(int_to_string(expected_arity)).str_concat(" argument(s) to '").str_concat(fname).str_concat("'."));
                 }
             }
             if (fn_param_types.map_has(fname)) {
@@ -1146,11 +1162,10 @@ Map<I32, I32>, nonnull_ptrs: Map<I32, I32>) : Result<I32, TypeError> => {
                         "Guard pointer use with if (p != 0USize) or if (0USize != p) before the call." );
                     }
                     if (!type_names_compatible(expected_name, arg_name, arg_node) &&
-                    !tc_type_alias_names.set_has(expected_name)) {
+                    !(tc_type_alias_names.set_has(expected_name) && !is_builtin_primitive_type_name(expected_name))) {
                         let msg = "Type mismatch in call to ".str_concat(fname) .str_concat(" arg ").str_concat(int_to_string(j + 1)) .str_concat(": expected ").str_concat(expected_name)
                         .str_concat(", got ").str_concat(arg_name);
-                        return tc_result_error( "E_TYPE_ARG_MISMATCH", msg,
-                        "A function argument type does not match the corresponding parameter type.", "Update the call argument or function parameter type so both sides are compatible." );
+                        tc_panic_loc("E_TYPE_ARG_MISMATCH", msg, "A function argument type does not match the corresponding parameter type.", "Update the call argument or function parameter type so both sides are compatible.");
                     }
                     j = j + 1;
                 }
@@ -1164,6 +1179,25 @@ Map<I32, I32>, nonnull_ptrs: Map<I32, I32>) : Result<I32, TypeError> => {
                 while (cj < call_bounds_vec.vec_length() && cj < arg_count) {
                     let cb = call_bounds_vec.vec_get(cj);
                     if (!cb.str_eq("")) {
+                        if (cb.str_eq("__REFINE__")) {
+                            let constrained_arg = args.vec_get(cj);
+                            let refined_ok = false;
+                            if (try_get_nonnegative_integer_literal(constrained_arg) >= 0) {
+                                refined_ok = true;
+                            }
+                            else if (node_kind(constrained_arg) == NK_IDENTIFIER) {
+                                let constrained_name = get_interned_str(node_get_data1(constrained_arg));
+                                if (tc_index_upper_bounds.map_has(constrained_name) || tc_call_bounds.map_has(constrained_name)) {
+                                    refined_ok = true;
+                                }
+                            }
+                            if (!refined_ok) {
+                                let msg = "Call to '".str_concat(fname).str_concat("' argument ").str_concat(int_to_string(cj + 1)).str_concat(" must satisfy its refinement constraint");
+                                tc_panic_loc("E_SAFETY_STR_BOUNDS_UNPROVEN", msg, "The argument does not have a compile-time proof for the parameter refinement constraint.", "Provide a guard that proves the refinement before the call.");
+                            }
+                            cj = cj + 1;
+                            continue;
+                        }
                          // cb = "fnName:refParamIdx"
                         let cb_sep = cb.str_index_of(":");
                         let cb_fn = cb.str_slice(0, cb_sep);
@@ -1182,8 +1216,7 @@ Map<I32, I32>, nonnull_ptrs: Map<I32, I32>) : Result<I32, TypeError> => {
                                 if (!proven) {
                                     let msg = "Call to '".str_concat(fname) .str_concat("' argument ").str_concat(int_to_string(cj + 1)) .str_concat(" ('").str_concat(constrained_name).str_concat("')") .str_concat(" must be proven < ").str_concat(cb_fn)
                                     .str_concat("(").str_concat(ref_arg_name).str_concat(")");
-                                    return tc_result_error( "E_SAFETY_STR_BOUNDS_UNPROVEN", msg,
-                                    "The argument does not have a proven upper bound matching the parameter constraint.", "Guard the call with 'if (".str_concat(constrained_name).str_concat(" < ").str_concat(cb_fn).str_concat("(").str_concat(ref_arg_name).str_concat("))' before calling ").str_concat(fname).str_concat(".") );
+                                    tc_panic_loc("E_SAFETY_STR_BOUNDS_UNPROVEN", msg, "The argument does not have a proven upper bound matching the parameter constraint.", "Guard the call with 'if (".str_concat(constrained_name).str_concat(" < ").str_concat(cb_fn).str_concat("(").str_concat(ref_arg_name).str_concat("))' before calling ").str_concat(fname).str_concat("."));
                                 }
                             }
                         }
@@ -1328,6 +1361,9 @@ Map<I32, I32>, nonnull_ptrs: Map<I32, I32>, expected_return_type: *Str) : Result
                             terminates_with_this = true;
                         }
                     }
+                        if (node_kind(last_stmt) == NK_IDENTIFIER && get_interned_str(node_get_data1(last_stmt)).str_eq("this")) {
+                            terminates_with_this = true;
+                        }
                 }
             }
             else if (node_kind(fn_body) == NK_IDENTIFIER) {
@@ -1391,11 +1427,11 @@ Map<I32, I32>, nonnull_ptrs: Map<I32, I32>, expected_return_type: *Str) : Result
         let rhs_name = infer_expr_type_name(rhs, fn_return_types, local_types);
         if (declared_type != 0) {
             let declared_name = type_name_from_type_node(declared_type);
-            if (!type_names_compatible(declared_name, rhs_name, rhs) && !tc_type_alias_names.set_has(declared_name) && !is_this_return_type_for (rhs_name, declared_name)) {
+            if (!type_names_compatible(declared_name, rhs_name, rhs) && !is_this_return_type_for (rhs_name, declared_name) &&
+            !(tc_type_alias_names.set_has(declared_name) && !is_builtin_primitive_type_name(declared_name))) {
                 let vname = get_interned_str(node_get_data1(n));
                 let msg = "Type mismatch for let ".str_concat(vname).str_concat(": expected ").str_concat(declared_name).str_concat(", got ").str_concat(rhs_name);
-                return tc_result_error( "E_TYPE_LET_MISMATCH",
-                msg, "An explicit let type annotation does not match the assigned RHS expression type.", "Update the explicit type annotation or change the RHS expression to match." );
+                tc_panic_loc("E_TYPE_LET_MISMATCH", msg, "An explicit let type annotation does not match the assigned RHS expression type.", "Update the explicit type annotation or change the RHS expression to match.");
             }
             let lname = get_interned_str(node_get_data1(n));
             local_types.map_set(lname, declared_name);
@@ -1439,9 +1475,8 @@ Map<I32, I32>, nonnull_ptrs: Map<I32, I32>, expected_return_type: *Str) : Result
                 let expected_name = local_types.map_get(tname);
                 let value_name = infer_expr_type_name(value, fn_return_types, local_types);
                 if (!type_names_compatible(expected_name, value_name, value) &&
-                !tc_type_alias_names.set_has(expected_name)) {
-                    return tc_result_error( "E_TYPE_ASSIGN_MISMATCH",
-                    "Assignment mismatch for ".str_concat(tname).str_concat(": expected ").str_concat(expected_name).str_concat(", got ").str_concat(value_name), "The assigned value type is incompatible with the declared variable type.", "Assign a compatible value or change the variable type declaration." );
+                !(tc_type_alias_names.set_has(expected_name) && !is_builtin_primitive_type_name(expected_name))) {
+                    tc_panic_loc("E_TYPE_ASSIGN_MISMATCH", "Assignment mismatch for ".str_concat(tname).str_concat(": expected ").str_concat(expected_name).str_concat(", got ").str_concat(value_name), "The assigned value type is incompatible with the declared variable type.", "Assign a compatible value or change the variable type declaration.");
                 }
             }
         }
@@ -1598,7 +1633,7 @@ out fn typecheck_program_with_options_impl(program: I32) : Result<I32, TypeError
     while (pre_i < pre_len) {
         let pre_stmt = body.vec_get(pre_i);
         let pre_kind = node_kind(pre_stmt);
-        if (pre_kind == NK_EXTERN_TYPE_DECL) {
+        if (is_extern_type_like_decl(pre_stmt)) {
             let alias_name = get_interned_str(node_get_data1(pre_stmt));
             tc_type_alias_names.set_add(alias_name);
             let value_params = node_get_data2(pre_stmt);
@@ -1654,7 +1689,12 @@ out fn typecheck_program_with_options_impl(program: I32) : Result<I32, TypeError
                     }
                 }
                 else {
-                    param_call_bounds_vec.vec_push("");
+                    if (param_type_node != 0 && node_kind(param_type_node) == NK_REFINEMENT_TYPE) {
+                        param_call_bounds_vec.vec_push("__REFINE__");
+                    }
+                    else {
+                        param_call_bounds_vec.vec_push("");
+                    }
                 }
                 p = p + 1;
             }
@@ -1702,7 +1742,7 @@ out fn typecheck_program_with_options_impl(program: I32) : Result<I32, TypeError
                 tc_alias_base_type.map_set(alias_name, alias_base_type_name);
             }
         }
-        if (kind == NK_EXTERN_TYPE_DECL) {
+        if (is_extern_type_like_decl(stmt)) {
             let alias_name = get_interned_str(node_get_data1(stmt));
             tc_type_alias_names.set_add(alias_name);
             let value_params = node_get_data2(stmt);
@@ -1733,8 +1773,7 @@ out fn typecheck_program_with_options_impl(program: I32) : Result<I32, TypeError
         let alias_name = tc_destructor_alias_names.vec_get(i);
         let destructor_name = tc_destructor_alias_by_alias.map_get(alias_name);
         if (!fn_nodes.map_has(destructor_name)) {
-            return tc_result_error( "E_TYPE_DESTRUCTOR_NOT_FOUND",
-            "Destructor '".str_concat(destructor_name).str_concat("' for alias '").str_concat(alias_name).str_concat("' was not found"), "A type alias referenced a destructor function that does not exist.", "Declare the destructor function before using it in 'type Alias = ... then destructor'." );
+            tc_panic_loc("E_TYPE_DESTRUCTOR_NOT_FOUND", "Destructor '".str_concat(destructor_name).str_concat("' for alias '").str_concat(alias_name).str_concat("' was not found"), "A type alias referenced a destructor function that does not exist.", "Declare the destructor function before using it in 'type Alias = ... then destructor'.");
         }
         let fn_node = fn_nodes.map_get(destructor_name);
         let params = node_get_data3(fn_node);
@@ -1763,8 +1802,7 @@ out fn typecheck_program_with_options_impl(program: I32) : Result<I32, TypeError
             valid = false;
         }
         if (!valid) {
-            return tc_result_error( "E_TYPE_DESTRUCTOR_SIGNATURE", "Destructor '".str_concat(destructor_name).str_concat("' must have signature fn ").str_concat(destructor_name).str_concat("(this : ").str_concat(alias_name).str_concat("<...>) : Void"),
-            "Destructor signatures must follow the required receiver and return type contract.", "Use exactly one receiver parameter named 'this' with the alias type (or legacy '*move AliasType') and return Void." );
+            tc_panic_loc("E_TYPE_DESTRUCTOR_SIGNATURE", "Destructor '".str_concat(destructor_name).str_concat("' must have signature fn ").str_concat(destructor_name).str_concat("(this : ").str_concat(alias_name).str_concat("<...>) : Void"), "Destructor signatures must follow the required receiver and return type contract.", "Use exactly one receiver parameter named 'this' with the alias type (or legacy '*move AliasType') and return Void.");
         }
         i = i + 1;
     }
