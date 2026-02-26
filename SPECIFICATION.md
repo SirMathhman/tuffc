@@ -106,6 +106,30 @@ type Result<T, X> = Ok<T> |> Err<X>
 // The |> operator indicates which side the ? operator extracts
 ```
 
+**Type Narrowing**: Flow-sensitive type refinement for union types via the `is` operator.
+
+```tuff
+fn process<T, E>(result: Result<T, E>) => {
+    if (result is Ok) {
+        // Within this branch, 'result' is narrowed to Ok<T>
+        let value: T = result.value;  // .value access is type-safe
+    } else {
+        // Within this branch, 'result' is narrowed to Err<E>
+        let error: E = result.error;  // .error access is type-safe
+    }
+}
+```
+
+The type narrowing is:
+- **Flow-sensitive**: Applies only within the control flow branch where the check succeeds
+- **Runtime-safe**: Union discrimination uses the `__tag` field injected by the compiler
+- **Compile-time verified**: The typechecker tracks narrowed types in the local scope map
+
+Supported contexts:
+- `if (expr is Type)` narrows in the true branch
+- `if (!(expr is Type))` narrows in the false branch (type subtraction)
+- Works with nested if/else chains
+
 #### Composite Types
 
 **Structs**: Product types with named fields.
@@ -697,6 +721,28 @@ type Option<T> = Some<T> | None<T>;
 ```
 
 **Error Propagation**: The `?` operator extracts `Ok` and propagates `Err` (or extracts `Some` and propagates `None`).
+
+**Type Discrimination**: The `is` operator performs runtime type checking and enables compile-time type narrowing in control flow branches.
+
+```tuff
+fn unwrap_or<T, E>(result: Result<T, E>, default_value: T) : T => {
+    if (result is Ok) {
+        result.value  // Type narrowed to Ok<T>, .value access is safe
+    } else {
+        default_value
+    }
+}
+
+fn process_option<T>(opt: Option<T>) => {
+    if (opt is Some) {
+        console_log(opt.value);  // Type narrowed to Some<T>
+    } else {
+        console_log("None");     // Type narrowed to None<T>
+    }
+}
+```
+
+Syntax: `<expr> is <Type>` returns `Bool` and narrows the type of `<expr>` in the true branch. At runtime, union types are discriminated via the `__tag` field.
 
 **No Panics**: The language guarantees no runtime panics. All errors must be handled explicitly through control flow or propagated via `?`.
 

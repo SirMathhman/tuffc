@@ -57,18 +57,6 @@ function str_starts_with(__this_param, prefix) {
 
 // extern fn int_to_string
 
-const __tuff_outer_for_int_to_string_out = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
-function int_to_string_out(n) {
-  let __tuff_this = { n: n, this: __tuff_outer_for_int_to_string_out };
-  return int_to_string(n);
-}
-if (typeof __tuff_this !== 'undefined') __tuff_this.int_to_string_out = int_to_string_out;
-
-function str_index_of_out(__this_param, needle) {
-  let __tuff_this = undefined;
-  return str_index_of((typeof __this_param !== 'undefined' ? __this_param : (typeof __tuff_this !== 'undefined' ? __tuff_this : this)), needle);
-}
-
 // extern fn parse_int
 
 // extern type StringBuilder
@@ -210,13 +198,6 @@ if (typeof __tuff_this !== 'undefined') __tuff_this.set_new = set_new;
 
 // extern fn print_error
 
-const __tuff_outer_for_print_error_out = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
-function print_error_out(s) {
-  let __tuff_this = { s: s, this: __tuff_outer_for_print_error_out };
-  return print_error(s);
-}
-if (typeof __tuff_this !== 'undefined') __tuff_this.print_error_out = print_error_out;
-
 // extern fn panic
 
 // extern fn panic_with_code
@@ -228,13 +209,6 @@ if (typeof __tuff_this !== 'undefined') __tuff_this.print_error_out = print_erro
 // extern fn get_argv
 
 // extern fn perf_now
-
-const __tuff_outer_for_perf_now_out = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
-function perf_now_out() {
-  let __tuff_this = { this: __tuff_outer_for_perf_now_out };
-  return perf_now();
-}
-if (typeof __tuff_this !== 'undefined') __tuff_this.perf_now_out = perf_now_out;
 
 // extern fn profile_mark
 
@@ -10473,7 +10447,7 @@ if (typeof __tuff_this !== 'undefined') __tuff_this.module_collect_declared_sets
 const __tuff_outer_for_module_snapshot_import_specs = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
 function module_snapshot_import_specs(stmts, moduleBasePath, import_path_cache) {
   let __tuff_this = { stmts: stmts, moduleBasePath: moduleBasePath, import_path_cache: import_path_cache, this: __tuff_outer_for_module_snapshot_import_specs };
-  let t0 = perf_now_out(); if (typeof __tuff_this !== 'undefined') __tuff_this.t0 = t0;
+  let t0 = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t0 = t0;
   let imports = vec_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.imports = imports;
   let i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
   let len = (() => { const __recv = stmts; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.len = len;
@@ -10505,7 +10479,7 @@ function module_snapshot_import_specs(stmts, moduleBasePath, import_path_cache) 
 }
   i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
 }
-  gather_prof_import_snapshot_ms = (gather_prof_import_snapshot_ms + (perf_now_out() - t0)); if (typeof __tuff_this !== 'undefined') __tuff_this.gather_prof_import_snapshot_ms = gather_prof_import_snapshot_ms;
+  gather_prof_import_snapshot_ms = (gather_prof_import_snapshot_ms + (perf_now() - t0)); if (typeof __tuff_this !== 'undefined') __tuff_this.gather_prof_import_snapshot_ms = gather_prof_import_snapshot_ms;
   return imports;
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.module_snapshot_import_specs = module_snapshot_import_specs;
@@ -10520,13 +10494,13 @@ function module_walk_imports(imports, moduleBasePath, seen, visiting, sources, m
   let depPath = (() => { const __recv = spec; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(0); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.depPath = depPath;
   let importNames = (() => { const __recv = spec; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(1); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 1) : vec_get(__recv, 1); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.importNames = importNames;
   if ((!(() => { const __recv = seen; const __prop = __recv?.["set_has"]; if (typeof __prop === "function") return __prop(depPath); const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, depPath) : set_has(__recv, depPath); })())) {
-  let t_recurse_0 = perf_now_out(); if (typeof __tuff_this !== 'undefined') __tuff_this.t_recurse_0 = t_recurse_0;
+  let t_recurse_0 = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t_recurse_0 = t_recurse_0;
   gather_module_sources(depPath, moduleBasePath, seen, visiting, sources, module_paths, module_declared_map, module_exported_map, module_source_cache, import_path_cache, all_declared_names, all_exported_declared_names, all_extern_declared_names, lint_enabled, max_effective_lines, module_cycles, (recursion_depth + 1));
   if ((recursion_depth === 0)) {
-  gather_prof_import_recurse_ms = (gather_prof_import_recurse_ms + (perf_now_out() - t_recurse_0)); if (typeof __tuff_this !== 'undefined') __tuff_this.gather_prof_import_recurse_ms = gather_prof_import_recurse_ms;
+  gather_prof_import_recurse_ms = (gather_prof_import_recurse_ms + (perf_now() - t_recurse_0)); if (typeof __tuff_this !== 'undefined') __tuff_this.gather_prof_import_recurse_ms = gather_prof_import_recurse_ms;
 }
 }
-  let t_walk_local_0 = perf_now_out(); if (typeof __tuff_this !== 'undefined') __tuff_this.t_walk_local_0 = t_walk_local_0;
+  let t_walk_local_0 = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t_walk_local_0 = t_walk_local_0;
   let depDeclared = (() => { const __recv = module_declared_map; const __prop = __recv?.["map_get"]; if (typeof __prop === "function") return __prop(depPath); const __dyn = __recv?.table?.map_get; return __dyn ? __dyn(__recv.ref, depPath) : map_get(__recv, depPath); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.depDeclared = depDeclared;
   let depExported = (() => { const __recv = module_exported_map; const __prop = __recv?.["map_get"]; if (typeof __prop === "function") return __prop(depPath); const __dyn = __recv?.table?.map_get; return __dyn ? __dyn(__recv.ref, depPath) : map_get(__recv, depPath); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.depExported = depExported;
   let j = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.j = j;
@@ -10541,7 +10515,7 @@ function module_walk_imports(imports, moduleBasePath, seen, visiting, sources, m
 }
   j = (j + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.j = j;
 }
-  gather_prof_import_walk_ms = (gather_prof_import_walk_ms + (perf_now_out() - t_walk_local_0)); if (typeof __tuff_this !== 'undefined') __tuff_this.gather_prof_import_walk_ms = gather_prof_import_walk_ms;
+  gather_prof_import_walk_ms = (gather_prof_import_walk_ms + (perf_now() - t_walk_local_0)); if (typeof __tuff_this !== 'undefined') __tuff_this.gather_prof_import_walk_ms = gather_prof_import_walk_ms;
   i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
 }
   return 0;
@@ -10766,18 +10740,18 @@ function gather_module_sources(filePath, moduleBasePath, seen, visiting, sources
   panic_with_code("E_MODULE_CYCLE", (() => { const __recv = "Module import cycle detected at "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(filePath); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, filePath) : str_concat(__recv, filePath); })(), "A module was revisited while still being loaded, which means the import graph contains a cycle.", "Break the cycle by extracting shared declarations into a third module imported by both sides.");
 }
   (() => { const __recv = visiting; const __prop = __recv?.["set_add"]; if (typeof __prop === "function") return __prop(filePath); const __dyn = __recv?.table?.set_add; return __dyn ? __dyn(__recv.ref, filePath) : set_add(__recv, filePath); })();
-  let module_t0 = perf_now_out(); if (typeof __tuff_this !== 'undefined') __tuff_this.module_t0 = module_t0;
+  let module_t0 = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.module_t0 = module_t0;
   gather_prof_modules = (gather_prof_modules + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.gather_prof_modules = gather_prof_modules;
   let source = ""; if (typeof __tuff_this !== 'undefined') __tuff_this.source = source;
   if ((() => { const __recv = module_source_cache; const __prop = __recv?.["map_has"]; if (typeof __prop === "function") return __prop(filePath); const __dyn = __recv?.table?.map_has; return __dyn ? __dyn(__recv.ref, filePath) : map_has(__recv, filePath); })()) {
   source = (() => { const __recv = module_source_cache; const __prop = __recv?.["map_get"]; if (typeof __prop === "function") return __prop(filePath); const __dyn = __recv?.table?.map_get; return __dyn ? __dyn(__recv.ref, filePath) : map_get(__recv, filePath); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.source = source;
 } else {
-  let t_read_0 = perf_now_out(); if (typeof __tuff_this !== 'undefined') __tuff_this.t_read_0 = t_read_0;
+  let t_read_0 = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t_read_0 = t_read_0;
   source = read_file(filePath); if (typeof __tuff_this !== 'undefined') __tuff_this.source = source;
-  gather_prof_read_file_ms = (gather_prof_read_file_ms + (perf_now_out() - t_read_0)); if (typeof __tuff_this !== 'undefined') __tuff_this.gather_prof_read_file_ms = gather_prof_read_file_ms;
+  gather_prof_read_file_ms = (gather_prof_read_file_ms + (perf_now() - t_read_0)); if (typeof __tuff_this !== 'undefined') __tuff_this.gather_prof_read_file_ms = gather_prof_read_file_ms;
   (() => { const __recv = module_source_cache; const __prop = __recv?.["map_set"]; if (typeof __prop === "function") return __prop(filePath, source); const __dyn = __recv?.table?.map_set; return __dyn ? __dyn(__recv.ref, filePath, source) : map_set(__recv, filePath, source); })();
 }
-  let t_parse_0 = perf_now_out(); if (typeof __tuff_this !== 'undefined') __tuff_this.t_parse_0 = t_parse_0;
+  let t_parse_0 = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t_parse_0 = t_parse_0;
   lex_init(source);
   lex_all();
   if ((lint_enabled === 1)) {
@@ -10785,18 +10759,18 @@ function gather_module_sources(filePath, moduleBasePath, seen, visiting, sources
 }
   parse_init();
   let program = p_parse_program(); if (typeof __tuff_this !== 'undefined') __tuff_this.program = program;
-  gather_prof_lex_parse_ms = (gather_prof_lex_parse_ms + (perf_now_out() - t_parse_0)); if (typeof __tuff_this !== 'undefined') __tuff_this.gather_prof_lex_parse_ms = gather_prof_lex_parse_ms;
+  gather_prof_lex_parse_ms = (gather_prof_lex_parse_ms + (perf_now() - t_parse_0)); if (typeof __tuff_this !== 'undefined') __tuff_this.gather_prof_lex_parse_ms = gather_prof_lex_parse_ms;
   let stmts = node_get_data1(program); if (typeof __tuff_this !== 'undefined') __tuff_this.stmts = stmts;
-  let t_decl_0 = perf_now_out(); if (typeof __tuff_this !== 'undefined') __tuff_this.t_decl_0 = t_decl_0;
+  let t_decl_0 = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t_decl_0 = t_decl_0;
   let declared = module_collect_declared_sets(source, program, module_declared_map, module_exported_map, filePath, all_declared_names, all_exported_declared_names, all_extern_declared_names); if (typeof __tuff_this !== 'undefined') __tuff_this.declared = declared;
-  gather_prof_decl_collect_ms = (gather_prof_decl_collect_ms + (perf_now_out() - t_decl_0)); if (typeof __tuff_this !== 'undefined') __tuff_this.gather_prof_decl_collect_ms = gather_prof_decl_collect_ms;
+  gather_prof_decl_collect_ms = (gather_prof_decl_collect_ms + (perf_now() - t_decl_0)); if (typeof __tuff_this !== 'undefined') __tuff_this.gather_prof_decl_collect_ms = gather_prof_decl_collect_ms;
   let imports = module_snapshot_import_specs(stmts, moduleBasePath, import_path_cache); if (typeof __tuff_this !== 'undefined') __tuff_this.imports = imports;
   let imported_names = module_collect_imported_names(imports); if (typeof __tuff_this !== 'undefined') __tuff_this.imported_names = imported_names;
   let implicit_candidates = module_collect_implicit_import_candidates(program, declared, imported_names); if (typeof __tuff_this !== 'undefined') __tuff_this.implicit_candidates = implicit_candidates;
   module_walk_imports(imports, moduleBasePath, seen, visiting, sources, module_paths, module_declared_map, module_exported_map, module_source_cache, import_path_cache, all_declared_names, all_exported_declared_names, all_extern_declared_names, lint_enabled, max_effective_lines, module_cycles, recursion_depth);
-  let t_implicit_0 = perf_now_out(); if (typeof __tuff_this !== 'undefined') __tuff_this.t_implicit_0 = t_implicit_0;
+  let t_implicit_0 = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t_implicit_0 = t_implicit_0;
   module_assert_no_implicit_imports(implicit_candidates, all_exported_declared_names, all_extern_declared_names);
-  gather_prof_implicit_check_ms = (gather_prof_implicit_check_ms + (perf_now_out() - t_implicit_0)); if (typeof __tuff_this !== 'undefined') __tuff_this.gather_prof_implicit_check_ms = gather_prof_implicit_check_ms;
+  gather_prof_implicit_check_ms = (gather_prof_implicit_check_ms + (perf_now() - t_implicit_0)); if (typeof __tuff_this !== 'undefined') __tuff_this.gather_prof_implicit_check_ms = gather_prof_implicit_check_ms;
   (() => { const __recv = visiting; const __prop = __recv?.["set_delete"]; if (typeof __prop === "function") return __prop(filePath); const __dyn = __recv?.table?.set_delete; return __dyn ? __dyn(__recv.ref, filePath) : set_delete(__recv, filePath); })();
   (() => { const __recv = seen; const __prop = __recv?.["set_add"]; if (typeof __prop === "function") return __prop(filePath); const __dyn = __recv?.table?.set_add; return __dyn ? __dyn(__recv.ref, filePath) : set_add(__recv, filePath); })();
   (() => { const __recv = sources; const __prop = __recv?.["vec_push"]; if (typeof __prop === "function") return __prop(source); const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, source) : vec_push(__recv, source); })();
@@ -10835,9 +10809,9 @@ function compile_file_with_options(inputPath, outputPath, lint_enabled, max_effe
   gather_prof_reset();
   lint_reset();
   sourcemap_init();
-  let t0 = perf_now_out(); if (typeof __tuff_this !== 'undefined') __tuff_this.t0 = t0;
+  let t0 = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t0 = t0;
   gather_module_sources(inputPath, moduleBasePath, seen, visiting, sources, module_paths, module_declared_map, module_exported_map, module_source_cache, import_path_cache, all_declared_names, all_exported_declared_names, all_extern_declared_names, lint, max_lines, module_cycles, 0);
-  let t1 = perf_now_out(); if (typeof __tuff_this !== 'undefined') __tuff_this.t1 = t1;
+  let t1 = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t1 = t1;
   let sm_i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.sm_i = sm_i;
   let sm_line = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.sm_line = sm_line;
   while ((sm_i < (() => { const __recv = module_paths; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })())) {
@@ -10849,22 +10823,22 @@ function compile_file_with_options(inputPath, outputPath, lint_enabled, max_effe
 }
   let joined = join_sources(sources); if (typeof __tuff_this !== 'undefined') __tuff_this.joined = joined;
   let merged = module_with_c_runtime_prelude(joined, target); if (typeof __tuff_this !== 'undefined') __tuff_this.merged = merged;
-  let t2 = perf_now_out(); if (typeof __tuff_this !== 'undefined') __tuff_this.t2 = t2;
+  let t2 = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t2 = t2;
   lex_init(merged);
   lex_all();
   parse_init();
   let program = p_parse_program(); if (typeof __tuff_this !== 'undefined') __tuff_this.program = program;
   program = strip_import_decls(program); if (typeof __tuff_this !== 'undefined') __tuff_this.program = program;
-  let t3 = perf_now_out(); if (typeof __tuff_this !== 'undefined') __tuff_this.t3 = t3;
+  let t3 = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t3 = t3;
   let desugared = desugar(program); if (typeof __tuff_this !== 'undefined') __tuff_this.desugared = desugared;
   let resolved = resolve_names(desugared); if (typeof __tuff_this !== 'undefined') __tuff_this.resolved = resolved;
-  let t4 = perf_now_out(); if (typeof __tuff_this !== 'undefined') __tuff_this.t4 = t4;
+  let t4 = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t4 = t4;
   let typed = typecheck_program_with_options(resolved); if (typeof __tuff_this !== 'undefined') __tuff_this.typed = typed;
-  let t5 = perf_now_out(); if (typeof __tuff_this !== 'undefined') __tuff_this.t5 = t5;
+  let t5 = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t5 = t5;
   if ((borrow === 1)) {
   borrowcheck_program(typed);
 }
-  let t6 = perf_now_out(); if (typeof __tuff_this !== 'undefined') __tuff_this.t6 = t6;
+  let t6 = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t6 = t6;
   if ((lint === 1)) {
   lint_program(typed, inputPath, max_lines, 0);
   let i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
@@ -10874,9 +10848,9 @@ function compile_file_with_options(inputPath, outputPath, lint_enabled, max_effe
   i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
 }
 }
-  let t7 = perf_now_out(); if (typeof __tuff_this !== 'undefined') __tuff_this.t7 = t7;
+  let t7 = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t7 = t7;
   let emitted = module_emit_target_output(typed, merged, target); if (typeof __tuff_this !== 'undefined') __tuff_this.emitted = emitted;
-  let t8 = perf_now_out(); if (typeof __tuff_this !== 'undefined') __tuff_this.t8 = t8;
+  let t8 = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t8 = t8;
   return write_file(outputPath, emitted);
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.compile_file_with_options = compile_file_with_options;
