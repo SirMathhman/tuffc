@@ -4,6 +4,14 @@ let {
 }
  = selfhost::runtime_lexer;
 let {
+    Ok, Err, Result
+}
+ = selfhost::Result;
+let {
+    ResolveError
+}
+ = selfhost::errors::ResolveError;
+let {
     lex_init, lex_all
 }
  = selfhost::runtime_lexer;
@@ -703,7 +711,11 @@ max_effective_lines: I32, borrow_enabled: I32, target: *Str) : I32 => {
     program = strip_import_decls(program);
     let t3 = perf_now();
     let desugared = desugar(program);
-    let resolved = resolve_names(desugared);
+    let resolved = match (resolve_names(desugared)) {
+        case Ok { value } = value;
+        case Err { error } = 
+            panic("Resolver error: ".str_concat(error.message));
+    };
     let t4 = perf_now();
     let typed = typecheck_program_with_options(resolved);
     let t5 = perf_now();

@@ -1,0 +1,16 @@
+// Result<T, E> type for error handling without panics
+// Selfhost compiler version - exports Ok, Err, and Result type
+
+// Ok variant - represents successful computation
+out struct Ok<T> {
+    value: T
+}
+
+// Err variant - represents failed computation with error
+out struct Err<E> {
+    error: E
+}
+
+// Result type using union syntax with extract operator (|>)
+// The |> allows the ? operator to extract Ok values or propagate Err
+out type Result<T, E> = Ok<T> |> Err<E>;

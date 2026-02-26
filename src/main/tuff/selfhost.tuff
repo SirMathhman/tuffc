@@ -11,6 +11,14 @@ let {
 }
  = selfhost::module_loader;
 let {
+    Ok, Err, Result
+}
+ = selfhost::Result;
+let {
+    ResolveError
+}
+ = selfhost::errors::ResolveError;
+let {
     selfhost_runtime_lexer_marker
 }
  = selfhost::runtime_lexer;
@@ -188,7 +196,11 @@ borrow_enabled: I32, target: *Str) : *Str => {
     let t3_desugar = perf_now();
     profile_mark("desugar", t3_desugar - t2_desugar);
     let t3_resolve = perf_now();
-    let resolved = resolve_names(desugared);
+    let resolved = match (resolve_names(desugared)) {
+        case Ok { value } = value;
+        case Err { error } = 
+            panic("Resolver error: ".str_concat(error.message));
+    };
     let t4_resolve = perf_now();
     profile_mark("resolve", t4_resolve - t3_resolve);
     let t4_typecheck = perf_now();

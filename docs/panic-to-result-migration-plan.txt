@@ -1,0 +1,80 @@
+// ============================================================================
+// MIGRATION PLAN: Phase 1 - Resolver (Result-based error handling)
+// ============================================================================
+
+// Step 1: Update rslv_panic_loc to return Result<I32, ResolveError>
+//   Before: fn rslv_panic_loc(...) : I32 => panic_with_code_loc(...)
+//   After:  fn rslv_panic_loc(...) : Result<I32, ResolveError> => {
+//             Err<ResolveError> {
+//               error: ResolveError {
+//                 code: code,
+//                 message: msg,
+//                 reason: reason,
+//                 fix: fix,
+//                 line: node_get_line(rslv_current_node),
+//                 col: node_get_col(rslv_current_node)
+//               }
+//             }
+//           }
+
+// Step 2: Update affected function signatures:
+//   - fn rslv_panic_loc(...) : I32 → fn rslv_panic_loc(...) : Result<I32, ResolveError>
+//   - fn resolve_expr_identifier(...) : I32 → fn resolve_expr_identifier(...) : Result<I32, ResolveError>
+//   - fn resolve_expr_call(...) : I32 → fn resolve_expr_call(...) : Result<I32, ResolveError>
+//   - fn resolve_type(...) : I32 → fn resolve_type(...) : Result<I32, ResolveError>
+//   - fn resolve_stmt_into(...) : I32 → fn resolve_stmt_into(...) : Result<I32, ResolveError>
+//   - fn resolve_expr_struct_init(...) : I32 → fn resolve_expr_struct_init(...) : Result<I32, ResolveError>
+//   - fn resolve_names(...) : I32 → fn resolve_names(...) : Result<I32, ResolveError>
+
+// Step 3: Wrap success returns:
+//   Before: return 0;
+//   After:  return Ok<I32> { value: 0 };
+
+// Step 4: Propagate errors with ? operator:
+//   Before: resolve_expr_identifier(n, globals, scopes, depth);
+//   After:  resolve_expr_identifier(n, globals, scopes, depth)?;
+
+// Total panic sites to convert: 8
+
+// ============================================================================
+// PANIC SITE INVENTORY
+// ============================================================================
+// Site 1: resolve_expr_identifier
+//   Line: 37
+//   Code: E_RESOLVE_UNKNOWN_IDENTIFIER
+//   Message: Unknown identifier: {name}
+
+// Site 2: resolve_expr_call (drop builtin)
+//   Line: 51
+//   Code: E_RESOLVE_UNKNOWN_IDENTIFIER
+//   Message: drop expects exactly one argument
+
+// Site 3: resolve_expr_call (into builtin)
+//   Line: 59
+//   Code: E_RESOLVE_UNKNOWN_IDENTIFIER
+//   Message: into conversion requires a receiver
+
+// Site 4: resolve_expr_call (into builtin)
+//   Line: 71
+//   Code: E_RESOLVE_UNKNOWN_IDENTIFIER
+//   Message: Unknown contract '{contract_label}'
+
+// Site 5: resolve_type
+//   Line: 283
+//   Code: E_RESOLVE_UNKNOWN_TYPE
+//   Message: Unknown type: {type_name}
+
+// Site 6: resolve_stmt_into
+//   Line: 303
+//   Code: E_RESOLVE_UNKNOWN_IDENTIFIER
+//   Message: Unknown contract: {cname}
+
+// Site 7: resolve_expr_struct_init
+//   Line: 345
+//   Code: E_RESOLVE_UNKNOWN_STRUCT
+//   Message: Unknown struct/type in initializer: {struct_name}
+
+// Site 8: resolve_names (global declaration)
+//   Line: 466
+//   Code: E_RESOLVE_SHADOWING
+//   Message: Global name '{name}' is already declared

@@ -1,7 +1,7 @@
 // Resolver error type for name resolution failures
 // Used when linking identifiers to declarations
 
-struct ResolveError {
+out struct ResolveError {
     code: *Str,      // Error code (E_RESOLVE_*)
     message: *Str,   // User-facing error summary
     reason: *Str,    // Why this is an error (educational)

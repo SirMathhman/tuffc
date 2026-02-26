@@ -828,6 +828,14 @@ function selfhost_runtime_lexer_marker() {
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.selfhost_runtime_lexer_marker = selfhost_runtime_lexer_marker;
 
+function Ok(fields = {}) { return { __tag: "Ok", value: fields.value }; }
+
+function Err(fields = {}) { return { __tag: "Err", error: fields.error }; }
+
+// type Result = ...
+
+function ResolveError(fields = {}) { return { __tag: "ResolveError", code: fields.code, message: fields.message, reason: fields.reason, fix: fields.fix, line: fields.line, col: fields.col }; }
+
 let NK_PROGRAM = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.NK_PROGRAM = NK_PROGRAM;
 
 let NK_FN_DECL = 2; if (typeof __tuff_this !== 'undefined') __tuff_this.NK_FN_DECL = NK_FN_DECL;
@@ -3332,7 +3340,7 @@ let rslv_current_node = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.r
 const __tuff_outer_for_rslv_panic_loc = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
 function rslv_panic_loc(code, msg, reason, fix) {
   let __tuff_this = { code: code, msg: msg, reason: reason, fix: fix, this: __tuff_outer_for_rslv_panic_loc };
-  return panic_with_code_loc(code, msg, reason, fix, node_get_line(rslv_current_node), node_get_col(rslv_current_node));
+  return ((typeof Err === "function") ? Err({error: ((typeof ResolveError === "function") ? ResolveError({code: code, message: msg, reason: reason, fix: fix, line: node_get_line(rslv_current_node), col: node_get_col(rslv_current_node)}) : ({ __tag: "ResolveError", code: code, message: msg, reason: reason, fix: fix, line: node_get_line(rslv_current_node), col: node_get_col(rslv_current_node) }))}) : ({ __tag: "Err", error: ((typeof ResolveError === "function") ? ResolveError({code: code, message: msg, reason: reason, fix: fix, line: node_get_line(rslv_current_node), col: node_get_col(rslv_current_node)}) : ({ __tag: "ResolveError", code: code, message: msg, reason: reason, fix: fix, line: node_get_line(rslv_current_node), col: node_get_col(rslv_current_node) })) }));
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.rslv_panic_loc = rslv_panic_loc;
 
@@ -3352,9 +3360,9 @@ function resolve_expr_identifier(n, globals, scopes, depth) {
   if ((!(() => { const __recv = suggestion; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop(""); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "") : str_eq(__recv, ""); })())) {
   fix_msg = (() => { const __recv = (() => { const __recv = "Did you mean '"; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(suggestion); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, suggestion) : str_concat(__recv, suggestion); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("'? Declare or import it from the correct module."); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "'? Declare or import it from the correct module.") : str_concat(__recv, "'? Declare or import it from the correct module."); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.fix_msg = fix_msg;
 }
-  rslv_panic_loc("E_RESOLVE_UNKNOWN_IDENTIFIER", (() => { const __recv = "Unknown identifier: "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, name) : str_concat(__recv, name); })(), "The identifier is not declared in local scope, global declarations, or imports.", fix_msg);
+  return rslv_panic_loc("E_RESOLVE_UNKNOWN_IDENTIFIER", (() => { const __recv = "Unknown identifier: "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, name) : str_concat(__recv, name); })(), "The identifier is not declared in local scope, global declarations, or imports.", fix_msg);
 }
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.resolve_expr_identifier = resolve_expr_identifier;
 
@@ -3365,15 +3373,15 @@ function resolve_expr_call(n, globals, scopes, depth) {
   if (((node_kind(callee) === NK_IDENTIFIER) && (() => { const __recv = get_interned_str(node_get_data1(callee)); const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("drop"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "drop") : str_eq(__recv, "drop"); })())) {
   let args = node_get_data2(n); if (typeof __tuff_this !== 'undefined') __tuff_this.args = args;
   if (((() => { const __recv = args; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })() !== 1)) {
-  rslv_panic_loc("E_RESOLVE_UNKNOWN_IDENTIFIER", "drop expects exactly one argument", "Built-in drop requires exactly one receiver value.", "Use drop(value) or value.drop() with exactly one receiver value.");
+  return rslv_panic_loc("E_RESOLVE_UNKNOWN_IDENTIFIER", "drop expects exactly one argument", "Built-in drop requires exactly one receiver value.", "Use drop(value) or value.drop() with exactly one receiver value.");
 }
   resolve_expr((() => { const __recv = args; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(0); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })(), globals, scopes, depth);
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
   if ((((node_kind(callee) === NK_IDENTIFIER) && (() => { const __recv = get_interned_str(node_get_data1(callee)); const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("into"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "into") : str_eq(__recv, "into"); })()) && (node_get_data3(n) === 1))) {
   let args = node_get_data2(n); if (typeof __tuff_this !== 'undefined') __tuff_this.args = args;
   if (((() => { const __recv = args; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })() < 1)) {
-  rslv_panic_loc("E_RESOLVE_UNKNOWN_IDENTIFIER", "into conversion requires a receiver", "Method-sugar into conversion requires a source value as receiver.", "Use value.into<Contract>(...) with a receiver value.");
+  return rslv_panic_loc("E_RESOLVE_UNKNOWN_IDENTIFIER", "into conversion requires a receiver", "Method-sugar into conversion requires a source value as receiver.", "Use value.into<Contract>(...) with a receiver value.");
 }
   let type_args = node_get_data4(n); if (typeof __tuff_this !== 'undefined') __tuff_this.type_args = type_args;
   let contract_name = ""; if (typeof __tuff_this !== 'undefined') __tuff_this.contract_name = contract_name;
@@ -3385,7 +3393,7 @@ function resolve_expr_call(n, globals, scopes, depth) {
   contract_label = "<missing>"; if (typeof __tuff_this !== 'undefined') __tuff_this.contract_label = contract_label;
 }
   if (((() => { const __recv = contract_name; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop(""); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "") : str_eq(__recv, ""); })() || (!(() => { const __recv = globals; const __prop = __recv?.["set_has"]; if (typeof __prop === "function") return __prop(contract_name); const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, contract_name) : set_has(__recv, contract_name); })()))) {
-  rslv_panic_loc("E_RESOLVE_UNKNOWN_IDENTIFIER", (() => { const __recv = (() => { const __recv = "Unknown contract '"; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(contract_label); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, contract_label) : str_concat(__recv, contract_label); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("'"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "'") : str_concat(__recv, "'"); })(), "An into conversion referenced a contract that is not declared in scope.", "Use value.into<Contract>(...) with a declared contract name.");
+  return rslv_panic_loc("E_RESOLVE_UNKNOWN_IDENTIFIER", (() => { const __recv = (() => { const __recv = "Unknown contract '"; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(contract_label); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, contract_label) : str_concat(__recv, contract_label); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("'"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "'") : str_concat(__recv, "'"); })(), "An into conversion referenced a contract that is not declared in scope.", "Use value.into<Contract>(...) with a declared contract name.");
 }
   resolve_expr((() => { const __recv = args; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(0); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })(), globals, scopes, depth);
   let i = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
@@ -3394,7 +3402,7 @@ function resolve_expr_call(n, globals, scopes, depth) {
   resolve_expr((() => { const __recv = args; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(), globals, scopes, depth);
   i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
 }
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
   if ((node_get_data3(n) !== 1)) {
   resolve_expr(node_get_data1(n), globals, scopes, depth);
@@ -3406,7 +3414,7 @@ function resolve_expr_call(n, globals, scopes, depth) {
   resolve_expr((() => { const __recv = args; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(), globals, scopes, depth);
   i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
 }
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.resolve_expr_call = resolve_expr_call;
 
@@ -3441,7 +3449,7 @@ function resolve_expr_match(n, globals, scopes, depth) {
   (() => { const __recv = scopes; const __prop = __recv?.["vec_pop"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_pop; return __dyn ? __dyn(__recv.ref) : vec_pop(__recv); })();
   i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
 }
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.resolve_expr_match = resolve_expr_match;
 
@@ -3460,7 +3468,7 @@ function resolve_expr_lambda(n, globals, scopes, depth) {
 }
   resolve_stmt(node_get_data2(n), globals, scopes, next_depth);
   (() => { const __recv = scopes; const __prop = __recv?.["vec_pop"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_pop; return __dyn ? __dyn(__recv.ref) : vec_pop(__recv); })();
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.resolve_expr_lambda = resolve_expr_lambda;
 
@@ -3483,7 +3491,7 @@ function resolve_expr_fn_expr(n, globals, scopes, depth) {
 }
   resolve_stmt(node_get_data5(n), globals, scopes, next_depth);
   (() => { const __recv = scopes; const __prop = __recv?.["vec_pop"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_pop; return __dyn ? __dyn(__recv.ref) : vec_pop(__recv); })();
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.resolve_expr_fn_expr = resolve_expr_fn_expr;
 
@@ -3509,7 +3517,7 @@ function resolve_stmt_block(n, globals, scopes, depth) {
   i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
 }
   (() => { const __recv = scopes; const __prop = __recv?.["vec_pop"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_pop; return __dyn ? __dyn(__recv.ref) : vec_pop(__recv); })();
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.resolve_stmt_block = resolve_stmt_block;
 
@@ -3530,7 +3538,7 @@ function resolve_stmt_fn_decl(n, globals, scopes, depth) {
   rslv_utils_resolve_type_lifetimes(node_get_data4(n), resolve_lifetime_scopes, n);
   resolve_stmt(node_get_data5(n), globals, scopes, next_depth);
   (() => { const __recv = scopes; const __prop = __recv?.["vec_pop"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_pop; return __dyn ? __dyn(__recv.ref) : vec_pop(__recv); })();
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.resolve_stmt_fn_decl = resolve_stmt_fn_decl;
 
@@ -3544,7 +3552,7 @@ function resolve_stmt_let_or_import(n, globals, scopes, depth) {
 }
   resolve_expr(node_get_data3(n), globals, scopes, depth);
   rslv_utils_scope_define(scopes, depth, get_interned_str(node_get_data1(n)), n);
-  return 1;
+  return ((typeof Ok === "function") ? Ok({value: 1}) : ({ __tag: "Ok", value: 1 }));
 }
   if ((kind === NK_IMPORT_DECL)) {
   let names = node_get_data1(n); if (typeof __tuff_this !== 'undefined') __tuff_this.names = names;
@@ -3554,12 +3562,12 @@ function resolve_stmt_let_or_import(n, globals, scopes, depth) {
   rslv_utils_scope_define(scopes, depth, get_interned_str((() => { const __recv = names; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })()), n);
   i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
 }
-  return 1;
+  return ((typeof Ok === "function") ? Ok({value: 1}) : ({ __tag: "Ok", value: 1 }));
 }
   if ((kind === NK_EXTERN_IMPORT_DECL)) {
-  return 1;
+  return ((typeof Ok === "function") ? Ok({value: 1}) : ({ __tag: "Ok", value: 1 }));
 }
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.resolve_stmt_let_or_import = resolve_stmt_let_or_import;
 
@@ -3569,16 +3577,16 @@ function resolve_stmt_flow(n, globals, scopes, depth) {
   let kind = node_kind(n); if (typeof __tuff_this !== 'undefined') __tuff_this.kind = kind;
   if ((kind === NK_EXPR_STMT)) {
   resolve_expr(node_get_data1(n), globals, scopes, depth);
-  return 1;
+  return ((typeof Ok === "function") ? Ok({value: 1}) : ({ __tag: "Ok", value: 1 }));
 }
   if ((kind === NK_ASSIGN_STMT)) {
   resolve_expr(node_get_data1(n), globals, scopes, depth);
   resolve_expr(node_get_data2(n), globals, scopes, depth);
-  return 1;
+  return ((typeof Ok === "function") ? Ok({value: 1}) : ({ __tag: "Ok", value: 1 }));
 }
   if ((kind === NK_RETURN_STMT)) {
   resolve_expr(node_get_data1(n), globals, scopes, depth);
-  return 1;
+  return ((typeof Ok === "function") ? Ok({value: 1}) : ({ __tag: "Ok", value: 1 }));
 }
   if ((kind === NK_IF_STMT)) {
   resolve_expr(node_get_data1(n), globals, scopes, depth);
@@ -3586,7 +3594,7 @@ function resolve_stmt_flow(n, globals, scopes, depth) {
   if ((node_get_data3(n) !== 0)) {
   resolve_stmt(node_get_data3(n), globals, scopes, depth);
 }
-  return 1;
+  return ((typeof Ok === "function") ? Ok({value: 1}) : ({ __tag: "Ok", value: 1 }));
 }
   if ((kind === NK_FOR_STMT)) {
   let next_depth = (depth + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.next_depth = next_depth;
@@ -3596,18 +3604,18 @@ function resolve_stmt_flow(n, globals, scopes, depth) {
   resolve_expr(node_get_data3(n), globals, scopes, next_depth);
   resolve_stmt(node_get_data4(n), globals, scopes, next_depth);
   (() => { const __recv = scopes; const __prop = __recv?.["vec_pop"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_pop; return __dyn ? __dyn(__recv.ref) : vec_pop(__recv); })();
-  return 1;
+  return ((typeof Ok === "function") ? Ok({value: 1}) : ({ __tag: "Ok", value: 1 }));
 }
   if ((kind === NK_WHILE_STMT)) {
   resolve_expr(node_get_data1(n), globals, scopes, depth);
   resolve_stmt(node_get_data2(n), globals, scopes, depth);
-  return 1;
+  return ((typeof Ok === "function") ? Ok({value: 1}) : ({ __tag: "Ok", value: 1 }));
 }
   if ((kind === NK_LOOP_STMT)) {
   resolve_stmt(node_get_data1(n), globals, scopes, depth);
-  return 1;
+  return ((typeof Ok === "function") ? Ok({value: 1}) : ({ __tag: "Ok", value: 1 }));
 }
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.resolve_stmt_flow = resolve_stmt_flow;
 
@@ -3625,7 +3633,7 @@ function resolve_stmt_lifetime_or_into(n, globals, scopes, depth) {
   while ((i < len)) {
   let lname = get_interned_str((() => { const __recv = lifetime_names; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })()); if (typeof __tuff_this !== 'undefined') __tuff_this.lname = lname;
   if ((() => { const __recv = lifetime_scope; const __prop = __recv?.["set_has"]; if (typeof __prop === "function") return __prop(lname); const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, lname) : set_has(__recv, lname); })()) {
-  rslv_panic_loc("E_RESOLVE_DUPLICATE_LIFETIME", (() => { const __recv = (() => { const __recv = "Duplicate lifetime name '"; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(lname); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, lname) : str_concat(__recv, lname); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("' in lifetime block"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "' in lifetime block") : str_concat(__recv, "' in lifetime block"); })(), "A lifetime block contains duplicate lifetime names.", "Use unique lifetime names within a lifetime declaration block.");
+  return rslv_panic_loc("E_RESOLVE_DUPLICATE_LIFETIME", (() => { const __recv = (() => { const __recv = "Duplicate lifetime name '"; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(lname); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, lname) : str_concat(__recv, lname); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("' in lifetime block"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "' in lifetime block") : str_concat(__recv, "' in lifetime block"); })(), "A lifetime block contains duplicate lifetime names.", "Use unique lifetime names within a lifetime declaration block.");
 }
   (() => { const __recv = lifetime_scope; const __prop = __recv?.["set_add"]; if (typeof __prop === "function") return __prop(lname); const __dyn = __recv?.table?.set_add; return __dyn ? __dyn(__recv.ref, lname) : set_add(__recv, lname); })();
   rslv_utils_scope_define(scopes, next_depth, lname, n);
@@ -3635,16 +3643,16 @@ function resolve_stmt_lifetime_or_into(n, globals, scopes, depth) {
   resolve_stmt(node_get_data2(n), globals, scopes, next_depth);
   (() => { const __recv = resolve_lifetime_scopes; const __prop = __recv?.["vec_pop"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_pop; return __dyn ? __dyn(__recv.ref) : vec_pop(__recv); })();
   (() => { const __recv = scopes; const __prop = __recv?.["vec_pop"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_pop; return __dyn ? __dyn(__recv.ref) : vec_pop(__recv); })();
-  return 1;
+  return ((typeof Ok === "function") ? Ok({value: 1}) : ({ __tag: "Ok", value: 1 }));
 }
   if ((kind === NK_INTO_STMT)) {
   let cname = get_interned_str(node_get_data1(n)); if (typeof __tuff_this !== 'undefined') __tuff_this.cname = cname;
   if ((!(() => { const __recv = globals; const __prop = __recv?.["set_has"]; if (typeof __prop === "function") return __prop(cname); const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, cname) : set_has(__recv, cname); })())) {
-  rslv_panic_loc("E_RESOLVE_UNKNOWN_IDENTIFIER", (() => { const __recv = "Unknown contract: "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(cname); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, cname) : str_concat(__recv, cname); })(), "An into statement referenced a contract that is not declared in scope.", "Declare the contract before using 'into'.");
+  return rslv_panic_loc("E_RESOLVE_UNKNOWN_IDENTIFIER", (() => { const __recv = "Unknown contract: "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(cname); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, cname) : str_concat(__recv, cname); })(), "An into statement referenced a contract that is not declared in scope.", "Declare the contract before using 'into'.");
 }
-  return 1;
+  return ((typeof Ok === "function") ? Ok({value: 1}) : ({ __tag: "Ok", value: 1 }));
 }
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.resolve_stmt_lifetime_or_into = resolve_stmt_lifetime_or_into;
 
@@ -3652,7 +3660,7 @@ const __tuff_outer_for_resolve_expr = typeof __tuff_this !== 'undefined' ? __tuf
 function resolve_expr(n, globals, scopes, depth) {
   let __tuff_this = { n: n, globals: globals, scopes: scopes, depth: depth, this: __tuff_outer_for_resolve_expr };
   if ((n === 0)) {
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
   rslv_current_node = n; if (typeof __tuff_this !== 'undefined') __tuff_this.rslv_current_node = rslv_current_node;
   let kind = node_kind(n); if (typeof __tuff_this !== 'undefined') __tuff_this.kind = kind;
@@ -3662,31 +3670,31 @@ function resolve_expr(n, globals, scopes, depth) {
   if ((kind === NK_BINARY_EXPR)) {
   resolve_expr(node_get_data2(n), globals, scopes, depth);
   resolve_expr(node_get_data3(n), globals, scopes, depth);
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
   if (((kind === NK_UNARY_EXPR) || (kind === NK_UNWRAP_EXPR))) {
   resolve_expr(node_get_data2(n), globals, scopes, depth);
   if ((kind === NK_UNWRAP_EXPR)) {
   resolve_expr(node_get_data1(n), globals, scopes, depth);
 }
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
   if ((kind === NK_CALL_EXPR)) {
   return resolve_expr_call(n, globals, scopes, depth);
 }
   if ((kind === NK_MEMBER_EXPR)) {
   resolve_expr(node_get_data1(n), globals, scopes, depth);
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
   if ((kind === NK_INDEX_EXPR)) {
   resolve_expr(node_get_data1(n), globals, scopes, depth);
   resolve_expr(node_get_data2(n), globals, scopes, depth);
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
   if ((kind === NK_STRUCT_INIT)) {
   let type_name = get_interned_str(node_get_data1(n)); if (typeof __tuff_this !== 'undefined') __tuff_this.type_name = type_name;
   if ((!(() => { const __recv = globals; const __prop = __recv?.["set_has"]; if (typeof __prop === "function") return __prop(type_name); const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, type_name) : set_has(__recv, type_name); })())) {
-  rslv_panic_loc("E_RESOLVE_UNKNOWN_STRUCT", (() => { const __recv = "Unknown struct/type in initializer: "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(type_name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, type_name) : str_concat(__recv, type_name); })(), "A struct initializer referenced a type that is not declared in the merged module scope.", "Declare the struct/type first or import the module that defines it.");
+  return rslv_panic_loc("E_RESOLVE_UNKNOWN_STRUCT", (() => { const __recv = "Unknown struct/type in initializer: "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(type_name); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, type_name) : str_concat(__recv, type_name); })(), "A struct initializer referenced a type that is not declared in the merged module scope.", "Declare the struct/type first or import the module that defines it.");
 }
   let fields = node_get_data2(n); if (typeof __tuff_this !== 'undefined') __tuff_this.fields = fields;
   let i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
@@ -3696,7 +3704,7 @@ function resolve_expr(n, globals, scopes, depth) {
   resolve_expr((() => { const __recv = field; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(1); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 1) : vec_get(__recv, 1); })(), globals, scopes, depth);
   i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
 }
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
   if ((kind === NK_TUPLE_EXPR)) {
   let items = node_get_data1(n); if (typeof __tuff_this !== 'undefined') __tuff_this.items = items;
@@ -3706,7 +3714,7 @@ function resolve_expr(n, globals, scopes, depth) {
   resolve_expr((() => { const __recv = items; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(), globals, scopes, depth);
   i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
 }
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
   if ((kind === NK_IF_EXPR)) {
   resolve_expr(node_get_data1(n), globals, scopes, depth);
@@ -3714,14 +3722,14 @@ function resolve_expr(n, globals, scopes, depth) {
   if ((node_get_data3(n) !== 0)) {
   resolve_stmt(node_get_data3(n), globals, scopes, depth);
 }
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
   if ((kind === NK_MATCH_EXPR)) {
   return resolve_expr_match(n, globals, scopes, depth);
 }
   if ((kind === NK_IS_EXPR)) {
   resolve_expr(node_get_data1(n), globals, scopes, depth);
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
   if ((kind === NK_LAMBDA_EXPR)) {
   return resolve_expr_lambda(n, globals, scopes, depth);
@@ -3729,7 +3737,7 @@ function resolve_expr(n, globals, scopes, depth) {
   if ((kind === NK_FN_EXPR)) {
   return resolve_expr_fn_expr(n, globals, scopes, depth);
 }
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.resolve_expr = resolve_expr;
 
@@ -3737,7 +3745,7 @@ const __tuff_outer_for_resolve_stmt = typeof __tuff_this !== 'undefined' ? __tuf
 function resolve_stmt(n, globals, scopes, depth) {
   let __tuff_this = { n: n, globals: globals, scopes: scopes, depth: depth, this: __tuff_outer_for_resolve_stmt };
   if ((n === 0)) {
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
   rslv_current_node = n; if (typeof __tuff_this !== 'undefined') __tuff_this.rslv_current_node = rslv_current_node;
   let kind = node_kind(n); if (typeof __tuff_this !== 'undefined') __tuff_this.kind = kind;
@@ -3745,28 +3753,28 @@ function resolve_stmt(n, globals, scopes, depth) {
   return resolve_stmt_block(n, globals, scopes, depth);
 }
   if ((kind === NK_EXPECT_FN_DECL)) {
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
   if ((kind === NK_CONTRACT_DECL)) {
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
   if ((((kind === NK_FN_DECL) || (kind === NK_CLASS_FN_DECL)) || (kind === NK_ACTUAL_FN_DECL))) {
   return resolve_stmt_fn_decl(n, globals, scopes, depth);
 }
   if ((resolve_stmt_let_or_import(n, globals, scopes, depth) === 1)) {
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
   if ((resolve_stmt_flow(n, globals, scopes, depth) === 1)) {
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
   if ((resolve_stmt_lifetime_or_into(n, globals, scopes, depth) === 1)) {
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
   if (((((((((((kind === NK_TYPE_ALIAS) || (kind === NK_DEP_TYPE_ALIAS)) || (kind === NK_STRUCT_DECL)) || (kind === NK_ENUM_DECL)) || (kind === NK_EXTERN_LET_DECL)) || (kind === NK_EXTERN_TYPE_DECL)) || (kind === NK_EXTERN_IMPORT_DECL)) || (kind === NK_OBJECT_DECL)) || (kind === NK_CONTRACT_DECL)) || (kind === NK_EXPECT_FN_DECL))) {
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
   resolve_expr(n, globals, scopes, depth);
-  return 0;
+  return ((typeof Ok === "function") ? Ok({value: 0}) : ({ __tag: "Ok", value: 0 }));
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.resolve_stmt = resolve_stmt;
 
@@ -10831,7 +10839,7 @@ function compile_file_with_options(inputPath, outputPath, lint_enabled, max_effe
   program = strip_import_decls(program); if (typeof __tuff_this !== 'undefined') __tuff_this.program = program;
   let t3 = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t3 = t3;
   let desugared = desugar(program); if (typeof __tuff_this !== 'undefined') __tuff_this.desugared = desugared;
-  let resolved = resolve_names(desugared); if (typeof __tuff_this !== 'undefined') __tuff_this.resolved = resolved;
+  let resolved = (() => { const __m = resolve_names(desugared); if (__m && __m.__tag === "Ok") { const value = __m.value; return value; } else if (__m && __m.__tag === "Err") { const error = __m.error; return panic((() => { const __recv = "Resolver error: "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(error.message); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, error.message) : str_concat(__recv, error.message); })()); } else { throw new Error("Non-exhaustive match"); } })(); if (typeof __tuff_this !== 'undefined') __tuff_this.resolved = resolved;
   let t4 = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t4 = t4;
   let typed = typecheck_program_with_options(resolved); if (typeof __tuff_this !== 'undefined') __tuff_this.typed = typed;
   let t5 = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t5 = t5;
@@ -12894,7 +12902,7 @@ function compile_source_with_options(source, lint_enabled, max_effective_lines, 
   let t3_desugar = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t3_desugar = t3_desugar;
   profile_mark("desugar", (t3_desugar - t2_desugar));
   let t3_resolve = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t3_resolve = t3_resolve;
-  let resolved = resolve_names(desugared); if (typeof __tuff_this !== 'undefined') __tuff_this.resolved = resolved;
+  let resolved = (() => { const __m = resolve_names(desugared); if (__m && __m.__tag === "Ok") { const value = __m.value; return value; } else if (__m && __m.__tag === "Err") { const error = __m.error; return panic((() => { const __recv = "Resolver error: "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(error.message); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, error.message) : str_concat(__recv, error.message); })()); } else { throw new Error("Non-exhaustive match"); } })(); if (typeof __tuff_this !== 'undefined') __tuff_this.resolved = resolved;
   let t4_resolve = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t4_resolve = t4_resolve;
   profile_mark("resolve", (t4_resolve - t3_resolve));
   let t4_typecheck = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t4_typecheck = t4_typecheck;
