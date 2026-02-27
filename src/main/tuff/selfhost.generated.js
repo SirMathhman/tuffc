@@ -11102,8 +11102,8 @@ function lintCheckAstDuplicates(program) {
 if (typeof __tuff_this !== 'undefined') __tuff_this.lintCheckAstDuplicates = lintCheckAstDuplicates;
 
 const __tuff_outer_for_lintProgram = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
-function lintProgram(program, filePath, maxEffectiveLines, enforceFileLength) {
-  let __tuff_this = { program: program, filePath: filePath, maxEffectiveLines: maxEffectiveLines, enforceFileLength: enforceFileLength, this: __tuff_outer_for_lintProgram };
+function lintProgram(program, filePath, maxEffectiveLines, enforceFileLength, astDupEnabled) {
+  let __tuff_this = { program: program, filePath: filePath, maxEffectiveLines: maxEffectiveLines, enforceFileLength: enforceFileLength, astDupEnabled: astDupEnabled, this: __tuff_outer_for_lintProgram };
   if ((enforceFileLength === 1)) {
   lintCheckFileLength(filePath, maxEffectiveLines);
 }
@@ -11144,7 +11144,9 @@ function lintProgram(program, filePath, maxEffectiveLines, enforceFileLength) {
 }
   i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
 }
+  if ((astDupEnabled === 1)) {
   lintCheckAstDuplicates(program);
+}
   return 0;
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.lintProgram = lintProgram;
@@ -11945,8 +11947,8 @@ function compileFile(inputPath, outputPath) {
 if (typeof __tuff_this !== 'undefined') __tuff_this.compileFile = compileFile;
 
 const __tuff_outer_for_compileFileWithOptions = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
-function compileFileWithOptions(inputPath, outputPath, lintEnabled, maxEffectiveLines, borrowEnabled, target) {
-  let __tuff_this = { inputPath: inputPath, outputPath: outputPath, lintEnabled: lintEnabled, maxEffectiveLines: maxEffectiveLines, borrowEnabled: borrowEnabled, target: target, this: __tuff_outer_for_compileFileWithOptions };
+function compileFileWithOptions(inputPath, outputPath, lintEnabled, maxEffectiveLines, borrowEnabled, target, astDupEnabled) {
+  let __tuff_this = { inputPath: inputPath, outputPath: outputPath, lintEnabled: lintEnabled, maxEffectiveLines: maxEffectiveLines, borrowEnabled: borrowEnabled, target: target, astDupEnabled: astDupEnabled, this: __tuff_outer_for_compileFileWithOptions };
   let maxLines = moduleLoaderSanitizeMaxEffectiveLines(maxEffectiveLines); if (typeof __tuff_this !== 'undefined') __tuff_this.maxLines = maxLines;
   let lint = moduleLoaderNormalizeFlag(lintEnabled); if (typeof __tuff_this !== 'undefined') __tuff_this.lint = lint;
   let borrow = moduleLoaderNormalizeFlag(borrowEnabled); if (typeof __tuff_this !== 'undefined') __tuff_this.borrow = borrow;
@@ -12046,7 +12048,7 @@ function compileFileWithOptions(inputPath, outputPath, lintEnabled, maxEffective
 }
   let t6 = perfNow(); if (typeof __tuff_this !== 'undefined') __tuff_this.t6 = t6;
   if ((lint === 1)) {
-  lintProgram(typed, inputPath, maxLines, 0);
+  lintProgram(typed, inputPath, maxLines, 0, astDupEnabled);
   let i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
   let len = (() => { const __recv = moduleCycles; const __prop = __recv?.["vecLength"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vecLength; return __dyn ? __dyn(__recv.ref) : vecLength(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.len = len;
   while ((i < len)) {
@@ -14088,8 +14090,8 @@ function emitTargetOutput(typed, source, target) {
 if (typeof __tuff_this !== 'undefined') __tuff_this.emitTargetOutput = emitTargetOutput;
 
 const __tuff_outer_for_compileSourceWithOptions = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
-function compileSourceWithOptions(source, lintEnabled, maxEffectiveLines, borrowEnabled, target) {
-  let __tuff_this = { source: source, lintEnabled: lintEnabled, maxEffectiveLines: maxEffectiveLines, borrowEnabled: borrowEnabled, target: target, this: __tuff_outer_for_compileSourceWithOptions };
+function compileSourceWithOptions(source, lintEnabled, maxEffectiveLines, borrowEnabled, target, astDupEnabled) {
+  let __tuff_this = { source: source, lintEnabled: lintEnabled, maxEffectiveLines: maxEffectiveLines, borrowEnabled: borrowEnabled, target: target, astDupEnabled: astDupEnabled, this: __tuff_outer_for_compileSourceWithOptions };
   let tStart = perfNow(); if (typeof __tuff_this !== 'undefined') __tuff_this.tStart = tStart;
   let effectiveSource = withCRuntimePrelude(source, target); if (typeof __tuff_this !== 'undefined') __tuff_this.effectiveSource = effectiveSource;
   let maxLines = sanitizeMaxEffectiveLines(maxEffectiveLines); if (typeof __tuff_this !== 'undefined') __tuff_this.maxLines = maxLines;
@@ -14143,7 +14145,7 @@ function compileSourceWithOptions(source, lintEnabled, maxEffectiveLines, borrow
   let t6Borrow = perfNow(); if (typeof __tuff_this !== 'undefined') __tuff_this.t6Borrow = t6Borrow;
   profileMark("borrowcheck", (t6Borrow - t5Borrow));
   if ((lint === 1)) {
-  lintProgram(typed, "<memory>", maxLines, 1);
+  lintProgram(typed, "<memory>", maxLines, 1, astDupEnabled);
 }
   let t6Emit = perfNow(); if (typeof __tuff_this !== 'undefined') __tuff_this.t6Emit = t6Emit;
   let output = emitTargetOutput(typed, effectiveSource, target); if (typeof __tuff_this !== 'undefined') __tuff_this.output = output;
@@ -14225,6 +14227,74 @@ function compileSource(source) {
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.compileSource = compileSource;
 
+const __tuff_outer_for_mainLint = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function mainLint() {
+  let __tuff_this = { this: __tuff_outer_for_mainLint };
+  let argc = getArgc(); if (typeof __tuff_this !== 'undefined') __tuff_this.argc = argc;
+  if ((argc < 3)) {
+  printError("Usage: tuffc lint <input.tuff> [--strict] [--ast-dup|--no-ast-dup] [--max-lines <n>] [--target <js|c>]");
+  return 1;
+}
+  let inputFile = getArgv(2); if (typeof __tuff_this !== 'undefined') __tuff_this.inputFile = inputFile;
+  let target = "js"; if (typeof __tuff_this !== 'undefined') __tuff_this.target = target;
+  let maxLines = 500; if (typeof __tuff_this !== 'undefined') __tuff_this.maxLines = maxLines;
+  let astDupEnabled = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.astDupEnabled = astDupEnabled;
+  let strict = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.strict = strict;
+  let borrowEnabled = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.borrowEnabled = borrowEnabled;
+  let i = 3; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
+  let hadError = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.hadError = hadError;
+  while ((i < argc)) {
+  let arg = getArgv(i); if (typeof __tuff_this !== 'undefined') __tuff_this.arg = arg;
+  if ((() => { const __recv = arg; const __prop = __recv?.["strEq"]; if (typeof __prop === "function") return __prop("--strict"); const __dyn = __recv?.table?.strEq; return __dyn ? __dyn(__recv.ref, "--strict") : strEq(__recv, "--strict"); })()) {
+  strict = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.strict = strict;
+} else { if ((() => { const __recv = arg; const __prop = __recv?.["strEq"]; if (typeof __prop === "function") return __prop("--ast-dup"); const __dyn = __recv?.table?.strEq; return __dyn ? __dyn(__recv.ref, "--ast-dup") : strEq(__recv, "--ast-dup"); })()) {
+  astDupEnabled = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.astDupEnabled = astDupEnabled;
+} else { if ((() => { const __recv = arg; const __prop = __recv?.["strEq"]; if (typeof __prop === "function") return __prop("--no-ast-dup"); const __dyn = __recv?.table?.strEq; return __dyn ? __dyn(__recv.ref, "--no-ast-dup") : strEq(__recv, "--no-ast-dup"); })()) {
+  astDupEnabled = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.astDupEnabled = astDupEnabled;
+} else { if ((() => { const __recv = arg; const __prop = __recv?.["strEq"]; if (typeof __prop === "function") return __prop("--max-lines"); const __dyn = __recv?.table?.strEq; return __dyn ? __dyn(__recv.ref, "--max-lines") : strEq(__recv, "--max-lines"); })()) {
+  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
+  if ((i < argc)) {
+  maxLines = intParse(getArgv(i)); if (typeof __tuff_this !== 'undefined') __tuff_this.maxLines = maxLines;
+  if ((maxLines <= 0)) {
+  printError("Invalid value for --max-lines");
+  hadError = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.hadError = hadError;
+}
+} else {
+  printError("Missing value for --max-lines");
+  hadError = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.hadError = hadError;
+}
+} else { if ((() => { const __recv = arg; const __prop = __recv?.["strEq"]; if (typeof __prop === "function") return __prop("--target"); const __dyn = __recv?.table?.strEq; return __dyn ? __dyn(__recv.ref, "--target") : strEq(__recv, "--target"); })()) {
+  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
+  if ((i < argc)) {
+  target = getArgv(i); if (typeof __tuff_this !== 'undefined') __tuff_this.target = target;
+} else {
+  printError("Missing value for --target");
+  hadError = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.hadError = hadError;
+}
+} else {
+  printError((() => { const __recv = "Unknown lint option: "; const __prop = __recv?.["strConcat"]; if (typeof __prop === "function") return __prop(arg); const __dyn = __recv?.table?.strConcat; return __dyn ? __dyn(__recv.ref, arg) : strConcat(__recv, arg); })());
+  hadError = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.hadError = hadError;
+} } } } }
+  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
+}
+  if ((hadError === 1)) {
+  return 1;
+}
+  let scratchOutput = "/tmp/tuff-lint-scratch.js"; if (typeof __tuff_this !== 'undefined') __tuff_this.scratchOutput = scratchOutput;
+  let resultCode = compileFileWithOptions(inputFile, scratchOutput, 1, maxLines, borrowEnabled, target, astDupEnabled); if (typeof __tuff_this !== 'undefined') __tuff_this.resultCode = resultCode;
+  let issues = takeLintIssues(); if (typeof __tuff_this !== 'undefined') __tuff_this.issues = issues;
+  if (((() => { const __recv = issues; const __prop = __recv?.["strLength"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.strLength; return __dyn ? __dyn(__recv.ref) : strLength(__recv); })() > 0)) {
+  printError((() => { const __recv = "[lint] "; const __prop = __recv?.["strConcat"]; if (typeof __prop === "function") return __prop(issues); const __dyn = __recv?.table?.strConcat; return __dyn ? __dyn(__recv.ref, issues) : strConcat(__recv, issues); })());
+  if ((strict === 1)) {
+  resultCode = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.resultCode = resultCode;
+}
+} else {
+  print("No lint issues found.");
+}
+  return resultCode;
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.mainLint = mainLint;
+
 const __tuff_outer_for_main = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
 function main() {
   let __tuff_this = { this: __tuff_outer_for_main };
@@ -14234,6 +14304,9 @@ function main() {
   return 1;
 }
   let firstArg = getArgv(1); if (typeof __tuff_this !== 'undefined') __tuff_this.firstArg = firstArg;
+  if ((() => { const __recv = firstArg; const __prop = __recv?.["strEq"]; if (typeof __prop === "function") return __prop("lint"); const __dyn = __recv?.table?.strEq; return __dyn ? __dyn(__recv.ref, "lint") : strEq(__recv, "lint"); })()) {
+  return mainLint();
+}
   if ((() => { const __recv = firstArg; const __prop = __recv?.["strEq"]; if (typeof __prop === "function") return __prop("--version"); const __dyn = __recv?.table?.strEq; return __dyn ? __dyn(__recv.ref, "--version") : strEq(__recv, "--version"); })()) {
   print("tuffc (stage3 native)");
   return 0;
@@ -14246,7 +14319,7 @@ function main() {
   let outputFile = ""; if (typeof __tuff_this !== 'undefined') __tuff_this.outputFile = outputFile;
   let target = "js"; if (typeof __tuff_this !== 'undefined') __tuff_this.target = target;
   let lintEnabled = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.lintEnabled = lintEnabled;
-  let lintStrict = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.lintStrict = lintStrict;
+  let lintAstDupEnabled = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.lintAstDupEnabled = lintAstDupEnabled;
   let borrowEnabled = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.borrowEnabled = borrowEnabled;
   let profileEnabled = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.profileEnabled = profileEnabled;
   let i = 2; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
@@ -14271,9 +14344,8 @@ function main() {
 }
 } else { if ((() => { const __recv = arg; const __prop = __recv?.["strEq"]; if (typeof __prop === "function") return __prop("--lint"); const __dyn = __recv?.table?.strEq; return __dyn ? __dyn(__recv.ref, "--lint") : strEq(__recv, "--lint"); })()) {
   lintEnabled = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.lintEnabled = lintEnabled;
-} else { if ((() => { const __recv = arg; const __prop = __recv?.["strEq"]; if (typeof __prop === "function") return __prop("--lint-strict"); const __dyn = __recv?.table?.strEq; return __dyn ? __dyn(__recv.ref, "--lint-strict") : strEq(__recv, "--lint-strict"); })()) {
-  lintEnabled = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.lintEnabled = lintEnabled;
-  lintStrict = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.lintStrict = lintStrict;
+} else { if ((() => { const __recv = arg; const __prop = __recv?.["strEq"]; if (typeof __prop === "function") return __prop("--no-lint-ast-dup"); const __dyn = __recv?.table?.strEq; return __dyn ? __dyn(__recv.ref, "--no-lint-ast-dup") : strEq(__recv, "--no-lint-ast-dup"); })()) {
+  lintAstDupEnabled = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.lintAstDupEnabled = lintAstDupEnabled;
 } else { if ((() => { const __recv = arg; const __prop = __recv?.["strEq"]; if (typeof __prop === "function") return __prop("--profile"); const __dyn = __recv?.table?.strEq; return __dyn ? __dyn(__recv.ref, "--profile") : strEq(__recv, "--profile"); })()) {
   profileEnabled = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.profileEnabled = profileEnabled;
 } else { if ((() => { const __recv = arg; const __prop = __recv?.["strEq"]; if (typeof __prop === "function") return __prop("--no-borrowcheck"); const __dyn = __recv?.table?.strEq; return __dyn ? __dyn(__recv.ref, "--no-borrowcheck") : strEq(__recv, "--no-borrowcheck"); })()) {
@@ -14297,7 +14369,7 @@ function main() {
   printError("Missing required -o/--out <output_file>. Native selfhost CLI writes compiled output to a file.");
   return 1;
 }
-  let resultCode = compileFileWithOptions(inputFile, outputFile, lintEnabled, 500, borrowEnabled, target); if (typeof __tuff_this !== 'undefined') __tuff_this.resultCode = resultCode;
+  let resultCode = compileFileWithOptions(inputFile, outputFile, lintEnabled, 500, borrowEnabled, target, lintAstDupEnabled); if (typeof __tuff_this !== 'undefined') __tuff_this.resultCode = resultCode;
   if ((resultCode === 0)) {
   print((() => { const __recv = (() => { const __recv = (() => { const __recv = "Compiled "; const __prop = __recv?.["strConcat"]; if (typeof __prop === "function") return __prop(inputFile); const __dyn = __recv?.table?.strConcat; return __dyn ? __dyn(__recv.ref, inputFile) : strConcat(__recv, inputFile); })(); const __prop = __recv?.["strConcat"]; if (typeof __prop === "function") return __prop(" -> "); const __dyn = __recv?.table?.strConcat; return __dyn ? __dyn(__recv.ref, " -> ") : strConcat(__recv, " -> "); })(); const __prop = __recv?.["strConcat"]; if (typeof __prop === "function") return __prop(outputFile); const __dyn = __recv?.table?.strConcat; return __dyn ? __dyn(__recv.ref, outputFile) : strConcat(__recv, outputFile); })());
 }
@@ -14305,9 +14377,7 @@ function main() {
   let issues = takeLintIssues(); if (typeof __tuff_this !== 'undefined') __tuff_this.issues = issues;
   if (((() => { const __recv = issues; const __prop = __recv?.["strLength"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.strLength; return __dyn ? __dyn(__recv.ref) : strLength(__recv); })() > 0)) {
   printError((() => { const __recv = "[lint] "; const __prop = __recv?.["strConcat"]; if (typeof __prop === "function") return __prop(issues); const __dyn = __recv?.table?.strConcat; return __dyn ? __dyn(__recv.ref, issues) : strConcat(__recv, issues); })());
-  if ((lintStrict === 1)) {
   resultCode = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.resultCode = resultCode;
-}
 }
 }
   if ((profileEnabled === 1)) {
