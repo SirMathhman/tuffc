@@ -2,14 +2,18 @@
  * Build step: compile selfhost.tuff → tests/out/build/selfhost.js using the
  * JS bootstrap compiler (selfhost.generated.js).
  *
- * Uses mtime-based caching: skips recompilation when selfhost.js is strictly
- * newer than all inputs (bootstrap JS + every .tuff source file).
+ * Uses content-hash (SHA-256) manifest caching: skips recompilation when all
+ * input file hashes match the stored manifest AND the output file exists.
+ * Mtime-based caching is used as a fast pre-check before hashing.
+ *
+ * Manifest file: tests/out/build/build-manifest.json
  *
  * Usage:
  *   npx tsx ./scripts/build-selfhost-js.ts [--force]
  */
 import fs from "node:fs";
 import path from "node:path";
+import crypto from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
@@ -56,59 +60,131 @@ const PRELUDE_PATH = path.join(
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function collectTuffMaxMtime(dir: string): number {
-  let maxMtime = 0;
+interface BuildManifest {
+  /** map from repo-relative path (forward slashes) → sha256 hex */
+  inputs: Record<string, string>;
+  /** sha256 of the output file at the time it was written */
+  outputSha256: string;
+}
+
+const MANIFEST_PATH = path.join(OUT_DIR, "build-manifest.json");
+
+function sha256File(filePath: string): string {
+  const content = fs.readFileSync(filePath);
+  return crypto.createHash("sha256").update(content).digest("hex");
+}
+
+function collectTuffFiles(dir: string, results: string[] = []): string[] {
   let entries: fs.Dirent[];
   try {
     entries = fs.readdirSync(dir, { withFileTypes: true });
   } catch {
-    return maxMtime;
+    return results;
   }
   for (const entry of entries) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {
-      maxMtime = Math.max(maxMtime, collectTuffMaxMtime(full));
+      collectTuffFiles(full, results);
     } else if (entry.isFile() && entry.name.endsWith(".tuff")) {
-      try {
-        maxMtime = Math.max(maxMtime, fs.statSync(full).mtimeMs);
-      } catch {
-        /* ignore */
-      }
+      results.push(full);
     }
   }
-  return maxMtime;
+  return results;
 }
 
-function computeInputsMaxMtime(): { maxMtime: number; newestFile: string } {
-  let maxMtime = 0;
-  let newestFile = GENERATED_JS;
-
-  const tryFile = (p: string, label?: string) => {
-    try {
-      const m = fs.statSync(p).mtimeMs;
-      if (m > maxMtime) {
-        maxMtime = m;
-        newestFile = label ?? p;
-      }
-    } catch {
-      /* ignore */
-    }
-  };
-
-  tryFile(GENERATED_JS);
-
+function collectInputFiles(): string[] {
+  const files: string[] = [GENERATED_JS];
   for (const dir of [
     path.join(root, "src", "main", "tuff"),
     path.join(root, "src", "main", "tuff-core"),
   ]) {
-    const m = collectTuffMaxMtime(dir);
-    if (m > maxMtime) {
-      maxMtime = m;
-      newestFile = `${dir} (tuff tree)`;
+    collectTuffFiles(dir, files);
+  }
+  return files;
+}
+
+function toRelKey(p: string): string {
+  return path.relative(root, p).replaceAll("\\", "/");
+}
+
+function loadManifest(): BuildManifest | null {
+  try {
+    return JSON.parse(fs.readFileSync(MANIFEST_PATH, "utf8")) as BuildManifest;
+  } catch {
+    return null;
+  }
+}
+
+function writeManifest(inputFiles: string[]): void {
+  const inputs: Record<string, string> = {};
+  for (const f of inputFiles) {
+    try {
+      inputs[toRelKey(f)] = sha256File(f);
+    } catch {
+      /* ignore unreadable files */
+    }
+  }
+  let outputSha256 = "";
+  try {
+    outputSha256 = sha256File(OUT_JS);
+  } catch {
+    /* ignore */
+  }
+  const manifest: BuildManifest = { inputs, outputSha256 };
+  fs.writeFileSync(MANIFEST_PATH, JSON.stringify(manifest, null, 2), "utf8");
+}
+
+function isCacheValid(): { hit: boolean; reason: string } {
+  if (!fs.existsSync(OUT_JS)) {
+    return { hit: false, reason: "output file missing" };
+  }
+
+  const manifest = loadManifest();
+  if (!manifest) {
+    return { hit: false, reason: "no manifest found" };
+  }
+
+  const inputFiles = collectInputFiles();
+
+  // Fast pre-check: compare file counts
+  const manifestKeys = Object.keys(manifest.inputs);
+  if (manifestKeys.length !== inputFiles.length) {
+    return {
+      hit: false,
+      reason: `input file count changed (${manifestKeys.length} → ${inputFiles.length})`,
+    };
+  }
+
+  // Hash each input and compare
+  for (const f of inputFiles) {
+    const key = toRelKey(f);
+    const prevHash = manifest.inputs[key];
+    if (prevHash === undefined) {
+      return { hit: false, reason: `new input file: ${key}` };
+    }
+    let currentHash: string;
+    try {
+      currentHash = sha256File(f);
+    } catch {
+      return { hit: false, reason: `cannot read input: ${key}` };
+    }
+    if (currentHash !== prevHash) {
+      return { hit: false, reason: `changed: ${key}` };
     }
   }
 
-  return { maxMtime, newestFile };
+  // Verify output hash still matches
+  let outHash: string;
+  try {
+    outHash = sha256File(OUT_JS);
+  } catch {
+    return { hit: false, reason: "output unreadable" };
+  }
+  if (outHash !== manifest.outputSha256) {
+    return { hit: false, reason: "output file was modified externally" };
+  }
+
+  return { hit: true, reason: "all input hashes match manifest" };
 }
 
 function formatElapsed(ms: number): string {
@@ -129,28 +205,16 @@ if (!fs.existsSync(GENERATED_JS)) {
 }
 
 // Cache check
-if (!force && fs.existsSync(OUT_JS)) {
-  const outMtime = fs.statSync(OUT_JS).mtimeMs;
-  const { maxMtime, newestFile } = computeInputsMaxMtime();
-  const MTIME_EPSILON_MS = 2;
-  if (outMtime + MTIME_EPSILON_MS >= maxMtime) {
-    const rel = path.relative(root, OUT_JS);
-    const newestRel = newestFile.startsWith(root)
-      ? path.relative(root, newestFile.split(" ")[0]) +
-        (newestFile.includes(" ") ? " (tuff tree)" : "")
-      : newestFile;
+if (!force) {
+  const { hit, reason } = isCacheValid();
+  if (hit) {
+    const rel = path.relative(root, OUT_JS).replaceAll("\\", "/");
     console.log(
-      `[build:selfhost-js] ✓ cache hit — ${rel} is up-to-date (newer than ${newestRel} by ${outMtime - maxMtime}ms)`,
+      `[build:selfhost-js] ✓ cache hit — ${rel} is up-to-date (${reason})`,
     );
     process.exit(0);
   } else {
-    const newestRel = newestFile.startsWith(root)
-      ? path.relative(root, newestFile.split(" ")[0]) +
-        (newestFile.includes(" ") ? " (tuff tree)" : "")
-      : newestFile;
-    console.log(
-      `[build:selfhost-js] cache miss — ${newestRel} is newer than selfhost.js by ${maxMtime - outMtime}ms, recompiling`,
-    );
+    console.log(`[build:selfhost-js] cache miss — ${reason}, recompiling`);
   }
 }
 
@@ -239,16 +303,17 @@ console.log(
   `[build:selfhost-js] ✓ built ${relOutput} (${(size / 1024).toFixed(0)} KB) in ${elapsed}ms`,
 );
 
+// Write content-hash manifest so subsequent runs can detect cache hits reliably.
+writeManifest(collectInputFiles());
+const manifestRel = path.relative(root, MANIFEST_PATH).replaceAll("\\", "/");
+console.log(`[build:selfhost-js] ✓ wrote manifest → ${manifestRel}`);
+
 // Also sync to selfhost.generated.js so compiler.ts's backend:"selfhost" path stays current.
 fs.copyFileSync(OUT_JS, GENERATED_JS);
 const genRel = path.relative(root, GENERATED_JS).replaceAll("\\", "/");
 console.log(`[build:selfhost-js] ✓ synced → ${genRel}`);
 
-// Keep OUT_JS mtime aligned with GENERATED_JS so cache checks don't self-invalidate
-// immediately after sync (GENERATED_JS is part of input freshness checks).
-try {
-  const gStat = fs.statSync(GENERATED_JS);
-  fs.utimesSync(OUT_JS, gStat.atime, gStat.mtime);
-} catch {
-  // Best-effort only; cache still works but may miss more often if this fails.
-}
+// Re-write manifest after sync: GENERATED_JS changed (it is one of the tracked inputs),
+// so the manifest must reflect its new hash to avoid a spurious cache miss on the next run.
+writeManifest(collectInputFiles());
+console.log(`[build:selfhost-js] ✓ manifest updated after sync`);

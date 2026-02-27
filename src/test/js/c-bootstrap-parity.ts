@@ -476,6 +476,8 @@ if (fs.existsSync(fixpointOutC) && fs.existsSync(stage3outC)) {
 if (!phase4UsedCache) {
   const fixpointArgs = [
     selfhostPath,
+    "--module-base",
+    selfhostModuleBase,
     "--target",
     "c",
     "--no-borrowcheck",

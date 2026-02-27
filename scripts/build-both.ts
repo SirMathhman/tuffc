@@ -15,63 +15,49 @@ import process from "node:process";
 const args = process.argv.slice(2);
 const force = args.includes("--force");
 
-function run(command: string, args: string[], label: string): number {
+function run(command: string, args: string[], label: string): void {
   console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
   console.log(`📦 Building ${label}...`);
+  console.log(`    $ ${command} ${args.join(" ")}`);
   console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
   const result = spawnSync(command, args, {
     stdio: "inherit",
     shell: true,
+    windowsHide: false,
   });
+  if (result.error) {
+    console.error(`\n❌ Failed to spawn ${label}: ${result.error.message}`);
+    process.exit(1);
+  }
+  if (result.status === null) {
+    console.error(`\n❌ ${label} killed by signal: ${result.signal}`);
+    process.exit(1);
+  }
   if (result.status !== 0) {
     console.error(
       `\n❌ Failed to build ${label} (exit code: ${result.status})`,
     );
-    process.exit(1);
+    process.exit(result.status);
   }
   console.log(`✅ ${label} built successfully`);
-  return result.status ?? 0;
 }
 
 // Step 1: Build selfhost.js
 run(
   "npx",
-  [
-    "tsx",
-    "./scripts/with-timeout.ts",
-    "180000",
-    "tsx",
-    "./scripts/build-selfhost-js.ts",
-    force ? "--force" : "",
-  ].filter((x) => x !== ""),
+  ["tsx", "./scripts/build-selfhost-js.ts", ...(force ? ["--force"] : [])],
   "generated.js",
 );
 
 // Step 2: Build native parity (Stage 3 native selfhost)
 run(
   "npx",
-  [
-    "tsx",
-    "./scripts/with-timeout.ts",
-    "180000",
-    "tsx",
-    "./src/test/js/c-bootstrap-parity.ts",
-  ].filter((x) => x !== ""),
+  ["tsx", "./src/test/js/c-bootstrap-parity.ts"],
   "native parity (prerequisite for generated.exe)",
 );
 
 // Step 3: Build generated.exe (copy native to dist)
-run(
-  "npx",
-  [
-    "tsx",
-    "./scripts/with-timeout.ts",
-    "180000",
-    "tsx",
-    "./scripts/build-native-binary.ts",
-  ].filter((x) => x !== ""),
-  "generated.exe",
-);
+run("npx", ["tsx", "./scripts/build-native-binary.ts"], "generated.exe");
 
 console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
 console.log(`✨ All build artifacts complete!`);
