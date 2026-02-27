@@ -19,6 +19,7 @@
     "test:update": "tsx ./src/test/js/test-orchestrator.ts --suite=core --update",
     "check": "npm run lint && npm run typecheck && npm run test",
     "lint": "tsx ./scripts/with-timeout.ts 60000 node ./scripts/tuffc-native.mjs ./src/main/tuff/selfhost.tuff --lint --lint-strict -o ./tests/out/lint/selfhost.js",
+    "find-duplicates": "pmd cpd src tests scripts --language typescript --minimum-tokens 35",
     "typecheck": "tsc -p tsconfig.json",
     "typecheck:scripts": "tsc -p tsconfig.scripts.json --noEmit",
     "build:scripts": "tsc -p tsconfig.scripts.json",
