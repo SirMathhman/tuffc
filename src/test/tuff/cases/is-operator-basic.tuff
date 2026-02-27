@@ -16,19 +16,19 @@ struct MyError {
 }
 
 // Test 1: Basic `is` check with Ok
-fn test_is_ok() : Bool => {
+fn testIsOk() : Bool => {
     let r: Result<I32, MyError> = Ok<I32> { value: 42 };
     r is Ok
 }
 
 // Test 2: Basic `is` check with Err
-fn test_is_err() : Bool => {
+fn testIsErr() : Bool => {
     let r: Result<I32, MyError> = Err<MyError> { error: MyError { code: 1 } };
     r is Err
 }
 
 // Test 3: Type narrowing in if statement
-fn test_type_narrowing() : I32 => {
+fn testTypeNarrowing() : I32 => {
     let r: Result<I32, MyError> = Ok<I32> { value: 100 };
     if (r is Ok) {
         r.value  // Type narrowed to Ok<I32>, can access .value
@@ -38,7 +38,7 @@ fn test_type_narrowing() : I32 => {
 }
 
 // Test 4: Type narrowing in else branch
-fn test_else_narrowing() : I32 => {
+fn testElseNarrowing() : I32 => {
     let r: Result<I32, MyError> = Err<MyError> { error: MyError { code: 5 } };
     if (r is Ok) {
         0
@@ -48,7 +48,7 @@ fn test_else_narrowing() : I32 => {
 }
 
 // Test 5: Multiple checks in sequence
-fn test_multiple_checks(r: Result<I32, MyError>) : I32 => {
+fn testMultipleChecks(r: Result<I32, MyError>) : I32 => {
     if (r is Ok) {
         r.value * 2
     } else if (r is Err) {
@@ -59,7 +59,7 @@ fn test_multiple_checks(r: Result<I32, MyError>) : I32 => {
 }
 
 // Test 6: Pattern matching with struct destructuring
-fn test_struct_pattern() : I32 => {
+fn testStructPattern() : I32 => {
     let r: Result<I32, MyError> = Ok<I32> { value: 25 };
     if (r is Ok) {
         r.value + 10
@@ -69,12 +69,12 @@ fn test_struct_pattern() : I32 => {
 }
 
 fn main() : I32 => {
-    let t1: Bool = test_is_ok();
-    let t2: Bool = test_is_err();
-    let t3: I32 = test_type_narrowing();
-    let t4: I32 = test_else_narrowing();
-    let t5: I32 = test_multiple_checks(Ok<I32> { value: 7 });
-    let t6: I32 = test_struct_pattern();
+    let t1: Bool = testIsOk();
+    let t2: Bool = testIsErr();
+    let t3: I32 = testTypeNarrowing();
+    let t4: I32 = testElseNarrowing();
+    let t5: I32 = testMultipleChecks(Ok<I32> { value: 7 });
+    let t6: I32 = testStructPattern();
     
     // All tests should pass
     if (t1 && t2 && t3 == 100 && t4 == 5 && t5 == 14 && t6 == 35) {

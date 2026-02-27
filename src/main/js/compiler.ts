@@ -34,25 +34,25 @@ let runtimeCPreludeSourceCache = undefined;
 let compilerQuietMode = false;
 
 const hostRuntimeBridgeFns = [
-  "str_length",
-  "str_char_at",
-  "str_slice",
-  "str_slice_window",
-  "str_copy",
-  "str_mut_slice",
-  "str_concat",
-  "str_eq",
-  "str_from_char_code",
-  "str_index_of",
-  "str_trim",
-  "str_replace_all",
-  "char_code",
-  "int_to_string",
-  "parse_int",
-  "sb_new",
-  "sb_append",
-  "sb_append_char",
-  "sb_build",
+  "strLength",
+  "strCharAt",
+  "strSlice",
+  "strSliceWindow",
+  "strCopy",
+  "strMutSlice",
+  "strConcat",
+  "strEq",
+  "strFromCharCode",
+  "strIndexOf",
+  "strTrim",
+  "strReplaceAll",
+  "charCode",
+  "intToString",
+  "parseInt",
+  "sbNew",
+  "sbAppend",
+  "sbAppendChar",
+  "sbBuild",
   "__vec_new",
   "__vec_push",
   "__vec_pop",
@@ -65,25 +65,25 @@ const hostRuntimeBridgeFns = [
   "__vec_join",
   "__vec_includes",
   "__map_new",
-  "map_set",
-  "map_get",
-  "map_has",
-  "map_delete",
+  "mapSet",
+  "mapGet",
+  "mapHas",
+  "mapDelete",
   "__set_new",
-  "set_add",
-  "set_has",
-  "set_delete",
-  "read_file",
-  "write_file",
-  "path_join",
-  "path_dirname",
+  "setAdd",
+  "setHas",
+  "setDelete",
+  "readFile",
+  "writeFile",
+  "pathJoin",
+  "pathDirname",
   "panic",
-  "panic_with_code",
-  "panic_with_code_loc",
-  "get_argc",
-  "get_argv",
+  "panicWithCode",
+  "panicWithCodeLoc",
+  "getArgc",
+  "getArgv",
   "perf_now",
-  "profile_mark",
+  "profileMark",
   "profile_take_json",
 ];
 
@@ -474,22 +474,22 @@ function loadSelfhostFromDisk(selfhostOutput): CompilerResult<unknown> {
 
   try {
     vm.runInNewContext(
-      `${selfhostJs}\nmodule.exports = { compile_source, compile_file, compile_source_with_options, compile_file_with_options, take_lint_issues, main, ...(typeof format_source_tuff === \"function\" ? { format_source_tuff } : {}) };`,
+      `${selfhostJs}\nmodule.exports = { compile_source: compileSource, compile_file: compileFile, compile_source_with_options: compileSourceWithOptions, compile_file_with_options: compileFileWithOptions, take_lint_issues: takeLintIssues, main, ...(typeof formatSourceTuff === \"function\" ? { format_source_tuff: formatSourceTuff } : {}) };`,
       sandbox,
       { filename: toPosixPath(selfhostOutput) },
     );
     vm.runInNewContext(
       `
 const __bridgeFns = [
-  "str_length", "str_char_at", "str_slice", "str_slice_window", "str_copy", "str_mut_slice", "str_concat", "str_eq",
-  "str_from_char_code", "str_index_of", "str_trim", "str_replace_all", "char_code",
-  "int_to_string", "parse_int", "sb_new", "sb_append", "sb_append_char", "sb_build",
+  "strLength", "strCharAt", "strSlice", "strSliceWindow", "strCopy", "strMutSlice", "strConcat", "strEq",
+  "strFromCharCode", "strIndexOf", "strTrim", "strReplaceAll", "charCode",
+  "intToString", "parseInt", "sbNew", "sbAppend", "sbAppendChar", "sbBuild",
   "__vec_new", "__vec_push", "__vec_pop", "__vec_get", "__vec_set", "__vec_length",
   "__vec_init", "__vec_capacity", "__vec_clear", "__vec_join", "__vec_includes",
-  "__map_new", "map_set", "map_get", "map_has", "map_delete", "__set_new", "set_add",
-  "set_has", "set_delete", "read_file", "write_file", "path_join", "path_dirname",
-  "panic", "panic_with_code", "panic_with_code_loc", "get_argc", "get_argv", "perf_now",
-  "profile_mark", "profile_take_json"
+  "__map_new", "mapSet", "mapGet", "mapHas", "mapDelete", "__set_new", "setAdd",
+  "setHas", "setDelete", "readFile", "writeFile", "pathJoin", "pathDirname",
+  "panic", "panicWithCode", "panicWithCodeLoc", "getArgc", "getArgv", "perf_now",
+  "profileMark", "profile_take_json"
 ];
 __bridgeFns.forEach((__name) => {
   try {
@@ -516,17 +516,17 @@ if (typeof __host_runtime_print_error === "function") {
       `(() => {
   try {
     return {
-      str_replace_all: typeof str_replace_all,
-      int_to_string: typeof int_to_string,
-      module_normalize_path: typeof module_normalize_path,
+      strReplaceAll: typeof strReplaceAll,
+      intToString: typeof intToString,
+      moduleNormalizePath: typeof moduleNormalizePath,
       sample_norm: (() => {
-        if (typeof module_normalize_path !== "function")
+        if (typeof moduleNormalizePath !== "function")
           return "<no-module-normalize-path>";
-        return String(module_normalize_path("a\\\\b"));
+        return String(moduleNormalizePath("a\\\\b"));
       })(),
       sample_i2s:
-        typeof int_to_string_out === "function"
-          ? String(int_to_string_out(0))
+        typeof intToStringOut === "function"
+          ? String(intToStringOut(0))
           : "<no-int-to-string-out>",
     };
   } catch (e) {

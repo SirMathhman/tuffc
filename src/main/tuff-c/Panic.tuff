@@ -10,7 +10,7 @@ out fn panic(msg : *Str) : I32 => {
 	0
 };
 
-out fn panic_with_code(code : *Str, msg : *Str, reason : *Str, fix : *Str) : I32 => {
+out fn panicWithCode(code : *Str, msg : *Str, reason : *Str, fix : *Str) : I32 => {
 	printf("panic code: %s\n", code);
 	printf("message: %s\n", msg);
 	printf("reason: %s\n", reason);

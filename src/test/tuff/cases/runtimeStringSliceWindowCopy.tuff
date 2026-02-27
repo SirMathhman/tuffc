@@ -1,0 +1,22 @@
+extern let { strLength, strSliceWindow, strCopy, strConcat } = globalThis;
+
+extern fn strLength(this: *Str) : USize;
+type StrIndex(this: *Str) = USize < strLength(this);
+
+lifetime t {
+    extern fn strSliceWindow(this: *t Str, start: StrIndex(this) <= end, end: StrIndex(this)) : *t Str;
+}
+extern fn strCopy(this: *Str) : *Str;
+extern fn strConcat(this: *Str, b: *Str) : *Str;
+
+fn main() : I32 => {
+    let src = "hello";
+    let window = src.strSliceWindow(1, 4);
+    let owned = window.strCopy();
+    let combined = owned.strConcat("!");
+
+    if (window.strLength() == 3 && owned.strLength() == 3 && combined.strLength() == 4) {
+        return 0;
+    }
+    return 13;
+}

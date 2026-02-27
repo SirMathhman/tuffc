@@ -14,9 +14,9 @@ extern fn strcat(dst : I32, src : *Str) : I32;
 
 
 // Temporary fallback until full stdlib-only file read support is completed.
-out fn read_file(path : *Str) : *Str => "";
+out fn readFile(path : *Str) : *Str => "";
 
-out fn write_file(path : *Str, contents : *Str) : I32 => {
+out fn writeFile(path : *Str, contents : *Str) : I32 => {
 	let file = fopen(path, "wb");
 	if (file == 0) return 0;
 	let len = strlen(contents);
@@ -24,21 +24,21 @@ out fn write_file(path : *Str, contents : *Str) : I32 => {
 	fclose(file)
 };
 
-out fn path_join(a : *Str, b : *Str) : *Str => {
+out fn pathJoin(a : *Str, b : *Str) : *Str => {
 	let alen = strlen(a);
 	let blen = strlen(b);
 	let cap = alen + blen + 2USize;
-	let out_ptr = malloc(cap);
-	if (out_ptr == 0) return "";
-	strcpy(out_ptr, a);
+	let outPtr = malloc(cap);
+	if (outPtr == 0) return "";
+	strcpy(outPtr, a);
 	if (alen > 0USize) {
-		strcat(out_ptr, "/");
+		strcat(outPtr, "/");
 	}
-	strcat(out_ptr, b);
-	out_ptr
+	strcat(outPtr, b);
+	outPtr
 };
 
-out fn path_dirname(p : *Str) : *Str => p;
+out fn pathDirname(p : *Str) : *Str => p;
 
 out fn print(s : *Str) : I32 => printf("%s\n", s);
-out fn print_error(s : *Str) : I32 => printf("[error] %s\n", s);
+out fn printError(s : *Str) : I32 => printf("[error] %s\n", s);

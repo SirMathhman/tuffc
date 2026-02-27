@@ -2,7 +2,7 @@
 // Iterator shape: () => (Bool, T) where Bool indicates "hasValue"
 
 // Test 1: Range iterator produces values until exhausted
-fn test_range_basic(): I32 => {
+fn testRangeBasic(): I32 => {
     let iter = range(0, 3); // Should produce (true, 0), (true, 1), (true, 2), (false, ?)
     let (has1, v1) = iter();
     let (has2, v2) = iter();
@@ -18,7 +18,7 @@ fn test_range_basic(): I32 => {
 }
 
 // Test 2: first() on non-empty iterator returns Some
-fn test_first_nonempty(): I32 => {
+fn testFirstNonempty(): I32 => {
     let iter = range(10, 15);
     let result = first(iter);
     
@@ -29,7 +29,7 @@ fn test_first_nonempty(): I32 => {
 }
 
 // Test 3: first() on empty iterator returns None
-fn test_first_empty(): I32 => {
+fn testFirstEmpty(): I32 => {
     let iter = range(5, 5); // Empty range
     let result = first(iter);
     
@@ -40,7 +40,7 @@ fn test_first_empty(): I32 => {
 }
 
 // Test 4: filter preserves hasValue semantics
-fn test_filter(): I32 => {
+fn testFilter(): I32 => {
     let iter = range(0, 10);
     let evens = filter(iter, |x| x % 2 == 0);
     
@@ -92,16 +92,16 @@ fn filter<T>(iter: () => (Bool, T), predicate: (T) => Bool): () => (Bool, T) => 
 }
 
 fn main(): I32 => {
-    let r1 = test_range_basic();
+    let r1 = testRangeBasic();
     if (r1 != 0) return r1;
     
-    let r2 = test_first_nonempty();
+    let r2 = testFirstNonempty();
     if (r2 != 0) return r2;
     
-    let r3 = test_first_empty();
+    let r3 = testFirstEmpty();
     if (r3 != 0) return r3;
     
-    let r4 = test_filter();
+    let r4 = testFilter();
     if (r4 != 0) return r4;
     
     0

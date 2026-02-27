@@ -1,0 +1,3 @@
+let { callNested } = nested::Caller;
+
+fn main() : I32 => callNested();

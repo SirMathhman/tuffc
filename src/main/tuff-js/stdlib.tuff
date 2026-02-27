@@ -1,56 +1,56 @@
-extern fn str_length(s : *Str) : USize;
+extern fn strLength(s : *Str) : USize;
 
 extern type Vec<T>;
 extern type Map<K, V>;
 extern type Set<T>;
 
 extern fn __vec_new() : Vec<I32>;
-extern fn vec_push(this : Vec<I32>, item : I32) : Vec<I32>;
-extern fn vec_get(this : Vec<I32>, index : USize) : I32;
-extern fn vec_set(this : Vec<I32>, index : USize, item : I32) : Vec<I32>;
-extern fn vec_init(this : Vec<I32>) : USize;
-extern fn vec_capacity(this : Vec<I32>) : USize;
-extern fn vec_length(this : Vec<I32>) : USize;
+extern fn vecPush(this : Vec<I32>, item : I32) : Vec<I32>;
+extern fn vecGet(this : Vec<I32>, index : USize) : I32;
+extern fn vecSet(this : Vec<I32>, index : USize, item : I32) : Vec<I32>;
+extern fn vecInit(this : Vec<I32>) : USize;
+extern fn vecCapacity(this : Vec<I32>) : USize;
+extern fn vecLength(this : Vec<I32>) : USize;
 
 extern fn __map_new() : Map<I32, I32>;
-extern fn map_set(this : Map<I32, I32>, k : I32, v : I32) : Map<I32, I32>;
-extern fn map_get(this : Map<I32, I32>, k : I32) : I32;
+extern fn mapSet(this : Map<I32, I32>, k : I32, v : I32) : Map<I32, I32>;
+extern fn mapGet(this : Map<I32, I32>, k : I32) : I32;
 
 extern fn __set_new() : Set<I32>;
-extern fn set_add(this : Set<I32>, item : I32) : Set<I32>;
-extern fn set_has(this : Set<I32>, item : I32) : Bool;
+extern fn setAdd(this : Set<I32>, item : I32) : Set<I32>;
+extern fn setHas(this : Set<I32>, item : I32) : Bool;
 
 out expect fn length(this : *Str) : USize;
-out actual fn length(this : *Str) : USize => str_length(this);
+out actual fn length(this : *Str) : USize => strLength(this);
 
-out expect fn vec_new_i32() : Vec<I32>;
-out expect fn vec_push_i32(this : Vec<I32>, item : I32) : Vec<I32>;
-out expect fn vec_get_i32(this : Vec<I32>, index : USize) : I32;
-out expect fn vec_set_i32(this : Vec<I32>, index : USize, item : I32) : Vec<I32>;
-out expect fn vec_init_i32(this : Vec<I32>) : USize;
-out expect fn vec_capacity_i32(this : Vec<I32>) : USize;
-out expect fn vec_length_i32(this : Vec<I32>) : USize;
+out expect fn vecNewI32() : Vec<I32>;
+out expect fn vecPushI32(this : Vec<I32>, item : I32) : Vec<I32>;
+out expect fn vecGetI32(this : Vec<I32>, index : USize) : I32;
+out expect fn vecSetI32(this : Vec<I32>, index : USize, item : I32) : Vec<I32>;
+out expect fn vecInitI32(this : Vec<I32>) : USize;
+out expect fn vecCapacityI32(this : Vec<I32>) : USize;
+out expect fn vecLengthI32(this : Vec<I32>) : USize;
 
-out expect fn map_new_i32_i32() : Map<I32, I32>;
-out expect fn map_set_i32_i32(this : Map<I32, I32>, k : I32, v : I32) : Map<I32, I32>;
-out expect fn map_get_i32_i32(this : Map<I32, I32>, k : I32) : I32;
+out expect fn mapNewI32I32() : Map<I32, I32>;
+out expect fn mapSetI32I32(this : Map<I32, I32>, k : I32, v : I32) : Map<I32, I32>;
+out expect fn mapGetI32I32(this : Map<I32, I32>, k : I32) : I32;
 
-out expect fn set_new_i32() : Set<I32>;
-out expect fn set_add_i32(this : Set<I32>, item : I32) : Set<I32>;
-out expect fn set_has_i32(this : Set<I32>, item : I32) : Bool;
+out expect fn setNewI32() : Set<I32>;
+out expect fn setAddI32(this : Set<I32>, item : I32) : Set<I32>;
+out expect fn setHasI32(this : Set<I32>, item : I32) : Bool;
 
-out actual fn vec_new_i32() : Vec<I32> => __vec_new();
-out actual fn vec_push_i32(this : Vec<I32>, item : I32) : Vec<I32> => vec_push(this, item);
-out actual fn vec_get_i32(this : Vec<I32>, index : USize) : I32 => vec_get(this, index);
-out actual fn vec_set_i32(this : Vec<I32>, index : USize, item : I32) : Vec<I32> => vec_set(this, index, item);
-out actual fn vec_init_i32(this : Vec<I32>) : USize => vec_init(this);
-out actual fn vec_capacity_i32(this : Vec<I32>) : USize => vec_capacity(this);
-out actual fn vec_length_i32(this : Vec<I32>) : USize => vec_length(this);
+out actual fn vecNewI32() : Vec<I32> => __vec_new();
+out actual fn vecPushI32(this : Vec<I32>, item : I32) : Vec<I32> => vecPush(this, item);
+out actual fn vecGetI32(this : Vec<I32>, index : USize) : I32 => vecGet(this, index);
+out actual fn vecSetI32(this : Vec<I32>, index : USize, item : I32) : Vec<I32> => vecSet(this, index, item);
+out actual fn vecInitI32(this : Vec<I32>) : USize => vecInit(this);
+out actual fn vecCapacityI32(this : Vec<I32>) : USize => vecCapacity(this);
+out actual fn vecLengthI32(this : Vec<I32>) : USize => vecLength(this);
 
-out actual fn map_new_i32_i32() : Map<I32, I32> => __map_new();
-out actual fn map_set_i32_i32(this : Map<I32, I32>, k : I32, v : I32) : Map<I32, I32> => map_set(this, k, v);
-out actual fn map_get_i32_i32(this : Map<I32, I32>, k : I32) : I32 => map_get(this, k);
+out actual fn mapNewI32I32() : Map<I32, I32> => __map_new();
+out actual fn mapSetI32I32(this : Map<I32, I32>, k : I32, v : I32) : Map<I32, I32> => mapSet(this, k, v);
+out actual fn mapGetI32I32(this : Map<I32, I32>, k : I32) : I32 => mapGet(this, k);
 
-out actual fn set_new_i32() : Set<I32> => __set_new();
-out actual fn set_add_i32(this : Set<I32>, item : I32) : Set<I32> => set_add(this, item);
-out actual fn set_has_i32(this : Set<I32>, item : I32) : Bool => set_has(this, item);
+out actual fn setNewI32() : Set<I32> => __set_new();
+out actual fn setAddI32(this : Set<I32>, item : I32) : Set<I32> => setAdd(this, item);
+out actual fn setHasI32(this : Set<I32>, item : I32) : Bool => setHas(this, item);

@@ -1,20 +1,20 @@
-extern fn read_file(path : *Str) : *Str;
-extern fn write_file(path : *Str, contents : *Str) : I32;
-extern fn path_join(a : *Str, b : *Str) : *Str;
-extern fn path_dirname(p : *Str) : *Str;
+extern fn readFile(path : *Str) : *Str;
+extern fn writeFile(path : *Str, contents : *Str) : I32;
+extern fn pathJoin(a : *Str, b : *Str) : *Str;
+extern fn pathDirname(p : *Str) : *Str;
 extern fn print(s : *Str) : I32;
-extern fn print_error(s : *Str) : I32;
+extern fn printError(s : *Str) : I32;
 
-out expect fn read_file(path : *Str) : *Str;
-out expect fn write_file(path : *Str, contents : *Str) : I32;
-out expect fn path_join(a : *Str, b : *Str) : *Str;
-out expect fn path_dirname(p : *Str) : *Str;
+out expect fn readFile(path : *Str) : *Str;
+out expect fn writeFile(path : *Str, contents : *Str) : I32;
+out expect fn pathJoin(a : *Str, b : *Str) : *Str;
+out expect fn pathDirname(p : *Str) : *Str;
 out expect fn print(s : *Str) : I32;
-out expect fn print_error(s : *Str) : I32;
+out expect fn printError(s : *Str) : I32;
 
-out actual fn read_file(path : *Str) : *Str => read_file(path);
-out actual fn write_file(path : *Str, contents : *Str) : I32 => write_file(path, contents);
-out actual fn path_join(a : *Str, b : *Str) : *Str => path_join(a, b);
-out actual fn path_dirname(p : *Str) : *Str => path_dirname(p);
+out actual fn readFile(path : *Str) : *Str => readFile(path);
+out actual fn writeFile(path : *Str, contents : *Str) : I32 => writeFile(path, contents);
+out actual fn pathJoin(a : *Str, b : *Str) : *Str => pathJoin(a, b);
+out actual fn pathDirname(p : *Str) : *Str => pathDirname(p);
 out actual fn print(s : *Str) : I32 => print(s);
-out actual fn print_error(s : *Str) : I32 => print_error(s);
+out actual fn printError(s : *Str) : I32 => printError(s);

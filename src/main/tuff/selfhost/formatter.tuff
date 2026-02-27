@@ -1,6 +1,6 @@
 let {
-    format_tuff_source_impl, selfhost_formatter_impl_marker
+    formatTuffSourceImpl, selfhostFormatterImplMarker
 }
- = selfhost::internal::formatter_impl;
-out fn format_tuff_source(source: *Str) : *Str => format_tuff_source_impl(source);
-out fn selfhost_formatter_marker() : I32 => selfhost_formatter_impl_marker();
+ = selfhost::internal::formatterImpl;
+out fn formatTuffSource(source: *Str) : *Str => formatTuffSourceImpl(source);
+out fn selfhostFormatterMarker() : I32 => selfhostFormatterImplMarker();

@@ -1,0 +1,365 @@
+let {
+    pAt, pEat, pExpect, pParseIdentifier, pAtKind, pPeek, pParseType,
+    pCanStartTypeTokAt, pErrorWithTokenContext, nodeKind, nodeNew, nodeSetData1, nodeSetData2, nodeSetData3, nodeSetData4, nodeSetData5, nodeGetData1, nodeGetData2
+}
+ = selfhost::parserCore;
+let {
+    tokKind, tokValue, getInternedStr, vecNew
+}
+ = selfhost::runtimeLexer;
+fn pHasGenericCallSuffix() : Bool => {
+    if (!pAt(TK_SYMBOL, "<")) {
+        return false;
+    }
+    if (!pCanStartTypeTokAt(1)) {
+        return false;
+    }
+    let cursor = 0;
+    let depth = 0;
+    while (true) {
+        if (cursor > 200000) {
+            pErrorWithTokenContext("Parser watchdog: generic-call suffix scan exceeded 200000 tokens");
+        }
+        let ti = pPeek(cursor);
+        let tk = tokKind(ti);
+        if (tk == TK_EOF) {
+            return false;
+        }
+        if (tk == TK_SYMBOL) {
+            let sym = getInternedStr(tokValue(ti));
+            if (sym.strEq("<")) {
+                depth = depth + 1;
+            }
+            else if (sym.strEq(">")) {
+                depth = depth - 1;
+                if (depth == 0) {
+                    let next = pPeek(cursor + 1);
+                    if (tokKind(next) == TK_SYMBOL) {
+                        let nextSym = getInternedStr(tokValue(next));
+                        return nextSym.strEq("(");
+                    }
+                    return false;
+                }
+            }
+        }
+        cursor = cursor + 1;
+    }
+}
+fn pHasGenericStructInitSuffix() : Bool => {
+    if (!pAt(TK_SYMBOL, "<")) {
+        return false;
+    }
+    if (!pCanStartTypeTokAt(1)) {
+        return false;
+    }
+    let cursor = 0;
+    let depth = 0;
+    while (true) {
+        if (cursor > 200000) {
+            pErrorWithTokenContext("Parser watchdog: generic-struct-init suffix scan exceeded 200000 tokens");
+        }
+        let ti = pPeek(cursor);
+        let tk = tokKind(ti);
+        if (tk == TK_EOF) {
+            return false;
+        }
+        if (tk == TK_SYMBOL) {
+            let sym = getInternedStr(tokValue(ti));
+            if (sym.strEq("<")) {
+                depth = depth + 1;
+            }
+            else if (sym.strEq(">")) {
+                depth = depth - 1;
+                if (depth == 0) {
+                    let next = pPeek(cursor + 1);
+                    if (tokKind(next) == TK_SYMBOL) {
+                        let nextSym = getInternedStr(tokValue(next));
+                        return nextSym.strEq("{");
+                    }
+                    return false;
+                }
+            }
+        }
+        cursor = cursor + 1;
+    }
+}
+fn pHasGenericValueSuffix() : Bool => {
+    if (!pAt(TK_SYMBOL, "<")) {
+        return false;
+    }
+    if (!pCanStartTypeTokAt(1)) {
+        return false;
+    }
+    let cursor = 0;
+    let depth = 0;
+    while (true) {
+        if (cursor > 200000) {
+            pErrorWithTokenContext("Parser watchdog: generic-value suffix scan exceeded 200000 tokens");
+        }
+        let ti = pPeek(cursor);
+        let tk = tokKind(ti);
+        if (tk == TK_EOF) {
+            return false;
+        }
+        if (tk == TK_SYMBOL) {
+            let sym = getInternedStr(tokValue(ti));
+            if (sym.strEq("<")) {
+                depth = depth + 1;
+            }
+            else if (sym.strEq(">")) {
+                depth = depth - 1;
+                if (depth == 0) {
+                    let next = pPeek(cursor + 1);
+                    if (tokKind(next) == TK_SYMBOL) {
+                        let nextSym = getInternedStr(tokValue(next));
+                        if (nextSym.strEq("(")) {
+                            return false;
+                        }
+                    }
+                    return true;
+                }
+            }
+        }
+        cursor = cursor + 1;
+    }
+}
+fn pParseGenericArgValueOrType() : I32 => {
+    let t0 = pPeek(0);
+    if (tokKind(t0) == TK_IDENTIFIER && tokKind(pPeek(1)) == TK_SYMBOL) {
+        let s1 = getInternedStr(tokValue(pPeek(1)));
+        if (s1.strEq(".")) {
+            return pParseExpression(5);
+        }
+    }
+    let cursor = 0;
+    let parenDepth = 0;
+    let bracketDepth = 0;
+    while (true) {
+        if (cursor > 200000) {
+            pErrorWithTokenContext("Parser watchdog: generic-arg scan exceeded 200000 tokens");
+        }
+        let ti = pPeek(cursor);
+        let tk = tokKind(ti);
+        if (tk == TK_EOF) {
+            break;
+        }
+        if (tk == TK_SYMBOL) {
+            let sym = getInternedStr(tokValue(ti));
+            if (sym.strEq("(")) {
+                parenDepth = parenDepth + 1;
+            }
+            else if (sym.strEq(")")) {
+                if (parenDepth > 0) {
+                    parenDepth = parenDepth - 1;
+                }
+            }
+            else if (sym.strEq("[")) {
+                bracketDepth = bracketDepth + 1;
+            }
+            else if (sym.strEq("]")) {
+                if (bracketDepth > 0) {
+                    bracketDepth = bracketDepth - 1;
+                }
+            }
+            else if (parenDepth == 0 && bracketDepth == 0 && (sym.strEq(",") || sym.strEq(">"))) {
+                break;
+            }
+            else if (
+            parenDepth == 0 &&
+            bracketDepth == 0 &&
+            (
+            (cursor > 0 && sym.strEq(".")) ||
+            (cursor > 0 && sym.strEq("+")) ||
+            (cursor > 0 && sym.strEq("-")) ||
+            (cursor > 0 && sym.strEq("*")) ||
+            (cursor > 0 && sym.strEq("/")) ||
+            (cursor > 0 && sym.strEq("%"))
+            )
+            ) {
+                return pParseExpression(5);
+            }
+        }
+        cursor = cursor + 1;
+    }
+    pParseType()
+}
+fn pTryParseIntoGenericValueCall(expr: I32) : I32 => {
+    if (!(nodeKind(expr) == NK_MEMBER_EXPR && getInternedStr(nodeGetData2(expr)).strEq("into") && pAt(TK_SYMBOL, "<") && pHasGenericValueSuffix())) {
+        return 0;
+    }
+    pEat();
+    let typeArgs = vecNew();
+    if (!pAt(TK_SYMBOL, ">")) {
+        typeArgs.vecPush(pParseGenericArgValueOrType());
+        while (pAt(TK_SYMBOL, ",")) {
+            pEat();
+            typeArgs.vecPush(pParseGenericArgValueOrType());
+        }
+    }
+    pExpect(TK_SYMBOL, ">", "Expected '>' after into type args");
+    let recv = nodeGetData1(expr);
+    let prop = nodeGetData2(expr);
+    let args = vecNew();
+    args.vecPush(recv);
+    let callee = nodeNew(NK_IDENTIFIER);
+    nodeSetData1(callee, prop);
+    let intoValue = nodeNew(NK_CALL_EXPR);
+    nodeSetData1(intoValue, callee);
+    nodeSetData2(intoValue, args);
+    nodeSetData3(intoValue, 1);
+    nodeSetData4(intoValue, typeArgs);
+    nodeSetData5(intoValue, 1);
+    intoValue
+}
+fn pParseCallArgs() : Vec<I32> => {
+    let args = vecNew();
+    if (!pAt(TK_SYMBOL, ")")) {
+        args.vecPush(pParseExpression(0));
+        while (pAt(TK_SYMBOL, ",")) {
+            pEat();
+            args.vecPush(pParseExpression(0));
+        }
+    }
+    args
+}
+fn pLowerMemberCall(expr: I32, args: Vec<I32>, typeArgs: Vec<I32>, hasTypeArgs: I32) : I32 => {
+    let recv = nodeGetData1(expr);
+    let prop = nodeGetData2(expr);
+    let loweredArgs = vecNew();
+    loweredArgs.vecPush(recv);
+    let ai = 0;
+    let alen = args.vecLength();
+    while (ai < alen) {
+        loweredArgs.vecPush(args.vecGet(ai));
+        ai = ai + 1;
+    }
+    let callee = nodeNew(NK_IDENTIFIER);
+    nodeSetData1(callee, prop);
+    let call = nodeNew(NK_CALL_EXPR);
+    nodeSetData1(call, callee);
+    nodeSetData2(call, loweredArgs);
+    nodeSetData3(call, 1);
+    if (hasTypeArgs == 1) {
+        nodeSetData4(call, typeArgs);
+    }
+    call
+}
+fn pTryParseGenericCall(expr: I32) : I32 => {
+    if (!(pAt(TK_SYMBOL, "<") && pHasGenericCallSuffix())) {
+        return 0;
+    }
+    pEat();
+    let typeArgs = vecNew();
+    if (!pAt(TK_SYMBOL, ">")) {
+        typeArgs.vecPush(pParseGenericArgValueOrType());
+        while (pAt(TK_SYMBOL, ",")) {
+            pEat();
+            typeArgs.vecPush(pParseGenericArgValueOrType());
+        }
+    }
+    pExpect(TK_SYMBOL, ">", "Expected '>' after generic call type args");
+    pExpect(TK_SYMBOL, "(", "Expected '(' after generic call type args");
+    let args = pParseCallArgs();
+    pExpect(TK_SYMBOL, ")", "Expected ')' after call args");
+    if (nodeKind(expr) == NK_MEMBER_EXPR) {
+        return pLowerMemberCall(expr, args, typeArgs, 1);
+    }
+    let call = nodeNew(NK_CALL_EXPR);
+    nodeSetData1(call, expr);
+    nodeSetData2(call, args);
+    nodeSetData3(call, 0);
+    nodeSetData4(call, typeArgs);
+    call
+}
+fn pTryParseCall(expr: I32) : I32 => {
+    if (!pAt(TK_SYMBOL, "(")) {
+        return 0;
+    }
+    pEat();
+    let args = pParseCallArgs();
+    pExpect(TK_SYMBOL, ")", "Expected ')'");
+    if (nodeKind(expr) == NK_MEMBER_EXPR) {
+        return pLowerMemberCall(expr, args, vecNew(), 0);
+    }
+    let call = nodeNew(NK_CALL_EXPR);
+    nodeSetData1(call, expr);
+    nodeSetData2(call, args);
+    nodeSetData3(call, 0);
+    call
+}
+fn pTryParseMember(expr: I32) : I32 => {
+    if (!pAt(TK_SYMBOL, ".")) {
+        return 0;
+    }
+    pEat();
+    let prop = 0;
+    if (pAtKind(TK_IDENTIFIER)) {
+        prop = pParseIdentifier();
+    }
+    else if (pAtKind(TK_KEYWORD)) {
+        prop = tokValue(pEat());
+    }
+    else {
+        pErrorWithTokenContext("Expected member name after '.'");
+    }
+    let member = nodeNew(NK_MEMBER_EXPR);
+    nodeSetData1(member, expr);
+    nodeSetData2(member, prop);
+    member
+}
+fn pTryParseIndexOrUnwrap(expr: I32) : I32 => {
+    if (pAt(TK_SYMBOL, "[")) {
+        pEat();
+        let idxExpr = pParseExpression(0);
+        pExpect(TK_SYMBOL, "]", "Expected ']'");
+        let idxNode = nodeNew(NK_INDEX_EXPR);
+        nodeSetData1(idxNode, expr);
+        nodeSetData2(idxNode, idxExpr);
+        return idxNode;
+    }
+    if (pAt(TK_SYMBOL, "?")) {
+        pEat();
+        let unwrap = nodeNew(NK_UNWRAP_EXPR);
+        nodeSetData1(unwrap, expr);
+        return unwrap;
+    }
+    0
+}
+out fn pParsePostfix(exprIn: I32) : I32 => {
+    let expr = exprIn;
+    let postfixWatchdog = 0;
+    while (true) {
+        postfixWatchdog = postfixWatchdog + 1;
+        if (postfixWatchdog > 10000) {
+            pErrorWithTokenContext("Parser watchdog: postfix loop exceeded 10000 iterations");
+        }
+        let next = pTryParseIntoGenericValueCall(expr);
+        if (next != 0) {
+            expr = next;
+            continue;
+        }
+        next = pTryParseGenericCall(expr);
+        if (next != 0) {
+            expr = next;
+            continue;
+        }
+        next = pTryParseCall(expr);
+        if (next != 0) {
+            expr = next;
+            continue;
+        }
+        next = pTryParseMember(expr);
+        if (next != 0) {
+            expr = next;
+            continue;
+        }
+        next = pTryParseIndexOrUnwrap(expr);
+        if (next != 0) {
+            expr = next;
+            continue;
+        }
+        break;
+    }
+    expr
+}
+out fn selfhostParserExprPostfixMarker() : I32 => 0;

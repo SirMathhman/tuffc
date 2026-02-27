@@ -1,0 +1,434 @@
+ // ============================================================================
+ // JavaScript Code Generation
+ // ============================================================================
+let {
+    getInternedStr, vecNew
+}
+ = selfhost::runtimeLexer;
+let {
+    nodeKind, nodeGetData1, nodeGetData2, nodeGetData3, nodeGetData4, nodeGetData5
+}
+ = selfhost::parserCore;
+fn jsIdentExpr(name: *Str) : *Str => {
+     // 'this' is a reserved word in JavaScript; rename to avoid SyntaxError.
+    if (name.strEq("this")) {
+        return "(typeof __this_param !== 'undefined' ? __this_param : (typeof __tuff_this !== 'undefined' ? __tuff_this : this))";
+    }
+    name
+}
+fn cgStripNumSuffix(s: *Str) : *Str => {
+    let n = s.strLength();
+    if (n > 5 && s.strSliceWindow(n - 5, n).strEq("USize")) {
+        return s.strSliceWindow(0, n - 5);
+    }
+    if (n > 5 && s.strSliceWindow(n - 5, n).strEq("ISize")) {
+        return s.strSliceWindow(0, n - 5);
+    }
+    if (n > 4 && s.strSliceWindow(n - 4, n).strEq("U128")) {
+        return s.strSliceWindow(0, n - 4);
+    }
+    if (n > 4 && s.strSliceWindow(n - 4, n).strEq("I128")) {
+        return s.strSliceWindow(0, n - 4);
+    }
+    if (n > 3 && s.strSliceWindow(n - 3, n).strEq("U64")) {
+        return s.strSliceWindow(0, n - 3);
+    }
+    if (n > 3 && s.strSliceWindow(n - 3, n).strEq("I64")) {
+        return s.strSliceWindow(0, n - 3);
+    }
+    if (n > 3 && s.strSliceWindow(n - 3, n).strEq("U32")) {
+        return s.strSliceWindow(0, n - 3);
+    }
+    if (n > 3 && s.strSliceWindow(n - 3, n).strEq("I32")) {
+        return s.strSliceWindow(0, n - 3);
+    }
+    if (n > 3 && s.strSliceWindow(n - 3, n).strEq("U16")) {
+        return s.strSliceWindow(0, n - 3);
+    }
+    if (n > 3 && s.strSliceWindow(n - 3, n).strEq("I16")) {
+        return s.strSliceWindow(0, n - 3);
+    }
+    if (n > 2 && s.strSliceWindow(n - 2, n).strEq("U8")) {
+        return s.strSliceWindow(0, n - 2);
+    }
+    if (n > 2 && s.strSliceWindow(n - 2, n).strEq("I8")) {
+        return s.strSliceWindow(0, n - 2);
+    }
+    s
+}
+fn emitExprCallInto(n: I32, calleeNode: I32) : *Str => {
+    let calleeName = getInternedStr(nodeGetData1(calleeNode));
+    if (!(calleeName.strEq("into") && nodeGetData3(n) == 1)) {
+        return "";
+    }
+    let args = nodeGetData2(n);
+    if (args.vecLength() < 1) {
+        return "undefined";
+    }
+    let typeArgs = nodeGetData4(n);
+    let contractName = "";
+    if (typeArgs.vecLength() == 1 && nodeKind(typeArgs.vecGet(0)) == NK_NAMED_TYPE) {
+        contractName = getInternedStr(nodeGetData1(typeArgs.vecGet(0)));
+    }
+    let srcNode = args.vecGet(0);
+    let src = emitExpr(srcNode);
+    let consumeSource = "";
+    let contractLabel = contractName;
+    if (contractLabel.strEq("")) {
+        contractLabel = "<unknown>";
+    }
+    if (nodeKind(srcNode) == NK_IDENTIFIER) {
+        consumeSource = getInternedStr(nodeGetData1(srcNode)).strConcat(" = undefined;");
+    }
+    if (nodeGetData5(n) == 1) {
+        return "(() => { const __src = ".strConcat(src).strConcat("; const __conv = __src?.__into?.[").strConcat("\"").strConcat(contractName).strConcat("\"").strConcat("]; if (!__conv) { throw new Error(\"Missing into converter for ").strConcat(contractLabel).strConcat("\"); } ").strConcat(consumeSource).strConcat(" let __used = false; return (...__intoArgs) => { if (__used) { throw new Error(\"Into converter already consumed for ").strConcat(contractLabel).strConcat("\"); } __used = true; return __conv(...__intoArgs); }; })()");
+    }
+    let argStrs = vecNew();
+    let i = 1;
+    let len = args.vecLength();
+    while (i < len) {
+        argStrs.vecPush(emitExpr(args.vecGet(i)));
+        i = i + 1;
+    }
+    let restArgs = argStrs.vecJoin(", ");
+    "(() => { const __src = ".strConcat(src).strConcat("; const __conv = __src?.__into?.[").strConcat("\"").strConcat(contractName).strConcat("\"").strConcat("]; if (!__conv) { throw new Error(\"Missing into converter for ").strConcat(contractLabel).strConcat("\"); } const __out = __conv(").strConcat(restArgs).strConcat("); ").strConcat(consumeSource).strConcat(" return __out; })()")
+}
+fn emitExprCallMethod(n: I32, calleeNode: I32) : *Str => {
+    if (!(nodeGetData3(n) == 1 && nodeKind(calleeNode) == NK_IDENTIFIER)) {
+        return "";
+    }
+    let args = nodeGetData2(n);
+    if (args.vecLength() < 1) {
+        return "";
+    }
+    let calleeName = getInternedStr(nodeGetData1(calleeNode));
+    let receiver = emitExpr(args.vecGet(0));
+    let restArgs = vecNew();
+    let i = 1;
+    let len = args.vecLength();
+    while (i < len) {
+        restArgs.vecPush(emitExpr(args.vecGet(i)));
+        i = i + 1;
+    }
+    let restStr = restArgs.vecJoin(", ");
+    let dynArgs = "";
+    if (restStr.strEq("")) {
+        dynArgs = "__recv.ref";
+    }
+    else {
+        dynArgs = "__recv.ref, ".strConcat(restStr);
+    }
+    let staticArgs = "";
+    if (restStr.strEq("")) {
+        staticArgs = "__recv";
+    }
+    else {
+        staticArgs = "__recv, ".strConcat(restStr);
+    }
+    let methodKey = "\"".strConcat(calleeName).strConcat("\"");
+    "(() => { const __recv = ".strConcat(receiver).strConcat("; const __prop = __recv?.[").strConcat(methodKey).strConcat("]; if (typeof __prop === \"function\") return __prop(").strConcat(restStr).strConcat("); const __dyn = __recv?.table?.").strConcat(calleeName).strConcat("; return __dyn ? __dyn(").strConcat(dynArgs).strConcat(") : ").strConcat(emitExpr(calleeNode)).strConcat("(").strConcat(staticArgs).strConcat("); })()")
+}
+fn emitExprCallExpr(n: I32) : *Str => {
+    let calleeNode = nodeGetData1(n);
+    if (nodeKind(calleeNode) == NK_IDENTIFIER && getInternedStr(nodeGetData1(calleeNode)).strEq("drop")) {
+        return "undefined";
+    }
+    let intoCall = emitExprCallInto(n, calleeNode);
+    if (!intoCall.strEq("")) {
+        return intoCall;
+    }
+    let method = emitExprCallMethod(n, calleeNode);
+    if (!method.strEq("")) {
+        return method;
+    }
+    let callee = emitExpr(nodeGetData1(n));
+    let args = nodeGetData2(n);
+    let argStrs = vecNew();
+    let i = 0;
+    let len = args.vecLength();
+    while (i < len) {
+        argStrs.vecPush(emitExpr(args.vecGet(i)));
+        i = i + 1;
+    }
+    let argsStr = argStrs.vecJoin(", ");
+    callee.strConcat("(").strConcat(argsStr.strConcat(")"))
+}
+fn emitExprStructInit(n: I32) : *Str => {
+    let name = getInternedStr(nodeGetData1(n));
+    let fields = nodeGetData2(n);
+    let sb = sbNew();
+    sbAppend(sb, "((typeof ");
+    sbAppend(sb, name);
+    sbAppend(sb, " === \"function\") ? ");
+    sbAppend(sb, name);
+    sbAppend(sb, "({");
+    let i = 0;
+    let len = fields.vecLength();
+    while (i < len) {
+        let field = fields.vecGet(i);
+        if (i > 0) {
+            sbAppend(sb, ", ");
+        }
+        sbAppend(sb, getInternedStr(field.vecGet(0)));
+        sbAppend(sb, ": ");
+        sbAppend(sb, emitExpr(field.vecGet(1)));
+        i = i + 1;
+    }
+    sbAppend(sb, "}) : ({ __tag: ");
+    sbAppend(sb, "\"".strConcat(name).strConcat("\""));
+    i = 0;
+    while (i < len) {
+        let field = fields.vecGet(i);
+        sbAppend(sb, ", ");
+        sbAppend(sb, getInternedStr(field.vecGet(0)));
+        sbAppend(sb, ": ");
+        sbAppend(sb, emitExpr(field.vecGet(1)));
+        i = i + 1;
+    }
+    sbAppend(sb, " }))");
+    sbBuild(sb)
+}
+fn emitExprComplex(n: I32) : *Str => {
+    let kind = nodeKind(n);
+    if (kind == NK_IF_EXPR) {
+        let cond = emitExpr(nodeGetData1(n));
+        let thenB = nodeGetData2(n);
+        let elseB = nodeGetData3(n);
+        let thenStr = "";
+        if (nodeKind(thenB) == NK_BLOCK) {
+            thenStr = emitBlockAsIife(thenB);
+        }
+        else {
+            thenStr = emitExpr(thenB);
+        }
+        let elseStr = "undefined";
+        if (elseB != 0) {
+            if (nodeKind(elseB) == NK_BLOCK) {
+                elseStr = emitBlockAsIife(elseB);
+            }
+            else {
+                elseStr = emitExpr(elseB);
+            }
+        }
+        return strConcat("((".strConcat(cond).strConcat(") ? ").strConcat(thenStr.strConcat(" : ")), elseStr.strConcat(")"));
+    }
+    if (kind == NK_MATCH_EXPR) {
+        let target = emitExpr(nodeGetData1(n));
+        let cases = nodeGetData2(n);
+        let sb = sbNew();
+        sbAppend(sb, "(() => { const __m = ");
+        sbAppend(sb, target);
+        sbAppend(sb, "; ");
+        let i = 0;
+        let len = cases.vecLength();
+        while (i < len) {
+            let caseNode = cases.vecGet(i);
+            let pat = caseNode.vecGet(0);
+            let body = caseNode.vecGet(1);
+            let guard = emitPatternGuard("__m", pat);
+            if (i == 0) {
+                sbAppend(sb, "if (");
+            }
+            else {
+                sbAppend(sb, "else if (");
+            }
+            sbAppend(sb, guard);
+            sbAppend(sb, ") { ");
+            sbAppend(sb, emitPatternBindings("__m", pat));
+            sbAppend(sb, "return ");
+            let bodyJs = "";
+            if (nodeKind(body) == NK_BLOCK) {
+                bodyJs = emitBlock(body);
+            }
+            else {
+                bodyJs = emitExpr(body);
+            }
+            sbAppend(sb, bodyJs);
+            sbAppend(sb, "; } ");
+            i = i + 1;
+        }
+        sbAppend(sb, "else { throw new Error(\"Non-exhaustive match\"); } })()");
+        return sbBuild(sb);
+    }
+    if (kind == NK_IS_EXPR) {
+        return "(".strConcat(emitPatternGuard(emitExpr(nodeGetData1(n)), nodeGetData2(n))).strConcat(")");
+    }
+    if (kind == NK_UNWRAP_EXPR) {
+        return emitExpr(nodeGetData1(n));
+    }
+    if (kind == NK_LAMBDA_EXPR) {
+        let params = nodeGetData1(n);
+        let body = nodeGetData2(n);
+        let pnames = vecNew();
+        let i = 0;
+        let len = params.vecLength();
+        while (i < len) {
+            pnames.vecPush(jsIdentExpr(getInternedStr(params.vecGet(i).vecGet(0))));
+            i = i + 1;
+        }
+        let args = pnames.vecJoin(", ");
+        if (nodeKind(body) == NK_BLOCK) {
+            return "((".strConcat(args).strConcat(") => ").strConcat(emitFnBlock(body)).strConcat(")");
+        }
+        return "((".strConcat(args).strConcat(") => ").strConcat(emitExpr(body)).strConcat(")");
+    }
+    if (kind == NK_FN_EXPR) {
+        let fnameIdx = nodeGetData1(n);
+        let params = nodeGetData3(n);
+        let body = nodeGetData5(n);
+        let pnames = vecNew();
+        let i = 0;
+        let len = params.vecLength();
+        while (i < len) {
+            pnames.vecPush(jsIdentExpr(getInternedStr(params.vecGet(i).vecGet(0))));
+            i = i + 1;
+        }
+        let args = pnames.vecJoin(", ");
+        let namePart = "";
+        if (fnameIdx != 0) {
+            namePart = " ".strConcat(getInternedStr(fnameIdx));
+        }
+        if (nodeKind(body) == NK_BLOCK) {
+            return "(function".strConcat(namePart).strConcat("(").strConcat(args).strConcat(") ").strConcat(emitFnBlock(body)).strConcat(")");
+        }
+        return "(function".strConcat(namePart).strConcat("(").strConcat(args).strConcat(") { return ").strConcat(emitExpr(body)).strConcat("; })");
+    }
+    ""
+}
+fn emitExpr(n: I32) : *Str => {
+    let kind = nodeKind(n);
+    if (kind == NK_NUMBER_LIT) {
+        let val = nodeGetData1(n);
+         // Get the number string, stripping any type suffix for valid JS output
+        return cgStripNumSuffix(getInternedStr(val));
+    }
+    if (kind == NK_BOOL_LIT) {
+        let val = nodeGetData1(n);
+        if (val == 1) {
+            return "true";
+        }
+        return "false";
+    }
+    if (kind == NK_STRING_LIT) {
+        let val = nodeGetData1(n);
+        let s = getInternedStr(val);
+        return "\"".strConcat(s).strConcat("\"");
+    }
+    if (kind == NK_CHAR_LIT) {
+        let val = nodeGetData1(n);
+        let s = getInternedStr(val);
+        return "\"".strConcat(s).strConcat("\"");
+    }
+    if (kind == NK_IDENTIFIER) {
+        let nameIdx = nodeGetData1(n);
+        return jsIdentExpr(getInternedStr(nameIdx));
+    }
+    if (kind == NK_UNARY_EXPR) {
+        let op = getInternedStr(nodeGetData1(n));
+        if (op.strEq("&") || op.strEq("&mut")) {
+            return emitExpr(nodeGetData2(n));
+        }
+        let inner = emitExpr(nodeGetData2(n));
+        return "(".strConcat(op).strConcat(inner.strConcat(")"));
+    }
+    if (kind == NK_BINARY_EXPR) {
+        let op = getInternedStr(nodeGetData1(n));
+        if (op.strEq("==")) {
+            op = "===";
+        }
+        if (op.strEq("!=")) {
+            op = "!==";
+        }
+        let left = emitExpr(nodeGetData2(n));
+        let right = emitExpr(nodeGetData3(n));
+        if (op.strEq("..")) {
+            return "(function() { let __cur = ".strConcat(left)
+            .strConcat(", __hi = ").strConcat(right)
+            .strConcat("; return function() { if (__cur > __hi) return [true, __hi]; let __val = __cur++; return [false, __val]; }; })()");
+        }
+        return strConcat("(".strConcat(left).strConcat(" ".strConcat(op)).strConcat(" ".strConcat(right)), ")");
+    }
+    if (kind == NK_CALL_EXPR) {
+        return emitExprCallExpr(n);
+    }
+    if (kind == NK_MEMBER_EXPR) {
+        let obj = emitExpr(nodeGetData1(n));
+        let prop = getInternedStr(nodeGetData2(n));
+         // .init on a slice/array emits as .length (JS arrays track initialized count = length)
+        if (prop.strEq("init")) {
+            return obj.strConcat(".length");
+        }
+        return obj.strConcat(".").strConcat(prop);
+    }
+    if (kind == NK_INDEX_EXPR) {
+        let target = emitExpr(nodeGetData1(n));
+        let idxExpr = emitExpr(nodeGetData2(n));
+        return target.strConcat("[").strConcat(idxExpr).strConcat("]");
+    }
+    if (kind == NK_STRUCT_INIT) {
+        return emitExprStructInit(n);
+    }
+    if (kind == NK_TUPLE_EXPR) {
+        let items = nodeGetData1(n);
+        let parts = vecNew();
+        let i = 0;
+        let len = items.vecLength();
+        while (i < len) {
+            parts.vecPush(emitExpr(items.vecGet(i)));
+            i = i + 1;
+        }
+        return "[".strConcat(parts.vecJoin(", ")).strConcat("]");
+    }
+    let complex = emitExprComplex(n);
+    if (!complex.strEq("")) {
+        return complex;
+    }
+    "undefined"
+}
+fn emitPatternGuard(valueExpr: *Str, pat: I32) : *Str => {
+    let kind = nodeKind(pat);
+    if (kind == NK_WILDCARD_PAT) {
+        return "true";
+    }
+    if (kind == NK_LITERAL_PAT) {
+        let val = getInternedStr(nodeGetData1(pat));
+        return valueExpr.strConcat(" === ").strConcat(val).strConcat("");
+    }
+    if (kind == NK_NAME_PAT) {
+        let name = getInternedStr(nodeGetData1(pat));
+        return strConcat(valueExpr.strConcat(" && ").strConcat(valueExpr).strConcat(".__tag === \""), name.strConcat("\""));
+    }
+    if (kind == NK_STRUCT_PAT) {
+        let name = getInternedStr(nodeGetData1(pat));
+        return strConcat(valueExpr.strConcat(" && ").strConcat(valueExpr).strConcat(".__tag === \""), name.strConcat("\""));
+    }
+    "false"
+}
+fn emitPatternBindings(valueExpr: *Str, pat: I32) : *Str => {
+    let kind = nodeKind(pat);
+    if (kind == NK_STRUCT_PAT) {
+        let fields = nodeGetData2(pat);
+        let sb = sbNew();
+        let i = 0;
+        let len = fields.vecLength();
+        while (i < len) {
+            let fnameIdx = fields.vecGet(i);
+            let fname = getInternedStr(fnameIdx);
+            sbAppend(sb, "const ");
+            sbAppend(sb, fname);
+            sbAppend(sb, " = ");
+            sbAppend(sb, valueExpr);
+            sbAppend(sb, ".");
+            sbAppend(sb, fname);
+            sbAppend(sb, "; ");
+            i = i + 1;
+        }
+        return sbBuild(sb);
+    }
+    if (kind == NK_NAME_PAT) {
+        let name = getInternedStr(nodeGetData1(pat));
+        return "const ".strConcat(name).strConcat(" = ").strConcat(valueExpr.strConcat("; "));
+    }
+    ""
+}
+out fn selfhostCodegenExprMarker() : I32 => 0;

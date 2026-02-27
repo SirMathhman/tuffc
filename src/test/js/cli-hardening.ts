@@ -147,7 +147,7 @@ expectFail(
   [
     "compile",
     "./src/test/tuff/cases/factorial.tuff",
-    "./src/test/tuff/cases/enum_match.tuff",
+    "./src/test/tuff/cases/enumMatch.tuff",
   ],
   "Expected exactly one input file",
   "deprecated-multi-input-rejected",

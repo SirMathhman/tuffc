@@ -1,0 +1,17 @@
+extern let { strLength, strConcat, strIndexOf, strTrim } = strings;
+
+extern fn strLength(this: *Str) : USize;
+extern fn strConcat(this: *Str, b: *Str) : *Str;
+extern fn strIndexOf(this: *Str, needle: *Str) : I32;
+extern fn strTrim(this: *Str) : *Str;
+
+fn strIncludes(this: *Str, needle: *Str) : Bool => this.strIndexOf(needle) >= 0;
+
+fn main() : I32 => {
+    let combined = "ab".strConcat("cd");
+    let trimmed = "  hello  ".strTrim();
+    if (combined.strLength() == 4 && combined.strIncludes("bc") && trimmed.strLength() == 5) {
+        return 0;
+    }
+    return 7;
+}

@@ -136,15 +136,17 @@ if (!selected) {
 
 const cases = [
   runCase("factorial", { backend: "selfhost" }),
-  runCase("enum_match", { backend: "selfhost" }),
-  runCase("option_match", { backend: "selfhost" }),
-  runCase("runtime_strings", { backend: "selfhost" }),
-  runCase("runtime_collections", { backend: "selfhost" }),
-  runCase("runtime_io", { backend: "selfhost" }),
+  runCase("enumMatch", { backend: "selfhost" }),
+  runCase("optionMatch", { backend: "selfhost" }),
+  runCase("runtimeStrings", { backend: "selfhost" }),
+  runCase("runtimeCollections", { backend: "selfhost" }),
+  runCase("runtimeIo", { backend: "selfhost" }),
 ];
 
 function failCCompile(result, caseName: string, compiler: string): never {
-  console.error(`Failed to compile generated C for ${caseName} with ${compiler}`);
+  console.error(
+    `Failed to compile generated C for ${caseName} with ${compiler}`,
+  );
   console.error(`${result.stdout ?? ""}\n${result.stderr ?? ""}`);
   process.exit(1);
 }

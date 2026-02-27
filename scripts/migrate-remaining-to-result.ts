@@ -14,11 +14,11 @@ import {
 
 // Map of files to error types
 const FILE_ERROR_TYPES = {
-  "src/main/tuff/selfhost/runtime_lexer.tuff": "LexError",
-  "src/main/tuff/selfhost/internal/codegen_c_impl.tuff": "CodegenError",
-  "src/main/tuff/selfhost/internal/borrowcheck_impl.tuff": "BorrowError",
-  "src/main/tuff/selfhost/module_loader.tuff": "ModuleError",
-  "src/main/tuff/selfhost/resolver_utils.tuff": "ResolveError",
+  "src/main/tuff/selfhost/runtimeLexer.tuff": "LexError",
+  "src/main/tuff/selfhost/internal/codegenCImpl.tuff": "CodegenError",
+  "src/main/tuff/selfhost/internal/borrowcheckImpl.tuff": "BorrowError",
+  "src/main/tuff/selfhost/moduleLoader.tuff": "ModuleError",
+  "src/main/tuff/selfhost/resolverUtils.tuff": "ResolveError",
 };
 
 function addResultImports(content: string, errorType: string): string {

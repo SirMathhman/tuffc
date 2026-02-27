@@ -10,14 +10,14 @@ extern fn strlen(s : *Str) : USize;
 extern fn strcpy(dst : I32, src : *Str) : I32;
 extern fn strcat(dst : I32, src : *Str) : I32;
 
-out fn sb_new() : StringBuilder => {
+out fn sbNew() : StringBuilder => {
 	let ptr = malloc(1USize);
 	if (ptr == 0) return 0;
 	strcpy(ptr, "");
 	ptr
 };
 
-out fn sb_append(this : StringBuilder, s : *Str) : StringBuilder => {
+out fn sbAppend(this : StringBuilder, s : *Str) : StringBuilder => {
 	if (this == 0) return this;
 	let need = strlen(this) + strlen(s) + 1USize;
 	let grown = realloc(this, need);
@@ -26,9 +26,9 @@ out fn sb_append(this : StringBuilder, s : *Str) : StringBuilder => {
 	grown
 };
 
-out fn sb_append_char(this : StringBuilder, code : I32) : StringBuilder => {
+out fn sbAppendChar(this : StringBuilder, code : I32) : StringBuilder => {
 	// TODO: replace placeholder with proper codepoint encoding helper.
-	sb_append(this, "?")
+	sbAppend(this, "?")
 };
 
-out fn sb_build(this : StringBuilder) : *Str => this;
+out fn sbBuild(this : StringBuilder) : *Str => this;

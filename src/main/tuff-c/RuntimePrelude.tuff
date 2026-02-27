@@ -6,12 +6,12 @@ extern let { abort } = stdlib;
 
 extern fn abort() : I32;
 
-out fn tuff_runtime_panic(msg: *Str) : I32 => {
+out fn tuffRuntimePanic(msg: *Str) : I32 => {
     abort();
     0
 };
 
-out fn tuff_runtime_panic_with_code(code: *Str, msg: *Str, reason: *Str, fix: *Str) : I32 => {
+out fn tuffRuntimePanicWithCode(code: *Str, msg: *Str, reason: *Str, fix: *Str) : I32 => {
     abort();
     0
 };

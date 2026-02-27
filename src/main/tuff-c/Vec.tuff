@@ -26,36 +26,36 @@ extern fn memcpy<T, SI : USize, DI : USize, Count : USize <= SI, DL : USize >= D
 let DEFAULT_SIZE = 10USize;
 
 
-fn ensure_capacity<T>(slice : Vec<T>, need : USize) : Vec<T> => {
+fn ensureCapacity<T>(slice : Vec<T>, need : USize) : Vec<T> => {
     if (slice.length >= need) return slice;
 
-    let mut next_len = if (slice.length == 0USize) 4USize else slice.length;
-    while (next_len < need) {
-        next_len = next_len * 2USize;
+    let mut nextLen = if (slice.length == 0USize) 4USize else slice.length;
+    while (nextLen < need) {
+        nextLen = nextLen * 2USize;
     }
 
-    let grown = realloc<T, next_len>(slice, sizeOf<T>() * next_len);
+    let grown = realloc<T, nextLen>(slice, sizeOf<T>() * nextLen);
     if (grown == 0) return slice;
     grown
 };
 
-out fn vec_new<T>() : Vec<T> => {
+out fn vecNew<T>() : Vec<T> => {
     let out = malloc<T, DEFAULT_SIZE>(sizeOf<T>() * DEFAULT_SIZE);
     if (out == 0) return 0;
     out
 };
 
-out fn vec_push<T>(this : Vec<T>, item : T) : Vec<T> => {
+out fn vecPush<T>(this : Vec<T>, item : T) : Vec<T> => {
     let mut slice = this;
     if (slice == 0) return this;
 
-    slice = ensure_capacity(slice, slice.init + 1USize);
+    slice = ensureCapacity(slice, slice.init + 1USize);
     slice[slice.init] = item;
     slice.init = slice.init + 1USize;
     slice
 };
 
-out fn vec_pop<T>(this : Vec<T>) : T => {
+out fn vecPop<T>(this : Vec<T>) : T => {
     if (this == 0 || this.init == 0USize) return 0;
     let idx = this.init - 1USize;
     let out = this[idx];
@@ -63,18 +63,18 @@ out fn vec_pop<T>(this : Vec<T>) : T => {
     out
 };
 
-out fn vec_get<T>(this : Vec<T>, index : USize) : T => {
+out fn vecGet<T>(this : Vec<T>, index : USize) : T => {
     if (this == 0 || index >= this.init) return 0;
     this[index]
 };
 
-out fn vec_set<T>(this : Vec<T>, index : USize, item : T) : Vec<T> => {
+out fn vecSet<T>(this : Vec<T>, index : USize, item : T) : Vec<T> => {
     if (this == 0) return this;
 
     let mut slice = this;
     if (index > slice.init) return slice;
 
-    slice = ensure_capacity(slice, index + 1USize);
+    slice = ensureCapacity(slice, index + 1USize);
     slice[index] = item;
     if (index == slice.init) {
         slice.init = slice.init + 1USize;
@@ -82,11 +82,11 @@ out fn vec_set<T>(this : Vec<T>, index : USize, item : T) : Vec<T> => {
     slice
 };
 
-out fn vec_init<T>(this : Vec<T>) : USize => if (this == 0) 0USize else this.init;
-out fn vec_capacity<T>(this : Vec<T>) : USize => if (this == 0) 0USize else this.length;
-out fn vec_length<T>(this : Vec<T>) : USize => vec_init(this);
+out fn vecInit<T>(this : Vec<T>) : USize => if (this == 0) 0USize else this.init;
+out fn vecCapacity<T>(this : Vec<T>) : USize => if (this == 0) 0USize else this.length;
+out fn vecLength<T>(this : Vec<T>) : USize => vecInit(this);
 
-out fn vec_includes<T>(this : Vec<T>, item : T) : Bool => {
+out fn vecIncludes<T>(this : Vec<T>, item : T) : Bool => {
     if (this == 0) return false;
     let mut i = 0USize;
     while (i < this.init) {
@@ -96,7 +96,7 @@ out fn vec_includes<T>(this : Vec<T>, item : T) : Bool => {
     false
 };
 
-out fn vec_clear<T>(this : Vec<T>) : Vec<T> => {
+out fn vecClear<T>(this : Vec<T>) : Vec<T> => {
     if (this != 0) this.init = 0USize;
     this
 };

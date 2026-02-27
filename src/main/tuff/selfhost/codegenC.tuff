@@ -1,0 +1,8 @@
+let {
+    generateCImpl, generateCSplitFilesImpl, selfhostCodegenCImplMarker
+}
+ = selfhost::internal::codegenCImpl;
+out fn generateC(typed: I32, substrate: *Str) : *Str => generateCImpl(typed, substrate);
+out fn generateCSplitFiles(typed: I32, substrate: *Str, moduleKeys: Vec<*Str>, stmtOwners: Vec<*Str>,
+initOrder: Vec<*Str>) : Vec<I32> => generateCSplitFilesImpl(typed, substrate, moduleKeys, stmtOwners, initOrder);
+out fn selfhostCodegenCMarker() : I32 => selfhostCodegenCImplMarker();

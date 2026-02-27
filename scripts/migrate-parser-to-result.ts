@@ -118,7 +118,7 @@ function main() {
   const files = [
     "src/main/tuff/selfhost/parser_decls.tuff",
     "src/main/tuff/selfhost/parser_decls_let_extern.tuff",
-    "src/main/tuff/selfhost/parser_core.tuff",
+    "src/main/tuff/selfhost/parserCore.tuff",
   ].map((f) => path.join(TUFFC_ROOT, f));
 
   const { totalModified, total } = runMigrationMain(files, migrateParserFile);

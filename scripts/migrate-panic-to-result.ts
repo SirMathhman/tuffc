@@ -48,11 +48,11 @@ function generateResolverResultVersion(): string {
 
   console.log("Step 1: Adding Result and ResolveError imports...");
   source = source.replace(
-    "let {\n    get_interned_str, set_new, vec_new, map_new\n}\n = selfhost::runtime_lexer;",
+    "let {\n    getInternedStr, setNew, vecNew, mapNew\n}\n = selfhost::runtimeLexer;",
     `let {
     get_interned_str, set_new, vec_new, map_new
 }
- = selfhost::runtime_lexer;
+ = selfhost::runtimeLexer;
 let { ResolveError } = selfhost::errors::ResolveError;
 let { Ok, Err } = tuff-core::Result;`,
   );

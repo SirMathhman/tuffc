@@ -1,0 +1,341 @@
+let {
+    getIntern, tokKind, tokValue, vecNew, intToString
+}
+ = selfhost::runtimeLexer;
+let {
+    pExpect, pParseIdentifier, pAt, pEat, pParseType, pParseTypePrimary, pAtKind,
+    pCanStartRefinementExprAt, pPeek, nodeNew, nodeSetData1, nodeSetData2, nodeSetData3, nodeSetData4, nodeSetData5, pResultError
+}
+ = selfhost::parserCore;
+let {
+    Ok, Err, Result
+}
+ = selfhost::Result;
+let {
+    ParseError
+}
+ = selfhost::errors::ParseError;
+let parseTempCounter : I32 = 0;
+fn pNewTempName(prefix: *Str) : I32 => {
+    parseTempCounter = parseTempCounter + 1;
+    intern(prefix.strConcat(intToString(parseTempCounter)))
+}
+fn pDeclsLetExternNewStmtList(stmts: Vec<I32>) : I32 => {
+    let n = nodeNew(NK_STMT_LIST);
+    nodeSetData1(n, stmts);
+    n
+}
+out fn pParseLet() : I32 => {
+    pExpect(TK_KEYWORD, "let", "Expected 'let'");
+    if (pAt(TK_KEYWORD, "mut")) {
+        pEat();
+    }
+    if (pAt(TK_SYMBOL, "{")) {
+        pEat();
+        let names = vecNew();
+        if (!pAt(TK_SYMBOL, "}")) {
+            names.vecPush(pParseIdentifier());
+            while (pAt(TK_SYMBOL, ",")) {
+                pEat();
+                names.vecPush(pParseIdentifier());
+            }
+        }
+        pExpect(TK_SYMBOL, "}", "Expected '}'");
+        pExpect(TK_SYMBOL, "=", "Expected '='");
+        let parts = vecNew();
+        parts.vecPush(pParseIdentifier());
+        while (pAt(TK_SYMBOL, "::")) {
+            pEat();
+            parts.vecPush(pParseIdentifier());
+        }
+        pExpect(TK_SYMBOL, ";", "Expected ';'");
+        let node = nodeNew(NK_IMPORT_DECL);
+        nodeSetData1(node, names);
+        nodeSetData2(node, parts);
+        return node;
+    }
+    if (pAt(TK_SYMBOL, "(")) {
+        pEat();
+        let names = vecNew();
+        if (!pAt(TK_SYMBOL, ")")) {
+            names.vecPush(pParseIdentifier());
+            while (pAt(TK_SYMBOL, ",")) {
+                pEat();
+                names.vecPush(pParseIdentifier());
+            }
+        }
+        pExpect(TK_SYMBOL, ")", "Expected ')' in tuple let destructuring");
+        if (pAt(TK_SYMBOL, ":")) {
+            pEat();
+            pParseType();
+        }
+        pExpect(TK_SYMBOL, "=", "Expected '=' in tuple let destructuring");
+        let rhs = pParseExpression(0);
+        pExpect(TK_SYMBOL, ";", "Expected ';' after tuple let destructuring");
+        let lowered = vecNew();
+        let tmpName = pNewTempName("__tuple_tmp_");
+        let tmpDecl = nodeNew(NK_LET_DECL);
+        nodeSetData1(tmpDecl, tmpName);
+        nodeSetData2(tmpDecl, 0);
+        nodeSetData3(tmpDecl, rhs);
+        lowered.vecPush(tmpDecl);
+        let i = 0;
+        while (i < names.vecLength()) {
+            let tmpIdent = nodeNew(NK_IDENTIFIER);
+            nodeSetData1(tmpIdent, tmpName);
+            let idxLit = nodeNew(NK_NUMBER_LIT);
+            nodeSetData1(idxLit, intern(intToString(i)));
+            let idxExpr = nodeNew(NK_INDEX_EXPR);
+            nodeSetData1(idxExpr, tmpIdent);
+            nodeSetData2(idxExpr, idxLit);
+            let elemDecl = nodeNew(NK_LET_DECL);
+            nodeSetData1(elemDecl, names.vecGet(i));
+            nodeSetData2(elemDecl, 0);
+            nodeSetData3(elemDecl, idxExpr);
+            lowered.vecPush(elemDecl);
+            i = i + 1;
+        }
+        return pDeclsLetExternNewStmtList(lowered);
+    }
+    let name = pParseIdentifier();
+    let vtype = 0;
+    if (pAt(TK_SYMBOL, ":")) {
+        pEat();
+        vtype = pParseType();
+    }
+    pExpect(TK_SYMBOL, "=", "Expected '='");
+    let value = pParseExpression(0);
+    pExpect(TK_SYMBOL, ";", "Expected ';'");
+    let node = nodeNew(NK_LET_DECL);
+    nodeSetData1(node, name);
+    nodeSetData2(node, vtype);
+    nodeSetData3(node, value);
+    node
+}
+fn pLeParseConstraintValueAtom() : I32 => {
+    if (pAtKind(TK_IDENTIFIER)) {
+        let n = nodeNew(NK_IDENTIFIER);
+        nodeSetData1(n, tokValue(pEat()));
+        return n;
+    }
+    if (pAtKind(TK_NUMBER)) {
+        let n = nodeNew(NK_NUMBER_LIT);
+        nodeSetData1(n, tokValue(pEat()));
+        return n;
+    }
+    if (pAtKind(TK_BOOL)) {
+        let n = nodeNew(NK_BOOL_LIT);
+        nodeSetData1(n, tokValue(pEat()));
+        return n;
+    }
+    if (pAtKind(TK_STRING)) {
+        let n = nodeNew(NK_STRING_LIT);
+        nodeSetData1(n, tokValue(pEat()));
+        return n;
+    }
+    if (pAtKind(TK_CHAR)) {
+        let n = nodeNew(NK_CHAR_LIT);
+        nodeSetData1(n, tokValue(pEat()));
+        return n;
+    }
+    if (pAt(TK_SYMBOL, "(")) {
+        pEat();
+        let inner = pParseExpression(0);
+        pExpect(TK_SYMBOL, ")", "Expected ')' in generic constraint expression");
+        return inner;
+    }
+    pParseTypePrimary()
+}
+fn pLeParseConstraintValueExpr() : I32 => {
+    let left = pLeParseConstraintValueAtom();
+    while (
+    pAt(TK_SYMBOL, "+") ||
+    pAt(TK_SYMBOL, "-") ||
+    pAt(TK_SYMBOL, "*") ||
+    pAt(TK_SYMBOL, "/") ||
+    pAt(TK_SYMBOL, "%")
+    ) {
+        let op = tokValue(pEat());
+        let right = pLeParseConstraintValueAtom();
+        let bin = nodeNew(NK_BINARY_EXPR);
+        nodeSetData1(bin, op);
+        nodeSetData2(bin, left);
+        nodeSetData3(bin, right);
+        left = bin;
+    }
+    left
+}
+fn pLeParseGenericConstraintType() : I32 => {
+    let typeNode = pParseTypePrimary();
+    let startsGenericCallSuffix = false;
+    if (pAt(TK_SYMBOL, ">") && tokKind(pPeek(1)) == TK_SYMBOL) {
+        let nextSym = getIntern(tokValue(pPeek(1)));
+        if (nextSym.strEq("(")) {
+            startsGenericCallSuffix = true;
+        }
+    }
+    let hasRefine =
+    (pAt(TK_SYMBOL, "!=") ||
+    pAt(TK_SYMBOL, "<") ||
+    pAt(TK_SYMBOL, ">") ||
+    pAt(TK_SYMBOL, "<=") ||
+    pAt(TK_SYMBOL, ">=")) &&
+    pCanStartRefinementExprAt(1) &&
+    !startsGenericCallSuffix;
+    if (hasRefine) {
+        let op = tokValue(pEat());
+        let value = pLeParseConstraintValueExpr();
+        let refine = nodeNew(NK_REFINEMENT_TYPE);
+        nodeSetData1(refine, typeNode);
+        nodeSetData2(refine, op);
+        nodeSetData3(refine, value);
+        typeNode = refine;
+    }
+    while (pAt(TK_SYMBOL, "|") || pAt(TK_SYMBOL, "|>")) {
+        let isExtract = 0;
+        if (pAt(TK_SYMBOL, "|>")) {
+            isExtract = 1;
+        }
+        pEat();
+        let right = pParseTypePrimary();
+        let unionNode = nodeNew(NK_UNION_TYPE);
+        nodeSetData1(unionNode, typeNode);
+        nodeSetData2(unionNode, right);
+        nodeSetData3(unionNode, isExtract);
+        typeNode = unionNode;
+    }
+    typeNode
+}
+fn pLeParseDeclGenerics(closeMessage: *Str) : Vec<I32> => {
+    let generics = vecNew();
+    if (pAt(TK_SYMBOL, "<")) {
+        pEat();
+        if (!pAt(TK_SYMBOL, ">")) {
+            while (true) {
+                generics.vecPush(pParseIdentifier());
+                if (pAt(TK_SYMBOL, ":")) {
+                    pEat();
+                    pLeParseGenericConstraintType();
+                }
+                if (!pAt(TK_SYMBOL, ",")) {
+                    break;
+                }
+                pEat();
+            }
+        }
+        pExpect(TK_SYMBOL, ">", closeMessage);
+    }
+    generics
+}
+out fn pParseExternFnDecl() : I32 => {
+    pExpect(TK_KEYWORD, "fn", "Expected 'fn'");
+    let name = pParseIdentifier();
+    let generics = pLeParseDeclGenerics("Expected '>'");
+    pExpect(TK_SYMBOL, "(", "Expected '('");
+    let params = vecNew();
+    if (!pAt(TK_SYMBOL, ")")) {
+        while (true) {
+            let pname = 0;
+            let ptype = 0;
+            if (pAt(TK_SYMBOL, "*")) {
+                ptype = pParseType();
+                pname = pParseIdentifier();
+            }
+            else {
+                pname = pParseIdentifier();
+                if (pAt(TK_SYMBOL, ":")) {
+                    pEat();
+                    ptype = pParseType();
+                }
+            }
+            let param = vecNew();
+            param.vecPush(pname);
+            param.vecPush(ptype);
+            params.vecPush(param);
+            if (!pAt(TK_SYMBOL, ",")) {
+                break;
+            }
+            pEat();
+        }
+    }
+    pExpect(TK_SYMBOL, ")", "Expected ')'");
+    let retType = 0;
+    if (pAt(TK_SYMBOL, ":")) {
+        pEat();
+        retType = pParseType();
+    }
+    pExpect(TK_SYMBOL, ";", "Expected ';' after extern fn");
+    let node = nodeNew(NK_FN_DECL);
+    nodeSetData1(node, name);
+    nodeSetData2(node, generics);
+    nodeSetData3(node, params);
+    nodeSetData4(node, retType);
+    nodeSetData5(node, 0);
+    node
+}
+out fn pParseExternDecl() : Result<I32, ParseError> => {
+    if (pAt(TK_KEYWORD, "fn")) {
+        return Ok<I32> { value: pParseExternFnDecl() };
+    }
+    if (pAt(TK_KEYWORD, "let")) {
+        pEat();
+        if (pAt(TK_SYMBOL, "{")) {
+            pEat();
+            let names = vecNew();
+            if (!pAt(TK_SYMBOL, "}")) {
+                names.vecPush(pParseIdentifier());
+                while (pAt(TK_SYMBOL, ",")) {
+                    pEat();
+                    names.vecPush(pParseIdentifier());
+                }
+            }
+            pExpect(TK_SYMBOL, "}", "Expected '}' after extern let bindings");
+            pExpect(TK_SYMBOL, "=", "Expected '=' in extern let bindings");
+            let sourceParts = vecNew();
+            sourceParts.vecPush(pParseIdentifier());
+            while (pAt(TK_SYMBOL, "::")) {
+                pEat();
+                sourceParts.vecPush(pParseIdentifier());
+            }
+            pExpect(TK_SYMBOL, ";", "Expected ';' after extern let bindings");
+            let node = nodeNew(NK_EXTERN_IMPORT_DECL);
+            nodeSetData1(node, names);
+            nodeSetData2(node, sourceParts);
+            return Ok<I32> { value: node };
+        }
+        let name = pParseIdentifier();
+        let typ = 0;
+        if (pAt(TK_SYMBOL, ":")) {
+            pEat();
+            typ = pParseType();
+        }
+        pExpect(TK_SYMBOL, ";", "Expected ';' after extern let");
+        let node = nodeNew(NK_EXTERN_LET_DECL);
+        nodeSetData1(node, name);
+        nodeSetData2(node, typ);
+        return Ok<I32> { value: node };
+    }
+    if (pAt(TK_KEYWORD, "type")) {
+        pEat();
+        let name = pParseIdentifier();
+        let generics = pLeParseDeclGenerics("Expected '>' after extern type generics");
+        let destructorName = 0;
+        if (pAt(TK_KEYWORD, "then")) {
+            pEat();
+            destructorName = pParseIdentifier();
+        }
+        pExpect(TK_SYMBOL, ";", "Expected ';' after extern type");
+        let node = nodeNew(NK_EXTERN_TYPE_DECL);
+        nodeSetData1(node, name);
+        nodeSetData2(node, generics);
+        nodeSetData5(node, destructorName);
+        return Ok<I32> { value: node };
+    }
+    return pResultError(
+        "E_PARSE_EXPECTED_TOKEN",
+        "Expected fn, let, or type after extern",
+        "External declarations must be functions, variables, or types",
+        "Add fn, let, or type keyword after extern"
+    );
+}
+out fn selfhostParserDeclsLetExternMarker() : I32 => 0;

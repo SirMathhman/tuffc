@@ -21,8 +21,8 @@ struct ParseError {
 }
 
 // Function that validates identifier format
-fn validate_identifier(name: *Str) : Result<I32, ParseError> => {
-    let len = name.str_length();
+fn validateIdentifier(name: *Str) : Result<I32, ParseError> => {
+    let len = name.strLength();
     if (len == 0) {
         return Err<ParseError> {
             error: ParseError {
@@ -43,8 +43,8 @@ fn validate_identifier(name: *Str) : Result<I32, ParseError> => {
 }
 
 // Test valid identifier
-fn test_valid_identifier() : I32 => {
-    let result = validate_identifier("myVar");
+fn testValidIdentifier() : I32 => {
+    let result = validateIdentifier("myVar");
     match (result) {
         case Ok { value } = value;
         case Err { error } = -999;
@@ -52,8 +52,8 @@ fn test_valid_identifier() : I32 => {
 }
 
 // Test empty identifier
-fn test_empty_identifier() : I32 => {
-    let result = validate_identifier("");
+fn testEmptyIdentifier() : I32 => {
+    let result = validateIdentifier("");
     match (result) {
         case Ok { value } = -998;
         case Err { error } = if (error.code == "E_PARSE_EMPTY_IDENTIFIER") {
@@ -65,12 +65,12 @@ fn test_empty_identifier() : I32 => {
 }
 
 out fn main() : I32 => {
-    let valid = test_valid_identifier();
+    let valid = testValidIdentifier();
     if (valid != 42) {
         panic("Expected test_valid_identifier() to return 42");
     }
     
-    let invalid = test_empty_identifier();
+    let invalid = testEmptyIdentifier();
     if (invalid != -1) {
         panic("Expected test_empty_identifier() to return -1");
     }

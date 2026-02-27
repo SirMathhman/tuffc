@@ -28,12 +28,12 @@ fn err<E>(error: E) : Err<E> => {
 }
 
 // Check if Result is Ok
-fn is_ok<T, E>(result: Result<T, E>) : Bool => {
+fn isOk<T, E>(result: Result<T, E>) : Bool => {
     result is Ok
 }
 
 // Check if Result is Err
-fn is_err<T, E>(result: Result<T, E>) : Bool => {
+fn isErr<T, E>(result: Result<T, E>) : Bool => {
     result is Err
 }
 
@@ -46,10 +46,10 @@ fn unwrap<T, E>(result: Result<T, E>) : T => {
 }
 
 // Extract value from Ok or return default on Err
-fn unwrap_or<T, E>(result: Result<T, E>, default_value: T) : T => {
+fn unwrapOr<T, E>(result: Result<T, E>, defaultValue: T) : T => {
     if (result is Ok) {
         result.value
     } else {
-        default_value
+        defaultValue
     }
 }

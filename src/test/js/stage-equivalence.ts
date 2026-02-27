@@ -26,7 +26,7 @@ fs.mkdirSync(outDir, { recursive: true });
 const stageEquivalenceCaseSkips = new Set([
   // Uses pipe-lambda syntax (`|x| ...`) that is not yet supported consistently
   // across Stage2-3 in the bootstrap chain.
-  "iter_semantics.tuff",
+  "iterSemantics.tuff",
 ]);
 
 const chain = buildStageChain(root, path.join(outDir, "bootstrap"));

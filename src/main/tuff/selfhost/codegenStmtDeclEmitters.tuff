@@ -1,0 +1,98 @@
+let {
+    getInternedStr
+}
+ = selfhost::runtimeLexer;
+let {
+    nodeGetData1, nodeGetData2, nodeGetData3
+}
+ = selfhost::parserCore;
+out fn jsEmitStructDecl(n: I32) : *Str => {
+    let nameIdx = nodeGetData1(n);
+    let name = getInternedStr(nameIdx);
+    let fields = nodeGetData3(n);
+    let sb = sbNew();
+    sbAppend(sb, "function ");
+    sbAppend(sb, name);
+    sbAppend(sb, "(fields = {}) { return { __tag: \"");
+    sbAppend(sb, name);
+    sbAppend(sb, "\"");
+    let i = 0;
+    let len = fields.vecLength();
+    while (i < len) {
+        let field = fields.vecGet(i);
+        let fname = getInternedStr(field.vecGet(0));
+        sbAppend(sb, ", ");
+        sbAppend(sb, fname);
+        sbAppend(sb, ": fields.");
+        sbAppend(sb, fname);
+        i = i + 1;
+    }
+    sbAppend(sb, " }; }");
+    sbBuild(sb)
+}
+out fn jsEmitEnumDecl(n: I32) : *Str => {
+    let name = getInternedStr(nodeGetData1(n));
+    let variants = nodeGetData2(n);
+    let sb = sbNew();
+    sbAppend(sb, "const ");
+    sbAppend(sb, name);
+    sbAppend(sb, " = { ");
+    let i = 0;
+    let len = variants.vecLength();
+    while (i < len) {
+        if (i > 0) {
+            sbAppend(sb, ", ");
+        }
+        let v = getInternedStr(variants.vecGet(i));
+        sbAppend(sb, v);
+        sbAppend(sb, ": { __tag: \"");
+        sbAppend(sb, v);
+        sbAppend(sb, "\" }");
+        i = i + 1;
+    }
+    sbAppend(sb, " }; ");
+    sbBuild(sb)
+}
+out fn jsEmitObjectDecl(n: I32) : *Str => {
+    let name = getInternedStr(nodeGetData1(n));
+    let inputs = nodeGetData3(n);
+    if (inputs == 0 || inputs.vecLength() == 0) {
+        return "const ".strConcat(name).strConcat(" = { __tag: \"").strConcat(name).strConcat("\" }; ");
+    }
+    let sb = sbNew();
+    sbAppend(sb, "const ");
+    sbAppend(sb, name);
+    sbAppend(sb, " = (() => { const __cache = new Map(); return (fields = {}) => { const __key = JSON.stringify([");
+    let i = 0;
+    let len = inputs.vecLength();
+    while (i < len) {
+        if (i > 0) {
+            sbAppend(sb, ", ");
+        }
+        let inputField = inputs.vecGet(i);
+        let fname = getInternedStr(inputField.vecGet(0));
+        sbAppend(sb, "fields.");
+        sbAppend(sb, fname);
+        i = i + 1;
+    }
+    sbAppend(sb, "]); const __cached = __cache.get(__key); if (__cached !== undefined) return __cached; const __value = { __tag: \"");
+    sbAppend(sb, name);
+    sbAppend(sb, "\"");
+    i = 0;
+    while (i < len) {
+        let inputField = inputs.vecGet(i);
+        let fname = getInternedStr(inputField.vecGet(0));
+        sbAppend(sb, ", ");
+        sbAppend(sb, fname);
+        sbAppend(sb, ": fields.");
+        sbAppend(sb, fname);
+        i = i + 1;
+    }
+    sbAppend(sb, " }; __cache.set(__key, __value); return __value; }; })();");
+    sbBuild(sb)
+}
+out fn jsEmitContractDecl(n: I32) : *Str => {
+    let name = getInternedStr(nodeGetData1(n));
+    "// contract ".strConcat(name)
+}
+out fn selfhostCodegenStmtDeclEmittersMarker() : I32 => 0;

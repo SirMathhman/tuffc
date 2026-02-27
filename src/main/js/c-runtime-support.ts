@@ -33,6 +33,8 @@ function assembleCSubstrate() {
     readC("collections.h"),
     readC("io.h"),
     readC("panic.h"),
+    // camelCase aliases header (Tuff source renamed snake_case → camelCase)
+    readC("camelcase-aliases.h"),
     // Implementations
     readC("substrate.c"),
     readC("strings.c"),

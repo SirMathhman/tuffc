@@ -8,6 +8,90 @@ static size_t g_managed_strings_cap = 0;
 static const char **g_managed_ptr_index = NULL;
 static size_t g_managed_ptr_index_cap = 0;
 
+// ---------------------------------------------------------------------------
+// O(1) string length cache: maps char* → size_t.
+// Populated once in tuff_register_owned_string and tuff_record_str_length.
+// Subsequent str_length calls are a single hash probe — no strlen scan.
+// ---------------------------------------------------------------------------
+typedef struct
+{
+    const char *key;
+    size_t length;
+} TuffStrLenEntry;
+static TuffStrLenEntry *g_strlen_cache = NULL;
+static size_t g_strlen_cache_cap = 0;
+static size_t g_strlen_cache_count = 0;
+
+static size_t tuff_strlen_hash(const char *p)
+{
+    uintptr_t x = (uintptr_t)p;
+    x ^= x >> 33;
+    x *= (uintptr_t)0xff51afd7ed558ccdULL;
+    x ^= x >> 33;
+    return (size_t)x;
+}
+
+static void tuff_strlen_cache_grow(void)
+{
+    size_t new_cap = g_strlen_cache_cap < 64 ? 64 : g_strlen_cache_cap * 2;
+    TuffStrLenEntry *next = (TuffStrLenEntry *)calloc(new_cap, sizeof(TuffStrLenEntry));
+    if (next == NULL)
+        tuff_panic("Out of memory in string length cache");
+    for (size_t i = 0; i < g_strlen_cache_cap; i++)
+    {
+        if (g_strlen_cache[i].key == NULL)
+            continue;
+        size_t mask = new_cap - 1;
+        size_t idx = tuff_strlen_hash(g_strlen_cache[i].key) & mask;
+        while (next[idx].key != NULL)
+            idx = (idx + 1) & mask;
+        next[idx] = g_strlen_cache[i];
+    }
+    free(g_strlen_cache);
+    g_strlen_cache = next;
+    g_strlen_cache_cap = new_cap;
+}
+
+static void tuff_record_str_length(const char *p, size_t len)
+{
+    if (p == NULL)
+        return;
+    if (g_strlen_cache_cap == 0 ||
+        (g_strlen_cache_count + 1) * 10 >= g_strlen_cache_cap * 7)
+        tuff_strlen_cache_grow();
+    size_t mask = g_strlen_cache_cap - 1;
+    size_t idx = tuff_strlen_hash(p) & mask;
+    while (g_strlen_cache[idx].key != NULL && g_strlen_cache[idx].key != p)
+        idx = (idx + 1) & mask;
+    if (g_strlen_cache[idx].key == NULL)
+        g_strlen_cache_count++;
+    g_strlen_cache[idx].key = p;
+    g_strlen_cache[idx].length = len;
+}
+
+/* Returns cached length, or -1 if not in the cache (caller must use strlen). */
+static int64_t tuff_lookup_str_length(const char *p)
+{
+    if (p == NULL || g_strlen_cache_cap == 0)
+        return -1;
+    size_t mask = g_strlen_cache_cap - 1;
+    size_t idx = tuff_strlen_hash(p) & mask;
+    while (g_strlen_cache[idx].key != NULL)
+    {
+        if (g_strlen_cache[idx].key == p)
+            return (int64_t)g_strlen_cache[idx].length;
+        idx = (idx + 1) & mask;
+    }
+    return -1;
+}
+
+/* O(1) if the pointer is in the length cache; O(n) fallback for literals. */
+static size_t tuff_str_len(const char *p)
+{
+    int64_t cached = tuff_lookup_str_length(p);
+    return cached >= 0 ? (size_t)cached : strlen(p);
+}
+
 static size_t tuff_ptr_hash(const char *p)
 {
     uintptr_t x = (uintptr_t)p;
@@ -142,8 +226,10 @@ static int64_t tuff_register_owned_string(char *owned)
             g_managed_strings = next;
             g_managed_strings_cap = next_cap;
         }
+        size_t owned_len = strlen(owned);
         g_managed_strings[g_managed_strings_len++] = owned;
         tuff_managed_index_insert(owned);
+        tuff_record_str_length(owned, owned_len); /* cache once for O(1) future lookups */
     }
     return tuff_to_val(owned);
 }

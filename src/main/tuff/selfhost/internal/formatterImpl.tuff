@@ -1,0 +1,425 @@
+let {
+    vecNew
+}
+ = selfhost::runtimeLexer;
+fn fmtSpaces(n: I32) : *Str => {
+    let sb = sbNew();
+    let i = 0;
+    while (i < n) {
+        sbAppendChar(sb, 32);
+        i = i + 1;
+    }
+    sbBuild(sb)
+}
+fn fmtTrimRight(line: *Str) : *Str => {
+    let end = line.strLength();
+    while (end > 0) {
+        let ch = line.strCharAt(end - 1);
+        if (ch == 32 || ch == 9 || ch == 13) {
+            end = end - 1;
+        }
+        else {
+            return line.strSliceWindow(0, end);
+        }
+    }
+    ""
+}
+fn fmtCountLeadingCloses(line: *Str) : I32 => {
+    let i = 0;
+    let len = line.strLength();
+    while (i < len && line.strCharAt(i) == 125) {
+        i = i + 1;
+    }
+    i
+}
+fn fmtCountChar(line: *Str, target: I32) : I32 => {
+    let i = 0;
+    let len = line.strLength();
+    let count = 0;
+    while (i < len) {
+        if (line.strCharAt(i) == target) {
+            count = count + 1;
+        }
+        i = i + 1;
+    }
+    count
+}
+fn fmtCountStructuralBraces(line: *Str) : Vec<I32> => {
+    let i = 0;
+    let len = line.strLength();
+    let opens = 0;
+    let closes = 0;
+    let inString = 0;
+    let inChar = 0;
+    while (i < len) {
+        let ch = line.strCharAt(i);
+        if (inString == 1) {
+            if (ch == 92 && i + 1 < len) {
+                i = i + 2;
+                continue;
+            }
+            if (ch == 34) {
+                inString = 0;
+            }
+            i = i + 1;
+            continue;
+        }
+        if (inChar == 1) {
+            if (ch == 92 && i + 1 < len) {
+                i = i + 2;
+                continue;
+            }
+            if (ch == 39) {
+                inChar = 0;
+            }
+            i = i + 1;
+            continue;
+        }
+        if (ch == 47 && i + 1 < len && line.strCharAt(i + 1) == 47) {
+            break;
+        }
+        if (ch == 34) {
+            inString = 1;
+            i = i + 1;
+            continue;
+        }
+        if (ch == 39) {
+            inChar = 1;
+            i = i + 1;
+            continue;
+        }
+        if (ch == 123) {
+            opens = opens + 1;
+        }
+        if (ch == 125) {
+            closes = closes + 1;
+        }
+        i = i + 1;
+    }
+    let r = vecNew();
+    r.vecPush(opens);
+    r.vecPush(closes);
+    r
+}
+fn fmtIsSpace(ch: I32) : Bool => ch == 32 || ch == 9;
+fn fmtIsIdentChar(ch: I32) : Bool =>
+(ch >= 65 && ch <= 90) ||
+(ch >= 97 && ch <= 122) ||
+(ch >= 48 && ch <= 57) ||
+ch == 95;
+fn fmtPrevNonSpaceChar(text: *Str) : I32 => {
+    let i = text.strLength() - 1;
+    while (i >= 0) {
+        let ch = text.strCharAt(i);
+        if (!fmtIsSpace(0 + ch)) {
+            return 0 + ch;
+        }
+        i = i - 1;
+    }
+    0
+}
+fn fmtNextNonSpaceChar(text: *Str, start: I32) : I32 => {
+    let i = start;
+    let len = text.strLength();
+    while (i < len) {
+        let ch = text.strCharAt(i);
+        if (!fmtIsSpace(0 + ch)) {
+            return 0 + ch;
+        }
+        i = i + 1;
+    }
+    0
+}
+fn fmtTrimRightSpacesText(text: *Str) : *Str => {
+    let end = text.strLength();
+    while (end > 0 && fmtIsSpace(0 + text.strCharAt(end - 1))) {
+        end = end - 1;
+    }
+    text.strSliceWindow(0, end)
+}
+fn fmtNormalizeLineSpacing(line: *Str) : *Str => {
+    let acc = "";
+    let i = 0;
+    let len = line.strLength();
+    let inString = 0;
+    let inChar = 0;
+    while (i < len) {
+        let ch = line.strCharAt(i);
+        if (inString == 1) {
+            acc = acc.strConcat(strFromCharCode(0 + ch));
+            if (ch == 92 && i + 1 < len) {
+                acc = acc.strConcat(strFromCharCode(0 + line.strCharAt(i + 1)));
+                i = i + 2;
+                continue;
+            }
+            if (ch == 34) {
+                inString = 0;
+            }
+            i = i + 1;
+            continue;
+        }
+        if (inChar == 1) {
+            acc = acc.strConcat(strFromCharCode(0 + ch));
+            if (ch == 92 && i + 1 < len) {
+                acc = acc.strConcat(strFromCharCode(0 + line.strCharAt(i + 1)));
+                i = i + 2;
+                continue;
+            }
+            if (ch == 39) {
+                inChar = 0;
+            }
+            i = i + 1;
+            continue;
+        }
+        if (ch == 47 && i + 1 < len && line.strCharAt(i + 1) == 47) {
+            acc = fmtTrimRightSpacesText(acc).strConcat(" ").strConcat(line.strSliceWindow(i, len));
+            break;
+        }
+        if (ch == 34) {
+            acc = acc.strConcat("\"");
+            inString = 1;
+            i = i + 1;
+            continue;
+        }
+        if (ch == 39) {
+            acc = acc.strConcat("'");
+            inChar = 1;
+            i = i + 1;
+            continue;
+        }
+        if (ch == 44) {
+            acc = fmtTrimRightSpacesText(acc).strConcat(",");
+            let next = fmtNextNonSpaceChar(line, i + 1);
+            if (next != 0 && next != 41 && next != 93 && next != 125) {
+                acc = acc.strConcat(" ");
+            }
+            i = i + 1;
+            continue;
+        }
+        if (ch == 123) {
+            let prev = fmtPrevNonSpaceChar(acc);
+            acc = fmtTrimRightSpacesText(acc);
+            if (prev != 0 && prev != 123 && prev != 40 && prev != 91) {
+                acc = acc.strConcat(" ");
+            }
+            acc = acc.strConcat("{");
+            i = i + 1;
+            continue;
+        }
+        if (
+        ch == 61 &&
+        !(i + 1 < len && (line.strCharAt(i + 1) == 61 || line.strCharAt(i + 1) == 62)) &&
+        !(i > 0 && (line.strCharAt(i - 1) == 33 || line.strCharAt(i - 1) == 60 || line.strCharAt(i - 1) == 62))
+        ) {
+            acc = fmtTrimRightSpacesText(acc).strConcat(" = ");
+            i = i + 1;
+            while (i < len && fmtIsSpace(0 + line.strCharAt(i))) {
+                i = i + 1;
+            }
+            continue;
+        }
+        if (ch == 43 || ch == 45 || ch == 47 || ch == 37) {
+            let prev = fmtPrevNonSpaceChar(acc);
+            let next = fmtNextNonSpaceChar(line, i + 1);
+            let binary =
+            (fmtIsIdentChar(prev) || prev == 41 || prev == 93 || prev == 125 || prev == 34 || prev == 39) &&
+            (fmtIsIdentChar(next) || next == 40 || next == 91 || next == 34 || next == 39);
+            if (binary) {
+                acc = fmtTrimRightSpacesText(acc)
+                .strConcat(" ")
+                .strConcat(strFromCharCode(0 + ch))
+                .strConcat(" ");
+                i = i + 1;
+                while (i < len && fmtIsSpace(0 + line.strCharAt(i))) {
+                    i = i + 1;
+                }
+                continue;
+            }
+        }
+        if (fmtIsSpace(0 + ch)) {
+            if (acc.strLength() > 0 && !fmtIsSpace(0 + acc.strCharAt(acc.strLength() - 1))) {
+                acc = acc.strConcat(" ");
+            }
+            i = i + 1;
+            continue;
+        }
+        acc = acc.strConcat(strFromCharCode(0 + ch));
+        i = i + 1;
+    }
+    acc = fmtTrimRightSpacesText(acc);
+    acc = acc.strReplaceAll("if (", "if (");
+    acc = acc.strReplaceAll("while (", "while (");
+    acc = acc.strReplaceAll("match (", "match (");
+    acc = acc.strReplaceAll("for (", "for (");
+    acc = acc.strReplaceAll("return (", "return (");
+    acc
+}
+fn fmtEmitProcessedLine(sink: StringBuilder, raw: *Str, indent: I32) : I32 => {
+    let trimmed = fmtTrimRight(raw).strTrim();
+    if (trimmed.strEq("")) {
+        return indent;
+    }
+    let normalized = fmtNormalizeLineSpacing(trimmed);
+    let leadingCloses = fmtCountLeadingCloses(normalized);
+    let effectiveIndent = indent;
+    if (effectiveIndent > 0 && leadingCloses > 0) {
+        let k = 0;
+        while (k < leadingCloses && effectiveIndent > 0) {
+            effectiveIndent = effectiveIndent - 1;
+            k = k + 1;
+        }
+    }
+    let line = fmtSpaces(effectiveIndent * 4).strConcat(normalized);
+    sink.sbAppend(line);
+    sink.sbAppend("\n");
+    let braceCounts = fmtCountStructuralBraces(normalized);
+    let opens = braceCounts.vecGet(0);
+    let closes = braceCounts.vecGet(1);
+    let closesAfterPrefix = closes - leadingCloses;
+    if (closesAfterPrefix < 0) {
+        closesAfterPrefix = 0;
+    }
+    let nextIndent = effectiveIndent + opens - closesAfterPrefix;
+    if (nextIndent < 0) {
+        nextIndent = 0;
+    }
+    nextIndent
+}
+fn fmtStage1Split(source: *Str) : *Str => {
+    let sink = sbNew();
+    let i = 0;
+    let len = source.strLength();
+    let inLineComment = 0;
+    let inBlockComment = 0;
+    let inString = 0;
+    let inChar = 0;
+    while (i < len) {
+        let ch = source.strCharAt(i);
+        if (inLineComment == 1) {
+            sink.sbAppendChar(0 + ch);
+            i = i + 1;
+            if (ch == 10) {
+                inLineComment = 0;
+            }
+            continue;
+        }
+        if (inBlockComment == 1) {
+            sink.sbAppendChar(0 + ch);
+            i = i + 1;
+            if (ch == 42 && i < len && source.strCharAt(i) == 47) {
+                sink.sbAppendChar(47);
+                i = i + 1;
+                inBlockComment = 0;
+            }
+            continue;
+        }
+        if (inString == 1) {
+            sink.sbAppendChar(0 + ch);
+            if (ch == 92 && i + 1 < len) {
+                sink.sbAppendChar(0 + source.strCharAt(i + 1));
+                i = i + 2;
+                continue;
+            }
+            i = i + 1;
+            if (ch == 34) {
+                inString = 0;
+            }
+            continue;
+        }
+        if (inChar == 1) {
+            sink.sbAppendChar(0 + ch);
+            if (ch == 92 && i + 1 < len) {
+                sink.sbAppendChar(0 + source.strCharAt(i + 1));
+                i = i + 2;
+                continue;
+            }
+            i = i + 1;
+            if (ch == 39) {
+                inChar = 0;
+            }
+            continue;
+        }
+        if (ch == 47 && i + 1 < len && source.strCharAt(i + 1) == 47) {
+            sink.sbAppend("//");
+            inLineComment = 1;
+            i = i + 2;
+            continue;
+        }
+        if (ch == 47 && i + 1 < len && source.strCharAt(i + 1) == 42) {
+            sink.sbAppend("/*");
+            inBlockComment = 1;
+            i = i + 2;
+            continue;
+        }
+        if (ch == 34) {
+            sink.sbAppendChar(0 + ch);
+            inString = 1;
+            i = i + 1;
+            continue;
+        }
+        if (ch == 39) {
+            sink.sbAppendChar(0 + ch);
+            inChar = 1;
+            i = i + 1;
+            continue;
+        }
+        if (ch == 13) {
+            i = i + 1;
+            continue;
+        }
+        if (ch == 59) {
+            sink.sbAppendChar(0 + ch);
+            sink.sbAppend("\n");
+            i = i + 1;
+            continue;
+        }
+        if (ch == 123) {
+            sink.sbAppendChar(0 + ch);
+            sink.sbAppend("\n");
+            i = i + 1;
+            continue;
+        }
+        if (ch == 125) {
+            sink.sbAppend("\n");
+            sink.sbAppendChar(0 + ch);
+            sink.sbAppend("\n");
+            i = i + 1;
+            continue;
+        }
+        sink.sbAppendChar(0 + ch);
+        i = i + 1;
+    }
+    sink.sbBuild()
+}
+out fn formatTuffSourceImpl(source: *Str) : *Str => {
+    let stage1 = fmtStage1Split(source);
+    let sink = sbNew();
+    let lineSb = sbNew();
+    let indent = 0;
+    let i = 0;
+    let len = stage1.strLength();
+    while (i < len) {
+        let ch = stage1.strCharAt(i);
+        if (ch == 13) {
+            i = i + 1;
+            continue;
+        }
+        if (ch == 10) {
+            let line = lineSb.sbBuild();
+            lineSb = sbNew();
+            indent = fmtEmitProcessedLine(sink, line, indent);
+            i = i + 1;
+            continue;
+        }
+        lineSb.sbAppendChar(0 + ch);
+        i = i + 1;
+    }
+    let tail = lineSb.sbBuild();
+    fmtEmitProcessedLine(sink, tail, indent);
+    let result = sink.sbBuild();
+    if (result.strLength() > 0 && result.strCharAt(result.strLength() - 1) == 10) {
+        return result;
+    }
+    result.strConcat("\n")
+}
+out fn selfhostFormatterImplMarker() : I32 => 0;

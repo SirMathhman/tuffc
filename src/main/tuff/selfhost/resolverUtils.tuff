@@ -1,0 +1,304 @@
+let {
+    getInternedStr, vecNew, intToString
+}
+ = selfhost::runtimeLexer;
+let {
+    nodeKind, nodeGetData1, nodeGetData2, nodeGetData3, nodeGetData4, nodeGetLine,
+    nodeGetCol
+}
+ = selfhost::parserCore;
+fn rslvUtilsPanicNode(errNode: I32, code: *Str, msg: *Str, reason: *Str, fix: *Str) : I32 =>
+panicWithCodeLoc(code, msg, reason, fix, nodeGetLine(errNode), nodeGetCol(errNode));
+ // Compute Levenshtein edit distance between two strings (two-row DP).
+fn levenshteinDistance(a: *Str, b: *Str) : I32 => {
+    let an = 0 + a.strLength();
+    let bn = 0 + b.strLength();
+    if (an == 0) {
+        return bn;
+    }
+    if (bn == 0) {
+        return an;
+    }
+    let prev = vecNew();
+    let curr = vecNew();
+    let j = 0;
+    while (j <= bn) {
+        prev.vecPush(j);
+        curr.vecPush(0);
+        j = j + 1;
+    }
+    let i = 1;
+    while (i <= an) {
+        curr.vecSet(0, i);
+        let j2 = 1;
+        while (j2 <= bn) {
+            let cost = 0;
+            if (a.strCharAt(i - 1) != b.strCharAt(j2 - 1)) {
+                cost = 1;
+            }
+            let delCost = prev.vecGet(j2) + 1;
+            let insCost = curr.vecGet(j2 - 1) + 1;
+            let repCost = prev.vecGet(j2 - 1) + cost;
+            let best = delCost;
+            if (insCost < best) {
+                best = insCost;
+            }
+            if (repCost < best) {
+                best = repCost;
+            }
+            curr.vecSet(j2, best);
+            j2 = j2 + 1;
+        }
+        let k = 0;
+        while (k <= bn) {
+            prev.vecSet(k, curr.vecGet(k));
+            k = k + 1;
+        }
+        i = i + 1;
+    }
+    prev.vecGet(bn)
+}
+out fn rslvUtilsFindDidYouMean(name: *Str, candidates: Vec<I32>) : *Str => {
+    let best = "";
+    let bestDist = 9999;
+    let nameLen = 0 + name.strLength();
+    let threshold = nameLen / 3 + 1;
+    if (threshold > 3) {
+        threshold = 3;
+    }
+    let n = candidates.vecLength();
+    let ci = 0;
+    while (ci < n) {
+        let cand = candidates.vecGet(ci);
+        let dist = levenshteinDistance(name, cand);
+        if (dist <= threshold && dist < bestDist) {
+            bestDist = dist;
+            best = cand;
+        }
+        ci = ci + 1;
+    }
+    best
+}
+fn fnTypeSig(t: I32) : *Str => {
+    if (t == 0) {
+        return "_";
+    }
+    let k = nodeKind(t);
+    if (k == NK_NAMED_TYPE) {
+        return getInternedStr(nodeGetData1(t));
+    }
+    if (k == NK_POINTER_TYPE) {
+        let mutv = nodeGetData1(t);
+        let inner = fnTypeSig(nodeGetData2(t));
+        let lifeIdx = nodeGetData4(t);
+        let lifePrefix = "";
+        if (lifeIdx != 0) {
+            lifePrefix = getInternedStr(lifeIdx).strConcat(" ");
+        }
+        if (mutv == 1) {
+            return "*".strConcat(lifePrefix).strConcat("mut ").strConcat(inner);
+        }
+        return "*".strConcat(lifePrefix).strConcat(inner);
+    }
+    if (k == NK_ARRAY_TYPE) {
+        return "Array";
+    }
+    if (k == NK_TUPLE_TYPE) {
+        return "Tuple";
+    }
+    if (k == NK_REFINEMENT_TYPE) {
+        return "Ref<".strConcat(fnTypeSig(nodeGetData1(t))).strConcat(">");
+    }
+    if (k == NK_APPLIED_TYPE) {
+        return getInternedStr(nodeGetData1(t)).strConcat("(...)");
+    }
+    if (k == NK_UNION_TYPE) {
+        return fnTypeSig(nodeGetData1(t)).strConcat("|").strConcat(fnTypeSig(nodeGetData2(t)));
+    }
+    if (k == NK_FUNCTION_TYPE) {
+        let parts = vecNew();
+        let ps = nodeGetData1(t);
+        let i = 0;
+        while (i < ps.vecLength()) {
+            parts.vecPush(fnTypeSig(ps.vecGet(i)));
+            i = i + 1;
+        }
+        return "(".strConcat(parts.vecJoin(",")).strConcat(")=>").strConcat(fnTypeSig(nodeGetData2(t)));
+    }
+    "Unknown"
+}
+fn fnDeclSig(n: I32) : *Str => {
+    let gens = nodeGetData2(n);
+    let params = nodeGetData3(n);
+    let ret = nodeGetData4(n);
+    let pparts = vecNew();
+    let i = 0;
+    while (i < params.vecLength()) {
+        let p = params.vecGet(i);
+        let pname = getInternedStr(p.vecGet(0));
+        let ptype = fnTypeSig(p.vecGet(1));
+        pparts.vecPush(pname.strConcat(":").strConcat(ptype));
+        i = i + 1;
+    }
+    let gcountLen: I32 = 0;
+    let gcount = intToString(gcountLen);
+    return "g=".strConcat(gcount).strConcat(";p=").strConcat(pparts.vecJoin(",")).strConcat(";r=").strConcat(fnTypeSig(ret));
+}
+out fn rslvUtilsValidateExpectActualPairs(body: Vec<I32>) : I32 => {
+    let i = 0;
+    let len = body.vecLength();
+    while (i < len) {
+        let stmt = body.vecGet(i);
+        let kind = nodeKind(stmt);
+        if (kind == NK_EXPECT_FN_DECL || kind == NK_ACTUAL_FN_DECL) {
+            let name = getInternedStr(nodeGetData1(stmt));
+            let expectCount = 0;
+            let actualCount = 0;
+            let expectNode = 0;
+            let actualNode = 0;
+            let j = 0;
+            while (j < len) {
+                let cand = body.vecGet(j);
+                let ck = nodeKind(cand);
+                if ((ck == NK_EXPECT_FN_DECL || ck == NK_ACTUAL_FN_DECL) &&
+                getInternedStr(nodeGetData1(cand)).strEq(name)) {
+                    if (ck == NK_EXPECT_FN_DECL) {
+                        expectCount = expectCount + 1;
+                        expectNode = cand;
+                    }
+                    else {
+                        actualCount = actualCount + 1;
+                        actualNode = cand;
+                    }
+                }
+                j = j + 1;
+            }
+            if (expectCount != 1 || actualCount != 1) {
+                rslvUtilsPanicNode(
+                stmt,
+                "E_EXPECT_ACTUAL_PAIRING",
+                "expect/actual pairing requires exactly one expect and one actual for '".strConcat(name).strConcat("'"),
+                "Platform declarations require exactly one expect and one actual declaration for each symbol.",
+                "Declare exactly one 'expect fn' and one matching 'actual fn' for each platform symbol."
+                );
+            }
+            if (!fnDeclSig(expectNode).strEq(fnDeclSig(actualNode))) {
+                rslvUtilsPanicNode(
+                stmt,
+                "E_EXPECT_ACTUAL_SIGNATURE_MISMATCH",
+                "expect/actual signatures do not match for '".strConcat(name).strConcat("'"),
+                "An expect declaration and its actual implementation have different signatures.",
+                "Make generic params, parameter list, and return type identical between expect and actual declarations."
+                );
+            }
+        }
+        i = i + 1;
+    }
+    0
+}
+out fn rslvUtilsScopeDefine(scopes: Vec<I32>, depth: I32, name: *Str, errNode: I32) : I32 => {
+    let scope = scopes.vecGet(depth);
+    if (scope.setHas(name)) {
+        rslvUtilsPanicNode(
+        errNode,
+        "E_RESOLVE_SHADOWING",
+        "Variable shadowing/redeclaration is not allowed: ".strConcat(name),
+        "A name was declared multiple times in the same lexical scope.",
+        "Rename one of the bindings or move it to a different scope."
+        );
+    }
+    scope.setAdd(name);
+    0
+}
+out fn rslvUtilsScopeHas(scopes: Vec<I32>, depth: I32, name: *Str) : Bool => {
+    let i = depth;
+    while (i >= 0) {
+        if (scopes.vecGet(i).setHas(name)) {
+            return true;
+        }
+        i = i - 1;
+    }
+    false
+}
+out fn rslvUtilsIsHostBuiltinName(name: *Str) : Bool => {
+    name.strEq("sizeOf") ||
+    name.strEq("malloc") ||
+    name.strEq("realloc") ||
+    name.strEq("free") ||
+    name.strEq("memcpy") ||
+    name.strEq("memset") ||
+    name.strEq("drop") ||
+    name.strEq("panic") ||
+    name.strEq("this")
+}
+fn lifetimeScopeHas(resolveLifetimeScopes: Vec<I32>, name: *Str) : Bool => {
+    let len = resolveLifetimeScopes.vecLength();
+    let mut i : I32 = 0;
+    while (i < len) {
+        if (resolveLifetimeScopes.vecGet(i).setHas(name)) {
+            return true;
+        }
+        i = i + 1;
+    }
+    false
+}
+out fn rslvUtilsResolveTypeLifetimes(t: I32, resolveLifetimeScopes: Vec<I32>, errNode: I32) : I32
+=> {
+    if (t == 0) {
+        return 0;
+    }
+    let k = nodeKind(t);
+    if (k == NK_POINTER_TYPE) {
+        let lifeIdx = nodeGetData4(t);
+        if (lifeIdx != 0) {
+            let lname = getInternedStr(lifeIdx);
+            if (!lifetimeScopeHas(resolveLifetimeScopes, lname)) {
+                rslvUtilsPanicNode(
+                errNode,
+                "E_RESOLVE_UNDEFINED_LIFETIME",
+                "Undefined lifetime '".strConcat(lname).strConcat("'"),
+                "A pointer type annotation references a lifetime name that is not declared in any active lifetime block.",
+                "Declare the lifetime in an enclosing `lifetime ... { ... }` block before using it in pointer types."
+                );
+            }
+        }
+        rslvUtilsResolveTypeLifetimes(nodeGetData2(t), resolveLifetimeScopes, errNode);
+        return 0;
+    }
+    if (k == NK_ARRAY_TYPE) {
+        rslvUtilsResolveTypeLifetimes(nodeGetData1(t), resolveLifetimeScopes, errNode);
+        return 0;
+    }
+    if (k == NK_REFINEMENT_TYPE) {
+        rslvUtilsResolveTypeLifetimes(nodeGetData1(t), resolveLifetimeScopes, errNode);
+        return 0;
+    }
+    if (k == NK_UNION_TYPE) {
+        rslvUtilsResolveTypeLifetimes(nodeGetData1(t), resolveLifetimeScopes, errNode);
+        rslvUtilsResolveTypeLifetimes(nodeGetData2(t), resolveLifetimeScopes, errNode);
+        return 0;
+    }
+    if (k == NK_TUPLE_TYPE) {
+        let members = nodeGetData1(t);
+        let i = 0;
+        let len = members.vecLength();
+        while (i < len) {
+            rslvUtilsResolveTypeLifetimes(members.vecGet(i), resolveLifetimeScopes,
+            errNode);
+            i = i + 1;
+        }
+        return 0;
+    }
+    if (k == NK_FUNCTION_TYPE) {
+        let ps = nodeGetData1(t);
+        let i = 0;
+        while (i < ps.vecLength()) {
+            rslvUtilsResolveTypeLifetimes(ps.vecGet(i), resolveLifetimeScopes, errNode);
+            i = i + 1;
+        }
+        rslvUtilsResolveTypeLifetimes(nodeGetData2(t), resolveLifetimeScopes, errNode);
+        return 0;
+    }
+    0
+}
+out fn selfhostResolverUtilsMarker() : I32 => 0;

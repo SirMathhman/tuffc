@@ -59,4 +59,4 @@ let NK_WILDCARD_PAT : I32 = 50;
 let NK_LITERAL_PAT : I32 = 51;
 let NK_NAME_PAT : I32 = 52;
 let NK_STRUCT_PAT : I32 = 53;
-out fn selfhost_parser_kinds_marker() : I32 => 0;
+out fn selfhostParserKindsMarker() : I32 => 0;

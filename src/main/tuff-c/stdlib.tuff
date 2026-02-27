@@ -23,75 +23,75 @@ let EMPTY_VEC_I32 : Vec<I32> = 0;
 let EMPTY_MAP_I32_I32 : Map<I32, I32> = 0;
 let EMPTY_SET_I32 : Set<I32> = 0;
 
-fn vec_i32_ensure_capacity(this : Vec<I32>, need : USize) : Vec<I32> => {
+fn vecI32EnsureCapacity(this : Vec<I32>, need : USize) : Vec<I32> => {
 	if (this == 0) return this;
 	if (this.length >= need) return this;
 
-	let mut next_len = if (this.length == 0USize) 4USize else this.length;
-	while (next_len < need) {
-		next_len = next_len * 2USize;
+	let mut nextLen = if (this.length == 0USize) 4USize else this.length;
+	while (nextLen < need) {
+		nextLen = nextLen * 2USize;
 	}
 
-	let grown = realloc<I32, next_len>(this, sizeOf<I32>() * next_len);
+	let grown = realloc<I32, nextLen>(this, sizeOf<I32>() * nextLen);
 	if (grown == 0) return this;
 	grown
 }
 
-fn map_i32_ensure_capacity(this : Map<I32, I32>, need : USize) : Map<I32, I32> => {
+fn mapI32EnsureCapacity(this : Map<I32, I32>, need : USize) : Map<I32, I32> => {
 	if (this == 0) return this;
 	if (this.length >= need) return this;
 
-	let mut next_len = if (this.length == 0USize) 4USize else this.length;
-	while (next_len < need) {
-		next_len = next_len * 2USize;
+	let mut nextLen = if (this.length == 0USize) 4USize else this.length;
+	while (nextLen < need) {
+		nextLen = nextLen * 2USize;
 	}
 
-	let grown = realloc<I32, next_len>(this, sizeOf<I32>() * next_len);
+	let grown = realloc<I32, nextLen>(this, sizeOf<I32>() * nextLen);
 	if (grown == 0) return this;
 	grown
 }
 
-fn set_i32_ensure_capacity(this : Set<I32>, need : USize) : Set<I32> => {
+fn setI32EnsureCapacity(this : Set<I32>, need : USize) : Set<I32> => {
 	if (this == 0) return this;
 	if (this.length >= need) return this;
 
-	let mut next_len = if (this.length == 0USize) 4USize else this.length;
-	while (next_len < need) {
-		next_len = next_len * 2USize;
+	let mut nextLen = if (this.length == 0USize) 4USize else this.length;
+	while (nextLen < need) {
+		nextLen = nextLen * 2USize;
 	}
 
-	let grown = realloc<I32, next_len>(this, sizeOf<I32>() * next_len);
+	let grown = realloc<I32, nextLen>(this, sizeOf<I32>() * nextLen);
 	if (grown == 0) return this;
 	grown
 }
 
 out fn length(this : *Str) : USize => strlen(this);
 
-out fn vec_new_i32() : Vec<I32> => {
-	let out_ptr = malloc<I32, DEFAULT_SIZE>(sizeOf<I32>() * DEFAULT_SIZE);
-	if (out_ptr == 0) return EMPTY_VEC_I32;
-	out_ptr
+out fn vecNewI32() : Vec<I32> => {
+	let outPtr = malloc<I32, DEFAULT_SIZE>(sizeOf<I32>() * DEFAULT_SIZE);
+	if (outPtr == 0) return EMPTY_VEC_I32;
+	outPtr
 };
 
-out fn vec_push_i32(this : Vec<I32>, item : I32) : Vec<I32> => {
+out fn vecPushI32(this : Vec<I32>, item : I32) : Vec<I32> => {
 	let mut slice = this;
 	if (slice == 0) return this;
 
-	slice = vec_i32_ensure_capacity(slice, slice.init + 1USize);
+	slice = vecI32EnsureCapacity(slice, slice.init + 1USize);
 	slice[slice.init] = item;
 	slice.init = slice.init + 1USize;
 	slice
 };
 
-out fn vec_get_i32(this : Vec<I32>, index : USize) : I32 => {
+out fn vecGetI32(this : Vec<I32>, index : USize) : I32 => {
 	if (this == 0 || index >= this.init) return 0;
 	this[index]
 };
 
-out fn vec_set_i32(this : Vec<I32>, index : USize, item : I32) : Vec<I32> => {
+out fn vecSetI32(this : Vec<I32>, index : USize, item : I32) : Vec<I32> => {
 	if (this == 0) return this;
 	if (index > this.init) return this;
-	let mut slice = vec_i32_ensure_capacity(this, index + 1USize);
+	let mut slice = vecI32EnsureCapacity(this, index + 1USize);
 	slice[index] = item;
 	if (index == slice.init) {
 		slice.init = slice.init + 1USize;
@@ -99,17 +99,17 @@ out fn vec_set_i32(this : Vec<I32>, index : USize, item : I32) : Vec<I32> => {
 	slice
 };
 
-out fn vec_init_i32(this : Vec<I32>) : USize => if (this == 0) 0USize else this.init;
-out fn vec_capacity_i32(this : Vec<I32>) : USize => if (this == 0) 0USize else this.length;
-out fn vec_length_i32(this : Vec<I32>) : USize => vec_init_i32(this);
+out fn vecInitI32(this : Vec<I32>) : USize => if (this == 0) 0USize else this.init;
+out fn vecCapacityI32(this : Vec<I32>) : USize => if (this == 0) 0USize else this.length;
+out fn vecLengthI32(this : Vec<I32>) : USize => vecInitI32(this);
 
-out fn map_new_i32_i32() : Map<I32, I32> => {
-	let out_ptr = malloc<I32, DEFAULT_SIZE>(sizeOf<I32>() * DEFAULT_SIZE);
-	if (out_ptr == 0) return EMPTY_MAP_I32_I32;
-	out_ptr
+out fn mapNewI32I32() : Map<I32, I32> => {
+	let outPtr = malloc<I32, DEFAULT_SIZE>(sizeOf<I32>() * DEFAULT_SIZE);
+	if (outPtr == 0) return EMPTY_MAP_I32_I32;
+	outPtr
 };
 
-out fn map_set_i32_i32(this : Map<I32, I32>, k : I32, v : I32) : Map<I32, I32> => {
+out fn mapSetI32I32(this : Map<I32, I32>, k : I32, v : I32) : Map<I32, I32> => {
 	let mut m = this;
 	if (m == 0) return m;
 
@@ -122,7 +122,7 @@ out fn map_set_i32_i32(this : Map<I32, I32>, k : I32, v : I32) : Map<I32, I32> =
 		i = i + 2USize;
 	}
 
-	m = map_i32_ensure_capacity(m, m.init + 2USize);
+	m = mapI32EnsureCapacity(m, m.init + 2USize);
 	m[m.init] = k;
 	m.init = m.init + 1USize;
 	m[m.init] = v;
@@ -130,7 +130,7 @@ out fn map_set_i32_i32(this : Map<I32, I32>, k : I32, v : I32) : Map<I32, I32> =
 	m
 };
 
-out fn map_get_i32_i32(this : Map<I32, I32>, k : I32) : I32 => {
+out fn mapGetI32I32(this : Map<I32, I32>, k : I32) : I32 => {
 	if (this == 0) return 0;
 	let mut i = 0USize;
 	while (i + 1USize < this.init) {
@@ -142,21 +142,21 @@ out fn map_get_i32_i32(this : Map<I32, I32>, k : I32) : I32 => {
 	0
 };
 
-out fn set_new_i32() : Set<I32> => {
-	let out_ptr = malloc<I32, DEFAULT_SIZE>(sizeOf<I32>() * DEFAULT_SIZE);
-	if (out_ptr == 0) return EMPTY_SET_I32;
-	out_ptr
+out fn setNewI32() : Set<I32> => {
+	let outPtr = malloc<I32, DEFAULT_SIZE>(sizeOf<I32>() * DEFAULT_SIZE);
+	if (outPtr == 0) return EMPTY_SET_I32;
+	outPtr
 };
 
-out fn set_add_i32(this : Set<I32>, item : I32) : Set<I32> => {
-	if (set_has_i32(this, item)) return this;
-	let mut s = set_i32_ensure_capacity(this, this.init + 1USize);
+out fn setAddI32(this : Set<I32>, item : I32) : Set<I32> => {
+	if (setHasI32(this, item)) return this;
+	let mut s = setI32EnsureCapacity(this, this.init + 1USize);
 	s[s.init] = item;
 	s.init = s.init + 1USize;
 	s
 };
 
-out fn set_has_i32(this : Set<I32>, item : I32) : Bool => {
+out fn setHasI32(this : Set<I32>, item : I32) : Bool => {
 	if (this == 0) return false;
 	let mut i = 0USize;
 	while (i < this.init) {

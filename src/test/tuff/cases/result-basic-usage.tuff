@@ -17,7 +17,7 @@ struct OperationError {
 }
 
 // Function that returns Result - can fail
-fn safe_compute(a: I32, b: I32) : Result<I32, OperationError> => {
+fn safeCompute(a: I32, b: I32) : Result<I32, OperationError> => {
     if (b == 0) {
         return Err<OperationError> {
             error: OperationError {
@@ -31,8 +31,8 @@ fn safe_compute(a: I32, b: I32) : Result<I32, OperationError> => {
 }
 
 // Function that handles Result with match
-fn test_division() : I32 => {
-    let result = safe_compute(10, 2);
+fn testDivision() : I32 => {
+    let result = safeCompute(10, 2);
     match (result) {
         case Ok { value } = if (value == 12) 12 else -1;
         case Err { error } = -1;
@@ -40,8 +40,8 @@ fn test_division() : I32 => {
 }
 
 // Test division by zero case
-fn test_division_by_zero() : I32 => {
-    let result = safe_compute(10, 0);
+fn testDivisionByZero() : I32 => {
+    let result = safeCompute(10, 0);
     match (result) {
         case Ok { value } = value;
         case Err { error } = -1;
@@ -50,13 +50,13 @@ fn test_division_by_zero() : I32 => {
 
 // Main entry point
 out fn main() : I32 => {
-    let success = test_division();
+    let success = testDivision();
     if (success != 12) {
         panic("Expected test_division() to return 12");
     }
     
-    let error_case = test_division_by_zero();
-    if (error_case != -1) {
+    let errorCase = testDivisionByZero();
+    if (errorCase != -1) {
         panic("Expected test_division_by_zero() to return -1");
     }
     

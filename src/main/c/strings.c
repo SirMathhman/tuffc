@@ -5,16 +5,16 @@ int64_t str_length(int64_t s)
     const char *p = tuff_str(s);
     if (p == NULL)
         return 0;
-    return (int64_t)strlen(p);
+    return (int64_t)tuff_str_len(p); /* O(1) if registered, O(n) fallback for literals */
 }
 
 int64_t str_char_at(int64_t s, int64_t i)
 {
     const char *p = tuff_str(s);
-    if (p == NULL)
+    if (p == NULL || i < 0)
         return 0;
-    size_t n = strlen(p);
-    if (i < 0 || (size_t)i >= n)
+    size_t n = tuff_str_len(p);
+    if ((size_t)i >= n)
         return 0;
     return (unsigned char)p[i];
 }
@@ -24,7 +24,7 @@ int64_t str_slice(int64_t s, int64_t start, int64_t end)
     const char *p = tuff_str(s);
     if (p == NULL)
         return tuff_register_cstring_copy("");
-    size_t n = strlen(p);
+    size_t n = tuff_str_len(p);
     if (start < 0)
         start = 0;
     if (end < 0)
@@ -37,7 +37,12 @@ int64_t str_slice(int64_t s, int64_t start, int64_t end)
         end = start;
 
     size_t out_n = (size_t)(end - start);
-    return tuff_register_cstring_copy(p + start);
+    char *out = (char *)malloc(out_n + 1);
+    if (out == NULL)
+        tuff_panic("Out of memory in str_slice");
+    memcpy(out, p + start, out_n);
+    out[out_n] = '\0';
+    return tuff_register_owned_string(out); /* records length = out_n */
 }
 
 int64_t str_slice_window(int64_t s, int64_t start, int64_t end)
@@ -45,7 +50,7 @@ int64_t str_slice_window(int64_t s, int64_t start, int64_t end)
     const char *p = tuff_str(s);
     if (p == NULL)
         return s;
-    size_t n = strlen(p);
+    size_t n = tuff_str_len(p);
     if (start < 0)
         start = 0;
     if ((size_t)start > n)
@@ -58,7 +63,10 @@ int64_t str_slice_window(int64_t s, int64_t start, int64_t end)
         end = start;
     // Return a pointer directly into the existing buffer — no allocation.
     // The lifetime system guarantees this window cannot outlive the source.
-    return tuff_to_val(p + start);
+    // Cache the window's length so str_length on the result is also O(1).
+    const char *window = p + (size_t)start;
+    tuff_record_str_length(window, (size_t)(end - start));
+    return tuff_to_val(window);
 }
 
 int64_t str_copy(int64_t s)
@@ -71,8 +79,8 @@ int64_t str_concat(int64_t a, int64_t b)
 {
     const char *sa = tuff_str_or_empty(a);
     const char *sb = tuff_str_or_empty(b);
-    size_t na = strlen(sa);
-    size_t nb = strlen(sb);
+    size_t na = tuff_str_len(sa);
+    size_t nb = tuff_str_len(sb);
     char *out = (char *)malloc(na + nb + 1);
     if (out == NULL)
         tuff_panic("Out of memory in str_concat");
@@ -117,7 +125,7 @@ int64_t str_trim(int64_t s)
     const char *p = tuff_str(s);
     if (p == NULL)
         return tuff_register_cstring_copy("");
-    size_t n = strlen(p);
+    size_t n = tuff_str_len(p);
     size_t a = 0;
     while (a < n && (p[a] == ' ' || p[a] == '\n' || p[a] == '\r' || p[a] == '\t'))
         a++;
@@ -139,9 +147,9 @@ int64_t str_replace_all(int64_t s, int64_t from, int64_t to)
     if (repl == NULL)
         repl = "";
 
-    size_t src_len = strlen(src);
-    size_t nd_len = strlen(needle);
-    size_t rp_len = strlen(repl);
+    size_t src_len = tuff_str_len(src);
+    size_t nd_len = tuff_str_len(needle);
+    size_t rp_len = tuff_str_len(repl);
 
     size_t count = 0;
     const char *scan = src;

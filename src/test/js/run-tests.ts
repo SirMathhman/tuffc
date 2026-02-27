@@ -16,7 +16,7 @@ fs.mkdirSync(outDir, { recursive: true });
 const testCases = fs.readdirSync(casesDir).filter((x) => x.endsWith(".tuff"));
 const selfhostKnownUnsupportedCases = new Set([
   // Pipe-lambda syntax is not yet supported consistently in selfhost parser.
-  "iter_semantics.tuff",
+  "iterSemantics.tuff",
   // Result type requires module imports (stdlib not yet available without modules).
   "result-error-propagation.tuff",
 ]);

@@ -76,6 +76,12 @@ export function str_trim(s: string): string {
   return s.trim();
 }
 
+// str_mut_slice: C ABI exposes a mutable variant; in JS strings are immutable
+// so this behaves identically to str_slice.
+export function str_mut_slice(s: string, start: number, end: number): string {
+  return s.slice(start, end);
+}
+
 export function str_replace_all(s: string, from: string, to: string): string {
   return s.replaceAll(from, to);
 }
@@ -93,7 +99,7 @@ export function __int_to_string(n: number): string {
 }
 
 export function parse_int(s: string): number {
-  return parseInt(s, 10);
+  return Number.parseInt(s, 10);
 }
 
 export function parse_float(s: string): number {
@@ -785,3 +791,50 @@ export function profile_take_json(): string {
   profileMarks.length = 0; // Clear for next run
   return result;
 }
+
+// ---------------------------------------------------------------------------
+// camelCase aliases for renamed extern-binding identifiers
+// (added by scripts/rename-snake-to-camel.ts migration)
+// ---------------------------------------------------------------------------
+export const charCode = char_code;
+// get_argc / get_argv are bridged via __host_runtime at runtime; define camelCase stubs here.
+export function getArgc(): number {
+  return process.argv.length;
+}
+export function getArgv(i: number): string {
+  return process.argv[i] ?? "";
+}
+export const mapDelete = map_delete;
+export const mapGet = map_get;
+export const mapHas = map_has;
+export const mapSet = map_set;
+export const panicWithCode = panic_with_code;
+export const panicWithCodeLoc = panic_with_code_loc;
+// Intentionally shadows the JS built-in parseInt in the selfhost VM sandbox so
+// that Tuff's compiled parseInt(s) calls resolve to the Tuff runtime version.
+// eslint-disable-next-line no-shadow
+export const parseInt = parse_int;
+export const pathDirname = path_dirname;
+export const pathJoin = path_join;
+export const profileMark = profile_mark;
+export const readFile = read_file;
+export const sbAppend = sb_append;
+export const sbAppendChar = sb_append_char;
+export const sbBuild = sb_build;
+export const sbNew = sb_new;
+export const setAdd = set_add;
+export const setDelete = set_delete;
+export const setHas = set_has;
+export const strCharAt = str_char_at;
+export const strConcat = str_concat;
+export const strCopy = str_copy;
+export const strEq = str_eq;
+export const strFromCharCode = str_from_char_code;
+export const strIndexOf = str_index_of;
+export const strLength = str_length;
+export const strMutSlice = str_mut_slice;
+export const strReplaceAll = str_replace_all;
+export const strSlice = str_slice;
+export const strSliceWindow = str_slice_window;
+export const strTrim = str_trim;
+export const writeFile = write_file;

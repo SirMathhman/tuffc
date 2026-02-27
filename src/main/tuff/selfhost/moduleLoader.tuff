@@ -1,0 +1,904 @@
+let { getInternedStr, mapNew, setNew, vecNew, perfNow, printError, intToString, lexTakeTrivia, lexInit, lexAll, strIncludes } = selfhost::runtimeLexer;
+let {
+    Ok, Err, Result
+}
+ = selfhost::Result;
+let {
+    ResolveError
+}
+ = selfhost::errors::ResolveError;
+let {
+    parseInit, nodeKind, nodeGetData1, nodeGetData2, nodeGetData3, nodeGetData4,
+    nodeGetData5, nodeSetData1
+}
+ = selfhost::parserCore;
+let {
+    pParseProgram, desugar
+}
+ = selfhost::parserDecls;
+let {
+    resolveNames
+}
+ = selfhost::resolver;
+let {
+    typecheckProgram, typecheckProgramWithOptions
+}
+ = selfhost::typecheck;
+let {
+    borrowcheckProgram
+}
+ = selfhost::borrowcheck;
+let {
+    generateJs
+}
+ = selfhost::codegenStmt;
+let {
+    generateC, generateCSplitFiles
+}
+ = selfhost::codegenC;
+let {
+    emitTuffFromTyped
+}
+ = selfhost::tuffPrinter;
+let {
+    lintReset, lintTakeIssues, lintProgram, lintAddCircularImportIssue,
+    lintCheckCurrentFileLength
+}
+ = selfhost::linter;
+let {
+    moduleLoaderSanitizeMaxEffectiveLines, moduleLoaderNormalizeFlag,
+    modulePartsToRelativePath, moduleNormalizePath, joinSources, moduleWithCRuntimePrelude
+}
+ = selfhost::moduleLoaderUtils;
+let MODULE_WATCHDOG_MAX_RECURSION_DEPTH : I32 = 2048;
+let MODULE_WATCHDOG_MAX_IMPORTS_PER_MODULE : I32 = 200000;
+let MODULE_WATCHDOG_MAX_SOURCEMAP_ENTRIES : I32 = 200000;
+let {
+    sourcemapInit, sourcemapAdd, sourcemapCountLines, sourcemapLookup
+}
+ = selfhost::moduleSourcemap;
+fn moduleEmitTargetOutput(typed: I32, mergedSource: *Str, target: *Str) : *Str => {
+    if (target.strEq("js")) {
+        return generateJs(typed);
+    }
+    if (target.strEq("c")) {
+        return generateC(typed, __host_get_c_substrate());
+    }
+    if (target.strEq("tuff")) {
+        return emitTuffFromTyped(typed, mergedSource, lexTakeTrivia());
+    }
+    panicWithCode(
+    "E_UNSUPPORTED_TARGET",
+    "Unsupported codegen target: ".strConcat(target),
+    "The compiler was asked to emit code for a target that is not implemented.",
+    "Use target 'js', target 'c', target 'c-split', or target 'tuff'."
+    );
+    ""
+}
+let gatherProfModules : I32 = 0;
+let gatherProfImportEdges : I32 = 0;
+let gatherProfReadFileMs : I32 = 0;
+let gatherProfLexParseMs : I32 = 0;
+let gatherProfDeclCollectMs : I32 = 0;
+let gatherProfImportSnapshotMs : I32 = 0;
+let gatherProfImportWalkMs : I32 = 0;
+let gatherProfImportRecurseMs : I32 = 0;
+let gatherProfImplicitCheckMs : I32 = 0;
+fn gatherProfReset() : I32 => {
+    gatherProfModules = 0;
+    gatherProfImportEdges = 0;
+    gatherProfReadFileMs = 0;
+    gatherProfLexParseMs = 0;
+    gatherProfDeclCollectMs = 0;
+    gatherProfImportSnapshotMs = 0;
+    gatherProfImportWalkMs = 0;
+    gatherProfImportRecurseMs = 0;
+    gatherProfImplicitCheckMs = 0;
+    0
+}
+fn stripImportDecls(program: I32) : I32 => {
+    let stmts = nodeGetData1(program);
+    let filtered = vecNew();
+    let i = 0;
+    let len = stmts.vecLength();
+    while (i < len) {
+        let stmt = stmts.vecGet(i);
+        if (nodeKind(stmt) != 6) {
+            filtered.vecPush(stmt);
+        }
+        i = i + 1;
+    }
+    nodeSetData1(program, filtered);
+    program
+}
+fn isModuleDeclKind(kind: I32) : Bool => {
+     // Uses literal node-kind IDs to avoid cross-module constant resolution.
+    kind == 2 || // NK_FN_DECL
+    kind == 16 || // NK_CLASS_FN_DECL
+    kind == 3 || // NK_STRUCT_DECL
+    kind == 60 || // NK_ENUM_DECL
+    kind == 63 || // NK_OBJECT_DECL
+    kind == 65 || // NK_CONTRACT_DECL
+    kind == 4 || // NK_TYPE_ALIAS
+    kind == 5 || // NK_LET_DECL
+    kind == 18 || // NK_EXTERN_LET_DECL
+    kind == 19 // NK_EXTERN_TYPE_DECL
+}
+fn moduleIsExternDecl(stmt: I32) : Bool => {
+    let kind = nodeKind(stmt);
+    (kind == 2 && nodeGetData5(stmt) == 0) || // NK_FN_DECL with no body
+    kind == 18 || // NK_EXTERN_LET_DECL
+    kind == 19 // NK_EXTERN_TYPE_DECL
+}
+fn collectModuleDeclarations(stmts: Vec<I32>) : *mut Set<*Str> => {
+    let declared = setNew();
+    let i = 0;
+    let len = stmts.vecLength();
+    while (i < len) {
+        let stmt = stmts.vecGet(i);
+        let kind = nodeKind(stmt);
+        if (isModuleDeclKind(kind)) {
+            declared.setAdd(getInternedStr(nodeGetData1(stmt)));
+        }
+        i = i + 1;
+    }
+    declared
+}
+fn moduleScopeDefine(scopes: Vec<I32>, depth: I32, name: *Str) : I32 => {
+    let scope = scopes.vecGet(depth);
+    scope.setAdd(name);
+    0
+}
+fn moduleScopeHas(scopes: Vec<I32>, depth: I32, name: *Str) : Bool => {
+    let i = depth;
+    while (i >= 0) {
+        if (scopes.vecGet(i).setHas(name)) {
+            return true;
+        }
+        i = i - 1;
+    }
+    false
+}
+fn moduleCheckExprCallLike(n: I32, declared: *mut Set<I32>, imported: *mut Set<I32>,
+scopes: Vec<I32>, depth: I32, implicitCandidates: Vec<I32>, implicitCandidateSet: *mut Set<I32>) : I32 => {
+    if (nodeKind(n) == 27) {
+        moduleCheckExprImplicitImports(nodeGetData1(n), declared, imported,
+        scopes, depth, implicitCandidates, implicitCandidateSet);
+        let args = nodeGetData2(n);
+        let i = 0;
+        let len = args.vecLength();
+        while (i < len) {
+            moduleCheckExprImplicitImports(args.vecGet(i), declared, imported,
+            scopes, depth, implicitCandidates, implicitCandidateSet);
+            i = i + 1;
+        }
+        return 1;
+    }
+    if (nodeKind(n) == 28) {
+        moduleCheckExprImplicitImports(nodeGetData1(n), declared, imported,
+        scopes, depth, implicitCandidates, implicitCandidateSet);
+        return 1;
+    }
+    if (nodeKind(n) == 29) {
+        moduleCheckExprImplicitImports(nodeGetData1(n), declared, imported,
+        scopes, depth, implicitCandidates, implicitCandidateSet);
+        moduleCheckExprImplicitImports(nodeGetData2(n), declared, imported,
+        scopes, depth, implicitCandidates, implicitCandidateSet);
+        return 1;
+    }
+    0
+}
+fn moduleCheckExprComposites(n: I32, declared: *mut Set<I32>, imported: *mut Set<I32>,
+scopes: Vec<I32>, depth: I32, implicitCandidates: Vec<I32>, implicitCandidateSet: *mut Set<I32>) : I32 => {
+    if (nodeKind(n) == 30) {
+        let fields = nodeGetData2(n);
+        let i = 0;
+        let len = fields.vecLength();
+        while (i < len) {
+            let f = fields.vecGet(i);
+            moduleCheckExprImplicitImports(f.vecGet(1), declared, imported,
+            scopes, depth, implicitCandidates, implicitCandidateSet);
+            i = i + 1;
+        }
+        return 1;
+    }
+    if (nodeKind(n) == 33) {
+        moduleCheckExprImplicitImports(nodeGetData1(n), declared, imported,
+        scopes, depth, implicitCandidates, implicitCandidateSet);
+        return 1;
+    }
+    0
+}
+fn moduleCheckExprMatch (n: I32, declared: *mut Set<I32>, imported: *mut Set<I32>, scopes: Vec<I32>,
+depth: I32, implicitCandidates: Vec<I32>, implicitCandidateSet: *mut Set<I32>) : I32 => {
+    if (nodeKind(n) != 32) {
+        return 0;
+    }
+    moduleCheckExprImplicitImports(nodeGetData1(n), declared, imported,
+    scopes, depth, implicitCandidates, implicitCandidateSet);
+    let cases = nodeGetData2(n);
+    let i = 0;
+    let len = cases.vecLength();
+    while (i < len) {
+        let caseNode = cases.vecGet(i);
+        let pat = caseNode.vecGet(0);
+        let body = caseNode.vecGet(1);
+        let nextDepth = depth + 1;
+        scopes.vecPush(setNew());
+        if (nodeKind(pat) == 53) {
+            let fields = nodeGetData2(pat);
+            let j = 0;
+            let fLen = fields.vecLength();
+            while (j < fLen) {
+                moduleScopeDefine(scopes, nextDepth, getInternedStr(fields.vecGet(j)));
+                j = j + 1;
+            }
+        }
+        else if (nodeKind(pat) == 52) {
+            let patName = getInternedStr(nodeGetData1(pat));
+            if (!declared.setHas(patName) && !imported.setHas(patName)) {
+                moduleScopeDefine(scopes, nextDepth, patName);
+            }
+        }
+        moduleCheckStmtImplicitImports(body, declared, imported, scopes, nextDepth,
+        implicitCandidates, implicitCandidateSet);
+        scopes.vecPop();
+        i = i + 1;
+    }
+    1
+}
+fn moduleCollectDeclaredSets(source: *Str, program: I32, moduleDeclaredMap: Map<I32, I32>,
+moduleExportedMap: Map<I32, I32>, filePath: *Str, allDeclaredNames: *mut Set<I32>,
+allExportedDeclaredNames: *mut Set<I32>, allExternDeclaredNames: *mut Set<I32>) : *mut Set<I32> => {
+    let stmts = nodeGetData1(program);
+    let declared = collectModuleDeclarations(stmts);
+    let exported = setNew();
+    moduleDeclaredMap.mapSet(filePath, declared);
+    moduleExportedMap.mapSet(filePath, exported);
+    let di = 0;
+    let dlen = stmts.vecLength();
+    while (di < dlen) {
+        let dstmt = stmts.vecGet(di);
+        let dkind = nodeKind(dstmt);
+        if (isModuleDeclKind(dkind)) {
+            let dname = getInternedStr(nodeGetData1(dstmt));
+            allDeclaredNames.setAdd(dname);
+            if (moduleIsExternDecl(dstmt)) {
+                allExternDeclaredNames.setAdd(dname);
+            }
+            if (moduleHasOutExport(source, dname)) {
+                exported.setAdd(dname);
+                allExportedDeclaredNames.setAdd(dname);
+            }
+        }
+        di = di + 1;
+    }
+    declared
+}
+fn moduleSnapshotImportSpecs(stmts: Vec<I32>, moduleBasePath: *Str, importPathCache: Map<I32, I32>) : Vec<I32> => {
+    let t0 = perfNow();
+    let imports = vecNew();
+    let i = 0;
+    let len = stmts.vecLength();
+    while (i < len) {
+        let stmt = stmts.vecGet(i);
+        if (nodeKind(stmt) == 6) {
+            let parts = nodeGetData2(stmt);
+            let rel = modulePartsToRelativePath(parts);
+            let depPath = "";
+            if (importPathCache.mapHas(rel)) {
+                depPath = importPathCache.mapGet(rel);
+            }
+            else {
+                depPath = moduleNormalizePath(pathJoin(moduleBasePath, rel));
+                importPathCache.mapSet(rel, depPath);
+            }
+            let importNamesRaw = nodeGetData1(stmt);
+            let importNames = vecNew();
+            let j = 0;
+            let jLen = importNamesRaw.vecLength();
+            while (j < jLen) {
+                importNames.vecPush(getInternedStr(importNamesRaw.vecGet(j)));
+                j = j + 1;
+            }
+            let importSpec = vecNew();
+            importSpec.vecPush(depPath);
+            importSpec.vecPush(importNames);
+            imports.vecPush(importSpec);
+            gatherProfImportEdges = gatherProfImportEdges + 1;
+        }
+        i = i + 1;
+    }
+    gatherProfImportSnapshotMs = gatherProfImportSnapshotMs + (perfNow() - t0);
+    imports
+}
+fn moduleWalkImports(imports: Vec<I32>, moduleBasePath: *Str, seen: *mut Set<I32>, visiting: *mut Set<I32>,
+sources: Vec<*Str>, modulePaths: Vec<*Str>, moduleDeclaredMap: Map<I32, I32>, moduleExportedMap: Map<I32, I32>,
+moduleSourceCache: Map<I32, I32>, importPathCache: Map<I32, I32>, allDeclaredNames: *mut Set<I32>,
+allExportedDeclaredNames: *mut Set<I32>, allExternDeclaredNames: *mut Set<I32>, lintEnabled: I32,
+maxEffectiveLines: I32, moduleCycles: Vec<*Str>, recursionDepth: I32) : I32 => {
+    let i = 0;
+    let len = imports.vecLength();
+    if (len > MODULE_WATCHDOG_MAX_IMPORTS_PER_MODULE) {
+        panicWithCode(
+        "E_MODULE_LOADER_WATCHDOG_IMPORTS",
+        "Import fan-out exceeded safety limit while walking module imports",
+        "A single module produced too many import edges, indicating malformed AST or a loader loop.",
+        "Inspect the module import list and parser output for duplicate or non-terminating import expansion."
+        );
+    }
+    while (i < len) {
+        let spec = imports.vecGet(i);
+        let depPath = spec.vecGet(0);
+        let importNames = spec.vecGet(1);
+        if (!seen.setHas(depPath)) {
+            let tRecurse0 = perfNow();
+            gatherModuleSources(depPath, moduleBasePath, seen, visiting, sources, modulePaths,
+            moduleDeclaredMap, moduleExportedMap, moduleSourceCache, importPathCache,
+            allDeclaredNames, allExportedDeclaredNames, allExternDeclaredNames, lintEnabled,
+            maxEffectiveLines, moduleCycles, recursionDepth + 1);
+            if (recursionDepth == 0) {
+                gatherProfImportRecurseMs = gatherProfImportRecurseMs +
+                (perfNow() - tRecurse0);
+            }
+        }
+        let tWalkLocal0 = perfNow();
+        let depDeclared = moduleDeclaredMap.mapGet(depPath);
+        let depExported = moduleExportedMap.mapGet(depPath);
+        let j = 0;
+        let jLen = importNames.vecLength();
+        while (j < jLen) {
+            let importedName = importNames.vecGet(j);
+            if (!depExported.setHas(importedName)) {
+                if (depDeclared.setHas(importedName)) {
+                    panicWithCode("E_MODULE_PRIVATE_IMPORT", "Cannot import '".strConcat(importedName).strConcat("' from module: symbol is not exported with 'out'"), "A module import referenced a declaration that exists but is not visible outside its module.", "Mark the declaration with 'out' in the target module, or remove it from the import list.");
+                }
+                panicWithCode("E_MODULE_UNKNOWN_EXPORT", "Cannot import '".strConcat(importedName).strConcat("' from module: exported symbol not found"), "A module import requested a symbol that is not exported by the target module.", "Check the import list and add a matching 'out' declaration in the target module.");
+            }
+            j = j + 1;
+        }
+        gatherProfImportWalkMs = gatherProfImportWalkMs +
+        (perfNow() - tWalkLocal0);
+        i = i + 1;
+    }
+    0
+}
+fn moduleCollectImportedNames(imports: Vec<I32>) : *mut Set<I32> => {
+    let importedNames = setNew();
+    let i = 0;
+    let len = imports.vecLength();
+    while (i < len) {
+        let spec = imports.vecGet(i);
+        let importNames = spec.vecGet(1);
+        let j = 0;
+        let jLen = importNames.vecLength();
+        while (j < jLen) {
+            importedNames.setAdd(importNames.vecGet(j));
+            j = j + 1;
+        }
+        i = i + 1;
+    }
+    importedNames
+}
+fn moduleCheckExprImplicitImports(n: I32, declared: *mut Set<I32>, imported: *mut Set<I32>,
+scopes: Vec<I32>, depth: I32, implicitCandidates: Vec<I32>, implicitCandidateSet: *mut Set<I32>) : I32 => {
+    if (n == 0) {
+        return 0;
+    }
+    let kind = nodeKind(n);
+    if (kind == 24) {
+        let name = getInternedStr(nodeGetData1(n));
+        if (!moduleScopeHas(scopes, depth, name) && !declared.setHas(name) &&
+        !imported.setHas(name)) {
+            if (!implicitCandidateSet.setHas(name)) {
+                implicitCandidateSet.setAdd(name);
+                implicitCandidates.vecPush(name);
+            }
+        }
+        return 0;
+    }
+    if (kind == 25) {
+        moduleCheckExprImplicitImports(nodeGetData2(n), declared, imported,
+        scopes, depth, implicitCandidates, implicitCandidateSet);
+        moduleCheckExprImplicitImports(nodeGetData3(n), declared, imported,
+        scopes, depth, implicitCandidates, implicitCandidateSet);
+        return 0;
+    }
+    if (kind == 26 || kind == 34) {
+        moduleCheckExprImplicitImports(nodeGetData2(n), declared, imported,
+        scopes, depth, implicitCandidates, implicitCandidateSet);
+        if (kind == 34) {
+            moduleCheckExprImplicitImports(nodeGetData1(n), declared, imported,
+            scopes, depth, implicitCandidates, implicitCandidateSet);
+        }
+        return 0;
+    }
+    if (moduleCheckExprCallLike(n, declared, imported, scopes, depth,
+    implicitCandidates, implicitCandidateSet) == 1) {
+        return 0;
+    }
+    if (moduleCheckExprComposites(n, declared, imported, scopes, depth,
+    implicitCandidates, implicitCandidateSet) == 1) {
+        return 0;
+    }
+    if (kind == 31) {
+        moduleCheckExprImplicitImports(nodeGetData1(n), declared, imported,
+        scopes, depth, implicitCandidates, implicitCandidateSet);
+        moduleCheckStmtImplicitImports(nodeGetData2(n), declared, imported,
+        scopes, depth, implicitCandidates, implicitCandidateSet);
+        if (nodeGetData3(n) != 0) {
+            moduleCheckStmtImplicitImports(nodeGetData3(n), declared, imported,
+            scopes, depth, implicitCandidates, implicitCandidateSet);
+        }
+        return 0;
+    }
+    if (moduleCheckExprMatch (n, declared, imported, scopes, depth,
+    implicitCandidates, implicitCandidateSet) == 1) {
+        return 0;
+    }
+    0
+}
+fn moduleCheckStmtImplicitImports(n: I32, declared: *mut Set<I32>, imported: *mut Set<I32>,
+scopes: Vec<I32>, depth: I32, implicitCandidates: Vec<I32>, implicitCandidateSet: *mut Set<I32>) : I32 => {
+    if (n == 0) {
+        return 0;
+    }
+    let kind = nodeKind(n);
+    if (kind == 12) {
+        let nextDepth = depth + 1;
+        scopes.vecPush(setNew());
+        let stmts = nodeGetData1(n);
+        let i = 0;
+        let len = stmts.vecLength();
+        while (i < len) {
+            moduleCheckStmtImplicitImports(stmts.vecGet(i), declared, imported,
+            scopes, nextDepth, implicitCandidates, implicitCandidateSet);
+            i = i + 1;
+        }
+        scopes.vecPop();
+        return 0;
+    }
+    if (kind == 2 || kind == 16) {
+        let fnScopes = vecNew();
+        fnScopes.vecPush(setNew());
+        let params = nodeGetData3(n);
+        let i = 0;
+        let len = params.vecLength();
+        while (i < len) {
+            let p = params.vecGet(i);
+            moduleScopeDefine(fnScopes, 0, getInternedStr(p.vecGet(0)));
+            i = i + 1;
+        }
+        moduleCheckStmtImplicitImports(nodeGetData5(n), declared, imported,
+        fnScopes, 0, implicitCandidates, implicitCandidateSet);
+        return 0;
+    }
+    if (kind == 5) {
+        moduleCheckExprImplicitImports(nodeGetData3(n), declared, imported,
+        scopes, depth, implicitCandidates, implicitCandidateSet);
+        moduleScopeDefine(scopes, depth, getInternedStr(nodeGetData1(n)));
+        return 0;
+    }
+    if (kind == 6) {
+        let names = nodeGetData1(n);
+        let i = 0;
+        let len = names.vecLength();
+        while (i < len) {
+            moduleScopeDefine(scopes, depth, getInternedStr(names.vecGet(i)));
+            i = i + 1;
+        }
+        return 0;
+    }
+    if (kind == 7) {
+        moduleCheckExprImplicitImports(nodeGetData1(n), declared, imported,
+        scopes, depth, implicitCandidates, implicitCandidateSet);
+        return 0;
+    }
+    if (kind == 13) {
+        moduleCheckExprImplicitImports(nodeGetData1(n), declared, imported,
+        scopes, depth, implicitCandidates, implicitCandidateSet);
+        moduleCheckExprImplicitImports(nodeGetData2(n), declared, imported,
+        scopes, depth, implicitCandidates, implicitCandidateSet);
+        return 0;
+    }
+    if (kind == 8) {
+        moduleCheckExprImplicitImports(nodeGetData1(n), declared, imported,
+        scopes, depth, implicitCandidates, implicitCandidateSet);
+        return 0;
+    }
+    if (kind == 9) {
+        moduleCheckExprImplicitImports(nodeGetData1(n), declared, imported,
+        scopes, depth, implicitCandidates, implicitCandidateSet);
+        moduleCheckStmtImplicitImports(nodeGetData2(n), declared, imported,
+        scopes, depth, implicitCandidates, implicitCandidateSet);
+        if (nodeGetData3(n) != 0) {
+            moduleCheckStmtImplicitImports(nodeGetData3(n), declared, imported,
+            scopes, depth, implicitCandidates, implicitCandidateSet);
+        }
+        return 0;
+    }
+    if (kind == 11) {
+        let nextDepth = depth + 1;
+        scopes.vecPush(setNew());
+        moduleScopeDefine(scopes, nextDepth, getInternedStr(nodeGetData1(n)));
+        moduleCheckExprImplicitImports(nodeGetData2(n), declared, imported,
+        scopes, nextDepth, implicitCandidates, implicitCandidateSet);
+        moduleCheckExprImplicitImports(nodeGetData3(n), declared, imported,
+        scopes, nextDepth, implicitCandidates, implicitCandidateSet);
+        moduleCheckStmtImplicitImports(nodeGetData4(n), declared, imported,
+        scopes, nextDepth, implicitCandidates, implicitCandidateSet);
+        scopes.vecPop();
+        return 0;
+    }
+    if (kind == 10) {
+        moduleCheckExprImplicitImports(nodeGetData1(n), declared, imported,
+        scopes, depth, implicitCandidates, implicitCandidateSet);
+        moduleCheckStmtImplicitImports(nodeGetData2(n), declared, imported,
+        scopes, depth, implicitCandidates, implicitCandidateSet);
+        return 0;
+    }
+    moduleCheckExprImplicitImports(n, declared, imported, scopes, depth,
+    implicitCandidates, implicitCandidateSet);
+    0
+}
+fn moduleCollectImplicitImportCandidates(program: I32, declared: *mut Set<I32>,
+imported: *mut Set<I32>) : Vec<I32> => {
+    let implicitCandidates = vecNew();
+    let implicitCandidateSet = setNew();
+    let topScopes = vecNew();
+    topScopes.vecPush(setNew());
+    let body = nodeGetData1(program);
+    let i = 0;
+    let len = body.vecLength();
+    while (i < len) {
+        moduleCheckStmtImplicitImports(body.vecGet(i), declared, imported, topScopes, 0,
+        implicitCandidates, implicitCandidateSet);
+        i = i + 1;
+    }
+    implicitCandidates
+}
+fn moduleAssertNoImplicitImports(implicitCandidates: Vec<I32>, allExportedDeclared: *mut Set<I32>,
+allExternDeclared: *mut Set<I32>) : I32 => {
+    let i = 0;
+    let len = implicitCandidates.vecLength();
+    while (i < len) {
+        let name = implicitCandidates.vecGet(i);
+        if (allExportedDeclared.setHas(name) && !allExternDeclared.setHas(name)) {
+            panicWithCode(
+            "E_MODULE_IMPLICIT_IMPORT",
+            "Strict module imports require explicit import for symbol '".strConcat(name).strConcat("'"),
+            "A module referenced a symbol declared in another module without importing it explicitly.",
+            "Add the symbol to the module import list (for example: let { symbol } = moduleName;)."
+            );
+        }
+        i = i + 1;
+    }
+    0
+}
+fn moduleHasOutExport(source: *Str, name: *Str) : Bool => {
+    source.strIncludes("out extern fn ".strConcat(name)) ||
+    source.strIncludes("extern out fn ".strConcat(name)) ||
+    source.strIncludes("out fn ".strConcat(name)) ||
+    source.strIncludes("out struct ".strConcat(name)) ||
+    source.strIncludes("out copy struct ".strConcat(name)) ||
+    source.strIncludes("copy out struct ".strConcat(name)) ||
+    source.strIncludes("out enum ".strConcat(name)) ||
+    source.strIncludes("out object ".strConcat(name)) ||
+    source.strIncludes("out contract ".strConcat(name)) ||
+    source.strIncludes("out type ".strConcat(name)) ||
+    source.strIncludes("out copy type ".strConcat(name)) ||
+    source.strIncludes("copy out type ".strConcat(name)) ||
+    source.strIncludes("out class fn ".strConcat(name))
+}
+fn modulePathToUnitKey(p: *Str, fallbackIdx: I32) : *Str => {
+    let key = moduleNormalizePath(p);
+    key = key.strReplaceAll(":", "_");
+    key = key.strReplaceAll("/", "_");
+    key = key.strReplaceAll("\\", "_");
+    key = key.strReplaceAll("-", "_");
+    key = key.strReplaceAll(".", "_");
+    key = key.strReplaceAll(".tuff", "");
+    if (key.strEq("")) {
+        return "module_".strConcat(intToString(fallbackIdx));
+    }
+    key
+}
+fn moduleBuildUnitKeys(modulePaths: Vec<*Str>) : Vec<*Str> => {
+    let keys = vecNew();
+    let seen = setNew();
+    let i = 0;
+    let len = modulePaths.vecLength();
+    while (i < len) {
+        let base = modulePathToUnitKey(modulePaths.vecGet(i), i);
+        let candidate = base;
+        let suffix = 2;
+        while (seen.setHas(candidate)) {
+            candidate = base.strConcat("_").strConcat(intToString(suffix));
+            suffix = suffix + 1;
+        }
+        seen.setAdd(candidate);
+        keys.vecPush(candidate);
+        i = i + 1;
+    }
+    keys
+}
+fn moduleFindOwnerKeyForName(name: *Str, modulePaths: Vec<*Str>, moduleKeys: Vec<*Str>,
+moduleDeclaredMap: Map<I32, I32>, fallbackKey: *Str) : *Str => {
+    let i = 0;
+    let len = modulePaths.vecLength();
+    while (i < len) {
+        let path = modulePaths.vecGet(i);
+        if (moduleDeclaredMap.mapHas(path)) {
+            let declared = moduleDeclaredMap.mapGet(path);
+            if (declared.setHas(name)) {
+                return moduleKeys.vecGet(i);
+            }
+        }
+        i = i + 1;
+    }
+    fallbackKey
+}
+fn moduleStmtOwnerKey(stmt: I32, modulePaths: Vec<*Str>, moduleKeys: Vec<*Str>,
+moduleDeclaredMap: Map<I32, I32>, fallbackKey: *Str) : *Str => {
+    let kind = nodeKind(stmt);
+    if (kind == 2 || // NK_FN_DECL
+    kind == 16 || // NK_CLASS_FN_DECL
+    kind == 3 || // NK_STRUCT_DECL
+    kind == 60 || // NK_ENUM_DECL
+    kind == 63 || // NK_OBJECT_DECL
+    kind == 65 || // NK_CONTRACT_DECL
+    kind == 4 || // NK_TYPE_ALIAS
+    kind == 5 || // NK_LET_DECL
+    kind == 18 || // NK_EXTERN_LET_DECL
+    kind == 19) { // NK_EXTERN_TYPE_DECL
+        return moduleFindOwnerKeyForName(getInternedStr(nodeGetData1(stmt)),
+        modulePaths, moduleKeys, moduleDeclaredMap, fallbackKey);
+    }
+    fallbackKey
+}
+fn moduleWriteCSplitOutputs(typed: I32, outputPath: *Str, modulePaths: Vec<*Str>,
+moduleDeclaredMap: Map<I32, I32>) : I32 => {
+    let moduleKeys = moduleBuildUnitKeys(modulePaths);
+    let fallbackKey = "main";
+    if (moduleKeys.vecLength() > 0) {
+        fallbackKey = moduleKeys.vecGet(moduleKeys.vecLength() - 1);
+    }
+    let stmts = nodeGetData1(typed);
+    let stmtOwners : Vec<*Str> = vecNew();
+    let i = 0;
+    let len = stmts.vecLength();
+    while (i < len) {
+        stmtOwners.vecPush(moduleStmtOwnerKey(stmts.vecGet(i), modulePaths, moduleKeys,
+        moduleDeclaredMap, fallbackKey));
+        i = i + 1;
+    }
+    let files = generateCSplitFiles(typed, __host_get_c_substrate(), moduleKeys, stmtOwners,
+    moduleKeys);
+    let manifestRows = vecNew();
+    i = 0;
+    let flen = files.vecLength();
+    while (i < flen) {
+        let rec = files.vecGet(i);
+        let rel = rec.vecGet(0);
+        let contents = rec.vecGet(1);
+        let full = pathJoin(outputPath, rel);
+        writeFile(full, contents);
+        manifestRows.vecPush(rel);
+        i = i + 1;
+    }
+    writeFile(pathJoin(outputPath, "manifest.txt"), manifestRows.vecJoin("\n"))
+}
+fn gatherModuleSources(filePath: *Str, moduleBasePath: *Str, seen: *mut Set<I32>, visiting: *mut Set<I32>,
+sources: Vec<*Str>, modulePaths: Vec<*Str>, moduleDeclaredMap: Map<I32, I32>, moduleExportedMap: Map<I32, I32>,
+moduleSourceCache: Map<I32, I32>, importPathCache: Map<I32, I32>, allDeclaredNames: *mut Set<I32>,
+allExportedDeclaredNames: *mut Set<I32>, allExternDeclaredNames: *mut Set<I32>, lintEnabled: I32,
+maxEffectiveLines: I32, moduleCycles: Vec<*Str>, recursionDepth: I32) : I32 => {
+    if (recursionDepth > MODULE_WATCHDOG_MAX_RECURSION_DEPTH) {
+        panicWithCode(
+        "E_MODULE_LOADER_WATCHDOG_RECURSION",
+        "Module loader recursion depth exceeded while loading ".strConcat(filePath),
+        "The module graph walk did not converge and exceeded the recursion safety limit.",
+        "Check import cycles and path normalization; ensure modules are de-duplicated by normalized absolute path."
+        );
+    }
+    filePath = moduleNormalizePath(filePath);
+    moduleBasePath = moduleNormalizePath(moduleBasePath);
+    if (seen.setHas(filePath)) {
+        return 0;
+    }
+    if (visiting.setHas(filePath)) {
+        if (lintEnabled == 1) {
+            moduleCycles.vecPush(filePath);
+            return 0;
+        }
+        panicWithCode(
+        "E_MODULE_CYCLE",
+        "Module import cycle detected at ".strConcat(filePath),
+        "A module was revisited while still being loaded, which means the import graph contains a cycle.",
+        "Break the cycle by extracting shared declarations into a third module imported by both sides."
+        );
+    }
+    visiting.setAdd(filePath);
+    let moduleT0 = perfNow();
+    gatherProfModules = gatherProfModules + 1;
+    let source = "";
+    if (moduleSourceCache.mapHas(filePath)) {
+        source = moduleSourceCache.mapGet(filePath);
+    }
+    else {
+        let tRead0 = perfNow();
+        source = readFile(filePath);
+        gatherProfReadFileMs = gatherProfReadFileMs + (perfNow() - tRead0);
+        moduleSourceCache.mapSet(filePath, source);
+    }
+    let tParse0 = perfNow();
+    lexInit(source);
+    lexAll();
+    if (lintEnabled == 1) {
+        lintCheckCurrentFileLength(filePath, maxEffectiveLines);
+    }
+    parseInit();
+    let program = pParseProgram();
+    gatherProfLexParseMs = gatherProfLexParseMs + (perfNow() - tParse0);
+    let stmts = nodeGetData1(program);
+    let tDecl0 = perfNow();
+    let declared = moduleCollectDeclaredSets(source, program, moduleDeclaredMap,
+    moduleExportedMap, filePath, allDeclaredNames, allExportedDeclaredNames,
+    allExternDeclaredNames);
+    gatherProfDeclCollectMs = gatherProfDeclCollectMs + (perfNow() - tDecl0);
+     // IMPORTANT: snapshot imports before recursive calls, because parse_init()
+     // in child modules clears global AST storage arrays.
+    let imports = moduleSnapshotImportSpecs(stmts, moduleBasePath, importPathCache);
+    let importedNames = moduleCollectImportedNames(imports);
+    let implicitCandidates = moduleCollectImplicitImportCandidates(program, declared,
+    importedNames);
+    moduleWalkImports(imports, moduleBasePath, seen, visiting, sources, modulePaths,
+    moduleDeclaredMap, moduleExportedMap, moduleSourceCache, importPathCache,
+    allDeclaredNames, allExportedDeclaredNames, allExternDeclaredNames, lintEnabled,
+    maxEffectiveLines, moduleCycles, recursionDepth);
+    let tImplicit0 = perfNow();
+    moduleAssertNoImplicitImports(implicitCandidates, allExportedDeclaredNames,
+    allExternDeclaredNames);
+    gatherProfImplicitCheckMs = gatherProfImplicitCheckMs + (perfNow() - tImplicit0);
+    visiting.setDelete(filePath);
+    seen.setAdd(filePath);
+    sources.vecPush(source);
+    modulePaths.vecPush(filePath);
+    0
+}
+out fn compileFile(inputPath: *Str, outputPath: *Str) : I32 => {
+    compileFileWithOptions(inputPath, outputPath, 0, 500, 1, "js")
+}
+out fn compileFileWithOptions(inputPath: *Str, outputPath: *Str, lintEnabled: I32,
+maxEffectiveLines: I32, borrowEnabled: I32, target: *Str) : I32 => {
+    let maxLines = moduleLoaderSanitizeMaxEffectiveLines(maxEffectiveLines);
+    let lint = moduleLoaderNormalizeFlag(lintEnabled);
+    let borrow = moduleLoaderNormalizeFlag(borrowEnabled);
+    inputPath = moduleNormalizePath(inputPath);
+    let moduleBasePath = moduleNormalizePath(pathDirname(inputPath));
+    let seen = setNew();
+    let visiting = setNew();
+    let sources = vecNew();
+    let modulePaths = vecNew();
+    let moduleDeclaredMap = mapNew();
+    let moduleExportedMap = mapNew();
+    let moduleSourceCache = mapNew();
+    let importPathCache = mapNew();
+    let allDeclaredNames = setNew();
+    let allExportedDeclaredNames = setNew();
+    let allExternDeclaredNames = setNew();
+    let moduleCycles = vecNew();
+    gatherProfReset();
+    lintReset();
+    sourcemapInit();
+    printError("[selfhost] phase: gather-modules:start");
+    let t0 = perfNow();
+    gatherModuleSources(inputPath, moduleBasePath, seen, visiting, sources, modulePaths,
+    moduleDeclaredMap, moduleExportedMap, moduleSourceCache, importPathCache,
+    allDeclaredNames, allExportedDeclaredNames, allExternDeclaredNames, lint, maxLines,
+    moduleCycles, 0);
+    let t1 = perfNow();
+    printError("[selfhost] phase: gather-modules:done modules=".strConcat(intToString(gatherProfModules)).strConcat(" ms=").strConcat(intToString(t1 - t0)));
+    let smI = 0;
+    let smLine = 1;
+    if (modulePaths.vecLength() > MODULE_WATCHDOG_MAX_SOURCEMAP_ENTRIES) {
+        panicWithCode(
+        "E_MODULE_LOADER_WATCHDOG_SOURCEMAP",
+        "Sourcemap entry count exceeded safety limit",
+        "Module collection produced an unexpectedly large number of source segments.",
+        "Inspect module graph expansion and ensure duplicate modules are not repeatedly re-added."
+        );
+    }
+    while (smI < modulePaths.vecLength()) {
+        let smPath = modulePaths.vecGet(smI);
+        let smSrc = sources.vecGet(smI);
+        sourcemapAdd(smPath, smLine);
+        smLine = smLine + sourcemapCountLines(smSrc) + 2;
+        smI = smI + 1;
+    }
+    let joined = joinSources(sources);
+    let merged = moduleWithCRuntimePrelude(joined, target);
+    let t2 = perfNow();
+    printError("[selfhost] phase: lex-parse-merged:start merged-bytes=".strConcat(intToString(merged.strLength())));
+    let t2LexInit0 = perfNow();
+    printError("[selfhost] phase: lex-parse-merged:lex-init:start");
+    lexInit(merged);
+    let t2LexInit1 = perfNow();
+    printError("[selfhost] phase: lex-parse-merged:lex-init:done ms=".strConcat(intToString(t2LexInit1 - t2LexInit0)));
+    let t2LexAll0 = perfNow();
+    printError("[selfhost] phase: lex-parse-merged:lex-all:start");
+    lexAll();
+    let t2LexAll1 = perfNow();
+    printError("[selfhost] phase: lex-parse-merged:lex-all:done ms=".strConcat(intToString(t2LexAll1 - t2LexAll0)));
+    let t2ParseInit0 = perfNow();
+    printError("[selfhost] phase: lex-parse-merged:parse-init:start");
+    parseInit();
+    let t2ParseInit1 = perfNow();
+    printError("[selfhost] phase: lex-parse-merged:parse-init:done ms=".strConcat(intToString(t2ParseInit1 - t2ParseInit0)));
+    let t2Parse0 = perfNow();
+    printError("[selfhost] phase: lex-parse-merged:parse-program:start");
+    let program = pParseProgram();
+    let t2Parse1 = perfNow();
+    printError("[selfhost] phase: lex-parse-merged:parse-program:done ms=".strConcat(intToString(t2Parse1 - t2Parse0)));
+    let t2Strip0 = perfNow();
+    printError("[selfhost] phase: lex-parse-merged:strip-imports:start");
+    program = stripImportDecls(program);
+    let t2Strip1 = perfNow();
+    printError("[selfhost] phase: lex-parse-merged:strip-imports:done ms=".strConcat(intToString(t2Strip1 - t2Strip0)));
+    printError("[selfhost] phase: lex-parse-merged:done total-ms=".strConcat(intToString(t2Strip1 - t2)));
+    let t3 = perfNow();
+    printError("[selfhost] phase: desugar:start");
+    let desugared = desugar(program);
+    printError("[selfhost] phase: resolve:start");
+    let resolvedResultAny = resolveNames(desugared);
+    if (resolvedResultAny is struct Err) {
+        panic("Resolver error: ".strConcat(resolvedResultAny.error.message));
+    }
+    let resolved = 0;
+    if (resolvedResultAny is struct Ok) {
+        resolved = resolvedResultAny.value;
+    }
+    else {
+        panic("Resolver returned unexpected result variant");
+    }
+    let t4 = perfNow();
+    printError("[selfhost] phase: typecheck:start");
+    let typedResultAny = typecheckProgramWithOptions(resolved);
+    if (typedResultAny is struct Err) {
+        panic("Typechecker error: ".strConcat(typedResultAny.error.message));
+    }
+    let typed = 0;
+    if (typedResultAny is struct Ok) {
+        typed = typedResultAny.value;
+    }
+    else {
+        panic("Typechecker returned unexpected result variant");
+    }
+    let t5 = perfNow();
+    if (borrow == 1) {
+        borrowcheckProgram(typed);
+    }
+    let t6 = perfNow();
+    if (lint == 1) {
+         // File-length lint already ran per module file during gather_module_sources.
+        lintProgram(typed, inputPath, maxLines, 0);
+        let i = 0;
+        let len = moduleCycles.vecLength();
+        while (i < len) {
+            lintAddCircularImportIssue(moduleCycles.vecGet(i));
+            i = i + 1;
+        }
+    }
+    let t7 = perfNow();
+    printError("[selfhost] phase: emit:start target=".strConcat(target));
+    if (target.strEq("c-split")) {
+        moduleWriteCSplitOutputs(typed, outputPath, modulePaths, moduleDeclaredMap);
+        let t8Split = perfNow();
+        printError("[selfhost] phase: done total-ms=".strConcat(intToString(t8Split - t0)));
+        return 0;
+    }
+    let emitted = moduleEmitTargetOutput(typed, merged, target);
+    let t8 = perfNow();
+    printError("[selfhost] phase: done total-ms=".strConcat(intToString(t8 - t0)));
+    writeFile(outputPath, emitted)
+}

@@ -15,18 +15,19 @@ function nowMs(): number {
   return Date.now();
 }
 
-const STAGE_EXPORT_NAMES = [
-  "compile_source",
-  "compile_file",
-  "compile_source_with_options",
-  "compile_file_with_options",
-  "take_lint_issues",
-  "main",
+const STAGE_EXPORT_NAMES: [camel: string, snake: string][] = [
+  ["compileSource", "compile_source"],
+  ["compileFile", "compile_file"],
+  ["compileSourceWithOptions", "compile_source_with_options"],
+  ["compileFileWithOptions", "compile_file_with_options"],
+  ["takeLintIssues", "take_lint_issues"],
+  ["main", "main"],
 ];
 const STAGE_EXPORTS_SNIPPET =
   `\nconst __exports = {};\n` +
   STAGE_EXPORT_NAMES.map(
-    (n) => `if (typeof ${n} !== "undefined") __exports.${n} = ${n};`,
+    ([camel, snake]) =>
+      `if (typeof ${camel} !== "undefined") { __exports.${camel} = ${camel}; __exports.${snake} = ${camel}; }`,
   ).join("\n") +
   `\nmodule.exports = __exports;`;
 

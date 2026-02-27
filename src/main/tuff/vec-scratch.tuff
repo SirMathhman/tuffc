@@ -49,7 +49,7 @@ out object None<T> {
 ;
 type Option<T> = Some<T> | None<T>;
 out module Option {
-    fn flat_map<T, U>(this : Option<T>, f : (T) => Option<U>) : Option<U> => {
+    fn flatMap<T, U>(this : Option<T>, f : (T) => Option<U>) : Option<U> => {
         if (this is Some<T>) {
              // Extract the value from Some<T>
             let someValue : Some<T> = this;
@@ -167,7 +167,7 @@ out fn Vec<T>() : Option<Vec<T>> => {
         */
         slice + index
     }
-    out fn get_mut(*mut this, index : Index) : *mut T => {
+    out fn getMut(*mut this, index : Index) : *mut T => {
          // Same logic applies as above
         slice + index
     }
@@ -199,11 +199,11 @@ out module Vec {
      // So we don't have to do <T : Equatable> for all three signatures
      // Reduces duplication
     template T : Equatable {
-        out fn remove_by_value(*mut this, value : *T) : Option<T> => {
-            index_of(this, value).flat_map(index => this.removeByIndex(index))
+        out fn removeByValue(*mut this, value : *T) : Option<T> => {
+            indexOf(this, value).flatMap(index => this.removeByIndex(index))
         }
-        out fn contains(this : *Vec<T>, element : *T) : Bool => index_of(element) is Some;
-        out fn index_of(this : *Vec<T>, element : *T) : Option<Vec<I32>::Index> => {
+        out fn contains(this : *Vec<T>, element : *T) : Bool => indexOf(element) is Some;
+        out fn indexOf(this : *Vec<T>, element : *T) : Option<Vec<I32>::Index> => {
             this.iterIndices()
             .filter(index => this.get(index).equalsTo(element))
             .first()
