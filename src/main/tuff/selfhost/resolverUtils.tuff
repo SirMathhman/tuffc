@@ -1,5 +1,5 @@
 let {
-    getInternedStr, vecNew, intToString
+    getInternedStr, vecNew, intToString, setNew
 }
  = selfhost::runtimeLexer;
 let {
@@ -9,6 +9,21 @@ let {
  = selfhost::parserCore;
 fn rslvUtilsPanicNode(errNode: I32, code: *Str, msg: *Str, reason: *Str, fix: *Str) : I32 =>
 panicWithCodeLoc(code, msg, reason, fix, nodeGetLine(errNode), nodeGetCol(errNode));
+// Initialize host builtins set once at module load for O(1) lookup
+fn initHostBuiltins() : *mut Set<*Str> => {
+    let builtins = setNew();
+    builtins.setAdd("sizeOf");
+    builtins.setAdd("malloc");
+    builtins.setAdd("realloc");
+    builtins.setAdd("free");
+    builtins.setAdd("memcpy");
+    builtins.setAdd("memset");
+    builtins.setAdd("drop");
+    builtins.setAdd("panic");
+    builtins.setAdd("this");
+    builtins
+};
+let HOST_BUILTINS : *mut Set<*Str> = initHostBuiltins();
  // Compute Levenshtein edit distance between two strings (two-row DP).
 fn levenshteinDistance(a: *Str, b: *Str) : I32 => {
     let an = 0 + a.strLength();
@@ -220,17 +235,7 @@ out fn rslvUtilsScopeHas(scopes: Vec<I32>, depth: I32, name: *Str) : Bool => {
     }
     false
 }
-out fn rslvUtilsIsHostBuiltinName(name: *Str) : Bool => {
-    name.strEq("sizeOf") ||
-    name.strEq("malloc") ||
-    name.strEq("realloc") ||
-    name.strEq("free") ||
-    name.strEq("memcpy") ||
-    name.strEq("memset") ||
-    name.strEq("drop") ||
-    name.strEq("panic") ||
-    name.strEq("this")
-}
+out fn rslvUtilsIsHostBuiltinName(name: *Str) : Bool => HOST_BUILTINS.setHas(name);
 fn lifetimeScopeHas(resolveLifetimeScopes: Vec<I32>, name: *Str) : Bool => {
     let len = resolveLifetimeScopes.vecLength();
     let mut i : I32 = 0;
