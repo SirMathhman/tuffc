@@ -16,11 +16,10 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { compileAndLoadSelfhost } from "../src/test/js/selfhost-harness.ts";
+import { getProjectRoot, getCandidateRoots, SelfhostCpdBridge } from "./common-scan-roots.ts";
 
-const thisFile = fileURLToPath(import.meta.url);
-const root = path.resolve(path.dirname(thisFile), "..");
+const root = getProjectRoot(import.meta.url);
 
 // ---------------------------------------------------------------------------
 // CLI args
@@ -40,15 +39,7 @@ const outDir = path.join(root, "tests", "out", "rename-snake-to-camel");
 fs.mkdirSync(outDir, { recursive: true });
 
 const { selfhost } = compileAndLoadSelfhost(root, outDir) as {
-  selfhost: {
-    cpd_lex_init(source: string): number;
-    cpd_lex_all(): number;
-    cpd_tok_kind(idx: number): number;
-    cpd_tok_value(idx: number): number;
-    cpd_tok_line(idx: number): number;
-    cpd_tok_col(idx: number): number;
-    cpd_get_interned_str(idx: number): string;
-  };
+  selfhost: SelfhostCpdBridge & { cpd_get_interned_str(idx: number): string };
 };
 
 // ---------------------------------------------------------------------------
@@ -70,14 +61,7 @@ function collectTuffFiles(dir: string): string[] {
   return result.sort();
 }
 
-const SCAN_DIRS = [
-  path.join(root, "src", "main", "tuff"),
-  path.join(root, "src", "main", "tuff-core"),
-  path.join(root, "src", "main", "tuff-js"),
-  path.join(root, "src", "main", "tuff-c"),
-  path.join(root, "src", "test", "tuff"),
-];
-
+const SCAN_DIRS = getCandidateRoots(root);
 const allFiles = SCAN_DIRS.flatMap(collectTuffFiles);
 console.log(`[rename] Scanning ${allFiles.length} .tuff files...\n`);
 

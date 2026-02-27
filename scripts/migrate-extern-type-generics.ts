@@ -1,8 +1,8 @@
 // @ts-nocheck
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { compileSourceResult } from "../src/main/js/compiler.ts";
+import { getProjectRoot, getCandidateRoots } from "./common-scan-roots.ts";
 
 type TargetExtern = {
   name: string;
@@ -16,8 +16,7 @@ const TARGETS: TargetExtern[] = [
   { name: "Set", defaults: ["T"], concrete: "Set<I32>" },
 ];
 
-const thisFile = fileURLToPath(import.meta.url);
-const root = path.resolve(path.dirname(thisFile), "..");
+const root = getProjectRoot(import.meta.url);
 
 function shouldSkipDir(fullPath: string): boolean {
   const normalized = fullPath.replaceAll("\\", "/").toLowerCase();
@@ -139,14 +138,8 @@ function transformViaAstRoundTrip(source: string, fileLabel: string): string {
 }
 
 function main(): void {
-  const candidateRoots = [
-    path.join(root, "src", "main", "tuff"),
-    path.join(root, "src", "main", "tuff-core"),
-    path.join(root, "src", "main", "tuff-js"),
-    path.join(root, "src", "main", "tuff-c"),
-    path.join(root, "src", "test", "tuff"),
-    path.join(root, "tests"),
-  ];
+  const candidateRoots = getCandidateRoots(root);
+  candidateRoots.push(path.join(root, "tests")); // Include tests directory
 
   const files: string[] = [];
   for (const dir of candidateRoots) {

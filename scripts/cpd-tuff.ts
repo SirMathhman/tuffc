@@ -6,11 +6,10 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { compileAndLoadSelfhost } from "../src/test/js/selfhost-harness.ts";
+import { getProjectRoot, SelfhostCpdBridge } from "./common-scan-roots.ts";
 
-const thisFile = fileURLToPath(import.meta.url);
-const root = path.resolve(path.dirname(thisFile), "..");
+const root = getProjectRoot(import.meta.url);
 
 export type CpdOptions = {
   minTokens: number;
@@ -67,15 +66,6 @@ type CpdSummary = {
   elapsedMs: number;
   findings: Finding[];
   mode: "strict" | "informational";
-};
-
-type SelfhostCpdBridge = {
-  cpd_lex_init(source: string): number;
-  cpd_lex_all(): number;
-  cpd_tok_kind(idx: number): number;
-  cpd_tok_value(idx: number): number;
-  cpd_tok_line(idx: number): number;
-  cpd_tok_col(idx: number): number;
 };
 
 const TK_KEYWORD = 1;
