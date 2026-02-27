@@ -11,6 +11,7 @@ import {
   readManifestLines,
 } from "./compiler.ts";
 import { formatDiagnostic, toDiagnostic } from "./errors.ts";
+import { loadTuffConfig } from "./config.ts";
 import { buildCertificate } from "./certificate.ts";
 import { writeTypstSource, compileTypstToPdf } from "./typst-render.ts";
 
@@ -39,7 +40,7 @@ function emitCertificateForInput(
 
 function printUsage(): void {
   console.log(
-    "Usage:\n  tuffc <input.tuff> [options]\n\nOptions:\n  -o, --out <file>          Write output to file\n  --target <js|c|c-split|tuff>\n                            Output target (default: js)\n  --native                  For target c/c-split, compile+link generated C to native executable\n  --native-out <file>       Native executable output path when using --native\n  --cc <compiler>           Native C compiler command (default: auto-detect clang/gcc/cc)\n  -I, --module-base <dir>   Module root directory (legacy compatibility; may be deprecated)\n  --selfhost                Use selfhost backend (default, only backend)\n  --backend <name>          Explicit backend name (default: selfhost)\n  --profile                 Emit per-phase compiler timing JSON\n  -Wall                     Enable common warnings (maps to lint warnings)\n  -Wextra                   Enable extra warnings (maps to lint warnings)\n  -Werror                   Treat warnings as errors (maps to lint strict mode)\n  -Werror=<group>           Treat warning group as errors (e.g. lint, all, extra)\n  -Wno-error                Disable warning-as-error mode\n  -Wno-error=<group>        Disable warning group as errors\n  -Wno-lint, -w             Disable warning/lint compatibility mapping\n  --lint                    Run lint checks\n  --lint-fix                Apply lint auto-fixes\n  --lint-strict             Treat lint findings as errors\n  --no-borrow               Disable borrowcheck (for bootstrap builds)\n  -O0|-O1|-O2|-O3|-Os      Optimization level (accepted; reserved for optimizer)\n  -g                        Emit debug info (accepted; reserved for debug metadata)\n  -c                        Compile only (default behavior; accepted for compatibility)\n  -std=<dialect>            Language dialect (e.g. -std=tuff2024)\n  --color=<auto|always|never>\n                            Diagnostics color policy\n  -fdiagnostics-color[=always|never|auto]\n                            Diagnostics color policy (clang-style)\n  @<file>                   Read additional args from response file\n  --json-errors             Emit diagnostics as JSON\n  --emit-certificate <file> Write a Tuff Verification Certificate (JSON) to file\n  -v, --verbose             Trace compiler passes\n  --trace-passes            Trace compiler passes\n  --version                 Print tuffc version\n  -h, --help                Show help\n  --help=<topic>            Show topic help (warnings|diagnostics|optimizers)\n\nNotes:\n  Module graph loading is always enabled for file compilation.\n\nDeprecated:\n  tuffc compile <input.tuff> [options]",
+    "Usage:\n  tuffc <input.tuff> [options]\n\nOptions:\n  -o, --out <file>          Write output to file\n  --target <js|c|c-split|tuff>\n                            Output target (default: js)\n  --native                  For target c/c-split, compile+link generated C to native executable\n  --native-out <file>       Native executable output path when using --native\n  --cc <compiler>           Native C compiler command (default: auto-detect clang/gcc/cc)\n  -I, --module-base <dir>   Module root directory (legacy compatibility; may be deprecated)\n  --selfhost                Use selfhost backend (default, only backend)\n  --backend <name>          Explicit backend name (default: selfhost)\n  --profile                 Emit per-phase compiler timing JSON\n  -Wall                     Enable common warnings (maps to lint warnings)\n  -Wextra                   Enable extra warnings (maps to lint warnings)\n  -Werror                   Treat warnings as errors (lint always errors when enabled)\n  -Werror=<group>           Treat warning group as errors (e.g. lint, all, extra)\n  -Wno-error                Disable warning-as-error mode\n  -Wno-error=<group>        Disable warning group as errors\n  -Wno-lint, -w             Disable warning/lint compatibility mapping\n  --lint                    Run lint checks (always strict; use tuff-lint for non-strict)\n  --no-borrow               Disable borrowcheck (for bootstrap builds)\n  -O0|-O1|-O2|-O3|-Os      Optimization level (accepted; reserved for optimizer)\n  -g                        Emit debug info (accepted; reserved for debug metadata)\n  -c                        Compile only (default behavior; accepted for compatibility)\n  -std=<dialect>            Language dialect (e.g. -std=tuff2024)\n  --color=<auto|always|never>\n                            Diagnostics color policy\n  -fdiagnostics-color[=always|never|auto]\n                            Diagnostics color policy (clang-style)\n  @<file>                   Read additional args from response file\n  --json-errors             Emit diagnostics as JSON\n  --emit-certificate <file> Write a Tuff Verification Certificate (JSON) to file\n  -v, --verbose             Trace compiler passes\n  --trace-passes            Trace compiler passes\n  --version                 Print tuffc version\n  -h, --help                Show help\n  --help=<topic>            Show topic help (warnings|diagnostics|optimizers)\n\nNotes:\n  Module graph loading is always enabled for file compilation.\n  Lint settings are loaded from tuff.json in the project directory.\n  Use 'tuff-lint' CLI for more lint options (--fix, --strict, etc.).\n\nDeprecated:\n  tuffc compile <input.tuff> [options]",
   );
 }
 
@@ -423,8 +424,6 @@ function main(argv: string[]): void {
   let requestedBackend = undefined;
   let lint = false;
   let noBorrow = false;
-  let lintFix = false;
-  let lintStrict = false;
   let tracePasses = false;
   let target = "js";
   let warningFlagsRequested = false;
@@ -507,7 +506,6 @@ function main(argv: string[]): void {
     }
     if (args[i] === "-Wno-error") {
       warningFlagsStrict = false;
-      lintStrict = false;
       continue;
     }
     if (args[i].startsWith("-Wno-error=")) {
@@ -546,7 +544,6 @@ function main(argv: string[]): void {
       warningFlagsRequested = false;
       warningFlagsStrict = false;
       lint = false;
-      lintStrict = false;
       continue;
     }
     if (args[i] === "-c") {
@@ -704,16 +701,6 @@ function main(argv: string[]): void {
       lint = true;
       continue;
     }
-    if (args[i] === "--lint-fix") {
-      lint = true;
-      lintFix = true;
-      continue;
-    }
-    if (args[i] === "--lint-strict") {
-      lint = true;
-      lintStrict = true;
-      continue;
-    }
     if (args[i] === "--no-borrow") {
       noBorrow = true;
       continue;
@@ -781,8 +768,11 @@ function main(argv: string[]): void {
 
   if (backend === "selfhost") {
     if (warningFlagsRequested || warningGroups.size > 0) lint = true;
-    if (warningFlagsStrict || strictViaGroups) lintStrict = true;
   }
+
+  // Load config when lint is enabled
+  const inputDir = path.dirname(path.resolve(input));
+  const config = lint ? loadTuffConfig(inputDir) : { lint: {} };
 
   if (tracePasses) {
     if (compileOnly) {
@@ -832,8 +822,10 @@ function main(argv: string[]): void {
     },
     lint: {
       enabled: lint,
-      fix: lintFix,
-      mode: lintStrict ? "error" : "warn",
+      fix: false,
+      mode: "error",
+      maxEffectiveLines: config.lint?.maxEffectiveLines ?? 500,
+      astDupEnabled: config.lint?.astDuplicates ?? true,
     },
     target,
     tracePasses,
