@@ -5,10 +5,13 @@ import { getCLIPaths } from "./path-test-utils.ts";
 
 const { root, tsxCli, nodeExec, nativeCli } = getCLIPaths(import.meta.url);
 
+const SPAWN_TIMEOUT_MS = 30_000;
+
 function runTsCli(args) {
   return spawnSync(nodeExec, [tsxCli, "./src/main/js/cli.ts", ...args], {
     cwd: root,
     encoding: "utf8",
+    timeout: SPAWN_TIMEOUT_MS,
   });
 }
 
@@ -16,6 +19,7 @@ function runNativeCli(args) {
   return spawnSync(nodeExec, [nativeCli, ...args], {
     cwd: root,
     encoding: "utf8",
+    timeout: SPAWN_TIMEOUT_MS,
   });
 }
 
@@ -75,7 +79,7 @@ const nativeParsable = (() => {
       "-o",
       path.join(root, "tests", "out", "cli-hardening", "native-probe.js"),
     ],
-    { cwd: root, encoding: "utf8" },
+    { cwd: root, encoding: "utf8", timeout: SPAWN_TIMEOUT_MS },
   );
   return probe.status === 0;
 })();

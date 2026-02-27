@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "allowImportingTsExtensions": false,
+    "outDir": "dist/scripts",
+    "declaration": false,
+    "sourceMap": false
+  },
+  "include": [
+    "scripts/build-selfhost-js.ts",
+    "scripts/build-both.ts",
+    "scripts/build-native-binary.ts",
+    "scripts/with-timeout.ts",
+    "scripts/profile-compiler.ts",
+    "scripts/run-native-selfhost.ts"
+  ]
+}
