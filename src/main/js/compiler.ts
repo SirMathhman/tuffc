@@ -203,6 +203,91 @@ function buildModuleSourceOrder(entryAbsPath, moduleBaseAbsPath) {
   return { order, sourceByFile };
 }
 
+function tryStatMtimeMs(filePath: string): number | undefined {
+  try {
+    return fs.statSync(filePath).mtimeMs;
+  } catch {
+    return undefined;
+  }
+}
+
+function listTuffFilesRecursive(rootDir: string): string[] {
+  const out: string[] = [];
+  const stack = [rootDir];
+  while (stack.length > 0) {
+    const cur = stack.pop()!;
+    let entries: fs.Dirent[] = [];
+    try {
+      entries = fs.readdirSync(cur, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      const full = path.join(cur, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(full);
+        continue;
+      }
+      if (entry.isFile() && full.toLowerCase().endsWith(".tuff")) {
+        out.push(full);
+      }
+    }
+  }
+  return out;
+}
+
+function splitModeKey(options: Record<string, unknown>): string {
+  return typeof options?.cSubstrateMode === "string"
+    ? options.cSubstrateMode
+    : "default";
+}
+
+function isSplitOutputUpToDate(
+  entryAbsPath: string,
+  moduleBaseAbsPath: string,
+  outputDir: string,
+  modeKey: string,
+): boolean {
+  const manifestPath = path.join(outputDir, "manifest.txt");
+  const manifestMtime = tryStatMtimeMs(manifestPath);
+  if (manifestMtime === undefined) return false;
+  const metaPath = path.join(outputDir, ".tuffcsplit.meta.json");
+  try {
+    const meta = JSON.parse(fs.readFileSync(metaPath, "utf8"));
+    if (meta?.modeKey !== modeKey) return false;
+  } catch {
+    return false;
+  }
+
+  const manifestRows = fs
+    .readFileSync(manifestPath, "utf8")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  if (manifestRows.length === 0) return false;
+
+  let oldestGenerated = manifestMtime;
+  for (const rel of manifestRows) {
+    const fileMtime = tryStatMtimeMs(path.join(outputDir, rel));
+    if (fileMtime === undefined) return false;
+    if (fileMtime < oldestGenerated) oldestGenerated = fileMtime;
+  }
+
+  const sourceFiles = listTuffFilesRecursive(moduleBaseAbsPath);
+  if (!sourceFiles.includes(entryAbsPath)) {
+    sourceFiles.push(entryAbsPath);
+  }
+  if (sourceFiles.length === 0) return false;
+  let newestSource = 0;
+  for (const modulePath of sourceFiles) {
+    const moduleMtime = tryStatMtimeMs(modulePath);
+    if (moduleMtime === undefined) continue;
+    if (moduleMtime > newestSource) newestSource = moduleMtime;
+  }
+  if (newestSource === 0) return false;
+  return newestSource <= oldestGenerated;
+}
+
 function countLines(source) {
   if (source.length === 0) return 1;
   return source.split(/\r?\n/).length;
@@ -1116,6 +1201,34 @@ function compileFileInternal(
   outputPath: string | undefined = undefined,
   options: Record<string, unknown> = {},
 ): CompilerResult<Record<string, unknown>> {
+  const target = getCodegenTarget(options);
+  const absInput = path.resolve(inputPath);
+  const finalOutput = outputPath ?? defaultOutputPath(absInput, target);
+  const lintEnabled = options.lint?.enabled === true;
+  const lintFix = options.lint?.fix === true;
+  if (target === "c-split" && !lintEnabled && !lintFix) {
+    const moduleBaseAbsPath = path.resolve(
+      options.modules?.moduleBaseDir ?? path.dirname(absInput),
+    );
+    if (
+      isSplitOutputUpToDate(
+        absInput,
+        moduleBaseAbsPath,
+        finalOutput,
+        splitModeKey(options),
+      )
+    ) {
+      return ok({
+        outputPath: finalOutput,
+        skipped: true,
+        lintIssues: [],
+        lintFixesApplied: 0,
+        lintFixedSource: undefined,
+        profileJson: "",
+        profile: undefined,
+      });
+    }
+  }
   return withCompileContext(options, (ctx) => {
     const {
       target,
@@ -1127,8 +1240,6 @@ function compileFileInternal(
       maxEffectiveLines,
       lintMode,
     } = ctx;
-    const absInput = path.resolve(inputPath);
-    const finalOutput = outputPath ?? defaultOutputPath(absInput, target);
     const source = fs.readFileSync(absInput, "utf8");
 
     let js;
@@ -1190,6 +1301,11 @@ function compileFileInternal(
         js = fs.existsSync(manifestPath)
           ? fs.readFileSync(manifestPath, "utf8")
           : "";
+        fs.writeFileSync(
+          path.join(finalOutput, ".tuffcsplit.meta.json"),
+          JSON.stringify({ modeKey: splitModeKey(options) }),
+          "utf8",
+        );
       } else {
         js = fs.readFileSync(finalOutput, "utf8");
       }

@@ -872,6 +872,7 @@ function main(argv: string[]): void {
 
   const {
     outputPath,
+    skipped = false,
     lintIssues = [],
     lintFixesApplied = 0,
     lintFixedSource = undefined,
@@ -885,7 +886,11 @@ function main(argv: string[]): void {
     console.log(`Applied ${lintFixesApplied} lint auto-fix(es) to ${input}`);
   }
 
-  console.log(`Compiled ${input} -> ${outputPath}`);
+  if (skipped) {
+    console.log(`Skipped (up-to-date) ${input} -> ${outputPath}`);
+  } else {
+    console.log(`Compiled ${input} -> ${outputPath}`);
+  }
 
   if (profile) {
     if (typeof profileJson === "string" && profileJson.length > 0) {
