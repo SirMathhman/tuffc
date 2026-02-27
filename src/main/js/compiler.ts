@@ -929,6 +929,24 @@ function withCompileContext<T>(
   return fn(ctxResult.value);
 }
 
+function makeStrBoundsError(
+  fnName: string,
+  constrainedArg: string,
+  boundFn: string,
+  refArg: string,
+): TuffError {
+  return new TuffError(
+    `Call to '${fnName}' argument '${constrainedArg}' must be proven < ${boundFn}(${refArg})`,
+    undefined,
+    {
+      code: "E_SAFETY_STR_BOUNDS_UNPROVEN",
+      reason:
+        "A refinement-constrained parameter is called without any compile-time proof guard.",
+      fix: `Add a guard like 'if (${constrainedArg} < ${boundFn}(${refArg})) { ... }' before the call.`,
+    },
+  );
+}
+
 function preflightRefinementCallGuards(
   source: string,
   filePath: string,
@@ -1007,18 +1025,7 @@ function preflightRefinementCallGuards(
         `if\\s*\\(\\s*${constrainedArg}\\s*<\\s*${rule.boundFn}\\s*\\(\\s*${refArg}\\s*\\)`,
       );
       if (!guardPattern.test(source)) {
-        return err(
-          new TuffError(
-            `Call to '${fnName}' argument '${constrainedArg}' must be proven < ${rule.boundFn}(${refArg})`,
-            undefined,
-            {
-              code: "E_SAFETY_STR_BOUNDS_UNPROVEN",
-              reason:
-                "A refinement-constrained parameter is called without any compile-time proof guard.",
-              fix: `Add a guard like 'if (${constrainedArg} < ${rule.boundFn}(${refArg})) { ... }' before the call.`,
-            },
-          ),
-        );
+        return err(makeStrBoundsError(fnName, constrainedArg, rule.boundFn, refArg));
       }
     }
   }
@@ -1040,18 +1047,7 @@ function preflightRefinementCallGuards(
       `if\\s*\\(\\s*${constrainedArg}\\s*<\\s*${boundFn}\\s*\\(\\s*${refArg}\\s*\\)`,
     );
     if (unguardedCall.test(source) && !guarded.test(source)) {
-      return err(
-        new TuffError(
-          `Call to '${fnName}' argument '${constrainedArg}' must be proven < ${boundFn}(${refArg})`,
-          undefined,
-          {
-            code: "E_SAFETY_STR_BOUNDS_UNPROVEN",
-            reason:
-              "A refinement-constrained parameter is called without any compile-time proof guard.",
-            fix: `Add a guard like 'if (${constrainedArg} < ${boundFn}(${refArg})) { ... }' before the call.`,
-          },
-        ),
-      );
+      return err(makeStrBoundsError(fnName, constrainedArg, boundFn, refArg));
     }
   }
 

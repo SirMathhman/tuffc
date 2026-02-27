@@ -305,6 +305,23 @@ function updateCaseSnapshot(caseId: number, snapshot: string): void {
   }
 }
 
+function runNativeCliFile(
+  inputPath: string,
+  outputPath: string,
+): { ok: true; output: string } | { ok: false; errorMessage: string } {
+  const run = spawnSync(nodeExec, [nativeCli, inputPath, "-o", outputPath], {
+    cwd: root,
+    encoding: "utf8",
+  });
+  if (run.status !== 0 || !fs.existsSync(outputPath)) {
+    return {
+      ok: false,
+      errorMessage: `${run.stderr ?? ""}\n${run.stdout ?? ""}`.trim(),
+    };
+  }
+  return { ok: true, output: fs.readFileSync(outputPath, "utf8") };
+}
+
 function compileViaNativeCli(
   source: string,
   label: string,
@@ -314,20 +331,20 @@ function compileViaNativeCli(
   const inputPath = path.join(nativeTmpDir, `${base}.tuff`);
   const outputPath = path.join(nativeTmpDir, `${base}.js`);
   fs.writeFileSync(inputPath, source, "utf8");
+  return runNativeCliFile(inputPath, outputPath);
+}
 
-  const run = spawnSync(nodeExec, [nativeCli, inputPath, "-o", outputPath], {
-    cwd: root,
-    encoding: "utf8",
-  });
-
-  if (run.status !== 0 || !fs.existsSync(outputPath)) {
+function mapCompilerResult(
+  result: ReturnType<typeof compileSourceResult>,
+): { ok: true; output: string } | { ok: false; errorMessage: string; errorCode: string } {
+  if (!result.ok) {
     return {
       ok: false,
-      errorMessage: `${run.stderr ?? ""}\n${run.stdout ?? ""}`.trim(),
+      errorMessage: String(result.error?.message ?? "<unknown compile error>"),
+      errorCode: String(result.error?.code ?? ""),
     };
   }
-
-  return { ok: true, output: fs.readFileSync(outputPath, "utf8") };
+  return { ok: true, output: result.value.output };
 }
 
 function compileWithBackend(
@@ -346,14 +363,7 @@ function compileWithBackend(
     backend,
     target: "js",
   });
-  if (!result.ok) {
-    return {
-      ok: false,
-      errorMessage: String(result.error?.message ?? "<unknown compile error>"),
-      errorCode: String(result.error?.code ?? ""),
-    };
-  }
-  return { ok: true, output: result.value.output };
+  return mapCompilerResult(result);
 }
 
 function compileFileWithBackend(
@@ -365,17 +375,7 @@ function compileFileWithBackend(
   | { ok: true; output: string }
   | { ok: false; errorMessage: string; errorCode?: string } {
   if (backend === "native-exe") {
-    const run = spawnSync(nodeExec, [nativeCli, inputPath, "-o", outputPath], {
-      cwd: root,
-      encoding: "utf8",
-    });
-    if (run.status !== 0 || !fs.existsSync(outputPath)) {
-      return {
-        ok: false,
-        errorMessage: `${run.stderr ?? ""}\n${run.stdout ?? ""}`.trim(),
-      };
-    }
-    return { ok: true, output: fs.readFileSync(outputPath, "utf8") };
+    return runNativeCliFile(inputPath, outputPath);
   }
 
   const result = compileFileResult(inputPath, outputPath, {
@@ -383,14 +383,7 @@ function compileFileWithBackend(
     backend,
     target: "js",
   });
-  if (!result.ok) {
-    return {
-      ok: false,
-      errorMessage: String(result.error?.message ?? "<unknown compile error>"),
-      errorCode: String(result.error?.code ?? ""),
-    };
-  }
-  return { ok: true, output: result.value.output };
+  return mapCompilerResult(result);
 }
 
 function materializeCaseFiles(testCase: DbCase): {

@@ -14,12 +14,13 @@ import process from "node:process";
 
 const args = process.argv.slice(2);
 const force = args.includes("--force");
+const SEPARATOR = `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
 
 function run(command: string, args: string[], label: string): void {
-  console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+  console.log(`\n${SEPARATOR}`);
   console.log(`📦 Building ${label}...`);
   console.log(`    $ ${command} ${args.join(" ")}`);
-  console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+  console.log(SEPARATOR);
   const result = spawnSync(command, args, {
     stdio: "inherit",
     shell: true,
@@ -59,6 +60,6 @@ run(
 // Step 3: Build generated.exe (copy native to dist)
 run("npx", ["tsx", "./scripts/build-native-binary.ts"], "generated.exe");
 
-console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+console.log(`\n${SEPARATOR}`);
 console.log(`✨ All build artifacts complete!`);
-console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+console.log(SEPARATOR);

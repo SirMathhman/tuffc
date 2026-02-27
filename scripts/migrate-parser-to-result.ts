@@ -9,6 +9,8 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+import { runFileMigration } from "./fix-utils.ts";
+
 const TUFFC_ROOT = path.resolve(__dirname, "..");
 
 // Functions to migrate to Result<I32, ParseError>
@@ -125,15 +127,10 @@ function main() {
     "src/main/tuff/selfhost/parser_core.tuff",
   ].map((f) => path.join(TUFFC_ROOT, f));
 
-  let totalModified = 0;
-  for (const file of files) {
-    if (migrateFile(file)) {
-      totalModified++;
-    }
-  }
+  const { totalModified, total } = runFileMigration(files, migrateFile);
 
   console.log(`\n=== Summary ===`);
-  console.log(`Files modified: ${totalModified}/${files.length}`);
+  console.log(`Files modified: ${totalModified}/${total}`);
   console.log(`\nNext steps:`);
   console.log(`1. Convert function signatures to Result<I32, ParseError>`);
   console.log(`2. Add ? operators for error propagation`);

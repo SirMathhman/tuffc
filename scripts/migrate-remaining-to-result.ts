@@ -9,6 +9,8 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+import { runFileMigration } from "./fix-utils.ts";
+
 const TUFFC_ROOT = path.resolve(__dirname, "..");
 
 // Map of files to error types
@@ -99,15 +101,10 @@ function main() {
     path.join(TUFFC_ROOT, f),
   );
 
-  let totalModified = 0;
-  for (const file of files) {
-    if (migrateFile(file)) {
-      totalModified++;
-    }
-  }
+  const { totalModified, total } = runFileMigration(files, migrateFile);
 
   console.log(`\n=== Summary ===`);
-  console.log(`Files modified: ${totalModified}/${files.length}`);
+  console.log(`Files modified: ${totalModified}/${total}`);
   console.log(`\nArchitectural status:`);
   console.log(`✅ All error types have 'out' exports`);
   console.log(`✅ Result infrastructure complete`);

@@ -65,9 +65,7 @@ function runBuild(changedFile?: string): void {
 
   if (result.error) {
     const err = result.error as NodeJS.ErrnoException;
-    console.error(
-      `[watch] ❌ build error after ${elapsed}ms: ${err.message}`,
-    );
+    console.error(`[watch] ❌ build error after ${elapsed}ms: ${err.message}`);
   } else if (result.status !== 0) {
     console.error(
       `[watch] ❌ build failed after ${elapsed}ms (exit ${String(result.status)})`,

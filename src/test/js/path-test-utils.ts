@@ -65,6 +65,34 @@ export function selectCCompiler(logPrefix = ""): string {
   return "";
 }
 
+/**
+ * Run a tsx script as a child process; exit with code 1 on failure.
+ * @param label   Used in the error message (e.g. "db-multifile-smoke").
+ * @param root    Repo root path.
+ * @param script  Absolute path to the .ts script to run.
+ * @param args    Extra CLI arguments to pass.
+ */
+export function runTestScript(
+  label: string,
+  root: string,
+  script: string,
+  args: string[] = [],
+): void {
+  const nodeExec = getNodeExecPath();
+  const tsxCli = getTsxCliPath(root);
+  const result = spawnSync(nodeExec, [tsxCli, script, ...args], {
+    cwd: root,
+    encoding: "utf8",
+    stdio: "inherit",
+  });
+  if (result.error || result.status !== 0) {
+    console.error(
+      `[${label}] failed running ${script}: ${result.error?.message ?? `exit ${result.status}`}`,
+    );
+    process.exit(result.status ?? 1);
+  }
+}
+
 export function createBuildRunUtils(logPrefix: string) {
   function formatBytes(n: number): string {
     if (!Number.isFinite(n)) return "unknown";

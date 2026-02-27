@@ -36,11 +36,13 @@
     "profile:compiler": "tsx ./scripts/profile-compiler.ts",
     "seed:db:unions": "tsx ./scripts/seed-db-union-features.ts",
     "seed:db:strings": "tsx ./scripts/seed-db-string-slice-lifetime.ts",
-    "seed:db:lifetime": "tsx ./scripts/seed-db-lifetime-sanity-checks.ts"
+    "seed:db:lifetime": "tsx ./scripts/seed-db-lifetime-sanity-checks.ts",
+    "prepare": "husky"
   },
   "devDependencies": {
     "@types/node": "^25.3.0",
     "esbuild": "^0.25.12",
+    "husky": "^9.1.7",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   }

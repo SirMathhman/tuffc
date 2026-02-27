@@ -13,6 +13,13 @@ import { formatDiagnostic, toDiagnostic } from "./errors.ts";
 import { buildCertificate } from "./certificate.ts";
 import { writeTypstSource, compileTypstToPdf } from "./typst-render.ts";
 
+function emitCertificate(cert: ReturnType<typeof buildCertificate>, certificatePath: string): void {
+  fs.writeFileSync(certificatePath, JSON.stringify(cert, undefined, 2), "utf8");
+  console.log(`Certificate written to ${certificatePath}`);
+  const typPath = writeTypstSource(cert, certificatePath);
+  if (typPath) compileTypstToPdf(typPath);
+}
+
 function printUsage(): void {
   console.log(
     "Usage:\n  tuffc <input.tuff> [options]\n\nOptions:\n  -o, --out <file>          Write output to file\n  --target <js|c|c-split|tuff>\n                            Output target (default: js)\n  --native                  For target c/c-split, compile+link generated C to native executable\n  --native-out <file>       Native executable output path when using --native\n  --cc <compiler>           Native C compiler command (default: auto-detect clang/gcc/cc)\n  -I, --module-base <dir>   Module root directory (legacy compatibility; may be deprecated)\n  --selfhost                Use selfhost backend (default, only backend)\n  --backend <name>          Explicit backend name (default: selfhost)\n  --profile                 Emit per-phase compiler timing JSON\n  -Wall                     Enable common warnings (maps to lint warnings)\n  -Wextra                   Enable extra warnings (maps to lint warnings)\n  -Werror                   Treat warnings as errors (maps to lint strict mode)\n  -Werror=<group>           Treat warning group as errors (e.g. lint, all, extra)\n  -Wno-error                Disable warning-as-error mode\n  -Wno-error=<group>        Disable warning group as errors\n  -Wno-lint, -w             Disable warning/lint compatibility mapping\n  --lint                    Run lint checks\n  --lint-fix                Apply lint auto-fixes\n  --lint-strict             Treat lint findings as errors\n  --no-borrow               Disable borrowcheck (for bootstrap builds)\n  -O0|-O1|-O2|-O3|-Os      Optimization level (accepted; reserved for optimizer)\n  -g                        Emit debug info (accepted; reserved for debug metadata)\n  -c                        Compile only (default behavior; accepted for compatibility)\n  -std=<dialect>            Language dialect (e.g. -std=tuff2024)\n  --color=<auto|always|never>\n                            Diagnostics color policy\n  -fdiagnostics-color[=always|never|auto]\n                            Diagnostics color policy (clang-style)\n  @<file>                   Read additional args from response file\n  --json-errors             Emit diagnostics as JSON\n  --emit-certificate <file> Write a Tuff Verification Certificate (JSON) to file\n  -v, --verbose             Trace compiler passes\n  --trace-passes            Trace compiler passes\n  --version                 Print tuffc version\n  -h, --help                Show help\n  --help=<topic>            Show topic help (warnings|diagnostics|optimizers)\n\nNotes:\n  Module graph loading is always enabled for file compilation.\n\nDeprecated:\n  tuffc compile <input.tuff> [options]",
@@ -841,14 +848,7 @@ function main(argv: string[]): void {
           diagnosticCodes: [diag.code].filter(Boolean),
         },
       });
-      fs.writeFileSync(
-        certificatePath,
-        JSON.stringify(cert, undefined, 2),
-        "utf8",
-      );
-      console.log(`Certificate written to ${certificatePath}`);
-      const typPath0 = writeTypstSource(cert, certificatePath);
-      if (typPath0) compileTypstToPdf(typPath0);
+      emitCertificate(cert, certificatePath);
     }
     process.exitCode = 1;
     return;
@@ -860,14 +860,7 @@ function main(argv: string[]): void {
       compilerVersion: readVersion(),
       outcome: { success: true, diagnosticCodes: [] },
     });
-    fs.writeFileSync(
-      certificatePath,
-      JSON.stringify(cert, undefined, 2),
-      "utf8",
-    );
-    console.log(`Certificate written to ${certificatePath}`);
-    const typPath1 = writeTypstSource(cert, certificatePath);
-    if (typPath1) compileTypstToPdf(typPath1);
+    emitCertificate(cert, certificatePath);
   }
 
   const {
