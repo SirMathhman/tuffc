@@ -257,6 +257,7 @@ if (canReuseStage3C) {
       500, // maxEffectiveLines
       1, // borrowEnabled=1
       "c",
+      0, // astDupEnabled=0
     );
   } catch (e) {
     console.error(

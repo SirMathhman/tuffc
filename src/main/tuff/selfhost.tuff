@@ -254,7 +254,7 @@ out fn cpdTokLine(idx: I32) : I32 => tokLine(idx);
 out fn cpdTokCol(idx: I32) : I32 => tokCol(idx);
 out fn cpdGetInternedStr(idx: I32) : *Str => getInternedStr(idx);
  // Main compiler pipeline
-fn compileSource(source: *Str) : *Str => compileSourceWithOptions(source, 0, 500, 1, "js");
+fn compileSource(source: *Str) : *Str => compileSourceWithOptions(source, 0, 500, 1, "js", 0);
  // Linter CLI entry point
 fn mainLint() : I32 => {
     let argc = getArgc();
@@ -285,7 +285,7 @@ fn mainLint() : I32 => {
         else if (arg.strEq("--max-lines")) {
             i = i + 1;
             if (i < argc) {
-                maxLines = intParse(getArgv(i));
+                maxLines = parseInt(getArgv(i));
                 if (maxLines <= 0) {
                     printError("Invalid value for --max-lines");
                     hadError = 1;
@@ -316,7 +316,7 @@ fn mainLint() : I32 => {
         return 1;
     }
      // Use a scratch output path (linter doesn't use the compiled output)
-    let scratchOutput = "/tmp/tuff-lint-scratch.js";
+    let scratchOutput = "C:\\\\Windows\\\\Temp\\\\tuff-lint-scratch.js";
      // Compile with lint enabled (always strict in lint mode)
     let resultCode = compileFileWithOptions(inputFile, scratchOutput, 1, maxLines,
     borrowEnabled, target, astDupEnabled);

@@ -1329,7 +1329,7 @@ fn lintCheckAstDuplicates(program: I32) : I32 => {
 }
 
 out fn lintProgram(program: I32, filePath: *Str, maxEffectiveLines: I32, enforceFileLength:
-I32) : I32 => {
+I32, astDupEnabled: I32) : I32 => {
     if (enforceFileLength == 1) {
         lintCheckFileLength(filePath, maxEffectiveLines);
     }
@@ -1376,7 +1376,9 @@ I32) : I32 => {
         i = i + 1;
     }
 
-    lintCheckAstDuplicates(program);
+    if (astDupEnabled == 1) {
+        lintCheckAstDuplicates(program);
+    }
 
     0
 }

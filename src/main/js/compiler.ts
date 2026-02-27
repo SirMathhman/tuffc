@@ -817,6 +817,7 @@ function getSelfhostLintConfig(options) {
     lintFix: options.lint?.fix === true,
     maxEffectiveLines: options.lint?.maxEffectiveLines ?? 500,
     lintMode: options.lint?.mode ?? "error",
+    lintAstDupEnabled: options.lint?.astDupEnabled !== false ? 1 : 0,
   };
 }
 
@@ -1080,6 +1081,7 @@ export function compileSource(
       lintFix,
       maxEffectiveLines,
       lintMode,
+      lintAstDupEnabled,
     }) => {
       let js;
       setSubstrateOverrideFromOptions(options, target, "selfhost");
@@ -1092,6 +1094,7 @@ export function compileSource(
           maxEffectiveLines,
           borrowEnabled ? 1 : 0,
           target,
+          lintAstDupEnabled,
         );
       } catch (error) {
         return err(
@@ -1123,6 +1126,7 @@ function runSelfhostCompileSource(
   maxEffectiveLines: unknown,
   borrowEnabled: unknown,
   target: unknown,
+  lintAstDupEnabled?: unknown,
 ): string {
   return run("selfhost-compile-source", () =>
     typeof selfhost.compile_source_with_options === "function"
@@ -1133,8 +1137,16 @@ function runSelfhostCompileSource(
             mel: unknown,
             be: unknown,
             t: unknown,
+            ade: unknown,
           ) => string
-        )(source, lintEnabled, maxEffectiveLines, borrowEnabled, target)
+        )(
+          source,
+          lintEnabled,
+          maxEffectiveLines,
+          borrowEnabled,
+          target,
+          lintAstDupEnabled ?? 1,
+        )
       : (selfhost.compile_source as (src: string) => string)(source),
   );
 }

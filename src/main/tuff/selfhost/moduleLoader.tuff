@@ -767,10 +767,10 @@ maxEffectiveLines: I32, moduleCycles: Vec<*Str>, recursionDepth: I32) : I32 => {
     0
 }
 out fn compileFile(inputPath: *Str, outputPath: *Str) : I32 => {
-    compileFileWithOptions(inputPath, outputPath, 0, 500, 1, "js")
+    compileFileWithOptions(inputPath, outputPath, 0, 500, 1, "js", 0)
 }
 out fn compileFileWithOptions(inputPath: *Str, outputPath: *Str, lintEnabled: I32,
-maxEffectiveLines: I32, borrowEnabled: I32, target: *Str) : I32 => {
+maxEffectiveLines: I32, borrowEnabled: I32, target: *Str, astDupEnabled: I32) : I32 => {
     let maxLines = moduleLoaderSanitizeMaxEffectiveLines(maxEffectiveLines);
     let lint = moduleLoaderNormalizeFlag(lintEnabled);
     let borrow = moduleLoaderNormalizeFlag(borrowEnabled);
@@ -881,7 +881,7 @@ maxEffectiveLines: I32, borrowEnabled: I32, target: *Str) : I32 => {
     let t6 = perfNow();
     if (lint == 1) {
          // File-length lint already ran per module file during gather_module_sources.
-        lintProgram(typed, inputPath, maxLines, 0);
+        lintProgram(typed, inputPath, maxLines, 0, astDupEnabled);
         let i = 0;
         let len = moduleCycles.vecLength();
         while (i < len) {

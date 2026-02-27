@@ -17,7 +17,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import { compileAndLoadSelfhost } from "../src/test/js/selfhost-harness.ts";
-import { getProjectRoot, getCandidateRoots, SelfhostCpdBridge } from "./common-scan-roots.ts";
+import {
+  getProjectRoot,
+  getCandidateRoots,
+  SelfhostCpdBridge,
+} from "./common-scan-roots.ts";
 
 const root = getProjectRoot(import.meta.url);
 

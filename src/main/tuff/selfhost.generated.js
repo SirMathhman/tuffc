@@ -11942,7 +11942,7 @@ if (typeof __tuff_this !== 'undefined') __tuff_this.gatherModuleSources = gather
 const __tuff_outer_for_compileFile = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
 function compileFile(inputPath, outputPath) {
   let __tuff_this = { inputPath: inputPath, outputPath: outputPath, this: __tuff_outer_for_compileFile };
-  return compileFileWithOptions(inputPath, outputPath, 0, 500, 1, "js");
+  return compileFileWithOptions(inputPath, outputPath, 0, 500, 1, "js", 0);
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.compileFile = compileFile;
 
@@ -14223,7 +14223,7 @@ if (typeof __tuff_this !== 'undefined') __tuff_this.cpdGetInternedStr = cpdGetIn
 const __tuff_outer_for_compileSource = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
 function compileSource(source) {
   let __tuff_this = { source: source, this: __tuff_outer_for_compileSource };
-  return compileSourceWithOptions(source, 0, 500, 1, "js");
+  return compileSourceWithOptions(source, 0, 500, 1, "js", 0);
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.compileSource = compileSource;
 
@@ -14254,7 +14254,7 @@ function mainLint() {
 } else { if ((() => { const __recv = arg; const __prop = __recv?.["strEq"]; if (typeof __prop === "function") return __prop("--max-lines"); const __dyn = __recv?.table?.strEq; return __dyn ? __dyn(__recv.ref, "--max-lines") : strEq(__recv, "--max-lines"); })()) {
   i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
   if ((i < argc)) {
-  maxLines = intParse(getArgv(i)); if (typeof __tuff_this !== 'undefined') __tuff_this.maxLines = maxLines;
+  maxLines = parseInt(getArgv(i)); if (typeof __tuff_this !== 'undefined') __tuff_this.maxLines = maxLines;
   if ((maxLines <= 0)) {
   printError("Invalid value for --max-lines");
   hadError = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.hadError = hadError;
@@ -14280,7 +14280,7 @@ function mainLint() {
   if ((hadError === 1)) {
   return 1;
 }
-  let scratchOutput = "/tmp/tuff-lint-scratch.js"; if (typeof __tuff_this !== 'undefined') __tuff_this.scratchOutput = scratchOutput;
+  let scratchOutput = "C:\\\\Windows\\\\Temp\\\\tuff-lint-scratch.js"; if (typeof __tuff_this !== 'undefined') __tuff_this.scratchOutput = scratchOutput;
   let resultCode = compileFileWithOptions(inputFile, scratchOutput, 1, maxLines, borrowEnabled, target, astDupEnabled); if (typeof __tuff_this !== 'undefined') __tuff_this.resultCode = resultCode;
   let issues = takeLintIssues(); if (typeof __tuff_this !== 'undefined') __tuff_this.issues = issues;
   if (((() => { const __recv = issues; const __prop = __recv?.["strLength"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.strLength; return __dyn ? __dyn(__recv.ref) : strLength(__recv); })() > 0)) {
