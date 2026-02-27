@@ -57,10 +57,9 @@ function inferParamsFromAppliedTypes(source: string, name: string): string[] {
   return order;
 }
 
-function migrateExternTypeDecls(source: string): {
-  output: string;
-  changed: boolean;
-} {
+type MigrateResult = { output: string; changed: boolean };
+
+function migrateExternTypeDecls(source: string): MigrateResult {
   let output = source;
   let changed = false;
 
@@ -183,12 +182,11 @@ function main(): void {
     fs.writeFileSync(absPath, migratedTypes.output, "utf8");
     changedCount += 1;
     if (usedFallback) fallbackMigrated += 1;
-    console.log(`[migrate-extern-type-generics] updated ${rel}`);
+    console.log(`[migrate-extern-type-generics] wrote ${rel}`);
   }
 
-  console.log(
-    `[migrate-extern-type-generics] scanned ${files.length} .tuff file(s), visited ${visited} candidate(s), changed ${changedCount} file(s), roundtrip-failed ${roundTripFailed}, fallback-migrated ${fallbackMigrated}`,
-  );
+  const scanSummary = `[migrate-extern-type-generics] scanned ${files.length} .tuff file(s), visited ${visited} candidate(s), changed ${changedCount} file(s), roundtrip-failed ${roundTripFailed}, fallback-migrated ${fallbackMigrated}`;
+  console.log(scanSummary);
 }
 
 main();

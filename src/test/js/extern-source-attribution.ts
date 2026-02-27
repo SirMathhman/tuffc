@@ -6,9 +6,11 @@ import {
   assertCompileSuccessGetOutput,
 } from "./compile-test-utils.ts";
 
-const strlenExternDecl = `extern fn strlen(src: *Str) : I32;
-
-fn main() : I32 => strlen("hello")`;
+const strlenExternDecl = [
+  "extern fn strlen(src: *Str) : I32;",
+  "",
+  `fn main() : I32 => strlen("hello")`,
+].join("\n");
 
 const C_COMPILE_OPTS = {
   backend: "selfhost",

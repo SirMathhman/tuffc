@@ -60,13 +60,10 @@ function normalizeSource(src: string): string {
   return trimmed.endsWith(";") ? trimmed : `${trimmed};`;
 }
 
-function hasExplicitMain(source: string): boolean {
-  return /\bfn\s+main\s*\(/.test(source);
-}
-
-function wrapSnippetAsMain(source: string): string {
-  return `fn main() => {\n${source}\n}`;
-}
+import {
+  hasExplicitMain,
+  wrapSnippetAsMain,
+} from "../src/test/js/tuff-snippet-utils.ts";
 
 // Attempt to verify C compilation
 function verifyC(

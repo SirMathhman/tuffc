@@ -4,10 +4,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { compileFileResult } from "../../main/js/compiler.ts";
-import { getRepoRootFromImportMeta } from "./path-test-utils.ts";
+import { getRepoRootFromImportMeta, getTestsOutDir } from "./path-test-utils.ts";
 
 const root = getRepoRootFromImportMeta(import.meta.url);
-const outDir = path.join(root, "tests", "out", "vec-generic-smoke");
+const outDir = getTestsOutDir(root, "vec-generic-smoke");
 const appDir = path.join(outDir, "app");
 const entry = path.join(appDir, "Main.tuff");
 const outC = path.join(outDir, "main.c");

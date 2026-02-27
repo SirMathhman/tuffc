@@ -6,6 +6,7 @@ import {
   compileFileResult,
 } from "../../main/js/compiler.ts";
 import { getCLIPaths } from "./path-test-utils.ts";
+import { assertCompileOk } from "./compile-test-utils.ts";
 
 const { root, tsxCli, nodeExec } = getCLIPaths(import.meta.url);
 const outDir = path.join(root, "tests", "out", "tuff-target");
@@ -28,12 +29,7 @@ const inMemory = compileSourceResult(source, "<tuff-target-memory>", {
   lint: { enabled: true, fix: true, mode: "warn" },
 });
 
-if (!inMemory.ok) {
-  console.error(
-    `Expected in-memory tuff target compile success, got: ${String((inMemory as { ok: false; error: unknown }).error)}`,
-  );
-  process.exit(1);
-}
+assertCompileOk(inMemory, "in-memory tuff target");
 
 const tuffOut = (inMemory.value as { tuff?: string }).tuff ?? "";
 if (!tuffOut.includes("// file header comment")) {
@@ -67,12 +63,7 @@ const fileResult = compileFileResult(inputPath, outputPath, {
   target: "tuff",
   lint: { enabled: true, fix: true, mode: "warn" },
 });
-if (!fileResult.ok) {
-  console.error(
-    `Expected file tuff target compile success, got: ${String((fileResult as { ok: false; error: unknown }).error)}`,
-  );
-  process.exit(1);
-}
+assertCompileOk(fileResult, "file tuff target");
 if (!fs.existsSync(outputPath)) {
   console.error("Expected tuff target output file to be created");
   process.exit(1);

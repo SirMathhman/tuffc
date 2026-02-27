@@ -224,10 +224,9 @@ function ensureSelfhostBuiltOnceAtStart(): void {
   });
 
   if (result.error != null) {
-    console.error(
+    throw new Error(
       `[test] Failed to start build step ${relative}: ${result.error.message}`,
     );
-    process.exit(1);
   }
   if (result.status !== 0) {
     console.error(

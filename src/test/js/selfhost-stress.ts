@@ -10,11 +10,10 @@ import { toDiagnostic } from "../../main/js/errors.ts";
 import { runMainFromJs } from "./js-runtime-test-utils.ts";
 import {
   getRepoRootFromImportMeta,
-  getTestsOutDir,
 } from "./path-test-utils.ts";
 
 const root = getRepoRootFromImportMeta(import.meta.url);
-const outDir = getTestsOutDir(root, "selfhost", "stress");
+const outDir = path.join(root, "tests", "out", "selfhost", "stress");
 const modulesDir = path.join(outDir, "modules");
 fs.mkdirSync(outDir, { recursive: true });
 

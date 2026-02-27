@@ -1,10 +1,4 @@
-import fs from "node:fs";
-import path from "node:path";
-import { spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
-
-const thisFile = fileURLToPath(import.meta.url);
-const root = path.resolve(path.dirname(thisFile), "..");
+import { fs, path, spawnSync, root } from "./script-utils.ts";
 const outDir = path.join(root, "tests", "out", "c-bootstrap");
 
 const exePath = path.join(

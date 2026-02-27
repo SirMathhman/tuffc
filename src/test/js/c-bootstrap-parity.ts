@@ -84,21 +84,21 @@ function decodeProcessExit(status: number | null): string {
   return known[status] ? `${hex} (${known[status]})` : hex;
 }
 
-function getFixpointTimeoutMs(): number {
-  const raw = process.env.TUFFC_FIXPOINT_TIMEOUT_MS;
-  if (!raw) return 60_000;
+function parseTimeoutEnv(envVar: string, defaultMs: number): number {
+  const raw = process.env[envVar];
+  if (!raw) return defaultMs;
   const parsed = Number(raw);
-  if (!Number.isFinite(parsed) || parsed <= 0) return 60_000;
+  if (!Number.isFinite(parsed) || parsed <= 0) return defaultMs;
   return Math.floor(parsed);
 }
 
+function getFixpointTimeoutMs(): number {
+  return parseTimeoutEnv("TUFFC_FIXPOINT_TIMEOUT_MS", 60_000);
+}
+
 function getParityBudgetMs(): number {
-  const raw = process.env.TUFFC_PARITY_TIMEOUT_MS;
-  if (!raw) return 60_000;
-  const parsed = Number(raw);
-  if (!Number.isFinite(parsed) || parsed <= 0) return 60_000;
   // Functional requirement: 60s is a hard maximum.
-  return Math.min(60_000, Math.floor(parsed));
+  return Math.min(60_000, parseTimeoutEnv("TUFFC_PARITY_TIMEOUT_MS", 60_000));
 }
 
 function getNativeOptFlag(): string {

@@ -11,13 +11,8 @@
  *   npx tsx ./scripts/watch.ts
  *   npx tsx ./scripts/watch.ts --force   # force initial rebuild even if cached
  */
-import fs from "node:fs";
-import path from "node:path";
-import { spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { fs, path, spawnSync, root } from "./script-utils.ts";
 
-const thisFile = fileURLToPath(import.meta.url);
-const root = path.resolve(path.dirname(thisFile), "..");
 const force = process.argv.includes("--force");
 
 const tsxCli = path.join(root, "node_modules", "tsx", "dist", "cli.mjs");

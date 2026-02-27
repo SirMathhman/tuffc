@@ -8,16 +8,33 @@ import {
   compileFileResult,
   formatTuffSource,
   setCompilerQuietMode,
+  readManifestLines,
 } from "./compiler.ts";
 import { formatDiagnostic, toDiagnostic } from "./errors.ts";
 import { buildCertificate } from "./certificate.ts";
 import { writeTypstSource, compileTypstToPdf } from "./typst-render.ts";
 
-function emitCertificate(cert: ReturnType<typeof buildCertificate>, certificatePath: string): void {
+function emitCertificate(
+  cert: ReturnType<typeof buildCertificate>,
+  certificatePath: string,
+): void {
   fs.writeFileSync(certificatePath, JSON.stringify(cert, undefined, 2), "utf8");
   console.log(`Certificate written to ${certificatePath}`);
   const typPath = writeTypstSource(cert, certificatePath);
   if (typPath) compileTypstToPdf(typPath);
+}
+
+function emitCertificateForInput(
+  certificatePath: string,
+  input: string,
+  outcome: { success: boolean; diagnosticCodes: string[] },
+): void {
+  const cert = buildCertificate({
+    sourcePaths: [path.resolve(input)],
+    compilerVersion: readVersion(),
+    outcome,
+  });
+  emitCertificate(cert, certificatePath);
 }
 
 function printUsage(): void {
@@ -81,11 +98,7 @@ function compileNativeC(
 function splitManifestCFiles(outputDir: string): string[] {
   const manifestPath = path.join(outputDir, "manifest.txt");
   if (!fs.existsSync(manifestPath)) return [];
-  const rows = fs
-    .readFileSync(manifestPath, "utf8")
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
+  const rows = readManifestLines(manifestPath);
   return rows
     .filter((line) => line.toLowerCase().endsWith(".c"))
     .map((line) => path.join(outputDir, line));
@@ -840,27 +853,20 @@ function main(argv: string[]): void {
       console.error(formatDiagnostic(diag, useColor));
     }
     if (certificatePath) {
-      const cert = buildCertificate({
-        sourcePaths: [path.resolve(input)],
-        compilerVersion: readVersion(),
-        outcome: {
-          success: false,
-          diagnosticCodes: [diag.code].filter(Boolean),
-        },
+      emitCertificateForInput(certificatePath, input, {
+        success: false,
+        diagnosticCodes: [diag.code].filter(Boolean),
       });
-      emitCertificate(cert, certificatePath);
     }
     process.exitCode = 1;
     return;
   }
 
   if (certificatePath) {
-    const cert = buildCertificate({
-      sourcePaths: [path.resolve(input)],
-      compilerVersion: readVersion(),
-      outcome: { success: true, diagnosticCodes: [] },
+    emitCertificateForInput(certificatePath, input, {
+      success: true,
+      diagnosticCodes: [],
     });
-    emitCertificate(cert, certificatePath);
   }
 
   const {

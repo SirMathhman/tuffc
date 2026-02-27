@@ -254,13 +254,7 @@ function parseCompileOptions(testCase: DbCase): Record<string, unknown> {
   return {};
 }
 
-function hasExplicitMain(source: string): boolean {
-  return /\bfn\s+main\s*\(/.test(source);
-}
-
-function wrapSnippetAsMain(source: string): string {
-  return `fn main() => {\n${source}\n}`;
-}
+import { hasExplicitMain, wrapSnippetAsMain } from "./tuff-snippet-utils.ts";
 
 function toBool(value: number): boolean {
   return Number(value) !== 0;
@@ -305,6 +299,10 @@ function updateCaseSnapshot(caseId: number, snapshot: string): void {
   }
 }
 
+type CompileResult =
+  | { ok: true; output: string }
+  | { ok: false; errorMessage: string; errorCode?: string };
+
 function runNativeCliFile(
   inputPath: string,
   outputPath: string,
@@ -336,7 +334,9 @@ function compileViaNativeCli(
 
 function mapCompilerResult(
   result: ReturnType<typeof compileSourceResult>,
-): { ok: true; output: string } | { ok: false; errorMessage: string; errorCode: string } {
+):
+  | { ok: true; output: string }
+  | { ok: false; errorMessage: string; errorCode: string } {
   if (!result.ok) {
     return {
       ok: false,
@@ -351,9 +351,7 @@ function compileWithBackend(
   source: string,
   label: string,
   caseOptions: Record<string, unknown>,
-):
-  | { ok: true; output: string }
-  | { ok: false; errorMessage: string; errorCode?: string } {
+): CompileResult {
   if (backend === "native-exe") {
     return compileViaNativeCli(source, label);
   }
@@ -371,9 +369,7 @@ function compileFileWithBackend(
   outputPath: string,
   label: string,
   caseOptions: Record<string, unknown>,
-):
-  | { ok: true; output: string }
-  | { ok: false; errorMessage: string; errorCode?: string } {
+): CompileResult {
   if (backend === "native-exe") {
     return runNativeCliFile(inputPath, outputPath);
   }
@@ -444,6 +440,11 @@ let passed = 0;
 let failed = 0;
 let skipped = 0;
 
+function dbTestFail(msg: string): void {
+  failed += 1;
+  console.error(msg);
+}
+
 for (const testCase of selectedCases) {
   const label = `db:${testCase.id}:${testCase.category || "uncategorized"}`;
   const source = normalizeSource(testCase.source_code ?? "");
@@ -479,8 +480,7 @@ for (const testCase of selectedCases) {
       );
     } catch (error) {
       if (!skipKnownGap(String(error))) {
-        failed += 1;
-        console.error(
+        dbTestFail(
           `[db-tests] ✖ ${label} failed to materialize files: ${String(error)}`,
         );
       }
@@ -493,8 +493,7 @@ for (const testCase of selectedCases) {
   if (expectsCompileError) {
     if (compileResult.ok) {
       if (!skipKnownGap("expected compile error but compiled")) {
-        failed++;
-        console.error(
+        dbTestFail(
           `[db-tests] ✖ ${label} expected compile error, but compilation succeeded`,
         );
       }
@@ -503,14 +502,11 @@ for (const testCase of selectedCases) {
 
     if (testCase.expected_diagnostic_code) {
       if (compileResult.errorCode !== testCase.expected_diagnostic_code) {
-        if (
-          !skipKnownGap(
-            `expected diagnostic ${testCase.expected_diagnostic_code}, got ${compileResult.errorCode || "<none>"}`,
-          )
-        ) {
-          failed += 1;
-          console.error(
-            `[db-tests] ✖ ${label} expected diagnostic code ${testCase.expected_diagnostic_code}, got ${compileResult.errorCode || "<none>"}`,
+        const gotCode = compileResult.errorCode ?? "<none>";
+        const codeGapMsg = `expected diagnostic ${testCase.expected_diagnostic_code}, got ${gotCode}`;
+        if (!skipKnownGap(codeGapMsg)) {
+          dbTestFail(
+            `[db-tests] ✖ ${label} expected diagnostic code ${testCase.expected_diagnostic_code}, got ${gotCode}`,
           );
         }
         continue;
@@ -526,8 +522,7 @@ for (const testCase of selectedCases) {
     if (skipKnownGap(`compile failed: ${compileResult.errorMessage}`)) {
       continue;
     }
-    failed += 1;
-    console.error(
+    dbTestFail(
       `[db-tests] ✖ ${label} failed to compile: ${compileResult.errorMessage}`,
     );
     continue;
@@ -542,15 +537,13 @@ for (const testCase of selectedCases) {
           updateCaseSnapshot(testCase.id, compileResult.output);
           console.log(`[db-tests] ↺ ${label} snapshot updated in DB`);
         } catch (error) {
-          failed += 1;
-          console.error(
+          dbTestFail(
             `[db-tests] ✖ ${label} failed to update DB snapshot: ${String(error)}`,
           );
           continue;
         }
       } else {
-        failed += 1;
-        console.error(`[db-tests] ✖ ${label} snapshot mismatch`);
+        dbTestFail(`[db-tests] ✖ ${label} snapshot mismatch`);
         continue;
       }
     }
@@ -606,8 +599,7 @@ for (const testCase of selectedCases) {
         if (skipKnownGap(compileFailMsg)) {
           continue;
         }
-        failed += 1;
-        console.error(`[db-tests] ✖ ${label} ${compileFailMsg}`);
+        dbTestFail(`[db-tests] ✖ ${label} ${compileFailMsg}`);
         continue;
       }
 
@@ -626,16 +618,14 @@ for (const testCase of selectedCases) {
         if (skipKnownGap(wrapRunMsg)) {
           continue;
         }
-        failed += 1;
-        console.error(`[db-tests] ✖ ${label} ${wrapRunMsg}`);
+        dbTestFail(`[db-tests] ✖ ${label} ${wrapRunMsg}`);
         continue;
       }
     } else {
       if (skipKnownGap(`runtime failed: ${message}`)) {
         continue;
       }
-      failed += 1;
-      console.error(`[db-tests] ✖ ${label} runtime failed: ${message}`);
+      dbTestFail(`[db-tests] ✖ ${label} runtime failed: ${message}`);
       continue;
     }
   }
@@ -650,8 +640,7 @@ for (const testCase of selectedCases) {
         `runtime mismatch expected ${JSON.stringify(expectedValue)} got ${JSON.stringify(runtimeValue)}`,
       )
     ) {
-      failed += 1;
-      console.error(
+      dbTestFail(
         `[db-tests] ✖ ${label} expected runtime ${JSON.stringify(expectedValue)}, got ${JSON.stringify(runtimeValue)}`,
       );
     }

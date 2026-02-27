@@ -1,7 +1,14 @@
 #!/usr/bin/env tsx
-import { fs, addQuestionMarkToTypecheckCalls, addReturnToTcErrorCalls, loadAndSetupFixTarget } from "./fix-utils.ts";
+import {
+  fs,
+  addQuestionMarkToTypecheckCalls,
+  addReturnToTcErrorCalls,
+  addOkWrapToReturns,
+  loadAndSetupFixTarget,
+} from "./fix-utils.ts";
 
-const { filePath, lines, isInResultFunction } = loadAndSetupFixTarget(".backup6");
+const { filePath, lines, isInResultFunction } =
+  loadAndSetupFixTarget(".backup6");
 
 // Step 1: Change tc_panic_loc to tc_error in Result functions
 let modified = false;
@@ -32,20 +39,10 @@ if (modified) {
   console.log("✓ Added ? operators to typecheck calls");
 }
 
-// Step 4: Wrap return 0 with Ok in Result functions only
-modified = false;
-for (let i = 0; i < lines.length; i++) {
-  if (!isInResultFunction(i)) continue;
-
-  const line = lines[i];
-  if (line.match(/^\s+return 0;$/)) {
-    lines[i] = line.replace("return 0;", "return Ok<I32> { value: 0 };");
-    modified = true;
-  }
-}
-
-if (modified) {
-  console.log("✓ Wrapped return 0 with Ok in Result functions");
+// Step 4: Wrap return 0/1 with Ok in Result functions only
+const wrapCount = addOkWrapToReturns(lines, isInResultFunction);
+if (wrapCount > 0) {
+  console.log("✓ Wrapped return 0/1 with Ok in Result functions");
 }
 
 // Step 2: Wrap return 0 with Ok in Result functions only

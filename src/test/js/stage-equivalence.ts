@@ -34,14 +34,7 @@ const chain = buildStageChain(root, path.join(outDir, "bootstrap"));
 const stageById = buildStageById(chain);
 const stages = [stageById.stage2, stageById.stage3];
 
-function assertEqual(actual, expected, label) {
-  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
-    console.error(
-      `${label}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`,
-    );
-    process.exit(1);
-  }
-}
+import { assertEqual } from "./assert-utils.ts";
 
 function runPositiveCase(label, source, expectedOutput = undefined) {
   const outputs = new Map();

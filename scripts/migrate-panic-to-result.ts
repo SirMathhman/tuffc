@@ -1,13 +1,7 @@
 // Script to migrate panic-based error handling to Result-based error handling
 // Generates .tuff source with Result<T, E> by applying regex transformations
 
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const root = path.resolve(__dirname, "..");
+import { fs, path, root } from "./script-utils.ts";
 
 // ============================================================================
 // Configuration

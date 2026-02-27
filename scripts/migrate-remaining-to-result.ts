@@ -4,14 +4,7 @@
  * Phase 4: Final cleanup - runtime_lexer, codegen_c, borrowcheck, module_loader
  */
 
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-import { runFileMigration } from "./fix-utils.ts";
-
-const TUFFC_ROOT = path.resolve(__dirname, "..");
+import { fs, path, TUFFC_ROOT, runMigrationMain, saveIfModified } from "./fix-utils.ts";
 
 // Map of files to error types
 const FILE_ERROR_TYPES = {
@@ -52,7 +45,7 @@ let {
   );
 }
 
-function migrateFile(filePath: string): boolean {
+const migrateSingleFile = (filePath: string): boolean => {
   console.log(`\nMigrating ${path.relative(TUFFC_ROOT, filePath)}...`);
 
   if (!fs.existsSync(filePath)) {
@@ -85,10 +78,7 @@ function migrateFile(filePath: string): boolean {
     `  ℹ️  Remaining work: Convert panic_with_code* calls to helper functions`,
   );
 
-  if (modified) {
-    fs.writeFileSync(filePath, content, "utf-8");
-    console.log(`  ✅ Saved changes`);
-  }
+  saveIfModified(filePath, content, modified);
 
   return modified;
 }
@@ -101,10 +91,9 @@ function main() {
     path.join(TUFFC_ROOT, f),
   );
 
-  const { totalModified, total } = runFileMigration(files, migrateFile);
-
-  console.log(`\n=== Summary ===`);
-  console.log(`Files modified: ${totalModified}/${total}`);
+  const { totalModified, total } = runMigrationMain(files, migrateSingleFile);
+  void totalModified;
+  void total;
   console.log(`\nArchitectural status:`);
   console.log(`✅ All error types have 'out' exports`);
   console.log(`✅ Result infrastructure complete`);

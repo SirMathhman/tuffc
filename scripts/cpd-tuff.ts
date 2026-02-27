@@ -441,6 +441,14 @@ function findWindowMatches(
   return matches;
 }
 
+function compareByPosition(x: Finding, y: Finding): number {
+  if (x.fileA !== y.fileA) return x.fileA.localeCompare(y.fileA);
+  if (x.startLineA !== y.startLineA) return x.startLineA - y.startLineA;
+  if (x.fileB !== y.fileB) return x.fileB.localeCompare(y.fileB);
+  if (x.startLineB !== y.startLineB) return x.startLineB - y.startLineB;
+  return 0;
+}
+
 function toFindings(
   fileTokens: CpdFileTokens[],
   matches: WindowMatch[],
@@ -469,10 +477,7 @@ function toFindings(
 
   findings.sort((x, y) => {
     if (x.tokens !== y.tokens) return y.tokens - x.tokens;
-    if (x.fileA !== y.fileA) return x.fileA.localeCompare(y.fileA);
-    if (x.startLineA !== y.startLineA) return x.startLineA - y.startLineA;
-    if (x.fileB !== y.fileB) return x.fileB.localeCompare(y.fileB);
-    return x.startLineB - y.startLineB;
+    return compareByPosition(x, y);
   });
 
   const consolidated: Finding[] = [];
@@ -495,11 +500,8 @@ function toFindings(
   }
 
   consolidated.sort((x, y) => {
-    if (x.fileA !== y.fileA) return x.fileA.localeCompare(y.fileA);
-    if (x.startLineA !== y.startLineA) return x.startLineA - y.startLineA;
-    if (x.fileB !== y.fileB) return x.fileB.localeCompare(y.fileB);
-    if (x.startLineB !== y.startLineB) return x.startLineB - y.startLineB;
-    return y.tokens - x.tokens;
+    const pos = compareByPosition(x, y);
+    return pos !== 0 ? pos : y.tokens - x.tokens;
   });
 
   return consolidated;

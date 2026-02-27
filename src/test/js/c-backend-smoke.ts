@@ -6,7 +6,8 @@ import { compileSourceResult } from "../../main/js/compiler.ts";
 import { getRepoRootFromImportMeta } from "./path-test-utils.ts";
 
 const root = getRepoRootFromImportMeta(import.meta.url);
-const outDir = path.join(root, "tests", "out", "c");
+const testsOutBase = path.join(root, "tests", "out");
+const outDir = path.join(testsOutBase, "c");
 
 fs.mkdirSync(outDir, { recursive: true });
 
@@ -98,13 +99,13 @@ function runCase(caseName, compileOptions = {}) {
     !result.value.c.includes("int main(void)") &&
     !result.value.c.includes("int main(int argc, char **argv)")
   ) {
-    console.error(`Generated C for ${caseName} is missing process entrypoint`);
+    console.error(`C for ${caseName}: missing main entrypoint`);
     process.exit(1);
   }
 
   if (!result.value.c.includes("tuff_main")) {
     const sym = "tuff_main";
-    console.error(`Generated C for ${caseName} is missing ${sym} symbol`);
+    console.error(`C for ${caseName}: missing ${sym} symbol`);
     process.exit(1);
   }
 
@@ -142,6 +143,12 @@ const cases = [
   runCase("runtime_io", { backend: "selfhost" }),
 ];
 
+function failCCompile(result, caseName: string, compiler: string): never {
+  console.error(`Failed to compile generated C for ${caseName} with ${compiler}`);
+  console.error(`${result.stdout ?? ""}\n${result.stderr ?? ""}`);
+  process.exit(1);
+}
+
 for (const testCase of cases) {
   const compile = spawnSync(
     selected,
@@ -151,12 +158,7 @@ for (const testCase of cases) {
     },
   );
   if (compile.status !== 0) {
-    console.error(
-      `Failed to compile generated C for ${testCase.caseName} with ${selected}`,
-    );
-    console.error(compile.stdout ?? "");
-    console.error(compile.stderr ?? "");
-    process.exit(1);
+    failCCompile(compile, testCase.caseName, selected);
   }
 
   const run = spawnSync(testCase.outExe, [], { encoding: "utf8" });

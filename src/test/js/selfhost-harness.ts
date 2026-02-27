@@ -27,17 +27,21 @@ export function getCanonicalSelfhostJsPath(root: string): string {
   return path.join(root, "tests", "out", "build", "selfhost.js");
 }
 
+function requireBuildArtifact(buildArtifact: string): void {
+  if (!fs.existsSync(buildArtifact)) {
+    throw new Error(
+      "[selfhost-harness] Build artifact not found: " + buildArtifact +
+        "\nRun 'npm run build' to produce it, then re-run tests."
+    );
+  }
+}
+
 export function compileAndLoadSelfhost(root: string, outDir: string) {
   const t0 = nowMs();
   const selfhostPath = path.join(root, "src", "main", "tuff", "selfhost.tuff");
   const buildArtifact = getCanonicalSelfhostJsPath(root);
 
-  if (!fs.existsSync(buildArtifact)) {
-    throw new Error(
-      `[selfhost-harness] Build artifact not found: ${buildArtifact}\n` +
-        `Run 'npm run build' to produce it, then re-run tests.`,
-    );
-  }
+  requireBuildArtifact(buildArtifact);
 
   tlog(`loading selfhost JS from build artifact`);
   const tReadStart = nowMs();
@@ -49,9 +53,11 @@ export function compileAndLoadSelfhost(root: string, outDir: string) {
     new vm.Script(selfhostJs);
   } catch (parseErr) {
     throw new Error(
-      `[selfhost-harness] Build artifact failed VM parse: ${parseErr}\n` +
-        `Artifact: ${buildArtifact}\n` +
+      [
+        `[selfhost-harness] Build artifact failed VM parse: ${parseErr}`,
+        `Artifact: ${buildArtifact}`,
         `Re-run 'npm run build' to regenerate it.`,
+      ].join("\n"),
     );
   }
   tlog(`VM parse succeeded in ${nowMs() - tParseStart}ms`);

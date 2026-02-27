@@ -3,16 +3,11 @@
  * Handles all tc_panic_loc conversions and Result propagation
  */
 
-import * as fs from "fs";
-import * as path from "path";
-import { fileURLToPath } from "url";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import { fs, path, root } from "./script-utils.ts";
 
 const FILE = path.join(
-  __dirname,
-  "../src/main/tuff/selfhost/internal/typecheck_impl.tuff",
+  root,
+  "src/main/tuff/selfhost/internal/typecheck_impl.tuff",
 );
 const BACKUP = FILE + ".backup5";
 

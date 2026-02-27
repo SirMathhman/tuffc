@@ -165,32 +165,34 @@ const SELFHOST_ENTRY_DECL = `#include <stdio.h>
 
 ${SELFHOST_EXTERN_ENTRY.split("\n")[0]}`;
 
+const entryDecl = SELFHOST_ENTRY_DECL.split("\n").slice(2).join("\n");
 const harnessSource = deepHarness
   ? `#include <stdint.h>
 #include <string.h>
 #include <stdio.h>
 #include <inttypes.h>
-${SELFHOST_ENTRY_DECL.split("\n").slice(2).join("\n")}
+${entryDecl}
 extern int64_t compile_source_with_options(int64_t, int64_t, int64_t, int64_t, int64_t);
+static void dbg(const char* msg) { fprintf(stderr, "%s\\n", msg); }
 
 int main(void) {
-  fprintf(stderr, "[deep] calling selfhost_entry\\n");
+  dbg("[deep] calling selfhost_entry");
   (void)selfhost_entry();
-  fprintf(stderr, "[deep] selfhost_entry done\\n");
-  const char* src = "fn main() : I32 => 7;";
-  fprintf(stderr, "[deep] calling compile_source_with_options\\n");
+  dbg("[deep] selfhost_entry done");
+  const char* src = "fn trivial() : I32 => 7;";
+  dbg("[deep] calling compile_source_with_options");
   int64_t cOut = compile_source_with_options((int64_t)(intptr_t)src, 0, 500, 1, (int64_t)(intptr_t)"js");
-  fprintf(stderr, "[deep] compile_source_with_options returned\\n");
+  dbg("[deep] compile_source_with_options returned");
   const char* js = (const char*)(intptr_t)cOut;
   if (cOut == 0) return 2;
   if (strstr(js, "function main") == 0) return 3;
-  fprintf(stderr, "[deep] deep harness success\\n");
+  dbg("[deep] deep harness success");
   return 0;
 }
 `
   : `#include <stdint.h>
 
-${SELFHOST_ENTRY_DECL.split("\n").slice(2).join("\n")}
+${entryDecl}
 
 int main(void) { return (int)selfhost_entry(); }
 `;

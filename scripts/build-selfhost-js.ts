@@ -11,14 +11,9 @@
  * Usage:
  *   npx tsx ./scripts/build-selfhost-js.ts [--force]
  */
-import fs from "node:fs";
-import path from "node:path";
+import { fs, path, spawnSync, root } from "./script-utils.ts";
 import crypto from "node:crypto";
-import { spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
 
-const thisFile = fileURLToPath(import.meta.url);
-const root = path.resolve(path.dirname(thisFile), "..");
 const force = process.argv.includes("--force");
 
 process.on("uncaughtException", (err) => {
@@ -27,9 +22,8 @@ process.on("uncaughtException", (err) => {
   process.exit(1);
 });
 process.on("unhandledRejection", (reason) => {
-  console.error(
-    `[build:selfhost-js] FATAL unhandledRejection: ${String(reason)}`,
-  );
+  const msg = `[build:selfhost-js] FATAL unhandledRejection: ${String(reason)}`;
+  console.error(msg);
   process.exit(1);
 });
 
@@ -192,6 +186,13 @@ function formatElapsed(ms: number): string {
   return `${(ms / 1000).toFixed(2)}s`;
 }
 
+function failBuild(detail: string, elapsed: number): never {
+  console.error(
+    `[build:selfhost-js] FAILED after ${formatElapsed(elapsed)}: ${detail}`,
+  );
+  process.exit(1);
+}
+
 // ── Main ─────────────────────────────────────────────────────────────────────
 
 if (!fs.existsSync(GENERATED_JS)) {
@@ -208,9 +209,9 @@ if (!fs.existsSync(GENERATED_JS)) {
 if (!force) {
   const { hit, reason } = isCacheValid();
   if (hit) {
-    const rel = path.relative(root, OUT_JS).replaceAll("\\", "/");
+    const outRel = path.relative(root, OUT_JS).replaceAll("\\\\", "/");
     console.log(
-      `[build:selfhost-js] ✓ cache hit — ${rel} is up-to-date (${reason})`,
+      `[build:selfhost-js] \u2713 cache hit \u2014 ${outRel} is up-to-date (${reason})`,
     );
     process.exit(0);
   } else {
@@ -238,8 +239,7 @@ const args = [
   `./${relOutput}`,
 ];
 
-console.log(`[build:selfhost-js] compiling selfhost.tuff → ${relOutput}`);
-console.log(`[build:selfhost-js] compiler: tsx ./src/main/js/cli.ts`);
+console.log(`[build:selfhost-js] compiling selfhost.tuff -> ${relOutput} using tsx ./src/main/js/cli.ts`);
 
 const COMPILE_TIMEOUT_MS = 300_000; // 5 minutes
 
@@ -247,10 +247,9 @@ const t0 = Date.now();
 const startedAtIso = new Date(t0).toISOString();
 const tsxCli = path.join(root, "node_modules", "tsx", "dist", "cli.mjs");
 if (!fs.existsSync(tsxCli)) {
-  console.error(
-    `[build:selfhost-js] ERROR: tsx CLI not found at ${tsxCli}. Run npm install in Tuffc/.`,
+  throw new Error(
+    `[build:selfhost-js] tsx CLI not found at ${tsxCli}. Run npm install in Tuffc/.`,
   );
-  process.exit(1);
 }
 console.log(`[build:selfhost-js] started: ${startedAtIso}`);
 console.log(`[build:selfhost-js] cwd: ${root}`);
@@ -277,19 +276,13 @@ if (compileProc.error) {
     console.error(
       `[build:selfhost-js] TIMEOUT: compilation exceeded ${COMPILE_TIMEOUT_MS / 1000}s after ${formatElapsed(elapsed)} — process terminated`,
     );
-  } else {
-    console.error(
-      `[build:selfhost-js] FAILED after ${formatElapsed(elapsed)}: ${errno.message}`,
-    );
+    process.exit(1);
   }
-  process.exit(1);
+  failBuild(errno.message, elapsed);
 }
 
 if (compileProc.status !== 0) {
-  console.error(
-    `[build:selfhost-js] FAILED after ${formatElapsed(elapsed)}: compiler exited with code ${String(compileProc.status)}`,
-  );
-  process.exit(1);
+  failBuild(`compiler exited with code ${String(compileProc.status)}`, elapsed);
 }
 if (!fs.existsSync(OUT_JS)) {
   console.error(
@@ -310,7 +303,7 @@ console.log(`[build:selfhost-js] ✓ wrote manifest → ${manifestRel}`);
 
 // Also sync to selfhost.generated.js so compiler.ts's backend:"selfhost" path stays current.
 fs.copyFileSync(OUT_JS, GENERATED_JS);
-const genRel = path.relative(root, GENERATED_JS).replaceAll("\\", "/");
+const genRel = path.relative(root, GENERATED_JS).replace(/\\/g, "/");
 console.log(`[build:selfhost-js] ✓ synced → ${genRel}`);
 
 // Re-write manifest after sync: GENERATED_JS changed (it is one of the tracked inputs),

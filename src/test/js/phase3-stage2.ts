@@ -11,7 +11,7 @@ import {
   getRepoRootFromImportMeta,
   getTestsOutDir,
 } from "./path-test-utils.ts";
-import { STRICT_DIV_BY_ZERO_SOURCE } from "./test-fixtures.ts";
+import { STRICT_DIV_BY_ZERO_SOURCE, SAFE_DIV_FLOW_SOURCE } from "./test-fixtures.ts";
 import {
   NULLABLE_POINTER_GUARDED_REVERSED_SOURCE,
   NULLABLE_POINTER_GUARDED_SOURCE,
@@ -37,7 +37,7 @@ expectCompileFail(
 
 expectCompileOk(
   "flow-sensitive-nonzero",
-  `fn safe(x : I32) : I32 => { if (x == 0) { 0 } else { 100 / x } }`,
+  SAFE_DIV_FLOW_SOURCE,
   { typecheck: { strictSafety: true } },
 );
 

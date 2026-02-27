@@ -9,6 +9,7 @@ import { toDiagnostic } from "../../main/js/errors.ts";
 import { expectDiagnosticCode } from "./compile-test-utils.ts";
 import { assertDiagnosticContract } from "./diagnostic-contract-utils.ts";
 import { getCLIPaths } from "./path-test-utils.ts";
+import { assertEq } from "./assert-utils.ts";
 import {
   NULLABLE_POINTER_UNGUARDED_SOURCE,
   STRICT_DIV_BY_ZERO_SOURCE,
@@ -16,6 +17,14 @@ import {
   STRICT_OVERFLOW_VAR_SOURCE,
   SAFE_DIV_WITH_GUARD_SOURCE,
 } from "./test-fixtures.ts";
+
+function makeVarLines(count: number): string[] {
+  return [
+    ...Array.from({ length: count }, (_, i) => `  let _v${i} : I32 = ${i};`),
+    "  0",
+    "}",
+  ];
+}
 
 type ResultUnknown =
   | { ok: true; value: unknown }
@@ -532,9 +541,7 @@ const tooLongFunctionSource = [
   "fn too_long() : I32 => {",
   "  // comment line should not count",
   "",
-  ...Array.from({ length: 101 }, (_, i) => `  let _v${i} : I32 = ${i};`),
-  "  0",
-  "}",
+  ...makeVarLines(101),
   "fn main() : I32 => too_long();",
   "",
 ].join("\n");
@@ -554,18 +561,15 @@ if (tooLongFunctionResult.ok) {
   process.exit(1);
 }
 const tooLongFunctionDiag = toDiagnostic(unwrapErr(tooLongFunctionResult));
-if (tooLongFunctionDiag.code !== "E_LINT_FUNCTION_TOO_LONG") {
-  console.error(
-    `Expected E_LINT_FUNCTION_TOO_LONG, got ${tooLongFunctionDiag.code}`,
-  );
-  process.exit(1);
-}
+assertEq(
+  tooLongFunctionDiag.code,
+  "E_LINT_FUNCTION_TOO_LONG",
+  "tooLong: expected code",
+);
 
 const exactlyHundredFunctionSource = [
   "fn exactly_hundred() : I32 => {",
-  ...Array.from({ length: 100 }, (_, i) => `  let _v${i} : I32 = ${i};`),
-  "  0",
-  "}",
+  ...makeVarLines(100),
   "fn main() : I32 => exactly_hundred();",
   "",
 ].join("\n");
@@ -587,12 +591,11 @@ if (exactlyHundredFunctionResult.ok) {
 const exactlyHundredFunctionDiag = toDiagnostic(
   unwrapErr(exactlyHundredFunctionResult),
 );
-if (exactlyHundredFunctionDiag.code !== "E_LINT_FUNCTION_TOO_LONG") {
-  console.error(
-    `Expected E_LINT_FUNCTION_TOO_LONG at exactly 100 lines, got ${exactlyHundredFunctionDiag.code}`,
-  );
-  process.exit(1);
-}
+assertEq(
+  exactlyHundredFunctionDiag.code,
+  "E_LINT_FUNCTION_TOO_LONG",
+  "exactlyHundred: expected code",
+);
 
 const commentHeavyFunctionSource = [
   "fn mostly_comments() : I32 => {",

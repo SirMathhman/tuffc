@@ -4,10 +4,14 @@
  */
 import * as fs from "fs";
 import * as path from "path";
+import { fileURLToPath } from "url";
 
 export { fs, path };
 
-export const TUFFC_ROOT = process.cwd();
+export const TUFFC_ROOT = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+);
 
 export const tuffFilePath = path.join(
   process.cwd(),
@@ -61,21 +65,37 @@ export function makeIsInResultFunction(
     resultFunctions.some((f) => lineNum >= f.start && lineNum <= f.end);
 }
 
+/**
+ * Internal: iterate over lines inside Result functions and apply a transform.
+ * The callback receives the current line and its index; return true if the
+ * line was modified (the callback is responsible for updating `lines[i]`).
+ */
+function transformResultLines(
+  lines: string[],
+  isInResultFunction: (lineNum: number) => boolean,
+  transform: (line: string, i: number) => boolean,
+): number {
+  let count = 0;
+  for (let i = 0; i < lines.length; i++) {
+    if (!isInResultFunction(i)) continue;
+    if (transform(lines[i], i)) count++;
+  }
+  return count;
+}
+
 /** Returns the number of lines modified. */
 export function addReturnToTcErrorCalls(
   lines: string[],
   isInResultFunction: (lineNum: number) => boolean,
 ): number {
-  let count = 0;
-  for (let i = 0; i < lines.length; i++) {
-    if (!isInResultFunction(i)) continue;
-    const line = lines[i];
-    if (line.match(/^\s+tc_error\(/) && !line.match(/return\s+tc_error/)) {
-      lines[i] = line.replace(/(\s+)tc_error/, "$1return tc_error");
-      count++;
+  return lines.reduce((count, _line, i) => {
+    if (!isInResultFunction(i)) return count;
+    if (lines[i].match(/^\s+tc_error\(/) && !lines[i].match(/return\s+tc_error/)) {
+      lines[i] = lines[i].replace(/(\s+)tc_error/, "$1return tc_error");
+      return count + 1;
     }
-  }
-  return count;
+    return count;
+  }, 0);
 }
 
 /**
@@ -115,15 +135,67 @@ export function addQuestionMarkToTypecheckCalls(
   lines: string[],
   isInResultFunction: (lineNum: number) => boolean,
 ): number {
-  let count = 0;
-  for (let i = 0; i < lines.length; i++) {
-    if (!isInResultFunction(i)) continue;
-    if (lines[i].match(/^\s+typecheck_(expr|stmt|if_expr_branch)\([^)]+\);/)) {
-      lines[i] = lines[i].replace(/;$/, "?;");
-      count++;
+  return transformResultLines(lines, isInResultFunction, (line, i) => {
+    if (line.match(/^\s+typecheck_(expr|stmt|if_expr_branch)\([^)]+\);/)) {
+      lines[i] = line.replace(/;$/, "?;");
+      return true;
     }
-  }
+    return false;
+  });
+}
+
+/**
+ * Wrap `return 0;` / `return 1;` and bare numeric final lines in Result
+ * functions with `Ok<I32> { value: N }`.  Returns the number of lines
+ * modified.
+ */
+export function addOkWrapToReturns(
+  lines: string[],
+  isInResultFunction: (lineNum: number) => boolean,
+): number {
+  let count = 0;
+  count += transformResultLines(lines, isInResultFunction, (line, i) => {
+    if (line.match(/^\s+return [01];$/)) {
+      const num = line.match(/return ([01]);/)![1];
+      lines[i] = line.replace(
+        `return ${num};`,
+        `return Ok<I32> { value: ${num} };`,
+      );
+      return true;
+    }
+    return false;
+  });
+  count += transformResultLines(lines, isInResultFunction, (line, i) => {
+    if (
+      line.match(/^\s+[01]\s*$/) &&
+      i + 1 < lines.length &&
+      lines[i + 1].match(/^}/)
+    ) {
+      const num = line.trim();
+      const indent = line.match(/^(\s*)/)?.[1] ?? "";
+      lines[i] = `${indent}Ok<I32> { value: ${num} }`;
+      return true;
+    }
+    return false;
+  });
   return count;
+}
+
+/**
+ * Write `content` back to `filePath` if `modified` is true.
+ * Prints a standard ✅/ℹ️ message either way.
+ */
+export function saveIfModified(
+  filePath: string,
+  content: string,
+  modified: boolean,
+): void {
+  if (modified) {
+    fs.writeFileSync(filePath, content, "utf-8");
+    console.log(`  ✅ Saved changes`);
+  } else {
+    console.log(`  ℹ️  No changes needed`);
+  }
 }
 
 /**
@@ -141,4 +213,19 @@ export function runFileMigration(
     }
   }
   return { totalModified, total: files.length };
+}
+
+/**
+ * Run a migration set and print the standard summary header.
+ * Avoids duplicating the `runFileMigration + console.log === Summary ===` block
+ * across migrate-*.ts scripts.
+ */
+export function runMigrationMain(
+  files: string[],
+  migrateFile: (file: string) => boolean,
+): { totalModified: number; total: number } {
+  const result = runFileMigration(files, migrateFile);
+  console.log(`\n=== Summary ===`);
+  console.log(`Files modified: ${result.totalModified}/${result.total}`);
+  return result;
 }

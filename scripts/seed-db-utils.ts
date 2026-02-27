@@ -203,5 +203,7 @@ export function verifyCategory(scriptLabel: string, category: string): void {
     );
     process.exit(1);
   }
-  console.log(`[${scriptLabel}] Category '${category}' already populated with ${count} case(s); no seeding needed.`);
+  console.log(
+    `[${scriptLabel}] Category '${category}' already populated with ${count} case(s); no seeding needed.`,
+  );
 }

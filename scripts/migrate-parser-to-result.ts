@@ -4,14 +4,7 @@
  * Phase 3: Parser migration following proven Phase 2 (typechecker) pattern
  */
 
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-import { runFileMigration } from "./fix-utils.ts";
-
-const TUFFC_ROOT = path.resolve(__dirname, "..");
+import { fs, path, TUFFC_ROOT, runMigrationMain, saveIfModified } from "./fix-utils.ts";
 
 // Functions to migrate to Result<I32, ParseError>
 const RESULT_FUNCTIONS = ["p_parse_after_modifiers", "p_parse_extern_decl"];
@@ -94,7 +87,7 @@ const PANIC_CONVERSIONS = [
   },
 ];
 
-function migrateFile(filePath: string): boolean {
+function migrateParserFile(filePath: string): boolean {
   console.log(`\nMigrating ${path.relative(TUFFC_ROOT, filePath)}...`);
   let content = fs.readFileSync(filePath, "utf-8");
   let modified = false;
@@ -108,12 +101,7 @@ function migrateFile(filePath: string): boolean {
     }
   }
 
-  if (modified) {
-    fs.writeFileSync(filePath, content, "utf-8");
-    console.log(`  ✅ Saved changes`);
-  } else {
-    console.log(`  ℹ️  No changes needed`);
-  }
+  saveIfModified(filePath, content, modified);
 
   return modified;
 }
@@ -127,10 +115,9 @@ function main() {
     "src/main/tuff/selfhost/parser_core.tuff",
   ].map((f) => path.join(TUFFC_ROOT, f));
 
-  const { totalModified, total } = runFileMigration(files, migrateFile);
-
-  console.log(`\n=== Summary ===`);
-  console.log(`Files modified: ${totalModified}/${total}`);
+  const { totalModified, total } = runMigrationMain(files, migrateParserFile);
+  void totalModified;
+  void total;
   console.log(`\nNext steps:`);
   console.log(`1. Convert function signatures to Result<I32, ParseError>`);
   console.log(`2. Add ? operators for error propagation`);

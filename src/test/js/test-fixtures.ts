@@ -42,14 +42,22 @@ export const STRICT_OVERFLOW_SOURCE = `fn bad() : I32 => 2147483647 + 1;`;
 export const STRICT_OVERFLOW_VAR_SOURCE = `fn bad() : I32 => { let x : I32 = 2147483647; x + 1 }`;
 
 export const SAFE_DIV_WITH_GUARD_SOURCE = `fn safe(x : I32) : I32 => { if (x != 0) { 100 / x } else { 0 } }`;
+// Zero-first variant: guards x == 0 so the else branch can safely divide.
+export const SAFE_DIV_FLOW_SOURCE = [
+  "fn safe(x : I32) : I32 => {",
+  "  if (x == 0) { 0 } else { 100 / x }",
+  "}",
+].join("\n");
 
 export const COPY_VEC2_ALIAS_PROGRAM = `
 copy struct Vec3 { x : F32, y : F32, z : F32 }
 copy type Vec3Alias = Vec3;
 fn main() : I32 => {
-  let a : Vec3Alias = Vec3 { x: 1, y: 2, z: 3 };
+  let v : Vec3 = Vec3 { x: 1, y: 2, z: 3 };
+  let a : Vec3Alias = v;
   let b : Vec3Alias = a;
   let c : Vec3Alias = a;
+  let d : Vec3Alias = b;
   0
 }
 `;

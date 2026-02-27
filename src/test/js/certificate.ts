@@ -23,26 +23,16 @@ const outDir = getTestsOutDir(root, "certificate");
 fs.mkdirSync(outDir, { recursive: true });
 
 function runCli(args: string[]) {
-  return spawnSync(nodeExec, [tsxCli, "./src/main/js/cli.ts", ...args], {
-    cwd: root,
-    encoding: "utf8",
-  });
+  const cliArgs = [tsxCli, "./src/main/js/cli.ts", ...args];
+  return spawnSync(nodeExec, cliArgs, { cwd: root, encoding: "utf8" });
 }
 
-function assertEq<T>(actual: T, expected: T, label: string): void {
-  if (actual !== expected) {
-    console.error(
-      `${label}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`,
-    );
-    process.exit(1);
-  }
-}
+import { assertEq, assertTrue } from "./assert-utils.ts";
 
-function assertTrue(cond: boolean, label: string): void {
-  if (!cond) {
-    console.error(`${label}: assertion failed`);
-    process.exit(1);
-  }
+function runCliExpectError(args: string[], label: string) {
+  const r = runCli(args);
+  assertTrue(r.status !== 0, `${label}: expected non-zero exit`);
+  return r;
 }
 
 function readCert(certPath: string): Record<string, unknown> {
@@ -214,9 +204,8 @@ function readCert(certPath: string): Record<string, unknown> {
   );
 
   const certPath = path.join(outDir, "failure.cert.json");
-  const r = runCli([badSrc, "--emit-certificate", certPath]);
-
-  assertTrue(r.status !== 0, `${label}: expected non-zero exit`);
+  const r = runCliExpectError([badSrc, "--emit-certificate", certPath], label);
+  void r;
 
   const cert = readCert(certPath);
   const outcome = cert["compilationOutcome"] as {
@@ -233,11 +222,10 @@ function readCert(certPath: string): Record<string, unknown> {
 // ---------------------------------------------------------------------------
 {
   const label = "missing-value";
-  const r = runCli([
-    "./src/test/tuff/cases/factorial.tuff",
-    "--emit-certificate",
-  ]);
-  assertTrue(r.status !== 0, `${label}: expected non-zero exit`);
+  const r = runCliExpectError(
+    ["./src/test/tuff/cases/factorial.tuff", "--emit-certificate"],
+    label,
+  );
   assertTrue(
     `${r.stdout ?? ""}\n${r.stderr ?? ""}`.includes(
       "Missing value for --emit-certificate",

@@ -203,6 +203,14 @@ function buildModuleSourceOrder(entryAbsPath, moduleBaseAbsPath) {
   return { order, sourceByFile };
 }
 
+export function readManifestLines(manifestPath: string): string[] {
+  return fs
+    .readFileSync(manifestPath, "utf8")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+}
+
 function tryStatMtimeMs(filePath: string): number | undefined {
   try {
     return fs.statSync(filePath).mtimeMs;
@@ -259,11 +267,7 @@ function isSplitOutputUpToDate(
     return false;
   }
 
-  const manifestRows = fs
-    .readFileSync(manifestPath, "utf8")
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
+  const manifestRows = readManifestLines(manifestPath);
   if (manifestRows.length === 0) return false;
 
   let oldestGenerated = manifestMtime;
@@ -487,7 +491,7 @@ const __bridgeFns = [
   "panic", "panic_with_code", "panic_with_code_loc", "get_argc", "get_argv", "perf_now",
   "profile_mark", "profile_take_json"
 ];
-for (const __name of __bridgeFns) {
+__bridgeFns.forEach((__name) => {
   try {
     const __fn = __host_runtime[__name];
     if (typeof __fn === "function") {
@@ -495,13 +499,14 @@ for (const __name of __bridgeFns) {
       eval(__name + ' = __host_runtime["' + __name + '"]');
     }
   } catch {}
-}
+});
 if (typeof __host_runtime_print === "function") {
   try { print = (s) => { __host_runtime_print(s); return 0; }; } catch {}
 }
 if (typeof __host_runtime_print_error === "function") {
-  try { print_error = (s) => { __host_runtime_print_error(s); return 0; }; } catch {}
-  try { print_error_out = (s) => { __host_runtime_print_error(s); return 0; }; } catch {}
+  const __pe = (s) => { __host_runtime_print_error(s); return 0; };
+  try { print_error = __pe; } catch {}
+  try { print_error_out = __pe; } catch {}
 }
       `,
       sandbox,
@@ -514,10 +519,11 @@ if (typeof __host_runtime_print_error === "function") {
       str_replace_all: typeof str_replace_all,
       int_to_string: typeof int_to_string,
       module_normalize_path: typeof module_normalize_path,
-      sample_norm:
-        typeof module_normalize_path === "function"
-          ? String(module_normalize_path("a\\\\b"))
-          : "<no-module-normalize-path>",
+      sample_norm: (() => {
+        if (typeof module_normalize_path !== "function")
+          return "<no-module-normalize-path>";
+        return String(module_normalize_path("a\\\\b"));
+      })(),
       sample_i2s:
         typeof int_to_string_out === "function"
           ? String(int_to_string_out(0))
@@ -1025,7 +1031,9 @@ function preflightRefinementCallGuards(
         `if\\s*\\(\\s*${constrainedArg}\\s*<\\s*${rule.boundFn}\\s*\\(\\s*${refArg}\\s*\\)`,
       );
       if (!guardPattern.test(source)) {
-        return err(makeStrBoundsError(fnName, constrainedArg, rule.boundFn, refArg));
+        return err(
+          makeStrBoundsError(fnName, constrainedArg, rule.boundFn, refArg),
+        );
       }
     }
   }

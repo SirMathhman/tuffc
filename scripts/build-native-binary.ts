@@ -24,11 +24,10 @@ const sourcePath = path.join(
 );
 
 if (!fs.existsSync(sourcePath)) {
-  console.error(
-    `[build-native-binary] Missing native selfhost executable: ${sourcePath}\n` +
+  throw new Error(
+    `[build-native-binary] Native bootstrap executable not found: ${sourcePath}. ` +
       "Run `npm run native:selfhost:parity` first.",
   );
-  process.exit(1);
 }
 
 fs.mkdirSync(path.dirname(outputPath), { recursive: true });
