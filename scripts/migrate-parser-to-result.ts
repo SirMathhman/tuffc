@@ -4,7 +4,13 @@
  * Phase 3: Parser migration following proven Phase 2 (typechecker) pattern
  */
 
-import { fs, path, TUFFC_ROOT, runMigrationMain, saveIfModified } from "./fix-utils.ts";
+import {
+  fs,
+  path,
+  TUFFC_ROOT,
+  runMigrationMain,
+  saveIfModified,
+} from "./fix-utils.ts";
 
 // Functions to migrate to Result<I32, ParseError>
 const RESULT_FUNCTIONS = ["p_parse_after_modifiers", "p_parse_extern_decl"];

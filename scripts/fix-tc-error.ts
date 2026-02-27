@@ -24,7 +24,10 @@ for (let i = 0; i < lines.length; i++) {
     count++;
   }
 }
-if (count > 0) console.log(`✓ Changed tc_panic_loc to tc_error in Result functions (${count} lines)`);
+if (count > 0)
+  console.log(
+    `✓ Changed tc_panic_loc to tc_error in Result functions (${count} lines)`,
+  );
 
 // Step 2: Add return to tc_error calls in Result functions
 count = addReturnToTcErrorCalls(lines, isInResultFunction);
@@ -36,7 +39,8 @@ if (count > 0) reportStep("Added ? operators to typecheck calls", count);
 
 // Step 4: Wrap return 0/1 and final numeric returns with Ok in Result functions only
 count = addOkWrapToReturns(lines, isInResultFunction);
-if (count > 0) reportStep("Wrapped return 0/1 with Ok in Result functions", count);
+if (count > 0)
+  reportStep("Wrapped return 0/1 with Ok in Result functions", count);
 const content = lines.join("\n");
 fs.writeFileSync(filePath, content, "utf-8");
 

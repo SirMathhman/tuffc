@@ -4,7 +4,13 @@
  * Phase 4: Final cleanup - runtime_lexer, codegen_c, borrowcheck, module_loader
  */
 
-import { fs, path, TUFFC_ROOT, runMigrationMain, saveIfModified } from "./fix-utils.ts";
+import {
+  fs,
+  path,
+  TUFFC_ROOT,
+  runMigrationMain,
+  saveIfModified,
+} from "./fix-utils.ts";
 
 // Map of files to error types
 const FILE_ERROR_TYPES = {
@@ -81,7 +87,7 @@ const migrateSingleFile = (filePath: string): boolean => {
   saveIfModified(filePath, content, modified);
 
   return modified;
-}
+};
 
 function main() {
   console.log("=== Final Result Migration (Phase 4) ===\n");

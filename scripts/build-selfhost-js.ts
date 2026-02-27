@@ -239,7 +239,9 @@ const args = [
   `./${relOutput}`,
 ];
 
-console.log(`[build:selfhost-js] compiling selfhost.tuff -> ${relOutput} using tsx ./src/main/js/cli.ts`);
+console.log(
+  `[build:selfhost-js] compiling selfhost.tuff -> ${relOutput} using tsx ./src/main/js/cli.ts`,
+);
 
 const COMPILE_TIMEOUT_MS = 300_000; // 5 minutes
 
