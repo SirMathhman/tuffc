@@ -1,0 +1,6 @@
+{
+  "lint": {
+    "maxEffectiveLines": 500,
+    "astDuplicates": false
+  }
+}
