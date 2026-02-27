@@ -1,5 +1,6 @@
 import fs from "node:fs";
-import { spawnSync } from "node:child_process";
+import os from "node:os";
+import { spawnSync, spawn } from "node:child_process";
 import path from "node:path";
 import {
   getNodeExecPath,
@@ -8,7 +9,7 @@ import {
 } from "./path-test-utils.ts";
 
 type SuiteName = "core" | "native" | "stress" | "parity";
-type ScriptOutcome = "passed" | "timed_out";
+type ScriptOutcome = "passed" | "timed_out" | "failed";
 
 const TEST_TIMEOUT_MS = 60_000;
 
@@ -88,10 +89,21 @@ function parseSuites(argv: string[]): SuiteName[] {
   return suites.length > 0 ? suites : ["core"];
 }
 
-function executeScript(
+function parseConcurrency(argv: string[]): number {
+  const raw = argv.find((a) => a.startsWith("--concurrency="));
+  if (raw) {
+    const n = parseInt(raw.slice("--concurrency=".length), 10);
+    if (!isNaN(n) && n >= 1) return n;
+  }
+  // Default: min(cpu count, 4) — avoids spawning dozens of tsx processes on
+  // high-core-count machines which causes I/O contention and slower overall runs.
+  return Math.min(os.cpus().length, 4);
+}
+
+function buildScriptArgs(
   scriptPath: string,
   updateSnapshots: boolean,
-): ScriptOutcome {
+): string[] {
   const args = [tsxCli, scriptPath];
   if (updateSnapshots && scriptPath.endsWith("run-tests.ts")) {
     args.push("--update");
@@ -102,39 +114,102 @@ function executeScript(
   if (scriptPath.endsWith("db-test-cases.ts")) {
     args.push("--backend=selfhost", "--allow-known-gaps");
   }
+  return args;
+}
 
+interface ScriptResult {
+  script: string;
+  outcome: ScriptOutcome;
+  output: string;
+  elapsedMs: number;
+}
+
+function executeScriptAsync(
+  scriptPath: string,
+  updateSnapshots: boolean,
+): Promise<ScriptResult> {
+  const args = buildScriptArgs(scriptPath, updateSnapshots);
   const relative = path.relative(root, scriptPath).replaceAll("\\", "/");
-  console.log(`\n[test] ▶ ${relative}`);
+  const t0 = Date.now();
 
-  const result = spawnSync(nodeExec, args, {
-    cwd: root,
-    encoding: "utf8",
-    stdio: "inherit",
-    timeout: TEST_TIMEOUT_MS,
+  return new Promise((resolve) => {
+    const chunks: Buffer[] = [];
+
+    const proc = spawn(nodeExec, args, {
+      cwd: root,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    proc.stdout.on("data", (chunk: Buffer) => chunks.push(chunk));
+    proc.stderr.on("data", (chunk: Buffer) => chunks.push(chunk));
+
+    const timer = setTimeout(() => {
+      proc.kill();
+      resolve({
+        script: relative,
+        outcome: "timed_out",
+        output: Buffer.concat(chunks).toString("utf8"),
+        elapsedMs: Date.now() - t0,
+      });
+    }, TEST_TIMEOUT_MS);
+
+    proc.on("close", (code) => {
+      clearTimeout(timer);
+      const elapsed = Date.now() - t0;
+      const output = Buffer.concat(chunks).toString("utf8");
+      resolve({
+        script: relative,
+        outcome: code === 0 ? "passed" : "failed",
+        output,
+        elapsedMs: elapsed,
+      });
+    });
+  });
+}
+
+async function runScriptsParallel(
+  scripts: string[],
+  updateSnapshots: boolean,
+  concurrency: number,
+): Promise<ScriptResult[]> {
+  const results: ScriptResult[] = [];
+  const queue = [...scripts];
+  let active = 0;
+  let resolveAll!: () => void;
+  const done = new Promise<void>((res) => {
+    resolveAll = res;
   });
 
-  if (
-    (result.error as NodeJS.ErrnoException | undefined)?.code === "ETIMEDOUT"
-  ) {
-    console.error(
-      `[test] ⚠ ${relative} timed out after ${TEST_TIMEOUT_MS / 1000}s; continuing with remaining scripts`,
-    );
-    return "timed_out";
+  function dispatch(): void {
+    while (active < concurrency && queue.length > 0) {
+      const script = queue.shift()!;
+      active++;
+      const relative = path.relative(root, script).replaceAll("\\", "/");
+      console.log(`\n[test] ▶ ${relative} (starting)`);
+      executeScriptAsync(script, updateSnapshots).then((result) => {
+        results.push(result);
+        active--;
+        // Print buffered output now that this script finished
+        if (result.output.trim().length > 0) {
+          process.stdout.write(result.output);
+        }
+        const icon =
+          result.outcome === "passed"
+            ? "✓"
+            : result.outcome === "timed_out"
+              ? "⚠"
+              : "✖";
+        console.log(`[test] ${icon} ${result.script} (${result.elapsedMs}ms)`);
+        dispatch();
+        if (active === 0 && queue.length === 0) resolveAll();
+      });
+    }
+    if (active === 0 && queue.length === 0) resolveAll();
   }
 
-  if (result.error != null) {
-    console.error(
-      `[test] Failed to start ${relative}: ${result.error.message}`,
-    );
-    process.exit(1);
-  }
-  if (result.status !== 0) {
-    console.error(`[test] ✖ ${relative} exited with status ${result.status}`);
-    process.exit(result.status ?? 1);
-  }
-
-  console.log(`[test] ✓ ${relative}`);
-  return "passed";
+  dispatch();
+  await done;
+  return results;
 }
 
 function ensureSelfhostBuiltOnceAtStart(): void {
@@ -166,6 +241,7 @@ function ensureSelfhostBuiltOnceAtStart(): void {
 
 const suites = parseSuites(process.argv.slice(2));
 const updateSnapshots = process.argv.includes("--update");
+const concurrency = parseConcurrency(process.argv.slice(2));
 
 const scriptsInOrder = suites.flatMap((suite) => suiteScripts[suite]);
 const dedupedScripts = [...new Set(scriptsInOrder)];
@@ -203,22 +279,42 @@ if (needsSelfhostArtifact) {
   }
 }
 
-console.log(`[test] Script count: ${dedupedScripts.length}`);
+console.log(
+  `[test] Script count: ${dedupedScripts.length}, concurrency: ${concurrency} (use --concurrency=N to override)`,
+);
 
-const timedOutScripts: string[] = [];
+// When updating snapshots, serialize execution to avoid concurrent file writes.
+const effectiveConcurrency = updateSnapshots ? 1 : concurrency;
 
-for (const script of dedupedScripts) {
-  const outcome = executeScript(script, updateSnapshots);
-  if (outcome === "timed_out") {
-    timedOutScripts.push(path.relative(root, script).replaceAll("\\", "/"));
-  }
-}
+const results = await runScriptsParallel(
+  dedupedScripts,
+  updateSnapshots,
+  effectiveConcurrency,
+);
+
+const timedOutScripts = results
+  .filter((r) => r.outcome === "timed_out")
+  .map((r) => r.script);
+const failedScripts = results
+  .filter((r) => r.outcome === "failed")
+  .map((r) => r.script);
 
 if (timedOutScripts.length > 0) {
   console.error("\n[test] Timed out script(s):");
   for (const script of timedOutScripts) {
     console.error(`  ${script}`);
   }
+}
+
+if (failedScripts.length > 0) {
+  console.error("\n[test] Failed script(s):");
+  for (const script of failedScripts) {
+    console.error(`  ${script}`);
+  }
+  process.exit(1);
+}
+
+if (timedOutScripts.length > 0) {
   process.exit(124);
 }
 
