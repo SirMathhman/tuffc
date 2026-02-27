@@ -9499,13 +9499,383 @@ function generate_c_impl(typed, substrate) {
   i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
 }
   sb_append(sb, "}\n\n");
-  sb_append(sb, "int main(void) {\n");
+  sb_append(sb, "void tuff_set_argv(int argc, char** argv);\n\n");
+  sb_append(sb, "int main(int argc, char** argv) {\n");
+  sb_append(sb, "  tuff_set_argv(argc, argv);\n");
   sb_append(sb, "  tuff_init_globals();\n");
   sb_append(sb, "  return (int)tuff_main();\n");
   sb_append(sb, "}\n");
   return sb_build(sb);
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.generate_c_impl = generate_c_impl;
+
+const __tuff_outer_for_cc_push_file = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function cc_push_file(artifacts, rel_path, content) {
+  let __tuff_this = { artifacts: artifacts, rel_path: rel_path, content: content, this: __tuff_outer_for_cc_push_file };
+  let rec = vec_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.rec = rec;
+  (() => { const __recv = rec; const __prop = __recv?.["vec_push"]; if (typeof __prop === "function") return __prop(rel_path); const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, rel_path) : vec_push(__recv, rel_path); })();
+  (() => { const __recv = rec; const __prop = __recv?.["vec_push"]; if (typeof __prop === "function") return __prop(content); const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, content) : vec_push(__recv, content); })();
+  return (() => { const __recv = artifacts; const __prop = __recv?.["vec_push"]; if (typeof __prop === "function") return __prop(rec); const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, rec) : vec_push(__recv, rec); })();
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.cc_push_file = cc_push_file;
+
+const __tuff_outer_for_cc_owner_key_for_index = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function cc_owner_key_for_index(stmt_owners, idx, fallback) {
+  let __tuff_this = { stmt_owners: stmt_owners, idx: idx, fallback: fallback, this: __tuff_outer_for_cc_owner_key_for_index };
+  if ((idx < (() => { const __recv = stmt_owners; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })())) {
+  return (() => { const __recv = stmt_owners; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(idx); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, idx) : vec_get(__recv, idx); })();
+}
+  return fallback;
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.cc_owner_key_for_index = cc_owner_key_for_index;
+
+const __tuff_outer_for_cc_emit_split_shared_header = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function cc_emit_split_shared_header(typed, module_keys) {
+  let __tuff_this = { typed: typed, module_keys: module_keys, this: __tuff_outer_for_cc_emit_split_shared_header };
+  let sb = sb_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.sb = sb;
+  sb_append(sb, "#ifndef TUFF_SHARED_H\n");
+  sb_append(sb, "#define TUFF_SHARED_H\n\n");
+  if ((cc_inc_stdint === 1)) {
+  sb_append(sb, "#include <stdint.h>\n");
+}
+  if ((cc_inc_stddef === 1)) {
+  sb_append(sb, "#include <stddef.h>\n");
+}
+  if ((cc_inc_stdio === 1)) {
+  sb_append(sb, "#include <stdio.h>\n");
+}
+  if ((cc_inc_stdlib === 1)) {
+  sb_append(sb, "#include <stdlib.h>\n");
+}
+  if ((cc_inc_string === 1)) {
+  sb_append(sb, "#include <string.h>\n");
+}
+  if ((cc_inc_ctype === 1)) {
+  sb_append(sb, "#include <ctype.h>\n");
+}
+  if ((cc_inc_errno === 1)) {
+  sb_append(sb, "#include <errno.h>\n");
+}
+  sb_append(sb, "#ifdef _WIN32\n");
+  if ((cc_inc_direct === 1)) {
+  sb_append(sb, "#include <direct.h>\n");
+}
+  sb_append(sb, "#else\n");
+  if ((cc_inc_sys_stat === 1)) {
+  sb_append(sb, "#include <sys/stat.h>\n");
+}
+  if ((cc_inc_sys_types === 1)) {
+  sb_append(sb, "#include <sys/types.h>\n");
+}
+  sb_append(sb, "#endif\n\n");
+  sb_append(sb, "typedef struct TuffError { int64_t code; int64_t message; int64_t reason; int64_t fix; int64_t line; int64_t col; } TuffError;\n");
+  sb_append(sb, "typedef struct TuffVec { int64_t* data; int64_t init; int64_t length; } TuffVec;\n");
+  sb_append(sb, "\n");
+  cc_emitted_tuff_error = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.cc_emitted_tuff_error = cc_emitted_tuff_error;
+  sb_append(sb, "/* Runtime/host declarations required across split translation units. */\n");
+  sb_append(sb, "int64_t str_length();\n");
+  sb_append(sb, "int64_t str_char_at();\n");
+  sb_append(sb, "int64_t str_slice();\n");
+  sb_append(sb, "int64_t str_slice_window();\n");
+  sb_append(sb, "int64_t str_copy();\n");
+  sb_append(sb, "int64_t str_mut_slice();\n");
+  sb_append(sb, "int64_t str_concat();\n");
+  sb_append(sb, "int64_t str_eq();\n");
+  sb_append(sb, "int64_t str_from_char_code();\n");
+  sb_append(sb, "int64_t __str_index_of();\n");
+  sb_append(sb, "int64_t str_trim();\n");
+  sb_append(sb, "int64_t str_replace_all();\n");
+  sb_append(sb, "int64_t char_code();\n");
+  sb_append(sb, "int64_t __int_to_string();\n");
+  sb_append(sb, "int64_t parse_int();\n");
+  sb_append(sb, "int64_t sb_new();\n");
+  sb_append(sb, "int64_t sb_append();\n");
+  sb_append(sb, "int64_t sb_append_char();\n");
+  sb_append(sb, "int64_t sb_build();\n");
+  sb_append(sb, "int64_t __vec_new();\n");
+  sb_append(sb, "int64_t __vec_push();\n");
+  sb_append(sb, "int64_t __vec_pop();\n");
+  sb_append(sb, "int64_t __vec_get();\n");
+  sb_append(sb, "int64_t __vec_set();\n");
+  sb_append(sb, "int64_t __vec_length();\n");
+  sb_append(sb, "int64_t __vec_init();\n");
+  sb_append(sb, "int64_t __vec_capacity();\n");
+  sb_append(sb, "int64_t __vec_clear();\n");
+  sb_append(sb, "int64_t __vec_join();\n");
+  sb_append(sb, "int64_t __vec_includes();\n");
+  sb_append(sb, "int64_t __map_new();\n");
+  sb_append(sb, "int64_t map_set();\n");
+  sb_append(sb, "int64_t map_get();\n");
+  sb_append(sb, "int64_t map_has();\n");
+  sb_append(sb, "int64_t map_delete();\n");
+  sb_append(sb, "int64_t __set_new();\n");
+  sb_append(sb, "int64_t set_add();\n");
+  sb_append(sb, "int64_t set_has();\n");
+  sb_append(sb, "int64_t set_delete();\n");
+  sb_append(sb, "int64_t read_file();\n");
+  sb_append(sb, "int64_t write_file();\n");
+  sb_append(sb, "int64_t path_join();\n");
+  sb_append(sb, "int64_t path_dirname();\n");
+  sb_append(sb, "int64_t print();\n");
+  sb_append(sb, "int64_t __print_error();\n");
+  sb_append(sb, "int64_t panic();\n");
+  sb_append(sb, "int64_t panic_with_code();\n");
+  sb_append(sb, "int64_t panic_with_code_loc();\n");
+  sb_append(sb, "int64_t get_argc();\n");
+  sb_append(sb, "int64_t get_argv();\n");
+  sb_append(sb, "void tuff_set_argv(int argc, char** argv);\n");
+  sb_append(sb, "int64_t __perf_now();\n");
+  sb_append(sb, "int64_t profile_mark();\n");
+  sb_append(sb, "int64_t __profile_take_json();\n");
+  sb_append(sb, "int64_t __host_get_c_substrate();\n");
+  sb_append(sb, "int64_t __host_get_c_runtime_prelude_source();\n");
+  sb_append(sb, "int64_t __host_emit_target_from_source();\n\n");
+  let stmts = node_get_data1(typed); if (typeof __tuff_this !== 'undefined') __tuff_this.stmts = stmts;
+  let i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
+  let len = (() => { const __recv = stmts; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.len = len;
+  while ((i < len)) {
+  let node = (() => { const __recv = stmts; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.node = node;
+  let kind = node_kind(node); if (typeof __tuff_this !== 'undefined') __tuff_this.kind = kind;
+  if ((((((kind === NK_FN_DECL) || (kind === NK_CLASS_FN_DECL)) || (kind === NK_ACTUAL_FN_DECL)) || (kind === NK_EXPECT_FN_DECL)) || (kind === NK_LET_DECL))) {
+  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
+  continue;
+}
+  let row = cc_emit_stmt(node); if (typeof __tuff_this !== 'undefined') __tuff_this.row = row;
+  if ((!(() => { const __recv = row; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop(""); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "") : str_eq(__recv, ""); })())) {
+  if ((() => { const __recv = row; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("typedef struct TuffError { int64_t code; int64_t message; int64_t reason; int64_t fix; int64_t line; int64_t col; } TuffError;"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "typedef struct TuffError { int64_t code; int64_t message; int64_t reason; int64_t fix; int64_t line; int64_t col; } TuffError;") : str_eq(__recv, "typedef struct TuffError { int64_t code; int64_t message; int64_t reason; int64_t fix; int64_t line; int64_t col; } TuffError;"); })()) {
+  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
+  continue;
+}
+  sb_append(sb, row);
+  sb_append(sb, "\n");
+}
+  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
+}
+  sb_append(sb, "\n");
+  i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
+  while ((i < len)) {
+  let node = (() => { const __recv = stmts; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.node = node;
+  if ((node_kind(node) === NK_LET_DECL)) {
+  let name = cc_to_name(get_interned_str(node_get_data1(node))); if (typeof __tuff_this !== 'undefined') __tuff_this.name = name;
+  sb_append(sb, "extern int64_t ");
+  sb_append(sb, name);
+  sb_append(sb, ";\n");
+}
+  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
+}
+  sb_append(sb, "\n");
+  i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
+  while ((i < len)) {
+  let fn_node = (() => { const __recv = stmts; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.fn_node = fn_node;
+  let kind = node_kind(fn_node); if (typeof __tuff_this !== 'undefined') __tuff_this.kind = kind;
+  if (((((kind === NK_FN_DECL) || (kind === NK_CLASS_FN_DECL)) || (kind === NK_ACTUAL_FN_DECL)) || (kind === NK_EXPECT_FN_DECL))) {
+  let fn_name = cc_to_name(get_interned_str(node_get_data1(fn_node))); if (typeof __tuff_this !== 'undefined') __tuff_this.fn_name = fn_name;
+  let params_str = cc_emit_param_list(node_get_data3(fn_node)); if (typeof __tuff_this !== 'undefined') __tuff_this.params_str = params_str;
+  let ret_type = cc_type_to_c(node_get_data4(fn_node)); if (typeof __tuff_this !== 'undefined') __tuff_this.ret_type = ret_type;
+  sb_append(sb, cc_emit_prototype(ret_type, fn_name, params_str));
+  sb_append(sb, "\n");
+}
+  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
+}
+  sb_append(sb, "\n");
+  i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
+  let mlen = (() => { const __recv = module_keys; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.mlen = mlen;
+  while ((i < mlen)) {
+  let key = (() => { const __recv = module_keys; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.key = key;
+  sb_append(sb, "void tuff_init_globals_");
+  sb_append(sb, key);
+  sb_append(sb, "(void);\n");
+  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
+}
+  sb_append(sb, "\n#endif\n");
+  return sb_build(sb);
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.cc_emit_split_shared_header = cc_emit_split_shared_header;
+
+const __tuff_outer_for_cc_emit_split_module_header = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function cc_emit_split_module_header(module_key) {
+  let __tuff_this = { module_key: module_key, this: __tuff_outer_for_cc_emit_split_module_header };
+  let guard = (() => { const __recv = (() => { const __recv = "TUFF_MOD_"; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(module_key); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, module_key) : str_concat(__recv, module_key); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("_H"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "_H") : str_concat(__recv, "_H"); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.guard = guard;
+  let sb = sb_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.sb = sb;
+  sb_append(sb, "#ifndef ");
+  sb_append(sb, guard);
+  sb_append(sb, "\n#define ");
+  sb_append(sb, guard);
+  sb_append(sb, "\n\n#include \"tuff_shared.h\"\n\n");
+  sb_append(sb, "void tuff_init_globals_");
+  sb_append(sb, module_key);
+  sb_append(sb, "(void);\n\n#endif\n");
+  return sb_build(sb);
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.cc_emit_split_module_header = cc_emit_split_module_header;
+
+const __tuff_outer_for_cc_emit_split_module_source = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function cc_emit_split_module_source(typed, module_key, stmt_owners, fallback_key) {
+  let __tuff_this = { typed: typed, module_key: module_key, stmt_owners: stmt_owners, fallback_key: fallback_key, this: __tuff_outer_for_cc_emit_split_module_source };
+  let sb = sb_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.sb = sb;
+  sb_append(sb, "#include \"");
+  sb_append(sb, module_key);
+  sb_append(sb, ".h\"\n\n");
+  let stmts = node_get_data1(typed); if (typeof __tuff_this !== 'undefined') __tuff_this.stmts = stmts;
+  let i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
+  let len = (() => { const __recv = stmts; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.len = len;
+  while ((i < len)) {
+  let owner = cc_owner_key_for_index(stmt_owners, i, fallback_key); if (typeof __tuff_this !== 'undefined') __tuff_this.owner = owner;
+  let node = (() => { const __recv = stmts; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.node = node;
+  if (((() => { const __recv = owner; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop(module_key); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, module_key) : str_eq(__recv, module_key); })() && (node_kind(node) === NK_LET_DECL))) {
+  let name = cc_to_name(get_interned_str(node_get_data1(node))); if (typeof __tuff_this !== 'undefined') __tuff_this.name = name;
+  sb_append(sb, "int64_t ");
+  sb_append(sb, name);
+  sb_append(sb, ";\n");
+}
+  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
+}
+  sb_append(sb, "\nvoid tuff_init_globals_");
+  sb_append(sb, module_key);
+  sb_append(sb, "(void) {\n");
+  i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
+  while ((i < len)) {
+  let owner = cc_owner_key_for_index(stmt_owners, i, fallback_key); if (typeof __tuff_this !== 'undefined') __tuff_this.owner = owner;
+  let node = (() => { const __recv = stmts; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.node = node;
+  if (((() => { const __recv = owner; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop(module_key); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, module_key) : str_eq(__recv, module_key); })() && (node_kind(node) === NK_LET_DECL))) {
+  let name = cc_to_name(get_interned_str(node_get_data1(node))); if (typeof __tuff_this !== 'undefined') __tuff_this.name = name;
+  sb_append(sb, "  ");
+  sb_append(sb, name);
+  sb_append(sb, " = ");
+  sb_append(sb, cc_emit_expr(node_get_data3(node)));
+  sb_append(sb, ";\n");
+}
+  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
+}
+  sb_append(sb, "}\n\n");
+  i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
+  while ((i < len)) {
+  let owner = cc_owner_key_for_index(stmt_owners, i, fallback_key); if (typeof __tuff_this !== 'undefined') __tuff_this.owner = owner;
+  let fn_node = (() => { const __recv = stmts; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.fn_node = fn_node;
+  let kind = node_kind(fn_node); if (typeof __tuff_this !== 'undefined') __tuff_this.kind = kind;
+  if (((() => { const __recv = owner; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop(module_key); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, module_key) : str_eq(__recv, module_key); })() && (((kind === NK_FN_DECL) || (kind === NK_CLASS_FN_DECL)) || (kind === NK_ACTUAL_FN_DECL)))) {
+  if ((node_get_data5(fn_node) !== 0)) {
+  sb_append(sb, cc_emit_stmt(fn_node));
+  sb_append(sb, "\n\n");
+}
+}
+  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
+}
+  return sb_build(sb);
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.cc_emit_split_module_source = cc_emit_split_module_source;
+
+const __tuff_outer_for_cc_emit_split_runtime_source = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function cc_emit_split_runtime_source(substrate) {
+  let __tuff_this = { substrate: substrate, this: __tuff_outer_for_cc_emit_split_runtime_source };
+  let sb = sb_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.sb = sb;
+  sb_append(sb, "#include \"tuff_shared.h\"\n\n");
+  let runtime_src = substrate; if (typeof __tuff_this !== 'undefined') __tuff_this.runtime_src = runtime_src;
+  if ((() => { const __recv = runtime_src; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop(""); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "") : str_eq(__recv, ""); })()) {
+  runtime_src = cc_emit_minimal_runtime_prelude(); if (typeof __tuff_this !== 'undefined') __tuff_this.runtime_src = runtime_src;
+}
+  runtime_src = (() => { const __recv = runtime_src; const __prop = __recv?.["str_replace_all"]; if (typeof __prop === "function") return __prop("typedef struct TuffVec { int64_t* data; int64_t init; int64_t length; } TuffVec;\n", ""); const __dyn = __recv?.table?.str_replace_all; return __dyn ? __dyn(__recv.ref, "typedef struct TuffVec { int64_t* data; int64_t init; int64_t length; } TuffVec;\n", "") : str_replace_all(__recv, "typedef struct TuffVec { int64_t* data; int64_t init; int64_t length; } TuffVec;\n", ""); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.runtime_src = runtime_src;
+  runtime_src = (() => { const __recv = runtime_src; const __prop = __recv?.["str_replace_all"]; if (typeof __prop === "function") return __prop("typedef struct TuffVec { int64_t* data; int64_t init; int64_t length; } TuffVec;\r\n", ""); const __dyn = __recv?.table?.str_replace_all; return __dyn ? __dyn(__recv.ref, "typedef struct TuffVec { int64_t* data; int64_t init; int64_t length; } TuffVec;\r\n", "") : str_replace_all(__recv, "typedef struct TuffVec { int64_t* data; int64_t init; int64_t length; } TuffVec;\r\n", ""); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.runtime_src = runtime_src;
+  runtime_src = (() => { const __recv = runtime_src; const __prop = __recv?.["str_replace_all"]; if (typeof __prop === "function") return __prop("typedef struct\n{\n    int64_t *data;\n    size_t init;\n    size_t length;\n} TuffVec;\n", ""); const __dyn = __recv?.table?.str_replace_all; return __dyn ? __dyn(__recv.ref, "typedef struct\n{\n    int64_t *data;\n    size_t init;\n    size_t length;\n} TuffVec;\n", "") : str_replace_all(__recv, "typedef struct\n{\n    int64_t *data;\n    size_t init;\n    size_t length;\n} TuffVec;\n", ""); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.runtime_src = runtime_src;
+  runtime_src = (() => { const __recv = runtime_src; const __prop = __recv?.["str_replace_all"]; if (typeof __prop === "function") return __prop("typedef struct\r\n{\r\n    int64_t *data;\r\n    size_t init;\r\n    size_t length;\r\n} TuffVec;\r\n", ""); const __dyn = __recv?.table?.str_replace_all; return __dyn ? __dyn(__recv.ref, "typedef struct\r\n{\r\n    int64_t *data;\r\n    size_t init;\r\n    size_t length;\r\n} TuffVec;\r\n", "") : str_replace_all(__recv, "typedef struct\r\n{\r\n    int64_t *data;\r\n    size_t init;\r\n    size_t length;\r\n} TuffVec;\r\n", ""); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.runtime_src = runtime_src;
+  if ((!(() => { const __recv = substrate; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop(""); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "") : str_eq(__recv, ""); })())) {
+  sb_append(sb, runtime_src);
+} else {
+  sb_append(sb, runtime_src);
+}
+  sb_append(sb, "\n");
+  return sb_build(sb);
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.cc_emit_split_runtime_source = cc_emit_split_runtime_source;
+
+const __tuff_outer_for_cc_emit_split_main_source = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function cc_emit_split_main_source(init_order) {
+  let __tuff_this = { init_order: init_order, this: __tuff_outer_for_cc_emit_split_main_source };
+  let sb = sb_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.sb = sb;
+  sb_append(sb, "#include \"tuff_shared.h\"\n\n");
+  sb_append(sb, "int main(int argc, char** argv) {\n");
+  sb_append(sb, "  tuff_set_argv(argc, argv);\n");
+  let i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
+  let len = (() => { const __recv = init_order; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.len = len;
+  while ((i < len)) {
+  let key = (() => { const __recv = init_order; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.key = key;
+  sb_append(sb, "  tuff_init_globals_");
+  sb_append(sb, key);
+  sb_append(sb, "();\n");
+  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
+}
+  sb_append(sb, "  return (int)tuff_main();\n");
+  sb_append(sb, "}\n");
+  return sb_build(sb);
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.cc_emit_split_main_source = cc_emit_split_main_source;
+
+const __tuff_outer_for_generate_c_split_files_impl = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function generate_c_split_files_impl(typed, substrate, module_keys, stmt_owners, init_order) {
+  let __tuff_this = { typed: typed, substrate: substrate, module_keys: module_keys, stmt_owners: stmt_owners, init_order: init_order, this: __tuff_outer_for_generate_c_split_files_impl };
+  cc_temp_counter = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.cc_temp_counter = cc_temp_counter;
+  cc_disable_unicode_escape = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.cc_disable_unicode_escape = cc_disable_unicode_escape;
+  cc_enum_names = set_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.cc_enum_names = cc_enum_names;
+  cc_enum_variant_consts = map_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.cc_enum_variant_consts = cc_enum_variant_consts;
+  cc_struct_fields = map_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.cc_struct_fields = cc_struct_fields;
+  cc_alias_by_variant = map_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.cc_alias_by_variant = cc_alias_by_variant;
+  cc_union_alias_info = map_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.cc_union_alias_info = cc_union_alias_info;
+  cc_covered_extern_fns = set_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.cc_covered_extern_fns = cc_covered_extern_fns;
+  cc_fn_return_types = map_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.cc_fn_return_types = cc_fn_return_types;
+  cc_local_types = map_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.cc_local_types = cc_local_types;
+  cc_emitted_tuff_error = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.cc_emitted_tuff_error = cc_emitted_tuff_error;
+  cc_inc_stdint = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.cc_inc_stdint = cc_inc_stdint;
+  cc_inc_stddef = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.cc_inc_stddef = cc_inc_stddef;
+  cc_inc_stdio = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.cc_inc_stdio = cc_inc_stdio;
+  cc_inc_stdlib = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.cc_inc_stdlib = cc_inc_stdlib;
+  cc_inc_string = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.cc_inc_string = cc_inc_string;
+  cc_inc_ctype = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.cc_inc_ctype = cc_inc_ctype;
+  cc_inc_errno = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.cc_inc_errno = cc_inc_errno;
+  cc_inc_direct = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.cc_inc_direct = cc_inc_direct;
+  cc_inc_sys_stat = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.cc_inc_sys_stat = cc_inc_sys_stat;
+  cc_inc_sys_types = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.cc_inc_sys_types = cc_inc_sys_types;
+  cc_init_context(typed);
+  if ((!(() => { const __recv = substrate; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop(""); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "") : str_eq(__recv, ""); })())) {
+  cc_require_substrate_headers();
+} else {
+  cc_inc_stddef = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.cc_inc_stddef = cc_inc_stddef;
+  cc_inc_stdio = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.cc_inc_stdio = cc_inc_stdio;
+  cc_inc_stdlib = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.cc_inc_stdlib = cc_inc_stdlib;
+  cc_inc_string = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.cc_inc_string = cc_inc_string;
+  cc_inc_ctype = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.cc_inc_ctype = cc_inc_ctype;
+}
+  let stmts = node_get_data1(typed); if (typeof __tuff_this !== 'undefined') __tuff_this.stmts = stmts;
+  let len = (() => { const __recv = stmts; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.len = len;
+  let cvi = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.cvi = cvi;
+  while ((cvi < len)) {
+  let cvn = (() => { const __recv = stmts; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(cvi); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, cvi) : vec_get(__recv, cvi); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.cvn = cvn;
+  if (cc_is_extern_fn_decl(cvn)) {
+  let fname = get_interned_str(node_get_data1(cvn)); if (typeof __tuff_this !== 'undefined') __tuff_this.fname = fname;
+  if ((!(() => { const __recv = cc_covered_extern_fns; const __prop = __recv?.["set_has"]; if (typeof __prop === "function") return __prop(fname); const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, fname) : set_has(__recv, fname); })())) {
+  panic_with_code("E_EXTERN_NO_SOURCE", (() => { const __recv = (() => { const __recv = "extern fn '"; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(fname); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, fname) : str_concat(__recv, fname); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("' has no source attribution"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "' has no source attribution") : str_concat(__recv, "' has no source attribution"); })(), "C codegen requires each extern function to be attributed to a source via extern let destructuring.", (() => { const __recv = (() => { const __recv = "Add 'extern let { "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(fname); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, fname) : str_concat(__recv, fname); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(" } = <header>;' before the declaration."); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, " } = <header>;' before the declaration.") : str_concat(__recv, " } = <header>;' before the declaration."); })());
+}
+}
+  cvi = (cvi + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.cvi = cvi;
+}
+  let artifacts = vec_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.artifacts = artifacts;
+  cc_push_file(artifacts, "tuff_shared.h", cc_emit_split_shared_header(typed, module_keys));
+  cc_push_file(artifacts, "tuff_runtime.c", cc_emit_split_runtime_source(substrate));
+  let fallback_key = "main"; if (typeof __tuff_this !== 'undefined') __tuff_this.fallback_key = fallback_key;
+  if (((() => { const __recv = module_keys; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })() > 0)) {
+  fallback_key = (() => { const __recv = module_keys; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(((() => { const __recv = module_keys; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })() - 1)); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, ((() => { const __recv = module_keys; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })() - 1)) : vec_get(__recv, ((() => { const __recv = module_keys; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })() - 1)); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.fallback_key = fallback_key;
+}
+  let i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
+  let mlen = (() => { const __recv = module_keys; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.mlen = mlen;
+  while ((i < mlen)) {
+  let key = (() => { const __recv = module_keys; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.key = key;
+  cc_push_file(artifacts, (() => { const __recv = key; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(".h"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ".h") : str_concat(__recv, ".h"); })(), cc_emit_split_module_header(key));
+  cc_push_file(artifacts, (() => { const __recv = key; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(".c"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, ".c") : str_concat(__recv, ".c"); })(), cc_emit_split_module_source(typed, key, stmt_owners, fallback_key));
+  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
+}
+  cc_push_file(artifacts, "tuff_main.c", cc_emit_split_main_source(init_order));
+  return artifacts;
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.generate_c_split_files_impl = generate_c_split_files_impl;
 
 const __tuff_outer_for_selfhost_codegen_c_impl_marker = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
 function selfhost_codegen_c_impl_marker() {
@@ -9520,6 +9890,13 @@ function generate_c(typed, substrate) {
   return generate_c_impl(typed, substrate);
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.generate_c = generate_c;
+
+const __tuff_outer_for_generate_c_split_files = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function generate_c_split_files(typed, substrate, module_keys, stmt_owners, init_order) {
+  let __tuff_this = { typed: typed, substrate: substrate, module_keys: module_keys, stmt_owners: stmt_owners, init_order: init_order, this: __tuff_outer_for_generate_c_split_files };
+  return generate_c_split_files_impl(typed, substrate, module_keys, stmt_owners, init_order);
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.generate_c_split_files = generate_c_split_files;
 
 const __tuff_outer_for_selfhost_codegen_c_marker = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
 function selfhost_codegen_c_marker() {
@@ -10850,7 +11227,7 @@ if (typeof __tuff_this !== 'undefined') __tuff_this.join_sources = join_sources;
 const __tuff_outer_for_module_with_c_runtime_prelude = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
 function module_with_c_runtime_prelude(source, target) {
   let __tuff_this = { source: source, target: target, this: __tuff_outer_for_module_with_c_runtime_prelude };
-  if ((!(() => { const __recv = target; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("c"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "c") : str_eq(__recv, "c"); })())) {
+  if (((!(() => { const __recv = target; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("c"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "c") : str_eq(__recv, "c"); })()) && (!(() => { const __recv = target; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("c-split"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "c-split") : str_eq(__recv, "c-split"); })()))) {
   return source;
 }
   if ((() => { const __recv = source; const __prop = __recv?.["str_includes"]; if (typeof __prop === "function") return __prop("fn tuff_runtime_panic("); const __dyn = __recv?.table?.str_includes; return __dyn ? __dyn(__recv.ref, "fn tuff_runtime_panic(") : str_includes(__recv, "fn tuff_runtime_panic("); })()) {
@@ -10889,7 +11266,7 @@ function module_emit_target_output(typed, merged_source, target) {
   if ((() => { const __recv = target; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("tuff"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "tuff") : str_eq(__recv, "tuff"); })()) {
   return emit_tuff_from_typed(typed, merged_source, lex_take_trivia());
 }
-  panic_with_code("E_UNSUPPORTED_TARGET", (() => { const __recv = "Unsupported codegen target: "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(target); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, target) : str_concat(__recv, target); })(), "The compiler was asked to emit code for a target that is not implemented.", "Use target 'js', target 'c', or target 'tuff'.");
+  panic_with_code("E_UNSUPPORTED_TARGET", (() => { const __recv = "Unsupported codegen target: "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(target); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, target) : str_concat(__recv, target); })(), "The compiler was asked to emit code for a target that is not implemented.", "Use target 'js', target 'c', target 'c-split', or target 'tuff'.");
   return "";
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.module_emit_target_output = module_emit_target_output;
@@ -11403,6 +11780,109 @@ function module_has_out_export(source, name) {
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.module_has_out_export = module_has_out_export;
 
+const __tuff_outer_for_module_path_to_unit_key = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function module_path_to_unit_key(p, fallback_idx) {
+  let __tuff_this = { p: p, fallback_idx: fallback_idx, this: __tuff_outer_for_module_path_to_unit_key };
+  let key = module_normalize_path(p); if (typeof __tuff_this !== 'undefined') __tuff_this.key = key;
+  key = (() => { const __recv = key; const __prop = __recv?.["str_replace_all"]; if (typeof __prop === "function") return __prop(":", "_"); const __dyn = __recv?.table?.str_replace_all; return __dyn ? __dyn(__recv.ref, ":", "_") : str_replace_all(__recv, ":", "_"); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.key = key;
+  key = (() => { const __recv = key; const __prop = __recv?.["str_replace_all"]; if (typeof __prop === "function") return __prop("/", "_"); const __dyn = __recv?.table?.str_replace_all; return __dyn ? __dyn(__recv.ref, "/", "_") : str_replace_all(__recv, "/", "_"); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.key = key;
+  key = (() => { const __recv = key; const __prop = __recv?.["str_replace_all"]; if (typeof __prop === "function") return __prop("\\", "_"); const __dyn = __recv?.table?.str_replace_all; return __dyn ? __dyn(__recv.ref, "\\", "_") : str_replace_all(__recv, "\\", "_"); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.key = key;
+  key = (() => { const __recv = key; const __prop = __recv?.["str_replace_all"]; if (typeof __prop === "function") return __prop("-", "_"); const __dyn = __recv?.table?.str_replace_all; return __dyn ? __dyn(__recv.ref, "-", "_") : str_replace_all(__recv, "-", "_"); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.key = key;
+  key = (() => { const __recv = key; const __prop = __recv?.["str_replace_all"]; if (typeof __prop === "function") return __prop(".", "_"); const __dyn = __recv?.table?.str_replace_all; return __dyn ? __dyn(__recv.ref, ".", "_") : str_replace_all(__recv, ".", "_"); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.key = key;
+  key = (() => { const __recv = key; const __prop = __recv?.["str_replace_all"]; if (typeof __prop === "function") return __prop(".tuff", ""); const __dyn = __recv?.table?.str_replace_all; return __dyn ? __dyn(__recv.ref, ".tuff", "") : str_replace_all(__recv, ".tuff", ""); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.key = key;
+  if ((() => { const __recv = key; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop(""); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "") : str_eq(__recv, ""); })()) {
+  return (() => { const __recv = "module_"; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string(fallback_idx)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(fallback_idx)) : str_concat(__recv, int_to_string(fallback_idx)); })();
+}
+  return key;
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.module_path_to_unit_key = module_path_to_unit_key;
+
+const __tuff_outer_for_module_build_unit_keys = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function module_build_unit_keys(module_paths) {
+  let __tuff_this = { module_paths: module_paths, this: __tuff_outer_for_module_build_unit_keys };
+  let keys = vec_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.keys = keys;
+  let seen = set_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.seen = seen;
+  let i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
+  let len = (() => { const __recv = module_paths; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.len = len;
+  while ((i < len)) {
+  let base = module_path_to_unit_key((() => { const __recv = module_paths; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(), i); if (typeof __tuff_this !== 'undefined') __tuff_this.base = base;
+  let candidate = base; if (typeof __tuff_this !== 'undefined') __tuff_this.candidate = candidate;
+  let suffix = 2; if (typeof __tuff_this !== 'undefined') __tuff_this.suffix = suffix;
+  while ((() => { const __recv = seen; const __prop = __recv?.["set_has"]; if (typeof __prop === "function") return __prop(candidate); const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, candidate) : set_has(__recv, candidate); })()) {
+  candidate = (() => { const __recv = (() => { const __recv = base; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop("_"); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, "_") : str_concat(__recv, "_"); })(); const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string(suffix)); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string(suffix)) : str_concat(__recv, int_to_string(suffix)); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.candidate = candidate;
+  suffix = (suffix + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.suffix = suffix;
+}
+  (() => { const __recv = seen; const __prop = __recv?.["set_add"]; if (typeof __prop === "function") return __prop(candidate); const __dyn = __recv?.table?.set_add; return __dyn ? __dyn(__recv.ref, candidate) : set_add(__recv, candidate); })();
+  (() => { const __recv = keys; const __prop = __recv?.["vec_push"]; if (typeof __prop === "function") return __prop(candidate); const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, candidate) : vec_push(__recv, candidate); })();
+  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
+}
+  return keys;
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.module_build_unit_keys = module_build_unit_keys;
+
+const __tuff_outer_for_module_find_owner_key_for_name = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function module_find_owner_key_for_name(name, module_paths, module_keys, module_declared_map, fallback_key) {
+  let __tuff_this = { name: name, module_paths: module_paths, module_keys: module_keys, module_declared_map: module_declared_map, fallback_key: fallback_key, this: __tuff_outer_for_module_find_owner_key_for_name };
+  let i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
+  let len = (() => { const __recv = module_paths; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.len = len;
+  while ((i < len)) {
+  let path = (() => { const __recv = module_paths; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.path = path;
+  if ((() => { const __recv = module_declared_map; const __prop = __recv?.["map_has"]; if (typeof __prop === "function") return __prop(path); const __dyn = __recv?.table?.map_has; return __dyn ? __dyn(__recv.ref, path) : map_has(__recv, path); })()) {
+  let declared = (() => { const __recv = module_declared_map; const __prop = __recv?.["map_get"]; if (typeof __prop === "function") return __prop(path); const __dyn = __recv?.table?.map_get; return __dyn ? __dyn(__recv.ref, path) : map_get(__recv, path); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.declared = declared;
+  if ((() => { const __recv = declared; const __prop = __recv?.["set_has"]; if (typeof __prop === "function") return __prop(name); const __dyn = __recv?.table?.set_has; return __dyn ? __dyn(__recv.ref, name) : set_has(__recv, name); })()) {
+  return (() => { const __recv = module_keys; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })();
+}
+}
+  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
+}
+  return fallback_key;
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.module_find_owner_key_for_name = module_find_owner_key_for_name;
+
+const __tuff_outer_for_module_stmt_owner_key = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function module_stmt_owner_key(stmt, module_paths, module_keys, module_declared_map, fallback_key) {
+  let __tuff_this = { stmt: stmt, module_paths: module_paths, module_keys: module_keys, module_declared_map: module_declared_map, fallback_key: fallback_key, this: __tuff_outer_for_module_stmt_owner_key };
+  let kind = node_kind(stmt); if (typeof __tuff_this !== 'undefined') __tuff_this.kind = kind;
+  if (((((((((((kind === 2) || (kind === 16)) || (kind === 3)) || (kind === 60)) || (kind === 63)) || (kind === 65)) || (kind === 4)) || (kind === 5)) || (kind === 18)) || (kind === 19))) {
+  return module_find_owner_key_for_name(get_interned_str(node_get_data1(stmt)), module_paths, module_keys, module_declared_map, fallback_key);
+}
+  return fallback_key;
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.module_stmt_owner_key = module_stmt_owner_key;
+
+const __tuff_outer_for_module_write_c_split_outputs = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
+function module_write_c_split_outputs(typed, outputPath, module_paths, module_declared_map) {
+  let __tuff_this = { typed: typed, outputPath: outputPath, module_paths: module_paths, module_declared_map: module_declared_map, this: __tuff_outer_for_module_write_c_split_outputs };
+  let module_keys = module_build_unit_keys(module_paths); if (typeof __tuff_this !== 'undefined') __tuff_this.module_keys = module_keys;
+  let fallback_key = "main"; if (typeof __tuff_this !== 'undefined') __tuff_this.fallback_key = fallback_key;
+  if (((() => { const __recv = module_keys; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })() > 0)) {
+  fallback_key = (() => { const __recv = module_keys; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(((() => { const __recv = module_keys; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })() - 1)); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, ((() => { const __recv = module_keys; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })() - 1)) : vec_get(__recv, ((() => { const __recv = module_keys; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })() - 1)); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.fallback_key = fallback_key;
+}
+  let stmts = node_get_data1(typed); if (typeof __tuff_this !== 'undefined') __tuff_this.stmts = stmts;
+  let stmt_owners = vec_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.stmt_owners = stmt_owners;
+  let i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
+  let len = (() => { const __recv = stmts; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.len = len;
+  while ((i < len)) {
+  (() => { const __recv = stmt_owners; const __prop = __recv?.["vec_push"]; if (typeof __prop === "function") return __prop(module_stmt_owner_key((() => { const __recv = stmts; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(), module_paths, module_keys, module_declared_map, fallback_key)); const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, module_stmt_owner_key((() => { const __recv = stmts; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(), module_paths, module_keys, module_declared_map, fallback_key)) : vec_push(__recv, module_stmt_owner_key((() => { const __recv = stmts; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(), module_paths, module_keys, module_declared_map, fallback_key)); })();
+  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
+}
+  let files = generate_c_split_files(typed, __host_get_c_substrate(), module_keys, stmt_owners, module_keys); if (typeof __tuff_this !== 'undefined') __tuff_this.files = files;
+  let manifest_rows = vec_new(); if (typeof __tuff_this !== 'undefined') __tuff_this.manifest_rows = manifest_rows;
+  i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
+  let flen = (() => { const __recv = files; const __prop = __recv?.["vec_length"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vec_length; return __dyn ? __dyn(__recv.ref) : vec_length(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.flen = flen;
+  while ((i < flen)) {
+  let rec = (() => { const __recv = files; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, i) : vec_get(__recv, i); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.rec = rec;
+  let rel = (() => { const __recv = rec; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(0); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 0) : vec_get(__recv, 0); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.rel = rel;
+  let contents = (() => { const __recv = rec; const __prop = __recv?.["vec_get"]; if (typeof __prop === "function") return __prop(1); const __dyn = __recv?.table?.vec_get; return __dyn ? __dyn(__recv.ref, 1) : vec_get(__recv, 1); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.contents = contents;
+  let full = path_join(outputPath, rel); if (typeof __tuff_this !== 'undefined') __tuff_this.full = full;
+  write_file(full, contents);
+  (() => { const __recv = manifest_rows; const __prop = __recv?.["vec_push"]; if (typeof __prop === "function") return __prop(rel); const __dyn = __recv?.table?.vec_push; return __dyn ? __dyn(__recv.ref, rel) : vec_push(__recv, rel); })();
+  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
+}
+  return write_file(path_join(outputPath, "manifest.txt"), (() => { const __recv = manifest_rows; const __prop = __recv?.["vec_join"]; if (typeof __prop === "function") return __prop("\n"); const __dyn = __recv?.table?.vec_join; return __dyn ? __dyn(__recv.ref, "\n") : vec_join(__recv, "\n"); })());
+}
+if (typeof __tuff_this !== 'undefined') __tuff_this.module_write_c_split_outputs = module_write_c_split_outputs;
+
 const __tuff_outer_for_gather_module_sources = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
 function gather_module_sources(filePath, moduleBasePath, seen, visiting, sources, module_paths, module_declared_map, module_exported_map, module_source_cache, import_path_cache, all_declared_names, all_exported_declared_names, all_extern_declared_names, lint_enabled, max_effective_lines, module_cycles, recursion_depth) {
   let __tuff_this = { filePath: filePath, moduleBasePath: moduleBasePath, seen: seen, visiting: visiting, sources: sources, module_paths: module_paths, module_declared_map: module_declared_map, module_exported_map: module_exported_map, module_source_cache: module_source_cache, import_path_cache: import_path_cache, all_declared_names: all_declared_names, all_exported_declared_names: all_exported_declared_names, all_extern_declared_names: all_extern_declared_names, lint_enabled: lint_enabled, max_effective_lines: max_effective_lines, module_cycles: module_cycles, recursion_depth: recursion_depth, this: __tuff_outer_for_gather_module_sources };
@@ -11580,6 +12060,12 @@ function compile_file_with_options(inputPath, outputPath, lint_enabled, max_effe
 }
   let t7 = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t7 = t7;
   print_error((() => { const __recv = "[selfhost] phase: emit:start target="; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(target); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, target) : str_concat(__recv, target); })());
+  if ((() => { const __recv = target; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("c-split"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "c-split") : str_eq(__recv, "c-split"); })()) {
+  module_write_c_split_outputs(typed, outputPath, module_paths, module_declared_map);
+  let t8_split = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t8_split = t8_split;
+  print_error((() => { const __recv = "[selfhost] phase: done total-ms="; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string((t8_split - t0))); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string((t8_split - t0))) : str_concat(__recv, int_to_string((t8_split - t0))); })());
+  return 0;
+}
   let emitted = module_emit_target_output(typed, merged, target); if (typeof __tuff_this !== 'undefined') __tuff_this.emitted = emitted;
   let t8 = perf_now(); if (typeof __tuff_this !== 'undefined') __tuff_this.t8 = t8;
   print_error((() => { const __recv = "[selfhost] phase: done total-ms="; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(int_to_string((t8 - t0))); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, int_to_string((t8 - t0))) : str_concat(__recv, int_to_string((t8 - t0))); })());
@@ -13571,7 +14057,7 @@ if (typeof __tuff_this !== 'undefined') __tuff_this.normalize_flag = normalize_f
 const __tuff_outer_for_with_c_runtime_prelude = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
 function with_c_runtime_prelude(source, target) {
   let __tuff_this = { source: source, target: target, this: __tuff_outer_for_with_c_runtime_prelude };
-  if ((!(() => { const __recv = target; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("c"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "c") : str_eq(__recv, "c"); })())) {
+  if (((!(() => { const __recv = target; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("c"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "c") : str_eq(__recv, "c"); })()) && (!(() => { const __recv = target; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("c-split"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "c-split") : str_eq(__recv, "c-split"); })()))) {
   return source;
 }
   if ((() => { const __recv = source; const __prop = __recv?.["str_includes"]; if (typeof __prop === "function") return __prop("fn tuff_runtime_panic("); const __dyn = __recv?.table?.str_includes; return __dyn ? __dyn(__recv.ref, "fn tuff_runtime_panic(") : str_includes(__recv, "fn tuff_runtime_panic("); })()) {
@@ -13594,10 +14080,13 @@ function emit_target_output(typed, source, target) {
   if ((() => { const __recv = target; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("c"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "c") : str_eq(__recv, "c"); })()) {
   return generate_c(typed, __host_get_c_substrate());
 }
+  if ((() => { const __recv = target; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("c-split"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "c-split") : str_eq(__recv, "c-split"); })()) {
+  return generate_c(typed, __host_get_c_substrate());
+}
   if ((() => { const __recv = target; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("tuff"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "tuff") : str_eq(__recv, "tuff"); })()) {
   return emit_tuff_from_typed(typed, source, lex_take_trivia());
 }
-  panic_with_code("E_UNSUPPORTED_TARGET", (() => { const __recv = "Unsupported codegen target: "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(target); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, target) : str_concat(__recv, target); })(), "The compiler was asked to emit code for a target that is not implemented.", "Use target 'js', target 'c', or target 'tuff'.");
+  panic_with_code("E_UNSUPPORTED_TARGET", (() => { const __recv = "Unsupported codegen target: "; const __prop = __recv?.["str_concat"]; if (typeof __prop === "function") return __prop(target); const __dyn = __recv?.table?.str_concat; return __dyn ? __dyn(__recv.ref, target) : str_concat(__recv, target); })(), "The compiler was asked to emit code for a target that is not implemented.", "Use target 'js', target 'c', target 'c-split', or target 'tuff'.");
   return "";
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.emit_target_output = emit_target_output;
@@ -13745,7 +14234,7 @@ function main() {
   let __tuff_this = { this: __tuff_outer_for_main };
   let argc = get_argc(); if (typeof __tuff_this !== 'undefined') __tuff_this.argc = argc;
   if ((argc < 2)) {
-  print_error("Usage: tuffc <input.tuff> -o <output> [--target <js|c|tuff>] [--module-base <dir> (legacy)]");
+  print_error("Usage: tuffc <input.tuff> -o <output> [--target <js|c|c-split|tuff>] [--module-base <dir> (legacy)]");
   return 1;
 }
   let first_arg = get_argv(1); if (typeof __tuff_this !== 'undefined') __tuff_this.first_arg = first_arg;
@@ -13754,7 +14243,7 @@ function main() {
   return 0;
 }
   if (((() => { const __recv = first_arg; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("-h"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "-h") : str_eq(__recv, "-h"); })() || (() => { const __recv = first_arg; const __prop = __recv?.["str_eq"]; if (typeof __prop === "function") return __prop("--help"); const __dyn = __recv?.table?.str_eq; return __dyn ? __dyn(__recv.ref, "--help") : str_eq(__recv, "--help"); })())) {
-  print("Usage: tuffc <input.tuff> -o <output> [--target <js|c|tuff>] [--module-base <dir> (legacy)] [--version]");
+  print("Usage: tuffc <input.tuff> -o <output> [--target <js|c|c-split|tuff>] [--module-base <dir> (legacy)] [--version]");
   return 0;
 }
   let input_file = first_arg; if (typeof __tuff_this !== 'undefined') __tuff_this.input_file = input_file;

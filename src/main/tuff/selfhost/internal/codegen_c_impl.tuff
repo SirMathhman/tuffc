@@ -1476,10 +1476,352 @@ out fn generate_c_impl(typed: I32, substrate: *Str) : *Str => {
     }
     sb_append(sb, "}\n\n");
      // ── main() entry point ───────────────────────────────────────────────────
-    sb_append(sb, "int main(void) {\n");
+    sb_append(sb, "void tuff_set_argv(int argc, char** argv);\n\n");
+    sb_append(sb, "int main(int argc, char** argv) {\n");
+    sb_append(sb, "  tuff_set_argv(argc, argv);\n");
     sb_append(sb, "  tuff_init_globals();\n");
     sb_append(sb, "  return (int)tuff_main();\n");
     sb_append(sb, "}\n");
     sb_build(sb)
+}
+fn cc_push_file(artifacts: Vec<I32>, rel_path: *Str, content: *Str) : Vec<I32> => {
+    let rec = vec_new();
+    rec.vec_push(rel_path);
+    rec.vec_push(content);
+    artifacts.vec_push(rec)
+}
+fn cc_owner_key_for_index(stmt_owners: Vec<*Str>, idx: I32, fallback: *Str) : *Str => {
+    if (idx < stmt_owners.vec_length()) {
+        return stmt_owners.vec_get(idx);
+    }
+    fallback
+}
+fn cc_emit_split_shared_header(typed: I32, module_keys: Vec<*Str>) : *Str => {
+    let sb = sb_new();
+    sb_append(sb, "#ifndef TUFF_SHARED_H\n");
+    sb_append(sb, "#define TUFF_SHARED_H\n\n");
+    if (cc_inc_stdint == 1) {
+        sb_append(sb, "#include <stdint.h>\n");
+    }
+    if (cc_inc_stddef == 1) {
+        sb_append(sb, "#include <stddef.h>\n");
+    }
+    if (cc_inc_stdio == 1) {
+        sb_append(sb, "#include <stdio.h>\n");
+    }
+    if (cc_inc_stdlib == 1) {
+        sb_append(sb, "#include <stdlib.h>\n");
+    }
+    if (cc_inc_string == 1) {
+        sb_append(sb, "#include <string.h>\n");
+    }
+    if (cc_inc_ctype == 1) {
+        sb_append(sb, "#include <ctype.h>\n");
+    }
+    if (cc_inc_errno == 1) {
+        sb_append(sb, "#include <errno.h>\n");
+    }
+    sb_append(sb, "#ifdef _WIN32\n");
+    if (cc_inc_direct == 1) {
+        sb_append(sb, "#include <direct.h>\n");
+    }
+    sb_append(sb, "#else\n");
+    if (cc_inc_sys_stat == 1) {
+        sb_append(sb, "#include <sys/stat.h>\n");
+    }
+    if (cc_inc_sys_types == 1) {
+        sb_append(sb, "#include <sys/types.h>\n");
+    }
+    sb_append(sb, "#endif\n\n");
+    sb_append(sb, "typedef struct TuffError { int64_t code; int64_t message; int64_t reason; int64_t fix; int64_t line; int64_t col; } TuffError;\n");
+    sb_append(sb, "typedef struct TuffVec { int64_t* data; int64_t init; int64_t length; } TuffVec;\n");
+    sb_append(sb, "\n");
+    cc_emitted_tuff_error = 1;
+    sb_append(sb, "/* Runtime/host declarations required across split translation units. */\n");
+    sb_append(sb, "int64_t str_length();\n");
+    sb_append(sb, "int64_t str_char_at();\n");
+    sb_append(sb, "int64_t str_slice();\n");
+    sb_append(sb, "int64_t str_slice_window();\n");
+    sb_append(sb, "int64_t str_copy();\n");
+    sb_append(sb, "int64_t str_mut_slice();\n");
+    sb_append(sb, "int64_t str_concat();\n");
+    sb_append(sb, "int64_t str_eq();\n");
+    sb_append(sb, "int64_t str_from_char_code();\n");
+    sb_append(sb, "int64_t __str_index_of();\n");
+    sb_append(sb, "int64_t str_trim();\n");
+    sb_append(sb, "int64_t str_replace_all();\n");
+    sb_append(sb, "int64_t char_code();\n");
+    sb_append(sb, "int64_t __int_to_string();\n");
+    sb_append(sb, "int64_t parse_int();\n");
+    sb_append(sb, "int64_t sb_new();\n");
+    sb_append(sb, "int64_t sb_append();\n");
+    sb_append(sb, "int64_t sb_append_char();\n");
+    sb_append(sb, "int64_t sb_build();\n");
+    sb_append(sb, "int64_t __vec_new();\n");
+    sb_append(sb, "int64_t __vec_push();\n");
+    sb_append(sb, "int64_t __vec_pop();\n");
+    sb_append(sb, "int64_t __vec_get();\n");
+    sb_append(sb, "int64_t __vec_set();\n");
+    sb_append(sb, "int64_t __vec_length();\n");
+    sb_append(sb, "int64_t __vec_init();\n");
+    sb_append(sb, "int64_t __vec_capacity();\n");
+    sb_append(sb, "int64_t __vec_clear();\n");
+    sb_append(sb, "int64_t __vec_join();\n");
+    sb_append(sb, "int64_t __vec_includes();\n");
+    sb_append(sb, "int64_t __map_new();\n");
+    sb_append(sb, "int64_t map_set();\n");
+    sb_append(sb, "int64_t map_get();\n");
+    sb_append(sb, "int64_t map_has();\n");
+    sb_append(sb, "int64_t map_delete();\n");
+    sb_append(sb, "int64_t __set_new();\n");
+    sb_append(sb, "int64_t set_add();\n");
+    sb_append(sb, "int64_t set_has();\n");
+    sb_append(sb, "int64_t set_delete();\n");
+    sb_append(sb, "int64_t read_file();\n");
+    sb_append(sb, "int64_t write_file();\n");
+    sb_append(sb, "int64_t path_join();\n");
+    sb_append(sb, "int64_t path_dirname();\n");
+    sb_append(sb, "int64_t print();\n");
+    sb_append(sb, "int64_t __print_error();\n");
+    sb_append(sb, "int64_t panic();\n");
+    sb_append(sb, "int64_t panic_with_code();\n");
+    sb_append(sb, "int64_t panic_with_code_loc();\n");
+    sb_append(sb, "int64_t get_argc();\n");
+    sb_append(sb, "int64_t get_argv();\n");
+    sb_append(sb, "void tuff_set_argv(int argc, char** argv);\n");
+    sb_append(sb, "int64_t __perf_now();\n");
+    sb_append(sb, "int64_t profile_mark();\n");
+    sb_append(sb, "int64_t __profile_take_json();\n");
+    sb_append(sb, "int64_t __host_get_c_substrate();\n");
+    sb_append(sb, "int64_t __host_get_c_runtime_prelude_source();\n");
+    sb_append(sb, "int64_t __host_emit_target_from_source();\n\n");
+    let stmts = node_get_data1(typed);
+    let i = 0;
+    let len = stmts.vec_length();
+    while (i < len) {
+        let node = stmts.vec_get(i);
+        let kind = node_kind(node);
+        if (kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL || kind == NK_ACTUAL_FN_DECL || kind == NK_EXPECT_FN_DECL || kind == NK_LET_DECL) {
+            i = i + 1;
+            continue;
+        }
+        let row = cc_emit_stmt(node);
+        if (!row.str_eq("")) {
+            if (row.str_eq("typedef struct TuffError { int64_t code; int64_t message; int64_t reason; int64_t fix; int64_t line; int64_t col; } TuffError;")) {
+                i = i + 1;
+                continue;
+            }
+            sb_append(sb, row);
+            sb_append(sb, "\n");
+        }
+        i = i + 1;
+    }
+    sb_append(sb, "\n");
+    i = 0;
+    while (i < len) {
+        let node = stmts.vec_get(i);
+        if (node_kind(node) == NK_LET_DECL) {
+            let name = cc_to_name(get_interned_str(node_get_data1(node)));
+            sb_append(sb, "extern int64_t ");
+            sb_append(sb, name);
+            sb_append(sb, ";\n");
+        }
+        i = i + 1;
+    }
+    sb_append(sb, "\n");
+    i = 0;
+    while (i < len) {
+        let fn_node = stmts.vec_get(i);
+        let kind = node_kind(fn_node);
+        if (kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL || kind == NK_ACTUAL_FN_DECL || kind == NK_EXPECT_FN_DECL) {
+            let fn_name = cc_to_name(get_interned_str(node_get_data1(fn_node)));
+            let params_str = cc_emit_param_list(node_get_data3(fn_node));
+            let ret_type = cc_type_to_c(node_get_data4(fn_node));
+            sb_append(sb, cc_emit_prototype(ret_type, fn_name, params_str));
+            sb_append(sb, "\n");
+        }
+        i = i + 1;
+    }
+    sb_append(sb, "\n");
+    i = 0;
+    let mlen = module_keys.vec_length();
+    while (i < mlen) {
+        let key = module_keys.vec_get(i);
+        sb_append(sb, "void tuff_init_globals_");
+        sb_append(sb, key);
+        sb_append(sb, "(void);\n");
+        i = i + 1;
+    }
+    sb_append(sb, "\n#endif\n");
+    sb_build(sb)
+}
+fn cc_emit_split_module_header(module_key: *Str) : *Str => {
+    let guard = "TUFF_MOD_".str_concat(module_key).str_concat("_H");
+    let sb = sb_new();
+    sb_append(sb, "#ifndef ");
+    sb_append(sb, guard);
+    sb_append(sb, "\n#define ");
+    sb_append(sb, guard);
+    sb_append(sb, "\n\n#include \"tuff_shared.h\"\n\n");
+    sb_append(sb, "void tuff_init_globals_");
+    sb_append(sb, module_key);
+    sb_append(sb, "(void);\n\n#endif\n");
+    sb_build(sb)
+}
+fn cc_emit_split_module_source(typed: I32, module_key: *Str, stmt_owners: Vec<*Str>, fallback_key: *Str) : *Str => {
+    let sb = sb_new();
+    sb_append(sb, "#include \"");
+    sb_append(sb, module_key);
+    sb_append(sb, ".h\"\n\n");
+    let stmts = node_get_data1(typed);
+    let i = 0;
+    let len = stmts.vec_length();
+    while (i < len) {
+        let owner = cc_owner_key_for_index(stmt_owners, i, fallback_key);
+        let node = stmts.vec_get(i);
+        if (owner.str_eq(module_key) && node_kind(node) == NK_LET_DECL) {
+            let name = cc_to_name(get_interned_str(node_get_data1(node)));
+            sb_append(sb, "int64_t ");
+            sb_append(sb, name);
+            sb_append(sb, ";\n");
+        }
+        i = i + 1;
+    }
+    sb_append(sb, "\nvoid tuff_init_globals_");
+    sb_append(sb, module_key);
+    sb_append(sb, "(void) {\n");
+    i = 0;
+    while (i < len) {
+        let owner = cc_owner_key_for_index(stmt_owners, i, fallback_key);
+        let node = stmts.vec_get(i);
+        if (owner.str_eq(module_key) && node_kind(node) == NK_LET_DECL) {
+            let name = cc_to_name(get_interned_str(node_get_data1(node)));
+            sb_append(sb, "  ");
+            sb_append(sb, name);
+            sb_append(sb, " = ");
+            sb_append(sb, cc_emit_expr(node_get_data3(node)));
+            sb_append(sb, ";\n");
+        }
+        i = i + 1;
+    }
+    sb_append(sb, "}\n\n");
+    i = 0;
+    while (i < len) {
+        let owner = cc_owner_key_for_index(stmt_owners, i, fallback_key);
+        let fn_node = stmts.vec_get(i);
+        let kind = node_kind(fn_node);
+        if (owner.str_eq(module_key) && (kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL || kind == NK_ACTUAL_FN_DECL)) {
+            if (node_get_data5(fn_node) != 0) {
+                sb_append(sb, cc_emit_stmt(fn_node));
+                sb_append(sb, "\n\n");
+            }
+        }
+        i = i + 1;
+    }
+    sb_build(sb)
+}
+fn cc_emit_split_runtime_source(substrate: *Str) : *Str => {
+    let sb = sb_new();
+    sb_append(sb, "#include \"tuff_shared.h\"\n\n");
+    let runtime_src = substrate;
+    if (runtime_src.str_eq("")) {
+        runtime_src = cc_emit_minimal_runtime_prelude();
+    }
+    runtime_src = runtime_src.str_replace_all("typedef struct TuffVec { int64_t* data; int64_t init; int64_t length; } TuffVec;\n", "");
+    runtime_src = runtime_src.str_replace_all("typedef struct TuffVec { int64_t* data; int64_t init; int64_t length; } TuffVec;\r\n", "");
+    runtime_src = runtime_src.str_replace_all("typedef struct\n{\n    int64_t *data;\n    size_t init;\n    size_t length;\n} TuffVec;\n", "");
+    runtime_src = runtime_src.str_replace_all("typedef struct\r\n{\r\n    int64_t *data;\r\n    size_t init;\r\n    size_t length;\r\n} TuffVec;\r\n", "");
+    if (!substrate.str_eq("")) {
+        sb_append(sb, runtime_src);
+    }
+    else {
+        sb_append(sb, runtime_src);
+    }
+    sb_append(sb, "\n");
+    sb_build(sb)
+}
+fn cc_emit_split_main_source(init_order: Vec<*Str>) : *Str => {
+    let sb = sb_new();
+    sb_append(sb, "#include \"tuff_shared.h\"\n\n");
+    sb_append(sb, "int main(int argc, char** argv) {\n");
+    sb_append(sb, "  tuff_set_argv(argc, argv);\n");
+    let i = 0;
+    let len = init_order.vec_length();
+    while (i < len) {
+        let key = init_order.vec_get(i);
+        sb_append(sb, "  tuff_init_globals_");
+        sb_append(sb, key);
+        sb_append(sb, "();\n");
+        i = i + 1;
+    }
+    sb_append(sb, "  return (int)tuff_main();\n");
+    sb_append(sb, "}\n");
+    sb_build(sb)
+}
+out fn generate_c_split_files_impl(typed: I32, substrate: *Str, module_keys: Vec<*Str>,
+stmt_owners: Vec<*Str>, init_order: Vec<*Str>) : Vec<I32> => {
+    cc_temp_counter = 0;
+    cc_disable_unicode_escape = 0;
+    cc_enum_names = set_new();
+    cc_enum_variant_consts = map_new();
+    cc_struct_fields = map_new();
+    cc_alias_by_variant = map_new();
+    cc_union_alias_info = map_new();
+    cc_covered_extern_fns = set_new();
+    cc_fn_return_types = map_new();
+    cc_local_types = map_new();
+    cc_emitted_tuff_error = 0;
+    cc_inc_stdint = 1;
+    cc_inc_stddef = 0;
+    cc_inc_stdio = 0;
+    cc_inc_stdlib = 0;
+    cc_inc_string = 0;
+    cc_inc_ctype = 0;
+    cc_inc_errno = 0;
+    cc_inc_direct = 0;
+    cc_inc_sys_stat = 0;
+    cc_inc_sys_types = 0;
+    cc_init_context(typed);
+    if (!substrate.str_eq("")) {
+        cc_require_substrate_headers();
+    }
+    else {
+        cc_inc_stddef = 1;
+        cc_inc_stdio = 1;
+        cc_inc_stdlib = 1;
+        cc_inc_string = 1;
+        cc_inc_ctype = 1;
+    }
+    let stmts = node_get_data1(typed);
+    let len = stmts.vec_length();
+    let cvi = 0;
+    while (cvi < len) {
+        let cvn = stmts.vec_get(cvi);
+        if (cc_is_extern_fn_decl(cvn)) {
+            let fname = get_interned_str(node_get_data1(cvn));
+            if (!cc_covered_extern_fns.set_has(fname)) {
+                panic_with_code( "E_EXTERN_NO_SOURCE",
+                "extern fn '".str_concat(fname).str_concat("' has no source attribution"), "C codegen requires each extern function to be attributed to a source via extern let destructuring.", "Add 'extern let { ".str_concat(fname).str_concat(" } = <header>;' before the declaration.") );
+            }
+        }
+        cvi = cvi + 1;
+    }
+    let artifacts : Vec<I32> = vec_new();
+    cc_push_file(artifacts, "tuff_shared.h", cc_emit_split_shared_header(typed, module_keys));
+    cc_push_file(artifacts, "tuff_runtime.c", cc_emit_split_runtime_source(substrate));
+    let fallback_key = "main";
+    if (module_keys.vec_length() > 0) {
+        fallback_key = module_keys.vec_get(module_keys.vec_length() - 1);
+    }
+    let i = 0;
+    let mlen = module_keys.vec_length();
+    while (i < mlen) {
+        let key = module_keys.vec_get(i);
+        cc_push_file(artifacts, key.str_concat(".h"), cc_emit_split_module_header(key));
+        cc_push_file(artifacts, key.str_concat(".c"), cc_emit_split_module_source(typed, key, stmt_owners, fallback_key));
+        i = i + 1;
+    }
+    cc_push_file(artifacts, "tuff_main.c", cc_emit_split_main_source(init_order));
+    artifacts
 }
 out fn selfhost_codegen_c_impl_marker() : I32 => 0;

@@ -33,7 +33,7 @@ let {
 }
  = selfhost::codegen_stmt;
 let {
-    generate_c
+    generate_c, generate_c_split_files
 }
  = selfhost::codegen_c;
 let {
@@ -71,7 +71,7 @@ fn module_emit_target_output(typed: I32, merged_source: *Str, target: *Str) : *S
     "E_UNSUPPORTED_TARGET",
     "Unsupported codegen target: ".str_concat(target),
     "The compiler was asked to emit code for a target that is not implemented.",
-    "Use target 'js', target 'c', or target 'tuff'."
+    "Use target 'js', target 'c', target 'c-split', or target 'tuff'."
     );
     ""
 }
@@ -590,6 +590,104 @@ fn module_has_out_export(source: *Str, name: *Str) : Bool => {
     source.str_includes("copy out type ".str_concat(name)) ||
     source.str_includes("out class fn ".str_concat(name))
 }
+fn module_path_to_unit_key(p: *Str, fallback_idx: I32) : *Str => {
+    let key = module_normalize_path(p);
+    key = key.str_replace_all(":", "_");
+    key = key.str_replace_all("/", "_");
+    key = key.str_replace_all("\\", "_");
+    key = key.str_replace_all("-", "_");
+    key = key.str_replace_all(".", "_");
+    key = key.str_replace_all(".tuff", "");
+    if (key.str_eq("")) {
+        return "module_".str_concat(int_to_string(fallback_idx));
+    }
+    key
+}
+fn module_build_unit_keys(module_paths: Vec<*Str>) : Vec<*Str> => {
+    let keys = vec_new();
+    let seen = set_new();
+    let i = 0;
+    let len = module_paths.vec_length();
+    while (i < len) {
+        let base = module_path_to_unit_key(module_paths.vec_get(i), i);
+        let candidate = base;
+        let suffix = 2;
+        while (seen.set_has(candidate)) {
+            candidate = base.str_concat("_").str_concat(int_to_string(suffix));
+            suffix = suffix + 1;
+        }
+        seen.set_add(candidate);
+        keys.vec_push(candidate);
+        i = i + 1;
+    }
+    keys
+}
+fn module_find_owner_key_for_name(name: *Str, module_paths: Vec<*Str>, module_keys: Vec<*Str>,
+module_declared_map: Map<I32, I32>, fallback_key: *Str) : *Str => {
+    let i = 0;
+    let len = module_paths.vec_length();
+    while (i < len) {
+        let path = module_paths.vec_get(i);
+        if (module_declared_map.map_has(path)) {
+            let declared = module_declared_map.map_get(path);
+            if (declared.set_has(name)) {
+                return module_keys.vec_get(i);
+            }
+        }
+        i = i + 1;
+    }
+    fallback_key
+}
+fn module_stmt_owner_key(stmt: I32, module_paths: Vec<*Str>, module_keys: Vec<*Str>,
+module_declared_map: Map<I32, I32>, fallback_key: *Str) : *Str => {
+    let kind = node_kind(stmt);
+    if (kind == 2 || // NK_FN_DECL
+    kind == 16 || // NK_CLASS_FN_DECL
+    kind == 3 || // NK_STRUCT_DECL
+    kind == 60 || // NK_ENUM_DECL
+    kind == 63 || // NK_OBJECT_DECL
+    kind == 65 || // NK_CONTRACT_DECL
+    kind == 4 || // NK_TYPE_ALIAS
+    kind == 5 || // NK_LET_DECL
+    kind == 18 || // NK_EXTERN_LET_DECL
+    kind == 19) { // NK_EXTERN_TYPE_DECL
+        return module_find_owner_key_for_name(get_interned_str(node_get_data1(stmt)),
+        module_paths, module_keys, module_declared_map, fallback_key);
+    }
+    fallback_key
+}
+fn module_write_c_split_outputs(typed: I32, outputPath: *Str, module_paths: Vec<*Str>,
+module_declared_map: Map<I32, I32>) : I32 => {
+    let module_keys = module_build_unit_keys(module_paths);
+    let fallback_key = "main";
+    if (module_keys.vec_length() > 0) {
+        fallback_key = module_keys.vec_get(module_keys.vec_length() - 1);
+    }
+    let stmts = node_get_data1(typed);
+    let stmt_owners : Vec<*Str> = vec_new();
+    let i = 0;
+    let len = stmts.vec_length();
+    while (i < len) {
+        stmt_owners.vec_push(module_stmt_owner_key(stmts.vec_get(i), module_paths, module_keys,
+        module_declared_map, fallback_key));
+        i = i + 1;
+    }
+    let files = generate_c_split_files(typed, __host_get_c_substrate(), module_keys, stmt_owners,
+    module_keys);
+    let manifest_rows = vec_new();
+    i = 0;
+    let flen = files.vec_length();
+    while (i < flen) {
+        let rec = files.vec_get(i);
+        let rel = rec.vec_get(0);
+        let contents = rec.vec_get(1);
+        let full = path_join(outputPath, rel);
+        write_file(full, contents);
+        manifest_rows.vec_push(rel);
+        i = i + 1;
+    }
+    write_file(path_join(outputPath, "manifest.txt"), manifest_rows.vec_join("\n"))
+}
 fn gather_module_sources(filePath: *Str, moduleBasePath: *Str, seen: *mut Set<I32>, visiting: *mut Set<I32>,
 sources: Vec<*Str>, module_paths: Vec<*Str>, module_declared_map: Map<I32, I32>, module_exported_map: Map<I32, I32>,
 module_source_cache: Map<I32, I32>, import_path_cache: Map<I32, I32>, all_declared_names: *mut Set<I32>,
@@ -793,6 +891,12 @@ max_effective_lines: I32, borrow_enabled: I32, target: *Str) : I32 => {
     }
     let t7 = perf_now();
     print_error("[selfhost] phase: emit:start target=".str_concat(target));
+    if (target.str_eq("c-split")) {
+        module_write_c_split_outputs(typed, outputPath, module_paths, module_declared_map);
+        let t8_split = perf_now();
+        print_error("[selfhost] phase: done total-ms=".str_concat(int_to_string(t8_split - t0)));
+        return 0;
+    }
     let emitted = module_emit_target_output(typed, merged, target);
     let t8 = perf_now();
     print_error("[selfhost] phase: done total-ms=".str_concat(int_to_string(t8 - t0)));

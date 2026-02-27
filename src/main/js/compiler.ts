@@ -514,7 +514,7 @@ function setSubstrateOverrideFromOptions(options, target, backend) {
     return;
   }
   if (
-    target === "c" &&
+    (target === "c" || target === "c-split") &&
     backend === "selfhost" &&
     options?.cSubstrateMode !== "legacy"
   ) {
@@ -525,7 +525,12 @@ function setSubstrateOverrideFromOptions(options, target, backend) {
 }
 
 function isSupportedTarget(target): boolean {
-  return target === "js" || target === "c" || target === "tuff";
+  return (
+    target === "js" ||
+    target === "c" ||
+    target === "c-split" ||
+    target === "tuff"
+  );
 }
 
 function ensureSupportedTarget(target): CompilerResult<true> {
@@ -537,7 +542,7 @@ function ensureSupportedTarget(target): CompilerResult<true> {
       code: "E_UNSUPPORTED_TARGET",
       reason:
         "The compiler was asked to emit code for a target that is not implemented.",
-      fix: "Use target: 'js', target: 'c', or target: 'tuff'.",
+      fix: "Use target: 'js', target: 'c', target: 'c-split', or target: 'tuff'.",
     }),
   );
 }
@@ -741,7 +746,7 @@ function makeSelfhostCompileResult(
     cst: { kind: "Program", body: [] },
     core: { kind: "Program", body: [] },
     js: target === "js" ? js : undefined,
-    c: target === "c" ? js : undefined,
+    c: target === "c" || target === "c-split" ? js : undefined,
     tuff: target === "tuff" ? js : undefined,
     output: js,
     target,
@@ -782,6 +787,7 @@ function initializeSelfhostCompileContext(
 
 function extensionForTarget(target): string {
   if (target === "c") return ".c";
+  if (target === "c-split") return ".csplit";
   if (target === "tuff") return ".tuff";
   return ".js";
 }
@@ -1135,6 +1141,9 @@ function compileFileInternal(
     setSubstrateOverrideFromOptions(options, target, "selfhost");
     const quiet = compilerQuietMode || Boolean(options.quiet);
     try {
+      if (target === "c-split") {
+        fs.mkdirSync(finalOutput, { recursive: true });
+      }
       const normalizedInput = toPosixPath(absInput);
       const normalizedOutput = toPosixPath(finalOutput);
       if (!quiet) {
@@ -1176,7 +1185,14 @@ function compileFileInternal(
           `[tuffc] compilation done in ${Date.now() - compileStart}ms\n`,
         );
       }
-      js = fs.readFileSync(finalOutput, "utf8");
+      if (target === "c-split") {
+        const manifestPath = path.join(finalOutput, "manifest.txt");
+        js = fs.existsSync(manifestPath)
+          ? fs.readFileSync(manifestPath, "utf8")
+          : "";
+      } else {
+        js = fs.readFileSync(finalOutput, "utf8");
+      }
     } catch (error) {
       if (!quiet) {
         const raw = error as Error;

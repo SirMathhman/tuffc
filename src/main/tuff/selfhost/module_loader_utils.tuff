@@ -49,7 +49,7 @@ out fn join_sources(sources: Vec<*Str>) : *Str => {
     sb_build(sb)
 }
 out fn module_with_c_runtime_prelude(source: *Str, target: *Str) : *Str => {
-    if (!target.str_eq("c")) {
+    if (!target.str_eq("c") && !target.str_eq("c-split")) {
         return source;
     }
     if (source.str_includes("fn tuff_runtime_panic(")) {

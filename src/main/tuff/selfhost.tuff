@@ -143,7 +143,7 @@ fn normalize_flag(value: I32) : I32 => {
     }
 }
 fn with_c_runtime_prelude(source: *Str, target: *Str) : *Str => {
-    if (!target.str_eq("c")) {
+    if (!target.str_eq("c") && !target.str_eq("c-split")) {
         return source;
     }
     if (source.str_includes("fn tuff_runtime_panic(")) {
@@ -162,6 +162,9 @@ fn emit_target_output(typed: I32, source: *Str, target: *Str) : *Str => {
     if (target.str_eq("c")) {
         return generate_c(typed, __host_get_c_substrate());
     }
+    if (target.str_eq("c-split")) {
+        return generate_c(typed, __host_get_c_substrate());
+    }
     if (target.str_eq("tuff")) {
         return emit_tuff_from_typed(typed, source, lex_take_trivia());
     }
@@ -169,7 +172,7 @@ fn emit_target_output(typed: I32, source: *Str, target: *Str) : *Str => {
     "E_UNSUPPORTED_TARGET",
     "Unsupported codegen target: ".str_concat(target),
     "The compiler was asked to emit code for a target that is not implemented.",
-    "Use target 'js', target 'c', or target 'tuff'."
+    "Use target 'js', target 'c', target 'c-split', or target 'tuff'."
     );
     ""
 }
@@ -257,7 +260,7 @@ fn main() : I32 => {
     let argc = get_argc();
      // argv[0] is the executable name; we need at least argv[1] (input file).
     if (argc < 2) {
-        print_error("Usage: tuffc <input.tuff> -o <output> [--target <js|c|tuff>] [--module-base <dir> (legacy)]");
+        print_error("Usage: tuffc <input.tuff> -o <output> [--target <js|c|c-split|tuff>] [--module-base <dir> (legacy)]");
         return 1;
     }
      // Fast-path: handle flags-only commands before any file parsing.
@@ -267,7 +270,7 @@ fn main() : I32 => {
         return 0;
     }
     if (first_arg.str_eq("-h") || first_arg.str_eq("--help")) {
-        print("Usage: tuffc <input.tuff> -o <output> [--target <js|c|tuff>] [--module-base <dir> (legacy)] [--version]");
+        print("Usage: tuffc <input.tuff> -o <output> [--target <js|c|c-split|tuff>] [--module-base <dir> (legacy)] [--version]");
         return 0;
     }
     let input_file = first_arg;

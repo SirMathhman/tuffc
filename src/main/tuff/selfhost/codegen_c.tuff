@@ -1,6 +1,8 @@
 let {
-    generate_c_impl, selfhost_codegen_c_impl_marker
+    generate_c_impl, generate_c_split_files_impl, selfhost_codegen_c_impl_marker
 }
  = selfhost::internal::codegen_c_impl;
 out fn generate_c(typed: I32, substrate: *Str) : *Str => generate_c_impl(typed, substrate);
+out fn generate_c_split_files(typed: I32, substrate: *Str, module_keys: Vec<*Str>, stmt_owners: Vec<*Str>,
+init_order: Vec<*Str>) : Vec<I32> => generate_c_split_files_impl(typed, substrate, module_keys, stmt_owners, init_order);
 out fn selfhost_codegen_c_marker() : I32 => selfhost_codegen_c_impl_marker();
