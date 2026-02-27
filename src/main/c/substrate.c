@@ -328,7 +328,7 @@ int64_t __host_get_c_runtime_prelude_source(void)
 }
 
 // Profiling clock: monotonic milliseconds.
-int64_t perf_now(void)
+int64_t __perf_now(void)
 {
 #ifdef _WIN32
     static LARGE_INTEGER freq = {0};
@@ -354,4 +354,4 @@ int64_t profile_mark(int64_t label, int64_t duration_ms)
     (void)duration_ms;
     return 0;
 }
-int64_t profile_take_json(void) { return tuff_to_val("{}"); }
+int64_t __profile_take_json(void) { return tuff_to_val("{}"); }

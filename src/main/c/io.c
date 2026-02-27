@@ -116,7 +116,7 @@ int64_t print(int64_t s)
     return 0;
 }
 
-int64_t print_error(int64_t s)
+int64_t __print_error(int64_t s)
 {
     const char *p = tuff_str(s);
     if (p == NULL)

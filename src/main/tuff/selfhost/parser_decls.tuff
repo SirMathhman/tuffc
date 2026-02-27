@@ -403,7 +403,12 @@ fn p_try_parse_plain_decl_statement() : I32 => {
     }
     if (p_at(TK_KEYWORD, "extern")) {
         p_eat();
-        return p_parse_extern_decl();
+        let extern_result = p_parse_extern_decl();
+        if (extern_result is struct Err) {
+            panic_with_code_loc(extern_result.error.code, extern_result.error.message, extern_result.error.reason, extern_result.error.fix, extern_result.error.line, extern_result.error.col);
+            return 0;
+        }
+        return extern_result.value;
     }
     if (p_at(TK_KEYWORD, "class")) {
         p_eat();

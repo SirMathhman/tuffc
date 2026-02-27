@@ -152,11 +152,15 @@ fn resolve_expr_call(n: I32, globals: *mut Set<I32>, scopes: Vec<I32>, depth: I3
         if (type_args.vec_length() == 1 && node_kind(type_args.vec_get(0)) == NK_NAMED_TYPE) {
             contract_name = get_interned_str(node_get_data1(type_args.vec_get(0)));
         }
-        let contract_label = contract_name;
-        if (contract_label.str_eq("")) {
-            contract_label = "<missing>";
+        let contract_declared = false;
+        if (!contract_name.str_eq("")) {
+            contract_declared = globals.set_has(contract_name);
         }
-        if (contract_name.str_eq("") || !globals.set_has(contract_name)) {
+        if (contract_name.str_eq("") || !contract_declared) {
+            let contract_label = contract_name;
+            if (contract_label.str_eq("")) {
+                contract_label = "<missing>";
+            }
             return rslv_panic_loc("E_RESOLVE_UNKNOWN_IDENTIFIER", "Unknown contract '".str_concat(contract_label).str_concat("'"), "An into conversion referenced a contract that is not declared in scope.", "Use value.into<Contract>(...) with a declared contract name.");
         }
         resolve_expr(args.vec_get(0), globals, scopes, depth)?;
@@ -535,21 +539,21 @@ fn resolve_stmt(n: I32, globals: *mut Set<I32>, scopes: Vec<I32>, depth: I32) : 
         resolve_stmt_fn_ms = resolve_stmt_fn_ms + dt;
         return Ok<I32> { value: v };
     }
-    if (resolve_stmt_let_or_import(n, globals, scopes, depth) == 1) {
+    if (resolve_stmt_let_or_import(n, globals, scopes, depth)? == 1) {
         let dt = perf_now() - stmt_t0;
         resolve_stmt_total_ms = resolve_stmt_total_ms + dt;
         resolve_stmt_let_import_calls = resolve_stmt_let_import_calls + 1;
         resolve_stmt_let_import_ms = resolve_stmt_let_import_ms + dt;
         return Ok<I32> { value: 0 };
     }
-    if (resolve_stmt_flow(n, globals, scopes, depth) == 1) {
+    if (resolve_stmt_flow(n, globals, scopes, depth)? == 1) {
         let dt = perf_now() - stmt_t0;
         resolve_stmt_total_ms = resolve_stmt_total_ms + dt;
         resolve_stmt_flow_calls = resolve_stmt_flow_calls + 1;
         resolve_stmt_flow_ms = resolve_stmt_flow_ms + dt;
         return Ok<I32> { value: 0 };
     }
-    if (resolve_stmt_lifetime_or_into(n, globals, scopes, depth) == 1) {
+    if (resolve_stmt_lifetime_or_into(n, globals, scopes, depth)? == 1) {
         let dt = perf_now() - stmt_t0;
         resolve_stmt_total_ms = resolve_stmt_total_ms + dt;
         resolve_stmt_lifetime_into_calls = resolve_stmt_lifetime_into_calls + 1;
@@ -666,7 +670,40 @@ out fn resolve_names(program: I32) : Result<I32, ResolveError> => {
     resolve_step_start = resolve_log_step("init-top-scope", resolve_step_start, resolve_total_start);
     i = 0;
     while (i < len) {
-        resolve_stmt(body.vec_get(i), globals, topScopes, 0)?;
+        let top_stmt = body.vec_get(i);
+        let top_kind = node_kind(top_stmt);
+        let top_name = "";
+        if (
+        top_kind == NK_FN_DECL ||
+        top_kind == NK_CLASS_FN_DECL ||
+        top_kind == NK_ACTUAL_FN_DECL ||
+        top_kind == NK_STRUCT_DECL ||
+        top_kind == NK_ENUM_DECL ||
+        top_kind == NK_OBJECT_DECL ||
+        top_kind == NK_CONTRACT_DECL ||
+        top_kind == NK_TYPE_ALIAS ||
+        top_kind == NK_DEP_TYPE_ALIAS ||
+        top_kind == NK_LET_DECL ||
+        top_kind == NK_EXTERN_LET_DECL ||
+        top_kind == NK_EXTERN_TYPE_DECL
+        ) {
+            top_name = get_interned_str(node_get_data1(top_stmt));
+        }
+        print_error(
+            "[selfhost][resolve] top-stmt:start i=".str_concat(int_to_string(i))
+            .str_concat(" kind=")
+            .str_concat(int_to_string(top_kind))
+            .str_concat(" name=")
+            .str_concat(top_name)
+            .str_concat("\n")
+        );
+        resolve_stmt(top_stmt, globals, topScopes, 0)?;
+        print_error(
+            "[selfhost][resolve] top-stmt:done i=".str_concat(int_to_string(i))
+            .str_concat(" kind=")
+            .str_concat(int_to_string(top_kind))
+            .str_concat("\n")
+        );
         i = i + 1;
     }
     resolve_step_start = resolve_log_step("resolve-top-level", resolve_step_start, resolve_total_start);

@@ -457,7 +457,7 @@ fn p_parse_type_primary_numeric_sentinel() : I32 => {
     let t = p_eat();
     let raw = get_intern(tok_value(t));
     if (!(raw.str_eq("0USize") || raw.str_eq("0"))) {
-        return p_result_error(
+        p_panic_loc(
         "E_PARSE_INVALID_LITERAL",
         "Only 0 or 0USize is supported as a type-level numeric sentinel",
         "Type-level numeric literals are restricted to zero sentinels",

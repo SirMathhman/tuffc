@@ -100,7 +100,7 @@ int64_t str_from_char_code(int64_t code)
     return tuff_register_owned_string(out);
 }
 
-int64_t str_index_of(int64_t s, int64_t needle)
+int64_t __str_index_of(int64_t s, int64_t needle)
 {
     const char *hay = tuff_str(s);
     const char *nd = tuff_str(needle);
@@ -181,7 +181,7 @@ int64_t char_code(int64_t ch)
     return str_char_at(ch, 0);
 }
 
-int64_t int_to_string(int64_t n)
+int64_t __int_to_string(int64_t n)
 {
     char buf[64];
     snprintf(buf, sizeof(buf), "%lld", (long long)n);

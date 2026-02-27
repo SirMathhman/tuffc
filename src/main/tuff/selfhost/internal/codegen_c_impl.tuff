@@ -36,6 +36,9 @@ let cc_union_alias_info : Map<I32, I32> = map_new();
 let cc_covered_extern_fns : *mut Set<I32> = set_new();
 let cc_local_types : Map<I32, I32> = map_new();
  // local var name → C type string (e.g. "TuffVec*")
+let cc_fn_return_types : Map<I32, I32> = map_new();
+ // function name → C return type string
+let cc_emitted_tuff_error : I32 = 0;
 let cc_inc_stdint : I32 = 1;
 let cc_inc_stddef : I32 = 0;
 let cc_inc_stdio : I32 = 0;
@@ -61,6 +64,17 @@ fn cc_to_name(name: *Str) : *Str => {
     else {
         name
     }
+}
+fn cc_str_ends_with(s: *Str, suffix: *Str) : Bool => {
+    let sn = s.str_length();
+    let tn = suffix.str_length();
+    if (sn < tn) {
+        return false;
+    }
+    if (sn == tn) {
+        return s.str_slice(0, sn).str_eq(suffix);
+    }
+    false
 }
 fn cc_join_parts(parts: Vec<I32>) : *Str => {
     let sb = sb_new();
@@ -199,6 +213,9 @@ fn cc_type_to_c(type_node: I32) : *Str => {
         if (cc_union_alias_info.map_has(name)) {
             return name;
         }
+        if (cc_struct_fields.map_has(name)) {
+            return name;
+        }
         if (cc_alias_by_variant.map_has(name)) {
             return cc_alias_by_variant.map_get(name);
         }
@@ -208,8 +225,19 @@ fn cc_type_to_c(type_node: I32) : *Str => {
     if (kind == 44) {
         return cc_type_to_c(node_get_data1(type_node));
     }
-     // NK_APPLIED_TYPE (71): dep-type-alias application \u2014 erase to int64_t (alias name is not a C type).
+    // NK_APPLIED_TYPE (71): value-level type application.
+    // Erase value args but preserve nominal base when it is a known concrete type.
     if (kind == 71) {
+        let base = get_interned_str(node_get_data1(type_node));
+        if (cc_union_alias_info.map_has(base)) {
+            return base;
+        }
+        if (cc_struct_fields.map_has(base)) {
+            return base;
+        }
+        if (cc_alias_by_variant.map_has(base)) {
+            return cc_alias_by_variant.map_get(base);
+        }
         return "int64_t";
     }
     "int64_t"
@@ -233,6 +261,9 @@ fn cc_infer_expr_ctype(n: I32) : *Str => {
             let cname = get_interned_str(node_get_data1(callee));
             if (cname.str_eq("malloc") || cname.str_eq("realloc")) {
                 return "TuffVec*";
+            }
+            if (cc_fn_return_types.map_has(cname)) {
+                return cc_fn_return_types.map_get(cname);
             }
         }
     }
@@ -319,6 +350,19 @@ fn cc_init_context(program: I32) : I32 => {
                 j = j + 1;
             }
             cc_mark_header_from_source(cc_join_parts(node_get_data2(n)));
+        }
+        i = i + 1;
+    }
+    i = 0;
+    while (i < len) {
+        let n = stmts.vec_get(i);
+        let kind = node_kind(n);
+        if (kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL || kind == NK_ACTUAL_FN_DECL) {
+            let source_name = get_interned_str(node_get_data1(n));
+            let c_name = cc_to_name(source_name);
+            let ret_ctype = cc_type_to_c(node_get_data4(n));
+            cc_fn_return_types.map_set(source_name, ret_ctype);
+            cc_fn_return_types.map_set(c_name, ret_ctype);
         }
         i = i + 1;
     }
@@ -680,7 +724,19 @@ fn cc_emit_expr(n: I32) : *Str => {
         return "((".str_concat(cond).str_concat(") ? (").str_concat(then_str).str_concat(") : (").str_concat(else_str).str_concat("))");
     }
     if (kind == NK_UNWRAP_EXPR) {
-        return cc_emit_expr(node_get_data1(n));
+        let inner_node = node_get_data1(n);
+        let inner = cc_emit_expr(inner_node);
+        let rtype = cc_infer_expr_ctype(inner_node);
+        if (rtype.str_eq("int64_t")) {
+            return inner;
+        }
+        let tmp = cc_next_temp("unwrap");
+        return "({ ".str_concat(rtype)
+            .str_concat(" ").str_concat(tmp)
+            .str_concat(" = ").str_concat(inner)
+            .str_concat("; if (").str_concat(tmp).str_concat(".__tag == ")
+            .str_concat(rtype).str_concat("_Err) { return ").str_concat(tmp)
+            .str_concat("; } ").str_concat(tmp).str_concat(".value; })");
     }
     if (kind == NK_MATCH_EXPR) {
         return cc_emit_match_expr(n);
@@ -695,6 +751,13 @@ fn cc_emit_expr(n: I32) : *Str => {
                 return "(".str_concat(inner).str_concat(".__tag == ").str_concat(alias).str_concat("_").str_concat(name).str_concat(")");
             }
             return "((int64_t)(".str_concat(inner).str_concat(") != 0)");
+        }
+        if (node_kind(pat) == NK_STRUCT_PAT) {
+            let name = get_interned_str(node_get_data1(pat));
+            if (cc_alias_by_variant.map_has(name)) {
+                let alias = cc_alias_by_variant.map_get(name);
+                return "(".str_concat(inner).str_concat(".__tag == ").str_concat(alias).str_concat("_").str_concat(name).str_concat(")");
+            }
         }
         return "0";
     }
@@ -725,7 +788,28 @@ fn cc_emit_expr(n: I32) : *Str => {
             sb_append(sb, " })");
             return sb_build(sb);
         }
-        return "/* struct_init(".str_concat(name).str_concat(") unsupported in C MVP */ 0");
+        let fields = node_get_data2(n);
+        let sb = sb_new();
+        sb_append(sb, "((");
+        sb_append(sb, name);
+        sb_append(sb, "){ ");
+        let i = 0;
+        let flen = fields.vec_length();
+        while (i < flen) {
+            let field = fields.vec_get(i);
+            let key = get_interned_str(field.vec_get(0));
+            let val_str = cc_emit_expr(field.vec_get(1));
+            if (i > 0) {
+                sb_append(sb, ", ");
+            }
+            sb_append(sb, ".");
+            sb_append(sb, key);
+            sb_append(sb, " = ");
+            sb_append(sb, val_str);
+            i = i + 1;
+        }
+        sb_append(sb, " })");
+        return sb_build(sb);
     }
     if (kind == NK_LAMBDA_EXPR || kind == NK_FN_EXPR) {
         return "/* lambda/fn_expr unsupported in C */ 0";
@@ -912,8 +996,15 @@ fn cc_emit_type_alias(n: I32) : *Str => {
     let m = 0;
     let flen = all_field_names.vec_length();
     while (m < flen) {
-        sb_append(sb, " int64_t ");
-        sb_append(sb, all_field_names.vec_get(m));
+        let fname = all_field_names.vec_get(m);
+        let ftype = "int64_t";
+        if (alias_name.str_eq("Result") && fname.str_eq("error")) {
+            ftype = "TuffError";
+        }
+        sb_append(sb, " ");
+        sb_append(sb, ftype);
+        sb_append(sb, " ");
+        sb_append(sb, fname);
         sb_append(sb, ";");
         m = m + 1;
     }
@@ -934,10 +1025,15 @@ fn cc_emit_type_alias(n: I32) : *Str => {
         let klen = vfields.vec_length();
         while (k < klen) {
             let fname = vfields.vec_get(k);
+            let ptype = "int64_t";
+            if (alias_name.str_eq("Result") && fname.str_eq("error")) {
+                ptype = "TuffError";
+            }
             if (k > 0) {
                 sb_append(params_sb, ", ");
             }
-            sb_append(params_sb, "int64_t ");
+            sb_append(params_sb, ptype);
+            sb_append(params_sb, " ");
             sb_append(params_sb, fname);
             sb_append(assigns_sb, " out.");
             sb_append(assigns_sb, fname);
@@ -1035,7 +1131,28 @@ fn cc_emit_stmt(n: I32) : *Str => {
         return "/* into ".str_concat(get_interned_str(node_get_data1(n))).str_concat(" */");
     }
     if (kind == NK_LIFETIME_STMT) {
-        return cc_emit_block(node_get_data2(n));
+         // Lifetime blocks are compile-time scoping only.
+         // At C top level we must not emit a raw "{ ... }" block.
+         // Instead, emit the lowered body statements directly.
+        let body = node_get_data2(n);
+        if (body == 0 || node_kind(body) != NK_BLOCK) {
+            return "";
+        }
+        let stmts = node_get_data1(body);
+        let sb = sb_new();
+        let i = 0;
+        let len = stmts.vec_length();
+        while (i < len) {
+            let row = cc_emit_stmt(stmts.vec_get(i));
+            if (!row.str_eq("")) {
+                sb_append(sb, row);
+                if (i + 1 < len) {
+                    sb_append(sb, "\n");
+                }
+            }
+            i = i + 1;
+        }
+        return sb_build(sb);
     }
     if (kind == NK_BLOCK) {
         return cc_emit_block(n);
@@ -1079,7 +1196,53 @@ fn cc_emit_stmt(n: I32) : *Str => {
     }
     if (kind == NK_STRUCT_DECL) {
         let name = get_interned_str(node_get_data1(n));
-        return "/* struct ".str_concat(name).str_concat(" lowered via union aliases when applicable */");
+        let fields = node_get_data3(n);
+        if (name.str_eq("ParseError") || name.str_eq("ResolveError") || name.str_eq("TypeError") || name.str_eq("CodegenError")) {
+            let sb = sb_new();
+            if (cc_emitted_tuff_error == 0) {
+                sb_append(sb, "typedef struct TuffError { ");
+                let i = 0;
+                let flen = fields.vec_length();
+                while (i < flen) {
+                    let f = fields.vec_get(i);
+                    let fname = get_interned_str(f.vec_get(0));
+                    let ftype = f.vec_get(1);
+                    let ctype = cc_type_to_c(ftype);
+                    sb_append(sb, ctype);
+                    sb_append(sb, " ");
+                    sb_append(sb, fname);
+                    sb_append(sb, "; ");
+                    i = i + 1;
+                }
+                sb_append(sb, "} TuffError;\n");
+                cc_emitted_tuff_error = 1;
+            }
+            sb_append(sb, "typedef TuffError ");
+            sb_append(sb, name);
+            sb_append(sb, ";");
+            return sb_build(sb);
+        }
+        let sb = sb_new();
+        sb_append(sb, "typedef struct ");
+        sb_append(sb, name);
+        sb_append(sb, " { ");
+        let i = 0;
+        let flen = fields.vec_length();
+        while (i < flen) {
+            let f = fields.vec_get(i);
+            let fname = get_interned_str(f.vec_get(0));
+            let ftype = f.vec_get(1);
+            let ctype = cc_type_to_c(ftype);
+            sb_append(sb, ctype);
+            sb_append(sb, " ");
+            sb_append(sb, fname);
+            sb_append(sb, "; ");
+            i = i + 1;
+        }
+        sb_append(sb, "} ");
+        sb_append(sb, name);
+        sb_append(sb, ";");
+        return sb_build(sb);
     }
     if (kind == NK_TYPE_ALIAS) {
         return cc_emit_type_alias(n);
@@ -1149,7 +1312,9 @@ out fn generate_c_impl(typed: I32, substrate: *Str) : *Str => {
     cc_alias_by_variant = map_new();
     cc_union_alias_info = map_new();
     cc_covered_extern_fns = set_new();
+    cc_fn_return_types = map_new();
     cc_local_types = map_new();
+    cc_emitted_tuff_error = 0;
     cc_inc_stdint = 1;
     cc_inc_stddef = 0;
     cc_inc_stdio = 0;
@@ -1240,6 +1405,8 @@ out fn generate_c_impl(typed: I32, substrate: *Str) : *Str => {
         sb_append(sb, cc_emit_minimal_runtime_prelude());
     }
     sb_append(sb, "\n\n");
+    sb_append(sb, "typedef struct TuffError { int64_t code; int64_t message; int64_t reason; int64_t fix; int64_t line; int64_t col; } TuffError;\n\n");
+    cc_emitted_tuff_error = 1;
      // ── First pass: non-fn top-level declarations ────────────────────────────
     let i = 0;
     while (i < len) {

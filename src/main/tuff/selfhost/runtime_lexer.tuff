@@ -45,23 +45,6 @@ extern fn str_length(this: *Str) : USize;
 type StrIndex(this: *Str) = USize < str_length(this);
 extern fn str_char_at(this: *Str, index: StrIndex(this)) : Char;
 
-/*
-TODO: change underlying implementation of string slicing for performance reasons.
-We do a LOT of string slicing, but this enforces correctness.
-
-Should become:
-
-lifetime t {
-    extern fn str_slice(this: *t Str, start: StrIndex(this) <= end, end: StrIndex(this)) : *t Str;
-}
-
-Because the slice will only exist as long as the underlying string exists, and the slice should be a window.
-
-We will also therefore need a "copy" function:
-
-extern fn str_copy(this : *Str) : *Str;
-*/
-
 extern fn str_slice(this: *Str, start: StrIndex(this) <= end, end: StrIndex(this)) : *Str;
 lifetime t {
     extern fn str_slice_window(this: *t Str, start: StrIndex(this) <= end, end: StrIndex(this)) : *t Str;
@@ -134,7 +117,7 @@ out fn map_new() : Map<K, V> => __map_new();
 extern type Set<T>;
 extern fn __set_new() : *mut Set<T>;
 extern fn set_add(this: *mut Set<T>, item: T) : *mut Set<T>;
-extern fn set_has(this: *Set<T>, item: T) : Bool;
+extern fn set_has(this: *mut Set<T>, item: T) : Bool;
 extern fn set_delete(this: *mut Set<T>, item: T) : Bool;
 out fn set_new() : *mut Set<T> => __set_new();
 extern fn read_file(filePath: *Str) : *Str;
@@ -142,7 +125,6 @@ extern fn write_file(filePath: *Str, contents: *Str) : I32;
 extern fn path_join(a: *Str, b: *Str) : *Str;
 extern fn path_dirname(p: *Str) : *Str;
 extern fn print(s: *Str) : I32;
-extern fn print_error(s: *Str) : I32;
 extern fn __print_error(s: *Str) : I32;
 out fn print_error(s: *Str) : I32 => __print_error(s);
 extern fn panic(msg: *Str) : I32;
@@ -152,7 +134,6 @@ I32;
 extern fn get_argc() : I32;
 extern fn get_argv(i: I32) : *Str;
  // Performance profiling
-extern fn perf_now() : I32;
 extern fn __perf_now() : I32;
 out fn perf_now() : I32 => __perf_now();
 extern fn profile_mark(label: *Str, duration_ms: I32) : I32;
@@ -277,11 +258,12 @@ let lex_line : I32 = 1;
 let lex_col : I32 = 1;
 let lex_len : USize = 0;
 out fn lex_init(source: *Str) : I32 => {
+    let source_len = source.str_length();
     lex_source = source;
     lex_pos = 0;
     lex_line = 1;
     lex_col = 1;
-    lex_len = source.str_length();
+    lex_len = source_len;
      // Clear token arrays for fresh compilation
     tok_kinds.vec_clear();
     tok_values.vec_clear();

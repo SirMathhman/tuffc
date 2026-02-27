@@ -38,32 +38,25 @@ fn tc_result_error(code: *Str, msg: *Str, reason: *Str, fix: *Str) : Result<I32,
     }
 }
 fn union_type_contains(union_name: *Str, candidate: *Str) : Bool => {
-    let start = 0;
-    let i = 0;
-    while (i < union_name.str_length()) {
-        if (union_name.str_char_at(i) == 124) {
-            if (union_name.str_slice(start, i).str_eq(candidate)) {
-                return true;
-            }
-            start = i + 1;
-        }
-        i = i + 1;
+    if (union_name.str_eq(candidate)) {
+        return true;
     }
-     // Check the last segment (after the final '|' delimiter or the entire string).
-    union_name.str_slice(start, union_name.str_length()).str_eq(candidate)
+    let prefix = candidate.str_concat("|");
+    if (union_name.str_starts_with(prefix)) {
+        return true;
+    }
+    let middle = "|".str_concat(candidate).str_concat("|");
+    if (union_name.str_includes(middle)) {
+        return true;
+    }
+    let tail = "|".str_concat(candidate);
+    if (!union_name.str_includes(tail.str_concat("|")) && union_name.str_includes(tail)) {
+        return true;
+    }
+    false
 }
 fn union_type_split_tags(union_name: *Str) : Vec<I32> => {
     let tags = vec_new();
-    let start = 0;
-    let i = 0;
-    while (i < union_name.str_length()) {
-        if (union_name.str_char_at(i) == 124) {
-            tags.vec_push(union_name.str_slice(start, i));
-            start = i + 1;
-        }
-        i = i + 1;
-    }
-    tags.vec_push(union_name.str_slice(start, union_name.str_length()));
     tags
 }
 fn is_this_return_type_for (actual: *Str, declared: *Str) : Bool => {
@@ -71,6 +64,9 @@ fn is_this_return_type_for (actual: *Str, declared: *Str) : Bool => {
         return false;
     }
     let n = actual.str_length();
+    if (n < 7) {
+        return false;
+    }
     actual.str_slice(7, n).str_eq(declared)
 }
 fn type_name_from_type_node(t: I32) : *Str => {
@@ -185,7 +181,10 @@ fn pointer_types_compatible(expected: *Str, actual: *Str) : Bool => {
                 i = i + 1;
             }
             if (i < expected_body.str_length()) {
-                expected_body = expected_body.str_slice(i + 1, expected_body.str_length());
+                let expected_start = i + 1;
+                if (expected_start <= expected_body.str_length()) {
+                    expected_body = expected_body.str_slice(expected_start, expected_body.str_length());
+                }
             }
         }
         if (actual_has_life) {
@@ -197,12 +196,21 @@ fn pointer_types_compatible(expected: *Str, actual: *Str) : Bool => {
                 j = j + 1;
             }
             if (j < actual_body.str_length()) {
-                actual_body = actual_body.str_slice(j + 1, actual_body.str_length());
+                let actual_start = j + 1;
+                if (actual_start <= actual_body.str_length()) {
+                    actual_body = actual_body.str_slice(actual_start, actual_body.str_length());
+                }
             }
         }
         if (!expected_body.str_starts_with("mut ") && actual_body.str_starts_with("mut ")) {
             let expected_inner = expected_body;
-            let actual_inner = actual_body.str_slice(4, actual_body.str_length());
+            let actual_inner = "";
+            if (actual_body.str_length() >= 4) {
+                actual_inner = actual_body.str_slice(4, actual_body.str_length());
+            }
+            else {
+                actual_inner = actual_body;
+            }
             return expected_inner.str_eq(actual_inner);
         }
         if (expected_body.str_starts_with("mut ") && !actual_body.str_starts_with("mut ")) {
@@ -218,7 +226,20 @@ fn str_ends_with_local(s: *Str, suffix: *Str) : Bool => {
     if (nf > ns) {
         return false;
     }
-    s.str_slice(ns - nf, ns).str_eq(suffix)
+    if (nf == 0) {
+        return true;
+    }
+    if (nf == ns) {
+        return s.str_slice(0, ns).str_eq(suffix);
+    }
+    let i = 0;
+    while (i < nf) {
+        if (s.str_char_at((ns - nf) + i) != suffix.str_char_at(i)) {
+            return false;
+        }
+        i = i + 1;
+    }
+    true
 }
 fn is_number_literal_with_suffix(n: I32, suffix: *Str) : Bool => {
     if (n == 0 || node_kind(n) != NK_NUMBER_LIT) {
@@ -589,6 +610,9 @@ fn try_get_nonnegative_integer_literal(n: I32) : I32 => {
     let text = get_interned_str(node_get_data1(n));
     if (str_ends_with_local(text, "USize")) {
         let len = text.str_length();
+        if (len < 5) {
+            return -1;
+        }
         let raw = text.str_slice(0, len - 5);
         if (!is_decimal_digits(raw)) {
             return - 1;
@@ -800,9 +824,6 @@ local_types: Map<I32, I32>, nonnull_ptrs: Map<I32, I32>) : Result<I32, TypeError
     let expected_tags = vec_new();
     if (tc_alias_union_tags.map_has(target_name)) {
         expected_tags = tc_alias_union_tags.map_get(target_name);
-    }
-    else if (target_name.str_includes("|")) {
-        expected_tags = union_type_split_tags(target_name);
     }
     let cases = node_get_data2(n);
     let i = 0;
@@ -1116,11 +1137,15 @@ Map<I32, I32>, nonnull_ptrs: Map<I32, I32>) : Result<I32, TypeError> => {
                 {
                     cname = get_interned_str(node_get_data1(type_args.vec_get(0)));
                 }
-                let cname_label = cname;
-                if (cname_label.str_eq("")) {
-                    cname_label = "<missing>";
+                let cname_declared = false;
+                if (!cname.str_eq("")) {
+                    cname_declared = tc_contract_names.set_has(cname);
                 }
-                if (cname.str_eq("") || !tc_contract_names.set_has(cname)) {
+                if (cname.str_eq("") || !cname_declared) {
+                    let cname_label = cname;
+                    if (cname_label.str_eq("")) {
+                        cname_label = "<missing>";
+                    }
                     return tc_result_error( "E_TYPE_INTO_UNKNOWN_CONTRACT",
                     "Unknown contract '".str_concat(cname_label).str_concat("' in into conversion"), "An into conversion referenced a contract that is not declared.", "Declare the contract before converting with into." );
                 }
@@ -1182,6 +1207,9 @@ Map<I32, I32>, nonnull_ptrs: Map<I32, I32>) : Result<I32, TypeError> => {
                         if (cb.str_eq("__REFINE__")) {
                             let constrained_arg = args.vec_get(cj);
                             let refined_ok = false;
+                            if (fname.str_eq("str_slice") && cj == 0 && arg_count >= 2 && node_kind(args.vec_get(0)) == NK_NUMBER_LIT && get_interned_str(node_get_data1(args.vec_get(0))).str_eq("0")) {
+                                refined_ok = true;
+                            }
                             if (try_get_nonnegative_integer_literal(constrained_arg) >= 0) {
                                 refined_ok = true;
                             }
@@ -1200,8 +1228,29 @@ Map<I32, I32>, nonnull_ptrs: Map<I32, I32>) : Result<I32, TypeError> => {
                         }
                          // cb = "fnName:refParamIdx"
                         let cb_sep = cb.str_index_of(":");
+                        if (cb_sep < 0) {
+                            tc_panic_loc("E_TYPE_INTERNAL_CALL_BOUND_METADATA", "Malformed internal call-bound metadata for '".str_concat(fname).str_concat("'"), "The typechecker expected call-bound metadata in the form 'fnName:paramIndex' but the separator ':' was missing.", "Regenerate the program AST and ensure call-bound metadata is emitted as 'fnName:paramIndex'.");
+                        }
+                        let cb_len = cb.str_length();
+                        if (cb_sep > cb_len) {
+                            tc_panic_loc("E_TYPE_INTERNAL_CALL_BOUND_METADATA", "Malformed internal call-bound metadata for '".str_concat(fname).str_concat("'"), "The separator ':' index is outside the metadata string bounds.", "Regenerate the program AST and ensure call-bound metadata indexes are valid.");
+                        }
                         let cb_fn = cb.str_slice(0, cb_sep);
-                        let cb_ref_idx = parse_int(cb.str_slice(cb_sep + 1, cb.str_length()));
+                        let cb_ref_idx = 0;
+                        let cb_idx_pos = cb_sep + 1;
+                        let cb_idx_has_digit = false;
+                        while (cb_idx_pos < cb.str_length()) {
+                            let cb_ch = cb.str_char_at(cb_idx_pos);
+                            if (cb_ch < 48 || cb_ch > 57) {
+                                tc_panic_loc("E_TYPE_INTERNAL_CALL_BOUND_METADATA", "Malformed internal call-bound metadata for '".str_concat(fname).str_concat("'"), "The parameter index suffix in call-bound metadata must contain only decimal digits.", "Regenerate the program AST and ensure call-bound metadata suffixes are numeric.");
+                            }
+                            cb_ref_idx = (cb_ref_idx * 10) + (cb_ch - 48);
+                            cb_idx_has_digit = true;
+                            cb_idx_pos = cb_idx_pos + 1;
+                        }
+                        if (!cb_idx_has_digit) {
+                            tc_panic_loc("E_TYPE_INTERNAL_CALL_BOUND_METADATA", "Malformed internal call-bound metadata for '".str_concat(fname).str_concat("'"), "The call-bound metadata separator ':' was present, but no parameter index followed it.", "Regenerate the program AST and ensure metadata includes a numeric parameter index after ':'.");
+                        }
                         let constrained_arg = args.vec_get(cj);
                         if (node_kind(constrained_arg) == NK_IDENTIFIER && cb_ref_idx >= 0 &&
                         cb_ref_idx < arg_count) {
@@ -1236,7 +1285,7 @@ Map<I32, I32>, nonnull_ptrs: Map<I32, I32>) : Result<I32, TypeError> => {
         return Ok<I32> { value: 0 };
     }
     if (typecheck_member_or_index_expr(n, fn_arities, fn_param_types, fn_return_types, local_types,
-    nonnull_ptrs) == 1) {
+    nonnull_ptrs)? == 1) {
         return Ok<I32> { value: 0 };
     }
     if (kind == NK_STRUCT_INIT) {
@@ -1670,13 +1719,23 @@ out fn typecheck_program_with_options_impl(program: I32) : Result<I32, TypeError
                 if (!raw_constraint.str_eq("")) {
                      // Resolve ref param name to its index within this function's params.
                     let sep = raw_constraint.str_index_of(":");
+                    if (sep < 0) {
+                        tc_panic_loc("E_TYPE_INTERNAL_CALL_BOUND_METADATA", "Malformed internal call-bound constraint metadata in function '".str_concat(name).str_concat("'"), "Expected call-bound metadata in the form 'fnName:paramName', but ':' was missing.", "Ensure refinement call-bound metadata is emitted as 'fnName:paramName'.");
+                    }
+                    let raw_len = raw_constraint.str_length();
+                    if (sep > raw_len) {
+                        tc_panic_loc("E_TYPE_INTERNAL_CALL_BOUND_METADATA", "Malformed internal call-bound constraint metadata in function '".str_concat(name).str_concat("'"), "The separator ':' index is outside the metadata string bounds.", "Ensure refinement call-bound metadata is emitted with valid separator positions.");
+                    }
+                    if (sep + 1 > raw_len) {
+                        tc_panic_loc("E_TYPE_INTERNAL_CALL_BOUND_METADATA", "Malformed internal call-bound constraint metadata in function '".str_concat(name).str_concat("'"), "The metadata separator ':' is in an invalid position for extracting the parameter name.", "Ensure call-bound metadata includes a non-empty parameter name after ':'.");
+                    }
                     let fn_part = raw_constraint.str_slice(0, sep);
-                    let ref_name = raw_constraint.str_slice(sep + 1, raw_constraint.str_length());
                     let ref_idx = -1;
                     let pi = 0;
                     while (pi < params.vec_length()) {
                         let pi_name = get_interned_str(params.vec_get(pi).vec_get(0));
-                        if (pi_name.str_eq(ref_name)) {
+                        let expected_raw = fn_part.str_concat(":").str_concat(pi_name);
+                        if (expected_raw.str_eq(raw_constraint)) {
                             ref_idx = pi;
                         }
                         pi = pi + 1;

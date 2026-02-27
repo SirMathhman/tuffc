@@ -8,7 +8,7 @@ int64_t write_file(int64_t filePath, int64_t contents);
 int64_t path_join(int64_t a, int64_t b);
 int64_t path_dirname(int64_t p);
 int64_t print(int64_t s);
-int64_t print_error(int64_t s);
+int64_t __print_error(int64_t s);
 
 // argv access — stashed from main() before tuff_main() runs.
 void tuff_set_argv(int argc, char **argv);
