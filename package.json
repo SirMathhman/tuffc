@@ -23,6 +23,8 @@
     "typecheck:scripts": "tsc -p tsconfig.scripts.json --noEmit",
     "build:scripts": "tsc -p tsconfig.scripts.json",
     "build:scripts:run": "node dist/scripts/build-both.js",
+    "dev": "tsx ./scripts/watch.ts",
+    "dev:force": "tsx ./scripts/watch.ts --force",
     "test:fast": "node dist/scripts/with-timeout.js 300000 tsx ./src/test/js/test-orchestrator.ts --suite=core",
     "format": "tsx ./scripts/with-timeout.ts 60000 tsx ./src/main/js/cli.ts format ./src/main/tuff --write",
     "cpd:tuff": "tsx ./scripts/cpd-tuff.ts",

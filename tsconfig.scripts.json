@@ -13,6 +13,7 @@
     "scripts/build-native-binary.ts",
     "scripts/with-timeout.ts",
     "scripts/profile-compiler.ts",
-    "scripts/run-native-selfhost.ts"
+    "scripts/run-native-selfhost.ts",
+    "scripts/watch.ts"
   ]
 }
