@@ -131,7 +131,7 @@ expectFail(
 );
 expectFail(
   ["./src/test/tuff/cases/factorial.tuff", "--native", "--target", "js"],
-  "--native is only supported when --target c is selected",
+  "--native is only supported when --target c or --target c-split is selected",
   "native-js-target-rejected",
 );
 expectFail(

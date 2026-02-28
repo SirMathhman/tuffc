@@ -798,15 +798,7 @@ function applyReceiverCallFixes(source: string, fnNames: string[]) {
   return { source: out, fixes: totalFixes };
 }
 
-function applyDeterministicLintFixes(source: string, lintIssues: unknown[]) {
-  const hasReceiverLint = lintIssues.some(
-    (issue: unknown) =>
-      issue instanceof TuffError &&
-      issue.code === "E_LINT_PREFER_RECEIVER_CALL",
-  );
-  if (!hasReceiverLint) {
-    return { lintFixesApplied: 0, lintFixedSource: source };
-  }
+function applyDeterministicLintFixes(source: string, _lintIssues: unknown[]) {
   const receiverNames = collectReceiverExternFunctionNames(source);
   const fixed = applyReceiverCallFixes(source, receiverNames);
   return {

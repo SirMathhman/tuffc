@@ -32,7 +32,10 @@ if (!output.includes("typedef struct TuffVec")) {
   process.exit(1);
 }
 
-if (!output.includes("tuff_runtime_panic")) {
+if (
+  !output.includes("tuff_runtime_panic") &&
+  !output.includes("tuffRuntimePanic")
+) {
   console.error(
     "Expected generated C to include runtime prelude symbol from RuntimePrelude.tuff",
   );

@@ -21,14 +21,20 @@ const output = compileToCEmpty(
   source,
   "RuntimePrelude.tuff to compile to C",
 );
-if (!output.includes("tuff_runtime_panic")) {
+if (
+  !output.includes("tuff_runtime_panic") &&
+  !output.includes("tuffRuntimePanic")
+) {
   console.error(
     "Expected generated C from RuntimePrelude.tuff to include tuff_runtime_panic symbol",
   );
   process.exit(1);
 }
 
-if (!output.includes("tuff_runtime_panic_with_code")) {
+if (
+  !output.includes("tuff_runtime_panic_with_code") &&
+  !output.includes("tuffRuntimePanicWithCode")
+) {
   console.error(
     "Expected generated C from RuntimePrelude.tuff to include tuff_runtime_panic_with_code symbol",
   );

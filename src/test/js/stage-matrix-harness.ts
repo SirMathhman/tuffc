@@ -4,6 +4,10 @@ import path from "node:path";
 import vm from "node:vm";
 import * as runtime from "../../main/js/runtime.ts";
 import { compileAndLoadSelfhost, timingEnabled } from "./selfhost-harness.ts";
+import {
+  buildExportSnippet,
+  CORE_STAGE_EXPORT_NAMES,
+} from "./selfhost-export-utils.ts";
 
 function tlog(msg: string): void {
   if (timingEnabled()) {
@@ -15,21 +19,7 @@ function nowMs(): number {
   return Date.now();
 }
 
-const STAGE_EXPORT_NAMES: [camel: string, snake: string][] = [
-  ["compileSource", "compile_source"],
-  ["compileFile", "compile_file"],
-  ["compileSourceWithOptions", "compile_source_with_options"],
-  ["compileFileWithOptions", "compile_file_with_options"],
-  ["takeLintIssues", "take_lint_issues"],
-  ["main", "main"],
-];
-const STAGE_EXPORTS_SNIPPET =
-  `\nconst __exports = {};\n` +
-  STAGE_EXPORT_NAMES.map(
-    ([camel, snake]) =>
-      `if (typeof ${camel} !== "undefined") { __exports.${camel} = ${camel}; __exports.${snake} = ${camel}; }`,
-  ).join("\n") +
-  `\nmodule.exports = __exports;`;
+const STAGE_EXPORTS_SNIPPET = buildExportSnippet(CORE_STAGE_EXPORT_NAMES);
 
 export function loadStageCompilerFromJs(js, extraSandbox = {}) {
   const sandbox = {

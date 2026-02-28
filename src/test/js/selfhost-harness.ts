@@ -3,6 +3,11 @@ import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
 import * as runtime from "../../main/js/runtime.ts";
+import {
+  buildExportSnippet,
+  CORE_STAGE_EXPORT_NAMES,
+  CPD_EXPORT_NAMES,
+} from "./selfhost-export-utils.ts";
 
 export function timingEnabled(): boolean {
   const v = process.env.TUFFC_DEBUG_TIMING;
@@ -30,8 +35,9 @@ export function getCanonicalSelfhostJsPath(root: string): string {
 function requireBuildArtifact(buildArtifact: string): void {
   if (!fs.existsSync(buildArtifact)) {
     throw new Error(
-      "[selfhost-harness] Build artifact not found: " + buildArtifact +
-        "\nRun 'npm run build' to produce it, then re-run tests."
+      "[selfhost-harness] Build artifact not found: " +
+        buildArtifact +
+        "\nRun 'npm run build' to produce it, then re-run tests.",
     );
   }
 }
@@ -76,25 +82,11 @@ function buildSelfhostSandbox(selfhostJs: string): Record<string, unknown> {
     ...runtime,
   };
 
-  const exportedNames = [
-    "compile_source",
-    "compile_file",
-    "compile_source_with_options",
-    "compile_file_with_options",
-    "take_lint_issues",
-    "cpd_lex_init",
-    "cpd_lex_all",
-    "cpd_tok_kind",
-    "cpd_tok_value",
-    "cpd_tok_line",
-    "cpd_tok_col",
-    "cpd_get_interned_str",
-    "main",
-  ].join(", ");
+  const exportSnippet = buildExportSnippet([
+    ...CORE_STAGE_EXPORT_NAMES,
+    ...CPD_EXPORT_NAMES,
+  ]);
 
-  vm.runInNewContext(
-    `${selfhostJs}\nmodule.exports = { ${exportedNames} };`,
-    sandbox,
-  );
+  vm.runInNewContext(`${selfhostJs}${exportSnippet}`, sandbox);
   return sandbox.module.exports;
 }

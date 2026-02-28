@@ -26,6 +26,6 @@ const result = compileStdlibJs(
   "<panic-module-stdlib-only>",
 );
 
-assertStdlibModuleOutput(result, "Panic", "panic_with_code");
+assertStdlibModuleOutput(result, "Panic", "panicWithCode");
 
 console.log("Panic.tuff stdlib-only extern binding checks passed");

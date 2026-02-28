@@ -26,6 +26,6 @@ const result = compileStdlibJs(
   "<io-module-stdlib-only>",
 );
 
-assertStdlibModuleOutput(result, "IO", "path_join");
+assertStdlibModuleOutput(result, "IO", "pathJoin");
 
 console.log("IO.tuff stdlib-only extern binding checks passed");
