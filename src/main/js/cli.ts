@@ -423,6 +423,7 @@ function main(argv: string[]): void {
   let jsonErrors = false;
   let requestedBackend = undefined;
   let lint = false;
+  let lintFix = false;
   let noBorrow = false;
   let tracePasses = false;
   let target = "js";
