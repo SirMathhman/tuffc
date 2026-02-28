@@ -11,6 +11,8 @@
   },
   "scripts": {
     "build": "tsx ./scripts/build-both.ts",
+    "build:js": "tsx ./src/main/js/cli.ts ./src/main/tuff/selfhost.tuff --module-base ./src/main/tuff --target js -o ./tests/out/build/selfhost.js && tsx ./src/main/js/cli.ts ./src/main/tuff/selfhost.tuff --module-base ./src/main/tuff --target c -o ./tests/out/build/selfhost.c",
+    "build:c": "tests/out/c-bootstrap/stage3_selfhost_cli.exe ./src/main/tuff/selfhost.tuff --module-base ./src/main/tuff --target js -o ./tests/out/build/selfhost.js && tests/out/c-bootstrap/stage3_selfhost_cli.exe ./src/main/tuff/selfhost.tuff --module-base ./src/main/tuff --target c -o ./tests/out/build/selfhost.c",
     "test": "npm run test:core",
     "test:core": "tsx ./scripts/with-timeout.ts 300000 tsx ./src/test/js/test-orchestrator.ts --suite=core",
     "test:native": "tsx ./scripts/with-timeout.ts 300000 tsx ./src/test/js/test-orchestrator.ts --suite=native",
