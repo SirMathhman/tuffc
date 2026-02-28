@@ -13,7 +13,7 @@ let {
 let lintIssueRecords : Vec<*Str> = vecNew();
 fn lintIssueSepField() : *Str => "\u001f";
 fn lintIssueSepRecord() : *Str => "\u001e";
-fn lintIssueEncode(code: *Str, message: *Str, reason: *Str, fix: *Str) : *Str => {
+fn lintIssueEncode(code: *Str, message: *Str, reason: *Str, fix: *Str, line: I32, col: I32, filePath: *Str) : *Str => {
     code
     .strConcat(lintIssueSepField())
     .strConcat(message)
@@ -21,9 +21,18 @@ fn lintIssueEncode(code: *Str, message: *Str, reason: *Str, fix: *Str) : *Str =>
     .strConcat(reason)
     .strConcat(lintIssueSepField())
     .strConcat(fix)
+    .strConcat(lintIssueSepField())
+    .strConcat(filePath)
+    .strConcat(lintIssueSepField())
+    .strConcat(intToString(col))
 }
 fn lintAddIssue(code: *Str, message: *Str, reason: *Str, fix: *Str) : I32 => {
-    lintIssueRecords.vecPush(lintIssueEncode(code, message, reason, fix));
+    lintIssueRecords.vecPush(lintIssueEncode(code, message, reason, fix, 0, 0, "<unknown>"));
+    0
+}
+fn lintAddIssueAt(code: *Str, message: *Str, reason: *Str, fix: *Str, line: I32, col: I32) : I32 => {
+    let filePath = sourcemapLookup(line);
+    lintIssueRecords.vecPush(lintIssueEncode(code, message, reason, fix, line, col, filePath));
     0
 }
 out fn lintReset() : I32 => {
@@ -52,7 +61,7 @@ out fn lintCheckCurrentFileLength(filePath: *Str, maxEffectiveLines: I32) : I32 
 }
 fn lintIsExternFnDecl(stmt: I32) : Bool => {
     let kind = nodeKind(stmt);
-    kind == NK_FN_DECL && nodeGetData5(stmt) == 0
+    kind = = NK_FN_DECL && nodeGetData5(stmt) = = 0
 }
 fn lintMarkLine(lines: *mut Set<I32>, line: I32) : I32 => {
     let key = intToString(line);
@@ -63,24 +72,24 @@ fn lintMarkLine(lines: *mut Set<I32>, line: I32) : I32 => {
     0
 }
 fn lintCollectEffectiveLinesExpr(expr: I32, lines: *mut Set<I32>) : I32 => {
-    if (expr == 0) {
+    if (expr = = 0) {
         return 0;
     }
     let added = lintMarkLine(lines, nodeGetLine(expr));
     let kind = nodeKind(expr);
-    if (kind == NK_UNARY_EXPR || kind == NK_UNWRAP_EXPR) {
+    if (kind = = NK_UNARY_EXPR || kind = = NK_UNWRAP_EXPR) {
         added = added + lintCollectEffectiveLinesExpr(nodeGetData2(expr), lines);
-        if (kind == NK_UNWRAP_EXPR) {
+        if (kind = = NK_UNWRAP_EXPR) {
             added = added + lintCollectEffectiveLinesExpr(nodeGetData1(expr), lines);
         }
         return added;
     }
-    if (kind == NK_BINARY_EXPR) {
+    if (kind = = NK_BINARY_EXPR) {
         added = added + lintCollectEffectiveLinesExpr(nodeGetData2(expr), lines);
         added = added + lintCollectEffectiveLinesExpr(nodeGetData3(expr), lines);
         return added;
     }
-    if (kind == NK_CALL_EXPR) {
+    if (kind = = NK_CALL_EXPR) {
         added = added + lintCollectEffectiveLinesExpr(nodeGetData1(expr), lines);
         let args = nodeGetData2(expr);
         let i = 0;
@@ -91,15 +100,15 @@ fn lintCollectEffectiveLinesExpr(expr: I32, lines: *mut Set<I32>) : I32 => {
         }
         return added;
     }
-    if (kind == NK_MEMBER_EXPR) {
+    if (kind = = NK_MEMBER_EXPR) {
         return added + lintCollectEffectiveLinesExpr(nodeGetData1(expr), lines);
     }
-    if (kind == NK_INDEX_EXPR) {
+    if (kind = = NK_INDEX_EXPR) {
         added = added + lintCollectEffectiveLinesExpr(nodeGetData1(expr), lines);
         added = added + lintCollectEffectiveLinesExpr(nodeGetData2(expr), lines);
         return added;
     }
-    if (kind == NK_STRUCT_INIT) {
+    if (kind = = NK_STRUCT_INIT) {
         let fields = nodeGetData2(expr);
         let i = 0;
         let __len24 = fields.vecLength();
@@ -110,7 +119,7 @@ fn lintCollectEffectiveLinesExpr(expr: I32, lines: *mut Set<I32>) : I32 => {
         }
         return added;
     }
-    if (kind == NK_IF_EXPR) {
+    if (kind = = NK_IF_EXPR) {
         added = added + lintCollectEffectiveLinesExpr(nodeGetData1(expr), lines);
         added = added + lintCollectEffectiveLinesStmt(nodeGetData2(expr), lines);
         if (nodeGetData3(expr) != 0) {
@@ -118,7 +127,7 @@ fn lintCollectEffectiveLinesExpr(expr: I32, lines: *mut Set<I32>) : I32 => {
         }
         return added;
     }
-    if (kind == NK_MATCH_EXPR) {
+    if (kind = = NK_MATCH_EXPR) {
         added = added + lintCollectEffectiveLinesExpr(nodeGetData1(expr), lines);
         let cases = nodeGetData2(expr);
         let i = 0;
@@ -130,16 +139,16 @@ fn lintCollectEffectiveLinesExpr(expr: I32, lines: *mut Set<I32>) : I32 => {
         }
         return added;
     }
-    if (kind == NK_IS_EXPR) {
+    if (kind = = NK_IS_EXPR) {
         return added + lintCollectEffectiveLinesExpr(nodeGetData1(expr), lines);
     }
-    if (kind == NK_FN_EXPR) {
+    if (kind = = NK_FN_EXPR) {
         return added + lintCollectEffectiveLinesStmt(nodeGetData5(expr), lines);
     }
-    if (kind == NK_LAMBDA_EXPR) {
+    if (kind = = NK_LAMBDA_EXPR) {
         return added + lintCollectEffectiveLinesStmt(nodeGetData2(expr), lines);
     }
-    if (kind == NK_TUPLE_EXPR) {
+    if (kind = = NK_TUPLE_EXPR) {
         let items = nodeGetData1(expr);
         let i = 0;
         let __len22 = items.vecLength();
@@ -152,17 +161,17 @@ fn lintCollectEffectiveLinesExpr(expr: I32, lines: *mut Set<I32>) : I32 => {
     added
 }
 fn lintCollectEffectiveLinesStmt(stmt: I32, lines: *mut Set<I32>) : I32 => {
-    if (stmt == 0) {
+    if (stmt = = 0) {
         return 0;
     }
     let added = lintMarkLine(lines, nodeGetLine(stmt));
     let kind = nodeKind(stmt);
-    if (kind == NK_LET_DECL) {
+    if (kind = = NK_LET_DECL) {
         added = added + lintCollectEffectiveLinesExpr(nodeGetData2(stmt), lines);
         added = added + lintCollectEffectiveLinesExpr(nodeGetData3(stmt), lines);
         return added;
     }
-    if (kind == NK_BLOCK) {
+    if (kind = = NK_BLOCK) {
         let stmts = nodeGetData1(stmt);
         let i = 0;
         let __len21 = stmts.vecLength();
@@ -172,46 +181,46 @@ fn lintCollectEffectiveLinesStmt(stmt: I32, lines: *mut Set<I32>) : I32 => {
         }
         return added;
     }
-    if (kind == NK_EXPR_STMT) {
+    if (kind = = NK_EXPR_STMT) {
         return added + lintCollectEffectiveLinesExpr(nodeGetData1(stmt), lines);
     }
-    if (kind == NK_ASSIGN_STMT) {
+    if (kind = = NK_ASSIGN_STMT) {
         added = added + lintCollectEffectiveLinesExpr(nodeGetData1(stmt), lines);
         added = added + lintCollectEffectiveLinesExpr(nodeGetData2(stmt), lines);
         return added;
     }
-    if (kind == NK_RETURN_STMT) {
+    if (kind = = NK_RETURN_STMT) {
         return added + lintCollectEffectiveLinesExpr(nodeGetData1(stmt), lines);
     }
-    if (kind == NK_IF_STMT) {
+    if (kind = = NK_IF_STMT) {
         added = added + lintCollectEffectiveLinesExpr(nodeGetData1(stmt), lines);
         added = added + lintCollectEffectiveLinesStmt(nodeGetData2(stmt), lines);
         added = added + lintCollectEffectiveLinesStmt(nodeGetData3(stmt), lines);
         return added;
     }
-    if (kind == NK_FOR_STMT) {
+    if (kind = = NK_FOR_STMT) {
         added = added + lintCollectEffectiveLinesExpr(nodeGetData2(stmt), lines);
         added = added + lintCollectEffectiveLinesExpr(nodeGetData3(stmt), lines);
         added = added + lintCollectEffectiveLinesStmt(nodeGetData4(stmt), lines);
         return added;
     }
-    if (kind == NK_WHILE_STMT) {
+    if (kind = = NK_WHILE_STMT) {
         added = added + lintCollectEffectiveLinesExpr(nodeGetData1(stmt), lines);
         added = added + lintCollectEffectiveLinesStmt(nodeGetData2(stmt), lines);
         return added;
     }
-    if (kind == NK_LOOP_STMT) {
+    if (kind = = NK_LOOP_STMT) {
         return added + lintCollectEffectiveLinesStmt(nodeGetData1(stmt), lines);
     }
-    if (kind == NK_LIFETIME_STMT) {
+    if (kind = = NK_LIFETIME_STMT) {
         return added + lintCollectEffectiveLinesStmt(nodeGetData2(stmt), lines);
     }
-    if (kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL || kind == NK_ACTUAL_FN_DECL) {
+    if (kind = = NK_FN_DECL || kind = = NK_CLASS_FN_DECL || kind = = NK_ACTUAL_FN_DECL) {
         added = added + lintCollectEffectiveLinesExpr(nodeGetData4(stmt), lines);
         added = added + lintCollectEffectiveLinesStmt(nodeGetData5(stmt), lines);
         return added;
     }
-    if (kind == NK_STMT_LIST) {
+    if (kind = = NK_STMT_LIST) {
         let items = nodeGetData1(stmt);
         let i = 0;
         let __len20 = items.vecLength();
@@ -221,19 +230,19 @@ fn lintCollectEffectiveLinesStmt(stmt: I32, lines: *mut Set<I32>) : I32 => {
         }
         return added;
     }
-    if (kind == NK_INTO_STMT || kind == NK_BREAK_STMT || kind == NK_CONTINUE_STMT || kind ==
-    NK_EXTERN_IMPORT_DECL || lintIsExternFnDecl(stmt) || kind == NK_EXTERN_LET_DECL || kind == NK_EXTERN_TYPE_DECL) {
+    if (kind = = NK_INTO_STMT || kind = = NK_BREAK_STMT || kind = = NK_CONTINUE_STMT || kind = =
+    NK_EXTERN_IMPORT_DECL || lintIsExternFnDecl(stmt) || kind = = NK_EXTERN_LET_DECL || kind = = NK_EXTERN_TYPE_DECL) {
         return added;
     }
     added + lintCollectEffectiveLinesExpr(stmt, lines)
 }
 fn lintCheckFunctionLength(stmt: I32, maxEffectiveLines: I32) : I32 => {
     let kind = nodeKind(stmt);
-    if (!(kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL || kind == NK_ACTUAL_FN_DECL)) {
+    if (!(kind = = NK_FN_DECL || kind = = NK_CLASS_FN_DECL || kind = = NK_ACTUAL_FN_DECL)) {
         return 0;
     }
     let body = nodeGetData5(stmt);
-    if (body == 0) {
+    if (body = = 0) {
         return 0;
     }
     let lines = setNew();
@@ -251,30 +260,30 @@ fn lintCheckFunctionLength(stmt: I32, maxEffectiveLines: I32) : I32 => {
     0
 }
 fn lintCollectExpr(expr: I32, receiverExternFns: *mut Set<I32>, reads: *mut Set<I32>) : I32 => {
-    if (expr == 0) {
+    if (expr = = 0) {
         return 0;
     }
     let kind = nodeKind(expr);
-    if (kind == NK_IDENTIFIER) {
+    if (kind = = NK_IDENTIFIER) {
         reads.setAdd(getInternedStr(nodeGetData1(expr)));
         return 0;
     }
-    if (kind == NK_UNARY_EXPR || kind == NK_UNWRAP_EXPR) {
+    if (kind = = NK_UNARY_EXPR || kind = = NK_UNWRAP_EXPR) {
         lintCollectExpr(nodeGetData2(expr), receiverExternFns, reads);
-        if (kind == NK_UNWRAP_EXPR) {
+        if (kind = = NK_UNWRAP_EXPR) {
             lintCollectExpr(nodeGetData1(expr), receiverExternFns, reads);
         }
         return 0;
     }
-    if (kind == NK_BINARY_EXPR) {
+    if (kind = = NK_BINARY_EXPR) {
         lintCollectExpr(nodeGetData2(expr), receiverExternFns, reads);
         lintCollectExpr(nodeGetData3(expr), receiverExternFns, reads);
         return 0;
     }
-    if (kind == NK_CALL_EXPR) {
+    if (kind = = NK_CALL_EXPR) {
         let callee = nodeGetData1(expr);
         let args = nodeGetData2(expr);
-        if (nodeKind(callee) == NK_IDENTIFIER && args.vecLength() > 0) {
+        if (nodeKind(callee) = = NK_IDENTIFIER && args.vecLength() > 0) {
             let name = getInternedStr(nodeGetData1(callee));
             let callStyle = nodeGetData3(expr);
             if (receiverExternFns.setHas(name) && callStyle != 1) {
@@ -295,16 +304,16 @@ fn lintCollectExpr(expr: I32, receiverExternFns: *mut Set<I32>, reads: *mut Set<
         }
         return 0;
     }
-    if (kind == NK_MEMBER_EXPR) {
+    if (kind = = NK_MEMBER_EXPR) {
         lintCollectExpr(nodeGetData1(expr), receiverExternFns, reads);
         return 0;
     }
-    if (kind == NK_INDEX_EXPR) {
+    if (kind = = NK_INDEX_EXPR) {
         lintCollectExpr(nodeGetData1(expr), receiverExternFns, reads);
         lintCollectExpr(nodeGetData2(expr), receiverExternFns, reads);
         return 0;
     }
-    if (kind == NK_STRUCT_INIT) {
+    if (kind = = NK_STRUCT_INIT) {
         let fields = nodeGetData2(expr);
         let i = 0;
         let len = fields.vecLength();
@@ -315,9 +324,9 @@ fn lintCollectExpr(expr: I32, receiverExternFns: *mut Set<I32>, reads: *mut Set<
         }
         return 0;
     }
-    if (kind == NK_IF_EXPR) {
+    if (kind = = NK_IF_EXPR) {
         let cond = nodeGetData1(expr);
-        if (nodeKind(cond) == NK_BOOL_LIT) {
+        if (nodeKind(cond) = = NK_BOOL_LIT) {
             lintAddIssue(
             "E_LINT_CONSTANT_CONDITION",
             "Constant condition in if-expression/statement",
@@ -333,7 +342,7 @@ fn lintCollectExpr(expr: I32, receiverExternFns: *mut Set<I32>, reads: *mut Set<
         }
         return 0;
     }
-    if (kind == NK_MATCH_EXPR) {
+    if (kind = = NK_MATCH_EXPR) {
         lintCollectExpr(nodeGetData1(expr), receiverExternFns, reads);
         let cases = nodeGetData2(expr);
         let i = 0;
@@ -345,29 +354,29 @@ fn lintCollectExpr(expr: I32, receiverExternFns: *mut Set<I32>, reads: *mut Set<
         }
         return 0;
     }
-    if (kind == NK_IS_EXPR) {
+    if (kind = = NK_IS_EXPR) {
         lintCollectExpr(nodeGetData1(expr), receiverExternFns, reads);
     }
     0
 }
 fn lintCollectStmt(stmt: I32, receiverExternFns: *mut Set<I32>, reads: *mut Set<I32>, declaredSet: *mut
 Set<I32>, declaredNames: Vec<I32>) : I32 => {
-    if (stmt == 0) {
+    if (stmt = = 0) {
         return 0;
     }
     let kind = nodeKind(stmt);
-    if (kind == NK_LET_DECL) {
+    if (kind = = NK_LET_DECL) {
         let name = getInternedStr(nodeGetData1(stmt));
         if (!declaredSet.setHas(name)) {
             declaredSet.setAdd(name);
-            declaredNames.vecPush(name);
+            declaredNames.vecPush(stmt);
         }
         lintCollectExpr(nodeGetData3(stmt), receiverExternFns, reads);
         return 0;
     }
-    if (kind == NK_BLOCK) {
+    if (kind = = NK_BLOCK) {
         let stmts = nodeGetData1(stmt);
-        if (stmts.vecLength() == 0) {
+        if (stmts.vecLength() = = 0) {
             lintAddIssue(
             "E_LINT_EMPTY_BLOCK",
             "Empty block has no effect",
@@ -384,25 +393,25 @@ Set<I32>, declaredNames: Vec<I32>) : I32 => {
         }
         return 0;
     }
-    if (kind == NK_EXPR_STMT) {
+    if (kind = = NK_EXPR_STMT) {
         lintCollectExpr(nodeGetData1(stmt), receiverExternFns, reads);
         return 0;
     }
-    if (kind == NK_EXTERN_IMPORT_DECL) {
+    if (kind = = NK_EXTERN_IMPORT_DECL) {
         return 0;
     }
-    if (kind == NK_ASSIGN_STMT) {
+    if (kind = = NK_ASSIGN_STMT) {
         lintCollectExpr(nodeGetData1(stmt), receiverExternFns, reads);
         lintCollectExpr(nodeGetData2(stmt), receiverExternFns, reads);
         return 0;
     }
-    if (kind == NK_RETURN_STMT) {
+    if (kind = = NK_RETURN_STMT) {
         lintCollectExpr(nodeGetData1(stmt), receiverExternFns, reads);
         return 0;
     }
-    if (kind == NK_IF_STMT) {
+    if (kind = = NK_IF_STMT) {
         let cond = nodeGetData1(stmt);
-        if (nodeKind(cond) == NK_BOOL_LIT) {
+        if (nodeKind(cond) = = NK_BOOL_LIT) {
             lintAddIssue(
             "E_LINT_CONSTANT_CONDITION",
             "Constant condition in if-expression/statement",
@@ -417,20 +426,20 @@ Set<I32>, declaredNames: Vec<I32>) : I32 => {
         declaredNames);
         return 0;
     }
-    if (kind == NK_FOR_STMT) {
+    if (kind = = NK_FOR_STMT) {
         lintCollectExpr(nodeGetData2(stmt), receiverExternFns, reads);
         lintCollectExpr(nodeGetData3(stmt), receiverExternFns, reads);
         lintCollectStmt(nodeGetData4(stmt), receiverExternFns, reads, declaredSet,
         declaredNames);
         return 0;
     }
-    if (kind == NK_WHILE_STMT) {
+    if (kind = = NK_WHILE_STMT) {
         lintCollectExpr(nodeGetData1(stmt), receiverExternFns, reads);
         lintCollectStmt(nodeGetData2(stmt), receiverExternFns, reads, declaredSet,
         declaredNames);
         return 0;
     }
-    if (kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL) {
+    if (kind = = NK_FN_DECL || kind = = NK_CLASS_FN_DECL) {
         lintCollectStmt(nodeGetData5(stmt), receiverExternFns, reads, declaredSet,
         declaredNames);
         return 0;
@@ -446,54 +455,51 @@ out fn lintAddCircularImportIssue(cycleText: *Str) : I32 => {
     "Refactor shared declarations into a third module and have each side import that shared module instead."
     )
 }
-
 fn lintAstdupKindName(kind: I32) : *Str => {
-    if (kind == NK_BLOCK) {
+    if (kind = = NK_BLOCK) {
         return "block";
     }
-    if (kind == NK_IF_STMT) {
+    if (kind = = NK_IF_STMT) {
         return "if-stmt";
     }
-    if (kind == NK_WHILE_STMT) {
+    if (kind = = NK_WHILE_STMT) {
         return "while-stmt";
     }
-    if (kind == NK_FOR_STMT) {
+    if (kind = = NK_FOR_STMT) {
         return "for-stmt";
     }
-    if (kind == NK_LOOP_STMT) {
+    if (kind = = NK_LOOP_STMT) {
         return "loop-stmt";
     }
-    if (kind == NK_ASSIGN_STMT) {
+    if (kind = = NK_ASSIGN_STMT) {
         return "assign-stmt";
     }
-    if (kind == NK_RETURN_STMT) {
+    if (kind = = NK_RETURN_STMT) {
         return "return-stmt";
     }
-    if (kind == NK_BINARY_EXPR) {
+    if (kind = = NK_BINARY_EXPR) {
         return "binary-expr";
     }
-    if (kind == NK_CALL_EXPR) {
+    if (kind = = NK_CALL_EXPR) {
         return "call-expr";
     }
-    if (kind == NK_IF_EXPR) {
+    if (kind = = NK_IF_EXPR) {
         return "if-expr";
     }
-    if (kind == NK_MATCH_EXPR) {
+    if (kind = = NK_MATCH_EXPR) {
         return "match-expr";
     }
-    if (kind == NK_STRUCT_INIT) {
+    if (kind = = NK_STRUCT_INIT) {
         return "struct-init";
     }
-    if (kind == NK_LAMBDA_EXPR) {
+    if (kind = = NK_LAMBDA_EXPR) {
         return "lambda-expr";
     }
     "node-kind-".strConcat(intToString(kind))
 }
-
 fn lintAstdupLoc(n: I32) : *Str => {
     sourcemapLookup(nodeGetLine(n)).strConcat(":").strConcat(intToString(nodeGetCol(n)))
 }
-
 fn lintAstdupPreview(fp: *Str) : *Str => {
     let maxLen = 120;
     if (fp.strLength() <= maxLen) {
@@ -501,31 +507,29 @@ fn lintAstdupPreview(fp: *Str) : *Str => {
     }
     fp.strSliceWindow(0, maxLen).strConcat("...")
 }
-
 fn lintAstdupReportableKind(kind: I32) : Bool => {
-    kind == NK_BLOCK ||
-    kind == NK_IF_STMT ||
-    kind == NK_WHILE_STMT ||
-    kind == NK_FOR_STMT ||
-    kind == NK_LOOP_STMT ||
-    kind == NK_ASSIGN_STMT ||
-    kind == NK_EXPR_STMT ||
-    kind == NK_RETURN_STMT ||
-    kind == NK_BINARY_EXPR ||
-    kind == NK_UNARY_EXPR ||
-    kind == NK_CALL_EXPR ||
-    kind == NK_MEMBER_EXPR ||
-    kind == NK_INDEX_EXPR ||
-    kind == NK_STRUCT_INIT ||
-    kind == NK_IF_EXPR ||
-    kind == NK_MATCH_EXPR ||
-    kind == NK_IS_EXPR ||
-    kind == NK_UNWRAP_EXPR ||
-    kind == NK_TUPLE_EXPR ||
-    kind == NK_LAMBDA_EXPR ||
-    kind == NK_FN_EXPR
+    kind = = NK_BLOCK ||
+    kind = = NK_IF_STMT ||
+    kind = = NK_WHILE_STMT ||
+    kind = = NK_FOR_STMT ||
+    kind = = NK_LOOP_STMT ||
+    kind = = NK_ASSIGN_STMT ||
+    kind = = NK_EXPR_STMT ||
+    kind = = NK_RETURN_STMT ||
+    kind = = NK_BINARY_EXPR ||
+    kind = = NK_UNARY_EXPR ||
+    kind = = NK_CALL_EXPR ||
+    kind = = NK_MEMBER_EXPR ||
+    kind = = NK_INDEX_EXPR ||
+    kind = = NK_STRUCT_INIT ||
+    kind = = NK_IF_EXPR ||
+    kind = = NK_MATCH_EXPR ||
+    kind = = NK_IS_EXPR ||
+    kind = = NK_UNWRAP_EXPR ||
+    kind = = NK_TUPLE_EXPR ||
+    kind = = NK_LAMBDA_EXPR ||
+    kind = = NK_FN_EXPR
 }
-
 fn lintAstdupVecFp(vecNodes: Vec<I32>, fpCache: Map<I32, I32>, sizeCache: Map<I32, I32>, seenNodes: Vec<I32>) : *Str => {
     let i = 0;
     let acc = "[";
@@ -539,7 +543,6 @@ fn lintAstdupVecFp(vecNodes: Vec<I32>, fpCache: Map<I32, I32>, sizeCache: Map<I3
     }
     acc.strConcat("]")
 }
-
 fn lintAstdupVecSize(vecNodes: Vec<I32>, sizeCache: Map<I32, I32>) : I32 => {
     let i = 0;
     let total = 0;
@@ -553,7 +556,6 @@ fn lintAstdupVecSize(vecNodes: Vec<I32>, sizeCache: Map<I32, I32>) : I32 => {
     }
     total
 }
-
 fn lintAstdupParamsFp(params: Vec<I32>, fpCache: Map<I32, I32>, sizeCache: Map<I32, I32>, seenNodes: Vec<I32>) : *Str => {
     let i = 0;
     let acc = "(";
@@ -562,9 +564,9 @@ fn lintAstdupParamsFp(params: Vec<I32>, fpCache: Map<I32, I32>, sizeCache: Map<I
         let p = params.vecGet(i);
         let ptype = p.vecGet(1);
         acc = acc
-            .strConcat("{p:ID:t:")
-            .strConcat(lintAstdupFp(ptype, fpCache, sizeCache, seenNodes))
-            .strConcat("}");
+        .strConcat("{p:ID:t:")
+        .strConcat(lintAstdupFp(ptype, fpCache, sizeCache, seenNodes))
+        .strConcat("}");
         if (i + 1 < params.vecLength()) {
             acc = acc.strConcat(",");
         }
@@ -572,7 +574,6 @@ fn lintAstdupParamsFp(params: Vec<I32>, fpCache: Map<I32, I32>, sizeCache: Map<I
     }
     acc.strConcat(")")
 }
-
 fn lintAstdupParamsSize(params: Vec<I32>, sizeCache: Map<I32, I32>) : I32 => {
     let i = 0;
     let total = 0;
@@ -587,7 +588,6 @@ fn lintAstdupParamsSize(params: Vec<I32>, sizeCache: Map<I32, I32>) : I32 => {
     }
     total
 }
-
 fn lintAstdupNamedTypeFieldsFp(fields: Vec<I32>, fpCache: Map<I32, I32>, sizeCache: Map<I32, I32>, seenNodes: Vec<I32>)
 : *Str => {
     let i = 0;
@@ -596,9 +596,9 @@ fn lintAstdupNamedTypeFieldsFp(fields: Vec<I32>, fpCache: Map<I32, I32>, sizeCac
     while (i < __len15) {
         let f = fields.vecGet(i);
         acc = acc
-            .strConcat("{n:ID:t:")
-            .strConcat(lintAstdupFp(f.vecGet(1), fpCache, sizeCache, seenNodes))
-            .strConcat("}");
+        .strConcat("{n:ID:t:")
+        .strConcat(lintAstdupFp(f.vecGet(1), fpCache, sizeCache, seenNodes))
+        .strConcat("}");
         if (i + 1 < fields.vecLength()) {
             acc = acc.strConcat(",");
         }
@@ -606,7 +606,6 @@ fn lintAstdupNamedTypeFieldsFp(fields: Vec<I32>, fpCache: Map<I32, I32>, sizeCac
     }
     acc.strConcat("}")
 }
-
 fn lintAstdupNamedTypeFieldsSize(fields: Vec<I32>, sizeCache: Map<I32, I32>) : I32 => {
     let i = 0;
     let total = 0;
@@ -621,7 +620,6 @@ fn lintAstdupNamedTypeFieldsSize(fields: Vec<I32>, sizeCache: Map<I32, I32>) : I
     }
     total
 }
-
 fn lintAstdupStructInitFieldsFp(fields: Vec<I32>, fpCache: Map<I32, I32>, sizeCache: Map<I32, I32>, seenNodes: Vec<I32>)
 : *Str => {
     let i = 0;
@@ -630,9 +628,9 @@ fn lintAstdupStructInitFieldsFp(fields: Vec<I32>, fpCache: Map<I32, I32>, sizeCa
     while (i < __len13) {
         let f = fields.vecGet(i);
         acc = acc
-            .strConcat("{n:ID:v:")
-            .strConcat(lintAstdupFp(f.vecGet(1), fpCache, sizeCache, seenNodes))
-            .strConcat("}");
+        .strConcat("{n:ID:v:")
+        .strConcat(lintAstdupFp(f.vecGet(1), fpCache, sizeCache, seenNodes))
+        .strConcat("}");
         if (i + 1 < fields.vecLength()) {
             acc = acc.strConcat(",");
         }
@@ -640,7 +638,6 @@ fn lintAstdupStructInitFieldsFp(fields: Vec<I32>, fpCache: Map<I32, I32>, sizeCa
     }
     acc.strConcat("}")
 }
-
 fn lintAstdupStructInitFieldsSize(fields: Vec<I32>, sizeCache: Map<I32, I32>) : I32 => {
     let i = 0;
     let total = 0;
@@ -655,7 +652,6 @@ fn lintAstdupStructInitFieldsSize(fields: Vec<I32>, sizeCache: Map<I32, I32>) : 
     }
     total
 }
-
 fn lintAstdupCasesFp(cases: Vec<I32>, fpCache: Map<I32, I32>, sizeCache: Map<I32, I32>, seenNodes: Vec<I32>) : *Str => {
     let i = 0;
     let acc = "[";
@@ -663,11 +659,11 @@ fn lintAstdupCasesFp(cases: Vec<I32>, fpCache: Map<I32, I32>, sizeCache: Map<I32
     while (i < __len11) {
         let c = cases.vecGet(i);
         acc = acc
-            .strConcat("{p:")
-            .strConcat(lintAstdupFp(c.vecGet(0), fpCache, sizeCache, seenNodes))
-            .strConcat(":b:")
-            .strConcat(lintAstdupFp(c.vecGet(1), fpCache, sizeCache, seenNodes))
-            .strConcat("}");
+        .strConcat("{p:")
+        .strConcat(lintAstdupFp(c.vecGet(0), fpCache, sizeCache, seenNodes))
+        .strConcat(":b:")
+        .strConcat(lintAstdupFp(c.vecGet(1), fpCache, sizeCache, seenNodes))
+        .strConcat("}");
         if (i + 1 < cases.vecLength()) {
             acc = acc.strConcat(",");
         }
@@ -675,7 +671,6 @@ fn lintAstdupCasesFp(cases: Vec<I32>, fpCache: Map<I32, I32>, sizeCache: Map<I32
     }
     acc.strConcat("]")
 }
-
 fn lintAstdupCasesSize(cases: Vec<I32>, sizeCache: Map<I32, I32>) : I32 => {
     let i = 0;
     let total = 0;
@@ -694,7 +689,6 @@ fn lintAstdupCasesSize(cases: Vec<I32>, sizeCache: Map<I32, I32>) : I32 => {
     }
     total
 }
-
 fn lintAstdupContractMethodsFp(methods: Vec<I32>, fpCache: Map<I32, I32>, sizeCache: Map<I32, I32>, seenNodes: Vec<I32>)
 : *Str => {
     let i = 0;
@@ -703,13 +697,13 @@ fn lintAstdupContractMethodsFp(methods: Vec<I32>, fpCache: Map<I32, I32>, sizeCa
     while (i < __len9) {
         let m = methods.vecGet(i);
         acc = acc
-            .strConcat("{m:ID:g:")
-            .strConcat(intToString(m.vecGet(1).vecLength()))
-            .strConcat(":p:")
-            .strConcat(lintAstdupParamsFp(m.vecGet(2), fpCache, sizeCache, seenNodes))
-            .strConcat(":r:")
-            .strConcat(lintAstdupFp(m.vecGet(3), fpCache, sizeCache, seenNodes))
-            .strConcat("}");
+        .strConcat("{m:ID:g:")
+        .strConcat(intToString(m.vecGet(1).vecLength()))
+        .strConcat(":p:")
+        .strConcat(lintAstdupParamsFp(m.vecGet(2), fpCache, sizeCache, seenNodes))
+        .strConcat(":r:")
+        .strConcat(lintAstdupFp(m.vecGet(3), fpCache, sizeCache, seenNodes))
+        .strConcat("}");
         if (i + 1 < methods.vecLength()) {
             acc = acc.strConcat(",");
         }
@@ -717,7 +711,6 @@ fn lintAstdupContractMethodsFp(methods: Vec<I32>, fpCache: Map<I32, I32>, sizeCa
     }
     acc.strConcat("]")
 }
-
 fn lintAstdupContractMethodsSize(methods: Vec<I32>, sizeCache: Map<I32, I32>) : I32 => {
     let i = 0;
     let total = 0;
@@ -733,175 +726,172 @@ fn lintAstdupContractMethodsSize(methods: Vec<I32>, sizeCache: Map<I32, I32>) : 
     }
     total
 }
-
 fn lintAstdupFp(n: I32, fpCache: Map<I32, I32>, sizeCache: Map<I32, I32>, seenNodes: Vec<I32>) : *Str => {
-    if (n == 0) {
+    if (n = = 0) {
         return "0";
     }
     if (fpCache.mapHas(n)) {
         return fpCache.mapGet(n);
     }
-
     let kind = nodeKind(n);
     let fp = "K".strConcat(intToString(kind));
     let size = 1;
-
-    if (kind == NK_IDENTIFIER || kind == NK_NAME_PAT || kind == NK_NAMED_TYPE) {
+    if (kind = = NK_IDENTIFIER || kind = = NK_NAME_PAT || kind = = NK_NAMED_TYPE) {
         fp = fp.strConcat("(ID)");
     }
-    else if (kind == NK_NUMBER_LIT || kind == NK_STRING_LIT || kind == NK_CHAR_LIT || kind == NK_LITERAL_PAT) {
+    else if (kind = = NK_NUMBER_LIT || kind = = NK_STRING_LIT || kind = = NK_CHAR_LIT || kind = = NK_LITERAL_PAT) {
         fp = fp.strConcat("(LIT)");
     }
-    else if (kind == NK_BOOL_LIT) {
+    else if (kind = = NK_BOOL_LIT) {
         fp = fp.strConcat("(BOOL)");
     }
-    else if (kind == NK_WILDCARD_PAT || kind == NK_BREAK_STMT || kind == NK_CONTINUE_STMT) {
+    else if (kind = = NK_WILDCARD_PAT || kind = = NK_BREAK_STMT || kind = = NK_CONTINUE_STMT) {
         fp = fp.strConcat("()");
     }
-    else if (kind == NK_UNARY_EXPR) {
+    else if (kind = = NK_UNARY_EXPR) {
         fp = fp
-            .strConcat("(")
-            .strConcat(getInternedStr(nodeGetData1(n)))
-            .strConcat(":")
-            .strConcat(lintAstdupFp(nodeGetData2(n), fpCache, sizeCache, seenNodes))
-            .strConcat(")");
+        .strConcat("(")
+        .strConcat(getInternedStr(nodeGetData1(n)))
+        .strConcat(":")
+        .strConcat(lintAstdupFp(nodeGetData2(n), fpCache, sizeCache, seenNodes))
+        .strConcat(")");
         size = size + sizeCache.mapGet(nodeGetData2(n));
     }
-    else if (kind == NK_UNWRAP_EXPR) {
+    else if (kind = = NK_UNWRAP_EXPR) {
         fp = fp
-            .strConcat("(")
-            .strConcat(lintAstdupFp(nodeGetData1(n), fpCache, sizeCache, seenNodes))
-            .strConcat(")");
+        .strConcat("(")
+        .strConcat(lintAstdupFp(nodeGetData1(n), fpCache, sizeCache, seenNodes))
+        .strConcat(")");
         size = size + sizeCache.mapGet(nodeGetData1(n));
     }
-    else if (kind == NK_BINARY_EXPR) {
+    else if (kind = = NK_BINARY_EXPR) {
         fp = fp
-            .strConcat("(")
-            .strConcat(getInternedStr(nodeGetData1(n)))
-            .strConcat(":")
-            .strConcat(lintAstdupFp(nodeGetData2(n), fpCache, sizeCache, seenNodes))
-            .strConcat(":")
-            .strConcat(lintAstdupFp(nodeGetData3(n), fpCache, sizeCache, seenNodes))
-            .strConcat(")");
+        .strConcat("(")
+        .strConcat(getInternedStr(nodeGetData1(n)))
+        .strConcat(":")
+        .strConcat(lintAstdupFp(nodeGetData2(n), fpCache, sizeCache, seenNodes))
+        .strConcat(":")
+        .strConcat(lintAstdupFp(nodeGetData3(n), fpCache, sizeCache, seenNodes))
+        .strConcat(")");
         size = size + sizeCache.mapGet(nodeGetData2(n)) + sizeCache.mapGet(nodeGetData3(n));
     }
-    else if (kind == NK_CALL_EXPR) {
+    else if (kind = = NK_CALL_EXPR) {
         fp = fp
-            .strConcat("(callee:")
-            .strConcat(lintAstdupFp(nodeGetData1(n), fpCache, sizeCache, seenNodes))
-            .strConcat(":args:")
-            .strConcat(lintAstdupVecFp(nodeGetData2(n), fpCache, sizeCache, seenNodes))
-            .strConcat(":style:")
-            .strConcat(intToString(nodeGetData3(n)))
-            .strConcat(":targs:")
-            .strConcat(lintAstdupVecFp(nodeGetData4(n), fpCache, sizeCache, seenNodes))
-            .strConcat(")");
+        .strConcat("(callee:")
+        .strConcat(lintAstdupFp(nodeGetData1(n), fpCache, sizeCache, seenNodes))
+        .strConcat(":args:")
+        .strConcat(lintAstdupVecFp(nodeGetData2(n), fpCache, sizeCache, seenNodes))
+        .strConcat(":style:")
+        .strConcat(intToString(nodeGetData3(n)))
+        .strConcat(":targs:")
+        .strConcat(lintAstdupVecFp(nodeGetData4(n), fpCache, sizeCache, seenNodes))
+        .strConcat(")");
         size = size + sizeCache.mapGet(nodeGetData1(n));
         size = size + lintAstdupVecSize(nodeGetData2(n), sizeCache);
         size = size + lintAstdupVecSize(nodeGetData4(n), sizeCache);
     }
-    else if (kind == NK_MEMBER_EXPR) {
+    else if (kind = = NK_MEMBER_EXPR) {
         fp = fp
-            .strConcat("(obj:")
-            .strConcat(lintAstdupFp(nodeGetData1(n), fpCache, sizeCache, seenNodes))
-            .strConcat(":member:ID)");
+        .strConcat("(obj:")
+        .strConcat(lintAstdupFp(nodeGetData1(n), fpCache, sizeCache, seenNodes))
+        .strConcat(":member:ID)");
         size = size + sizeCache.mapGet(nodeGetData1(n));
     }
-    else if (kind == NK_INDEX_EXPR) {
+    else if (kind = = NK_INDEX_EXPR) {
         fp = fp
-            .strConcat("(target:")
-            .strConcat(lintAstdupFp(nodeGetData1(n), fpCache, sizeCache, seenNodes))
-            .strConcat(":index:")
-            .strConcat(lintAstdupFp(nodeGetData2(n), fpCache, sizeCache, seenNodes))
-            .strConcat(")");
+        .strConcat("(target:")
+        .strConcat(lintAstdupFp(nodeGetData1(n), fpCache, sizeCache, seenNodes))
+        .strConcat(":index:")
+        .strConcat(lintAstdupFp(nodeGetData2(n), fpCache, sizeCache, seenNodes))
+        .strConcat(")");
         size = size + sizeCache.mapGet(nodeGetData1(n)) + sizeCache.mapGet(nodeGetData2(n));
     }
-    else if (kind == NK_STRUCT_INIT) {
+    else if (kind = = NK_STRUCT_INIT) {
         fp = fp
-            .strConcat("(name:ID:fields:")
-            .strConcat(lintAstdupStructInitFieldsFp(nodeGetData2(n), fpCache, sizeCache, seenNodes))
-            .strConcat(":targs:")
-            .strConcat(lintAstdupVecFp(nodeGetData3(n), fpCache, sizeCache, seenNodes))
-            .strConcat(")");
+        .strConcat("(name:ID:fields:")
+        .strConcat(lintAstdupStructInitFieldsFp(nodeGetData2(n), fpCache, sizeCache, seenNodes))
+        .strConcat(":targs:")
+        .strConcat(lintAstdupVecFp(nodeGetData3(n), fpCache, sizeCache, seenNodes))
+        .strConcat(")");
         size = size + lintAstdupStructInitFieldsSize(nodeGetData2(n), sizeCache);
         size = size + lintAstdupVecSize(nodeGetData3(n), sizeCache);
     }
-    else if (kind == NK_IF_EXPR || kind == NK_IF_STMT) {
+    else if (kind = = NK_IF_EXPR || kind = = NK_IF_STMT) {
         fp = fp
-            .strConcat("(c:")
-            .strConcat(lintAstdupFp(nodeGetData1(n), fpCache, sizeCache, seenNodes))
-            .strConcat(":t:")
-            .strConcat(lintAstdupFp(nodeGetData2(n), fpCache, sizeCache, seenNodes))
-            .strConcat(":e:")
-            .strConcat(lintAstdupFp(nodeGetData3(n), fpCache, sizeCache, seenNodes))
-            .strConcat(")");
+        .strConcat("(c:")
+        .strConcat(lintAstdupFp(nodeGetData1(n), fpCache, sizeCache, seenNodes))
+        .strConcat(":t:")
+        .strConcat(lintAstdupFp(nodeGetData2(n), fpCache, sizeCache, seenNodes))
+        .strConcat(":e:")
+        .strConcat(lintAstdupFp(nodeGetData3(n), fpCache, sizeCache, seenNodes))
+        .strConcat(")");
         size = size + sizeCache.mapGet(nodeGetData1(n));
         size = size + sizeCache.mapGet(nodeGetData2(n));
         if (nodeGetData3(n) != 0) {
             size = size + sizeCache.mapGet(nodeGetData3(n));
         }
     }
-    else if (kind == NK_MATCH_EXPR) {
+    else if (kind = = NK_MATCH_EXPR) {
         fp = fp
-            .strConcat("(target:")
-            .strConcat(lintAstdupFp(nodeGetData1(n), fpCache, sizeCache, seenNodes))
-            .strConcat(":cases:")
-            .strConcat(lintAstdupCasesFp(nodeGetData2(n), fpCache, sizeCache, seenNodes))
-            .strConcat(")");
+        .strConcat("(target:")
+        .strConcat(lintAstdupFp(nodeGetData1(n), fpCache, sizeCache, seenNodes))
+        .strConcat(":cases:")
+        .strConcat(lintAstdupCasesFp(nodeGetData2(n), fpCache, sizeCache, seenNodes))
+        .strConcat(")");
         size = size + sizeCache.mapGet(nodeGetData1(n));
         size = size + lintAstdupCasesSize(nodeGetData2(n), sizeCache);
     }
-    else if (kind == NK_IS_EXPR) {
+    else if (kind = = NK_IS_EXPR) {
         fp = fp
-            .strConcat("(subject:")
-            .strConcat(lintAstdupFp(nodeGetData1(n), fpCache, sizeCache, seenNodes))
-            .strConcat(":pat:")
-            .strConcat(lintAstdupFp(nodeGetData2(n), fpCache, sizeCache, seenNodes))
-            .strConcat(")");
+        .strConcat("(subject:")
+        .strConcat(lintAstdupFp(nodeGetData1(n), fpCache, sizeCache, seenNodes))
+        .strConcat(":pat:")
+        .strConcat(lintAstdupFp(nodeGetData2(n), fpCache, sizeCache, seenNodes))
+        .strConcat(")");
         size = size + sizeCache.mapGet(nodeGetData1(n)) + sizeCache.mapGet(nodeGetData2(n));
     }
-    else if (kind == NK_TUPLE_EXPR || kind == NK_TUPLE_TYPE || kind == NK_BLOCK || kind == NK_STMT_LIST || kind == NK_PROGRAM) {
+    else if (kind = = NK_TUPLE_EXPR || kind = = NK_TUPLE_TYPE || kind = = NK_BLOCK || kind = = NK_STMT_LIST || kind = = NK_PROGRAM) {
         fp = fp.strConcat(lintAstdupVecFp(nodeGetData1(n), fpCache, sizeCache, seenNodes));
         size = size + lintAstdupVecSize(nodeGetData1(n), sizeCache);
     }
-    else if (kind == NK_FN_EXPR) {
+    else if (kind = = NK_FN_EXPR) {
         fp = fp
-            .strConcat("(name:ID:g:")
-            .strConcat(intToString(nodeGetData2(n).vecLength()))
-            .strConcat(":p:")
-            .strConcat(lintAstdupParamsFp(nodeGetData3(n), fpCache, sizeCache, seenNodes))
-            .strConcat(":r:")
-            .strConcat(lintAstdupFp(nodeGetData4(n), fpCache, sizeCache, seenNodes))
-            .strConcat(":b:")
-            .strConcat(lintAstdupFp(nodeGetData5(n), fpCache, sizeCache, seenNodes))
-            .strConcat(")");
+        .strConcat("(name:ID:g:")
+        .strConcat(intToString(nodeGetData2(n).vecLength()))
+        .strConcat(":p:")
+        .strConcat(lintAstdupParamsFp(nodeGetData3(n), fpCache, sizeCache, seenNodes))
+        .strConcat(":r:")
+        .strConcat(lintAstdupFp(nodeGetData4(n), fpCache, sizeCache, seenNodes))
+        .strConcat(":b:")
+        .strConcat(lintAstdupFp(nodeGetData5(n), fpCache, sizeCache, seenNodes))
+        .strConcat(")");
         size = size + lintAstdupParamsSize(nodeGetData3(n), sizeCache);
         if (nodeGetData4(n) != 0) {
             size = size + sizeCache.mapGet(nodeGetData4(n));
         }
         size = size + sizeCache.mapGet(nodeGetData5(n));
     }
-    else if (kind == NK_LAMBDA_EXPR) {
+    else if (kind = = NK_LAMBDA_EXPR) {
         fp = fp
-            .strConcat("(p:")
-            .strConcat(lintAstdupParamsFp(nodeGetData1(n), fpCache, sizeCache, seenNodes))
-            .strConcat(":b:")
-            .strConcat(lintAstdupFp(nodeGetData2(n), fpCache, sizeCache, seenNodes))
-            .strConcat(")");
+        .strConcat("(p:")
+        .strConcat(lintAstdupParamsFp(nodeGetData1(n), fpCache, sizeCache, seenNodes))
+        .strConcat(":b:")
+        .strConcat(lintAstdupFp(nodeGetData2(n), fpCache, sizeCache, seenNodes))
+        .strConcat(")");
         size = size + lintAstdupParamsSize(nodeGetData1(n), sizeCache);
         size = size + sizeCache.mapGet(nodeGetData2(n));
     }
-    else if (kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL || kind == NK_ACTUAL_FN_DECL || kind == NK_EXPECT_FN_DECL) {
+    else if (kind = = NK_FN_DECL || kind = = NK_CLASS_FN_DECL || kind = = NK_ACTUAL_FN_DECL || kind = = NK_EXPECT_FN_DECL) {
         fp = fp
-            .strConcat("(name:ID:g:")
-            .strConcat(intToString(nodeGetData2(n).vecLength()))
-            .strConcat(":p:")
-            .strConcat(lintAstdupParamsFp(nodeGetData3(n), fpCache, sizeCache, seenNodes))
-            .strConcat(":r:")
-            .strConcat(lintAstdupFp(nodeGetData4(n), fpCache, sizeCache, seenNodes))
-            .strConcat(":b:")
-            .strConcat(lintAstdupFp(nodeGetData5(n), fpCache, sizeCache, seenNodes))
-            .strConcat(")");
+        .strConcat("(name:ID:g:")
+        .strConcat(intToString(nodeGetData2(n).vecLength()))
+        .strConcat(":p:")
+        .strConcat(lintAstdupParamsFp(nodeGetData3(n), fpCache, sizeCache, seenNodes))
+        .strConcat(":r:")
+        .strConcat(lintAstdupFp(nodeGetData4(n), fpCache, sizeCache, seenNodes))
+        .strConcat(":b:")
+        .strConcat(lintAstdupFp(nodeGetData5(n), fpCache, sizeCache, seenNodes))
+        .strConcat(")");
         size = size + lintAstdupParamsSize(nodeGetData3(n), sizeCache);
         if (nodeGetData4(n) != 0) {
             size = size + sizeCache.mapGet(nodeGetData4(n));
@@ -910,13 +900,13 @@ fn lintAstdupFp(n: I32, fpCache: Map<I32, I32>, sizeCache: Map<I32, I32>, seenNo
             size = size + sizeCache.mapGet(nodeGetData5(n));
         }
     }
-    else if (kind == NK_LET_DECL || kind == NK_EXTERN_LET_DECL) {
+    else if (kind = = NK_LET_DECL || kind = = NK_EXTERN_LET_DECL) {
         fp = fp
-            .strConcat("(name:ID:t:")
-            .strConcat(lintAstdupFp(nodeGetData2(n), fpCache, sizeCache, seenNodes))
-            .strConcat(":v:")
-            .strConcat(lintAstdupFp(nodeGetData3(n), fpCache, sizeCache, seenNodes))
-            .strConcat(")");
+        .strConcat("(name:ID:t:")
+        .strConcat(lintAstdupFp(nodeGetData2(n), fpCache, sizeCache, seenNodes))
+        .strConcat(":v:")
+        .strConcat(lintAstdupFp(nodeGetData3(n), fpCache, sizeCache, seenNodes))
+        .strConcat(")");
         if (nodeGetData2(n) != 0) {
             size = size + sizeCache.mapGet(nodeGetData2(n));
         }
@@ -924,66 +914,66 @@ fn lintAstdupFp(n: I32, fpCache: Map<I32, I32>, sizeCache: Map<I32, I32>, seenNo
             size = size + sizeCache.mapGet(nodeGetData3(n));
         }
     }
-    else if (kind == NK_FOR_STMT) {
+    else if (kind = = NK_FOR_STMT) {
         fp = fp
-            .strConcat("(iter:ID:s:")
-            .strConcat(lintAstdupFp(nodeGetData2(n), fpCache, sizeCache, seenNodes))
-            .strConcat(":e:")
-            .strConcat(lintAstdupFp(nodeGetData3(n), fpCache, sizeCache, seenNodes))
-            .strConcat(":b:")
-            .strConcat(lintAstdupFp(nodeGetData4(n), fpCache, sizeCache, seenNodes))
-            .strConcat(")");
+        .strConcat("(iter:ID:s:")
+        .strConcat(lintAstdupFp(nodeGetData2(n), fpCache, sizeCache, seenNodes))
+        .strConcat(":e:")
+        .strConcat(lintAstdupFp(nodeGetData3(n), fpCache, sizeCache, seenNodes))
+        .strConcat(":b:")
+        .strConcat(lintAstdupFp(nodeGetData4(n), fpCache, sizeCache, seenNodes))
+        .strConcat(")");
         size = size + sizeCache.mapGet(nodeGetData2(n));
         size = size + sizeCache.mapGet(nodeGetData3(n));
         size = size + sizeCache.mapGet(nodeGetData4(n));
     }
-    else if (kind == NK_WHILE_STMT || kind == NK_LOOP_STMT || kind == NK_RETURN_STMT || kind == NK_EXPR_STMT) {
+    else if (kind = = NK_WHILE_STMT || kind = = NK_LOOP_STMT || kind = = NK_RETURN_STMT || kind = = NK_EXPR_STMT) {
         fp = fp
-            .strConcat("(")
-            .strConcat(lintAstdupFp(nodeGetData1(n), fpCache, sizeCache, seenNodes))
-            .strConcat(")");
+        .strConcat("(")
+        .strConcat(lintAstdupFp(nodeGetData1(n), fpCache, sizeCache, seenNodes))
+        .strConcat(")");
         if (nodeGetData1(n) != 0) {
             size = size + sizeCache.mapGet(nodeGetData1(n));
         }
     }
-    else if (kind == NK_ASSIGN_STMT) {
+    else if (kind = = NK_ASSIGN_STMT) {
         fp = fp
-            .strConcat("(t:")
-            .strConcat(lintAstdupFp(nodeGetData1(n), fpCache, sizeCache, seenNodes))
-            .strConcat(":v:")
-            .strConcat(lintAstdupFp(nodeGetData2(n), fpCache, sizeCache, seenNodes))
-            .strConcat(")");
+        .strConcat("(t:")
+        .strConcat(lintAstdupFp(nodeGetData1(n), fpCache, sizeCache, seenNodes))
+        .strConcat(":v:")
+        .strConcat(lintAstdupFp(nodeGetData2(n), fpCache, sizeCache, seenNodes))
+        .strConcat(")");
         size = size + sizeCache.mapGet(nodeGetData1(n)) + sizeCache.mapGet(nodeGetData2(n));
     }
-    else if (kind == NK_LIFETIME_STMT) {
+    else if (kind = = NK_LIFETIME_STMT) {
         fp = fp
-            .strConcat("(names:")
-            .strConcat(intToString(nodeGetData1(n).vecLength()))
-            .strConcat(":b:")
-            .strConcat(lintAstdupFp(nodeGetData2(n), fpCache, sizeCache, seenNodes))
-            .strConcat(")");
+        .strConcat("(names:")
+        .strConcat(intToString(nodeGetData1(n).vecLength()))
+        .strConcat(":b:")
+        .strConcat(lintAstdupFp(nodeGetData2(n), fpCache, sizeCache, seenNodes))
+        .strConcat(")");
         size = size + sizeCache.mapGet(nodeGetData2(n));
     }
-    else if (kind == NK_POINTER_TYPE) {
+    else if (kind = = NK_POINTER_TYPE) {
         fp = fp
-            .strConcat("(mut:")
-            .strConcat(intToString(nodeGetData1(n)))
-            .strConcat(":inner:")
-            .strConcat(lintAstdupFp(nodeGetData2(n), fpCache, sizeCache, seenNodes))
-            .strConcat(":move:")
-            .strConcat(intToString(nodeGetData3(n)))
-            .strConcat(":life:ID)");
+        .strConcat("(mut:")
+        .strConcat(intToString(nodeGetData1(n)))
+        .strConcat(":inner:")
+        .strConcat(lintAstdupFp(nodeGetData2(n), fpCache, sizeCache, seenNodes))
+        .strConcat(":move:")
+        .strConcat(intToString(nodeGetData3(n)))
+        .strConcat(":life:ID)");
         size = size + sizeCache.mapGet(nodeGetData2(n));
     }
-    else if (kind == NK_ARRAY_TYPE) {
+    else if (kind = = NK_ARRAY_TYPE) {
         fp = fp
-            .strConcat("(e:")
-            .strConcat(lintAstdupFp(nodeGetData1(n), fpCache, sizeCache, seenNodes))
-            .strConcat(":i:")
-            .strConcat(lintAstdupFp(nodeGetData2(n), fpCache, sizeCache, seenNodes))
-            .strConcat(":t:")
-            .strConcat(lintAstdupFp(nodeGetData3(n), fpCache, sizeCache, seenNodes))
-            .strConcat(")");
+        .strConcat("(e:")
+        .strConcat(lintAstdupFp(nodeGetData1(n), fpCache, sizeCache, seenNodes))
+        .strConcat(":i:")
+        .strConcat(lintAstdupFp(nodeGetData2(n), fpCache, sizeCache, seenNodes))
+        .strConcat(":t:")
+        .strConcat(lintAstdupFp(nodeGetData3(n), fpCache, sizeCache, seenNodes))
+        .strConcat(")");
         size = size + sizeCache.mapGet(nodeGetData1(n));
         if (nodeGetData2(n) != 0) {
             size = size + sizeCache.mapGet(nodeGetData2(n));
@@ -992,156 +982,153 @@ fn lintAstdupFp(n: I32, fpCache: Map<I32, I32>, sizeCache: Map<I32, I32>, seenNo
             size = size + sizeCache.mapGet(nodeGetData3(n));
         }
     }
-    else if (kind == NK_REFINEMENT_TYPE) {
+    else if (kind = = NK_REFINEMENT_TYPE) {
         fp = fp
-            .strConcat("(b:")
-            .strConcat(lintAstdupFp(nodeGetData1(n), fpCache, sizeCache, seenNodes))
-            .strConcat(":op:")
-            .strConcat(getInternedStr(nodeGetData2(n)))
-            .strConcat(":v:")
-            .strConcat(lintAstdupFp(nodeGetData3(n), fpCache, sizeCache, seenNodes))
-            .strConcat(")");
+        .strConcat("(b:")
+        .strConcat(lintAstdupFp(nodeGetData1(n), fpCache, sizeCache, seenNodes))
+        .strConcat(":op:")
+        .strConcat(getInternedStr(nodeGetData2(n)))
+        .strConcat(":v:")
+        .strConcat(lintAstdupFp(nodeGetData3(n), fpCache, sizeCache, seenNodes))
+        .strConcat(")");
         size = size + sizeCache.mapGet(nodeGetData1(n));
         size = size + sizeCache.mapGet(nodeGetData3(n));
     }
-    else if (kind == NK_UNION_TYPE) {
+    else if (kind = = NK_UNION_TYPE) {
         fp = fp
-            .strConcat("(l:")
-            .strConcat(lintAstdupFp(nodeGetData1(n), fpCache, sizeCache, seenNodes))
-            .strConcat(":r:")
-            .strConcat(lintAstdupFp(nodeGetData2(n), fpCache, sizeCache, seenNodes))
-            .strConcat(":x:")
-            .strConcat(intToString(nodeGetData3(n)))
-            .strConcat(")");
+        .strConcat("(l:")
+        .strConcat(lintAstdupFp(nodeGetData1(n), fpCache, sizeCache, seenNodes))
+        .strConcat(":r:")
+        .strConcat(lintAstdupFp(nodeGetData2(n), fpCache, sizeCache, seenNodes))
+        .strConcat(":x:")
+        .strConcat(intToString(nodeGetData3(n)))
+        .strConcat(")");
         size = size + sizeCache.mapGet(nodeGetData1(n)) + sizeCache.mapGet(nodeGetData2(n));
     }
-    else if (kind == NK_FUNCTION_TYPE) {
+    else if (kind = = NK_FUNCTION_TYPE) {
         fp = fp
-            .strConcat("(p:")
-            .strConcat(lintAstdupVecFp(nodeGetData1(n), fpCache, sizeCache, seenNodes))
-            .strConcat(":r:")
-            .strConcat(lintAstdupFp(nodeGetData2(n), fpCache, sizeCache, seenNodes))
-            .strConcat(")");
+        .strConcat("(p:")
+        .strConcat(lintAstdupVecFp(nodeGetData1(n), fpCache, sizeCache, seenNodes))
+        .strConcat(":r:")
+        .strConcat(lintAstdupFp(nodeGetData2(n), fpCache, sizeCache, seenNodes))
+        .strConcat(")");
         size = size + lintAstdupVecSize(nodeGetData1(n), sizeCache);
         size = size + sizeCache.mapGet(nodeGetData2(n));
     }
-    else if (kind == NK_APPLIED_TYPE) {
+    else if (kind = = NK_APPLIED_TYPE) {
         fp = fp
-            .strConcat("(name:ID:args:")
-            .strConcat(lintAstdupVecFp(nodeGetData2(n), fpCache, sizeCache, seenNodes))
-            .strConcat(")");
+        .strConcat("(name:ID:args:")
+        .strConcat(lintAstdupVecFp(nodeGetData2(n), fpCache, sizeCache, seenNodes))
+        .strConcat(")");
         size = size + lintAstdupVecSize(nodeGetData2(n), sizeCache);
     }
-    else if (kind == NK_IMPORT_DECL || kind == NK_EXTERN_IMPORT_DECL) {
+    else if (kind = = NK_IMPORT_DECL || kind = = NK_EXTERN_IMPORT_DECL) {
         fp = fp
-            .strConcat("(names:")
-            .strConcat(intToString(nodeGetData1(n).vecLength()))
-            .strConcat(":parts:")
-            .strConcat(intToString(nodeGetData2(n).vecLength()))
-            .strConcat(")");
+        .strConcat("(names:")
+        .strConcat(intToString(nodeGetData1(n).vecLength()))
+        .strConcat(":parts:")
+        .strConcat(intToString(nodeGetData2(n).vecLength()))
+        .strConcat(")");
     }
-    else if (kind == NK_STRUCT_DECL) {
+    else if (kind = = NK_STRUCT_DECL) {
         fp = fp
-            .strConcat("(name:ID:g:")
-            .strConcat(intToString(nodeGetData2(n).vecLength()))
-            .strConcat(":f:")
-            .strConcat(lintAstdupNamedTypeFieldsFp(nodeGetData3(n), fpCache, sizeCache, seenNodes))
-            .strConcat(":copy:")
-            .strConcat(intToString(nodeGetData4(n)))
-            .strConcat(")");
+        .strConcat("(name:ID:g:")
+        .strConcat(intToString(nodeGetData2(n).vecLength()))
+        .strConcat(":f:")
+        .strConcat(lintAstdupNamedTypeFieldsFp(nodeGetData3(n), fpCache, sizeCache, seenNodes))
+        .strConcat(":copy:")
+        .strConcat(intToString(nodeGetData4(n)))
+        .strConcat(")");
         size = size + lintAstdupNamedTypeFieldsSize(nodeGetData3(n), sizeCache);
     }
-    else if (kind == NK_OBJECT_DECL) {
+    else if (kind = = NK_OBJECT_DECL) {
         fp = fp
-            .strConcat("(name:ID:g:")
-            .strConcat(intToString(nodeGetData2(n).vecLength()))
-            .strConcat(":in:")
-            .strConcat(lintAstdupNamedTypeFieldsFp(nodeGetData3(n), fpCache, sizeCache, seenNodes))
-            .strConcat(")");
+        .strConcat("(name:ID:g:")
+        .strConcat(intToString(nodeGetData2(n).vecLength()))
+        .strConcat(":in:")
+        .strConcat(lintAstdupNamedTypeFieldsFp(nodeGetData3(n), fpCache, sizeCache, seenNodes))
+        .strConcat(")");
         size = size + lintAstdupNamedTypeFieldsSize(nodeGetData3(n), sizeCache);
     }
-    else if (kind == NK_CONTRACT_DECL) {
+    else if (kind = = NK_CONTRACT_DECL) {
         fp = fp
-            .strConcat("(name:ID:m:")
-            .strConcat(lintAstdupContractMethodsFp(nodeGetData2(n), fpCache, sizeCache, seenNodes))
-            .strConcat(")");
+        .strConcat("(name:ID:m:")
+        .strConcat(lintAstdupContractMethodsFp(nodeGetData2(n), fpCache, sizeCache, seenNodes))
+        .strConcat(")");
         size = size + lintAstdupContractMethodsSize(nodeGetData2(n), sizeCache);
     }
-    else if (kind == NK_ENUM_DECL) {
+    else if (kind = = NK_ENUM_DECL) {
         fp = fp
-            .strConcat("(name:ID:v:")
-            .strConcat(intToString(nodeGetData2(n).vecLength()))
-            .strConcat(")");
+        .strConcat("(name:ID:v:")
+        .strConcat(intToString(nodeGetData2(n).vecLength()))
+        .strConcat(")");
     }
-    else if (kind == NK_TYPE_ALIAS) {
+    else if (kind = = NK_TYPE_ALIAS) {
         fp = fp
-            .strConcat("(name:ID:g:")
-            .strConcat(intToString(nodeGetData2(n).vecLength()))
-            .strConcat(":a:")
-            .strConcat(lintAstdupFp(nodeGetData3(n), fpCache, sizeCache, seenNodes))
-            .strConcat(":copy:")
-            .strConcat(intToString(nodeGetData4(n)))
-            .strConcat(":d:ID)");
+        .strConcat("(name:ID:g:")
+        .strConcat(intToString(nodeGetData2(n).vecLength()))
+        .strConcat(":a:")
+        .strConcat(lintAstdupFp(nodeGetData3(n), fpCache, sizeCache, seenNodes))
+        .strConcat(":copy:")
+        .strConcat(intToString(nodeGetData4(n)))
+        .strConcat(":d:ID)");
         size = size + sizeCache.mapGet(nodeGetData3(n));
     }
-    else if (kind == NK_DEP_TYPE_ALIAS) {
+    else if (kind = = NK_DEP_TYPE_ALIAS) {
         fp = fp
-            .strConcat("(name:ID:p:")
-            .strConcat(lintAstdupParamsFp(nodeGetData2(n), fpCache, sizeCache, seenNodes))
-            .strConcat(":a:")
-            .strConcat(lintAstdupFp(nodeGetData3(n), fpCache, sizeCache, seenNodes))
-            .strConcat(":copy:")
-            .strConcat(intToString(nodeGetData4(n)))
-            .strConcat(":d:ID)");
+        .strConcat("(name:ID:p:")
+        .strConcat(lintAstdupParamsFp(nodeGetData2(n), fpCache, sizeCache, seenNodes))
+        .strConcat(":a:")
+        .strConcat(lintAstdupFp(nodeGetData3(n), fpCache, sizeCache, seenNodes))
+        .strConcat(":copy:")
+        .strConcat(intToString(nodeGetData4(n)))
+        .strConcat(":d:ID)");
         size = size + lintAstdupParamsSize(nodeGetData2(n), sizeCache);
         size = size + sizeCache.mapGet(nodeGetData3(n));
     }
-    else if (kind == NK_EXTERN_TYPE_DECL) {
+    else if (kind = = NK_EXTERN_TYPE_DECL) {
         fp = fp
-            .strConcat("(name:ID:g:")
-            .strConcat(intToString(nodeGetData2(n).vecLength()))
-            .strConcat(":d:ID)");
+        .strConcat("(name:ID:g:")
+        .strConcat(intToString(nodeGetData2(n).vecLength()))
+        .strConcat(":d:ID)");
     }
-    else if (kind == NK_STRUCT_PAT) {
+    else if (kind = = NK_STRUCT_PAT) {
         fp = fp
-            .strConcat("(name:ID:fields:")
-            .strConcat(intToString(nodeGetData2(n).vecLength()))
-            .strConcat(")");
+        .strConcat("(name:ID:fields:")
+        .strConcat(intToString(nodeGetData2(n).vecLength()))
+        .strConcat(")");
     }
     else {
         fp = fp
-            .strConcat("(d1:")
-            .strConcat(intToString(nodeGetData1(n)))
-            .strConcat(":d2:")
-            .strConcat(intToString(nodeGetData2(n)))
-            .strConcat(":d3:")
-            .strConcat(intToString(nodeGetData3(n)))
-            .strConcat(":d4:")
-            .strConcat(intToString(nodeGetData4(n)))
-            .strConcat(":d5:")
-            .strConcat(intToString(nodeGetData5(n)))
-            .strConcat(")");
+        .strConcat("(d1:")
+        .strConcat(intToString(nodeGetData1(n)))
+        .strConcat(":d2:")
+        .strConcat(intToString(nodeGetData2(n)))
+        .strConcat(":d3:")
+        .strConcat(intToString(nodeGetData3(n)))
+        .strConcat(":d4:")
+        .strConcat(intToString(nodeGetData4(n)))
+        .strConcat(":d5:")
+        .strConcat(intToString(nodeGetData5(n)))
+        .strConcat(")");
     }
-
     fpCache.mapSet(n, fp);
     sizeCache.mapSet(n, size);
     seenNodes.vecPush(n);
     fp
 }
-
 fn lintAstdupNormLeafKind(kind: I32) : *Str => {
-    if (kind == NK_IDENTIFIER || kind == NK_NAME_PAT || kind == NK_NAMED_TYPE) {
+    if (kind = = NK_IDENTIFIER || kind = = NK_NAME_PAT || kind = = NK_NAMED_TYPE) {
         return "ID";
     }
-    if (kind == NK_NUMBER_LIT || kind == NK_STRING_LIT || kind == NK_CHAR_LIT || kind == NK_LITERAL_PAT) {
+    if (kind = = NK_NUMBER_LIT || kind = = NK_STRING_LIT || kind = = NK_CHAR_LIT || kind = = NK_LITERAL_PAT) {
         return "LIT";
     }
-    if (kind == NK_BOOL_LIT) {
+    if (kind = = NK_BOOL_LIT) {
         return "BOOL";
     }
     intToString(kind)
 }
-
 fn lintAstdupFallbackBinary(program: I32) : I32 => {
     let body = nodeGetData1(program);
     let stack = vecNew();
@@ -1151,26 +1138,22 @@ fn lintAstdupFallbackBinary(program: I32) : I32 => {
         stack.vecPush(body.vecGet(i));
         i = i + 1;
     }
-
     let keys = vecNew();
     let counts = vecNew();
     let firstNodes = vecNew();
     let secondNodes = vecNew();
-
     while (stack.vecLength() > 0) {
         let n = stack.vecGet(stack.vecLength() - 1);
         stack.vecPop();
-        if (n == 0) {
+        if (n = = 0) {
             continue;
         }
         let kind = nodeKind(n);
-
-        if (kind == NK_BINARY_EXPR) {
+        if (kind = = NK_BINARY_EXPR) {
             let op = getInternedStr(nodeGetData1(n));
             let leftKind = lintAstdupNormLeafKind(nodeKind(nodeGetData2(n)));
             let rightKind = lintAstdupNormLeafKind(nodeKind(nodeGetData3(n)));
             let key = op.strConcat(":").strConcat(leftKind).strConcat(":").strConcat(rightKind);
-
             let found = -1;
             let k = 0;
             let __len6 = keys.vecLength();
@@ -1181,7 +1164,7 @@ fn lintAstdupFallbackBinary(program: I32) : I32 => {
                 }
                 k = k + 1;
             }
-            if (found == -1) {
+            if (found = = -1) {
                 keys.vecPush(key);
                 counts.vecPush(1);
                 firstNodes.vecPush(n);
@@ -1190,13 +1173,12 @@ fn lintAstdupFallbackBinary(program: I32) : I32 => {
             else {
                 let nextCount = counts.vecGet(found) + 1;
                 counts.vecSet(found, nextCount);
-                if (secondNodes.vecGet(found) == 0) {
+                if (secondNodes.vecGet(found) = = 0) {
                     secondNodes.vecSet(found, n);
                 }
             }
         }
-
-        if (kind == NK_PROGRAM || kind == NK_BLOCK || kind == NK_STMT_LIST || kind == NK_TUPLE_EXPR || kind == NK_TUPLE_TYPE) {
+        if (kind = = NK_PROGRAM || kind = = NK_BLOCK || kind = = NK_STMT_LIST || kind = = NK_TUPLE_EXPR || kind = = NK_TUPLE_TYPE) {
             let items = nodeGetData1(n);
             let j = 0;
             let __len5 = items.vecLength();
@@ -1206,39 +1188,34 @@ fn lintAstdupFallbackBinary(program: I32) : I32 => {
             }
             continue;
         }
-
-        if (kind == NK_LET_DECL || kind == NK_ASSIGN_STMT || kind == NK_BINARY_EXPR || kind == NK_INDEX_EXPR || kind == NK_IS_EXPR) {
+        if (kind = = NK_LET_DECL || kind = = NK_ASSIGN_STMT || kind = = NK_BINARY_EXPR || kind = = NK_INDEX_EXPR || kind = = NK_IS_EXPR) {
             stack.vecPush(nodeGetData1(n));
             stack.vecPush(nodeGetData2(n));
-            if (kind == NK_LET_DECL || kind == NK_BINARY_EXPR) {
+            if (kind = = NK_LET_DECL || kind = = NK_BINARY_EXPR) {
                 stack.vecPush(nodeGetData3(n));
             }
             continue;
         }
-
-        if (kind == NK_EXPR_STMT || kind == NK_RETURN_STMT || kind == NK_WHILE_STMT || kind == NK_LOOP_STMT || kind == NK_UNARY_EXPR || kind == NK_UNWRAP_EXPR || kind == NK_MEMBER_EXPR) {
+        if (kind = = NK_EXPR_STMT || kind = = NK_RETURN_STMT || kind = = NK_WHILE_STMT || kind = = NK_LOOP_STMT || kind = = NK_UNARY_EXPR || kind = = NK_UNWRAP_EXPR || kind = = NK_MEMBER_EXPR) {
             stack.vecPush(nodeGetData1(n));
-            if (kind == NK_UNARY_EXPR || kind == NK_UNWRAP_EXPR) {
+            if (kind = = NK_UNARY_EXPR || kind = = NK_UNWRAP_EXPR) {
                 stack.vecPush(nodeGetData2(n));
             }
             continue;
         }
-
-        if (kind == NK_IF_STMT || kind == NK_IF_EXPR) {
+        if (kind = = NK_IF_STMT || kind = = NK_IF_EXPR) {
             stack.vecPush(nodeGetData1(n));
             stack.vecPush(nodeGetData2(n));
             stack.vecPush(nodeGetData3(n));
             continue;
         }
-
-        if (kind == NK_FOR_STMT) {
+        if (kind = = NK_FOR_STMT) {
             stack.vecPush(nodeGetData2(n));
             stack.vecPush(nodeGetData3(n));
             stack.vecPush(nodeGetData4(n));
             continue;
         }
-
-        if (kind == NK_CALL_EXPR) {
+        if (kind = = NK_CALL_EXPR) {
             stack.vecPush(nodeGetData1(n));
             let args = nodeGetData2(n);
             let a = 0;
@@ -1249,7 +1226,6 @@ fn lintAstdupFallbackBinary(program: I32) : I32 => {
             }
         }
     }
-
     let emitted = 0;
     let k = 0;
     while (k < keys.vecLength() && emitted < 5) {
@@ -1264,10 +1240,10 @@ fn lintAstdupFallbackBinary(program: I32) : I32 => {
                 secondLoc = lintAstdupLoc(second);
             }
             lintAddIssue(
-                "E_LINT_AST_DUPLICATE_SUBTREE",
-                "Duplicate AST subtree detected (binary-expr) with ".strConcat(intToString(count)).strConcat(" occurrences"),
-                "Normalized shape '".strConcat(key).strConcat("' repeats (identifier/literal values normalized), indicating copy-paste structure that is likely extractable."),
-                "Consider extracting the repeated expression shape into a helper/local binding. Example locations: ".strConcat(firstLoc).strConcat(" and ").strConcat(secondLoc).strConcat(".")
+            "E_LINT_AST_DUPLICATE_SUBTREE",
+            "Duplicate AST subtree detected (binary-expr) with ".strConcat(intToString(count)).strConcat(" occurrences"),
+            "Normalized shape '".strConcat(key).strConcat("' repeats (identifier/literal values normalized), indicating copy-paste structure that is likely extractable."),
+            "Consider extracting the repeated expression shape into a helper/local binding. Example locations: ".strConcat(firstLoc).strConcat(" and ").strConcat(secondLoc).strConcat(".")
             );
             emitted = emitted + 1;
         }
@@ -1275,12 +1251,10 @@ fn lintAstdupFallbackBinary(program: I32) : I32 => {
     }
     0
 }
-
 fn lintCheckAstDuplicates(program: I32) : I32 => {
     let fpCache = mapNew();
     let sizeCache = mapNew();
     let seenNodes = vecNew();
-
     let body = nodeGetData1(program);
     let scanI = 0;
     let __len3 = body.vecLength();
@@ -1288,10 +1262,8 @@ fn lintCheckAstDuplicates(program: I32) : I32 => {
         lintAstdupFp(body.vecGet(scanI), fpCache, sizeCache, seenNodes);
         scanI = scanI + 1;
     }
-
     let keys = vecNew();
     let buckets = vecNew();
-
     let i = 0;
     let __len2 = seenNodes.vecLength();
     while (i < __len2) {
@@ -1310,7 +1282,7 @@ fn lintCheckAstDuplicates(program: I32) : I32 => {
                 }
                 j = j + 1;
             }
-            if (found == -1) {
+            if (found = = -1) {
                 keys.vecPush(fp);
                 let bucket = vecNew();
                 bucket.vecPush(n);
@@ -1324,7 +1296,6 @@ fn lintCheckAstDuplicates(program: I32) : I32 => {
         }
         i = i + 1;
     }
-
     i = 0;
     let __len = keys.vecLength();
     while (i < __len) {
@@ -1338,25 +1309,21 @@ fn lintCheckAstDuplicates(program: I32) : I32 => {
             let firstLoc = lintAstdupLoc(first);
             let secondLoc = lintAstdupLoc(second);
             let shape = lintAstdupPreview(fp);
-
             lintAddIssue(
-                "E_LINT_AST_DUPLICATE_SUBTREE",
-                "Duplicate AST subtree detected (".strConcat(kindName).strConcat(") with ").strConcat(intToString(count)).strConcat(" occurrences"),
-                "A structurally identical subtree appears multiple times (identifier/literal values normalized). Shape preview: '".strConcat(shape).strConcat("'."),
-                "Extract shared logic into a helper function. Example locations: ".strConcat(firstLoc).strConcat(" and ").strConcat(secondLoc).strConcat(".")
+            "E_LINT_AST_DUPLICATE_SUBTREE",
+            "Duplicate AST subtree detected (".strConcat(kindName).strConcat(") with ").strConcat(intToString(count)).strConcat(" occurrences"),
+            "A structurally identical subtree appears multiple times (identifier/literal values normalized). Shape preview: '".strConcat(shape).strConcat("'."),
+            "Extract shared logic into a helper function. Example locations: ".strConcat(firstLoc).strConcat(" and ").strConcat(secondLoc).strConcat(".")
             );
         }
         i = i + 1;
     }
-
     lintAstdupFallbackBinary(program);
-
     0
 }
-
 out fn lintProgram(program: I32, filePath: *Str, maxEffectiveLines: I32, enforceFileLength:
 I32, astDupEnabled: I32) : I32 => {
-    if (enforceFileLength == 1) {
+    if (enforceFileLength = = 1) {
         lintCheckFileLength(filePath, maxEffectiveLines);
     }
     let receiverExternFns = setNew();
@@ -1390,22 +1357,23 @@ I32, astDupEnabled: I32) : I32 => {
     i = 0;
     let dlen = declaredNames.vecLength();
     while (i < dlen) {
-        let name = declaredNames.vecGet(i);
+        let declNode = declaredNames.vecGet(i);
+        let name = getInternedStr(nodeGetData1(declNode));
         if (!name.strStartsWith("_") && !reads.setHas(name)) {
-            lintAddIssue(
+            lintAddIssueAt(
             "E_LINT_UNUSED_BINDING",
             "Unused binding '".strConcat(name).strConcat("'"),
             "Unused bindings increase cognitive load and can indicate leftover or incomplete code paths.",
-            "Remove the binding if unused, use it intentionally, or rename it to start with '_' to mark it as intentionally unused."
+            "Remove the binding if unused, use it intentionally, or rename it to start with '_' to mark it as intentionally unused.",
+            nodeGetLine(declNode),
+            nodeGetCol(declNode)
             );
         }
         i = i + 1;
     }
-
-    if (astDupEnabled == 1) {
+    if (astDupEnabled = = 1) {
         lintCheckAstDuplicates(program);
     }
-
     0
 }
 out fn selfhostLinterMarker() : I32 => 0;

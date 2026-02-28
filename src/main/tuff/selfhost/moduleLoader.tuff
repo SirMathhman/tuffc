@@ -1,4 +1,7 @@
-let { getInternedStr, mapNew, setNew, vecNew, perfNow, printError, intToString, lexTakeTrivia, lexInit, lexAll, strIncludes } = selfhost::runtimeLexer;
+let {
+    getInternedStr, mapNew, setNew, vecNew, perfNow, printError, intToString, lexTakeTrivia, lexInit, lexAll, strIncludes
+}
+ = selfhost::runtimeLexer;
 let {
     Ok, Err, Result
 }
@@ -113,22 +116,22 @@ fn stripImportDecls(program: I32) : I32 => {
 }
 fn isModuleDeclKind(kind: I32) : Bool => {
      // Uses literal node-kind IDs to avoid cross-module constant resolution.
-    kind == 2 || // NK_FN_DECL
-    kind == 16 || // NK_CLASS_FN_DECL
-    kind == 3 || // NK_STRUCT_DECL
-    kind == 60 || // NK_ENUM_DECL
-    kind == 63 || // NK_OBJECT_DECL
-    kind == 65 || // NK_CONTRACT_DECL
-    kind == 4 || // NK_TYPE_ALIAS
-    kind == 5 || // NK_LET_DECL
-    kind == 18 || // NK_EXTERN_LET_DECL
-    kind == 19 // NK_EXTERN_TYPE_DECL
+    kind = = 2 || // NK_FN_DECL
+    kind = = 16 || // NK_CLASS_FN_DECL
+    kind = = 3 || // NK_STRUCT_DECL
+    kind = = 60 || // NK_ENUM_DECL
+    kind = = 63 || // NK_OBJECT_DECL
+    kind = = 65 || // NK_CONTRACT_DECL
+    kind = = 4 || // NK_TYPE_ALIAS
+    kind = = 5 || // NK_LET_DECL
+    kind = = 18 || // NK_EXTERN_LET_DECL
+    kind = = 19 // NK_EXTERN_TYPE_DECL
 }
 fn moduleIsExternDecl(stmt: I32) : Bool => {
     let kind = nodeKind(stmt);
-    (kind == 2 && nodeGetData5(stmt) == 0) || // NK_FN_DECL with no body
-    kind == 18 || // NK_EXTERN_LET_DECL
-    kind == 19 // NK_EXTERN_TYPE_DECL
+    (kind = = 2 && nodeGetData5(stmt) = = 0) || // NK_FN_DECL with no body
+    kind = = 18 || // NK_EXTERN_LET_DECL
+    kind = = 19 // NK_EXTERN_TYPE_DECL
 }
 fn collectModuleDeclarations(stmts: Vec<I32>) : *mut Set<*Str> => {
     let declared = setNew();
@@ -161,7 +164,7 @@ fn moduleScopeHas(scopes: Vec<I32>, depth: I32, name: *Str) : Bool => {
 }
 fn moduleCheckExprCallLike(n: I32, declared: *mut Set<I32>, imported: *mut Set<I32>,
 scopes: Vec<I32>, depth: I32, implicitCandidates: Vec<I32>, implicitCandidateSet: *mut Set<I32>) : I32 => {
-    if (nodeKind(n) == 27) {
+    if (nodeKind(n) = = 27) {
         moduleCheckExprImplicitImports(nodeGetData1(n), declared, imported,
         scopes, depth, implicitCandidates, implicitCandidateSet);
         let args = nodeGetData2(n);
@@ -174,12 +177,12 @@ scopes: Vec<I32>, depth: I32, implicitCandidates: Vec<I32>, implicitCandidateSet
         }
         return 1;
     }
-    if (nodeKind(n) == 28) {
+    if (nodeKind(n) = = 28) {
         moduleCheckExprImplicitImports(nodeGetData1(n), declared, imported,
         scopes, depth, implicitCandidates, implicitCandidateSet);
         return 1;
     }
-    if (nodeKind(n) == 29) {
+    if (nodeKind(n) = = 29) {
         moduleCheckExprImplicitImports(nodeGetData1(n), declared, imported,
         scopes, depth, implicitCandidates, implicitCandidateSet);
         moduleCheckExprImplicitImports(nodeGetData2(n), declared, imported,
@@ -190,7 +193,7 @@ scopes: Vec<I32>, depth: I32, implicitCandidates: Vec<I32>, implicitCandidateSet
 }
 fn moduleCheckExprComposites(n: I32, declared: *mut Set<I32>, imported: *mut Set<I32>,
 scopes: Vec<I32>, depth: I32, implicitCandidates: Vec<I32>, implicitCandidateSet: *mut Set<I32>) : I32 => {
-    if (nodeKind(n) == 30) {
+    if (nodeKind(n) = = 30) {
         let fields = nodeGetData2(n);
         let i = 0;
         let len = fields.vecLength();
@@ -202,7 +205,7 @@ scopes: Vec<I32>, depth: I32, implicitCandidates: Vec<I32>, implicitCandidateSet
         }
         return 1;
     }
-    if (nodeKind(n) == 33) {
+    if (nodeKind(n) = = 33) {
         moduleCheckExprImplicitImports(nodeGetData1(n), declared, imported,
         scopes, depth, implicitCandidates, implicitCandidateSet);
         return 1;
@@ -225,7 +228,7 @@ depth: I32, implicitCandidates: Vec<I32>, implicitCandidateSet: *mut Set<I32>) :
         let body = caseNode.vecGet(1);
         let nextDepth = depth + 1;
         scopes.vecPush(setNew());
-        if (nodeKind(pat) == 53) {
+        if (nodeKind(pat) = = 53) {
             let fields = nodeGetData2(pat);
             let j = 0;
             let fLen = fields.vecLength();
@@ -234,7 +237,7 @@ depth: I32, implicitCandidates: Vec<I32>, implicitCandidateSet: *mut Set<I32>) :
                 j = j + 1;
             }
         }
-        else if (nodeKind(pat) == 52) {
+        else if (nodeKind(pat) = = 52) {
             let patName = getInternedStr(nodeGetData1(pat));
             if (!declared.setHas(patName) && !imported.setHas(patName)) {
                 moduleScopeDefine(scopes, nextDepth, patName);
@@ -282,7 +285,7 @@ fn moduleSnapshotImportSpecs(stmts: Vec<I32>, moduleBasePath: *Str, importPathCa
     let len = stmts.vecLength();
     while (i < len) {
         let stmt = stmts.vecGet(i);
-        if (nodeKind(stmt) == 6) {
+        if (nodeKind(stmt) = = 6) {
             let parts = nodeGetData2(stmt);
             let rel = modulePartsToRelativePath(parts);
             let depPath = "";
@@ -337,7 +340,7 @@ maxEffectiveLines: I32, moduleCycles: Vec<*Str>, recursionDepth: I32) : I32 => {
             moduleDeclaredMap, moduleExportedMap, moduleSourceCache, importPathCache,
             allDeclaredNames, allExportedDeclaredNames, allExternDeclaredNames, lintEnabled,
             maxEffectiveLines, moduleCycles, recursionDepth + 1);
-            if (recursionDepth == 0) {
+            if (recursionDepth = = 0) {
                 gatherProfImportRecurseMs = gatherProfImportRecurseMs +
                 (perfNow() - tRecurse0);
             }
@@ -382,11 +385,11 @@ fn moduleCollectImportedNames(imports: Vec<I32>) : *mut Set<I32> => {
 }
 fn moduleCheckExprImplicitImports(n: I32, declared: *mut Set<I32>, imported: *mut Set<I32>,
 scopes: Vec<I32>, depth: I32, implicitCandidates: Vec<I32>, implicitCandidateSet: *mut Set<I32>) : I32 => {
-    if (n == 0) {
+    if (n = = 0) {
         return 0;
     }
     let kind = nodeKind(n);
-    if (kind == 24) {
+    if (kind = = 24) {
         let name = getInternedStr(nodeGetData1(n));
         if (!moduleScopeHas(scopes, depth, name) && !declared.setHas(name) &&
         !imported.setHas(name)) {
@@ -397,31 +400,31 @@ scopes: Vec<I32>, depth: I32, implicitCandidates: Vec<I32>, implicitCandidateSet
         }
         return 0;
     }
-    if (kind == 25) {
+    if (kind = = 25) {
         moduleCheckExprImplicitImports(nodeGetData2(n), declared, imported,
         scopes, depth, implicitCandidates, implicitCandidateSet);
         moduleCheckExprImplicitImports(nodeGetData3(n), declared, imported,
         scopes, depth, implicitCandidates, implicitCandidateSet);
         return 0;
     }
-    if (kind == 26 || kind == 34) {
+    if (kind = = 26 || kind = = 34) {
         moduleCheckExprImplicitImports(nodeGetData2(n), declared, imported,
         scopes, depth, implicitCandidates, implicitCandidateSet);
-        if (kind == 34) {
+        if (kind = = 34) {
             moduleCheckExprImplicitImports(nodeGetData1(n), declared, imported,
             scopes, depth, implicitCandidates, implicitCandidateSet);
         }
         return 0;
     }
     if (moduleCheckExprCallLike(n, declared, imported, scopes, depth,
-    implicitCandidates, implicitCandidateSet) == 1) {
+    implicitCandidates, implicitCandidateSet) = = 1) {
         return 0;
     }
     if (moduleCheckExprComposites(n, declared, imported, scopes, depth,
-    implicitCandidates, implicitCandidateSet) == 1) {
+    implicitCandidates, implicitCandidateSet) = = 1) {
         return 0;
     }
-    if (kind == 31) {
+    if (kind = = 31) {
         moduleCheckExprImplicitImports(nodeGetData1(n), declared, imported,
         scopes, depth, implicitCandidates, implicitCandidateSet);
         moduleCheckStmtImplicitImports(nodeGetData2(n), declared, imported,
@@ -433,18 +436,18 @@ scopes: Vec<I32>, depth: I32, implicitCandidates: Vec<I32>, implicitCandidateSet
         return 0;
     }
     if (moduleCheckExprMatch (n, declared, imported, scopes, depth,
-    implicitCandidates, implicitCandidateSet) == 1) {
+    implicitCandidates, implicitCandidateSet) = = 1) {
         return 0;
     }
     0
 }
 fn moduleCheckStmtImplicitImports(n: I32, declared: *mut Set<I32>, imported: *mut Set<I32>,
 scopes: Vec<I32>, depth: I32, implicitCandidates: Vec<I32>, implicitCandidateSet: *mut Set<I32>) : I32 => {
-    if (n == 0) {
+    if (n = = 0) {
         return 0;
     }
     let kind = nodeKind(n);
-    if (kind == 12) {
+    if (kind = = 12) {
         let nextDepth = depth + 1;
         scopes.vecPush(setNew());
         let stmts = nodeGetData1(n);
@@ -458,7 +461,7 @@ scopes: Vec<I32>, depth: I32, implicitCandidates: Vec<I32>, implicitCandidateSet
         scopes.vecPop();
         return 0;
     }
-    if (kind == 2 || kind == 16) {
+    if (kind = = 2 || kind = = 16) {
         let fnScopes = vecNew();
         fnScopes.vecPush(setNew());
         let params = nodeGetData3(n);
@@ -473,13 +476,13 @@ scopes: Vec<I32>, depth: I32, implicitCandidates: Vec<I32>, implicitCandidateSet
         fnScopes, 0, implicitCandidates, implicitCandidateSet);
         return 0;
     }
-    if (kind == 5) {
+    if (kind = = 5) {
         moduleCheckExprImplicitImports(nodeGetData3(n), declared, imported,
         scopes, depth, implicitCandidates, implicitCandidateSet);
         moduleScopeDefine(scopes, depth, getInternedStr(nodeGetData1(n)));
         return 0;
     }
-    if (kind == 6) {
+    if (kind = = 6) {
         let names = nodeGetData1(n);
         let i = 0;
         let len = names.vecLength();
@@ -489,24 +492,24 @@ scopes: Vec<I32>, depth: I32, implicitCandidates: Vec<I32>, implicitCandidateSet
         }
         return 0;
     }
-    if (kind == 7) {
+    if (kind = = 7) {
         moduleCheckExprImplicitImports(nodeGetData1(n), declared, imported,
         scopes, depth, implicitCandidates, implicitCandidateSet);
         return 0;
     }
-    if (kind == 13) {
+    if (kind = = 13) {
         moduleCheckExprImplicitImports(nodeGetData1(n), declared, imported,
         scopes, depth, implicitCandidates, implicitCandidateSet);
         moduleCheckExprImplicitImports(nodeGetData2(n), declared, imported,
         scopes, depth, implicitCandidates, implicitCandidateSet);
         return 0;
     }
-    if (kind == 8) {
+    if (kind = = 8) {
         moduleCheckExprImplicitImports(nodeGetData1(n), declared, imported,
         scopes, depth, implicitCandidates, implicitCandidateSet);
         return 0;
     }
-    if (kind == 9) {
+    if (kind = = 9) {
         moduleCheckExprImplicitImports(nodeGetData1(n), declared, imported,
         scopes, depth, implicitCandidates, implicitCandidateSet);
         moduleCheckStmtImplicitImports(nodeGetData2(n), declared, imported,
@@ -517,7 +520,7 @@ scopes: Vec<I32>, depth: I32, implicitCandidates: Vec<I32>, implicitCandidateSet
         }
         return 0;
     }
-    if (kind == 11) {
+    if (kind = = 11) {
         let nextDepth = depth + 1;
         scopes.vecPush(setNew());
         moduleScopeDefine(scopes, nextDepth, getInternedStr(nodeGetData1(n)));
@@ -530,7 +533,7 @@ scopes: Vec<I32>, depth: I32, implicitCandidates: Vec<I32>, implicitCandidateSet
         scopes.vecPop();
         return 0;
     }
-    if (kind == 10) {
+    if (kind = = 10) {
         moduleCheckExprImplicitImports(nodeGetData1(n), declared, imported,
         scopes, depth, implicitCandidates, implicitCandidateSet);
         moduleCheckStmtImplicitImports(nodeGetData2(n), declared, imported,
@@ -575,7 +578,7 @@ allExternDeclared: *mut Set<I32>) : I32 => {
     }
     0
 }
-// moduleHasOutExport removed — replaced by getParseExports().setHas() O(1) lookup
+ // moduleHasOutExport removed — replaced by getParseExports().setHas() O(1) lookup
 fn modulePathToUnitKey(p: *Str, fallbackIdx: I32) : *Str => {
     let key = moduleNormalizePath(p);
     key = key.strReplaceAll(":", "_");
@@ -627,16 +630,17 @@ moduleDeclaredMap: Map<I32, I32>, fallbackKey: *Str) : *Str => {
 fn moduleStmtOwnerKey(stmt: I32, modulePaths: Vec<*Str>, moduleKeys: Vec<*Str>,
 moduleDeclaredMap: Map<I32, I32>, fallbackKey: *Str) : *Str => {
     let kind = nodeKind(stmt);
-    if (kind == 2 || // NK_FN_DECL
-    kind == 16 || // NK_CLASS_FN_DECL
-    kind == 3 || // NK_STRUCT_DECL
-    kind == 60 || // NK_ENUM_DECL
-    kind == 63 || // NK_OBJECT_DECL
-    kind == 65 || // NK_CONTRACT_DECL
-    kind == 4 || // NK_TYPE_ALIAS
-    kind == 5 || // NK_LET_DECL
-    kind == 18 || // NK_EXTERN_LET_DECL
-    kind == 19) { // NK_EXTERN_TYPE_DECL
+    if (kind = = 2 || // NK_FN_DECL
+    kind = = 16 || // NK_CLASS_FN_DECL
+    kind = = 3 || // NK_STRUCT_DECL
+    kind = = 60 || // NK_ENUM_DECL
+    kind = = 63 || // NK_OBJECT_DECL
+    kind = = 65 || // NK_CONTRACT_DECL
+    kind = = 4 || // NK_TYPE_ALIAS
+    kind = = 5 || // NK_LET_DECL
+    kind = = 18 || // NK_EXTERN_LET_DECL
+    kind = = 19) {
+         // NK_EXTERN_TYPE_DECL
         return moduleFindOwnerKeyForName(getInternedStr(nodeGetData1(stmt)),
         modulePaths, moduleKeys, moduleDeclaredMap, fallbackKey);
     }
@@ -693,7 +697,7 @@ maxEffectiveLines: I32, moduleCycles: Vec<*Str>, recursionDepth: I32) : I32 => {
         return 0;
     }
     if (visiting.setHas(filePath)) {
-        if (lintEnabled == 1) {
+        if (lintEnabled = = 1) {
             moduleCycles.vecPush(filePath);
             return 0;
         }
@@ -720,7 +724,7 @@ maxEffectiveLines: I32, moduleCycles: Vec<*Str>, recursionDepth: I32) : I32 => {
     let tParse0 = perfNow();
     lexInit(source);
     lexAll();
-    if (lintEnabled == 1) {
+    if (lintEnabled = = 1) {
         lintCheckCurrentFileLength(filePath, maxEffectiveLines);
     }
     parseInit();
@@ -833,7 +837,6 @@ maxEffectiveLines: I32, borrowEnabled: I32, target: *Str, astDupEnabled: I32) : 
     let t2Strip1 = perfNow();
     printError("[selfhost] phase: lex-parse-merged:strip-imports:done ms=".strConcat(intToString(t2Strip1 - t2Strip0)));
     printError("[selfhost] phase: lex-parse-merged:done total-ms=".strConcat(intToString(t2Strip1 - t2)));
-    let t3 = perfNow();
     printError("[selfhost] phase: desugar:start");
     let desugared = desugar(program);
     printError("[selfhost] phase: resolve:start");
@@ -848,7 +851,6 @@ maxEffectiveLines: I32, borrowEnabled: I32, target: *Str, astDupEnabled: I32) : 
     else {
         panic("Resolver returned unexpected result variant");
     }
-    let t4 = perfNow();
     printError("[selfhost] phase: typecheck:start");
     let typedResultAny = typecheckProgramWithOptions(resolved);
     if (typedResultAny is struct Err) {
@@ -861,12 +863,10 @@ maxEffectiveLines: I32, borrowEnabled: I32, target: *Str, astDupEnabled: I32) : 
     else {
         panic("Typechecker returned unexpected result variant");
     }
-    let t5 = perfNow();
-    if (borrow == 1) {
+    if (borrow = = 1) {
         borrowcheckProgram(typed);
     }
-    let t6 = perfNow();
-    if (lint == 1) {
+    if (lint = = 1) {
          // File-length lint already ran per module file during gather_module_sources.
         lintProgram(typed, inputPath, maxLines, 0, astDupEnabled);
         let i = 0;
@@ -876,7 +876,6 @@ maxEffectiveLines: I32, borrowEnabled: I32, target: *Str, astDupEnabled: I32) : 
             i = i + 1;
         }
     }
-    let t7 = perfNow();
     printError("[selfhost] phase: emit:start target=".strConcat(target));
     if (target.strEq("c-split")) {
         moduleWriteCSplitOutputs(typed, outputPath, modulePaths, moduleDeclaredMap);

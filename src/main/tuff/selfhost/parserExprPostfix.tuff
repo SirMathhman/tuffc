@@ -7,8 +7,8 @@ let {
     tokKind, tokValue, getInternedStr, vecNew, internStr
 }
  = selfhost::runtimeLexer;
-// Cache interned symbol IDs for O(1) comparison in lookahead loops.
-// Lazy-initialized on first use to avoid bootstrap ordering issues.
+ // Cache interned symbol IDs for O(1) comparison in lookahead loops.
+ // Lazy-initialized on first use to avoid bootstrap ordering issues.
 let SYM_LT : I32 = 0;
 let SYM_GT : I32 = 0;
 let SYM_LPAREN : I32 = 0;
@@ -24,7 +24,7 @@ let SYM_STAR : I32 = 0;
 let SYM_SLASH : I32 = 0;
 let SYM_PERCENT : I32 = 0;
 fn initSymbolCache() : I32 => {
-    if (SYM_LT == 0) {
+    if (SYM_LT = = 0) {
         SYM_LT = internStr("<");
         SYM_GT = internStr(">");
         SYM_LPAREN = internStr("(");
@@ -42,11 +42,11 @@ fn initSymbolCache() : I32 => {
     }
     0
 }
-// Unified generic suffix scanner. Returns:
-//   0 = not a valid generic suffix (EOF reached or no matching >)
-//   1 = generic call: > followed by (
-//   2 = generic struct init: > followed by {
-//   3 = generic value: > followed by anything else
+ // Unified generic suffix scanner. Returns:
+ //   0 = not a valid generic suffix (EOF reached or no matching >)
+ //   1 = generic call: > followed by (
+ //   2 = generic struct init: > followed by {
+ //   3 = generic value: > followed by anything else
 out fn pGenericSuffixKind() : I32 => {
     initSymbolCache();
     if (!pAt(TK_SYMBOL, "<")) {
@@ -63,22 +63,26 @@ out fn pGenericSuffixKind() : I32 => {
         }
         let ti = pPeek(cursor);
         let tk = tokKind(ti);
-        if (tk == TK_EOF) {
+        if (tk = = TK_EOF) {
             return 0;
         }
-        if (tk == TK_SYMBOL) {
+        if (tk = = TK_SYMBOL) {
             let val = tokValue(ti);
-            if (val == SYM_LT) {
+            if (val = = SYM_LT) {
                 depth = depth + 1;
             }
-            else if (val == SYM_GT) {
+            else if (val = = SYM_GT) {
                 depth = depth - 1;
-                if (depth == 0) {
+                if (depth = = 0) {
                     let next = pPeek(cursor + 1);
-                    if (tokKind(next) == TK_SYMBOL) {
+                    if (tokKind(next) = = TK_SYMBOL) {
                         let nextVal = tokValue(next);
-                        if (nextVal == SYM_LPAREN) { return 1; }
-                        if (nextVal == SYM_LBRACE) { return 2; }
+                        if (nextVal = = SYM_LPAREN) {
+                            return 1;
+                        }
+                        if (nextVal = = SYM_LBRACE) {
+                            return 2;
+                        }
                     }
                     return 3;
                 }
@@ -88,19 +92,19 @@ out fn pGenericSuffixKind() : I32 => {
     }
 }
 fn pHasGenericCallSuffix() : Bool => {
-    pGenericSuffixKind() == 1
+    pGenericSuffixKind() = = 1
 }
 fn pHasGenericStructInitSuffix() : Bool => {
-    pGenericSuffixKind() == 2
+    pGenericSuffixKind() = = 2
 }
 fn pHasGenericValueSuffix() : Bool => {
-    pGenericSuffixKind() == 3
+    pGenericSuffixKind() = = 3
 }
 fn pParseGenericArgValueOrType() : I32 => {
     initSymbolCache();
     let t0 = pPeek(0);
-    if (tokKind(t0) == TK_IDENTIFIER && tokKind(pPeek(1)) == TK_SYMBOL) {
-        if (tokValue(pPeek(1)) == SYM_DOT) {
+    if (tokKind(t0) = = TK_IDENTIFIER && tokKind(pPeek(1)) = = TK_SYMBOL) {
+        if (tokValue(pPeek(1)) = = SYM_DOT) {
             return pParseExpression(5);
         }
     }
@@ -113,35 +117,35 @@ fn pParseGenericArgValueOrType() : I32 => {
         }
         let ti = pPeek(cursor);
         let tk = tokKind(ti);
-        if (tk == TK_EOF) {
+        if (tk = = TK_EOF) {
             break;
         }
-        if (tk == TK_SYMBOL) {
+        if (tk = = TK_SYMBOL) {
             let val = tokValue(ti);
-            if (val == SYM_LPAREN) {
+            if (val = = SYM_LPAREN) {
                 parenDepth = parenDepth + 1;
             }
-            else if (val == SYM_RPAREN) {
+            else if (val = = SYM_RPAREN) {
                 if (parenDepth > 0) {
                     parenDepth = parenDepth - 1;
                 }
             }
-            else if (val == SYM_LBRACKET) {
+            else if (val = = SYM_LBRACKET) {
                 bracketDepth = bracketDepth + 1;
             }
-            else if (val == SYM_RBRACKET) {
+            else if (val = = SYM_RBRACKET) {
                 if (bracketDepth > 0) {
                     bracketDepth = bracketDepth - 1;
                 }
             }
-            else if (parenDepth == 0 && bracketDepth == 0 && (val == SYM_COMMA || val == SYM_GT)) {
+            else if (parenDepth = = 0 && bracketDepth = = 0 && (val = = SYM_COMMA || val = = SYM_GT)) {
                 break;
             }
             else if (
-            parenDepth == 0 &&
-            bracketDepth == 0 &&
+            parenDepth = = 0 &&
+            bracketDepth = = 0 &&
             cursor > 0 &&
-            (val == SYM_DOT || val == SYM_PLUS || val == SYM_MINUS || val == SYM_STAR || val == SYM_SLASH || val == SYM_PERCENT)
+            (val = = SYM_DOT || val = = SYM_PLUS || val = = SYM_MINUS || val = = SYM_STAR || val = = SYM_SLASH || val = = SYM_PERCENT)
             ) {
                 return pParseExpression(5);
             }
@@ -151,7 +155,7 @@ fn pParseGenericArgValueOrType() : I32 => {
     pParseType()
 }
 fn pTryParseIntoGenericValueCall(expr: I32) : I32 => {
-    if (!(nodeKind(expr) == NK_MEMBER_EXPR && getInternedStr(nodeGetData2(expr)).strEq("into") && pAt(TK_SYMBOL, "<") && pHasGenericValueSuffix())) {
+    if (!(nodeKind(expr) = = NK_MEMBER_EXPR && getInternedStr(nodeGetData2(expr)).strEq("into") && pAt(TK_SYMBOL, "<") && pHasGenericValueSuffix())) {
         return 0;
     }
     pEat();
@@ -206,7 +210,7 @@ fn pLowerMemberCall(expr: I32, args: Vec<I32>, typeArgs: Vec<I32>, hasTypeArgs: 
     nodeSetData1(call, callee);
     nodeSetData2(call, loweredArgs);
     nodeSetData3(call, 1);
-    if (hasTypeArgs == 1) {
+    if (hasTypeArgs = = 1) {
         nodeSetData4(call, typeArgs);
     }
     call
@@ -228,7 +232,7 @@ fn pTryParseGenericCall(expr: I32) : I32 => {
     pExpect(TK_SYMBOL, "(", "Expected '(' after generic call type args");
     let args = pParseCallArgs();
     pExpect(TK_SYMBOL, ")", "Expected ')' after call args");
-    if (nodeKind(expr) == NK_MEMBER_EXPR) {
+    if (nodeKind(expr) = = NK_MEMBER_EXPR) {
         return pLowerMemberCall(expr, args, typeArgs, 1);
     }
     let call = nodeNew(NK_CALL_EXPR);
@@ -245,7 +249,7 @@ fn pTryParseCall(expr: I32) : I32 => {
     pEat();
     let args = pParseCallArgs();
     pExpect(TK_SYMBOL, ")", "Expected ')'");
-    if (nodeKind(expr) == NK_MEMBER_EXPR) {
+    if (nodeKind(expr) = = NK_MEMBER_EXPR) {
         return pLowerMemberCall(expr, args, vecNew(), 0);
     }
     let call = nodeNew(NK_CALL_EXPR);

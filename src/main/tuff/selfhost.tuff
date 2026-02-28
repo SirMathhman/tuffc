@@ -135,7 +135,7 @@ fn sanitizeMaxEffectiveLines(maxEffectiveLines: I32) : I32 => {
     }
 }
 fn normalizeFlag(value: I32) : I32 => {
-    if (value == 0) {
+    if (value = = 0) {
         0
     }
     else {
@@ -227,12 +227,12 @@ borrowEnabled: I32, target: *Str, astDupEnabled: I32) : *Str => {
     let t5Typecheck = perfNow();
     profileMark("typecheck", t5Typecheck - t4Typecheck);
     let t5Borrow = perfNow();
-    if (borrow == 1) {
+    if (borrow = = 1) {
         borrowcheckProgram(typed);
     }
     let t6Borrow = perfNow();
     profileMark("borrowcheck", t6Borrow - t5Borrow);
-    if (lint == 1) {
+    if (lint = = 1) {
         lintProgram(typed, "<memory>", maxLines, 1, astDupEnabled);
     }
     let t6Emit = perfNow();
@@ -312,7 +312,7 @@ fn mainLint() : I32 => {
         }
         i = i + 1;
     }
-    if (hadError == 1) {
+    if (hadError = = 1) {
         return 1;
     }
      // Use a scratch output path (linter doesn't use the compiled output)
@@ -324,7 +324,7 @@ fn mainLint() : I32 => {
     let issues = takeLintIssues();
     if (issues.strLength() > 0) {
         printError("[lint] ".strConcat(issues));
-        if (strict == 1) {
+        if (strict = = 1) {
             resultCode = 1;
         }
     }
@@ -413,7 +413,7 @@ fn main() : I32 => {
         }
         i = i + 1;
     }
-    if (hadError == 1) {
+    if (hadError = = 1) {
         return 1;
     }
     if (outputFile.strEq("")) {
@@ -422,17 +422,17 @@ fn main() : I32 => {
     }
     let resultCode = compileFileWithOptions(inputFile, outputFile, lintEnabled, 500,
     borrowEnabled, target, lintAstDupEnabled);
-    if (resultCode == 0) {
+    if (resultCode = = 0) {
         print("Compiled ".strConcat(inputFile).strConcat(" -> ").strConcat(outputFile));
     }
-    if (lintEnabled == 1) {
+    if (lintEnabled = = 1) {
         let issues = takeLintIssues();
         if (issues.strLength() > 0) {
             printError("[lint] ".strConcat(issues));
             resultCode = 1;
         }
     }
-    if (profileEnabled == 1) {
+    if (profileEnabled = = 1) {
         printError("[profile] ".strConcat(profileTakeJson()));
     }
     resultCode

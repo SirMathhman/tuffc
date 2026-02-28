@@ -44,13 +44,11 @@ extern let {
 extern fn strLength(this: *Str) : USize;
 type StrIndex(this: *Str) = USize < strLength(this);
 extern fn strCharAt(this: *Str, index: StrIndex(this)) : Char;
-
 extern fn strSlice(this: *Str, start: StrIndex(this) <= end, end: StrIndex(this)) : *Str;
 lifetime t {
     extern fn strSliceWindow(this: *t Str, start: StrIndex(this) <= end, end: StrIndex(this)) : *t Str;
 }
 extern fn strCopy(this: *Str) : *Str;
-
 /*
 We'll need this eventually.
 extern fn str_mut_slice(this: **mut Str, start: I32, end: I32) : *mut Str;
@@ -174,7 +172,7 @@ fn triviaAdd(kind: *Str, text: *Str, line: I32, col: I32) : I32 => {
 }
 out fn lexTakeTrivia() : *Str => {
     let len = triviaData.vecLength();
-    if (len == 0) {
+    if (len = = 0) {
         return "";
     }
     let sep = triviaSepField();
@@ -186,13 +184,13 @@ out fn lexTakeTrivia() : *Str => {
             result = result.strConcat(rsep);
         }
         result = result
-            .strConcat(triviaData.vecGet(i))
-            .strConcat(sep)
-            .strConcat(triviaData.vecGet(i + 1))
-            .strConcat(sep)
-            .strConcat(intToString(triviaData.vecGet(i + 2)))
-            .strConcat(sep)
-            .strConcat(intToString(triviaData.vecGet(i + 3)));
+        .strConcat(triviaData.vecGet(i))
+        .strConcat(sep)
+        .strConcat(triviaData.vecGet(i + 1))
+        .strConcat(sep)
+        .strConcat(intToString(triviaData.vecGet(i + 2)))
+        .strConcat(sep)
+        .strConcat(intToString(triviaData.vecGet(i + 3)));
         i = i + 4;
     }
     triviaData.vecClear();
@@ -302,7 +300,7 @@ fn lexPeek(offset: I32) : I32 => {
 fn lexAdvance() : I32 => {
     let ch = lexPeek(0);
     lexPos = lexPos + 1;
-    if (ch == 10) {
+    if (ch = = 10) {
         lexLine = lexLine + 1;
         lexCol = 1;
         ch
@@ -319,7 +317,7 @@ fn isAlpha(ch: I32) : Bool => {
     else if (ch >= 97 && ch <= 122) {
         true
     }
-    else if (ch == 95) {
+    else if (ch = = 95) {
         true
     }
     else {
@@ -329,7 +327,7 @@ fn isAlpha(ch: I32) : Bool => {
 fn isDigit(ch: I32) : Bool => ch >= 48 && ch <= 57;
 fn isAlnum(ch: I32) : Bool => isAlpha(ch) || isDigit(ch);
 fn isWhitespace(ch: I32) : Bool => {
-    ch == 32 || ch == 9 || ch == 13 || ch == 10
+    ch = = 32 || ch = = 9 || ch = = 13 || ch = = 10
 }
 fn lexReadIdent() : *Str => {
     let sb = sbNew();
@@ -341,12 +339,12 @@ fn lexReadIdent() : *Str => {
 fn lexReadNumber() : *Str => {
     let sb = sbNew();
      // Handle 0x, 0b, 0o
-    if (lexPeek(0) == 48) {
+    if (lexPeek(0) = = 48) {
         let next = lexPeek(1);
-        if (next == 120 || next == 98 || next == 111) {
+        if (next = = 120 || next = = 98 || next = = 111) {
             sbAppendChar(sb, lexAdvance());
             sbAppendChar(sb, lexAdvance());
-            while (isAlnum(lexPeek(0)) || lexPeek(0) == 95) {
+            while (isAlnum(lexPeek(0)) || lexPeek(0) = = 95) {
                 let ch = lexAdvance();
                 if (ch != 95) {
                     sbAppendChar(sb, ch);
@@ -355,22 +353,22 @@ fn lexReadNumber() : *Str => {
             return sbBuild(sb);
         }
     }
-    while (isDigit(lexPeek(0)) || lexPeek(0) == 95) {
+    while (isDigit(lexPeek(0)) || lexPeek(0) = = 95) {
         let ch = lexAdvance();
         if (ch != 95) {
             sbAppendChar(sb, ch);
         }
     }
-    if (lexPeek(0) == 46 && isDigit(lexPeek(1))) {
+    if (lexPeek(0) = = 46 && isDigit(lexPeek(1))) {
         sbAppendChar(sb, lexAdvance());
-        while (isDigit(lexPeek(0)) || lexPeek(0) == 95) {
+        while (isDigit(lexPeek(0)) || lexPeek(0) = = 95) {
             let ch = lexAdvance();
             if (ch != 95) {
                 sbAppendChar(sb, ch);
             }
         }
     }
-    while (isAlnum(lexPeek(0)) || lexPeek(0) == 95) {
+    while (isAlnum(lexPeek(0)) || lexPeek(0) = = 95) {
         let ch = lexAdvance();
         if (ch != 95) {
             sbAppendChar(sb, ch);
@@ -383,7 +381,7 @@ fn lexReadString() : *Str => {
      // skip opening "
     let sb = sbNew();
     while (lexPos < lexLen && lexPeek(0) != 34) {
-        if (lexPeek(0) == 92) {
+        if (lexPeek(0) = = 92) {
             sbAppendChar(sb, lexAdvance());
             sbAppendChar(sb, lexAdvance());
         }
@@ -423,16 +421,16 @@ fn lexReadChar() : *Str => {
     sbBuild(sb)
 }
 fn lexCheckTwo(a: I32, b: I32) : Bool => {
-    lexPeek(0) == a && lexPeek(1) == b
+    lexPeek(0) = = a && lexPeek(1) = = b
 }
 fn lexTryConsumeBom(ch: I32) : Bool => {
-    if (lexPos == 0 && ch == 239 && lexPeek(1) == 187 && lexPeek(2) == 191) {
+    if (lexPos = = 0 && ch = = 239 && lexPeek(1) = = 187 && lexPeek(2) = = 191) {
         lexAdvance();
         lexAdvance();
         lexAdvance();
         return true;
     }
-    if (lexPos == 0 && (ch == 65279 || ch == 65534)) {
+    if (lexPos = = 0 && (ch = = 65279 || ch = = 65534)) {
         lexAdvance();
         return true;
     }
@@ -443,7 +441,7 @@ fn lexTrySkipWhitespaceOrComment(ch: I32) : Bool => {
         lexAdvance();
         return true;
     }
-    if (ch == 47 && lexPeek(1) == 47) {
+    if (ch = = 47 && lexPeek(1) = = 47) {
         let startLine = lexLine;
         let startCol = lexCol;
         let sb = sbNew();
@@ -453,13 +451,13 @@ fn lexTrySkipWhitespaceOrComment(ch: I32) : Bool => {
         triviaAdd("line_comment", sbBuild(sb), startLine, startCol);
         return true;
     }
-    if (ch == 47 && lexPeek(1) == 42) {
+    if (ch = = 47 && lexPeek(1) = = 42) {
         let startLine = lexLine;
         let startCol = lexCol;
         let sb = sbNew();
         sbAppendChar(sb, lexAdvance());
         sbAppendChar(sb, lexAdvance());
-        while (lexPos < lexLen && !(lexPeek(0) == 42 && lexPeek(1) == 47)) {
+        while (lexPos < lexLen && !(lexPeek(0) = = 42 && lexPeek(1) = = 47)) {
             sbAppendChar(sb, lexAdvance());
         }
         if (lexPos >= lexLen) {
@@ -478,7 +476,7 @@ fn lexTrySkipWhitespaceOrComment(ch: I32) : Bool => {
     false
 }
 fn lexTryEmitThreeCharSymbol(startLine: I32, startCol: I32) : Bool => {
-    if (lexPeek(0) == 46 && lexPeek(1) == 46 && lexPeek(2) == 46) {
+    if (lexPeek(0) = = 46 && lexPeek(1) = = 46 && lexPeek(2) = = 46) {
         lexAdvance();
         lexAdvance();
         lexAdvance();
@@ -587,26 +585,26 @@ out fn lexAll() : I32 => {
             continue;
         }
          // String
-        if (ch == 34) {
+        if (ch = = 34) {
             let text = lexReadString();
             tokAdd(TK_STRING, intern(text), startLine, startCol);
             continue;
         }
          // Char
-        if (ch == 39) {
+        if (ch = = 39) {
             let text = lexReadChar();
             tokAdd(TK_CHAR, intern(text), startLine, startCol);
             continue;
         }
          // Single-char symbols
         let symText = strFromCharCode(ch);
-        if (symText.strLength() == 1 && "(){}[],:;+-*/%<>=.!?|&".strIncludes(symText)) {
+        if (symText.strLength() = = 1 && "(){}[],:;+-*/%<>=.!?|&".strIncludes(symText)) {
             lexAdvance();
             tokAdd(TK_SYMBOL, intern(symText), startLine, startCol);
             continue;
         }
         let displayChar = symText;
-        if (displayChar.strLength() == 0) {
+        if (displayChar.strLength() = = 0) {
             displayChar = "<non-printable>";
         }
         panicWithCode(

@@ -2,9 +2,7 @@ let {
     emitTuffFromTypedImpl, selfhostTuffPrinterImplMarker
 }
  = selfhost::internal::tuffPrinterImpl;
-
-// Phase 3 printer API: canonical .tuff emission entrypoint.
+ // Phase 3 printer API: canonical .tuff emission entrypoint.
 out fn emitTuffFromTyped(typed: I32, source: *Str, triviaPayload: *Str) : *Str =>
-    emitTuffFromTypedImpl(typed, source, triviaPayload);
-
+emitTuffFromTypedImpl(typed, source, triviaPayload);
 out fn selfhostTuffPrinterMarker() : I32 => selfhostTuffPrinterImplMarker();

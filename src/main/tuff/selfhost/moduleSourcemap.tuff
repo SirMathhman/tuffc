@@ -18,17 +18,24 @@ out fn sourcemapAdd(path: *Str, startLine: I32) : I32 => {
 }
 out fn sourcemapCountLines(s: *Str) : I32 => {
     let count = 1;
+    let original = s;
     let found = s.strIndexOf("\n");
     while (found >= 0) {
         count = count + 1;
         s = s.strSliceWindow(found + 1, s.strLength()).strCopy();
         found = s.strIndexOf("\n");
     }
+    if (original.strLength() > 0) {
+        let last = original.strSliceWindow(original.strLength() - 1, original.strLength());
+        if (last.strEq("\n")) {
+            count = count - 1;
+        }
+    }
     count
 }
 out fn sourcemapLookup(mergedLine: I32) : *Str => {
     let len = smPaths.vecLength();
-    if (len == 0) {
+    if (len = = 0) {
         return "<unknown>";
     }
     let bestI = 0;

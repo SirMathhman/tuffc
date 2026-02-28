@@ -27,19 +27,19 @@ fn jsFnStackPop() : Void => {
 }
 fn jsStackInSyntheticThis() : Bool => {
     let h = jsFnStack.vecLength();
-    if (h == 0) {
+    if (h = = 0) {
         return false;
     }
     let frame = jsFnStack.vecGet(h - 1);
-    frame.vecGet(0) == 0
+    frame.vecGet(0) = = 0
 }
 fn jsThisExpr() : *Str => {
     let h = jsFnStack.vecLength();
-    if (h == 0) {
+    if (h = = 0) {
         return "__tuff_this";
     }
     let frame = jsFnStack.vecGet(h - 1);
-    if (frame.vecGet(0) == 1) {
+    if (frame.vecGet(0) = = 1) {
         return "__this_param";
     }
     "__tuff_this"
@@ -53,7 +53,7 @@ fn jsIdentStmt(name: *Str) : *Str => {
 }
 fn emitStmtLetOrAssign(n: I32) : *Str => {
     let kind = nodeKind(n);
-    if (kind == NK_LET_DECL) {
+    if (kind = = NK_LET_DECL) {
         let nameIdx = nodeGetData1(n);
         let name = jsIdentStmt(getInternedStr(nameIdx));
         let value = emitExpr(nodeGetData3(n));
@@ -63,21 +63,21 @@ fn emitStmtLetOrAssign(n: I32) : *Str => {
         }
         return decl.strConcat(" if (typeof __tuff_this !== 'undefined') __tuff_this.").strConcat(name).strConcat(" = ").strConcat(name).strConcat(";");
     }
-    if (kind == NK_ASSIGN_STMT) {
+    if (kind = = NK_ASSIGN_STMT) {
         let targetNode = nodeGetData1(n);
         let target = emitExpr(targetNode);
         let value = emitExpr(nodeGetData2(n));
         let assign = target.strConcat(" = ").strConcat(value).strConcat(";");
-        if (nodeKind(targetNode) == NK_IDENTIFIER) {
+        if (nodeKind(targetNode) = = NK_IDENTIFIER) {
             let name = getInternedStr(nodeGetData1(targetNode));
             let jsName = jsIdentStmt(name);
             if (!jsName.strEq("__this_param")) {
                 return assign.strConcat(" if (typeof __tuff_this !== 'undefined') __tuff_this.").strConcat(jsName).strConcat(" = ").strConcat(jsName).strConcat(";");
             }
         }
-        if (nodeKind(targetNode) == NK_MEMBER_EXPR) {
+        if (nodeKind(targetNode) = = NK_MEMBER_EXPR) {
             let objNode = nodeGetData1(targetNode);
-            if (nodeKind(objNode) == NK_IDENTIFIER) {
+            if (nodeKind(objNode) = = NK_IDENTIFIER) {
                 let objName = getInternedStr(nodeGetData1(objNode));
                 if (objName.strEq("this")) {
                     let prop = getInternedStr(nodeGetData2(targetNode));
@@ -91,64 +91,64 @@ fn emitStmtLetOrAssign(n: I32) : *Str => {
 }
 fn emitStmtFlow(n: I32) : *Str => {
     let kind = nodeKind(n);
-    if (kind == NK_IMPORT_DECL) {
+    if (kind = = NK_IMPORT_DECL) {
         return "// import placeholder";
     }
-    if (kind == NK_EXPR_STMT) {
+    if (kind = = NK_EXPR_STMT) {
         return emitExpr(nodeGetData1(n)).strConcat(";");
     }
-    if (kind == NK_RETURN_STMT) {
+    if (kind = = NK_RETURN_STMT) {
         let value = nodeGetData1(n);
-        if (value == 0) {
+        if (value = = 0) {
             return "return;";
         }
         return "return ".strConcat(emitExpr(value).strConcat(";"));
     }
-    if (kind == NK_IF_STMT) {
+    if (kind = = NK_IF_STMT) {
         let cond = emitExpr(nodeGetData1(n));
         let thenB = emitBlock(nodeGetData2(n));
         let elseB = nodeGetData3(n);
-        if (elseB == 0) {
+        if (elseB = = 0) {
             return "if (".strConcat(cond).strConcat(") ".strConcat(thenB));
         }
         return strConcat("if (".strConcat(cond).strConcat(") ").strConcat(thenB), " else ".strConcat(emitStmtOrBlock(elseB)));
     }
-    if (kind == NK_IF_EXPR) {
+    if (kind = = NK_IF_EXPR) {
         let cond = emitExpr(nodeGetData1(n));
         let thenB = nodeGetData2(n);
         let elseB = nodeGetData3(n);
         let thenStr = emitStmtOrBlock(thenB);
-        if (elseB == 0) {
+        if (elseB = = 0) {
             return "if (".strConcat(cond).strConcat(") ".strConcat(thenStr));
         }
         return strConcat("if (".strConcat(cond).strConcat(") ").strConcat(thenStr), " else ".strConcat(emitStmtOrBlock(elseB)));
     }
-    if (kind == NK_WHILE_STMT) {
+    if (kind = = NK_WHILE_STMT) {
         return "while (".strConcat(emitExpr(nodeGetData1(n))).strConcat(") ".strConcat(emitBlock(nodeGetData2(n))));
     }
-    if (kind == NK_FOR_STMT) {
+    if (kind = = NK_FOR_STMT) {
         let iter = jsIdentStmt(getInternedStr(nodeGetData1(n)));
         let start = emitExpr(nodeGetData2(n));
         let end = emitExpr(nodeGetData3(n));
         let body = emitBlock(nodeGetData4(n));
         return strConcat(strConcat(strConcat(strConcat("for (let ".strConcat(iter).strConcat(" = ").strConcat(start), "; ".strConcat(iter)), " < ".strConcat(end)), "; ".strConcat(iter.strConcat("++) "))), body);
     }
-    if (kind == NK_LOOP_STMT) {
+    if (kind = = NK_LOOP_STMT) {
         return "while (true) ".strConcat(emitBlock(nodeGetData1(n)));
     }
-    if (kind == NK_BREAK_STMT) {
+    if (kind = = NK_BREAK_STMT) {
         return "break;";
     }
-    if (kind == NK_CONTINUE_STMT) {
+    if (kind = = NK_CONTINUE_STMT) {
         return "continue;";
     }
-    if (kind == NK_INTO_STMT) {
+    if (kind = = NK_INTO_STMT) {
         return "// into ".strConcat(getInternedStr(nodeGetData1(n)));
     }
-    if (kind == NK_LIFETIME_STMT) {
+    if (kind = = NK_LIFETIME_STMT) {
         return emitBlock(nodeGetData2(n));
     }
-    if (kind == NK_BLOCK) {
+    if (kind = = NK_BLOCK) {
         return emitBlock(n);
     }
     ""
@@ -177,7 +177,7 @@ fn emitStmtFnDecl(n: I32) : *Str => {
     let preamble = "";
     let initThis = "";
     let suffix = "";
-    if (hasExplicitThis == 1) {
+    if (hasExplicitThis = = 1) {
         initThis = "let __tuff_this = undefined;\n";
     }
     else {
@@ -195,51 +195,51 @@ fn emitStmtFnDecl(n: I32) : *Str => {
         initThis = "let __tuff_this = { ".strConcat(fields.vecJoin(", ")).strConcat(" };\n");
         suffix = "\nif (typeof __tuff_this !== 'undefined') __tuff_this.".strConcat(name).strConcat(" = ").strConcat(name).strConcat(";");
     }
-    if (nodeKind(body) == NK_BLOCK) {
+    if (nodeKind(body) = = NK_BLOCK) {
         return preamble.strConcat("function ".strConcat(name).strConcat("(".strConcat(paramsStr)).strConcat(") ".strConcat(emitFnBlockWithInit(body, initThis)))).strConcat(suffix);
     }
     preamble.strConcat("function ".strConcat(name).strConcat("(".strConcat(paramsStr)).strConcat(") {\n  ").strConcat(initThis).strConcat("  return ").strConcat(emitExpr(body)).strConcat(";\n}")).strConcat(suffix)
 }
 fn jsIsExternFnDecl(n: I32) : Bool => {
     let kind = nodeKind(n);
-    kind == NK_FN_DECL && nodeGetData5(n) == 0
+    kind = = NK_FN_DECL && nodeGetData5(n) = = 0
 }
 fn emitStmtDecls(n: I32) : *Str => {
     let kind = nodeKind(n);
-    if (kind == NK_EXPECT_FN_DECL) {
+    if (kind = = NK_EXPECT_FN_DECL) {
         return "// expect fn ".strConcat(getInternedStr(nodeGetData1(n)));
     }
     if (jsIsExternFnDecl(n)) {
         return "// extern fn ".strConcat(getInternedStr(nodeGetData1(n)));
     }
-    if (kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL || kind == NK_ACTUAL_FN_DECL) {
+    if (kind = = NK_FN_DECL || kind = = NK_CLASS_FN_DECL || kind = = NK_ACTUAL_FN_DECL) {
         return emitStmtFnDecl(n);
     }
-    if (kind == NK_STRUCT_DECL) {
+    if (kind = = NK_STRUCT_DECL) {
         return jsEmitStructDecl(n);
     }
-    if (kind == NK_TYPE_ALIAS) {
+    if (kind = = NK_TYPE_ALIAS) {
         return "// type ".strConcat(getInternedStr(nodeGetData1(n))).strConcat(" = ...");
     }
-    if (kind == NK_DEP_TYPE_ALIAS) {
+    if (kind = = NK_DEP_TYPE_ALIAS) {
         return "// type ".strConcat(getInternedStr(nodeGetData1(n))).strConcat("(...) = ...");
     }
-    if (kind == NK_ENUM_DECL) {
+    if (kind = = NK_ENUM_DECL) {
         return jsEmitEnumDecl(n);
     }
-    if (kind == NK_OBJECT_DECL) {
+    if (kind = = NK_OBJECT_DECL) {
         return jsEmitObjectDecl(n);
     }
-    if (kind == NK_CONTRACT_DECL) {
+    if (kind = = NK_CONTRACT_DECL) {
         return jsEmitContractDecl(n);
     }
-    if (kind == NK_EXTERN_LET_DECL) {
+    if (kind = = NK_EXTERN_LET_DECL) {
         return "// extern let ".strConcat(getInternedStr(nodeGetData1(n)));
     }
-    if (kind == NK_EXTERN_TYPE_DECL) {
+    if (kind = = NK_EXTERN_TYPE_DECL) {
         return "// extern type ".strConcat(getInternedStr(nodeGetData1(n)));
     }
-    if (kind == NK_EXTERN_IMPORT_DECL) {
+    if (kind = = NK_EXTERN_IMPORT_DECL) {
         let parts = nodeGetData2(n);
         let i = 0;
         let source = "";
@@ -267,7 +267,7 @@ fn emitStmt(n: I32) : *Str => {
     emitStmtDecls(n)
 }
 fn emitStmtOrBlock(n: I32) : *Str => {
-    if (nodeKind(n) == NK_BLOCK) {
+    if (nodeKind(n) = = NK_BLOCK) {
         return emitBlock(n);
     }
     "{ ".strConcat(emitStmt(n).strConcat(" }"))
@@ -291,7 +291,7 @@ fn emitBlock(n: I32) : *Str => {
 fn emitBlockAsIife(n: I32) : *Str => {
     let stmts = nodeGetData1(n);
     let len = stmts.vecLength();
-    if (len == 0) {
+    if (len = = 0) {
         return "(() => undefined)()";
     }
     let sb = sbNew();
@@ -299,14 +299,14 @@ fn emitBlockAsIife(n: I32) : *Str => {
     let i = 0;
     while (i < len) {
         let stmt = stmts.vecGet(i);
-        let isLast = i == len - 1;
+        let isLast = i = = len - 1;
         let kind = nodeKind(stmt);
-        if (isLast && kind == NK_EXPR_STMT) {
+        if (isLast && kind = = NK_EXPR_STMT) {
             sbAppend(sb, "  return ");
             sbAppend(sb, emitExpr(nodeGetData1(stmt)));
             sbAppend(sb, ";\n");
         }
-        else if (isLast && (kind == NK_IF_STMT || kind == NK_IF_EXPR)) {
+        else if (isLast && (kind = = NK_IF_STMT || kind = = NK_IF_EXPR)) {
             sbAppend(sb, "  return ");
             sbAppend(sb, emitIfAsExpr(stmt));
             sbAppend(sb, ";\n");
@@ -330,7 +330,7 @@ fn emitFnBlockWithInit(n: I32, initThis: *Str) : *Str => {
         sbAppend(sb, "  ");
         sbAppend(sb, initThis);
     }
-    if (len == 0) {
+    if (len = = 0) {
         sbAppend(sb, "}");
         return sbBuild(sb);
     }
@@ -339,7 +339,7 @@ fn emitFnBlockWithInit(n: I32, initThis: *Str) : *Str => {
     let si = 0;
     while (si < len) {
         let stmt = stmts.vecGet(si);
-        if (nodeKind(stmt) == NK_TYPE_ALIAS && nodeGetData5(stmt) != 0) {
+        if (nodeKind(stmt) = = NK_TYPE_ALIAS && nodeGetData5(stmt) != 0) {
             let aliasName = getInternedStr(nodeGetData1(stmt));
             let dtorName = getInternedStr(nodeGetData5(stmt));
             dtorTypeMap.mapSet(aliasName, dtorName);
@@ -354,9 +354,9 @@ fn emitFnBlockWithInit(n: I32, initThis: *Str) : *Str => {
     si = 0;
     while (si < len) {
         let stmt = stmts.vecGet(si);
-        if (nodeKind(stmt) == NK_LET_DECL) {
+        if (nodeKind(stmt) = = NK_LET_DECL) {
             let typeNode = nodeGetData2(stmt);
-            if (typeNode != 0 && nodeKind(typeNode) == 40) {
+            if (typeNode != 0 && nodeKind(typeNode) = = 40) {
                 let typeName = getInternedStr(nodeGetData1(typeNode));
                 let localDtor = dtorTypeMap.mapGetOrDefault(typeName, "");
                 let globalDtor = jsGlobalDtorTypeMap.mapGetOrDefault(typeName, "");
@@ -388,9 +388,9 @@ fn emitFnBlockWithInit(n: I32, initThis: *Str) : *Str => {
     let i = 0;
     while (i < len) {
         let stmt = stmts.vecGet(i);
-        let isLast = i == len - 1;
+        let isLast = i = = len - 1;
         let kind = nodeKind(stmt);
-        if (isLast && kind == NK_EXPR_STMT) {
+        if (isLast && kind = = NK_EXPR_STMT) {
             if (!dtorCalls.strEq("")) {
                 sbAppend(sb, "  ");
                 sbAppend(sb, dtorCalls);
@@ -399,7 +399,7 @@ fn emitFnBlockWithInit(n: I32, initThis: *Str) : *Str => {
             sbAppend(sb, emitExpr(nodeGetData1(stmt)));
             sbAppend(sb, ";\n");
         }
-        else if (isLast && (kind == NK_IF_STMT || kind == NK_IF_EXPR)) {
+        else if (isLast && (kind = = NK_IF_STMT || kind = = NK_IF_EXPR)) {
              // Return the result of the if expression
             if (!dtorCalls.strEq("")) {
                 sbAppend(sb, "  ");
@@ -422,7 +422,7 @@ fn emitFnBlockWithInit(n: I32, initThis: *Str) : *Str => {
 fn emitFnBlockWithPreamble(n: I32, preamble: *Str) : *Str => {
     let stmts = nodeGetData1(n);
     let len = stmts.vecLength();
-    if (len == 0) {
+    if (len = = 0) {
         if (preamble.strEq("")) {
             return "{\n}";
         }
@@ -438,14 +438,14 @@ fn emitFnBlockWithPreamble(n: I32, preamble: *Str) : *Str => {
     let i = 0;
     while (i < len) {
         let stmt = stmts.vecGet(i);
-        let isLast = i == len - 1;
+        let isLast = i = = len - 1;
         let kind = nodeKind(stmt);
-        if (isLast && kind == NK_EXPR_STMT) {
+        if (isLast && kind = = NK_EXPR_STMT) {
             sbAppend(sb, "  return ");
             sbAppend(sb, emitExpr(nodeGetData1(stmt)));
             sbAppend(sb, ";\n");
         }
-        else if (isLast && (kind == NK_IF_STMT || kind == NK_IF_EXPR)) {
+        else if (isLast && (kind = = NK_IF_STMT || kind = = NK_IF_EXPR)) {
             sbAppend(sb, "  return ");
             sbAppend(sb, emitIfAsExpr(stmt));
             sbAppend(sb, ";\n");
@@ -475,11 +475,11 @@ fn emitIfAsExpr(n: I32) : *Str => {
 }
 fn emitBranchAsExpr(n: I32) : *Str => {
     let kind = nodeKind(n);
-    if (kind == NK_BLOCK) {
+    if (kind = = NK_BLOCK) {
          // Wrap block in IIFE
         let stmts = nodeGetData1(n);
         let len = stmts.vecLength();
-        if (len == 0) {
+        if (len = = 0) {
             return "undefined";
         }
         let sb = sbNew();
@@ -487,14 +487,14 @@ fn emitBranchAsExpr(n: I32) : *Str => {
         let i = 0;
         while (i < len) {
             let stmt = stmts.vecGet(i);
-            let isLast = i == len - 1;
+            let isLast = i = = len - 1;
             let stmtKind = nodeKind(stmt);
-            if (isLast && stmtKind == NK_EXPR_STMT) {
+            if (isLast && stmtKind = = NK_EXPR_STMT) {
                 sbAppend(sb, "    return ");
                 sbAppend(sb, emitExpr(nodeGetData1(stmt)));
                 sbAppend(sb, ";\n");
             }
-            else if (isLast && (stmtKind == NK_IF_STMT || stmtKind == NK_IF_EXPR)) {
+            else if (isLast && (stmtKind = = NK_IF_STMT || stmtKind = = NK_IF_EXPR)) {
                 sbAppend(sb, "    return ");
                 sbAppend(sb, emitIfAsExpr(stmt));
                 sbAppend(sb, ";\n");
@@ -509,7 +509,7 @@ fn emitBranchAsExpr(n: I32) : *Str => {
         sbAppend(sb, "  })()");
         return sbBuild(sb);
     }
-    if (kind == NK_IF_STMT || kind == NK_IF_EXPR) {
+    if (kind = = NK_IF_STMT || kind = = NK_IF_EXPR) {
         return emitIfAsExpr(n);
     }
     emitExpr(n)
@@ -522,7 +522,7 @@ out fn generateJs(program: I32) : *Str => {
     while (gi < glen) {
         let s = stmts.vecGet(gi);
         let k = nodeKind(s);
-        if ((k == NK_TYPE_ALIAS || k == NK_EXTERN_TYPE_DECL) && nodeGetData5(s) != 0) {
+        if ((k = = NK_TYPE_ALIAS || k = = NK_EXTERN_TYPE_DECL) && nodeGetData5(s) != 0) {
             jsGlobalDtorTypeMap.mapSet(getInternedStr(nodeGetData1(s)), getInternedStr(nodeGetData5(s)));
         }
         gi = gi + 1;

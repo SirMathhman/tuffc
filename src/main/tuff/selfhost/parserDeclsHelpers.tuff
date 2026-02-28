@@ -63,7 +63,7 @@ fn pParseConstraintValueExpr() : I32 => {
 fn pParseGenericConstraintType() : I32 => {
     let typeNode = pParseTypePrimary();
     let startsGenericCallSuffix = false;
-    if (pAt(TK_SYMBOL, ">") && tokKind(pPeek(1)) == TK_SYMBOL) {
+    if (pAt(TK_SYMBOL, ">") && tokKind(pPeek(1)) = = TK_SYMBOL) {
         let nextSym = getIntern(tokValue(pPeek(1)));
         if (nextSym.strEq("(")) {
             startsGenericCallSuffix = true;
@@ -138,9 +138,9 @@ out fn pParseFunction(isClass: I32, mode: I32) : I32 => {
                     pname = pParseIdentifier();
                 }
                 else {
-                    if (nodeKind(ptype) == NK_POINTER_TYPE) {
+                    if (nodeKind(ptype) = = NK_POINTER_TYPE) {
                         let inner = nodeGetData2(ptype);
-                        if (inner != 0 && nodeKind(inner) == NK_NAMED_TYPE) {
+                        if (inner != 0 && nodeKind(inner) = = NK_NAMED_TYPE) {
                             let innerName = nodeGetData1(inner);
                             if (getIntern(innerName).strEq("this")) {
                                 pname = innerName;
@@ -182,7 +182,7 @@ out fn pParseFunction(isClass: I32, mode: I32) : I32 => {
         retType = pParseType();
     }
     let body = 0;
-    if (mode == 1) {
+    if (mode = = 1) {
         pExpect(TK_SYMBOL, ";", "Expected ';' after expect function declaration");
     }
     else {
@@ -200,13 +200,13 @@ out fn pParseFunction(isClass: I32, mode: I32) : I32 => {
         }
     }
     let kind = NK_FN_DECL;
-    if (isClass == 1) {
+    if (isClass = = 1) {
         kind = NK_CLASS_FN_DECL;
     }
-    else if (mode == 1) {
+    else if (mode = = 1) {
         kind = NK_EXPECT_FN_DECL;
     }
-    else if (mode == 2) {
+    else if (mode = = 2) {
         kind = NK_ACTUAL_FN_DECL;
     }
     let node = nodeNew(kind);

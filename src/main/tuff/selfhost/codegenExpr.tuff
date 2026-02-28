@@ -58,7 +58,7 @@ fn cgStripNumSuffix(s: *Str) : *Str => {
 }
 fn emitExprCallInto(n: I32, calleeNode: I32) : *Str => {
     let calleeName = getInternedStr(nodeGetData1(calleeNode));
-    if (!(calleeName.strEq("into") && nodeGetData3(n) == 1)) {
+    if (!(calleeName.strEq("into") && nodeGetData3(n) = = 1)) {
         return "";
     }
     let args = nodeGetData2(n);
@@ -67,7 +67,7 @@ fn emitExprCallInto(n: I32, calleeNode: I32) : *Str => {
     }
     let typeArgs = nodeGetData4(n);
     let contractName = "";
-    if (typeArgs.vecLength() == 1 && nodeKind(typeArgs.vecGet(0)) == NK_NAMED_TYPE) {
+    if (typeArgs.vecLength() = = 1 && nodeKind(typeArgs.vecGet(0)) = = NK_NAMED_TYPE) {
         contractName = getInternedStr(nodeGetData1(typeArgs.vecGet(0)));
     }
     let srcNode = args.vecGet(0);
@@ -77,10 +77,10 @@ fn emitExprCallInto(n: I32, calleeNode: I32) : *Str => {
     if (contractLabel.strEq("")) {
         contractLabel = "<unknown>";
     }
-    if (nodeKind(srcNode) == NK_IDENTIFIER) {
+    if (nodeKind(srcNode) = = NK_IDENTIFIER) {
         consumeSource = getInternedStr(nodeGetData1(srcNode)).strConcat(" = undefined;");
     }
-    if (nodeGetData5(n) == 1) {
+    if (nodeGetData5(n) = = 1) {
         return "(() => { const __src = ".strConcat(src).strConcat("; const __conv = __src?.__into?.[").strConcat("\"").strConcat(contractName).strConcat("\"").strConcat("]; if (!__conv) { throw new Error(\"Missing into converter for ").strConcat(contractLabel).strConcat("\"); } ").strConcat(consumeSource).strConcat(" let __used = false; return (...__intoArgs) => { if (__used) { throw new Error(\"Into converter already consumed for ").strConcat(contractLabel).strConcat("\"); } __used = true; return __conv(...__intoArgs); }; })()");
     }
     let argStrs = vecNew();
@@ -94,7 +94,7 @@ fn emitExprCallInto(n: I32, calleeNode: I32) : *Str => {
     "(() => { const __src = ".strConcat(src).strConcat("; const __conv = __src?.__into?.[").strConcat("\"").strConcat(contractName).strConcat("\"").strConcat("]; if (!__conv) { throw new Error(\"Missing into converter for ").strConcat(contractLabel).strConcat("\"); } const __out = __conv(").strConcat(restArgs).strConcat("); ").strConcat(consumeSource).strConcat(" return __out; })()")
 }
 fn emitExprCallMethod(n: I32, calleeNode: I32) : *Str => {
-    if (!(nodeGetData3(n) == 1 && nodeKind(calleeNode) == NK_IDENTIFIER)) {
+    if (!(nodeGetData3(n) = = 1 && nodeKind(calleeNode) = = NK_IDENTIFIER)) {
         return "";
     }
     let args = nodeGetData2(n);
@@ -130,7 +130,7 @@ fn emitExprCallMethod(n: I32, calleeNode: I32) : *Str => {
 }
 fn emitExprCallExpr(n: I32) : *Str => {
     let calleeNode = nodeGetData1(n);
-    if (nodeKind(calleeNode) == NK_IDENTIFIER && getInternedStr(nodeGetData1(calleeNode)).strEq("drop")) {
+    if (nodeKind(calleeNode) = = NK_IDENTIFIER && getInternedStr(nodeGetData1(calleeNode)).strEq("drop")) {
         return "undefined";
     }
     let intoCall = emitExprCallInto(n, calleeNode);
@@ -190,12 +190,12 @@ fn emitExprStructInit(n: I32) : *Str => {
 }
 fn emitExprComplex(n: I32) : *Str => {
     let kind = nodeKind(n);
-    if (kind == NK_IF_EXPR) {
+    if (kind = = NK_IF_EXPR) {
         let cond = emitExpr(nodeGetData1(n));
         let thenB = nodeGetData2(n);
         let elseB = nodeGetData3(n);
         let thenStr = "";
-        if (nodeKind(thenB) == NK_BLOCK) {
+        if (nodeKind(thenB) = = NK_BLOCK) {
             thenStr = emitBlockAsIife(thenB);
         }
         else {
@@ -203,7 +203,7 @@ fn emitExprComplex(n: I32) : *Str => {
         }
         let elseStr = "undefined";
         if (elseB != 0) {
-            if (nodeKind(elseB) == NK_BLOCK) {
+            if (nodeKind(elseB) = = NK_BLOCK) {
                 elseStr = emitBlockAsIife(elseB);
             }
             else {
@@ -212,7 +212,7 @@ fn emitExprComplex(n: I32) : *Str => {
         }
         return strConcat("((".strConcat(cond).strConcat(") ? ").strConcat(thenStr.strConcat(" : ")), elseStr.strConcat(")"));
     }
-    if (kind == NK_MATCH_EXPR) {
+    if (kind = = NK_MATCH_EXPR) {
         let target = emitExpr(nodeGetData1(n));
         let cases = nodeGetData2(n);
         let sb = sbNew();
@@ -226,7 +226,7 @@ fn emitExprComplex(n: I32) : *Str => {
             let pat = caseNode.vecGet(0);
             let body = caseNode.vecGet(1);
             let guard = emitPatternGuard("__m", pat);
-            if (i == 0) {
+            if (i = = 0) {
                 sbAppend(sb, "if (");
             }
             else {
@@ -237,7 +237,7 @@ fn emitExprComplex(n: I32) : *Str => {
             sbAppend(sb, emitPatternBindings("__m", pat));
             sbAppend(sb, "return ");
             let bodyJs = "";
-            if (nodeKind(body) == NK_BLOCK) {
+            if (nodeKind(body) = = NK_BLOCK) {
                 bodyJs = emitBlock(body);
             }
             else {
@@ -250,13 +250,13 @@ fn emitExprComplex(n: I32) : *Str => {
         sbAppend(sb, "else { throw new Error(\"Non-exhaustive match\"); } })()");
         return sbBuild(sb);
     }
-    if (kind == NK_IS_EXPR) {
+    if (kind = = NK_IS_EXPR) {
         return "(".strConcat(emitPatternGuard(emitExpr(nodeGetData1(n)), nodeGetData2(n))).strConcat(")");
     }
-    if (kind == NK_UNWRAP_EXPR) {
+    if (kind = = NK_UNWRAP_EXPR) {
         return emitExpr(nodeGetData1(n));
     }
-    if (kind == NK_LAMBDA_EXPR) {
+    if (kind = = NK_LAMBDA_EXPR) {
         let params = nodeGetData1(n);
         let body = nodeGetData2(n);
         let pnames = vecNew();
@@ -267,12 +267,12 @@ fn emitExprComplex(n: I32) : *Str => {
             i = i + 1;
         }
         let args = pnames.vecJoin(", ");
-        if (nodeKind(body) == NK_BLOCK) {
+        if (nodeKind(body) = = NK_BLOCK) {
             return "((".strConcat(args).strConcat(") => ").strConcat(emitFnBlock(body)).strConcat(")");
         }
         return "((".strConcat(args).strConcat(") => ").strConcat(emitExpr(body)).strConcat(")");
     }
-    if (kind == NK_FN_EXPR) {
+    if (kind = = NK_FN_EXPR) {
         let fnameIdx = nodeGetData1(n);
         let params = nodeGetData3(n);
         let body = nodeGetData5(n);
@@ -288,7 +288,7 @@ fn emitExprComplex(n: I32) : *Str => {
         if (fnameIdx != 0) {
             namePart = " ".strConcat(getInternedStr(fnameIdx));
         }
-        if (nodeKind(body) == NK_BLOCK) {
+        if (nodeKind(body) = = NK_BLOCK) {
             return "(function".strConcat(namePart).strConcat("(").strConcat(args).strConcat(") ").strConcat(emitFnBlock(body)).strConcat(")");
         }
         return "(function".strConcat(namePart).strConcat("(").strConcat(args).strConcat(") { return ").strConcat(emitExpr(body)).strConcat("; })");
@@ -297,33 +297,33 @@ fn emitExprComplex(n: I32) : *Str => {
 }
 fn emitExpr(n: I32) : *Str => {
     let kind = nodeKind(n);
-    if (kind == NK_NUMBER_LIT) {
+    if (kind = = NK_NUMBER_LIT) {
         let val = nodeGetData1(n);
          // Get the number string, stripping any type suffix for valid JS output
         return cgStripNumSuffix(getInternedStr(val));
     }
-    if (kind == NK_BOOL_LIT) {
+    if (kind = = NK_BOOL_LIT) {
         let val = nodeGetData1(n);
-        if (val == 1) {
+        if (val = = 1) {
             return "true";
         }
         return "false";
     }
-    if (kind == NK_STRING_LIT) {
+    if (kind = = NK_STRING_LIT) {
         let val = nodeGetData1(n);
         let s = getInternedStr(val);
         return "\"".strConcat(s).strConcat("\"");
     }
-    if (kind == NK_CHAR_LIT) {
+    if (kind = = NK_CHAR_LIT) {
         let val = nodeGetData1(n);
         let s = getInternedStr(val);
         return "\"".strConcat(s).strConcat("\"");
     }
-    if (kind == NK_IDENTIFIER) {
+    if (kind = = NK_IDENTIFIER) {
         let nameIdx = nodeGetData1(n);
         return jsIdentExpr(getInternedStr(nameIdx));
     }
-    if (kind == NK_UNARY_EXPR) {
+    if (kind = = NK_UNARY_EXPR) {
         let op = getInternedStr(nodeGetData1(n));
         if (op.strEq("&") || op.strEq("&mut")) {
             return emitExpr(nodeGetData2(n));
@@ -331,7 +331,7 @@ fn emitExpr(n: I32) : *Str => {
         let inner = emitExpr(nodeGetData2(n));
         return "(".strConcat(op).strConcat(inner.strConcat(")"));
     }
-    if (kind == NK_BINARY_EXPR) {
+    if (kind = = NK_BINARY_EXPR) {
         let op = getInternedStr(nodeGetData1(n));
         if (op.strEq("==")) {
             op = "===";
@@ -348,10 +348,10 @@ fn emitExpr(n: I32) : *Str => {
         }
         return strConcat("(".strConcat(left).strConcat(" ".strConcat(op)).strConcat(" ".strConcat(right)), ")");
     }
-    if (kind == NK_CALL_EXPR) {
+    if (kind = = NK_CALL_EXPR) {
         return emitExprCallExpr(n);
     }
-    if (kind == NK_MEMBER_EXPR) {
+    if (kind = = NK_MEMBER_EXPR) {
         let obj = emitExpr(nodeGetData1(n));
         let prop = getInternedStr(nodeGetData2(n));
          // .init on a slice/array emits as .length (JS arrays track initialized count = length)
@@ -360,15 +360,15 @@ fn emitExpr(n: I32) : *Str => {
         }
         return obj.strConcat(".").strConcat(prop);
     }
-    if (kind == NK_INDEX_EXPR) {
+    if (kind = = NK_INDEX_EXPR) {
         let target = emitExpr(nodeGetData1(n));
         let idxExpr = emitExpr(nodeGetData2(n));
         return target.strConcat("[").strConcat(idxExpr).strConcat("]");
     }
-    if (kind == NK_STRUCT_INIT) {
+    if (kind = = NK_STRUCT_INIT) {
         return emitExprStructInit(n);
     }
-    if (kind == NK_TUPLE_EXPR) {
+    if (kind = = NK_TUPLE_EXPR) {
         let items = nodeGetData1(n);
         let parts = vecNew();
         let i = 0;
@@ -387,18 +387,18 @@ fn emitExpr(n: I32) : *Str => {
 }
 fn emitPatternGuard(valueExpr: *Str, pat: I32) : *Str => {
     let kind = nodeKind(pat);
-    if (kind == NK_WILDCARD_PAT) {
+    if (kind = = NK_WILDCARD_PAT) {
         return "true";
     }
-    if (kind == NK_LITERAL_PAT) {
+    if (kind = = NK_LITERAL_PAT) {
         let val = getInternedStr(nodeGetData1(pat));
         return valueExpr.strConcat(" === ").strConcat(val).strConcat("");
     }
-    if (kind == NK_NAME_PAT) {
+    if (kind = = NK_NAME_PAT) {
         let name = getInternedStr(nodeGetData1(pat));
         return strConcat(valueExpr.strConcat(" && ").strConcat(valueExpr).strConcat(".__tag === \""), name.strConcat("\""));
     }
-    if (kind == NK_STRUCT_PAT) {
+    if (kind = = NK_STRUCT_PAT) {
         let name = getInternedStr(nodeGetData1(pat));
         return strConcat(valueExpr.strConcat(" && ").strConcat(valueExpr).strConcat(".__tag === \""), name.strConcat("\""));
     }
@@ -406,7 +406,7 @@ fn emitPatternGuard(valueExpr: *Str, pat: I32) : *Str => {
 }
 fn emitPatternBindings(valueExpr: *Str, pat: I32) : *Str => {
     let kind = nodeKind(pat);
-    if (kind == NK_STRUCT_PAT) {
+    if (kind = = NK_STRUCT_PAT) {
         let fields = nodeGetData2(pat);
         let sb = sbNew();
         let i = 0;
@@ -425,7 +425,7 @@ fn emitPatternBindings(valueExpr: *Str, pat: I32) : *Str => {
         }
         return sbBuild(sb);
     }
-    if (kind == NK_NAME_PAT) {
+    if (kind = = NK_NAME_PAT) {
         let name = getInternedStr(nodeGetData1(pat));
         return "const ".strConcat(name).strConcat(" = ").strConcat(valueExpr.strConcat("; "));
     }

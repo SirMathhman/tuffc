@@ -79,12 +79,12 @@ out fn nodeGetCol(idx: I32) : I32 => tokCol(nodeToks.vecGet(idx));
  // ============================================================================
 let parsePos : I32 = 0;
 let parseExports : *mut Set<*Str> = setNew();
-// Cached symbol IDs for fast comparison
+ // Cached symbol IDs for fast comparison
 let PC_SYM_STAR : I32 = 0;
 let PC_SYM_LBRACKET : I32 = 0;
 let PC_SYM_LPAREN : I32 = 0;
 fn pcInitSymbolCache() : I32 => {
-    if (PC_SYM_STAR == 0) {
+    if (PC_SYM_STAR = = 0) {
         PC_SYM_STAR = internStr("*");
         PC_SYM_LBRACKET = internStr("[");
         PC_SYM_LPAREN = internStr("(");
@@ -128,10 +128,10 @@ out fn pRestore(mark: I32) : I32 => {
     parsePos = mark;
     0
 }
-out fn pAtKind(kind: I32) : Bool => tokKind(pPeek(0)) == kind;
+out fn pAtKind(kind: I32) : Bool => tokKind(pPeek(0)) = = kind;
 out fn pAtValue(val: *Str) : Bool => {
     let v = tokValue(pPeek(0));
-    internMap.mapHas(val) && internMap.mapGet(val) == v
+    internMap.mapHas(val) && internMap.mapGet(val) = = v
 }
 out fn pAt(kind: I32, val: *Str) : Bool => pAtKind(kind) && pAtValue(val);
 out fn pEat() : I32 => {
@@ -140,51 +140,51 @@ out fn pEat() : I32 => {
     t
 }
 fn pTokenKindName(knd: I32) : *Str => {
-    if (knd == TK_EOF) {
+    if (knd = = TK_EOF) {
         return "eof";
     }
-    if (knd == TK_KEYWORD) {
+    if (knd = = TK_KEYWORD) {
         return "keyword";
     }
-    if (knd == TK_IDENTIFIER) {
+    if (knd = = TK_IDENTIFIER) {
         return "identifier";
     }
-    if (knd == TK_NUMBER) {
+    if (knd = = TK_NUMBER) {
         return "number";
     }
-    if (knd == TK_STRING) {
+    if (knd = = TK_STRING) {
         return "string";
     }
-    if (knd == TK_BOOL) {
+    if (knd = = TK_BOOL) {
         return "bool";
     }
-    if (knd == TK_SYMBOL) {
+    if (knd = = TK_SYMBOL) {
         return "symbol";
     }
-    if (knd == TK_CHAR) {
+    if (knd = = TK_CHAR) {
         return "char";
     }
     "token"
 }
 fn pTokenValueForError(t: I32) : *Str => {
     let knd = tokKind(t);
-    if (knd == TK_BOOL) {
-        if (tokValue(t) == 0) {
+    if (knd = = TK_BOOL) {
+        if (tokValue(t) = = 0) {
             return "false";
         }
         return "true";
     }
     if (
-    knd == TK_KEYWORD ||
-    knd == TK_IDENTIFIER ||
-    knd == TK_NUMBER ||
-    knd == TK_STRING ||
-    knd == TK_SYMBOL ||
-    knd == TK_CHAR ||
-    knd == TK_EOF
+    knd = = TK_KEYWORD ||
+    knd = = TK_IDENTIFIER ||
+    knd = = TK_NUMBER ||
+    knd = = TK_STRING ||
+    knd = = TK_SYMBOL ||
+    knd = = TK_CHAR ||
+    knd = = TK_EOF
     ) {
         let raw = getIntern(tokValue(t));
-        if (knd == TK_SYMBOL && raw.strLength() == 0) {
+        if (knd = = TK_SYMBOL && raw.strLength() = = 0) {
             return "<empty-symbol>";
         }
         return raw;
@@ -238,16 +238,14 @@ out fn pErrorWithTokenContext(msg: *Str) : I32 => {
     .strConcat(")"));
     0
 }
-
-// Parse error helpers - dual pattern for Result migration
-// p_panic_loc: For non-Result helper functions - returns I32, panics
+ // Parse error helpers - dual pattern for Result migration
+ // p_panic_loc: For non-Result helper functions - returns I32, panics
 out fn pPanicLoc(code: *Str, message: *Str, reason: *Str, fix: *Str) : I32 => {
     let t = pPeek(0);
     panicWithCodeLoc(code, message, reason, fix, tokLine(t), tokCol(t));
     0
 }
-
-// p_result_error: For Result-returning functions - returns Result<I32, ParseError>
+ // p_result_error: For Result-returning functions - returns Result<I32, ParseError>
 out fn pResultError(code: *Str, message: *Str, reason: *Str, fix: *Str) : Result<I32, ParseError> => {
     let t = pPeek(0);
     let err = ParseError {
@@ -257,10 +255,12 @@ out fn pResultError(code: *Str, message: *Str, reason: *Str, fix: *Str) : Result
         fix: fix,
         line: tokLine(t),
         col: tokCol(t)
-    };
-    Err<ParseError> { error: err }
+    }
+    ;
+    Err<ParseError> {
+        error: err
+    }
 }
-
 out fn pExpectKind(kind: I32, msg: *Str) : I32 => {
     if (!pAtKind(kind)) {
         pErrorWithTokenContext(msg);
@@ -297,12 +297,12 @@ out fn pCanStartTypeTokAt(offset: I32) : Bool => {
     pcInitSymbolCache();
     let idx = pPeek(offset);
     let k = tokKind(idx);
-    if (k == TK_IDENTIFIER) {
+    if (k = = TK_IDENTIFIER) {
         return true;
     }
-    if (k == TK_SYMBOL) {
+    if (k = = TK_SYMBOL) {
         let v = tokValue(idx);
-        if (v == PC_SYM_STAR || v == PC_SYM_LBRACKET || v == PC_SYM_LPAREN) {
+        if (v = = PC_SYM_STAR || v = = PC_SYM_LBRACKET || v = = PC_SYM_LPAREN) {
             return true;
         }
     }
@@ -312,16 +312,16 @@ out fn pCanStartTypeAfterLifetimeTokAt(offset: I32) : Bool => {
     pcInitSymbolCache();
     let idx = pPeek(offset);
     let k = tokKind(idx);
-    if (k == TK_IDENTIFIER) {
+    if (k = = TK_IDENTIFIER) {
         return true;
     }
-    if (k == TK_SYMBOL) {
+    if (k = = TK_SYMBOL) {
         let v = tokValue(idx);
-        if (v == PC_SYM_STAR || v == PC_SYM_LBRACKET || v == PC_SYM_LPAREN) {
+        if (v = = PC_SYM_STAR || v = = PC_SYM_LBRACKET || v = = PC_SYM_LPAREN) {
             return true;
         }
     }
-    if (k == TK_KEYWORD) {
+    if (k = = TK_KEYWORD) {
         let kw = getIntern(tokValue(idx));
         if (kw.strEq("mut") || kw.strEq("move") || kw.strEq("out") || kw.strEq("uninit")) {
             return true;
@@ -356,10 +356,10 @@ out fn pCanStartRefinementExpr() : Bool => {
 out fn pCanStartRefinementExprAt(offset: I32) : Bool => {
     let idx = pPeek(offset);
     let k = tokKind(idx);
-    if (k == TK_NUMBER || k == TK_IDENTIFIER || k == TK_BOOL || k == TK_STRING || k == TK_CHAR) {
+    if (k = = TK_NUMBER || k = = TK_IDENTIFIER || k = = TK_BOOL || k = = TK_STRING || k = = TK_CHAR) {
         return true;
     }
-    if (k == TK_SYMBOL) {
+    if (k = = TK_SYMBOL) {
         let s = getIntern(tokValue(idx));
         if (s.strEq("(") || s.strEq("-") || s.strEq("!")) {
             return true;
@@ -375,17 +375,17 @@ fn pParseTypePrimaryPointer() : I32 => {
     let progressed = true;
     while (progressed) {
         progressed = false;
-        if (mutable == 0 && pAt(TK_KEYWORD, "mut")) {
+        if (mutable = = 0 && pAt(TK_KEYWORD, "mut")) {
             pEat();
             mutable = 1;
             progressed = true;
         }
-        else if (movePtr == 0 && pAt(TK_KEYWORD, "move")) {
+        else if (movePtr = = 0 && pAt(TK_KEYWORD, "move")) {
             pEat();
             movePtr = 1;
             progressed = true;
         }
-        else if (lifeName == 0 && pAtKind(TK_IDENTIFIER) &&
+        else if (lifeName = = 0 && pAtKind(TK_IDENTIFIER) &&
         pCanStartTypeAfterLifetimeTokAt(1)) {
             lifeName = tokValue(pEat());
             progressed = true;
@@ -434,7 +434,7 @@ fn pParseTypePrimaryArray() : I32 => {
     node
 }
 fn pTrySkipNamedTupleMemberLabel() : I32 => {
-    if (tokKind(pPeek(0)) == TK_IDENTIFIER && tokKind(pPeek(1)) == TK_SYMBOL) {
+    if (tokKind(pPeek(0)) = = TK_IDENTIFIER && tokKind(pPeek(1)) = = TK_SYMBOL) {
         let sym = getIntern(tokValue(pPeek(1)));
         if (sym.strEq(":")) {
             pEat();
@@ -477,7 +477,7 @@ fn pParseTypePrimaryNumericSentinel() : I32 => {
         "Only 0 or 0USize is supported as a type-level numeric sentinel",
         "Type-level numeric literals are restricted to zero sentinels",
         "Use 0 or 0USize for type-level numeric sentinels"
-    );
+        );
     }
     let base = nodeNew(NK_NAMED_TYPE);
     nodeSetData1(base, intern("USize"));
@@ -501,7 +501,7 @@ fn pParseTypePrimaryNamedOrApplied() : I32 => {
     if (pAt(TK_SYMBOL, "<")) {
         let k1 = tokKind(pPeek(1));
         let k2 = tokKind(pPeek(2));
-        if (k1 == TK_IDENTIFIER && k2 == TK_SYMBOL) {
+        if (k1 = = TK_IDENTIFIER && k2 = = TK_SYMBOL) {
             let s2 = getIntern(tokValue(pPeek(2)));
             if (s2.strEq(".") || s2.strEq("(")) {
                 wouldBeMemberRefine = true;
@@ -522,7 +522,7 @@ fn pParseTypePrimaryNamedOrApplied() : I32 => {
     let typeNode = nodeNew(NK_NAMED_TYPE);
     nodeSetData1(typeNode, name);
     nodeSetData2(typeNode, generics);
-    if (pAt(TK_SYMBOL, "(") && generics.vecLength() == 0) {
+    if (pAt(TK_SYMBOL, "(") && generics.vecLength() = = 0) {
         pEat();
         let args = vecNew();
         if (!pAt(TK_SYMBOL, ")")) {
@@ -563,7 +563,7 @@ out fn pParseType() : I32 => {
      // Refinement predicate
     let hasRefine = pAt(TK_SYMBOL, "!=") || pAt(TK_SYMBOL, "<") || pAt(TK_SYMBOL, ">") || pAt(TK_SYMBOL, "<=") || pAt(TK_SYMBOL, ">=");
     let startsGenericCallSuffix = false;
-    if (pAt(TK_SYMBOL, ">") && tokKind(pPeek(1)) == TK_SYMBOL) {
+    if (pAt(TK_SYMBOL, ">") && tokKind(pPeek(1)) = = TK_SYMBOL) {
         let nextSym = getIntern(tokValue(pPeek(1)));
         if (nextSym.strEq("(")) {
             startsGenericCallSuffix = true;
@@ -630,7 +630,7 @@ out fn pParsePattern() : I32 => {
         nodeSetData1(node, tokValue(t));
         return node;
     }
-    // Name or struct pattern (supports optional leading 'struct')
+     // Name or struct pattern (supports optional leading 'struct')
     let hasStructKeyword = false;
     if (pAt(TK_KEYWORD, "struct")) {
         pEat();

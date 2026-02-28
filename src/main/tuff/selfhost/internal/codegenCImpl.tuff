@@ -71,7 +71,7 @@ fn ccStrEndsWith(s: *Str, suffix: *Str) : Bool => {
     if (sn < tn) {
         return false;
     }
-    if (sn == tn) {
+    if (sn = = tn) {
         return s.strSlice(0, sn).strEq(suffix);
     }
     false
@@ -186,18 +186,18 @@ fn ccEmitMinimalRuntimePrelude() : *Str => {
  //   Alloc<T>         → transparent; recurse into T
  //   Void             → void
 fn ccTypeToC(typeNode: I32) : *Str => {
-    if (typeNode == 0) {
+    if (typeNode = = 0) {
         return "int64_t";
     }
     let kind = nodeKind(typeNode);
-    if (kind == NK_POINTER_TYPE) {
+    if (kind = = NK_POINTER_TYPE) {
         let inner = nodeGetData2(typeNode);
-        if (inner != 0 && nodeKind(inner) == NK_ARRAY_TYPE) {
+        if (inner != 0 && nodeKind(inner) = = NK_ARRAY_TYPE) {
             return "TuffVec*";
         }
         return "int64_t";
     }
-    if (kind == NK_NAMED_TYPE) {
+    if (kind = = NK_NAMED_TYPE) {
         let name = getInternedStr(nodeGetData1(typeNode));
         if (name.strEq("Void")) {
             return "void";
@@ -222,12 +222,12 @@ fn ccTypeToC(typeNode: I32) : *Str => {
         return "int64_t";
     }
      // NK_REFINEMENT_TYPE (44): erase refinement, lower base type.
-    if (kind == 44) {
+    if (kind = = 44) {
         return ccTypeToC(nodeGetData1(typeNode));
     }
-    // NK_APPLIED_TYPE (71): value-level type application.
-    // Erase value args but preserve nominal base when it is a known concrete type.
-    if (kind == 71) {
+     // NK_APPLIED_TYPE (71): value-level type application.
+     // Erase value args but preserve nominal base when it is a known concrete type.
+    if (kind = = 71) {
         let base = getInternedStr(nodeGetData1(typeNode));
         if (ccUnionAliasInfo.mapHas(base)) {
             return base;
@@ -243,11 +243,11 @@ fn ccTypeToC(typeNode: I32) : *Str => {
     "int64_t"
 }
 fn ccInferExprCtype(n: I32) : *Str => {
-    if (n == 0) {
+    if (n = = 0) {
         return "int64_t";
     }
     let kind = nodeKind(n);
-    if (kind == NK_STRUCT_INIT) {
+    if (kind = = NK_STRUCT_INIT) {
         let vname = getInternedStr(nodeGetData1(n));
         if (ccAliasByVariant.mapHas(vname)) {
             return ccAliasByVariant.mapGet(vname);
@@ -255,9 +255,9 @@ fn ccInferExprCtype(n: I32) : *Str => {
         return vname;
     }
      // malloc / realloc calls produce TuffVec* fat slice pointers
-    if (kind == NK_CALL_EXPR) {
+    if (kind = = NK_CALL_EXPR) {
         let callee = nodeGetData1(n);
-        if (nodeKind(callee) == NK_IDENTIFIER) {
+        if (nodeKind(callee) = = NK_IDENTIFIER) {
             let cname = getInternedStr(nodeGetData1(callee));
             if (cname.strEq("malloc") || cname.strEq("realloc")) {
                 return "TuffVec*";
@@ -278,15 +278,15 @@ fn ccIsStdlibBuiltin(name: *Str) : Bool => {
  // Context Pre-scan
  // ============================================================================
 fn ccFlattenUnionVariants(typeNode: I32, namesVec: Vec<I32>) : I32 => {
-    if (typeNode == 0) {
+    if (typeNode = = 0) {
         return 0;
     }
     let kind = nodeKind(typeNode);
-    if (kind == NK_NAMED_TYPE) {
+    if (kind = = NK_NAMED_TYPE) {
         namesVec.vecPush(getInternedStr(nodeGetData1(typeNode)));
         return 0;
     }
-    if (kind == NK_UNION_TYPE) {
+    if (kind = = NK_UNION_TYPE) {
         ccFlattenUnionVariants(nodeGetData1(typeNode), namesVec);
         ccFlattenUnionVariants(nodeGetData2(typeNode), namesVec);
         return 0;
@@ -300,7 +300,7 @@ fn ccInitContext(program: I32) : I32 => {
     while (i < len) {
         let n = stmts.vecGet(i);
         let kind = nodeKind(n);
-        if (kind == NK_ENUM_DECL) {
+        if (kind = = NK_ENUM_DECL) {
             let enumName = getInternedStr(nodeGetData1(n));
             ccEnumNames.setAdd(enumName);
             let variants = nodeGetData2(n);
@@ -312,7 +312,7 @@ fn ccInitContext(program: I32) : I32 => {
                 j = j + 1;
             }
         }
-        if (kind == NK_STRUCT_DECL) {
+        if (kind = = NK_STRUCT_DECL) {
             let structName = getInternedStr(nodeGetData1(n));
             let fields = nodeGetData3(n);
             let fieldNames = vecNew();
@@ -325,10 +325,10 @@ fn ccInitContext(program: I32) : I32 => {
             }
             ccStructFields.mapSet(structName, fieldNames);
         }
-        if (kind == NK_TYPE_ALIAS) {
+        if (kind = = NK_TYPE_ALIAS) {
             let aliasName = getInternedStr(nodeGetData1(n));
             let aliased = nodeGetData3(n);
-            if (aliased != 0 && nodeKind(aliased) == NK_UNION_TYPE) {
+            if (aliased != 0 && nodeKind(aliased) = = NK_UNION_TYPE) {
                 let variants = vecNew();
                 ccFlattenUnionVariants(aliased, variants);
                 let j = 0;
@@ -341,7 +341,7 @@ fn ccInitContext(program: I32) : I32 => {
                 ccUnionAliasInfo.mapSet(aliasName, variants);
             }
         }
-        if (kind == NK_EXTERN_IMPORT_DECL) {
+        if (kind = = NK_EXTERN_IMPORT_DECL) {
             let names = nodeGetData1(n);
             let j = 0;
             let nlen = names.vecLength();
@@ -357,7 +357,7 @@ fn ccInitContext(program: I32) : I32 => {
     while (i < len) {
         let n = stmts.vecGet(i);
         let kind = nodeKind(n);
-        if (kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL || kind == NK_ACTUAL_FN_DECL) {
+        if (kind = = NK_FN_DECL || kind = = NK_CLASS_FN_DECL || kind = = NK_ACTUAL_FN_DECL) {
             let sourceName = getInternedStr(nodeGetData1(n));
             let cName = ccToName(sourceName);
             let retCtype = ccTypeToC(nodeGetData4(n));
@@ -373,14 +373,14 @@ fn ccInitContext(program: I32) : I32 => {
  // ============================================================================
 fn ccEmitPatternGuard(target: *Str, pat: I32) : *Str => {
     let kind = nodeKind(pat);
-    if (kind == NK_WILDCARD_PAT) {
+    if (kind = = NK_WILDCARD_PAT) {
         return "1";
     }
-    if (kind == NK_LITERAL_PAT) {
+    if (kind = = NK_LITERAL_PAT) {
         let val = getInternedStr(nodeGetData1(pat));
         return "(".strConcat(target).strConcat(" == ").strConcat(val).strConcat(")");
     }
-    if (kind == NK_NAME_PAT) {
+    if (kind = = NK_NAME_PAT) {
         let name = getInternedStr(nodeGetData1(pat));
         if (ccEnumVariantConsts.mapHas(name)) {
             return "(".strConcat(target).strConcat(" == ").strConcat(ccEnumVariantConsts.mapGet(name)).strConcat(")");
@@ -391,7 +391,7 @@ fn ccEmitPatternGuard(target: *Str, pat: I32) : *Str => {
         }
         return "1";
     }
-    if (kind == NK_STRUCT_PAT) {
+    if (kind = = NK_STRUCT_PAT) {
         let name = getInternedStr(nodeGetData1(pat));
         if (ccAliasByVariant.mapHas(name)) {
             let alias = ccAliasByVariant.mapGet(name);
@@ -407,28 +407,28 @@ fn ccEmitPatternGuard(target: *Str, pat: I32) : *Str => {
 fn ccEmitBlockToAssign(blockNode: I32, tmpVar: *Str) : *Str => {
     let stmts = nodeGetData1(blockNode);
     let len = stmts.vecLength();
-    if (len == 0) {
+    if (len = = 0) {
         return tmpVar.strConcat(" = 0;");
     }
     let sb = sbNew();
     let i = 0;
     while (i < len) {
         let stmt = stmts.vecGet(i);
-        let isLast = i == len - 1;
+        let isLast = i = = len - 1;
         let skind = nodeKind(stmt);
-        if (isLast && skind == NK_EXPR_STMT) {
+        if (isLast && skind = = NK_EXPR_STMT) {
             sbAppend(sb, tmpVar);
             sbAppend(sb, " = ");
             sbAppend(sb, ccEmitExpr(nodeGetData1(stmt)));
             sbAppend(sb, ";");
         }
-        else if (isLast && (skind == NK_IF_STMT || skind == NK_IF_EXPR)) {
+        else if (isLast && (skind = = NK_IF_STMT || skind = = NK_IF_EXPR)) {
             sbAppend(sb, tmpVar);
             sbAppend(sb, " = ");
             sbAppend(sb, ccEmitIfAsCExpr(stmt));
             sbAppend(sb, ";");
         }
-        else if (isLast && skind == NK_RETURN_STMT) {
+        else if (isLast && skind = = NK_RETURN_STMT) {
             let val = nodeGetData1(stmt);
             let valCode = "0";
             if (val != 0) {
@@ -458,23 +458,23 @@ fn ccEmitIfAsCExpr(n: I32) : *Str => {
     let elseB = nodeGetData3(n);
     let tmp = ccNextTemp("ifexpr");
     let thenBody = "";
-    if (nodeKind(thenB) == NK_BLOCK) {
+    if (nodeKind(thenB) = = NK_BLOCK) {
         thenBody = ccEmitBlockToAssign(thenB, tmp);
     }
-    else if (nodeKind(thenB) == NK_IF_STMT || nodeKind(thenB) == NK_IF_EXPR) {
+    else if (nodeKind(thenB) = = NK_IF_STMT || nodeKind(thenB) = = NK_IF_EXPR) {
         thenBody = tmp.strConcat(" = ").strConcat(ccEmitIfAsCExpr(thenB)).strConcat(";");
     }
     else {
         thenBody = tmp.strConcat(" = ").strConcat(ccEmitExpr(thenB)).strConcat(";");
     }
     let elseBody = "";
-    if (elseB == 0) {
+    if (elseB = = 0) {
         elseBody = tmp.strConcat(" = 0;");
     }
-    else if (nodeKind(elseB) == NK_BLOCK) {
+    else if (nodeKind(elseB) = = NK_BLOCK) {
         elseBody = ccEmitBlockToAssign(elseB, tmp);
     }
-    else if (nodeKind(elseB) == NK_IF_STMT || nodeKind(elseB) == NK_IF_EXPR) {
+    else if (nodeKind(elseB) = = NK_IF_STMT || nodeKind(elseB) = = NK_IF_EXPR) {
         elseBody = tmp.strConcat(" = ").strConcat(ccEmitIfAsCExpr(elseB)).strConcat(";");
     }
     else {
@@ -503,16 +503,16 @@ fn ccEscapeUnicodeInString(raw: *Str) : *Str => {
 }
 fn ccEmitExpr(n: I32) : *Str => {
     let kind = nodeKind(n);
-    if (kind == NK_NUMBER_LIT) {
+    if (kind = = NK_NUMBER_LIT) {
         return getInternedStr(nodeGetData1(n));
     }
-    if (kind == NK_BOOL_LIT) {
-        if (nodeGetData1(n) == 1) {
+    if (kind = = NK_BOOL_LIT) {
+        if (nodeGetData1(n) = = 1) {
             return "1";
         }
         return "0";
     }
-    if (kind == NK_STRING_LIT) {
+    if (kind = = NK_STRING_LIT) {
         let s = getInternedStr(nodeGetData1(n));
         let sC = s;
         if (ccDisableUnicodeEscape != 1) {
@@ -520,9 +520,9 @@ fn ccEmitExpr(n: I32) : *Str => {
         }
         return "((int64_t)(intptr_t)\"".strConcat(sC).strConcat("\")");
     }
-    if (kind == NK_CHAR_LIT) {
+    if (kind = = NK_CHAR_LIT) {
         let s = getInternedStr(nodeGetData1(n));
-        if (s.strLength() == 1) {
+        if (s.strLength() = = 1) {
             return intToString(charCode(s));
         }
         if (s.strEq("\\n")) {
@@ -539,30 +539,30 @@ fn ccEmitExpr(n: I32) : *Str => {
         }
         return "0";
     }
-    if (kind == NK_IDENTIFIER) {
+    if (kind = = NK_IDENTIFIER) {
         let name = getInternedStr(nodeGetData1(n));
         if (ccEnumVariantConsts.mapHas(name)) {
             return ccEnumVariantConsts.mapGet(name);
         }
         return ccToName(name);
     }
-    if (kind == NK_UNARY_EXPR) {
+    if (kind = = NK_UNARY_EXPR) {
         let op = getInternedStr(nodeGetData1(n));
         if (op.strEq("&") || op.strEq("&mut")) {
             return ccEmitExpr(nodeGetData2(n));
         }
         return "(".strConcat(op).strConcat(ccEmitExpr(nodeGetData2(n))).strConcat(")");
     }
-    if (kind == NK_BINARY_EXPR) {
+    if (kind = = NK_BINARY_EXPR) {
         let op = getInternedStr(nodeGetData1(n));
         let left = ccEmitExpr(nodeGetData2(n));
         let right = ccEmitExpr(nodeGetData3(n));
         return "(".strConcat(left).strConcat(" ").strConcat(op).strConcat(" ").strConcat(right).strConcat(")");
     }
-    if (kind == NK_CALL_EXPR) {
+    if (kind = = NK_CALL_EXPR) {
         let calleeNode = nodeGetData1(n);
          // Special-case built-in transformations
-        if (nodeKind(calleeNode) == NK_IDENTIFIER) {
+        if (nodeKind(calleeNode) = = NK_IDENTIFIER) {
             let calleeName = getInternedStr(nodeGetData1(calleeNode));
              // drop(x) → 0
             if (calleeName.strEq("drop")) {
@@ -685,11 +685,11 @@ fn ccEmitExpr(n: I32) : *Str => {
         let argsStr = argStrs.vecJoin(", ");
         return callee.strConcat("(").strConcat(argsStr).strConcat(")");
     }
-    if (kind == NK_MEMBER_EXPR) {
+    if (kind = = NK_MEMBER_EXPR) {
         let objNode = nodeGetData1(n);
         let prop = getInternedStr(nodeGetData2(n));
          // Enum access: EnumName.Variant → EnumName_Variant
-        if (nodeKind(objNode) == NK_IDENTIFIER) {
+        if (nodeKind(objNode) = = NK_IDENTIFIER) {
             let objName = getInternedStr(nodeGetData1(objNode));
             if (ccEnumNames.setHas(objName)) {
                 return objName.strConcat("_").strConcat(prop);
@@ -702,17 +702,17 @@ fn ccEmitExpr(n: I32) : *Str => {
         let obj = ccEmitExpr(objNode);
         return obj.strConcat(".").strConcat(prop);
     }
-    if (kind == NK_INDEX_EXPR) {
+    if (kind = = NK_INDEX_EXPR) {
         let target = ccEmitExpr(nodeGetData1(n));
         let idx = ccEmitExpr(nodeGetData2(n));
         return target.strConcat("[").strConcat(idx).strConcat("]");
     }
-    if (kind == NK_IF_EXPR) {
+    if (kind = = NK_IF_EXPR) {
         let cond = ccEmitExpr(nodeGetData1(n));
         let thenB = nodeGetData2(n);
         let elseB = nodeGetData3(n);
          // Use GNU statement expression for block branches
-        if (nodeKind(thenB) == NK_BLOCK || (elseB != 0 && nodeKind(elseB) == NK_BLOCK)) {
+        if (nodeKind(thenB) = = NK_BLOCK || (elseB != 0 && nodeKind(elseB) = = NK_BLOCK)) {
             return ccEmitIfAsCExpr(n);
         }
          // Simple ternary
@@ -723,7 +723,7 @@ fn ccEmitExpr(n: I32) : *Str => {
         }
         return "((".strConcat(cond).strConcat(") ? (").strConcat(thenStr).strConcat(") : (").strConcat(elseStr).strConcat("))");
     }
-    if (kind == NK_UNWRAP_EXPR) {
+    if (kind = = NK_UNWRAP_EXPR) {
         let innerNode = nodeGetData1(n);
         let inner = ccEmitExpr(innerNode);
         let rtype = ccInferExprCtype(innerNode);
@@ -732,19 +732,19 @@ fn ccEmitExpr(n: I32) : *Str => {
         }
         let tmp = ccNextTemp("unwrap");
         return "({ ".strConcat(rtype)
-            .strConcat(" ").strConcat(tmp)
-            .strConcat(" = ").strConcat(inner)
-            .strConcat("; if (").strConcat(tmp).strConcat(".__tag == ")
-            .strConcat(rtype).strConcat("_Err) { return ").strConcat(tmp)
-            .strConcat("; } ").strConcat(tmp).strConcat(".value; })");
+        .strConcat(" ").strConcat(tmp)
+        .strConcat(" = ").strConcat(inner)
+        .strConcat("; if (").strConcat(tmp).strConcat(".__tag == ")
+        .strConcat(rtype).strConcat("_Err) { return ").strConcat(tmp)
+        .strConcat("; } ").strConcat(tmp).strConcat(".value; })");
     }
-    if (kind == NK_MATCH_EXPR) {
+    if (kind = = NK_MATCH_EXPR) {
         return ccEmitMatchExpr(n);
     }
-    if (kind == NK_IS_EXPR) {
+    if (kind = = NK_IS_EXPR) {
         let inner = ccEmitExpr(nodeGetData1(n));
         let pat = nodeGetData2(n);
-        if (nodeKind(pat) == NK_NAME_PAT) {
+        if (nodeKind(pat) = = NK_NAME_PAT) {
             let name = getInternedStr(nodeGetData1(pat));
             if (ccAliasByVariant.mapHas(name)) {
                 let alias = ccAliasByVariant.mapGet(name);
@@ -752,7 +752,7 @@ fn ccEmitExpr(n: I32) : *Str => {
             }
             return "((int64_t)(".strConcat(inner).strConcat(") != 0)");
         }
-        if (nodeKind(pat) == NK_STRUCT_PAT) {
+        if (nodeKind(pat) = = NK_STRUCT_PAT) {
             let name = getInternedStr(nodeGetData1(pat));
             if (ccAliasByVariant.mapHas(name)) {
                 let alias = ccAliasByVariant.mapGet(name);
@@ -761,7 +761,7 @@ fn ccEmitExpr(n: I32) : *Str => {
         }
         return "0";
     }
-    if (kind == NK_STRUCT_INIT) {
+    if (kind = = NK_STRUCT_INIT) {
         let name = getInternedStr(nodeGetData1(n));
         if (ccAliasByVariant.mapHas(name)) {
             let alias = ccAliasByVariant.mapGet(name);
@@ -811,10 +811,10 @@ fn ccEmitExpr(n: I32) : *Str => {
         sbAppend(sb, " })");
         return sbBuild(sb);
     }
-    if (kind == NK_LAMBDA_EXPR || kind == NK_FN_EXPR) {
+    if (kind = = NK_LAMBDA_EXPR || kind = = NK_FN_EXPR) {
         return "/* lambda/fn_expr unsupported in C */ 0";
     }
-    if (kind == NK_TUPLE_EXPR) {
+    if (kind = = NK_TUPLE_EXPR) {
         return "/* tuple_expr unsupported in C */ 0";
     }
     "/* unknown_expr */ 0"
@@ -832,13 +832,13 @@ fn ccEmitMatchExpr(n: I32) : *Str => {
         let body = caseNode.vecGet(1);
         let guard = ccEmitPatternGuard(targetStr, pat);
         let bodyStr = "";
-        if (nodeKind(body) == NK_BLOCK) {
+        if (nodeKind(body) = = NK_BLOCK) {
             bodyStr = ccEmitBlockAsExpr(body);
         }
         else {
-            if (nodeKind(pat) == NK_STRUCT_PAT && nodeKind(body) == NK_IDENTIFIER) {
+            if (nodeKind(pat) = = NK_STRUCT_PAT && nodeKind(body) = = NK_IDENTIFIER) {
                 let pfields = nodeGetData2(pat);
-                if (pfields != 0 && pfields.vecLength() == 1) {
+                if (pfields != 0 && pfields.vecLength() = = 1) {
                     let pfield = pfields.vecGet(0);
                     let fieldName = getInternedStr(pfield);
                     let bindName = fieldName;
@@ -882,7 +882,7 @@ fn ccEmitBlock(n: I32) : *Str => {
     sbBuild(sb)
 }
 fn ccEmitStmtOrBlock(n: I32) : *Str => {
-    if (nodeKind(n) == NK_BLOCK) {
+    if (nodeKind(n) = = NK_BLOCK) {
         return ccEmitBlock(n);
     }
     "{ ".strConcat(ccEmitStmt(n)).strConcat(" }")
@@ -892,7 +892,7 @@ fn ccEmitFnBlock(n: I32) : *Str => {
     ccLocalTypes = ccLocalTypes.mapClear();
     let stmts = nodeGetData1(n);
     let len = stmts.vecLength();
-    if (len == 0) {
+    if (len = = 0) {
         return "{\n  return 0;\n}";
     }
     let sb = sbNew();
@@ -900,14 +900,14 @@ fn ccEmitFnBlock(n: I32) : *Str => {
     let i = 0;
     while (i < len) {
         let stmt = stmts.vecGet(i);
-        let isLast = i == len - 1;
+        let isLast = i = = len - 1;
         let skind = nodeKind(stmt);
-        if (isLast && skind == NK_EXPR_STMT) {
+        if (isLast && skind = = NK_EXPR_STMT) {
             sbAppend(sb, "  return ");
             sbAppend(sb, ccEmitExpr(nodeGetData1(stmt)));
             sbAppend(sb, ";\n");
         }
-        else if (isLast && (skind == NK_IF_STMT || skind == NK_IF_EXPR)) {
+        else if (isLast && (skind = = NK_IF_STMT || skind = = NK_IF_EXPR)) {
             sbAppend(sb, "  return ");
             sbAppend(sb, ccEmitIfAsCExpr(stmt));
             sbAppend(sb, ";\n");
@@ -940,7 +940,7 @@ fn ccEmitPrototype(retType: *Str, name: *Str, params: *Str) : *Str => retType.st
 fn ccEmitTypeAlias(n: I32) : *Str => {
     let aliasName = getInternedStr(nodeGetData1(n));
     let aliased = nodeGetData3(n);
-    if (aliased == 0 || nodeKind(aliased) != NK_UNION_TYPE) {
+    if (aliased = = 0 || nodeKind(aliased) != NK_UNION_TYPE) {
         return "/* type ".strConcat(aliasName).strConcat(" = ... */");
     }
     if (!ccUnionAliasInfo.mapHas(aliasName)) {
@@ -1065,11 +1065,11 @@ fn ccEmitTypeAlias(n: I32) : *Str => {
 }
 fn ccIsExternFnDecl(n: I32) : Bool => {
     let kind = nodeKind(n);
-    kind == NK_FN_DECL && nodeGetData5(n) == 0
+    kind = = NK_FN_DECL && nodeGetData5(n) = = 0
 }
 fn ccEmitStmt(n: I32) : *Str => {
     let kind = nodeKind(n);
-    if (kind == NK_LET_DECL) {
+    if (kind = = NK_LET_DECL) {
         let name = ccToName(getInternedStr(nodeGetData1(n)));
         let valNode = nodeGetData3(n);
         let ctype = ccInferExprCtype(valNode);
@@ -1077,65 +1077,65 @@ fn ccEmitStmt(n: I32) : *Str => {
         ccLocalTypes.mapSet(name, ctype);
         return ctype.strConcat(" ").strConcat(name).strConcat(" = ").strConcat(value).strConcat(";");
     }
-    if (kind == NK_IMPORT_DECL) {
+    if (kind = = NK_IMPORT_DECL) {
         return "/* import placeholder */";
     }
-    if (kind == NK_EXPR_STMT) {
+    if (kind = = NK_EXPR_STMT) {
         return ccEmitExpr(nodeGetData1(n)).strConcat(";");
     }
-    if (kind == NK_ASSIGN_STMT) {
+    if (kind = = NK_ASSIGN_STMT) {
         let target = ccEmitExpr(nodeGetData1(n));
         let value = ccEmitExpr(nodeGetData2(n));
         return target.strConcat(" = ").strConcat(value).strConcat(";");
     }
-    if (kind == NK_RETURN_STMT) {
+    if (kind = = NK_RETURN_STMT) {
         let val = nodeGetData1(n);
-        if (val == 0) {
+        if (val = = 0) {
             return "return 0;";
         }
         return "return ".strConcat(ccEmitExpr(val)).strConcat(";");
     }
-    if (kind == NK_IF_STMT || kind == NK_IF_EXPR) {
+    if (kind = = NK_IF_STMT || kind = = NK_IF_EXPR) {
         let cond = ccEmitExpr(nodeGetData1(n));
         let thenB = nodeGetData2(n);
         let elseB = nodeGetData3(n);
         let thenStr = ccEmitStmtOrBlock(thenB);
-        if (elseB == 0) {
+        if (elseB = = 0) {
             return "if (".strConcat(cond).strConcat(") ").strConcat(thenStr);
         }
         return "if (".strConcat(cond).strConcat(") ").strConcat(thenStr).strConcat(" else ").strConcat(ccEmitStmtOrBlock(elseB));
     }
-    if (kind == NK_WHILE_STMT) {
+    if (kind = = NK_WHILE_STMT) {
         let cond = ccEmitExpr(nodeGetData1(n));
         let body = ccEmitBlock(nodeGetData2(n));
         return "while (".strConcat(cond).strConcat(") ").strConcat(body);
     }
-    if (kind == NK_FOR_STMT) {
+    if (kind = = NK_FOR_STMT) {
         let iter = ccToName(getInternedStr(nodeGetData1(n)));
         let start = ccEmitExpr(nodeGetData2(n));
         let end = ccEmitExpr(nodeGetData3(n));
         let body = ccEmitBlock(nodeGetData4(n));
         return "for (int64_t ".strConcat(iter).strConcat(" = ").strConcat(start).strConcat("; ").strConcat(iter).strConcat(" < ").strConcat(end).strConcat("; ").strConcat(iter).strConcat("++) ").strConcat(body);
     }
-    if (kind == NK_LOOP_STMT) {
+    if (kind = = NK_LOOP_STMT) {
         let body = ccEmitBlock(nodeGetData1(n));
         return "while (1) ".strConcat(body);
     }
-    if (kind == NK_BREAK_STMT) {
+    if (kind = = NK_BREAK_STMT) {
         return "break;";
     }
-    if (kind == NK_CONTINUE_STMT) {
+    if (kind = = NK_CONTINUE_STMT) {
         return "continue;";
     }
-    if (kind == NK_INTO_STMT) {
+    if (kind = = NK_INTO_STMT) {
         return "/* into ".strConcat(getInternedStr(nodeGetData1(n))).strConcat(" */");
     }
-    if (kind == NK_LIFETIME_STMT) {
+    if (kind = = NK_LIFETIME_STMT) {
          // Lifetime blocks are compile-time scoping only.
          // At C top level we must not emit a raw "{ ... }" block.
          // Instead, emit the lowered body statements directly.
         let body = nodeGetData2(n);
-        if (body == 0 || nodeKind(body) != NK_BLOCK) {
+        if (body = = 0 || nodeKind(body) != NK_BLOCK) {
             return "";
         }
         let stmts = nodeGetData1(body);
@@ -1154,10 +1154,10 @@ fn ccEmitStmt(n: I32) : *Str => {
         }
         return sbBuild(sb);
     }
-    if (kind == NK_BLOCK) {
+    if (kind = = NK_BLOCK) {
         return ccEmitBlock(n);
     }
-    if (kind == NK_EXPECT_FN_DECL) {
+    if (kind = = NK_EXPECT_FN_DECL) {
         return "/* expect fn ".strConcat(getInternedStr(nodeGetData1(n))).strConcat(" */");
     }
     if (ccIsExternFnDecl(n)) {
@@ -1170,14 +1170,14 @@ fn ccEmitStmt(n: I32) : *Str => {
         let paramsStr = ccEmitParamList(params);
         return ccEmitPrototype("extern ".strConcat(retType), name, paramsStr);
     }
-    if (kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL || kind == NK_ACTUAL_FN_DECL) {
+    if (kind = = NK_FN_DECL || kind = = NK_CLASS_FN_DECL || kind = = NK_ACTUAL_FN_DECL) {
         let sourceName = getInternedStr(nodeGetData1(n));
         let name = ccToName(sourceName);
         let params = nodeGetData3(n);
         let retType = ccTypeToC(nodeGetData4(n));
         let body = nodeGetData5(n);
         let paramsStr = ccEmitParamList(params);
-        if (body == 0) {
+        if (body = = 0) {
             return "/* fn ".strConcat(name).strConcat(" has no body */");
         }
         let prevDisableEscape = ccDisableUnicodeEscape;
@@ -1185,7 +1185,7 @@ fn ccEmitStmt(n: I32) : *Str => {
             ccDisableUnicodeEscape = 1;
         }
         let emitted = "";
-        if (nodeKind(body) == NK_BLOCK) {
+        if (nodeKind(body) = = NK_BLOCK) {
             emitted = retType.strConcat(" ").strConcat(name).strConcat("(").strConcat(paramsStr).strConcat(") ").strConcat(ccEmitFnBlock(body));
         }
         else {
@@ -1194,12 +1194,12 @@ fn ccEmitStmt(n: I32) : *Str => {
         ccDisableUnicodeEscape = prevDisableEscape;
         return emitted;
     }
-    if (kind == NK_STRUCT_DECL) {
+    if (kind = = NK_STRUCT_DECL) {
         let name = getInternedStr(nodeGetData1(n));
         let fields = nodeGetData3(n);
         if (name.strEq("ParseError") || name.strEq("ResolveError") || name.strEq("TypeError") || name.strEq("CodegenError")) {
             let sb = sbNew();
-            if (ccEmittedTuffError == 0) {
+            if (ccEmittedTuffError = = 0) {
                 sbAppend(sb, "typedef struct TuffError { ");
                 let i = 0;
                 let flen = fields.vecLength();
@@ -1244,14 +1244,14 @@ fn ccEmitStmt(n: I32) : *Str => {
         sbAppend(sb, ";");
         return sbBuild(sb);
     }
-    if (kind == NK_TYPE_ALIAS) {
+    if (kind = = NK_TYPE_ALIAS) {
         return ccEmitTypeAlias(n);
     }
-    if (kind == NK_DEP_TYPE_ALIAS) {
+    if (kind = = NK_DEP_TYPE_ALIAS) {
         let name = getInternedStr(nodeGetData1(n));
         return "/* type ".strConcat(name).strConcat("(...) = ... */");
     }
-    if (kind == NK_ENUM_DECL) {
+    if (kind = = NK_ENUM_DECL) {
         let name = getInternedStr(nodeGetData1(n));
         let variants = nodeGetData2(n);
         let sb = sbNew();
@@ -1276,25 +1276,25 @@ fn ccEmitStmt(n: I32) : *Str => {
         sbAppend(sb, ";");
         return sbBuild(sb);
     }
-    if (kind == NK_OBJECT_DECL) {
+    if (kind = = NK_OBJECT_DECL) {
         return "/* object ".strConcat(getInternedStr(nodeGetData1(n))).strConcat(" */");
     }
-    if (kind == NK_CONTRACT_DECL) {
+    if (kind = = NK_CONTRACT_DECL) {
         return "/* contract ".strConcat(getInternedStr(nodeGetData1(n))).strConcat(" */");
     }
-    if (kind == NK_EXTERN_LET_DECL) {
+    if (kind = = NK_EXTERN_LET_DECL) {
         let name = getInternedStr(nodeGetData1(n));
         return "/* extern let ".strConcat(name).strConcat(" */");
     }
-    if (kind == NK_EXTERN_TYPE_DECL) {
+    if (kind = = NK_EXTERN_TYPE_DECL) {
         let name = getInternedStr(nodeGetData1(n));
         return "/* extern type ".strConcat(name).strConcat(" */");
     }
-    if (kind == NK_EXTERN_IMPORT_DECL) {
+    if (kind = = NK_EXTERN_IMPORT_DECL) {
         return "";
     }
      // NK_STMT_LIST (noop from extern let { } = source; parsing) — emit nothing
-    if (kind == NK_STMT_LIST) {
+    if (kind = = NK_STMT_LIST) {
         return "";
     }
     ""
@@ -1363,36 +1363,36 @@ out fn generateCImpl(typed: I32, substrate: *Str) : *Str => {
     let initRows : Vec<*Str> = vecNew();
     let sb = sbNew();
      // ── Preamble: fixed C includes ──────────────────────────────────────────
-    if (ccIncStdint == 1) {
+    if (ccIncStdint = = 1) {
         sbAppend(sb, "#include <stdint.h>\n");
     }
-    if (ccIncStddef == 1) {
+    if (ccIncStddef = = 1) {
         sbAppend(sb, "#include <stddef.h>\n");
     }
-    if (ccIncStdio == 1) {
+    if (ccIncStdio = = 1) {
         sbAppend(sb, "#include <stdio.h>\n");
     }
-    if (ccIncStdlib == 1) {
+    if (ccIncStdlib = = 1) {
         sbAppend(sb, "#include <stdlib.h>\n");
     }
-    if (ccIncString == 1) {
+    if (ccIncString = = 1) {
         sbAppend(sb, "#include <string.h>\n");
     }
-    if (ccIncCtype == 1) {
+    if (ccIncCtype = = 1) {
         sbAppend(sb, "#include <ctype.h>\n");
     }
-    if (ccIncErrno == 1) {
+    if (ccIncErrno = = 1) {
         sbAppend(sb, "#include <errno.h>\n");
     }
     sbAppend(sb, "#ifdef _WIN32\n");
-    if (ccIncDirect == 1) {
+    if (ccIncDirect = = 1) {
         sbAppend(sb, "#include <direct.h>\n");
     }
     sbAppend(sb, "#else\n");
-    if (ccIncSysStat == 1) {
+    if (ccIncSysStat = = 1) {
         sbAppend(sb, "#include <sys/stat.h>\n");
     }
-    if (ccIncSysTypes == 1) {
+    if (ccIncSysTypes = = 1) {
         sbAppend(sb, "#include <sys/types.h>\n");
     }
     sbAppend(sb, "#endif\n\n");
@@ -1413,18 +1413,18 @@ out fn generateCImpl(typed: I32, substrate: *Str) : *Str => {
         let node = stmts.vecGet(i);
         let kind = nodeKind(node);
          // Collect fn nodes for later
-        if (kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL || kind == NK_ACTUAL_FN_DECL) {
+        if (kind = = NK_FN_DECL || kind = = NK_CLASS_FN_DECL || kind = = NK_ACTUAL_FN_DECL) {
             fnNodes.vecPush(node);
             i = i + 1;
             continue;
         }
          // Skip expect fn declarations
-        if (kind == NK_EXPECT_FN_DECL) {
+        if (kind = = NK_EXPECT_FN_DECL) {
             i = i + 1;
             continue;
         }
          // Global let → forward declaration + deferred initializer
-        if (kind == NK_LET_DECL) {
+        if (kind = = NK_LET_DECL) {
             let name = ccToName(getInternedStr(nodeGetData1(node)));
             sbAppend(sb, "int64_t ");
             sbAppend(sb, name);
@@ -1500,36 +1500,36 @@ fn ccEmitSplitSharedHeader(typed: I32, moduleKeys: Vec<*Str>) : *Str => {
     let sb = sbNew();
     sbAppend(sb, "#ifndef TUFF_SHARED_H\n");
     sbAppend(sb, "#define TUFF_SHARED_H\n\n");
-    if (ccIncStdint == 1) {
+    if (ccIncStdint = = 1) {
         sbAppend(sb, "#include <stdint.h>\n");
     }
-    if (ccIncStddef == 1) {
+    if (ccIncStddef = = 1) {
         sbAppend(sb, "#include <stddef.h>\n");
     }
-    if (ccIncStdio == 1) {
+    if (ccIncStdio = = 1) {
         sbAppend(sb, "#include <stdio.h>\n");
     }
-    if (ccIncStdlib == 1) {
+    if (ccIncStdlib = = 1) {
         sbAppend(sb, "#include <stdlib.h>\n");
     }
-    if (ccIncString == 1) {
+    if (ccIncString = = 1) {
         sbAppend(sb, "#include <string.h>\n");
     }
-    if (ccIncCtype == 1) {
+    if (ccIncCtype = = 1) {
         sbAppend(sb, "#include <ctype.h>\n");
     }
-    if (ccIncErrno == 1) {
+    if (ccIncErrno = = 1) {
         sbAppend(sb, "#include <errno.h>\n");
     }
     sbAppend(sb, "#ifdef _WIN32\n");
-    if (ccIncDirect == 1) {
+    if (ccIncDirect = = 1) {
         sbAppend(sb, "#include <direct.h>\n");
     }
     sbAppend(sb, "#else\n");
-    if (ccIncSysStat == 1) {
+    if (ccIncSysStat = = 1) {
         sbAppend(sb, "#include <sys/stat.h>\n");
     }
-    if (ccIncSysTypes == 1) {
+    if (ccIncSysTypes = = 1) {
         sbAppend(sb, "#include <sys/types.h>\n");
     }
     sbAppend(sb, "#endif\n\n");
@@ -1601,7 +1601,7 @@ fn ccEmitSplitSharedHeader(typed: I32, moduleKeys: Vec<*Str>) : *Str => {
     while (i < len) {
         let node = stmts.vecGet(i);
         let kind = nodeKind(node);
-        if (kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL || kind == NK_ACTUAL_FN_DECL || kind == NK_EXPECT_FN_DECL || kind == NK_LET_DECL) {
+        if (kind = = NK_FN_DECL || kind = = NK_CLASS_FN_DECL || kind = = NK_ACTUAL_FN_DECL || kind = = NK_EXPECT_FN_DECL || kind = = NK_LET_DECL) {
             i = i + 1;
             continue;
         }
@@ -1620,7 +1620,7 @@ fn ccEmitSplitSharedHeader(typed: I32, moduleKeys: Vec<*Str>) : *Str => {
     i = 0;
     while (i < len) {
         let node = stmts.vecGet(i);
-        if (nodeKind(node) == NK_LET_DECL) {
+        if (nodeKind(node) = = NK_LET_DECL) {
             let name = ccToName(getInternedStr(nodeGetData1(node)));
             sbAppend(sb, "extern int64_t ");
             sbAppend(sb, name);
@@ -1633,7 +1633,7 @@ fn ccEmitSplitSharedHeader(typed: I32, moduleKeys: Vec<*Str>) : *Str => {
     while (i < len) {
         let fnNode = stmts.vecGet(i);
         let kind = nodeKind(fnNode);
-        if (kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL || kind == NK_ACTUAL_FN_DECL || kind == NK_EXPECT_FN_DECL) {
+        if (kind = = NK_FN_DECL || kind = = NK_CLASS_FN_DECL || kind = = NK_ACTUAL_FN_DECL || kind = = NK_EXPECT_FN_DECL) {
             let fnName = ccToName(getInternedStr(nodeGetData1(fnNode)));
             let paramsStr = ccEmitParamList(nodeGetData3(fnNode));
             let retType = ccTypeToC(nodeGetData4(fnNode));
@@ -1679,7 +1679,7 @@ fn ccEmitSplitModuleSource(typed: I32, moduleKey: *Str, stmtOwners: Vec<*Str>, f
     while (i < len) {
         let owner = ccOwnerKeyForIndex(stmtOwners, i, fallbackKey);
         let node = stmts.vecGet(i);
-        if (owner.strEq(moduleKey) && nodeKind(node) == NK_LET_DECL) {
+        if (owner.strEq(moduleKey) && nodeKind(node) = = NK_LET_DECL) {
             let name = ccToName(getInternedStr(nodeGetData1(node)));
             sbAppend(sb, "int64_t ");
             sbAppend(sb, name);
@@ -1694,7 +1694,7 @@ fn ccEmitSplitModuleSource(typed: I32, moduleKey: *Str, stmtOwners: Vec<*Str>, f
     while (i < len) {
         let owner = ccOwnerKeyForIndex(stmtOwners, i, fallbackKey);
         let node = stmts.vecGet(i);
-        if (owner.strEq(moduleKey) && nodeKind(node) == NK_LET_DECL) {
+        if (owner.strEq(moduleKey) && nodeKind(node) = = NK_LET_DECL) {
             let name = ccToName(getInternedStr(nodeGetData1(node)));
             sbAppend(sb, "  ");
             sbAppend(sb, name);
@@ -1710,7 +1710,7 @@ fn ccEmitSplitModuleSource(typed: I32, moduleKey: *Str, stmtOwners: Vec<*Str>, f
         let owner = ccOwnerKeyForIndex(stmtOwners, i, fallbackKey);
         let fnNode = stmts.vecGet(i);
         let kind = nodeKind(fnNode);
-        if (owner.strEq(moduleKey) && (kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL || kind == NK_ACTUAL_FN_DECL)) {
+        if (owner.strEq(moduleKey) && (kind = = NK_FN_DECL || kind = = NK_CLASS_FN_DECL || kind = = NK_ACTUAL_FN_DECL)) {
             if (nodeGetData5(fnNode) != 0) {
                 sbAppend(sb, ccEmitStmt(fnNode));
                 sbAppend(sb, "\n\n");

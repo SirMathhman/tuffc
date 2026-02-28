@@ -136,10 +136,20 @@ function decodeSelfhostLintIssues(payload): unknown[] {
   const issues = [];
   for (const record of records) {
     if (!record) continue;
-    const [code, message, reason, fix] = record.split("\u001f");
+    const [code, message, reason, fix, sourceMapStr, colStr] =
+      record.split("\u001f");
     if (!code || !message) continue;
+    // sourceMapStr format: "path:Lline" (e.g., "src/main/tuff/selfhost/linter.tuff:L1396")
+    const sourceMapMatch = sourceMapStr
+      ? sourceMapStr.match(/^(.+):L(\d+)$/)
+      : null;
+    const filePath = sourceMapMatch ? sourceMapMatch[1] : undefined;
+    const line = sourceMapMatch ? parseInt(sourceMapMatch[2], 10) : 0;
+    const col = colStr ? parseInt(colStr, 10) : 0;
+    const loc =
+      filePath && line > 0 ? { line, column: col, filePath } : undefined;
     issues.push(
-      new TuffError(message, undefined, {
+      new TuffError(message, loc, {
         code,
         reason:
           reason ??

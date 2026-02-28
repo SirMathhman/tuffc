@@ -17,6 +17,7 @@ Options:
   --fix                     Apply lint auto-fixes
   --config <path>           Explicit config file path (default: discover tuff.json)
   --ast-dup                 Enable AST duplication checks
+  --ast-dup-only            Run only AST duplication checks (ignore other lint issue codes)
   --no-ast-dup              Disable AST duplication checks
   --max-lines <n>           Maximum effective lines per file (default: from config)
   --target <js|c>           Compilation target (default: js)
@@ -35,6 +36,7 @@ interface LintOptions {
   fix: boolean;
   configPath?: string;
   astDup?: boolean;
+  astDupOnly?: boolean;
   maxLines?: number;
   target: string;
 }
@@ -80,6 +82,13 @@ function parseLintArgs(args: string[]): LintOptions | null {
 
     if (arg === "--ast-dup") {
       options.astDup = true;
+      i += 1;
+      continue;
+    }
+
+    if (arg === "--ast-dup-only") {
+      options.astDup = true;
+      options.astDupOnly = true;
       i += 1;
       continue;
     }
@@ -201,7 +210,7 @@ function main(): void {
       lint: {
         enabled: true,
         fix: options.fix,
-        mode: "error", // Lint is always in error mode (strict)
+        mode: "warn",
         maxEffectiveLines: lintConfig.maxEffectiveLines,
         astDupEnabled: lintConfig.astDupEnabled,
       },
@@ -227,12 +236,20 @@ function main(): void {
 
     // Check for lint issues
     const lintIssues = result.value.lintIssues || [];
+    const relevantIssues = options.astDupOnly
+      ? lintIssues.filter(
+          (issue) =>
+            String(issue?.code ?? "") === "E_LINT_AST_DUPLICATE_SUBTREE",
+        )
+      : lintIssues;
 
-    if (lintIssues.length > 0) {
-      for (const issue of lintIssues) {
-        console.log(issue);
+    if (relevantIssues.length > 0) {
+      for (const issue of relevantIssues) {
+        const diagnostic = toDiagnostic(issue);
+        console.log(formatDiagnostic(diagnostic));
+        console.log(); // blank line between issues
       }
-      console.log(`\nFound ${lintIssues.length} lint issue(s).`);
+      console.log(`Found ${relevantIssues.length} lint issue(s).`);
 
       if (options.strict) {
         process.exitCode = 1;

@@ -169,7 +169,7 @@ fn pLeParseConstraintValueExpr() : I32 => {
 fn pLeParseGenericConstraintType() : I32 => {
     let typeNode = pParseTypePrimary();
     let startsGenericCallSuffix = false;
-    if (pAt(TK_SYMBOL, ">") && tokKind(pPeek(1)) == TK_SYMBOL) {
+    if (pAt(TK_SYMBOL, ">") && tokKind(pPeek(1)) = = TK_SYMBOL) {
         let nextSym = getIntern(tokValue(pPeek(1)));
         if (nextSym.strEq("(")) {
             startsGenericCallSuffix = true;
@@ -276,7 +276,10 @@ out fn pParseExternFnDecl() : I32 => {
 }
 out fn pParseExternDecl() : Result<I32, ParseError> => {
     if (pAt(TK_KEYWORD, "fn")) {
-        return Ok<I32> { value: pParseExternFnDecl() };
+        return Ok<I32> {
+            value: pParseExternFnDecl()
+        }
+        ;
     }
     if (pAt(TK_KEYWORD, "let")) {
         pEat();
@@ -302,7 +305,10 @@ out fn pParseExternDecl() : Result<I32, ParseError> => {
             let node = nodeNew(NK_EXTERN_IMPORT_DECL);
             nodeSetData1(node, names);
             nodeSetData2(node, sourceParts);
-            return Ok<I32> { value: node };
+            return Ok<I32> {
+                value: node
+            }
+            ;
         }
         let name = pParseIdentifier();
         let typ = 0;
@@ -314,7 +320,10 @@ out fn pParseExternDecl() : Result<I32, ParseError> => {
         let node = nodeNew(NK_EXTERN_LET_DECL);
         nodeSetData1(node, name);
         nodeSetData2(node, typ);
-        return Ok<I32> { value: node };
+        return Ok<I32> {
+            value: node
+        }
+        ;
     }
     if (pAt(TK_KEYWORD, "type")) {
         pEat();
@@ -330,13 +339,16 @@ out fn pParseExternDecl() : Result<I32, ParseError> => {
         nodeSetData1(node, name);
         nodeSetData2(node, generics);
         nodeSetData5(node, destructorName);
-        return Ok<I32> { value: node };
+        return Ok<I32> {
+            value: node
+        }
+        ;
     }
     return pResultError(
-        "E_PARSE_EXPECTED_TOKEN",
-        "Expected fn, let, or type after extern",
-        "External declarations must be functions, variables, or types",
-        "Add fn, let, or type keyword after extern"
+    "E_PARSE_EXPECTED_TOKEN",
+    "Expected fn, let, or type after extern",
+    "External declarations must be functions, variables, or types",
+    "Add fn, let, or type keyword after extern"
     );
 }
 out fn selfhostParserDeclsLetExternMarker() : I32 => 0;

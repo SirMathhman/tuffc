@@ -101,7 +101,7 @@ out fn Vec<T>() : Option<Vec<T>> => {
     let mut slice : Alloc<*[T;
     0;
     DEFAULT_SIZE]> | 0 = malloc<T, DEFAULT_SIZE>(sizeOf<T>() * DEFAULT_SIZE);
-    if (slice == 0) return None<Vec<T>>;
+    if (slice = = 0) return None<Vec<T>>;
      // Can also be `lifetime a, b, c, d`, etc. for multiple lifetimes.
     lifetime a {
         out fn addLast(*mut a this, element : T) : Option<*mut a Vec<T>> =>
@@ -109,10 +109,10 @@ out fn Vec<T>() : Option<Vec<T>> => {
         out fn set(*mut a this, index : USize <= this.size(), element : T) : Option<*mut a Vec<T>>
         => {
              // We don't need a while here, only an if, because index can never be > this.slice.length
-            if (index == slice.length) {
+            if (index = = slice.length) {
                 let reallocated = realloc<T, slice.length * 2>(slice, sizeOf<T>() * slice.length *
                 2);
-                if (reallocated == 0) return None<*mut a Vec<T>>;
+                if (reallocated = = 0) return None<*mut a Vec<T>>;
                 slice = reallocated;
             }
             slice[index] = element;

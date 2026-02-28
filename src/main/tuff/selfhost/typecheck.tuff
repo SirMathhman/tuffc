@@ -1,6 +1,11 @@
-let { Ok, Err, Result } = selfhost::Result;
-let { TypeError } = selfhost::errors::TypeError;
-
+let {
+    Ok, Err, Result
+}
+ = selfhost::Result;
+let {
+    TypeError
+}
+ = selfhost::errors::TypeError;
 let {
     typecheckProgramWithOptionsImpl, typecheckProgramImpl, selfhostTypecheckImplMarker
 }

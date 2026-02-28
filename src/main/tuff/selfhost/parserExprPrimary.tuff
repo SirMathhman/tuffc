@@ -153,7 +153,7 @@ fn pParsePrimaryFnExpr() : I32 => {
     pParsePostfix(fnexpr)
 }
 fn pTryParseIdentifierLambda() : I32 => {
-    if (!(pAtKind(TK_IDENTIFIER) && tokKind(pPeek(1)) == TK_SYMBOL && getInternedStr(tokValue(pPeek(1))).strEq("=>"))) {
+    if (!(pAtKind(TK_IDENTIFIER) && tokKind(pPeek(1)) = = TK_SYMBOL && getInternedStr(tokValue(pPeek(1))).strEq("=>"))) {
         return 0;
     }
     let pname = pParseIdentifier();
@@ -266,7 +266,7 @@ fn pParsePrimaryIdentifierExpr() : I32 => {
     }
     if (isTypeLike && pAt(TK_SYMBOL, "<")) {
         let gsk = pGenericSuffixKind();
-        if (gsk == 2 || gsk == 3) {
+        if (gsk = = 2 || gsk = = 3) {
             pEat();
             if (!pAt(TK_SYMBOL, ">")) {
                 genericArgs.vecPush(pParseGenericArgValueOrType());

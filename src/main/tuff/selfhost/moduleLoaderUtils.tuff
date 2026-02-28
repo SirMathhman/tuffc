@@ -11,7 +11,7 @@ out fn moduleLoaderSanitizeMaxEffectiveLines(maxEffectiveLines: I32) : I32 => {
     }
 }
 out fn moduleLoaderNormalizeFlag(value: I32) : I32 => {
-    if (value == 0) {
+    if (value = = 0) {
         0
     }
     else {

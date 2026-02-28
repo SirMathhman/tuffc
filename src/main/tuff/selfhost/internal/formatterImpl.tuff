@@ -15,7 +15,7 @@ fn fmtTrimRight(line: *Str) : *Str => {
     let end = line.strLength();
     while (end > 0) {
         let ch = line.strCharAt(end - 1);
-        if (ch == 32 || ch == 9 || ch == 13) {
+        if (ch = = 32 || ch = = 9 || ch = = 13) {
             end = end - 1;
         }
         else {
@@ -27,7 +27,7 @@ fn fmtTrimRight(line: *Str) : *Str => {
 fn fmtCountLeadingCloses(line: *Str) : I32 => {
     let i = 0;
     let len = line.strLength();
-    while (i < len && line.strCharAt(i) == 125) {
+    while (i < len && line.strCharAt(i) = = 125) {
         i = i + 1;
     }
     i
@@ -37,7 +37,7 @@ fn fmtCountChar(line: *Str, target: I32) : I32 => {
     let len = line.strLength();
     let count = 0;
     while (i < len) {
-        if (line.strCharAt(i) == target) {
+        if (line.strCharAt(i) = = target) {
             count = count + 1;
         }
         i = i + 1;
@@ -53,45 +53,45 @@ fn fmtCountStructuralBraces(line: *Str) : Vec<I32> => {
     let inChar = 0;
     while (i < len) {
         let ch = line.strCharAt(i);
-        if (inString == 1) {
-            if (ch == 92 && i + 1 < len) {
+        if (inString = = 1) {
+            if (ch = = 92 && i + 1 < len) {
                 i = i + 2;
                 continue;
             }
-            if (ch == 34) {
+            if (ch = = 34) {
                 inString = 0;
             }
             i = i + 1;
             continue;
         }
-        if (inChar == 1) {
-            if (ch == 92 && i + 1 < len) {
+        if (inChar = = 1) {
+            if (ch = = 92 && i + 1 < len) {
                 i = i + 2;
                 continue;
             }
-            if (ch == 39) {
+            if (ch = = 39) {
                 inChar = 0;
             }
             i = i + 1;
             continue;
         }
-        if (ch == 47 && i + 1 < len && line.strCharAt(i + 1) == 47) {
+        if (ch = = 47 && i + 1 < len && line.strCharAt(i + 1) = = 47) {
             break;
         }
-        if (ch == 34) {
+        if (ch = = 34) {
             inString = 1;
             i = i + 1;
             continue;
         }
-        if (ch == 39) {
+        if (ch = = 39) {
             inChar = 1;
             i = i + 1;
             continue;
         }
-        if (ch == 123) {
+        if (ch = = 123) {
             opens = opens + 1;
         }
-        if (ch == 125) {
+        if (ch = = 125) {
             closes = closes + 1;
         }
         i = i + 1;
@@ -101,12 +101,12 @@ fn fmtCountStructuralBraces(line: *Str) : Vec<I32> => {
     r.vecPush(closes);
     r
 }
-fn fmtIsSpace(ch: I32) : Bool => ch == 32 || ch == 9;
+fn fmtIsSpace(ch: I32) : Bool => ch = = 32 || ch = = 9;
 fn fmtIsIdentChar(ch: I32) : Bool =>
 (ch >= 65 && ch <= 90) ||
 (ch >= 97 && ch <= 122) ||
 (ch >= 48 && ch <= 57) ||
-ch == 95;
+ch = = 95;
 fn fmtPrevNonSpaceChar(text: *Str) : I32 => {
     let i = text.strLength() - 1;
     while (i >= 0) {
@@ -145,49 +145,49 @@ fn fmtNormalizeLineSpacing(line: *Str) : *Str => {
     let inChar = 0;
     while (i < len) {
         let ch = line.strCharAt(i);
-        if (inString == 1) {
+        if (inString = = 1) {
             acc = acc.strConcat(strFromCharCode(0 + ch));
-            if (ch == 92 && i + 1 < len) {
+            if (ch = = 92 && i + 1 < len) {
                 acc = acc.strConcat(strFromCharCode(0 + line.strCharAt(i + 1)));
                 i = i + 2;
                 continue;
             }
-            if (ch == 34) {
+            if (ch = = 34) {
                 inString = 0;
             }
             i = i + 1;
             continue;
         }
-        if (inChar == 1) {
+        if (inChar = = 1) {
             acc = acc.strConcat(strFromCharCode(0 + ch));
-            if (ch == 92 && i + 1 < len) {
+            if (ch = = 92 && i + 1 < len) {
                 acc = acc.strConcat(strFromCharCode(0 + line.strCharAt(i + 1)));
                 i = i + 2;
                 continue;
             }
-            if (ch == 39) {
+            if (ch = = 39) {
                 inChar = 0;
             }
             i = i + 1;
             continue;
         }
-        if (ch == 47 && i + 1 < len && line.strCharAt(i + 1) == 47) {
+        if (ch = = 47 && i + 1 < len && line.strCharAt(i + 1) = = 47) {
             acc = fmtTrimRightSpacesText(acc).strConcat(" ").strConcat(line.strSliceWindow(i, len));
             break;
         }
-        if (ch == 34) {
+        if (ch = = 34) {
             acc = acc.strConcat("\"");
             inString = 1;
             i = i + 1;
             continue;
         }
-        if (ch == 39) {
+        if (ch = = 39) {
             acc = acc.strConcat("'");
             inChar = 1;
             i = i + 1;
             continue;
         }
-        if (ch == 44) {
+        if (ch = = 44) {
             acc = fmtTrimRightSpacesText(acc).strConcat(",");
             let next = fmtNextNonSpaceChar(line, i + 1);
             if (next != 0 && next != 41 && next != 93 && next != 125) {
@@ -196,7 +196,7 @@ fn fmtNormalizeLineSpacing(line: *Str) : *Str => {
             i = i + 1;
             continue;
         }
-        if (ch == 123) {
+        if (ch = = 123) {
             let prev = fmtPrevNonSpaceChar(acc);
             acc = fmtTrimRightSpacesText(acc);
             if (prev != 0 && prev != 123 && prev != 40 && prev != 91) {
@@ -207,9 +207,9 @@ fn fmtNormalizeLineSpacing(line: *Str) : *Str => {
             continue;
         }
         if (
-        ch == 61 &&
-        !(i + 1 < len && (line.strCharAt(i + 1) == 61 || line.strCharAt(i + 1) == 62)) &&
-        !(i > 0 && (line.strCharAt(i - 1) == 33 || line.strCharAt(i - 1) == 60 || line.strCharAt(i - 1) == 62))
+        ch = = 61 &&
+        !(i + 1 < len && (line.strCharAt(i + 1) = = 61 || line.strCharAt(i + 1) = = 62)) &&
+        !(i > 0 && (line.strCharAt(i - 1) = = 33 || line.strCharAt(i - 1) = = 60 || line.strCharAt(i - 1) = = 62))
         ) {
             acc = fmtTrimRightSpacesText(acc).strConcat(" = ");
             i = i + 1;
@@ -218,12 +218,12 @@ fn fmtNormalizeLineSpacing(line: *Str) : *Str => {
             }
             continue;
         }
-        if (ch == 43 || ch == 45 || ch == 47 || ch == 37) {
+        if (ch = = 43 || ch = = 45 || ch = = 47 || ch = = 37) {
             let prev = fmtPrevNonSpaceChar(acc);
             let next = fmtNextNonSpaceChar(line, i + 1);
             let binary =
-            (fmtIsIdentChar(prev) || prev == 41 || prev == 93 || prev == 125 || prev == 34 || prev == 39) &&
-            (fmtIsIdentChar(next) || next == 40 || next == 91 || next == 34 || next == 39);
+            (fmtIsIdentChar(prev) || prev = = 41 || prev = = 93 || prev = = 125 || prev = = 34 || prev = = 39) &&
+            (fmtIsIdentChar(next) || next = = 40 || next = = 91 || next = = 34 || next = = 39);
             if (binary) {
                 acc = fmtTrimRightSpacesText(acc)
                 .strConcat(" ")
@@ -295,91 +295,91 @@ fn fmtStage1Split(source: *Str) : *Str => {
     let inChar = 0;
     while (i < len) {
         let ch = source.strCharAt(i);
-        if (inLineComment == 1) {
+        if (inLineComment = = 1) {
             sink.sbAppendChar(0 + ch);
             i = i + 1;
-            if (ch == 10) {
+            if (ch = = 10) {
                 inLineComment = 0;
             }
             continue;
         }
-        if (inBlockComment == 1) {
+        if (inBlockComment = = 1) {
             sink.sbAppendChar(0 + ch);
             i = i + 1;
-            if (ch == 42 && i < len && source.strCharAt(i) == 47) {
+            if (ch = = 42 && i < len && source.strCharAt(i) = = 47) {
                 sink.sbAppendChar(47);
                 i = i + 1;
                 inBlockComment = 0;
             }
             continue;
         }
-        if (inString == 1) {
+        if (inString = = 1) {
             sink.sbAppendChar(0 + ch);
-            if (ch == 92 && i + 1 < len) {
+            if (ch = = 92 && i + 1 < len) {
                 sink.sbAppendChar(0 + source.strCharAt(i + 1));
                 i = i + 2;
                 continue;
             }
             i = i + 1;
-            if (ch == 34) {
+            if (ch = = 34) {
                 inString = 0;
             }
             continue;
         }
-        if (inChar == 1) {
+        if (inChar = = 1) {
             sink.sbAppendChar(0 + ch);
-            if (ch == 92 && i + 1 < len) {
+            if (ch = = 92 && i + 1 < len) {
                 sink.sbAppendChar(0 + source.strCharAt(i + 1));
                 i = i + 2;
                 continue;
             }
             i = i + 1;
-            if (ch == 39) {
+            if (ch = = 39) {
                 inChar = 0;
             }
             continue;
         }
-        if (ch == 47 && i + 1 < len && source.strCharAt(i + 1) == 47) {
+        if (ch = = 47 && i + 1 < len && source.strCharAt(i + 1) = = 47) {
             sink.sbAppend("//");
             inLineComment = 1;
             i = i + 2;
             continue;
         }
-        if (ch == 47 && i + 1 < len && source.strCharAt(i + 1) == 42) {
+        if (ch = = 47 && i + 1 < len && source.strCharAt(i + 1) = = 42) {
             sink.sbAppend("/*");
             inBlockComment = 1;
             i = i + 2;
             continue;
         }
-        if (ch == 34) {
+        if (ch = = 34) {
             sink.sbAppendChar(0 + ch);
             inString = 1;
             i = i + 1;
             continue;
         }
-        if (ch == 39) {
+        if (ch = = 39) {
             sink.sbAppendChar(0 + ch);
             inChar = 1;
             i = i + 1;
             continue;
         }
-        if (ch == 13) {
+        if (ch = = 13) {
             i = i + 1;
             continue;
         }
-        if (ch == 59) {
+        if (ch = = 59) {
             sink.sbAppendChar(0 + ch);
             sink.sbAppend("\n");
             i = i + 1;
             continue;
         }
-        if (ch == 123) {
+        if (ch = = 123) {
             sink.sbAppendChar(0 + ch);
             sink.sbAppend("\n");
             i = i + 1;
             continue;
         }
-        if (ch == 125) {
+        if (ch = = 125) {
             sink.sbAppend("\n");
             sink.sbAppendChar(0 + ch);
             sink.sbAppend("\n");
@@ -400,11 +400,11 @@ out fn formatTuffSourceImpl(source: *Str) : *Str => {
     let len = stage1.strLength();
     while (i < len) {
         let ch = stage1.strCharAt(i);
-        if (ch == 13) {
+        if (ch = = 13) {
             i = i + 1;
             continue;
         }
-        if (ch == 10) {
+        if (ch = = 10) {
             let line = lineSb.sbBuild();
             lineSb = sbNew();
             indent = fmtEmitProcessedLine(sink, line, indent);
@@ -417,7 +417,7 @@ out fn formatTuffSourceImpl(source: *Str) : *Str => {
     let tail = lineSb.sbBuild();
     fmtEmitProcessedLine(sink, tail, indent);
     let result = sink.sbBuild();
-    if (result.strLength() > 0 && result.strCharAt(result.strLength() - 1) == 10) {
+    if (result.strLength() > 0 && result.strCharAt(result.strLength() - 1) = = 10) {
         return result;
     }
     result.strConcat("\n")

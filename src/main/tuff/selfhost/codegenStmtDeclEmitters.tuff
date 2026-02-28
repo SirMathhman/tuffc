@@ -56,7 +56,7 @@ out fn jsEmitEnumDecl(n: I32) : *Str => {
 out fn jsEmitObjectDecl(n: I32) : *Str => {
     let name = getInternedStr(nodeGetData1(n));
     let inputs = nodeGetData3(n);
-    if (inputs == 0 || inputs.vecLength() == 0) {
+    if (inputs = = 0 || inputs.vecLength() = = 0) {
         return "const ".strConcat(name).strConcat(" = { __tag: \"").strConcat(name).strConcat("\" }; ");
     }
     let sb = sbNew();

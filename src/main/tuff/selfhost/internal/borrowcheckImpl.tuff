@@ -13,7 +13,6 @@ let bcGlobalValueTypes : Map<I32, I32> = mapNew();
 let bcCopyTypes : *mut Set<I32> = setNew();
 let bcCopyAliasTypes : Map<I32, I32> = mapNew();
 let bcCopyAliasNames : Vec<*Str> = vecNew();
-
 let bcDestructorAliases : Map<I32, I32> = mapNew();
 let bcDestructorAliasNames : Vec<*Str> = vecNew();
 fn bcStrEndsWithLocal(s: *Str, suffix: *Str) : Bool => {
@@ -25,17 +24,17 @@ fn bcStrEndsWithLocal(s: *Str, suffix: *Str) : Bool => {
     s.strSliceWindow(ns - nf, ns).strEq(suffix)
 }
 fn bcTypeNameFromTypeNode(t: I32) : *Str => {
-    if (t == 0) {
+    if (t = = 0) {
         return "Unknown";
     }
     let k = nodeKind(t);
-    if (k == NK_NAMED_TYPE) {
+    if (k = = NK_NAMED_TYPE) {
         return getInternedStr(nodeGetData1(t));
     }
-    if (k == NK_REFINEMENT_TYPE) {
+    if (k = = NK_REFINEMENT_TYPE) {
         return bcTypeNameFromTypeNode(nodeGetData1(t));
     }
-    if (k == NK_POINTER_TYPE) {
+    if (k = = NK_POINTER_TYPE) {
         let mutable = nodeGetData1(t);
         let inner = bcTypeNameFromTypeNode(nodeGetData2(t));
         let movePtr = nodeGetData3(t);
@@ -44,15 +43,15 @@ fn bcTypeNameFromTypeNode(t: I32) : *Str => {
         if (lifeIdx != 0) {
             lifePrefix = getInternedStr(lifeIdx).strConcat(" ");
         }
-        if (movePtr == 1) {
+        if (movePtr = = 1) {
             return "*".strConcat(lifePrefix).strConcat("move ").strConcat(inner);
         }
-        if (mutable == 1) {
+        if (mutable = = 1) {
             return "*".strConcat(lifePrefix).strConcat("mut ").strConcat(inner);
         }
         return "*".strConcat(lifePrefix).strConcat(inner);
     }
-    if (k == NK_UNION_TYPE) {
+    if (k = = NK_UNION_TYPE) {
         let left = bcTypeNameFromTypeNode(nodeGetData1(t));
         let right = bcTypeNameFromTypeNode(nodeGetData2(t));
         return left.strConcat("|").strConcat(right);
@@ -95,11 +94,11 @@ fn bcFindCopyAliasType(name: *Str) : I32 => {
 }
 fn bcTypeNodeIsCopyable(t: I32, externTypeNames: *mut Set<I32>, visitingAliases: *mut Set<I32>) : Bool
 => {
-    if (t == 0) {
+    if (t = = 0) {
         return false;
     }
     let k = nodeKind(t);
-    if (k == NK_NAMED_TYPE) {
+    if (k = = NK_NAMED_TYPE) {
         let name = getInternedStr(nodeGetData1(t));
         if (bcDestructorAliases.mapHas(name)) {
             return false;
@@ -128,17 +127,17 @@ fn bcTypeNodeIsCopyable(t: I32, externTypeNames: *mut Set<I32>, visitingAliases:
         }
         return false;
     }
-    if (k == NK_REFINEMENT_TYPE) {
+    if (k = = NK_REFINEMENT_TYPE) {
         return bcTypeNodeIsCopyable(nodeGetData1(t), externTypeNames, visitingAliases);
     }
-    if (k == NK_POINTER_TYPE) {
+    if (k = = NK_POINTER_TYPE) {
         return true;
     }
-    if (k == NK_UNION_TYPE) {
+    if (k = = NK_UNION_TYPE) {
         return bcTypeNodeIsCopyable(nodeGetData1(t), externTypeNames, visitingAliases) &&
         bcTypeNodeIsCopyable(nodeGetData2(t), externTypeNames, visitingAliases);
     }
-    if (k == NK_TUPLE_TYPE) {
+    if (k = = NK_TUPLE_TYPE) {
         let members = nodeGetData1(t);
         let i = 0;
         let len = members.vecLength();
@@ -154,41 +153,41 @@ fn bcTypeNodeIsCopyable(t: I32, externTypeNames: *mut Set<I32>, visitingAliases:
     false
 }
 fn bcTypeNodeIsDestructorReceiver(t: I32, aliasName: *Str) : Bool => {
-    if (t == 0) {
+    if (t = = 0) {
         return false;
     }
      // Preferred form: alias receiver value (e.g. Alloc<...>)
-    if (nodeKind(t) == NK_NAMED_TYPE && getInternedStr(nodeGetData1(t)).strEq(aliasName)) {
+    if (nodeKind(t) = = NK_NAMED_TYPE && getInternedStr(nodeGetData1(t)).strEq(aliasName)) {
         return true;
     }
      // Back-compat: *move Alias
-    if (nodeKind(t) == NK_POINTER_TYPE && nodeGetData3(t) == 1) {
+    if (nodeKind(t) = = NK_POINTER_TYPE && nodeGetData3(t) = = 1) {
         return bcTypeNameFromTypeNode(nodeGetData2(t)).strEq(aliasName);
     }
     false
 }
 fn bcInferExprTypeName(n: I32, envTypes: Map<I32, I32>, fnReturnTypes: Map<I32, I32>) : *Str => {
-    if (n == 0) {
+    if (n = = 0) {
         return "Unknown";
     }
     let kind = nodeKind(n);
-    if (kind == NK_NUMBER_LIT) {
+    if (kind = = NK_NUMBER_LIT) {
         let text = getInternedStr(nodeGetData1(n));
         if (bcStrEndsWithLocal(text, "USize")) {
             return "USize";
         }
         return "I32";
     }
-    if (kind == NK_BOOL_LIT) {
+    if (kind = = NK_BOOL_LIT) {
         return "Bool";
     }
-    if (kind == NK_STRING_LIT) {
+    if (kind = = NK_STRING_LIT) {
         return "*Str";
     }
-    if (kind == NK_CHAR_LIT) {
+    if (kind = = NK_CHAR_LIT) {
         return "Char";
     }
-    if (kind == NK_IDENTIFIER) {
+    if (kind = = NK_IDENTIFIER) {
         let name = getInternedStr(nodeGetData1(n));
         if (envTypes.mapHas(name)) {
             return envTypes.mapGet(name);
@@ -198,7 +197,7 @@ fn bcInferExprTypeName(n: I32, envTypes: Map<I32, I32>, fnReturnTypes: Map<I32, 
         }
         return "Unknown";
     }
-    if (kind == NK_UNARY_EXPR) {
+    if (kind = = NK_UNARY_EXPR) {
         let op = getInternedStr(nodeGetData1(n));
         let inner = bcInferExprTypeName(nodeGetData2(n), envTypes, fnReturnTypes);
         if (op.strEq("&")) {
@@ -212,23 +211,23 @@ fn bcInferExprTypeName(n: I32, envTypes: Map<I32, I32>, fnReturnTypes: Map<I32, 
         }
         return inner;
     }
-    if (kind == NK_BINARY_EXPR) {
+    if (kind = = NK_BINARY_EXPR) {
         let op = getInternedStr(nodeGetData1(n));
         if (op.strEq("==") || op.strEq("!=") || op.strEq("<") || op.strEq("<=") || op.strEq(">") || op.strEq(">=") || op.strEq("&&") || op.strEq("||")) {
             return "Bool";
         }
         return bcInferExprTypeName(nodeGetData2(n), envTypes, fnReturnTypes);
     }
-    if (kind == NK_CALL_EXPR) {
+    if (kind = = NK_CALL_EXPR) {
         let callee = nodeGetData1(n);
-        if (nodeKind(callee) == NK_IDENTIFIER) {
+        if (nodeKind(callee) = = NK_IDENTIFIER) {
             let fname = getInternedStr(nodeGetData1(callee));
             if (fnReturnTypes.mapHas(fname)) {
                 return fnReturnTypes.mapGet(fname);
             }
         }
     }
-    if (kind == NK_STRUCT_INIT) {
+    if (kind = = NK_STRUCT_INIT) {
         return getInternedStr(nodeGetData1(n));
     }
     "Unknown"
@@ -239,19 +238,19 @@ fn placeNew(base: *Str, path: *Str) : Vec<I32> => {
     p.vecPush(path);
     p
 }
-fn placeIsValid(p: Vec<I32>) : Bool => p.vecLength() == 2;
+fn placeIsValid(p: Vec<I32>) : Bool => p.vecLength() = = 2;
 fn placeBase(p: Vec<I32>) : *Str => p.vecGet(0);
 fn placePath(p: Vec<I32>) : *Str => p.vecGet(1);
 fn canonicalPlace(n: I32) : Vec<I32> => {
-    if (n == 0) {
+    if (n = = 0) {
         return vecNew();
     }
     let kind = nodeKind(n);
-    if (kind == NK_IDENTIFIER) {
+    if (kind = = NK_IDENTIFIER) {
         let name = getInternedStr(nodeGetData1(n));
         return placeNew(name, name);
     }
-    if (kind == NK_MEMBER_EXPR) {
+    if (kind = = NK_MEMBER_EXPR) {
         let base = canonicalPlace(nodeGetData1(n));
         if (!placeIsValid(base)) {
             return vecNew();
@@ -259,7 +258,7 @@ fn canonicalPlace(n: I32) : Vec<I32> => {
         let prop = getInternedStr(nodeGetData2(n));
         return placeNew(placeBase(base), placePath(base).strConcat(".").strConcat(prop));
     }
-    if (kind == NK_INDEX_EXPR) {
+    if (kind = = NK_INDEX_EXPR) {
         let base = canonicalPlace(nodeGetData1(n));
         if (!placeIsValid(base)) {
             return vecNew();
@@ -329,7 +328,7 @@ fn stateBeginScope(state: Vec<I32>) : I32 => {
 }
 fn stateEndScope(state: Vec<I32>) : I32 => {
     let starts = stateScopeStarts(state);
-    if (starts.vecLength() == 0) {
+    if (starts.vecLength() = = 0) {
         return 0;
     }
     let start = starts.vecPop();
@@ -384,7 +383,7 @@ fn stateConflictingMutLoan(state: Vec<I32>, base: *Str, path: *Str) : Bool => {
     let len = baseLoans.vecLength();
     while (i < len) {
         let e = baseLoans.vecGet(i);
-        if (e.vecGet(0) == 2) {
+        if (e.vecGet(0) = = 2) {
             let ep = e.vecGet(2);
             if (placesConflict(base, path, base, ep)) {
                 return true;
@@ -400,7 +399,7 @@ fn stateConflictingImmutLoan(state: Vec<I32>, base: *Str, path: *Str) : Bool => 
     let len = baseLoans.vecLength();
     while (i < len) {
         let e = baseLoans.vecGet(i);
-        if (e.vecGet(0) == 1) {
+        if (e.vecGet(0) = = 1) {
             let ep = e.vecGet(2);
             if (placesConflict(base, path, base, ep)) {
                 return true;
@@ -554,23 +553,23 @@ fn consumePlace(expr: I32, state: Vec<I32>, envTypes: Map<I32, I32>, fnReturnTyp
 }
 fn checkExpr(expr: I32, state: Vec<I32>, envTypes: Map<I32, I32>, fnReturnTypes: Map<I32, I32>, externTypeNames: *mut
 Set<I32>, globalFnNames: *mut Set<I32>, mode: *Str) : I32 => {
-    if (expr == 0) {
+    if (expr = = 0) {
         return 0;
     }
     bcCurrentNode = expr;
-    if (mode.strEq("move") && nodeKind(expr) == NK_IDENTIFIER) {
+    if (mode.strEq("move") && nodeKind(expr) = = NK_IDENTIFIER) {
         let nm = getInternedStr(nodeGetData1(expr));
         if (globalFnNames.setHas(nm)) {
             return 0;
         }
     }
-    if (nodeKind(expr) == NK_UNARY_EXPR) {
+    if (nodeKind(expr) = = NK_UNARY_EXPR) {
         let op = getInternedStr(nodeGetData1(expr));
         if (op.strEq("&") || op.strEq("&mut")) {
             let target = nodeGetData2(expr);
             let p = canonicalPlace(target);
             if (!placeIsValid(p)) {
-                if (nodeKind(target) == NK_STRUCT_INIT) {
+                if (nodeKind(target) = = NK_STRUCT_INIT) {
                     checkExpr(target, state, envTypes, fnReturnTypes, externTypeNames, globalFnNames, "read");
                     return 0;
                 }
@@ -599,7 +598,7 @@ Set<I32>, globalFnNames: *mut Set<I32>, mode: *Str) : I32 => {
         }
     }
     let kind = nodeKind(expr);
-    if (kind == NK_IDENTIFIER || kind == NK_MEMBER_EXPR || kind == NK_INDEX_EXPR) {
+    if (kind = = NK_IDENTIFIER || kind = = NK_MEMBER_EXPR || kind = = NK_INDEX_EXPR) {
         if (mode.strEq("read")) {
             ensureReadable(expr, state);
             return 0;
@@ -607,22 +606,22 @@ Set<I32>, globalFnNames: *mut Set<I32>, mode: *Str) : I32 => {
         consumePlace(expr, state, envTypes, fnReturnTypes, externTypeNames);
         return 0;
     }
-    if (kind == NK_NUMBER_LIT || kind == NK_BOOL_LIT || kind == NK_STRING_LIT || kind ==
+    if (kind = = NK_NUMBER_LIT || kind = = NK_BOOL_LIT || kind = = NK_STRING_LIT || kind = =
     NK_CHAR_LIT) {
         return 0;
     }
-    if (kind == NK_UNARY_EXPR) {
+    if (kind = = NK_UNARY_EXPR) {
         checkExpr(nodeGetData2(expr), state, envTypes, fnReturnTypes, externTypeNames, globalFnNames, "read");
         return 0;
     }
-    if (kind == NK_BINARY_EXPR) {
+    if (kind = = NK_BINARY_EXPR) {
         checkExpr(nodeGetData2(expr), state, envTypes, fnReturnTypes, externTypeNames, globalFnNames, "read");
         checkExpr(nodeGetData3(expr), state, envTypes, fnReturnTypes, externTypeNames, globalFnNames, "read");
         return 0;
     }
-    if (kind == NK_CALL_EXPR) {
+    if (kind = = NK_CALL_EXPR) {
         let callee = nodeGetData1(expr);
-        if (nodeKind(callee) == NK_IDENTIFIER && getInternedStr(nodeGetData1(callee)).strEq("drop")) {
+        if (nodeKind(callee) = = NK_IDENTIFIER && getInternedStr(nodeGetData1(callee)).strEq("drop")) {
             let args = nodeGetData2(expr);
             if (args.vecLength() != 1) {
                 panicBorrow( "E_BORROW_INVALID_TARGET", "drop expects exactly one argument",
@@ -654,7 +653,7 @@ Set<I32>, globalFnNames: *mut Set<I32>, mode: *Str) : I32 => {
             stateMovedAdd(state, base);
             return 0;
         }
-        if (nodeKind(callee) == NK_IDENTIFIER && getInternedStr(nodeGetData1(callee)).strEq("into") && nodeGetData3(expr) == 1) {
+        if (nodeKind(callee) = = NK_IDENTIFIER && getInternedStr(nodeGetData1(callee)).strEq("into") && nodeGetData3(expr) = = 1) {
             let args = nodeGetData2(expr);
             if (args.vecLength() >= 1) {
                 let receiver = args.vecGet(0);
@@ -673,7 +672,7 @@ Set<I32>, globalFnNames: *mut Set<I32>, mode: *Str) : I32 => {
             }
             return 0;
         }
-        if (!(nodeKind(callee) == NK_IDENTIFIER &&
+        if (!(nodeKind(callee) = = NK_IDENTIFIER &&
         globalFnNames.setHas(getInternedStr(nodeGetData1(callee))))) {
             checkExpr(callee, state, envTypes, fnReturnTypes, externTypeNames, globalFnNames, "read");
         }
@@ -686,7 +685,7 @@ Set<I32>, globalFnNames: *mut Set<I32>, mode: *Str) : I32 => {
         }
         return 0;
     }
-    if (kind == NK_STRUCT_INIT) {
+    if (kind = = NK_STRUCT_INIT) {
         let fields = nodeGetData2(expr);
         let i = 0;
         let len = fields.vecLength();
@@ -697,7 +696,7 @@ Set<I32>, globalFnNames: *mut Set<I32>, mode: *Str) : I32 => {
         }
         return 0;
     }
-    if (kind == NK_TUPLE_EXPR) {
+    if (kind = = NK_TUPLE_EXPR) {
         let items = nodeGetData1(expr);
         let i = 0;
         let len = items.vecLength();
@@ -707,7 +706,7 @@ Set<I32>, globalFnNames: *mut Set<I32>, mode: *Str) : I32 => {
         }
         return 0;
     }
-    if (kind == NK_IF_EXPR) {
+    if (kind = = NK_IF_EXPR) {
         checkExpr(nodeGetData1(expr), state, envTypes, fnReturnTypes, externTypeNames, globalFnNames, "read");
         let thenState = stateClone(state);
         checkStmt(nodeGetData2(expr), thenState, envTypes, fnReturnTypes, externTypeNames,
@@ -723,7 +722,7 @@ Set<I32>, globalFnNames: *mut Set<I32>, mode: *Str) : I32 => {
         }
         return 0;
     }
-    if (kind == NK_MATCH_EXPR) {
+    if (kind = = NK_MATCH_EXPR) {
         checkExpr(nodeGetData1(expr), state, envTypes, fnReturnTypes, externTypeNames, globalFnNames, "read");
         let cases = nodeGetData2(expr);
         let merged = stateClone(state);
@@ -740,11 +739,11 @@ Set<I32>, globalFnNames: *mut Set<I32>, mode: *Str) : I32 => {
         stateMergeMovedFromBranches(state, merged, state);
         return 0;
     }
-    if (kind == NK_IS_EXPR) {
+    if (kind = = NK_IS_EXPR) {
         checkExpr(nodeGetData1(expr), state, envTypes, fnReturnTypes, externTypeNames, globalFnNames, "read");
         return 0;
     }
-    if (kind == NK_UNWRAP_EXPR) {
+    if (kind = = NK_UNWRAP_EXPR) {
         checkExpr(nodeGetData1(expr), state, envTypes, fnReturnTypes, externTypeNames, globalFnNames, "read");
         return 0;
     }
@@ -753,17 +752,17 @@ Set<I32>, globalFnNames: *mut Set<I32>, mode: *Str) : I32 => {
  // Returns true if the stmt or block definitely diverges (ends with a return).
  // Used to avoid propagating moved-state from dead branches into the parent scope.
 fn bcStmtDiverges(stmt: I32) : Bool => {
-    if (stmt == 0) {
+    if (stmt = = 0) {
         return false;
     }
     let k = nodeKind(stmt);
-    if (k == NK_RETURN_STMT) {
+    if (k = = NK_RETURN_STMT) {
         return true;
     }
-    if (k == NK_BLOCK) {
+    if (k = = NK_BLOCK) {
         let stmts = nodeGetData1(stmt);
         let len = stmts.vecLength();
-        if (len == 0) {
+        if (len = = 0) {
             return false;
         }
         return bcStmtDiverges(stmts.vecGet(len - 1));
@@ -785,17 +784,17 @@ Set<I32>, globalFnNames: *mut Set<I32>) : I32 => {
 }
 fn checkStmt(stmt: I32, state: Vec<I32>, envTypes: Map<I32, I32>, fnReturnTypes: Map<I32, I32>, externTypeNames: *mut
 Set<I32>, globalFnNames: *mut Set<I32>) : I32 => {
-    if (stmt == 0) {
+    if (stmt = = 0) {
         return 0;
     }
     bcCurrentNode = stmt;
     let kind = nodeKind(stmt);
-    if (kind == NK_LET_DECL) {
+    if (kind = = NK_LET_DECL) {
         let rhs = nodeGetData3(stmt);
         let mode = "read";
         let p = canonicalPlace(rhs);
         if (placeIsValid(p)) {
-            if (nodeKind(rhs) == NK_IDENTIFIER) {
+            if (nodeKind(rhs) = = NK_IDENTIFIER) {
                 mode = "move";
             }
             else {
@@ -816,10 +815,10 @@ Set<I32>, globalFnNames: *mut Set<I32>) : I32 => {
         stateDroppedDelete(state, name);
         return 0;
     }
-    if (kind == NK_EXTERN_IMPORT_DECL) {
+    if (kind = = NK_EXTERN_IMPORT_DECL) {
         return 0;
     }
-    if (kind == NK_ASSIGN_STMT) {
+    if (kind = = NK_ASSIGN_STMT) {
         let target = nodeGetData1(stmt);
         let tplace = canonicalPlace(target);
         if (placeIsValid(tplace)) {
@@ -838,18 +837,18 @@ Set<I32>, globalFnNames: *mut Set<I32>) : I32 => {
         }
         checkExpr(rhs, state, envTypes, fnReturnTypes, externTypeNames, globalFnNames,
         mode);
-        if (nodeKind(target) == NK_IDENTIFIER) {
+        if (nodeKind(target) = = NK_IDENTIFIER) {
             let targetName = getInternedStr(nodeGetData1(target));
             stateMovedDelete(state, targetName);
             stateDroppedDelete(state, targetName);
         }
         return 0;
     }
-    if (kind == NK_EXPR_STMT) {
+    if (kind = = NK_EXPR_STMT) {
         checkExpr(nodeGetData1(stmt), state, envTypes, fnReturnTypes, externTypeNames, globalFnNames, "move");
         return 0;
     }
-    if (kind == NK_RETURN_STMT) {
+    if (kind = = NK_RETURN_STMT) {
         let v = nodeGetData1(stmt);
         if (v != 0) {
             let mode = "read";
@@ -861,7 +860,7 @@ Set<I32>, globalFnNames: *mut Set<I32>) : I32 => {
         }
         return 0;
     }
-    if (kind == NK_IF_STMT) {
+    if (kind = = NK_IF_STMT) {
         checkExpr(nodeGetData1(stmt), state, envTypes, fnReturnTypes, externTypeNames, globalFnNames, "read");
         let thenBranch = nodeGetData2(stmt);
         let elseBranch = nodeGetData3(stmt);
@@ -901,7 +900,7 @@ Set<I32>, globalFnNames: *mut Set<I32>) : I32 => {
         }
         return 0;
     }
-    if (kind == NK_FOR_STMT) {
+    if (kind = = NK_FOR_STMT) {
         checkExpr(nodeGetData2(stmt), state, envTypes, fnReturnTypes, externTypeNames, globalFnNames, "read");
         checkExpr(nodeGetData3(stmt), state, envTypes, fnReturnTypes, externTypeNames, globalFnNames, "read");
         stateBeginScope(state);
@@ -911,7 +910,7 @@ Set<I32>, globalFnNames: *mut Set<I32>) : I32 => {
         stateEndScope(state);
         return 0;
     }
-    if (kind == NK_WHILE_STMT) {
+    if (kind = = NK_WHILE_STMT) {
         checkExpr(nodeGetData1(stmt), state, envTypes, fnReturnTypes, externTypeNames, globalFnNames, "read");
         stateBeginScope(state);
         checkStmt(nodeGetData2(stmt), state, envTypes, fnReturnTypes, externTypeNames,
@@ -919,26 +918,26 @@ Set<I32>, globalFnNames: *mut Set<I32>) : I32 => {
         stateEndScope(state);
         return 0;
     }
-    if (kind == NK_LOOP_STMT) {
+    if (kind = = NK_LOOP_STMT) {
         stateBeginScope(state);
         checkStmt(nodeGetData1(stmt), state, envTypes, fnReturnTypes, externTypeNames,
         globalFnNames);
         stateEndScope(state);
         return 0;
     }
-    if (kind == NK_BLOCK) {
+    if (kind = = NK_BLOCK) {
         checkBlock(stmt, state, envTypes, fnReturnTypes, externTypeNames, globalFnNames);
         return 0;
     }
-    if (kind == NK_LIFETIME_STMT) {
+    if (kind = = NK_LIFETIME_STMT) {
         checkStmt(nodeGetData2(stmt), state, envTypes, fnReturnTypes, externTypeNames,
         globalFnNames);
         return 0;
     }
-    if (kind == NK_CONTRACT_DECL || kind == NK_INTO_STMT) {
+    if (kind = = NK_CONTRACT_DECL || kind = = NK_INTO_STMT) {
         return 0;
     }
-    if (kind == NK_FN_DECL) {
+    if (kind = = NK_FN_DECL) {
         let fnState = stateNew();
         let fnEnv = mapNew();
          // inherit global value types
@@ -955,7 +954,7 @@ Set<I32>, globalFnNames: *mut Set<I32>) : I32 => {
             i = i + 1;
         }
         let body = nodeGetData5(stmt);
-        if (nodeKind(body) == NK_BLOCK) {
+        if (nodeKind(body) = = NK_BLOCK) {
             checkBlock(body, fnState, fnEnv, fnReturnTypes, externTypeNames,
             globalFnNames);
         }
@@ -984,36 +983,36 @@ out fn borrowcheckProgramImpl(program: I32) : I32 => {
     while (i < len) {
         let stmt = body.vecGet(i);
         let kind = nodeKind(stmt);
-        if (kind == NK_EXTERN_TYPE_DECL) {
+        if (kind = = NK_EXTERN_TYPE_DECL) {
             externTypeNames.setAdd(getInternedStr(nodeGetData1(stmt)));
         }
-        if (kind == NK_FN_DECL) {
+        if (kind = = NK_FN_DECL) {
             let fname = getInternedStr(nodeGetData1(stmt));
             globalFnNames.setAdd(fname);
             fnReturnTypes.mapSet(fname, bcTypeNameFromTypeNode(nodeGetData4(stmt)));
         }
-        if (kind == NK_LET_DECL || kind == NK_EXTERN_LET_DECL) {
+        if (kind = = NK_LET_DECL || kind = = NK_EXTERN_LET_DECL) {
             globalTypeByName.mapSet(getInternedStr(nodeGetData1(stmt)),
             bcTypeNameFromTypeNode(nodeGetData2(stmt)));
         }
-        if (kind == NK_ENUM_DECL) {
+        if (kind = = NK_ENUM_DECL) {
             bcCopyTypes.setAdd(getInternedStr(nodeGetData1(stmt)));
         }
-        if (kind == NK_STRUCT_DECL && nodeGetData4(stmt) == 1) {
+        if (kind = = NK_STRUCT_DECL && nodeGetData4(stmt) = = 1) {
             bcCopyTypes.setAdd(getInternedStr(nodeGetData1(stmt)));
         }
-        if (kind == NK_TYPE_ALIAS && nodeGetData4(stmt) == 1) {
+        if (kind = = NK_TYPE_ALIAS && nodeGetData4(stmt) = = 1) {
             let aliasName = getInternedStr(nodeGetData1(stmt));
             bcCopyAliasNames.vecPush(aliasName);
             bcCopyAliasTypes.mapSet(aliasName, nodeGetData3(stmt));
         }
-        if (kind == NK_TYPE_ALIAS && nodeGetData5(stmt) != 0) {
+        if (kind = = NK_TYPE_ALIAS && nodeGetData5(stmt) != 0) {
             let aliasName = getInternedStr(nodeGetData1(stmt));
             let destructorName = getInternedStr(nodeGetData5(stmt));
             bcDestructorAliases.mapSet(aliasName, destructorName);
             bcDestructorAliasNames.vecPush(aliasName);
         }
-        if (kind == NK_EXTERN_TYPE_DECL && nodeGetData5(stmt) != 0) {
+        if (kind = = NK_EXTERN_TYPE_DECL && nodeGetData5(stmt) != 0) {
             let aliasName = getInternedStr(nodeGetData1(stmt));
             let destructorName = getInternedStr(nodeGetData5(stmt));
             bcDestructorAliases.mapSet(aliasName, destructorName);
@@ -1032,7 +1031,7 @@ out fn borrowcheckProgramImpl(program: I32) : I32 => {
         while (j < len) {
             let stmt = body.vecGet(j);
             let sk = nodeKind(stmt);
-            if ((sk == NK_FN_DECL) &&
+            if ((sk = = NK_FN_DECL) &&
             getInternedStr(nodeGetData1(stmt)).strEq(destructorName)) {
                 found = true;
                 let valid = true;

@@ -1,18 +1,16 @@
-// Resolver error type for name resolution failures
-// Used when linking identifiers to declarations
-
+ // Resolver error type for name resolution failures
+ // Used when linking identifiers to declarations
 out struct ResolveError {
-    code: *Str,      // Error code (E_RESOLVE_*)
-    message: *Str,   // User-facing error summary
-    reason: *Str,    // Why this is an error (educational)
-    fix: *Str,       // How to fix it (actionable)
-    line: I32,       // Source line number
-    col: I32         // Source column number
+    code: *Str, // Error code (E_RESOLVE_*)
+    message: *Str, // User-facing error summary
+    reason: *Str, // Why this is an error (educational)
+    fix: *Str, // How to fix it (actionable)
+    line: I32, // Source line number
+    col: I32 // Source column number
 }
-
-// Common resolver error codes:
-// - E_RESOLVE_UNKNOWN_IDENTIFIER: Identifier not found in scope
-// - E_RESOLVE_DUPLICATE_DECLARATION: Name already declared
-// - E_RESOLVE_AMBIGUOUS_REFERENCE: Multiple candidates for name
-// - E_RESOLVE_PRIVATE_ACCESS: Attempted access to private member
-// - E_RESOLVE_TYPE_NOT_FOUND: Type name not found
+ // Common resolver error codes:
+ // - E_RESOLVE_UNKNOWN_IDENTIFIER: Identifier not found in scope
+ // - E_RESOLVE_DUPLICATE_DECLARATION: Name already declared
+ // - E_RESOLVE_AMBIGUOUS_REFERENCE: Multiple candidates for name
+ // - E_RESOLVE_PRIVATE_ACCESS: Attempted access to private member
+ // - E_RESOLVE_TYPE_NOT_FOUND: Type name not found
