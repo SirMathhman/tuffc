@@ -509,76 +509,73 @@ fn resolveStmt(n: I32, globals: *mut Set<I32>, scopes: Vec<I32>, depth: I32) : R
     resolveStmtTotalCalls = resolveStmtTotalCalls + 1;
     rslvCurrentNode = n;
     let kind = nodeKind(n);
+    let resultValue : I32 = 0;
+    let catName : *Str = "";
+    
+     // Dispatch by kind: each branch sets category and executes logic
     if (kind == NK_BLOCK) {
-        let v = resolveStmtBlock(n, globals, scopes, depth)?;
-        let dt = perfNow() - stmtT0;
-        resolveStmtTotalMs = resolveStmtTotalMs + dt;
-        resolveStmtBlockCalls = resolveStmtBlockCalls + 1;
-        resolveStmtBlockMs = resolveStmtBlockMs + dt;
-        return Ok<I32> { value: v };
+        resultValue = resolveStmtBlock(n, globals, scopes, depth)?;
+        catName = "block";
     }
-    if (kind == NK_EXPECT_FN_DECL) {
-        let dt = perfNow() - stmtT0;
-        resolveStmtTotalMs = resolveStmtTotalMs + dt;
-        resolveStmtDeclSkipCalls = resolveStmtDeclSkipCalls + 1;
-        resolveStmtDeclSkipMs = resolveStmtDeclSkipMs + dt;
-        return Ok<I32> { value: 0 };
+    else if (kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL || kind == NK_ACTUAL_FN_DECL) {
+        resultValue = resolveStmtFnDecl(n, globals, scopes, depth)?;
+        catName = "fn";
     }
-    if (kind == NK_CONTRACT_DECL) {
-        let dt = perfNow() - stmtT0;
-        resolveStmtTotalMs = resolveStmtTotalMs + dt;
-        resolveStmtDeclSkipCalls = resolveStmtDeclSkipCalls + 1;
-        resolveStmtDeclSkipMs = resolveStmtDeclSkipMs + dt;
-        return Ok<I32> { value: 0 };
+    else if (resolveStmtLetOrImport(n, globals, scopes, depth)? == 1) {
+        catName = "let";
     }
-    if (kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL || kind == NK_ACTUAL_FN_DECL) {
-        let v = resolveStmtFnDecl(n, globals, scopes, depth)?;
-        let dt = perfNow() - stmtT0;
-        resolveStmtTotalMs = resolveStmtTotalMs + dt;
-        resolveStmtFnCalls = resolveStmtFnCalls + 1;
-        resolveStmtFnMs = resolveStmtFnMs + dt;
-        return Ok<I32> { value: v };
+    else if (resolveStmtFlow(n, globals, scopes, depth)? == 1) {
+        catName = "flow";
     }
-    if (resolveStmtLetOrImport(n, globals, scopes, depth)? == 1) {
-        let dt = perfNow() - stmtT0;
-        resolveStmtTotalMs = resolveStmtTotalMs + dt;
-        resolveStmtLetImportCalls = resolveStmtLetImportCalls + 1;
-        resolveStmtLetImportMs = resolveStmtLetImportMs + dt;
-        return Ok<I32> { value: 0 };
+    else if (resolveStmtLifetimeOrInto(n, globals, scopes, depth)? == 1) {
+        catName = "lifetime";
     }
-    if (resolveStmtFlow(n, globals, scopes, depth)? == 1) {
-        let dt = perfNow() - stmtT0;
-        resolveStmtTotalMs = resolveStmtTotalMs + dt;
-        resolveStmtFlowCalls = resolveStmtFlowCalls + 1;
-        resolveStmtFlowMs = resolveStmtFlowMs + dt;
-        return Ok<I32> { value: 0 };
-    }
-    if (resolveStmtLifetimeOrInto(n, globals, scopes, depth)? == 1) {
-        let dt = perfNow() - stmtT0;
-        resolveStmtTotalMs = resolveStmtTotalMs + dt;
-        resolveStmtLifetimeIntoCalls = resolveStmtLifetimeIntoCalls + 1;
-        resolveStmtLifetimeIntoMs = resolveStmtLifetimeIntoMs + dt;
-        return Ok<I32> { value: 0 };
-    }
-    if (kind == NK_TYPE_ALIAS || kind == NK_DEP_TYPE_ALIAS ||
+    else if (kind == NK_TYPE_ALIAS || kind == NK_DEP_TYPE_ALIAS ||
     kind == NK_STRUCT_DECL || kind == NK_ENUM_DECL ||
     kind == NK_EXTERN_LET_DECL ||
     kind == NK_EXTERN_TYPE_DECL || kind == NK_EXTERN_IMPORT_DECL ||
     kind == NK_OBJECT_DECL || kind == NK_CONTRACT_DECL ||
     kind == NK_EXPECT_FN_DECL) {
-        let dt = perfNow() - stmtT0;
-        resolveStmtTotalMs = resolveStmtTotalMs + dt;
-        resolveStmtDeclSkipCalls = resolveStmtDeclSkipCalls + 1;
-        resolveStmtDeclSkipMs = resolveStmtDeclSkipMs + dt;
-        return Ok<I32> { value: 0 };
+        catName = "decl";
     }
-     // Fallback: treat unmatched nodes as expressions.
-    resolveExpr(n, globals, scopes, depth)?;
+    else {
+         // Fallback: treat unmatched nodes as expressions.
+        resolveExpr(n, globals, scopes, depth)?;
+        catName = "expr";
+    }
+    
+     // Single timing accumulation point (eliminates 7-8 redundant perfNow calls)
     let dt = perfNow() - stmtT0;
     resolveStmtTotalMs = resolveStmtTotalMs + dt;
-    resolveStmtFallbackExprCalls = resolveStmtFallbackExprCalls + 1;
-    resolveStmtFallbackExprMs = resolveStmtFallbackExprMs + dt;
-    Ok<I32> { value: 0 }
+    if (catName.strEq("block")) {
+        resolveStmtBlockCalls = resolveStmtBlockCalls + 1;
+        resolveStmtBlockMs = resolveStmtBlockMs + dt;
+    }
+    else if (catName.strEq("fn")) {
+        resolveStmtFnCalls = resolveStmtFnCalls + 1;
+        resolveStmtFnMs = resolveStmtFnMs + dt;
+    }
+    else if (catName.strEq("let")) {
+        resolveStmtLetImportCalls = resolveStmtLetImportCalls + 1;
+        resolveStmtLetImportMs = resolveStmtLetImportMs + dt;
+    }
+    else if (catName.strEq("flow")) {
+        resolveStmtFlowCalls = resolveStmtFlowCalls + 1;
+        resolveStmtFlowMs = resolveStmtFlowMs + dt;
+    }
+    else if (catName.strEq("lifetime")) {
+        resolveStmtLifetimeIntoCalls = resolveStmtLifetimeIntoCalls + 1;
+        resolveStmtLifetimeIntoMs = resolveStmtLifetimeIntoMs + dt;
+    }
+    else if (catName.strEq("decl")) {
+        resolveStmtDeclSkipCalls = resolveStmtDeclSkipCalls + 1;
+        resolveStmtDeclSkipMs = resolveStmtDeclSkipMs + dt;
+    }
+    else if (catName.strEq("expr")) {
+        resolveStmtFallbackExprCalls = resolveStmtFallbackExprCalls + 1;
+        resolveStmtFallbackExprMs = resolveStmtFallbackExprMs + dt;
+    }
+    Ok<I32> { value: resultValue }
 }
 out fn resolveNames(program: I32) : Result<I32, ResolveError> => {
     let resolveTotalStart = perfNow();
