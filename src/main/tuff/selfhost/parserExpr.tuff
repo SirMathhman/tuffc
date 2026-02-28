@@ -165,17 +165,17 @@ fn pParseExpression(minPrec: I32) : I32 => {
          // Don't consume op= sequences (+=, -=, etc.) as binary operators;
          // statement parser handles them as compound assignments.
         if (
-        (internMap.mapHas("+") && op = = internMap.mapGet("+")) ||
-        (internMap.mapHas("-") && op = = internMap.mapGet("-")) ||
-        (internMap.mapHas("*") && op = = internMap.mapGet("*")) ||
-        (internMap.mapHas("/") && op = = internMap.mapGet("/")) ||
-        (internMap.mapHas("%") && op = = internMap.mapGet("%")) ||
-        (internMap.mapHas("&") && op = = internMap.mapGet("&")) ||
-        (internMap.mapHas("|") && op = = internMap.mapGet("|")) ||
-        (internMap.mapHas("^") && op = = internMap.mapGet("^"))
+        (internMap.mapHas("+") && op == internMap.mapGet("+")) ||
+        (internMap.mapHas("-") && op == internMap.mapGet("-")) ||
+        (internMap.mapHas("*") && op == internMap.mapGet("*")) ||
+        (internMap.mapHas("/") && op == internMap.mapGet("/")) ||
+        (internMap.mapHas("%") && op == internMap.mapGet("%")) ||
+        (internMap.mapHas("&") && op == internMap.mapGet("&")) ||
+        (internMap.mapHas("|") && op == internMap.mapGet("|")) ||
+        (internMap.mapHas("^") && op == internMap.mapGet("^"))
         ) {
             let next = pPeek(1);
-            if (tokKind(next) = = TK_SYMBOL && getInternedStr(tokValue(next)).strEq("=")) {
+            if (tokKind(next) == TK_SYMBOL && getInternedStr(tokValue(next)).strEq("=")) {
                 break;
             }
         }
@@ -196,10 +196,10 @@ fn pParseBlock() : I32 => {
         let before = pMark();
         let stmt = pParseStatement();
         let after = pMark();
-        if (after = = before) {
+        if (after == before) {
             pErrorWithTokenContext("Parser made no progress while parsing block statement");
         }
-        if (nodeKind(stmt) = = NK_STMT_LIST) {
+        if (nodeKind(stmt) == NK_STMT_LIST) {
             let inner = nodeGetData1(stmt);
             let i = 0;
             let __len = inner.vecLength();

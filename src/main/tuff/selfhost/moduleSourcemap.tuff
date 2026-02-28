@@ -35,7 +35,7 @@ out fn sourcemapCountLines(s: *Str) : I32 => {
 }
 out fn sourcemapLookup(mergedLine: I32) : *Str => {
     let len = smPaths.vecLength();
-    if (len = = 0) {
+    if (len == 0) {
         return "<unknown>";
     }
     let bestI = 0;

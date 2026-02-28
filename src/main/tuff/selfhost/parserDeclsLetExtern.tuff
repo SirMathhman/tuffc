@@ -169,7 +169,7 @@ fn pLeParseConstraintValueExpr() : I32 => {
 fn pLeParseGenericConstraintType() : I32 => {
     let typeNode = pParseTypePrimary();
     let startsGenericCallSuffix = false;
-    if (pAt(TK_SYMBOL, ">") && tokKind(pPeek(1)) = = TK_SYMBOL) {
+    if (pAt(TK_SYMBOL, ">") && tokKind(pPeek(1)) == TK_SYMBOL) {
         let nextSym = getIntern(tokValue(pPeek(1)));
         if (nextSym.strEq("(")) {
             startsGenericCallSuffix = true;

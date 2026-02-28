@@ -71,10 +71,10 @@ let HOST_BUILTINS : *mut Set<*Str> = initHostBuiltins();
 fn levenshteinDistance(a: *Str, b: *Str) : I32 => {
     let an = 0 + a.strLength();
     let bn = 0 + b.strLength();
-    if (an = = 0) {
+    if (an == 0) {
         return bn;
     }
-    if (bn = = 0) {
+    if (bn == 0) {
         return an;
     }
     let prev = vecNew();
@@ -138,14 +138,14 @@ out fn rslvUtilsFindDidYouMean(name: *Str, candidates: Vec<*Str>) : *Str => {
     best
 }
 fn fnTypeSig(t: I32) : *Str => {
-    if (t = = 0) {
+    if (t == 0) {
         return "_";
     }
     let k = nodeKind(t);
-    if (k = = NK_NAMED_TYPE) {
+    if (k == NK_NAMED_TYPE) {
         return getInternedStr(nodeGetData1(t));
     }
-    if (k = = NK_POINTER_TYPE) {
+    if (k == NK_POINTER_TYPE) {
         let mutv = nodeGetData1(t);
         let inner = fnTypeSig(nodeGetData2(t));
         let lifeIdx = nodeGetData4(t);
@@ -153,27 +153,27 @@ fn fnTypeSig(t: I32) : *Str => {
         if (lifeIdx != 0) {
             lifePrefix = getInternedStr(lifeIdx).strConcat(" ");
         }
-        if (mutv = = 1) {
+        if (mutv == 1) {
             return "*".strConcat(lifePrefix).strConcat("mut ").strConcat(inner);
         }
         return "*".strConcat(lifePrefix).strConcat(inner);
     }
-    if (k = = NK_ARRAY_TYPE) {
+    if (k == NK_ARRAY_TYPE) {
         return "Array";
     }
-    if (k = = NK_TUPLE_TYPE) {
+    if (k == NK_TUPLE_TYPE) {
         return "Tuple";
     }
-    if (k = = NK_REFINEMENT_TYPE) {
+    if (k == NK_REFINEMENT_TYPE) {
         return "Ref<".strConcat(fnTypeSig(nodeGetData1(t))).strConcat(">");
     }
-    if (k = = NK_APPLIED_TYPE) {
+    if (k == NK_APPLIED_TYPE) {
         return getInternedStr(nodeGetData1(t)).strConcat("(...)");
     }
-    if (k = = NK_UNION_TYPE) {
+    if (k == NK_UNION_TYPE) {
         return fnTypeSig(nodeGetData1(t)).strConcat("|").strConcat(fnTypeSig(nodeGetData2(t)));
     }
-    if (k = = NK_FUNCTION_TYPE) {
+    if (k == NK_FUNCTION_TYPE) {
         let parts = vecNew();
         let ps = nodeGetData1(t);
         let i = 0;
@@ -210,7 +210,7 @@ out fn rslvUtilsValidateExpectActualPairs(body: Vec<I32>) : I32 => {
     while (i < len) {
         let stmt = body.vecGet(i);
         let kind = nodeKind(stmt);
-        if (kind = = NK_EXPECT_FN_DECL || kind = = NK_ACTUAL_FN_DECL) {
+        if (kind == NK_EXPECT_FN_DECL || kind == NK_ACTUAL_FN_DECL) {
             let name = getInternedStr(nodeGetData1(stmt));
             let expectCount = 0;
             let actualCount = 0;
@@ -220,9 +220,9 @@ out fn rslvUtilsValidateExpectActualPairs(body: Vec<I32>) : I32 => {
             while (j < len) {
                 let cand = body.vecGet(j);
                 let ck = nodeKind(cand);
-                if ((ck = = NK_EXPECT_FN_DECL || ck = = NK_ACTUAL_FN_DECL) &&
+                if ((ck == NK_EXPECT_FN_DECL || ck == NK_ACTUAL_FN_DECL) &&
                 getInternedStr(nodeGetData1(cand)).strEq(name)) {
-                    if (ck = = NK_EXPECT_FN_DECL) {
+                    if (ck == NK_EXPECT_FN_DECL) {
                         expectCount = expectCount + 1;
                         expectNode = cand;
                     }
@@ -294,11 +294,11 @@ fn lifetimeScopeHas(resolveLifetimeScopes: Vec<*mut Set<*Str>>, name: *Str) : Bo
 }
 out fn rslvUtilsResolveTypeLifetimes(t: I32, resolveLifetimeScopes: Vec<*mut Set<*Str>>, errNode: I32) : I32
 => {
-    if (t = = 0) {
+    if (t == 0) {
         return 0;
     }
     let k = nodeKind(t);
-    if (k = = NK_POINTER_TYPE) {
+    if (k == NK_POINTER_TYPE) {
         let lifeIdx = nodeGetData4(t);
         if (lifeIdx != 0) {
             let lname = getInternedStr(lifeIdx);
@@ -315,20 +315,20 @@ out fn rslvUtilsResolveTypeLifetimes(t: I32, resolveLifetimeScopes: Vec<*mut Set
         rslvUtilsResolveTypeLifetimes(nodeGetData2(t), resolveLifetimeScopes, errNode);
         return 0;
     }
-    if (k = = NK_ARRAY_TYPE) {
+    if (k == NK_ARRAY_TYPE) {
         rslvUtilsResolveTypeLifetimes(nodeGetData1(t), resolveLifetimeScopes, errNode);
         return 0;
     }
-    if (k = = NK_REFINEMENT_TYPE) {
+    if (k == NK_REFINEMENT_TYPE) {
         rslvUtilsResolveTypeLifetimes(nodeGetData1(t), resolveLifetimeScopes, errNode);
         return 0;
     }
-    if (k = = NK_UNION_TYPE) {
+    if (k == NK_UNION_TYPE) {
         rslvUtilsResolveTypeLifetimes(nodeGetData1(t), resolveLifetimeScopes, errNode);
         rslvUtilsResolveTypeLifetimes(nodeGetData2(t), resolveLifetimeScopes, errNode);
         return 0;
     }
-    if (k = = NK_TUPLE_TYPE) {
+    if (k == NK_TUPLE_TYPE) {
         let members = nodeGetData1(t);
         let i = 0;
         let len = members.vecLength();
@@ -339,7 +339,7 @@ out fn rslvUtilsResolveTypeLifetimes(t: I32, resolveLifetimeScopes: Vec<*mut Set
         }
         return 0;
     }
-    if (k = = NK_FUNCTION_TYPE) {
+    if (k == NK_FUNCTION_TYPE) {
         let ps = nodeGetData1(t);
         let i = 0;
         let __len = ps.vecLength();

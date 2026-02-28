@@ -47,7 +47,7 @@ fn pParseTemplateWrapper() : I32 => {
     let stmts = vecNew();
     while (!pAt(TK_SYMBOL, "}")) {
         let stmt = pParseStatement();
-        if (nodeKind(stmt) = = NK_BLOCK) {
+        if (nodeKind(stmt) == NK_BLOCK) {
             let inner = nodeGetData1(stmt);
             let j = 0;
             let __len2 = inner.vecLength();
@@ -70,7 +70,7 @@ fn pParseModuleWrapper() : I32 => {
     let stmts = vecNew();
     while (!pAt(TK_SYMBOL, "}")) {
         let stmt = pParseStatement();
-        if (nodeKind(stmt) = = NK_BLOCK) {
+        if (nodeKind(stmt) == NK_BLOCK) {
             let inner = nodeGetData1(stmt);
             let j = 0;
             let __len1 = inner.vecLength();
@@ -99,9 +99,9 @@ fn pParseDeclModifiers() : Vec<I32> => {
     pAt(TK_KEYWORD, "extern") ||
     pAt(TK_KEYWORD, "copy") ||
     pAt(TK_KEYWORD, "expect") ||
-    (pAt(TK_IDENTIFIER, "expect") && (tokKind(pPeek(1)) = = TK_KEYWORD || tokKind(pPeek(1)) = = TK_IDENTIFIER)) ||
+    (pAt(TK_IDENTIFIER, "expect") && (tokKind(pPeek(1)) == TK_KEYWORD || tokKind(pPeek(1)) == TK_IDENTIFIER)) ||
     pAt(TK_KEYWORD, "actual") ||
-    (pAt(TK_IDENTIFIER, "actual") && (tokKind(pPeek(1)) = = TK_KEYWORD || tokKind(pPeek(1)) = = TK_IDENTIFIER))
+    (pAt(TK_IDENTIFIER, "actual") && (tokKind(pPeek(1)) == TK_KEYWORD || tokKind(pPeek(1)) == TK_IDENTIFIER))
     ) {
         modifierWatchdog = modifierWatchdog + 1;
         if (modifierWatchdog > 1000) {
@@ -110,7 +110,7 @@ fn pParseDeclModifiers() : Vec<I32> => {
         consumedModifier = 1;
         if (pAt(TK_KEYWORD, "out")) {
             pEat();
-            if (exported = = 1) {
+            if (exported == 1) {
                 pPanicLoc(
                 "E_PARSE_DUPLICATE_MODIFIER",
                 "Duplicate 'out' modifier",
@@ -122,7 +122,7 @@ fn pParseDeclModifiers() : Vec<I32> => {
         }
         else if (pAt(TK_KEYWORD, "extern")) {
             pEat();
-            if (externDecl = = 1) {
+            if (externDecl == 1) {
                 pPanicLoc(
                 "E_PARSE_DUPLICATE_MODIFIER",
                 "Duplicate 'extern' modifier",
@@ -134,7 +134,7 @@ fn pParseDeclModifiers() : Vec<I32> => {
         }
         else if (pAt(TK_KEYWORD, "copy")) {
             pEat();
-            if (copyDecl = = 1) {
+            if (copyDecl == 1) {
                 pPanicLoc(
                 "E_PARSE_DUPLICATE_MODIFIER",
                 "Duplicate 'copy' modifier",
@@ -144,9 +144,9 @@ fn pParseDeclModifiers() : Vec<I32> => {
             }
             copyDecl = 1;
         }
-        else if (pAt(TK_KEYWORD, "expect") || (pAt(TK_IDENTIFIER, "expect") && (tokKind(pPeek(1)) = = TK_KEYWORD || tokKind(pPeek(1)) = = TK_IDENTIFIER))) {
+        else if (pAt(TK_KEYWORD, "expect") || (pAt(TK_IDENTIFIER, "expect") && (tokKind(pPeek(1)) == TK_KEYWORD || tokKind(pPeek(1)) == TK_IDENTIFIER))) {
             pEat();
-            if (expectDecl = = 1) {
+            if (expectDecl == 1) {
                 pPanicLoc(
                 "E_PARSE_DUPLICATE_MODIFIER",
                 "Duplicate 'expect' modifier",
@@ -156,9 +156,9 @@ fn pParseDeclModifiers() : Vec<I32> => {
             }
             expectDecl = 1;
         }
-        else if (pAt(TK_KEYWORD, "actual") || (pAt(TK_IDENTIFIER, "actual") && (tokKind(pPeek(1)) = = TK_KEYWORD || tokKind(pPeek(1)) = = TK_IDENTIFIER))) {
+        else if (pAt(TK_KEYWORD, "actual") || (pAt(TK_IDENTIFIER, "actual") && (tokKind(pPeek(1)) == TK_KEYWORD || tokKind(pPeek(1)) == TK_IDENTIFIER))) {
             pEat();
-            if (actualDecl = = 1) {
+            if (actualDecl == 1) {
                 pPanicLoc(
                 "E_PARSE_DUPLICATE_MODIFIER",
                 "Duplicate 'actual' modifier",
@@ -187,7 +187,7 @@ fn pParseDeclModifiers() : Vec<I32> => {
     mods
 }
 fn pParseAfterModifiers(exported: I32, externDecl: I32, copyDecl: I32, expectDecl: I32, actualDecl: I32) : Result<I32, ParseError> => {
-    if (expectDecl = = 1 && actualDecl = = 1) {
+    if (expectDecl == 1 && actualDecl == 1) {
         return pResultError(
         "E_PARSE_CONFLICTING_MODIFIERS",
         "Cannot combine 'expect' and 'actual' modifiers",
@@ -196,8 +196,8 @@ fn pParseAfterModifiers(exported: I32, externDecl: I32, copyDecl: I32, expectDec
         );
     }
     let outNode = 0;
-    if (externDecl = = 1) {
-        if (copyDecl = = 1) {
+    if (externDecl == 1) {
+        if (copyDecl == 1) {
             return pResultError(
             "E_PARSE_INVALID_MODIFIER",
             "'copy' is not supported on extern declarations",
@@ -205,7 +205,7 @@ fn pParseAfterModifiers(exported: I32, externDecl: I32, copyDecl: I32, expectDec
             "Remove the 'copy' modifier from extern declarations"
             );
         }
-        if (expectDecl = = 1 || actualDecl = = 1) {
+        if (expectDecl == 1 || actualDecl == 1) {
             return pResultError(
             "E_PARSE_INVALID_MODIFIER",
             "'expect'/'actual' are not supported on extern declarations",
@@ -233,7 +233,7 @@ fn pParseAfterModifiers(exported: I32, externDecl: I32, copyDecl: I32, expectDec
         outNode = pParseEnum();
     }
     else if (pAt(TK_KEYWORD, "object")) {
-        if (copyDecl = = 1) {
+        if (copyDecl == 1) {
             return pResultError(
             "E_PARSE_INVALID_MODIFIER",
             "'copy' is only supported on struct/type declarations",
@@ -241,7 +241,7 @@ fn pParseAfterModifiers(exported: I32, externDecl: I32, copyDecl: I32, expectDec
             "Remove 'copy' or use it with struct/type declarations"
             );
         }
-        if (expectDecl = = 1 || actualDecl = = 1) {
+        if (expectDecl == 1 || actualDecl == 1) {
             return pResultError(
             "E_PARSE_INVALID_MODIFIER",
             "'expect'/'actual' are currently supported only on fn declarations",
@@ -252,7 +252,7 @@ fn pParseAfterModifiers(exported: I32, externDecl: I32, copyDecl: I32, expectDec
         outNode = pParseObject();
     }
     else if (pAt(TK_KEYWORD, "contract")) {
-        if (copyDecl = = 1) {
+        if (copyDecl == 1) {
             return pResultError(
             "E_PARSE_INVALID_MODIFIER",
             "'copy' is only supported on struct/type declarations",
@@ -260,7 +260,7 @@ fn pParseAfterModifiers(exported: I32, externDecl: I32, copyDecl: I32, expectDec
             "Remove 'copy' or use it with struct/type declarations"
             );
         }
-        if (expectDecl = = 1 || actualDecl = = 1) {
+        if (expectDecl == 1 || actualDecl == 1) {
             return pResultError(
             "E_PARSE_INVALID_MODIFIER",
             "'expect'/'actual' are currently supported only on fn declarations",
@@ -274,7 +274,7 @@ fn pParseAfterModifiers(exported: I32, externDecl: I32, copyDecl: I32, expectDec
         outNode = pParseTypeAlias(copyDecl);
     }
     else if (pAt(TK_KEYWORD, "fn")) {
-        if (copyDecl = = 1) {
+        if (copyDecl == 1) {
             return pResultError(
             "E_PARSE_INVALID_MODIFIER",
             "'copy' is only supported on struct/type declarations",
@@ -283,16 +283,16 @@ fn pParseAfterModifiers(exported: I32, externDecl: I32, copyDecl: I32, expectDec
             );
         }
         let mode = 0;
-        if (expectDecl = = 1) {
+        if (expectDecl == 1) {
             mode = 1;
         }
-        else if (actualDecl = = 1) {
+        else if (actualDecl == 1) {
             mode = 2;
         }
         outNode = pParseFunction(0, mode);
     }
     else if (pAt(TK_KEYWORD, "class")) {
-        if (copyDecl = = 1) {
+        if (copyDecl == 1) {
             return pResultError(
             "E_PARSE_INVALID_MODIFIER",
             "'copy' is only supported on struct/type declarations",
@@ -300,7 +300,7 @@ fn pParseAfterModifiers(exported: I32, externDecl: I32, copyDecl: I32, expectDec
             "Remove 'copy' or use it with struct/type declarations"
             );
         }
-        if (expectDecl = = 1 || actualDecl = = 1) {
+        if (expectDecl == 1 || actualDecl == 1) {
             return pResultError(
             "E_PARSE_INVALID_MODIFIER",
             "'expect'/'actual' are currently supported only on fn declarations",
@@ -312,7 +312,7 @@ fn pParseAfterModifiers(exported: I32, externDecl: I32, copyDecl: I32, expectDec
         outNode = pParseFunction(1, 0);
     }
     else if (pAt(TK_KEYWORD, "module")) {
-        if (copyDecl = = 1) {
+        if (copyDecl == 1) {
             return pResultError(
             "E_PARSE_INVALID_MODIFIER",
             "'copy' is only supported on struct/type declarations",
@@ -320,7 +320,7 @@ fn pParseAfterModifiers(exported: I32, externDecl: I32, copyDecl: I32, expectDec
             "Remove 'copy' or use it with struct/type declarations"
             );
         }
-        if (expectDecl = = 1 || actualDecl = = 1) {
+        if (expectDecl == 1 || actualDecl == 1) {
             return pResultError(
             "E_PARSE_INVALID_MODIFIER",
             "'expect'/'actual' are currently supported only on fn declarations",
@@ -339,7 +339,7 @@ fn pParseAfterModifiers(exported: I32, externDecl: I32, copyDecl: I32, expectDec
         }
         ;
     }
-    if (exported = = 1 && nodeKind(outNode) != NK_STMT_LIST) {
+    if (exported == 1 && nodeKind(outNode) != NK_STMT_LIST) {
         parseExports.setAdd(getInternedStr(nodeGetData1(outNode)));
     }
     if (pAt(TK_SYMBOL, ";")) {
@@ -572,7 +572,7 @@ fn pTryParsePlainControlStatement() : I32 => {
 }
 fn pParseStatement() : I32 => {
     let mods = pParseDeclModifiers();
-    if (mods.vecGet(5) = = 1) {
+    if (mods.vecGet(5) == 1) {
         let modResultAny = pParseAfterModifiers(mods.vecGet(0), mods.vecGet(1), mods.vecGet(2), mods.vecGet(3), mods.vecGet(4));
         if (modResultAny is struct Err) {
             panicWithCodeLoc(modResultAny.error.code, modResultAny.error.message, modResultAny.error.reason, modResultAny.error.fix, modResultAny.error.line, modResultAny.error.col);
@@ -606,7 +606,7 @@ fn pParseStatement() : I32 => {
      // Compound assignment: x += v, x -= v, etc. (lexed as op token followed by '=')
     if (
     (pAt(TK_SYMBOL, "+") || pAt(TK_SYMBOL, "-") || pAt(TK_SYMBOL, "*") || pAt(TK_SYMBOL, "/") || pAt(TK_SYMBOL, "%") || pAt(TK_SYMBOL, "&") || pAt(TK_SYMBOL, "|") || pAt(TK_SYMBOL, "^")) &&
-    tokKind(pPeek(1)) = = TK_SYMBOL &&
+    tokKind(pPeek(1)) == TK_SYMBOL &&
     getInternedStr(tokValue(pPeek(1))).strEq("=")
     ) {
         let opTok = pEat();
@@ -639,10 +639,10 @@ out fn pParseProgram() : I32 => {
         let before = pMark();
         let stmt = pParseStatement();
         let after = pMark();
-        if (after = = before) {
+        if (after == before) {
             pErrorWithTokenContext("Parser made no progress while parsing top-level statement");
         }
-        if (nodeKind(stmt) = = NK_STMT_LIST) {
+        if (nodeKind(stmt) == NK_STMT_LIST) {
             let inner = nodeGetData1(stmt);
             let i = 0;
             let __len = inner.vecLength();

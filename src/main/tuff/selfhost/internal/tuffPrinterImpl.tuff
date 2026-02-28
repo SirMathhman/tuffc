@@ -1,8 +1,8 @@
 fn ensureTrailingNewline(text: *Str) : *Str => {
-    if (text.strLength() = = 0) {
+    if (text.strLength() == 0) {
         return "\n";
     }
-    if (text.strCharAt(text.strLength() - 1) = = 10) {
+    if (text.strCharAt(text.strLength() - 1) == 10) {
         return text;
     }
     text.strConcat("\n")

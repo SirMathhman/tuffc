@@ -149,7 +149,7 @@ fn resolveExprIdentifier(n: I32, globals: *mut Set<*Str>, scopes: Vec<*mut Set<*
 }
 fn resolveExprCall(n: I32, globals: *mut Set<*Str>, scopes: Vec<*mut Set<*Str>>, depth: I32) : Result<I32, ResolveError> => {
     let callee = nodeGetData1(n)?;
-    if (nodeKind(callee) = = NK_IDENTIFIER && getInternedStr(nodeGetData1(callee)).strEq("drop")) {
+    if (nodeKind(callee) == NK_IDENTIFIER && getInternedStr(nodeGetData1(callee)).strEq("drop")) {
         let args = nodeGetData2(n);
         if (args.vecLength() != 1) {
             return rslvPanicLoc("E_RESOLVE_UNKNOWN_IDENTIFIER", "drop expects exactly one argument", "Built-in drop requires exactly one receiver value.", "Use drop(value) or value.drop() with exactly one receiver value.");
@@ -160,14 +160,14 @@ fn resolveExprCall(n: I32, globals: *mut Set<*Str>, scopes: Vec<*mut Set<*Str>>,
         }
         ;
     }
-    if (nodeKind(callee) = = NK_IDENTIFIER && getInternedStr(nodeGetData1(callee)).strEq("into") && nodeGetData3(n) = = 1) {
+    if (nodeKind(callee) == NK_IDENTIFIER && getInternedStr(nodeGetData1(callee)).strEq("into") && nodeGetData3(n) == 1) {
         let args = nodeGetData2(n);
         if (args.vecLength() < 1) {
             return rslvPanicLoc("E_RESOLVE_UNKNOWN_IDENTIFIER", "into conversion requires a receiver", "Method-sugar into conversion requires a source value as receiver.", "Use value.into<Contract>(...) with a receiver value.");
         }
         let typeArgs = nodeGetData4(n);
         let contractName = "";
-        if (typeArgs.vecLength() = = 1 && nodeKind(typeArgs.vecGet(0)) = = NK_NAMED_TYPE) {
+        if (typeArgs.vecLength() == 1 && nodeKind(typeArgs.vecGet(0)) == NK_NAMED_TYPE) {
             contractName = getInternedStr(nodeGetData1(typeArgs.vecGet(0)));
         }
         let contractDeclared = false;
@@ -218,7 +218,7 @@ fn resolveExprMatch (n: I32, globals: *mut Set<*Str>, scopes: Vec<*mut Set<*Str>
         let body = caseNode.vecGet(1);
         let nextDepth = depth + 1;
         scopes.vecPush(scopePoolGet());
-        if (nodeKind(pat) = = NK_STRUCT_PAT) {
+        if (nodeKind(pat) == NK_STRUCT_PAT) {
             let fields = nodeGetData2(pat);
             let j = 0;
             let fLen = fields.vecLength();
@@ -228,7 +228,7 @@ fn resolveExprMatch (n: I32, globals: *mut Set<*Str>, scopes: Vec<*mut Set<*Str>
                 j = j + 1;
             }
         }
-        else if (nodeKind(pat) = = NK_NAME_PAT) {
+        else if (nodeKind(pat) == NK_NAME_PAT) {
             let patName = getInternedStr(nodeGetData1(pat));
             if (!globals.setHas(patName)) {
                 rslvUtilsScopeDefine(scopes, nextDepth, patName, pat);
@@ -290,7 +290,7 @@ fn resolveStmtBlock(n: I32, globals: *mut Set<*Str>, scopes: Vec<*mut Set<*Str>>
     while (i < len) {
         let stmt = stmts.vecGet(i);
         let stmtKind = nodeKind(stmt);
-        if (stmtKind = = NK_FN_DECL || stmtKind = = NK_CLASS_FN_DECL || stmtKind = =
+        if (stmtKind == NK_FN_DECL || stmtKind == NK_CLASS_FN_DECL || stmtKind = =
         NK_ACTUAL_FN_DECL) {
             rslvUtilsScopeDefine(scopes, nextDepth, getInternedStr(nodeGetData1(stmt)),
             stmt);
@@ -331,7 +331,7 @@ fn resolveStmtFnDecl(n: I32, globals: *mut Set<*Str>, scopes: Vec<*mut Set<*Str>
 }
 fn resolveStmtLetOrImport(n: I32, globals: *mut Set<*Str>, scopes: Vec<*mut Set<*Str>>, depth: I32) : Result<I32, ResolveError> => {
     let kind = nodeKind(n)?;
-    if (kind = = NK_LET_DECL) {
+    if (kind == NK_LET_DECL) {
         if (nodeGetData2(n) != 0) {
             rslvUtilsResolveTypeLifetimes(nodeGetData2(n), resolveLifetimeScopes, n);
         }
@@ -342,7 +342,7 @@ fn resolveStmtLetOrImport(n: I32, globals: *mut Set<*Str>, scopes: Vec<*mut Set<
         }
         ;
     }
-    if (kind = = NK_IMPORT_DECL) {
+    if (kind == NK_IMPORT_DECL) {
         let names = nodeGetData1(n);
         let i = 0;
         let len = names.vecLength();
@@ -355,7 +355,7 @@ fn resolveStmtLetOrImport(n: I32, globals: *mut Set<*Str>, scopes: Vec<*mut Set<
         }
         ;
     }
-    if (kind = = NK_EXTERN_IMPORT_DECL) {
+    if (kind == NK_EXTERN_IMPORT_DECL) {
         return Ok<I32> {
             value: 1
         }
@@ -367,14 +367,14 @@ fn resolveStmtLetOrImport(n: I32, globals: *mut Set<*Str>, scopes: Vec<*mut Set<
 }
 fn resolveStmtFlow(n: I32, globals: *mut Set<*Str>, scopes: Vec<*mut Set<*Str>>, depth: I32) : Result<I32, ResolveError> => {
     let kind = nodeKind(n)?;
-    if (kind = = NK_EXPR_STMT) {
+    if (kind == NK_EXPR_STMT) {
         resolveExpr(nodeGetData1(n), globals, scopes, depth)?;
         return Ok<I32> {
             value: 1
         }
         ;
     }
-    if (kind = = NK_ASSIGN_STMT) {
+    if (kind == NK_ASSIGN_STMT) {
         resolveExpr(nodeGetData1(n), globals, scopes, depth)?;
         resolveExpr(nodeGetData2(n), globals, scopes, depth)?;
         return Ok<I32> {
@@ -382,14 +382,14 @@ fn resolveStmtFlow(n: I32, globals: *mut Set<*Str>, scopes: Vec<*mut Set<*Str>>,
         }
         ;
     }
-    if (kind = = NK_RETURN_STMT) {
+    if (kind == NK_RETURN_STMT) {
         resolveExpr(nodeGetData1(n), globals, scopes, depth)?;
         return Ok<I32> {
             value: 1
         }
         ;
     }
-    if (kind = = NK_IF_STMT) {
+    if (kind == NK_IF_STMT) {
         resolveExpr(nodeGetData1(n), globals, scopes, depth)?;
         resolveStmt(nodeGetData2(n), globals, scopes, depth)?;
         if (nodeGetData3(n) != 0) {
@@ -400,7 +400,7 @@ fn resolveStmtFlow(n: I32, globals: *mut Set<*Str>, scopes: Vec<*mut Set<*Str>>,
         }
         ;
     }
-    if (kind = = NK_FOR_STMT) {
+    if (kind == NK_FOR_STMT) {
         let nextDepth = depth + 1;
         scopes.vecPush(scopePoolGet());
         rslvUtilsScopeDefine(scopes, nextDepth, getInternedStr(nodeGetData1(n)), n);
@@ -413,7 +413,7 @@ fn resolveStmtFlow(n: I32, globals: *mut Set<*Str>, scopes: Vec<*mut Set<*Str>>,
         }
         ;
     }
-    if (kind = = NK_WHILE_STMT) {
+    if (kind == NK_WHILE_STMT) {
         resolveExpr(nodeGetData1(n), globals, scopes, depth)?;
         resolveStmt(nodeGetData2(n), globals, scopes, depth)?;
         return Ok<I32> {
@@ -421,7 +421,7 @@ fn resolveStmtFlow(n: I32, globals: *mut Set<*Str>, scopes: Vec<*mut Set<*Str>>,
         }
         ;
     }
-    if (kind = = NK_LOOP_STMT) {
+    if (kind == NK_LOOP_STMT) {
         resolveStmt(nodeGetData1(n), globals, scopes, depth)?;
         return Ok<I32> {
             value: 1
@@ -434,7 +434,7 @@ fn resolveStmtFlow(n: I32, globals: *mut Set<*Str>, scopes: Vec<*mut Set<*Str>>,
 }
 fn resolveStmtLifetimeOrInto(n: I32, globals: *mut Set<*Str>, scopes: Vec<*mut Set<*Str>>, depth: I32) : Result<I32, ResolveError> => {
     let kind = nodeKind(n)?;
-    if (kind = = NK_LIFETIME_STMT) {
+    if (kind == NK_LIFETIME_STMT) {
         let nextDepth = depth + 1;
         scopes.vecPush(scopePoolGet());
         let lifetimeNames = nodeGetData1(n);
@@ -460,7 +460,7 @@ fn resolveStmtLifetimeOrInto(n: I32, globals: *mut Set<*Str>, scopes: Vec<*mut S
         }
         ;
     }
-    if (kind = = NK_INTO_STMT) {
+    if (kind == NK_INTO_STMT) {
         let cname = getInternedStr(nodeGetData1(n));
         if (!globals.setHas(cname)) {
             return rslvPanicLoc("E_RESOLVE_UNKNOWN_IDENTIFIER", "Unknown contract: ".strConcat(cname), "An into statement referenced a contract that is not declared in scope.", "Declare the contract before using 'into'.");
@@ -475,7 +475,7 @@ fn resolveStmtLifetimeOrInto(n: I32, globals: *mut Set<*Str>, scopes: Vec<*mut S
     }
 }
 fn resolveExpr(n: I32, globals: *mut Set<*Str>, scopes: Vec<*mut Set<*Str>>, depth: I32) : Result<I32, ResolveError> => {
-    if (n = = 0) {
+    if (n == 0) {
         return Ok<I32> {
             value: 0
         }
@@ -483,11 +483,11 @@ fn resolveExpr(n: I32, globals: *mut Set<*Str>, scopes: Vec<*mut Set<*Str>>, dep
     }
     rslvCurrentNode = n;
     let kind = nodeKind(n);
-    if (kind = = NK_IDENTIFIER) {
+    if (kind == NK_IDENTIFIER) {
         resolveExprIdentifierCalls = resolveExprIdentifierCalls + 1;
         return resolveExprIdentifier(n, globals, scopes, depth);
     }
-    if (kind = = NK_BINARY_EXPR) {
+    if (kind == NK_BINARY_EXPR) {
         resolveExprBinaryCalls = resolveExprBinaryCalls + 1;
         resolveExpr(nodeGetData2(n), globals, scopes, depth)?;
         resolveExpr(nodeGetData3(n), globals, scopes, depth)?;
@@ -496,10 +496,10 @@ fn resolveExpr(n: I32, globals: *mut Set<*Str>, scopes: Vec<*mut Set<*Str>>, dep
         }
         ;
     }
-    if (kind = = NK_UNARY_EXPR || kind = = NK_UNWRAP_EXPR) {
+    if (kind == NK_UNARY_EXPR || kind == NK_UNWRAP_EXPR) {
         resolveExprUnaryOrUnwrapCalls = resolveExprUnaryOrUnwrapCalls + 1;
         resolveExpr(nodeGetData2(n), globals, scopes, depth)?;
-        if (kind = = NK_UNWRAP_EXPR) {
+        if (kind == NK_UNWRAP_EXPR) {
             resolveExpr(nodeGetData1(n), globals, scopes, depth)?;
         }
         return Ok<I32> {
@@ -507,11 +507,11 @@ fn resolveExpr(n: I32, globals: *mut Set<*Str>, scopes: Vec<*mut Set<*Str>>, dep
         }
         ;
     }
-    if (kind = = NK_CALL_EXPR) {
+    if (kind == NK_CALL_EXPR) {
         resolveExprCallCalls = resolveExprCallCalls + 1;
         return resolveExprCall(n, globals, scopes, depth);
     }
-    if (kind = = NK_MEMBER_EXPR) {
+    if (kind == NK_MEMBER_EXPR) {
         resolveExprMemberCalls = resolveExprMemberCalls + 1;
         resolveExpr(nodeGetData1(n), globals, scopes, depth)?;
         return Ok<I32> {
@@ -519,7 +519,7 @@ fn resolveExpr(n: I32, globals: *mut Set<*Str>, scopes: Vec<*mut Set<*Str>>, dep
         }
         ;
     }
-    if (kind = = NK_INDEX_EXPR) {
+    if (kind == NK_INDEX_EXPR) {
         resolveExprIndexCalls = resolveExprIndexCalls + 1;
         resolveExpr(nodeGetData1(n), globals, scopes, depth)?;
         resolveExpr(nodeGetData2(n), globals, scopes, depth)?;
@@ -528,7 +528,7 @@ fn resolveExpr(n: I32, globals: *mut Set<*Str>, scopes: Vec<*mut Set<*Str>>, dep
         }
         ;
     }
-    if (kind = = NK_STRUCT_INIT) {
+    if (kind == NK_STRUCT_INIT) {
         resolveExprStructInitCalls = resolveExprStructInitCalls + 1;
         let typeName = getInternedStr(nodeGetData1(n));
         if (!globals.setHas(typeName)) {
@@ -548,7 +548,7 @@ fn resolveExpr(n: I32, globals: *mut Set<*Str>, scopes: Vec<*mut Set<*Str>>, dep
         }
         ;
     }
-    if (kind = = NK_TUPLE_EXPR) {
+    if (kind == NK_TUPLE_EXPR) {
         resolveExprTupleCalls = resolveExprTupleCalls + 1;
         let items = nodeGetData1(n);
         let i = 0;
@@ -562,7 +562,7 @@ fn resolveExpr(n: I32, globals: *mut Set<*Str>, scopes: Vec<*mut Set<*Str>>, dep
         }
         ;
     }
-    if (kind = = NK_IF_EXPR) {
+    if (kind == NK_IF_EXPR) {
         resolveExprIfCalls = resolveExprIfCalls + 1;
         resolveExpr(nodeGetData1(n), globals, scopes, depth)?;
         resolveStmt(nodeGetData2(n), globals, scopes, depth)?;
@@ -580,11 +580,11 @@ fn resolveExpr(n: I32, globals: *mut Set<*Str>, scopes: Vec<*mut Set<*Str>>, dep
         }
         ;
     }
-    if (kind = = NK_MATCH_EXPR) {
+    if (kind == NK_MATCH_EXPR) {
         resolveExprMatchCalls = resolveExprMatchCalls + 1;
         return resolveExprMatch (n, globals, scopes, depth);
     }
-    if (kind = = NK_IS_EXPR) {
+    if (kind == NK_IS_EXPR) {
         resolveExprIsCalls = resolveExprIsCalls + 1;
         resolveExpr(nodeGetData1(n), globals, scopes, depth)?;
         return Ok<I32> {
@@ -592,11 +592,11 @@ fn resolveExpr(n: I32, globals: *mut Set<*Str>, scopes: Vec<*mut Set<*Str>>, dep
         }
         ;
     }
-    if (kind = = NK_LAMBDA_EXPR) {
+    if (kind == NK_LAMBDA_EXPR) {
         resolveExprLambdaCalls = resolveExprLambdaCalls + 1;
         return resolveExprLambda(n, globals, scopes, depth);
     }
-    if (kind = = NK_FN_EXPR) {
+    if (kind == NK_FN_EXPR) {
         resolveExprFnExprCalls = resolveExprFnExprCalls + 1;
         return resolveExprFnExpr(n, globals, scopes, depth);
     }
@@ -606,7 +606,7 @@ fn resolveExpr(n: I32, globals: *mut Set<*Str>, scopes: Vec<*mut Set<*Str>>, dep
     }
 }
 fn resolveStmt(n: I32, globals: *mut Set<*Str>, scopes: Vec<*mut Set<*Str>>, depth: I32) : Result<I32, ResolveError> => {
-    if (n = = 0) {
+    if (n == 0) {
         return Ok<I32> {
             value: 0
         }
@@ -619,29 +619,29 @@ fn resolveStmt(n: I32, globals: *mut Set<*Str>, scopes: Vec<*mut Set<*Str>>, dep
     let resultValue : I32 = 0;
     let catName : *Str = "";
      // Dispatch by kind: each branch sets category and executes logic
-    if (kind = = NK_BLOCK) {
+    if (kind == NK_BLOCK) {
         resultValue = resolveStmtBlock(n, globals, scopes, depth)?;
         catName = "block";
     }
-    else if (kind = = NK_FN_DECL || kind = = NK_CLASS_FN_DECL || kind = = NK_ACTUAL_FN_DECL) {
+    else if (kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL || kind == NK_ACTUAL_FN_DECL) {
         resultValue = resolveStmtFnDecl(n, globals, scopes, depth)?;
         catName = "fn";
     }
-    else if (resolveStmtLetOrImport(n, globals, scopes, depth)? = = 1) {
+    else if (resolveStmtLetOrImport(n, globals, scopes, depth)? == 1) {
         catName = "let";
     }
-    else if (resolveStmtFlow(n, globals, scopes, depth)? = = 1) {
+    else if (resolveStmtFlow(n, globals, scopes, depth)? == 1) {
         catName = "flow";
     }
-    else if (resolveStmtLifetimeOrInto(n, globals, scopes, depth)? = = 1) {
+    else if (resolveStmtLifetimeOrInto(n, globals, scopes, depth)? == 1) {
         catName = "lifetime";
     }
-    else if (kind = = NK_TYPE_ALIAS || kind = = NK_DEP_TYPE_ALIAS ||
-    kind = = NK_STRUCT_DECL || kind = = NK_ENUM_DECL ||
-    kind = = NK_EXTERN_LET_DECL ||
-    kind = = NK_EXTERN_TYPE_DECL || kind = = NK_EXTERN_IMPORT_DECL ||
-    kind = = NK_OBJECT_DECL || kind = = NK_CONTRACT_DECL ||
-    kind = = NK_EXPECT_FN_DECL) {
+    else if (kind == NK_TYPE_ALIAS || kind == NK_DEP_TYPE_ALIAS ||
+    kind == NK_STRUCT_DECL || kind == NK_ENUM_DECL ||
+    kind == NK_EXTERN_LET_DECL ||
+    kind == NK_EXTERN_TYPE_DECL || kind == NK_EXTERN_IMPORT_DECL ||
+    kind == NK_OBJECT_DECL || kind == NK_CONTRACT_DECL ||
+    kind == NK_EXPECT_FN_DECL) {
         catName = "decl";
     }
     else {
@@ -736,18 +736,18 @@ out fn resolveNames(program: I32) : Result<I32, ResolveError> => {
         let stmt = body.vecGet(i);
         let kind = nodeKind(stmt);
         if (
-        kind = = NK_FN_DECL ||
-        kind = = NK_CLASS_FN_DECL ||
-        kind = = NK_ACTUAL_FN_DECL ||
-        kind = = NK_STRUCT_DECL ||
-        kind = = NK_ENUM_DECL ||
-        kind = = NK_OBJECT_DECL ||
-        kind = = NK_CONTRACT_DECL ||
-        kind = = NK_TYPE_ALIAS ||
-        kind = = NK_DEP_TYPE_ALIAS ||
-        kind = = NK_LET_DECL ||
-        kind = = NK_EXTERN_LET_DECL ||
-        kind = = NK_EXTERN_TYPE_DECL
+        kind == NK_FN_DECL ||
+        kind == NK_CLASS_FN_DECL ||
+        kind == NK_ACTUAL_FN_DECL ||
+        kind == NK_STRUCT_DECL ||
+        kind == NK_ENUM_DECL ||
+        kind == NK_OBJECT_DECL ||
+        kind == NK_CONTRACT_DECL ||
+        kind == NK_TYPE_ALIAS ||
+        kind == NK_DEP_TYPE_ALIAS ||
+        kind == NK_LET_DECL ||
+        kind == NK_EXTERN_LET_DECL ||
+        kind == NK_EXTERN_TYPE_DECL
         ) {
             let gname = getInternedStr(nodeGetData1(stmt));
             if (globals.setHas(gname)) {
@@ -778,18 +778,18 @@ out fn resolveNames(program: I32) : Result<I32, ResolveError> => {
         let topKind = nodeKind(topStmt);
         let topName = "";
         if (
-        topKind = = NK_FN_DECL ||
-        topKind = = NK_CLASS_FN_DECL ||
-        topKind = = NK_ACTUAL_FN_DECL ||
-        topKind = = NK_STRUCT_DECL ||
-        topKind = = NK_ENUM_DECL ||
-        topKind = = NK_OBJECT_DECL ||
-        topKind = = NK_CONTRACT_DECL ||
-        topKind = = NK_TYPE_ALIAS ||
-        topKind = = NK_DEP_TYPE_ALIAS ||
-        topKind = = NK_LET_DECL ||
-        topKind = = NK_EXTERN_LET_DECL ||
-        topKind = = NK_EXTERN_TYPE_DECL
+        topKind == NK_FN_DECL ||
+        topKind == NK_CLASS_FN_DECL ||
+        topKind == NK_ACTUAL_FN_DECL ||
+        topKind == NK_STRUCT_DECL ||
+        topKind == NK_ENUM_DECL ||
+        topKind == NK_OBJECT_DECL ||
+        topKind == NK_CONTRACT_DECL ||
+        topKind == NK_TYPE_ALIAS ||
+        topKind == NK_DEP_TYPE_ALIAS ||
+        topKind == NK_LET_DECL ||
+        topKind == NK_EXTERN_LET_DECL ||
+        topKind == NK_EXTERN_TYPE_DECL
         ) {
             topName = getInternedStr(nodeGetData1(topStmt));
         }
