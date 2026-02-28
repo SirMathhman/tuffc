@@ -1391,7 +1391,8 @@ Map<I32, I32>, nonnullPtrs: Map<I32, I32>, expectedReturnType: *Str) : Result<I3
         let fnameStr = getInternedStr(nodeGetData1(n));
         let hasThisParam = false;
         let pi = 0;
-        while (pi < params.vecLength()) {
+        let __len3 = params.vecLength();
+        while (pi < __len3) {
             if (getInternedStr(params.vecGet(pi).vecGet(0)).strEq("this")) {
                 hasThisParam = true;
             }
@@ -1425,7 +1426,8 @@ Map<I32, I32>, nonnullPtrs: Map<I32, I32>, expectedReturnType: *Str) : Result<I3
                 thisFields.setAdd("this");
                  // Add params (excluding 'this') to this-struct fields
                 let qi = 0;
-                while (qi < params.vecLength()) {
+                let __len2 = params.vecLength();
+                while (qi < __len2) {
                     let pn = getInternedStr(params.vecGet(qi).vecGet(0));
                     if (!pn.strEq("this")) {
                         thisFields.setAdd(pn);
@@ -1662,19 +1664,19 @@ out fn typecheckProgramWithOptionsImpl(program: I32) : Result<I32, TypeError> =>
     let fnReturnTypes = mapNew();
     let fnNodes = mapNew();
     let localTypes = mapNew();
-    tcGlobalValueTypes = mapNew();
-    tcAliasUnionTags = mapNew();
-    tcTypeAliasNames = setNew();
-    tcDepTypeAliasParams = mapNew();
-    tcExternTypeParams = mapNew();
-    tcContractNames = setNew();
-    tcDestructorAliasByAlias = mapNew();
+    tcGlobalValueTypes = tcGlobalValueTypes.mapClear();
+    tcAliasUnionTags = tcAliasUnionTags.mapClear();
+    tcTypeAliasNames = tcTypeAliasNames.setClear();
+    tcDepTypeAliasParams = tcDepTypeAliasParams.mapClear();
+    tcExternTypeParams = tcExternTypeParams.mapClear();
+    tcContractNames = tcContractNames.setClear();
+    tcDestructorAliasByAlias = tcDestructorAliasByAlias.mapClear();
     tcDestructorAliasNames = vecNew();
-    tcFnThisFields = mapNew();
-    tcAliasBaseType = mapNew();
-    tcTypeNameCache = mapNew();
-    tcCallBounds = mapNew();
-    fnParamCallBounds = mapNew();
+    tcFnThisFields = tcFnThisFields.mapClear();
+    tcAliasBaseType = tcAliasBaseType.mapClear();
+    tcTypeNameCache = tcTypeNameCache.mapClear();
+    tcCallBounds = tcCallBounds.mapClear();
+    fnParamCallBounds = fnParamCallBounds.mapClear();
     let body = nodeGetData1(program);
      // Pre-collect generic arities so type-name checks are strict regardless of declaration order.
     let preI = 0;
@@ -1711,7 +1713,8 @@ out fn typecheckProgramWithOptionsImpl(program: I32) : Result<I32, TypeError> =>
             let paramTypes = vecNew();
             let paramCallBoundsVec = vecNew();
             let p = 0;
-            while (p < params.vecLength()) {
+            let __len1 = params.vecLength();
+            while (p < __len1) {
                 let param = params.vecGet(p);
                 let paramTypeNode = param.vecGet(1);
                 paramTypes.vecPush(typeNameFromTypeNode(paramTypeNode));
@@ -1732,7 +1735,8 @@ out fn typecheckProgramWithOptionsImpl(program: I32) : Result<I32, TypeError> =>
                     let fnPart = rawConstraint.strSlice(0, sep);
                     let refIdx = -1;
                     let pi = 0;
-                    while (pi < params.vecLength()) {
+                    let __len = params.vecLength();
+                    while (pi < __len) {
                         let piName = getInternedStr(params.vecGet(pi).vecGet(0));
                         let expectedRaw = fnPart.strConcat(":").strConcat(piName);
                         if (expectedRaw.strEq(rawConstraint)) {

@@ -443,6 +443,66 @@ static void set_ensure_capacity(TuffSet *s)
     }
 }
 
+int64_t __vec_clone(int64_t thisVec)
+{
+    TuffVec *src = (TuffVec *)tuff_from_val(thisVec);
+    if (src == NULL)
+        return __vec_new();
+    TuffVec *dst = (TuffVec *)calloc(1, sizeof(TuffVec));
+    if (dst == NULL)
+        tuff_panic("Out of memory in __vec_clone");
+    if (src->init > 0)
+    {
+        dst->data = (int64_t *)calloc(src->init, sizeof(int64_t));
+        if (dst->data == NULL)
+            tuff_panic("Out of memory in __vec_clone data");
+        for (size_t i = 0; i < src->init; i++)
+            dst->data[i] = src->data[i];
+        dst->length = src->init;
+    }
+    dst->init = src->init;
+    return tuff_to_val(dst);
+}
+
+int64_t map_get_or_default(int64_t thisMap, int64_t k, int64_t defaultVal)
+{
+    TuffMap *m = (TuffMap *)tuff_from_val(thisMap);
+    if (m == NULL || m->cap == 0)
+        return defaultVal;
+    k = tuff_canonicalize_key(k);
+    int found = 0;
+    size_t slot = map_find_slot(m, k, &found);
+    return found ? m->vals[slot] : defaultVal;
+}
+
+int64_t map_clear(int64_t thisMap)
+{
+    TuffMap *m = (TuffMap *)tuff_from_val(thisMap);
+    if (m == NULL)
+        return thisMap;
+    if (m->cap > 0)
+    {
+        memset(m->states, 0, m->cap * sizeof(uint8_t));
+        m->len = 0;
+        m->tombstones = 0;
+    }
+    return thisMap;
+}
+
+int64_t set_clear(int64_t thisSet)
+{
+    TuffSet *s = (TuffSet *)tuff_from_val(thisSet);
+    if (s == NULL)
+        return thisSet;
+    if (s->cap > 0)
+    {
+        memset(s->states, 0, s->cap * sizeof(uint8_t));
+        s->len = 0;
+        s->tombstones = 0;
+    }
+    return thisSet;
+}
+
 int64_t set_add(int64_t thisSet, int64_t item)
 {
     TuffSet *s = (TuffSet *)tuff_from_val(thisSet);

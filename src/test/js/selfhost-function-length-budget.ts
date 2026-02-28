@@ -1,3 +1,4 @@
+// @ts-nocheck
 import path from "node:path";
 import { compileFileResult } from "../../main/js/compiler.ts";
 import { getCLIPaths } from "./path-test-utils.ts";

@@ -36,3 +36,6 @@
 #define getArgc get_argc
 #define getArgv get_argv
 #define profileMark profile_mark
+#define mapGetOrDefault map_get_or_default
+#define mapClear map_clear
+#define setClear set_clear

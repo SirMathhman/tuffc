@@ -2,7 +2,7 @@
  // AST Node Kinds
  // ============================================================================
 let {
-    tokKind, tokValue, tokLine, tokCol, getIntern, intToString, vecNew, setNew
+    tokKind, tokValue, tokLine, tokCol, getIntern, intToString, vecNew, setNew, internStr
 }
  = selfhost::runtimeLexer;
 let {
@@ -79,6 +79,19 @@ out fn nodeGetCol(idx: I32) : I32 => tokCol(nodeToks.vecGet(idx));
  // ============================================================================
 let parsePos : I32 = 0;
 let parseExports : *mut Set<*Str> = setNew();
+// Cached symbol IDs for fast comparison
+let PC_SYM_STAR : I32 = 0;
+let PC_SYM_LBRACKET : I32 = 0;
+let PC_SYM_LPAREN : I32 = 0;
+fn pcInitSymbolCache() : I32 => {
+    if (PC_SYM_STAR == 0) {
+        PC_SYM_STAR = internStr("*");
+        PC_SYM_LBRACKET = internStr("[");
+        PC_SYM_LPAREN = internStr("(");
+    }
+    0
+}
+out fn getParseExports() : *mut Set<*Str> => parseExports;
 out fn parseInit() : I32 => {
     parsePos = 0;
     parseExports = setNew();
@@ -281,28 +294,30 @@ out fn pCanStartTypeTok() : Bool => {
     false
 }
 out fn pCanStartTypeTokAt(offset: I32) : Bool => {
+    pcInitSymbolCache();
     let idx = pPeek(offset);
     let k = tokKind(idx);
     if (k == TK_IDENTIFIER) {
         return true;
     }
     if (k == TK_SYMBOL) {
-        let s = getIntern(tokValue(idx));
-        if (s.strEq("*") || s.strEq("[") || s.strEq("(")) {
+        let v = tokValue(idx);
+        if (v == PC_SYM_STAR || v == PC_SYM_LBRACKET || v == PC_SYM_LPAREN) {
             return true;
         }
     }
     false
 }
 out fn pCanStartTypeAfterLifetimeTokAt(offset: I32) : Bool => {
+    pcInitSymbolCache();
     let idx = pPeek(offset);
     let k = tokKind(idx);
     if (k == TK_IDENTIFIER) {
         return true;
     }
     if (k == TK_SYMBOL) {
-        let s = getIntern(tokValue(idx));
-        if (s.strEq("*") || s.strEq("[") || s.strEq("(")) {
+        let v = tokValue(idx);
+        if (v == PC_SYM_STAR || v == PC_SYM_LBRACKET || v == PC_SYM_LPAREN) {
             return true;
         }
     }

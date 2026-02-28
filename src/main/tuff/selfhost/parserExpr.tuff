@@ -4,7 +4,7 @@ let {
 }
  = selfhost::parserCore;
 let {
-    tokKind, tokValue, tokLine, tokCol, getInternedStr, vecNew
+    tokKind, tokValue, tokLine, tokCol, getInternedStr, vecNew, mapNew
 }
  = selfhost::runtimeLexer;
 let {
@@ -27,50 +27,31 @@ fn pParseUnary() : I32 => {
     }
     pParsePrimary()
 }
+let precedenceMap : Map<I32, I32> = mapNew();
+let precedenceMapInit : Bool = false;
+fn initPrecedenceMap() => {
+    if (precedenceMapInit) { return 0; }
+    precedenceMapInit = true;
+    precedenceMap.mapSet(intern("||"), 1);
+    precedenceMap.mapSet(intern("&&"), 2);
+    precedenceMap.mapSet(intern("=="), 3);
+    precedenceMap.mapSet(intern("!="), 3);
+    precedenceMap.mapSet(intern("<"), 4);
+    precedenceMap.mapSet(intern("<="), 4);
+    precedenceMap.mapSet(intern(">"), 4);
+    precedenceMap.mapSet(intern(">="), 4);
+    precedenceMap.mapSet(intern(".."), 4);
+    precedenceMap.mapSet(intern("+"), 5);
+    precedenceMap.mapSet(intern("-"), 5);
+    precedenceMap.mapSet(intern("*"), 6);
+    precedenceMap.mapSet(intern("/"), 6);
+    precedenceMap.mapSet(intern("%"), 6);
+    0
+}
 fn pGetPrecedence(op: I32) : I32 => {
-     // Map operator to precedence
-     // We use intern indices, so we need to check against known values
-    if (internMap.mapHas("||") && op == internMap.mapGet("||")) {
-        return 1;
-    }
-    if (internMap.mapHas("&&") && op == internMap.mapGet("&&")) {
-        return 2;
-    }
-    if (internMap.mapHas("==") && op == internMap.mapGet("==")) {
-        return 3;
-    }
-    if (internMap.mapHas("!=") && op == internMap.mapGet("!=")) {
-        return 3;
-    }
-    if (internMap.mapHas("<") && op == internMap.mapGet("<")) {
-        return 4;
-    }
-    if (internMap.mapHas("<=") && op == internMap.mapGet("<=")) {
-        return 4;
-    }
-    if (internMap.mapHas(">") && op == internMap.mapGet(">")) {
-        return 4;
-    }
-    if (internMap.mapHas(">=") && op == internMap.mapGet(">=")) {
-        return 4;
-    }
-    if (internMap.mapHas("..") && op == internMap.mapGet("..")) {
-        return 4;
-    }
-    if (internMap.mapHas("+") && op == internMap.mapGet("+")) {
-        return 5;
-    }
-    if (internMap.mapHas("-") && op == internMap.mapGet("-")) {
-        return 5;
-    }
-    if (internMap.mapHas("*") && op == internMap.mapGet("*")) {
-        return 6;
-    }
-    if (internMap.mapHas("/") && op == internMap.mapGet("/")) {
-        return 6;
-    }
-    if (internMap.mapHas("%") && op == internMap.mapGet("%")) {
-        return 6;
+    initPrecedenceMap();
+    if (precedenceMap.mapHas(op)) {
+        return precedenceMap.mapGet(op);
     }
     0
 }
@@ -219,7 +200,8 @@ fn pParseBlock() : I32 => {
         if (nodeKind(stmt) == NK_STMT_LIST) {
             let inner = nodeGetData1(stmt);
             let i = 0;
-            while (i < inner.vecLength()) {
+            let __len = inner.vecLength();
+            while (i < __len) {
                 stmts.vecPush(inner.vecGet(i));
                 i = i + 1;
             }

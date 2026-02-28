@@ -50,7 +50,8 @@ fn pParseTemplateWrapper() : I32 => {
         if (nodeKind(stmt) == NK_BLOCK) {
             let inner = nodeGetData1(stmt);
             let j = 0;
-            while (j < inner.vecLength()) {
+            let __len2 = inner.vecLength();
+            while (j < __len2) {
                 stmts.vecPush(inner.vecGet(j));
                 j = j + 1;
             }
@@ -72,7 +73,8 @@ fn pParseModuleWrapper() : I32 => {
         if (nodeKind(stmt) == NK_BLOCK) {
             let inner = nodeGetData1(stmt);
             let j = 0;
-            while (j < inner.vecLength()) {
+            let __len1 = inner.vecLength();
+            while (j < __len1) {
                 stmts.vecPush(inner.vecGet(j));
                 j = j + 1;
             }
@@ -635,7 +637,8 @@ out fn pParseProgram() : I32 => {
         if (nodeKind(stmt) == NK_STMT_LIST) {
             let inner = nodeGetData1(stmt);
             let i = 0;
-            while (i < inner.vecLength()) {
+            let __len = inner.vecLength();
+            while (i < __len) {
                 stmts.vecPush(inner.vecGet(i));
                 i = i + 1;
             }

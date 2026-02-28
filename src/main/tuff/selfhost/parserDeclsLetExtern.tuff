@@ -80,7 +80,8 @@ out fn pParseLet() : I32 => {
         nodeSetData3(tmpDecl, rhs);
         lowered.vecPush(tmpDecl);
         let i = 0;
-        while (i < names.vecLength()) {
+        let __len = names.vecLength();
+        while (i < __len) {
             let tmpIdent = nodeNew(NK_IDENTIFIER);
             nodeSetData1(tmpIdent, tmpName);
             let idxLit = nodeNew(NK_NUMBER_LIT);

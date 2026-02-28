@@ -281,7 +281,7 @@ fn placesConflict(aBase: *Str, aPath: *Str, bBase: *Str, bPath: *Str) : Bool => 
     aPath.strStartsWith(bPath.strConcat(".")) || bPath.strStartsWith(aPath.strConcat("."))
 }
 fn stateNew() : Vec<I32> => {
-     // [moved_set, moved_vec, loans_vec, scope_starts, dropped_set, dropped_vec]
+     // [moved_set, moved_vec, loans_vec, scope_starts, dropped_set, dropped_vec, loans_by_base]
     let s = vecNew();
     s.vecPush(setNew());
     s.vecPush(vecNew());
@@ -289,6 +289,7 @@ fn stateNew() : Vec<I32> => {
     s.vecPush(vecNew());
     s.vecPush(setNew());
     s.vecPush(vecNew());
+    s.vecPush(mapNew());
     s
 }
 fn stateMovedSet(state: Vec<I32>) : *mut Set<I32> => state.vecGet(0);
@@ -297,6 +298,7 @@ fn stateLoans(state: Vec<I32>) : Vec<I32> => state.vecGet(2);
 fn stateScopeStarts(state: Vec<I32>) : Vec<I32> => state.vecGet(3);
 fn stateDroppedSet(state: Vec<I32>) : *mut Set<I32> => state.vecGet(4);
 fn stateDroppedVec(state: Vec<I32>) : Vec<I32> => state.vecGet(5);
+fn stateLoansByBase(state: Vec<I32>) : Map<I32, Vec<I32>> => state.vecGet(6);
 fn stateMovedHas(state: Vec<I32>, name: *Str) : Bool => stateMovedSet(state).setHas(name);
 fn stateDroppedHas(state: Vec<I32>, name: *Str) : Bool => stateDroppedSet(state).setHas(name);
 fn stateMovedAdd(state: Vec<I32>, name: *Str) : I32 => {
@@ -335,6 +337,18 @@ fn stateEndScope(state: Vec<I32>) : I32 => {
     while (loans.vecLength() > start) {
         loans.vecPop();
     }
+     // Rebuild loansByBase index from remaining loans
+    let idx = stateLoansByBase(state).mapClear();
+    let i = 0;
+    let len = loans.vecLength();
+    while (i < len) {
+        let e = loans.vecGet(i);
+        let eb = e.vecGet(1);
+        let existing = idx.mapGetOrDefault(eb, vecNew());
+        existing.vecPush(e);
+        idx.mapSet(eb, existing);
+        i = i + 1;
+    }
     0
 }
 fn stateAddLoan(state: Vec<I32>, kind: I32, base: *Str, path: *Str) : I32 => {
@@ -343,17 +357,21 @@ fn stateAddLoan(state: Vec<I32>, kind: I32, base: *Str, path: *Str) : I32 => {
     entry.vecPush(base);
     entry.vecPush(path);
     stateLoans(state).vecPush(entry);
+     // Maintain loansByBase index
+    let idx = stateLoansByBase(state);
+    let existing = idx.mapGetOrDefault(base, vecNew());
+    existing.vecPush(entry);
+    idx.mapSet(base, existing);
     0
 }
 fn stateAnyConflictingLoan(state: Vec<I32>, base: *Str, path: *Str) : Bool => {
-    let loans = stateLoans(state);
+    let baseLoans = stateLoansByBase(state).mapGetOrDefault(base, vecNew());
     let i = 0;
-    let len = loans.vecLength();
+    let len = baseLoans.vecLength();
     while (i < len) {
-        let e = loans.vecGet(i);
-        let eb = e.vecGet(1);
+        let e = baseLoans.vecGet(i);
         let ep = e.vecGet(2);
-        if (placesConflict(base, path, eb, ep)) {
+        if (placesConflict(base, path, base, ep)) {
             return true;
         }
         i = i + 1;
@@ -361,15 +379,14 @@ fn stateAnyConflictingLoan(state: Vec<I32>, base: *Str, path: *Str) : Bool => {
     false
 }
 fn stateConflictingMutLoan(state: Vec<I32>, base: *Str, path: *Str) : Bool => {
-    let loans = stateLoans(state);
+    let baseLoans = stateLoansByBase(state).mapGetOrDefault(base, vecNew());
     let i = 0;
-    let len = loans.vecLength();
+    let len = baseLoans.vecLength();
     while (i < len) {
-        let e = loans.vecGet(i);
+        let e = baseLoans.vecGet(i);
         if (e.vecGet(0) == 2) {
-            let eb = e.vecGet(1);
             let ep = e.vecGet(2);
-            if (placesConflict(base, path, eb, ep)) {
+            if (placesConflict(base, path, base, ep)) {
                 return true;
             }
         }
@@ -378,15 +395,14 @@ fn stateConflictingMutLoan(state: Vec<I32>, base: *Str, path: *Str) : Bool => {
     false
 }
 fn stateConflictingImmutLoan(state: Vec<I32>, base: *Str, path: *Str) : Bool => {
-    let loans = stateLoans(state);
+    let baseLoans = stateLoansByBase(state).mapGetOrDefault(base, vecNew());
     let i = 0;
-    let len = loans.vecLength();
+    let len = baseLoans.vecLength();
     while (i < len) {
-        let e = loans.vecGet(i);
+        let e = baseLoans.vecGet(i);
         if (e.vecGet(0) == 1) {
-            let eb = e.vecGet(1);
             let ep = e.vecGet(2);
-            if (placesConflict(base, path, eb, ep)) {
+            if (placesConflict(base, path, base, ep)) {
                 return true;
             }
         }
@@ -412,12 +428,7 @@ fn stateClone(src: Vec<I32>) : Vec<I32> => {
         i = i + 1;
     }
     let srcScopes = stateScopeStarts(src);
-    i = 0;
-    len = srcScopes.vecLength();
-    while (i < len) {
-        stateScopeStarts(dst).vecPush(srcScopes.vecGet(i));
-        i = i + 1;
-    }
+    dst.vecSet(3, srcScopes.vecClone());
     let srcDropped = stateDroppedVec(src);
     i = 0;
     len = srcDropped.vecLength();

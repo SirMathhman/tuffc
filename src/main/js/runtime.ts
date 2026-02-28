@@ -347,6 +347,18 @@ export const __vec_clear = vec_clear;
 export const __vec_join = vec_join;
 export const __vec_includes = vec_includes;
 
+export function vec_clone<T>(input: VecState<T> | T[]): VecState<T> {
+  const src = asVecState(input);
+  const dst: VecState<T> = {
+    data: new Array(src.data.length),
+    init: src.init,
+    length: src.init,
+  };
+  for (let i = 0; i < src.init; i += 1) dst.data[i] = src.data[i];
+  return dst;
+}
+export const __vec_clone = vec_clone;
+
 // Destructor hook for `extern type Vec<T> then drop_vec;`
 export function drop_vec<T = unknown>(thisVec: VecState<T> | T[]): void {
   vec_clear(thisVec);
@@ -370,12 +382,22 @@ export function map_get<K, V>(m: Map<K, V>, k: K): V | undefined {
   return m.get(k);
 }
 
+export function map_get_or_default<K, V>(m: Map<K, V>, k: K, defaultVal: V): V {
+  const v = m.get(k);
+  return v !== undefined ? v : defaultVal;
+}
+
 export function map_has<K, V>(m: Map<K, V>, k: K): boolean {
   return m.has(k);
 }
 
 export function map_delete<K, V>(m: Map<K, V>, k: K): boolean {
   return m.delete(k);
+}
+
+export function map_clear<K, V>(m: Map<K, V>): Map<K, V> {
+  m.clear();
+  return m;
 }
 
 export function map_size<K, V>(m: Map<K, V>): number {
@@ -410,6 +432,11 @@ export function set_has<T>(s: Set<T>, item: T): boolean {
 
 export function set_delete<T>(s: Set<T>, item: T): boolean {
   return s.delete(item);
+}
+
+export function set_clear<T>(s: Set<T>): Set<T> {
+  s.clear();
+  return s;
 }
 
 export function set_size<T>(s: Set<T>): number {
@@ -805,7 +832,9 @@ export function getArgv(i: number): string {
   return process.argv[i] ?? "";
 }
 export const mapDelete = map_delete;
+export const mapClear = map_clear;
 export const mapGet = map_get;
+export const mapGetOrDefault = map_get_or_default;
 export const mapHas = map_has;
 export const mapSet = map_set;
 export const panicWithCode = panic_with_code;
@@ -824,6 +853,7 @@ export const sbBuild = sb_build;
 export const sbNew = sb_new;
 export const setAdd = set_add;
 export const setDelete = set_delete;
+export const setClear = set_clear;
 export const setHas = set_has;
 export const strCharAt = str_char_at;
 export const strConcat = str_concat;

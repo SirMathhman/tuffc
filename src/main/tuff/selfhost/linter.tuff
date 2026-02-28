@@ -84,7 +84,8 @@ fn lintCollectEffectiveLinesExpr(expr: I32, lines: *mut Set<I32>) : I32 => {
         added = added + lintCollectEffectiveLinesExpr(nodeGetData1(expr), lines);
         let args = nodeGetData2(expr);
         let i = 0;
-        while (i < args.vecLength()) {
+        let __len25 = args.vecLength();
+        while (i < __len25) {
             added = added + lintCollectEffectiveLinesExpr(args.vecGet(i), lines);
             i = i + 1;
         }
@@ -101,7 +102,8 @@ fn lintCollectEffectiveLinesExpr(expr: I32, lines: *mut Set<I32>) : I32 => {
     if (kind == NK_STRUCT_INIT) {
         let fields = nodeGetData2(expr);
         let i = 0;
-        while (i < fields.vecLength()) {
+        let __len24 = fields.vecLength();
+        while (i < __len24) {
             let field = fields.vecGet(i);
             added = added + lintCollectEffectiveLinesExpr(field.vecGet(1), lines);
             i = i + 1;
@@ -120,7 +122,8 @@ fn lintCollectEffectiveLinesExpr(expr: I32, lines: *mut Set<I32>) : I32 => {
         added = added + lintCollectEffectiveLinesExpr(nodeGetData1(expr), lines);
         let cases = nodeGetData2(expr);
         let i = 0;
-        while (i < cases.vecLength()) {
+        let __len23 = cases.vecLength();
+        while (i < __len23) {
             let c = cases.vecGet(i);
             added = added + lintCollectEffectiveLinesStmt(c.vecGet(1), lines);
             i = i + 1;
@@ -139,7 +142,8 @@ fn lintCollectEffectiveLinesExpr(expr: I32, lines: *mut Set<I32>) : I32 => {
     if (kind == NK_TUPLE_EXPR) {
         let items = nodeGetData1(expr);
         let i = 0;
-        while (i < items.vecLength()) {
+        let __len22 = items.vecLength();
+        while (i < __len22) {
             added = added + lintCollectEffectiveLinesExpr(items.vecGet(i), lines);
             i = i + 1;
         }
@@ -161,7 +165,8 @@ fn lintCollectEffectiveLinesStmt(stmt: I32, lines: *mut Set<I32>) : I32 => {
     if (kind == NK_BLOCK) {
         let stmts = nodeGetData1(stmt);
         let i = 0;
-        while (i < stmts.vecLength()) {
+        let __len21 = stmts.vecLength();
+        while (i < __len21) {
             added = added + lintCollectEffectiveLinesStmt(stmts.vecGet(i), lines);
             i = i + 1;
         }
@@ -209,7 +214,8 @@ fn lintCollectEffectiveLinesStmt(stmt: I32, lines: *mut Set<I32>) : I32 => {
     if (kind == NK_STMT_LIST) {
         let items = nodeGetData1(stmt);
         let i = 0;
-        while (i < items.vecLength()) {
+        let __len20 = items.vecLength();
+        while (i < __len20) {
             added = added + lintCollectEffectiveLinesStmt(items.vecGet(i), lines);
             i = i + 1;
         }
@@ -523,7 +529,8 @@ fn lintAstdupReportableKind(kind: I32) : Bool => {
 fn lintAstdupVecFp(vecNodes: Vec<I32>, fpCache: Map<I32, I32>, sizeCache: Map<I32, I32>, seenNodes: Vec<I32>) : *Str => {
     let i = 0;
     let acc = "[";
-    while (i < vecNodes.vecLength()) {
+    let __len19 = vecNodes.vecLength();
+    while (i < __len19) {
         acc = acc.strConcat(lintAstdupFp(vecNodes.vecGet(i), fpCache, sizeCache, seenNodes));
         if (i + 1 < vecNodes.vecLength()) {
             acc = acc.strConcat(",");
@@ -536,7 +543,8 @@ fn lintAstdupVecFp(vecNodes: Vec<I32>, fpCache: Map<I32, I32>, sizeCache: Map<I3
 fn lintAstdupVecSize(vecNodes: Vec<I32>, sizeCache: Map<I32, I32>) : I32 => {
     let i = 0;
     let total = 0;
-    while (i < vecNodes.vecLength()) {
+    let __len18 = vecNodes.vecLength();
+    while (i < __len18) {
         let node = vecNodes.vecGet(i);
         if (node != 0 && sizeCache.mapHas(node)) {
             total = total + sizeCache.mapGet(node);
@@ -549,7 +557,8 @@ fn lintAstdupVecSize(vecNodes: Vec<I32>, sizeCache: Map<I32, I32>) : I32 => {
 fn lintAstdupParamsFp(params: Vec<I32>, fpCache: Map<I32, I32>, sizeCache: Map<I32, I32>, seenNodes: Vec<I32>) : *Str => {
     let i = 0;
     let acc = "(";
-    while (i < params.vecLength()) {
+    let __len17 = params.vecLength();
+    while (i < __len17) {
         let p = params.vecGet(i);
         let ptype = p.vecGet(1);
         acc = acc
@@ -567,7 +576,8 @@ fn lintAstdupParamsFp(params: Vec<I32>, fpCache: Map<I32, I32>, sizeCache: Map<I
 fn lintAstdupParamsSize(params: Vec<I32>, sizeCache: Map<I32, I32>) : I32 => {
     let i = 0;
     let total = 0;
-    while (i < params.vecLength()) {
+    let __len16 = params.vecLength();
+    while (i < __len16) {
         let p = params.vecGet(i);
         let ptype = p.vecGet(1);
         if (ptype != 0 && sizeCache.mapHas(ptype)) {
@@ -582,7 +592,8 @@ fn lintAstdupNamedTypeFieldsFp(fields: Vec<I32>, fpCache: Map<I32, I32>, sizeCac
 : *Str => {
     let i = 0;
     let acc = "{";
-    while (i < fields.vecLength()) {
+    let __len15 = fields.vecLength();
+    while (i < __len15) {
         let f = fields.vecGet(i);
         acc = acc
             .strConcat("{n:ID:t:")
@@ -599,7 +610,8 @@ fn lintAstdupNamedTypeFieldsFp(fields: Vec<I32>, fpCache: Map<I32, I32>, sizeCac
 fn lintAstdupNamedTypeFieldsSize(fields: Vec<I32>, sizeCache: Map<I32, I32>) : I32 => {
     let i = 0;
     let total = 0;
-    while (i < fields.vecLength()) {
+    let __len14 = fields.vecLength();
+    while (i < __len14) {
         let f = fields.vecGet(i);
         let t = f.vecGet(1);
         if (t != 0 && sizeCache.mapHas(t)) {
@@ -614,7 +626,8 @@ fn lintAstdupStructInitFieldsFp(fields: Vec<I32>, fpCache: Map<I32, I32>, sizeCa
 : *Str => {
     let i = 0;
     let acc = "{";
-    while (i < fields.vecLength()) {
+    let __len13 = fields.vecLength();
+    while (i < __len13) {
         let f = fields.vecGet(i);
         acc = acc
             .strConcat("{n:ID:v:")
@@ -631,7 +644,8 @@ fn lintAstdupStructInitFieldsFp(fields: Vec<I32>, fpCache: Map<I32, I32>, sizeCa
 fn lintAstdupStructInitFieldsSize(fields: Vec<I32>, sizeCache: Map<I32, I32>) : I32 => {
     let i = 0;
     let total = 0;
-    while (i < fields.vecLength()) {
+    let __len12 = fields.vecLength();
+    while (i < __len12) {
         let f = fields.vecGet(i);
         let v = f.vecGet(1);
         if (v != 0 && sizeCache.mapHas(v)) {
@@ -645,7 +659,8 @@ fn lintAstdupStructInitFieldsSize(fields: Vec<I32>, sizeCache: Map<I32, I32>) : 
 fn lintAstdupCasesFp(cases: Vec<I32>, fpCache: Map<I32, I32>, sizeCache: Map<I32, I32>, seenNodes: Vec<I32>) : *Str => {
     let i = 0;
     let acc = "[";
-    while (i < cases.vecLength()) {
+    let __len11 = cases.vecLength();
+    while (i < __len11) {
         let c = cases.vecGet(i);
         acc = acc
             .strConcat("{p:")
@@ -664,7 +679,8 @@ fn lintAstdupCasesFp(cases: Vec<I32>, fpCache: Map<I32, I32>, sizeCache: Map<I32
 fn lintAstdupCasesSize(cases: Vec<I32>, sizeCache: Map<I32, I32>) : I32 => {
     let i = 0;
     let total = 0;
-    while (i < cases.vecLength()) {
+    let __len10 = cases.vecLength();
+    while (i < __len10) {
         let c = cases.vecGet(i);
         let p = c.vecGet(0);
         let b = c.vecGet(1);
@@ -683,7 +699,8 @@ fn lintAstdupContractMethodsFp(methods: Vec<I32>, fpCache: Map<I32, I32>, sizeCa
 : *Str => {
     let i = 0;
     let acc = "[";
-    while (i < methods.vecLength()) {
+    let __len9 = methods.vecLength();
+    while (i < __len9) {
         let m = methods.vecGet(i);
         acc = acc
             .strConcat("{m:ID:g:")
@@ -704,7 +721,8 @@ fn lintAstdupContractMethodsFp(methods: Vec<I32>, fpCache: Map<I32, I32>, sizeCa
 fn lintAstdupContractMethodsSize(methods: Vec<I32>, sizeCache: Map<I32, I32>) : I32 => {
     let i = 0;
     let total = 0;
-    while (i < methods.vecLength()) {
+    let __len8 = methods.vecLength();
+    while (i < __len8) {
         let m = methods.vecGet(i);
         total = total + lintAstdupParamsSize(m.vecGet(2), sizeCache);
         let ret = m.vecGet(3);
@@ -1128,7 +1146,8 @@ fn lintAstdupFallbackBinary(program: I32) : I32 => {
     let body = nodeGetData1(program);
     let stack = vecNew();
     let i = 0;
-    while (i < body.vecLength()) {
+    let __len7 = body.vecLength();
+    while (i < __len7) {
         stack.vecPush(body.vecGet(i));
         i = i + 1;
     }
@@ -1154,7 +1173,8 @@ fn lintAstdupFallbackBinary(program: I32) : I32 => {
 
             let found = -1;
             let k = 0;
-            while (k < keys.vecLength()) {
+            let __len6 = keys.vecLength();
+            while (k < __len6) {
                 if (keys.vecGet(k).strEq(key)) {
                     found = k;
                     break;
@@ -1179,7 +1199,8 @@ fn lintAstdupFallbackBinary(program: I32) : I32 => {
         if (kind == NK_PROGRAM || kind == NK_BLOCK || kind == NK_STMT_LIST || kind == NK_TUPLE_EXPR || kind == NK_TUPLE_TYPE) {
             let items = nodeGetData1(n);
             let j = 0;
-            while (j < items.vecLength()) {
+            let __len5 = items.vecLength();
+            while (j < __len5) {
                 stack.vecPush(items.vecGet(j));
                 j = j + 1;
             }
@@ -1221,7 +1242,8 @@ fn lintAstdupFallbackBinary(program: I32) : I32 => {
             stack.vecPush(nodeGetData1(n));
             let args = nodeGetData2(n);
             let a = 0;
-            while (a < args.vecLength()) {
+            let __len4 = args.vecLength();
+            while (a < __len4) {
                 stack.vecPush(args.vecGet(a));
                 a = a + 1;
             }
@@ -1261,7 +1283,8 @@ fn lintCheckAstDuplicates(program: I32) : I32 => {
 
     let body = nodeGetData1(program);
     let scanI = 0;
-    while (scanI < body.vecLength()) {
+    let __len3 = body.vecLength();
+    while (scanI < __len3) {
         lintAstdupFp(body.vecGet(scanI), fpCache, sizeCache, seenNodes);
         scanI = scanI + 1;
     }
@@ -1270,7 +1293,8 @@ fn lintCheckAstDuplicates(program: I32) : I32 => {
     let buckets = vecNew();
 
     let i = 0;
-    while (i < seenNodes.vecLength()) {
+    let __len2 = seenNodes.vecLength();
+    while (i < __len2) {
         let n = seenNodes.vecGet(i);
         let kind = nodeKind(n);
         let size = sizeCache.mapGet(n);
@@ -1278,7 +1302,8 @@ fn lintCheckAstDuplicates(program: I32) : I32 => {
             let fp = fpCache.mapGet(n);
             let found = -1;
             let j = 0;
-            while (j < keys.vecLength()) {
+            let __len1 = keys.vecLength();
+            while (j < __len1) {
                 if (keys.vecGet(j).strEq(fp)) {
                     found = j;
                     break;
@@ -1301,7 +1326,8 @@ fn lintCheckAstDuplicates(program: I32) : I32 => {
     }
 
     i = 0;
-    while (i < keys.vecLength()) {
+    let __len = keys.vecLength();
+    while (i < __len) {
         let fp = keys.vecGet(i);
         let bucket = buckets.vecGet(i);
         if (bucket.vecLength() > 1) {

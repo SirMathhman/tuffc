@@ -9,7 +9,7 @@ let {
  = selfhost::errors::ResolveError;
 let {
     parseInit, nodeKind, nodeGetData1, nodeGetData2, nodeGetData3, nodeGetData4,
-    nodeGetData5, nodeSetData1
+    nodeGetData5, nodeSetData1, getParseExports
 }
  = selfhost::parserCore;
 let {
@@ -266,7 +266,7 @@ allExportedDeclaredNames: *mut Set<I32>, allExternDeclaredNames: *mut Set<I32>) 
             if (moduleIsExternDecl(dstmt)) {
                 allExternDeclaredNames.setAdd(dname);
             }
-            if (moduleHasOutExport(source, dname)) {
+            if (getParseExports().setHas(dname)) {
                 exported.setAdd(dname);
                 allExportedDeclaredNames.setAdd(dname);
             }
@@ -575,21 +575,7 @@ allExternDeclared: *mut Set<I32>) : I32 => {
     }
     0
 }
-fn moduleHasOutExport(source: *Str, name: *Str) : Bool => {
-    source.strIncludes("out extern fn ".strConcat(name)) ||
-    source.strIncludes("extern out fn ".strConcat(name)) ||
-    source.strIncludes("out fn ".strConcat(name)) ||
-    source.strIncludes("out struct ".strConcat(name)) ||
-    source.strIncludes("out copy struct ".strConcat(name)) ||
-    source.strIncludes("copy out struct ".strConcat(name)) ||
-    source.strIncludes("out enum ".strConcat(name)) ||
-    source.strIncludes("out object ".strConcat(name)) ||
-    source.strIncludes("out contract ".strConcat(name)) ||
-    source.strIncludes("out type ".strConcat(name)) ||
-    source.strIncludes("out copy type ".strConcat(name)) ||
-    source.strIncludes("copy out type ".strConcat(name)) ||
-    source.strIncludes("out class fn ".strConcat(name))
-}
+// moduleHasOutExport removed — replaced by getParseExports().setHas() O(1) lookup
 fn modulePathToUnitKey(p: *Str, fallbackIdx: I32) : *Str => {
     let key = moduleNormalizePath(p);
     key = key.strReplaceAll(":", "_");
@@ -809,7 +795,8 @@ maxEffectiveLines: I32, borrowEnabled: I32, target: *Str, astDupEnabled: I32) : 
         "Inspect module graph expansion and ensure duplicate modules are not repeatedly re-added."
         );
     }
-    while (smI < modulePaths.vecLength()) {
+    let __len = modulePaths.vecLength();
+    while (smI < __len) {
         let smPath = modulePaths.vecGet(smI);
         let smSrc = sources.vecGet(smI);
         sourcemapAdd(smPath, smLine);

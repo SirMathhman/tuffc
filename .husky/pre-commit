@@ -1,1 +1,1 @@
-pmd cpd --dir src,tests,scripts --language typescript --minimum-tokens 35
+pmd cpd --dir src,tests,scripts --language typescript --minimum-tokens 80

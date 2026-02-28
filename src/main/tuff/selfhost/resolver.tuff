@@ -26,6 +26,21 @@ let {
 
  // Current AST node being resolved — set at each resolve_expr/resolve_stmt entry.
 let rslvCurrentNode : I32 = 0;
+
+ // Scope Set pool — recycle cleared Sets instead of allocating new ones each scope.
+let scopePool : Vec<*mut Set<*Str>> = vecNew();
+fn scopePoolGet() : *mut Set<*Str> => {
+    if (scopePool.vecLength() > 0) {
+        scopePool.vecPop()
+    } else {
+        setNew()
+    }
+}
+fn scopePoolReturn(s: *mut Set<*Str>) => {
+    s.setClear();
+    scopePool.vecPush(s);
+}
+
 fn rslvPanicLoc(code: *Str, msg: *Str, reason: *Str, fix: *Str) : Result<I32, ResolveError> => {
     Err<ResolveError> {
         error: ResolveError {
@@ -38,11 +53,11 @@ fn rslvPanicLoc(code: *Str, msg: *Str, reason: *Str, fix: *Str) : Result<I32, Re
         }
     }
 }
-let resolveLifetimeScopes : Vec<I32> = vecNew();
+let resolveLifetimeScopes : Vec<*mut Set<*Str>> = vecNew();
  // Track first declaration node for each global name (for shadowing error messages).
-let resolveGlobalDeclNodes : Map<I32, I32> = mapNew();
+let resolveGlobalDeclNodes : Map<*Str, I32> = mapNew();
  // Parallel list of declared global names so we can iterate for "did you mean?" suggestions.
-let resolveGlobalNamesList : Vec<I32> = vecNew();
+let resolveGlobalNamesList : Vec<*Str> = vecNew();
 let resolveStmtTotalCalls : I32 = 0;
 let resolveStmtTotalMs : I32 = 0;
 let resolveStmtBlockCalls : I32 = 0;
@@ -117,7 +132,7 @@ fn resolveLogCount(name: *Str, count: I32) : I32 => {
     );
     0
 }
-fn resolveExprIdentifier(n: I32, globals: *mut Set<I32>, scopes: Vec<I32>, depth: I32) : Result<I32, ResolveError> => {
+fn resolveExprIdentifier(n: I32, globals: *mut Set<*Str>, scopes: Vec<*mut Set<*Str>>, depth: I32) : Result<I32, ResolveError> => {
     let name = getInternedStr(nodeGetData1(n))?;
     if (!rslvUtilsScopeHas(scopes, depth, name) && !globals.setHas(name) &&
     !rslvUtilsIsHostBuiltinName(name)) {
@@ -132,7 +147,7 @@ fn resolveExprIdentifier(n: I32, globals: *mut Set<I32>, scopes: Vec<I32>, depth
     }
     Ok<I32> { value: 0 }
 }
-fn resolveExprCall(n: I32, globals: *mut Set<I32>, scopes: Vec<I32>, depth: I32) : Result<I32, ResolveError> => {
+fn resolveExprCall(n: I32, globals: *mut Set<*Str>, scopes: Vec<*mut Set<*Str>>, depth: I32) : Result<I32, ResolveError> => {
     let callee = nodeGetData1(n)?;
     if (nodeKind(callee) == NK_IDENTIFIER && getInternedStr(nodeGetData1(callee)).strEq("drop")) {
         let args = nodeGetData2(n);
@@ -184,7 +199,7 @@ fn resolveExprCall(n: I32, globals: *mut Set<I32>, scopes: Vec<I32>, depth: I32)
     }
     Ok<I32> { value: 0 }
 }
-fn resolveExprMatch (n: I32, globals: *mut Set<I32>, scopes: Vec<I32>, depth: I32) : Result<I32, ResolveError> => {
+fn resolveExprMatch (n: I32, globals: *mut Set<*Str>, scopes: Vec<*mut Set<*Str>>, depth: I32) : Result<I32, ResolveError> => {
     resolveExpr(nodeGetData1(n), globals, scopes, depth)?;
     let cases = nodeGetData2(n);
     let i = 0;
@@ -194,7 +209,7 @@ fn resolveExprMatch (n: I32, globals: *mut Set<I32>, scopes: Vec<I32>, depth: I3
         let pat = caseNode.vecGet(0);
         let body = caseNode.vecGet(1);
         let nextDepth = depth + 1;
-        scopes.vecPush(setNew());
+        scopes.vecPush(scopePoolGet());
         if (nodeKind(pat) == NK_STRUCT_PAT) {
             let fields = nodeGetData2(pat);
             let j = 0;
@@ -212,14 +227,14 @@ fn resolveExprMatch (n: I32, globals: *mut Set<I32>, scopes: Vec<I32>, depth: I3
             }
         }
         resolveStmt(body, globals, scopes, nextDepth)?;
-        scopes.vecPop();
+        scopePoolReturn(scopes.vecPop());
         i = i + 1;
     }
     Ok<I32> { value: 0 }
 }
-fn resolveExprLambda(n: I32, globals: *mut Set<I32>, scopes: Vec<I32>, depth: I32) : Result<I32, ResolveError> => {
+fn resolveExprLambda(n: I32, globals: *mut Set<*Str>, scopes: Vec<*mut Set<*Str>>, depth: I32) : Result<I32, ResolveError> => {
     let nextDepth = depth + 1;
-    scopes.vecPush(setNew());
+    scopes.vecPush(scopePoolGet());
     let params = nodeGetData1(n);
     let i = 0;
     let len = params.vecLength();
@@ -229,12 +244,12 @@ fn resolveExprLambda(n: I32, globals: *mut Set<I32>, scopes: Vec<I32>, depth: I3
         i = i + 1;
     }
     resolveStmt(nodeGetData2(n), globals, scopes, nextDepth)?;
-    scopes.vecPop();
+    scopePoolReturn(scopes.vecPop());
     Ok<I32> { value: 0 }
 }
-fn resolveExprFnExpr(n: I32, globals: *mut Set<I32>, scopes: Vec<I32>, depth: I32) : Result<I32, ResolveError> => {
+fn resolveExprFnExpr(n: I32, globals: *mut Set<*Str>, scopes: Vec<*mut Set<*Str>>, depth: I32) : Result<I32, ResolveError> => {
     let nextDepth = depth + 1;
-    scopes.vecPush(setNew());
+    scopes.vecPush(scopePoolGet());
     let fnameIdx = nodeGetData1(n);
     if (fnameIdx != 0) {
         rslvUtilsScopeDefine(scopes, nextDepth, getInternedStr(fnameIdx), n);
@@ -248,12 +263,12 @@ fn resolveExprFnExpr(n: I32, globals: *mut Set<I32>, scopes: Vec<I32>, depth: I3
         i = i + 1;
     }
     resolveStmt(nodeGetData5(n), globals, scopes, nextDepth)?;
-    scopes.vecPop();
+    scopePoolReturn(scopes.vecPop());
     Ok<I32> { value: 0 }
 }
-fn resolveStmtBlock(n: I32, globals: *mut Set<I32>, scopes: Vec<I32>, depth: I32) : Result<I32, ResolveError> => {
+fn resolveStmtBlock(n: I32, globals: *mut Set<*Str>, scopes: Vec<*mut Set<*Str>>, depth: I32) : Result<I32, ResolveError> => {
     let nextDepth = depth + 1;
-    scopes.vecPush(setNew());
+    scopes.vecPush(scopePoolGet());
     let stmts = nodeGetData1(n);
     let i = 0;
     let len = stmts.vecLength();
@@ -276,12 +291,12 @@ fn resolveStmtBlock(n: I32, globals: *mut Set<I32>, scopes: Vec<I32>, depth: I32
         i = i + 1;
     }
     resolveBlockBodyMs = resolveBlockBodyMs + (perfNow() - bodyT0);
-    scopes.vecPop();
+    scopePoolReturn(scopes.vecPop());
     Ok<I32> { value: 0 }
 }
-fn resolveStmtFnDecl(n: I32, globals: *mut Set<I32>, scopes: Vec<I32>, depth: I32) : Result<I32, ResolveError> => {
+fn resolveStmtFnDecl(n: I32, globals: *mut Set<*Str>, scopes: Vec<*mut Set<*Str>>, depth: I32) : Result<I32, ResolveError> => {
     let nextDepth = depth + 1;
-    scopes.vecPush(setNew());
+    scopes.vecPush(scopePoolGet());
     let params = nodeGetData3(n);
     let i = 0;
     let len = params.vecLength();
@@ -293,10 +308,10 @@ fn resolveStmtFnDecl(n: I32, globals: *mut Set<I32>, scopes: Vec<I32>, depth: I3
     }
     rslvUtilsResolveTypeLifetimes(nodeGetData4(n), resolveLifetimeScopes, n);
     resolveStmt(nodeGetData5(n), globals, scopes, nextDepth)?;
-    scopes.vecPop();
+    scopePoolReturn(scopes.vecPop());
     Ok<I32> { value: 0 }
 }
-fn resolveStmtLetOrImport(n: I32, globals: *mut Set<I32>, scopes: Vec<I32>, depth: I32) : Result<I32, ResolveError> => {
+fn resolveStmtLetOrImport(n: I32, globals: *mut Set<*Str>, scopes: Vec<*mut Set<*Str>>, depth: I32) : Result<I32, ResolveError> => {
     let kind = nodeKind(n)?;
     if (kind == NK_LET_DECL) {
         if (nodeGetData2(n) != 0) {
@@ -321,7 +336,7 @@ fn resolveStmtLetOrImport(n: I32, globals: *mut Set<I32>, scopes: Vec<I32>, dept
     }
     Ok<I32> { value: 0 }
 }
-fn resolveStmtFlow(n: I32, globals: *mut Set<I32>, scopes: Vec<I32>, depth: I32) : Result<I32, ResolveError> => {
+fn resolveStmtFlow(n: I32, globals: *mut Set<*Str>, scopes: Vec<*mut Set<*Str>>, depth: I32) : Result<I32, ResolveError> => {
     let kind = nodeKind(n)?;
     if (kind == NK_EXPR_STMT) {
         resolveExpr(nodeGetData1(n), globals, scopes, depth)?;
@@ -346,12 +361,12 @@ fn resolveStmtFlow(n: I32, globals: *mut Set<I32>, scopes: Vec<I32>, depth: I32)
     }
     if (kind == NK_FOR_STMT) {
         let nextDepth = depth + 1;
-        scopes.vecPush(setNew());
+        scopes.vecPush(scopePoolGet());
         rslvUtilsScopeDefine(scopes, nextDepth, getInternedStr(nodeGetData1(n)), n);
         resolveExpr(nodeGetData2(n), globals, scopes, nextDepth)?;
         resolveExpr(nodeGetData3(n), globals, scopes, nextDepth)?;
         resolveStmt(nodeGetData4(n), globals, scopes, nextDepth)?;
-        scopes.vecPop();
+        scopePoolReturn(scopes.vecPop());
         return Ok<I32> { value: 1 };
     }
     if (kind == NK_WHILE_STMT) {
@@ -365,11 +380,11 @@ fn resolveStmtFlow(n: I32, globals: *mut Set<I32>, scopes: Vec<I32>, depth: I32)
     }
     Ok<I32> { value: 0 }
 }
-fn resolveStmtLifetimeOrInto(n: I32, globals: *mut Set<I32>, scopes: Vec<I32>, depth: I32) : Result<I32, ResolveError> => {
+fn resolveStmtLifetimeOrInto(n: I32, globals: *mut Set<*Str>, scopes: Vec<*mut Set<*Str>>, depth: I32) : Result<I32, ResolveError> => {
     let kind = nodeKind(n)?;
     if (kind == NK_LIFETIME_STMT) {
         let nextDepth = depth + 1;
-        scopes.vecPush(setNew());
+        scopes.vecPush(scopePoolGet());
         let lifetimeNames = nodeGetData1(n);
         let lifetimeScope = setNew();
         let i = 0;
@@ -387,7 +402,7 @@ fn resolveStmtLifetimeOrInto(n: I32, globals: *mut Set<I32>, scopes: Vec<I32>, d
         resolveLifetimeScopes.vecPush(lifetimeScope);
         resolveStmt(nodeGetData2(n), globals, scopes, nextDepth)?;
         resolveLifetimeScopes.vecPop();
-        scopes.vecPop();
+        scopePoolReturn(scopes.vecPop());
         return Ok<I32> { value: 1 };
     }
     if (kind == NK_INTO_STMT) {
@@ -399,7 +414,7 @@ fn resolveStmtLifetimeOrInto(n: I32, globals: *mut Set<I32>, scopes: Vec<I32>, d
     }
     Ok<I32> { value: 0 }
 }
-fn resolveExpr(n: I32, globals: *mut Set<I32>, scopes: Vec<I32>, depth: I32) : Result<I32, ResolveError> => {
+fn resolveExpr(n: I32, globals: *mut Set<*Str>, scopes: Vec<*mut Set<*Str>>, depth: I32) : Result<I32, ResolveError> => {
     if (n == 0) {
         return Ok<I32> { value: 0 };
     }
@@ -501,7 +516,7 @@ fn resolveExpr(n: I32, globals: *mut Set<I32>, scopes: Vec<I32>, depth: I32) : R
     resolveExprOtherCalls = resolveExprOtherCalls + 1;
     Ok<I32> { value: 0 }
 }
-fn resolveStmt(n: I32, globals: *mut Set<I32>, scopes: Vec<I32>, depth: I32) : Result<I32, ResolveError> => {
+fn resolveStmt(n: I32, globals: *mut Set<*Str>, scopes: Vec<*mut Set<*Str>>, depth: I32) : Result<I32, ResolveError> => {
     if (n == 0) {
         return Ok<I32> { value: 0 };
     }
@@ -582,7 +597,7 @@ out fn resolveNames(program: I32) : Result<I32, ResolveError> => {
     let resolveStepStart = resolveTotalStart;
     resolveLifetimeScopes.vecClear();
     resolveGlobalNamesList.vecClear();
-    resolveGlobalDeclNodes = mapNew();
+    resolveGlobalDeclNodes = resolveGlobalDeclNodes.mapClear();
     resolveStmtTotalCalls = 0;
     resolveStmtTotalMs = 0;
     resolveStmtBlockCalls = 0;
@@ -615,7 +630,7 @@ out fn resolveNames(program: I32) : Result<I32, ResolveError> => {
     resolveExprLambdaCalls = 0;
     resolveExprFnExprCalls = 0;
     resolveExprOtherCalls = 0;
-    resolveExprOtherKindCounts = mapNew();
+    resolveExprOtherKindCounts = resolveExprOtherKindCounts.mapClear();
     resolveExprOtherKindKeys.vecClear();
     resolveStepStart = resolveLogStep("reset-state", resolveStepStart, resolveTotalStart);
     let globals = setNew();

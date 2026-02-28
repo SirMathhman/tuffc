@@ -8,7 +8,7 @@ let {
 }
  = selfhost::runtimeLexer;
 let {
-    pParsePostfix
+    pParsePostfix, pGenericSuffixKind
 }
  = selfhost::parserExprPostfix;
 fn pParsePrimaryArray() : I32 => {
@@ -264,17 +264,20 @@ fn pParsePrimaryIdentifierExpr() : I32 => {
             isTypeLike = true;
         }
     }
-    if (isTypeLike && pAt(TK_SYMBOL, "<") && (pHasGenericStructInitSuffix() || pHasGenericValueSuffix())) {
-        pEat();
-        if (!pAt(TK_SYMBOL, ">")) {
-            genericArgs.vecPush(pParseGenericArgValueOrType());
-            while (pAt(TK_SYMBOL, ",")) {
-                pEat();
+    if (isTypeLike && pAt(TK_SYMBOL, "<")) {
+        let gsk = pGenericSuffixKind();
+        if (gsk == 2 || gsk == 3) {
+            pEat();
+            if (!pAt(TK_SYMBOL, ">")) {
                 genericArgs.vecPush(pParseGenericArgValueOrType());
+                while (pAt(TK_SYMBOL, ",")) {
+                    pEat();
+                    genericArgs.vecPush(pParseGenericArgValueOrType());
+                }
             }
+            pExpect(TK_SYMBOL, ">", "Expected '>' in generic struct initializer");
+            nodeSetData2(expr, genericArgs);
         }
-        pExpect(TK_SYMBOL, ">", "Expected '>' in generic struct initializer");
-        nodeSetData2(expr, genericArgs);
     }
     if (pAt(TK_SYMBOL, "{")) {
         pEat();

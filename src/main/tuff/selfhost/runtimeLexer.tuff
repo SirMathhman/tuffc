@@ -14,15 +14,15 @@ extern let {
  = globalThis;
 extern let {
     __vec_new, __vec_push, __vec_pop, __vec_get, __vec_set, __vec_length, __vec_init,
-    __vec_capacity, __vec_clear, __vec_join, __vec_includes
+    __vec_capacity, __vec_clear, __vec_join, __vec_includes, __vec_clone
 }
  = globalThis;
 extern let {
-    __map_new, mapSet, mapGet, mapHas, mapDelete
+    __map_new, mapSet, mapGet, mapHas, mapDelete, mapGetOrDefault, mapClear
 }
  = globalThis;
 extern let {
-    __set_new, setAdd, setHas, setDelete
+    __set_new, setAdd, setHas, setDelete, setClear
 }
  = globalThis;
 extern let {
@@ -86,10 +86,10 @@ extern fn sbBuild(sb: StringBuilder) : *Str;
 extern type Vec<T>;
 extern fn __vec_new() : Vec<T>;
 extern fn __vec_push(this: Vec<T>, item: T) : Vec<T>;
-extern fn __vec_pop(this: Vec<T>) : I32;
+extern fn __vec_pop(this: Vec<T>) : T;
 out fn vecNew() : Vec<T> => __vec_new();
 fn vecPush(this: Vec<T>, item: T) : Vec<T> => __vec_push(this, item);
-fn vecPop(this: Vec<T>) : I32 => __vec_pop(this);
+fn vecPop(this: Vec<T>) : T => __vec_pop(this);
 extern fn __vec_get(this: Vec<T>, i: I32) : T;
 fn vecGet(this: Vec<T>, i: I32) : T => __vec_get(this, i);
 extern fn __vec_set(this: Vec<T>, i: I32, v: T) : Vec<T>;
@@ -97,6 +97,7 @@ extern fn __vec_length(this: Vec<T>) : USize;
 extern fn __vec_init(this: Vec<T>) : USize;
 extern fn __vec_capacity(this: Vec<T>) : USize;
 extern fn __vec_clear(this: Vec<T>) : Vec<T>;
+extern fn __vec_clone(this: Vec<T>) : Vec<T>;
 extern fn __vec_join(this: Vec<T>, sep: *Str) : *Str;
 extern fn __vec_includes(this: Vec<T>, item: T) : Bool;
 fn vecSet(this: Vec<T>, i: I32, v: T) : Vec<T> => __vec_set(this, i, v);
@@ -105,20 +106,24 @@ fn vecLength(this: Vec<T>) : I32 => 0 + __vec_length(this);
 fn vecInit(this: Vec<T>) : USize => __vec_init(this);
 fn vecCapacity(this: Vec<T>) : USize => __vec_capacity(this);
 fn vecClear(this: Vec<T>) : Vec<T> => __vec_clear(this);
+fn vecClone(this: Vec<T>) : Vec<T> => __vec_clone(this);
 fn vecJoin(this: Vec<T>, sep: *Str) : *Str => __vec_join(this, sep);
 fn vecIncludes(this: Vec<T>, item: T) : Bool => __vec_includes(this, item);
 extern type Map<K, V>;
 extern fn __map_new() : Map<K, V>;
 extern fn mapSet(this: Map<K, V>, k: K, v: V) : Map<K, V>;
 extern fn mapGet(this: Map<K, V>, k: K) : V;
+extern fn mapGetOrDefault(this: Map<K, V>, k: K, default: V) : V;
 extern fn mapHas(this: Map<K, V>, k: K) : Bool;
 extern fn mapDelete(this: Map<K, V>, k: K) : Bool;
+extern fn mapClear(this: Map<K, V>) : Map<K, V>;
 out fn mapNew() : Map<K, V> => __map_new();
 extern type Set<T>;
 extern fn __set_new() : *mut Set<T>;
 extern fn setAdd(this: *mut Set<T>, item: T) : *mut Set<T>;
 extern fn setHas(this: *mut Set<T>, item: T) : Bool;
 extern fn setDelete(this: *mut Set<T>, item: T) : Bool;
+extern fn setClear(this: *mut Set<T>) : *mut Set<T>;
 out fn setNew() : *mut Set<T> => __set_new();
 extern fn readFile(filePath: *Str) : *Str;
 extern fn writeFile(filePath: *Str, contents: *Str) : I32;
@@ -152,53 +157,67 @@ let TK_SYMBOL : I32 = 6;
 let TK_CHAR : I32 = 7;
  // ============================================================================
  // Token structure - array-based representation
- // Tokens are stored as indices into arrays.
- // tok_kinds[i], tok_values[i], tok_lines[i], tok_cols[i]
+ // Tokens are stored in a stride-4 vector: [kind0, value0, line0, col0, kind1, ...]
  // ============================================================================
-let tokKinds : Vec<I32> = vecNew();
-let tokValues : Vec<I32> = vecNew();
-let tokLines : Vec<I32> = vecNew();
-let tokCols : Vec<I32> = vecNew();
+let tokens : Vec<I32> = vecNew();
 let tokCount : I32 = 0;
-let triviaRecords : Vec<*Str> = vecNew();
 fn triviaSepField() : *Str => "\u001f";
 fn triviaSepRecord() : *Str => "\u001e";
+ // Trivia stored as stride-4: [kind, text, line, col, ...]
+let triviaData : Vec<I32> = vecNew();
 fn triviaAdd(kind: *Str, text: *Str, line: I32, col: I32) : I32 => {
-    triviaRecords.vecPush(
-    kind
-    .strConcat(triviaSepField())
-    .strConcat(text)
-    .strConcat(triviaSepField())
-    .strConcat(intToString(line))
-    .strConcat(triviaSepField())
-    .strConcat(intToString(col))
-    );
+    triviaData.vecPush(kind);
+    triviaData.vecPush(text);
+    triviaData.vecPush(line);
+    triviaData.vecPush(col);
     0
 }
 out fn lexTakeTrivia() : *Str => {
-    let payload = triviaRecords.vecJoin(triviaSepRecord());
-    triviaRecords.vecClear();
-    payload
+    let len = triviaData.vecLength();
+    if (len == 0) {
+        return "";
+    }
+    let sep = triviaSepField();
+    let rsep = triviaSepRecord();
+    let i = 0;
+    let result = "";
+    while (i < len) {
+        if (i > 0) {
+            result = result.strConcat(rsep);
+        }
+        result = result
+            .strConcat(triviaData.vecGet(i))
+            .strConcat(sep)
+            .strConcat(triviaData.vecGet(i + 1))
+            .strConcat(sep)
+            .strConcat(intToString(triviaData.vecGet(i + 2)))
+            .strConcat(sep)
+            .strConcat(intToString(triviaData.vecGet(i + 3)));
+        i = i + 4;
+    }
+    triviaData.vecClear();
+    result
 }
 fn tokAdd(kind: I32, value: I32, line: I32, col: I32) : I32 => {
     let idx = tokCount;
-    tokKinds.vecPush(kind);
-    tokValues.vecPush(value);
-    tokLines.vecPush(line);
-    tokCols.vecPush(col);
+    tokens.vecPush(kind);
+    tokens.vecPush(value);
+    tokens.vecPush(line);
+    tokens.vecPush(col);
     tokCount = tokCount + 1;
     idx
 }
-out fn tokKind(idx: I32) : I32 => tokKinds.vecGet(idx);
-out fn tokValue(idx: I32) : I32 => tokValues.vecGet(idx);
-out fn tokLine(idx: I32) : I32 => tokLines.vecGet(idx);
-out fn tokCol(idx: I32) : I32 => tokCols.vecGet(idx);
+out fn tokKind(idx: I32) : I32 => tokens.vecGet(idx * 4);
+out fn tokValue(idx: I32) : I32 => tokens.vecGet(idx * 4 + 1);
+out fn tokLine(idx: I32) : I32 => tokens.vecGet(idx * 4 + 2);
+out fn tokCol(idx: I32) : I32 => tokens.vecGet(idx * 4 + 3);
  // String intern table - stores strings by index for reverse lookup
 let internTable : Vec<*Str> = vecNew();
 let internMap : Map<I32, I32> = mapNew();
 fn intern(s: *Str) : I32 => {
-    if (internMap.mapHas(s)) {
-        internMap.mapGet(s)
+    let existing = internMap.mapGetOrDefault(s, -1);
+    if (existing != -1) {
+        existing
     }
     else {
         let idx = internTable.vecLength();
@@ -207,6 +226,7 @@ fn intern(s: *Str) : I32 => {
         idx
     }
 }
+out fn internStr(s: *Str) : I32 => intern(s);
 out fn getIntern(idx: I32) : *Str => {
     internTable.vecGet(idx)
 }
@@ -265,11 +285,8 @@ out fn lexInit(source: *Str) : I32 => {
     lexCol = 1;
     lexLen = sourceLen;
      // Clear token arrays for fresh compilation
-    tokKinds.vecClear();
-    tokValues.vecClear();
-    tokLines.vecClear();
-    tokCols.vecClear();
-    triviaRecords.vecClear();
+    tokens.vecClear();
+    triviaData.vecClear();
     tokCount = 0;
     0
 }
@@ -608,7 +625,7 @@ fn countEffectiveTokenLines() : I32 => {
     let i = 0;
     while (i < tokCount) {
         if (tokKind(i) != TK_EOF) {
-            let line = tokLines.vecGet(i);
+            let line = tokLine(i);
             if (!seen.mapHas(line)) {
                 seen.mapSet(line, 1);
                 count = count + 1;

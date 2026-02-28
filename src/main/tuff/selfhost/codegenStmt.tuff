@@ -243,7 +243,8 @@ fn emitStmtDecls(n: I32) : *Str => {
         let parts = nodeGetData2(n);
         let i = 0;
         let source = "";
-        while (i < parts.vecLength()) {
+        let __len = parts.vecLength();
+        while (i < __len) {
             if (i > 0) {
                 source = source.strConcat("::");
             }
@@ -357,13 +358,15 @@ fn emitFnBlockWithInit(n: I32, initThis: *Str) : *Str => {
             let typeNode = nodeGetData2(stmt);
             if (typeNode != 0 && nodeKind(typeNode) == 40) {
                 let typeName = getInternedStr(nodeGetData1(typeNode));
-                if (dtorTypeMap.mapHas(typeName) || jsGlobalDtorTypeMap.mapHas(typeName)) {
+                let localDtor = dtorTypeMap.mapGetOrDefault(typeName, "");
+                let globalDtor = jsGlobalDtorTypeMap.mapGetOrDefault(typeName, "");
+                if (localDtor != "" || globalDtor != "") {
                     dtorVarNames.vecPush(getInternedStr(nodeGetData1(stmt)));
-                    if (dtorTypeMap.mapHas(typeName)) {
-                        dtorVarDtors.vecPush(dtorTypeMap.mapGet(typeName));
+                    if (localDtor != "") {
+                        dtorVarDtors.vecPush(localDtor);
                     }
                     else {
-                        dtorVarDtors.vecPush(jsGlobalDtorTypeMap.mapGet(typeName));
+                        dtorVarDtors.vecPush(globalDtor);
                     }
                 }
             }

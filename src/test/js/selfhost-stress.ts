@@ -8,9 +8,7 @@ import {
 } from "../../main/js/compiler.ts";
 import { toDiagnostic } from "../../main/js/errors.ts";
 import { runMainFromJs } from "./js-runtime-test-utils.ts";
-import {
-  getRepoRootFromImportMeta,
-} from "./path-test-utils.ts";
+import { getRepoRootFromImportMeta } from "./path-test-utils.ts";
 
 const root = getRepoRootFromImportMeta(import.meta.url);
 const outDir = path.join(root, "tests", "out", "selfhost", "stress");
@@ -52,7 +50,11 @@ function unwrapTimedResult(result) {
     return { ok: false, ms: result.ms, crash: normalizeError(result.error) };
   }
   if (!result.value.ok) {
-    return { ok: false, ms: result.ms, error: normalizeError(result.value.error) };
+    return {
+      ok: false,
+      ms: result.ms,
+      error: normalizeError(result.value.error),
+    };
   }
   return { ok: true, ms: result.ms, js: result.value.value.js };
 }
@@ -203,6 +205,9 @@ function compareProgramCase(name, source, expectedMain) {
     ) {
       gaps.push(diagnosticSpecificityGap(stage0Code, selfhostCode));
     }
+  }
+
+  return { name, stage0, selfhost, gaps };
 }
 
 function compareCompileOnlyCase(name, source) {
@@ -246,17 +251,29 @@ function pushCompileOnlyQualityGap(gaps, result, who) {
   }
 }
 
-function checkHazardResult(result, stageName, gaps, genericCodes, expectedCodes) {
+function checkHazardResult(
+  result,
+  stageName,
+  gaps,
+  genericCodes,
+  expectedCodes,
+) {
   if (result.ok) {
-    gaps.push(`Critical safety gap: ${stageName} accepted hazard under strict safety`);
+    gaps.push(
+      `Critical safety gap: ${stageName} accepted hazard under strict safety`,
+    );
     return;
   }
   const code = result.error?.code ?? result.crash?.code;
   if (genericCodes.has(code)) {
-    gaps.push(`Critical diagnostic gap (${stageName}): strict-safety hazard produced generic code ${code}`);
+    gaps.push(
+      `Critical diagnostic gap (${stageName}): strict-safety hazard produced generic code ${code}`,
+    );
   }
   if (expectedCodes.length > 0 && !expectedCodes.includes(code)) {
-    gaps.push(`Diagnostic specificity gap (${stageName}): expected one of [${expectedCodes.join(", ")}], got ${code ?? "unknown"}`);
+    gaps.push(
+      `Diagnostic specificity gap (${stageName}): expected one of [${expectedCodes.join(", ")}], got ${code ?? "unknown"}`,
+    );
   }
 }
 

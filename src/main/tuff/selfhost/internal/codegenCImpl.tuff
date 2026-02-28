@@ -889,7 +889,7 @@ fn ccEmitStmtOrBlock(n: I32) : *Str => {
 }
 fn ccEmitFnBlock(n: I32) : *Str => {
      // Reset local type map for this function scope
-    ccLocalTypes = mapNew();
+    ccLocalTypes = ccLocalTypes.mapClear();
     let stmts = nodeGetData1(n);
     let len = stmts.vecLength();
     if (len == 0) {
@@ -1306,14 +1306,14 @@ out fn generateCImpl(typed: I32, substrate: *Str) : *Str => {
      // Reset global state for this compilation
     ccTempCounter = 0;
     ccDisableUnicodeEscape = 0;
-    ccEnumNames = setNew();
-    ccEnumVariantConsts = mapNew();
-    ccStructFields = mapNew();
-    ccAliasByVariant = mapNew();
-    ccUnionAliasInfo = mapNew();
-    ccCoveredExternFns = setNew();
-    ccFnReturnTypes = mapNew();
-    ccLocalTypes = mapNew();
+    ccEnumNames = ccEnumNames.setClear();
+    ccEnumVariantConsts = ccEnumVariantConsts.mapClear();
+    ccStructFields = ccStructFields.mapClear();
+    ccAliasByVariant = ccAliasByVariant.mapClear();
+    ccUnionAliasInfo = ccUnionAliasInfo.mapClear();
+    ccCoveredExternFns = ccCoveredExternFns.setClear();
+    ccFnReturnTypes = ccFnReturnTypes.mapClear();
+    ccLocalTypes = ccLocalTypes.mapClear();
     ccEmittedTuffError = 0;
     ccIncStdint = 1;
     ccIncStddef = 0;
@@ -1762,14 +1762,14 @@ out fn generateCSplitFilesImpl(typed: I32, substrate: *Str, moduleKeys: Vec<*Str
 stmtOwners: Vec<*Str>, initOrder: Vec<*Str>) : Vec<I32> => {
     ccTempCounter = 0;
     ccDisableUnicodeEscape = 0;
-    ccEnumNames = setNew();
-    ccEnumVariantConsts = mapNew();
-    ccStructFields = mapNew();
-    ccAliasByVariant = mapNew();
-    ccUnionAliasInfo = mapNew();
-    ccCoveredExternFns = setNew();
-    ccFnReturnTypes = mapNew();
-    ccLocalTypes = mapNew();
+    ccEnumNames = ccEnumNames.setClear();
+    ccEnumVariantConsts = ccEnumVariantConsts.mapClear();
+    ccStructFields = ccStructFields.mapClear();
+    ccAliasByVariant = ccAliasByVariant.mapClear();
+    ccUnionAliasInfo = ccUnionAliasInfo.mapClear();
+    ccCoveredExternFns = ccCoveredExternFns.setClear();
+    ccFnReturnTypes = ccFnReturnTypes.mapClear();
+    ccLocalTypes = ccLocalTypes.mapClear();
     ccEmittedTuffError = 0;
     ccIncStdint = 1;
     ccIncStddef = 0;

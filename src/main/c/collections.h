@@ -22,7 +22,13 @@ int64_t map_get(int64_t thisMap, int64_t k);
 int64_t map_has(int64_t thisMap, int64_t k);
 int64_t map_delete(int64_t thisMap, int64_t k);
 
+int64_t __vec_clone(int64_t thisVec);
+
+int64_t map_get_or_default(int64_t thisMap, int64_t k, int64_t defaultVal);
+int64_t map_clear(int64_t thisMap);
+
 int64_t __set_new(void);
 int64_t set_add(int64_t thisSet, int64_t item);
 int64_t set_has(int64_t thisSet, int64_t item);
 int64_t set_delete(int64_t thisSet, int64_t item);
+int64_t set_clear(int64_t thisSet);
