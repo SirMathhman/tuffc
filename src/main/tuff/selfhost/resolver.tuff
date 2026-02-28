@@ -290,7 +290,7 @@ fn resolveStmtBlock(n: I32, globals: *mut Set<*Str>, scopes: Vec<*mut Set<*Str>>
     while (i < len) {
         let stmt = stmts.vecGet(i);
         let stmtKind = nodeKind(stmt);
-        if (stmtKind == NK_FN_DECL || stmtKind == NK_CLASS_FN_DECL || stmtKind = =
+        if (stmtKind == NK_FN_DECL || stmtKind == NK_CLASS_FN_DECL || stmtKind ==
         NK_ACTUAL_FN_DECL) {
             rslvUtilsScopeDefine(scopes, nextDepth, getInternedStr(nodeGetData1(stmt)),
             stmt);

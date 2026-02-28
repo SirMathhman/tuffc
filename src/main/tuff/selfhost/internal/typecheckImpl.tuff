@@ -1815,7 +1815,7 @@ out fn typecheckProgramWithOptionsImpl(program: I32) : Result<I32, TypeError> =>
     while (i < len) {
         let stmt = body.vecGet(i);
         let kind = nodeKind(stmt);
-        if (kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL || kind = =
+        if (kind == NK_FN_DECL || kind == NK_CLASS_FN_DECL || kind ==
         NK_ACTUAL_FN_DECL) {
             let name = getInternedStr(nodeGetData1(stmt));
             fnNodes.mapSet(name, stmt);

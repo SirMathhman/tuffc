@@ -148,9 +148,15 @@ export function formatDiagnostic(
   const yellow = (t: string) => c(t, 33);
   const dim = (t: string) => c(t, 2);
 
-  const where = diag.loc
-    ? `${diag.loc.filePath ?? "<memory>"}:${diag.loc.line}:${diag.loc.column}`
-    : "<unknown>";
+  const parserLocMatch = (diag.cause ?? diag.message ?? "").match(
+    /\bat\s+(\d+):(\d+)\b/,
+  );
+  const inferredLine = parserLocMatch ? Number(parserLocMatch[1]) : undefined;
+  const inferredCol = parserLocMatch ? Number(parserLocMatch[2]) : undefined;
+  const line = diag.loc?.line ?? inferredLine;
+  const column = diag.loc?.column ?? inferredCol;
+  const filePath = diag.loc?.filePath ?? "<memory>";
+  const where = `${filePath}:${line ?? "<unknown>"}:${column ?? "<unknown>"}`;
 
   // Highlight the caret line within the source excerpt
   const rawSource = diag.source ?? "<unavailable>";

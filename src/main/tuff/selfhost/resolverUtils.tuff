@@ -200,8 +200,7 @@ fn fnDeclSig(n: I32) : *Str => {
         pparts.vecPush(pname.strConcat(":").strConcat(ptype));
         i = i + 1;
     }
-    let gcountLen: I32 = 0;
-    let gcount = intToString(gcountLen);
+    let gcount = intToString(gens.vecLength());
     return "g=".strConcat(gcount).strConcat(";p=").strConcat(pparts.vecJoin(",")).strConcat(";r=").strConcat(fnTypeSig(ret));
 }
 out fn rslvUtilsValidateExpectActualPairs(body: Vec<I32>) : I32 => {

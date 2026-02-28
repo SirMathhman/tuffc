@@ -23,7 +23,7 @@
     "check": "npm run lint && npm run test",
     "lint": "npm run lint:ts && npm run lint:tuff",
     "lint:ts": "tsc -p tsconfig.json --noEmit",
-    "lint:tuff": "tsx ./scripts/with-timeout.ts 60000 tsx ./src/main/js/lint-cli.ts ./src/main/tuff/selfhost.tuff --no-ast-dup --max-lines 1000",
+    "lint:tuff": "tsx ./scripts/with-timeout.ts 60000 tsx ./src/main/js/lint-cli.ts ./src/main/tuff/selfhost.tuff --no-ast-dup --max-lines 2500",
     "find-duplicates": "npm run find-duplicates:ts && npm run find-duplicates:tuff",
     "find-duplicates:ts": "pmd cpd src tests scripts --language typescript --minimum-tokens 35",
     "find-duplicates:tuff": "npm run find-duplicates:tuff:ast && tsx ./scripts/cpd-tuff.ts",

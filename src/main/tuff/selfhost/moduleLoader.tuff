@@ -709,7 +709,6 @@ maxEffectiveLines: I32, moduleCycles: Vec<*Str>, recursionDepth: I32) : I32 => {
         );
     }
     visiting.setAdd(filePath);
-    let moduleT0 = perfNow();
     gatherProfModules = gatherProfModules + 1;
     let source = "";
     if (moduleSourceCache.mapHas(filePath)) {

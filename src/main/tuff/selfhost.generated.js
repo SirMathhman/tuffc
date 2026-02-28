@@ -3402,8 +3402,7 @@ function fnDeclSig(n) {
   (() => { const __recv = pparts; const __prop = __recv?.["vecPush"]; if (typeof __prop === "function") return __prop((() => { const __recv = (() => { const __recv = pname; const __prop = __recv?.["strConcat"]; if (typeof __prop === "function") return __prop(":"); const __dyn = __recv?.table?.strConcat; return __dyn ? __dyn(__recv.ref, ":") : strConcat(__recv, ":"); })(); const __prop = __recv?.["strConcat"]; if (typeof __prop === "function") return __prop(ptype); const __dyn = __recv?.table?.strConcat; return __dyn ? __dyn(__recv.ref, ptype) : strConcat(__recv, ptype); })()); const __dyn = __recv?.table?.vecPush; return __dyn ? __dyn(__recv.ref, (() => { const __recv = (() => { const __recv = pname; const __prop = __recv?.["strConcat"]; if (typeof __prop === "function") return __prop(":"); const __dyn = __recv?.table?.strConcat; return __dyn ? __dyn(__recv.ref, ":") : strConcat(__recv, ":"); })(); const __prop = __recv?.["strConcat"]; if (typeof __prop === "function") return __prop(ptype); const __dyn = __recv?.table?.strConcat; return __dyn ? __dyn(__recv.ref, ptype) : strConcat(__recv, ptype); })()) : vecPush(__recv, (() => { const __recv = (() => { const __recv = pname; const __prop = __recv?.["strConcat"]; if (typeof __prop === "function") return __prop(":"); const __dyn = __recv?.table?.strConcat; return __dyn ? __dyn(__recv.ref, ":") : strConcat(__recv, ":"); })(); const __prop = __recv?.["strConcat"]; if (typeof __prop === "function") return __prop(ptype); const __dyn = __recv?.table?.strConcat; return __dyn ? __dyn(__recv.ref, ptype) : strConcat(__recv, ptype); })()); })();
   i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
 }
-  let gcountLen = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.gcountLen = gcountLen;
-  let gcount = intToString(gcountLen); if (typeof __tuff_this !== 'undefined') __tuff_this.gcount = gcount;
+  let gcount = intToString((() => { const __recv = gens; const __prop = __recv?.["vecLength"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.vecLength; return __dyn ? __dyn(__recv.ref) : vecLength(__recv); })()); if (typeof __tuff_this !== 'undefined') __tuff_this.gcount = gcount;
   return (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = (() => { const __recv = "g="; const __prop = __recv?.["strConcat"]; if (typeof __prop === "function") return __prop(gcount); const __dyn = __recv?.table?.strConcat; return __dyn ? __dyn(__recv.ref, gcount) : strConcat(__recv, gcount); })(); const __prop = __recv?.["strConcat"]; if (typeof __prop === "function") return __prop(";p="); const __dyn = __recv?.table?.strConcat; return __dyn ? __dyn(__recv.ref, ";p=") : strConcat(__recv, ";p="); })(); const __prop = __recv?.["strConcat"]; if (typeof __prop === "function") return __prop((() => { const __recv = pparts; const __prop = __recv?.["vecJoin"]; if (typeof __prop === "function") return __prop(","); const __dyn = __recv?.table?.vecJoin; return __dyn ? __dyn(__recv.ref, ",") : vecJoin(__recv, ","); })()); const __dyn = __recv?.table?.strConcat; return __dyn ? __dyn(__recv.ref, (() => { const __recv = pparts; const __prop = __recv?.["vecJoin"]; if (typeof __prop === "function") return __prop(","); const __dyn = __recv?.table?.vecJoin; return __dyn ? __dyn(__recv.ref, ",") : vecJoin(__recv, ","); })()) : strConcat(__recv, (() => { const __recv = pparts; const __prop = __recv?.["vecJoin"]; if (typeof __prop === "function") return __prop(","); const __dyn = __recv?.table?.vecJoin; return __dyn ? __dyn(__recv.ref, ",") : vecJoin(__recv, ","); })()); })(); const __prop = __recv?.["strConcat"]; if (typeof __prop === "function") return __prop(";r="); const __dyn = __recv?.table?.strConcat; return __dyn ? __dyn(__recv.ref, ";r=") : strConcat(__recv, ";r="); })(); const __prop = __recv?.["strConcat"]; if (typeof __prop === "function") return __prop(fnTypeSig(ret)); const __dyn = __recv?.table?.strConcat; return __dyn ? __dyn(__recv.ref, fnTypeSig(ret)) : strConcat(__recv, fnTypeSig(ret)); })();
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.fnDeclSig = fnDeclSig;
@@ -10118,11 +10117,18 @@ const __tuff_outer_for_sourcemapCountLines = typeof __tuff_this !== 'undefined' 
 function sourcemapCountLines(s) {
   let __tuff_this = { s: s, this: __tuff_outer_for_sourcemapCountLines };
   let count = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.count = count;
+  let original = s; if (typeof __tuff_this !== 'undefined') __tuff_this.original = original;
   let found = (() => { const __recv = s; const __prop = __recv?.["strIndexOf"]; if (typeof __prop === "function") return __prop("\n"); const __dyn = __recv?.table?.strIndexOf; return __dyn ? __dyn(__recv.ref, "\n") : strIndexOf(__recv, "\n"); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.found = found;
   while ((found >= 0)) {
   count = (count + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.count = count;
   s = (() => { const __recv = (() => { const __recv = s; const __prop = __recv?.["strSliceWindow"]; if (typeof __prop === "function") return __prop((found + 1), (() => { const __recv = s; const __prop = __recv?.["strLength"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.strLength; return __dyn ? __dyn(__recv.ref) : strLength(__recv); })()); const __dyn = __recv?.table?.strSliceWindow; return __dyn ? __dyn(__recv.ref, (found + 1), (() => { const __recv = s; const __prop = __recv?.["strLength"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.strLength; return __dyn ? __dyn(__recv.ref) : strLength(__recv); })()) : strSliceWindow(__recv, (found + 1), (() => { const __recv = s; const __prop = __recv?.["strLength"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.strLength; return __dyn ? __dyn(__recv.ref) : strLength(__recv); })()); })(); const __prop = __recv?.["strCopy"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.strCopy; return __dyn ? __dyn(__recv.ref) : strCopy(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.s = s;
   found = (() => { const __recv = s; const __prop = __recv?.["strIndexOf"]; if (typeof __prop === "function") return __prop("\n"); const __dyn = __recv?.table?.strIndexOf; return __dyn ? __dyn(__recv.ref, "\n") : strIndexOf(__recv, "\n"); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.found = found;
+}
+  if (((() => { const __recv = original; const __prop = __recv?.["strLength"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.strLength; return __dyn ? __dyn(__recv.ref) : strLength(__recv); })() > 0)) {
+  let last = (() => { const __recv = original; const __prop = __recv?.["strSliceWindow"]; if (typeof __prop === "function") return __prop(((() => { const __recv = original; const __prop = __recv?.["strLength"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.strLength; return __dyn ? __dyn(__recv.ref) : strLength(__recv); })() - 1), (() => { const __recv = original; const __prop = __recv?.["strLength"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.strLength; return __dyn ? __dyn(__recv.ref) : strLength(__recv); })()); const __dyn = __recv?.table?.strSliceWindow; return __dyn ? __dyn(__recv.ref, ((() => { const __recv = original; const __prop = __recv?.["strLength"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.strLength; return __dyn ? __dyn(__recv.ref) : strLength(__recv); })() - 1), (() => { const __recv = original; const __prop = __recv?.["strLength"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.strLength; return __dyn ? __dyn(__recv.ref) : strLength(__recv); })()) : strSliceWindow(__recv, ((() => { const __recv = original; const __prop = __recv?.["strLength"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.strLength; return __dyn ? __dyn(__recv.ref) : strLength(__recv); })() - 1), (() => { const __recv = original; const __prop = __recv?.["strLength"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.strLength; return __dyn ? __dyn(__recv.ref) : strLength(__recv); })()); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.last = last;
+  if ((() => { const __recv = last; const __prop = __recv?.["strEq"]; if (typeof __prop === "function") return __prop("\n"); const __dyn = __recv?.table?.strEq; return __dyn ? __dyn(__recv.ref, "\n") : strEq(__recv, "\n"); })()) {
+  count = (count - 1); if (typeof __tuff_this !== 'undefined') __tuff_this.count = count;
+}
 }
   return count;
 }
@@ -11311,7 +11317,7 @@ function lintProgram(program, filePath, maxEffectiveLines, enforceFileLength, as
   i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
   while ((i < len)) {
   let stmt = (() => { const __recv = body; const __prop = __recv?.["vecGet"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.vecGet; return __dyn ? __dyn(__recv.ref, i) : vecGet(__recv, i); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.stmt = stmt;
-  lintCheckFunctionLength(stmt, 100);
+  lintCheckFunctionLength(stmt, maxEffectiveLines);
   lintCollectStmt(stmt, receiverExternFns, reads, declaredSet, declaredNames);
   i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
 }
@@ -12074,7 +12080,6 @@ function gatherModuleSources(filePath, moduleBasePath, seen, visiting, sources, 
   panicWithCode("E_MODULE_CYCLE", (() => { const __recv = "Module import cycle detected at "; const __prop = __recv?.["strConcat"]; if (typeof __prop === "function") return __prop(filePath); const __dyn = __recv?.table?.strConcat; return __dyn ? __dyn(__recv.ref, filePath) : strConcat(__recv, filePath); })(), "A module was revisited while still being loaded, which means the import graph contains a cycle.", "Break the cycle by extracting shared declarations into a third module imported by both sides.");
 }
   (() => { const __recv = visiting; const __prop = __recv?.["setAdd"]; if (typeof __prop === "function") return __prop(filePath); const __dyn = __recv?.table?.setAdd; return __dyn ? __dyn(__recv.ref, filePath) : setAdd(__recv, filePath); })();
-  let moduleT0 = perfNow(); if (typeof __tuff_this !== 'undefined') __tuff_this.moduleT0 = moduleT0;
   gatherProfModules = (gatherProfModules + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.gatherProfModules = gatherProfModules;
   let source = ""; if (typeof __tuff_this !== 'undefined') __tuff_this.source = source;
   if ((() => { const __recv = moduleSourceCache; const __prop = __recv?.["mapHas"]; if (typeof __prop === "function") return __prop(filePath); const __dyn = __recv?.table?.mapHas; return __dyn ? __dyn(__recv.ref, filePath) : mapHas(__recv, filePath); })()) {
@@ -12191,7 +12196,6 @@ function compileFileWithOptions(inputPath, outputPath, lintEnabled, maxEffective
   let t2Strip1 = perfNow(); if (typeof __tuff_this !== 'undefined') __tuff_this.t2Strip1 = t2Strip1;
   printError((() => { const __recv = "[selfhost] phase: lex-parse-merged:strip-imports:done ms="; const __prop = __recv?.["strConcat"]; if (typeof __prop === "function") return __prop(intToString((t2Strip1 - t2Strip0))); const __dyn = __recv?.table?.strConcat; return __dyn ? __dyn(__recv.ref, intToString((t2Strip1 - t2Strip0))) : strConcat(__recv, intToString((t2Strip1 - t2Strip0))); })());
   printError((() => { const __recv = "[selfhost] phase: lex-parse-merged:done total-ms="; const __prop = __recv?.["strConcat"]; if (typeof __prop === "function") return __prop(intToString((t2Strip1 - t2))); const __dyn = __recv?.table?.strConcat; return __dyn ? __dyn(__recv.ref, intToString((t2Strip1 - t2))) : strConcat(__recv, intToString((t2Strip1 - t2))); })());
-  let t3 = perfNow(); if (typeof __tuff_this !== 'undefined') __tuff_this.t3 = t3;
   printError("[selfhost] phase: desugar:start");
   let desugared = desugar(program); if (typeof __tuff_this !== 'undefined') __tuff_this.desugared = desugared;
   printError("[selfhost] phase: resolve:start");
@@ -12205,7 +12209,6 @@ function compileFileWithOptions(inputPath, outputPath, lintEnabled, maxEffective
 } else {
   panic("Resolver returned unexpected result variant");
 }
-  let t4 = perfNow(); if (typeof __tuff_this !== 'undefined') __tuff_this.t4 = t4;
   printError("[selfhost] phase: typecheck:start");
   let typedResultAny = typecheckProgramWithOptions(resolved); if (typeof __tuff_this !== 'undefined') __tuff_this.typedResultAny = typedResultAny;
   if ((typedResultAny && typedResultAny.__tag === "Err")) {
@@ -12217,11 +12220,9 @@ function compileFileWithOptions(inputPath, outputPath, lintEnabled, maxEffective
 } else {
   panic("Typechecker returned unexpected result variant");
 }
-  let t5 = perfNow(); if (typeof __tuff_this !== 'undefined') __tuff_this.t5 = t5;
   if ((borrow === 1)) {
   borrowcheckProgram(typed);
 }
-  let t6 = perfNow(); if (typeof __tuff_this !== 'undefined') __tuff_this.t6 = t6;
   if ((lint === 1)) {
   lintProgram(typed, inputPath, maxLines, 0, astDupEnabled);
   let i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
@@ -12231,7 +12232,6 @@ function compileFileWithOptions(inputPath, outputPath, lintEnabled, maxEffective
   i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
 }
 }
-  let t7 = perfNow(); if (typeof __tuff_this !== 'undefined') __tuff_this.t7 = t7;
   printError((() => { const __recv = "[selfhost] phase: emit:start target="; const __prop = __recv?.["strConcat"]; if (typeof __prop === "function") return __prop(target); const __dyn = __recv?.table?.strConcat; return __dyn ? __dyn(__recv.ref, target) : strConcat(__recv, target); })());
   if ((() => { const __recv = target; const __prop = __recv?.["strEq"]; if (typeof __prop === "function") return __prop("c-split"); const __dyn = __recv?.table?.strEq; return __dyn ? __dyn(__recv.ref, "c-split") : strEq(__recv, "c-split"); })()) {
   moduleWriteCSplitOutputs(typed, outputPath, modulePaths, moduleDeclaredMap);
@@ -13695,469 +13695,35 @@ function selfhostCodegenExprMarker() {
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.selfhostCodegenExprMarker = selfhostCodegenExprMarker;
 
-const __tuff_outer_for_fmtSpaces = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
-function fmtSpaces(n) {
-  let __tuff_this = { n: n, this: __tuff_outer_for_fmtSpaces };
-  let sb = sbNew(); if (typeof __tuff_this !== 'undefined') __tuff_this.sb = sb;
-  let i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-  while ((i < n)) {
-  sbAppendChar(sb, 32);
-  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-}
-  return sbBuild(sb);
-}
-if (typeof __tuff_this !== 'undefined') __tuff_this.fmtSpaces = fmtSpaces;
-
-const __tuff_outer_for_fmtTrimRight = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
-function fmtTrimRight(line) {
-  let __tuff_this = { line: line, this: __tuff_outer_for_fmtTrimRight };
-  let end = (() => { const __recv = line; const __prop = __recv?.["strLength"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.strLength; return __dyn ? __dyn(__recv.ref) : strLength(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.end = end;
-  while ((end > 0)) {
-  let ch = (() => { const __recv = line; const __prop = __recv?.["strCharAt"]; if (typeof __prop === "function") return __prop((end - 1)); const __dyn = __recv?.table?.strCharAt; return __dyn ? __dyn(__recv.ref, (end - 1)) : strCharAt(__recv, (end - 1)); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.ch = ch;
-  if ((((ch === 32) || (ch === 9)) || (ch === 13))) {
-  end = (end - 1); if (typeof __tuff_this !== 'undefined') __tuff_this.end = end;
-} else {
-  return (() => { const __recv = line; const __prop = __recv?.["strSliceWindow"]; if (typeof __prop === "function") return __prop(0, end); const __dyn = __recv?.table?.strSliceWindow; return __dyn ? __dyn(__recv.ref, 0, end) : strSliceWindow(__recv, 0, end); })();
-}
-}
-  return "";
-}
-if (typeof __tuff_this !== 'undefined') __tuff_this.fmtTrimRight = fmtTrimRight;
-
-const __tuff_outer_for_fmtCountLeadingCloses = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
-function fmtCountLeadingCloses(line) {
-  let __tuff_this = { line: line, this: __tuff_outer_for_fmtCountLeadingCloses };
-  let i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-  let len = (() => { const __recv = line; const __prop = __recv?.["strLength"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.strLength; return __dyn ? __dyn(__recv.ref) : strLength(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.len = len;
-  while (((i < len) && ((() => { const __recv = line; const __prop = __recv?.["strCharAt"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.strCharAt; return __dyn ? __dyn(__recv.ref, i) : strCharAt(__recv, i); })() === 125))) {
-  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-}
-  return i;
-}
-if (typeof __tuff_this !== 'undefined') __tuff_this.fmtCountLeadingCloses = fmtCountLeadingCloses;
-
-const __tuff_outer_for_fmtCountChar = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
-function fmtCountChar(line, target) {
-  let __tuff_this = { line: line, target: target, this: __tuff_outer_for_fmtCountChar };
-  let i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-  let len = (() => { const __recv = line; const __prop = __recv?.["strLength"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.strLength; return __dyn ? __dyn(__recv.ref) : strLength(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.len = len;
-  let count = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.count = count;
-  while ((i < len)) {
-  if (((() => { const __recv = line; const __prop = __recv?.["strCharAt"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.strCharAt; return __dyn ? __dyn(__recv.ref, i) : strCharAt(__recv, i); })() === target)) {
-  count = (count + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.count = count;
-}
-  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-}
-  return count;
-}
-if (typeof __tuff_this !== 'undefined') __tuff_this.fmtCountChar = fmtCountChar;
-
-const __tuff_outer_for_fmtCountStructuralBraces = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
-function fmtCountStructuralBraces(line) {
-  let __tuff_this = { line: line, this: __tuff_outer_for_fmtCountStructuralBraces };
-  let i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-  let len = (() => { const __recv = line; const __prop = __recv?.["strLength"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.strLength; return __dyn ? __dyn(__recv.ref) : strLength(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.len = len;
-  let opens = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.opens = opens;
-  let closes = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.closes = closes;
-  let inString = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.inString = inString;
-  let inChar = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.inChar = inChar;
-  while ((i < len)) {
-  let ch = (() => { const __recv = line; const __prop = __recv?.["strCharAt"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.strCharAt; return __dyn ? __dyn(__recv.ref, i) : strCharAt(__recv, i); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.ch = ch;
-  if ((inString === 1)) {
-  if (((ch === 92) && ((i + 1) < len))) {
-  i = (i + 2); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-  continue;
-}
-  if ((ch === 34)) {
-  inString = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.inString = inString;
-}
-  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-  continue;
-}
-  if ((inChar === 1)) {
-  if (((ch === 92) && ((i + 1) < len))) {
-  i = (i + 2); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-  continue;
-}
-  if ((ch === 39)) {
-  inChar = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.inChar = inChar;
-}
-  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-  continue;
-}
-  if ((((ch === 47) && ((i + 1) < len)) && ((() => { const __recv = line; const __prop = __recv?.["strCharAt"]; if (typeof __prop === "function") return __prop((i + 1)); const __dyn = __recv?.table?.strCharAt; return __dyn ? __dyn(__recv.ref, (i + 1)) : strCharAt(__recv, (i + 1)); })() === 47))) {
-  break;
-}
-  if ((ch === 34)) {
-  inString = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.inString = inString;
-  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-  continue;
-}
-  if ((ch === 39)) {
-  inChar = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.inChar = inChar;
-  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-  continue;
-}
-  if ((ch === 123)) {
-  opens = (opens + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.opens = opens;
-}
-  if ((ch === 125)) {
-  closes = (closes + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.closes = closes;
-}
-  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-}
-  let r = vecNew(); if (typeof __tuff_this !== 'undefined') __tuff_this.r = r;
-  (() => { const __recv = r; const __prop = __recv?.["vecPush"]; if (typeof __prop === "function") return __prop(opens); const __dyn = __recv?.table?.vecPush; return __dyn ? __dyn(__recv.ref, opens) : vecPush(__recv, opens); })();
-  (() => { const __recv = r; const __prop = __recv?.["vecPush"]; if (typeof __prop === "function") return __prop(closes); const __dyn = __recv?.table?.vecPush; return __dyn ? __dyn(__recv.ref, closes) : vecPush(__recv, closes); })();
-  return r;
-}
-if (typeof __tuff_this !== 'undefined') __tuff_this.fmtCountStructuralBraces = fmtCountStructuralBraces;
-
-const __tuff_outer_for_fmtIsSpace = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
-function fmtIsSpace(ch) {
-  let __tuff_this = { ch: ch, this: __tuff_outer_for_fmtIsSpace };
-  return ((ch === 32) || (ch === 9));
-}
-if (typeof __tuff_this !== 'undefined') __tuff_this.fmtIsSpace = fmtIsSpace;
-
-const __tuff_outer_for_fmtIsIdentChar = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
-function fmtIsIdentChar(ch) {
-  let __tuff_this = { ch: ch, this: __tuff_outer_for_fmtIsIdentChar };
-  return (((((ch >= 65) && (ch <= 90)) || ((ch >= 97) && (ch <= 122))) || ((ch >= 48) && (ch <= 57))) || (ch === 95));
-}
-if (typeof __tuff_this !== 'undefined') __tuff_this.fmtIsIdentChar = fmtIsIdentChar;
-
-const __tuff_outer_for_fmtPrevNonSpaceChar = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
-function fmtPrevNonSpaceChar(text) {
-  let __tuff_this = { text: text, this: __tuff_outer_for_fmtPrevNonSpaceChar };
-  let i = ((() => { const __recv = text; const __prop = __recv?.["strLength"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.strLength; return __dyn ? __dyn(__recv.ref) : strLength(__recv); })() - 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-  while ((i >= 0)) {
-  let ch = (() => { const __recv = text; const __prop = __recv?.["strCharAt"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.strCharAt; return __dyn ? __dyn(__recv.ref, i) : strCharAt(__recv, i); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.ch = ch;
-  if ((!fmtIsSpace((0 + ch)))) {
-  return (0 + ch);
-}
-  i = (i - 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-}
-  return 0;
-}
-if (typeof __tuff_this !== 'undefined') __tuff_this.fmtPrevNonSpaceChar = fmtPrevNonSpaceChar;
-
-const __tuff_outer_for_fmtNextNonSpaceChar = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
-function fmtNextNonSpaceChar(text, start) {
-  let __tuff_this = { text: text, start: start, this: __tuff_outer_for_fmtNextNonSpaceChar };
-  let i = start; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-  let len = (() => { const __recv = text; const __prop = __recv?.["strLength"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.strLength; return __dyn ? __dyn(__recv.ref) : strLength(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.len = len;
-  while ((i < len)) {
-  let ch = (() => { const __recv = text; const __prop = __recv?.["strCharAt"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.strCharAt; return __dyn ? __dyn(__recv.ref, i) : strCharAt(__recv, i); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.ch = ch;
-  if ((!fmtIsSpace((0 + ch)))) {
-  return (0 + ch);
-}
-  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-}
-  return 0;
-}
-if (typeof __tuff_this !== 'undefined') __tuff_this.fmtNextNonSpaceChar = fmtNextNonSpaceChar;
-
-const __tuff_outer_for_fmtTrimRightSpacesText = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
-function fmtTrimRightSpacesText(text) {
-  let __tuff_this = { text: text, this: __tuff_outer_for_fmtTrimRightSpacesText };
-  let end = (() => { const __recv = text; const __prop = __recv?.["strLength"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.strLength; return __dyn ? __dyn(__recv.ref) : strLength(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.end = end;
-  while (((end > 0) && fmtIsSpace((0 + (() => { const __recv = text; const __prop = __recv?.["strCharAt"]; if (typeof __prop === "function") return __prop((end - 1)); const __dyn = __recv?.table?.strCharAt; return __dyn ? __dyn(__recv.ref, (end - 1)) : strCharAt(__recv, (end - 1)); })())))) {
-  end = (end - 1); if (typeof __tuff_this !== 'undefined') __tuff_this.end = end;
-}
-  return (() => { const __recv = text; const __prop = __recv?.["strSliceWindow"]; if (typeof __prop === "function") return __prop(0, end); const __dyn = __recv?.table?.strSliceWindow; return __dyn ? __dyn(__recv.ref, 0, end) : strSliceWindow(__recv, 0, end); })();
-}
-if (typeof __tuff_this !== 'undefined') __tuff_this.fmtTrimRightSpacesText = fmtTrimRightSpacesText;
-
-const __tuff_outer_for_fmtNormalizeLineSpacing = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
-function fmtNormalizeLineSpacing(line) {
-  let __tuff_this = { line: line, this: __tuff_outer_for_fmtNormalizeLineSpacing };
-  let acc = ""; if (typeof __tuff_this !== 'undefined') __tuff_this.acc = acc;
-  let i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-  let len = (() => { const __recv = line; const __prop = __recv?.["strLength"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.strLength; return __dyn ? __dyn(__recv.ref) : strLength(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.len = len;
-  let inString = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.inString = inString;
-  let inChar = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.inChar = inChar;
-  while ((i < len)) {
-  let ch = (() => { const __recv = line; const __prop = __recv?.["strCharAt"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.strCharAt; return __dyn ? __dyn(__recv.ref, i) : strCharAt(__recv, i); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.ch = ch;
-  if ((inString === 1)) {
-  acc = (() => { const __recv = acc; const __prop = __recv?.["strConcat"]; if (typeof __prop === "function") return __prop(strFromCharCode((0 + ch))); const __dyn = __recv?.table?.strConcat; return __dyn ? __dyn(__recv.ref, strFromCharCode((0 + ch))) : strConcat(__recv, strFromCharCode((0 + ch))); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.acc = acc;
-  if (((ch === 92) && ((i + 1) < len))) {
-  acc = (() => { const __recv = acc; const __prop = __recv?.["strConcat"]; if (typeof __prop === "function") return __prop(strFromCharCode((0 + (() => { const __recv = line; const __prop = __recv?.["strCharAt"]; if (typeof __prop === "function") return __prop((i + 1)); const __dyn = __recv?.table?.strCharAt; return __dyn ? __dyn(__recv.ref, (i + 1)) : strCharAt(__recv, (i + 1)); })()))); const __dyn = __recv?.table?.strConcat; return __dyn ? __dyn(__recv.ref, strFromCharCode((0 + (() => { const __recv = line; const __prop = __recv?.["strCharAt"]; if (typeof __prop === "function") return __prop((i + 1)); const __dyn = __recv?.table?.strCharAt; return __dyn ? __dyn(__recv.ref, (i + 1)) : strCharAt(__recv, (i + 1)); })()))) : strConcat(__recv, strFromCharCode((0 + (() => { const __recv = line; const __prop = __recv?.["strCharAt"]; if (typeof __prop === "function") return __prop((i + 1)); const __dyn = __recv?.table?.strCharAt; return __dyn ? __dyn(__recv.ref, (i + 1)) : strCharAt(__recv, (i + 1)); })()))); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.acc = acc;
-  i = (i + 2); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-  continue;
-}
-  if ((ch === 34)) {
-  inString = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.inString = inString;
-}
-  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-  continue;
-}
-  if ((inChar === 1)) {
-  acc = (() => { const __recv = acc; const __prop = __recv?.["strConcat"]; if (typeof __prop === "function") return __prop(strFromCharCode((0 + ch))); const __dyn = __recv?.table?.strConcat; return __dyn ? __dyn(__recv.ref, strFromCharCode((0 + ch))) : strConcat(__recv, strFromCharCode((0 + ch))); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.acc = acc;
-  if (((ch === 92) && ((i + 1) < len))) {
-  acc = (() => { const __recv = acc; const __prop = __recv?.["strConcat"]; if (typeof __prop === "function") return __prop(strFromCharCode((0 + (() => { const __recv = line; const __prop = __recv?.["strCharAt"]; if (typeof __prop === "function") return __prop((i + 1)); const __dyn = __recv?.table?.strCharAt; return __dyn ? __dyn(__recv.ref, (i + 1)) : strCharAt(__recv, (i + 1)); })()))); const __dyn = __recv?.table?.strConcat; return __dyn ? __dyn(__recv.ref, strFromCharCode((0 + (() => { const __recv = line; const __prop = __recv?.["strCharAt"]; if (typeof __prop === "function") return __prop((i + 1)); const __dyn = __recv?.table?.strCharAt; return __dyn ? __dyn(__recv.ref, (i + 1)) : strCharAt(__recv, (i + 1)); })()))) : strConcat(__recv, strFromCharCode((0 + (() => { const __recv = line; const __prop = __recv?.["strCharAt"]; if (typeof __prop === "function") return __prop((i + 1)); const __dyn = __recv?.table?.strCharAt; return __dyn ? __dyn(__recv.ref, (i + 1)) : strCharAt(__recv, (i + 1)); })()))); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.acc = acc;
-  i = (i + 2); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-  continue;
-}
-  if ((ch === 39)) {
-  inChar = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.inChar = inChar;
-}
-  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-  continue;
-}
-  if ((((ch === 47) && ((i + 1) < len)) && ((() => { const __recv = line; const __prop = __recv?.["strCharAt"]; if (typeof __prop === "function") return __prop((i + 1)); const __dyn = __recv?.table?.strCharAt; return __dyn ? __dyn(__recv.ref, (i + 1)) : strCharAt(__recv, (i + 1)); })() === 47))) {
-  acc = (() => { const __recv = (() => { const __recv = fmtTrimRightSpacesText(acc); const __prop = __recv?.["strConcat"]; if (typeof __prop === "function") return __prop(" "); const __dyn = __recv?.table?.strConcat; return __dyn ? __dyn(__recv.ref, " ") : strConcat(__recv, " "); })(); const __prop = __recv?.["strConcat"]; if (typeof __prop === "function") return __prop((() => { const __recv = line; const __prop = __recv?.["strSliceWindow"]; if (typeof __prop === "function") return __prop(i, len); const __dyn = __recv?.table?.strSliceWindow; return __dyn ? __dyn(__recv.ref, i, len) : strSliceWindow(__recv, i, len); })()); const __dyn = __recv?.table?.strConcat; return __dyn ? __dyn(__recv.ref, (() => { const __recv = line; const __prop = __recv?.["strSliceWindow"]; if (typeof __prop === "function") return __prop(i, len); const __dyn = __recv?.table?.strSliceWindow; return __dyn ? __dyn(__recv.ref, i, len) : strSliceWindow(__recv, i, len); })()) : strConcat(__recv, (() => { const __recv = line; const __prop = __recv?.["strSliceWindow"]; if (typeof __prop === "function") return __prop(i, len); const __dyn = __recv?.table?.strSliceWindow; return __dyn ? __dyn(__recv.ref, i, len) : strSliceWindow(__recv, i, len); })()); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.acc = acc;
-  break;
-}
-  if ((ch === 34)) {
-  acc = (() => { const __recv = acc; const __prop = __recv?.["strConcat"]; if (typeof __prop === "function") return __prop("\""); const __dyn = __recv?.table?.strConcat; return __dyn ? __dyn(__recv.ref, "\"") : strConcat(__recv, "\""); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.acc = acc;
-  inString = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.inString = inString;
-  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-  continue;
-}
-  if ((ch === 39)) {
-  acc = (() => { const __recv = acc; const __prop = __recv?.["strConcat"]; if (typeof __prop === "function") return __prop("'"); const __dyn = __recv?.table?.strConcat; return __dyn ? __dyn(__recv.ref, "'") : strConcat(__recv, "'"); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.acc = acc;
-  inChar = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.inChar = inChar;
-  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-  continue;
-}
-  if ((ch === 44)) {
-  acc = (() => { const __recv = fmtTrimRightSpacesText(acc); const __prop = __recv?.["strConcat"]; if (typeof __prop === "function") return __prop(","); const __dyn = __recv?.table?.strConcat; return __dyn ? __dyn(__recv.ref, ",") : strConcat(__recv, ","); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.acc = acc;
-  let next = fmtNextNonSpaceChar(line, (i + 1)); if (typeof __tuff_this !== 'undefined') __tuff_this.next = next;
-  if (((((next !== 0) && (next !== 41)) && (next !== 93)) && (next !== 125))) {
-  acc = (() => { const __recv = acc; const __prop = __recv?.["strConcat"]; if (typeof __prop === "function") return __prop(" "); const __dyn = __recv?.table?.strConcat; return __dyn ? __dyn(__recv.ref, " ") : strConcat(__recv, " "); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.acc = acc;
-}
-  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-  continue;
-}
-  if ((ch === 123)) {
-  let prev = fmtPrevNonSpaceChar(acc); if (typeof __tuff_this !== 'undefined') __tuff_this.prev = prev;
-  acc = fmtTrimRightSpacesText(acc); if (typeof __tuff_this !== 'undefined') __tuff_this.acc = acc;
-  if (((((prev !== 0) && (prev !== 123)) && (prev !== 40)) && (prev !== 91))) {
-  acc = (() => { const __recv = acc; const __prop = __recv?.["strConcat"]; if (typeof __prop === "function") return __prop(" "); const __dyn = __recv?.table?.strConcat; return __dyn ? __dyn(__recv.ref, " ") : strConcat(__recv, " "); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.acc = acc;
-}
-  acc = (() => { const __recv = acc; const __prop = __recv?.["strConcat"]; if (typeof __prop === "function") return __prop("{"); const __dyn = __recv?.table?.strConcat; return __dyn ? __dyn(__recv.ref, "{") : strConcat(__recv, "{"); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.acc = acc;
-  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-  continue;
-}
-  if ((((ch === 61) && (!(((i + 1) < len) && (((() => { const __recv = line; const __prop = __recv?.["strCharAt"]; if (typeof __prop === "function") return __prop((i + 1)); const __dyn = __recv?.table?.strCharAt; return __dyn ? __dyn(__recv.ref, (i + 1)) : strCharAt(__recv, (i + 1)); })() === 61) || ((() => { const __recv = line; const __prop = __recv?.["strCharAt"]; if (typeof __prop === "function") return __prop((i + 1)); const __dyn = __recv?.table?.strCharAt; return __dyn ? __dyn(__recv.ref, (i + 1)) : strCharAt(__recv, (i + 1)); })() === 62))))) && (!((i > 0) && ((((() => { const __recv = line; const __prop = __recv?.["strCharAt"]; if (typeof __prop === "function") return __prop((i - 1)); const __dyn = __recv?.table?.strCharAt; return __dyn ? __dyn(__recv.ref, (i - 1)) : strCharAt(__recv, (i - 1)); })() === 33) || ((() => { const __recv = line; const __prop = __recv?.["strCharAt"]; if (typeof __prop === "function") return __prop((i - 1)); const __dyn = __recv?.table?.strCharAt; return __dyn ? __dyn(__recv.ref, (i - 1)) : strCharAt(__recv, (i - 1)); })() === 60)) || ((() => { const __recv = line; const __prop = __recv?.["strCharAt"]; if (typeof __prop === "function") return __prop((i - 1)); const __dyn = __recv?.table?.strCharAt; return __dyn ? __dyn(__recv.ref, (i - 1)) : strCharAt(__recv, (i - 1)); })() === 62)))))) {
-  acc = (() => { const __recv = fmtTrimRightSpacesText(acc); const __prop = __recv?.["strConcat"]; if (typeof __prop === "function") return __prop(" = "); const __dyn = __recv?.table?.strConcat; return __dyn ? __dyn(__recv.ref, " = ") : strConcat(__recv, " = "); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.acc = acc;
-  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-  while (((i < len) && fmtIsSpace((0 + (() => { const __recv = line; const __prop = __recv?.["strCharAt"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.strCharAt; return __dyn ? __dyn(__recv.ref, i) : strCharAt(__recv, i); })())))) {
-  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-}
-  continue;
-}
-  if (((((ch === 43) || (ch === 45)) || (ch === 47)) || (ch === 37))) {
-  let prev = fmtPrevNonSpaceChar(acc); if (typeof __tuff_this !== 'undefined') __tuff_this.prev = prev;
-  let next = fmtNextNonSpaceChar(line, (i + 1)); if (typeof __tuff_this !== 'undefined') __tuff_this.next = next;
-  let binary = ((((((fmtIsIdentChar(prev) || (prev === 41)) || (prev === 93)) || (prev === 125)) || (prev === 34)) || (prev === 39)) && ((((fmtIsIdentChar(next) || (next === 40)) || (next === 91)) || (next === 34)) || (next === 39))); if (typeof __tuff_this !== 'undefined') __tuff_this.binary = binary;
-  if (binary) {
-  acc = (() => { const __recv = (() => { const __recv = (() => { const __recv = fmtTrimRightSpacesText(acc); const __prop = __recv?.["strConcat"]; if (typeof __prop === "function") return __prop(" "); const __dyn = __recv?.table?.strConcat; return __dyn ? __dyn(__recv.ref, " ") : strConcat(__recv, " "); })(); const __prop = __recv?.["strConcat"]; if (typeof __prop === "function") return __prop(strFromCharCode((0 + ch))); const __dyn = __recv?.table?.strConcat; return __dyn ? __dyn(__recv.ref, strFromCharCode((0 + ch))) : strConcat(__recv, strFromCharCode((0 + ch))); })(); const __prop = __recv?.["strConcat"]; if (typeof __prop === "function") return __prop(" "); const __dyn = __recv?.table?.strConcat; return __dyn ? __dyn(__recv.ref, " ") : strConcat(__recv, " "); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.acc = acc;
-  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-  while (((i < len) && fmtIsSpace((0 + (() => { const __recv = line; const __prop = __recv?.["strCharAt"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.strCharAt; return __dyn ? __dyn(__recv.ref, i) : strCharAt(__recv, i); })())))) {
-  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-}
-  continue;
-}
-}
-  if (fmtIsSpace((0 + ch))) {
-  if ((((() => { const __recv = acc; const __prop = __recv?.["strLength"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.strLength; return __dyn ? __dyn(__recv.ref) : strLength(__recv); })() > 0) && (!fmtIsSpace((0 + (() => { const __recv = acc; const __prop = __recv?.["strCharAt"]; if (typeof __prop === "function") return __prop(((() => { const __recv = acc; const __prop = __recv?.["strLength"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.strLength; return __dyn ? __dyn(__recv.ref) : strLength(__recv); })() - 1)); const __dyn = __recv?.table?.strCharAt; return __dyn ? __dyn(__recv.ref, ((() => { const __recv = acc; const __prop = __recv?.["strLength"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.strLength; return __dyn ? __dyn(__recv.ref) : strLength(__recv); })() - 1)) : strCharAt(__recv, ((() => { const __recv = acc; const __prop = __recv?.["strLength"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.strLength; return __dyn ? __dyn(__recv.ref) : strLength(__recv); })() - 1)); })()))))) {
-  acc = (() => { const __recv = acc; const __prop = __recv?.["strConcat"]; if (typeof __prop === "function") return __prop(" "); const __dyn = __recv?.table?.strConcat; return __dyn ? __dyn(__recv.ref, " ") : strConcat(__recv, " "); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.acc = acc;
-}
-  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-  continue;
-}
-  acc = (() => { const __recv = acc; const __prop = __recv?.["strConcat"]; if (typeof __prop === "function") return __prop(strFromCharCode((0 + ch))); const __dyn = __recv?.table?.strConcat; return __dyn ? __dyn(__recv.ref, strFromCharCode((0 + ch))) : strConcat(__recv, strFromCharCode((0 + ch))); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.acc = acc;
-  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-}
-  acc = fmtTrimRightSpacesText(acc); if (typeof __tuff_this !== 'undefined') __tuff_this.acc = acc;
-  acc = (() => { const __recv = acc; const __prop = __recv?.["strReplaceAll"]; if (typeof __prop === "function") return __prop("if (", "if ("); const __dyn = __recv?.table?.strReplaceAll; return __dyn ? __dyn(__recv.ref, "if (", "if (") : strReplaceAll(__recv, "if (", "if ("); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.acc = acc;
-  acc = (() => { const __recv = acc; const __prop = __recv?.["strReplaceAll"]; if (typeof __prop === "function") return __prop("while (", "while ("); const __dyn = __recv?.table?.strReplaceAll; return __dyn ? __dyn(__recv.ref, "while (", "while (") : strReplaceAll(__recv, "while (", "while ("); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.acc = acc;
-  acc = (() => { const __recv = acc; const __prop = __recv?.["strReplaceAll"]; if (typeof __prop === "function") return __prop("match (", "match ("); const __dyn = __recv?.table?.strReplaceAll; return __dyn ? __dyn(__recv.ref, "match (", "match (") : strReplaceAll(__recv, "match (", "match ("); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.acc = acc;
-  acc = (() => { const __recv = acc; const __prop = __recv?.["strReplaceAll"]; if (typeof __prop === "function") return __prop("for (", "for ("); const __dyn = __recv?.table?.strReplaceAll; return __dyn ? __dyn(__recv.ref, "for (", "for (") : strReplaceAll(__recv, "for (", "for ("); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.acc = acc;
-  acc = (() => { const __recv = acc; const __prop = __recv?.["strReplaceAll"]; if (typeof __prop === "function") return __prop("return (", "return ("); const __dyn = __recv?.table?.strReplaceAll; return __dyn ? __dyn(__recv.ref, "return (", "return (") : strReplaceAll(__recv, "return (", "return ("); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.acc = acc;
-  return acc;
-}
-if (typeof __tuff_this !== 'undefined') __tuff_this.fmtNormalizeLineSpacing = fmtNormalizeLineSpacing;
-
-const __tuff_outer_for_fmtEmitProcessedLine = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
-function fmtEmitProcessedLine(sink, raw, indent) {
-  let __tuff_this = { sink: sink, raw: raw, indent: indent, this: __tuff_outer_for_fmtEmitProcessedLine };
-  let trimmed = (() => { const __recv = fmtTrimRight(raw); const __prop = __recv?.["strTrim"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.strTrim; return __dyn ? __dyn(__recv.ref) : strTrim(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.trimmed = trimmed;
-  if ((() => { const __recv = trimmed; const __prop = __recv?.["strEq"]; if (typeof __prop === "function") return __prop(""); const __dyn = __recv?.table?.strEq; return __dyn ? __dyn(__recv.ref, "") : strEq(__recv, ""); })()) {
-  return indent;
-}
-  let normalized = fmtNormalizeLineSpacing(trimmed); if (typeof __tuff_this !== 'undefined') __tuff_this.normalized = normalized;
-  let leadingCloses = fmtCountLeadingCloses(normalized); if (typeof __tuff_this !== 'undefined') __tuff_this.leadingCloses = leadingCloses;
-  let effectiveIndent = indent; if (typeof __tuff_this !== 'undefined') __tuff_this.effectiveIndent = effectiveIndent;
-  if (((effectiveIndent > 0) && (leadingCloses > 0))) {
-  let k = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.k = k;
-  while (((k < leadingCloses) && (effectiveIndent > 0))) {
-  effectiveIndent = (effectiveIndent - 1); if (typeof __tuff_this !== 'undefined') __tuff_this.effectiveIndent = effectiveIndent;
-  k = (k + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.k = k;
-}
-}
-  let line = (() => { const __recv = fmtSpaces((effectiveIndent * 4)); const __prop = __recv?.["strConcat"]; if (typeof __prop === "function") return __prop(normalized); const __dyn = __recv?.table?.strConcat; return __dyn ? __dyn(__recv.ref, normalized) : strConcat(__recv, normalized); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.line = line;
-  (() => { const __recv = sink; const __prop = __recv?.["sbAppend"]; if (typeof __prop === "function") return __prop(line); const __dyn = __recv?.table?.sbAppend; return __dyn ? __dyn(__recv.ref, line) : sbAppend(__recv, line); })();
-  (() => { const __recv = sink; const __prop = __recv?.["sbAppend"]; if (typeof __prop === "function") return __prop("\n"); const __dyn = __recv?.table?.sbAppend; return __dyn ? __dyn(__recv.ref, "\n") : sbAppend(__recv, "\n"); })();
-  let braceCounts = fmtCountStructuralBraces(normalized); if (typeof __tuff_this !== 'undefined') __tuff_this.braceCounts = braceCounts;
-  let opens = (() => { const __recv = braceCounts; const __prop = __recv?.["vecGet"]; if (typeof __prop === "function") return __prop(0); const __dyn = __recv?.table?.vecGet; return __dyn ? __dyn(__recv.ref, 0) : vecGet(__recv, 0); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.opens = opens;
-  let closes = (() => { const __recv = braceCounts; const __prop = __recv?.["vecGet"]; if (typeof __prop === "function") return __prop(1); const __dyn = __recv?.table?.vecGet; return __dyn ? __dyn(__recv.ref, 1) : vecGet(__recv, 1); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.closes = closes;
-  let closesAfterPrefix = (closes - leadingCloses); if (typeof __tuff_this !== 'undefined') __tuff_this.closesAfterPrefix = closesAfterPrefix;
-  if ((closesAfterPrefix < 0)) {
-  closesAfterPrefix = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.closesAfterPrefix = closesAfterPrefix;
-}
-  let nextIndent = ((effectiveIndent + opens) - closesAfterPrefix); if (typeof __tuff_this !== 'undefined') __tuff_this.nextIndent = nextIndent;
-  if ((nextIndent < 0)) {
-  nextIndent = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.nextIndent = nextIndent;
-}
-  return nextIndent;
-}
-if (typeof __tuff_this !== 'undefined') __tuff_this.fmtEmitProcessedLine = fmtEmitProcessedLine;
-
-const __tuff_outer_for_fmtStage1Split = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
-function fmtStage1Split(source) {
-  let __tuff_this = { source: source, this: __tuff_outer_for_fmtStage1Split };
-  let sink = sbNew(); if (typeof __tuff_this !== 'undefined') __tuff_this.sink = sink;
-  let i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-  let len = (() => { const __recv = source; const __prop = __recv?.["strLength"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.strLength; return __dyn ? __dyn(__recv.ref) : strLength(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.len = len;
-  let inLineComment = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.inLineComment = inLineComment;
-  let inBlockComment = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.inBlockComment = inBlockComment;
-  let inString = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.inString = inString;
-  let inChar = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.inChar = inChar;
-  while ((i < len)) {
-  let ch = (() => { const __recv = source; const __prop = __recv?.["strCharAt"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.strCharAt; return __dyn ? __dyn(__recv.ref, i) : strCharAt(__recv, i); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.ch = ch;
-  if ((inLineComment === 1)) {
-  (() => { const __recv = sink; const __prop = __recv?.["sbAppendChar"]; if (typeof __prop === "function") return __prop((0 + ch)); const __dyn = __recv?.table?.sbAppendChar; return __dyn ? __dyn(__recv.ref, (0 + ch)) : sbAppendChar(__recv, (0 + ch)); })();
-  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-  if ((ch === 10)) {
-  inLineComment = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.inLineComment = inLineComment;
-}
-  continue;
-}
-  if ((inBlockComment === 1)) {
-  (() => { const __recv = sink; const __prop = __recv?.["sbAppendChar"]; if (typeof __prop === "function") return __prop((0 + ch)); const __dyn = __recv?.table?.sbAppendChar; return __dyn ? __dyn(__recv.ref, (0 + ch)) : sbAppendChar(__recv, (0 + ch)); })();
-  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-  if ((((ch === 42) && (i < len)) && ((() => { const __recv = source; const __prop = __recv?.["strCharAt"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.strCharAt; return __dyn ? __dyn(__recv.ref, i) : strCharAt(__recv, i); })() === 47))) {
-  (() => { const __recv = sink; const __prop = __recv?.["sbAppendChar"]; if (typeof __prop === "function") return __prop(47); const __dyn = __recv?.table?.sbAppendChar; return __dyn ? __dyn(__recv.ref, 47) : sbAppendChar(__recv, 47); })();
-  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-  inBlockComment = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.inBlockComment = inBlockComment;
-}
-  continue;
-}
-  if ((inString === 1)) {
-  (() => { const __recv = sink; const __prop = __recv?.["sbAppendChar"]; if (typeof __prop === "function") return __prop((0 + ch)); const __dyn = __recv?.table?.sbAppendChar; return __dyn ? __dyn(__recv.ref, (0 + ch)) : sbAppendChar(__recv, (0 + ch)); })();
-  if (((ch === 92) && ((i + 1) < len))) {
-  (() => { const __recv = sink; const __prop = __recv?.["sbAppendChar"]; if (typeof __prop === "function") return __prop((0 + (() => { const __recv = source; const __prop = __recv?.["strCharAt"]; if (typeof __prop === "function") return __prop((i + 1)); const __dyn = __recv?.table?.strCharAt; return __dyn ? __dyn(__recv.ref, (i + 1)) : strCharAt(__recv, (i + 1)); })())); const __dyn = __recv?.table?.sbAppendChar; return __dyn ? __dyn(__recv.ref, (0 + (() => { const __recv = source; const __prop = __recv?.["strCharAt"]; if (typeof __prop === "function") return __prop((i + 1)); const __dyn = __recv?.table?.strCharAt; return __dyn ? __dyn(__recv.ref, (i + 1)) : strCharAt(__recv, (i + 1)); })())) : sbAppendChar(__recv, (0 + (() => { const __recv = source; const __prop = __recv?.["strCharAt"]; if (typeof __prop === "function") return __prop((i + 1)); const __dyn = __recv?.table?.strCharAt; return __dyn ? __dyn(__recv.ref, (i + 1)) : strCharAt(__recv, (i + 1)); })())); })();
-  i = (i + 2); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-  continue;
-}
-  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-  if ((ch === 34)) {
-  inString = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.inString = inString;
-}
-  continue;
-}
-  if ((inChar === 1)) {
-  (() => { const __recv = sink; const __prop = __recv?.["sbAppendChar"]; if (typeof __prop === "function") return __prop((0 + ch)); const __dyn = __recv?.table?.sbAppendChar; return __dyn ? __dyn(__recv.ref, (0 + ch)) : sbAppendChar(__recv, (0 + ch)); })();
-  if (((ch === 92) && ((i + 1) < len))) {
-  (() => { const __recv = sink; const __prop = __recv?.["sbAppendChar"]; if (typeof __prop === "function") return __prop((0 + (() => { const __recv = source; const __prop = __recv?.["strCharAt"]; if (typeof __prop === "function") return __prop((i + 1)); const __dyn = __recv?.table?.strCharAt; return __dyn ? __dyn(__recv.ref, (i + 1)) : strCharAt(__recv, (i + 1)); })())); const __dyn = __recv?.table?.sbAppendChar; return __dyn ? __dyn(__recv.ref, (0 + (() => { const __recv = source; const __prop = __recv?.["strCharAt"]; if (typeof __prop === "function") return __prop((i + 1)); const __dyn = __recv?.table?.strCharAt; return __dyn ? __dyn(__recv.ref, (i + 1)) : strCharAt(__recv, (i + 1)); })())) : sbAppendChar(__recv, (0 + (() => { const __recv = source; const __prop = __recv?.["strCharAt"]; if (typeof __prop === "function") return __prop((i + 1)); const __dyn = __recv?.table?.strCharAt; return __dyn ? __dyn(__recv.ref, (i + 1)) : strCharAt(__recv, (i + 1)); })())); })();
-  i = (i + 2); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-  continue;
-}
-  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-  if ((ch === 39)) {
-  inChar = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.inChar = inChar;
-}
-  continue;
-}
-  if ((((ch === 47) && ((i + 1) < len)) && ((() => { const __recv = source; const __prop = __recv?.["strCharAt"]; if (typeof __prop === "function") return __prop((i + 1)); const __dyn = __recv?.table?.strCharAt; return __dyn ? __dyn(__recv.ref, (i + 1)) : strCharAt(__recv, (i + 1)); })() === 47))) {
-  (() => { const __recv = sink; const __prop = __recv?.["sbAppend"]; if (typeof __prop === "function") return __prop("//"); const __dyn = __recv?.table?.sbAppend; return __dyn ? __dyn(__recv.ref, "//") : sbAppend(__recv, "//"); })();
-  inLineComment = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.inLineComment = inLineComment;
-  i = (i + 2); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-  continue;
-}
-  if ((((ch === 47) && ((i + 1) < len)) && ((() => { const __recv = source; const __prop = __recv?.["strCharAt"]; if (typeof __prop === "function") return __prop((i + 1)); const __dyn = __recv?.table?.strCharAt; return __dyn ? __dyn(__recv.ref, (i + 1)) : strCharAt(__recv, (i + 1)); })() === 42))) {
-  (() => { const __recv = sink; const __prop = __recv?.["sbAppend"]; if (typeof __prop === "function") return __prop("/*"); const __dyn = __recv?.table?.sbAppend; return __dyn ? __dyn(__recv.ref, "/*") : sbAppend(__recv, "/*"); })();
-  inBlockComment = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.inBlockComment = inBlockComment;
-  i = (i + 2); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-  continue;
-}
-  if ((ch === 34)) {
-  (() => { const __recv = sink; const __prop = __recv?.["sbAppendChar"]; if (typeof __prop === "function") return __prop((0 + ch)); const __dyn = __recv?.table?.sbAppendChar; return __dyn ? __dyn(__recv.ref, (0 + ch)) : sbAppendChar(__recv, (0 + ch)); })();
-  inString = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.inString = inString;
-  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-  continue;
-}
-  if ((ch === 39)) {
-  (() => { const __recv = sink; const __prop = __recv?.["sbAppendChar"]; if (typeof __prop === "function") return __prop((0 + ch)); const __dyn = __recv?.table?.sbAppendChar; return __dyn ? __dyn(__recv.ref, (0 + ch)) : sbAppendChar(__recv, (0 + ch)); })();
-  inChar = 1; if (typeof __tuff_this !== 'undefined') __tuff_this.inChar = inChar;
-  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-  continue;
-}
-  if ((ch === 13)) {
-  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-  continue;
-}
-  if ((ch === 59)) {
-  (() => { const __recv = sink; const __prop = __recv?.["sbAppendChar"]; if (typeof __prop === "function") return __prop((0 + ch)); const __dyn = __recv?.table?.sbAppendChar; return __dyn ? __dyn(__recv.ref, (0 + ch)) : sbAppendChar(__recv, (0 + ch)); })();
-  (() => { const __recv = sink; const __prop = __recv?.["sbAppend"]; if (typeof __prop === "function") return __prop("\n"); const __dyn = __recv?.table?.sbAppend; return __dyn ? __dyn(__recv.ref, "\n") : sbAppend(__recv, "\n"); })();
-  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-  continue;
-}
-  if ((ch === 123)) {
-  (() => { const __recv = sink; const __prop = __recv?.["sbAppendChar"]; if (typeof __prop === "function") return __prop((0 + ch)); const __dyn = __recv?.table?.sbAppendChar; return __dyn ? __dyn(__recv.ref, (0 + ch)) : sbAppendChar(__recv, (0 + ch)); })();
-  (() => { const __recv = sink; const __prop = __recv?.["sbAppend"]; if (typeof __prop === "function") return __prop("\n"); const __dyn = __recv?.table?.sbAppend; return __dyn ? __dyn(__recv.ref, "\n") : sbAppend(__recv, "\n"); })();
-  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-  continue;
-}
-  if ((ch === 125)) {
-  (() => { const __recv = sink; const __prop = __recv?.["sbAppend"]; if (typeof __prop === "function") return __prop("\n"); const __dyn = __recv?.table?.sbAppend; return __dyn ? __dyn(__recv.ref, "\n") : sbAppend(__recv, "\n"); })();
-  (() => { const __recv = sink; const __prop = __recv?.["sbAppendChar"]; if (typeof __prop === "function") return __prop((0 + ch)); const __dyn = __recv?.table?.sbAppendChar; return __dyn ? __dyn(__recv.ref, (0 + ch)) : sbAppendChar(__recv, (0 + ch)); })();
-  (() => { const __recv = sink; const __prop = __recv?.["sbAppend"]; if (typeof __prop === "function") return __prop("\n"); const __dyn = __recv?.table?.sbAppend; return __dyn ? __dyn(__recv.ref, "\n") : sbAppend(__recv, "\n"); })();
-  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-  continue;
-}
-  (() => { const __recv = sink; const __prop = __recv?.["sbAppendChar"]; if (typeof __prop === "function") return __prop((0 + ch)); const __dyn = __recv?.table?.sbAppendChar; return __dyn ? __dyn(__recv.ref, (0 + ch)) : sbAppendChar(__recv, (0 + ch)); })();
-  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-}
-  return (() => { const __recv = sink; const __prop = __recv?.["sbBuild"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.sbBuild; return __dyn ? __dyn(__recv.ref) : sbBuild(__recv); })();
-}
-if (typeof __tuff_this !== 'undefined') __tuff_this.fmtStage1Split = fmtStage1Split;
-
 const __tuff_outer_for_formatTuffSourceImpl = typeof __tuff_this !== 'undefined' ? __tuff_this : undefined;
 function formatTuffSourceImpl(source) {
   let __tuff_this = { source: source, this: __tuff_outer_for_formatTuffSourceImpl };
-  let stage1 = fmtStage1Split(source); if (typeof __tuff_this !== 'undefined') __tuff_this.stage1 = stage1;
-  let sink = sbNew(); if (typeof __tuff_this !== 'undefined') __tuff_this.sink = sink;
-  let lineSb = sbNew(); if (typeof __tuff_this !== 'undefined') __tuff_this.lineSb = lineSb;
-  let indent = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.indent = indent;
-  let i = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-  let len = (() => { const __recv = stage1; const __prop = __recv?.["strLength"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.strLength; return __dyn ? __dyn(__recv.ref) : strLength(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.len = len;
-  while ((i < len)) {
-  let ch = (() => { const __recv = stage1; const __prop = __recv?.["strCharAt"]; if (typeof __prop === "function") return __prop(i); const __dyn = __recv?.table?.strCharAt; return __dyn ? __dyn(__recv.ref, i) : strCharAt(__recv, i); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.ch = ch;
-  if ((ch === 13)) {
-  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-  continue;
+  lexInit(source);
+  lexAll();
+  parseInit();
+  let program = pParseProgram(); if (typeof __tuff_this !== 'undefined') __tuff_this.program = program;
+  let desugared = desugar(program); if (typeof __tuff_this !== 'undefined') __tuff_this.desugared = desugared;
+  let resolvedResultAny = resolveNames(desugared); if (typeof __tuff_this !== 'undefined') __tuff_this.resolvedResultAny = resolvedResultAny;
+  if ((resolvedResultAny && resolvedResultAny.__tag === "Err")) {
+  panic((() => { const __recv = "Formatter resolver error: "; const __prop = __recv?.["strConcat"]; if (typeof __prop === "function") return __prop(resolvedResultAny.error.message); const __dyn = __recv?.table?.strConcat; return __dyn ? __dyn(__recv.ref, resolvedResultAny.error.message) : strConcat(__recv, resolvedResultAny.error.message); })());
 }
-  if ((ch === 10)) {
-  let line = (() => { const __recv = lineSb; const __prop = __recv?.["sbBuild"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.sbBuild; return __dyn ? __dyn(__recv.ref) : sbBuild(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.line = line;
-  lineSb = sbNew(); if (typeof __tuff_this !== 'undefined') __tuff_this.lineSb = lineSb;
-  indent = fmtEmitProcessedLine(sink, line, indent); if (typeof __tuff_this !== 'undefined') __tuff_this.indent = indent;
-  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
-  continue;
+  let resolved = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.resolved = resolved;
+  if ((resolvedResultAny && resolvedResultAny.__tag === "Ok")) {
+  resolved = resolvedResultAny.value; if (typeof __tuff_this !== 'undefined') __tuff_this.resolved = resolved;
+} else {
+  panic("Formatter resolver returned unexpected result variant");
 }
-  (() => { const __recv = lineSb; const __prop = __recv?.["sbAppendChar"]; if (typeof __prop === "function") return __prop((0 + ch)); const __dyn = __recv?.table?.sbAppendChar; return __dyn ? __dyn(__recv.ref, (0 + ch)) : sbAppendChar(__recv, (0 + ch)); })();
-  i = (i + 1); if (typeof __tuff_this !== 'undefined') __tuff_this.i = i;
+  let typedResultAny = typecheckProgramWithOptions(resolved); if (typeof __tuff_this !== 'undefined') __tuff_this.typedResultAny = typedResultAny;
+  if ((typedResultAny && typedResultAny.__tag === "Err")) {
+  panic((() => { const __recv = "Formatter typechecker error: "; const __prop = __recv?.["strConcat"]; if (typeof __prop === "function") return __prop(typedResultAny.error.message); const __dyn = __recv?.table?.strConcat; return __dyn ? __dyn(__recv.ref, typedResultAny.error.message) : strConcat(__recv, typedResultAny.error.message); })());
 }
-  let tail = (() => { const __recv = lineSb; const __prop = __recv?.["sbBuild"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.sbBuild; return __dyn ? __dyn(__recv.ref) : sbBuild(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.tail = tail;
-  fmtEmitProcessedLine(sink, tail, indent);
-  let result = (() => { const __recv = sink; const __prop = __recv?.["sbBuild"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.sbBuild; return __dyn ? __dyn(__recv.ref) : sbBuild(__recv); })(); if (typeof __tuff_this !== 'undefined') __tuff_this.result = result;
-  if ((((() => { const __recv = result; const __prop = __recv?.["strLength"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.strLength; return __dyn ? __dyn(__recv.ref) : strLength(__recv); })() > 0) && ((() => { const __recv = result; const __prop = __recv?.["strCharAt"]; if (typeof __prop === "function") return __prop(((() => { const __recv = result; const __prop = __recv?.["strLength"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.strLength; return __dyn ? __dyn(__recv.ref) : strLength(__recv); })() - 1)); const __dyn = __recv?.table?.strCharAt; return __dyn ? __dyn(__recv.ref, ((() => { const __recv = result; const __prop = __recv?.["strLength"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.strLength; return __dyn ? __dyn(__recv.ref) : strLength(__recv); })() - 1)) : strCharAt(__recv, ((() => { const __recv = result; const __prop = __recv?.["strLength"]; if (typeof __prop === "function") return __prop(); const __dyn = __recv?.table?.strLength; return __dyn ? __dyn(__recv.ref) : strLength(__recv); })() - 1)); })() === 10))) {
-  return result;
+  let typed = 0; if (typeof __tuff_this !== 'undefined') __tuff_this.typed = typed;
+  if ((typedResultAny && typedResultAny.__tag === "Ok")) {
+  typed = typedResultAny.value; if (typeof __tuff_this !== 'undefined') __tuff_this.typed = typed;
+} else {
+  panic("Formatter typechecker returned unexpected result variant");
 }
-  return (() => { const __recv = result; const __prop = __recv?.["strConcat"]; if (typeof __prop === "function") return __prop("\n"); const __dyn = __recv?.table?.strConcat; return __dyn ? __dyn(__recv.ref, "\n") : strConcat(__recv, "\n"); })();
+  return emitTuffFromTyped(typed, source, lexTakeTrivia());
 }
 if (typeof __tuff_this !== 'undefined') __tuff_this.formatTuffSourceImpl = formatTuffSourceImpl;
 

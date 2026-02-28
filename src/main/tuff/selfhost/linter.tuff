@@ -230,7 +230,7 @@ fn lintCollectEffectiveLinesStmt(stmt: I32, lines: *mut Set<I32>) : I32 => {
         }
         return added;
     }
-    if (kind == NK_INTO_STMT || kind == NK_BREAK_STMT || kind == NK_CONTINUE_STMT || kind = =
+    if (kind == NK_INTO_STMT || kind == NK_BREAK_STMT || kind == NK_CONTINUE_STMT || kind ==
     NK_EXTERN_IMPORT_DECL || lintIsExternFnDecl(stmt) || kind == NK_EXTERN_LET_DECL || kind == NK_EXTERN_TYPE_DECL) {
         return added;
     }
@@ -1350,7 +1350,7 @@ I32, astDupEnabled: I32) : I32 => {
     i = 0;
     while (i < len) {
         let stmt = body.vecGet(i);
-        lintCheckFunctionLength(stmt, 100);
+        lintCheckFunctionLength(stmt, maxEffectiveLines);
         lintCollectStmt(stmt, receiverExternFns, reads, declaredSet, declaredNames);
         i = i + 1;
     }

@@ -606,7 +606,7 @@ Set<I32>, globalFnNames: *mut Set<I32>, mode: *Str) : I32 => {
         consumePlace(expr, state, envTypes, fnReturnTypes, externTypeNames);
         return 0;
     }
-    if (kind == NK_NUMBER_LIT || kind == NK_BOOL_LIT || kind == NK_STRING_LIT || kind = =
+    if (kind == NK_NUMBER_LIT || kind == NK_BOOL_LIT || kind == NK_STRING_LIT || kind ==
     NK_CHAR_LIT) {
         return 0;
     }
