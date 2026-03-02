@@ -11,7 +11,8 @@ function assertValid(
       expect(new Function(`return ${result.value}`)()).toBe(stdInOrExpected);
     } else {
       const values: number[] = [];
-      let current = "", i = 0;
+      let current = "",
+        i = 0;
       while (i < stdInOrExpected.length) {
         const char = stdInOrExpected[i];
         if (char !== " " && char !== "\t" && char !== "\n") {
@@ -25,7 +26,9 @@ function assertValid(
       if (current) values.push(Number(current));
       let index = 0;
       const read = (): number => values[index++];
-      expect(new Function("read", `return ${result.value}`)(read)).toBe(expected);
+      expect(new Function("read", `return ${result.value}`)(read)).toBe(
+        expected,
+      );
     }
   } else {
     expect(result.error).toBeUndefined();
@@ -105,5 +108,9 @@ describe("The compiler can compile", () => {
 
   it("allows literal assigned to matching declared type (I32)", () => {
     assertValid("let x = 0; let y : I32 = x;", 0);
+  });
+
+  it("rejects undefined variable reference", () => {
+    assertInvalid("x");
   });
 });

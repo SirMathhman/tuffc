@@ -381,6 +381,46 @@ function checkAssignmentTypeMatch(
   });
 }
 
+function checkUndefinedVariables(
+  source: string,
+  metadata: VariableInfo[],
+): Result<void, CompileError> {
+  const trimmed = source.trim();
+  if (trimmed.length === 0) {
+    return ok(void 0);
+  }
+  const firstChar = trimmed[0];
+  const isLetter =
+    (firstChar >= "a" && firstChar <= "z") ||
+    (firstChar >= "A" && firstChar <= "Z");
+  if (!isLetter) {
+    return ok(void 0);
+  }
+  const identifier = extractIdentifier(trimmed, 0);
+  if (identifier === trimmed) {
+    let found = false;
+    let j = 0;
+    while (j < metadata.length) {
+      if (metadata[j].name === identifier) {
+        found = true;
+        break;
+      }
+      j++;
+    }
+    if (!found) {
+      return err(
+        createCompileError(
+          source,
+          `Undefined variable: '${identifier}' is referenced but never declared`,
+          "All variables must be declared with 'let' before they can be used",
+          `Declare '${identifier}' using 'let ${identifier} = <value>;' before using it`,
+        ),
+      );
+    }
+  }
+  return ok(void 0);
+}
+
 function parseNumberLiteral(trimmed: string): Result<string, CompileError> {
   // Try parsing as a full number first
   let num = Number(trimmed);
@@ -460,6 +500,10 @@ export function compile(source: string): Result<string, CompileError> {
     if (assignResult.type === "err") {
       return assignResult;
     }
+    const undefResult = checkUndefinedVariables(trimmed, metadata);
+    if (undefResult.type === "err") {
+      return undefResult;
+    }
     const transformed = transformReadPatterns(trimmed);
     const stripped = stripTypeAnnotations(transformed);
     const lastSemicolonIndex = stripped.lastIndexOf(";");
@@ -479,6 +523,11 @@ export function compile(source: string): Result<string, CompileError> {
   if (trimmed.indexOf("read<") !== -1) {
     const transformed = transformReadPatterns(trimmed);
     return ok(transformed);
+  }
+
+  const undefCheckResult = checkUndefinedVariables(trimmed, []);
+  if (undefCheckResult.type === "err") {
+    return undefCheckResult;
   }
 
   return parseNumberLiteral(trimmed);
