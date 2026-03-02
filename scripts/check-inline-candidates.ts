@@ -156,14 +156,49 @@ function findBestInlineCandidates(
   return bestPerCaller;
 }
 
-function getBodyStatements(fn: FunctionDeclaration): string {
-  const body = fn.getBody() as Block;
-  const statements = body.getStatements();
-  return statements.map((s) => s.getText()).join("\n");
+function isIdentChar(c: string): boolean {
+  const isLower = c >= "a" && c <= "z";
+  const isUpper = c >= "A" && c <= "Z";
+  const isDigit = c >= "0" && c <= "9";
+  return isLower || isUpper || isDigit || c === "_";
 }
 
-function extractReturnExpression(stmts: string): string | undefined {
-  const trimmed = stmts.trim();
+function replaceIdentifier(text: string, from: string, to: string): string {
+  let result = "";
+  let i = 0;
+  while (i < text.length) {
+    let prevChar = "";
+    if (i > 0) {
+      prevChar = text[i - 1];
+    }
+    if (text.startsWith(from, i) && !isIdentChar(prevChar)) {
+      const afterIdx = i + from.length;
+      let nextChar = "";
+      if (afterIdx < text.length) {
+        nextChar = text[afterIdx];
+      }
+      if (!isIdentChar(nextChar)) {
+        result += to;
+        i = afterIdx;
+        continue;
+      }
+    }
+    result += text[i];
+    i++;
+  }
+  return result;
+}
+
+function applyRenames(text: string, renameMap: Map<string, string>): string {
+  let result = text;
+  renameMap.forEach((newName, oldName) => {
+    result = replaceIdentifier(result, oldName, newName);
+  });
+  return result;
+}
+
+function extractReturnExpression(stmt: string): string | undefined {
+  const trimmed = stmt.trim();
   const prefix = "return ";
   if (!trimmed.startsWith(prefix)) {
     return undefined;
@@ -175,24 +210,89 @@ function extractReturnExpression(stmts: string): string | undefined {
   return rest;
 }
 
-function inlineFunction(fn: FunctionDeclaration, call: CallExpression): void {
-  const bodyStatements = getBodyStatements(fn);
-  const returnExpr = extractReturnExpression(bodyStatements);
-  const callStatement = call.getParent();
-  if (returnExpr !== undefined && callStatement !== undefined) {
-    if (Node.isReturnStatement(callStatement)) {
-      callStatement.replaceWithText(`return ${returnExpr};`);
-    } else {
-      call.replaceWithText(returnExpr);
+function collectDeclaredNames(
+  stmts: import("ts-morph").Statement[],
+): string[] {
+  const names: string[] = [];
+  let i = 0;
+  while (i < stmts.length) {
+    const stmt = stmts[i];
+    if (Node.isVariableStatement(stmt)) {
+      stmt.getDeclarationList().getDeclarations().forEach((decl) => {
+        names.push(decl.getName());
+      });
     }
-  } else if (callStatement !== undefined) {
-    const allStatements = bodyStatements.trim();
-    if (Node.isExpressionStatement(callStatement)) {
-      callStatement.replaceWithText(allStatements + "\n");
-    } else {
-      call.replaceWithText(`(function() { ${allStatements} })()`);
-    }
+    i++;
   }
+  return names;
+}
+
+function buildRenameMap(
+  calleeNames: string[],
+  callerNames: Set<string>,
+): Map<string, string> {
+  const renameMap = new Map<string, string>();
+  let i = 0;
+  while (i < calleeNames.length) {
+    const name = calleeNames[i];
+    if (callerNames.has(name)) {
+      let suffix = 0;
+      let newName = name + String(suffix);
+      while (callerNames.has(newName)) {
+        suffix++;
+        newName = name + String(suffix);
+      }
+      renameMap.set(name, newName);
+      callerNames.add(newName);
+    }
+    i++;
+  }
+  return renameMap;
+}
+
+function findContainingStatement(call: CallExpression): Node | undefined {
+  let node: Node = call;
+  while (true) {
+    const parent = node.getParent();
+    if (parent === undefined) {
+      return undefined;
+    }
+    if (Node.isBlock(parent)) {
+      return node;
+    }
+    node = parent;
+  }
+}
+
+function inlineFunction(fn: FunctionDeclaration, call: CallExpression): void {
+  const caller = findCallerFunction(call);
+  if (caller === undefined) {
+    return;
+  }
+  const body = fn.getBody() as Block;
+  const stmts = body.getStatements();
+  const calleeNames = collectDeclaredNames(stmts);
+  const callerNames = new Set(collectDeclaredNames((caller.getBody() as Block).getStatements()));
+  const renameMap = buildRenameMap(calleeNames, callerNames);
+  const lastStmt = stmts[stmts.length - 1];
+  const prefixStmts = stmts.slice(0, stmts.length - 1);
+  let returnExpr = extractReturnExpression(lastStmt.getText());
+  if (returnExpr === undefined) {
+    returnExpr = lastStmt.getText();
+  }
+  const renamedReturn = applyRenames(returnExpr, renameMap);
+  const renamedPrefixes = prefixStmts.map((s) => applyRenames(s.getText(), renameMap));
+  const containingStmt = findContainingStatement(call);
+  if (containingStmt === undefined) {
+    return;
+  }
+  const stmtStart = containingStmt.getStart();
+  const stmtText = containingStmt.getText();
+  const newStmtText =
+    stmtText.slice(0, call.getStart() - stmtStart) +
+    renamedReturn +
+    stmtText.slice(call.getEnd() - stmtStart);
+  containingStmt.replaceWithText([...renamedPrefixes, newStmtText].join("\n"));
   fn.remove();
 }
 
