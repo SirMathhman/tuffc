@@ -9,6 +9,7 @@
     "find-duplicates": "pmd cpd --dir src,tests --language typescript --minimum-tokens 40 --ignore-literals --ignore-identifiers",
     "check-inline": "npx tsx scripts/check-inline-candidates.ts --min-tokens 20",
     "check-ast-duplicates": "npx tsx scripts/check-ast-duplicates.ts",
+    "check-directory-size": "npx tsx scripts/check-directory-size.ts",
     "lint": "eslint .",
     "prepare": "husky install"
   },
