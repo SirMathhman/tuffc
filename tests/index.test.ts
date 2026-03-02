@@ -337,4 +337,12 @@ describe("The compiler can compile", () => {
       1,
     );
   });
+
+  it("declares singleton object with method and field access", () => {
+    assertValid(
+      "object MySingleton { let mut counter = 0; fn add() : Void => counter += read<I32>(); } MySingleton::add(); MySingleton::counter",
+      "1",
+      1,
+    );
+  });
 });

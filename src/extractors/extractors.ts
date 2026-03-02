@@ -4,6 +4,7 @@ export {
   extractNumericPart,
   isAssignmentOperator,
   advancePast,
+  isAtWordBoundary,
 } from "./extractors-identifiers";
 export {
   extractAfterEq,

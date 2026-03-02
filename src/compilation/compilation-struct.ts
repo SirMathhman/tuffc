@@ -1,7 +1,7 @@
 import {
   isIdChar,
   skipWs,
-  findBraceEnd,
+  findMatchingBrace,
   parseStructPrefix,
   normalizeFields,
 } from "./compilation-struct-helpers";
@@ -20,7 +20,7 @@ function rewriteLiterals(source: string, names: string[]): string {
       ) {
         const braceStart = skipWs(source, i + name.length);
         if (source[braceStart] === "{") {
-          const braceEnd = findBraceEnd(source, braceStart);
+          const braceEnd = findMatchingBrace(source, braceStart);
           if (braceEnd !== -1) {
             const fields = source.substring(braceStart + 1, braceEnd);
             out += "{" + normalizeFields(fields) + "}";

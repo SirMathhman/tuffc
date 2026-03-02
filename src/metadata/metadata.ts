@@ -91,10 +91,15 @@ function buildVariableMetadata(source: string): VariableInfo[] {
   let j = 0;
   while (j < statements.length) {
     const stmt = statements[j];
-    if (stmt.substring(0, 4) === "let ") {
+    const isLet = stmt.substring(0, 4) === "let ";
+    const isConst = stmt.substring(0, 6) === "const ";
+    if (isLet || isConst) {
       let isMutable = false;
       let skipOffset = 4;
-      if (stmt.substring(4, 8) === "mut ") {
+      if (isConst) {
+        skipOffset = 6;
+      }
+      if (isLet && stmt.substring(4, 8) === "mut ") {
         isMutable = true;
         skipOffset = 8;
       }

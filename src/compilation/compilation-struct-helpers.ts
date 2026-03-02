@@ -1,4 +1,5 @@
 import { extractIdentifier } from "../extractors/extractors";
+import { findMatchingBrace } from "../extractors/extractors-braces";
 
 function isIdChar(ch: string): boolean {
   return (
@@ -20,19 +21,6 @@ function skipWs(text: string, idx: number): number {
     i++;
   return i;
 }
-function findBraceEnd(text: string, openIdx: number): number {
-  let depth = 0;
-  let i = openIdx;
-  while (i < text.length) {
-    if (text[i] === "{") depth++;
-    else if (text[i] === "}") {
-      depth--;
-      if (depth === 0) return i;
-    }
-    i++;
-  }
-  return -1;
-}
 
 function parseStructPrefix(source: string): { names: string[]; rest: string } {
   const names: string[] = [];
@@ -44,7 +32,7 @@ function parseStructPrefix(source: string): { names: string[]; rest: string } {
     names.push(name);
     j = skipWs(source, j + name.length);
     if (source[j] !== "{") break;
-    const end = findBraceEnd(source, j);
+    const end = findMatchingBrace(source, j);
     if (end === -1) break;
     i = skipWs(source, end + 1);
     if (source[i] === ";") i = skipWs(source, i + 1);
@@ -74,4 +62,4 @@ function normalizeFields(content: string): string {
   return out;
 }
 
-export { isIdChar, skipWs, findBraceEnd, parseStructPrefix, normalizeFields };
+export { isIdChar, skipWs, findMatchingBrace, parseStructPrefix, normalizeFields };

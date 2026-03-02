@@ -44,9 +44,14 @@ function advancePast(varStart: number, varName: string): number {
   return varStart + varName.length;
 }
 
+function isAtWordBoundary(source: string, i: number): boolean {
+  return i === 0 || source[i - 1] === " " || source[i - 1] === ";";
+}
+
 export {
   extractIdentifier,
   extractNumericPart,
   isAssignmentOperator,
   advancePast,
+  isAtWordBoundary,
 };

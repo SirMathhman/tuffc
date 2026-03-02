@@ -36,7 +36,7 @@ function compileLetStatement(
   source: string,
 ): Result<string, CompileError> | null {
   const trimmed = source.trim();
-  if (trimmed.indexOf("let ") === -1) {
+  if (trimmed.indexOf("let ") === -1 && trimmed.indexOf("const ") === -1) {
     return null;
   }
   const processedSource = transformIfElseToTernary(

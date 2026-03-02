@@ -2,6 +2,7 @@ import {
   findMatchingParen,
   extractParamNames,
 } from "../compilation/compilation-fn-helpers";
+import { isAtWordBoundary } from "../extractors/extractors";
 
 function transformFnDeclarations(source: string): string {
   let result = "";
@@ -10,7 +11,7 @@ function transformFnDeclarations(source: string): string {
     const isFn =
       i < source.length - 3 &&
       source.substring(i, i + 3) === "fn " &&
-      (i === 0 || source[i - 1] === " " || source[i - 1] === ";");
+      isAtWordBoundary(source, i);
     if (!isFn) {
       result += source[i];
       i++;
