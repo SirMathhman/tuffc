@@ -108,6 +108,62 @@ function transformReadPatterns(source: string): string {
   return result;
 }
 
+function containsLetDeclaration(source: string): boolean {
+  return source.indexOf("let ") !== -1;
+}
+
+function stripTypeAnnotations(source: string): string {
+  let result = "";
+  let i = 0;
+  while (i < source.length) {
+    if (i < source.length - 1 && source[i] === ":" && source[i + 1] === " ") {
+      // Skip the colon and space
+      i += 2;
+      // Skip the type name (letters, digits, angle brackets for generics)
+      while (i < source.length) {
+        const char = source[i];
+        if (
+          (char >= "a" && char <= "z") ||
+          (char >= "A" && char <= "Z") ||
+          (char >= "0" && char <= "9") ||
+          char === "<" ||
+          char === ">" ||
+          char === ","
+        ) {
+          i++;
+        } else {
+          break;
+        }
+      }
+      // Skip any trailing spaces after the type
+      while (i < source.length && source[i] === " ") {
+        i++;
+      }
+    } else {
+      result += source[i];
+      i++;
+    }
+  }
+  return result;
+}
+
+function wrapInIife(code: string): string {
+  // Find the last statement that's not a declaration
+  // and add return to it
+  const lastSemicolonIndex = code.lastIndexOf(";");
+  if (lastSemicolonIndex === -1) {
+    // No semicolon, wrap the whole thing with return
+    return `(function() { return ${code}; })()`;
+  }
+  const beforeLastStatement = code.substring(0, lastSemicolonIndex + 1);
+  const lastStatement = code.substring(lastSemicolonIndex + 1).trim();
+  if (lastStatement === "") {
+    // Only semicolons, no final statement
+    return `(function() { ${code} })()`;
+  }
+  return `(function() { ${beforeLastStatement} return ${lastStatement}; })()`;
+}
+
 function validateNegativeWithSuffix(
   source: string,
 ): Result<string, CompileError> {
@@ -121,19 +177,7 @@ function validateNegativeWithSuffix(
   );
 }
 
-export function compile(source: string): Result<string, CompileError> {
-  const trimmed = source.trim();
-
-  if (trimmed === "") {
-    return ok("0");
-  }
-
-  // Check for read<TYPE>() pattern (simple or in expression)
-  if (containsReadPattern(trimmed)) {
-    const transformed = transformReadPatterns(trimmed);
-    return ok(transformed);
-  }
-
+function parseNumberLiteral(trimmed: string): Result<string, CompileError> {
   // Try parsing as a full number first
   let num = Number(trimmed);
   if (!Number.isNaN(num) && String(num) === trimmed) {
@@ -182,4 +226,28 @@ export function compile(source: string): Result<string, CompileError> {
   }
 
   return ok("0");
+}
+
+export function compile(source: string): Result<string, CompileError> {
+  const trimmed = source.trim();
+
+  if (trimmed === "") {
+    return ok("0");
+  }
+
+  // Check for variable declarations
+  if (containsLetDeclaration(trimmed)) {
+    const transformed = transformReadPatterns(trimmed);
+    const stripped = stripTypeAnnotations(transformed);
+    const wrapped = wrapInIife(stripped);
+    return ok(wrapped);
+  }
+
+  // Check for read<TYPE>() pattern (simple or in expression)
+  if (containsReadPattern(trimmed)) {
+    const transformed = transformReadPatterns(trimmed);
+    return ok(transformed);
+  }
+
+  return parseNumberLiteral(trimmed);
 }

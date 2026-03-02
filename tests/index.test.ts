@@ -80,4 +80,8 @@ describe("The compiler can compile", () => {
   it("adds two U8 values from input", () => {
     assertValid("read<U8>() + read<U8>()", "1 2", 3);
   });
+
+  it("declares and uses a variable", () => {
+    assertValid("let x : U8 = read<U8>(); x", "1 3", 1);
+  });
 });
