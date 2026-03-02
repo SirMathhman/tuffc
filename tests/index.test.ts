@@ -174,4 +174,8 @@ describe("The compiler can compile", () => {
       "let mut x = 0; let y : *I32 = &x; let z : *mut I32 = &mut x;",
     );
   });
+
+  it("evaluates empty block expression to 0", () => {
+    assertValid("{}", 0);
+  });
 });
