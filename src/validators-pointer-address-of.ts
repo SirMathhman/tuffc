@@ -1,11 +1,11 @@
-import {
-  VariableInfo,
-  Result,
-  CompileError,
-} from "./types";
+import { VariableInfo, Result, CompileError } from "./types";
 import { findVariable } from "./metadata";
 import { checkMixedPointerTypes } from "./validators-pointer-mixed-types";
-import { undeclaredVariableError, varNotDeclaredHint, checkOperatorUsage } from "./validators-pointer-helpers";
+import {
+  undeclaredVariableError,
+  varNotDeclaredHint,
+  checkOperatorUsage,
+} from "./validators-pointer-helpers";
 
 function checkAddressOfOperator(
   source: string,
@@ -25,7 +25,13 @@ function checkAddressOfOperator(
     }
     return { type: "ok", value: void 0 };
   };
-  return checkOperatorUsage(source, "&", addressOfChecker, false, "mut ") as Result<void, CompileError>;
+  return checkOperatorUsage(
+    source,
+    "&",
+    addressOfChecker,
+    false,
+    "mut ",
+  ) as Result<void, CompileError>;
 }
 
 export { checkAddressOfOperator };

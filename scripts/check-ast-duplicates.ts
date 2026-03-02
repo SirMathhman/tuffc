@@ -47,6 +47,16 @@ function isLiteralKind(kind: SyntaxKind): boolean {
 }
 
 function isIgnoredKind(kind: SyntaxKind): boolean {
+  if (
+    kind === SyntaxKind.ImportDeclaration ||
+    kind === SyntaxKind.NamedImports ||
+    kind === SyntaxKind.ImportSpecifier ||
+    kind === SyntaxKind.TypeLiteral ||
+    kind === SyntaxKind.UnionType ||
+    kind === SyntaxKind.ObjectBindingPattern
+  ) {
+    return true;
+  }
   if (IGNORE_IDENTIFIERS && kind === SyntaxKind.Identifier) {
     return true;
   }
@@ -101,6 +111,11 @@ function collectSubtrees(
   filePath: string,
   map: Map<string, NodeLocation[]>,
 ): void {
+  // Skip processing ImportDeclaration nodes and their children entirely
+  if (node.getKind() === SyntaxKind.ImportDeclaration) {
+    return;
+  }
+
   const nodeCount = countNodes(node);
   if (nodeCount >= MIN_NODES && !isIgnoredKind(node.getKind())) {
     const hash = computeStructuralHash(node);

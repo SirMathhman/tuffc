@@ -15,3 +15,4 @@ export {
 } from "./validators-block-checks";
 export { checkPointerOperators } from "./validators-pointer-checks";
 export { checkLogicalOperatorTypes } from "./validators-logical-checks";
+export { checkArithmeticOperatorTypes } from "./validators-arithmetic-checks";

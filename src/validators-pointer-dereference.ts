@@ -6,7 +6,11 @@ import {
   createCompileError,
 } from "./types";
 import { findVariable } from "./metadata";
-import { undeclaredVariableError, varNotDeclaredHint, checkOperatorUsage } from "./validators-pointer-helpers";
+import {
+  undeclaredVariableError,
+  varNotDeclaredHint,
+  checkOperatorUsage,
+} from "./validators-pointer-helpers";
 
 function checkDereferenceOperator(
   source: string,
@@ -35,7 +39,10 @@ function checkDereferenceOperator(
     }
     return { type: "ok", value: void 0 };
   };
-  return checkOperatorUsage(source, "*", derefChecker, true) as Result<void, CompileError>;
+  return checkOperatorUsage(source, "*", derefChecker, true) as Result<
+    void,
+    CompileError
+  >;
 }
 
 export { checkDereferenceOperator };

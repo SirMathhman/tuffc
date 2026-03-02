@@ -234,4 +234,8 @@ describe("The compiler can compile", () => {
   it("rejects non-boolean operands for logical AND", () => {
     assertInvalid("let x = 1; let y = 2; x && y");
   });
+
+  it("rejects arithmetic operators on boolean operands", () => {
+    assertInvalid("let x = true; let y = false; x + y");
+  });
 });

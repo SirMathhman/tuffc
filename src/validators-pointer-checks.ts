@@ -2,7 +2,10 @@ import { VariableInfo, Result, CompileError } from "./types";
 import { checkAddressOfOperator } from "./validators-pointer-address-of";
 import { checkDereferenceOperator } from "./validators-pointer-dereference";
 import { checkImmutablePointerAssignments } from "./validators-pointer-mutations";
-import { undeclaredVariableError, varNotDeclaredHint } from "./validators-pointer-helpers";
+import {
+  undeclaredVariableError,
+  varNotDeclaredHint,
+} from "./validators-pointer-helpers";
 
 function checkPointerOperators(
   source: string,
@@ -15,8 +18,4 @@ function checkPointerOperators(
   return checkImmutablePointerAssignments(source, metadata);
 }
 
-export {
-  checkPointerOperators,
-  undeclaredVariableError,
-  varNotDeclaredHint,
-};
+export { checkPointerOperators, undeclaredVariableError, varNotDeclaredHint };
