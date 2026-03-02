@@ -46,6 +46,14 @@ export default [
         },
       ],
       "@typescript-eslint/consistent-type-definitions": ["error", "interface"],
+      "max-lines-per-function": [
+        "error",
+        {
+          max: 50,
+          skipBlankLines: true,
+          skipComments: true,
+        },
+      ],
     },
   },
 ];
