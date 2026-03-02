@@ -248,6 +248,17 @@ describe("The compiler can compile", () => {
   });
 
   it("evaluates if-else with variable condition", () => {
-    assertValid("let cond = true; let mut x = 0; if (cond) x = 10; else x = 20; x", 10);
+    assertValid(
+      "let cond = true; let mut x = 0; if (cond) x = 10; else x = 20; x",
+      10,
+    );
+  });
+
+  it("evaluates if-else with braces in then branch", () => {
+    assertValid("let mut x = 0; if (true) { x = 3; } else { x = 5; } x", 3);
+  });
+
+  it("evaluates if-else with braces in else branch", () => {
+    assertValid("let mut x = 0; if (false) { x = 3; } else { x = 5; } x", 5);
   });
 });
