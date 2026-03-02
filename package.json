@@ -2,20 +2,25 @@
   "name": "tuffc",
   "version": "0.0.1",
   "description": "Tuff Compiler",
+  "type": "module",
   "main": "index.ts",
   "scripts": {
     "test": "jest",
+    "lint": "eslint .",
     "prepare": "husky install"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "devDependencies": {
+    "@eslint/js": "^9.39.3",
     "@types/jest": "^29.5.0",
     "@types/node": "^20.0.0",
+    "eslint": "^9.39.3",
     "husky": "^9.1.7",
     "jest": "^29.5.0",
     "ts-jest": "^29.1.0",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "typescript-eslint": "^8.56.1"
   }
 }
