@@ -178,4 +178,8 @@ describe("The compiler can compile", () => {
   it("evaluates empty block expression to 0", () => {
     assertValid("{}", 0);
   });
+
+  it("evaluates block followed by expression to expression value", () => {
+    assertValid("{} 100", 100);
+  });
 });

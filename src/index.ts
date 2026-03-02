@@ -904,6 +904,43 @@ function transformReadPatterns(source: string): string {
   return result;
 }
 
+function compileLetStatement(
+  source: string,
+): Result<string, CompileError> | null {
+  const trimmed = source.trim();
+  if (trimmed.indexOf("let ") === -1) {
+    return null;
+  }
+  const metadata = buildVariableMetadata(trimmed);
+  const dupRes = checkVariableDuplicates(metadata);
+  if (dupRes.type === "err") return dupRes;
+  const readRes = checkReadTypeMatch(metadata);
+  if (readRes.type === "err") return readRes;
+  const assignRes = checkAssignmentTypeMatch(metadata);
+  if (assignRes.type === "err") return assignRes;
+  const ptrRes = checkPointerOperators(trimmed, metadata);
+  if (ptrRes.type === "err") return ptrRes;
+  const undefRes = checkUndefinedVariables(trimmed, metadata);
+  if (undefRes.type === "err") return undefRes;
+  const reassignRes = checkReassignments(trimmed, metadata);
+  if (reassignRes.type === "err") return reassignRes;
+  const code = transformDereference(
+    transformAddressOf(stripTypeAnnotations(transformReadPatterns(trimmed))),
+  );
+  const lastSemicolonIndex = code.lastIndexOf(";");
+  if (lastSemicolonIndex === -1) {
+    return ok(`(function() { return ${code}; })()`);
+  }
+  const beforeLastStatement = code.substring(0, lastSemicolonIndex + 1);
+  const lastStatement = code.substring(lastSemicolonIndex + 1).trim();
+  if (lastStatement === "") {
+    return ok(`(function() { ${code} return 0; })()`);
+  }
+  return ok(
+    `(function() { ${beforeLastStatement} return ${lastStatement}; })()`,
+  );
+}
+
 export function compile(source: string): Result<string, CompileError> {
   const trimmed = source.trim();
 
@@ -911,41 +948,9 @@ export function compile(source: string): Result<string, CompileError> {
     return ok("0");
   }
 
-  if (trimmed.indexOf("let ") !== -1) {
-    const metadata = buildVariableMetadata(trimmed);
-    // Check duplicates
-    const dupRes = checkVariableDuplicates(metadata);
-    if (dupRes.type === "err") return dupRes;
-    // Check read types
-    const readRes = checkReadTypeMatch(metadata);
-    if (readRes.type === "err") return readRes;
-    // Check assignment types
-    const assignRes = checkAssignmentTypeMatch(metadata);
-    if (assignRes.type === "err") return assignRes;
-    // Check address-of and dereference variables
-    const ptrRes = checkPointerOperators(trimmed, metadata);
-    if (ptrRes.type === "err") return ptrRes;
-    // Check undefined vars
-    const undefRes = checkUndefinedVariables(trimmed, metadata);
-    if (undefRes.type === "err") return undefRes;
-    // Check reassignments
-    const reassignRes = checkReassignments(trimmed, metadata);
-    if (reassignRes.type === "err") return reassignRes;
-    const code = transformDereference(
-      transformAddressOf(stripTypeAnnotations(transformReadPatterns(trimmed))),
-    );
-    const lastSemicolonIndex = code.lastIndexOf(";");
-    if (lastSemicolonIndex === -1) {
-      return ok(`(function() { return ${code}; })()`);
-    }
-    const beforeLastStatement = code.substring(0, lastSemicolonIndex + 1);
-    const lastStatement = code.substring(lastSemicolonIndex + 1).trim();
-    if (lastStatement === "") {
-      return ok(`(function() { ${code} return 0; })()`);
-    }
-    return ok(
-      `(function() { ${beforeLastStatement} return ${lastStatement}; })()`,
-    );
+  const letRes = compileLetStatement(source);
+  if (letRes !== null) {
+    return letRes;
   }
 
   if (trimmed.indexOf("read<") !== -1) {
@@ -955,6 +960,14 @@ export function compile(source: string): Result<string, CompileError> {
       return reassignRes;
     }
     return ok(transformReadPatterns(trimmed));
+  }
+
+  if (trimmed.startsWith("{}")) {
+    const afterBlock = trimmed.substring(2).trim();
+    if (afterBlock !== "") {
+      return compile(afterBlock);
+    }
+    return ok("0");
   }
 
   const undefCheckResult = checkUndefinedVariables(trimmed, []);
