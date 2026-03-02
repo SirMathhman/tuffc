@@ -197,4 +197,8 @@ describe("The compiler can compile", () => {
   it("evaluates let binding with block expression to block result", () => {
     assertValid("let x = { let y = 100; y }; x", 100);
   });
+
+  it("rejects block without final expression in assignment", () => {
+    assertInvalid("let x = { let y = 100; }; x");
+  });
 });

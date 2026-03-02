@@ -57,6 +57,14 @@ export default [
           skipComments: true,
         },
       ],
+      "max-lines": [
+        "error",
+        {
+          max: 510,
+          skipBlankLines: true,
+          skipComments: true,
+        },
+      ],
     },
   },
 ];
