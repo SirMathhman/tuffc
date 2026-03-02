@@ -11,4 +11,9 @@ describe("The compiler can compile", () => {
     const result = execute("");
     expect(result).toBe(0);
   });
+
+  it("a number literal", () => {
+    const result = execute("100");
+    expect(result).toBe(100);
+  });
 });
