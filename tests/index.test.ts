@@ -190,4 +190,8 @@ describe("The compiler can compile", () => {
   it("assigns mutable variable inside block and returns it", () => {
     assertValid("let mut x = 0U8; { x = read<U8>(); } x", "100", 100);
   });
+
+  it("rejects use of variable outside its block scope", () => {
+    assertInvalid("{ let x = 0; } x");
+  });
 });

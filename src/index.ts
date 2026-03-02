@@ -1083,6 +1083,83 @@ function generateFunctionFromLastStatement(
   return `(function() { ${beforeLastStatement} return ${lastStatement}; })()`;
 }
 
+function findBlockEnd(text: string): number {
+  let braceDepth = 0;
+  let i = 0;
+  while (i < text.length) {
+    if (text[i] === "{") {
+      braceDepth++;
+    } else if (text[i] === "}") {
+      braceDepth--;
+      if (braceDepth === 0) {
+        return i;
+      }
+    }
+    i++;
+  }
+  return -1;
+}
+
+function checkBlockScopes(
+  source: string,
+): Result<string, CompileError> | null {
+  const trimmed = source.trim();
+
+  if (!trimmed.startsWith("{")) {
+    return null;
+  }
+
+  const blockEnd = findBlockEnd(trimmed);
+
+  if (blockEnd === -1 || blockEnd >= trimmed.length - 1) {
+    return null;
+  }
+
+  const blockContent = trimmed.substring(1, blockEnd);
+  const afterBlock = trimmed.substring(blockEnd + 1).trim();
+
+  if (afterBlock === "") {
+    return null;
+  }
+
+  const blockMetadata = buildVariableMetadata(blockContent);
+  const blockVarNames = new Set<string>();
+  let mi = 0;
+  while (mi < blockMetadata.length) {
+    blockVarNames.add(blockMetadata[mi].name);
+    mi++;
+  }
+
+  let firstChar: string;
+  if (afterBlock.length > 0) {
+    firstChar = afterBlock[0];
+  } else {
+    firstChar = "";
+  }
+
+  const isLetter =
+    (firstChar >= "a" && firstChar <= "z") ||
+    (firstChar >= "A" && firstChar <= "Z");
+
+  if (!isLetter) {
+    return null;
+  }
+
+  const identifier = extractIdentifier(afterBlock, 0);
+  if (identifier !== afterBlock || !blockVarNames.has(identifier)) {
+    return null;
+  }
+
+  return err(
+    createCompileError(
+      source,
+      `Variable '${identifier}' is not in scope: it was declared inside a block and is being accessed outside`,
+      "Variables declared in a block are only accessible within that block",
+      `Declare the variable outside the block or use it only within the block`,
+    ),
+  );
+}
+
 function compileLetStatement(
   source: string,
 ): Result<string, CompileError> | null {
@@ -1131,6 +1208,11 @@ export function compile(source: string): Result<string, CompileError> {
 
   if (trimmed === "") {
     return ok("0");
+  }
+
+  const blockScopeRes = checkBlockScopes(source);
+  if (blockScopeRes !== null) {
+    return blockScopeRes;
   }
 
   const letRes = compileLetStatement(source);
