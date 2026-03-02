@@ -25,6 +25,10 @@ function extractParamNames(paramsRaw: string): string {
     if (colonIdx !== -1) {
       name = p.substring(0, colonIdx).trim();
     }
+    // Rename 'this' to '_this' because 'this' is a reserved keyword in JavaScript
+    if (name === "this") {
+      name = "_this";
+    }
     if (out !== "") out += ", ";
     out += name;
     i++;

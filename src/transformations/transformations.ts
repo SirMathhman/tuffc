@@ -17,3 +17,4 @@ export {
   transformObjectDeclarations,
   transformNamespaceAccess,
 } from "./transformations-object";
+export { transformMethodCalls } from "./transformations-method-calls";

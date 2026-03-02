@@ -34,7 +34,7 @@ function isInsideWhileCondition(source: string, opIndex: number): boolean {
 
 function transformComparisonOperators(source: string): string {
   let result = source;
-  const ops = ["<=", ">=", "<", ">"];
+  const ops = ["<=", ">=", "==", "!=", "<", ">"];
 
   for (const op of ops) {
     const index = result.indexOf(op);

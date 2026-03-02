@@ -11,6 +11,7 @@ import {
   transformComparisonOperators,
   transformWhileLoops,
   transformFnDeclarations,
+  transformMethodCalls,
 } from "../transformations/transformations";
 import { generateFunctionFromLastStatement } from "./compilation-helpers";
 import { verifyLetStatement } from "./compilation-verification";
@@ -50,8 +51,10 @@ function compileLetStatement(
       transformAddressOf(
         transformComparisonOperators(
           stripTypeAnnotations(
-            transformFnDeclarations(
-              transformWhileLoops(transformReadPatterns(processedSource)),
+            transformMethodCalls(
+              transformFnDeclarations(
+                transformWhileLoops(transformReadPatterns(processedSource)),
+              ),
             ),
           ),
         ),

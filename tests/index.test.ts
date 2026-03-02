@@ -353,4 +353,12 @@ describe("The compiler can compile", () => {
       100,
     );
   });
+
+  it("calls method with receiver syntax", () => {
+    assertValid(
+      "fn equalsTo(this : I32, other : I32) => this == other; 100.equalsTo(200)",
+      "",
+      0,
+    );
+  });
 });

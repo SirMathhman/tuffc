@@ -42,6 +42,18 @@ function skipWhitespace(source: string, startIdx: number): number {
   return i;
 }
 
+function matchParenDepth(source: string, startIdx: number, openChar: string): number {
+  const closeChar = openChar === "(" ? ")" : openChar === "[" ? "]" : "}";
+  let i = startIdx + 1;
+  let depth = 1;
+  while (i < source.length && depth > 0) {
+    if (source[i] === openChar) depth++;
+    else if (source[i] === closeChar) depth--;
+    i++;
+  }
+  return i - 1; // Return index of closing character
+}
+
 function extractCondition(
   source: string,
   ifIdx: number,
@@ -64,4 +76,4 @@ function extractCondition(
   return { cond, endIdx: i + 1 };
 }
 
-export { findExpressionEnd, skipWhitespace, extractCondition };
+export { findExpressionEnd, skipWhitespace, extractCondition, matchParenDepth };

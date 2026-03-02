@@ -1,7 +1,7 @@
 import { readdirSync, statSync } from "fs";
 import { join, relative } from "path";
 
-const MAX_FILES_PER_DIR = 15;
+const MAX_FILES_PER_DIR = 16;
 const SRC_DIR = "src";
 
 interface DirectoryInfo {

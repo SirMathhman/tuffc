@@ -4,6 +4,7 @@ import {
   stripTypeAnnotations,
   transformComparisonOperators,
   transformReadPatterns,
+  transformMethodCalls,
 } from "../transformations/transformations";
 import { findMatchingParen, extractParamNames } from "./compilation-fn-helpers";
 
@@ -14,6 +15,37 @@ function buildFnIife(
   returnExpr: string,
 ): string {
   return `(function() { function ${fnName}(${paramNames}) { return ${transformedBody}; } return ${returnExpr}; })()`;
+}
+
+function renameThisParameter(source: string): string {
+  // Replace standalone 'this' with '_this' (at word boundaries)
+  let result = "";
+  let i = 0;
+  while (i < source.length) {
+    const isThisWord =
+      i + 4 <= source.length &&
+      source.substring(i, i + 4) === "this" &&
+      (i === 0 || !isAlphaNumeric(source[i - 1])) &&
+      (i + 4 === source.length || !isAlphaNumeric(source[i + 4]));
+
+    if (isThisWord) {
+      result += "_this";
+      i += 4;
+    } else {
+      result += source[i];
+      i++;
+    }
+  }
+  return result;
+}
+
+function isAlphaNumeric(char: string): boolean {
+  return (
+    (char >= "a" && char <= "z") ||
+    (char >= "A" && char <= "Z") ||
+    (char >= "0" && char <= "9") ||
+    char === "_"
+  );
 }
 
 function compileFnStatement(
@@ -41,13 +73,20 @@ function compileFnStatement(
   const paramsRaw = decl.substring(openParen + 1, closeParen);
   const paramNames = extractParamNames(paramsRaw);
 
+  // Rename 'this' to '_this' in the body since 'this' is a reserved keyword
+  const bodyWithRenamedThis = renameThisParameter(body);
+
   const transformedBody = stripNumericTypeSuffixes(
-    transformComparisonOperators(transformReadPatterns(body)),
+    transformComparisonOperators(
+      transformMethodCalls(transformReadPatterns(bodyWithRenamedThis)),
+    ),
   );
 
   const afterExpr = stripNumericTypeSuffixes(
     transformComparisonOperators(
-      stripTypeAnnotations(transformReadPatterns(after)),
+      transformMethodCalls(
+        stripTypeAnnotations(transformReadPatterns(renameThisParameter(after))),
+      ),
     ),
   );
   let returnExpr = afterExpr;
