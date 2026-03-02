@@ -16,6 +16,7 @@ import {
   forEachAddressOf,
   extractBlockContent,
   isAssignmentOperator,
+  extractDeclaredType,
 } from "./extractors";
 import {
   splitStatementsKeepBlocks,
@@ -23,6 +24,7 @@ import {
   buildVariableMetadata,
   parseBlockStatements,
   getLastStatement,
+  extractBlockExpressionType,
 } from "./metadata";
 
 function validateTypeSuffix(
@@ -287,18 +289,33 @@ function checkBlockScopes(source: string): Result<string, CompileError> | null {
   );
 }
 
-function checkBlockExpressions(
-  source: string,
-): Result<string, CompileError> | null {
+interface BlockAssignment {
+  beforeEq: string;
+  afterEq: string;
+}
+
+function extractBlockAssignmentInfo(source: string): BlockAssignment | null {
   const trimmed = source.trim();
   if (trimmed.indexOf("let ") === -1 || trimmed.indexOf("=") === -1) {
     return null;
   }
   const eqIndex = trimmed.indexOf("=");
+  const beforeEq = trimmed.substring(0, eqIndex).trim();
   const afterEq = trimmed.substring(eqIndex + 1).trim();
   if (!afterEq.startsWith("{")) {
     return null;
   }
+  return { beforeEq, afterEq };
+}
+
+function checkBlockExpressions(
+  source: string,
+): Result<string, CompileError> | null {
+  const blockInfo = extractBlockAssignmentInfo(source);
+  if (blockInfo === null) {
+    return null;
+  }
+  const { afterEq } = blockInfo;
   const blockEnd = findBlockEnd(afterEq);
   if (blockEnd === -1) {
     return null;
@@ -319,6 +336,34 @@ function checkBlockExpressions(
         `Block expression must have a final value, but ends with a statement`,
         "Blocks used in assignments must evaluate to a value",
         `Add a final expression after the last statement, e.g., '{ let y = 100; y }'`,
+      ),
+    );
+  }
+  return null;
+}
+function checkBlockExpressionType(
+  source: string,
+): Result<string, CompileError> | null {
+  const blockInfo = extractBlockAssignmentInfo(source);
+  if (blockInfo === null) {
+    return null;
+  }
+  const { beforeEq, afterEq } = blockInfo;
+  const declaredType = extractDeclaredType(beforeEq);
+  if (declaredType === "") {
+    return null;
+  }
+  const blockExprType = extractBlockExpressionType(afterEq);
+  if (blockExprType === "") {
+    return null;
+  }
+  if (!isUpconversionAllowed(blockExprType, declaredType)) {
+    return err(
+      createCompileError(
+        source,
+        `Type mismatch: block expression evaluates to type '${blockExprType}' but variable is declared as type '${declaredType}'`,
+        "Block expression type must match or be upconvertible to the variable's declared type",
+        `Change the block expression to evaluate to '${declaredType}' or change the variable's declared type to '${blockExprType}'`,
       ),
     );
   }
@@ -514,5 +559,6 @@ export {
   checkReassignments,
   checkBlockScopes,
   checkBlockExpressions,
+  checkBlockExpressionType,
   checkPointerOperators,
 };

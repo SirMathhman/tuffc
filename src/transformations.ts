@@ -155,9 +155,7 @@ function transformAddressOf(source: string): string {
   return result;
 }
 
-function findDereferenceAssignments(
-  source: string,
-): DereferenceAssignment[] {
+function findDereferenceAssignments(source: string): DereferenceAssignment[] {
   const assignments: DereferenceAssignment[] = [];
   let i = 0;
   while (i < source.length) {

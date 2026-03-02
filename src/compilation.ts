@@ -14,6 +14,7 @@ import {
   checkUndefinedVariables,
   checkBlockScopes,
   checkBlockExpressions,
+  checkBlockExpressionType,
   checkPointerOperators,
 } from "./validators";
 import {
@@ -218,6 +219,11 @@ export function compile(source: string): Result<string, CompileError> {
   const blockExprRes = checkBlockExpressions(source);
   if (blockExprRes !== null) {
     return blockExprRes;
+  }
+
+  const blockTypeRes = checkBlockExpressionType(source);
+  if (blockTypeRes !== null) {
+    return blockTypeRes;
   }
 
   const letRes = compileLetStatement(source);

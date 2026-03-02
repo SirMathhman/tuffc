@@ -201,4 +201,8 @@ describe("The compiler can compile", () => {
   it("rejects block without final expression in assignment", () => {
     assertInvalid("let x = { let y = 100; }; x");
   });
+
+  it("rejects type mismatch between block return type and variable type", () => {
+    assertInvalid("let x : U8 = { let y : U16 = 100; y }; x");
+  });
 });
