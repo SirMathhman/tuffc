@@ -108,7 +108,14 @@ function stripTypeAnnotations(source: string): string {
   let result = "";
   let i = 0;
   while (i < source.length) {
-    if (i < source.length - 1 && source[i] === ":" && source[i + 1] === " ") {
+    if (i < source.length - 5 && source.substring(i, i + 8) === "let mut ") {
+      result += "let ";
+      i += 8;
+    } else if (
+      i < source.length - 1 &&
+      source[i] === ":" &&
+      source[i + 1] === " "
+    ) {
       // Skip the colon and space
       i += 2;
       // Skip the type name (letters, digits, angle brackets for generics)
@@ -230,15 +237,16 @@ interface VariableInfo {
   name: string;
   declaredType: string;
   inferredType: string;
+  isMutable: boolean;
   stmt: string;
 }
 
-function buildVariableMetadata(source: string): VariableInfo[] {
+function splitStatements(source: string): string[] {
   const statements: string[] = [];
   let current = "";
-  let si = 0;
-  while (si < source.length) {
-    const char = source[si];
+  let i = 0;
+  while (i < source.length) {
+    const char = source[i];
     if (char === ";") {
       if (current.trim() !== "") {
         statements.push(current.trim());
@@ -247,17 +255,28 @@ function buildVariableMetadata(source: string): VariableInfo[] {
     } else {
       current += char;
     }
-    si++;
+    i++;
   }
   if (current.trim() !== "") {
     statements.push(current.trim());
   }
+  return statements;
+}
+
+function buildVariableMetadata(source: string): VariableInfo[] {
+  const statements = splitStatements(source);
   const metadata: VariableInfo[] = [];
   let j = 0;
   while (j < statements.length) {
     const stmt = statements[j];
     if (stmt.substring(0, 4) === "let ") {
-      const name = extractIdentifier(stmt, 4);
+      let isMutable = false;
+      let skipOffset = 4;
+      if (stmt.substring(4, 8) === "mut ") {
+        isMutable = true;
+        skipOffset = 8;
+      }
+      const name = extractIdentifier(stmt, skipOffset);
       const declaredType = extractDeclaredType(stmt);
       const readType = extractReadType(stmt);
       const literalType = extractLiteralType(stmt);
@@ -269,7 +288,7 @@ function buildVariableMetadata(source: string): VariableInfo[] {
       } else {
         inferredType = literalType;
       }
-      metadata.push({ name, declaredType, inferredType, stmt });
+      metadata.push({ name, declaredType, inferredType, isMutable, stmt });
     }
     j++;
   }
@@ -421,6 +440,40 @@ function checkUndefinedVariables(
   return ok(void 0);
 }
 
+function checkReassignments(
+  source: string,
+  metadata: VariableInfo[],
+): Result<void, CompileError> {
+  const statements = splitStatements(source);
+  for (const stmt of statements) {
+    if (stmt.substring(0, 4) === "let ") {
+      continue;
+    }
+    const eqIndex = stmt.indexOf("=");
+    if (eqIndex === -1) {
+      continue;
+    }
+    const beforeEq = stmt.substring(0, eqIndex).trim();
+    const identifier = extractIdentifier(beforeEq, 0);
+    if (identifier !== beforeEq) {
+      continue;
+    }
+    for (const metaVar of metadata) {
+      if (metaVar.name === identifier && !metaVar.isMutable) {
+        return err(
+          createCompileError(
+            stmt,
+            `Cannot reassign immutable variable: '${identifier}'`,
+            "Only mutable variables declared with 'let mut' can be reassigned",
+            `Change the declaration to 'let mut ${identifier} = ...' to allow reassignment`,
+          ),
+        );
+      }
+    }
+  }
+  return ok(void 0);
+}
+
 function parseNumberLiteral(trimmed: string): Result<string, CompileError> {
   // Try parsing as a full number first
   let num = Number(trimmed);
@@ -488,22 +541,21 @@ export function compile(source: string): Result<string, CompileError> {
 
   if (trimmed.indexOf("let ") !== -1) {
     const metadata = buildVariableMetadata(trimmed);
-    const dupResult = checkVariableDuplicates(metadata);
-    if (dupResult.type === "err") {
-      return dupResult;
-    }
-    const readResult = checkReadTypeMatch(metadata);
-    if (readResult.type === "err") {
-      return readResult;
-    }
-    const assignResult = checkAssignmentTypeMatch(metadata);
-    if (assignResult.type === "err") {
-      return assignResult;
-    }
-    const undefResult = checkUndefinedVariables(trimmed, metadata);
-    if (undefResult.type === "err") {
-      return undefResult;
-    }
+    // Check duplicates
+    const dupRes = checkVariableDuplicates(metadata);
+    if (dupRes.type === "err") return dupRes;
+    // Check read types
+    const readRes = checkReadTypeMatch(metadata);
+    if (readRes.type === "err") return readRes;
+    // Check assignment types
+    const assignRes = checkAssignmentTypeMatch(metadata);
+    if (assignRes.type === "err") return assignRes;
+    // Check undefined vars
+    const undefRes = checkUndefinedVariables(trimmed, metadata);
+    if (undefRes.type === "err") return undefRes;
+    // Check reassignments
+    const reassignRes = checkReassignments(trimmed, metadata);
+    if (reassignRes.type === "err") return reassignRes;
     const transformed = transformReadPatterns(trimmed);
     const stripped = stripTypeAnnotations(transformed);
     const lastSemicolonIndex = stripped.lastIndexOf(";");

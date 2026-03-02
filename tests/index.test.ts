@@ -113,4 +113,8 @@ describe("The compiler can compile", () => {
   it("rejects undefined variable reference", () => {
     assertInvalid("x");
   });
+
+  it("reassigns mutable variable", () => {
+    assertValid("let mut x = 0; x = read<I32>(); x", "100", 100);
+  });
 });
