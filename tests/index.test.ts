@@ -305,4 +305,12 @@ describe("The compiler can compile", () => {
   it("evaluates less-than with equal values as false", () => {
     assertValid("read<I32>() < read<I32>()", "1 1", 0);
   });
+
+  it("sums numbers using while loop", () => {
+    assertValid(
+      "let mut sum = 0; let max = read<I32>(); let mut i = 0; while (i < max) { sum += i; i += 1; } sum",
+      "10",
+      45,
+    );
+  });
 });

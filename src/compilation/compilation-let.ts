@@ -9,6 +9,7 @@ import {
   stripNumericTypeSuffixes,
   transformIfElseToTernary,
   transformComparisonOperators,
+  transformWhileLoops,
 } from "../transformations/transformations";
 import { generateFunctionFromLastStatement } from "./compilation-helpers";
 import { verifyLetStatement } from "./compilation-verification";
@@ -47,7 +48,7 @@ function compileLetStatement(
     transformDereference(
       transformAddressOf(
         transformComparisonOperators(
-          stripTypeAnnotations(transformReadPatterns(processedSource)),
+          stripTypeAnnotations(transformWhileLoops(transformReadPatterns(processedSource))),
         ),
       ),
     ),
