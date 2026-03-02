@@ -157,4 +157,21 @@ describe("The compiler can compile", () => {
   it("rejects assignment through immutable pointer", () => {
     assertInvalid("let mut x = 0; let y : *I32 = &x; *y = 100; x");
   });
+
+  it("supports multiple immutable pointers to the same variable", () => {
+    assertValid(
+      "let x = 100; let y : *I32 = &x; let z : *I32 = &x; *y + *z",
+      200,
+    );
+  });
+
+  it("supports mutable pointer assignment with reassignment", () => {
+    assertValid("let mut x = 0; let y : *mut I32 = &mut x; *y = 100; x", 100);
+  });
+
+  it("rejects mixed immutable and mutable pointers to same variable", () => {
+    assertInvalid(
+      "let mut x = 0; let y : *I32 = &x; let z : *mut I32 = &mut x;",
+    );
+  });
 });

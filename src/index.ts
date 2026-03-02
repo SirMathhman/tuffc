@@ -513,6 +513,37 @@ function undeclaredVariableError(
   );
 }
 
+function forEachAddressOf(
+  source: string,
+  callback: (
+    varName: string,
+    isMut: boolean,
+    position: number,
+    varEnd: number,
+  ) => void,
+): void {
+  let i = 0;
+  while (i < source.length) {
+    if (source[i] === "&") {
+      let varStart = i + 1;
+      let isMut = false;
+      if (source.substring(i + 1, i + 5) === "mut ") {
+        varStart = i + 5;
+        isMut = true;
+      }
+      const varName = extractIdentifier(source, varStart);
+      if (varName !== "") {
+        callback(varName, isMut, i, varStart + varName.length);
+        i = varStart + varName.length;
+      } else {
+        i++;
+      }
+    } else {
+      i++;
+    }
+  }
+}
+
 function findDereferenceAssignments(source: string): Array<{
   varName: string;
   position: number;
@@ -571,10 +602,43 @@ function checkImmutablePointerAssignments(
   return ok(void 0);
 }
 
+function checkMixedPointerTypes(source: string): Result<void, CompileError> {
+  const varMap = new Map<string, { hasImmut: boolean; hasMut: boolean }>();
+
+  forEachAddressOf(source, (varName, isMut) => {
+    if (!varMap.has(varName)) {
+      varMap.set(varName, { hasImmut: false, hasMut: false });
+    }
+    const info = varMap.get(varName)!;
+    if (isMut) {
+      info.hasMut = true;
+    } else {
+      info.hasImmut = true;
+    }
+  });
+
+  for (const [varName, info] of varMap) {
+    if (info.hasImmut && info.hasMut) {
+      return err(
+        createCompileError(
+          source,
+          `Cannot have both immutable and mutable pointers to '${varName}'`,
+          "A variable cannot be borrowed both immutably (&x) and mutably (&mut x) at the same time",
+          `Remove either the immutable pointer (&${varName}) or the mutable pointer (&mut ${varName})`,
+        ),
+      );
+    }
+  }
+  return ok(void 0);
+}
+
 function checkAddressOfOperator(
   source: string,
   metadata: VariableInfo[],
 ): Result<void, CompileError> {
+  const mixedRes = checkMixedPointerTypes(source);
+  if (mixedRes.type === "err") return mixedRes;
+
   const addressOfChecker: OperatorChecker = (varName, varInfo) => {
     if (varInfo === undefined) {
       return undeclaredVariableError(
@@ -767,32 +831,19 @@ function parseNumberLiteral(trimmed: string): Result<string, CompileError> {
 
 function transformAddressOf(source: string): string {
   let result = "";
-  let i = 0;
-  while (i < source.length) {
-    if (source[i] === "&") {
-      let varStart = i + 1;
-      let isMut = false;
-      if (source.substring(i + 1, i + 5) === "mut ") {
-        varStart = i + 5;
-        isMut = true;
-      }
-      const varName = extractIdentifier(source, varStart);
-      if (varName !== "") {
-        if (isMut) {
-          result += `{get:()=>${varName},set:(v)=>{${varName}=v}}`;
-        } else {
-          result += `{get:()=>${varName}}`;
-        }
-        i = varStart + varName.length;
-      } else {
-        result += "&";
-        i++;
-      }
+  let lastEnd = 0;
+
+  forEachAddressOf(source, (varName, isMut, position, varEnd) => {
+    result += source.substring(lastEnd, position);
+    if (isMut) {
+      result += `{get:()=>${varName},set:(v)=>{${varName}=v}}`;
     } else {
-      result += source[i];
-      i++;
+      result += `{get:()=>${varName}}`;
     }
-  }
+    lastEnd = varEnd;
+  });
+
+  result += source.substring(lastEnd);
   return result;
 }
 
