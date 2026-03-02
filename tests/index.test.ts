@@ -129,4 +129,12 @@ describe("The compiler can compile", () => {
   it("allows implicit upconversion from U8 to U16", () => {
     assertValid("let x = read<U8>(); let y : U16 = x; y", "100", 100);
   });
+
+  it("rejects reassignment with type mismatch", () => {
+    assertInvalid("let mut x = 0; x = read<I64>(); x");
+  });
+
+  it("supports pointer types with address-of and dereference", () => {
+    assertValid("let x = 100; let y : *I32 = &x; *y", 100);
+  });
 });

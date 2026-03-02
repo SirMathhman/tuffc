@@ -78,6 +78,7 @@ function transformReadPatterns(source: string): string {
   let result = "";
   let i = 0;
   while (i < source.length) {
+    let consumed = 1; // Default: consume one character
     if (source.substring(i, i + 5) === "read<") {
       // Find the closing >()
       let j = i + 5;
@@ -91,10 +92,82 @@ function transformReadPatterns(source: string): string {
         source[j + 2] === ")"
       ) {
         result += "read()";
-        i = j + 3;
+        consumed = j + 3 - i;
+      }
+    }
+    if (consumed === 1) {
+      result += source[i];
+    }
+    i += consumed;
+  }
+  return result;
+}
+
+
+function stripTypeAnnotations(source: string): string {
+  let result = "";
+  let i = 0;
+  while (i < source.length) {
+    let consumed = 1; // Default: consume one character and add it
+    let addCurrent = true; // Default: add the current character
+    
+    if (i < source.length - 5 && source.substring(i, i + 8) === "let mut ") {
+      result += "let ";
+      consumed = 8;
+      addCurrent = false;
+    } else if (
+      i < source.length - 1 &&
+      source[i] === ":" &&
+      source[i + 1] === " "
+    ) {
+      // Skip the colon and space
+      consumed = 2;
+      addCurrent = false;
+      // Skip the type name (letters, digits, angle brackets for generics, and *)
+      let j = i + consumed;
+      while (j < source.length) {
+        const char = source[j];
+        if (
+          (char >= "a" && char <= "z") ||
+          (char >= "A" && char <= "Z") ||
+          (char >= "0" && char <= "9") ||
+          char === "<" ||
+          char === ">" ||
+          char === "," ||
+          char === "*"
+        ) {
+          j++;
+        } else {
+          break;
+        }
+      }
+      consumed = j - i;
+      // Skip any trailing spaces after the type
+      while (i + consumed < source.length && source[i + consumed] === " ") {
+        consumed++;
+      }
+    }
+    
+    if (addCurrent) {
+      result += source[i];
+    }
+    i += consumed;
+  }
+  return result;
+}
+
+function transformAddressOf(source: string): string {
+  let result = "";
+  let i = 0;
+  while (i < source.length) {
+    if (source[i] === "&") {
+      i++;
+      const varName = extractIdentifier(source, i);
+      if (varName !== "") {
+        result += `{_ptr:${varName}}`;
+        i += varName.length;
       } else {
-        result += source[i];
-        i++;
+        result += "&";
       }
     } else {
       result += source[i];
@@ -104,38 +177,17 @@ function transformReadPatterns(source: string): string {
   return result;
 }
 
-function stripTypeAnnotations(source: string): string {
+function transformDereference(source: string): string {
   let result = "";
   let i = 0;
   while (i < source.length) {
-    if (i < source.length - 5 && source.substring(i, i + 8) === "let mut ") {
-      result += "let ";
-      i += 8;
-    } else if (
-      i < source.length - 1 &&
-      source[i] === ":" &&
-      source[i + 1] === " "
-    ) {
-      // Skip the colon and space
-      i += 2;
-      // Skip the type name (letters, digits, angle brackets for generics)
-      while (i < source.length) {
-        const char = source[i];
-        if (
-          (char >= "a" && char <= "z") ||
-          (char >= "A" && char <= "Z") ||
-          (char >= "0" && char <= "9") ||
-          char === "<" ||
-          char === ">" ||
-          char === ","
-        ) {
-          i++;
-        } else {
-          break;
-        }
-      }
-      // Skip any trailing spaces after the type
-      while (i < source.length && source[i] === " ") {
+    if (source[i] === "*") {
+      const varName = extractIdentifier(source, i + 1);
+      if (varName !== "") {
+        result += `${varName}._ptr`;
+        i += 1 + varName.length;
+      } else {
+        result += source[i];
         i++;
       }
     } else {
@@ -149,19 +201,15 @@ function stripTypeAnnotations(source: string): string {
 function extractIdentifier(str: string, startIndex: number): string {
   let identifier = "";
   let i = startIndex;
-  while (i < str.length) {
-    const c = str[i];
-    if (
-      (c >= "a" && c <= "z") ||
-      (c >= "A" && c <= "Z") ||
-      (c >= "0" && c <= "9") ||
-      c === "_"
-    ) {
-      identifier += c;
-      i++;
-    } else {
-      break;
-    }
+  while (
+    i < str.length &&
+    ((str[i] >= "a" && str[i] <= "z") ||
+      (str[i] >= "A" && str[i] <= "Z") ||
+      (str[i] >= "0" && str[i] <= "9") ||
+      str[i] === "_")
+  ) {
+    identifier += str[i];
+    i++;
   }
   return identifier;
 }
@@ -179,17 +227,14 @@ function extractDeclaredType(stmt: string): string {
     typeStart++;
   }
   let typeEnd = typeStart;
-  while (typeEnd < stmt.length) {
-    const c = stmt[typeEnd];
-    if (
-      (c >= "a" && c <= "z") ||
-      (c >= "A" && c <= "Z") ||
-      (c >= "0" && c <= "9")
-    ) {
-      typeEnd++;
-    } else {
-      break;
-    }
+  while (
+    typeEnd < stmt.length &&
+    ((stmt[typeEnd] >= "a" && stmt[typeEnd] <= "z") ||
+      (stmt[typeEnd] >= "A" && stmt[typeEnd] <= "Z") ||
+      (stmt[typeEnd] >= "0" && stmt[typeEnd] <= "9") ||
+      stmt[typeEnd] === "*")
+  ) {
+    typeEnd++;
   }
   return stmt.substring(typeStart, typeEnd);
 }
@@ -295,6 +340,49 @@ function buildVariableMetadata(source: string): VariableInfo[] {
   return metadata;
 }
 
+function validateReassignment(
+  stmt: string,
+  identifier: string,
+  metaVar: VariableInfo,
+): Result<void, CompileError> {
+  if (!metaVar.isMutable) {
+    return err(
+      createCompileError(
+        stmt,
+        `Cannot reassign immutable variable: '${identifier}'`,
+        "Only mutable variables declared with 'let mut' can be reassigned",
+        `Change the declaration to 'let mut ${identifier} = ...' to allow reassignment`,
+      ),
+    );
+  }
+  const eqIndex = stmt.indexOf("=");
+  const afterEq = stmt.substring(eqIndex + 1).trim();
+  const assignedType = extractReadType(afterEq);
+  if (assignedType !== "") {
+    const varType = metaVar.inferredType;
+    const allowed =
+      varType === assignedType ||
+      (varType === "U16" && assignedType === "U8") ||
+      (varType === "U32" && ["U8", "U16"].indexOf(assignedType) !== -1) ||
+      (varType === "U64" &&
+        ["U8", "U16", "U32"].indexOf(assignedType) !== -1) ||
+      (varType === "I16" && assignedType === "I8") ||
+      (varType === "I32" && ["I8", "I16"].indexOf(assignedType) !== -1) ||
+      (varType === "I64" && ["I8", "I16", "I32"].indexOf(assignedType) !== -1);
+    if (!allowed) {
+      return err(
+        createCompileError(
+          stmt,
+          `Type mismatch in reassignment: cannot assign '${assignedType}' to variable '${identifier}' of type '${varType}'`,
+          "Variable reassignments must match the declared type",
+          `Change the assignment to use type '${varType}' or change the variable's type`,
+        ),
+      );
+    }
+  }
+  return ok(void 0);
+}
+
 function forEachVariable(
   metadata: VariableInfo[],
   callback: (
@@ -383,11 +471,16 @@ function checkAssignmentTypeMatch(
         if (metadata[j].name === assignedVar) {
           const fromType = metadata[j].inferredType;
           const toType = varInfo.declaredType;
-          const allowed = fromType === toType ||
-            (fromType === "U8" && ["U16", "U32", "U64", "I16", "I32", "I64"].indexOf(toType) !== -1) ||
-            (fromType === "U16" && ["U32", "U64", "I32", "I64"].indexOf(toType) !== -1) ||
+          const allowed =
+            fromType === toType ||
+            (fromType === "U8" &&
+              ["U16", "U32", "U64", "I16", "I32", "I64"].indexOf(toType) !==
+                -1) ||
+            (fromType === "U16" &&
+              ["U32", "U64", "I32", "I64"].indexOf(toType) !== -1) ||
             (fromType === "U32" && ["U64", "I64"].indexOf(toType) !== -1) ||
-            (fromType === "I8" && ["I16", "I32", "I64"].indexOf(toType) !== -1) ||
+            (fromType === "I8" &&
+              ["I16", "I32", "I64"].indexOf(toType) !== -1) ||
             (fromType === "I16" && ["I32", "I64"].indexOf(toType) !== -1) ||
             (fromType === "I32" && toType === "I64");
           if (!allowed) {
@@ -467,24 +560,14 @@ function checkReassignments(
     if (identifier !== beforeEq) {
       continue;
     }
-    let found = false;
-    for (const metaVar of metadata) {
-      if (metaVar.name === identifier) {
-        found = true;
-        if (!metaVar.isMutable) {
-          return err(
-            createCompileError(
-              stmt,
-              `Cannot reassign immutable variable: '${identifier}'`,
-              "Only mutable variables declared with 'let mut' can be reassigned",
-              `Change the declaration to 'let mut ${identifier} = ...' to allow reassignment`,
-            ),
-          );
-        }
+    let metaVar: VariableInfo | null = null;
+    for (const v of metadata) {
+      if (v.name === identifier) {
+        metaVar = v;
         break;
       }
     }
-    if (!found) {
+    if (metaVar === null) {
       return err(
         createCompileError(
           stmt,
@@ -494,6 +577,8 @@ function checkReassignments(
         ),
       );
     }
+    const validRes = validateReassignment(stmt, identifier, metaVar);
+    if (validRes.type === "err") return validRes;
   }
   return ok(void 0);
 }
@@ -556,6 +641,13 @@ function parseNumberLiteral(trimmed: string): Result<string, CompileError> {
   return ok("0");
 }
 
+function applyCodeTransforms(source: string): string {
+  const transformed = transformReadPatterns(source);
+  const stripped = stripTypeAnnotations(transformed);
+  const withPointers = transformAddressOf(stripped);
+  return transformDereference(withPointers);
+}
+
 export function compile(source: string): Result<string, CompileError> {
   const trimmed = source.trim();
 
@@ -580,16 +672,15 @@ export function compile(source: string): Result<string, CompileError> {
     // Check reassignments
     const reassignRes = checkReassignments(trimmed, metadata);
     if (reassignRes.type === "err") return reassignRes;
-    const transformed = transformReadPatterns(trimmed);
-    const stripped = stripTypeAnnotations(transformed);
-    const lastSemicolonIndex = stripped.lastIndexOf(";");
+    const code = applyCodeTransforms(trimmed);
+    const lastSemicolonIndex = code.lastIndexOf(";");
     if (lastSemicolonIndex === -1) {
-      return ok(`(function() { return ${stripped}; })()`);
+      return ok(`(function() { return ${code}; })()`);
     }
-    const beforeLastStatement = stripped.substring(0, lastSemicolonIndex + 1);
-    const lastStatement = stripped.substring(lastSemicolonIndex + 1).trim();
+    const beforeLastStatement = code.substring(0, lastSemicolonIndex + 1);
+    const lastStatement = code.substring(lastSemicolonIndex + 1).trim();
     if (lastStatement === "") {
-      return ok(`(function() { ${stripped} return 0; })()`);
+      return ok(`(function() { ${code} return 0; })()`);
     }
     return ok(
       `(function() { ${beforeLastStatement} return ${lastStatement}; })()`,
@@ -602,8 +693,7 @@ export function compile(source: string): Result<string, CompileError> {
     if (reassignRes.type === "err") {
       return reassignRes;
     }
-    const transformed = transformReadPatterns(trimmed);
-    return ok(transformed);
+    return ok(applyCodeTransforms(trimmed));
   }
 
   const undefCheckResult = checkUndefinedVariables(trimmed, []);
