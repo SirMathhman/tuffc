@@ -936,6 +936,15 @@ function compileLetStatement(
   if (lastStatement === "") {
     return ok(`(function() { ${code} return 0; })()`);
   }
+  if (lastStatement.startsWith("{}")) {
+    const afterBlock = lastStatement.substring(2).trim();
+    if (afterBlock === "") {
+      return ok(`(function() { ${beforeLastStatement} return 0; })()`);
+    }
+    return ok(
+      `(function() { ${beforeLastStatement} return ${afterBlock}; })()`,
+    );
+  }
   return ok(
     `(function() { ${beforeLastStatement} return ${lastStatement}; })()`,
   );

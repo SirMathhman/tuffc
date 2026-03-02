@@ -182,4 +182,8 @@ describe("The compiler can compile", () => {
   it("evaluates block followed by expression to expression value", () => {
     assertValid("{} 100", 100);
   });
+
+  it("evaluates read variable after empty block", () => {
+    assertValid("let x = read<U8>(); {} x", "100", 100);
+  });
 });
