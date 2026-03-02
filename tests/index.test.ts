@@ -186,4 +186,8 @@ describe("The compiler can compile", () => {
   it("evaluates read variable after empty block", () => {
     assertValid("let x = read<U8>(); {} x", "100", 100);
   });
+
+  it("assigns mutable variable inside block and returns it", () => {
+    assertValid("let mut x = 0U8; { x = read<U8>(); } x", "100", 100);
+  });
 });

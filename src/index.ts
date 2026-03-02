@@ -74,6 +74,75 @@ function extractNumericPart(
   return { numericPart, endIndex };
 }
 
+function skipTypeAnnotation(source: string, i: number): number {
+  if (i < source.length - 1 && source[i] === ":" && source[i + 1] === " ") {
+    let j = i + 2;
+    while (j < source.length) {
+      const char = source[j];
+      const isTypePart =
+        (char >= "a" && char <= "z") ||
+        (char >= "A" && char <= "Z") ||
+        (char >= "0" && char <= "9") ||
+        char === "<" ||
+        char === ">" ||
+        char === "," ||
+        char === "*";
+      const isSpace =
+        char === " " &&
+        j + 1 < source.length &&
+        ((source[j + 1] >= "a" && source[j + 1] <= "z") ||
+          (source[j + 1] >= "A" && source[j + 1] <= "Z"));
+      if (isTypePart || isSpace) {
+        j++;
+      } else {
+        break;
+      }
+    }
+    while (j < source.length && source[j] === " ") {
+      j++;
+    }
+    return j;
+  }
+  return i;
+}
+
+function handleNumericSuffix(
+  source: string,
+  i: number,
+): {
+  newIndex: number;
+  result: string;
+} {
+  const isNumber =
+    (source[i] >= "0" && source[i] <= "9") ||
+    (source[i] === "-" &&
+      i + 1 < source.length &&
+      source[i + 1] >= "0" &&
+      source[i + 1] <= "9");
+
+  if (!isNumber) {
+    return { newIndex: i, result: "" };
+  }
+
+  let j = i;
+  if (source[j] === "-") j++;
+  while (j < source.length && source[j] >= "0" && source[j] <= "9") {
+    j++;
+  }
+  const numericPart = source.substring(i, j);
+
+  let suffixEnd = j;
+  while (
+    suffixEnd < source.length &&
+    ((source[suffixEnd] >= "a" && source[suffixEnd] <= "z") ||
+      (source[suffixEnd] >= "A" && source[suffixEnd] <= "Z"))
+  ) {
+    suffixEnd++;
+  }
+
+  return { newIndex: suffixEnd, result: numericPart };
+}
+
 function stripTypeAnnotations(source: string): string {
   let result = "";
   let i = 0;
@@ -81,45 +150,52 @@ function stripTypeAnnotations(source: string): string {
     if (i < source.length - 5 && source.substring(i, i + 8) === "let mut ") {
       result += "let ";
       i += 8;
-    } else if (
-      i < source.length - 1 &&
-      source[i] === ":" &&
-      source[i + 1] === " "
-    ) {
-      let j = i + 2; // skip ": "
-      while (j < source.length) {
-        const char = source[j];
-        if (
-          (char >= "a" && char <= "z") ||
-          (char >= "A" && char <= "Z") ||
-          (char >= "0" && char <= "9") ||
-          char === "<" ||
-          char === ">" ||
-          char === "," ||
-          char === "*"
-        ) {
-          j++;
-        } else if (
-          char === " " &&
-          j + 1 < source.length &&
-          ((source[j + 1] >= "a" && source[j + 1] <= "z") ||
-            (source[j + 1] >= "A" && source[j + 1] <= "Z"))
-        ) {
-          j++;
+    } else {
+      const newI = skipTypeAnnotation(source, i);
+      if (newI > i) {
+        i = newI;
+      } else {
+        const suffix = handleNumericSuffix(source, i);
+        if (suffix.newIndex > i) {
+          result += suffix.result;
+          i = suffix.newIndex;
         } else {
-          break;
+          result += source[i];
+          i++;
         }
       }
-      while (j < source.length && source[j] === " ") {
-        j++;
-      }
-      i = j;
-    } else {
-      result += source[i];
-      i++;
     }
   }
   return result;
+}
+
+function splitStatementsKeepBlocks(source: string): string[] {
+  const statements: string[] = [];
+  let current = "";
+  let braceDepth = 0;
+  let i = 0;
+  while (i < source.length) {
+    const char = source[i];
+    if (char === "{") {
+      braceDepth++;
+      current += char;
+    } else if (char === "}") {
+      braceDepth--;
+      current += char;
+    } else if (char === ";" && braceDepth === 0) {
+      if (current.trim() !== "") {
+        statements.push(current.trim());
+      }
+      current = "";
+    } else {
+      current += char;
+    }
+    i++;
+  }
+  if (current.trim() !== "") {
+    statements.push(current.trim());
+  }
+  return statements;
 }
 
 function extractIdentifier(str: string, startIndex: number): string {
@@ -210,30 +286,8 @@ interface VariableInfo {
   stmt: string;
 }
 
-function splitStatements(source: string): string[] {
-  const statements: string[] = [];
-  let current = "";
-  let i = 0;
-  while (i < source.length) {
-    const char = source[i];
-    if (char === ";") {
-      if (current.trim() !== "") {
-        statements.push(current.trim());
-      }
-      current = "";
-    } else {
-      current += char;
-    }
-    i++;
-  }
-  if (current.trim() !== "") {
-    statements.push(current.trim());
-  }
-  return statements;
-}
-
 function buildVariableMetadata(source: string): VariableInfo[] {
-  const statements = splitStatements(source);
+  const statements = splitStatementsKeepBlocks(source);
   const metadata: VariableInfo[] = [];
   let j = 0;
   while (j < statements.length) {
@@ -350,32 +404,6 @@ function checkVariableDuplicates(
   return ok(void 0);
 }
 
-function checkReadTypeMatch(
-  metadata: VariableInfo[],
-): Result<void, CompileError> {
-  return forEachVariable(metadata, (varInfo) => {
-    if (varInfo.stmt.indexOf("read<") === -1) {
-      return ok(void 0);
-    }
-    const readType = extractReadType(varInfo.stmt);
-    if (
-      varInfo.declaredType !== "" &&
-      readType !== "" &&
-      varInfo.declaredType !== readType
-    ) {
-      return err(
-        createCompileError(
-          varInfo.stmt,
-          `Type mismatch: declared variable as '${varInfo.declaredType}' but initialized with 'read<${readType}>()'`,
-          "Variable declaration type must match the type of the read operation",
-          `Change either the declared type to '${readType}' or the read type to '<${varInfo.declaredType}>'`,
-        ),
-      );
-    }
-    return ok(void 0);
-  });
-}
-
 function checkAssignmentTypeMatch(
   metadata: VariableInfo[],
 ): Result<void, CompileError> {
@@ -454,10 +482,10 @@ function checkOperatorOnVariables(
   shouldSkipTypeAnnotation: boolean,
   prefixAfterOperator?: string,
 ): Result<void, CompileError> {
-  const statements = splitStatements(source);
-  let si = 0;
-  while (si < statements.length) {
-    const stmt = statements[si];
+  const statements = splitStatementsKeepBlocks(source);
+  let stmtIdx = 0;
+  while (stmtIdx < statements.length) {
+    const stmt = statements[stmtIdx];
 
     // Skip type annotation part if needed
     let startCheck = 0;
@@ -492,7 +520,7 @@ function checkOperatorOnVariables(
         i++;
       }
     }
-    si++;
+    stmtIdx++;
   }
   return ok(void 0);
 }
@@ -586,7 +614,9 @@ function checkImmutablePointerAssignments(
   metadata: VariableInfo[],
 ): Result<void, CompileError> {
   const assignments = findDereferenceAssignments(source);
-  for (const assignment of assignments) {
+  let i = 0;
+  while (i < assignments.length) {
+    const assignment = assignments[i];
     const varInfo = findVariable(assignment.varName, metadata);
     if (varInfo !== undefined && !varInfo.declaredType.includes("mut")) {
       return err(
@@ -598,6 +628,7 @@ function checkImmutablePointerAssignments(
         ),
       );
     }
+    i++;
   }
   return ok(void 0);
 }
@@ -617,7 +648,11 @@ function checkMixedPointerTypes(source: string): Result<void, CompileError> {
     }
   });
 
-  for (const [varName, info] of varMap) {
+  const entries: Array<[string, { hasImmut: boolean; hasMut: boolean }]> =
+    Array.from(varMap.entries());
+  let i = 0;
+  while (i < entries.length) {
+    const [varName, info] = entries[i];
     if (info.hasImmut && info.hasMut) {
       return err(
         createCompileError(
@@ -628,6 +663,7 @@ function checkMixedPointerTypes(source: string): Result<void, CompileError> {
         ),
       );
     }
+    i++;
   }
   return ok(void 0);
 }
@@ -734,26 +770,33 @@ function checkReassignments(
   source: string,
   metadata: VariableInfo[],
 ): Result<void, CompileError> {
-  const statements = splitStatements(source);
-  for (const stmt of statements) {
+  const statements = splitStatementsKeepBlocks(source);
+  let si = 0;
+  while (si < statements.length) {
+    const stmt = statements[si];
     if (stmt.substring(0, 4) === "let ") {
+      si++;
       continue;
     }
     const eqIndex = stmt.indexOf("=");
     if (eqIndex === -1) {
+      si++;
       continue;
     }
     const beforeEq = stmt.substring(0, eqIndex).trim();
     const identifier = extractIdentifier(beforeEq, 0);
     if (identifier !== beforeEq) {
+      si++;
       continue;
     }
     let metaVar: VariableInfo | null = null;
-    for (const v of metadata) {
-      if (v.name === identifier) {
-        metaVar = v;
+    let mi = 0;
+    while (mi < metadata.length) {
+      if (metadata[mi].name === identifier) {
+        metaVar = metadata[mi];
         break;
       }
+      mi++;
     }
     if (metaVar === null) {
       return err(
@@ -767,6 +810,7 @@ function checkReassignments(
     }
     const validRes = validateReassignment(stmt, identifier, metaVar);
     if (validRes.type === "err") return validRes;
+    si++;
   }
   return ok(void 0);
 }
@@ -904,6 +948,141 @@ function transformReadPatterns(source: string): string {
   return result;
 }
 
+function stripNumericTypeSuffixes(code: string): string {
+  let result = "";
+  let i = 0;
+  while (i < code.length) {
+    const char = code[i];
+    if (char >= "0" && char <= "9") {
+      // Found start of a number
+      let j = i;
+      while (j < code.length && code[j] >= "0" && code[j] <= "9") {
+        j++;
+      }
+      // j is now at the first non-digit character
+      result += code.substring(i, j);
+
+      // Check if there's a type suffix (U8, I32, etc.)
+      let suffixEnd = j;
+      while (
+        suffixEnd < code.length &&
+        ((code[suffixEnd] >= "a" && code[suffixEnd] <= "z") ||
+          (code[suffixEnd] >= "A" && code[suffixEnd] <= "Z"))
+      ) {
+        suffixEnd++;
+      }
+
+      // Skip the suffix
+      i = suffixEnd;
+    } else {
+      result += char;
+      i++;
+    }
+  }
+  return result;
+}
+
+function extractBlockAndAfter(text: string): {
+  block: string | null;
+  after: string;
+} {
+  let braceDepth = 0;
+  let blockStart = -1;
+  let blockEnd = -1;
+
+  let i = 0;
+  while (i < text.length) {
+    if (text[i] === "{") {
+      if (braceDepth === 0) {
+        blockStart = i;
+      }
+      braceDepth++;
+    } else if (text[i] === "}") {
+      braceDepth--;
+      if (braceDepth === 0) {
+        blockEnd = i + 1;
+        break;
+      }
+    }
+    i++;
+  }
+
+  if (blockStart === -1) {
+    return { block: null, after: text };
+  }
+
+  const block = text.substring(blockStart, blockEnd);
+  const after = text.substring(blockEnd).trim();
+  return { block, after };
+}
+
+function verifyLetStatement(
+  source: string,
+  metadata: VariableInfo[],
+): Result<void, CompileError> {
+  const dupRes = checkVariableDuplicates(metadata);
+  if (dupRes.type === "err") return dupRes;
+  // Inline checkReadTypeMatch
+  let i = 0;
+  while (i < metadata.length) {
+    const varInfo = metadata[i];
+    if (varInfo.stmt.indexOf("read<") !== -1) {
+      const readType = extractReadType(varInfo.stmt);
+      if (
+        varInfo.declaredType !== "" &&
+        readType !== "" &&
+        varInfo.declaredType !== readType
+      ) {
+        return err(
+          createCompileError(
+            varInfo.stmt,
+            `Type mismatch: declared variable as '${varInfo.declaredType}' but initialized with 'read<${readType}>()'`,
+            "Variable declaration type must match the type of the read operation",
+            `Change either the declared type to '${readType}' or the read type to '<${varInfo.declaredType}>'`,
+          ),
+        );
+      }
+    }
+    i++;
+  }
+  const assignRes = checkAssignmentTypeMatch(metadata);
+  if (assignRes.type === "err") return assignRes;
+  const ptrRes = checkPointerOperators(source, metadata);
+  if (ptrRes.type === "err") return ptrRes;
+  const undefRes = checkUndefinedVariables(source, metadata);
+  if (undefRes.type === "err") return undefRes;
+  const reassignRes = checkReassignments(source, metadata);
+  if (reassignRes.type === "err") return reassignRes;
+  return ok(void 0);
+}
+
+function generateFunctionFromLastStatement(
+  beforeLastStatement: string,
+  lastStatement: string,
+): string {
+  const { block, after } = extractBlockAndAfter(lastStatement);
+  if (block !== null) {
+    let returnVal: string;
+    if (after === "") {
+      returnVal = "0";
+    } else {
+      returnVal = after;
+    }
+    return `(function() { ${beforeLastStatement} ${block} return ${returnVal}; })()`;
+  }
+  if (lastStatement.startsWith("{}")) {
+    const afterBlock = lastStatement.substring(2).trim();
+    let returnVal: string;
+    if (afterBlock === "") {
+      returnVal = "0";
+    } else {
+      returnVal = afterBlock;
+    }
+    return `(function() { ${beforeLastStatement} return ${returnVal}; })()`;
+  }
+  return `(function() { ${beforeLastStatement} return ${lastStatement}; })()`;
+}
+
 function compileLetStatement(
   source: string,
 ): Result<string, CompileError> | null {
@@ -912,22 +1091,26 @@ function compileLetStatement(
     return null;
   }
   const metadata = buildVariableMetadata(trimmed);
-  const dupRes = checkVariableDuplicates(metadata);
-  if (dupRes.type === "err") return dupRes;
-  const readRes = checkReadTypeMatch(metadata);
-  if (readRes.type === "err") return readRes;
-  const assignRes = checkAssignmentTypeMatch(metadata);
-  if (assignRes.type === "err") return assignRes;
-  const ptrRes = checkPointerOperators(trimmed, metadata);
-  if (ptrRes.type === "err") return ptrRes;
-  const undefRes = checkUndefinedVariables(trimmed, metadata);
-  if (undefRes.type === "err") return undefRes;
-  const reassignRes = checkReassignments(trimmed, metadata);
-  if (reassignRes.type === "err") return reassignRes;
-  const code = transformDereference(
-    transformAddressOf(stripTypeAnnotations(transformReadPatterns(trimmed))),
+  const verRes = verifyLetStatement(trimmed, metadata);
+  if (verRes.type === "err") return verRes;
+  const code = stripNumericTypeSuffixes(
+    transformDereference(
+      transformAddressOf(stripTypeAnnotations(transformReadPatterns(trimmed))),
+    ),
   );
-  const lastSemicolonIndex = code.lastIndexOf(";");
+  let braceDepth = 0;
+  let lastSemicolonIndex = -1;
+  let i = 0;
+  while (i < code.length) {
+    if (code[i] === "{") {
+      braceDepth++;
+    } else if (code[i] === "}") {
+      braceDepth--;
+    } else if (code[i] === ";" && braceDepth === 0) {
+      lastSemicolonIndex = i;
+    }
+    i++;
+  }
   if (lastSemicolonIndex === -1) {
     return ok(`(function() { return ${code}; })()`);
   }
@@ -936,18 +1119,11 @@ function compileLetStatement(
   if (lastStatement === "") {
     return ok(`(function() { ${code} return 0; })()`);
   }
-  if (lastStatement.startsWith("{}")) {
-    const afterBlock = lastStatement.substring(2).trim();
-    if (afterBlock === "") {
-      return ok(`(function() { ${beforeLastStatement} return 0; })()`);
-    }
-    return ok(
-      `(function() { ${beforeLastStatement} return ${afterBlock}; })()`,
-    );
-  }
-  return ok(
-    `(function() { ${beforeLastStatement} return ${lastStatement}; })()`,
+  const generatedCode = generateFunctionFromLastStatement(
+    beforeLastStatement,
+    lastStatement,
   );
+  return ok(generatedCode);
 }
 
 export function compile(source: string): Result<string, CompileError> {
