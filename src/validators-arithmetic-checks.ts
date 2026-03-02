@@ -1,4 +1,3 @@
-/* eslint-disable max-lines */
 import { VariableInfo, Result, CompileError, ok } from "./types";
 import { getExpressionType } from "./validators-logical-helpers";
 import { extractBinaryOperands } from "./extractors-operators";

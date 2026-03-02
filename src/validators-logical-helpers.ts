@@ -1,4 +1,3 @@
-/* eslint-disable max-lines */
 import { VariableInfo } from "./types";
 import { extractIdentifier } from "./extractors";
 import { findVariable } from "./metadata";
