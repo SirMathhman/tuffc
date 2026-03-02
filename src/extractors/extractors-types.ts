@@ -7,8 +7,12 @@ function extractDeclaredType(stmt: string): string {
   if (stmt.substring(0, 4) !== "let ") {
     return "";
   }
+  const eqIndex = stmt.indexOf("=");
   const colonIndex = stmt.indexOf(":");
   if (colonIndex === -1) {
+    return "";
+  }
+  if (eqIndex !== -1 && colonIndex > eqIndex) {
     return "";
   }
   let typeStart = colonIndex + 1;

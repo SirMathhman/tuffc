@@ -321,4 +321,12 @@ describe("The compiler can compile", () => {
       7,
     );
   });
+
+  it("declares a struct and sums two fields", () => {
+    assertValid(
+      "struct Point { x : I32; y : I32; } let point : Point = Point { x : read<I32>(), y : read<I32>() }; point.x + point.y",
+      "3 4",
+      7,
+    );
+  });
 });

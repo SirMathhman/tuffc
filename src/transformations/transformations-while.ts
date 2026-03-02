@@ -1,5 +1,9 @@
 function skipWhitespace(source: string, idx: number): number {
-  while (idx < source.length && (source[idx] === " " || source[idx] === "\t" || source[idx] === "\n")) idx++;
+  while (
+    idx < source.length &&
+    (source[idx] === " " || source[idx] === "\t" || source[idx] === "\n")
+  )
+    idx++;
   return idx;
 }
 
@@ -31,7 +35,10 @@ function extractBody(source: string, idx: number): { body: string; endIdx: numbe
     }
     bodyEnd++;
   }
-  return { body: source.substring(idx, bodyEnd + 1).trim(), endIdx: bodyEnd + 1 };
+  return {
+    body: source.substring(idx, bodyEnd + 1).trim(),
+    endIdx: bodyEnd + 1,
+  };
 }
 
 function parseWhileAt(source: string, whileIdx: number): { text: string; nextIdx: number } | null {

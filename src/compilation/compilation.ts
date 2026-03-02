@@ -15,10 +15,13 @@ import {
 import { parseNumberLiteral } from "./compilation-helpers";
 import { compileFnStatement } from "./compilation-fn";
 import { compileLetStatement } from "./compilation-let";
+import { normalizeStructSyntax } from "./compilation-struct";
 
 export function compile(source: string): Result<string, CompileError> {
   const trimmed = source.trim();
   if (trimmed === "") return ok("0");
+  const normalizedStructSource = normalizeStructSyntax(source);
+  if (normalizedStructSource !== source) return compile(normalizedStructSource);
   const blockScopeRes = checkBlockScopes(source);
   if (blockScopeRes !== null) return blockScopeRes;
   const blockExprRes = checkBlockExpressions(source);
