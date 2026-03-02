@@ -217,4 +217,12 @@ describe("The compiler can compile", () => {
   it("evaluates true to 1", () => {
     assertValid("let x : Bool = true; x", 1);
   });
+
+  it("evaluates logical OR with true || false to 1", () => {
+    assertValid("let x = true; let y = false; x || y", 1);
+  });
+
+  it("evaluates logical AND with true && false to 0", () => {
+    assertValid("let x = true; let y = false; x && y", 0);
+  });
 });
