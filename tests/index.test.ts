@@ -16,4 +16,9 @@ describe("The compiler can compile", () => {
     const result = execute("100");
     expect(result).toBe(100);
   });
+
+  it("a number literal with U8 type suffix", () => {
+    const result = execute("100U8");
+    expect(result).toBe(100);
+  });
 });
