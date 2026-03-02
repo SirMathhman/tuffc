@@ -1,5 +1,5 @@
-import { findBlockEnd, extractBlockContent } from "./extractors";
-import { parseBlockStatements, getLastStatement } from "./metadata";
+import { findBlockEnd, extractBlockContent } from "../extractors/extractors";
+import { parseBlockStatements, getLastStatement } from "../metadata/metadata";
 
 function wrapBlockExpressionInInit(source: string): string {
   if (source.indexOf("let ") === -1 || source.indexOf("=") === -1) {

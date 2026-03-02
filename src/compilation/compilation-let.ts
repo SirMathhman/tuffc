@@ -1,5 +1,5 @@
-import { Result, CompileError, ok } from "./types";
-import { buildVariableMetadata } from "./metadata";
+import { Result, CompileError, ok } from "../types";
+import { buildVariableMetadata } from "../metadata/metadata";
 import {
   wrapBlockExpressionInInit,
   stripTypeAnnotations,
@@ -7,7 +7,7 @@ import {
   transformAddressOf,
   transformDereference,
   stripNumericTypeSuffixes,
-} from "./transformations";
+} from "../transformations/transformations";
 import { generateFunctionFromLastStatement } from "./compilation-helpers";
 import { verifyLetStatement } from "./compilation-verification";
 

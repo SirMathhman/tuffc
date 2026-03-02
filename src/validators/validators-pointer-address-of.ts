@@ -1,5 +1,5 @@
-import { VariableInfo, Result, CompileError } from "./types";
-import { findVariable } from "./metadata";
+import { VariableInfo, Result, CompileError } from "../types";
+import { findVariable } from "../metadata/metadata";
 import { checkMixedPointerTypes } from "./validators-pointer-mixed-types";
 import {
   undeclaredVariableError,

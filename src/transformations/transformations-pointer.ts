@@ -3,8 +3,8 @@ import {
   extractIdentifier,
   forEachAddressOf,
   isAssignmentOperator,
-} from "./extractors";
-import { DereferenceAssignment } from "./types";
+} from "../extractors/extractors";
+import { DereferenceAssignment } from "../types";
 
 function identifierAfterDeref(source: string, pos: number): string {
   return extractIdentifier(source, pos + 1);

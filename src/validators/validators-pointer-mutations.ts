@@ -5,8 +5,8 @@ import {
   ok,
   err,
   createCompileError,
-} from "./types";
-import { extractIdentifier, isAssignmentOperator } from "./extractors";
+} from "../types";
+import { extractIdentifier, isAssignmentOperator } from "../extractors/extractors";
 
 function checkImmutablePointerAssignments(
   source: string,

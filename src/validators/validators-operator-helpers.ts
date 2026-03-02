@@ -5,7 +5,7 @@ import {
   ok,
   err,
   createCompileError,
-} from "./types";
+} from "../types";
 
 function createOperatorTypeError(
   operatorType: string,

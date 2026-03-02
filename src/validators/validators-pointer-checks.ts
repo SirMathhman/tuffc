@@ -1,4 +1,4 @@
-import { VariableInfo, Result, CompileError } from "./types";
+import { VariableInfo, Result, CompileError } from "../types";
 import { checkAddressOfOperator } from "./validators-pointer-address-of";
 import { checkDereferenceOperator } from "./validators-pointer-dereference";
 import { checkImmutablePointerAssignments } from "./validators-pointer-mutations";

@@ -1,17 +1,17 @@
 /* eslint-disable max-lines */
-import { Result, CompileError, err, createCompileError } from "./types";
+import { Result, CompileError, err, createCompileError } from "../types";
 import {
   extractIdentifier,
   extractDeclaredType,
   findBlockEnd,
   extractBlockContent,
-} from "./extractors";
+} from "../extractors/extractors";
 import {
   buildVariableMetadata,
   parseBlockStatements,
   getLastStatement,
   extractBlockExpressionType,
-} from "./metadata";
+} from "../metadata/metadata";
 import { isUpconversionAllowed } from "./validators-type-checks";
 
 interface BlockAssignment {

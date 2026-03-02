@@ -4,8 +4,8 @@ import {
   CompileError,
   err,
   createCompileError,
-} from "./types";
-import { findVariable } from "./metadata";
+} from "../types";
+import { findVariable } from "../metadata/metadata";
 import {
   undeclaredVariableError,
   varNotDeclaredHint,

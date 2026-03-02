@@ -1,4 +1,4 @@
-import { VariableInfo } from "./types";
+import { VariableInfo } from "../types";
 
 function pushIfNonEmpty(statements: string[], text: string): void {
   const trimmed = text.trim();

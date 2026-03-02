@@ -1,6 +1,6 @@
-import { Result, CompileError, ok, err, createCompileError } from "./types";
-import { extractIdentifier, advancePast } from "./extractors";
-import { splitStatementsKeepBlocks } from "./metadata";
+import { Result, CompileError, ok, err, createCompileError } from "../types";
+import { extractIdentifier, advancePast } from "../extractors/extractors";
+import { splitStatementsKeepBlocks } from "../metadata/metadata";
 
 function undeclaredVariableError(
   source: string,

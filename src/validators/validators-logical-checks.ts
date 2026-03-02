@@ -1,4 +1,4 @@
-import { VariableInfo, Result, CompileError, ok } from "./types";
+import { VariableInfo, Result, CompileError, ok } from "../types";
 import {
   getExpressionType,
   extractOperands,

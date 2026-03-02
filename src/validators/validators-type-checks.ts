@@ -6,12 +6,12 @@ import {
   ok,
   err,
   createCompileError,
-} from "./types";
+} from "../types";
 import {
   extractAfterEq,
   extractReadType,
   extractIdentifier,
-} from "./extractors";
+} from "../extractors/extractors";
 
 function isUpconversionAllowed(fromType: string, toType: string): boolean {
   return (

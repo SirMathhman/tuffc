@@ -1,6 +1,6 @@
-import { Result, CompileError, ok, err, createCompileError } from "./types";
-import { validateTypeSuffix } from "./validators";
-import { extractNumericPart, extractBlockAndAfter } from "./extractors";
+import { Result, CompileError, ok, err, createCompileError } from "../types";
+import { validateTypeSuffix } from "../validators/validators";
+import { extractNumericPart, extractBlockAndAfter } from "../extractors/extractors";
 
 function parseNumberLiteral(trimmed: string): Result<string, CompileError> {
   let num = Number(trimmed);

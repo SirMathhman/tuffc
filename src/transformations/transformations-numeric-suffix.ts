@@ -1,4 +1,4 @@
-import { isDigit, isAlpha } from "./extractors";
+import { isDigit, isAlpha } from "../extractors/extractors";
 
 function extractNumericIfPresent(
   source: string,

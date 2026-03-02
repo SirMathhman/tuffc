@@ -4,9 +4,9 @@ import {
   CompileError,
   err,
   createCompileError,
-} from "./types";
-import { extractIdentifier } from "./extractors";
-import { splitStatementsKeepBlocks } from "./metadata";
+} from "../types";
+import { extractIdentifier } from "../extractors/extractors";
+import { splitStatementsKeepBlocks } from "../metadata/metadata";
 import { validateReassignment } from "./validators-type-checks";
 
 function checkReassignments(

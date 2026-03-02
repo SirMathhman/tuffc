@@ -1,4 +1,4 @@
-import { isAlpha, isDigit } from "./extractors";
+import { isAlpha, isDigit } from "../extractors/extractors";
 import { extractNumericIfPresent } from "./transformations-numeric-suffix";
 
 function skipTypeAnnotation(source: string, i: number): number {

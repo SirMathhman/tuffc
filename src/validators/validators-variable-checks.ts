@@ -5,9 +5,9 @@ import {
   ok,
   err,
   createCompileError,
-} from "./types";
-import { extractIdentifier, isAlpha } from "./extractors";
-import { findVariable } from "./metadata";
+} from "../types";
+import { extractIdentifier, isAlpha } from "../extractors/extractors";
+import { findVariable } from "../metadata/metadata";
 import { checkReassignments } from "./validators-variable-reassignment";
 
 function checkVariableDuplicates(

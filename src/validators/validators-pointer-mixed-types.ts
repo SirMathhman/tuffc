@@ -1,5 +1,5 @@
-import { Result, CompileError, ok, err, createCompileError } from "./types";
-import { forEachAddressOf } from "./extractors";
+import { Result, CompileError, ok, err, createCompileError } from "../types";
+import { forEachAddressOf } from "../extractors/extractors";
 
 function checkMixedPointerTypes(source: string): Result<void, CompileError> {
   const varMap = new Map<string, { hasImmut: boolean; hasMut: boolean }>();

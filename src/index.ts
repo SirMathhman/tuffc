@@ -1,2 +1,2 @@
-export { compile } from "./compilation";
+export { compile } from "./compilation/compilation";
 export type { CompileError } from "./types";

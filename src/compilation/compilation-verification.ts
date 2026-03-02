@@ -5,7 +5,7 @@ import {
   ok,
   err,
   createCompileError,
-} from "./types";
+} from "../types";
 import {
   checkReassignments,
   checkVariableDuplicates,
@@ -14,8 +14,8 @@ import {
   checkPointerOperators,
   checkLogicalOperatorTypes,
   checkArithmeticOperatorTypes,
-} from "./validators";
-import { extractReadType } from "./extractors";
+} from "../validators/validators";
+import { extractReadType } from "../extractors/extractors";
 
 function verifyLetStatement(
   source: string,

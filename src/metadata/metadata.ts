@@ -1,5 +1,5 @@
 /* eslint-disable max-lines */
-import { VariableInfo } from "./types";
+import { VariableInfo } from "../types";
 import {
   extractIdentifier,
   extractDeclaredType,
@@ -7,7 +7,7 @@ import {
   extractAfterEq,
   findBlockEnd,
   isDigit,
-} from "./extractors";
+} from "../extractors/extractors";
 import {
   splitStatementsKeepBlocks,
   findVariable,

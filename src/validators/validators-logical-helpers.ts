@@ -1,7 +1,7 @@
-import { VariableInfo } from "./types";
-import { extractIdentifier } from "./extractors";
-import { findVariable } from "./metadata";
-import { extractBinaryOperands } from "./extractors-operators";
+import { VariableInfo } from "../types";
+import { extractIdentifier } from "../extractors/extractors";
+import { findVariable } from "../metadata/metadata";
+import { extractBinaryOperands } from "../extractors/extractors-operators";
 
 function getExpressionType(expr: string, metadata: VariableInfo[]): string {
   const trimmed = expr.trim();

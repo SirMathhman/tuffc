@@ -1,4 +1,4 @@
-import { Result, CompileError, VariableInfo, ok } from "./types";
+import { Result, CompileError, VariableInfo, ok } from "../types";
 import {
   checkReassignments,
   checkUndefinedVariables,
@@ -6,8 +6,8 @@ import {
   checkBlockExpressions,
   checkBlockExpressionType,
   checkLogicalOperatorTypes,
-} from "./validators";
-import { transformReadPatterns } from "./transformations";
+} from "../validators/validators";
+import { transformReadPatterns } from "../transformations/transformations";
 import { parseNumberLiteral } from "./compilation-helpers";
 import { compileLetStatement } from "./compilation-let";
 
