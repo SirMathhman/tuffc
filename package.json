@@ -6,6 +6,7 @@
   "main": "index.ts",
   "scripts": {
     "test": "jest",
+    "find-duplicates": "pmd cpd --dir src,tests --language typescript --minimum-tokens 35 --ignore-literals --ignore-identifiers",
     "lint": "eslint .",
     "prepare": "husky install"
   },
