@@ -38,11 +38,13 @@ export function compile(source: string): Result<string, string> {
   // Extract numeric part (skip minus sign if present)
   let numericPart = "";
   let endIndex = numericStart;
-  for (let i = numericStart; i < trimmed.length; i++) {
+  let i = numericStart;
+  while (i < trimmed.length) {
     const char = trimmed[i];
     if ((char >= "0" && char <= "9") || char === ".") {
       numericPart += char;
       endIndex = i + 1;
+      i++;
     } else {
       break;
     }

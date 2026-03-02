@@ -34,6 +34,11 @@ export default [
           message:
             "Anonymous object types are not allowed. Use named interfaces instead.",
         },
+        {
+          selector: "ForStatement",
+          message:
+            "for loops are not allowed. Use while, map, reduce, or other alternatives.",
+        },
       ],
       "@typescript-eslint/consistent-type-definitions": ["error", "interface"],
     },
