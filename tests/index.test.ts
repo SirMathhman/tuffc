@@ -10,7 +10,6 @@ function assertValid(
   expected?: number,
 ): void {
   const result = executeResult(source);
-  expect(result.type).toBe("ok");
   if (result.type === "ok") {
     if (typeof stdInOrExpected === "number") {
       // Old signature: assertValid(source, expected)
@@ -23,6 +22,8 @@ function assertValid(
       const fn = new Function("read", `return ${result.value}`);
       expect(fn(read)).toBe(expected);
     }
+  } else {
+    expect(result.error).toBeUndefined();
   }
 }
 

@@ -8,6 +8,13 @@ interface Err<E> {
   error: E;
 }
 
+interface CompileError {
+  code: string;
+  message: string;
+  reason: string;
+  fix: string;
+}
+
 type Result<T, E> = Ok<T> | Err<E>;
 
 function ok<T, E>(value: T): Result<T, E> {
@@ -18,13 +25,30 @@ function err<T, E>(error: E): Result<T, E> {
   return { type: "err", error };
 }
 
+function createCompileError(
+  code: string,
+  message: string,
+  reason: string,
+  fix: string,
+): CompileError {
+  return { code, message, reason, fix };
+}
+
 function validateTypeSuffix(
   suffix: string,
   value: number,
-): Result<void, string> {
+  code: string,
+): Result<void, CompileError> {
   if (suffix === "U8") {
     if (value < 0 || value > 255) {
-      return err(`U8 values must be in range 0-255, got: ${value}`);
+      return err(
+        createCompileError(
+          code,
+          `U8 values must be in range 0-255, got: ${value}`,
+          "U8 is an unsigned 8-bit integer with valid range 0-255",
+          `Use a value between 0 and 255, or use a different type like I16 or I32 for larger values`,
+        ),
+      );
     }
   }
   return ok(void 0);
@@ -54,7 +78,20 @@ function isReadPattern(source: string): boolean {
   return source.startsWith("read<") && source.endsWith("()");
 }
 
-export function compile(source: string): Result<string, string> {
+function validateNegativeWithSuffix(
+  source: string,
+): Result<string, CompileError> {
+  return err(
+    createCompileError(
+      source,
+      "Negative numbers with type suffixes are not allowed",
+      "Type suffixes are only valid for positive literal values",
+      "Remove the type suffix from the negative number, or remove the minus sign if the value should be positive",
+    ),
+  );
+}
+
+export function compile(source: string): Result<string, CompileError> {
   const trimmed = source.trim();
 
   if (trimmed === "") {
@@ -91,15 +128,13 @@ export function compile(source: string): Result<string, string> {
 
       // Negative numbers with type suffixes are not allowed
       if (isNegative && hasSuffix) {
-        return err(
-          `Negative numbers with type suffixes are not allowed: ${trimmed}`,
-        );
+        return validateNegativeWithSuffix(trimmed);
       }
 
       // Extract and validate type suffix if present
       if (hasSuffix) {
         const suffix = trimmed.slice(endIndex);
-        const validationResult = validateTypeSuffix(suffix, num);
+        const validationResult = validateTypeSuffix(suffix, num, trimmed);
         if (validationResult.type === "err") {
           return validationResult;
         }
