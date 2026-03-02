@@ -5,7 +5,8 @@ export function compile(source: string): string {
     return "0";
   }
 
-  if (/^\d+$/.test(trimmed)) {
+  const num = Number(trimmed);
+  if (!Number.isNaN(num) && String(num) === trimmed) {
     return trimmed;
   }
 

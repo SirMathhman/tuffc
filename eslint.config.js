@@ -17,6 +17,13 @@ export default [
           varsIgnorePattern: "^_",
         },
       ],
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "Literal[regex]",
+          message: "Regular expressions are not allowed",
+        },
+      ],
     },
   },
 ];
