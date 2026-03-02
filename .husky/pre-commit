@@ -1,3 +1,4 @@
 npm test
 npm run find-duplicates
+npm run check-inline
 npm run lint

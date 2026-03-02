@@ -74,10 +74,6 @@ function extractNumericPart(
   return { numericPart, endIndex };
 }
 
-function containsReadPattern(source: string): boolean {
-  return source.indexOf("read<") !== -1;
-}
-
 function transformReadPatterns(source: string): string {
   let result = "";
   let i = 0;
@@ -106,10 +102,6 @@ function transformReadPatterns(source: string): string {
     }
   }
   return result;
-}
-
-function containsLetDeclaration(source: string): boolean {
-  return source.indexOf("let ") !== -1;
 }
 
 function stripTypeAnnotations(source: string): string {
@@ -147,58 +139,6 @@ function stripTypeAnnotations(source: string): string {
   return result;
 }
 
-function wrapInIife(code: string): string {
-  // Find the last statement that's not a declaration
-  // and add return to it
-  const lastSemicolonIndex = code.lastIndexOf(";");
-  if (lastSemicolonIndex === -1) {
-    // No semicolon, wrap the whole thing with return
-    return `(function() { return ${code}; })()`;
-  }
-  const beforeLastStatement = code.substring(0, lastSemicolonIndex + 1);
-  const lastStatement = code.substring(lastSemicolonIndex + 1).trim();
-  if (lastStatement === "") {
-    // Only semicolons, no final statement - return 0
-    return `(function() { ${code} return 0; })()`;
-  }
-  return `(function() { ${beforeLastStatement} return ${lastStatement}; })()`;
-}
-
-function validateNegativeWithSuffix(
-  source: string,
-): Result<string, CompileError> {
-  return err(
-    createCompileError(
-      source,
-      "Negative numbers with type suffixes are not allowed",
-      "Type suffixes are only valid for positive literal values",
-      "Remove the type suffix from the negative number, or remove the minus sign if the value should be positive",
-    ),
-  );
-}
-
-function splitByStatement(source: string): string[] {
-  const statements: string[] = [];
-  let current = "";
-  let i = 0;
-  while (i < source.length) {
-    const char = source[i];
-    if (char === ";") {
-      if (current.trim() !== "") {
-        statements.push(current.trim());
-      }
-      current = "";
-    } else {
-      current += char;
-    }
-    i++;
-  }
-  if (current.trim() !== "") {
-    statements.push(current.trim());
-  }
-  return statements;
-}
-
 function extractIdentifier(str: string, startIndex: number): string {
   let identifier = "";
   let i = startIndex;
@@ -217,13 +157,6 @@ function extractIdentifier(str: string, startIndex: number): string {
     }
   }
   return identifier;
-}
-
-function extractVariableName(stmt: string): string {
-  if (stmt.substring(0, 4) !== "let ") {
-    return "";
-  }
-  return extractIdentifier(stmt, 4);
 }
 
 function extractDeclaredType(stmt: string): string {
@@ -267,15 +200,6 @@ function extractReadType(stmt: string): string {
   return stmt.substring(typeStart, typeEnd);
 }
 
-function extractVariableFromAssignment(stmt: string): string {
-  const eqIndex = stmt.indexOf("=");
-  if (eqIndex === -1) {
-    return "";
-  }
-  const afterEq = stmt.substring(eqIndex + 1).trim();
-  return extractIdentifier(afterEq, 0);
-}
-
 interface VariableInfo {
   name: string;
   declaredType: string;
@@ -284,13 +208,30 @@ interface VariableInfo {
 }
 
 function buildVariableMetadata(source: string): VariableInfo[] {
-  const statements = splitByStatement(source);
+  const statements: string[] = [];
+  let current = "";
+  let si = 0;
+  while (si < source.length) {
+    const char = source[si];
+    if (char === ";") {
+      if (current.trim() !== "") {
+        statements.push(current.trim());
+      }
+      current = "";
+    } else {
+      current += char;
+    }
+    si++;
+  }
+  if (current.trim() !== "") {
+    statements.push(current.trim());
+  }
   const metadata: VariableInfo[] = [];
   let j = 0;
   while (j < statements.length) {
     const stmt = statements[j];
     if (stmt.substring(0, 4) === "let ") {
-      const name = extractVariableName(stmt);
+      const name = extractIdentifier(stmt, 4);
       const declaredType = extractDeclaredType(stmt);
       const readType = extractReadType(stmt);
       let inferredType: string;
@@ -299,12 +240,7 @@ function buildVariableMetadata(source: string): VariableInfo[] {
       } else {
         inferredType = readType;
       }
-      metadata.push({
-        name,
-        declaredType,
-        inferredType,
-        stmt,
-      });
+      metadata.push({ name, declaredType, inferredType, stmt });
     }
     j++;
   }
@@ -387,7 +323,12 @@ function checkAssignmentTypeMatch(
     if (varInfo.declaredType === "") {
       return ok(void 0);
     }
-    const assignedVar = extractVariableFromAssignment(varInfo.stmt);
+    const eqIndex = varInfo.stmt.indexOf("=");
+    let assignedVar = "";
+    if (eqIndex !== -1) {
+      const afterEq = varInfo.stmt.substring(eqIndex + 1).trim();
+      assignedVar = extractIdentifier(afterEq, 0);
+    }
     if (assignedVar !== "") {
       let j = 0;
       while (j < metadata.length) {
@@ -409,23 +350,6 @@ function checkAssignmentTypeMatch(
     }
     return ok(void 0);
   });
-}
-
-function checkVariableValidation(source: string): Result<void, CompileError> {
-  const metadata = buildVariableMetadata(source);
-  const dupResult = checkVariableDuplicates(metadata);
-  if (dupResult.type === "err") {
-    return dupResult;
-  }
-  const readResult = checkReadTypeMatch(metadata);
-  if (readResult.type === "err") {
-    return readResult;
-  }
-  const assignResult = checkAssignmentTypeMatch(metadata);
-  if (assignResult.type === "err") {
-    return assignResult;
-  }
-  return ok(void 0);
 }
 
 function parseNumberLiteral(trimmed: string): Result<string, CompileError> {
@@ -454,7 +378,14 @@ function parseNumberLiteral(trimmed: string): Result<string, CompileError> {
 
       // Negative numbers with type suffixes are not allowed
       if (isNegative && hasSuffix) {
-        return validateNegativeWithSuffix(trimmed);
+        return err(
+          createCompileError(
+            trimmed,
+            "Negative numbers with type suffixes are not allowed",
+            "Type suffixes are only valid for positive literal values",
+            "Remove the type suffix from the negative number, or remove the minus sign if the value should be positive",
+          ),
+        );
       }
 
       // Extract and validate type suffix if present
@@ -486,20 +417,35 @@ export function compile(source: string): Result<string, CompileError> {
     return ok("0");
   }
 
-  // Check for variable declarations
-  if (containsLetDeclaration(trimmed)) {
-    const varValidationResult = checkVariableValidation(trimmed);
-    if (varValidationResult.type === "err") {
-      return varValidationResult;
+  if (trimmed.indexOf("let ") !== -1) {
+    const metadata = buildVariableMetadata(trimmed);
+    const dupResult = checkVariableDuplicates(metadata);
+    if (dupResult.type === "err") {
+      return dupResult;
+    }
+    const readResult = checkReadTypeMatch(metadata);
+    if (readResult.type === "err") {
+      return readResult;
+    }
+    const assignResult = checkAssignmentTypeMatch(metadata);
+    if (assignResult.type === "err") {
+      return assignResult;
     }
     const transformed = transformReadPatterns(trimmed);
     const stripped = stripTypeAnnotations(transformed);
-    const wrapped = wrapInIife(stripped);
-    return ok(wrapped);
+    const lastSemicolonIndex = stripped.lastIndexOf(";");
+    if (lastSemicolonIndex === -1) {
+      return ok(`(function() { return ${stripped}; })()`);
+    }
+    const beforeLastStatement = stripped.substring(0, lastSemicolonIndex + 1);
+    const lastStatement = stripped.substring(lastSemicolonIndex + 1).trim();
+    if (lastStatement === "") {
+      return ok(`(function() { ${stripped} return 0; })()`);
+    }
+    return ok(`(function() { ${beforeLastStatement} return ${lastStatement}; })()`);
   }
 
-  // Check for read<TYPE>() pattern (simple or in expression)
-  if (containsReadPattern(trimmed)) {
+  if (trimmed.indexOf("read<") !== -1) {
     const transformed = transformReadPatterns(trimmed);
     return ok(transformed);
   }

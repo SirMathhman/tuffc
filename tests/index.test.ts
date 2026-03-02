@@ -1,15 +1,11 @@
 import { compile } from "../src";
 
-function executeResult(source: string): ReturnType<typeof compile> {
-  return compile(source);
-}
-
 function assertValid(
   source: string,
   stdInOrExpected: string | number,
   expected?: number,
 ): void {
-  const result = executeResult(source);
+  const result = compile(source);
   if (result.type === "ok") {
     if (typeof stdInOrExpected === "number") {
       // Old signature: assertValid(source, expected)
@@ -51,7 +47,7 @@ function assertValid(
 }
 
 function assertInvalid(source: string): void {
-  const result = executeResult(source);
+  const result = compile(source);
   expect(result.type).toBe("err");
 }
 
@@ -69,14 +65,14 @@ describe("The compiler can compile", () => {
   });
 
   it("rejects negative numbers with type suffix", () => {
-    const result = executeResult("-100U8");
+    const result = compile("-100U8");
     if (result.type === "ok") {
       expect(result.value).toBeUndefined();
     }
   });
 
   it("rejects U8 values outside valid range", () => {
-    const result = executeResult("256U8");
+    const result = compile("256U8");
     expect(result.type).toBe("err");
   });
 
