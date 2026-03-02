@@ -1,14 +1,24 @@
-export function compile(source: string): string {
+type Result<T, E> = { type: "ok"; value: T } | { type: "err"; error: E };
+
+function ok<T, E>(value: T): Result<T, E> {
+  return { type: "ok", value };
+}
+
+function err<T, E>(error: E): Result<T, E> {
+  return { type: "err", error };
+}
+
+export function compile(source: string): Result<string, string> {
   const trimmed = source.trim();
 
   if (trimmed === "") {
-    return "0";
+    return ok("0");
   }
 
   // Try parsing as a full number first
   let num = Number(trimmed);
   if (!Number.isNaN(num) && String(num) === trimmed) {
-    return trimmed;
+    return ok(trimmed);
   }
 
   // Check if input starts with minus sign
@@ -36,14 +46,14 @@ export function compile(source: string): string {
 
       // Negative numbers with type suffixes are not allowed
       if (isNegative && hasSuffix) {
-        throw new Error(
+        return err(
           `Negative numbers with type suffixes are not allowed: ${trimmed}`,
         );
       }
 
-      return isNegative ? "-" + numericPart : numericPart;
+      return ok(isNegative ? "-" + numericPart : numericPart);
     }
   }
 
-  return "0";
+  return ok("0");
 }

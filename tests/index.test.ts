@@ -1,28 +1,33 @@
 import { compile } from "../src";
 
-function execute(source: string): number {
-  const output = compile(source);
-  const fn = new Function(`return ${output}`);
-  return fn() as number;
+function executeResult(source: string): ReturnType<typeof compile> {
+  return compile(source);
+}
+
+function expectSuccess(source: string, expected: number): void {
+  const result = executeResult(source);
+  expect(result.type).toBe("ok");
+  if (result.type === "ok") {
+    const fn = new Function(`return ${result.value}`);
+    expect(fn()).toBe(expected);
+  }
 }
 
 describe("The compiler can compile", () => {
   it("an empty program", () => {
-    const result = execute("");
-    expect(result).toBe(0);
+    expectSuccess("", 0);
   });
 
   it("a number literal", () => {
-    const result = execute("100");
-    expect(result).toBe(100);
+    expectSuccess("100", 100);
   });
 
   it("a number literal with U8 type suffix", () => {
-    const result = execute("100U8");
-    expect(result).toBe(100);
+    expectSuccess("100U8", 100);
   });
 
   it("rejects negative numbers with type suffix", () => {
-    expect(() => execute("-100U8")).toThrow();
+    const result = executeResult("-100U8");
+    expect(result.type).toBe("err");
   });
 });
