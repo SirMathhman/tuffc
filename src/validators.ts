@@ -318,9 +318,7 @@ interface ProcessedBlock {
   afterEq: string;
 }
 
-function processBlockAssignment(
-  source: string,
-): ProcessedBlock | null {
+function processBlockAssignment(source: string): ProcessedBlock | null {
   const trimmed = source.trim();
   if (trimmed.indexOf("let ") === -1 || trimmed.indexOf("=") === -1) {
     return null;

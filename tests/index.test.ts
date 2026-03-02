@@ -209,4 +209,12 @@ describe("The compiler can compile", () => {
   it("rejects access to variable outside its block scope", () => {
     assertInvalid("let x : U16 = { let y : U8 = 100; y }; y");
   });
+
+  it("evaluates false to 0", () => {
+    assertValid("let x : Bool = false; x", 0);
+  });
+
+  it("evaluates true to 1", () => {
+    assertValid("let x : Bool = true; x", 1);
+  });
 });

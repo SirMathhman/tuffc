@@ -100,7 +100,15 @@ function transformReadPatterns(source: string): string {
       }
     }
     if (consumed === 1) {
-      result += source[i];
+      if (source.substring(i, i + 4) === "true") {
+        result += "1";
+        consumed = 4;
+      } else if (source.substring(i, i + 5) === "false") {
+        result += "0";
+        consumed = 5;
+      } else {
+        result += source[i];
+      }
     }
     i += consumed;
   }

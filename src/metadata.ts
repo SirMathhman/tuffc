@@ -88,6 +88,9 @@ function extractLiteralType(stmt: string): string {
   if (blockType !== "") {
     return blockType;
   }
+  if (afterEq.trim() === "false" || afterEq.trim() === "true") {
+    return "Bool";
+  }
   let digitEnd = 0;
   while (digitEnd < afterEq.length) {
     const c = afterEq[digitEnd];
