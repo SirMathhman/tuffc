@@ -158,8 +158,8 @@ function wrapInIife(code: string): string {
   const beforeLastStatement = code.substring(0, lastSemicolonIndex + 1);
   const lastStatement = code.substring(lastSemicolonIndex + 1).trim();
   if (lastStatement === "") {
-    // Only semicolons, no final statement
-    return `(function() { ${code} })()`;
+    // Only semicolons, no final statement - return 0
+    return `(function() { ${code} return 0; })()`;
   }
   return `(function() { ${beforeLastStatement} return ${lastStatement}; })()`;
 }

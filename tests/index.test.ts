@@ -84,4 +84,8 @@ describe("The compiler can compile", () => {
   it("declares and uses a variable", () => {
     assertValid("let x : U8 = read<U8>(); x", "1 3", 1);
   });
+
+  it("declares a variable without using it", () => {
+    assertValid("let x : U8 = read<U8>();", "1 3", 0);
+  });
 });
