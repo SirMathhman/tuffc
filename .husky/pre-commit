@@ -1,1 +1,2 @@
 npm test
+pmd cpd --dir src,tests --language typescript --minimum-tokens 35 --ignore-literals --ignore-identifiers
