@@ -97,4 +97,8 @@ describe("The compiler can compile", () => {
   it("rejects duplicate variable declarations", () => {
     assertInvalid("let x : U8 = read<U8>(); let x : U8 = read<U8>();");
   });
+
+  it("rejects type mismatch in variable initialization", () => {
+    assertInvalid("let x : U8 = read<U16>();");
+  });
 });

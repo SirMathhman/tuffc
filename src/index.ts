@@ -222,6 +222,79 @@ function extractVariableName(stmt: string): string {
   return varName;
 }
 
+function extractDeclaredType(stmt: string): string {
+  if (stmt.substring(0, 4) !== "let ") {
+    return "";
+  }
+  const colonIndex = stmt.indexOf(":");
+  if (colonIndex === -1) {
+    return "";
+  }
+  let typeStart = colonIndex + 1;
+  while (typeStart < stmt.length && stmt[typeStart] === " ") {
+    typeStart++;
+  }
+  let typeEnd = typeStart;
+  while (typeEnd < stmt.length) {
+    const c = stmt[typeEnd];
+    if (
+      (c >= "a" && c <= "z") ||
+      (c >= "A" && c <= "Z") ||
+      (c >= "0" && c <= "9")
+    ) {
+      typeEnd++;
+    } else {
+      break;
+    }
+  }
+  return stmt.substring(typeStart, typeEnd);
+}
+
+function extractReadType(stmt: string): string {
+  const readIndex = stmt.indexOf("read<");
+  if (readIndex === -1) {
+    return "";
+  }
+  const typeStart = readIndex + 5;
+  let typeEnd = typeStart;
+  while (typeEnd < stmt.length && stmt[typeEnd] !== ">") {
+    typeEnd++;
+  }
+  return stmt.substring(typeStart, typeEnd);
+}
+
+function checkVariableTypeConsistency(
+  source: string,
+): Result<void, CompileError> {
+  const statements = splitByStatement(source);
+  let j = 0;
+  while (j < statements.length) {
+    const stmt = statements[j];
+    if (stmt.substring(0, 4) === "let ") {
+      if (stmt.indexOf("read<") !== -1) {
+        const declaredType = extractDeclaredType(stmt);
+        const readType = extractReadType(stmt);
+        if (
+          declaredType !== "" &&
+          readType !== "" &&
+          declaredType !== readType
+        ) {
+          return err(
+            createCompileError(
+              stmt,
+              `Type mismatch: declared variable as '${declaredType}' but initialized with 'read<${readType}>()'`,
+              "Variable declaration type must match the type of the read operation",
+              `Change either the declared type to '${readType}' or the read type to '<${declaredType}>'`,
+            ),
+          );
+        }
+      }
+    }
+    j++;
+  }
+  return ok(void 0);
+}
+
 function checkDuplicateVariables(source: string): Result<void, CompileError> {
   const statements = splitByStatement(source);
   const declaredVars: string[] = [];
@@ -319,6 +392,10 @@ export function compile(source: string): Result<string, CompileError> {
     const dupCheckResult = checkDuplicateVariables(trimmed);
     if (dupCheckResult.type === "err") {
       return dupCheckResult;
+    }
+    const typeCheckResult = checkVariableTypeConsistency(trimmed);
+    if (typeCheckResult.type === "err") {
+      return typeCheckResult;
     }
     const transformed = transformReadPatterns(trimmed);
     const stripped = stripTypeAnnotations(transformed);
