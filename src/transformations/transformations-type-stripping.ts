@@ -1,5 +1,6 @@
 import { isAlpha, isDigit } from "../extractors/extractors";
 import { extractNumericIfPresent } from "./transformations-numeric-suffix";
+import { skipGenericParameters } from "./transformations-generic-stripping";
 
 function skipTypeAnnotation(source: string, i: number, braceDepth: number): number {
   if (braceDepth > 0) return i;
@@ -36,6 +37,11 @@ function stripTypeAnnotations(source: string): string {
       result += "let ";
       i += 8;
     } else {
+      const genericEnd = skipGenericParameters(source, i);
+      if (genericEnd > i) {
+        i = genericEnd;
+        continue;
+      }
       const newI = skipTypeAnnotation(source, i, braceDepth);
       if (newI > i) {
         i = newI;

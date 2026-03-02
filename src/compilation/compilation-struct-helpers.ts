@@ -62,4 +62,10 @@ function normalizeFields(content: string): string {
   return out;
 }
 
-export { isIdChar, skipWs, findMatchingBrace, parseStructPrefix, normalizeFields };
+export {
+  isIdChar,
+  skipWs,
+  findMatchingBrace,
+  parseStructPrefix,
+  normalizeFields,
+};

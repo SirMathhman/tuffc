@@ -345,4 +345,12 @@ describe("The compiler can compile", () => {
       1,
     );
   });
+
+  it("declares and calls generic function", () => {
+    assertValid(
+      "fn pass<T>(value : T) : T => value; pass<I32>(read<I32>())",
+      "100",
+      100,
+    );
+  });
 });

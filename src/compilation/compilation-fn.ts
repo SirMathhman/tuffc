@@ -1,6 +1,7 @@
 import { Result, CompileError, ok } from "../types";
 import {
   stripNumericTypeSuffixes,
+  stripTypeAnnotations,
   transformComparisonOperators,
   transformReadPatterns,
 } from "../transformations/transformations";
@@ -35,7 +36,8 @@ function compileFnStatement(
   const closeParen = findMatchingParen(decl, openParen);
   if (closeParen === -1) return null;
 
-  const fnName = decl.substring(3, openParen).trim();
+  const fnNameRaw = decl.substring(3, openParen).trim();
+  const fnName = stripTypeAnnotations(fnNameRaw);
   const paramsRaw = decl.substring(openParen + 1, closeParen);
   const paramNames = extractParamNames(paramsRaw);
 
@@ -44,7 +46,9 @@ function compileFnStatement(
   );
 
   const afterExpr = stripNumericTypeSuffixes(
-    transformComparisonOperators(transformReadPatterns(after)),
+    transformComparisonOperators(
+      stripTypeAnnotations(transformReadPatterns(after)),
+    ),
   );
   let returnExpr = afterExpr;
   if (returnExpr === "") returnExpr = "0";
