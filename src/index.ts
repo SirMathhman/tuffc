@@ -1,4 +1,14 @@
-type Result<T, E> = { type: "ok"; value: T } | { type: "err"; error: E };
+interface Ok<T> {
+  type: "ok";
+  value: T;
+}
+
+interface Err<E> {
+  type: "err";
+  error: E;
+}
+
+type Result<T, E> = Ok<T> | Err<E>;
 
 function ok<T, E>(value: T): Result<T, E> {
   return { type: "ok", value };

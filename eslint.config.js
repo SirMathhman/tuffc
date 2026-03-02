@@ -28,7 +28,14 @@ export default [
           message:
             "Throw statements are not allowed. Use Result<T, E> instead.",
         },
+        {
+          selector:
+            "TSTypeReference > TSTypeLiteral, TSTypeAliasDeclaration > TSUnionType > TSTypeLiteral",
+          message:
+            "Anonymous object types are not allowed. Use named interfaces instead.",
+        },
       ],
+      "@typescript-eslint/consistent-type-definitions": ["error", "interface"],
     },
   },
 ];
