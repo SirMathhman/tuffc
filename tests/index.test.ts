@@ -2,8 +2,8 @@ import { compile } from "../src";
 
 function execute(source: string): number {
   const output = compile(source);
-  const evaled = eval(output);
-  return evaled as number;
+  const fn = new Function(`return ${output}`);
+  return fn() as number;
 }
 
 describe("The compiler can compile", () => {
