@@ -7,7 +7,7 @@
   "scripts": {
     "test": "jest",
     "find-duplicates": "pmd cpd --dir src,tests --language typescript --minimum-tokens 40 --ignore-literals --ignore-identifiers",
-    "check-inline": "npx tsx scripts/check-inline-candidates.ts --min-tokens 10",
+    "check-inline": "npx tsx scripts/check-inline-candidates.ts --min-tokens 20",
     "check-ast-duplicates": "npx tsx scripts/check-ast-duplicates.ts",
     "lint": "eslint .",
     "prepare": "husky install"

@@ -52,7 +52,7 @@ export default [
       "max-lines-per-function": [
         "error",
         {
-          max: 80,
+          max: 50,
           skipBlankLines: true,
           skipComments: true,
         },
@@ -60,7 +60,7 @@ export default [
       "max-lines": [
         "error",
         {
-          max: 700,
+          max: 80,
           skipBlankLines: true,
           skipComments: true,
         },

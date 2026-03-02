@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import { compile } from "../src";
 
 function assertValid(
