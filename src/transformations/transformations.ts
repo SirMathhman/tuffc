@@ -12,3 +12,4 @@ export { wrapBlockExpressionInInit } from "./transformations-block";
 export { transformIfElseToTernary } from "./transformations-if-expr";
 export { transformComparisonOperators } from "./transformations-comparison";
 export { transformWhileLoops } from "./transformations-while";
+export { transformFnDeclarations } from "./transformations-fn";

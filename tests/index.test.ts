@@ -329,4 +329,12 @@ describe("The compiler can compile", () => {
       7,
     );
   });
+
+  it("uses mutable variable in closure with compound assignment", () => {
+    assertValid(
+      "let mut counter = 0; fn add() : Void => counter += read<I32>(); add(); counter",
+      "1",
+      1,
+    );
+  });
 });

@@ -7,7 +7,10 @@ function skipWhitespace(source: string, idx: number): number {
   return idx;
 }
 
-function extractCondition(source: string, idx: number): { cond: string; endIdx: number } | null {
+function extractCondition(
+  source: string,
+  idx: number,
+): { cond: string; endIdx: number } | null {
   if (source[idx] !== "(") return null;
   let parenDepth = 0;
   let condEnd = idx;
@@ -23,7 +26,10 @@ function extractCondition(source: string, idx: number): { cond: string; endIdx: 
   return { cond: source.substring(idx + 1, condEnd).trim(), endIdx: condEnd };
 }
 
-function extractBody(source: string, idx: number): { body: string; endIdx: number } | null {
+function extractBody(
+  source: string,
+  idx: number,
+): { body: string; endIdx: number } | null {
   if (source[idx] !== "{") return null;
   let braceDepth = 0;
   let bodyEnd = idx;
@@ -35,13 +41,14 @@ function extractBody(source: string, idx: number): { body: string; endIdx: numbe
     }
     bodyEnd++;
   }
-  return {
-    body: source.substring(idx, bodyEnd + 1).trim(),
-    endIdx: bodyEnd + 1,
-  };
+  const body = source.substring(idx, bodyEnd + 1).trim();
+  return { body, endIdx: bodyEnd + 1 };
 }
 
-function parseWhileAt(source: string, whileIdx: number): { text: string; nextIdx: number } | null {
+function parseWhileAt(
+  source: string,
+  whileIdx: number,
+): { text: string; nextIdx: number } | null {
   const cond = extractCondition(source, skipWhitespace(source, whileIdx + 5));
   if (cond === null) return null;
   const body = extractBody(source, skipWhitespace(source, cond.endIdx + 1));

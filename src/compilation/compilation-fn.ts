@@ -4,40 +4,7 @@ import {
   transformComparisonOperators,
   transformReadPatterns,
 } from "../transformations/transformations";
-
-function findMatchingParen(text: string, openIdx: number): number {
-  let depth = 0;
-  let i = openIdx;
-  while (i < text.length) {
-    if (text[i] === "(") depth++;
-    else if (text[i] === ")") {
-      depth--;
-      if (depth === 0) return i;
-    }
-    i++;
-  }
-  return -1;
-}
-
-function extractParamNames(paramsRaw: string): string {
-  const trimmed = paramsRaw.trim();
-  if (trimmed === "") return "";
-  const parts = trimmed.split(",");
-  let out = "";
-  let i = 0;
-  while (i < parts.length) {
-    const p = parts[i].trim();
-    const colonIdx = p.indexOf(":");
-    let name = p;
-    if (colonIdx !== -1) {
-      name = p.substring(0, colonIdx).trim();
-    }
-    if (out !== "") out += ", ";
-    out += name;
-    i++;
-  }
-  return out;
-}
+import { findMatchingParen, extractParamNames } from "./compilation-fn-helpers";
 
 function buildFnIife(
   fnName: string,

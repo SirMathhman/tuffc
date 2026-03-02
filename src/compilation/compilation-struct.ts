@@ -14,12 +14,16 @@ function rewriteLiterals(source: string, names: string[]): string {
     let k = 0;
     while (k < names.length) {
       const name = names[k];
-      if (source.substring(i, i + name.length) === name && !(i > 0 && isIdChar(source[i - 1]))) {
+      if (
+        source.substring(i, i + name.length) === name &&
+        !(i > 0 && isIdChar(source[i - 1]))
+      ) {
         const braceStart = skipWs(source, i + name.length);
         if (source[braceStart] === "{") {
           const braceEnd = findBraceEnd(source, braceStart);
           if (braceEnd !== -1) {
-            out += "{" + normalizeFields(source.substring(braceStart + 1, braceEnd)) + "}";
+            const fields = source.substring(braceStart + 1, braceEnd);
+            out += "{" + normalizeFields(fields) + "}";
             i = braceEnd + 1;
             used = true;
             break;
@@ -73,7 +77,8 @@ function normalizeStructSyntax(source: string): string {
   if (source.indexOf("struct ") === -1) return source;
   const parsed = parseStructPrefix(source);
   if (parsed.names.length === 0) return source;
-  return stripStructTypes(rewriteLiterals(parsed.rest, parsed.names), parsed.names).trim();
+  const rewritten = rewriteLiterals(parsed.rest, parsed.names);
+  return stripStructTypes(rewritten, parsed.names).trim();
 }
 
 export { normalizeStructSyntax };

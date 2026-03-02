@@ -10,6 +10,7 @@ import {
   transformIfElseToTernary,
   transformComparisonOperators,
   transformWhileLoops,
+  transformFnDeclarations,
 } from "../transformations/transformations";
 import { generateFunctionFromLastStatement } from "./compilation-helpers";
 import { verifyLetStatement } from "./compilation-verification";
@@ -49,7 +50,9 @@ function compileLetStatement(
       transformAddressOf(
         transformComparisonOperators(
           stripTypeAnnotations(
-            transformWhileLoops(transformReadPatterns(processedSource)),
+            transformFnDeclarations(
+              transformWhileLoops(transformReadPatterns(processedSource)),
+            ),
           ),
         ),
       ),
