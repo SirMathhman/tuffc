@@ -200,6 +200,32 @@ function extractReadType(stmt: string): string {
   return stmt.substring(typeStart, typeEnd);
 }
 
+function extractLiteralType(stmt: string): string {
+  const eqIndex = stmt.indexOf("=");
+  if (eqIndex === -1) {
+    return "";
+  }
+  const afterEq = stmt.substring(eqIndex + 1).trim();
+  let digitEnd = 0;
+  while (digitEnd < afterEq.length) {
+    const c = afterEq[digitEnd];
+    if ((c >= "0" && c <= "9") || c === ".") {
+      digitEnd++;
+    } else {
+      break;
+    }
+  }
+  if (digitEnd === 0) {
+    return "";
+  }
+  const _numericPart = afterEq.substring(0, digitEnd);
+  const suffix = afterEq.substring(digitEnd).trim();
+  if (suffix === "") {
+    return "I32";
+  }
+  return suffix;
+}
+
 interface VariableInfo {
   name: string;
   declaredType: string;
@@ -234,11 +260,14 @@ function buildVariableMetadata(source: string): VariableInfo[] {
       const name = extractIdentifier(stmt, 4);
       const declaredType = extractDeclaredType(stmt);
       const readType = extractReadType(stmt);
+      const literalType = extractLiteralType(stmt);
       let inferredType: string;
       if (declaredType !== "") {
         inferredType = declaredType;
-      } else {
+      } else if (readType !== "") {
         inferredType = readType;
+      } else {
+        inferredType = literalType;
       }
       metadata.push({ name, declaredType, inferredType, stmt });
     }
@@ -442,7 +471,9 @@ export function compile(source: string): Result<string, CompileError> {
     if (lastStatement === "") {
       return ok(`(function() { ${stripped} return 0; })()`);
     }
-    return ok(`(function() { ${beforeLastStatement} return ${lastStatement}; })()`);
+    return ok(
+      `(function() { ${beforeLastStatement} return ${lastStatement}; })()`,
+    );
   }
 
   if (trimmed.indexOf("read<") !== -1) {

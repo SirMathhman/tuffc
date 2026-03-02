@@ -8,38 +8,24 @@ function assertValid(
   const result = compile(source);
   if (result.type === "ok") {
     if (typeof stdInOrExpected === "number") {
-      // Old signature: assertValid(source, expected)
-      const fn = new Function(`return ${result.value}`);
-      expect(fn()).toBe(stdInOrExpected);
+      expect(new Function(`return ${result.value}`)()).toBe(stdInOrExpected);
     } else {
-      // New signature: assertValid(source, stdIn, expected)
-      const stdIn = stdInOrExpected;
       const values: number[] = [];
-      let current = "";
-      let i = 0;
-      while (i < stdIn.length) {
-        const char = stdIn[i];
-        if (char === " " || char === "\t" || char === "\n") {
-          if (current !== "") {
-            values.push(Number(current));
-            current = "";
-          }
-        } else {
+      let current = "", i = 0;
+      while (i < stdInOrExpected.length) {
+        const char = stdInOrExpected[i];
+        if (char !== " " && char !== "\t" && char !== "\n") {
           current += char;
+        } else if (current) {
+          values.push(Number(current));
+          current = "";
         }
         i++;
       }
-      if (current !== "") {
-        values.push(Number(current));
-      }
+      if (current) values.push(Number(current));
       let index = 0;
-      const read = (): number => {
-        const value = values[index];
-        index++;
-        return value;
-      };
-      const fn = new Function("read", `return ${result.value}`);
-      expect(fn(read)).toBe(expected);
+      const read = (): number => values[index++];
+      expect(new Function("read", `return ${result.value}`)(read)).toBe(expected);
     }
   } else {
     expect(result.error).toBeUndefined();
@@ -51,6 +37,7 @@ function assertInvalid(source: string): void {
   expect(result.type).toBe("err");
 }
 
+// eslint-disable-next-line max-lines-per-function
 describe("The compiler can compile", () => {
   it("an empty program", () => {
     assertValid("", 0);
@@ -106,5 +93,17 @@ describe("The compiler can compile", () => {
 
   it("rejects type mismatch when assigning variable to variable", () => {
     assertInvalid("let x = read<U16>(); let y : U8 = x;");
+  });
+
+  it("rejects type mismatch for literal assigned to incompatible declared type (U16)", () => {
+    assertInvalid("let x = 0; let y : U16 = x;");
+  });
+
+  it("rejects type mismatch for literal assigned to incompatible declared type (I64)", () => {
+    assertInvalid("let x = 0; let y : I64 = x;");
+  });
+
+  it("allows literal assigned to matching declared type (I32)", () => {
+    assertValid("let x = 0; let y : I32 = x;", 0);
   });
 });
