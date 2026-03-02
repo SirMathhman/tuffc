@@ -50,11 +50,20 @@ function extractNumericPart(
   return { numericPart, endIndex };
 }
 
+function isReadPattern(source: string): boolean {
+  return source.startsWith("read<") && source.endsWith("()");
+}
+
 export function compile(source: string): Result<string, string> {
   const trimmed = source.trim();
 
   if (trimmed === "") {
     return ok("0");
+  }
+
+  // Check for read<TYPE>() pattern
+  if (isReadPattern(trimmed)) {
+    return ok("read()");
   }
 
   // Try parsing as a full number first
