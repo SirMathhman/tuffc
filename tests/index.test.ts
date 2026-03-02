@@ -205,4 +205,8 @@ describe("The compiler can compile", () => {
   it("rejects type mismatch between block return type and variable type", () => {
     assertInvalid("let x : U8 = { let y : U16 = 100; y }; x");
   });
+
+  it("rejects access to variable outside its block scope", () => {
+    assertInvalid("let x : U16 = { let y : U8 = 100; y }; y");
+  });
 });

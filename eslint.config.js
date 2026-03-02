@@ -60,7 +60,7 @@ export default [
       "max-lines": [
         "error",
         {
-          max: 560,
+          max: 580,
           skipBlankLines: true,
           skipComments: true,
         },

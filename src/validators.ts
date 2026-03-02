@@ -254,18 +254,13 @@ function undeclaredVariableError(
 function varNotDeclaredHint(varName: string, usage: string): string {
   return `Declare '${varName}' using 'let ${varName}${usage}' before using it`;
 }
-function checkBlockScopes(source: string): Result<string, CompileError> | null {
-  const trimmed = source.trim();
-  if (!trimmed.startsWith("{")) {
-    return null;
-  }
-  const blockEnd = findBlockEnd(trimmed);
-  if (blockEnd === -1 || blockEnd >= trimmed.length - 1) {
-    return null;
-  }
-  const blockContent = trimmed.substring(1, blockEnd);
-  const afterBlock = trimmed.substring(blockEnd + 1).trim();
-  if (afterBlock === "") {
+
+function checkBlockScopeViolation(
+  blockContent: string,
+  afterBlockText: string,
+  source: string,
+): Result<string, CompileError> | null {
+  if (afterBlockText === "") {
     return null;
   }
   const blockMetadata = buildVariableMetadata(blockContent);
@@ -275,8 +270,8 @@ function checkBlockScopes(source: string): Result<string, CompileError> | null {
     blockVarNames.add(blockMetadata[mi].name);
     mi++;
   }
-  const identifier = extractIdentifier(afterBlock, 0);
-  if (identifier !== afterBlock || !blockVarNames.has(identifier)) {
+  const identifier = extractIdentifier(afterBlockText, 0);
+  if (identifier !== afterBlockText || !blockVarNames.has(identifier)) {
     return null;
   }
   return err(
@@ -288,13 +283,44 @@ function checkBlockScopes(source: string): Result<string, CompileError> | null {
     ),
   );
 }
+function checkBlockScopes(source: string): Result<string, CompileError> | null {
+  const trimmed = source.trim();
+  if (trimmed.startsWith("{")) {
+    const blockEnd = findBlockEnd(trimmed);
+    if (blockEnd === -1 || blockEnd >= trimmed.length - 1) {
+      return null;
+    }
+    const blockContent = trimmed.substring(1, blockEnd);
+    const afterBlock = trimmed.substring(blockEnd + 1).trim();
+    return checkBlockScopeViolation(blockContent, afterBlock, source);
+  }
+  const processed = processBlockAssignment(source);
+  if (processed === null) {
+    return null;
+  }
+  const { blockContent, blockEnd, afterEq } = processed;
+  let afterBlockWithoutBrace = afterEq.substring(blockEnd + 1).trim();
+  if (afterBlockWithoutBrace.startsWith(";")) {
+    afterBlockWithoutBrace = afterBlockWithoutBrace.substring(1).trim();
+  }
+  return checkBlockScopeViolation(blockContent, afterBlockWithoutBrace, source);
+}
 
 interface BlockAssignment {
   beforeEq: string;
   afterEq: string;
 }
 
-function extractBlockAssignmentInfo(source: string): BlockAssignment | null {
+interface ProcessedBlock {
+  blockInfo: BlockAssignment;
+  blockContent: string;
+  blockEnd: number;
+  afterEq: string;
+}
+
+function processBlockAssignment(
+  source: string,
+): ProcessedBlock | null {
   const trimmed = source.trim();
   if (trimmed.indexOf("let ") === -1 || trimmed.indexOf("=") === -1) {
     return null;
@@ -305,25 +331,26 @@ function extractBlockAssignmentInfo(source: string): BlockAssignment | null {
   if (!afterEq.startsWith("{")) {
     return null;
   }
-  return { beforeEq, afterEq };
-}
-
-function checkBlockExpressions(
-  source: string,
-): Result<string, CompileError> | null {
-  const blockInfo = extractBlockAssignmentInfo(source);
-  if (blockInfo === null) {
-    return null;
-  }
-  const { afterEq } = blockInfo;
   const blockEnd = findBlockEnd(afterEq);
-  if (blockEnd === -1) {
+  if (blockEnd === -1 || blockEnd >= afterEq.length - 1) {
     return null;
   }
   const blockContent = extractBlockContent(afterEq, blockEnd);
   if (blockContent === "") {
     return null;
   }
+  const blockInfo = { beforeEq, afterEq };
+  return { blockInfo, blockContent, blockEnd, afterEq };
+}
+
+function checkBlockExpressions(
+  source: string,
+): Result<string, CompileError> | null {
+  const processed = processBlockAssignment(source);
+  if (processed === null) {
+    return null;
+  }
+  const { blockContent } = processed;
   const stmts = parseBlockStatements(blockContent);
   if (stmts.length === 0) {
     return null;
@@ -344,11 +371,12 @@ function checkBlockExpressions(
 function checkBlockExpressionType(
   source: string,
 ): Result<string, CompileError> | null {
-  const blockInfo = extractBlockAssignmentInfo(source);
-  if (blockInfo === null) {
+  const processed = processBlockAssignment(source);
+  if (processed === null) {
     return null;
   }
-  const { beforeEq, afterEq } = blockInfo;
+  const { blockInfo, afterEq } = processed;
+  const { beforeEq } = blockInfo;
   const declaredType = extractDeclaredType(beforeEq);
   if (declaredType === "") {
     return null;
