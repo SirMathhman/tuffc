@@ -39,6 +39,11 @@ export default [
           message:
             "for loops are not allowed. Use while, map, reduce, or other alternatives.",
         },
+        {
+          selector: "ConditionalExpression",
+          message:
+            "Ternary operators are not allowed. Use if statements instead.",
+        },
       ],
       "@typescript-eslint/consistent-type-definitions": ["error", "interface"],
     },

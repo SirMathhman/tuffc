@@ -33,7 +33,12 @@ export function compile(source: string): Result<string, string> {
 
   // Check if input starts with minus sign
   const isNegative = trimmed[0] === "-";
-  const numericStart = isNegative ? 1 : 0;
+  let numericStart: number;
+  if (isNegative) {
+    numericStart = 1;
+  } else {
+    numericStart = 0;
+  }
 
   // Extract numeric part (skip minus sign if present)
   let numericPart = "";
@@ -63,7 +68,13 @@ export function compile(source: string): Result<string, string> {
         );
       }
 
-      return ok(isNegative ? "-" + numericPart : numericPart);
+      let resultValue: string;
+      if (isNegative) {
+        resultValue = "-" + numericPart;
+      } else {
+        resultValue = numericPart;
+      }
+      return ok(resultValue);
     }
   }
 
