@@ -102,8 +102,8 @@ describe("The compiler can compile", () => {
     assertInvalid("let x = 0; let y : U16 = x;");
   });
 
-  it("rejects type mismatch for literal assigned to incompatible declared type (I64)", () => {
-    assertInvalid("let x = 0; let y : I64 = x;");
+  it("allows literal assigned to wider signed type (I64)", () => {
+    assertValid("let x = 0; let y : I64 = x;", 0);
   });
 
   it("allows literal assigned to matching declared type (I32)", () => {
@@ -124,5 +124,9 @@ describe("The compiler can compile", () => {
 
   it("rejects reassignment of undefined variable", () => {
     assertInvalid("x = read<I32>(); x");
+  });
+
+  it("allows implicit upconversion from U8 to U16", () => {
+    assertValid("let x = read<U8>(); let y : U16 = x; y", "100", 100);
   });
 });

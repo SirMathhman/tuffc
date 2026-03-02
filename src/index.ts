@@ -381,13 +381,22 @@ function checkAssignmentTypeMatch(
       let j = 0;
       while (j < metadata.length) {
         if (metadata[j].name === assignedVar) {
-          if (metadata[j].inferredType !== varInfo.declaredType) {
+          const fromType = metadata[j].inferredType;
+          const toType = varInfo.declaredType;
+          const allowed = fromType === toType ||
+            (fromType === "U8" && ["U16", "U32", "U64", "I16", "I32", "I64"].indexOf(toType) !== -1) ||
+            (fromType === "U16" && ["U32", "U64", "I32", "I64"].indexOf(toType) !== -1) ||
+            (fromType === "U32" && ["U64", "I64"].indexOf(toType) !== -1) ||
+            (fromType === "I8" && ["I16", "I32", "I64"].indexOf(toType) !== -1) ||
+            (fromType === "I16" && ["I32", "I64"].indexOf(toType) !== -1) ||
+            (fromType === "I32" && toType === "I64");
+          if (!allowed) {
             return err(
               createCompileError(
                 varInfo.stmt,
-                `Type mismatch: variable '${assignedVar}' has type '${metadata[j].inferredType}' but '${varInfo.declaredType}' was expected`,
+                `Type mismatch: variable '${assignedVar}' has type '${fromType}' but '${toType}' was expected`,
                 "Variable assignments must match the declared type",
-                `Change the declared type to '${metadata[j].inferredType}' or assign a different variable`,
+                `Change the declared type to '${fromType}' or assign a different variable`,
               ),
             );
           }
