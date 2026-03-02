@@ -11,12 +11,18 @@ export function compile(source: string): string {
     return trimmed;
   }
 
-  // Try extracting numeric prefix (handles type suffixes like U8, I32, etc.)
+  // Check if input starts with minus sign
+  const isNegative = trimmed[0] === "-";
+  const numericStart = isNegative ? 1 : 0;
+
+  // Extract numeric part (skip minus sign if present)
   let numericPart = "";
-  for (let i = 0; i < trimmed.length; i++) {
+  let endIndex = numericStart;
+  for (let i = numericStart; i < trimmed.length; i++) {
     const char = trimmed[i];
     if ((char >= "0" && char <= "9") || char === ".") {
       numericPart += char;
+      endIndex = i + 1;
     } else {
       break;
     }
@@ -25,7 +31,17 @@ export function compile(source: string): string {
   if (numericPart !== "") {
     num = Number(numericPart);
     if (!Number.isNaN(num)) {
-      return numericPart;
+      // Check if there's a type suffix after the numeric part
+      const hasSuffix = endIndex < trimmed.length;
+
+      // Negative numbers with type suffixes are not allowed
+      if (isNegative && hasSuffix) {
+        throw new Error(
+          `Negative numbers with type suffixes are not allowed: ${trimmed}`,
+        );
+      }
+
+      return isNegative ? "-" + numericPart : numericPart;
     }
   }
 

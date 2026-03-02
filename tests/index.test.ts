@@ -21,4 +21,8 @@ describe("The compiler can compile", () => {
     const result = execute("100U8");
     expect(result).toBe(100);
   });
+
+  it("rejects negative numbers with type suffix", () => {
+    expect(() => execute("-100U8")).toThrow();
+  });
 });
