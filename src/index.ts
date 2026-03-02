@@ -458,17 +458,32 @@ function checkReassignments(
     if (identifier !== beforeEq) {
       continue;
     }
+    let found = false;
     for (const metaVar of metadata) {
-      if (metaVar.name === identifier && !metaVar.isMutable) {
-        return err(
-          createCompileError(
-            stmt,
-            `Cannot reassign immutable variable: '${identifier}'`,
-            "Only mutable variables declared with 'let mut' can be reassigned",
-            `Change the declaration to 'let mut ${identifier} = ...' to allow reassignment`,
-          ),
-        );
+      if (metaVar.name === identifier) {
+        found = true;
+        if (!metaVar.isMutable) {
+          return err(
+            createCompileError(
+              stmt,
+              `Cannot reassign immutable variable: '${identifier}'`,
+              "Only mutable variables declared with 'let mut' can be reassigned",
+              `Change the declaration to 'let mut ${identifier} = ...' to allow reassignment`,
+            ),
+          );
+        }
+        break;
       }
+    }
+    if (!found) {
+      return err(
+        createCompileError(
+          stmt,
+          `Cannot reassign undefined variable: '${identifier}'`,
+          "Variable must be declared before reassignment",
+          `Add a declaration: 'let mut ${identifier} = ...'`,
+        ),
+      );
     }
   }
   return ok(void 0);
@@ -573,6 +588,11 @@ export function compile(source: string): Result<string, CompileError> {
   }
 
   if (trimmed.indexOf("read<") !== -1) {
+    const emptyMetadata: VariableInfo[] = [];
+    const reassignRes = checkReassignments(trimmed, emptyMetadata);
+    if (reassignRes.type === "err") {
+      return reassignRes;
+    }
     const transformed = transformReadPatterns(trimmed);
     return ok(transformed);
   }

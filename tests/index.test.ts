@@ -121,4 +121,8 @@ describe("The compiler can compile", () => {
   it("rejects reassignment of immutable variable", () => {
     assertInvalid("let x = 0; x = read<I32>(); x");
   });
+
+  it("rejects reassignment of undefined variable", () => {
+    assertInvalid("x = read<I32>(); x");
+  });
 });
