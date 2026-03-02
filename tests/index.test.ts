@@ -193,4 +193,8 @@ describe("The compiler can compile", () => {
   it("rejects use of variable outside its block scope", () => {
     assertInvalid("{ let x = 0; } x");
   });
+
+  it("evaluates let binding with block expression to block result", () => {
+    assertValid("let x = { let y = 100; y }; x", 100);
+  });
 });

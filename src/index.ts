@@ -250,12 +250,54 @@ function extractReadType(stmt: string): string {
   return stmt.substring(typeStart, typeEnd);
 }
 
+function extractBlockExpressionType(blockStr: string): string {
+  if (!blockStr.startsWith("{")) {
+    return "";
+  }
+  const blockEnd = findBlockEnd(blockStr);
+  if (blockEnd === -1) {
+    return "";
+  }
+  const blockContent = blockStr.substring(1, blockEnd);
+  const blockStmts = splitStatementsKeepBlocks(blockContent);
+  if (blockStmts.length === 0) {
+    return "I32";
+  }
+  const lastStmt = blockStmts[blockStmts.length - 1].trim();
+  if (lastStmt === "" || lastStmt === "{}") {
+    return "I32";
+  }
+  if (lastStmt.substring(0, 4) === "let ") {
+    const stmtMetadata = buildVariableMetadata(lastStmt);
+    if (stmtMetadata.length > 0) {
+      return stmtMetadata[0].inferredType;
+    }
+    return "";
+  }
+  const varName = extractIdentifier(lastStmt, 0);
+  if (varName !== "") {
+    const blockMetadata = buildVariableMetadata(blockContent);
+    let mi = 0;
+    while (mi < blockMetadata.length) {
+      if (blockMetadata[mi].name === varName) {
+        return blockMetadata[mi].inferredType;
+      }
+      mi++;
+    }
+  }
+  return "";
+}
+
 function extractLiteralType(stmt: string): string {
   const eqIndex = stmt.indexOf("=");
   if (eqIndex === -1) {
     return "";
   }
   const afterEq = extractAfterEq(stmt);
+  const blockType = extractBlockExpressionType(afterEq.trim());
+  if (blockType !== "") {
+    return blockType;
+  }
   let digitEnd = 0;
   while (digitEnd < afterEq.length) {
     const c = afterEq[digitEnd];
@@ -1152,6 +1194,49 @@ function checkBlockScopes(source: string): Result<string, CompileError> | null {
   );
 }
 
+function wrapBlockExpressionInInit(source: string): string {
+  if (source.indexOf("let ") === -1 || source.indexOf("=") === -1) {
+    return source;
+  }
+
+  const eqIndex = source.indexOf("=");
+  const beforeEq = source.substring(0, eqIndex).trim();
+  const afterEq = source.substring(eqIndex + 1).trim();
+
+  if (!afterEq.startsWith("{")) {
+    return source;
+  }
+
+  const blockEnd = findBlockEnd(afterEq);
+  if (blockEnd === -1) {
+    return source;
+  }
+
+  const block = afterEq.substring(0, blockEnd + 1);
+  const afterBlock = afterEq.substring(blockEnd + 1);
+
+  const blockContent = block.substring(1, block.length - 1).trim();
+  const stmts = blockContent
+    .split(";")
+    .map((s) => s.trim())
+    .filter((s) => s);
+
+  if (stmts.length > 0) {
+    const lastStmt = stmts[stmts.length - 1];
+    if (!lastStmt.startsWith("let ")) {
+      const beforeLastStmts = stmts.slice(0, -1).join("; ");
+      let beforeLastPart = "";
+      if (beforeLastStmts !== "") {
+        beforeLastPart = beforeLastStmts + "; ";
+      }
+      const newBlock = `{ ${beforeLastPart} return ${lastStmt}; }`;
+      return beforeEq + " = (function() " + newBlock + ")()" + afterBlock;
+    }
+  }
+
+  return source;
+}
+
 function compileLetStatement(
   source: string,
 ): Result<string, CompileError> | null {
@@ -1159,12 +1244,15 @@ function compileLetStatement(
   if (trimmed.indexOf("let ") === -1) {
     return null;
   }
-  const metadata = buildVariableMetadata(trimmed);
-  const verRes = verifyLetStatement(trimmed, metadata);
+  const processedSource = wrapBlockExpressionInInit(trimmed);
+  const metadata = buildVariableMetadata(processedSource);
+  const verRes = verifyLetStatement(processedSource, metadata);
   if (verRes.type === "err") return verRes;
   const code = stripNumericTypeSuffixes(
     transformDereference(
-      transformAddressOf(stripTypeAnnotations(transformReadPatterns(trimmed))),
+      transformAddressOf(
+        stripTypeAnnotations(transformReadPatterns(processedSource)),
+      ),
     ),
   );
   let braceDepth = 0;
