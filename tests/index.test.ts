@@ -62,8 +62,7 @@ describe("The compiler can compile", () => {
   });
 
   it("rejects U8 values outside valid range", () => {
-    const result = compile("256U8");
-    expect(result.type).toBe("err");
+    assertInvalid("256U8");
   });
 
   it("reads a U8 value from input", () => {

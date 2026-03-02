@@ -54,6 +54,29 @@ function validateTypeSuffix(
   return ok(void 0);
 }
 
+function identifierAfterDeref(source: string, pos: number): string {
+  return extractIdentifier(source, pos + 1);
+}
+
+function isDigit(c: string): boolean {
+  return c >= "0" && c <= "9";
+}
+
+function isAlpha(c: string): boolean {
+  return (c >= "a" && c <= "z") || (c >= "A" && c <= "Z");
+}
+
+function pushIfNonEmpty(statements: string[], current: string): void {
+  if (current.trim() !== "") {
+    statements.push(current.trim());
+  }
+}
+
+function extractAfterEq(stmt: string): string {
+  const eqIndex = stmt.indexOf("=");
+  return stmt.substring(eqIndex + 1).trim();
+}
+
 function extractNumericPart(
   source: string,
   startIndex: number,
@@ -63,7 +86,7 @@ function extractNumericPart(
   let i = startIndex;
   while (i < source.length) {
     const char = source[i];
-    if ((char >= "0" && char <= "9") || char === ".") {
+    if (isDigit(char) || char === ".") {
       numericPart += char;
       endIndex = i + 1;
       i++;
@@ -80,18 +103,14 @@ function skipTypeAnnotation(source: string, i: number): number {
     while (j < source.length) {
       const char = source[j];
       const isTypePart =
-        (char >= "a" && char <= "z") ||
-        (char >= "A" && char <= "Z") ||
-        (char >= "0" && char <= "9") ||
+        isAlpha(char) ||
+        isDigit(char) ||
         char === "<" ||
         char === ">" ||
         char === "," ||
         char === "*";
       const isSpace =
-        char === " " &&
-        j + 1 < source.length &&
-        ((source[j + 1] >= "a" && source[j + 1] <= "z") ||
-          (source[j + 1] >= "A" && source[j + 1] <= "Z"));
+        char === " " && j + 1 < source.length && isAlpha(source[j + 1]);
       if (isTypePart || isSpace) {
         j++;
       } else {
@@ -106,43 +125,6 @@ function skipTypeAnnotation(source: string, i: number): number {
   return i;
 }
 
-function handleNumericSuffix(
-  source: string,
-  i: number,
-): {
-  newIndex: number;
-  result: string;
-} {
-  const isNumber =
-    (source[i] >= "0" && source[i] <= "9") ||
-    (source[i] === "-" &&
-      i + 1 < source.length &&
-      source[i + 1] >= "0" &&
-      source[i + 1] <= "9");
-
-  if (!isNumber) {
-    return { newIndex: i, result: "" };
-  }
-
-  let j = i;
-  if (source[j] === "-") j++;
-  while (j < source.length && source[j] >= "0" && source[j] <= "9") {
-    j++;
-  }
-  const numericPart = source.substring(i, j);
-
-  let suffixEnd = j;
-  while (
-    suffixEnd < source.length &&
-    ((source[suffixEnd] >= "a" && source[suffixEnd] <= "z") ||
-      (source[suffixEnd] >= "A" && source[suffixEnd] <= "Z"))
-  ) {
-    suffixEnd++;
-  }
-
-  return { newIndex: suffixEnd, result: numericPart };
-}
-
 function stripTypeAnnotations(source: string): string {
   let result = "";
   let i = 0;
@@ -155,7 +137,27 @@ function stripTypeAnnotations(source: string): string {
       if (newI > i) {
         i = newI;
       } else {
-        const suffix = handleNumericSuffix(source, i);
+        const suffix = (() => {
+          const isNumber =
+            isDigit(source[i]) ||
+            (source[i] === "-" &&
+              i + 1 < source.length &&
+              isDigit(source[i + 1]));
+          if (!isNumber) {
+            return { newIndex: i, result: "" };
+          }
+          let j = i;
+          if (source[j] === "-") j++;
+          while (j < source.length && isDigit(source[j])) {
+            j++;
+          }
+          const numericPart = source.substring(i, j);
+          let suffixEnd = j;
+          while (suffixEnd < source.length && isAlpha(source[suffixEnd])) {
+            suffixEnd++;
+          }
+          return { newIndex: suffixEnd, result: numericPart };
+        })();
         if (suffix.newIndex > i) {
           result += suffix.result;
           i = suffix.newIndex;
@@ -183,18 +185,14 @@ function splitStatementsKeepBlocks(source: string): string[] {
       braceDepth--;
       current += char;
     } else if (char === ";" && braceDepth === 0) {
-      if (current.trim() !== "") {
-        statements.push(current.trim());
-      }
+      pushIfNonEmpty(statements, current);
       current = "";
     } else {
       current += char;
     }
     i++;
   }
-  if (current.trim() !== "") {
-    statements.push(current.trim());
-  }
+  pushIfNonEmpty(statements, current);
   return statements;
 }
 
@@ -257,11 +255,11 @@ function extractLiteralType(stmt: string): string {
   if (eqIndex === -1) {
     return "";
   }
-  const afterEq = stmt.substring(eqIndex + 1).trim();
+  const afterEq = extractAfterEq(stmt);
   let digitEnd = 0;
   while (digitEnd < afterEq.length) {
     const c = afterEq[digitEnd];
-    if ((c >= "0" && c <= "9") || c === ".") {
+    if (isDigit(c) || c === ".") {
       digitEnd++;
     } else {
       break;
@@ -270,7 +268,6 @@ function extractLiteralType(stmt: string): string {
   if (digitEnd === 0) {
     return "";
   }
-  const _numericPart = afterEq.substring(0, digitEnd);
   const suffix = afterEq.substring(digitEnd).trim();
   if (suffix === "") {
     return "I32";
@@ -333,8 +330,7 @@ function validateReassignment(
       ),
     );
   }
-  const eqIndex = stmt.indexOf("=");
-  const afterEq = stmt.substring(eqIndex + 1).trim();
+  const afterEq = extractAfterEq(stmt);
   const assignedType = extractReadType(afterEq);
   if (assignedType !== "") {
     const varType = metaVar.inferredType;
@@ -364,8 +360,8 @@ function validateReassignment(
 function forEachVariable(
   metadata: VariableInfo[],
   callback: (
-    varInfo: VariableInfo,
-    index: number,
+    _varInfo: VariableInfo,
+    _index: number,
   ) => Result<void, CompileError>,
 ): Result<void, CompileError> {
   let i = 0;
@@ -469,9 +465,9 @@ function findVariable(
 }
 
 type OperatorChecker = (
-  varName: string,
-  varInfo: VariableInfo | undefined,
-  source: string,
+  _varName: string,
+  _varInfo: VariableInfo | undefined,
+  _source: string,
 ) => Result<void, CompileError>;
 
 function checkOperatorOnVariables(
@@ -512,7 +508,7 @@ function checkOperatorOnVariables(
           const varInfo = findVariable(varName, metadata);
           const checkRes = checker(varName, varInfo, source);
           if (checkRes.type === "err") return checkRes;
-          i = varStart + varName.length;
+          i = advancePast(varStart, varName);
         } else {
           i++;
         }
@@ -544,10 +540,10 @@ function undeclaredVariableError(
 function forEachAddressOf(
   source: string,
   callback: (
-    varName: string,
-    isMut: boolean,
-    position: number,
-    varEnd: number,
+    _varName: string,
+    _isMut: boolean,
+    _position: number,
+    _varEnd: number,
   ) => void,
 ): void {
   let i = 0;
@@ -561,8 +557,8 @@ function forEachAddressOf(
       }
       const varName = extractIdentifier(source, varStart);
       if (varName !== "") {
-        callback(varName, isMut, i, varStart + varName.length);
-        i = varStart + varName.length;
+        callback(varName, isMut, i, advancePast(varStart, varName));
+        i = advancePast(varStart, varName);
       } else {
         i++;
       }
@@ -572,22 +568,19 @@ function forEachAddressOf(
   }
 }
 
-function findDereferenceAssignments(source: string): Array<{
+interface DereferenceAssignment {
   varName: string;
   position: number;
   exprStart: number;
   exprEnd: number;
-}> {
-  const assignments: Array<{
-    varName: string;
-    position: number;
-    exprStart: number;
-    exprEnd: number;
-  }> = [];
+}
+
+function findDereferenceAssignments(source: string): DereferenceAssignment[] {
+  const assignments: DereferenceAssignment[] = [];
   let i = 0;
   while (i < source.length) {
     if (source[i] === "*") {
-      const varName = extractIdentifier(source, i + 1);
+      const varName = identifierAfterDeref(source, i);
       if (varName !== "") {
         const afterVar = i + 1 + varName.length;
         if (source.substring(afterVar, afterVar + 3) === " = ") {
@@ -668,6 +661,14 @@ function checkMixedPointerTypes(source: string): Result<void, CompileError> {
   return ok(void 0);
 }
 
+function varNotDeclaredHint(varName: string, usage: string): string {
+  return `Declare '${varName}' using 'let ${varName}${usage}' before using it`;
+}
+
+function advancePast(varStart: number, varName: string): number {
+  return varStart + varName.length;
+}
+
 function checkAddressOfOperator(
   source: string,
   metadata: VariableInfo[],
@@ -681,7 +682,7 @@ function checkAddressOfOperator(
         source,
         varName,
         "is referenced with address-of operator but never declared",
-        `Declare '${varName}' using 'let ${varName} = <value>;' before using &${varName}`,
+        varNotDeclaredHint(varName, " = <value>;"),
       );
     }
     return ok(void 0);
@@ -709,16 +710,17 @@ function checkPointerOperators(
         source,
         varName,
         "is dereferenced but never declared",
-        `Declare '${varName}' using 'let ${varName} : *<type> = <value>;' before using *${varName}`,
+        varNotDeclaredHint(varName, " : *<type> = <value>;"),
       );
     }
     if (!varInfo.declaredType.includes("*")) {
+      const t = varInfo.declaredType;
       return err(
         createCompileError(
           source,
-          `Cannot dereference non-pointer variable: '${varName}' has type '${varInfo.declaredType}' but attempted dereference requires pointer type`,
+          `Cannot dereference non-pointer variable: '${varName}' has type '${t}' but attempted dereference requires pointer type`,
           "Dereference operator (*) can only be applied to pointer types",
-          `Change '${varName}' to a pointer type (e.g., : *${varInfo.declaredType}) or use variable directly`,
+          `Change '${varName}' to a pointer type (e.g., : *${t}) or use variable directly`,
         ),
       );
     }
@@ -745,10 +747,7 @@ function checkUndefinedVariables(
     return ok(void 0);
   }
   const firstChar = trimmed[0];
-  const isLetter =
-    (firstChar >= "a" && firstChar <= "z") ||
-    (firstChar >= "A" && firstChar <= "Z");
-  if (!isLetter) {
+  if (!isAlpha(firstChar)) {
     return ok(void 0);
   }
   const identifier = extractIdentifier(trimmed, 0);
@@ -900,20 +899,21 @@ function transformDereference(source: string): string {
   let i = 0;
   while (i < source.length) {
     if (source[i] === "*") {
+      result += source.substring(lastEnd, i);
       if (assignmentSet.has(i)) {
         const assignment = assignments.find((a) => a.position === i)!;
-        result += source.substring(lastEnd, i);
         result += `${assignment.varName}.set(${source.substring(assignment.exprStart, assignment.exprEnd)})`;
         lastEnd = assignment.exprEnd;
         i = assignment.exprEnd;
       } else {
-        const varName = extractIdentifier(source, i + 1);
+        const varName = identifierAfterDeref(source, i);
         if (varName !== "") {
-          result += source.substring(lastEnd, i);
           result += `${varName}.get()`;
           lastEnd = i + 1 + varName.length;
           i = lastEnd;
         } else {
+          result += source[i];
+          lastEnd = i + 1;
           i++;
         }
       }
@@ -953,10 +953,10 @@ function stripNumericTypeSuffixes(code: string): string {
   let i = 0;
   while (i < code.length) {
     const char = code[i];
-    if (char >= "0" && char <= "9") {
+    if (isDigit(char)) {
       // Found start of a number
       let j = i;
-      while (j < code.length && code[j] >= "0" && code[j] <= "9") {
+      while (j < code.length && isDigit(code[j])) {
         j++;
       }
       // j is now at the first non-digit character
@@ -964,11 +964,7 @@ function stripNumericTypeSuffixes(code: string): string {
 
       // Check if there's a type suffix (U8, I32, etc.)
       let suffixEnd = j;
-      while (
-        suffixEnd < code.length &&
-        ((code[suffixEnd] >= "a" && code[suffixEnd] <= "z") ||
-          (code[suffixEnd] >= "A" && code[suffixEnd] <= "Z"))
-      ) {
+      while (suffixEnd < code.length && isAlpha(code[suffixEnd])) {
         suffixEnd++;
       }
 
@@ -1100,9 +1096,7 @@ function findBlockEnd(text: string): number {
   return -1;
 }
 
-function checkBlockScopes(
-  source: string,
-): Result<string, CompileError> | null {
+function checkBlockScopes(source: string): Result<string, CompileError> | null {
   const trimmed = source.trim();
 
   if (!trimmed.startsWith("{")) {
@@ -1137,9 +1131,7 @@ function checkBlockScopes(
     firstChar = "";
   }
 
-  const isLetter =
-    (firstChar >= "a" && firstChar <= "z") ||
-    (firstChar >= "A" && firstChar <= "Z");
+  const isLetter = isAlpha(firstChar);
 
   if (!isLetter) {
     return null;
