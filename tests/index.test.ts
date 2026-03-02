@@ -50,6 +50,11 @@ function assertValid(
   }
 }
 
+function assertInvalid(source: string): void {
+  const result = executeResult(source);
+  expect(result.type).toBe("err");
+}
+
 describe("The compiler can compile", () => {
   it("an empty program", () => {
     assertValid("", 0);
@@ -87,5 +92,9 @@ describe("The compiler can compile", () => {
 
   it("declares a variable without using it", () => {
     assertValid("let x : U8 = read<U8>();", "1 3", 0);
+  });
+
+  it("rejects duplicate variable declarations", () => {
+    assertInvalid("let x : U8 = read<U8>(); let x : U8 = read<U8>();");
   });
 });

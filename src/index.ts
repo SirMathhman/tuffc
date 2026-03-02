@@ -177,6 +177,85 @@ function validateNegativeWithSuffix(
   );
 }
 
+function splitByStatement(source: string): string[] {
+  const statements: string[] = [];
+  let current = "";
+  let i = 0;
+  while (i < source.length) {
+    const char = source[i];
+    if (char === ";") {
+      if (current.trim() !== "") {
+        statements.push(current.trim());
+      }
+      current = "";
+    } else {
+      current += char;
+    }
+    i++;
+  }
+  if (current.trim() !== "") {
+    statements.push(current.trim());
+  }
+  return statements;
+}
+
+function extractVariableName(stmt: string): string {
+  if (stmt.substring(0, 4) !== "let ") {
+    return "";
+  }
+  let varName = "";
+  let k = 4;
+  while (k < stmt.length) {
+    const c = stmt[k];
+    if (
+      (c >= "a" && c <= "z") ||
+      (c >= "A" && c <= "Z") ||
+      (c >= "0" && c <= "9") ||
+      c === "_"
+    ) {
+      varName += c;
+      k++;
+    } else {
+      break;
+    }
+  }
+  return varName;
+}
+
+function checkDuplicateVariables(source: string): Result<void, CompileError> {
+  const statements = splitByStatement(source);
+  const declaredVars: string[] = [];
+  let j = 0;
+  while (j < statements.length) {
+    const stmt = statements[j];
+    const varName = extractVariableName(stmt);
+    if (varName !== "") {
+      let isDuplicate = false;
+      let m = 0;
+      while (m < declaredVars.length) {
+        if (declaredVars[m] === varName) {
+          isDuplicate = true;
+          break;
+        }
+        m++;
+      }
+      if (isDuplicate) {
+        return err(
+          createCompileError(
+            stmt,
+            `Duplicate variable declaration: '${varName}' is already declared`,
+            "Variables can only be declared once in a scope",
+            `Use a different variable name, or remove the duplicate declaration`,
+          ),
+        );
+      }
+      declaredVars.push(varName);
+    }
+    j++;
+  }
+  return ok(void 0);
+}
+
 function parseNumberLiteral(trimmed: string): Result<string, CompileError> {
   // Try parsing as a full number first
   let num = Number(trimmed);
@@ -237,6 +316,10 @@ export function compile(source: string): Result<string, CompileError> {
 
   // Check for variable declarations
   if (containsLetDeclaration(trimmed)) {
+    const dupCheckResult = checkDuplicateVariables(trimmed);
+    if (dupCheckResult.type === "err") {
+      return dupCheckResult;
+    }
     const transformed = transformReadPatterns(trimmed);
     const stripped = stripTypeAnnotations(transformed);
     const wrapped = wrapInIife(stripped);
