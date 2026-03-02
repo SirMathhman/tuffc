@@ -1,6 +1,0 @@
-out expect fn readFile(path : *Str) : *Str;
-out expect fn writeFile(path : *Str, contents : *Str) : I32;
-out expect fn pathJoin(a : *Str, b : *Str) : *Str;
-out expect fn pathDirname(p : *Str) : *Str;
-out expect fn print(s : *Str) : I32;
-out expect fn printError(s : *Str) : I32;

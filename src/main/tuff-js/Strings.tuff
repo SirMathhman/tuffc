@@ -1,4 +1,0 @@
-extern fn strLength(s : *Str) : USize;
-
-out expect fn length(this : *Str) : USize;
-out actual fn length(this : *Str) : USize => strLength(this);

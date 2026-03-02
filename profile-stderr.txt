@@ -1,2 +1,0 @@
-Legacy option(s): --modules
-Module graph loading is always enabled for file compilation; remove these option(s).

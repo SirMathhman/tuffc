@@ -1,6 +1,0 @@
-let {
-    borrowcheckProgramImpl, selfhostBorrowcheckImplMarker
-}
- = selfhost::internal::borrowcheckImpl;
-out fn borrowcheckProgram(program: I32) : I32 => borrowcheckProgramImpl(program);
-out fn selfhostBorrowcheckMarker() : I32 => selfhostBorrowcheckImplMarker();

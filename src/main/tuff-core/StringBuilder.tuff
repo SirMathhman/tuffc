@@ -1,6 +1,0 @@
-extern type StringBuilder;
-
-out expect fn sbNew() : StringBuilder;
-out expect fn sbAppend(this : StringBuilder, s : *Str) : StringBuilder;
-out expect fn sbAppendChar(this : StringBuilder, code : I32) : StringBuilder;
-out expect fn sbBuild(this : StringBuilder) : *Str;
