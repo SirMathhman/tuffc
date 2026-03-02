@@ -103,14 +103,13 @@ function transformReadPatterns(source: string): string {
   return result;
 }
 
-
 function stripTypeAnnotations(source: string): string {
   let result = "";
   let i = 0;
   while (i < source.length) {
     let consumed = 1; // Default: consume one character and add it
     let addCurrent = true; // Default: add the current character
-    
+
     if (i < source.length - 5 && source.substring(i, i + 8) === "let mut ") {
       result += "let ";
       consumed = 8;
@@ -123,7 +122,7 @@ function stripTypeAnnotations(source: string): string {
       // Skip the colon and space
       consumed = 2;
       addCurrent = false;
-      // Skip the type name (letters, digits, angle brackets for generics, and *)
+      // Skip the type name (letters, digits, angle brackets for generics, *, and spaces between words like *mut I32)
       let j = i + consumed;
       while (j < source.length) {
         const char = source[j];
@@ -137,6 +136,14 @@ function stripTypeAnnotations(source: string): string {
           char === "*"
         ) {
           j++;
+        } else if (
+          char === " " &&
+          j + 1 < source.length &&
+          ((source[j + 1] >= "a" && source[j + 1] <= "z") ||
+            (source[j + 1] >= "A" && source[j + 1] <= "Z"))
+        ) {
+          // Continue through multi-word types like *mut I32
+          j++;
         } else {
           break;
         }
@@ -147,7 +154,7 @@ function stripTypeAnnotations(source: string): string {
         consumed++;
       }
     }
-    
+
     if (addCurrent) {
       result += source[i];
     }
@@ -161,13 +168,23 @@ function transformAddressOf(source: string): string {
   let i = 0;
   while (i < source.length) {
     if (source[i] === "&") {
-      i++;
-      const varName = extractIdentifier(source, i);
+      let varStart = i + 1;
+      let isMut = false;
+      if (source.substring(i + 1, i + 5) === "mut ") {
+        varStart = i + 5;
+        isMut = true;
+      }
+      const varName = extractIdentifier(source, varStart);
       if (varName !== "") {
-        result += `{_ptr:${varName}}`;
-        i += varName.length;
+        if (isMut) {
+          result += `{get:()=>${varName},set:(v)=>{${varName}=v}}`;
+        } else {
+          result += `{get:()=>${varName}}`;
+        }
+        i = varStart + varName.length;
       } else {
         result += "&";
+        i++;
       }
     } else {
       result += source[i];
@@ -184,8 +201,20 @@ function transformDereference(source: string): string {
     if (source[i] === "*") {
       const varName = extractIdentifier(source, i + 1);
       if (varName !== "") {
-        result += `${varName}._ptr`;
-        i += 1 + varName.length;
+        const afterVar = i + 1 + varName.length;
+        if (source.substring(afterVar, afterVar + 3) === " = ") {
+          // Pointer assignment: *varName = expr
+          let exprEnd = afterVar + 3;
+          while (exprEnd < source.length && source[exprEnd] !== ";") {
+            exprEnd++;
+          }
+          const expr = source.substring(afterVar + 3, exprEnd);
+          result += `${varName}.set(${expr})`;
+          i = exprEnd;
+        } else {
+          result += `${varName}.get()`;
+          i += 1 + varName.length;
+        }
       } else {
         result += source[i];
         i++;
@@ -502,6 +531,127 @@ function checkAssignmentTypeMatch(
   });
 }
 
+function findVariable(
+  varName: string,
+  metadata: VariableInfo[],
+): VariableInfo | undefined {
+  let i = 0;
+  while (i < metadata.length) {
+    if (metadata[i].name === varName) {
+      return metadata[i];
+    }
+    i++;
+  }
+  return undefined;
+}
+
+type OperatorChecker = (
+  varName: string,
+  varInfo: VariableInfo | undefined,
+  source: string,
+) => Result<void, CompileError>;
+
+function checkOperatorOnVariables(
+  source: string,
+  metadata: VariableInfo[],
+  operator: string,
+  checker: OperatorChecker,
+  shouldSkipTypeAnnotation: boolean,
+  prefixAfterOperator?: string,
+): Result<void, CompileError> {
+  const statements = splitStatements(source);
+  let si = 0;
+  while (si < statements.length) {
+    const stmt = statements[si];
+
+    // Skip type annotation part if needed
+    let startCheck = 0;
+    if (shouldSkipTypeAnnotation && stmt.substring(0, 4) === "let ") {
+      const eqIndex = stmt.indexOf("=");
+      if (eqIndex !== -1) {
+        startCheck = eqIndex + 1;
+      }
+    }
+
+    let i = startCheck;
+    while (i < stmt.length) {
+      if (stmt[i] === operator) {
+        let varStart = i + 1;
+        if (
+          prefixAfterOperator !== undefined &&
+          stmt.substring(i + 1, i + 1 + prefixAfterOperator.length) === prefixAfterOperator
+        ) {
+          varStart = i + 1 + prefixAfterOperator.length;
+        }
+        const varName = extractIdentifier(stmt, varStart);
+        if (varName !== "") {
+          const varInfo = findVariable(varName, metadata);
+          const checkRes = checker(varName, varInfo, source);
+          if (checkRes.type === "err") return checkRes;
+          i = varStart + varName.length;
+        } else {
+          i++;
+        }
+      } else {
+        i++;
+      }
+    }
+    si++;
+  }
+  return ok(void 0);
+}
+
+function checkAddressOfVariables(
+  source: string,
+  metadata: VariableInfo[],
+): Result<void, CompileError> {
+  const checker: OperatorChecker = (varName, varInfo) => {
+    if (varInfo === undefined) {
+      return err(
+        createCompileError(
+          source,
+          `Undefined variable: '${varName}' is referenced with address-of operator but never declared`,
+          "All variables must be declared with 'let' before they can be referenced with &",
+          `Declare '${varName}' using 'let ${varName} = <value>;' before using &${varName}`,
+        ),
+      );
+    }
+    return ok(void 0);
+  };
+  return checkOperatorOnVariables(source, metadata, "&", checker, false, "mut ");
+}
+
+function checkDereferenceVariables(
+  source: string,
+  metadata: VariableInfo[],
+): Result<void, CompileError> {
+  const checker: OperatorChecker = (varName, varInfo) => {
+    if (varInfo === undefined) {
+      return err(
+        createCompileError(
+          source,
+          `Undefined variable: '${varName}' is dereferenced but never declared`,
+          "All variables must be declared with 'let' before they can be dereferenced with *",
+          `Declare '${varName}' using 'let ${varName} : *<type> = <value>;' before using *${varName}`,
+        ),
+      );
+    }
+    // Check if variable is actually a pointer type
+    if (!varInfo.declaredType.includes("*")) {
+      return err(
+        createCompileError(
+          source,
+          `Cannot dereference non-pointer variable: '${varName}' has type '${varInfo.declaredType}' but attempted dereference requires pointer type`,
+          "Dereference operator (*) can only be applied to pointer types",
+          `Change '${varName}' to a pointer type (e.g., : *${varInfo.declaredType}) or use variable directly`,
+        ),
+      );
+    }
+    return ok(void 0);
+  };
+  return checkOperatorOnVariables(source, metadata, "*", checker, true);
+}
+
 function checkUndefinedVariables(
   source: string,
   metadata: VariableInfo[],
@@ -519,16 +669,8 @@ function checkUndefinedVariables(
   }
   const identifier = extractIdentifier(trimmed, 0);
   if (identifier === trimmed) {
-    let found = false;
-    let j = 0;
-    while (j < metadata.length) {
-      if (metadata[j].name === identifier) {
-        found = true;
-        break;
-      }
-      j++;
-    }
-    if (!found) {
+    const varInfo = findVariable(identifier, metadata);
+    if (varInfo === undefined) {
       return err(
         createCompileError(
           source,
@@ -666,6 +808,12 @@ export function compile(source: string): Result<string, CompileError> {
     // Check assignment types
     const assignRes = checkAssignmentTypeMatch(metadata);
     if (assignRes.type === "err") return assignRes;
+    // Check address-of variables
+    const addressOfRes = checkAddressOfVariables(trimmed, metadata);
+    if (addressOfRes.type === "err") return addressOfRes;
+    // Check dereference variables
+    const derefRes = checkDereferenceVariables(trimmed, metadata);
+    if (derefRes.type === "err") return derefRes;
     // Check undefined vars
     const undefRes = checkUndefinedVariables(trimmed, metadata);
     if (undefRes.type === "err") return undefRes;

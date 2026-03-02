@@ -137,4 +137,20 @@ describe("The compiler can compile", () => {
   it("supports pointer types with address-of and dereference", () => {
     assertValid("let x = 100; let y : *I32 = &x; *y", 100);
   });
+
+  it("rejects pointer to undefined variable", () => {
+    assertInvalid("let y : *I32 = &x; *y");
+  });
+
+  it("rejects dereference of non-pointer variable", () => {
+    assertInvalid("let y = 100; *y");
+  });
+
+  it("rejects redeclaration of existing variable", () => {
+    assertInvalid("let x = 100; let y : *I32 = &x; let x : U8 = *y;");
+  });
+
+  it("supports mutable pointer assignment through dereference", () => {
+    assertValid("let mut x = 0; let y : *mut I32 = &mut x; *y = 100; x", 100);
+  });
 });
