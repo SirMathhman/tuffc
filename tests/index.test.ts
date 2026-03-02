@@ -30,4 +30,9 @@ describe("The compiler can compile", () => {
     const result = executeResult("-100U8");
     expect(result.type).toBe("err");
   });
+
+  it("rejects U8 values outside valid range", () => {
+    const result = executeResult("256U8");
+    expect(result.type).toBe("err");
+  });
 });

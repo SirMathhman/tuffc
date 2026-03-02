@@ -18,6 +18,38 @@ function err<T, E>(error: E): Result<T, E> {
   return { type: "err", error };
 }
 
+function validateTypeSuffix(
+  suffix: string,
+  value: number,
+): Result<void, string> {
+  if (suffix === "U8") {
+    if (value < 0 || value > 255) {
+      return err(`U8 values must be in range 0-255, got: ${value}`);
+    }
+  }
+  return ok(void 0);
+}
+
+function extractNumericPart(
+  source: string,
+  startIndex: number,
+): { numericPart: string; endIndex: number } {
+  let numericPart = "";
+  let endIndex = startIndex;
+  let i = startIndex;
+  while (i < source.length) {
+    const char = source[i];
+    if ((char >= "0" && char <= "9") || char === ".") {
+      numericPart += char;
+      endIndex = i + 1;
+      i++;
+    } else {
+      break;
+    }
+  }
+  return { numericPart, endIndex };
+}
+
 export function compile(source: string): Result<string, string> {
   const trimmed = source.trim();
 
@@ -40,20 +72,7 @@ export function compile(source: string): Result<string, string> {
     numericStart = 0;
   }
 
-  // Extract numeric part (skip minus sign if present)
-  let numericPart = "";
-  let endIndex = numericStart;
-  let i = numericStart;
-  while (i < trimmed.length) {
-    const char = trimmed[i];
-    if ((char >= "0" && char <= "9") || char === ".") {
-      numericPart += char;
-      endIndex = i + 1;
-      i++;
-    } else {
-      break;
-    }
-  }
+  const { numericPart, endIndex } = extractNumericPart(trimmed, numericStart);
 
   if (numericPart !== "") {
     num = Number(numericPart);
@@ -66,6 +85,15 @@ export function compile(source: string): Result<string, string> {
         return err(
           `Negative numbers with type suffixes are not allowed: ${trimmed}`,
         );
+      }
+
+      // Extract and validate type suffix if present
+      if (hasSuffix) {
+        const suffix = trimmed.slice(endIndex);
+        const validationResult = validateTypeSuffix(suffix, num);
+        if (validationResult.type === "err") {
+          return validationResult;
+        }
       }
 
       let resultValue: string;
