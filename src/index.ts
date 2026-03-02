@@ -74,56 +74,19 @@ function extractNumericPart(
   return { numericPart, endIndex };
 }
 
-function transformReadPatterns(source: string): string {
-  let result = "";
-  let i = 0;
-  while (i < source.length) {
-    let consumed = 1; // Default: consume one character
-    if (source.substring(i, i + 5) === "read<") {
-      // Find the closing >()
-      let j = i + 5;
-      while (j < source.length && source[j] !== ">") {
-        j++;
-      }
-      if (
-        j < source.length &&
-        source[j] === ">" &&
-        source[j + 1] === "(" &&
-        source[j + 2] === ")"
-      ) {
-        result += "read()";
-        consumed = j + 3 - i;
-      }
-    }
-    if (consumed === 1) {
-      result += source[i];
-    }
-    i += consumed;
-  }
-  return result;
-}
-
 function stripTypeAnnotations(source: string): string {
   let result = "";
   let i = 0;
   while (i < source.length) {
-    let consumed = 1; // Default: consume one character and add it
-    let addCurrent = true; // Default: add the current character
-
     if (i < source.length - 5 && source.substring(i, i + 8) === "let mut ") {
       result += "let ";
-      consumed = 8;
-      addCurrent = false;
+      i += 8;
     } else if (
       i < source.length - 1 &&
       source[i] === ":" &&
       source[i + 1] === " "
     ) {
-      // Skip the colon and space
-      consumed = 2;
-      addCurrent = false;
-      // Skip the type name (letters, digits, angle brackets for generics, *, and spaces between words like *mut I32)
-      let j = i + consumed;
+      let j = i + 2; // skip ": "
       while (j < source.length) {
         const char = source[j];
         if (
@@ -142,83 +105,15 @@ function stripTypeAnnotations(source: string): string {
           ((source[j + 1] >= "a" && source[j + 1] <= "z") ||
             (source[j + 1] >= "A" && source[j + 1] <= "Z"))
         ) {
-          // Continue through multi-word types like *mut I32
           j++;
         } else {
           break;
         }
       }
-      consumed = j - i;
-      // Skip any trailing spaces after the type
-      while (i + consumed < source.length && source[i + consumed] === " ") {
-        consumed++;
+      while (j < source.length && source[j] === " ") {
+        j++;
       }
-    }
-
-    if (addCurrent) {
-      result += source[i];
-    }
-    i += consumed;
-  }
-  return result;
-}
-
-function transformAddressOf(source: string): string {
-  let result = "";
-  let i = 0;
-  while (i < source.length) {
-    if (source[i] === "&") {
-      let varStart = i + 1;
-      let isMut = false;
-      if (source.substring(i + 1, i + 5) === "mut ") {
-        varStart = i + 5;
-        isMut = true;
-      }
-      const varName = extractIdentifier(source, varStart);
-      if (varName !== "") {
-        if (isMut) {
-          result += `{get:()=>${varName},set:(v)=>{${varName}=v}}`;
-        } else {
-          result += `{get:()=>${varName}}`;
-        }
-        i = varStart + varName.length;
-      } else {
-        result += "&";
-        i++;
-      }
-    } else {
-      result += source[i];
-      i++;
-    }
-  }
-  return result;
-}
-
-function transformDereference(source: string): string {
-  let result = "";
-  let i = 0;
-  while (i < source.length) {
-    if (source[i] === "*") {
-      const varName = extractIdentifier(source, i + 1);
-      if (varName !== "") {
-        const afterVar = i + 1 + varName.length;
-        if (source.substring(afterVar, afterVar + 3) === " = ") {
-          // Pointer assignment: *varName = expr
-          let exprEnd = afterVar + 3;
-          while (exprEnd < source.length && source[exprEnd] !== ";") {
-            exprEnd++;
-          }
-          const expr = source.substring(afterVar + 3, exprEnd);
-          result += `${varName}.set(${expr})`;
-          i = exprEnd;
-        } else {
-          result += `${varName}.get()`;
-          i += 1 + varName.length;
-        }
-      } else {
-        result += source[i];
-        i++;
-      }
+      i = j;
     } else {
       result += source[i];
       i++;
@@ -579,7 +474,8 @@ function checkOperatorOnVariables(
         let varStart = i + 1;
         if (
           prefixAfterOperator !== undefined &&
-          stmt.substring(i + 1, i + 1 + prefixAfterOperator.length) === prefixAfterOperator
+          stmt.substring(i + 1, i + 1 + prefixAfterOperator.length) ===
+            prefixAfterOperator
         ) {
           varStart = i + 1 + prefixAfterOperator.length;
         }
@@ -601,42 +497,56 @@ function checkOperatorOnVariables(
   return ok(void 0);
 }
 
-function checkAddressOfVariables(
+function undeclaredVariableError(
+  source: string,
+  varName: string,
+  context: string,
+  hint: string,
+): Result<void, CompileError> {
+  return err(
+    createCompileError(
+      source,
+      `Undefined variable: '${varName}' ${context}`,
+      "All variables must be declared with 'let' before they can be used",
+      hint,
+    ),
+  );
+}
+
+function checkPointerOperators(
   source: string,
   metadata: VariableInfo[],
 ): Result<void, CompileError> {
-  const checker: OperatorChecker = (varName, varInfo) => {
+  const addressOfChecker: OperatorChecker = (varName, varInfo) => {
     if (varInfo === undefined) {
-      return err(
-        createCompileError(
-          source,
-          `Undefined variable: '${varName}' is referenced with address-of operator but never declared`,
-          "All variables must be declared with 'let' before they can be referenced with &",
-          `Declare '${varName}' using 'let ${varName} = <value>;' before using &${varName}`,
-        ),
+      return undeclaredVariableError(
+        source,
+        varName,
+        "is referenced with address-of operator but never declared",
+        `Declare '${varName}' using 'let ${varName} = <value>;' before using &${varName}`,
       );
     }
     return ok(void 0);
   };
-  return checkOperatorOnVariables(source, metadata, "&", checker, false, "mut ");
-}
+  const addressOfRes = checkOperatorOnVariables(
+    source,
+    metadata,
+    "&",
+    addressOfChecker,
+    false,
+    "mut ",
+  );
+  if (addressOfRes.type === "err") return addressOfRes;
 
-function checkDereferenceVariables(
-  source: string,
-  metadata: VariableInfo[],
-): Result<void, CompileError> {
-  const checker: OperatorChecker = (varName, varInfo) => {
+  const derefChecker: OperatorChecker = (varName, varInfo) => {
     if (varInfo === undefined) {
-      return err(
-        createCompileError(
-          source,
-          `Undefined variable: '${varName}' is dereferenced but never declared`,
-          "All variables must be declared with 'let' before they can be dereferenced with *",
-          `Declare '${varName}' using 'let ${varName} : *<type> = <value>;' before using *${varName}`,
-        ),
+      return undeclaredVariableError(
+        source,
+        varName,
+        "is dereferenced but never declared",
+        `Declare '${varName}' using 'let ${varName} : *<type> = <value>;' before using *${varName}`,
       );
     }
-    // Check if variable is actually a pointer type
     if (!varInfo.declaredType.includes("*")) {
       return err(
         createCompileError(
@@ -649,7 +559,7 @@ function checkDereferenceVariables(
     }
     return ok(void 0);
   };
-  return checkOperatorOnVariables(source, metadata, "*", checker, true);
+  return checkOperatorOnVariables(source, metadata, "*", derefChecker, true);
 }
 
 function checkUndefinedVariables(
@@ -671,13 +581,11 @@ function checkUndefinedVariables(
   if (identifier === trimmed) {
     const varInfo = findVariable(identifier, metadata);
     if (varInfo === undefined) {
-      return err(
-        createCompileError(
-          source,
-          `Undefined variable: '${identifier}' is referenced but never declared`,
-          "All variables must be declared with 'let' before they can be used",
-          `Declare '${identifier}' using 'let ${identifier} = <value>;' before using it`,
-        ),
+      return undeclaredVariableError(
+        source,
+        identifier,
+        "is referenced but never declared",
+        `Declare '${identifier}' using 'let ${identifier} = <value>;' before using it`,
       );
     }
   }
@@ -783,12 +691,91 @@ function parseNumberLiteral(trimmed: string): Result<string, CompileError> {
   return ok("0");
 }
 
-function applyCodeTransforms(source: string): string {
-  const transformed = transformReadPatterns(source);
-  const stripped = stripTypeAnnotations(transformed);
-  const withPointers = transformAddressOf(stripped);
-  return transformDereference(withPointers);
+function transformAddressOf(source: string): string {
+  let result = "";
+  let i = 0;
+  while (i < source.length) {
+    if (source[i] === "&") {
+      let varStart = i + 1;
+      let isMut = false;
+      if (source.substring(i + 1, i + 5) === "mut ") {
+        varStart = i + 5;
+        isMut = true;
+      }
+      const varName = extractIdentifier(source, varStart);
+      if (varName !== "") {
+        if (isMut) {
+          result += `{get:()=>${varName},set:(v)=>{${varName}=v}}`;
+        } else {
+          result += `{get:()=>${varName}}`;
+        }
+        i = varStart + varName.length;
+      } else {
+        result += "&";
+        i++;
+      }
+    } else {
+      result += source[i];
+      i++;
+    }
+  }
+  return result;
 }
+
+function transformDereference(source: string): string {
+  let result = "";
+  let i = 0;
+  while (i < source.length) {
+    if (source[i] === "*") {
+      const varName = extractIdentifier(source, i + 1);
+      if (varName !== "") {
+        const afterVar = i + 1 + varName.length;
+        if (source.substring(afterVar, afterVar + 3) === " = ") {
+          let exprEnd = afterVar + 3;
+          while (exprEnd < source.length && source[exprEnd] !== ";") {
+            exprEnd++;
+          }
+          result += `${varName}.set(${source.substring(afterVar + 3, exprEnd)})`;
+          i = exprEnd;
+        } else {
+          result += `${varName}.get()`;
+          i += 1 + varName.length;
+        }
+      } else {
+        result += source[i];
+        i++;
+      }
+    } else {
+      result += source[i];
+      i++;
+    }
+  }
+  return result;
+}
+
+function transformReadPatterns(source: string): string {
+  let result = "";
+  let i = 0;
+  while (i < source.length) {
+    let consumed = 1;
+    if (source.substring(i, i + 5) === "read<") {
+      let j = i + 5;
+      while (j < source.length && source[j] !== ">") {
+        j++;
+      }
+      if (source[j] === ">" && source[j + 1] === "(" && source[j + 2] === ")") {
+        result += "read()";
+        consumed = j + 3 - i;
+      }
+    }
+    if (consumed === 1) {
+      result += source[i];
+    }
+    i += consumed;
+  }
+  return result;
+}
+
 
 export function compile(source: string): Result<string, CompileError> {
   const trimmed = source.trim();
@@ -808,19 +795,16 @@ export function compile(source: string): Result<string, CompileError> {
     // Check assignment types
     const assignRes = checkAssignmentTypeMatch(metadata);
     if (assignRes.type === "err") return assignRes;
-    // Check address-of variables
-    const addressOfRes = checkAddressOfVariables(trimmed, metadata);
-    if (addressOfRes.type === "err") return addressOfRes;
-    // Check dereference variables
-    const derefRes = checkDereferenceVariables(trimmed, metadata);
-    if (derefRes.type === "err") return derefRes;
+    // Check address-of and dereference variables
+    const ptrRes = checkPointerOperators(trimmed, metadata);
+    if (ptrRes.type === "err") return ptrRes;
     // Check undefined vars
     const undefRes = checkUndefinedVariables(trimmed, metadata);
     if (undefRes.type === "err") return undefRes;
     // Check reassignments
     const reassignRes = checkReassignments(trimmed, metadata);
     if (reassignRes.type === "err") return reassignRes;
-    const code = applyCodeTransforms(trimmed);
+    const code = transformDereference(transformAddressOf(stripTypeAnnotations(transformReadPatterns(trimmed))));
     const lastSemicolonIndex = code.lastIndexOf(";");
     if (lastSemicolonIndex === -1) {
       return ok(`(function() { return ${code}; })()`);
@@ -841,7 +825,7 @@ export function compile(source: string): Result<string, CompileError> {
     if (reassignRes.type === "err") {
       return reassignRes;
     }
-    return ok(applyCodeTransforms(trimmed));
+    return ok(transformReadPatterns(trimmed));
   }
 
   const undefCheckResult = checkUndefinedVariables(trimmed, []);
