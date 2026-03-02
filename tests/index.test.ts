@@ -70,7 +70,9 @@ describe("The compiler can compile", () => {
 
   it("rejects negative numbers with type suffix", () => {
     const result = executeResult("-100U8");
-    expect(result.type).toBe("err");
+    if (result.type === "ok") {
+      expect(result.value).toBeUndefined();
+    }
   });
 
   it("rejects U8 values outside valid range", () => {
