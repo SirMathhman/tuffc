@@ -64,7 +64,7 @@ function extractBlockExpressionType(blockStr: string): string {
     }
     return "";
   }
-  const varName = extractIdentifier(lastStmt, 0)
+  const varName = extractIdentifier(lastStmt, 0);
   if (varName !== "") {
     const blockMetadata = buildVariableMetadata(blockContent);
     let mi = 0;

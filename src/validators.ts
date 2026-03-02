@@ -576,6 +576,111 @@ function checkImmutablePointerAssignments(
   return ok(void 0);
 }
 
+function getExpressionType(expr: string, metadata: VariableInfo[]): string {
+  const trimmed = expr.trim();
+  if (trimmed === "true" || trimmed === "false") {
+    return "Bool";
+  }
+  const identifier = extractIdentifier(trimmed, 0);
+  if (identifier !== "" && identifier === trimmed) {
+    const varInfo = findVariable(identifier, metadata);
+    if (varInfo !== undefined) {
+      return varInfo.inferredType;
+    }
+  }
+  const readType = extractReadType(trimmed);
+  if (readType !== "") {
+    return readType;
+  }
+  return "";
+}
+
+function checkOperatorUsage(
+  source: string,
+  metadata: VariableInfo[],
+  operator: string,
+): Result<void, CompileError> {
+  let i = 0;
+  while (i < source.length - 1) {
+    if (source[i] === operator[0] && source[i + 1] === operator[1]) {
+      let leftEnd = i - 1;
+      while (leftEnd >= 0 && source[leftEnd] === " ") {
+        leftEnd--;
+      }
+      if (leftEnd < 0) {
+        i += 2;
+        continue;
+      }
+      let leftStart = leftEnd;
+      while (
+        leftStart >= 0 &&
+        source[leftStart] !== " " &&
+        source[leftStart] !== ";" &&
+        source[leftStart] !== "{" &&
+        source[leftStart] !== "("
+      ) {
+        leftStart--;
+      }
+      leftStart++;
+      const leftExpr = source.substring(leftStart, leftEnd + 1).trim();
+      let rightStart = i + 2;
+      while (rightStart < source.length && source[rightStart] === " ") {
+        rightStart++;
+      }
+      if (rightStart >= source.length) {
+        i += 2;
+        continue;
+      }
+      let rightEnd = rightStart;
+      while (
+        rightEnd < source.length &&
+        source[rightEnd] !== " " &&
+        source[rightEnd] !== ";" &&
+        source[rightEnd] !== "}" &&
+        source[rightEnd] !== ")"
+      ) {
+        rightEnd++;
+      }
+      const rightExpr = source.substring(rightStart, rightEnd).trim();
+      if (leftExpr !== "" && rightExpr !== "") {
+        const operands = [
+          { expr: leftExpr, side: "left" },
+          { expr: rightExpr, side: "right" },
+        ];
+        let oIdx = 0;
+        while (oIdx < operands.length) {
+          const operand = operands[oIdx];
+          const exprType = getExpressionType(operand.expr, metadata);
+          if (exprType !== "Bool" && exprType !== "") {
+            return err(
+              createCompileError(
+                source,
+                `Type mismatch in logical operator '${operator}': ${operand.side} operand has type '${exprType}' but Bool is required`,
+                "Logical operators || and && only work with boolean operands",
+                `Change the ${operand.side} operand to a boolean expression or variable`,
+              ),
+            );
+          }
+          oIdx++;
+        }
+      }
+      i += 2;
+    } else {
+      i++;
+    }
+  }
+  return ok(void 0);
+}
+
+function checkLogicalOperatorTypes(
+  source: string,
+  metadata: VariableInfo[],
+): Result<void, CompileError> {
+  const orRes = checkOperatorUsage(source, metadata, "||");
+  if (orRes.type === "err") return orRes;
+  return checkOperatorUsage(source, metadata, "&&");
+}
+
 export {
   validateTypeSuffix,
   validateReassignment,
@@ -587,4 +692,5 @@ export {
   checkBlockExpressions,
   checkBlockExpressionType,
   checkPointerOperators,
+  checkLogicalOperatorTypes,
 };

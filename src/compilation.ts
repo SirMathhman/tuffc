@@ -16,6 +16,7 @@ import {
   checkBlockExpressions,
   checkBlockExpressionType,
   checkPointerOperators,
+  checkLogicalOperatorTypes,
 } from "./validators";
 import {
   extractNumericPart,
@@ -149,6 +150,9 @@ function verifyLetStatement(
   const ptrRes = checkPointerOperators(source, metadata);
   if (ptrRes.type === "err") return ptrRes;
 
+  const logicalOpRes = checkLogicalOperatorTypes(source, metadata);
+  if (logicalOpRes.type === "err") return logicalOpRes;
+
   const undefRes = checkUndefinedVariables(source, metadata);
   if (undefRes.type === "err") return undefRes;
 
@@ -251,6 +255,11 @@ export function compile(source: string): Result<string, CompileError> {
   const undefCheckResult = checkUndefinedVariables(trimmed, []);
   if (undefCheckResult.type === "err") {
     return undefCheckResult;
+  }
+
+  const logicalOpCheckResult = checkLogicalOperatorTypes(trimmed, []);
+  if (logicalOpCheckResult.type === "err") {
+    return logicalOpCheckResult;
   }
 
   return parseNumberLiteral(trimmed);
