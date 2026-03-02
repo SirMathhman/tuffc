@@ -238,4 +238,16 @@ describe("The compiler can compile", () => {
   it("rejects arithmetic operators on boolean operands", () => {
     assertInvalid("let x = true; let y = false; x + y");
   });
+
+  it("evaluates if-else with true condition to then branch", () => {
+    assertValid("let mut x = 0; if (true) x = 3; else x = 5; x", 3);
+  });
+
+  it("evaluates if-else with false condition to else branch", () => {
+    assertValid("let mut x = 0; if (false) x = 3; else x = 5; x", 5);
+  });
+
+  it("evaluates if-else with variable condition", () => {
+    assertValid("let cond = true; let mut x = 0; if (cond) x = 10; else x = 20; x", 10);
+  });
 });
