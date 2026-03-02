@@ -313,4 +313,12 @@ describe("The compiler can compile", () => {
       45,
     );
   });
+
+  it("declares and calls a function", () => {
+    assertValid(
+      "fn add(first : I32, second : I32) : I32 => first + second; add(3, 4)",
+      "",
+      7,
+    );
+  });
 });

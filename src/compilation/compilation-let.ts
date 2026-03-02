@@ -48,7 +48,9 @@ function compileLetStatement(
     transformDereference(
       transformAddressOf(
         transformComparisonOperators(
-          stripTypeAnnotations(transformWhileLoops(transformReadPatterns(processedSource))),
+          stripTypeAnnotations(
+            transformWhileLoops(transformReadPatterns(processedSource)),
+          ),
         ),
       ),
     ),

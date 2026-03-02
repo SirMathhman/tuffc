@@ -13,34 +13,22 @@ import {
   transformComparisonOperators,
 } from "../transformations/transformations";
 import { parseNumberLiteral } from "./compilation-helpers";
+import { compileFnStatement } from "./compilation-fn";
 import { compileLetStatement } from "./compilation-let";
 
 export function compile(source: string): Result<string, CompileError> {
   const trimmed = source.trim();
-
-  if (trimmed === "") {
-    return ok("0");
-  }
-
+  if (trimmed === "") return ok("0");
   const blockScopeRes = checkBlockScopes(source);
-  if (blockScopeRes !== null) {
-    return blockScopeRes;
-  }
-
+  if (blockScopeRes !== null) return blockScopeRes;
   const blockExprRes = checkBlockExpressions(source);
-  if (blockExprRes !== null) {
-    return blockExprRes;
-  }
-
+  if (blockExprRes !== null) return blockExprRes;
   const blockTypeRes = checkBlockExpressionType(source);
-  if (blockTypeRes !== null) {
-    return blockTypeRes;
-  }
-
+  if (blockTypeRes !== null) return blockTypeRes;
   const letRes = compileLetStatement(source);
-  if (letRes !== null) {
-    return letRes;
-  }
+  if (letRes !== null) return letRes;
+  const fnRes = compileFnStatement(source);
+  if (fnRes !== null) return fnRes;
 
   if (trimmed.indexOf("read<") !== -1) {
     const emptyMetadata: VariableInfo[] = [];
@@ -56,21 +44,15 @@ export function compile(source: string): Result<string, CompileError> {
 
   if (trimmed.startsWith("{}")) {
     const afterBlock = trimmed.substring(2).trim();
-    if (afterBlock !== "") {
-      return compile(afterBlock);
-    }
+    if (afterBlock !== "") return compile(afterBlock);
     return ok("0");
   }
 
   const undefCheckResult = checkUndefinedVariables(trimmed, []);
-  if (undefCheckResult.type === "err") {
-    return undefCheckResult;
-  }
+  if (undefCheckResult.type === "err") return undefCheckResult;
 
   const logicalOpCheckResult = checkLogicalOperatorTypes(trimmed, []);
-  if (logicalOpCheckResult.type === "err") {
-    return logicalOpCheckResult;
-  }
+  if (logicalOpCheckResult.type === "err") return logicalOpCheckResult;
 
   return parseNumberLiteral(trimmed);
 }

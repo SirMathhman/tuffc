@@ -1,7 +1,5 @@
 function skipWhitespace(source: string, idx: number): number {
-  while (idx < source.length && (source[idx] === " " || source[idx] === "\t" || source[idx] === "\n")) {
-    idx++;
-  }
+  while (idx < source.length && (source[idx] === " " || source[idx] === "\t" || source[idx] === "\n")) idx++;
   return idx;
 }
 
@@ -36,6 +34,16 @@ function extractBody(source: string, idx: number): { body: string; endIdx: numbe
   return { body: source.substring(idx, bodyEnd + 1).trim(), endIdx: bodyEnd + 1 };
 }
 
+function parseWhileAt(source: string, whileIdx: number): { text: string; nextIdx: number } | null {
+  const cond = extractCondition(source, skipWhitespace(source, whileIdx + 5));
+  if (cond === null) return null;
+  const body = extractBody(source, skipWhitespace(source, cond.endIdx + 1));
+  if (body === null) return null;
+  let nextIdx = body.endIdx;
+  if (nextIdx < source.length && source[nextIdx] === ";") nextIdx++;
+  return { text: `while (${cond.cond}) ${body.body}`, nextIdx };
+}
+
 function transformWhileLoops(source: string): string {
   if (!source.includes("while")) return source;
   let result = "";
@@ -47,23 +55,14 @@ function transformWhileLoops(source: string): string {
       break;
     }
     result += source.substring(i, whileIdx);
-    let idx = skipWhitespace(source, whileIdx + 5);
-    const condResult = extractCondition(source, idx);
-    if (condResult === null) {
+    const parsed = parseWhileAt(source, whileIdx);
+    if (parsed === null) {
       result += "while";
       i = whileIdx + 5;
-      continue;
+    } else {
+      result += parsed.text;
+      i = parsed.nextIdx;
     }
-    idx = skipWhitespace(source, condResult.endIdx + 1);
-    const bodyResult = extractBody(source, idx);
-    if (bodyResult === null) {
-      result += "while";
-      i = whileIdx + 5;
-      continue;
-    }
-    result += `while (${condResult.cond}) ${bodyResult.body}`;
-    i = bodyResult.endIdx;
-    if (i < source.length && source[i] === ";") i++;
   }
   return result;
 }

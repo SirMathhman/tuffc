@@ -76,4 +76,4 @@ function extractIfElseAndAfter(text: string): {
   return { ifElse, after };
 }
 
-export { extractIfElseAndAfter };
+export { extractIfElseAndAfter, skipWhitespace };

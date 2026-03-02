@@ -1,9 +1,10 @@
+import { skipWhitespace } from "./compilation-if-else";
+
 function extractWhileAndAfter(
   text: string,
 ): { whileStmt: string; after: string } | null {
   if (!text.startsWith("while")) return null;
-  let i = 5;
-  while (i < text.length && (text[i] === " " || text[i] === "\t")) i++;
+  const i = skipWhitespace(text, 5);
   if (text[i] !== "(") return null;
   let parenDepth = 0;
   let condEnd = i;
@@ -17,10 +18,7 @@ function extractWhileAndAfter(
     condEnd++;
   }
   if (condEnd >= text.length) return null;
-  let bodyStart = condEnd + 1;
-  while (bodyStart < text.length && (text[bodyStart] === " " || text[bodyStart] === "\t")) {
-    bodyStart++;
-  }
+  const bodyStart = skipWhitespace(text, condEnd + 1);
   if (text[bodyStart] !== "{") return null;
   let braceDepth = 0;
   let bodyEnd = bodyStart;

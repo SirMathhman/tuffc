@@ -2,19 +2,21 @@ function makeComparison(before: string, op: string, after: string): string {
   return `((${before} ${op} ${after})) ? 1 : 0`;
 }
 
+function isSpaceOrTab(char: string): boolean {
+  return char === " " || char === "\t";
+}
+
 function isInsideWhileCondition(source: string, opIndex: number): boolean {
   let i = opIndex - 1;
   let parenDepth = 0;
-  
+
   while (i >= 0) {
     if (source[i] === ")") {
       parenDepth++;
     } else if (source[i] === "(") {
       if (parenDepth === 0) {
         i--;
-        while (i >= 0 && (source[i] === " " || source[i] === "\t")) {
-          i--;
-        }
+        while (i >= 0 && isSpaceOrTab(source[i])) i--;
         if (i >= 4) {
           const word = source.substring(i - 4, i + 1);
           if (word === "while") {
