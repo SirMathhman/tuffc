@@ -14,5 +14,6 @@ export {
   checkBlockExpressionType,
 } from "./validators-block-checks";
 export { checkPointerOperators } from "./validators-pointer-checks";
-export { checkLogicalOperatorTypes } from "./validators-logical-checks";
-export { checkArithmeticOperatorTypes } from "./validators-arithmetic-checks";
+export { checkLogicalOperatorTypes } from "./operators/validators-logical-checks";
+export { checkArithmeticOperatorTypes } from "./operators/validators-arithmetic-checks";
+export { checkIfConditionTypes } from "./operators/validators-if-checks";

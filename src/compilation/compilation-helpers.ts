@@ -1,6 +1,4 @@
-import {
-  extractBlockAndAfter,
-} from "../extractors/extractors";
+import { extractBlockAndAfter } from "../extractors/extractors";
 import { extractIfElseAndAfter } from "./compilation-if-else";
 import { parseNumberLiteral } from "./compilation-number";
 

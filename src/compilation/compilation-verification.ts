@@ -14,6 +14,7 @@ import {
   checkPointerOperators,
   checkLogicalOperatorTypes,
   checkArithmeticOperatorTypes,
+  checkIfConditionTypes,
 } from "../validators/validators";
 import { extractReadType } from "../extractors/extractors";
 
@@ -58,6 +59,9 @@ function verifyLetStatement(
 
   const arithmeticOpRes = checkArithmeticOperatorTypes(source, metadata);
   if (arithmeticOpRes.type === "err") return arithmeticOpRes;
+
+  const ifCondRes = checkIfConditionTypes(source, metadata);
+  if (ifCondRes !== null && ifCondRes.type === "err") return ifCondRes;
 
   const undefRes = checkUndefinedVariables(source, metadata);
   if (undefRes.type === "err") return undefRes;

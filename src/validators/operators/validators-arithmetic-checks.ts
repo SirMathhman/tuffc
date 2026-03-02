@@ -1,6 +1,6 @@
-import { VariableInfo, Result, CompileError, ok } from "../types";
+import { VariableInfo, Result, CompileError, ok } from "../../types";
 import { getExpressionType } from "./validators-logical-helpers";
-import { extractBinaryOperands } from "../extractors/extractors-operators";
+import { extractBinaryOperands } from "../../extractors/extractors-operators";
 import {
   validateBinaryOperandTypes,
   createOperatorTypeError,

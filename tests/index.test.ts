@@ -261,4 +261,8 @@ describe("The compiler can compile", () => {
   it("evaluates if-else with braces in else branch", () => {
     assertValid("let mut x = 0; if (false) { x = 3; } else { x = 5; } x", 5);
   });
+
+  it("rejects non-boolean condition in if statement", () => {
+    assertInvalid("let mut x = 0; if (100) { x = 3; } else { x = 5; } x");
+  });
 });
