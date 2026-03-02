@@ -4,6 +4,7 @@ import {
   FunctionDeclaration,
   CallExpression,
   SyntaxKind,
+  Block,
 } from "ts-morph";
 import { readFileSync } from "fs";
 import { resolve } from "path";
@@ -155,6 +156,46 @@ function findBestInlineCandidates(
   return bestPerCaller;
 }
 
+function getBodyStatements(fn: FunctionDeclaration): string {
+  const body = fn.getBody() as Block;
+  const statements = body.getStatements();
+  return statements.map((s) => s.getText()).join("\n");
+}
+
+function extractReturnExpression(stmts: string): string | undefined {
+  const trimmed = stmts.trim();
+  const prefix = "return ";
+  if (!trimmed.startsWith(prefix)) {
+    return undefined;
+  }
+  const rest = trimmed.slice(prefix.length);
+  if (rest.endsWith(";")) {
+    return rest.slice(0, -1);
+  }
+  return rest;
+}
+
+function inlineFunction(fn: FunctionDeclaration, call: CallExpression): void {
+  const bodyStatements = getBodyStatements(fn);
+  const returnExpr = extractReturnExpression(bodyStatements);
+  const callStatement = call.getParent();
+  if (returnExpr !== undefined && callStatement !== undefined) {
+    if (Node.isReturnStatement(callStatement)) {
+      callStatement.replaceWithText(`return ${returnExpr};`);
+    } else {
+      call.replaceWithText(returnExpr);
+    }
+  } else if (callStatement !== undefined) {
+    const allStatements = bodyStatements.trim();
+    if (Node.isExpressionStatement(callStatement)) {
+      callStatement.replaceWithText(allStatements + "\n");
+    } else {
+      call.replaceWithText(`(function() { ${allStatements} })()`);
+    }
+  }
+  fn.remove();
+}
+
 function main(): void {
   const maxLines = readMaxLinesFromEslint();
   if (maxLines === undefined) {
@@ -170,15 +211,26 @@ function main(): void {
     maxLines,
     project,
   );
+  if (bestPerCaller.size === 0) {
+    return;
+  }
   bestPerCaller.forEach((c) => {
     console.log(
-      `✓ can inline: ${c.fnName} into ${c.callerName} ` +
+      `✓ inlining: ${c.fnName} into ${c.callerName} ` +
         `(${c.callerLines} + ${c.inlinedLines} + ${PADDING} padding = ${c.combined} / ${maxLines})`,
     );
   });
-  if (bestPerCaller.size > 0) {
-    process.exit(1);
-  }
+  const allFunctions = sourceFiles.flatMap((sf) => sf.getFunctions());
+  bestPerCaller.forEach((c) => {
+    const fn = allFunctions.find((f) => f.getName() === c.fnName);
+    if (fn === undefined) return;
+    const usages = findUsages(fn, project);
+    if (usages.length === 1) {
+      inlineFunction(fn, usages[0]);
+    }
+  });
+  project.saveSync();
+  process.exit(1);
 }
 
 main();
