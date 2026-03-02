@@ -6,7 +6,7 @@ function parseCliArgs(): {
   ignoreIdentifiers: boolean;
   ignoreLiterals: boolean;
 } {
-  let minNodes = 10;
+  let minNodes = 15;
   let ignoreIdentifiers = false;
   let ignoreLiterals = false;
 

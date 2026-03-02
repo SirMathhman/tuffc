@@ -6,8 +6,12 @@ import {
   checkBlockExpressions,
   checkBlockExpressionType,
   checkLogicalOperatorTypes,
+  checkComparisonOperatorTypes,
 } from "../validators/validators";
-import { transformReadPatterns } from "../transformations/transformations";
+import {
+  transformReadPatterns,
+  transformComparisonOperators,
+} from "../transformations/transformations";
 import { parseNumberLiteral } from "./compilation-helpers";
 import { compileLetStatement } from "./compilation-let";
 
@@ -40,11 +44,14 @@ export function compile(source: string): Result<string, CompileError> {
 
   if (trimmed.indexOf("read<") !== -1) {
     const emptyMetadata: VariableInfo[] = [];
-    const reassignRes = checkReassignments(trimmed, emptyMetadata);
-    if (reassignRes.type === "err") {
-      return reassignRes;
-    }
-    return ok(transformReadPatterns(trimmed));
+    const reassignChk = checkReassignments(trimmed, emptyMetadata);
+    if (reassignChk.type === "err") return reassignChk;
+    const compChk = checkComparisonOperatorTypes(trimmed, emptyMetadata);
+    if (compChk.type === "err") return compChk;
+    const transformed = transformComparisonOperators(
+      transformReadPatterns(trimmed),
+    );
+    return ok(transformed);
   }
 
   if (trimmed.startsWith("{}")) {

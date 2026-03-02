@@ -1,9 +1,8 @@
 import { VariableInfo, Result, CompileError, ok } from "../../types";
 import { getExpressionType } from "./validators-logical-helpers";
-import { extractBinaryOperands } from "../../extractors/extractors-operators";
 import {
-  validateBinaryOperandTypes,
   createOperatorTypeError,
+  makeOperatorChecker,
 } from "./validators-operator-helpers";
 
 function createArithmeticTypeError(
@@ -22,35 +21,11 @@ function createArithmeticTypeError(
   );
 }
 
-function checkArithmeticOperatorUsage(
-  source: string,
-  metadata: VariableInfo[],
-  operator: string,
-): Result<void, CompileError> {
-  let i = 0;
-  while (i < source.length) {
-    if (source[i] === operator) {
-      const operands = extractBinaryOperands(source, i, 1);
-      if (operands === null) {
-        i++;
-        continue;
-      }
-      const validRes = validateBinaryOperandTypes(
-        operands.leftExpr,
-        operands.rightExpr,
-        metadata,
-        operator,
-        source,
-        getExpressionType,
-        (type: string): boolean => type === "Bool",
-        createArithmeticTypeError,
-      );
-      if (validRes.type === "err") return validRes;
-    }
-    i++;
-  }
-  return ok(void 0);
-}
+const checkArithmeticOperatorUsage = makeOperatorChecker(
+  getExpressionType,
+  createArithmeticTypeError,
+  (s: string, i: number, o: string) => s[i] === o,
+);
 
 function checkArithmeticOperatorTypes(
   source: string,

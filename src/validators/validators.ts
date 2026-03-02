@@ -17,3 +17,4 @@ export { checkPointerOperators } from "./validators-pointer-checks";
 export { checkLogicalOperatorTypes } from "./operators/validators-logical-checks";
 export { checkArithmeticOperatorTypes } from "./operators/validators-arithmetic-checks";
 export { checkIfConditionTypes } from "./operators/validators-if-checks";
+export { checkComparisonOperatorTypes } from "./operators/validators-comparison-checks";

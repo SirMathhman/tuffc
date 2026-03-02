@@ -7,6 +7,8 @@ import {
   transformAddressOf,
   transformDereference,
   stripNumericTypeSuffixes,
+  transformIfElseToTernary,
+  transformComparisonOperators,
 } from "../transformations/transformations";
 import { generateFunctionFromLastStatement } from "./compilation-helpers";
 import { verifyLetStatement } from "./compilation-verification";
@@ -35,14 +37,18 @@ function compileLetStatement(
   if (trimmed.indexOf("let ") === -1) {
     return null;
   }
-  const processedSource = wrapBlockExpressionInInit(trimmed);
+  const processedSource = transformIfElseToTernary(
+    wrapBlockExpressionInInit(trimmed),
+  );
   const metadata = buildVariableMetadata(processedSource);
   const verRes = verifyLetStatement(processedSource, metadata);
   if (verRes.type === "err") return verRes;
   const code = stripNumericTypeSuffixes(
     transformDereference(
       transformAddressOf(
-        stripTypeAnnotations(transformReadPatterns(processedSource)),
+        transformComparisonOperators(
+          stripTypeAnnotations(transformReadPatterns(processedSource)),
+        ),
       ),
     ),
   );

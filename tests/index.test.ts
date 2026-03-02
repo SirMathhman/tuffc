@@ -265,4 +265,44 @@ describe("The compiler can compile", () => {
   it("rejects non-boolean condition in if statement", () => {
     assertInvalid("let mut x = 0; if (100) { x = 3; } else { x = 5; } x");
   });
+
+  it("evaluates if-statement without else modifying mutable variable", () => {
+    assertValid("let mut x = 0; if (true) { x = 3; } x", 3);
+  });
+
+  it("evaluates if-statement with false condition leaving variable unchanged", () => {
+    assertValid("let mut x = 5; if (false) { x = 3; } x", 5);
+  });
+
+  it("supports += operator for addition assignment", () => {
+    assertValid("let mut x = 0; x += 5; x", 5);
+  });
+
+  it("supports += with read input", () => {
+    assertValid("let mut x = 0; x += read<I32>(); x", "100", 100);
+  });
+
+  it("supports += chaining with multiple operations", () => {
+    assertValid("let mut x = 10; x += 5; x += 3; x", 18);
+  });
+
+  it("evaluates if-else as expression in let assignment", () => {
+    assertValid("let x = if (true) 3 else 5; x", 3);
+  });
+
+  it("evaluates if-else expression with false condition", () => {
+    assertValid("let x = if (false) 3 else 5; x", 5);
+  });
+
+  it("evaluates less-than comparison true", () => {
+    assertValid("read<I32>() < read<I32>()", "1 2", 1);
+  });
+
+  it("evaluates less-than comparison false", () => {
+    assertValid("read<I32>() < read<I32>()", "2 1", 0);
+  });
+
+  it("evaluates less-than with equal values as false", () => {
+    assertValid("read<I32>() < read<I32>()", "1 1", 0);
+  });
 });
