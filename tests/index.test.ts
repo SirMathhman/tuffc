@@ -153,4 +153,8 @@ describe("The compiler can compile", () => {
   it("supports mutable pointer assignment through dereference", () => {
     assertValid("let mut x = 0; let y : *mut I32 = &mut x; *y = 100; x", 100);
   });
+
+  it("rejects assignment through immutable pointer", () => {
+    assertInvalid("let mut x = 0; let y : *I32 = &x; *y = 100; x");
+  });
 });

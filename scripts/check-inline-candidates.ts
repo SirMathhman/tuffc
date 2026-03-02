@@ -101,19 +101,21 @@ function findCallerFunction(
 
 const PADDING = 2;
 
-function main(): void {
-  const maxLines = readMaxLinesFromEslint();
-  if (maxLines === undefined) {
-    console.error(
-      "Could not find max-lines-per-function rule in eslint.config.js",
-    );
-    return;
-  }
-  const project = new Project({ tsConfigFilePath: resolve("tsconfig.json") });
-  const sourceFiles = project.getSourceFiles();
+interface Candidate {
+  fnName: string;
+  callerName: string;
+  callerLines: number;
+  inlinedLines: number;
+  combined: number;
+}
 
+function findBestInlineCandidates(
+  sourceFiles: import("ts-morph").SourceFile[],
+  maxLines: number,
+  project: import("ts-morph").Project,
+): Map<string, Candidate> {
+  const bestPerCaller = new Map<string, Candidate>();
   let fi = 0;
-  let foundCount = 0;
   while (fi < sourceFiles.length) {
     const sf = sourceFiles[fi];
     const functions = sf.getFunctions();
@@ -130,11 +132,19 @@ function main(): void {
           if (combined <= maxLines) {
             const callerName = caller.getName() ?? "(anonymous)";
             const fnName = fn.getName() ?? "(anonymous)";
-            console.log(
-              `✓ can inline: ${fnName} into ${callerName} ` +
-                `(${callerLines} + ${inlinedLines} + ${PADDING} padding = ${combined} / ${maxLines})`,
-            );
-            foundCount++;
+            const existing = bestPerCaller.get(callerName);
+            if (
+              existing === undefined ||
+              inlinedLines > existing.inlinedLines
+            ) {
+              bestPerCaller.set(callerName, {
+                fnName,
+                callerName,
+                callerLines,
+                inlinedLines,
+                combined,
+              });
+            }
           }
         }
       }
@@ -142,7 +152,31 @@ function main(): void {
     }
     fi++;
   }
-  if (foundCount > 0) {
+  return bestPerCaller;
+}
+
+function main(): void {
+  const maxLines = readMaxLinesFromEslint();
+  if (maxLines === undefined) {
+    console.error(
+      "Could not find max-lines-per-function rule in eslint.config.js",
+    );
+    return;
+  }
+  const project = new Project({ tsConfigFilePath: resolve("tsconfig.json") });
+  const sourceFiles = project.getSourceFiles();
+  const bestPerCaller = findBestInlineCandidates(
+    sourceFiles,
+    maxLines,
+    project,
+  );
+  bestPerCaller.forEach((c) => {
+    console.log(
+      `✓ can inline: ${c.fnName} into ${c.callerName} ` +
+        `(${c.callerLines} + ${c.inlinedLines} + ${PADDING} padding = ${c.combined} / ${maxLines})`,
+    );
+  });
+  if (bestPerCaller.size > 0) {
     process.exit(1);
   }
 }

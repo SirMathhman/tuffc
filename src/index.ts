@@ -513,7 +513,65 @@ function undeclaredVariableError(
   );
 }
 
-function checkPointerOperators(
+function findDereferenceAssignments(source: string): Array<{
+  varName: string;
+  position: number;
+  exprStart: number;
+  exprEnd: number;
+}> {
+  const assignments: Array<{
+    varName: string;
+    position: number;
+    exprStart: number;
+    exprEnd: number;
+  }> = [];
+  let i = 0;
+  while (i < source.length) {
+    if (source[i] === "*") {
+      const varName = extractIdentifier(source, i + 1);
+      if (varName !== "") {
+        const afterVar = i + 1 + varName.length;
+        if (source.substring(afterVar, afterVar + 3) === " = ") {
+          let exprEnd = afterVar + 3;
+          while (exprEnd < source.length && source[exprEnd] !== ";") {
+            exprEnd++;
+          }
+          assignments.push({
+            varName,
+            position: i,
+            exprStart: afterVar + 3,
+            exprEnd,
+          });
+        }
+      }
+    }
+    i++;
+  }
+  return assignments;
+}
+
+function checkImmutablePointerAssignments(
+  source: string,
+  metadata: VariableInfo[],
+): Result<void, CompileError> {
+  const assignments = findDereferenceAssignments(source);
+  for (const assignment of assignments) {
+    const varInfo = findVariable(assignment.varName, metadata);
+    if (varInfo !== undefined && !varInfo.declaredType.includes("mut")) {
+      return err(
+        createCompileError(
+          source,
+          `Cannot assign through immutable pointer: '${assignment.varName}' has type '${varInfo.declaredType}' but assignment through pointer requires mutable pointer type (*mut)`,
+          "Assignment through dereference (*ptr = value) requires a mutable pointer",
+          `Change '${assignment.varName}' to a mutable pointer type (: *mut <type>) or use direct assignment`,
+        ),
+      );
+    }
+  }
+  return ok(void 0);
+}
+
+function checkAddressOfOperator(
   source: string,
   metadata: VariableInfo[],
 ): Result<void, CompileError> {
@@ -528,7 +586,7 @@ function checkPointerOperators(
     }
     return ok(void 0);
   };
-  const addressOfRes = checkOperatorOnVariables(
+  return checkOperatorOnVariables(
     source,
     metadata,
     "&",
@@ -536,6 +594,13 @@ function checkPointerOperators(
     false,
     "mut ",
   );
+}
+
+function checkPointerOperators(
+  source: string,
+  metadata: VariableInfo[],
+): Result<void, CompileError> {
+  const addressOfRes = checkAddressOfOperator(source, metadata);
   if (addressOfRes.type === "err") return addressOfRes;
 
   const derefChecker: OperatorChecker = (varName, varInfo) => {
@@ -559,7 +624,16 @@ function checkPointerOperators(
     }
     return ok(void 0);
   };
-  return checkOperatorOnVariables(source, metadata, "*", derefChecker, true);
+  const derefRes = checkOperatorOnVariables(
+    source,
+    metadata,
+    "*",
+    derefChecker,
+    true,
+  );
+  if (derefRes.type === "err") return derefRes;
+
+  return checkImmutablePointerAssignments(source, metadata);
 }
 
 function checkUndefinedVariables(
@@ -724,32 +798,35 @@ function transformAddressOf(source: string): string {
 
 function transformDereference(source: string): string {
   let result = "";
+  let lastEnd = 0;
+  const assignments = findDereferenceAssignments(source);
+  const assignmentSet = new Set(assignments.map((a) => a.position));
+
   let i = 0;
   while (i < source.length) {
     if (source[i] === "*") {
-      const varName = extractIdentifier(source, i + 1);
-      if (varName !== "") {
-        const afterVar = i + 1 + varName.length;
-        if (source.substring(afterVar, afterVar + 3) === " = ") {
-          let exprEnd = afterVar + 3;
-          while (exprEnd < source.length && source[exprEnd] !== ";") {
-            exprEnd++;
-          }
-          result += `${varName}.set(${source.substring(afterVar + 3, exprEnd)})`;
-          i = exprEnd;
-        } else {
-          result += `${varName}.get()`;
-          i += 1 + varName.length;
-        }
+      if (assignmentSet.has(i)) {
+        const assignment = assignments.find((a) => a.position === i)!;
+        result += source.substring(lastEnd, i);
+        result += `${assignment.varName}.set(${source.substring(assignment.exprStart, assignment.exprEnd)})`;
+        lastEnd = assignment.exprEnd;
+        i = assignment.exprEnd;
       } else {
-        result += source[i];
-        i++;
+        const varName = extractIdentifier(source, i + 1);
+        if (varName !== "") {
+          result += source.substring(lastEnd, i);
+          result += `${varName}.get()`;
+          lastEnd = i + 1 + varName.length;
+          i = lastEnd;
+        } else {
+          i++;
+        }
       }
     } else {
-      result += source[i];
       i++;
     }
   }
+  result += source.substring(lastEnd);
   return result;
 }
 
@@ -775,7 +852,6 @@ function transformReadPatterns(source: string): string {
   }
   return result;
 }
-
 
 export function compile(source: string): Result<string, CompileError> {
   const trimmed = source.trim();
@@ -804,7 +880,9 @@ export function compile(source: string): Result<string, CompileError> {
     // Check reassignments
     const reassignRes = checkReassignments(trimmed, metadata);
     if (reassignRes.type === "err") return reassignRes;
-    const code = transformDereference(transformAddressOf(stripTypeAnnotations(transformReadPatterns(trimmed))));
+    const code = transformDereference(
+      transformAddressOf(stripTypeAnnotations(transformReadPatterns(trimmed))),
+    );
     const lastSemicolonIndex = code.lastIndexOf(";");
     if (lastSemicolonIndex === -1) {
       return ok(`(function() { return ${code}; })()`);
