@@ -18,7 +18,30 @@ function assertValid(
     } else {
       // New signature: assertValid(source, stdIn, expected)
       const stdIn = stdInOrExpected;
-      const read = (): number => Number(stdIn);
+      const values: number[] = [];
+      let current = "";
+      let i = 0;
+      while (i < stdIn.length) {
+        const char = stdIn[i];
+        if (char === " " || char === "\t" || char === "\n") {
+          if (current !== "") {
+            values.push(Number(current));
+            current = "";
+          }
+        } else {
+          current += char;
+        }
+        i++;
+      }
+      if (current !== "") {
+        values.push(Number(current));
+      }
+      let index = 0;
+      const read = (): number => {
+        const value = values[index];
+        index++;
+        return value;
+      };
       const fn = new Function("read", `return ${result.value}`);
       expect(fn(read)).toBe(expected);
     }
@@ -52,5 +75,9 @@ describe("The compiler can compile", () => {
 
   it("reads a U8 value from input", () => {
     assertValid("read<U8>()", "100", 100);
+  });
+
+  it("adds two U8 values from input", () => {
+    assertValid("read<U8>() + read<U8>()", "1 2", 3);
   });
 });

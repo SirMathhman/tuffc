@@ -74,8 +74,38 @@ function extractNumericPart(
   return { numericPart, endIndex };
 }
 
-function isReadPattern(source: string): boolean {
-  return source.startsWith("read<") && source.endsWith("()");
+function containsReadPattern(source: string): boolean {
+  return source.indexOf("read<") !== -1;
+}
+
+function transformReadPatterns(source: string): string {
+  let result = "";
+  let i = 0;
+  while (i < source.length) {
+    if (source.substring(i, i + 5) === "read<") {
+      // Find the closing >()
+      let j = i + 5;
+      while (j < source.length && source[j] !== ">") {
+        j++;
+      }
+      if (
+        j < source.length &&
+        source[j] === ">" &&
+        source[j + 1] === "(" &&
+        source[j + 2] === ")"
+      ) {
+        result += "read()";
+        i = j + 3;
+      } else {
+        result += source[i];
+        i++;
+      }
+    } else {
+      result += source[i];
+      i++;
+    }
+  }
+  return result;
 }
 
 function validateNegativeWithSuffix(
@@ -98,9 +128,10 @@ export function compile(source: string): Result<string, CompileError> {
     return ok("0");
   }
 
-  // Check for read<TYPE>() pattern
-  if (isReadPattern(trimmed)) {
-    return ok("read()");
+  // Check for read<TYPE>() pattern (simple or in expression)
+  if (containsReadPattern(trimmed)) {
+    const transformed = transformReadPatterns(trimmed);
+    return ok(transformed);
   }
 
   // Try parsing as a full number first
