@@ -357,12 +357,9 @@ function checkVariableDuplicates(
 function checkReadTypeMatch(
   metadata: VariableInfo[],
 ): Result<void, CompileError> {
-  let i = 0;
-  while (i < metadata.length) {
-    const varInfo = metadata[i];
+  return forEachVariable(metadata, (varInfo) => {
     if (varInfo.stmt.indexOf("read<") === -1) {
-      i++;
-      continue;
+      return ok(void 0);
     }
     const readType = extractReadType(varInfo.stmt);
     if (
@@ -379,20 +376,16 @@ function checkReadTypeMatch(
         ),
       );
     }
-    i++;
-  }
-  return ok(void 0);
+    return ok(void 0);
+  });
 }
 
 function checkAssignmentTypeMatch(
   metadata: VariableInfo[],
 ): Result<void, CompileError> {
-  let i = 0;
-  while (i < metadata.length) {
-    const varInfo = metadata[i];
+  return forEachVariable(metadata, (varInfo) => {
     if (varInfo.declaredType === "") {
-      i++;
-      continue;
+      return ok(void 0);
     }
     const assignedVar = extractVariableFromAssignment(varInfo.stmt);
     if (assignedVar !== "") {
@@ -414,9 +407,8 @@ function checkAssignmentTypeMatch(
         j++;
       }
     }
-    i++;
-  }
-  return ok(void 0);
+    return ok(void 0);
+  });
 }
 
 function checkVariableValidation(source: string): Result<void, CompileError> {
