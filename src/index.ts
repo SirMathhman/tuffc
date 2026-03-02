@@ -199,27 +199,31 @@ function splitByStatement(source: string): string[] {
   return statements;
 }
 
-function extractVariableName(stmt: string): string {
-  if (stmt.substring(0, 4) !== "let ") {
-    return "";
-  }
-  let varName = "";
-  let k = 4;
-  while (k < stmt.length) {
-    const c = stmt[k];
+function extractIdentifier(str: string, startIndex: number): string {
+  let identifier = "";
+  let i = startIndex;
+  while (i < str.length) {
+    const c = str[i];
     if (
       (c >= "a" && c <= "z") ||
       (c >= "A" && c <= "Z") ||
       (c >= "0" && c <= "9") ||
       c === "_"
     ) {
-      varName += c;
-      k++;
+      identifier += c;
+      i++;
     } else {
       break;
     }
   }
-  return varName;
+  return identifier;
+}
+
+function extractVariableName(stmt: string): string {
+  if (stmt.substring(0, 4) !== "let ") {
+    return "";
+  }
+  return extractIdentifier(stmt, 4);
 }
 
 function extractDeclaredType(stmt: string): string {
@@ -263,68 +267,171 @@ function extractReadType(stmt: string): string {
   return stmt.substring(typeStart, typeEnd);
 }
 
-function checkVariableTypeConsistency(
-  source: string,
-): Result<void, CompileError> {
+function extractVariableFromAssignment(stmt: string): string {
+  const eqIndex = stmt.indexOf("=");
+  if (eqIndex === -1) {
+    return "";
+  }
+  const afterEq = stmt.substring(eqIndex + 1).trim();
+  return extractIdentifier(afterEq, 0);
+}
+
+interface VariableInfo {
+  name: string;
+  declaredType: string;
+  inferredType: string;
+  stmt: string;
+}
+
+function buildVariableMetadata(source: string): VariableInfo[] {
   const statements = splitByStatement(source);
+  const metadata: VariableInfo[] = [];
   let j = 0;
   while (j < statements.length) {
     const stmt = statements[j];
     if (stmt.substring(0, 4) === "let ") {
-      if (stmt.indexOf("read<") !== -1) {
-        const declaredType = extractDeclaredType(stmt);
-        const readType = extractReadType(stmt);
-        if (
-          declaredType !== "" &&
-          readType !== "" &&
-          declaredType !== readType
-        ) {
-          return err(
-            createCompileError(
-              stmt,
-              `Type mismatch: declared variable as '${declaredType}' but initialized with 'read<${readType}>()'`,
-              "Variable declaration type must match the type of the read operation",
-              `Change either the declared type to '${readType}' or the read type to '<${declaredType}>'`,
-            ),
-          );
-        }
+      const name = extractVariableName(stmt);
+      const declaredType = extractDeclaredType(stmt);
+      const readType = extractReadType(stmt);
+      let inferredType: string;
+      if (declaredType !== "") {
+        inferredType = declaredType;
+      } else {
+        inferredType = readType;
       }
+      metadata.push({
+        name,
+        declaredType,
+        inferredType,
+        stmt,
+      });
     }
     j++;
+  }
+  return metadata;
+}
+
+function forEachVariable(
+  metadata: VariableInfo[],
+  callback: (
+    varInfo: VariableInfo,
+    index: number,
+  ) => Result<void, CompileError>,
+): Result<void, CompileError> {
+  let i = 0;
+  while (i < metadata.length) {
+    const result = callback(metadata[i], i);
+    if (result.type === "err") {
+      return result;
+    }
+    i++;
   }
   return ok(void 0);
 }
 
-function checkDuplicateVariables(source: string): Result<void, CompileError> {
-  const statements = splitByStatement(source);
-  const declaredVars: string[] = [];
-  let j = 0;
-  while (j < statements.length) {
-    const stmt = statements[j];
-    const varName = extractVariableName(stmt);
-    if (varName !== "") {
-      let isDuplicate = false;
-      let m = 0;
-      while (m < declaredVars.length) {
-        if (declaredVars[m] === varName) {
-          isDuplicate = true;
-          break;
-        }
-        m++;
-      }
-      if (isDuplicate) {
+function checkVariableDuplicates(
+  metadata: VariableInfo[],
+): Result<void, CompileError> {
+  let i = 0;
+  while (i < metadata.length) {
+    const varInfo = metadata[i];
+    let j = i + 1;
+    while (j < metadata.length) {
+      if (metadata[j].name === varInfo.name) {
         return err(
           createCompileError(
-            stmt,
-            `Duplicate variable declaration: '${varName}' is already declared`,
+            varInfo.stmt,
+            `Duplicate variable declaration: '${varInfo.name}' is already declared`,
             "Variables can only be declared once in a scope",
             `Use a different variable name, or remove the duplicate declaration`,
           ),
         );
       }
-      declaredVars.push(varName);
+      j++;
     }
-    j++;
+    i++;
+  }
+  return ok(void 0);
+}
+
+function checkReadTypeMatch(
+  metadata: VariableInfo[],
+): Result<void, CompileError> {
+  let i = 0;
+  while (i < metadata.length) {
+    const varInfo = metadata[i];
+    if (varInfo.stmt.indexOf("read<") === -1) {
+      i++;
+      continue;
+    }
+    const readType = extractReadType(varInfo.stmt);
+    if (
+      varInfo.declaredType !== "" &&
+      readType !== "" &&
+      varInfo.declaredType !== readType
+    ) {
+      return err(
+        createCompileError(
+          varInfo.stmt,
+          `Type mismatch: declared variable as '${varInfo.declaredType}' but initialized with 'read<${readType}>()'`,
+          "Variable declaration type must match the type of the read operation",
+          `Change either the declared type to '${readType}' or the read type to '<${varInfo.declaredType}>'`,
+        ),
+      );
+    }
+    i++;
+  }
+  return ok(void 0);
+}
+
+function checkAssignmentTypeMatch(
+  metadata: VariableInfo[],
+): Result<void, CompileError> {
+  let i = 0;
+  while (i < metadata.length) {
+    const varInfo = metadata[i];
+    if (varInfo.declaredType === "") {
+      i++;
+      continue;
+    }
+    const assignedVar = extractVariableFromAssignment(varInfo.stmt);
+    if (assignedVar !== "") {
+      let j = 0;
+      while (j < metadata.length) {
+        if (metadata[j].name === assignedVar) {
+          if (metadata[j].inferredType !== varInfo.declaredType) {
+            return err(
+              createCompileError(
+                varInfo.stmt,
+                `Type mismatch: variable '${assignedVar}' has type '${metadata[j].inferredType}' but '${varInfo.declaredType}' was expected`,
+                "Variable assignments must match the declared type",
+                `Change the declared type to '${metadata[j].inferredType}' or assign a different variable`,
+              ),
+            );
+          }
+          break;
+        }
+        j++;
+      }
+    }
+    i++;
+  }
+  return ok(void 0);
+}
+
+function checkVariableValidation(source: string): Result<void, CompileError> {
+  const metadata = buildVariableMetadata(source);
+  const dupResult = checkVariableDuplicates(metadata);
+  if (dupResult.type === "err") {
+    return dupResult;
+  }
+  const readResult = checkReadTypeMatch(metadata);
+  if (readResult.type === "err") {
+    return readResult;
+  }
+  const assignResult = checkAssignmentTypeMatch(metadata);
+  if (assignResult.type === "err") {
+    return assignResult;
   }
   return ok(void 0);
 }
@@ -389,13 +496,9 @@ export function compile(source: string): Result<string, CompileError> {
 
   // Check for variable declarations
   if (containsLetDeclaration(trimmed)) {
-    const dupCheckResult = checkDuplicateVariables(trimmed);
-    if (dupCheckResult.type === "err") {
-      return dupCheckResult;
-    }
-    const typeCheckResult = checkVariableTypeConsistency(trimmed);
-    if (typeCheckResult.type === "err") {
-      return typeCheckResult;
+    const varValidationResult = checkVariableValidation(trimmed);
+    if (varValidationResult.type === "err") {
+      return varValidationResult;
     }
     const transformed = transformReadPatterns(trimmed);
     const stripped = stripTypeAnnotations(transformed);

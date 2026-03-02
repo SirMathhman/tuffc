@@ -107,4 +107,8 @@ describe("The compiler can compile", () => {
   it("declares variable without explicit type annotation", () => {
     assertValid("let x = read<U8>(); x", "100", 100);
   });
+
+  it("rejects type mismatch when assigning variable to variable", () => {
+    assertInvalid("let x = read<U16>(); let y : U8 = x;");
+  });
 });
