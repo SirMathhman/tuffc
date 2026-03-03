@@ -24,15 +24,18 @@ export const compile = (source: string): Result<string, string> => {
     return ok("return 0");
   }
 
-  // Variable declarations (let x : Type = expr; or let x = expr;)
+  // Variable declarations (let x : Type = expr; or let x = expr; or let mut x = expr;)
   if (source.includes("let ")) {
     const declarations: Record<string, string> = {};
     const declarationTypes: Record<string, string> = {};
+    const mutableVars: Set<string> = new Set();
+    const statements: string[] = [];
     let returnExpr = "";
 
     for (const stmt of source.split(";").map((s) => s.trim())) {
       if (stmt.startsWith("let ")) {
-        const afterLet = stmt.substring(4);
+        const isMutable = stmt.substring(4, 8) === "mut ";
+        const afterLet = stmt.substring(isMutable ? 8 : 4);
         const colonIdx = afterLet.indexOf(":");
         const equalIdx = afterLet.indexOf("=");
 
@@ -126,6 +129,13 @@ export const compile = (source: string): Result<string, string> => {
         }
 
         declarations[varName] = compiledValue;
+        if (isMutable) {
+          mutableVars.add(varName);
+        }
+        statements.push(
+          `${mutableVars.has(varName) ? "var" : "const"} ${varName} = ${compiledValue};`,
+        );
+
         if (isTyped && declaredType) {
           declarationTypes[varName] = declaredType;
         } else if (valueExpr in declarationTypes) {
@@ -153,6 +163,89 @@ export const compile = (source: string): Result<string, string> => {
             declarationTypes[varName] = valueExpr.substring(tIdx);
           }
         }
+      } else if (stmt.includes("=")) {
+        // Handle assignment statements
+        const equalIdx = stmt.indexOf("=");
+        const varName = stmt.substring(0, equalIdx).trim();
+
+        if (!(varName in declarations)) {
+          return err(`Variable '${varName}' is not declared`);
+        }
+        if (!mutableVars.has(varName)) {
+          return err(`Variable '${varName}' is not mutable`);
+        }
+
+        const valueExpr = stmt.substring(equalIdx + 1).trim();
+        let compiledValue: string;
+
+        if (valueExpr in declarations) {
+          compiledValue = valueExpr;
+        } else {
+          const compileResult = compile(valueExpr);
+          if (!compileResult.ok) {
+            return compileResult;
+          }
+
+          const returnValue = compileResult.value;
+          if (!returnValue.startsWith("return ")) {
+            return err("Invalid variable assignment");
+          }
+
+          compiledValue = returnValue.substring(7).endsWith(";")
+            ? returnValue.substring(7, returnValue.length - 1)
+            : returnValue.substring(7);
+        }
+
+        // Type check the assignment
+        if (varName in declarationTypes) {
+          const declaredType = declarationTypes[varName];
+          let valueType = "";
+          const typeMarkerIdx = Math.max(
+            valueExpr.lastIndexOf("U"),
+            valueExpr.lastIndexOf("I"),
+          );
+
+          if (typeMarkerIdx > 0 && typeMarkerIdx < valueExpr.length - 1) {
+            if (
+              valueExpr
+                .substring(0, typeMarkerIdx)
+                .split("")
+                .every((c) => c >= "0" && c <= "9") &&
+              valueExpr
+                .substring(typeMarkerIdx + 1)
+                .split("")
+                .every((c) => c >= "0" && c <= "9")
+            ) {
+              valueType = valueExpr.substring(typeMarkerIdx);
+            }
+          }
+
+          if (!valueType) {
+            if (valueExpr.startsWith("read<") && valueExpr.endsWith(">()")) {
+              const typeEnd = valueExpr.indexOf(">");
+              if (typeEnd > 5) {
+                valueType = valueExpr.substring(5, typeEnd);
+              }
+            }
+          }
+          if (!valueType && valueExpr in declarationTypes) {
+            valueType = declarationTypes[valueExpr];
+          }
+
+          if (
+            valueType &&
+            !(
+              declaredType[0] === valueType[0] &&
+              parseInt(valueType.substring(1), 10) <=
+                parseInt(declaredType.substring(1), 10)
+            )
+          ) {
+            return err(`Cannot assign ${valueType} to ${declaredType}`);
+          }
+        }
+
+        declarations[varName] = compiledValue;
+        statements.push(`${varName} = ${compiledValue};`);
       } else if (stmt.length > 0) {
         returnExpr = stmt;
       }
@@ -162,14 +255,7 @@ export const compile = (source: string): Result<string, string> => {
       returnExpr = "0";
     }
 
-    return ok(
-      Object.entries(declarations)
-        .map(([name, value]) => `let ${name} = ${value};`)
-        .join("\n") +
-        "\nreturn " +
-        returnExpr +
-        ";",
-    );
+    return ok(statements.join("\n") + "\nreturn " + returnExpr + ";");
   }
 
   // Binary expressions with operators
