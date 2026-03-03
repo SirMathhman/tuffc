@@ -13,6 +13,10 @@ const isValidTypeStr = (typeStr: string): boolean => {
   if (typeStr.startsWith("*")) {
     return isValidTypeStr(typeStr.substring(1));
   }
+  // Handle mutable pointee marker in pointer types like *mut I32
+  if (typeStr.startsWith("mut ")) {
+    return isValidTypeStr(typeStr.substring(4).trim());
+  }
   if (typeStr === "Bool") {
     return true;
   }
@@ -221,13 +225,26 @@ const extractValueType = (
       valueExpr.substring(1),
       declarationTypes,
     );
+    if (innerType.startsWith("*mut ")) {
+      return innerType.substring(5);
+    }
     if (innerType.startsWith("*")) {
-      return innerType.substring(1);
+      return innerType.substring(1).trim();
     }
     return innerType;
   }
 
   // Handle reference operator
+  if (valueExpr.startsWith("&mut ")) {
+    const innerType = extractValueType(
+      valueExpr.substring(5).trim(),
+      declarationTypes,
+    );
+    if (innerType) {
+      return "*mut " + innerType;
+    }
+    return "";
+  }
   if (valueExpr.startsWith("&")) {
     const innerType = extractValueType(
       valueExpr.substring(1),
@@ -296,6 +313,13 @@ const validateTypeAssignment = (
   valueType: string,
   declaredType: string,
 ): Result<undefined, string> => {
+  const stripMutabilityPrefix = (typeStr: string): string => {
+    const trimmedType = typeStr.trim();
+    return trimmedType.startsWith("mut ")
+      ? trimmedType.substring(4).trim()
+      : trimmedType;
+  };
+
   if (!valueType) {
     return ok(undefined);
   }
@@ -316,9 +340,11 @@ const validateTypeAssignment = (
   }
 
   // Remove pointer markers for comparison
-  const innerValueType = isValuePointer ? valueType.substring(1) : valueType;
+  const innerValueType = isValuePointer
+    ? stripMutabilityPrefix(valueType.substring(1))
+    : valueType;
   const innerDeclaredType = isDeclaredPointer
-    ? declaredType.substring(1)
+    ? stripMutabilityPrefix(declaredType.substring(1))
     : declaredType;
 
   if (
@@ -578,6 +604,23 @@ export const compile = (
       return isValidTypeStr(resolved);
     };
 
+    const requireDeclaredVariable = (varName: string): Result<true, string> => {
+      if (!(varName in declarations)) {
+        return err(`Variable '${varName}' is not declared`);
+      }
+      return ok(true);
+    };
+
+    const buildReferenceLiteral = (
+      variableName: string,
+      isMutableReference: boolean,
+    ): string => {
+      if (isMutableReference) {
+        return `{ get value() { return ${variableName}; }, set value(v) { ${variableName} = v; } }`;
+      }
+      return `{ get value() { return ${variableName}; } }`;
+    };
+
     const compilePointerExpr = (expr: string): Result<string, string> => {
       // Handle dereference operator *x
       if (expr.startsWith("*")) {
@@ -598,13 +641,29 @@ export const compile = (
         return err(`Cannot dereference '${innerExpr}'`);
       }
 
+      // Handle mutable reference operator &mut x
+      if (expr.startsWith("&mut ")) {
+        const innerExpr = expr.substring(5).trim();
+        const declaredResult = requireDeclaredVariable(innerExpr);
+        if (!declaredResult.ok) {
+          return declaredResult;
+        }
+        if (!mutableVars.has(innerExpr)) {
+          return err(
+            `Cannot take mutable reference of immutable variable '${innerExpr}'`,
+          );
+        }
+        return ok(buildReferenceLiteral(innerExpr, true));
+      }
+
       // Handle reference operator &x
       if (expr.startsWith("&")) {
         const innerExpr = expr.substring(1).trim();
-        if (innerExpr in declarations) {
-          return ok(`{ value: ${innerExpr} }`);
+        const declaredResult = requireDeclaredVariable(innerExpr);
+        if (!declaredResult.ok) {
+          return declaredResult;
         }
-        return err(`Variable '${innerExpr}' is not declared`);
+        return ok(buildReferenceLiteral(innerExpr, false));
       }
 
       return err("Not a pointer expression");
@@ -684,11 +743,68 @@ export const compile = (
         const handleAssignment = (
           assignStmt: string,
         ): Result<undefined, string> => {
+          const extractAndCompileAssignmentValue = (
+            statement: string,
+          ): Result<{ valueExpr: string; compiledValue: string }, string> => {
+            const equalIdx = statement.indexOf("=");
+            const valueExpr = statement.substring(equalIdx + 1).trim();
+            const compiledValueResult = extractCompiledValue(valueExpr, true);
+            if (!compiledValueResult.ok) {
+              return compiledValueResult;
+            }
+
+            return ok({
+              valueExpr,
+              compiledValue: compiledValueResult.value,
+            });
+          };
+
           const varName = extractVariableNameFromAssignment(assignStmt);
 
+          // Handle dereference assignment: *ptr = value
+          if (varName.startsWith("*")) {
+            const ptrName = varName.substring(1).trim();
+            const declaredResult = requireDeclaredVariable(ptrName);
+            if (!declaredResult.ok) {
+              return declaredResult;
+            }
+
+            const ptrType = declarationTypes[ptrName] || "";
+            if (!ptrType.startsWith("*")) {
+              return err(
+                `Cannot assign through non-pointer variable '${ptrName}'`,
+              );
+            }
+            if (!ptrType.startsWith("*mut ")) {
+              return err(
+                `Cannot assign through immutable reference '${ptrName}'`,
+              );
+            }
+
+            const assignmentValueResult =
+              extractAndCompileAssignmentValue(assignStmt);
+            if (!assignmentValueResult.ok) {
+              return assignmentValueResult;
+            }
+            const { valueExpr, compiledValue } = assignmentValueResult.value;
+
+            const pointedType = ptrType.substring(5).trim();
+            const validationResult = validateTypeAssignment(
+              extractValueType(valueExpr, declarationTypes),
+              pointedType,
+            );
+            if (!validationResult.ok) {
+              return validationResult;
+            }
+
+            statements.push(`${ptrName}.value = ${compiledValue};`);
+            return ok(undefined);
+          }
+
           // Validate variable is declared
-          if (!(varName in declarations)) {
-            return err(`Variable '${varName}' is not declared`);
+          const declaredResult = requireDeclaredVariable(varName);
+          if (!declaredResult.ok) {
+            return declaredResult;
           }
 
           if (!mutableVars.has(varName)) {
@@ -800,8 +916,11 @@ export const compile = (
               } else if (bodyStmt.includes("=")) {
                 // Handle assignments - only allow modifying outer-scope variables
                 const varName = extractVariableNameFromAssignment(bodyStmt);
+                const scopedVarName = varName.startsWith("*")
+                  ? varName.substring(1).trim()
+                  : varName;
 
-                if (!outerDeclarations.has(varName)) {
+                if (!outerDeclarations.has(scopedVarName)) {
                   return err(
                     `Variable '${varName}' is not available in this scope`,
                   );
@@ -874,9 +993,7 @@ export const compile = (
             "Bool",
           ];
           if (builtInTypes.includes(aliasName)) {
-            return err(
-              `Cannot use built-in type name '${aliasName}' as alias`,
-            );
+            return err(`Cannot use built-in type name '${aliasName}' as alias`);
           }
 
           // Validate that the aliased type is valid
@@ -960,10 +1077,13 @@ export const compile = (
             declarationTypes[parsed.varName] = "Bool";
           } else if (parsed.valueExpr.startsWith("&")) {
             // Handle reference operator: infer pointer type
-            const refVarName = parsed.valueExpr.substring(1).trim();
+            const refVarName = parsed.valueExpr.startsWith("&mut ")
+              ? parsed.valueExpr.substring(5).trim()
+              : parsed.valueExpr.substring(1).trim();
             if (refVarName in declarationTypes) {
               declarationTypes[parsed.varName] =
-                "*" + declarationTypes[refVarName];
+                (parsed.valueExpr.startsWith("&mut ") ? "*mut " : "*") +
+                declarationTypes[refVarName];
             }
           } else if (parsed.valueExpr in declarationTypes) {
             declarationTypes[parsed.varName] =

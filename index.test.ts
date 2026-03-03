@@ -108,3 +108,8 @@ invalidate(
   "type MyAlias = I32; type MyAlias = I32; let temp : MyAlias = read<I32>(); temp",
 );
 invalidate("type I32 = U64;");
+validate(
+  "let mut x = 0; let y : *mut I32 = &mut x; *y = read<I32>(); x",
+  "100",
+  100,
+);
