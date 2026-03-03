@@ -18,6 +18,62 @@ const isValidTypeStr = (typeStr: string): boolean => {
   );
 };
 
+const extractValueType = (
+  valueExpr: string,
+  declarationTypes: Record<string, string>,
+): string => {
+  let valueType = "";
+  const typeMarkerIdx = Math.max(
+    valueExpr.lastIndexOf("U"),
+    valueExpr.lastIndexOf("I"),
+  );
+
+  if (typeMarkerIdx > 0 && typeMarkerIdx < valueExpr.length - 1) {
+    if (
+      valueExpr
+        .substring(0, typeMarkerIdx)
+        .split("")
+        .every((c) => c >= "0" && c <= "9") &&
+      valueExpr
+        .substring(typeMarkerIdx + 1)
+        .split("")
+        .every((c) => c >= "0" && c <= "9")
+    ) {
+      valueType = valueExpr.substring(typeMarkerIdx);
+    }
+  }
+
+  if (!valueType) {
+    if (valueExpr.startsWith("read<") && valueExpr.endsWith(">()")) {
+      const typeEnd = valueExpr.indexOf(">");
+      if (typeEnd > 5) {
+        valueType = valueExpr.substring(5, typeEnd);
+      }
+    }
+  }
+  if (!valueType && valueExpr in declarationTypes) {
+    valueType = declarationTypes[valueExpr];
+  }
+  return valueType;
+};
+
+const validateTypeAssignment = (
+  valueType: string,
+  declaredType: string,
+): Result<null, string> => {
+  if (
+    valueType &&
+    !(
+      declaredType[0] === valueType[0] &&
+      parseInt(valueType.substring(1), 10) <=
+        parseInt(declaredType.substring(1), 10)
+    )
+  ) {
+    return err(`Cannot assign ${valueType} to ${declaredType}`);
+  }
+  return ok(null);
+};
+
 export const compile = (source: string): Result<string, string> => {
   // Empty input returns 0
   if (source === "") {
@@ -31,6 +87,35 @@ export const compile = (source: string): Result<string, string> => {
     const mutableVars: Set<string> = new Set();
     const statements: string[] = [];
     let returnExpr = "";
+
+    const extractCompiledValue = (
+      expr: string,
+      isAssignmentContext: boolean,
+    ): Result<string, string> => {
+      if (expr in declarations) {
+        return ok(expr);
+      }
+
+      const compileResult = compile(expr);
+      if (!compileResult.ok) {
+        return compileResult;
+      }
+
+      const returnValue = compileResult.value;
+      if (!returnValue.startsWith("return ")) {
+        return err(
+          isAssignmentContext
+            ? "Invalid variable assignment"
+            : "Invalid variable initialization",
+        );
+      }
+
+      return ok(
+        returnValue.substring(7).endsWith(";")
+          ? returnValue.substring(7, returnValue.length - 1)
+          : returnValue.substring(7),
+      );
+    };
 
     for (const stmt of source.split(";").map((s) => s.trim())) {
       if (stmt.startsWith("let ")) {
@@ -53,71 +138,23 @@ export const compile = (source: string): Result<string, string> => {
           )
           .trim();
 
-        let compiledValue: string;
-        if (valueExpr in declarations) {
-          compiledValue = valueExpr;
-        } else {
-          const compileResult = compile(valueExpr);
-          if (!compileResult.ok) {
-            return compileResult;
-          }
-
-          const returnValue = compileResult.value;
-          if (!returnValue.startsWith("return ")) {
-            return err("Invalid variable initialization");
-          }
-
-          compiledValue = returnValue.substring(7).endsWith(";")
-            ? returnValue.substring(7, returnValue.length - 1)
-            : returnValue.substring(7);
+        const compiledValueResult = extractCompiledValue(valueExpr, false);
+        if (!compiledValueResult.ok) {
+          return compiledValueResult;
         }
+        const compiledValue = compiledValueResult.value;
 
         if (isTyped && declaredType) {
           if (!isValidTypeStr(declaredType)) {
             return err(`Invalid type: ${declaredType}`);
           }
 
-          let valueType = "";
-          const typeMarkerIdx = Math.max(
-            valueExpr.lastIndexOf("U"),
-            valueExpr.lastIndexOf("I"),
+          const validationResult = validateTypeAssignment(
+            extractValueType(valueExpr, declarationTypes),
+            declaredType,
           );
-
-          if (typeMarkerIdx > 0 && typeMarkerIdx < valueExpr.length - 1) {
-            if (
-              valueExpr
-                .substring(0, typeMarkerIdx)
-                .split("")
-                .every((c) => c >= "0" && c <= "9") &&
-              valueExpr
-                .substring(typeMarkerIdx + 1)
-                .split("")
-                .every((c) => c >= "0" && c <= "9")
-            ) {
-              valueType = valueExpr.substring(typeMarkerIdx);
-            }
-          }
-
-          if (!valueType) {
-            if (valueExpr.startsWith("read<") && valueExpr.endsWith(">()")) {
-              const typeEnd = valueExpr.indexOf(">");
-              if (typeEnd > 5) {
-                valueType = valueExpr.substring(5, typeEnd);
-              }
-            }
-          }
-          if (!valueType && valueExpr in declarationTypes) {
-            valueType = declarationTypes[valueExpr];
-          }
-          if (
-            valueType &&
-            !(
-              declaredType[0] === valueType[0] &&
-              parseInt(valueType.substring(1), 10) <=
-                parseInt(declaredType.substring(1), 10)
-            )
-          ) {
-            return err(`Cannot assign ${valueType} to ${declaredType}`);
+          if (!validationResult.ok) {
+            return validationResult;
           }
         }
 
@@ -176,71 +213,20 @@ export const compile = (source: string): Result<string, string> => {
         }
 
         const valueExpr = stmt.substring(equalIdx + 1).trim();
-        let compiledValue: string;
-
-        if (valueExpr in declarations) {
-          compiledValue = valueExpr;
-        } else {
-          const compileResult = compile(valueExpr);
-          if (!compileResult.ok) {
-            return compileResult;
-          }
-
-          const returnValue = compileResult.value;
-          if (!returnValue.startsWith("return ")) {
-            return err("Invalid variable assignment");
-          }
-
-          compiledValue = returnValue.substring(7).endsWith(";")
-            ? returnValue.substring(7, returnValue.length - 1)
-            : returnValue.substring(7);
+        const compiledValueResult = extractCompiledValue(valueExpr, true);
+        if (!compiledValueResult.ok) {
+          return compiledValueResult;
         }
+        const compiledValue = compiledValueResult.value;
 
         // Type check the assignment
         if (varName in declarationTypes) {
-          const declaredType = declarationTypes[varName];
-          let valueType = "";
-          const typeMarkerIdx = Math.max(
-            valueExpr.lastIndexOf("U"),
-            valueExpr.lastIndexOf("I"),
+          const validationResult = validateTypeAssignment(
+            extractValueType(valueExpr, declarationTypes),
+            declarationTypes[varName],
           );
-
-          if (typeMarkerIdx > 0 && typeMarkerIdx < valueExpr.length - 1) {
-            if (
-              valueExpr
-                .substring(0, typeMarkerIdx)
-                .split("")
-                .every((c) => c >= "0" && c <= "9") &&
-              valueExpr
-                .substring(typeMarkerIdx + 1)
-                .split("")
-                .every((c) => c >= "0" && c <= "9")
-            ) {
-              valueType = valueExpr.substring(typeMarkerIdx);
-            }
-          }
-
-          if (!valueType) {
-            if (valueExpr.startsWith("read<") && valueExpr.endsWith(">()")) {
-              const typeEnd = valueExpr.indexOf(">");
-              if (typeEnd > 5) {
-                valueType = valueExpr.substring(5, typeEnd);
-              }
-            }
-          }
-          if (!valueType && valueExpr in declarationTypes) {
-            valueType = declarationTypes[valueExpr];
-          }
-
-          if (
-            valueType &&
-            !(
-              declaredType[0] === valueType[0] &&
-              parseInt(valueType.substring(1), 10) <=
-                parseInt(declaredType.substring(1), 10)
-            )
-          ) {
-            return err(`Cannot assign ${valueType} to ${declaredType}`);
+          if (!validationResult.ok) {
+            return validationResult;
           }
         }
 

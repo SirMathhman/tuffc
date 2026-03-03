@@ -44,7 +44,6 @@ const invalidate = (source: string) => {
   });
 };
 
-invalidate("100");
 validate("", "", 0);
 invalidate("x");
 validate("100", "", 100);
