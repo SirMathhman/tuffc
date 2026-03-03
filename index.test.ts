@@ -68,3 +68,4 @@ invalidate("let x = true; let y = false; x + y");
 validate("let x = true; let y = false; x || y", "", 1);
 validate("let x = true; let y = false; x && y", "", 0);
 invalidate("let x = 0; let y = 1; x || y");
+validate("let x = read<I32>(); let y = read<I32>(); x < y", "3 4", 1);

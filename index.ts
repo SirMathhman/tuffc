@@ -164,6 +164,25 @@ export const compile = (source: string): Result<string, string> => {
     return ok(result);
   };
 
+  const extractOperandTypes = (
+    leftOp: string,
+    rightOp: string,
+    declarationTypes: Record<string, string>,
+  ): {
+    leftType: string;
+    rightType: string;
+  } => {
+    const leftType =
+      leftOp in declarationTypes
+        ? declarationTypes[leftOp]
+        : extractValueType(leftOp, declarationTypes);
+    const rightType =
+      rightOp in declarationTypes
+        ? declarationTypes[rightOp]
+        : extractValueType(rightOp, declarationTypes);
+    return { leftType, rightType };
+  };
+
   // Empty input returns 0
   if (source === "") {
     return ok("return 0");
@@ -482,17 +501,16 @@ export const compile = (source: string): Result<string, string> => {
         if (logicalOpIndex !== -1) {
           const leftOp = returnExpr.substring(0, logicalOpIndex).trim();
           const rightOp = returnExpr
-            .substring(logicalOpIndex + (returnExpr[logicalOpIndex] === "&" ? 2 : 2))
+            .substring(
+              logicalOpIndex + (returnExpr[logicalOpIndex] === "&" ? 2 : 2),
+            )
             .trim();
 
-          const leftType =
-            leftOp in declarationTypes
-              ? declarationTypes[leftOp]
-              : extractValueType(leftOp, declarationTypes);
-          const rightType =
-            rightOp in declarationTypes
-              ? declarationTypes[rightOp]
-              : extractValueType(rightOp, declarationTypes);
+          const { leftType, rightType } = extractOperandTypes(
+            leftOp,
+            rightOp,
+            declarationTypes,
+          );
 
           if (leftType !== "Bool" || rightType !== "Bool") {
             return err(
@@ -501,6 +519,48 @@ export const compile = (source: string): Result<string, string> => {
           }
         }
         returnExpr = `${returnExpr} ? 1 : 0`;
+      }
+
+      // Handle comparison operators (<, >, <=, >=, ==, !=)
+      const comparisonOps = ["<=", ">=", "==", "!=", "<", ">"];
+      const hasComparison = comparisonOps.some((op) => returnExpr.includes(op));
+
+      if (hasComparison) {
+        // Find which comparison operator is in the expression
+        let compOp = "";
+        let opIndex = -1;
+        for (const op of comparisonOps) {
+          const idx = returnExpr.indexOf(op);
+          if (idx !== -1 && (opIndex === -1 || idx < opIndex)) {
+            opIndex = idx;
+            compOp = op;
+          }
+        }
+
+        if (opIndex !== -1) {
+          const leftOp = returnExpr.substring(0, opIndex).trim();
+          const rightOp = returnExpr.substring(opIndex + compOp.length).trim();
+
+          const { leftType, rightType } = extractOperandTypes(
+            leftOp,
+            rightOp,
+            declarationTypes,
+          );
+
+          if (leftType === "Bool" || rightType === "Bool") {
+            return err(
+              "Comparison operators cannot be used with boolean types",
+            );
+          }
+        }
+
+        // Replace read<Type>() calls in the expression for comparison
+        const readReplaced = replaceReadCalls(returnExpr);
+        if (!readReplaced.ok) {
+          return readReplaced;
+        }
+
+        returnExpr = `${readReplaced.value} ? 1 : 0`;
       }
     }
 
