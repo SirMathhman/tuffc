@@ -183,11 +183,14 @@ export const compile = (source: string): Result<string, string> => {
     return { leftType, rightType };
   };
 
-  const compileIfElse = (expr: string): string | undefined => {
+  const compileIfElse = (
+    expr: string,
+    declarationTypes?: Record<string, string>,
+  ): Result<string, string> => {
     // Match pattern: if (condition) consequent else alternate
     // Handle nested parentheses in condition
     if (!expr.startsWith("if (")) {
-      return undefined;
+      return err("Invalid if/else expression");
     }
 
     let depthCounter = 0;
@@ -205,7 +208,7 @@ export const compile = (source: string): Result<string, string> => {
     }
 
     if (conditionEndIdx === -1) {
-      return undefined;
+      return err("Invalid if/else condition");
     }
 
     const condition = expr.substring(4, conditionEndIdx).trim();
@@ -213,13 +216,29 @@ export const compile = (source: string): Result<string, string> => {
 
     const elseIdx = remaining.lastIndexOf(" else ");
     if (elseIdx === -1) {
-      return undefined;
+      return err("Invalid if/else expression: missing else");
+    }
+
+    // Validate that the condition is a boolean type
+    if (declarationTypes) {
+      // Only allow boolean literals or boolean variables
+      const isBoolLiteral = condition === "true" || condition === "false";
+      const isBoolVar = condition in declarationTypes && declarationTypes[condition] === "Bool";
+
+      if (!isBoolLiteral && !isBoolVar) {
+        return err("If/else condition must be of type Bool");
+      }
+    } else {
+      // Without declaration types, only allow boolean literals
+      if (condition !== "true" && condition !== "false") {
+        return err("If/else condition must be of type Bool");
+      }
     }
 
     const consequent = remaining.substring(0, elseIdx).trim();
     const alternate = remaining.substring(elseIdx + 6).trim();
 
-    return `(${condition}) ? (${consequent}) : (${alternate})`;
+    return ok(`(${condition}) ? (${consequent}) : (${alternate})`);
   };
 
   // Empty input returns 0
@@ -502,9 +521,13 @@ export const compile = (source: string): Result<string, string> => {
       returnExpr = "0";
     } else {
       // Handle if/else expressions
-      const ifElseCompiled = compileIfElse(returnExpr);
-      if (ifElseCompiled !== undefined) {
-        returnExpr = ifElseCompiled;
+      if (returnExpr.startsWith("if (")) {
+        const ifElseCompiled = compileIfElse(returnExpr, declarationTypes);
+        if (ifElseCompiled.ok) {
+          returnExpr = ifElseCompiled.value;
+        } else {
+          return ifElseCompiled;
+        }
       }
 
       // Check for arithmetic operations with boolean operands (disallow)
@@ -615,9 +638,11 @@ export const compile = (source: string): Result<string, string> => {
   // If/else expressions: if (condition) consequent else alternate
   if (source.startsWith("if (")) {
     const ifElseCompiled = compileIfElse(source);
-    if (ifElseCompiled !== undefined) {
+    if (ifElseCompiled.ok) {
       // Recursively compile the ternary expression
-      return compile(ifElseCompiled);
+      return compile(ifElseCompiled.value);
+    } else {
+      return ifElseCompiled;
     }
   }
 

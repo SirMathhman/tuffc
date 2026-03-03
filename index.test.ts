@@ -75,3 +75,4 @@ invalidate("let x = 0; let y = 1; x || y");
 validate("let x = read<I32>(); let y = read<I32>(); x < y", "3 4", 1);
 validate("let x = read<Bool>(); x", "true", 1);
 validate("let x = if (true) 3 else 5; x", "", 3);
+invalidate("let x = if (100) 3 else 5; x");
