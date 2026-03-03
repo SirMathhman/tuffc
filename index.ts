@@ -1,3 +1,6 @@
+import { readFileSync, writeFileSync } from "fs";
+import { join } from "path";
+
 export type Result<T, E> = { ok: true; value: T } | { ok: false; error: E };
 
 export const ok = <T>(value: T): Result<T, never> => {
@@ -2329,3 +2332,33 @@ const isValidIdentifier = (str: string): boolean => {
   if (str[0] >= "0" && str[0] <= "9") return false;
   return [...str].every((c) => isWordChar(c));
 };
+
+if (import.meta.main) {
+  try {
+    const tuffPath = join(process.cwd(), "main.tuff");
+    const jsPath = join(process.cwd(), "main.js");
+    const source = readFileSync(tuffPath, "utf8");
+    const result = compile(source);
+
+    if (result.ok) {
+      const wrappedCode = `process.exit((() => {\n${result.value}\n})());`;
+      writeFileSync(jsPath, wrappedCode);
+      console.log(`Successfully compiled ${tuffPath} -> ${jsPath}`);
+    } else {
+      console.error("Compilation failed:", result.error);
+      process.exit(1);
+    }
+  } catch (err: unknown) {
+    if (
+      err &&
+      typeof err === "object" &&
+      "code" in err &&
+      err.code === "ENOENT"
+    ) {
+      console.error("Error: main.tuff not found in current directory.");
+    } else {
+      console.error("Unexpected error during compilation:", err);
+    }
+    process.exit(1);
+  }
+}
