@@ -986,6 +986,13 @@ export const compile = (
             return err(`Function '${fnName}' is already defined`);
           }
 
+          // Check if function name shadows a declared variable
+          if (fnName in declarations) {
+            return err(
+              `Function '${fnName}' shadows declared variable`,
+            );
+          }
+
           // Find closing paren using reduce
           let closeParenIdx = -1;
           [...afterFn].reduce((depth: number, char: string, idx: number) => {

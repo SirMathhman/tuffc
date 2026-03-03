@@ -117,3 +117,4 @@ validate("fn empty() => {}", "", 0);
 invalidate("fn empty() => {} fn empty() => {}");
 invalidate("fn add(first : I32, first : I32) => {}");
 invalidate("let x = 0; fn doSomething(x : I32) => {}");
+invalidate("let doSomething = 0; fn doSomething() => {}");
