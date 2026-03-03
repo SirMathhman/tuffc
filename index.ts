@@ -8,7 +8,10 @@ export const err = <E>(error: E): Result<never, E> => {
   return { ok: false, error };
 };
 
-const replaceThisPattern = (source: string, localDeclarations?: Record<string, string>): string => {
+const replaceThisPattern = (
+  source: string,
+  localDeclarations?: Record<string, string>,
+): string => {
   let result = "";
   let i = 0;
   const chars = [...source];
@@ -17,7 +20,10 @@ const replaceThisPattern = (source: string, localDeclarations?: Record<string, s
     if (idx < i) return;
 
     const atThisDot = source.slice(idx, idx + 5) === "this.";
-    const atThis = localDeclarations && source.slice(idx, idx + 4) === "this" && (idx + 4 === source.length || !isWordChar(source[idx + 4]));
+    const atThis =
+      localDeclarations &&
+      source.slice(idx, idx + 4) === "this" &&
+      (idx + 4 === source.length || !isWordChar(source[idx + 4]));
 
     if (atThisDot || atThis) {
       const prevChar = idx > 0 ? source[idx - 1] : "";
@@ -39,8 +45,14 @@ const replaceThisPattern = (source: string, localDeclarations?: Record<string, s
           }
         } else {
           i = idx + 4;
-          const entriesList = Object.keys(localDeclarations!).map(name => `${name}: ${name}`).join(", ");
-          result += `({ ${entriesList} })`;
+          if (localDeclarations && Object.keys(localDeclarations).length > 0) {
+            const entriesList = Object.keys(localDeclarations)
+              .map((name) => `${name}: ${name}`)
+              .join(", ");
+            result += `({ ${entriesList} })`;
+          } else {
+            result += "this";
+          }
         }
       } else {
         result += source[idx];
@@ -201,10 +213,51 @@ const parseWhile = (
   return { condition, body };
 };
 
+type FunctionDefinition = {
+  params: Array<{ name: string; type: string }>;
+  returnType: string;
+  body: string;
+};
+
 const extractValueType = (
   valueExpr: string,
   declarationTypes: Record<string, string>,
+  definedFunctions?: Record<string, FunctionDefinition>,
 ): string => {
+  // Handle property access test.value
+  if (valueExpr.includes(".") && !valueExpr.startsWith("{")) {
+    const dotIdx = valueExpr.lastIndexOf(".");
+    const objExpr = valueExpr.substring(0, dotIdx).trim();
+    const propName = valueExpr.substring(dotIdx + 1).trim();
+    const objType = extractValueType(
+      objExpr,
+      declarationTypes,
+      definedFunctions,
+    );
+
+    if (objType && definedFunctions && objType in definedFunctions) {
+      const fnDef = definedFunctions[objType];
+      const param = fnDef.params.find((p) => p.name === propName);
+      if (param) {
+        return param.type || "I32";
+      }
+    }
+  }
+
+  // Handle function calls in type inference
+  if (valueExpr.includes("(") && definedFunctions) {
+    const openParenIdx = valueExpr.indexOf("(");
+    const fnName = valueExpr.substring(0, openParenIdx).trim();
+    if (fnName in definedFunctions) {
+      const fnDef = definedFunctions[fnName];
+      // If returnType is "this", the return type is the function name itself (the "class" type)
+      if (fnDef.returnType === "this" || fnDef.body === "this") {
+        return fnName;
+      }
+      return fnDef.returnType || "I32";
+    }
+  }
+
   // Handle block expressions first
   if (valueExpr.startsWith("{") && valueExpr.endsWith("}")) {
     const blockContent = valueExpr.substring(1, valueExpr.length - 1).trim();
@@ -223,12 +276,25 @@ const extractValueType = (
           blockDeclarationTypes[parsed.varName] = parsed.declaredType;
         } else {
           // Infer type from value expr
+          // Infer type from value expr
           const inferredType = extractValueType(
             parsed.valueExpr,
             blockDeclarationTypes,
+            definedFunctions,
           );
           if (inferredType) {
             blockDeclarationTypes[parsed.varName] = inferredType;
+          }
+        }
+      } else if (stmt.startsWith("type ")) {
+        // Handle type alias declarations inside blocks too
+        const afterType = stmt.substring(5);
+        const eqIdx = afterType.indexOf("=");
+        if (eqIdx !== -1) {
+          const aliasName = afterType.substring(0, eqIdx).trim();
+          const aliasType = afterType.substring(eqIdx + 1).trim();
+          if (aliasName && aliasType) {
+            // Placeholder for type alias handling
           }
         }
       }
@@ -240,7 +306,11 @@ const extractValueType = (
     // The last statement should determine the return type
     if (!lastStatement.startsWith("let ")) {
       // It's a plain expression
-      return extractValueType(lastStatement, blockDeclarationTypes);
+      return extractValueType(
+        lastStatement,
+        blockDeclarationTypes,
+        definedFunctions,
+      );
     }
 
     // If it's a let statement, extract the type of its value
@@ -251,6 +321,7 @@ const extractValueType = (
     const inferredType = extractValueType(
       parsed.valueExpr,
       blockDeclarationTypes,
+      definedFunctions,
     );
     return inferredType;
   }
@@ -261,10 +332,12 @@ const extractValueType = (
     const consequentType = extractValueType(
       ifElseParts.consequent,
       declarationTypes,
+      definedFunctions,
     );
     const alternateType = extractValueType(
       ifElseParts.alternate,
       declarationTypes,
+      definedFunctions,
     );
 
     // Return the type if they match, otherwise return empty string
@@ -279,6 +352,7 @@ const extractValueType = (
     const innerType = extractValueType(
       valueExpr.substring(1),
       declarationTypes,
+      definedFunctions,
     );
     if (innerType.startsWith("*mut ")) {
       return innerType.substring(5);
@@ -294,6 +368,7 @@ const extractValueType = (
     const innerType = extractValueType(
       valueExpr.substring(5).trim(),
       declarationTypes,
+      definedFunctions,
     );
     if (innerType) {
       return "*mut " + innerType;
@@ -304,6 +379,7 @@ const extractValueType = (
     const innerType = extractValueType(
       valueExpr.substring(1),
       declarationTypes,
+      definedFunctions,
     );
     if (innerType) {
       return "*" + innerType;
@@ -376,6 +452,11 @@ const validateTypeAssignment = (
   };
 
   if (!valueType) {
+    return ok(undefined);
+  }
+
+  // Handle case where custom type is the same as declared type
+  if (valueType === declaredType) {
     return ok(undefined);
   }
 
@@ -560,6 +641,7 @@ export const compile = (
     leftOp: string,
     rightOp: string,
     declarationTypes: Record<string, string>,
+    definedFunctions?: Record<string, FunctionDefinition>,
   ): {
     leftType: string;
     rightType: string;
@@ -567,17 +649,18 @@ export const compile = (
     const leftType =
       leftOp in declarationTypes
         ? declarationTypes[leftOp]
-        : extractValueType(leftOp, declarationTypes);
+        : extractValueType(leftOp, declarationTypes, definedFunctions);
     const rightType =
       rightOp in declarationTypes
         ? declarationTypes[rightOp]
-        : extractValueType(rightOp, declarationTypes);
+        : extractValueType(rightOp, declarationTypes, definedFunctions);
     return { leftType, rightType };
   };
 
   const compileIfElse = (
     expr: string,
     declarationTypes?: Record<string, string>,
+    definedFunctions?: Record<string, FunctionDefinition>,
   ): Result<string, string> => {
     const ifElseParts = parseIfElse(expr);
 
@@ -606,11 +689,11 @@ export const compile = (
 
     // Validate that consequent and alternate have the same type
     const consequentType = declarationTypes
-      ? extractValueType(consequent, declarationTypes)
-      : extractValueType(consequent, {});
+      ? extractValueType(consequent, declarationTypes, definedFunctions)
+      : extractValueType(consequent, {}, definedFunctions);
     const alternateType = declarationTypes
-      ? extractValueType(alternate, declarationTypes)
-      : extractValueType(alternate, {});
+      ? extractValueType(alternate, declarationTypes, definedFunctions)
+      : extractValueType(alternate, {}, definedFunctions);
 
     if (consequentType !== alternateType) {
       return err(
@@ -621,7 +704,11 @@ export const compile = (
     // If the alternate is itself an if-else expression, compile it to a ternary
     let compiledAlternate = alternate;
     if (alternate.trim().startsWith("if (")) {
-      const alternateResult = compileIfElse(alternate.trim(), declarationTypes);
+      const alternateResult = compileIfElse(
+        alternate.trim(),
+        declarationTypes,
+        definedFunctions,
+      );
       if (!alternateResult.ok) {
         return alternateResult;
       }
@@ -651,14 +738,7 @@ export const compile = (
     const declarations: Record<string, string> = {};
     const declarationTypes: Record<string, string> = {};
     const typeAliases: Record<string, string> = {};
-    const definedFunctions: Record<
-      string,
-      {
-        params: Array<{ name: string; type: string }>;
-        returnType: string;
-        body: string;
-      }
-    > = {};
+    const definedFunctions: Record<string, FunctionDefinition> = {};
     const mutableVars: Set<string> = new Set();
     const statements: string[] = [];
     let returnExpr = "";
@@ -855,6 +935,39 @@ export const compile = (
         return ok("read()");
       }
 
+      // Handle property access test.value
+      if (expr.includes(".") && !expr.startsWith("{")) {
+        const dotIdx = expr.lastIndexOf(".");
+        const objExpr = expr.substring(0, dotIdx).trim();
+        const propName = expr.substring(dotIdx + 1).trim();
+
+        // Recursively compile the object expression
+        const compiledObjResult = extractCompiledValue(
+          objExpr,
+          isAssignmentContext,
+        );
+        if (!compiledObjResult.ok) {
+          return compiledObjResult;
+        }
+
+        // Validate the property exists if we can determine the type
+        const objType = extractValueType(
+          objExpr,
+          declarationTypes,
+          definedFunctions,
+        );
+        if (objType && definedFunctions && objType in definedFunctions) {
+          const fnDef = definedFunctions[objType];
+          if (!fnDef.params.find((p) => p.name === propName)) {
+            return err(
+              `Property '${propName}' does not exist on type '${objType}'`,
+            );
+          }
+        }
+
+        return ok(`${compiledObjResult.value}.${propName}`);
+      }
+
       // Try function calls first
       const fnCallResult = compileFunctionCall(expr);
       if (fnCallResult !== undefined) {
@@ -978,7 +1091,7 @@ export const compile = (
 
             const pointedType = ptrType.substring(5).trim();
             const validationResult = validateTypeAssignment(
-              extractValueType(valueExpr, declarationTypes),
+              extractValueType(valueExpr, declarationTypes, definedFunctions),
               pointedType,
             );
             if (!validationResult.ok) {
@@ -1047,7 +1160,7 @@ export const compile = (
           // Type check the assignment
           if (varName in declarationTypes) {
             const validationResult = validateTypeAssignment(
-              extractValueType(valueExpr, declarationTypes),
+              extractValueType(valueExpr, declarationTypes, definedFunctions),
               declarationTypes[varName],
             );
             if (!validationResult.ok) {
@@ -1405,11 +1518,18 @@ export const compile = (
           if (parsed.isTyped && parsed.declaredType) {
             const resolvedType = resolveTypeAlias(parsed.declaredType);
             if (!isValidTypeStr(resolvedType)) {
-              return err(`Invalid type: ${parsed.declaredType}`);
+              // Allow function names as types
+              if (definedFunctions && !(resolvedType in definedFunctions)) {
+                return err(`Invalid type: ${parsed.declaredType}`);
+              }
             }
 
             const validationResult = validateTypeAssignment(
-              extractValueType(parsed.valueExpr, declarationTypes),
+              extractValueType(
+                parsed.valueExpr,
+                declarationTypes,
+                definedFunctions,
+              ),
               resolvedType,
             );
             if (!validationResult.ok) {
@@ -1671,7 +1791,11 @@ export const compile = (
 
       // Handle if/else expressions
       if (returnExpr.startsWith("if (")) {
-        const ifElseCompiled = compileIfElse(returnExpr, declarationTypes);
+        const ifElseCompiled = compileIfElse(
+          returnExpr,
+          declarationTypes,
+          definedFunctions,
+        );
         if (ifElseCompiled.ok) {
           returnExpr = ifElseCompiled.value;
         } else {
@@ -1727,6 +1851,7 @@ export const compile = (
             leftOp,
             rightOp,
             declarationTypes,
+            definedFunctions,
           );
 
           if (leftType !== "Bool" || rightType !== "Bool") {
@@ -1762,6 +1887,7 @@ export const compile = (
             leftOp,
             rightOp,
             declarationTypes,
+            definedFunctions,
           );
 
           if (leftType === "Bool" || rightType === "Bool") {
@@ -1787,11 +1913,7 @@ export const compile = (
 
     const compileFunctionDefinition = (
       functionName: string,
-      fnDef: {
-        params: Array<{ name: string; type: string }>;
-        returnType: string;
-        body: string;
-      },
+      fnDef: FunctionDefinition,
     ): Result<string, string> => {
       const paramsList = fnDef.params.map((param) => param.name).join(", ");
       let functionBody = fnDef.body;

@@ -139,3 +139,8 @@ validate("fn Wrapper(value : I32) => this; Wrapper(100).value", "", 100);
 invalidate("undefinedFunction()");
 invalidate("fn pass(value : I32) => value; pass()");
 invalidate("fn pass(value : I32) => value; pass(true)");
+validate(
+  "fn Wrapper(value : I32) => this; let test : Wrapper = Wrapper(100); test.value",
+  "",
+  100,
+);
