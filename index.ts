@@ -631,6 +631,20 @@ export const compile = (
             return err(`Variable '${varName}' is not mutable`);
           }
 
+          // Check for compound arithmetic operators and validate type compatibility
+          const isCompoundArithmetic = assignStmt.includes("+=") || 
+                                       assignStmt.includes("-=") || 
+                                       assignStmt.includes("*=") || 
+                                       assignStmt.includes("/=");
+          
+          if (isCompoundArithmetic && varName in declarationTypes) {
+            const varType = declarationTypes[varName];
+            // Arithmetic operations are not valid on Bool types
+            if (varType === "Bool") {
+              return err(`Cannot perform arithmetic operation on Bool variable '${varName}'`);
+            }
+          }
+
           // Handle compound assignment operators (+=, -=, *=, /=)
           let normalizedStmt = assignStmt;
           if (assignStmt.includes("+=")) {
