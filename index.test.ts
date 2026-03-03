@@ -1,12 +1,18 @@
 import { compile } from ".";
 
-function itIsValid(source: string, expected: number): void {
+function validate(source: string, expected: number): void {
   it(source, () => {
-    const actual = eval(compile(source)) as number;
+    const func = new Function(compile(source));
+    const actual = func() as number;
     expect(actual).toBe(expected);
   });
 }
 
-describe("Compiler test cases", () => {
-  itIsValid("1 + 2", 3);
-});
+function invalidate(source: string) {
+  it(source, () => {
+    expect(() => compile(source)).toThrow();
+  });
+}
+
+validate("", 0);
+invalidate("x");

@@ -3,7 +3,7 @@
     "Stop": [
       {
         "type": "command",
-        "command": "bun test"
+        "command": "bun test --timeout 1000 --concurrent"
       }
     ]
   }
