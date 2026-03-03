@@ -123,3 +123,8 @@ validate(
   "3 4",
   7,
 );
+validate(
+  "fn add(first : I32, second : I32) : I32 => first + second; add(read<I32>(), read<I32>())",
+  "3 4",
+  7,
+);

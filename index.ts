@@ -1209,15 +1209,31 @@ export const compile = (
           const bodyStart = afterReturnType.indexOf("=>") + 2;
           const body = afterReturnType.substring(bodyStart).trim();
 
-          if (!body.startsWith("{") || !body.endsWith("}")) {
-            return err("Invalid function definition: body must be a block");
+          // Remove trailing semicolon if present (for expression-only bodies)
+          const normalizedBody = body.endsWith(";")
+            ? body.substring(0, body.length - 1).trim()
+            : body;
+
+          // Validate body format: either a block { ... } or an expression
+          if (
+            !(
+              (normalizedBody.startsWith("{") &&
+                normalizedBody.endsWith("}")) ||
+              (normalizedBody.length > 0 &&
+                !normalizedBody.includes("{") &&
+                !normalizedBody.includes("}"))
+            )
+          ) {
+            return err(
+              "Invalid function definition: body must be a block or expression",
+            );
           }
 
           // Store this function definition
           definedFunctions[fnName] = {
             params,
             returnType,
-            body,
+            body: normalizedBody,
           };
 
           // Skip this statement - function definitions are no-ops
@@ -1728,53 +1744,65 @@ export const compile = (
           const compiledArgs = args.map((arg) => removeTypeAnnotations(arg));
 
           // Extract return expression from function body
-          const bodyContent = fnDef.body
-            .substring(1, fnDef.body.length - 1)
-            .trim();
+          let returnStmt: string;
 
-          if (bodyContent.startsWith("return ")) {
-            let returnStmt = bodyContent.substring(7);
-            if (returnStmt.endsWith(";")) {
-              returnStmt = returnStmt
-                .substring(0, returnStmt.length - 1)
-                .trim();
-            }
+          if (fnDef.body.startsWith("{") && fnDef.body.endsWith("}")) {
+            // Block body: extract content from { ... }
+            const bodyContent = fnDef.body
+              .substring(1, fnDef.body.length - 1)
+              .trim();
 
-            // Substitute parameters into the return statement
-            finalReturnExpr = fnDef.params.reduce((stmt, param, idx) => {
-              const compiledArg = compiledArgs[idx];
-              // Simple string replacement for parameter substitution
-              // This works for simple cases; doesn't handle word boundaries perfectly
-              // but good enough for basic function inlining
-              let result = stmt;
-              let searchPos = 0;
-              while (true) {
-                const idx = result.indexOf(param.name, searchPos);
-                if (idx === -1) break;
-                // Check boundaries
-                const before = idx > 0 ? result[idx - 1] : " ";
-                const after =
-                  idx + param.name.length < result.length
-                    ? result[idx + param.name.length]
-                    : " ";
-                const isWordChar = (c: string) =>
-                  (c >= "a" && c <= "z") ||
-                  (c >= "A" && c <= "Z") ||
-                  (c >= "0" && c <= "9") ||
-                  c === "_";
-                if (!isWordChar(before) && !isWordChar(after)) {
-                  result =
-                    result.substring(0, idx) +
-                    `(${compiledArg})` +
-                    result.substring(idx + param.name.length);
-                  searchPos = idx + compiledArg.length + 2;
-                } else {
-                  searchPos = idx + 1;
-                }
+            if (bodyContent.startsWith("return ")) {
+              // Explicit return statement
+              returnStmt = bodyContent.substring(7);
+              if (returnStmt.endsWith(";")) {
+                returnStmt = returnStmt
+                  .substring(0, returnStmt.length - 1)
+                  .trim();
               }
-              return result;
-            }, returnStmt);
+            } else {
+              // Implicit return (last expression in block)
+              returnStmt = bodyContent;
+            }
+          } else {
+            // Expression body: use directly
+            returnStmt = fnDef.body;
           }
+
+          // Substitute parameters into the return statement
+          finalReturnExpr = fnDef.params.reduce((stmt, param, idx) => {
+            const compiledArg = compiledArgs[idx];
+            // Simple string replacement for parameter substitution
+            // This works for simple cases; doesn't handle word boundaries perfectly
+            // but good enough for basic function inlining
+            let result = stmt;
+            let searchPos = 0;
+            while (true) {
+              const idx = result.indexOf(param.name, searchPos);
+              if (idx === -1) break;
+              // Check boundaries
+              const before = idx > 0 ? result[idx - 1] : " ";
+              const after =
+                idx + param.name.length < result.length
+                  ? result[idx + param.name.length]
+                  : " ";
+              const isWordChar = (c: string) =>
+                (c >= "a" && c <= "z") ||
+                (c >= "A" && c <= "Z") ||
+                (c >= "0" && c <= "9") ||
+                c === "_";
+              if (!isWordChar(before) && !isWordChar(after)) {
+                result =
+                  result.substring(0, idx) +
+                  `(${compiledArg})` +
+                  result.substring(idx + param.name.length);
+                searchPos = idx + compiledArg.length + 2;
+              } else {
+                searchPos = idx + 1;
+              }
+            }
+            return result;
+          }, returnStmt);
         }
       }
     }
