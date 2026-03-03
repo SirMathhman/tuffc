@@ -1,4 +1,4 @@
-import { Project, SyntaxKind, Node } from "ts-morph";
+import { Project, SyntaxKind, Node, VariableDeclaration } from "ts-morph";
 
 const project = new Project({ useInMemoryFileSystem: false });
 project.addSourceFilesAtPaths(["**/*.ts", "!node_modules/**", "!.github/**"]);
@@ -7,20 +7,52 @@ const sourceFiles = project.getSourceFiles();
 
 let failed = false;
 
+// Helper to safely get initializer
+function getInitializer(node: Node): Node | undefined {
+  if (node instanceof VariableDeclaration) {
+    return node.getInitializer();
+  }
+  return undefined;
+}
+
+// Check if a character is a valid identifier character
+function isValidIdentifierChar(char: string): boolean {
+  return (
+    char === "_" ||
+    char === "$" ||
+    (char >= "a" && char <= "z") ||
+    (char >= "A" && char <= "Z") ||
+    (char >= "0" && char <= "9")
+  );
+}
+
+// Check if a string is a valid identifier
+function isValidIdentifier(text: string): boolean {
+  if (text.length === 0) return false;
+  const firstChar = text.charAt(0);
+  if (
+    firstChar === "_" ||
+    firstChar === "$" ||
+    (firstChar >= "a" && firstChar <= "z") ||
+    (firstChar >= "A" && firstChar <= "Z")
+  ) {
+    return Array.from(text).every((char) => isValidIdentifierChar(char));
+  }
+  return false;
+}
+
 // Only flag the most egregious single-use cases:
 // - simple identity/wrapper assignments (const x = y; return x; or use(x);)
 // - helper functions that are called exactly once
-const isEgregiousWrapper = (decl: any): boolean => {
-  const initializer = decl.getInitializer();
+const isEgregiousWrapper = (decl: Node): boolean => {
+  const initializer = getInitializer(decl);
   if (!initializer) return false;
 
   const text = initializer.getText();
   // Flag only if it's a simple identifier reference (wrapping, not transformation)
-  if (
-    text.match(/^[a-zA-Z_$][a-zA-Z0-9_$]*$/) &&
-    !text.includes("(") &&
-    !text.includes(".")
-  ) {
+  const isSimpleIdentifier =
+    isValidIdentifier(text) && !text.includes("(") && !text.includes(".");
+  if (isSimpleIdentifier) {
     return true;
   }
 

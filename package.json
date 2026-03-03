@@ -3,9 +3,10 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "find-inlines": "npx tsx scripts/single-use.ts || exit 2",
-    "find-duplicates": "pmd cpd index.ts --language typescript --minimum-tokens 35 --ignore-identifiers || exit 2",
-    "test": "bun test --timeout 5000 --concurrent",
+    "hook-duplicate": "pmd cpd index.ts --language typescript --minimum-tokens 35 --ignore-identifiers || exit 2",
+    "hook-inline": "npx tsx scripts/single-use.ts || exit 2",
+    "hook-test": "bun run test || exit 2",
+    "test": "powershell -NoProfile -File run-test.ps1",
     "lint": "eslint . --ext .ts,.tsx || exit 2",
     "dev": "nodemon -e ts,tuff --watch index.ts --watch main.tuff --exec \"bun index.ts\"",
     "prepare": "husky"

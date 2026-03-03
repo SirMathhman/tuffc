@@ -3,7 +3,7 @@
     "Stop": [
       {
         "type": "command",
-        "command": "bun test --timeout 5000 --concurrent || exit 2"
+        "command": "bun run hook-test"
       },
       {
         "type": "command",
@@ -11,11 +11,11 @@
       },
       {
         "type": "command",
-        "command": "bun run find-inlines"
+        "command": "bun run hook-inline"
       },
       {
         "type": "command",
-        "command": "bun run find-duplicates"
+        "command": "bun run hook-duplicate"
       }
     ]
   }
