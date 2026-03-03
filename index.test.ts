@@ -1,10 +1,6 @@
 import { compile } from ".";
 
-const validate = (
-  source: string,
-  stdin: string = "",
-  expected: number,
-): void => {
+function validate(source: string, stdin: string = "", expected: number): void {
   it(source, () => {
     const result = compile(source);
     if (result.ok) {
@@ -29,9 +25,9 @@ const validate = (
       expect(result.error).toBeUndefined();
     }
   });
-};
+}
 
-const invalidate = (source: string) => {
+function invalidate(source: string) {
   it(source, () => {
     const result = compile(source);
     if (result.ok) {
@@ -40,6 +36,6 @@ const invalidate = (source: string) => {
       ).toBeUndefined();
     }
   });
-};
+}
 
 validate("", "", 0);
