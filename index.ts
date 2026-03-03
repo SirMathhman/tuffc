@@ -863,6 +863,22 @@ export const compile = (
             );
           }
 
+          // Prevent shadowing built-in types
+          const builtInTypes = [
+            "I32",
+            "I64",
+            "U8",
+            "U16",
+            "U32",
+            "U64",
+            "Bool",
+          ];
+          if (builtInTypes.includes(aliasName)) {
+            return err(
+              `Cannot use built-in type name '${aliasName}' as alias`,
+            );
+          }
+
           // Validate that the aliased type is valid
           if (!isValidTypeStrWithAliases(aliasType)) {
             return err(`Invalid type in alias: ${aliasType}`);

@@ -107,3 +107,4 @@ validate(
 invalidate(
   "type MyAlias = I32; type MyAlias = I32; let temp : MyAlias = read<I32>(); temp",
 );
+invalidate("type I32 = U64;");
