@@ -135,6 +135,7 @@ validate(
 );
 validate("let x = read<I32>(); this.x", "100", 100);
 validate("fn get() => 100; this.get()", "", 100);
+validate("fn Wrapper(value : I32) => this; Wrapper(100).value", "", 100);
 invalidate("undefinedFunction()");
 invalidate("fn pass(value : I32) => value; pass()");
 invalidate("fn pass(value : I32) => value; pass(true)");

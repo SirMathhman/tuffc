@@ -8,47 +8,49 @@ export const err = <E>(error: E): Result<never, E> => {
   return { ok: false, error };
 };
 
-const replaceThisPattern = (source: string): string => {
+const replaceThisPattern = (source: string, localDeclarations?: Record<string, string>): string => {
   let result = "";
   let i = 0;
-  
-  while (i < source.length) {
-    // Check if we're at the start of "this."
-    if (source.slice(i, i + 5) === "this.") {
-      // Check if this is a word boundary (not preceded by word character)
-      const prevChar = i > 0 ? source[i - 1] : "";
+  const chars = [...source];
+
+  chars.forEach((_, idx) => {
+    if (idx < i) return;
+
+    const atThisDot = source.slice(idx, idx + 5) === "this.";
+    const atThis = localDeclarations && source.slice(idx, idx + 4) === "this" && (idx + 4 === source.length || !isWordChar(source[idx + 4]));
+
+    if (atThisDot || atThis) {
+      const prevChar = idx > 0 ? source[idx - 1] : "";
       const isWordBoundary = !prevChar || !isWordChar(prevChar);
-      
+
       if (isWordBoundary) {
-        // Skip "this." and extract the identifier
-        i += 5; // skip "this."
-        
-        // Collect identifier characters
-        let identifier = "";
-        while (i < source.length && isWordChar(source[i])) {
-          identifier += source[i];
-          i++;
-        }
-        
-        // Only replace if we found a valid identifier
-        if (identifier.length > 0) {
-          result += identifier;
+        if (atThisDot) {
+          i = idx + 5;
+          let identifier = "";
+          while (i < source.length && isWordChar(source[i])) {
+            identifier += source[i];
+            i++;
+          }
+          if (identifier.length > 0) {
+            result += identifier;
+          } else {
+            result += "this.";
+            i = idx + 5;
+          }
         } else {
-          // No valid identifier, keep "this."
-          result += "this.";
-          i -= 5;
+          i = idx + 4;
+          const entriesList = Object.keys(localDeclarations!).map(name => `${name}: ${name}`).join(", ");
+          result += `({ ${entriesList} })`;
         }
       } else {
-        // Not a word boundary, just add current character
-        result += source[i];
-        i++;
+        result += source[idx];
+        i = idx + 1;
       }
     } else {
-      result += source[i];
-      i++;
+      result += source[idx];
+      i = idx + 1;
     }
-  }
-  
+  });
   return result;
 };
 
@@ -749,18 +751,33 @@ export const compile = (
         return undefined;
       }
 
+      // Find the closing parenthesis that matches this opening parenthesis
+      let closeParenIdx = -1;
+      let depthCounterParen = 0;
+      let charArray = [...expr];
+      charArray.forEach((char, i) => {
+        if (i < openParenIdx || closeParenIdx !== -1) return;
+        if (char === "(") depthCounterParen++;
+        else if (char === ")") {
+          depthCounterParen--;
+          if (depthCounterParen === 0) {
+            closeParenIdx = i;
+          }
+        }
+      });
+
+      if (closeParenIdx === -1) {
+        return undefined;
+      }
+
       const potentialFnName = expr.substring(0, openParenIdx).trim();
       if (!(potentialFnName in definedFunctions)) {
         return undefined;
       }
 
-      // Verify closing paren exists
-      if (!expr.endsWith(")")) {
-        return err("Invalid function call: missing closing parenthesis");
-      }
-
       const fnDef = definedFunctions[potentialFnName];
-      const argsStr = expr.substring(openParenIdx + 1, expr.length - 1).trim();
+      const argsStr = expr.substring(openParenIdx + 1, closeParenIdx).trim();
+      const rest = expr.substring(closeParenIdx + 1);
 
       // Parse arguments
       const args: string[] = [];
@@ -825,7 +842,9 @@ export const compile = (
         return compiledArgsResult;
       }
 
-      return ok(`${potentialFnName}(${compiledArgsResult.value.join(", ")})`);
+      return ok(
+        `${potentialFnName}(${compiledArgsResult.value.join(", ")})${rest}`,
+      );
     };
 
     const extractCompiledValue = (
@@ -1776,6 +1795,13 @@ export const compile = (
     ): Result<string, string> => {
       const paramsList = fnDef.params.map((param) => param.name).join(", ");
       let functionBody = fnDef.body;
+
+      const localDeclarations: Record<string, string> = {};
+      fnDef.params.forEach((p) => {
+        localDeclarations[p.name] = p.name;
+      });
+
+      functionBody = replaceThisPattern(functionBody, localDeclarations);
 
       if (functionBody.startsWith("{") && functionBody.endsWith("}")) {
         functionBody = functionBody
