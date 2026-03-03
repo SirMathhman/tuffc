@@ -5,7 +5,19 @@ index.test.ts:
 (pass) x
 (pass) 100
 (pass) 100U8
-(pass) -100U8
+36 |   it(source, () => {
+37 |     const result = compile(source);
+38 |     if (result.ok) {
+39 |       expect(
+40 |         "Expected to fail, but succeeded: ```" + result.value + "```",
+41 |       ).toBeUndefined();
+             ^
+error: expect(received).toBeUndefined()
+
+Received: "Expected to fail, but succeeded: ```return -100U8;```"
+
+      at <anonymous> (C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\index.test.ts:41:9)
+(fail) -100U8
 (pass) 256U8
 (pass) read<I32>()
 (pass) read<I32>() + read<I32>()
@@ -20,6 +32,7 @@ index.test.ts:
 (pass) let x = read<U8>(); x = read<U8>(); x
 (pass) let mut x = read<U8>(); x = read<U8>(); x
 (pass) let mut x = read<U8>(); x = read<U16>(); x
+(pass) let mut x = read<I32>(); x += read<I32>(); x
 (pass) let x = read<I32>(); let y : *I32 = &x; *y
 (pass) let x = read<I32>(); let y : *U8 = &x; *y
 (pass) let x = read<I32>(); *x
@@ -36,11 +49,22 @@ index.test.ts:
 (pass) let x = if (100) 3 else 5; x
 (pass) let x = if (true) 3 else true; x
 (pass) let x : Bool = if (true) 3 else 5; x
+(pass) let x = if (false) 2 else if (false) 3 else 4; x
 (pass) let x = { let y = 100; y }; x
 (pass) let x = { let y = 100; }; x
+(pass) let x = { let y = 100; y }; y
 (pass) let x : I64 = { let y : I64 = 100; y }; x
 (pass) let x : U8 = { let y : I64 = 100; y }; x
+(pass) {}
+(pass) {} read<I32>()
+(pass) let x = read<I32>(); {} x
+(pass) let mut x = read<I32>(); { x = read<I32>(); } x
+(pass) { let mut x = read<I32>(); } x = read<I32>(); x
 
- 39 pass
- 0 fail
-Ran 39 tests across 1 file. [44.00ms]
+1 tests failed:
+(fail) -100U8
+
+ 46 pass
+ 1 fail
+ 1 expect() calls
+Ran 47 tests across 1 file. [39.00ms]

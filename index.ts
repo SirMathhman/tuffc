@@ -483,10 +483,7 @@ export const compile = (
     // If the alternate is itself an if-else expression, compile it to a ternary
     let compiledAlternate = alternate;
     if (alternate.trim().startsWith("if (")) {
-      const alternateResult = compileIfElse(
-        alternate.trim(),
-        declarationTypes,
-      );
+      const alternateResult = compileIfElse(alternate.trim(), declarationTypes);
       if (!alternateResult.ok) {
         return alternateResult;
       }
@@ -600,8 +597,23 @@ export const compile = (
         const extractVariableNameFromAssignment = (
           assignStmt: string,
         ): string => {
-          const equalIdx = assignStmt.indexOf("=");
-          return assignStmt.substring(0, equalIdx).trim();
+          // Find the first assignment operator (=, +=, -=, *=, /=)
+          let opIdx = -1;
+          const compoundOps = ["+=", "-=", "*=", "/="];
+
+          for (const compOp of compoundOps) {
+            const idx = assignStmt.indexOf(compOp);
+            if (idx !== -1 && (opIdx === -1 || idx < opIdx)) {
+              opIdx = idx;
+            }
+          }
+
+          // If no compound op found, look for simple =
+          if (opIdx === -1) {
+            opIdx = assignStmt.indexOf("=");
+          }
+
+          return assignStmt.substring(0, opIdx).trim();
         };
 
         // Helper to handle variable assignments (used both for regular and block assignments)
@@ -619,8 +631,28 @@ export const compile = (
             return err(`Variable '${varName}' is not mutable`);
           }
 
-          const equalIdx = assignStmt.indexOf("=");
-          const valueExpr = assignStmt.substring(equalIdx + 1).trim();
+          // Handle compound assignment operators (+=, -=, *=, /=)
+          let normalizedStmt = assignStmt;
+          if (assignStmt.includes("+=")) {
+            const plusEqIdx = assignStmt.indexOf("+=");
+            const valueExpr = assignStmt.substring(plusEqIdx + 2).trim();
+            normalizedStmt = `${varName} = ${varName} + ${valueExpr}`;
+          } else if (assignStmt.includes("-=")) {
+            const minusEqIdx = assignStmt.indexOf("-=");
+            const valueExpr = assignStmt.substring(minusEqIdx + 2).trim();
+            normalizedStmt = `${varName} = ${varName} - ${valueExpr}`;
+          } else if (assignStmt.includes("*=")) {
+            const mulEqIdx = assignStmt.indexOf("*=");
+            const valueExpr = assignStmt.substring(mulEqIdx + 2).trim();
+            normalizedStmt = `${varName} = ${varName} * ${valueExpr}`;
+          } else if (assignStmt.includes("/=")) {
+            const divEqIdx = assignStmt.indexOf("/=");
+            const valueExpr = assignStmt.substring(divEqIdx + 2).trim();
+            normalizedStmt = `${varName} = ${varName} / ${valueExpr}`;
+          }
+
+          const equalIdx = normalizedStmt.indexOf("=");
+          const valueExpr = normalizedStmt.substring(equalIdx + 1).trim();
           const compiledValueResult = extractCompiledValue(valueExpr, true);
           if (!compiledValueResult.ok) {
             return compiledValueResult;
@@ -1095,12 +1127,60 @@ export const compile = (
     let result = readReplaced.value;
 
     // Validate the resulting expression contains only valid characters
-    const validChars = "0123456789+-*/ ()read";
+    // Allow alphanumeric, underscores (for variables), and operators
+    const validChars =
+      "0123456789+-*/ ()read_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
     const invalidCharIndex = [...result].findIndex(
       (c) => !validChars.includes(c),
     );
     if (invalidCharIndex !== -1) {
       return err("Invalid character in expression");
+    }
+
+    // Reject patterns like -100U8 (unary minus with typed numeric literal)
+    // These are not valid JavaScript and shouldn't be allowed
+    // Check for minus followed by digits followed by type suffix (U/I/F + digits)
+    const resultChars = [...result];
+    const hasInvalidNegativeTypedLiteral = resultChars.some((char, i) => {
+      if (char !== "-" || i + 1 >= resultChars.length) {
+        return false;
+      }
+      // Check if next char is a digit
+      if (!(resultChars[i + 1] >= "0" && resultChars[i + 1] <= "9")) {
+        return false;
+      }
+      // Found minus followed by digit, check if it's a typed literal
+      let digitEnd = i + 1;
+      while (
+        digitEnd < resultChars.length &&
+        resultChars[digitEnd] >= "0" &&
+        resultChars[digitEnd] <= "9"
+      ) {
+        digitEnd++;
+      }
+      // Check if digits are followed by type suffix (U/I/F)
+      if (
+        digitEnd >= resultChars.length ||
+        !(
+          resultChars[digitEnd] === "U" ||
+          resultChars[digitEnd] === "I" ||
+          resultChars[digitEnd] === "F"
+        )
+      ) {
+        return false;
+      }
+      const afterTypeLetter = digitEnd + 1;
+      return (
+        afterTypeLetter < resultChars.length &&
+        resultChars[afterTypeLetter] >= "0" &&
+        resultChars[afterTypeLetter] <= "9"
+      );
+    });
+
+    if (hasInvalidNegativeTypedLiteral) {
+      return err(
+        "Negative numeric literals with type suffixes are not allowed",
+      );
     }
 
     return ok(`return ${result};`);
