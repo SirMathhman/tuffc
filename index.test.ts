@@ -30,7 +30,7 @@ const validate = (
       ) {
         return;
       } else {
-        expect("Failed to execute: " + result.value).toBeUndefined();
+        expect("Failed to execute: ```" + result.value + "```").toBeUndefined();
       }
     } else {
       expect(result.error).toBeUndefined();
