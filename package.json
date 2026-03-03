@@ -5,6 +5,7 @@
   "scripts": {
     "hook-duplicate": "pmd cpd index.ts --language typescript --minimum-tokens 35 --ignore-identifiers || exit 2",
     "hook-inline": "npx tsx scripts/single-use.ts || exit 2",
+    "hook-no-inner-functions": "npx tsx scripts/ban-inner-functions.ts || exit 2",
     "hook-test": "bun run test || exit 2",
     "test": "powershell -NoProfile -File run-test.ps1",
     "lint": "eslint . --ext .ts,.tsx || exit 2",

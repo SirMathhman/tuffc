@@ -16,6 +16,10 @@
       {
         "type": "command",
         "command": "bun run hook-duplicate"
+      },
+      {
+        "type": "command",
+        "command": "bun run hook-no-inner-functions"
       }
     ]
   }

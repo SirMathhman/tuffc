@@ -63,3 +63,6 @@ validate("255U8 + 1U16", "", 256);
 validate("1 + 2 + 3", "", 6);
 validate("255U8 + 1 + 1U16", "", 257);
 validate("read<I32>() + read<I32>() + read<I32>()", "1 2 3", 6);
+
+// variable declaration with typed read
+validate("let x : U8 = read<U8>(); x", "100", 100);

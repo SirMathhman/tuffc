@@ -1,5 +1,4 @@
 import { Project, SyntaxKind, Node, VariableDeclaration } from "ts-morph";
-
 const project = new Project({ useInMemoryFileSystem: false });
 project.addSourceFilesAtPaths(["**/*.ts", "!node_modules/**", "!.github/**"]);
 
@@ -94,7 +93,10 @@ for (const sourceFile of sourceFiles) {
     }
   }
 
-  // Check all function declarations - always flag  if used once
+  // Check all function declarations - flag if used once, unless the sole
+  // usage is as a higher-order callback (passed by reference as an argument).
+  // Callbacks extracted to the top level to satisfy ban-inner-functions must
+  // not be penalised here.
   const funcDecls = sourceFile.getDescendantsOfKind(
     SyntaxKind.FunctionDeclaration,
   );
@@ -108,11 +110,22 @@ for (const sourceFile of sourceFiles) {
       .filter((r) => !r.isDefinition());
 
     if (usages.length === 1) {
-      const { line } = sourceFile.getLineAndColumnAtPos(name.getStart());
-      console.error(
-        `${sourceFile.getFilePath()}:${line} - "${name.getText()}" is only used once. Inline it.`,
-      );
-      failed = true;
+      const refNode = usages[0].getNode();
+      const parent = refNode.getParent();
+      // exempt: the function is passed as a callback argument (not as the
+      // callee of a direct call expression)
+      if (
+        parent &&
+        parent.getKind() === SyntaxKind.CallExpression &&
+        parent.asKindOrThrow(SyntaxKind.CallExpression).getExpression() ===
+          refNode
+      ) {
+        const { line } = sourceFile.getLineAndColumnAtPos(name.getStart());
+        console.error(
+          `${sourceFile.getFilePath()}:${line} - "${name.getText()}" is only used once. Inline it.`,
+        );
+        failed = true;
+      }
     }
   }
 }

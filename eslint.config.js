@@ -60,6 +60,11 @@ export default [
           message:
             "for loops are not allowed. Use map, reduce, filter, or forEach instead.",
         },
+        {
+          selector: "TSTypeLiteral",
+          message:
+            "Anonymous object types are not allowed. Define a named interface instead.",
+        },
       ],
     },
   },
