@@ -79,6 +79,56 @@ const extractValueType = (
   valueExpr: string,
   declarationTypes: Record<string, string>,
 ): string => {
+  // Handle block expressions first
+  if (valueExpr.startsWith("{") && valueExpr.endsWith("}")) {
+    const blockContent = valueExpr.substring(1, valueExpr.length - 1).trim();
+    if (blockContent.length === 0) {
+      return "";
+    }
+    // Parse the block content to extract types
+    const blockDeclarationTypes: Record<string, string> = {};
+    const blockStatements = splitStatements(blockContent);
+    let lastStatement = "";
+
+    blockStatements.forEach((stmt, idx) => {
+      if (stmt.startsWith("let ")) {
+        const parsed = parseLetStatement(stmt);
+        if (parsed.isTyped) {
+          blockDeclarationTypes[parsed.varName] = parsed.declaredType;
+        } else {
+          // Infer type from value expr
+          const inferredType = extractValueType(
+            parsed.valueExpr,
+            blockDeclarationTypes,
+          );
+          if (inferredType) {
+            blockDeclarationTypes[parsed.varName] = inferredType;
+          }
+        }
+      }
+      if (idx === blockStatements.length - 1) {
+        lastStatement = stmt;
+      }
+    });
+
+    // The last statement should determine the return type
+    if (!lastStatement.startsWith("let ")) {
+      // It's a plain expression
+      return extractValueType(lastStatement, blockDeclarationTypes);
+    }
+
+    // If it's a let statement, extract the type of its value
+    const parsed = parseLetStatement(lastStatement);
+    if (parsed.isTyped) {
+      return parsed.declaredType;
+    }
+    const inferredType = extractValueType(
+      parsed.valueExpr,
+      blockDeclarationTypes,
+    );
+    return inferredType;
+  }
+
   // Handle if/else expressions
   const ifElseParts = parseIfElse(valueExpr);
   if (ifElseParts) {
@@ -239,6 +289,32 @@ const splitStatements = (source: string): string[] => {
   }
 
   return statements;
+};
+
+const parseLetStatement = (
+  stmt: string,
+): {
+  isMutable: boolean;
+  varName: string;
+  declaredType: string;
+  valueExpr: string;
+  isTyped: boolean;
+} => {
+  const isMutable = stmt.substring(4, 8) === "mut ";
+  const afterLet = stmt.substring(isMutable ? 8 : 4);
+  const colonIdx = afterLet.indexOf(":");
+  const equalIdx = afterLet.indexOf("=");
+
+  const isTyped = colonIdx !== -1 && colonIdx < equalIdx;
+  const declaredType = isTyped
+    ? afterLet.substring(colonIdx + 1, equalIdx).trim()
+    : "";
+  const varName = afterLet.substring(0, isTyped ? colonIdx : equalIdx).trim();
+  const valueExpr = afterLet
+    .substring(isTyped ? afterLet.indexOf("=", colonIdx) + 1 : equalIdx + 1)
+    .trim();
+
+  return { isMutable, varName, declaredType, valueExpr, isTyped };
 };
 
 export const compile = (
@@ -462,35 +538,19 @@ export const compile = (
         }
 
         if (stmt.startsWith("let ")) {
-          const isMutable = stmt.substring(4, 8) === "mut ";
-          const afterLet = stmt.substring(isMutable ? 8 : 4);
-          const colonIdx = afterLet.indexOf(":");
-          const equalIdx = afterLet.indexOf("=");
+          const parsed = parseLetStatement(stmt);
 
-          if (equalIdx === -1) {
+          if (!parsed.valueExpr) {
             return err("Invalid variable declaration: missing initializer");
           }
 
-          const isTyped = colonIdx !== -1 && colonIdx < equalIdx;
-          const declaredType = isTyped
-            ? afterLet.substring(colonIdx + 1, equalIdx).trim()
-            : "";
-          const valueExpr = afterLet
-            .substring(
-              isTyped ? afterLet.indexOf("=", colonIdx) + 1 : equalIdx + 1,
-            )
-            .trim();
-
-          const varName = afterLet
-            .substring(0, isTyped ? colonIdx : equalIdx)
-            .trim();
-          if (varName in declarations) {
-            return err(`Variable '${varName}' is already declared`);
+          if (parsed.varName in declarations) {
+            return err(`Variable '${parsed.varName}' is already declared`);
           }
 
           let compiledValue: string;
           // Handle block expressions specially to preserve their statements
-          const blockResult = processBlockExpression(valueExpr);
+          const blockResult = processBlockExpression(parsed.valueExpr);
           if (blockResult.ok) {
             const { statements: blockStatements, returnValue } =
               blockResult.value;
@@ -499,72 +559,75 @@ export const compile = (
             }
             compiledValue = returnValue;
           } else {
-            const compiledValueResult = extractCompiledValue(valueExpr, false);
+            const compiledValueResult = extractCompiledValue(
+              parsed.valueExpr,
+              false,
+            );
             if (!compiledValueResult.ok) {
               return compiledValueResult;
             }
             compiledValue = compiledValueResult.value;
           }
 
-          if (isTyped && declaredType) {
-            if (!isValidTypeStr(declaredType)) {
-              return err(`Invalid type: ${declaredType}`);
+          if (parsed.isTyped && parsed.declaredType) {
+            if (!isValidTypeStr(parsed.declaredType)) {
+              return err(`Invalid type: ${parsed.declaredType}`);
             }
 
             const validationResult = validateTypeAssignment(
-              extractValueType(valueExpr, declarationTypes),
-              declaredType,
+              extractValueType(parsed.valueExpr, declarationTypes),
+              parsed.declaredType,
             );
             if (!validationResult.ok) {
               return validationResult;
             }
           }
 
-          declarations[varName] = compiledValue;
-          if (isMutable) {
-            mutableVars.add(varName);
+          declarations[parsed.varName] = compiledValue;
+          if (parsed.isMutable) {
+            mutableVars.add(parsed.varName);
           }
           statements.push(
-            `${mutableVars.has(varName) ? "var" : "const"} ${varName} = ${compiledValue};`,
+            `${parsed.isMutable ? "var" : "const"} ${parsed.varName} = ${compiledValue};`,
           );
 
-          if (isTyped && declaredType) {
-            declarationTypes[varName] = declaredType;
-          } else if (valueExpr === "true" || valueExpr === "false") {
+          if (parsed.isTyped && parsed.declaredType) {
+            declarationTypes[parsed.varName] = parsed.declaredType;
+          } else if (parsed.valueExpr === "true" || parsed.valueExpr === "false") {
             // Infer Bool type for boolean literals
-            declarationTypes[varName] = "Bool";
-          } else if (valueExpr.startsWith("&")) {
+            declarationTypes[parsed.varName] = "Bool";
+          } else if (parsed.valueExpr.startsWith("&")) {
             // Handle reference operator: infer pointer type
-            const refVarName = valueExpr.substring(1).trim();
+            const refVarName = parsed.valueExpr.substring(1).trim();
             if (refVarName in declarationTypes) {
-              declarationTypes[varName] = "*" + declarationTypes[refVarName];
+              declarationTypes[parsed.varName] = "*" + declarationTypes[refVarName];
             }
-          } else if (valueExpr in declarationTypes) {
-            declarationTypes[varName] = declarationTypes[valueExpr];
+          } else if (parsed.valueExpr in declarationTypes) {
+            declarationTypes[parsed.varName] = declarationTypes[parsed.valueExpr];
           } else if (
-            valueExpr.startsWith("read<") &&
-            valueExpr.endsWith(">()")
+            parsed.valueExpr.startsWith("read<") &&
+            parsed.valueExpr.endsWith(">()")
           ) {
-            const typeEnd = valueExpr.indexOf(">");
+            const typeEnd = parsed.valueExpr.indexOf(">");
             if (typeEnd > 5)
-              declarationTypes[varName] = valueExpr.substring(5, typeEnd);
+              declarationTypes[parsed.varName] = parsed.valueExpr.substring(5, typeEnd);
           } else {
             const tIdx = Math.max(
-              valueExpr.lastIndexOf("U"),
-              valueExpr.lastIndexOf("I"),
+              parsed.valueExpr.lastIndexOf("U"),
+              parsed.valueExpr.lastIndexOf("I"),
             );
             if (
               tIdx > 0 &&
-              valueExpr
+              parsed.valueExpr
                 .substring(0, tIdx)
                 .split("")
                 .every((c) => c >= "0" && c <= "9") &&
-              valueExpr
+              parsed.valueExpr
                 .substring(tIdx + 1)
                 .split("")
                 .every((c) => c >= "0" && c <= "9")
             ) {
-              declarationTypes[varName] = valueExpr.substring(tIdx);
+              declarationTypes[parsed.varName] = parsed.valueExpr.substring(tIdx);
             }
           }
 

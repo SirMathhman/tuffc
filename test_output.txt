@@ -1,0 +1,46 @@
+bun test v1.2.21 (7c45ed97)
+
+index.test.ts:
+(pass) test
+(pass) x
+(pass) 100
+(pass) 100U8
+(pass) -100U8
+(pass) 256U8
+(pass) read<I32>()
+(pass) read<I32>() + read<I32>()
+(pass) let x : I32 = read<I32>(); x + x
+(pass) let x = 100;
+(pass) let x : I32 = 100;
+(pass) let x = 0; let x = 0;
+(pass) let x : U8 = 100U16; x
+(pass) let x : U16 = 100U8; x
+(pass) let x = read<U16>(); let y : U8 = x; y
+(pass) let x = read<I32>(); let y = x; y
+(pass) let x = read<U8>(); x = read<U8>(); x
+(pass) let mut x = read<U8>(); x = read<U8>(); x
+(pass) let mut x = read<U8>(); x = read<U16>(); x
+(pass) let x = read<I32>(); let y : *I32 = &x; *y
+(pass) let x = read<I32>(); let y : *U8 = &x; *y
+(pass) let x = read<I32>(); *x
+(pass) let x = read<I32>(); let y = &x; let z : U8 = *y;
+(pass) let x : Bool = true; x
+(pass) let x : Bool = false; x
+(pass) let x = true; let y = false; x + y
+(pass) let x = true; let y = false; x || y
+(pass) let x = true; let y = false; x && y
+(pass) let x = 0; let y = 1; x || y
+(pass) let x = read<I32>(); let y = read<I32>(); x < y
+(pass) let x = read<Bool>(); x
+(pass) let x = if (true) 3 else 5; x
+(pass) let x = if (100) 3 else 5; x
+(pass) let x = if (true) 3 else true; x
+(pass) let x : Bool = if (true) 3 else 5; x
+(pass) let x = { let y = 100; y }; x
+(pass) let x = { let y = 100; }; x
+(pass) let x : I64 = { let y : I64 = 100; y }; x
+(pass) let x : U8 = { let y : I64 = 100; y }; x
+
+ 39 pass
+ 0 fail
+Ran 39 tests across 1 file. [44.00ms]
