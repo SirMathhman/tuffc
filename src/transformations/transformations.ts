@@ -3,7 +3,7 @@ export {
   stripTypeAnnotations,
   stripNumericTypeSuffixes,
 } from "./transformations-type-stripping";
-export { transformReadPatterns } from "./transformations-read-patterns";
+export { transformReadPatterns, transformThisAccess } from "./transformations-read-patterns";
 export {
   transformAddressOf,
   transformDereference,

@@ -1,3 +1,5 @@
+import { isAlphaNumeric, isWordStart } from "../extractors/extractors";
+
 function transformReadPatterns(source: string): string {
   let result = "";
   let i = 0;
@@ -29,4 +31,22 @@ function transformReadPatterns(source: string): string {
   return result;
 }
 
-export { transformReadPatterns };
+function transformThisAccess(source: string): string {
+  const prefix = "this.";
+  let result = "";
+  let i = 0;
+  while (i < source.length) {
+    const atThis =
+      source.substring(i, i + prefix.length) === prefix &&
+      isWordStart(source, i);
+    if (atThis) {
+      i += prefix.length;
+    } else {
+      result += source[i];
+      i++;
+    }
+  }
+  return result;
+}
+
+export { transformReadPatterns, transformThisAccess };

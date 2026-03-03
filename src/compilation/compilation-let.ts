@@ -4,6 +4,7 @@ import {
   wrapBlockExpressionInInit,
   stripTypeAnnotations,
   transformReadPatterns,
+  transformThisAccess,
   transformAddressOf,
   transformDereference,
   stripNumericTypeSuffixes,
@@ -51,9 +52,11 @@ function compileLetStatement(
       transformAddressOf(
         transformComparisonOperators(
           stripTypeAnnotations(
-            transformMethodCalls(
-              transformFnDeclarations(
-                transformWhileLoops(transformReadPatterns(processedSource)),
+            transformThisAccess(
+              transformMethodCalls(
+                transformFnDeclarations(
+                  transformWhileLoops(transformReadPatterns(processedSource)),
+                ),
               ),
             ),
           ),

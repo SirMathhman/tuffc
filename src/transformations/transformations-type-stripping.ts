@@ -4,7 +4,11 @@ import { skipGenericParameters } from "./transformations-generic-stripping";
 import { findMatchingBrace } from "../extractors/extractors-braces";
 import { skipWhitespace } from "./transformations-if-expr-utils";
 
-function skipTypeAnnotation(source: string, i: number, braceDepth: number): number {
+function skipTypeAnnotation(
+  source: string,
+  i: number,
+  braceDepth: number,
+): number {
   if (braceDepth > 0) return i;
   if (i < source.length - 1 && source[i] === ":" && source[i + 1] === " ") {
     let j = skipWhitespace(source, i + 2);
@@ -16,8 +20,15 @@ function skipTypeAnnotation(source: string, i: number, braceDepth: number): numb
     }
     while (j < source.length) {
       const char = source[j];
-      const isTypePart = isAlpha(char) || isDigit(char) || char === "<" || char === ">" || char === "," || char === "*";
-      const isSpace = char === " " && j + 1 < source.length && isAlpha(source[j + 1]);
+      const isTypePart =
+        isAlpha(char) ||
+        isDigit(char) ||
+        char === "<" ||
+        char === ">" ||
+        char === "," ||
+        char === "*";
+      const isSpace =
+        char === " " && j + 1 < source.length && isAlpha(source[j + 1]);
       if (isTypePart || isSpace) j++;
       else break;
     }
@@ -40,7 +51,10 @@ function stripTypeAnnotations(source: string): string {
       braceDepth--;
       result += char;
       i++;
-    } else if (i < source.length - 5 && source.substring(i, i + 8) === "let mut ") {
+    } else if (
+      i < source.length - 5 &&
+      source.substring(i, i + 8) === "let mut "
+    ) {
       result += "let ";
       i += 8;
     } else {

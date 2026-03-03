@@ -377,4 +377,8 @@ describe("The compiler can compile", () => {
       7,
     );
   });
+
+  it("accesses variable via this.x in current scope", () => {
+    assertValid("let x = 100; this.x", "", 100);
+  });
 });

@@ -1,4 +1,5 @@
 import { Result, CompileError, ok } from "../types";
+import { isAlphaNumeric, isWordStart } from "../extractors/extractors";
 import {
   stripNumericTypeSuffixes,
   stripTypeAnnotations,
@@ -36,7 +37,7 @@ function renameThisParameter(source: string): string {
     const isThisWord =
       i + 4 <= source.length &&
       source.substring(i, i + 4) === "this" &&
-      (i === 0 || !isAlphaNumeric(source[i - 1])) &&
+      isWordStart(source, i) &&
       (i + 4 === source.length || !isAlphaNumeric(source[i + 4]));
 
     if (isThisWord) {
@@ -48,15 +49,6 @@ function renameThisParameter(source: string): string {
     }
   }
   return result;
-}
-
-function isAlphaNumeric(char: string): boolean {
-  return (
-    (char >= "a" && char <= "z") ||
-    (char >= "A" && char <= "Z") ||
-    (char >= "0" && char <= "9") ||
-    char === "_"
-  );
 }
 
 function compileFnStatement(
