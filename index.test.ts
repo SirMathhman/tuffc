@@ -132,10 +132,9 @@ validate(
   "fn sumFromInput(times : I32) : I32 => { return times < 1 ? 0 : read<I32>() + sumFromInput(times - 1); } sumFromInput(read<I32>())",
   "3 10 20 30",
   60,
-);validate(
-  "let x = read<I32>(); this.x",
-  "100",
-  100,
-);invalidate("undefinedFunction()");
+);
+validate("let x = read<I32>(); this.x", "100", 100);
+validate("fn get() => 100; this.get()", "", 100);
+invalidate("undefinedFunction()");
 invalidate("fn pass(value : I32) => value; pass()");
 invalidate("fn pass(value : I32) => value; pass(true)");
