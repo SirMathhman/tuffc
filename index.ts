@@ -223,7 +223,8 @@ export const compile = (source: string): Result<string, string> => {
     if (declarationTypes) {
       // Only allow boolean literals or boolean variables
       const isBoolLiteral = condition === "true" || condition === "false";
-      const isBoolVar = condition in declarationTypes && declarationTypes[condition] === "Bool";
+      const isBoolVar =
+        condition in declarationTypes && declarationTypes[condition] === "Bool";
 
       if (!isBoolLiteral && !isBoolVar) {
         return err("If/else condition must be of type Bool");
@@ -237,6 +238,20 @@ export const compile = (source: string): Result<string, string> => {
 
     const consequent = remaining.substring(0, elseIdx).trim();
     const alternate = remaining.substring(elseIdx + 6).trim();
+
+    // Validate that consequent and alternate have the same type
+    const consequentType = declarationTypes
+      ? extractValueType(consequent, declarationTypes)
+      : extractValueType(consequent, {});
+    const alternateType = declarationTypes
+      ? extractValueType(alternate, declarationTypes)
+      : extractValueType(alternate, {});
+
+    if (consequentType !== alternateType) {
+      return err(
+        `If/else branches have mismatched types: ${consequentType} vs ${alternateType}`,
+      );
+    }
 
     return ok(`(${condition}) ? (${consequent}) : (${alternate})`);
   };
