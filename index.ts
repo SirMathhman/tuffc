@@ -9,6 +9,10 @@ export const err = <E>(error: E): Result<never, E> => {
 };
 
 const isValidTypeStr = (typeStr: string): boolean => {
+  // Handle pointer types like *I32 or *U8
+  if (typeStr.startsWith("*")) {
+    return isValidTypeStr(typeStr.substring(1));
+  }
   return (
     (typeStr[0] === "U" || typeStr[0] === "I") &&
     typeStr
@@ -22,6 +26,24 @@ const extractValueType = (
   valueExpr: string,
   declarationTypes: Record<string, string>,
 ): string => {
+  // Handle dereference operator
+  if (valueExpr.startsWith("*")) {
+    const innerType = extractValueType(valueExpr.substring(1), declarationTypes);
+    if (innerType.startsWith("*")) {
+      return innerType.substring(1);
+    }
+    return innerType;
+  }
+
+  // Handle reference operator
+  if (valueExpr.startsWith("&")) {
+    const innerType = extractValueType(valueExpr.substring(1), declarationTypes);
+    if (innerType) {
+      return "*" + innerType;
+    }
+    return "";
+  }
+
   let valueType = "";
   const typeMarkerIdx = Math.max(
     valueExpr.lastIndexOf("U"),
@@ -61,12 +83,28 @@ const validateTypeAssignment = (
   valueType: string,
   declaredType: string,
 ): Result<null, string> => {
+  if (!valueType) {
+    return ok(null);
+  }
+
+  // Handle pointer types
+  const isValuePointer = valueType.startsWith("*");
+  const isDeclaredPointer = declaredType.startsWith("*");
+
+  if (isValuePointer !== isDeclaredPointer) {
+    return err(`Cannot assign ${valueType} to ${declaredType}`);
+  }
+
+  // Remove pointer markers for comparison
+  const innerValueType = isValuePointer ? valueType.substring(1) : valueType;
+  const innerDeclaredType = isDeclaredPointer ? declaredType.substring(1) : declaredType;
+
   if (
-    valueType &&
+    innerValueType &&
     !(
-      declaredType[0] === valueType[0] &&
-      parseInt(valueType.substring(1), 10) <=
-        parseInt(declaredType.substring(1), 10)
+      innerDeclaredType[0] === innerValueType[0] &&
+      parseInt(innerValueType.substring(1), 10) <=
+        parseInt(innerDeclaredType.substring(1), 10)
     )
   ) {
     return err(`Cannot assign ${valueType} to ${declaredType}`);
@@ -88,10 +126,45 @@ export const compile = (source: string): Result<string, string> => {
     const statements: string[] = [];
     let returnExpr = "";
 
+    const compilePointerExpr = (
+      expr: string,
+    ): Result<string, string> => {
+      // Handle dereference operator *x
+      if (expr.startsWith("*")) {
+        const innerExpr = expr.substring(1).trim();
+        if (innerExpr in declarations) {
+          return ok(`${innerExpr}.value`);
+        }
+        // Try to recursively dereference
+        const innerResult = compilePointerExpr(innerExpr);
+        if (innerResult.ok) {
+          return ok(`${innerResult.value}.value`);
+        }
+        return err(`Cannot dereference '${innerExpr}'`);
+      }
+
+      // Handle reference operator &x
+      if (expr.startsWith("&")) {
+        const innerExpr = expr.substring(1).trim();
+        if (innerExpr in declarations) {
+          return ok(`{ value: ${innerExpr} }`);
+        }
+        return err(`Variable '${innerExpr}' is not declared`);
+      }
+
+      return err("Not a pointer expression");
+    };
+
     const extractCompiledValue = (
       expr: string,
       isAssignmentContext: boolean,
     ): Result<string, string> => {
+      // Try pointer expressions first
+      const pointerResult = compilePointerExpr(expr);
+      if (pointerResult.ok) {
+        return ok(pointerResult.value);
+      }
+
       if (expr in declarations) {
         return ok(expr);
       }
@@ -233,7 +306,13 @@ export const compile = (source: string): Result<string, string> => {
         declarations[varName] = compiledValue;
         statements.push(`${varName} = ${compiledValue};`);
       } else if (stmt.length > 0) {
-        returnExpr = stmt;
+        // Try to compile as return expression
+        const pointerResult = compilePointerExpr(stmt);
+        if (pointerResult.ok) {
+          returnExpr = pointerResult.value;
+        } else {
+          returnExpr = stmt;
+        }
       }
     }
 
