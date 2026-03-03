@@ -103,6 +103,43 @@ invalidate(
 // assignment to undeclared variable should error
 invalidate("x = read<U8>(); x", CompileErrorType.NotImplemented);
 
+// non-mutable base variable with &mut should error
+invalidate(
+  "let x = read<I32>(); let y : *mut I32 = &mut x; *y = read<I32>(); x",
+  CompileErrorType.NotImplemented,
+);
+
+// immutable pointer type should reject &mut initializer
+invalidate(
+  "let mut x = read<I32>(); let y : *I32 = &mut x; *y = read<I32>(); x",
+  CompileErrorType.NotImplemented,
+);
+
+// cannot write through a non-mutable inferred pointer
+invalidate(
+  "let mut x = read<I32>(); let y = &x; *y = read<I32>(); x",
+  CompileErrorType.NotImplemented,
+);
+
+// overflow via pointer write with wider type
+invalidate(
+  "let mut x = read<U8>(); let y = &mut x; *y = read<U32>(); x",
+  CompileErrorType.UnsignedOverflow,
+);
+
+// dereference before declaration should error
+invalidate("*y = read<U32>(); x", CompileErrorType.NotImplemented);
+
+// same without trailing expr
+invalidate("*y = read<U32>();", CompileErrorType.NotImplemented);
+
+// mutable pointer write: *y = rhs updates the pointed-to variable
+validate(
+  "let mut x = read<I32>(); let y : *mut I32 = &mut x; *y = read<I32>(); x",
+  "20 100",
+  100,
+);
+
 // duplicate declaration should fail
 invalidate(
   "let x : I32 = 0; let x : I32 = 0;",

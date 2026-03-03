@@ -91,6 +91,24 @@ function isReadExpr(s: string): boolean {
   }
   return false;
 }
+// compute a width for an expression (U8=8, U16=16, U32=32) if known
+function computeWidth(
+  expr: string,
+  letTypes: Map<string, number | undefined>,
+): number | undefined {
+  if (expr.endsWith("U8")) return 8;
+  if (expr.endsWith("U16")) return 16;
+  if (expr.endsWith("U32")) return 32;
+  if (expr.startsWith("read<") && expr.endsWith("()")) {
+    const inner = expr.slice(5, expr.length - 3);
+    if (inner === "U8") return 8;
+    if (inner === "U16") return 16;
+    if (inner === "U32") return 32;
+  }
+  if (letTypes.has(expr)) return letTypes.get(expr);
+  return undefined;
+}
+
 // strip `return` and trailing semicolon from generated body
 function strip(js: string): string {
   if (js.startsWith("return ")) js = js.slice(7);
@@ -158,6 +176,7 @@ function checkPointer(
   initExpr: string,
   declaredType: string | undefined,
   letTypes: Map<string, number | undefined>,
+  letMut: Map<string, boolean>,
   source: string,
 ): Result<string, CompileError> | undefined {
   if (
@@ -165,13 +184,56 @@ function checkPointer(
     declaredType.startsWith("*") &&
     initExpr.startsWith("&")
   ) {
-    const pointType = declaredType.slice(1);
+    const rawPointType = declaredType.slice(1);
+    const isMutPtr = rawPointType.startsWith("mut ");
+    const pointType = isMutPtr ? rawPointType.slice(4) : rawPointType;
     let pointWidth: number | undefined;
     if (pointType === "U8") pointWidth = 8;
     else if (pointType === "U16") pointWidth = 16;
-    const varName = initExpr.slice(1);
-    const varWidth = letTypes.get(varName);
-    if (varWidth !== pointWidth) {
+    const varName = initExpr.startsWith("&mut ")
+      ? initExpr.slice(5)
+      : initExpr.slice(1);
+    const isMutRef = initExpr.startsWith("&mut ");
+    // mutability mismatch: cannot initialize *mut T with &x (immutable ref)
+    if (isMutPtr && !isMutRef) {
+      return {
+        ok: false,
+        error: {
+          source,
+          message: "Cannot initialize mutable pointer with immutable reference",
+          reason: "mutability mismatch",
+          fix: "use &mut on the source",
+          type: CompileErrorType.NotImplemented,
+        },
+      };
+    }
+    // also disallow &mut initializer for non-mutable pointer type
+    if (!isMutPtr && isMutRef) {
+      return {
+        ok: false,
+        error: {
+          source,
+          message: "Cannot initialize immutable pointer with mutable reference",
+          reason: "mutability mismatch",
+          fix: 'drop the "mut" from the reference or make the pointer mutable',
+          type: CompileErrorType.NotImplemented,
+        },
+      };
+    }
+    // if creating a &mut reference, the source must be mutable
+    if (isMutRef && !letMut.get(varName)) {
+      return {
+        ok: false,
+        error: {
+          source,
+          message: "Cannot take mutable reference to immutable variable",
+          reason: "immutable base for &mut",
+          fix: "declare the variable as mutable",
+          type: CompileErrorType.NotImplemented,
+        },
+      };
+    }
+    if (letTypes.get(varName) !== pointWidth) {
       return {
         ok: false,
         error: {
@@ -186,6 +248,46 @@ function checkPointer(
   }
   return undefined;
 }
+// record pointer binding information (type, mutability, target)
+function recordPointerBinding(
+  name: string,
+  declaredType: string | undefined,
+  initExpr: string,
+  letPtr: Map<string, string | undefined>,
+  letPtrMutable: Map<string, boolean>,
+  letPtrTarget: Map<string, string>,
+  letTypes: Map<string, number | undefined>,
+) {
+  if (declaredType && declaredType.startsWith("*")) {
+    const rawPt = declaredType.slice(1);
+    const isMutPtr = rawPt.startsWith("mut ");
+    letPtr.set(name, isMutPtr ? rawPt.slice(4) : rawPt);
+    letPtrMutable.set(name, isMutPtr);
+    letPtrTarget.set(
+      name,
+      initExpr.startsWith("&mut ") ? initExpr.slice(5) : initExpr.slice(1),
+    );
+  } else if (!declaredType && initExpr.startsWith("&")) {
+    const target = initExpr.startsWith("&mut ")
+      ? initExpr.slice(5)
+      : initExpr.slice(1);
+    letPtr.set(
+      name,
+      (letPtr.get(target) ||
+        (letTypes.get(target) === 8
+          ? "U8"
+          : letTypes.get(target) === 16
+            ? "U16"
+            : "")) ??
+        "",
+    );
+    letPtrMutable.set(name, initExpr.startsWith("&mut "));
+    letPtrTarget.set(name, target);
+  } else {
+    letPtr.set(name, undefined);
+  }
+}
+
 // Named type for a parsed term descriptor
 export interface TermInfo {
   js: string;
@@ -250,6 +352,8 @@ export function compile(
   const letTypes = envLetTypes || new Map<string, number | undefined>();
   const letMut = new Map<string, boolean>();
   const letPtr = envLetPtr || new Map<string, string | undefined>(); // base type if pointer
+  const letPtrTarget = new Map<string, string>(); // pointer var -> target var name
+  const letPtrMutable = new Map<string, boolean>(); // is pointer variable itself mutable (*/not)
   // shared parts array used in several checks
   const parts = trimmed
     .split(";")
@@ -306,7 +410,13 @@ export function compile(
           else if (inner === "U16") initWidth = 16;
         } else if (letTypes.has(initExpr)) initWidth = letTypes.get(initExpr);
         // pointer type mismatch: check with helper
-        const ptrErr = checkPointer(initExpr, declaredType, letTypes, source);
+        const ptrErr = checkPointer(
+          initExpr,
+          declaredType,
+          letTypes,
+          letMut,
+          source,
+        );
         if (ptrErr) return ptrErr;
         // overflow check for U8
         if (declaredType === "U8" && initWidth === 16) {
@@ -317,28 +427,22 @@ export function compile(
         const initJs = strip(initRes.value);
         stmts.push(`let ${name} = ${initJs};`);
         // record type info for future assignments and pointer info
-        if (declaredType && declaredType.startsWith("*")) {
-          letPtr.set(name, declaredType.slice(1));
-          letTypes.set(name, undefined);
-        } else if (!declaredType && initExpr.startsWith("&")) {
-          // infer pointer type from RHS variable (mark as pointer regardless)
-          const target = initExpr.slice(1);
-          letPtr.set(
-            name,
-            (letPtr.get(target) ||
-              (letTypes.get(target) === 8
-                ? "U8"
-                : letTypes.get(target) === 16
-                  ? "U16"
-                  : "")) ??
-              "",
-          );
-          letTypes.set(name, undefined);
-        } else {
+        recordPointerBinding(
+          name,
+          declaredType,
+          initExpr,
+          letPtr,
+          letPtrMutable,
+          letPtrTarget,
+          letTypes,
+        );
+        if (
+          !(declaredType && declaredType.startsWith("*")) &&
+          !(!declaredType && initExpr.startsWith("&"))
+        ) {
           if (declaredType === "U8") letTypes.set(name, 8);
           else if (declaredType === "U16") letTypes.set(name, 16);
           else letTypes.set(name, initWidth);
-          letPtr.set(name, undefined);
         }
         continue;
       }
@@ -347,6 +451,48 @@ export function compile(
         const idx = part.indexOf("=");
         const lhs = part.slice(0, idx).trim();
         const rhs = part.slice(idx + 1).trim();
+        // pointer dereference write: *y = rhs → target = rhs
+        if (lhs.startsWith("*")) {
+          const ptrVar = lhs.slice(1);
+          if (letPtrTarget.get(ptrVar) === undefined) {
+            return {
+              ok: false,
+              error: {
+                source,
+                message: "Dereferencing non-pointer",
+                reason: "not a pointer",
+                fix: "use a mutable pointer variable",
+                type: CompileErrorType.NotImplemented,
+              },
+            };
+          }
+          if (!letPtrMutable.get(ptrVar)) {
+            return {
+              ok: false,
+              error: {
+                source,
+                message: "Cannot assign through immutable pointer",
+                reason: "pointer not declared mutable",
+                fix: "declare pointer as *mut",
+                type: CompileErrorType.NotImplemented,
+              },
+            };
+          }
+          const target = letPtrTarget.get(ptrVar)!;
+          const width = letTypes.get(target);
+          const rhsWidth = computeWidth(rhs, letTypes);
+          if (
+            width !== undefined &&
+            rhsWidth !== undefined &&
+            rhsWidth > width
+          ) {
+            return overflowResult(source);
+          }
+          const rhsRes = compile(rhs, letTypes, letPtr);
+          if (!rhsRes.ok) return rhsRes;
+          stmts.push(target + " = " + strip(rhsRes.value) + ";");
+          continue;
+        }
         if (!letTypes.has(lhs)) {
           return {
             ok: false,
@@ -374,15 +520,8 @@ export function compile(
           };
         }
         const width = letTypes.get(lhs);
-        let rhsWidth: number | undefined;
-        if (rhs.endsWith("U8")) rhsWidth = 8;
-        else if (rhs.endsWith("U16")) rhsWidth = 16;
-        else if (rhs.startsWith("read<") && rhs.endsWith("()")) {
-          const inner = rhs.slice(5, rhs.length - 3);
-          if (inner === "U8") rhsWidth = 8;
-          else if (inner === "U16") rhsWidth = 16;
-        } else if (letTypes.has(rhs)) rhsWidth = letTypes.get(rhs);
-        if (width === 8 && rhsWidth === 16) {
+        const rhsWidth = computeWidth(rhs, letTypes);
+        if (width !== undefined && rhsWidth !== undefined && rhsWidth > width) {
           return overflowResult(source);
         }
         if (width === undefined && rhsWidth !== undefined) {
@@ -441,28 +580,27 @@ export function compile(
       // before compiling, check for type mismatch when annotation present
       const declaredType = extractLetType(decl);
       // pointer check in single-let form
-      const ptrErr = checkPointer(initExpr, declaredType, letTypes, source);
+      const ptrErr = checkPointer(
+        initExpr,
+        declaredType,
+        letTypes,
+        letMut,
+        source,
+      );
       if (ptrErr) return ptrErr;
       if (declaredType && initExpr.endsWith("U16") && declaredType === "U8") {
         return overflowResult(source);
       }
       // record pointer info for single-let
-      if (declaredType && declaredType.startsWith("*")) {
-        letPtr.set(name, declaredType.slice(1));
-      } else if (!declaredType && initExpr.startsWith("&")) {
-        const target = initExpr.slice(1);
-        letPtr.set(
-          name,
-          letPtr.get(target) ||
-            (letTypes.get(target) === 8
-              ? "U8"
-              : letTypes.get(target) === 16
-                ? "U16"
-                : undefined),
-        );
-      } else {
-        letPtr.set(name, undefined);
-      }
+      recordPointerBinding(
+        name,
+        declaredType,
+        initExpr,
+        letPtr,
+        letPtrMutable,
+        letPtrTarget,
+        letTypes,
+      );
       // accept either rest === name OR rest is empty (no trailing expr)
       if (rest === name || rest === "") {
         const initRes = compile(initExpr, letTypes, letPtr);
@@ -536,10 +674,12 @@ export function compile(
   }
 
   // reference and dereference operators for simple identifiers. we treat
-  // `&x` and `*x` accordingly. dereference requires that the variable was
-  // declared as a pointer.
+  // `&x`, `&mut x`, and `*x` accordingly. dereference requires that the
+  // variable was declared as a pointer.
   if (trimmed.startsWith("&") || trimmed.startsWith("*")) {
-    const rest = trimmed.slice(1);
+    const rest = trimmed.startsWith("&mut ")
+      ? trimmed.slice(5)
+      : trimmed.slice(1);
     if (isIdentifier(rest)) {
       if (trimmed.startsWith("*")) {
         // ensure pointer type (undefined means not a pointer)
