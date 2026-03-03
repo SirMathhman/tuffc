@@ -606,8 +606,15 @@ const splitStatements = (source: string): string[] => {
       // treat this as a statement boundary
       if (braceDepth === 0) {
         const restOfSource = source.substring(idx + 1).trim();
-        if (restOfSource.length > 0 && !restOfSource.startsWith(";")) {
-          // There's something after the block that's not a semicolon
+        // Don't split if the next character is "." (property access) or "[" (indexing)
+        const nextCharIsPropertyAccess =
+          source[idx + 1] === "." || source[idx + 1] === "[";
+        if (
+          restOfSource.length > 0 &&
+          !restOfSource.startsWith(";") &&
+          !nextCharIsPropertyAccess
+        ) {
+          // There's something after the block that's not a semicolon and not property access
           if (currentStatement.trim().length > 0) {
             statements.push(currentStatement.trim());
           }
@@ -853,7 +860,10 @@ export const compile = (
     const mutableVars: Set<string> = new Set();
     const statements: string[] = [];
     let returnExpr = "";
-    const structNames: Set<string> = new Set();
+    interface StructDefinition {
+      fields: Record<string, string>;
+    }
+    const structDefinitions: Record<string, StructDefinition> = {};
 
     // Helper function to resolve type aliases recursively
     const resolveTypeAlias = (typeStr: string): string => {
@@ -1100,6 +1110,89 @@ export const compile = (
         }
 
         return ok(`${compiledObjResult.value}.${propName}`);
+      }
+
+      // Handle struct instantiation: StructName { field : value, ... }
+      const braceIdx = expr.indexOf("{");
+      if (braceIdx > 0) {
+        const structName = expr.substring(0, braceIdx).trim();
+        if (
+          structName in structDefinitions &&
+          !expr.includes("..") &&
+          expr.endsWith("}")
+        ) {
+          const structDef = structDefinitions[structName];
+          const fieldsStr = expr
+            .substring(braceIdx + 1, expr.length - 1)
+            .trim();
+
+          const fieldsToCompile: Record<string, string> = {};
+          const providedFields = new Set<string>();
+
+          if (fieldsStr.length > 0) {
+            // Parse field assignments
+            const fieldAssignments = fieldsStr
+              .split(";")
+              .map((f) => f.trim())
+              .filter((f) => f.length > 0);
+
+            for (const assignment of fieldAssignments) {
+              const colonIdx = assignment.indexOf(":");
+              if (colonIdx === -1) {
+                return err("Invalid struct instantiation: missing colon");
+              }
+
+              const fieldName = assignment.substring(0, colonIdx).trim();
+              const fieldValue = assignment.substring(colonIdx + 1).trim();
+
+              if (!(fieldName in structDef.fields)) {
+                return err(
+                  `Struct '${structName}' does not have field '${fieldName}'`,
+                );
+              }
+
+              providedFields.add(fieldName);
+              fieldsToCompile[fieldName] = fieldValue;
+            }
+          }
+
+          // Check that all fields are provided
+          for (const fieldName of Object.keys(structDef.fields)) {
+            if (!providedFields.has(fieldName)) {
+              return err(
+                `Missing required field '${fieldName}' in struct instantiation`,
+              );
+            }
+          }
+
+          // Compile field values and build object literal
+          const compiledFields: Record<string, string> = {};
+          for (const [fieldName, fieldValue] of Object.entries(
+            fieldsToCompile,
+          )) {
+            // First replace read<Type>() calls
+            const readReplaced = replaceReadCalls(fieldValue);
+            if (!readReplaced.ok) {
+              return readReplaced;
+            }
+
+            const compiledFieldResult = extractCompiledValue(
+              readReplaced.value,
+              false,
+            );
+            if (!compiledFieldResult.ok) {
+              return compiledFieldResult;
+            }
+
+            compiledFields[fieldName] = compiledFieldResult.value;
+          }
+
+          // Build the object literal
+          const fieldPairs = Object.entries(compiledFields)
+            .map(([name, value]) => `${name}: ${value}`)
+            .join(", ");
+          return ok(`{ ${fieldPairs} }`);
+        }
       }
 
       // Handle variable function calls: func()
@@ -1694,9 +1787,11 @@ export const compile = (
             return err("Invalid struct syntax");
           }
 
-          if (structNames.has(name)) {
+          if (name in structDefinitions) {
             return err(`Struct '${name}' is already defined`);
           }
+
+          const fieldDefs: Record<string, string> = {};
 
           // validate fields if any
           if (fieldsStr.length > 0) {
@@ -1729,10 +1824,12 @@ export const compile = (
                   `Invalid type in struct field '${fieldName}': ${fieldType}`,
                 );
               }
+
+              fieldDefs[fieldName] = fieldType;
             }
           }
 
-          structNames.add(name);
+          structDefinitions[name] = { fields: fieldDefs };
           return ok(undefined);
         } else if (stmt.startsWith("let ")) {
           const parsed = parseLetStatement(stmt);
@@ -1772,8 +1869,12 @@ export const compile = (
           if (parsed.isTyped && parsed.declaredType) {
             const resolvedType = resolveTypeAlias(parsed.declaredType);
             if (!isValidTypeStr(resolvedType, definedFunctions)) {
-              // Allow function names as types
-              if (definedFunctions && !(resolvedType in definedFunctions)) {
+              // Allow function names as types and struct names as types
+              if (
+                definedFunctions &&
+                !(resolvedType in definedFunctions) &&
+                !(resolvedType in structDefinitions)
+              ) {
                 return err(`Invalid type: ${parsed.declaredType}`);
               }
             }
@@ -1940,6 +2041,10 @@ export const compile = (
           }
         } else if (stmt.length > 0) {
           // Try to compile as return expression
+
+          // Don't handle struct instantiation in statement loop - let extractCompiledValue handle it
+          // This avoids issues with property access on struct literals
+
           const pointerResult = compilePointerExpr(stmt);
           if (pointerResult.ok) {
             returnExpr = pointerResult.value;
@@ -2177,12 +2282,20 @@ export const compile = (
 
     // Process return expression function calls with defined function context
     let finalReturnExpr = returnExpr;
-    const compiledReturnCall = compileFunctionCall(finalReturnExpr);
-    if (compiledReturnCall !== undefined) {
-      if (!compiledReturnCall.ok) {
-        return compiledReturnCall;
+
+    // First try to compile through extractCompiledValue for property access and other complex expressions
+    const compiledExprResult = extractCompiledValue(finalReturnExpr, false);
+    if (compiledExprResult.ok) {
+      finalReturnExpr = compiledExprResult.value;
+    } else {
+      // If extractCompiledValue fails, try compileFunctionCall as fallback
+      const compiledReturnCall = compileFunctionCall(finalReturnExpr);
+      if (compiledReturnCall !== undefined) {
+        if (!compiledReturnCall.ok) {
+          return compiledReturnCall;
+        }
+        finalReturnExpr = compiledReturnCall.value;
       }
-      finalReturnExpr = compiledReturnCall.value;
     }
 
     const compileFunctionDefinition = (

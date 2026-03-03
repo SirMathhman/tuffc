@@ -156,6 +156,16 @@ invalidate("struct Empty {} struct Empty");
 // ensure duplicate struct with braces also errors
 invalidate("struct MyStruct {} struct MyStruct {}");
 validate(
+  "struct Wrapper { x : I32; } Wrapper { x : read<I32>() }.x",
+  "100",
+  100,
+);
+validate(
+  "struct Wrapper { x : I32; } let test : Wrapper = Wrapper { x : read<I32>() }; test.x",
+  "100",
+  100,
+);
+validate(
   "fn add(x : I32, y : I32) => x + y; fn multiply(x : I32, y : I32) => x * y; let func : (I32, I32) => I32 = if (read<Bool>()) add else multiply; func(3, 4)",
   "false",
   12,
