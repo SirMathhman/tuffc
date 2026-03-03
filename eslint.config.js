@@ -115,6 +115,11 @@ export default [
           selector: "Literal[value=null]",
           message: "null is not allowed. Use undefined instead.",
         },
+        {
+          selector: "ForStatement",
+          message:
+            "for loops are not allowed. Use map, reduce, filter, or forEach instead.",
+        },
       ],
     },
   },

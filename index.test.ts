@@ -8,21 +8,11 @@ const validate = (
   it(source, () => {
     const result = compile(source);
     if (result.ok) {
-      const parts: string[] = [];
-      let current = "";
-      for (let i = 0; i < stdin.length; i++) {
-        if (stdin[i] === " " || stdin[i] === "\n" || stdin[i] === "\t") {
-          if (current.length > 0) {
-            parts.push(current);
-            current = "";
-          }
-        } else {
-          current += stdin[i];
-        }
-      }
-      if (current.length > 0) {
-        parts.push(current);
-      }
+      const parts = stdin
+        .split(" ")
+        .flatMap((part) => part.split("\n"))
+        .flatMap((part) => part.split("\t"))
+        .filter((part) => part.length > 0);
       if (
         new Function("read", result.value)(() =>
           parseInt(parts.shift()!, 10),

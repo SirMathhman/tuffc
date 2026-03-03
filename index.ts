@@ -201,133 +201,160 @@ export const compile = (source: string): Result<string, string> => {
       );
     };
 
-    for (const stmt of source.split(";").map((s) => s.trim())) {
-      if (stmt.startsWith("let ")) {
-        const isMutable = stmt.substring(4, 8) === "mut ";
-        const afterLet = stmt.substring(isMutable ? 8 : 4);
-        const colonIdx = afterLet.indexOf(":");
-        const equalIdx = afterLet.indexOf("=");
-
-        if (equalIdx === -1) {
-          return err("Invalid variable declaration: missing initializer");
-        }
-
-        const isTyped = colonIdx !== -1 && colonIdx < equalIdx;
-        const declaredType = isTyped
-          ? afterLet.substring(colonIdx + 1, equalIdx).trim()
-          : "";
-        const valueExpr = afterLet
-          .substring(
-            isTyped ? afterLet.indexOf("=", colonIdx) + 1 : equalIdx + 1,
-          )
-          .trim();
-
-        const compiledValueResult = extractCompiledValue(valueExpr, false);
-        if (!compiledValueResult.ok) {
-          return compiledValueResult;
-        }
-        const compiledValue = compiledValueResult.value;
-
-        if (isTyped && declaredType) {
-          if (!isValidTypeStr(declaredType)) {
-            return err(`Invalid type: ${declaredType}`);
+    const stmtResult = source
+      .split(";")
+      .map((s) => s.trim())
+      .reduce(
+        (acc, stmt) => {
+          if (acc.ok === false) {
+            return acc;
           }
 
-          const validationResult = validateTypeAssignment(
-            extractValueType(valueExpr, declarationTypes),
-            declaredType,
-          );
-          if (!validationResult.ok) {
-            return validationResult;
+          if (stmt.startsWith("let ")) {
+            const isMutable = stmt.substring(4, 8) === "mut ";
+            const afterLet = stmt.substring(isMutable ? 8 : 4);
+            const colonIdx = afterLet.indexOf(":");
+            const equalIdx = afterLet.indexOf("=");
+
+            if (equalIdx === -1) {
+              return err("Invalid variable declaration: missing initializer");
+            }
+
+            const isTyped = colonIdx !== -1 && colonIdx < equalIdx;
+            const declaredType = isTyped
+              ? afterLet.substring(colonIdx + 1, equalIdx).trim()
+              : "";
+            const valueExpr = afterLet
+              .substring(
+                isTyped ? afterLet.indexOf("=", colonIdx) + 1 : equalIdx + 1,
+              )
+              .trim();
+
+            const compiledValueResult = extractCompiledValue(valueExpr, false);
+            if (!compiledValueResult.ok) {
+              return compiledValueResult;
+            }
+            const compiledValue = compiledValueResult.value;
+
+            if (isTyped && declaredType) {
+              if (!isValidTypeStr(declaredType)) {
+                return err(`Invalid type: ${declaredType}`);
+              }
+
+              const validationResult = validateTypeAssignment(
+                extractValueType(valueExpr, declarationTypes),
+                declaredType,
+              );
+              if (!validationResult.ok) {
+                return validationResult;
+              }
+            }
+
+            const varName = afterLet
+              .substring(0, isTyped ? colonIdx : equalIdx)
+              .trim();
+            if (varName in declarations) {
+              return err(`Variable '${varName}' is already declared`);
+            }
+
+            declarations[varName] = compiledValue;
+            if (isMutable) {
+              mutableVars.add(varName);
+            }
+            statements.push(
+              `${mutableVars.has(varName) ? "var" : "const"} ${varName} = ${compiledValue};`,
+            );
+
+            if (isTyped && declaredType) {
+              declarationTypes[varName] = declaredType;
+            } else if (valueExpr in declarationTypes) {
+              declarationTypes[varName] = declarationTypes[valueExpr];
+            } else if (
+              valueExpr.startsWith("read<") &&
+              valueExpr.endsWith(">()")
+            ) {
+              const typeEnd = valueExpr.indexOf(">");
+              if (typeEnd > 5)
+                declarationTypes[varName] = valueExpr.substring(5, typeEnd);
+            } else {
+              const tIdx = Math.max(
+                valueExpr.lastIndexOf("U"),
+                valueExpr.lastIndexOf("I"),
+              );
+              if (
+                tIdx > 0 &&
+                valueExpr
+                  .substring(0, tIdx)
+                  .split("")
+                  .every((c) => c >= "0" && c <= "9") &&
+                valueExpr
+                  .substring(tIdx + 1)
+                  .split("")
+                  .every((c) => c >= "0" && c <= "9")
+              ) {
+                declarationTypes[varName] = valueExpr.substring(tIdx);
+              }
+            }
+
+            return ok(undefined);
+          } else if (stmt.includes("=")) {
+            // Handle assignment statements
+            const equalIdx = stmt.indexOf("=");
+            const varName = stmt.substring(0, equalIdx).trim();
+
+            if (!(varName in declarations)) {
+              return err(`Variable '${varName}' is not declared`);
+            }
+            if (!mutableVars.has(varName)) {
+              return err(`Variable '${varName}' is not mutable`);
+            }
+
+            const valueExpr = stmt.substring(equalIdx + 1).trim();
+            const compiledValueResult = extractCompiledValue(valueExpr, true);
+            if (!compiledValueResult.ok) {
+              return compiledValueResult;
+            }
+            const compiledValue = compiledValueResult.value;
+
+            // Type check the assignment
+            if (varName in declarationTypes) {
+              const validationResult = validateTypeAssignment(
+                extractValueType(valueExpr, declarationTypes),
+                declarationTypes[varName],
+              );
+              if (!validationResult.ok) {
+                return validationResult;
+              }
+            }
+
+            declarations[varName] = compiledValue;
+            statements.push(`${varName} = ${compiledValue};`);
+
+            return ok(undefined);
+          } else if (stmt.length > 0) {
+            // Try to compile as return expression
+            const pointerResult = compilePointerExpr(stmt);
+            if (pointerResult.ok) {
+              returnExpr = pointerResult.value;
+            } else if (
+              !pointerResult.error.includes("Not a pointer expression")
+            ) {
+              // It's a pointer expression but has an error (type checking, etc.)
+              return pointerResult;
+            } else {
+              returnExpr = stmt;
+            }
+
+            return ok(undefined);
           }
-        }
 
-        const varName = afterLet
-          .substring(0, isTyped ? colonIdx : equalIdx)
-          .trim();
-        if (varName in declarations) {
-          return err(`Variable '${varName}' is already declared`);
-        }
+          return ok(undefined);
+        },
+        ok(undefined) as Result<undefined, string>,
+      );
 
-        declarations[varName] = compiledValue;
-        if (isMutable) {
-          mutableVars.add(varName);
-        }
-        statements.push(
-          `${mutableVars.has(varName) ? "var" : "const"} ${varName} = ${compiledValue};`,
-        );
-
-        if (isTyped && declaredType) {
-          declarationTypes[varName] = declaredType;
-        } else if (valueExpr in declarationTypes) {
-          declarationTypes[varName] = declarationTypes[valueExpr];
-        } else if (valueExpr.startsWith("read<") && valueExpr.endsWith(">()")) {
-          const typeEnd = valueExpr.indexOf(">");
-          if (typeEnd > 5)
-            declarationTypes[varName] = valueExpr.substring(5, typeEnd);
-        } else {
-          const tIdx = Math.max(
-            valueExpr.lastIndexOf("U"),
-            valueExpr.lastIndexOf("I"),
-          );
-          if (
-            tIdx > 0 &&
-            valueExpr
-              .substring(0, tIdx)
-              .split("")
-              .every((c) => c >= "0" && c <= "9") &&
-            valueExpr
-              .substring(tIdx + 1)
-              .split("")
-              .every((c) => c >= "0" && c <= "9")
-          ) {
-            declarationTypes[varName] = valueExpr.substring(tIdx);
-          }
-        }
-      } else if (stmt.includes("=")) {
-        // Handle assignment statements
-        const equalIdx = stmt.indexOf("=");
-        const varName = stmt.substring(0, equalIdx).trim();
-
-        if (!(varName in declarations)) {
-          return err(`Variable '${varName}' is not declared`);
-        }
-        if (!mutableVars.has(varName)) {
-          return err(`Variable '${varName}' is not mutable`);
-        }
-
-        const valueExpr = stmt.substring(equalIdx + 1).trim();
-        const compiledValueResult = extractCompiledValue(valueExpr, true);
-        if (!compiledValueResult.ok) {
-          return compiledValueResult;
-        }
-        const compiledValue = compiledValueResult.value;
-
-        // Type check the assignment
-        if (varName in declarationTypes) {
-          const validationResult = validateTypeAssignment(
-            extractValueType(valueExpr, declarationTypes),
-            declarationTypes[varName],
-          );
-          if (!validationResult.ok) {
-            return validationResult;
-          }
-        }
-
-        declarations[varName] = compiledValue;
-        statements.push(`${varName} = ${compiledValue};`);
-      } else if (stmt.length > 0) {
-        // Try to compile as return expression
-        const pointerResult = compilePointerExpr(stmt);
-        if (pointerResult.ok) {
-          returnExpr = pointerResult.value;
-        } else if (!pointerResult.error.includes("Not a pointer expression")) {
-          // It's a pointer expression but has an error (type checking, etc.)
-          return pointerResult;
-        } else {
-          returnExpr = stmt;
-        }
-      }
+    if (!stmtResult.ok) {
+      return stmtResult;
     }
 
     if (!returnExpr) {
@@ -371,10 +398,12 @@ export const compile = (source: string): Result<string, string> => {
     }
 
     // Validate the resulting expression contains only valid characters
-    for (let i = 0; i < result.length; i++) {
-      if (!"0123456789+-*/ ()read".includes(result[i])) {
-        return err("Invalid character in expression");
-      }
+    const validChars = "0123456789+-*/ ()read";
+    const invalidCharIndex = [...result].findIndex(
+      (c) => !validChars.includes(c),
+    );
+    if (invalidCharIndex !== -1) {
+      return err("Invalid character in expression");
     }
 
     return ok(`return ${result};`);
