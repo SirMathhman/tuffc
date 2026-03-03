@@ -24,6 +24,57 @@ export const compile = (source: string): Result<string, string> => {
     return ok("return 0");
   }
 
+  // Variable declarations (let x : Type = expr;)
+  if (source.includes("let ")) {
+    const declarations: Record<string, string> = {};
+    let returnExpr = "";
+
+    for (const stmt of source.split(";").map((s) => s.trim())) {
+      if (stmt.startsWith("let ")) {
+        const afterLet = stmt.substring(4);
+        const colonIdx = afterLet.indexOf(":");
+        if (colonIdx === -1) {
+          return err("Invalid variable declaration: missing type");
+        }
+        const afterColon = afterLet.substring(colonIdx + 1);
+        const equalIdx = afterColon.indexOf("=");
+        if (equalIdx === -1) {
+          return err("Invalid variable declaration: missing initializer");
+        }
+        const compileResult = compile(
+          afterColon.substring(equalIdx + 1).trim(),
+        );
+        if (!compileResult.ok) {
+          return compileResult;
+        }
+        const returnValue = compileResult.value;
+        if (!returnValue.startsWith("return ")) {
+          return err("Invalid variable initialization");
+        }
+        declarations[afterLet.substring(0, colonIdx).trim()] = returnValue
+          .substring(7)
+          .endsWith(";")
+          ? returnValue.substring(7, returnValue.length - 1)
+          : returnValue.substring(7);
+      } else if (stmt.length > 0) {
+        returnExpr = stmt;
+      }
+    }
+
+    if (!returnExpr) {
+      return err("No return expression found");
+    }
+
+    return ok(
+      Object.entries(declarations)
+        .map(([name, value]) => `let ${name} = ${value};`)
+        .join("\n") +
+        "\nreturn " +
+        returnExpr +
+        ";",
+    );
+  }
+
   // Binary expressions with operators
   if (
     source.includes("+") ||

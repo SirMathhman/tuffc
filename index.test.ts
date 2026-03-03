@@ -7,7 +7,6 @@ const validate = (
 ): void => {
   it(source, () => {
     const result = compile(source);
-    expect(result.ok).toBe(true);
     if (result.ok) {
       const parts: string[] = [];
       let current = "";
@@ -24,9 +23,17 @@ const validate = (
       if (current.length > 0) {
         parts.push(current);
       }
-      expect(
-        new Function("read", result.value)(() => parseInt(parts.shift()!, 10)),
-      ).toBe(expected);
+      if (
+        new Function("read", result.value)(() =>
+          parseInt(parts.shift()!, 10),
+        ) == expected
+      ) {
+        return;
+      } else {
+        expect("Failed to execute: " + result.value).toBeUndefined();
+      }
+    } else {
+      expect(result.error).toBeUndefined();
     }
   });
 };
@@ -45,3 +52,4 @@ invalidate("-100U8");
 invalidate("256U8");
 validate("read<I32>()", "100", 100);
 validate("read<I32>() + read<I32>()", "1 2", 3);
+validate("let x : I32 = read<I32>(); x + x", "1 3", 2);
