@@ -336,6 +336,7 @@ export const compile = (
 ): Result<string, string> => {
   const processBlockExpression = (
     blockExpr: string,
+    requiresFinalExpr = true,
   ): Result<{ statements: string; returnValue: string }, string> => {
     if (!blockExpr.startsWith("{") || !blockExpr.endsWith("}")) {
       return err("Not a block expression");
@@ -346,7 +347,7 @@ export const compile = (
       return ok({ statements: "", returnValue: "0" });
     }
 
-    const blockResult = compile(blockContent, true);
+    const blockResult = compile(blockContent, requiresFinalExpr);
     if (!blockResult.ok) {
       return blockResult;
     }
@@ -558,6 +559,42 @@ export const compile = (
           return acc;
         }
 
+        // Helper to handle variable assignments (used both for regular and block assignments)
+        const handleAssignment = (assignStmt: string): Result<undefined, string> => {
+          const equalIdx = assignStmt.indexOf("=");
+          const varName = assignStmt.substring(0, equalIdx).trim();
+
+          if (!(varName in declarations)) {
+            return err(`Variable '${varName}' is not declared`);
+          }
+          if (!mutableVars.has(varName)) {
+            return err(`Variable '${varName}' is not mutable`);
+          }
+
+          const valueExpr = assignStmt.substring(equalIdx + 1).trim();
+          const compiledValueResult = extractCompiledValue(valueExpr, true);
+          if (!compiledValueResult.ok) {
+            return compiledValueResult;
+          }
+          const compiledValue = compiledValueResult.value;
+
+          // Type check the assignment
+          if (varName in declarationTypes) {
+            const validationResult = validateTypeAssignment(
+              extractValueType(valueExpr, declarationTypes),
+              declarationTypes[varName],
+            );
+            if (!validationResult.ok) {
+              return validationResult;
+            }
+          }
+
+          declarations[varName] = compiledValue;
+          statements.push(`${varName} = ${compiledValue};`);
+
+          return ok(undefined);
+        };
+
         if (stmt.startsWith("let ")) {
           const parsed = parseLetStatement(stmt);
 
@@ -662,54 +699,39 @@ export const compile = (
           }
 
           return ok(undefined);
+        } else if (stmt.startsWith("{") && stmt.endsWith("}")) {
+          // Handle block statements as standalone statements
+          // Process the block content directly without recursive compile() to preserve outer scope
+          const blockContent = stmt.substring(1, stmt.length - 1).trim();
+          if (blockContent.length > 0) {
+            // Split statements within the block
+            const blockStmts = splitStatements(blockContent);
+            // Process each statement in the block with the outer scope's declarations
+            const blockProcessResult = blockStmts.reduce(
+              (blockAcc, blockStmt) => {
+                if (blockAcc.ok === false) {
+                  return blockAcc;
+                }
+
+                // Handle assignments within the block
+                if (blockStmt.includes("=")) {
+                  return handleAssignment(blockStmt);
+                }
+
+                return ok(undefined);
+              },
+              ok(undefined) as Result<undefined, string>,
+            );
+
+            if (!blockProcessResult.ok) {
+              return blockProcessResult;
+            }
+          }
+
+          return ok(undefined);
         } else if (stmt.includes("=")) {
           // Handle assignment statements
-          const equalIdx = stmt.indexOf("=");
-          const varName = stmt.substring(0, equalIdx).trim();
-
-          if (!(varName in declarations)) {
-            return err(`Variable '${varName}' is not declared`);
-          }
-          if (!mutableVars.has(varName)) {
-            return err(`Variable '${varName}' is not mutable`);
-          }
-
-          const valueExpr = stmt.substring(equalIdx + 1).trim();
-          const compiledValueResult = extractCompiledValue(valueExpr, true);
-          if (!compiledValueResult.ok) {
-            return compiledValueResult;
-          }
-          const compiledValue = compiledValueResult.value;
-
-          // Type check the assignment
-          if (varName in declarationTypes) {
-            const validationResult = validateTypeAssignment(
-              extractValueType(valueExpr, declarationTypes),
-              declarationTypes[varName],
-            );
-            if (!validationResult.ok) {
-              return validationResult;
-            }
-          }
-
-          declarations[varName] = compiledValue;
-          statements.push(`${varName} = ${compiledValue};`);
-
-          return ok(undefined);
-        } else if (stmt.startsWith("{") && stmt.endsWith("}")) {
-          // Handle block expressions as standalone statements
-          const blockResult = processBlockExpression(stmt);
-          if (blockResult.ok) {
-            const { statements: blockStatements } = blockResult.value;
-            if (blockStatements.length > 0) {
-              statements.push(blockStatements);
-            }
-            // Don't set as return expression - just execute the block
-          } else {
-            return blockResult;
-          }
-
-          return ok(undefined);
+          return handleAssignment(stmt);
         } else if (stmt.startsWith("read<") && stmt.endsWith(">()")) {
           // Handle read<Type>() as return expression
           const typeEnd = stmt.indexOf(">");
@@ -897,9 +919,7 @@ export const compile = (
       }
     }
 
-    return ok(
-      statements.join("\n") + "\nreturn " + returnExpr + ";",
-    );
+    return ok(statements.join("\n") + "\nreturn " + returnExpr + ";");
   }
 
   // If/else expressions: if (condition) consequent else alternate
