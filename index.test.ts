@@ -99,3 +99,8 @@ validate(
   "10",
   45,
 );
+validate(
+  "type MyAlias = I32; let temp : MyAlias = read<I32>(); temp",
+  "100",
+  100,
+);

@@ -547,8 +547,9 @@ export const compile = (
   }
 
   // Multi-statement handler - triggered for complex inputs with multiple statements or declarations
-  // This includes: variable declarations (let), semicolon-separated statements, or expressions after block closures
+  // This includes: variable declarations (let), type aliases (type), semicolon-separated statements, or expressions after block closures
   const hasMultipleStatements =
+    source.includes("type ") ||
     source.includes("let ") ||
     source.includes(";") ||
     (source.includes("}") &&
@@ -558,9 +559,24 @@ export const compile = (
   if (hasMultipleStatements) {
     const declarations: Record<string, string> = {};
     const declarationTypes: Record<string, string> = {};
+    const typeAliases: Record<string, string> = {};
     const mutableVars: Set<string> = new Set();
     const statements: string[] = [];
     let returnExpr = "";
+
+    // Helper function to resolve type aliases recursively
+    const resolveTypeAlias = (typeStr: string): string => {
+      if (typeStr in typeAliases) {
+        return resolveTypeAlias(typeAliases[typeStr]);
+      }
+      return typeStr;
+    };
+
+    // Helper function to check if a type is valid, including aliases
+    const isValidTypeStrWithAliases = (typeStr: string): boolean => {
+      const resolved = resolveTypeAlias(typeStr);
+      return isValidTypeStr(resolved);
+    };
 
     const compilePointerExpr = (expr: string): Result<string, string> => {
       // Handle dereference operator *x
@@ -757,7 +773,9 @@ export const compile = (
               if (bodyStmt.startsWith("let ")) {
                 const parsed = parseLetStatement(bodyStmt);
                 if (!parsed.valueExpr) {
-                  return err("Invalid variable declaration: missing initializer");
+                  return err(
+                    "Invalid variable declaration: missing initializer",
+                  );
                 }
 
                 const compiledValueResult = extractCompiledValue(
@@ -828,7 +846,36 @@ export const compile = (
           });
         };
 
-        if (stmt.startsWith("let ")) {
+        if (stmt.startsWith("type ")) {
+          // Handle type alias declarations: type MyAlias = I32;
+          const afterType = stmt.substring(5);
+          const equalIdx = afterType.indexOf("=");
+          if (equalIdx === -1) {
+            return err("Invalid type alias syntax: missing =");
+          }
+
+          const aliasName = afterType.substring(0, equalIdx).trim();
+          const aliasType = afterType.substring(equalIdx + 1).trim();
+
+          if (!aliasName || !aliasType) {
+            return err(
+              "Invalid type alias syntax: alias name and type required",
+            );
+          }
+
+          // Validate that the aliased type is valid
+          if (!isValidTypeStrWithAliases(aliasType)) {
+            return err(`Invalid type in alias: ${aliasType}`);
+          }
+
+          // Check for duplicate alias
+          if (aliasName in typeAliases) {
+            return err(`Type alias '${aliasName}' is already defined`);
+          }
+
+          typeAliases[aliasName] = aliasType;
+          return ok(undefined);
+        } else if (stmt.startsWith("let ")) {
           const parsed = parseLetStatement(stmt);
 
           if (!parsed.valueExpr) {
@@ -864,13 +911,14 @@ export const compile = (
           }
 
           if (parsed.isTyped && parsed.declaredType) {
-            if (!isValidTypeStr(parsed.declaredType)) {
+            const resolvedType = resolveTypeAlias(parsed.declaredType);
+            if (!isValidTypeStr(resolvedType)) {
               return err(`Invalid type: ${parsed.declaredType}`);
             }
 
             const validationResult = validateTypeAssignment(
               extractValueType(parsed.valueExpr, declarationTypes),
-              parsed.declaredType,
+              resolvedType,
             );
             if (!validationResult.ok) {
               return validationResult;
@@ -886,7 +934,8 @@ export const compile = (
           );
 
           if (parsed.isTyped && parsed.declaredType) {
-            declarationTypes[parsed.varName] = parsed.declaredType;
+            const resolvedType = resolveTypeAlias(parsed.declaredType);
+            declarationTypes[parsed.varName] = resolvedType;
           } else if (
             parsed.valueExpr === "true" ||
             parsed.valueExpr === "false"
