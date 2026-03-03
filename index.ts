@@ -64,7 +64,31 @@ const parseIfElse = (
   const condition = expr.substring(4, conditionEndIdx).trim();
   const remaining = expr.substring(conditionEndIdx + 1).trim();
 
-  const elseIdx = remaining.lastIndexOf(" else ");
+  // Find the FIRST " else " at the top level (not inside nested if-else)
+  // We need to skip past the consequent to find the else clause
+  let elseIdx = -1;
+  let depth = 0; // Track depth of nested if-else
+  let i = 0;
+
+  while (i < remaining.length) {
+    // Check if we're at " else "
+    if (
+      remaining[i] === " " &&
+      remaining.substring(i + 1, i + 6) === "else " &&
+      depth === 0
+    ) {
+      elseIdx = i;
+      break;
+    }
+
+    // Track nesting depth: if we see "if (", we go deeper
+    if (remaining.substring(i, i + 3) === "if ") {
+      depth++;
+    }
+
+    i++;
+  }
+
   if (elseIdx === -1) {
     return undefined;
   }
@@ -456,7 +480,20 @@ export const compile = (
       );
     }
 
-    return ok(`(${condition}) ? (${consequent}) : (${alternate})`);
+    // If the alternate is itself an if-else expression, compile it to a ternary
+    let compiledAlternate = alternate;
+    if (alternate.trim().startsWith("if (")) {
+      const alternateResult = compileIfElse(
+        alternate.trim(),
+        declarationTypes,
+      );
+      if (!alternateResult.ok) {
+        return alternateResult;
+      }
+      compiledAlternate = alternateResult.value;
+    }
+
+    return ok(`(${condition}) ? (${consequent}) : (${compiledAlternate})`);
   };
 
   // Empty input returns 0

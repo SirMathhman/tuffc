@@ -78,6 +78,7 @@ validate("let x = if (true) 3 else 5; x", "", 3);
 invalidate("let x = if (100) 3 else 5; x");
 invalidate("let x = if (true) 3 else true; x");
 invalidate("let x : Bool = if (true) 3 else 5; x");
+validate("let x = if (false) 2 else if (false) 3 else 4; x", "", 4);
 validate("let x = { let y = 100; y }; x", "", 100);
 invalidate("let x = { let y = 100; }; x");
 invalidate("let x = { let y = 100; y }; y");
