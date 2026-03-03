@@ -52,11 +52,6 @@ export default [
             "Throwing errors is not allowed. Use Result<T, E> type instead.",
         },
         {
-          selector: "FunctionDeclaration",
-          message:
-            "Function declarations are not allowed. Use arrow functions instead: const name = () => ...",
-        },
-        {
           selector: "Literal[value=null]",
           message: "null is not allowed. Use undefined instead.",
         },

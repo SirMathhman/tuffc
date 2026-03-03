@@ -587,6 +587,7 @@ export const compile = (
     const declarations: Record<string, string> = {};
     const declarationTypes: Record<string, string> = {};
     const typeAliases: Record<string, string> = {};
+    const definedFunctions: Record<string, boolean> = {};
     const mutableVars: Set<string> = new Set();
     const statements: string[] = [];
     let returnExpr = "";
@@ -980,6 +981,11 @@ export const compile = (
             return err("Invalid function definition: missing function name");
           }
 
+          // Check for duplicate function definition
+          if (fnName in definedFunctions) {
+            return err(`Function '${fnName}' is already defined`);
+          }
+
           // Find closing paren using reduce
           let closeParenIdx = -1;
           [...afterFn].reduce((depth: number, char: string, idx: number) => {
@@ -1010,6 +1016,9 @@ export const compile = (
           if (!remaining.startsWith("=>")) {
             return err("Invalid function definition: missing arrow =>");
           }
+
+          // Track this function definition
+          definedFunctions[fnName] = true;
 
           // Skip this statement - function definitions are no-ops for now
           return ok(undefined);
