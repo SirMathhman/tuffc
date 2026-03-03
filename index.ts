@@ -196,6 +196,11 @@ const extractValueType = (
     return "";
   }
 
+  // Handle logical operators - any expression with || or && results in Bool
+  if (valueExpr.includes("||") || valueExpr.includes("&&")) {
+    return "Bool";
+  }
+
   let valueType = "";
 
   // Check for boolean literals
@@ -632,16 +637,19 @@ export const compile = (
           }
 
           // Check for compound arithmetic operators and validate type compatibility
-          const isCompoundArithmetic = assignStmt.includes("+=") || 
-                                       assignStmt.includes("-=") || 
-                                       assignStmt.includes("*=") || 
-                                       assignStmt.includes("/=");
-          
+          const isCompoundArithmetic =
+            assignStmt.includes("+=") ||
+            assignStmt.includes("-=") ||
+            assignStmt.includes("*=") ||
+            assignStmt.includes("/=");
+
           if (isCompoundArithmetic && varName in declarationTypes) {
             const varType = declarationTypes[varName];
             // Arithmetic operations are not valid on Bool types
             if (varType === "Bool") {
-              return err(`Cannot perform arithmetic operation on Bool variable '${varName}'`);
+              return err(
+                `Cannot perform arithmetic operation on Bool variable '${varName}'`,
+              );
             }
           }
 
@@ -793,6 +801,14 @@ export const compile = (
             ) {
               declarationTypes[parsed.varName] =
                 parsed.valueExpr.substring(tIdx);
+            } else {
+              // Check for plain numeric literals
+              const isPlainNumber =
+                parsed.valueExpr.length > 0 &&
+                [...parsed.valueExpr].every((c) => c >= "0" && c <= "9");
+              if (isPlainNumber) {
+                declarationTypes[parsed.varName] = "I32";
+              }
             }
           }
 
