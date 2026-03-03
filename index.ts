@@ -4,12 +4,78 @@
 
 export type Result<T, E> = { ok: true; value: T } | { ok: false; error: E };
 
-export function compile(source: string): Result<string, string> {
+// Different categories of compile errors. Tests use this enum to verify that
+// a particular case produces the expected kind of failure.
+// enum values are exported for external use but lint sees them as unused
+// within this module; disable the rule for the block
+/* eslint-disable no-unused-vars */
+export enum CompileErrorType {
+  NotImplemented = "NotImplemented",
+  NegativeUnsigned = "NegativeUnsigned",
+  UnsignedOverflow = "UnsignedOverflow",
+}
+/* eslint-enable no-unused-vars */
+
+// Custom error information produced by the compiler. Consumers can use the
+// `source` field to highlight the offending code, `message` for a user-facing
+// explanation, `reason` for an internal summary, and `fix` to suggest a way to
+// correct the problem.  The `type` property allows callers to distinguish
+// classes of errors programmatically.
+export interface CompileError {
+  source: string;
+  message: string;
+  reason: string;
+  fix: string;
+  type: CompileErrorType;
+}
+
+export function compile(source: string): Result<string, CompileError> {
   // A minimal implementation to make the existing tests pass. The tests
   // currently validate an empty program evaluates to 0 and that a numeric
   // literal returns its value. Anything else still returns an error so that
   // we can extend this function later without changing behaviour for now.
+
   const trimmed = source.trim();
+
+  // quickly handle a couple of explicit error cases so we can return specific
+  // error types rather than falling through to the generic stub at the end.
+  // negative unsigned check without regex
+  if (
+    trimmed.startsWith("-") &&
+    trimmed.endsWith("U8") &&
+    Array.from(trimmed.slice(1, -2)).every((ch) => ch >= "0" && ch <= "9")
+  ) {
+    return {
+      ok: false,
+      error: {
+        source,
+        message: "Negative value not allowed for unsigned type",
+        reason: "negative unsigned literal",
+        fix: "remove the '-' or the 'U8' suffix",
+        type: CompileErrorType.NegativeUnsigned,
+      },
+    };
+  }
+  // unsigned overflow check without regex
+  if (
+    trimmed.endsWith("U8") &&
+    Array.from(trimmed.slice(0, -2)).every((ch) => ch >= "0" && ch <= "9")
+  ) {
+    const num = parseInt(trimmed.slice(0, -2), 10);
+    if (isNaN(num) || num > 255) {
+      return {
+        ok: false,
+        error: {
+          source,
+          message: "Value out of range for U8",
+          reason: "unsigned literal overflow",
+          fix: "use a smaller value (0..255)",
+          type: CompileErrorType.UnsignedOverflow,
+        },
+      };
+    }
+  }
+
   if (trimmed === "") {
     return { ok: true, value: "return 0;" };
   }
@@ -112,5 +178,14 @@ export function compile(source: string): Result<string, string> {
     }
   }
 
-  return { ok: false, error: "Compilation is not implemented yet" };
+  return {
+    ok: false,
+    error: {
+      source,
+      message: "Compilation is not implemented yet",
+      reason: "stub",
+      fix: "implement the compiler",
+      type: CompileErrorType.NotImplemented,
+    },
+  };
 }
