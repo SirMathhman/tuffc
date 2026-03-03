@@ -41,8 +41,10 @@ function transformComparisonOperators(source: string): string {
     // For single-char ops, skip occurrences that are part of a two-char arrow (=>)
     if (op === ">" || op === "<") {
       while (index !== -1) {
-        const precededByEq = op === ">" && index > 0 && result[index - 1] === "=";
-        const followedByEq = op === "<" && index + 1 < result.length && result[index + 1] === "=";
+        const precededByEq =
+          op === ">" && index > 0 && result[index - 1] === "=";
+        const followedByEq =
+          op === "<" && index + 1 < result.length && result[index + 1] === "=";
         if (!precededByEq && !followedByEq) break;
         index = result.indexOf(op, index + 1);
       }

@@ -369,4 +369,12 @@ describe("The compiler can compile", () => {
       7,
     );
   });
+
+  it("declares inline struct type and accesses fields", () => {
+    assertValid(
+      "let point : { x : I32; y : I32; } = { x : read<I32>(), y : read<I32>()}; point.x + point.y",
+      "3 4",
+      7,
+    );
+  });
 });

@@ -73,4 +73,9 @@ function extractParamNames(paramsRaw: string): string {
   return out;
 }
 
-export { findMatchingParen, findMatchingBrace, findLastDepthZeroChar, extractParamNames };
+export {
+  findMatchingParen,
+  findMatchingBrace,
+  findLastDepthZeroChar,
+  extractParamNames,
+};

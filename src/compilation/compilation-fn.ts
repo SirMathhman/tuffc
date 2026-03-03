@@ -142,7 +142,9 @@ function compileFnStatement(
   );
   let callExpr = afterExpr;
   if (callExpr === "") callExpr = "0";
-  return ok(buildFnIife(fnName, paramNames, bodyStatements, bodyReturn, callExpr));
+  return ok(
+    buildFnIife(fnName, paramNames, bodyStatements, bodyReturn, callExpr),
+  );
 }
 
 export { compileFnStatement };

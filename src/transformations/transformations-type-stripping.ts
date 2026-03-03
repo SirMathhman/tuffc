@@ -1,11 +1,19 @@
 import { isAlpha, isDigit } from "../extractors/extractors";
 import { extractNumericIfPresent } from "./transformations-numeric-suffix";
 import { skipGenericParameters } from "./transformations-generic-stripping";
+import { findMatchingBrace } from "../extractors/extractors-braces";
+import { skipWhitespace } from "./transformations-if-expr-utils";
 
 function skipTypeAnnotation(source: string, i: number, braceDepth: number): number {
   if (braceDepth > 0) return i;
   if (i < source.length - 1 && source[i] === ":" && source[i + 1] === " ") {
-    let j = i + 2;
+    let j = skipWhitespace(source, i + 2);
+    if (source[j] === "{") {
+      const end = findMatchingBrace(source, j);
+      if (end !== -1) {
+        return skipWhitespace(source, end + 1);
+      }
+    }
     while (j < source.length) {
       const char = source[j];
       const isTypePart = isAlpha(char) || isDigit(char) || char === "<" || char === ">" || char === "," || char === "*";
@@ -13,8 +21,7 @@ function skipTypeAnnotation(source: string, i: number, braceDepth: number): numb
       if (isTypePart || isSpace) j++;
       else break;
     }
-    while (j < source.length && source[j] === " ") j++;
-    return j;
+    return skipWhitespace(source, j);
   }
   return i;
 }
