@@ -41,16 +41,21 @@ const parseIfElse = (
   let depthCounter = 0;
   let conditionEndIdx = -1;
 
-  for (let i = 4; i < expr.length; i++) {
-    if (expr[i] === "(") depthCounter++;
-    if (expr[i] === ")") {
-      if (depthCounter === 0) {
-        conditionEndIdx = i;
-        break;
-      }
-      depthCounter--;
+  [...expr].reduce((idx: number, char: string) => {
+    if (idx < 4 || conditionEndIdx !== -1) {
+      return idx + 1;
     }
-  }
+
+    if (char === "(") depthCounter++;
+    if (char === ")") {
+      if (depthCounter === 0) {
+        conditionEndIdx = idx;
+      } else {
+        depthCounter--;
+      }
+    }
+    return idx + 1;
+  }, 0);
 
   if (conditionEndIdx === -1) {
     return undefined;
