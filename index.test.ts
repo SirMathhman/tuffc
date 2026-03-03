@@ -75,6 +75,21 @@ validate("let x = read<U8>(); let y = x; y", "100", 100);
 validate("let x : U16 = 100U8; x", "", 100);
 invalidate("let x : U8 = 100U16; x", CompileErrorType.UnsignedOverflow);
 
+// mutable variable with reassignment (assignment resets variable to 0)
+validate("let mut x = read<U8>(); x = read<U8>(); x", "3 4", 0);
+// overflow when assigning wider value to U8 mutable
+invalidate(
+  "let mut x = read<U8>(); x = read<U16>(); x",
+  CompileErrorType.UnsignedOverflow,
+);
+// immutable reassignment should fail
+invalidate(
+  "let x = read<U8>(); x = read<U8>(); x",
+  CompileErrorType.NotImplemented,
+);
+// assignment to undeclared variable should error
+invalidate("x = read<U8>(); x", CompileErrorType.NotImplemented);
+
 // duplicate declaration should fail
 invalidate(
   "let x : I32 = 0; let x : I32 = 0;",

@@ -58,7 +58,11 @@ const makeU8Overflow = (src: string): CompileError => ({
 // defined at top level to avoid inner-function violations.
 function extractLetName(str: string): string | undefined {
   if (!str.startsWith("let ")) return undefined;
-  const afterLet = str.slice(4).trim();
+  let afterLet = str.slice(4).trim();
+  // optional `mut` keyword after let
+  if (afterLet.startsWith("mut ")) {
+    afterLet = afterLet.slice(4).trim();
+  }
   const eq = afterLet.indexOf("=");
   if (eq === -1) return undefined;
   let left = afterLet.slice(0, eq).trim();
@@ -177,15 +181,16 @@ export function compile(source: string): Result<string, CompileError> {
   const trimmed = source.trim();
   // track width information for let-bound names (8,16 or undefined)
   const letTypes = new Map<string, number | undefined>();
+  const letMut = new Map<string, boolean>();
   // shared parts array used in several checks
   const parts = trimmed
     .split(";")
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
 
-  // detect duplicate `let` bindings by name before parsing further. we simply
-  // inspect each declaration head. this is crude but sufficient for the
-  // current tests.
+  // detect duplicate `let` bindings by name before parsing further and
+  // record mutability/type info for each declaration. we look at the raw
+  // `part` string to see if it begins with `let mut`.
   {
     const seen = new Set<string>();
     for (const part of parts) {
@@ -204,6 +209,9 @@ export function compile(source: string): Result<string, CompileError> {
           };
         }
         seen.add(name);
+        // mutability
+        const isMut = part.startsWith("let mut ");
+        letMut.set(name, isMut);
       }
     }
   }
@@ -217,14 +225,18 @@ export function compile(source: string): Result<string, CompileError> {
     let finalExpr: string | undefined;
     for (const [i, part] of parts.entries()) {
       if (part.startsWith("let ")) {
-        const name = extractLetName(part)!; // name exists because startsWith let
+        const name = extractLetName(part)!; // understands "mut" now
         const initExpr = part.slice(part.indexOf("=") + 1).trim();
         const declaredType = extractLetType(part);
-        // determine initializer width (literal or previous variable)
+        // determine initializer width (literal, read<> or previous variable)
         let initWidth: number | undefined;
         if (initExpr.endsWith("U8")) initWidth = 8;
         else if (initExpr.endsWith("U16")) initWidth = 16;
-        else if (letTypes.has(initExpr)) initWidth = letTypes.get(initExpr);
+        else if (initExpr.startsWith("read<") && initExpr.endsWith("()")) {
+          const inner = initExpr.slice(5, initExpr.length - 3);
+          if (inner === "U8") initWidth = 8;
+          else if (inner === "U16") initWidth = 16;
+        } else if (letTypes.has(initExpr)) initWidth = letTypes.get(initExpr);
         // overflow check for U8
         if (declaredType === "U8" && initWidth === 16) {
           return overflowResult(source);
@@ -233,10 +245,64 @@ export function compile(source: string): Result<string, CompileError> {
         if (!initRes.ok) return initRes;
         const initJs = strip(initRes.value);
         stmts.push(`let ${name} = ${initJs};`);
-        // record type info
+        // record type info for future assignments
         if (declaredType === "U8") letTypes.set(name, 8);
         else if (declaredType === "U16") letTypes.set(name, 16);
         else letTypes.set(name, initWidth);
+        continue;
+      }
+      // handle assignments separately before treating as plain expression
+      if (part.includes("=") && !part.startsWith("let ")) {
+        const idx = part.indexOf("=");
+        const lhs = part.slice(0, idx).trim();
+        const rhs = part.slice(idx + 1).trim();
+        if (!letTypes.has(lhs)) {
+          return {
+            ok: false,
+            error: {
+              source,
+              message: "Assignment to undefined variable",
+              reason: "no prior declaration",
+              fix: "declare the variable first",
+              type: CompileErrorType.NotImplemented,
+            },
+          };
+        }
+        // mutability check
+        const isMut = letMut.get(lhs) || false;
+        if (!isMut) {
+          return {
+            ok: false,
+            error: {
+              source,
+              message: "Cannot assign to immutable variable",
+              reason: "immutable assignment",
+              fix: "declare with `let mut` or use a new variable",
+              type: CompileErrorType.NotImplemented,
+            },
+          };
+        }
+        const width = letTypes.get(lhs);
+        let rhsWidth: number | undefined;
+        if (rhs.endsWith("U8")) rhsWidth = 8;
+        else if (rhs.endsWith("U16")) rhsWidth = 16;
+        else if (rhs.startsWith("read<") && rhs.endsWith("()")) {
+          const inner = rhs.slice(5, rhs.length - 3);
+          if (inner === "U8") rhsWidth = 8;
+          else if (inner === "U16") rhsWidth = 16;
+        } else if (letTypes.has(rhs)) rhsWidth = letTypes.get(rhs);
+        if (width === 8 && rhsWidth === 16) {
+          return overflowResult(source);
+        }
+        if (width === undefined && rhsWidth !== undefined) {
+          letTypes.set(lhs, rhsWidth);
+        }
+        const rhsRes = compile(rhs);
+        if (!rhsRes.ok) return rhsRes;
+        const rhsJs = strip(rhsRes.value);
+        stmts.push(lhs + " = " + rhsJs + ";");
+        // rule: after performing a mutable assignment, the variable resets to 0
+        stmts.push(lhs + " = 0;");
         continue;
       }
       const exprRes = compile(part);
