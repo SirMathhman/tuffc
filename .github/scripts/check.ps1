@@ -35,5 +35,14 @@ if ($LASTEXITCODE -ne 0) {
 }
 Write-Host "PASSED: No single-use declarations" -ForegroundColor Green
 
+# Run PMD copy-paste detector
+Write-Host "4. Checking for duplicate code..." -ForegroundColor Yellow
+pmd cpd index.ts --language typescript --minimum-tokens 35
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "FAILED: Duplicate code detected" -ForegroundColor Red
+    exit 2
+}
+Write-Host "PASSED: No duplicate code detected" -ForegroundColor Green
+
 Write-Host "PASSED: All checks passed" -ForegroundColor Green
 exit 0

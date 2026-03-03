@@ -21,8 +21,11 @@ export const compile = (source: string): Result<string, string> => {
     while (i < source.length && source[i] >= "0" && source[i] <= "9") {
       i++;
     }
+    const numValue = source.substring(0, i);
     const typeSuffix = source.substring(i);
-    const validSuffix =
+
+    // Validate suffix format
+    const validSuffixFormat =
       typeSuffix.length === 0 ||
       (typeSuffix.length >= 2 &&
         typeSuffix.length <= 3 &&
@@ -31,9 +34,27 @@ export const compile = (source: string): Result<string, string> => {
           .split("")
           .slice(1)
           .every((c) => c >= "0" && c <= "9"));
-    if (validSuffix) {
-      return ok(`return ${source.substring(0, i)}`);
+
+    if (!validSuffixFormat) {
+      return err("Not implemented yet");
     }
+
+    // Validate value fits in type
+    if (typeSuffix.length > 0) {
+      const numVal = BigInt(numValue);
+      const typeChar = typeSuffix[0];
+      const bitWidth = parseInt(typeSuffix.substring(1), 10);
+      const shiftAmount = typeChar === "U" ? bitWidth : bitWidth - 1;
+      const maxVal = (BigInt(1) << BigInt(shiftAmount)) - BigInt(1);
+
+      if (numVal > maxVal) {
+        return err(
+          `Value ${numValue} exceeds maximum for ${typeChar}${bitWidth}`,
+        );
+      }
+    }
+
+    return ok(`return ${numValue}`);
   }
 
   // Invalid input returns error

@@ -24,3 +24,4 @@ invalidate("x");
 validate("100", 100);
 validate("100U8", 100);
 invalidate("-100U8");
+invalidate("256U8");
