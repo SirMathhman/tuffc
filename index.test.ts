@@ -27,15 +27,4 @@ function validate(source: string, stdin: string = "", expected: number): void {
   });
 }
 
-function invalidate(source: string) {
-  it(source, () => {
-    const result = compile(source);
-    if (result.ok) {
-      expect(
-        "Expected to fail, but succeeded: ```" + result.value + "```",
-      ).toBeUndefined();
-    }
-  });
-}
-
 validate("", "", 0);
