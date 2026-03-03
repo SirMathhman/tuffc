@@ -139,6 +139,13 @@ export const compile = (source: string): Result<string, string> => {
       if (expr.startsWith("*")) {
         const innerExpr = expr.substring(1).trim();
         if (innerExpr in declarations) {
+          // Check if the variable is a pointer type
+          const varType = declarationTypes[innerExpr];
+          if (varType && !varType.startsWith("*")) {
+            return err(
+              `Cannot dereference non-pointer type '${varType}'`,
+            );
+          }
           return ok(`${innerExpr}.value`);
         }
         // Try to recursively dereference
@@ -316,6 +323,9 @@ export const compile = (source: string): Result<string, string> => {
         const pointerResult = compilePointerExpr(stmt);
         if (pointerResult.ok) {
           returnExpr = pointerResult.value;
+        } else if (!pointerResult.error.includes("Not a pointer expression")) {
+          // It's a pointer expression but has an error (type checking, etc.)
+          return pointerResult;
         } else {
           returnExpr = stmt;
         }

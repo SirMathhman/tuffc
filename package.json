@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "test": "bun test --timeout 5000 --concurrent",
-    "lint": "eslint . --ext .ts,.tsx"
+    "lint": "eslint . --ext .ts,.tsx",
+    "prepare": "husky"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
