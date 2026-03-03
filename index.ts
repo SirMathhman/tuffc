@@ -23,22 +23,21 @@ const replaceThisPattern = (
 ): string => {
   let result = "";
   let i = 0;
-  const chars = [...source];
 
-  chars.forEach((_, idx) => {
+  [...source].forEach((_, idx) => {
     if (idx < i) return;
 
     const atThisDot = source.slice(idx, idx + 5) === "this.";
-    const atThis =
-      localDeclarations &&
-      source.slice(idx, idx + 4) === "this" &&
-      (idx + 4 === source.length || !isWordChar(source[idx + 4]));
 
-    if (atThisDot || atThis) {
+    if (
+      atThisDot ||
+      (localDeclarations &&
+        source.slice(idx, idx + 4) === "this" &&
+        (idx + 4 === source.length || !isWordChar(source[idx + 4])))
+    ) {
       const prevChar = idx > 0 ? source[idx - 1] : "";
-      const isWordBoundary = !prevChar || !isWordChar(prevChar);
 
-      if (isWordBoundary) {
+      if (!prevChar || !isWordChar(prevChar)) {
         if (atThisDot) {
           i = idx + 5;
           let identifier = "";
@@ -55,10 +54,9 @@ const replaceThisPattern = (
         } else {
           i = idx + 4;
           if (localDeclarations && Object.keys(localDeclarations).length > 0) {
-            const entriesList = Object.keys(localDeclarations)
+            result += `({ ${Object.keys(localDeclarations)
               .map((name) => `${name}: ${name}`)
-              .join(", ");
-            result += `({ ${entriesList} })`;
+              .join(", ")} })`;
           } else {
             result += "this";
           }
@@ -108,15 +106,16 @@ const parseFunctionTypeSignature = (
     return undefined;
   }
 
-  const paramTypes =
-    paramsPart.length === 0
-      ? []
-      : paramsPart
-          .split(",")
-          .map((p) => p.trim())
-          .filter((p) => p.length > 0);
-
-  return { paramTypes, returnType };
+  return {
+    paramTypes:
+      paramsPart.length === 0
+        ? []
+        : paramsPart
+            .split(",")
+            .map((p) => p.trim())
+            .filter((p) => p.length > 0),
+    returnType,
+  };
 };
 
 const getFunctionSignatureType = (
@@ -124,9 +123,7 @@ const getFunctionSignatureType = (
   definedFunctions: Record<string, FunctionDefinition>,
 ): string => {
   const fnDef = definedFunctions[fnName];
-  const params = fnDef.params.map((p) => p.type || "I32").join(", ");
-  const returnType = fnDef.returnType || "I32";
-  return `(${params}) => ${returnType}`;
+  return `(${fnDef.params.map((p) => p.type || "I32").join(", ")}) => ${fnDef.returnType || "I32"}`;
 };
 
 const normalizeFunctionCompatibleType = (
@@ -146,10 +143,11 @@ const isValidTypeStr = (
 ): boolean => {
   const functionTypeSignature = parseFunctionTypeSignature(typeStr);
   if (functionTypeSignature) {
-    const paramsValid = functionTypeSignature.paramTypes.every((paramType) =>
-      isValidTypeStr(paramType, definedFunctions),
-    );
-    if (!paramsValid) {
+    if (
+      !functionTypeSignature.paramTypes.every((paramType) =>
+        isValidTypeStr(paramType, definedFunctions),
+      )
+    ) {
       return false;
     }
     return isValidTypeStr(functionTypeSignature.returnType, definedFunctions);
@@ -225,13 +223,14 @@ const parseIfElse = (
     return undefined;
   }
 
-  const startIdx = expr.startsWith("if (") ? 4 : 3;
-  const result = extractConditionFromParens(expr, startIdx);
+  const result = extractConditionFromParens(
+    expr,
+    expr.startsWith("if (") ? 4 : 3,
+  );
   if (!result) {
     return undefined;
   }
 
-  const condition = result.condition;
   const remaining = expr.substring(result.endIdx + 1).trim();
 
   // Find the FIRST " else " at the top level (not inside nested if-else)
@@ -266,38 +265,11 @@ const parseIfElse = (
     return undefined;
   }
 
-  const consequent = remaining.substring(0, elseIdx).trim();
-  const alternate = remaining.substring(elseIdx + 6).trim();
-
-  return { condition, consequent, alternate };
-};
-
-const parseWhile = (
-  stmt: string,
-):
-  | {
-      condition: string;
-      body: string;
-    }
-  | undefined => {
-  if (!stmt.startsWith("while (")) {
-    return undefined;
-  }
-
-  const result = extractConditionFromParens(stmt, 7);
-  if (!result) {
-    return undefined;
-  }
-
-  const condition = result.condition;
-  const body = stmt.substring(result.endIdx + 1).trim();
-
-  // Body should be a block expression { ... }
-  if (!body.startsWith("{") || !body.endsWith("}")) {
-    return undefined;
-  }
-
-  return { condition, body };
+  return {
+    condition: result.condition,
+    consequent: remaining.substring(0, elseIdx).trim(),
+    alternate: remaining.substring(elseIdx + 6).trim(),
+  };
 };
 
 const extractValueType = (
@@ -308,17 +280,16 @@ const extractValueType = (
   // Handle property access test.value
   if (valueExpr.includes(".") && !valueExpr.startsWith("{")) {
     const dotIdx = valueExpr.lastIndexOf(".");
-    const objExpr = valueExpr.substring(0, dotIdx).trim();
-    const propName = valueExpr.substring(dotIdx + 1).trim();
     const objType = extractValueType(
-      objExpr,
+      valueExpr.substring(0, dotIdx).trim(),
       declarationTypes,
       definedFunctions,
     );
 
     if (objType && definedFunctions && objType in definedFunctions) {
-      const fnDef = definedFunctions[objType];
-      const param = fnDef.params.find((p) => p.name === propName);
+      const param = definedFunctions[objType].params.find(
+        (p) => p.name === valueExpr.substring(dotIdx + 1).trim(),
+      );
       if (param) {
         return param.type || "I32";
       }
@@ -327,8 +298,7 @@ const extractValueType = (
 
   // Handle function calls in type inference
   if (valueExpr.includes("(") && definedFunctions) {
-    const openParenIdx = valueExpr.indexOf("(");
-    const fnName = valueExpr.substring(0, openParenIdx).trim();
+    const fnName = valueExpr.substring(0, valueExpr.indexOf("(")).trim();
     if (fnName in definedFunctions) {
       const fnDef = definedFunctions[fnName];
       // If returnType is "this", the return type is the function name itself (the "class" type)
@@ -387,12 +357,11 @@ const extractValueType = (
     if (parsed.isTyped) {
       return parsed.declaredType;
     }
-    const inferredType = extractValueType(
+    return extractValueType(
       parsed.valueExpr,
       blockDeclarationTypes,
       definedFunctions,
     );
-    return inferredType;
   }
 
   // Handle if/else expressions
@@ -483,9 +452,10 @@ const extractValueType = (
   }
 
   // Check for plain numeric literals (just digits)
-  const isPlainNumber =
-    valueExpr.length > 0 && [...valueExpr].every((c) => c >= "0" && c <= "9");
-  if (isPlainNumber) {
+  if (
+    valueExpr.length > 0 &&
+    [...valueExpr].every((c) => c >= "0" && c <= "9")
+  ) {
     return "I32"; // Default to I32 for plain numbers
   }
 
@@ -660,13 +630,17 @@ const parseLetStatement = (
   const equalIdx = findAssignmentIndex(afterLet);
 
   const isTyped = colonIdx !== -1 && colonIdx < equalIdx;
-  const declaredType = isTyped
-    ? afterLet.substring(colonIdx + 1, equalIdx).trim()
-    : "";
-  const varName = afterLet.substring(0, isTyped ? colonIdx : equalIdx).trim();
   const valueExpr = afterLet.substring(equalIdx + 1).trim();
 
-  return { isMutable, varName, declaredType, valueExpr, isTyped };
+  return {
+    isMutable,
+    varName: afterLet.substring(0, isTyped ? colonIdx : equalIdx).trim(),
+    declaredType: isTyped
+      ? afterLet.substring(colonIdx + 1, equalIdx).trim()
+      : "",
+    valueExpr,
+    isTyped,
+  };
 };
 
 export const compile = (
@@ -709,13 +683,15 @@ export const compile = (
       return err("Invalid block expression");
     }
 
-    const blockStatements = compiledCode.substring(0, returnIdx).trim();
     let returnValue = compiledCode.substring(returnIdx + 7).trim();
     if (returnValue.endsWith(";")) {
       returnValue = returnValue.substring(0, returnValue.length - 1).trim();
     }
 
-    return ok({ statements: blockStatements, returnValue });
+    return ok({
+      statements: compiledCode.substring(0, returnIdx).trim(),
+      returnValue,
+    });
   };
 
   const replaceReadCalls = (expr: string): Result<string, string> => {
@@ -754,15 +730,16 @@ export const compile = (
     leftType: string;
     rightType: string;
   } => {
-    const leftType =
-      leftOp in declarationTypes
-        ? declarationTypes[leftOp]
-        : extractValueType(leftOp, declarationTypes, definedFunctions);
-    const rightType =
-      rightOp in declarationTypes
-        ? declarationTypes[rightOp]
-        : extractValueType(rightOp, declarationTypes, definedFunctions);
-    return { leftType, rightType };
+    return {
+      leftType:
+        leftOp in declarationTypes
+          ? declarationTypes[leftOp]
+          : extractValueType(leftOp, declarationTypes, definedFunctions),
+      rightType:
+        rightOp in declarationTypes
+          ? declarationTypes[rightOp]
+          : extractValueType(rightOp, declarationTypes, definedFunctions),
+    };
   };
 
   const compileIfElse = (
@@ -842,7 +819,7 @@ export const compile = (
 
   // Multi-statement handler - triggered for complex inputs with multiple statements or declarations
   // This includes: variable declarations (let), type aliases (type), function definitions (fn), semicolon-separated statements, or expressions after block closures
-  const hasMultipleStatements =
+  if (
     source.includes("fn ") ||
     source.includes("type ") ||
     source.includes("struct ") ||
@@ -850,9 +827,8 @@ export const compile = (
     source.includes(";") ||
     (source.includes("}") &&
       source.lastIndexOf("}") < source.length - 1 &&
-      source.substring(source.lastIndexOf("}") + 1).trim().length > 0);
-
-  if (hasMultipleStatements) {
+      source.substring(source.lastIndexOf("}") + 1).trim().length > 0)
+  ) {
     const declarations: Record<string, string> = {};
     const declarationTypes: Record<string, string> = {};
     const typeAliases: Record<string, string> = {};
@@ -862,6 +838,7 @@ export const compile = (
     let returnExpr = "";
     interface StructDefinition {
       fields: Record<string, string>;
+      typeParams: string[]; // Generic type parameters like ["T", "U"]
     }
     const structDefinitions: Record<string, StructDefinition> = {};
 
@@ -878,13 +855,32 @@ export const compile = (
       typeStr: string,
       definedFunctions?: Record<string, FunctionDefinition>,
     ): boolean => {
-      const resolved = resolveTypeAlias(typeStr);
-      return isValidTypeStr(resolved, definedFunctions);
+      return isValidTypeStr(resolveTypeAlias(typeStr), definedFunctions);
     };
 
     const requireDeclaredVariable = (varName: string): Result<true, string> => {
       if (!(varName in declarations)) {
         return err(`Variable '${varName}' is not declared`);
+      }
+      return ok(true);
+    };
+
+    const parseFieldString = (fieldsStr: string): string[] => {
+      return fieldsStr
+        .split(";")
+        .map((f) => f.trim())
+        .filter((f) => f.length > 0);
+    };
+
+    const validateTypeArgCount = (
+      structName: string,
+      expectedCount: number,
+      actualCount: number,
+    ): Result<true, string> => {
+      if (expectedCount !== actualCount) {
+        return err(
+          `Struct '${structName}' expects ${expectedCount} type argument(s), but got ${actualCount}`,
+        );
       }
       return ok(true);
     };
@@ -977,7 +973,6 @@ export const compile = (
 
       const potentialFnName = expr.substring(0, openParenIdx).trim();
       const argsStr = expr.substring(openParenIdx + 1, closeParenIdx).trim();
-      const rest = expr.substring(closeParenIdx + 1);
 
       // Parse arguments
       const args: string[] = [];
@@ -995,8 +990,9 @@ export const compile = (
       let functionKnown = false;
 
       if (potentialFnName in definedFunctions) {
-        const fnDef = definedFunctions[potentialFnName];
-        expectedParamTypes = fnDef.params.map((p) => p.type || "I32");
+        expectedParamTypes = definedFunctions[potentialFnName].params.map(
+          (p) => p.type || "I32",
+        );
         functionKnown = true;
       } else if (potentialFnName in declarations) {
         const declaredType = declarationTypes[potentialFnName] || "";
@@ -1005,8 +1001,9 @@ export const compile = (
           expectedParamTypes = parsedSignature.paramTypes;
           functionKnown = true;
         } else if (declaredType in definedFunctions) {
-          const fnDef = definedFunctions[declaredType];
-          expectedParamTypes = fnDef.params.map((p) => p.type || "I32");
+          expectedParamTypes = definedFunctions[declaredType].params.map(
+            (p) => p.type || "I32",
+          );
           functionKnown = true;
         }
       }
@@ -1022,13 +1019,11 @@ export const compile = (
         );
       }
 
-      const isBooleanLiteral = (arg: string): boolean =>
-        arg === "true" || arg === "false";
-
       const typeError = expectedParamTypes
         .map((paramType, i) => ({ paramType, arg: args[i].trim(), i }))
         .find(
-          ({ paramType, arg }) => isBooleanLiteral(arg) && paramType !== "Bool",
+          ({ paramType, arg }) =>
+            (arg === "true" || arg === "false") && paramType !== "Bool",
         );
 
       if (typeError) {
@@ -1067,7 +1062,7 @@ export const compile = (
       }
 
       return ok(
-        `${potentialFnName}(${compiledArgsResult.value.join(", ")})${rest}`,
+        `${potentialFnName}(${compiledArgsResult.value.join(", ")})${expr.substring(closeParenIdx + 1)}`,
       );
     };
 
@@ -1101,8 +1096,9 @@ export const compile = (
           definedFunctions,
         );
         if (objType && definedFunctions && objType in definedFunctions) {
-          const fnDef = definedFunctions[objType];
-          if (!fnDef.params.find((p) => p.name === propName)) {
+          if (
+            !definedFunctions[objType].params.find((p) => p.name === propName)
+          ) {
             return err(
               `Property '${propName}' does not exist on type '${objType}'`,
             );
@@ -1112,16 +1108,56 @@ export const compile = (
         return ok(`${compiledObjResult.value}.${propName}`);
       }
 
-      // Handle struct instantiation: StructName { field : value, ... }
+      // Handle struct instantiation: StructName<TypeArgs> { field : value, ... }
       const braceIdx = expr.indexOf("{");
       if (braceIdx > 0) {
-        const structName = expr.substring(0, braceIdx).trim();
+        let structNameAndArgs = expr.substring(0, braceIdx).trim();
+
+        // Parse struct name and type arguments
+        let structName: string;
+        let typeArgs: string[] = [];
+        const angleBracketIdx = structNameAndArgs.indexOf("<");
+        if (angleBracketIdx !== -1) {
+          // Has type arguments
+          structName = structNameAndArgs.substring(0, angleBracketIdx).trim();
+          if (!structNameAndArgs.endsWith(">")) {
+            // Not a struct instantiation with type args, might be comparison
+            structName = structNameAndArgs;
+          } else {
+            const argsStr = structNameAndArgs
+              .substring(angleBracketIdx + 1, structNameAndArgs.length - 1)
+              .trim();
+            if (argsStr.length > 0) {
+              typeArgs = argsStr.split(",").map((a) => a.trim());
+            }
+          }
+        } else {
+          structName = structNameAndArgs;
+        }
+
         if (
           structName in structDefinitions &&
           !expr.includes("..") &&
           expr.endsWith("}")
         ) {
           const structDef = structDefinitions[structName];
+
+          // Validate type arguments
+          const typeArgValidation = validateTypeArgCount(
+            structName,
+            structDef.typeParams.length,
+            typeArgs.length,
+          );
+          if (!typeArgValidation.ok) {
+            return typeArgValidation;
+          }
+
+          // Create a mapping from type parameters to type arguments
+          const typeSubstitution: Record<string, string> = {};
+          structDef.typeParams.forEach((param, i) => {
+            typeSubstitution[param] = typeArgs[i];
+          });
+
           const fieldsStr = expr
             .substring(braceIdx + 1, expr.length - 1)
             .trim();
@@ -1131,10 +1167,7 @@ export const compile = (
 
           if (fieldsStr.length > 0) {
             // Parse field assignments
-            const fieldAssignments = fieldsStr
-              .split(";")
-              .map((f) => f.trim())
-              .filter((f) => f.length > 0);
+            const fieldAssignments = parseFieldString(fieldsStr);
 
             for (const assignment of fieldAssignments) {
               const colonIdx = assignment.indexOf(":");
@@ -1283,9 +1316,8 @@ export const compile = (
         ): string => {
           // Find the first assignment operator (=, +=, -=, *=, /=)
           let opIdx = -1;
-          const compoundOps = ["+=", "-=", "*=", "/="];
 
-          for (const compOp of compoundOps) {
+          for (const compOp of ["+=", "-=", "*=", "/="]) {
             const idx = assignStmt.indexOf(compOp);
             if (idx !== -1 && (opIdx === -1 || idx < opIdx)) {
               opIdx = idx;
@@ -1374,13 +1406,13 @@ export const compile = (
           }
 
           // Check for compound arithmetic operators and validate type compatibility
-          const isCompoundArithmetic =
-            assignStmt.includes("+=") ||
-            assignStmt.includes("-=") ||
-            assignStmt.includes("*=") ||
-            assignStmt.includes("/=");
-
-          if (isCompoundArithmetic && varName in declarationTypes) {
+          if (
+            (assignStmt.includes("+=") ||
+              assignStmt.includes("-=") ||
+              assignStmt.includes("*=") ||
+              assignStmt.includes("/=")) &&
+            varName in declarationTypes
+          ) {
             const varType = declarationTypes[varName];
             // Arithmetic operations are not valid on Bool types
             if (varType === "Bool") {
@@ -1440,74 +1472,76 @@ export const compile = (
           bodyContent: string,
           outerDeclarations: Set<string>,
         ): { body: string; result: Result<undefined, string> } => {
-          const bodyStmts = splitStatements(bodyContent);
           let bodyOutput = "";
 
-          const bodyProcessResult = bodyStmts.reduce(
-            (acc, bodyStmt) => {
-              if (acc.ok === false) {
-                return acc;
-              }
+          return {
+            body: bodyOutput,
+            result: splitStatements(bodyContent).reduce(
+              (acc, bodyStmt) => {
+                if (acc.ok === false) {
+                  return acc;
+                }
 
-              if (bodyStmt.startsWith("let ")) {
-                const parsed = parseLetStatement(bodyStmt);
-                if (!parsed.valueExpr) {
-                  return err(
-                    "Invalid variable declaration: missing initializer",
+                if (bodyStmt.startsWith("let ")) {
+                  const parsed = parseLetStatement(bodyStmt);
+                  if (!parsed.valueExpr) {
+                    return err(
+                      "Invalid variable declaration: missing initializer",
+                    );
+                  }
+
+                  const compiledValueResult = extractCompiledValue(
+                    parsed.valueExpr,
+                    false,
                   );
-                }
+                  if (!compiledValueResult.ok) {
+                    return compiledValueResult;
+                  }
 
-                const compiledValueResult = extractCompiledValue(
-                  parsed.valueExpr,
-                  false,
-                );
-                if (!compiledValueResult.ok) {
-                  return compiledValueResult;
-                }
+                  declarations[parsed.varName] = compiledValueResult.value;
+                  if (parsed.isMutable) {
+                    mutableVars.add(parsed.varName);
+                  }
+                  bodyOutput += `${parsed.isMutable ? "var" : "const"} ${parsed.varName} = ${compiledValueResult.value}; `;
 
-                declarations[parsed.varName] = compiledValueResult.value;
-                if (parsed.isMutable) {
-                  mutableVars.add(parsed.varName);
-                }
-                bodyOutput += `${parsed.isMutable ? "var" : "const"} ${parsed.varName} = ${compiledValueResult.value}; `;
+                  if (parsed.isTyped && parsed.declaredType) {
+                    declarationTypes[parsed.varName] = parsed.declaredType;
+                  }
 
-                if (parsed.isTyped && parsed.declaredType) {
-                  declarationTypes[parsed.varName] = parsed.declaredType;
+                  return ok(undefined);
+                } else if (bodyStmt.includes("=")) {
+                  // Handle assignments - only allow modifying outer-scope variables
+                  const varName = extractVariableNameFromAssignment(bodyStmt);
+
+                  if (
+                    !outerDeclarations.has(
+                      varName.startsWith("*")
+                        ? varName.substring(1).trim()
+                        : varName,
+                    )
+                  ) {
+                    return err(
+                      `Variable '${varName}' is not available in this scope`,
+                    );
+                  }
+
+                  const assignmentResult = handleAssignment(bodyStmt);
+                  if (!assignmentResult.ok) {
+                    return assignmentResult;
+                  }
+
+                  // Extract the assignment from statements (last statement added)
+                  bodyOutput += statements[statements.length - 1];
+                  statements.pop(); // Remove from outer statements
+
+                  return ok(undefined);
                 }
 
                 return ok(undefined);
-              } else if (bodyStmt.includes("=")) {
-                // Handle assignments - only allow modifying outer-scope variables
-                const varName = extractVariableNameFromAssignment(bodyStmt);
-                const scopedVarName = varName.startsWith("*")
-                  ? varName.substring(1).trim()
-                  : varName;
-
-                if (!outerDeclarations.has(scopedVarName)) {
-                  return err(
-                    `Variable '${varName}' is not available in this scope`,
-                  );
-                }
-
-                const assignmentResult = handleAssignment(bodyStmt);
-                if (!assignmentResult.ok) {
-                  return assignmentResult;
-                }
-
-                // Extract the assignment from statements (last statement added)
-                const lastStatement = statements[statements.length - 1];
-                bodyOutput += lastStatement;
-                statements.pop(); // Remove from outer statements
-
-                return ok(undefined);
-              }
-
-              return ok(undefined);
-            },
-            ok(undefined) as Result<undefined, string>,
-          );
-
-          return { body: bodyOutput, result: bodyProcessResult };
+              },
+              ok(undefined) as Result<undefined, string>,
+            ),
+          };
         };
 
         const cleanupScopedVariables = (
@@ -1576,14 +1610,10 @@ export const compile = (
           }
 
           // Extract and validate parameters
-          const parametersStr = afterFn
-            .substring(parenIdx + 1, closeParenIdx)
-            .trim();
-
-          // Helper to parse and validate parameters
-          const parseParameters = (
-            paramStr: string,
-          ): Result<Array<{ name: string; type: string }>, string> => {
+          const paramsResult = (() => {
+            const paramStr = afterFn
+              .substring(parenIdx + 1, closeParenIdx)
+              .trim();
             const parsedParams: Array<{ name: string; type: string }> = [];
             if (paramStr.length === 0) {
               return ok(parsedParams);
@@ -1624,7 +1654,11 @@ export const compile = (
                 }
 
                 seenParamNames.add(paramName);
-                acc.value.push({ name: paramName, type: paramType });
+                acc.value.push({
+                  name: paramName,
+                  type:
+                    colonIdx > -1 ? param.substring(colonIdx + 1).trim() : "",
+                });
                 return acc;
               },
               ok(parsedParams) as Result<
@@ -1632,9 +1666,7 @@ export const compile = (
                 string
               >,
             );
-          };
-
-          const paramsResult = parseParameters(parametersStr);
+          })();
           if (!paramsResult.ok) {
             return paramsResult;
           }
@@ -1667,8 +1699,9 @@ export const compile = (
           }
 
           // Extract function body
-          const bodyStart = afterReturnType.indexOf("=>") + 2;
-          const body = afterReturnType.substring(bodyStart).trim();
+          const body = afterReturnType
+            .substring(afterReturnType.indexOf("=>") + 2)
+            .trim();
 
           // If the body is just "{}", we need to handle it specially
           let normalizedBody;
@@ -1749,17 +1782,37 @@ export const compile = (
           return ok(undefined);
         } else if (stmt.startsWith("struct ")) {
           // Handle struct declaration: parse name, validate syntax, and reject duplicates
-          // expected syntax: struct Name { field1 : Type; field2 : Type; }
+          // expected syntax: struct Name<T1, T2> { field1 : Type; field2 : Type; }
           const structBody = stmt.substring(6).trim();
           // parse without regex: look for first '{' and matching '}' at end
           const braceIdx = structBody.indexOf("{");
           if (braceIdx === -1 || !structBody.endsWith("}")) {
             return err("Invalid struct syntax");
           }
-          const name = structBody.substring(0, braceIdx).trim();
+          const nameAndParams = structBody.substring(0, braceIdx).trim();
           const fieldsStr = structBody
             .substring(braceIdx + 1, structBody.length - 1)
             .trim();
+
+          // Parse type parameters from name<T1, T2> or just name
+          let name: string;
+          let typeParams: string[] = [];
+          const angleBracketIdx = nameAndParams.indexOf("<");
+          if (angleBracketIdx !== -1) {
+            // Has type parameters
+            name = nameAndParams.substring(0, angleBracketIdx).trim();
+            if (!nameAndParams.endsWith(">")) {
+              return err("Invalid struct syntax: missing closing >");
+            }
+            const paramsStr = nameAndParams
+              .substring(angleBracketIdx + 1, nameAndParams.length - 1)
+              .trim();
+            if (paramsStr.length > 0) {
+              typeParams = paramsStr.split(",").map((p) => p.trim());
+            }
+          } else {
+            name = nameAndParams;
+          }
 
           const isIdentifier = (s: string): boolean => {
             if (!s) return false;
@@ -1773,8 +1826,7 @@ export const compile = (
             ) {
               return false;
             }
-            const rest = s.substring(1);
-            return [...rest].every(
+            return [...s.substring(1)].every(
               (c) =>
                 (c >= "a" && c <= "z") ||
                 (c >= "A" && c <= "Z") ||
@@ -1787,6 +1839,18 @@ export const compile = (
             return err("Invalid struct syntax");
           }
 
+          // Validate type parameters
+          for (const typeParam of typeParams) {
+            if (!isIdentifier(typeParam)) {
+              return err(`Invalid type parameter: ${typeParam}`);
+            }
+          }
+
+          // Check for duplicate type parameters
+          if (new Set(typeParams).size !== typeParams.length) {
+            return err("Duplicate type parameters in struct definition");
+          }
+
           if (name in structDefinitions) {
             return err(`Struct '${name}' is already defined`);
           }
@@ -1796,10 +1860,7 @@ export const compile = (
           // validate fields if any
           if (fieldsStr.length > 0) {
             const fieldNames: Set<string> = new Set();
-            const fieldParts = fieldsStr
-              .split(";")
-              .map((f) => f.trim())
-              .filter((f) => f.length > 0);
+            const fieldParts = parseFieldString(fieldsStr);
 
             for (const field of fieldParts) {
               const colonIdx = field.indexOf(":");
@@ -1819,7 +1880,12 @@ export const compile = (
               }
               fieldNames.add(fieldName);
 
-              if (!isValidTypeStrWithAliases(fieldType, definedFunctions)) {
+              // Field type can be a type parameter or a regular type
+              const isTypeParam = typeParams.includes(fieldType);
+              if (
+                !isTypeParam &&
+                !isValidTypeStrWithAliases(fieldType, definedFunctions)
+              ) {
                 return err(
                   `Invalid type in struct field '${fieldName}': ${fieldType}`,
                 );
@@ -1829,7 +1895,7 @@ export const compile = (
             }
           }
 
-          structDefinitions[name] = { fields: fieldDefs };
+          structDefinitions[name] = { fields: fieldDefs, typeParams };
           return ok(undefined);
         } else if (stmt.startsWith("let ")) {
           const parsed = parseLetStatement(stmt);
@@ -1850,8 +1916,7 @@ export const compile = (
               blockResult.value;
             // Wrap block statements in an IIFE to scope variables to the block
             if (blockStatements.length > 0) {
-              const iife = `(() => { ${blockStatements} return ${returnValue}; })()`;
-              compiledValue = iife;
+              compiledValue = `(() => { ${blockStatements} return ${returnValue}; })()`;
             } else {
               compiledValue = returnValue;
             }
@@ -1868,12 +1933,41 @@ export const compile = (
 
           if (parsed.isTyped && parsed.declaredType) {
             const resolvedType = resolveTypeAlias(parsed.declaredType);
+
+            // Check if it's a generic struct type like Wrapper<I32>
+            let isGenericStructType = false;
+            const angleBracketIdx = resolvedType.indexOf("<");
+            if (angleBracketIdx !== -1 && resolvedType.endsWith(">")) {
+              const baseType = resolvedType
+                .substring(0, angleBracketIdx)
+                .trim();
+              if (baseType in structDefinitions) {
+                isGenericStructType = true;
+                // Validate type arguments count
+                const typeArgsStr = resolvedType
+                  .substring(angleBracketIdx + 1, resolvedType.length - 1)
+                  .trim();
+                const typeArgValidation = validateTypeArgCount(
+                  baseType,
+                  structDefinitions[baseType].typeParams.length,
+                  (typeArgsStr.length > 0
+                    ? typeArgsStr.split(",").map((a) => a.trim())
+                    : []
+                  ).length,
+                );
+                if (!typeArgValidation.ok) {
+                  return typeArgValidation;
+                }
+              }
+            }
+
             if (!isValidTypeStr(resolvedType, definedFunctions)) {
-              // Allow function names as types and struct names as types
+              // Allow function names as types, struct names as types, and generic struct types
               if (
                 definedFunctions &&
                 !(resolvedType in definedFunctions) &&
-                !(resolvedType in structDefinitions)
+                !(resolvedType in structDefinitions) &&
+                !isGenericStructType
               ) {
                 return err(`Invalid type: ${parsed.declaredType}`);
               }
@@ -1953,10 +2047,10 @@ export const compile = (
                 parsed.valueExpr.substring(tIdx);
             } else {
               // Check for plain numeric literals
-              const isPlainNumber =
+              if (
                 parsed.valueExpr.length > 0 &&
-                [...parsed.valueExpr].every((c) => c >= "0" && c <= "9");
-              if (isPlainNumber) {
+                [...parsed.valueExpr].every((c) => c >= "0" && c <= "9")
+              ) {
                 declarationTypes[parsed.varName] = "I32";
               }
             }
@@ -1969,7 +2063,6 @@ export const compile = (
           if (blockContent.length > 0) {
             // Track which variables existed before the block (for scope isolation)
             const outerDeclarations = new Set(Object.keys(declarations));
-            const outerMutableVars = new Set(mutableVars);
 
             // Process the block body
             const { body: blockBody, result: blockProcessResult } =
@@ -1985,13 +2078,27 @@ export const compile = (
             }
 
             // Clean up block-scoped variables
-            cleanupScopedVariables(outerDeclarations, outerMutableVars);
+            cleanupScopedVariables(outerDeclarations, new Set(mutableVars));
           }
 
           return ok(undefined);
         } else if (stmt.startsWith("while (")) {
           // Handle while loops
-          const whileParsed = parseWhile(stmt);
+          const whileParsed = (() => {
+            const result = extractConditionFromParens(stmt, 7);
+            if (!result) {
+              return undefined;
+            }
+
+            const body = stmt.substring(result.endIdx + 1).trim();
+
+            // Body should be a block expression { ... }
+            if (!body.startsWith("{") || !body.endsWith("}")) {
+              return undefined;
+            }
+
+            return { condition: result.condition, body };
+          })();
           if (!whileParsed) {
             return err("Invalid while loop syntax");
           }
@@ -2010,7 +2117,6 @@ export const compile = (
 
           // Create a new scope for the while loop body
           const outerDeclarations = new Set(Object.keys(declarations));
-          const outerMutableVars = new Set(mutableVars);
 
           // Process the while loop body
           const { body: whileBody, result: bodyProcessResult } =
@@ -2021,7 +2127,7 @@ export const compile = (
           }
 
           // Restore variable scope
-          cleanupScopedVariables(outerDeclarations, outerMutableVars);
+          cleanupScopedVariables(outerDeclarations, new Set(mutableVars));
 
           // Add the while loop to statements - the condition is used directly
           statements.push(`while (${condition}) { ${whileBody.trim()} }`);
@@ -2054,6 +2160,29 @@ export const compile = (
             // It's a pointer expression but has an error (type checking, etc.)
             return pointerResult;
           } else {
+            // Handle type-checking operator: variable is Type
+            if (stmt.includes(" is ")) {
+              const isIndex = stmt.indexOf(" is ");
+              if (isIndex !== -1) {
+                const varName = stmt.substring(0, isIndex).trim();
+                const typeName = stmt.substring(isIndex + 4).trim();
+
+                const declaredResult = requireDeclaredVariable(varName);
+                if (!declaredResult.ok) {
+                  return declaredResult;
+                }
+
+                const varType = declarationTypes[varName];
+                const resolvedVarType = resolveTypeAlias(varType);
+                const resolvedTypeName = resolveTypeAlias(typeName);
+
+                // Compare types
+                const typesMatch = resolvedVarType === resolvedTypeName;
+                returnExpr = typesMatch ? "1" : "0";
+                return ok(undefined);
+              }
+            }
+
             // Check if this is a binary operation with boolean operands
             if (
               stmt.includes("+") ||
@@ -2089,36 +2218,34 @@ export const compile = (
 
           // Validate that simple identifier references exist in declarations
           // A simple identifier doesn't contain operators, parentheses, or brackets
-          const specialChars = [
-            "+",
-            "-",
-            "*",
-            "/",
-            "(",
-            ")",
-            "[",
-            "]",
-            "{",
-            "}",
-            ".",
-            ",",
-            ";",
-            ":",
-            "?",
-            "&",
-            "|",
-            "!",
-            "=",
-            "<",
-            ">",
-            "'",
-            '"',
-          ];
           const isIfElseSource =
             stmt.startsWith("if (") || stmt.startsWith("if(");
           const isSimpleIdentifier =
-            !specialChars.some((char) => stmt.includes(char)) &&
-            !isIfElseSource;
+            ![
+              "+",
+              "-",
+              "*",
+              "/",
+              "(",
+              ")",
+              "[",
+              "]",
+              "{",
+              "}",
+              ".",
+              ",",
+              ";",
+              ":",
+              "?",
+              "&",
+              "|",
+              "!",
+              "=",
+              "<",
+              ">",
+              "'",
+              '"',
+            ].some((char) => stmt.includes(char)) && !isIfElseSource;
           if (isSimpleIdentifier && !(stmt in declarations)) {
             return err(`Variable '${stmt}' is not declared`);
           }
@@ -2184,15 +2311,13 @@ export const compile = (
 
       // Check for arithmetic operations with boolean operands (disallow)
       // But allow logical operations (|| and &&)
-      const isLogicalOp =
-        returnExpr.includes("||") || returnExpr.includes("&&");
-      const isArithmeticOp =
-        returnExpr.includes("+") ||
-        returnExpr.includes("-") ||
-        returnExpr.includes("*") ||
-        returnExpr.includes("/");
-
-      if (isArithmeticOp && !isLogicalOp) {
+      if (
+        (returnExpr.includes("+") ||
+          returnExpr.includes("-") ||
+          returnExpr.includes("*") ||
+          returnExpr.includes("/")) &&
+        !(returnExpr.includes("||") || returnExpr.includes("&&"))
+      ) {
         const opChars = ["+", "-", "*", "/"];
         const opIndex = [...returnExpr].findIndex((c) => opChars.includes(c));
         if (opIndex !== -1) {
@@ -2220,15 +2345,14 @@ export const compile = (
         );
         if (logicalOpIndex !== -1) {
           const leftOp = returnExpr.substring(0, logicalOpIndex).trim();
-          const rightOp = returnExpr
-            .substring(
-              logicalOpIndex + (returnExpr[logicalOpIndex] === "&" ? 2 : 2),
-            )
-            .trim();
 
           const { leftType, rightType } = extractOperandTypes(
             leftOp,
-            rightOp,
+            returnExpr
+              .substring(
+                logicalOpIndex + (returnExpr[logicalOpIndex] === "&" ? 2 : 2),
+              )
+              .trim(),
             declarationTypes,
             definedFunctions,
           );
@@ -2243,8 +2367,13 @@ export const compile = (
       }
 
       // Handle comparison operators (<, >, <=, >=, ==, !=)
+      // But skip if this looks like a struct instantiation with type arguments
+      const looksLikeStructInstantiation =
+        returnExpr.includes("{") && returnExpr.includes("}");
       const comparisonOps = ["<=", ">=", "==", "!=", "<", ">"];
-      const hasComparison = comparisonOps.some((op) => returnExpr.includes(op));
+      const hasComparison =
+        !looksLikeStructInstantiation &&
+        comparisonOps.some((op) => returnExpr.includes(op));
 
       if (hasComparison) {
         // Find which comparison operator is in the expression
@@ -2260,11 +2389,10 @@ export const compile = (
 
         if (opIndex !== -1) {
           const leftOp = returnExpr.substring(0, opIndex).trim();
-          const rightOp = returnExpr.substring(opIndex + compOp.length).trim();
 
           const { leftType, rightType } = extractOperandTypes(
             leftOp,
-            rightOp,
+            returnExpr.substring(opIndex + compOp.length).trim(),
             declarationTypes,
             definedFunctions,
           );

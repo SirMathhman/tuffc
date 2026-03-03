@@ -5,18 +5,18 @@
         "type": "command",
         "command": "bun test --timeout 5000 --concurrent || exit 2"
       },
-	  {
-		"type": "command",
-		"command": "bun run lint || exit 2"
-	  },
-	  {
-		"type": "command",
-		"command": "npx tsx scripts/single-use.ts || exit 2"
-	  },
-	  {
-		"type": "command",
-		"command": "pmd cpd index.ts --language typescript --minimum-tokens 35 --ignore-identifiers || exit 2"
-	  }
+      {
+        "type": "command",
+        "command": "bun run lint || exit 2"
+      },
+      {
+        "type": "command",
+        "command": "bun run find-inlines"
+      },
+      {
+        "type": "command",
+        "command": "bun run find-duplicates"
+      }
     ]
   }
 }

@@ -3,8 +3,10 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "find-inlines": "npx tsx scripts/single-use.ts || exit 2",
+    "find-duplicates": "pmd cpd index.ts --language typescript --minimum-tokens 35 --ignore-identifiers || exit 2",
     "test": "bun test --timeout 5000 --concurrent",
-    "lint": "eslint . --ext .ts,.tsx",
+    "lint": "eslint . --ext .ts,.tsx || exit 2",
     "dev": "nodemon -e ts,tuff --watch index.ts --watch main.tuff --exec \"bun index.ts\"",
     "prepare": "husky"
   },
@@ -16,6 +18,7 @@
     "eslint": "^10.0.2",
     "husky": "^9.1.7",
     "nodemon": "^3.1.14",
-    "ts-morph": "^27.0.2"
+    "ts-morph": "^27.0.2",
+    "typescript": "^5.9.3"
   }
 }

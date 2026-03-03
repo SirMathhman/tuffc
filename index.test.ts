@@ -8,14 +8,13 @@ const validate = (
   it(source, () => {
     const result = compile(source);
     if (result.ok) {
-      const parts = stdin
-        .split(" ")
-        .flatMap((part) => part.split("\n"))
-        .flatMap((part) => part.split("\t"))
-        .filter((part) => part.length > 0);
-
       const readFunc = () => {
-        const part = parts.shift()!;
+        const part = stdin
+          .split(" ")
+          .flatMap((part) => part.split("\n"))
+          .flatMap((part) => part.split("\t"))
+          .filter((part) => part.length > 0)
+          .shift()!;
         if (part === "true") return 1;
         if (part === "false") return 0;
         return parseInt(part, 10);
@@ -165,6 +164,12 @@ validate(
   "100",
   100,
 );
+validate(
+  "struct Wrapper<T> { x : T; } Wrapper<I32> { x : read<I32>() }.x",
+  "100",
+  100,
+);
+validate("let x = 100; x is I32", "", 1);
 validate(
   "fn add(x : I32, y : I32) => x + y; fn multiply(x : I32, y : I32) => x * y; let func : (I32, I32) => I32 = if (read<Bool>()) add else multiply; func(3, 4)",
   "false",
