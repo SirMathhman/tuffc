@@ -241,7 +241,10 @@ const splitStatements = (source: string): string[] => {
   return statements;
 };
 
-export const compile = (source: string): Result<string, string> => {
+export const compile = (
+  source: string,
+  requiresFinalExpression = false,
+): Result<string, string> => {
   const processBlockExpression = (
     blockExpr: string,
   ): Result<{ statements: string; returnValue: string }, string> => {
@@ -254,7 +257,7 @@ export const compile = (source: string): Result<string, string> => {
       return err("Block expression cannot be empty");
     }
 
-    const blockResult = compile(blockContent);
+    const blockResult = compile(blockContent, true);
     if (!blockResult.ok) {
       return blockResult;
     }
@@ -658,6 +661,9 @@ export const compile = (source: string): Result<string, string> => {
 
     // Validate return expression for boolean operations
     if (!returnExpr) {
+      if (requiresFinalExpression) {
+        return err("Block expression must have a final expression");
+      }
       returnExpr = "0";
     } else {
       // Handle if/else expressions
