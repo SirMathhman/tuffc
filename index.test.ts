@@ -144,3 +144,9 @@ validate(
   "",
   100,
 );
+validate("fn get() => 100; let func = get; func()", "", 100);
+validate(
+  "fn add(x : I32, y : I32) => x + y; fn multiply(x : I32, y : I32) => x * y; let func : (I32, I32) => I32 = if (read<Bool>()) add else multiply; func(3, 4)",
+  "false",
+  12,
+);

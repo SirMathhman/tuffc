@@ -81,10 +81,77 @@ const isWordChar = (char: string): boolean => {
   );
 };
 
+const parseFunctionTypeSignature = (
+  typeStr: string,
+): { paramTypes: string[]; returnType: string } | undefined => {
+  const trimmed = typeStr.trim();
+  if (!trimmed.startsWith("(")) {
+    return undefined;
+  }
+
+  const closeParenIdx = trimmed.indexOf(")");
+  if (closeParenIdx === -1) {
+    return undefined;
+  }
+
+  const arrowIdx = trimmed.indexOf("=>", closeParenIdx + 1);
+  if (arrowIdx === -1) {
+    return undefined;
+  }
+
+  const paramsPart = trimmed.substring(1, closeParenIdx).trim();
+  const returnType = trimmed.substring(arrowIdx + 2).trim();
+  if (!returnType) {
+    return undefined;
+  }
+
+  const paramTypes =
+    paramsPart.length === 0
+      ? []
+      : paramsPart
+          .split(",")
+          .map((p) => p.trim())
+          .filter((p) => p.length > 0);
+
+  return { paramTypes, returnType };
+};
+
+const getFunctionSignatureType = (
+  fnName: string,
+  definedFunctions: Record<string, FunctionDefinition>,
+): string => {
+  const fnDef = definedFunctions[fnName];
+  const params = fnDef.params.map((p) => p.type || "I32").join(", ");
+  const returnType = fnDef.returnType || "I32";
+  return `(${params}) => ${returnType}`;
+};
+
+const normalizeFunctionCompatibleType = (
+  typeStr: string,
+  definedFunctions?: Record<string, FunctionDefinition>,
+): string => {
+  const trimmed = typeStr.trim();
+  if (definedFunctions && trimmed in definedFunctions) {
+    return getFunctionSignatureType(trimmed, definedFunctions);
+  }
+  return trimmed;
+};
+
 const isValidTypeStr = (
   typeStr: string,
   definedFunctions?: Record<string, FunctionDefinition>,
 ): boolean => {
+  const functionTypeSignature = parseFunctionTypeSignature(typeStr);
+  if (functionTypeSignature) {
+    const paramsValid = functionTypeSignature.paramTypes.every((paramType) =>
+      isValidTypeStr(paramType, definedFunctions),
+    );
+    if (!paramsValid) {
+      return false;
+    }
+    return isValidTypeStr(functionTypeSignature.returnType, definedFunctions);
+  }
+
   // Handle function types/references
   if (definedFunctions && typeStr in definedFunctions) {
     return true;
@@ -339,9 +406,18 @@ const extractValueType = (
       definedFunctions,
     );
 
+    const normalizedConsequentType = normalizeFunctionCompatibleType(
+      consequentType,
+      definedFunctions,
+    );
+    const normalizedAlternateType = normalizeFunctionCompatibleType(
+      alternateType,
+      definedFunctions,
+    );
+
     // Return the type if they match, otherwise return empty string
-    if (consequentType === alternateType) {
-      return alternateType;
+    if (normalizedConsequentType === normalizedAlternateType) {
+      return normalizedAlternateType;
     }
     return "";
   }
@@ -447,6 +523,7 @@ const extractValueType = (
 const validateTypeAssignment = (
   valueType: string,
   declaredType: string,
+  definedFunctions?: Record<string, FunctionDefinition>,
 ): Result<undefined, string> => {
   const stripMutabilityPrefix = (typeStr: string): string => {
     const trimmedType = typeStr.trim();
@@ -459,21 +536,30 @@ const validateTypeAssignment = (
     return ok(undefined);
   }
 
+  const normalizedValueType = normalizeFunctionCompatibleType(
+    valueType,
+    definedFunctions,
+  );
+  const normalizedDeclaredType = normalizeFunctionCompatibleType(
+    declaredType,
+    definedFunctions,
+  );
+
   // Handle case where custom type is the same as declared type
-  if (valueType === declaredType) {
+  if (normalizedValueType === normalizedDeclaredType) {
     return ok(undefined);
   }
 
   // Handle Bool types
-  if (valueType === "Bool" || declaredType === "Bool") {
-    return valueType === declaredType
+  if (normalizedValueType === "Bool" || normalizedDeclaredType === "Bool") {
+    return normalizedValueType === normalizedDeclaredType
       ? ok(undefined)
       : err(`Cannot assign ${valueType} to ${declaredType}`);
   }
 
   // Handle pointer types
-  const isValuePointer = valueType.startsWith("*");
-  const isDeclaredPointer = declaredType.startsWith("*");
+  const isValuePointer = normalizedValueType.startsWith("*");
+  const isDeclaredPointer = normalizedDeclaredType.startsWith("*");
 
   if (isValuePointer !== isDeclaredPointer) {
     return err(`Cannot assign ${valueType} to ${declaredType}`);
@@ -481,11 +567,11 @@ const validateTypeAssignment = (
 
   // Remove pointer markers for comparison
   const innerValueType = isValuePointer
-    ? stripMutabilityPrefix(valueType.substring(1))
-    : valueType;
+    ? stripMutabilityPrefix(normalizedValueType.substring(1))
+    : normalizedValueType;
   const innerDeclaredType = isDeclaredPointer
-    ? stripMutabilityPrefix(declaredType.substring(1))
-    : declaredType;
+    ? stripMutabilityPrefix(normalizedDeclaredType.substring(1))
+    : normalizedDeclaredType;
 
   if (
     innerValueType &&
@@ -553,17 +639,22 @@ const parseLetStatement = (
 } => {
   const isMutable = stmt.substring(4, 8) === "mut ";
   const afterLet = stmt.substring(isMutable ? 8 : 4);
+
+  const findAssignmentIndex = (sourceText: string): number => {
+    return [...sourceText].findIndex(
+      (_char, idx) => sourceText[idx] === "=" && sourceText[idx + 1] !== ">",
+    );
+  };
+
   const colonIdx = afterLet.indexOf(":");
-  const equalIdx = afterLet.indexOf("=");
+  const equalIdx = findAssignmentIndex(afterLet);
 
   const isTyped = colonIdx !== -1 && colonIdx < equalIdx;
   const declaredType = isTyped
     ? afterLet.substring(colonIdx + 1, equalIdx).trim()
     : "";
   const varName = afterLet.substring(0, isTyped ? colonIdx : equalIdx).trim();
-  const valueExpr = afterLet
-    .substring(isTyped ? afterLet.indexOf("=", colonIdx) + 1 : equalIdx + 1)
-    .trim();
+  const valueExpr = afterLet.substring(equalIdx + 1).trim();
 
   return { isMutable, varName, declaredType, valueExpr, isTyped };
 };
@@ -679,17 +770,17 @@ export const compile = (
 
     // Validate that the condition is a boolean type
     if (declarationTypes) {
-      // Only allow boolean literals or boolean variables
-      const isBoolLiteral = condition === "true" || condition === "false";
-      const isBoolVar =
-        condition in declarationTypes && declarationTypes[condition] === "Bool";
-
-      if (!isBoolLiteral && !isBoolVar) {
+      const conditionType = extractValueType(
+        condition,
+        declarationTypes,
+        definedFunctions,
+      );
+      if (conditionType !== "Bool") {
         return err("If/else condition must be of type Bool");
       }
     } else {
-      // Without declaration types, only allow boolean literals
-      if (condition !== "true" && condition !== "false") {
+      const conditionType = extractValueType(condition, {}, definedFunctions);
+      if (conditionType !== "Bool") {
         return err("If/else condition must be of type Bool");
       }
     }
@@ -702,7 +793,16 @@ export const compile = (
       ? extractValueType(alternate, declarationTypes, definedFunctions)
       : extractValueType(alternate, {}, definedFunctions);
 
-    if (consequentType !== alternateType) {
+    const normalizedConsequentType = normalizeFunctionCompatibleType(
+      consequentType,
+      definedFunctions,
+    );
+    const normalizedAlternateType = normalizeFunctionCompatibleType(
+      alternateType,
+      definedFunctions,
+    );
+
+    if (normalizedConsequentType !== normalizedAlternateType) {
       return err(
         `If/else branches have mismatched types: ${consequentType} vs ${alternateType}`,
       );
@@ -861,11 +961,6 @@ export const compile = (
       }
 
       const potentialFnName = expr.substring(0, openParenIdx).trim();
-      if (!(potentialFnName in definedFunctions)) {
-        return undefined;
-      }
-
-      const fnDef = definedFunctions[potentialFnName];
       const argsStr = expr.substring(openParenIdx + 1, closeParenIdx).trim();
       const rest = expr.substring(closeParenIdx + 1);
 
@@ -881,25 +976,49 @@ export const compile = (
         );
       }
 
+      let expectedParamTypes: string[] = [];
+      let functionKnown = false;
+
+      if (potentialFnName in definedFunctions) {
+        const fnDef = definedFunctions[potentialFnName];
+        expectedParamTypes = fnDef.params.map((p) => p.type || "I32");
+        functionKnown = true;
+      } else if (potentialFnName in declarations) {
+        const declaredType = declarationTypes[potentialFnName] || "";
+        const parsedSignature = parseFunctionTypeSignature(declaredType);
+        if (parsedSignature) {
+          expectedParamTypes = parsedSignature.paramTypes;
+          functionKnown = true;
+        } else if (declaredType in definedFunctions) {
+          const fnDef = definedFunctions[declaredType];
+          expectedParamTypes = fnDef.params.map((p) => p.type || "I32");
+          functionKnown = true;
+        }
+      }
+
+      if (!functionKnown) {
+        return undefined;
+      }
+
       // Validate argument count
-      if (args.length !== fnDef.params.length) {
+      if (args.length !== expectedParamTypes.length) {
         return err(
-          `Function '${potentialFnName}' expects ${fnDef.params.length} arguments, got ${args.length}`,
+          `Function '${potentialFnName}' expects ${expectedParamTypes.length} arguments, got ${args.length}`,
         );
       }
 
       const isBooleanLiteral = (arg: string): boolean =>
         arg === "true" || arg === "false";
 
-      const typeError = fnDef.params
-        .map((param, i) => ({ param, arg: args[i].trim() }))
+      const typeError = expectedParamTypes
+        .map((paramType, i) => ({ paramType, arg: args[i].trim(), i }))
         .find(
-          ({ param, arg }) => isBooleanLiteral(arg) && param.type !== "Bool",
+          ({ paramType, arg }) => isBooleanLiteral(arg) && paramType !== "Bool",
         );
 
       if (typeError) {
         return err(
-          `Argument type mismatch for parameter ${typeError.param.name}: expected ${typeError.param.type}, got Bool`,
+          `Argument type mismatch for parameter ${typeError.i + 1}: expected ${typeError.paramType}, got Bool`,
         );
       }
 
@@ -997,7 +1116,11 @@ export const compile = (
           definedFunctions,
         );
         if (ifElseResult.ok) {
-          return ok(ifElseResult.value);
+          const readReplaced = replaceReadCalls(ifElseResult.value);
+          if (!readReplaced.ok) {
+            return readReplaced;
+          }
+          return ok(readReplaced.value);
         }
         return ifElseResult;
       }
@@ -1132,6 +1255,7 @@ export const compile = (
             const validationResult = validateTypeAssignment(
               extractValueType(valueExpr, declarationTypes, definedFunctions),
               pointedType,
+              definedFunctions,
             );
             if (!validationResult.ok) {
               return validationResult;
@@ -1201,6 +1325,7 @@ export const compile = (
             const validationResult = validateTypeAssignment(
               extractValueType(valueExpr, declarationTypes, definedFunctions),
               declarationTypes[varName],
+              definedFunctions,
             );
             if (!validationResult.ok) {
               return validationResult;
@@ -1575,6 +1700,7 @@ export const compile = (
                 definedFunctions,
               ),
               resolvedType,
+              definedFunctions,
             );
             if (!validationResult.ok) {
               return validationResult;
@@ -1798,9 +1924,11 @@ export const compile = (
             "'",
             '"',
           ];
-          const isIfElseSource = stmt.startsWith("if (") || stmt.startsWith("if(");
+          const isIfElseSource =
+            stmt.startsWith("if (") || stmt.startsWith("if(");
           const isSimpleIdentifier =
-            !specialChars.some((char) => stmt.includes(char)) && !isIfElseSource;
+            !specialChars.some((char) => stmt.includes(char)) &&
+            !isIfElseSource;
           if (isSimpleIdentifier && !(stmt in declarations)) {
             return err(`Variable '${stmt}' is not declared`);
           }
@@ -1826,7 +1954,10 @@ export const compile = (
         return err("Block expression must have a final expression");
       }
       returnExpr = "0";
-      if ((source === "{}" || source.includes("; {}")) && !requiresFinalExpression) {
+      if (
+        (source === "{}" || source.includes("; {}")) &&
+        !requiresFinalExpression
+      ) {
         returnExpr = "";
       }
     } else {
@@ -1835,7 +1966,7 @@ export const compile = (
         returnExpr = "";
       }
 
-      // Handle if/else expressions EARLY before read call replacement if possible, 
+      // Handle if/else expressions EARLY before read call replacement if possible,
       // but compileIfElse expects the expression.
       if (returnExpr.trim().startsWith("if(")) {
         returnExpr = returnExpr.trim().replace("if(", "if (");
