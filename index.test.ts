@@ -1,27 +1,47 @@
 import { compile } from ".";
 
-const validate = (source: string, expected: number): void => {
+const validate = (
+  source: string,
+  stdin: string = "",
+  expected: number,
+): void => {
   it(source, () => {
     const result = compile(source);
     expect(result.ok).toBe(true);
     if (result.ok) {
-      const func = new Function(result.value);
-      const actual = func() as number;
-      expect(actual).toBe(expected);
+      const parts: string[] = [];
+      let current = "";
+      for (let i = 0; i < stdin.length; i++) {
+        if (stdin[i] === " " || stdin[i] === "\n" || stdin[i] === "\t") {
+          if (current.length > 0) {
+            parts.push(current);
+            current = "";
+          }
+        } else {
+          current += stdin[i];
+        }
+      }
+      if (current.length > 0) {
+        parts.push(current);
+      }
+      expect(
+        new Function("read", result.value)(() => parseInt(parts.shift()!, 10)),
+      ).toBe(expected);
     }
   });
 };
 
 const invalidate = (source: string) => {
   it(source, () => {
-    const result = compile(source);
-    expect(result.ok).toBe(false);
+    expect(compile(source).ok).toBe(false);
   });
 };
 
-validate("", 0);
+validate("", "", 0);
 invalidate("x");
-validate("100", 100);
-validate("100U8", 100);
+validate("100", "", 100);
+validate("100U8", "", 100);
 invalidate("-100U8");
 invalidate("256U8");
+validate("read<I32>()", "100", 100);
+validate("read<I32>() + read<I32>()", "1 2", 3);

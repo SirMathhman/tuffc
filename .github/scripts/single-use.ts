@@ -8,48 +8,47 @@ const sourceFiles = project.getSourceFiles();
 let failed = false;
 
 for (const sourceFile of sourceFiles) {
-  // Collect all top-level variable declarations (const x = ...) and function declarations
-  const statements = sourceFile.getStatements();
+  // Check all variable declarations anywhere in the file
+  const varDecls = sourceFile.getDescendantsOfKind(
+    SyntaxKind.VariableDeclaration,
+  );
+  for (const decl of varDecls) {
+    const name = decl.getNameNode();
+    if (!Node.isIdentifier(name)) continue;
 
-  for (const statement of statements) {
-    // Handle: const x = ...
-    if (statement.isKind(SyntaxKind.VariableStatement)) {
-      for (const decl of statement.getDeclarationList().getDeclarations()) {
-        const name = decl.getNameNode();
-        if (!Node.isIdentifier(name)) continue;
+    const refs = name.findReferences();
+    const usages = refs
+      .flatMap((r) => r.getReferences())
+      .filter((r) => !r.isDefinition());
 
-        const refs = name.findReferences();
-        const usages = refs
-          .flatMap((r) => r.getReferences())
-          .filter((r) => !r.isDefinition());
-
-        if (usages.length === 1) {
-          const { line } = sourceFile.getLineAndColumnAtPos(name.getStart());
-          console.error(
-            `${sourceFile.getFilePath()}:${line} - "${name.getText()}" is only used once. Inline it.`,
-          );
-          failed = true;
-        }
-      }
+    if (usages.length === 1) {
+      const { line } = sourceFile.getLineAndColumnAtPos(name.getStart());
+      console.error(
+        `${sourceFile.getFilePath()}:${line} - "${name.getText()}" is only used once. Inline it.`,
+      );
+      failed = true;
     }
+  }
 
-    // Handle: function foo() {} (in case any slips through)
-    if (statement.isKind(SyntaxKind.FunctionDeclaration)) {
-      const name = statement.getNameNode();
-      if (!name) continue;
+  // Check all function declarations anywhere in the file
+  const funcDecls = sourceFile.getDescendantsOfKind(
+    SyntaxKind.FunctionDeclaration,
+  );
+  for (const decl of funcDecls) {
+    const name = decl.getNameNode();
+    if (!name) continue;
 
-      const refs = name.findReferences();
-      const usages = refs
-        .flatMap((r) => r.getReferences())
-        .filter((r) => !r.isDefinition());
+    const refs = name.findReferences();
+    const usages = refs
+      .flatMap((r) => r.getReferences())
+      .filter((r) => !r.isDefinition());
 
-      if (usages.length === 1) {
-        const { line } = sourceFile.getLineAndColumnAtPos(name.getStart());
-        console.error(
-          `${sourceFile.getFilePath()}:${line} - "${name.getText()}" is only used once. Inline it.`,
-        );
-        failed = true;
-      }
+    if (usages.length === 1) {
+      const { line } = sourceFile.getLineAndColumnAtPos(name.getStart());
+      console.error(
+        `${sourceFile.getFilePath()}:${line} - "${name.getText()}" is only used once. Inline it.`,
+      );
+      failed = true;
     }
   }
 }
