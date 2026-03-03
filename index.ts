@@ -183,6 +183,45 @@ export const compile = (source: string): Result<string, string> => {
     return { leftType, rightType };
   };
 
+  const compileIfElse = (expr: string): string | undefined => {
+    // Match pattern: if (condition) consequent else alternate
+    // Handle nested parentheses in condition
+    if (!expr.startsWith("if (")) {
+      return undefined;
+    }
+
+    let depthCounter = 0;
+    let conditionEndIdx = -1;
+
+    for (let i = 4; i < expr.length; i++) {
+      if (expr[i] === "(") depthCounter++;
+      if (expr[i] === ")") {
+        if (depthCounter === 0) {
+          conditionEndIdx = i;
+          break;
+        }
+        depthCounter--;
+      }
+    }
+
+    if (conditionEndIdx === -1) {
+      return undefined;
+    }
+
+    const condition = expr.substring(4, conditionEndIdx).trim();
+    const remaining = expr.substring(conditionEndIdx + 1).trim();
+
+    const elseIdx = remaining.lastIndexOf(" else ");
+    if (elseIdx === -1) {
+      return undefined;
+    }
+
+    const consequent = remaining.substring(0, elseIdx).trim();
+    const alternate = remaining.substring(elseIdx + 6).trim();
+
+    return `(${condition}) ? (${consequent}) : (${alternate})`;
+  };
+
   // Empty input returns 0
   if (source === "") {
     return ok("return 0");
@@ -462,6 +501,12 @@ export const compile = (source: string): Result<string, string> => {
     if (!returnExpr) {
       returnExpr = "0";
     } else {
+      // Handle if/else expressions
+      const ifElseCompiled = compileIfElse(returnExpr);
+      if (ifElseCompiled !== undefined) {
+        returnExpr = ifElseCompiled;
+      }
+
       // Check for arithmetic operations with boolean operands (disallow)
       // But allow logical operations (|| and &&)
       const isLogicalOp =
@@ -567,6 +612,15 @@ export const compile = (source: string): Result<string, string> => {
     return ok(statements.join("\n") + "\nreturn " + returnExpr + ";");
   }
 
+  // If/else expressions: if (condition) consequent else alternate
+  if (source.startsWith("if (")) {
+    const ifElseCompiled = compileIfElse(source);
+    if (ifElseCompiled !== undefined) {
+      // Recursively compile the ternary expression
+      return compile(ifElseCompiled);
+    }
+  }
+
   // Logical expressions with operators (|| and &&)
   if (source.includes("||") || source.includes("&&")) {
     const readReplaced = replaceReadCalls(source);
@@ -664,6 +718,31 @@ export const compile = (source: string): Result<string, string> => {
     }
 
     return ok(`return ${numValue}`);
+  }
+
+  // Ternary expressions (condition ? consequent : alternate)
+  if (source.includes("?") && source.includes(":")) {
+    const questionIdx = source.indexOf("?");
+    const colonIdx = source.indexOf(":", questionIdx);
+
+    if (questionIdx > 0 && colonIdx > questionIdx) {
+      const readReplaced = replaceReadCalls(source);
+      if (!readReplaced.ok) {
+        return readReplaced;
+      }
+
+      // Validate basic structure - allow alphanumeric, operators, parentheses, and read()
+      const validChars =
+        "()? :<>=!+-*/ 0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_read";
+      const invalidCharIndex = [...readReplaced.value].findIndex(
+        (c) => !validChars.includes(c),
+      );
+      if (invalidCharIndex !== -1) {
+        return err("Invalid character in ternary expression");
+      }
+
+      return ok(`return ${readReplaced.value};`);
+    }
   }
 
   // Invalid input returns error
