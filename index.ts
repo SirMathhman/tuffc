@@ -137,6 +137,33 @@ const validateTypeAssignment = (
 };
 
 export const compile = (source: string): Result<string, string> => {
+  const replaceReadCalls = (expr: string): Result<string, string> => {
+    let result = expr;
+    while (result.includes("read<")) {
+      const start = result.indexOf("read<");
+      const typeEnd = result.indexOf(">", start + 5);
+      const parenStart = result.indexOf("(", typeEnd);
+
+      if (
+        typeEnd === -1 ||
+        parenStart === -1 ||
+        result[parenStart + 1] !== ")"
+      ) {
+        return err("Invalid read syntax in expression");
+      }
+
+      if (!isValidTypeStr(result.substring(start + 5, typeEnd))) {
+        return err("Invalid type in read<> expression");
+      }
+
+      result =
+        result.substring(0, start) +
+        "read()" +
+        result.substring(parenStart + 2);
+    }
+    return ok(result);
+  };
+
   // Empty input returns 0
   if (source === "") {
     return ok("return 0");
@@ -416,13 +443,17 @@ export const compile = (source: string): Result<string, string> => {
     if (!returnExpr) {
       returnExpr = "0";
     } else {
-      // Check for binary operations with boolean operands
-      const containsOp =
+      // Check for arithmetic operations with boolean operands (disallow)
+      // But allow logical operations (|| and &&)
+      const isLogicalOp =
+        returnExpr.includes("||") || returnExpr.includes("&&");
+      const isArithmeticOp =
         returnExpr.includes("+") ||
         returnExpr.includes("-") ||
         returnExpr.includes("*") ||
         returnExpr.includes("/");
-      if (containsOp) {
+
+      if (isArithmeticOp && !isLogicalOp) {
         const opChars = ["+", "-", "*", "/"];
         const opIndex = [...returnExpr].findIndex((c) => opChars.includes(c));
         if (opIndex !== -1) {
@@ -438,9 +469,27 @@ export const compile = (source: string): Result<string, string> => {
           }
         }
       }
+
+      // Handle logical operations on booleans
+      const hasLogicalOp =
+        returnExpr.includes("||") || returnExpr.includes("&&");
+      if (hasLogicalOp) {
+        returnExpr = `${returnExpr} ? 1 : 0`;
+      }
     }
 
     return ok(statements.join("\n") + "\nreturn " + returnExpr + ";");
+  }
+
+  // Logical expressions with operators (|| and &&)
+  if (source.includes("||") || source.includes("&&")) {
+    const readReplaced = replaceReadCalls(source);
+    if (!readReplaced.ok) {
+      return readReplaced;
+    }
+
+    // Convert boolean result to 0 or 1
+    return ok(`return ${readReplaced.value} ? 1 : 0;`);
   }
 
   // Binary expressions with operators
@@ -450,31 +499,12 @@ export const compile = (source: string): Result<string, string> => {
     source.includes("*") ||
     source.includes("/")
   ) {
-    let result = source;
-
-    // Replace all read<Type>() patterns with read()
-    while (result.includes("read<")) {
-      const start = result.indexOf("read<");
-      const typeEnd = result.indexOf(">", start + 5);
-      const parenStart = result.indexOf("(", typeEnd);
-
-      if (
-        typeEnd === -1 ||
-        parenStart === -1 ||
-        result[parenStart + 1] !== ")"
-      ) {
-        return err("Invalid read syntax in expression");
-      }
-
-      if (!isValidTypeStr(result.substring(start + 5, typeEnd))) {
-        return err("Invalid type in read<> expression");
-      }
-
-      result =
-        result.substring(0, start) +
-        "read()" +
-        result.substring(parenStart + 2);
+    const readReplaced = replaceReadCalls(source);
+    if (!readReplaced.ok) {
+      return readReplaced;
     }
+
+    let result = readReplaced.value;
 
     // Validate the resulting expression contains only valid characters
     const validChars = "0123456789+-*/ ()read";
