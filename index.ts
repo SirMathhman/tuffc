@@ -624,10 +624,13 @@ export const compile = (
           if (blockResult.ok) {
             const { statements: blockStatements, returnValue } =
               blockResult.value;
+            // Wrap block statements in an IIFE to scope variables to the block
             if (blockStatements.length > 0) {
-              statements.push(blockStatements);
+              const iife = `(() => { ${blockStatements} return ${returnValue}; })()`;
+              compiledValue = iife;
+            } else {
+              compiledValue = returnValue;
             }
-            compiledValue = returnValue;
           } else {
             const compiledValueResult = extractCompiledValue(
               parsed.valueExpr,
@@ -845,6 +848,40 @@ export const compile = (
               }
             }
             returnExpr = stmt;
+          }
+
+          // Validate that simple identifier references exist in declarations
+          // A simple identifier doesn't contain operators, parentheses, or brackets
+          const specialChars = [
+            "+",
+            "-",
+            "*",
+            "/",
+            "(",
+            ")",
+            "[",
+            "]",
+            "{",
+            "}",
+            ".",
+            ",",
+            ";",
+            ":",
+            "?",
+            "&",
+            "|",
+            "!",
+            "=",
+            "<",
+            ">",
+            "'",
+            '"',
+          ];
+          const isSimpleIdentifier = !specialChars.some((char) =>
+            stmt.includes(char),
+          );
+          if (isSimpleIdentifier && !(stmt in declarations)) {
+            return err(`Variable '${stmt}' is not declared`);
           }
 
           return ok(undefined);

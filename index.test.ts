@@ -80,6 +80,7 @@ invalidate("let x = if (true) 3 else true; x");
 invalidate("let x : Bool = if (true) 3 else 5; x");
 validate("let x = { let y = 100; y }; x", "", 100);
 invalidate("let x = { let y = 100; }; x");
+invalidate("let x = { let y = 100; y }; y");
 validate("let x : I64 = { let y : I64 = 100; y }; x", "", 100);
 invalidate("let x : U8 = { let y : I64 = 100; y }; x");
 validate("{}", "", 0);
