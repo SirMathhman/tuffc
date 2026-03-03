@@ -1,6 +1,0 @@
-npm test
-npm run find-duplicates
-npm run check-ast-duplicates
-npm run check-directory-size
-npm run check-inline
-npm run lint
