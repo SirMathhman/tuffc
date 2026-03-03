@@ -235,7 +235,11 @@ const parseTerm = (t: string): TermInfo | undefined => {
   return undefined;
 };
 
-export function compile(source: string): Result<string, CompileError> {
+export function compile(
+  source: string,
+  envLetTypes?: Map<string, number | undefined>,
+  envLetPtr?: Map<string, string | undefined>,
+): Result<string, CompileError> {
   // A minimal implementation to make the existing tests pass. The tests
   // currently validate an empty program evaluates to 0 and that a numeric
   // literal returns its value. Anything else still returns an error so that
@@ -243,8 +247,9 @@ export function compile(source: string): Result<string, CompileError> {
 
   const trimmed = source.trim();
   // track width information for let-bound names (8,16 or undefined)
-  const letTypes = new Map<string, number | undefined>();
+  const letTypes = envLetTypes || new Map<string, number | undefined>();
   const letMut = new Map<string, boolean>();
+  const letPtr = envLetPtr || new Map<string, string | undefined>(); // base type if pointer
   // shared parts array used in several checks
   const parts = trimmed
     .split(";")
@@ -307,14 +312,34 @@ export function compile(source: string): Result<string, CompileError> {
         if (declaredType === "U8" && initWidth === 16) {
           return overflowResult(source);
         }
-        const initRes = compile(initExpr);
+        const initRes = compile(initExpr, letTypes, letPtr);
         if (!initRes.ok) return initRes;
         const initJs = strip(initRes.value);
         stmts.push(`let ${name} = ${initJs};`);
-        // record type info for future assignments
-        if (declaredType === "U8") letTypes.set(name, 8);
-        else if (declaredType === "U16") letTypes.set(name, 16);
-        else letTypes.set(name, initWidth);
+        // record type info for future assignments and pointer info
+        if (declaredType && declaredType.startsWith("*")) {
+          letPtr.set(name, declaredType.slice(1));
+          letTypes.set(name, undefined);
+        } else if (!declaredType && initExpr.startsWith("&")) {
+          // infer pointer type from RHS variable (mark as pointer regardless)
+          const target = initExpr.slice(1);
+          letPtr.set(
+            name,
+            (letPtr.get(target) ||
+              (letTypes.get(target) === 8
+                ? "U8"
+                : letTypes.get(target) === 16
+                  ? "U16"
+                  : "")) ??
+              "",
+          );
+          letTypes.set(name, undefined);
+        } else {
+          if (declaredType === "U8") letTypes.set(name, 8);
+          else if (declaredType === "U16") letTypes.set(name, 16);
+          else letTypes.set(name, initWidth);
+          letPtr.set(name, undefined);
+        }
         continue;
       }
       // handle assignments separately before treating as plain expression
@@ -363,7 +388,7 @@ export function compile(source: string): Result<string, CompileError> {
         if (width === undefined && rhsWidth !== undefined) {
           letTypes.set(lhs, rhsWidth);
         }
-        const rhsRes = compile(rhs);
+        const rhsRes = compile(rhs, letTypes, letPtr);
         if (!rhsRes.ok) return rhsRes;
         const rhsJs = strip(rhsRes.value);
         stmts.push(lhs + " = " + rhsJs + ";");
@@ -371,7 +396,7 @@ export function compile(source: string): Result<string, CompileError> {
         stmts.push(lhs + " = 0;");
         continue;
       }
-      const exprRes = compile(part);
+      const exprRes = compile(part, letTypes, letPtr);
       if (!exprRes.ok) return exprRes;
       const exprJs = strip(exprRes.value);
       if (i === parts.length - 1) {
@@ -421,9 +446,26 @@ export function compile(source: string): Result<string, CompileError> {
       if (declaredType && initExpr.endsWith("U16") && declaredType === "U8") {
         return overflowResult(source);
       }
+      // record pointer info for single-let
+      if (declaredType && declaredType.startsWith("*")) {
+        letPtr.set(name, declaredType.slice(1));
+      } else if (!declaredType && initExpr.startsWith("&")) {
+        const target = initExpr.slice(1);
+        letPtr.set(
+          name,
+          letPtr.get(target) ||
+            (letTypes.get(target) === 8
+              ? "U8"
+              : letTypes.get(target) === 16
+                ? "U16"
+                : undefined),
+        );
+      } else {
+        letPtr.set(name, undefined);
+      }
       // accept either rest === name OR rest is empty (no trailing expr)
       if (rest === name || rest === "") {
-        const initRes = compile(initExpr);
+        const initRes = compile(initExpr, letTypes, letPtr);
         if (!initRes.ok) return initRes;
         let initJs = initRes.value;
         if (initJs.startsWith("return ")) {
@@ -494,11 +536,27 @@ export function compile(source: string): Result<string, CompileError> {
   }
 
   // reference and dereference operators for simple identifiers. we treat
-  // `&x` and `*x` identically by just returning the variable; pointer types
-  // are unchecked in this tiny compiler.
+  // `&x` and `*x` accordingly. dereference requires that the variable was
+  // declared as a pointer.
   if (trimmed.startsWith("&") || trimmed.startsWith("*")) {
     const rest = trimmed.slice(1);
     if (isIdentifier(rest)) {
+      if (trimmed.startsWith("*")) {
+        // ensure pointer type (undefined means not a pointer)
+        const ptrtype = letPtr.get(rest);
+        if (ptrtype === undefined) {
+          return {
+            ok: false,
+            error: {
+              source,
+              message: "Dereferencing non-pointer",
+              reason: "not a pointer",
+              fix: "use & on a pointer variable",
+              type: CompileErrorType.NotImplemented,
+            },
+          };
+        }
+      }
       return { ok: true, value: "return " + rest + ";" };
     }
   }

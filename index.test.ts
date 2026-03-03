@@ -85,6 +85,9 @@ invalidate(
 // pointer to undeclared variable should error
 invalidate("let y : *U8 = &x; *y", CompileErrorType.NotImplemented);
 
+// dereferencing pointer from simple variable
+validate("let x = 100; let y = &x; let z : I32 = *y; z", "100", 100);
+
 // mutable variable with reassignment (assignment resets variable to 0)
 validate("let mut x = read<U8>(); x = read<U8>(); x", "3 4", 0);
 // overflow when assigning wider value to U8 mutable
