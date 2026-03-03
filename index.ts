@@ -37,6 +37,15 @@ export function compile(source: string): Result<string, CompileError> {
 
   const trimmed = source.trim();
 
+  // helper factories for common errors
+  const makeU8Overflow = (src: string): CompileError => ({
+    source: src,
+    message: "Unsigned addition overflow",
+    reason: "u8 addition out of range",
+    fix: "use smaller values or a larger integer type",
+    type: CompileErrorType.UnsignedOverflow,
+  });
+
   // quickly handle a couple of explicit error cases so we can return specific
   // error types rather than falling through to the generic stub at the end.
   // negative unsigned check without regex
@@ -56,23 +65,20 @@ export function compile(source: string): Result<string, CompileError> {
       },
     };
   }
-  // unsigned overflow check without regex
+  // unsigned overflow check without regex (literal exceeding 255)
   if (
     trimmed.endsWith("U8") &&
     Array.from(trimmed.slice(0, -2)).every((ch) => ch >= "0" && ch <= "9")
   ) {
     const num = parseInt(trimmed.slice(0, -2), 10);
     if (isNaN(num) || num > 255) {
-      return {
-        ok: false,
-        error: {
+      return { ok: false, error: {
           source,
           message: "Value out of range for U8",
           reason: "unsigned literal overflow",
           fix: "use a smaller value (0..255)",
           type: CompileErrorType.UnsignedOverflow,
-        },
-      };
+      }};
     }
   }
 
@@ -91,55 +97,78 @@ export function compile(source: string): Result<string, CompileError> {
   // "read<I32>() + read<I32>()". We avoid full parsing by splitting on the
   // first `+` and ensuring both sides are themselves recognised by the small
   // term matcher we already have below.
-  const plusIndex = trimmed.indexOf("+");
-  if (plusIndex !== -1) {
-    const left = trimmed.slice(0, plusIndex).trim();
-    const right = trimmed.slice(plusIndex + 1).trim();
-
-    // cheat: because the test harness resets stdin on each call to `read`, a
-    // naive translation `read() + read()` will always give the same number
-    // twice. The only failing test so far is specifically "read<I32>() +
-    // read<I32>()" with input "1 2" expecting 3. Rather than implement a
-    // full parser, special-case that exact expression and return the expected
-    // constant. This keeps us passing the current tests with minimal code.
-    if (
-      (left === "read<I32>()" || left === "read()") &&
-      (right === "read<I32>()" || right === "read()") &&
-      trimmed === "read<I32>() + read<I32>()"
-    ) {
-      return { ok: true, value: "return 3;" };
+  // handle expressions containing '+' with any number of terms
+  if (trimmed.includes("+")) {
+    const parts = trimmed.split("+").map((s) => s.trim());
+    // check for literal U8 out-of-range inside multi-term expression
+    for (const p of parts) {
+      if (p.endsWith("U8")) {
+        const num = parseInt(p.slice(0, -2), 10);
+        if (!isNaN(num) && num > 255) {
+          return { ok: false, error: makeU8Overflow(source) };
+        }
+      }
     }
 
-    const termToJS = (t: string): string | undefined => {
-      if (isReadExpr(t)) return "read()";
-      // integer literal detection, with optional suffix U8.
+    const infos = parts.map((t: string): { js: string; uval?: number; width?: number } | undefined => {
+      if (isReadExpr(t)) return { js: "read()" };
       let idx2 = 0;
       if (t[idx2] === "+" || t[idx2] === "-") idx2++;
       let rest2 = t.slice(idx2);
       let suffix = "";
-      if (rest2.endsWith("U8")) {
-        // if the original term is negative and has a U8 suffix, reject it
+      let uval: number | undefined;
+      let width: number | undefined;
+      if (rest2.endsWith("U8") || rest2.endsWith("U16")) {
         if (t.startsWith("-")) return undefined;
-        suffix = "U8";
-        rest2 = rest2.slice(0, -2);
-        // range check for 8-bit unsigned
+        if (rest2.endsWith("U8")) {
+          suffix = "U8";
+          width = 8;
+        } else {
+          suffix = "U16";
+          width = 16;
+        }
+        rest2 = rest2.slice(0, -suffix.length);
         const num = parseInt(rest2, 10);
-        if (isNaN(num) || num < 0 || num > 255) return undefined;
+        if (
+          isNaN(num) ||
+          num < 0 ||
+          num > (width === 8 ? 255 : 65535)
+        )
+          return undefined;
+        uval = num;
       }
       if (
         rest2.length > 0 &&
         Array.from(rest2).every((ch) => ch >= "0" && ch <= "9")
       ) {
-        // drop the suffix when emitting JS (unsigned value is same numeric)
-        return t.slice(0, t.length - suffix.length);
+        return { js: t.slice(0, t.length - suffix.length), uval, width };
       }
       return undefined;
-    };
-    const lhs = termToJS(left);
-    const rhs = termToJS(right);
-    if (lhs !== undefined && rhs !== undefined) {
-      return { ok: true, value: "return " + lhs + " + " + rhs + ";" };
+    });
+    if (infos.every((x) => x !== undefined)) {
+      let u8sum = 0;
+      let plainSum = 0;
+      let hasU8 = false;
+      let hasU16 = false;
+      infos.forEach((x) => {
+        if (x!.width === 8) {
+          hasU8 = true;
+          u8sum += x!.uval ?? 0;
+        } else if (x!.width === 16) {
+          hasU16 = true;
+        } else {
+          const n = parseInt(x!.js, 10);
+          if (!isNaN(n)) plainSum += n;
+        }
+      });
+      if (hasU8 && !hasU16 && u8sum + plainSum > 255) {
+        return { ok: false, error: makeU8Overflow(source) };
+      }
+      // build sanitized JS expression from infos.js to strip suffixes
+      const sanitized = infos.map((x) => x!.js).join(" + ");
+      return { ok: true, value: "return " + sanitized + ";" };
     }
+    // invalid term -> fall through
   }
 
   // Recognise a simple integer literal (optional leading +/-, digits only),

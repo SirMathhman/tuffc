@@ -4,13 +4,14 @@ function validate(source: string, stdin: string = "", expected: number): void {
   it(source, () => {
     const result = compile(source);
     if (result.ok) {
+      const tokens = stdin
+        .split(" ")
+        .flatMap((part) => part.split("\n"))
+        .flatMap((part) => part.split("\t"))
+        .filter((part) => part.length > 0);
+      let tokenIndex = 0;
       const readFunc = () => {
-        const part = stdin
-          .split(" ")
-          .flatMap((part) => part.split("\n"))
-          .flatMap((part) => part.split("\t"))
-          .filter((part) => part.length > 0)
-          .shift()!;
+        const part = tokens[tokenIndex++] ?? "0";
         if (part === "true") return 1;
         if (part === "false") return 0;
         return parseInt(part, 10);
@@ -49,3 +50,16 @@ function invalidate(source: string, expectedType: CompileErrorType) {
 
 invalidate("-100U8", CompileErrorType.NegativeUnsigned);
 invalidate("256U8", CompileErrorType.UnsignedOverflow);
+invalidate("1U8 + 255U8", CompileErrorType.UnsignedOverflow);
+invalidate("1 + 255U8", CompileErrorType.UnsignedOverflow);
+invalidate("255U8 + 1", CompileErrorType.UnsignedOverflow);
+invalidate(
+  "read<I32>() + 256U8 + read<I32>()",
+  CompileErrorType.UnsignedOverflow,
+);
+validate("1 + 254U8", "", 255);
+validate("255U8 + 1U16", "", 256);
+
+validate("1 + 2 + 3", "", 6);
+validate("255U8 + 1 + 1U16", "", 257);
+validate("read<I32>() + read<I32>() + read<I32>()", "1 2 3", 6);
