@@ -1,0 +1,12 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "type": "command",
+        "windows": "scripts\\hooks\\block-no-verify.ps1",
+        "command": "scripts/hooks/block-no-verify.sh",
+        "timeout": 5
+      }
+    ]
+  }
+}

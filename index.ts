@@ -838,6 +838,7 @@ export const compile = (
   const hasMultipleStatements =
     source.includes("fn ") ||
     source.includes("type ") ||
+    source.includes("struct ") ||
     source.includes("let ") ||
     source.includes(";") ||
     (source.includes("}") &&
@@ -852,6 +853,7 @@ export const compile = (
     const mutableVars: Set<string> = new Set();
     const statements: string[] = [];
     let returnExpr = "";
+    const structNames: Set<string> = new Set();
 
     // Helper function to resolve type aliases recursively
     const resolveTypeAlias = (typeStr: string): string => {
@@ -1651,6 +1653,20 @@ export const compile = (
           }
 
           typeAliases[aliasName] = aliasType;
+          return ok(undefined);
+        } else if (stmt.startsWith("struct ")) {
+          // Handle struct declaration: just record name and reject duplicates
+          // expected syntax: struct Name { }
+          const structBody = stmt.substring(6).trim();
+          const parts = structBody.split(" ").filter(p => p.length > 0);
+          const name = parts[0] || "";
+          if (!name) {
+            return err("Invalid struct syntax");
+          }
+          if (structNames.has(name)) {
+            return err(`Struct '${name}' is already defined`);
+          }
+          structNames.add(name);
           return ok(undefined);
         } else if (stmt.startsWith("let ")) {
           const parsed = parseLetStatement(stmt);
