@@ -212,7 +212,68 @@ const validateTypeAssignment = (
   return ok(undefined);
 };
 
+const splitStatements = (source: string): string[] => {
+  const statements: string[] = [];
+  let currentStatement = "";
+  let braceDepth = 0;
+
+  [...source].forEach((char) => {
+    if (char === "{") {
+      braceDepth++;
+      currentStatement += char;
+    } else if (char === "}") {
+      braceDepth--;
+      currentStatement += char;
+    } else if (char === ";" && braceDepth === 0) {
+      if (currentStatement.trim().length > 0) {
+        statements.push(currentStatement.trim());
+      }
+      currentStatement = "";
+    } else {
+      currentStatement += char;
+    }
+  });
+
+  if (currentStatement.trim().length > 0) {
+    statements.push(currentStatement.trim());
+  }
+
+  return statements;
+};
+
 export const compile = (source: string): Result<string, string> => {
+  const processBlockExpression = (
+    blockExpr: string,
+  ): Result<{ statements: string; returnValue: string }, string> => {
+    if (!blockExpr.startsWith("{") || !blockExpr.endsWith("}")) {
+      return err("Not a block expression");
+    }
+
+    const blockContent = blockExpr.substring(1, blockExpr.length - 1).trim();
+    if (blockContent.length === 0) {
+      return err("Block expression cannot be empty");
+    }
+
+    const blockResult = compile(blockContent);
+    if (!blockResult.ok) {
+      return blockResult;
+    }
+
+    const compiledCode = blockResult.value;
+    const returnIdx = compiledCode.lastIndexOf("return ");
+    if (returnIdx === -1) {
+      return err("Invalid block expression");
+    }
+
+    const blockStatements = compiledCode.substring(0, returnIdx).trim();
+    let returnValue = compiledCode.substring(returnIdx + 7).trim();
+    if (returnValue.endsWith(";")) {
+      returnValue = returnValue.substring(0, returnValue.length - 1).trim();
+    }
+
+    return ok({ statements: blockStatements, returnValue });
+  };
+
   const replaceReadCalls = (expr: string): Result<string, string> => {
     let result = expr;
     while (result.includes("read<")) {
@@ -354,6 +415,12 @@ export const compile = (source: string): Result<string, string> => {
       expr: string,
       isAssignmentContext: boolean,
     ): Result<string, string> => {
+      // Handle block expressions: { ... }
+      const blockResult = processBlockExpression(expr);
+      if (blockResult.ok) {
+        return ok(blockResult.value.returnValue);
+      }
+
       // Try pointer expressions first
       const pointerResult = compilePointerExpr(expr);
       if (pointerResult.ok) {
@@ -385,196 +452,205 @@ export const compile = (source: string): Result<string, string> => {
       );
     };
 
-    const stmtResult = source
-      .split(";")
-      .map((s) => s.trim())
-      .reduce(
-        (acc, stmt) => {
-          if (acc.ok === false) {
-            return acc;
+    const stmtResult = splitStatements(source).reduce(
+      (acc, stmt) => {
+        if (acc.ok === false) {
+          return acc;
+        }
+
+        if (stmt.startsWith("let ")) {
+          const isMutable = stmt.substring(4, 8) === "mut ";
+          const afterLet = stmt.substring(isMutable ? 8 : 4);
+          const colonIdx = afterLet.indexOf(":");
+          const equalIdx = afterLet.indexOf("=");
+
+          if (equalIdx === -1) {
+            return err("Invalid variable declaration: missing initializer");
           }
 
-          if (stmt.startsWith("let ")) {
-            const isMutable = stmt.substring(4, 8) === "mut ";
-            const afterLet = stmt.substring(isMutable ? 8 : 4);
-            const colonIdx = afterLet.indexOf(":");
-            const equalIdx = afterLet.indexOf("=");
+          const isTyped = colonIdx !== -1 && colonIdx < equalIdx;
+          const declaredType = isTyped
+            ? afterLet.substring(colonIdx + 1, equalIdx).trim()
+            : "";
+          const valueExpr = afterLet
+            .substring(
+              isTyped ? afterLet.indexOf("=", colonIdx) + 1 : equalIdx + 1,
+            )
+            .trim();
 
-            if (equalIdx === -1) {
-              return err("Invalid variable declaration: missing initializer");
+          const varName = afterLet
+            .substring(0, isTyped ? colonIdx : equalIdx)
+            .trim();
+          if (varName in declarations) {
+            return err(`Variable '${varName}' is already declared`);
+          }
+
+          let compiledValue: string;
+          // Handle block expressions specially to preserve their statements
+          const blockResult = processBlockExpression(valueExpr);
+          if (blockResult.ok) {
+            const { statements: blockStatements, returnValue } =
+              blockResult.value;
+            if (blockStatements.length > 0) {
+              statements.push(blockStatements);
             }
-
-            const isTyped = colonIdx !== -1 && colonIdx < equalIdx;
-            const declaredType = isTyped
-              ? afterLet.substring(colonIdx + 1, equalIdx).trim()
-              : "";
-            const valueExpr = afterLet
-              .substring(
-                isTyped ? afterLet.indexOf("=", colonIdx) + 1 : equalIdx + 1,
-              )
-              .trim();
-
+            compiledValue = returnValue;
+          } else {
             const compiledValueResult = extractCompiledValue(valueExpr, false);
             if (!compiledValueResult.ok) {
               return compiledValueResult;
             }
-            const compiledValue = compiledValueResult.value;
+            compiledValue = compiledValueResult.value;
+          }
 
-            if (isTyped && declaredType) {
-              if (!isValidTypeStr(declaredType)) {
-                return err(`Invalid type: ${declaredType}`);
-              }
-
-              const validationResult = validateTypeAssignment(
-                extractValueType(valueExpr, declarationTypes),
-                declaredType,
-              );
-              if (!validationResult.ok) {
-                return validationResult;
-              }
+          if (isTyped && declaredType) {
+            if (!isValidTypeStr(declaredType)) {
+              return err(`Invalid type: ${declaredType}`);
             }
 
-            const varName = afterLet
-              .substring(0, isTyped ? colonIdx : equalIdx)
-              .trim();
-            if (varName in declarations) {
-              return err(`Variable '${varName}' is already declared`);
-            }
-
-            declarations[varName] = compiledValue;
-            if (isMutable) {
-              mutableVars.add(varName);
-            }
-            statements.push(
-              `${mutableVars.has(varName) ? "var" : "const"} ${varName} = ${compiledValue};`,
+            const validationResult = validateTypeAssignment(
+              extractValueType(valueExpr, declarationTypes),
+              declaredType,
             );
+            if (!validationResult.ok) {
+              return validationResult;
+            }
+          }
 
-            if (isTyped && declaredType) {
-              declarationTypes[varName] = declaredType;
-            } else if (valueExpr === "true" || valueExpr === "false") {
-              // Infer Bool type for boolean literals
-              declarationTypes[varName] = "Bool";
-            } else if (valueExpr.startsWith("&")) {
-              // Handle reference operator: infer pointer type
-              const refVarName = valueExpr.substring(1).trim();
-              if (refVarName in declarationTypes) {
-                declarationTypes[varName] = "*" + declarationTypes[refVarName];
-              }
-            } else if (valueExpr in declarationTypes) {
-              declarationTypes[varName] = declarationTypes[valueExpr];
-            } else if (
-              valueExpr.startsWith("read<") &&
-              valueExpr.endsWith(">()")
+          declarations[varName] = compiledValue;
+          if (isMutable) {
+            mutableVars.add(varName);
+          }
+          statements.push(
+            `${mutableVars.has(varName) ? "var" : "const"} ${varName} = ${compiledValue};`,
+          );
+
+          if (isTyped && declaredType) {
+            declarationTypes[varName] = declaredType;
+          } else if (valueExpr === "true" || valueExpr === "false") {
+            // Infer Bool type for boolean literals
+            declarationTypes[varName] = "Bool";
+          } else if (valueExpr.startsWith("&")) {
+            // Handle reference operator: infer pointer type
+            const refVarName = valueExpr.substring(1).trim();
+            if (refVarName in declarationTypes) {
+              declarationTypes[varName] = "*" + declarationTypes[refVarName];
+            }
+          } else if (valueExpr in declarationTypes) {
+            declarationTypes[varName] = declarationTypes[valueExpr];
+          } else if (
+            valueExpr.startsWith("read<") &&
+            valueExpr.endsWith(">()")
+          ) {
+            const typeEnd = valueExpr.indexOf(">");
+            if (typeEnd > 5)
+              declarationTypes[varName] = valueExpr.substring(5, typeEnd);
+          } else {
+            const tIdx = Math.max(
+              valueExpr.lastIndexOf("U"),
+              valueExpr.lastIndexOf("I"),
+            );
+            if (
+              tIdx > 0 &&
+              valueExpr
+                .substring(0, tIdx)
+                .split("")
+                .every((c) => c >= "0" && c <= "9") &&
+              valueExpr
+                .substring(tIdx + 1)
+                .split("")
+                .every((c) => c >= "0" && c <= "9")
             ) {
-              const typeEnd = valueExpr.indexOf(">");
-              if (typeEnd > 5)
-                declarationTypes[varName] = valueExpr.substring(5, typeEnd);
-            } else {
-              const tIdx = Math.max(
-                valueExpr.lastIndexOf("U"),
-                valueExpr.lastIndexOf("I"),
-              );
-              if (
-                tIdx > 0 &&
-                valueExpr
-                  .substring(0, tIdx)
-                  .split("")
-                  .every((c) => c >= "0" && c <= "9") &&
-                valueExpr
-                  .substring(tIdx + 1)
-                  .split("")
-                  .every((c) => c >= "0" && c <= "9")
-              ) {
-                declarationTypes[varName] = valueExpr.substring(tIdx);
-              }
+              declarationTypes[varName] = valueExpr.substring(tIdx);
             }
-
-            return ok(undefined);
-          } else if (stmt.includes("=")) {
-            // Handle assignment statements
-            const equalIdx = stmt.indexOf("=");
-            const varName = stmt.substring(0, equalIdx).trim();
-
-            if (!(varName in declarations)) {
-              return err(`Variable '${varName}' is not declared`);
-            }
-            if (!mutableVars.has(varName)) {
-              return err(`Variable '${varName}' is not mutable`);
-            }
-
-            const valueExpr = stmt.substring(equalIdx + 1).trim();
-            const compiledValueResult = extractCompiledValue(valueExpr, true);
-            if (!compiledValueResult.ok) {
-              return compiledValueResult;
-            }
-            const compiledValue = compiledValueResult.value;
-
-            // Type check the assignment
-            if (varName in declarationTypes) {
-              const validationResult = validateTypeAssignment(
-                extractValueType(valueExpr, declarationTypes),
-                declarationTypes[varName],
-              );
-              if (!validationResult.ok) {
-                return validationResult;
-              }
-            }
-
-            declarations[varName] = compiledValue;
-            statements.push(`${varName} = ${compiledValue};`);
-
-            return ok(undefined);
-          } else if (stmt.length > 0) {
-            // Try to compile as return expression
-            const pointerResult = compilePointerExpr(stmt);
-            if (pointerResult.ok) {
-              returnExpr = pointerResult.value;
-            } else if (
-              !pointerResult.error.includes("Not a pointer expression")
-            ) {
-              // It's a pointer expression but has an error (type checking, etc.)
-              return pointerResult;
-            } else {
-              // Check if this is a binary operation with boolean operands
-              if (
-                stmt.includes("+") ||
-                stmt.includes("-") ||
-                stmt.includes("*") ||
-                stmt.includes("/")
-              ) {
-                // Split by binary operators to extract operands
-                const opIndex = Math.max(
-                  stmt.indexOf("+"),
-                  stmt.indexOf("-"),
-                  stmt.indexOf("*"),
-                  stmt.indexOf("/"),
-                );
-                if (opIndex !== -1) {
-                  const leftOperand = stmt.substring(0, opIndex).trim();
-                  const rightOperand = stmt.substring(opIndex + 1).trim();
-
-                  if (
-                    (leftOperand in declarationTypes &&
-                      declarationTypes[leftOperand] === "Bool") ||
-                    (rightOperand in declarationTypes &&
-                      declarationTypes[rightOperand] === "Bool")
-                  ) {
-                    return err(
-                      "Binary operations are not allowed on boolean types",
-                    );
-                  }
-                }
-              }
-              returnExpr = stmt;
-            }
-
-            return ok(undefined);
           }
 
           return ok(undefined);
-        },
-        ok(undefined) as Result<undefined, string>,
-      );
+        } else if (stmt.includes("=")) {
+          // Handle assignment statements
+          const equalIdx = stmt.indexOf("=");
+          const varName = stmt.substring(0, equalIdx).trim();
+
+          if (!(varName in declarations)) {
+            return err(`Variable '${varName}' is not declared`);
+          }
+          if (!mutableVars.has(varName)) {
+            return err(`Variable '${varName}' is not mutable`);
+          }
+
+          const valueExpr = stmt.substring(equalIdx + 1).trim();
+          const compiledValueResult = extractCompiledValue(valueExpr, true);
+          if (!compiledValueResult.ok) {
+            return compiledValueResult;
+          }
+          const compiledValue = compiledValueResult.value;
+
+          // Type check the assignment
+          if (varName in declarationTypes) {
+            const validationResult = validateTypeAssignment(
+              extractValueType(valueExpr, declarationTypes),
+              declarationTypes[varName],
+            );
+            if (!validationResult.ok) {
+              return validationResult;
+            }
+          }
+
+          declarations[varName] = compiledValue;
+          statements.push(`${varName} = ${compiledValue};`);
+
+          return ok(undefined);
+        } else if (stmt.length > 0) {
+          // Try to compile as return expression
+          const pointerResult = compilePointerExpr(stmt);
+          if (pointerResult.ok) {
+            returnExpr = pointerResult.value;
+          } else if (
+            !pointerResult.error.includes("Not a pointer expression")
+          ) {
+            // It's a pointer expression but has an error (type checking, etc.)
+            return pointerResult;
+          } else {
+            // Check if this is a binary operation with boolean operands
+            if (
+              stmt.includes("+") ||
+              stmt.includes("-") ||
+              stmt.includes("*") ||
+              stmt.includes("/")
+            ) {
+              // Split by binary operators to extract operands
+              const opIndex = Math.max(
+                stmt.indexOf("+"),
+                stmt.indexOf("-"),
+                stmt.indexOf("*"),
+                stmt.indexOf("/"),
+              );
+              if (opIndex !== -1) {
+                const leftOperand = stmt.substring(0, opIndex).trim();
+                const rightOperand = stmt.substring(opIndex + 1).trim();
+
+                if (
+                  (leftOperand in declarationTypes &&
+                    declarationTypes[leftOperand] === "Bool") ||
+                  (rightOperand in declarationTypes &&
+                    declarationTypes[rightOperand] === "Bool")
+                ) {
+                  return err(
+                    "Binary operations are not allowed on boolean types",
+                  );
+                }
+              }
+            }
+            returnExpr = stmt;
+          }
+
+          return ok(undefined);
+        }
+
+        return ok(undefined);
+      },
+      ok(undefined) as Result<undefined, string>,
+    );
 
     if (!stmtResult.ok) {
       return stmtResult;
