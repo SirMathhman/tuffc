@@ -37,6 +37,14 @@ export default [
           argsIgnorePattern: "^_",
         },
       ],
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "Literal[regex]",
+          message:
+            "Regular expressions are not allowed. Use alternatives instead.",
+        },
+      ],
     },
   },
 ];

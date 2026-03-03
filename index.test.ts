@@ -18,3 +18,4 @@ validate("", 0);
 invalidate("x");
 validate("100", 100);
 validate("100U8", 100);
+invalidate("-100U8");
