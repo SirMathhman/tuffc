@@ -134,6 +134,8 @@ invalidate(
 
 // simple function definition and call
 validate("fn get() : I32 => read<I32>(); get()", "100", 100);
+// recursive function body can include read<T>() and self-call
+validate("fn loop() : I32 => read<I32>() + loop(); 0", "123", 0);
 // function with single parameter
 validate(
   "fn add(param : I32) : I32 => read<I32>() + param; add(50)",

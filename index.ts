@@ -84,40 +84,70 @@ function extractFnName(str: string): string | undefined {
   return name.length > 0 ? name : undefined;
 }
 
-// compile the body of a function declaration and return stripped JS
-function compileFnBody(
-  body: string,
+interface FunctionDeclInfo {
+  fname: string;
+  fnText: string;
+}
+
+// compile a function declaration snippet into JS and keep return width info
+function compileFunctionDecl(
+  part: string,
   letTypes: Map<string, number | undefined>,
   letPtr: Map<string, string | undefined>,
   letFns: Set<string>,
   fnReturn: Map<string, number | undefined>,
-): Result<string, CompileError> {
-  if (body.startsWith("{") && body.endsWith("}")) {
-    body = "0";
+  fnParams: Map<string, string[]>,
+): Result<FunctionDeclInfo, CompileError> {
+  const fname = extractFnName(part);
+  if (!fname) {
+    return {
+      ok: false,
+      error: {
+        source: part,
+        message: "Invalid function declaration",
+        reason: "missing function name",
+        fix: "use syntax like fn name() => expr",
+        type: CompileErrorType.NotImplemented,
+      },
+    };
   }
-  const bodyRes = compile(body, letTypes, letPtr, letFns, fnReturn);
-  if (!bodyRes.ok) return bodyRes;
-  return { ok: true, value: strip(bodyRes.value) };
-}
-
-// extract the right-hand expression (body) from a function declaration
-function parseFnBody(part: string): string {
   const arrow = part.indexOf("=>");
   let body = "0";
   if (arrow !== -1) {
     body = part.slice(arrow + 2).trim();
   }
-  return body;
+  const retw = computeWidth(body, letTypes, fnReturn);
+  fnReturn.set(fname, retw);
+  const bodyRes = compile(
+    body.startsWith("{") && body.endsWith("}") ? "0" : body,
+    letTypes,
+    letPtr,
+    letFns,
+    fnReturn,
+  );
+  if (!bodyRes.ok) return bodyRes;
+  const params = fnParams.get(fname) || [];
+  return {
+    ok: true,
+    value: {
+      fname,
+      fnText:
+        `function ${fname}(${params.join(",")}){return ` +
+        strip(bodyRes.value) +
+        ";}",
+    },
+  };
 }
 
-// produce a JS text for a function given its name, compiled body, and param map
-function formatFunction(
-  fname: string,
-  bodyJs: string,
-  fnParams: Map<string, string[]>,
-): string {
-  const params = fnParams.get(fname) || [];
-  return `function ${fname}(${params.join(",")}){return ${bodyJs};}`;
+function isWidthOverflow(
+  targetWidth: number | undefined,
+  sourceWidth: number | undefined,
+): boolean {
+  return (
+    targetWidth !== undefined &&
+    sourceWidth !== undefined &&
+    sourceWidth > targetWidth
+  );
 }
 
 // Detects any read<T>() call notation, e.g. read<I32>(), read<U8>(), read().
@@ -362,6 +392,11 @@ export interface TermAccumulator {
 const parseTerm = (t: string): TermInfo | undefined => {
   if (isReadExpr(t)) return { js: "read()" };
   if (isIdentifier(t)) return { js: t };
+  // allow function call terms inside additions (e.g. read<I32>() + recurse())
+  if (t.endsWith("()")) {
+    const fname = t.slice(0, -2).trim();
+    if (isIdentifier(fname)) return { js: fname + "()" };
+  }
   let idx2 = 0;
   if (t[idx2] === "+" || t[idx2] === "-") idx2++;
   let rest2 = t.slice(idx2);
@@ -529,15 +564,16 @@ export function compile(
     for (const [i, part] of parts.entries()) {
       // function declaration in multi-stmt context
       if (part.startsWith("fn ")) {
-        const fname = extractFnName(part)!;
-        const body = parseFnBody(part);
-        // infer return width from body expression
-        const retw = computeWidth(body, letTypes, fnReturn);
-        fnReturn.set(fname, retw);
-        const bodyRes = compileFnBody(body, letTypes, letPtr, letFns, fnReturn);
-        if (!bodyRes.ok) return bodyRes;
-        const bodyJs = bodyRes.value;
-        stmts.push(formatFunction(fname, bodyJs, fnParams));
+        const fnRes = compileFunctionDecl(
+          part,
+          letTypes,
+          letPtr,
+          letFns,
+          fnReturn,
+          fnParams,
+        );
+        if (!fnRes.ok) return fnRes;
+        stmts.push(fnRes.value.fnText);
         continue;
       }
       if (part.startsWith("let ")) {
@@ -624,11 +660,7 @@ export function compile(
           const target = letPtrTarget.get(ptrVar)!;
           const width = letTypes.get(target);
           const rhsWidth = computeWidth(rhs, letTypes, fnReturn);
-          if (
-            width !== undefined &&
-            rhsWidth !== undefined &&
-            rhsWidth > width
-          ) {
+          if (isWidthOverflow(width, rhsWidth)) {
             return overflowResult(source);
           }
           const rhsRes = compile(rhs, letTypes, letPtr, letFns, fnReturn);
@@ -664,7 +696,7 @@ export function compile(
         }
         const width = letTypes.get(lhs);
         const rhsWidth = computeWidth(rhs, letTypes, fnReturn);
-        if (width !== undefined && rhsWidth !== undefined && rhsWidth > width) {
+        if (isWidthOverflow(width, rhsWidth)) {
           return overflowResult(source);
         }
         if (width === undefined && rhsWidth !== undefined) {
@@ -709,20 +741,19 @@ export function compile(
 
   // single-statement function declaration
   if (trimmed.startsWith("fn ")) {
-    const fname = extractFnName(trimmed);
-    if (fname) {
-      const body = parseFnBody(trimmed);
-      const retw = computeWidth(body, letTypes, fnReturn);
-      fnReturn.set(fname, retw);
-      const bodyRes = compileFnBody(body, letTypes, letPtr, letFns, fnReturn);
-      if (!bodyRes.ok) return bodyRes;
-      const bodyJs = bodyRes.value;
-      const fnText = formatFunction(fname, bodyJs, fnParams);
-      return {
-        ok: true,
-        value: `return (()=>{${fnText} return 0;})()`,
-      };
-    }
+    const fnRes = compileFunctionDecl(
+      trimmed,
+      letTypes,
+      letPtr,
+      letFns,
+      fnReturn,
+      fnParams,
+    );
+    if (!fnRes.ok) return fnRes;
+    return {
+      ok: true,
+      value: `return (()=>{${fnRes.value.fnText} return 0;})()`,
+    };
   }
   // simple function call expression when alone, optionally with a single
   // argument. collect function name and argument expression if present.
