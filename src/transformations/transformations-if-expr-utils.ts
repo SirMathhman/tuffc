@@ -42,7 +42,11 @@ function skipWhitespace(source: string, startIdx: number): number {
   return i;
 }
 
-function matchParenDepth(source: string, startIdx: number, openChar: string): number {
+function matchParenDepth(
+  source: string,
+  startIdx: number,
+  openChar: string,
+): number {
   const closeChar = openChar === "(" ? ")" : openChar === "[" ? "]" : "}";
   let i = startIdx + 1;
   let depth = 1;

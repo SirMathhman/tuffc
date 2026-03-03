@@ -361,4 +361,12 @@ describe("The compiler can compile", () => {
       0,
     );
   });
+
+  it("passes lambda as argument to higher-order function", () => {
+    assertValid(
+      "fn get(action : (I32, I32) => I32) => {\n action(read<I32>(), read<I32>())\n}\n\nget((first, second) => first + second)",
+      "3 4",
+      7,
+    );
+  });
 });

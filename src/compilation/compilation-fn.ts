@@ -6,15 +6,26 @@ import {
   transformReadPatterns,
   transformMethodCalls,
 } from "../transformations/transformations";
-import { findMatchingParen, extractParamNames } from "./compilation-fn-helpers";
+import {
+  findMatchingParen,
+  findMatchingBrace,
+  findLastDepthZeroChar,
+  extractParamNames,
+} from "./compilation-fn-helpers";
 
 function buildFnIife(
   fnName: string,
   paramNames: string,
-  transformedBody: string,
-  returnExpr: string,
+  bodyStatements: string,
+  bodyReturn: string,
+  callExpr: string,
 ): string {
-  return `(function() { function ${fnName}(${paramNames}) { return ${transformedBody}; } return ${returnExpr}; })()`;
+  const stmts = bodyStatements !== "" ? `${bodyStatements} ` : "";
+  return `(function() { function ${fnName}(${paramNames}) { ${stmts}return ${bodyReturn}; } return ${callExpr}; })()`;
+}
+
+function findLastDepthZeroSemicolon(content: string): number {
+  return findLastDepthZeroChar(content, ";");
 }
 
 function renameThisParameter(source: string): string {
@@ -54,33 +65,73 @@ function compileFnStatement(
   const trimmed = source.trim();
   if (!trimmed.startsWith("fn ")) return null;
 
-  const arrowIdx = trimmed.indexOf("=>");
-  if (arrowIdx === -1) return null;
-  const semiIdx = trimmed.indexOf(";", arrowIdx + 2);
-  if (semiIdx === -1) return null;
-
-  const decl = trimmed.substring(0, arrowIdx).trim();
-  const body = trimmed.substring(arrowIdx + 2, semiIdx).trim();
-  const after = trimmed.substring(semiIdx + 1).trim();
-
-  const openParen = decl.indexOf("(");
+  // Find the function's parameter list first
+  const openParen = trimmed.indexOf("(", 3);
   if (openParen === -1) return null;
-  const closeParen = findMatchingParen(decl, openParen);
+  const closeParen = findMatchingParen(trimmed, openParen);
   if (closeParen === -1) return null;
 
-  const fnNameRaw = decl.substring(3, openParen).trim();
+  // Find the => belonging to THIS function (after the closing paren, skipping type annotations)
+  const arrowIdx = trimmed.indexOf("=>", closeParen + 1);
+  if (arrowIdx === -1) return null;
+
+  let body: string;
+  let after: string;
+
+  // Skip whitespace after => to check if body is a block
+  let bodyStart = arrowIdx + 2;
+  while (
+    bodyStart < trimmed.length &&
+    (trimmed[bodyStart] === " " ||
+      trimmed[bodyStart] === "\n" ||
+      trimmed[bodyStart] === "\r" ||
+      trimmed[bodyStart] === "\t")
+  ) {
+    bodyStart++;
+  }
+
+  if (trimmed[bodyStart] === "{") {
+    // Block body: ends at matching }
+    const braceEnd = findMatchingBrace(trimmed, bodyStart);
+    if (braceEnd === -1) return null;
+    body = trimmed.substring(bodyStart + 1, braceEnd).trim();
+    after = trimmed.substring(braceEnd + 1).trim();
+  } else {
+    // Expression body: ends at ;
+    const semiIdx = trimmed.indexOf(";", arrowIdx + 2);
+    if (semiIdx === -1) return null;
+    body = trimmed.substring(arrowIdx + 2, semiIdx).trim();
+    after = trimmed.substring(semiIdx + 1).trim();
+  }
+
+  const fnNameRaw = trimmed.substring(3, openParen).trim();
   const fnName = stripTypeAnnotations(fnNameRaw);
-  const paramsRaw = decl.substring(openParen + 1, closeParen);
+  const paramsRaw = trimmed.substring(openParen + 1, closeParen);
   const paramNames = extractParamNames(paramsRaw);
 
   // Rename 'this' to '_this' in the body since 'this' is a reserved keyword
   const bodyWithRenamedThis = renameThisParameter(body);
 
-  const transformedBody = stripNumericTypeSuffixes(
+  const transformedFullBody = stripNumericTypeSuffixes(
     transformComparisonOperators(
       transformMethodCalls(transformReadPatterns(bodyWithRenamedThis)),
     ),
   );
+
+  // Split block body into statements + return expression
+  const lastSemi = findLastDepthZeroSemicolon(transformedFullBody);
+  let bodyStatements: string;
+  let bodyReturn: string;
+  if (lastSemi === -1) {
+    bodyStatements = "";
+    bodyReturn = transformedFullBody;
+  } else {
+    bodyStatements = transformedFullBody.substring(0, lastSemi + 1).trim();
+    bodyReturn = transformedFullBody.substring(lastSemi + 1).trim();
+    if (bodyReturn === "") {
+      bodyReturn = "0";
+    }
+  }
 
   const afterExpr = stripNumericTypeSuffixes(
     transformComparisonOperators(
@@ -89,9 +140,9 @@ function compileFnStatement(
       ),
     ),
   );
-  let returnExpr = afterExpr;
-  if (returnExpr === "") returnExpr = "0";
-  return ok(buildFnIife(fnName, paramNames, transformedBody, returnExpr));
+  let callExpr = afterExpr;
+  if (callExpr === "") callExpr = "0";
+  return ok(buildFnIife(fnName, paramNames, bodyStatements, bodyReturn, callExpr));
 }
 
 export { compileFnStatement };

@@ -1,4 +1,7 @@
-import { skipWhitespace, matchParenDepth } from "./transformations-if-expr-utils";
+import {
+  skipWhitespace,
+  matchParenDepth,
+} from "./transformations-if-expr-utils";
 
 function transformMethodCalls(source: string): string {
   let result = "";

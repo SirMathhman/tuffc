@@ -37,7 +37,16 @@ function transformComparisonOperators(source: string): string {
   const ops = ["<=", ">=", "==", "!=", "<", ">"];
 
   for (const op of ops) {
-    const index = result.indexOf(op);
+    let index = result.indexOf(op);
+    // For single-char ops, skip occurrences that are part of a two-char arrow (=>)
+    if (op === ">" || op === "<") {
+      while (index !== -1) {
+        const precededByEq = op === ">" && index > 0 && result[index - 1] === "=";
+        const followedByEq = op === "<" && index + 1 < result.length && result[index + 1] === "=";
+        if (!precededByEq && !followedByEq) break;
+        index = result.indexOf(op, index + 1);
+      }
+    }
     if (index !== -1 && !isInsideWhileCondition(result, index)) {
       const before = result.substring(0, index).trim();
       const after = result.substring(index + op.length).trim();
