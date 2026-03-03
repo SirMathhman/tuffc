@@ -83,3 +83,4 @@ invalidate("let x = { let y = 100; }; x");
 validate("let x : I64 = { let y : I64 = 100; y }; x", "", 100);
 invalidate("let x : U8 = { let y : I64 = 100; y }; x");
 validate("{}", "", 0);
+validate("{} read<I32>()", "100", 100);

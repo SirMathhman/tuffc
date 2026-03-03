@@ -266,14 +266,27 @@ const splitStatements = (source: string): string[] => {
   const statements: string[] = [];
   let currentStatement = "";
   let braceDepth = 0;
+  const chars = [...source];
 
-  [...source].forEach((char) => {
+  chars.forEach((char, idx) => {
     if (char === "{") {
       braceDepth++;
       currentStatement += char;
     } else if (char === "}") {
       braceDepth--;
       currentStatement += char;
+      // If we just closed a brace at depth 0 and there's non-whitespace after it,
+      // treat this as a statement boundary
+      if (braceDepth === 0) {
+        const restOfSource = source.substring(idx + 1).trim();
+        if (restOfSource.length > 0 && !restOfSource.startsWith(";")) {
+          // There's something after the block that's not a semicolon
+          if (currentStatement.trim().length > 0) {
+            statements.push(currentStatement.trim());
+          }
+          currentStatement = "";
+        }
+      }
     } else if (char === ";" && braceDepth === 0) {
       if (currentStatement.trim().length > 0) {
         statements.push(currentStatement.trim());
@@ -450,8 +463,16 @@ export const compile = (
     return ok("return 0");
   }
 
-  // Variable declarations (let x : Type = expr; or let x = expr; or let mut x = expr;)
-  if (source.includes("let ")) {
+  // Multi-statement handler - triggered for complex inputs with multiple statements or declarations
+  // This includes: variable declarations (let), semicolon-separated statements, or expressions after block closures
+  const hasMultipleStatements =
+    source.includes("let ") ||
+    source.includes(";") ||
+    (source.includes("}") &&
+      source.lastIndexOf("}") < source.length - 1 &&
+      source.substring(source.lastIndexOf("}") + 1).trim().length > 0);
+
+  if (hasMultipleStatements) {
     const declarations: Record<string, string> = {};
     const declarationTypes: Record<string, string> = {};
     const mutableVars: Set<string> = new Set();
@@ -675,6 +696,29 @@ export const compile = (
           statements.push(`${varName} = ${compiledValue};`);
 
           return ok(undefined);
+        } else if (stmt.startsWith("{") && stmt.endsWith("}")) {
+          // Handle block expressions as standalone statements
+          const blockResult = processBlockExpression(stmt);
+          if (blockResult.ok) {
+            const { statements: blockStatements } = blockResult.value;
+            if (blockStatements.length > 0) {
+              statements.push(blockStatements);
+            }
+            // Don't set as return expression - just execute the block
+          } else {
+            return blockResult;
+          }
+
+          return ok(undefined);
+        } else if (stmt.startsWith("read<") && stmt.endsWith(">()")) {
+          // Handle read<Type>() as return expression
+          const typeEnd = stmt.indexOf(">");
+          if (typeEnd > 5 && isValidTypeStr(stmt.substring(5, typeEnd))) {
+            returnExpr = stmt;
+            return ok(undefined);
+          } else {
+            return err("Invalid read syntax");
+          }
         } else if (stmt.length > 0) {
           // Try to compile as return expression
           const pointerResult = compilePointerExpr(stmt);
@@ -732,12 +776,21 @@ export const compile = (
     }
 
     // Validate return expression for boolean operations
+    // First, replace any read<Type>() calls BEFORE checking for operators
+    // This prevents read<I32>() from being misidentified as a comparison due to < and >
     if (!returnExpr) {
       if (requiresFinalExpression) {
         return err("Block expression must have a final expression");
       }
       returnExpr = "0";
     } else {
+      // Replace read<Type>() calls early to avoid operator misdetection
+      const earlyReadReplaced = replaceReadCalls(returnExpr);
+      if (!earlyReadReplaced.ok) {
+        return earlyReadReplaced;
+      }
+      returnExpr = earlyReadReplaced.value;
+
       // Handle if/else expressions
       if (returnExpr.startsWith("if (")) {
         const ifElseCompiled = compileIfElse(returnExpr, declarationTypes);
@@ -840,17 +893,13 @@ export const compile = (
           }
         }
 
-        // Replace read<Type>() calls in the expression for comparison
-        const readReplaced = replaceReadCalls(returnExpr);
-        if (!readReplaced.ok) {
-          return readReplaced;
-        }
-
-        returnExpr = `${readReplaced.value} ? 1 : 0`;
+        returnExpr = `${returnExpr} ? 1 : 0`;
       }
     }
 
-    return ok(statements.join("\n") + "\nreturn " + returnExpr + ";");
+    return ok(
+      statements.join("\n") + "\nreturn " + returnExpr + ";",
+    );
   }
 
   // If/else expressions: if (condition) consequent else alternate
