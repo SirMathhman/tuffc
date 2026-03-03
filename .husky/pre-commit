@@ -1,4 +1,4 @@
 bun test --timeout 5000 --concurrent
 bun run lint
 npx tsx scripts/single-use.ts
-pmd cpd index.ts --language typescript --minimum-tokens 35
+pmd cpd index.ts --language typescript --minimum-tokens 35 --ignore-identifiers

@@ -267,6 +267,12 @@ export const compile = (source: string): Result<string, string> => {
 
             if (isTyped && declaredType) {
               declarationTypes[varName] = declaredType;
+            } else if (valueExpr.startsWith("&")) {
+              // Handle reference operator: infer pointer type
+              const refVarName = valueExpr.substring(1).trim();
+              if (refVarName in declarationTypes) {
+                declarationTypes[varName] = "*" + declarationTypes[refVarName];
+              }
             } else if (valueExpr in declarationTypes) {
               declarationTypes[varName] = declarationTypes[valueExpr];
             } else if (
