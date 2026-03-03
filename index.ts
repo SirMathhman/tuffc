@@ -24,45 +24,142 @@ export const compile = (source: string): Result<string, string> => {
     return ok("return 0");
   }
 
-  // Variable declarations (let x : Type = expr;)
+  // Variable declarations (let x : Type = expr; or let x = expr;)
   if (source.includes("let ")) {
     const declarations: Record<string, string> = {};
+    const declarationTypes: Record<string, string> = {};
     let returnExpr = "";
 
     for (const stmt of source.split(";").map((s) => s.trim())) {
       if (stmt.startsWith("let ")) {
         const afterLet = stmt.substring(4);
         const colonIdx = afterLet.indexOf(":");
-        if (colonIdx === -1) {
-          return err("Invalid variable declaration: missing type");
-        }
-        const afterColon = afterLet.substring(colonIdx + 1);
-        const equalIdx = afterColon.indexOf("=");
+        const equalIdx = afterLet.indexOf("=");
+
         if (equalIdx === -1) {
           return err("Invalid variable declaration: missing initializer");
         }
-        const compileResult = compile(
-          afterColon.substring(equalIdx + 1).trim(),
-        );
-        if (!compileResult.ok) {
-          return compileResult;
+
+        const isTyped = colonIdx !== -1 && colonIdx < equalIdx;
+        const declaredType = isTyped
+          ? afterLet.substring(colonIdx + 1, equalIdx).trim()
+          : "";
+        const valueExpr = afterLet
+          .substring(
+            isTyped ? afterLet.indexOf("=", colonIdx) + 1 : equalIdx + 1,
+          )
+          .trim();
+
+        let compiledValue: string;
+        if (valueExpr in declarations) {
+          compiledValue = valueExpr;
+        } else {
+          const compileResult = compile(valueExpr);
+          if (!compileResult.ok) {
+            return compileResult;
+          }
+
+          const returnValue = compileResult.value;
+          if (!returnValue.startsWith("return ")) {
+            return err("Invalid variable initialization");
+          }
+
+          compiledValue = returnValue.substring(7).endsWith(";")
+            ? returnValue.substring(7, returnValue.length - 1)
+            : returnValue.substring(7);
         }
-        const returnValue = compileResult.value;
-        if (!returnValue.startsWith("return ")) {
-          return err("Invalid variable initialization");
+
+        if (isTyped && declaredType) {
+          if (!isValidTypeStr(declaredType)) {
+            return err(`Invalid type: ${declaredType}`);
+          }
+
+          let valueType = "";
+          const typeMarkerIdx = Math.max(
+            valueExpr.lastIndexOf("U"),
+            valueExpr.lastIndexOf("I"),
+          );
+
+          if (typeMarkerIdx > 0 && typeMarkerIdx < valueExpr.length - 1) {
+            if (
+              valueExpr
+                .substring(0, typeMarkerIdx)
+                .split("")
+                .every((c) => c >= "0" && c <= "9") &&
+              valueExpr
+                .substring(typeMarkerIdx + 1)
+                .split("")
+                .every((c) => c >= "0" && c <= "9")
+            ) {
+              valueType = valueExpr.substring(typeMarkerIdx);
+            }
+          }
+
+          if (!valueType) {
+            if (valueExpr.startsWith("read<") && valueExpr.endsWith(">()")) {
+              const typeEnd = valueExpr.indexOf(">");
+              if (typeEnd > 5) {
+                valueType = valueExpr.substring(5, typeEnd);
+              }
+            }
+          }
+          if (!valueType && valueExpr in declarationTypes) {
+            valueType = declarationTypes[valueExpr];
+          }
+          if (
+            valueType &&
+            !(
+              declaredType[0] === valueType[0] &&
+              parseInt(valueType.substring(1), 10) <=
+                parseInt(declaredType.substring(1), 10)
+            )
+          ) {
+            return err(`Cannot assign ${valueType} to ${declaredType}`);
+          }
         }
-        declarations[afterLet.substring(0, colonIdx).trim()] = returnValue
-          .substring(7)
-          .endsWith(";")
-          ? returnValue.substring(7, returnValue.length - 1)
-          : returnValue.substring(7);
+
+        const varName = afterLet
+          .substring(0, isTyped ? colonIdx : equalIdx)
+          .trim();
+        if (varName in declarations) {
+          return err(`Variable '${varName}' is already declared`);
+        }
+
+        declarations[varName] = compiledValue;
+        if (isTyped && declaredType) {
+          declarationTypes[varName] = declaredType;
+        } else if (valueExpr in declarationTypes) {
+          declarationTypes[varName] = declarationTypes[valueExpr];
+        } else if (valueExpr.startsWith("read<") && valueExpr.endsWith(">()")) {
+          const typeEnd = valueExpr.indexOf(">");
+          if (typeEnd > 5)
+            declarationTypes[varName] = valueExpr.substring(5, typeEnd);
+        } else {
+          const tIdx = Math.max(
+            valueExpr.lastIndexOf("U"),
+            valueExpr.lastIndexOf("I"),
+          );
+          if (
+            tIdx > 0 &&
+            valueExpr
+              .substring(0, tIdx)
+              .split("")
+              .every((c) => c >= "0" && c <= "9") &&
+            valueExpr
+              .substring(tIdx + 1)
+              .split("")
+              .every((c) => c >= "0" && c <= "9")
+          ) {
+            declarationTypes[varName] = valueExpr.substring(tIdx);
+          }
+        }
       } else if (stmt.length > 0) {
         returnExpr = stmt;
       }
     }
 
     if (!returnExpr) {
-      return err("No return expression found");
+      returnExpr = "0";
     }
 
     return ok(

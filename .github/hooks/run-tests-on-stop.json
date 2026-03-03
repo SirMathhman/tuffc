@@ -3,22 +3,22 @@
     "Stop": [
       {
         "type": "command",
-        "windows": "bun test --timeout 1000 --concurrent",
+        "windows": "powershell -File .github/hooks/scripts/run-tests.ps1",
         "timeout": 30
       },
       {
         "type": "command",
-        "windows": "bun run lint",
+        "windows": "powershell -File .github/hooks/scripts/run-lint.ps1",
         "timeout": 30
       },
       {
         "type": "command",
-        "windows": "bun .github/scripts/single-use.ts",
+        "windows": "powershell -File .github/hooks/scripts/run-single-use.ps1",
         "timeout": 30
       },
       {
         "type": "command",
-        "windows": "pmd cpd index.ts --language typescript --minimum-tokens 35",
+        "windows": "powershell -File .github/hooks/scripts/run-cpd.ps1",
         "timeout": 30
       }
     ]
