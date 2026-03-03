@@ -573,8 +573,9 @@ export const compile = (
   }
 
   // Multi-statement handler - triggered for complex inputs with multiple statements or declarations
-  // This includes: variable declarations (let), type aliases (type), semicolon-separated statements, or expressions after block closures
+  // This includes: variable declarations (let), type aliases (type), function definitions (fn), semicolon-separated statements, or expressions after block closures
   const hasMultipleStatements =
+    source.includes("fn ") ||
     source.includes("type ") ||
     source.includes("let ") ||
     source.includes(";") ||
@@ -965,7 +966,54 @@ export const compile = (
           });
         };
 
-        if (stmt.startsWith("type ")) {
+        if (stmt.startsWith("fn ")) {
+          // Handle function definitions: fn name() => body
+          // For now, just validate syntax and skip (no-op)
+          const afterFn = stmt.substring(3).trim();
+          const parenIdx = afterFn.indexOf("(");
+          if (parenIdx === -1) {
+            return err("Invalid function definition: missing parentheses");
+          }
+
+          const fnName = afterFn.substring(0, parenIdx).trim();
+          if (!fnName) {
+            return err("Invalid function definition: missing function name");
+          }
+
+          // Find closing paren using reduce
+          let closeParenIdx = -1;
+          [...afterFn].reduce((depth: number, char: string, idx: number) => {
+            if (idx < parenIdx || closeParenIdx !== -1) {
+              return depth;
+            }
+            if (char === "(") return depth + 1;
+            if (char === ")") {
+              const newDepth = depth - 1;
+              if (newDepth === 0) {
+                closeParenIdx = idx;
+              }
+              return newDepth;
+            }
+            return depth;
+          }, 0);
+
+          if (closeParenIdx === -1) {
+            return err(
+              "Invalid function definition: missing closing parenthesis",
+            );
+          }
+
+          // Extract parameters (just validate for now)
+          const remaining = afterFn.substring(closeParenIdx + 1).trim();
+
+          // Check for arrow =>
+          if (!remaining.startsWith("=>")) {
+            return err("Invalid function definition: missing arrow =>");
+          }
+
+          // Skip this statement - function definitions are no-ops for now
+          return ok(undefined);
+        } else if (stmt.startsWith("type ")) {
           // Handle type alias declarations: type MyAlias = I32;
           const afterType = stmt.substring(5);
           const equalIdx = afterType.indexOf("=");

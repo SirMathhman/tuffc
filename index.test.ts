@@ -113,3 +113,4 @@ validate(
   "100",
   100,
 );
+validate("fn empty() => {}", "", 0);
