@@ -3,19 +3,19 @@
 // unused imports have been removed to keep linting happy.
 
 // Success variant of the Result type
-export interface ResultOk<T> {
+export interface Ok<T> {
   ok: true;
   value: T;
 }
 
 // Error variant of the Result type
-export interface ResultErr<E> {
+export interface Err<E> {
   ok: false;
   error: E;
 }
 
 // Combined Result type using named variants
-export type Result<T, E> = ResultOk<T> | ResultErr<E>;
+export type Result<T, E> = Ok<T> | Err<E>;
 
 // Different categories of compile errors. Tests use this enum to verify that
 // a particular case produces the expected kind of failure.
@@ -70,13 +70,20 @@ function extractLetName(str: string): string | undefined {
   return left.length > 0 ? left : undefined;
 }
 
-
 // Detects any read<T>() call notation, e.g. read<I32>(), read<U8>(), read().
 function isReadExpr(s: string): boolean {
   if (s === "read()") return true;
   if (s.startsWith("read<") && s.endsWith(">()")) {
     const inner = s.slice(5, s.length - 3); // strip "read<" and ">()"
-    if (Array.from(inner).every((ch) => (ch >= "A" && ch <= "Z") || (ch >= "a" && ch <= "z") || (ch >= "0" && ch <= "9"))) return true;
+    if (
+      Array.from(inner).every(
+        (ch) =>
+          (ch >= "A" && ch <= "Z") ||
+          (ch >= "a" && ch <= "z") ||
+          (ch >= "0" && ch <= "9"),
+      )
+    )
+      return true;
   }
   return false;
 }
@@ -98,7 +105,6 @@ function extractLetType(str: string): string | undefined {
   if (colon > eq) return undefined;
   return str.slice(colon + 1, eq).trim();
 }
-
 
 // create a standard overflow error result
 function overflowResult(src: string): Result<string, CompileError> {
@@ -130,7 +136,7 @@ export interface TermAccumulator {
 
 // Parses a single term in an addition expression into a TermInfo descriptor.
 // Returns undefined for any term that cannot be recognised.
-function parseTerm(t: string): TermInfo | undefined {
+const parseTerm = (t: string): TermInfo | undefined => {
   if (isReadExpr(t)) return { js: "read()" };
   let idx2 = 0;
   if (t[idx2] === "+" || t[idx2] === "-") idx2++;
@@ -160,7 +166,7 @@ function parseTerm(t: string): TermInfo | undefined {
     return { js: t.slice(0, t.length - suffix.length), uval, width };
   }
   return undefined;
-}
+};
 
 export function compile(source: string): Result<string, CompileError> {
   // A minimal implementation to make the existing tests pass. The tests
@@ -172,7 +178,10 @@ export function compile(source: string): Result<string, CompileError> {
   // track width information for let-bound names (8,16 or undefined)
   const letTypes = new Map<string, number | undefined>();
   // shared parts array used in several checks
-  const parts = trimmed.split(";").map((s) => s.trim()).filter((s) => s.length > 0);
+  const parts = trimmed
+    .split(";")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
 
   // detect duplicate `let` bindings by name before parsing further. we simply
   // inspect each declaration head. this is crude but sufficient for the
@@ -240,13 +249,24 @@ export function compile(source: string): Result<string, CompileError> {
       }
     }
     if (finalExpr !== undefined) {
-      return { ok: true, value: "return (()=>{" + (stmts.join(" ") + (stmts.length ? " " : "") + "return " + finalExpr + ";") + "})()" };
+      return {
+        ok: true,
+        value:
+          "return (()=>{" +
+          (stmts.join(" ") +
+            (stmts.length ? " " : "") +
+            "return " +
+            finalExpr +
+            ";") +
+          "})()",
+      };
     }
     // no final expression – default to returning 0
-    return { ok: true, value: "return (()=>{" + (stmts.join(" ") + "return 0;") + "})()" };
+    return {
+      ok: true,
+      value: "return (()=>{" + (stmts.join(" ") + "return 0;") + "})()",
+    };
   }
-
-
 
   // support a trivial let-binding pattern used by tests. this is not a
   // full statement parser; we only handle the specific form:
@@ -315,13 +335,16 @@ export function compile(source: string): Result<string, CompileError> {
   ) {
     const num = parseInt(trimmed.slice(0, -2), 10);
     if (isNaN(num) || num > 255) {
-      return { ok: false, error: {
+      return {
+        ok: false,
+        error: {
           source,
           message: "Value out of range for U8",
           reason: "unsigned literal overflow",
           fix: "use a smaller value (0..255)",
           type: CompileErrorType.UnsignedOverflow,
-      }};
+        },
+      };
     }
   }
 
@@ -359,7 +382,13 @@ export function compile(source: string): Result<string, CompileError> {
           hasU8: acc.hasU8 || x!.width === 8,
           hasU16: acc.hasU16 || x!.width === 16,
           u8sum: acc.u8sum + (x!.width === 8 ? (x!.uval ?? 0) : 0),
-          plainSum: acc.plainSum + (x!.width === undefined ? (isNaN(parseInt(x!.js, 10)) ? 0 : parseInt(x!.js, 10)) : 0),
+          plainSum:
+            acc.plainSum +
+            (x!.width === undefined
+              ? isNaN(parseInt(x!.js, 10))
+                ? 0
+                : parseInt(x!.js, 10)
+              : 0),
         }),
         { u8sum: 0, plainSum: 0, hasU8: false, hasU16: false },
       );
@@ -402,9 +431,7 @@ export function compile(source: string): Result<string, CompileError> {
       // drop the `U8` suffix if present; compute inline.
       return {
         ok: true,
-        value: "return " +
-          (hasU8 ? trimmed.slice(0, -2) : trimmed) +
-          ";",
+        value: "return " + (hasU8 ? trimmed.slice(0, -2) : trimmed) + ";",
       };
     }
   }
@@ -424,12 +451,13 @@ export function compile(source: string): Result<string, CompileError> {
         (first >= "a" && first <= "z") ||
         (first >= "A" && first <= "Z")
       ) {
-        isIdVal = Array.from(s).every((ch) =>
-          ch === "_" ||
-          ch === "$" ||
-          (ch >= "a" && ch <= "z") ||
-          (ch >= "A" && ch <= "Z") ||
-          (ch >= "0" && ch <= "9"),
+        isIdVal = Array.from(s).every(
+          (ch) =>
+            ch === "_" ||
+            ch === "$" ||
+            (ch >= "a" && ch <= "z") ||
+            (ch >= "A" && ch <= "Z") ||
+            (ch >= "0" && ch <= "9"),
         );
       }
     }

@@ -55,8 +55,10 @@ const isEgregiousWrapper = (decl: Node): boolean => {
     return true;
   }
 
-  // Flag simple ternary returns: x ? a : b
-  if (text.includes("?") && text.includes(":")) {
+  // Flag simple ternary returns: x ? a : b (but not arrow functions with block bodies)
+  const isArrowWithBlock =
+    (text.includes("=>") && text.includes("{")) || text.trim().startsWith("(");
+  if (!isArrowWithBlock && text.includes("?") && text.includes(":")) {
     return true;
   }
 
@@ -65,8 +67,12 @@ const isEgregiousWrapper = (decl: Node): boolean => {
 
 for (const sourceFile of sourceFiles) {
   const filePath = sourceFile.getFilePath();
-  // Skip checking the single-use script itself and test files
-  if (filePath.includes("single-use.ts") || filePath.includes(".test.ts")) {
+  // Skip checking the single-use script itself, other scripts, and test files
+  if (
+    filePath.includes("scripts/") ||
+    filePath.includes("scripts\\") ||
+    filePath.includes(".test.ts")
+  ) {
     continue;
   }
 
@@ -93,10 +99,7 @@ for (const sourceFile of sourceFiles) {
     }
   }
 
-  // Check all function declarations - flag if used once, unless the sole
-  // usage is as a higher-order callback (passed by reference as an argument).
-  // Callbacks extracted to the top level to satisfy ban-inner-functions must
-  // not be penalised here.
+  // Check all function declarations - flag if used only once.
   const funcDecls = sourceFile.getDescendantsOfKind(
     SyntaxKind.FunctionDeclaration,
   );
@@ -110,22 +113,11 @@ for (const sourceFile of sourceFiles) {
       .filter((r) => !r.isDefinition());
 
     if (usages.length === 1) {
-      const refNode = usages[0].getNode();
-      const parent = refNode.getParent();
-      // exempt: the function is passed as a callback argument (not as the
-      // callee of a direct call expression)
-      if (
-        parent &&
-        parent.getKind() === SyntaxKind.CallExpression &&
-        parent.asKindOrThrow(SyntaxKind.CallExpression).getExpression() ===
-          refNode
-      ) {
-        const { line } = sourceFile.getLineAndColumnAtPos(name.getStart());
-        console.error(
-          `${sourceFile.getFilePath()}:${line} - "${name.getText()}" is only used once. Inline it.`,
-        );
-        failed = true;
-      }
+      const { line } = sourceFile.getLineAndColumnAtPos(name.getStart());
+      console.error(
+        `${sourceFile.getFilePath()}:${line} - "${name.getText()}" is only used once. Inline it.`,
+      );
+      failed = true;
     }
   }
 }
