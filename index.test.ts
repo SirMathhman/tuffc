@@ -129,3 +129,4 @@ validate(
   7,
 );
 invalidate("undefinedFunction()");
+invalidate("fn pass(value : I32) => value; pass()");

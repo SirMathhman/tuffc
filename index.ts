@@ -1813,6 +1813,11 @@ export const compile = (
               }
               return result;
             }, returnStmt);
+          } else {
+            // Argument count mismatch
+            return err(
+              `Incorrect number of arguments for function ${potentialFnName}`,
+            );
           }
         }
       }
