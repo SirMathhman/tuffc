@@ -1658,15 +1658,41 @@ export const compile = (
           // Handle struct declaration: parse name, validate syntax, and reject duplicates
           // expected syntax: struct Name { field1 : Type; field2 : Type; }
           const structBody = stmt.substring(6).trim();
-          // require a name followed by a brace-enclosed list (which may be empty)
-          const match = structBody.match(
-            /^([A-Za-z_][A-Za-z0-9_]*)\s*\{([\s\S]*)\}$/,
-          );
-          if (!match) {
+          // parse without regex: look for first '{' and matching '}' at end
+          const braceIdx = structBody.indexOf("{");
+          if (braceIdx === -1 || !structBody.endsWith("}")) {
             return err("Invalid struct syntax");
           }
-          const name = match[1];
-          const fieldsStr = match[2].trim();
+          const name = structBody.substring(0, braceIdx).trim();
+          const fieldsStr = structBody
+            .substring(braceIdx + 1, structBody.length - 1)
+            .trim();
+
+          const isIdentifier = (s: string): boolean => {
+            if (!s) return false;
+            const first = s[0];
+            if (
+              !(
+                (first >= "a" && first <= "z") ||
+                (first >= "A" && first <= "Z") ||
+                first === "_"
+              )
+            ) {
+              return false;
+            }
+            const rest = s.substring(1);
+            return [...rest].every(
+              (c) =>
+                (c >= "a" && c <= "z") ||
+                (c >= "A" && c <= "Z") ||
+                (c >= "0" && c <= "9") ||
+                c === "_",
+            );
+          };
+
+          if (!isIdentifier(name)) {
+            return err("Invalid struct syntax");
+          }
 
           if (structNames.has(name)) {
             return err(`Struct '${name}' is already defined`);
@@ -1688,7 +1714,7 @@ export const compile = (
               const fieldName = field.substring(0, colonIdx).trim();
               const fieldType = field.substring(colonIdx + 1).trim();
 
-              if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(fieldName)) {
+              if (!isIdentifier(fieldName)) {
                 return err(`Invalid field name '${fieldName}'`);
               }
               if (fieldNames.has(fieldName)) {
