@@ -75,6 +75,16 @@ validate("let x = read<U8>(); let y = x; y", "100", 100);
 validate("let x : U16 = 100U8; x", "", 100);
 invalidate("let x : U8 = 100U16; x", CompileErrorType.UnsignedOverflow);
 
+// pointer semantics: & and * simply reference the variable value
+validate("let x = read<I32>(); let y : *I32 = &x; *y", "100", 100);
+// pointer type mismatch should error
+invalidate(
+  "let x = read<I32>(); let y : *U8 = &x; *y",
+  CompileErrorType.NotImplemented,
+);
+// pointer to undeclared variable should error
+invalidate("let y : *U8 = &x; *y", CompileErrorType.NotImplemented);
+
 // mutable variable with reassignment (assignment resets variable to 0)
 validate("let mut x = read<U8>(); x = read<U8>(); x", "3 4", 0);
 // overflow when assigning wider value to U8 mutable

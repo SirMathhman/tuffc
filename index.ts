@@ -98,6 +98,35 @@ function strip(js: string): string {
   return js;
 }
 
+// determine whether a string is a valid bare identifier (letters, digits,
+// underscore, dollar; not starting with digit). Extracted to avoid duplication
+// between pointer handling and bare identifier expression logic.
+function isIdentifier(s: string): boolean {
+  if (s.length === 0) return false;
+  const first = s[0];
+  if (
+    first !== "_" &&
+    first !== "$" &&
+    !(first >= "a" && first <= "z") &&
+    !(first >= "A" && first <= "Z")
+  ) {
+    return false;
+  }
+  for (const ch of s) {
+    if (
+      ch === "_" ||
+      ch === "$" ||
+      (ch >= "a" && ch <= "z") ||
+      (ch >= "A" && ch <= "Z") ||
+      (ch >= "0" && ch <= "9")
+    ) {
+      continue;
+    }
+    return false;
+  }
+  return true;
+}
+
 // returns the annotated type of a let declaration (without spaces), or
 // undefined if none present. simpler implementation avoids repeating logic
 // used by `extractLetName`.
@@ -122,6 +151,40 @@ function overflowResult(src: string): Result<string, CompileError> {
       type: CompileErrorType.UnsignedOverflow,
     },
   };
+}
+
+// helper to verify pointer initialization matches declared pointer type
+function checkPointer(
+  initExpr: string,
+  declaredType: string | undefined,
+  letTypes: Map<string, number | undefined>,
+  source: string,
+): Result<string, CompileError> | undefined {
+  if (
+    declaredType &&
+    declaredType.startsWith("*") &&
+    initExpr.startsWith("&")
+  ) {
+    const pointType = declaredType.slice(1);
+    let pointWidth: number | undefined;
+    if (pointType === "U8") pointWidth = 8;
+    else if (pointType === "U16") pointWidth = 16;
+    const varName = initExpr.slice(1);
+    const varWidth = letTypes.get(varName);
+    if (varWidth !== pointWidth) {
+      return {
+        ok: false,
+        error: {
+          source,
+          message: "Pointer type mismatch",
+          reason: "incompatible pointer",
+          fix: "use matching types",
+          type: CompileErrorType.NotImplemented,
+        },
+      };
+    }
+  }
+  return undefined;
 }
 // Named type for a parsed term descriptor
 export interface TermInfo {
@@ -237,6 +300,9 @@ export function compile(source: string): Result<string, CompileError> {
           if (inner === "U8") initWidth = 8;
           else if (inner === "U16") initWidth = 16;
         } else if (letTypes.has(initExpr)) initWidth = letTypes.get(initExpr);
+        // pointer type mismatch: check with helper
+        const ptrErr = checkPointer(initExpr, declaredType, letTypes, source);
+        if (ptrErr) return ptrErr;
         // overflow check for U8
         if (declaredType === "U8" && initWidth === 16) {
           return overflowResult(source);
@@ -349,6 +415,9 @@ export function compile(source: string): Result<string, CompileError> {
       const initExpr = decl.slice(decl.indexOf("=") + 1).trim();
       // before compiling, check for type mismatch when annotation present
       const declaredType = extractLetType(decl);
+      // pointer check in single-let form
+      const ptrErr = checkPointer(initExpr, declaredType, letTypes, source);
+      if (ptrErr) return ptrErr;
       if (declaredType && initExpr.endsWith("U16") && declaredType === "U8") {
         return overflowResult(source);
       }
@@ -422,6 +491,16 @@ export function compile(source: string): Result<string, CompileError> {
   // syntax `read<I32>()` and plain `read()` to make parsing trivial.
   if (isReadExpr(trimmed)) {
     return { ok: true, value: "return read();" };
+  }
+
+  // reference and dereference operators for simple identifiers. we treat
+  // `&x` and `*x` identically by just returning the variable; pointer types
+  // are unchecked in this tiny compiler.
+  if (trimmed.startsWith("&") || trimmed.startsWith("*")) {
+    const rest = trimmed.slice(1);
+    if (isIdentifier(rest)) {
+      return { ok: true, value: "return " + rest + ";" };
+    }
   }
 
   // Support a binary addition of two simple terms, e.g. "read<I32>() + 5" or
@@ -507,27 +586,7 @@ export function compile(source: string): Result<string, CompileError> {
   {
     // allow bare identifiers as expressions (variables introduced by previous
     // let statements or builtins such as `x`).
-    const s = trimmed;
-    let isIdVal = false;
-    if (s.length > 0) {
-      const first = s[0];
-      if (
-        first === "_" ||
-        first === "$" ||
-        (first >= "a" && first <= "z") ||
-        (first >= "A" && first <= "Z")
-      ) {
-        isIdVal = Array.from(s).every(
-          (ch) =>
-            ch === "_" ||
-            ch === "$" ||
-            (ch >= "a" && ch <= "z") ||
-            (ch >= "A" && ch <= "Z") ||
-            (ch >= "0" && ch <= "9"),
-        );
-      }
-    }
-    if (isIdVal) {
+    if (isIdentifier(trimmed)) {
       return { ok: true, value: "return " + trimmed + ";" };
     }
   }
