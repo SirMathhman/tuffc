@@ -66,3 +66,17 @@ validate("read<I32>() + read<I32>() + read<I32>()", "1 2 3", 6);
 
 // variable declaration with typed read
 validate("let x : U8 = read<U8>(); x", "100", 100);
+validate("let x : U8 = read<U8>();", "100", 0);
+// untyped declaration should also work
+validate("let x = read<U8>(); x", "100", 100);
+// chained let using previous variable
+validate("let x = read<U8>(); let y = x; y", "100", 100);
+// mismatched unsigned types in let
+validate("let x : U16 = 100U8; x", "", 100);
+invalidate("let x : U8 = 100U16; x", CompileErrorType.UnsignedOverflow);
+
+// duplicate declaration should fail
+invalidate(
+  "let x : I32 = 0; let x : I32 = 0;",
+  CompileErrorType.DuplicateDeclaration,
+);

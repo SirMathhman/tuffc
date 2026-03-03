@@ -26,6 +26,7 @@ export enum CompileErrorType {
   NotImplemented = "NotImplemented",
   NegativeUnsigned = "NegativeUnsigned",
   UnsignedOverflow = "UnsignedOverflow",
+  DuplicateDeclaration = "DuplicateDeclaration",
 }
 /* eslint-enable no-unused-vars */
 
@@ -53,16 +54,65 @@ const makeU8Overflow = (src: string): CompileError => ({
   type: CompileErrorType.UnsignedOverflow,
 });
 
+// extract variable name from a `let` declaration string (e.g. "let x : I32 = 0").
+// defined at top level to avoid inner-function violations.
+function extractLetName(str: string): string | undefined {
+  if (!str.startsWith("let ")) return undefined;
+  const afterLet = str.slice(4).trim();
+  const eq = afterLet.indexOf("=");
+  if (eq === -1) return undefined;
+  let left = afterLet.slice(0, eq).trim();
+  const colon = left.indexOf(":");
+  if (colon !== -1) {
+    // strip off type annotation
+    left = left.slice(0, colon).trim();
+  }
+  return left.length > 0 ? left : undefined;
+}
+
+
 // Detects any read<T>() call notation, e.g. read<I32>(), read<U8>(), read().
-const isReadExpr = (s: string): boolean => {
+function isReadExpr(s: string): boolean {
   if (s === "read()") return true;
   if (s.startsWith("read<") && s.endsWith(">()")) {
     const inner = s.slice(5, s.length - 3); // strip "read<" and ">()"
     if (Array.from(inner).every((ch) => (ch >= "A" && ch <= "Z") || (ch >= "a" && ch <= "z") || (ch >= "0" && ch <= "9"))) return true;
   }
   return false;
-};
+}
+// strip `return` and trailing semicolon from generated body
+function strip(js: string): string {
+  if (js.startsWith("return ")) js = js.slice(7);
+  if (js.endsWith(";")) js = js.slice(0, -1);
+  return js;
+}
 
+// returns the annotated type of a let declaration (without spaces), or
+// undefined if none present. simpler implementation avoids repeating logic
+// used by `extractLetName`.
+function extractLetType(str: string): string | undefined {
+  const colon = str.indexOf(":");
+  const eq = str.indexOf("=");
+  if (colon === -1 || eq === -1) return undefined;
+  // ensure colon comes before equals
+  if (colon > eq) return undefined;
+  return str.slice(colon + 1, eq).trim();
+}
+
+
+// create a standard overflow error result
+function overflowResult(src: string): Result<string, CompileError> {
+  return {
+    ok: false,
+    error: {
+      source: src,
+      message: "Unsigned addition overflow",
+      reason: "u8 assignment from u16",
+      fix: "use compatible types or cast",
+      type: CompileErrorType.UnsignedOverflow,
+    },
+  };
+}
 // Named type for a parsed term descriptor
 export interface TermInfo {
   js: string;
@@ -119,49 +169,123 @@ export function compile(source: string): Result<string, CompileError> {
   // we can extend this function later without changing behaviour for now.
 
   const trimmed = source.trim();
+  // track width information for let-bound names (8,16 or undefined)
+  const letTypes = new Map<string, number | undefined>();
+  // shared parts array used in several checks
+  const parts = trimmed.split(";").map((s) => s.trim()).filter((s) => s.length > 0);
+
+  // detect duplicate `let` bindings by name before parsing further. we simply
+  // inspect each declaration head. this is crude but sufficient for the
+  // current tests.
+  {
+    const seen = new Set<string>();
+    for (const part of parts) {
+      const name = extractLetName(part);
+      if (name) {
+        if (seen.has(name)) {
+          return {
+            ok: false,
+            error: {
+              source,
+              message: "Duplicate variable declaration",
+              reason: "duplicate let binding",
+              fix: "use distinct names",
+              type: CompileErrorType.DuplicateDeclaration,
+            },
+          };
+        }
+        seen.add(name);
+      }
+    }
+  }
+
+  // support multiple semicolon-separated statements. we process each
+  // segment and emit a single JS function body where `let` bindings and
+  // expressions share the same scope. this avoids the previous recursion
+  // design which isolated each part in its own IIFE (breaking variable use).
+  if (trimmed.includes(";")) {
+    const stmts: string[] = [];
+    let finalExpr: string | undefined;
+    for (const [i, part] of parts.entries()) {
+      if (part.startsWith("let ")) {
+        const name = extractLetName(part)!; // name exists because startsWith let
+        const initExpr = part.slice(part.indexOf("=") + 1).trim();
+        const declaredType = extractLetType(part);
+        // determine initializer width (literal or previous variable)
+        let initWidth: number | undefined;
+        if (initExpr.endsWith("U8")) initWidth = 8;
+        else if (initExpr.endsWith("U16")) initWidth = 16;
+        else if (letTypes.has(initExpr)) initWidth = letTypes.get(initExpr);
+        // overflow check for U8
+        if (declaredType === "U8" && initWidth === 16) {
+          return overflowResult(source);
+        }
+        const initRes = compile(initExpr);
+        if (!initRes.ok) return initRes;
+        const initJs = strip(initRes.value);
+        stmts.push(`let ${name} = ${initJs};`);
+        // record type info
+        if (declaredType === "U8") letTypes.set(name, 8);
+        else if (declaredType === "U16") letTypes.set(name, 16);
+        else letTypes.set(name, initWidth);
+        continue;
+      }
+      const exprRes = compile(part);
+      if (!exprRes.ok) return exprRes;
+      const exprJs = strip(exprRes.value);
+      if (i === parts.length - 1) {
+        finalExpr = exprJs;
+      } else {
+        stmts.push(exprJs + ";");
+      }
+    }
+    if (finalExpr !== undefined) {
+      return { ok: true, value: "return (()=>{" + (stmts.join(" ") + (stmts.length ? " " : "") + "return " + finalExpr + ";") + "})()" };
+    }
+    // no final expression – default to returning 0
+    return { ok: true, value: "return (()=>{" + (stmts.join(" ") + "return 0;") + "})()" };
+  }
+
+
 
   // support a trivial let-binding pattern used by tests. this is not a
   // full statement parser; we only handle the specific form:
-  //   let <name> : <type> = <expr>; <name>
-  // where the trailing expression is the same identifier. we accept any
-  // initializer that the compiler already recognises (constants, reads, etc.)
-  // by recursively invoking `compile` and then stripping the leading
-  // `return`/`;` from the generated body.
+  //   let <name> : <type> = <expr>; [<name>]?
+  // where the optional trailing expression is the same identifier. if omitted,
+  // the binding executes but nothing is returned (equivalent to returning 0).
   if (trimmed.startsWith("let ")) {
+    // handle both `let x = ...` and `let x = ...; rest`
     const semi = trimmed.indexOf(";");
-    if (semi !== -1) {
-      const decl = trimmed.slice(0, semi).trim();
-      const rest = trimmed.slice(semi + 1).trim();
-      const afterLet = decl.slice(4).trim(); // drop "let "
-      const eq = afterLet.indexOf("=");
-      if (eq !== -1) {
-        const left = afterLet.slice(0, eq).trim();
-        const initExpr = afterLet.slice(eq + 1).trim();
-        const colon = left.indexOf(":");
-        if (colon !== -1) {
-          const name = left.slice(0, colon).trim();
-          // we don't enforce the type here; the test cares only about U8
-          if (rest === name) {
-            const initRes = compile(initExpr);
-            if (!initRes.ok) return initRes;
-            let initJs = initRes.value;
-            if (initJs.startsWith("return ")) {
-              initJs = initJs.slice(7);
-              if (initJs.endsWith(";")) initJs = initJs.slice(0, -1);
-            }
-            return {
-              ok: true,
-              value:
-                "return (()=>{let " +
-                name +
-                " = " +
-                initJs +
-                "; return " +
-                name +
-                ";})()",
-            };
-          }
+    const decl = semi !== -1 ? trimmed.slice(0, semi).trim() : trimmed;
+    const rest = semi !== -1 ? trimmed.slice(semi + 1).trim() : "";
+    const name = extractLetName(decl);
+    if (name) {
+      const initExpr = decl.slice(decl.indexOf("=") + 1).trim();
+      // before compiling, check for type mismatch when annotation present
+      const declaredType = extractLetType(decl);
+      if (declaredType && initExpr.endsWith("U16") && declaredType === "U8") {
+        return overflowResult(source);
+      }
+      // accept either rest === name OR rest is empty (no trailing expr)
+      if (rest === name || rest === "") {
+        const initRes = compile(initExpr);
+        if (!initRes.ok) return initRes;
+        let initJs = initRes.value;
+        if (initJs.startsWith("return ")) {
+          initJs = initJs.slice(7);
+          if (initJs.endsWith(";")) initJs = initJs.slice(0, -1);
         }
+        return {
+          ok: true,
+          value:
+            "return (()=>{let " +
+            name +
+            " = " +
+            initJs +
+            "; return " +
+            (rest === name ? name : "0") +
+            ";})()",
+        };
       }
     }
   }
@@ -282,6 +406,35 @@ export function compile(source: string): Result<string, CompileError> {
           (hasU8 ? trimmed.slice(0, -2) : trimmed) +
           ";",
       };
+    }
+  }
+
+  // allow bare identifiers as expressions (variables introduced by previous
+  // let statements or builtins such as `x`).
+  {
+    // allow bare identifiers as expressions (variables introduced by previous
+    // let statements or builtins such as `x`).
+    const s = trimmed;
+    let isIdVal = false;
+    if (s.length > 0) {
+      const first = s[0];
+      if (
+        first === "_" ||
+        first === "$" ||
+        (first >= "a" && first <= "z") ||
+        (first >= "A" && first <= "Z")
+      ) {
+        isIdVal = Array.from(s).every((ch) =>
+          ch === "_" ||
+          ch === "$" ||
+          (ch >= "a" && ch <= "z") ||
+          (ch >= "A" && ch <= "Z") ||
+          (ch >= "0" && ch <= "9"),
+        );
+      }
+    }
+    if (isIdVal) {
+      return { ok: true, value: "return " + trimmed + ";" };
     }
   }
 
