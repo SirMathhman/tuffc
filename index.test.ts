@@ -77,3 +77,4 @@ validate("let x = read<Bool>(); x", "true", 1);
 validate("let x = if (true) 3 else 5; x", "", 3);
 invalidate("let x = if (100) 3 else 5; x");
 invalidate("let x = if (true) 3 else true; x");
+invalidate("let x : Bool = if (true) 3 else 5; x");

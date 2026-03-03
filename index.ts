@@ -25,10 +25,74 @@ const isValidTypeStr = (typeStr: string): boolean => {
   );
 };
 
+const parseIfElse = (
+  expr: string,
+):
+  | {
+      condition: string;
+      consequent: string;
+      alternate: string;
+    }
+  | undefined => {
+  if (!expr.startsWith("if (")) {
+    return undefined;
+  }
+
+  let depthCounter = 0;
+  let conditionEndIdx = -1;
+
+  for (let i = 4; i < expr.length; i++) {
+    if (expr[i] === "(") depthCounter++;
+    if (expr[i] === ")") {
+      if (depthCounter === 0) {
+        conditionEndIdx = i;
+        break;
+      }
+      depthCounter--;
+    }
+  }
+
+  if (conditionEndIdx === -1) {
+    return undefined;
+  }
+
+  const condition = expr.substring(4, conditionEndIdx).trim();
+  const remaining = expr.substring(conditionEndIdx + 1).trim();
+
+  const elseIdx = remaining.lastIndexOf(" else ");
+  if (elseIdx === -1) {
+    return undefined;
+  }
+
+  const consequent = remaining.substring(0, elseIdx).trim();
+  const alternate = remaining.substring(elseIdx + 6).trim();
+
+  return { condition, consequent, alternate };
+};
+
 const extractValueType = (
   valueExpr: string,
   declarationTypes: Record<string, string>,
 ): string => {
+  // Handle if/else expressions
+  const ifElseParts = parseIfElse(valueExpr);
+  if (ifElseParts) {
+    const consequentType = extractValueType(
+      ifElseParts.consequent,
+      declarationTypes,
+    );
+    const alternateType = extractValueType(
+      ifElseParts.alternate,
+      declarationTypes,
+    );
+
+    // Return the type if they match, otherwise return empty string
+    if (consequentType === alternateType) {
+      return alternateType;
+    }
+    return "";
+  }
+
   // Handle dereference operator
   if (valueExpr.startsWith("*")) {
     const innerType = extractValueType(
@@ -58,6 +122,13 @@ const extractValueType = (
   // Check for boolean literals
   if (valueExpr === "true" || valueExpr === "false") {
     return "Bool";
+  }
+
+  // Check for plain numeric literals (just digits)
+  const isPlainNumber =
+    valueExpr.length > 0 && [...valueExpr].every((c) => c >= "0" && c <= "9");
+  if (isPlainNumber) {
+    return "I32"; // Default to I32 for plain numbers
   }
 
   const typeMarkerIdx = Math.max(
@@ -187,37 +258,13 @@ export const compile = (source: string): Result<string, string> => {
     expr: string,
     declarationTypes?: Record<string, string>,
   ): Result<string, string> => {
-    // Match pattern: if (condition) consequent else alternate
-    // Handle nested parentheses in condition
-    if (!expr.startsWith("if (")) {
+    const ifElseParts = parseIfElse(expr);
+
+    if (!ifElseParts) {
       return err("Invalid if/else expression");
     }
 
-    let depthCounter = 0;
-    let conditionEndIdx = -1;
-
-    for (let i = 4; i < expr.length; i++) {
-      if (expr[i] === "(") depthCounter++;
-      if (expr[i] === ")") {
-        if (depthCounter === 0) {
-          conditionEndIdx = i;
-          break;
-        }
-        depthCounter--;
-      }
-    }
-
-    if (conditionEndIdx === -1) {
-      return err("Invalid if/else condition");
-    }
-
-    const condition = expr.substring(4, conditionEndIdx).trim();
-    const remaining = expr.substring(conditionEndIdx + 1).trim();
-
-    const elseIdx = remaining.lastIndexOf(" else ");
-    if (elseIdx === -1) {
-      return err("Invalid if/else expression: missing else");
-    }
+    const { condition, consequent, alternate } = ifElseParts;
 
     // Validate that the condition is a boolean type
     if (declarationTypes) {
@@ -235,9 +282,6 @@ export const compile = (source: string): Result<string, string> => {
         return err("If/else condition must be of type Bool");
       }
     }
-
-    const consequent = remaining.substring(0, elseIdx).trim();
-    const alternate = remaining.substring(elseIdx + 6).trim();
 
     // Validate that consequent and alternate have the same type
     const consequentType = declarationTypes
