@@ -128,3 +128,4 @@ validate(
   "3 4",
   7,
 );
+invalidate("undefinedFunction()");

@@ -1721,88 +1721,99 @@ export const compile = (
     const parenIdx = finalReturnExpr.indexOf("(");
     if (parenIdx > 0) {
       const potentialFnName = finalReturnExpr.substring(0, parenIdx).trim();
-      if (
-        finalReturnExpr.endsWith(")") &&
-        potentialFnName in definedFunctions
-      ) {
-        const fnDef = definedFunctions[potentialFnName];
-        const argsStr = finalReturnExpr
-          .substring(parenIdx + 1, finalReturnExpr.length - 1)
-          .trim();
+      if (finalReturnExpr.endsWith(")")) {
+        // Skip built-in functions like read<T>()
+        const builtInFunctions = ["read"];
 
-        // Parse arguments (simple split by comma)
-        const args: string[] =
-          argsStr.length > 0
-            ? argsStr
-                .split(",")
-                .map((arg) => arg.trim())
-                .filter((arg) => arg.length > 0)
-            : [];
+        // Check if function is defined (skip built-in functions)
+        if (
+          !(potentialFnName in definedFunctions) &&
+          !builtInFunctions.includes(potentialFnName)
+        ) {
+          return err(`Undefined function: ${potentialFnName}`);
+        }
 
-        if (args.length === fnDef.params.length) {
-          // Process arguments by removing type annotations
-          const compiledArgs = args.map((arg) => removeTypeAnnotations(arg));
+        // Only inline user-defined functions
+        if (potentialFnName in definedFunctions) {
+          const fnDef = definedFunctions[potentialFnName];
+          const argsStr = finalReturnExpr
+            .substring(parenIdx + 1, finalReturnExpr.length - 1)
+            .trim();
 
-          // Extract return expression from function body
-          let returnStmt: string;
+          // Parse arguments (simple split by comma)
+          const args: string[] =
+            argsStr.length > 0
+              ? argsStr
+                  .split(",")
+                  .map((arg) => arg.trim())
+                  .filter((arg) => arg.length > 0)
+              : [];
 
-          if (fnDef.body.startsWith("{") && fnDef.body.endsWith("}")) {
-            // Block body: extract content from { ... }
-            const bodyContent = fnDef.body
-              .substring(1, fnDef.body.length - 1)
-              .trim();
+          if (args.length === fnDef.params.length) {
+            // Process arguments by removing type annotations
+            const compiledArgs = args.map((arg) => removeTypeAnnotations(arg));
 
-            if (bodyContent.startsWith("return ")) {
-              // Explicit return statement
-              returnStmt = bodyContent.substring(7);
-              if (returnStmt.endsWith(";")) {
-                returnStmt = returnStmt
-                  .substring(0, returnStmt.length - 1)
-                  .trim();
+            // Extract return expression from function body
+            let returnStmt: string;
+
+            if (fnDef.body.startsWith("{") && fnDef.body.endsWith("}")) {
+              // Block body: extract content from { ... }
+              const bodyContent = fnDef.body
+                .substring(1, fnDef.body.length - 1)
+                .trim();
+
+              if (bodyContent.startsWith("return ")) {
+                // Explicit return statement
+                returnStmt = bodyContent.substring(7);
+                if (returnStmt.endsWith(";")) {
+                  returnStmt = returnStmt
+                    .substring(0, returnStmt.length - 1)
+                    .trim();
+                }
+              } else {
+                // Implicit return (last expression in block)
+                returnStmt = bodyContent;
               }
             } else {
-              // Implicit return (last expression in block)
-              returnStmt = bodyContent;
+              // Expression body: use directly
+              returnStmt = fnDef.body;
             }
-          } else {
-            // Expression body: use directly
-            returnStmt = fnDef.body;
-          }
 
-          // Substitute parameters into the return statement
-          finalReturnExpr = fnDef.params.reduce((stmt, param, idx) => {
-            const compiledArg = compiledArgs[idx];
-            // Simple string replacement for parameter substitution
-            // This works for simple cases; doesn't handle word boundaries perfectly
-            // but good enough for basic function inlining
-            let result = stmt;
-            let searchPos = 0;
-            while (true) {
-              const idx = result.indexOf(param.name, searchPos);
-              if (idx === -1) break;
-              // Check boundaries
-              const before = idx > 0 ? result[idx - 1] : " ";
-              const after =
-                idx + param.name.length < result.length
-                  ? result[idx + param.name.length]
-                  : " ";
-              const isWordChar = (c: string) =>
-                (c >= "a" && c <= "z") ||
-                (c >= "A" && c <= "Z") ||
-                (c >= "0" && c <= "9") ||
-                c === "_";
-              if (!isWordChar(before) && !isWordChar(after)) {
-                result =
-                  result.substring(0, idx) +
-                  `(${compiledArg})` +
-                  result.substring(idx + param.name.length);
-                searchPos = idx + compiledArg.length + 2;
-              } else {
-                searchPos = idx + 1;
+            // Substitute parameters into the return statement
+            finalReturnExpr = fnDef.params.reduce((stmt, param, idx) => {
+              const compiledArg = compiledArgs[idx];
+              // Simple string replacement for parameter substitution
+              // This works for simple cases; doesn't handle word boundaries perfectly
+              // but good enough for basic function inlining
+              let result = stmt;
+              let searchPos = 0;
+              while (true) {
+                const idx = result.indexOf(param.name, searchPos);
+                if (idx === -1) break;
+                // Check boundaries
+                const before = idx > 0 ? result[idx - 1] : " ";
+                const after =
+                  idx + param.name.length < result.length
+                    ? result[idx + param.name.length]
+                    : " ";
+                const isWordChar = (c: string) =>
+                  (c >= "a" && c <= "z") ||
+                  (c >= "A" && c <= "Z") ||
+                  (c >= "0" && c <= "9") ||
+                  c === "_";
+                if (!isWordChar(before) && !isWordChar(after)) {
+                  result =
+                    result.substring(0, idx) +
+                    `(${compiledArg})` +
+                    result.substring(idx + param.name.length);
+                  searchPos = idx + compiledArg.length + 2;
+                } else {
+                  searchPos = idx + 1;
+                }
               }
-            }
-            return result;
-          }, returnStmt);
+              return result;
+            }, returnStmt);
+          }
         }
       }
     }
