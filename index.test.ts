@@ -16,3 +16,5 @@ function invalidate(source: string) {
 
 validate("", 0);
 invalidate("x");
+validate("100", 100);
+validate("100U8", 100);
