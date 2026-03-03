@@ -1750,6 +1750,27 @@ export const compile = (
               : [];
 
           if (args.length === fnDef.params.length) {
+            // ---- Argument type validation ----
+            const isBooleanLiteral = (arg: string): boolean =>
+              arg === "true" || arg === "false";
+
+            const typeError = fnDef.params
+              .map((param, i) => ({
+                param,
+                arg: args[i].trim(),
+              }))
+              .find(
+                ({ param, arg }) =>
+                  isBooleanLiteral(arg) && param.type !== "Bool",
+              );
+
+            if (typeError) {
+              return err(
+                `Argument type mismatch for parameter ${typeError.param.name}: expected ${typeError.param.type}, got Bool`,
+              );
+            }
+            // ---- End argument type validation ----
+
             // Process arguments by removing type annotations
             const compiledArgs = args.map((arg) => removeTypeAnnotations(arg));
 
