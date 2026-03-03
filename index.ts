@@ -719,56 +719,61 @@ export const compile = (
         );
       }
 
-      // Compile arguments
-      const compiledArgs: string[] = [];
-      for (const arg of args) {
-        const compiledArgRes = extractCompiledValue(arg, true);
-        if (!compiledArgRes.ok) {
-          return compiledArgRes;
-        }
-        compiledArgs.push(compiledArgRes.value);
-      }
+      const isBooleanLiteral = (arg: string): boolean =>
+        arg === "true" || arg === "false";
 
-      // Create bindings for function parameters
-      const paramBindings: Record<string, string> = fnDef.params.reduce(
-        (bindings, param, idx) => {
-          bindings[param.name] = compiledArgs[idx];
-          return bindings;
-        },
-        {} as Record<string, string>,
-      );
+      const typeError = fnDef.params
+        .map((param, i) => ({ param, arg: args[i].trim() }))
+        .find(
+          ({ param, arg }) => isBooleanLiteral(arg) && param.type !== "Bool",
+        );
 
-      // Extract return statement from function body
-      const bodyContent = fnDef.body.substring(1, fnDef.body.length - 1).trim();
-
-      // Parse return statement
-      if (!bodyContent.startsWith("return ")) {
+      if (typeError) {
         return err(
-          `Function '${potentialFnName}' body must contain a return statement`,
+          `Argument type mismatch for parameter ${typeError.param.name}: expected ${typeError.param.type}, got Bool`,
         );
       }
 
-      const returnExprStr = bodyContent.substring(7).endsWith(";")
-        ? bodyContent.substring(7, bodyContent.length - 1).trim()
-        : bodyContent.substring(7).trim();
+      const compiledArgsResult = args.reduce(
+        (acc, arg) => {
+          if (!acc.ok) {
+            return acc;
+          }
 
-      // Replace parameter references with compiled values
-      let finalExpr = returnExprStr;
-      for (const [paramName, compiledValue] of Object.entries(paramBindings)) {
-        // Replace parameter name with compiled value (using word boundaries)
-        const regex = new RegExp(`\\b${paramName}\\b`, "g");
-        finalExpr = finalExpr.replace(regex, `(${compiledValue})`);
+          const readReplacedArgResult = replaceReadCalls(arg);
+          if (!readReplacedArgResult.ok) {
+            return readReplacedArgResult;
+          }
+
+          const compiledArgRes = extractCompiledValue(
+            readReplacedArgResult.value,
+            true,
+          );
+          if (!compiledArgRes.ok) {
+            return compiledArgRes;
+          }
+
+          acc.value.push(compiledArgRes.value);
+          return acc;
+        },
+        ok([] as string[]) as Result<string[], string>,
+      );
+
+      if (!compiledArgsResult.ok) {
+        return compiledArgsResult;
       }
 
-      // The final expression now has parameters replaced with compiled JavaScript expressions
-      // Return it directly (it's already in JavaScript form)
-      return ok(finalExpr);
+      return ok(`${potentialFnName}(${compiledArgsResult.value.join(", ")})`);
     };
 
     const extractCompiledValue = (
       expr: string,
       isAssignmentContext: boolean,
     ): Result<string, string> => {
+      if (expr === "read()") {
+        return ok("read()");
+      }
+
       // Try function calls first
       const fnCallResult = compileFunctionCall(expr);
       if (fnCallResult !== undefined) {
@@ -1689,165 +1694,78 @@ export const compile = (
       }
     }
 
-    // Process return expression to inline function calls and handle Tuff-specific syntax
+    // Process return expression function calls with defined function context
     let finalReturnExpr = returnExpr;
-
-    // Helper to remove type annotations (e.g., <I32> -> empty)
-    const removeTypeAnnotations = (expr: string): string => {
-      let result = expr;
-      [...expr].reduce(
-        (acc, char, i) => {
-          if (acc.depth === 0 && char === "<") {
-            acc.start = i;
-            acc.depth = 1;
-          } else if (char === "<") {
-            acc.depth++;
-          } else if (char === ">") {
-            acc.depth--;
-            if (acc.depth === 0 && acc.start !== -1) {
-              result = result.substring(0, acc.start) + result.substring(i + 1);
-              acc.start = -1;
-            }
-          }
-          return acc;
-        },
-        { depth: 0, start: -1 },
-      );
-      return result;
-    };
-
-    // Try to detect and inline function calls in return expression
-    // Match pattern: functionName(...)
-    const parenIdx = finalReturnExpr.indexOf("(");
-    if (parenIdx > 0) {
-      const potentialFnName = finalReturnExpr.substring(0, parenIdx).trim();
-      if (finalReturnExpr.endsWith(")")) {
-        // Skip built-in functions like read<T>()
-        const builtInFunctions = ["read"];
-
-        // Check if function is defined (skip built-in functions)
-        if (
-          !(potentialFnName in definedFunctions) &&
-          !builtInFunctions.includes(potentialFnName)
-        ) {
-          return err(`Undefined function: ${potentialFnName}`);
-        }
-
-        // Only inline user-defined functions
-        if (potentialFnName in definedFunctions) {
-          const fnDef = definedFunctions[potentialFnName];
-          const argsStr = finalReturnExpr
-            .substring(parenIdx + 1, finalReturnExpr.length - 1)
-            .trim();
-
-          // Parse arguments (simple split by comma)
-          const args: string[] =
-            argsStr.length > 0
-              ? argsStr
-                  .split(",")
-                  .map((arg) => arg.trim())
-                  .filter((arg) => arg.length > 0)
-              : [];
-
-          if (args.length === fnDef.params.length) {
-            // ---- Argument type validation ----
-            const isBooleanLiteral = (arg: string): boolean =>
-              arg === "true" || arg === "false";
-
-            const typeError = fnDef.params
-              .map((param, i) => ({
-                param,
-                arg: args[i].trim(),
-              }))
-              .find(
-                ({ param, arg }) =>
-                  isBooleanLiteral(arg) && param.type !== "Bool",
-              );
-
-            if (typeError) {
-              return err(
-                `Argument type mismatch for parameter ${typeError.param.name}: expected ${typeError.param.type}, got Bool`,
-              );
-            }
-            // ---- End argument type validation ----
-
-            // Process arguments by removing type annotations
-            const compiledArgs = args.map((arg) => removeTypeAnnotations(arg));
-
-            // Extract return expression from function body
-            let returnStmt: string;
-
-            if (fnDef.body.startsWith("{") && fnDef.body.endsWith("}")) {
-              // Block body: extract content from { ... }
-              const bodyContent = fnDef.body
-                .substring(1, fnDef.body.length - 1)
-                .trim();
-
-              if (bodyContent.startsWith("return ")) {
-                // Explicit return statement
-                returnStmt = bodyContent.substring(7);
-                if (returnStmt.endsWith(";")) {
-                  returnStmt = returnStmt
-                    .substring(0, returnStmt.length - 1)
-                    .trim();
-                }
-              } else {
-                // Implicit return (last expression in block)
-                returnStmt = bodyContent;
-              }
-            } else {
-              // Expression body: use directly
-              returnStmt = fnDef.body;
-            }
-
-            // Substitute parameters into the return statement
-            finalReturnExpr = fnDef.params.reduce((stmt, param, idx) => {
-              const compiledArg = compiledArgs[idx];
-              // Simple string replacement for parameter substitution
-              // This works for simple cases; doesn't handle word boundaries perfectly
-              // but good enough for basic function inlining
-              let result = stmt;
-              let searchPos = 0;
-              while (true) {
-                const idx = result.indexOf(param.name, searchPos);
-                if (idx === -1) break;
-                // Check boundaries
-                const before = idx > 0 ? result[idx - 1] : " ";
-                const after =
-                  idx + param.name.length < result.length
-                    ? result[idx + param.name.length]
-                    : " ";
-                const isWordChar = (c: string) =>
-                  (c >= "a" && c <= "z") ||
-                  (c >= "A" && c <= "Z") ||
-                  (c >= "0" && c <= "9") ||
-                  c === "_";
-                if (!isWordChar(before) && !isWordChar(after)) {
-                  result =
-                    result.substring(0, idx) +
-                    `(${compiledArg})` +
-                    result.substring(idx + param.name.length);
-                  searchPos = idx + compiledArg.length + 2;
-                } else {
-                  searchPos = idx + 1;
-                }
-              }
-              return result;
-            }, returnStmt);
-          } else {
-            // Argument count mismatch
-            return err(
-              `Incorrect number of arguments for function ${potentialFnName}`,
-            );
-          }
-        }
+    const compiledReturnCall = compileFunctionCall(finalReturnExpr);
+    if (compiledReturnCall !== undefined) {
+      if (!compiledReturnCall.ok) {
+        return compiledReturnCall;
       }
+      finalReturnExpr = compiledReturnCall.value;
     }
 
-    // Clean up any remaining type annotations in the return expression
-    finalReturnExpr = removeTypeAnnotations(finalReturnExpr);
+    const compileFunctionDefinition = (
+      functionName: string,
+      fnDef: {
+        params: Array<{ name: string; type: string }>;
+        returnType: string;
+        body: string;
+      },
+    ): Result<string, string> => {
+      const paramsList = fnDef.params.map((param) => param.name).join(", ");
+      let functionBody = fnDef.body;
 
-    return ok(statements.join("\n") + "\nreturn " + finalReturnExpr + ";");
+      if (functionBody.startsWith("{") && functionBody.endsWith("}")) {
+        functionBody = functionBody
+          .substring(1, functionBody.length - 1)
+          .trim();
+      } else {
+        functionBody = `return ${functionBody};`;
+      }
+
+      const bodyWithReadCalls = replaceReadCalls(functionBody);
+      if (!bodyWithReadCalls.ok) {
+        return bodyWithReadCalls;
+      }
+
+      return ok(
+        `function ${functionName}(${paramsList}) { ${bodyWithReadCalls.value} }`,
+      );
+    };
+
+    const compiledFunctionDefinitionsResult = Object.entries(
+      definedFunctions,
+    ).reduce(
+      (acc, [functionName, fnDef]) => {
+        if (!acc.ok) {
+          return acc;
+        }
+
+        const compiledFunctionDefinition = compileFunctionDefinition(
+          functionName,
+          fnDef,
+        );
+        if (!compiledFunctionDefinition.ok) {
+          return compiledFunctionDefinition;
+        }
+
+        acc.value.push(compiledFunctionDefinition.value);
+        return acc;
+      },
+      ok([] as string[]) as Result<string[], string>,
+    );
+
+    if (!compiledFunctionDefinitionsResult.ok) {
+      return compiledFunctionDefinitionsResult;
+    }
+
+    const outputLines = [
+      ...compiledFunctionDefinitionsResult.value,
+      ...statements,
+      `return ${finalReturnExpr};`,
+    ].filter((line) => line.trim().length > 0);
+
+    return ok(outputLines.join("\n"));
   }
 
   // If/else expressions: if (condition) consequent else alternate
