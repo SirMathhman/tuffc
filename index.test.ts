@@ -150,6 +150,7 @@ validate("struct MyStruct { x : I32; y : I32; }", "", 0); // struct with fields 
 // invalid struct field syntax examples
 invalidate("struct Bad { x I32; }"); // missing colon
 invalidate("struct Bad { x : Foo; }"); // invalid type
+invalidate("struct MyStruct { x : I32; x : I32; }"); // duplicate field name
 
 invalidate("struct Empty {} struct Empty");
 // ensure duplicate struct with braces also errors
