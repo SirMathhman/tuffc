@@ -7,6 +7,14 @@
         "command": "scripts/hooks/block-no-verify.sh",
         "timeout": 5
       }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "windows": "scripts\\hooks\\run-precommit.ps1",
+        "command": "scripts/hooks/run-precommit.sh",
+        "timeout": 60
+      }
     ]
   }
 }

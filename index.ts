@@ -1658,7 +1658,7 @@ export const compile = (
           // Handle struct declaration: just record name and reject duplicates
           // expected syntax: struct Name { }
           const structBody = stmt.substring(6).trim();
-          const parts = structBody.split(" ").filter(p => p.length > 0);
+          const parts = structBody.split(" ").filter((p) => p.length > 0);
           const name = parts[0] || "";
           if (!name) {
             return err("Invalid struct syntax");
