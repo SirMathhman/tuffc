@@ -7,19 +7,19 @@
       },
       {
         "type": "command",
-        "command": "bun run lint || exit 2"
+        "command": "npm run lint || exit 2"
       },
       {
         "type": "command",
-        "command": "bun run hook-inline"
+        "command": "npm run hook-inline"
       },
       {
         "type": "command",
-        "command": "bun run hook-duplicate"
+        "command": "npm run hook-duplicate"
       },
       {
         "type": "command",
-        "command": "bun run hook-no-inner-functions"
+        "command": "npm run hook-no-inner-functions"
       }
     ]
   }

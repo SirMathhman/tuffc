@@ -121,6 +121,48 @@ invalidate(
   CompileErrorType.NotImplemented,
 );
 
+// simple function definition alone returns 0
+validate("fn empty() => {}", "", 0);
+// void return annotation should also work
+validate("fn empty() : Void => {}", "", 0);
+
+// return type width should propagate and enforce assignments
+invalidate(
+  "fn get() => 100U16; let temp : U8 = get();",
+  CompileErrorType.UnsignedOverflow,
+);
+
+// simple function definition and call
+validate("fn get() : I32 => read<I32>(); get()", "100", 100);
+// function with single parameter
+validate(
+  "fn add(param : I32) : I32 => read<I32>() + param; add(50)",
+  "100",
+  150,
+);
+// multi-parameter addition
+validate(
+  "fn add(first : I32, second : I32) : I32 => first + second; add(3, 4)",
+  "",
+  7,
+);
+// conflicting names between variable and function should error
+invalidate(
+  "let empty = 0; fn empty() => {}",
+  CompileErrorType.DuplicateDeclaration,
+);
+
+// duplicate parameter names should be rejected
+invalidate(
+  "fn accept(first : I32, first : I32) => {}",
+  CompileErrorType.DuplicateDeclaration,
+);
+// duplicate function names should fail (same error type as variable duplicates)
+invalidate(
+  "fn empty() => {} fn empty() => {}",
+  CompileErrorType.DuplicateDeclaration,
+);
+
 // overflow via pointer write with wider type
 invalidate(
   "let mut x = read<U8>(); let y = &mut x; *y = read<U32>(); x",

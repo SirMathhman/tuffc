@@ -74,6 +74,52 @@ function extractLetName(str: string): string | undefined {
   return left.length > 0 ? left : undefined;
 }
 
+// extract function name from a declaration like "fn foo() => ...".
+function extractFnName(str: string): string | undefined {
+  if (!str.startsWith("fn ")) return undefined;
+  const after = str.slice(3).trim();
+  const paren = after.indexOf("(");
+  if (paren === -1) return undefined;
+  const name = after.slice(0, paren).trim();
+  return name.length > 0 ? name : undefined;
+}
+
+// compile the body of a function declaration and return stripped JS
+function compileFnBody(
+  body: string,
+  letTypes: Map<string, number | undefined>,
+  letPtr: Map<string, string | undefined>,
+  letFns: Set<string>,
+  fnReturn: Map<string, number | undefined>,
+): Result<string, CompileError> {
+  if (body.startsWith("{") && body.endsWith("}")) {
+    body = "0";
+  }
+  const bodyRes = compile(body, letTypes, letPtr, letFns, fnReturn);
+  if (!bodyRes.ok) return bodyRes;
+  return { ok: true, value: strip(bodyRes.value) };
+}
+
+// extract the right-hand expression (body) from a function declaration
+function parseFnBody(part: string): string {
+  const arrow = part.indexOf("=>");
+  let body = "0";
+  if (arrow !== -1) {
+    body = part.slice(arrow + 2).trim();
+  }
+  return body;
+}
+
+// produce a JS text for a function given its name, compiled body, and param map
+function formatFunction(
+  fname: string,
+  bodyJs: string,
+  fnParams: Map<string, string[]>,
+): string {
+  const params = fnParams.get(fname) || [];
+  return `function ${fname}(${params.join(",")}){return ${bodyJs};}`;
+}
+
 // Detects any read<T>() call notation, e.g. read<I32>(), read<U8>(), read().
 function isReadExpr(s: string): boolean {
   if (s === "read()") return true;
@@ -95,6 +141,7 @@ function isReadExpr(s: string): boolean {
 function computeWidth(
   expr: string,
   letTypes: Map<string, number | undefined>,
+  fnReturn: Map<string, number | undefined>,
 ): number | undefined {
   if (expr.endsWith("U8")) return 8;
   if (expr.endsWith("U16")) return 16;
@@ -106,6 +153,13 @@ function computeWidth(
     if (inner === "U32") return 32;
   }
   if (letTypes.has(expr)) return letTypes.get(expr);
+  // check for function call width
+  if (expr.endsWith("()")) {
+    const fname = expr.slice(0, -2);
+    if (fnReturn.has(fname)) {
+      return fnReturn.get(fname);
+    }
+  }
   return undefined;
 }
 
@@ -307,6 +361,7 @@ export interface TermAccumulator {
 // Returns undefined for any term that cannot be recognised.
 const parseTerm = (t: string): TermInfo | undefined => {
   if (isReadExpr(t)) return { js: "read()" };
+  if (isIdentifier(t)) return { js: t };
   let idx2 = 0;
   if (t[idx2] === "+" || t[idx2] === "-") idx2++;
   let rest2 = t.slice(idx2);
@@ -341,6 +396,8 @@ export function compile(
   source: string,
   envLetTypes?: Map<string, number | undefined>,
   envLetPtr?: Map<string, string | undefined>,
+  envFns?: Set<string>,
+  envFnReturn?: Map<string, number | undefined>,
 ): Result<string, CompileError> {
   // A minimal implementation to make the existing tests pass. The tests
   // currently validate an empty program evaluates to 0 and that a numeric
@@ -354,36 +411,110 @@ export function compile(
   const letPtr = envLetPtr || new Map<string, string | undefined>(); // base type if pointer
   const letPtrTarget = new Map<string, string>(); // pointer var -> target var name
   const letPtrMutable = new Map<string, boolean>(); // is pointer variable itself mutable (*/not)
-  // shared parts array used in several checks
-  const parts = trimmed
+  const letFns = envFns || new Set<string>();
+  const fnParams = new Map<string, string[]>();
+  const fnReturn = envFnReturn || new Map<string, number | undefined>();
+  // shared parts array used in several checks. we split on semicolons
+  // and also break apart consecutive function declarations without
+  // semicolons by manually scanning for additional "fn " tokens.
+  const raw = trimmed
     .split(";")
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
+  const parts: string[] = [];
+  for (const p of raw) {
+    let idx = p.indexOf("fn ", 1);
+    if (idx === -1) {
+      parts.push(p);
+    } else {
+      let start = 0;
+      while (true) {
+        idx = p.indexOf("fn ", start + 1);
+        if (idx === -1) {
+          parts.push(p.slice(start).trim());
+          break;
+        }
+        parts.push(p.slice(start, idx).trim());
+        start = idx;
+      }
+    }
+  }
 
-  // detect duplicate `let` bindings by name before parsing further and
-  // record mutability/type info for each declaration. we look at the raw
-  // `part` string to see if it begins with `let mut`.
+  // detect duplicate `let` bindings and function declarations by name
+  // before parsing further. we also record mutability/type info for lets.
   {
-    const seen = new Set<string>();
+    const seenLets = new Set<string>();
+    const seenFns = new Set<string>();
     for (const part of parts) {
-      const name = extractLetName(part);
-      if (name) {
-        if (seen.has(name)) {
+      const lname = extractLetName(part);
+      if (lname) {
+        if (seenLets.has(lname) || seenFns.has(lname)) {
           return {
             ok: false,
             error: {
               source,
               message: "Duplicate variable declaration",
-              reason: "duplicate let binding",
+              reason: "name already used",
               fix: "use distinct names",
               type: CompileErrorType.DuplicateDeclaration,
             },
           };
         }
-        seen.add(name);
+        seenLets.add(lname);
         // mutability
         const isMut = part.startsWith("let mut ");
-        letMut.set(name, isMut);
+        letMut.set(lname, isMut);
+      }
+      const fname = extractFnName(part);
+      if (fname) {
+        if (seenFns.has(fname) || seenLets.has(fname)) {
+          return {
+            ok: false,
+            error: {
+              source,
+              message: "Duplicate function declaration",
+              reason: "name already used",
+              fix: "use distinct names",
+              type: CompileErrorType.DuplicateDeclaration,
+            },
+          };
+        }
+        seenFns.add(fname);
+        letFns.add(fname);
+        // record parameters if declared; also check for duplicate names
+        const open = part.indexOf("(");
+        const close = part.indexOf(")");
+        if (open !== -1 && close !== -1 && close > open + 1) {
+          const inside = part.slice(open + 1, close).trim();
+          const decls = inside
+            .split(",")
+            .map((s) => s.trim())
+            .filter((s) => s);
+          const seenP = new Set<string>();
+          for (const decl of decls) {
+            const pname = decl.split(":")[0].trim();
+            if (isIdentifier(pname)) {
+              if (seenP.has(pname)) {
+                return {
+                  ok: false,
+                  error: {
+                    source,
+                    message: "Duplicate parameter name",
+                    reason: "duplicate fn parameter",
+                    fix: "use distinct parameter names",
+                    type: CompileErrorType.DuplicateDeclaration,
+                  },
+                };
+              }
+              seenP.add(pname);
+            }
+          }
+          // stash all parameter names for call support
+          const names = decls
+            .map((d) => d.split(":")[0].trim())
+            .filter((n) => isIdentifier(n));
+          if (names.length) fnParams.set(fname, names);
+        }
       }
     }
   }
@@ -396,19 +527,31 @@ export function compile(
     const stmts: string[] = [];
     let finalExpr: string | undefined;
     for (const [i, part] of parts.entries()) {
+      // function declaration in multi-stmt context
+      if (part.startsWith("fn ")) {
+        const fname = extractFnName(part)!;
+        const body = parseFnBody(part);
+        // infer return width from body expression
+        const retw = computeWidth(body, letTypes, fnReturn);
+        fnReturn.set(fname, retw);
+        const bodyRes = compileFnBody(body, letTypes, letPtr, letFns, fnReturn);
+        if (!bodyRes.ok) return bodyRes;
+        const bodyJs = bodyRes.value;
+        stmts.push(formatFunction(fname, bodyJs, fnParams));
+        continue;
+      }
       if (part.startsWith("let ")) {
         const name = extractLetName(part)!; // understands "mut" now
         const initExpr = part.slice(part.indexOf("=") + 1).trim();
         const declaredType = extractLetType(part);
-        // determine initializer width (literal, read<> or previous variable)
-        let initWidth: number | undefined;
-        if (initExpr.endsWith("U8")) initWidth = 8;
-        else if (initExpr.endsWith("U16")) initWidth = 16;
-        else if (initExpr.startsWith("read<") && initExpr.endsWith("()")) {
-          const inner = initExpr.slice(5, initExpr.length - 3);
-          if (inner === "U8") initWidth = 8;
-          else if (inner === "U16") initWidth = 16;
-        } else if (letTypes.has(initExpr)) initWidth = letTypes.get(initExpr);
+        // determine initializer width using computeWidth (handles literals, read<>,
+        // variables, and function calls) so we can enforce overflow rules even
+        // when the initializer is a function invocation.
+        let initWidth: number | undefined = computeWidth(
+          initExpr,
+          letTypes,
+          fnReturn,
+        );
         // pointer type mismatch: check with helper
         const ptrErr = checkPointer(
           initExpr,
@@ -418,11 +561,11 @@ export function compile(
           source,
         );
         if (ptrErr) return ptrErr;
-        // overflow check for U8
+        // overflow check for U8 when the initializer has a larger width
         if (declaredType === "U8" && initWidth === 16) {
           return overflowResult(source);
         }
-        const initRes = compile(initExpr, letTypes, letPtr);
+        const initRes = compile(initExpr, letTypes, letPtr, letFns);
         if (!initRes.ok) return initRes;
         const initJs = strip(initRes.value);
         stmts.push(`let ${name} = ${initJs};`);
@@ -480,7 +623,7 @@ export function compile(
           }
           const target = letPtrTarget.get(ptrVar)!;
           const width = letTypes.get(target);
-          const rhsWidth = computeWidth(rhs, letTypes);
+          const rhsWidth = computeWidth(rhs, letTypes, fnReturn);
           if (
             width !== undefined &&
             rhsWidth !== undefined &&
@@ -488,7 +631,7 @@ export function compile(
           ) {
             return overflowResult(source);
           }
-          const rhsRes = compile(rhs, letTypes, letPtr);
+          const rhsRes = compile(rhs, letTypes, letPtr, letFns, fnReturn);
           if (!rhsRes.ok) return rhsRes;
           stmts.push(target + " = " + strip(rhsRes.value) + ";");
           continue;
@@ -520,14 +663,14 @@ export function compile(
           };
         }
         const width = letTypes.get(lhs);
-        const rhsWidth = computeWidth(rhs, letTypes);
+        const rhsWidth = computeWidth(rhs, letTypes, fnReturn);
         if (width !== undefined && rhsWidth !== undefined && rhsWidth > width) {
           return overflowResult(source);
         }
         if (width === undefined && rhsWidth !== undefined) {
           letTypes.set(lhs, rhsWidth);
         }
-        const rhsRes = compile(rhs, letTypes, letPtr);
+        const rhsRes = compile(rhs, letTypes, letPtr, letFns);
         if (!rhsRes.ok) return rhsRes;
         const rhsJs = strip(rhsRes.value);
         stmts.push(lhs + " = " + rhsJs + ";");
@@ -535,7 +678,7 @@ export function compile(
         stmts.push(lhs + " = 0;");
         continue;
       }
-      const exprRes = compile(part, letTypes, letPtr);
+      const exprRes = compile(part, letTypes, letPtr, letFns, fnReturn);
       if (!exprRes.ok) return exprRes;
       const exprJs = strip(exprRes.value);
       if (i === parts.length - 1) {
@@ -564,6 +707,64 @@ export function compile(
     };
   }
 
+  // single-statement function declaration
+  if (trimmed.startsWith("fn ")) {
+    const fname = extractFnName(trimmed);
+    if (fname) {
+      const body = parseFnBody(trimmed);
+      const retw = computeWidth(body, letTypes, fnReturn);
+      fnReturn.set(fname, retw);
+      const bodyRes = compileFnBody(body, letTypes, letPtr, letFns, fnReturn);
+      if (!bodyRes.ok) return bodyRes;
+      const bodyJs = bodyRes.value;
+      const fnText = formatFunction(fname, bodyJs, fnParams);
+      return {
+        ok: true,
+        value: `return (()=>{${fnText} return 0;})()`,
+      };
+    }
+  }
+  // simple function call expression when alone, optionally with a single
+  // argument. collect function name and argument expression if present.
+  if (trimmed.endsWith(")")) {
+    const open = trimmed.indexOf("(");
+    if (open !== -1) {
+      const fname = trimmed.slice(0, open);
+      if (isIdentifier(fname)) {
+        if (!letFns.has(fname)) {
+          return {
+            ok: false,
+            error: {
+              source,
+              message: "Call to undefined function",
+              reason: "unknown function",
+              fix: "declare the function first",
+              type: CompileErrorType.NotImplemented,
+            },
+          };
+        }
+        const argStr = trimmed.slice(open + 1, -1).trim();
+        if (argStr === "") {
+          return { ok: true, value: "return " + fname + "();" };
+        }
+        const args = argStr
+          .split(",")
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0);
+        const compiled: string[] = [];
+        for (const a of args) {
+          const aRes = compile(a, letTypes, letPtr, letFns, fnReturn);
+          if (!aRes.ok) return aRes;
+          compiled.push(strip(aRes.value));
+        }
+        return {
+          ok: true,
+          value: "return " + fname + "(" + compiled.join(",") + ");",
+        };
+      }
+    }
+  }
+
   // support a trivial let-binding pattern used by tests. this is not a
   // full statement parser; we only handle the specific form:
   //   let <name> : <type> = <expr>; [<name>]?
@@ -588,7 +789,15 @@ export function compile(
         source,
       );
       if (ptrErr) return ptrErr;
-      if (declaredType && initExpr.endsWith("U16") && declaredType === "U8") {
+      // width check: compute actual initializer width to catch function
+      // return values as well as literals
+      const initWidth = computeWidth(initExpr, letTypes, fnReturn);
+      if (
+        declaredType &&
+        initWidth !== undefined &&
+        declaredType === "U8" &&
+        initWidth === 16
+      ) {
         return overflowResult(source);
       }
       // record pointer info for single-let
@@ -603,7 +812,7 @@ export function compile(
       );
       // accept either rest === name OR rest is empty (no trailing expr)
       if (rest === name || rest === "") {
-        const initRes = compile(initExpr, letTypes, letPtr);
+        const initRes = compile(initExpr, letTypes, letPtr, letFns);
         if (!initRes.ok) return initRes;
         let initJs = initRes.value;
         if (initJs.startsWith("return ")) {
@@ -746,22 +955,38 @@ export function compile(
   }
 
   // Recognise a simple integer literal (optional leading +/-, digits only),
-  // with optional `U8` suffix. We simply strip the suffix when emitting JS.
+  // with optional unsigned suffix (U8, U16, U32). We strip the suffix when
+  // emitting JS and perform range checks for the known widths.
   {
     let idx = 0;
     if (trimmed[idx] === "+" || trimmed[idx] === "-") {
       idx++;
     }
     let rest = trimmed.slice(idx);
-    const hasU8 = rest.endsWith("U8");
-    if (hasU8) {
+    let suffix = "";
+    let width: number | undefined;
+    if (rest.endsWith("U8")) {
+      suffix = "U8";
+      width = 8;
+    } else if (rest.endsWith("U16")) {
+      suffix = "U16";
+      width = 16;
+    } else if (rest.endsWith("U32")) {
+      suffix = "U32";
+      width = 32;
+    }
+    if (suffix) {
       // reject negative unsigned literals
       if (trimmed.startsWith("-")) {
         // fall through to error case below
       } else {
-        rest = rest.slice(0, -2);
+        rest = rest.slice(0, -suffix.length);
         const num = parseInt(rest, 10);
-        if (isNaN(num) || num < 0 || num > 255) {
+        if (
+          isNaN(num) ||
+          num < 0 ||
+          num > (width === 8 ? 255 : width === 16 ? 65535 : 4294967295)
+        ) {
           // invalid range, fall through to failure
           rest = "";
         }
@@ -771,10 +996,13 @@ export function compile(
       rest.length > 0 &&
       Array.from(rest).every((ch) => ch >= "0" && ch <= "9")
     ) {
-      // drop the `U8` suffix if present; compute inline.
+      // drop the suffix if present; compute inline.
       return {
         ok: true,
-        value: "return " + (hasU8 ? trimmed.slice(0, -2) : trimmed) + ";",
+        value:
+          "return " +
+          (suffix ? trimmed.slice(0, -suffix.length) : trimmed) +
+          ";",
       };
     }
   }
