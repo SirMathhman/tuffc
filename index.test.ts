@@ -94,3 +94,8 @@ validate("{} read<I32>()", "100", 100);
 validate("let x = read<I32>(); {} x", "100", 100);
 validate("let mut x = read<I32>(); { x = read<I32>(); } x", "1 2", 2);
 invalidate("{ let mut x = read<I32>(); } x = read<I32>(); x");
+validate(
+  "let mut i = 0; let max = read<I32>(); let mut sum = 0; while (i < max) { sum += i; i += 1; }; sum",
+  "10",
+  45,
+);

@@ -25,24 +25,15 @@ const isValidTypeStr = (typeStr: string): boolean => {
   );
 };
 
-const parseIfElse = (
-  expr: string,
-):
-  | {
-      condition: string;
-      consequent: string;
-      alternate: string;
-    }
-  | undefined => {
-  if (!expr.startsWith("if (")) {
-    return undefined;
-  }
-
+const extractConditionFromParens = (
+  stmt: string,
+  startIdx: number,
+): { condition: string; endIdx: number } | undefined => {
   let depthCounter = 0;
   let conditionEndIdx = -1;
 
-  [...expr].reduce((idx: number, char: string) => {
-    if (idx < 4 || conditionEndIdx !== -1) {
+  [...stmt].reduce((idx: number, char: string) => {
+    if (idx < startIdx || conditionEndIdx !== -1) {
       return idx + 1;
     }
 
@@ -61,8 +52,32 @@ const parseIfElse = (
     return undefined;
   }
 
-  const condition = expr.substring(4, conditionEndIdx).trim();
-  const remaining = expr.substring(conditionEndIdx + 1).trim();
+  return {
+    condition: stmt.substring(startIdx, conditionEndIdx).trim(),
+    endIdx: conditionEndIdx,
+  };
+};
+
+const parseIfElse = (
+  expr: string,
+):
+  | {
+      condition: string;
+      consequent: string;
+      alternate: string;
+    }
+  | undefined => {
+  if (!expr.startsWith("if (")) {
+    return undefined;
+  }
+
+  const result = extractConditionFromParens(expr, 4);
+  if (!result) {
+    return undefined;
+  }
+
+  const condition = result.condition;
+  const remaining = expr.substring(result.endIdx + 1).trim();
 
   // Find the FIRST " else " at the top level (not inside nested if-else)
   // We need to skip past the consequent to find the else clause
@@ -97,6 +112,34 @@ const parseIfElse = (
   const alternate = remaining.substring(elseIdx + 6).trim();
 
   return { condition, consequent, alternate };
+};
+
+const parseWhile = (
+  stmt: string,
+):
+  | {
+      condition: string;
+      body: string;
+    }
+  | undefined => {
+  if (!stmt.startsWith("while (")) {
+    return undefined;
+  }
+
+  const result = extractConditionFromParens(stmt, 7);
+  if (!result) {
+    return undefined;
+  }
+
+  const condition = result.condition;
+  const body = stmt.substring(result.endIdx + 1).trim();
+
+  // Body should be a block expression { ... }
+  if (!body.startsWith("{") || !body.endsWith("}")) {
+    return undefined;
+  }
+
+  return { condition, body };
 };
 
 const extractValueType = (
@@ -698,6 +741,93 @@ export const compile = (
           return ok(undefined);
         };
 
+        const processScopedBodyStatements = (
+          bodyContent: string,
+          outerDeclarations: Set<string>,
+        ): { body: string; result: Result<undefined, string> } => {
+          const bodyStmts = splitStatements(bodyContent);
+          let bodyOutput = "";
+
+          const bodyProcessResult = bodyStmts.reduce(
+            (acc, bodyStmt) => {
+              if (acc.ok === false) {
+                return acc;
+              }
+
+              if (bodyStmt.startsWith("let ")) {
+                const parsed = parseLetStatement(bodyStmt);
+                if (!parsed.valueExpr) {
+                  return err("Invalid variable declaration: missing initializer");
+                }
+
+                const compiledValueResult = extractCompiledValue(
+                  parsed.valueExpr,
+                  false,
+                );
+                if (!compiledValueResult.ok) {
+                  return compiledValueResult;
+                }
+
+                declarations[parsed.varName] = compiledValueResult.value;
+                if (parsed.isMutable) {
+                  mutableVars.add(parsed.varName);
+                }
+                bodyOutput += `${parsed.isMutable ? "var" : "const"} ${parsed.varName} = ${compiledValueResult.value}; `;
+
+                if (parsed.isTyped && parsed.declaredType) {
+                  declarationTypes[parsed.varName] = parsed.declaredType;
+                }
+
+                return ok(undefined);
+              } else if (bodyStmt.includes("=")) {
+                // Handle assignments - only allow modifying outer-scope variables
+                const varName = extractVariableNameFromAssignment(bodyStmt);
+
+                if (!outerDeclarations.has(varName)) {
+                  return err(
+                    `Variable '${varName}' is not available in this scope`,
+                  );
+                }
+
+                const assignmentResult = handleAssignment(bodyStmt);
+                if (!assignmentResult.ok) {
+                  return assignmentResult;
+                }
+
+                // Extract the assignment from statements (last statement added)
+                const lastStatement = statements[statements.length - 1];
+                bodyOutput += lastStatement;
+                statements.pop(); // Remove from outer statements
+
+                return ok(undefined);
+              }
+
+              return ok(undefined);
+            },
+            ok(undefined) as Result<undefined, string>,
+          );
+
+          return { body: bodyOutput, result: bodyProcessResult };
+        };
+
+        const cleanupScopedVariables = (
+          outerDeclarations: Set<string>,
+          outerMutableVars: Set<string>,
+        ): void => {
+          // Remove scoped variables from declarations by restoring to pre-scope state
+          Object.keys(declarations).forEach((varName) => {
+            if (!outerDeclarations.has(varName)) {
+              delete declarations[varName];
+              delete declarationTypes[varName];
+            }
+          });
+          mutableVars.forEach((varName) => {
+            if (!outerMutableVars.has(varName)) {
+              mutableVars.delete(varName);
+            }
+          });
+        };
+
         if (stmt.startsWith("let ")) {
           const parsed = parseLetStatement(stmt);
 
@@ -819,78 +949,62 @@ export const compile = (
           if (blockContent.length > 0) {
             // Track which variables existed before the block (for scope isolation)
             const outerDeclarations = new Set(Object.keys(declarations));
+            const outerMutableVars = new Set(mutableVars);
 
-            // Split statements within the block
-            const blockStmts = splitStatements(blockContent);
-            // Process each statement in the block
-            const blockProcessResult = blockStmts.reduce(
-              (blockAcc, blockStmt) => {
-                if (blockAcc.ok === false) {
-                  return blockAcc;
-                }
-
-                // Handle let statements within the block (block-scoped)
-                if (blockStmt.startsWith("let ")) {
-                  const parsed = parseLetStatement(blockStmt);
-                  if (!parsed.valueExpr) {
-                    return err(
-                      "Invalid variable declaration: missing initializer",
-                    );
-                  }
-
-                  // Block-scoped variables
-                  const compiledValueResult = extractCompiledValue(
-                    parsed.valueExpr,
-                    false,
-                  );
-                  if (!compiledValueResult.ok) {
-                    return compiledValueResult;
-                  }
-
-                  // Add to declarations for use within this block
-                  declarations[parsed.varName] = compiledValueResult.value;
-                  // Add to block statements
-                  statements.push(
-                    `${parsed.isMutable ? "var" : "const"} ${parsed.varName} = ${compiledValueResult.value};`,
-                  );
-
-                  if (parsed.isTyped && parsed.declaredType) {
-                    declarationTypes[parsed.varName] = parsed.declaredType;
-                  }
-
-                  return ok(undefined);
-                } else if (blockStmt.includes("=")) {
-                  // Handle assignments within the block - only allow modifying outer-scope variables
-                  const varName = extractVariableNameFromAssignment(blockStmt);
-
-                  // Check if this variable is from outer scope only
-                  if (!outerDeclarations.has(varName)) {
-                    return err(
-                      `Variable '${varName}' is not available in this scope`,
-                    );
-                  }
-
-                  return handleAssignment(blockStmt);
-                }
-
-                return ok(undefined);
-              },
-              ok(undefined) as Result<undefined, string>,
-            );
+            // Process the block body
+            const { body: blockBody, result: blockProcessResult } =
+              processScopedBodyStatements(blockContent, outerDeclarations);
 
             if (!blockProcessResult.ok) {
               return blockProcessResult;
             }
 
-            // Remove block-scoped variables from declarations
-            // by restoring to pre-block state (only keep outer declarations)
-            Object.keys(declarations).forEach((varName) => {
-              if (!outerDeclarations.has(varName)) {
-                delete declarations[varName];
-                delete declarationTypes[varName];
-              }
-            });
+            // Add the block body statements to the main statements
+            if (blockBody.length > 0) {
+              statements.push(blockBody);
+            }
+
+            // Clean up block-scoped variables
+            cleanupScopedVariables(outerDeclarations, outerMutableVars);
           }
+
+          return ok(undefined);
+        } else if (stmt.startsWith("while (")) {
+          // Handle while loops
+          const whileParsed = parseWhile(stmt);
+          if (!whileParsed) {
+            return err("Invalid while loop syntax");
+          }
+
+          const { condition, body } = whileParsed;
+
+          // The while condition will be used as-is, since JavaScript evaluates the expression
+          // Variables used in the condition must already be declared
+
+          // Process the body (which is a block { ... })
+          const bodyContent = body.substring(1, body.length - 1).trim();
+          if (bodyContent.length === 0) {
+            // Empty while loop - just skip
+            return ok(undefined);
+          }
+
+          // Create a new scope for the while loop body
+          const outerDeclarations = new Set(Object.keys(declarations));
+          const outerMutableVars = new Set(mutableVars);
+
+          // Process the while loop body
+          const { body: whileBody, result: bodyProcessResult } =
+            processScopedBodyStatements(bodyContent, outerDeclarations);
+
+          if (!bodyProcessResult.ok) {
+            return bodyProcessResult;
+          }
+
+          // Restore variable scope
+          cleanupScopedVariables(outerDeclarations, outerMutableVars);
+
+          // Add the while loop to statements - the condition is used directly
+          statements.push(`while (${condition}) { ${whileBody.trim()} }`);
 
           return ok(undefined);
         } else if (stmt.includes("=")) {
