@@ -381,4 +381,8 @@ describe("The compiler can compile", () => {
   it("accesses variable via this.x in current scope", () => {
     assertValid("let x = 100; this.x", "", 100);
   });
+
+  it("calls method via this.get() in current scope", () => {
+    assertValid("fn get() => 100; this.get()", "", 100);
+  });
 });

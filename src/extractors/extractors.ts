@@ -1,4 +1,9 @@
-export { isDigit, isAlpha, isAlphaNumeric, isWordStart } from "./extractors-characters";
+export {
+  isDigit,
+  isAlpha,
+  isAlphaNumeric,
+  isWordStart,
+} from "./extractors-characters";
 export {
   extractIdentifier,
   extractNumericPart,

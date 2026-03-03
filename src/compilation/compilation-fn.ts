@@ -6,6 +6,7 @@ import {
   transformComparisonOperators,
   transformReadPatterns,
   transformMethodCalls,
+  transformThisAccess,
 } from "../transformations/transformations";
 import {
   findMatchingParen,
@@ -102,7 +103,8 @@ function compileFnStatement(
   const paramNames = extractParamNames(paramsRaw);
 
   // Rename 'this' to '_this' in the body since 'this' is a reserved keyword
-  const bodyWithRenamedThis = renameThisParameter(body);
+  const bodyWithThisAccess = transformThisAccess(body);
+  const bodyWithRenamedThis = renameThisParameter(bodyWithThisAccess);
 
   const transformedFullBody = stripNumericTypeSuffixes(
     transformComparisonOperators(
@@ -128,7 +130,7 @@ function compileFnStatement(
   const afterExpr = stripNumericTypeSuffixes(
     transformComparisonOperators(
       transformMethodCalls(
-        stripTypeAnnotations(transformReadPatterns(renameThisParameter(after))),
+        stripTypeAnnotations(transformReadPatterns(renameThisParameter(transformThisAccess(after)))),
       ),
     ),
   );
