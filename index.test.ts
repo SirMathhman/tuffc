@@ -13,11 +13,15 @@ const validate = (
         .flatMap((part) => part.split("\n"))
         .flatMap((part) => part.split("\t"))
         .filter((part) => part.length > 0);
-      if (
-        new Function("read", result.value)(() =>
-          parseInt(parts.shift()!, 10),
-        ) == expected
-      ) {
+      
+      const readFunc = () => {
+        const part = parts.shift()!;
+        if (part === "true") return 1;
+        if (part === "false") return 0;
+        return parseInt(part, 10);
+      };
+
+      if (new Function("read", result.value)(readFunc) == expected) {
         return;
       } else {
         expect("Failed to execute: ```" + result.value + "```").toBeUndefined();
@@ -69,3 +73,4 @@ validate("let x = true; let y = false; x || y", "", 1);
 validate("let x = true; let y = false; x && y", "", 0);
 invalidate("let x = 0; let y = 1; x || y");
 validate("let x = read<I32>(); let y = read<I32>(); x < y", "3 4", 1);
+validate("let x = read<Bool>(); x", "true", 1);
