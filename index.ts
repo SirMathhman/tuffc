@@ -1655,17 +1655,57 @@ export const compile = (
           typeAliases[aliasName] = aliasType;
           return ok(undefined);
         } else if (stmt.startsWith("struct ")) {
-          // Handle struct declaration: just record name and reject duplicates
-          // expected syntax: struct Name { }
+          // Handle struct declaration: parse name, validate syntax, and reject duplicates
+          // expected syntax: struct Name { field1 : Type; field2 : Type; }
           const structBody = stmt.substring(6).trim();
-          const parts = structBody.split(" ").filter((p) => p.length > 0);
-          const name = parts[0] || "";
-          if (!name) {
+          // require a name followed by a brace-enclosed list (which may be empty)
+          const match = structBody.match(
+            /^([A-Za-z_][A-Za-z0-9_]*)\s*\{([\s\S]*)\}$/,
+          );
+          if (!match) {
             return err("Invalid struct syntax");
           }
+          const name = match[1];
+          const fieldsStr = match[2].trim();
+
           if (structNames.has(name)) {
             return err(`Struct '${name}' is already defined`);
           }
+
+          // validate fields if any
+          if (fieldsStr.length > 0) {
+            const fieldNames: Set<string> = new Set();
+            const fieldParts = fieldsStr
+              .split(";")
+              .map((f) => f.trim())
+              .filter((f) => f.length > 0);
+
+            for (const field of fieldParts) {
+              const colonIdx = field.indexOf(":");
+              if (colonIdx === -1) {
+                return err("Invalid struct field syntax");
+              }
+              const fieldName = field.substring(0, colonIdx).trim();
+              const fieldType = field.substring(colonIdx + 1).trim();
+
+              if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(fieldName)) {
+                return err(`Invalid field name '${fieldName}'`);
+              }
+              if (fieldNames.has(fieldName)) {
+                return err(
+                  `Duplicate field name '${fieldName}' in struct '${name}'`,
+                );
+              }
+              fieldNames.add(fieldName);
+
+              if (!isValidTypeStrWithAliases(fieldType, definedFunctions)) {
+                return err(
+                  `Invalid type in struct field '${fieldName}': ${fieldType}`,
+                );
+              }
+            }
+          }
+
           structNames.add(name);
           return ok(undefined);
         } else if (stmt.startsWith("let ")) {
