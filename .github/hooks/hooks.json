@@ -1,0 +1,10 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "type": "command",
+        "command": "cmd /c \"npx husky run pre-commit || exit 2\""
+      }
+    ]
+  }
+}
