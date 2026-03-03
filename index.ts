@@ -1010,7 +1010,9 @@ export const compile = (
           }
 
           // Extract and validate parameters
-          const parametersStr = afterFn.substring(parenIdx + 1, closeParenIdx).trim();
+          const parametersStr = afterFn
+            .substring(parenIdx + 1, closeParenIdx)
+            .trim();
           const seenParams = new Set<string>();
 
           if (parametersStr.length > 0) {
@@ -1019,15 +1021,27 @@ export const compile = (
             for (const param of params) {
               // Extract parameter name (before the colon)
               const colonIdx = param.indexOf(":");
-              const paramName = colonIdx > -1 ? param.substring(0, colonIdx).trim() : param.trim();
+              const paramName =
+                colonIdx > -1
+                  ? param.substring(0, colonIdx).trim()
+                  : param.trim();
 
               if (!paramName) {
-                return err("Invalid function parameter: missing parameter name");
+                return err(
+                  "Invalid function parameter: missing parameter name",
+                );
               }
 
               // Check for duplicate parameter name
               if (seenParams.has(paramName)) {
                 return err(`Parameter '${paramName}' is already defined`);
+              }
+
+              // Check if parameter shadows a declared variable
+              if (paramName in declarations) {
+                return err(
+                  `Parameter '${paramName}' shadows declared variable`,
+                );
               }
               seenParams.add(paramName);
             }
