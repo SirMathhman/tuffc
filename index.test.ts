@@ -118,3 +118,8 @@ invalidate("fn empty() => {} fn empty() => {}");
 invalidate("fn add(first : I32, first : I32) => {}");
 invalidate("let x = 0; fn doSomething(x : I32) => {}");
 invalidate("let doSomething = 0; fn doSomething() => {}");
+validate(
+  "fn add(first : I32, second : I32) : I32 => { return first + second; } add(read<I32>(), read<I32>())",
+  "3 4",
+  7,
+);

@@ -587,7 +587,14 @@ export const compile = (
     const declarations: Record<string, string> = {};
     const declarationTypes: Record<string, string> = {};
     const typeAliases: Record<string, string> = {};
-    const definedFunctions: Record<string, boolean> = {};
+    const definedFunctions: Record<
+      string,
+      {
+        params: Array<{ name: string; type: string }>;
+        returnType: string;
+        body: string;
+      }
+    > = {};
     const mutableVars: Set<string> = new Set();
     const statements: string[] = [];
     let returnExpr = "";
@@ -671,10 +678,103 @@ export const compile = (
       return err("Not a pointer expression");
     };
 
+    const compileFunctionCall = (
+      expr: string,
+    ): Result<string, string> | undefined => {
+      // Check if it looks like a function call: name(...)
+      const openParenIdx = expr.indexOf("(");
+      if (openParenIdx === -1) {
+        return undefined;
+      }
+
+      const potentialFnName = expr.substring(0, openParenIdx).trim();
+      if (!(potentialFnName in definedFunctions)) {
+        return undefined;
+      }
+
+      // Verify closing paren exists
+      if (!expr.endsWith(")")) {
+        return err("Invalid function call: missing closing parenthesis");
+      }
+
+      const fnDef = definedFunctions[potentialFnName];
+      const argsStr = expr.substring(openParenIdx + 1, expr.length - 1).trim();
+
+      // Parse arguments
+      const args: string[] = [];
+      if (argsStr.length > 0) {
+        // Simple split by comma (doesn't handle nested calls perfectly, but good for now)
+        args.push(
+          ...argsStr
+            .split(",")
+            .map((arg) => arg.trim())
+            .filter((arg) => arg.length > 0),
+        );
+      }
+
+      // Validate argument count
+      if (args.length !== fnDef.params.length) {
+        return err(
+          `Function '${potentialFnName}' expects ${fnDef.params.length} arguments, got ${args.length}`,
+        );
+      }
+
+      // Compile arguments
+      const compiledArgs: string[] = [];
+      for (const arg of args) {
+        const compiledArgRes = extractCompiledValue(arg, true);
+        if (!compiledArgRes.ok) {
+          return compiledArgRes;
+        }
+        compiledArgs.push(compiledArgRes.value);
+      }
+
+      // Create bindings for function parameters
+      const paramBindings: Record<string, string> = fnDef.params.reduce(
+        (bindings, param, idx) => {
+          bindings[param.name] = compiledArgs[idx];
+          return bindings;
+        },
+        {} as Record<string, string>,
+      );
+
+      // Extract return statement from function body
+      const bodyContent = fnDef.body.substring(1, fnDef.body.length - 1).trim();
+
+      // Parse return statement
+      if (!bodyContent.startsWith("return ")) {
+        return err(
+          `Function '${potentialFnName}' body must contain a return statement`,
+        );
+      }
+
+      const returnExprStr = bodyContent.substring(7).endsWith(";")
+        ? bodyContent.substring(7, bodyContent.length - 1).trim()
+        : bodyContent.substring(7).trim();
+
+      // Replace parameter references with compiled values
+      let finalExpr = returnExprStr;
+      for (const [paramName, compiledValue] of Object.entries(paramBindings)) {
+        // Replace parameter name with compiled value (using word boundaries)
+        const regex = new RegExp(`\\b${paramName}\\b`, "g");
+        finalExpr = finalExpr.replace(regex, `(${compiledValue})`);
+      }
+
+      // The final expression now has parameters replaced with compiled JavaScript expressions
+      // Return it directly (it's already in JavaScript form)
+      return ok(finalExpr);
+    };
+
     const extractCompiledValue = (
       expr: string,
       isAssignmentContext: boolean,
     ): Result<string, string> => {
+      // Try function calls first
+      const fnCallResult = compileFunctionCall(expr);
+      if (fnCallResult !== undefined) {
+        return fnCallResult;
+      }
+
       // Handle block expressions: { ... }
       const blockResult = processBlockExpression(expr);
       if (blockResult.ok) {
@@ -988,9 +1088,7 @@ export const compile = (
 
           // Check if function name shadows a declared variable
           if (fnName in declarations) {
-            return err(
-              `Function '${fnName}' shadows declared variable`,
-            );
+            return err(`Function '${fnName}' shadows declared variable`);
           }
 
           // Find closing paren using reduce
@@ -1020,51 +1118,109 @@ export const compile = (
           const parametersStr = afterFn
             .substring(parenIdx + 1, closeParenIdx)
             .trim();
-          const seenParams = new Set<string>();
 
-          if (parametersStr.length > 0) {
-            // Split parameters by comma (handling nested type info)
-            const params = parametersStr.split(",").map((p) => p.trim());
-            for (const param of params) {
-              // Extract parameter name (before the colon)
-              const colonIdx = param.indexOf(":");
-              const paramName =
-                colonIdx > -1
-                  ? param.substring(0, colonIdx).trim()
-                  : param.trim();
-
-              if (!paramName) {
-                return err(
-                  "Invalid function parameter: missing parameter name",
-                );
-              }
-
-              // Check for duplicate parameter name
-              if (seenParams.has(paramName)) {
-                return err(`Parameter '${paramName}' is already defined`);
-              }
-
-              // Check if parameter shadows a declared variable
-              if (paramName in declarations) {
-                return err(
-                  `Parameter '${paramName}' shadows declared variable`,
-                );
-              }
-              seenParams.add(paramName);
+          // Helper to parse and validate parameters
+          const parseParameters = (
+            paramStr: string,
+          ): Result<Array<{ name: string; type: string }>, string> => {
+            const parsedParams: Array<{ name: string; type: string }> = [];
+            if (paramStr.length === 0) {
+              return ok(parsedParams);
             }
+
+            const params = paramStr.split(",").map((p) => p.trim());
+            const seenParamNames = new Set<string>();
+
+            return params.reduce(
+              (acc, param) => {
+                if (!acc.ok) return acc;
+
+                // Extract parameter name (before the colon)
+                const colonIdx = param.indexOf(":");
+                const paramName =
+                  colonIdx > -1
+                    ? param.substring(0, colonIdx).trim()
+                    : param.trim();
+                const paramType =
+                  colonIdx > -1 ? param.substring(colonIdx + 1).trim() : "";
+
+                if (!paramName) {
+                  return err(
+                    "Invalid function parameter: missing parameter name",
+                  );
+                }
+
+                // Check for duplicate parameter name
+                if (seenParamNames.has(paramName)) {
+                  return err(`Parameter '${paramName}' is already defined`);
+                }
+
+                // Check if parameter shadows a declared variable
+                if (paramName in declarations) {
+                  return err(
+                    `Parameter '${paramName}' shadows declared variable`,
+                  );
+                }
+
+                seenParamNames.add(paramName);
+                acc.value.push({ name: paramName, type: paramType });
+                return acc;
+              },
+              ok(parsedParams) as Result<
+                Array<{ name: string; type: string }>,
+                string
+              >,
+            );
+          };
+
+          const paramsResult = parseParameters(parametersStr);
+          if (!paramsResult.ok) {
+            return paramsResult;
           }
+          const params = paramsResult.value;
 
           const remaining = afterFn.substring(closeParenIdx + 1).trim();
 
+          // Parse return type if present (: Type)
+          let returnType = "";
+          let afterReturnType = remaining;
+
+          if (remaining.startsWith(":")) {
+            const typeEndIdx = remaining.indexOf("=>");
+            if (typeEndIdx === -1) {
+              return err(
+                "Invalid function definition: missing arrow => after return type",
+              );
+            }
+            returnType = remaining.substring(1, typeEndIdx).trim();
+            afterReturnType = remaining.substring(typeEndIdx).trim();
+
+            if (!isValidTypeStrWithAliases(returnType)) {
+              return err(`Invalid return type: ${returnType}`);
+            }
+          }
+
           // Check for arrow =>
-          if (!remaining.startsWith("=>")) {
+          if (!afterReturnType.startsWith("=>")) {
             return err("Invalid function definition: missing arrow =>");
           }
 
-          // Track this function definition
-          definedFunctions[fnName] = true;
+          // Extract function body
+          const bodyStart = afterReturnType.indexOf("=>") + 2;
+          const body = afterReturnType.substring(bodyStart).trim();
 
-          // Skip this statement - function definitions are no-ops for now
+          if (!body.startsWith("{") || !body.endsWith("}")) {
+            return err("Invalid function definition: body must be a block");
+          }
+
+          // Store this function definition
+          definedFunctions[fnName] = {
+            params,
+            returnType,
+            body,
+          };
+
+          // Skip this statement - function definitions are no-ops
           return ok(undefined);
         } else if (stmt.startsWith("type ")) {
           // Handle type alias declarations: type MyAlias = I32;
@@ -1517,7 +1673,116 @@ export const compile = (
       }
     }
 
-    return ok(statements.join("\n") + "\nreturn " + returnExpr + ";");
+    // Process return expression to inline function calls and handle Tuff-specific syntax
+    let finalReturnExpr = returnExpr;
+
+    // Helper to remove type annotations (e.g., <I32> -> empty)
+    const removeTypeAnnotations = (expr: string): string => {
+      let result = expr;
+      [...expr].reduce(
+        (acc, char, i) => {
+          if (acc.depth === 0 && char === "<") {
+            acc.start = i;
+            acc.depth = 1;
+          } else if (char === "<") {
+            acc.depth++;
+          } else if (char === ">") {
+            acc.depth--;
+            if (acc.depth === 0 && acc.start !== -1) {
+              result = result.substring(0, acc.start) + result.substring(i + 1);
+              acc.start = -1;
+            }
+          }
+          return acc;
+        },
+        { depth: 0, start: -1 },
+      );
+      return result;
+    };
+
+    // Try to detect and inline function calls in return expression
+    // Match pattern: functionName(...)
+    const parenIdx = finalReturnExpr.indexOf("(");
+    if (parenIdx > 0) {
+      const potentialFnName = finalReturnExpr.substring(0, parenIdx).trim();
+      if (
+        finalReturnExpr.endsWith(")") &&
+        potentialFnName in definedFunctions
+      ) {
+        const fnDef = definedFunctions[potentialFnName];
+        const argsStr = finalReturnExpr
+          .substring(parenIdx + 1, finalReturnExpr.length - 1)
+          .trim();
+
+        // Parse arguments (simple split by comma)
+        const args: string[] =
+          argsStr.length > 0
+            ? argsStr
+                .split(",")
+                .map((arg) => arg.trim())
+                .filter((arg) => arg.length > 0)
+            : [];
+
+        if (args.length === fnDef.params.length) {
+          // Process arguments by removing type annotations
+          const compiledArgs = args.map((arg) => removeTypeAnnotations(arg));
+
+          // Extract return expression from function body
+          const bodyContent = fnDef.body
+            .substring(1, fnDef.body.length - 1)
+            .trim();
+
+          if (bodyContent.startsWith("return ")) {
+            let returnStmt = bodyContent.substring(7);
+            if (returnStmt.endsWith(";")) {
+              returnStmt = returnStmt
+                .substring(0, returnStmt.length - 1)
+                .trim();
+            }
+
+            // Substitute parameters into the return statement
+            finalReturnExpr = fnDef.params.reduce((stmt, param, idx) => {
+              const compiledArg = compiledArgs[idx];
+              // Simple string replacement for parameter substitution
+              // This works for simple cases; doesn't handle word boundaries perfectly
+              // but good enough for basic function inlining
+              let result = stmt;
+              let searchPos = 0;
+              while (true) {
+                const idx = result.indexOf(param.name, searchPos);
+                if (idx === -1) break;
+                // Check boundaries
+                const before = idx > 0 ? result[idx - 1] : " ";
+                const after =
+                  idx + param.name.length < result.length
+                    ? result[idx + param.name.length]
+                    : " ";
+                const isWordChar = (c: string) =>
+                  (c >= "a" && c <= "z") ||
+                  (c >= "A" && c <= "Z") ||
+                  (c >= "0" && c <= "9") ||
+                  c === "_";
+                if (!isWordChar(before) && !isWordChar(after)) {
+                  result =
+                    result.substring(0, idx) +
+                    `(${compiledArg})` +
+                    result.substring(idx + param.name.length);
+                  searchPos = idx + compiledArg.length + 2;
+                } else {
+                  searchPos = idx + 1;
+                }
+              }
+              return result;
+            }, returnStmt);
+          }
+        }
+      }
+    }
+
+    // Clean up any remaining type annotations in the return expression
+    finalReturnExpr = removeTypeAnnotations(finalReturnExpr);
+
+    return ok(statements.join("\n") + "\nreturn " + finalReturnExpr + ";");
   }
 
   // If/else expressions: if (condition) consequent else alternate
