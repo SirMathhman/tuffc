@@ -67,3 +67,4 @@ validate("let x : Bool = false; x", "", 0);
 invalidate("let x = true; let y = false; x + y");
 validate("let x = true; let y = false; x || y", "", 1);
 validate("let x = true; let y = false; x && y", "", 0);
+invalidate("let x = 0; let y = 1; x || y");

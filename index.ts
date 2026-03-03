@@ -474,6 +474,32 @@ export const compile = (source: string): Result<string, string> => {
       const hasLogicalOp =
         returnExpr.includes("||") || returnExpr.includes("&&");
       if (hasLogicalOp) {
+        // Validate that logical operations only work on booleans
+        const logicalOpIndex = Math.max(
+          returnExpr.indexOf("||"),
+          returnExpr.indexOf("&&"),
+        );
+        if (logicalOpIndex !== -1) {
+          const leftOp = returnExpr.substring(0, logicalOpIndex).trim();
+          const rightOp = returnExpr
+            .substring(logicalOpIndex + (returnExpr[logicalOpIndex] === "&" ? 2 : 2))
+            .trim();
+
+          const leftType =
+            leftOp in declarationTypes
+              ? declarationTypes[leftOp]
+              : extractValueType(leftOp, declarationTypes);
+          const rightType =
+            rightOp in declarationTypes
+              ? declarationTypes[rightOp]
+              : extractValueType(rightOp, declarationTypes);
+
+          if (leftType !== "Bool" || rightType !== "Bool") {
+            return err(
+              "Logical operations (|| and &&) can only be used with boolean types",
+            );
+          }
+        }
         returnExpr = `${returnExpr} ? 1 : 0`;
       }
     }
