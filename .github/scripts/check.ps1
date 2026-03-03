@@ -26,5 +26,14 @@ if ($LASTEXITCODE -ne 0) {
 }
 Write-Host "PASSED: Linting passed" -ForegroundColor Green
 
+# Run single-use check
+Write-Host "3. Checking for single-use declarations..." -ForegroundColor Yellow
+bun .github/scripts/single-use.ts
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "FAILED: Single-use declarations found" -ForegroundColor Red
+    exit 2
+}
+Write-Host "PASSED: No single-use declarations" -ForegroundColor Green
+
 Write-Host "PASSED: All checks passed" -ForegroundColor Green
 exit 0

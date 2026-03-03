@@ -30,7 +30,7 @@ export default [
     rules: {
       ...js.configs.recommended.rules,
       ...tsPlugin.configs.recommended.rules,
-      "no-unused-vars": "off",
+      "no-unused-vars": "error",
       "@typescript-eslint/no-unused-vars": [
         "warn",
         {
@@ -55,6 +55,15 @@ export default [
             "Function declarations are not allowed. Use arrow functions instead: const name = () => ...",
         },
       ],
+    },
+  },
+  {
+    files: [".github/scripts/**/*.ts"],
+    languageOptions: {
+      globals: {
+        console: "readonly",
+        process: "readonly",
+      },
     },
   },
 ];
