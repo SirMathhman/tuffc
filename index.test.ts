@@ -62,3 +62,4 @@ invalidate("let x = read<U16>(); let y : U8 = x; y");
 validate("let x = read<I32>(); let y = x; y", "100", 100);
 invalidate("let x = read<U8>(); x = read<U8>(); x");
 validate("let mut x = read<U8>(); x = read<U8>(); x", "3 4", 4);
+invalidate("let mut x = read<U8>(); x = read<U16>(); x");
