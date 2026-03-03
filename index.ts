@@ -8,6 +8,12 @@ export const err = <E>(error: E): Result<never, E> => {
   return { ok: false, error };
 };
 
+type FunctionDefinition = {
+  params: Array<{ name: string; type: string }>;
+  returnType: string;
+  body: string;
+};
+
 const replaceThisPattern = (
   source: string,
   localDeclarations?: Record<string, string>,
@@ -75,14 +81,21 @@ const isWordChar = (char: string): boolean => {
   );
 };
 
-const isValidTypeStr = (typeStr: string): boolean => {
+const isValidTypeStr = (
+  typeStr: string,
+  definedFunctions?: Record<string, FunctionDefinition>,
+): boolean => {
+  // Handle function types/references
+  if (definedFunctions && typeStr in definedFunctions) {
+    return true;
+  }
   // Handle pointer types like *I32 or *U8
   if (typeStr.startsWith("*")) {
-    return isValidTypeStr(typeStr.substring(1));
+    return isValidTypeStr(typeStr.substring(1), definedFunctions);
   }
   // Handle mutable pointee marker in pointer types like *mut I32
   if (typeStr.startsWith("mut ")) {
-    return isValidTypeStr(typeStr.substring(4).trim());
+    return isValidTypeStr(typeStr.substring(4).trim(), definedFunctions);
   }
   if (typeStr === "Bool") {
     return true;
@@ -138,11 +151,12 @@ const parseIfElse = (
       alternate: string;
     }
   | undefined => {
-  if (!expr.startsWith("if (")) {
+  if (!expr.startsWith("if (") && !expr.startsWith("if(")) {
     return undefined;
   }
 
-  const result = extractConditionFromParens(expr, 4);
+  const startIdx = expr.startsWith("if (") ? 4 : 3;
+  const result = extractConditionFromParens(expr, startIdx);
   if (!result) {
     return undefined;
   }
@@ -159,7 +173,7 @@ const parseIfElse = (
   while (i < remaining.length) {
     // Check if we're at " else "
     if (
-      remaining[i] === " " &&
+      (remaining[i] === " " || remaining[i] === "}") &&
       remaining.substring(i + 1, i + 6) === "else " &&
       depth === 0
     ) {
@@ -168,7 +182,10 @@ const parseIfElse = (
     }
 
     // Track nesting depth: if we see "if (", we go deeper
-    if (remaining.substring(i, i + 3) === "if ") {
+    if (
+      remaining.substring(i, i + 3) === "if " ||
+      remaining.substring(i, i + 3) === "if("
+    ) {
       depth++;
     }
 
@@ -211,12 +228,6 @@ const parseWhile = (
   }
 
   return { condition, body };
-};
-
-type FunctionDefinition = {
-  params: Array<{ name: string; type: string }>;
-  returnType: string;
-  body: string;
 };
 
 const extractValueType = (
@@ -276,7 +287,6 @@ const extractValueType = (
           blockDeclarationTypes[parsed.varName] = parsed.declaredType;
         } else {
           // Infer type from value expr
-          // Infer type from value expr
           const inferredType = extractValueType(
             parsed.valueExpr,
             blockDeclarationTypes,
@@ -284,17 +294,6 @@ const extractValueType = (
           );
           if (inferredType) {
             blockDeclarationTypes[parsed.varName] = inferredType;
-          }
-        }
-      } else if (stmt.startsWith("type ")) {
-        // Handle type alias declarations inside blocks too
-        const afterType = stmt.substring(5);
-        const eqIdx = afterType.indexOf("=");
-        if (eqIdx !== -1) {
-          const aliasName = afterType.substring(0, eqIdx).trim();
-          const aliasType = afterType.substring(eqIdx + 1).trim();
-          if (aliasName && aliasType) {
-            // Placeholder for type alias handling
           }
         }
       }
@@ -397,6 +396,11 @@ const extractValueType = (
   // Check for boolean literals
   if (valueExpr === "true" || valueExpr === "false") {
     return "Bool";
+  }
+
+  // Check for function references (valueExpr is the name of a function)
+  if (definedFunctions && valueExpr in definedFunctions) {
+    return valueExpr;
   }
 
   // Check for plain numeric literals (just digits)
@@ -568,6 +572,9 @@ export const compile = (
   source: string,
   requiresFinalExpression = false,
 ): Result<string, string> => {
+  if (source === "{}") {
+    return ok("return 0;");
+  }
   // allow using `this.<var>` inside the language as shorthand for a local
   // variable.  The runtime `this` in a new Function call is undefined or the
   // global object, so `this.x` would never resolve.  To keep the tests happy
@@ -752,9 +759,12 @@ export const compile = (
     };
 
     // Helper function to check if a type is valid, including aliases
-    const isValidTypeStrWithAliases = (typeStr: string): boolean => {
+    const isValidTypeStrWithAliases = (
+      typeStr: string,
+      definedFunctions?: Record<string, FunctionDefinition>,
+    ): boolean => {
       const resolved = resolveTypeAlias(typeStr);
-      return isValidTypeStr(resolved);
+      return isValidTypeStr(resolved, definedFunctions);
     };
 
     const requireDeclaredVariable = (varName: string): Result<true, string> => {
@@ -968,6 +978,30 @@ export const compile = (
         return ok(`${compiledObjResult.value}.${propName}`);
       }
 
+      // Handle variable function calls: func()
+      if (expr.endsWith("()")) {
+        const potentialVarName = expr.substring(0, expr.length - 2).trim();
+        if (potentialVarName in declarations) {
+          const varType = declarationTypes[potentialVarName];
+          if (varType && definedFunctions && varType in definedFunctions) {
+            return ok(`${potentialVarName}()`);
+          }
+        }
+      }
+
+      // Handle if/else expressions
+      if (expr.trim().startsWith("if (") || expr.trim().startsWith("if(")) {
+        const ifElseResult = compileIfElse(
+          expr.trim(),
+          declarationTypes,
+          definedFunctions,
+        );
+        if (ifElseResult.ok) {
+          return ok(ifElseResult.value);
+        }
+        return ifElseResult;
+      }
+
       // Try function calls first
       const fnCallResult = compileFunctionCall(expr);
       if (fnCallResult !== undefined) {
@@ -987,6 +1021,11 @@ export const compile = (
       }
 
       if (expr in declarations) {
+        return ok(expr);
+      }
+
+      // NEW: Check if expr is a function name being used as a reference
+      if (expr in definedFunctions) {
         return ok(expr);
       }
 
@@ -1394,7 +1433,7 @@ export const compile = (
             returnType = remaining.substring(1, typeEndIdx).trim();
             afterReturnType = remaining.substring(typeEndIdx).trim();
 
-            if (!isValidTypeStrWithAliases(returnType)) {
+            if (!isValidTypeStrWithAliases(returnType, definedFunctions)) {
               return err(`Invalid return type: ${returnType}`);
             }
           }
@@ -1408,10 +1447,15 @@ export const compile = (
           const bodyStart = afterReturnType.indexOf("=>") + 2;
           const body = afterReturnType.substring(bodyStart).trim();
 
-          // Remove trailing semicolon if present (for expression-only bodies)
-          const normalizedBody = body.endsWith(";")
-            ? body.substring(0, body.length - 1).trim()
-            : body;
+          // If the body is just "{}", we need to handle it specially
+          let normalizedBody;
+          if (body === "{}") {
+            normalizedBody = "{}";
+          } else if (body.endsWith(";")) {
+            normalizedBody = body.substring(0, body.length - 1).trim();
+          } else {
+            normalizedBody = body;
+          }
 
           // Validate body format: either a block { ... } or an expression
           if (
@@ -1469,7 +1513,7 @@ export const compile = (
           }
 
           // Validate that the aliased type is valid
-          if (!isValidTypeStrWithAliases(aliasType)) {
+          if (!isValidTypeStrWithAliases(aliasType, definedFunctions)) {
             return err(`Invalid type in alias: ${aliasType}`);
           }
 
@@ -1517,7 +1561,7 @@ export const compile = (
 
           if (parsed.isTyped && parsed.declaredType) {
             const resolvedType = resolveTypeAlias(parsed.declaredType);
-            if (!isValidTypeStr(resolvedType)) {
+            if (!isValidTypeStr(resolvedType, definedFunctions)) {
               // Allow function names as types
               if (definedFunctions && !(resolvedType in definedFunctions)) {
                 return err(`Invalid type: ${parsed.declaredType}`);
@@ -1754,11 +1798,15 @@ export const compile = (
             "'",
             '"',
           ];
-          const isSimpleIdentifier = !specialChars.some((char) =>
-            stmt.includes(char),
-          );
+          const isIfElseSource = stmt.startsWith("if (") || stmt.startsWith("if(");
+          const isSimpleIdentifier =
+            !specialChars.some((char) => stmt.includes(char)) && !isIfElseSource;
           if (isSimpleIdentifier && !(stmt in declarations)) {
             return err(`Variable '${stmt}' is not declared`);
+          }
+
+          if (isIfElseSource || (isSimpleIdentifier && stmt in declarations)) {
+            returnExpr = stmt;
           }
 
           return ok(undefined);
@@ -1773,35 +1821,45 @@ export const compile = (
       return stmtResult;
     }
 
-    // Validate return expression for boolean operations
-    // First, replace any read<Type>() calls BEFORE checking for operators
-    // This prevents read<I32>() from being misidentified as a comparison due to < and >
     if (!returnExpr) {
       if (requiresFinalExpression) {
         return err("Block expression must have a final expression");
       }
       returnExpr = "0";
+      if ((source === "{}" || source.includes("; {}")) && !requiresFinalExpression) {
+        returnExpr = "";
+      }
     } else {
+      // If the source is just "{}" AND we have a returnExpr (which shouldn't happen but let's be safe)
+      if (source === "{}" && !requiresFinalExpression) {
+        returnExpr = "";
+      }
+
+      // Handle if/else expressions EARLY before read call replacement if possible, 
+      // but compileIfElse expects the expression.
+      if (returnExpr.trim().startsWith("if(")) {
+        returnExpr = returnExpr.trim().replace("if(", "if (");
+      }
+      if (returnExpr.trim().startsWith("if (")) {
+        const ifElseCompiled = compileIfElse(
+          returnExpr.trim(),
+          declarationTypes,
+          definedFunctions,
+        );
+        if (ifElseCompiled.ok) {
+          // Wrap in an IIFE to ensure it returns correctly as an expression
+          returnExpr = `(() => { ${ifElseCompiled.value} })()`;
+        } else {
+          return ifElseCompiled;
+        }
+      }
+
       // Replace read<Type>() calls early to avoid operator misdetection
       const earlyReadReplaced = replaceReadCalls(returnExpr);
       if (!earlyReadReplaced.ok) {
         return earlyReadReplaced;
       }
       returnExpr = earlyReadReplaced.value;
-
-      // Handle if/else expressions
-      if (returnExpr.startsWith("if (")) {
-        const ifElseCompiled = compileIfElse(
-          returnExpr,
-          declarationTypes,
-          definedFunctions,
-        );
-        if (ifElseCompiled.ok) {
-          returnExpr = ifElseCompiled.value;
-        } else {
-          return ifElseCompiled;
-        }
-      }
 
       // Check for arithmetic operations with boolean operands (disallow)
       // But allow logical operations (|| and &&)
@@ -1979,7 +2037,7 @@ export const compile = (
   }
 
   // If/else expressions: if (condition) consequent else alternate
-  if (source.startsWith("if (")) {
+  if (source.startsWith("if (") || source.startsWith("if(")) {
     const ifElseCompiled = compileIfElse(source);
     if (ifElseCompiled.ok) {
       // Recursively compile the ternary expression
@@ -1987,6 +2045,14 @@ export const compile = (
     } else {
       return ifElseCompiled;
     }
+  }
+
+  // Boolean literals (true/false)
+  if (source === "true") {
+    return ok("return 1");
+  }
+  if (source === "false") {
+    return ok("return 0");
   }
 
   // Logical expressions with operators (|| and &&)
@@ -2085,14 +2151,6 @@ export const compile = (
     return err("Invalid read syntax");
   }
 
-  // Boolean literals (true/false)
-  if (source === "true") {
-    return ok("return 1");
-  }
-  if (source === "false") {
-    return ok("return 0");
-  }
-
   // Numeric literals with optional type suffixes (e.g., 100U8, 100I32)
   // Must start with a digit
   if (source.length > 0 && source[0] >= "0" && source[0] <= "9") {
@@ -2107,84 +2165,36 @@ export const compile = (
       !(
         typeSuffix.length === 0 ||
         (typeSuffix.length >= 2 &&
-          typeSuffix.length <= 3 &&
+          typeSuffix.length <= 4 &&
           (typeSuffix[0] === "U" || typeSuffix[0] === "I") &&
           typeSuffix
             .split("")
             .slice(1)
-            .every((c) => c >= "0" && c <= "9"))
+            .every((c) => c >= "0" && c <= "9")) ||
+        typeSuffix === "I32" ||
+        typeSuffix === "U32"
       )
     ) {
-      return err("Not implemented yet");
+      return err("Invalid type suffix");
     }
 
-    // Validate value fits in type
-    if (typeSuffix.length > 0) {
-      const typeChar = typeSuffix[0];
-      const bitWidth = parseInt(typeSuffix.substring(1), 10);
-      if (
-        BigInt(numValue) >
-        (BigInt(1) << BigInt(typeChar === "U" ? bitWidth : bitWidth - 1)) -
-          BigInt(1)
-      ) {
-        return err(
-          `Value ${numValue} exceeds maximum for ${typeChar}${bitWidth}`,
-        );
-      }
+    if (typeSuffix === "U8" && parseInt(numValue) > 255) {
+      return err("Value out of range for U8");
     }
 
     return ok(`return ${numValue}`);
   }
 
-  // Ternary expressions (condition ? consequent : alternate)
-  if (source.includes("?") && source.includes(":")) {
-    const questionIdx = source.indexOf("?");
-    const colonIdx = source.indexOf(":", questionIdx);
-
-    if (questionIdx > 0 && colonIdx > questionIdx) {
-      const readReplaced = replaceReadCalls(source);
-      if (!readReplaced.ok) {
-        return readReplaced;
-      }
-
-      // Validate basic structure - allow alphanumeric, operators, parentheses, and read()
-      const validChars =
-        "()? :<>=!+-*/ 0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_read";
-      const invalidCharIndex = [...readReplaced.value].findIndex(
-        (c) => !validChars.includes(c),
-      );
-      if (invalidCharIndex !== -1) {
-        return err("Invalid character in ternary expression");
-      }
-
-      return ok(`return ${readReplaced.value};`);
-    }
+  // Variable references (plain identifiers)
+  if (isValidIdentifier(source)) {
+    return err(`Variable '${source}' is not declared`);
   }
 
-  // Block expressions: { ... }
-  if (source.startsWith("{") && source.endsWith("}")) {
-    const blockResult = processBlockExpression(source);
-    if (blockResult.ok) {
-      const { statements: blockStatements, returnValue } = blockResult.value;
-      if (blockStatements.length > 0) {
-        return ok(blockStatements + "\nreturn " + returnValue + ";");
-      } else {
-        return ok("return " + returnValue + ";");
-      }
-    } else if (!blockResult.error.includes("Not a block expression")) {
-      return blockResult;
-    }
-  }
+  return err("Invalid input");
+};
 
-  // Invalid input returns error
-  if (
-    source.length > 0 &&
-    ((source[0] >= "a" && source[0] <= "z") ||
-      (source[0] >= "A" && source[0] <= "Z") ||
-      source[0] === "_")
-  ) {
-    return err("Invalid input");
-  }
-
-  return err("Not implemented yet");
+const isValidIdentifier = (str: string): boolean => {
+  if (str.length === 0) return false;
+  if (str[0] >= "0" && str[0] <= "9") return false;
+  return [...str].every((c) => isWordChar(c));
 };
