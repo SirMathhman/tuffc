@@ -88,9 +88,9 @@ const extractValueType = (
 const validateTypeAssignment = (
   valueType: string,
   declaredType: string,
-): Result<null, string> => {
+): Result<undefined, string> => {
   if (!valueType) {
-    return ok(null);
+    return ok(undefined);
   }
 
   // Handle pointer types
@@ -117,7 +117,7 @@ const validateTypeAssignment = (
   ) {
     return err(`Cannot assign ${valueType} to ${declaredType}`);
   }
-  return ok(null);
+  return ok(undefined);
 };
 
 export const compile = (source: string): Result<string, string> => {
@@ -142,9 +142,7 @@ export const compile = (source: string): Result<string, string> => {
           // Check if the variable is a pointer type
           const varType = declarationTypes[innerExpr];
           if (varType && !varType.startsWith("*")) {
-            return err(
-              `Cannot dereference non-pointer type '${varType}'`,
-            );
+            return err(`Cannot dereference non-pointer type '${varType}'`);
           }
           return ok(`${innerExpr}.value`);
         }

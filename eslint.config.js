@@ -54,6 +54,10 @@ export default [
           message:
             "Function declarations are not allowed. Use arrow functions instead: const name = () => ...",
         },
+        {
+          selector: "Literal[value=null]",
+          message: "null is not allowed. Use undefined instead.",
+        },
       ],
     },
   },
@@ -106,6 +110,10 @@ export default [
           selector: "FunctionDeclaration",
           message:
             "Function declarations are not allowed. Use arrow functions instead: const name = () => ...",
+        },
+        {
+          selector: "Literal[value=null]",
+          message: "null is not allowed. Use undefined instead.",
         },
       ],
     },
