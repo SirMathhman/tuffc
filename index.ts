@@ -559,18 +559,30 @@ export const compile = (
           return acc;
         }
 
-        // Helper to handle variable assignments (used both for regular and block assignments)
-        const handleAssignment = (assignStmt: string): Result<undefined, string> => {
+        // Helper to extract variable name from an assignment statement
+        const extractVariableNameFromAssignment = (
+          assignStmt: string,
+        ): string => {
           const equalIdx = assignStmt.indexOf("=");
-          const varName = assignStmt.substring(0, equalIdx).trim();
+          return assignStmt.substring(0, equalIdx).trim();
+        };
 
+        // Helper to handle variable assignments (used both for regular and block assignments)
+        const handleAssignment = (
+          assignStmt: string,
+        ): Result<undefined, string> => {
+          const varName = extractVariableNameFromAssignment(assignStmt);
+
+          // Validate variable is declared
           if (!(varName in declarations)) {
             return err(`Variable '${varName}' is not declared`);
           }
+
           if (!mutableVars.has(varName)) {
             return err(`Variable '${varName}' is not mutable`);
           }
 
+          const equalIdx = assignStmt.indexOf("=");
           const valueExpr = assignStmt.substring(equalIdx + 1).trim();
           const compiledValueResult = extractCompiledValue(valueExpr, true);
           if (!compiledValueResult.ok) {
@@ -700,21 +712,62 @@ export const compile = (
 
           return ok(undefined);
         } else if (stmt.startsWith("{") && stmt.endsWith("}")) {
-          // Handle block statements as standalone statements
-          // Process the block content directly without recursive compile() to preserve outer scope
+          // Handle block statements as standalone statements with proper scoping
           const blockContent = stmt.substring(1, stmt.length - 1).trim();
           if (blockContent.length > 0) {
+            // Track which variables existed before the block (for scope isolation)
+            const outerDeclarations = new Set(Object.keys(declarations));
+
             // Split statements within the block
             const blockStmts = splitStatements(blockContent);
-            // Process each statement in the block with the outer scope's declarations
+            // Process each statement in the block
             const blockProcessResult = blockStmts.reduce(
               (blockAcc, blockStmt) => {
                 if (blockAcc.ok === false) {
                   return blockAcc;
                 }
 
-                // Handle assignments within the block
-                if (blockStmt.includes("=")) {
+                // Handle let statements within the block (block-scoped)
+                if (blockStmt.startsWith("let ")) {
+                  const parsed = parseLetStatement(blockStmt);
+                  if (!parsed.valueExpr) {
+                    return err(
+                      "Invalid variable declaration: missing initializer",
+                    );
+                  }
+
+                  // Block-scoped variables
+                  const compiledValueResult = extractCompiledValue(
+                    parsed.valueExpr,
+                    false,
+                  );
+                  if (!compiledValueResult.ok) {
+                    return compiledValueResult;
+                  }
+
+                  // Add to declarations for use within this block
+                  declarations[parsed.varName] = compiledValueResult.value;
+                  // Add to block statements
+                  statements.push(
+                    `${parsed.isMutable ? "var" : "const"} ${parsed.varName} = ${compiledValueResult.value};`,
+                  );
+
+                  if (parsed.isTyped && parsed.declaredType) {
+                    declarationTypes[parsed.varName] = parsed.declaredType;
+                  }
+
+                  return ok(undefined);
+                } else if (blockStmt.includes("=")) {
+                  // Handle assignments within the block - only allow modifying outer-scope variables
+                  const varName = extractVariableNameFromAssignment(blockStmt);
+
+                  // Check if this variable is from outer scope only
+                  if (!outerDeclarations.has(varName)) {
+                    return err(
+                      `Variable '${varName}' is not available in this scope`,
+                    );
+                  }
+
                   return handleAssignment(blockStmt);
                 }
 
@@ -726,6 +779,15 @@ export const compile = (
             if (!blockProcessResult.ok) {
               return blockProcessResult;
             }
+
+            // Remove block-scoped variables from declarations
+            // by restoring to pre-block state (only keep outer declarations)
+            Object.keys(declarations).forEach((varName) => {
+              if (!outerDeclarations.has(varName)) {
+                delete declarations[varName];
+                delete declarationTypes[varName];
+              }
+            });
           }
 
           return ok(undefined);
