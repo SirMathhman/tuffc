@@ -28,7 +28,10 @@ const extractValueType = (
 ): string => {
   // Handle dereference operator
   if (valueExpr.startsWith("*")) {
-    const innerType = extractValueType(valueExpr.substring(1), declarationTypes);
+    const innerType = extractValueType(
+      valueExpr.substring(1),
+      declarationTypes,
+    );
     if (innerType.startsWith("*")) {
       return innerType.substring(1);
     }
@@ -37,7 +40,10 @@ const extractValueType = (
 
   // Handle reference operator
   if (valueExpr.startsWith("&")) {
-    const innerType = extractValueType(valueExpr.substring(1), declarationTypes);
+    const innerType = extractValueType(
+      valueExpr.substring(1),
+      declarationTypes,
+    );
     if (innerType) {
       return "*" + innerType;
     }
@@ -97,7 +103,9 @@ const validateTypeAssignment = (
 
   // Remove pointer markers for comparison
   const innerValueType = isValuePointer ? valueType.substring(1) : valueType;
-  const innerDeclaredType = isDeclaredPointer ? declaredType.substring(1) : declaredType;
+  const innerDeclaredType = isDeclaredPointer
+    ? declaredType.substring(1)
+    : declaredType;
 
   if (
     innerValueType &&
@@ -126,9 +134,7 @@ export const compile = (source: string): Result<string, string> => {
     const statements: string[] = [];
     let returnExpr = "";
 
-    const compilePointerExpr = (
-      expr: string,
-    ): Result<string, string> => {
+    const compilePointerExpr = (expr: string): Result<string, string> => {
       // Handle dereference operator *x
       if (expr.startsWith("*")) {
         const innerExpr = expr.substring(1).trim();
