@@ -283,6 +283,9 @@ export const compile = (source: string): Result<string, string> => {
 
             if (isTyped && declaredType) {
               declarationTypes[varName] = declaredType;
+            } else if (valueExpr === "true" || valueExpr === "false") {
+              // Infer Bool type for boolean literals
+              declarationTypes[varName] = "Bool";
             } else if (valueExpr.startsWith("&")) {
               // Handle reference operator: infer pointer type
               const refVarName = valueExpr.substring(1).trim();
@@ -364,6 +367,36 @@ export const compile = (source: string): Result<string, string> => {
               // It's a pointer expression but has an error (type checking, etc.)
               return pointerResult;
             } else {
+              // Check if this is a binary operation with boolean operands
+              if (
+                stmt.includes("+") ||
+                stmt.includes("-") ||
+                stmt.includes("*") ||
+                stmt.includes("/")
+              ) {
+                // Split by binary operators to extract operands
+                const opIndex = Math.max(
+                  stmt.indexOf("+"),
+                  stmt.indexOf("-"),
+                  stmt.indexOf("*"),
+                  stmt.indexOf("/"),
+                );
+                if (opIndex !== -1) {
+                  const leftOperand = stmt.substring(0, opIndex).trim();
+                  const rightOperand = stmt.substring(opIndex + 1).trim();
+
+                  if (
+                    (leftOperand in declarationTypes &&
+                      declarationTypes[leftOperand] === "Bool") ||
+                    (rightOperand in declarationTypes &&
+                      declarationTypes[rightOperand] === "Bool")
+                  ) {
+                    return err(
+                      "Binary operations are not allowed on boolean types",
+                    );
+                  }
+                }
+              }
               returnExpr = stmt;
             }
 
@@ -379,8 +412,32 @@ export const compile = (source: string): Result<string, string> => {
       return stmtResult;
     }
 
+    // Validate return expression for boolean operations
     if (!returnExpr) {
       returnExpr = "0";
+    } else {
+      // Check for binary operations with boolean operands
+      const containsOp =
+        returnExpr.includes("+") ||
+        returnExpr.includes("-") ||
+        returnExpr.includes("*") ||
+        returnExpr.includes("/");
+      if (containsOp) {
+        const opChars = ["+", "-", "*", "/"];
+        const opIndex = [...returnExpr].findIndex((c) => opChars.includes(c));
+        if (opIndex !== -1) {
+          const leftOp = returnExpr.substring(0, opIndex).trim();
+          const rightOp = returnExpr.substring(opIndex + 1).trim();
+          if (
+            (leftOp in declarationTypes &&
+              declarationTypes[leftOp] === "Bool") ||
+            (rightOp in declarationTypes &&
+              declarationTypes[rightOp] === "Bool")
+          ) {
+            return err("Binary operations are not allowed on boolean types");
+          }
+        }
+      }
     }
 
     return ok(statements.join("\n") + "\nreturn " + returnExpr + ";");

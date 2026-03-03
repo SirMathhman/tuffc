@@ -30,7 +30,10 @@ const validate = (
 
 const invalidate = (source: string) => {
   it(source, () => {
-    expect(compile(source).ok).toBe(false);
+    const result = compile(source);
+    if(result.ok) {
+      expect("Expected to fail, but succeeded: ```" + result.value + "```").toBeUndefined();
+    }
   });
 };
 
@@ -59,3 +62,4 @@ invalidate("let x = read<I32>(); *x");
 invalidate("let x = read<I32>(); let y = &x; let z : U8 = *y;");
 validate("let x : Bool = true; x", "", 1);
 validate("let x : Bool = false; x", "", 0);
+invalidate("let x = true; let y = false; x + y");
