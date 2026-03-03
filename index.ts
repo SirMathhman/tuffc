@@ -330,7 +330,7 @@ export const compile = (
 
     const blockContent = blockExpr.substring(1, blockExpr.length - 1).trim();
     if (blockContent.length === 0) {
-      return err("Block expression cannot be empty");
+      return ok({ statements: "", returnValue: "0" });
     }
 
     const blockResult = compile(blockContent, true);
@@ -593,24 +593,32 @@ export const compile = (
 
           if (parsed.isTyped && parsed.declaredType) {
             declarationTypes[parsed.varName] = parsed.declaredType;
-          } else if (parsed.valueExpr === "true" || parsed.valueExpr === "false") {
+          } else if (
+            parsed.valueExpr === "true" ||
+            parsed.valueExpr === "false"
+          ) {
             // Infer Bool type for boolean literals
             declarationTypes[parsed.varName] = "Bool";
           } else if (parsed.valueExpr.startsWith("&")) {
             // Handle reference operator: infer pointer type
             const refVarName = parsed.valueExpr.substring(1).trim();
             if (refVarName in declarationTypes) {
-              declarationTypes[parsed.varName] = "*" + declarationTypes[refVarName];
+              declarationTypes[parsed.varName] =
+                "*" + declarationTypes[refVarName];
             }
           } else if (parsed.valueExpr in declarationTypes) {
-            declarationTypes[parsed.varName] = declarationTypes[parsed.valueExpr];
+            declarationTypes[parsed.varName] =
+              declarationTypes[parsed.valueExpr];
           } else if (
             parsed.valueExpr.startsWith("read<") &&
             parsed.valueExpr.endsWith(">()")
           ) {
             const typeEnd = parsed.valueExpr.indexOf(">");
             if (typeEnd > 5)
-              declarationTypes[parsed.varName] = parsed.valueExpr.substring(5, typeEnd);
+              declarationTypes[parsed.varName] = parsed.valueExpr.substring(
+                5,
+                typeEnd,
+              );
           } else {
             const tIdx = Math.max(
               parsed.valueExpr.lastIndexOf("U"),
@@ -627,7 +635,8 @@ export const compile = (
                 .split("")
                 .every((c) => c >= "0" && c <= "9")
             ) {
-              declarationTypes[parsed.varName] = parsed.valueExpr.substring(tIdx);
+              declarationTypes[parsed.varName] =
+                parsed.valueExpr.substring(tIdx);
             }
           }
 
@@ -976,6 +985,21 @@ export const compile = (
       }
 
       return ok(`return ${readReplaced.value};`);
+    }
+  }
+
+  // Block expressions: { ... }
+  if (source.startsWith("{") && source.endsWith("}")) {
+    const blockResult = processBlockExpression(source);
+    if (blockResult.ok) {
+      const { statements: blockStatements, returnValue } = blockResult.value;
+      if (blockStatements.length > 0) {
+        return ok(blockStatements + "\nreturn " + returnValue + ";");
+      } else {
+        return ok("return " + returnValue + ";");
+      }
+    } else if (!blockResult.error.includes("Not a block expression")) {
+      return blockResult;
     }
   }
 
