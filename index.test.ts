@@ -115,3 +115,4 @@ validate(
 );
 validate("fn empty() => {}", "", 0);
 invalidate("fn empty() => {} fn empty() => {}");
+invalidate("fn add(first : I32, first : I32) => {}");

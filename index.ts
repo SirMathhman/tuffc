@@ -1009,7 +1009,30 @@ export const compile = (
             );
           }
 
-          // Extract parameters (just validate for now)
+          // Extract and validate parameters
+          const parametersStr = afterFn.substring(parenIdx + 1, closeParenIdx).trim();
+          const seenParams = new Set<string>();
+
+          if (parametersStr.length > 0) {
+            // Split parameters by comma (handling nested type info)
+            const params = parametersStr.split(",").map((p) => p.trim());
+            for (const param of params) {
+              // Extract parameter name (before the colon)
+              const colonIdx = param.indexOf(":");
+              const paramName = colonIdx > -1 ? param.substring(0, colonIdx).trim() : param.trim();
+
+              if (!paramName) {
+                return err("Invalid function parameter: missing parameter name");
+              }
+
+              // Check for duplicate parameter name
+              if (seenParams.has(paramName)) {
+                return err(`Parameter '${paramName}' is already defined`);
+              }
+              seenParams.add(paramName);
+            }
+          }
+
           const remaining = afterFn.substring(closeParenIdx + 1).trim();
 
           // Check for arrow =>
