@@ -52,6 +52,13 @@ function renameThisParameter(source: string): string {
   return result;
 }
 
+function buildThisObjectFromParams(paramNames: string): string {
+  if (paramNames === "" || paramNames === undefined) return "{}";
+  const params = paramNames.split(",").map((p) => p.trim());
+  const fields = params.map((p) => `${p}: ${p}`).join(", ");
+  return `{ ${fields} }`;
+}
+
 function compileFnStatement(
   source: string,
 ): Result<string, CompileError> | null {
@@ -102,8 +109,14 @@ function compileFnStatement(
   const paramsRaw = trimmed.substring(openParen + 1, closeParen);
   const paramNames = extractParamNames(paramsRaw);
 
+  // If body is 'this', replace with object literal constructed from parameters
+  let bodyToProcess = body;
+  if (body.trim() === "this" && paramNames !== "") {
+    bodyToProcess = buildThisObjectFromParams(paramNames);
+  }
+
   // Rename 'this' to '_this' in the body since 'this' is a reserved keyword
-  const bodyWithThisAccess = transformThisAccess(body);
+  const bodyWithThisAccess = transformThisAccess(bodyToProcess);
   const bodyWithRenamedThis = renameThisParameter(bodyWithThisAccess);
 
   const transformedFullBody = stripNumericTypeSuffixes(

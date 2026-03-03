@@ -385,4 +385,12 @@ describe("The compiler can compile", () => {
   it("calls method via this.get() in current scope", () => {
     assertValid("fn get() => 100; this.get()", "", 100);
   });
+
+  it("returns object from function with this and accesses field", () => {
+    assertValid(
+      "fn Wrapper(value : I32) => this; Wrapper(100).value",
+      "",
+      100,
+    );
+  });
 });
