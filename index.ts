@@ -8,6 +8,59 @@ export const err = <E>(error: E): Result<never, E> => {
   return { ok: false, error };
 };
 
+const replaceThisPattern = (source: string): string => {
+  let result = "";
+  let i = 0;
+  
+  while (i < source.length) {
+    // Check if we're at the start of "this."
+    if (source.slice(i, i + 5) === "this.") {
+      // Check if this is a word boundary (not preceded by word character)
+      const prevChar = i > 0 ? source[i - 1] : "";
+      const isWordBoundary = !prevChar || !isWordChar(prevChar);
+      
+      if (isWordBoundary) {
+        // Skip "this." and extract the identifier
+        i += 5; // skip "this."
+        
+        // Collect identifier characters
+        let identifier = "";
+        while (i < source.length && isWordChar(source[i])) {
+          identifier += source[i];
+          i++;
+        }
+        
+        // Only replace if we found a valid identifier
+        if (identifier.length > 0) {
+          result += identifier;
+        } else {
+          // No valid identifier, keep "this."
+          result += "this.";
+          i -= 5;
+        }
+      } else {
+        // Not a word boundary, just add current character
+        result += source[i];
+        i++;
+      }
+    } else {
+      result += source[i];
+      i++;
+    }
+  }
+  
+  return result;
+};
+
+const isWordChar = (char: string): boolean => {
+  return (
+    (char >= "a" && char <= "z") ||
+    (char >= "A" && char <= "Z") ||
+    (char >= "0" && char <= "9") ||
+    char === "_"
+  );
+};
+
 const isValidTypeStr = (typeStr: string): boolean => {
   // Handle pointer types like *I32 or *U8
   if (typeStr.startsWith("*")) {
@@ -432,6 +485,15 @@ export const compile = (
   source: string,
   requiresFinalExpression = false,
 ): Result<string, string> => {
+  // allow using `this.<var>` inside the language as shorthand for a local
+  // variable.  The runtime `this` in a new Function call is undefined or the
+  // global object, so `this.x` would never resolve.  To keep the tests happy
+  // we simply rewrite all `this.<ident>` occurrences to the bare identifier
+  // before any parsing occurs.  This transformation happens early so that
+  // subsequent analysis (splitting statements, type checking, etc.) works
+  // normally.
+  source = replaceThisPattern(source);
+
   const processBlockExpression = (
     blockExpr: string,
     requiresFinalExpr = true,
