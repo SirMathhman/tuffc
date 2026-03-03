@@ -57,3 +57,5 @@ validate("let x = read<I32>(); let y : *I32 = &x; *y", "100", 100);
 invalidate("let x = read<I32>(); let y : *U8 = &x; *y");
 invalidate("let x = read<I32>(); *x");
 invalidate("let x = read<I32>(); let y = &x; let z : U8 = *y;");
+validate("let x : Bool = true; x", "", 1);
+validate("let x : Bool = false; x", "", 0);

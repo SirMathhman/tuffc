@@ -13,6 +13,9 @@ const isValidTypeStr = (typeStr: string): boolean => {
   if (typeStr.startsWith("*")) {
     return isValidTypeStr(typeStr.substring(1));
   }
+  if (typeStr === "Bool") {
+    return true;
+  }
   return (
     (typeStr[0] === "U" || typeStr[0] === "I") &&
     typeStr
@@ -51,6 +54,12 @@ const extractValueType = (
   }
 
   let valueType = "";
+
+  // Check for boolean literals
+  if (valueExpr === "true" || valueExpr === "false") {
+    return "Bool";
+  }
+
   const typeMarkerIdx = Math.max(
     valueExpr.lastIndexOf("U"),
     valueExpr.lastIndexOf("I"),
@@ -91,6 +100,13 @@ const validateTypeAssignment = (
 ): Result<undefined, string> => {
   if (!valueType) {
     return ok(undefined);
+  }
+
+  // Handle Bool types
+  if (valueType === "Bool" || declaredType === "Bool") {
+    return valueType === declaredType
+      ? ok(undefined)
+      : err(`Cannot assign ${valueType} to ${declaredType}`);
   }
 
   // Handle pointer types
@@ -424,6 +440,14 @@ export const compile = (source: string): Result<string, string> => {
       }
     }
     return err("Invalid read syntax");
+  }
+
+  // Boolean literals (true/false)
+  if (source === "true") {
+    return ok("return 1");
+  }
+  if (source === "false") {
+    return ok("return 0");
   }
 
   // Numeric literals with optional type suffixes (e.g., 100U8, 100I32)
