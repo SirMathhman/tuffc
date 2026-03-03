@@ -3,8 +3,23 @@
     "Stop": [
       {
         "type": "command",
-        "windows": "powershell -NoProfile -ExecutionPolicy Bypass -File .github/scripts/check.ps1",
-        "timeout": 60
+        "windows": "bun test --timeout 1000 --concurrent",
+        "timeout": 30
+      },
+      {
+        "type": "command",
+        "windows": "bun run lint",
+        "timeout": 30
+      },
+      {
+        "type": "command",
+        "windows": "bun .github/scripts/single-use.ts",
+        "timeout": 30
+      },
+      {
+        "type": "command",
+        "windows": "pmd cpd index.ts --language typescript --minimum-tokens 35",
+        "timeout": 30
       }
     ]
   }
