@@ -44,6 +44,16 @@ export default [
           message:
             "Regular expressions are not allowed. Use alternatives instead.",
         },
+        {
+          selector: "ThrowStatement",
+          message:
+            "Throwing errors is not allowed. Use Result<T, E> type instead.",
+        },
+        {
+          selector: "FunctionDeclaration",
+          message:
+            "Function declarations are not allowed. Use arrow functions instead: const name = () => ...",
+        },
       ],
     },
   },

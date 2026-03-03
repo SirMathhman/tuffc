@@ -1,24 +1,34 @@
-export function compile(source: string): string {
+export type Result<T, E> = { ok: true; value: T } | { ok: false; error: E };
+
+export const ok = <T>(value: T): Result<T, never> => {
+  return { ok: true, value };
+};
+
+export const err = <E>(error: E): Result<never, E> => {
+  return { ok: false, error };
+};
+
+export const compile = (source: string): Result<string, string> => {
   // Empty input returns 0
   if (source === "") {
-    return "return 0";
+    return ok("return 0");
   }
 
   // Numeric literals with optional type suffixes (e.g., 100U8, 100I32)
   if (isValidNumericLiteral(source)) {
     const numValue = stripTypeSuffix(source);
-    return `return ${numValue}`;
+    return ok(`return ${numValue}`);
   }
 
-  // Invalid input throws error
+  // Invalid input returns error
   if (startsWithIdentifierChar(source)) {
-    throw new Error("Invalid input");
+    return err("Invalid input");
   }
 
-  throw new Error("Not implemented yet");
-}
+  return err("Not implemented yet");
+};
 
-function isValidNumericLiteral(source: string): boolean {
+const isValidNumericLiteral = (source: string): boolean => {
   // Must start with a digit
   if (!source.length || source[0] < "0" || source[0] > "9") {
     return false;
@@ -37,9 +47,9 @@ function isValidNumericLiteral(source: string): boolean {
   }
 
   return true;
-}
+};
 
-function isValidTypeSuffix(suffix: string): boolean {
+const isValidTypeSuffix = (suffix: string): boolean => {
   // Match patterns like U8, I32, U64, etc.
   if (suffix.length < 2 || suffix.length > 3) {
     return false;
@@ -58,18 +68,18 @@ function isValidTypeSuffix(suffix: string): boolean {
   }
 
   return true;
-}
+};
 
-function stripTypeSuffix(source: string): string {
+const stripTypeSuffix = (source: string): string => {
   // Remove type suffix if present
   let i = 0;
   while (i < source.length && source[i] >= "0" && source[i] <= "9") {
     i++;
   }
   return source.substring(0, i);
-}
+};
 
-function startsWithIdentifierChar(source: string): boolean {
+const startsWithIdentifierChar = (source: string): boolean => {
   if (!source.length) {
     return false;
   }
@@ -79,4 +89,4 @@ function startsWithIdentifierChar(source: string): boolean {
     (firstChar >= "A" && firstChar <= "Z") ||
     firstChar === "_"
   );
-}
+};

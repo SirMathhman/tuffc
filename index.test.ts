@@ -1,18 +1,23 @@
 import { compile } from ".";
 
-function validate(source: string, expected: number): void {
+const validate = (source: string, expected: number): void => {
   it(source, () => {
-    const func = new Function(compile(source));
-    const actual = func() as number;
-    expect(actual).toBe(expected);
+    const result = compile(source);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const func = new Function(result.value);
+      const actual = func() as number;
+      expect(actual).toBe(expected);
+    }
   });
-}
+};
 
-function invalidate(source: string) {
+const invalidate = (source: string) => {
   it(source, () => {
-    expect(() => compile(source)).toThrow();
+    const result = compile(source);
+    expect(result.ok).toBe(false);
   });
-}
+};
 
 validate("", 0);
 invalidate("x");
