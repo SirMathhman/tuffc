@@ -2,6 +2,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
+#include <stdint.h>
+#include <stdbool.h>
 
 // External function declaration
 extern char *compile(const char *input);
