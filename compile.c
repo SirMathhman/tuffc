@@ -14,6 +14,7 @@ typedef struct
     long long max_val;
 } TypeInfo;
 
+// CPD-OFF
 static TypeInfo type_map[] = {
     {"I8", 8, 1, -128LL, 127LL},
     {"U8", 8, 0, 0LL, 255LL},
@@ -24,6 +25,7 @@ static TypeInfo type_map[] = {
     {"I64", 64, 1, -9223372036854775807LL - 1, 9223372036854775807LL},
     {"U64", 64, 0, 0LL, 18446744073709551615ULL},
     {NULL, 0, 0, 0, 0}};
+// CPD-ON
 
 // Find type info by suffix
 static TypeInfo *find_type(const char *suffix)
