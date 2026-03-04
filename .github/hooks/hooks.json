@@ -1,0 +1,10 @@
+{
+	"hooks": {
+		"Stop": [
+			{
+				"type": "command",
+				"command": "powershell -ExecutionPolicy Bypass -File test.ps1 || exit 2"
+			}
+		]
+	}
+}
