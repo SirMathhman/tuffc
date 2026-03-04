@@ -2,7 +2,12 @@ import { compile } from ".";
 
 function validate(source: string, stdin: string = "", expected: number): void {
   it(source, () => {
-    const compiled = compile(source);
+    const result = compile(source);
+    if (typeof result === "object" && "error" in result) {
+      expect(`Unexpected compilation error: ${result.error}`).toBeUndefined();
+      return;
+    }
+    const compiled = result.value;
     const tokens = stdin
       .split(" ")
       .flatMap((part) => part.split("\n"))
@@ -52,3 +57,32 @@ validate("read()", "false", 0);
 // Default value (no input)
 validate("read()", "", 0);
 validate("read<U8>()", "", 0);
+
+// Literal syntax with type annotations
+validate("100U8", "", 100);
+validate("0U8", "", 0);
+validate("255U8", "", 255);
+validate("100U8 + 50U8", "", 150);
+
+function invalidate(source: string): void {
+  it(`rejects ${source}`, () => {
+    const result = compile(source);
+    if (typeof result === "object" && "error" in result) {
+      return;
+    } else {
+      expect("Expected compilation to fail").toBeUndefined();
+    }
+  });
+}
+
+// Negative literal error cases
+invalidate("-100U8");
+invalidate("-1U8");
+invalidate("-0U8");
+invalidate("100U8 + -50U8");
+
+// Out of range literal cases
+invalidate("256U8"); // U8 max is 255
+invalidate("65536U16"); // U16 max is 65535
+invalidate("128I8"); // I8 max is 127
+invalidate("-129I8"); // I8 min is -128
