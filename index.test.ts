@@ -64,6 +64,27 @@ validate("0U8", "", 0);
 validate("255U8", "", 255);
 validate("100U8 + 50U8", "", 150);
 
+// Variable declaration with type annotations
+validate("let x : U8 = read<U8>(); x", "100", 100);
+
+// Mutable variable with reassignment
+validate("let mut x = read<U8>(); x = read<U8>(); x", "1 2", 2);
+
+// Type inference from literals
+validate("let x = 100U8; x", "", 100);
+validate("let y = 50U16; y", "", 50);
+validate("let z = 10U32; z", "", 10);
+
+// Mutable variable with type inference
+validate("let mut x = 5U8; x = 10U8; x", "", 10);
+
+// Error cases: immutability enforcement, redeclaration, temporal dead zone
+invalidate("let x = 100U8; x = 50U8"); // immutable by default
+invalidate("let x = 5U8; let x = 10U8"); // redeclaration forbidden
+invalidate("x = 5U8; let x = 10U8"); // use before declaration (TDZ)
+invalidate("let x = 100U8; let x = 100U8; x"); // redeclaration
+invalidate("let mut x = 50U8; let x = 100U8"); // redeclaration even with mut
+
 function invalidate(source: string): void {
   it(`rejects ${source}`, () => {
     const result = compile(source);
