@@ -19,6 +19,6 @@ char *compile(const char *input)
     {
         return NULL;
     }
-    strcpy(result, code);
+    memcpy(result, code, len + 1);
     return result;
 }

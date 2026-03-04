@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <errno.h>
 
 // External function declaration
 extern char *compile(const char *input);
@@ -26,8 +27,9 @@ int execute(const char *input)
     snprintf(temp_c_file, sizeof(temp_c_file), "tuffc_temp_%d.c", rand());
 
     // Write compiled output to the temp file
-    FILE *f = fopen(temp_c_file, "w");
-    if (!f)
+    FILE *f;
+    errno_t err = fopen_s(&f, temp_c_file, "w");
+    if (err != 0 || !f)
     {
         free(compiled);
         return -1;
