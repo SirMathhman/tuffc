@@ -173,3 +173,83 @@ invalidate("let x = true; x = false;");
 invalidate("x && true;");
 invalidate("!y;");
 invalidate("x || false;");
+
+// Pointer tests
+validate(
+  "let mut x = read<U8>(); let y : *mut U8 = &mut x; *y = read<U8>(); x",
+  "1 2",
+  2,
+);
+
+// --- Negative tests for pointers ---
+
+// Error: dereferencing non-pointer type
+invalidate("let x = 10U8; *x = 5U8;");
+invalidate("let x = 10U8; let y = *x;");
+
+// Error: creating mutable reference to immutable variable
+invalidate("let x = 10U8; let y : *mut U8 = &mut x;");
+
+// Error: type mismatch with pointer types
+invalidate("let mut x = 10U8; let y : *mut U16 = &mut x;");
+invalidate("let mut x = 10U8; let y : *U8 = &mut x;");
+
+// Error: assigning non-pointer value to pointer variable
+invalidate("let mut x = 10U8; let y : *mut U8 = 5U8;");
+
+// Error: undeclared variable in pointer context
+invalidate("let y : *mut U8 = &mut z;");
+invalidate("let mut x = 10U8; let y : *mut U8 = &mut z;");
+
+// Error: boolean operations on pointer values
+invalidate("let mut x = true; let y : *mut Bool = &mut x; *y && true;");
+
+// Error: attempting to reassign immutable pointer
+invalidate("let x = 10U8; let mut y : *mut U8 = 0U8; y = &mut x;");
+
+// Error: creating reference to non-existent variable
+invalidate("let y : *mut U8 = &mut nonexistent;");
+
+// Error: dereference on immutable pointer
+invalidate("let x = 10U8; let y = &x; *y = 5U8;");
+
+// Error: type syntax errors
+invalidate("let x : U8 = 10U8; let y : U16 = x;");
+
+// Error: undeclared variables in expressions
+invalidate("y * z");
+invalidate("read<U8>() + undeclared");
+
+// Error: reassigning immutable variables multiple times
+invalidate("let x = 5U8; x = 10U8; x = 15U8;");
+
+// Error: mutable variable used as immutable in context
+invalidate("let x = 10U8; let y : *mut U8 = &mut x; let z : *U8 = &mut x;");
+
+// Error: boolean type errors
+invalidate("let x : Bool = 1U8;");
+invalidate("let x : Bool = 0U8;");
+
+// Error: operations mixing different numeric types
+invalidate("let x : U8 = 10U8; let y : U16 = x;");
+
+// Error: undeclared variable in boolean context
+invalidate("undeclared || true");
+invalidate("!undeclared");
+invalidate("declared && undeclared");
+
+// Error: type annotation with undeclared variable
+invalidate("let x : U8 = y;");
+invalidate("let x : Bool = y;");
+
+// Error: attempting to use variable before declaration
+invalidate("z = 5U8; let z = 10U8;");
+w;
+
+// Error: invalid operations on boolean variables
+invalidate("let x = true; x + 5U8;");
+invalidate("let x = false; x * 2U8;");
+
+// Error: reassigning variables with type mismatches
+invalidate("let mut x = 10U8; x = true;");
+invalidate("let mut x = true; x = 10U8;");

@@ -11,18 +11,11 @@ type Result = CompileSuccess | CompileError;
 interface VariableInfo {
   mutable: boolean;
   declaredAt: number;
-  type: "U8" | "U16" | "U32" | "I8" | "I16" | "I32" | "Bool" | undefined;
+  type: string | undefined; // Support types like "U8", "Bool", "*U8", "*mut U8", etc.
 }
 
 interface OptionalError {
   error: string;
-}
-
-function skipTypeSuffix(source: string, i: number): number {
-  while (i < source.length && (isLetter(source[i]) || isDigit(source[i]))) {
-    i++;
-  }
-  return i;
 }
 
 function returnUndeclaredError(ident: string): OptionalError {
@@ -110,21 +103,61 @@ export function compile(source: string): Result {
         ) {
           typeAnnotationI++;
         }
-        const type = source.substring(
+        // Extract type, handling pointer syntax: *T or *mut T
+        let typeStr = "";
+        if (
+          typeAnnotationI < source.length &&
+          source[typeAnnotationI] === "*"
+        ) {
+          typeStr += "*";
+          typeAnnotationI++;
+          while (
+            typeAnnotationI < source.length &&
+            source[typeAnnotationI] === " "
+          ) {
+            typeAnnotationI++;
+          }
+          if (
+            source.substring(typeAnnotationI, typeAnnotationI + 3) === "mut"
+          ) {
+            typeStr += "mut ";
+            typeAnnotationI += 3;
+            while (
+              typeAnnotationI < source.length &&
+              source[typeAnnotationI] === " "
+            ) {
+              typeAnnotationI++;
+            }
+          }
+        }
+        // Extract base type name
+        typeStr += source.substring(
           typeAnnotationI,
           (() => {
-            let end = typeAnnotationI;
             while (
-              end < source.length &&
-              (isLetter(source[end]) || isDigit(source[end]))
+              typeAnnotationI < source.length &&
+              (isLetter(source[typeAnnotationI]) ||
+                isDigit(source[typeAnnotationI]))
             ) {
-              end++;
+              typeAnnotationI++;
             }
-            typeAnnotationI = end;
-            return end;
+            return typeAnnotationI;
           })(),
         );
-        annotatedType = type.length > 0 ? type : undefined;
+        annotatedType = typeStr.length > 0 ? typeStr : undefined;
+
+        // Validate: no pointer-to-pointer types
+        if (annotatedType && annotatedType.includes("*")) {
+          let pointerCount = 0;
+          for (const c of annotatedType) {
+            if (c === "*") pointerCount++;
+          }
+          if (pointerCount > 1) {
+            return {
+              error: `Pointer-to-pointer types are not supported: '${annotatedType}'`,
+            };
+          }
+        }
       }
       validateI = typeAnnotationI;
 
@@ -208,8 +241,52 @@ export function compile(source: string): Result {
           | "I16"
           | "I32"
           | "Bool"
+          | string
           | undefined;
-        if (trimmed === "true" || trimmed === "false") {
+
+        // Check for reference operators: &mut variable or &variable
+        if (trimmed.startsWith("&mut ")) {
+          const refVar = trimmed.substring(5).trim();
+          const refVarInfo = variables.get(refVar);
+          if (!refVarInfo) {
+            return returnUndeclaredError(refVar);
+          }
+          if (!refVarInfo.mutable) {
+            return {
+              error: `Cannot create mutable reference to immutable variable '${refVar}'`,
+            };
+          }
+          if (refVarInfo && refVarInfo.type) {
+            inferred = "*mut " + refVarInfo.type;
+          }
+        } else if (trimmed.startsWith("&")) {
+          const refVar = trimmed.substring(1).trim();
+          const refVarInfo = variables.get(refVar);
+          if (!refVarInfo) {
+            return returnUndeclaredError(refVar);
+          }
+          if (refVarInfo && refVarInfo.type) {
+            inferred = "*" + refVarInfo.type;
+          }
+        } else if (
+          trimmed.startsWith("*") &&
+          (isLetter(trimmed[1]) || trimmed[1] === "_")
+        ) {
+          // Dereference operation: *variable
+          const derefVar = trimmed.substring(1).trim();
+          const derefVarInfo = variables.get(derefVar);
+          if (!derefVarInfo) {
+            return returnUndeclaredError(derefVar);
+          }
+          const baseType = derefVarInfo.type;
+          if (!baseType || !baseType.startsWith("*")) {
+            return {
+              error: `Cannot dereference non-pointer variable '${derefVar}'`,
+            };
+          }
+          // Remove the * prefix from the pointer type to get the base type
+          inferred = baseType.substring(1);
+        } else if (trimmed === "true" || trimmed === "false") {
           inferred = "Bool";
         } else if (trimmed.includes("&&") || trimmed.includes("||")) {
           inferred = "Bool";
@@ -235,7 +312,26 @@ export function compile(source: string): Result {
               break;
             }
           }
-          inferred = isNumeric ? "U8" : undefined;
+
+          if (isNumeric) {
+            inferred = "U8";
+          } else if (trimmed.includes("<") && trimmed.includes("(")) {
+            // This is a function call with generics like read<U8>(), skip validation
+            inferred = undefined;
+          } else {
+            // Check if it's a variable reference
+            const varInfo = variables.get(trimmed);
+            if (varInfo && varInfo.type) {
+              inferred = varInfo.type;
+            } else if (
+              trimmed &&
+              isLetter(trimmed[0]) &&
+              !trimmed.includes("(")
+            ) {
+              // Looks like a variable but not found, and not a function call
+              return returnUndeclaredError(trimmed);
+            }
+          }
         }
         inferredType = inferred;
 
@@ -253,15 +349,7 @@ export function compile(source: string): Result {
       variables.set(varName, {
         mutable,
         declaredAt: nameStart,
-        type: finalType as
-          | "U8"
-          | "U16"
-          | "U32"
-          | "I8"
-          | "I16"
-          | "I32"
-          | "Bool"
-          | undefined,
+        type: finalType,
       });
 
       // Skip to end of statement if not already there
@@ -272,6 +360,18 @@ export function compile(source: string): Result {
         validateI++;
       }
     } else if (isLetter(source[validateI]) || source[validateI] === "_") {
+      // Check for dereference assignment (*identifier = value)
+      let isDereferenceAssignment = false;
+      if (
+        validateI > 0 &&
+        source[validateI - 1] === "*" &&
+        (validateI < 2 ||
+          source[validateI - 2] === " " ||
+          source[validateI - 2] === "=")
+      ) {
+        isDereferenceAssignment = true;
+      }
+
       // Check for identifier (potential variable use/assignment)
       const ident = source.substring(
         validateI,
@@ -294,15 +394,85 @@ export function compile(source: string): Result {
       if (validateI < source.length && source[validateI] === "=") {
         // Check if it's not a comparison (==)
         if (validateI + 1 < source.length && source[validateI + 1] !== "=") {
-          // This is an assignment - check if variable exists and is mutable
+          // Check if variable exists - needed for both paths
           if (!variables.has(ident)) {
             return returnUndeclaredError(ident);
           }
           const varInfo = variables.get(ident);
-          if (!varInfo!.mutable) {
-            return {
-              error: `Cannot assign to immutable variable '${ident}'`,
-            };
+
+          if (isDereferenceAssignment) {
+            // Assignment through pointer dereference: *y = value
+            const pointerType = varInfo!.type;
+            if (!pointerType || !pointerType.startsWith("*")) {
+              return {
+                error: `Variable '${ident}' is not a pointer; cannot assign through dereference`,
+              };
+            }
+            // Check that the pointer is mutable (*mut)
+            if (!pointerType.startsWith("*mut")) {
+              return {
+                error: `Cannot assign to immutable pointer '${ident}'`,
+              };
+            }
+          } else {
+            // Direct assignment: x = value - check if variable is mutable
+            if (!varInfo!.mutable) {
+              return {
+                error: `Cannot assign to immutable variable '${ident}'`,
+              };
+            }
+
+            // Type check the RHS
+            let assignI = validateI + 1;
+            while (assignI < source.length && source[assignI] === " ") {
+              assignI++;
+            }
+            const rhsStart = assignI;
+            let assignEndI = rhsStart;
+            while (
+              assignEndI < source.length &&
+              source[assignEndI] !== ";" &&
+              source[assignEndI] !== " " // Stop at space that separates from next statement
+            ) {
+              assignEndI++;
+            }
+            const rhsValue = source.substring(rhsStart, assignEndI).trim();
+
+            // Check type mismatch for direct assignments
+            if (varInfo!.type) {
+              const isBoolVar = varInfo!.type === "Bool";
+              const isNumericVar =
+                varInfo!.type === "U8" ||
+                varInfo!.type === "U16" ||
+                varInfo!.type === "U32" ||
+                varInfo!.type === "I8" ||
+                varInfo!.type === "I16" ||
+                varInfo!.type === "I32";
+
+              const isRhsBoolean =
+                rhsValue === "true" ||
+                rhsValue === "false" ||
+                rhsValue.includes("&&") ||
+                rhsValue.includes("||") ||
+                rhsValue.startsWith("!");
+              const isRhsNumeric =
+                !isRhsBoolean &&
+                !rhsValue.includes("read") &&
+                rhsValue.length > 0 &&
+                rhsValue[0] >= "0" &&
+                rhsValue[0] <= "9";
+
+              if (isBoolVar && isRhsNumeric) {
+                return {
+                  error: `Type mismatch: variable '${ident}' is Bool but assigned numeric instead`,
+                };
+              }
+              if (isNumericVar && isRhsBoolean && !rhsValue.includes("read")) {
+                return {
+                  error: `Type mismatch for '${ident}': expected ${varInfo!.type} but got boolean`,
+                };
+              }
+            }
           }
         }
         validateI++;
@@ -323,7 +493,13 @@ export function compile(source: string): Result {
         while (i < source.length && isDigit(source[i])) {
           i++;
         }
-        i = skipTypeSuffix(source, i);
+        // Inline skipTypeSuffix
+        while (
+          i < source.length &&
+          (isLetter(source[i]) || isDigit(source[i]))
+        ) {
+          i++;
+        }
         continue;
       }
 
@@ -345,7 +521,6 @@ export function compile(source: string): Result {
           ident === "mut" ||
           ident === "true" ||
           ident === "false" ||
-          ident === "read" ||
           ident === "U8" ||
           ident === "U16" ||
           ident === "U32" ||
@@ -363,12 +538,27 @@ export function compile(source: string): Result {
         }
         const nextChar = source[j] || "";
 
+        // Skip if this is part of a generic type argument like read<U8>
+        if (nextChar === "<") {
+          let angleDepth = 1;
+          j++;
+          while (j < source.length && angleDepth > 0) {
+            if (source[j] === "<") angleDepth++;
+            else if (source[j] === ">") angleDepth--;
+            j++;
+          }
+          i = j;
+          continue;
+        }
+
         if (
           nextChar === "&" ||
           nextChar === "|" ||
           nextChar === "=" ||
           nextChar === ";" ||
           nextChar === ")" ||
+          nextChar === "+" ||
+          nextChar === "*" ||
           nextChar === ""
         ) {
           if (!declaredVars.has(ident) && ident !== "") {
@@ -423,6 +613,47 @@ export function compile(source: string): Result {
   }
 
   // Remove type annotations like <U8>, <I32>, etc. and literal suffixes like 100U8
+  // Also identify variables that need wrapping (mutable variables that are referenced)
+  const wrappedVariables = new Set<string>();
+  {
+    let scanI = 0;
+    while (scanI < source.length) {
+      let isReference = false;
+      if (source.substring(scanI, scanI + 5) === "&mut ") {
+        isReference = true;
+        scanI += 5;
+      } else if (
+        source[scanI] === "&" &&
+        (scanI === 0 || source[scanI - 1] !== "&") && // Not part of &&
+        (scanI + 1 >= source.length || source[scanI + 1] !== "&") // Not part of &&
+      ) {
+        isReference = true;
+        scanI++;
+      }
+
+      if (isReference) {
+        // Skip whitespace and extract the referenced variable
+        while (scanI < source.length && source[scanI] === " ") {
+          scanI++;
+        }
+        const refVar = source.substring(
+          scanI,
+          (() => {
+            while (scanI < source.length && isIdentifierChar(source[scanI])) {
+              scanI++;
+            }
+            return scanI;
+          })(),
+        );
+        if (variables.has(refVar)) {
+          wrappedVariables.add(refVar);
+        }
+      } else {
+        scanI++;
+      }
+    }
+  }
+
   let transformed = "";
   let i = 0;
   while (i < source.length) {
@@ -432,21 +663,50 @@ export function compile(source: string): Result {
         i++;
       }
       i++; // skip the closing >
-    } else if (
-      source[i] === ":" &&
-      i > 0 &&
-      transformed.trimEnd().endsWith("x")
-    ) {
-      // Skip type annotation after colon (e.g., ": U8")
-      i++; // skip the colon
-      // Skip whitespace after colon
-      while (i < source.length && source[i] === " ") {
+    } else if (source[i] === ":" && i > 0) {
+      // Check if this looks like a type annotation (previous token is a variable name)
+      const trimmedBefore = transformed.trimEnd();
+      let isTypeAnnotation = false;
+      if (trimmedBefore.length > 0) {
+        const lastChar = trimmedBefore.charAt(trimmedBefore.length - 1);
+        // If last char is identifier char, likely a variable name followed by type annotation
+        if (isIdentifierChar(lastChar)) {
+          isTypeAnnotation = true;
+        }
+      }
+      if (isTypeAnnotation) {
+        // Skip type annotation after colon (e.g., ": U8" or ": *mut U8")
+        i++; // skip the colon
+        // Skip whitespace after colon
+        while (i < source.length && source[i] === " ") {
+          i++;
+        }
+        // Skip pointer prefix if present
+        if (source[i] === "*") {
+          i++;
+          while (i < source.length && source[i] === " ") {
+            i++;
+          }
+          if (source.substring(i, i + 3) === "mut") {
+            i += 3;
+            while (i < source.length && source[i] === " ") {
+              i++;
+            }
+          }
+        }
+        // Skip the base type name (letters and digits)
+        while (
+          i < source.length &&
+          (isLetter(source[i]) || isDigit(source[i]))
+        ) {
+          i++;
+        }
+        // Add back a single space
+        transformed += " ";
+      } else {
+        transformed += source[i];
         i++;
       }
-      // Skip the type name (letters and digits)
-      i = skipTypeSuffix(source, i);
-      // Add back a single space if we removed whitespace
-      transformed += " ";
     } else if (
       source[i] === "l" &&
       i + 3 < source.length &&
@@ -469,6 +729,38 @@ export function compile(source: string): Result {
           i++;
         }
       }
+    } else if (
+      source.substring(i, i + 5) === "&mut " ||
+      (source[i] === "&" &&
+        (i === 0 || source[i - 1] !== "&") && // Not part of &&
+        (i + 1 >= source.length || source[i + 1] !== "&")) // Not part of &&
+    ) {
+      // Skip reference operators (&mut or &) and add the referenced variable directly
+      if (source.substring(i, i + 5) === "&mut ") {
+        i += 5;
+      } else {
+        i++;
+      }
+      while (i < source.length && source[i] === " ") {
+        i++;
+      }
+      while (i < source.length && isIdentifierChar(source[i])) {
+        transformed += source[i];
+        i++;
+      }
+    } else if (
+      source[i] === "*" &&
+      i + 1 < source.length &&
+      isIdentifierChar(source[i + 1])
+    ) {
+      // Dereference operator: *variable - transform to variable.value
+      i++;
+      while (i < source.length && isIdentifierChar(source[i])) {
+        transformed += source[i];
+        i++;
+      }
+      // Insert .value after the variable
+      transformed += ".value";
     } else if (
       source[i] === "-" &&
       i + 1 < source.length &&
@@ -550,6 +842,109 @@ export function compile(source: string): Result {
       i++;
     }
   }
+
+  // Apply wrapping transformation for mutable variables that are referenced
+  let wrappingApplied = transformed;
+  for (const wrappedVar of wrappedVariables) {
+    // Find "let " followed by variable name with any amount of whitespace
+    let searchStart = 0;
+    while (searchStart < wrappingApplied.length) {
+      // Look for "let "
+      const letIndex = wrappingApplied.indexOf("let ", searchStart);
+      if (letIndex === -1) break;
+
+      // Check what follows "let "
+      let checkIndex = letIndex + 4;
+      // Skip spaces
+      while (
+        checkIndex < wrappingApplied.length &&
+        wrappingApplied[checkIndex] === " "
+      ) {
+        checkIndex++;
+      }
+
+      // Check if the variable name matches
+      let varMatch = true;
+      let j = 0;
+      while (j < wrappedVar.length) {
+        if (
+          checkIndex + j >= wrappingApplied.length ||
+          wrappingApplied[checkIndex + j] !== wrappedVar[j]
+        ) {
+          varMatch = false;
+          break;
+        }
+        j++;
+      }
+
+      if (!varMatch) {
+        searchStart = letIndex + 4;
+        continue;
+      }
+
+      // Check that what comes after the variable name is not an identifier char
+      const afterVarIndex = checkIndex + wrappedVar.length;
+      if (
+        afterVarIndex < wrappingApplied.length &&
+        isIdentifierChar(wrappingApplied[afterVarIndex])
+      ) {
+        // This is a longer identifier (like letx or let xyz when we're looking for x)
+        searchStart = letIndex + 4;
+        continue;
+      }
+
+      // Found the variable! Now look for the = sign
+      let equalIndex = afterVarIndex;
+      while (
+        equalIndex < wrappingApplied.length &&
+        wrappingApplied[equalIndex] === " "
+      ) {
+        equalIndex++;
+      }
+
+      if (
+        equalIndex >= wrappingApplied.length ||
+        wrappingApplied[equalIndex] !== "="
+      ) {
+        searchStart = letIndex + 4;
+        continue;
+      }
+
+      // Found "let varName =" - now wrap the RHS
+      let rhsStart = equalIndex + 1;
+      while (
+        rhsStart < wrappingApplied.length &&
+        wrappingApplied[rhsStart] === " "
+      ) {
+        rhsStart++;
+      }
+
+      // Find the semicolon
+      let semiIndex = rhsStart;
+      while (
+        semiIndex < wrappingApplied.length &&
+        wrappingApplied[semiIndex] !== ";"
+      ) {
+        semiIndex++;
+      }
+
+      if (semiIndex < wrappingApplied.length) {
+        const rhs = wrappingApplied.substring(rhsStart, semiIndex);
+        wrappingApplied =
+          wrappingApplied.substring(0, rhsStart) +
+          "{value: " +
+          rhs +
+          "}" +
+          wrappingApplied.substring(semiIndex);
+        // Move past this wrapping
+        searchStart = rhsStart + 9 + rhs.length;
+      } else {
+        searchStart = letIndex + 4;
+      }
+    }
+  }
+  transformed = wrappingApplied;
+
   // Check if code contains variable declarations or statements
   if (
     transformed.includes("let ") ||
@@ -561,7 +956,13 @@ export function compile(source: string): Result {
     if (lastSemicolon >= 0 && lastSemicolon < trimmed.length - 1) {
       // There's an expression after the last semicolon
       const statements = trimmed.substring(0, lastSemicolon + 1);
-      const returnExpr = trimmed.substring(lastSemicolon + 1).trim();
+      let returnExpr = trimmed.substring(lastSemicolon + 1).trim();
+      // Unwrap wrapped variables in return expression
+      for (const wrappedVar of wrappedVariables) {
+        if (returnExpr === wrappedVar) {
+          returnExpr = wrappedVar + ".value";
+        }
+      }
       return {
         value: `return (function() { ${statements} return ${returnExpr}; }())`,
       };
