@@ -1,9 +1,0 @@
-struct Ok<T> {
-    value : T;
-}
-
-struct Err<X> {
-    error : X;
-}
-
-type Result<T, X> = Ok<T> | Err<X>;
