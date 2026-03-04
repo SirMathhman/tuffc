@@ -107,3 +107,69 @@ invalidate("256U8"); // U8 max is 255
 invalidate("65536U16"); // U16 max is 65535
 invalidate("128I8"); // I8 max is 127
 invalidate("-129I8"); // I8 min is -128
+
+// Boolean literal exit codes
+validate("true", "", 1);
+validate("false", "", 0);
+
+// Boolean type inference
+validate("let x = true; x", "", 1);
+validate("let x = false; x", "", 0);
+
+// Boolean type annotation
+validate("let x : Bool = true; x", "", 1);
+validate("let x : Bool = false; x", "", 0);
+
+// Mutable booleans
+validate("let mut x = true; x = false; x", "", 0);
+validate("let mut x = false; x = true; x", "", 1);
+
+// Boolean AND operations
+validate("true && true", "", 1);
+validate("true && false", "", 0);
+validate("false && true", "", 0);
+validate("false && false", "", 0);
+
+// Boolean OR operations
+validate("true || false", "", 1);
+validate("true || true", "", 1);
+validate("false || false", "", 0);
+validate("false || true", "", 1);
+
+// Boolean NOT operations
+validate("!true", "", 0);
+validate("!false", "", 1);
+
+// Combined boolean expressions
+validate("!true && false", "", 0);
+validate("true || !false", "", 1);
+validate("!(true && false)", "", 1);
+validate("!(false || false)", "", 1);
+validate("true && true || false", "", 1);
+
+// Boolean with variables
+validate("let x = true; let y = false; x && y", "", 0);
+validate("let x = true; let y = true; x && y", "", 1);
+validate("let x = false; let y = false; x || y", "", 0);
+validate("let x = true; let y = false; x || y", "", 1);
+
+// Mutable boolean operations
+validate("let mut x = true; x = x && false; x", "", 0);
+validate("let mut x = false; x = x || true; x", "", 1);
+
+// Error cases: type mismatch
+invalidate("let x : U8 = true;");
+invalidate("let x : Bool = 10U8;");
+
+// Error cases: invalid operations (boolean with numbers)
+invalidate("true + false");
+invalidate("true * false");
+invalidate("true + 10U8");
+
+// Error cases: immutable boolean reassignment
+invalidate("let x = true; x = false;");
+
+// Error cases: undeclared variable
+invalidate("x && true;");
+invalidate("!y;");
+invalidate("x || false;");

@@ -11,6 +11,22 @@ type Result = CompileSuccess | CompileError;
 interface VariableInfo {
   mutable: boolean;
   declaredAt: number;
+  type: "U8" | "U16" | "U32" | "I8" | "I16" | "I32" | "Bool" | undefined;
+}
+
+interface OptionalError {
+  error: string;
+}
+
+function skipTypeSuffix(source: string, i: number): number {
+  while (i < source.length && (isLetter(source[i]) || isDigit(source[i]))) {
+    i++;
+  }
+  return i;
+}
+
+function returnUndeclaredError(ident: string): OptionalError {
+  return { error: `Variable '${ident}' is not declared` };
 }
 
 function isDigit(char: string): boolean {
@@ -77,9 +93,178 @@ export function compile(source: string): Result {
         };
       }
 
-      variables.set(varName, { mutable, declaredAt: nameStart });
+      // Extract optional type annotation
+      let annotatedType: string | undefined;
+      let typeAnnotationI = validateI;
+      while (
+        typeAnnotationI < source.length &&
+        source[typeAnnotationI] === " "
+      ) {
+        typeAnnotationI++;
+      }
+      if (typeAnnotationI < source.length && source[typeAnnotationI] === ":") {
+        typeAnnotationI++; // skip colon
+        while (
+          typeAnnotationI < source.length &&
+          source[typeAnnotationI] === " "
+        ) {
+          typeAnnotationI++;
+        }
+        const type = source.substring(
+          typeAnnotationI,
+          (() => {
+            let end = typeAnnotationI;
+            while (
+              end < source.length &&
+              (isLetter(source[end]) || isDigit(source[end]))
+            ) {
+              end++;
+            }
+            typeAnnotationI = end;
+            return end;
+          })(),
+        );
+        annotatedType = type.length > 0 ? type : undefined;
+      }
+      validateI = typeAnnotationI;
 
-      // Skip to end of statement
+      // Skip whitespace
+      while (validateI < source.length && source[validateI] === " ") {
+        validateI++;
+      }
+
+      // Skip assignment operator if present
+      let inferredType: string | undefined = undefined;
+      if (validateI < source.length && source[validateI] === "=") {
+        validateI++; // skip =
+        while (validateI < source.length && source[validateI] === " ") {
+          validateI++;
+        }
+
+        // Extract the RHS expression and infer its type
+        const rhsExpr = source
+          .substring(
+            validateI,
+            (() => {
+              let end = validateI;
+              while (end < source.length && source[end] !== ";") {
+                end++;
+              }
+              validateI = end;
+              return end;
+            })(),
+          )
+          .trim();
+
+        // Check for invalid operations
+        const trimmedRhs = rhsExpr;
+        let hasOpError = false;
+        if (trimmedRhs.includes("true") || trimmedRhs.includes("false")) {
+          let i = 0;
+          let hasBoolean = false;
+          let hasArithmetic = false;
+          while (i < trimmedRhs.length) {
+            if (
+              trimmedRhs.substring(i, i + 4) === "true" ||
+              trimmedRhs.substring(i, i + 5) === "false"
+            ) {
+              hasBoolean = true;
+              i += trimmedRhs[i] === "t" ? 4 : 5;
+            } else if (trimmedRhs[i] === "+" || trimmedRhs[i] === "*") {
+              hasArithmetic = true;
+              i++;
+            } else if (
+              trimmedRhs[i] === "-" &&
+              i > 0 &&
+              trimmedRhs[i - 1] !== "!" &&
+              trimmedRhs[i - 1] !== "(" &&
+              trimmedRhs[i - 1] !== "&" &&
+              trimmedRhs[i - 1] !== " "
+            ) {
+              hasArithmetic = true;
+              i++;
+            } else {
+              i++;
+            }
+          }
+          if (hasBoolean && hasArithmetic) {
+            hasOpError = true;
+          }
+        }
+        if (hasOpError) {
+          return {
+            error:
+              "Invalid operation: arithmetic operators not allowed on booleans",
+          };
+        }
+
+        // Infer type from RHS
+        const trimmed = rhsExpr;
+        let inferred:
+          | "U8"
+          | "U16"
+          | "U32"
+          | "I8"
+          | "I16"
+          | "I32"
+          | "Bool"
+          | undefined;
+        if (trimmed === "true" || trimmed === "false") {
+          inferred = "Bool";
+        } else if (trimmed.includes("&&") || trimmed.includes("||")) {
+          inferred = "Bool";
+        } else if (trimmed.startsWith("!")) {
+          inferred = "Bool";
+        } else if (trimmed.endsWith("U8")) {
+          inferred = "U8";
+        } else if (trimmed.endsWith("U16")) {
+          inferred = "U16";
+        } else if (trimmed.endsWith("U32")) {
+          inferred = "U32";
+        } else if (trimmed.endsWith("I8")) {
+          inferred = "I8";
+        } else if (trimmed.endsWith("I16")) {
+          inferred = "I16";
+        } else if (trimmed.endsWith("I32")) {
+          inferred = "I32";
+        } else {
+          let isNumeric = true;
+          for (const c of trimmed) {
+            if (!isDigit(c)) {
+              isNumeric = false;
+              break;
+            }
+          }
+          inferred = isNumeric ? "U8" : undefined;
+        }
+        inferredType = inferred;
+
+        // Validate type mismatch
+        if (annotatedType && inferredType && annotatedType !== inferredType) {
+          return {
+            error: `Type mismatch: variable '${varName}' declared as ${annotatedType} but assigned ${inferredType}`,
+          };
+        }
+      }
+
+      // Determine final type
+      const finalType = annotatedType || inferredType;
+
+      variables.set(varName, {
+        mutable,
+        declaredAt: nameStart,
+        type: finalType as
+          | "U8"
+          | "U16"
+          | "U32"
+          | "I8"
+          | "I16"
+          | "I32"
+          | "Bool"
+          | undefined,
+      });
+
+      // Skip to end of statement if not already there
       while (validateI < source.length && source[validateI] !== ";") {
         validateI++;
       }
@@ -111,9 +296,7 @@ export function compile(source: string): Result {
         if (validateI + 1 < source.length && source[validateI + 1] !== "=") {
           // This is an assignment - check if variable exists and is mutable
           if (!variables.has(ident)) {
-            return {
-              error: `Variable '${ident}' is not declared`,
-            };
+            return returnUndeclaredError(ident);
           }
           const varInfo = variables.get(ident);
           if (!varInfo!.mutable) {
@@ -128,6 +311,114 @@ export function compile(source: string): Result {
       // Continue to next character
     } else {
       validateI++;
+    }
+  }
+
+  // Validate undeclared variables
+  const declaredVars = new Set(variables.keys());
+  {
+    let i = 0;
+    while (i < source.length) {
+      if (isDigit(source[i])) {
+        while (i < source.length && isDigit(source[i])) {
+          i++;
+        }
+        i = skipTypeSuffix(source, i);
+        continue;
+      }
+
+      if (isLetter(source[i]) || source[i] === "_") {
+        const ident = source.substring(
+          i,
+          (() => {
+            let end = i;
+            while (end < source.length && isIdentifierChar(source[end])) {
+              end++;
+            }
+            i = end;
+            return end;
+          })(),
+        );
+
+        if (
+          ident === "let" ||
+          ident === "mut" ||
+          ident === "true" ||
+          ident === "false" ||
+          ident === "read" ||
+          ident === "U8" ||
+          ident === "U16" ||
+          ident === "U32" ||
+          ident === "I8" ||
+          ident === "I16" ||
+          ident === "I32" ||
+          ident === "Bool"
+        ) {
+          continue;
+        }
+
+        let j = i;
+        while (j < source.length && source[j] === " ") {
+          j++;
+        }
+        const nextChar = source[j] || "";
+
+        if (
+          nextChar === "&" ||
+          nextChar === "|" ||
+          nextChar === "=" ||
+          nextChar === ";" ||
+          nextChar === ")" ||
+          nextChar === ""
+        ) {
+          if (!declaredVars.has(ident) && ident !== "") {
+            return returnUndeclaredError(ident);
+          }
+        }
+
+        continue;
+      }
+      i++;
+    }
+  }
+
+  // Validate no invalid operations (arithmetic on booleans)
+  {
+    const trimmed = source.trim();
+    if (trimmed.includes("true") || trimmed.includes("false")) {
+      let i = 0;
+      let hasBoolean = false;
+      let hasArithmetic = false;
+      while (i < trimmed.length) {
+        if (
+          trimmed.substring(i, i + 4) === "true" ||
+          trimmed.substring(i, i + 5) === "false"
+        ) {
+          hasBoolean = true;
+          i += trimmed[i] === "t" ? 4 : 5;
+        } else if (trimmed[i] === "+" || trimmed[i] === "*") {
+          hasArithmetic = true;
+          i++;
+        } else if (
+          trimmed[i] === "-" &&
+          i > 0 &&
+          trimmed[i - 1] !== "!" &&
+          trimmed[i - 1] !== "(" &&
+          trimmed[i - 1] !== "&" &&
+          trimmed[i - 1] !== " "
+        ) {
+          hasArithmetic = true;
+          i++;
+        } else {
+          i++;
+        }
+      }
+      if (hasBoolean && hasArithmetic) {
+        return {
+          error:
+            "Invalid operation: arithmetic operators not allowed on booleans",
+        };
+      }
     }
   }
 
@@ -153,9 +444,7 @@ export function compile(source: string): Result {
         i++;
       }
       // Skip the type name (letters and digits)
-      while (i < source.length && (isLetter(source[i]) || isDigit(source[i]))) {
-        i++;
-      }
+      i = skipTypeSuffix(source, i);
       // Add back a single space if we removed whitespace
       transformed += " ";
     } else if (
