@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 
 extern int execute(const char *input);
 
@@ -45,6 +46,27 @@ void run_tests(void)
         if (len == 0)
             continue; // Skip blank lines
 
+        // Skip section headers (lines that are only word characters/underscores + colon)
+        int is_section_header = 1;
+        for (int j = 0; j < (int)len - 1; j++)
+        {
+            char ch = line[j];
+            if (!isalnum((unsigned char)ch) && ch != '_')
+            {
+                is_section_header = 0;
+                break;
+            }
+        }
+        if (is_section_header && line[len - 1] == ':')
+        {
+            // This is a section header, update mode but don't process as test
+            if (strcmp(line, "valid:") == 0)
+                mode = 1;
+            else if (strcmp(line, "error:") == 0)
+                mode = 2;
+            continue;
+        }
+
         if (strcmp(line, "valid:") == 0)
         {
             mode = 1;
@@ -81,6 +103,12 @@ void run_tests(void)
     for (int i = 0; i < valid_count; i++)
     {
         int result = execute(valid_tests[i].input);
+        if (result != valid_tests[i].expected)
+        {
+            printf("✗ Test FAILED: execute(\"%s\") returned %d, expected %d\n",
+                   valid_tests[i].input, result, valid_tests[i].expected);
+            fflush(stdout);
+        }
         assert(result == valid_tests[i].expected);
         printf("✓ Test passed: execute(\"%s\") == %d\n",
                valid_tests[i].input, valid_tests[i].expected);

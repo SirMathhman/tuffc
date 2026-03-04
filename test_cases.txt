@@ -13,6 +13,62 @@ valid:
 -32768I16:-32768
 32767I16:32767
 
+arithmetic_addition:
+0U8 + 0U8:0
+1U8 + 1U8:2
+5U8 + 10U8:15
+100U8 + 100U8:200
+255U8 + 0U8:255
+-5I8 + 3I8:-2
+0I8 + 0I8:0
+10U16 + 20U16:30
+
+arithmetic_subtraction:
+5U8 - 2U8:3
+10U8 - 10U8:0
+255U8 - 100U8:155
+100I8 - 50I8:50
+-10I8 - 5I8:-15
+
+arithmetic_multiplication:
+2U8 * 3U8:6
+10U8 * 10U8:100
+0U8 * 255U8:0
+1U8 * 127U8:127
+3I8 * -4I8:-12
+
+arithmetic_division:
+10U8 / 2U8:5
+100U8 / 10U8:10
+255U8 / 1U8:255
+0U8 / 1U8:0
+12I8 / 3I8:4
+-20I8 / 5I8:-4
+
+arithmetic_modulo:
+10U8 % 3U8:1
+20U8 % 7U8:6
+100U8 % 10U8:0
+5U8 % 2U8:1
+
+arithmetic_precedence:
+2U8 + 3U8 * 4U8:14
+2U8 * 3U8 + 4U8:10
+10U8 - 2U8 / 2U8:9
+100U8 / 10U8 * 2U8:20
+
+arithmetic_parentheses:
+(2U8 + 3U8) * 4U8:20
+(10U8 - 5U8) / 5U8:1
+2U8 * (3U8 + 4U8):14
+((5U8 + 5U8) * 2U8):20
+
+arithmetic_type_coercion:
+1U8 + 256U16:257
+255U8 + 1U16:256
+100I8 + 200I16:300
+10U8 / 2U16:5
+
 error:
 256U8
 300U8
@@ -23,3 +79,27 @@ error:
 50Y16
 U8
 100
+
+arithmetic_overflow:
+255U8 + 1U8
+200U8 + 100U8
+255U8 * 2U8
+128I8 + 1I8
+-128I8 - 1I8
+127I8 * 2I8
+
+arithmetic_div_by_zero:
+5U8 / 0U8
+100U16 / 0U16
+-10I8 / 0I8
+0U8 / 0U8
+
+arithmetic_invalid_syntax:
+2U8 + 
++ 3U8
+2U8 ++ 3U8
+(2U8 + 3U8
+2U8 + 3U8)
+2U8 + * 3U8
+2 U8 + 3 U8
+
