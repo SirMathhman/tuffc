@@ -24,6 +24,13 @@ export type Result<T, E> = Ok<T> | Err<E>;
 /* eslint-disable no-unused-vars */
 export enum CompileErrorType {
   NotImplemented = "NotImplemented",
+  InvalidFunctionDeclaration = "InvalidFunctionDeclaration",
+  MutabilityError = "MutabilityError",
+  PointerError = "PointerError",
+  UndefinedVariable = "UndefinedVariable",
+  UndefinedFunction = "UndefinedFunction",
+  ArityMismatch = "ArityMismatch",
+  DereferenceNonPointer = "DereferenceNonPointer",
   NegativeUnsigned = "NegativeUnsigned",
   UnsignedOverflow = "UnsignedOverflow",
   DuplicateDeclaration = "DuplicateDeclaration",
@@ -107,7 +114,7 @@ function compileFunctionDecl(
         message: "Invalid function declaration",
         reason: "missing function name",
         fix: "use syntax like fn name() => expr",
-        type: CompileErrorType.NotImplemented,
+        type: CompileErrorType.InvalidFunctionDeclaration,
       },
     };
   }
@@ -124,6 +131,7 @@ function compileFunctionDecl(
     letPtr,
     letFns,
     fnReturn,
+    fnParams,
   );
   if (!bodyRes.ok) return bodyRes;
   const params = fnParams.get(fname) || [];
@@ -278,6 +286,20 @@ function checkPointer(
       ? initExpr.slice(5)
       : initExpr.slice(1);
     const isMutRef = initExpr.startsWith("&mut ");
+    // if the variable doesn't exist at all, report undefined rather than a
+    // confusing pointer type mismatch
+    if (!letTypes.has(varName)) {
+      return {
+        ok: false,
+        error: {
+          source,
+          message: "Undefined variable",
+          reason: "no prior declaration",
+          fix: "declare the variable first",
+          type: CompileErrorType.UndefinedVariable,
+        },
+      };
+    }
     // mutability mismatch: cannot initialize *mut T with &x (immutable ref)
     if (isMutPtr && !isMutRef) {
       return {
@@ -287,7 +309,7 @@ function checkPointer(
           message: "Cannot initialize mutable pointer with immutable reference",
           reason: "mutability mismatch",
           fix: "use &mut on the source",
-          type: CompileErrorType.NotImplemented,
+          type: CompileErrorType.MutabilityError,
         },
       };
     }
@@ -300,7 +322,7 @@ function checkPointer(
           message: "Cannot initialize immutable pointer with mutable reference",
           reason: "mutability mismatch",
           fix: 'drop the "mut" from the reference or make the pointer mutable',
-          type: CompileErrorType.NotImplemented,
+          type: CompileErrorType.MutabilityError,
         },
       };
     }
@@ -313,7 +335,7 @@ function checkPointer(
           message: "Cannot take mutable reference to immutable variable",
           reason: "immutable base for &mut",
           fix: "declare the variable as mutable",
-          type: CompileErrorType.NotImplemented,
+          type: CompileErrorType.MutabilityError,
         },
       };
     }
@@ -325,7 +347,7 @@ function checkPointer(
           message: "Pointer type mismatch",
           reason: "incompatible pointer",
           fix: "use matching types",
-          type: CompileErrorType.NotImplemented,
+          type: CompileErrorType.PointerError,
         },
       };
     }
@@ -433,6 +455,7 @@ export function compile(
   envLetPtr?: Map<string, string | undefined>,
   envFns?: Set<string>,
   envFnReturn?: Map<string, number | undefined>,
+  envFnParams?: Map<string, string[]>,
 ): Result<string, CompileError> {
   // A minimal implementation to make the existing tests pass. The tests
   // currently validate an empty program evaluates to 0 and that a numeric
@@ -447,7 +470,7 @@ export function compile(
   const letPtrTarget = new Map<string, string>(); // pointer var -> target var name
   const letPtrMutable = new Map<string, boolean>(); // is pointer variable itself mutable (*/not)
   const letFns = envFns || new Set<string>();
-  const fnParams = new Map<string, string[]>();
+  const fnParams = envFnParams || new Map<string, string[]>();
   const fnReturn = envFnReturn || new Map<string, number | undefined>();
   // shared parts array used in several checks. we split on semicolons
   // and also break apart consecutive function declarations without
@@ -548,7 +571,9 @@ export function compile(
           const names = decls
             .map((d) => d.split(":")[0].trim())
             .filter((n) => isIdentifier(n));
-          if (names.length) fnParams.set(fname, names);
+          if (names.length) {
+            fnParams.set(fname, names);
+          }
         }
       }
     }
@@ -601,7 +626,14 @@ export function compile(
         if (declaredType === "U8" && initWidth === 16) {
           return overflowResult(source);
         }
-        const initRes = compile(initExpr, letTypes, letPtr, letFns);
+        const initRes = compile(
+          initExpr,
+          letTypes,
+          letPtr,
+          letFns,
+          fnReturn,
+          fnParams,
+        );
         if (!initRes.ok) return initRes;
         const initJs = strip(initRes.value);
         stmts.push(`let ${name} = ${initJs};`);
@@ -641,7 +673,7 @@ export function compile(
                 message: "Dereferencing non-pointer",
                 reason: "not a pointer",
                 fix: "use a mutable pointer variable",
-                type: CompileErrorType.NotImplemented,
+                type: CompileErrorType.DereferenceNonPointer,
               },
             };
           }
@@ -653,7 +685,7 @@ export function compile(
                 message: "Cannot assign through immutable pointer",
                 reason: "pointer not declared mutable",
                 fix: "declare pointer as *mut",
-                type: CompileErrorType.NotImplemented,
+                type: CompileErrorType.MutabilityError,
               },
             };
           }
@@ -663,7 +695,14 @@ export function compile(
           if (isWidthOverflow(width, rhsWidth)) {
             return overflowResult(source);
           }
-          const rhsRes = compile(rhs, letTypes, letPtr, letFns, fnReturn);
+          const rhsRes = compile(
+            rhs,
+            letTypes,
+            letPtr,
+            letFns,
+            fnReturn,
+            fnParams,
+          );
           if (!rhsRes.ok) return rhsRes;
           stmts.push(target + " = " + strip(rhsRes.value) + ";");
           continue;
@@ -676,7 +715,7 @@ export function compile(
               message: "Assignment to undefined variable",
               reason: "no prior declaration",
               fix: "declare the variable first",
-              type: CompileErrorType.NotImplemented,
+              type: CompileErrorType.UndefinedVariable,
             },
           };
         }
@@ -690,7 +729,7 @@ export function compile(
               message: "Cannot assign to immutable variable",
               reason: "immutable assignment",
               fix: "declare with `let mut` or use a new variable",
-              type: CompileErrorType.NotImplemented,
+              type: CompileErrorType.MutabilityError,
             },
           };
         }
@@ -702,7 +741,14 @@ export function compile(
         if (width === undefined && rhsWidth !== undefined) {
           letTypes.set(lhs, rhsWidth);
         }
-        const rhsRes = compile(rhs, letTypes, letPtr, letFns);
+        const rhsRes = compile(
+          rhs,
+          letTypes,
+          letPtr,
+          letFns,
+          fnReturn,
+          fnParams,
+        );
         if (!rhsRes.ok) return rhsRes;
         const rhsJs = strip(rhsRes.value);
         stmts.push(lhs + " = " + rhsJs + ";");
@@ -710,7 +756,14 @@ export function compile(
         stmts.push(lhs + " = 0;");
         continue;
       }
-      const exprRes = compile(part, letTypes, letPtr, letFns, fnReturn);
+      const exprRes = compile(
+        part,
+        letTypes,
+        letPtr,
+        letFns,
+        fnReturn,
+        fnParams,
+      );
       if (!exprRes.ok) return exprRes;
       const exprJs = strip(exprRes.value);
       if (i === parts.length - 1) {
@@ -770,21 +823,39 @@ export function compile(
               message: "Call to undefined function",
               reason: "unknown function",
               fix: "declare the function first",
-              type: CompileErrorType.NotImplemented,
+              type: CompileErrorType.UndefinedFunction,
             },
           };
         }
         const argStr = trimmed.slice(open + 1, -1).trim();
-        if (argStr === "") {
+        // prepare argument list (empty string => zero args)
+        const args =
+          argStr === ""
+            ? []
+            : argStr
+                .split(",")
+                .map((s) => s.trim())
+                .filter((s) => s.length > 0);
+        // check arity against declared parameters
+        const expected = fnParams.get(fname) || [];
+        if (args.length !== expected.length) {
+          return {
+            ok: false,
+            error: {
+              source,
+              message: "Incorrect number of arguments",
+              reason: "arity mismatch",
+              fix: `expected ${expected.length} arg(s)`,
+              type: CompileErrorType.ArityMismatch,
+            },
+          };
+        }
+        if (args.length === 0) {
           return { ok: true, value: "return " + fname + "();" };
         }
-        const args = argStr
-          .split(",")
-          .map((s) => s.trim())
-          .filter((s) => s.length > 0);
         const compiled: string[] = [];
         for (const a of args) {
-          const aRes = compile(a, letTypes, letPtr, letFns, fnReturn);
+          const aRes = compile(a, letTypes, letPtr, letFns, fnReturn, fnParams);
           if (!aRes.ok) return aRes;
           compiled.push(strip(aRes.value));
         }
@@ -843,7 +914,14 @@ export function compile(
       );
       // accept either rest === name OR rest is empty (no trailing expr)
       if (rest === name || rest === "") {
-        const initRes = compile(initExpr, letTypes, letPtr, letFns);
+        const initRes = compile(
+          initExpr,
+          letTypes,
+          letPtr,
+          letFns,
+          fnReturn,
+          fnParams,
+        );
         if (!initRes.ok) return initRes;
         let initJs = initRes.value;
         if (initJs.startsWith("return ")) {
@@ -932,7 +1010,7 @@ export function compile(
               message: "Dereferencing non-pointer",
               reason: "not a pointer",
               fix: "use & on a pointer variable",
-              type: CompileErrorType.NotImplemented,
+              type: CompileErrorType.DereferenceNonPointer,
             },
           };
         }

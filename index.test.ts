@@ -80,10 +80,10 @@ validate("let x = read<I32>(); let y : *I32 = &x; *y", "100", 100);
 // pointer type mismatch should error
 invalidate(
   "let x = read<I32>(); let y : *U8 = &x; *y",
-  CompileErrorType.NotImplemented,
+  CompileErrorType.PointerError,
 );
 // pointer to undeclared variable should error
-invalidate("let y : *U8 = &x; *y", CompileErrorType.NotImplemented);
+invalidate("let y : *U8 = &x; *y", CompileErrorType.UndefinedVariable);
 
 // dereferencing pointer from simple variable
 validate("let x = 100; let y = &x; let z : I32 = *y; z", "100", 100);
@@ -98,27 +98,27 @@ invalidate(
 // immutable reassignment should fail
 invalidate(
   "let x = read<U8>(); x = read<U8>(); x",
-  CompileErrorType.NotImplemented,
+  CompileErrorType.MutabilityError,
 );
 // assignment to undeclared variable should error
-invalidate("x = read<U8>(); x", CompileErrorType.NotImplemented);
+invalidate("x = read<U8>(); x", CompileErrorType.UndefinedVariable);
 
 // non-mutable base variable with &mut should error
 invalidate(
   "let x = read<I32>(); let y : *mut I32 = &mut x; *y = read<I32>(); x",
-  CompileErrorType.NotImplemented,
+  CompileErrorType.MutabilityError,
 );
 
 // immutable pointer type should reject &mut initializer
 invalidate(
   "let mut x = read<I32>(); let y : *I32 = &mut x; *y = read<I32>(); x",
-  CompileErrorType.NotImplemented,
+  CompileErrorType.MutabilityError,
 );
 
 // cannot write through a non-mutable inferred pointer
 invalidate(
   "let mut x = read<I32>(); let y = &x; *y = read<I32>(); x",
-  CompileErrorType.NotImplemented,
+  CompileErrorType.MutabilityError,
 );
 
 // simple function definition alone returns 0
@@ -136,6 +136,15 @@ invalidate(
 validate("fn get() : I32 => read<I32>(); get()", "100", 100);
 // recursive function body can include read<T>() and self-call
 validate("fn loop() : I32 => read<I32>() + loop(); 0", "123", 0);
+// arity mismatch should be rejected (too few or too many args)
+invalidate(
+  "fn foo(a : I32, b : I32) : I32 => a + b; foo(1)",
+  CompileErrorType.ArityMismatch,
+);
+invalidate(
+  "fn foo(a : I32) : I32 => a; foo(1,2)",
+  CompileErrorType.ArityMismatch,
+);
 // function with single parameter
 validate(
   "fn add(param : I32) : I32 => read<I32>() + param; add(50)",
@@ -172,10 +181,10 @@ invalidate(
 );
 
 // dereference before declaration should error
-invalidate("*y = read<U32>(); x", CompileErrorType.NotImplemented);
+invalidate("*y = read<U32>(); x", CompileErrorType.DereferenceNonPointer);
 
 // same without trailing expr
-invalidate("*y = read<U32>();", CompileErrorType.NotImplemented);
+invalidate("*y = read<U32>();", CompileErrorType.DereferenceNonPointer);
 
 // mutable pointer write: *y = rhs updates the pointed-to variable
 validate(
