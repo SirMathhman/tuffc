@@ -40,17 +40,28 @@ int execute(const char *input)
 
     // Compile with clang
     char clang_cmd[512];
-    char temp_obj[256];
-    snprintf(temp_obj, sizeof(temp_obj), "tuffc_temp_%d.obj", rand());
-    snprintf(clang_cmd, sizeof(clang_cmd), "clang -c %s -o %s", temp_c_file, temp_obj);
+    char temp_exe[256];
+    snprintf(temp_exe, sizeof(temp_exe), "tuffc_temp_%d.exe", rand());
+    snprintf(clang_cmd, sizeof(clang_cmd), "clang %s -o %s", temp_c_file, temp_exe);
 
-    int exit_code = system(clang_cmd);
+    int compile_exit = system(clang_cmd);
+
+    // If compilation failed, clean up and return error
+    if (compile_exit != 0)
+    {
+        remove(temp_c_file);
+        free(compiled);
+        return compile_exit;
+    }
+
+    // Run the compiled executable and capture its exit code
+    int exec_exit = system(temp_exe);
 
     // Clean up temporary files
     remove(temp_c_file);
-    remove(temp_obj);
+    remove(temp_exe);
 
     free(compiled);
 
-    return exit_code;
+    return exec_exit;
 }
