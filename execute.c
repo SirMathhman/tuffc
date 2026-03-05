@@ -1,3 +1,4 @@
+#define _CRT_SECURE_NO_WARNINGS
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -29,9 +30,9 @@ static int compile_code(const char *temp_c_file, const char *temp_exe,
     if (write_file(temp_c_file, compiled_code) != 0)
         return -1;
 
-    // Compile with clang
-    char clang_cmd[512];
-    snprintf(clang_cmd, sizeof(clang_cmd), "clang %s -o %s", temp_c_file, temp_exe);
+    // Compile with clang (quote paths for spaces)
+    char clang_cmd[1024];
+    snprintf(clang_cmd, sizeof(clang_cmd), "clang \"%s\" -o \"%s\"", temp_c_file, temp_exe);
     int compile_exit = system(clang_cmd);
 
     return compile_exit;
@@ -45,10 +46,16 @@ static int execute_impl(const char *input, const char *stdin_data)
     if (!compiled)
         return -1;
 
-    char temp_c_file[256];
-    char temp_exe[256];
-    snprintf(temp_c_file, sizeof(temp_c_file), "tuffc_temp_%d.c", rand());
-    snprintf(temp_exe, sizeof(temp_exe), "tuffc_temp_%d.exe", rand());
+    char temp_c_file[512];
+    char temp_exe[512];
+    const char *tmpdir = getenv("TEMP");
+    if (!tmpdir || tmpdir[0] == '\0')
+        tmpdir = getenv("TMP");
+    if (!tmpdir || tmpdir[0] == '\0')
+        tmpdir = ".";
+    int rnd = rand();
+    snprintf(temp_c_file, sizeof(temp_c_file), "%s\\tuffc_temp_%d.c", tmpdir, rnd);
+    snprintf(temp_exe, sizeof(temp_exe), "%s\\tuffc_temp_%d.exe", tmpdir, rnd);
 
     int compile_exit = compile_code(temp_c_file, temp_exe, compiled);
     if (compile_exit != 0)
@@ -61,8 +68,8 @@ static int execute_impl(const char *input, const char *stdin_data)
     int exec_exit;
     if (stdin_data != NULL)
     {
-        char stdin_file[256];
-        snprintf(stdin_file, sizeof(stdin_file), "tuffc_stdin_%d.txt", rand());
+        char stdin_file[512];
+        snprintf(stdin_file, sizeof(stdin_file), "%s\\tuffc_stdin_%d.txt", tmpdir, rand());
         if (write_file(stdin_file, stdin_data) != 0)
         {
             remove(temp_c_file);
@@ -70,14 +77,19 @@ static int execute_impl(const char *input, const char *stdin_data)
             free(compiled);
             return -1;
         }
-        char exec_cmd[512];
-        snprintf(exec_cmd, sizeof(exec_cmd), "%s < %s", temp_exe, stdin_file);
+        char exec_cmd[1024];
+        // On Windows, cmd.exe /c strips the outermost quotes when the command
+        // string starts and ends with ". Wrap in "cmd /c "..."" so the inner
+        // cmd.exe correctly receives ""exe" < "stdin"" and strips only those.
+        snprintf(exec_cmd, sizeof(exec_cmd), "cmd /c \"\"%s\" < \"%s\"\"", temp_exe, stdin_file);
         exec_exit = system(exec_cmd);
         remove(stdin_file);
     }
     else
     {
-        exec_exit = system(temp_exe);
+        char exec_cmd[1024];
+        snprintf(exec_cmd, sizeof(exec_cmd), "\"%s\"", temp_exe);
+        exec_exit = system(exec_cmd);
     }
 
     remove(temp_c_file);

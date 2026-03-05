@@ -111,7 +111,7 @@ void run_tests(void)
 
             if (pipe && colon)
             {
-                // Format: input | stdin:expected
+                // Format: input | stdin:expected OR input | :expected (empty stdin)
                 char *expected_colon = strchr(pipe + 1, ':');
                 if (expected_colon)
                 {
@@ -123,8 +123,16 @@ void run_tests(void)
                     while (*stdin_start == ' ' || *stdin_start == '\t')
                         stdin_start++;
 
-                    add_valid_test(&valid_tests[valid_count], line, true,
-                                   stdin_start, atoi(expected_colon + 1));
+                    // Check if stdin is empty (points directly to colon position)
+                    // In that case, use NULL to indicate no stdin
+                    const char *stdin_to_use = NULL;
+                    if (*stdin_start != '\0' && stdin_start < expected_colon)
+                    {
+                        stdin_to_use = stdin_start;
+                    }
+
+                    add_valid_test(&valid_tests[valid_count], line, (stdin_to_use != NULL),
+                                   stdin_to_use, atoi(expected_colon + 1));
                     valid_count++;
                 }
             }
@@ -149,8 +157,8 @@ void run_tests(void)
     // CPD-OFF
     // NOTE: Due to stack overflow issues with deep recursion in the parser,
     // we limit testing to a reasonable subset. All major features are covered
-    // by the first 80 valid test cases.
-    int max_tests = (valid_count > 80) ? 80 : valid_count;
+    // by the first 120 valid test cases.
+    int max_tests = (valid_count > 120) ? 120 : valid_count;
 
     for (int i = 0; i < max_tests; i++)
     {

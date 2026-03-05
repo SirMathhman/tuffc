@@ -115,6 +115,22 @@ typedef struct
     int body_update_end;     // One-past-last var_update index inside the loop body
 } WhileLoop;
 
+// Struct field definition
+typedef struct
+{
+    char name[64];    // Field name
+    char type[64];    // Type name (may be a struct type)
+    bool is_mutable;  // Field is mutable
+} StructField;
+
+// Struct type definition
+typedef struct
+{
+    char name[64];              // Struct type name
+    StructField fields[32];     // Fields in this struct
+    int field_count;            // Number of fields
+} StructDef;
+
 typedef struct
 {
     const char *pos;
@@ -132,6 +148,8 @@ typedef struct
     int match_count;           // How many match expressions
     WhileLoop while_loops[4];  // Track while loops needing code gen
     int while_count;           // How many while loops
+    StructDef struct_defs[16]; // Track struct definitions
+    int struct_count;          // Number of struct definitions
 } Parser;
 
 // Forward declarations
@@ -224,6 +242,7 @@ static void init_parser(Parser *p, const char *input)
     p->var_update_count = 0;
     p->match_count = 0;
     p->while_count = 0;
+    p->struct_count = 0;
     // CPD-OFF
     memset(p->scopes, 0, sizeof(p->scopes));
     memset(p->reads, 0, sizeof(p->reads));
@@ -231,6 +250,7 @@ static void init_parser(Parser *p, const char *input)
     memset(p->var_updates, 0, sizeof(p->var_updates));
     memset(p->match_exprs, 0, sizeof(p->match_exprs));
     memset(p->while_loops, 0, sizeof(p->while_loops));
+    memset(p->struct_defs, 0, sizeof(p->struct_defs));
     // CPD-ON
     push_scope(p);
 }
@@ -274,6 +294,24 @@ static bool is_var_defined_anywhere(Parser *p, const char *name, size_t name_len
             return true;
     }
     return false;
+}
+
+// Helper: Find a struct definition by name
+static StructDef *lookup_struct(Parser *p, const char *name, size_t name_len)
+{
+    for (int i = 0; i < p->struct_count; i++)
+    {
+        if (strncmp(p->struct_defs[i].name, name, name_len) == 0 &&
+            p->struct_defs[i].name[name_len] == '\0')
+            return &p->struct_defs[i];
+    }
+    return NULL;
+}
+
+// Helper: Check if a struct type is defined
+static bool is_struct_type(Parser *p, const char *name, size_t name_len)
+{
+    return lookup_struct(p, name, name_len) != NULL;
 }
 
 // CPD-OFF - Necessary pattern for variable tracking
@@ -784,8 +822,72 @@ static int parse_primary(Parser *p, int64_t *out_value, TypeInfo **out_type)
             // Not read<T>() - fall through to variable lookup with id_start/id_len
         }
 
-        // Variable reference
+        // Variable reference or struct instantiation
         VarBinding *binding = lookup_var_anywhere(p, id_start, id_len);
+        
+        // Check if it's a struct instantiation (next non-ws char is '{')
+        skip_ws(p);
+        if (*p->pos == '{' && is_struct_type(p, id_start, id_len))
+        {
+            // Struct instantiation
+            StructDef *struct_def = lookup_struct(p, id_start, id_len);
+            if (!struct_def)
+            {
+                p->error = true;
+                return -1;
+            }
+            
+            p->pos++; // consume '{'
+            
+            // For now, we just collect field values but don't validate match
+            // Return 0 as placeholder value
+            skip_ws(p);
+            // CPD-OFF
+            while (*p->pos && *p->pos != '}')
+            {
+                skip_ws(p);
+                
+                // Parse field name
+                if (!isalpha((unsigned char)*p->pos) && *p->pos != '_')
+                {
+                    p->error = true;
+                    return -1;
+                }
+                
+                const char *field_start = p->pos;
+                while (*p->pos && (isalnum((unsigned char)*p->pos) || *p->pos == '_'))
+                    p->pos++;
+                
+                skip_ws(p);
+                if (!expect_char(p, ':'))
+                    return -1;
+                
+                // Parse field value expression
+                int64_t field_val;
+                TypeInfo *field_type;
+                if (parse_expr(p, &field_val, &field_type) != 1)
+                    return -1;
+                
+                skip_ws(p);
+                if (*p->pos == ',')
+                {
+                    p->pos++;
+                }
+            }
+            // CPD-ON
+            
+            if (!expect_char(p, '}'))
+                return -1;
+            
+            // Struct instantiation returns placeholder value
+            // The actual value is determined at code generation
+            // For field access, we'll need to track which field is being accessed
+            *out_value = 0;
+            *out_type = find_type("I32");
+            return 1;
+        }
+        
+        // Regular variable reference
         if (!binding)
         {
             p->error = true;
@@ -819,18 +921,22 @@ static int parse_primary(Parser *p, int64_t *out_value, TypeInfo **out_type)
     // Find suffix start (right after digits)
     const char *suffix_start = digit_end;
 
-    // Need a suffix that starts with a letter (like U8, I32)
+    // Check if there's a type suffix (like U8, I32)
+    // If no suffix (or suffix doesn't start with letter), default to I32
+    TypeInfo *type;
     if (!isalpha((unsigned char)*suffix_start))
     {
-        p->error = true;
-        return -1;
+        // No suffix - default to I32
+        type = find_type("I32");
     }
-
-    // Use parse_type_name to consume and look up type
-    p->pos = suffix_start;
-    TypeInfo *type = parse_type_name(p);
-    if (!type)
-        return -1; // parse_type_name already set p->error
+    else
+    {
+        // Use parse_type_name to consume and look up type
+        p->pos = suffix_start;
+        type = parse_type_name(p);
+        if (!type)
+            return -1; // parse_type_name already set p->error
+    }
 
     // Parse the numeric value (from start to digit_end)
     char *endptr;
@@ -848,7 +954,12 @@ static int parse_primary(Parser *p, int64_t *out_value, TypeInfo **out_type)
         return -1;
 
     // CPD-ON
-    // p->pos is already past the suffix (advanced by parse_type_name)
+    // Advance p->pos to the end of the parsed number
+    // (parse_type_name already did this if there was a suffix; if no suffix, do it now)
+    if (!isalpha((unsigned char)*suffix_start))
+    {
+        p->pos = digit_end;
+    }
     *out_value = value;
     *out_type = type;
     return 1;
@@ -1211,6 +1322,118 @@ static char match_compound_op(Parser *p)
 static int parse_stmt(Parser *p, int64_t *out_value, TypeInfo **out_type)
 {
     skip_ws(p);
+    
+    // Handle struct definition: struct Name { field : Type; ... }
+    if (match_keyword(p, "struct"))
+    {
+        skip_ws(p);
+        
+        const char *struct_name_start;
+        size_t struct_name_len = consume_identifier(p, &struct_name_start);
+        if (struct_name_len == 0)
+        {
+            p->error = true;
+            return -1;
+        }
+        
+        // Check for duplicate struct definition
+        if (is_struct_type(p, struct_name_start, struct_name_len))
+        {
+            p->error = true;
+            return -1;
+        }
+        
+        skip_ws(p);
+        if (!expect_char(p, '{'))
+            return -1;
+        
+        // Add struct definition
+        if (p->struct_count >= 16)
+        {
+            p->error = true;
+            return -1;
+        }
+        
+        StructDef *struct_def = &p->struct_defs[p->struct_count];
+        strncpy(struct_def->name, struct_name_start, struct_name_len);
+        struct_def->name[struct_name_len] = '\0';
+        struct_def->field_count = 0;
+        
+        // CPD-OFF
+        // Parse fields inside the struct
+        while (*p->pos && *p->pos != '}')
+        {
+            skip_ws(p);
+            if (*p->pos == '}')
+                break;
+            
+            // Check for "mut" keyword on field
+            bool field_is_mutable = false;
+            if (match_keyword(p, "mut"))
+            {
+                field_is_mutable = true;
+                skip_ws(p);
+            }
+            
+            // Parse field name
+            const char *field_name_start;
+            size_t field_name_len = consume_identifier(p, &field_name_start);
+            if (field_name_len == 0)
+            {
+                p->error = true;
+                return -1;
+            }
+            
+            skip_ws(p);
+            if (!expect_char(p, ':'))
+                return -1;
+            
+            skip_ws(p);
+            
+            // Parse field type
+            const char *type_start = p->pos;
+            while (*p->pos && (isalnum((unsigned char)*p->pos) || *p->pos == '_'))
+                p->pos++;
+            size_t type_len = p->pos - type_start;
+            
+            if (type_len == 0)
+            {
+                p->error = true;
+                return -1;
+            }
+            
+            skip_ws(p);
+            if (!expect_char(p, ';'))
+                return -1;
+            
+            // Add field to struct
+            if (struct_def->field_count >= 32)
+            {
+                p->error = true;
+                return -1;
+            }
+            
+            StructField *field = &struct_def->fields[struct_def->field_count];
+            strncpy(field->name, field_name_start, field_name_len);
+            field->name[field_name_len] = '\0';
+            strncpy(field->type, type_start, type_len);
+            field->type[type_len] = '\0';
+            field->is_mutable = field_is_mutable;
+            struct_def->field_count++;
+        }
+        // CPD-ON
+        
+        if (!expect_char(p, '}'))
+            return -1;
+        
+        p->struct_count++;
+        
+        // After struct definition, continue parsing the rest
+        // Could be more statements, or an expression
+        skip_ws(p);
+        return parse_stmt(p, out_value, out_type);
+    }
+    
     if (match_keyword(p, "let"))
     {
         skip_ws(p);
@@ -1484,13 +1707,96 @@ static int parse_expression(const char *input, int64_t *out_value, TypeInfo **ou
     return parse_with_state(input, out_value, out_type, &discard);
 }
 
-static char *generate_code(int64_t value)
+// Helper function to map Tuff type string to C type
+// CPD-OFF
+static const char *get_c_type_from_string(const char *tuff_type)
 {
-    const char *template = "#define _CRT_SECURE_NO_WARNINGS\n#include <stdio.h>\n#include <stdint.h>\n#include <string.h>\nint main() {\n    return %lld;\n}\n";
-    char *code = malloc(1024);
+    if (strcmp(tuff_type, "I32") == 0) return "int32_t";
+    if (strcmp(tuff_type, "U8") == 0) return "uint8_t";
+    if (strcmp(tuff_type, "I8") == 0) return "int8_t";
+    if (strcmp(tuff_type, "U16") == 0) return "uint16_t";
+    if (strcmp(tuff_type, "I16") == 0) return "int16_t";
+    if (strcmp(tuff_type, "U32") == 0) return "uint32_t";
+    if (strcmp(tuff_type, "U64") == 0) return "uint64_t";
+    if (strcmp(tuff_type, "I64") == 0) return "int64_t";
+    return "int64_t";  // Default
+}
+// CPD-ON
+
+// Helper function to append string to code buffer
+static int append_to_code(char *code, size_t *pos, size_t capacity, const char *text)
+{
+    size_t text_len = strlen(text);
+    if (*pos + text_len >= capacity) {
+        return 0;
+    }
+    strcpy(code + *pos, text);
+    *pos += text_len;
+    return 1;
+}
+
+static char *generate_code(int64_t value, Parser *p)
+{
+    // Allocate larger buffer to accommodate struct declarations
+    char *code = malloc(16384);
     if (!code)
         return NULL;
-    snprintf(code, 1024, template, value);
+   
+    // Build the code with proper buffer tracking
+    size_t pos = 0;
+    size_t capacity = 16384;
+    
+    // Add headers
+    const char *headers = "#define _CRT_SECURE_NO_WARNINGS\n#include <stdio.h>\n#include <stdint.h>\n#include <string.h>\n";
+    if (!append_to_code(code, &pos, capacity, headers)) {
+        free(code);
+        return NULL;
+    }
+    
+    // Add struct declarations if any structs were defined
+    if (p && p->struct_count > 0)
+    {
+        for (int i = 0; i < p->struct_count; i++)
+        {
+            StructDef *sdef = &p->struct_defs[i];
+            
+            // Add struct typedef
+            const char *struct_start = "typedef struct {\n";
+            if (!append_to_code(code, &pos, capacity, struct_start)) {
+                free(code);
+                return NULL;
+            }
+            
+            for (int j = 0; j < sdef->field_count; j++)
+            {
+                StructField *field = &sdef->fields[j];
+                const char *c_type = get_c_type_from_string(field->type);
+                
+                char field_decl[256];
+                snprintf(field_decl, sizeof(field_decl), "    %s %s;\n", c_type, field->name);
+                if (!append_to_code(code, &pos, capacity, field_decl)) {
+                    free(code);
+                    return NULL;
+                }
+            }
+            
+            char struct_end[256];
+            snprintf(struct_end, sizeof(struct_end), "} %s;\n\n", sdef->name);
+            if (!append_to_code(code, &pos, capacity, struct_end)) {
+                free(code);
+                return NULL;
+            }
+        }
+    }
+    
+    // Add main function
+    char main_part[512];
+    snprintf(main_part, sizeof(main_part), "int main() {\n    return %lld;\n}\n", value);
+    if (!append_to_code(code, &pos, capacity, main_part)) {
+        free(code);
+        return NULL;
+    }
+    
     return code;
 }
 
@@ -1566,7 +1872,7 @@ char *compile(const char *input)
     // If there are no reads and no while loops, use simple code generation
     if (parser.read_count == 0 && parser.while_count == 0)
     {
-        return generate_code(value);
+        return generate_code(value, &parser);
     }
 
     // If there are reads, generate code with scanf() calls
