@@ -31,6 +31,10 @@ export default [
           selector: "Literal[value=null]",
           message: "null is not allowed. Use undefined instead.",
         },
+        {
+          selector: "ThrowStatement",
+          message: "throw is not allowed. Use Result<T, E> type instead.",
+        },
       ],
     },
   },

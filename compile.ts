@@ -1,3 +1,5 @@
+import { type Result, ok, err } from "./types";
+
 const VALID_TYPES = new Set([
   "U8",
   "U16",
@@ -32,11 +34,9 @@ function isDigit(char: string | undefined): boolean {
   return char !== undefined && char >= "0" && char <= "9";
 }
 
-function parseNumericLiteral(input: string): {
-  sign: string;
-  number: string;
-  type: string | undefined;
-} {
+function parseNumericLiteral(
+  input: string,
+): Result<{ sign: string; number: string; type: string | undefined }, string> {
   let pos = 0;
 
   // Check for optional sign
@@ -48,7 +48,7 @@ function parseNumericLiteral(input: string): {
 
   // Parse digits before decimal point
   if (pos >= input.length || !isDigit(input[pos])) {
-    throw new Error(`Invalid numeric literal: ${input}`);
+    return err(`Invalid numeric literal: ${input}`);
   }
 
   let number = "";
@@ -64,7 +64,7 @@ function parseNumericLiteral(input: string): {
 
     // Must have at least one digit after decimal
     if (pos >= input.length || !isDigit(input[pos])) {
-      throw new Error(`Invalid numeric literal: ${input}`);
+      return err(`Invalid numeric literal: ${input}`);
     }
 
     while (pos < input.length && isDigit(input[pos])) {
@@ -79,7 +79,7 @@ function parseNumericLiteral(input: string): {
     // Expect a letter followed by digit(s)
     const char = input[pos];
     if (!isLetter(char)) {
-      throw new Error(`Invalid numeric literal: ${input}`);
+      return err(`Invalid numeric literal: ${input}`);
     }
 
     let potentialType = "";
@@ -92,7 +92,7 @@ function parseNumericLiteral(input: string): {
     }
 
     if (!VALID_TYPES.has(potentialType)) {
-      throw new Error(`Invalid type annotation: ${potentialType}`);
+      return err(`Invalid type annotation: ${potentialType}`);
     }
 
     type = potentialType;
@@ -100,10 +100,10 @@ function parseNumericLiteral(input: string): {
 
   // Ensure we've consumed the entire input
   if (pos !== input.length) {
-    throw new Error(`Invalid numeric literal: ${input}`);
+    return err(`Invalid numeric literal: ${input}`);
   }
 
-  return { sign, number, type };
+  return ok({ sign, number, type });
 }
 
 function isLetter(char: string | undefined): boolean {
@@ -113,22 +113,27 @@ function isLetter(char: string | undefined): boolean {
   );
 }
 
-export function compile(input: string): string {
+export function compile(input: string): Result<string, string> {
   // Empty input returns 0
   if (input === "") {
-    return "return 0;";
+    return ok("return 0;");
   }
 
   // Disallow any whitespace
   if (input !== input.trim() || hasWhitespace(input)) {
-    throw new Error("Whitespace is not allowed in numeric literals");
+    return err("Whitespace is not allowed in numeric literals");
   }
 
-  const { sign, number, type } = parseNumericLiteral(input);
+  const parseResult = parseNumericLiteral(input);
+  if (!parseResult.ok) {
+    return parseResult;
+  }
+
+  const { sign, number, type } = parseResult.value;
 
   // Validate: negative numbers can only be signed (I) or float (F)
   if (sign === "-" && type && !type.startsWith("I") && !type.startsWith("F")) {
-    throw new Error(
+    return err(
       `Cannot apply negative sign to unsigned type: -${number}${type}`,
     );
   }
@@ -136,5 +141,5 @@ export function compile(input: string): string {
   // Construct the final number value
   const finalNumber = sign + number;
 
-  return `return ${finalNumber};`;
+  return ok(`return ${finalNumber};`);
 }
