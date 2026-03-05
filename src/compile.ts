@@ -18,21 +18,43 @@ type Token =
   | { type: "NUMBER"; value: string }
   | { type: "OPERATOR"; value: "+" | "-" | "*" | "/" }
   | { type: "IDENTIFIER"; value: string }
+  | { type: "KEYWORD"; value: "let" | "mut" }
   | { type: "LPAREN" }
   | { type: "RPAREN" }
   | { type: "LT" }
   | { type: "GT" }
+  | { type: "COLON" }
+  | { type: "SEMICOLON" }
+  | { type: "ASSIGN" }
   | { type: "EOF" };
 
 // AST node types
 type ASTNode =
   | { kind: "number"; value: string }
   | { kind: "read"; type: string }
+  | { kind: "variable"; name: string }
   | {
       kind: "binary";
       left: ASTNode;
       operator: "+" | "-" | "*" | "/";
       right: ASTNode;
+    }
+  | {
+      kind: "let";
+      mutable: boolean;
+      name: string;
+      type: string;
+      initializer: ASTNode;
+    }
+  | {
+      kind: "assign";
+      name: string;
+      value: ASTNode;
+    }
+  | {
+      kind: "block";
+      statements: ASTNode[];
+      result: ASTNode;
     };
 
 function isWhitespace(char: string | undefined): boolean {
@@ -64,6 +86,44 @@ function validateType(typeStr: string): Result<undefined, string> {
   return ok(undefined);
 }
 
+function getVariable(
+  parser: Parser,
+  name: string,
+): Result<{ type: string; mutable: boolean }, string> {
+  const varInfo = parser.variables.get(name);
+  if (!varInfo) {
+    return err(`Variable '${name}' is not defined`);
+  }
+  return ok(varInfo);
+}
+
+function parseTypeAnnotation(parser: Parser): Result<string, string> {
+  const typeTok = current(parser);
+  if (typeTok.type !== "IDENTIFIER") {
+    return err("Expected type annotation");
+  }
+  const typeStr = typeTok.value;
+  const validateResult = validateType(typeStr);
+  if (!validateResult.ok) {
+    return validateResult;
+  }
+  advance(parser);
+  return ok(typeStr);
+}
+
+function parseTypeValue(parser: Parser): Result<string, string> {
+  const typeTok = current(parser);
+  if (typeTok.type !== "IDENTIFIER") {
+    return err("Expected type");
+  }
+  const typeStr = typeTok.value;
+  const validateResult = validateType(typeStr);
+  if (!validateResult.ok) {
+    return validateResult;
+  }
+  return ok(typeStr);
+}
+
 function tokenize(input: string): Result<Token[], string> {
   const tokens: Token[] = [];
   let pos = 0;
@@ -75,7 +135,11 @@ function tokenize(input: string): Result<Token[], string> {
   const isOperatorContext = (): boolean => {
     const last = lastToken();
     return (
-      last !== undefined && (last.type === "NUMBER" || last.type === "RPAREN")
+      last !== undefined &&
+      (last.type === "NUMBER" ||
+        last.type === "RPAREN" ||
+        last.type === "IDENTIFIER" ||
+        last.type === "GT")
     );
   };
 
@@ -113,8 +177,17 @@ function tokenize(input: string): Result<Token[], string> {
     } else if (char === ">") {
       tokens.push({ type: "GT" });
       pos++;
+    } else if (char === ":") {
+      tokens.push({ type: "COLON" });
+      pos++;
+    } else if (char === ";") {
+      tokens.push({ type: "SEMICOLON" });
+      pos++;
+    } else if (char === "=") {
+      tokens.push({ type: "ASSIGN" });
+      pos++;
     } else if (isLetter(char)) {
-      // Parse identifier (e.g., 'read' or type like 'U8')
+      // Parse identifier (e.g., 'read', 'let', 'mut', or type like 'U8')
       let ident = "";
       while (
         pos < input.length &&
@@ -123,7 +196,13 @@ function tokenize(input: string): Result<Token[], string> {
         ident += input[pos];
         pos++;
       }
-      tokens.push({ type: "IDENTIFIER", value: ident });
+
+      // Check if it's a keyword
+      if (ident === "let" || ident === "mut") {
+        tokens.push({ type: "KEYWORD", value: ident });
+      } else {
+        tokens.push({ type: "IDENTIFIER", value: ident });
+      }
     } else if (isDigit(char) || (char === "-" && isDigit(input[pos + 1]))) {
       // Parse number with optional type and optional leading sign
       let numStr = "";
@@ -186,6 +265,7 @@ function tokenize(input: string): Result<Token[], string> {
 interface Parser {
   tokens: Token[];
   pos: number;
+  variables: Map<string, { type: string; mutable: boolean }>;
 }
 
 function current(parser: Parser): Token {
@@ -198,6 +278,169 @@ function current(parser: Parser): Token {
 
 function advance(parser: Parser): void {
   parser.pos++;
+}
+
+function parseProgram(parser: Parser): Result<ASTNode, string> {
+  const statements: ASTNode[] = [];
+
+  // Parse all let and assignment statements
+  while (true) {
+    const tok = current(parser);
+
+    if (tok.type === "KEYWORD" && tok.value === "let") {
+      const stmt = parseLetStatement(parser);
+      if (!stmt.ok) {
+        return stmt;
+      }
+      statements.push(stmt.value);
+    } else if (tok.type === "IDENTIFIER") {
+      // Could be assignment or expression
+      const savedPos = parser.pos;
+      const name = tok.value;
+      advance(parser);
+
+      const nextTok = current(parser);
+      if (nextTok.type === "ASSIGN") {
+        // It's an assignment
+        advance(parser);
+
+        // Check if variable is mutable
+        const varResult = getVariable(parser, name);
+        if (!varResult.ok) {
+          return varResult;
+        }
+        if (!varResult.value.mutable) {
+          return err(
+            `Variable '${name}' is immutable and cannot be reassigned`,
+          );
+        }
+
+        const valueResult = parseExpression(parser);
+        if (!valueResult.ok) {
+          return valueResult;
+        }
+
+        // Expect ';'
+        const semiTok = current(parser);
+        if (semiTok.type !== "SEMICOLON") {
+          return err("Expected ';' after assignment");
+        }
+        advance(parser);
+
+        statements.push({
+          kind: "assign",
+          name,
+          value: valueResult.value,
+        });
+      } else {
+        // Restore position and parse as expression
+        parser.pos = savedPos;
+        break;
+      }
+    } else {
+      break;
+    }
+  }
+
+  // Parse final expression
+  const expr = parseExpression(parser);
+  if (!expr.ok) {
+    return expr;
+  }
+
+  if (statements.length === 0) {
+    return expr;
+  }
+
+  return ok({ kind: "block", statements, result: expr.value });
+}
+
+function parseLetStatement(parser: Parser): Result<ASTNode, string> {
+  // Expect 'let'
+  const letTok = current(parser);
+  if (letTok.type !== "KEYWORD" || letTok.value !== "let") {
+    return err("Expected 'let'");
+  }
+  advance(parser);
+
+  // Check for 'mut'
+  let mutable = false;
+  const mutTok = current(parser);
+  if (mutTok.type === "KEYWORD" && mutTok.value === "mut") {
+    mutable = true;
+    advance(parser);
+  }
+
+  // Expect identifier
+  const nameTok = current(parser);
+  if (nameTok.type !== "IDENTIFIER") {
+    return err("Expected variable name");
+  }
+  const name = nameTok.value;
+  advance(parser);
+
+  // Check for duplicate declaration
+  if (parser.variables.has(name)) {
+    return err(`Variable '${name}' already declared`);
+  }
+
+  // Expect ':'
+  const colonTok = current(parser);
+  if (colonTok.type !== "COLON") {
+    return err("Expected ':' after variable name");
+  }
+  advance(parser);
+
+  // Parse type annotation
+  const typeResult = parseTypeAnnotation(parser);
+  if (!typeResult.ok) {
+    return typeResult;
+  }
+  const typeStr = typeResult.value;
+
+  // Expect '='
+  const assignTok = current(parser);
+  if (assignTok.type !== "ASSIGN") {
+    return err("Expected '=' in let statement");
+  }
+  advance(parser);
+
+  // Parse initializer expression
+  const initResult = parseExpression(parser);
+  if (!initResult.ok) {
+    return initResult;
+  }
+
+  // Check type compatibility for numeric literals
+  const initializer = initResult.value;
+  if (initializer.kind === "number") {
+    // Check if negative literal is assigned to unsigned type
+    if (
+      initializer.value.startsWith("-") &&
+      !typeStr.startsWith("I") &&
+      !typeStr.startsWith("F")
+    ) {
+      return err(`Cannot assign negative value to unsigned type '${typeStr}'`);
+    }
+  }
+
+  // Expect ';'
+  const semiTok = current(parser);
+  if (semiTok.type !== "SEMICOLON") {
+    return err("Expected ';' after let statement");
+  }
+  advance(parser);
+
+  // Register variable in parser context
+  parser.variables.set(name, { type: typeStr, mutable });
+
+  return ok({
+    kind: "let",
+    mutable,
+    name,
+    type: typeStr,
+    initializer,
+  });
 }
 
 function parseExpression(parser: Parser): Result<ASTNode, string> {
@@ -268,15 +511,11 @@ function parsePrimary(parser: Parser): Result<ASTNode, string> {
     }
     advance(parser);
 
-    const typeTok = current(parser);
-    if (typeTok.type !== "IDENTIFIER") {
-      return err("Expected type after 'read<'");
+    const typeResult = parseTypeValue(parser);
+    if (!typeResult.ok) {
+      return typeResult;
     }
-    const typeStr = typeTok.value;
-    const validateResult = validateType(typeStr);
-    if (!validateResult.ok) {
-      return validateResult;
-    }
+    const typeStr = typeResult.value;
     advance(parser);
 
     const gt = current(parser);
@@ -298,6 +537,19 @@ function parsePrimary(parser: Parser): Result<ASTNode, string> {
     advance(parser);
 
     return ok({ kind: "read", type: typeStr });
+  }
+
+  if (tok.type === "IDENTIFIER") {
+    const name = tok.value;
+    advance(parser);
+
+    // Variable reference - just check it exists
+    const varResult = getVariable(parser, name);
+    if (!varResult.ok) {
+      return varResult;
+    }
+
+    return ok({ kind: "variable", name });
   }
 
   if (tok.type === "LPAREN") {
@@ -401,10 +653,35 @@ function codegenAST(node: ASTNode): string {
     return "readValue()";
   }
 
+  if (node.kind === "variable") {
+    return node.name;
+  }
+
+  if (node.kind === "let") {
+    const init = codegenAST(node.initializer);
+    return `let ${node.name} = ${init}`;
+  }
+
+  if (node.kind === "assign") {
+    const value = codegenAST(node.value);
+    return `${node.name} = ${value}`;
+  }
+
   if (node.kind === "binary") {
     const left = codegenAST(node.left);
     const right = codegenAST(node.right);
     return `(${left} ${node.operator} ${right})`;
+  }
+
+  if (node.kind === "block") {
+    const statements = node.statements
+      .map((stmt) => {
+        const code = codegenAST(stmt);
+        return code.endsWith(";") ? code : code + ";";
+      })
+      .join(" ");
+    const result = codegenAST(node.result);
+    return `${statements} return ${result}`;
   }
 
   return "0";
@@ -415,8 +692,16 @@ function validateAST(node: ASTNode): Result<undefined, string> {
     return validateNegativeType(node.value);
   }
 
-  if (node.kind === "read") {
+  if (node.kind === "read" || node.kind === "variable") {
     return ok(undefined);
+  }
+
+  if (node.kind === "let") {
+    return validateAST(node.initializer);
+  }
+
+  if (node.kind === "assign") {
+    return validateAST(node.value);
   }
 
   if (node.kind === "binary") {
@@ -426,6 +711,16 @@ function validateAST(node: ASTNode): Result<undefined, string> {
     }
 
     return validateAST(node.right);
+  }
+
+  if (node.kind === "block") {
+    for (const stmt of node.statements) {
+      const validation = validateAST(stmt);
+      if (!validation.ok) {
+        return validation;
+      }
+    }
+    return validateAST(node.result);
   }
 
   return ok(undefined);
@@ -450,8 +745,8 @@ export function compile(input: string): Result<string, string> {
 
   // Parse
   const tokens = tokenResult.value;
-  const parser: Parser = { tokens, pos: 0 };
-  const astResult = parseExpression(parser);
+  const parser: Parser = { tokens, pos: 0, variables: new Map() };
+  const astResult = parseProgram(parser);
   if (!astResult.ok) {
     return astResult;
   }
@@ -470,6 +765,11 @@ export function compile(input: string): Result<string, string> {
 
   // Generate code
   const code = codegenAST(ast);
+
+  // If the AST is a block, it already includes return statement
+  if (ast.kind === "block") {
+    return ok(code + ";");
+  }
 
   return ok(`return ${code};`);
 }

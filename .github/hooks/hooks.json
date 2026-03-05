@@ -11,7 +11,7 @@
 			},
 			{
 				"type": "command",
-				"command": "bun run lint"
+				"command": "npm run lint"
 			}
 		]
 	}

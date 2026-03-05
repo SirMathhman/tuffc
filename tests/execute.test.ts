@@ -253,3 +253,61 @@ test("read multiple values in complex expression", () => {
   );
   expectValue(result, 14);
 });
+
+// Variable binding with let
+test("simple variable declaration and use", () => {
+  expectValue(executeTuff("let x : U8 = 100; x"), 100);
+});
+
+test("variable in arithmetic expression", () => {
+  expectValue(executeTuff("let x : U8 = 3; x + 5"), 8);
+});
+
+test("multiple variable declarations", () => {
+  expectValue(executeTuff("let x : U8 = 3; let y : U8 = 4; x + y"), 7);
+});
+
+test("variable with mutable binding and reassignment", () => {
+  expectValue(executeTuff("let mut x : U8 = 0; x = 5; x"), 5);
+});
+
+test("variable with multiple reassignments", () => {
+  expectValue(executeTuff("let mut x : U8 = 1; x = 2; x = 3; x"), 3);
+});
+
+test("variable initialized from read", () => {
+  const result = executeTuffWithInput("let x : U8 = read<U8>(); x", "42");
+  expectValue(result, 42);
+});
+
+test("multiple variables with reads", () => {
+  const result = executeTuffWithInput(
+    "let x : U8 = read<U8>(); let y : U8 = read<U8>(); x + y",
+    "10 20",
+  );
+  expectValue(result, 30);
+});
+
+test("variable in complex expression", () => {
+  expectValue(executeTuff("let x : U8 = 2; let y : U8 = 3; x + y * 4"), 14);
+});
+
+test("immutable variable reassignment error", () => {
+  expectError(executeTuff("let x : U8 = 5; x = 10; x"));
+});
+
+test("undefined variable error", () => {
+  expectError(executeTuff("x"));
+});
+
+test("duplicate variable declaration error", () => {
+  expectError(executeTuff("let x : U8 = 1; let x : U8 = 2; x"));
+});
+
+test("variable without initializer error", () => {
+  expectError(executeTuff("let x : U8; x"));
+});
+
+test("type mismatch in variable initializer", () => {
+  expectError(executeTuff("let x : U8 = -5; x"));
+});
