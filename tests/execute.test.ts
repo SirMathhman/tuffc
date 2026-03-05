@@ -1,6 +1,6 @@
 import { test, expect } from "bun:test";
-import { compile as compileTuffToJS } from "./compile";
-import { type Result, isOk, isErr } from "./types";
+import { compile as compileTuffToJS } from "../src/compile";
+import { type Result, isOk, isErr } from "../src/types";
 
 /**
  * Executes compiled code by creating a new Function from the compiled
