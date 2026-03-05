@@ -1,0 +1,121 @@
+Building test executable...
+clang -Werror test.c execute.c compile.c -o test.exe
+Running tests...
+./test.exe
+Γ£ô Test passed: execute("") == 0
+Γ£ô Test passed: execute("0U8") == 0
+Γ£ô Test passed: execute("1U8") == 1
+Γ£ô Test passed: execute("100U8") == 100
+Γ£ô Test passed: execute("255U8") == 255
+Γ£ô Test passed: execute("-128I8") == -128
+Γ£ô Test passed: execute("-50I8") == -50
+Γ£ô Test passed: execute("0I8") == 0
+Γ£ô Test passed: execute("127I8") == 127
+Γ£ô Test passed: execute("256U16") == 256
+Γ£ô Test passed: execute("65535U16") == 65535
+Γ£ô Test passed: execute("-32768I16") == -32768
+Γ£ô Test passed: execute("32767I16") == 32767
+Γ£ô Test passed: execute("0U8 + 0U8") == 0
+Γ£ô Test passed: execute("1U8 + 1U8") == 2
+Γ£ô Test passed: execute("5U8 + 10U8") == 15
+Γ£ô Test passed: execute("100U8 + 100U8") == 200
+Γ£ô Test passed: execute("255U8 + 0U8") == 255
+Γ£ô Test passed: execute("-5I8 + 3I8") == -2
+Γ£ô Test passed: execute("0I8 + 0I8") == 0
+Γ£ô Test passed: execute("10U16 + 20U16") == 30
+Γ£ô Test passed: execute("5U8 - 2U8") == 3
+Γ£ô Test passed: execute("10U8 - 10U8") == 0
+Γ£ô Test passed: execute("255U8 - 100U8") == 155
+Γ£ô Test passed: execute("100I8 - 50I8") == 50
+Γ£ô Test passed: execute("-10I8 - 5I8") == -15
+Γ£ô Test passed: execute("2U8 * 3U8") == 6
+Γ£ô Test passed: execute("10U8 * 10U8") == 100
+Γ£ô Test passed: execute("0U8 * 255U8") == 0
+Γ£ô Test passed: execute("1U8 * 127U8") == 127
+Γ£ô Test passed: execute("3I8 * -4I8") == -12
+Γ£ô Test passed: execute("10U8 / 2U8") == 5
+Γ£ô Test passed: execute("100U8 / 10U8") == 10
+Γ£ô Test passed: execute("255U8 / 1U8") == 255
+Γ£ô Test passed: execute("0U8 / 1U8") == 0
+Γ£ô Test passed: execute("12I8 / 3I8") == 4
+Γ£ô Test passed: execute("-20I8 / 5I8") == -4
+Γ£ô Test passed: execute("10U8 % 3U8") == 1
+Γ£ô Test passed: execute("20U8 % 7U8") == 6
+Γ£ô Test passed: execute("100U8 % 10U8") == 0
+Γ£ô Test passed: execute("5U8 % 2U8") == 1
+Γ£ô Test passed: execute("2U8 + 3U8 * 4U8") == 14
+Γ£ô Test passed: execute("2U8 * 3U8 + 4U8") == 10
+Γ£ô Test passed: execute("10U8 - 2U8 / 2U8") == 9
+Γ£ô Test passed: execute("100U8 / 10U8 * 2U8") == 20
+Γ£ô Test passed: execute("(2U8 + 3U8) * 4U8") == 20
+Γ£ô Test passed: execute("(10U8 - 5U8) / 5U8") == 1
+Γ£ô Test passed: execute("2U8 * (3U8 + 4U8)") == 14
+Γ£ô Test passed: execute("((5U8 + 5U8) * 2U8)") == 20
+Γ£ô Test passed: execute("1U8 + 256U16") == 257
+Γ£ô Test passed: execute("255U8 + 1U16") == 256
+Γ£ô Test passed: execute("100I8 + 200I16") == 300
+Γ£ô Test passed: execute("10U8 / 2U16") == 5
+Γ£ô Test passed: execute("read<I32>() ") == 100
+Γ£ô Test passed: execute("read<U8>() ") == 50
+Γ£ô Test passed: execute("read<I16>() ") == -100
+Γ£ô Test passed: execute("read<U16>() ") == 256
+Γ£ô Test passed: execute("read<I8>() ") == 42
+Γ£ô Test passed: execute("read<U32>() ") == 1000000
+Γ£ô Test passed: execute("read<I32>() + read<I32>() ") == 3
+Γ£ô Test passed: execute("read<U8>() * read<U8>() ") == 30
+Γ£ô Test passed: execute("read<I32>() - read<I32>() ") == 7
+Γ£ô Test passed: execute("read<U16>() / read<U16>() ") == 25
+Γ£ô Test passed: execute("read<I32>() + 100I32 ") == 150
+Γ£ô Test passed: execute("read<I32>() * 2I32 ") == 14
+Γ£ô Test passed: execute("read<I32>() + read<I32>() * read<I32>() ") == 14
+Γ£ô Test passed: execute("(read<I32>() + read<I32>()) * read<I32>() ") == 20
+Γ£ô Test passed: execute("let mut x = 10U8; x += 5U8; x") == 15
+Γ£ô Test passed: execute("let mut x = 100U8; x += 55U8; x") == 155
+Γ£ô Test passed: execute("let mut a = 0U8; a += 1U8; a") == 1
+Γ£ô Test passed: execute("let mut x = 50U8; x -= 10U8; x") == 40
+Γ£ô Test passed: execute("let mut x = 100U8; x -= 50U8; x") == 50
+Γ£ô Test passed: execute("let mut y = 200U16; y -= 100U16; y") == 100
+Γ£ô Test passed: execute("let mut x = 5U8; x *= 3U8; x") == 15
+Γ£ô Test passed: execute("let mut x = 10U8; x *= 2U8; x") == 20
+
+Γ£ôΓ£ôΓ£ô All 75 valid tests passed! Γ£ôΓ£ôΓ£ô
+pmd cpd . --language cpp --minimum-tokens 35 --ignore-literals --ignore-identifiers || exit 2
+Found a 24 line (162 tokens) duplication in the following files: 
+Starting at line 1550 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\compile.c
+Starting at line 1848 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\compile.c
+
+    strncpy(temp_input, input, MAX_INPUT);
+
+    // Replace read<T>() patterns with __readN variables
+    int read_idx = 0;
+    for (int i = 0; i < (int)strlen(temp_input) && read_idx < parser.read_count; i++)
+    {
+        if (strncmp(&temp_input[i], "read<", 5) == 0)
+        {
+            // Find the closing >
+            int close_bracket = i + 5;
+            while (close_bracket < (int)strlen(temp_input) && temp_input[close_bracket] != '>')
+                close_bracket++;
+
+            if (close_bracket < (int)strlen(temp_input) && temp_input[close_bracket] == '>' &&
+                close_bracket + 2 < (int)strlen(temp_input) &&
+                temp_input[close_bracket + 1] == '(' && temp_input[close_bracket + 2] == ')')
+            {
+                // Replace "read<T>()" with "__readN"
+                char replacement[32];
+                snprintf(replacement, sizeof(replacement), "__read%d", read_idx);
+                int match_len = close_bracket - i + 3; // "read<T>()"
+
+                // Build new string with replacement
+                char new_input[MAX_INPUT + 1];
+
+=====================================================================
+Found a 3 line (36 tokens) duplication in the following files: 
+Starting at line 1826 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\compile.c
+Starting at line 1885 of C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\compile.c
+
+                    char else_line[256];
+                    snprintf(else_line, sizeof(else_line), "    else __match_result = %lld;\n", default_result);
+                    strncat(buffer, else_line, 32767 - strlen(buffer) - 1);
+
+make: *** [Makefile:20: dedup] Error 2

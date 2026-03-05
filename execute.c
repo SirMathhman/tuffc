@@ -86,6 +86,15 @@ static int execute_impl(const char *input, const char *stdin_data)
     return exec_exit;
 }
 
+// Returns a heap-allocated string of the generated C code for the given input.
+// Caller must free the returned pointer. Returns NULL on failure.
+char *get_generated_code(const char *input)
+{
+    if (!input)
+        return NULL;
+    return compile(input);
+}
+
 // Execute function: compiles input, writes to temp .c file, compiles with clang,
 // and returns the exit code of the clang process.
 int execute(const char *input)

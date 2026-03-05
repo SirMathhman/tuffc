@@ -93,6 +93,12 @@ read_errors_missing_type:
 read()
 read<>()
 
+while_loops:
+let mut x = 3U8; while (x != 0U8) { x -= 1U8; }; x:0
+let mut x = 0U8; while (x != 5U8) { x += 1U8; }; x:5
+let mut x = 10I16; while (x != 0I16) { x -= 2I16; }; x:0
+let mut x = 1U8; while (x != 8U8) { x += x; }; x:8
+
 error:
 256U8
 300U8
@@ -162,6 +168,7 @@ let_statements_blocks:
 let_statements_nested_blocks:
 { { 100U8 } }:100
 { let x = 100U8; { x } }:100
+let x = { let y = 100U8; y }; x:100
 
 boolean_literals:
 true:1

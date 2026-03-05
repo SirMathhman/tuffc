@@ -1,0 +1,59 @@
+tuffc_temp_13977.c:9:12: error: expected expression
+    9 |     while () {
+      |            ^
+1 error generated.
+Γ£ô Test passed: execute("") == 0
+Γ£ô Test passed: execute("0U8") == 0
+Γ£ô Test passed: execute("1U8") == 1
+Γ£ô Test passed: execute("100U8") == 100
+Γ£ô Test passed: execute("255U8") == 255
+Γ£ô Test passed: execute("-128I8") == -128
+Γ£ô Test passed: execute("-50I8") == -50
+Γ£ô Test passed: execute("0I8") == 0
+Γ£ô Test passed: execute("127I8") == 127
+Γ£ô Test passed: execute("256U16") == 256
+Γ£ô Test passed: execute("65535U16") == 65535
+Γ£ô Test passed: execute("-32768I16") == -32768
+Γ£ô Test passed: execute("32767I16") == 32767
+Γ£ô Test passed: execute("0U8 + 0U8") == 0
+Γ£ô Test passed: execute("1U8 + 1U8") == 2
+Γ£ô Test passed: execute("5U8 + 10U8") == 15
+Γ£ô Test passed: execute("100U8 + 100U8") == 200
+Γ£ô Test passed: execute("255U8 + 0U8") == 255
+Γ£ô Test passed: execute("-5I8 + 3I8") == -2
+Γ£ô Test passed: execute("0I8 + 0I8") == 0
+Γ£ô Test passed: execute("10U16 + 20U16") == 30
+Γ£ô Test passed: execute("5U8 - 2U8") == 3
+Γ£ô Test passed: execute("10U8 - 10U8") == 0
+Γ£ô Test passed: execute("255U8 - 100U8") == 155
+Γ£ô Test passed: execute("100I8 - 50I8") == 50
+Γ£ô Test passed: execute("-10I8 - 5I8") == -15
+Γ£ô Test passed: execute("2U8 * 3U8") == 6
+Γ£ô Test passed: execute("10U8 * 10U8") == 100
+Γ£ô Test passed: execute("0U8 * 255U8") == 0
+Γ£ô Test passed: execute("1U8 * 127U8") == 127
+Γ£ô Test passed: execute("3I8 * -4I8") == -12
+Γ£ô Test passed: execute("10U8 / 2U8") == 5
+Γ£ô Test passed: execute("100U8 / 10U8") == 10
+Γ£ô Test passed: execute("255U8 / 1U8") == 255
+Γ£ô Test passed: execute("0U8 / 1U8") == 0
+Γ£ô Test passed: execute("12I8 / 3I8") == 4
+Γ£ô Test passed: execute("-20I8 / 5I8") == -4
+Γ£ô Test passed: execute("10U8 % 3U8") == 1
+Γ£ô Test passed: execute("20U8 % 7U8") == 6
+Γ£ô Test passed: execute("100U8 % 10U8") == 0
+Γ£ô Test passed: execute("5U8 % 2U8") == 1
+Γ£ô Test passed: execute("2U8 + 3U8 * 4U8") == 14
+Γ£ô Test passed: execute("2U8 * 3U8 + 4U8") == 10
+Γ£ô Test passed: execute("10U8 - 2U8 / 2U8") == 9
+Γ£ô Test passed: execute("100U8 / 10U8 * 2U8") == 20
+Γ£ô Test passed: execute("(2U8 + 3U8) * 4U8") == 20
+Γ£ô Test passed: execute("(10U8 - 5U8) / 5U8") == 1
+Γ£ô Test passed: execute("2U8 * (3U8 + 4U8)") == 14
+Γ£ô Test passed: execute("((5U8 + 5U8) * 2U8)") == 20
+Γ£ô Test passed: execute("1U8 + 256U16") == 257
+Γ£ô Test passed: execute("255U8 + 1U16") == 256
+Γ£ô Test passed: execute("100I8 + 200I16") == 300
+Γ£ô Test passed: execute("10U8 / 2U16") == 5
+Γ£ù Test FAILED: execute("read<I32>() ") returned 1, expected 100
+Assertion failed: result == valid_tests[i].expected, file test.c, line 172

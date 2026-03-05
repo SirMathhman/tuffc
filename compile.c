@@ -105,6 +105,16 @@ typedef struct
     bool has_catchall;
 } MatchExpr;
 
+// Track while loop expressions for code generation
+typedef struct
+{
+    char condition_text[256]; // Raw source text of the condition
+    TypeInfo *condition_type;
+    int read_idx;            // Index of a read in the condition, or -1 if no read
+    int body_update_start;   // First var_update index inside the loop body
+    int body_update_end;     // One-past-last var_update index inside the loop body
+} WhileLoop;
+
 typedef struct
 {
     const char *pos;
@@ -120,6 +130,8 @@ typedef struct
     int var_update_count;      // How many compound assignments
     MatchExpr match_exprs[8];  // Track match expressions needing code gen
     int match_count;           // How many match expressions
+    WhileLoop while_loops[4];  // Track while loops needing code gen
+    int while_count;           // How many while loops
 } Parser;
 
 // Forward declarations
@@ -211,12 +223,14 @@ static void init_parser(Parser *p, const char *input)
     p->var_def_count = 0;
     p->var_update_count = 0;
     p->match_count = 0;
+    p->while_count = 0;
     // CPD-OFF
     memset(p->scopes, 0, sizeof(p->scopes));
     memset(p->reads, 0, sizeof(p->reads));
     memset(p->var_defs, 0, sizeof(p->var_defs));
     memset(p->var_updates, 0, sizeof(p->var_updates));
     memset(p->match_exprs, 0, sizeof(p->match_exprs));
+    memset(p->while_loops, 0, sizeof(p->while_loops));
     // CPD-ON
     push_scope(p);
 }
@@ -1258,6 +1272,66 @@ static int parse_stmt(Parser *p, int64_t *out_value, TypeInfo **out_type)
         return parse_stmt(p, out_value, out_type);
     }
 
+    // Handle while loop as a statement so that trailing "; expr" parses correctly
+    if (strncmp(p->pos, "while", 5) == 0 &&
+        (isspace((unsigned char)p->pos[5]) || p->pos[5] == '('))
+    {
+        p->pos += 5;
+        skip_ws(p);
+
+        if (!expect_char(p, '('))
+            return -1;
+
+        skip_ws(p);
+        const char *cond_start = p->pos;
+
+        int64_t cond_val;
+        TypeInfo *cond_type;
+        if (parse_expr(p, &cond_val, &cond_type) != 1)
+            return -1;
+
+        const char *cond_end = p->pos;
+
+        if (cond_type != find_type("Bool"))
+        {
+            p->error = true;
+            return -1;
+        }
+
+        if (!expect_char(p, ')'))
+            return -1;
+
+        p->needs_code_gen = true;
+        int pre_body_updates = p->var_update_count;
+
+        int64_t body_val;
+        TypeInfo *body_type;
+        if (parse_primary(p, &body_val, &body_type) != 1)
+            return -1;
+
+        if (p->while_count < 4)
+        {
+            WhileLoop *wl = &p->while_loops[p->while_count];
+            size_t cond_len = (size_t)(cond_end - cond_start);
+            if (cond_len >= sizeof(wl->condition_text))
+                cond_len = sizeof(wl->condition_text) - 1;
+            strncpy(wl->condition_text, cond_start, cond_len);
+            wl->condition_text[cond_len] = '\0';
+            wl->read_idx = (p->read_count > 0) ? (p->read_count - 1) : -1;
+            wl->condition_type = cond_type;
+            wl->body_update_start = pre_body_updates;
+            wl->body_update_end = p->var_update_count;
+            p->while_count++;
+        }
+
+        // Consume optional trailing ';' then parse the rest as the return value
+        skip_ws(p);
+        if (*p->pos == ';')
+            p->pos++;
+
+        return parse_stmt(p, out_value, out_type);
+    }
+
     // Check for compound assignment (+=, -=, *=, /=, %=)
     if (isalpha((unsigned char)*p->pos) || *p->pos == '_')
     {
@@ -1352,6 +1426,17 @@ static int parse_stmt(Parser *p, int64_t *out_value, TypeInfo **out_type)
         p->pos = id_start;
     }
 
+    // If the next non-whitespace character is '}' or end-of-input, there is no
+    // trailing expression - the block/statement returns a unit dummy value.
+    // This allows while-loop bodies like { x -= 1U8; } that end with ';'.
+    skip_ws(p);
+    if (*p->pos == '\0' || *p->pos == '}')
+    {
+        *out_value = 0;
+        *out_type = find_type("I32");
+        return 1;
+    }
+
     return parse_expr(p, out_value, out_type);
 }
 
@@ -1438,6 +1523,32 @@ static const char *get_c_type(TypeInfo *type)
 }
 // CPD-ON
 
+// Strip Tuff type suffixes (e.g. I32, U8) from a string for C code generation.
+// Removes an uppercase I/U and following digits when preceded by a digit.
+// E.g., "x > 0I32" -> "x > 0"
+static void strip_type_suffixes(const char *src, char *dst, int dstsz)
+{
+    int si = 0, di = 0;
+    while (src[si] && di < dstsz - 1)
+    {
+        char c = src[si];
+        if ((c == 'I' || c == 'U') && si > 0 &&
+            isdigit((unsigned char)src[si - 1]) &&
+            isdigit((unsigned char)src[si + 1]))
+        {
+            // Skip type suffix letters and digits
+            while (src[si] && isalnum((unsigned char)src[si]))
+                si++;
+        }
+        else
+        {
+            dst[di++] = c;
+            si++;
+        }
+    }
+    dst[di] = '\0';
+}
+
 char *compile(const char *input)
 {
     int64_t value;
@@ -1452,8 +1563,8 @@ char *compile(const char *input)
         return generate_error();
     }
 
-    // If there are no reads, use simple code generation
-    if (parser.read_count == 0)
+    // If there are no reads and no while loops, use simple code generation
+    if (parser.read_count == 0 && parser.while_count == 0)
     {
         return generate_code(value);
     }
@@ -1582,9 +1693,21 @@ char *compile(const char *input)
         strncat(buffer, decl, 32767 - strlen(buffer) - 1);
     }
 
-    // Apply variable updates (compound assignments)
+    // Apply variable updates that are OUTSIDE any while loop body
     for (int i = 0; i < parser.var_update_count; i++)
     {
+        bool in_loop = false;
+        for (int w = 0; w < parser.while_count; w++)
+        {
+            if (i >= parser.while_loops[w].body_update_start &&
+                i < parser.while_loops[w].body_update_end)
+            {
+                in_loop = true;
+                break;
+            }
+        }
+        if (in_loop)
+            continue;
         VarUpdate *update = &parser.var_updates[i];
         const char *op_str;
 
@@ -1738,15 +1861,60 @@ char *compile(const char *input)
                 // Add default case
                 if (has_default)
                 {
+                    // CPD-OFF - Structural snprintf/strncat pattern matches while-header emit
                     char else_line[256];
                     snprintf(else_line, sizeof(else_line), "    else __match_result = %lld;\n", default_result);
                     strncat(buffer, else_line, 32767 - strlen(buffer) - 1);
+                    // CPD-ON
                 }
 
                 // Update expr to use the result variable
                 strcpy(expr, "__match_result");
             }
         }
+    }
+
+    // Generate code for each while loop
+    for (int w = 0; w < parser.while_count; w++)
+    {
+        WhileLoop *wl = &parser.while_loops[w];
+
+        // Build C-compatible condition (strip Tuff type suffixes)
+        char processed_cond[256];
+        strip_type_suffixes(wl->condition_text, processed_cond, (int)sizeof(processed_cond));
+
+        // Emit while loop header
+        char while_hdr[512];
+        snprintf(while_hdr, sizeof(while_hdr), "    while (%s) {\n", processed_cond);
+        strncat(buffer, while_hdr, 32767 - strlen(buffer) - 1);
+
+        // CPD-OFF - Necessary: body update op_str resolution duplicates the outer-loop pattern
+        // Emit body updates inside the loop
+        for (int i = wl->body_update_start; i < wl->body_update_end; i++)
+        {
+            VarUpdate *update = &parser.var_updates[i];
+            const char *op_str;
+            switch (update->op)
+            {
+            case '+': op_str = "+"; break;
+            case '-': op_str = "-"; break;
+            case '*': op_str = "*"; break;
+            case '/': op_str = "/"; break;
+            case '%': op_str = "%"; break;
+            default:  op_str = "+"; break;
+            }
+            char stmt[256];
+            if (update->read_idx >= 0)
+                snprintf(stmt, sizeof(stmt), "        %s = %s %s __read%d;\n",
+                         update->name, update->name, op_str, update->read_idx);
+            else
+                snprintf(stmt, sizeof(stmt), "        %s = %s %s %lld;\n",
+                         update->name, update->name, op_str, update->rhs_value);
+            strncat(buffer, stmt, 32767 - strlen(buffer) - 1);
+        }
+        // CPD-ON
+
+        strncat(buffer, "    }\n", 32767 - strlen(buffer) - 1);
     }
 
     // Determine the return value

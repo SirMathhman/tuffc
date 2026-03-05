@@ -9,6 +9,7 @@
 
 extern int execute(const char *input);
 extern int execute_with_stdin(const char *input, const char *stdin_data);
+extern char *get_generated_code(const char *input);
 
 // Helper: Safely copy string with null termination
 static void safe_strcpy(char *dest, size_t dest_size, const char *src)
@@ -148,8 +149,8 @@ void run_tests(void)
     // CPD-OFF
     // NOTE: Due to stack overflow issues with deep recursion in the parser,
     // we limit testing to a reasonable subset. All major features are covered
-    // by the first 60 valid test cases.
-    int max_tests = (valid_count > 60) ? 60 : valid_count;
+    // by the first 80 valid test cases.
+    int max_tests = (valid_count > 80) ? 80 : valid_count;
 
     for (int i = 0; i < max_tests; i++)
     {
@@ -167,6 +168,12 @@ void run_tests(void)
         {
             printf("✗ Test FAILED: execute(\"%s\") returned %d, expected %d\n",
                    valid_tests[i].input, result, valid_tests[i].expected);
+            char *generated = get_generated_code(valid_tests[i].input);
+            if (generated)
+            {
+                printf("  Generated C code:\n%s\n", generated);
+                free(generated);
+            }
             fflush(stdout);
         }
         assert(result == valid_tests[i].expected);
