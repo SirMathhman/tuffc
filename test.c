@@ -8,20 +8,42 @@
 #include <stdbool.h>
 
 extern int execute(const char *input);
+extern int execute_with_stdin(const char *input, const char *stdin_data);
 
-#define MAX_TESTS 100
-#define MAX_INPUT 64
+// Helper: Safely copy string with null termination
+static void safe_strcpy(char *dest, size_t dest_size, const char *src)
+{
+    strncpy(dest, src, dest_size - 1);
+    dest[dest_size - 1] = '\0';
+}
+
+#define MAX_TESTS 200
+#define MAX_INPUT 256
+#define MAX_STDIN 256
 
 typedef struct
 {
     char input[MAX_INPUT];
+    char stdin_data[MAX_STDIN];
     int expected;
+    bool has_stdin;
 } ValidTest;
 
 typedef struct
 {
     char input[MAX_INPUT];
 } ErrorTest;
+
+// Helper: Populate a ValidTest struct
+static void add_valid_test(ValidTest *t, const char *input, bool has_stdin,
+                           const char *stdin_data, int expected)
+{
+    safe_strcpy(t->input, MAX_INPUT, input);
+    t->has_stdin = has_stdin;
+    if (has_stdin && stdin_data)
+        safe_strcpy(t->stdin_data, MAX_STDIN, stdin_data);
+    t->expected = expected;
+}
 
 void run_tests(void)
 {
@@ -82,13 +104,35 @@ void run_tests(void)
 
         if (mode == 1)
         {
-            // Parse "input:expected"
+            // Parse "input:expected" or "input | stdin:expected"
+            char *pipe = strchr(line, '|');
             char *colon = strchr(line, ':');
-            if (colon)
+
+            if (pipe && colon)
             {
+                // Format: input | stdin:expected
+                char *expected_colon = strchr(pipe + 1, ':');
+                if (expected_colon)
+                {
+                    *pipe = '\0';
+                    *expected_colon = '\0';
+
+                    // Skip whitespace after pipe
+                    const char *stdin_start = pipe + 1;
+                    while (*stdin_start == ' ' || *stdin_start == '\t')
+                        stdin_start++;
+
+                    add_valid_test(&valid_tests[valid_count], line, true,
+                                   stdin_start, atoi(expected_colon + 1));
+                    valid_count++;
+                }
+            }
+            else if (colon && !pipe)
+            {
+                // Format: input:expected (no stdin)
                 *colon = '\0';
-                strncpy(valid_tests[valid_count].input, line, MAX_INPUT - 1);
-                valid_tests[valid_count].expected = atoi(colon + 1);
+                add_valid_test(&valid_tests[valid_count], line, false, NULL,
+                               atoi(colon + 1));
                 valid_count++;
             }
         }
@@ -104,7 +148,16 @@ void run_tests(void)
     // CPD-OFF
     for (int i = 0; i < valid_count; i++)
     {
-        int result = execute(valid_tests[i].input);
+        int result;
+        if (valid_tests[i].has_stdin)
+        {
+            result = execute_with_stdin(valid_tests[i].input, valid_tests[i].stdin_data);
+        }
+        else
+        {
+            result = execute(valid_tests[i].input);
+        }
+
         if (result != valid_tests[i].expected)
         {
             printf("✗ Test FAILED: execute(\"%s\") returned %d, expected %d\n",

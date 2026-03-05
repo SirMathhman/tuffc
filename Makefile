@@ -17,7 +17,7 @@ test:
 
 # Run code duplication detection
 dedup:
-	pmd cpd . --language cpp --minimum-tokens 35 --ignore-literals || exit 2
+	pmd cpd . --language cpp --minimum-tokens 35 --ignore-literals --ignore-identifiers || exit 2
 
 # Run all checks
 check: test dedup

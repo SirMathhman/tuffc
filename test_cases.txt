@@ -69,6 +69,30 @@ arithmetic_type_coercion:
 100I8 + 200I16:300
 10U8 / 2U16:5
 
+read_simple:
+read<I32>() | 100:100
+read<U8>() | 50:50
+read<I16>() | -100:-100
+read<U16>() | 256:256
+read<I8>() | 42:42
+read<U32>() | 1000000:1000000
+
+read_arithmetic:
+read<I32>() + read<I32>() | 1 2:3
+read<U8>() * read<U8>() | 5 6:30
+read<I32>() - read<I32>() | 10 3:7
+read<U16>() / read<U16>() | 100 4:25
+read<I32>() + 100I32 | 50:150
+read<I32>() * 2I32 | 7:14
+
+read_precedence:
+read<I32>() + read<I32>() * read<I32>() | 2 3 4:14
+(read<I32>() + read<I32>()) * read<I32>() | 2 3 4:20
+
+read_errors_missing_type:
+read()
+read<>()
+
 error:
 256U8
 300U8
@@ -164,4 +188,3 @@ let_statements_errors_type_mismatch:
 let x : U8 = 1000U16;
 let y : U8 = 300U8;
 let x : I8 = 200I8;
-
