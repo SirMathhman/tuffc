@@ -27,6 +27,10 @@ export default [
           message:
             "Regex literals are not allowed. Use string methods instead.",
         },
+        {
+          selector: "Literal[value=null]",
+          message: "null is not allowed. Use undefined instead.",
+        },
       ],
     },
   },

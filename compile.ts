@@ -35,7 +35,7 @@ function isDigit(char: string | undefined): boolean {
 function parseNumericLiteral(input: string): {
   sign: string;
   number: string;
-  type: string | null;
+  type: string | undefined;
 } {
   let pos = 0;
 
@@ -74,7 +74,7 @@ function parseNumericLiteral(input: string): {
   }
 
   // Check for optional type annotation
-  let type: string | null = null;
+  let type: string | undefined;
   if (pos < input.length) {
     // Expect a letter followed by digit(s)
     const char = input[pos];
