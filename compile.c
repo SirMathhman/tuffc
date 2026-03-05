@@ -262,6 +262,93 @@ static int parse_primary(Parser *p, int64_t *out_value, TypeInfo **out_type)
 {
     skip_ws(p);
 
+    // Handle if statement/expression
+    // CPD-OFF (if/else if/else parsing structure is inherent to conditional grammar)
+    if (strncmp(p->pos, "if", 2) == 0 &&
+        (isspace((unsigned char)p->pos[2]) || p->pos[2] == '('))
+    {
+        p->pos += 2;
+        skip_ws(p);
+
+        // Expect '('
+        if (!expect_char(p, '('))
+            return -1;
+
+        // Parse condition - must be Bool type
+        int64_t cond_val;
+        TypeInfo *cond_type;
+        if (parse_expr(p, &cond_val, &cond_type) != 1)
+            return -1;
+
+        if (cond_type != find_type("Bool"))
+        {
+            p->error = true;
+            return -1;
+        }
+
+        // Expect ')'
+        if (!expect_char(p, ')'))
+            return -1;
+
+        // Parse true branch
+        int64_t true_val;
+        TypeInfo *true_type;
+        if (parse_primary(p, &true_val, &true_type) != 1)
+            return -1;
+
+        // Handle else/else if/else chain
+        int64_t result_val = true_val;
+        TypeInfo *result_type = true_type;
+
+        skip_ws(p);
+        if (strncmp(p->pos, "else", 4) == 0 &&
+            (isspace((unsigned char)p->pos[4]) || p->pos[4] == '\0' || p->pos[4] == 'i' || p->pos[4] == '{' || p->pos[4] == '('))
+        {
+            p->pos += 4;
+            skip_ws(p);
+
+            // Check if it's "else if" or just "else"
+            if (strncmp(p->pos, "if", 2) == 0)
+            {
+                // Recursively parse as another if statement
+                if (parse_primary(p, &result_val, &result_type) != 1)
+                    return -1;
+                // Use else-if result if condition was false
+                if (!cond_val)
+                {
+                    result_val = result_val;
+                    result_type = result_type;
+                }
+            }
+            else
+            {
+                // Parse else branch
+                int64_t false_val;
+                TypeInfo *false_type;
+                if (parse_primary(p, &false_val, &false_type) != 1)
+                    return -1;
+
+                // If condition is true at parse time, use true branch; otherwise false branch
+                if (!cond_val)
+                {
+                    result_val = false_val;
+                    result_type = false_type;
+                }
+            }
+        }
+        else if (!cond_val)
+        {
+            // No else clause and condition is false - this is an error unless used as statement
+            p->error = true;
+            return -1;
+        }
+
+        *out_value = result_val;
+        *out_type = result_type;
+        return 1;
+    }
+    // CPD-ON
+
     // CPD-OFF - Handle parenthesized and block expressions (error patterns are unavoidable)
     // Handle parenthesized expression
     if (*p->pos == '(')

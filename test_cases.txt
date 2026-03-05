@@ -225,6 +225,83 @@ let x = true; !x:0
 let x = false; !x:1
 let x = true; let y = false; x && y:0
 let x = true; let y = true; x || y:1
+
+if_simple_true:
+if (true) 100U8:100
+if (false) 100U8
+if (true) 1U8 else 2U8:1
+if (false) 1U8 else 2U8:2
+
+if_simple_false:
+if (false) 100U8
+if (true) 1U8 else 2U8:1
+
+if_with_comparisons:
+if (100U8 == 100U8) 1U8 else 0U8:1
+if (100U8 != 100U8) 1U8 else 0U8:0
+if (50U8 < 100U8) 10U8 else 20U8:10
+if (100U8 > 50U8) 5U8 else 15U8:5
+
+if_with_boolean_ops:
+if (true && true) 100U8 else 0U8:100
+if (true || false) 50U8 else 0U8:50
+if (!false) 75U8 else 0U8:75
+
+if_with_arithmetic_in_condition:
+if (10U8 + 5U8 == 15U8) 1U8 else 0U8:1
+if (20U8 - 10U8 == 10U8) 100U8 else 200U8:100
+if (5U8 * 4U8 == 20U8) 1U8 else 0U8:1
+
+if_else_if:
+if (false) 1U8 else if (true) 2U8 else 3U8:2
+if (false) 1U8 else if (false) 2U8 else 3U8:3
+if (true) 10U8 else if (true) 20U8 else 30U8:10
+
+if_multiple_else_if:
+if (false) 1U8 else if (false) 2U8 else if (false) 3U8 else 4U8:4
+if (false) 1U8 else if (true) 2U8 else if (false) 3U8 else 4U8:2
+if (false) 1U8 else if (false) 2U8 else if (true) 3U8 else 4U8:3
+
+if_with_let_variables:
+let x = 100U8; if (true) x else 0U8:100
+let x = 50U8; if (false) 0U8 else x:50
+let x = 10U8; if (x == 10U8) 1U8 else 0U8:1
+
+if_nested:
+if (true) { if (true) 100U8 else 0U8 } else 0U8:100
+if (true) { if (false) 10U8 else 20U8 } else 0U8:20
+if (false) { if (true) 100U8 } else 50U8:50
+
+if_with_blocks:
+if (true) { 100U8 } else { 0U8 }:100
+if (false) { 100U8 } else { 0U8 }:0
+if (true) { let x = 50U8; x } else { 100U8 }:50
+
+if_with_read_in_condition:
+if (read<Bool>()) 100U8 else 0U8 | true:100
+if (read<Bool>()) 100U8 else 0U8 | false:0
+if (read<Bool>()) read<I32>() else 0I32 | true 42:42
+
+if_with_read_comparison:
+if (read<I32>() == 100I32) 1U8 else 0U8 | 100:1
+if (read<I32>() == 100I32) 1U8 else 0U8 | 50:0
+if (read<I32>() > 50I32) 10U8 else 20U8 | 75:10
+if (read<I32>() < 100I32) 5U8 else 15U8 | 50:5
+
+if_with_multiple_reads:
+if (read<Bool>()) read<I32>() else read<I32>() | true 100 200:100
+if (read<Bool>()) read<I32>() else read<I32>() | false 100 200:200
+if (read<I32>() > 50I32) read<I32>() else read<I32>() | 75 10 20:10
+
+if_expression_in_arithmetic:
+if (true) 100U8 else 50U8 + 10U8:100
+if (false) 100U8 else 50U8 + 10U8:60
+(if (true) 10U8 else 5U8) * 2U8:20
+
+if_errors_non_bool_condition:
+if (100U8) 1U8 else 0U8
+if (1U8) 100U8 else 0U8
+if ("test") 100U8
 { let x = 100U8; { x + 10U8 } }:110
 { let x = 50U8; { let y = 100U8; x + y } }:150
 let x = { 100U8 }; x:100
