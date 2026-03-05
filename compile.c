@@ -29,6 +29,7 @@ typedef struct
 
 // CPD-OFF
 static TypeInfo type_map[] = {
+    {"Bool", 8, false, 0LL, 1LL},
     {"I8", 8, true, -128LL, 127LL},
     {"U8", 8, false, 0LL, 255LL},
     {"I16", 16, true, -32768LL, 32767LL},
@@ -306,11 +307,25 @@ static int parse_primary(Parser *p, int64_t *out_value, TypeInfo **out_type)
     }
     // CPD-ON
 
-    // Check for identifier: either read<T>() or variable reference
+    // Check for identifier: either read<T>(), true/false, or variable reference
     if (isalpha((unsigned char)*p->pos) || *p->pos == '_')
     {
         const char *id_start;
         size_t id_len = consume_identifier(p, &id_start);
+
+        // Check for boolean literals
+        if (id_len == 4 && strncmp(id_start, "true", 4) == 0)
+        {
+            *out_value = 1;
+            *out_type = find_type("Bool");
+            return 1;
+        }
+        if (id_len == 5 && strncmp(id_start, "false", 5) == 0)
+        {
+            *out_value = 0;
+            *out_type = find_type("Bool");
+            return 1;
+        }
 
         // Check if it's "read" followed by "<"
         if (id_len == 4 && strncmp(id_start, "read", 4) == 0)
@@ -463,10 +478,43 @@ static int mul_checked(int64_t a, int64_t b, TypeInfo *result_type, int64_t *out
     return store_if_in_range((int128_t)a * b, result_type, out);
 }
 
+// Helper: Get Bool type
+static TypeInfo *get_bool_type(void)
+{
+    return find_type("Bool");
+}
+
+// Forward declarations for recursive descent
+static int parse_expr(Parser *p, int64_t *out_value, TypeInfo **out_type);
+
+// parse_unary: handles '!' operator and calls parse_primary
+static int parse_unary(Parser *p, int64_t *out_value, TypeInfo **out_type)
+{
+    skip_ws(p);
+    if (*p->pos == '!')
+    {
+        p->pos++;
+        int64_t inner_val;
+        TypeInfo *inner_type;
+        if (parse_unary(p, &inner_val, &inner_type) != 1)
+            return -1;
+        if (inner_type != get_bool_type() && inner_type->bits != 8)
+        {
+            p->error = true;
+            return -1;
+        }
+        *out_value = inner_val ? 0 : 1;
+        *out_type = get_bool_type();
+        return 1;
+    }
+    return parse_primary(p, out_value, out_type);
+}
+
+// parse_term: handles *, /, %
 static int parse_term(Parser *p, int64_t *out_value, TypeInfo **out_type)
 {
     // CPD-OFF
-    if (parse_primary(p, out_value, out_type) != 1)
+    if (parse_unary(p, out_value, out_type) != 1)
         return -1;
 
     while (1)
@@ -480,7 +528,7 @@ static int parse_term(Parser *p, int64_t *out_value, TypeInfo **out_type)
 
             int64_t right_val;
             TypeInfo *right_type;
-            if (parse_primary(p, &right_val, &right_type) != 1)
+            if (parse_unary(p, &right_val, &right_type) != 1)
                 return -1;
 
             TypeInfo *result_type = promote_type(*out_type, right_type);
@@ -542,7 +590,8 @@ static int parse_term(Parser *p, int64_t *out_value, TypeInfo **out_type)
     return 1;
 }
 
-static int parse_expr(Parser *p, int64_t *out_value, TypeInfo **out_type)
+// parse_add_sub: handles +, -
+static int parse_add_sub(Parser *p, int64_t *out_value, TypeInfo **out_type)
 {
     // CPD-OFF
     if (parse_term(p, out_value, out_type) != 1)
@@ -593,6 +642,108 @@ static int parse_expr(Parser *p, int64_t *out_value, TypeInfo **out_type)
     // CPD-ON
 
     return 1;
+}
+
+// parse_equality: handles ==, !=
+// CPD-OFF (binary operator patterns are structurally similar across parse_equality, parse_and, parse_or)
+static int parse_equality(Parser *p, int64_t *out_value, TypeInfo **out_type)
+{
+    if (parse_add_sub(p, out_value, out_type) != 1)
+        return -1;
+
+    while (1)
+    {
+        skip_ws(p);
+        if (strncmp(p->pos, "==", 2) == 0)
+        {
+            p->pos += 2;
+            int64_t right_val;
+            TypeInfo *right_type;
+            if (parse_add_sub(p, &right_val, &right_type) != 1)
+                return -1;
+            *out_value = (*out_value == right_val) ? 1 : 0;
+            *out_type = get_bool_type();
+        }
+        else if (strncmp(p->pos, "!=", 2) == 0)
+        {
+            p->pos += 2;
+            int64_t right_val;
+            TypeInfo *right_type;
+            if (parse_add_sub(p, &right_val, &right_type) != 1)
+                return -1;
+            *out_value = (*out_value != right_val) ? 1 : 0;
+            *out_type = get_bool_type();
+        }
+        else
+        {
+            break;
+        }
+    }
+
+    return 1;
+}
+
+// parse_and: handles &&
+static int parse_and(Parser *p, int64_t *out_value, TypeInfo **out_type)
+{
+    if (parse_equality(p, out_value, out_type) != 1)
+        return -1;
+
+    while (1)
+    {
+        skip_ws(p);
+        if (strncmp(p->pos, "&&", 2) == 0)
+        {
+            p->pos += 2;
+            int64_t right_val;
+            TypeInfo *right_type;
+            if (parse_equality(p, &right_val, &right_type) != 1)
+                return -1;
+            *out_value = (*out_value && right_val) ? 1 : 0;
+            *out_type = get_bool_type();
+        }
+        else
+        {
+            break;
+        }
+    }
+
+    return 1;
+}
+
+// parse_or: handles ||
+static int parse_or(Parser *p, int64_t *out_value, TypeInfo **out_type)
+{
+    if (parse_and(p, out_value, out_type) != 1)
+        return -1;
+
+    while (1)
+    {
+        skip_ws(p);
+        if (strncmp(p->pos, "||", 2) == 0)
+        {
+            p->pos += 2;
+            int64_t right_val;
+            TypeInfo *right_type;
+            if (parse_and(p, &right_val, &right_type) != 1)
+                return -1;
+            *out_value = (*out_value || right_val) ? 1 : 0;
+            *out_type = get_bool_type();
+        }
+        else
+        {
+            break;
+        }
+    }
+
+    return 1;
+}
+// CPD-ON
+
+// parse_expr: entry point for expression parsing
+static int parse_expr(Parser *p, int64_t *out_value, TypeInfo **out_type)
+{
+    return parse_or(p, out_value, out_type);
 }
 
 // Forward declare parse_stmt for use in parse_expression
@@ -737,7 +888,9 @@ static char *generate_error()
 // CPD-OFF - Unavoidable type mapping duplication
 static const char *get_c_type(TypeInfo *type)
 {
-    if (type->bits == 8)
+    if (type->bits == 8 && !type->is_signed && type->max_val == 1)
+        return "_Bool"; // Bool type
+    else if (type->bits == 8)
         return type->is_signed ? "int8_t" : "uint8_t";
     else if (type->bits == 16)
         return type->is_signed ? "int16_t" : "uint16_t";
@@ -821,14 +974,12 @@ char *compile(const char *input)
         return NULL;
 
     char buffer[4096] = "";
-    strncat(buffer, "#include <stdio.h>\n#include <stdint.h>\nint main() {\n", sizeof(buffer) - 1);
+    strncat(buffer, "#include <stdio.h>\n#include <stdint.h>\n#include <string.h>\nint main() {\n", sizeof(buffer) - 1);
 
     // Declare and initialize variables for each read
     for (int i = 0; i < parser.read_count; i++)
     {
         const char *c_type = get_c_type(parser.reads[i].type);
-        const char *scanf_fmt;
-        const char *read_type;
 
         if (!c_type)
         {
@@ -836,22 +987,38 @@ char *compile(const char *input)
             return generate_error();
         }
 
-        // Determine scanf format and temporary read type
-        if (parser.reads[i].type->is_signed)
+        // Check if this is a Bool type
+        if (parser.reads[i].type->bits == 8 && !parser.reads[i].type->is_signed && parser.reads[i].type->max_val == 1)
         {
-            read_type = "long long";
-            scanf_fmt = "%lld";
+            // Special handling for Bool: read a string and parse "true" or "false"
+            char decl[512];
+            snprintf(decl, sizeof(decl), "    char __read%d_str[16];\n    scanf(\"%%15s\", __read%d_str);\n    _Bool __read%d = (strcmp(__read%d_str, \"true\") == 0) ? 1 : 0;\n",
+                     i, i, i, i);
+            strncat(buffer, decl, sizeof(buffer) - strlen(buffer) - 1);
         }
         else
         {
-            read_type = "unsigned long long";
-            scanf_fmt = "%llu";
-        }
+            // Standard numeric scanf handling
+            const char *scanf_fmt;
+            const char *read_type;
 
-        char decl[512];
-        snprintf(decl, sizeof(decl), "    %s __read%d_temp;\n    scanf(\"%s\", &__read%d_temp);\n    %s __read%d = (%s)__read%d_temp;\n",
-                 read_type, i, scanf_fmt, i, c_type, i, c_type, i);
-        strncat(buffer, decl, sizeof(buffer) - strlen(buffer) - 1);
+            // Determine scanf format and temporary read type
+            if (parser.reads[i].type->is_signed)
+            {
+                read_type = "long long";
+                scanf_fmt = "%lld";
+            }
+            else
+            {
+                read_type = "unsigned long long";
+                scanf_fmt = "%llu";
+            }
+
+            char decl[512];
+            snprintf(decl, sizeof(decl), "    %s __read%d_temp;\n    scanf(\"%s\", &__read%d_temp);\n    %s __read%d = (%s)__read%d_temp;\n",
+                     read_type, i, scanf_fmt, i, c_type, i, c_type, i);
+            strncat(buffer, decl, sizeof(buffer) - strlen(buffer) - 1);
+        }
     }
 
     // Return the expression

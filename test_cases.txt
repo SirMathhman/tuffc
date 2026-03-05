@@ -162,6 +162,69 @@ let_statements_blocks:
 let_statements_nested_blocks:
 { { 100U8 } }:100
 { let x = 100U8; { x } }:100
+
+boolean_literals:
+true:1
+false:0
+
+boolean_equality:
+true == true:1
+true == false:0
+false == false:1
+false == true:0
+true != true:0
+true != false:1
+false != false:0
+false != true:1
+
+boolean_logical_and:
+true && true:1
+true && false:0
+false && true:0
+false && false:0
+
+boolean_logical_or:
+true || true:1
+true || false:1
+false || true:1
+false || false:0
+
+boolean_logical_not:
+!true:0
+!false:1
+
+boolean_mixed_operations:
+(true && false) || true:1
+true && false || true:1
+!(true && false):1
+!(true || false):0
+true && !false:1
+!true || !false:1
+
+boolean_with_equality:
+100U8 == 100U8:1
+100U8 == 50U8:0
+100U8 != 100U8:0
+100U8 != 50U8:1
+
+boolean_comparisons_with_integers:
+(100U8 == 100U8) && (50U8 < 100U8):1
+(10U8 != 5U8) || false:1
+
+read_boolean:
+read<Bool>() | true:1
+read<Bool>() | false:0
+read<Bool>() || read<Bool>() | true false:1
+read<Bool>() && read<Bool>() | true true:1
+read<Bool>() && read<Bool>() | true false:0
+
+boolean_with_variables:
+let x = true; x:1
+let y = false; y:0
+let x = true; !x:0
+let x = false; !x:1
+let x = true; let y = false; x && y:0
+let x = true; let y = true; x || y:1
 { let x = 100U8; { x + 10U8 } }:110
 { let x = 50U8; { let y = 100U8; x + y } }:150
 let x = { 100U8 }; x:100
