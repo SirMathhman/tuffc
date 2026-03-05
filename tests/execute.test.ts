@@ -292,6 +292,14 @@ test("variable in complex expression", () => {
   expectValue(executeTuff("let x : U8 = 2; let y : U8 = 3; x + y * 4"), 14);
 });
 
+test("mutable variable reassigned from read", () => {
+  const result = executeTuffWithInput(
+    "let mut x : U8 = 0; x = read<U8>(); x",
+    "99",
+  );
+  expectValue(result, 99);
+});
+
 test("immutable variable reassignment error", () => {
   expectError(executeTuff("let x : U8 = 5; x = 10; x"));
 });
@@ -310,4 +318,115 @@ test("variable without initializer error", () => {
 
 test("type mismatch in variable initializer", () => {
   expectError(executeTuff("let x : U8 = -5; x"));
+});
+
+// Boolean literal tests
+test("boolean literal true returns 1", () => {
+  expectValue(executeTuff("true"), 1);
+});
+
+test("boolean literal false returns 0", () => {
+  expectValue(executeTuff("false"), 0);
+});
+
+test("boolean variable declaration", () => {
+  expectValue(executeTuff("let x : Bool = true; x"), 1);
+});
+
+test("boolean variable false", () => {
+  expectValue(executeTuff("let x : Bool = false; x"), 0);
+});
+
+// Comparison operator tests
+test("less than: true case", () => {
+  expectValue(executeTuff("1 < 2"), 1);
+});
+
+test("less than: false case", () => {
+  expectValue(executeTuff("2 < 1"), 0);
+});
+
+test("greater than: true case", () => {
+  expectValue(executeTuff("5 > 3"), 1);
+});
+
+test("greater than: false case", () => {
+  expectValue(executeTuff("2 > 5"), 0);
+});
+
+test("less than or equal: true case", () => {
+  expectValue(executeTuff("3 <= 3"), 1);
+});
+
+test("less than or equal: false case", () => {
+  expectValue(executeTuff("4 <= 3"), 0);
+});
+
+test("greater than or equal: true case", () => {
+  expectValue(executeTuff("5 >= 5"), 1);
+});
+
+test("greater than or equal: false case", () => {
+  expectValue(executeTuff("3 >= 4"), 0);
+});
+
+test("equal: true case", () => {
+  expectValue(executeTuff("42 == 42"), 1);
+});
+
+test("equal: false case", () => {
+  expectValue(executeTuff("3 == 5"), 0);
+});
+
+test("not equal: true case", () => {
+  expectValue(executeTuff("2 != 3"), 1);
+});
+
+test("not equal: false case", () => {
+  expectValue(executeTuff("4 != 4"), 0);
+});
+
+// Logical operator tests
+test("logical AND: true && true", () => {
+  expectValue(executeTuff("true && true"), 1);
+});
+
+test("logical AND: true && false", () => {
+  expectValue(executeTuff("true && false"), 0);
+});
+
+test("logical AND: false && true", () => {
+  expectValue(executeTuff("false && true"), 0);
+});
+
+test("logical OR: true || false", () => {
+  expectValue(executeTuff("true || false"), 1);
+});
+
+test("logical OR: false || false", () => {
+  expectValue(executeTuff("false || false"), 0);
+});
+
+test("logical NOT: !true", () => {
+  expectValue(executeTuff("!true"), 0);
+});
+
+test("logical NOT: !false", () => {
+  expectValue(executeTuff("!false"), 1);
+});
+
+test("comparison in variable", () => {
+  expectValue(executeTuff("let x : Bool = 1 < 5; x"), 1);
+});
+
+test("logical AND with comparisons", () => {
+  expectValue(executeTuff("(1 < 2) && (3 > 2)"), 1);
+});
+
+test("logical OR with comparisons", () => {
+  expectValue(executeTuff("(1 > 2) || (3 < 5)"), 1);
+});
+
+test("NOT with boolean literal", () => {
+  expectValue(executeTuff("let x : Bool = !false; x"), 1);
 });

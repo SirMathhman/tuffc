@@ -11,6 +11,7 @@ const VALID_TYPES = new Set([
   "I64",
   "F32",
   "F64",
+  "Bool",
 ]);
 
 // Token interfaces
@@ -22,6 +23,21 @@ interface NumberToken {
 interface OperatorToken {
   type: "OPERATOR";
   value: "+" | "-" | "*" | "/";
+}
+
+interface BoolToken {
+  type: "BOOL";
+  value: "true" | "false";
+}
+
+interface ComparisonToken {
+  type: "COMPARISON";
+  value: "<" | ">" | "<=" | ">=" | "==" | "!=";
+}
+
+interface LogicalToken {
+  type: "LOGICAL";
+  value: "&&" | "||" | "!";
 }
 
 interface IdentifierToken {
@@ -71,6 +87,9 @@ type Token =
   | OperatorToken
   | IdentifierToken
   | KeywordToken
+  | BoolToken
+  | ComparisonToken
+  | LogicalToken
   | LParenToken
   | RParenToken
   | LTToken
@@ -103,6 +122,31 @@ interface BinaryNode {
   right: ASTNode;
 }
 
+interface ComparisonNode {
+  kind: "comparison";
+  left: ASTNode;
+  operator: "<" | ">" | "<=" | ">=" | "==" | "!=";
+  right: ASTNode;
+}
+
+interface LogicalNode {
+  kind: "logical";
+  operator: "&&" | "||";
+  left: ASTNode;
+  right: ASTNode;
+}
+
+interface UnaryLogicalNode {
+  kind: "unary-logical";
+  operator: "!";
+  operand: ASTNode;
+}
+
+interface BooleanNode {
+  kind: "boolean";
+  value: boolean;
+}
+
 interface LetNode {
   kind: "let";
   mutable: boolean;
@@ -128,6 +172,10 @@ type ASTNode =
   | ReadNode
   | VariableNode
   | BinaryNode
+  | ComparisonNode
+  | LogicalNode
+  | UnaryLogicalNode
+  | BooleanNode
   | LetNode
   | AssignNode
   | BlockNode;
@@ -220,6 +268,7 @@ function tokenize(input: string): Result<Token[], string> {
       (last.type === "NUMBER" ||
         last.type === "RPAREN" ||
         last.type === "IDENTIFIER" ||
+        last.type === "BOOL" ||
         last.type === "GT")
     );
   };
@@ -253,11 +302,23 @@ function tokenize(input: string): Result<Token[], string> {
       tokens.push({ type: "RPAREN" });
       pos++;
     } else if (char === "<") {
-      tokens.push({ type: "LT" });
-      pos++;
+      // Check for <=
+      if (pos + 1 < input.length && input[pos + 1] === "=") {
+        tokens.push({ type: "COMPARISON", value: "<=" });
+        pos += 2;
+      } else {
+        tokens.push({ type: "COMPARISON", value: "<" });
+        pos++;
+      }
     } else if (char === ">") {
-      tokens.push({ type: "GT" });
-      pos++;
+      // Check for >=
+      if (pos + 1 < input.length && input[pos + 1] === "=") {
+        tokens.push({ type: "COMPARISON", value: ">=" });
+        pos += 2;
+      } else {
+        tokens.push({ type: "COMPARISON", value: ">" });
+        pos++;
+      }
     } else if (char === ":") {
       tokens.push({ type: "COLON" });
       pos++;
@@ -265,8 +326,39 @@ function tokenize(input: string): Result<Token[], string> {
       tokens.push({ type: "SEMICOLON" });
       pos++;
     } else if (char === "=") {
-      tokens.push({ type: "ASSIGN" });
-      pos++;
+      // Check for ==
+      if (pos + 1 < input.length && input[pos + 1] === "=") {
+        tokens.push({ type: "COMPARISON", value: "==" });
+        pos += 2;
+      } else {
+        tokens.push({ type: "ASSIGN" });
+        pos++;
+      }
+    } else if (char === "!") {
+      // Check for !=
+      if (pos + 1 < input.length && input[pos + 1] === "=") {
+        tokens.push({ type: "COMPARISON", value: "!=" });
+        pos += 2;
+      } else {
+        tokens.push({ type: "LOGICAL", value: "!" });
+        pos++;
+      }
+    } else if (char === "&") {
+      // Check for &&
+      if (pos + 1 < input.length && input[pos + 1] === "&") {
+        tokens.push({ type: "LOGICAL", value: "&&" });
+        pos += 2;
+      } else {
+        return err("Unexpected character: &");
+      }
+    } else if (char === "|") {
+      // Check for ||
+      if (pos + 1 < input.length && input[pos + 1] === "|") {
+        tokens.push({ type: "LOGICAL", value: "||" });
+        pos += 2;
+      } else {
+        return err("Unexpected character: |");
+      }
     } else if (isLetter(char)) {
       // Parse identifier (e.g., 'read', 'let', 'mut', or type like 'U8')
       let ident = "";
@@ -278,9 +370,13 @@ function tokenize(input: string): Result<Token[], string> {
         pos++;
       }
 
-      // Check if it's a keyword
+      // Check if it's a keyword or boolean
       if (ident === "let" || ident === "mut") {
         tokens.push({ type: "KEYWORD", value: ident });
+      } else if (ident === "true") {
+        tokens.push({ type: "BOOL", value: "true" });
+      } else if (ident === "false") {
+        tokens.push({ type: "BOOL", value: "false" });
       } else {
         tokens.push({ type: "IDENTIFIER", value: ident });
       }
@@ -525,16 +621,31 @@ function parseLetStatement(parser: Parser): Result<ASTNode, string> {
 }
 
 function parseExpression(parser: Parser): Result<ASTNode, string> {
-  return parseAdditive(parser);
+  return parseLogicalOr(parser);
 }
 
-function parseBinaryExpression(
-  parser: Parser,
+interface ParseBinaryConfig {
   // eslint-disable-next-line no-unused-vars
-  parseOperand: (p: Parser) => Result<ASTNode, string>,
-  operators: Set<"+" | "-" | "*" | "/">,
+  nextParser: (p: Parser) => Result<ASTNode, string>;
+  // eslint-disable-next-line no-unused-vars
+  tokenMatcher: (tok: Token) => boolean;
+  // eslint-disable-next-line no-unused-vars
+  operatorExtractor: (tok: Token) => string;
+  nodeMaker: (
+    // eslint-disable-next-line no-unused-vars
+    operator: string,
+    // eslint-disable-next-line no-unused-vars
+    left: ASTNode,
+    // eslint-disable-next-line no-unused-vars
+    right: ASTNode,
+  ) => BinaryNode | ComparisonNode | LogicalNode;
+}
+
+function parseBinary(
+  parser: Parser,
+  config: ParseBinaryConfig,
 ): Result<ASTNode, string> {
-  let left = parseOperand(parser);
+  let left = config.nextParser(parser);
   if (!left.ok) {
     return left;
   }
@@ -543,37 +654,142 @@ function parseBinaryExpression(
 
   while (true) {
     const tok = current(parser);
-    if (
-      tok.type !== "OPERATOR" ||
-      !operators.has(tok.value as "+" | "-" | "*" | "/")
-    ) {
+    if (!config.tokenMatcher(tok)) {
       break;
     }
 
-    const operator = tok.value as "+" | "-" | "*" | "/";
+    const operator = config.operatorExtractor(tok);
     advance(parser);
 
-    const right = parseOperand(parser);
+    const right = config.nextParser(parser);
     if (!right.ok) {
       return right;
     }
 
-    node = { kind: "binary", left: node, operator, right: right.value };
+    node = config.nodeMaker(operator, node, right.value);
   }
 
   return ok(node);
 }
 
+function logicalNodeMaker(
+  op: string,
+  left: ASTNode,
+  right: ASTNode,
+): LogicalNode {
+  return {
+    kind: "logical",
+    operator: op as "&&" | "||",
+    left,
+    right,
+  };
+}
+
+function comparisonNodeMaker(
+  op: string,
+  left: ASTNode,
+  right: ASTNode,
+): ComparisonNode {
+  return {
+    kind: "comparison",
+    operator: op as "<" | ">" | "<=" | ">=" | "==" | "!=",
+    left,
+    right,
+  };
+}
+
+function parseLogicalOr(parser: Parser): Result<ASTNode, string> {
+  return parseBinary(parser, {
+    nextParser: parseLogicalAnd,
+    tokenMatcher: (tok: Token) => tok.type === "LOGICAL" && tok.value === "||",
+    operatorExtractor: (tok: Token) =>
+      tok.type === "LOGICAL" ? tok.value : "",
+    nodeMaker: logicalNodeMaker,
+  });
+}
+
+function parseLogicalAnd(parser: Parser): Result<ASTNode, string> {
+  return parseBinary(parser, {
+    nextParser: parseComparison,
+    tokenMatcher: (tok: Token) => tok.type === "LOGICAL" && tok.value === "&&",
+    operatorExtractor: (tok: Token) =>
+      tok.type === "LOGICAL" ? tok.value : "",
+    nodeMaker: logicalNodeMaker,
+  });
+}
+
+function parseComparison(parser: Parser): Result<ASTNode, string> {
+  return parseBinary(parser, {
+    nextParser: parseUnaryLogical,
+    tokenMatcher: (tok: Token) => tok.type === "COMPARISON",
+    operatorExtractor: (tok: Token) =>
+      tok.type === "COMPARISON" ? tok.value : "",
+    nodeMaker: comparisonNodeMaker,
+  });
+}
+
+function parseUnaryLogical(parser: Parser): Result<ASTNode, string> {
+  const tok = current(parser);
+
+  if (tok.type === "LOGICAL" && tok.value === "!") {
+    advance(parser);
+
+    const operand = parseUnaryLogical(parser);
+    if (!operand.ok) {
+      return operand;
+    }
+
+    return ok({
+      kind: "unary-logical",
+      operator: "!",
+      operand: operand.value,
+    });
+  }
+
+  return parseAdditive(parser);
+}
+
+function parseBinaryOperator(
+  parser: Parser,
+  // eslint-disable-next-line no-unused-vars
+  nextParser: (p: Parser) => Result<ASTNode, string>,
+  operators: Set<string>,
+  castType: "+" | "-" | "*" | "/",
+): Result<ASTNode, string> {
+  return parseBinary(parser, {
+    nextParser,
+    tokenMatcher: (tok: Token) =>
+      tok.type === "OPERATOR" && operators.has(tok.value),
+    operatorExtractor: (tok: Token) => (tok as OperatorToken).value,
+    nodeMaker: (
+      operator: string,
+      left: ASTNode,
+      right: ASTNode,
+    ): BinaryNode => ({
+      kind: "binary",
+      operator: operator as typeof castType,
+      left,
+      right,
+    }),
+  });
+}
+
 function parseAdditive(parser: Parser): Result<ASTNode, string> {
-  return parseBinaryExpression(
+  return parseBinaryOperator(
     parser,
     parseMultiplicative,
     new Set(["+", "-"]),
+    "+" as "+" | "-",
   );
 }
 
 function parseMultiplicative(parser: Parser): Result<ASTNode, string> {
-  return parseBinaryExpression(parser, parsePrimary, new Set(["*", "/"]));
+  return parseBinaryOperator(
+    parser,
+    parsePrimary,
+    new Set(["*", "/"]),
+    "*" as "*" | "/",
+  );
 }
 
 function parsePrimary(parser: Parser): Result<ASTNode, string> {
@@ -584,11 +800,19 @@ function parsePrimary(parser: Parser): Result<ASTNode, string> {
     return ok({ kind: "number", value: tok.value });
   }
 
+  if (tok.type === "BOOL") {
+    advance(parser);
+    return ok({ kind: "boolean", value: tok.value === "true" });
+  }
+
   if (tok.type === "IDENTIFIER" && tok.value === "read") {
     advance(parser);
     const lt = current(parser);
-    if (lt.type !== "LT") {
+    if (lt.type !== "COMPARISON" || (lt.value !== "<" && lt.value !== "<=")) {
       return err("Expected '<' after read");
+    }
+    if (lt.type === "COMPARISON" && lt.value === "<=") {
+      return err("Expected '<' after read, not '<='");
     }
     advance(parser);
 
@@ -600,8 +824,11 @@ function parsePrimary(parser: Parser): Result<ASTNode, string> {
     advance(parser);
 
     const gt = current(parser);
-    if (gt.type !== "GT") {
+    if (gt.type !== "COMPARISON" || (gt.value !== ">" && gt.value !== ">=")) {
       return err("Expected '>' after type");
+    }
+    if (gt.type === "COMPARISON" && gt.value === ">=") {
+      return err("Expected '>' after type, not '>='");
     }
     advance(parser);
 
@@ -730,6 +957,11 @@ function codegenAST(node: ASTNode): string {
     return extractNumberValue(node.value);
   }
 
+  if (node.kind === "boolean") {
+    // Convert boolean to number (1 for true, 0 for false)
+    return node.value ? "1" : "0";
+  }
+
   if (node.kind === "read") {
     return "readValue()";
   }
@@ -748,10 +980,19 @@ function codegenAST(node: ASTNode): string {
     return `${node.name} = ${value}`;
   }
 
-  if (node.kind === "binary") {
+  if (
+    node.kind === "binary" ||
+    node.kind === "comparison" ||
+    node.kind === "logical"
+  ) {
     const left = codegenAST(node.left);
     const right = codegenAST(node.right);
     return `(${left} ${node.operator} ${right})`;
+  }
+
+  if (node.kind === "unary-logical") {
+    const operand = codegenAST(node.operand);
+    return `(!${operand})`;
   }
 
   if (node.kind === "block") {
@@ -773,6 +1014,10 @@ function validateAST(node: ASTNode): Result<undefined, string> {
     return validateNegativeType(node.value);
   }
 
+  if (node.kind === "boolean") {
+    return ok(undefined);
+  }
+
   if (node.kind === "read" || node.kind === "variable") {
     return ok(undefined);
   }
@@ -785,13 +1030,21 @@ function validateAST(node: ASTNode): Result<undefined, string> {
     return validateAST(node.value);
   }
 
-  if (node.kind === "binary") {
+  if (
+    node.kind === "binary" ||
+    node.kind === "comparison" ||
+    node.kind === "logical"
+  ) {
     const leftValidation = validateAST(node.left);
     if (!leftValidation.ok) {
       return leftValidation;
     }
 
     return validateAST(node.right);
+  }
+
+  if (node.kind === "unary-logical") {
+    return validateAST(node.operand);
   }
 
   if (node.kind === "block") {
