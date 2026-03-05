@@ -107,3 +107,35 @@ struct Triple { a : I16; b : I16; c : I16; } 0 | :0
 struct MutPoint { mut x : I32; } 0 | :0
 struct Pair { mut a : I32; mut b : I32; } 0 | :0
 
+boolean_literals_and_ops:
+true:1
+false:0
+true && false:0
+1U8 == 1U8:1
+1U8 != 2U8:1
+
+unary_not:
+!true:0
+!false:1
+!(1U8 == 2U8):1
+
+if_else_expressions:
+if (true) 10I32 else 20I32:10
+if (false) 10I32 else 20I32:20
+if (1U8 == 1U8) 7I32 else 9I32:7
+if (false) 1I32 else if (true) 2I32 else 3I32:2
+
+compound_assignments:
+let mut x = 5U8; x += 3U8; x:8
+let mut x = 8U8; x -= 3U8; x:5
+let mut x = 6U8; x *= 4U8; x:24
+let mut x = 20U8; x /= 4U8; x:5
+let mut x = 20U8; x %= 6U8; x:2
+
+match_expressions:
+match (2U8) { case 1U8 => 10I32; case 2U8 => 20I32; case _ => 30I32; }:20
+match (5I32) { case 1I32 => 10I32; case _ => 99I32; }:99
+
+struct_instantiation_usage:
+struct Point2 { x : I32; y : I32; } Point2 { x: 1I32, y: 2I32 } | :0
+
