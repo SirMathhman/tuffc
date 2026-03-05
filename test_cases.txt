@@ -103,3 +103,65 @@ arithmetic_invalid_syntax:
 2U8 + * 3U8
 2 U8 + 3 U8
 
+let_statements_simple:
+let x = 100U8; x:100
+let x = 0U8; x:0
+let x = 255U8; x:255
+let x = 50U16; x:50
+let x = -100I16; x:-100
+
+let_statements_explicit_type:
+let x : U8 = 100U8; x:100
+let y : U16 = 256U16; y:256
+let z : I8 = -50I8; z:-50
+let w : I16 = 1000I16; w:1000
+
+let_statements_with_arithmetic:
+let x = 10U8; x + 5U8:15
+let x = 100U8; x - 50U8:50
+let x = 5U8; x * 6U8:30
+let x = 20U8; x / 4U8:5
+let x = 10U8; x % 3U8:1
+
+let_statements_multiple_vars:
+let x = 10U8; let y = 20U8; x + y:30
+let a = 5U8; let b = 15U8; let c = 10U8; a + b - c:10
+let x = 100U16; let y = 50U16; x - y:50
+
+let_statements_blocks:
+{ 100U8 }:100
+{ 50U8 + 50U8 }:100
+{ let x = 100U8; x }:100
+{ let x = 100U8; x + 10U8 }:110
+{ let x = 5U8; let y = 10U8; x * y }:50
+
+let_statements_nested_blocks:
+{ { 100U8 } }:100
+{ let x = 100U8; { x } }:100
+{ let x = 100U8; { x + 10U8 } }:110
+{ let x = 50U8; { let y = 100U8; x + y } }:150
+let x = { 100U8 }; x:100
+let x = { 50U8 + 50U8 }; x:100
+let x = { let y = 100U8; y }; x:100
+
+let_statements_errors_undefined_var:
+x
+y
+z
+a + b
+
+let_statements_errors_redefinition:
+let x = 10U8; let x = 20U8;
+let x = 100U16; let x = 50U16;
+let a = 5U8; let b = 10U8; let a = 15U8;
+
+let_statements_errors_scope_isolation:
+{ let x = 100U8; x }; x
+let x = 10U8; { let y = 20U8; } y
+{ let a = 50U8; } a + 10U8
+
+let_statements_errors_type_mismatch:
+let x : U8 = 1000U16;
+let y : U8 = 300U8;
+let x : I8 = 200I8;
+

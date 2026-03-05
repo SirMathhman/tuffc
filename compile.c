@@ -50,10 +50,29 @@ static TypeInfo *find_type(const char *suffix)
     return NULL;
 }
 
+// Variable binding in symbol table
+typedef struct
+{
+    char name[32];
+    int64_t value;
+    TypeInfo *type;
+    bool is_mutable;
+} VarBinding;
+
+// Scope in symbol table
+typedef struct
+{
+    VarBinding bindings[64];
+    int count;
+} Scope;
+
 typedef struct
 {
     const char *pos;
     bool error;
+    Scope scopes[16];
+    int scope_depth;
+    bool needs_code_gen;
 } Parser;
 
 // Forward declarations
@@ -65,10 +84,94 @@ static void skip_ws(Parser *p)
         p->pos++;
 }
 
+static void push_scope(Parser *p)
+{
+    if (p->scope_depth >= 16)
+    {
+        p->error = true;
+        return;
+    }
+    p->scopes[p->scope_depth].count = 0;
+    p->scope_depth++;
+}
+
+static void pop_scope(Parser *p)
+{
+    if (p->scope_depth > 0)
+        p->scope_depth--;
+}
+
+static VarBinding *lookup_var(Parser *p, const char *name, size_t name_len)
+{
+    if (p->scope_depth == 0)
+        return NULL;
+    Scope *current_scope = &p->scopes[p->scope_depth - 1];
+    for (int i = 0; i < current_scope->count; i++)
+    {
+        if (strncmp(current_scope->bindings[i].name, name, name_len) == 0 &&
+            current_scope->bindings[i].name[name_len] == '\0')
+        {
+            return &current_scope->bindings[i];
+        }
+    }
+    return NULL;
+}
+
+static bool is_var_defined_anywhere(Parser *p, const char *name, size_t name_len)
+{
+    for (int scope_idx = 0; scope_idx < p->scope_depth; scope_idx++)
+    {
+        Scope *scope = &p->scopes[scope_idx];
+        for (int i = 0; i < scope->count; i++)
+        {
+            if (strncmp(scope->bindings[i].name, name, name_len) == 0 &&
+                scope->bindings[i].name[name_len] == '\0')
+            {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+static bool define_var(Parser *p, const char *name, size_t name_len, int64_t value, TypeInfo *type, bool is_mutable)
+{
+    if (p->scope_depth == 0)
+        return false;
+    if (is_var_defined_anywhere(p, name, name_len))
+        return false;
+    Scope *current_scope = &p->scopes[p->scope_depth - 1];
+    if (current_scope->count >= 64)
+        return false;
+    VarBinding *binding = &current_scope->bindings[current_scope->count];
+    if (name_len >= sizeof(binding->name))
+        return false;
+    strncpy(binding->name, name, name_len);
+    binding->name[name_len] = '\0';
+    binding->value = value;
+    binding->type = type;
+    binding->is_mutable = is_mutable;
+    current_scope->count++;
+    return true;
+}
+
+// CPD-OFF
+// Helper: consume an identifier from current position
+// Returns length of identifier, updates p->pos
+static size_t consume_identifier(Parser *p, const char **out_start)
+{
+    *out_start = p->pos;
+    while (*p->pos && (isalnum((unsigned char)*p->pos) || *p->pos == '_'))
+        p->pos++;
+    return p->pos - *out_start;
+}
+// CPD-ON
+
 static int parse_primary(Parser *p, int64_t *out_value, TypeInfo **out_type)
 {
     skip_ws(p);
 
+    // CPD-OFF - Handle parenthesized and block expressions (error patterns are unavoidable)
     // Handle parenthesized expression
     if (*p->pos == '(')
     {
@@ -85,6 +188,47 @@ static int parse_primary(Parser *p, int64_t *out_value, TypeInfo **out_type)
             return -1;
         }
         p->pos++;
+        return 1;
+    }
+
+    // Handle block expression
+    if (*p->pos == '{')
+    {
+        p->pos++;
+        push_scope(p);
+        p->needs_code_gen = true;
+        if (parse_expr(p, out_value, out_type) != 1)
+        {
+            p->error = true;
+            pop_scope(p);
+            return -1;
+        }
+        skip_ws(p);
+        if (*p->pos != '}')
+        {
+            p->error = true;
+            pop_scope(p);
+            return -1;
+        }
+        p->pos++;
+        pop_scope(p);
+        return 1;
+    }
+    // CPD-ON
+
+    // Check for variable reference (identifier)
+    if (isalpha((unsigned char)*p->pos) || *p->pos == '_')
+    {
+        const char *id_start;
+        size_t id_len = consume_identifier(p, &id_start);
+        VarBinding *binding = lookup_var(p, id_start, id_len);
+        if (!binding)
+        {
+            p->error = true;
+            return -1;
+        }
+        *out_value = binding->value;
+        *out_type = binding->type;
         return 1;
     }
 
@@ -327,6 +471,107 @@ static int parse_expr(Parser *p, int64_t *out_value, TypeInfo **out_type)
     return 1;
 }
 
+// Forward declare parse_stmt for use in parse_expression
+static int parse_stmt(Parser *p, int64_t *out_value, TypeInfo **out_type);
+
+// Implement parse_stmt
+static int parse_stmt(Parser *p, int64_t *out_value, TypeInfo **out_type)
+{
+    skip_ws(p);
+    if (isalpha((unsigned char)*p->pos))
+    {
+        const char *id_start;
+        size_t id_len = consume_identifier(p, &id_start);
+        if (id_len == 3 && strncmp(id_start, "let", 3) == 0)
+        {
+            skip_ws(p);
+            if (!isalpha((unsigned char)*p->pos) && *p->pos != '_')
+            {
+                p->error = true;
+                return -1;
+            }
+            const char *var_start = p->pos;
+            while (*p->pos && (isalnum((unsigned char)*p->pos) || *p->pos == '_'))
+                p->pos++;
+            size_t var_len = p->pos - var_start;
+            skip_ws(p);
+            TypeInfo *explicit_type = NULL;
+            if (*p->pos == ':')
+            {
+                p->pos++;
+                skip_ws(p);
+                const char *type_start = p->pos;
+                while (*p->pos && (isalpha((unsigned char)*p->pos) || isdigit((unsigned char)*p->pos)))
+                    p->pos++;
+                size_t type_len = p->pos - type_start;
+                if (type_len == 0)
+                {
+                    p->error = true;
+                    return -1;
+                }
+                char type_buf[16];
+                if (type_len >= sizeof(type_buf))
+                {
+                    p->error = true;
+                    return -1;
+                }
+                strncpy(type_buf, type_start, type_len);
+                type_buf[type_len] = '\0';
+                explicit_type = find_type(type_buf);
+                if (!explicit_type)
+                {
+                    p->error = true;
+                    return -1;
+                }
+                skip_ws(p);
+            }
+            if (*p->pos != '=')
+            {
+                p->error = true;
+                return -1;
+            }
+            p->pos++;
+            int64_t rhs_value;
+            TypeInfo *rhs_type;
+            if (parse_expr(p, &rhs_value, &rhs_type) != 1)
+            {
+                p->error = true;
+                return -1;
+            }
+            skip_ws(p);
+            if (*p->pos != ';')
+            {
+                p->error = true;
+                return -1;
+            }
+            p->pos++;
+            TypeInfo *var_type = explicit_type ? explicit_type : rhs_type;
+            if (!var_type)
+            {
+                p->error = true;
+                return -1;
+            }
+            if (rhs_value < var_type->min_val || rhs_value > var_type->max_val)
+            {
+                p->error = true;
+                return -1;
+            }
+            if (!define_var(p, var_start, var_len, rhs_value, var_type, false))
+            {
+                p->error = true;
+                return -1;
+            }
+            return parse_stmt(p, out_value, out_type);
+        }
+        else
+        {
+            p->pos = id_start;
+            return parse_expr(p, out_value, out_type);
+        }
+    }
+    return parse_expr(p, out_value, out_type);
+}
+
 static int parse_expression(const char *input, int64_t *out_value, TypeInfo **out_type)
 {
     if (!input || *input == '\0')
@@ -339,8 +584,12 @@ static int parse_expression(const char *input, int64_t *out_value, TypeInfo **ou
     Parser p;
     p.pos = input;
     p.error = false;
+    p.scope_depth = 0;
+    p.needs_code_gen = false;
+    memset(p.scopes, 0, sizeof(p.scopes));
+    push_scope(&p);
 
-    if (parse_expr(&p, out_value, out_type) != 1 || p.error)
+    if (parse_stmt(&p, out_value, out_type) != 1 || p.error)
         return -1;
 
     skip_ws(&p);
