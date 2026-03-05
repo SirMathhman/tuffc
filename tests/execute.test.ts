@@ -603,3 +603,106 @@ test("non-boolean condition is error", () => {
 test("if expression without else returns void type error", () => {
   expectError(executeTuff("let x : I32 = if (true) 5;"));
 });
+
+// Compound assignment tests
+
+test("compound assignment: += adds to mutable variable", () => {
+  expectValue(executeTuff("let mut x : I32 = 10; x += 5; x"), 15);
+});
+
+test("compound assignment: += with expression", () => {
+  expectValue(executeTuff("let mut x : I32 = 10; x += 2 + 3; x"), 15);
+});
+
+test("compound assignment: -= subtracts from mutable variable", () => {
+  expectValue(executeTuff("let mut x : I32 = 20; x -= 7; x"), 13);
+});
+
+test("compound assignment: -= with expression", () => {
+  expectValue(executeTuff("let mut x : I32 = 20; x -= 3 * 2; x"), 14);
+});
+
+test("compound assignment: *= multiplies mutable variable", () => {
+  expectValue(executeTuff("let mut x : I32 = 6; x *= 4; x"), 24);
+});
+
+test("compound assignment: *= with expression", () => {
+  expectValue(executeTuff("let mut x : I32 = 5; x *= 2 + 1; x"), 15);
+});
+
+test("compound assignment: /= divides mutable variable", () => {
+  expectValue(executeTuff("let mut x : I32 = 20; x /= 4; x"), 5);
+});
+
+test("compound assignment: /= with expression", () => {
+  expectValue(executeTuff("let mut x : I32 = 24; x /= 2 * 2; x"), 6);
+});
+
+test("compound assignment: %= modulo on mutable variable", () => {
+  expectValue(executeTuff("let mut x : I32 = 17; x %= 5; x"), 2);
+});
+
+test("compound assignment: %= with expression", () => {
+  expectValue(executeTuff("let mut x : I32 = 23; x %= 3 + 2; x"), 3);
+});
+
+test("compound assignment: += with U8 type", () => {
+  expectValue(executeTuff("let mut x : U8 = 100; x += 50; x"), 150);
+});
+
+test("compound assignment: += with F32 type", () => {
+  const result = executeTuff("let mut x : F32 = 1.5; x += 2.5; x");
+  if (isOk(result)) {
+    expect(Math.abs(result.value - 4.0) < 0.01).toBe(true);
+  } else {
+    expect.unreachable();
+  }
+});
+
+test("compound assignment: multiple compound assignments", () => {
+  expectValue(
+    executeTuff("let mut x : I32 = 10; x += 5; x -= 3; x *= 2; x"),
+    24,
+  );
+});
+
+test("compound assignment: multiple variables with compound ops", () => {
+  expectValue(
+    executeTuff(
+      "let mut x : I32 = 10; let mut y : I32 = 5; x += y; y *= 2; x + y",
+    ),
+    25,
+  );
+});
+
+test("compound assignment: += with negative result", () => {
+  expectValue(executeTuff("let mut x : I32 = 5; x += -10; x"), -5);
+});
+
+test("compound assignment: -= produces negative", () => {
+  expectValue(executeTuff("let mut x : I32 = 3; x -= 10; x"), -7);
+});
+
+test("compound assignment: immutable variable error", () => {
+  expectError(executeTuff("let x : I32 = 10; x += 5;"));
+});
+
+test("compound assignment: undefined variable error", () => {
+  expectError(executeTuff("x += 5;"));
+});
+
+test("compound assignment: /= produces Infinity", () => {
+  // JavaScript behavior: 10 / 0 = Infinity, which the test framework handles
+  const result = executeTuff("let mut x : I32 = 10; x /= 0; x");
+  if (isOk(result)) {
+    expect(Number.isFinite(result.value) === false).toBe(true);
+  }
+});
+
+test("compound assignment: %= produces NaN", () => {
+  // JavaScript behavior: 10 % 0 = NaN
+  const result = executeTuff("let mut x : I32 = 10; x %= 0; x");
+  if (isOk(result)) {
+    expect(Number.isNaN(result.value)).toBe(true);
+  }
+});

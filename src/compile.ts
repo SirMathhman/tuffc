@@ -22,7 +22,7 @@ interface NumberToken {
 
 interface OperatorToken {
   type: "OPERATOR";
-  value: "+" | "-" | "*" | "/";
+  value: "+" | "-" | "*" | "/" | "%";
 }
 
 interface BoolToken {
@@ -78,6 +78,26 @@ interface AssignToken {
   type: "ASSIGN";
 }
 
+interface PlusAssignToken {
+  type: "PLUS_ASSIGN";
+}
+
+interface MinusAssignToken {
+  type: "MINUS_ASSIGN";
+}
+
+interface MultAssignToken {
+  type: "MULT_ASSIGN";
+}
+
+interface DivAssignToken {
+  type: "DIV_ASSIGN";
+}
+
+interface ModAssignToken {
+  type: "MOD_ASSIGN";
+}
+
 interface LBraceToken {
   type: "LBRACE";
 }
@@ -107,6 +127,11 @@ type Token =
   | ColonToken
   | SemicolonToken
   | AssignToken
+  | PlusAssignToken
+  | MinusAssignToken
+  | MultAssignToken
+  | DivAssignToken
+  | ModAssignToken
   | EOFToken;
 
 // AST node interfaces
@@ -128,7 +153,7 @@ interface VariableNode {
 interface BinaryNode {
   kind: "binary";
   left: ASTNode;
-  operator: "+" | "-" | "*" | "/";
+  operator: "+" | "-" | "*" | "/" | "%";
   right: ASTNode;
 }
 
@@ -302,17 +327,50 @@ function tokenize(input: string): Result<Token[], string> {
 
     // Operators (only if following a number or closing paren)
     if (char === "+" && isOperatorContext()) {
-      tokens.push({ type: "OPERATOR", value: "+" });
-      pos++;
+      // Check for +=
+      if (pos + 1 < input.length && input[pos + 1] === "=") {
+        tokens.push({ type: "PLUS_ASSIGN" });
+        pos += 2;
+      } else {
+        tokens.push({ type: "OPERATOR", value: "+" });
+        pos++;
+      }
     } else if (char === "-" && isOperatorContext()) {
-      tokens.push({ type: "OPERATOR", value: "-" });
-      pos++;
+      // Check for -=
+      if (pos + 1 < input.length && input[pos + 1] === "=") {
+        tokens.push({ type: "MINUS_ASSIGN" });
+        pos += 2;
+      } else {
+        tokens.push({ type: "OPERATOR", value: "-" });
+        pos++;
+      }
     } else if (char === "*" && isOperatorContext()) {
-      tokens.push({ type: "OPERATOR", value: "*" });
-      pos++;
+      // Check for *=
+      if (pos + 1 < input.length && input[pos + 1] === "=") {
+        tokens.push({ type: "MULT_ASSIGN" });
+        pos += 2;
+      } else {
+        tokens.push({ type: "OPERATOR", value: "*" });
+        pos++;
+      }
     } else if (char === "/" && isOperatorContext()) {
-      tokens.push({ type: "OPERATOR", value: "/" });
-      pos++;
+      // Check for /=
+      if (pos + 1 < input.length && input[pos + 1] === "=") {
+        tokens.push({ type: "DIV_ASSIGN" });
+        pos += 2;
+      } else {
+        tokens.push({ type: "OPERATOR", value: "/" });
+        pos++;
+      }
+    } else if (char === "%" && isOperatorContext()) {
+      // Check for %=
+      if (pos + 1 < input.length && input[pos + 1] === "=") {
+        tokens.push({ type: "MOD_ASSIGN" });
+        pos += 2;
+      } else {
+        tokens.push({ type: "OPERATOR", value: "%" });
+        pos++;
+      }
     } else if (char === "(") {
       tokens.push({ type: "LPAREN" });
       pos++;
@@ -500,14 +558,39 @@ function tryParseAssignment(
   advance(parser);
 
   const nextTok = current(parser);
-  if (nextTok.type !== "ASSIGN") {
+
+  // Check if it's a compound assignment operator
+  const compoundOperators = new Set([
+    "PLUS_ASSIGN",
+    "MINUS_ASSIGN",
+    "MULT_ASSIGN",
+    "DIV_ASSIGN",
+    "MOD_ASSIGN",
+  ]);
+
+  let isCompound = false;
+  let operator: "+" | "-" | "*" | "/" | "%" = "+";
+
+  if (compoundOperators.has(nextTok.type)) {
+    isCompound = true;
+    // Map compound operators to binary operators
+    const operatorMap: Record<string, "+" | "-" | "*" | "/" | "%"> = {
+      PLUS_ASSIGN: "+",
+      MINUS_ASSIGN: "-",
+      MULT_ASSIGN: "*",
+      DIV_ASSIGN: "/",
+      MOD_ASSIGN: "%",
+    };
+    operator = operatorMap[nextTok.type] || "+";
+    advance(parser);
+  } else if (nextTok.type === "ASSIGN") {
+    // Regular assignment
+    advance(parser);
+  } else {
     // Not an assignment, restore position
     parser.pos = savedPos;
     return ok(undefined);
   }
-
-  // It's an assignment
-  advance(parser);
 
   const varResult = getVariable(parser, name);
   if (!varResult.ok) {
@@ -522,10 +605,23 @@ function tryParseAssignment(
     return valueResult;
   }
 
+  let assignValue = valueResult.value;
+
+  // For compound assignments, wrap in a binary operation
+  if (isCompound) {
+    const binaryNode: BinaryNode = {
+      kind: "binary",
+      left: { kind: "variable", name },
+      operator,
+      right: valueResult.value,
+    };
+    assignValue = binaryNode;
+  }
+
   return ok({
     kind: "assign",
     name,
-    value: valueResult.value,
+    value: assignValue,
   });
 }
 
