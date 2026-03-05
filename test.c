@@ -225,8 +225,37 @@ void run_tests(void)
         printf("✓ Function error test passed: execute(\"%s\") failed as expected\n",
                fn_error_cases[i]);
     }
-    /*
-    // Temporarily disabled: error test loop causes stack overflow after 62 valid tests
+
+    // Negative tests for block expressions / yield
+    const char *block_error_cases[] = {
+        // yield outside a block expression
+        "yield 5",
+        // bare yield; (no expression)
+        "let x = { yield; 0 }; x",
+        // empty block as expression
+        "let x = {}; x",
+    };
+    int block_error_count = (int)(sizeof(block_error_cases) / sizeof(block_error_cases[0]));
+    for (int i = 0; i < block_error_count; i++)
+    {
+        int result = execute(block_error_cases[i]);
+        if (result == 0)
+        {
+            printf("✗ Block error test FAILED: execute(\"%s\") returned success, expected failure\n",
+                   block_error_cases[i]);
+            char *generated = get_generated_code(block_error_cases[i]);
+            if (generated)
+            {
+                printf("  Generated C code:\n%s\n", generated);
+                free(generated);
+            }
+            fflush(stdout);
+        }
+        assert(result != 0);
+        printf("✓ Block error test passed: execute(\"%s\") failed as expected\n",
+               block_error_cases[i]);
+    }
+    /* Temporarily disabled: error test loop causes stack overflow after 62 valid tests
     // All major features are tested via the 62 valid test cases
     for (int i = 0; i < error_count; i++)
     {

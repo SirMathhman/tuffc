@@ -151,6 +151,11 @@ typedef struct
     int while_count;           // How many while loops
     StructDef struct_defs[16]; // Track struct definitions
     int struct_count;          // Number of struct definitions
+    int in_block_expr;         // Nesting depth of block expressions (for yield validation)
+    int suppress_yield;        // >0: inside an unexecuted branch, yield must not activate
+    bool yield_active;         // True if a yield was triggered in the current block
+    int64_t yield_value;       // Value produced by yield
+    TypeInfo *yield_type;      // Type of yield value
 } Parser;
 
 // Forward declarations
@@ -244,6 +249,11 @@ static void init_parser(Parser *p, const char *input)
     p->match_count = 0;
     p->while_count = 0;
     p->struct_count = 0;
+    p->in_block_expr = 0;
+    p->suppress_yield = 0;
+    p->yield_active = false;
+    p->yield_value = 0;
+    p->yield_type = NULL;
     // CPD-OFF
     memset(p->scopes, 0, sizeof(p->scopes));
     memset(p->reads, 0, sizeof(p->reads));
@@ -457,11 +467,19 @@ static int parse_primary(Parser *p, int64_t *out_value, TypeInfo **out_type)
         if (!expect_char(p, ')'))
             return -1;
 
-        // Parse true branch
+        // Parse true branch — if cond is false, suppress yield so untaken branch can't yield
+        if (!cond_val)
+            p->suppress_yield++;
         int64_t true_val;
         TypeInfo *true_type;
         if (parse_primary(p, &true_val, &true_type) != 1)
+        {
+            if (!cond_val)
+                p->suppress_yield--;
             return -1;
+        }
+        if (!cond_val)
+            p->suppress_yield--;
 
         // Handle else/else if/else chain
         int64_t result_val = true_val;
@@ -489,11 +507,19 @@ static int parse_primary(Parser *p, int64_t *out_value, TypeInfo **out_type)
             }
             else
             {
-                // Parse else branch
+                // Parse else branch — if cond is true, suppress yield in false branch
+                if (cond_val)
+                    p->suppress_yield++;
                 int64_t false_val;
                 TypeInfo *false_type;
                 if (parse_primary(p, &false_val, &false_type) != 1)
+                {
+                    if (cond_val)
+                        p->suppress_yield--;
                     return -1;
+                }
+                if (cond_val)
+                    p->suppress_yield--;
 
                 // If condition is true at parse time, use true branch; otherwise false branch
                 if (!cond_val)
@@ -505,9 +531,16 @@ static int parse_primary(Parser *p, int64_t *out_value, TypeInfo **out_type)
         }
         else if (!cond_val)
         {
-            // No else clause and condition is false - this is an error unless used as statement
-            p->error = true;
-            return -1;
+            if (p->in_block_expr == 0)
+            {
+                // No else clause and condition is false - only valid as a block statement
+                p->error = true;
+                return -1;
+            }
+            // Inside a block expression: if-without-else used as statement; return unit
+            *out_value = 0;
+            *out_type = find_type("I32");
+            return 1;
         }
 
         *out_value = result_val;
@@ -735,19 +768,161 @@ static int parse_primary(Parser *p, int64_t *out_value, TypeInfo **out_type)
         return 1;
     }
 
-    // Handle block expression
+    // Handle yield expression
+    if (strncmp(p->pos, "yield", 5) == 0 &&
+        !isalnum((unsigned char)p->pos[5]) && p->pos[5] != '_')
+    {
+        if (p->in_block_expr == 0)
+        {
+            p->error = true; // yield outside block expression
+            return -1;
+        }
+        p->pos += 5;
+        skip_ws(p);
+        // bare yield; with no expression is an error
+        if (*p->pos == ';' || *p->pos == '}' || *p->pos == '\0')
+        {
+            p->error = true;
+            return -1;
+        }
+        int64_t yield_val;
+        TypeInfo *yield_tp;
+        if (parse_expr(p, &yield_val, &yield_tp) != 1)
+            return -1;
+        if (!p->suppress_yield)
+        {
+            p->yield_active = true;
+            p->yield_value = yield_val;
+            p->yield_type = yield_tp;
+        }
+        *out_value = yield_val;
+        *out_type = yield_tp;
+        return 1;
+    }
+
+    // Handle block expression: { stmt* expr }
+    // CPD-OFF
     if (*p->pos == '{')
     {
         p->pos++;
-        push_scope(p);
-        // Parse statements within block (not just expressions)
-        int stmt_result = parse_stmt(p, out_value, out_type);
-        if (stmt_result != 1)
+        skip_ws(p);
+        // Empty block used as expression is an error
+        if (*p->pos == '}')
         {
             p->error = true;
-            pop_scope(p);
             return -1;
         }
+        push_scope(p);
+        p->in_block_expr++;
+
+        int64_t last_val = 0;
+        TypeInfo *last_type = find_type("I32");
+        int has_value = 0;
+
+        while (*p->pos && *p->pos != '}')
+        {
+            skip_ws(p);
+            if (*p->pos == '}')
+                break;
+            if (*p->pos == '\0')
+            {
+                p->error = true;
+                p->in_block_expr--;
+                pop_scope(p);
+                return -1;
+            }
+
+            // Declaration/loop keywords: let parse_stmt recurse to drain the rest of the block
+            bool is_decl = ((strncmp(p->pos, "let", 3) == 0 && !isalnum((unsigned char)p->pos[3]) && p->pos[3] != '_') ||
+                            (strncmp(p->pos, "struct", 6) == 0 && !isalnum((unsigned char)p->pos[6]) && p->pos[6] != '_') ||
+                            (strncmp(p->pos, "while", 5) == 0 && !isalnum((unsigned char)p->pos[5]) && p->pos[5] != '_'));
+
+            // Compound/plain assignment: identifier followed by (op)=
+            // parse_stmt handles these; same "drain" approach applies
+            bool is_assign_stmt = false;
+            if (!is_decl && (isalpha((unsigned char)*p->pos) || *p->pos == '_'))
+            {
+                const char *tp = p->pos;
+                while (isalnum((unsigned char)*tp) || *tp == '_')
+                    tp++;
+                while (isspace((unsigned char)*tp))
+                    tp++;
+                is_assign_stmt = ((*tp == '+' || *tp == '-' || *tp == '*' || *tp == '/' || *tp == '%') && tp[1] == '=') ||
+                                 (*tp == '=' && tp[1] != '=');
+            }
+
+            if (is_decl || is_assign_stmt)
+            {
+                if (parse_stmt(p, &last_val, &last_type) != 1)
+                {
+                    p->in_block_expr--;
+                    pop_scope(p);
+                    return -1;
+                }
+                has_value = 1;
+                break; // parse_stmt consumed all remaining stmts up to '}'
+            }
+
+            // Expression statement
+            int64_t expr_val;
+            TypeInfo *expr_type;
+            if (parse_expr(p, &expr_val, &expr_type) != 1)
+            {
+                p->in_block_expr--;
+                pop_scope(p);
+                return -1;
+            }
+            has_value = 1;
+            last_val = expr_val;
+            last_type = expr_type;
+
+            if (p->yield_active)
+                break;
+
+            skip_ws(p);
+            if (*p->pos == ';')
+            {
+                p->pos++; // expression used as statement; discard value
+                has_value = 0;
+                last_val = 0;
+                last_type = find_type("I32");
+            }
+            // else: next must be '}', loop condition exits
+        }
+
+        p->in_block_expr--;
+
+        if (p->yield_active)
+        {
+            // Skip remaining content to the closing '}'
+            int depth = 1;
+            while (*p->pos && depth > 0)
+            {
+                if (*p->pos == '{')
+                    depth++;
+                else if (*p->pos == '}')
+                {
+                    if (--depth == 0)
+                        break;
+                }
+                p->pos++;
+            }
+            *out_value = p->yield_value;
+            *out_type = p->yield_type;
+            p->yield_active = false;
+        }
+        else
+        {
+            if (!has_value)
+            {
+                p->error = true;
+                pop_scope(p);
+                return -1;
+            }
+            *out_value = last_val;
+            *out_type = last_type;
+        }
+
         skip_ws(p);
         if (*p->pos != '}')
         {
