@@ -13,97 +13,37 @@ const VALID_TYPES = new Set([
   "F64",
 ]);
 
-function hasWhitespace(input: string): boolean {
-  for (let i = 0; i < input.length; i++) {
-    const char = input[i];
-    if (
-      char === " " ||
-      char === "\t" ||
-      char === "\n" ||
-      char === "\r" ||
-      char === "\v" ||
-      char === "\f"
-    ) {
-      return true;
-    }
-  }
-  return false;
+// Token types
+type Token =
+  | { type: "NUMBER"; value: string }
+  | { type: "OPERATOR"; value: "+" | "-" | "*" | "/" }
+  | { type: "LPAREN" }
+  | { type: "RPAREN" }
+  | { type: "EOF" };
+
+// AST node types
+type ASTNode =
+  | { kind: "number"; value: string }
+  | {
+      kind: "binary";
+      left: ASTNode;
+      operator: "+" | "-" | "*" | "/";
+      right: ASTNode;
+    };
+
+function isWhitespace(char: string | undefined): boolean {
+  return (
+    char === " " ||
+    char === "\t" ||
+    char === "\n" ||
+    char === "\r" ||
+    char === "\v" ||
+    char === "\f"
+  );
 }
 
 function isDigit(char: string | undefined): boolean {
   return char !== undefined && char >= "0" && char <= "9";
-}
-
-function parseNumericLiteral(
-  input: string,
-): Result<{ sign: string; number: string; type: string | undefined }, string> {
-  let pos = 0;
-
-  // Check for optional sign
-  let sign = "";
-  if (pos < input.length && input[pos] === "-") {
-    sign = "-";
-    pos++;
-  }
-
-  // Parse digits before decimal point
-  if (pos >= input.length || !isDigit(input[pos])) {
-    return err(`Invalid numeric literal: ${input}`);
-  }
-
-  let number = "";
-  while (pos < input.length && isDigit(input[pos])) {
-    number += input[pos];
-    pos++;
-  }
-
-  // Check for optional decimal point
-  if (pos < input.length && input[pos] === ".") {
-    number += ".";
-    pos++;
-
-    // Must have at least one digit after decimal
-    if (pos >= input.length || !isDigit(input[pos])) {
-      return err(`Invalid numeric literal: ${input}`);
-    }
-
-    while (pos < input.length && isDigit(input[pos])) {
-      number += input[pos];
-      pos++;
-    }
-  }
-
-  // Check for optional type annotation
-  let type: string | undefined;
-  if (pos < input.length) {
-    // Expect a letter followed by digit(s)
-    const char = input[pos];
-    if (!isLetter(char)) {
-      return err(`Invalid numeric literal: ${input}`);
-    }
-
-    let potentialType = "";
-    while (
-      pos < input.length &&
-      (isLetter(input[pos]) || isDigit(input[pos]))
-    ) {
-      potentialType += input[pos];
-      pos++;
-    }
-
-    if (!VALID_TYPES.has(potentialType)) {
-      return err(`Invalid type annotation: ${potentialType}`);
-    }
-
-    type = potentialType;
-  }
-
-  // Ensure we've consumed the entire input
-  if (pos !== input.length) {
-    return err(`Invalid numeric literal: ${input}`);
-  }
-
-  return ok({ sign, number, type });
 }
 
 function isLetter(char: string | undefined): boolean {
@@ -113,33 +53,346 @@ function isLetter(char: string | undefined): boolean {
   );
 }
 
+function tokenize(input: string): Result<Token[], string> {
+  const tokens: Token[] = [];
+  let pos = 0;
+
+  const lastToken = (): Token | undefined => {
+    return tokens.length > 0 ? tokens[tokens.length - 1] : undefined;
+  };
+
+  const isOperatorContext = (): boolean => {
+    const last = lastToken();
+    return (
+      last !== undefined && (last.type === "NUMBER" || last.type === "RPAREN")
+    );
+  };
+
+  while (pos < input.length) {
+    const char = input[pos];
+
+    // Skip whitespace
+    if (isWhitespace(char)) {
+      pos++;
+      continue;
+    }
+
+    // Operators (only if following a number or closing paren)
+    if (char === "+" && isOperatorContext()) {
+      tokens.push({ type: "OPERATOR", value: "+" });
+      pos++;
+    } else if (char === "-" && isOperatorContext()) {
+      tokens.push({ type: "OPERATOR", value: "-" });
+      pos++;
+    } else if (char === "*" && isOperatorContext()) {
+      tokens.push({ type: "OPERATOR", value: "*" });
+      pos++;
+    } else if (char === "/" && isOperatorContext()) {
+      tokens.push({ type: "OPERATOR", value: "/" });
+      pos++;
+    } else if (char === "(") {
+      tokens.push({ type: "LPAREN" });
+      pos++;
+    } else if (char === ")") {
+      tokens.push({ type: "RPAREN" });
+      pos++;
+    } else if (isDigit(char) || (char === "-" && isDigit(input[pos + 1]))) {
+      // Parse number with optional type and optional leading sign
+      let numStr = "";
+
+      // Handle optional negative sign
+      if (char === "-") {
+        numStr += "-";
+        pos++;
+      }
+
+      // Parse digits
+      while (pos < input.length && isDigit(input[pos])) {
+        numStr += input[pos];
+        pos++;
+      }
+
+      // Parse optional decimal point
+      if (pos < input.length && input[pos] === ".") {
+        numStr += ".";
+        pos++;
+
+        while (pos < input.length && isDigit(input[pos])) {
+          numStr += input[pos];
+          pos++;
+        }
+      }
+
+      // Parse optional type annotation
+      if (pos < input.length && isLetter(input[pos])) {
+        let typeStr = "";
+        while (pos < input.length && isLetter(input[pos])) {
+          typeStr += input[pos];
+          pos++;
+        }
+
+        // Parse type numbers (e.g., U8, I32)
+        while (pos < input.length && isDigit(input[pos])) {
+          typeStr += input[pos];
+          pos++;
+        }
+
+        if (!VALID_TYPES.has(typeStr)) {
+          return err(`Invalid type annotation: ${typeStr}`);
+        }
+
+        numStr += typeStr;
+      }
+
+      tokens.push({ type: "NUMBER", value: numStr });
+    } else {
+      return err(`Unexpected character: ${char}`);
+    }
+  }
+
+  tokens.push({ type: "EOF" });
+  return ok(tokens);
+}
+
+interface Parser {
+  tokens: Token[];
+  pos: number;
+}
+
+function current(parser: Parser): Token {
+  if (parser.pos < parser.tokens.length) {
+    const tok = parser.tokens[parser.pos];
+    return tok || { type: "EOF" };
+  }
+  return { type: "EOF" };
+}
+
+function advance(parser: Parser): void {
+  parser.pos++;
+}
+
+function parseExpression(parser: Parser): Result<ASTNode, string> {
+  return parseAdditive(parser);
+}
+
+function parseBinaryExpression(
+  parser: Parser,
+  // eslint-disable-next-line no-unused-vars
+  parseOperand: (p: Parser) => Result<ASTNode, string>,
+  operators: Set<"+" | "-" | "*" | "/">,
+): Result<ASTNode, string> {
+  let left = parseOperand(parser);
+  if (!left.ok) {
+    return left;
+  }
+
+  let node = left.value;
+
+  while (true) {
+    const tok = current(parser);
+    if (
+      tok.type !== "OPERATOR" ||
+      !operators.has(tok.value as "+" | "-" | "*" | "/")
+    ) {
+      break;
+    }
+
+    const operator = tok.value as "+" | "-" | "*" | "/";
+    advance(parser);
+
+    const right = parseOperand(parser);
+    if (!right.ok) {
+      return right;
+    }
+
+    node = { kind: "binary", left: node, operator, right: right.value };
+  }
+
+  return ok(node);
+}
+
+function parseAdditive(parser: Parser): Result<ASTNode, string> {
+  return parseBinaryExpression(
+    parser,
+    parseMultiplicative,
+    new Set(["+", "-"]),
+  );
+}
+
+function parseMultiplicative(parser: Parser): Result<ASTNode, string> {
+  return parseBinaryExpression(parser, parsePrimary, new Set(["*", "/"]));
+}
+
+function parsePrimary(parser: Parser): Result<ASTNode, string> {
+  const tok = current(parser);
+
+  if (tok.type === "NUMBER") {
+    advance(parser);
+    return ok({ kind: "number", value: tok.value });
+  }
+
+  if (tok.type === "LPAREN") {
+    advance(parser);
+    const expr = parseExpression(parser);
+    if (!expr.ok) {
+      return expr;
+    }
+
+    const closing = current(parser);
+    if (closing.type !== "RPAREN") {
+      return err("Expected closing parenthesis");
+    }
+
+    advance(parser);
+    return ok(expr.value);
+  }
+
+  return err(`Unexpected token: ${tok.type}`);
+}
+
+function extractNumberValue(numericLiteral: string): string {
+  let pos = 0;
+  let result = "";
+
+  // Handle optional sign
+  if (pos < numericLiteral.length && numericLiteral[pos] === "-") {
+    result += "-";
+    pos++;
+  }
+
+  // Extract digits
+  while (pos < numericLiteral.length && isDigit(numericLiteral[pos])) {
+    result += numericLiteral[pos];
+    pos++;
+  }
+
+  // Extract optional decimal part
+  if (pos < numericLiteral.length && numericLiteral[pos] === ".") {
+    result += ".";
+    pos++;
+
+    while (pos < numericLiteral.length && isDigit(numericLiteral[pos])) {
+      result += numericLiteral[pos];
+      pos++;
+    }
+  }
+
+  return result || "0";
+}
+
+function getTypeFromLiteral(numericLiteral: string): string | undefined {
+  let pos = 0;
+
+  // Skip sign and digits
+  if (pos < numericLiteral.length && numericLiteral[pos] === "-") {
+    pos++;
+  }
+
+  while (pos < numericLiteral.length && isDigit(numericLiteral[pos])) {
+    pos++;
+  }
+
+  // Skip decimal if present
+  if (pos < numericLiteral.length && numericLiteral[pos] === ".") {
+    pos++;
+
+    while (pos < numericLiteral.length && isDigit(numericLiteral[pos])) {
+      pos++;
+    }
+  }
+
+  // Extract type
+  if (pos < numericLiteral.length) {
+    return numericLiteral.substring(pos);
+  }
+
+  return undefined;
+}
+
+function validateNegativeType(literal: string): Result<undefined, string> {
+  if (!literal.startsWith("-")) {
+    return ok(undefined);
+  }
+
+  const type = getTypeFromLiteral(literal);
+  if (type && !type.startsWith("I") && !type.startsWith("F")) {
+    return err(`Cannot apply negative sign to unsigned type: ${literal}`);
+  }
+
+  return ok(undefined);
+}
+
+function codegenAST(node: ASTNode): string {
+  if (node.kind === "number") {
+    // Extract numeric part, stripping type annotation
+    return extractNumberValue(node.value);
+  }
+
+  if (node.kind === "binary") {
+    const left = codegenAST(node.left);
+    const right = codegenAST(node.right);
+    return `(${left} ${node.operator} ${right})`;
+  }
+
+  return "0";
+}
+
+function validateAST(node: ASTNode): Result<undefined, string> {
+  if (node.kind === "number") {
+    return validateNegativeType(node.value);
+  }
+
+  if (node.kind === "binary") {
+    const leftValidation = validateAST(node.left);
+    if (!leftValidation.ok) {
+      return leftValidation;
+    }
+
+    return validateAST(node.right);
+  }
+
+  return ok(undefined);
+}
+
 export function compile(input: string): Result<string, string> {
   // Empty input returns 0
   if (input === "") {
     return ok("return 0;");
   }
 
-  // Disallow any whitespace
-  if (input !== input.trim() || hasWhitespace(input)) {
-    return err("Whitespace is not allowed in numeric literals");
+  // Reject leading or trailing whitespace
+  if (input !== input.trim()) {
+    return err("Leading or trailing whitespace is not allowed");
   }
 
-  const parseResult = parseNumericLiteral(input);
-  if (!parseResult.ok) {
-    return parseResult;
+  // Tokenize
+  const tokenResult = tokenize(input);
+  if (!tokenResult.ok) {
+    return tokenResult;
   }
 
-  const { sign, number, type } = parseResult.value;
-
-  // Validate: negative numbers can only be signed (I) or float (F)
-  if (sign === "-" && type && !type.startsWith("I") && !type.startsWith("F")) {
-    return err(
-      `Cannot apply negative sign to unsigned type: -${number}${type}`,
-    );
+  // Parse
+  const tokens = tokenResult.value;
+  const parser: Parser = { tokens, pos: 0 };
+  const astResult = parseExpression(parser);
+  if (!astResult.ok) {
+    return astResult;
   }
 
-  // Construct the final number value
-  const finalNumber = sign + number;
+  // Check all tokens consumed
+  if (current(parser).type !== "EOF") {
+    return err("Unexpected tokens after expression");
+  }
 
-  return ok(`return ${finalNumber};`);
+  // Validate AST
+  const ast = astResult.value;
+  const validationResult = validateAST(ast);
+  if (!validationResult.ok) {
+    return validationResult;
+  }
+
+  // Generate code
+  const code = codegenAST(ast);
+
+  return ok(`return ${code};`);
 }
