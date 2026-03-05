@@ -7,6 +7,7 @@
 #include <ctype.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <stdarg.h>
 
 #define MAX_INPUT 256
 
@@ -110,25 +111,25 @@ typedef struct
 {
     char condition_text[256]; // Raw source text of the condition
     TypeInfo *condition_type;
-    int read_idx;            // Index of a read in the condition, or -1 if no read
-    int body_update_start;   // First var_update index inside the loop body
-    int body_update_end;     // One-past-last var_update index inside the loop body
+    int read_idx;          // Index of a read in the condition, or -1 if no read
+    int body_update_start; // First var_update index inside the loop body
+    int body_update_end;   // One-past-last var_update index inside the loop body
 } WhileLoop;
 
 // Struct field definition
 typedef struct
 {
-    char name[64];    // Field name
-    char type[64];    // Type name (may be a struct type)
-    bool is_mutable;  // Field is mutable
+    char name[64];   // Field name
+    char type[64];   // Type name (may be a struct type)
+    bool is_mutable; // Field is mutable
 } StructField;
 
 // Struct type definition
 typedef struct
 {
-    char name[64];              // Struct type name
-    StructField fields[32];     // Fields in this struct
-    int field_count;            // Number of fields
+    char name[64];          // Struct type name
+    StructField fields[32]; // Fields in this struct
+    int field_count;        // Number of fields
 } StructDef;
 
 typedef struct
@@ -824,7 +825,7 @@ static int parse_primary(Parser *p, int64_t *out_value, TypeInfo **out_type)
 
         // Variable reference or struct instantiation
         VarBinding *binding = lookup_var_anywhere(p, id_start, id_len);
-        
+
         // Check if it's a struct instantiation (next non-ws char is '{')
         skip_ws(p);
         if (*p->pos == '{' && is_struct_type(p, id_start, id_len))
@@ -836,9 +837,9 @@ static int parse_primary(Parser *p, int64_t *out_value, TypeInfo **out_type)
                 p->error = true;
                 return -1;
             }
-            
+
             p->pos++; // consume '{'
-            
+
             // For now, we just collect field values but don't validate match
             // Return 0 as placeholder value
             skip_ws(p);
@@ -846,28 +847,28 @@ static int parse_primary(Parser *p, int64_t *out_value, TypeInfo **out_type)
             while (*p->pos && *p->pos != '}')
             {
                 skip_ws(p);
-                
+
                 // Parse field name
                 if (!isalpha((unsigned char)*p->pos) && *p->pos != '_')
                 {
                     p->error = true;
                     return -1;
                 }
-                
+
                 const char *field_start = p->pos;
                 while (*p->pos && (isalnum((unsigned char)*p->pos) || *p->pos == '_'))
                     p->pos++;
-                
+
                 skip_ws(p);
                 if (!expect_char(p, ':'))
                     return -1;
-                
+
                 // Parse field value expression
                 int64_t field_val;
                 TypeInfo *field_type;
                 if (parse_expr(p, &field_val, &field_type) != 1)
                     return -1;
-                
+
                 skip_ws(p);
                 if (*p->pos == ',')
                 {
@@ -875,10 +876,10 @@ static int parse_primary(Parser *p, int64_t *out_value, TypeInfo **out_type)
                 }
             }
             // CPD-ON
-            
+
             if (!expect_char(p, '}'))
                 return -1;
-            
+
             // Struct instantiation returns placeholder value
             // The actual value is determined at code generation
             // For field access, we'll need to track which field is being accessed
@@ -886,7 +887,7 @@ static int parse_primary(Parser *p, int64_t *out_value, TypeInfo **out_type)
             *out_type = find_type("I32");
             return 1;
         }
-        
+
         // Regular variable reference
         if (!binding)
         {
@@ -1322,12 +1323,12 @@ static char match_compound_op(Parser *p)
 static int parse_stmt(Parser *p, int64_t *out_value, TypeInfo **out_type)
 {
     skip_ws(p);
-    
+
     // Handle struct definition: struct Name { field : Type; ... }
     if (match_keyword(p, "struct"))
     {
         skip_ws(p);
-        
+
         const char *struct_name_start;
         size_t struct_name_len = consume_identifier(p, &struct_name_start);
         if (struct_name_len == 0)
@@ -1335,30 +1336,30 @@ static int parse_stmt(Parser *p, int64_t *out_value, TypeInfo **out_type)
             p->error = true;
             return -1;
         }
-        
+
         // Check for duplicate struct definition
         if (is_struct_type(p, struct_name_start, struct_name_len))
         {
             p->error = true;
             return -1;
         }
-        
+
         skip_ws(p);
         if (!expect_char(p, '{'))
             return -1;
-        
+
         // Add struct definition
         if (p->struct_count >= 16)
         {
             p->error = true;
             return -1;
         }
-        
+
         StructDef *struct_def = &p->struct_defs[p->struct_count];
         strncpy(struct_def->name, struct_name_start, struct_name_len);
         struct_def->name[struct_name_len] = '\0';
         struct_def->field_count = 0;
-        
+
         // CPD-OFF
         // Parse fields inside the struct
         while (*p->pos && *p->pos != '}')
@@ -1366,7 +1367,7 @@ static int parse_stmt(Parser *p, int64_t *out_value, TypeInfo **out_type)
             skip_ws(p);
             if (*p->pos == '}')
                 break;
-            
+
             // Check for "mut" keyword on field
             bool field_is_mutable = false;
             if (match_keyword(p, "mut"))
@@ -1374,7 +1375,7 @@ static int parse_stmt(Parser *p, int64_t *out_value, TypeInfo **out_type)
                 field_is_mutable = true;
                 skip_ws(p);
             }
-            
+
             // Parse field name
             const char *field_name_start;
             size_t field_name_len = consume_identifier(p, &field_name_start);
@@ -1383,36 +1384,36 @@ static int parse_stmt(Parser *p, int64_t *out_value, TypeInfo **out_type)
                 p->error = true;
                 return -1;
             }
-            
+
             skip_ws(p);
             if (!expect_char(p, ':'))
                 return -1;
-            
+
             skip_ws(p);
-            
+
             // Parse field type
             const char *type_start = p->pos;
             while (*p->pos && (isalnum((unsigned char)*p->pos) || *p->pos == '_'))
                 p->pos++;
             size_t type_len = p->pos - type_start;
-            
+
             if (type_len == 0)
             {
                 p->error = true;
                 return -1;
             }
-            
+
             skip_ws(p);
             if (!expect_char(p, ';'))
                 return -1;
-            
+
             // Add field to struct
             if (struct_def->field_count >= 32)
             {
                 p->error = true;
                 return -1;
             }
-            
+
             StructField *field = &struct_def->fields[struct_def->field_count];
             strncpy(field->name, field_name_start, field_name_len);
             field->name[field_name_len] = '\0';
@@ -1422,18 +1423,18 @@ static int parse_stmt(Parser *p, int64_t *out_value, TypeInfo **out_type)
             struct_def->field_count++;
         }
         // CPD-ON
-        
+
         if (!expect_char(p, '}'))
             return -1;
-        
+
         p->struct_count++;
-        
+
         // After struct definition, continue parsing the rest
         // Could be more statements, or an expression
         skip_ws(p);
         return parse_stmt(p, out_value, out_type);
     }
-    
+
     if (match_keyword(p, "let"))
     {
         skip_ws(p);
@@ -1711,15 +1712,23 @@ static int parse_expression(const char *input, int64_t *out_value, TypeInfo **ou
 // CPD-OFF
 static const char *get_c_type_from_string(const char *tuff_type)
 {
-    if (strcmp(tuff_type, "I32") == 0) return "int32_t";
-    if (strcmp(tuff_type, "U8") == 0) return "uint8_t";
-    if (strcmp(tuff_type, "I8") == 0) return "int8_t";
-    if (strcmp(tuff_type, "U16") == 0) return "uint16_t";
-    if (strcmp(tuff_type, "I16") == 0) return "int16_t";
-    if (strcmp(tuff_type, "U32") == 0) return "uint32_t";
-    if (strcmp(tuff_type, "U64") == 0) return "uint64_t";
-    if (strcmp(tuff_type, "I64") == 0) return "int64_t";
-    return "int64_t";  // Default
+    if (strcmp(tuff_type, "I32") == 0)
+        return "int32_t";
+    if (strcmp(tuff_type, "U8") == 0)
+        return "uint8_t";
+    if (strcmp(tuff_type, "I8") == 0)
+        return "int8_t";
+    if (strcmp(tuff_type, "U16") == 0)
+        return "uint16_t";
+    if (strcmp(tuff_type, "I16") == 0)
+        return "int16_t";
+    if (strcmp(tuff_type, "U32") == 0)
+        return "uint32_t";
+    if (strcmp(tuff_type, "U64") == 0)
+        return "uint64_t";
+    if (strcmp(tuff_type, "I64") == 0)
+        return "int64_t";
+    return "int64_t"; // Default
 }
 // CPD-ON
 
@@ -1727,7 +1736,8 @@ static const char *get_c_type_from_string(const char *tuff_type)
 static int append_to_code(char *code, size_t *pos, size_t capacity, const char *text)
 {
     size_t text_len = strlen(text);
-    if (*pos + text_len >= capacity) {
+    if (*pos + text_len >= capacity)
+    {
         return 0;
     }
     strcpy(code + *pos, text);
@@ -1741,62 +1751,67 @@ static char *generate_code(int64_t value, Parser *p)
     char *code = malloc(16384);
     if (!code)
         return NULL;
-   
+
     // Build the code with proper buffer tracking
     size_t pos = 0;
     size_t capacity = 16384;
-    
+
     // Add headers
     const char *headers = "#define _CRT_SECURE_NO_WARNINGS\n#include <stdio.h>\n#include <stdint.h>\n#include <string.h>\n";
-    if (!append_to_code(code, &pos, capacity, headers)) {
+    if (!append_to_code(code, &pos, capacity, headers))
+    {
         free(code);
         return NULL;
     }
-    
+
     // Add struct declarations if any structs were defined
     if (p && p->struct_count > 0)
     {
         for (int i = 0; i < p->struct_count; i++)
         {
             StructDef *sdef = &p->struct_defs[i];
-            
+
             // Add struct typedef
             const char *struct_start = "typedef struct {\n";
-            if (!append_to_code(code, &pos, capacity, struct_start)) {
+            if (!append_to_code(code, &pos, capacity, struct_start))
+            {
                 free(code);
                 return NULL;
             }
-            
+
             for (int j = 0; j < sdef->field_count; j++)
             {
                 StructField *field = &sdef->fields[j];
                 const char *c_type = get_c_type_from_string(field->type);
-                
+
                 char field_decl[256];
                 snprintf(field_decl, sizeof(field_decl), "    %s %s;\n", c_type, field->name);
-                if (!append_to_code(code, &pos, capacity, field_decl)) {
+                if (!append_to_code(code, &pos, capacity, field_decl))
+                {
                     free(code);
                     return NULL;
                 }
             }
-            
+
             char struct_end[256];
             snprintf(struct_end, sizeof(struct_end), "} %s;\n\n", sdef->name);
-            if (!append_to_code(code, &pos, capacity, struct_end)) {
+            if (!append_to_code(code, &pos, capacity, struct_end))
+            {
                 free(code);
                 return NULL;
             }
         }
     }
-    
+
     // Add main function
     char main_part[512];
     snprintf(main_part, sizeof(main_part), "int main() {\n    return %lld;\n}\n", value);
-    if (!append_to_code(code, &pos, capacity, main_part)) {
+    if (!append_to_code(code, &pos, capacity, main_part))
+    {
         free(code);
         return NULL;
     }
-    
+
     return code;
 }
 
@@ -1855,8 +1870,892 @@ static void strip_type_suffixes(const char *src, char *dst, int dstsz)
     dst[di] = '\0';
 }
 
+static void trim_span(const char **start, const char **end)
+{
+    while (*start < *end && isspace((unsigned char)**start))
+        (*start)++;
+    while (*end > *start && isspace((unsigned char)*((*end) - 1)))
+        (*end)--;
+}
+
+static bool is_ident_start_char(char c)
+{
+    return isalpha((unsigned char)c) || c == '_';
+}
+
+static bool is_ident_char2(char c)
+{
+    return isalnum((unsigned char)c) || c == '_';
+}
+
+static const char *skip_ws_ptr(const char *s)
+{
+    while (*s && isspace((unsigned char)*s))
+        s++;
+    return s;
+}
+
+// CPD-OFF - Function parser/codegen has unavoidable structural repetition
+static bool contains_fn_keyword(const char *input)
+{
+    if (!input)
+        return false;
+    const char *p = input;
+    while ((p = strstr(p, "fn")) != NULL)
+    {
+        bool left_ok = (p == input) || !is_ident_char2(*(p - 1));
+        bool right_ok = !is_ident_char2(*(p + 2));
+        if (left_ok && right_ok)
+            return true;
+        p += 2;
+    }
+    return false;
+}
+
+static const char *map_tuff_or_struct_type_to_c(const char *tuff_type)
+{
+    const char *primitive = get_c_type_from_string(tuff_type);
+    if (primitive && strcmp(primitive, "int64_t") != 0)
+        return primitive;
+    if (strcmp(tuff_type, "I32") == 0)
+        return "int32_t";
+    if (strcmp(tuff_type, "U8") == 0)
+        return "uint8_t";
+    if (strcmp(tuff_type, "I8") == 0)
+        return "int8_t";
+    if (strcmp(tuff_type, "U16") == 0)
+        return "uint16_t";
+    if (strcmp(tuff_type, "I16") == 0)
+        return "int16_t";
+    if (strcmp(tuff_type, "U32") == 0)
+        return "uint32_t";
+    if (strcmp(tuff_type, "U64") == 0)
+        return "uint64_t";
+    if (strcmp(tuff_type, "I64") == 0)
+        return "int64_t";
+    if (strcmp(tuff_type, "Bool") == 0)
+        return "_Bool";
+    return tuff_type; // likely a struct type
+}
+
+static bool appendf(char *out, size_t out_sz, size_t *pos, const char *fmt, ...)
+{
+    if (*pos >= out_sz)
+        return false;
+    va_list args;
+    va_start(args, fmt);
+    int written = vsnprintf(out + *pos, out_sz - *pos, fmt, args);
+    va_end(args);
+    if (written < 0 || (size_t)written >= (out_sz - *pos))
+        return false;
+    *pos += (size_t)written;
+    return true;
+}
+
+typedef struct
+{
+    char name[64];
+    int param_count;
+    char param_types[32][64];
+} FuncSig;
+
+static int count_call_args(const char *arg_start, const char *arg_end)
+{
+    const char *s = arg_start;
+    const char *e = arg_end;
+    trim_span(&s, &e);
+    if (s >= e)
+        return 0;
+
+    int depth = 0;
+    int brace_depth = 0;
+    int count = 1;
+    for (const char *p = s; p < e; p++)
+    {
+        if (*p == '(')
+            depth++;
+        else if (*p == ')')
+            depth--;
+        else if (*p == '{')
+            brace_depth++;
+        else if (*p == '}')
+            brace_depth--;
+        else if (*p == ',' && depth == 0 && brace_depth == 0)
+            count++;
+    }
+    return count;
+}
+
+static int find_func_sig(FuncSig *sigs, int sig_count, const char *name, size_t name_len)
+{
+    for (int i = 0; i < sig_count; i++)
+    {
+        if (strncmp(sigs[i].name, name, name_len) == 0 && sigs[i].name[name_len] == '\0')
+            return i;
+    }
+    return -1;
+}
+
+static bool check_literal_arg_fits_param(const char *arg_start, const char *arg_end, const char *param_type)
+{
+    TypeInfo *target = find_type(param_type);
+    if (!target)
+        return true; // Non-primitive (likely struct) - skip range check
+
+    const char *s = arg_start;
+    const char *e = arg_end;
+    trim_span(&s, &e);
+    if (s >= e)
+        return false;
+
+    const char *p = s;
+    if (*p == '-')
+        p++;
+    if (p >= e || !isdigit((unsigned char)*p))
+        return true; // Non-literal expression; not checked here
+
+    while (p < e && isdigit((unsigned char)*p))
+        p++;
+
+    // Optional type suffix
+    if (p < e)
+    {
+        if (!isalpha((unsigned char)*p))
+            return true; // expression tail; not a pure literal
+        while (p < e && isalnum((unsigned char)*p))
+            p++;
+    }
+
+    if (p != e)
+        return true; // expression; skip strict literal check
+
+    char lit[128];
+    size_t lit_len = (size_t)(e - s);
+    if (lit_len >= sizeof(lit))
+        return false;
+    strncpy(lit, s, lit_len);
+    lit[lit_len] = '\0';
+
+    // Parse numeric prefix only (before suffix)
+    const char *num_end = s;
+    if (*num_end == '-')
+        num_end++;
+    while (num_end < e && isdigit((unsigned char)*num_end))
+        num_end++;
+
+    char numbuf[64];
+    size_t num_len = (size_t)(num_end - s);
+    if (num_len == 0 || num_len >= sizeof(numbuf))
+        return false;
+    strncpy(numbuf, s, num_len);
+    numbuf[num_len] = '\0';
+
+    errno = 0;
+    char *endptr = NULL;
+    long long v = strtoll(numbuf, &endptr, 10);
+    if (errno != 0 || !endptr || *endptr != '\0')
+        return false;
+
+    return v >= target->min_val && v <= target->max_val;
+}
+
+static bool validate_calls_in_text(const char *text, FuncSig *sigs, int sig_count)
+{
+    const char *p = text;
+    while (*p)
+    {
+        if (!is_ident_start_char(*p))
+        {
+            p++;
+            continue;
+        }
+
+        const char *id_start = p;
+        while (is_ident_char2(*p))
+            p++;
+        size_t id_len = (size_t)(p - id_start);
+
+        const char *q = skip_ws_ptr(p);
+        if (*q != '(')
+            continue;
+
+        if ((id_len == 2 && strncmp(id_start, "if", 2) == 0) ||
+            (id_len == 5 && strncmp(id_start, "while", 5) == 0) ||
+            (id_len == 5 && strncmp(id_start, "match", 5) == 0) ||
+            (id_len == 4 && strncmp(id_start, "read", 4) == 0) ||
+            (id_len == 6 && strncmp(id_start, "return", 6) == 0))
+        {
+            p = q + 1;
+            continue;
+        }
+
+        const char *arg_start = q + 1;
+        const char *r = arg_start;
+        int depth = 1;
+        while (*r && depth > 0)
+        {
+            if (*r == '(')
+                depth++;
+            else if (*r == ')')
+                depth--;
+            r++;
+        }
+        if (depth != 0)
+            return false;
+
+        const char *arg_end = r - 1;
+        int idx = find_func_sig(sigs, sig_count, id_start, id_len);
+        if (idx < 0)
+            return false;
+
+        int argc = count_call_args(arg_start, arg_end);
+        if (argc != sigs[idx].param_count)
+            return false;
+
+        // Validate literal arguments against typed parameters
+        const char *a = arg_start;
+        int arg_i = 0;
+        int paren_depth = 0;
+        int brace_depth = 0;
+        for (const char *t = arg_start;; t++)
+        {
+            bool at_end = (t == arg_end);
+            bool at_split = false;
+
+            if (!at_end)
+            {
+                if (*t == '(')
+                    paren_depth++;
+                else if (*t == ')')
+                    paren_depth--;
+                else if (*t == '{')
+                    brace_depth++;
+                else if (*t == '}')
+                    brace_depth--;
+                else if (*t == ',' && paren_depth == 0 && brace_depth == 0)
+                    at_split = true;
+            }
+
+            if (at_split || at_end)
+            {
+                if (arg_i < sigs[idx].param_count)
+                {
+                    const char *seg_start = a;
+                    const char *seg_end = t;
+                    if (!check_literal_arg_fits_param(seg_start, seg_end, sigs[idx].param_types[arg_i]))
+                        return false;
+                }
+                arg_i++;
+                a = t + 1;
+                if (at_end)
+                    break;
+            }
+        }
+
+        p = r;
+    }
+    return true;
+}
+
+static bool contains_empty_return(const char *text)
+{
+    const char *p = text;
+    while ((p = strstr(p, "return")) != NULL)
+    {
+        bool left_ok = (p == text) || !is_ident_char2(*(p - 1));
+        bool right_ok = !is_ident_char2(*(p + 6));
+        if (left_ok && right_ok)
+        {
+            const char *q = skip_ws_ptr(p + 6);
+            if (*q == ';')
+                return true;
+        }
+        p += 6;
+    }
+    return false;
+}
+
+static bool convert_if_expr_to_ternary(const char *src, char *dst, size_t dst_sz)
+{
+    const char *s = skip_ws_ptr(src);
+    if (strncmp(s, "if", 2) != 0 || is_ident_char2(s[2]))
+        return false;
+    s += 2;
+    s = skip_ws_ptr(s);
+    if (*s != '(')
+        return false;
+
+    const char *cond_start = s + 1;
+    int depth = 1;
+    const char *p = cond_start;
+    while (*p && depth > 0)
+    {
+        if (*p == '(')
+            depth++;
+        else if (*p == ')')
+            depth--;
+        p++;
+    }
+    if (depth != 0)
+        return false;
+    const char *cond_end = p - 1;
+
+    const char *then_start = skip_ws_ptr(p);
+    const char *scan = then_start;
+    int nested = 0;
+    const char *else_kw = NULL;
+    while (*scan)
+    {
+        if (*scan == '(' || *scan == '{')
+            nested++;
+        else if (*scan == ')' || *scan == '}')
+            nested--;
+        if (nested == 0 && strncmp(scan, "else", 4) == 0 && !is_ident_char2(scan[4]))
+        {
+            else_kw = scan;
+            break;
+        }
+        scan++;
+    }
+    if (!else_kw)
+        return false;
+    const char *then_end = else_kw;
+    const char *else_start = skip_ws_ptr(else_kw + 4);
+    const char *else_end = src + strlen(src);
+
+    trim_span(&then_start, &then_end);
+    trim_span(&else_start, &else_end);
+
+    char cond[512], texp[1024], eexp[1024], cond_c[512], t_c[1024], e_c[1024];
+    size_t cond_len = (size_t)(cond_end - cond_start);
+    if (cond_len >= sizeof(cond))
+        return false;
+    strncpy(cond, cond_start, cond_len);
+    cond[cond_len] = '\0';
+
+    size_t t_len = (size_t)(then_end - then_start);
+    if (t_len >= sizeof(texp))
+        return false;
+    strncpy(texp, then_start, t_len);
+    texp[t_len] = '\0';
+
+    size_t e_len = (size_t)(else_end - else_start);
+    if (e_len >= sizeof(eexp))
+        return false;
+    strncpy(eexp, else_start, e_len);
+    eexp[e_len] = '\0';
+
+    strip_type_suffixes(cond, cond_c, (int)sizeof(cond_c));
+    if (!convert_if_expr_to_ternary(texp, t_c, sizeof(t_c)))
+        strip_type_suffixes(texp, t_c, (int)sizeof(t_c));
+    if (!convert_if_expr_to_ternary(eexp, e_c, sizeof(e_c)))
+        strip_type_suffixes(eexp, e_c, (int)sizeof(e_c));
+
+    snprintf(dst, dst_sz, "((%s) ? (%s) : (%s))", cond_c, t_c, e_c);
+    return true;
+}
+
+static void convert_struct_literals_to_c(const char *src, char *dst, size_t dst_sz)
+{
+    size_t di = 0;
+    size_t n = strlen(src);
+
+    for (size_t i = 0; i < n && di + 1 < dst_sz;)
+    {
+        if (is_ident_start_char(src[i]))
+        {
+            size_t id_start = i;
+            size_t id_end = i + 1;
+            while (id_end < n && is_ident_char2(src[id_end]))
+                id_end++;
+
+            size_t j = id_end;
+            while (j < n && isspace((unsigned char)src[j]))
+                j++;
+
+            if (j < n && src[j] == '{')
+            {
+                // Emit C compound literal prefix: (Type){
+                if (di + 3 + (id_end - id_start) >= dst_sz)
+                    break;
+                dst[di++] = '(';
+                memcpy(&dst[di], &src[id_start], id_end - id_start);
+                di += (id_end - id_start);
+                dst[di++] = ')';
+                dst[di++] = '{';
+
+                // Parse brace content
+                int depth = 1;
+                size_t k = j + 1;
+                size_t field_start = k;
+                while (k < n && depth > 0)
+                {
+                    if (src[k] == '{')
+                        depth++;
+                    else if (src[k] == '}')
+                        depth--;
+
+                    if ((src[k] == ',' && depth == 1) || depth == 0)
+                    {
+                        size_t field_end = (depth == 0) ? k : k;
+                        const char *fs = &src[field_start];
+                        const char *fe = &src[field_end];
+                        trim_span(&fs, &fe);
+
+                        if (fs < fe)
+                        {
+                            const char *colon = fs;
+                            while (colon < fe && *colon != ':')
+                                colon++;
+
+                            if (colon < fe)
+                            {
+                                const char *name_s = fs;
+                                const char *name_e = colon;
+                                trim_span(&name_s, &name_e);
+                                const char *val_s = colon + 1;
+                                const char *val_e = fe;
+                                trim_span(&val_s, &val_e);
+
+                                if (di + 4 >= dst_sz)
+                                    break;
+                                dst[di++] = '.';
+                                size_t name_len = (size_t)(name_e - name_s);
+                                if (di + name_len + 4 >= dst_sz)
+                                    break;
+                                memcpy(&dst[di], name_s, name_len);
+                                di += name_len;
+                                dst[di++] = ' ';
+                                dst[di++] = '=';
+                                dst[di++] = ' ';
+                                size_t val_len = (size_t)(val_e - val_s);
+                                if (di + val_len + 2 >= dst_sz)
+                                    break;
+                                memcpy(&dst[di], val_s, val_len);
+                                di += val_len;
+                            }
+                            else
+                            {
+                                size_t raw_len = (size_t)(fe - fs);
+                                if (di + raw_len + 2 >= dst_sz)
+                                    break;
+                                memcpy(&dst[di], fs, raw_len);
+                                di += raw_len;
+                            }
+                        }
+
+                        if (depth == 1)
+                        {
+                            if (di + 2 >= dst_sz)
+                                break;
+                            dst[di++] = ',';
+                            dst[di++] = ' ';
+                            field_start = k + 1;
+                        }
+                    }
+
+                    k++;
+                }
+
+                if (di + 2 >= dst_sz)
+                    break;
+                dst[di++] = '}';
+
+                i = k;
+                continue;
+            }
+        }
+
+        dst[di++] = src[i++];
+    }
+
+    dst[di] = '\0';
+}
+
+static void convert_tuff_expr_to_c(const char *src, char *dst, size_t dst_sz)
+{
+    char tmp[2048];
+    if (!convert_if_expr_to_ternary(src, tmp, sizeof(tmp)))
+        strip_type_suffixes(src, tmp, (int)sizeof(tmp));
+    else
+        strip_type_suffixes(tmp, tmp, (int)sizeof(tmp));
+
+    convert_struct_literals_to_c(tmp, dst, dst_sz);
+}
+
+static char *generate_functions_program(const char *input)
+{
+    char *code = malloc(32768);
+    if (!code)
+        return NULL;
+
+    size_t pos = 0;
+    if (!appendf(code, 32768, &pos,
+                 "#define _CRT_SECURE_NO_WARNINGS\n#include <stdio.h>\n#include <stdint.h>\n#include <stdbool.h>\n"))
+    {
+        free(code);
+        return NULL;
+    }
+
+    FuncSig sigs[64];
+    int sig_count = 0;
+
+    const char *p = skip_ws_ptr(input);
+
+    while (*p)
+    {
+        if (strncmp(p, "struct", 6) == 0 && !is_ident_char2(p[6]))
+        {
+            p += 6;
+            p = skip_ws_ptr(p);
+            if (!is_ident_start_char(*p))
+                goto fail;
+
+            const char *name_start = p;
+            while (is_ident_char2(*p))
+                p++;
+            size_t name_len = (size_t)(p - name_start);
+            char sname[64];
+            if (name_len >= sizeof(sname))
+                goto fail;
+            strncpy(sname, name_start, name_len);
+            sname[name_len] = '\0';
+
+            p = skip_ws_ptr(p);
+            if (*p != '{')
+                goto fail;
+            p++;
+
+            if (!appendf(code, 32768, &pos, "typedef struct {\n"))
+                goto fail;
+
+            while (*p)
+            {
+                p = skip_ws_ptr(p);
+                if (*p == '}')
+                {
+                    p++;
+                    break;
+                }
+
+                if (strncmp(p, "mut", 3) == 0 && !is_ident_char2(p[3]))
+                {
+                    p += 3;
+                    p = skip_ws_ptr(p);
+                }
+
+                const char *fname_start = p;
+                if (!is_ident_start_char(*p))
+                    goto fail;
+                while (is_ident_char2(*p))
+                    p++;
+                size_t fname_len = (size_t)(p - fname_start);
+                char fname[64];
+                if (fname_len >= sizeof(fname))
+                    goto fail;
+                strncpy(fname, fname_start, fname_len);
+                fname[fname_len] = '\0';
+
+                p = skip_ws_ptr(p);
+                if (*p != ':')
+                    goto fail;
+                p++;
+                p = skip_ws_ptr(p);
+
+                const char *ftype_start = p;
+                if (!is_ident_start_char(*p))
+                    goto fail;
+                while (is_ident_char2(*p))
+                    p++;
+                size_t ftype_len = (size_t)(p - ftype_start);
+                char ftype[64];
+                if (ftype_len >= sizeof(ftype))
+                    goto fail;
+                strncpy(ftype, ftype_start, ftype_len);
+                ftype[ftype_len] = '\0';
+
+                p = skip_ws_ptr(p);
+                if (*p != ';')
+                    goto fail;
+                p++;
+
+                if (!appendf(code, 32768, &pos, "    %s %s;\n", map_tuff_or_struct_type_to_c(ftype), fname))
+                    goto fail;
+            }
+
+            if (!appendf(code, 32768, &pos, "} %s;\n\n", sname))
+                goto fail;
+
+            p = skip_ws_ptr(p);
+            continue;
+        }
+
+        if (strncmp(p, "fn", 2) != 0 || is_ident_char2(p[2]))
+            break;
+
+        p += 2;
+        p = skip_ws_ptr(p);
+        if (!is_ident_start_char(*p))
+            goto fail;
+
+        const char *fn_name_start = p;
+        while (is_ident_char2(*p))
+            p++;
+        size_t fn_name_len = (size_t)(p - fn_name_start);
+        char fn_name[64];
+        if (fn_name_len >= sizeof(fn_name))
+            goto fail;
+        strncpy(fn_name, fn_name_start, fn_name_len);
+        fn_name[fn_name_len] = '\0';
+
+        if (find_func_sig(sigs, sig_count, fn_name, fn_name_len) >= 0)
+            goto fail;
+
+        p = skip_ws_ptr(p);
+        if (*p != '(')
+            goto fail;
+        p++;
+
+        typedef struct
+        {
+            char name[64];
+            char type[64];
+        } Param;
+
+        Param params[32];
+        int param_count = 0;
+
+        while (*p)
+        {
+            p = skip_ws_ptr(p);
+            if (*p == ')')
+            {
+                p++;
+                break;
+            }
+
+            if (!is_ident_start_char(*p))
+                goto fail;
+            const char *pn_start = p;
+            while (is_ident_char2(*p))
+                p++;
+            size_t pn_len = (size_t)(p - pn_start);
+            if (pn_len >= sizeof(params[param_count].name))
+                goto fail;
+            strncpy(params[param_count].name, pn_start, pn_len);
+            params[param_count].name[pn_len] = '\0';
+
+            strcpy(params[param_count].type, "I64"); // inferred default
+
+            p = skip_ws_ptr(p);
+            if (*p == ':')
+            {
+                p++;
+                p = skip_ws_ptr(p);
+                const char *pt_start = p;
+                if (!is_ident_start_char(*p))
+                    goto fail;
+                while (is_ident_char2(*p))
+                    p++;
+                size_t pt_len = (size_t)(p - pt_start);
+                if (pt_len >= sizeof(params[param_count].type))
+                    goto fail;
+                strncpy(params[param_count].type, pt_start, pt_len);
+                params[param_count].type[pt_len] = '\0';
+            }
+
+            param_count++;
+            p = skip_ws_ptr(p);
+            if (*p == ',')
+            {
+                p++;
+                continue;
+            }
+            if (*p == ')')
+            {
+                p++;
+                break;
+            }
+            goto fail;
+        }
+
+        char return_type[64];
+        strcpy(return_type, "I64"); // inferred default
+
+        p = skip_ws_ptr(p);
+        if (*p == ':')
+        {
+            p++;
+            p = skip_ws_ptr(p);
+            const char *rt_start = p;
+            if (!is_ident_start_char(*p))
+                goto fail;
+            while (is_ident_char2(*p))
+                p++;
+            size_t rt_len = (size_t)(p - rt_start);
+            if (rt_len >= sizeof(return_type))
+                goto fail;
+            strncpy(return_type, rt_start, rt_len);
+            return_type[rt_len] = '\0';
+        }
+
+        p = skip_ws_ptr(p);
+        if (strncmp(p, "=>", 2) != 0)
+            goto fail;
+        p += 2;
+        p = skip_ws_ptr(p);
+
+        char body[2048];
+        body[0] = '\0';
+
+        bool has_block = false;
+        if (*p == '{')
+        {
+            has_block = true;
+            const char *bstart = p + 1;
+            int depth = 1;
+            p++;
+            while (*p && depth > 0)
+            {
+                if (*p == '{')
+                    depth++;
+                else if (*p == '}')
+                    depth--;
+                p++;
+            }
+            if (depth != 0)
+                goto fail;
+            const char *bend = p - 1;
+            trim_span(&bstart, &bend);
+            size_t blen = (size_t)(bend - bstart);
+            if (blen >= sizeof(body))
+                goto fail;
+            strncpy(body, bstart, blen);
+            body[blen] = '\0';
+        }
+        else
+        {
+            const char *estart = p;
+            while (*p && *p != ';')
+                p++;
+            if (*p != ';')
+                goto fail;
+            const char *eend = p;
+            p++;
+            trim_span(&estart, &eend);
+            size_t elen = (size_t)(eend - estart);
+            if (elen >= sizeof(body))
+                goto fail;
+            strncpy(body, estart, elen);
+            body[elen] = '\0';
+        }
+
+        if (contains_empty_return(body))
+            goto fail;
+
+        // Register signature before validating body to allow recursion.
+        if (sig_count >= 64)
+            goto fail;
+        strncpy(sigs[sig_count].name, fn_name, sizeof(sigs[sig_count].name) - 1);
+        sigs[sig_count].name[sizeof(sigs[sig_count].name) - 1] = '\0';
+        sigs[sig_count].param_count = param_count;
+        for (int i = 0; i < param_count && i < 32; i++)
+        {
+            strncpy(sigs[sig_count].param_types[i], params[i].type, sizeof(sigs[sig_count].param_types[i]) - 1);
+            sigs[sig_count].param_types[i][sizeof(sigs[sig_count].param_types[i]) - 1] = '\0';
+        }
+        sig_count++;
+
+        if (!validate_calls_in_text(body, sigs, sig_count))
+            goto fail;
+
+        if (!appendf(code, 32768, &pos, "%s %s(", map_tuff_or_struct_type_to_c(return_type), fn_name))
+            goto fail;
+
+        for (int i = 0; i < param_count; i++)
+        {
+            if (!appendf(code, 32768, &pos, "%s %s%s",
+                         map_tuff_or_struct_type_to_c(params[i].type), params[i].name,
+                         (i + 1 < param_count) ? ", " : ""))
+                goto fail;
+        }
+
+        if (!appendf(code, 32768, &pos, ") {\n"))
+            goto fail;
+
+        if (has_block)
+        {
+            if (strstr(body, "return") != NULL)
+            {
+                char body_c[3072];
+                strip_type_suffixes(body, body_c, (int)sizeof(body_c));
+                if (!appendf(code, 32768, &pos, "    %s\n", body_c))
+                    goto fail;
+            }
+            else
+            {
+                char expr_c[2048];
+                convert_tuff_expr_to_c(body, expr_c, sizeof(expr_c));
+                if (!appendf(code, 32768, &pos, "    return %s;\n", expr_c))
+                    goto fail;
+            }
+        }
+        else
+        {
+            char expr_c[2048];
+            convert_tuff_expr_to_c(body, expr_c, sizeof(expr_c));
+            if (!appendf(code, 32768, &pos, "    return %s;\n", expr_c))
+                goto fail;
+        }
+
+        if (!appendf(code, 32768, &pos, "}\n\n"))
+            goto fail;
+
+        p = skip_ws_ptr(p);
+    }
+
+    // Remainder is final expression
+    const char *expr_start = p;
+    const char *expr_end = input + strlen(input);
+    trim_span(&expr_start, &expr_end);
+    while (expr_end > expr_start && expr_end[-1] == ';')
+        expr_end--;
+    trim_span(&expr_start, &expr_end);
+
+    if (expr_start >= expr_end)
+        goto fail;
+
+    char final_expr[2048];
+    size_t f_len = (size_t)(expr_end - expr_start);
+    if (f_len >= sizeof(final_expr))
+        goto fail;
+    strncpy(final_expr, expr_start, f_len);
+    final_expr[f_len] = '\0';
+
+    if (!validate_calls_in_text(final_expr, sigs, sig_count))
+        goto fail;
+
+    char final_expr_c[2048];
+    convert_tuff_expr_to_c(final_expr, final_expr_c, sizeof(final_expr_c));
+
+    if (!appendf(code, 32768, &pos, "int main() {\n    return (int)(%s);\n}\n", final_expr_c))
+        goto fail;
+
+    return code;
+
+fail:
+    free(code);
+    return generate_error();
+}
+// CPD-ON
+
 char *compile(const char *input)
 {
+    if (contains_fn_keyword(input))
+    {
+        return generate_functions_program(input);
+    }
+
     int64_t value;
     TypeInfo *type;
     Parser parser;
@@ -2202,12 +3101,24 @@ char *compile(const char *input)
             const char *op_str;
             switch (update->op)
             {
-            case '+': op_str = "+"; break;
-            case '-': op_str = "-"; break;
-            case '*': op_str = "*"; break;
-            case '/': op_str = "/"; break;
-            case '%': op_str = "%"; break;
-            default:  op_str = "+"; break;
+            case '+':
+                op_str = "+";
+                break;
+            case '-':
+                op_str = "-";
+                break;
+            case '*':
+                op_str = "*";
+                break;
+            case '/':
+                op_str = "/";
+                break;
+            case '%':
+                op_str = "%";
+                break;
+            default:
+                op_str = "+";
+                break;
             }
             char stmt[256];
             if (update->read_idx >= 0)

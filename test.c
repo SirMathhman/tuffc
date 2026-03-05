@@ -188,6 +188,43 @@ void run_tests(void)
         printf("✓ Test passed: execute(\"%s\") == %d\n",
                valid_tests[i].input, valid_tests[i].expected);
     }
+
+    // Focused negative tests for function support.
+    // These are kept separate from the generic error section to avoid
+    // previous stack-overflow issues from very large error suites.
+    const char *fn_error_cases[] = {
+        // Duplicate function name
+        "fn add(a : I32, b : I32) : I32 => a + b; fn add(a : I32, b : I32) : I32 => a - b; add(1I32,2I32)",
+        // Call to undefined function
+        "missing(1I32)",
+        // Wrong argument count
+        "fn add(a : I32, b : I32) : I32 => a + b; add(1I32)",
+        // Missing return value for non-unit function
+        "fn bad(a : I32) : I32 => { return; } bad(1I32)",
+        // Argument type/range mismatch (literal out of target range)
+        "fn takes_u8(x : U8) : I32 => x; takes_u8(300I32)",
+    };
+
+    int fn_error_count = (int)(sizeof(fn_error_cases) / sizeof(fn_error_cases[0]));
+    for (int i = 0; i < fn_error_count; i++)
+    {
+        int result = execute(fn_error_cases[i]);
+        if (result == 0)
+        {
+            printf("✗ Function error test FAILED: execute(\"%s\") returned success, expected failure\n",
+                   fn_error_cases[i]);
+            char *generated = get_generated_code(fn_error_cases[i]);
+            if (generated)
+            {
+                printf("  Generated C code:\n%s\n", generated);
+                free(generated);
+            }
+            fflush(stdout);
+        }
+        assert(result != 0);
+        printf("✓ Function error test passed: execute(\"%s\") failed as expected\n",
+               fn_error_cases[i]);
+    }
     /*
     // Temporarily disabled: error test loop causes stack overflow after 62 valid tests
     // All major features are tested via the 62 valid test cases

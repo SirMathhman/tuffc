@@ -139,3 +139,15 @@ match (5I32) { case 1I32 => 10I32; case _ => 99I32; }:99
 struct_instantiation_usage:
 struct Point2 { x : I32; y : I32; } Point2 { x: 1I32, y: 2I32 } | :0
 
+functions_core:
+fn add(first : I32, second : I32) : I32 => { return first + second; } add(2I32, 3I32) | :5
+fn add(first : I32, second : I32) : I32 => { first + second } add(4I32, 5I32) | :9
+fn add(first : I32, second : I32) : I32 => first + second; add(6I32, 7I32) | :13
+
+functions_inference_and_structs:
+fn add(first, second) => first + second; add(10I32, 20I32):30
+struct Pair2 { a : I32; b : I32; } fn take_pair(p : Pair2) : I32 => 7I32; take_pair(Pair2 { a: 1I32, b: 2I32 }) | :7
+
+functions_recursion:
+fn fact(n : I32) : I32 => { if (n == 0I32) 1I32 else n * fact(n - 1I32) } fact(5I32) | :120
+
