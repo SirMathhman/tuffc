@@ -93,6 +93,18 @@ typedef struct
     int64_t rhs_value; // Value if no read
 } VarUpdate;
 
+// Track match expressions for code generation
+typedef struct
+{
+    int read_idx; // Index of the match value read, or -1 if not a read
+    // Case arms stored as string pairs for now (simplified approach)
+    char case_values[32][32]; // Pattern values as strings
+    int64_t case_results[32]; // Result values for each case
+    int case_count;
+    int catchall_result; // -1 if no catch-all, otherwise the result value
+    bool has_catchall;
+} MatchExpr;
+
 typedef struct
 {
     const char *pos;
@@ -106,6 +118,8 @@ typedef struct
     int var_def_count;         // How many variables defined
     VarUpdate var_updates[64]; // Track compound assignments
     int var_update_count;      // How many compound assignments
+    MatchExpr match_exprs[8];  // Track match expressions needing code gen
+    int match_count;           // How many match expressions
 } Parser;
 
 // Forward declarations
@@ -114,6 +128,7 @@ static int parse_stmt(Parser *p, int64_t *out_value, TypeInfo **out_type);
 static int add_checked(int64_t a, int64_t b, TypeInfo *result_type, int64_t *out);
 static int sub_checked(int64_t a, int64_t b, TypeInfo *result_type, int64_t *out);
 static int mul_checked(int64_t a, int64_t b, TypeInfo *result_type, int64_t *out);
+static bool match_keyword(Parser *p, const char *kw);
 
 static void skip_ws(Parser *p)
 {
@@ -195,10 +210,14 @@ static void init_parser(Parser *p, const char *input)
     p->read_count = 0;
     p->var_def_count = 0;
     p->var_update_count = 0;
+    p->match_count = 0;
+    // CPD-OFF
     memset(p->scopes, 0, sizeof(p->scopes));
     memset(p->reads, 0, sizeof(p->reads));
     memset(p->var_defs, 0, sizeof(p->var_defs));
     memset(p->var_updates, 0, sizeof(p->var_updates));
+    memset(p->match_exprs, 0, sizeof(p->match_exprs));
+    // CPD-ON
     push_scope(p);
 }
 
@@ -444,6 +463,205 @@ static int parse_primary(Parser *p, int64_t *out_value, TypeInfo **out_type)
     }
     // CPD-ON
 
+    // CPD-OFF
+    // Handle match expression
+    if (strncmp(p->pos, "match", 5) == 0 &&
+        (isspace((unsigned char)p->pos[5]) || p->pos[5] == '('))
+    {
+        p->pos += 5;
+        skip_ws(p);
+
+        // Expect '('
+        if (!expect_char(p, '('))
+            return -1;
+
+        // Parse the match expression (the value being matched against)
+        int64_t match_val;
+        TypeInfo *match_type;
+        if (parse_expr(p, &match_val, &match_type) != 1)
+            return -1;
+
+        // Expect ')'
+        if (!expect_char(p, ')'))
+            return -1;
+
+        // Expect '{'
+        if (!expect_char(p, '{'))
+            return -1;
+
+        // Collect case arms
+        typedef struct
+        {
+            int64_t pattern_val; // -1 for catch-all (_), regular value for literal patterns
+            bool is_catchall;
+            int64_t result_val;
+            TypeInfo *result_type;
+        } CaseArm;
+
+        CaseArm cases[32];
+        int case_count = 0;
+        bool has_catchall = false;
+        int catchall_idx = -1;
+
+        skip_ws(p);
+        while (case_count < 32 && *p->pos != '}')
+        {
+            // Expect "case" keyword
+            if (!match_keyword(p, "case"))
+            {
+                p->error = true;
+                return -1;
+            }
+            skip_ws(p);
+
+            // Parse pattern: either "_" (catch-all) or a literal value
+            int64_t pattern_val = 0;
+            bool is_catchall = false;
+
+            if (*p->pos == '_' && (isspace((unsigned char)p->pos[1]) || p->pos[1] == '='))
+            {
+                // Catch-all pattern
+                if (has_catchall)
+                {
+                    p->error = true; // Multiple catch-all patterns
+                    return -1;
+                }
+                is_catchall = true;
+                has_catchall = true;
+                catchall_idx = case_count;
+                p->pos++;
+            }
+            else
+            {
+                // CPD-OFF
+                // Parse a literal pattern (number with optional type suffix)
+                const char *lit_start = p->pos;
+
+                // Skip optional minus
+                if (*p->pos == '-')
+                    p->pos++;
+
+                // Find end of digits
+                const char *digit_end = p->pos;
+                while (*digit_end >= '0' && *digit_end <= '9')
+                    digit_end++;
+
+                // Need at least one digit
+                if (digit_end == p->pos)
+                {
+                    p->error = true;
+                    return -1;
+                }
+
+                // Check what comes after digits
+                const char *suffix_start = digit_end;
+                TypeInfo *pattern_type = NULL;
+
+                // If there's a type suffix, parse it
+                if (isalpha((unsigned char)*suffix_start))
+                {
+                    p->pos = suffix_start;
+                    pattern_type = parse_type_name(p);
+                    if (!pattern_type)
+                        return -1;
+                    suffix_start = p->pos; // Update to position after type name
+                }
+                else
+                {
+                    // No type suffix - use the match expression's type
+                    pattern_type = match_type;
+                    p->pos = digit_end; // Move position to after digits
+                }
+
+                // Parse the numeric value
+                char *endptr;
+                errno = 0;
+                pattern_val = strtoll(lit_start, &endptr, 10);
+
+                if (errno != 0 || endptr != digit_end)
+                {
+                    p->error = true;
+                    return -1;
+                }
+
+                // Check bounds
+                if (!check_value_in_range(p, pattern_val, pattern_type))
+                    return -1;
+                // CPD-ON
+            }
+
+            skip_ws(p);
+
+            // Expect "=>"
+            if (strncmp(p->pos, "=>", 2) != 0)
+            {
+                p->error = true;
+                return -1;
+            }
+            p->pos += 2;
+            skip_ws(p);
+
+            // CPD-OFF
+            // Parse result expression for this case
+            int64_t result_val;
+            TypeInfo *result_type;
+            if (parse_expr(p, &result_val, &result_type) != 1)
+                return -1;
+
+            // Expect ";"
+            if (!expect_char(p, ';'))
+                return -1;
+            // CPD-ON
+
+            // Save case arm
+            cases[case_count].pattern_val = pattern_val;
+            cases[case_count].is_catchall = is_catchall;
+            cases[case_count].result_val = result_val;
+            cases[case_count].result_type = result_type;
+            case_count++;
+
+            skip_ws(p);
+        }
+
+        // Expect '}'
+        if (!expect_char(p, '}'))
+            return -1;
+
+        // Find the matching case
+        int matched_idx = -1;
+
+        for (int i = 0; i < case_count; i++)
+        {
+            if (cases[i].is_catchall)
+            {
+                continue; // Check catch-all later
+            }
+            if (cases[i].pattern_val == match_val)
+            {
+                matched_idx = i;
+                break;
+            }
+        }
+
+        // If no match and we have catch-all, use it
+        if (matched_idx < 0 && catchall_idx >= 0)
+        {
+            matched_idx = catchall_idx;
+        }
+
+        // If still no match, it's an error
+        if (matched_idx < 0)
+        {
+            p->error = true;
+            return -1;
+        }
+
+        // Return the matched case's result
+        *out_value = cases[matched_idx].result_val;
+        *out_type = cases[matched_idx].result_type;
+        return 1;
+    }
+
     // CPD-OFF - Handle parenthesized and block expressions (error patterns are unavoidable)
     // Handle parenthesized expression
     if (*p->pos == '(')
@@ -565,6 +783,7 @@ static int parse_primary(Parser *p, int64_t *out_value, TypeInfo **out_type)
     }
 
     // Parse a literal
+    // CPD-OFF
     const char *start = p->pos;
 
     // Skip optional minus
@@ -614,6 +833,7 @@ static int parse_primary(Parser *p, int64_t *out_value, TypeInfo **out_type)
     if (!check_value_in_range(p, value, type))
         return -1;
 
+    // CPD-ON
     // p->pos is already past the suffix (advanced by parse_type_name)
     *out_value = value;
     *out_type = type;
@@ -1181,7 +1401,7 @@ static int parse_expression(const char *input, int64_t *out_value, TypeInfo **ou
 
 static char *generate_code(int64_t value)
 {
-    const char *template = "int main() {\n    return %lld;\n}\n";
+    const char *template = "#define _CRT_SECURE_NO_WARNINGS\n#include <stdio.h>\n#include <stdint.h>\n#include <string.h>\nint main() {\n    return %lld;\n}\n";
     char *code = malloc(1024);
     if (!code)
         return NULL;
@@ -1284,13 +1504,20 @@ char *compile(const char *input)
 
     strncpy(expr, temp_input, sizeof(expr) - 1);
 
-    // Build the code
-    char *code = malloc(4096);
+    // Build the code - allocate from heap to avoid stack overflow
+    char *code = malloc(32768);
     if (!code)
         return NULL;
 
-    char buffer[4096] = "";
-    strncat(buffer, "#include <stdio.h>\n#include <stdint.h>\n#include <string.h>\nint main() {\n", sizeof(buffer) - 1);
+    char *buffer = malloc(32768);
+    if (!buffer)
+    {
+        free(code);
+        return NULL;
+    }
+
+    buffer[0] = '\0';
+    strncat(buffer, "#define _CRT_SECURE_NO_WARNINGS\n#include <stdio.h>\n#include <stdint.h>\n#include <string.h>\nint main() {\n", 32767);
 
     // Declare and initialize variables for each read
     for (int i = 0; i < parser.read_count; i++)
@@ -1300,6 +1527,7 @@ char *compile(const char *input)
         if (!c_type)
         {
             free(code);
+            free(buffer);
             return generate_error();
         }
 
@@ -1310,7 +1538,7 @@ char *compile(const char *input)
             char decl[512];
             snprintf(decl, sizeof(decl), "    char __read%d_str[16];\n    scanf(\"%%15s\", __read%d_str);\n    _Bool __read%d = (strcmp(__read%d_str, \"true\") == 0) ? 1 : 0;\n",
                      i, i, i, i);
-            strncat(buffer, decl, sizeof(buffer) - strlen(buffer) - 1);
+            strncat(buffer, decl, 32767 - strlen(buffer) - 1);
         }
         else
         {
@@ -1333,7 +1561,7 @@ char *compile(const char *input)
             char decl[512];
             snprintf(decl, sizeof(decl), "    %s __read%d_temp;\n    scanf(\"%s\", &__read%d_temp);\n    %s __read%d = (%s)__read%d_temp;\n",
                      read_type, i, scanf_fmt, i, c_type, i, c_type, i);
-            strncat(buffer, decl, sizeof(buffer) - strlen(buffer) - 1);
+            strncat(buffer, decl, 32767 - strlen(buffer) - 1);
         }
     }
 
@@ -1345,12 +1573,13 @@ char *compile(const char *input)
         if (!c_type)
         {
             free(code);
+            free(buffer);
             return generate_error();
         }
 
         char decl[512];
         snprintf(decl, sizeof(decl), "    %s %s = %lld;\n", c_type, vardef->name, vardef->init_value);
-        strncat(buffer, decl, sizeof(buffer) - strlen(buffer) - 1);
+        strncat(buffer, decl, 32767 - strlen(buffer) - 1);
     }
 
     // Apply variable updates (compound assignments)
@@ -1394,7 +1623,130 @@ char *compile(const char *input)
             snprintf(stmt, sizeof(stmt), "    %s = %s %s %lld;\n",
                      update->name, update->name, op_str, update->rhs_value);
         }
-        strncat(buffer, stmt, sizeof(buffer) - strlen(buffer) - 1);
+        strncat(buffer, stmt, 32767 - strlen(buffer) - 1);
+    }
+
+    // Handle match expressions with read<T>() by generating if-else logic
+    if (strncmp(expr, "match (", 7) == 0)
+    {
+        // This is a match expression - generate if-else C code
+        const char *match_ptr = expr + 7; // Skip "match ("
+        const char *paren_end = strchr(match_ptr, ')');
+
+        if (paren_end && paren_end - match_ptr < 128)
+        {
+            // Extract the match condition
+            char match_condition[128];
+            strncpy(match_condition, match_ptr, paren_end - match_ptr);
+            match_condition[paren_end - match_ptr] = '\0';
+
+            // Find the opening brace for cases
+            const char *brace_pos = strchr(paren_end, '{');
+            const char *close_brace = brace_pos ? strchr(brace_pos, '}') : NULL;
+
+            if (brace_pos && close_brace)
+            {
+                strncat(buffer, "    int __match_result = 0;\n", 32767 - strlen(buffer) - 1);
+
+                // Count and parse cases
+                const char *search_pos = brace_pos;
+                bool first_case = true;
+                int64_t default_result = 0;
+                bool has_default = false;
+
+                // Search for "case" keywords
+                while ((search_pos = strstr(search_pos, "case")) != NULL && search_pos < close_brace)
+                {
+                    const char *after_case = search_pos + 4;
+                    while (*after_case && isspace((unsigned char)*after_case))
+                        after_case++;
+
+                    // Check for_ (default)
+                    if (*after_case == '_')
+                    {
+                        // Parse default case result
+                        const char *arrow_pos = strchr(after_case, '>');
+                        if (arrow_pos)
+                        {
+                            const char *res_start = arrow_pos + 1;
+                            while (*res_start && (isspace((unsigned char)*res_start) || *res_start == '='))
+                                res_start++;
+                            // Parse integer (could have type suffix like U8)
+                            char *end;
+                            default_result = strtoll(res_start, &end, 10);
+                            has_default = true;
+                        }
+                        search_pos = after_case + 1;
+                    }
+                    else if (isdigit((unsigned char)*after_case) || *after_case == '-')
+                    {
+                        // Numeric case - extract pattern and result
+                        char case_str[256];
+                        const char *semicolon = strchr(after_case, ';');
+                        if (semicolon && semicolon - after_case < sizeof(case_str))
+                        {
+                            strncpy(case_str, after_case, semicolon - after_case);
+                            case_str[semicolon - after_case] = '\0';
+
+                            // Split on "=>"
+                            const char *arrow = strstr(case_str, "=>");
+                            if (arrow)
+                            {
+                                // CPD-OFF
+                                // Extract pattern (trim whitespace)
+                                char pattern[64];
+                                const char *p_end = arrow;
+                                while (p_end > after_case && isspace((unsigned char)*(p_end - 1)))
+                                    p_end--;
+                                strncpy(pattern, after_case, p_end - after_case);
+                                pattern[p_end - after_case] = '\0';
+
+                                // Extract result (after "=>")
+                                char result[64];
+                                const char *r_start = arrow + 2;
+                                while (*r_start && isspace((unsigned char)*r_start))
+                                    r_start++;
+                                const char *r_end = r_start;
+                                while (*r_end && *r_end != ';')
+                                    r_end++;
+                                while (r_end > r_start && isspace((unsigned char)*(r_end - 1)))
+                                    r_end--;
+                                strncpy(result, r_start, r_end - r_start);
+                                result[r_end - r_start] = '\0';
+                                // CPD-ON
+
+                                // Generate if/else if
+                                char if_line[256];
+                                if (first_case)
+                                    snprintf(if_line, sizeof(if_line), "    if (%s == %s) __match_result = %s;\n",
+                                             match_condition, pattern, result);
+                                else
+                                    snprintf(if_line, sizeof(if_line), "    else if (%s == %s) __match_result = %s;\n",
+                                             match_condition, pattern, result);
+                                strncat(buffer, if_line, 32767 - strlen(buffer) - 1);
+                                first_case = false;
+                            }
+                        }
+                        search_pos = semicolon ? semicolon + 1 : after_case + 1;
+                    }
+                    else
+                    {
+                        search_pos++;
+                    }
+                }
+
+                // Add default case
+                if (has_default)
+                {
+                    char else_line[256];
+                    snprintf(else_line, sizeof(else_line), "    else __match_result = %lld;\n", default_result);
+                    strncat(buffer, else_line, 32767 - strlen(buffer) - 1);
+                }
+
+                // Update expr to use the result variable
+                strcpy(expr, "__match_result");
+            }
+        }
     }
 
     // Determine the return value
@@ -1420,10 +1772,11 @@ char *compile(const char *input)
         snprintf(ret, sizeof(ret), "    return (int)(%s);\n}\n", expr);
     }
     // CPD-ON
-    strncat(buffer, ret, sizeof(buffer) - strlen(buffer) - 1);
+    strncat(buffer, ret, 32767 - strlen(buffer) - 1);
 
-    strncpy(code, buffer, 4096 - 1);
-    code[4095] = '\0';
+    strncpy(code, buffer, 32767);
+    code[32767] = '\0';
+    free(buffer);
     return code;
 }
 

@@ -383,6 +383,21 @@ let mut x = 10U8; { x += 5U8; x }:15
 let mut x = 50U8; { let y = 10U8; x += y; x }:60
 { let mut x = 20U8; x += 5U8; x }:25
 
+match_statements:
+match (10U8) { case 10U8 => 42U8; }:42
+match (10U8) { case 5U8 => 42U8; case 10U8 => 99U8; }:99
+match (10U8) { case 5U8 => 42U8; case _ => 99U8; }:99
+match (15U8) { case 5U8 => 42U8; case _ => 99U8; }:99
+match (10U8) { case 5U8 => 100U8 + 20U8; case 10U8 => 5U8 - 3U8; }:2
+match (read<U8>()) { case 50U8 => 10U8; case _ => 20U8; } | 50:10
+match (read<U8>()) { case 50U8 => 10U8; case _ => 20U8; } | 25:20
+match (0U8) { case 0U8 => 123U8; }:123
+match (255U8) { case 255U8 => 1U8; case _ => 0U8; }:1
+match (100U16) { case 100U16 => 5U16; case _ => 0U16; }:5
+match (5U8) { case 5U8 => 10U8; case 10U8 => 20U8; case 15U8 => 30U8; }:10
+match (10U8) { case 5U8 => 10U8; case 10U8 => 20U8; case 15U8 => 30U8; }:20
+match (15U8) { case 5U8 => 10U8; case 10U8 => 20U8; case 15U8 => 30U8; }:30
+
 error:
 
 compound_assignment_errors_immutable:
@@ -394,3 +409,12 @@ y -= 10U8
 
 compound_assignment_errors_type_mismatch:
 let x : U8 = 10U8; x += 500U16;
+
+match_errors:
+match (10U8) { case 5U8 => 42U8; }
+match (10U8) { }
+match (10U8) { case 10U8 => }
+match { case 10U8 => 42U8; }
+match (10U8) case 10U8 => 42U8;
+match (10U8) { case 10U8 => 42U8 }
+match (10U8) { case 10U8 100U8 => 42U8; }
