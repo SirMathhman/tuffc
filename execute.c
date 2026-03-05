@@ -32,7 +32,7 @@ static int compile_code(const char *temp_c_file, const char *temp_exe,
 
     // Compile with clang (quote paths for spaces)
     char clang_cmd[1024];
-    snprintf(clang_cmd, sizeof(clang_cmd), "clang \"%s\" -o \"%s\"", temp_c_file, temp_exe);
+    snprintf(clang_cmd, sizeof(clang_cmd), "clang -Werror \"%s\" -o \"%s\"", temp_c_file, temp_exe);
     int compile_exit = system(clang_cmd);
 
     return compile_exit;
