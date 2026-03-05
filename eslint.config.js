@@ -34,6 +34,11 @@ export default [
           selector: "ThrowStatement",
           message: "throw is not allowed. Use Result<T, E> type instead.",
         },
+        {
+          selector: "TSTypeLiteral",
+          message:
+            "Anonymous object types are not allowed. Use named interfaces instead.",
+        },
       ],
     },
   },

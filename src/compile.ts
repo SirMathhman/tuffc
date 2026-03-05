@@ -13,49 +13,130 @@ const VALID_TYPES = new Set([
   "F64",
 ]);
 
-// Token types
-type Token =
-  | { type: "NUMBER"; value: string }
-  | { type: "OPERATOR"; value: "+" | "-" | "*" | "/" }
-  | { type: "IDENTIFIER"; value: string }
-  | { type: "KEYWORD"; value: "let" | "mut" }
-  | { type: "LPAREN" }
-  | { type: "RPAREN" }
-  | { type: "LT" }
-  | { type: "GT" }
-  | { type: "COLON" }
-  | { type: "SEMICOLON" }
-  | { type: "ASSIGN" }
-  | { type: "EOF" };
+// Token interfaces
+interface NumberToken {
+  type: "NUMBER";
+  value: string;
+}
 
-// AST node types
+interface OperatorToken {
+  type: "OPERATOR";
+  value: "+" | "-" | "*" | "/";
+}
+
+interface IdentifierToken {
+  type: "IDENTIFIER";
+  value: string;
+}
+
+interface KeywordToken {
+  type: "KEYWORD";
+  value: "let" | "mut";
+}
+
+interface LParenToken {
+  type: "LPAREN";
+}
+
+interface RParenToken {
+  type: "RPAREN";
+}
+
+interface LTToken {
+  type: "LT";
+}
+
+interface GTToken {
+  type: "GT";
+}
+
+interface ColonToken {
+  type: "COLON";
+}
+
+interface SemicolonToken {
+  type: "SEMICOLON";
+}
+
+interface AssignToken {
+  type: "ASSIGN";
+}
+
+interface EOFToken {
+  type: "EOF";
+}
+
+type Token =
+  | NumberToken
+  | OperatorToken
+  | IdentifierToken
+  | KeywordToken
+  | LParenToken
+  | RParenToken
+  | LTToken
+  | GTToken
+  | ColonToken
+  | SemicolonToken
+  | AssignToken
+  | EOFToken;
+
+// AST node interfaces
+interface NumberNode {
+  kind: "number";
+  value: string;
+}
+
+interface ReadNode {
+  kind: "read";
+  type: string;
+}
+
+interface VariableNode {
+  kind: "variable";
+  name: string;
+}
+
+interface BinaryNode {
+  kind: "binary";
+  left: ASTNode;
+  operator: "+" | "-" | "*" | "/";
+  right: ASTNode;
+}
+
+interface LetNode {
+  kind: "let";
+  mutable: boolean;
+  name: string;
+  type: string;
+  initializer: ASTNode;
+}
+
+interface AssignNode {
+  kind: "assign";
+  name: string;
+  value: ASTNode;
+}
+
+interface BlockNode {
+  kind: "block";
+  statements: ASTNode[];
+  result: ASTNode;
+}
+
 type ASTNode =
-  | { kind: "number"; value: string }
-  | { kind: "read"; type: string }
-  | { kind: "variable"; name: string }
-  | {
-      kind: "binary";
-      left: ASTNode;
-      operator: "+" | "-" | "*" | "/";
-      right: ASTNode;
-    }
-  | {
-      kind: "let";
-      mutable: boolean;
-      name: string;
-      type: string;
-      initializer: ASTNode;
-    }
-  | {
-      kind: "assign";
-      name: string;
-      value: ASTNode;
-    }
-  | {
-      kind: "block";
-      statements: ASTNode[];
-      result: ASTNode;
-    };
+  | NumberNode
+  | ReadNode
+  | VariableNode
+  | BinaryNode
+  | LetNode
+  | AssignNode
+  | BlockNode;
+
+// Variable info interface
+interface VariableInfo {
+  type: string;
+  mutable: boolean;
+}
 
 function isWhitespace(char: string | undefined): boolean {
   return (
@@ -89,7 +170,7 @@ function validateType(typeStr: string): Result<undefined, string> {
 function getVariable(
   parser: Parser,
   name: string,
-): Result<{ type: string; mutable: boolean }, string> {
+): Result<VariableInfo, string> {
   const varInfo = parser.variables.get(name);
   if (!varInfo) {
     return err(`Variable '${name}' is not defined`);
@@ -265,7 +346,7 @@ function tokenize(input: string): Result<Token[], string> {
 interface Parser {
   tokens: Token[];
   pos: number;
-  variables: Map<string, { type: string; mutable: boolean }>;
+  variables: Map<string, VariableInfo>;
 }
 
 function current(parser: Parser): Token {
