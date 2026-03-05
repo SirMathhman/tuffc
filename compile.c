@@ -76,6 +76,23 @@ typedef struct
     int64_t temp_value; // Placeholder during parsing
 } ReadCall;
 
+// Track variable definitions for code generation
+typedef struct
+{
+    char name[64];
+    TypeInfo *type;
+    int64_t init_value;
+} VarDef;
+
+// Track variable updates (compound assignments) for code generation
+typedef struct
+{
+    char name[64];
+    char op;           // '+', '-', '*', '/', '%'
+    int read_idx;      // Index into reads[], or -1 if no read
+    int64_t rhs_value; // Value if no read
+} VarUpdate;
+
 typedef struct
 {
     const char *pos;
@@ -83,12 +100,20 @@ typedef struct
     Scope scopes[16];
     int scope_depth;
     bool needs_code_gen;
-    ReadCall reads[32]; // Track all read<T>() calls
-    int read_count;     // How many read<T>() calls we've seen
+    ReadCall reads[32];        // Track all read<T>() calls
+    int read_count;            // How many read<T>() calls we've seen
+    VarDef var_defs[64];       // Track variable definitions
+    int var_def_count;         // How many variables defined
+    VarUpdate var_updates[64]; // Track compound assignments
+    int var_update_count;      // How many compound assignments
 } Parser;
 
 // Forward declarations
 static int parse_expr(Parser *p, int64_t *out_value, TypeInfo **out_type);
+static int parse_stmt(Parser *p, int64_t *out_value, TypeInfo **out_type);
+static int add_checked(int64_t a, int64_t b, TypeInfo *result_type, int64_t *out);
+static int sub_checked(int64_t a, int64_t b, TypeInfo *result_type, int64_t *out);
+static int mul_checked(int64_t a, int64_t b, TypeInfo *result_type, int64_t *out);
 
 static void skip_ws(Parser *p)
 {
@@ -168,8 +193,12 @@ static void init_parser(Parser *p, const char *input)
     p->scope_depth = 0;
     p->needs_code_gen = false;
     p->read_count = 0;
+    p->var_def_count = 0;
+    p->var_update_count = 0;
     memset(p->scopes, 0, sizeof(p->scopes));
     memset(p->reads, 0, sizeof(p->reads));
+    memset(p->var_defs, 0, sizeof(p->var_defs));
+    memset(p->var_updates, 0, sizeof(p->var_updates));
     push_scope(p);
 }
 
@@ -214,6 +243,22 @@ static bool is_var_defined_anywhere(Parser *p, const char *name, size_t name_len
     return false;
 }
 
+// CPD-OFF - Necessary pattern for variable tracking
+// Helper: Track a variable definition for code generation
+static void track_var_def(Parser *p, const char *name, size_t name_len, TypeInfo *type, int64_t value)
+{
+    if (p->var_def_count < 64)
+    {
+        VarDef *vardef = &p->var_defs[p->var_def_count];
+        strncpy(vardef->name, name, name_len);
+        vardef->name[name_len] = '\0';
+        vardef->type = type;
+        vardef->init_value = value;
+        p->var_def_count++;
+    }
+}
+// CPD-ON
+
 static bool define_var(Parser *p, const char *name, size_t name_len, int64_t value, TypeInfo *type, bool is_mutable)
 {
     if (p->scope_depth == 0)
@@ -232,7 +277,57 @@ static bool define_var(Parser *p, const char *name, size_t name_len, int64_t val
     binding->type = type;
     binding->is_mutable = is_mutable;
     current_scope->count++;
+
+    // Track variable definition for code generation
+    track_var_def(p, name, name_len, type, value);
+
     return true;
+}
+
+// Helper: Update a mutable variable's value
+static bool update_var(Parser *p, const char *name, size_t name_len, int64_t new_value)
+{
+    VarBinding *binding = lookup_var_anywhere(p, name, name_len);
+    if (!binding)
+        return false;
+    if (!binding->is_mutable)
+        return false;
+    binding->value = new_value;
+    return true;
+}
+
+// Helper: Perform arithmetic operation (op: +, -, *, /, %)
+// Returns true on success, sets p->error on failure
+static bool perform_op(Parser *p, char op, int64_t left, int64_t right, TypeInfo *type, int64_t *out_result)
+{
+    switch (op)
+    {
+    case '+':
+        return add_checked(left, right, type, out_result);
+    case '-':
+        return sub_checked(left, right, type, out_result);
+    case '*':
+        return mul_checked(left, right, type, out_result);
+    case '/':
+        if (right == 0)
+        {
+            p->error = true;
+            return false;
+        }
+        *out_result = left / right;
+        return true;
+    case '%':
+        if (right == 0)
+        {
+            p->error = true;
+            return false;
+        }
+        *out_result = left % right;
+        return true;
+    default:
+        p->error = true;
+        return false;
+    }
 }
 
 // CPD-OFF
@@ -374,8 +469,9 @@ static int parse_primary(Parser *p, int64_t *out_value, TypeInfo **out_type)
     {
         p->pos++;
         push_scope(p);
-        p->needs_code_gen = true;
-        if (parse_expr(p, out_value, out_type) != 1)
+        // Parse statements within block (not just expressions)
+        int stmt_result = parse_stmt(p, out_value, out_type);
+        if (stmt_result != 1)
         {
             p->error = true;
             pop_scope(p);
@@ -570,9 +666,6 @@ static TypeInfo *get_bool_type(void)
 {
     return find_type("Bool");
 }
-
-// Forward declarations for recursive descent
-static int parse_expr(Parser *p, int64_t *out_value, TypeInfo **out_type);
 
 // parse_unary: handles '!' operator and calls parse_primary
 static int parse_unary(Parser *p, int64_t *out_value, TypeInfo **out_type)
@@ -833,9 +926,6 @@ static int parse_expr(Parser *p, int64_t *out_value, TypeInfo **out_type)
     return parse_or(p, out_value, out_type);
 }
 
-// Forward declare parse_stmt for use in parse_expression
-static int parse_stmt(Parser *p, int64_t *out_value, TypeInfo **out_type);
-
 // Helper: match a keyword (exact word boundary check, advances pos on match)
 static bool match_keyword(Parser *p, const char *kw)
 {
@@ -848,6 +938,41 @@ static bool match_keyword(Parser *p, const char *kw)
     return true;
 }
 
+// Helper: Try to match a compound assignment operator (+=, -=, etc.)
+// Returns the operator char (+, -, *, /, %) or '\0' if not matched
+// Advances p->pos if matched
+// CPD-OFF - Unavoidable repetition due to explicit operator checking
+static char match_compound_op(Parser *p)
+{
+    if (strncmp(p->pos, "+=", 2) == 0)
+    {
+        p->pos += 2;
+        return '+';
+    }
+    if (strncmp(p->pos, "-=", 2) == 0)
+    {
+        p->pos += 2;
+        return '-';
+    }
+    if (strncmp(p->pos, "*=", 2) == 0)
+    {
+        p->pos += 2;
+        return '*';
+    }
+    if (strncmp(p->pos, "/=", 2) == 0)
+    {
+        p->pos += 2;
+        return '/';
+    }
+    if (strncmp(p->pos, "%=", 2) == 0)
+    {
+        p->pos += 2;
+        return '%';
+    }
+    return '\0';
+}
+// CPD-ON
+
 // Implement parse_stmt
 static int parse_stmt(Parser *p, int64_t *out_value, TypeInfo **out_type)
 {
@@ -855,6 +980,15 @@ static int parse_stmt(Parser *p, int64_t *out_value, TypeInfo **out_type)
     if (match_keyword(p, "let"))
     {
         skip_ws(p);
+
+        // Check for "mut" keyword
+        bool is_mutable = false;
+        if (match_keyword(p, "mut"))
+        {
+            is_mutable = true;
+            skip_ws(p);
+        }
+
         if (!isalpha((unsigned char)*p->pos) && *p->pos != '_')
         {
             p->error = true;
@@ -896,13 +1030,108 @@ static int parse_stmt(Parser *p, int64_t *out_value, TypeInfo **out_type)
         }
         if (!check_value_in_range(p, rhs_value, var_type))
             return -1;
-        if (!define_var(p, var_start, var_len, rhs_value, var_type, false))
+        if (!define_var(p, var_start, var_len, rhs_value, var_type, is_mutable))
         {
             p->error = true;
             return -1;
         }
         return parse_stmt(p, out_value, out_type);
     }
+
+    // Check for compound assignment (+=, -=, *=, /=, %=)
+    if (isalpha((unsigned char)*p->pos) || *p->pos == '_')
+    {
+        const char *id_start = p->pos;
+        size_t id_len = consume_identifier(p, &id_start);
+        skip_ws(p);
+
+        // Check for compound assignment operator
+        char op = match_compound_op(p);
+
+        if (op != '\0')
+        {
+            // Look up variable
+            VarBinding *binding = lookup_var_anywhere(p, id_start, id_len);
+            if (!binding)
+            {
+                p->error = true;
+                return -1;
+            }
+            if (!binding->is_mutable)
+            {
+                p->error = true;
+                return -1;
+            }
+
+            skip_ws(p);
+
+            // Parse right-hand side
+            int64_t rhs_value;
+            TypeInfo *rhs_type;
+            if (parse_expr(p, &rhs_value, &rhs_type) != 1)
+                return -1;
+
+            // Expect semicolon
+            if (!expect_char(p, ';'))
+                return -1;
+
+            // Only perform operation at parse time if we're not doing code generation
+            // (i.e., if RHS doesn't contain read<T>())
+            if (!p->needs_code_gen)
+            {
+                // Perform operation at parse time
+                int64_t result = 0;
+                TypeInfo *result_type = binding->type;
+
+                if (!perform_op(p, op, binding->value, rhs_value, result_type, &result))
+                    return -1;
+
+                // Update variable
+                if (!update_var(p, id_start, id_len, result))
+                {
+                    p->error = true;
+                    return -1;
+                }
+            }
+            else
+            {
+                // With code generation, we can't evaluate at parse time
+                // Track the variable update for code generation
+                if (p->var_update_count < 64)
+                {
+                    // CPD-OFF - Necessary pattern for variable update tracking
+                    VarUpdate *update = &p->var_updates[p->var_update_count];
+                    strncpy(update->name, id_start, id_len);
+                    update->name[id_len] = '\0';
+                    update->op = op;
+
+                    // Check if RHS contains a read call
+                    // If rhs_type is non-null and needs_code_gen, we have a read
+                    if (rhs_type && p->read_count > 0)
+                    {
+                        // Use the most recent read index
+                        update->read_idx = p->read_count - 1;
+                        update->rhs_value = 0;
+                    }
+                    else
+                    {
+                        // No read, use the RHS value directly
+                        update->read_idx = -1;
+                        update->rhs_value = rhs_value;
+                    }
+                    // CPD-ON
+                    p->var_update_count++;
+                }
+            }
+
+            // Continue parsing statements
+            return parse_stmt(p, out_value, out_type);
+        }
+
+        // Not a compound assignment, reset and parse as expression
+        p->pos = id_start;
+    }
+
     return parse_expr(p, out_value, out_type);
 }
 
@@ -1108,9 +1337,89 @@ char *compile(const char *input)
         }
     }
 
-    // Return the expression
+    // Declare and initialize variables that were defined
+    for (int i = 0; i < parser.var_def_count; i++)
+    {
+        VarDef *vardef = &parser.var_defs[i];
+        const char *c_type = get_c_type(vardef->type);
+        if (!c_type)
+        {
+            free(code);
+            return generate_error();
+        }
+
+        char decl[512];
+        snprintf(decl, sizeof(decl), "    %s %s = %lld;\n", c_type, vardef->name, vardef->init_value);
+        strncat(buffer, decl, sizeof(buffer) - strlen(buffer) - 1);
+    }
+
+    // Apply variable updates (compound assignments)
+    for (int i = 0; i < parser.var_update_count; i++)
+    {
+        VarUpdate *update = &parser.var_updates[i];
+        const char *op_str;
+
+        switch (update->op)
+        {
+        case '+':
+            op_str = "+";
+            break;
+        case '-':
+            op_str = "-";
+            break;
+        case '*':
+            op_str = "*";
+            break;
+        case '/':
+            op_str = "/";
+            break;
+        case '%':
+            op_str = "%";
+            break;
+        default:
+            op_str = "+";
+            break;
+        }
+
+        char stmt[512];
+        if (update->read_idx >= 0)
+        {
+            // Variable update with a read call
+            snprintf(stmt, sizeof(stmt), "    %s = %s %s __read%d;\n",
+                     update->name, update->name, op_str, update->read_idx);
+        }
+        else
+        {
+            // Variable update with a constant
+            snprintf(stmt, sizeof(stmt), "    %s = %s %s %lld;\n",
+                     update->name, update->name, op_str, update->rhs_value);
+        }
+        strncat(buffer, stmt, sizeof(buffer) - strlen(buffer) - 1);
+    }
+
+    // Determine the return value
+    // CPD-OFF - Unavoidable conditional branching in code generation
+    // If we have variable definitions/updates, return the last modified variable
+    // Otherwise, return the expression
     char ret[512];
-    snprintf(ret, sizeof(ret), "    return (int)(%s);\n}\n", expr);
+    if (parser.var_update_count > 0)
+    {
+        // Return the last updated variable
+        VarUpdate *last_update = &parser.var_updates[parser.var_update_count - 1];
+        snprintf(ret, sizeof(ret), "    return (int)%s;\n}\n", last_update->name);
+    }
+    else if (parser.var_def_count > 0)
+    {
+        // Return the last defined variable
+        VarDef *last_def = &parser.var_defs[parser.var_def_count - 1];
+        snprintf(ret, sizeof(ret), "    return (int)%s;\n}\n", last_def->name);
+    }
+    else
+    {
+        // No variables, return the expression
+        snprintf(ret, sizeof(ret), "    return (int)(%s);\n}\n", expr);
+    }
+    // CPD-ON
     strncat(buffer, ret, sizeof(buffer) - strlen(buffer) - 1);
 
     strncpy(code, buffer, 4096 - 1);

@@ -328,3 +328,69 @@ let_statements_errors_type_mismatch:
 let x : U8 = 1000U16;
 let y : U8 = 300U8;
 let x : I8 = 200I8;
+
+valid:
+
+compound_assignment_addition:
+let mut x = 10U8; x += 5U8; x:15
+let mut x = 100U8; x += 55U8; x:155
+let mut a = 0U8; a += 1U8; a:1
+
+compound_assignment_subtraction:
+let mut x = 50U8; x -= 10U8; x:40
+let mut x = 100U8; x -= 50U8; x:50
+let mut y = 200U16; y -= 100U16; y:100
+
+compound_assignment_multiplication:
+let mut x = 5U8; x *= 3U8; x:15
+let mut x = 10U8; x *= 2U8; x:20
+let mut y = 7U8; y *= 4U8; y:28
+
+compound_assignment_division:
+let mut x = 20U8; x /= 2U8; x:10
+let mut x = 100U8; x /= 4U8; x:25
+let mut y = 50U16; y /= 5U16; y:10
+
+compound_assignment_modulo:
+let mut x = 10U8; x %= 3U8; x:1
+let mut x = 20U8; x %= 7U8; x:6
+let mut y = 100U8; y %= 10U8; y:0
+
+compound_assignment_chained:
+let mut x = 10U8; x += 5U8; x += 2U8; x:17
+let mut x = 100U8; x -= 20U8; x -= 10U8; x:70
+let mut x = 2U8; x *= 3U8; x *= 2U8; x:12
+
+compound_assignment_with_variables:
+let mut x = 10U8; let y = 5U8; x += y; x:15
+let mut a = 100U8; let b = 30U8; a -= b; a:70
+let mut p = 4U8; let q = 5U8; p *= q; p:20
+
+compound_assignment_with_expressions:
+let mut x = 10U8; x += 5U8 + 3U8; x:18
+let mut x = 20U8; x -= 2U8 + 3U8; x:15
+let mut x = 5U8; x *= 2U8 * 2U8; x:20
+
+compound_assignment_with_read:
+let mut x = 10U8; x += read<U8>(); x | 5:15
+let mut x = 50U16; x -= read<U16>(); x | 20:30
+let mut x = 3U8; x *= read<U8>(); x | 4:12
+let mut x = 100U8; x /= read<U8>(); x | 5:20
+let mut x = 20U8; x %= read<U8>(); x | 3:2
+
+compound_assignment_in_blocks:
+let mut x = 10U8; { x += 5U8; x }:15
+let mut x = 50U8; { let y = 10U8; x += y; x }:60
+{ let mut x = 20U8; x += 5U8; x }:25
+
+error:
+
+compound_assignment_errors_immutable:
+let x = 10U8; x += 5U8
+
+compound_assignment_errors_nonexistent:
+x += 5U8
+y -= 10U8
+
+compound_assignment_errors_type_mismatch:
+let x : U8 = 10U8; x += 500U16;
