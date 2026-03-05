@@ -1,0 +1,14 @@
+{
+  "name": "tuffc",
+  "private": true,
+  "scripts": {
+    "build": "bun build src/index.ts --outdir dist --format cjs,esm --minify",
+    "test": "bun test || 2"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}
