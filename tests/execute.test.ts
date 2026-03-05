@@ -7,17 +7,85 @@ import { type Result, isOk, isErr } from "../src/types";
  * string and running it. The result of the function is coerced to a number.
  * Returns a Result to avoid throwing exceptions.
  */
-export function executeTuff(input: string): Result<number, string> {
+/**
+ * Parse whitespace-separated tokens from stdin
+ */
+function parseStdinTokens(stdin: string): string[] {
+  const stdinTrimmed = stdin.trim();
+  const tokens: string[] = [];
+  let currentToken = "";
+
+  for (let i = 0; i < stdinTrimmed.length; i++) {
+    const char = stdinTrimmed[i];
+    const isWhitespace =
+      char === " " || char === "\t" || char === "\n" || char === "\r";
+
+    if (isWhitespace) {
+      if (currentToken.length > 0) {
+        tokens.push(currentToken);
+        currentToken = "";
+      }
+    } else {
+      currentToken += char;
+    }
+  }
+
+  if (currentToken.length > 0) {
+    tokens.push(currentToken);
+  }
+
+  return tokens;
+}
+
+/**
+ * Create a readValue function for stdin token consumption
+ */
+function createReadValueFunction(tokens: string[]): () => number {
+  let tokenIndex = 0;
+
+  return (): number => {
+    if (tokenIndex >= tokens.length) {
+      return 0;
+    }
+    const token = tokens[tokenIndex];
+    tokenIndex++;
+    return Number(token);
+  };
+}
+
+/**
+ * Compile Tuff code to executable JavaScript
+ */
+function compileCode(input: string): Result<string, string> {
   const compileResult = compileTuffToJS(input);
+  if (isErr(compileResult)) {
+    return compileResult;
+  }
+  return { ok: true, value: compileResult.value };
+}
+
+/**
+ * Execute compiled code with optional stdin context
+ */
+function executeCompiledCode(
+  compiled: string,
+  readValue?: () => number,
+): Result<number, string> {
+  const fn = readValue
+    ? new Function("readValue", compiled)
+    : new Function(compiled);
+  const result = readValue ? fn(readValue) : fn();
+  return { ok: true, value: Number(result) };
+}
+
+export function executeTuff(input: string): Result<number, string> {
+  const compileResult = compileCode(input);
 
   if (isErr(compileResult)) {
     return compileResult;
   }
 
-  const compiled = compileResult.value;
-  const fn = new Function(compiled);
-  const result = fn();
-  return { ok: true, value: Number(result) };
+  return executeCompiledCode(compileResult.value);
 }
 
 /**
@@ -35,6 +103,26 @@ function expectValue(result: Result<number, string>, expected: number): void {
  */
 function expectError(result: Result<number, string>): void {
   expect(isErr(result)).toBe(true);
+}
+
+/**
+ * Execute Tuff code with stdin input
+ */
+export function executeTuffWithInput(
+  input: string,
+  stdin: string,
+): Result<number, string> {
+  const compileResult = compileCode(input);
+
+  if (isErr(compileResult)) {
+    return compileResult;
+  }
+
+  const compiled = compileResult.value;
+  const tokens = parseStdinTokens(stdin);
+  const readValue = createReadValueFunction(tokens);
+
+  return executeCompiledCode(compiled, readValue);
 }
 
 test("execute with empty string returns 0", () => {
@@ -140,4 +228,28 @@ test("addition without whitespace", () => {
 
 test("multiple additions", () => {
   expectValue(executeTuff("1I32 + 2I32 + 3I32"), 6);
+});
+
+// stdin-based reads
+test("read single value from stdin", () => {
+  const result = executeTuffWithInput("read<U8>()", "100");
+  expectValue(result, 100);
+});
+
+test("read multiple values from stdin", () => {
+  const result = executeTuffWithInput("read<U8>() + read<U8>()", "3 4");
+  expectValue(result, 7);
+});
+
+test("read with expression", () => {
+  const result = executeTuffWithInput("read<I32>() * 2I32", "5");
+  expectValue(result, 10);
+});
+
+test("read multiple values in complex expression", () => {
+  const result = executeTuffWithInput(
+    "read<U8>() + read<U8>() * read<U8>()",
+    "2 3 4",
+  );
+  expectValue(result, 14);
 });

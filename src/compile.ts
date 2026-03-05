@@ -17,13 +17,17 @@ const VALID_TYPES = new Set([
 type Token =
   | { type: "NUMBER"; value: string }
   | { type: "OPERATOR"; value: "+" | "-" | "*" | "/" }
+  | { type: "IDENTIFIER"; value: string }
   | { type: "LPAREN" }
   | { type: "RPAREN" }
+  | { type: "LT" }
+  | { type: "GT" }
   | { type: "EOF" };
 
 // AST node types
 type ASTNode =
   | { kind: "number"; value: string }
+  | { kind: "read"; type: string }
   | {
       kind: "binary";
       left: ASTNode;
@@ -51,6 +55,13 @@ function isLetter(char: string | undefined): boolean {
     (char !== undefined && char >= "a" && char <= "z") ||
     (char !== undefined && char >= "A" && char <= "Z")
   );
+}
+
+function validateType(typeStr: string): Result<undefined, string> {
+  if (!VALID_TYPES.has(typeStr)) {
+    return err(`Invalid type annotation: ${typeStr}`);
+  }
+  return ok(undefined);
 }
 
 function tokenize(input: string): Result<Token[], string> {
@@ -96,6 +107,23 @@ function tokenize(input: string): Result<Token[], string> {
     } else if (char === ")") {
       tokens.push({ type: "RPAREN" });
       pos++;
+    } else if (char === "<") {
+      tokens.push({ type: "LT" });
+      pos++;
+    } else if (char === ">") {
+      tokens.push({ type: "GT" });
+      pos++;
+    } else if (isLetter(char)) {
+      // Parse identifier (e.g., 'read' or type like 'U8')
+      let ident = "";
+      while (
+        pos < input.length &&
+        (isLetter(input[pos]) || isDigit(input[pos]))
+      ) {
+        ident += input[pos];
+        pos++;
+      }
+      tokens.push({ type: "IDENTIFIER", value: ident });
     } else if (isDigit(char) || (char === "-" && isDigit(input[pos + 1]))) {
       // Parse number with optional type and optional leading sign
       let numStr = "";
@@ -137,8 +165,9 @@ function tokenize(input: string): Result<Token[], string> {
           pos++;
         }
 
-        if (!VALID_TYPES.has(typeStr)) {
-          return err(`Invalid type annotation: ${typeStr}`);
+        const validateResult = validateType(typeStr);
+        if (!validateResult.ok) {
+          return validateResult;
         }
 
         numStr += typeStr;
@@ -229,6 +258,46 @@ function parsePrimary(parser: Parser): Result<ASTNode, string> {
   if (tok.type === "NUMBER") {
     advance(parser);
     return ok({ kind: "number", value: tok.value });
+  }
+
+  if (tok.type === "IDENTIFIER" && tok.value === "read") {
+    advance(parser);
+    const lt = current(parser);
+    if (lt.type !== "LT") {
+      return err("Expected '<' after read");
+    }
+    advance(parser);
+
+    const typeTok = current(parser);
+    if (typeTok.type !== "IDENTIFIER") {
+      return err("Expected type after 'read<'");
+    }
+    const typeStr = typeTok.value;
+    const validateResult = validateType(typeStr);
+    if (!validateResult.ok) {
+      return validateResult;
+    }
+    advance(parser);
+
+    const gt = current(parser);
+    if (gt.type !== "GT") {
+      return err("Expected '>' after type");
+    }
+    advance(parser);
+
+    const lparen = current(parser);
+    if (lparen.type !== "LPAREN") {
+      return err("Expected '(' after read<TYPE>");
+    }
+    advance(parser);
+
+    const rparen = current(parser);
+    if (rparen.type !== "RPAREN") {
+      return err("Expected ')' after read<TYPE>(");
+    }
+    advance(parser);
+
+    return ok({ kind: "read", type: typeStr });
   }
 
   if (tok.type === "LPAREN") {
@@ -328,6 +397,10 @@ function codegenAST(node: ASTNode): string {
     return extractNumberValue(node.value);
   }
 
+  if (node.kind === "read") {
+    return "readValue()";
+  }
+
   if (node.kind === "binary") {
     const left = codegenAST(node.left);
     const right = codegenAST(node.right);
@@ -340,6 +413,10 @@ function codegenAST(node: ASTNode): string {
 function validateAST(node: ASTNode): Result<undefined, string> {
   if (node.kind === "number") {
     return validateNegativeType(node.value);
+  }
+
+  if (node.kind === "read") {
+    return ok(undefined);
   }
 
   if (node.kind === "binary") {
@@ -396,3 +473,5 @@ export function compile(input: string): Result<string, string> {
 
   return ok(`return ${code};`);
 }
+
+export const compileTuffToJS = compile;

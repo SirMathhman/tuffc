@@ -8,6 +8,10 @@
 			{
 				"type": "command",
 				"command": "bun run find-duplicates"
+			},
+			{
+				"type": "command",
+				"command": "bun run lint"
 			}
 		]
 	}

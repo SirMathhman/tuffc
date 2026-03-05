@@ -3,7 +3,8 @@
   "private": true,
   "scripts": {
     "build": "bun build src/index.ts --outdir dist --format cjs,esm --minify",
-    "find-duplicates": "pmd cpd --dir src,tests --language typescript --minimum-tokens 35 || exit 2",
+    "find-duplicates": "pmd cpd --dir src,tests --language typescript --minimum-tokens 35 --ignore-literals --ignore-identifiers || exit 2",
+    "lint": "eslint . --ext ts || exit 2",
     "test": "bun test || exit 2"
   },
   "devDependencies": {
