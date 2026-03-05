@@ -47,7 +47,7 @@ interface IdentifierToken {
 
 interface KeywordToken {
   type: "KEYWORD";
-  value: "let" | "mut";
+  value: "let" | "mut" | "if" | "else";
 }
 
 interface LParenToken {
@@ -78,6 +78,14 @@ interface AssignToken {
   type: "ASSIGN";
 }
 
+interface LBraceToken {
+  type: "LBRACE";
+}
+
+interface RBraceToken {
+  type: "RBRACE";
+}
+
 interface EOFToken {
   type: "EOF";
 }
@@ -92,6 +100,8 @@ type Token =
   | LogicalToken
   | LParenToken
   | RParenToken
+  | LBraceToken
+  | RBraceToken
   | LTToken
   | GTToken
   | ColonToken
@@ -167,6 +177,13 @@ interface BlockNode {
   result: ASTNode;
 }
 
+interface IfNode {
+  kind: "if";
+  condition: ASTNode;
+  thenBranch: ASTNode;
+  elseBranch: ASTNode | undefined;
+}
+
 type ASTNode =
   | NumberNode
   | ReadNode
@@ -178,7 +195,8 @@ type ASTNode =
   | BooleanNode
   | LetNode
   | AssignNode
-  | BlockNode;
+  | BlockNode
+  | IfNode;
 
 // Variable info interface
 interface VariableInfo {
@@ -301,6 +319,12 @@ function tokenize(input: string): Result<Token[], string> {
     } else if (char === ")") {
       tokens.push({ type: "RPAREN" });
       pos++;
+    } else if (char === "{") {
+      tokens.push({ type: "LBRACE" });
+      pos++;
+    } else if (char === "}") {
+      tokens.push({ type: "RBRACE" });
+      pos++;
     } else if (char === "<") {
       // Check for <=
       if (pos + 1 < input.length && input[pos + 1] === "=") {
@@ -371,7 +395,12 @@ function tokenize(input: string): Result<Token[], string> {
       }
 
       // Check if it's a keyword or boolean
-      if (ident === "let" || ident === "mut") {
+      if (
+        ident === "let" ||
+        ident === "mut" ||
+        ident === "if" ||
+        ident === "else"
+      ) {
         tokens.push({ type: "KEYWORD", value: ident });
       } else if (ident === "true") {
         tokens.push({ type: "BOOL", value: "true" });
@@ -457,66 +486,262 @@ function advance(parser: Parser): void {
   parser.pos++;
 }
 
+function tryParseAssignment(
+  parser: Parser,
+): Result<ASTNode | undefined, string> {
+  const tok = current(parser);
+
+  if (tok.type !== "IDENTIFIER") {
+    return ok(undefined);
+  }
+
+  const savedPos = parser.pos;
+  const name = tok.value;
+  advance(parser);
+
+  const nextTok = current(parser);
+  if (nextTok.type !== "ASSIGN") {
+    // Not an assignment, restore position
+    parser.pos = savedPos;
+    return ok(undefined);
+  }
+
+  // It's an assignment
+  advance(parser);
+
+  const varResult = getVariable(parser, name);
+  if (!varResult.ok) {
+    return varResult;
+  }
+  if (!varResult.value.mutable) {
+    return err(`Variable '${name}' is immutable and cannot be reassigned`);
+  }
+
+  const valueResult = parseExpression(parser);
+  if (!valueResult.ok) {
+    return valueResult;
+  }
+
+  return ok({
+    kind: "assign",
+    name,
+    value: valueResult.value,
+  });
+}
+
+function consumeOptionalSemicolon(parser: Parser): void {
+  if (current(parser).type === "SEMICOLON") {
+    advance(parser);
+  }
+}
+
+function parseStatementBlock(
+  parser: Parser,
+  statements: ASTNode[],
+  stopOnRbrace: boolean = true,
+): Result<void, string> {
+  while (true) {
+    const tok = current(parser);
+    if (tok.type === "EOF" || (stopOnRbrace && tok.type === "RBRACE")) {
+      break;
+    }
+
+    const stmtResult = parseStatementInBlock(parser, statements);
+    if (!stmtResult.ok) {
+      return stmtResult;
+    }
+
+    if (!stmtResult.value) {
+      // Not a statement, break to parse expression
+      break;
+    }
+  }
+  return ok(undefined);
+}
+
+function parseStatementInBlock(
+  parser: Parser,
+  statements: ASTNode[],
+): Result<boolean, string> {
+  const stmtTok = current(parser);
+
+  if (stmtTok.type === "KEYWORD" && stmtTok.value === "let") {
+    const stmt = parseLetStatement(parser);
+    if (!stmt.ok) {
+      return stmt;
+    }
+    statements.push(stmt.value);
+    return ok(true);
+  } else if (stmtTok.type === "KEYWORD" && stmtTok.value === "if") {
+    // Nested if statement
+    const ifStmt = parseIfStatement(parser);
+    if (!ifStmt.ok) {
+      return ifStmt;
+    }
+    statements.push(ifStmt.value);
+    consumeOptionalSemicolon(parser);
+    return ok(true);
+  } else if (stmtTok.type === "IDENTIFIER") {
+    // Could be assignment - use helper
+    const assignResult = tryParseAssignment(parser);
+    if (!assignResult.ok) {
+      return assignResult;
+    }
+
+    if (assignResult.value !== undefined) {
+      statements.push(assignResult.value);
+      consumeOptionalSemicolon(parser);
+      return ok(true);
+    } else {
+      // Not an assignment
+      return ok(false);
+    }
+  } else {
+    return ok(false);
+  }
+}
+
+function parseIfStatement(parser: Parser): Result<ASTNode, string> {
+  // Expect 'if'
+  const ifTok = current(parser);
+  if (ifTok.type !== "KEYWORD" || ifTok.value !== "if") {
+    return err("Expected 'if'");
+  }
+  advance(parser);
+
+  // Expect '('
+  const lparen = current(parser);
+  if (lparen.type !== "LPAREN") {
+    return err("Expected '(' after 'if'");
+  }
+  advance(parser);
+
+  // Parse condition
+  const conditionResult = parseExpression(parser);
+  if (!conditionResult.ok) {
+    return conditionResult;
+  }
+
+  // Expect ')'
+  const rparen = current(parser);
+  if (rparen.type !== "RPAREN") {
+    return err("Expected ')'");
+  }
+  advance(parser);
+
+  // Parse then branch (single statement or block)
+  const thenResult = parseIfBody(parser);
+  if (!thenResult.ok) {
+    return thenResult;
+  }
+
+  // Check for else
+  const elseTok = current(parser);
+  let elseBranch: ASTNode | undefined = undefined;
+
+  if (elseTok.type === "KEYWORD" && elseTok.value === "else") {
+    advance(parser);
+
+    // else can be followed by another if (else if) or a body
+    const nextTok = current(parser);
+    if (nextTok.type === "KEYWORD" && nextTok.value === "if") {
+      // else if - recursively parse another if
+      const elseIfResult = parseIfStatement(parser);
+      if (!elseIfResult.ok) {
+        return elseIfResult;
+      }
+      elseBranch = elseIfResult.value;
+    } else {
+      // else body
+      const elseBodyResult = parseIfBody(parser);
+      if (!elseBodyResult.ok) {
+        return elseBodyResult;
+      }
+      elseBranch = elseBodyResult.value;
+    }
+  }
+
+  return ok({
+    kind: "if",
+    condition: conditionResult.value,
+    thenBranch: thenResult.value,
+    elseBranch,
+  });
+}
+
+function parseIfBody(parser: Parser): Result<ASTNode, string> {
+  const tok = current(parser);
+
+  // Block body
+  if (tok.type === "LBRACE") {
+    advance(parser);
+
+    const statements: ASTNode[] = [];
+    const blockResult = parseStatementBlock(parser, statements);
+    if (!blockResult.ok) {
+      return blockResult;
+    }
+
+    // Expect '}'
+    if (current(parser).type !== "RBRACE") {
+      return err("Expected '}'");
+    }
+    advance(parser);
+
+    // If block has statements, the last expression is the result
+    // Otherwise it's just a no-op
+    if (statements.length === 0) {
+      return ok({ kind: "number", value: "0" });
+    }
+
+    // Parse the final expression in the block (if any)
+    const resultTok = current(parser);
+    if (
+      resultTok.type !== "RBRACE" &&
+      resultTok.type !== "SEMICOLON" &&
+      resultTok.type !== "KEYWORD" &&
+      resultTok.type !== "IDENTIFIER" &&
+      resultTok.type !== "EOF"
+    ) {
+      const exprResult = parseExpression(parser);
+      if (!exprResult.ok) {
+        return exprResult;
+      }
+      return ok({ kind: "block", statements, result: exprResult.value });
+    }
+
+    return ok({
+      kind: "block",
+      statements,
+      result: { kind: "number", value: "0" },
+    });
+  } else {
+    // Single statement body - could be assignment or expression
+    const assignResult = tryParseAssignment(parser);
+    if (!assignResult.ok) {
+      return assignResult;
+    }
+
+    if (assignResult.value !== undefined) {
+      return ok(assignResult.value);
+    }
+
+    // Parse as expression
+    const exprResult = parseExpression(parser);
+    if (!exprResult.ok) {
+      return exprResult;
+    }
+    return exprResult;
+  }
+}
+
 function parseProgram(parser: Parser): Result<ASTNode, string> {
   const statements: ASTNode[] = [];
 
-  // Parse all let and assignment statements
-  while (true) {
-    const tok = current(parser);
-
-    if (tok.type === "KEYWORD" && tok.value === "let") {
-      const stmt = parseLetStatement(parser);
-      if (!stmt.ok) {
-        return stmt;
-      }
-      statements.push(stmt.value);
-    } else if (tok.type === "IDENTIFIER") {
-      // Could be assignment or expression
-      const savedPos = parser.pos;
-      const name = tok.value;
-      advance(parser);
-
-      const nextTok = current(parser);
-      if (nextTok.type === "ASSIGN") {
-        // It's an assignment
-        advance(parser);
-
-        // Check if variable is mutable
-        const varResult = getVariable(parser, name);
-        if (!varResult.ok) {
-          return varResult;
-        }
-        if (!varResult.value.mutable) {
-          return err(
-            `Variable '${name}' is immutable and cannot be reassigned`,
-          );
-        }
-
-        const valueResult = parseExpression(parser);
-        if (!valueResult.ok) {
-          return valueResult;
-        }
-
-        // Expect ';'
-        const semiTok = current(parser);
-        if (semiTok.type !== "SEMICOLON") {
-          return err("Expected ';' after assignment");
-        }
-        advance(parser);
-
-        statements.push({
-          kind: "assign",
-          name,
-          value: valueResult.value,
-        });
-      } else {
-        // Restore position and parse as expression
-        parser.pos = savedPos;
-        break;
-      }
-    } else {
-      break;
-    }
+  // Parse all let and assignment statements and if statements
+  const blockResult = parseStatementBlock(parser, statements, false);
+  if (!blockResult.ok) {
+    return blockResult;
   }
 
   // Parse final expression
@@ -621,6 +846,13 @@ function parseLetStatement(parser: Parser): Result<ASTNode, string> {
 }
 
 function parseExpression(parser: Parser): Result<ASTNode, string> {
+  const tok = current(parser);
+
+  // Check for if expression
+  if (tok.type === "KEYWORD" && tok.value === "if") {
+    return parseIfStatement(parser);
+  }
+
   return parseLogicalOr(parser);
 }
 
@@ -951,6 +1183,15 @@ function validateNegativeType(literal: string): Result<undefined, string> {
   return ok(undefined);
 }
 
+function generateStatementCode(statements: ASTNode[]): string {
+  return statements
+    .map((stmt) => {
+      const code = codegenAST(stmt);
+      return code.endsWith(";") ? code : code + ";";
+    })
+    .join(" ");
+}
+
 function codegenAST(node: ASTNode): string {
   if (node.kind === "number") {
     // Extract numeric part, stripping type annotation
@@ -996,14 +1237,55 @@ function codegenAST(node: ASTNode): string {
   }
 
   if (node.kind === "block") {
-    const statements = node.statements
-      .map((stmt) => {
-        const code = codegenAST(stmt);
-        return code.endsWith(";") ? code : code + ";";
-      })
-      .join(" ");
+    const statements = generateStatementCode(node.statements);
     const result = codegenAST(node.result);
     return `${statements} return ${result}`;
+  }
+
+  if (node.kind === "if") {
+    const condition = codegenAST(node.condition);
+
+    let thenCode = "";
+    if (node.thenBranch.kind === "block") {
+      thenCode = generateStatementCode(node.thenBranch.statements);
+    } else {
+      thenCode = codegenAST(node.thenBranch);
+    }
+
+    if (node.elseBranch === undefined) {
+      // if without else - used as statement
+      return `if (${condition}) { ${thenCode} }`;
+    }
+
+    // if with else - generate else branch code
+    let elseCode = "";
+    if (node.elseBranch.kind === "block") {
+      // For block bodies, get just the statements
+      elseCode = generateStatementCode(node.elseBranch.statements);
+    } else if (node.elseBranch.kind === "if") {
+      // else if - the recursive call will generate the correct syntax
+      // For nested if nodes, we need to generate them as expressions if blocks are involved
+      const innerIfCode = codegenAST(node.elseBranch);
+
+      if (node.thenBranch.kind === "block") {
+        // Then has statements, use if/else syntax
+        return `if (${condition}) { ${thenCode} } else ${innerIfCode}`;
+      } else {
+        // Both are non-block expressions, so treat as full ternary
+        return `(${condition} ? ${thenCode} : ${innerIfCode})`;
+      }
+    } else {
+      elseCode = codegenAST(node.elseBranch);
+    }
+
+    // Check if both branches are simple expressions without statements or blocks
+    if (node.thenBranch.kind !== "block" && node.elseBranch.kind !== "block") {
+      // Both are simple expressions - use ternary
+      return `(${condition} ? ${thenCode} : ${elseCode})`;
+    } else {
+      // At least one has statements - use if/else syntax
+      return `if (${condition}) { ${thenCode} } else { ${elseCode} }`;
+    }
   }
 
   return "0";
@@ -1055,6 +1337,30 @@ function validateAST(node: ASTNode): Result<undefined, string> {
       }
     }
     return validateAST(node.result);
+  }
+
+  if (node.kind === "if") {
+    // Validate condition
+    const condValidation = validateAST(node.condition);
+    if (!condValidation.ok) {
+      return condValidation;
+    }
+
+    // Validate then branch
+    const thenValidation = validateAST(node.thenBranch);
+    if (!thenValidation.ok) {
+      return thenValidation;
+    }
+
+    // Validate else branch if present
+    if (node.elseBranch !== undefined) {
+      const elseValidation = validateAST(node.elseBranch);
+      if (!elseValidation.ok) {
+        return elseValidation;
+      }
+    }
+
+    return ok(undefined);
   }
 
   return ok(undefined);

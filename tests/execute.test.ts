@@ -430,3 +430,176 @@ test("logical OR with comparisons", () => {
 test("NOT with boolean literal", () => {
   expectValue(executeTuff("let x : Bool = !false; x"), 1);
 });
+
+// If statement tests - basic control flow
+test("if true with block executes", () => {
+  expectValue(executeTuff("let mut x : I32 = 0; if (true) { x = 5 }; x"), 5);
+});
+
+test("if false with block does nothing", () => {
+  expectValue(executeTuff("let mut x : I32 = 10; if (false) { x = 5 }; x"), 10);
+});
+
+test("if true without braces executes single statement", () => {
+  expectValue(executeTuff("let mut x : I32 = 0; if (true) x = 7; x"), 7);
+});
+
+test("if false without braces does nothing", () => {
+  expectValue(executeTuff("let mut x : I32 = 10; if (false) x = 3; x"), 10);
+});
+
+// If/else statements
+test("if true skips else block", () => {
+  expectValue(
+    executeTuff("let mut x : I32 = 0; if (true) { x = 5 } else { x = 2 }; x"),
+    5,
+  );
+});
+
+test("if false executes else block", () => {
+  expectValue(
+    executeTuff("let mut x : I32 = 0; if (false) { x = 5 } else { x = 2 }; x"),
+    2,
+  );
+});
+
+test("if/else without braces", () => {
+  expectValue(
+    executeTuff("let mut x : I32 = 0; if (true) x = 4 else x = 8; x"),
+    4,
+  );
+});
+
+// If as expression (returns value)
+test("if expression: true branch returns value", () => {
+  expectValue(executeTuff("let x : I32 = if (true) 42 else 10; x"), 42);
+});
+
+test("if expression: false branch returns value", () => {
+  expectValue(executeTuff("let x : I32 = if (false) 42 else 10; x"), 10);
+});
+
+test("if expression in arithmetic", () => {
+  expectValue(executeTuff("let x : I32 = if (true) 5 else 3; x + 2"), 7);
+});
+
+test("if expression with arithmetic in branches", () => {
+  expectValue(executeTuff("let x : I32 = if (true) 2 + 3 else 4 + 1; x"), 5);
+});
+
+test("nested if: outer true, inner true", () => {
+  expectValue(
+    executeTuff("let mut x : I32 = 0; if (true) { if (true) { x = 99 } }; x"),
+    99,
+  );
+});
+
+test("nested if: outer true, inner false", () => {
+  expectValue(
+    executeTuff("let mut x : I32 = 0; if (true) { if (false) { x = 99 } }; x"),
+    0,
+  );
+});
+
+test("nested if: outer false", () => {
+  expectValue(
+    executeTuff("let mut x : I32 = 0; if (false) { if (true) { x = 99 } }; x"),
+    0,
+  );
+});
+
+// If/else if chains
+test("if/else if: first condition true", () => {
+  expectValue(
+    executeTuff(
+      "let mut x : I32 = 0; if (true) { x = 1 } else if (true) { x = 2 }; x",
+    ),
+    1,
+  );
+});
+
+test("if/else if: first false, second true", () => {
+  expectValue(
+    executeTuff(
+      "let mut x : I32 = 0; if (false) { x = 1 } else if (true) { x = 2 }; x",
+    ),
+    2,
+  );
+});
+
+test("if/else if/else: all false, else executes", () => {
+  expectValue(
+    executeTuff(
+      "let mut x : I32 = 0; if (false) { x = 1 } else if (false) { x = 2 } else { x = 3 }; x",
+    ),
+    3,
+  );
+});
+
+test("if/else if returns values", () => {
+  expectValue(
+    executeTuff("let x : I32 = if (false) 1 else if (true) 2 else 3; x"),
+    2,
+  );
+});
+
+// Conditions with boolean expressions
+test("if with comparison condition: true", () => {
+  expectValue(
+    executeTuff("let mut x : I32 = 0; if (5 > 3) { x = 100 }; x"),
+    100,
+  );
+});
+
+test("if with comparison condition: false", () => {
+  expectValue(executeTuff("let mut x : I32 = 0; if (2 > 5) { x = 100 }; x"), 0);
+});
+
+test("if with logical AND condition", () => {
+  expectValue(
+    executeTuff("let mut x : I32 = 0; if (true && true) { x = 50 }; x"),
+    50,
+  );
+});
+
+test("if with logical OR condition", () => {
+  expectValue(
+    executeTuff("let mut x : I32 = 0; if (false || true) { x = 50 }; x"),
+    50,
+  );
+});
+
+test("if with variable condition", () => {
+  expectValue(
+    executeTuff(
+      "let cond : Bool = true; let mut x : I32 = 0; if (cond) { x = 7 }; x",
+    ),
+    7,
+  );
+});
+
+// Scope tests - variables in if block with braces don't leak
+test("variable declared in if block with braces does not leak", () => {
+  expectError(executeTuff("if (true) { let y : I32 = 1 }; y"));
+});
+
+test("variable modified in if block without braces persists", () => {
+  expectValue(executeTuff("let mut x : I32 = 5; if (true) x = 10; x"), 10);
+});
+
+// Error cases
+test("missing condition in if is error", () => {
+  expectError(executeTuff("if { x = 1 }"));
+});
+
+test("if without matching parenthesis is error", () => {
+  expectError(executeTuff("if (true x = 1"));
+});
+
+test("non-boolean condition is error", () => {
+  expectError(executeTuff("if (5) { x = 1 }"));
+});
+
+test("if expression without else returns void type error", () => {
+  expectError(executeTuff("let x : I32 = if (true) 5;"));
+});
