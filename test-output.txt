@@ -1,0 +1,273 @@
+bun test v1.2.21 (7c45ed97)
+
+tests\execute.test.ts:
+(pass) execute with empty string returns 0
+(pass) execute 100U8 returns 100 [15.00ms]
+(pass) positive integer with U16
+(pass) positive integer with I32
+(pass) positive integer with U64
+(pass) negative integer with I8
+(pass) negative integer with I32
+(pass) float with F32 type
+(pass) float with F64 type
+(pass) float without type defaults to F32
+(pass) negative float with F64
+(pass) invalid type annotation returns error
+(pass) negative unsigned type returns error
+(pass) non-numeric input returns error
+(pass) input with whitespace returns error
+(pass) leading whitespace returns error
+(pass) simple addition
+(pass) simple subtraction
+(pass) simple multiplication
+(pass) simple division
+(pass) operator precedence: multiplication before addition
+(pass) parentheses override precedence
+(pass) type widening: U8 + U16
+(pass) addition without whitespace
+(pass) multiple additions
+(pass) read single value from stdin
+(pass) read multiple values from stdin
+(pass) read with expression
+(pass) read multiple values in complex expression
+(pass) simple variable declaration and use
+(pass) variable in arithmetic expression
+(pass) multiple variable declarations
+(pass) variable with mutable binding and reassignment
+(pass) variable with multiple reassignments
+(pass) variable initialized from read
+(pass) multiple variables with reads
+(pass) variable in complex expression
+(pass) mutable variable reassigned from read
+(pass) immutable variable reassignment error
+(pass) undefined variable error
+(pass) duplicate variable declaration error
+(pass) variable without initializer error
+(pass) type mismatch in variable initializer
+(pass) boolean literal true returns 1
+(pass) boolean literal false returns 0
+(pass) boolean variable declaration
+(pass) boolean variable false
+(pass) less than: true case
+(pass) less than: false case
+(pass) greater than: true case
+(pass) greater than: false case
+(pass) less than or equal: true case
+(pass) less than or equal: false case
+(pass) greater than or equal: true case
+(pass) greater than or equal: false case
+(pass) equal: true case
+(pass) equal: false case
+(pass) not equal: true case
+(pass) not equal: false case
+(pass) logical AND: true && true
+(pass) logical AND: true && false
+(pass) logical AND: false && true
+(pass) logical OR: true || false
+(pass) logical OR: false || false
+(pass) logical NOT: !true
+(pass) logical NOT: !false
+(pass) comparison in variable
+(pass) logical AND with comparisons
+(pass) logical OR with comparisons
+(pass) NOT with boolean literal
+(pass) if true with block executes
+(pass) if false with block does nothing
+(pass) if true without braces executes single statement
+(pass) if false without braces does nothing
+(pass) if true skips else block
+(pass) if false executes else block
+(pass) if/else without braces
+(pass) if expression: true branch returns value
+(pass) if expression: false branch returns value
+(pass) if expression in arithmetic
+(pass) if expression with arithmetic in branches
+(pass) nested if: outer true, inner true
+(pass) nested if: outer true, inner false
+(pass) nested if: outer false
+(pass) if/else if: first condition true
+(pass) if/else if: first false, second true
+(pass) if/else if/else: all false, else executes
+(pass) if/else if returns values
+(pass) if with comparison condition: true
+(pass) if with comparison condition: false
+(pass) if with logical AND condition
+(pass) if with logical OR condition
+(pass) if with variable condition
+(pass) variable declared in if block with braces does not leak
+(pass) variable modified in if block without braces persists
+(pass) missing condition in if is error
+(pass) if without matching parenthesis is error
+(pass) non-boolean condition is error
+(pass) if expression without else returns void type error
+(pass) compound assignment: += adds to mutable variable
+(pass) compound assignment: += with expression
+(pass) compound assignment: -= subtracts from mutable variable
+(pass) compound assignment: -= with expression
+(pass) compound assignment: *= multiplies mutable variable
+(pass) compound assignment: *= with expression
+(pass) compound assignment: /= divides mutable variable
+(pass) compound assignment: /= with expression
+(pass) compound assignment: %= modulo on mutable variable
+(pass) compound assignment: %= with expression [16.00ms]
+(pass) compound assignment: += with U8 type
+(pass) compound assignment: += with F32 type
+(pass) compound assignment: multiple compound assignments
+(pass) compound assignment: multiple variables with compound ops
+(pass) compound assignment: += with negative result
+(pass) compound assignment: -= produces negative
+(pass) compound assignment: immutable variable error
+(pass) compound assignment: undefined variable error
+(pass) compound assignment: /= produces Infinity
+(pass) compound assignment: %= produces NaN
+(pass) while loop: simple counter loop
+(pass) while loop: zero iterations
+(pass) while loop: accumulator pattern
+(pass) while loop: without braces (single statement)
+(pass) while loop: with break statement
+(pass) while loop: with continue statement
+(pass) while loop: multiple breaks at different conditions
+(pass) while loop: break in nested if
+(pass) while loop: continue in nested if
+(pass) while loop: with compound assignment in condition
+(pass) while loop: with variable condition
+(pass) while loop: with comparison in condition
+(pass) while loop: with logical AND condition
+(pass) while loop: with logical OR condition
+(pass) while loop: with NOT condition
+(pass) while loop: nested while loops
+(pass) while loop: nested with break in inner
+(pass) while loop: non-boolean condition is error
+(pass) while loop: undefined variable in condition is error
+(pass) while loop: break outside loop is error
+(pass) while loop: continue outside loop is error
+(pass) while loop: break without condition is valid
+(pass) while loop: continue after statement executes next iteration
+(pass) match: simple number match returns correct case
+(pass) match: wildcard case used when no case matches
+(pass) match: multiple numeric cases
+(pass) match: boolean pattern true
+(pass) match: boolean pattern false
+(pass) match: match with variable in pattern result
+(pass) match: nested match expressions
+(pass) match: match in if condition
+(pass) match: match in arithmetic expression
+(pass) match: match with negative numbers
+(pass) match: match case precedence - first match wins
+(pass) match: complex result expression
+(pass) match: missing wildcard with multiple numbers is error
+(pass) match: non-matching pattern type is error
+(pass) match: boolean missing one branch without wildcard is error
+(pass) match: match with variable expression in matched value
+(pass) match: match expression result in block
+(pass) match: zero as matched value
+(pass) match: large number range
+(pass) function: block with explicit return statement
+(pass) function: block without explicit return (implicit return)
+(pass) function: arrow expression (no braces)
+(pass) function: arrow expression with semicolon
+(pass) function: multiple parameters
+(pass) function: single parameter
+(pass) function: parameter types U8
+(pass) function: parameter types F32
+(pass) function: return type Void
+(pass) function: using let statements in function body
+(pass) function: block with multiple statements then expression
+(pass) function: function with arithmetic in body
+(pass) function: using comparison in body
+(pass) function: calling with complex expressions as arguments
+(pass) function: multiple function declarations
+(pass) function: function call with variables
+(pass) function: chained function calls
+(pass) function: function with negative numbers
+(pass) function: block with assignment statement
+(pass) function: missing function name is error
+(pass) function: missing parameter list is error
+(pass) function: missing colon in parameter is error
+(pass) function: missing type annotation on parameter is error
+(pass) function: missing arrow (=>) is error
+(pass) function: missing return type is error
+(pass) function: invalid return type is error
+(pass) function: missing closing parenthesis in parameter list is error
+(pass) function: missing closing brace in block is error
+(pass) function: empty parameter list is valid
+(pass) function: duplicate parameter names is error
+(pass) function: invalid parameter type is error
+(pass) function: missing semicolon after arrow expression is error
+(pass) function: function with void return but expression body is error
+(pass) function: reference to undefined variable in function is error
+(pass) function: mismatched return type (returns I32 but declares Void) is error
+(pass) function: parameter name used but not declared is error
+(pass) function: function called with wrong number of arguments is error
+(pass) function: function called with no parentheses is error
+(pass) function: using reserved keyword as function name is error
+(pass) function: using reserved keyword as parameter name is error
+(pass) function: multiple statements without final expression in block (implicit return) is error
+(pass) function: function body with only statements no expression is error
+(pass) recursive: factorial without input
+(pass) recursive: factorial with 0 returns 1
+(pass) recursive: fibonacci sequence
+(pass) recursive: countdown from input
+(pass) recursive: sum list by reading input values
+(pass) recursive: power function with input base
+(pass) recursive: accumulate with input and counter
+(pass) recursive: read first number then use in recursion
+(pass) recursive: mutual recursion with input (evens and odds)
+(pass) recursive: read two numbers and compute GCD
+(pass) struct: basic declaration and field access
+(pass) struct: access second field
+(pass) struct: multiple fields with arithmetic
+(pass) struct: field arithmetic in instantiation
+(pass) struct: fields in any order
+(pass) struct: three fields
+(pass) struct: mutable field with reassignment
+(pass) struct: multiple mutable fields
+(pass) struct: nested struct instantiation
+(pass) struct: nested struct with arithmetic
+(pass) struct: with variable initialization
+(pass) struct: return from function
+(pass) struct: pass to function
+(pass) struct: field in if expression
+(pass) struct: mixed mutable and immutable fields
+(pass) struct: field from read input
+(pass) struct: complex nested with mutable fields
+(pass) struct: missing required field is error
+(pass) struct: extra unknown field is error
+(pass) struct: duplicate field declaration is error
+(pass) struct: type mismatch in field initialization is error
+(pass) struct: accessing non-existent field is error
+(pass) struct: duplicate field names in instantiation is error
+(pass) struct: missing struct name is error
+(pass) struct: missing opening brace in instantiation is error
+(pass) struct: invalid type in field declaration is error
+(pass) struct: readonly field reassignment is error
+(pass) struct: undefined struct type is error
+(pass) struct: type mismatch in variable declaration is error
+(pass) struct: missing colon in field declaration is error
+(pass) struct: missing semicolon in field declaration is error
+(pass) struct: nested struct type mismatch is error
+(pass) refinement: basic literal refinement valid
+(pass) refinement: compile error when literal violates constraint
+(pass) refinement: compile error when assigning unrefined variable to refined type without proof
+(pass) refinement: type narrowing in if-block enables assignment
+(pass) refinement: type narrowing rejects in else-branch (proof lost)
+(pass) refinement: multiple constraints with AND
+(pass) refinement: multiple constraints AND - lower bound violation
+(pass) refinement: multiple constraints AND - upper bound violation [15.00ms]
+(pass) refinement: OR constraints
+(pass) refinement: OR constraints - alternative branch
+(pass) refinement: equality constraint
+(pass) refinement: equality constraint violation
+(pass) refinement: type narrowing with complex guard condition
+(pass) refinement: nested if narrowing
+(pass) refinement: variable constraint with constant-folding
+(pass) refinement: variable constraint proves at compile-time
+(pass) refinement: variable constraint with dynamic value fails
+(pass) refinement: narrowing with variable constraint
+(pass) refinement: arithmetic constraint
+(pass) refinement: arithmetic constraint fails when not satisfied
+
+ 265 pass
+ 0 fail
+ 198 expect() calls
+Ran 265 tests across 1 file. [140.00ms]

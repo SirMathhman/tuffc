@@ -1751,3 +1751,39 @@ test("refinement: nested if narrowing", () => {
   );
   expectValue(result, 50);
 });
+
+// Expression-based refinement constraints
+test("refinement: variable constraint with constant-folding", () => {
+  expectValue(executeTuff("let x : I32 = 50; let y : I32 > x = 100; y"), 100);
+});
+
+test("refinement: variable constraint proves at compile-time", () => {
+  expectValue(
+    executeTuff(
+      "let x : I32 = 10; let y : I32 > x = 20; let z : I32 > 15 = y; z",
+    ),
+    20,
+  );
+});
+
+test("refinement: variable constraint with dynamic value fails", () => {
+  expectError(
+    executeTuff("let x : I32 = read<I32>(); let y : I32 > x = 100; y"),
+  );
+});
+
+test("refinement: narrowing with variable constraint", () => {
+  const result = executeTuffWithInput(
+    "let x : I32 = read<I32>(); let threshold : I32 = 50; if (x > threshold) { let y : I32 > threshold = x; y } else { 0 }",
+    "100",
+  );
+  expectValue(result, 100);
+});
+
+test("refinement: arithmetic constraint", () => {
+  expectValue(executeTuff("let x : I32 = 10; let y : I32 > x + 5 = 20; y"), 20);
+});
+
+test("refinement: arithmetic constraint fails when not satisfied", () => {
+  expectError(executeTuff("let x : I32 = 10; let y : I32 > x + 5 = 12; y"));
+});

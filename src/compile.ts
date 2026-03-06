@@ -355,7 +355,8 @@ type ASTNode =
 // Refinement type interfaces
 interface RefinementConstraint {
   operator: "<" | ">" | "<=" | ">=" | "==" | "!=";
-  value: string; // The constraint value (as string literal)
+  value: string; // The constraint value (as string literal, for backward compat)
+  valueExpr?: ASTNode; // The constraint value as an expression (for variables/arithmetic)
   baseType?: string; // For multi-constraint like "I32 > 0 && I32 < 100", track base type
   isOr?: boolean; // True if this constraint is OR'd with the previous one
 }
@@ -370,7 +371,19 @@ interface VariableInfo {
   type: string;
   mutable: boolean;
   refinement?: RefinementType; // Optional refinement constraints
+  initValue?: string; // The literal value (for constants), if available
 }
+
+interface SuccessfulEvaluation {
+  success: true;
+  value: number;
+}
+
+interface FailedEvaluation {
+  success: false;
+}
+
+type EvaluationResult = SuccessfulEvaluation | FailedEvaluation;
 
 function isWhitespace(char: string | undefined): boolean {
   return (
@@ -461,23 +474,24 @@ function parseRefinementConstraint(
   const operator = opTok.value as "<" | ">" | "<=" | ">=" | "==" | "!=";
   advance(parser);
 
-  // Parse constraint value (number or identifier)
-  const valueTok = current(parser);
-  let value: string;
+  // Parse constraint value expression (can be variable, literal, arithmetic, function call, etc.)
+  const exprResult = parseAdditive(parser);
+  if (!exprResult.ok) {
+    return exprResult;
+  }
 
-  if (valueTok.type === "NUMBER") {
-    value = valueTok.value;
-    advance(parser);
-  } else if (valueTok.type === "IDENTIFIER") {
-    value = valueTok.value;
-    advance(parser);
-  } else {
-    return err("Expected number or identifier in constraint value");
+  // For backward compatibility, extract string representation if it's a simple literal
+  let value = "?"; // default placeholder
+  if (exprResult.value.kind === "number") {
+    value = exprResult.value.value;
+  } else if (exprResult.value.kind === "variable") {
+    value = exprResult.value.name;
   }
 
   return ok({
     operator,
     value,
+    valueExpr: exprResult.value, // Store the full expression
     baseType,
   });
 }
@@ -528,9 +542,7 @@ function parseRefinementType(
     if (nextBaseType !== baseType) {
       const opType = isOrOp ? "OR" : "AND";
       return err(
-        "All constraints in " +
-          opType +
-          " must reference the same base type",
+        "All constraints in " + opType + " must reference the same base type",
       );
     }
     advance(parser); // consume type identifier
@@ -554,6 +566,8 @@ function parseRefinementType(
 function validateConstraints(
   value: string,
   refinement: RefinementType,
+  variables?: Map<string, VariableInfo>,
+  parser?: Parser,
 ): boolean {
   // Parse the numeric value
   const numValue = Number(value);
@@ -583,7 +597,7 @@ function validateConstraints(
   // If no groups were created (all AND), validate all constraints
   if (constraintGroups.length === 0) {
     for (const constraint of refinement.constraints) {
-      if (!validateSingleConstraint(numValue, constraint)) {
+      if (!validateSingleConstraint(numValue, constraint, variables, parser)) {
         return false;
       }
     }
@@ -594,7 +608,7 @@ function validateConstraints(
   for (const group of constraintGroups) {
     let groupSatisfied = true;
     for (const constraint of group) {
-      if (!validateSingleConstraint(numValue, constraint)) {
+      if (!validateSingleConstraint(numValue, constraint, variables, parser)) {
         groupSatisfied = false;
         break;
       }
@@ -607,13 +621,104 @@ function validateConstraints(
   return false;
 }
 
+// Try to evaluate an expression to a number at compile-time given variable context
+function tryEvaluateExpression(
+  expr: ASTNode,
+  variables: Map<string, VariableInfo>,
+  parser: Parser,
+): EvaluationResult {
+  // Base case: numeric literal
+  if (expr.kind === "number") {
+    const num = Number(expr.value);
+    return isNaN(num) ? { success: false } : { success: true, value: num };
+  }
+
+  // Variable reference - look it up and try to use its known value
+  if (expr.kind === "variable") {
+    const varInfo = variables.get(expr.name);
+    if (!varInfo || !varInfo.initValue) {
+      // Can't evaluate if variable not found or value not tracked
+      return { success: false };
+    }
+    // Evaluate the stored initialization value
+    const num = Number(varInfo.initValue);
+    return isNaN(num) ? { success: false } : { success: true, value: num };
+  }
+
+  // Binary operations (arithmetic)
+  if (expr.kind === "binary") {
+    const leftEval = tryEvaluateExpression(expr.left, variables, parser);
+    const rightEval = tryEvaluateExpression(expr.right, variables, parser);
+
+    if (
+      !leftEval.success ||
+      !rightEval.success ||
+      leftEval.value === undefined ||
+      rightEval.value === undefined
+    ) {
+      return { success: false };
+    }
+
+    const left = leftEval.value as number;
+    const right = rightEval.value as number;
+    let result = 0;
+
+    switch (expr.operator) {
+      case "+":
+        result = left + right;
+        break;
+      case "-":
+        result = left - right;
+        break;
+      case "*":
+        result = left * right;
+        break;
+      case "/":
+        if (right === 0) return { success: false };
+        result = left / right;
+        break;
+      case "%":
+        if (right === 0) return { success: false };
+        result = left % right;
+        break;
+      default:
+        return { success: false };
+    }
+
+    return { success: true, value: result };
+  }
+
+  // Other expressions can't be evaluated at compile-time
+  return { success: false };
+}
+
 function validateSingleConstraint(
   numValue: number,
   constraint: RefinementConstraint,
+  variables?: Map<string, VariableInfo>,
+  parser?: Parser,
 ): boolean {
-  const constraintVal = Number(constraint.value);
-  if (isNaN(constraintVal)) {
-    return false;
+  // Try to evaluate the constraint value
+  let constraintVal: number;
+
+  if (constraint.valueExpr && variables && parser) {
+    // Evaluate expression
+    const evalResult = tryEvaluateExpression(
+      constraint.valueExpr,
+      variables,
+      parser,
+    );
+    if (!evalResult.success || evalResult.value === undefined) {
+      // Can't evaluate - fail the constraint
+      return false;
+    }
+    constraintVal = evalResult.value as number;
+  } else {
+    // Fall back to string representation
+    constraintVal = Number(constraint.value);
+    if (isNaN(constraintVal)) {
+      return false;
+    }
   }
 
   let satisfied = false;
@@ -765,11 +870,24 @@ function canAssignToRefinedType(
   requiredRefinement: RefinementType,
   parser: Parser,
 ): boolean {
+  // Check if we have proof for this variable
+  const varInfo = parser.variables.get(varName);
+
+  // If the variable has a known initialization value (literal), use that to prove the constraint
+  if (varInfo && varInfo.initValue) {
+    return validateConstraints(
+      varInfo.initValue,
+      requiredRefinement,
+      parser.variables,
+      parser,
+    );
+  }
+
   // Check if we have proven constraints for this variable
   const proven = parser.provenConstraints.get(varName);
 
   if (!proven) {
-    // No proven constraints - can only assign if it's a literal matching the constraint
+    // No proven constraints - can't assign
     return false;
   }
 
@@ -778,18 +896,64 @@ function canAssignToRefinedType(
     return false; // Type mismatch
   }
 
-  // For AND constraints, all must be satisfied
-  // Check if all required constraints are in the proven set
+  // For each required constraint, check if it's proven
+  // This is a simplified check: proven constraints must exactly match required ones
+  // (or be stricter, but that's complex to determine for expression-based constraints)
   for (const reqConstraint of requiredRefinement.constraints) {
     let found = false;
     for (const provenConstraint of proven.constraints) {
-      // Match on operator and value (ignore isOr flag in comparison)
+      // Try to match constraints by evaluating them
+      // First try simple string match
       if (
         provenConstraint.operator === reqConstraint.operator &&
         provenConstraint.value === reqConstraint.value
       ) {
         found = true;
         break;
+      }
+
+      // If mismatch try evaluating proven constraint to see if it's equivalent
+      if (provenConstraint.operator === reqConstraint.operator) {
+        // Both are same operator, evaluate the values
+        let provenVal: number | undefined;
+        let reqVal: number | undefined;
+
+        if (provenConstraint.valueExpr) {
+          const evalResult = tryEvaluateExpression(
+            provenConstraint.valueExpr,
+            parser.variables,
+            parser,
+          );
+          if (evalResult.success && evalResult.value !== undefined) {
+            provenVal = evalResult.value as number;
+          }
+        } else {
+          const val = Number(provenConstraint.value);
+          if (!isNaN(val)) provenVal = val;
+        }
+
+        if (reqConstraint.valueExpr) {
+          const evalResult = tryEvaluateExpression(
+            reqConstraint.valueExpr,
+            parser.variables,
+            parser,
+          );
+          if (evalResult.success && evalResult.value !== undefined) {
+            reqVal = evalResult.value as number;
+          }
+        } else {
+          const val = Number(reqConstraint.value);
+          if (!isNaN(val)) reqVal = val;
+        }
+
+        if (
+          provenVal !== undefined &&
+          reqVal !== undefined &&
+          provenVal === reqVal
+        ) {
+          found = true;
+          break;
+        }
       }
     }
     if (!found) {
@@ -2159,7 +2323,14 @@ function parseLetStatement(parser: Parser): Result<ASTNode, string> {
 
     // If there's a refinement type, validate the literal against constraints
     if (refinement) {
-      if (!validateConstraints(initializer.value, refinement)) {
+      if (
+        !validateConstraints(
+          initializer.value,
+          refinement,
+          parser.variables,
+          parser,
+        )
+      ) {
         return err(
           "Literal value does not satisfy refinement constraints for type",
         );
@@ -2185,7 +2356,26 @@ function parseLetStatement(parser: Parser): Result<ASTNode, string> {
   advance(parser);
 
   // Register variable in parser context with refinement info
-  parser.variables.set(name, { type: typeStr, mutable, refinement });
+  // Store initValue if it's a numeric literal (so we can constant-fold constraints)
+  const varInfo: VariableInfo = { type: typeStr, mutable, refinement };
+  if (initializer.kind === "number") {
+    varInfo.initValue = initializer.value;
+  }
+  parser.variables.set(name, varInfo);
+
+  // Record proven constraints for this variable
+  // If initialized with a literal that satisfies the constraints, the constraint is proven
+  if (refinement && initializer.kind === "number") {
+    parser.provenConstraints.set(name, refinement);
+  }
+  // If initialized with a variable, inherit its proven constraints
+  else if (initializer.kind === "variable") {
+    const sourceVarName = initializer.name;
+    const sourceProven = parser.provenConstraints.get(sourceVarName);
+    if (sourceProven) {
+      parser.provenConstraints.set(name, sourceProven);
+    }
+  }
 
   return ok({
     kind: "let",
