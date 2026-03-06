@@ -352,10 +352,24 @@ type ASTNode =
   | StructInstantiationNode
   | FieldAccessNode;
 
+// Refinement type interfaces
+interface RefinementConstraint {
+  operator: "<" | ">" | "<=" | ">=" | "==" | "!=";
+  value: string; // The constraint value (as string literal)
+  baseType?: string; // For multi-constraint like "I32 > 0 && I32 < 100", track base type
+  isOr?: boolean; // True if this constraint is OR'd with the previous one
+}
+
+interface RefinementType {
+  baseType: string;
+  constraints: RefinementConstraint[];
+}
+
 // Variable info interface
 interface VariableInfo {
   type: string;
   mutable: boolean;
+  refinement?: RefinementType; // Optional refinement constraints
 }
 
 function isWhitespace(char: string | undefined): boolean {
@@ -430,6 +444,360 @@ function parseTypeValue(parser: Parser): Result<string, string> {
     return validateResult;
   }
   return ok(typeStr);
+}
+
+// Refinement type parsing
+function parseRefinementConstraint(
+  parser: Parser,
+  baseType: string,
+): Result<RefinementConstraint, string> {
+  const opTok = current(parser);
+
+  // Check for comparison operator
+  if (opTok.type !== "COMPARISON") {
+    return err("Expected comparison operator in refinement constraint");
+  }
+
+  const operator = opTok.value as "<" | ">" | "<=" | ">=" | "==" | "!=";
+  advance(parser);
+
+  // Parse constraint value (number or identifier)
+  const valueTok = current(parser);
+  let value: string;
+
+  if (valueTok.type === "NUMBER") {
+    value = valueTok.value;
+    advance(parser);
+  } else if (valueTok.type === "IDENTIFIER") {
+    value = valueTok.value;
+    advance(parser);
+  } else {
+    return err("Expected number or identifier in constraint value");
+  }
+
+  return ok({
+    operator,
+    value,
+    baseType,
+  });
+}
+
+// Parse refinement type like "I32 > 100" or "I32 > 0 && I32 < 1000"
+function parseRefinementType(
+  parser: Parser,
+  baseType: string,
+): Result<RefinementType | undefined, string> {
+  // Check if next token is a comparison operator (start of refinement)
+  const tok = current(parser);
+  if (tok.type !== "COMPARISON") {
+    // No refinement, just the base type
+    return ok(undefined);
+  }
+
+  const constraints: RefinementConstraint[] = [];
+
+  // Parse first constraint
+  const firstConstraintResult = parseRefinementConstraint(parser, baseType);
+  if (!firstConstraintResult.ok) {
+    return firstConstraintResult;
+  }
+  constraints.push(firstConstraintResult.value);
+
+  // Parse additional constraints with && or ||
+  while (true) {
+    const nextTok = current(parser);
+    let isOrOp = false;
+
+    if (nextTok.type === "LOGICAL" && nextTok.value === "&&") {
+      advance(parser); // consume &&
+      isOrOp = false;
+    } else if (nextTok.type === "LOGICAL" && nextTok.value === "||") {
+      advance(parser); // consume ||
+      isOrOp = true;
+    } else {
+      // No more constraints
+      break;
+    }
+
+    // Expect another base type identifier
+    const typeTok = current(parser);
+    if (typeTok.type !== "IDENTIFIER") {
+      return err("Expected type in chained constraint");
+    }
+    const nextBaseType = typeTok.value;
+    if (nextBaseType !== baseType) {
+      const opType = isOrOp ? "OR" : "AND";
+      return err(
+        "All constraints in " +
+          opType +
+          " must reference the same base type",
+      );
+    }
+    advance(parser); // consume type identifier
+
+    const constraintResult = parseRefinementConstraint(parser, baseType);
+    if (!constraintResult.ok) {
+      return constraintResult;
+    }
+    // Mark with appropriate operator
+    constraintResult.value.isOr = isOrOp;
+    constraints.push(constraintResult.value);
+  }
+
+  return ok({
+    baseType,
+    constraints,
+  });
+}
+
+// Validate if a number satisfies refinement constraints
+function validateConstraints(
+  value: string,
+  refinement: RefinementType,
+): boolean {
+  // Parse the numeric value
+  const numValue = Number(value);
+  if (isNaN(numValue)) {
+    return false; // Can't validate non-numeric values
+  }
+
+  // Build groups of constraints separated by OR
+  // Constraints with isOr=true are OR'd with the previous group
+  let currentAndGroup: RefinementConstraint[] = [];
+  let constraintGroups: RefinementConstraint[][] = [];
+
+  for (const constraint of refinement.constraints) {
+    if (constraint.isOr) {
+      // Start new OR group
+      if (currentAndGroup.length > 0) {
+        constraintGroups.push(currentAndGroup);
+        currentAndGroup = [];
+      }
+    }
+    currentAndGroup.push(constraint);
+  }
+  if (currentAndGroup.length > 0) {
+    constraintGroups.push(currentAndGroup);
+  }
+
+  // If no groups were created (all AND), validate all constraints
+  if (constraintGroups.length === 0) {
+    for (const constraint of refinement.constraints) {
+      if (!validateSingleConstraint(numValue, constraint)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  // If we have groups (OR), at least one group must be fully satisfied
+  for (const group of constraintGroups) {
+    let groupSatisfied = true;
+    for (const constraint of group) {
+      if (!validateSingleConstraint(numValue, constraint)) {
+        groupSatisfied = false;
+        break;
+      }
+    }
+    if (groupSatisfied) {
+      return true; // At least one OR group is satisfied
+    }
+  }
+
+  return false;
+}
+
+function validateSingleConstraint(
+  numValue: number,
+  constraint: RefinementConstraint,
+): boolean {
+  const constraintVal = Number(constraint.value);
+  if (isNaN(constraintVal)) {
+    return false;
+  }
+
+  let satisfied = false;
+  switch (constraint.operator) {
+    case ">":
+      satisfied = numValue > constraintVal;
+      break;
+    case "<":
+      satisfied = numValue < constraintVal;
+      break;
+    case ">=":
+      satisfied = numValue >= constraintVal;
+      break;
+    case "<=":
+      satisfied = numValue <= constraintVal;
+      break;
+    case "==":
+      satisfied = numValue === constraintVal;
+      break;
+    case "!=":
+      satisfied = numValue !== constraintVal;
+      break;
+  }
+  return satisfied;
+}
+
+// Extract refinement constraints from a comparison expression (for type narrowing)
+// e.g., "x > 100" yields { baseType: "I32", constraints: [{ operator: ">", value: "100" }] }
+function extractConstraintsFromComparison(
+  condition: ASTNode,
+  parser: Parser,
+): Map<string, RefinementType> {
+  const constraints = new Map<string, RefinementType>();
+
+  if (condition.kind === "comparison") {
+    const comp = condition as ComparisonNode;
+
+    // Simple case: variable OP value, e.g., x > 100
+    if (
+      comp.left.kind === "variable" &&
+      (comp.right.kind === "number" || comp.right.kind === "variable")
+    ) {
+      const varName = comp.left.name;
+      const varInfo = parser.variables.get(varName);
+
+      if (varInfo) {
+        const rightValue =
+          comp.right.kind === "number"
+            ? (comp.right as NumberNode).value
+            : (comp.right as VariableNode).name;
+
+        const refinement: RefinementType = {
+          baseType: varInfo.type,
+          constraints: [
+            {
+              operator: comp.operator,
+              value: rightValue,
+              baseType: varInfo.type,
+            },
+          ],
+        };
+        constraints.set(varName, refinement);
+      }
+    }
+    // Reverse case: value OP variable, e.g., 100 < x
+    else if (
+      comp.right.kind === "variable" &&
+      (comp.left.kind === "number" || comp.left.kind === "variable")
+    ) {
+      const varName = comp.right.name;
+      const varInfo = parser.variables.get(varName);
+
+      if (varInfo) {
+        const leftValue =
+          comp.left.kind === "number"
+            ? (comp.left as NumberNode).value
+            : (comp.left as VariableNode).name;
+
+        // Flip the operator: 100 < x becomes x > 100
+        const flippedOp = flightConstraintOperator(comp.operator);
+        const refinement: RefinementType = {
+          baseType: varInfo.type,
+          constraints: [
+            {
+              operator: flippedOp,
+              value: leftValue,
+              baseType: varInfo.type,
+            },
+          ],
+        };
+        constraints.set(varName, refinement);
+      }
+    }
+  } else if (condition.kind === "logical") {
+    const logic = condition as LogicalNode;
+
+    if (logic.operator === "&&") {
+      // Combine constraints from both sides
+      const leftConstraints = extractConstraintsFromComparison(
+        logic.left,
+        parser,
+      );
+      const rightConstraints = extractConstraintsFromComparison(
+        logic.right,
+        parser,
+      );
+
+      // Merge constraints for the same variable
+      for (const [varName, refinement] of leftConstraints) {
+        constraints.set(varName, refinement);
+      }
+      for (const [varName, refinement] of rightConstraints) {
+        const existing = constraints.get(varName);
+        if (existing && existing.baseType === refinement.baseType) {
+          // Combine AND constraints
+          existing.constraints.push(...refinement.constraints);
+        } else {
+          constraints.set(varName, refinement);
+        }
+      }
+    }
+    // TODO: Handle OR constraints for type narrowing (more complex)
+  }
+
+  return constraints;
+}
+
+// Flip comparison operator for constraint extraction (e.g., < becomes >)
+function flightConstraintOperator(
+  op: "<" | ">" | "<=" | ">=" | "==" | "!=",
+): "<" | ">" | "<=" | ">=" | "==" | "!=" {
+  switch (op) {
+    case "<":
+      return ">";
+    case ">":
+      return "<";
+    case "<=":
+      return ">=";
+    case ">=":
+      return "<=";
+    default:
+      return op; // == and != remain the same
+  }
+}
+
+// Check if a variable can be assigned to a refined type given current proven constraints
+function canAssignToRefinedType(
+  varName: string,
+  requiredRefinement: RefinementType,
+  parser: Parser,
+): boolean {
+  // Check if we have proven constraints for this variable
+  const proven = parser.provenConstraints.get(varName);
+
+  if (!proven) {
+    // No proven constraints - can only assign if it's a literal matching the constraint
+    return false;
+  }
+
+  // Check if proven constraints satisfy the required refinement
+  if (proven.baseType !== requiredRefinement.baseType) {
+    return false; // Type mismatch
+  }
+
+  // For AND constraints, all must be satisfied
+  // Check if all required constraints are in the proven set
+  for (const reqConstraint of requiredRefinement.constraints) {
+    let found = false;
+    for (const provenConstraint of proven.constraints) {
+      // Match on operator and value (ignore isOr flag in comparison)
+      if (
+        provenConstraint.operator === reqConstraint.operator &&
+        provenConstraint.value === reqConstraint.value
+      ) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      return false; // Required constraint not proven
+    }
+  }
+
+  return true;
 }
 
 function tokenize(input: string): Result<Token[], string> {
@@ -697,6 +1065,8 @@ interface Parser {
   structs: Map<string, StructInfo>;
   inLoop: boolean;
   currentFunctionReturnType: string | undefined;
+  // Type narrowing: track variables with proven constraints (from control flow guards)
+  provenConstraints: Map<string, RefinementType>; // e.g., "x" -> I32 > 100
   _parseDepth?: number; // Track recursion depth for debugging
   _lastTokenPos?: number; // Track last position for detecting stuck parsers
 }
@@ -1080,6 +1450,31 @@ function parseParenthesizedCondition(parser: Parser): Result<ASTNode, string> {
 }
 
 function parseBlockStatements(parser: Parser): Result<ASTNode[], string> {
+  const stmtsResult = parseBlockStatementsInternal(parser);
+  if (!stmtsResult.ok) {
+    return stmtsResult;
+  }
+
+  // Expect '}'
+  if (current(parser).type !== "RBRACE") {
+    return err("Expected '}'");
+  }
+  advance(parser);
+
+  return stmtsResult;
+}
+
+// Internal helper to parse block statements without consuming RBRACE (for if/else with final expressions)
+function parseBlockStatementsWithoutRbrace(
+  parser: Parser,
+): Result<ASTNode[], string> {
+  return parseBlockStatementsInternal(parser);
+}
+
+// Shared internal implementation for parsing block statements
+function parseBlockStatementsInternal(
+  parser: Parser,
+): Result<ASTNode[], string> {
   // Expect '{'
   if (current(parser).type !== "LBRACE") {
     return err("Expected '{'");
@@ -1092,31 +1487,120 @@ function parseBlockStatements(parser: Parser): Result<ASTNode[], string> {
     return blockResult;
   }
 
-  // Expect '}'
-  if (current(parser).type !== "RBRACE") {
-    return err("Expected '}'");
-  }
-  advance(parser);
-
   return ok(statements);
+}
+
+// Helper: extract the last if/match as result if it exists
+function extractFinalExpressionIfPresent(
+  statements: ASTNode[],
+): ASTNode | undefined {
+  if (statements.length === 0) {
+    return undefined;
+  }
+
+  const lastStmt = statements[statements.length - 1];
+  if (
+    lastStmt &&
+    (lastStmt.kind === "match" ||
+      (lastStmt.kind === "if" && lastStmt.elseBranch !== undefined))
+  ) {
+    return lastStmt;
+  }
+
+  return undefined;
 }
 
 function createBlockBodyWithOptionalExpression(
   statements: ASTNode[],
   parser: Parser,
 ): Result<ASTNode, string> {
-  if (statements.length === 0) {
-    return ok({ kind: "number", value: "0" });
+  const resultTok = current(parser);
+
+  // Check if at end of block
+  if (resultTok.type === "RBRACE" || resultTok.type === "EOF") {
+    const finalExpr = extractFinalExpressionIfPresent(statements);
+    if (finalExpr) {
+      statements.pop();
+      return ok({
+        kind: "block",
+        statements,
+        result: finalExpr,
+      });
+    }
+    return ok({
+      kind: "block",
+      statements,
+      result: { kind: "number", value: "0" },
+    });
   }
 
-  // Parse the final expression in the block (if any)
-  const resultTok = current(parser);
+  // Check if it's a non-expression keyword
+  const nonExprKeywords = new Set([
+    "let",
+    "fn",
+    "struct",
+    "while",
+    "break",
+    "continue",
+    "return",
+  ]);
+
+  if (resultTok.type === "KEYWORD" && nonExprKeywords.has(resultTok.value)) {
+    return ok({
+      kind: "block",
+      statements,
+      result: { kind: "number", value: "0" },
+    });
+  }
+
+  // For IDENTIFIER, check if it's followed by assignment or is a bare variable ref
+  if (resultTok.type === "IDENTIFIER") {
+    const nextIdx = parser.pos + 1;
+    const nextTok =
+      nextIdx < parser.tokens.length ? parser.tokens[nextIdx] : null;
+
+    const assignmentOps = new Set([
+      "ASSIGN",
+      "PLUS_ASSIGN",
+      "MINUS_ASSIGN",
+      "MULT_ASSIGN",
+      "DIV_ASSIGN",
+      "MOD_ASSIGN",
+    ]);
+
+    // If it's an assignment, no final expression
+    if (nextTok && assignmentOps.has(nextTok.type)) {
+      return ok({
+        kind: "block",
+        statements,
+        result: { kind: "number", value: "0" },
+      });
+    }
+
+    // It's a variable reference - parse it as primary (just the identifier)
+    const varName = resultTok.value;
+    advance(parser);
+
+    // Check if variable exists
+    const varResult = getVariable(parser, varName);
+    if (!varResult.ok) {
+      return varResult;
+    }
+
+    return ok({
+      kind: "block",
+      statements,
+      result: { kind: "variable", name: varName },
+    });
+  }
+
+  // Try to parse other expression types (NUMBER, BOOL, LPAREN, if, match)
   if (
-    resultTok.type !== "RBRACE" &&
-    resultTok.type !== "SEMICOLON" &&
-    resultTok.type !== "KEYWORD" &&
-    resultTok.type !== "IDENTIFIER" &&
-    resultTok.type !== "EOF"
+    resultTok.type === "NUMBER" ||
+    resultTok.type === "BOOL" ||
+    resultTok.type === "LPAREN" ||
+    (resultTok.type === "KEYWORD" &&
+      (resultTok.value === "if" || resultTok.value === "match"))
   ) {
     const exprResult = parseExpression(parser);
     if (!exprResult.ok) {
@@ -1125,6 +1609,7 @@ function createBlockBodyWithOptionalExpression(
     return ok({ kind: "block", statements, result: exprResult.value });
   }
 
+  // Default: no final expression
   return ok({
     kind: "block",
     statements,
@@ -1158,11 +1643,36 @@ function parseIfStatement(parser: Parser): Result<ASTNode, string> {
     return conditionResult;
   }
 
+  // Save current proven constraints for scope management
+  const savedConstraints = new Map(parser.provenConstraints);
+
+  // Extract constraints from the condition for type narrowing in then-branch
+  const thenConstraints = extractConstraintsFromComparison(
+    conditionResult.value,
+    parser,
+  );
+  // Add constraints to parser context for then-branch
+  // MERGE with existing constraints to handle nesting (don't overwrite!)
+  for (const [varName, refinement] of thenConstraints) {
+    const existing = parser.provenConstraints.get(varName);
+    if (existing && existing.baseType === refinement.baseType) {
+      // Merge: combine all constraints from outer scope + new from condition
+      existing.constraints.push(...refinement.constraints);
+    } else {
+      parser.provenConstraints.set(varName, refinement);
+    }
+  }
+
   // Parse then branch (single statement or block)
   const thenResult = parseIfBody(parser);
   if (!thenResult.ok) {
+    // Restore constraints even on error
+    parser.provenConstraints = savedConstraints;
     return thenResult;
   }
+
+  // Restore to saved constraints for else branch (proven constraints are lost outside narrowing)
+  parser.provenConstraints = new Map(savedConstraints);
 
   // Check for else
   const elseTok = current(parser);
@@ -1190,6 +1700,9 @@ function parseIfStatement(parser: Parser): Result<ASTNode, string> {
     }
   }
 
+  // Restore original constraints after if statement
+  parser.provenConstraints = savedConstraints;
+
   return ok({
     kind: "if",
     condition: conditionResult.value,
@@ -1201,14 +1714,28 @@ function parseIfStatement(parser: Parser): Result<ASTNode, string> {
 function parseIfBody(parser: Parser): Result<ASTNode, string> {
   const tok = current(parser);
 
-  // Block body
+  // Block body - use helper that doesn't consume RBRACE so we can parse final expression
   if (tok.type === "LBRACE") {
-    const stmtsResult = parseBlockStatements(parser);
+    const stmtsResult = parseBlockStatementsWithoutRbrace(parser);
     if (!stmtsResult.ok) {
       return stmtsResult;
     }
 
-    return createBlockBodyWithOptionalExpression(stmtsResult.value, parser);
+    const blockResult = createBlockBodyWithOptionalExpression(
+      stmtsResult.value,
+      parser,
+    );
+    if (!blockResult.ok) {
+      return blockResult;
+    }
+
+    // Now consume the closing RBRACE
+    if (current(parser).type !== "RBRACE") {
+      return err("Expected '}'");
+    }
+    advance(parser);
+
+    return blockResult;
   } else {
     // Single statement body - could be break, continue, assignment, or expression
     const tok = current(parser);
@@ -1519,15 +2046,14 @@ function parseProgram(parser: Parser): Result<ASTNode, string> {
   if (current(parser).type === "EOF") {
     // If we have statements, use the last expression-like statement as the result
     if (statements.length > 0) {
-      // Check if the last statement is an expression-like node (if, match, etc.)
-      const lastStmt = statements[statements.length - 1];
-      if (lastStmt && (lastStmt.kind === "if" || lastStmt.kind === "match")) {
+      const finalExpr = extractFinalExpressionIfPresent(statements);
+      if (finalExpr) {
         // Use this as the result, remove it from statements
         statements.pop();
         if (statements.length === 0) {
-          return ok(lastStmt);
+          return ok(finalExpr);
         }
-        return ok({ kind: "block", statements, result: lastStmt });
+        return ok({ kind: "block", statements, result: finalExpr });
       }
       // Otherwise, return a block with the statements and a default result
       return ok({
@@ -1596,6 +2122,14 @@ function parseLetStatement(parser: Parser): Result<ASTNode, string> {
   }
   const typeStr = typeResult.value;
 
+  // Try to parse refinement constraints
+  let refinement: RefinementType | undefined;
+  const refinementResult = parseRefinementType(parser, typeStr);
+  if (!refinementResult.ok) {
+    return refinementResult;
+  }
+  refinement = refinementResult.value;
+
   // Expect '='
   const assignTok = current(parser);
   if (assignTok.type !== "ASSIGN") {
@@ -1622,6 +2156,25 @@ function parseLetStatement(parser: Parser): Result<ASTNode, string> {
         "Cannot assign negative value to unsigned type '" + typeStr + "'",
       );
     }
+
+    // If there's a refinement type, validate the literal against constraints
+    if (refinement) {
+      if (!validateConstraints(initializer.value, refinement)) {
+        return err(
+          "Literal value does not satisfy refinement constraints for type",
+        );
+      }
+    }
+  } else if (initializer.kind === "variable" && refinement) {
+    // Assigning a variable to a refined type - check if we can prove the constraint
+    const sourceVarName = initializer.name;
+    if (!canAssignToRefinedType(sourceVarName, refinement, parser)) {
+      return err(
+        "Cannot assign variable '" +
+          sourceVarName +
+          "' to refined type - constraint cannot be proven",
+      );
+    }
   }
 
   // Expect ';'
@@ -1631,8 +2184,8 @@ function parseLetStatement(parser: Parser): Result<ASTNode, string> {
   }
   advance(parser);
 
-  // Register variable in parser context
-  parser.variables.set(name, { type: typeStr, mutable });
+  // Register variable in parser context with refinement info
+  parser.variables.set(name, { type: typeStr, mutable, refinement });
 
   return ok({
     kind: "let",
@@ -2656,7 +3209,23 @@ function codegenAST(node: ASTNode): string {
 
     let thenCode = "";
     if (node.thenBranch.kind === "block") {
-      thenCode = generateStatementCode(node.thenBranch.statements);
+      // Check if block has a meaningful final expression (not just 0)
+      const hasResult =
+        node.thenBranch.result &&
+        !(
+          node.thenBranch.result.kind === "number" &&
+          node.thenBranch.result.value === "0"
+        );
+
+      const stmtCode = generateStatementCode(node.thenBranch.statements);
+      if (hasResult && node.elseBranch) {
+        // Block with meaningful result and there's an else - it's an expression
+        const resultCode = codegenAST(node.thenBranch.result);
+        thenCode = stmtCode + " return " + resultCode;
+      } else {
+        // Just statements, no meaningful result
+        thenCode = stmtCode;
+      }
     } else {
       thenCode = codegenAST(node.thenBranch);
     }
@@ -2669,8 +3238,21 @@ function codegenAST(node: ASTNode): string {
     // if with else - generate else branch code
     let elseCode = "";
     if (node.elseBranch.kind === "block") {
-      // For block bodies, get just the statements
-      elseCode = generateStatementCode(node.elseBranch.statements);
+      // Check if block has a meaningful final expression
+      const hasResult =
+        node.elseBranch.result &&
+        !(
+          node.elseBranch.result.kind === "number" &&
+          node.elseBranch.result.value === "0"
+        );
+
+      const stmtCode = generateStatementCode(node.elseBranch.statements);
+      if (hasResult) {
+        const resultCode = codegenAST(node.elseBranch.result);
+        elseCode = stmtCode + " return " + resultCode;
+      } else {
+        elseCode = stmtCode;
+      }
     } else if (node.elseBranch.kind === "if") {
       // else if - the recursive call will generate the correct syntax
       // For nested if nodes, we need to generate them as expressions if blocks are involved
@@ -2694,9 +3276,16 @@ function codegenAST(node: ASTNode): string {
       // Both are simple expressions - use ternary
       return "(" + condition + " ? " + thenCode + " : " + elseCode + ")";
     } else {
-      // At least one has statements - use if/else syntax
+      // At least one has statements - need to wrap as expression
+      // Use IIFE to convert if statement to expression
       return (
-        "if (" + condition + ") { " + thenCode + " } else { " + elseCode + " }"
+        "(function() { if (" +
+        condition +
+        ") { " +
+        thenCode +
+        " } else { " +
+        elseCode +
+        " } }())"
       );
     }
   }
@@ -3463,6 +4052,7 @@ export function compile(input: string): Result<string, string> {
     structs: new Map(),
     inLoop: false,
     currentFunctionReturnType: undefined,
+    provenConstraints: new Map(),
   };
 
   // Pre-scan for struct definitions to support nested structs

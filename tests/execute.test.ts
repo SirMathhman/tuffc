@@ -1673,3 +1673,81 @@ test("struct: nested struct type mismatch is error", () => {
     ),
   );
 });
+
+// Refinement types - compile-time constraint checking
+test("refinement: basic literal refinement valid", () => {
+  expectValue(executeTuff("let x : I32 > 100 = 200; x"), 200);
+});
+
+test("refinement: compile error when literal violates constraint", () => {
+  expectError(executeTuff("let x : I32 > 100 = 50; x"));
+});
+
+test("refinement: compile error when assigning unrefined variable to refined type without proof", () => {
+  expectError(executeTuff("let x : I32 = 100; let y : I32 > 100 = x; y"));
+});
+
+test("refinement: type narrowing in if-block enables assignment", () => {
+  const result = executeTuffWithInput(
+    "let x : I32 = read<I32>(); if (x > 100) { let y : I32 > 100 = x; y } else { 0 }",
+    "200",
+  );
+  expectValue(result, 200);
+});
+
+test("refinement: type narrowing rejects in else-branch (proof lost)", () => {
+  expectError(
+    executeTuff(
+      "let mut x : I32 = 50; if (x > 100) { 1 } else { let y : I32 > 100 = x; y }",
+    ),
+  );
+});
+
+test("refinement: multiple constraints with AND", () => {
+  expectValue(executeTuff("let x : I32 > 0 && I32 < 1000 = 500; x"), 500);
+});
+
+test("refinement: multiple constraints AND - lower bound violation", () => {
+  expectError(executeTuff("let x : I32 > 0 && I32 < 1000 = -1; x"));
+});
+
+test("refinement: multiple constraints AND - upper bound violation", () => {
+  expectError(executeTuff("let x : I32 > 0 && I32 < 1000 = 1500; x"));
+});
+
+test("refinement: OR constraints", () => {
+  expectValue(executeTuff("let x : I32 < 0 || I32 > 100 = 150; x"), 150);
+});
+
+test("refinement: OR constraints - alternative branch", () => {
+  expectValue(executeTuff("let x : I32 < 0 || I32 > 100 = -50; x"), -50);
+});
+
+// TODO: String refinement requires string literal tokenization support
+// test("refinement: string refinement by length", () => {
+//   expectValue(executeTuff('let s : String > 0 = "hello"; 1'), 1);
+// });
+
+test("refinement: equality constraint", () => {
+  expectValue(executeTuff("let x : I32 == 42 = 42; x"), 42);
+});
+
+test("refinement: equality constraint violation", () => {
+  expectError(executeTuff("let x : I32 == 42 = 43; x"));
+});
+
+test("refinement: type narrowing with complex guard condition", () => {
+  const result = executeTuffWithInput(
+    "let x : I32 = read<I32>(); if (x > 50 && x < 200) { let y : I32 > 50 = x; y } else { 0 }",
+    "100",
+  );
+  expectValue(result, 100);
+});
+
+test("refinement: nested if narrowing", () => {
+  const result = executeTuffWithInput(
+    "let x : I32 = read<I32>(); if (x > 0) { if (x < 100) { let y : I32 > 0 && I32 < 100 = x; y } else { 0 } } else { 0 }",
+    "50",
+  );
+  expectValue(result, 50);
+});
