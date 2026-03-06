@@ -8,7 +8,7 @@ tests\execute.test.ts:
 (pass) positive integer with U64
 (pass) negative integer with I8
 (pass) negative integer with I32
-(pass) float with F32 type [16.00ms]
+(pass) float with F32 type
 (pass) float with F64 type
 (pass) float without type defaults to F32
 (pass) negative float with F64
@@ -27,7 +27,7 @@ tests\execute.test.ts:
 (pass) addition without whitespace
 (pass) multiple additions
 (pass) read single value from stdin
-(pass) read multiple values from stdin
+(pass) read multiple values from stdin [15.00ms]
 (pass) read with expression
 (pass) read multiple values in complex expression
 (pass) simple variable declaration and use
@@ -104,13 +104,13 @@ tests\execute.test.ts:
 (pass) compound assignment: += with expression
 (pass) compound assignment: -= subtracts from mutable variable
 (pass) compound assignment: -= with expression
-(pass) compound assignment: *= multiplies mutable variable [16.00ms]
+(pass) compound assignment: *= multiplies mutable variable
 (pass) compound assignment: *= with expression
 (pass) compound assignment: /= divides mutable variable
 (pass) compound assignment: /= with expression
 (pass) compound assignment: %= modulo on mutable variable
 (pass) compound assignment: %= with expression
-(pass) compound assignment: += with U8 type
+(pass) compound assignment: += with U8 type [16.00ms]
 (pass) compound assignment: += with F32 type
 (pass) compound assignment: multiple compound assignments
 (pass) compound assignment: multiple variables with compound ops
@@ -177,7 +177,7 @@ tests\execute.test.ts:
 (pass) function: using comparison in body
 (pass) function: calling with complex expressions as arguments
 (pass) function: multiple function declarations
-(pass) function: function call with variables [15.00ms]
+(pass) function: function call with variables
 (pass) function: chained function calls
 (pass) function: function with negative numbers
 (pass) function: block with assignment statement
@@ -213,7 +213,7 @@ tests\execute.test.ts:
 (pass) recursive: accumulate with input and counter
 (pass) recursive: read first number then use in recursion
 (pass) recursive: mutual recursion with input (evens and odds)
-(pass) recursive: read two numbers and compute GCD
+(pass) recursive: read two numbers and compute GCD [16.00ms]
 (pass) struct: basic declaration and field access
 (pass) struct: access second field
 (pass) struct: multiple fields with arithmetic
@@ -377,7 +377,7 @@ error: expect(received).toBeUndefined()
 Received: "Expected type annotation"
 
       at expectValue (C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\tests\execute.test.ts:110:26)
-      at <anonymous> (C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\tests\execute.test.ts:1916:3)
+      at <anonymous> (C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\tests\execute.test.ts:1918:3)
 (fail) mutable pointer: assign to dereferenced mutable pointer in expression
 105 |       console.log("Input:", result.value[0]);
 106 |     }
@@ -391,8 +391,8 @@ error: expect(received).toBeUndefined()
 Received: "Expected type annotation"
 
       at expectValue (C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\tests\execute.test.ts:110:26)
-      at <anonymous> (C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\tests\execute.test.ts:1925:3)
-(fail) mutable pointer: mutable pointer arithmetic through dereference [16.00ms]
+      at <anonymous> (C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\tests\execute.test.ts:1927:3)
+(fail) mutable pointer: mutable pointer arithmetic through dereference
 105 |       console.log("Input:", result.value[0]);
 106 |     }
 107 | 
@@ -405,7 +405,7 @@ error: expect(received).toBeUndefined()
 Received: "Expected type annotation"
 
       at expectValue (C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\tests\execute.test.ts:110:26)
-      at <anonymous> (C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\tests\execute.test.ts:1934:3)
+      at <anonymous> (C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\tests\execute.test.ts:1936:3)
 (fail) mutable pointer: nested dereference assignment
 
 9 tests failed:
@@ -416,10 +416,10 @@ Received: "Expected type annotation"
 (fail) mutable pointer: mutable pointer to U8
 (fail) mutable pointer: coerce mutable to immutable pointer
 (fail) mutable pointer: assign to dereferenced mutable pointer in expression
-(fail) mutable pointer: mutable pointer arithmetic through dereference [16.00ms]
+(fail) mutable pointer: mutable pointer arithmetic through dereference
 (fail) mutable pointer: nested dereference assignment
 
  280 pass
  9 fail
  213 expect() calls
-Ran 289 tests across 1 file. [102.00ms]
+Ran 289 tests across 1 file. [117.00ms]

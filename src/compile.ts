@@ -133,6 +133,10 @@ interface DotToken {
   type: "DOT";
 }
 
+interface AddressOfToken {
+  type: "ADDRESS_OF";
+}
+
 interface EOFToken {
   type: "EOF";
 }
@@ -162,6 +166,7 @@ type Token =
   | ModAssignToken
   | CommaToken
   | DotToken
+  | AddressOfToken
   | EOFToken;
 
 // AST node interfaces
@@ -207,6 +212,12 @@ interface UnaryLogicalNode {
   operand: ASTNode;
 }
 
+interface UnaryOpNode {
+  kind: "unary-op";
+  operator: "*" | "&" | "&mut";
+  operand: ASTNode;
+}
+
 interface BooleanNode {
   kind: "boolean";
   value: boolean;
@@ -231,6 +242,13 @@ interface FieldAssignNode {
   object: ASTNode;
   fieldName: string;
   value: ASTNode;
+}
+
+interface DerefAssignNode {
+  kind: "deref-assign";
+  target: ASTNode;
+  value: ASTNode;
+  targetVar?: string; // The name of the variable being assigned (for pointers)
 }
 
 interface BlockNode {
@@ -337,10 +355,12 @@ type ASTNode =
   | ComparisonNode
   | LogicalNode
   | UnaryLogicalNode
+  | UnaryOpNode
   | BooleanNode
   | LetNode
   | AssignNode
   | FieldAssignNode
+  | DerefAssignNode
   | BlockNode
   | IfNode
   | WhileNode
@@ -374,6 +394,7 @@ interface VariableInfo {
   mutable: boolean;
   refinement?: RefinementType; // Optional refinement constraints
   initValue?: string; // The literal value (for constants), if available
+  pointsTo?: string; // For pointers: the name of the variable it points to
 }
 
 interface SuccessfulEvaluation {
@@ -423,6 +444,103 @@ function validateTypeWithStructs(
   return validateType(typeStr);
 }
 
+// Infer the type of an expression
+function inferExpressionType(
+  expr: ASTNode,
+  parser: Parser,
+): Result<string, string> {
+  if (expr.kind === "number") {
+    // Extract base type from number literal (e.g., "100I32" -> "I32")
+    const numValue = expr.value;
+    let typeStr = "";
+    for (let i = numValue.length - 1; i >= 0; i--) {
+      if (isLetter(numValue[i]) || numValue[i] === "_") {
+        typeStr = numValue[i] + typeStr;
+      } else {
+        break;
+      }
+    }
+    // Default to I32 if no type annotation
+    return ok(typeStr || "I32");
+  }
+
+  if (expr.kind === "boolean") {
+    return ok("Bool");
+  }
+
+  if (expr.kind === "variable") {
+    const varResult = getVariable(parser, expr.name);
+    if (!varResult.ok) {
+      return varResult;
+    }
+    return ok(varResult.value.type);
+  }
+
+  if (expr.kind === "unary-op") {
+    if (expr.operator === "&" || expr.operator === "&mut") {
+      // Address-of: &x has type *T, &mut x has type *mut T
+      if (expr.operand.kind !== "variable") {
+        return err("Cannot take address of non-variable expression");
+      }
+      const operandTypeResult = inferExpressionType(expr.operand, parser);
+      if (!operandTypeResult.ok) {
+        return operandTypeResult;
+      }
+      const prefix = expr.operator === "&mut" ? "*mut " : "*";
+      return ok(prefix + operandTypeResult.value);
+    } else if (expr.operator === "*") {
+      // Dereference: *ptr has type T where ptr has type *T or *mut T
+      const operandTypeResult = inferExpressionType(expr.operand, parser);
+      if (!operandTypeResult.ok) {
+        return operandTypeResult;
+      }
+      const ptrType = operandTypeResult.value;
+      if (!ptrType.startsWith("*")) {
+        return err("Cannot dereference non-pointer type: " + ptrType);
+      }
+      // Handle both *T and *mut T -> return base type T
+      if (ptrType.startsWith("*mut ")) {
+        return ok(ptrType.slice(5)); // Remove "*mut "
+      } else {
+        return ok(ptrType.slice(1)); // Remove leading *
+      }
+    }
+  }
+
+  if (
+    expr.kind === "binary" ||
+    expr.kind === "comparison" ||
+    expr.kind === "logical"
+  ) {
+    // Check that operands don't have pointer types (no pointer arithmetic)
+    const leftTypeResult = inferExpressionType(expr.left, parser);
+    if (!leftTypeResult.ok) {
+      return leftTypeResult;
+    }
+    const rightTypeResult = inferExpressionType(expr.right, parser);
+    if (!rightTypeResult.ok) {
+      return rightTypeResult;
+    }
+
+    if (
+      leftTypeResult.value.startsWith("*") ||
+      rightTypeResult.value.startsWith("*")
+    ) {
+      return err("Pointer arithmetic not supported");
+    }
+
+    // Binary operations return the type of their operands (simplified)
+    return leftTypeResult;
+  }
+
+  if (expr.kind === "read") {
+    return ok(expr.type);
+  }
+
+  // For other expressions, we'd need more analysis
+  return err("Cannot infer type of expression");
+}
+
 function getVariable(
   parser: Parser,
   name: string,
@@ -435,16 +553,43 @@ function getVariable(
 }
 
 function parseTypeAnnotation(parser: Parser): Result<string, string> {
+  // Count and consume any leading * for pointer types
+  let pointerDepth = 0;
+  let isMutable = false;
+  while (
+    current(parser).type === "OPERATOR" &&
+    (current(parser) as OperatorToken).value === "*"
+  ) {
+    pointerDepth++;
+    advance(parser);
+
+    // Check for 'mut' keyword after *
+    if (tryConsumeMutKeyword(parser)) {
+      isMutable = true;
+      break; // mut can only appear once, after the last *
+    }
+  }
+
   const typeTok = current(parser);
   if (typeTok.type !== "IDENTIFIER") {
     return err("Expected type annotation");
   }
-  const typeStr = typeTok.value;
-  const validateResult = validateTypeWithStructs(parser, typeStr);
+  const baseType = (typeTok as IdentifierToken).value;
+  const validateResult = validateTypeWithStructs(parser, baseType);
   if (!validateResult.ok) {
     return validateResult;
   }
   advance(parser);
+
+  // Construct pointer type string: e.g., "*I32", "*mut I32", "**I32", "*mut *I32"
+  let typeStr = baseType;
+  for (let i = 0; i < pointerDepth; i++) {
+    if (i === pointerDepth - 1 && isMutable) {
+      typeStr = "*mut " + typeStr;
+    } else {
+      typeStr = "*" + typeStr;
+    }
+  }
   return ok(typeStr);
 }
 
@@ -1014,12 +1159,19 @@ function tokenize(input: string): Result<Token[], string> {
         tokens.push({ type: "OPERATOR", value: "-" });
         pos++;
       }
-    } else if (char === "*" && isOperatorContext()) {
-      // Check for *=
-      if (pos + 1 < input.length && input[pos + 1] === "=") {
-        tokens.push({ type: "MULT_ASSIGN" });
-        pos += 2;
+    } else if (char === "*") {
+      // Handle * as either multiplication operator or dereference operator
+      if (isOperatorContext()) {
+        // Check for *=
+        if (pos + 1 < input.length && input[pos + 1] === "=") {
+          tokens.push({ type: "MULT_ASSIGN" });
+          pos += 2;
+        } else {
+          tokens.push({ type: "OPERATOR", value: "*" });
+          pos++;
+        }
       } else {
+        // * in prefix context is dereference operator (used in *y or pointer types *I32)
         tokens.push({ type: "OPERATOR", value: "*" });
         pos++;
       }
@@ -1111,7 +1263,9 @@ function tokenize(input: string): Result<Token[], string> {
         tokens.push({ type: "LOGICAL", value: "&&" });
         pos += 2;
       } else {
-        return err("Unexpected character: &");
+        // Single & is address-of operator
+        tokens.push({ type: "ADDRESS_OF" });
+        pos++;
       }
     } else if (char === "|") {
       // Check for ||
@@ -1297,10 +1451,181 @@ function decrementParseDepth(parser: Parser): void {
   parser._parseDepth = (parser._parseDepth || 1) - 1;
 }
 
+// Helper to parse compound assignment operators
+function parseCompoundAssignmentOperator(
+  parser: Parser,
+): Result<
+  { isCompound: boolean; operator: "+" | "-" | "*" | "/" | "%" },
+  string
+> {
+  const compoundOperators = new Set([
+    "PLUS_ASSIGN",
+    "MINUS_ASSIGN",
+    "MULT_ASSIGN",
+    "DIV_ASSIGN",
+    "MOD_ASSIGN",
+  ]);
+
+  const tok = current(parser);
+  if (compoundOperators.has(tok.type)) {
+    const operatorMap: Record<string, "+" | "-" | "*" | "/" | "%"> = {
+      PLUS_ASSIGN: "+",
+      MINUS_ASSIGN: "-",
+      MULT_ASSIGN: "*",
+      DIV_ASSIGN: "/",
+      MOD_ASSIGN: "%",
+    };
+    const operator = operatorMap[tok.type] || "+";
+    advance(parser);
+    return ok({ isCompound: true, operator });
+  } else if (tok.type === "ASSIGN") {
+    advance(parser);
+    return ok({ isCompound: false, operator: "+" });
+  } else {
+    return err("Expected assignment operator");
+  }
+}
+
+// Helper to check for 'mut' keyword and consume if present
+function tryConsumeMutKeyword(parser: Parser): boolean {
+  if (
+    current(parser).type === "KEYWORD" &&
+    (current(parser) as KeywordToken).value === "mut"
+  ) {
+    advance(parser);
+    return true;
+  }
+  return false;
+}
+
+// Helper to try parsing assignment operator and validate format
+function tryParseAndValidateAssignmentOperator(
+  parser: Parser,
+  savedPos: number,
+): Result<{ isCompound: boolean; operator: "+" | "-" | "*" | "/" | "%" } | undefined, string> {
+  const assignOpResult = parseCompoundAssignmentOperator(parser);
+  if (!assignOpResult.ok) {
+    // Not an assignment, restore position
+    parser.pos = savedPos;
+    return ok(undefined);
+  }
+  return ok(assignOpResult.value);
+}
+function parseAssignmentValue(
+  parser: Parser,
+  isCompound: boolean,
+  operator: "+" | "-" | "*" | "/" | "%",
+  lvalue: ASTNode,
+): Result<ASTNode, string> {
+  const valueResult = parseExpression(parser);
+  if (!valueResult.ok) {
+    return valueResult;
+  }
+
+  let assignValue = valueResult.value;
+
+  // For compound assignments, wrap in a binary operation
+  if (isCompound) {
+    const binaryNode: BinaryNode = {
+      kind: "binary",
+      left: lvalue,
+      operator,
+      right: valueResult.value,
+    };
+    assignValue = binaryNode;
+  }
+
+  return ok(assignValue);
+}
+function handleAssignmentStatement(
+  assignResult: Result<ASTNode | undefined, string>,
+  parser: Parser,
+  statements: ASTNode[],
+): Result<boolean, string> {
+  if (!assignResult.ok) {
+    return assignResult;
+  }
+
+  if (assignResult.value !== undefined) {
+    statements.push(assignResult.value);
+    consumeOptionalSemicolon(parser);
+    return ok(true);
+  } else {
+    // Not an assignment
+    return ok(false);
+  }
+}
+
 function tryParseAssignment(
   parser: Parser,
 ): Result<ASTNode | undefined, string> {
   const tok = current(parser);
+
+  // Handle dereference assignment: *y = value (or *y += value, etc.)
+  if (tok.type === "OPERATOR" && tok.value === "*") {
+    const savedPos = parser.pos;
+
+    // Try to parse: parseUnary() then check for assignment operator
+    const unaryResult = parseUnary(parser);
+    if (!unaryResult.ok) {
+      parser.pos = savedPos;
+      return ok(undefined);
+    }
+
+    // Check if next token is an assignment operator
+    const assignOpResult = parseCompoundAssignmentOperator(parser);
+    if (!assignOpResult.ok) {
+      // Not an assignment, restore position
+      parser.pos = savedPos;
+      return ok(undefined);
+    }
+    const { isCompound, operator } = assignOpResult.value;
+
+    // Validate that we're assigning to a dereference
+    const lvalue = unaryResult.value;
+    if (lvalue.kind !== "unary-op" || lvalue.operator !== "*") {
+      parser.pos = savedPos;
+      return ok(undefined);
+    }
+
+    // Validate that the pointer is mutable
+    const ptrTypeResult = inferExpressionType(lvalue.operand, parser);
+    if (!ptrTypeResult.ok) {
+      return ptrTypeResult;
+    }
+    const ptrType = ptrTypeResult.value;
+    if (!ptrType.startsWith("*mut ")) {
+      return err("Cannot assign through immutable pointer");
+    }
+
+    const assignValueResult = parseAssignmentValue(
+      parser,
+      isCompound,
+      operator,
+      lvalue,
+    );
+    if (!assignValueResult.ok) {
+      return assignValueResult;
+    }
+    const assignValue = assignValueResult.value;
+
+    // Track which variable the pointer points to (for runtime assignment)
+    let targetVar: string | undefined;
+    if (lvalue.operand.kind === "variable") {
+      const ptrVarName = lvalue.operand.name;
+      const ptrVarInfo = parser.variables.get(ptrVarName);
+      if (ptrVarInfo && ptrVarInfo.pointsTo) {
+        targetVar = ptrVarInfo.pointsTo;
+      }
+    }
+
+    return ok({
+      kind: "deref-assign",
+      target: lvalue.operand,
+      value: assignValue,
+      targetVar,
+    } as DerefAssignNode);
+  }
 
   if (tok.type !== "IDENTIFIER") {
     return ok(undefined);
@@ -1366,37 +1691,13 @@ function tryParseAssignment(
   }
 
   // Check if it's a compound assignment operator (for variable assignment)
-  const compoundOperators = new Set([
-    "PLUS_ASSIGN",
-    "MINUS_ASSIGN",
-    "MULT_ASSIGN",
-    "DIV_ASSIGN",
-    "MOD_ASSIGN",
-  ]);
-
-  let isCompound = false;
-  let operator: "+" | "-" | "*" | "/" | "%" = "+";
-
-  if (compoundOperators.has(nextTok.type)) {
-    isCompound = true;
-    // Map compound operators to binary operators
-    const operatorMap: Record<string, "+" | "-" | "*" | "/" | "%"> = {
-      PLUS_ASSIGN: "+",
-      MINUS_ASSIGN: "-",
-      MULT_ASSIGN: "*",
-      DIV_ASSIGN: "/",
-      MOD_ASSIGN: "%",
-    };
-    operator = operatorMap[nextTok.type] || "+";
-    advance(parser);
-  } else if (nextTok.type === "ASSIGN") {
-    // Regular assignment
-    advance(parser);
-  } else {
+  const assignOpResult = parseCompoundAssignmentOperator(parser);
+  if (!assignOpResult.ok) {
     // Not an assignment, restore position
     parser.pos = savedPos;
     return ok(undefined);
   }
+  const { isCompound, operator } = assignOpResult.value;
 
   const varResult = getVariable(parser, name);
   if (!varResult.ok) {
@@ -1406,23 +1707,17 @@ function tryParseAssignment(
     return err("Variable '" + name + "' is immutable and cannot be reassigned");
   }
 
-  const valueResult = parseExpression(parser);
-  if (!valueResult.ok) {
-    return valueResult;
+  const varLvalue: VariableNode = { kind: "variable", name };
+  const assignValueResult = parseAssignmentValue(
+    parser,
+    isCompound,
+    operator,
+    varLvalue,
+  );
+  if (!assignValueResult.ok) {
+    return assignValueResult;
   }
-
-  let assignValue = valueResult.value;
-
-  // For compound assignments, wrap in a binary operation
-  if (isCompound) {
-    const binaryNode: BinaryNode = {
-      kind: "binary",
-      left: { kind: "variable", name },
-      operator,
-      right: valueResult.value,
-    };
-    assignValue = binaryNode;
-  }
+  const assignValue = assignValueResult.value;
 
   return ok({
     kind: "assign",
@@ -1541,18 +1836,11 @@ function parseStatementInBlock(
   } else if (stmtTok.type === "IDENTIFIER") {
     // Could be assignment - use helper
     const assignResult = tryParseAssignment(parser);
-    if (!assignResult.ok) {
-      return assignResult;
-    }
-
-    if (assignResult.value !== undefined) {
-      statements.push(assignResult.value);
-      consumeOptionalSemicolon(parser);
-      return ok(true);
-    } else {
-      // Not an assignment
-      return ok(false);
-    }
+    return handleAssignmentStatement(assignResult, parser, statements);
+  } else if (stmtTok.type === "OPERATOR" && stmtTok.value === "*") {
+    // Could be dereference assignment: *y = value
+    const assignResult = tryParseAssignment(parser);
+    return handleAssignmentStatement(assignResult, parser, statements);
   } else {
     return ok(false);
   }
@@ -2311,12 +2599,46 @@ function parseLetStatement(parser: Parser): Result<ASTNode, string> {
 
   // Check type compatibility for numeric literals
   const initializer = initResult.value;
+
+  // Type check for pointer types: must infer expression type for correct pointer assignment
+  if (typeStr.startsWith("*")) {
+    const exprTypeResult = inferExpressionType(initializer, parser);
+    if (!exprTypeResult.ok) {
+      return exprTypeResult;
+    }
+    const exprType = exprTypeResult.value;
+
+    // Check that expression type matches declared type, with coercion support
+    // Allow *mut T to coerce to *T
+    let isCompatible = exprType === typeStr;
+    if (
+      !isCompatible &&
+      exprType.startsWith("*mut ") &&
+      typeStr.startsWith("*")
+    ) {
+      // Strip "*mut " from exprType and "*" from typeStr and compare base types
+      const exprBase = exprType.slice(5); // Remove "*mut "
+      const typeBase = typeStr.slice(1); // Remove one "*"
+      isCompatible = exprBase === typeBase;
+    }
+    if (!isCompatible) {
+      return err(
+        "Type mismatch: expression has type '" +
+          exprType +
+          "' but variable declared as '" +
+          typeStr +
+          "'",
+      );
+    }
+  }
+
   if (initializer.kind === "number") {
     // Check if negative literal is assigned to unsigned type
     if (
       initializer.value.startsWith("-") &&
       !typeStr.startsWith("I") &&
-      !typeStr.startsWith("F")
+      !typeStr.startsWith("F") &&
+      !typeStr.startsWith("*")
     ) {
       return err(
         "Cannot assign negative value to unsigned type '" + typeStr + "'",
@@ -2363,6 +2685,43 @@ function parseLetStatement(parser: Parser): Result<ASTNode, string> {
   if (initializer.kind === "number") {
     varInfo.initValue = initializer.value;
   }
+
+  // Track what variable a pointer points to (for lvalue operations)
+  // Also enforce exclusive access for mutable pointers
+  if (
+    typeStr.startsWith("*") &&
+    initializer.kind === "unary-op" &&
+    (initializer.operator === "&" || initializer.operator === "&mut")
+  ) {
+    const targetVar = initializer.operand;
+    if (targetVar.kind === "variable") {
+      varInfo.pointsTo = targetVar.name;
+
+      // Enforce exclusive access: only one &mut per variable
+      if (initializer.operator === "&mut") {
+        // Check if another variable already has a mutable pointer to this target
+        for (const [otherName, otherInfo] of parser.variables.entries()) {
+          if (
+            otherInfo.pointsTo === targetVar.name &&
+            otherInfo.type.startsWith("*mut ")
+          ) {
+            return err(
+              `Cannot create multiple mutable pointers to '${targetVar.name}' - exclusive access violation`,
+            );
+          }
+        }
+      }
+    }
+  }
+
+  // If initialized with another pointer, inherit its pointsTo
+  if (typeStr.startsWith("*") && initializer.kind === "variable") {
+    const sourceVarInfo = parser.variables.get(initializer.name);
+    if (sourceVarInfo && sourceVarInfo.pointsTo) {
+      varInfo.pointsTo = sourceVarInfo.pointsTo;
+    }
+  }
+
   parser.variables.set(name, varInfo);
 
   // Record proven constraints for this variable
@@ -2898,7 +3257,7 @@ function parseBinaryOperator(
   operators: Set<string>,
   castType: "+" | "-" | "*" | "/" | "%",
 ): Result<ASTNode, string> {
-  return parseBinary(parser, {
+  const result = parseBinary(parser, {
     nextParser,
     tokenMatcher: (tok: Token) =>
       tok.type === "OPERATOR" && operators.has(tok.value),
@@ -2914,6 +3273,21 @@ function parseBinaryOperator(
       right,
     }),
   });
+
+  // Validate that neither operand has pointer type (no pointer arithmetic)
+  if (result.ok && result.value.kind === "binary") {
+    const leftType = inferExpressionType(result.value.left, parser);
+    const rightType = inferExpressionType(result.value.right, parser);
+
+    if (leftType.ok && leftType.value.startsWith("*")) {
+      return err("Cannot use pointer in arithmetic operation");
+    }
+    if (rightType.ok && rightType.value.startsWith("*")) {
+      return err("Cannot use pointer in arithmetic operation");
+    }
+  }
+
+  return result;
 }
 
 function parseAdditive(parser: Parser): Result<ASTNode, string> {
@@ -2928,10 +3302,77 @@ function parseAdditive(parser: Parser): Result<ASTNode, string> {
 function parseMultiplicative(parser: Parser): Result<ASTNode, string> {
   return parseBinaryOperator(
     parser,
-    parsePostfix,
+    parseUnary,
     new Set(["*", "/", "%"]),
     "*" as "*" | "/" | "%",
   );
+}
+
+function parseUnary(parser: Parser): Result<ASTNode, string> {
+  const tok = current(parser);
+
+  // Handle unary prefix operators: * (dereference) and & (address-of)
+  if (tok.type === "OPERATOR" && tok.value === "*") {
+    advance(parser);
+    const operandResult = parseUnary(parser); // Right-associative: **a means *(*a)
+    if (!operandResult.ok) {
+      return operandResult;
+    }
+
+    // Validate that we're dereferencing a pointer type
+    const operandTypeResult = inferExpressionType(operandResult.value, parser);
+    if (operandTypeResult.ok && !operandTypeResult.value.startsWith("*")) {
+      return err(
+        "Cannot dereference non-pointer type: " + operandTypeResult.value,
+      );
+    }
+
+    return ok({
+      kind: "unary-op",
+      operator: "*",
+      operand: operandResult.value,
+    } as UnaryOpNode);
+  }
+
+  if (tok.type === "ADDRESS_OF") {
+    advance(parser);
+
+    // Check for 'mut' keyword after &
+    const isMutable = tryConsumeMutKeyword(parser);
+
+    const operandResult = parseUnary(parser); // Right-associative: &&a means &(&a)
+    if (!operandResult.ok) {
+      return operandResult;
+    }
+
+    // Validate that we're taking address of a variable
+    if (operandResult.value.kind !== "variable") {
+      return err("Cannot take address of non-variable expression");
+    }
+
+    // Validate that for &mut, the variable must be mutable
+    if (isMutable) {
+      const varName = (operandResult.value as VariableNode).name;
+      const varResult = getVariable(parser, varName);
+      if (!varResult.ok) {
+        return varResult;
+      }
+      if (!varResult.value.mutable) {
+        return err(
+          `Cannot take mutable reference to immutable variable '${varName}'`,
+        );
+      }
+    }
+
+    return ok({
+      kind: "unary-op",
+      operator: isMutable ? "&mut" : "&",
+      operand: operandResult.value,
+    } as UnaryOpNode);
+  }
+
+  // Otherwise, parse postfix expression
+  return parsePostfix(parser);
 }
 
 function parsePostfix(parser: Parser): Result<ASTNode, string> {
@@ -3371,6 +3812,17 @@ function codegenAST(node: ASTNode): string {
     return node.name + " = " + value;
   }
 
+  if (node.kind === "deref-assign") {
+    const value = codegenAST(node.value);
+    // If we know which variable the pointer points to, assign to that variable
+    if (node.targetVar) {
+      return node.targetVar + " = " + value;
+    }
+    // Otherwise, fall back to assigning through the pointer
+    const target = codegenAST(node.target);
+    return target + " = " + value;
+  }
+
   if (
     node.kind === "binary" ||
     node.kind === "comparison" ||
@@ -3388,6 +3840,17 @@ function codegenAST(node: ASTNode): string {
   if (node.kind === "unary-logical") {
     const operand = codegenAST(node.operand);
     return "(!" + operand + ")";
+  }
+
+  if (node.kind === "unary-op") {
+    const operand = codegenAST(node.operand);
+    if (node.operator === "*") {
+      // Dereference: *ptr -> ptr (in a simple interpreter, values are already dereferenced)
+      return operand;
+    } else if (node.operator === "&" || node.operator === "&mut") {
+      // Address-of: &x -> x (in our simple model, we just return the variable/value)
+      return operand;
+    }
   }
 
   if (node.kind === "block") {

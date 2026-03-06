@@ -1787,3 +1787,154 @@ test("refinement: arithmetic constraint", () => {
 test("refinement: arithmetic constraint fails when not satisfied", () => {
   expectError(executeTuff("let x : I32 = 10; let y : I32 > x + 5 = 12; y"));
 });
+
+test("pointer: basic immutable pointer to I32", () => {
+  expectValue(executeTuff("let x : I32 = 100; let y : *I32 = &x; *y"), 100);
+});
+
+test("pointer: immutable pointer to U8", () => {
+  expectValue(executeTuff("let x : U8 = 42; let y : *U8 = &x; *y"), 42);
+});
+
+test("pointer: immutable pointer to F32", () => {
+  expectValue(executeTuff("let x : F32 = 3.14; let y : *F32 = &x; *y"), 3.14);
+});
+
+test("pointer: dereference returns correct type", () => {
+  expectValue(
+    executeTuff("let x : I32 = 50; let y : *I32 = &x; let z : I32 = *y; z"),
+    50,
+  );
+});
+
+test("pointer: pointer to pointer", () => {
+  expectValue(
+    executeTuff(
+      "let x : I32 = 100; let y : *I32 = &x; let z : **I32 = &y; **z",
+    ),
+    100,
+  );
+});
+
+test("pointer: pointer type mismatch on initialization", () => {
+  expectError(executeTuff("let x : I32 = 100; let y : *U8 = &x; y"));
+});
+
+test("pointer: pointer type mismatch on dereference", () => {
+  expectError(executeTuff("let x : I32 = 100; let y : *U8 = &x; *y"));
+});
+
+test("pointer: dereference non-pointer type is error", () => {
+  expectError(executeTuff("let x : I32 = 100; *x"));
+});
+
+test("pointer: invalid pointer type syntax", () => {
+  expectError(executeTuff("let x : *I32 = 100; x"));
+});
+
+test("pointer: address-of non-variable is error", () => {
+  expectError(executeTuff("let x : *I32 = &100; x"));
+});
+
+test("pointer: using pointer in arithmetic fails", () => {
+  expectError(executeTuff("let x : I32 = 100; let y : *I32 = &x; y + 1"));
+});
+
+test("pointer: out-of-scope variable error", () => {
+  expectError(
+    executeTuff("let y : *I32; if (true) { let x : I32 = 100; y = &x; } *y"),
+  );
+});
+
+test("pointer: pointer assignment from valid variable", () => {
+  expectValue(
+    executeTuff("let x : I32 = 100; let y : *I32 = &x; let z : *I32 = &x; *z"),
+    100,
+  );
+});
+
+test("mutable pointer: basic mutable pointer declaration", () => {
+  expectValue(
+    executeTuff("let mut x : I32 = 100; let y : *mut I32 = &mut x; *y"),
+    100,
+  );
+});
+
+test("mutable pointer: assign through mutable pointer", () => {
+  expectValue(
+    executeTuff("let mut x : I32 = 50; let y : *mut I32 = &mut x; *y = 200; x"),
+    200,
+  );
+});
+
+test("mutable pointer: multiple assignments through mutable pointer", () => {
+  expectValue(
+    executeTuff(
+      "let mut x : I32 = 10; let y : *mut I32 = &mut x; *y = 20; *y = 30; x",
+    ),
+    30,
+  );
+});
+
+test("mutable pointer: mutable pointer with read input", () => {
+  const result = executeTuffWithInput(
+    "let mut x : I32 = 0; let y : *mut I32 = &mut x; *y = read<I32>(); x",
+    "99",
+  );
+  expectValue(result, 99);
+});
+
+test("mutable pointer: mutable pointer to U8", () => {
+  expectValue(
+    executeTuff("let mut x : U8 = 42; let y : *mut U8 = &mut x; *y = 100; x"),
+    100,
+  );
+});
+
+test("mutable pointer: coerce mutable to immutable pointer", () => {
+  expectValue(
+    executeTuff(
+      "let mut x : I32 = 100; let y : *mut I32 = &mut x; let z : *I32 = y; *z",
+    ),
+    100,
+  );
+});
+
+test("mutable pointer: cannot take mutable ref to immutable variable", () => {
+  expectError(executeTuff("let x : I32 = 100; let y : *mut I32 = &mut x; y"));
+});
+
+test("mutable pointer: cannot assign to immutable pointer with mutable value", () => {
+  expectError(
+    executeTuff(
+      "let mut x : I32 = 100; let y : *mut I32 = &mut x; let z : *mut I32 = &mut x; y",
+    ),
+  );
+});
+
+test("mutable pointer: assign to dereferenced mutable pointer in expression", () => {
+  expectValue(
+    executeTuff(
+      "let mut x : I32 = 10; let y : *mut I32 = &mut x; *y = (*y) + 5; x",
+    ),
+    15,
+  );
+});
+
+test("mutable pointer: mutable pointer arithmetic through dereference", () => {
+  expectValue(
+    executeTuff(
+      "let mut x : I32 = 100; let y : *mut I32 = &mut x; *y = *y * 2; x",
+    ),
+    200,
+  );
+});
+
+test("mutable pointer: nested dereference assignment", () => {
+  expectValue(
+    executeTuff(
+      "let mut x : I32 = 50; let y : *mut I32 = &mut x; let z : *mut I32 = y; *z = 75; x",
+    ),
+    75,
+  );
+});
