@@ -12,6 +12,7 @@ const VALID_TYPES = new Set([
   "F32",
   "F64",
   "Bool",
+  "Void",
 ]);
 
 // Token interfaces
@@ -56,7 +57,9 @@ interface KeywordToken {
     | "break"
     | "continue"
     | "match"
-    | "case";
+    | "case"
+    | "fn"
+    | "return";
 }
 
 interface LParenToken {
@@ -119,6 +122,10 @@ interface RBraceToken {
   type: "RBRACE";
 }
 
+interface CommaToken {
+  type: "COMMA";
+}
+
 interface EOFToken {
   type: "EOF";
 }
@@ -146,6 +153,7 @@ type Token =
   | MultAssignToken
   | DivAssignToken
   | ModAssignToken
+  | CommaToken
   | EOFToken;
 
 // AST node interfaces
@@ -237,6 +245,11 @@ interface ContinueNode {
   kind: "continue";
 }
 
+interface ReturnNode {
+  kind: "return";
+  value: ASTNode;
+}
+
 interface CasePattern {
   type: "literal" | "boolean" | "wildcard";
   value?: string | boolean; // value for literals/booleans, undefined for wildcard
@@ -251,6 +264,25 @@ interface MatchNode {
   kind: "match";
   matchExpr: ASTNode;
   cases: MatchCase[];
+}
+
+interface FunctionParameter {
+  name: string;
+  type: string;
+}
+
+interface FunctionNode {
+  kind: "function";
+  name: string;
+  parameters: FunctionParameter[];
+  returnType: string;
+  body: ASTNode;
+}
+
+interface FunctionCallNode {
+  kind: "function-call";
+  name: string;
+  arguments: ASTNode[];
 }
 
 type ASTNode =
@@ -269,7 +301,10 @@ type ASTNode =
   | WhileNode
   | BreakNode
   | ContinueNode
-  | MatchNode;
+  | ReturnNode
+  | MatchNode
+  | FunctionNode
+  | FunctionCallNode;
 
 // Variable info interface
 interface VariableInfo {
@@ -455,6 +490,9 @@ function tokenize(input: string): Result<Token[], string> {
     } else if (char === ";") {
       tokens.push({ type: "SEMICOLON" });
       pos++;
+    } else if (char === ",") {
+      tokens.push({ type: "COMMA" });
+      pos++;
     } else if (char === "=") {
       // Check for => (arrow)
       if (pos + 1 < input.length && input[pos + 1] === ">") {
@@ -514,7 +552,9 @@ function tokenize(input: string): Result<Token[], string> {
         ident === "break" ||
         ident === "continue" ||
         ident === "match" ||
-        ident === "case"
+        ident === "case" ||
+        ident === "fn" ||
+        ident === "return"
       ) {
         tokens.push({ type: "KEYWORD", value: ident });
       } else if (ident === "true") {
@@ -583,10 +623,16 @@ function tokenize(input: string): Result<Token[], string> {
   return ok(tokens);
 }
 
+interface FunctionInfo {
+  parameters: FunctionParameter[];
+  returnType: string;
+}
+
 interface Parser {
   tokens: Token[];
   pos: number;
   variables: Map<string, VariableInfo>;
+  functions: Map<string, FunctionInfo>;
 }
 
 function current(parser: Parser): Token {
@@ -725,6 +771,14 @@ function parseStatementInBlock(
     }
     statements.push(stmt.value);
     return ok(true);
+  } else if (stmtTok.type === "KEYWORD" && stmtTok.value === "fn") {
+    // Function declaration
+    const fnStmt = parseFunctionStatement(parser);
+    if (!fnStmt.ok) {
+      return fnStmt;
+    }
+    statements.push(fnStmt.value);
+    return ok(true);
   } else if (stmtTok.type === "KEYWORD" && stmtTok.value === "if") {
     // Nested if statement
     const ifStmt = parseIfStatement(parser);
@@ -759,6 +813,15 @@ function parseStatementInBlock(
       return continueStmt;
     }
     statements.push(continueStmt.value);
+    consumeOptionalSemicolon(parser);
+    return ok(true);
+  } else if (stmtTok.type === "KEYWORD" && stmtTok.value === "return") {
+    // Return statement
+    const returnStmt = parseReturnStatement(parser);
+    if (!returnStmt.ok) {
+      return returnStmt;
+    }
+    statements.push(returnStmt.value);
     consumeOptionalSemicolon(parser);
     return ok(true);
   } else if (stmtTok.type === "IDENTIFIER") {
@@ -1056,6 +1119,26 @@ function parseContinueStatement(parser: Parser): Result<ASTNode, string> {
   return ok({ kind: "continue" });
 }
 
+function parseReturnStatement(parser: Parser): Result<ASTNode, string> {
+  // Expect 'return'
+  const returnTok = current(parser);
+  if (returnTok.type !== "KEYWORD" || returnTok.value !== "return") {
+    return err("Expected 'return'");
+  }
+  advance(parser);
+
+  // Parse return value expression
+  const valueResult = parseExpression(parser);
+  if (!valueResult.ok) {
+    return valueResult;
+  }
+
+  return ok({
+    kind: "return",
+    value: valueResult.value,
+  });
+}
+
 function parseMatchExpression(parser: Parser): Result<ASTNode, string> {
   // Expect 'match'
   const matchTok = current(parser);
@@ -1312,6 +1395,246 @@ function parseLetStatement(parser: Parser): Result<ASTNode, string> {
   });
 }
 
+function isReservedKeyword(name: string): boolean {
+  return (
+    name === "let" ||
+    name === "mut" ||
+    name === "if" ||
+    name === "else" ||
+    name === "while" ||
+    name === "break" ||
+    name === "continue" ||
+    name === "match" ||
+    name === "case" ||
+    name === "fn" ||
+    name === "return"
+  );
+}
+
+function checkReservedKeyword(
+  name: string,
+  context: "function name" | "parameter name",
+): Result<undefined, string> {
+  if (isReservedKeyword(name)) {
+    return err(`Cannot use reserved keyword '${name}' as ${context}`);
+  }
+  return ok(undefined);
+}
+
+function parseFunctionStatement(parser: Parser): Result<ASTNode, string> {
+  // Expect 'fn'
+  const fnTok = current(parser);
+  if (fnTok.type !== "KEYWORD" || fnTok.value !== "fn") {
+    return err("Expected 'fn'");
+  }
+  advance(parser);
+
+  // Expect function name
+  const nameTok = current(parser);
+  if (nameTok.type !== "IDENTIFIER") {
+    return err("Expected function name");
+  }
+  const functionName = nameTok.value;
+
+  // Check reserved keyword
+  const fnNameCheck = checkReservedKeyword(functionName, "function name");
+  if (!fnNameCheck.ok) {
+    return fnNameCheck;
+  }
+
+  // Check for duplicate declaration
+  if (parser.functions.has(functionName)) {
+    return err(`Function '${functionName}' already declared`);
+  }
+
+  advance(parser);
+
+  // Expect '('
+  const lparenTok = current(parser);
+  if (lparenTok.type !== "LPAREN") {
+    return err("Expected '(' after function name");
+  }
+  advance(parser);
+
+  // Parse parameters
+  const parameters: FunctionParameter[] = [];
+  const parameterNames = new Set<string>();
+
+  while (current(parser).type !== "RPAREN") {
+    // Expect parameter name
+    const paramNameTok = current(parser);
+    if (paramNameTok.type !== "IDENTIFIER") {
+      return err("Expected parameter name");
+    }
+
+    // Check reserved keyword
+    const paramKeywordCheck = checkReservedKeyword(
+      paramNameTok.value,
+      "parameter name",
+    );
+    if (!paramKeywordCheck.ok) {
+      return paramKeywordCheck;
+    }
+
+    // Check for duplicate parameter names
+    if (parameterNames.has(paramNameTok.value)) {
+      return err(`Duplicate parameter name '${paramNameTok.value}'`);
+    }
+    parameterNames.add(paramNameTok.value);
+
+    const paramName = paramNameTok.value;
+    advance(parser);
+
+    // Expect ':'
+    const paramColonTok = current(parser);
+    if (paramColonTok.type !== "COLON") {
+      return err("Expected ':' after parameter name");
+    }
+    advance(parser);
+
+    // Parse parameter type
+    const paramTypeResult = parseTypeAnnotation(parser);
+    if (!paramTypeResult.ok) {
+      return paramTypeResult;
+    }
+
+    parameters.push({
+      name: paramName,
+      type: paramTypeResult.value,
+    });
+
+    // Check for comma or end of parameter list
+    const nextTok = current(parser);
+    if (nextTok.type === "RPAREN") {
+      break;
+    } else if (nextTok.type === "COMMA") {
+      advance(parser);
+    } else {
+      return err("Expected ',' or ')' in parameter list");
+    }
+  }
+
+  // Expect ')'
+  const rparenTok = current(parser);
+  if (rparenTok.type !== "RPAREN") {
+    return err("Expected ')' after parameter list");
+  }
+  advance(parser);
+
+  // Expect ':'
+  const returnColonTok = current(parser);
+  if (returnColonTok.type !== "COLON") {
+    return err("Expected ':' before return type");
+  }
+  advance(parser);
+
+  // Parse return type
+  const returnTypeResult = parseTypeValue(parser);
+  if (!returnTypeResult.ok) {
+    return returnTypeResult;
+  }
+  const returnType = returnTypeResult.value;
+  advance(parser);
+
+  // Expect '=>'
+  const arrowTok = current(parser);
+  if (arrowTok.type !== "ARROW") {
+    return err("Expected '=>' after return type");
+  }
+  advance(parser);
+
+  // Parse function body
+  // Save current variable scope
+  const savedVariables = new Map(parser.variables);
+
+  // Add parameters to scope
+  for (const param of parameters) {
+    parser.variables.set(param.name, { type: param.type, mutable: false });
+  }
+
+  const bodyTok = current(parser);
+  let body: ASTNode;
+
+  if (bodyTok.type === "LBRACE") {
+    // Block body with statements - handle manually to support implicit return
+    advance(parser); // consume LBRACE
+
+    const statements: ASTNode[] = [];
+    const blockResult = parseStatementBlock(parser, statements);
+    if (!blockResult.ok) {
+      parser.variables = savedVariables;
+      return blockResult;
+    }
+
+    // Now we should be at RBRACE or have a final expression
+    // Try to parse an optional final expression
+    let result: ASTNode = { kind: "number", value: "0" };
+
+    const exprTok = current(parser);
+    if (exprTok.type !== "RBRACE") {
+      // Try to parse a final expression
+      const exprResult = parseExpression(parser);
+      if (exprResult.ok) {
+        result = exprResult.value;
+      } else {
+        // If expression parsing failed and we're not at RBRACE, return the error
+        if (current(parser).type !== "RBRACE") {
+          parser.variables = savedVariables;
+          return exprResult;
+        }
+        // Otherwise, use default result
+      }
+    }
+
+    // Expect closing brace
+    if (current(parser).type !== "RBRACE") {
+      parser.variables = savedVariables;
+      return err("Expected '}'");
+    }
+    advance(parser);
+
+    body = {
+      kind: "block",
+      statements,
+      result,
+    };
+  } else {
+    // Expression or expression with optional semicolon
+    const exprResult = parseExpression(parser);
+    if (!exprResult.ok) {
+      parser.variables = savedVariables;
+      return exprResult;
+    }
+
+    body = exprResult.value;
+
+    // Expect ';' after expression
+    const semiTok = current(parser);
+    if (semiTok.type !== "SEMICOLON") {
+      parser.variables = savedVariables;
+      return err("Expected ';' after function arrow expression");
+    }
+    advance(parser);
+  }
+
+  // Restore variable scope
+  parser.variables = savedVariables;
+
+  // Register function in parser context
+  parser.functions.set(functionName, {
+    parameters,
+    returnType,
+  });
+
+  return ok({
+    kind: "function",
+    name: functionName,
+    parameters,
+    returnType,
+    body,
+  });
+}
+
 function parseExpression(parser: Parser): Result<ASTNode, string> {
   const tok = current(parser);
 
@@ -1555,6 +1878,60 @@ function parsePrimary(parser: Parser): Result<ASTNode, string> {
     const name = tok.value;
     advance(parser);
 
+    // Check if this is a function call (identifier followed by LPAREN)
+    const nextTok = current(parser);
+    if (nextTok.type === "LPAREN") {
+      // Function call
+      advance(parser); // consume LPAREN
+
+      // Parse arguments
+      const args: ASTNode[] = [];
+
+      while (current(parser).type !== "RPAREN") {
+        const argResult = parseExpression(parser);
+        if (!argResult.ok) {
+          return argResult;
+        }
+        args.push(argResult.value);
+
+        // Check for comma or RPAREN
+        const argNextTok = current(parser);
+        if (argNextTok.type === "RPAREN") {
+          break;
+        } else if (argNextTok.type === "COMMA") {
+          advance(parser);
+        } else {
+          return err("Expected ',' or ')' in function call argument list");
+        }
+      }
+
+      // Expect RPAREN
+      if (current(parser).type !== "RPAREN") {
+        return err("Expected ')' after function arguments");
+      }
+      advance(parser);
+
+      // Check that function exists
+      const fnInfo = parser.functions.get(name);
+      if (!fnInfo) {
+        return err(`Function '${name}' is not defined`);
+      }
+
+      // Check argument count
+      if (args.length !== fnInfo.parameters.length) {
+        return err(
+          `Function '${name}' expects ${fnInfo.parameters.length} arguments, got ${args.length}`,
+        );
+      }
+
+      // Return a function call node
+      return ok({
+        kind: "function-call",
+        name,
+        arguments: args,
+      });
+    }
+
     // Variable reference - just check it exists
     const varResult = getVariable(parser, name);
     if (!varResult.ok) {
@@ -1786,6 +2163,11 @@ function codegenAST(node: ASTNode): string {
     return "continue";
   }
 
+  if (node.kind === "return") {
+    const value = codegenAST(node.value);
+    return `return ${value}`;
+  }
+
   if (node.kind === "match") {
     const matchExpr = codegenAST(node.matchExpr);
 
@@ -1850,6 +2232,39 @@ function codegenAST(node: ASTNode): string {
     }
 
     return `(${result})`;
+  }
+
+  if (node.kind === "function") {
+    // Generate function declaration
+    const paramList = node.parameters.map((p) => `${p.name}`).join(", ");
+
+    let bodyCode = "";
+    if (node.body.kind === "block") {
+      const statements = node.body.statements;
+      bodyCode = generateStatementCode(statements);
+
+      // Check if the last statement is a return statement
+      const lastStmt =
+        statements.length > 0 ? statements[statements.length - 1] : undefined;
+      if (lastStmt && lastStmt.kind === "return") {
+        // The last statement is a return, don't add another return
+        // The return statement was already generated in generateStatementCode
+      } else {
+        // No return statement at the end, add an explicit return for the result
+        bodyCode += `return ${codegenAST(node.body.result)}`;
+      }
+    } else {
+      bodyCode = `return ${codegenAST(node.body)}`;
+    }
+
+    return `function ${node.name}(${paramList}) { ${bodyCode} };`;
+  }
+
+  if (node.kind === "function-call") {
+    // Generate function call
+    const argList = node.arguments.map((arg) => codegenAST(arg)).join(", ");
+
+    return `${node.name}(${argList})`;
   }
 
   return "0";
@@ -1948,6 +2363,11 @@ function validateAST(node: ASTNode): Result<undefined, string> {
     return ok(undefined);
   }
 
+  if (node.kind === "return") {
+    // Validate return value
+    return validateAST(node.value);
+  }
+
   if (node.kind === "match") {
     // Validate match expression
     const exprValidation = validateAST(node.matchExpr);
@@ -1963,6 +2383,22 @@ function validateAST(node: ASTNode): Result<undefined, string> {
       }
     }
 
+    return ok(undefined);
+  }
+
+  if (node.kind === "function") {
+    // Validate function body
+    return validateAST(node.body);
+  }
+
+  if (node.kind === "function-call") {
+    // Validate function call arguments
+    for (const arg of node.arguments) {
+      const argValidation = validateAST(arg);
+      if (!argValidation.ok) {
+        return argValidation;
+      }
+    }
     return ok(undefined);
   }
 
@@ -1988,7 +2424,12 @@ export function compile(input: string): Result<string, string> {
 
   // Parse
   const tokens = tokenResult.value;
-  const parser: Parser = { tokens, pos: 0, variables: new Map() };
+  const parser: Parser = {
+    tokens,
+    pos: 0,
+    variables: new Map(),
+    functions: new Map(),
+  };
   const astResult = parseProgram(parser);
   if (!astResult.ok) {
     return astResult;

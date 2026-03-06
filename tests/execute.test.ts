@@ -106,6 +106,20 @@ function expectError(result: Result<number, string>): void {
 }
 
 /**
+ * Helper to assert a floating point result matches expected value within tolerance
+ */
+function expectFloatValue(
+  result: Result<number, string>,
+  expected: number,
+  tolerance: number = 0.01,
+): void {
+  expect(isOk(result)).toBe(true);
+  if (isOk(result)) {
+    expect(Math.abs(result.value - expected) < tolerance).toBe(true);
+  }
+}
+
+/**
  * Execute Tuff code with stdin input
  */
 export function executeTuffWithInput(
@@ -651,12 +665,7 @@ test("compound assignment: += with U8 type", () => {
 });
 
 test("compound assignment: += with F32 type", () => {
-  const result = executeTuff("let mut x : F32 = 1.5; x += 2.5; x");
-  if (isOk(result)) {
-    expect(Math.abs(result.value - 4.0) < 0.01).toBe(true);
-  } else {
-    expect.unreachable();
-  }
+  expectFloatValue(executeTuff("let mut x : F32 = 1.5; x += 2.5; x"), 4.0);
 });
 
 test("compound assignment: multiple compound assignments", () => {
@@ -1034,5 +1043,252 @@ test("match: large number range", () => {
       "let x : I32 = match (1000) { case 100 => 1; case 500 => 2; case 1000 => 3; case _ => 0; };x",
     ),
     3,
+  );
+});
+
+// Function declaration tests - POSITIVE CASES (happy path)
+
+test("function: block with explicit return statement", () => {
+  expectValue(
+    executeTuff(
+      "fn add(a : I32, b : I32) : I32 => { return a + b; } add(5, 3)",
+    ),
+    8,
+  );
+});
+
+test("function: block without explicit return (implicit return)", () => {
+  expectValue(
+    executeTuff("fn add(a : I32, b : I32) : I32 => { a + b } add(5, 3)"),
+    8,
+  );
+});
+
+test("function: arrow expression (no braces)", () => {
+  expectValue(
+    executeTuff("fn add(a : I32, b : I32) : I32 => a + b; add(5, 3)"),
+    8,
+  );
+});
+
+test("function: arrow expression with semicolon", () => {
+  expectValue(
+    executeTuff("fn add(a : I32, b : I32) : I32 => a + b; add(10, 20)"),
+    30,
+  );
+});
+
+test("function: multiple parameters", () => {
+  expectValue(
+    executeTuff(
+      "fn multiply(x : I32, y : I32, z : I32) : I32 => x * y * z; multiply(2, 3, 4)",
+    ),
+    24,
+  );
+});
+
+test("function: single parameter", () => {
+  expectValue(executeTuff("fn double(x : I32) : I32 => x * 2; double(21)"), 42);
+});
+
+test("function: parameter types U8", () => {
+  expectValue(
+    executeTuff("fn add(a : U8, b : U8) : U8 => a + b; add(100U8, 50U8)"),
+    150,
+  );
+});
+
+test("function: parameter types F32", () => {
+  expectFloatValue(
+    executeTuff("fn add(a : F32, b : F32) : F32 => a + b; add(1.5F32, 2.5F32)"),
+    4.0,
+  );
+});
+
+test("function: return type Void", () => {
+  expectValue(executeTuff("fn printNum(x : I32) : Void => { } 42"), 42);
+});
+
+test("function: using let statements in function body", () => {
+  expectValue(
+    executeTuff(
+      "fn calculate(x : I32) : I32 => { let temp : I32 = x * 2; temp + 5 } calculate(10)",
+    ),
+    25,
+  );
+});
+
+test("function: block with multiple statements then expression", () => {
+  expectValue(
+    executeTuff(
+      "fn compute(a : I32, b : I32) : I32 => { let x : I32 = a + b; let y : I32 = x * 2; y } compute(3, 4)",
+    ),
+    14,
+  );
+});
+
+test("function: function with arithmetic in body", () => {
+  expectValue(
+    executeTuff(
+      "fn calculate(x : I32) : I32 => x * x - 3 * x + 2; calculate(5)",
+    ),
+    12,
+  );
+});
+
+test("function: using comparison in body", () => {
+  expectValue(
+    executeTuff(
+      "fn isGreater(a : I32, b : I32) : I32 => if (a > b) 1 else 0; isGreater(10, 5)",
+    ),
+    1,
+  );
+});
+
+test("function: calling with complex expressions as arguments", () => {
+  expectValue(
+    executeTuff("fn add(a : I32, b : I32) : I32 => a + b; add(2 + 3, 4 * 2)"),
+    13,
+  );
+});
+
+test("function: multiple function declarations", () => {
+  expectValue(
+    executeTuff(
+      "fn add(a : I32, b : I32) : I32 => a + b; fn mul(a : I32, b : I32) : I32 => a * b; add(mul(2, 3), 4)",
+    ),
+    10,
+  );
+});
+
+test("function: function call with variables", () => {
+  expectValue(
+    executeTuff(
+      "fn add(a : I32, b : I32) : I32 => a + b; let x : I32 = 5; let y : I32 = 10; add(x, y)",
+    ),
+    15,
+  );
+});
+
+test("function: chained function calls", () => {
+  expectValue(
+    executeTuff(
+      "fn add(a : I32, b : I32) : I32 => a + b; fn double(x : I32) : I32 => x * 2; double(add(3, 4))",
+    ),
+    14,
+  );
+});
+
+test("function: function with negative numbers", () => {
+  expectValue(
+    executeTuff("fn sub(a : I32, b : I32) : I32 => a - b; sub(-10, 5)"),
+    -15,
+  );
+});
+
+test("function: block with assignment statement", () => {
+  expectValue(
+    executeTuff(
+      "fn compute(x : I32) : I32 => { let mut result : I32 = 0; result = x * 2; result } compute(7)",
+    ),
+    14,
+  );
+});
+
+// Function declaration tests - NEGATIVE CASES (error handling)
+
+test("function: missing function name is error", () => {
+  expectError(executeTuff("fn (a : I32) : I32 => a;"));
+});
+
+test("function: missing parameter list is error", () => {
+  expectError(executeTuff("fn add : I32 => 42;"));
+});
+
+test("function: missing colon in parameter is error", () => {
+  expectError(executeTuff("fn add(a I32) : I32 => a;"));
+});
+
+test("function: missing type annotation on parameter is error", () => {
+  expectError(executeTuff("fn add(a :  ) : I32 => a;"));
+});
+
+test("function: missing arrow (=>) is error", () => {
+  expectError(executeTuff("fn add(a : I32) : I32 { a }"));
+});
+
+test("function: missing return type is error", () => {
+  expectError(executeTuff("fn add(a : I32) => a;"));
+});
+
+test("function: invalid return type is error", () => {
+  expectError(executeTuff("fn add(a : I32) : InvalidType => a;"));
+});
+
+test("function: missing closing parenthesis in parameter list is error", () => {
+  expectError(executeTuff("fn add(a : I32 : I32 => a;"));
+});
+
+test("function: missing closing brace in block is error", () => {
+  expectError(executeTuff("fn add(a : I32) : I32 => { a"));
+});
+
+test("function: empty parameter list is valid", () => {
+  expectValue(executeTuff("fn getNumber() : I32 => 42; getNumber()"), 42);
+});
+
+test("function: duplicate parameter names is error", () => {
+  expectError(executeTuff("fn add(a : I32, a : I32) : I32 => a + a;"));
+});
+
+test("function: invalid parameter type is error", () => {
+  expectError(executeTuff("fn add(a : InvalidType) : I32 => a;"));
+});
+
+test("function: missing semicolon after arrow expression is error", () => {
+  expectError(executeTuff("fn add(a : I32) : I32 => a"));
+});
+
+test("function: function with void return but expression body is error", () => {
+  expectError(executeTuff("fn foo() : Void => 42;"));
+});
+
+test("function: reference to undefined variable in function is error", () => {
+  expectError(executeTuff("fn useX() : I32 => x; useX()"));
+});
+
+test("function: mismatched return type (returns I32 but declares Void) is error", () => {
+  expectError(executeTuff("fn foo() : Void => 42;"));
+});
+
+test("function: parameter name used but not declared is error", () => {
+  expectError(
+    executeTuff("fn add(a : I32, b : I32) : I32 => a + c; add(1, 2)"),
+  );
+});
+
+test("function: function called with wrong number of arguments is error", () => {
+  expectError(executeTuff("fn add(a : I32, b : I32) : I32 => a + b; add(5)"));
+});
+
+test("function: function called with no parentheses is error", () => {
+  expectError(executeTuff("fn getNumber() : I32 => 42; getNumber"));
+});
+
+test("function: using reserved keyword as function name is error", () => {
+  expectError(executeTuff("fn let() : I32 => 42;"));
+});
+
+test("function: using reserved keyword as parameter name is error", () => {
+  expectError(executeTuff("fn add(let : I32) : I32 => let;"));
+});
+
+test("function: multiple statements without final expression in block (implicit return) is error", () => {
+  expectError(executeTuff("fn foo() : I32 => { let x : I32 = 5; }"));
+});
+
+test("function: function body with only statements no expression is error", () => {
+  expectError(
+    executeTuff("fn foo() : I32 => { let x : I32 = 5; let y : I32 = 10; }"),
   );
 });
