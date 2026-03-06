@@ -47,7 +47,7 @@ interface IdentifierToken {
 
 interface KeywordToken {
   type: "KEYWORD";
-  value: "let" | "mut" | "if" | "else";
+  value: "let" | "mut" | "if" | "else" | "while" | "break" | "continue";
 }
 
 interface LParenToken {
@@ -209,6 +209,20 @@ interface IfNode {
   elseBranch: ASTNode | undefined;
 }
 
+interface WhileNode {
+  kind: "while";
+  condition: ASTNode;
+  body: ASTNode;
+}
+
+interface BreakNode {
+  kind: "break";
+}
+
+interface ContinueNode {
+  kind: "continue";
+}
+
 type ASTNode =
   | NumberNode
   | ReadNode
@@ -221,7 +235,10 @@ type ASTNode =
   | LetNode
   | AssignNode
   | BlockNode
-  | IfNode;
+  | IfNode
+  | WhileNode
+  | BreakNode
+  | ContinueNode;
 
 // Variable info interface
 interface VariableInfo {
@@ -457,7 +474,10 @@ function tokenize(input: string): Result<Token[], string> {
         ident === "let" ||
         ident === "mut" ||
         ident === "if" ||
-        ident === "else"
+        ident === "else" ||
+        ident === "while" ||
+        ident === "break" ||
+        ident === "continue"
       ) {
         tokens.push({ type: "KEYWORD", value: ident });
       } else if (ident === "true") {
@@ -677,6 +697,33 @@ function parseStatementInBlock(
     statements.push(ifStmt.value);
     consumeOptionalSemicolon(parser);
     return ok(true);
+  } else if (stmtTok.type === "KEYWORD" && stmtTok.value === "while") {
+    // While loop statement
+    const whileStmt = parseWhileStatement(parser);
+    if (!whileStmt.ok) {
+      return whileStmt;
+    }
+    statements.push(whileStmt.value);
+    consumeOptionalSemicolon(parser);
+    return ok(true);
+  } else if (stmtTok.type === "KEYWORD" && stmtTok.value === "break") {
+    // Break statement
+    const breakStmt = parseBreakStatement(parser);
+    if (!breakStmt.ok) {
+      return breakStmt;
+    }
+    statements.push(breakStmt.value);
+    consumeOptionalSemicolon(parser);
+    return ok(true);
+  } else if (stmtTok.type === "KEYWORD" && stmtTok.value === "continue") {
+    // Continue statement
+    const continueStmt = parseContinueStatement(parser);
+    if (!continueStmt.ok) {
+      return continueStmt;
+    }
+    statements.push(continueStmt.value);
+    consumeOptionalSemicolon(parser);
+    return ok(true);
   } else if (stmtTok.type === "IDENTIFIER") {
     // Could be assignment - use helper
     const assignResult = tryParseAssignment(parser);
@@ -697,18 +744,11 @@ function parseStatementInBlock(
   }
 }
 
-function parseIfStatement(parser: Parser): Result<ASTNode, string> {
-  // Expect 'if'
-  const ifTok = current(parser);
-  if (ifTok.type !== "KEYWORD" || ifTok.value !== "if") {
-    return err("Expected 'if'");
-  }
-  advance(parser);
-
+function parseParenthesizedCondition(parser: Parser): Result<ASTNode, string> {
   // Expect '('
   const lparen = current(parser);
   if (lparen.type !== "LPAREN") {
-    return err("Expected '(' after 'if'");
+    return err("Expected '('");
   }
   advance(parser);
 
@@ -724,6 +764,88 @@ function parseIfStatement(parser: Parser): Result<ASTNode, string> {
     return err("Expected ')'");
   }
   advance(parser);
+
+  return conditionResult;
+}
+
+function parseBlockStatements(parser: Parser): Result<ASTNode[], string> {
+  // Expect '{'
+  if (current(parser).type !== "LBRACE") {
+    return err("Expected '{'");
+  }
+  advance(parser);
+
+  const statements: ASTNode[] = [];
+  const blockResult = parseStatementBlock(parser, statements);
+  if (!blockResult.ok) {
+    return blockResult;
+  }
+
+  // Expect '}'
+  if (current(parser).type !== "RBRACE") {
+    return err("Expected '}'");
+  }
+  advance(parser);
+
+  return ok(statements);
+}
+
+function createBlockBodyWithOptionalExpression(
+  statements: ASTNode[],
+  parser: Parser,
+): Result<ASTNode, string> {
+  if (statements.length === 0) {
+    return ok({ kind: "number", value: "0" });
+  }
+
+  // Parse the final expression in the block (if any)
+  const resultTok = current(parser);
+  if (
+    resultTok.type !== "RBRACE" &&
+    resultTok.type !== "SEMICOLON" &&
+    resultTok.type !== "KEYWORD" &&
+    resultTok.type !== "IDENTIFIER" &&
+    resultTok.type !== "EOF"
+  ) {
+    const exprResult = parseExpression(parser);
+    if (!exprResult.ok) {
+      return exprResult;
+    }
+    return ok({ kind: "block", statements, result: exprResult.value });
+  }
+
+  return ok({
+    kind: "block",
+    statements,
+    result: { kind: "number", value: "0" },
+  });
+}
+
+function createSimpleBlockNode(statements: ASTNode[]): ASTNode {
+  if (statements.length === 0) {
+    return { kind: "number", value: "0" };
+  }
+
+  return {
+    kind: "block",
+    statements,
+    result: { kind: "number", value: "0" },
+  };
+}
+
+function parseIfStatement(parser: Parser): Result<ASTNode, string> {
+  // Expect 'if'
+  const ifTok = current(parser);
+  if (ifTok.type !== "KEYWORD" || ifTok.value !== "if") {
+    return err("Expected 'if'");
+  }
+  advance(parser);
+
+  // Parse condition
+  const conditionResult = parseParenthesizedCondition(parser);
+  if (!conditionResult.ok) {
+    return conditionResult;
+  }
 
   // Parse then branch (single statement or block)
   const thenResult = parseIfBody(parser);
@@ -770,49 +892,35 @@ function parseIfBody(parser: Parser): Result<ASTNode, string> {
 
   // Block body
   if (tok.type === "LBRACE") {
-    advance(parser);
-
-    const statements: ASTNode[] = [];
-    const blockResult = parseStatementBlock(parser, statements);
-    if (!blockResult.ok) {
-      return blockResult;
+    const stmtsResult = parseBlockStatements(parser);
+    if (!stmtsResult.ok) {
+      return stmtsResult;
     }
 
-    // Expect '}'
-    if (current(parser).type !== "RBRACE") {
-      return err("Expected '}'");
-    }
-    advance(parser);
-
-    // If block has statements, the last expression is the result
-    // Otherwise it's just a no-op
-    if (statements.length === 0) {
-      return ok({ kind: "number", value: "0" });
-    }
-
-    // Parse the final expression in the block (if any)
-    const resultTok = current(parser);
-    if (
-      resultTok.type !== "RBRACE" &&
-      resultTok.type !== "SEMICOLON" &&
-      resultTok.type !== "KEYWORD" &&
-      resultTok.type !== "IDENTIFIER" &&
-      resultTok.type !== "EOF"
-    ) {
-      const exprResult = parseExpression(parser);
-      if (!exprResult.ok) {
-        return exprResult;
-      }
-      return ok({ kind: "block", statements, result: exprResult.value });
-    }
-
-    return ok({
-      kind: "block",
-      statements,
-      result: { kind: "number", value: "0" },
-    });
+    return createBlockBodyWithOptionalExpression(stmtsResult.value, parser);
   } else {
-    // Single statement body - could be assignment or expression
+    // Single statement body - could be break, continue, assignment, or expression
+    const tok = current(parser);
+
+    // Check for break statement
+    if (tok.type === "KEYWORD" && tok.value === "break") {
+      const breakStmt = parseBreakStatement(parser);
+      if (!breakStmt.ok) {
+        return breakStmt;
+      }
+      return breakStmt;
+    }
+
+    // Check for continue statement
+    if (tok.type === "KEYWORD" && tok.value === "continue") {
+      const continueStmt = parseContinueStatement(parser);
+      if (!continueStmt.ok) {
+        return continueStmt;
+      }
+      return continueStmt;
+    }
+
+    // Try assignment
     const assignResult = tryParseAssignment(parser);
     if (!assignResult.ok) {
       return assignResult;
@@ -829,6 +937,86 @@ function parseIfBody(parser: Parser): Result<ASTNode, string> {
     }
     return exprResult;
   }
+}
+
+function parseWhileStatement(parser: Parser): Result<ASTNode, string> {
+  // Expect 'while'
+  const whileTok = current(parser);
+  if (whileTok.type !== "KEYWORD" || whileTok.value !== "while") {
+    return err("Expected 'while'");
+  }
+  advance(parser);
+
+  // Parse condition
+  const conditionResult = parseParenthesizedCondition(parser);
+  if (!conditionResult.ok) {
+    return conditionResult;
+  }
+
+  // Parse body (single statement or block)
+  const bodyTok = current(parser);
+  let bodyResult: Result<ASTNode, string>;
+
+  if (bodyTok.type === "LBRACE") {
+    // Block body
+    const stmtsResult = parseBlockStatements(parser);
+    if (!stmtsResult.ok) {
+      return stmtsResult;
+    }
+
+    bodyResult = ok(createSimpleBlockNode(stmtsResult.value));
+  } else {
+    // Single statement body
+    const statements: ASTNode[] = [];
+    const stmtResult = parseStatementInBlock(parser, statements);
+    if (!stmtResult.ok) {
+      return stmtResult;
+    }
+
+    if (stmtResult.value && statements.length === 1) {
+      bodyResult = ok(statements[0] as ASTNode);
+    } else if (stmtResult.value && statements.length > 1) {
+      bodyResult = ok({
+        kind: "block",
+        statements,
+        result: { kind: "number", value: "0" },
+      });
+    } else {
+      return err("Expected statement or block in while body");
+    }
+  }
+
+  if (!bodyResult.ok) {
+    return bodyResult;
+  }
+
+  return ok({
+    kind: "while",
+    condition: conditionResult.value,
+    body: bodyResult.value,
+  });
+}
+
+function parseBreakStatement(parser: Parser): Result<ASTNode, string> {
+  // Expect 'break'
+  const breakTok = current(parser);
+  if (breakTok.type !== "KEYWORD" || breakTok.value !== "break") {
+    return err("Expected 'break'");
+  }
+  advance(parser);
+
+  return ok({ kind: "break" });
+}
+
+function parseContinueStatement(parser: Parser): Result<ASTNode, string> {
+  // Expect 'continue'
+  const continueTok = current(parser);
+  if (continueTok.type !== "KEYWORD" || continueTok.value !== "continue") {
+    return err("Expected 'continue'");
+  }
+  advance(parser);
+
+  return ok({ kind: "continue" });
 }
 
 function parseProgram(parser: Parser): Result<ASTNode, string> {
@@ -1384,6 +1572,27 @@ function codegenAST(node: ASTNode): string {
     }
   }
 
+  if (node.kind === "while") {
+    const condition = codegenAST(node.condition);
+    let bodyCode = "";
+
+    if (node.body.kind === "block") {
+      bodyCode = generateStatementCode(node.body.statements);
+    } else {
+      bodyCode = codegenAST(node.body);
+    }
+
+    return `while (${condition}) { ${bodyCode} }`;
+  }
+
+  if (node.kind === "break") {
+    return "break";
+  }
+
+  if (node.kind === "continue") {
+    return "continue";
+  }
+
   return "0";
 }
 
@@ -1456,6 +1665,27 @@ function validateAST(node: ASTNode): Result<undefined, string> {
       }
     }
 
+    return ok(undefined);
+  }
+
+  if (node.kind === "while") {
+    // Validate condition
+    const condValidation = validateAST(node.condition);
+    if (!condValidation.ok) {
+      return condValidation;
+    }
+
+    // Validate body
+    const bodyValidation = validateAST(node.body);
+    if (!bodyValidation.ok) {
+      return bodyValidation;
+    }
+
+    return ok(undefined);
+  }
+
+  if (node.kind === "break" || node.kind === "continue") {
+    // Validation for break/continue will be done at parser level
     return ok(undefined);
   }
 

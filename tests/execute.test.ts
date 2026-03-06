@@ -706,3 +706,170 @@ test("compound assignment: %= produces NaN", () => {
     expect(Number.isNaN(result.value)).toBe(true);
   }
 });
+
+// While statement tests
+
+test("while loop: simple counter loop", () => {
+  expectValue(
+    executeTuff("let mut x : I32 = 0; while (x < 5) { x += 1 }; x"),
+    5,
+  );
+});
+
+test("while loop: zero iterations", () => {
+  expectValue(
+    executeTuff("let mut x : I32 = 10; while (x < 5) { x += 1 }; x"),
+    10,
+  );
+});
+
+test("while loop: accumulator pattern", () => {
+  expectValue(
+    executeTuff(
+      "let mut x : I32 = 0; let mut sum : I32 = 0; while (x < 5) { sum += x; x += 1 }; sum",
+    ),
+    10,
+  );
+});
+
+test("while loop: without braces (single statement)", () => {
+  expectValue(executeTuff("let mut x : I32 = 0; while (x < 3) x += 1; x"), 3);
+});
+
+test("while loop: with break statement", () => {
+  expectValue(
+    executeTuff(
+      "let mut x : I32 = 0; while (x < 10) { if (x == 3) break; x += 1 }; x",
+    ),
+    3,
+  );
+});
+
+test("while loop: with continue statement", () => {
+  expectValue(
+    executeTuff(
+      "let mut x : I32 = 0; let mut sum : I32 = 0; while (x < 5) { x += 1; if (x == 3) continue; sum += x }; sum",
+    ),
+    12,
+  );
+});
+
+test("while loop: multiple breaks at different conditions", () => {
+  expectValue(
+    executeTuff(
+      "let mut x : I32 = 0; while (x < 20) { if (x == 5) break; x += 1 }; x",
+    ),
+    5,
+  );
+});
+
+test("while loop: break in nested if", () => {
+  expectValue(
+    executeTuff(
+      "let mut x : I32 = 0; while (x < 10) { x += 1; if (x > 3) if (x == 5) break }; x",
+    ),
+    5,
+  );
+});
+
+test("while loop: continue in nested if", () => {
+  expectValue(
+    executeTuff(
+      "let mut x : I32 = 0; let mut sum : I32 = 0; while (x < 5) { x += 1; if (x == 2) { continue } sum += x }; sum",
+    ),
+    13,
+  );
+});
+
+test("while loop: with compound assignment in condition", () => {
+  expectValue(executeTuff("let mut x : I32 = 1; while (x < 3) x += 1; x"), 3);
+});
+
+test("while loop: with variable condition", () => {
+  expectValue(
+    executeTuff(
+      "let mut x : I32 = 0; let mut limit : I32 = 5; while (x < limit) { x += 1 }; x",
+    ),
+    5,
+  );
+});
+
+test("while loop: with comparison in condition", () => {
+  expectValue(
+    executeTuff("let mut x : I32 = 0; while (x < 4) { x += 1 }; x"),
+    4,
+  );
+});
+
+test("while loop: with logical AND condition", () => {
+  expectValue(
+    executeTuff("let mut x : I32 = 0; while (x < 5 && x != 3) { x += 1 }; x"),
+    3,
+  );
+});
+
+test("while loop: with logical OR condition", () => {
+  expectValue(
+    executeTuff("let mut x : I32 = 0; while (x < 3 || x == 0) { x += 1 }; x"),
+    3,
+  );
+});
+
+test("while loop: with NOT condition", () => {
+  expectValue(
+    executeTuff(
+      "let mut x : I32 = 0; let mut done : Bool = false; while (!done) { x += 1; if (x == 3) done = true }; x",
+    ),
+    3,
+  );
+});
+
+test("while loop: nested while loops", () => {
+  expectValue(
+    executeTuff(
+      "let mut i : I32 = 0; let mut sum : I32 = 0; while (i < 3) { let mut j : I32 = 0; while (j < 2) { sum += 1; j += 1 }; i += 1 }; sum",
+    ),
+    6,
+  );
+});
+
+test("while loop: nested with break in inner", () => {
+  expectValue(
+    executeTuff(
+      "let mut i : I32 = 0; let mut sum : I32 = 0; while (i < 3) { let mut j : I32 = 0; while (j < 5) { if (j == 2) break; sum += 1; j += 1 }; i += 1 }; sum",
+    ),
+    6,
+  );
+});
+
+test("while loop: non-boolean condition is error", () => {
+  expectError(executeTuff("while (5) { }"));
+});
+
+test("while loop: undefined variable in condition is error", () => {
+  expectError(executeTuff("while (x < 5) { }"));
+});
+
+test("while loop: break outside loop is error", () => {
+  expectError(executeTuff("break;"));
+});
+
+test("while loop: continue outside loop is error", () => {
+  expectError(executeTuff("continue;"));
+});
+
+test("while loop: break without condition is valid", () => {
+  expectValue(
+    executeTuff("let mut x : I32 = 0; while (x < 10) { x += 1; break }; x"),
+    1,
+  );
+});
+
+test("while loop: continue after statement executes next iteration", () => {
+  expectValue(
+    executeTuff(
+      "let mut x : I32 = 0; let mut sum : I32 = 0; while (x < 4) { x += 1; sum += x; if (x == 2) continue; sum += 10 }; sum",
+    ),
+    40,
+  );
+});
