@@ -1442,11 +1442,6 @@ function parseFunctionStatement(parser: Parser): Result<ASTNode, string> {
     return fnNameCheck;
   }
 
-  // Check for duplicate declaration
-  if (parser.functions.has(functionName)) {
-    return err(`Function '${functionName}' already declared`);
-  }
-
   advance(parser);
 
   // Expect '('
@@ -1543,6 +1538,13 @@ function parseFunctionStatement(parser: Parser): Result<ASTNode, string> {
   }
   advance(parser);
 
+  // Register function in parser context BEFORE parsing body
+  // This allows recursive calls to find the function
+  parser.functions.set(functionName, {
+    parameters,
+    returnType,
+  });
+
   // Parse function body
   // Save current variable scope
   const savedVariables = new Map(parser.variables);
@@ -1619,12 +1621,6 @@ function parseFunctionStatement(parser: Parser): Result<ASTNode, string> {
 
   // Restore variable scope
   parser.variables = savedVariables;
-
-  // Register function in parser context
-  parser.functions.set(functionName, {
-    parameters,
-    returnType,
-  });
 
   return ok({
     kind: "function",
@@ -2082,6 +2078,10 @@ function codegenAST(node: ASTNode): string {
   ) {
     const left = codegenAST(node.left);
     const right = codegenAST(node.right);
+    // For division with integer types, use Math.trunc for integer division
+    if (node.kind === "binary" && node.operator === "/") {
+      return `(Math.trunc(${left} / ${right}))`;
+    }
     return `(${left} ${node.operator} ${right})`;
   }
 
@@ -2405,6 +2405,145 @@ function validateAST(node: ASTNode): Result<undefined, string> {
   return ok(undefined);
 }
 
+/**
+ * Helper to register all function signatures before parsing bodies
+ * Supports mutual recursion by allowing functions to reference each other
+ */
+function prescanFunctionSignatures(parser: Parser): Result<void, string> {
+  const savedPos = parser.pos;
+  parser.pos = 0;
+
+  while (current(parser).type !== "EOF") {
+    const tok = current(parser);
+
+    // Look for function declarations
+    if (tok.type === "KEYWORD" && tok.value === "fn") {
+      advance(parser); // consume 'fn'
+
+      // Get function name
+      const nameTok = current(parser);
+      if (nameTok.type !== "IDENTIFIER") {
+        parser.pos = savedPos;
+        return err("Expected function name");
+      }
+      const nameTokValue = nameTok as IdentifierToken;
+      const functionName = nameTokValue.value;
+      advance(parser);
+
+      // Skip to opening paren
+      if (current(parser).type !== "LPAREN") {
+        parser.pos = savedPos;
+        return err("Expected '(' after function name");
+      }
+      advance(parser);
+
+      // Parse parameters
+      const parameters: FunctionParameter[] = [];
+      while (current(parser).type !== "RPAREN") {
+        if (current(parser).type === "IDENTIFIER") {
+          const paramTok = current(parser) as IdentifierToken;
+          const paramName = paramTok.value;
+          advance(parser); // param name
+
+          if (current(parser).type !== "COLON") {
+            parser.pos = savedPos;
+            return err("Expected ':' after parameter name");
+          }
+          advance(parser); // colon
+
+          // Parse parameter type
+          const paramTypeResult = parseTypeAnnotation(parser);
+          if (!paramTypeResult.ok) {
+            parser.pos = savedPos;
+            return paramTypeResult;
+          }
+
+          parameters.push({
+            name: paramName,
+            type: paramTypeResult.value,
+          });
+
+          if (current(parser).type === "COMMA") {
+            advance(parser);
+          }
+        } else if (current(parser).type !== "RPAREN") {
+          parser.pos = savedPos;
+          return err("Expected parameter or ')' in parameter list");
+        }
+      }
+
+      if (current(parser).type !== "RPAREN") {
+        parser.pos = savedPos;
+        return err("Expected ')' after parameters");
+      }
+      advance(parser); // consume ')'
+
+      // Expect ':'
+      if (current(parser).type !== "COLON") {
+        parser.pos = savedPos;
+        return err("Expected ':' before return type");
+      }
+      advance(parser);
+
+      // Parse return type
+      const returnTypeResult = parseTypeValue(parser);
+      if (!returnTypeResult.ok) {
+        parser.pos = savedPos;
+        return returnTypeResult;
+      }
+      advance(parser); // consume return type
+
+      // Register function signature
+      if (!parser.functions.has(functionName)) {
+        parser.functions.set(functionName, {
+          parameters,
+          returnType: returnTypeResult.value,
+        });
+      } else {
+        parser.pos = savedPos;
+        return err(`Function '${functionName}' already declared`);
+      }
+
+      // Skip rest of function (arrow and body) by finding the next statement
+      // Arrow is next
+      if (current(parser).type === "ARROW") {
+        advance(parser);
+      }
+
+      // Now skip the body - it's either a block {} or an expression ending in ;
+      if (current(parser).type === "LBRACE") {
+        // Block body - skip to matching }
+        let braceDepth = 1;
+        advance(parser); // consume {
+        while (braceDepth > 0 && current(parser).type !== "EOF") {
+          if (current(parser).type === "LBRACE") {
+            braceDepth++;
+          } else if (current(parser).type === "RBRACE") {
+            braceDepth--;
+          }
+          advance(parser);
+        }
+      } else {
+        // Expression body - skip until semicolon
+        while (
+          current(parser).type !== "SEMICOLON" &&
+          current(parser).type !== "EOF"
+        ) {
+          advance(parser);
+        }
+        if (current(parser).type === "SEMICOLON") {
+          advance(parser);
+        }
+      }
+    } else {
+      advance(parser);
+    }
+  }
+
+  parser.pos = savedPos;
+  return ok(undefined);
+}
+
 export function compile(input: string): Result<string, string> {
   // Empty input returns 0
   if (input === "") {
@@ -2430,6 +2569,13 @@ export function compile(input: string): Result<string, string> {
     variables: new Map(),
     functions: new Map(),
   };
+
+  // Pre-scan for function signatures to support mutual recursion
+  const prescanResult = prescanFunctionSignatures(parser);
+  if (!prescanResult.ok) {
+    return prescanResult;
+  }
+
   const astResult = parseProgram(parser);
   if (!astResult.ok) {
     return astResult;
