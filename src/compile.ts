@@ -576,10 +576,9 @@ function inferExpressionType(
       const varResult = getVariable(parser, expr.array.name);
       if (varResult.ok) {
         const arrType = varResult.value.type;
-        // array type looks like [ElemType;initCount;totalCount]
-        const m = arrType.match(/^\[(.+);(\d+);(\d+)\]$/);
-        if (m) {
-          return ok(m[1] ?? "I32");
+        const parsedArrayType = parseArrayType(arrType);
+        if (parsedArrayType) {
+          return ok(parsedArrayType.elementType);
         }
       }
     }
@@ -1509,8 +1508,84 @@ interface Parser {
   currentFunctionReturnType: string | undefined;
   // Type narrowing: track variables with proven constraints (from control flow guards)
   provenConstraints: Map<string, RefinementType>; // e.g., "x" -> I32 > 100
-  _parseDepth?: number; // Track recursion depth for debugging
-  _lastTokenPos?: number; // Track last position for detecting stuck parsers
+}
+
+interface ParsedNumberLiteral {
+  numericPart: string;
+  typeAnnotation: string;
+}
+
+interface ParsedArrayType {
+  elementType: string;
+  initCount: number;
+  totalCount: number;
+}
+
+function splitNumberLiteral(value: string): ParsedNumberLiteral {
+  let pos = 0;
+
+  if (value[pos] === "-") {
+    pos++;
+  }
+
+  while (pos < value.length && isDigit(value[pos])) {
+    pos++;
+  }
+
+  if (value[pos] === ".") {
+    pos++;
+    while (pos < value.length && isDigit(value[pos])) {
+      pos++;
+    }
+  }
+
+  return {
+    numericPart: value.slice(0, pos),
+    typeAnnotation: value.slice(pos),
+  };
+}
+
+function parseArrayType(typeStr: string): ParsedArrayType | undefined {
+  if (!typeStr.startsWith("[") || !typeStr.endsWith("]")) {
+    return undefined;
+  }
+
+  const inner = typeStr.slice(1, -1);
+  const parts: string[] = [];
+  let currentPart = "";
+  let depth = 0;
+
+  for (const char of inner) {
+    if (char === "[") {
+      depth++;
+    } else if (char === "]") {
+      depth--;
+    }
+
+    if (char === ";" && depth === 0) {
+      parts.push(currentPart);
+      currentPart = "";
+    } else {
+      currentPart += char;
+    }
+  }
+  parts.push(currentPart);
+
+  if (parts.length !== 3) {
+    return undefined;
+  }
+
+  const initCount = Number(parts[1]);
+  const totalCount = Number(parts[2]);
+  if (!Number.isInteger(initCount) || !Number.isInteger(totalCount)) {
+    return undefined;
+  }
+
+  return {
+    elementType: parts[0] ?? "",
+    initCount,
+    totalCount,
+  };
 }
 
 function current(parser: Parser): Token {
@@ -1525,61 +1600,15 @@ function advance(parser: Parser): void {
   parser.pos++;
 }
 
-// Debug helpers
-const DEBUG_LOG = false;
-function logParseEntry(
-  parser: Parser,
-  funcName: string,
-  currentToken: Token,
-): void {
-  if (!DEBUG_LOG) return;
-  const depth = (parser._parseDepth || 0) + 1;
-  const indent = "  ".repeat(depth);
-  const tok =
-    (currentToken as any).value ||
-    (currentToken as any).keyword ||
-    currentToken.type;
-  console.log(
-    indent + "→ " + funcName + " [pos=" + parser.pos + " tok=" + tok + "]",
-  );
-}
-
-function logParseExit(parser: Parser, funcName: string): void {
-  if (!DEBUG_LOG) return;
-  const depth = parser._parseDepth || 1;
-  const indent = "  ".repeat(depth);
-  console.log(indent + "← " + funcName + " [pos=" + parser.pos + "]");
-}
-
-function checkParserStuck(parser: Parser, funcName: string): void {
-  if (!DEBUG_LOG) return;
-  const maxDepth = 500;
-  parser._parseDepth = (parser._parseDepth || 0) + 1;
-  if (parser._parseDepth > maxDepth) {
-    console.error(
-      "[STACK OVERFLOW] " +
-        funcName +
-        " depth=" +
-        parser._parseDepth +
-        " pos=" +
-        parser.pos,
-    );
-    throw new Error("Infinite recursion in " + funcName);
-  }
-}
-
-function decrementParseDepth(parser: Parser): void {
-  if (!DEBUG_LOG) return;
-  parser._parseDepth = (parser._parseDepth || 1) - 1;
+interface AssignmentOperatorInfo {
+  isCompound: boolean;
+  operator: "+" | "-" | "*" | "/" | "%";
 }
 
 // Helper to parse compound assignment operators
 function parseCompoundAssignmentOperator(
   parser: Parser,
-): Result<
-  { isCompound: boolean; operator: "+" | "-" | "*" | "/" | "%" },
-  string
-> {
+): Result<AssignmentOperatorInfo, string> {
   const compoundOperators = new Set([
     "PLUS_ASSIGN",
     "MINUS_ASSIGN",
@@ -1624,10 +1653,7 @@ function tryConsumeMutKeyword(parser: Parser): boolean {
 function tryParseAndValidateAssignmentOperator(
   parser: Parser,
   savedPos: number,
-): Result<
-  { isCompound: boolean; operator: "+" | "-" | "*" | "/" | "%" } | undefined,
-  string
-> {
+): Result<AssignmentOperatorInfo | undefined, string> {
   const assignOpResult = parseCompoundAssignmentOperator(parser);
   if (!assignOpResult.ok) {
     // Not an assignment, restore position
@@ -1636,6 +1662,26 @@ function tryParseAndValidateAssignmentOperator(
   }
   return ok(assignOpResult.value);
 }
+
+function withParsedAssignmentOperator<T>(
+  parser: Parser,
+  savedPos: number,
+  handler: CallableFunction,
+): Result<T | undefined, string> {
+  const assignOpResult = tryParseAndValidateAssignmentOperator(
+    parser,
+    savedPos,
+  );
+  if (!assignOpResult.ok) {
+    return assignOpResult;
+  }
+  if (!assignOpResult.value) {
+    return ok(undefined);
+  }
+
+  return handler(assignOpResult.value) as Result<T, string>;
+}
+
 function parseAssignmentValue(
   parser: Parser,
   isCompound: boolean,
@@ -1681,6 +1727,18 @@ function handleAssignmentStatement(
   }
 }
 
+function parseBlockResultExpression(
+  parser: Parser,
+  statements: ASTNode[],
+): Result<BlockNode, string> {
+  const exprResult = parseExpression(parser);
+  if (!exprResult.ok) {
+    return exprResult;
+  }
+
+  return ok({ kind: "block", statements, result: exprResult.value });
+}
+
 function tryParseAssignment(
   parser: Parser,
 ): Result<ASTNode | undefined, string> {
@@ -1697,59 +1755,61 @@ function tryParseAssignment(
       return ok(undefined);
     }
 
-    // Check if next token is an assignment operator
-    const assignOpResult = parseCompoundAssignmentOperator(parser);
-    if (!assignOpResult.ok) {
-      // Not an assignment, restore position
-      parser.pos = savedPos;
-      return ok(undefined);
-    }
-    const { isCompound, operator } = assignOpResult.value;
-
-    // Validate that we're assigning to a dereference
-    const lvalue = unaryResult.value;
-    if (lvalue.kind !== "unary-op" || lvalue.operator !== "*") {
-      parser.pos = savedPos;
-      return ok(undefined);
-    }
-
-    // Validate that the pointer is mutable
-    const ptrTypeResult = inferExpressionType(lvalue.operand, parser);
-    if (!ptrTypeResult.ok) {
-      return ptrTypeResult;
-    }
-    const ptrType = ptrTypeResult.value;
-    if (!ptrType.startsWith("*mut ")) {
-      return err("Cannot assign through immutable pointer");
-    }
-
-    const assignValueResult = parseAssignmentValue(
+    return withParsedAssignmentOperator(
       parser,
-      isCompound,
-      operator,
-      lvalue,
+      savedPos,
+      (assignOp: AssignmentOperatorInfo) => {
+        const { isCompound, operator } = assignOp;
+
+        // Validate that we're assigning to a dereference
+        const lvalue = unaryResult.value;
+        if (lvalue.kind !== "unary-op" || lvalue.operator !== "*") {
+          parser.pos = savedPos;
+          return ok(undefined as never);
+        }
+
+        // Validate that the pointer is mutable
+        const ptrTypeResult = inferExpressionType(lvalue.operand, parser);
+        if (!ptrTypeResult.ok) {
+          return ptrTypeResult as Result<never, string>;
+        }
+        const ptrType = ptrTypeResult.value;
+        if (!ptrType.startsWith("*mut ")) {
+          return err("Cannot assign through immutable pointer") as Result<
+            never,
+            string
+          >;
+        }
+
+        const assignValueResult = parseAssignmentValue(
+          parser,
+          isCompound,
+          operator,
+          lvalue,
+        );
+        if (!assignValueResult.ok) {
+          return assignValueResult as Result<never, string>;
+        }
+        const assignValue = assignValueResult.value;
+
+        // Track which variable the pointer points to (for runtime assignment)
+        let targetVar: string | undefined;
+        if (lvalue.operand.kind === "variable") {
+          const ptrVarName = lvalue.operand.name;
+          const ptrVarInfo = parser.variables.get(ptrVarName);
+          if (ptrVarInfo && ptrVarInfo.pointsTo) {
+            targetVar = ptrVarInfo.pointsTo;
+          }
+        }
+
+        return ok({
+          kind: "deref-assign",
+          target: lvalue.operand,
+          value: assignValue,
+          targetVar,
+        } as DerefAssignNode);
+      },
     );
-    if (!assignValueResult.ok) {
-      return assignValueResult;
-    }
-    const assignValue = assignValueResult.value;
-
-    // Track which variable the pointer points to (for runtime assignment)
-    let targetVar: string | undefined;
-    if (lvalue.operand.kind === "variable") {
-      const ptrVarName = lvalue.operand.name;
-      const ptrVarInfo = parser.variables.get(ptrVarName);
-      if (ptrVarInfo && ptrVarInfo.pointsTo) {
-        targetVar = ptrVarInfo.pointsTo;
-      }
-    }
-
-    return ok({
-      kind: "deref-assign",
-      target: lvalue.operand,
-      value: assignValue,
-      targetVar,
-    } as DerefAssignNode);
   }
 
   // Try to parse as a postfix expression (could be array access: arr[index])
@@ -1787,15 +1847,15 @@ function tryParseAssignment(
 
           // Get array type info for bounds/type checking
           if (arrayVar && arrayVar.type.startsWith("[")) {
-            const m = arrayVar.type.match(/^\[(.+);(\d+);(\d+)\]$/);
-            if (m) {
-              const elemType = m[1] ?? "";
-              const initCount = parseInt(m[2] ?? "0", 10);
+            const parsedArrayType = parseArrayType(arrayVar.type);
+            if (parsedArrayType) {
+              const elemType = parsedArrayType.elementType;
+              const initCount = parsedArrayType.initCount;
 
               // Check write bounds: can write to index 0..initCount (adjacent slot allowed)
               const idxNode = lvalue.index;
               if (idxNode.kind === "number") {
-                const bareNum = idxNode.value.replace(/[A-Za-z_]+$/, "");
+                const bareNum = splitNumberLiteral(idxNode.value).numericPart;
                 const idxVal = parseFloat(bareNum);
                 if (idxVal > initCount) {
                   return err(
@@ -1813,9 +1873,9 @@ function tryParseAssignment(
                 // Direct float literal check (3.14 without type suffix defaults to I32 in inferExpressionType)
                 if (
                   valueResult.value.kind === "number" &&
-                  valueResult.value.value
-                    .replace(/[A-Za-z_]+$/, "")
-                    .includes(".")
+                  splitNumberLiteral(
+                    valueResult.value.value,
+                  ).numericPart.includes(".")
                 ) {
                   if (!elemType.startsWith("F")) {
                     return err(
@@ -1963,40 +2023,41 @@ function tryParseAssignment(
     } as FieldAssignNode);
   }
 
-  // Check if it's a compound assignment operator (for variable assignment)
-  const assignOpResult = parseCompoundAssignmentOperator(parser);
-  if (!assignOpResult.ok) {
-    // Not an assignment, restore position
-    parser.pos = savedPos;
-    return ok(undefined);
-  }
-  const { isCompound, operator } = assignOpResult.value;
-
-  const varResult = getVariable(parser, name);
-  if (!varResult.ok) {
-    return varResult;
-  }
-  if (!varResult.value.mutable) {
-    return err("Variable '" + name + "' is immutable and cannot be reassigned");
-  }
-
-  const varLvalue: VariableNode = { kind: "variable", name };
-  const assignValueResult = parseAssignmentValue(
+  return withParsedAssignmentOperator(
     parser,
-    isCompound,
-    operator,
-    varLvalue,
-  );
-  if (!assignValueResult.ok) {
-    return assignValueResult;
-  }
-  const assignValue = assignValueResult.value;
+    savedPos,
+    (assignOp: AssignmentOperatorInfo) => {
+      const { isCompound, operator } = assignOp;
 
-  return ok({
-    kind: "assign",
-    name,
-    value: assignValue,
-  });
+      const varResult = getVariable(parser, name);
+      if (!varResult.ok) {
+        return varResult as Result<never, string>;
+      }
+      if (!varResult.value.mutable) {
+        return err(
+          "Variable '" + name + "' is immutable and cannot be reassigned",
+        ) as Result<never, string>;
+      }
+
+      const varLvalue: VariableNode = { kind: "variable", name };
+      const assignValueResult = parseAssignmentValue(
+        parser,
+        isCompound,
+        operator,
+        varLvalue,
+      );
+      if (!assignValueResult.ok) {
+        return assignValueResult as Result<never, string>;
+      }
+      const assignValue = assignValueResult.value;
+
+      return ok({
+        kind: "assign",
+        name,
+        value: assignValue,
+      });
+    },
+  );
 }
 
 function consumeOptionalSemicolon(parser: Parser): void {
@@ -2139,10 +2200,12 @@ function validateBooleanCondition(
 
   // Allow integer literals 1/0 as boolean (truthy/falsy constants)
   if (node.kind === "number") {
-    const numStr = node.value.replace(/-/g, "");
+    const numericPart = splitNumberLiteral(node.value).numericPart;
+    const numStr = numericPart.startsWith("-")
+      ? numericPart.slice(1)
+      : numericPart;
     // Must be 0 or 1 (without type suffix)
-    const bare = numStr.replace(/[A-Za-z_]+$/, "");
-    if (bare === "0" || bare === "1") {
+    if (numStr === "0" || numStr === "1") {
       return ok(undefined);
     }
     return err("Condition must be a boolean expression");
@@ -2314,7 +2377,7 @@ function createBlockBodyWithOptionalExpression(
   if (resultTok.type === "IDENTIFIER") {
     const nextIdx = parser.pos + 1;
     const nextTok =
-      nextIdx < parser.tokens.length ? parser.tokens[nextIdx] : null;
+      nextIdx < parser.tokens.length ? parser.tokens[nextIdx] : undefined;
 
     const assignmentOps = new Set([
       "ASSIGN",
@@ -2336,11 +2399,7 @@ function createBlockBodyWithOptionalExpression(
 
     // If followed by '[' or '.', parse full postfix expression (e.g. arr[0] or obj.field)
     if (nextTok && (nextTok.type === "LBRACKET" || nextTok.type === "DOT")) {
-      const exprResult = parseExpression(parser);
-      if (!exprResult.ok) {
-        return exprResult;
-      }
-      return ok({ kind: "block", statements, result: exprResult.value });
+      return parseBlockResultExpression(parser, statements);
     }
 
     // It's a variable reference - parse it as primary (just the identifier)
@@ -2368,11 +2427,7 @@ function createBlockBodyWithOptionalExpression(
     (resultTok.type === "KEYWORD" &&
       (resultTok.value === "if" || resultTok.value === "match"))
   ) {
-    const exprResult = parseExpression(parser);
-    if (!exprResult.ok) {
-      return exprResult;
-    }
-    return ok({ kind: "block", statements, result: exprResult.value });
+    return parseBlockResultExpression(parser, statements);
   }
 
   // Default: no final expression
@@ -2916,10 +2971,9 @@ function parseLetStatement(parser: Parser): Result<ASTNode, string> {
   if (typeStr.startsWith("[")) {
     // Parse array type: [ElementType; InitCount; TotalCount]
     // Extract init count and total count
-    const arrayTypeMatch = typeStr.match(/\[.*?;(\d+);(\d+)\]$/);
-    if (arrayTypeMatch) {
-      const initCount = parseInt(arrayTypeMatch[1] ?? "0", 10);
-      const totalCount = parseInt(arrayTypeMatch[2] ?? "0", 10);
+    const parsedArrayType = parseArrayType(typeStr);
+    if (parsedArrayType) {
+      const { initCount, totalCount } = parsedArrayType;
 
       if (initCount === 0) {
         return err("Array init count must be > 0");
@@ -2952,8 +3006,7 @@ function parseLetStatement(parser: Parser): Result<ASTNode, string> {
         }
 
         // Extract element type from array type (everything before first ';')
-        const elemTypeMatch = typeStr.match(/^\[(.+);(\d+);(\d+)\]$/);
-        const elemType = elemTypeMatch ? elemTypeMatch[1] : undefined;
+        const elemType = parsedArrayType.elementType;
 
         // Type-check each element against the declared element type
         if (elemType && !elemType.startsWith("[")) {
@@ -2970,7 +3023,6 @@ function parseLetStatement(parser: Parser): Result<ASTNode, string> {
                   break;
                 }
               }
-              const inferredElem = numTypeAnnotation || "I32";
               // Check float assigned to integer type
               const isFloatType = elemType.startsWith("F");
               const isIntType = !isFloatType && !elemType.startsWith("Bool");
@@ -3127,7 +3179,7 @@ function parseLetStatement(parser: Parser): Result<ASTNode, string> {
       // Enforce exclusive access: only one &mut per variable
       if (initializer.operator === "&mut") {
         // Check if another variable already has a mutable pointer to this target
-        for (const [otherName, otherInfo] of parser.variables.entries()) {
+        for (const [, otherInfo] of parser.variables.entries()) {
           if (
             otherInfo.pointsTo === targetVar.name &&
             otherInfo.type.startsWith("*mut ")
@@ -3856,18 +3908,16 @@ function parsePostfix(parser: Parser): Result<ASTNode, string> {
 
       // Validate index type and bounds
       // Get declared array type for bounds checking
-      let arrElemType: string | undefined;
       let arrInitCount: number | undefined;
       let arrTotalCount: number | undefined;
       let arrMutable: boolean | undefined;
       if (node.kind === "variable") {
-        const varInfo = parser.variables.get((node as { name: string }).name);
+        const varInfo = parser.variables.get(node.name);
         if (varInfo && varInfo.type.startsWith("[")) {
-          const m = varInfo.type.match(/^\[(.+);(\d+);(\d+)\]$/);
-          if (m) {
-            arrElemType = m[1];
-            arrInitCount = parseInt(m[2] ?? "0", 10);
-            arrTotalCount = parseInt(m[3] ?? "0", 10);
+          const parsedArrayType = parseArrayType(varInfo.type);
+          if (parsedArrayType) {
+            arrInitCount = parsedArrayType.initCount;
+            arrTotalCount = parsedArrayType.totalCount;
             arrMutable = varInfo.mutable;
           }
         }
@@ -3875,9 +3925,7 @@ function parsePostfix(parser: Parser): Result<ASTNode, string> {
 
       // Check index type (must be an integer type, not F32/F64/Bool/array)
       if (indexNode.kind === "variable") {
-        const idxVarInfo = parser.variables.get(
-          (indexNode as { name: string }).name,
-        );
+        const idxVarInfo = parser.variables.get(indexNode.name);
         if (idxVarInfo) {
           if (
             idxVarInfo.type.startsWith("F") ||
@@ -3903,7 +3951,7 @@ function parsePostfix(parser: Parser): Result<ASTNode, string> {
           return err("Array index must be non-negative");
         }
         // Extract numeric value (strip type suffix)
-        const bareNum = numStr.replace(/[A-Za-z_]+$/, "");
+        const bareNum = splitNumberLiteral(numStr).numericPart;
         const idxVal = parseFloat(bareNum);
         // Check for floating point index
         if (bareNum.includes(".")) {
@@ -4919,7 +4967,7 @@ function consumeKeywordAndGetName(
 function runPrescan(
   parser: Parser,
   keyword: string,
-  handler: (savedPos: number) => Result<void, string>,
+  handler: CallableFunction,
 ): Result<void, string> {
   const savedPos = parser.pos;
   parser.pos = 0;
@@ -4927,7 +4975,7 @@ function runPrescan(
   while (current(parser).type !== "EOF") {
     const tok = current(parser);
     if (tok.type === "KEYWORD" && tok.value === keyword) {
-      const result = handler(savedPos);
+      const result = handler(savedPos) as Result<void, string>;
       if (!result.ok) return result;
     } else {
       advance(parser);
@@ -4943,7 +4991,7 @@ function runPrescan(
  * Supports nested structs and struct field types
  */
 function prescanStructDefinitions(parser: Parser): Result<void, string> {
-  return runPrescan(parser, "struct", (savedPos) => {
+  return runPrescan(parser, "struct", (savedPos: number) => {
     const nameResult = consumeKeywordAndGetName(
       parser,
       savedPos,
@@ -4975,7 +5023,7 @@ function prescanStructDefinitions(parser: Parser): Result<void, string> {
  * Supports mutual recursion by allowing functions to reference each other
  */
 function prescanFunctionSignatures(parser: Parser): Result<void, string> {
-  return runPrescan(parser, "fn", (savedPos) => {
+  return runPrescan(parser, "fn", (savedPos: number) => {
     const nameResult = consumeKeywordAndGetName(
       parser,
       savedPos,
