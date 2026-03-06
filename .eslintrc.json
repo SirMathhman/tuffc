@@ -10,6 +10,7 @@
     "sourceType": "module"
   },
   "rules": {
+    "no-template-curly-in-string": "off",
     "no-restricted-syntax": [
       "error",
       {
@@ -19,6 +20,10 @@
       {
         "selector": "Literal[regex]",
         "message": "Regex literals are not allowed. Use string methods instead."
+      },
+      {
+        "selector": "TemplateLiteral",
+        "message": "Template literals are not allowed. Use string concatenation instead (template literals false-flag CPD)."
       }
     ]
   }

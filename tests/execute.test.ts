@@ -78,22 +78,34 @@ function executeCompiledCode(
   return { ok: true, value: Number(result) };
 }
 
-export function executeTuff(input: string): Result<number, string> {
+export function executeTuff(input: string): Result<[string, number], string> {
   const compileResult = compileCode(input);
 
   if (isErr(compileResult)) {
     return compileResult;
   }
 
-  return executeCompiledCode(compileResult.value);
+  const executeResult = executeCompiledCode(compileResult.value);
+  if (executeResult.ok) {
+    return { ok: true, value: [input, executeResult.value] };
+  }
+
+  return executeResult;
 }
 
 /**
  * Helper to assert a successful result matches an expected value
  */
-function expectValue(result: Result<number, string>, expected: number): void {
+function expectValue(
+  result: Result<[string, number], string>,
+  expected: number,
+): void {
   if (isOk(result)) {
-    expect(result.value).toBe(expected);
+    if (result.value[1] !== expected) {
+      console.log("Input:", result.value[0]);
+    }
+
+    expect(result.value[1]).toBe(expected);
   } else {
     expect(result.error).toBeUndefined();
   }
@@ -102,7 +114,7 @@ function expectValue(result: Result<number, string>, expected: number): void {
 /**
  * Helper to assert a result is an error
  */
-function expectError(result: Result<number, string>): void {
+function expectError(result: Result<[string, number], string>): void {
   if (isOk(result)) {
     expect(result.value).toBeUndefined();
   }
@@ -112,13 +124,18 @@ function expectError(result: Result<number, string>): void {
  * Helper to assert a floating point result matches expected value within tolerance
  */
 function expectFloatValue(
-  result: Result<number, string>,
+  result: Result<[string, number], string>,
   expected: number,
   tolerance: number = 0.01,
 ): void {
-  expect(isOk(result)).toBe(true);
   if (isOk(result)) {
-    expect(Math.abs(result.value - expected) < tolerance).toBe(true);
+    if (Math.abs(result.value[1] - expected) >= tolerance) {
+      console.log("Input:", result.value[0]);
+    }
+
+    expect(Math.abs(result.value[1] - expected) < tolerance).toBe(true);
+  } else {
+    expect(result.error).toBeUndefined();
   }
 }
 
@@ -128,7 +145,7 @@ function expectFloatValue(
 export function executeTuffWithInput(
   input: string,
   stdin: string,
-): Result<number, string> {
+): Result<[string, number], string> {
   const compileResult = compileCode(input);
 
   if (isErr(compileResult)) {
@@ -139,7 +156,11 @@ export function executeTuffWithInput(
   const tokens = parseStdinTokens(stdin);
   const readValue = createReadValueFunction(tokens);
 
-  return executeCompiledCode(compiled, readValue);
+  const executeResult = executeCompiledCode(compiled, readValue);
+  if (isOk(executeResult)) {
+    return { ok: true, value: [input, executeResult.value] };
+  }
+  return executeResult;
 }
 
 test("execute with empty string returns 0", () => {
@@ -715,7 +736,7 @@ test("compound assignment: %= produces NaN", () => {
   // JavaScript behavior: 10 % 0 = NaN
   const result = executeTuff("let mut x : I32 = 10; x %= 0; x");
   if (isOk(result)) {
-    expect(Number.isNaN(result.value)).toBe(true);
+    expect(Number.isNaN(result.value[1])).toBe(true);
   }
 });
 
@@ -1379,4 +1400,276 @@ test("recursive: read two numbers and compute GCD", () => {
     "48 18",
   );
   expectValue(result, 6);
+});
+
+// ===== STRUCT TESTS =====
+
+// Positive struct tests
+test("struct: basic declaration and field access", () => {
+  expectValue(
+    executeTuff(
+      "struct Point { x : I32; y : I32; } let p : Point = Point { x : 3, y : 4 }; p.x",
+    ),
+    3,
+  );
+});
+
+test("struct: access second field", () => {
+  expectValue(
+    executeTuff(
+      "struct Point { x : I32; y : I32; } let p : Point = Point { x : 3, y : 4 }; p.y",
+    ),
+    4,
+  );
+});
+
+test("struct: multiple fields with arithmetic", () => {
+  expectValue(
+    executeTuff(
+      "struct Point { x : I32; y : I32; } let p : Point = Point { x : 10, y : 20 }; p.x + p.y",
+    ),
+    30,
+  );
+});
+
+test("struct: field arithmetic in instantiation", () => {
+  expectValue(
+    executeTuff(
+      "struct Point { x : I32; y : I32; } let p : Point = Point { x : 2 + 3, y : 4 * 5 }; p.x",
+    ),
+    5,
+  );
+});
+
+test("struct: fields in any order", () => {
+  expectValue(
+    executeTuff(
+      "struct Point { x : I32; y : I32; } let p : Point = Point { y : 9, x : 5 }; p.x + p.y",
+    ),
+    14,
+  );
+});
+
+test("struct: three fields", () => {
+  expectValue(
+    executeTuff(
+      "struct Point3D { x : I32; y : I32; z : I32; } let p : Point3D = Point3D { x : 1, y : 2, z : 3 }; p.x + p.y + p.z",
+    ),
+    6,
+  );
+});
+
+test("struct: mutable field with reassignment", () => {
+  expectValue(
+    executeTuff(
+      "struct Point { mut x : I32; y : I32; } let mut p : Point = Point { x : 3, y : 4 }; p.x = 10; p.x",
+    ),
+    10,
+  );
+});
+
+test("struct: multiple mutable fields", () => {
+  expectValue(
+    executeTuff(
+      "struct Point { mut x : I32; mut y : I32; } let mut p : Point = Point { x : 1, y : 2 }; p.x = 5; p.y = 10; p.x + p.y",
+    ),
+    15,
+  );
+});
+
+test("struct: nested struct instantiation", () => {
+  expectValue(
+    executeTuff(
+      "struct Inner { val : I32; } struct Outer { inner : Inner; } let o : Outer = Outer { inner : Inner { val : 42 } }; o.inner.val",
+    ),
+    42,
+  );
+});
+
+test("struct: nested struct with arithmetic", () => {
+  expectValue(
+    executeTuff(
+      "struct Inner { val : I32; } struct Outer { inner : Inner; x : I32; } let o : Outer = Outer { inner : Inner { val : 10 }, x : 5 }; o.inner.val + o.x",
+    ),
+    15,
+  );
+});
+
+test("struct: with variable initialization", () => {
+  expectValue(
+    executeTuff(
+      "struct Point { x : I32; y : I32; } let a : I32 = 7; let p : Point = Point { x : a, y : a + 1 }; p.x + p.y",
+    ),
+    15,
+  );
+});
+
+test("struct: return from function", () => {
+  expectValue(
+    executeTuff(
+      "struct Point { x : I32; y : I32; } fn makePoint() : Point => Point { x : 5, y : 10 }; let p : Point = makePoint(); p.x + p.y",
+    ),
+    15,
+  );
+});
+
+test("struct: pass to function", () => {
+  expectValue(
+    executeTuff(
+      "struct Point { x : I32; y : I32; } fn sum(p : Point) : I32 => p.x + p.y; let pt : Point = Point { x : 3, y : 7 }; sum(pt)",
+    ),
+    10,
+  );
+});
+
+test("struct: field in if expression", () => {
+  expectValue(
+    executeTuff(
+      "struct Point { x : I32; y : I32; } let p : Point = Point { x : 5, y : 10 }; if (p.x > 3) p.y else 0",
+    ),
+    10,
+  );
+});
+
+test("struct: mixed mutable and immutable fields", () => {
+  expectValue(
+    executeTuff(
+      "struct Data { mut value : I32; constant : I32; } let mut d : Data = Data { value : 2, constant : 3 }; d.value = 5; d.value + d.constant",
+    ),
+    8,
+  );
+});
+
+test("struct: field from read input", () => {
+  const result = executeTuffWithInput(
+    "struct Point { x : I32; y : I32; } let p : Point = Point { x : read<I32>(), y : 20 }; p.x + p.y",
+    "8",
+  );
+  expectValue(result, 28);
+});
+
+test("struct: complex nested with mutable fields", () => {
+  expectValue(
+    executeTuff(
+      "struct Inner { mut val : I32; } struct Outer { mut inner : Inner; } let mut o : Outer = Outer { inner : Inner { val : 5 } }; o.inner.val = 20; o.inner.val",
+    ),
+    20,
+  );
+});
+
+// Negative struct tests
+test("struct: missing required field is error", () => {
+  expectError(
+    executeTuff(
+      "struct Point { x : I32; y : I32; } let p : Point = Point { x : 3 }; p.x",
+    ),
+  );
+});
+
+test("struct: extra unknown field is error", () => {
+  expectError(
+    executeTuff(
+      "struct Point { x : I32; y : I32; } let p : Point = Point { x : 3, y : 4, z : 5 }; p.x",
+    ),
+  );
+});
+
+test("struct: duplicate field declaration is error", () => {
+  expectError(
+    executeTuff(
+      "struct Point { x : I32; x : I32; } let p : Point = Point { x : 3 }; p.x",
+    ),
+  );
+});
+
+test("struct: type mismatch in field initialization is error", () => {
+  expectError(
+    executeTuff(
+      "struct Point { x : I32; y : I32; } let p : Point = Point { x : 3, y : true }; p.x",
+    ),
+  );
+});
+
+test("struct: accessing non-existent field is error", () => {
+  expectError(
+    executeTuff(
+      "struct Point { x : I32; y : I32; } let p : Point = Point { x : 3, y : 4 }; p.z",
+    ),
+  );
+});
+
+test("struct: duplicate field names in instantiation is error", () => {
+  expectError(
+    executeTuff(
+      "struct Point { x : I32; y : I32; } let p : Point = Point { x : 3, x : 5, y : 4 }; p.x",
+    ),
+  );
+});
+
+test("struct: missing struct name is error", () => {
+  expectError(
+    executeTuff(
+      "struct Point { x : I32; y : I32; } let p : Point = { x : 3, y : 4 }; p.x",
+    ),
+  );
+});
+
+test("struct: missing opening brace in instantiation is error", () => {
+  expectError(
+    executeTuff(
+      "struct Point { x : I32; y : I32; } let p : Point = Point x : 3, y : 4 }; p.x",
+    ),
+  );
+});
+
+test("struct: invalid type in field declaration is error", () => {
+  expectError(
+    executeTuff(
+      "struct Point { x : UnknownType; } let p : Point = Point { x : 3 }; p.x",
+    ),
+  );
+});
+
+test("struct: readonly field reassignment is error", () => {
+  expectError(
+    executeTuff(
+      "struct Point { x : I32; y : I32; } let mut p : Point = Point { x : 3, y : 4 }; p.x = 10; p.x",
+    ),
+  );
+});
+
+test("struct: undefined struct type is error", () => {
+  expectError(executeTuff("let p : Point = Point { x : 3, y : 4 }; p.x"));
+});
+
+test("struct: type mismatch in variable declaration is error", () => {
+  expectError(
+    executeTuff(
+      "struct Point { x : I32; y : I32; } let p : I32 = Point { x : 3, y : 4 }; p",
+    ),
+  );
+});
+
+test("struct: missing colon in field declaration is error", () => {
+  expectError(
+    executeTuff(
+      "struct Point { x I32; y : I32; } let p : Point = Point { x : 3, y : 4 }; p.x",
+    ),
+  );
+});
+
+test("struct: missing semicolon in field declaration is error", () => {
+  expectError(
+    executeTuff(
+      "struct Point { x : I32 y : I32; } let p : Point = Point { x : 3, y : 4 }; p.x",
+    ),
+  );
+});
+
+test("struct: nested struct type mismatch is error", () => {
+  expectError(
+    executeTuff(
+      "struct Inner { val : I32; } struct Outer { inner : Inner; } let o : Outer = Outer { inner : 42 }; o.inner.val",
+    ),
+  );
 });

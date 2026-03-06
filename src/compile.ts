@@ -59,7 +59,8 @@ interface KeywordToken {
     | "match"
     | "case"
     | "fn"
-    | "return";
+    | "return"
+    | "struct";
 }
 
 interface LParenToken {
@@ -126,6 +127,10 @@ interface CommaToken {
   type: "COMMA";
 }
 
+interface DotToken {
+  type: "DOT";
+}
+
 interface EOFToken {
   type: "EOF";
 }
@@ -154,6 +159,7 @@ type Token =
   | DivAssignToken
   | ModAssignToken
   | CommaToken
+  | DotToken
   | EOFToken;
 
 // AST node interfaces
@@ -215,6 +221,13 @@ interface LetNode {
 interface AssignNode {
   kind: "assign";
   name: string;
+  value: ASTNode;
+}
+
+interface FieldAssignNode {
+  kind: "field-assign";
+  object: ASTNode;
+  fieldName: string;
   value: ASTNode;
 }
 
@@ -285,6 +298,35 @@ interface FunctionCallNode {
   arguments: ASTNode[];
 }
 
+interface StructField {
+  name: string;
+  type: string;
+  mutable: boolean;
+}
+
+interface StructNode {
+  kind: "struct";
+  name: string;
+  fields: StructField[];
+}
+
+interface StructInstantiationField {
+  name: string;
+  value: ASTNode;
+}
+
+interface StructInstantiationNode {
+  kind: "struct-instantiation";
+  structName: string;
+  fields: StructInstantiationField[];
+}
+
+interface FieldAccessNode {
+  kind: "field-access";
+  object: ASTNode;
+  fieldName: string;
+}
+
 type ASTNode =
   | NumberNode
   | ReadNode
@@ -296,6 +338,7 @@ type ASTNode =
   | BooleanNode
   | LetNode
   | AssignNode
+  | FieldAssignNode
   | BlockNode
   | IfNode
   | WhileNode
@@ -304,7 +347,10 @@ type ASTNode =
   | ReturnNode
   | MatchNode
   | FunctionNode
-  | FunctionCallNode;
+  | FunctionCallNode
+  | StructNode
+  | StructInstantiationNode
+  | FieldAccessNode;
 
 // Variable info interface
 interface VariableInfo {
@@ -335,10 +381,17 @@ function isLetter(char: string | undefined): boolean {
 }
 
 function validateType(typeStr: string): Result<undefined, string> {
-  if (!VALID_TYPES.has(typeStr)) {
-    return err(`Invalid type annotation: ${typeStr}`);
-  }
-  return ok(undefined);
+  return VALID_TYPES.has(typeStr)
+    ? ok(undefined)
+    : err("Invalid type annotation: " + typeStr);
+}
+
+function validateTypeWithStructs(
+  parser: Parser,
+  typeStr: string,
+): Result<undefined, string> {
+  if (parser.structs.has(typeStr)) return ok(undefined);
+  return validateType(typeStr);
 }
 
 function getVariable(
@@ -347,7 +400,7 @@ function getVariable(
 ): Result<VariableInfo, string> {
   const varInfo = parser.variables.get(name);
   if (!varInfo) {
-    return err(`Variable '${name}' is not defined`);
+    return err("Variable '" + name + "' is not defined");
   }
   return ok(varInfo);
 }
@@ -358,7 +411,7 @@ function parseTypeAnnotation(parser: Parser): Result<string, string> {
     return err("Expected type annotation");
   }
   const typeStr = typeTok.value;
-  const validateResult = validateType(typeStr);
+  const validateResult = validateTypeWithStructs(parser, typeStr);
   if (!validateResult.ok) {
     return validateResult;
   }
@@ -372,7 +425,7 @@ function parseTypeValue(parser: Parser): Result<string, string> {
     return err("Expected type");
   }
   const typeStr = typeTok.value;
-  const validateResult = validateType(typeStr);
+  const validateResult = validateTypeWithStructs(parser, typeStr);
   if (!validateResult.ok) {
     return validateResult;
   }
@@ -493,6 +546,9 @@ function tokenize(input: string): Result<Token[], string> {
     } else if (char === ",") {
       tokens.push({ type: "COMMA" });
       pos++;
+    } else if (char === ".") {
+      tokens.push({ type: "DOT" });
+      pos++;
     } else if (char === "=") {
       // Check for => (arrow)
       if (pos + 1 < input.length && input[pos + 1] === ">") {
@@ -554,7 +610,8 @@ function tokenize(input: string): Result<Token[], string> {
         ident === "match" ||
         ident === "case" ||
         ident === "fn" ||
-        ident === "return"
+        ident === "return" ||
+        ident === "struct"
       ) {
         tokens.push({ type: "KEYWORD", value: ident });
       } else if (ident === "true") {
@@ -615,7 +672,7 @@ function tokenize(input: string): Result<Token[], string> {
 
       tokens.push({ type: "NUMBER", value: numStr });
     } else {
-      return err(`Unexpected character: ${char}`);
+      return err("Unexpected character: " + char);
     }
   }
 
@@ -628,11 +685,20 @@ interface FunctionInfo {
   returnType: string;
 }
 
+interface StructInfo {
+  fields: StructField[];
+}
+
 interface Parser {
   tokens: Token[];
   pos: number;
   variables: Map<string, VariableInfo>;
   functions: Map<string, FunctionInfo>;
+  structs: Map<string, StructInfo>;
+  inLoop: boolean;
+  currentFunctionReturnType: string | undefined;
+  _parseDepth?: number; // Track recursion depth for debugging
+  _lastTokenPos?: number; // Track last position for detecting stuck parsers
 }
 
 function current(parser: Parser): Token {
@@ -645,6 +711,54 @@ function current(parser: Parser): Token {
 
 function advance(parser: Parser): void {
   parser.pos++;
+}
+
+// Debug helpers
+const DEBUG_LOG = false;
+function logParseEntry(
+  parser: Parser,
+  funcName: string,
+  currentToken: Token,
+): void {
+  if (!DEBUG_LOG) return;
+  const depth = (parser._parseDepth || 0) + 1;
+  const indent = "  ".repeat(depth);
+  const tok =
+    (currentToken as any).value ||
+    (currentToken as any).keyword ||
+    currentToken.type;
+  console.log(
+    indent + "→ " + funcName + " [pos=" + parser.pos + " tok=" + tok + "]",
+  );
+}
+
+function logParseExit(parser: Parser, funcName: string): void {
+  if (!DEBUG_LOG) return;
+  const depth = parser._parseDepth || 1;
+  const indent = "  ".repeat(depth);
+  console.log(indent + "← " + funcName + " [pos=" + parser.pos + "]");
+}
+
+function checkParserStuck(parser: Parser, funcName: string): void {
+  if (!DEBUG_LOG) return;
+  const maxDepth = 500;
+  parser._parseDepth = (parser._parseDepth || 0) + 1;
+  if (parser._parseDepth > maxDepth) {
+    console.error(
+      "[STACK OVERFLOW] " +
+        funcName +
+        " depth=" +
+        parser._parseDepth +
+        " pos=" +
+        parser.pos,
+    );
+    throw new Error("Infinite recursion in " + funcName);
+  }
+}
+
+function decrementParseDepth(parser: Parser): void {
+  if (!DEBUG_LOG) return;
+  parser._parseDepth = (parser._parseDepth || 1) - 1;
 }
 
 function tryParseAssignment(
@@ -662,7 +776,60 @@ function tryParseAssignment(
 
   const nextTok = current(parser);
 
-  // Check if it's a compound assignment operator
+  // Check if it's a field assignment (object.field(.field...)* = value)
+  if (nextTok.type === "DOT") {
+    // Collect dot-access chain: ident.a.b.c = value
+    // We need to parse all but the last segment as field-access, last as field-assign
+    let objNode: ASTNode = { kind: "variable", name };
+    advance(parser); // consume first DOT
+
+    const fieldTok = current(parser);
+    if (fieldTok.type !== "IDENTIFIER") {
+      parser.pos = savedPos;
+      return ok(undefined);
+    }
+    let fieldName = fieldTok.value;
+    advance(parser);
+
+    // Consume additional dots (a.b.c = ...)
+    while (current(parser).type === "DOT") {
+      // The current fieldName becomes an access on objNode
+      objNode = {
+        kind: "field-access",
+        object: objNode,
+        fieldName,
+      } as FieldAccessNode;
+      advance(parser); // consume DOT
+      const nextFieldTok = current(parser);
+      if (nextFieldTok.type !== "IDENTIFIER") {
+        parser.pos = savedPos;
+        return ok(undefined);
+      }
+      fieldName = nextFieldTok.value;
+      advance(parser);
+    }
+
+    const assignOpTok = current(parser);
+    if (assignOpTok.type !== "ASSIGN") {
+      parser.pos = savedPos;
+      return ok(undefined);
+    }
+    advance(parser); // consume ASSIGN
+
+    const valueResult = parseExpression(parser);
+    if (!valueResult.ok) {
+      return valueResult;
+    }
+
+    return ok({
+      kind: "field-assign",
+      object: objNode,
+      fieldName,
+      value: valueResult.value,
+    } as FieldAssignNode);
+  }
+
+  // Check if it's a compound assignment operator (for variable assignment)
   const compoundOperators = new Set([
     "PLUS_ASSIGN",
     "MINUS_ASSIGN",
@@ -700,7 +867,7 @@ function tryParseAssignment(
     return varResult;
   }
   if (!varResult.value.mutable) {
-    return err(`Variable '${name}' is immutable and cannot be reassigned`);
+    return err("Variable '" + name + "' is immutable and cannot be reassigned");
   }
 
   const valueResult = parseExpression(parser);
@@ -779,6 +946,17 @@ function parseStatementInBlock(
     }
     statements.push(fnStmt.value);
     return ok(true);
+  } else if (
+    stmtTok.type === "KEYWORD" &&
+    (stmtTok as KeywordToken).value === "struct"
+  ) {
+    // Struct declaration
+    const structStmt = parseStructStatement(parser);
+    if (!structStmt.ok) {
+      return structStmt;
+    }
+    statements.push(structStmt.value);
+    return ok(true);
   } else if (stmtTok.type === "KEYWORD" && stmtTok.value === "if") {
     // Nested if statement
     const ifStmt = parseIfStatement(parser);
@@ -844,6 +1022,33 @@ function parseStatementInBlock(
   }
 }
 
+function isBooleanNode(node: ASTNode): boolean {
+  return (
+    node.kind === "boolean" ||
+    node.kind === "comparison" ||
+    node.kind === "logical" ||
+    node.kind === "unary-logical"
+  );
+}
+
+function validateBooleanCondition(node: ASTNode): Result<undefined, string> {
+  // Allow variable references (checked at runtime) and function calls
+  if (
+    node.kind === "variable" ||
+    node.kind === "function-call" ||
+    node.kind === "if" ||
+    node.kind === "match"
+  ) {
+    return ok(undefined);
+  }
+
+  if (!isBooleanNode(node)) {
+    return err("Condition must be a boolean expression");
+  }
+
+  return ok(undefined);
+}
+
 function parseParenthesizedCondition(parser: Parser): Result<ASTNode, string> {
   // Expect '('
   const lparen = current(parser);
@@ -864,6 +1069,12 @@ function parseParenthesizedCondition(parser: Parser): Result<ASTNode, string> {
     return err("Expected ')'");
   }
   advance(parser);
+
+  // Validate that the condition is a boolean expression
+  const boolCheck = validateBooleanCondition(conditionResult.value);
+  if (!boolCheck.ok) {
+    return boolCheck;
+  }
 
   return conditionResult;
 }
@@ -1054,6 +1265,8 @@ function parseWhileStatement(parser: Parser): Result<ASTNode, string> {
   }
 
   // Parse body (single statement or block)
+  const savedInLoop = parser.inLoop;
+  parser.inLoop = true;
   const bodyTok = current(parser);
   let bodyResult: Result<ASTNode, string>;
 
@@ -1087,8 +1300,11 @@ function parseWhileStatement(parser: Parser): Result<ASTNode, string> {
   }
 
   if (!bodyResult.ok) {
+    parser.inLoop = savedInLoop;
     return bodyResult;
   }
+
+  parser.inLoop = savedInLoop;
 
   return ok({
     kind: "while",
@@ -1098,10 +1314,12 @@ function parseWhileStatement(parser: Parser): Result<ASTNode, string> {
 }
 
 function parseBreakStatement(parser: Parser): Result<ASTNode, string> {
-  // Expect 'break'
   const breakTok = current(parser);
   if (breakTok.type !== "KEYWORD" || breakTok.value !== "break") {
     return err("Expected 'break'");
+  }
+  if (!parser.inLoop) {
+    return err("'break' is only valid inside a loop");
   }
   advance(parser);
 
@@ -1109,10 +1327,12 @@ function parseBreakStatement(parser: Parser): Result<ASTNode, string> {
 }
 
 function parseContinueStatement(parser: Parser): Result<ASTNode, string> {
-  // Expect 'continue'
   const continueTok = current(parser);
   if (continueTok.type !== "KEYWORD" || continueTok.value !== "continue") {
     return err("Expected 'continue'");
+  }
+  if (!parser.inLoop) {
+    return err("'continue' is only valid inside a loop");
   }
   advance(parser);
 
@@ -1195,10 +1415,11 @@ function parseMatchExpression(parser: Parser): Result<ASTNode, string> {
     const pattern = patternResult.value;
 
     // Check for duplicate patterns
-    const patternKey = `${pattern.type}:${String(pattern.value)}`;
+    const patternKey = pattern.type + ":" + String(pattern.value);
     if (patternsUsed.has(patternKey)) {
       return err(
-        `Duplicate case pattern: ${pattern.type === "wildcard" ? "_" : pattern.value}`,
+        "Duplicate case pattern: " +
+          (pattern.type === "wildcard" ? "_" : pattern.value),
       );
     }
     patternsUsed.add(patternKey);
@@ -1294,6 +1515,31 @@ function parseProgram(parser: Parser): Result<ASTNode, string> {
     return blockResult;
   }
 
+  // Check if we're at EOF before trying to parse a final expression
+  if (current(parser).type === "EOF") {
+    // If we have statements, use the last expression-like statement as the result
+    if (statements.length > 0) {
+      // Check if the last statement is an expression-like node (if, match, etc.)
+      const lastStmt = statements[statements.length - 1];
+      if (lastStmt && (lastStmt.kind === "if" || lastStmt.kind === "match")) {
+        // Use this as the result, remove it from statements
+        statements.pop();
+        if (statements.length === 0) {
+          return ok(lastStmt);
+        }
+        return ok({ kind: "block", statements, result: lastStmt });
+      }
+      // Otherwise, return a block with the statements and a default result
+      return ok({
+        kind: "block",
+        statements,
+        result: { kind: "number", value: "0" },
+      });
+    }
+    // If no statements and EOF, return 0
+    return ok({ kind: "number", value: "0" });
+  }
+
   // Parse final expression
   const expr = parseExpression(parser);
   if (!expr.ok) {
@@ -1333,7 +1579,7 @@ function parseLetStatement(parser: Parser): Result<ASTNode, string> {
 
   // Check for duplicate declaration
   if (parser.variables.has(name)) {
-    return err(`Variable '${name}' already declared`);
+    return err("Variable '" + name + "' already declared");
   }
 
   // Expect ':'
@@ -1372,7 +1618,9 @@ function parseLetStatement(parser: Parser): Result<ASTNode, string> {
       !typeStr.startsWith("I") &&
       !typeStr.startsWith("F")
     ) {
-      return err(`Cannot assign negative value to unsigned type '${typeStr}'`);
+      return err(
+        "Cannot assign negative value to unsigned type '" + typeStr + "'",
+      );
     }
   }
 
@@ -1416,7 +1664,7 @@ function checkReservedKeyword(
   context: "function name" | "parameter name",
 ): Result<undefined, string> {
   if (isReservedKeyword(name)) {
-    return err(`Cannot use reserved keyword '${name}' as ${context}`);
+    return err("Cannot use reserved keyword '" + name + "' as " + context);
   }
   return ok(undefined);
 }
@@ -1473,7 +1721,7 @@ function parseFunctionStatement(parser: Parser): Result<ASTNode, string> {
 
     // Check for duplicate parameter names
     if (parameterNames.has(paramNameTok.value)) {
-      return err(`Duplicate parameter name '${paramNameTok.value}'`);
+      return err("Duplicate parameter name '" + paramNameTok.value + "'");
     }
     parameterNames.add(paramNameTok.value);
 
@@ -1546,8 +1794,10 @@ function parseFunctionStatement(parser: Parser): Result<ASTNode, string> {
   });
 
   // Parse function body
-  // Save current variable scope
+  // Save current variable scope and loop context
   const savedVariables = new Map(parser.variables);
+  const savedInLoop = parser.inLoop;
+  parser.inLoop = false;
 
   // Add parameters to scope
   for (const param of parameters) {
@@ -1565,32 +1815,42 @@ function parseFunctionStatement(parser: Parser): Result<ASTNode, string> {
     const blockResult = parseStatementBlock(parser, statements);
     if (!blockResult.ok) {
       parser.variables = savedVariables;
+      parser.inLoop = savedInLoop;
       return blockResult;
     }
 
-    // Now we should be at RBRACE or have a final expression
-    // Try to parse an optional final expression
+    // Try to parse a final expression (required when return type is not Void)
     let result: ASTNode = { kind: "number", value: "0" };
 
     const exprTok = current(parser);
     if (exprTok.type !== "RBRACE") {
-      // Try to parse a final expression
       const exprResult = parseExpression(parser);
       if (exprResult.ok) {
         result = exprResult.value;
       } else {
-        // If expression parsing failed and we're not at RBRACE, return the error
         if (current(parser).type !== "RBRACE") {
           parser.variables = savedVariables;
+          parser.inLoop = savedInLoop;
           return exprResult;
         }
-        // Otherwise, use default result
+      }
+    } else if (returnType !== "Void") {
+      // No final expression — acceptable only if last statement is a return
+      const lastStmt =
+        statements.length > 0 ? statements[statements.length - 1] : undefined;
+      if (!lastStmt || lastStmt.kind !== "return") {
+        parser.variables = savedVariables;
+        parser.inLoop = savedInLoop;
+        return err(
+          "Function body must end with an expression when return type is not Void",
+        );
       }
     }
 
     // Expect closing brace
     if (current(parser).type !== "RBRACE") {
       parser.variables = savedVariables;
+      parser.inLoop = savedInLoop;
       return err("Expected '}'");
     }
     advance(parser);
@@ -1601,10 +1861,19 @@ function parseFunctionStatement(parser: Parser): Result<ASTNode, string> {
       result,
     };
   } else {
-    // Expression or expression with optional semicolon
+    // Arrow expression body
+    if (returnType === "Void") {
+      parser.variables = savedVariables;
+      parser.inLoop = savedInLoop;
+      return err(
+        "Function with Void return type cannot have an expression body",
+      );
+    }
+
     const exprResult = parseExpression(parser);
     if (!exprResult.ok) {
       parser.variables = savedVariables;
+      parser.inLoop = savedInLoop;
       return exprResult;
     }
 
@@ -1614,13 +1883,15 @@ function parseFunctionStatement(parser: Parser): Result<ASTNode, string> {
     const semiTok = current(parser);
     if (semiTok.type !== "SEMICOLON") {
       parser.variables = savedVariables;
+      parser.inLoop = savedInLoop;
       return err("Expected ';' after function arrow expression");
     }
     advance(parser);
   }
 
-  // Restore variable scope
+  // Restore variable scope and loop context
   parser.variables = savedVariables;
+  parser.inLoop = savedInLoop;
 
   return ok({
     kind: "function",
@@ -1628,6 +1899,109 @@ function parseFunctionStatement(parser: Parser): Result<ASTNode, string> {
     parameters,
     returnType,
     body,
+  });
+}
+
+/**
+ * Parses struct field list from `{` to `}` (inclusive).
+ * Returns the parsed fields or an error.
+ */
+function parseStructFieldList(parser: Parser): Result<StructField[], string> {
+  // Expect '{'
+  if (current(parser).type !== "LBRACE") {
+    return err("Expected '{' after struct name");
+  }
+  advance(parser);
+
+  const fields: StructField[] = [];
+  const fieldNames = new Set<string>();
+
+  while (current(parser).type !== "RBRACE") {
+    // Check for mut modifier
+    let mutable = false;
+    const tok = current(parser);
+    if (tok.type === "KEYWORD") {
+      const keywordTok = tok as KeywordToken;
+      if (keywordTok.value === "mut") {
+        mutable = true;
+        advance(parser);
+      }
+    }
+
+    // Get field name
+    if (current(parser).type !== "IDENTIFIER") {
+      return err("Expected field name");
+    }
+    const fieldNameTok = current(parser) as IdentifierToken;
+    const fieldName = fieldNameTok.value;
+    advance(parser);
+
+    // Reject duplicate field names
+    const prevSize = fieldNames.size;
+    fieldNames.add(fieldName);
+    if (fieldNames.size === prevSize) {
+      return err("Duplicate field name '" + fieldName + "'");
+    }
+
+    // Expect ':'
+    if (current(parser).type !== "COLON") {
+      return err("Expected ':' after field name");
+    }
+    advance(parser);
+
+    // Parse field type
+    const fieldTypeResult = parseTypeValue(parser);
+    if (!fieldTypeResult.ok) {
+      return fieldTypeResult;
+    }
+    const fieldType = fieldTypeResult.value;
+    advance(parser);
+
+    fields.push({ name: fieldName, type: fieldType, mutable });
+
+    // Expect ';'
+    if (current(parser).type !== "SEMICOLON") {
+      return err("Expected ';' after field");
+    }
+    advance(parser);
+  }
+
+  if (current(parser).type !== "RBRACE") {
+    return err("Expected '}' after struct fields");
+  }
+  advance(parser); // consume '}'
+
+  return ok(fields);
+}
+
+function parseStructStatement(parser: Parser): Result<ASTNode, string> {
+  // Expect 'struct'
+  const structTok = current(parser);
+  if (
+    structTok.type !== "KEYWORD" ||
+    (structTok as KeywordToken).value !== "struct"
+  ) {
+    return err("Expected 'struct'");
+  }
+  advance(parser);
+
+  // Expect struct name
+  const nameTok = current(parser);
+  if (nameTok.type !== "IDENTIFIER") {
+    return err("Expected struct name");
+  }
+  const structName = (nameTok as IdentifierToken).value;
+  advance(parser);
+
+  const fieldsResult = parseStructFieldList(parser);
+  if (!fieldsResult.ok) {
+    return fieldsResult;
+  }
+
+  return ok({
+    kind: "struct",
+    name: structName,
+    fields: fieldsResult.value,
   });
 }
 
@@ -1777,7 +2151,7 @@ function parseBinaryOperator(
   // eslint-disable-next-line no-unused-vars
   nextParser: (p: Parser) => Result<ASTNode, string>,
   operators: Set<string>,
-  castType: "+" | "-" | "*" | "/",
+  castType: "+" | "-" | "*" | "/" | "%",
 ): Result<ASTNode, string> {
   return parseBinary(parser, {
     nextParser,
@@ -1809,10 +2183,40 @@ function parseAdditive(parser: Parser): Result<ASTNode, string> {
 function parseMultiplicative(parser: Parser): Result<ASTNode, string> {
   return parseBinaryOperator(
     parser,
-    parsePrimary,
-    new Set(["*", "/"]),
-    "*" as "*" | "/",
+    parsePostfix,
+    new Set(["*", "/", "%"]),
+    "*" as "*" | "/" | "%",
   );
+}
+
+function parsePostfix(parser: Parser): Result<ASTNode, string> {
+  let result = parsePrimary(parser);
+  if (!result.ok) {
+    return result;
+  }
+
+  let node = result.value;
+
+  // Handle field access with dot notation
+  while (current(parser).type === "DOT") {
+    advance(parser); // consume DOT
+
+    // Expect identifier for field name
+    if (current(parser).type !== "IDENTIFIER") {
+      return err("Expected field name after '.'");
+    }
+    const fieldNameTok = current(parser) as IdentifierToken;
+    const fieldName = fieldNameTok.value;
+    advance(parser);
+
+    node = {
+      kind: "field-access",
+      object: node,
+      fieldName,
+    } as FieldAccessNode;
+  }
+
+  return ok(node);
 }
 
 function parsePrimary(parser: Parser): Result<ASTNode, string> {
@@ -1910,13 +2314,18 @@ function parsePrimary(parser: Parser): Result<ASTNode, string> {
       // Check that function exists
       const fnInfo = parser.functions.get(name);
       if (!fnInfo) {
-        return err(`Function '${name}' is not defined`);
+        return err("Function '" + name + "' is not defined");
       }
 
       // Check argument count
       if (args.length !== fnInfo.parameters.length) {
         return err(
-          `Function '${name}' expects ${fnInfo.parameters.length} arguments, got ${args.length}`,
+          "Function '" +
+            name +
+            "' expects " +
+            fnInfo.parameters.length +
+            " arguments, got " +
+            args.length,
         );
       }
 
@@ -1925,6 +2334,152 @@ function parsePrimary(parser: Parser): Result<ASTNode, string> {
         kind: "function-call",
         name,
         arguments: args,
+      });
+    }
+
+    // Check if this is a struct instantiation (identifier followed by LBRACE)
+    if (nextTok.type === "LBRACE") {
+      // Struct instantiation
+      const structInfo = parser.structs.get(name);
+      if (!structInfo) {
+        return err("Struct '" + name + "' is not defined");
+      }
+
+      advance(parser); // consume LBRACE
+
+      // Parse fields
+      const fields: StructInstantiationField[] = [];
+      const providedFields = new Set<string>();
+
+      while (current(parser).type !== "RBRACE") {
+        // Get field name
+        const fieldNameTok = current(parser);
+        if (fieldNameTok.type !== "IDENTIFIER") {
+          return err("Expected field name in struct instantiation");
+        }
+        const fieldName = (fieldNameTok as IdentifierToken).value;
+        advance(parser);
+
+        // Check for duplicate field names
+        if (providedFields.has(fieldName)) {
+          return err(
+            "Duplicate field name '" + fieldName + "' in struct instantiation",
+          );
+        }
+        providedFields.add(fieldName);
+
+        // Expect ':'
+        if (current(parser).type !== "COLON") {
+          return err("Expected ':' after field name in struct instantiation");
+        }
+        advance(parser);
+
+        // Parse field value
+        const valueResult = parseExpression(parser);
+        if (!valueResult.ok) {
+          return valueResult;
+        }
+
+        fields.push({
+          name: fieldName,
+          value: valueResult.value,
+        });
+
+        // Check for comma or RBRACE
+        const fieldNextTok = current(parser);
+        if (fieldNextTok.type === "RBRACE") {
+          break;
+        } else if (fieldNextTok.type === "COMMA") {
+          advance(parser);
+        } else {
+          return err("Expected ',' or '}' in struct instantiation");
+        }
+      }
+
+      // Expect RBRACE
+      if (current(parser).type !== "RBRACE") {
+        return err("Expected '}' after struct fields");
+      }
+      advance(parser);
+
+      // Validate all required fields are provided
+      for (const structField of structInfo.fields) {
+        if (!providedFields.has(structField.name)) {
+          return err(
+            "Missing required field '" +
+              structField.name +
+              "' in struct instantiation",
+          );
+        }
+      }
+
+      // Check for extra fields
+      for (const providedField of providedFields) {
+        if (!structInfo.fields.find((f) => f.name === providedField)) {
+          return err(
+            "Unknown field '" + providedField + "' in struct instantiation",
+          );
+        }
+      }
+
+      // Validate field value types match declared field types
+      for (const f of fields) {
+        const declaredField = structInfo.fields.find(
+          (sf) => sf.name === f.name,
+        );
+        if (!declaredField) continue;
+        const isStructType = parser.structs.has(declaredField.type);
+        const valueIsStruct = f.value.kind === "struct-instantiation";
+        if (isStructType) {
+          // Expect a struct instantiation of the correct type
+          if (!valueIsStruct) {
+            return err(
+              "Field '" +
+                f.name +
+                "' expects struct type '" +
+                declaredField.type +
+                "'",
+            );
+          }
+          const instNode = f.value as StructInstantiationNode;
+          if (instNode.structName !== declaredField.type) {
+            return err(
+              "Field '" +
+                f.name +
+                "' expects struct '" +
+                declaredField.type +
+                "' but got '" +
+                instNode.structName +
+                "'",
+            );
+          }
+        } else if (valueIsStruct) {
+          return err(
+            "Field '" + f.name + "' expects a primitive type but got a struct",
+          );
+        } else {
+          // Check boolean vs numeric type mismatch
+          const fieldIsBoolean = declaredField.type === "Bool";
+          const valueIsBoolean = f.value.kind === "boolean";
+          if (fieldIsBoolean && !valueIsBoolean && f.value.kind === "number") {
+            return err("Field '" + f.name + "' has type Bool but got a number");
+          }
+          if (!fieldIsBoolean && valueIsBoolean) {
+            return err(
+              "Field '" +
+                f.name +
+                "' has type '" +
+                declaredField.type +
+                "' but got a boolean",
+            );
+          }
+        }
+      }
+
+      return ok({
+        kind: "struct-instantiation",
+        structName: name,
+        fields,
       });
     }
 
@@ -1953,12 +2508,12 @@ function parsePrimary(parser: Parser): Result<ASTNode, string> {
     return ok(expr.value);
   }
 
-  // Handle if and match expressions
+  // Delegate if/match to parseExpression (avoids duplicate dispatch)
   if (tok.type === "KEYWORD" && (tok.value === "if" || tok.value === "match")) {
     return parseExpression(parser);
   }
 
-  return err(`Unexpected token: ${tok.type}`);
+  return err("Unexpected token: " + tok.type);
 }
 
 function extractNumberValue(numericLiteral: string): string {
@@ -2027,7 +2582,7 @@ function validateNegativeType(literal: string): Result<undefined, string> {
 
   const type = getTypeFromLiteral(literal);
   if (type && !type.startsWith("I") && !type.startsWith("F")) {
-    return err(`Cannot apply negative sign to unsigned type: ${literal}`);
+    return err("Cannot apply negative sign to unsigned type: " + literal);
   }
 
   return ok(undefined);
@@ -2063,12 +2618,12 @@ function codegenAST(node: ASTNode): string {
 
   if (node.kind === "let") {
     const init = codegenAST(node.initializer);
-    return `let ${node.name} = ${init}`;
+    return "let " + node.name + " = " + init;
   }
 
   if (node.kind === "assign") {
     const value = codegenAST(node.value);
-    return `${node.name} = ${value}`;
+    return node.name + " = " + value;
   }
 
   if (
@@ -2080,20 +2635,20 @@ function codegenAST(node: ASTNode): string {
     const right = codegenAST(node.right);
     // For division with integer types, use Math.trunc for integer division
     if (node.kind === "binary" && node.operator === "/") {
-      return `(Math.trunc(${left} / ${right}))`;
+      return "(Math.trunc(" + left + " / " + right + "))";
     }
-    return `(${left} ${node.operator} ${right})`;
+    return "(" + left + " " + node.operator + " " + right + ")";
   }
 
   if (node.kind === "unary-logical") {
     const operand = codegenAST(node.operand);
-    return `(!${operand})`;
+    return "(!" + operand + ")";
   }
 
   if (node.kind === "block") {
     const statements = generateStatementCode(node.statements);
     const result = codegenAST(node.result);
-    return `${statements} return ${result}`;
+    return statements + " return " + result;
   }
 
   if (node.kind === "if") {
@@ -2108,7 +2663,7 @@ function codegenAST(node: ASTNode): string {
 
     if (node.elseBranch === undefined) {
       // if without else - used as statement
-      return `if (${condition}) { ${thenCode} }`;
+      return "if (" + condition + ") { " + thenCode + " }";
     }
 
     // if with else - generate else branch code
@@ -2123,10 +2678,12 @@ function codegenAST(node: ASTNode): string {
 
       if (node.thenBranch.kind === "block") {
         // Then has statements, use if/else syntax
-        return `if (${condition}) { ${thenCode} } else ${innerIfCode}`;
+        return (
+          "if (" + condition + ") { " + thenCode + " } else " + innerIfCode
+        );
       } else {
         // Both are non-block expressions, so treat as full ternary
-        return `(${condition} ? ${thenCode} : ${innerIfCode})`;
+        return "(" + condition + " ? " + thenCode + " : " + innerIfCode + ")";
       }
     } else {
       elseCode = codegenAST(node.elseBranch);
@@ -2135,10 +2692,12 @@ function codegenAST(node: ASTNode): string {
     // Check if both branches are simple expressions without statements or blocks
     if (node.thenBranch.kind !== "block" && node.elseBranch.kind !== "block") {
       // Both are simple expressions - use ternary
-      return `(${condition} ? ${thenCode} : ${elseCode})`;
+      return "(" + condition + " ? " + thenCode + " : " + elseCode + ")";
     } else {
       // At least one has statements - use if/else syntax
-      return `if (${condition}) { ${thenCode} } else { ${elseCode} }`;
+      return (
+        "if (" + condition + ") { " + thenCode + " } else { " + elseCode + " }"
+      );
     }
   }
 
@@ -2152,7 +2711,7 @@ function codegenAST(node: ASTNode): string {
       bodyCode = codegenAST(node.body);
     }
 
-    return `while (${condition}) { ${bodyCode} }`;
+    return "while (" + condition + ") { " + bodyCode + " }";
   }
 
   if (node.kind === "break") {
@@ -2165,7 +2724,7 @@ function codegenAST(node: ASTNode): string {
 
   if (node.kind === "return") {
     const value = codegenAST(node.value);
-    return `return ${value}`;
+    return "return " + value;
   }
 
   if (node.kind === "match") {
@@ -2206,7 +2765,7 @@ function codegenAST(node: ASTNode): string {
       if (trueCase && falseCase) {
         const trueResult = codegenAST(trueCase.result);
         const falseResult = codegenAST(falseCase.result);
-        result = `${matchExpr} === 1 ? ${trueResult} : ${falseResult}`;
+        result = matchExpr + " === 1 ? " + trueResult + " : " + falseResult;
       }
     } else {
       // Regular ternary chain
@@ -2214,9 +2773,12 @@ function codegenAST(node: ASTNode): string {
         const caseResult = codegenAST(c.result);
 
         if (c.pattern.type === "literal") {
-          result += `${matchExpr} === ${c.pattern.value} ? ${caseResult}`;
+          result += matchExpr + " === " + c.pattern.value + " ? " + caseResult;
         } else if (c.pattern.type === "boolean") {
-          result += `${matchExpr} === ${c.pattern.value ? "1" : "0"} ? ${caseResult}`;
+          result +=
+            matchExpr + " === " + c.pattern.value
+              ? "1"
+              : "0" + " ? " + caseResult;
         }
 
         if (i < regularCases.length - 1 || wildcardCase) {
@@ -2231,12 +2793,12 @@ function codegenAST(node: ASTNode): string {
       }
     }
 
-    return `(${result})`;
+    return "(" + result + ")";
   }
 
   if (node.kind === "function") {
     // Generate function declaration
-    const paramList = node.parameters.map((p) => `${p.name}`).join(", ");
+    const paramList = node.parameters.map((p) => String(p.name)).join(", ");
 
     let bodyCode = "";
     if (node.body.kind === "block") {
@@ -2251,23 +2813,71 @@ function codegenAST(node: ASTNode): string {
         // The return statement was already generated in generateStatementCode
       } else {
         // No return statement at the end, add an explicit return for the result
-        bodyCode += `return ${codegenAST(node.body.result)}`;
+        bodyCode += "return " + codegenAST(node.body.result);
       }
     } else {
-      bodyCode = `return ${codegenAST(node.body)}`;
+      bodyCode = "return " + codegenAST(node.body);
     }
 
-    return `function ${node.name}(${paramList}) { ${bodyCode} };`;
+    return (
+      "function " + node.name + "(" + paramList + ") { " + bodyCode + " };"
+    );
   }
 
   if (node.kind === "function-call") {
     // Generate function call
     const argList = node.arguments.map((arg) => codegenAST(arg)).join(", ");
 
-    return `${node.name}(${argList})`;
+    return node.name + "(" + argList + ")";
+  }
+
+  if (node.kind === "struct") {
+    // Struct declarations don't generate code themselves
+    // They are just type definitions
+    return "0";
+  }
+
+  if (node.kind === "struct-instantiation") {
+    // Generate struct instantiation as JavaScript object
+    const fields = node.fields
+      .map((f) => {
+        const value = codegenAST(f.value);
+        return f.name + ": " + value;
+      })
+      .join(", ");
+
+    return "{ " + fields + " }";
+  }
+
+  if (node.kind === "field-access") {
+    // Generate field access
+    const obj = codegenAST(node.object);
+    return obj + "." + node.fieldName;
+  }
+
+  if (node.kind === "field-assign") {
+    // Generate field assignment
+    const obj = codegenAST(node.object);
+    const value = codegenAST(node.value);
+    return obj + "." + node.fieldName + " = " + value;
   }
 
   return "0";
+}
+
+/**
+ * Helper to validate expressions used in value contexts where they must produce a value
+ * (e.g., initializers, returns, if branches)
+ */
+function validateExpressionAsValue(node: ASTNode): Result<undefined, string> {
+  // If expressions without else cannot be used in value contexts
+  if (node.kind === "if" && node.elseBranch === undefined) {
+    return err(
+      "If expression without else clause cannot be used in value context",
+    );
+  }
+
+  return validateAST(node);
 }
 
 function validateAST(node: ASTNode): Result<undefined, string> {
@@ -2284,7 +2894,8 @@ function validateAST(node: ASTNode): Result<undefined, string> {
   }
 
   if (node.kind === "let") {
-    return validateAST(node.initializer);
+    // Validate initializer expression - must produce a value
+    return validateExpressionAsValue(node.initializer);
   }
 
   if (node.kind === "assign") {
@@ -2364,8 +2975,8 @@ function validateAST(node: ASTNode): Result<undefined, string> {
   }
 
   if (node.kind === "return") {
-    // Validate return value
-    return validateAST(node.value);
+    // Validate return value - must produce a value
+    return validateExpressionAsValue(node.value);
   }
 
   if (node.kind === "match") {
@@ -2402,139 +3013,79 @@ function validateAST(node: ASTNode): Result<undefined, string> {
     return ok(undefined);
   }
 
+  if (node.kind === "struct") {
+    // Structs are just declarations, no body validation needed
+    return ok(undefined);
+  }
+
+  if (node.kind === "struct-instantiation") {
+    // Validate all field values
+    for (const field of node.fields) {
+      const fieldValidation = validateAST(field.value);
+      if (!fieldValidation.ok) {
+        return fieldValidation;
+      }
+    }
+    return ok(undefined);
+  }
+
+  if (node.kind === "field-access") {
+    // Validate the object being accessed
+    return validateAST(node.object);
+  }
+
+  if (node.kind === "field-assign") {
+    // Validate the object being assigned to and the value
+    const objectValidation = validateAST(node.object);
+    if (!objectValidation.ok) {
+      return objectValidation;
+    }
+    return validateAST(node.value);
+  }
+
   return ok(undefined);
 }
 
 /**
- * Helper to register all function signatures before parsing bodies
- * Supports mutual recursion by allowing functions to reference each other
+ * Consumes the current keyword token then returns the following identifier
+ * name, restoring parser.pos to savedPos on failure.
  */
-function prescanFunctionSignatures(parser: Parser): Result<void, string> {
+function consumeKeywordAndGetName(
+  parser: Parser,
+  savedPos: number,
+  errorMsg: string,
+): Result<string, string> {
+  advance(parser); // consume keyword
+  const nameTok = current(parser);
+  if (nameTok.type !== "IDENTIFIER") {
+    parser.pos = savedPos;
+    return err(errorMsg);
+  }
+  const name = (nameTok as IdentifierToken).value;
+  advance(parser);
+  return ok(name);
+}
+
+/**
+ * Runs a prescan pass over all tokens, calling `handler` for each keyword
+ * match. The handler receives the saved original position so it can restore
+ * on error. If the handler returns ok(false) the generic loop advances past
+ * the current (non-matching) token; returning ok(true) means the handler
+ * already advanced the parser.
+ */
+function runPrescan(
+  parser: Parser,
+  keyword: string,
+  handler: (savedPos: number) => Result<void, string>,
+): Result<void, string> {
   const savedPos = parser.pos;
   parser.pos = 0;
 
   while (current(parser).type !== "EOF") {
     const tok = current(parser);
-
-    // Look for function declarations
-    if (tok.type === "KEYWORD" && tok.value === "fn") {
-      advance(parser); // consume 'fn'
-
-      // Get function name
-      const nameTok = current(parser);
-      if (nameTok.type !== "IDENTIFIER") {
-        parser.pos = savedPos;
-        return err("Expected function name");
-      }
-      const nameTokValue = nameTok as IdentifierToken;
-      const functionName = nameTokValue.value;
-      advance(parser);
-
-      // Skip to opening paren
-      if (current(parser).type !== "LPAREN") {
-        parser.pos = savedPos;
-        return err("Expected '(' after function name");
-      }
-      advance(parser);
-
-      // Parse parameters
-      const parameters: FunctionParameter[] = [];
-      while (current(parser).type !== "RPAREN") {
-        if (current(parser).type === "IDENTIFIER") {
-          const paramTok = current(parser) as IdentifierToken;
-          const paramName = paramTok.value;
-          advance(parser); // param name
-
-          if (current(parser).type !== "COLON") {
-            parser.pos = savedPos;
-            return err("Expected ':' after parameter name");
-          }
-          advance(parser); // colon
-
-          // Parse parameter type
-          const paramTypeResult = parseTypeAnnotation(parser);
-          if (!paramTypeResult.ok) {
-            parser.pos = savedPos;
-            return paramTypeResult;
-          }
-
-          parameters.push({
-            name: paramName,
-            type: paramTypeResult.value,
-          });
-
-          if (current(parser).type === "COMMA") {
-            advance(parser);
-          }
-        } else if (current(parser).type !== "RPAREN") {
-          parser.pos = savedPos;
-          return err("Expected parameter or ')' in parameter list");
-        }
-      }
-
-      if (current(parser).type !== "RPAREN") {
-        parser.pos = savedPos;
-        return err("Expected ')' after parameters");
-      }
-      advance(parser); // consume ')'
-
-      // Expect ':'
-      if (current(parser).type !== "COLON") {
-        parser.pos = savedPos;
-        return err("Expected ':' before return type");
-      }
-      advance(parser);
-
-      // Parse return type
-      const returnTypeResult = parseTypeValue(parser);
-      if (!returnTypeResult.ok) {
-        parser.pos = savedPos;
-        return returnTypeResult;
-      }
-      advance(parser); // consume return type
-
-      // Register function signature
-      if (!parser.functions.has(functionName)) {
-        parser.functions.set(functionName, {
-          parameters,
-          returnType: returnTypeResult.value,
-        });
-      } else {
-        parser.pos = savedPos;
-        return err(`Function '${functionName}' already declared`);
-      }
-
-      // Skip rest of function (arrow and body) by finding the next statement
-      // Arrow is next
-      if (current(parser).type === "ARROW") {
-        advance(parser);
-      }
-
-      // Now skip the body - it's either a block {} or an expression ending in ;
-      if (current(parser).type === "LBRACE") {
-        // Block body - skip to matching }
-        let braceDepth = 1;
-        advance(parser); // consume {
-        while (braceDepth > 0 && current(parser).type !== "EOF") {
-          if (current(parser).type === "LBRACE") {
-            braceDepth++;
-          } else if (current(parser).type === "RBRACE") {
-            braceDepth--;
-          }
-          advance(parser);
-        }
-      } else {
-        // Expression body - skip until semicolon
-        while (
-          current(parser).type !== "SEMICOLON" &&
-          current(parser).type !== "EOF"
-        ) {
-          advance(parser);
-        }
-        if (current(parser).type === "SEMICOLON") {
-          advance(parser);
-        }
-      }
+    if (tok.type === "KEYWORD" && tok.value === keyword) {
+      const result = handler(savedPos);
+      if (!result.ok) return result;
     } else {
       advance(parser);
     }
@@ -2544,7 +3095,345 @@ function prescanFunctionSignatures(parser: Parser): Result<void, string> {
   return ok(undefined);
 }
 
+/**
+ * Helper to register all struct definitions before parsing bodies
+ * Supports nested structs and struct field types
+ */
+function prescanStructDefinitions(parser: Parser): Result<void, string> {
+  return runPrescan(parser, "struct", (savedPos) => {
+    const nameResult = consumeKeywordAndGetName(
+      parser,
+      savedPos,
+      "Expected struct name",
+    );
+    if (!nameResult.ok) return nameResult;
+    const structName = nameResult.value;
+
+    const fieldsResult = parseStructFieldList(parser);
+    if (!fieldsResult.ok) {
+      parser.pos = savedPos;
+      return fieldsResult;
+    }
+
+    // Register struct
+    if (!parser.structs.has(structName)) {
+      parser.structs.set(structName, { fields: fieldsResult.value });
+    } else {
+      parser.pos = savedPos;
+      return err("Struct '" + structName + "' already declared");
+    }
+
+    return ok(undefined);
+  });
+}
+
+/**
+ * Helper to register all function signatures before parsing bodies
+ * Supports mutual recursion by allowing functions to reference each other
+ */
+function prescanFunctionSignatures(parser: Parser): Result<void, string> {
+  return runPrescan(parser, "fn", (savedPos) => {
+    const nameResult = consumeKeywordAndGetName(
+      parser,
+      savedPos,
+      "Expected function name",
+    );
+    if (!nameResult.ok) return nameResult;
+    const functionName = nameResult.value;
+
+    if (current(parser).type !== "LPAREN") {
+      parser.pos = savedPos;
+      return err("Expected '(' after function name");
+    }
+    advance(parser);
+
+    const parameters: FunctionParameter[] = [];
+    while (current(parser).type !== "RPAREN") {
+      if (current(parser).type === "IDENTIFIER") {
+        const paramTok = current(parser) as IdentifierToken;
+        const paramName = paramTok.value;
+        advance(parser);
+
+        if (current(parser).type !== "COLON") {
+          parser.pos = savedPos;
+          return err("Expected ':' after parameter name");
+        }
+        advance(parser);
+
+        const paramTypeResult = parseTypeAnnotation(parser);
+        if (!paramTypeResult.ok) {
+          parser.pos = savedPos;
+          return paramTypeResult;
+        }
+
+        parameters.push({ name: paramName, type: paramTypeResult.value });
+
+        if (current(parser).type === "COMMA") {
+          advance(parser);
+        }
+      } else if (current(parser).type !== "RPAREN") {
+        parser.pos = savedPos;
+        return err("Expected parameter or ')' in parameter list");
+      }
+    }
+
+    if (current(parser).type !== "RPAREN") {
+      parser.pos = savedPos;
+      return err("Expected ')' after parameters");
+    }
+    advance(parser);
+
+    if (current(parser).type !== "COLON") {
+      parser.pos = savedPos;
+      return err("Expected ':' before return type");
+    }
+    advance(parser);
+
+    const returnTypeResult = parseTypeValue(parser);
+    if (!returnTypeResult.ok) {
+      parser.pos = savedPos;
+      return returnTypeResult;
+    }
+    advance(parser);
+
+    if (!parser.functions.has(functionName)) {
+      parser.functions.set(functionName, {
+        parameters,
+        returnType: returnTypeResult.value,
+      });
+    } else {
+      parser.pos = savedPos;
+      return err("Function '" + functionName + "' already declared");
+    }
+
+    if (current(parser).type === "ARROW") {
+      advance(parser);
+    }
+
+    if (current(parser).type === "LBRACE") {
+      let braceDepth = 1;
+      advance(parser);
+      while (braceDepth > 0 && current(parser).type !== "EOF") {
+        if (current(parser).type === "LBRACE") braceDepth++;
+        else if (current(parser).type === "RBRACE") braceDepth--;
+        advance(parser);
+      }
+    } else {
+      while (
+        current(parser).type !== "SEMICOLON" &&
+        current(parser).type !== "EOF"
+      ) {
+        advance(parser);
+      }
+      if (current(parser).type === "SEMICOLON") {
+        advance(parser);
+      }
+    }
+
+    return ok(undefined);
+  });
+}
+
+/**
+ * Returns the struct name for the given node if it's a struct-instantiation,
+ * or looks up the variable type for a variable node.
+ */
+function getNodeStructType(
+  node: ASTNode,
+  structs: Map<string, StructInfo>,
+  typeEnv: Map<string, string>,
+): string | undefined {
+  if (node.kind === "struct-instantiation") {
+    return (node as StructInstantiationNode).structName;
+  }
+  if (node.kind === "variable") {
+    const t = typeEnv.get(node.name);
+    return t && structs.has(t) ? t : undefined;
+  }
+  if (node.kind === "field-access") {
+    const parentType = getNodeStructType(node.object, structs, typeEnv);
+    if (!parentType) return undefined;
+    const structInfo = structs.get(parentType);
+    const field = structInfo?.fields.find((f) => f.name === node.fieldName);
+    return field && structs.has(field.type) ? field.type : undefined;
+  }
+  return undefined;
+}
+
+/**
+ * Validates struct field access, mutability, and type compatibility.
+ * 'typeEnv' maps variable names to their declared types.
+ */
+function validateStructSemantics(
+  node: ASTNode,
+  structs: Map<string, StructInfo>,
+  typeEnv: Map<string, string>,
+): Result<undefined, string> {
+  if (node.kind === "let") {
+    const letNode = node as LetNode;
+    // Check struct vs primitive type mismatch
+    if (
+      letNode.initializer.kind === "struct-instantiation" &&
+      !structs.has(letNode.type)
+    ) {
+      return err(
+        "Type mismatch: cannot assign struct to variable of type '" +
+          letNode.type +
+          "'",
+      );
+    }
+    if (
+      structs.has(letNode.type) &&
+      letNode.initializer.kind !== "struct-instantiation" &&
+      letNode.initializer.kind !== "variable" &&
+      letNode.initializer.kind !== "field-access"
+    ) {
+      // Only error if initializer is clearly not a struct (e.g. a number literal)
+      if (
+        letNode.initializer.kind === "number" ||
+        letNode.initializer.kind === "boolean"
+      ) {
+        return err(
+          "Type mismatch: variable '" +
+            letNode.name +
+            "' expects struct type '" +
+            letNode.type +
+            "'",
+        );
+      }
+    }
+    // Register variable type in environment for sub-expressions
+    typeEnv = new Map(typeEnv);
+    typeEnv.set(letNode.name, letNode.type);
+    return validateStructSemantics(letNode.initializer, structs, typeEnv);
+  }
+
+  if (node.kind === "field-access" || node.kind === "field-assign") {
+    const objResult = validateStructSemantics(node.object, structs, typeEnv);
+    if (!objResult.ok) return objResult;
+
+    const structType = getNodeStructType(node.object, structs, typeEnv);
+    const structInfo = structType ? structs.get(structType) : undefined;
+
+    if (node.kind === "field-access") {
+      if (
+        structInfo &&
+        !structInfo.fields.find((f) => f.name === node.fieldName)
+      ) {
+        return err(
+          "Struct '" + structType + "' has no field '" + node.fieldName + "'",
+        );
+      }
+      return ok(undefined);
+    }
+
+    // field-assign
+    if (structInfo) {
+      const field = structInfo.fields.find((f) => f.name === node.fieldName);
+      if (field && !field.mutable) {
+        return err(
+          "Field '" +
+            node.fieldName +
+            "' of struct '" +
+            structType +
+            "' is read-only",
+        );
+      }
+    }
+    return validateStructSemantics(node.value, structs, typeEnv);
+  }
+
+  // For block nodes, thread the typeEnv through sequentially
+  if (node.kind === "block") {
+    let env = typeEnv;
+    for (const stmt of node.statements) {
+      if (stmt.kind === "let") {
+        const r = validateStructSemantics(stmt, structs, env);
+        if (!r.ok) return r;
+        // Update env after let
+        env = new Map(env);
+        env.set((stmt as LetNode).name, (stmt as LetNode).type);
+      } else {
+        const r = validateStructSemantics(stmt, structs, env);
+        if (!r.ok) return r;
+      }
+    }
+    return validateStructSemantics(node.result, structs, env);
+  }
+
+  // Recurse into child nodes generically
+  if (
+    node.kind === "binary" ||
+    node.kind === "comparison" ||
+    node.kind === "logical"
+  ) {
+    const l = validateStructSemantics(node.left, structs, typeEnv);
+    if (!l.ok) return l;
+    return validateStructSemantics(node.right, structs, typeEnv);
+  }
+
+  if (node.kind === "unary-logical") {
+    return validateStructSemantics(node.operand, structs, typeEnv);
+  }
+
+  if (node.kind === "if") {
+    const c = validateStructSemantics(node.condition, structs, typeEnv);
+    if (!c.ok) return c;
+    const t = validateStructSemantics(node.thenBranch, structs, typeEnv);
+    if (!t.ok) return t;
+    if (node.elseBranch) {
+      return validateStructSemantics(node.elseBranch, structs, typeEnv);
+    }
+    return ok(undefined);
+  }
+
+  if (node.kind === "while") {
+    const c = validateStructSemantics(node.condition, structs, typeEnv);
+    if (!c.ok) return c;
+    return validateStructSemantics(node.body, structs, typeEnv);
+  }
+
+  if (node.kind === "function") {
+    // Build parameter type env for function body
+    const fnEnv = new Map(typeEnv);
+    for (const p of (node as FunctionNode).parameters) {
+      fnEnv.set(p.name, p.type);
+    }
+    return validateStructSemantics(node.body, structs, fnEnv);
+  }
+
+  if (node.kind === "function-call") {
+    for (const arg of (node as FunctionCallNode).arguments) {
+      const r = validateStructSemantics(arg, structs, typeEnv);
+      if (!r.ok) return r;
+    }
+    return ok(undefined);
+  }
+
+  if (node.kind === "struct-instantiation") {
+    for (const f of (node as StructInstantiationNode).fields) {
+      const r = validateStructSemantics(f.value, structs, typeEnv);
+      if (!r.ok) return r;
+    }
+    return ok(undefined);
+  }
+
+  if (node.kind === "return") {
+    return validateStructSemantics(node.value, structs, typeEnv);
+  }
+
+  if (node.kind === "assign") {
+    return validateStructSemantics(node.value, structs, typeEnv);
+  }
+
+  return ok(undefined);
+}
+
 export function compile(input: string): Result<string, string> {
+  const DEBUG = false; // Set to true to enable debug logging
+
+  if (DEBUG) console.log("[COMPILE START]", input.substring(0, 100));
+
   // Empty input returns 0
   if (input === "") {
     return ok("return 0;");
@@ -2556,30 +3445,54 @@ export function compile(input: string): Result<string, string> {
   }
 
   // Tokenize
+  if (DEBUG) console.log("[TOKENIZE]");
   const tokenResult = tokenize(input);
   if (!tokenResult.ok) {
     return tokenResult;
   }
 
   // Parse
+  if (DEBUG) console.log("[PARSE START]");
   const tokens = tokenResult.value;
+  if (DEBUG) console.log("[TOKENS] " + tokens.length + " tokens");
   const parser: Parser = {
     tokens,
     pos: 0,
     variables: new Map(),
     functions: new Map(),
+    structs: new Map(),
+    inLoop: false,
+    currentFunctionReturnType: undefined,
   };
 
+  // Pre-scan for struct definitions to support nested structs
+  if (DEBUG) console.log("[PRESCAN STRUCTS]");
+  const structPrescanResult = prescanStructDefinitions(parser);
+  if (!structPrescanResult.ok) {
+    return structPrescanResult;
+  }
+  if (DEBUG)
+    console.log(
+      "[STRUCT PRESCAN DONE] " + parser.structs.size + " structs found",
+    );
+
   // Pre-scan for function signatures to support mutual recursion
+  if (DEBUG) console.log("[PRESCAN FUNCTIONS]");
   const prescanResult = prescanFunctionSignatures(parser);
   if (!prescanResult.ok) {
     return prescanResult;
   }
+  if (DEBUG)
+    console.log(
+      "[FUNCTION PRESCAN DONE] " + parser.functions.size + " functions found",
+    );
 
+  if (DEBUG) console.log("[PARSE PROGRAM]");
   const astResult = parseProgram(parser);
   if (!astResult.ok) {
     return astResult;
   }
+  if (DEBUG) console.log("[AST PARSED]");
 
   // Check all tokens consumed
   if (current(parser).type !== "EOF") {
@@ -2593,15 +3506,23 @@ export function compile(input: string): Result<string, string> {
     return validationResult;
   }
 
+  // Semantic struct validation (field existence, readonly, type mismatch)
+  const structSemanticsResult = validateStructSemantics(
+    ast,
+    parser.structs,
+    new Map(),
+  );
+  if (!structSemanticsResult.ok) {
+    return structSemanticsResult;
+  }
+
   // Generate code
   const code = codegenAST(ast);
-
-  // If the AST is a block, it already includes return statement
   if (ast.kind === "block") {
     return ok(code + ";");
   }
 
-  return ok(`return ${code};`);
+  return ok("return " + code + ";");
 }
 
 export const compileTuffToJS = compile;
