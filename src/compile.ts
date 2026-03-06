@@ -137,6 +137,14 @@ interface AddressOfToken {
   type: "ADDRESS_OF";
 }
 
+interface LBracketToken {
+  type: "LBRACKET";
+}
+
+interface RBracketToken {
+  type: "RBRACKET";
+}
+
 interface EOFToken {
   type: "EOF";
 }
@@ -153,6 +161,8 @@ type Token =
   | RParenToken
   | LBraceToken
   | RBraceToken
+  | LBracketToken
+  | RBracketToken
   | LTToken
   | GTToken
   | ColonToken
@@ -347,6 +357,26 @@ interface FieldAccessNode {
   fieldName: string;
 }
 
+interface ArrayLiteralNode {
+  kind: "array-literal";
+  elements: ASTNode[];
+  totalCount?: number;
+  elemType?: string;
+}
+
+interface ArrayAccessNode {
+  kind: "array-access";
+  array: ASTNode;
+  index: ASTNode;
+}
+
+interface ArrayAssignNode {
+  kind: "array-assign";
+  array: ASTNode;
+  index: ASTNode;
+  value: ASTNode;
+}
+
 type ASTNode =
   | NumberNode
   | ReadNode
@@ -372,7 +402,10 @@ type ASTNode =
   | FunctionCallNode
   | StructNode
   | StructInstantiationNode
-  | FieldAccessNode;
+  | FieldAccessNode
+  | ArrayLiteralNode
+  | ArrayAccessNode
+  | ArrayAssignNode;
 
 // Refinement type interfaces
 interface RefinementConstraint {
@@ -537,6 +570,31 @@ function inferExpressionType(
     return ok(expr.type);
   }
 
+  if (expr.kind === "array-access") {
+    // Look up the array's type to get element type
+    if (expr.array.kind === "variable") {
+      const varResult = getVariable(parser, expr.array.name);
+      if (varResult.ok) {
+        const arrType = varResult.value.type;
+        // array type looks like [ElemType;initCount;totalCount]
+        const m = arrType.match(/^\[(.+);(\d+);(\d+)\]$/);
+        if (m) {
+          return ok(m[1] ?? "I32");
+        }
+      }
+    }
+    return err("Cannot infer element type of array access");
+  }
+
+  if (expr.kind === "field-access" && expr.fieldName === "length") {
+    return ok("USize");
+  }
+
+  if (expr.kind === "if") {
+    // Infer from then branch
+    return inferExpressionType(expr.thenBranch, parser);
+  }
+
   // For other expressions, we'd need more analysis
   return err("Cannot infer type of expression");
 }
@@ -570,6 +628,54 @@ function parseTypeAnnotation(parser: Parser): Result<string, string> {
     }
   }
 
+  // Check for array type [ElementType; InitCount; TotalCount]
+  if (current(parser).type === "LBRACKET") {
+    advance(parser); // consume [
+
+    // Parse element type recursively (can be nested arrays)
+    const elemTypeResult = parseTypeAnnotation(parser);
+    if (!elemTypeResult.ok) {
+      return elemTypeResult;
+    }
+    const elemType = elemTypeResult.value;
+
+    // Expect ;
+    if (current(parser).type !== "SEMICOLON") {
+      return err("Expected ';' after array element type");
+    }
+    advance(parser);
+
+    // Parse init count
+    const initCountTok = current(parser);
+    if (initCountTok.type !== "NUMBER") {
+      return err("Expected init count as number");
+    }
+    const initCount = (initCountTok as NumberToken).value;
+    advance(parser);
+
+    // Expect ;
+    if (current(parser).type !== "SEMICOLON") {
+      return err("Expected ';' after init count");
+    }
+    advance(parser);
+
+    // Parse total count
+    const totalCountTok = current(parser);
+    if (totalCountTok.type !== "NUMBER") {
+      return err("Expected total count as number");
+    }
+    const totalCount = (totalCountTok as NumberToken).value;
+    advance(parser);
+
+    // Expect ]
+    if (current(parser).type !== "RBRACKET") {
+      return err("Expected ']' to close array type");
+    }
+    advance(parser);
+
+    return ok("[" + elemType + ";" + initCount + ";" + totalCount + "]");
+  }
+
   const typeTok = current(parser);
   if (typeTok.type !== "IDENTIFIER") {
     return err("Expected type annotation");
@@ -595,6 +701,15 @@ function parseTypeAnnotation(parser: Parser): Result<string, string> {
 
 function parseTypeValue(parser: Parser): Result<string, string> {
   const typeTok = current(parser);
+  // Delegate array types to parseTypeAnnotation, but step back one so
+  // the caller's advance() moves past the last token correctly.
+  if (typeTok.type === "LBRACKET") {
+    const result = parseTypeAnnotation(parser);
+    if (!result.ok) return result;
+    // parseTypeAnnotation advanced past ']'; step back one so caller's advance() is correct
+    parser.pos -= 1;
+    return result;
+  }
   if (typeTok.type !== "IDENTIFIER") {
     return err("Expected type");
   }
@@ -1125,6 +1240,7 @@ function tokenize(input: string): Result<Token[], string> {
       last !== undefined &&
       (last.type === "NUMBER" ||
         last.type === "RPAREN" ||
+        last.type === "RBRACKET" ||
         last.type === "IDENTIFIER" ||
         last.type === "BOOL" ||
         last.type === "GT")
@@ -1204,6 +1320,12 @@ function tokenize(input: string): Result<Token[], string> {
       pos++;
     } else if (char === "}") {
       tokens.push({ type: "RBRACE" });
+      pos++;
+    } else if (char === "[") {
+      tokens.push({ type: "LBRACKET" });
+      pos++;
+    } else if (char === "]") {
+      tokens.push({ type: "RBRACKET" });
       pos++;
     } else if (char === "<") {
       // Check for <=
@@ -1502,7 +1624,10 @@ function tryConsumeMutKeyword(parser: Parser): boolean {
 function tryParseAndValidateAssignmentOperator(
   parser: Parser,
   savedPos: number,
-): Result<{ isCompound: boolean; operator: "+" | "-" | "*" | "/" | "%" } | undefined, string> {
+): Result<
+  { isCompound: boolean; operator: "+" | "-" | "*" | "/" | "%" } | undefined,
+  string
+> {
   const assignOpResult = parseCompoundAssignmentOperator(parser);
   if (!assignOpResult.ok) {
     // Not an assignment, restore position
@@ -1627,11 +1752,159 @@ function tryParseAssignment(
     } as DerefAssignNode);
   }
 
+  // Try to parse as a postfix expression (could be array access: arr[index])
+  // Save position in case it's not an assignment
+  const savedPos = parser.pos;
+
+  // Try to parse a postfix expression to check if it's array access or field access
+  const postfixResult = parsePostfix(parser);
+  if (postfixResult.ok) {
+    const lvalue = postfixResult.value;
+
+    // Check if this is array access or field access that could be assigned to
+    if (
+      (lvalue.kind === "array-access" || lvalue.kind === "field-access") &&
+      current(parser).type === "ASSIGN"
+    ) {
+      advance(parser); // consume ASSIGN
+
+      const valueResult = parseExpression(parser);
+      if (!valueResult.ok) {
+        return valueResult;
+      }
+
+      if (lvalue.kind === "array-access") {
+        // Check that the array variable is mutable
+        if (lvalue.array.kind === "variable") {
+          const arrayVar = parser.variables.get(lvalue.array.name);
+          if (arrayVar && !arrayVar.mutable) {
+            return err(
+              "Cannot modify elements of immutable array '" +
+                lvalue.array.name +
+                "'",
+            );
+          }
+
+          // Get array type info for bounds/type checking
+          if (arrayVar && arrayVar.type.startsWith("[")) {
+            const m = arrayVar.type.match(/^\[(.+);(\d+);(\d+)\]$/);
+            if (m) {
+              const elemType = m[1] ?? "";
+              const initCount = parseInt(m[2] ?? "0", 10);
+
+              // Check write bounds: can write to index 0..initCount (adjacent slot allowed)
+              const idxNode = lvalue.index;
+              if (idxNode.kind === "number") {
+                const bareNum = idxNode.value.replace(/[A-Za-z_]+$/, "");
+                const idxVal = parseFloat(bareNum);
+                if (idxVal > initCount) {
+                  return err(
+                    "Array write index " +
+                      idxVal +
+                      " is beyond adjacent uninitialized slot (init count: " +
+                      initCount +
+                      ")",
+                  );
+                }
+              }
+
+              // Check assigned value type matches element type
+              if (!elemType.startsWith("[")) {
+                // Direct float literal check (3.14 without type suffix defaults to I32 in inferExpressionType)
+                if (
+                  valueResult.value.kind === "number" &&
+                  valueResult.value.value
+                    .replace(/[A-Za-z_]+$/, "")
+                    .includes(".")
+                ) {
+                  if (!elemType.startsWith("F")) {
+                    return err(
+                      "Type mismatch in array element assignment: expected " +
+                        elemType +
+                        " but got float literal",
+                    );
+                  }
+                }
+                const assignedTypeResult = inferExpressionType(
+                  valueResult.value,
+                  parser,
+                );
+                if (assignedTypeResult.ok) {
+                  const assignedType = assignedTypeResult.value;
+                  const bothFloat =
+                    elemType.startsWith("F") && assignedType.startsWith("F");
+                  const bothInt =
+                    !elemType.startsWith("F") && !assignedType.startsWith("F");
+                  if (assignedType !== elemType && !bothFloat && !bothInt) {
+                    return err(
+                      "Type mismatch in array element assignment: expected " +
+                        elemType +
+                        " but got " +
+                        assignedType,
+                    );
+                  }
+                  // Float assigned to integer array
+                  if (
+                    !elemType.startsWith("F") &&
+                    assignedType.startsWith("F")
+                  ) {
+                    return err(
+                      "Type mismatch in array element assignment: expected " +
+                        elemType +
+                        " but got " +
+                        assignedType,
+                    );
+                  }
+                  // Integer assigned to float array (check for literal with decimal)
+                  if (
+                    elemType.startsWith("F") &&
+                    !assignedType.startsWith("F")
+                  ) {
+                    // This is OK - int can widen to float
+                  }
+                } else {
+                  // Check if value is a number literal with a decimal (float)
+                  if (
+                    valueResult.value.kind === "number" &&
+                    valueResult.value.value.includes(".")
+                  ) {
+                    if (!elemType.startsWith("F")) {
+                      return err(
+                        "Type mismatch in array element assignment: expected " +
+                          elemType +
+                          " but got float literal",
+                      );
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        return ok({
+          kind: "array-assign",
+          array: lvalue.array,
+          index: lvalue.index,
+          value: valueResult.value,
+        } as ArrayAssignNode);
+      } else {
+        return ok({
+          kind: "field-assign",
+          object: lvalue.object,
+          fieldName: lvalue.fieldName,
+          value: valueResult.value,
+        } as FieldAssignNode);
+      }
+    }
+  }
+
+  // Restore position and try identifier-based assignment
+  parser.pos = savedPos;
+
   if (tok.type !== "IDENTIFIER") {
     return ok(undefined);
   }
 
-  const savedPos = parser.pos;
   const name = tok.value;
   advance(parser);
 
@@ -1855,10 +2128,38 @@ function isBooleanNode(node: ASTNode): boolean {
   );
 }
 
-function validateBooleanCondition(node: ASTNode): Result<undefined, string> {
-  // Allow variable references (checked at runtime) and function calls
+function validateBooleanCondition(
+  node: ASTNode,
+  parser?: Parser,
+): Result<undefined, string> {
+  // Allow boolean literals directly
+  if (node.kind === "boolean") {
+    return ok(undefined);
+  }
+
+  // Allow integer literals 1/0 as boolean (truthy/falsy constants)
+  if (node.kind === "number") {
+    const numStr = node.value.replace(/-/g, "");
+    // Must be 0 or 1 (without type suffix)
+    const bare = numStr.replace(/[A-Za-z_]+$/, "");
+    if (bare === "0" || bare === "1") {
+      return ok(undefined);
+    }
+    return err("Condition must be a boolean expression");
+  }
+
+  // Allow variable references only if they have Bool type
+  if (node.kind === "variable") {
+    if (parser) {
+      const varInfo = parser.variables.get(node.name);
+      if (varInfo && varInfo.type !== "Bool") {
+        return err("Condition must be a boolean expression");
+      }
+    }
+    return ok(undefined);
+  }
+
   if (
-    node.kind === "variable" ||
     node.kind === "function-call" ||
     node.kind === "if" ||
     node.kind === "match"
@@ -1873,29 +2174,31 @@ function validateBooleanCondition(node: ASTNode): Result<undefined, string> {
   return ok(undefined);
 }
 
-function parseParenthesizedCondition(parser: Parser): Result<ASTNode, string> {
-  // Expect '('
-  const lparen = current(parser);
-  if (lparen.type !== "LPAREN") {
-    return err("Expected '('");
-  }
-  advance(parser);
+/**
+ * Parses a condition expression, with optional surrounding parentheses.
+ * If the next token is '(', parens are consumed; otherwise the expression
+ * is parsed directly. The condition is validated as a boolean expression.
+ */
+function parseConditionExpression(parser: Parser): Result<ASTNode, string> {
+  const hasParen = current(parser).type === "LPAREN";
 
-  // Parse condition
+  if (hasParen) {
+    advance(parser); // consume '('
+  }
+
   const conditionResult = parseExpression(parser);
   if (!conditionResult.ok) {
     return conditionResult;
   }
 
-  // Expect ')'
-  const rparen = current(parser);
-  if (rparen.type !== "RPAREN") {
-    return err("Expected ')'");
+  if (hasParen) {
+    if (current(parser).type !== "RPAREN") {
+      return err("Expected ')'");
+    }
+    advance(parser); // consume ')'
   }
-  advance(parser);
 
-  // Validate that the condition is a boolean expression
-  const boolCheck = validateBooleanCondition(conditionResult.value);
+  const boolCheck = validateBooleanCondition(conditionResult.value, parser);
   if (!boolCheck.ok) {
     return boolCheck;
   }
@@ -2031,6 +2334,15 @@ function createBlockBodyWithOptionalExpression(
       });
     }
 
+    // If followed by '[' or '.', parse full postfix expression (e.g. arr[0] or obj.field)
+    if (nextTok && (nextTok.type === "LBRACKET" || nextTok.type === "DOT")) {
+      const exprResult = parseExpression(parser);
+      if (!exprResult.ok) {
+        return exprResult;
+      }
+      return ok({ kind: "block", statements, result: exprResult.value });
+    }
+
     // It's a variable reference - parse it as primary (just the identifier)
     const varName = resultTok.value;
     advance(parser);
@@ -2091,8 +2403,8 @@ function parseIfStatement(parser: Parser): Result<ASTNode, string> {
   }
   advance(parser);
 
-  // Parse condition
-  const conditionResult = parseParenthesizedCondition(parser);
+  // Parse condition (parentheses optional)
+  const conditionResult = parseConditionExpression(parser);
   if (!conditionResult.ok) {
     return conditionResult;
   }
@@ -2239,8 +2551,8 @@ function parseWhileStatement(parser: Parser): Result<ASTNode, string> {
   }
   advance(parser);
 
-  // Parse condition
-  const conditionResult = parseParenthesizedCondition(parser);
+  // Parse condition (parentheses optional)
+  const conditionResult = parseConditionExpression(parser);
   if (!conditionResult.ok) {
     return conditionResult;
   }
@@ -2599,6 +2911,121 @@ function parseLetStatement(parser: Parser): Result<ASTNode, string> {
 
   // Check type compatibility for numeric literals
   const initializer = initResult.value;
+
+  // Type check for array types: validate element count
+  if (typeStr.startsWith("[")) {
+    // Parse array type: [ElementType; InitCount; TotalCount]
+    // Extract init count and total count
+    const arrayTypeMatch = typeStr.match(/\[.*?;(\d+);(\d+)\]$/);
+    if (arrayTypeMatch) {
+      const initCount = parseInt(arrayTypeMatch[1] ?? "0", 10);
+      const totalCount = parseInt(arrayTypeMatch[2] ?? "0", 10);
+
+      if (initCount === 0) {
+        return err("Array init count must be > 0");
+      }
+      if (totalCount < initCount) {
+        return err("Array total count must be >= init count");
+      }
+
+      // Check that initializer is an array literal (or function call / variable returning array)
+      if (
+        initializer.kind !== "array-literal" &&
+        initializer.kind !== "function-call" &&
+        initializer.kind !== "variable"
+      ) {
+        return err("Expected array literal for array type");
+      }
+
+      // For non-literal initializers (function call, variable), trust the type annotation
+      if (initializer.kind !== "array-literal") {
+        // Skip element-level validation, handled by the return type
+      } else {
+        const arrayLit = initializer as ArrayLiteralNode;
+        if (arrayLit.elements.length !== initCount) {
+          return err(
+            "Array initializer has " +
+              arrayLit.elements.length +
+              " elements but type specifies " +
+              initCount,
+          );
+        }
+
+        // Extract element type from array type (everything before first ';')
+        const elemTypeMatch = typeStr.match(/^\[(.+);(\d+);(\d+)\]$/);
+        const elemType = elemTypeMatch ? elemTypeMatch[1] : undefined;
+
+        // Type-check each element against the declared element type
+        if (elemType && !elemType.startsWith("[")) {
+          for (let idx = 0; idx < arrayLit.elements.length; idx++) {
+            const elemNode = arrayLit.elements[idx];
+            if (elemNode && elemNode.kind === "number") {
+              // Check element type annotation if present
+              const numVal = elemNode.value;
+              let numTypeAnnotation = "";
+              for (let ci = numVal.length - 1; ci >= 0; ci--) {
+                if (isLetter(numVal[ci]) || numVal[ci] === "_") {
+                  numTypeAnnotation = numVal[ci] + numTypeAnnotation;
+                } else {
+                  break;
+                }
+              }
+              const inferredElem = numTypeAnnotation || "I32";
+              // Check float assigned to integer type
+              const isFloatType = elemType.startsWith("F");
+              const isIntType = !isFloatType && !elemType.startsWith("Bool");
+              if (isIntType && numVal.includes(".")) {
+                return err(
+                  "Type mismatch in array element " +
+                    idx +
+                    ": expected " +
+                    elemType +
+                    " but got float literal",
+                );
+              }
+              if (numTypeAnnotation && numTypeAnnotation !== elemType) {
+                return err(
+                  "Type mismatch in array element " +
+                    idx +
+                    ": expected " +
+                    elemType +
+                    " but got " +
+                    numTypeAnnotation,
+                );
+              }
+            } else {
+              const elemTypeResult = inferExpressionType(elemNode!, parser);
+              if (elemTypeResult.ok && elemTypeResult.value !== elemType) {
+                // Check for type mismatch (allow widening from same family)
+                const bothFloat =
+                  elemType.startsWith("F") &&
+                  elemTypeResult.value.startsWith("F");
+                const bothInt =
+                  !elemType.startsWith("F") &&
+                  !elemTypeResult.value.startsWith("F");
+                if (!bothFloat && !bothInt) {
+                  return err(
+                    "Type mismatch in array element " +
+                      idx +
+                      ": expected " +
+                      elemType +
+                      " but got " +
+                      elemTypeResult.value,
+                  );
+                }
+              }
+            }
+          }
+        }
+
+        // Store totalCount in the array literal node for codegen
+        arrayLit.totalCount = totalCount;
+        arrayLit.elemType = elemType;
+      } // close else (array-literal branch)
+    }
+  } else if (initializer.kind === "array-literal") {
+    return err("Array literal used with non-array type '" + typeStr + "'");
+  }
 
   // Type check for pointer types: must infer expression type for correct pointer assignment
   if (typeStr.startsWith("*")) {
@@ -3383,23 +3810,136 @@ function parsePostfix(parser: Parser): Result<ASTNode, string> {
 
   let node = result.value;
 
-  // Handle field access with dot notation
-  while (current(parser).type === "DOT") {
-    advance(parser); // consume DOT
+  // Handle postfix operations: field access (dot) and array access (brackets)
+  while (true) {
+    if (current(parser).type === "DOT") {
+      advance(parser); // consume DOT
 
-    // Expect identifier for field name
-    if (current(parser).type !== "IDENTIFIER") {
-      return err("Expected field name after '.'");
+      // Expect identifier for field name or property
+      if (current(parser).type !== "IDENTIFIER") {
+        return err("Expected field name or property after '.'");
+      }
+      const fieldNameTok = current(parser) as IdentifierToken;
+      const fieldName = fieldNameTok.value;
+      advance(parser);
+
+      // Check if this is the 'length' property
+      if (fieldName === "length") {
+        // Special case for .length on arrays - return as field-access which will be handled during codegen
+        node = {
+          kind: "field-access",
+          object: node,
+          fieldName: "length",
+        } as FieldAccessNode;
+      } else {
+        node = {
+          kind: "field-access",
+          object: node,
+          fieldName,
+        } as FieldAccessNode;
+      }
+    } else if (current(parser).type === "LBRACKET") {
+      advance(parser); // consume [
+
+      // Parse index expression
+      const indexResult = parseExpression(parser);
+      if (!indexResult.ok) {
+        return indexResult;
+      }
+
+      if (current(parser).type !== "RBRACKET") {
+        return err("Expected ']' after array index");
+      }
+      advance(parser); // consume ]
+
+      const indexNode = indexResult.value;
+
+      // Validate index type and bounds
+      // Get declared array type for bounds checking
+      let arrElemType: string | undefined;
+      let arrInitCount: number | undefined;
+      let arrTotalCount: number | undefined;
+      let arrMutable: boolean | undefined;
+      if (node.kind === "variable") {
+        const varInfo = parser.variables.get((node as { name: string }).name);
+        if (varInfo && varInfo.type.startsWith("[")) {
+          const m = varInfo.type.match(/^\[(.+);(\d+);(\d+)\]$/);
+          if (m) {
+            arrElemType = m[1];
+            arrInitCount = parseInt(m[2] ?? "0", 10);
+            arrTotalCount = parseInt(m[3] ?? "0", 10);
+            arrMutable = varInfo.mutable;
+          }
+        }
+      }
+
+      // Check index type (must be an integer type, not F32/F64/Bool/array)
+      if (indexNode.kind === "variable") {
+        const idxVarInfo = parser.variables.get(
+          (indexNode as { name: string }).name,
+        );
+        if (idxVarInfo) {
+          if (
+            idxVarInfo.type.startsWith("F") ||
+            idxVarInfo.type === "Bool" ||
+            idxVarInfo.type.startsWith("[")
+          ) {
+            return err(
+              "Array index must be an integer type, got " + idxVarInfo.type,
+            );
+          }
+          // Dynamic variable index for read - array bounds cannot be proven safe
+          // (write side is handled in tryParseAssignment)
+          if (arrInitCount !== undefined) {
+            return err(
+              "Array index must be a constant proven in bounds; dynamic index not allowed",
+            );
+          }
+        }
+      } else if (indexNode.kind === "number") {
+        const numStr = indexNode.value;
+        // Check for negative index
+        if (numStr.startsWith("-")) {
+          return err("Array index must be non-negative");
+        }
+        // Extract numeric value (strip type suffix)
+        const bareNum = numStr.replace(/[A-Za-z_]+$/, "");
+        const idxVal = parseFloat(bareNum);
+        // Check for floating point index
+        if (bareNum.includes(".")) {
+          return err("Array index must be an integer type, got float");
+        }
+        // For mutable arrays: allow reading any index < totalCount (write may extend init)
+        // For immutable arrays: only allow index < initCount
+        if (arrMutable) {
+          if (arrTotalCount !== undefined && idxVal >= arrTotalCount) {
+            return err(
+              "Array index " +
+                idxVal +
+                " is out of total capacity (total count: " +
+                arrTotalCount +
+                ")",
+            );
+          }
+        } else if (arrInitCount !== undefined && idxVal >= arrInitCount) {
+          return err(
+            "Array index " +
+              idxVal +
+              " is out of initialized bounds (init count: " +
+              arrInitCount +
+              ")",
+          );
+        }
+      }
+
+      node = {
+        kind: "array-access",
+        array: node,
+        index: indexNode,
+      } as ArrayAccessNode;
+    } else {
+      break;
     }
-    const fieldNameTok = current(parser) as IdentifierToken;
-    const fieldName = fieldNameTok.value;
-    advance(parser);
-
-    node = {
-      kind: "field-access",
-      object: node,
-      fieldName,
-    } as FieldAccessNode;
   }
 
   return ok(node);
@@ -3697,6 +4237,40 @@ function parsePrimary(parser: Parser): Result<ASTNode, string> {
   // Delegate if/match to parseExpression (avoids duplicate dispatch)
   if (tok.type === "KEYWORD" && (tok.value === "if" || tok.value === "match")) {
     return parseExpression(parser);
+  }
+
+  // Array literals [expr, expr, ...]
+  if (tok.type === "LBRACKET") {
+    advance(parser); // consume [
+
+    const elements: ASTNode[] = [];
+
+    while (current(parser).type !== "RBRACKET") {
+      const elemResult = parseExpression(parser);
+      if (!elemResult.ok) {
+        return elemResult;
+      }
+      elements.push(elemResult.value);
+
+      const nextTok = current(parser);
+      if (nextTok.type === "RBRACKET") {
+        break;
+      } else if (nextTok.type === "COMMA") {
+        advance(parser); // consume comma
+      } else {
+        return err("Expected ',' or ']' in array literal");
+      }
+    }
+
+    if (current(parser).type !== "RBRACKET") {
+      return err("Expected ']' after array literal");
+    }
+    advance(parser); // consume ]
+
+    return ok({
+      kind: "array-literal",
+      elements,
+    } as ArrayLiteralNode);
   }
 
   return err("Unexpected token: " + tok.type);
@@ -4091,6 +4665,31 @@ function codegenAST(node: ASTNode): string {
       .join(", ");
 
     return "{ " + fields + " }";
+  }
+
+  if (node.kind === "array-literal") {
+    // Generate array literal as JavaScript array, padded to totalCount with zeros
+    const elements = node.elements.map((elem) => codegenAST(elem));
+    const totalCount = node.totalCount ?? node.elements.length;
+    while (elements.length < totalCount) {
+      elements.push("0");
+    }
+    return "[" + elements.join(", ") + "]";
+  }
+
+  if (node.kind === "array-access") {
+    // Generate array access
+    const array = codegenAST(node.array);
+    const index = codegenAST(node.index);
+    return array + "[" + index + "]";
+  }
+
+  if (node.kind === "array-assign") {
+    // Generate array element assignment
+    const array = codegenAST(node.array);
+    const index = codegenAST(node.index);
+    const value = codegenAST(node.value);
+    return array + "[" + index + "] = " + value;
   }
 
   if (node.kind === "field-access") {

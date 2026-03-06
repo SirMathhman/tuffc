@@ -1,3 +1,7 @@
+
+> test
+> bun test || exit 2
+
 bun test v1.2.21 (7c45ed97)
 
 tests\execute.test.ts:
@@ -8,10 +12,10 @@ tests\execute.test.ts:
 (pass) positive integer with U64
 (pass) negative integer with I8
 (pass) negative integer with I32
-(pass) float with F32 type [16.00ms]
+(pass) float with F32 type
 (pass) float with F64 type
 (pass) float without type defaults to F32
-(pass) negative float with F64
+(pass) negative float with F64 [15.00ms]
 (pass) invalid type annotation returns error
 (pass) negative unsigned type returns error
 (pass) non-numeric input returns error
@@ -104,7 +108,7 @@ tests\execute.test.ts:
 (pass) compound assignment: += with expression
 (pass) compound assignment: -= subtracts from mutable variable
 (pass) compound assignment: -= with expression
-(pass) compound assignment: *= multiplies mutable variable [16.00ms]
+(pass) compound assignment: *= multiplies mutable variable
 (pass) compound assignment: *= with expression
 (pass) compound assignment: /= divides mutable variable
 (pass) compound assignment: /= with expression
@@ -177,7 +181,7 @@ tests\execute.test.ts:
 (pass) function: using comparison in body
 (pass) function: calling with complex expressions as arguments
 (pass) function: multiple function declarations
-(pass) function: function call with variables [15.00ms]
+(pass) function: function call with variables
 (pass) function: chained function calls
 (pass) function: function with negative numbers
 (pass) function: block with assignment statement
@@ -238,7 +242,7 @@ tests\execute.test.ts:
 (pass) struct: accessing non-existent field is error
 (pass) struct: duplicate field names in instantiation is error
 (pass) struct: missing struct name is error
-(pass) struct: missing opening brace in instantiation is error
+(pass) struct: missing opening brace in instantiation is error [15.00ms]
 (pass) struct: invalid type in field declaration is error
 (pass) struct: readonly field reassignment is error
 (pass) struct: undefined struct type is error
@@ -279,92 +283,73 @@ tests\execute.test.ts:
 (pass) pointer: using pointer in arithmetic fails
 (pass) pointer: out-of-scope variable error
 (pass) pointer: pointer assignment from valid variable
-105 |       console.log("Input:", result.value[0]);
-106 |     }
-107 | 
-108 |     expect(result.value[1]).toBe(expected);
-109 |   } else {
-110 |     expect(result.error).toBeUndefined();
-                               ^
-error: expect(received).toBeUndefined()
-
-Received: "Expected type annotation"
-
-      at expectValue (C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\tests\execute.test.ts:110:26)
-      at <anonymous> (C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\tests\execute.test.ts:1857:3)
-(fail) mutable pointer: basic mutable pointer declaration
-105 |       console.log("Input:", result.value[0]);
-106 |     }
-107 | 
-108 |     expect(result.value[1]).toBe(expected);
-109 |   } else {
-110 |     expect(result.error).toBeUndefined();
-                               ^
-error: expect(received).toBeUndefined()
-
-Received: "Expected type annotation"
-
-      at expectValue (C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\tests\execute.test.ts:110:26)
-      at <anonymous> (C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\tests\execute.test.ts:1864:3)
-(fail) mutable pointer: assign through mutable pointer
-105 |       console.log("Input:", result.value[0]);
-106 |     }
-107 | 
-108 |     expect(result.value[1]).toBe(expected);
-109 |   } else {
-110 |     expect(result.error).toBeUndefined();
-                               ^
-error: expect(received).toBeUndefined()
-
-Received: "Expected type annotation"
-
-      at expectValue (C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\tests\execute.test.ts:110:26)
-      at <anonymous> (C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\tests\execute.test.ts:1871:3)
-(fail) mutable pointer: multiple assignments through mutable pointer
-105 |       console.log("Input:", result.value[0]);
-106 |     }
-107 | 
-108 |     expect(result.value[1]).toBe(expected);
-109 |   } else {
-110 |     expect(result.error).toBeUndefined();
-                               ^
-error: expect(received).toBeUndefined()
-
-Received: "Expected type annotation"
-
-      at expectValue (C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\tests\execute.test.ts:110:26)
-      at <anonymous> (C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\tests\execute.test.ts:1884:3)
-(fail) mutable pointer: mutable pointer with read input
-105 |       console.log("Input:", result.value[0]);
-106 |     }
-107 | 
-108 |     expect(result.value[1]).toBe(expected);
-109 |   } else {
-110 |     expect(result.error).toBeUndefined();
-                               ^
-error: expect(received).toBeUndefined()
-
-Received: "Expected type annotation"
-
-      at expectValue (C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\tests\execute.test.ts:110:26)
-      at <anonymous> (C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\tests\execute.test.ts:1888:3)
-(fail) mutable pointer: mutable pointer to U8
-105 |       console.log("Input:", result.value[0]);
-106 |     }
-107 | 
-108 |     expect(result.value[1]).toBe(expected);
-109 |   } else {
-110 |     expect(result.error).toBeUndefined();
-                               ^
-error: expect(received).toBeUndefined()
-
-Received: "Expected type annotation"
-
-      at expectValue (C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\tests\execute.test.ts:110:26)
-      at <anonymous> (C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\tests\execute.test.ts:1895:3)
-(fail) mutable pointer: coerce mutable to immutable pointer
+(pass) mutable pointer: basic mutable pointer declaration
+(pass) mutable pointer: assign through mutable pointer
+(pass) mutable pointer: multiple assignments through mutable pointer
+(pass) mutable pointer: mutable pointer with read input
+(pass) mutable pointer: mutable pointer to U8
+(pass) mutable pointer: coerce mutable to immutable pointer
 (pass) mutable pointer: cannot take mutable ref to immutable variable
 (pass) mutable pointer: cannot assign to immutable pointer with mutable value
+(pass) mutable pointer: assign to dereferenced mutable pointer in expression
+(pass) mutable pointer: mutable pointer arithmetic through dereference
+(pass) mutable pointer: nested dereference assignment
+(pass) array: basic declaration with full initialization (3;3)
+(pass) array: access second element
+(pass) array: access third element
+(pass) array: U8 element type
+(pass) array: F32 element type
+(pass) array: negative numbers in array
+(pass) array: expressions in array initializer
+(pass) array: variables in array initializer
+(pass) array: length property returns total capacity
+Input: let arr : [I32; 2; 5] = [1, 2]; arr.length
+103 |   if (isOk(result)) {
+104 |     if (result.value[1] !== expected) {
+105 |       console.log("Input:", result.value[0]);
+106 |     }
+107 | 
+108 |     expect(result.value[1]).toBe(expected);
+                                  ^
+error: expect(received).toBe(expected)
+
+Expected: 5
+Received: 2
+
+      at expectValue (C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\tests\execute.test.ts:108:29)
+      at <anonymous> (C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\tests\execute.test.ts:1991:3)
+(fail) array: length property on larger capacity
+(pass) array: access with constant index proven < init count
+(pass) array: access element in arithmetic
+(pass) array: multiple array accesses in expression
+Input: let arr : [I32; 2; 4] = [5, 10]; arr.length
+103 |   if (isOk(result)) {
+104 |     if (result.value[1] !== expected) {
+105 |       console.log("Input:", result.value[0]);
+106 |     }
+107 | 
+108 |     expect(result.value[1]).toBe(expected);
+                                  ^
+error: expect(received).toBe(expected)
+
+Expected: 4
+Received: 2
+
+      at expectValue (C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\tests\execute.test.ts:108:29)
+      at <anonymous> (C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\tests\execute.test.ts:2017:3)
+(fail) array: partial initialization (2;4) with default zeros
+(pass) array: partial init - read initialized slot
+(pass) array: single element array
+(pass) array: mutable array element reassignment
+(pass) array: mutable array reassign second element
+(pass) array: mutable array write to adjacent uninitialized slot
+(pass) array: mutable array multiple reassignments
+(pass) array: immutable array modification error
+(pass) array: 2D array (nested arrays) declaration
+(pass) array: 2D array access second element
+(pass) array: 2D array access second row
+(pass) array: 2D array access nested element
+(pass) array: 3D array access
 105 |       console.log("Input:", result.value[0]);
 106 |     }
 107 | 
@@ -374,11 +359,12 @@ Received: "Expected type annotation"
                                ^
 error: expect(received).toBeUndefined()
 
-Received: "Expected type annotation"
+Received: "Expected type"
 
       at expectValue (C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\tests\execute.test.ts:110:26)
-      at <anonymous> (C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\tests\execute.test.ts:1916:3)
-(fail) mutable pointer: assign to dereferenced mutable pointer in expression
+      at <anonymous> (C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\tests\execute.test.ts:2105:3)
+(fail) array: array element returned from function
+(pass) array: pass array to function
 105 |       console.log("Input:", result.value[0]);
 106 |     }
 107 | 
@@ -388,11 +374,11 @@ Received: "Expected type annotation"
                                ^
 error: expect(received).toBeUndefined()
 
-Received: "Expected type annotation"
+Received: "Expected '('"
 
       at expectValue (C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\tests\execute.test.ts:110:26)
-      at <anonymous> (C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\tests\execute.test.ts:1925:3)
-(fail) mutable pointer: mutable pointer arithmetic through dereference [16.00ms]
+      at <anonymous> (C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\tests\execute.test.ts:2123:3)
+(fail) array: array in if condition result
 105 |       console.log("Input:", result.value[0]);
 106 |     }
 107 | 
@@ -402,24 +388,136 @@ Received: "Expected type annotation"
                                ^
 error: expect(received).toBeUndefined()
 
-Received: "Expected type annotation"
+Received: "Expected '('"
 
       at expectValue (C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\tests\execute.test.ts:110:26)
-      at <anonymous> (C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\tests\execute.test.ts:1934:3)
-(fail) mutable pointer: nested dereference assignment
+      at <anonymous> (C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\tests\execute.test.ts:2132:3)
+(fail) array: array element in while loop
+114 | /**
+115 |  * Helper to assert a result is an error
+116 |  */
+117 | function expectError(result: Result<[string, number], string>): void {
+118 |   if (isOk(result)) {
+119 |     expect(result.value).toBeUndefined();
+                               ^
+error: expect(received).toBeUndefined()
 
-9 tests failed:
-(fail) mutable pointer: basic mutable pointer declaration
-(fail) mutable pointer: assign through mutable pointer
-(fail) mutable pointer: multiple assignments through mutable pointer
-(fail) mutable pointer: mutable pointer with read input
-(fail) mutable pointer: mutable pointer to U8
-(fail) mutable pointer: coerce mutable to immutable pointer
-(fail) mutable pointer: assign to dereferenced mutable pointer in expression
-(fail) mutable pointer: mutable pointer arithmetic through dereference [16.00ms]
-(fail) mutable pointer: nested dereference assignment
+Received: [ "let arr : [I32; 2; 2] = [1, 2.5]; arr[0]", 1 ]
 
- 280 pass
- 9 fail
- 213 expect() calls
-Ran 289 tests across 1 file. [102.00ms]
+      at expectError (C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\tests\execute.test.ts:119:26)
+      at <anonymous> (C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\tests\execute.test.ts:2143:3)
+(fail) array: type mismatch in element initialization
+(pass) array: too few elements in initializer
+(pass) array: too many elements in initializer
+(pass) array: invalid array type syntax
+(pass) array: missing element count in type
+114 | /**
+115 |  * Helper to assert a result is an error
+116 |  */
+117 | function expectError(result: Result<[string, number], string>): void {
+118 |   if (isOk(result)) {
+119 |     expect(result.value).toBeUndefined();
+                               ^
+error: expect(received).toBeUndefined()
+
+Received: [ "let arr : [I32; 2; 2] = [1, 2]; let x : F32 = 0.5; arr[x]", NaN ]
+
+      at expectError (C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\tests\execute.test.ts:119:26)
+      at <anonymous> (C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\tests\execute.test.ts:2163:3)
+(fail) array: accessing with non-index expression
+(pass) array: missing array initializer
+(pass) array: non-numeric element in initializer
+(pass) array: missing opening bracket in initializer
+(pass) array: missing closing bracket in initializer
+114 | /**
+115 |  * Helper to assert a result is an error
+116 |  */
+117 | function expectError(result: Result<[string, number], string>): void {
+118 |   if (isOk(result)) {
+119 |     expect(result.value).toBeUndefined();
+                               ^
+error: expect(received).toBeUndefined()
+
+Received: [ "let arr : [I32; 2; 4] = [1, 2]; let i : I32 = 3; arr[i]", NaN ]
+
+      at expectError (C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\tests\execute.test.ts:119:26)
+      at <anonymous> (C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\tests\execute.test.ts:2185:3)
+(fail) array: accessing uninitialized index (dynamic)
+114 | /**
+115 |  * Helper to assert a result is an error
+116 |  */
+117 | function expectError(result: Result<[string, number], string>): void {
+118 |   if (isOk(result)) {
+119 |     expect(result.value).toBeUndefined();
+                               ^
+error: expect(received).toBeUndefined()
+
+Received: [ "let mut arr : [I32; 2; 4] = [1, 2]; arr[3] = 50; arr[3]", 50 ]
+
+      at expectError (C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\tests\execute.test.ts:119:26)
+      at <anonymous> (C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\tests\execute.test.ts:2191:3)
+(fail) array: writing beyond adjacent uninitialized
+114 | /**
+115 |  * Helper to assert a result is an error
+116 |  */
+117 | function expectError(result: Result<[string, number], string>): void {
+118 |   if (isOk(result)) {
+119 |     expect(result.value).toBeUndefined();
+                               ^
+error: expect(received).toBeUndefined()
+
+Received: [ "let arr : [I32; 2; 4] = [1, 2]; arr[3]", NaN ]
+
+      at expectError (C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\tests\execute.test.ts:119:26)
+      at <anonymous> (C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\tests\execute.test.ts:2197:3)
+(fail) array: accessing constant index >= init count unproven
+114 | /**
+115 |  * Helper to assert a result is an error
+116 |  */
+117 | function expectError(result: Result<[string, number], string>): void {
+118 |   if (isOk(result)) {
+119 |     expect(result.value).toBeUndefined();
+                               ^
+error: expect(received).toBeUndefined()
+
+Received: [ "let mut arr : [I32; 2; 2] = [1, 2]; arr[0] = 3.14; arr[0]", 3.14 ]
+
+      at expectError (C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\tests\execute.test.ts:119:26)
+      at <anonymous> (C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\tests\execute.test.ts:2201:3)
+(fail) array: array element type mismatch in assignment
+(pass) array: undefined variable in array initializer
+114 | /**
+115 |  * Helper to assert a result is an error
+116 |  */
+117 | function expectError(result: Result<[string, number], string>): void {
+118 |   if (isOk(result)) {
+119 |     expect(result.value).toBeUndefined();
+                               ^
+error: expect(received).toBeUndefined()
+
+Received: [ "let arr : [I32; 2; 2] = [1, 2]; arr[-1]", NaN ]
+
+      at expectError (C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\tests\execute.test.ts:119:26)
+      at <anonymous> (C:\Users\mathm\Documents\Projects\Tuff-Toolchain\Tuffc\tests\execute.test.ts:2211:3)
+(fail) array: negative index access
+(pass) array: missing type in array type
+(pass) array: invalid capacity (0 total elements)
+
+12 tests failed:
+(fail) array: length property on larger capacity
+(fail) array: partial initialization (2;4) with default zeros
+(fail) array: array element returned from function
+(fail) array: array in if condition result
+(fail) array: array element in while loop
+(fail) array: type mismatch in element initialization
+(fail) array: accessing with non-index expression
+(fail) array: accessing uninitialized index (dynamic)
+(fail) array: writing beyond adjacent uninitialized
+(fail) array: accessing constant index >= init count unproven
+(fail) array: array element type mismatch in assignment
+(fail) array: negative index access
+
+ 325 pass
+ 12 fail
+ 249 expect() calls
+Ran 337 tests across 1 file. [109.00ms]
