@@ -47,7 +47,16 @@ interface IdentifierToken {
 
 interface KeywordToken {
   type: "KEYWORD";
-  value: "let" | "mut" | "if" | "else" | "while" | "break" | "continue";
+  value:
+    | "let"
+    | "mut"
+    | "if"
+    | "else"
+    | "while"
+    | "break"
+    | "continue"
+    | "match"
+    | "case";
 }
 
 interface LParenToken {
@@ -72,6 +81,10 @@ interface ColonToken {
 
 interface SemicolonToken {
   type: "SEMICOLON";
+}
+
+interface ArrowToken {
+  type: "ARROW";
 }
 
 interface AssignToken {
@@ -126,6 +139,7 @@ type Token =
   | GTToken
   | ColonToken
   | SemicolonToken
+  | ArrowToken
   | AssignToken
   | PlusAssignToken
   | MinusAssignToken
@@ -223,6 +237,22 @@ interface ContinueNode {
   kind: "continue";
 }
 
+interface CasePattern {
+  type: "literal" | "boolean" | "wildcard";
+  value?: string | boolean; // value for literals/booleans, undefined for wildcard
+}
+
+interface MatchCase {
+  pattern: CasePattern;
+  result: ASTNode;
+}
+
+interface MatchNode {
+  kind: "match";
+  matchExpr: ASTNode;
+  cases: MatchCase[];
+}
+
 type ASTNode =
   | NumberNode
   | ReadNode
@@ -238,7 +268,8 @@ type ASTNode =
   | IfNode
   | WhileNode
   | BreakNode
-  | ContinueNode;
+  | ContinueNode
+  | MatchNode;
 
 // Variable info interface
 interface VariableInfo {
@@ -425,8 +456,12 @@ function tokenize(input: string): Result<Token[], string> {
       tokens.push({ type: "SEMICOLON" });
       pos++;
     } else if (char === "=") {
-      // Check for ==
-      if (pos + 1 < input.length && input[pos + 1] === "=") {
+      // Check for => (arrow)
+      if (pos + 1 < input.length && input[pos + 1] === ">") {
+        tokens.push({ type: "ARROW" });
+        pos += 2;
+      } else if (pos + 1 < input.length && input[pos + 1] === "=") {
+        // Check for ==
         tokens.push({ type: "COMPARISON", value: "==" });
         pos += 2;
       } else {
@@ -458,12 +493,12 @@ function tokenize(input: string): Result<Token[], string> {
       } else {
         return err("Unexpected character: |");
       }
-    } else if (isLetter(char)) {
-      // Parse identifier (e.g., 'read', 'let', 'mut', or type like 'U8')
+    } else if (isLetter(char) || char === "_") {
+      // Parse identifier (e.g., 'read', 'let', 'mut', type like 'U8', or wildcard '_')
       let ident = "";
       while (
         pos < input.length &&
-        (isLetter(input[pos]) || isDigit(input[pos]))
+        (isLetter(input[pos]) || isDigit(input[pos]) || input[pos] === "_")
       ) {
         ident += input[pos];
         pos++;
@@ -477,7 +512,9 @@ function tokenize(input: string): Result<Token[], string> {
         ident === "else" ||
         ident === "while" ||
         ident === "break" ||
-        ident === "continue"
+        ident === "continue" ||
+        ident === "match" ||
+        ident === "case"
       ) {
         tokens.push({ type: "KEYWORD", value: ident });
       } else if (ident === "true") {
@@ -1019,6 +1056,152 @@ function parseContinueStatement(parser: Parser): Result<ASTNode, string> {
   return ok({ kind: "continue" });
 }
 
+function parseMatchExpression(parser: Parser): Result<ASTNode, string> {
+  // Expect 'match'
+  const matchTok = current(parser);
+  if (matchTok.type !== "KEYWORD" || matchTok.value !== "match") {
+    return err("Expected 'match'");
+  }
+  advance(parser);
+
+  // Expect '('
+  const lparen = current(parser);
+  if (lparen.type !== "LPAREN") {
+    return err("Expected '(' after 'match'");
+  }
+  advance(parser);
+
+  // Parse match expression
+  const exprResult = parseExpression(parser);
+  if (!exprResult.ok) {
+    return exprResult;
+  }
+
+  // Expect ')'
+  const rparen = current(parser);
+  if (rparen.type !== "RPAREN") {
+    return err("Expected ')' after match expression");
+  }
+  advance(parser);
+
+  // Expect '{'
+  const lbrace = current(parser);
+  if (lbrace.type !== "LBRACE") {
+    return err("Expected '{' before match cases");
+  }
+  advance(parser);
+
+  // Parse cases
+  const cases: MatchCase[] = [];
+  const patternsUsed = new Set<string>();
+
+  while (current(parser).type !== "RBRACE" && current(parser).type !== "EOF") {
+    // Expect 'case'
+    const caseTok = current(parser);
+    if (caseTok.type !== "KEYWORD" || caseTok.value !== "case") {
+      return err("Expected 'case' in match expression");
+    }
+    advance(parser);
+
+    // Parse pattern
+    const patternResult = parseMatchPattern(parser);
+    if (!patternResult.ok) {
+      return patternResult;
+    }
+
+    const pattern = patternResult.value;
+
+    // Check for duplicate patterns
+    const patternKey = `${pattern.type}:${String(pattern.value)}`;
+    if (patternsUsed.has(patternKey)) {
+      return err(
+        `Duplicate case pattern: ${pattern.type === "wildcard" ? "_" : pattern.value}`,
+      );
+    }
+    patternsUsed.add(patternKey);
+
+    // Expect '=>'
+    const arrow = current(parser);
+    if (arrow.type !== "ARROW") {
+      return err("Expected '=>' after match pattern");
+    }
+    advance(parser);
+
+    // Parse case result expression
+    const resultExpr = parseExpression(parser);
+    if (!resultExpr.ok) {
+      return resultExpr;
+    }
+
+    // Expect ';'
+    const semi = current(parser);
+    if (semi.type !== "SEMICOLON") {
+      return err("Expected ';' after match case");
+    }
+    advance(parser);
+
+    cases.push({
+      pattern,
+      result: resultExpr.value,
+    });
+  }
+
+  // Expect '}'
+  if (current(parser).type !== "RBRACE") {
+    return err("Expected '}' after match cases");
+  }
+  advance(parser);
+
+  // Validate: must have either wildcard or exhaustive coverage
+  const hasWildcard = cases.some((c) => c.pattern.type === "wildcard");
+
+  if (!hasWildcard) {
+    // Check if coverage is exhaustive for booleans (true and false both present)
+    const booleanCases = cases.filter((c) => c.pattern.type === "boolean");
+    const hasTrue = booleanCases.some((c) => c.pattern.value === true);
+    const hasFalse = booleanCases.some((c) => c.pattern.value === false);
+    const allCasesAreBoolean = cases.every((c) => c.pattern.type === "boolean");
+
+    if (!(allCasesAreBoolean && hasTrue && hasFalse)) {
+      return err(
+        "Match expression must have a wildcard case or be exhaustive (for booleans, need both true and false cases)",
+      );
+    }
+  }
+
+  return ok({
+    kind: "match",
+    matchExpr: exprResult.value,
+    cases,
+  });
+}
+
+function parseMatchPattern(parser: Parser): Result<CasePattern, string> {
+  const tok = current(parser);
+
+  // Check for wildcard
+  if (tok.type === "IDENTIFIER" && tok.value === "_") {
+    advance(parser);
+    return ok({ type: "wildcard" });
+  }
+
+  // Check for boolean
+  if (tok.type === "BOOL") {
+    const value = tok.value === "true";
+    advance(parser);
+    return ok({ type: "boolean", value });
+  }
+
+  // Check for number (including negative)
+  if (tok.type === "NUMBER") {
+    const value = tok.value;
+    advance(parser);
+    return ok({ type: "literal", value });
+  }
+
+  return err("Expected pattern (number, boolean, or wildcard) in match case");
+}
+
 function parseProgram(parser: Parser): Result<ASTNode, string> {
   const statements: ASTNode[] = [];
 
@@ -1135,6 +1318,11 @@ function parseExpression(parser: Parser): Result<ASTNode, string> {
   // Check for if expression
   if (tok.type === "KEYWORD" && tok.value === "if") {
     return parseIfStatement(parser);
+  }
+
+  // Check for match expression
+  if (tok.type === "KEYWORD" && tok.value === "match") {
+    return parseMatchExpression(parser);
   }
 
   return parseLogicalOr(parser);
@@ -1392,6 +1580,11 @@ function parsePrimary(parser: Parser): Result<ASTNode, string> {
     return ok(expr.value);
   }
 
+  // Handle if and match expressions
+  if (tok.type === "KEYWORD" && (tok.value === "if" || tok.value === "match")) {
+    return parseExpression(parser);
+  }
+
   return err(`Unexpected token: ${tok.type}`);
 }
 
@@ -1593,6 +1786,72 @@ function codegenAST(node: ASTNode): string {
     return "continue";
   }
 
+  if (node.kind === "match") {
+    const matchExpr = codegenAST(node.matchExpr);
+
+    // Generate ternary chain for match cases
+    // match (x) { case 1 => 10; case 2 => 20; case _ => 0; }
+    // becomes: x === 1 ? 10 : x === 2 ? 20 : 0
+    let result = "";
+    let wildcardCase: MatchCase | undefined;
+    const regularCases: MatchCase[] = [];
+
+    for (const c of node.cases) {
+      if (c.pattern.type === "wildcard") {
+        wildcardCase = c;
+      } else {
+        regularCases.push(c);
+      }
+    }
+
+    // Check if all non-wildcard cases are boolean (exhaustive boolean match)
+    const isExhaustiveBooleanMatch =
+      regularCases.length > 0 &&
+      regularCases.every((c) => c.pattern.type === "boolean") &&
+      regularCases.length === 2 &&
+      regularCases.some((c) => (c.pattern as any).value === true) &&
+      regularCases.some((c) => (c.pattern as any).value === false);
+
+    // Build ternary chain for all cases
+    if (isExhaustiveBooleanMatch) {
+      // Special handling for exhaustive boolean: x === 1 ? trueValue : falseValue
+      const trueCase = regularCases.find(
+        (c) => (c.pattern as any).value === true,
+      );
+      const falseCase = regularCases.find(
+        (c) => (c.pattern as any).value === false,
+      );
+      if (trueCase && falseCase) {
+        const trueResult = codegenAST(trueCase.result);
+        const falseResult = codegenAST(falseCase.result);
+        result = `${matchExpr} === 1 ? ${trueResult} : ${falseResult}`;
+      }
+    } else {
+      // Regular ternary chain
+      regularCases.forEach((c, i) => {
+        const caseResult = codegenAST(c.result);
+
+        if (c.pattern.type === "literal") {
+          result += `${matchExpr} === ${c.pattern.value} ? ${caseResult}`;
+        } else if (c.pattern.type === "boolean") {
+          result += `${matchExpr} === ${c.pattern.value ? "1" : "0"} ? ${caseResult}`;
+        }
+
+        if (i < regularCases.length - 1 || wildcardCase) {
+          result += " : ";
+        }
+      });
+
+      // Add wildcard case at the end
+      if (wildcardCase) {
+        const wildcardResult = codegenAST(wildcardCase.result);
+        result += wildcardResult;
+      }
+    }
+
+    return `(${result})`;
+  }
+
   return "0";
 }
 
@@ -1686,6 +1945,24 @@ function validateAST(node: ASTNode): Result<undefined, string> {
 
   if (node.kind === "break" || node.kind === "continue") {
     // Validation for break/continue will be done at parser level
+    return ok(undefined);
+  }
+
+  if (node.kind === "match") {
+    // Validate match expression
+    const exprValidation = validateAST(node.matchExpr);
+    if (!exprValidation.ok) {
+      return exprValidation;
+    }
+
+    // Validate all case results
+    for (const c of node.cases) {
+      const caseValidation = validateAST(c.result);
+      if (!caseValidation.ok) {
+        return caseValidation;
+      }
+    }
+
     return ok(undefined);
   }
 

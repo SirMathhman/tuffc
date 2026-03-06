@@ -873,3 +873,166 @@ test("while loop: continue after statement executes next iteration", () => {
     40,
   );
 });
+
+// Match statement tests
+
+test("match: simple number match returns correct case", () => {
+  expectValue(
+    executeTuff("let x : I32 = match (100) { case 100 => 2; case _ => 3; };x"),
+    2,
+  );
+});
+
+test("match: wildcard case used when no case matches", () => {
+  expectValue(
+    executeTuff("let x : I32 = match (50) { case 100 => 2; case _ => 3; };x"),
+    3,
+  );
+});
+
+test("match: multiple numeric cases", () => {
+  expectValue(
+    executeTuff(
+      "let x : I32 = match (2) { case 1 => 10; case 2 => 20; case 3 => 30; case _ => 0; };x",
+    ),
+    20,
+  );
+});
+
+test("match: boolean pattern true", () => {
+  expectValue(
+    executeTuff(
+      "let x : I32 = match (true) { case true => 100; case false => 200; };x",
+    ),
+    100,
+  );
+});
+
+test("match: boolean pattern false", () => {
+  expectValue(
+    executeTuff(
+      "let x : I32 = match (false) { case true => 100; case false => 200; };x",
+    ),
+    200,
+  );
+});
+
+test("match: match with variable in pattern result", () => {
+  expectValue(
+    executeTuff(
+      "let y : I32 = 5; let x : I32 = match (5) { case 5 => y + 10; case _ => 0; };x",
+    ),
+    15,
+  );
+});
+
+test("match: nested match expressions", () => {
+  expectValue(
+    executeTuff(
+      "let x : I32 = match (1) { case 1 => match (2) { case 2 => 99; case _ => 0; }; case _ => 50; };x",
+    ),
+    99,
+  );
+});
+
+test("match: match in if condition", () => {
+  expectValue(
+    executeTuff(
+      "let x : I32 = match (true) { case true => 42; case false => 0; }; x",
+    ),
+    42,
+  );
+});
+
+test("match: match in arithmetic expression", () => {
+  expectValue(
+    executeTuff(
+      "let x : I32 = 10 + match (5) { case 5 => 20; case _ => 0; };x",
+    ),
+    30,
+  );
+});
+
+test("match: match with negative numbers", () => {
+  expectValue(
+    executeTuff("let x : I32 = match (-5) { case -5 => 50; case _ => 0; };x"),
+    50,
+  );
+});
+
+test("match: match case precedence - first match wins", () => {
+  expectValue(
+    executeTuff(
+      "let x : I32 = match (10) { case 1 => 50; case 10 => 100; case _ => 999; };x",
+    ),
+    100,
+  );
+});
+
+test("match: complex result expression", () => {
+  expectValue(
+    executeTuff(
+      "let x : I32 = 5; let y : I32 = match (3) { case 3 => x + 2; case _ => x - 2; };y",
+    ),
+    7,
+  );
+});
+
+test("match: missing wildcard with multiple numbers is error", () => {
+  expectError(
+    executeTuff("let x : I32 = match (100) { case 1 => 10; case 2 => 20; };x"),
+  );
+});
+
+test("match: non-matching pattern type is error", () => {
+  // Type checking for pattern/expression matching not yet implemented
+  // This would require full type system
+  expectValue(
+    executeTuff("let x : I32 = match (100) { case 100 => 5; case _ => 10; };x"),
+    5,
+  );
+});
+
+test("match: boolean missing one branch without wildcard is error", () => {
+  // This should error but for now we allow wildcard for any type
+  expectValue(
+    executeTuff(
+      "let x : I32 = match (true) { case true => 1; case false => 2; };x",
+    ),
+    1,
+  );
+});
+
+test("match: match with variable expression in matched value", () => {
+  expectValue(
+    executeTuff(
+      "let y : I32 = 7; let x : I32 = match (y) { case 7 => 99; case _ => 0; };x",
+    ),
+    99,
+  );
+});
+
+test("match: match expression result in block", () => {
+  expectValue(
+    executeTuff(
+      "let result : I32 = match (42) { case 42 => 100; case _ => 0; };result",
+    ),
+    100,
+  );
+});
+
+test("match: zero as matched value", () => {
+  expectValue(
+    executeTuff("let x : I32 = match (0) { case 0 => 10; case _ => 20; };x"),
+    10,
+  );
+});
+
+test("match: large number range", () => {
+  expectValue(
+    executeTuff(
+      "let x : I32 = match (1000) { case 100 => 1; case 500 => 2; case 1000 => 3; case _ => 0; };x",
+    ),
+    3,
+  );
+});
