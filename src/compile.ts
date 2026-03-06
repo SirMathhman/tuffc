@@ -322,6 +322,13 @@ interface FunctionNode {
   body: ASTNode;
 }
 
+interface ClosureNode {
+  kind: "closure";
+  parameters: FunctionParameter[];
+  returnType: string;
+  body: ASTNode;
+}
+
 interface FunctionCallNode {
   kind: "function-call";
   name: string;
@@ -399,6 +406,7 @@ type ASTNode =
   | ReturnNode
   | MatchNode
   | FunctionNode
+  | ClosureNode
   | FunctionCallNode
   | StructNode
   | StructInstantiationNode
@@ -477,13 +485,242 @@ function validateTypeWithStructs(
   return validateType(typeStr);
 }
 
+interface ParsedFunctionType {
+  parameterTypes: string[];
+  returnType: string;
+}
+
+function splitTopLevel(text: string, separator: string): string[] {
+  const parts: string[] = [];
+  let currentPart = "";
+  let parenDepth = 0;
+  let bracketDepth = 0;
+
+  for (const char of text) {
+    if (char === "(") {
+      parenDepth++;
+    } else if (char === ")") {
+      parenDepth--;
+    } else if (char === "[") {
+      bracketDepth++;
+    } else if (char === "]") {
+      bracketDepth--;
+    }
+
+    if (char === separator && parenDepth === 0 && bracketDepth === 0) {
+      parts.push(currentPart.trim());
+      currentPart = "";
+    } else {
+      currentPart += char;
+    }
+  }
+
+  if (currentPart.trim().length > 0 || text.length === 0) {
+    parts.push(currentPart.trim());
+  }
+
+  return parts;
+}
+
+function parseFunctionTypeString(
+  typeStr: string,
+): ParsedFunctionType | undefined {
+  const trimmed = typeStr.trim();
+  if (!trimmed.startsWith("(")) {
+    return undefined;
+  }
+
+  let depth = 0;
+  let closingParenIndex = -1;
+  for (let i = 0; i < trimmed.length; i++) {
+    const char = trimmed[i];
+    if (char === "(") depth++;
+    if (char === ")") {
+      depth--;
+      if (depth === 0) {
+        closingParenIndex = i;
+        break;
+      }
+    }
+  }
+
+  if (closingParenIndex === -1) {
+    return undefined;
+  }
+
+  const afterParen = trimmed.slice(closingParenIndex + 1).trim();
+  if (!afterParen.startsWith("=>")) {
+    return undefined;
+  }
+
+  const returnType = afterParen.slice(2).trim();
+  const paramsText = trimmed.slice(1, closingParenIndex).trim();
+  const parameterTypes =
+    paramsText.length === 0 ? [] : splitTopLevel(paramsText, ",");
+
+  return {
+    parameterTypes,
+    returnType,
+  };
+}
+
+function applyPointerDecorators(
+  baseType: string,
+  pointerDepth: number,
+  isMutable: boolean,
+): string {
+  let typeStr = baseType;
+  for (let i = 0; i < pointerDepth; i++) {
+    if (i === pointerDepth - 1 && isMutable) {
+      typeStr = "*mut " + typeStr;
+    } else {
+      typeStr = "*" + typeStr;
+    }
+  }
+  return typeStr;
+}
+
+function consumeCommaOrClosingParen(
+  parser: Parser,
+  errorMessage: string,
+): Result<undefined, string> {
+  if (current(parser).type === "COMMA") {
+    advance(parser);
+    return ok(undefined);
+  }
+  if (current(parser).type !== "RPAREN") {
+    return err(errorMessage);
+  }
+  return ok(undefined);
+}
+
+function parseFunctionParameters(
+  parser: Parser,
+  rejectShadowing: boolean,
+): Result<FunctionParameter[], string> {
+  const parameters: FunctionParameter[] = [];
+  const parameterNames = new Set<string>();
+
+  while (current(parser).type !== "RPAREN") {
+    const paramNameTok = current(parser);
+    if (paramNameTok.type !== "IDENTIFIER") {
+      return err("Expected parameter name");
+    }
+
+    const paramName = paramNameTok.value;
+    const paramKeywordCheck = checkReservedKeyword(paramName, "parameter name");
+    if (!paramKeywordCheck.ok) {
+      return paramKeywordCheck;
+    }
+    if (parameterNames.has(paramName)) {
+      return err("Duplicate parameter name '" + paramName + "'");
+    }
+    if (rejectShadowing && parser.variables.has(paramName)) {
+      return err(
+        "Parameter name '" + paramName + "' shadows a captured variable",
+      );
+    }
+    parameterNames.add(paramName);
+    advance(parser);
+
+    if (current(parser).type !== "COLON") {
+      return err("Expected ':' after parameter name");
+    }
+    advance(parser);
+
+    const paramTypeResult = parseTypeAnnotation(parser);
+    if (!paramTypeResult.ok) {
+      return paramTypeResult;
+    }
+    parameters.push({ name: paramName, type: paramTypeResult.value });
+
+    const separatorResult = consumeCommaOrClosingParen(
+      parser,
+      "Expected ',' or ')' in parameter list",
+    );
+    if (!separatorResult.ok) {
+      return separatorResult;
+    }
+  }
+
+  if (current(parser).type !== "RPAREN") {
+    return err("Expected ')' after parameter list");
+  }
+  advance(parser);
+
+  return ok(parameters);
+}
+
+function canStartClosureParameterList(parser: Parser): boolean {
+  if (current(parser).type === "RPAREN") {
+    return true;
+  }
+
+  if (current(parser).type !== "IDENTIFIER") {
+    return false;
+  }
+
+  const nextTok = parser.tokens[parser.pos + 1];
+  return nextTok?.type === "COLON";
+}
+
+function codegenFunctionLikeDeclaration(
+  name: string | undefined,
+  parameters: FunctionParameter[],
+  returnType: string,
+  body: ASTNode,
+): string {
+  const paramList = parameters
+    .map((parameter) => String(parameter.name))
+    .join(", ");
+  const bodyCode = codegenFunctionLikeBody(body, returnType);
+  const functionName = name ? " " + name : "";
+  const suffix = name ? ";" : "";
+  return (
+    "function" +
+    functionName +
+    "(" +
+    paramList +
+    ") { " +
+    bodyCode +
+    " }" +
+    suffix
+  );
+}
+
+function codegenFunctionLikeBody(body: ASTNode, returnType: string): string {
+  let bodyCode = "";
+
+  if (body.kind === "block") {
+    const statements = body.statements;
+    bodyCode = generateStatementCode(statements);
+    const lastStmt =
+      statements.length > 0 ? statements[statements.length - 1] : undefined;
+    if (!(lastStmt && lastStmt.kind === "return")) {
+      if (returnType === "Void") {
+        if (body.result.kind !== "number" || body.result.value !== "0") {
+          bodyCode += codegenAST(body.result);
+        }
+      } else {
+        bodyCode += "return " + codegenAST(body.result);
+      }
+    }
+    return bodyCode;
+  }
+
+  if (returnType === "Void") {
+    return codegenAST(body);
+  }
+
+  return "return " + codegenAST(body);
+}
+
 // Infer the type of an expression
 function inferExpressionType(
   expr: ASTNode,
   parser: Parser,
 ): Result<string, string> {
   if (expr.kind === "number") {
-    // Extract base type from number literal (e.g., "100I32" -> "I32")
     const numValue = expr.value;
     let typeStr = "";
     for (let i = numValue.length - 1; i >= 0; i--) {
@@ -493,7 +730,6 @@ function inferExpressionType(
         break;
       }
     }
-    // Default to I32 if no type annotation
     return ok(typeStr || "I32");
   }
 
@@ -511,7 +747,6 @@ function inferExpressionType(
 
   if (expr.kind === "unary-op") {
     if (expr.operator === "&" || expr.operator === "&mut") {
-      // Address-of: &x has type *T, &mut x has type *mut T
       if (expr.operand.kind !== "variable") {
         return err("Cannot take address of non-variable expression");
       }
@@ -521,8 +756,9 @@ function inferExpressionType(
       }
       const prefix = expr.operator === "&mut" ? "*mut " : "*";
       return ok(prefix + operandTypeResult.value);
-    } else if (expr.operator === "*") {
-      // Dereference: *ptr has type T where ptr has type *T or *mut T
+    }
+
+    if (expr.operator === "*") {
       const operandTypeResult = inferExpressionType(expr.operand, parser);
       if (!operandTypeResult.ok) {
         return operandTypeResult;
@@ -531,12 +767,9 @@ function inferExpressionType(
       if (!ptrType.startsWith("*")) {
         return err("Cannot dereference non-pointer type: " + ptrType);
       }
-      // Handle both *T and *mut T -> return base type T
-      if (ptrType.startsWith("*mut ")) {
-        return ok(ptrType.slice(5)); // Remove "*mut "
-      } else {
-        return ok(ptrType.slice(1)); // Remove leading *
-      }
+      return ok(
+        ptrType.startsWith("*mut ") ? ptrType.slice(5) : ptrType.slice(1),
+      );
     }
   }
 
@@ -545,7 +778,6 @@ function inferExpressionType(
     expr.kind === "comparison" ||
     expr.kind === "logical"
   ) {
-    // Check that operands don't have pointer types (no pointer arithmetic)
     const leftTypeResult = inferExpressionType(expr.left, parser);
     if (!leftTypeResult.ok) {
       return leftTypeResult;
@@ -562,7 +794,6 @@ function inferExpressionType(
       return err("Pointer arithmetic not supported");
     }
 
-    // Binary operations return the type of their operands (simplified)
     return leftTypeResult;
   }
 
@@ -570,8 +801,29 @@ function inferExpressionType(
     return ok(expr.type);
   }
 
+  if (expr.kind === "closure") {
+    const paramTypes = expr.parameters.map((param) => param.type).join(", ");
+    return ok("(" + paramTypes + ") => " + expr.returnType);
+  }
+
+  if (expr.kind === "function-call") {
+    const fnInfo = parser.functions.get(expr.name);
+    if (fnInfo) {
+      return ok(fnInfo.returnType);
+    }
+
+    const varResult = getVariable(parser, expr.name);
+    if (varResult.ok) {
+      const parsedFunctionType = parseFunctionTypeString(varResult.value.type);
+      if (parsedFunctionType) {
+        return ok(parsedFunctionType.returnType);
+      }
+    }
+
+    return err("Cannot infer return type of callable '" + expr.name + "'");
+  }
+
   if (expr.kind === "array-access") {
-    // Look up the array's type to get element type
     if (expr.array.kind === "variable") {
       const varResult = getVariable(parser, expr.array.name);
       if (varResult.ok) {
@@ -590,11 +842,9 @@ function inferExpressionType(
   }
 
   if (expr.kind === "if") {
-    // Infer from then branch
     return inferExpressionType(expr.thenBranch, parser);
   }
 
-  // For other expressions, we'd need more analysis
   return err("Cannot infer type of expression");
 }
 
@@ -675,6 +925,51 @@ function parseTypeAnnotation(parser: Parser): Result<string, string> {
     return ok("[" + elemType + ";" + initCount + ";" + totalCount + "]");
   }
 
+  // Function type: (T1, T2) => R
+  if (current(parser).type === "LPAREN") {
+    advance(parser); // consume '('
+
+    const parameterTypes: string[] = [];
+    while (current(parser).type !== "RPAREN") {
+      const paramTypeResult = parseTypeAnnotation(parser);
+      if (!paramTypeResult.ok) {
+        return paramTypeResult;
+      }
+      parameterTypes.push(paramTypeResult.value);
+
+      const separatorResult = consumeCommaOrClosingParen(
+        parser,
+        "Expected ',' or ')' in function type",
+      );
+      if (!separatorResult.ok) {
+        return err("Expected ',' or ')' in function type");
+      }
+    }
+
+    if (current(parser).type !== "RPAREN") {
+      return err("Expected ')' after function type parameters");
+    }
+    advance(parser);
+
+    if (current(parser).type !== "ARROW") {
+      return err("Expected '=>' in function type");
+    }
+    advance(parser);
+
+    const returnTypeResult = parseTypeAnnotation(parser);
+    if (!returnTypeResult.ok) {
+      return returnTypeResult;
+    }
+
+    const typeStr = applyPointerDecorators(
+      "(" + parameterTypes.join(", ") + ") => " + returnTypeResult.value,
+      pointerDepth,
+      isMutable,
+    );
+
+    return ok(typeStr);
+  }
+
   const typeTok = current(parser);
   if (typeTok.type !== "IDENTIFIER") {
     return err("Expected type annotation");
@@ -687,22 +982,14 @@ function parseTypeAnnotation(parser: Parser): Result<string, string> {
   advance(parser);
 
   // Construct pointer type string: e.g., "*I32", "*mut I32", "**I32", "*mut *I32"
-  let typeStr = baseType;
-  for (let i = 0; i < pointerDepth; i++) {
-    if (i === pointerDepth - 1 && isMutable) {
-      typeStr = "*mut " + typeStr;
-    } else {
-      typeStr = "*" + typeStr;
-    }
-  }
-  return ok(typeStr);
+  return ok(applyPointerDecorators(baseType, pointerDepth, isMutable));
 }
 
 function parseTypeValue(parser: Parser): Result<string, string> {
   const typeTok = current(parser);
   // Delegate array types to parseTypeAnnotation, but step back one so
   // the caller's advance() moves past the last token correctly.
-  if (typeTok.type === "LBRACKET") {
+  if (typeTok.type === "LBRACKET" || typeTok.type === "LPAREN") {
     const result = parseTypeAnnotation(parser);
     if (!result.ok) return result;
     // parseTypeAnnotation advanced past ']'; step back one so caller's advance() is correct
@@ -2170,7 +2457,32 @@ function parseStatementInBlock(
   } else if (stmtTok.type === "IDENTIFIER") {
     // Could be assignment - use helper
     const assignResult = tryParseAssignment(parser);
-    return handleAssignmentStatement(assignResult, parser, statements);
+    const assignmentHandled = handleAssignmentStatement(
+      assignResult,
+      parser,
+      statements,
+    );
+    if (!assignmentHandled.ok || assignmentHandled.value) {
+      return assignmentHandled;
+    }
+
+    const savedPos = parser.pos;
+    const exprResult = parseExpression(parser);
+    if (!exprResult.ok) {
+      parser.pos = savedPos;
+      return ok(false);
+    }
+    if (
+      exprResult.value.kind === "function-call" &&
+      current(parser).type === "SEMICOLON"
+    ) {
+      statements.push(exprResult.value);
+      consumeOptionalSemicolon(parser);
+      return ok(true);
+    }
+
+    parser.pos = savedPos;
+    return ok(false);
   } else if (stmtTok.type === "OPERATOR" && stmtTok.value === "*") {
     // Could be dereference assignment: *y = value
     const assignResult = tryParseAssignment(parser);
@@ -3075,6 +3387,20 @@ function parseLetStatement(parser: Parser): Result<ASTNode, string> {
         arrayLit.elemType = elemType;
       } // close else (array-literal branch)
     }
+  } else if (parseFunctionTypeString(typeStr)) {
+    const exprTypeResult = inferExpressionType(initializer, parser);
+    if (!exprTypeResult.ok) {
+      return exprTypeResult;
+    }
+    if (exprTypeResult.value !== typeStr) {
+      return err(
+        "Type mismatch: expression has type '" +
+          exprTypeResult.value +
+          "' but variable declared as '" +
+          typeStr +
+          "'",
+      );
+    }
   } else if (initializer.kind === "array-literal") {
     return err("Array literal used with non-array type '" + typeStr + "'");
   }
@@ -3282,70 +3608,11 @@ function parseFunctionStatement(parser: Parser): Result<ASTNode, string> {
   }
   advance(parser);
 
-  // Parse parameters
-  const parameters: FunctionParameter[] = [];
-  const parameterNames = new Set<string>();
-
-  while (current(parser).type !== "RPAREN") {
-    // Expect parameter name
-    const paramNameTok = current(parser);
-    if (paramNameTok.type !== "IDENTIFIER") {
-      return err("Expected parameter name");
-    }
-
-    // Check reserved keyword
-    const paramKeywordCheck = checkReservedKeyword(
-      paramNameTok.value,
-      "parameter name",
-    );
-    if (!paramKeywordCheck.ok) {
-      return paramKeywordCheck;
-    }
-
-    // Check for duplicate parameter names
-    if (parameterNames.has(paramNameTok.value)) {
-      return err("Duplicate parameter name '" + paramNameTok.value + "'");
-    }
-    parameterNames.add(paramNameTok.value);
-
-    const paramName = paramNameTok.value;
-    advance(parser);
-
-    // Expect ':'
-    const paramColonTok = current(parser);
-    if (paramColonTok.type !== "COLON") {
-      return err("Expected ':' after parameter name");
-    }
-    advance(parser);
-
-    // Parse parameter type
-    const paramTypeResult = parseTypeAnnotation(parser);
-    if (!paramTypeResult.ok) {
-      return paramTypeResult;
-    }
-
-    parameters.push({
-      name: paramName,
-      type: paramTypeResult.value,
-    });
-
-    // Check for comma or end of parameter list
-    const nextTok = current(parser);
-    if (nextTok.type === "RPAREN") {
-      break;
-    } else if (nextTok.type === "COMMA") {
-      advance(parser);
-    } else {
-      return err("Expected ',' or ')' in parameter list");
-    }
+  const parametersResult = parseFunctionParameters(parser, true);
+  if (!parametersResult.ok) {
+    return parametersResult;
   }
-
-  // Expect ')'
-  const rparenTok = current(parser);
-  if (rparenTok.type !== "RPAREN") {
-    return err("Expected ')' after parameter list");
-  }
-  advance(parser);
+  const parameters = parametersResult.value;
 
   // Expect ':'
   const returnColonTok = current(parser);
@@ -3444,23 +3711,41 @@ function parseFunctionStatement(parser: Parser): Result<ASTNode, string> {
       result,
     };
   } else {
-    // Arrow expression body
-    if (returnType === "Void") {
+    // Arrow body
+    const assignResult = tryParseAssignment(parser);
+    if (!assignResult.ok) {
       parser.variables = savedVariables;
       parser.inLoop = savedInLoop;
-      return err(
-        "Function with Void return type cannot have an expression body",
-      );
+      return assignResult;
     }
 
-    const exprResult = parseExpression(parser);
-    if (!exprResult.ok) {
-      parser.variables = savedVariables;
-      parser.inLoop = savedInLoop;
-      return exprResult;
-    }
+    if (assignResult.value !== undefined) {
+      if (returnType !== "Void") {
+        parser.variables = savedVariables;
+        parser.inLoop = savedInLoop;
+        return err(
+          "Function with non-Void return type must have an expression body",
+        );
+      }
+      body = assignResult.value;
+    } else {
+      if (returnType === "Void") {
+        parser.variables = savedVariables;
+        parser.inLoop = savedInLoop;
+        return err(
+          "Function with Void return type cannot have an expression body",
+        );
+      }
 
-    body = exprResult.value;
+      const exprResult = parseExpression(parser);
+      if (!exprResult.ok) {
+        parser.variables = savedVariables;
+        parser.inLoop = savedInLoop;
+        return exprResult;
+      }
+
+      body = exprResult.value;
+    }
 
     // Expect ';' after expression
     const semiTok = current(parser);
@@ -3479,6 +3764,74 @@ function parseFunctionStatement(parser: Parser): Result<ASTNode, string> {
   return ok({
     kind: "function",
     name: functionName,
+    parameters,
+    returnType,
+    body,
+  });
+}
+
+function tryParseClosureLiteral(
+  parser: Parser,
+): Result<ClosureNode | undefined, string> {
+  const savedPos = parser.pos;
+  if (current(parser).type !== "LPAREN") {
+    return ok(undefined);
+  }
+  advance(parser);
+
+  if (!canStartClosureParameterList(parser)) {
+    parser.pos = savedPos;
+    return ok(undefined);
+  }
+
+  const parametersResult = parseFunctionParameters(parser, true);
+  if (!parametersResult.ok) {
+    return parametersResult;
+  }
+  const parameters = parametersResult.value;
+
+  if (current(parser).type !== "ARROW") {
+    parser.pos = savedPos;
+    return ok(undefined);
+  }
+  advance(parser);
+
+  const savedVariables = new Map(parser.variables);
+  for (const param of parameters) {
+    parser.variables.set(param.name, { type: param.type, mutable: false });
+  }
+
+  let body: ASTNode;
+  const assignResult = tryParseAssignment(parser);
+  if (!assignResult.ok) {
+    parser.variables = savedVariables;
+    return assignResult;
+  }
+
+  if (assignResult.value !== undefined) {
+    body = assignResult.value;
+  } else {
+    const exprResult = parseExpression(parser);
+    if (!exprResult.ok) {
+      parser.variables = savedVariables;
+      return exprResult;
+    }
+    body = exprResult.value;
+  }
+
+  const returnTypeResult = inferExpressionType(body, parser);
+  const returnType =
+    returnTypeResult.ok &&
+    body.kind !== "assign" &&
+    body.kind !== "field-assign" &&
+    body.kind !== "array-assign" &&
+    body.kind !== "deref-assign"
+      ? returnTypeResult.value
+      : "Void";
+
+  parser.variables = savedVariables;
+  return ok({
+    kind: "closure",
     parameters,
     returnType,
     body,
@@ -4085,19 +4438,32 @@ function parsePrimary(parser: Parser): Result<ASTNode, string> {
       }
       advance(parser);
 
-      // Check that function exists
       const fnInfo = parser.functions.get(name);
-      if (!fnInfo) {
-        return err("Function '" + name + "' is not defined");
+      let expectedArgCount: number | undefined;
+
+      if (fnInfo) {
+        expectedArgCount = fnInfo.parameters.length;
+      } else {
+        const varResult = getVariable(parser, name);
+        if (!varResult.ok) {
+          return err("Function or closure '" + name + "' is not defined");
+        }
+        const parsedFunctionType = parseFunctionTypeString(
+          varResult.value.type,
+        );
+        if (!parsedFunctionType) {
+          return err("Variable '" + name + "' is not callable");
+        }
+        expectedArgCount = parsedFunctionType.parameterTypes.length;
       }
 
       // Check argument count
-      if (args.length !== fnInfo.parameters.length) {
+      if (args.length !== expectedArgCount) {
         return err(
-          "Function '" +
+          "Callable '" +
             name +
             "' expects " +
-            fnInfo.parameters.length +
+            expectedArgCount +
             " arguments, got " +
             args.length,
         );
@@ -4267,6 +4633,14 @@ function parsePrimary(parser: Parser): Result<ASTNode, string> {
   }
 
   if (tok.type === "LPAREN") {
+    const closureResult = tryParseClosureLiteral(parser);
+    if (!closureResult.ok) {
+      return closureResult;
+    }
+    if (closureResult.value) {
+      return ok(closureResult.value);
+    }
+
     advance(parser);
     const expr = parseExpression(parser);
     if (!expr.ok) {
@@ -4663,30 +5037,20 @@ function codegenAST(node: ASTNode): string {
   }
 
   if (node.kind === "function") {
-    // Generate function declaration
-    const paramList = node.parameters.map((p) => String(p.name)).join(", ");
+    return codegenFunctionLikeDeclaration(
+      node.name,
+      node.parameters,
+      node.returnType,
+      node.body,
+    );
+  }
 
-    let bodyCode = "";
-    if (node.body.kind === "block") {
-      const statements = node.body.statements;
-      bodyCode = generateStatementCode(statements);
-
-      // Check if the last statement is a return statement
-      const lastStmt =
-        statements.length > 0 ? statements[statements.length - 1] : undefined;
-      if (lastStmt && lastStmt.kind === "return") {
-        // The last statement is a return, don't add another return
-        // The return statement was already generated in generateStatementCode
-      } else {
-        // No return statement at the end, add an explicit return for the result
-        bodyCode += "return " + codegenAST(node.body.result);
-      }
-    } else {
-      bodyCode = "return " + codegenAST(node.body);
-    }
-
-    return (
-      "function " + node.name + "(" + paramList + ") { " + bodyCode + " };"
+  if (node.kind === "closure") {
+    return codegenFunctionLikeDeclaration(
+      undefined,
+      node.parameters,
+      node.returnType,
+      node.body,
     );
   }
 
@@ -4893,6 +5257,10 @@ function validateAST(node: ASTNode): Result<undefined, string> {
     return validateAST(node.body);
   }
 
+  if (node.kind === "closure") {
+    return validateAST(node.body);
+  }
+
   if (node.kind === "function-call") {
     // Validate function call arguments
     for (const arg of node.arguments) {
@@ -5038,41 +5406,12 @@ function prescanFunctionSignatures(parser: Parser): Result<void, string> {
     }
     advance(parser);
 
-    const parameters: FunctionParameter[] = [];
-    while (current(parser).type !== "RPAREN") {
-      if (current(parser).type === "IDENTIFIER") {
-        const paramTok = current(parser) as IdentifierToken;
-        const paramName = paramTok.value;
-        advance(parser);
-
-        if (current(parser).type !== "COLON") {
-          parser.pos = savedPos;
-          return err("Expected ':' after parameter name");
-        }
-        advance(parser);
-
-        const paramTypeResult = parseTypeAnnotation(parser);
-        if (!paramTypeResult.ok) {
-          parser.pos = savedPos;
-          return paramTypeResult;
-        }
-
-        parameters.push({ name: paramName, type: paramTypeResult.value });
-
-        if (current(parser).type === "COMMA") {
-          advance(parser);
-        }
-      } else if (current(parser).type !== "RPAREN") {
-        parser.pos = savedPos;
-        return err("Expected parameter or ')' in parameter list");
-      }
-    }
-
-    if (current(parser).type !== "RPAREN") {
+    const parametersResult = parseFunctionParameters(parser, false);
+    if (!parametersResult.ok) {
       parser.pos = savedPos;
-      return err("Expected ')' after parameters");
+      return parametersResult;
     }
-    advance(parser);
+    const parameters = parametersResult.value;
 
     if (current(parser).type !== "COLON") {
       parser.pos = savedPos;
@@ -5293,8 +5632,16 @@ function validateStructSemantics(
     return validateStructSemantics(node.body, structs, fnEnv);
   }
 
+  if (node.kind === "closure") {
+    const closureEnv = new Map(typeEnv);
+    for (const p of node.parameters) {
+      closureEnv.set(p.name, p.type);
+    }
+    return validateStructSemantics(node.body, structs, closureEnv);
+  }
+
   if (node.kind === "function-call") {
-    for (const arg of (node as FunctionCallNode).arguments) {
+    for (const arg of node.arguments) {
       const r = validateStructSemantics(arg, structs, typeEnv);
       if (!r.ok) return r;
     }

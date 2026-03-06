@@ -1317,6 +1317,56 @@ test("function: function body with only statements no expression is error", () =
   );
 });
 
+test("closure: named function captures top-level mutable variable", () => {
+  expectValue(
+    executeTuff(
+      "let mut counter : I32 = 0; fn add() : Void => counter += 1; add(); counter",
+    ),
+    1,
+  );
+});
+
+test("closure: named function captures top-level immutable variable for reading", () => {
+  expectValue(
+    executeTuff("let base : I32 = 41; fn addOne() : I32 => base + 1; addOne()"),
+    42,
+  );
+});
+
+test("closure: nested function captures enclosing mutable variable", () => {
+  expectValue(
+    executeTuff(
+      "fn outer() : I32 => { let mut counter : I32 = 0; fn add() : Void => counter += 1; add(); counter } outer()",
+    ),
+    1,
+  );
+});
+
+test("closure: closure value captures outer variable", () => {
+  expectValue(
+    executeTuff(
+      "let counter : I32 = 3; let add : (I32) => I32 = (x : I32) => x + counter; add(4)",
+    ),
+    7,
+  );
+});
+
+test("closure: reassigning captured immutable variable is error", () => {
+  expectError(
+    executeTuff(
+      "let counter : I32 = 0; fn add() : Void => counter += 1; add(); counter",
+    ),
+  );
+});
+
+test("closure: shadowing captured variable with parameter is error", () => {
+  expectError(
+    executeTuff(
+      "let counter : I32 = 1; fn add(counter : I32) : I32 => counter + 1; add(2)",
+    ),
+  );
+});
+
 // Recursive function tests
 
 test("recursive: factorial without input", () => {
