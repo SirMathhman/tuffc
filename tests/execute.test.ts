@@ -92,9 +92,10 @@ export function executeTuff(input: string): Result<number, string> {
  * Helper to assert a successful result matches an expected value
  */
 function expectValue(result: Result<number, string>, expected: number): void {
-  expect(isOk(result)).toBe(true);
   if (isOk(result)) {
     expect(result.value).toBe(expected);
+  } else {
+    expect(result.error).toBeUndefined();
   }
 }
 
@@ -102,7 +103,9 @@ function expectValue(result: Result<number, string>, expected: number): void {
  * Helper to assert a result is an error
  */
 function expectError(result: Result<number, string>): void {
-  expect(isErr(result)).toBe(true);
+  if (isOk(result)) {
+    expect(result.value).toBeUndefined();
+  }
 }
 
 /**
@@ -1291,4 +1294,89 @@ test("function: function body with only statements no expression is error", () =
   expectError(
     executeTuff("fn foo() : I32 => { let x : I32 = 5; let y : I32 = 10; }"),
   );
+});
+
+// Recursive function tests
+
+test("recursive: factorial without input", () => {
+  expectValue(
+    executeTuff(
+      "fn factorial(n : I32) : I32 => if (n <= 1) 1 else n * factorial(n - 1); factorial(5)",
+    ),
+    120,
+  );
+});
+
+test("recursive: factorial with 0 returns 1", () => {
+  expectValue(
+    executeTuff(
+      "fn factorial(n : I32) : I32 => if (n <= 1) 1 else n * factorial(n - 1); factorial(0)",
+    ),
+    1,
+  );
+});
+
+test("recursive: fibonacci sequence", () => {
+  expectValue(
+    executeTuff(
+      "fn fib(n : I32) : I32 => if (n <= 1) n else fib(n - 1) + fib(n - 2); fib(6)",
+    ),
+    8,
+  );
+});
+
+test("recursive: countdown from input", () => {
+  const result = executeTuffWithInput(
+    "fn countdown(n : I32) : I32 => if (n <= 0) read<I32>() else countdown(n - 1); countdown(3)",
+    "42",
+  );
+  expectValue(result, 42);
+});
+
+test("recursive: sum list by reading input values", () => {
+  const result = executeTuffWithInput(
+    "fn sumRemaining(count : I32) : I32 => if (count <= 0) 0 else read<I32>() + sumRemaining(count - 1); sumRemaining(3)",
+    "10 20 30",
+  );
+  expectValue(result, 60);
+});
+
+test("recursive: power function with input base", () => {
+  const result = executeTuffWithInput(
+    "fn power(base : I32, exp : I32) : I32 => if (exp <= 0) 1 else base * power(base, exp - 1); let b : I32 = read<I32>(); power(b, 3)",
+    "2",
+  );
+  expectValue(result, 8);
+});
+
+test("recursive: accumulate with input and counter", () => {
+  const result = executeTuffWithInput(
+    "fn accumulate(acc : I32, remaining : I32) : I32 => if (remaining <= 0) acc else accumulate(acc + read<I32>(), remaining - 1); accumulate(0, 4)",
+    "5 10 15 20",
+  );
+  expectValue(result, 50);
+});
+
+test("recursive: read first number then use in recursion", () => {
+  const result = executeTuffWithInput(
+    "fn repeatValue(val : I32, times : I32) : I32 => if (times <= 0) 0 else val + repeatValue(val, times - 1); let x : I32 = read<I32>(); repeatValue(x, 5)",
+    "7",
+  );
+  expectValue(result, 35);
+});
+
+test("recursive: mutual recursion with input (evens and odds)", () => {
+  const result = executeTuffWithInput(
+    "fn even(n : I32) : I32 => if (n == 0) 1 else odd(n - 1); fn odd(n : I32) : I32 => if (n == 0) 0 else even(n - 1); let num : I32 = read<I32>(); even(num)",
+    "4",
+  );
+  expectValue(result, 1);
+});
+
+test("recursive: read two numbers and compute GCD", () => {
+  const result = executeTuffWithInput(
+    "fn gcd(a : I32, b : I32) : I32 => if (b == 0) a else gcd(b, a - (a / b) * b); let x : I32 = read<I32>(); let y : I32 = read<I32>(); gcd(x, y)",
+    "48 18",
+  );
+  expectValue(result, 6);
 });
