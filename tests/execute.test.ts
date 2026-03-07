@@ -467,6 +467,71 @@ test("string slice: out-of-bounds constant index is error", () => {
   expectError(executeTuff('let s : *[Char] = "hi"; s[2USize]'));
 });
 
+// Type alias tests
+test("type alias: alias to primitive works in let binding", () => {
+  expectValue(executeTuff("type MyInt = I32; let x : MyInt = 7; x"), 7);
+});
+
+test("type alias: alias to Char slice works", () => {
+  expectValue(
+    executeTuff(
+      'type Greeting = *[Char]; let s : Greeting = "hello"; s.length',
+    ),
+    5,
+  );
+});
+
+test("type alias: alias works as slice element type", () => {
+  expectValue(
+    executeTuff('type Glyph = Char; let s : *[Glyph] = "ok"; s[1USize]'),
+    107,
+  );
+});
+
+test("type alias: alias works in function parameter and return", () => {
+  expectValue(
+    executeTuff(
+      "type Letter = Char; fn echo(c : Letter) : Letter => c; echo('Z')",
+    ),
+    90,
+  );
+});
+
+test("type alias: alias works in struct field", () => {
+  expectValue(
+    executeTuff(
+      "type Age = I32; struct Person { age : Age; } let p : Person = Person { age: 42 }; p.age",
+    ),
+    42,
+  );
+});
+
+test("type alias: alias chain resolves transitively", () => {
+  expectValue(executeTuff("type A = I32; type B = A; let x : B = 9; x"), 9);
+});
+
+test("type alias: unknown target type is error", () => {
+  expectError(executeTuff("type Nope = MissingType; let x : Nope = 1; x"));
+});
+
+test("type alias: duplicate alias name is error", () => {
+  expectError(
+    executeTuff("type Name = I32; type Name = U32; let x : Name = 1; x"),
+  );
+});
+
+test("type alias: reserved keyword alias name is error", () => {
+  expectError(executeTuff("type fn = I32; let x : fn = 1; x"));
+});
+
+test("type alias: direct self reference is error", () => {
+  expectError(executeTuff("type Loop = Loop; let x : Loop = 1; x"));
+});
+
+test("type alias: mutual cycle is error", () => {
+  expectError(executeTuff("type A = B; type B = A; let x : A = 1; x"));
+});
+
 // Comparison operator tests
 test("less than: true case", () => {
   expectValue(executeTuff("1 < 2"), 1);

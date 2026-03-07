@@ -63,6 +63,7 @@ interface KeywordToken {
   type: "KEYWORD";
   value:
     | "let"
+    | "type"
     | "mut"
     | "if"
     | "else"
@@ -370,6 +371,12 @@ interface StructNode {
   fields: StructField[];
 }
 
+interface TypeAliasNode {
+  kind: "type-alias";
+  name: string;
+  targetType: string;
+}
+
 interface StructInstantiationField {
   name: string;
   value: ASTNode;
@@ -441,6 +448,7 @@ type ASTNode =
   | FunctionNode
   | ClosureNode
   | FunctionCallNode
+  | TypeAliasNode
   | StructNode
   | StructInstantiationNode
   | FieldAccessNode
@@ -471,6 +479,11 @@ interface VariableInfo {
   initValue?: string; // The literal value (for constants), if available
   pointsTo?: string; // For pointers: the name of the variable it points to
   sliceLength?: number; // For slices: known compile-time length
+}
+
+interface ParsedTypeAliasDeclaration {
+  name: string;
+  targetType: string;
 }
 
 interface SuccessfulEvaluation {
@@ -661,8 +674,9 @@ function validateTypeWithStructs(
   parser: Parser,
   typeStr: string,
 ): Result<undefined, string> {
-  if (parser.structs.has(typeStr)) return ok(undefined);
-  return validateType(typeStr);
+  return isKnownNamedType(parser, typeStr)
+    ? ok(undefined)
+    : err("Invalid type annotation: " + typeStr);
 }
 
 interface ParsedFunctionType {
@@ -742,6 +756,143 @@ function parseFunctionTypeString(
     parameterTypes,
     returnType,
   };
+}
+
+function isKnownNamedType(parser: Parser, typeStr: string): boolean {
+  return (
+    VALID_TYPES.has(typeStr) ||
+    parser.structNames.has(typeStr) ||
+    parser.aliasDeclarations.has(typeStr)
+  );
+}
+
+function resolveAliasName(
+  parser: Parser,
+  aliasName: string,
+  visiting: Set<string>,
+): Result<string, string> {
+  const cachedType = parser.aliases.get(aliasName);
+  if (cachedType) {
+    return ok(cachedType);
+  }
+
+  if (visiting.has(aliasName)) {
+    return err("Cyclic type alias detected involving '" + aliasName + "'");
+  }
+
+  const rawTargetType = parser.aliasDeclarations.get(aliasName);
+  if (!rawTargetType) {
+    return err("Invalid type annotation: " + aliasName);
+  }
+
+  visiting.add(aliasName);
+  const resolvedType = canonicalizeTypeString(parser, rawTargetType, visiting);
+  visiting.delete(aliasName);
+
+  if (!resolvedType.ok) {
+    return resolvedType;
+  }
+
+  parser.aliases.set(aliasName, resolvedType.value);
+  return resolvedType;
+}
+
+function canonicalizeTypeString(
+  parser: Parser,
+  typeStr: string,
+  visiting: Set<string> = new Set<string>(),
+): Result<string, string> {
+  if (typeStr.startsWith("*mut ")) {
+    const innerType = canonicalizeTypeString(
+      parser,
+      typeStr.slice(5),
+      visiting,
+    );
+    return innerType.ok ? ok("*mut " + innerType.value) : innerType;
+  }
+
+  if (typeStr.startsWith("*")) {
+    const innerType = canonicalizeTypeString(
+      parser,
+      typeStr.slice(1),
+      visiting,
+    );
+    return innerType.ok ? ok("*" + innerType.value) : innerType;
+  }
+
+  const arrayType = parseArrayType(typeStr);
+  if (arrayType) {
+    const elementType = canonicalizeTypeString(
+      parser,
+      arrayType.elementType,
+      visiting,
+    );
+    return elementType.ok
+      ? ok("[" + elementType.value + ";" + arrayType.length + "]")
+      : elementType;
+  }
+
+  const sliceType = parseSliceType(typeStr);
+  if (sliceType) {
+    const elementType = canonicalizeTypeString(
+      parser,
+      sliceType.elementType,
+      visiting,
+    );
+    return elementType.ok ? ok("[" + elementType.value + "]") : elementType;
+  }
+
+  const functionType = parseFunctionTypeString(typeStr);
+  if (functionType) {
+    const parameterTypes: string[] = [];
+    for (const parameterType of functionType.parameterTypes) {
+      const canonicalParameterType = canonicalizeTypeString(
+        parser,
+        parameterType,
+        visiting,
+      );
+      if (!canonicalParameterType.ok) {
+        return canonicalParameterType;
+      }
+      parameterTypes.push(canonicalParameterType.value);
+    }
+
+    const returnType = canonicalizeTypeString(
+      parser,
+      functionType.returnType,
+      visiting,
+    );
+    if (!returnType.ok) {
+      return returnType;
+    }
+
+    return ok("(" + parameterTypes.join(", ") + ") => " + returnType.value);
+  }
+
+  if (VALID_TYPES.has(typeStr) || parser.structNames.has(typeStr)) {
+    return ok(typeStr);
+  }
+
+  if (parser.aliasDeclarations.has(typeStr)) {
+    return resolveAliasName(parser, typeStr, visiting);
+  }
+
+  return err("Invalid type annotation: " + typeStr);
+}
+
+function normalizeTypeName(
+  parser: Parser,
+  typeName: string,
+  resolveAliases: boolean,
+): Result<string, string> {
+  const validateResult = validateTypeWithStructs(parser, typeName);
+  if (!validateResult.ok) {
+    return validateResult;
+  }
+
+  return resolveAliases
+    ? canonicalizeTypeString(parser, typeName)
+    : ok(typeName);
 }
 
 function ensureExpressionType(
@@ -1105,7 +1256,10 @@ function getVariable(
   return ok(varInfo);
 }
 
-function parseTypeAnnotation(parser: Parser): Result<string, string> {
+function parseTypeAnnotation(
+  parser: Parser,
+  resolveAliases: boolean = true,
+): Result<string, string> {
   // Count and consume any leading * for pointer types
   let pointerDepth = 0;
   let isMutable = false;
@@ -1128,7 +1282,7 @@ function parseTypeAnnotation(parser: Parser): Result<string, string> {
     advance(parser); // consume [
 
     // Parse element type recursively (can be nested arrays)
-    const elemTypeResult = parseTypeAnnotation(parser);
+    const elemTypeResult = parseTypeAnnotation(parser, resolveAliases);
     if (!elemTypeResult.ok) {
       return elemTypeResult;
     }
@@ -1179,7 +1333,7 @@ function parseTypeAnnotation(parser: Parser): Result<string, string> {
 
     const parameterTypes: string[] = [];
     while (current(parser).type !== "RPAREN") {
-      const paramTypeResult = parseTypeAnnotation(parser);
+      const paramTypeResult = parseTypeAnnotation(parser, resolveAliases);
       if (!paramTypeResult.ok) {
         return paramTypeResult;
       }
@@ -1204,7 +1358,7 @@ function parseTypeAnnotation(parser: Parser): Result<string, string> {
     }
     advance(parser);
 
-    const returnTypeResult = parseTypeAnnotation(parser);
+    const returnTypeResult = parseTypeAnnotation(parser, resolveAliases);
     if (!returnTypeResult.ok) {
       return returnTypeResult;
     }
@@ -1223,22 +1377,31 @@ function parseTypeAnnotation(parser: Parser): Result<string, string> {
     return err("Expected type annotation");
   }
   const baseType = (typeTok as IdentifierToken).value;
-  const validateResult = validateTypeWithStructs(parser, baseType);
-  if (!validateResult.ok) {
-    return validateResult;
+  const normalizedTypeResult = normalizeTypeName(
+    parser,
+    baseType,
+    resolveAliases,
+  );
+  if (!normalizedTypeResult.ok) {
+    return normalizedTypeResult;
   }
   advance(parser);
 
   // Construct pointer type string: e.g., "*I32", "*mut I32", "**I32", "*mut *I32"
-  return ok(applyPointerDecorators(baseType, pointerDepth, isMutable));
+  return ok(
+    applyPointerDecorators(normalizedTypeResult.value, pointerDepth, isMutable),
+  );
 }
 
-function parseTypeValue(parser: Parser): Result<string, string> {
+function parseTypeValue(
+  parser: Parser,
+  resolveAliases: boolean = true,
+): Result<string, string> {
   const typeTok = current(parser);
   // Delegate array types to parseTypeAnnotation, but step back one so
   // the caller's advance() moves past the last token correctly.
   if (typeTok.type === "LBRACKET" || typeTok.type === "LPAREN") {
-    const result = parseTypeAnnotation(parser);
+    const result = parseTypeAnnotation(parser, resolveAliases);
     if (!result.ok) return result;
     // parseTypeAnnotation advanced past ']'; step back one so caller's advance() is correct
     parser.pos -= 1;
@@ -1247,12 +1410,7 @@ function parseTypeValue(parser: Parser): Result<string, string> {
   if (typeTok.type !== "IDENTIFIER") {
     return err("Expected type");
   }
-  const typeStr = typeTok.value;
-  const validateResult = validateTypeWithStructs(parser, typeStr);
-  if (!validateResult.ok) {
-    return validateResult;
-  }
-  return ok(typeStr);
+  return normalizeTypeName(parser, typeTok.value, resolveAliases);
 }
 
 // Refinement type parsing
@@ -1965,6 +2123,7 @@ function tokenize(input: string): Result<Token[], string> {
       // Check if it's a keyword or boolean
       if (
         ident === "let" ||
+        ident === "type" ||
         ident === "mut" ||
         ident === "if" ||
         ident === "else" ||
@@ -2063,7 +2222,10 @@ interface Parser {
   pos: number;
   variables: Map<string, VariableInfo>;
   functions: Map<string, FunctionInfo>;
+  aliases: Map<string, string>;
+  aliasDeclarations: Map<string, string>;
   structs: Map<string, StructInfo>;
+  structNames: Set<string>;
   inLoop: boolean;
   currentFunctionReturnType: string | undefined;
   // Type narrowing: track variables with proven constraints (from control flow guards)
@@ -2827,6 +2989,13 @@ function parseStatementInBlock(
     }
     statements.push(stmt.value);
     return ok(true);
+  } else if (stmtTok.type === "KEYWORD" && stmtTok.value === "type") {
+    const aliasStmt = parseTypeAliasStatement(parser);
+    if (!aliasStmt.ok) {
+      return aliasStmt;
+    }
+    statements.push(aliasStmt.value);
+    return ok(true);
   } else if (stmtTok.type === "KEYWORD" && stmtTok.value === "fn") {
     // Function declaration
     const fnStmt = parseFunctionStatement(parser);
@@ -3106,6 +3275,7 @@ function createBlockBodyWithOptionalExpression(
   // Check if it's a non-expression keyword
   const nonExprKeywords = new Set([
     "let",
+    "type",
     "fn",
     "struct",
     "while",
@@ -4048,6 +4218,7 @@ function parseLetStatement(parser: Parser): Result<ASTNode, string> {
 function isReservedKeyword(name: string): boolean {
   return (
     name === "let" ||
+    name === "type" ||
     name === "mut" ||
     name === "if" ||
     name === "else" ||
@@ -4057,18 +4228,83 @@ function isReservedKeyword(name: string): boolean {
     name === "match" ||
     name === "case" ||
     name === "fn" ||
-    name === "return"
+    name === "return" ||
+    name === "struct"
   );
 }
 
 function checkReservedKeyword(
   name: string,
-  context: "function name" | "parameter name",
+  context: "function name" | "parameter name" | "type alias name",
 ): Result<undefined, string> {
   if (isReservedKeyword(name)) {
     return err("Cannot use reserved keyword '" + name + "' as " + context);
   }
   return ok(undefined);
+}
+
+function parseTypeAliasDeclaration(
+  parser: Parser,
+  resolveAliases: boolean,
+): Result<ParsedTypeAliasDeclaration, string> {
+  const typeTok = current(parser);
+  if (typeTok.type !== "KEYWORD" || typeTok.value !== "type") {
+    return err("Expected 'type'");
+  }
+  advance(parser);
+
+  const nameTok = current(parser);
+  if (nameTok.type === "KEYWORD") {
+    return err(
+      "Cannot use reserved keyword '" + nameTok.value + "' as type alias name",
+    );
+  }
+  if (nameTok.type !== "IDENTIFIER") {
+    return err("Expected type alias name");
+  }
+  const aliasName = nameTok.value;
+
+  const aliasKeywordCheck = checkReservedKeyword(aliasName, "type alias name");
+  if (!aliasKeywordCheck.ok) {
+    return aliasKeywordCheck;
+  }
+  if (VALID_TYPES.has(aliasName)) {
+    return err("Type '" + aliasName + "' already declared");
+  }
+  advance(parser);
+
+  if (current(parser).type !== "ASSIGN") {
+    return err("Expected '=' in type alias declaration");
+  }
+  advance(parser);
+
+  const targetTypeResult = parseTypeAnnotation(parser, resolveAliases);
+  if (!targetTypeResult.ok) {
+    return targetTypeResult;
+  }
+
+  if (current(parser).type !== "SEMICOLON") {
+    return err("Expected ';' after type alias declaration");
+  }
+  advance(parser);
+
+  return ok({
+    name: aliasName,
+    targetType: targetTypeResult.value,
+  });
+}
+
+function parseTypeAliasStatement(parser: Parser): Result<ASTNode, string> {
+  const aliasDeclaration = parseTypeAliasDeclaration(parser, true);
+  if (!aliasDeclaration.ok) {
+    return aliasDeclaration;
+  }
+
+  return ok({
+    kind: "type-alias",
+    name: aliasDeclaration.value.name,
+    targetType: aliasDeclaration.value.targetType,
+  });
 }
 
 function parseFunctionStatement(parser: Parser): Result<ASTNode, string> {
@@ -5745,6 +5981,10 @@ function codegenAST(node: ASTNode): string {
     );
   }
 
+  if (node.kind === "type-alias") {
+    return "0";
+  }
+
   if (node.kind === "closure") {
     return codegenFunctionLikeDeclaration(
       undefined,
@@ -6001,6 +6241,10 @@ function validateAST(node: ASTNode): Result<undefined, string> {
     return validateAST(node.body);
   }
 
+  if (node.kind === "type-alias") {
+    return ok(undefined);
+  }
+
   if (node.kind === "closure") {
     return validateAST(node.body);
   }
@@ -6108,31 +6352,143 @@ function consumeKeywordAndGetName(
 }
 
 /**
- * Runs a prescan pass over all tokens, calling `handler` for each keyword
- * match. The handler receives the saved original position so it can restore
- * on error. If the handler returns ok(false) the generic loop advances past
- * the current (non-matching) token; returning ok(true) means the handler
- * already advanced the parser.
+ * Walks the token stream from the beginning, letting the visitor decide
+ * whether it consumed the current token sequence.
  */
-function runPrescan(
+function scanTokensFromStart(
   parser: Parser,
-  keyword: string,
-  handler: CallableFunction,
+  visitor: CallableFunction,
 ): Result<void, string> {
   const savedPos = parser.pos;
   parser.pos = 0;
 
   while (current(parser).type !== "EOF") {
-    const tok = current(parser);
-    if (tok.type === "KEYWORD" && tok.value === keyword) {
-      const result = handler(savedPos) as Result<void, string>;
-      if (!result.ok) return result;
-    } else {
+    const visitResult = visitor(savedPos) as Result<boolean, string>;
+    if (!visitResult.ok) {
+      return visitResult;
+    }
+    if (!visitResult.value) {
       advance(parser);
     }
   }
 
   parser.pos = savedPos;
+  return ok(undefined);
+}
+
+function scanMatchingKeywords(
+  parser: Parser,
+  matcher: CallableFunction,
+  handler: CallableFunction,
+): Result<void, string> {
+  return scanTokensFromStart(parser, (savedPos: number) => {
+    const tok = current(parser);
+    if (tok.type !== "KEYWORD") {
+      return ok(false);
+    }
+
+    const matchedKeyword = matcher(tok.value) as string | undefined;
+    if (!matchedKeyword) {
+      return ok(false);
+    }
+
+    const result = handler(savedPos, matchedKeyword) as Result<void, string>;
+    return result.ok ? ok(true) : result;
+  });
+}
+
+function collectTypeDeclarationNames(parser: Parser): Result<void, string> {
+  return scanMatchingKeywords(
+    parser,
+    (keyword: string) => {
+      return keyword === "struct" || keyword === "type" ? keyword : undefined;
+    },
+    (savedPos: number, declarationKind: string) => {
+      advance(parser);
+
+      const nameTok = current(parser);
+      if (nameTok.type !== "IDENTIFIER") {
+        parser.pos = savedPos;
+        return err(
+          "Expected " +
+            (declarationKind === "type" ? "type alias" : "struct") +
+            " name",
+        );
+      }
+
+      const declaredName = nameTok.value;
+      if (VALID_TYPES.has(declaredName)) {
+        parser.pos = savedPos;
+        return err("Type '" + declaredName + "' already declared");
+      }
+
+      if (declarationKind === "struct") {
+        if (
+          parser.structNames.has(declaredName) ||
+          parser.aliasDeclarations.has(declaredName)
+        ) {
+          parser.pos = savedPos;
+          return err("Type '" + declaredName + "' already declared");
+        }
+        parser.structNames.add(declaredName);
+      } else {
+        if (
+          parser.aliasDeclarations.has(declaredName) ||
+          parser.structNames.has(declaredName)
+        ) {
+          parser.pos = savedPos;
+          return err("Type '" + declaredName + "' already declared");
+        }
+        parser.aliasDeclarations.set(declaredName, "");
+      }
+
+      return ok(undefined);
+    },
+  );
+}
+
+function prescanTypeAliases(parser: Parser): Result<void, string> {
+  return runPrescan(parser, "type", (savedPos: number) => {
+    const aliasDeclaration = parseTypeAliasDeclaration(parser, false);
+    if (!aliasDeclaration.ok) {
+      parser.pos = savedPos;
+      return aliasDeclaration;
+    }
+
+    parser.aliasDeclarations.set(
+      aliasDeclaration.value.name,
+      aliasDeclaration.value.targetType,
+    );
+    return ok(undefined);
+  });
+}
+
+function runPrescan(
+  parser: Parser,
+  keyword: string,
+  handler: CallableFunction,
+): Result<void, string> {
+  return scanMatchingKeywords(
+    parser,
+    (matchedKeyword: string) => {
+      return matchedKeyword === keyword ? matchedKeyword : undefined;
+    },
+    (savedPos: number) => handler(savedPos) as Result<void, string>,
+  );
+}
+
+function resolveTypeAliases(parser: Parser): Result<void, string> {
+  for (const aliasName of parser.aliasDeclarations.keys()) {
+    const resolvedAlias = resolveAliasName(
+      parser,
+      aliasName,
+      new Set<string>(),
+    );
+    if (!resolvedAlias.ok) {
+      return resolvedAlias;
+    }
+  }
+
   return ok(undefined);
 }
 
@@ -6430,6 +6786,10 @@ function validateStructSemantics(
     return ok(undefined);
   }
 
+  if (node.kind === "type-alias") {
+    return ok(undefined);
+  }
+
   if (node.kind === "array-literal") {
     if (node.generator) {
       return validateStructSemantics(node.generator, structs, typeEnv);
@@ -6514,11 +6874,29 @@ export function compile(input: string): Result<string, string> {
     pos: 0,
     variables: new Map(),
     functions: new Map(),
+    aliases: new Map(),
+    aliasDeclarations: new Map(),
     structs: new Map(),
+    structNames: new Set(),
     inLoop: false,
     currentFunctionReturnType: undefined,
     provenConstraints: new Map(),
   };
+
+  const typeNameCollectionResult = collectTypeDeclarationNames(parser);
+  if (!typeNameCollectionResult.ok) {
+    return typeNameCollectionResult;
+  }
+
+  const aliasPrescanResult = prescanTypeAliases(parser);
+  if (!aliasPrescanResult.ok) {
+    return aliasPrescanResult;
+  }
+
+  const aliasResolutionResult = resolveTypeAliases(parser);
+  if (!aliasResolutionResult.ok) {
+    return aliasResolutionResult;
+  }
 
   // Pre-scan for struct definitions to support nested structs
   if (DEBUG) console.log("[PRESCAN STRUCTS]");
