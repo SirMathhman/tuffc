@@ -1,0 +1,3042 @@
+[
+  {
+    "name": "VALID_TYPES",
+    "names": [
+      "VALID_TYPES"
+    ],
+    "kind": "VariableStatement",
+    "line": 3,
+    "group": "tokenization",
+    "output": "src/compiler/core/tokenization.ts"
+  },
+  {
+    "name": "NumberToken",
+    "names": [
+      "NumberToken"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 22,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "OperatorToken",
+    "names": [
+      "OperatorToken"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 27,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "BoolToken",
+    "names": [
+      "BoolToken"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 32,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "CharToken",
+    "names": [
+      "CharToken"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 37,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "StringToken",
+    "names": [
+      "StringToken"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 42,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "ComparisonToken",
+    "names": [
+      "ComparisonToken"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 47,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "LogicalToken",
+    "names": [
+      "LogicalToken"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 52,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "IdentifierToken",
+    "names": [
+      "IdentifierToken"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 57,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "KeywordToken",
+    "names": [
+      "KeywordToken"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 62,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "LParenToken",
+    "names": [
+      "LParenToken"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 83,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "RParenToken",
+    "names": [
+      "RParenToken"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 87,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "LTToken",
+    "names": [
+      "LTToken"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 91,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "GTToken",
+    "names": [
+      "GTToken"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 95,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "ColonToken",
+    "names": [
+      "ColonToken"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 99,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "DoubleColonToken",
+    "names": [
+      "DoubleColonToken"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 103,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "SemicolonToken",
+    "names": [
+      "SemicolonToken"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 107,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "ArrowToken",
+    "names": [
+      "ArrowToken"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 111,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "AssignToken",
+    "names": [
+      "AssignToken"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 115,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "PlusAssignToken",
+    "names": [
+      "PlusAssignToken"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 119,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "MinusAssignToken",
+    "names": [
+      "MinusAssignToken"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 123,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "MultAssignToken",
+    "names": [
+      "MultAssignToken"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 127,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "DivAssignToken",
+    "names": [
+      "DivAssignToken"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 131,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "ModAssignToken",
+    "names": [
+      "ModAssignToken"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 135,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "LBraceToken",
+    "names": [
+      "LBraceToken"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 139,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "RBraceToken",
+    "names": [
+      "RBraceToken"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 143,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "CommaToken",
+    "names": [
+      "CommaToken"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 147,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "PipeToken",
+    "names": [
+      "PipeToken"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 151,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "DotToken",
+    "names": [
+      "DotToken"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 155,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "AddressOfToken",
+    "names": [
+      "AddressOfToken"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 159,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "LBracketToken",
+    "names": [
+      "LBracketToken"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 163,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "RBracketToken",
+    "names": [
+      "RBracketToken"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 167,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "EOFToken",
+    "names": [
+      "EOFToken"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 171,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "Token",
+    "names": [
+      "Token"
+    ],
+    "kind": "TypeAliasDeclaration",
+    "line": 175,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "NumberNode",
+    "names": [
+      "NumberNode"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 210,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "ReadNode",
+    "names": [
+      "ReadNode"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 215,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "VariableNode",
+    "names": [
+      "VariableNode"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 220,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "ModuleReferenceNode",
+    "names": [
+      "ModuleReferenceNode"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 225,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "ThisNode",
+    "names": [
+      "ThisNode"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 232,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "BinaryNode",
+    "names": [
+      "BinaryNode"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 237,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "ComparisonNode",
+    "names": [
+      "ComparisonNode"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 244,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "IsNode",
+    "names": [
+      "IsNode"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 251,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "UnionWrapNode",
+    "names": [
+      "UnionWrapNode"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 259,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "LogicalNode",
+    "names": [
+      "LogicalNode"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 266,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "UnaryLogicalNode",
+    "names": [
+      "UnaryLogicalNode"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 273,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "UnaryOpNode",
+    "names": [
+      "UnaryOpNode"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 279,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "BooleanNode",
+    "names": [
+      "BooleanNode"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 285,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "CharNode",
+    "names": [
+      "CharNode"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 290,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "StringNode",
+    "names": [
+      "StringNode"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 295,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "LetNode",
+    "names": [
+      "LetNode"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 300,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "DestructureNode",
+    "names": [
+      "DestructureNode"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 308,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "AssignNode",
+    "names": [
+      "AssignNode"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 313,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "FieldAssignNode",
+    "names": [
+      "FieldAssignNode"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 319,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "DerefAssignNode",
+    "names": [
+      "DerefAssignNode"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 326,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "BlockNode",
+    "names": [
+      "BlockNode"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 333,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "IfNode",
+    "names": [
+      "IfNode"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 339,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "WhileNode",
+    "names": [
+      "WhileNode"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 346,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "BreakNode",
+    "names": [
+      "BreakNode"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 352,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "ContinueNode",
+    "names": [
+      "ContinueNode"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 356,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "ReturnNode",
+    "names": [
+      "ReturnNode"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 360,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "CasePattern",
+    "names": [
+      "CasePattern"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 365,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "MatchCase",
+    "names": [
+      "MatchCase"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 370,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "MatchNode",
+    "names": [
+      "MatchNode"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 375,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "FunctionParameter",
+    "names": [
+      "FunctionParameter"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 381,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "FunctionNode",
+    "names": [
+      "FunctionNode"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 386,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "ObjectNode",
+    "names": [
+      "ObjectNode"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 394,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "ModuleNode",
+    "names": [
+      "ModuleNode"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 402,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "ClosureNode",
+    "names": [
+      "ClosureNode"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 411,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "FunctionCallNode",
+    "names": [
+      "FunctionCallNode"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 418,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "CallNode",
+    "names": [
+      "CallNode"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 424,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "StructField",
+    "names": [
+      "StructField"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 430,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "StructNode",
+    "names": [
+      "StructNode"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 436,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "TypeAliasNode",
+    "names": [
+      "TypeAliasNode"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 442,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "StructInstantiationField",
+    "names": [
+      "StructInstantiationField"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 448,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "StructInstantiationNode",
+    "names": [
+      "StructInstantiationNode"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 453,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "FieldAccessNode",
+    "names": [
+      "FieldAccessNode"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 459,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "ArrayLiteralNode",
+    "names": [
+      "ArrayLiteralNode"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 465,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "ArrayAccessNode",
+    "names": [
+      "ArrayAccessNode"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 473,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "ArraySliceNode",
+    "names": [
+      "ArraySliceNode"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 479,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "ArrayAssignNode",
+    "names": [
+      "ArrayAssignNode"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 486,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "ASTNode",
+    "names": [
+      "ASTNode"
+    ],
+    "kind": "TypeAliasDeclaration",
+    "line": 493,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "RefinementConstraint",
+    "names": [
+      "RefinementConstraint"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 537,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "RefinementType",
+    "names": [
+      "RefinementType"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 545,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "VariableInfo",
+    "names": [
+      "VariableInfo"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 551,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "ScopeBinding",
+    "names": [
+      "ScopeBinding"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 560,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "ScopeFrame",
+    "names": [
+      "ScopeFrame"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 567,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "ObjectInfo",
+    "names": [
+      "ObjectInfo"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 573,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "TypeNarrowingInfo",
+    "names": [
+      "TypeNarrowingInfo"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 579,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "ParsedTypeAliasDeclaration",
+    "names": [
+      "ParsedTypeAliasDeclaration"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 584,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "DestructuredBinding",
+    "names": [
+      "DestructuredBinding"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 589,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "ProjectCompileInput",
+    "names": [
+      "ProjectCompileInput"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 594,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "ModuleCompilationInfo",
+    "names": [
+      "ModuleCompilationInfo"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 599,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "SuccessfulEvaluation",
+    "names": [
+      "SuccessfulEvaluation"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 610,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "FailedEvaluation",
+    "names": [
+      "FailedEvaluation"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 615,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "EvaluationResult",
+    "names": [
+      "EvaluationResult"
+    ],
+    "kind": "TypeAliasDeclaration",
+    "line": 619,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "isWhitespace",
+    "names": [
+      "isWhitespace"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 621,
+    "group": "tokenization",
+    "output": "src/compiler/core/tokenization.ts"
+  },
+  {
+    "name": "isDigit",
+    "names": [
+      "isDigit"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 632,
+    "group": "tokenization",
+    "output": "src/compiler/core/tokenization.ts"
+  },
+  {
+    "name": "isLetter",
+    "names": [
+      "isLetter"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 636,
+    "group": "tokenization",
+    "output": "src/compiler/core/tokenization.ts"
+  },
+  {
+    "name": "isPrimitiveNumericType",
+    "names": [
+      "isPrimitiveNumericType"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 643,
+    "group": "tokenization",
+    "output": "src/compiler/core/tokenization.ts"
+  },
+  {
+    "name": "areTypesCompatible",
+    "names": [
+      "areTypesCompatible"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 652,
+    "group": "tokenization",
+    "output": "src/compiler/core/tokenization.ts"
+  },
+  {
+    "name": "TokenizedCharLiteral",
+    "names": [
+      "TokenizedCharLiteral"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 677,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "TokenizedStringLiteral",
+    "names": [
+      "TokenizedStringLiteral"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 682,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "readEscapedCharValue",
+    "names": [
+      "readEscapedCharValue"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 687,
+    "group": "tokenization",
+    "output": "src/compiler/core/tokenization.ts"
+  },
+  {
+    "name": "tokenizeCharLiteral",
+    "names": [
+      "tokenizeCharLiteral"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 705,
+    "group": "tokenization",
+    "output": "src/compiler/core/tokenization.ts"
+  },
+  {
+    "name": "tokenizeStringLiteral",
+    "names": [
+      "tokenizeStringLiteral"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 751,
+    "group": "tokenization",
+    "output": "src/compiler/core/tokenization.ts"
+  },
+  {
+    "name": "validateType",
+    "names": [
+      "validateType"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 788,
+    "group": "tokenization",
+    "output": "src/compiler/core/tokenization.ts"
+  },
+  {
+    "name": "validateTypeWithStructs",
+    "names": [
+      "validateTypeWithStructs"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 794,
+    "group": "semantics",
+    "output": "src/compiler/semantics/type-system.ts"
+  },
+  {
+    "name": "ParsedFunctionType",
+    "names": [
+      "ParsedFunctionType"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 803,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "splitTopLevel",
+    "names": [
+      "splitTopLevel"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 808,
+    "group": "semantics",
+    "output": "src/compiler/semantics/type-system.ts"
+  },
+  {
+    "name": "parseUnionTypeString",
+    "names": [
+      "parseUnionTypeString"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 840,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "parseFunctionTypeString",
+    "names": [
+      "parseFunctionTypeString"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 852,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "isKnownNamedType",
+    "names": [
+      "isKnownNamedType"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 894,
+    "group": "semantics",
+    "output": "src/compiler/semantics/type-system.ts"
+  },
+  {
+    "name": "isUnionType",
+    "names": [
+      "isUnionType"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 902,
+    "group": "semantics",
+    "output": "src/compiler/semantics/type-system.ts"
+  },
+  {
+    "name": "getUnionTypeArms",
+    "names": [
+      "getUnionTypeArms"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 906,
+    "group": "semantics",
+    "output": "src/compiler/semantics/type-system.ts"
+  },
+  {
+    "name": "joinUnionTypeArms",
+    "names": [
+      "joinUnionTypeArms"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 910,
+    "group": "semantics",
+    "output": "src/compiler/semantics/type-system.ts"
+  },
+  {
+    "name": "formatFunctionType",
+    "names": [
+      "formatFunctionType"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 914,
+    "group": "semantics",
+    "output": "src/compiler/semantics/type-system.ts"
+  },
+  {
+    "name": "createScopeFrame",
+    "names": [
+      "createScopeFrame"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 921,
+    "group": "scope",
+    "output": "src/compiler/core/scope.ts"
+  },
+  {
+    "name": "createFunctionScopeBinding",
+    "names": [
+      "createFunctionScopeBinding"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 932,
+    "group": "scope",
+    "output": "src/compiler/core/scope.ts"
+  },
+  {
+    "name": "registerScopeVariable",
+    "names": [
+      "registerScopeVariable"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 947,
+    "group": "scope",
+    "output": "src/compiler/core/scope.ts"
+  },
+  {
+    "name": "registerScopeFunction",
+    "names": [
+      "registerScopeFunction"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 962,
+    "group": "scope",
+    "output": "src/compiler/core/scope.ts"
+  },
+  {
+    "name": "createObjectTypeName",
+    "names": [
+      "createObjectTypeName"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 974,
+    "group": "scope",
+    "output": "src/compiler/core/scope.ts"
+  },
+  {
+    "name": "normalizeProjectFilePath",
+    "names": [
+      "normalizeProjectFilePath"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 978,
+    "group": "project",
+    "output": "src/compiler/core/project.ts"
+  },
+  {
+    "name": "isIdentifierName",
+    "names": [
+      "isIdentifierName"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 982,
+    "group": "project",
+    "output": "src/compiler/core/project.ts"
+  },
+  {
+    "name": "inferModuleNameFromPath",
+    "names": [
+      "inferModuleNameFromPath"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 1002,
+    "group": "project",
+    "output": "src/compiler/core/project.ts"
+  },
+  {
+    "name": "createModuleRuntimeName",
+    "names": [
+      "createModuleRuntimeName"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 1029,
+    "group": "project",
+    "output": "src/compiler/core/project.ts"
+  },
+  {
+    "name": "createModuleResultName",
+    "names": [
+      "createModuleResultName"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 1045,
+    "group": "project",
+    "output": "src/compiler/core/project.ts"
+  },
+  {
+    "name": "normalizeProjectFiles",
+    "names": [
+      "normalizeProjectFiles"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 1049,
+    "group": "project",
+    "output": "src/compiler/core/project.ts"
+  },
+  {
+    "name": "createProjectModuleInfo",
+    "names": [
+      "createProjectModuleInfo"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 1069,
+    "group": "project",
+    "output": "src/compiler/core/project.ts"
+  },
+  {
+    "name": "tokenizeProjectSource",
+    "names": [
+      "tokenizeProjectSource"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 1089,
+    "group": "project",
+    "output": "src/compiler/core/project.ts"
+  },
+  {
+    "name": "tokenizeProjectModule",
+    "names": [
+      "tokenizeProjectModule"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 1097,
+    "group": "project",
+    "output": "src/compiler/core/project.ts"
+  },
+  {
+    "name": "collectModuleReferencesFromTokens",
+    "names": [
+      "collectModuleReferencesFromTokens"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 1113,
+    "group": "project",
+    "output": "src/compiler/core/project.ts"
+  },
+  {
+    "name": "collectDeclaredValueNamesFromTokens",
+    "names": [
+      "collectDeclaredValueNamesFromTokens"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 1150,
+    "group": "project",
+    "output": "src/compiler/core/project.ts"
+  },
+  {
+    "name": "collectProjectModuleReferencesFromTokens",
+    "names": [
+      "collectProjectModuleReferencesFromTokens"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 1184,
+    "group": "project",
+    "output": "src/compiler/core/project.ts"
+  },
+  {
+    "name": "buildProjectModuleRegistry",
+    "names": [
+      "buildProjectModuleRegistry"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 1222,
+    "group": "project",
+    "output": "src/compiler/core/project.ts"
+  },
+  {
+    "name": "populateProjectModuleDependencies",
+    "names": [
+      "populateProjectModuleDependencies"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 1250,
+    "group": "project",
+    "output": "src/compiler/core/project.ts"
+  },
+  {
+    "name": "registerProjectModulesAsObjects",
+    "names": [
+      "registerProjectModulesAsObjects"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 1268,
+    "group": "scope",
+    "output": "src/compiler/core/scope.ts"
+  },
+  {
+    "name": "createParser",
+    "names": [
+      "createParser"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 1281,
+    "group": "compiler",
+    "output": "src/compiler/index.ts"
+  },
+  {
+    "name": "prepareParser",
+    "names": [
+      "prepareParser"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 1308,
+    "group": "compiler",
+    "output": "src/compiler/index.ts"
+  },
+  {
+    "name": "parseAndValidateProgram",
+    "names": [
+      "parseAndValidateProgram"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 1332,
+    "group": "compiler",
+    "output": "src/compiler/index.ts"
+  },
+  {
+    "name": "parseProjectModule",
+    "names": [
+      "parseProjectModule"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 1366,
+    "group": "compiler",
+    "output": "src/compiler/index.ts"
+  },
+  {
+    "name": "codegenProgramReturn",
+    "names": [
+      "codegenProgramReturn"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 1399,
+    "group": "codegen",
+    "output": "src/compiler/codegen/index.ts"
+  },
+  {
+    "name": "codegenProgramEvaluation",
+    "names": [
+      "codegenProgramEvaluation"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 1404,
+    "group": "codegen",
+    "output": "src/compiler/codegen/index.ts"
+  },
+  {
+    "name": "collectReachableModules",
+    "names": [
+      "collectReachableModules"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 1419,
+    "group": "project",
+    "output": "src/compiler/core/project.ts"
+  },
+  {
+    "name": "getProjectCompilationOrder",
+    "names": [
+      "getProjectCompilationOrder"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 1461,
+    "group": "project",
+    "output": "src/compiler/core/project.ts"
+  },
+  {
+    "name": "findScopeBinding",
+    "names": [
+      "findScopeBinding"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 1485,
+    "group": "scope",
+    "output": "src/compiler/core/scope.ts"
+  },
+  {
+    "name": "updateScopeFunctionBinding",
+    "names": [
+      "updateScopeFunctionBinding"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 1502,
+    "group": "scope",
+    "output": "src/compiler/core/scope.ts"
+  },
+  {
+    "name": "extendTypeEnvironmentForStatement",
+    "names": [
+      "extendTypeEnvironmentForStatement"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 1511,
+    "group": "scope",
+    "output": "src/compiler/core/scope.ts"
+  },
+  {
+    "name": "inferReturnTypesFromNode",
+    "names": [
+      "inferReturnTypesFromNode"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 1532,
+    "group": "semantics",
+    "output": "src/compiler/semantics/type-system.ts"
+  },
+  {
+    "name": "inferFunctionReturnTypeFromBody",
+    "names": [
+      "inferFunctionReturnTypeFromBody"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 1576,
+    "group": "semantics",
+    "output": "src/compiler/semantics/type-system.ts"
+  },
+  {
+    "name": "inferContainerMemberType",
+    "names": [
+      "inferContainerMemberType"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 1624,
+    "group": "semantics",
+    "output": "src/compiler/semantics/type-system.ts"
+  },
+  {
+    "name": "resolveThisScopeNode",
+    "names": [
+      "resolveThisScopeNode"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 1665,
+    "group": "scope",
+    "output": "src/compiler/core/scope.ts"
+  },
+  {
+    "name": "ResolvedThisMemberAccess",
+    "names": [
+      "ResolvedThisMemberAccess"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 1681,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "resolveThisMemberAccess",
+    "names": [
+      "resolveThisMemberAccess"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 1687,
+    "group": "scope",
+    "output": "src/compiler/core/scope.ts"
+  },
+  {
+    "name": "validateThisScopeAgainstStruct",
+    "names": [
+      "validateThisScopeAgainstStruct"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 1715,
+    "group": "scope",
+    "output": "src/compiler/core/scope.ts"
+  },
+  {
+    "name": "getCallableInfo",
+    "names": [
+      "getCallableInfo"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 1757,
+    "group": "semantics",
+    "output": "src/compiler/semantics/type-system.ts"
+  },
+  {
+    "name": "parseCallArguments",
+    "names": [
+      "parseCallArguments"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 1809,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "validateCallArguments",
+    "names": [
+      "validateCallArguments"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 1837,
+    "group": "semantics",
+    "output": "src/compiler/semantics/type-system.ts"
+  },
+  {
+    "name": "parseValidatedCallArguments",
+    "names": [
+      "parseValidatedCallArguments"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 1880,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "tryParseModuleReference",
+    "names": [
+      "tryParseModuleReference"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 1903,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "enterCallableScope",
+    "names": [
+      "enterCallableScope"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 1959,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "validateArgumentNodes",
+    "names": [
+      "validateArgumentNodes"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 1971,
+    "group": "semantics",
+    "output": "src/compiler/semantics/type-system.ts"
+  },
+  {
+    "name": "arePointerTypesCompatible",
+    "names": [
+      "arePointerTypesCompatible"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 1986,
+    "group": "semantics",
+    "output": "src/compiler/semantics/type-system.ts"
+  },
+  {
+    "name": "isTypeAssignable",
+    "names": [
+      "isTypeAssignable"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 2001,
+    "group": "semantics",
+    "output": "src/compiler/semantics/type-system.ts"
+  },
+  {
+    "name": "selectMatchingUnionArm",
+    "names": [
+      "selectMatchingUnionArm"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 2023,
+    "group": "semantics",
+    "output": "src/compiler/semantics/type-system.ts"
+  },
+  {
+    "name": "wrapExpressionForUnion",
+    "names": [
+      "wrapExpressionForUnion"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 2035,
+    "group": "semantics",
+    "output": "src/compiler/semantics/type-system.ts"
+  },
+  {
+    "name": "appendUnionType",
+    "names": [
+      "appendUnionType"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 2048,
+    "group": "semantics",
+    "output": "src/compiler/semantics/type-system.ts"
+  },
+  {
+    "name": "parseTrailingUnionType",
+    "names": [
+      "parseTrailingUnionType"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 2061,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "resolveAliasName",
+    "names": [
+      "resolveAliasName"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 2091,
+    "group": "semantics",
+    "output": "src/compiler/semantics/type-system.ts"
+  },
+  {
+    "name": "canonicalizeTypeString",
+    "names": [
+      "canonicalizeTypeString"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 2122,
+    "group": "semantics",
+    "output": "src/compiler/semantics/type-system.ts"
+  },
+  {
+    "name": "normalizeTypeName",
+    "names": [
+      "normalizeTypeName"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 2219,
+    "group": "semantics",
+    "output": "src/compiler/semantics/type-system.ts"
+  },
+  {
+    "name": "inferStructFieldType",
+    "names": [
+      "inferStructFieldType"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 2234,
+    "group": "semantics",
+    "output": "src/compiler/semantics/type-system.ts"
+  },
+  {
+    "name": "evaluateIsType",
+    "names": [
+      "evaluateIsType"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 2242,
+    "group": "semantics",
+    "output": "src/compiler/semantics/type-system.ts"
+  },
+  {
+    "name": "getTypeNarrowingFromCondition",
+    "names": [
+      "getTypeNarrowingFromCondition"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 2260,
+    "group": "semantics",
+    "output": "src/compiler/semantics/type-system.ts"
+  },
+  {
+    "name": "applyVariableTypeNarrowing",
+    "names": [
+      "applyVariableTypeNarrowing"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 2303,
+    "group": "semantics",
+    "output": "src/compiler/semantics/type-system.ts"
+  },
+  {
+    "name": "expressionHasUnionType",
+    "names": [
+      "expressionHasUnionType"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 2319,
+    "group": "semantics",
+    "output": "src/compiler/semantics/type-system.ts"
+  },
+  {
+    "name": "coerceExpressionToType",
+    "names": [
+      "coerceExpressionToType"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 2324,
+    "group": "semantics",
+    "output": "src/compiler/semantics/type-system.ts"
+  },
+  {
+    "name": "coerceFunctionBodyToReturnType",
+    "names": [
+      "coerceFunctionBodyToReturnType"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 2365,
+    "group": "semantics",
+    "output": "src/compiler/semantics/type-system.ts"
+  },
+  {
+    "name": "coerceUnionReturnValue",
+    "names": [
+      "coerceUnionReturnValue"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 2397,
+    "group": "semantics",
+    "output": "src/compiler/semantics/type-system.ts"
+  },
+  {
+    "name": "combineBranchTypes",
+    "names": [
+      "combineBranchTypes"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 2447,
+    "group": "semantics",
+    "output": "src/compiler/semantics/type-system.ts"
+  },
+  {
+    "name": "ensureExpressionType",
+    "names": [
+      "ensureExpressionType"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 2466,
+    "group": "semantics",
+    "output": "src/compiler/semantics/type-system.ts"
+  },
+  {
+    "name": "inferReferenceType",
+    "names": [
+      "inferReferenceType"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 2487,
+    "group": "semantics",
+    "output": "src/compiler/semantics/type-system.ts"
+  },
+  {
+    "name": "getBracketedTypeInner",
+    "names": [
+      "getBracketedTypeInner"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 2518,
+    "group": "semantics",
+    "output": "src/compiler/semantics/type-system.ts"
+  },
+  {
+    "name": "getBracketedTypeParts",
+    "names": [
+      "getBracketedTypeParts"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 2525,
+    "group": "semantics",
+    "output": "src/compiler/semantics/type-system.ts"
+  },
+  {
+    "name": "applyPointerDecorators",
+    "names": [
+      "applyPointerDecorators"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 2530,
+    "group": "semantics",
+    "output": "src/compiler/semantics/type-system.ts"
+  },
+  {
+    "name": "consumeCommaOrClosingParen",
+    "names": [
+      "consumeCommaOrClosingParen"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 2546,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "parseFunctionParameters",
+    "names": [
+      "parseFunctionParameters"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 2560,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "canStartClosureParameterList",
+    "names": [
+      "canStartClosureParameterList"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 2617,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "codegenFunctionLikeDeclaration",
+    "names": [
+      "codegenFunctionLikeDeclaration"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 2630,
+    "group": "codegen",
+    "output": "src/compiler/codegen/index.ts"
+  },
+  {
+    "name": "codegenFunctionLikeBody",
+    "names": [
+      "codegenFunctionLikeBody"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 2654,
+    "group": "codegen",
+    "output": "src/compiler/codegen/index.ts"
+  },
+  {
+    "name": "inferExpressionType",
+    "names": [
+      "inferExpressionType"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 2682,
+    "group": "semantics",
+    "output": "src/compiler/semantics/type-system.ts"
+  },
+  {
+    "name": "getVariable",
+    "names": [
+      "getVariable"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 2935,
+    "group": "semantics",
+    "output": "src/compiler/semantics/type-system.ts"
+  },
+  {
+    "name": "parseTypeAnnotation",
+    "names": [
+      "parseTypeAnnotation"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 2954,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "parseTypeValue",
+    "names": [
+      "parseTypeValue"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 3099,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "parseRefinementConstraint",
+    "names": [
+      "parseRefinementConstraint"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 3120,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "parseRefinementType",
+    "names": [
+      "parseRefinementType"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 3157,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "validateConstraints",
+    "names": [
+      "validateConstraints"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 3223,
+    "group": "semantics",
+    "output": "src/compiler/semantics/type-system.ts"
+  },
+  {
+    "name": "tryEvaluateExpression",
+    "names": [
+      "tryEvaluateExpression"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 3282,
+    "group": "semantics",
+    "output": "src/compiler/semantics/type-system.ts"
+  },
+  {
+    "name": "validateSingleConstraint",
+    "names": [
+      "validateSingleConstraint"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 3352,
+    "group": "semantics",
+    "output": "src/compiler/semantics/type-system.ts"
+  },
+  {
+    "name": "extractConstraintsFromComparison",
+    "names": [
+      "extractConstraintsFromComparison"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 3407,
+    "group": "semantics",
+    "output": "src/compiler/semantics/type-system.ts"
+  },
+  {
+    "name": "flightConstraintOperator",
+    "names": [
+      "flightConstraintOperator"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 3507,
+    "group": "semantics",
+    "output": "src/compiler/semantics/type-system.ts"
+  },
+  {
+    "name": "canAssignToRefinedType",
+    "names": [
+      "canAssignToRefinedType"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 3525,
+    "group": "semantics",
+    "output": "src/compiler/semantics/type-system.ts"
+  },
+  {
+    "name": "tokenize",
+    "names": [
+      "tokenize"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 3624,
+    "group": "tokenization",
+    "output": "src/compiler/core/tokenization.ts"
+  },
+  {
+    "name": "FunctionInfo",
+    "names": [
+      "FunctionInfo"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 3923,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "StructInfo",
+    "names": [
+      "StructInfo"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 3928,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "Parser",
+    "names": [
+      "Parser"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 3932,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "ParsedNumberLiteral",
+    "names": [
+      "ParsedNumberLiteral"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 3951,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "ParsedArrayType",
+    "names": [
+      "ParsedArrayType"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 3956,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "ParsedSliceType",
+    "names": [
+      "ParsedSliceType"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 3961,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "ParsedSliceReferenceType",
+    "names": [
+      "ParsedSliceReferenceType"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 3965,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "ArrayLikeInfo",
+    "names": [
+      "ArrayLikeInfo"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 3970,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "splitNumberLiteral",
+    "names": [
+      "splitNumberLiteral"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 3977,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "isBareNonNegativeIntegerLiteral",
+    "names": [
+      "isBareNonNegativeIntegerLiteral"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 4001,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "parseArrayType",
+    "names": [
+      "parseArrayType"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 4016,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "parseSliceType",
+    "names": [
+      "parseSliceType"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 4037,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "parseSliceReferenceType",
+    "names": [
+      "parseSliceReferenceType"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 4050,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "getArrayLikeInfo",
+    "names": [
+      "getArrayLikeInfo"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 4070,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "getSliceLengthFromInitializer",
+    "names": [
+      "getSliceLengthFromInitializer"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 4129,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "inferZeroArgCallableReturnType",
+    "names": [
+      "inferZeroArgCallableReturnType"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 4148,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "current",
+    "names": [
+      "current"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 4202,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "advance",
+    "names": [
+      "advance"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 4210,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "AssignmentOperatorInfo",
+    "names": [
+      "AssignmentOperatorInfo"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 4214,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "parseCompoundAssignmentOperator",
+    "names": [
+      "parseCompoundAssignmentOperator"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 4220,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "tryConsumeMutKeyword",
+    "names": [
+      "tryConsumeMutKeyword"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 4252,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "tryParseAndValidateAssignmentOperator",
+    "names": [
+      "tryParseAndValidateAssignmentOperator"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 4264,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "withParsedAssignmentOperator",
+    "names": [
+      "withParsedAssignmentOperator"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 4277,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "parseAssignmentValue",
+    "names": [
+      "parseAssignmentValue"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 4296,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "validateThisAssignmentTarget",
+    "names": [
+      "validateThisAssignmentTarget"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 4323,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "handleAssignmentStatement",
+    "names": [
+      "handleAssignmentStatement"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 4349,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "parseBlockResultExpression",
+    "names": [
+      "parseBlockResultExpression"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 4368,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "tryParseAssignment",
+    "names": [
+      "tryParseAssignment"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 4380,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "consumeOptionalSemicolon",
+    "names": [
+      "consumeOptionalSemicolon"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 4706,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "parseStatementBlock",
+    "names": [
+      "parseStatementBlock"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 4712,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "parseStatementInBlock",
+    "names": [
+      "parseStatementInBlock"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 4736,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "isBooleanNode",
+    "names": [
+      "isBooleanNode"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 4866,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "validateBooleanCondition",
+    "names": [
+      "validateBooleanCondition"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 4876,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "parseConditionExpression",
+    "names": [
+      "parseConditionExpression"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 4929,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "parseBlockStatements",
+    "names": [
+      "parseBlockStatements"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 4956,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "parseBlockStatementsWithoutRbrace",
+    "names": [
+      "parseBlockStatementsWithoutRbrace"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 4972,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "parseBlockStatementsInternal",
+    "names": [
+      "parseBlockStatementsInternal"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 4979,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "extractFinalExpressionIfPresent",
+    "names": [
+      "extractFinalExpressionIfPresent"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 4998,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "createBlockBodyWithOptionalExpression",
+    "names": [
+      "createBlockBodyWithOptionalExpression"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 5017,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "createSimpleBlockNode",
+    "names": [
+      "createSimpleBlockNode"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 5128,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "parseIfStatement",
+    "names": [
+      "parseIfStatement"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 5140,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "parseIfBody",
+    "names": [
+      "parseIfBody"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 5232,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "parseWhileStatement",
+    "names": [
+      "parseWhileStatement"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 5298,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "parseBreakStatement",
+    "names": [
+      "parseBreakStatement"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 5361,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "parseContinueStatement",
+    "names": [
+      "parseContinueStatement"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 5374,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "parseReturnStatement",
+    "names": [
+      "parseReturnStatement"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 5387,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "parseMatchExpression",
+    "names": [
+      "parseMatchExpression"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 5407,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "parseMatchPattern",
+    "names": [
+      "parseMatchPattern"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 5528,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "parseProgram",
+    "names": [
+      "parseProgram"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 5554,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "parseLetStatement",
+    "names": [
+      "parseLetStatement"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 5600,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "createDestructureTempName",
+    "names": [
+      "createDestructureTempName"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 6002,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "parseDestructuringPattern",
+    "names": [
+      "parseDestructuringPattern"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 6014,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "parseRequiredLetInitializer",
+    "names": [
+      "parseRequiredLetInitializer"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 6067,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "parseDestructuringLetStatement",
+    "names": [
+      "parseDestructuringLetStatement"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 6076,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "isReservedKeyword",
+    "names": [
+      "isReservedKeyword"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 6182,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "checkReservedKeyword",
+    "names": [
+      "checkReservedKeyword"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 6203,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "parseTypeAliasDeclaration",
+    "names": [
+      "parseTypeAliasDeclaration"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 6213,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "parseTypeAliasStatement",
+    "names": [
+      "parseTypeAliasStatement"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 6264,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "parseFunctionStatement",
+    "names": [
+      "parseFunctionStatement"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 6277,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "parseObjectStatement",
+    "names": [
+      "parseObjectStatement"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 6521,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "tryParseClosureLiteral",
+    "names": [
+      "tryParseClosureLiteral"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 6600,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "parseStructFieldList",
+    "names": [
+      "parseStructFieldList"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 6674,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "parseStructStatement",
+    "names": [
+      "parseStructStatement"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 6742,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "parseExpression",
+    "names": [
+      "parseExpression"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 6773,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "ParseBinaryConfig",
+    "names": [
+      "ParseBinaryConfig"
+    ],
+    "kind": "InterfaceDeclaration",
+    "line": 6789,
+    "group": "ast",
+    "output": "src/compiler/core/ast.ts"
+  },
+  {
+    "name": "parseLeftAssociative",
+    "names": [
+      "parseLeftAssociative"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 6806,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "parseBinary",
+    "names": [
+      "parseBinary"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 6832,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "logicalNodeMaker",
+    "names": [
+      "logicalNodeMaker"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 6858,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "comparisonNodeMaker",
+    "names": [
+      "comparisonNodeMaker"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 6871,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "parseComparison",
+    "names": [
+      "parseComparison"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 6884,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "parseLogicalOr",
+    "names": [
+      "parseLogicalOr"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 6928,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "parseLogicalAnd",
+    "names": [
+      "parseLogicalAnd"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 6938,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "parseUnaryLogical",
+    "names": [
+      "parseUnaryLogical"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 6948,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "parseBinaryOperator",
+    "names": [
+      "parseBinaryOperator"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 6969,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "parseAdditive",
+    "names": [
+      "parseAdditive"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 7009,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "parseMultiplicative",
+    "names": [
+      "parseMultiplicative"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 7018,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "parseUnary",
+    "names": [
+      "parseUnary"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 7027,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "parsePostfix",
+    "names": [
+      "parsePostfix"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 7112,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "parsePrimary",
+    "names": [
+      "parsePrimary"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 7350,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "extractNumberValue",
+    "names": [
+      "extractNumberValue"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 7711,
+    "group": "codegen",
+    "output": "src/compiler/codegen/index.ts"
+  },
+  {
+    "name": "getTypeFromLiteral",
+    "names": [
+      "getTypeFromLiteral"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 7741,
+    "group": "codegen",
+    "output": "src/compiler/codegen/index.ts"
+  },
+  {
+    "name": "validateNegativeType",
+    "names": [
+      "validateNegativeType"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 7770,
+    "group": "codegen",
+    "output": "src/compiler/codegen/index.ts"
+  },
+  {
+    "name": "generateStatementCode",
+    "names": [
+      "generateStatementCode"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 7783,
+    "group": "codegen",
+    "output": "src/compiler/codegen/index.ts"
+  },
+  {
+    "name": "codegenThisScopeObject",
+    "names": [
+      "codegenThisScopeObject"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 7792,
+    "group": "codegen",
+    "output": "src/compiler/codegen/index.ts"
+  },
+  {
+    "name": "codegenAST",
+    "names": [
+      "codegenAST"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 7861,
+    "group": "codegen",
+    "output": "src/compiler/codegen/index.ts"
+  },
+  {
+    "name": "validateExpressionAsValue",
+    "names": [
+      "validateExpressionAsValue"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 8335,
+    "group": "validation",
+    "output": "src/compiler/semantics/validation.ts"
+  },
+  {
+    "name": "validateStatementList",
+    "names": [
+      "validateStatementList"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 8346,
+    "group": "validation",
+    "output": "src/compiler/semantics/validation.ts"
+  },
+  {
+    "name": "validateAST",
+    "names": [
+      "validateAST"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 8359,
+    "group": "validation",
+    "output": "src/compiler/semantics/validation.ts"
+  },
+  {
+    "name": "consumeKeywordAndGetName",
+    "names": [
+      "consumeKeywordAndGetName"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 8612,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "scanTokensFromStart",
+    "names": [
+      "scanTokensFromStart"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 8632,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "scanMatchingKeywords",
+    "names": [
+      "scanMatchingKeywords"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 8653,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "collectTypeDeclarationNames",
+    "names": [
+      "collectTypeDeclarationNames"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 8674,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "prescanTypeAliases",
+    "names": [
+      "prescanTypeAliases"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 8724,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "runPrescan",
+    "names": [
+      "runPrescan"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 8740,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "resolveTypeAliases",
+    "names": [
+      "resolveTypeAliases"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 8754,
+    "group": "validation",
+    "output": "src/compiler/semantics/validation.ts"
+  },
+  {
+    "name": "prescanStructDefinitions",
+    "names": [
+      "prescanStructDefinitions"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 8773,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "prescanFunctionSignatures",
+    "names": [
+      "prescanFunctionSignatures"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 8805,
+    "group": "parser",
+    "output": "src/compiler/parser/index.ts"
+  },
+  {
+    "name": "getNodeContainerType",
+    "names": [
+      "getNodeContainerType"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 8900,
+    "group": "validation",
+    "output": "src/compiler/semantics/validation.ts"
+  },
+  {
+    "name": "validateStructSemantics",
+    "names": [
+      "validateStructSemantics"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 8946,
+    "group": "validation",
+    "output": "src/compiler/semantics/validation.ts"
+  },
+  {
+    "name": "compile",
+    "names": [
+      "compile"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 9305,
+    "group": "compiler",
+    "output": "src/compiler/index.ts"
+  },
+  {
+    "name": "compileProject",
+    "names": [
+      "compileProject"
+    ],
+    "kind": "FunctionDeclaration",
+    "line": 9337,
+    "group": "compiler",
+    "output": "src/compiler/index.ts"
+  },
+  {
+    "name": "compileTuffToJS",
+    "names": [
+      "compileTuffToJS"
+    ],
+    "kind": "VariableStatement",
+    "line": 9380,
+    "group": "compiler",
+    "output": "src/compiler/index.ts"
+  }
+]
