@@ -1283,19 +1283,19 @@ test("extern: generic member call with explicit type arguments works", () => {
   );
 });
 
-test("extern: allocator module supports dynamic slice indexing and realloc", () => {
+test("extern: allocator module uses runtime access helpers and realloc", () => {
   expectValue(
     executeTuffProjectFixture({
       entryModule: "Main",
       tuffFiles: {
         "Main.tuff":
-          "let mut buf : *mut [I32] = Mem.malloc<I32>(2USize); let i : USize = 1USize; buf[0USize] = 10; buf[i] = 20; buf = Mem.realloc<I32>(buf, 4USize); let j : USize = 2USize; buf[j] = buf[0USize] + buf[i]; Mem.free<I32>(buf); 30",
+          "let mut buf : *mut [I32] = Mem.malloc<I32>(2USize); let i : USize = 1USize; Mem.setAt<I32>(buf, 0USize, 10); Mem.setAt<I32>(buf, i, 20); buf = Mem.realloc<I32>(buf, 4USize); let j : USize = 2USize; Mem.setAt<I32>(buf, j, Mem.getAt<I32>(buf, 0USize) + Mem.getAt<I32>(buf, i)); let result : I32 = Mem.getAt<I32>(buf, j); Mem.free<I32>(buf); result",
         "Mem.tuff":
-          "extern Mem; extern fn malloc<T>(len : USize) : *mut [T]; extern fn realloc<T>(buf : *mut [T], len : USize) : *mut [T]; extern fn free<T>(buf : *mut [T]) : Void;",
+          "extern Mem; extern fn malloc<T>(len : USize) : *mut [T]; extern fn realloc<T>(buf : *mut [T], len : USize) : *mut [T]; extern fn free<T>(buf : *mut [T]) : Void; extern fn getAt<T>(buf : *mut [T], index : USize) : T; extern fn setAt<T>(buf : *mut [T], index : USize, value : T) : Void;",
       },
       foreignFiles: {
         "Mem.js":
-          "module.exports = { malloc: (len) => ({ __tuffSlice: true, data: Array(Number(len)).fill(0), start: 0, end: Number(len), length: Number(len) }), realloc: (buf, len) => { const nextLength = Number(len); const nextData = Array.isArray(buf?.data) ? buf.data.slice() : []; while (nextData.length < nextLength) { nextData.push(0); } nextData.length = nextLength; return { __tuffSlice: true, data: nextData, start: 0, end: nextLength, length: nextLength }; }, free: () => undefined };",
+          "module.exports = { malloc: (len) => ({ __tuffSlice: true, data: Array(Number(len)).fill(0), start: 0, end: Number(len), length: Number(len) }), realloc: (buf, len) => { const nextLength = Number(len); const nextData = Array.isArray(buf?.data) ? buf.data.slice() : []; while (nextData.length < nextLength) { nextData.push(0); } nextData.length = nextLength; return { __tuffSlice: true, data: nextData, start: 0, end: nextLength, length: nextLength }; }, free: () => undefined, getAt: (buf, index) => Number(buf?.data?.[Number(index)] ?? 0), setAt: (buf, index, value) => { if (Array.isArray(buf?.data)) { buf.data[Number(index)] = value; } } };",
       },
     }),
     30,
@@ -2526,12 +2526,12 @@ test("generic function: arrays of T work", () => {
   );
 });
 
-test("generic function: slices of T work", () => {
+test("generic function: slices of T expose length", () => {
   expectValue(
     executeTuff(
-      "fn first<T>(items : *[T]) : T => items[0]; let arr : [I32; 3] = [10, 20, 30]; first(&arr[1..3])",
+      "fn sliceLen<T>(items : *[T]) : USize => items.length; let arr : [I32; 3] = [10, 20, 30]; sliceLen(&arr[1..3])",
     ),
-    20,
+    2,
   );
 });
 
@@ -3549,6 +3549,39 @@ test("slice: slice index out of bounds is error", () => {
   expectError(
     executeTuff(
       "let arr : [I32; 4] = [10, 20, 30, 40]; let s : *[I32] = &arr[1..3]; s[2]",
+    ),
+  );
+});
+
+test("slice: helper with unproven USize index is rejected", () => {
+  expectError(
+    executeTuff(
+      "fn get(list : *[I32], index : USize) : I32 => list[index]; let arr : [I32; 2] = [10, 20]; let s : *[I32] = &arr; get(s, 1USize)",
+    ),
+  );
+});
+
+test("slice: refined USize index proves access is safe", () => {
+  expectValue(
+    executeTuff(
+      "let arr : [I32; 3] = [10, 20, 30]; let s : *[I32] = &arr; let index : USize < 3USize = 1USize; s[index]",
+    ),
+    20,
+  );
+});
+
+test("slice: guard-narrowed USize index proves access is safe", () => {
+  const result = executeTuffWithInput(
+    "let arr : [I32; 3] = [10, 20, 30]; let s : *[I32] = &arr; let index : USize = read<USize>(); if (index < s.length) { s[index] } else { 0 }",
+    "2",
+  );
+  expectValue(result, 30);
+});
+
+test("slice: dynamic index without proof remains rejected", () => {
+  expectError(
+    executeTuff(
+      "let arr : [I32; 3] = [10, 20, 30]; let s : *[I32] = &arr; let index : USize = 1USize; s[index]",
     ),
   );
 });

@@ -9,7 +9,6 @@ import type {
   FunctionInfo,
   FunctionParameter,
   LogicalNode,
-  NumberNode,
   ParsedFunctionType,
   Parser,
   RefinementConstraint,
@@ -19,7 +18,6 @@ import type {
   TypeNarrowingInfo,
   UnionWrapNode,
   VariableInfo,
-  VariableNode,
 } from "../core/ast";
 import {
   findScopeBinding,
@@ -96,6 +94,11 @@ export function splitTopLevel(text: string, separator: string): string[] {
 export interface ParsedGenericTypeString {
   baseType: string;
   typeArguments: string[];
+}
+
+export interface ConstraintValueInfo {
+  value: string;
+  valueExpr: ASTNode;
 }
 
 export function parseGenericTypeString(
@@ -1926,7 +1929,7 @@ export function validateConstraints(
   parser?: Parser,
 ): boolean {
   // Parse the numeric value
-  const numValue = Number(value);
+  const numValue = parseNumericConstraintValue(value);
   if (isNaN(numValue)) {
     return false; // Can't validate non-numeric values
   }
@@ -1977,6 +1980,57 @@ export function validateConstraints(
   return false;
 }
 
+export function parseNumericConstraintValue(value: string): number {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return Number.NaN;
+  }
+
+  let end = trimmed.length;
+  while (end > 0) {
+    const char = trimmed[end - 1] as string;
+    if (isLetter(char) || char === "_") {
+      end -= 1;
+      continue;
+    }
+    break;
+  }
+
+  const numericPart = trimmed.slice(0, end);
+  return Number(numericPart);
+}
+
+export function areEquivalentConstraintExpressions(
+  left: ASTNode,
+  right: ASTNode,
+): boolean {
+  if (left.kind !== right.kind) {
+    return false;
+  }
+
+  switch (left.kind) {
+    case "number":
+      return left.value === (right.kind === "number" ? right.value : "");
+    case "variable":
+      return left.name === (right.kind === "variable" ? right.name : "");
+    case "field-access":
+      return (
+        right.kind === "field-access" &&
+        left.fieldName === right.fieldName &&
+        areEquivalentConstraintExpressions(left.object, right.object)
+      );
+    case "binary":
+      return (
+        right.kind === "binary" &&
+        left.operator === right.operator &&
+        areEquivalentConstraintExpressions(left.left, right.left) &&
+        areEquivalentConstraintExpressions(left.right, right.right)
+      );
+    default:
+      return false;
+  }
+}
+
 // Try to evaluate an expression to a number at compile-time given variable context
 export function tryEvaluateExpression(
   expr: ASTNode,
@@ -1985,7 +2039,7 @@ export function tryEvaluateExpression(
 ): EvaluationResult {
   // Base case: numeric literal
   if (expr.kind === "number") {
-    const num = Number(expr.value);
+    const num = parseNumericConstraintValue(expr.value);
     return isNaN(num) ? { success: false } : { success: true, value: num };
   }
 
@@ -1997,8 +2051,16 @@ export function tryEvaluateExpression(
       return { success: false };
     }
     // Evaluate the stored initialization value
-    const num = Number(varInfo.initValue);
+    const num = parseNumericConstraintValue(varInfo.initValue);
     return isNaN(num) ? { success: false } : { success: true, value: num };
+  }
+
+  if (expr.kind === "field-access" && expr.fieldName === "length") {
+    const arrayInfo = getArrayLikeInfo(expr.object, parser);
+    if (arrayInfo && arrayInfo.length !== undefined) {
+      return { success: true, value: arrayInfo.length };
+    }
+    return { success: false };
   }
 
   // Binary operations (arithmetic)
@@ -2109,29 +2171,36 @@ export function extractConstraintsFromComparison(
 ): Map<string, RefinementType> {
   const constraints = new Map<string, RefinementType>();
 
+  const getConstraintValue = (expr: ASTNode): ConstraintValueInfo => {
+    if (expr.kind === "number") {
+      return { value: expr.value, valueExpr: expr };
+    }
+
+    if (expr.kind === "variable") {
+      return { value: expr.name, valueExpr: expr };
+    }
+
+    return { value: "?", valueExpr: expr };
+  };
+
   if (condition.kind === "comparison") {
     const comp = condition as ComparisonNode;
 
-    // Simple case: variable OP value, e.g., x > 100
-    if (
-      comp.left.kind === "variable" &&
-      (comp.right.kind === "number" || comp.right.kind === "variable")
-    ) {
+    // Simple case: variable OP expression, e.g., x > 100 or x < arr.length
+    if (comp.left.kind === "variable") {
       const varName = comp.left.name;
       const varInfo = parser.variables.get(varName);
 
       if (varInfo) {
-        const rightValue =
-          comp.right.kind === "number"
-            ? (comp.right as NumberNode).value
-            : (comp.right as VariableNode).name;
+        const rightValue = getConstraintValue(comp.right);
 
         const refinement: RefinementType = {
           baseType: varInfo.type,
           constraints: [
             {
               operator: comp.operator,
-              value: rightValue,
+              value: rightValue.value,
+              valueExpr: rightValue.valueExpr,
               baseType: varInfo.type,
             },
           ],
@@ -2139,19 +2208,13 @@ export function extractConstraintsFromComparison(
         constraints.set(varName, refinement);
       }
     }
-    // Reverse case: value OP variable, e.g., 100 < x
-    else if (
-      comp.right.kind === "variable" &&
-      (comp.left.kind === "number" || comp.left.kind === "variable")
-    ) {
+    // Reverse case: expression OP variable, e.g., 100 < x or arr.length > x
+    else if (comp.right.kind === "variable") {
       const varName = comp.right.name;
       const varInfo = parser.variables.get(varName);
 
       if (varInfo) {
-        const leftValue =
-          comp.left.kind === "number"
-            ? (comp.left as NumberNode).value
-            : (comp.left as VariableNode).name;
+        const leftValue = getConstraintValue(comp.left);
 
         // Flip the operator: 100 < x becomes x > 100
         const flippedOp = flightConstraintOperator(comp.operator);
@@ -2160,7 +2223,8 @@ export function extractConstraintsFromComparison(
           constraints: [
             {
               operator: flippedOp,
-              value: leftValue,
+              value: leftValue.value,
+              valueExpr: leftValue.valueExpr,
               baseType: varInfo.type,
             },
           ],
@@ -2247,6 +2311,14 @@ export function canAssignToRefinedType(
     return false;
   }
 
+  return satisfiesRefinementConstraints(proven, requiredRefinement, parser);
+}
+
+export function satisfiesRefinementConstraints(
+  proven: RefinementType,
+  requiredRefinement: RefinementType,
+  parser: Parser,
+): boolean {
   // Check if proven constraints satisfy the required refinement
   if (proven.baseType !== requiredRefinement.baseType) {
     return false; // Type mismatch
@@ -2306,6 +2378,18 @@ export function canAssignToRefinedType(
           provenVal !== undefined &&
           reqVal !== undefined &&
           provenVal === reqVal
+        ) {
+          found = true;
+          break;
+        }
+
+        if (
+          provenConstraint.valueExpr &&
+          reqConstraint.valueExpr &&
+          areEquivalentConstraintExpressions(
+            provenConstraint.valueExpr,
+            reqConstraint.valueExpr,
+          )
         ) {
           found = true;
           break;

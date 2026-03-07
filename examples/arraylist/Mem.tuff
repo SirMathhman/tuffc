@@ -7,3 +7,5 @@ extern fn free<T>(list : *mut [T]) : Void;
 extern fn listLength<T>(list : *mut [T]) : USize;
 extern fn listCapacity<T>(list : *mut [T]) : USize;
 extern fn setListLength<T>(list : *mut [T], length : USize) : Void;
+extern fn getAt<T>(list : *mut [T], index : USize) : T;
+extern fn setAt<T>(list : *mut [T], index : USize, value : T) : Void;

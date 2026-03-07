@@ -14,13 +14,13 @@ fn push<T>(list : *mut [T], value : T) : *mut [T] => {
     result = Mem.realloc<T>(result, nextCapacity);
   };
 
-  result[currentLen] = value;
+  Mem.setAt<T>(result, currentLen, value);
   Mem.setListLength<T>(result, currentLen + 1USize);
   result
 }
 
-fn get<T>(list : *mut [T], index : USize) : T => list[index];
+fn get<T>(list : *mut [T], index : USize) : T => Mem.getAt<T>(list, index);
 
-fn set<T>(list : *mut [T], index : USize, value : T) => list[index] = value;
+fn set<T>(list : *mut [T], index : USize, value : T) => Mem.setAt<T>(list, index, value);
 
 fn free<T>(list : *mut [T]) => Mem.free<T>(list);

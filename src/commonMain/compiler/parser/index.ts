@@ -89,6 +89,7 @@ import {
   isGenericTypeParameter,
   normalizeTypeName,
   splitTopLevel,
+  satisfiesRefinementConstraints,
   substituteTypeParameters,
   validateCallArguments,
   validateConstraints,
@@ -1128,6 +1129,31 @@ export function getArrayLikeInfo(
   }
 
   if (node.kind !== "variable") {
+    const inferredType = inferExpressionType(node, parser);
+    if (!inferredType.ok) {
+      return undefined;
+    }
+
+    const inferredArrayType = parseArrayType(inferredType.value);
+    if (inferredArrayType) {
+      return {
+        elementType: inferredArrayType.elementType,
+        length: inferredArrayType.length,
+        mutable: false,
+        isSlice: false,
+      };
+    }
+
+    const inferredSliceType = parseSliceReferenceType(inferredType.value);
+    if (inferredSliceType) {
+      return {
+        elementType: inferredSliceType.elementType,
+        length: undefined,
+        mutable: inferredSliceType.mutable,
+        isSlice: true,
+      };
+    }
+
     return undefined;
   }
 
@@ -1176,6 +1202,142 @@ export function getSliceLengthFromInitializer(
 
   const arrayInfo = getArrayLikeInfo(initializer, parser);
   return arrayInfo?.length;
+}
+
+export function createArrayLengthConstraintExpr(
+  arrayNode: ASTNode,
+  arrayInfo: ArrayLikeInfo,
+): ASTNode {
+  if (arrayInfo.length !== undefined) {
+    return {
+      kind: "number",
+      value: String(arrayInfo.length),
+    };
+  }
+
+  return {
+    kind: "field-access",
+    object: arrayNode,
+    fieldName: "length",
+  } as FieldAccessNode;
+}
+
+export function createRequiredArrayIndexRefinement(
+  arrayNode: ASTNode,
+  arrayInfo: ArrayLikeInfo,
+): RefinementType {
+  const valueExpr = createArrayLengthConstraintExpr(arrayNode, arrayInfo);
+  return {
+    baseType: "USize",
+    constraints: [
+      {
+        operator: "<",
+        value: valueExpr.kind === "number" ? valueExpr.value : "?",
+        valueExpr,
+        baseType: "USize",
+      },
+    ],
+  };
+}
+
+export function hasProvenArrayIndexRefinement(
+  parser: Parser,
+  indexName: string,
+  requiredRefinement: RefinementType,
+): boolean {
+  const variableInfo = parser.variables.get(indexName);
+  if (
+    variableInfo?.refinement &&
+    satisfiesRefinementConstraints(
+      variableInfo.refinement,
+      requiredRefinement,
+      parser,
+    )
+  ) {
+    return true;
+  }
+
+  const provenRefinement = parser.provenConstraints.get(indexName);
+  return provenRefinement
+    ? satisfiesRefinementConstraints(
+        provenRefinement,
+        requiredRefinement,
+        parser,
+      )
+    : false;
+}
+
+export function validateArrayIndexAccess(
+  parser: Parser,
+  arrayNode: ASTNode,
+  indexNode: ASTNode,
+  arrayInfo: ArrayLikeInfo | undefined,
+): Result<void, string> {
+  if (indexNode.kind === "number") {
+    const bareNum = splitNumberLiteral(indexNode.value).numericPart;
+    if (bareNum.startsWith("-")) {
+      return err("Array index must be non-negative");
+    }
+    if (bareNum.includes(".")) {
+      return err("Array index must be an integer type, got float");
+    }
+    if (!arrayInfo || arrayInfo.length === undefined) {
+      return err(
+        "Array index must be proven in bounds; literal index requires known compile-time length",
+      );
+    }
+
+    const idxVal = parseFloat(bareNum);
+    if (idxVal >= arrayInfo.length) {
+      return err(
+        "Array index " +
+          idxVal +
+          " is out of bounds for array of length " +
+          arrayInfo.length +
+          ")",
+      );
+    }
+
+    return ok(undefined);
+  }
+
+  if (indexNode.kind !== "variable") {
+    return err("Array index must be a USize value proven to be < array.length");
+  }
+
+  const indexInfo = getVariable(parser, indexNode.name);
+  if (!indexInfo.ok) {
+    return indexInfo;
+  }
+
+  const normalizedType = normalizeTypeName(parser, indexInfo.value.type, true);
+  if (!normalizedType.ok) {
+    return normalizedType;
+  }
+
+  if (normalizedType.value !== "USize") {
+    return err("Array index must be a USize, got " + indexInfo.value.type);
+  }
+
+  if (!arrayInfo) {
+    return err("Cannot index non-array value");
+  }
+
+  const requiredRefinement = createRequiredArrayIndexRefinement(
+    arrayNode,
+    arrayInfo,
+  );
+  if (
+    !hasProvenArrayIndexRefinement(parser, indexNode.name, requiredRefinement)
+  ) {
+    return err(
+      "Array index variable '" +
+        indexNode.name +
+        "' must be proven to satisfy USize < array.length",
+    );
+  }
+
+  return ok(undefined);
 }
 
 export function inferZeroArgCallableReturnType(
@@ -1532,22 +1694,15 @@ export function tryParseAssignment(
 
         if (arrayInfo) {
           const elemType = arrayInfo.elementType;
-          const arrayLength = arrayInfo.length;
 
-          // Check write bounds against known length.
-          const idxNode = lvalue.index;
-          if (idxNode.kind === "number" && arrayLength !== undefined) {
-            const bareNum = splitNumberLiteral(idxNode.value).numericPart;
-            const idxVal = parseFloat(bareNum);
-            if (idxVal >= arrayLength) {
-              return err(
-                "Array write index " +
-                  idxVal +
-                  " is out of bounds for array of length " +
-                  arrayLength +
-                  ")",
-              );
-            }
+          const indexValidation = validateArrayIndexAccess(
+            parser,
+            lvalue.array,
+            lvalue.index,
+            arrayInfo,
+          );
+          if (!indexValidation.ok) {
+            return indexValidation;
           }
 
           // Check assigned value type matches element type
@@ -4780,54 +4935,15 @@ export function parsePostfix(parser: Parser): Result<ASTNode, string> {
 
       const indexNode = indexResult.value;
 
-      // Validate index type and bounds
-      // Get declared array length for bounds checking
       const currentArrayInfo = getArrayLikeInfo(node, parser);
-      const arrLength = currentArrayInfo?.length;
-
-      // Check index type (must be an integer type, not F32/F64/Bool/array)
-      if (indexNode.kind === "variable") {
-        const idxVarInfo = parser.variables.get(indexNode.name);
-        if (idxVarInfo) {
-          if (
-            idxVarInfo.type.startsWith("F") ||
-            idxVarInfo.type === "Bool" ||
-            idxVarInfo.type.startsWith("[")
-          ) {
-            return err(
-              "Array index must be an integer type, got " + idxVarInfo.type,
-            );
-          }
-          // Dynamic variable index for read - array bounds cannot be proven safe.
-          // (write side is handled in tryParseAssignment)
-          if (arrLength !== undefined) {
-            return err(
-              "Array index must be a constant proven in bounds; dynamic index not allowed",
-            );
-          }
-        }
-      } else if (indexNode.kind === "number") {
-        const numStr = indexNode.value;
-        // Check for negative index
-        if (numStr.startsWith("-")) {
-          return err("Array index must be non-negative");
-        }
-        // Extract numeric value (strip type suffix)
-        const bareNum = splitNumberLiteral(numStr).numericPart;
-        const idxVal = parseFloat(bareNum);
-        // Check for floating point index
-        if (bareNum.includes(".")) {
-          return err("Array index must be an integer type, got float");
-        }
-        if (arrLength !== undefined && idxVal >= arrLength) {
-          return err(
-            "Array index " +
-              idxVal +
-              " is out of bounds for array of length " +
-              arrLength +
-              ")",
-          );
-        }
+      const indexValidation = validateArrayIndexAccess(
+        parser,
+        node,
+        indexNode,
+        currentArrayInfo,
+      );
+      if (!indexValidation.ok) {
+        return indexValidation;
       }
 
       node = {

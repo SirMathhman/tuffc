@@ -41,4 +41,10 @@ module.exports = {
       list.__tuffArrayListLength = Number(length);
     }
   },
+  getAt: (list, index) => Number(list?.data?.[Number(index)] ?? 0),
+  setAt: (list, index, value) => {
+    if (Array.isArray(list?.data)) {
+      list.data[Number(index)] = value;
+    }
+  },
 };
