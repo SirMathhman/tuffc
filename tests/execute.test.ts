@@ -699,6 +699,75 @@ test("this: missing member assignment is error", () => {
   expectError(executeTuff("let mut x : I32 = 1; this.y = 2; x"));
 });
 
+// object tests
+test("object: singleton method updates shared mutable state", () => {
+  expectValue(
+    executeTuff(
+      "object MySingleton { let mut counter : I32 = 0; fn add() => counter += 1; } MySingleton.add(); MySingleton.add(); MySingleton.counter",
+    ),
+    2,
+  );
+});
+
+test("object: methods can use this.member", () => {
+  expectValue(
+    executeTuff(
+      "object Counter { let mut value : I32 = 1; fn addTwice() => { this.value = this.value + 1; this.value = this.value + 1; } } Counter.addTwice(); Counter.value",
+    ),
+    3,
+  );
+});
+
+test("object: external mutation is allowed for mutable members", () => {
+  expectValue(
+    executeTuff(
+      "object Box { let mut value : I32 = 1; } Box.value = 9; Box.value",
+    ),
+    9,
+  );
+});
+
+test("object: singleton identity is stable", () => {
+  expectValue(
+    executeTuff(
+      "object Box { let value : I32 = 1; } if &Box == &Box { 1 } else { 0 }",
+    ),
+    1,
+  );
+});
+
+test("object: declaration is allowed inside functions", () => {
+  expectValue(
+    executeTuff(
+      "fn readLocal() => { object Local { let value : I32 = 7; } Local.value } readLocal()",
+    ),
+    7,
+  );
+});
+
+test("object: missing member read is error", () => {
+  expectError(executeTuff("object Box { let value : I32 = 1; } Box.missing"));
+});
+
+test("object: missing member assignment is error", () => {
+  expectError(
+    executeTuff(
+      "object Box { let mut value : I32 = 1; } Box.missing = 2; Box.value",
+    ),
+  );
+});
+
+test("function inference: omitted return type is inferred for expression bodies", () => {
+  expectValue(executeTuff("fn addOne(x : I32) => x + 1; addOne(4)"), 5);
+});
+
+test("function inference: omitted return type infers Void for assignment bodies", () => {
+  expectValue(
+    executeTuff("let mut x : I32 = 0; fn bump() => x += 1; bump(); x"),
+    1,
+  );
+});
+
 // Comparison operator tests
 test("less than: true case", () => {
   expectValue(executeTuff("1 < 2"), 1);
@@ -1565,8 +1634,8 @@ test("function: missing arrow (=>) is error", () => {
   expectError(executeTuff("fn add(a : I32) : I32 { a }"));
 });
 
-test("function: missing return type is error", () => {
-  expectError(executeTuff("fn add(a : I32) => a;"));
+test("function: missing return type is inferred", () => {
+  expectValue(executeTuff("fn add(a : I32) => a; add(5)"), 5);
 });
 
 test("function: invalid return type is error", () => {
