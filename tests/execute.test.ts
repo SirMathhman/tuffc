@@ -642,6 +642,63 @@ test("union: initializer not assignable to any arm is error", () => {
   expectError(executeTuff("let x : I32 | Bool = 'a'; x"));
 });
 
+// this keyword tests
+test("this: top-level exposes let bindings", () => {
+  expectValue(executeTuff("let x : I32 = 10; this.x"), 10);
+});
+
+test("this: top-level exposes functions", () => {
+  expectValue(executeTuff("fn get() : I32 => 100; this.get()"), 100);
+});
+
+test("this: constructor-like function can return this", () => {
+  expectValue(
+    executeTuff(
+      "struct Point { x : I32; } fn Point(x : I32) : Point => this; Point(100).x",
+    ),
+    100,
+  );
+});
+
+test("this: function scope exposes parameters", () => {
+  expectValue(executeTuff("fn getX(x : I32) : I32 => this.x; getX(42)"), 42);
+});
+
+test("this: function scope can reach global via this.this", () => {
+  expectValue(
+    executeTuff("let x : I32 = 7; fn get() : I32 => this.this.x; get()"),
+    7,
+  );
+});
+
+test("this: assignment updates top-level binding", () => {
+  expectValue(executeTuff("let mut x : I32 = 1; this.x = 9; x"), 9);
+});
+
+test("this: assignment updates parameter binding", () => {
+  expectValue(
+    executeTuff(
+      "fn setLocal(x : I32) : I32 => { this.x = 12; this.x } setLocal(5)",
+    ),
+    12,
+  );
+});
+
+test("this: repeated this.this chains are allowed", () => {
+  expectValue(
+    executeTuff("let x : I32 = 11; fn get() : I32 => this.this.this.x; get()"),
+    11,
+  );
+});
+
+test("this: missing member read is error", () => {
+  expectError(executeTuff("let x : I32 = 1; this.y"));
+});
+
+test("this: missing member assignment is error", () => {
+  expectError(executeTuff("let mut x : I32 = 1; this.y = 2; x"));
+});
+
 // Comparison operator tests
 test("less than: true case", () => {
   expectValue(executeTuff("1 < 2"), 1);

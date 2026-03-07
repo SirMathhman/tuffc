@@ -64,6 +64,7 @@ interface KeywordToken {
   value:
     | "let"
     | "type"
+    | "this"
     | "is"
     | "mut"
     | "if"
@@ -213,6 +214,11 @@ interface ReadNode {
 interface VariableNode {
   kind: "variable";
   name: string;
+}
+
+interface ThisNode {
+  kind: "this";
+  scope: ScopeFrame;
 }
 
 interface BinaryNode {
@@ -380,6 +386,12 @@ interface FunctionCallNode {
   arguments: ASTNode[];
 }
 
+interface CallNode {
+  kind: "call";
+  callee: ASTNode;
+  arguments: ASTNode[];
+}
+
 interface StructField {
   name: string;
   type: string;
@@ -447,6 +459,7 @@ type ASTNode =
   | NumberNode
   | ReadNode
   | VariableNode
+  | ThisNode
   | BinaryNode
   | ComparisonNode
   | IsNode
@@ -471,6 +484,7 @@ type ASTNode =
   | FunctionNode
   | ClosureNode
   | FunctionCallNode
+  | CallNode
   | TypeAliasNode
   | StructNode
   | StructInstantiationNode
@@ -502,6 +516,18 @@ interface VariableInfo {
   initValue?: string; // The literal value (for constants), if available
   pointsTo?: string; // For pointers: the name of the variable it points to
   sliceLength?: number; // For slices: known compile-time length
+}
+
+interface ScopeBinding {
+  kind: "variable" | "function";
+  type: string;
+  mutable: boolean;
+  assignable: boolean;
+}
+
+interface ScopeFrame {
+  members: Map<string, ScopeBinding>;
+  parent: ScopeFrame | undefined;
 }
 
 interface TypeNarrowingInfo {
@@ -816,6 +842,313 @@ function getUnionTypeArms(typeStr: string): string[] {
 
 function joinUnionTypeArms(arms: string[]): string {
   return arms.join(" | ");
+}
+
+function formatFunctionType(
+  parameterTypes: string[],
+  returnType: string,
+): string {
+  return "(" + parameterTypes.join(", ") + ") => " + returnType;
+}
+
+function createScopeFrame(parent: ScopeFrame | undefined): ScopeFrame {
+  return {
+    members: new Map<string, ScopeBinding>(),
+    parent,
+  };
+}
+
+function registerScopeVariable(
+  parser: Parser,
+  name: string,
+  type: string,
+  mutable: boolean,
+  assignable: boolean,
+): void {
+  parser.currentScope.members.set(name, {
+    kind: "variable",
+    type,
+    mutable,
+    assignable,
+  });
+}
+
+function registerScopeFunction(
+  parser: Parser,
+  name: string,
+  parameters: FunctionParameter[],
+  returnType: string,
+): void {
+  parser.currentScope.members.set(name, {
+    kind: "function",
+    type: formatFunctionType(
+      parameters.map((parameter) => parameter.type),
+      returnType,
+    ),
+    mutable: false,
+    assignable: false,
+  });
+}
+
+function resolveThisScopeNode(node: ASTNode): ScopeFrame | undefined {
+  if (node.kind === "this") {
+    return node.scope;
+  }
+
+  if (node.kind === "field-access" && node.fieldName === "this") {
+    const parentScope = resolveThisScopeNode(node.object);
+    if (!parentScope) {
+      return undefined;
+    }
+    return parentScope.parent ?? parentScope;
+  }
+
+  return undefined;
+}
+
+interface ResolvedThisMemberAccess {
+  ownerScope: ScopeFrame;
+  memberName: string;
+  binding: ScopeBinding;
+}
+
+function resolveThisMemberAccess(
+  node: ASTNode,
+): Result<ResolvedThisMemberAccess | undefined, string> {
+  if (node.kind !== "field-access" || node.fieldName === "this") {
+    return ok(undefined);
+  }
+
+  const ownerScope = resolveThisScopeNode(node.object);
+  if (!ownerScope) {
+    return ok(undefined);
+  }
+
+  const binding = ownerScope.members.get(node.fieldName);
+  if (!binding) {
+    return err("Unknown member '" + node.fieldName + "' on this");
+  }
+
+  return ok({
+    ownerScope,
+    memberName: node.fieldName,
+    binding,
+  });
+}
+
+function validateThisScopeAgainstStruct(
+  parser: Parser,
+  scope: ScopeFrame,
+  expectedType: string,
+): Result<undefined, string> {
+  const structInfo = parser.structs.get(expectedType);
+  if (!structInfo) {
+    return err(
+      "Type mismatch: expression has type 'this' but variable declared as '" +
+        expectedType +
+        "'",
+    );
+  }
+
+  for (const field of structInfo.fields) {
+    const binding = scope.members.get(field.name);
+    if (!binding) {
+      return err(
+        "Type mismatch: this is missing required member '" +
+          field.name +
+          "' for type '" +
+          expectedType +
+          "'",
+      );
+    }
+
+    if (!isTypeAssignable(field.type, binding.type)) {
+      return err(
+        "Type mismatch: this member '" +
+          field.name +
+          "' has type '" +
+          binding.type +
+          "' but expected '" +
+          field.type +
+          "'",
+      );
+    }
+  }
+
+  return ok(undefined);
+}
+
+function getCallableInfo(
+  parser: Parser,
+  callee: ASTNode,
+): Result<ParsedFunctionType, string> {
+  if (callee.kind === "variable") {
+    const fnInfo = parser.functions.get(callee.name);
+    if (fnInfo) {
+      return ok({
+        parameterTypes: fnInfo.parameters.map((parameter) => parameter.type),
+        returnType: fnInfo.returnType,
+      });
+    }
+
+    const variableInfo = getVariable(parser, callee.name);
+    if (!variableInfo.ok) {
+      return err("Function or closure '" + callee.name + "' is not defined");
+    }
+
+    const parsedFunctionType = parseFunctionTypeString(variableInfo.value.type);
+    return parsedFunctionType
+      ? ok(parsedFunctionType)
+      : err("Variable '" + callee.name + "' is not callable");
+  }
+
+  const resolvedThisMember = resolveThisMemberAccess(callee);
+  if (!resolvedThisMember.ok) {
+    return resolvedThisMember;
+  }
+  if (resolvedThisMember.value) {
+    const parsedFunctionType = parseFunctionTypeString(
+      resolvedThisMember.value.binding.type,
+    );
+    return parsedFunctionType
+      ? ok(parsedFunctionType)
+      : err(
+          "Member '" +
+            resolvedThisMember.value.memberName +
+            "' is not callable",
+        );
+  }
+
+  const calleeType = inferExpressionType(callee, parser);
+  if (!calleeType.ok) {
+    return calleeType;
+  }
+
+  const parsedFunctionType = parseFunctionTypeString(calleeType.value);
+  return parsedFunctionType
+    ? ok(parsedFunctionType)
+    : err("Expression is not callable");
+}
+
+function parseCallArguments(parser: Parser): Result<ASTNode[], string> {
+  const args: ASTNode[] = [];
+
+  while (current(parser).type !== "RPAREN") {
+    const argResult = parseExpression(parser);
+    if (!argResult.ok) {
+      return argResult;
+    }
+    args.push(argResult.value);
+
+    const nextTok = current(parser);
+    if (nextTok.type === "RPAREN") {
+      break;
+    }
+    if (nextTok.type !== "COMMA") {
+      return err("Expected ',' or ')' in function call argument list");
+    }
+    advance(parser);
+  }
+
+  if (current(parser).type !== "RPAREN") {
+    return err("Expected ')' after function arguments");
+  }
+  advance(parser);
+
+  return ok(args);
+}
+
+function validateCallArguments(
+  parser: Parser,
+  callableDescription: string,
+  args: ASTNode[],
+  parameterTypes: string[],
+): Result<ASTNode[], string> {
+  if (args.length !== parameterTypes.length) {
+    return err(
+      "Callable '" +
+        callableDescription +
+        "' expects " +
+        parameterTypes.length +
+        " arguments, got " +
+        args.length,
+    );
+  }
+
+  const coercedArgs: ASTNode[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const argNode = args[i];
+    const expectedType = parameterTypes[i];
+    if (!argNode || !expectedType) {
+      continue;
+    }
+
+    const coercedArg = coerceExpressionToType(parser, argNode, expectedType);
+    if (!coercedArg.ok) {
+      return err(
+        "Argument " +
+          (i + 1) +
+          " for '" +
+          callableDescription +
+          "' is invalid: " +
+          coercedArg.error,
+      );
+    }
+
+    coercedArgs.push(coercedArg.value);
+  }
+
+  return ok(coercedArgs);
+}
+
+function parseValidatedCallArguments(
+  parser: Parser,
+  callee: ASTNode,
+  callableDescription: string,
+): Result<ASTNode[], string> {
+  const argsResult = parseCallArguments(parser);
+  if (!argsResult.ok) {
+    return argsResult;
+  }
+
+  const callableInfo = getCallableInfo(parser, callee);
+  if (!callableInfo.ok) {
+    return callableInfo;
+  }
+
+  return validateCallArguments(
+    parser,
+    callableDescription,
+    argsResult.value,
+    callableInfo.value.parameterTypes,
+  );
+}
+
+function enterCallableScope(
+  parser: Parser,
+  parentScope: ScopeFrame,
+  parameters: FunctionParameter[],
+): void {
+  parser.currentScope = createScopeFrame(parentScope);
+  for (const param of parameters) {
+    parser.variables.set(param.name, { type: param.type, mutable: false });
+    registerScopeVariable(parser, param.name, param.type, false, true);
+  }
+}
+
+function validateArgumentNodes(
+  args: ASTNode[],
+  // eslint-disable-next-line no-unused-vars
+  validator: (arg: ASTNode) => Result<undefined, string>,
+): Result<undefined, string> {
+  for (const arg of args) {
+    const validation = validator(arg);
+    if (!validation.ok) {
+      return validation;
+    }
+  }
+
+  return ok(undefined);
 }
 
 function arePointerTypesCompatible(
@@ -1182,6 +1515,16 @@ function coerceExpressionToType(
   expression: ASTNode,
   expectedType: string,
 ): Result<ASTNode, string> {
+  const thisScope = resolveThisScopeNode(expression);
+  if (thisScope) {
+    const thisValidation = validateThisScopeAgainstStruct(
+      parser,
+      thisScope,
+      expectedType,
+    );
+    return thisValidation.ok ? ok(expression) : thisValidation;
+  }
+
   const actualTypeResult = inferExpressionType(expression, parser);
   if (!actualTypeResult.ok) {
     return actualTypeResult;
@@ -1574,6 +1917,10 @@ function inferExpressionType(
     return ok(varResult.value.type);
   }
 
+  if (expr.kind === "this") {
+    return err("Cannot infer type of expression");
+  }
+
   if (expr.kind === "struct-instantiation") {
     return ok(expr.structName);
   }
@@ -1609,6 +1956,14 @@ function inferExpressionType(
   }
 
   if (expr.kind === "field-access") {
+    const resolvedThisMember = resolveThisMemberAccess(expr);
+    if (!resolvedThisMember.ok) {
+      return resolvedThisMember;
+    }
+    if (resolvedThisMember.value) {
+      return ok(resolvedThisMember.value.binding.type);
+    }
+
     if (expr.fieldName === "length") {
       return ok("USize");
     }
@@ -1715,6 +2070,11 @@ function inferExpressionType(
     }
 
     return err("Cannot infer return type of callable '" + expr.name + "'");
+  }
+
+  if (expr.kind === "call") {
+    const callableInfo = getCallableInfo(parser, expr.callee);
+    return callableInfo.ok ? ok(callableInfo.value.returnType) : callableInfo;
   }
 
   if (expr.kind === "array-access") {
@@ -2645,6 +3005,7 @@ function tokenize(input: string): Result<Token[], string> {
       if (
         ident === "let" ||
         ident === "type" ||
+        ident === "this" ||
         ident === "is" ||
         ident === "mut" ||
         ident === "if" ||
@@ -2750,6 +3111,8 @@ interface Parser {
   structNames: Set<string>;
   inLoop: boolean;
   currentFunctionReturnType: string | undefined;
+  globalScope: ScopeFrame;
+  currentScope: ScopeFrame;
   // Type narrowing: track variables with proven constraints (from control flow guards)
   provenConstraints: Map<string, RefinementType>; // e.g., "x" -> I32 > 100
 }
@@ -3125,6 +3488,33 @@ function parseAssignmentValue(
 
   return ok(assignValue);
 }
+
+function validateThisAssignmentTarget(
+  lvalue: FieldAccessNode,
+): Result<undefined, string> {
+  const resolvedThisMember = resolveThisMemberAccess(lvalue);
+  if (!resolvedThisMember.ok) {
+    return resolvedThisMember;
+  }
+
+  if (!resolvedThisMember.value) {
+    return ok(undefined);
+  }
+
+  if (resolvedThisMember.value.binding.kind !== "variable") {
+    return err(
+      "Member '" + resolvedThisMember.value.memberName + "' is not assignable",
+    );
+  }
+
+  if (!resolvedThisMember.value.binding.assignable) {
+    return err(
+      "Member '" + resolvedThisMember.value.memberName + "' is read-only",
+    );
+  }
+
+  return ok(undefined);
+}
 function handleAssignmentStatement(
   assignResult: Result<ASTNode | undefined, string>,
   parser: Parser,
@@ -3356,6 +3746,11 @@ function tryParseAssignment(
           value: valueResult.value,
         } as ArrayAssignNode);
       } else {
+        const thisAssignmentValidation = validateThisAssignmentTarget(lvalue);
+        if (!thisAssignmentValidation.ok) {
+          return thisAssignmentValidation;
+        }
+
         return ok({
           kind: "field-assign",
           object: lvalue.object,
@@ -3421,6 +3816,15 @@ function tryParseAssignment(
     const valueResult = parseExpression(parser);
     if (!valueResult.ok) {
       return valueResult;
+    }
+
+    const thisAssignmentValidation = validateThisAssignmentTarget({
+      kind: "field-access",
+      object: objNode,
+      fieldName,
+    });
+    if (!thisAssignmentValidation.ok) {
+      return thisAssignmentValidation;
     }
 
     return ok({
@@ -3582,7 +3986,11 @@ function parseStatementInBlock(
     statements.push(returnStmt.value);
     consumeOptionalSemicolon(parser);
     return ok(true);
-  } else if (stmtTok.type === "IDENTIFIER") {
+  } else if (
+    stmtTok.type === "IDENTIFIER" ||
+    (stmtTok.type === "KEYWORD" && stmtTok.value === "this") ||
+    (stmtTok.type === "OPERATOR" && stmtTok.value === "*")
+  ) {
     // Could be assignment - use helper
     const assignResult = tryParseAssignment(parser);
     const assignmentHandled = handleAssignmentStatement(
@@ -3611,10 +4019,6 @@ function parseStatementInBlock(
 
     parser.pos = savedPos;
     return ok(false);
-  } else if (stmtTok.type === "OPERATOR" && stmtTok.value === "*") {
-    // Could be dereference assignment: *y = value
-    const assignResult = tryParseAssignment(parser);
-    return handleAssignmentStatement(assignResult, parser, statements);
   } else {
     return ok(false);
   }
@@ -4735,6 +5139,7 @@ function parseLetStatement(parser: Parser): Result<ASTNode, string> {
   }
 
   parser.variables.set(name, varInfo);
+  registerScopeVariable(parser, name, typeStr, mutable, mutable);
 
   // Record proven constraints for this variable
   // If initialized with a literal that satisfies the constraints, the constraint is proven
@@ -4763,6 +5168,7 @@ function isReservedKeyword(name: string): boolean {
   return (
     name === "let" ||
     name === "type" ||
+    name === "this" ||
     name === "is" ||
     name === "mut" ||
     name === "if" ||
@@ -4916,17 +5322,15 @@ function parseFunctionStatement(parser: Parser): Result<ASTNode, string> {
     parameters,
     returnType,
   });
+  registerScopeFunction(parser, functionName, parameters, returnType);
 
   // Parse function body
   // Save current variable scope and loop context
   const savedVariables = new Map(parser.variables);
+  const savedScope = parser.currentScope;
   const savedInLoop = parser.inLoop;
   parser.inLoop = false;
-
-  // Add parameters to scope
-  for (const param of parameters) {
-    parser.variables.set(param.name, { type: param.type, mutable: false });
-  }
+  enterCallableScope(parser, savedScope, parameters);
 
   const bodyTok = current(parser);
   let body: ASTNode;
@@ -4939,6 +5343,7 @@ function parseFunctionStatement(parser: Parser): Result<ASTNode, string> {
     const blockResult = parseStatementBlock(parser, statements);
     if (!blockResult.ok) {
       parser.variables = savedVariables;
+      parser.currentScope = savedScope;
       parser.inLoop = savedInLoop;
       return blockResult;
     }
@@ -4954,6 +5359,7 @@ function parseFunctionStatement(parser: Parser): Result<ASTNode, string> {
       } else {
         if (current(parser).type !== "RBRACE") {
           parser.variables = savedVariables;
+          parser.currentScope = savedScope;
           parser.inLoop = savedInLoop;
           return exprResult;
         }
@@ -4964,6 +5370,7 @@ function parseFunctionStatement(parser: Parser): Result<ASTNode, string> {
         statements.length > 0 ? statements[statements.length - 1] : undefined;
       if (!lastStmt || lastStmt.kind !== "return") {
         parser.variables = savedVariables;
+        parser.currentScope = savedScope;
         parser.inLoop = savedInLoop;
         return err(
           "Function body must end with an expression when return type is not Void",
@@ -4974,6 +5381,7 @@ function parseFunctionStatement(parser: Parser): Result<ASTNode, string> {
     // Expect closing brace
     if (current(parser).type !== "RBRACE") {
       parser.variables = savedVariables;
+      parser.currentScope = savedScope;
       parser.inLoop = savedInLoop;
       return err("Expected '}'");
     }
@@ -4989,6 +5397,7 @@ function parseFunctionStatement(parser: Parser): Result<ASTNode, string> {
     const assignResult = tryParseAssignment(parser);
     if (!assignResult.ok) {
       parser.variables = savedVariables;
+      parser.currentScope = savedScope;
       parser.inLoop = savedInLoop;
       return assignResult;
     }
@@ -4996,6 +5405,7 @@ function parseFunctionStatement(parser: Parser): Result<ASTNode, string> {
     if (assignResult.value !== undefined) {
       if (returnType !== "Void") {
         parser.variables = savedVariables;
+        parser.currentScope = savedScope;
         parser.inLoop = savedInLoop;
         return err(
           "Function with non-Void return type must have an expression body",
@@ -5005,6 +5415,7 @@ function parseFunctionStatement(parser: Parser): Result<ASTNode, string> {
     } else {
       if (returnType === "Void") {
         parser.variables = savedVariables;
+        parser.currentScope = savedScope;
         parser.inLoop = savedInLoop;
         return err(
           "Function with Void return type cannot have an expression body",
@@ -5014,6 +5425,7 @@ function parseFunctionStatement(parser: Parser): Result<ASTNode, string> {
       const exprResult = parseExpression(parser);
       if (!exprResult.ok) {
         parser.variables = savedVariables;
+        parser.currentScope = savedScope;
         parser.inLoop = savedInLoop;
         return exprResult;
       }
@@ -5025,6 +5437,7 @@ function parseFunctionStatement(parser: Parser): Result<ASTNode, string> {
     const semiTok = current(parser);
     if (semiTok.type !== "SEMICOLON") {
       parser.variables = savedVariables;
+      parser.currentScope = savedScope;
       parser.inLoop = savedInLoop;
       return err("Expected ';' after function arrow expression");
     }
@@ -5034,6 +5447,7 @@ function parseFunctionStatement(parser: Parser): Result<ASTNode, string> {
   const coercedBody = coerceFunctionBodyToReturnType(parser, body, returnType);
   if (!coercedBody.ok) {
     parser.variables = savedVariables;
+    parser.currentScope = savedScope;
     parser.inLoop = savedInLoop;
     return coercedBody;
   }
@@ -5041,6 +5455,7 @@ function parseFunctionStatement(parser: Parser): Result<ASTNode, string> {
 
   // Restore variable scope and loop context
   parser.variables = savedVariables;
+  parser.currentScope = savedScope;
   parser.inLoop = savedInLoop;
 
   return ok({
@@ -5079,14 +5494,14 @@ function tryParseClosureLiteral(
   advance(parser);
 
   const savedVariables = new Map(parser.variables);
-  for (const param of parameters) {
-    parser.variables.set(param.name, { type: param.type, mutable: false });
-  }
+  const savedScope = parser.currentScope;
+  enterCallableScope(parser, savedScope, parameters);
 
   let body: ASTNode;
   const assignResult = tryParseAssignment(parser);
   if (!assignResult.ok) {
     parser.variables = savedVariables;
+    parser.currentScope = savedScope;
     return assignResult;
   }
 
@@ -5096,6 +5511,7 @@ function tryParseClosureLiteral(
     const exprResult = parseExpression(parser);
     if (!exprResult.ok) {
       parser.variables = savedVariables;
+      parser.currentScope = savedScope;
       return exprResult;
     }
     body = exprResult.value;
@@ -5112,6 +5528,7 @@ function tryParseClosureLiteral(
       : "Void";
 
   parser.variables = savedVariables;
+  parser.currentScope = savedScope;
   return ok({
     kind: "closure",
     parameters,
@@ -5572,15 +5989,38 @@ function parsePostfix(parser: Parser): Result<ASTNode, string> {
 
   // Handle postfix operations: field access (dot) and array access (brackets)
   while (true) {
-    if (current(parser).type === "DOT") {
+    if (current(parser).type === "LPAREN") {
+      advance(parser); // consume LPAREN
+
+      const validatedArgs = parseValidatedCallArguments(
+        parser,
+        node,
+        "call expression",
+      );
+      if (!validatedArgs.ok) {
+        return validatedArgs;
+      }
+
+      node = {
+        kind: "call",
+        callee: node,
+        arguments: validatedArgs.value,
+      } as CallNode;
+    } else if (current(parser).type === "DOT") {
       advance(parser); // consume DOT
+      const fieldToken = current(parser);
 
       // Expect identifier for field name or property
-      if (current(parser).type !== "IDENTIFIER") {
+      if (
+        fieldToken.type !== "IDENTIFIER" &&
+        !(fieldToken.type === "KEYWORD" && fieldToken.value === "this")
+      ) {
         return err("Expected field name or property after '.'");
       }
-      const fieldNameTok = current(parser) as IdentifierToken;
-      const fieldName = fieldNameTok.value;
+      const fieldName =
+        fieldToken.type === "IDENTIFIER"
+          ? (fieldToken as IdentifierToken).value
+          : "this";
       advance(parser);
 
       // Check if this is the 'length' property
@@ -5800,6 +6240,11 @@ function parsePrimary(parser: Parser): Result<ASTNode, string> {
     return ok({ kind: "string", value: tok.value });
   }
 
+  if (tok.type === "KEYWORD" && tok.value === "this") {
+    advance(parser);
+    return ok({ kind: "this", scope: parser.currentScope });
+  }
+
   if (tok.type === "IDENTIFIER" && tok.value === "read") {
     advance(parser);
     const lt = current(parser);
@@ -5852,98 +6297,23 @@ function parsePrimary(parser: Parser): Result<ASTNode, string> {
       // Function call
       advance(parser); // consume LPAREN
 
-      // Parse arguments
-      const args: ASTNode[] = [];
-
-      while (current(parser).type !== "RPAREN") {
-        const argResult = parseExpression(parser);
-        if (!argResult.ok) {
-          return argResult;
-        }
-        args.push(argResult.value);
-
-        // Check for comma or RPAREN
-        const argNextTok = current(parser);
-        if (argNextTok.type === "RPAREN") {
-          break;
-        } else if (argNextTok.type === "COMMA") {
-          advance(parser);
-        } else {
-          return err("Expected ',' or ')' in function call argument list");
-        }
-      }
-
-      // Expect RPAREN
-      if (current(parser).type !== "RPAREN") {
-        return err("Expected ')' after function arguments");
-      }
-      advance(parser);
-
-      const fnInfo = parser.functions.get(name);
-      let expectedArgCount: number | undefined;
-      let expectedParamTypes: string[] | undefined;
-
-      if (fnInfo) {
-        expectedArgCount = fnInfo.parameters.length;
-        expectedParamTypes = fnInfo.parameters.map((param) => param.type);
-      } else {
-        const varResult = getVariable(parser, name);
-        if (!varResult.ok) {
-          return err("Function or closure '" + name + "' is not defined");
-        }
-        const parsedFunctionType = parseFunctionTypeString(
-          varResult.value.type,
-        );
-        if (!parsedFunctionType) {
-          return err("Variable '" + name + "' is not callable");
-        }
-        expectedArgCount = parsedFunctionType.parameterTypes.length;
-        expectedParamTypes = parsedFunctionType.parameterTypes;
-      }
-
-      // Check argument count
-      if (args.length !== expectedArgCount) {
-        return err(
-          "Callable '" +
-            name +
-            "' expects " +
-            expectedArgCount +
-            " arguments, got " +
-            args.length,
-        );
-      }
-
-      for (let i = 0; i < args.length; i++) {
-        const expectedType = expectedParamTypes?.[i];
-        const argNode = args[i];
-        if (!expectedType || !argNode) {
-          continue;
-        }
-
-        const coercedArg = coerceExpressionToType(
-          parser,
-          argNode,
-          expectedType,
-        );
-        if (!coercedArg.ok) {
-          return err(
-            "Argument " +
-              (i + 1) +
-              " for '" +
-              name +
-              "' is invalid: " +
-              coercedArg.error,
-          );
-        }
-
-        args[i] = coercedArg.value;
+      const validatedArgs = parseValidatedCallArguments(
+        parser,
+        {
+          kind: "variable",
+          name,
+        },
+        name,
+      );
+      if (!validatedArgs.ok) {
+        return validatedArgs;
       }
 
       // Return a function call node
       return ok({
         kind: "function-call",
         name,
-        arguments: args,
+        arguments: validatedArgs.value,
       });
     }
 
@@ -6272,6 +6642,45 @@ function generateStatementCode(statements: ASTNode[]): string {
     .join(" ");
 }
 
+function codegenThisScopeObject(scope: ScopeFrame): string {
+  const parentExpression = scope.parent
+    ? codegenThisScopeObject(scope.parent)
+    : undefined;
+
+  const memberDefinitions: string[] = [];
+  for (const [name, binding] of scope.members) {
+    if (binding.kind === "function") {
+      memberDefinitions.push("get " + name + "() { return " + name + "; }");
+      continue;
+    }
+
+    memberDefinitions.push("get " + name + "() { return " + name + "; }");
+    if (binding.assignable) {
+      memberDefinitions.push(
+        "set " + name + "(_tuffValue) { " + name + " = _tuffValue; }",
+      );
+    }
+  }
+
+  memberDefinitions.push(
+    scope.parent
+      ? "get this() { return _tuffParent; }"
+      : "get this() { return _tuffThis; }",
+  );
+
+  const parentInit = scope.parent
+    ? " const _tuffParent = " + parentExpression + ";"
+    : "";
+
+  return (
+    "(() => {" +
+    parentInit +
+    " const _tuffThis = { " +
+    memberDefinitions.join(", ") +
+    " }; return _tuffThis; })()"
+  );
+}
+
 function codegenAST(node: ASTNode): string {
   if (node.kind === "number") {
     // Extract numeric part, stripping type annotation
@@ -6329,6 +6738,10 @@ function codegenAST(node: ASTNode): string {
       node.name +
       "; return _tuffValue && _tuffValue.__tuffUnion ? _tuffValue.value : _tuffValue; })()"
     );
+  }
+
+  if (node.kind === "this") {
+    return codegenThisScopeObject(node.scope);
   }
 
   if (node.kind === "let") {
@@ -6603,6 +7016,12 @@ function codegenAST(node: ASTNode): string {
     return node.name + "(" + argList + ")";
   }
 
+  if (node.kind === "call") {
+    const callee = codegenAST(node.callee);
+    const argList = node.arguments.map((arg) => codegenAST(arg)).join(", ");
+    return callee + "(" + argList + ")";
+  }
+
   if (node.kind === "struct") {
     // Struct declarations don't generate code themselves
     // They are just type definitions
@@ -6734,7 +7153,11 @@ function validateAST(node: ASTNode): Result<undefined, string> {
     return validateAST(node.expression);
   }
 
-  if (node.kind === "read" || node.kind === "variable") {
+  if (
+    node.kind === "read" ||
+    node.kind === "variable" ||
+    node.kind === "this"
+  ) {
     return ok(undefined);
   }
 
@@ -6860,14 +7283,16 @@ function validateAST(node: ASTNode): Result<undefined, string> {
   }
 
   if (node.kind === "function-call") {
-    // Validate function call arguments
-    for (const arg of node.arguments) {
-      const argValidation = validateAST(arg);
-      if (!argValidation.ok) {
-        return argValidation;
-      }
+    return validateArgumentNodes(node.arguments, validateAST);
+  }
+
+  if (node.kind === "call") {
+    const calleeValidation = validateAST(node.callee);
+    if (!calleeValidation.ok) {
+      return calleeValidation;
     }
-    return ok(undefined);
+
+    return validateArgumentNodes(node.arguments, validateAST);
   }
 
   if (node.kind === "struct") {
@@ -7235,6 +7660,10 @@ function getNodeStructType(
     const field = structInfo?.fields.find((f) => f.name === node.fieldName);
     return field && structs.has(field.type) ? field.type : undefined;
   }
+  if (node.kind === "call") {
+    const calleeType = getNodeStructType(node.callee, structs, typeEnv);
+    return calleeType && structs.has(calleeType) ? calleeType : undefined;
+  }
   return undefined;
 }
 
@@ -7287,6 +7716,16 @@ function validateStructSemantics(
   }
 
   if (node.kind === "field-access" || node.kind === "field-assign") {
+    const resolvedThisMember = resolveThisMemberAccess(node);
+    if (!resolvedThisMember.ok) {
+      return resolvedThisMember;
+    }
+    if (resolvedThisMember.value) {
+      return node.kind === "field-access"
+        ? ok(undefined)
+        : validateStructSemantics(node.value, structs, typeEnv);
+    }
+
     const objResult = validateStructSemantics(node.object, structs, typeEnv);
     if (!objResult.ok) return objResult;
 
@@ -7389,11 +7828,21 @@ function validateStructSemantics(
   }
 
   if (node.kind === "function-call") {
-    for (const arg of node.arguments) {
-      const r = validateStructSemantics(arg, structs, typeEnv);
-      if (!r.ok) return r;
-    }
-    return ok(undefined);
+    return validateArgumentNodes(node.arguments, (arg: ASTNode) =>
+      validateStructSemantics(arg, structs, typeEnv),
+    );
+  }
+
+  if (node.kind === "call") {
+    const calleeValidation = validateStructSemantics(
+      node.callee,
+      structs,
+      typeEnv,
+    );
+    if (!calleeValidation.ok) return calleeValidation;
+    return validateArgumentNodes(node.arguments, (arg: ASTNode) =>
+      validateStructSemantics(arg, structs, typeEnv),
+    );
   }
 
   if (node.kind === "type-alias") {
@@ -7436,6 +7885,10 @@ function validateStructSemantics(
 
   if (node.kind === "union-wrap") {
     return validateStructSemantics(node.expression, structs, typeEnv);
+  }
+
+  if (node.kind === "this") {
+    return ok(undefined);
   }
 
   if (node.kind === "struct-instantiation") {
@@ -7483,6 +7936,7 @@ export function compile(input: string): Result<string, string> {
   if (DEBUG) console.log("[PARSE START]");
   const tokens = tokenResult.value;
   if (DEBUG) console.log("[TOKENS] " + tokens.length + " tokens");
+  const globalScope = createScopeFrame(undefined);
   const parser: Parser = {
     tokens,
     pos: 0,
@@ -7494,6 +7948,8 @@ export function compile(input: string): Result<string, string> {
     structNames: new Set(),
     inLoop: false,
     currentFunctionReturnType: undefined,
+    globalScope,
+    currentScope: globalScope,
     provenConstraints: new Map(),
   };
 
