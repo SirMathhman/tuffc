@@ -45,7 +45,9 @@ function expectProjectModuleMap(
 ): Map<string, ModuleCompilationInfo> {
   const moduleMap = createProjectModuleMap(files);
   expect(isOk(moduleMap)).toBe(true);
-  return moduleMap.ok ? moduleMap.value : new Map<string, ModuleCompilationInfo>();
+  return moduleMap.ok
+    ? moduleMap.value
+    : new Map<string, ModuleCompilationInfo>();
 }
 
 function expectParsedProjectModule(
