@@ -7,6 +7,22 @@ import { type Result, isOk, isErr } from "../src/types";
 
 type ProjectFiles = Record<string, string>;
 
+interface ProjectFixture {
+  entryModule: string;
+  tuffFiles: ProjectFiles;
+  foreignFiles?: ProjectFiles;
+}
+
+function mergeProjectFiles(
+  tuffFiles: ProjectFiles,
+  foreignFiles: ProjectFiles = {},
+): ProjectFiles {
+  return {
+    ...tuffFiles,
+    ...foreignFiles,
+  };
+}
+
 /**
  * Executes compiled code by creating a new Function from the compiled
  * string and running it. The result of the function is coerced to a number.
@@ -87,11 +103,18 @@ function executeCompiledCode(
   compiled: string,
   readValue?: () => number,
 ): Result<number, string> {
-  const fn = readValue
-    ? new Function("readValue", compiled)
-    : new Function(compiled);
-  const result = readValue ? fn(readValue) : fn();
-  return { ok: true, value: Number(result) };
+  try {
+    const fn = readValue
+      ? new Function("readValue", compiled)
+      : new Function(compiled);
+    const result = readValue ? fn(readValue) : fn();
+    return { ok: true, value: Number(result) };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 export function executeTuff(input: string): Result<[string, number], string> {
@@ -195,6 +218,15 @@ export function executeTuffProject(
   }
 
   return executeResult;
+}
+
+export function executeTuffProjectFixture(
+  fixture: ProjectFixture,
+): Result<[string, number], string> {
+  return executeTuffProject(
+    fixture.entryModule,
+    mergeProjectFiles(fixture.tuffFiles, fixture.foreignFiles),
+  );
 }
 
 test("execute with empty string returns 0", () => {
@@ -952,6 +984,22 @@ test("modules: circular dependencies are rejected", () => {
       "A.tuff": "B.value()",
       "B.tuff": "A.value()",
     }),
+  );
+});
+
+test.skip("extern harness: supports foreign-backed project fixtures", () => {
+  expectValue(
+    executeTuffProjectFixture({
+      entryModule: "Main",
+      tuffFiles: {
+        "Main.tuff": "Math.max(3, 4)",
+        "Math.tuff": "extern Math; extern fn max(a : I32, b : I32) : I32;",
+      },
+      foreignFiles: {
+        "Math.js": "module.exports = { max: (a, b) => (a > b ? a : b) };",
+      },
+    }),
+    4,
   );
 });
 
