@@ -208,6 +208,7 @@ export function tokenize(input: string): Result<Token[], string> {
         last.type === "RPAREN" ||
         last.type === "RBRACKET" ||
         last.type === "IDENTIFIER" ||
+        (last.type === "KEYWORD" && last.value === "this") ||
         last.type === "BOOL" ||
         last.type === "GT")
     );

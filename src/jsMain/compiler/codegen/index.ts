@@ -95,7 +95,7 @@ export function codegenFunctionLikeDeclaration(
   body: ASTNode,
 ): string {
   const paramList = parameters
-    .map((parameter) => String(parameter.name))
+    .map((parameter) => codegenVariableName(String(parameter.name)))
     .join(", ");
   const bodyCode = codegenFunctionLikeBody(body, returnType);
   const functionName = name ? " " + name : "";
@@ -170,6 +170,10 @@ export function extractNumberValue(numericLiteral: string): string {
   }
 
   return result || "0";
+}
+
+export function codegenVariableName(name: string): string {
+  return name === "this" ? "_tuffThisParam" : name;
 }
 
 export function generateStatementCode(statements: ASTNode[]): string {
@@ -273,7 +277,7 @@ export function codegenAST(node: ASTNode): string {
     if (node.runtimeCheck) {
       const expression =
         node.expression.kind === "variable"
-          ? node.expression.name
+          ? codegenVariableName(node.expression.name)
           : codegenAST(node.expression);
       return (
         "(() => { const _tuffValue = " +
@@ -308,7 +312,7 @@ export function codegenAST(node: ASTNode): string {
   if (node.kind === "variable") {
     return (
       "(() => { const _tuffValue = " +
-      node.name +
+      codegenVariableName(node.name) +
       "; return _tuffValue && _tuffValue.__tuffUnion ? _tuffValue.value : _tuffValue; })()"
     );
   }
@@ -319,7 +323,7 @@ export function codegenAST(node: ASTNode): string {
 
   if (node.kind === "let") {
     const init = codegenAST(node.initializer);
-    return "let " + node.name + " = " + init;
+    return "let " + codegenVariableName(node.name) + " = " + init;
   }
 
   if (node.kind === "destructure") {
@@ -328,14 +332,14 @@ export function codegenAST(node: ASTNode): string {
 
   if (node.kind === "assign") {
     const value = codegenAST(node.value);
-    return node.name + " = " + value;
+    return codegenVariableName(node.name) + " = " + value;
   }
 
   if (node.kind === "deref-assign") {
     const value = codegenAST(node.value);
     // If we know which variable the pointer points to, assign to that variable
     if (node.targetVar) {
-      return node.targetVar + " = " + value;
+      return codegenVariableName(node.targetVar) + " = " + value;
     }
     // Otherwise, fall back to assigning through the pointer
     const target = codegenAST(node.target);

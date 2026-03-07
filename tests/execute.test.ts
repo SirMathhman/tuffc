@@ -2232,6 +2232,68 @@ test("function: function called with wrong number of arguments is error", () => 
   expectError(executeTuff("fn add(a : I32, b : I32) : I32 => a + b; add(5)"));
 });
 
+test("method syntax: literal receiver desugars to this-parameter function", () => {
+  expectValue(
+    executeTuff(
+      "fn add(this : I32, arg : I32) : I32 => this + arg; 100.add(50)",
+    ),
+    150,
+  );
+});
+
+test("method syntax: expression receiver works", () => {
+  expectValue(
+    executeTuff(
+      "fn add(this : I32, arg : I32) : I32 => this + arg; (40 + 2).add(8)",
+    ),
+    50,
+  );
+});
+
+test("method syntax: chained extension calls work", () => {
+  expectValue(
+    executeTuff(
+      "fn add(this : I32, arg : I32) : I32 => this + arg; 100.add(50).add(25)",
+    ),
+    175,
+  );
+});
+
+test("method syntax: struct receiver works", () => {
+  expectValue(
+    executeTuff(
+      "struct Point { x : I32; y : I32; } fn sum(this : Point) : I32 => this.x + this.y; Point { x : 3, y : 4 }.sum()",
+    ),
+    7,
+  );
+});
+
+test("method syntax: first parameter must be named this", () => {
+  expectError(
+    executeTuff(
+      "fn add(value : I32, arg : I32) : I32 => value + arg; 100.add(50)",
+    ),
+  );
+});
+
+test("method syntax: missing matching extension is error", () => {
+  expectError(executeTuff("100.missing(50)"));
+});
+
+test("method syntax: arity mismatch on extension call is error", () => {
+  expectError(
+    executeTuff("fn add(this : I32, arg : I32) : I32 => this + arg; 100.add()"),
+  );
+});
+
+test("method syntax: callable field and extension candidate is ambiguous", () => {
+  expectError(
+    executeTuff(
+      "struct Box { apply : (I32) => I32; } fn apply(this : Box, value : I32) : I32 => value + 1; let box : Box = Box { apply : (value : I32) => value * 2 }; box.apply(10)",
+    ),
+  );
+});
+
 test("function: function called with no parentheses is error", () => {
   expectError(executeTuff("fn getNumber() : I32 => 42; getNumber"));
 });

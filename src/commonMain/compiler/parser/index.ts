@@ -313,14 +313,22 @@ export function parseFunctionParameters(
 
   while (current(parser).type !== "RPAREN") {
     const paramNameTok = current(parser);
-    if (paramNameTok.type !== "IDENTIFIER") {
+    if (
+      paramNameTok.type !== "IDENTIFIER" &&
+      !(paramNameTok.type === "KEYWORD" && paramNameTok.value === "this")
+    ) {
       return err("Expected parameter name");
     }
 
     const paramName = paramNameTok.value;
-    const paramKeywordCheck = checkReservedKeyword(paramName, "parameter name");
-    if (!paramKeywordCheck.ok) {
-      return paramKeywordCheck;
+    if (paramName !== "this") {
+      const paramKeywordCheck = checkReservedKeyword(
+        paramName,
+        "parameter name",
+      );
+      if (!paramKeywordCheck.ok) {
+        return paramKeywordCheck;
+      }
     }
     if (parameterNames.has(paramName)) {
       return err("Duplicate parameter name '" + paramName + "'");
@@ -366,7 +374,10 @@ export function canStartClosureParameterList(parser: Parser): boolean {
     return true;
   }
 
-  if (current(parser).type !== "IDENTIFIER") {
+  if (
+    current(parser).type !== "IDENTIFIER" &&
+    !(current(parser).type === "KEYWORD" && current(parser).value === "this")
+  ) {
     return false;
   }
 
@@ -4085,22 +4096,12 @@ export function parsePostfix(parser: Parser): Result<ASTNode, string> {
   // Handle postfix operations: field access (dot) and array access (brackets)
   while (true) {
     if (current(parser).type === "LPAREN") {
-      advance(parser); // consume LPAREN
-
-      const validatedArgs = parseValidatedCallArguments(
-        parser,
-        node,
-        "call expression",
-      );
-      if (!validatedArgs.ok) {
-        return validatedArgs;
+      const callResult = parsePostfixCall(parser, node);
+      if (!callResult.ok) {
+        return callResult;
       }
 
-      node = {
-        kind: "call",
-        callee: node,
-        arguments: validatedArgs.value,
-      } as CallNode;
+      node = callResult.value;
     } else if (current(parser).type === "DOT") {
       advance(parser); // consume DOT
       const fieldToken = current(parser);
@@ -4312,6 +4313,160 @@ export function parsePostfix(parser: Parser): Result<ASTNode, string> {
   return ok(node);
 }
 
+export function tryGetDirectMemberCallableInfo(
+  parser: Parser,
+  callee: FieldAccessNode,
+): Result<ParsedFunctionType | undefined, string> {
+  const resolvedThisMember = resolveThisMemberAccess(callee);
+  if (!resolvedThisMember.ok) {
+    return resolvedThisMember;
+  }
+
+  if (resolvedThisMember.value) {
+    return ok(parseFunctionTypeString(resolvedThisMember.value.binding.type));
+  }
+
+  const memberType = inferContainerMemberType(
+    parser,
+    callee.object,
+    callee.fieldName,
+  );
+  if (!memberType.ok) {
+    return ok(undefined);
+  }
+
+  return ok(parseFunctionTypeString(memberType.value));
+}
+
+export function tryGetExtensionMethodCallableInfo(
+  parser: Parser,
+  callee: FieldAccessNode,
+): Result<ParsedFunctionType | undefined, string> {
+  if (callee.fieldName === "length") {
+    return ok(undefined);
+  }
+
+  const fnInfo = parser.functions.get(callee.fieldName);
+  if (!fnInfo) {
+    return ok(undefined);
+  }
+
+  const receiverParam = fnInfo.parameters[0];
+  if (!receiverParam || receiverParam.name !== "this") {
+    return ok(undefined);
+  }
+
+  const receiverType = inferExpressionType(callee.object, parser);
+  if (!receiverType.ok) {
+    return receiverType;
+  }
+
+  if (!areTypesCompatible(receiverParam.type, receiverType.value)) {
+    return ok(undefined);
+  }
+
+  return ok({
+    parameterTypes: fnInfo.parameters
+      .slice(1)
+      .map((parameter) => parameter.type),
+    returnType: fnInfo.returnType,
+  });
+}
+
+export function parsePostfixCall(
+  parser: Parser,
+  callee: ASTNode,
+): Result<ASTNode, string> {
+  advance(parser); // consume LPAREN
+
+  const argsResult = parseCallArguments(parser);
+  if (!argsResult.ok) {
+    return argsResult;
+  }
+
+  if (callee.kind === "field-access") {
+    const memberCallable = tryGetDirectMemberCallableInfo(parser, callee);
+    if (!memberCallable.ok) {
+      return memberCallable;
+    }
+
+    const extensionCallable = tryGetExtensionMethodCallableInfo(parser, callee);
+    if (!extensionCallable.ok) {
+      return extensionCallable;
+    }
+
+    if (memberCallable.value && extensionCallable.value) {
+      return err(
+        "Ambiguous method call '" +
+          callee.fieldName +
+          "': both a callable member and a this-parameter function match",
+      );
+    }
+
+    if (extensionCallable.value) {
+      const validatedArgs = validateCallArguments(
+        parser,
+        callee.fieldName,
+        argsResult.value,
+        extensionCallable.value.parameterTypes,
+      );
+      if (!validatedArgs.ok) {
+        return validatedArgs;
+      }
+
+      return ok({
+        kind: "function-call",
+        name: callee.fieldName,
+        arguments: [callee.object, ...validatedArgs.value],
+      });
+    }
+
+    if (memberCallable.value) {
+      return createValidatedCallNode(
+        parser,
+        callee,
+        argsResult.value,
+        memberCallable.value.parameterTypes,
+      );
+    }
+  }
+
+  const callableInfo = getCallableInfo(parser, callee);
+  if (!callableInfo.ok) {
+    return callableInfo;
+  }
+
+  return createValidatedCallNode(
+    parser,
+    callee,
+    argsResult.value,
+    callableInfo.value.parameterTypes,
+  );
+}
+
+export function createValidatedCallNode(
+  parser: Parser,
+  callee: ASTNode,
+  args: ASTNode[],
+  parameterTypes: string[],
+): Result<ASTNode, string> {
+  const validatedArgs = validateCallArguments(
+    parser,
+    "call expression",
+    args,
+    parameterTypes,
+  );
+  if (!validatedArgs.ok) {
+    return validatedArgs;
+  }
+
+  return ok({
+    kind: "call",
+    callee,
+    arguments: validatedArgs.value,
+  } as CallNode);
+}
+
 export function parsePrimary(parser: Parser): Result<ASTNode, string> {
   const tok = current(parser);
 
@@ -4336,6 +4491,11 @@ export function parsePrimary(parser: Parser): Result<ASTNode, string> {
   }
 
   if (tok.type === "KEYWORD" && tok.value === "this") {
+    if (parser.variables.has("this")) {
+      advance(parser);
+      return ok({ kind: "variable", name: "this" });
+    }
+
     advance(parser);
     return ok({ kind: "this", scope: parser.currentScope });
   }
