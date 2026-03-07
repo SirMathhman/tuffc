@@ -39,6 +39,11 @@ interface CharToken {
   value: string;
 }
 
+interface StringToken {
+  type: "STRING";
+  value: number[];
+}
+
 interface ComparisonToken {
   type: "COMPARISON";
   value: "<" | ">" | "<=" | ">=" | "==" | "!=";
@@ -162,6 +167,7 @@ type Token =
   | KeywordToken
   | BoolToken
   | CharToken
+  | StringToken
   | ComparisonToken
   | LogicalToken
   | LParenToken
@@ -243,6 +249,11 @@ interface BooleanNode {
 interface CharNode {
   kind: "char";
   value: string;
+}
+
+interface StringNode {
+  kind: "string";
+  value: number[];
 }
 
 interface LetNode {
@@ -415,6 +426,7 @@ type ASTNode =
   | UnaryOpNode
   | BooleanNode
   | CharNode
+  | StringNode
   | LetNode
   | AssignNode
   | FieldAssignNode
@@ -533,6 +545,11 @@ interface TokenizedCharLiteral {
   nextPos: number;
 }
 
+interface TokenizedStringLiteral {
+  token: StringToken;
+  nextPos: number;
+}
+
 function readEscapedCharValue(
   char: string | undefined,
 ): Result<number, string> {
@@ -545,6 +562,7 @@ function readEscapedCharValue(
   if (char === "r") return ok(13);
   if (char === "0") return ok(0);
   if (char === "'") return ok(39);
+  if (char === '"') return ok(34);
   if (char === "\\") return ok(92);
 
   return err("Invalid escape sequence '\\" + char + "' in character literal");
@@ -594,6 +612,43 @@ function tokenizeCharLiteral(
     token: { type: "CHAR", value: String(charValue) },
     nextPos: nextPos + 1,
   });
+}
+
+function tokenizeStringLiteral(
+  input: string,
+  startPos: number,
+): Result<TokenizedStringLiteral, string> {
+  const codePoints: number[] = [];
+  let pos = startPos + 1;
+
+  while (pos < input.length) {
+    const char = input[pos];
+    if (char === '"') {
+      return ok({
+        token: { type: "STRING", value: codePoints },
+        nextPos: pos + 1,
+      });
+    }
+
+    if (char === "\\") {
+      const escapedValue = readEscapedCharValue(input[pos + 1]);
+      if (!escapedValue.ok) {
+        return escapedValue;
+      }
+      codePoints.push(escapedValue.value);
+      pos += 2;
+      continue;
+    }
+
+    const codePoint = input.codePointAt(pos);
+    if (codePoint === undefined) {
+      return err("Unterminated string literal");
+    }
+    codePoints.push(codePoint);
+    pos += codePoint > 65535 ? 2 : 1;
+  }
+
+  return err("Unterminated string literal");
 }
 
 function validateType(typeStr: string): Result<undefined, string> {
@@ -936,6 +991,10 @@ function inferExpressionType(
 
   if (expr.kind === "char") {
     return ok("Char");
+  }
+
+  if (expr.kind === "string") {
+    return ok("*[Char]");
   }
 
   if (expr.kind === "variable") {
@@ -1741,6 +1800,16 @@ function tokenize(input: string): Result<Token[], string> {
       continue;
     }
 
+    if (char === '"') {
+      const stringTokenResult = tokenizeStringLiteral(input, pos);
+      if (!stringTokenResult.ok) {
+        return stringTokenResult;
+      }
+      tokens.push(stringTokenResult.value.token);
+      pos = stringTokenResult.value.nextPos;
+      continue;
+    }
+
     // Operators (only if following a number or closing paren)
     if (char === "+" && isOperatorContext()) {
       // Check for +=
@@ -2124,6 +2193,15 @@ function getArrayLikeInfo(
   node: ASTNode,
   parser: Parser,
 ): ArrayLikeInfo | undefined {
+  if (node.kind === "string") {
+    return {
+      elementType: "Char",
+      length: node.value.length,
+      mutable: false,
+      isSlice: true,
+    };
+  }
+
   if (node.kind === "array-slice") {
     const arrayInfo = getArrayLikeInfo(node.array, parser);
     if (!arrayInfo) {
@@ -2179,6 +2257,10 @@ function getSliceLengthFromInitializer(
     (initializer.operator === "&" || initializer.operator === "&mut")
   ) {
     return getSliceLengthFromInitializer(initializer.operand, parser);
+  }
+
+  if (initializer.kind === "string") {
+    return initializer.value.length;
   }
 
   const arrayInfo = getArrayLikeInfo(initializer, parser);
@@ -3090,6 +3172,8 @@ function createBlockBodyWithOptionalExpression(
   if (
     resultTok.type === "NUMBER" ||
     resultTok.type === "BOOL" ||
+    resultTok.type === "CHAR" ||
+    resultTok.type === "STRING" ||
     resultTok.type === "LPAREN" ||
     (resultTok.type === "KEYWORD" &&
       (resultTok.value === "if" || resultTok.value === "match"))
@@ -4867,6 +4951,11 @@ function parsePrimary(parser: Parser): Result<ASTNode, string> {
     return ok({ kind: "char", value: tok.value });
   }
 
+  if (tok.type === "STRING") {
+    advance(parser);
+    return ok({ kind: "string", value: tok.value });
+  }
+
   if (tok.type === "IDENTIFIER" && tok.value === "read") {
     advance(parser);
     const lt = current(parser);
@@ -5383,6 +5472,10 @@ function codegenAST(node: ASTNode): string {
     return extractNumberValue(node.value);
   }
 
+  if (node.kind === "string") {
+    return "[" + node.value.join(", ") + "]";
+  }
+
   if (node.kind === "char") {
     return node.value;
   }
@@ -5784,6 +5877,10 @@ function validateAST(node: ASTNode): Result<undefined, string> {
   }
 
   if (node.kind === "char") {
+    return ok(undefined);
+  }
+
+  if (node.kind === "string") {
     return ok(undefined);
   }
 

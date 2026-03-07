@@ -413,6 +413,60 @@ test("char: unterminated literal is error", () => {
   expectError(executeTuff("'a"));
 });
 
+// String literal as immutable Char slice tests
+test("string slice: double-quoted literal has length", () => {
+  expectValue(executeTuff('let s : *[Char] = "hello"; s.length'), 5);
+});
+
+test("string slice: empty literal has zero length", () => {
+  expectValue(executeTuff('let s : *[Char] = ""; s.length'), 0);
+});
+
+test("string slice: escaped characters count toward length", () => {
+  expectValue(executeTuff('let s : *[Char] = "a\\n\\t"; s.length'), 3);
+});
+
+test("string slice: indexing returns Char code point", () => {
+  expectValue(executeTuff('let c : Char = "hi"[0USize]; c'), 104);
+});
+
+test("string slice: function accepts literal Char slice", () => {
+  expectValue(
+    executeTuff('fn len(s : *[Char]) : USize => s.length; len("hi")'),
+    2,
+  );
+});
+
+test("string slice: immutable slice assignment is error", () => {
+  expectError(executeTuff("let s : *[Char] = \"hi\"; s[0USize] = 'H';"));
+});
+
+test("string slice: Char literal assigned to Char slice is error", () => {
+  expectError(executeTuff("let s : *[Char] = 'a'; s.length"));
+});
+
+test("string slice: string literal assigned to Char is error", () => {
+  expectError(executeTuff('let c : Char = "a"; c'));
+});
+
+test("string slice: unterminated double-quoted literal is error", () => {
+  expectError(executeTuff('let s : *[Char] = "hello; s.length'));
+});
+
+test("string slice: invalid escape sequence is error", () => {
+  expectError(executeTuff('let s : *[Char] = "\\x"; s.length'));
+});
+
+test("string slice: dynamic index is rejected", () => {
+  expectError(
+    executeTuff('let s : *[Char] = "hi"; let i : USize = 0USize; s[i]'),
+  );
+});
+
+test("string slice: out-of-bounds constant index is error", () => {
+  expectError(executeTuff('let s : *[Char] = "hi"; s[2USize]'));
+});
+
 // Comparison operator tests
 test("less than: true case", () => {
   expectValue(executeTuff("1 < 2"), 1);
