@@ -2,7 +2,13 @@
 
 import { err, ok } from "../../types";
 import type { Result } from "../../types";
-import type { ModuleCompilationInfo, Token } from "./ast";
+import type {
+  ExternalModuleProviderInfo,
+  ModuleCompilationInfo,
+  ProjectCompileInput,
+  ProjectTarget,
+  Token,
+} from "./ast";
 import { createObjectTypeName, createScopeFrame } from "./scope";
 import { isDigit, isLetter, tokenize } from "./tokenization";
 
@@ -30,13 +36,24 @@ export function isIdentifierName(text: string): boolean {
   return true;
 }
 
-export function inferModuleNameFromPath(path: string): Result<string, string> {
+export function inferModuleNameFromPath(
+  path: string,
+  allowedExtensions: string[] = [".tuff"],
+): Result<string, string> {
   const normalizedPath = normalizeProjectFilePath(path);
-  if (!normalizedPath.endsWith(".tuff")) {
-    return err("Project file path must end with '.tuff': " + path);
+  const matchedExtension = allowedExtensions.find((extension) =>
+    normalizedPath.endsWith(extension),
+  );
+  if (!matchedExtension) {
+    return err(
+      "Project file path must end with one of " +
+        allowedExtensions.map((extension) => "'" + extension + "'").join(", ") +
+        ": " +
+        path,
+    );
   }
 
-  const withoutExtension = normalizedPath.slice(0, -5);
+  const withoutExtension = normalizedPath.slice(0, -matchedExtension.length);
   const segments = withoutExtension
     .split("/")
     .map((segment) => segment.trim())
@@ -77,6 +94,14 @@ export function createModuleResultName(runtimeName: string): string {
   return runtimeName + "__result";
 }
 
+export function createExternalProviderRuntimeName(moduleName: string): string {
+  return createModuleRuntimeName(moduleName) + "__external";
+}
+
+export function getProjectTarget(input: ProjectCompileInput): ProjectTarget {
+  return input.target ?? "js";
+}
+
 export function normalizeProjectFiles(
   files: Map<string, string> | Record<string, string>,
 ): Map<string, string> {
@@ -100,8 +125,9 @@ export function normalizeProjectFiles(
 export function createProjectModuleInfo(
   path: string,
   source: string,
+  target: ProjectTarget = "js",
 ): Result<ModuleCompilationInfo, string> {
-  const moduleName = inferModuleNameFromPath(path);
+  const moduleName = inferModuleNameFromPath(path, [".tuff"]);
   if (!moduleName.ok) {
     return moduleName;
   }
@@ -114,6 +140,27 @@ export function createProjectModuleInfo(
     source,
     scope: createScopeFrame(undefined, "object"),
     dependencies: [],
+    target,
+    implementationOrigin: "tuff",
+  });
+}
+
+export function createExternalProviderInfo(
+  path: string,
+  source: string,
+  target: ProjectTarget = "js",
+): Result<ExternalModuleProviderInfo, string> {
+  const moduleName = inferModuleNameFromPath(path, [".js"]);
+  if (!moduleName.ok) {
+    return moduleName;
+  }
+
+  return ok({
+    path,
+    moduleName: moduleName.value,
+    target,
+    source,
+    runtimeName: createExternalProviderRuntimeName(moduleName.value),
   });
 }
 
@@ -271,27 +318,71 @@ export function collectProjectModuleReferencesFromTokens(
 
 export function buildProjectModuleRegistry(
   files: Map<string, string> | Record<string, string>,
+  target: ProjectTarget = "js",
 ): Result<Map<string, ModuleCompilationInfo>, string> {
   const normalizedFiles = normalizeProjectFiles(files);
   const modules = new Map<string, ModuleCompilationInfo>();
+  const externalProviders = new Map<string, ExternalModuleProviderInfo>();
 
   for (const [path, source] of normalizedFiles) {
-    const moduleInfo = createProjectModuleInfo(path, source);
-    if (!moduleInfo.ok) {
-      return moduleInfo;
+    if (path.endsWith(".tuff")) {
+      const moduleInfo = createProjectModuleInfo(path, source, target);
+      if (!moduleInfo.ok) {
+        return moduleInfo;
+      }
+
+      if (modules.has(moduleInfo.value.moduleName)) {
+        return err(
+          "Duplicate inferred module name '" +
+            moduleInfo.value.moduleName +
+            "' from path '" +
+            path +
+            "'",
+        );
+      }
+
+      modules.set(moduleInfo.value.moduleName, moduleInfo.value);
+      continue;
     }
 
-    if (modules.has(moduleInfo.value.moduleName)) {
+    if (path.endsWith(".js")) {
+      const providerInfo = createExternalProviderInfo(path, source, target);
+      if (!providerInfo.ok) {
+        return providerInfo;
+      }
+
+      if (externalProviders.has(providerInfo.value.moduleName)) {
+        return err(
+          "Duplicate external provider for module '" +
+            providerInfo.value.moduleName +
+            "' from path '" +
+            path +
+            "'",
+        );
+      }
+
+      externalProviders.set(providerInfo.value.moduleName, providerInfo.value);
+      continue;
+    }
+
+    return err(
+      "Project file path must end with one of '.tuff', '.js': " + path,
+    );
+  }
+
+  for (const providerInfo of externalProviders.values()) {
+    const moduleInfo = modules.get(providerInfo.moduleName);
+    if (!moduleInfo) {
       return err(
-        "Duplicate inferred module name '" +
-          moduleInfo.value.moduleName +
-          "' from path '" +
-          path +
+        "External provider '" +
+          providerInfo.path +
+          "' requires a matching '.tuff' contract file for module '" +
+          providerInfo.moduleName +
           "'",
       );
     }
 
-    modules.set(moduleInfo.value.moduleName, moduleInfo.value);
+    moduleInfo.externalProvider = providerInfo;
   }
 
   return ok(modules);
@@ -358,10 +449,12 @@ export function collectReachableModules(
 }
 
 export function getProjectCompilationOrder(
-  entryModule: string,
-  files: Map<string, string> | Record<string, string>,
+  input: ProjectCompileInput,
 ): Result<ModuleCompilationInfo[], string> {
-  const moduleRegistry = buildProjectModuleRegistry(files);
+  const moduleRegistry = buildProjectModuleRegistry(
+    input.files,
+    getProjectTarget(input),
+  );
   if (!moduleRegistry.ok) {
     return moduleRegistry;
   }
@@ -373,7 +466,10 @@ export function getProjectCompilationOrder(
     return dependencyResult;
   }
 
-  const reachable = collectReachableModules(entryModule, moduleRegistry.value);
+  const reachable = collectReachableModules(
+    input.entryModule,
+    moduleRegistry.value,
+  );
   if (!reachable.ok) {
     return reachable;
   }

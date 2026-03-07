@@ -391,6 +391,9 @@ export interface ModuleNode {
   type: string;
   body: ASTNode;
   scope: ScopeFrame;
+  implementationOrigin?: ModuleImplementationOrigin;
+  externalProviderVar?: string;
+  externBindings?: ExternBindingInfo[];
 }
 
 export interface ClosureNode {
@@ -607,6 +610,24 @@ export interface DestructuredBinding {
 export interface ProjectCompileInput {
   entryModule: string;
   files: Map<string, string> | Record<string, string>;
+  target?: ProjectTarget;
+}
+
+export type ProjectTarget = "js";
+
+export type ModuleImplementationOrigin = "tuff" | "external" | "hybrid";
+
+export interface ExternalModuleProviderInfo {
+  path: string;
+  moduleName: string;
+  target: ProjectTarget;
+  source: string;
+  runtimeName: string;
+}
+
+export interface ExternBindingInfo {
+  name: string;
+  kind: "function" | "value";
 }
 
 export interface ModuleCompilationInfo {
@@ -617,7 +638,11 @@ export interface ModuleCompilationInfo {
   source: string;
   scope: ScopeFrame;
   dependencies: string[];
+  target: ProjectTarget;
+  implementationOrigin: ModuleImplementationOrigin;
+  externalProvider?: ExternalModuleProviderInfo;
   externModuleName?: string;
+  externBindings?: ExternBindingInfo[];
   ast?: ASTNode;
 }
 

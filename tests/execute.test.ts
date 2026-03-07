@@ -9,7 +9,7 @@ import type {
   ModuleCompilationInfo,
   ModuleNode,
 } from "../src/compiler/core/ast";
-import { createProjectModuleInfo } from "../src/compiler/core/project";
+import { buildProjectModuleRegistry } from "../src/compiler/core/project";
 
 type ProjectFiles = Record<string, string>;
 
@@ -32,28 +32,7 @@ function mergeProjectFiles(
 function createProjectModuleMap(
   files: ProjectFiles,
 ): Result<Map<string, ModuleCompilationInfo>, string> {
-  const modules = new Map<string, ModuleCompilationInfo>();
-
-  for (const [path, source] of Object.entries(files)) {
-    const moduleInfo = createProjectModuleInfo(path, source);
-    if (isErr(moduleInfo)) {
-      return moduleInfo;
-    }
-
-    if (modules.has(moduleInfo.value.moduleName)) {
-      return {
-        ok: false,
-        error:
-          "Duplicate inferred module name '" +
-          moduleInfo.value.moduleName +
-          "'",
-      };
-    }
-
-    modules.set(moduleInfo.value.moduleName, moduleInfo.value);
-  }
-
-  return { ok: true, value: modules };
+  return buildProjectModuleRegistry(files);
 }
 
 function parseProjectModules(
@@ -1050,7 +1029,7 @@ test("modules: circular dependencies are rejected", () => {
   );
 });
 
-test.skip("extern harness: supports foreign-backed project fixtures", () => {
+test("extern: companion js provider supports function call through module object", () => {
   expectValue(
     executeTuffProjectFixture({
       entryModule: "Main",
@@ -1066,11 +1045,112 @@ test.skip("extern harness: supports foreign-backed project fixtures", () => {
   );
 });
 
+test("extern: destructuring works for foreign-backed module members", () => {
+  expectValue(
+    executeTuffProjectFixture({
+      entryModule: "Main",
+      tuffFiles: {
+        "Main.tuff": "let { max } = Math; max(3, 4)",
+        "Math.tuff": "extern Math; extern fn max(a : I32, b : I32) : I32;",
+      },
+      foreignFiles: {
+        "Math.js": "module.exports = { max: (a, b) => (a > b ? a : b) };",
+      },
+    }),
+    4,
+  );
+});
+
+test("extern: extern let exposes js values", () => {
+  expectValue(
+    executeTuffProjectFixture({
+      entryModule: "Main",
+      tuffFiles: {
+        "Main.tuff": "Math.answer",
+        "Math.tuff": "extern Math; extern let answer : I32;",
+      },
+      foreignFiles: {
+        "Math.js": "module.exports = { answer: 42 };",
+      },
+    }),
+    42,
+  );
+});
+
+test("extern: missing companion js provider is a compile error", () => {
+  const compileResult = compileProjectCode("Main", {
+    "Main.tuff": "Math.max(3, 4)",
+    "Math.tuff": "extern Math; extern fn max(a : I32, b : I32) : I32;",
+  });
+
+  expect(isErr(compileResult)).toBe(true);
+});
+
+test("extern: duplicate js providers are rejected", () => {
+  const compileResult = compileProjectCode("Main", {
+    "Main.tuff": "Math.max(3, 4)",
+    "Math.tuff": "extern Math; extern fn max(a : I32, b : I32) : I32;",
+    "foo/Math.js": "module.exports = { max: (a, b) => a };",
+    "foo//Math.js": "module.exports = { max: (a, b) => b };",
+  });
+
+  expect(isErr(compileResult)).toBe(true);
+});
+
+test("extern: missing js export is a runtime error", () => {
+  expectError(
+    executeTuffProjectFixture({
+      entryModule: "Main",
+      tuffFiles: {
+        "Main.tuff": "Math.max(3, 4)",
+        "Math.tuff": "extern Math; extern fn max(a : I32, b : I32) : I32;",
+      },
+      foreignFiles: {
+        "Math.js": "module.exports = { min: (a, b) => (a < b ? a : b) };",
+      },
+    }),
+  );
+});
+
+test("extern: non-callable js export used as extern fn is a runtime error", () => {
+  expectError(
+    executeTuffProjectFixture({
+      entryModule: "Main",
+      tuffFiles: {
+        "Main.tuff": "Math.max(3, 4)",
+        "Math.tuff": "extern Math; extern fn max(a : I32, b : I32) : I32;",
+      },
+      foreignFiles: {
+        "Math.js": "module.exports = { max: 42 };",
+      },
+    }),
+  );
+});
+
+test("extern: mixed Tuff and JS project graph executes", () => {
+  expectValue(
+    executeTuffProjectFixture({
+      entryModule: "Main",
+      tuffFiles: {
+        "Main.tuff": "Bridge.compute(5)",
+        "Bridge.tuff":
+          "extern Bridge; extern fn compute(x : I32) : I32; fn plusOne(x : I32) : I32 => x + 1;",
+        "Helper.tuff": "fn double(x : I32) : I32 => x * 2;",
+      },
+      foreignFiles: {
+        "Bridge.js": "module.exports = { compute: (x) => (x * 2) + 1 };",
+      },
+    }),
+    11,
+  );
+});
+
 test("extern: module declarations parse with function, let, and type contracts", () => {
   const parsedModules = parseProjectModules(
     {
       "Api.tuff":
         "extern Api; extern fn max(a : I32, b : I32) : I32; extern let answer : I32; extern type Score = I32; 0",
+      "Api.js": "module.exports = { max: (a, b) => (a > b ? a : b), answer: 42 };",
     },
     ["Api"],
   );
@@ -1111,6 +1191,7 @@ test("extern: declarations populate module member lookup for downstream parsing"
     {
       "Api.tuff":
         "extern Api; extern fn max(a : I32, b : I32) : I32; extern let answer : I32; extern type Score = I32; 0",
+      "Api.js": "module.exports = { max: (a, b) => (a > b ? a : b), answer: 42 };",
       "Main.tuff": "let { max, answer } = Api; max(answer, 4)",
     },
     ["Api", "Main"],

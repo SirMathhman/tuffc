@@ -4,6 +4,7 @@ import { err, ok } from "../../types";
 import type { Result } from "../../types";
 import type {
   ASTNode,
+  ExternBindingInfo,
   FunctionParameter,
   MatchCase,
   ScopeFrame,
@@ -32,6 +33,61 @@ export function codegenProgramEvaluation(
   }
 
   return resultName + " = " + codegenAST(node) + ";";
+}
+
+export function codegenExternalProviderHelpers(): string {
+  return (
+    "function __tuffExternValue(_tuffProvider, _tuffModuleName, _tuffExportName) { " +
+    "if (!_tuffProvider || !(_tuffExportName in _tuffProvider)) { " +
+    'throw new Error(`External module "${_tuffModuleName}" is missing export "${_tuffExportName}"`); ' +
+    "} return _tuffProvider[_tuffExportName]; } " +
+    "function __tuffExternFunction(_tuffProvider, _tuffModuleName, _tuffExportName) { " +
+    "const _tuffValue = __tuffExternValue(_tuffProvider, _tuffModuleName, _tuffExportName); " +
+    'if (typeof _tuffValue !== "function") { ' +
+    'throw new Error(`External module "${_tuffModuleName}" export "${_tuffExportName}" is not callable`); ' +
+    "} return _tuffValue; }"
+  );
+}
+
+export function codegenExternalProviderLoad(
+  runtimeName: string,
+  source: string,
+): string {
+  return (
+    "const " +
+    runtimeName +
+    " = (() => { const module = { exports: {} }; const exports = module.exports; " +
+    source +
+    "; return module.exports; })();"
+  );
+}
+
+export function codegenExternBindings(
+  moduleName: string,
+  providerVar: string,
+  externBindings: ExternBindingInfo[],
+): string {
+  return externBindings
+    .map((binding) => {
+      const accessor =
+        binding.kind === "function"
+          ? "__tuffExternFunction"
+          : "__tuffExternValue";
+      return (
+        "const " +
+        binding.name +
+        " = " +
+        accessor +
+        "(" +
+        providerVar +
+        ", " +
+        JSON.stringify(moduleName) +
+        ", " +
+        JSON.stringify(binding.name) +
+        ");"
+      );
+    })
+    .join(" ");
 }
 
 export function codegenFunctionLikeDeclaration(
@@ -580,12 +636,23 @@ export function codegenAST(node: ASTNode): string {
   if (node.kind === "module") {
     const runtimeObject = codegenThisScopeObject(node.scope);
     const resultName = createModuleResultName(node.runtimeName);
+    const externPrelude =
+      node.externalProviderVar &&
+      node.externBindings &&
+      node.externBindings.length > 0
+        ? codegenExternBindings(
+            node.moduleName,
+            node.externalProviderVar,
+            node.externBindings,
+          ) + " "
+        : "";
     return (
       "let " +
       resultName +
       "; const " +
       node.runtimeName +
       " = (() => { " +
+      externPrelude +
       codegenProgramEvaluation(node.body, resultName) +
       " return " +
       runtimeObject +

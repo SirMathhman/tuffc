@@ -2,10 +2,17 @@
 
 import { err, ok } from "../types";
 import type { Result } from "../types";
-import { codegenProgramReturn, generateStatementCode } from "./codegen";
+import {
+  codegenExternalProviderHelpers,
+  codegenExternalProviderLoad,
+  codegenProgramReturn,
+  generateStatementCode,
+} from "./codegen";
 import type {
   ASTNode,
+  ExternBindingInfo,
   ModuleCompilationInfo,
+  ModuleImplementationOrigin,
   ModuleNode,
   Parser,
   ProjectCompileInput,
@@ -35,6 +42,12 @@ import {
   validateAST,
   validateStructSemantics,
 } from "./semantics/validation";
+
+export interface ModuleExternMetadata {
+  externModuleName: string | undefined;
+  externBindings: ExternBindingInfo[];
+  implementationOrigin: ModuleImplementationOrigin;
+}
 
 export function createParser(
   tokens: Token[],
@@ -125,6 +138,73 @@ export function parseAndValidateProgram(
   return ok(ast);
 }
 
+export function getTopLevelStatements(node: ASTNode): ASTNode[] {
+  return node.kind === "block" ? node.statements : [];
+}
+
+export function collectModuleExternMetadata(
+  moduleInfo: ModuleCompilationInfo,
+  ast: ASTNode,
+): Result<ModuleExternMetadata, string> {
+  let externModuleName: string | undefined;
+  const externBindings: ExternBindingInfo[] = [];
+  let hasRuntimeTuffStatements = false;
+
+  for (const statement of getTopLevelStatements(ast)) {
+    if (statement.kind === "extern-module") {
+      if (externModuleName) {
+        return err(
+          "Module '" +
+            moduleInfo.moduleName +
+            "' has multiple extern module declarations",
+        );
+      }
+      externModuleName = statement.moduleName;
+      continue;
+    }
+
+    if (statement.kind === "extern-function") {
+      externBindings.push({ name: statement.name, kind: "function" });
+      continue;
+    }
+
+    if (statement.kind === "extern-let") {
+      externBindings.push({ name: statement.name, kind: "value" });
+      continue;
+    }
+
+    if (
+      statement.kind === "extern-type" ||
+      statement.kind === "type-alias" ||
+      statement.kind === "struct"
+    ) {
+      continue;
+    }
+
+    hasRuntimeTuffStatements = true;
+  }
+
+  if (externBindings.length > 0 && !externModuleName) {
+    return err(
+      "Module '" +
+        moduleInfo.moduleName +
+        "' must declare 'extern " +
+        moduleInfo.moduleName +
+        ";' before extern members",
+    );
+  }
+
+  return ok({
+    externModuleName,
+    externBindings,
+    implementationOrigin: externModuleName
+      ? hasRuntimeTuffStatements
+        ? "hybrid"
+        : "external"
+      : "tuff",
+  });
+}
+
 export function parseProjectModule(
   moduleInfo: ModuleCompilationInfo,
   modules: Map<string, ModuleCompilationInfo>,
@@ -150,6 +230,31 @@ export function parseProjectModule(
     );
   }
 
+  const externMetadata = collectModuleExternMetadata(
+    moduleInfo,
+    astResult.value,
+  );
+  if (!externMetadata.ok) {
+    return err(
+      "Module '" +
+        moduleInfo.moduleName +
+        "' failed to compile: " +
+        externMetadata.error,
+    );
+  }
+
+  moduleInfo.externModuleName = externMetadata.value.externModuleName;
+  moduleInfo.externBindings = externMetadata.value.externBindings;
+  moduleInfo.implementationOrigin = externMetadata.value.implementationOrigin;
+
+  if (moduleInfo.externModuleName && !moduleInfo.externalProvider) {
+    return err(
+      "Module '" +
+        moduleInfo.moduleName +
+        "' requires a companion '.js' provider",
+    );
+  }
+
   const moduleAst: ModuleNode = {
     kind: "module",
     moduleName: moduleInfo.moduleName,
@@ -157,6 +262,9 @@ export function parseProjectModule(
     type: moduleInfo.typeName,
     body: astResult.value,
     scope: moduleInfo.scope,
+    implementationOrigin: moduleInfo.implementationOrigin,
+    externalProviderVar: moduleInfo.externalProvider?.runtimeName,
+    externBindings: moduleInfo.externBindings,
   };
 
   moduleInfo.ast = moduleAst;
@@ -198,10 +306,7 @@ export function compile(input: string): Result<string, string> {
 export function compileProject(
   input: ProjectCompileInput,
 ): Result<string, string> {
-  const compilationOrder = getProjectCompilationOrder(
-    input.entryModule,
-    input.files,
-  );
+  const compilationOrder = getProjectCompilationOrder(input);
   if (!compilationOrder.ok) {
     return compilationOrder;
   }
@@ -229,9 +334,28 @@ export function compileProject(
     return err("Unknown module '" + input.entryModule + "'");
   }
 
+  const externalProviderModules = compilationOrder.value.filter(
+    (moduleInfo) => moduleInfo.externModuleName && moduleInfo.externalProvider,
+  );
+  const externalPrelude =
+    externalProviderModules.length > 0
+      ? codegenExternalProviderHelpers() +
+        " " +
+        externalProviderModules
+          .map((moduleInfo) =>
+            codegenExternalProviderLoad(
+              moduleInfo.externalProvider?.runtimeName ?? "",
+              moduleInfo.externalProvider?.source ?? "",
+            ),
+          )
+          .join(" ") +
+        " "
+      : "";
+
   const moduleCode = generateStatementCode(moduleNodes);
   return ok(
-    moduleCode +
+    externalPrelude +
+      moduleCode +
       " return " +
       createModuleResultName(entryModule.runtimeName) +
       ";",
