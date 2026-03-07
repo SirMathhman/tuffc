@@ -757,6 +757,68 @@ test("object: missing member assignment is error", () => {
   );
 });
 
+test("destructure: struct fields bind by name", () => {
+  expectValue(
+    executeTuff(
+      "struct Pair { left : I32; right : I32; } let { left, right } = Pair { left: 2, right: 5 }; left + right",
+    ),
+    7,
+  );
+});
+
+test("destructure: struct fields can be renamed", () => {
+  expectValue(
+    executeTuff(
+      "struct Pair { left : I32; right : I32; } let { left: x, right: y } = Pair { left: 3, right: 4 }; x * y",
+    ),
+    12,
+  );
+});
+
+test("destructure: object fields snapshot current values", () => {
+  expectValue(
+    executeTuff(
+      "object Counter { let mut value : I32 = 5; } let { value } = Counter; Counter.value = 9; value",
+    ),
+    5,
+  );
+});
+
+test("destructure: object fields can be renamed", () => {
+  expectValue(
+    executeTuff(
+      "object Point { let x : I32 = 8; let y : I32 = 13; } let { x: px, y: py } = Point; px + py",
+    ),
+    21,
+  );
+});
+
+test("destructure: missing struct field is error", () => {
+  expectError(
+    executeTuff(
+      "struct Pair { left : I32; right : I32; } let { missing } = Pair { left: 1, right: 2 }; missing",
+    ),
+  );
+});
+
+test("destructure: missing object member is error", () => {
+  expectError(
+    executeTuff("object Box { let value : I32 = 1; } let { missing } = Box; 0"),
+  );
+});
+
+test("destructure: duplicate binding names are error", () => {
+  expectError(
+    executeTuff(
+      "struct Pair { left : I32; right : I32; } let { left: x, right: x } = Pair { left: 1, right: 2 }; x",
+    ),
+  );
+});
+
+test("destructure: non-struct non-object source is error", () => {
+  expectError(executeTuff("let { value } = 42; value"));
+});
+
 test("function inference: omitted return type is inferred for expression bodies", () => {
   expectValue(executeTuff("fn addOne(x : I32) => x + 1; addOne(4)"), 5);
 });

@@ -293,6 +293,11 @@ interface LetNode {
   initializer: ASTNode;
 }
 
+interface DestructureNode {
+  kind: "destructure";
+  statements: LetNode[];
+}
+
 interface AssignNode {
   kind: "assign";
   name: string;
@@ -480,6 +485,7 @@ type ASTNode =
   | CharNode
   | StringNode
   | LetNode
+  | DestructureNode
   | AssignNode
   | FieldAssignNode
   | DerefAssignNode
@@ -555,6 +561,11 @@ interface TypeNarrowingInfo {
 interface ParsedTypeAliasDeclaration {
   name: string;
   targetType: string;
+}
+
+interface DestructuredBinding {
+  sourceName: string;
+  bindingName: string;
 }
 
 interface SuccessfulEvaluation {
@@ -961,6 +972,12 @@ function extendTypeEnvironmentForStatement(
     nextEnv.set(stmt.name, stmt.type);
   } else if (stmt.kind === "object") {
     nextEnv.set(stmt.name, stmt.type);
+  } else if (stmt.kind === "destructure") {
+    for (const declaration of stmt.statements) {
+      if (!declaration.name.startsWith("$tuffDestructure")) {
+        nextEnv.set(declaration.name, declaration.type);
+      }
+    }
   }
 
   return nextEnv;
@@ -1015,6 +1032,7 @@ function inferFunctionReturnTypeFromBody(
   body: ASTNode,
 ): Result<string, string> {
   if (
+    body.kind === "destructure" ||
     body.kind === "assign" ||
     body.kind === "field-assign" ||
     body.kind === "array-assign" ||
@@ -4983,6 +5001,10 @@ function parseLetStatement(parser: Parser): Result<ASTNode, string> {
     advance(parser);
   }
 
+  if (current(parser).type === "LBRACE") {
+    return parseDestructuringLetStatement(parser, mutable);
+  }
+
   // Expect identifier
   const nameTok = current(parser);
   if (nameTok.type !== "IDENTIFIER") {
@@ -5024,15 +5046,7 @@ function parseLetStatement(parser: Parser): Result<ASTNode, string> {
   }
   refinement = refinementResult.value;
 
-  // Expect '='
-  const assignTok = current(parser);
-  if (assignTok.type !== "ASSIGN") {
-    return err("Expected '=' in let statement");
-  }
-  advance(parser);
-
-  // Parse initializer expression
-  const initResult = parseExpression(parser);
+  const initResult = parseRequiredLetInitializer(parser);
   if (!initResult.ok) {
     return initResult;
   }
@@ -5371,6 +5385,186 @@ function parseLetStatement(parser: Parser): Result<ASTNode, string> {
     type: typeStr,
     initializer,
   });
+}
+
+function createDestructureTempName(parser: Parser): string {
+  let tempIndex = parser.pos;
+  let tempName = "$tuffDestructure" + tempIndex;
+
+  while (parser.variables.has(tempName)) {
+    tempIndex += 1;
+    tempName = "$tuffDestructure" + tempIndex;
+  }
+
+  return tempName;
+}
+
+function parseDestructuringPattern(
+  parser: Parser,
+): Result<DestructuredBinding[], string> {
+  if (current(parser).type !== "LBRACE") {
+    return err("Expected '{' after 'let'");
+  }
+  advance(parser);
+
+  const bindings: DestructuredBinding[] = [];
+  const seenBindingNames = new Set<string>();
+
+  while (current(parser).type !== "RBRACE") {
+    const sourceTok = current(parser);
+    if (sourceTok.type !== "IDENTIFIER") {
+      return err("Expected field name in destructuring pattern");
+    }
+    const sourceName = sourceTok.value;
+    advance(parser);
+
+    let bindingName = sourceName;
+    if (current(parser).type === "COLON") {
+      advance(parser);
+      const bindingTok = current(parser);
+      if (bindingTok.type !== "IDENTIFIER") {
+        return err("Expected binding name after ':' in destructuring pattern");
+      }
+      bindingName = bindingTok.value;
+      advance(parser);
+    }
+
+    if (seenBindingNames.has(bindingName)) {
+      return err("Duplicate binding name '" + bindingName + "'");
+    }
+    seenBindingNames.add(bindingName);
+    bindings.push({ sourceName, bindingName });
+
+    if (current(parser).type === "RBRACE") {
+      break;
+    }
+    if (current(parser).type !== "COMMA") {
+      return err("Expected ',' or '}' in destructuring pattern");
+    }
+    advance(parser);
+  }
+
+  if (current(parser).type !== "RBRACE") {
+    return err("Expected '}' after destructuring pattern");
+  }
+  advance(parser);
+
+  return ok(bindings);
+}
+
+function parseRequiredLetInitializer(parser: Parser): Result<ASTNode, string> {
+  if (current(parser).type !== "ASSIGN") {
+    return err("Expected '=' in let statement");
+  }
+  advance(parser);
+
+  return parseExpression(parser);
+}
+
+function parseDestructuringLetStatement(
+  parser: Parser,
+  mutable: boolean,
+): Result<ASTNode, string> {
+  if (mutable) {
+    return err("Destructuring bindings cannot use 'mut'");
+  }
+
+  const bindingsResult = parseDestructuringPattern(parser);
+  if (!bindingsResult.ok) {
+    return bindingsResult;
+  }
+  const bindings = bindingsResult.value;
+
+  const initResult = parseRequiredLetInitializer(parser);
+  if (!initResult.ok) {
+    return initResult;
+  }
+
+  const sourceTypeResult = inferExpressionType(initResult.value, parser);
+  if (!sourceTypeResult.ok) {
+    return sourceTypeResult;
+  }
+  const sourceType = sourceTypeResult.value;
+
+  const objectInfo = parser.objects.get(sourceType);
+  const structInfo = parser.structs.get(sourceType);
+  if (!objectInfo && !structInfo) {
+    return err(
+      "Type mismatch: cannot destructure non-struct/non-object type '" +
+        sourceType +
+        "'",
+    );
+  }
+
+  const tempName = createDestructureTempName(parser);
+  const coercedInitializer = coerceExpressionToType(
+    parser,
+    initResult.value,
+    sourceType,
+  );
+  if (!coercedInitializer.ok) {
+    return coercedInitializer;
+  }
+
+  const statements: LetNode[] = [
+    {
+      kind: "let",
+      mutable: false,
+      name: tempName,
+      type: sourceType,
+      initializer: coercedInitializer.value,
+    },
+  ];
+
+  parser.variables.set(tempName, { type: sourceType, mutable: false });
+  registerScopeVariable(parser, tempName, sourceType, false, false);
+
+  for (const binding of bindings) {
+    if (parser.variables.has(binding.bindingName)) {
+      return err("Variable '" + binding.bindingName + "' already declared");
+    }
+
+    const memberType = inferContainerMemberType(
+      parser,
+      { kind: "variable", name: tempName },
+      binding.sourceName,
+    );
+    if (!memberType.ok) {
+      return memberType;
+    }
+
+    const declaration: LetNode = {
+      kind: "let",
+      mutable: false,
+      name: binding.bindingName,
+      type: memberType.value,
+      initializer: {
+        kind: "field-access",
+        object: { kind: "variable", name: tempName },
+        fieldName: binding.sourceName,
+      },
+    };
+
+    statements.push(declaration);
+    parser.variables.set(binding.bindingName, {
+      type: memberType.value,
+      mutable: false,
+    });
+    registerScopeVariable(
+      parser,
+      binding.bindingName,
+      memberType.value,
+      false,
+      false,
+    );
+  }
+
+  if (current(parser).type !== "SEMICOLON") {
+    return err("Expected ';' after let statement");
+  }
+  advance(parser);
+
+  return ok({ kind: "destructure", statements });
 }
 
 function isReservedKeyword(name: string): boolean {
@@ -7112,6 +7306,10 @@ function codegenAST(node: ASTNode): string {
     return "let " + node.name + " = " + init;
   }
 
+  if (node.kind === "destructure") {
+    return generateStatementCode(node.statements);
+  }
+
   if (node.kind === "assign") {
     const value = codegenAST(node.value);
     return node.name + " = " + value;
@@ -7505,6 +7703,19 @@ function validateExpressionAsValue(node: ASTNode): Result<undefined, string> {
   return validateAST(node);
 }
 
+function validateStatementList(
+  statements: ASTNode[],
+): Result<undefined, string> {
+  for (const statement of statements) {
+    const validation = validateAST(statement);
+    if (!validation.ok) {
+      return validation;
+    }
+  }
+
+  return ok(undefined);
+}
+
 function validateAST(node: ASTNode): Result<undefined, string> {
   if (node.kind === "number") {
     return validateNegativeType(node.value);
@@ -7543,6 +7754,10 @@ function validateAST(node: ASTNode): Result<undefined, string> {
     return validateExpressionAsValue(node.initializer);
   }
 
+  if (node.kind === "destructure") {
+    return validateStatementList(node.statements);
+  }
+
   if (node.kind === "assign") {
     return validateAST(node.value);
   }
@@ -7569,11 +7784,9 @@ function validateAST(node: ASTNode): Result<undefined, string> {
   }
 
   if (node.kind === "block") {
-    for (const stmt of node.statements) {
-      const validation = validateAST(stmt);
-      if (!validation.ok) {
-        return validation;
-      }
+    const statementValidation = validateStatementList(node.statements);
+    if (!statementValidation.ok) {
+      return statementValidation;
     }
     return validateAST(node.result);
   }
@@ -7652,13 +7865,7 @@ function validateAST(node: ASTNode): Result<undefined, string> {
   }
 
   if (node.kind === "object") {
-    for (const statement of node.body) {
-      const validation = validateAST(statement);
-      if (!validation.ok) {
-        return validation;
-      }
-    }
-    return ok(undefined);
+    return validateStatementList(node.body);
   }
 
   if (node.kind === "type-alias") {
@@ -8093,6 +8300,23 @@ function validateStructSemantics(
   objects: Map<string, ObjectInfo>,
   typeEnv: Map<string, string>,
 ): Result<undefined, string> {
+  if (node.kind === "destructure") {
+    let env = typeEnv;
+    for (const statement of node.statements) {
+      const validation = validateStructSemantics(
+        statement,
+        structs,
+        objects,
+        env,
+      );
+      if (!validation.ok) {
+        return validation;
+      }
+      env = extendTypeEnvironmentForStatement(env, statement);
+    }
+    return ok(undefined);
+  }
+
   if (node.kind === "let") {
     const letNode = node as LetNode;
     // Check struct vs primitive type mismatch
