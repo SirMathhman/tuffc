@@ -367,7 +367,8 @@ interface FieldAccessNode {
 interface ArrayLiteralNode {
   kind: "array-literal";
   elements: ASTNode[];
-  totalCount?: number;
+  generator?: ASTNode;
+  repeatCount?: number;
   elemType?: string;
 }
 
@@ -877,7 +878,7 @@ function parseTypeAnnotation(parser: Parser): Result<string, string> {
     }
   }
 
-  // Check for array type [ElementType; InitCount; TotalCount]
+  // Check for array type [ElementType; Length]
   if (current(parser).type === "LBRACKET") {
     advance(parser); // consume [
 
@@ -894,26 +895,15 @@ function parseTypeAnnotation(parser: Parser): Result<string, string> {
     }
     advance(parser);
 
-    // Parse init count
-    const initCountTok = current(parser);
-    if (initCountTok.type !== "NUMBER") {
-      return err("Expected init count as number");
+    // Parse array length
+    const lengthTok = current(parser);
+    if (lengthTok.type !== "NUMBER") {
+      return err("Expected array length as number");
     }
-    const initCount = (initCountTok as NumberToken).value;
-    advance(parser);
-
-    // Expect ;
-    if (current(parser).type !== "SEMICOLON") {
-      return err("Expected ';' after init count");
+    const lengthValue = (lengthTok as NumberToken).value;
+    if (!isBareNonNegativeIntegerLiteral(lengthValue)) {
+      return err("Expected array length as a non-negative integer literal");
     }
-    advance(parser);
-
-    // Parse total count
-    const totalCountTok = current(parser);
-    if (totalCountTok.type !== "NUMBER") {
-      return err("Expected total count as number");
-    }
-    const totalCount = (totalCountTok as NumberToken).value;
     advance(parser);
 
     // Expect ]
@@ -922,7 +912,7 @@ function parseTypeAnnotation(parser: Parser): Result<string, string> {
     }
     advance(parser);
 
-    return ok("[" + elemType + ";" + initCount + ";" + totalCount + "]");
+    return ok("[" + elemType + ";" + lengthValue + "]");
   }
 
   // Function type: (T1, T2) => R
@@ -1804,8 +1794,7 @@ interface ParsedNumberLiteral {
 
 interface ParsedArrayType {
   elementType: string;
-  initCount: number;
-  totalCount: number;
+  length: number;
 }
 
 function splitNumberLiteral(value: string): ParsedNumberLiteral {
@@ -1830,6 +1819,21 @@ function splitNumberLiteral(value: string): ParsedNumberLiteral {
     numericPart: value.slice(0, pos),
     typeAnnotation: value.slice(pos),
   };
+}
+
+function isBareNonNegativeIntegerLiteral(value: string): boolean {
+  const numericPart = splitNumberLiteral(value).numericPart;
+  if (numericPart.length === 0) {
+    return false;
+  }
+
+  for (const char of numericPart) {
+    if (char < "0" || char > "9") {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 function parseArrayType(typeStr: string): ParsedArrayType | undefined {
@@ -1858,21 +1862,73 @@ function parseArrayType(typeStr: string): ParsedArrayType | undefined {
   }
   parts.push(currentPart);
 
-  if (parts.length !== 3) {
+  if (parts.length !== 2) {
     return undefined;
   }
 
-  const initCount = Number(parts[1]);
-  const totalCount = Number(parts[2]);
-  if (!Number.isInteger(initCount) || !Number.isInteger(totalCount)) {
+  const length = Number(parts[1]);
+  if (!Number.isInteger(length)) {
     return undefined;
   }
 
   return {
     elementType: parts[0] ?? "",
-    initCount,
-    totalCount,
+    length,
   };
+}
+
+function inferZeroArgCallableReturnType(
+  expr: ASTNode,
+  parser: Parser,
+): Result<string, string> {
+  if (expr.kind === "closure") {
+    if (expr.parameters.length !== 0) {
+      return err("Array generator must be a zero-argument callable");
+    }
+    return ok(expr.returnType);
+  }
+
+  if (expr.kind === "variable") {
+    const fnInfo = parser.functions.get(expr.name);
+    if (fnInfo) {
+      if (fnInfo.parameters.length !== 0) {
+        return err("Array generator must be a zero-argument callable");
+      }
+      return ok(fnInfo.returnType);
+    }
+
+    const varResult = getVariable(parser, expr.name);
+    if (!varResult.ok) {
+      return err(
+        "Array generator '" + expr.name + "' is not a function or closure",
+      );
+    }
+
+    const parsedFunctionType = parseFunctionTypeString(varResult.value.type);
+    if (!parsedFunctionType) {
+      return err(
+        "Array generator '" + expr.name + "' is not a function or closure",
+      );
+    }
+    if (parsedFunctionType.parameterTypes.length !== 0) {
+      return err("Array generator must be a zero-argument callable");
+    }
+    return ok(parsedFunctionType.returnType);
+  }
+
+  const exprTypeResult = inferExpressionType(expr, parser);
+  if (!exprTypeResult.ok) {
+    return err("Array generator must be a function or closure");
+  }
+
+  const parsedFunctionType = parseFunctionTypeString(exprTypeResult.value);
+  if (!parsedFunctionType) {
+    return err("Array generator must be a function or closure");
+  }
+  if (parsedFunctionType.parameterTypes.length !== 0) {
+    return err("Array generator must be a zero-argument callable");
+  }
+  return ok(parsedFunctionType.returnType);
 }
 
 function current(parser: Parser): Token {
@@ -2137,19 +2193,19 @@ function tryParseAssignment(
             const parsedArrayType = parseArrayType(arrayVar.type);
             if (parsedArrayType) {
               const elemType = parsedArrayType.elementType;
-              const initCount = parsedArrayType.initCount;
+              const arrayLength = parsedArrayType.length;
 
-              // Check write bounds: can write to index 0..initCount (adjacent slot allowed)
+              // Check write bounds against the declared fixed length.
               const idxNode = lvalue.index;
               if (idxNode.kind === "number") {
                 const bareNum = splitNumberLiteral(idxNode.value).numericPart;
                 const idxVal = parseFloat(bareNum);
-                if (idxVal > initCount) {
+                if (idxVal >= arrayLength) {
                   return err(
                     "Array write index " +
                       idxVal +
-                      " is beyond adjacent uninitialized slot (init count: " +
-                      initCount +
+                      " is out of bounds for array of length " +
+                      arrayLength +
                       ")",
                   );
                 }
@@ -3279,22 +3335,16 @@ function parseLetStatement(parser: Parser): Result<ASTNode, string> {
   // Check type compatibility for numeric literals
   const initializer = initResult.value;
 
-  // Type check for array types: validate element count
+  // Type check for array types: validate fixed-length initialization
   if (typeStr.startsWith("[")) {
-    // Parse array type: [ElementType; InitCount; TotalCount]
-    // Extract init count and total count
     const parsedArrayType = parseArrayType(typeStr);
     if (parsedArrayType) {
-      const { initCount, totalCount } = parsedArrayType;
+      const { elementType, length } = parsedArrayType;
 
-      if (initCount === 0) {
-        return err("Array init count must be > 0");
-      }
-      if (totalCount < initCount) {
-        return err("Array total count must be >= init count");
+      if (length <= 0) {
+        return err("Array length must be > 0");
       }
 
-      // Check that initializer is an array literal (or function call / variable returning array)
       if (
         initializer.kind !== "array-literal" &&
         initializer.kind !== "function-call" &&
@@ -3303,87 +3353,133 @@ function parseLetStatement(parser: Parser): Result<ASTNode, string> {
         return err("Expected array literal for array type");
       }
 
-      // For non-literal initializers (function call, variable), trust the type annotation
       if (initializer.kind !== "array-literal") {
-        // Skip element-level validation, handled by the return type
-      } else {
-        const arrayLit = initializer as ArrayLiteralNode;
-        if (arrayLit.elements.length !== initCount) {
+        const exprTypeResult = inferExpressionType(initializer, parser);
+        if (!exprTypeResult.ok) {
+          return exprTypeResult;
+        }
+        if (exprTypeResult.value !== typeStr) {
           return err(
-            "Array initializer has " +
-              arrayLit.elements.length +
-              " elements but type specifies " +
-              initCount,
+            "Type mismatch: expression has type '" +
+              exprTypeResult.value +
+              "' but variable declared as '" +
+              typeStr +
+              "'",
           );
         }
+      } else {
+        const arrayLit = initializer as ArrayLiteralNode;
+        const elemType = elementType;
 
-        // Extract element type from array type (everything before first ';')
-        const elemType = parsedArrayType.elementType;
+        if (arrayLit.generator) {
+          if (arrayLit.repeatCount !== length) {
+            return err(
+              "Array generator repeats " +
+                (arrayLit.repeatCount ?? 0) +
+                " times but type specifies length " +
+                length,
+            );
+          }
 
-        // Type-check each element against the declared element type
-        if (elemType && !elemType.startsWith("[")) {
-          for (let idx = 0; idx < arrayLit.elements.length; idx++) {
-            const elemNode = arrayLit.elements[idx];
-            if (elemNode && elemNode.kind === "number") {
-              // Check element type annotation if present
-              const numVal = elemNode.value;
-              let numTypeAnnotation = "";
-              for (let ci = numVal.length - 1; ci >= 0; ci--) {
-                if (isLetter(numVal[ci]) || numVal[ci] === "_") {
-                  numTypeAnnotation = numVal[ci] + numTypeAnnotation;
-                } else {
-                  break;
+          const generatorTypeResult = inferZeroArgCallableReturnType(
+            arrayLit.generator,
+            parser,
+          );
+          if (!generatorTypeResult.ok) {
+            return generatorTypeResult;
+          }
+
+          if (generatorTypeResult.value !== elemType) {
+            const bothFloat =
+              elemType.startsWith("F") &&
+              generatorTypeResult.value.startsWith("F");
+            const bothInt =
+              !elemType.startsWith("F") &&
+              !elemType.startsWith("Bool") &&
+              !generatorTypeResult.value.startsWith("F") &&
+              generatorTypeResult.value !== "Bool";
+            if (!bothFloat && !bothInt) {
+              return err(
+                "Type mismatch in array generator: expected " +
+                  elemType +
+                  " but got " +
+                  generatorTypeResult.value,
+              );
+            }
+          }
+        } else {
+          if (arrayLit.elements.length !== length) {
+            return err(
+              "Array initializer has " +
+                arrayLit.elements.length +
+                " elements but type specifies " +
+                length,
+            );
+          }
+
+          // Type-check each element against the declared element type
+          if (elemType && !elemType.startsWith("[")) {
+            for (let idx = 0; idx < arrayLit.elements.length; idx++) {
+              const elemNode = arrayLit.elements[idx];
+              if (elemNode && elemNode.kind === "number") {
+                // Check element type annotation if present
+                const numVal = elemNode.value;
+                let numTypeAnnotation = "";
+                for (let ci = numVal.length - 1; ci >= 0; ci--) {
+                  if (isLetter(numVal[ci]) || numVal[ci] === "_") {
+                    numTypeAnnotation = numVal[ci] + numTypeAnnotation;
+                  } else {
+                    break;
+                  }
                 }
-              }
-              // Check float assigned to integer type
-              const isFloatType = elemType.startsWith("F");
-              const isIntType = !isFloatType && !elemType.startsWith("Bool");
-              if (isIntType && numVal.includes(".")) {
-                return err(
-                  "Type mismatch in array element " +
-                    idx +
-                    ": expected " +
-                    elemType +
-                    " but got float literal",
-                );
-              }
-              if (numTypeAnnotation && numTypeAnnotation !== elemType) {
-                return err(
-                  "Type mismatch in array element " +
-                    idx +
-                    ": expected " +
-                    elemType +
-                    " but got " +
-                    numTypeAnnotation,
-                );
-              }
-            } else {
-              const elemTypeResult = inferExpressionType(elemNode!, parser);
-              if (elemTypeResult.ok && elemTypeResult.value !== elemType) {
-                // Check for type mismatch (allow widening from same family)
-                const bothFloat =
-                  elemType.startsWith("F") &&
-                  elemTypeResult.value.startsWith("F");
-                const bothInt =
-                  !elemType.startsWith("F") &&
-                  !elemTypeResult.value.startsWith("F");
-                if (!bothFloat && !bothInt) {
+                // Check float assigned to integer type
+                const isFloatType = elemType.startsWith("F");
+                const isIntType = !isFloatType && !elemType.startsWith("Bool");
+                if (isIntType && numVal.includes(".")) {
+                  return err(
+                    "Type mismatch in array element " +
+                      idx +
+                      ": expected " +
+                      elemType +
+                      " but got float literal",
+                  );
+                }
+                if (numTypeAnnotation && numTypeAnnotation !== elemType) {
                   return err(
                     "Type mismatch in array element " +
                       idx +
                       ": expected " +
                       elemType +
                       " but got " +
-                      elemTypeResult.value,
+                      numTypeAnnotation,
                   );
+                }
+              } else {
+                const elemTypeResult = inferExpressionType(elemNode!, parser);
+                if (elemTypeResult.ok && elemTypeResult.value !== elemType) {
+                  // Check for type mismatch (allow widening from same family)
+                  const bothFloat =
+                    elemType.startsWith("F") &&
+                    elemTypeResult.value.startsWith("F");
+                  const bothInt =
+                    !elemType.startsWith("F") &&
+                    !elemTypeResult.value.startsWith("F");
+                  if (!bothFloat && !bothInt) {
+                    return err(
+                      "Type mismatch in array element " +
+                        idx +
+                        ": expected " +
+                        elemType +
+                        " but got " +
+                        elemTypeResult.value,
+                    );
+                  }
                 }
               }
             }
           }
         }
 
-        // Store totalCount in the array literal node for codegen
-        arrayLit.totalCount = totalCount;
         arrayLit.elemType = elemType;
       } // close else (array-literal branch)
     }
@@ -4260,18 +4356,14 @@ function parsePostfix(parser: Parser): Result<ASTNode, string> {
       const indexNode = indexResult.value;
 
       // Validate index type and bounds
-      // Get declared array type for bounds checking
-      let arrInitCount: number | undefined;
-      let arrTotalCount: number | undefined;
-      let arrMutable: boolean | undefined;
+      // Get declared array length for bounds checking
+      let arrLength: number | undefined;
       if (node.kind === "variable") {
         const varInfo = parser.variables.get(node.name);
         if (varInfo && varInfo.type.startsWith("[")) {
           const parsedArrayType = parseArrayType(varInfo.type);
           if (parsedArrayType) {
-            arrInitCount = parsedArrayType.initCount;
-            arrTotalCount = parsedArrayType.totalCount;
-            arrMutable = varInfo.mutable;
+            arrLength = parsedArrayType.length;
           }
         }
       }
@@ -4289,9 +4381,9 @@ function parsePostfix(parser: Parser): Result<ASTNode, string> {
               "Array index must be an integer type, got " + idxVarInfo.type,
             );
           }
-          // Dynamic variable index for read - array bounds cannot be proven safe
+          // Dynamic variable index for read - array bounds cannot be proven safe.
           // (write side is handled in tryParseAssignment)
-          if (arrInitCount !== undefined) {
+          if (arrLength !== undefined) {
             return err(
               "Array index must be a constant proven in bounds; dynamic index not allowed",
             );
@@ -4310,24 +4402,12 @@ function parsePostfix(parser: Parser): Result<ASTNode, string> {
         if (bareNum.includes(".")) {
           return err("Array index must be an integer type, got float");
         }
-        // For mutable arrays: allow reading any index < totalCount (write may extend init)
-        // For immutable arrays: only allow index < initCount
-        if (arrMutable) {
-          if (arrTotalCount !== undefined && idxVal >= arrTotalCount) {
-            return err(
-              "Array index " +
-                idxVal +
-                " is out of total capacity (total count: " +
-                arrTotalCount +
-                ")",
-            );
-          }
-        } else if (arrInitCount !== undefined && idxVal >= arrInitCount) {
+        if (arrLength !== undefined && idxVal >= arrLength) {
           return err(
             "Array index " +
               idxVal +
-              " is out of initialized bounds (init count: " +
-              arrInitCount +
+              " is out of bounds for array of length " +
+              arrLength +
               ")",
           );
         }
@@ -4661,24 +4741,82 @@ function parsePrimary(parser: Parser): Result<ASTNode, string> {
     return parseExpression(parser);
   }
 
-  // Array literals [expr, expr, ...]
+  // Array literals [expr, expr, ...] or generator construction [callable; count]
   if (tok.type === "LBRACKET") {
     advance(parser); // consume [
 
     const elements: ASTNode[] = [];
 
-    while (current(parser).type !== "RBRACKET") {
-      const elemResult = parseExpression(parser);
-      if (!elemResult.ok) {
-        return elemResult;
-      }
-      elements.push(elemResult.value);
+    if (current(parser).type === "RBRACKET") {
+      advance(parser); // consume ]
+      return ok({
+        kind: "array-literal",
+        elements,
+      } as ArrayLiteralNode);
+    }
 
+    let firstElementResult: Result<ASTNode, string>;
+    if (
+      current(parser).type === "IDENTIFIER" &&
+      parser.functions.has((current(parser) as IdentifierToken).value) &&
+      parser.tokens[parser.pos + 1]?.type === "SEMICOLON"
+    ) {
+      firstElementResult = ok({
+        kind: "variable",
+        name: (current(parser) as IdentifierToken).value,
+      } as VariableNode);
+      advance(parser);
+    } else {
+      firstElementResult = parseExpression(parser);
+    }
+
+    if (!firstElementResult.ok) {
+      return firstElementResult;
+    }
+
+    if (current(parser).type === "SEMICOLON") {
+      advance(parser);
+
+      const repeatCountTok = current(parser);
+      if (repeatCountTok.type !== "NUMBER") {
+        return err("Expected array repeat count as number");
+      }
+
+      const repeatCountValue = repeatCountTok.value;
+      if (!isBareNonNegativeIntegerLiteral(repeatCountValue)) {
+        return err(
+          "Expected array repeat count as a non-negative integer literal",
+        );
+      }
+      const repeatCount = Number(repeatCountValue);
+      advance(parser);
+
+      if (current(parser).type !== "RBRACKET") {
+        return err("Expected ']' after array repeat count");
+      }
+      advance(parser); // consume ]
+
+      return ok({
+        kind: "array-literal",
+        elements,
+        generator: firstElementResult.value,
+        repeatCount,
+      } as ArrayLiteralNode);
+    }
+
+    elements.push(firstElementResult.value);
+
+    while (current(parser).type !== "RBRACKET") {
       const nextTok = current(parser);
       if (nextTok.type === "RBRACKET") {
         break;
       } else if (nextTok.type === "COMMA") {
         advance(parser); // consume comma
+        const elemResult = parseExpression(parser);
+        if (!elemResult.ok) {
+          return elemResult;
+        }
+        elements.push(elemResult.value);
       } else {
         return err("Expected ',' or ']' in array literal");
       }
@@ -5080,12 +5218,19 @@ function codegenAST(node: ASTNode): string {
   }
 
   if (node.kind === "array-literal") {
-    // Generate array literal as JavaScript array, padded to totalCount with zeros
-    const elements = node.elements.map((elem) => codegenAST(elem));
-    const totalCount = node.totalCount ?? node.elements.length;
-    while (elements.length < totalCount) {
-      elements.push("0");
+    if (node.generator && node.repeatCount !== undefined) {
+      const generator = codegenAST(node.generator);
+      return (
+        "(() => { const _tuffArray = []; const _tuffGenerator = (" +
+        generator +
+        "); for (let _tuffIndex = 0; _tuffIndex < " +
+        node.repeatCount +
+        "; _tuffIndex += 1) { _tuffArray.push(_tuffGenerator()); } return _tuffArray; })()"
+      );
     }
+
+    // Generate array literal as a JavaScript array.
+    const elements = node.elements.map((elem) => codegenAST(elem));
     return "[" + elements.join(", ") + "]";
   }
 
@@ -5274,6 +5419,20 @@ function validateAST(node: ASTNode): Result<undefined, string> {
 
   if (node.kind === "struct") {
     // Structs are just declarations, no body validation needed
+    return ok(undefined);
+  }
+
+  if (node.kind === "array-literal") {
+    if (node.generator) {
+      return validateAST(node.generator);
+    }
+
+    for (const element of node.elements) {
+      const elementValidation = validateAST(element);
+      if (!elementValidation.ok) {
+        return elementValidation;
+      }
+    }
     return ok(undefined);
   }
 
@@ -5643,6 +5802,18 @@ function validateStructSemantics(
   if (node.kind === "function-call") {
     for (const arg of node.arguments) {
       const r = validateStructSemantics(arg, structs, typeEnv);
+      if (!r.ok) return r;
+    }
+    return ok(undefined);
+  }
+
+  if (node.kind === "array-literal") {
+    if (node.generator) {
+      return validateStructSemantics(node.generator, structs, typeEnv);
+    }
+
+    for (const element of node.elements) {
+      const r = validateStructSemantics(element, structs, typeEnv);
       if (!r.ok) return r;
     }
     return ok(undefined);

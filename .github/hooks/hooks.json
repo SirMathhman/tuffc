@@ -3,11 +3,11 @@
 		"Stop": [
 			{
 				"type": "command",
-				"command": "bun run test"
+				"command": "npm run test"
 			},
 			{
 				"type": "command",
-				"command": "bun run find-duplicates"
+				"command": "npm run find-duplicates"
 			},
 			{
 				"type": "command",

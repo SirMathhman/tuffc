@@ -1991,116 +1991,75 @@ test("mutable pointer: nested dereference assignment", () => {
 
 // ===== ARRAY TESTS =====
 
-// Positive array tests - basic declarations and access
-test("array: basic declaration with full initialization (3;3)", () => {
-  expectValue(executeTuff("let arr : [I32; 3; 3] = [1, 2, 3]; arr[0]"), 1);
+test("array: basic declaration with named generator function", () => {
+  expectValue(
+    executeTuff("fn one() : I32 => 1; let arr : [I32; 3] = [one; 3]; arr[0]"),
+    1,
+  );
 });
 
-test("array: access second element", () => {
-  expectValue(executeTuff("let arr : [I32; 3; 3] = [1, 2, 3]; arr[1]"), 2);
+test("array: direct closure generator populates each slot", () => {
+  expectValue(executeTuff("let arr : [I32; 3] = [() => 7; 3]; arr[2]"), 7);
 });
 
-test("array: access third element", () => {
-  expectValue(executeTuff("let arr : [I32; 3; 3] = [1, 2, 3]; arr[2]"), 3);
+test("array: closure generator can produce distinct values", () => {
+  expectValue(
+    executeTuff(
+      "let mut current : I32 = 0; fn next() : I32 => { current += 1; current } let arr : [I32; 3] = [next; 3]; arr[1]",
+    ),
+    2,
+  );
 });
 
 test("array: U8 element type", () => {
-  expectValue(executeTuff("let arr : [U8; 2; 2] = [100, 200]; arr[0]"), 100);
+  expectValue(
+    executeTuff(
+      "fn byte() : U8 => 100U8; let arr : [U8; 2] = [byte; 2]; arr[0]",
+    ),
+    100,
+  );
 });
 
 test("array: F32 element type", () => {
   expectFloatValue(
-    executeTuff("let arr : [F32; 2; 2] = [3.14, 2.71]; arr[1]"),
+    executeTuff(
+      "fn value() : F32 => 2.71F32; let arr : [F32; 2] = [value; 2]; arr[1]",
+    ),
     2.71,
   );
 });
 
-test("array: negative numbers in array", () => {
-  expectValue(executeTuff("let arr : [I32; 3; 3] = [-1, -2, -3]; arr[0]"), -1);
-});
-
-test("array: expressions in array initializer", () => {
+test("array: length property returns declared length", () => {
   expectValue(
-    executeTuff("let arr : [I32; 3; 3] = [1 + 1, 2 + 1, 3 + 1]; arr[1]"),
-    3,
-  );
-});
-
-test("array: variables in array initializer", () => {
-  expectValue(
-    executeTuff("let x : I32 = 5; let arr : [I32; 2; 2] = [x, 10]; arr[0]"),
+    executeTuff(
+      "fn one() : I32 => 1; let arr : [I32; 5] = [one; 5]; arr.length",
+    ),
     5,
-  );
-});
-
-test("array: length property returns total capacity", () => {
-  expectValue(executeTuff("let arr : [I32; 3; 3] = [1, 2, 3]; arr.length"), 3);
-});
-
-test("array: length property on larger capacity", () => {
-  expectValue(executeTuff("let arr : [I32; 2; 5] = [1, 2]; arr.length"), 5);
-});
-
-test("array: access with constant index proven < init count", () => {
-  expectValue(
-    executeTuff("let arr : [I32; 4; 4] = [10, 20, 30, 40]; arr[0]"),
-    10,
   );
 });
 
 test("array: access element in arithmetic", () => {
   expectValue(
-    executeTuff("let arr : [I32; 3; 3] = [2, 3, 4]; arr[0] + arr[1]"),
-    5,
+    executeTuff(
+      "let mut current : I32 = 0; fn next() : I32 => { current += 1; current } let arr : [I32; 3] = [next; 3]; arr[0] + arr[1]",
+    ),
+    3,
   );
 });
 
-test("array: multiple array accesses in expression", () => {
-  expectValue(
-    executeTuff("let arr : [I32; 3; 3] = [1, 2, 3]; arr[0] + arr[1] + arr[2]"),
-    6,
-  );
-});
-
-// Partial initialization tests
-test("array: partial initialization (2;4) with default zeros", () => {
-  expectValue(executeTuff("let arr : [I32; 2; 4] = [5, 10]; arr.length"), 4);
-});
-
-test("array: partial init - read initialized slot", () => {
-  expectValue(executeTuff("let arr : [I32; 2; 4] = [5, 10]; arr[0]"), 5);
-});
-
-test("array: single element array", () => {
-  expectValue(executeTuff("let arr : [I32; 1; 1] = [42]; arr[0]"), 42);
-});
-
-// Mutable array tests - element reassignment
 test("array: mutable array element reassignment", () => {
   expectValue(
-    executeTuff("let mut arr : [I32; 2; 2] = [1, 2]; arr[0] = 100; arr[0]"),
+    executeTuff(
+      "fn one() : I32 => 1; let mut arr : [I32; 2] = [one; 2]; arr[0] = 100; arr[0]",
+    ),
     100,
-  );
-});
-
-test("array: mutable array reassign second element", () => {
-  expectValue(
-    executeTuff("let mut arr : [I32; 3; 3] = [1, 2, 3]; arr[1] = 50; arr[1]"),
-    50,
-  );
-});
-
-test("array: mutable array write to adjacent uninitialized slot", () => {
-  expectValue(
-    executeTuff("let mut arr : [I32; 2; 4] = [1, 2]; arr[2] = 99; arr[2]"),
-    99,
   );
 });
 
 test("array: mutable array multiple reassignments", () => {
   expectValue(
     executeTuff(
-      "let mut arr : [I32; 2; 2] = [1, 2]; arr[0] = 10; arr[1] = 20; arr[0] + arr[1]",
+      "fn one() : I32 => 1; let mut arr : [I32; 2] = [one; 2]; arr[0] = 10; arr[1] = 20; arr[0] + arr[1]",
     ),
     30,
   );
@@ -2108,163 +2067,160 @@ test("array: mutable array multiple reassignments", () => {
 
 test("array: immutable array modification error", () => {
   expectError(
-    executeTuff("let arr : [I32; 2; 2] = [1, 2]; arr[0] = 10; arr[0]"),
+    executeTuff(
+      "fn one() : I32 => 1; let arr : [I32; 2] = [one; 2]; arr[0] = 10; arr[0]",
+    ),
   );
 });
 
-// Nested array tests
-test("array: 2D array (nested arrays) declaration", () => {
+test("array: nested arrays via generator function", () => {
   expectValue(
-    executeTuff("let arr : [[I32; 2; 2]; 2; 2] = [[1, 2], [3, 4]]; arr[0][0]"),
-    1,
-  );
-});
-
-test("array: 2D array access second element", () => {
-  expectValue(
-    executeTuff("let arr : [[I32; 2; 2]; 2; 2] = [[1, 2], [3, 4]]; arr[0][1]"),
+    executeTuff(
+      "fn makeRow() : [I32; 2] => { let mut current : I32 = 0; fn next() : I32 => { current += 1; current } [next; 2] } let arr : [[I32; 2]; 2] = [makeRow; 2]; arr[1][1]",
+    ),
     2,
   );
 });
 
-test("array: 2D array access second row", () => {
-  expectValue(
-    executeTuff("let arr : [[I32; 2; 2]; 2; 2] = [[1, 2], [3, 4]]; arr[1][0]"),
-    3,
-  );
-});
-
-test("array: 2D array access nested element", () => {
-  expectValue(
-    executeTuff("let arr : [[I32; 2; 2]; 2; 2] = [[1, 2], [3, 4]]; arr[1][1]"),
-    4,
-  );
-});
-
-test("array: 3D array access", () => {
+test("array: array returned from function", () => {
   expectValue(
     executeTuff(
-      "let arr : [[[I32; 1; 1]; 1; 1]; 1; 1] = [[[5]]]; arr[0][0][0]",
+      "fn seed() : I32 => 10; fn getArray() : [I32; 3] => [seed; 3]; let a : [I32; 3] = getArray(); a[1]",
     ),
-    5,
-  );
-});
-
-// Array with functions and control flow
-test("array: array element returned from function", () => {
-  expectValue(
-    executeTuff(
-      "fn getArray() : [I32; 3; 3] => [10, 20, 30]; let a : [I32; 3; 3] = getArray(); a[1]",
-    ),
-    20,
+    10,
   );
 });
 
 test("array: pass array to function", () => {
   expectValue(
     executeTuff(
-      "fn sum(a : [I32; 2; 2]) : I32 => a[0] + a[1]; let arr : [I32; 2; 2] = [5, 7]; sum(arr)",
+      "fn value() : I32 => 6; fn sum(a : [I32; 2]) : I32 => a[0] + a[1]; let arr : [I32; 2] = [value; 2]; sum(arr)",
     ),
     12,
-  );
-});
-
-test("array: array in if condition result", () => {
-  expectValue(
-    executeTuff(
-      "let arr : [I32; 2; 2] = [1, 2]; if 1 { arr[0] } else { arr[1] }",
-    ),
-    1,
   );
 });
 
 test("array: array element in while loop", () => {
   expectValue(
     executeTuff(
-      "let arr : [I32; 1; 1] = [3]; let mut x : I32 = 0; let mut i : I32 = 0; while i < arr[0] { x = x + 1; i = i + 1; } x",
+      "fn three() : I32 => 3; let arr : [I32; 1] = [three; 1]; let mut x : I32 = 0; let mut i : I32 = 0; while (i < arr[0]) { x = x + 1; i = i + 1 }; x",
     ),
     3,
   );
 });
 
-// Negative array tests - errors
-
-test("array: type mismatch in element initialization", () => {
-  expectError(executeTuff("let arr : [I32; 2; 2] = [1, 2.5]; arr[0]"));
+test("array: generator return type mismatch is error", () => {
+  expectError(
+    executeTuff(
+      "fn makeFloat() : F32 => 2.5F32; let arr : [I32; 2] = [makeFloat; 2]; arr[0]",
+    ),
+  );
 });
 
-test("array: too few elements in initializer", () => {
-  expectError(executeTuff("let arr : [I32; 3; 3] = [1, 2]; arr[0]"));
+test("array: generator repeat count must match declared length", () => {
+  expectError(
+    executeTuff("fn one() : I32 => 1; let arr : [I32; 3] = [one; 2]; arr[0]"),
+  );
 });
 
-test("array: too many elements in initializer", () => {
-  expectError(executeTuff("let arr : [I32; 2; 2] = [1, 2, 3]; arr[0]"));
+test("array: generator repeat count cannot exceed declared length", () => {
+  expectError(
+    executeTuff("fn one() : I32 => 1; let arr : [I32; 2] = [one; 3]; arr[0]"),
+  );
 });
 
 test("array: invalid array type syntax", () => {
-  expectError(executeTuff("let arr : [I32] = [1, 2, 3]; arr[0]"));
+  expectError(
+    executeTuff("fn one() : I32 => 1; let arr : [I32] = [one; 3]; arr[0]"),
+  );
 });
 
 test("array: missing element count in type", () => {
-  expectError(executeTuff("let arr : [I32; 3] = [1, 2, 3]; arr[0]"));
+  expectError(
+    executeTuff("fn one() : I32 => 1; let arr : [I32;] = [one; 3]; arr[0]"),
+  );
 });
 
 test("array: accessing with non-index expression", () => {
   expectError(
-    executeTuff("let arr : [I32; 2; 2] = [1, 2]; let x : F32 = 0.5; arr[x]"),
+    executeTuff(
+      "fn one() : I32 => 1; let arr : [I32; 2] = [one; 2]; let x : F32 = 0.5; arr[x]",
+    ),
   );
 });
 
 test("array: missing array initializer", () => {
-  expectError(executeTuff("let arr : [I32; 2; 2]; arr[0]"));
+  expectError(executeTuff("let arr : [I32; 2]; arr[0]"));
 });
 
-test("array: non-numeric element in initializer", () => {
-  expectError(executeTuff("let arr : [I32; 2; 2] = [x, y]; arr[0]"));
+test("array: non-callable generator is error", () => {
+  expectError(
+    executeTuff("let x : I32 = 1; let arr : [I32; 2] = [x; 2]; arr[0]"),
+  );
+});
+
+test("array: generator must be zero-argument callable", () => {
+  expectError(
+    executeTuff(
+      "fn add(x : I32) : I32 => x; let arr : [I32; 2] = [add; 2]; arr[0]",
+    ),
+  );
 });
 
 test("array: missing opening bracket in initializer", () => {
-  expectError(executeTuff("let arr : [I32; 2; 2] = 1, 2]; arr[0]"));
+  expectError(
+    executeTuff("fn one() : I32 => 1; let arr : [I32; 2] = one; 2]; arr[0]"),
+  );
 });
 
 test("array: missing closing bracket in initializer", () => {
-  expectError(executeTuff("let arr : [I32; 2; 2] = [1, 2; arr[0]"));
-});
-
-test("array: accessing uninitialized index (dynamic)", () => {
   expectError(
-    executeTuff("let arr : [I32; 2; 4] = [1, 2]; let i : I32 = 3; arr[i]"),
+    executeTuff("fn one() : I32 => 1; let arr : [I32; 2] = [one; 2; arr[0]"),
   );
 });
 
-test("array: writing beyond adjacent uninitialized", () => {
+test("array: dynamic index remains disallowed", () => {
   expectError(
-    executeTuff("let mut arr : [I32; 2; 4] = [1, 2]; arr[3] = 50; arr[3]"),
+    executeTuff(
+      "fn one() : I32 => 1; let arr : [I32; 2] = [one; 2]; let i : I32 = 1; arr[i]",
+    ),
   );
 });
 
-test("array: accessing constant index >= init count unproven", () => {
-  expectError(executeTuff("let arr : [I32; 2; 4] = [1, 2]; arr[3]"));
+test("array: writing beyond fixed length is error", () => {
+  expectError(
+    executeTuff(
+      "fn one() : I32 => 1; let mut arr : [I32; 2] = [one; 2]; arr[2] = 50; arr[1]",
+    ),
+  );
+});
+
+test("array: constant out of bounds access is error", () => {
+  expectError(
+    executeTuff("fn one() : I32 => 1; let arr : [I32; 2] = [one; 2]; arr[2]"),
+  );
 });
 
 test("array: array element type mismatch in assignment", () => {
   expectError(
-    executeTuff("let mut arr : [I32; 2; 2] = [1, 2]; arr[0] = 3.14; arr[0]"),
+    executeTuff(
+      "fn one() : I32 => 1; let mut arr : [I32; 2] = [one; 2]; arr[0] = 3.14; arr[0]",
+    ),
   );
 });
 
-test("array: undefined variable in array initializer", () => {
-  expectError(executeTuff("let arr : [I32; 2; 2] = [x, y]; arr[0]"));
-});
-
 test("array: negative index access", () => {
-  expectError(executeTuff("let arr : [I32; 2; 2] = [1, 2]; arr[-1]"));
+  expectError(
+    executeTuff("fn one() : I32 => 1; let arr : [I32; 2] = [one; 2]; arr[-1]"),
+  );
 });
 
 test("array: missing type in array type", () => {
-  expectError(executeTuff("let arr : [; 2; 2] = [1, 2]; arr[0]"));
+  expectError(
+    executeTuff("fn one() : I32 => 1; let arr : [; 2] = [one; 2]; arr[0]"),
+  );
 });
 
-test("array: invalid capacity (0 total elements)", () => {
-  expectError(executeTuff("let arr : [I32; 0; 0] = []; arr[0]"));
+test("array: invalid length zero", () => {
+  expectError(executeTuff("let arr : [I32; 0] = []; arr[0]"));
 });
