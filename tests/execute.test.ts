@@ -675,6 +675,71 @@ test("type alias: mutual cycle is error", () => {
   expectError(executeTuff("type A = B; type B = A; let x : A = 1; x"));
 });
 
+test("destructor: local block drops bindings in reverse declaration order", () => {
+  expectValue(
+    executeTuff(
+      "let mut log : I32 = 0; type Counted = I32 then drop; fn drop(this : Counted) : Void => log = log * 10 + this; fn scoped() : I32 => { if true { let first : Counted = 1; let second : Counted = 2; } log } scoped()",
+    ),
+    21,
+  );
+});
+
+test("destructor: reassignment drops previous value before overwrite", () => {
+  expectValue(
+    executeTuff(
+      "let mut log : I32 = 0; type Counted = I32 then drop; fn drop(this : Counted) : Void => log = log * 10 + this; let mut value : Counted = 1; value = 2; log * 10 + value",
+    ),
+    12,
+  );
+});
+
+test("destructor: function return drops locals before caller continues", () => {
+  expectValue(
+    executeTuff(
+      "let mut log : I32 = 0; type Counted = I32 then drop; fn drop(this : Counted) : Void => log = log * 10 + this; fn make() : I32 => { let local : Counted = 3; 7 } let result : I32 = make(); log * 10 + result",
+    ),
+    37,
+  );
+});
+
+test("destructor: drop function must return Void", () => {
+  expectError(
+    executeTuff(
+      "type Counted = I32 then drop; fn drop(this : Counted) : I32 => this; 0",
+    ),
+  );
+});
+
+test("destructor: drop function first parameter must be named this", () => {
+  expectError(
+    executeTuff(
+      "type Counted = I32 then drop; fn drop(value : Counted) : Void => 0; 0",
+    ),
+  );
+});
+
+test("destructor: drop function parameter must use the alias type", () => {
+  expectError(
+    executeTuff(
+      "type Counted = I32 then drop; fn drop(this : I32) : Void => 0; 0",
+    ),
+  );
+});
+
+test("destructor: missing drop function is error", () => {
+  expectError(
+    executeTuff("type Counted = I32 then drop; let value : Counted = 1; value"),
+  );
+});
+
+test("destructor: moved binding cannot be used after transfer", () => {
+  expectError(
+    executeTuff(
+      "type Counted = I32 then drop; fn drop(this : Counted) : Void => 0; let value : Counted = 1; let moved : Counted = value; value",
+    ),
+  );
+});
+
 // is operator tests
 test("is operator: Char literal matches Char", () => {
   expectValue(executeTuff("'a' is Char"), 1);

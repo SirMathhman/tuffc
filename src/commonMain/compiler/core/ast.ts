@@ -50,6 +50,7 @@ export interface KeywordToken {
     | "extern"
     | "object"
     | "type"
+    | "then"
     | "this"
     | "is"
     | "mut"
@@ -207,6 +208,12 @@ export interface VariableNode {
   name: string;
 }
 
+export interface MoveNode {
+  kind: "move";
+  name: string;
+  type: string;
+}
+
 export interface ModuleReferenceNode {
   kind: "module-reference";
   moduleName: string;
@@ -287,6 +294,8 @@ export interface LetNode {
   mutable: boolean;
   name: string;
   type: string;
+  aliasType?: string;
+  destructorFunction?: string;
   initializer: ASTNode;
 }
 
@@ -366,6 +375,8 @@ export interface MatchNode {
 export interface FunctionParameter {
   name: string;
   type: string;
+  aliasType?: string;
+  destructorFunction?: string;
 }
 
 export interface FunctionNode {
@@ -374,6 +385,7 @@ export interface FunctionNode {
   parameters: FunctionParameter[];
   returnType: string;
   body: ASTNode;
+  isDestructor?: boolean;
 }
 
 export interface ObjectNode {
@@ -419,6 +431,8 @@ export interface StructField {
   name: string;
   type: string;
   mutable: boolean;
+  aliasType?: string;
+  destructorFunction?: string;
 }
 
 export interface StructNode {
@@ -431,6 +445,7 @@ export interface TypeAliasNode {
   kind: "type-alias";
   name: string;
   targetType: string;
+  destructorName?: string;
 }
 
 export interface ExternModuleNode {
@@ -507,6 +522,7 @@ export type ASTNode =
   | ReadNode
   | ModuleReferenceNode
   | VariableNode
+  | MoveNode
   | ThisNode
   | BinaryNode
   | ComparisonNode
@@ -567,6 +583,9 @@ export interface RefinementType {
 export interface VariableInfo {
   type: string;
   mutable: boolean;
+  aliasType?: string;
+  destructorFunction?: string;
+  moved?: boolean;
   refinement?: RefinementType; // Optional refinement constraints
   initValue?: string; // The literal value (for constants), if available
   pointsTo?: string; // For pointers: the name of the variable it points to
@@ -600,6 +619,13 @@ export interface TypeNarrowingInfo {
 export interface ParsedTypeAliasDeclaration {
   name: string;
   targetType: string;
+  destructorName?: string;
+}
+
+export interface ParsedTypeReference {
+  type: string;
+  aliasType?: string;
+  destructorFunction?: string;
 }
 
 export interface DestructuredBinding {
@@ -695,6 +721,7 @@ export interface Parser {
   modules: Map<string, ModuleCompilationInfo>;
   aliases: Map<string, string>;
   aliasDeclarations: Map<string, string>;
+  aliasDestructors: Map<string, string>;
   structs: Map<string, StructInfo>;
   structNames: Set<string>;
   objects: Map<string, ObjectInfo>;

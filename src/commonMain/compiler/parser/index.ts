@@ -37,6 +37,7 @@ import type {
   ParsedSliceReferenceType,
   ParsedSliceType,
   ParsedTypeAliasDeclaration,
+  ParsedTypeReference,
   Parser,
   RefinementConstraint,
   RefinementType,
@@ -255,9 +256,121 @@ export function enterCallableScope(
 ): void {
   parser.currentScope = createScopeFrame(parentScope);
   for (const param of parameters) {
-    parser.variables.set(param.name, { type: param.type, mutable: false });
+    parser.variables.set(param.name, {
+      type: param.type,
+      mutable: false,
+      aliasType: param.aliasType,
+      destructorFunction: param.destructorFunction,
+      moved: false,
+    });
     registerScopeVariable(parser, param.name, param.type, false, true);
   }
+}
+
+export function maybeMoveExpression(
+  parser: Parser,
+  expression: ASTNode,
+): Result<ASTNode, string> {
+  if (expression.kind !== "variable") {
+    return ok(expression);
+  }
+
+  const variableInfo = parser.variables.get(expression.name);
+  if (!variableInfo?.destructorFunction) {
+    return ok(expression);
+  }
+
+  if (variableInfo.moved) {
+    return err(
+      "Variable '" + expression.name + "' was moved and cannot be used",
+    );
+  }
+
+  parser.variables.set(expression.name, {
+    ...variableInfo,
+    moved: true,
+  });
+
+  return ok({
+    kind: "move",
+    name: expression.name,
+    type: variableInfo.type,
+  });
+}
+
+export function validateAliasDestructor(
+  parser: Parser,
+  aliasName: string,
+  destructorName: string,
+): Result<void, string> {
+  const fnInfo = parser.functions.get(destructorName);
+  if (!fnInfo) {
+    return err(
+      "Destructor function '" +
+        destructorName +
+        "' for alias '" +
+        aliasName +
+        "' is not defined",
+    );
+  }
+
+  if (fnInfo.returnType !== "Void") {
+    return err(
+      "Destructor function '" +
+        destructorName +
+        "' for alias '" +
+        aliasName +
+        "' must return Void",
+    );
+  }
+
+  const firstParameter = fnInfo.parameters[0];
+  if (!firstParameter) {
+    return err(
+      "Destructor function '" +
+        destructorName +
+        "' for alias '" +
+        aliasName +
+        "' must take a this parameter",
+    );
+  }
+
+  if (firstParameter.name !== "this") {
+    return err(
+      "Destructor function '" +
+        destructorName +
+        "' for alias '" +
+        aliasName +
+        "' must use 'this' as its first parameter name",
+    );
+  }
+
+  if (firstParameter.aliasType !== aliasName) {
+    return err(
+      "Destructor function '" +
+        destructorName +
+        "' for alias '" +
+        aliasName +
+        "' must take '" +
+        aliasName +
+        "' as its first parameter type",
+    );
+  }
+
+  return ok(undefined);
+}
+
+export function isDestructorFunction(
+  parser: Parser,
+  functionName: string,
+): boolean {
+  for (const destructorName of parser.aliasDestructors.values()) {
+    if (destructorName === functionName) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 export function parseTrailingUnionType(
@@ -346,11 +459,16 @@ export function parseFunctionParameters(
     }
     advance(parser);
 
-    const paramTypeResult = parseTypeAnnotation(parser);
+    const paramTypeResult = parseTypeReference(parser);
     if (!paramTypeResult.ok) {
       return paramTypeResult;
     }
-    parameters.push({ name: paramName, type: paramTypeResult.value });
+    parameters.push({
+      name: paramName,
+      type: paramTypeResult.value.type,
+      aliasType: paramTypeResult.value.aliasType,
+      destructorFunction: paramTypeResult.value.destructorFunction,
+    });
 
     const separatorResult = consumeCommaOrClosingParen(
       parser,
@@ -548,6 +666,30 @@ export function parseTypeValue(
   }
 
   return err("Expected type");
+}
+
+export function parseTypeReference(
+  parser: Parser,
+  resolveAliases: boolean = true,
+): Result<ParsedTypeReference, string> {
+  const aliasType =
+    current(parser).type === "IDENTIFIER" &&
+    parser.aliasDeclarations.has(current(parser).value)
+      ? current(parser).value
+      : undefined;
+
+  const typeResult = parseTypeAnnotation(parser, resolveAliases);
+  if (!typeResult.ok) {
+    return typeResult;
+  }
+
+  return ok({
+    type: typeResult.value,
+    aliasType,
+    destructorFunction: aliasType
+      ? parser.aliasDestructors.get(aliasType)
+      : undefined,
+  });
 }
 
 // Refinement type parsing
@@ -989,6 +1131,14 @@ export function parseAssignmentValue(
       right: valueResult.value,
     };
     assignValue = binaryNode;
+  }
+
+  if (!isCompound) {
+    const movedValue = maybeMoveExpression(parser, assignValue);
+    if (!movedValue.ok) {
+      return movedValue;
+    }
+    assignValue = movedValue.value;
   }
 
   return ok(assignValue);
@@ -2086,9 +2236,14 @@ export function parseReturnStatement(parser: Parser): Result<ASTNode, string> {
     return valueResult;
   }
 
+  const movedValue = maybeMoveExpression(parser, valueResult.value);
+  if (!movedValue.ok) {
+    return movedValue;
+  }
+
   return ok({
     kind: "return",
-    value: valueResult.value,
+    value: movedValue.value,
   });
 }
 
@@ -2307,7 +2462,12 @@ export function parseLetStatement(parser: Parser): Result<ASTNode, string> {
   if (!declarationResult.ok) {
     return declarationResult;
   }
-  const { name, type: typeStr } = declarationResult.value;
+  const {
+    name,
+    type: typeStr,
+    aliasType,
+    destructorFunction,
+  } = declarationResult.value;
 
   // Check for duplicate declaration
   if (parser.variables.has(name)) {
@@ -2336,6 +2496,11 @@ export function parseLetStatement(parser: Parser): Result<ASTNode, string> {
   // Check type compatibility for numeric literals
   let initializer = initResult.value;
   const originalInitializer = initializer;
+  const movedInitializer = maybeMoveExpression(parser, initializer);
+  if (!movedInitializer.ok) {
+    return movedInitializer;
+  }
+  initializer = movedInitializer.value;
 
   // Type check for array types: validate fixed-length initialization
   if (typeStr.startsWith("[")) {
@@ -2596,7 +2761,14 @@ export function parseLetStatement(parser: Parser): Result<ASTNode, string> {
 
   // Register variable in parser context with refinement info
   // Store initValue if it's a numeric literal (so we can constant-fold constraints)
-  const varInfo: VariableInfo = { type: typeStr, mutable, refinement };
+  const varInfo: VariableInfo = {
+    type: typeStr,
+    mutable,
+    aliasType,
+    destructorFunction,
+    moved: false,
+    refinement,
+  };
   if (originalInitializer.kind === "number") {
     varInfo.initValue = originalInitializer.value;
   }
@@ -2665,6 +2837,8 @@ export function parseLetStatement(parser: Parser): Result<ASTNode, string> {
     mutable,
     name,
     type: typeStr,
+    aliasType,
+    destructorFunction,
     initializer,
   });
 }
@@ -2800,7 +2974,11 @@ export function parseDestructuringLetStatement(
     },
   ];
 
-  parser.variables.set(tempName, { type: sourceType, mutable: false });
+  parser.variables.set(tempName, {
+    type: sourceType,
+    mutable: false,
+    moved: false,
+  });
   registerScopeVariable(parser, tempName, sourceType, false, false);
 
   for (const binding of bindings) {
@@ -2833,6 +3011,7 @@ export function parseDestructuringLetStatement(
     parser.variables.set(binding.bindingName, {
       type: memberType.value,
       mutable: false,
+      moved: false,
     });
     registerScopeVariable(
       parser,
@@ -2857,6 +3036,7 @@ export function isReservedKeyword(name: string): boolean {
     name === "extern" ||
     name === "object" ||
     name === "type" ||
+    name === "then" ||
     name === "this" ||
     name === "is" ||
     name === "mut" ||
@@ -2923,6 +3103,18 @@ export function parseTypeAliasDeclaration(
     return targetTypeResult;
   }
 
+  let destructorName: string | undefined;
+  if (current(parser).type === "KEYWORD" && current(parser).value === "then") {
+    advance(parser);
+
+    const destructorTok = current(parser);
+    if (destructorTok.type !== "IDENTIFIER") {
+      return err("Expected destructor function name after 'then'");
+    }
+    destructorName = destructorTok.value;
+    advance(parser);
+  }
+
   if (current(parser).type !== "SEMICOLON") {
     return err("Expected ';' after type alias declaration");
   }
@@ -2931,18 +3123,37 @@ export function parseTypeAliasDeclaration(
   return ok({
     name: aliasName,
     targetType: targetTypeResult.value,
+    destructorName,
   });
 }
 
 export function parseTypeAliasStatement(
   parser: Parser,
 ): Result<ASTNode, string> {
-  return parseTypeAliasLikeStatement(parser, createTypeAliasNode);
+  const aliasNode = parseTypeAliasLikeStatement(parser, createTypeAliasNode);
+  if (!aliasNode.ok) {
+    return aliasNode;
+  }
+
+  if (aliasNode.value.kind === "type-alias" && aliasNode.value.destructorName) {
+    const destructorValidation = validateAliasDestructor(
+      parser,
+      aliasNode.value.name,
+      aliasNode.value.destructorName,
+    );
+    if (!destructorValidation.ok) {
+      return destructorValidation;
+    }
+  }
+
+  return aliasNode;
 }
 
 export interface ParsedNamedTypeDeclaration {
   name: string;
   type: string;
+  aliasType?: string;
+  destructorFunction?: string;
 }
 
 export interface ParsedFunctionSignatureHead {
@@ -2980,22 +3191,29 @@ export function parseNamedTypeDeclaration(
   }
   advance(parser);
 
-  const typeResult = parseTypeAnnotation(parser);
+  const typeResult = parseTypeReference(parser);
   if (!typeResult.ok) {
     return typeResult;
   }
 
   return ok({
     name,
-    type: typeResult.value,
+    type: typeResult.value.type,
+    aliasType: typeResult.value.aliasType,
+    destructorFunction: typeResult.value.destructorFunction,
   });
 }
 
-export function createTypeAliasNode(name: string, targetType: string): ASTNode {
+export function createTypeAliasNode(
+  name: string,
+  targetType: string,
+  destructorName?: string,
+): ASTNode {
   return {
     kind: "type-alias",
     name,
     targetType,
+    destructorName,
   };
 }
 
@@ -3023,6 +3241,7 @@ export function parseTypeAliasLikeStatement(
     nodeFactory(
       aliasDeclaration.value.name,
       aliasDeclaration.value.targetType,
+      aliasDeclaration.value.destructorName,
     ) as ASTNode,
   );
 }
@@ -3259,7 +3478,7 @@ export function parseExternLetStatement(
   }
   advance(parser);
 
-  parser.variables.set(name, { type, mutable: false });
+  parser.variables.set(name, { type, mutable: false, moved: false });
   registerScopeVariable(parser, name, type, false, false);
 
   return ok({
@@ -3506,6 +3725,7 @@ export function parseFunctionStatement(
     parameters,
     returnType,
     body,
+    isDestructor: isDestructorFunction(parser, functionName),
   });
 }
 
@@ -3542,7 +3762,11 @@ export function parseObjectStatement(parser: Parser): Result<ASTNode, string> {
   const savedScope = parser.currentScope;
   const savedInLoop = parser.inLoop;
 
-  parser.variables.set(objectName, { type: objectType, mutable: false });
+  parser.variables.set(objectName, {
+    type: objectType,
+    mutable: false,
+    moved: false,
+  });
   registerScopeVariable(parser, objectName, objectType, false, false);
   parser.objects.set(objectType, {
     name: objectName,
@@ -3574,7 +3798,11 @@ export function parseObjectStatement(parser: Parser): Result<ASTNode, string> {
   advance(parser);
 
   parser.variables = savedVariables;
-  parser.variables.set(objectName, { type: objectType, mutable: false });
+  parser.variables.set(objectName, {
+    type: objectType,
+    mutable: false,
+    moved: false,
+  });
   parser.functions = savedFunctions;
   parser.currentScope = savedScope;
   parser.inLoop = savedInLoop;
@@ -3708,14 +3936,19 @@ export function parseStructFieldList(
     advance(parser);
 
     // Parse field type
-    const fieldTypeResult = parseTypeValue(parser);
+    const fieldTypeResult = parseTypeReference(parser);
     if (!fieldTypeResult.ok) {
       return fieldTypeResult;
     }
-    const fieldType = fieldTypeResult.value;
-    advance(parser);
+    const fieldType = fieldTypeResult.value.type;
 
-    fields.push({ name: fieldName, type: fieldType, mutable });
+    fields.push({
+      name: fieldName,
+      type: fieldType,
+      mutable,
+      aliasType: fieldTypeResult.value.aliasType,
+      destructorFunction: fieldTypeResult.value.destructorFunction,
+    });
 
     // Expect ';'
     if (current(parser).type !== "SEMICOLON") {
@@ -4694,6 +4927,9 @@ export function parsePrimary(parser: Parser): Result<ASTNode, string> {
     // Variable reference - just check it exists
     const declaredVariable = parser.variables.get(name);
     if (declaredVariable) {
+      if (declaredVariable.moved) {
+        return err("Variable '" + name + "' was moved and cannot be used");
+      }
       return ok({ kind: "variable", name });
     }
 
@@ -4964,6 +5200,12 @@ export function prescanTypeAliases(parser: Parser): Result<void, string> {
         aliasDeclaration.value.name,
         aliasDeclaration.value.targetType,
       );
+      if (aliasDeclaration.value.destructorName) {
+        parser.aliasDestructors.set(
+          aliasDeclaration.value.name,
+          aliasDeclaration.value.destructorName,
+        );
+      }
       return ok(undefined);
     },
   );

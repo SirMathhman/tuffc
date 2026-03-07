@@ -48,6 +48,7 @@ export function createParser(
     modules,
     aliases: new Map(),
     aliasDeclarations: new Map(),
+    aliasDestructors: new Map(),
     structs: new Map(),
     structNames: new Set(),
     objects: new Map(),

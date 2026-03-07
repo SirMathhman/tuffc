@@ -407,6 +407,7 @@ export function tokenize(input: string): Result<Token[], string> {
         ident === "extern" ||
         ident === "object" ||
         ident === "type" ||
+        ident === "then" ||
         ident === "this" ||
         ident === "is" ||
         ident === "mut" ||

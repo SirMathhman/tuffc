@@ -80,6 +80,7 @@ export function validateAST(node: ASTNode): Result<undefined, string> {
     node.kind === "read" ||
     node.kind === "module-reference" ||
     node.kind === "variable" ||
+    node.kind === "move" ||
     node.kind === "this"
   ) {
     return ok(undefined);
@@ -724,7 +725,7 @@ export function validateStructSemantics(
     return validateStructSemantics(node.expression, structs, objects, typeEnv);
   }
 
-  if (node.kind === "this") {
+  if (node.kind === "this" || node.kind === "move") {
     return ok(undefined);
   }
 

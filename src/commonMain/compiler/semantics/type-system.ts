@@ -981,6 +981,10 @@ export function inferExpressionType(
     return ok(varResult.value.type);
   }
 
+  if (expr.kind === "move") {
+    return ok(expr.type);
+  }
+
   if (expr.kind === "this") {
     return err("Cannot infer type of expression");
   }
@@ -1195,7 +1199,11 @@ export function getVariable(
     return ok({
       type: scopeBinding.type,
       mutable: scopeBinding.mutable,
+      moved: false,
     });
+  }
+  if (varInfo.moved) {
+    return err("Variable '" + name + "' was moved and cannot be used");
   }
   return ok(varInfo);
 }

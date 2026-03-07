@@ -2,6 +2,7 @@
 
 import type {
   ASTNode,
+  BlockNode,
   ExternBindingInfo,
   FunctionParameter,
   MatchCase,
@@ -10,9 +11,182 @@ import type {
 import { createModuleResultName } from "../../../commonMain/compiler/core/project";
 import { isDigit } from "../../../commonMain/compiler/core/tokenization";
 
+interface CleanupBinding {
+  name: string;
+  destructorFunction: string;
+}
+
+interface CodegenBindingInfo {
+  destructorFunction?: string;
+}
+
+interface CodegenContext {
+  variables: Map<string, CodegenBindingInfo>;
+}
+
+interface GeneratedStatementCode {
+  code: string;
+  context: CodegenContext;
+  cleanupBindings: CleanupBinding[];
+}
+
+export function createCodegenContext(): CodegenContext {
+  return { variables: new Map() };
+}
+
+export function cloneCodegenContext(context: CodegenContext): CodegenContext {
+  return { variables: new Map(context.variables) };
+}
+
+export function createFunctionCodegenContext(
+  parameters: FunctionParameter[],
+): CodegenContext {
+  const context = createCodegenContext();
+  for (const parameter of parameters) {
+    context.variables.set(parameter.name, {
+      destructorFunction: parameter.destructorFunction,
+    });
+  }
+  return context;
+}
+
+export function getCleanupBindings(statement: ASTNode): CleanupBinding[] {
+  if (statement.kind === "let" && statement.destructorFunction) {
+    return [
+      {
+        name: statement.name,
+        destructorFunction: statement.destructorFunction,
+      },
+    ];
+  }
+
+  if (statement.kind === "destructure") {
+    return statement.statements.flatMap((nestedStatement) =>
+      getCleanupBindings(nestedStatement),
+    );
+  }
+
+  return [];
+}
+
+export function extendCodegenContextForStatement(
+  context: CodegenContext,
+  statement: ASTNode,
+): CodegenContext {
+  const nextContext = cloneCodegenContext(context);
+
+  if (statement.kind === "let") {
+    nextContext.variables.set(statement.name, {
+      destructorFunction: statement.destructorFunction,
+    });
+    return nextContext;
+  }
+
+  if (statement.kind === "destructure") {
+    for (const nestedStatement of statement.statements) {
+      nextContext.variables.set(nestedStatement.name, {
+        destructorFunction: nestedStatement.destructorFunction,
+      });
+    }
+  }
+
+  return nextContext;
+}
+
+export function codegenCleanup(binding: CleanupBinding): string {
+  const emittedName = codegenVariableName(binding.name);
+  return (
+    "if (" +
+    emittedName +
+    " !== undefined) { " +
+    binding.destructorFunction +
+    "(" +
+    emittedName +
+    "); " +
+    emittedName +
+    " = undefined; }"
+  );
+}
+
+export function codegenCleanupBindings(bindings: CleanupBinding[]): string {
+  return [...bindings]
+    .reverse()
+    .map((binding) => codegenCleanup(binding))
+    .join(" ");
+}
+
+export function hasMeaningfulBlockResult(block: BlockNode): boolean {
+  return !(block.result.kind === "number" && block.result.value === "0");
+}
+
+export function generateStatementCodeWithContext(
+  statements: ASTNode[],
+  context: CodegenContext,
+): GeneratedStatementCode {
+  let currentContext = cloneCodegenContext(context);
+  const cleanupBindings: CleanupBinding[] = [];
+  const code = statements
+    .map((stmt) => {
+      const statementCode = codegenAST(stmt, currentContext);
+      cleanupBindings.push(...getCleanupBindings(stmt));
+      currentContext = extendCodegenContextForStatement(currentContext, stmt);
+      return statementCode.endsWith(";") ? statementCode : statementCode + ";";
+    })
+    .join(" ");
+
+  return {
+    code,
+    context: currentContext,
+    cleanupBindings,
+  };
+}
+
+export function codegenBlockFragment(
+  block: BlockNode,
+  context: CodegenContext,
+  mode: "statement" | "value" | "effect",
+  initialCleanupBindings: CleanupBinding[] = [],
+): string {
+  const statementResult = generateStatementCodeWithContext(
+    block.statements,
+    context,
+  );
+  const cleanupCode = codegenCleanupBindings([
+    ...initialCleanupBindings,
+    ...statementResult.cleanupBindings,
+  ]);
+
+  if (mode === "statement") {
+    if (cleanupCode.length === 0) {
+      return statementResult.code;
+    }
+
+    return (
+      "try { " + statementResult.code + " } finally { " + cleanupCode + " }"
+    );
+  }
+
+  const resultCode = codegenAST(block.result, statementResult.context);
+  const bodyCode =
+    mode === "value"
+      ? statementResult.code + " return " + resultCode + ";"
+      : statementResult.code +
+        (hasMeaningfulBlockResult(block) ? resultCode + ";" : "");
+
+  if (cleanupCode.length === 0) {
+    return bodyCode;
+  }
+
+  return "try { " + bodyCode + " } finally { " + cleanupCode + " }";
+}
+
 export function codegenProgramReturn(node: ASTNode): string {
-  const code = codegenAST(node);
-  return node.kind === "block" ? code + ";" : "return " + code + ";";
+  const context = createCodegenContext();
+  if (node.kind === "block") {
+    return codegenBlockFragment(node, context, "value") + ";";
+  }
+
+  return "return " + codegenAST(node, context) + ";";
 }
 
 export function codegenProgramEvaluation(
@@ -20,17 +194,21 @@ export function codegenProgramEvaluation(
   resultName: string,
 ): string {
   if (node.kind === "block") {
+    const statementResult = generateStatementCodeWithContext(
+      node.statements,
+      createCodegenContext(),
+    );
     return (
-      generateStatementCode(node.statements) +
+      statementResult.code +
       " " +
       resultName +
       " = " +
-      codegenAST(node.result) +
+      codegenAST(node.result, statementResult.context) +
       ";"
     );
   }
 
-  return resultName + " = " + codegenAST(node) + ";";
+  return resultName + " = " + codegenAST(node, createCodegenContext()) + ";";
 }
 
 export function codegenExternalProviderHelpers(): string {
@@ -93,11 +271,17 @@ export function codegenFunctionLikeDeclaration(
   parameters: FunctionParameter[],
   returnType: string,
   body: ASTNode,
+  isDestructor: boolean = false,
 ): string {
   const paramList = parameters
     .map((parameter) => codegenVariableName(String(parameter.name)))
     .join(", ");
-  const bodyCode = codegenFunctionLikeBody(body, returnType);
+  const bodyCode = codegenFunctionLikeBody(
+    body,
+    returnType,
+    parameters,
+    isDestructor,
+  );
   const functionName = name ? " " + name : "";
   const suffix = name ? ";" : "";
   return (
@@ -115,31 +299,40 @@ export function codegenFunctionLikeDeclaration(
 export function codegenFunctionLikeBody(
   body: ASTNode,
   returnType: string,
+  parameters: FunctionParameter[],
+  isDestructor: boolean,
 ): string {
+  const context = createFunctionCodegenContext(parameters);
+  const parameterCleanupBindings = (isDestructor ? [] : parameters)
+    .filter((parameter) => parameter.destructorFunction)
+    .map((parameter) => ({
+      name: parameter.name,
+      destructorFunction: parameter.destructorFunction ?? "",
+    }));
+
   let bodyCode = "";
 
   if (body.kind === "block") {
-    const statements = body.statements;
-    bodyCode = generateStatementCode(statements);
-    const lastStmt =
-      statements.length > 0 ? statements[statements.length - 1] : undefined;
-    if (!(lastStmt && lastStmt.kind === "return")) {
-      if (returnType === "Void") {
-        if (body.result.kind !== "number" || body.result.value !== "0") {
-          bodyCode += codegenAST(body.result);
-        }
-      } else {
-        bodyCode += "return " + codegenAST(body.result);
-      }
-    }
-    return bodyCode;
+    return codegenBlockFragment(
+      body,
+      context,
+      returnType === "Void" ? "effect" : "value",
+      parameterCleanupBindings,
+    );
   }
 
+  const cleanupCode = codegenCleanupBindings(parameterCleanupBindings);
   if (returnType === "Void") {
-    return codegenAST(body);
+    bodyCode = codegenAST(body, context);
+    return cleanupCode.length === 0
+      ? bodyCode
+      : "try { " + bodyCode + "; } finally { " + cleanupCode + " }";
   }
 
-  return "return " + codegenAST(body);
+  bodyCode = "return " + codegenAST(body, context) + ";";
+  return cleanupCode.length === 0
+    ? bodyCode
+    : "try { " + bodyCode + " } finally { " + cleanupCode + " }";
 }
 
 export function extractNumberValue(numericLiteral: string): string {
@@ -176,13 +369,11 @@ export function codegenVariableName(name: string): string {
   return name === "this" ? "_tuffThisParam" : name;
 }
 
-export function generateStatementCode(statements: ASTNode[]): string {
-  return statements
-    .map((stmt) => {
-      const code = codegenAST(stmt);
-      return code.endsWith(";") ? code : code + ";";
-    })
-    .join(" ");
+export function generateStatementCode(
+  statements: ASTNode[],
+  context: CodegenContext = createCodegenContext(),
+): string {
+  return generateStatementCodeWithContext(statements, context).code;
 }
 
 export function codegenThisScopeObject(scope: ScopeFrame): string {
@@ -254,7 +445,10 @@ export function codegenThisScopeObject(scope: ScopeFrame): string {
   );
 }
 
-export function codegenAST(node: ASTNode): string {
+export function codegenAST(
+  node: ASTNode,
+  context: CodegenContext = createCodegenContext(),
+): string {
   if (node.kind === "number") {
     // Extract numeric part, stripping type annotation
     return extractNumberValue(node.value);
@@ -278,7 +472,7 @@ export function codegenAST(node: ASTNode): string {
       const expression =
         node.expression.kind === "variable"
           ? codegenVariableName(node.expression.name)
-          : codegenAST(node.expression);
+          : codegenAST(node.expression, context);
       return (
         "(() => { const _tuffValue = " +
         expression +
@@ -291,7 +485,7 @@ export function codegenAST(node: ASTNode): string {
   }
 
   if (node.kind === "union-wrap") {
-    const expression = codegenAST(node.expression);
+    const expression = codegenAST(node.expression, context);
     return (
       '({ __tuffUnion: true, tag: "' +
       node.armType +
@@ -317,32 +511,61 @@ export function codegenAST(node: ASTNode): string {
     );
   }
 
+  if (node.kind === "move") {
+    const emittedName = codegenVariableName(node.name);
+    return (
+      "(() => { const _tuffMoved = " +
+      emittedName +
+      "; " +
+      emittedName +
+      " = undefined; return _tuffMoved; })()"
+    );
+  }
+
   if (node.kind === "this") {
     return codegenThisScopeObject(node.scope);
   }
 
   if (node.kind === "let") {
-    const init = codegenAST(node.initializer);
-    return "let " + codegenVariableName(node.name) + " = " + init;
+    const init = codegenAST(node.initializer, context);
+    return "var " + codegenVariableName(node.name) + " = " + init;
   }
 
   if (node.kind === "destructure") {
-    return generateStatementCode(node.statements);
+    return generateStatementCode(node.statements, context);
   }
 
   if (node.kind === "assign") {
-    const value = codegenAST(node.value);
-    return codegenVariableName(node.name) + " = " + value;
+    const value = codegenAST(node.value, context);
+    const bindingInfo = context.variables.get(node.name);
+    const emittedName = codegenVariableName(node.name);
+    if (!bindingInfo?.destructorFunction) {
+      return emittedName + " = " + value;
+    }
+
+    return (
+      "(() => { const _tuffValue = " +
+      value +
+      "; if (" +
+      emittedName +
+      " !== undefined) { " +
+      bindingInfo.destructorFunction +
+      "(" +
+      emittedName +
+      "); } " +
+      emittedName +
+      " = _tuffValue; return _tuffValue; })()"
+    );
   }
 
   if (node.kind === "deref-assign") {
-    const value = codegenAST(node.value);
+    const value = codegenAST(node.value, context);
     // If we know which variable the pointer points to, assign to that variable
     if (node.targetVar) {
       return codegenVariableName(node.targetVar) + " = " + value;
     }
     // Otherwise, fall back to assigning through the pointer
-    const target = codegenAST(node.target);
+    const target = codegenAST(node.target, context);
     return target + " = " + value;
   }
 
@@ -351,8 +574,8 @@ export function codegenAST(node: ASTNode): string {
     node.kind === "comparison" ||
     node.kind === "logical"
   ) {
-    const left = codegenAST(node.left);
-    const right = codegenAST(node.right);
+    const left = codegenAST(node.left, context);
+    const right = codegenAST(node.right, context);
     // For division with integer types, use Math.trunc for integer division
     if (node.kind === "binary" && node.operator === "/") {
       return "(Math.trunc(" + left + " / " + right + "))";
@@ -361,34 +584,32 @@ export function codegenAST(node: ASTNode): string {
   }
 
   if (node.kind === "unary-logical") {
-    const operand = codegenAST(node.operand);
+    const operand = codegenAST(node.operand, context);
     return "(!" + operand + ")";
   }
 
   if (node.kind === "unary-op") {
     if (node.operator === "*") {
-      const operand = codegenAST(node.operand);
+      const operand = codegenAST(node.operand, context);
       // Dereference: *ptr -> ptr (in a simple interpreter, values are already dereferenced)
       return operand;
     } else if (node.operator === "&" || node.operator === "&mut") {
       if (node.operand.kind === "array-slice") {
-        return codegenAST(node.operand);
+        return codegenAST(node.operand, context);
       }
 
-      const operand = codegenAST(node.operand);
+      const operand = codegenAST(node.operand, context);
       // Address-of: &x -> x (in our simple model, we just return the variable/value)
       return operand;
     }
   }
 
   if (node.kind === "block") {
-    const statements = generateStatementCode(node.statements);
-    const result = codegenAST(node.result);
-    return statements + " return " + result;
+    return codegenBlockFragment(node, context, "value");
   }
 
   if (node.kind === "if") {
-    const condition = codegenAST(node.condition);
+    const condition = codegenAST(node.condition, context);
 
     let thenCode = "";
     if (node.thenBranch.kind === "block") {
@@ -400,17 +621,20 @@ export function codegenAST(node: ASTNode): string {
           node.thenBranch.result.value === "0"
         );
 
-      const stmtCode = generateStatementCode(node.thenBranch.statements);
+      const stmtCode = codegenBlockFragment(
+        node.thenBranch,
+        context,
+        hasResult && node.elseBranch ? "value" : "statement",
+      );
       if (hasResult && node.elseBranch) {
         // Block with meaningful result and there's an else - it's an expression
-        const resultCode = codegenAST(node.thenBranch.result);
-        thenCode = stmtCode + " return " + resultCode;
+        thenCode = stmtCode;
       } else {
         // Just statements, no meaningful result
         thenCode = stmtCode;
       }
     } else {
-      thenCode = codegenAST(node.thenBranch);
+      thenCode = codegenAST(node.thenBranch, context);
     }
 
     if (node.elseBranch === undefined) {
@@ -429,17 +653,20 @@ export function codegenAST(node: ASTNode): string {
           node.elseBranch.result.value === "0"
         );
 
-      const stmtCode = generateStatementCode(node.elseBranch.statements);
+      const stmtCode = codegenBlockFragment(
+        node.elseBranch,
+        context,
+        hasResult ? "value" : "statement",
+      );
       if (hasResult) {
-        const resultCode = codegenAST(node.elseBranch.result);
-        elseCode = stmtCode + " return " + resultCode;
+        elseCode = stmtCode;
       } else {
         elseCode = stmtCode;
       }
     } else if (node.elseBranch.kind === "if") {
       // else if - the recursive call will generate the correct syntax
       // For nested if nodes, we need to generate them as expressions if blocks are involved
-      const innerIfCode = codegenAST(node.elseBranch);
+      const innerIfCode = codegenAST(node.elseBranch, context);
 
       if (node.thenBranch.kind === "block") {
         // Then has statements, use if/else syntax
@@ -451,7 +678,7 @@ export function codegenAST(node: ASTNode): string {
         return "(" + condition + " ? " + thenCode + " : " + innerIfCode + ")";
       }
     } else {
-      elseCode = codegenAST(node.elseBranch);
+      elseCode = codegenAST(node.elseBranch, context);
     }
 
     // Check if both branches are simple expressions without statements or blocks
@@ -474,13 +701,13 @@ export function codegenAST(node: ASTNode): string {
   }
 
   if (node.kind === "while") {
-    const condition = codegenAST(node.condition);
+    const condition = codegenAST(node.condition, context);
     let bodyCode = "";
 
     if (node.body.kind === "block") {
-      bodyCode = generateStatementCode(node.body.statements);
+      bodyCode = codegenBlockFragment(node.body, context, "statement");
     } else {
-      bodyCode = codegenAST(node.body);
+      bodyCode = codegenAST(node.body, context);
     }
 
     return "while (" + condition + ") { " + bodyCode + " }";
@@ -495,12 +722,12 @@ export function codegenAST(node: ASTNode): string {
   }
 
   if (node.kind === "return") {
-    const value = codegenAST(node.value);
+    const value = codegenAST(node.value, context);
     return "return " + value;
   }
 
   if (node.kind === "match") {
-    const matchExpr = codegenAST(node.matchExpr);
+    const matchExpr = codegenAST(node.matchExpr, context);
 
     // Generate ternary chain for match cases
     // match (x) { case 1 => 10; case 2 => 20; case _ => 0; }
@@ -535,14 +762,14 @@ export function codegenAST(node: ASTNode): string {
         (c) => (c.pattern as any).value === false,
       );
       if (trueCase && falseCase) {
-        const trueResult = codegenAST(trueCase.result);
-        const falseResult = codegenAST(falseCase.result);
+        const trueResult = codegenAST(trueCase.result, context);
+        const falseResult = codegenAST(falseCase.result, context);
         result = matchExpr + " === 1 ? " + trueResult + " : " + falseResult;
       }
     } else {
       // Regular ternary chain
       regularCases.forEach((c, i) => {
-        const caseResult = codegenAST(c.result);
+        const caseResult = codegenAST(c.result, context);
 
         if (c.pattern.type === "literal") {
           result += matchExpr + " === " + c.pattern.value + " ? " + caseResult;
@@ -560,7 +787,7 @@ export function codegenAST(node: ASTNode): string {
 
       // Add wildcard case at the end
       if (wildcardCase) {
-        const wildcardResult = codegenAST(wildcardCase.result);
+        const wildcardResult = codegenAST(wildcardCase.result, context);
         result += wildcardResult;
       }
     }
@@ -574,11 +801,12 @@ export function codegenAST(node: ASTNode): string {
       node.parameters,
       node.returnType,
       node.body,
+      node.isDestructor,
     );
   }
 
   if (node.kind === "object") {
-    const statements = generateStatementCode(node.body);
+    const statements = generateStatementCode(node.body, context);
     const runtimeObject = codegenThisScopeObject(node.scope);
     return (
       "const " +
@@ -637,19 +865,24 @@ export function codegenAST(node: ASTNode): string {
       node.parameters,
       node.returnType,
       node.body,
+      false,
     );
   }
 
   if (node.kind === "function-call") {
     // Generate function call
-    const argList = node.arguments.map((arg) => codegenAST(arg)).join(", ");
+    const argList = node.arguments
+      .map((arg) => codegenAST(arg, context))
+      .join(", ");
 
     return node.name + "(" + argList + ")";
   }
 
   if (node.kind === "call") {
-    const callee = codegenAST(node.callee);
-    const argList = node.arguments.map((arg) => codegenAST(arg)).join(", ");
+    const callee = codegenAST(node.callee, context);
+    const argList = node.arguments
+      .map((arg) => codegenAST(arg, context))
+      .join(", ");
     return callee + "(" + argList + ")";
   }
 
@@ -663,7 +896,7 @@ export function codegenAST(node: ASTNode): string {
     // Generate struct instantiation as JavaScript object
     const fields = node.fields
       .map((f) => {
-        const value = codegenAST(f.value);
+        const value = codegenAST(f.value, context);
         return f.name + ": " + value;
       })
       .join(", ");
@@ -673,7 +906,7 @@ export function codegenAST(node: ASTNode): string {
 
   if (node.kind === "array-literal") {
     if (node.generator && node.repeatCount !== undefined) {
-      const generator = codegenAST(node.generator);
+      const generator = codegenAST(node.generator, context);
       return (
         "(() => { const _tuffArray = []; const _tuffGenerator = (" +
         generator +
@@ -684,13 +917,13 @@ export function codegenAST(node: ASTNode): string {
     }
 
     // Generate array literal as a JavaScript array.
-    const elements = node.elements.map((elem) => codegenAST(elem));
+    const elements = node.elements.map((elem) => codegenAST(elem, context));
     return "[" + elements.join(", ") + "]";
   }
 
   if (node.kind === "array-access") {
-    const array = codegenAST(node.array);
-    const index = codegenAST(node.index);
+    const array = codegenAST(node.array, context);
+    const index = codegenAST(node.index, context);
     return (
       "(() => { const _tuffArray = " +
       array +
@@ -701,7 +934,7 @@ export function codegenAST(node: ASTNode): string {
   }
 
   if (node.kind === "array-slice") {
-    const array = codegenAST(node.array);
+    const array = codegenAST(node.array, context);
     return (
       "(() => { const _tuffArray = " +
       array +
@@ -714,9 +947,9 @@ export function codegenAST(node: ASTNode): string {
   }
 
   if (node.kind === "array-assign") {
-    const array = codegenAST(node.array);
-    const index = codegenAST(node.index);
-    const value = codegenAST(node.value);
+    const array = codegenAST(node.array, context);
+    const index = codegenAST(node.index, context);
+    const value = codegenAST(node.value, context);
     return (
       "(() => { const _tuffArray = " +
       array +
@@ -730,14 +963,14 @@ export function codegenAST(node: ASTNode): string {
 
   if (node.kind === "field-access") {
     // Generate field access
-    const obj = codegenAST(node.object);
+    const obj = codegenAST(node.object, context);
     return obj + "." + node.fieldName;
   }
 
   if (node.kind === "field-assign") {
     // Generate field assignment
-    const obj = codegenAST(node.object);
-    const value = codegenAST(node.value);
+    const obj = codegenAST(node.object, context);
+    const value = codegenAST(node.value, context);
     return obj + "." + node.fieldName + " = " + value;
   }
 
