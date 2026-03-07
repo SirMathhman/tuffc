@@ -429,6 +429,7 @@ export interface CallNode {
   kind: "call";
   callee: ASTNode;
   arguments: ASTNode[];
+  returnType?: string;
 }
 
 export interface StructField {
@@ -493,6 +494,7 @@ export interface FieldAccessNode {
   kind: "field-access";
   object: ASTNode;
   fieldName: string;
+  typeArguments?: string[];
 }
 
 export interface ArrayLiteralNode {
@@ -603,6 +605,7 @@ export interface ScopeBinding {
   type: string;
   mutable: boolean;
   assignable: boolean;
+  typeParameters?: string[];
 }
 
 export interface ScopeFrame {

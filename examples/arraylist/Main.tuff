@@ -1,0 +1,15 @@
+let mut list : *mut [I32] = ArrayList.create<I32>(0USize);
+list = ArrayList.push<I32>(list, 10);
+list = ArrayList.push<I32>(list, 20);
+list = ArrayList.push<I32>(list, 30);
+ArrayList.set<I32>(list, 1USize, 25);
+
+let result : I32 =
+  ArrayList.get<I32>(list, 0USize) +
+  ArrayList.get<I32>(list, 1USize) +
+  ArrayList.get<I32>(list, 2USize) +
+  ArrayList.len<I32>(list) +
+  ArrayList.capacity<I32>(list);
+
+ArrayList.free<I32>(list);
+result

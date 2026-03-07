@@ -27,6 +27,7 @@ export function createScopeFrame(
 export function createFunctionScopeBinding(
   parameters: FunctionParameter[],
   returnType: string,
+  typeParameters: string[] = [],
 ): ScopeBinding {
   return {
     kind: "function",
@@ -36,6 +37,7 @@ export function createFunctionScopeBinding(
     ),
     mutable: false,
     assignable: false,
+    typeParameters,
   };
 }
 
@@ -59,10 +61,11 @@ export function registerScopeFunction(
   name: string,
   parameters: FunctionParameter[],
   returnType: string,
+  typeParameters: string[] = [],
 ): void {
   parser.currentScope.members.set(
     name,
-    createFunctionScopeBinding(parameters, returnType),
+    createFunctionScopeBinding(parameters, returnType, typeParameters),
   );
 }
 
@@ -105,8 +108,12 @@ export function updateScopeFunctionBinding(
   name: string,
   parameters: FunctionParameter[],
   returnType: string,
+  typeParameters: string[] = [],
 ): void {
-  scope.members.set(name, createFunctionScopeBinding(parameters, returnType));
+  scope.members.set(
+    name,
+    createFunctionScopeBinding(parameters, returnType, typeParameters),
+  );
 }
 
 export function extendTypeEnvironmentForStatement(

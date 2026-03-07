@@ -85,6 +85,7 @@ import {
   inferTypeParameterBindings,
   inferFunctionReturnTypeFromBody,
   instantiateFunctionInfo,
+  instantiateParsedFunctionType,
   isGenericTypeParameter,
   normalizeTypeName,
   splitTopLevel,
@@ -3670,6 +3671,7 @@ export function parseExternFunctionStatement(
     signatureResult.value.name,
     signatureResult.value.parameters,
     signatureResult.value.returnType,
+    signatureResult.value.typeParameters,
   );
 
   return ok({
@@ -3790,7 +3792,13 @@ export function parseFunctionStatement(
     parameters,
     returnType,
   });
-  registerScopeFunction(parser, functionName, parameters, returnType);
+  registerScopeFunction(
+    parser,
+    functionName,
+    parameters,
+    returnType,
+    typeParameters,
+  );
 
   // Parse function body
   // Save current variable scope and loop context
@@ -3963,6 +3971,7 @@ export function parseFunctionStatement(
       functionName,
       parameters,
       returnType,
+      typeParameters,
     );
 
     const inferredCoercedBody = coerceFunctionBodyToReturnType(
@@ -4631,6 +4640,13 @@ export function parsePostfix(parser: Parser): Result<ASTNode, string> {
           : "this";
       advance(parser);
 
+      const explicitTypeArguments = tryParseTypeArgumentList(parser, [
+        "LPAREN",
+      ]);
+      if (!explicitTypeArguments.ok) {
+        return explicitTypeArguments;
+      }
+
       // Check if this is the 'length' property
       if (fieldName === "length") {
         // Special case for .length on arrays - return as field-access which will be handled during codegen
@@ -4638,12 +4654,14 @@ export function parsePostfix(parser: Parser): Result<ASTNode, string> {
           kind: "field-access",
           object: node,
           fieldName: "length",
+          typeArguments: explicitTypeArguments.value,
         } as FieldAccessNode;
       } else {
         node = {
           kind: "field-access",
           object: node,
           fieldName,
+          typeArguments: explicitTypeArguments.value,
         } as FieldAccessNode;
       }
     } else if (current(parser).type === "LBRACKET") {
@@ -4828,14 +4846,64 @@ export function parsePostfix(parser: Parser): Result<ASTNode, string> {
 export function tryGetDirectMemberCallableInfo(
   parser: Parser,
   callee: FieldAccessNode,
+  args: ASTNode[],
 ): Result<ParsedFunctionType | undefined, string> {
+  const instantiateBoundCallable = (
+    callableType: ParsedFunctionType,
+    typeParameters: string[] = [],
+  ): Result<ParsedFunctionType, string> => {
+    const callableDescription =
+      callee.object.kind === "module-reference"
+        ? callee.object.moduleName + "." + callee.fieldName
+        : callee.fieldName;
+
+    return instantiateParsedFunctionType(
+      parser,
+      callableDescription,
+      callableType,
+      typeParameters,
+      callee.typeArguments,
+      args,
+    );
+  };
+
   const resolvedThisMember = resolveThisMemberAccess(callee);
   if (!resolvedThisMember.ok) {
     return resolvedThisMember;
   }
 
   if (resolvedThisMember.value) {
-    return ok(parseFunctionTypeString(resolvedThisMember.value.binding.type));
+    const parsedCallableType = parseFunctionTypeString(
+      resolvedThisMember.value.binding.type,
+    );
+    if (!parsedCallableType) {
+      return ok(undefined);
+    }
+
+    return instantiateBoundCallable(
+      parsedCallableType,
+      resolvedThisMember.value.binding.typeParameters,
+    );
+  }
+
+  const ownerType = inferExpressionType(callee.object, parser);
+  if (!ownerType.ok) {
+    return ok(undefined);
+  }
+
+  const objectInfo = parser.objects.get(ownerType.value);
+  if (objectInfo) {
+    const binding = objectInfo.scope.members.get(callee.fieldName);
+    if (!binding) {
+      return ok(undefined);
+    }
+
+    const parsedCallableType = parseFunctionTypeString(binding.type);
+    if (!parsedCallableType) {
+      return ok(undefined);
+    }
+
+    return instantiateBoundCallable(parsedCallableType, binding.typeParameters);
   }
 
   const memberType = inferContainerMemberType(
@@ -4847,7 +4915,12 @@ export function tryGetDirectMemberCallableInfo(
     return ok(undefined);
   }
 
-  return ok(parseFunctionTypeString(memberType.value));
+  const parsedCallableType = parseFunctionTypeString(memberType.value);
+  if (!parsedCallableType) {
+    return ok(undefined);
+  }
+
+  return instantiateBoundCallable(parsedCallableType);
 }
 
 export function tryGetExtensionMethodCallableInfo(
@@ -4950,7 +5023,11 @@ export function parsePostfixCall(
   }
 
   if (callee.kind === "field-access") {
-    const memberCallable = tryGetDirectMemberCallableInfo(parser, callee);
+    const memberCallable = tryGetDirectMemberCallableInfo(
+      parser,
+      callee,
+      argsResult.value,
+    );
     if (!memberCallable.ok) {
       return memberCallable;
     }
@@ -5002,6 +5079,7 @@ export function parsePostfixCall(
         callee,
         argsResult.value,
         memberCallable.value.parameterTypes,
+        memberCallable.value.returnType,
       );
     }
   }
@@ -5016,6 +5094,7 @@ export function parsePostfixCall(
     callee,
     argsResult.value,
     callableInfo.value.parameterTypes,
+    callableInfo.value.returnType,
   );
 }
 
@@ -5024,6 +5103,7 @@ export function createValidatedCallNode(
   callee: ASTNode,
   args: ASTNode[],
   parameterTypes: string[],
+  returnType?: string,
 ): Result<ASTNode, string> {
   const validatedArgs = validateCallArguments(
     parser,
@@ -5039,6 +5119,7 @@ export function createValidatedCallNode(
     kind: "call",
     callee,
     arguments: validatedArgs.value,
+    returnType,
   } as CallNode);
 }
 

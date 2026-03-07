@@ -1,4 +1,7 @@
 import { test, expect } from "bun:test";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   compile as compileTuffToJS,
   compileProject as compileTuffProjectToJS,
@@ -33,6 +36,24 @@ function mergeProjectFiles(
     ...foreignFiles,
   };
 }
+
+function loadProjectFilesFromDirectory(dirPath: string): ProjectFiles {
+  const files: ProjectFiles = {};
+
+  for (const entry of readdirSync(dirPath, { withFileTypes: true })) {
+    if (!entry.isFile()) {
+      continue;
+    }
+
+    files[entry.name] = readFileSync(join(dirPath, entry.name), "utf8");
+  }
+
+  return files;
+}
+
+const arrayListExampleDir = fileURLToPath(
+  new globalThis.URL("../examples/arraylist", import.meta.url),
+);
 
 function createProjectModuleMap(
   files: ProjectFiles,
@@ -1242,6 +1263,52 @@ test("extern: mixed Tuff and JS project graph executes", () => {
       },
     }),
     11,
+  );
+});
+
+test("extern: generic member call with explicit type arguments works", () => {
+  expectValue(
+    executeTuffProjectFixture({
+      entryModule: "Main",
+      tuffFiles: {
+        "Main.tuff": "Mem.malloc<I32>(3USize).length",
+        "Mem.tuff": "extern Mem; extern fn malloc<T>(len : USize) : *mut [T];",
+      },
+      foreignFiles: {
+        "Mem.js":
+          "module.exports = { malloc: (len) => ({ __tuffSlice: true, data: Array(Number(len)).fill(0), start: 0, end: Number(len), length: Number(len) }) };",
+      },
+    }),
+    3,
+  );
+});
+
+test("extern: allocator module supports dynamic slice indexing and realloc", () => {
+  expectValue(
+    executeTuffProjectFixture({
+      entryModule: "Main",
+      tuffFiles: {
+        "Main.tuff":
+          "let mut buf : *mut [I32] = Mem.malloc<I32>(2USize); let i : USize = 1USize; buf[0USize] = 10; buf[i] = 20; buf = Mem.realloc<I32>(buf, 4USize); let j : USize = 2USize; buf[j] = buf[0USize] + buf[i]; Mem.free<I32>(buf); 30",
+        "Mem.tuff":
+          "extern Mem; extern fn malloc<T>(len : USize) : *mut [T]; extern fn realloc<T>(buf : *mut [T], len : USize) : *mut [T]; extern fn free<T>(buf : *mut [T]) : Void;",
+      },
+      foreignFiles: {
+        "Mem.js":
+          "module.exports = { malloc: (len) => ({ __tuffSlice: true, data: Array(Number(len)).fill(0), start: 0, end: Number(len), length: Number(len) }), realloc: (buf, len) => { const nextLength = Number(len); const nextData = Array.isArray(buf?.data) ? buf.data.slice() : []; while (nextData.length < nextLength) { nextData.push(0); } nextData.length = nextLength; return { __tuffSlice: true, data: nextData, start: 0, end: nextLength, length: nextLength }; }, free: () => undefined };",
+      },
+    }),
+    30,
+  );
+});
+
+test("example: ArrayList .tuff project executes", () => {
+  expectValue(
+    executeTuffProject(
+      "Main",
+      loadProjectFilesFromDirectory(arrayListExampleDir),
+    ),
+    72,
   );
 });
 

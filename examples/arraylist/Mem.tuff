@@ -1,0 +1,9 @@
+extern Mem;
+
+extern fn malloc<T>(capacity : USize) : *mut [T];
+extern fn realloc<T>(list : *mut [T], capacity : USize) : *mut [T];
+extern fn free<T>(list : *mut [T]) : Void;
+
+extern fn listLength<T>(list : *mut [T]) : USize;
+extern fn listCapacity<T>(list : *mut [T]) : USize;
+extern fn setListLength<T>(list : *mut [T], length : USize) : Void;

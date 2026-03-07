@@ -1,0 +1,26 @@
+fn create<T>(capacity : USize) : *mut [T] => Mem.malloc<T>(capacity);
+
+fn len<T>(list : *mut [T]) : USize => Mem.listLength<T>(list);
+
+fn capacity<T>(list : *mut [T]) : USize => Mem.listCapacity<T>(list);
+
+fn push<T>(list : *mut [T], value : T) : *mut [T] => {
+  let mut result : *mut [T] = list;
+  let currentLen : USize = Mem.listLength<T>(result);
+  let currentCapacity : USize = Mem.listCapacity<T>(result);
+
+  if (currentLen == currentCapacity) {
+    let nextCapacity : USize = if (currentCapacity == 0USize) 1USize else currentCapacity + currentCapacity;
+    result = Mem.realloc<T>(result, nextCapacity);
+  };
+
+  result[currentLen] = value;
+  Mem.setListLength<T>(result, currentLen + 1USize);
+  result
+}
+
+fn get<T>(list : *mut [T], index : USize) : T => list[index];
+
+fn set<T>(list : *mut [T], index : USize, value : T) => list[index] = value;
+
+fn free<T>(list : *mut [T]) => Mem.free<T>(list);

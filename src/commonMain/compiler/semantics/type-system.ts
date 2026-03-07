@@ -485,26 +485,72 @@ export function instantiateFunctionInfo(
     return err("Function '" + functionName + "' is not defined");
   }
 
-  if (functionInfo.typeParameters.length === 0) {
+  const instantiatedSignature = instantiateParsedFunctionType(
+    parser,
+    functionName,
+    {
+      parameterTypes: functionInfo.parameters.map(
+        (parameter) => parameter.type,
+      ),
+      returnType: functionInfo.returnType,
+    },
+    functionInfo.typeParameters,
+    explicitTypeArguments,
+    args,
+  );
+  if (!instantiatedSignature.ok) {
+    return instantiatedSignature;
+  }
+
+  const specializedParameters: FunctionParameter[] = [];
+  for (let i = 0; i < functionInfo.parameters.length; i++) {
+    const parameter = functionInfo.parameters[i];
+    const specializedType = instantiatedSignature.value.parameterTypes[i];
+    if (!parameter || !specializedType) {
+      continue;
+    }
+
+    specializedParameters.push({
+      ...parameter,
+      type: specializedType,
+    });
+  }
+
+  return ok({
+    typeParameters: [],
+    parameters: specializedParameters,
+    returnType: instantiatedSignature.value.returnType,
+  });
+}
+
+export function instantiateParsedFunctionType(
+  parser: Parser,
+  callableDescription: string,
+  callableType: ParsedFunctionType,
+  typeParameters: string[],
+  explicitTypeArguments: string[] | undefined,
+  args: ASTNode[],
+): Result<ParsedFunctionType, string> {
+  if (typeParameters.length === 0) {
     if (explicitTypeArguments && explicitTypeArguments.length > 0) {
       return err(
         "Function '" +
-          functionName +
+          callableDescription +
           "' is not generic and cannot take type arguments",
       );
     }
-    return ok(functionInfo);
+    return ok(callableType);
   }
 
   if (
     explicitTypeArguments &&
-    explicitTypeArguments.length !== functionInfo.typeParameters.length
+    explicitTypeArguments.length !== typeParameters.length
   ) {
     return err(
       "Function '" +
-        functionName +
+        callableDescription +
         "' expects " +
-        functionInfo.typeParameters.length +
+        typeParameters.length +
         " type arguments, got " +
         explicitTypeArguments.length,
     );
@@ -513,9 +559,9 @@ export function instantiateFunctionInfo(
   const substitutions = new Map<string, string>();
   if (explicitTypeArguments) {
     const explicitSubstitutions = createTypeParameterSubstitutions(
-      functionInfo.typeParameters,
+      typeParameters,
       explicitTypeArguments,
-      functionName,
+      callableDescription,
       "Function",
     );
     if (!explicitSubstitutions.ok) {
@@ -527,12 +573,12 @@ export function instantiateFunctionInfo(
     }
   }
 
-  if (args.length !== functionInfo.parameters.length) {
+  if (args.length !== callableType.parameterTypes.length) {
     return err(
       "Callable '" +
-        functionName +
+        callableDescription +
         "' expects " +
-        functionInfo.parameters.length +
+        callableType.parameterTypes.length +
         " arguments, got " +
         args.length,
     );
@@ -541,13 +587,13 @@ export function instantiateFunctionInfo(
   const savedGenericTypeParameters = [...parser.genericTypeParameters];
   parser.genericTypeParameters = [
     ...savedGenericTypeParameters,
-    ...functionInfo.typeParameters,
+    ...typeParameters,
   ];
 
-  for (let i = 0; i < functionInfo.parameters.length; i++) {
-    const parameter = functionInfo.parameters[i];
+  for (let i = 0; i < callableType.parameterTypes.length; i++) {
+    const parameterType = callableType.parameterTypes[i];
     const argNode = args[i];
-    if (!parameter || !argNode) {
+    if (!parameterType || !argNode) {
       continue;
     }
 
@@ -559,7 +605,7 @@ export function instantiateFunctionInfo(
 
     const bindingResult = inferTypeParameterBindings(
       parser,
-      parameter.type,
+      parameterType,
       actualType.value,
       substitutions,
     );
@@ -573,38 +619,35 @@ export function instantiateFunctionInfo(
 
   parser.genericTypeParameters = savedGenericTypeParameters;
 
-  for (const typeParameter of functionInfo.typeParameters) {
+  for (const typeParameter of typeParameters) {
     if (!substitutions.has(typeParameter)) {
       return err(
         "Cannot infer type argument for generic parameter '" +
           typeParameter +
           "' in function '" +
-          functionName +
+          callableDescription +
           "'",
       );
     }
   }
 
-  const specializedParameters: FunctionParameter[] = [];
-  for (const parameter of functionInfo.parameters) {
+  const specializedParameterTypes: string[] = [];
+  for (const parameterType of callableType.parameterTypes) {
     const specializedType = substituteTypeParameters(
       parser,
-      parameter.type,
+      parameterType,
       substitutions,
     );
     if (!specializedType.ok) {
       return specializedType;
     }
 
-    specializedParameters.push({
-      ...parameter,
-      type: specializedType.value,
-    });
+    specializedParameterTypes.push(specializedType.value);
   }
 
   const specializedReturnType = substituteTypeParameters(
     parser,
-    functionInfo.returnType,
+    callableType.returnType,
     substitutions,
   );
   if (!specializedReturnType.ok) {
@@ -612,8 +655,7 @@ export function instantiateFunctionInfo(
   }
 
   return ok({
-    typeParameters: [],
-    parameters: specializedParameters,
+    parameterTypes: specializedParameterTypes,
     returnType: specializedReturnType.value,
   });
 }
@@ -1805,6 +1847,10 @@ export function inferExpressionType(
   }
 
   if (expr.kind === "call") {
+    if (expr.returnType) {
+      return ok(expr.returnType);
+    }
+
     const callableInfo = getCallableInfo(parser, expr.callee);
     return callableInfo.ok ? ok(callableInfo.value.returnType) : callableInfo;
   }
