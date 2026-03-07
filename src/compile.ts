@@ -13,6 +13,7 @@ const VALID_TYPES = new Set([
   "ISize",
   "F32",
   "F64",
+  "Char",
   "Bool",
   "Void",
 ]);
@@ -31,6 +32,11 @@ interface OperatorToken {
 interface BoolToken {
   type: "BOOL";
   value: "true" | "false";
+}
+
+interface CharToken {
+  type: "CHAR";
+  value: string;
 }
 
 interface ComparisonToken {
@@ -155,6 +161,7 @@ type Token =
   | IdentifierToken
   | KeywordToken
   | BoolToken
+  | CharToken
   | ComparisonToken
   | LogicalToken
   | LParenToken
@@ -231,6 +238,11 @@ interface UnaryOpNode {
 interface BooleanNode {
   kind: "boolean";
   value: boolean;
+}
+
+interface CharNode {
+  kind: "char";
+  value: string;
 }
 
 interface LetNode {
@@ -402,6 +414,7 @@ type ASTNode =
   | UnaryLogicalNode
   | UnaryOpNode
   | BooleanNode
+  | CharNode
   | LetNode
   | AssignNode
   | FieldAssignNode
@@ -479,6 +492,108 @@ function isLetter(char: string | undefined): boolean {
     (char !== undefined && char >= "a" && char <= "z") ||
     (char !== undefined && char >= "A" && char <= "Z")
   );
+}
+
+function isPrimitiveNumericType(typeStr: string): boolean {
+  return (
+    VALID_TYPES.has(typeStr) &&
+    typeStr !== "Bool" &&
+    typeStr !== "Void" &&
+    typeStr !== "Char"
+  );
+}
+
+function areTypesCompatible(expectedType: string, actualType: string): boolean {
+  if (expectedType === actualType) {
+    return true;
+  }
+
+  if (
+    expectedType === "Bool" ||
+    actualType === "Bool" ||
+    expectedType === "Void" ||
+    actualType === "Void" ||
+    expectedType === "Char" ||
+    actualType === "Char"
+  ) {
+    return false;
+  }
+
+  if (expectedType.startsWith("F") && actualType.startsWith("F")) {
+    return true;
+  }
+
+  return (
+    isPrimitiveNumericType(expectedType) && isPrimitiveNumericType(actualType)
+  );
+}
+
+interface TokenizedCharLiteral {
+  token: CharToken;
+  nextPos: number;
+}
+
+function readEscapedCharValue(
+  char: string | undefined,
+): Result<number, string> {
+  if (char === undefined) {
+    return err("Unterminated character literal");
+  }
+
+  if (char === "n") return ok(10);
+  if (char === "t") return ok(9);
+  if (char === "r") return ok(13);
+  if (char === "0") return ok(0);
+  if (char === "'") return ok(39);
+  if (char === "\\") return ok(92);
+
+  return err("Invalid escape sequence '\\" + char + "' in character literal");
+}
+
+function tokenizeCharLiteral(
+  input: string,
+  startPos: number,
+): Result<TokenizedCharLiteral, string> {
+  const contentPos = startPos + 1;
+  if (contentPos >= input.length) {
+    return err("Unterminated character literal");
+  }
+
+  if (input[contentPos] === "'") {
+    return err("Empty character literal is not allowed");
+  }
+
+  let charValue = 0;
+  let nextPos = contentPos;
+
+  if (input[nextPos] === "\\") {
+    const escapedValue = readEscapedCharValue(input[nextPos + 1]);
+    if (!escapedValue.ok) {
+      return escapedValue;
+    }
+    charValue = escapedValue.value;
+    nextPos += 2;
+  } else {
+    const codePoint = input.codePointAt(nextPos);
+    if (codePoint === undefined) {
+      return err("Unterminated character literal");
+    }
+    charValue = codePoint;
+    nextPos += codePoint > 65535 ? 2 : 1;
+  }
+
+  if (nextPos >= input.length) {
+    return err("Unterminated character literal");
+  }
+
+  if (input[nextPos] !== "'") {
+    return err("Character literal must contain exactly one character");
+  }
+
+  return ok({
+    token: { type: "CHAR", value: String(charValue) },
+    nextPos: nextPos + 1,
+  });
 }
 
 function validateType(typeStr: string): Result<undefined, string> {
@@ -572,6 +687,70 @@ function parseFunctionTypeString(
     parameterTypes,
     returnType,
   };
+}
+
+function ensureExpressionType(
+  parser: Parser,
+  expr: ASTNode,
+  expectedType: string,
+): Result<undefined, string> {
+  const exprTypeResult = inferExpressionType(expr, parser);
+  if (!exprTypeResult.ok) {
+    return exprTypeResult;
+  }
+  if (exprTypeResult.value !== expectedType) {
+    return err(
+      "Type mismatch: expression has type '" +
+        exprTypeResult.value +
+        "' but variable declared as '" +
+        expectedType +
+        "'",
+    );
+  }
+  return ok(undefined);
+}
+
+function inferReferenceType(
+  parser: Parser,
+  operand: ASTNode,
+  operator: "&" | "&mut",
+): Result<string, string> {
+  const prefix = operator === "&mut" ? "*mut " : "*";
+
+  if (operand.kind === "array-slice") {
+    const operandTypeResult = inferExpressionType(operand, parser);
+    if (!operandTypeResult.ok) {
+      return operandTypeResult;
+    }
+    return ok(prefix + operandTypeResult.value);
+  }
+
+  if (operand.kind !== "variable") {
+    return err("Cannot take address of non-variable expression");
+  }
+
+  const arrayInfo = getArrayLikeInfo(operand, parser);
+  if (arrayInfo && !arrayInfo.isSlice) {
+    return ok(prefix + "[" + arrayInfo.elementType + "]");
+  }
+
+  const operandTypeResult = inferExpressionType(operand, parser);
+  if (!operandTypeResult.ok) {
+    return operandTypeResult;
+  }
+  return ok(prefix + operandTypeResult.value);
+}
+
+function getBracketedTypeInner(typeStr: string): string | undefined {
+  if (!typeStr.startsWith("[") || !typeStr.endsWith("]")) {
+    return undefined;
+  }
+  return typeStr.slice(1, -1);
+}
+
+function getBracketedTypeParts(typeStr: string): string[] | undefined {
+  const inner = getBracketedTypeInner(typeStr);
+  return inner === undefined ? undefined : splitTopLevel(inner, ";");
 }
 
 function applyPointerDecorators(
@@ -755,6 +934,10 @@ function inferExpressionType(
     return ok("Bool");
   }
 
+  if (expr.kind === "char") {
+    return ok("Char");
+  }
+
   if (expr.kind === "variable") {
     const varResult = getVariable(parser, expr.name);
     if (!varResult.ok) {
@@ -765,31 +948,7 @@ function inferExpressionType(
 
   if (expr.kind === "unary-op") {
     if (expr.operator === "&" || expr.operator === "&mut") {
-      if (expr.operand.kind === "array-slice") {
-        const operandTypeResult = inferExpressionType(expr.operand, parser);
-        if (!operandTypeResult.ok) {
-          return operandTypeResult;
-        }
-        const prefix = expr.operator === "&mut" ? "*mut " : "*";
-        return ok(prefix + operandTypeResult.value);
-      }
-
-      if (expr.operand.kind !== "variable") {
-        return err("Cannot take address of non-variable expression");
-      }
-
-      const arrayInfo = getArrayLikeInfo(expr.operand, parser);
-      if (arrayInfo && !arrayInfo.isSlice) {
-        const prefix = expr.operator === "&mut" ? "*mut " : "*";
-        return ok(prefix + "[" + arrayInfo.elementType + "]");
-      }
-
-      const operandTypeResult = inferExpressionType(expr.operand, parser);
-      if (!operandTypeResult.ok) {
-        return operandTypeResult;
-      }
-      const prefix = expr.operator === "&mut" ? "*mut " : "*";
-      return ok(prefix + operandTypeResult.value);
+      return inferReferenceType(parser, expr.operand, expr.operator);
     }
 
     if (expr.operator === "*") {
@@ -1572,6 +1731,16 @@ function tokenize(input: string): Result<Token[], string> {
       continue;
     }
 
+    if (char === "'") {
+      const charTokenResult = tokenizeCharLiteral(input, pos);
+      if (!charTokenResult.ok) {
+        return charTokenResult;
+      }
+      tokens.push(charTokenResult.value.token);
+      pos = charTokenResult.value.nextPos;
+      continue;
+    }
+
     // Operators (only if following a number or closing paren)
     if (char === "+" && isOperatorContext()) {
       // Check for +=
@@ -1898,30 +2067,10 @@ function isBareNonNegativeIntegerLiteral(value: string): boolean {
 }
 
 function parseArrayType(typeStr: string): ParsedArrayType | undefined {
-  if (!typeStr.startsWith("[") || !typeStr.endsWith("]")) {
+  const parts = getBracketedTypeParts(typeStr);
+  if (!parts) {
     return undefined;
   }
-
-  const inner = typeStr.slice(1, -1);
-  const parts: string[] = [];
-  let currentPart = "";
-  let depth = 0;
-
-  for (const char of inner) {
-    if (char === "[") {
-      depth++;
-    } else if (char === "]") {
-      depth--;
-    }
-
-    if (char === ";" && depth === 0) {
-      parts.push(currentPart);
-      currentPart = "";
-    } else {
-      currentPart += char;
-    }
-  }
-  parts.push(currentPart);
 
   if (parts.length !== 2) {
     return undefined;
@@ -1939,23 +2088,15 @@ function parseArrayType(typeStr: string): ParsedArrayType | undefined {
 }
 
 function parseSliceType(typeStr: string): ParsedSliceType | undefined {
-  if (!typeStr.startsWith("[") || !typeStr.endsWith("]")) {
+  const parts = getBracketedTypeParts(typeStr);
+  if (!parts) {
+    return undefined;
+  }
+  if (parts.length !== 1) {
     return undefined;
   }
 
-  const inner = typeStr.slice(1, -1);
-  let depth = 0;
-  for (const char of inner) {
-    if (char === "[") {
-      depth++;
-    } else if (char === "]") {
-      depth--;
-    } else if (char === ";" && depth === 0) {
-      return undefined;
-    }
-  }
-
-  const elementType = inner.trim();
+  const elementType = (parts[0] ?? "").trim();
   return elementType.length === 0 ? undefined : { elementType };
 }
 
@@ -3518,18 +3659,13 @@ function parseLetStatement(parser: Parser): Result<ASTNode, string> {
       }
 
       if (initializer.kind !== "array-literal") {
-        const exprTypeResult = inferExpressionType(initializer, parser);
-        if (!exprTypeResult.ok) {
-          return exprTypeResult;
-        }
-        if (exprTypeResult.value !== typeStr) {
-          return err(
-            "Type mismatch: expression has type '" +
-              exprTypeResult.value +
-              "' but variable declared as '" +
-              typeStr +
-              "'",
-          );
+        const matchTypeResult = ensureExpressionType(
+          parser,
+          initializer,
+          typeStr,
+        );
+        if (!matchTypeResult.ok) {
+          return matchTypeResult;
         }
       } else {
         const arrayLit = initializer as ArrayLiteralNode;
@@ -3648,18 +3784,9 @@ function parseLetStatement(parser: Parser): Result<ASTNode, string> {
       } // close else (array-literal branch)
     }
   } else if (parseFunctionTypeString(typeStr)) {
-    const exprTypeResult = inferExpressionType(initializer, parser);
-    if (!exprTypeResult.ok) {
-      return exprTypeResult;
-    }
-    if (exprTypeResult.value !== typeStr) {
-      return err(
-        "Type mismatch: expression has type '" +
-          exprTypeResult.value +
-          "' but variable declared as '" +
-          typeStr +
-          "'",
-      );
+    const matchTypeResult = ensureExpressionType(parser, initializer, typeStr);
+    if (!matchTypeResult.ok) {
+      return matchTypeResult;
     }
   } else if (initializer.kind === "array-literal") {
     return err("Array literal used with non-array type '" + typeStr + "'");
@@ -3690,6 +3817,22 @@ function parseLetStatement(parser: Parser): Result<ASTNode, string> {
       return err(
         "Type mismatch: expression has type '" +
           exprType +
+          "' but variable declared as '" +
+          typeStr +
+          "'",
+      );
+    }
+  }
+
+  if (typeStr === "Char" || initializer.kind === "char") {
+    const exprTypeResult = inferExpressionType(initializer, parser);
+    if (!exprTypeResult.ok) {
+      return exprTypeResult;
+    }
+    if (!areTypesCompatible(typeStr, exprTypeResult.value)) {
+      return err(
+        "Type mismatch: expression has type '" +
+          exprTypeResult.value +
           "' but variable declared as '" +
           typeStr +
           "'",
@@ -4719,6 +4862,11 @@ function parsePrimary(parser: Parser): Result<ASTNode, string> {
     return ok({ kind: "boolean", value: tok.value === "true" });
   }
 
+  if (tok.type === "CHAR") {
+    advance(parser);
+    return ok({ kind: "char", value: tok.value });
+  }
+
   if (tok.type === "IDENTIFIER" && tok.value === "read") {
     advance(parser);
     const lt = current(parser);
@@ -4800,9 +4948,11 @@ function parsePrimary(parser: Parser): Result<ASTNode, string> {
 
       const fnInfo = parser.functions.get(name);
       let expectedArgCount: number | undefined;
+      let expectedParamTypes: string[] | undefined;
 
       if (fnInfo) {
         expectedArgCount = fnInfo.parameters.length;
+        expectedParamTypes = fnInfo.parameters.map((param) => param.type);
       } else {
         const varResult = getVariable(parser, name);
         if (!varResult.ok) {
@@ -4815,6 +4965,7 @@ function parsePrimary(parser: Parser): Result<ASTNode, string> {
           return err("Variable '" + name + "' is not callable");
         }
         expectedArgCount = parsedFunctionType.parameterTypes.length;
+        expectedParamTypes = parsedFunctionType.parameterTypes;
       }
 
       // Check argument count
@@ -4827,6 +4978,35 @@ function parsePrimary(parser: Parser): Result<ASTNode, string> {
             " arguments, got " +
             args.length,
         );
+      }
+
+      for (let i = 0; i < args.length; i++) {
+        const expectedType = expectedParamTypes?.[i];
+        const argNode = args[i];
+        if (!expectedType || !argNode) {
+          continue;
+        }
+
+        const argTypeResult = inferExpressionType(argNode, parser);
+        if (!argTypeResult.ok) {
+          return argTypeResult;
+        }
+        if (
+          (expectedType === "Char" || argTypeResult.value === "Char") &&
+          !areTypesCompatible(expectedType, argTypeResult.value)
+        ) {
+          return err(
+            "Argument " +
+              (i + 1) +
+              " for '" +
+              name +
+              "' expects type '" +
+              expectedType +
+              "' but got '" +
+              argTypeResult.value +
+              "'",
+          );
+        }
       }
 
       // Return a function call node
@@ -5201,6 +5381,10 @@ function codegenAST(node: ASTNode): string {
   if (node.kind === "number") {
     // Extract numeric part, stripping type annotation
     return extractNumberValue(node.value);
+  }
+
+  if (node.kind === "char") {
+    return node.value;
   }
 
   if (node.kind === "boolean") {
@@ -5596,6 +5780,10 @@ function validateAST(node: ASTNode): Result<undefined, string> {
   }
 
   if (node.kind === "boolean") {
+    return ok(undefined);
+  }
+
+  if (node.kind === "char") {
     return ok(undefined);
   }
 

@@ -375,6 +375,44 @@ test("boolean variable false", () => {
   expectValue(executeTuff("let x : Bool = false; x"), 0);
 });
 
+// Char literal tests
+test("char: single-quoted ASCII literal returns code point", () => {
+  expectValue(executeTuff("'a'"), 97);
+});
+
+test("char: escaped newline literal returns code point", () => {
+  expectValue(executeTuff("'\\n'"), 10);
+});
+
+test("char: Char variable declaration and function round-trip", () => {
+  expectValue(
+    executeTuff(
+      "fn echo(c : Char) : Char => c; let letter : Char = 'A'; echo(letter)",
+    ),
+    65,
+  );
+});
+
+test("char: double-quoted value assigned to Char is error", () => {
+  expectError(executeTuff('let letter : Char = "a"; letter'));
+});
+
+test("char: empty literal is error", () => {
+  expectError(executeTuff("''"));
+});
+
+test("char: multi-character literal is error", () => {
+  expectError(executeTuff("'ab'"));
+});
+
+test("char: invalid escape sequence is error", () => {
+  expectError(executeTuff("'\\x'"));
+});
+
+test("char: unterminated literal is error", () => {
+  expectError(executeTuff("'a"));
+});
+
 // Comparison operator tests
 test("less than: true case", () => {
   expectValue(executeTuff("1 < 2"), 1);
