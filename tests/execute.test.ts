@@ -1,6 +1,11 @@
 import { test, expect } from "bun:test";
-import { compile as compileTuffToJS } from "../src/compile";
+import {
+  compile as compileTuffToJS,
+  compileProject as compileTuffProjectToJS,
+} from "../src/compile";
 import { type Result, isOk, isErr } from "../src/types";
+
+type ProjectFiles = Record<string, string>;
 
 /**
  * Executes compiled code by creating a new Function from the compiled
@@ -58,6 +63,17 @@ function createReadValueFunction(tokens: string[]): () => number {
  */
 function compileCode(input: string): Result<string, string> {
   const compileResult = compileTuffToJS(input);
+  if (isErr(compileResult)) {
+    return compileResult;
+  }
+  return { ok: true, value: compileResult.value };
+}
+
+function compileProjectCode(
+  entryModule: string,
+  files: ProjectFiles,
+): Result<string, string> {
+  const compileResult = compileTuffProjectToJS({ entryModule, files });
   if (isErr(compileResult)) {
     return compileResult;
   }
@@ -160,6 +176,24 @@ export function executeTuffWithInput(
   if (isOk(executeResult)) {
     return { ok: true, value: [input, executeResult.value] };
   }
+  return executeResult;
+}
+
+export function executeTuffProject(
+  entryModule: string,
+  files: ProjectFiles,
+): Result<[string, number], string> {
+  const compileResult = compileProjectCode(entryModule, files);
+
+  if (isErr(compileResult)) {
+    return compileResult;
+  }
+
+  const executeResult = executeCompiledCode(compileResult.value);
+  if (isOk(executeResult)) {
+    return { ok: true, value: [entryModule, executeResult.value] };
+  }
+
   return executeResult;
 }
 
@@ -817,6 +851,108 @@ test("destructure: duplicate binding names are error", () => {
 
 test("destructure: non-struct non-object source is error", () => {
   expectError(executeTuff("let { value } = 42; value"));
+});
+
+test("modules: root module call resolves through file object", () => {
+  expectValue(
+    executeTuffProject("Main", {
+      "Main.tuff": "Math.max(3, 4)",
+      "Math.tuff":
+        "fn max(a : I32, b : I32) : I32 => if a > b { a } else { b };",
+    }),
+    4,
+  );
+});
+
+test("modules: qualified module path resolves with double colon", () => {
+  expectValue(
+    executeTuffProject("com::example::Main", {
+      "com/example/Main.tuff": "com::example::Math.max(3, 4)",
+      "com/example/Math.tuff":
+        "fn max(a : I32, b : I32) : I32 => if a > b { a } else { b };",
+    }),
+    4,
+  );
+});
+
+test("modules: destructuring from module object works", () => {
+  expectValue(
+    executeTuffProject("Main", {
+      "Main.tuff": "let { max } = Math; max(3, 4)",
+      "Math.tuff":
+        "fn max(a : I32, b : I32) : I32 => if a > b { a } else { b };",
+    }),
+    4,
+  );
+});
+
+test("modules: exported functions can return module-local structs", () => {
+  expectValue(
+    executeTuffProject("Main", {
+      "Main.tuff": "Geometry.make().right",
+      "Geometry.tuff":
+        "struct Pair { left : I32; right : I32; } fn make() : Pair => Pair { left : 2, right : 5 };",
+    }),
+    5,
+  );
+});
+
+test("modules: exported functions can use module-local type aliases", () => {
+  expectValue(
+    executeTuffProject("Main", {
+      "Main.tuff": "Numbers.value()",
+      "Numbers.tuff": "type Score = I32; fn value() : Score => 7;",
+    }),
+    7,
+  );
+});
+
+test("modules: missing module path is error", () => {
+  expectError(
+    executeTuffProject("Main", {
+      "Main.tuff": "Missing.max(3, 4)",
+    }),
+  );
+});
+
+test("modules: duplicate inferred module names are rejected", () => {
+  expectError(
+    executeTuffProject("Main", {
+      "Main.tuff": "0",
+      "foo/Bar.tuff": "1",
+      "foo//Bar.tuff": "2",
+    }),
+  );
+});
+
+test("modules: cross-file members are not globally visible", () => {
+  expectError(
+    executeTuffProject("Main", {
+      "Main.tuff": "max(3, 4)",
+      "Math.tuff":
+        "fn max(a : I32, b : I32) : I32 => if a > b { a } else { b };",
+    }),
+  );
+});
+
+test("modules: local bindings shadow same-named root modules", () => {
+  expectValue(
+    executeTuffProject("Main", {
+      "Main.tuff": "let Math : I32 = 1; Math",
+      "Math.tuff": "fn value() : I32 => 7;",
+    }),
+    1,
+  );
+});
+
+test("modules: circular dependencies are rejected", () => {
+  expectError(
+    executeTuffProject("Main", {
+      "Main.tuff": "A.value()",
+      "A.tuff": "B.value()",
+      "B.tuff": "A.value()",
+    }),
+  );
 });
 
 test("function inference: omitted return type is inferred for expression bodies", () => {
