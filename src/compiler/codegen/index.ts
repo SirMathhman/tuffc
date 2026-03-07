@@ -2,7 +2,12 @@
 
 import { err, ok } from "../../types";
 import type { Result } from "../../types";
-import type { ASTNode, FunctionParameter, MatchCase, ScopeFrame } from "../core/ast";
+import type {
+  ASTNode,
+  FunctionParameter,
+  MatchCase,
+  ScopeFrame,
+} from "../core/ast";
 import { createModuleResultName } from "../core/project";
 import { isDigit } from "../core/tokenization";
 
@@ -11,7 +16,10 @@ export function codegenProgramReturn(node: ASTNode): string {
   return node.kind === "block" ? code + ";" : "return " + code + ";";
 }
 
-export function codegenProgramEvaluation(node: ASTNode, resultName: string): string {
+export function codegenProgramEvaluation(
+  node: ASTNode,
+  resultName: string,
+): string {
   if (node.kind === "block") {
     return (
       generateStatementCode(node.statements) +
@@ -50,7 +58,10 @@ export function codegenFunctionLikeDeclaration(
   );
 }
 
-export function codegenFunctionLikeBody(body: ASTNode, returnType: string): string {
+export function codegenFunctionLikeBody(
+  body: ASTNode,
+  returnType: string,
+): string {
   let bodyCode = "";
 
   if (body.kind === "block") {
@@ -136,7 +147,9 @@ export function getTypeFromLiteral(numericLiteral: string): string | undefined {
   return undefined;
 }
 
-export function validateNegativeType(literal: string): Result<undefined, string> {
+export function validateNegativeType(
+  literal: string,
+): Result<undefined, string> {
   if (!literal.startsWith("-")) {
     return ok(undefined);
   }
@@ -581,6 +594,15 @@ export function codegenAST(node: ASTNode): string {
   }
 
   if (node.kind === "type-alias") {
+    return "0";
+  }
+
+  if (
+    node.kind === "extern-module" ||
+    node.kind === "extern-function" ||
+    node.kind === "extern-let" ||
+    node.kind === "extern-type"
+  ) {
     return "0";
   }
 

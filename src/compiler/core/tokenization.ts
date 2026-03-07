@@ -2,7 +2,11 @@
 
 import { err, ok } from "../../types";
 import type { Result } from "../../types";
-import type { Token, TokenizedCharLiteral, TokenizedStringLiteral } from "./ast";
+import type {
+  Token,
+  TokenizedCharLiteral,
+  TokenizedStringLiteral,
+} from "./ast";
 
 export const VALID_TYPES = new Set([
   "U8",
@@ -53,7 +57,10 @@ export function isPrimitiveNumericType(typeStr: string): boolean {
   );
 }
 
-export function areTypesCompatible(expectedType: string, actualType: string): boolean {
+export function areTypesCompatible(
+  expectedType: string,
+  actualType: string,
+): boolean {
   if (expectedType === actualType) {
     return true;
   }
@@ -396,6 +403,7 @@ export function tokenize(input: string): Result<Token[], string> {
       // Check if it's a keyword or boolean
       if (
         ident === "let" ||
+        ident === "extern" ||
         ident === "object" ||
         ident === "type" ||
         ident === "this" ||

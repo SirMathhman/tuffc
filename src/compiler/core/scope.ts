@@ -3,7 +3,15 @@
 import { err, ok } from "../../types";
 import type { Result } from "../../types";
 import { formatFunctionType, isTypeAssignable } from "../semantics/type-system";
-import type { ASTNode, FunctionParameter, ModuleCompilationInfo, Parser, ResolvedThisMemberAccess, ScopeBinding, ScopeFrame } from "./ast";
+import type {
+  ASTNode,
+  FunctionParameter,
+  ModuleCompilationInfo,
+  Parser,
+  ResolvedThisMemberAccess,
+  ScopeBinding,
+  ScopeFrame,
+} from "./ast";
 
 export function createScopeFrame(
   parent: ScopeFrame | undefined,
@@ -108,6 +116,8 @@ export function extendTypeEnvironmentForStatement(
   const nextEnv = new Map(env);
 
   if (stmt.kind === "let") {
+    nextEnv.set(stmt.name, stmt.type);
+  } else if (stmt.kind === "extern-let") {
     nextEnv.set(stmt.name, stmt.type);
   } else if (stmt.kind === "object") {
     nextEnv.set(stmt.name, stmt.type);

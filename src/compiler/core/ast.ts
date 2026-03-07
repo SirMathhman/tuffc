@@ -47,6 +47,7 @@ export interface KeywordToken {
   type: "KEYWORD";
   value:
     | "let"
+    | "extern"
     | "object"
     | "type"
     | "this"
@@ -429,6 +430,30 @@ export interface TypeAliasNode {
   targetType: string;
 }
 
+export interface ExternModuleNode {
+  kind: "extern-module";
+  moduleName: string;
+}
+
+export interface ExternFunctionNode {
+  kind: "extern-function";
+  name: string;
+  parameters: FunctionParameter[];
+  returnType: string;
+}
+
+export interface ExternLetNode {
+  kind: "extern-let";
+  name: string;
+  type: string;
+}
+
+export interface ExternTypeNode {
+  kind: "extern-type";
+  name: string;
+  targetType: string;
+}
+
 export interface StructInstantiationField {
   name: string;
   value: ASTNode;
@@ -509,6 +534,10 @@ export type ASTNode =
   | FunctionCallNode
   | CallNode
   | TypeAliasNode
+  | ExternModuleNode
+  | ExternFunctionNode
+  | ExternLetNode
+  | ExternTypeNode
   | StructNode
   | StructInstantiationNode
   | FieldAccessNode
@@ -588,6 +617,7 @@ export interface ModuleCompilationInfo {
   source: string;
   scope: ScopeFrame;
   dependencies: string[];
+  externModuleName?: string;
   ast?: ASTNode;
 }
 
@@ -647,6 +677,7 @@ export interface Parser {
   currentFunctionReturnType: string | undefined;
   globalScope: ScopeFrame;
   currentScope: ScopeFrame;
+  currentModuleName: string | undefined;
   // Type narrowing: track variables with proven constraints (from control flow guards)
   provenConstraints: Map<string, RefinementType>; // e.g., "x" -> I32 > 100
 }

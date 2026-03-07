@@ -2,10 +2,90 @@
 
 import { err, ok } from "../../types";
 import type { Result } from "../../types";
-import type { ArrayAccessNode, ArrayAssignNode, ArrayLikeInfo, ArrayLiteralNode, ArraySliceNode, AssignmentOperatorInfo, ASTNode, BinaryNode, BlockNode, CallNode, CasePattern, ClosureNode, ComparisonNode, DerefAssignNode, DestructuredBinding, FieldAccessNode, FieldAssignNode, FunctionParameter, IdentifierToken, IsNode, KeywordToken, LetNode, LogicalNode, MatchCase, ModuleReferenceNode, NumberToken, OperatorToken, ParseBinaryConfig, ParsedArrayType, ParsedFunctionType, ParsedNumberLiteral, ParsedSliceReferenceType, ParsedSliceType, ParsedTypeAliasDeclaration, Parser, RefinementConstraint, RefinementType, ScopeFrame, StructField, StructInstantiationField, Token, UnaryOpNode, VariableInfo, VariableNode } from "../core/ast";
-import { createObjectTypeName, createScopeFrame, findScopeBinding, registerScopeFunction, registerScopeVariable, resolveThisMemberAccess, updateScopeFunctionBinding } from "../core/scope";
-import { areTypesCompatible, isDigit, isLetter, VALID_TYPES } from "../core/tokenization";
-import { appendUnionType, applyPointerDecorators, applyVariableTypeNarrowing, canAssignToRefinedType, coerceExpressionToType, coerceFunctionBodyToReturnType, ensureExpressionType, evaluateIsType, expressionHasUnionType, extractConstraintsFromComparison, getBracketedTypeParts, getCallableInfo, getTypeNarrowingFromCondition, getVariable, inferContainerMemberType, inferExpressionType, inferFunctionReturnTypeFromBody, normalizeTypeName, splitTopLevel, validateCallArguments, validateConstraints } from "../semantics/type-system";
+import type {
+  ArrayAccessNode,
+  ArrayAssignNode,
+  ArrayLikeInfo,
+  ArrayLiteralNode,
+  ArraySliceNode,
+  AssignmentOperatorInfo,
+  ASTNode,
+  BinaryNode,
+  BlockNode,
+  CallNode,
+  CasePattern,
+  ClosureNode,
+  ComparisonNode,
+  DerefAssignNode,
+  DestructuredBinding,
+  FieldAccessNode,
+  FieldAssignNode,
+  FunctionParameter,
+  IdentifierToken,
+  IsNode,
+  KeywordToken,
+  LetNode,
+  LogicalNode,
+  MatchCase,
+  ModuleReferenceNode,
+  NumberToken,
+  OperatorToken,
+  ParseBinaryConfig,
+  ParsedArrayType,
+  ParsedFunctionType,
+  ParsedNumberLiteral,
+  ParsedSliceReferenceType,
+  ParsedSliceType,
+  ParsedTypeAliasDeclaration,
+  Parser,
+  RefinementConstraint,
+  RefinementType,
+  ScopeFrame,
+  StructField,
+  StructInstantiationField,
+  Token,
+  UnaryOpNode,
+  VariableInfo,
+  VariableNode,
+} from "../core/ast";
+import {
+  createObjectTypeName,
+  createScopeFrame,
+  findScopeBinding,
+  registerScopeFunction,
+  registerScopeVariable,
+  resolveThisMemberAccess,
+  updateScopeFunctionBinding,
+} from "../core/scope";
+import {
+  areTypesCompatible,
+  isDigit,
+  isLetter,
+  VALID_TYPES,
+} from "../core/tokenization";
+import {
+  appendUnionType,
+  applyPointerDecorators,
+  applyVariableTypeNarrowing,
+  canAssignToRefinedType,
+  coerceExpressionToType,
+  coerceFunctionBodyToReturnType,
+  ensureExpressionType,
+  evaluateIsType,
+  expressionHasUnionType,
+  extractConstraintsFromComparison,
+  getBracketedTypeParts,
+  getCallableInfo,
+  getTypeNarrowingFromCondition,
+  getVariable,
+  inferContainerMemberType,
+  inferExpressionType,
+  inferFunctionReturnTypeFromBody,
+  normalizeTypeName,
+  splitTopLevel,
+  validateCallArguments,
+  validateConstraints,
+} from "../semantics/type-system";
 
 export function parseUnionTypeString(typeStr: string): string[] | undefined {
   if (!typeStr.includes("|")) {
@@ -1323,7 +1403,14 @@ export function parseStatementInBlock(
 ): Result<boolean, string> {
   const stmtTok = current(parser);
 
-  if (stmtTok.type === "KEYWORD" && stmtTok.value === "let") {
+  if (stmtTok.type === "KEYWORD" && stmtTok.value === "extern") {
+    const externStmt = parseExternStatement(parser);
+    if (!externStmt.ok) {
+      return externStmt;
+    }
+    statements.push(externStmt.value);
+    return ok(true);
+  } else if (stmtTok.type === "KEYWORD" && stmtTok.value === "let") {
     const stmt = parseLetStatement(parser);
     if (!stmt.ok) {
       return stmt;
@@ -1510,7 +1597,9 @@ export function validateBooleanCondition(
  * If the next token is '(', parens are consumed; otherwise the expression
  * is parsed directly. The condition is validated as a boolean expression.
  */
-export function parseConditionExpression(parser: Parser): Result<ASTNode, string> {
+export function parseConditionExpression(
+  parser: Parser,
+): Result<ASTNode, string> {
   const hasParen = current(parser).type === "LPAREN";
 
   if (hasParen) {
@@ -1537,7 +1626,9 @@ export function parseConditionExpression(parser: Parser): Result<ASTNode, string
   return conditionResult;
 }
 
-export function parseBlockStatements(parser: Parser): Result<ASTNode[], string> {
+export function parseBlockStatements(
+  parser: Parser,
+): Result<ASTNode[], string> {
   const stmtsResult = parseBlockStatementsInternal(parser);
   if (!stmtsResult.ok) {
     return stmtsResult;
@@ -1955,7 +2046,9 @@ export function parseBreakStatement(parser: Parser): Result<ASTNode, string> {
   return ok({ kind: "break" });
 }
 
-export function parseContinueStatement(parser: Parser): Result<ASTNode, string> {
+export function parseContinueStatement(
+  parser: Parser,
+): Result<ASTNode, string> {
   const continueTok = current(parser);
   if (continueTok.type !== "KEYWORD" || continueTok.value !== "continue") {
     return err("Expected 'continue'");
@@ -2182,12 +2275,10 @@ export function parseProgram(parser: Parser): Result<ASTNode, string> {
 }
 
 export function parseLetStatement(parser: Parser): Result<ASTNode, string> {
-  // Expect 'let'
-  const letTok = current(parser);
-  if (letTok.type !== "KEYWORD" || letTok.value !== "let") {
-    return err("Expected 'let'");
+  const letKeyword = expectKeyword(parser, "let", "Expected 'let'");
+  if (!letKeyword.ok) {
+    return letKeyword;
   }
-  advance(parser);
 
   // Check for 'mut'
   let mutable = false;
@@ -2201,32 +2292,16 @@ export function parseLetStatement(parser: Parser): Result<ASTNode, string> {
     return parseDestructuringLetStatement(parser, mutable);
   }
 
-  // Expect identifier
-  const nameTok = current(parser);
-  if (nameTok.type !== "IDENTIFIER") {
-    return err("Expected variable name");
+  const declarationResult = parseNamedTypeDeclaration(parser);
+  if (!declarationResult.ok) {
+    return declarationResult;
   }
-  const name = nameTok.value;
-  advance(parser);
+  const { name, type: typeStr } = declarationResult.value;
 
   // Check for duplicate declaration
   if (parser.variables.has(name)) {
     return err("Variable '" + name + "' already declared");
   }
-
-  // Expect ':'
-  const colonTok = current(parser);
-  if (colonTok.type !== "COLON") {
-    return err("Expected ':' after variable name");
-  }
-  advance(parser);
-
-  // Parse type annotation
-  const typeResult = parseTypeAnnotation(parser);
-  if (!typeResult.ok) {
-    return typeResult;
-  }
-  const typeStr = typeResult.value;
 
   if (parseSliceType(typeStr) && !parseArrayType(typeStr)) {
     return err(
@@ -2648,7 +2723,9 @@ export function parseDestructuringPattern(
   return ok(bindings);
 }
 
-export function parseRequiredLetInitializer(parser: Parser): Result<ASTNode, string> {
+export function parseRequiredLetInitializer(
+  parser: Parser,
+): Result<ASTNode, string> {
   if (current(parser).type !== "ASSIGN") {
     return err("Expected '=' in let statement");
   }
@@ -2766,6 +2843,7 @@ export function parseDestructuringLetStatement(
 export function isReservedKeyword(name: string): boolean {
   return (
     name === "let" ||
+    name === "extern" ||
     name === "object" ||
     name === "type" ||
     name === "this" ||
@@ -2845,68 +2923,386 @@ export function parseTypeAliasDeclaration(
   });
 }
 
-export function parseTypeAliasStatement(parser: Parser): Result<ASTNode, string> {
+export function parseTypeAliasStatement(
+  parser: Parser,
+): Result<ASTNode, string> {
+  return parseTypeAliasLikeStatement(parser, createTypeAliasNode);
+}
+
+export interface ParsedNamedTypeDeclaration {
+  name: string;
+  type: string;
+}
+
+export interface ParsedFunctionSignatureHead {
+  name: string;
+  parameters: FunctionParameter[];
+  returnType: string;
+  hasExplicitReturnType: boolean;
+}
+
+export function expectKeyword(
+  parser: Parser,
+  keyword: string,
+  errorMessage: string,
+): Result<void, string> {
+  const tok = current(parser);
+  if (tok.type !== "KEYWORD" || tok.value !== keyword) {
+    return err(errorMessage);
+  }
+  advance(parser);
+  return ok(undefined);
+}
+
+export function parseNamedTypeDeclaration(
+  parser: Parser,
+): Result<ParsedNamedTypeDeclaration, string> {
+  const nameTok = current(parser);
+  if (nameTok.type !== "IDENTIFIER") {
+    return err("Expected variable name");
+  }
+  const name = nameTok.value;
+  advance(parser);
+
+  if (current(parser).type !== "COLON") {
+    return err("Expected ':' after variable name");
+  }
+  advance(parser);
+
+  const typeResult = parseTypeAnnotation(parser);
+  if (!typeResult.ok) {
+    return typeResult;
+  }
+
+  return ok({
+    name,
+    type: typeResult.value,
+  });
+}
+
+export function createTypeAliasNode(name: string, targetType: string): ASTNode {
+  return {
+    kind: "type-alias",
+    name,
+    targetType,
+  };
+}
+
+export function createExternTypeNode(
+  name: string,
+  targetType: string,
+): ASTNode {
+  return {
+    kind: "extern-type",
+    name,
+    targetType,
+  };
+}
+
+export function parseTypeAliasLikeStatement(
+  parser: Parser,
+  nodeFactory: CallableFunction,
+): Result<ASTNode, string> {
   const aliasDeclaration = parseTypeAliasDeclaration(parser, true);
   if (!aliasDeclaration.ok) {
     return aliasDeclaration;
   }
 
-  return ok({
-    kind: "type-alias",
-    name: aliasDeclaration.value.name,
-    targetType: aliasDeclaration.value.targetType,
+  return ok(
+    nodeFactory(
+      aliasDeclaration.value.name,
+      aliasDeclaration.value.targetType,
+    ) as ASTNode,
+  );
+}
+
+export function registerParsedFunctionSignature(
+  parser: Parser,
+  declarationStart: number,
+  signature: ParsedFunctionSignatureHead,
+): Result<void, string> {
+  if (!parser.functions.has(signature.name)) {
+    parser.functions.set(signature.name, {
+      parameters: signature.parameters,
+      returnType: signature.returnType,
+    });
+    return ok(undefined);
+  }
+
+  parser.pos = declarationStart;
+  return err("Function '" + signature.name + "' already declared");
+}
+
+export function scanTypeDeclarationKeywords(
+  parser: Parser,
+  handler: CallableFunction,
+): Result<void, string> {
+  return scanTokensFromStart(parser, (savedPos: number) => {
+    const tok = current(parser);
+    let declarationKind: "struct" | "type" | undefined;
+
+    if (tok.type === "KEYWORD" && tok.value === "struct") {
+      declarationKind = "struct";
+      advance(parser);
+    } else if (tok.type === "KEYWORD" && tok.value === "type") {
+      declarationKind = "type";
+      advance(parser);
+    } else if (tok.type === "KEYWORD" && tok.value === "extern") {
+      const externStart = parser.pos;
+      advance(parser);
+      const nestedTok = current(parser);
+      if (nestedTok.type !== "KEYWORD" || nestedTok.value !== "type") {
+        parser.pos = externStart + 1;
+        return ok(true);
+      }
+      declarationKind = "type";
+      advance(parser);
+    } else {
+      return ok(false);
+    }
+
+    const result = handler(savedPos, declarationKind) as Result<void, string>;
+    return result.ok ? ok(true) : result;
   });
 }
 
-export function parseFunctionStatement(parser: Parser): Result<ASTNode, string> {
-  // Expect 'fn'
-  const fnTok = current(parser);
-  if (fnTok.type !== "KEYWORD" || fnTok.value !== "fn") {
-    return err("Expected 'fn'");
+export function parseFunctionSignatureHead(
+  parser: Parser,
+  requireExplicitReturnType: boolean,
+  rejectShadowing: boolean,
+): Result<ParsedFunctionSignatureHead, string> {
+  const fnKeyword = expectKeyword(parser, "fn", "Expected 'fn'");
+  if (!fnKeyword.ok) {
+    return fnKeyword;
   }
-  advance(parser);
 
-  // Expect function name
   const nameTok = current(parser);
   if (nameTok.type !== "IDENTIFIER") {
     return err("Expected function name");
   }
   const functionName = nameTok.value;
 
-  // Check reserved keyword
   const fnNameCheck = checkReservedKeyword(functionName, "function name");
   if (!fnNameCheck.ok) {
     return fnNameCheck;
   }
-
   advance(parser);
 
-  // Expect '('
-  const lparenTok = current(parser);
-  if (lparenTok.type !== "LPAREN") {
+  if (current(parser).type !== "LPAREN") {
     return err("Expected '(' after function name");
   }
   advance(parser);
 
-  const parametersResult = parseFunctionParameters(parser, true);
+  const parametersResult = parseFunctionParameters(parser, rejectShadowing);
   if (!parametersResult.ok) {
     return parametersResult;
   }
-  const parameters = parametersResult.value;
 
-  let explicitReturnType: string | undefined;
+  let hasExplicitReturnType = false;
+  let returnType = "__inferred__";
   if (current(parser).type === "COLON") {
     advance(parser);
-
     const returnTypeResult = parseTypeValue(parser);
     if (!returnTypeResult.ok) {
       return returnTypeResult;
     }
-    explicitReturnType = returnTypeResult.value;
+    returnType = returnTypeResult.value;
+    hasExplicitReturnType = true;
     advance(parser);
   }
 
-  let returnType = explicitReturnType ?? "__inferred__";
+  if (requireExplicitReturnType && !hasExplicitReturnType) {
+    return err("Extern function declarations require an explicit return type");
+  }
+
+  return ok({
+    name: functionName,
+    parameters: parametersResult.value,
+    returnType,
+    hasExplicitReturnType,
+  });
+}
+
+export function ensureExternAllowed(parser: Parser): Result<void, string> {
+  if (!parser.currentModuleName || parser.modules.size === 0) {
+    return err("Extern declarations require project compilation");
+  }
+
+  if (parser.currentScope !== parser.globalScope) {
+    return err("Extern declarations are only allowed at module top level");
+  }
+
+  return ok(undefined);
+}
+
+export function parseModulePath(parser: Parser): Result<string, string> {
+  const first = current(parser);
+  if (first.type !== "IDENTIFIER") {
+    return err("Expected module name");
+  }
+
+  let moduleName = first.value;
+  advance(parser);
+
+  while (current(parser).type === "DOUBLE_COLON") {
+    advance(parser);
+    const segment = current(parser);
+    if (segment.type !== "IDENTIFIER") {
+      return err("Expected module name segment after '::'");
+    }
+
+    moduleName += "::" + segment.value;
+    advance(parser);
+  }
+
+  return ok(moduleName);
+}
+
+export function parseExternModuleStatement(
+  parser: Parser,
+): Result<ASTNode, string> {
+  const moduleNameResult = parseModulePath(parser);
+  if (!moduleNameResult.ok) {
+    return moduleNameResult;
+  }
+
+  if (current(parser).type !== "SEMICOLON") {
+    return err("Expected ';' after extern module declaration");
+  }
+  advance(parser);
+
+  if (
+    parser.currentModuleName &&
+    moduleNameResult.value !== parser.currentModuleName
+  ) {
+    return err(
+      "Extern module declaration must match current module '" +
+        parser.currentModuleName +
+        "'",
+    );
+  }
+
+  return ok({
+    kind: "extern-module",
+    moduleName: moduleNameResult.value,
+  });
+}
+
+export function parseExternFunctionStatement(
+  parser: Parser,
+): Result<ASTNode, string> {
+  const signatureResult = parseFunctionSignatureHead(parser, true, false);
+  if (!signatureResult.ok) {
+    return signatureResult;
+  }
+
+  if (parser.variables.has(signatureResult.value.name)) {
+    return err(
+      "Variable '" + signatureResult.value.name + "' already declared",
+    );
+  }
+
+  if (current(parser).type !== "SEMICOLON") {
+    return err("Expected ';' after extern function declaration");
+  }
+  advance(parser);
+
+  registerScopeFunction(
+    parser,
+    signatureResult.value.name,
+    signatureResult.value.parameters,
+    signatureResult.value.returnType,
+  );
+
+  return ok({
+    kind: "extern-function",
+    name: signatureResult.value.name,
+    parameters: signatureResult.value.parameters,
+    returnType: signatureResult.value.returnType,
+  });
+}
+
+export function parseExternLetStatement(
+  parser: Parser,
+): Result<ASTNode, string> {
+  const letKeyword = expectKeyword(
+    parser,
+    "let",
+    "Expected 'let' after 'extern'",
+  );
+  if (!letKeyword.ok) {
+    return letKeyword;
+  }
+  const declarationResult = parseNamedTypeDeclaration(parser);
+  if (!declarationResult.ok) {
+    return declarationResult;
+  }
+  const { name, type } = declarationResult.value;
+
+  if (parser.variables.has(name) || parser.functions.has(name)) {
+    return err("Member '" + name + "' already declared");
+  }
+
+  if (current(parser).type !== "SEMICOLON") {
+    return err("Expected ';' after extern let declaration");
+  }
+  advance(parser);
+
+  parser.variables.set(name, { type, mutable: false });
+  registerScopeVariable(parser, name, type, false, false);
+
+  return ok({
+    kind: "extern-let",
+    name,
+    type,
+  });
+}
+
+export function parseExternTypeStatement(
+  parser: Parser,
+): Result<ASTNode, string> {
+  return parseTypeAliasLikeStatement(parser, createExternTypeNode);
+}
+
+export function parseExternStatement(parser: Parser): Result<ASTNode, string> {
+  const externTok = current(parser);
+  if (externTok.type !== "KEYWORD" || externTok.value !== "extern") {
+    return err("Expected 'extern'");
+  }
+  advance(parser);
+
+  const placementResult = ensureExternAllowed(parser);
+  if (!placementResult.ok) {
+    return placementResult;
+  }
+
+  const nextTok = current(parser);
+  if (nextTok.type === "KEYWORD" && nextTok.value === "fn") {
+    return parseExternFunctionStatement(parser);
+  }
+  if (nextTok.type === "KEYWORD" && nextTok.value === "let") {
+    return parseExternLetStatement(parser);
+  }
+  if (nextTok.type === "KEYWORD" && nextTok.value === "type") {
+    return parseExternTypeStatement(parser);
+  }
+
+  return parseExternModuleStatement(parser);
+}
+
+export function parseFunctionStatement(
+  parser: Parser,
+): Result<ASTNode, string> {
+  const signatureResult = parseFunctionSignatureHead(parser, false, true);
+  if (!signatureResult.ok) {
+    return signatureResult;
+  }
+  const functionName = signatureResult.value.name;
+  const parameters = signatureResult.value.parameters;
+  const explicitReturnType = signatureResult.value.hasExplicitReturnType
+    ? signatureResult.value.returnType
+    : undefined;
+  let returnType = signatureResult.value.returnType;
 
   // Expect '=>'
   const arrowTok = current(parser);
@@ -3255,7 +3651,9 @@ export function tryParseClosureLiteral(
  * Parses struct field list from `{` to `}` (inclusive).
  * Returns the parsed fields or an error.
  */
-export function parseStructFieldList(parser: Parser): Result<StructField[], string> {
+export function parseStructFieldList(
+  parser: Parser,
+): Result<StructField[], string> {
   // Expect '{'
   if (current(parser).type !== "LBRACE") {
     return err("Expected '{' after struct name");
@@ -4341,15 +4739,12 @@ export function scanMatchingKeywords(
   });
 }
 
-export function collectTypeDeclarationNames(parser: Parser): Result<void, string> {
-  return scanMatchingKeywords(
+export function collectTypeDeclarationNames(
+  parser: Parser,
+): Result<void, string> {
+  return scanTypeDeclarationKeywords(
     parser,
-    (keyword: string) => {
-      return keyword === "struct" || keyword === "type" ? keyword : undefined;
-    },
-    (savedPos: number, declarationKind: string) => {
-      advance(parser);
-
+    (savedPos: number, declarationKind: "struct" | "type") => {
       const nameTok = current(parser);
       if (nameTok.type !== "IDENTIFIER") {
         parser.pos = savedPos;
@@ -4386,25 +4781,32 @@ export function collectTypeDeclarationNames(parser: Parser): Result<void, string
         parser.aliasDeclarations.set(declaredName, "");
       }
 
+      advance(parser);
       return ok(undefined);
     },
   );
 }
 
 export function prescanTypeAliases(parser: Parser): Result<void, string> {
-  return runPrescan(parser, "type", (savedPos: number) => {
-    const aliasDeclaration = parseTypeAliasDeclaration(parser, false);
-    if (!aliasDeclaration.ok) {
-      parser.pos = savedPos;
-      return aliasDeclaration;
-    }
+  return scanTypeDeclarationKeywords(
+    parser,
+    (_savedPos: number, declarationKind: "struct" | "type") => {
+      if (declarationKind !== "type") {
+        return ok(undefined);
+      }
+      parser.pos -= 1;
+      const aliasDeclaration = parseTypeAliasDeclaration(parser, false);
+      if (!aliasDeclaration.ok) {
+        return aliasDeclaration;
+      }
 
-    parser.aliasDeclarations.set(
-      aliasDeclaration.value.name,
-      aliasDeclaration.value.targetType,
-    );
-    return ok(undefined);
-  });
+      parser.aliasDeclarations.set(
+        aliasDeclaration.value.name,
+        aliasDeclaration.value.targetType,
+      );
+      return ok(undefined);
+    },
+  );
 }
 
 export function runPrescan(
@@ -4457,7 +4859,9 @@ export function prescanStructDefinitions(parser: Parser): Result<void, string> {
  * Helper to register all function signatures before parsing bodies
  * Supports mutual recursion by allowing functions to reference each other
  */
-export function prescanFunctionSignatures(parser: Parser): Result<void, string> {
+export function prescanFunctionSignatures(
+  parser: Parser,
+): Result<void, string> {
   const savedPos = parser.pos;
   parser.pos = 0;
   const braceContexts: Array<"object" | "other"> = [];
@@ -4487,53 +4891,62 @@ export function prescanFunctionSignatures(parser: Parser): Result<void, string> 
 
     if (
       tok.type === "KEYWORD" &&
+      tok.value === "extern" &&
+      !braceContexts.includes("object")
+    ) {
+      const externStart = parser.pos;
+      advance(parser);
+
+      const nestedTok = current(parser);
+      if (!(nestedTok.type === "KEYWORD" && nestedTok.value === "fn")) {
+        pendingObjectBrace = false;
+        continue;
+      }
+
+      const signatureResult = parseFunctionSignatureHead(parser, true, false);
+      if (!signatureResult.ok) {
+        parser.pos = externStart;
+        return signatureResult;
+      }
+
+      if (current(parser).type !== "SEMICOLON") {
+        parser.pos = externStart;
+        return err("Expected ';' after extern function declaration");
+      }
+      advance(parser);
+
+      const registrationResult = registerParsedFunctionSignature(
+        parser,
+        externStart,
+        signatureResult.value,
+      );
+      if (!registrationResult.ok) {
+        return registrationResult;
+      }
+
+      pendingObjectBrace = false;
+      continue;
+    }
+
+    if (
+      tok.type === "KEYWORD" &&
       tok.value === "fn" &&
       !braceContexts.includes("object")
     ) {
       const declarationStart = parser.pos;
-      advance(parser);
-
-      const nameTok = current(parser);
-      if (nameTok.type !== "IDENTIFIER") {
+      const signatureResult = parseFunctionSignatureHead(parser, false, false);
+      if (!signatureResult.ok) {
         parser.pos = declarationStart;
-        return err("Expected function name");
-      }
-      const functionName = nameTok.value;
-      advance(parser);
-
-      if (current(parser).type !== "LPAREN") {
-        parser.pos = declarationStart;
-        return err("Expected '(' after function name");
-      }
-      advance(parser);
-
-      const parametersResult = parseFunctionParameters(parser, false);
-      if (!parametersResult.ok) {
-        parser.pos = declarationStart;
-        return parametersResult;
-      }
-      const parameters = parametersResult.value;
-
-      let returnType = "__inferred__";
-      if (current(parser).type === "COLON") {
-        advance(parser);
-        const returnTypeResult = parseTypeValue(parser);
-        if (!returnTypeResult.ok) {
-          parser.pos = declarationStart;
-          return returnTypeResult;
-        }
-        returnType = returnTypeResult.value;
-        advance(parser);
+        return signatureResult;
       }
 
-      if (!parser.functions.has(functionName)) {
-        parser.functions.set(functionName, {
-          parameters,
-          returnType,
-        });
-      } else {
-        parser.pos = declarationStart;
-        return err("Function '" + functionName + "' already declared");
+      const registrationResult = registerParsedFunctionSignature(
+        parser,
+        declarationStart,
+        signatureResult.value,
+      );
+      if (!registrationResult.ok) {
+        return registrationResult;
       }
 
       pendingObjectBrace = false;

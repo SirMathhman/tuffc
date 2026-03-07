@@ -178,7 +178,9 @@ export function collectModuleReferencesFromTokens(tokens: Token[]): string[] {
   return references;
 }
 
-export function collectDeclaredValueNamesFromTokens(tokens: Token[]): Set<string> {
+export function collectDeclaredValueNamesFromTokens(
+  tokens: Token[],
+): Set<string> {
   const names = new Set<string>();
 
   for (let i = 0; i < tokens.length; i++) {
@@ -197,6 +199,23 @@ export function collectDeclaredValueNamesFromTokens(tokens: Token[]): Set<string
       const declared = tokens[cursor];
       if (declared?.type === "IDENTIFIER") {
         names.add(declared.value);
+      }
+      continue;
+    }
+
+    if (token.value === "extern") {
+      const nextToken = tokens[i + 1];
+
+      if (nextToken?.type === "KEYWORD" && nextToken.value === "let") {
+        const declared = tokens[i + 2];
+        if (declared?.type === "IDENTIFIER") {
+          names.add(declared.value);
+        }
+      } else if (nextToken?.type === "KEYWORD" && nextToken.value === "fn") {
+        const declared = tokens[i + 2];
+        if (declared?.type === "IDENTIFIER") {
+          names.add(declared.value);
+        }
       }
       continue;
     }

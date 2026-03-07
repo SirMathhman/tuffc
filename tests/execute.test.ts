@@ -3,7 +3,13 @@ import {
   compile as compileTuffToJS,
   compileProject as compileTuffProjectToJS,
 } from "../src/compile";
+import { parseProjectModule } from "../src/compiler";
 import { type Result, isOk, isErr } from "../src/types";
+import type {
+  ModuleCompilationInfo,
+  ModuleNode,
+} from "../src/compiler/core/ast";
+import { createProjectModuleInfo } from "../src/compiler/core/project";
 
 type ProjectFiles = Record<string, string>;
 
@@ -21,6 +27,63 @@ function mergeProjectFiles(
     ...tuffFiles,
     ...foreignFiles,
   };
+}
+
+function createProjectModuleMap(
+  files: ProjectFiles,
+): Result<Map<string, ModuleCompilationInfo>, string> {
+  const modules = new Map<string, ModuleCompilationInfo>();
+
+  for (const [path, source] of Object.entries(files)) {
+    const moduleInfo = createProjectModuleInfo(path, source);
+    if (isErr(moduleInfo)) {
+      return moduleInfo;
+    }
+
+    if (modules.has(moduleInfo.value.moduleName)) {
+      return {
+        ok: false,
+        error:
+          "Duplicate inferred module name '" +
+          moduleInfo.value.moduleName +
+          "'",
+      };
+    }
+
+    modules.set(moduleInfo.value.moduleName, moduleInfo.value);
+  }
+
+  return { ok: true, value: modules };
+}
+
+function parseProjectModules(
+  files: ProjectFiles,
+  moduleOrder: string[],
+): Result<Map<string, ModuleNode>, string> {
+  const modulesResult = createProjectModuleMap(files);
+  if (isErr(modulesResult)) {
+    return modulesResult;
+  }
+
+  const parsedModules = new Map<string, ModuleNode>();
+  for (const moduleName of moduleOrder) {
+    const moduleInfo = modulesResult.value.get(moduleName);
+    if (!moduleInfo) {
+      return {
+        ok: false,
+        error: "Unknown module '" + moduleName + "'",
+      };
+    }
+
+    const parsedModule = parseProjectModule(moduleInfo, modulesResult.value);
+    if (isErr(parsedModule)) {
+      return { ok: false, error: String(parsedModule.error) };
+    }
+
+    parsedModules.set(moduleName, parsedModule.value);
+  }
+
+  return { ok: true, value: parsedModules };
 }
 
 /**
@@ -1001,6 +1064,76 @@ test.skip("extern harness: supports foreign-backed project fixtures", () => {
     }),
     4,
   );
+});
+
+test("extern: module declarations parse with function, let, and type contracts", () => {
+  const parsedModules = parseProjectModules(
+    {
+      "Api.tuff":
+        "extern Api; extern fn max(a : I32, b : I32) : I32; extern let answer : I32; extern type Score = I32; 0",
+    },
+    ["Api"],
+  );
+
+  if (isErr(parsedModules)) {
+    expect(parsedModules.error).toBeUndefined();
+    return;
+  }
+
+  expect(parsedModules.value.has("Api")).toBe(true);
+});
+
+test("extern: declarations are rejected inside function bodies", () => {
+  const parsedModules = parseProjectModules(
+    {
+      "Api.tuff": "fn bad() : I32 => { extern fn max(a : I32) : I32; 0 } bad()",
+    },
+    ["Api"],
+  );
+
+  expect(isErr(parsedModules)).toBe(true);
+});
+
+test("extern: duplicate extern function declarations are rejected", () => {
+  const parsedModules = parseProjectModules(
+    {
+      "Api.tuff":
+        "extern Api; extern fn max(a : I32) : I32; extern fn max(a : I32) : I32; 0",
+    },
+    ["Api"],
+  );
+
+  expect(isErr(parsedModules)).toBe(true);
+});
+
+test("extern: declarations populate module member lookup for downstream parsing", () => {
+  const parsedModules = parseProjectModules(
+    {
+      "Api.tuff":
+        "extern Api; extern fn max(a : I32, b : I32) : I32; extern let answer : I32; extern type Score = I32; 0",
+      "Main.tuff": "let { max, answer } = Api; max(answer, 4)",
+    },
+    ["Api", "Main"],
+  );
+
+  if (isErr(parsedModules)) {
+    expect(parsedModules.error).toBeUndefined();
+    return;
+  }
+
+  expect(parsedModules.value.has("Main")).toBe(true);
+});
+
+test("extern: Tuff and extern declarations cannot claim the same member name", () => {
+  const parsedModules = parseProjectModules(
+    {
+      "Api.tuff":
+        "extern Api; fn max(a : I32, b : I32) : I32 => a; extern fn max(a : I32, b : I32) : I32; 0",
+    },
+    ["Api"],
+  );
+
+  expect(isErr(parsedModules)).toBe(true);
 });
 
 test("function inference: omitted return type is inferred for expression bodies", () => {

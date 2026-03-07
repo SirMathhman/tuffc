@@ -3,17 +3,44 @@
 import { err, ok } from "../types";
 import type { Result } from "../types";
 import { codegenProgramReturn, generateStatementCode } from "./codegen";
-import type { ASTNode, ModuleCompilationInfo, ModuleNode, Parser, ProjectCompileInput, ScopeFrame, Token } from "./core/ast";
-import { createModuleResultName, getProjectCompilationOrder, tokenizeProjectModule } from "./core/project";
-import { createScopeFrame, registerProjectModulesAsObjects } from "./core/scope";
+import type {
+  ASTNode,
+  ModuleCompilationInfo,
+  ModuleNode,
+  Parser,
+  ProjectCompileInput,
+  ScopeFrame,
+  Token,
+} from "./core/ast";
+import {
+  createModuleResultName,
+  getProjectCompilationOrder,
+  tokenizeProjectModule,
+} from "./core/project";
+import {
+  createScopeFrame,
+  registerProjectModulesAsObjects,
+} from "./core/scope";
 import { tokenize } from "./core/tokenization";
-import { collectTypeDeclarationNames, current, parseProgram, prescanFunctionSignatures, prescanStructDefinitions, prescanTypeAliases } from "./parser";
-import { resolveTypeAliases, validateAST, validateStructSemantics } from "./semantics/validation";
+import {
+  collectTypeDeclarationNames,
+  current,
+  parseProgram,
+  prescanFunctionSignatures,
+  prescanStructDefinitions,
+  prescanTypeAliases,
+} from "./parser";
+import {
+  resolveTypeAliases,
+  validateAST,
+  validateStructSemantics,
+} from "./semantics/validation";
 
 export function createParser(
   tokens: Token[],
   currentScope: ScopeFrame,
   modules: Map<string, ModuleCompilationInfo> = new Map(),
+  currentModuleName: string | undefined = undefined,
 ): Parser {
   const parser: Parser = {
     tokens,
@@ -30,6 +57,7 @@ export function createParser(
     currentFunctionReturnType: undefined,
     globalScope: currentScope,
     currentScope,
+    currentModuleName,
     provenConstraints: new Map(),
   };
 
@@ -61,7 +89,9 @@ export function prepareParser(parser: Parser): Result<void, string> {
   return prescanFunctionSignatures(parser);
 }
 
-export function parseAndValidateProgram(parser: Parser): Result<ASTNode, string> {
+export function parseAndValidateProgram(
+  parser: Parser,
+): Result<ASTNode, string> {
   const prepared = prepareParser(parser);
   if (!prepared.ok) {
     return prepared;
@@ -104,7 +134,12 @@ export function parseProjectModule(
     return tokenResult;
   }
 
-  const parser = createParser(tokenResult.value, moduleInfo.scope, modules);
+  const parser = createParser(
+    tokenResult.value,
+    moduleInfo.scope,
+    modules,
+    moduleInfo.moduleName,
+  );
   const astResult = parseAndValidateProgram(parser);
   if (!astResult.ok) {
     return err(

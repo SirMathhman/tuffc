@@ -3,15 +3,28 @@
 import { err, ok } from "../../types";
 import type { Result } from "../../types";
 import { validateNegativeType } from "../codegen";
-import type { ASTNode, FunctionNode, LetNode, ObjectInfo, Parser, StructInfo, StructInstantiationNode } from "../core/ast";
-import { extendTypeEnvironmentForStatement, resolveThisMemberAccess } from "../core/scope";
+import type {
+  ASTNode,
+  FunctionNode,
+  LetNode,
+  ObjectInfo,
+  Parser,
+  StructInfo,
+  StructInstantiationNode,
+} from "../core/ast";
+import {
+  extendTypeEnvironmentForStatement,
+  resolveThisMemberAccess,
+} from "../core/scope";
 import { resolveAliasName, validateArgumentNodes } from "./type-system";
 
 /**
  * Helper to validate expressions used in value contexts where they must produce a value
  * (e.g., initializers, returns, if branches)
  */
-export function validateExpressionAsValue(node: ASTNode): Result<undefined, string> {
+export function validateExpressionAsValue(
+  node: ASTNode,
+): Result<undefined, string> {
   // If expressions without else cannot be used in value contexts
   if (node.kind === "if" && node.elseBranch === undefined) {
     return err(
@@ -72,6 +85,15 @@ export function validateAST(node: ASTNode): Result<undefined, string> {
   if (node.kind === "let") {
     // Validate initializer expression - must produce a value
     return validateExpressionAsValue(node.initializer);
+  }
+
+  if (
+    node.kind === "extern-module" ||
+    node.kind === "extern-function" ||
+    node.kind === "extern-let" ||
+    node.kind === "extern-type"
+  ) {
+    return ok(undefined);
   }
 
   if (node.kind === "destructure") {
@@ -414,6 +436,20 @@ export function validateStructSemantics(
       objects,
       typeEnv,
     );
+  }
+
+  if (node.kind === "extern-let") {
+    typeEnv = new Map(typeEnv);
+    typeEnv.set(node.name, node.type);
+    return ok(undefined);
+  }
+
+  if (
+    node.kind === "extern-module" ||
+    node.kind === "extern-function" ||
+    node.kind === "extern-type"
+  ) {
+    return ok(undefined);
   }
 
   if (node.kind === "object") {
