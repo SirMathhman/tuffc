@@ -378,6 +378,13 @@ interface ArrayAccessNode {
   index: ASTNode;
 }
 
+interface ArraySliceNode {
+  kind: "array-slice";
+  array: ASTNode;
+  start: number;
+  end: number;
+}
+
 interface ArrayAssignNode {
   kind: "array-assign";
   array: ASTNode;
@@ -414,6 +421,7 @@ type ASTNode =
   | FieldAccessNode
   | ArrayLiteralNode
   | ArrayAccessNode
+  | ArraySliceNode
   | ArrayAssignNode;
 
 // Refinement type interfaces
@@ -437,6 +445,7 @@ interface VariableInfo {
   refinement?: RefinementType; // Optional refinement constraints
   initValue?: string; // The literal value (for constants), if available
   pointsTo?: string; // For pointers: the name of the variable it points to
+  sliceLength?: number; // For slices: known compile-time length
 }
 
 interface SuccessfulEvaluation {
@@ -721,6 +730,14 @@ function inferExpressionType(
   expr: ASTNode,
   parser: Parser,
 ): Result<string, string> {
+  if (expr.kind === "array-slice") {
+    const arrayInfo = getArrayLikeInfo(expr.array, parser);
+    if (!arrayInfo) {
+      return err("Cannot infer element type of array slice");
+    }
+    return ok("[" + arrayInfo.elementType + "]");
+  }
+
   if (expr.kind === "number") {
     const numValue = expr.value;
     let typeStr = "";
@@ -748,9 +765,25 @@ function inferExpressionType(
 
   if (expr.kind === "unary-op") {
     if (expr.operator === "&" || expr.operator === "&mut") {
+      if (expr.operand.kind === "array-slice") {
+        const operandTypeResult = inferExpressionType(expr.operand, parser);
+        if (!operandTypeResult.ok) {
+          return operandTypeResult;
+        }
+        const prefix = expr.operator === "&mut" ? "*mut " : "*";
+        return ok(prefix + operandTypeResult.value);
+      }
+
       if (expr.operand.kind !== "variable") {
         return err("Cannot take address of non-variable expression");
       }
+
+      const arrayInfo = getArrayLikeInfo(expr.operand, parser);
+      if (arrayInfo && !arrayInfo.isSlice) {
+        const prefix = expr.operator === "&mut" ? "*mut " : "*";
+        return ok(prefix + "[" + arrayInfo.elementType + "]");
+      }
+
       const operandTypeResult = inferExpressionType(expr.operand, parser);
       if (!operandTypeResult.ok) {
         return operandTypeResult;
@@ -825,15 +858,9 @@ function inferExpressionType(
   }
 
   if (expr.kind === "array-access") {
-    if (expr.array.kind === "variable") {
-      const varResult = getVariable(parser, expr.array.name);
-      if (varResult.ok) {
-        const arrType = varResult.value.type;
-        const parsedArrayType = parseArrayType(arrType);
-        if (parsedArrayType) {
-          return ok(parsedArrayType.elementType);
-        }
-      }
+    const arrayInfo = getArrayLikeInfo(expr.array, parser);
+    if (arrayInfo) {
+      return ok(arrayInfo.elementType);
     }
     return err("Cannot infer element type of array access");
   }
@@ -878,7 +905,7 @@ function parseTypeAnnotation(parser: Parser): Result<string, string> {
     }
   }
 
-  // Check for array type [ElementType; Length]
+  // Check for array or slice value type [ElementType; Length] / [ElementType]
   if (current(parser).type === "LBRACKET") {
     advance(parser); // consume [
 
@@ -888,6 +915,13 @@ function parseTypeAnnotation(parser: Parser): Result<string, string> {
       return elemTypeResult;
     }
     const elemType = elemTypeResult.value;
+
+    if (current(parser).type === "RBRACKET") {
+      advance(parser);
+      return ok(
+        applyPointerDecorators("[" + elemType + "]", pointerDepth, isMutable),
+      );
+    }
 
     // Expect ;
     if (current(parser).type !== "SEMICOLON") {
@@ -912,7 +946,13 @@ function parseTypeAnnotation(parser: Parser): Result<string, string> {
     }
     advance(parser);
 
-    return ok("[" + elemType + ";" + lengthValue + "]");
+    return ok(
+      applyPointerDecorators(
+        "[" + elemType + ";" + lengthValue + "]",
+        pointerDepth,
+        isMutable,
+      ),
+    );
   }
 
   // Function type: (T1, T2) => R
@@ -1724,7 +1764,12 @@ function tokenize(input: string): Result<Token[], string> {
       }
 
       // Parse optional decimal point
-      if (pos < input.length && input[pos] === ".") {
+      if (
+        pos < input.length &&
+        input[pos] === "." &&
+        pos + 1 < input.length &&
+        isDigit(input[pos + 1])
+      ) {
         numStr += ".";
         pos++;
 
@@ -1795,6 +1840,22 @@ interface ParsedNumberLiteral {
 interface ParsedArrayType {
   elementType: string;
   length: number;
+}
+
+interface ParsedSliceType {
+  elementType: string;
+}
+
+interface ParsedSliceReferenceType {
+  elementType: string;
+  mutable: boolean;
+}
+
+interface ArrayLikeInfo {
+  elementType: string;
+  length: number | undefined;
+  mutable: boolean;
+  isSlice: boolean;
 }
 
 function splitNumberLiteral(value: string): ParsedNumberLiteral {
@@ -1875,6 +1936,112 @@ function parseArrayType(typeStr: string): ParsedArrayType | undefined {
     elementType: parts[0] ?? "",
     length,
   };
+}
+
+function parseSliceType(typeStr: string): ParsedSliceType | undefined {
+  if (!typeStr.startsWith("[") || !typeStr.endsWith("]")) {
+    return undefined;
+  }
+
+  const inner = typeStr.slice(1, -1);
+  let depth = 0;
+  for (const char of inner) {
+    if (char === "[") {
+      depth++;
+    } else if (char === "]") {
+      depth--;
+    } else if (char === ";" && depth === 0) {
+      return undefined;
+    }
+  }
+
+  const elementType = inner.trim();
+  return elementType.length === 0 ? undefined : { elementType };
+}
+
+function parseSliceReferenceType(
+  typeStr: string,
+): ParsedSliceReferenceType | undefined {
+  if (typeStr.startsWith("*mut ")) {
+    const sliceType = parseSliceType(typeStr.slice(5));
+    return sliceType
+      ? { elementType: sliceType.elementType, mutable: true }
+      : undefined;
+  }
+
+  if (typeStr.startsWith("*")) {
+    const sliceType = parseSliceType(typeStr.slice(1));
+    return sliceType
+      ? { elementType: sliceType.elementType, mutable: false }
+      : undefined;
+  }
+
+  return undefined;
+}
+
+function getArrayLikeInfo(
+  node: ASTNode,
+  parser: Parser,
+): ArrayLikeInfo | undefined {
+  if (node.kind === "array-slice") {
+    const arrayInfo = getArrayLikeInfo(node.array, parser);
+    if (!arrayInfo) {
+      return undefined;
+    }
+
+    return {
+      elementType: arrayInfo.elementType,
+      length: node.end - node.start,
+      mutable: arrayInfo.mutable,
+      isSlice: true,
+    };
+  }
+
+  if (node.kind !== "variable") {
+    return undefined;
+  }
+
+  const varInfo = parser.variables.get(node.name);
+  if (!varInfo) {
+    return undefined;
+  }
+
+  const fixedArrayType = parseArrayType(varInfo.type);
+  if (fixedArrayType) {
+    return {
+      elementType: fixedArrayType.elementType,
+      length: fixedArrayType.length,
+      mutable: varInfo.mutable,
+      isSlice: false,
+    };
+  }
+
+  const sliceReferenceType = parseSliceReferenceType(varInfo.type);
+  if (sliceReferenceType) {
+    return {
+      elementType: sliceReferenceType.elementType,
+      length: varInfo.sliceLength,
+      mutable: sliceReferenceType.mutable,
+      isSlice: true,
+    };
+  }
+
+  return undefined;
+}
+
+function getSliceLengthFromInitializer(
+  initializer: ASTNode,
+  parser: Parser,
+): number | undefined {
+  if (
+    initializer.kind === "unary-op" &&
+    (initializer.operator === "&" || initializer.operator === "&mut")
+  ) {
+    return getSliceLengthFromInitializer(initializer.operand, parser);
+  }
+
+  const arrayInfo = getArrayLikeInfo(initializer, parser);
+  return arrayInfo?.length;
 }
 
 function inferZeroArgCallableReturnType(
@@ -2177,113 +2344,104 @@ function tryParseAssignment(
       }
 
       if (lvalue.kind === "array-access") {
-        // Check that the array variable is mutable
+        const arrayInfo = getArrayLikeInfo(lvalue.array, parser);
+
+        // Check that the array or slice is writable
         if (lvalue.array.kind === "variable") {
           const arrayVar = parser.variables.get(lvalue.array.name);
-          if (arrayVar && !arrayVar.mutable) {
+          const sliceReferenceType = arrayVar
+            ? parseSliceReferenceType(arrayVar.type)
+            : undefined;
+          const isWritable = sliceReferenceType
+            ? sliceReferenceType.mutable
+            : arrayVar?.mutable;
+
+          if (!isWritable) {
             return err(
               "Cannot modify elements of immutable array '" +
                 lvalue.array.name +
                 "'",
             );
           }
+        }
 
-          // Get array type info for bounds/type checking
-          if (arrayVar && arrayVar.type.startsWith("[")) {
-            const parsedArrayType = parseArrayType(arrayVar.type);
-            if (parsedArrayType) {
-              const elemType = parsedArrayType.elementType;
-              const arrayLength = parsedArrayType.length;
+        if (arrayInfo) {
+          const elemType = arrayInfo.elementType;
+          const arrayLength = arrayInfo.length;
 
-              // Check write bounds against the declared fixed length.
-              const idxNode = lvalue.index;
-              if (idxNode.kind === "number") {
-                const bareNum = splitNumberLiteral(idxNode.value).numericPart;
-                const idxVal = parseFloat(bareNum);
-                if (idxVal >= arrayLength) {
-                  return err(
-                    "Array write index " +
-                      idxVal +
-                      " is out of bounds for array of length " +
-                      arrayLength +
-                      ")",
-                  );
-                }
-              }
+          // Check write bounds against known length.
+          const idxNode = lvalue.index;
+          if (idxNode.kind === "number" && arrayLength !== undefined) {
+            const bareNum = splitNumberLiteral(idxNode.value).numericPart;
+            const idxVal = parseFloat(bareNum);
+            if (idxVal >= arrayLength) {
+              return err(
+                "Array write index " +
+                  idxVal +
+                  " is out of bounds for array of length " +
+                  arrayLength +
+                  ")",
+              );
+            }
+          }
 
-              // Check assigned value type matches element type
-              if (!elemType.startsWith("[")) {
-                // Direct float literal check (3.14 without type suffix defaults to I32 in inferExpressionType)
-                if (
-                  valueResult.value.kind === "number" &&
-                  splitNumberLiteral(
-                    valueResult.value.value,
-                  ).numericPart.includes(".")
-                ) {
-                  if (!elemType.startsWith("F")) {
-                    return err(
-                      "Type mismatch in array element assignment: expected " +
-                        elemType +
-                        " but got float literal",
-                    );
-                  }
-                }
-                const assignedTypeResult = inferExpressionType(
-                  valueResult.value,
-                  parser,
+          // Check assigned value type matches element type
+          if (!elemType.startsWith("[")) {
+            if (
+              valueResult.value.kind === "number" &&
+              splitNumberLiteral(valueResult.value.value).numericPart.includes(
+                ".",
+              )
+            ) {
+              if (!elemType.startsWith("F")) {
+                return err(
+                  "Type mismatch in array element assignment: expected " +
+                    elemType +
+                    " but got float literal",
                 );
-                if (assignedTypeResult.ok) {
-                  const assignedType = assignedTypeResult.value;
-                  const bothFloat =
-                    elemType.startsWith("F") && assignedType.startsWith("F");
-                  const bothInt =
-                    !elemType.startsWith("F") && !assignedType.startsWith("F");
-                  if (assignedType !== elemType && !bothFloat && !bothInt) {
-                    return err(
-                      "Type mismatch in array element assignment: expected " +
-                        elemType +
-                        " but got " +
-                        assignedType,
-                    );
-                  }
-                  // Float assigned to integer array
-                  if (
-                    !elemType.startsWith("F") &&
-                    assignedType.startsWith("F")
-                  ) {
-                    return err(
-                      "Type mismatch in array element assignment: expected " +
-                        elemType +
-                        " but got " +
-                        assignedType,
-                    );
-                  }
-                  // Integer assigned to float array (check for literal with decimal)
-                  if (
-                    elemType.startsWith("F") &&
-                    !assignedType.startsWith("F")
-                  ) {
-                    // This is OK - int can widen to float
-                  }
-                } else {
-                  // Check if value is a number literal with a decimal (float)
-                  if (
-                    valueResult.value.kind === "number" &&
-                    valueResult.value.value.includes(".")
-                  ) {
-                    if (!elemType.startsWith("F")) {
-                      return err(
-                        "Type mismatch in array element assignment: expected " +
-                          elemType +
-                          " but got float literal",
-                      );
-                    }
-                  }
-                }
               }
+            }
+
+            const assignedTypeResult = inferExpressionType(
+              valueResult.value,
+              parser,
+            );
+            if (assignedTypeResult.ok) {
+              const assignedType = assignedTypeResult.value;
+              const bothFloat =
+                elemType.startsWith("F") && assignedType.startsWith("F");
+              const bothInt =
+                !elemType.startsWith("F") && !assignedType.startsWith("F");
+              if (assignedType !== elemType && !bothFloat && !bothInt) {
+                return err(
+                  "Type mismatch in array element assignment: expected " +
+                    elemType +
+                    " but got " +
+                    assignedType,
+                );
+              }
+              if (!elemType.startsWith("F") && assignedType.startsWith("F")) {
+                return err(
+                  "Type mismatch in array element assignment: expected " +
+                    elemType +
+                    " but got " +
+                    assignedType,
+                );
+              }
+            } else if (
+              valueResult.value.kind === "number" &&
+              valueResult.value.value.includes(".") &&
+              !elemType.startsWith("F")
+            ) {
+              return err(
+                "Type mismatch in array element assignment: expected " +
+                  elemType +
+                  " but got float literal",
+              );
             }
           }
         }
+
         return ok({
           kind: "array-assign",
           array: lvalue.array,
@@ -3311,6 +3469,12 @@ function parseLetStatement(parser: Parser): Result<ASTNode, string> {
   }
   const typeStr = typeResult.value;
 
+  if (parseSliceType(typeStr) && !parseArrayType(typeStr)) {
+    return err(
+      "Slice value types must be referenced as *[T] or *mut [T] in let bindings",
+    );
+  }
+
   // Try to parse refinement constraints
   let refinement: RefinementType | undefined;
   const refinementResult = parseRefinementType(parser, typeStr);
@@ -3587,6 +3751,11 @@ function parseLetStatement(parser: Parser): Result<ASTNode, string> {
     varInfo.initValue = initializer.value;
   }
 
+  const sliceReferenceType = parseSliceReferenceType(typeStr);
+  if (sliceReferenceType) {
+    varInfo.sliceLength = getSliceLengthFromInitializer(initializer, parser);
+  }
+
   // Track what variable a pointer points to (for lvalue operations)
   // Also enforce exclusive access for mutable pointers
   if (
@@ -3604,7 +3773,8 @@ function parseLetStatement(parser: Parser): Result<ASTNode, string> {
         for (const [, otherInfo] of parser.variables.entries()) {
           if (
             otherInfo.pointsTo === targetVar.name &&
-            otherInfo.type.startsWith("*mut ")
+            otherInfo.type.startsWith("*mut ") &&
+            !parseSliceReferenceType(otherInfo.type)
           ) {
             return err(
               `Cannot create multiple mutable pointers to '${targetVar.name}' - exclusive access violation`,
@@ -4273,14 +4443,32 @@ function parseUnary(parser: Parser): Result<ASTNode, string> {
       return operandResult;
     }
 
-    // Validate that we're taking address of a variable
-    if (operandResult.value.kind !== "variable") {
+    let operandNode = operandResult.value;
+    if (operandNode.kind === "variable") {
+      const arrayInfo = getArrayLikeInfo(operandNode, parser);
+      if (arrayInfo && !arrayInfo.isSlice && arrayInfo.length !== undefined) {
+        operandNode = {
+          kind: "array-slice",
+          array: operandNode,
+          start: 0,
+          end: arrayInfo.length,
+        } as ArraySliceNode;
+      }
+    }
+
+    // Validate that we're taking address of a variable or array slice
+    if (operandNode.kind !== "variable" && operandNode.kind !== "array-slice") {
       return err("Cannot take address of non-variable expression");
     }
 
-    // Validate that for &mut, the variable must be mutable
+    // Validate that for &mut, the underlying array/variable must be mutable
     if (isMutable) {
-      const varName = (operandResult.value as VariableNode).name;
+      const targetNode =
+        operandNode.kind === "array-slice" ? operandNode.array : operandNode;
+      if (targetNode.kind !== "variable") {
+        return err("Cannot take mutable reference to non-variable expression");
+      }
+      const varName = targetNode.name;
       const varResult = getVariable(parser, varName);
       if (!varResult.ok) {
         return varResult;
@@ -4295,7 +4483,7 @@ function parseUnary(parser: Parser): Result<ASTNode, string> {
     return ok({
       kind: "unary-op",
       operator: isMutable ? "&mut" : "&",
-      operand: operandResult.value,
+      operand: operandNode,
     } as UnaryOpNode);
   }
 
@@ -4342,6 +4530,106 @@ function parsePostfix(parser: Parser): Result<ASTNode, string> {
     } else if (current(parser).type === "LBRACKET") {
       advance(parser); // consume [
 
+      const arrayInfo = getArrayLikeInfo(node, parser);
+
+      const isRangeStart =
+        (current(parser).type === "DOT" &&
+          parser.tokens[parser.pos + 1]?.type === "DOT") ||
+        ((current(parser).type === "NUMBER" ||
+          current(parser).type === "IDENTIFIER") &&
+          parser.tokens[parser.pos + 1]?.type === "DOT" &&
+          parser.tokens[parser.pos + 2]?.type === "DOT");
+
+      if (isRangeStart) {
+        if (!arrayInfo || arrayInfo.length === undefined) {
+          return err("Can only slice arrays with known compile-time length");
+        }
+
+        let start = 0;
+        let end = arrayInfo.length;
+
+        if (
+          current(parser).type !== "DOT" ||
+          parser.tokens[parser.pos + 1]?.type !== "DOT"
+        ) {
+          const startTok = current(parser);
+          if (startTok.type === "IDENTIFIER") {
+            return err(
+              "Array slice bounds must be constant proven in bounds; dynamic bounds not allowed",
+            );
+          }
+          if (startTok.type !== "NUMBER") {
+            return err("Expected slice start bound");
+          }
+
+          const bareStart = splitNumberLiteral(startTok.value).numericPart;
+          if (bareStart.startsWith("-")) {
+            return err("Array slice start must be non-negative");
+          }
+          if (bareStart.includes(".")) {
+            return err("Array slice bounds must be integer values");
+          }
+          start = Number(bareStart);
+          advance(parser);
+        }
+
+        if (
+          current(parser).type !== "DOT" ||
+          parser.tokens[parser.pos + 1]?.type !== "DOT"
+        ) {
+          return err("Expected '..' in array slice");
+        }
+        advance(parser);
+        advance(parser);
+
+        if (current(parser).type !== "RBRACKET") {
+          const endTok = current(parser);
+          if (endTok.type === "IDENTIFIER") {
+            return err(
+              "Array slice bounds must be constant proven in bounds; dynamic bounds not allowed",
+            );
+          }
+          if (endTok.type !== "NUMBER") {
+            return err("Expected slice end bound");
+          }
+
+          const bareEnd = splitNumberLiteral(endTok.value).numericPart;
+          if (bareEnd.startsWith("-")) {
+            return err("Array slice end must be non-negative");
+          }
+          if (bareEnd.includes(".")) {
+            return err("Array slice bounds must be integer values");
+          }
+          end = Number(bareEnd);
+          advance(parser);
+        }
+
+        if (current(parser).type !== "RBRACKET") {
+          return err("Expected ']' after array slice");
+        }
+        advance(parser);
+
+        if (start > end) {
+          return err("Array slice start must be <= end");
+        }
+        if (end > arrayInfo.length) {
+          return err(
+            "Array slice end " +
+              end +
+              " is out of bounds for array of length " +
+              arrayInfo.length,
+          );
+        }
+
+        node = {
+          kind: "array-slice",
+          array: node,
+          start,
+          end,
+        } as ArraySliceNode;
+        continue;
+      }
+
       // Parse index expression
       const indexResult = parseExpression(parser);
       if (!indexResult.ok) {
@@ -4357,16 +4645,8 @@ function parsePostfix(parser: Parser): Result<ASTNode, string> {
 
       // Validate index type and bounds
       // Get declared array length for bounds checking
-      let arrLength: number | undefined;
-      if (node.kind === "variable") {
-        const varInfo = parser.variables.get(node.name);
-        if (varInfo && varInfo.type.startsWith("[")) {
-          const parsedArrayType = parseArrayType(varInfo.type);
-          if (parsedArrayType) {
-            arrLength = parsedArrayType.length;
-          }
-        }
-      }
+      const currentArrayInfo = getArrayLikeInfo(node, parser);
+      const arrLength = currentArrayInfo?.length;
 
       // Check index type (must be an integer type, not F32/F64/Bool/array)
       if (indexNode.kind === "variable") {
@@ -4977,11 +5257,16 @@ function codegenAST(node: ASTNode): string {
   }
 
   if (node.kind === "unary-op") {
-    const operand = codegenAST(node.operand);
     if (node.operator === "*") {
+      const operand = codegenAST(node.operand);
       // Dereference: *ptr -> ptr (in a simple interpreter, values are already dereferenced)
       return operand;
     } else if (node.operator === "&" || node.operator === "&mut") {
+      if (node.operand.kind === "array-slice") {
+        return codegenAST(node.operand);
+      }
+
+      const operand = codegenAST(node.operand);
       // Address-of: &x -> x (in our simple model, we just return the variable/value)
       return operand;
     }
@@ -5235,18 +5520,43 @@ function codegenAST(node: ASTNode): string {
   }
 
   if (node.kind === "array-access") {
-    // Generate array access
     const array = codegenAST(node.array);
     const index = codegenAST(node.index);
-    return array + "[" + index + "]";
+    return (
+      "(() => { const _tuffArray = " +
+      array +
+      "; const _tuffIndex = " +
+      index +
+      "; return _tuffArray && _tuffArray.__tuffSlice ? _tuffArray.data[_tuffArray.start + _tuffIndex] : _tuffArray[_tuffIndex]; })()"
+    );
+  }
+
+  if (node.kind === "array-slice") {
+    const array = codegenAST(node.array);
+    return (
+      "(() => { const _tuffArray = " +
+      array +
+      "; const _tuffBase = _tuffArray && _tuffArray.__tuffSlice ? _tuffArray.data : _tuffArray; const _tuffStartOffset = _tuffArray && _tuffArray.__tuffSlice ? _tuffArray.start : 0; const _tuffStart = _tuffStartOffset + " +
+      node.start +
+      "; const _tuffEnd = _tuffStartOffset + " +
+      node.end +
+      "; return { __tuffSlice: true, data: _tuffBase, start: _tuffStart, end: _tuffEnd, length: _tuffEnd - _tuffStart }; })()"
+    );
   }
 
   if (node.kind === "array-assign") {
-    // Generate array element assignment
     const array = codegenAST(node.array);
     const index = codegenAST(node.index);
     const value = codegenAST(node.value);
-    return array + "[" + index + "] = " + value;
+    return (
+      "(() => { const _tuffArray = " +
+      array +
+      "; const _tuffIndex = " +
+      index +
+      "; const _tuffValue = " +
+      value +
+      "; if (_tuffArray && _tuffArray.__tuffSlice) { _tuffArray.data[_tuffArray.start + _tuffIndex] = _tuffValue; } else { _tuffArray[_tuffIndex] = _tuffValue; } return _tuffValue; })()"
+    );
   }
 
   if (node.kind === "field-access") {
@@ -5300,6 +5610,10 @@ function validateAST(node: ASTNode): Result<undefined, string> {
 
   if (node.kind === "assign") {
     return validateAST(node.value);
+  }
+
+  if (node.kind === "unary-op") {
+    return validateAST(node.operand);
   }
 
   if (
@@ -5434,6 +5748,30 @@ function validateAST(node: ASTNode): Result<undefined, string> {
       }
     }
     return ok(undefined);
+  }
+
+  if (node.kind === "array-access") {
+    const arrayValidation = validateAST(node.array);
+    if (!arrayValidation.ok) {
+      return arrayValidation;
+    }
+    return validateAST(node.index);
+  }
+
+  if (node.kind === "array-slice") {
+    return validateAST(node.array);
+  }
+
+  if (node.kind === "array-assign") {
+    const arrayValidation = validateAST(node.array);
+    if (!arrayValidation.ok) {
+      return arrayValidation;
+    }
+    const indexValidation = validateAST(node.index);
+    if (!indexValidation.ok) {
+      return indexValidation;
+    }
+    return validateAST(node.value);
   }
 
   if (node.kind === "struct-instantiation") {
@@ -5817,6 +6155,28 @@ function validateStructSemantics(
       if (!r.ok) return r;
     }
     return ok(undefined);
+  }
+
+  if (node.kind === "array-access") {
+    const arrayResult = validateStructSemantics(node.array, structs, typeEnv);
+    if (!arrayResult.ok) return arrayResult;
+    return validateStructSemantics(node.index, structs, typeEnv);
+  }
+
+  if (node.kind === "array-slice") {
+    return validateStructSemantics(node.array, structs, typeEnv);
+  }
+
+  if (node.kind === "array-assign") {
+    const arrayResult = validateStructSemantics(node.array, structs, typeEnv);
+    if (!arrayResult.ok) return arrayResult;
+    const indexResult = validateStructSemantics(node.index, structs, typeEnv);
+    if (!indexResult.ok) return indexResult;
+    return validateStructSemantics(node.value, structs, typeEnv);
+  }
+
+  if (node.kind === "unary-op") {
+    return validateStructSemantics(node.operand, structs, typeEnv);
   }
 
   if (node.kind === "struct-instantiation") {

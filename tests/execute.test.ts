@@ -2224,3 +2224,115 @@ test("array: missing type in array type", () => {
 test("array: invalid length zero", () => {
   expectError(executeTuff("let arr : [I32; 0] = []; arr[0]"));
 });
+
+// ===== ARRAY SLICE TESTS =====
+
+test("slice: whole array via &array", () => {
+  expectValue(
+    executeTuff(
+      "fn one() : I32 => 1; let arr : [I32; 3] = [one; 3]; let s : *[I32] = &arr; s.length",
+    ),
+    3,
+  );
+});
+
+test("slice: explicit start and end", () => {
+  expectValue(
+    executeTuff(
+      "let arr : [I32; 4] = [10, 20, 30, 40]; let s : *[I32] = &arr[1..3]; s[0] + s[1]",
+    ),
+    50,
+  );
+});
+
+test("slice: open start bound", () => {
+  expectValue(
+    executeTuff(
+      "let arr : [I32; 4] = [10, 20, 30, 40]; let s : *[I32] = &arr[..2]; s.length + s[1]",
+    ),
+    22,
+  );
+});
+
+test("slice: open end bound", () => {
+  expectValue(
+    executeTuff(
+      "let arr : [I32; 4] = [10, 20, 30, 40]; let s : *[I32] = &arr[2..]; s[0] + s.length",
+    ),
+    32,
+  );
+});
+
+test("slice: empty slice is valid", () => {
+  expectValue(
+    executeTuff(
+      "let arr : [I32; 4] = [10, 20, 30, 40]; let s : *[I32] = &arr[2..2]; s.length",
+    ),
+    0,
+  );
+});
+
+test("slice: mutable slice writes through to source array", () => {
+  expectValue(
+    executeTuff(
+      "let mut arr : [I32; 4] = [10, 20, 30, 40]; let s : *mut [I32] = &mut arr[1..3]; s[0] = 99; arr[1]",
+    ),
+    99,
+  );
+});
+
+test("slice: immutable slice assignment is error", () => {
+  expectError(
+    executeTuff(
+      "let mut arr : [I32; 4] = [10, 20, 30, 40]; let s : *[I32] = &arr[1..3]; s[0] = 99; arr[1]",
+    ),
+  );
+});
+
+test("slice: mutable slice requires mutable source", () => {
+  expectError(
+    executeTuff(
+      "let arr : [I32; 4] = [10, 20, 30, 40]; let s : *mut [I32] = &mut arr[1..3]; s[0]",
+    ),
+  );
+});
+
+test("slice: start greater than end is error", () => {
+  expectError(
+    executeTuff(
+      "let arr : [I32; 4] = [10, 20, 30, 40]; let s : *[I32] = &arr[3..1]; s.length",
+    ),
+  );
+});
+
+test("slice: end beyond array length is error", () => {
+  expectError(
+    executeTuff(
+      "let arr : [I32; 4] = [10, 20, 30, 40]; let s : *[I32] = &arr[1..5]; s.length",
+    ),
+  );
+});
+
+test("slice: negative start is error", () => {
+  expectError(
+    executeTuff(
+      "let arr : [I32; 4] = [10, 20, 30, 40]; let s : *[I32] = &arr[-1..2]; s.length",
+    ),
+  );
+});
+
+test("slice: dynamic bounds are rejected", () => {
+  expectError(
+    executeTuff(
+      "let arr : [I32; 4] = [10, 20, 30, 40]; let start : I32 = 1; let s : *[I32] = &arr[start..3]; s.length",
+    ),
+  );
+});
+
+test("slice: slice index out of bounds is error", () => {
+  expectError(
+    executeTuff(
+      "let arr : [I32; 4] = [10, 20, 30, 40]; let s : *[I32] = &arr[1..3]; s[2]",
+    ),
+  );
+});
