@@ -572,6 +572,76 @@ test("is operator: unknown target type is error", () => {
   expectError(executeTuff("1 is MissingType"));
 });
 
+// Union type tests
+test("union: let binding accepts first arm", () => {
+  expectValue(
+    executeTuff("let x : I32 | Bool = 7; if x is I32 { x } else { 0 }"),
+    7,
+  );
+});
+
+test("union: let binding accepts second arm", () => {
+  expectValue(
+    executeTuff(
+      "let x : I32 | Bool = true; if x is Bool { if x { 1 } else { 0 } } else { 0 }",
+    ),
+    1,
+  );
+});
+
+test("union: false branch narrows to remaining arm", () => {
+  expectValue(
+    executeTuff(
+      "let x : I32 | Bool = false; if x is I32 { 0 } else { if x { 1 } else { 2 } }",
+    ),
+    2,
+  );
+});
+
+test("union: function parameter can be narrowed with is", () => {
+  expectValue(
+    executeTuff(
+      "fn f(x : I32 | Bool) : I32 => if x is I32 { x } else { 0 }; f(5)",
+    ),
+    5,
+  );
+});
+
+test("union: function return type can be a union", () => {
+  expectValue(
+    executeTuff(
+      "fn f(flag : Bool) : I32 | Bool => if flag { 1 } else { false }; let x : I32 | Bool = f(true); if x is I32 { x } else { 0 }",
+    ),
+    1,
+  );
+});
+
+test("union: struct field can be a union", () => {
+  expectValue(
+    executeTuff(
+      "struct Box { value : I32 | Bool; } let b : Box = Box { value: true }; let v : I32 | Bool = b.value; if v is Bool { if v { 1 } else { 0 } } else { 0 }",
+    ),
+    1,
+  );
+});
+
+test("union: alias to union works", () => {
+  expectValue(
+    executeTuff(
+      "type NumOrFlag = I32 | Bool; let x : NumOrFlag = 9; if x is I32 { x } else { 0 }",
+    ),
+    9,
+  );
+});
+
+test("union: unknown arm type is error", () => {
+  expectError(executeTuff("let x : I32 | Missing = 1; x"));
+});
+
+test("union: initializer not assignable to any arm is error", () => {
+  expectError(executeTuff("let x : I32 | Bool = 'a'; x"));
+});
+
 // Comparison operator tests
 test("less than: true case", () => {
   expectValue(executeTuff("1 < 2"), 1);

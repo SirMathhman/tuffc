@@ -142,6 +142,10 @@ interface CommaToken {
   type: "COMMA";
 }
 
+interface PipeToken {
+  type: "PIPE";
+}
+
 interface DotToken {
   type: "DOT";
 }
@@ -190,6 +194,7 @@ type Token =
   | DivAssignToken
   | ModAssignToken
   | CommaToken
+  | PipeToken
   | DotToken
   | AddressOfToken
   | EOFToken;
@@ -229,6 +234,14 @@ interface IsNode {
   expression: ASTNode;
   checkedType: string;
   matches: boolean;
+  runtimeCheck: boolean;
+}
+
+interface UnionWrapNode {
+  kind: "union-wrap";
+  expression: ASTNode;
+  unionType: string;
+  armType: string;
 }
 
 interface LogicalNode {
@@ -437,6 +450,7 @@ type ASTNode =
   | BinaryNode
   | ComparisonNode
   | IsNode
+  | UnionWrapNode
   | LogicalNode
   | UnaryLogicalNode
   | UnaryOpNode
@@ -488,6 +502,11 @@ interface VariableInfo {
   initValue?: string; // The literal value (for constants), if available
   pointsTo?: string; // For pointers: the name of the variable it points to
   sliceLength?: number; // For slices: known compile-time length
+}
+
+interface TypeNarrowingInfo {
+  trueBranch: Map<string, string>;
+  falseBranch: Map<string, string>;
 }
 
 interface ParsedTypeAliasDeclaration {
@@ -725,6 +744,18 @@ function splitTopLevel(text: string, separator: string): string[] {
   return parts;
 }
 
+function parseUnionTypeString(typeStr: string): string[] | undefined {
+  if (!typeStr.includes("|")) {
+    return undefined;
+  }
+
+  const parts = splitTopLevel(typeStr, "|")
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
+
+  return parts.length > 1 ? parts : undefined;
+}
+
 function parseFunctionTypeString(
   typeStr: string,
 ): ParsedFunctionType | undefined {
@@ -773,6 +804,123 @@ function isKnownNamedType(parser: Parser, typeStr: string): boolean {
     parser.structNames.has(typeStr) ||
     parser.aliasDeclarations.has(typeStr)
   );
+}
+
+function isUnionType(typeStr: string): boolean {
+  return parseUnionTypeString(typeStr) !== undefined;
+}
+
+function getUnionTypeArms(typeStr: string): string[] {
+  return parseUnionTypeString(typeStr) ?? [typeStr];
+}
+
+function joinUnionTypeArms(arms: string[]): string {
+  return arms.join(" | ");
+}
+
+function arePointerTypesCompatible(
+  expectedType: string,
+  actualType: string,
+): boolean {
+  if (expectedType === actualType) {
+    return true;
+  }
+
+  if (actualType.startsWith("*mut ") && expectedType.startsWith("*")) {
+    return actualType.slice(5) === expectedType.slice(1);
+  }
+
+  return false;
+}
+
+function isTypeAssignable(expectedType: string, actualType: string): boolean {
+  if (expectedType === actualType) {
+    return true;
+  }
+
+  const expectedUnionArms = parseUnionTypeString(expectedType);
+  if (expectedUnionArms) {
+    return expectedUnionArms.some((arm) => isTypeAssignable(arm, actualType));
+  }
+
+  const actualUnionArms = parseUnionTypeString(actualType);
+  if (actualUnionArms) {
+    return actualUnionArms.every((arm) => isTypeAssignable(expectedType, arm));
+  }
+
+  if (expectedType.startsWith("*") || actualType.startsWith("*")) {
+    return arePointerTypesCompatible(expectedType, actualType);
+  }
+
+  return areTypesCompatible(expectedType, actualType);
+}
+
+function selectMatchingUnionArm(
+  unionType: string,
+  actualType: string,
+): string | undefined {
+  const unionArms = parseUnionTypeString(unionType);
+  if (!unionArms) {
+    return undefined;
+  }
+
+  return unionArms.find((arm) => isTypeAssignable(arm, actualType));
+}
+
+function wrapExpressionForUnion(
+  expression: ASTNode,
+  unionType: string,
+  armType: string,
+): UnionWrapNode {
+  return {
+    kind: "union-wrap",
+    expression,
+    unionType,
+    armType,
+  };
+}
+
+function appendUnionType(
+  parser: Parser,
+  leftType: string,
+  rightType: string,
+  resolveAliases: boolean,
+): Result<string, string> {
+  if (!resolveAliases) {
+    return ok(leftType + " | " + rightType);
+  }
+
+  return canonicalizeTypeString(parser, leftType + " | " + rightType);
+}
+
+function parseTrailingUnionType(
+  parser: Parser,
+  typeStr: string,
+  resolveAliases: boolean,
+): Result<string, string> {
+  let currentType = typeStr;
+
+  while (current(parser).type === "PIPE") {
+    advance(parser);
+    const unionTypeResult = parseTypeAnnotation(parser, resolveAliases);
+    if (!unionTypeResult.ok) {
+      return unionTypeResult;
+    }
+
+    const appendedUnion = appendUnionType(
+      parser,
+      currentType,
+      unionTypeResult.value,
+      resolveAliases,
+    );
+    if (!appendedUnion.ok) {
+      return appendedUnion;
+    }
+
+    currentType = appendedUnion.value;
+  }
+
+  return ok(currentType);
 }
 
 function resolveAliasName(
@@ -878,6 +1026,20 @@ function canonicalizeTypeString(
     return ok("(" + parameterTypes.join(", ") + ") => " + returnType.value);
   }
 
+  const unionTypeArms = parseUnionTypeString(typeStr);
+  if (unionTypeArms) {
+    const canonicalArms: string[] = [];
+    for (const arm of unionTypeArms) {
+      const canonicalArm = canonicalizeTypeString(parser, arm, visiting);
+      if (!canonicalArm.ok) {
+        return canonicalArm;
+      }
+      canonicalArms.push(canonicalArm.value);
+    }
+
+    return ok(joinUnionTypeArms(canonicalArms));
+  }
+
   if (VALID_TYPES.has(typeStr) || parser.structNames.has(typeStr)) {
     return ok(typeStr);
   }
@@ -943,7 +1105,208 @@ function evaluateIsType(
     return expressionType;
   }
 
+  const unionArms = parseUnionTypeString(expressionType.value);
+  if (unionArms) {
+    return ok(unionArms.some((arm) => arm === checkedType));
+  }
+
   return ok(expressionType.value === checkedType);
+}
+
+function getTypeNarrowingFromCondition(
+  condition: ASTNode,
+  parser: Parser,
+): TypeNarrowingInfo {
+  const trueBranch = new Map<string, string>();
+  const falseBranch = new Map<string, string>();
+
+  if (condition.kind !== "is" || condition.expression.kind !== "variable") {
+    return { trueBranch, falseBranch };
+  }
+
+  const variableName = condition.expression.name;
+  const variableInfo = parser.variables.get(variableName);
+  if (!variableInfo) {
+    return { trueBranch, falseBranch };
+  }
+
+  const unionArms = parseUnionTypeString(variableInfo.type);
+  if (!unionArms) {
+    return { trueBranch, falseBranch };
+  }
+
+  if (!unionArms.includes(condition.checkedType)) {
+    return { trueBranch, falseBranch };
+  }
+
+  trueBranch.set(variableName, condition.checkedType);
+
+  const remainingArms = unionArms.filter(
+    (arm) => arm !== condition.checkedType,
+  );
+  if (remainingArms.length === 1) {
+    const remainingArm = remainingArms[0];
+    if (remainingArm) {
+      falseBranch.set(variableName, remainingArm);
+    }
+  } else if (remainingArms.length > 1) {
+    falseBranch.set(variableName, joinUnionTypeArms(remainingArms));
+  }
+
+  return { trueBranch, falseBranch };
+}
+
+function applyVariableTypeNarrowing(
+  parser: Parser,
+  narrowing: Map<string, string>,
+): void {
+  for (const [name, narrowedType] of narrowing) {
+    const existing = parser.variables.get(name);
+    if (!existing) {
+      continue;
+    }
+    parser.variables.set(name, {
+      ...existing,
+      type: narrowedType,
+    });
+  }
+}
+
+function expressionHasUnionType(parser: Parser, expression: ASTNode): boolean {
+  const expressionType = inferExpressionType(expression, parser);
+  return expressionType.ok ? isUnionType(expressionType.value) : false;
+}
+
+function coerceExpressionToType(
+  parser: Parser,
+  expression: ASTNode,
+  expectedType: string,
+): Result<ASTNode, string> {
+  const actualTypeResult = inferExpressionType(expression, parser);
+  if (!actualTypeResult.ok) {
+    return actualTypeResult;
+  }
+
+  const actualType = actualTypeResult.value;
+  if (!isTypeAssignable(expectedType, actualType)) {
+    return err(
+      "Type mismatch: expression has type '" +
+        actualType +
+        "' but variable declared as '" +
+        expectedType +
+        "'",
+    );
+  }
+
+  const matchingUnionArm = selectMatchingUnionArm(expectedType, actualType);
+  if (matchingUnionArm && !isUnionType(actualType)) {
+    return ok(
+      wrapExpressionForUnion(expression, expectedType, matchingUnionArm),
+    );
+  }
+
+  return ok(expression);
+}
+
+function coerceFunctionBodyToReturnType(
+  parser: Parser,
+  body: ASTNode,
+  returnType: string,
+): Result<ASTNode, string> {
+  if (returnType === "Void") {
+    return ok(body);
+  }
+
+  if (isUnionType(returnType)) {
+    return coerceUnionReturnValue(parser, body, returnType);
+  }
+
+  if (body.kind === "block") {
+    const coercedResult = coerceExpressionToType(
+      parser,
+      body.result,
+      returnType,
+    );
+    if (!coercedResult.ok) {
+      return coercedResult;
+    }
+
+    return ok({
+      ...body,
+      result: coercedResult.value,
+    });
+  }
+
+  return coerceExpressionToType(parser, body, returnType);
+}
+
+function coerceUnionReturnValue(
+  parser: Parser,
+  node: ASTNode,
+  returnType: string,
+): Result<ASTNode, string> {
+  if (node.kind === "block") {
+    const coercedResult = coerceUnionReturnValue(
+      parser,
+      node.result,
+      returnType,
+    );
+    if (!coercedResult.ok) {
+      return coercedResult;
+    }
+
+    return ok({
+      ...node,
+      result: coercedResult.value,
+    });
+  }
+
+  if (node.kind === "if" && node.elseBranch !== undefined) {
+    const thenBranch = coerceUnionReturnValue(
+      parser,
+      node.thenBranch,
+      returnType,
+    );
+    if (!thenBranch.ok) {
+      return thenBranch;
+    }
+
+    const elseBranch = coerceUnionReturnValue(
+      parser,
+      node.elseBranch,
+      returnType,
+    );
+    if (!elseBranch.ok) {
+      return elseBranch;
+    }
+
+    return ok({
+      ...node,
+      thenBranch: thenBranch.value,
+      elseBranch: elseBranch.value,
+    });
+  }
+
+  return coerceExpressionToType(parser, node, returnType);
+}
+
+function combineBranchTypes(leftType: string, rightType: string): string {
+  if (isTypeAssignable(leftType, rightType)) {
+    return leftType;
+  }
+
+  if (isTypeAssignable(rightType, leftType)) {
+    return rightType;
+  }
+
+  const combinedArms = [
+    ...getUnionTypeArms(leftType),
+    ...getUnionTypeArms(rightType),
+  ];
+  const uniqueArms = combinedArms.filter(
+    (arm, index) => combinedArms.indexOf(arm) === index,
+  );
+  return joinUnionTypeArms(uniqueArms);
 }
 
 function ensureExpressionType(
@@ -1166,6 +1529,10 @@ function inferExpressionType(
   expr: ASTNode,
   parser: Parser,
 ): Result<string, string> {
+  if (expr.kind === "union-wrap") {
+    return ok(expr.unionType);
+  }
+
   if (expr.kind === "array-slice") {
     const arrayInfo = getArrayLikeInfo(expr.array, parser);
     if (!arrayInfo) {
@@ -1211,6 +1578,36 @@ function inferExpressionType(
     return ok(expr.structName);
   }
 
+  if (expr.kind === "array-literal") {
+    if (expr.generator && expr.repeatCount !== undefined) {
+      const generatorType = inferZeroArgCallableReturnType(
+        expr.generator,
+        parser,
+      );
+      if (!generatorType.ok) {
+        return generatorType;
+      }
+      return ok("[" + generatorType.value + ";" + expr.repeatCount + "]");
+    }
+
+    if (expr.elemType) {
+      return ok("[" + expr.elemType + ";" + expr.elements.length + "]");
+    }
+
+    if (expr.elements.length > 0) {
+      const firstType = inferExpressionType(
+        expr.elements[0] as ASTNode,
+        parser,
+      );
+      if (!firstType.ok) {
+        return firstType;
+      }
+      return ok("[" + firstType.value + ";" + expr.elements.length + "]");
+    }
+
+    return err("Cannot infer type of empty array literal");
+  }
+
   if (expr.kind === "field-access") {
     if (expr.fieldName === "length") {
       return ok("USize");
@@ -1220,6 +1617,26 @@ function inferExpressionType(
 
   if (expr.kind === "is") {
     return ok("Bool");
+  }
+
+  if (expr.kind === "match") {
+    if (expr.cases.length === 0) {
+      return err("Cannot infer type of expression");
+    }
+
+    let resultType: string | undefined;
+    for (const matchCase of expr.cases) {
+      const caseType = inferExpressionType(matchCase.result, parser);
+      if (!caseType.ok) {
+        return caseType;
+      }
+      resultType =
+        resultType === undefined
+          ? caseType.value
+          : combineBranchTypes(resultType, caseType.value);
+    }
+
+    return resultType ? ok(resultType) : err("Cannot infer type of expression");
   }
 
   if (expr.kind === "unary-op") {
@@ -1247,6 +1664,10 @@ function inferExpressionType(
     expr.kind === "comparison" ||
     expr.kind === "logical"
   ) {
+    if (expr.kind === "comparison" || expr.kind === "logical") {
+      return ok("Bool");
+    }
+
     const leftTypeResult = inferExpressionType(expr.left, parser);
     if (!leftTypeResult.ok) {
       return leftTypeResult;
@@ -1264,6 +1685,10 @@ function inferExpressionType(
     }
 
     return leftTypeResult;
+  }
+
+  if (expr.kind === "unary-logical") {
+    return ok("Bool");
   }
 
   if (expr.kind === "read") {
@@ -1300,8 +1725,33 @@ function inferExpressionType(
     return err("Cannot infer element type of array access");
   }
 
+  if (expr.kind === "block") {
+    return inferExpressionType(expr.result, parser);
+  }
+
   if (expr.kind === "if") {
-    return inferExpressionType(expr.thenBranch, parser);
+    const savedVariables = new Map(parser.variables);
+    const narrowing = getTypeNarrowingFromCondition(expr.condition, parser);
+
+    applyVariableTypeNarrowing(parser, narrowing.trueBranch);
+    const thenType = inferExpressionType(expr.thenBranch, parser);
+    parser.variables = new Map(savedVariables);
+    if (!thenType.ok) {
+      return thenType;
+    }
+
+    if (!expr.elseBranch) {
+      return thenType;
+    }
+
+    applyVariableTypeNarrowing(parser, narrowing.falseBranch);
+    const elseType = inferExpressionType(expr.elseBranch, parser);
+    parser.variables = savedVariables;
+    if (!elseType.ok) {
+      return elseType;
+    }
+
+    return ok(combineBranchTypes(thenType.value, elseType.value));
   }
 
   return err("Cannot infer type of expression");
@@ -1352,8 +1802,10 @@ function parseTypeAnnotation(
 
     if (current(parser).type === "RBRACKET") {
       advance(parser);
-      return ok(
+      return parseTrailingUnionType(
+        parser,
         applyPointerDecorators("[" + elemType + "]", pointerDepth, isMutable),
+        resolveAliases,
       );
     }
 
@@ -1380,12 +1832,14 @@ function parseTypeAnnotation(
     }
     advance(parser);
 
-    return ok(
+    return parseTrailingUnionType(
+      parser,
       applyPointerDecorators(
         "[" + elemType + ";" + lengthValue + "]",
         pointerDepth,
         isMutable,
       ),
+      resolveAliases,
     );
   }
 
@@ -1425,13 +1879,15 @@ function parseTypeAnnotation(
       return returnTypeResult;
     }
 
-    const typeStr = applyPointerDecorators(
-      "(" + parameterTypes.join(", ") + ") => " + returnTypeResult.value,
-      pointerDepth,
-      isMutable,
+    return parseTrailingUnionType(
+      parser,
+      applyPointerDecorators(
+        "(" + parameterTypes.join(", ") + ") => " + returnTypeResult.value,
+        pointerDepth,
+        isMutable,
+      ),
+      resolveAliases,
     );
-
-    return ok(typeStr);
   }
 
   const typeTok = current(parser);
@@ -1450,8 +1906,10 @@ function parseTypeAnnotation(
   advance(parser);
 
   // Construct pointer type string: e.g., "*I32", "*mut I32", "**I32", "*mut *I32"
-  return ok(
+  return parseTrailingUnionType(
+    parser,
     applyPointerDecorators(normalizedTypeResult.value, pointerDepth, isMutable),
+    resolveAliases,
   );
 }
 
@@ -1460,19 +1918,19 @@ function parseTypeValue(
   resolveAliases: boolean = true,
 ): Result<string, string> {
   const typeTok = current(parser);
-  // Delegate array types to parseTypeAnnotation, but step back one so
-  // the caller's advance() moves past the last token correctly.
-  if (typeTok.type === "LBRACKET" || typeTok.type === "LPAREN") {
+  if (
+    typeTok.type === "LBRACKET" ||
+    typeTok.type === "LPAREN" ||
+    typeTok.type === "IDENTIFIER" ||
+    (typeTok.type === "OPERATOR" && typeTok.value === "*")
+  ) {
     const result = parseTypeAnnotation(parser, resolveAliases);
     if (!result.ok) return result;
-    // parseTypeAnnotation advanced past ']'; step back one so caller's advance() is correct
     parser.pos -= 1;
     return result;
   }
-  if (typeTok.type !== "IDENTIFIER") {
-    return err("Expected type");
-  }
-  return normalizeTypeName(parser, typeTok.value, resolveAliases);
+
+  return err("Expected type");
 }
 
 // Refinement type parsing
@@ -2169,7 +2627,8 @@ function tokenize(input: string): Result<Token[], string> {
         tokens.push({ type: "LOGICAL", value: "||" });
         pos += 2;
       } else {
-        return err("Unexpected character: |");
+        tokens.push({ type: "PIPE" });
+        pos++;
       }
     } else if (isLetter(char) || char === "_") {
       // Parse identifier (e.g., 'read', 'let', 'mut', type like 'U8', or wildcard '_')
@@ -3451,9 +3910,14 @@ function parseIfStatement(parser: Parser): Result<ASTNode, string> {
 
   // Save current proven constraints for scope management
   const savedConstraints = new Map(parser.provenConstraints);
+  const savedVariables = new Map(parser.variables);
 
   // Extract constraints from the condition for type narrowing in then-branch
   const thenConstraints = extractConstraintsFromComparison(
+    conditionResult.value,
+    parser,
+  );
+  const typeNarrowing = getTypeNarrowingFromCondition(
     conditionResult.value,
     parser,
   );
@@ -3468,17 +3932,20 @@ function parseIfStatement(parser: Parser): Result<ASTNode, string> {
       parser.provenConstraints.set(varName, refinement);
     }
   }
+  applyVariableTypeNarrowing(parser, typeNarrowing.trueBranch);
 
   // Parse then branch (single statement or block)
   const thenResult = parseIfBody(parser);
   if (!thenResult.ok) {
     // Restore constraints even on error
     parser.provenConstraints = savedConstraints;
+    parser.variables = savedVariables;
     return thenResult;
   }
 
   // Restore to saved constraints for else branch (proven constraints are lost outside narrowing)
   parser.provenConstraints = new Map(savedConstraints);
+  parser.variables = new Map(savedVariables);
 
   // Check for else
   const elseTok = current(parser);
@@ -3486,6 +3953,7 @@ function parseIfStatement(parser: Parser): Result<ASTNode, string> {
 
   if (elseTok.type === "KEYWORD" && elseTok.value === "else") {
     advance(parser);
+    applyVariableTypeNarrowing(parser, typeNarrowing.falseBranch);
 
     // else can be followed by another if (else if) or a body
     const nextTok = current(parser);
@@ -3508,6 +3976,7 @@ function parseIfStatement(parser: Parser): Result<ASTNode, string> {
 
   // Restore original constraints after if statement
   parser.provenConstraints = savedConstraints;
+  parser.variables = savedVariables;
 
   return ok({
     kind: "if",
@@ -3956,7 +4425,8 @@ function parseLetStatement(parser: Parser): Result<ASTNode, string> {
   }
 
   // Check type compatibility for numeric literals
-  const initializer = initResult.value;
+  let initializer = initResult.value;
+  const originalInitializer = initializer;
 
   // Type check for array types: validate fixed-length initialization
   if (typeStr.startsWith("[")) {
@@ -4158,10 +4628,10 @@ function parseLetStatement(parser: Parser): Result<ASTNode, string> {
     }
   }
 
-  if (initializer.kind === "number") {
+  if (originalInitializer.kind === "number") {
     // Check if negative literal is assigned to unsigned type
     if (
-      initializer.value.startsWith("-") &&
+      originalInitializer.value.startsWith("-") &&
       !typeStr.startsWith("I") &&
       !typeStr.startsWith("F") &&
       !typeStr.startsWith("*")
@@ -4175,7 +4645,7 @@ function parseLetStatement(parser: Parser): Result<ASTNode, string> {
     if (refinement) {
       if (
         !validateConstraints(
-          initializer.value,
+          originalInitializer.value,
           refinement,
           parser.variables,
           parser,
@@ -4186,9 +4656,9 @@ function parseLetStatement(parser: Parser): Result<ASTNode, string> {
         );
       }
     }
-  } else if (initializer.kind === "variable" && refinement) {
+  } else if (originalInitializer.kind === "variable" && refinement) {
     // Assigning a variable to a refined type - check if we can prove the constraint
-    const sourceVarName = initializer.name;
+    const sourceVarName = originalInitializer.name;
     if (!canAssignToRefinedType(sourceVarName, refinement, parser)) {
       return err(
         "Cannot assign variable '" +
@@ -4197,6 +4667,16 @@ function parseLetStatement(parser: Parser): Result<ASTNode, string> {
       );
     }
   }
+
+  const coercedInitializer = coerceExpressionToType(
+    parser,
+    initializer,
+    typeStr,
+  );
+  if (!coercedInitializer.ok) {
+    return coercedInitializer;
+  }
+  initializer = coercedInitializer.value;
 
   // Expect ';'
   const semiTok = current(parser);
@@ -4208,8 +4688,8 @@ function parseLetStatement(parser: Parser): Result<ASTNode, string> {
   // Register variable in parser context with refinement info
   // Store initValue if it's a numeric literal (so we can constant-fold constraints)
   const varInfo: VariableInfo = { type: typeStr, mutable, refinement };
-  if (initializer.kind === "number") {
-    varInfo.initValue = initializer.value;
+  if (originalInitializer.kind === "number") {
+    varInfo.initValue = originalInitializer.value;
   }
 
   const sliceReferenceType = parseSliceReferenceType(typeStr);
@@ -4258,12 +4738,12 @@ function parseLetStatement(parser: Parser): Result<ASTNode, string> {
 
   // Record proven constraints for this variable
   // If initialized with a literal that satisfies the constraints, the constraint is proven
-  if (refinement && initializer.kind === "number") {
+  if (refinement && originalInitializer.kind === "number") {
     parser.provenConstraints.set(name, refinement);
   }
   // If initialized with a variable, inherit its proven constraints
-  else if (initializer.kind === "variable") {
-    const sourceVarName = initializer.name;
+  else if (originalInitializer.kind === "variable") {
+    const sourceVarName = originalInitializer.name;
     const sourceProven = parser.provenConstraints.get(sourceVarName);
     if (sourceProven) {
       parser.provenConstraints.set(name, sourceProven);
@@ -4550,6 +5030,14 @@ function parseFunctionStatement(parser: Parser): Result<ASTNode, string> {
     }
     advance(parser);
   }
+
+  const coercedBody = coerceFunctionBodyToReturnType(parser, body, returnType);
+  if (!coercedBody.ok) {
+    parser.variables = savedVariables;
+    parser.inLoop = savedInLoop;
+    return coercedBody;
+  }
+  body = coercedBody.value;
 
   // Restore variable scope and loop context
   parser.variables = savedVariables;
@@ -4881,6 +5369,7 @@ function parseComparison(parser: Parser): Result<ASTNode, string> {
           expression: node,
           checkedType: checkedType.value,
           matches: isMatch.value,
+          runtimeCheck: expressionHasUnionType(parser, node),
         } as IsNode);
       }
 
@@ -5431,26 +5920,23 @@ function parsePrimary(parser: Parser): Result<ASTNode, string> {
           continue;
         }
 
-        const argTypeResult = inferExpressionType(argNode, parser);
-        if (!argTypeResult.ok) {
-          return argTypeResult;
-        }
-        if (
-          (expectedType === "Char" || argTypeResult.value === "Char") &&
-          !areTypesCompatible(expectedType, argTypeResult.value)
-        ) {
+        const coercedArg = coerceExpressionToType(
+          parser,
+          argNode,
+          expectedType,
+        );
+        if (!coercedArg.ok) {
           return err(
             "Argument " +
               (i + 1) +
               " for '" +
               name +
-              "' expects type '" +
-              expectedType +
-              "' but got '" +
-              argTypeResult.value +
-              "'",
+              "' is invalid: " +
+              coercedArg.error,
           );
         }
+
+        args[i] = coercedArg.value;
       }
 
       // Return a function call node
@@ -5462,7 +5948,7 @@ function parsePrimary(parser: Parser): Result<ASTNode, string> {
     }
 
     // Check if this is a struct instantiation (identifier followed by LBRACE)
-    if (nextTok.type === "LBRACE") {
+    if (nextTok.type === "LBRACE" && parser.structs.has(name)) {
       // Struct instantiation
       const structInfo = parser.structs.get(name);
       if (!structInfo) {
@@ -5552,52 +6038,17 @@ function parsePrimary(parser: Parser): Result<ASTNode, string> {
           (sf) => sf.name === f.name,
         );
         if (!declaredField) continue;
-        const isStructType = parser.structs.has(declaredField.type);
-        const valueIsStruct = f.value.kind === "struct-instantiation";
-        if (isStructType) {
-          // Expect a struct instantiation of the correct type
-          if (!valueIsStruct) {
-            return err(
-              "Field '" +
-                f.name +
-                "' expects struct type '" +
-                declaredField.type +
-                "'",
-            );
-          }
-          const instNode = f.value as StructInstantiationNode;
-          if (instNode.structName !== declaredField.type) {
-            return err(
-              "Field '" +
-                f.name +
-                "' expects struct '" +
-                declaredField.type +
-                "' but got '" +
-                instNode.structName +
-                "'",
-            );
-          }
-        } else if (valueIsStruct) {
+        const coercedFieldValue = coerceExpressionToType(
+          parser,
+          f.value,
+          declaredField.type,
+        );
+        if (!coercedFieldValue.ok) {
           return err(
-            "Field '" + f.name + "' expects a primitive type but got a struct",
+            "Field '" + f.name + "' is invalid: " + coercedFieldValue.error,
           );
-        } else {
-          // Check boolean vs numeric type mismatch
-          const fieldIsBoolean = declaredField.type === "Bool";
-          const valueIsBoolean = f.value.kind === "boolean";
-          if (fieldIsBoolean && !valueIsBoolean && f.value.kind === "number") {
-            return err("Field '" + f.name + "' has type Bool but got a number");
-          }
-          if (!fieldIsBoolean && valueIsBoolean) {
-            return err(
-              "Field '" +
-                f.name +
-                "' has type '" +
-                declaredField.type +
-                "' but got a boolean",
-            );
-          }
         }
+        f.value = coercedFieldValue.value;
       }
 
       return ok({
@@ -5841,7 +6292,31 @@ function codegenAST(node: ASTNode): string {
   }
 
   if (node.kind === "is") {
+    if (node.runtimeCheck) {
+      const expression =
+        node.expression.kind === "variable"
+          ? node.expression.name
+          : codegenAST(node.expression);
+      return (
+        "(() => { const _tuffValue = " +
+        expression +
+        '; return _tuffValue && _tuffValue.__tuffUnion && _tuffValue.tag === "' +
+        node.checkedType +
+        '" ? 1 : 0; })()'
+      );
+    }
     return node.matches ? "1" : "0";
+  }
+
+  if (node.kind === "union-wrap") {
+    const expression = codegenAST(node.expression);
+    return (
+      '({ __tuffUnion: true, tag: "' +
+      node.armType +
+      '", value: ' +
+      expression +
+      " })"
+    );
   }
 
   if (node.kind === "read") {
@@ -5849,7 +6324,11 @@ function codegenAST(node: ASTNode): string {
   }
 
   if (node.kind === "variable") {
-    return node.name;
+    return (
+      "(() => { const _tuffValue = " +
+      node.name +
+      "; return _tuffValue && _tuffValue.__tuffUnion ? _tuffValue.value : _tuffValue; })()"
+    );
   }
 
   if (node.kind === "let") {
@@ -6248,6 +6727,10 @@ function validateAST(node: ASTNode): Result<undefined, string> {
   }
 
   if (node.kind === "is") {
+    return validateAST(node.expression);
+  }
+
+  if (node.kind === "union-wrap") {
     return validateAST(node.expression);
   }
 
@@ -6949,6 +7432,10 @@ function validateStructSemantics(
 
   if (node.kind === "unary-op") {
     return validateStructSemantics(node.operand, structs, typeEnv);
+  }
+
+  if (node.kind === "union-wrap") {
+    return validateStructSemantics(node.expression, structs, typeEnv);
   }
 
   if (node.kind === "struct-instantiation") {
