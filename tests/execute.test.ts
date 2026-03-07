@@ -2,14 +2,14 @@ import { test, expect } from "bun:test";
 import {
   compile as compileTuffToJS,
   compileProject as compileTuffProjectToJS,
-} from "../src/compile";
-import { parseProjectModule } from "../src/compiler";
-import { type Result, isOk, isErr } from "../src/types";
+} from "../src/jsMain/compile";
+import { parseProjectModule } from "../src/commonMain/compiler";
+import { type Result, isOk, isErr } from "../src/commonMain/types";
 import type {
   ModuleCompilationInfo,
   ModuleNode,
-} from "../src/compiler/core/ast";
-import { buildProjectModuleRegistry } from "../src/compiler/core/project";
+} from "../src/commonMain/compiler/core/ast";
+import { buildProjectModuleRegistry } from "../src/commonMain/compiler/core/project";
 
 type ProjectFiles = Record<string, string>;
 

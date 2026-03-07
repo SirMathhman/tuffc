@@ -2,7 +2,6 @@
 
 import { err, ok } from "../../types";
 import type { Result } from "../../types";
-import { validateNegativeType } from "../codegen";
 import type {
   ASTNode,
   FunctionNode,
@@ -16,7 +15,11 @@ import {
   extendTypeEnvironmentForStatement,
   resolveThisMemberAccess,
 } from "../core/scope";
-import { resolveAliasName, validateArgumentNodes } from "./type-system";
+import {
+  resolveAliasName,
+  validateArgumentNodes,
+  validateNegativeType,
+} from "./type-system";
 
 /**
  * Helper to validate expressions used in value contexts where they must produce a value

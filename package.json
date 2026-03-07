@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "convert-templates": "bun scripts/convert-templates.ts",
-    "build": "bun build src/index.ts --outdir dist --format cjs,esm --minify",
+    "build": "bun build src/jsMain/index.ts --outdir dist --format cjs,esm --minify",
     "find-duplicates": "pmd cpd --dir src,tests --language typescript --minimum-tokens 35 --ignore-literals --ignore-identifiers || exit 2",
     "lint": "eslint . --ext ts || exit 2",
     "refactor:compile:capture": "bun scripts/refactor/split-compile.ts capture",

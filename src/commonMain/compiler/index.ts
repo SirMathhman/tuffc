@@ -2,12 +2,6 @@
 
 import { err, ok } from "../types";
 import type { Result } from "../types";
-import {
-  codegenExternalProviderHelpers,
-  codegenExternalProviderLoad,
-  codegenProgramReturn,
-  generateStatementCode,
-} from "./codegen";
 import type {
   ASTNode,
   ExternBindingInfo,
@@ -15,20 +9,11 @@ import type {
   ModuleImplementationOrigin,
   ModuleNode,
   Parser,
-  ProjectCompileInput,
   ScopeFrame,
   Token,
 } from "./core/ast";
-import {
-  createModuleResultName,
-  getProjectCompilationOrder,
-  tokenizeProjectModule,
-} from "./core/project";
-import {
-  createScopeFrame,
-  registerProjectModulesAsObjects,
-} from "./core/scope";
-import { tokenize } from "./core/tokenization";
+import { tokenizeProjectModule } from "./core/project";
+import { registerProjectModulesAsObjects } from "./core/scope";
 import {
   collectTypeDeclarationNames,
   current,
@@ -270,96 +255,3 @@ export function parseProjectModule(
   moduleInfo.ast = moduleAst;
   return ok(moduleAst);
 }
-
-export function compile(input: string): Result<string, string> {
-  const DEBUG = false; // Set to true to enable debug logging
-
-  if (DEBUG) console.log("[COMPILE START]", input.substring(0, 100));
-
-  if (input === "") {
-    return ok("return 0;");
-  }
-
-  if (input !== input.trim()) {
-    return err("Leading or trailing whitespace is not allowed");
-  }
-
-  if (DEBUG) console.log("[TOKENIZE]");
-  const tokenResult = tokenize(input);
-  if (!tokenResult.ok) {
-    return tokenResult;
-  }
-
-  const parser = createParser(tokenResult.value, createScopeFrame(undefined));
-
-  if (DEBUG) console.log("[PRESCAN]");
-  if (DEBUG) console.log("[PARSE PROGRAM]");
-  const astResult = parseAndValidateProgram(parser);
-  if (!astResult.ok) {
-    return astResult;
-  }
-
-  const ast = astResult.value;
-  return ok(codegenProgramReturn(ast));
-}
-
-export function compileProject(
-  input: ProjectCompileInput,
-): Result<string, string> {
-  const compilationOrder = getProjectCompilationOrder(input);
-  if (!compilationOrder.ok) {
-    return compilationOrder;
-  }
-
-  const reachableModules = new Map(
-    compilationOrder.value.map((moduleInfo) => [
-      moduleInfo.moduleName,
-      moduleInfo,
-    ]),
-  );
-
-  const moduleNodes: ModuleNode[] = [];
-  for (const moduleInfo of compilationOrder.value) {
-    const moduleAst = parseProjectModule(moduleInfo, reachableModules);
-    if (!moduleAst.ok) {
-      return moduleAst;
-    }
-    moduleNodes.push(moduleAst.value);
-  }
-
-  const entryModule = compilationOrder.value.find(
-    (moduleInfo) => moduleInfo.moduleName === input.entryModule,
-  );
-  if (!entryModule) {
-    return err("Unknown module '" + input.entryModule + "'");
-  }
-
-  const externalProviderModules = compilationOrder.value.filter(
-    (moduleInfo) => moduleInfo.externModuleName && moduleInfo.externalProvider,
-  );
-  const externalPrelude =
-    externalProviderModules.length > 0
-      ? codegenExternalProviderHelpers() +
-        " " +
-        externalProviderModules
-          .map((moduleInfo) =>
-            codegenExternalProviderLoad(
-              moduleInfo.externalProvider?.runtimeName ?? "",
-              moduleInfo.externalProvider?.source ?? "",
-            ),
-          )
-          .join(" ") +
-        " "
-      : "";
-
-  const moduleCode = generateStatementCode(moduleNodes);
-  return ok(
-    externalPrelude +
-      moduleCode +
-      " return " +
-      createModuleResultName(entryModule.runtimeName) +
-      ";",
-  );
-}
-
-export const compileTuffToJS = compile;

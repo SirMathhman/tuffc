@@ -2,10 +2,41 @@
 
 import { err, ok } from "../../types";
 import type { Result } from "../../types";
-import type { ASTNode, ComparisonNode, EvaluationResult, LogicalNode, NumberNode, ParsedFunctionType, Parser, RefinementConstraint, RefinementType, TypeNarrowingInfo, UnionWrapNode, VariableInfo, VariableNode } from "../core/ast";
-import { findScopeBinding, resolveThisMemberAccess, resolveThisScopeNode, validateThisScopeAgainstStruct } from "../core/scope";
-import { areTypesCompatible, isLetter, VALID_TYPES } from "../core/tokenization";
-import { getArrayLikeInfo, inferZeroArgCallableReturnType, parseArrayType, parseFunctionTypeString, parseSliceType, parseUnionTypeString } from "../parser";
+import type {
+  ASTNode,
+  ComparisonNode,
+  EvaluationResult,
+  LogicalNode,
+  NumberNode,
+  ParsedFunctionType,
+  Parser,
+  RefinementConstraint,
+  RefinementType,
+  TypeNarrowingInfo,
+  UnionWrapNode,
+  VariableInfo,
+  VariableNode,
+} from "../core/ast";
+import {
+  findScopeBinding,
+  resolveThisMemberAccess,
+  resolveThisScopeNode,
+  validateThisScopeAgainstStruct,
+} from "../core/scope";
+import {
+  areTypesCompatible,
+  isDigit,
+  isLetter,
+  VALID_TYPES,
+} from "../core/tokenization";
+import {
+  getArrayLikeInfo,
+  inferZeroArgCallableReturnType,
+  parseArrayType,
+  parseFunctionTypeString,
+  parseSliceType,
+  parseUnionTypeString,
+} from "../parser";
 
 export function validateTypeWithStructs(
   parser: Parser,
@@ -333,7 +364,10 @@ export function arePointerTypesCompatible(
   return false;
 }
 
-export function isTypeAssignable(expectedType: string, actualType: string): boolean {
+export function isTypeAssignable(
+  expectedType: string,
+  actualType: string,
+): boolean {
   if (expectedType === actualType) {
     return true;
   }
@@ -621,7 +655,10 @@ export function applyVariableTypeNarrowing(
   }
 }
 
-export function expressionHasUnionType(parser: Parser, expression: ASTNode): boolean {
+export function expressionHasUnionType(
+  parser: Parser,
+  expression: ASTNode,
+): boolean {
   const expressionType = inferExpressionType(expression, parser);
   return expressionType.ok ? isUnionType(expressionType.value) : false;
 }
@@ -749,7 +786,10 @@ export function coerceUnionReturnValue(
   return coerceExpressionToType(parser, node, returnType);
 }
 
-export function combineBranchTypes(leftType: string, rightType: string): string {
+export function combineBranchTypes(
+  leftType: string,
+  rightType: string,
+): string {
   if (isTypeAssignable(leftType, rightType)) {
     return leftType;
   }
@@ -846,6 +886,45 @@ export function applyPointerDecorators(
     }
   }
   return typeStr;
+}
+
+export function getTypeFromLiteral(numericLiteral: string): string | undefined {
+  let pos = 0;
+
+  if (pos < numericLiteral.length && numericLiteral[pos] === "-") {
+    pos++;
+  }
+
+  while (pos < numericLiteral.length && isDigit(numericLiteral[pos])) {
+    pos++;
+  }
+
+  if (pos < numericLiteral.length && numericLiteral[pos] === ".") {
+    pos++;
+
+    while (pos < numericLiteral.length && isDigit(numericLiteral[pos])) {
+      pos++;
+    }
+  }
+
+  return pos < numericLiteral.length
+    ? numericLiteral.substring(pos)
+    : undefined;
+}
+
+export function validateNegativeType(
+  literal: string,
+): Result<undefined, string> {
+  if (!literal.startsWith("-")) {
+    return ok(undefined);
+  }
+
+  const type = getTypeFromLiteral(literal);
+  if (type && !type.startsWith("I") && !type.startsWith("F")) {
+    return err("Cannot apply negative sign to unsigned type: " + literal);
+  }
+
+  return ok(undefined);
 }
 
 // Infer the type of an expression

@@ -49,7 +49,7 @@ const sourceSnapshotPath = path.join(
 );
 const project = new Project({ tsConfigFilePath: "tsconfig.json" });
 const source = project.getSourceFileOrThrow(
-  existsSync(sourceSnapshotPath) ? sourceSnapshotPath : "src/compile.ts",
+  existsSync(sourceSnapshotPath) ? sourceSnapshotPath : "src/jsMain/compile.ts",
 );
 
 const captureOutputPath = path.join(
@@ -58,38 +58,75 @@ const captureOutputPath = path.join(
   "refactor",
   "compile-top-level.json",
 );
-const originalCompilePath = path.join(process.cwd(), "src", "compile.ts");
-const compilerRootPath = path.join(process.cwd(), "src", "compiler");
-const rootFacadePath = path.join(process.cwd(), "src", "compile.ts");
+const originalCompilePath = path.join(
+  process.cwd(),
+  "src",
+  "jsMain",
+  "compile.ts",
+);
+const compilerRootPath = path.join(
+  process.cwd(),
+  "src",
+  "commonMain",
+  "compiler",
+);
+const rootFacadePath = path.join(process.cwd(), "src", "jsMain", "compile.ts");
 
 const groupConfigs: GroupConfig[] = [
-  { key: "ast", filePath: path.join("src", "compiler", "core", "ast.ts") },
+  {
+    key: "ast",
+    filePath: path.join("src", "commonMain", "compiler", "core", "ast.ts"),
+  },
   {
     key: "tokenization",
-    filePath: path.join("src", "compiler", "core", "tokenization.ts"),
+    filePath: path.join(
+      "src",
+      "commonMain",
+      "compiler",
+      "core",
+      "tokenization.ts",
+    ),
   },
   {
     key: "project",
-    filePath: path.join("src", "compiler", "core", "project.ts"),
+    filePath: path.join("src", "commonMain", "compiler", "core", "project.ts"),
   },
-  { key: "scope", filePath: path.join("src", "compiler", "core", "scope.ts") },
+  {
+    key: "scope",
+    filePath: path.join("src", "commonMain", "compiler", "core", "scope.ts"),
+  },
   {
     key: "semantics",
-    filePath: path.join("src", "compiler", "semantics", "type-system.ts"),
+    filePath: path.join(
+      "src",
+      "commonMain",
+      "compiler",
+      "semantics",
+      "type-system.ts",
+    ),
   },
   {
     key: "validation",
-    filePath: path.join("src", "compiler", "semantics", "validation.ts"),
+    filePath: path.join(
+      "src",
+      "commonMain",
+      "compiler",
+      "semantics",
+      "validation.ts",
+    ),
   },
   {
     key: "parser",
-    filePath: path.join("src", "compiler", "parser", "index.ts"),
+    filePath: path.join("src", "commonMain", "compiler", "parser", "index.ts"),
   },
   {
     key: "codegen",
-    filePath: path.join("src", "compiler", "codegen", "index.ts"),
+    filePath: path.join("src", "jsMain", "compiler", "codegen", "index.ts"),
   },
-  { key: "compiler", filePath: path.join("src", "compiler", "index.ts") },
+  {
+    key: "compiler",
+    filePath: path.join("src", "commonMain", "compiler", "index.ts"),
+  },
 ];
 
 const tokenizationNames = new Set([
@@ -289,7 +326,7 @@ function runRearrange(): void {
     "",
   ].join("\n");
   writeFileSync(rootFacadePath, facade);
-  console.log("Updated src/compile.ts facade");
+  console.log("Updated src/jsMain/compile.ts facade");
 }
 
 function getEntries(sourceFile: SourceFile): Entry[] {
@@ -687,7 +724,13 @@ function getNodeKey(node: Node): string {
 function getGroupFilePath(groupKey: string): string {
   const group = groupConfigs.find((entry) => entry.key === groupKey);
   if (!group) {
-    return path.join("src", "compiler", "semantics", "type-system.ts");
+    return path.join(
+      "src",
+      "commonMain",
+      "compiler",
+      "semantics",
+      "type-system.ts",
+    );
   }
 
   return group.filePath;
