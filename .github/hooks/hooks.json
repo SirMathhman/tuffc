@@ -1,18 +1,18 @@
 {
-	"hooks": {
-		"Stop": [
-			{
-				"type": "command",
-				"command": "npm run test"
-			},
-			{
-				"type": "command",
-				"command": "npm run find-duplicates"
-			},
-			{
-				"type": "command",
-				"command": "npm run lint"
-			}
-		]
-	}
+  "hooks": {
+    "Stop": [
+      {
+        "type": "command",
+        "command": "npm run test"
+      },
+      {
+        "type": "command",
+        "command": "npm run find-duplicates"
+      },
+      {
+        "type": "command",
+        "command": "npm run lint"
+      }
+    ]
+  }
 }

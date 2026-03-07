@@ -108,3 +108,28 @@ This ensures consistency across the entire codebase and helps catch bugs early w
 ---
 
 **Related:** Check `test-output.txt` and test cases in `tests/execute.test.ts` to see expected behavior and error patterns.
+
+## Mandatory Hook Execution
+
+After every code change or task completion, you **MUST** run the project hooks defined in `.github/hooks/hooks.json`. These hooks are strict and deterministic:
+
+1. **`npm run test`** — Runs the full test suite
+2. **`npm run find-duplicates`** — Detects duplicate code patterns
+3. **`npm run lint`** — Enforces code style and quality rules
+
+### Critical Requirements
+
+- **No exceptions**: The hooks WILL block task completion if they fail—treat failures as blocking issues
+- **Fix, don't skip**: If any hook fails, you MUST adjust your code implementation to satisfy the hook requirements
+- **Sequential validation**: Run all three hooks in order. If the first fails, fix it before proceeding to the next
+- **Task integrity**: Your changes are not considered complete until all hooks pass
+
+### Workflow
+
+1. Implement the requested feature or fix
+2. Run `npm run test` and address any test failures by adjusting the implementation
+3. Run `npm run find-duplicates` and refactor duplicated code if found
+4. Run `npm run lint` and fix any style or quality violations
+5. Only then is the task considered complete
+
+This ensures code quality, consistency, and correctness are maintained across all changes.
