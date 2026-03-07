@@ -2400,6 +2400,92 @@ test("method syntax: struct receiver works", () => {
   );
 });
 
+test("method syntax: constructor-local function becomes instance method", () => {
+  expectValue(
+    executeTuff(
+      "struct Point { x : I32; y : I32; } fn Point(x : I32, y : I32) : Point => { fn manhattan() : I32 => x + y; this } let point : Point = Point(3, 4); point.manhattan()",
+    ),
+    7,
+  );
+});
+
+test("method syntax: constructor-local method works on direct constructor call", () => {
+  expectValue(
+    executeTuff(
+      "struct Point { x : I32; y : I32; } fn Point(x : I32, y : I32) : Point => { fn manhattan() : I32 => x + y; this } Point(3, 4).manhattan()",
+    ),
+    7,
+  );
+});
+
+test("method syntax: constructor-local method survives wrapping in another struct", () => {
+  expectValue(
+    executeTuff(
+      "struct Point { x : I32; y : I32; } struct Wrapper { point : Point; } fn Point(x : I32, y : I32) : Point => { fn manhattan() : I32 => x + y; this } let wrapper : Wrapper = Wrapper { point : Point(3, 4) }; wrapper.point.manhattan()",
+    ),
+    7,
+  );
+});
+
+test("method syntax: constructor-local method conflicting with field is error", () => {
+  expectError(
+    executeTuff(
+      "struct Point { x : I32; y : I32; manhattan : I32; } fn Point(x : I32, y : I32, manhattan : I32) : Point => { fn manhattan() : I32 => x + y; this } Point(3, 4, 0).manhattan()",
+    ),
+  );
+});
+
+test("method syntax: plain struct literal does not gain constructor-local methods", () => {
+  expectError(
+    executeTuff(
+      "struct Point { x : I32; y : I32; } fn Point(x : I32, y : I32) : Point => { fn manhattan() : I32 => x + y; this } Point { x : 3, y : 4 }.manhattan()",
+    ),
+  );
+});
+
+test("method syntax: constructor-local value receiver uses instance fields", () => {
+  expectValue(
+    executeTuff(
+      "struct Point { x : I32; y : I32; } fn Point(x : I32, y : I32) : Point => { fn sum(this) : I32 => this.x + this.y; this } Point(3, 4).sum()",
+    ),
+    7,
+  );
+});
+
+test("method syntax: constructor-local borrowed receiver leaves instance usable", () => {
+  expectValue(
+    executeTuff(
+      "struct Point { x : I32; y : I32; } fn Point(x : I32, y : I32) : Point => { fn sum(*this) : I32 => this.x + this.y; this } let point : Point = Point(3, 4); point.sum() + point.x",
+    ),
+    10,
+  );
+});
+
+test("method syntax: constructor-local mutable receiver can update fields", () => {
+  expectValue(
+    executeTuff(
+      "struct Counter { mut value : I32; } fn Counter(value : I32) : Counter => { fn inc(*mut this) : Void => this.value += 1; this } let mut counter : Counter = Counter(1); counter.inc(); counter.value",
+    ),
+    2,
+  );
+});
+
+test("method syntax: constructor-local move receiver consumes instance", () => {
+  expectError(
+    executeTuff(
+      "struct Box { value : I32; } fn Box(value : I32) : Box => { fn intoValue(*move this) : I32 => this.value; this } let box : Box = Box(5); let value : I32 = box.intoValue(); box.value",
+    ),
+  );
+});
+
+test("method syntax: special local receiver must be first parameter", () => {
+  expectError(
+    executeTuff(
+      "struct Point { x : I32; } fn Point(x : I32) : Point => { fn bad(arg : I32, this) : I32 => arg + this.x; this } Point(1)",
+    ),
+  );
+});
+
 test("method syntax: first parameter must be named this", () => {
   expectError(
     executeTuff(

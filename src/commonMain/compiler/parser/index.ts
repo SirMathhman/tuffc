@@ -22,6 +22,8 @@ import type {
   FieldAssignNode,
   FunctionParameter,
   IdentifierToken,
+  InstanceMethodInfo,
+  InstanceValueMetadata,
   IsNode,
   KeywordToken,
   LetNode,
@@ -69,14 +71,17 @@ import {
   applyPointerDecorators,
   applyVariableTypeNarrowing,
   canAssignToRefinedType,
+  cloneInstanceMetadata,
   coerceExpressionToType,
   coerceFunctionBodyToReturnType,
   ensureExpressionType,
   evaluateIsType,
   expressionHasUnionType,
   extractConstraintsFromComparison,
+  getExpressionInstanceMetadata,
   getBracketedTypeParts,
   getCallableInfo,
+  getInstanceMethodInfo,
   getStructInfoForType,
   getTypeNarrowingFromCondition,
   getVariable,
@@ -590,6 +595,88 @@ export function consumeCommaOrClosingParen(
   return ok(undefined);
 }
 
+export function getImplicitReceiverType(
+  parser: Parser,
+): Result<string, string> {
+  const receiverType = parser.currentFunctionReturnType;
+  if (!receiverType || receiverType === "__inferred__") {
+    return err(
+      "Implicit receiver shorthand requires an enclosing function with a known return type",
+    );
+  }
+
+  return ok(receiverType);
+}
+
+export function parseImplicitReceiverParameterFromAmbient(
+  parser: Parser,
+  isFirstParameter: boolean,
+  extraAdvanceCount: number,
+): Result<FunctionParameter, string> {
+  if (!isFirstParameter) {
+    return err("Special receiver shorthand must be the first parameter");
+  }
+
+  const receiverType = getImplicitReceiverType(parser);
+  if (!receiverType.ok) {
+    return receiverType;
+  }
+
+  advance(parser);
+  for (let i = 0; i < extraAdvanceCount; i++) {
+    advance(parser);
+  }
+
+  return ok({
+    name: "this",
+    type: receiverType.value,
+  });
+}
+
+export function tryParseImplicitReceiverParameter(
+  parser: Parser,
+  isFirstParameter: boolean,
+): Result<FunctionParameter | undefined, string> {
+  const token = current(parser);
+
+  if (token.type === "KEYWORD" && token.value === "this") {
+    const nextToken = parser.tokens[parser.pos + 1];
+    if (nextToken?.type === "COLON") {
+      return ok(undefined);
+    }
+
+    return parseImplicitReceiverParameterFromAmbient(
+      parser,
+      isFirstParameter,
+      0,
+    );
+  }
+
+  if (token.type !== "OPERATOR" || token.value !== "*") {
+    return ok(undefined);
+  }
+
+  const nextToken = parser.tokens[parser.pos + 1];
+  const afterNextToken = parser.tokens[parser.pos + 2];
+  const isBorrowedReceiver =
+    nextToken?.type === "KEYWORD" && nextToken.value === "this";
+  const isMutableReceiver =
+    nextToken?.type === "KEYWORD" &&
+    nextToken.value === "mut" &&
+    afterNextToken?.type === "KEYWORD" &&
+    afterNextToken.value === "this";
+
+  if (!isBorrowedReceiver && !isMutableReceiver) {
+    return ok(undefined);
+  }
+
+  return parseImplicitReceiverParameterFromAmbient(
+    parser,
+    isFirstParameter,
+    isMutableReceiver ? 2 : 1,
+  );
+}
+
 export function parseFunctionParameters(
   parser: Parser,
   rejectShadowing: boolean,
@@ -598,6 +685,27 @@ export function parseFunctionParameters(
   const parameterNames = new Set<string>();
 
   while (current(parser).type !== "RPAREN") {
+    const implicitReceiver = tryParseImplicitReceiverParameter(
+      parser,
+      parameters.length === 0,
+    );
+    if (!implicitReceiver.ok) {
+      return implicitReceiver;
+    }
+    if (implicitReceiver.value) {
+      parameterNames.add("this");
+      parameters.push(implicitReceiver.value);
+
+      const separatorResult = consumeCommaOrClosingParen(
+        parser,
+        "Expected ',' or ')' in parameter list",
+      );
+      if (!separatorResult.ok) {
+        return separatorResult;
+      }
+      continue;
+    }
+
     const paramNameTok = current(parser);
     if (
       paramNameTok.type !== "IDENTIFIER" &&
@@ -1659,128 +1767,137 @@ export function tryParseAssignment(
     const lvalue = postfixResult.value;
 
     // Check if this is array access or field access that could be assigned to
-    if (
-      (lvalue.kind === "array-access" || lvalue.kind === "field-access") &&
-      current(parser).type === "ASSIGN"
-    ) {
-      advance(parser); // consume ASSIGN
-
-      const valueResult = parseExpression(parser);
-      if (!valueResult.ok) {
-        return valueResult;
-      }
-
-      if (lvalue.kind === "array-access") {
-        const arrayInfo = getArrayLikeInfo(lvalue.array, parser);
-
-        // Check that the array or slice is writable
-        if (lvalue.array.kind === "variable") {
-          const arrayVar = parser.variables.get(lvalue.array.name);
-          const sliceReferenceType = arrayVar
-            ? parseSliceReferenceType(arrayVar.type)
-            : undefined;
-          const isWritable = sliceReferenceType
-            ? sliceReferenceType.mutable
-            : arrayVar?.mutable;
-
-          if (!isWritable) {
-            return err(
-              "Cannot modify elements of immutable array '" +
-                lvalue.array.name +
-                "'",
-            );
-          }
-        }
-
-        if (arrayInfo) {
-          const elemType = arrayInfo.elementType;
-
-          const indexValidation = validateArrayIndexAccess(
+    if (lvalue.kind === "array-access" || lvalue.kind === "field-access") {
+      return withParsedAssignmentOperator(
+        parser,
+        savedPos,
+        (assignOp: AssignmentOperatorInfo) => {
+          const { isCompound, operator } = assignOp;
+          const assignValueResult = parseAssignmentValue(
             parser,
-            lvalue.array,
-            lvalue.index,
-            arrayInfo,
+            isCompound,
+            operator,
+            lvalue,
           );
-          if (!indexValidation.ok) {
-            return indexValidation;
+          if (!assignValueResult.ok) {
+            return assignValueResult as Result<never, string>;
           }
 
-          // Check assigned value type matches element type
-          if (!elemType.startsWith("[")) {
-            if (
-              valueResult.value.kind === "number" &&
-              splitNumberLiteral(valueResult.value.value).numericPart.includes(
-                ".",
-              )
-            ) {
-              if (!elemType.startsWith("F")) {
+          if (lvalue.kind === "array-access") {
+            const arrayInfo = getArrayLikeInfo(lvalue.array, parser);
+
+            if (lvalue.array.kind === "variable") {
+              const arrayVar = parser.variables.get(lvalue.array.name);
+              const sliceReferenceType = arrayVar
+                ? parseSliceReferenceType(arrayVar.type)
+                : undefined;
+              const isWritable = sliceReferenceType
+                ? sliceReferenceType.mutable
+                : arrayVar?.mutable;
+
+              if (!isWritable) {
                 return err(
-                  "Type mismatch in array element assignment: expected " +
-                    elemType +
-                    " but got float literal",
-                );
+                  "Cannot modify elements of immutable array '" +
+                    lvalue.array.name +
+                    "'",
+                ) as Result<never, string>;
               }
             }
 
-            const assignedTypeResult = inferExpressionType(
-              valueResult.value,
-              parser,
-            );
-            if (assignedTypeResult.ok) {
-              const assignedType = assignedTypeResult.value;
-              const bothFloat =
-                elemType.startsWith("F") && assignedType.startsWith("F");
-              const bothInt =
-                !elemType.startsWith("F") && !assignedType.startsWith("F");
-              if (assignedType !== elemType && !bothFloat && !bothInt) {
-                return err(
-                  "Type mismatch in array element assignment: expected " +
-                    elemType +
-                    " but got " +
-                    assignedType,
-                );
-              }
-              if (!elemType.startsWith("F") && assignedType.startsWith("F")) {
-                return err(
-                  "Type mismatch in array element assignment: expected " +
-                    elemType +
-                    " but got " +
-                    assignedType,
-                );
-              }
-            } else if (
-              valueResult.value.kind === "number" &&
-              valueResult.value.value.includes(".") &&
-              !elemType.startsWith("F")
-            ) {
-              return err(
-                "Type mismatch in array element assignment: expected " +
-                  elemType +
-                  " but got float literal",
+            if (arrayInfo) {
+              const elemType = arrayInfo.elementType;
+
+              const indexValidation = validateArrayIndexAccess(
+                parser,
+                lvalue.array,
+                lvalue.index,
+                arrayInfo,
               );
+              if (!indexValidation.ok) {
+                return indexValidation as Result<never, string>;
+              }
+
+              if (!elemType.startsWith("[")) {
+                const assignedValue = assignValueResult.value;
+                if (
+                  assignedValue.kind === "number" &&
+                  splitNumberLiteral(assignedValue.value).numericPart.includes(
+                    ".",
+                  )
+                ) {
+                  if (!elemType.startsWith("F")) {
+                    return err(
+                      "Type mismatch in array element assignment: expected " +
+                        elemType +
+                        " but got float literal",
+                    ) as Result<never, string>;
+                  }
+                }
+
+                const assignedTypeResult = inferExpressionType(
+                  assignedValue,
+                  parser,
+                );
+                if (assignedTypeResult.ok) {
+                  const assignedType = assignedTypeResult.value;
+                  const bothFloat =
+                    elemType.startsWith("F") && assignedType.startsWith("F");
+                  const bothInt =
+                    !elemType.startsWith("F") && !assignedType.startsWith("F");
+                  if (assignedType !== elemType && !bothFloat && !bothInt) {
+                    return err(
+                      "Type mismatch in array element assignment: expected " +
+                        elemType +
+                        " but got " +
+                        assignedType,
+                    ) as Result<never, string>;
+                  }
+                  if (
+                    !elemType.startsWith("F") &&
+                    assignedType.startsWith("F")
+                  ) {
+                    return err(
+                      "Type mismatch in array element assignment: expected " +
+                        elemType +
+                        " but got " +
+                        assignedType,
+                    ) as Result<never, string>;
+                  }
+                } else if (
+                  assignedValue.kind === "number" &&
+                  assignedValue.value.includes(".") &&
+                  !elemType.startsWith("F")
+                ) {
+                  return err(
+                    "Type mismatch in array element assignment: expected " +
+                      elemType +
+                      " but got float literal",
+                  ) as Result<never, string>;
+                }
+              }
             }
+
+            return ok({
+              kind: "array-assign",
+              array: lvalue.array,
+              index: lvalue.index,
+              value: assignValueResult.value,
+            } as ArrayAssignNode) as Result<never, string>;
           }
-        }
 
-        return ok({
-          kind: "array-assign",
-          array: lvalue.array,
-          index: lvalue.index,
-          value: valueResult.value,
-        } as ArrayAssignNode);
-      } else {
-        const thisAssignmentValidation = validateThisAssignmentTarget(lvalue);
-        if (!thisAssignmentValidation.ok) {
-          return thisAssignmentValidation;
-        }
+          const thisAssignmentValidation = validateThisAssignmentTarget(lvalue);
+          if (!thisAssignmentValidation.ok) {
+            return thisAssignmentValidation as Result<never, string>;
+          }
 
-        return ok({
-          kind: "field-assign",
-          object: lvalue.object,
-          fieldName: lvalue.fieldName,
-          value: valueResult.value,
-        } as FieldAssignNode);
-      }
+          return ok({
+            kind: "field-assign",
+            object: lvalue.object,
+            fieldName: lvalue.fieldName,
+            value: assignValueResult.value,
+          } as FieldAssignNode) as Result<never, string>;
+        },
+      );
     }
   }
 
@@ -1885,6 +2002,20 @@ export function tryParseAssignment(
         return assignValueResult as Result<never, string>;
       }
       const assignValue = assignValueResult.value;
+
+      const assignedMetadata = getExpressionInstanceMetadata(
+        parser,
+        assignValue,
+      );
+      if (!assignedMetadata.ok) {
+        return assignedMetadata as Result<never, string>;
+      }
+      const existingVarInfo = parser.variables.get(name);
+      if (existingVarInfo) {
+        existingVarInfo.instanceMetadata = cloneOptionalInstanceMetadata(
+          assignedMetadata.value,
+        );
+      }
 
       return ok({
         kind: "assign",
@@ -3199,6 +3330,17 @@ export function parseLetStatement(parser: Parser): Result<ASTNode, string> {
     }
   }
 
+  const initializerMetadata = getExpressionInstanceMetadata(
+    parser,
+    initializer,
+  );
+  if (!initializerMetadata.ok) {
+    return initializerMetadata;
+  }
+  varInfo.instanceMetadata = cloneOptionalInstanceMetadata(
+    initializerMetadata.value,
+  );
+
   return ok({
     kind: "let",
     mutable,
@@ -3911,11 +4053,91 @@ export function restoreFunctionParsingState(
   savedScope: ScopeFrame,
   savedInLoop: boolean,
   savedGenericTypeParameters: string[],
+  savedCurrentFunctionReturnType?: string,
 ): void {
   parser.variables = savedVariables;
   parser.currentScope = savedScope;
   parser.inLoop = savedInLoop;
   parser.genericTypeParameters = savedGenericTypeParameters;
+  parser.currentFunctionReturnType = savedCurrentFunctionReturnType;
+}
+
+export function cloneOptionalInstanceMetadata(
+  metadata: InstanceValueMetadata | undefined,
+): InstanceValueMetadata | undefined {
+  return metadata ? cloneInstanceMetadata(metadata) : undefined;
+}
+
+export function getBoundInstanceMethodCallableInfo(
+  parser: Parser,
+  callee: FieldAccessNode,
+): Result<ParsedFunctionType | undefined, string> {
+  const instanceMethod = getInstanceMethodInfo(
+    parser,
+    callee.object,
+    callee.fieldName,
+  );
+  if (!instanceMethod.ok) {
+    return instanceMethod;
+  }
+
+  return ok(
+    instanceMethod.value
+      ? {
+          parameterTypes: instanceMethod.value.parameterTypes.slice(1),
+          returnType: instanceMethod.value.returnType,
+        }
+      : undefined,
+  );
+}
+
+export function buildConstructorInstanceMetadata(
+  parser: Parser,
+  constructorName: string,
+  body: ASTNode,
+): Result<InstanceValueMetadata | undefined, string> {
+  if (body.kind !== "block") {
+    return ok(undefined);
+  }
+
+  const structInfo = parser.structs.get(constructorName);
+  if (!structInfo) {
+    return ok(undefined);
+  }
+
+  const methods: InstanceMethodInfo[] = [];
+  const seenNames = new Set<string>();
+  for (const statement of body.statements) {
+    if (statement.kind !== "function") {
+      continue;
+    }
+
+    if (seenNames.has(statement.name)) {
+      return err(
+        "Constructor-local method '" + statement.name + "' already declared",
+      );
+    }
+    if (structInfo.fields.some((field) => field.name === statement.name)) {
+      return err(
+        "Constructor-local method '" +
+          statement.name +
+          "' conflicts with struct field '" +
+          statement.name +
+          "'",
+      );
+    }
+
+    seenNames.add(statement.name);
+    methods.push({
+      name: statement.name,
+      parameterTypes: statement.parameters.map((parameter) => parameter.type),
+      returnType: statement.returnType,
+    });
+  }
+
+  return methods.length > 0
+    ? ok({ methods, fields: new Map() })
+    : ok(undefined);
 }
 
 export function parseFunctionStatement(
@@ -3932,6 +4154,7 @@ export function parseFunctionStatement(
     ? signatureResult.value.returnType
     : undefined;
   let returnType = signatureResult.value.returnType;
+  let instanceMetadata: InstanceValueMetadata | undefined;
 
   // Expect '=>'
   const arrowTok = current(parser);
@@ -3961,11 +4184,15 @@ export function parseFunctionStatement(
   const savedScope = parser.currentScope;
   const savedInLoop = parser.inLoop;
   const savedGenericTypeParameters = [...parser.genericTypeParameters];
+  const savedCurrentFunctionReturnType = parser.currentFunctionReturnType;
   parser.inLoop = false;
   parser.genericTypeParameters = [
     ...savedGenericTypeParameters,
     ...typeParameters,
   ];
+  parser.currentFunctionReturnType =
+    explicitReturnType ??
+    (parser.structs.has(functionName) ? functionName : undefined);
   enterCallableScope(parser, savedScope, parameters);
 
   const bodyTok = current(parser);
@@ -3978,10 +4205,14 @@ export function parseFunctionStatement(
     const statements: ASTNode[] = [];
     const blockResult = parseStatementBlock(parser, statements);
     if (!blockResult.ok) {
-      parser.variables = savedVariables;
-      parser.currentScope = savedScope;
-      parser.inLoop = savedInLoop;
-      parser.genericTypeParameters = savedGenericTypeParameters;
+      restoreFunctionParsingState(
+        parser,
+        savedVariables,
+        savedScope,
+        savedInLoop,
+        savedGenericTypeParameters,
+        savedCurrentFunctionReturnType,
+      );
       return blockResult;
     }
 
@@ -4001,6 +4232,7 @@ export function parseFunctionStatement(
             savedScope,
             savedInLoop,
             savedGenericTypeParameters,
+            savedCurrentFunctionReturnType,
           );
           return exprResult;
         }
@@ -4028,6 +4260,7 @@ export function parseFunctionStatement(
         savedScope,
         savedInLoop,
         savedGenericTypeParameters,
+        savedCurrentFunctionReturnType,
       );
       return err("Expected '}'");
     }
@@ -4042,42 +4275,58 @@ export function parseFunctionStatement(
     // Arrow body
     const assignResult = tryParseAssignment(parser);
     if (!assignResult.ok) {
-      parser.variables = savedVariables;
-      parser.currentScope = savedScope;
-      parser.inLoop = savedInLoop;
-      parser.genericTypeParameters = savedGenericTypeParameters;
+      restoreFunctionParsingState(
+        parser,
+        savedVariables,
+        savedScope,
+        savedInLoop,
+        savedGenericTypeParameters,
+        savedCurrentFunctionReturnType,
+      );
       return assignResult;
     }
 
     if (assignResult.value !== undefined) {
       if (explicitReturnType && returnType !== "Void") {
-        parser.variables = savedVariables;
-        parser.currentScope = savedScope;
-        parser.inLoop = savedInLoop;
-        parser.genericTypeParameters = savedGenericTypeParameters;
+        restoreFunctionParsingState(
+          parser,
+          savedVariables,
+          savedScope,
+          savedInLoop,
+          savedGenericTypeParameters,
+          savedCurrentFunctionReturnType,
+        );
         return err(
           "Function with non-Void return type must have an expression body",
         );
       }
       body = assignResult.value;
     } else {
+      const exprResult = parseExpression(parser);
+      if (!exprResult.ok) {
+        restoreFunctionParsingState(
+          parser,
+          savedVariables,
+          savedScope,
+          savedInLoop,
+          savedGenericTypeParameters,
+          savedCurrentFunctionReturnType,
+        );
+        return exprResult;
+      }
+
       if (explicitReturnType && returnType === "Void") {
-        parser.variables = savedVariables;
-        parser.currentScope = savedScope;
-        parser.inLoop = savedInLoop;
-        parser.genericTypeParameters = savedGenericTypeParameters;
+        restoreFunctionParsingState(
+          parser,
+          savedVariables,
+          savedScope,
+          savedInLoop,
+          savedGenericTypeParameters,
+          savedCurrentFunctionReturnType,
+        );
         return err(
           "Function with Void return type cannot have an expression body",
         );
-      }
-
-      const exprResult = parseExpression(parser);
-      if (!exprResult.ok) {
-        parser.variables = savedVariables;
-        parser.currentScope = savedScope;
-        parser.inLoop = savedInLoop;
-        parser.genericTypeParameters = savedGenericTypeParameters;
-        return exprResult;
       }
 
       body = exprResult.value;
@@ -4098,20 +4347,28 @@ export function parseFunctionStatement(
   const coercedBody = coerceFunctionBodyToReturnType(parser, body, returnType);
   if (explicitReturnType) {
     if (!coercedBody.ok) {
-      parser.variables = savedVariables;
-      parser.currentScope = savedScope;
-      parser.inLoop = savedInLoop;
-      parser.genericTypeParameters = savedGenericTypeParameters;
+      restoreFunctionParsingState(
+        parser,
+        savedVariables,
+        savedScope,
+        savedInLoop,
+        savedGenericTypeParameters,
+        savedCurrentFunctionReturnType,
+      );
       return coercedBody;
     }
     body = coercedBody.value;
   } else {
     const inferredReturnType = inferFunctionReturnTypeFromBody(parser, body);
     if (!inferredReturnType.ok) {
-      parser.variables = savedVariables;
-      parser.currentScope = savedScope;
-      parser.inLoop = savedInLoop;
-      parser.genericTypeParameters = savedGenericTypeParameters;
+      restoreFunctionParsingState(
+        parser,
+        savedVariables,
+        savedScope,
+        savedInLoop,
+        savedGenericTypeParameters,
+        savedCurrentFunctionReturnType,
+      );
       return inferredReturnType;
     }
 
@@ -4135,21 +4392,54 @@ export function parseFunctionStatement(
       returnType,
     );
     if (!inferredCoercedBody.ok) {
-      parser.variables = savedVariables;
-      parser.currentScope = savedScope;
-      parser.inLoop = savedInLoop;
-      parser.genericTypeParameters = savedGenericTypeParameters;
+      restoreFunctionParsingState(
+        parser,
+        savedVariables,
+        savedScope,
+        savedInLoop,
+        savedGenericTypeParameters,
+        savedCurrentFunctionReturnType,
+      );
       return inferredCoercedBody;
     }
 
     body = inferredCoercedBody.value;
   }
 
+  const constructorMetadata = buildConstructorInstanceMetadata(
+    parser,
+    functionName,
+    body,
+  );
+  if (!constructorMetadata.ok) {
+    restoreFunctionParsingState(
+      parser,
+      savedVariables,
+      savedScope,
+      savedInLoop,
+      savedGenericTypeParameters,
+      savedCurrentFunctionReturnType,
+    );
+    return constructorMetadata;
+  }
+  instanceMetadata = constructorMetadata.value;
+
+  parser.functions.set(functionName, {
+    typeParameters,
+    parameters,
+    returnType,
+    instanceMetadata,
+  });
+
   // Restore variable scope and loop context
-  parser.variables = savedVariables;
-  parser.currentScope = savedScope;
-  parser.inLoop = savedInLoop;
-  parser.genericTypeParameters = savedGenericTypeParameters;
+  restoreFunctionParsingState(
+    parser,
+    savedVariables,
+    savedScope,
+    savedInLoop,
+    savedGenericTypeParameters,
+    savedCurrentFunctionReturnType,
+  );
 
   return ok({
     kind: "function",
@@ -5002,6 +5292,14 @@ export function tryGetDirectMemberCallableInfo(
     );
   }
 
+  const instanceMethod = getBoundInstanceMethodCallableInfo(parser, callee);
+  if (!instanceMethod.ok) {
+    return instanceMethod;
+  }
+  if (instanceMethod.value) {
+    return ok(instanceMethod.value);
+  }
+
   const ownerType = inferExpressionType(callee.object, parser);
   if (!ownerType.ok) {
     return ok(undefined);
@@ -5154,6 +5452,21 @@ export function parsePostfixCall(
     }
 
     if (memberCallable.value && extensionCallable.value) {
+      const instanceMethod = getBoundInstanceMethodCallableInfo(parser, callee);
+      if (!instanceMethod.ok) {
+        return instanceMethod;
+      }
+
+      if (instanceMethod.value) {
+        return createValidatedCallNode(
+          parser,
+          callee,
+          argsResult.value,
+          memberCallable.value.parameterTypes,
+          memberCallable.value.returnType,
+        );
+      }
+
       return err(
         "Ambiguous method call '" +
           callee.fieldName +
@@ -5881,12 +6194,30 @@ export function prescanFunctionSignatures(
   parser: Parser,
 ): Result<void, string> {
   const savedPos = parser.pos;
+  const savedCurrentFunctionReturnType = parser.currentFunctionReturnType;
   parser.pos = 0;
-  const braceContexts: Array<"object" | "other"> = [];
+  const braceContexts: Array<"function" | "object" | "other"> = [];
+  const functionReturnTypes: string[] = [];
   let pendingObjectBrace = false;
+  let pendingFunctionReturnType: string | undefined;
+
+  const updateCurrentFunctionReturnType = (): void => {
+    parser.currentFunctionReturnType =
+      functionReturnTypes.length > 0
+        ? functionReturnTypes[functionReturnTypes.length - 1]
+        : undefined;
+  };
 
   while (current(parser).type !== "EOF") {
     const tok = current(parser);
+
+    if (
+      pendingFunctionReturnType !== undefined &&
+      tok.type !== "ARROW" &&
+      tok.type !== "LBRACE"
+    ) {
+      pendingFunctionReturnType = undefined;
+    }
 
     if (tok.type === "KEYWORD" && tok.value === "object") {
       pendingObjectBrace = true;
@@ -5895,14 +6226,28 @@ export function prescanFunctionSignatures(
     }
 
     if (tok.type === "LBRACE") {
-      braceContexts.push(pendingObjectBrace ? "object" : "other");
+      if (pendingObjectBrace) {
+        braceContexts.push("object");
+      } else if (pendingFunctionReturnType !== undefined) {
+        braceContexts.push("function");
+        functionReturnTypes.push(pendingFunctionReturnType);
+        updateCurrentFunctionReturnType();
+      } else {
+        braceContexts.push("other");
+      }
+
       pendingObjectBrace = false;
+      pendingFunctionReturnType = undefined;
       advance(parser);
       continue;
     }
 
     if (tok.type === "RBRACE") {
-      braceContexts.pop();
+      const endedContext = braceContexts.pop();
+      if (endedContext === "function") {
+        functionReturnTypes.pop();
+        updateCurrentFunctionReturnType();
+      }
       advance(parser);
       continue;
     }
@@ -5943,6 +6288,7 @@ export function prescanFunctionSignatures(
       }
 
       pendingObjectBrace = false;
+      pendingFunctionReturnType = undefined;
       continue;
     }
 
@@ -5967,6 +6313,11 @@ export function prescanFunctionSignatures(
         return registrationResult;
       }
 
+      pendingFunctionReturnType = signatureResult.value.hasExplicitReturnType
+        ? signatureResult.value.returnType
+        : parser.structs.has(signatureResult.value.name)
+          ? signatureResult.value.name
+          : undefined;
       pendingObjectBrace = false;
       continue;
     }
@@ -5976,5 +6327,6 @@ export function prescanFunctionSignatures(
   }
 
   parser.pos = savedPos;
+  parser.currentFunctionReturnType = savedCurrentFunctionReturnType;
   return ok(undefined);
 }

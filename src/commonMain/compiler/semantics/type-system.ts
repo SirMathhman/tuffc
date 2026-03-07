@@ -8,6 +8,8 @@ import type {
   EvaluationResult,
   FunctionInfo,
   FunctionParameter,
+  InstanceMethodInfo,
+  InstanceValueMetadata,
   LogicalNode,
   ParsedFunctionType,
   Parser,
@@ -870,6 +872,14 @@ export function inferContainerMemberType(
   object: ASTNode,
   fieldName: string,
 ): Result<string, string> {
+  const instanceMethod = getInstanceMethodInfo(parser, object, fieldName);
+  if (!instanceMethod.ok) {
+    return instanceMethod;
+  }
+  if (instanceMethod.value) {
+    return ok(createInstanceMethodFunctionType(instanceMethod.value));
+  }
+
   const objectType = inferExpressionType(object, parser);
   if (!objectType.ok) {
     return objectType;
@@ -909,6 +919,104 @@ export function inferContainerMemberType(
   }
 
   return ok(field.type);
+}
+
+export function hasInstanceMetadata(
+  metadata: InstanceValueMetadata | undefined,
+): metadata is InstanceValueMetadata {
+  return (
+    !!metadata && (metadata.methods.length > 0 || metadata.fields.size > 0)
+  );
+}
+
+export function cloneInstanceMetadata(
+  metadata: InstanceValueMetadata,
+): InstanceValueMetadata {
+  return {
+    methods: metadata.methods.map((method) => ({
+      name: method.name,
+      parameterTypes: [...method.parameterTypes],
+      returnType: method.returnType,
+    })),
+    fields: new Map(
+      [...metadata.fields.entries()].map(([fieldName, fieldMetadata]) => [
+        fieldName,
+        cloneInstanceMetadata(fieldMetadata),
+      ]),
+    ),
+  };
+}
+
+export function createInstanceMethodFunctionType(
+  method: InstanceMethodInfo,
+): string {
+  return "(" + method.parameterTypes.join(", ") + ") => " + method.returnType;
+}
+
+export function getExpressionInstanceMetadata(
+  parser: Parser,
+  expr: ASTNode,
+): Result<InstanceValueMetadata | undefined, string> {
+  if (expr.kind === "variable") {
+    const variable = getVariable(parser, expr.name);
+    if (!variable.ok) {
+      return ok(undefined);
+    }
+    return ok(variable.value.instanceMetadata);
+  }
+
+  if (expr.kind === "function-call") {
+    return ok(parser.functions.get(expr.name)?.instanceMetadata);
+  }
+
+  if (expr.kind === "struct-instantiation") {
+    const fieldMetadata = new Map<string, InstanceValueMetadata>();
+    for (const field of expr.fields) {
+      const nestedMetadata = getExpressionInstanceMetadata(parser, field.value);
+      if (!nestedMetadata.ok) {
+        return nestedMetadata;
+      }
+      if (nestedMetadata.value) {
+        fieldMetadata.set(
+          field.name,
+          cloneInstanceMetadata(nestedMetadata.value),
+        );
+      }
+    }
+
+    return fieldMetadata.size > 0
+      ? ok({ methods: [], fields: fieldMetadata })
+      : ok(undefined);
+  }
+
+  if (expr.kind === "field-access") {
+    const objectMetadata = getExpressionInstanceMetadata(parser, expr.object);
+    if (!objectMetadata.ok) {
+      return objectMetadata;
+    }
+    return ok(objectMetadata.value?.fields.get(expr.fieldName));
+  }
+
+  if (expr.kind === "union-wrap") {
+    return getExpressionInstanceMetadata(parser, expr.expression);
+  }
+
+  return ok(undefined);
+}
+
+export function getInstanceMethodInfo(
+  parser: Parser,
+  expr: ASTNode,
+  methodName: string,
+): Result<InstanceMethodInfo | undefined, string> {
+  const metadata = getExpressionInstanceMetadata(parser, expr);
+  if (!metadata.ok) {
+    return metadata;
+  }
+
+  return ok(
+    metadata.value?.methods.find((method) => method.name === methodName),
+  );
 }
 
 export function getCallableInfo(

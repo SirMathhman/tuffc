@@ -17,9 +17,20 @@ import {
 } from "../core/scope";
 import {
   resolveAliasName,
+  getInstanceMethodInfo,
   validateArgumentNodes,
   validateNegativeType,
 } from "./type-system";
+
+let activeValidationParser: Parser | undefined;
+
+export function setActiveValidationParser(
+  parser: Parser | undefined,
+): Parser | undefined {
+  const previousParser = activeValidationParser;
+  activeValidationParser = parser;
+  return previousParser;
+}
 
 /**
  * Helper to validate expressions used in value contexts where they must produce a value
@@ -507,6 +518,20 @@ export function validateStructSemantics(
     const objectInfo = containerType ? objects.get(containerType) : undefined;
 
     if (node.kind === "field-access") {
+      if (activeValidationParser) {
+        const instanceMethod = getInstanceMethodInfo(
+          activeValidationParser,
+          node.object,
+          node.fieldName,
+        );
+        if (!instanceMethod.ok) {
+          return instanceMethod;
+        }
+        if (instanceMethod.value) {
+          return ok(undefined);
+        }
+      }
+
       if (objectInfo) {
         if (!objectInfo.scope.members.has(node.fieldName)) {
           return err(

@@ -24,6 +24,7 @@ import {
 } from "./parser";
 import {
   resolveTypeAliases,
+  setActiveValidationParser,
   validateAST,
   validateStructSemantics,
 } from "./semantics/validation";
@@ -112,12 +113,14 @@ export function parseAndValidateProgram(
     return validationResult;
   }
 
+  const previousValidationParser = setActiveValidationParser(parser);
   const structSemanticsResult = validateStructSemantics(
     ast,
     parser.structs,
     parser.objects,
     new Map(),
   );
+  setActiveValidationParser(previousValidationParser);
   if (!structSemanticsResult.ok) {
     return structSemanticsResult;
   }

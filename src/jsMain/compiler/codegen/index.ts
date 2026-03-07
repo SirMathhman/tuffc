@@ -386,7 +386,17 @@ export function codegenThisScopeObject(scope: ScopeFrame): string {
   for (const [name, binding] of scope.members) {
     emittedMembers.add(name);
     if (binding.kind === "function") {
-      memberDefinitions.push("get " + name + "() { return " + name + "; }");
+      memberDefinitions.push(
+        "get " +
+          name +
+          "() { return (..._tuffArgs) => " +
+          name +
+          ".length === _tuffArgs.length + 1 ? " +
+          name +
+          "(_tuffThis, ..._tuffArgs) : " +
+          name +
+          "(..._tuffArgs); }",
+      );
       continue;
     }
 
@@ -406,7 +416,15 @@ export function codegenThisScopeObject(scope: ScopeFrame): string {
 
       if (binding.kind === "function") {
         memberDefinitions.push(
-          "get " + name + "() { return _tuffParent." + name + "; }",
+          "get " +
+            name +
+            "() { return (..._tuffArgs) => _tuffParent." +
+            name +
+            ".length === _tuffArgs.length + 1 ? _tuffParent." +
+            name +
+            "(_tuffParent, ..._tuffArgs) : _tuffParent." +
+            name +
+            "(..._tuffArgs); }",
         );
         continue;
       }

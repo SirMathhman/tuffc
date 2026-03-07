@@ -379,6 +379,17 @@ export interface FunctionParameter {
   destructorFunction?: string;
 }
 
+export interface InstanceMethodInfo {
+  name: string;
+  parameterTypes: string[];
+  returnType: string;
+}
+
+export interface InstanceValueMetadata {
+  methods: InstanceMethodInfo[];
+  fields: Map<string, InstanceValueMetadata>;
+}
+
 export interface FunctionNode {
   kind: "function";
   name: string;
@@ -598,6 +609,7 @@ export interface VariableInfo {
   initValue?: string; // The literal value (for constants), if available
   pointsTo?: string; // For pointers: the name of the variable it points to
   sliceLength?: number; // For slices: known compile-time length
+  instanceMetadata?: InstanceValueMetadata;
 }
 
 export interface ScopeBinding {
@@ -717,6 +729,7 @@ export interface FunctionInfo {
   typeParameters: string[];
   parameters: FunctionParameter[];
   returnType: string;
+  instanceMetadata?: InstanceValueMetadata;
 }
 
 export interface StructInfo {
