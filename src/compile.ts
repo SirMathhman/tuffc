@@ -226,6 +226,7 @@ interface ModuleReferenceNode {
   kind: "module-reference";
   moduleName: string;
   runtimeName: string;
+  type: string;
 }
 
 interface ThisNode {
@@ -1041,6 +1042,10 @@ function createModuleRuntimeName(moduleName: string): string {
   return runtimeName;
 }
 
+function createModuleResultName(runtimeName: string): string {
+  return runtimeName + "__result";
+}
+
 function normalizeProjectFiles(
   files: Map<string, string> | Record<string, string>,
 ): Map<string, string> {
@@ -1089,6 +1094,22 @@ function tokenizeProjectSource(source: string): Result<Token[], string> {
   return tokenize(source);
 }
 
+function tokenizeProjectModule(
+  moduleInfo: ModuleCompilationInfo,
+): Result<Token[], string> {
+  const tokenResult = tokenizeProjectSource(moduleInfo.source);
+  if (!tokenResult.ok) {
+    return err(
+      "Module '" +
+        moduleInfo.moduleName +
+        "' could not be tokenized: " +
+        tokenResult.error,
+    );
+  }
+
+  return tokenResult;
+}
+
 function collectModuleReferencesFromTokens(tokens: Token[]): string[] {
   const references: string[] = [];
 
@@ -1120,6 +1141,78 @@ function collectModuleReferencesFromTokens(tokens: Token[]): string[] {
         references.push(moduleName);
       }
       i = cursor - 1;
+    }
+  }
+
+  return references;
+}
+
+function collectDeclaredValueNamesFromTokens(tokens: Token[]): Set<string> {
+  const names = new Set<string>();
+
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i];
+    if (token?.type !== "KEYWORD") {
+      continue;
+    }
+
+    if (token.value === "let") {
+      let cursor = i + 1;
+      const maybeMut = tokens[cursor];
+      if (maybeMut?.type === "KEYWORD" && maybeMut.value === "mut") {
+        cursor++;
+      }
+
+      const declared = tokens[cursor];
+      if (declared?.type === "IDENTIFIER") {
+        names.add(declared.value);
+      }
+      continue;
+    }
+
+    if (token.value === "fn" || token.value === "object") {
+      const declared = tokens[i + 1];
+      if (declared?.type === "IDENTIFIER") {
+        names.add(declared.value);
+      }
+    }
+  }
+
+  return names;
+}
+
+function collectProjectModuleReferencesFromTokens(
+  tokens: Token[],
+  modules: Map<string, ModuleCompilationInfo>,
+): string[] {
+  const references = collectModuleReferencesFromTokens(tokens);
+  const declaredNames = collectDeclaredValueNamesFromTokens(tokens);
+
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i];
+    if (token?.type !== "IDENTIFIER") {
+      continue;
+    }
+
+    if (declaredNames.has(token.value)) {
+      continue;
+    }
+
+    const moduleInfo = modules.get(token.value);
+    if (!moduleInfo || moduleInfo.moduleName.includes("::")) {
+      continue;
+    }
+
+    const previousToken = i > 0 ? tokens[i - 1] : undefined;
+    if (
+      previousToken?.type === "DOT" ||
+      previousToken?.type === "DOUBLE_COLON"
+    ) {
+      continue;
+    }
+
+    if (!references.includes(moduleInfo.moduleName)) {
+      references.push(moduleInfo.moduleName);
     }
   }
 
@@ -1158,22 +1251,169 @@ function populateProjectModuleDependencies(
   modules: Map<string, ModuleCompilationInfo>,
 ): Result<void, string> {
   for (const moduleInfo of modules.values()) {
-    const tokenResult = tokenizeProjectSource(moduleInfo.source);
+    const tokenResult = tokenizeProjectModule(moduleInfo);
     if (!tokenResult.ok) {
-      return err(
-        "Module '" +
-          moduleInfo.moduleName +
-          "' could not be tokenized: " +
-          tokenResult.error,
-      );
+      return tokenResult;
     }
 
-    moduleInfo.dependencies = collectModuleReferencesFromTokens(
+    moduleInfo.dependencies = collectProjectModuleReferencesFromTokens(
       tokenResult.value,
+      modules,
     ).filter((dependency) => dependency !== moduleInfo.moduleName);
   }
 
   return ok(undefined);
+}
+
+function registerProjectModulesAsObjects(
+  parser: Parser,
+  modules: Map<string, ModuleCompilationInfo>,
+): void {
+  for (const moduleInfo of modules.values()) {
+    parser.objects.set(moduleInfo.typeName, {
+      name: moduleInfo.moduleName,
+      type: moduleInfo.typeName,
+      scope: moduleInfo.scope,
+    });
+  }
+}
+
+function createParser(
+  tokens: Token[],
+  currentScope: ScopeFrame,
+  modules: Map<string, ModuleCompilationInfo> = new Map(),
+): Parser {
+  const parser: Parser = {
+    tokens,
+    pos: 0,
+    variables: new Map(),
+    functions: new Map(),
+    modules,
+    aliases: new Map(),
+    aliasDeclarations: new Map(),
+    structs: new Map(),
+    structNames: new Set(),
+    objects: new Map(),
+    inLoop: false,
+    currentFunctionReturnType: undefined,
+    globalScope: currentScope,
+    currentScope,
+    provenConstraints: new Map(),
+  };
+
+  registerProjectModulesAsObjects(parser, modules);
+  return parser;
+}
+
+function prepareParser(parser: Parser): Result<void, string> {
+  const typeNameCollectionResult = collectTypeDeclarationNames(parser);
+  if (!typeNameCollectionResult.ok) {
+    return typeNameCollectionResult;
+  }
+
+  const aliasPrescanResult = prescanTypeAliases(parser);
+  if (!aliasPrescanResult.ok) {
+    return aliasPrescanResult;
+  }
+
+  const aliasResolutionResult = resolveTypeAliases(parser);
+  if (!aliasResolutionResult.ok) {
+    return aliasResolutionResult;
+  }
+
+  const structPrescanResult = prescanStructDefinitions(parser);
+  if (!structPrescanResult.ok) {
+    return structPrescanResult;
+  }
+
+  return prescanFunctionSignatures(parser);
+}
+
+function parseAndValidateProgram(parser: Parser): Result<ASTNode, string> {
+  const prepared = prepareParser(parser);
+  if (!prepared.ok) {
+    return prepared;
+  }
+
+  const astResult = parseProgram(parser);
+  if (!astResult.ok) {
+    return astResult;
+  }
+
+  if (current(parser).type !== "EOF") {
+    return err("Unexpected tokens after expression");
+  }
+
+  const ast = astResult.value;
+  const validationResult = validateAST(ast);
+  if (!validationResult.ok) {
+    return validationResult;
+  }
+
+  const structSemanticsResult = validateStructSemantics(
+    ast,
+    parser.structs,
+    parser.objects,
+    new Map(),
+  );
+  if (!structSemanticsResult.ok) {
+    return structSemanticsResult;
+  }
+
+  return ok(ast);
+}
+
+function parseProjectModule(
+  moduleInfo: ModuleCompilationInfo,
+  modules: Map<string, ModuleCompilationInfo>,
+): Result<ModuleNode, string> {
+  const tokenResult = tokenizeProjectModule(moduleInfo);
+  if (!tokenResult.ok) {
+    return tokenResult;
+  }
+
+  const parser = createParser(tokenResult.value, moduleInfo.scope, modules);
+  const astResult = parseAndValidateProgram(parser);
+  if (!astResult.ok) {
+    return err(
+      "Module '" +
+        moduleInfo.moduleName +
+        "' failed to compile: " +
+        astResult.error,
+    );
+  }
+
+  const moduleAst: ModuleNode = {
+    kind: "module",
+    moduleName: moduleInfo.moduleName,
+    runtimeName: moduleInfo.runtimeName,
+    type: moduleInfo.typeName,
+    body: astResult.value,
+    scope: moduleInfo.scope,
+  };
+
+  moduleInfo.ast = moduleAst;
+  return ok(moduleAst);
+}
+
+function codegenProgramReturn(node: ASTNode): string {
+  const code = codegenAST(node);
+  return node.kind === "block" ? code + ";" : "return " + code + ";";
+}
+
+function codegenProgramEvaluation(node: ASTNode, resultName: string): string {
+  if (node.kind === "block") {
+    return (
+      generateStatementCode(node.statements) +
+      " " +
+      resultName +
+      " = " +
+      codegenAST(node.result) +
+      ";"
+    );
+  }
+
+  return resultName + " = " + codegenAST(node) + ";";
 }
 
 function collectReachableModules(
@@ -1658,6 +1898,62 @@ function parseValidatedCallArguments(
     argsResult.value,
     callableInfo.value.parameterTypes,
   );
+}
+
+function tryParseModuleReference(
+  parser: Parser,
+): Result<ModuleReferenceNode | undefined, string> {
+  const startToken = current(parser);
+  if (startToken.type !== "IDENTIFIER") {
+    return ok(undefined);
+  }
+
+  const savedPos = parser.pos;
+  let moduleName = startToken.value;
+  let segmentCount = 1;
+
+  advance(parser);
+
+  while (current(parser).type === "DOUBLE_COLON") {
+    advance(parser);
+    const segmentToken = current(parser);
+    if (segmentToken.type !== "IDENTIFIER") {
+      parser.pos = savedPos;
+      return err("Expected module name segment after '::'");
+    }
+
+    moduleName += "::" + segmentToken.value;
+    segmentCount++;
+    advance(parser);
+  }
+
+  if (segmentCount === 1) {
+    const nameTaken = findScopeBinding(parser.currentScope, moduleName);
+    const moduleInfo = parser.modules.get(moduleName);
+    if (!moduleInfo || nameTaken) {
+      parser.pos = savedPos;
+      return ok(undefined);
+    }
+
+    return ok({
+      kind: "module-reference",
+      moduleName: moduleInfo.moduleName,
+      runtimeName: moduleInfo.runtimeName,
+      type: moduleInfo.typeName,
+    });
+  }
+
+  const moduleInfo = parser.modules.get(moduleName);
+  if (!moduleInfo) {
+    return err("Unknown module '" + moduleName + "'");
+  }
+
+  return ok({
+    kind: "module-reference",
+    moduleName: moduleInfo.moduleName,
+    runtimeName: moduleInfo.runtimeName,
+    type: moduleInfo.typeName,
+  });
 }
 
 function enterCallableScope(
@@ -2422,6 +2718,10 @@ function inferExpressionType(
 
   if (expr.kind === "string") {
     return ok("*[Char]");
+  }
+
+  if (expr.kind === "module-reference") {
+    return ok(expr.type);
   }
 
   if (expr.kind === "variable") {
@@ -3461,8 +3761,13 @@ function tokenize(input: string): Result<Token[], string> {
         pos++;
       }
     } else if (char === ":") {
-      tokens.push({ type: "COLON" });
-      pos++;
+      if (pos + 1 < input.length && input[pos + 1] === ":") {
+        tokens.push({ type: "DOUBLE_COLON" });
+        pos += 2;
+      } else {
+        tokens.push({ type: "COLON" });
+        pos++;
+      }
     } else if (char === ";") {
       tokens.push({ type: "SEMICOLON" });
       pos++;
@@ -7113,6 +7418,14 @@ function parsePrimary(parser: Parser): Result<ASTNode, string> {
   }
 
   if (tok.type === "IDENTIFIER") {
+    const moduleReference = tryParseModuleReference(parser);
+    if (!moduleReference.ok) {
+      return moduleReference;
+    }
+    if (moduleReference.value) {
+      return ok(moduleReference.value);
+    }
+
     const name = tok.value;
     advance(parser);
 
@@ -7596,6 +7909,10 @@ function codegenAST(node: ASTNode): string {
     return "readValue()";
   }
 
+  if (node.kind === "module-reference") {
+    return node.runtimeName;
+  }
+
   if (node.kind === "variable") {
     return (
       "(() => { const _tuffValue = " +
@@ -7878,6 +8195,22 @@ function codegenAST(node: ASTNode): string {
     );
   }
 
+  if (node.kind === "module") {
+    const runtimeObject = codegenThisScopeObject(node.scope);
+    const resultName = createModuleResultName(node.runtimeName);
+    return (
+      "let " +
+      resultName +
+      "; const " +
+      node.runtimeName +
+      " = (() => { " +
+      codegenProgramEvaluation(node.body, resultName) +
+      " return " +
+      runtimeObject +
+      "; })()"
+    );
+  }
+
   if (node.kind === "type-alias") {
     return "0";
   }
@@ -8050,6 +8383,7 @@ function validateAST(node: ASTNode): Result<undefined, string> {
 
   if (
     node.kind === "read" ||
+    node.kind === "module-reference" ||
     node.kind === "variable" ||
     node.kind === "this"
   ) {
@@ -8173,6 +8507,10 @@ function validateAST(node: ASTNode): Result<undefined, string> {
 
   if (node.kind === "object") {
     return validateStatementList(node.body);
+  }
+
+  if (node.kind === "module") {
+    return validateAST(node.body);
   }
 
   if (node.kind === "type-alias") {
@@ -8565,6 +8903,10 @@ function getNodeContainerType(
   objects: Map<string, ObjectInfo>,
   typeEnv: Map<string, string>,
 ): string | undefined {
+  if (node.kind === "module-reference") {
+    return node.type;
+  }
+
   if (node.kind === "struct-instantiation") {
     return (node as StructInstantiationNode).structName;
   }
@@ -8965,120 +9307,31 @@ export function compile(input: string): Result<string, string> {
 
   if (DEBUG) console.log("[COMPILE START]", input.substring(0, 100));
 
-  // Empty input returns 0
   if (input === "") {
     return ok("return 0;");
   }
 
-  // Reject leading or trailing whitespace
   if (input !== input.trim()) {
     return err("Leading or trailing whitespace is not allowed");
   }
 
-  // Tokenize
   if (DEBUG) console.log("[TOKENIZE]");
   const tokenResult = tokenize(input);
   if (!tokenResult.ok) {
     return tokenResult;
   }
 
-  // Parse
-  if (DEBUG) console.log("[PARSE START]");
-  const tokens = tokenResult.value;
-  if (DEBUG) console.log("[TOKENS] " + tokens.length + " tokens");
-  const globalScope = createScopeFrame(undefined);
-  const parser: Parser = {
-    tokens,
-    pos: 0,
-    variables: new Map(),
-    functions: new Map(),
-    modules: new Map(),
-    aliases: new Map(),
-    aliasDeclarations: new Map(),
-    structs: new Map(),
-    structNames: new Set(),
-    objects: new Map(),
-    inLoop: false,
-    currentFunctionReturnType: undefined,
-    globalScope,
-    currentScope: globalScope,
-    provenConstraints: new Map(),
-  };
+  const parser = createParser(tokenResult.value, createScopeFrame(undefined));
 
-  const typeNameCollectionResult = collectTypeDeclarationNames(parser);
-  if (!typeNameCollectionResult.ok) {
-    return typeNameCollectionResult;
-  }
-
-  const aliasPrescanResult = prescanTypeAliases(parser);
-  if (!aliasPrescanResult.ok) {
-    return aliasPrescanResult;
-  }
-
-  const aliasResolutionResult = resolveTypeAliases(parser);
-  if (!aliasResolutionResult.ok) {
-    return aliasResolutionResult;
-  }
-
-  // Pre-scan for struct definitions to support nested structs
-  if (DEBUG) console.log("[PRESCAN STRUCTS]");
-  const structPrescanResult = prescanStructDefinitions(parser);
-  if (!structPrescanResult.ok) {
-    return structPrescanResult;
-  }
-  if (DEBUG)
-    console.log(
-      "[STRUCT PRESCAN DONE] " + parser.structs.size + " structs found",
-    );
-
-  // Pre-scan for function signatures to support mutual recursion
-  if (DEBUG) console.log("[PRESCAN FUNCTIONS]");
-  const prescanResult = prescanFunctionSignatures(parser);
-  if (!prescanResult.ok) {
-    return prescanResult;
-  }
-  if (DEBUG)
-    console.log(
-      "[FUNCTION PRESCAN DONE] " + parser.functions.size + " functions found",
-    );
-
+  if (DEBUG) console.log("[PRESCAN]");
   if (DEBUG) console.log("[PARSE PROGRAM]");
-  const astResult = parseProgram(parser);
+  const astResult = parseAndValidateProgram(parser);
   if (!astResult.ok) {
     return astResult;
   }
-  if (DEBUG) console.log("[AST PARSED]");
 
-  // Check all tokens consumed
-  if (current(parser).type !== "EOF") {
-    return err("Unexpected tokens after expression");
-  }
-
-  // Validate AST
   const ast = astResult.value;
-  const validationResult = validateAST(ast);
-  if (!validationResult.ok) {
-    return validationResult;
-  }
-
-  // Semantic struct validation (field existence, readonly, type mismatch)
-  const structSemanticsResult = validateStructSemantics(
-    ast,
-    parser.structs,
-    parser.objects,
-    new Map(),
-  );
-  if (!structSemanticsResult.ok) {
-    return structSemanticsResult;
-  }
-
-  // Generate code
-  const code = codegenAST(ast);
-  if (ast.kind === "block") {
-    return ok(code + ";");
-  }
-
-  return ok("return " + code + ";");
+  return ok(codegenProgramReturn(ast));
 }
 
 export function compileProject(
@@ -9092,8 +9345,35 @@ export function compileProject(
     return compilationOrder;
   }
 
-  return err(
-    "Project compilation scaffolding is ready, but full multi-file code generation is not implemented yet",
+  const reachableModules = new Map(
+    compilationOrder.value.map((moduleInfo) => [
+      moduleInfo.moduleName,
+      moduleInfo,
+    ]),
+  );
+
+  const moduleNodes: ModuleNode[] = [];
+  for (const moduleInfo of compilationOrder.value) {
+    const moduleAst = parseProjectModule(moduleInfo, reachableModules);
+    if (!moduleAst.ok) {
+      return moduleAst;
+    }
+    moduleNodes.push(moduleAst.value);
+  }
+
+  const entryModule = compilationOrder.value.find(
+    (moduleInfo) => moduleInfo.moduleName === input.entryModule,
+  );
+  if (!entryModule) {
+    return err("Unknown module '" + input.entryModule + "'");
+  }
+
+  const moduleCode = generateStatementCode(moduleNodes);
+  return ok(
+    moduleCode +
+      " return " +
+      createModuleResultName(entryModule.runtimeName) +
+      ";",
   );
 }
 
