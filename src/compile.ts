@@ -100,6 +100,10 @@ interface ColonToken {
   type: "COLON";
 }
 
+interface DoubleColonToken {
+  type: "DOUBLE_COLON";
+}
+
 interface SemicolonToken {
   type: "SEMICOLON";
 }
@@ -187,6 +191,7 @@ type Token =
   | LTToken
   | GTToken
   | ColonToken
+  | DoubleColonToken
   | SemicolonToken
   | ArrowToken
   | AssignToken
@@ -215,6 +220,12 @@ interface ReadNode {
 interface VariableNode {
   kind: "variable";
   name: string;
+}
+
+interface ModuleReferenceNode {
+  kind: "module-reference";
+  moduleName: string;
+  runtimeName: string;
 }
 
 interface ThisNode {
@@ -387,6 +398,15 @@ interface ObjectNode {
   scope: ScopeFrame;
 }
 
+interface ModuleNode {
+  kind: "module";
+  moduleName: string;
+  runtimeName: string;
+  type: string;
+  body: ASTNode;
+  scope: ScopeFrame;
+}
+
 interface ClosureNode {
   kind: "closure";
   parameters: FunctionParameter[];
@@ -472,6 +492,7 @@ interface ArrayAssignNode {
 type ASTNode =
   | NumberNode
   | ReadNode
+  | ModuleReferenceNode
   | VariableNode
   | ThisNode
   | BinaryNode
@@ -498,6 +519,7 @@ type ASTNode =
   | MatchNode
   | FunctionNode
   | ObjectNode
+  | ModuleNode
   | ClosureNode
   | FunctionCallNode
   | CallNode
@@ -566,6 +588,22 @@ interface ParsedTypeAliasDeclaration {
 interface DestructuredBinding {
   sourceName: string;
   bindingName: string;
+}
+
+interface ProjectCompileInput {
+  entryModule: string;
+  files: Map<string, string> | Record<string, string>;
+}
+
+interface ModuleCompilationInfo {
+  path: string;
+  moduleName: string;
+  typeName: string;
+  runtimeName: string;
+  source: string;
+  scope: ScopeFrame;
+  dependencies: string[];
+  ast?: ASTNode;
 }
 
 interface SuccessfulEvaluation {
@@ -934,6 +972,274 @@ function registerScopeFunction(
 
 function createObjectTypeName(name: string): string {
   return "__object__" + name;
+}
+
+function normalizeProjectFilePath(path: string): string {
+  return path.replaceAll("\\", "/");
+}
+
+function isIdentifierName(text: string): boolean {
+  if (text.length === 0) {
+    return false;
+  }
+
+  const first = text[0];
+  if (first !== "_" && !isLetter(first)) {
+    return false;
+  }
+
+  for (let i = 1; i < text.length; i++) {
+    const char = text[i];
+    if (char !== "_" && !isLetter(char) && !isDigit(char)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function inferModuleNameFromPath(path: string): Result<string, string> {
+  const normalizedPath = normalizeProjectFilePath(path);
+  if (!normalizedPath.endsWith(".tuff")) {
+    return err("Project file path must end with '.tuff': " + path);
+  }
+
+  const withoutExtension = normalizedPath.slice(0, -5);
+  const segments = withoutExtension
+    .split("/")
+    .map((segment) => segment.trim())
+    .filter((segment) => segment.length > 0);
+
+  if (segments.length === 0) {
+    return err("Project file path must contain a module name: " + path);
+  }
+
+  for (const segment of segments) {
+    if (!isIdentifierName(segment)) {
+      return err(
+        "Invalid module path segment '" + segment + "' in path '" + path + "'",
+      );
+    }
+  }
+
+  return ok(segments.join("::"));
+}
+
+function createModuleRuntimeName(moduleName: string): string {
+  let runtimeName = "__tuffModule";
+
+  for (const char of moduleName) {
+    if (char === ":") {
+      runtimeName += "_";
+    } else if (char === "_" || isLetter(char) || isDigit(char)) {
+      runtimeName += char;
+    } else {
+      runtimeName += "_";
+    }
+  }
+
+  return runtimeName;
+}
+
+function normalizeProjectFiles(
+  files: Map<string, string> | Record<string, string>,
+): Map<string, string> {
+  if (files instanceof Map) {
+    return new Map(
+      Array.from(files.entries(), ([path, source]) => [
+        normalizeProjectFilePath(path),
+        source,
+      ]),
+    );
+  }
+
+  return new Map(
+    Object.entries(files).map(([path, source]) => [
+      normalizeProjectFilePath(path),
+      source,
+    ]),
+  );
+}
+
+function createProjectModuleInfo(
+  path: string,
+  source: string,
+): Result<ModuleCompilationInfo, string> {
+  const moduleName = inferModuleNameFromPath(path);
+  if (!moduleName.ok) {
+    return moduleName;
+  }
+
+  return ok({
+    path,
+    moduleName: moduleName.value,
+    typeName: createObjectTypeName(moduleName.value),
+    runtimeName: createModuleRuntimeName(moduleName.value),
+    source,
+    scope: createScopeFrame(undefined, "object"),
+    dependencies: [],
+  });
+}
+
+function tokenizeProjectSource(source: string): Result<Token[], string> {
+  if (source !== source.trim()) {
+    return err("Leading or trailing whitespace is not allowed");
+  }
+
+  return tokenize(source);
+}
+
+function collectModuleReferencesFromTokens(tokens: Token[]): string[] {
+  const references: string[] = [];
+
+  for (let i = 0; i < tokens.length; i++) {
+    const currentToken = tokens[i];
+    const nextToken = tokens[i + 1];
+    if (
+      currentToken?.type !== "IDENTIFIER" ||
+      nextToken?.type !== "DOUBLE_COLON"
+    ) {
+      continue;
+    }
+
+    const segments = [currentToken.value];
+    let cursor = i + 1;
+
+    while (tokens[cursor]?.type === "DOUBLE_COLON") {
+      const identToken = tokens[cursor + 1];
+      if (identToken?.type !== "IDENTIFIER") {
+        break;
+      }
+      segments.push(identToken.value);
+      cursor += 2;
+    }
+
+    if (segments.length > 1) {
+      const moduleName = segments.join("::");
+      if (!references.includes(moduleName)) {
+        references.push(moduleName);
+      }
+      i = cursor - 1;
+    }
+  }
+
+  return references;
+}
+
+function buildProjectModuleRegistry(
+  files: Map<string, string> | Record<string, string>,
+): Result<Map<string, ModuleCompilationInfo>, string> {
+  const normalizedFiles = normalizeProjectFiles(files);
+  const modules = new Map<string, ModuleCompilationInfo>();
+
+  for (const [path, source] of normalizedFiles) {
+    const moduleInfo = createProjectModuleInfo(path, source);
+    if (!moduleInfo.ok) {
+      return moduleInfo;
+    }
+
+    if (modules.has(moduleInfo.value.moduleName)) {
+      return err(
+        "Duplicate inferred module name '" +
+          moduleInfo.value.moduleName +
+          "' from path '" +
+          path +
+          "'",
+      );
+    }
+
+    modules.set(moduleInfo.value.moduleName, moduleInfo.value);
+  }
+
+  return ok(modules);
+}
+
+function populateProjectModuleDependencies(
+  modules: Map<string, ModuleCompilationInfo>,
+): Result<void, string> {
+  for (const moduleInfo of modules.values()) {
+    const tokenResult = tokenizeProjectSource(moduleInfo.source);
+    if (!tokenResult.ok) {
+      return err(
+        "Module '" +
+          moduleInfo.moduleName +
+          "' could not be tokenized: " +
+          tokenResult.error,
+      );
+    }
+
+    moduleInfo.dependencies = collectModuleReferencesFromTokens(
+      tokenResult.value,
+    ).filter((dependency) => dependency !== moduleInfo.moduleName);
+  }
+
+  return ok(undefined);
+}
+
+function collectReachableModules(
+  entryModule: string,
+  modules: Map<string, ModuleCompilationInfo>,
+): Result<Map<string, ModuleCompilationInfo>, string> {
+  const reachable = new Map<string, ModuleCompilationInfo>();
+  const visiting = new Set<string>();
+
+  const visit = (moduleName: string): Result<void, string> => {
+    const moduleInfo = modules.get(moduleName);
+    if (!moduleInfo) {
+      return err("Unknown module '" + moduleName + "'");
+    }
+    if (reachable.has(moduleName)) {
+      return ok(undefined);
+    }
+    if (visiting.has(moduleName)) {
+      return err(
+        "Circular module dependency detected involving '" + moduleName + "'",
+      );
+    }
+
+    visiting.add(moduleName);
+    for (const dependency of moduleInfo.dependencies) {
+      const dependencyResult = visit(dependency);
+      if (!dependencyResult.ok) {
+        return dependencyResult;
+      }
+    }
+    visiting.delete(moduleName);
+
+    reachable.set(moduleName, moduleInfo);
+    return ok(undefined);
+  };
+
+  const visitResult = visit(entryModule);
+  if (!visitResult.ok) {
+    return visitResult;
+  }
+
+  return ok(reachable);
+}
+
+function getProjectCompilationOrder(
+  entryModule: string,
+  files: Map<string, string> | Record<string, string>,
+): Result<ModuleCompilationInfo[], string> {
+  const moduleRegistry = buildProjectModuleRegistry(files);
+  if (!moduleRegistry.ok) {
+    return moduleRegistry;
+  }
+
+  const dependencyResult = populateProjectModuleDependencies(
+    moduleRegistry.value,
+  );
+  if (!dependencyResult.ok) {
+    return dependencyResult;
+  }
+
+  const reachable = collectReachableModules(entryModule, moduleRegistry.value);
+  if (!reachable.ok) {
+    return reachable;
+  }
+
+  return ok(Array.from(reachable.value.values()));
 }
 
 function findScopeBinding(
@@ -3323,6 +3629,7 @@ interface Parser {
   pos: number;
   variables: Map<string, VariableInfo>;
   functions: Map<string, FunctionInfo>;
+  modules: Map<string, ModuleCompilationInfo>;
   aliases: Map<string, string>;
   aliasDeclarations: Map<string, string>;
   structs: Map<string, StructInfo>;
@@ -8685,6 +8992,7 @@ export function compile(input: string): Result<string, string> {
     pos: 0,
     variables: new Map(),
     functions: new Map(),
+    modules: new Map(),
     aliases: new Map(),
     aliasDeclarations: new Map(),
     structs: new Map(),
@@ -8771,6 +9079,22 @@ export function compile(input: string): Result<string, string> {
   }
 
   return ok("return " + code + ";");
+}
+
+export function compileProject(
+  input: ProjectCompileInput,
+): Result<string, string> {
+  const compilationOrder = getProjectCompilationOrder(
+    input.entryModule,
+    input.files,
+  );
+  if (!compilationOrder.ok) {
+    return compilationOrder;
+  }
+
+  return err(
+    "Project compilation scaffolding is ready, but full multi-file code generation is not implemented yet",
+  );
 }
 
 export const compileTuffToJS = compile;
