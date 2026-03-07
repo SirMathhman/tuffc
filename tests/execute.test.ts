@@ -19,6 +19,11 @@ interface ProjectFixture {
   foreignFiles?: ProjectFiles;
 }
 
+interface ParsedProjectModuleFixture {
+  moduleMap: Map<string, ModuleCompilationInfo>;
+  module: ModuleNode | undefined;
+}
+
 function mergeProjectFiles(
   tuffFiles: ProjectFiles,
   foreignFiles: ProjectFiles = {},
@@ -33,6 +38,34 @@ function createProjectModuleMap(
   files: ProjectFiles,
 ): Result<Map<string, ModuleCompilationInfo>, string> {
   return buildProjectModuleRegistry(files);
+}
+
+function expectProjectModuleMap(
+  files: ProjectFiles,
+): Map<string, ModuleCompilationInfo> {
+  const moduleMap = createProjectModuleMap(files);
+  expect(isOk(moduleMap)).toBe(true);
+  return moduleMap.ok ? moduleMap.value : new Map<string, ModuleCompilationInfo>();
+}
+
+function expectParsedProjectModule(
+  files: ProjectFiles,
+  moduleName: string,
+): ParsedProjectModuleFixture {
+  const moduleMap = expectProjectModuleMap(files);
+  const moduleInfo = moduleMap.get(moduleName);
+  expect(moduleInfo).toBeDefined();
+  if (!moduleInfo) {
+    return { moduleMap, module: undefined };
+  }
+
+  const parsedModule = parseProjectModule(moduleInfo, moduleMap);
+  expect(isOk(parsedModule)).toBe(true);
+
+  return {
+    moduleMap,
+    module: parsedModule.ok ? parsedModule.value : undefined,
+  };
 }
 
 function parseProjectModules(
@@ -1145,12 +1178,60 @@ test("extern: mixed Tuff and JS project graph executes", () => {
   );
 });
 
+test("extern: project registry records js target and provider metadata", () => {
+  const moduleMap = expectProjectModuleMap({
+    "Math.tuff": "extern Math; extern fn max(a : I32, b : I32) : I32;",
+    "Math.js": "module.exports = { max: (a, b) => (a > b ? a : b) };",
+  });
+
+  const mathModule = moduleMap.get("Math");
+  expect(mathModule?.target).toBe("js");
+  expect(mathModule?.externalProvider?.target).toBe("js");
+});
+
+test("extern: contract-only modules are marked external after parsing", () => {
+  const { moduleMap, module } = expectParsedProjectModule(
+    {
+      "Math.tuff": "extern Math; extern fn max(a : I32, b : I32) : I32;",
+      "Math.js": "module.exports = { max: (a, b) => (a > b ? a : b) };",
+    },
+    "Math",
+  );
+
+  expect(module?.implementationOrigin).toBe("external");
+  expect(moduleMap.get("Math")?.implementationOrigin).toBe("external");
+});
+
+test("extern: mixed contract modules are marked hybrid after parsing", () => {
+  const { moduleMap, module } = expectParsedProjectModule(
+    {
+      "Bridge.tuff":
+        "extern Bridge; extern fn compute(x : I32) : I32; fn plusOne(x : I32) : I32 => x + 1;",
+      "Bridge.js": "module.exports = { compute: (x) => (x * 2) + 1 };",
+    },
+    "Bridge",
+  );
+
+  expect(module?.implementationOrigin).toBe("hybrid");
+  expect(moduleMap.get("Bridge")?.implementationOrigin).toBe("hybrid");
+});
+
+test("extern: orphan js providers without tuff contracts are rejected", () => {
+  const compileResult = compileProjectCode("Main", {
+    "Main.tuff": "0",
+    "Math.js": "module.exports = { max: (a, b) => (a > b ? a : b) };",
+  });
+
+  expect(isErr(compileResult)).toBe(true);
+});
+
 test("extern: module declarations parse with function, let, and type contracts", () => {
   const parsedModules = parseProjectModules(
     {
       "Api.tuff":
         "extern Api; extern fn max(a : I32, b : I32) : I32; extern let answer : I32; extern type Score = I32; 0",
-      "Api.js": "module.exports = { max: (a, b) => (a > b ? a : b), answer: 42 };",
+      "Api.js":
+        "module.exports = { max: (a, b) => (a > b ? a : b), answer: 42 };",
     },
     ["Api"],
   );
@@ -1191,7 +1272,8 @@ test("extern: declarations populate module member lookup for downstream parsing"
     {
       "Api.tuff":
         "extern Api; extern fn max(a : I32, b : I32) : I32; extern let answer : I32; extern type Score = I32; 0",
-      "Api.js": "module.exports = { max: (a, b) => (a > b ? a : b), answer: 42 };",
+      "Api.js":
+        "module.exports = { max: (a, b) => (a > b ? a : b), answer: 42 };",
       "Main.tuff": "let { max, answer } = Api; max(answer, 4)",
     },
     ["Api", "Main"],
