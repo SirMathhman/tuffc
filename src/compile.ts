@@ -64,6 +64,7 @@ interface KeywordToken {
   value:
     | "let"
     | "type"
+    | "is"
     | "mut"
     | "if"
     | "else"
@@ -221,6 +222,13 @@ interface ComparisonNode {
   left: ASTNode;
   operator: "<" | ">" | "<=" | ">=" | "==" | "!=";
   right: ASTNode;
+}
+
+interface IsNode {
+  kind: "is";
+  expression: ASTNode;
+  checkedType: string;
+  matches: boolean;
 }
 
 interface LogicalNode {
@@ -428,6 +436,7 @@ type ASTNode =
   | VariableNode
   | BinaryNode
   | ComparisonNode
+  | IsNode
   | LogicalNode
   | UnaryLogicalNode
   | UnaryOpNode
@@ -895,6 +904,48 @@ function normalizeTypeName(
     : ok(typeName);
 }
 
+function inferStructFieldType(
+  parser: Parser,
+  object: ASTNode,
+  fieldName: string,
+): Result<string, string> {
+  const objectType = inferExpressionType(object, parser);
+  if (!objectType.ok) {
+    return objectType;
+  }
+
+  const structInfo = parser.structs.get(objectType.value);
+  if (!structInfo) {
+    return err(
+      "Cannot access field on non-struct type '" + objectType.value + "'",
+    );
+  }
+
+  const field = structInfo.fields.find(
+    (candidate) => candidate.name === fieldName,
+  );
+  if (!field) {
+    return err(
+      "Struct '" + objectType.value + "' has no field '" + fieldName + "'",
+    );
+  }
+
+  return ok(field.type);
+}
+
+function evaluateIsType(
+  parser: Parser,
+  expression: ASTNode,
+  checkedType: string,
+): Result<boolean, string> {
+  const expressionType = inferExpressionType(expression, parser);
+  if (!expressionType.ok) {
+    return expressionType;
+  }
+
+  return ok(expressionType.value === checkedType);
+}
+
 function ensureExpressionType(
   parser: Parser,
   expr: ASTNode,
@@ -1156,6 +1207,21 @@ function inferExpressionType(
     return ok(varResult.value.type);
   }
 
+  if (expr.kind === "struct-instantiation") {
+    return ok(expr.structName);
+  }
+
+  if (expr.kind === "field-access") {
+    if (expr.fieldName === "length") {
+      return ok("USize");
+    }
+    return inferStructFieldType(parser, expr.object, expr.fieldName);
+  }
+
+  if (expr.kind === "is") {
+    return ok("Bool");
+  }
+
   if (expr.kind === "unary-op") {
     if (expr.operator === "&" || expr.operator === "&mut") {
       return inferReferenceType(parser, expr.operand, expr.operator);
@@ -1232,10 +1298,6 @@ function inferExpressionType(
       return ok(arrayInfo.elementType);
     }
     return err("Cannot infer element type of array access");
-  }
-
-  if (expr.kind === "field-access" && expr.fieldName === "length") {
-    return ok("USize");
   }
 
   if (expr.kind === "if") {
@@ -2124,6 +2186,7 @@ function tokenize(input: string): Result<Token[], string> {
       if (
         ident === "let" ||
         ident === "type" ||
+        ident === "is" ||
         ident === "mut" ||
         ident === "if" ||
         ident === "else" ||
@@ -3101,6 +3164,7 @@ function parseStatementInBlock(
 function isBooleanNode(node: ASTNode): boolean {
   return (
     node.kind === "boolean" ||
+    node.kind === "is" ||
     node.kind === "comparison" ||
     node.kind === "logical" ||
     node.kind === "unary-logical"
@@ -4219,6 +4283,7 @@ function isReservedKeyword(name: string): boolean {
   return (
     name === "let" ||
     name === "type" ||
+    name === "is" ||
     name === "mut" ||
     name === "if" ||
     name === "else" ||
@@ -4703,11 +4768,12 @@ interface ParseBinaryConfig {
   ) => BinaryNode | ComparisonNode | LogicalNode;
 }
 
-function parseBinary(
+function parseLeftAssociative(
   parser: Parser,
-  config: ParseBinaryConfig,
+  nextParser: CallableFunction,
+  stepParser: CallableFunction,
 ): Result<ASTNode, string> {
-  let left = config.nextParser(parser);
+  const left = nextParser(parser) as Result<ASTNode, string>;
   if (!left.ok) {
     return left;
   }
@@ -4715,23 +4781,43 @@ function parseBinary(
   let node = left.value;
 
   while (true) {
-    const tok = current(parser);
-    if (!config.tokenMatcher(tok)) {
+    const nextNode = stepParser(node) as Result<ASTNode | undefined, string>;
+    if (!nextNode.ok) {
+      return nextNode;
+    }
+    if (!nextNode.value) {
       break;
     }
-
-    const operator = config.operatorExtractor(tok);
-    advance(parser);
-
-    const right = config.nextParser(parser);
-    if (!right.ok) {
-      return right;
-    }
-
-    node = config.nodeMaker(operator, node, right.value);
+    node = nextNode.value;
   }
 
   return ok(node);
+}
+
+function parseBinary(
+  parser: Parser,
+  config: ParseBinaryConfig,
+): Result<ASTNode, string> {
+  return parseLeftAssociative(
+    parser,
+    config.nextParser,
+    (node: ASTNode): Result<ASTNode | undefined, string> => {
+      const tok = current(parser);
+      if (!config.tokenMatcher(tok)) {
+        return ok(undefined);
+      }
+
+      const operator = config.operatorExtractor(tok);
+      advance(parser);
+
+      const right = config.nextParser(parser);
+      if (!right.ok) {
+        return right;
+      }
+
+      return ok(config.nodeMaker(operator, node, right.value));
+    },
+  );
 }
 
 function logicalNodeMaker(
@@ -4760,6 +4846,49 @@ function comparisonNodeMaker(
   };
 }
 
+function parseComparison(parser: Parser): Result<ASTNode, string> {
+  return parseLeftAssociative(
+    parser,
+    parseUnaryLogical,
+    (node: ASTNode): Result<ASTNode | undefined, string> => {
+      const tok = current(parser);
+      if (tok.type === "COMPARISON") {
+        advance(parser);
+
+        const right = parseUnaryLogical(parser);
+        if (!right.ok) {
+          return right;
+        }
+
+        return ok(comparisonNodeMaker(tok.value, node, right.value));
+      }
+
+      if (tok.type === "KEYWORD" && tok.value === "is") {
+        advance(parser);
+
+        const checkedType = parseTypeAnnotation(parser);
+        if (!checkedType.ok) {
+          return checkedType;
+        }
+
+        const isMatch = evaluateIsType(parser, node, checkedType.value);
+        if (!isMatch.ok) {
+          return isMatch;
+        }
+
+        return ok({
+          kind: "is",
+          expression: node,
+          checkedType: checkedType.value,
+          matches: isMatch.value,
+        } as IsNode);
+      }
+
+      return ok(undefined);
+    },
+  );
+}
+
 function parseLogicalOr(parser: Parser): Result<ASTNode, string> {
   return parseBinary(parser, {
     nextParser: parseLogicalAnd,
@@ -4777,16 +4906,6 @@ function parseLogicalAnd(parser: Parser): Result<ASTNode, string> {
     operatorExtractor: (tok: Token) =>
       tok.type === "LOGICAL" ? tok.value : "",
     nodeMaker: logicalNodeMaker,
-  });
-}
-
-function parseComparison(parser: Parser): Result<ASTNode, string> {
-  return parseBinary(parser, {
-    nextParser: parseUnaryLogical,
-    tokenMatcher: (tok: Token) => tok.type === "COMPARISON",
-    operatorExtractor: (tok: Token) =>
-      tok.type === "COMPARISON" ? tok.value : "",
-    nodeMaker: comparisonNodeMaker,
   });
 }
 
@@ -5721,6 +5840,10 @@ function codegenAST(node: ASTNode): string {
     return node.value ? "1" : "0";
   }
 
+  if (node.kind === "is") {
+    return node.matches ? "1" : "0";
+  }
+
   if (node.kind === "read") {
     return "readValue()";
   }
@@ -6122,6 +6245,10 @@ function validateAST(node: ASTNode): Result<undefined, string> {
 
   if (node.kind === "string") {
     return ok(undefined);
+  }
+
+  if (node.kind === "is") {
+    return validateAST(node.expression);
   }
 
   if (node.kind === "read" || node.kind === "variable") {

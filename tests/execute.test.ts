@@ -532,6 +532,46 @@ test("type alias: mutual cycle is error", () => {
   expectError(executeTuff("type A = B; type B = A; let x : A = 1; x"));
 });
 
+// is operator tests
+test("is operator: Char literal matches Char", () => {
+  expectValue(executeTuff("'a' is Char"), 1);
+});
+
+test("is operator: mismatched primitive type returns false", () => {
+  expectValue(executeTuff("'a' is I32"), 0);
+});
+
+test("is operator: alias target resolves", () => {
+  expectValue(executeTuff("type Letter = Char; 'z' is Letter"), 1);
+});
+
+test("is operator: string literal matches Char slice", () => {
+  expectValue(executeTuff('"hi" is *[Char]'), 1);
+});
+
+test("is operator: struct instantiation matches struct type", () => {
+  expectValue(
+    executeTuff("struct Person { age : I32; } Person { age: 42 } is Person"),
+    1,
+  );
+});
+
+test("is operator: closure matches function type", () => {
+  expectValue(executeTuff("((x : I32) => x) is (I32) => I32"), 1);
+});
+
+test("is operator: variable check can drive if guard", () => {
+  expectValue(executeTuff("let x : I32 = 1; if x is I32 { 7 } else { 0 }"), 7);
+});
+
+test("is operator: different declared type returns false", () => {
+  expectValue(executeTuff("let x : I32 = 1; x is U32"), 0);
+});
+
+test("is operator: unknown target type is error", () => {
+  expectError(executeTuff("1 is MissingType"));
+});
+
 // Comparison operator tests
 test("less than: true case", () => {
   expectValue(executeTuff("1 < 2"), 1);
