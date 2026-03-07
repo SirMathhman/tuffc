@@ -6,12 +6,16 @@ import type {
   ASTNode,
   ComparisonNode,
   EvaluationResult,
+  FunctionInfo,
+  FunctionParameter,
   LogicalNode,
   NumberNode,
   ParsedFunctionType,
   Parser,
   RefinementConstraint,
   RefinementType,
+  StructField,
+  StructInfo,
   TypeNarrowingInfo,
   UnionWrapNode,
   VariableInfo,
@@ -52,6 +56,7 @@ export function splitTopLevel(text: string, separator: string): string[] {
   let currentPart = "";
   let parenDepth = 0;
   let bracketDepth = 0;
+  let angleDepth = 0;
 
   for (const char of text) {
     if (char === "(") {
@@ -62,9 +67,18 @@ export function splitTopLevel(text: string, separator: string): string[] {
       bracketDepth++;
     } else if (char === "]") {
       bracketDepth--;
+    } else if (char === "<") {
+      angleDepth++;
+    } else if (char === ">") {
+      angleDepth--;
     }
 
-    if (char === separator && parenDepth === 0 && bracketDepth === 0) {
+    if (
+      char === separator &&
+      parenDepth === 0 &&
+      bracketDepth === 0 &&
+      angleDepth === 0
+    ) {
       parts.push(currentPart.trim());
       currentPart = "";
     } else {
@@ -79,10 +93,618 @@ export function splitTopLevel(text: string, separator: string): string[] {
   return parts;
 }
 
+export interface ParsedGenericTypeString {
+  baseType: string;
+  typeArguments: string[];
+}
+
+export function parseGenericTypeString(
+  typeStr: string,
+): ParsedGenericTypeString | undefined {
+  const trimmed = typeStr.trim();
+  const ltIndex = trimmed.indexOf("<");
+  if (ltIndex <= 0 || !trimmed.endsWith(">")) {
+    return undefined;
+  }
+
+  const baseType = trimmed.slice(0, ltIndex).trim();
+  if (baseType.length === 0) {
+    return undefined;
+  }
+
+  let angleDepth = 0;
+  let closingIndex = -1;
+  for (let i = ltIndex; i < trimmed.length; i++) {
+    const char = trimmed[i];
+    if (char === "<") {
+      angleDepth++;
+    } else if (char === ">") {
+      angleDepth--;
+      if (angleDepth === 0) {
+        closingIndex = i;
+        break;
+      }
+    }
+  }
+
+  if (closingIndex !== trimmed.length - 1) {
+    return undefined;
+  }
+
+  const typeArgumentsText = trimmed.slice(ltIndex + 1, -1).trim();
+  const typeArguments =
+    typeArgumentsText.length === 0
+      ? []
+      : splitTopLevel(typeArgumentsText, ",").map((part) => part.trim());
+
+  return {
+    baseType,
+    typeArguments,
+  };
+}
+
+export function isGenericTypeParameter(
+  parser: Parser,
+  typeStr: string,
+): boolean {
+  return parser.genericTypeParameters.includes(typeStr);
+}
+
+export function createTypeParameterSubstitutions(
+  typeParameters: string[],
+  typeArguments: string[],
+  subjectName: string,
+  subjectKind: string,
+): Result<Map<string, string>, string> {
+  if (typeParameters.length !== typeArguments.length) {
+    return err(
+      subjectKind +
+        " '" +
+        subjectName +
+        "' expects " +
+        typeParameters.length +
+        " type arguments, got " +
+        typeArguments.length,
+    );
+  }
+
+  const substitutions = new Map<string, string>();
+  for (let i = 0; i < typeParameters.length; i++) {
+    const typeParameter = typeParameters[i];
+    const typeArgument = typeArguments[i];
+    if (typeParameter && typeArgument) {
+      substitutions.set(typeParameter, typeArgument);
+    }
+  }
+
+  return ok(substitutions);
+}
+
+export function rewriteCompositeType(
+  parser: Parser,
+  typeStr: string,
+  leafMapper: CallableFunction,
+  genericMapper?: CallableFunction,
+): Result<string, string> {
+  if (typeStr.startsWith("*mut ")) {
+    const innerType = rewriteCompositeType(
+      parser,
+      typeStr.slice(5),
+      leafMapper,
+      genericMapper,
+    );
+    return innerType.ok ? ok("*mut " + innerType.value) : innerType;
+  }
+
+  if (typeStr.startsWith("*")) {
+    const innerType = rewriteCompositeType(
+      parser,
+      typeStr.slice(1),
+      leafMapper,
+      genericMapper,
+    );
+    return innerType.ok ? ok("*" + innerType.value) : innerType;
+  }
+
+  const arrayType = parseArrayType(typeStr);
+  if (arrayType) {
+    const elementType = rewriteCompositeType(
+      parser,
+      arrayType.elementType,
+      leafMapper,
+      genericMapper,
+    );
+    return elementType.ok
+      ? ok("[" + elementType.value + ";" + arrayType.length + "]")
+      : elementType;
+  }
+
+  const sliceType = parseSliceType(typeStr);
+  if (sliceType) {
+    const elementType = rewriteCompositeType(
+      parser,
+      sliceType.elementType,
+      leafMapper,
+      genericMapper,
+    );
+    return elementType.ok ? ok("[" + elementType.value + "]") : elementType;
+  }
+
+  const functionType = parseFunctionTypeString(typeStr);
+  if (functionType) {
+    const parameterTypes: string[] = [];
+    for (const parameterType of functionType.parameterTypes) {
+      const mappedParameterType = rewriteCompositeType(
+        parser,
+        parameterType,
+        leafMapper,
+        genericMapper,
+      );
+      if (!mappedParameterType.ok) {
+        return mappedParameterType;
+      }
+      parameterTypes.push(mappedParameterType.value);
+    }
+
+    const returnType = rewriteCompositeType(
+      parser,
+      functionType.returnType,
+      leafMapper,
+      genericMapper,
+    );
+    if (!returnType.ok) {
+      return returnType;
+    }
+
+    return ok(formatFunctionType(parameterTypes, returnType.value));
+  }
+
+  const unionTypeArms = parseUnionTypeString(typeStr);
+  if (unionTypeArms) {
+    const mappedArms: string[] = [];
+    for (const arm of unionTypeArms) {
+      const mappedArm = rewriteCompositeType(
+        parser,
+        arm,
+        leafMapper,
+        genericMapper,
+      );
+      if (!mappedArm.ok) {
+        return mappedArm;
+      }
+      mappedArms.push(mappedArm.value);
+    }
+
+    return ok(joinUnionTypeArms(mappedArms));
+  }
+
+  const genericType = parseGenericTypeString(typeStr);
+  if (genericType) {
+    const mappedTypeArguments: string[] = [];
+    for (const typeArgument of genericType.typeArguments) {
+      const mappedTypeArgument = rewriteCompositeType(
+        parser,
+        typeArgument,
+        leafMapper,
+        genericMapper,
+      );
+      if (!mappedTypeArgument.ok) {
+        return mappedTypeArgument;
+      }
+      mappedTypeArguments.push(mappedTypeArgument.value);
+    }
+
+    return genericMapper
+      ? (genericMapper(genericType.baseType, mappedTypeArguments) as Result<
+          string,
+          string
+        >)
+      : ok(genericType.baseType + "<" + mappedTypeArguments.join(", ") + ">");
+  }
+
+  return leafMapper(typeStr) as Result<string, string>;
+}
+
+export function substituteTypeParameters(
+  parser: Parser,
+  typeStr: string,
+  substitutions: Map<string, string>,
+): Result<string, string> {
+  const directSubstitution = substitutions.get(typeStr);
+  if (directSubstitution) {
+    return ok(directSubstitution);
+  }
+
+  return rewriteCompositeType(parser, typeStr, (typeName: string) =>
+    ok(substitutions.get(typeName) ?? typeName),
+  );
+}
+
+export function inferTypeParameterBindings(
+  parser: Parser,
+  patternType: string,
+  actualType: string,
+  bindings: Map<string, string>,
+): Result<void, string> {
+  if (isGenericTypeParameter(parser, patternType)) {
+    const existingBinding = bindings.get(patternType);
+    if (!existingBinding) {
+      bindings.set(patternType, actualType);
+      return ok(undefined);
+    }
+
+    return existingBinding === actualType
+      ? ok(undefined)
+      : err(
+          "Type inference conflict: generic parameter '" +
+            patternType +
+            "' matched both '" +
+            existingBinding +
+            "' and '" +
+            actualType +
+            "'",
+        );
+  }
+
+  if (patternType === actualType) {
+    return ok(undefined);
+  }
+
+  if (patternType.startsWith("*mut ") && actualType.startsWith("*mut ")) {
+    return inferTypeParameterBindings(
+      parser,
+      patternType.slice(5),
+      actualType.slice(5),
+      bindings,
+    );
+  }
+
+  if (patternType.startsWith("*") && actualType.startsWith("*")) {
+    const normalizedPattern = patternType.startsWith("*mut ")
+      ? patternType.slice(5)
+      : patternType.slice(1);
+    const normalizedActual = actualType.startsWith("*mut ")
+      ? actualType.slice(5)
+      : actualType.slice(1);
+    return inferTypeParameterBindings(
+      parser,
+      normalizedPattern,
+      normalizedActual,
+      bindings,
+    );
+  }
+
+  const patternArray = parseArrayType(patternType);
+  const actualArray = parseArrayType(actualType);
+  if (patternArray && actualArray) {
+    if (patternArray.length !== actualArray.length) {
+      return err(
+        "Type inference mismatch: expected array length " +
+          patternArray.length +
+          " but got " +
+          actualArray.length,
+      );
+    }
+    return inferTypeParameterBindings(
+      parser,
+      patternArray.elementType,
+      actualArray.elementType,
+      bindings,
+    );
+  }
+
+  const patternSlice = parseSliceType(patternType);
+  const actualSlice = parseSliceType(actualType);
+  if (patternSlice && actualSlice) {
+    return inferTypeParameterBindings(
+      parser,
+      patternSlice.elementType,
+      actualSlice.elementType,
+      bindings,
+    );
+  }
+
+  const patternFunction = parseFunctionTypeString(patternType);
+  const actualFunction = parseFunctionTypeString(actualType);
+  if (patternFunction && actualFunction) {
+    if (
+      patternFunction.parameterTypes.length !==
+      actualFunction.parameterTypes.length
+    ) {
+      return err("Type inference mismatch: function parameter count differs");
+    }
+
+    for (let i = 0; i < patternFunction.parameterTypes.length; i++) {
+      const parameterBinding = inferTypeParameterBindings(
+        parser,
+        patternFunction.parameterTypes[i] ?? "",
+        actualFunction.parameterTypes[i] ?? "",
+        bindings,
+      );
+      if (!parameterBinding.ok) {
+        return parameterBinding;
+      }
+    }
+
+    return inferTypeParameterBindings(
+      parser,
+      patternFunction.returnType,
+      actualFunction.returnType,
+      bindings,
+    );
+  }
+
+  const patternGeneric = parseGenericTypeString(patternType);
+  const actualGeneric = parseGenericTypeString(actualType);
+  if (patternGeneric && actualGeneric) {
+    if (
+      patternGeneric.baseType !== actualGeneric.baseType ||
+      patternGeneric.typeArguments.length !== actualGeneric.typeArguments.length
+    ) {
+      return err(
+        "Type inference mismatch: expected '" +
+          patternType +
+          "' but got '" +
+          actualType +
+          "'",
+      );
+    }
+
+    for (let i = 0; i < patternGeneric.typeArguments.length; i++) {
+      const argumentBinding = inferTypeParameterBindings(
+        parser,
+        patternGeneric.typeArguments[i] ?? "",
+        actualGeneric.typeArguments[i] ?? "",
+        bindings,
+      );
+      if (!argumentBinding.ok) {
+        return argumentBinding;
+      }
+    }
+
+    return ok(undefined);
+  }
+
+  return err(
+    "Type inference mismatch: expected '" +
+      patternType +
+      "' but got '" +
+      actualType +
+      "'",
+  );
+}
+
+export function instantiateFunctionInfo(
+  parser: Parser,
+  functionName: string,
+  explicitTypeArguments: string[] | undefined,
+  args: ASTNode[],
+): Result<FunctionInfo, string> {
+  const functionInfo = parser.functions.get(functionName);
+  if (!functionInfo) {
+    return err("Function '" + functionName + "' is not defined");
+  }
+
+  if (functionInfo.typeParameters.length === 0) {
+    if (explicitTypeArguments && explicitTypeArguments.length > 0) {
+      return err(
+        "Function '" +
+          functionName +
+          "' is not generic and cannot take type arguments",
+      );
+    }
+    return ok(functionInfo);
+  }
+
+  if (
+    explicitTypeArguments &&
+    explicitTypeArguments.length !== functionInfo.typeParameters.length
+  ) {
+    return err(
+      "Function '" +
+        functionName +
+        "' expects " +
+        functionInfo.typeParameters.length +
+        " type arguments, got " +
+        explicitTypeArguments.length,
+    );
+  }
+
+  const substitutions = new Map<string, string>();
+  if (explicitTypeArguments) {
+    const explicitSubstitutions = createTypeParameterSubstitutions(
+      functionInfo.typeParameters,
+      explicitTypeArguments,
+      functionName,
+      "Function",
+    );
+    if (!explicitSubstitutions.ok) {
+      return explicitSubstitutions;
+    }
+
+    for (const [typeParameter, typeArgument] of explicitSubstitutions.value) {
+      substitutions.set(typeParameter, typeArgument);
+    }
+  }
+
+  if (args.length !== functionInfo.parameters.length) {
+    return err(
+      "Callable '" +
+        functionName +
+        "' expects " +
+        functionInfo.parameters.length +
+        " arguments, got " +
+        args.length,
+    );
+  }
+
+  const savedGenericTypeParameters = [...parser.genericTypeParameters];
+  parser.genericTypeParameters = [
+    ...savedGenericTypeParameters,
+    ...functionInfo.typeParameters,
+  ];
+
+  for (let i = 0; i < functionInfo.parameters.length; i++) {
+    const parameter = functionInfo.parameters[i];
+    const argNode = args[i];
+    if (!parameter || !argNode) {
+      continue;
+    }
+
+    const actualType = inferExpressionType(argNode, parser);
+    if (!actualType.ok) {
+      parser.genericTypeParameters = savedGenericTypeParameters;
+      return actualType;
+    }
+
+    const bindingResult = inferTypeParameterBindings(
+      parser,
+      parameter.type,
+      actualType.value,
+      substitutions,
+    );
+    if (!bindingResult.ok) {
+      parser.genericTypeParameters = savedGenericTypeParameters;
+      if (explicitTypeArguments) {
+        return bindingResult;
+      }
+    }
+  }
+
+  parser.genericTypeParameters = savedGenericTypeParameters;
+
+  for (const typeParameter of functionInfo.typeParameters) {
+    if (!substitutions.has(typeParameter)) {
+      return err(
+        "Cannot infer type argument for generic parameter '" +
+          typeParameter +
+          "' in function '" +
+          functionName +
+          "'",
+      );
+    }
+  }
+
+  const specializedParameters: FunctionParameter[] = [];
+  for (const parameter of functionInfo.parameters) {
+    const specializedType = substituteTypeParameters(
+      parser,
+      parameter.type,
+      substitutions,
+    );
+    if (!specializedType.ok) {
+      return specializedType;
+    }
+
+    specializedParameters.push({
+      ...parameter,
+      type: specializedType.value,
+    });
+  }
+
+  const specializedReturnType = substituteTypeParameters(
+    parser,
+    functionInfo.returnType,
+    substitutions,
+  );
+  if (!specializedReturnType.ok) {
+    return specializedReturnType;
+  }
+
+  return ok({
+    typeParameters: [],
+    parameters: specializedParameters,
+    returnType: specializedReturnType.value,
+  });
+}
+
+export function getStructInfoForType(
+  parser: Parser,
+  typeStr: string,
+): Result<StructInfo, string> {
+  const cachedInfo = parser.structs.get(typeStr);
+  if (cachedInfo && cachedInfo.typeParameters.length === 0) {
+    return ok(cachedInfo);
+  }
+
+  const genericType = parseGenericTypeString(typeStr);
+  if (!genericType) {
+    if (cachedInfo) {
+      return ok(cachedInfo);
+    }
+
+    return err("Struct '" + typeStr + "' is not defined");
+  }
+
+  const baseInfo = parser.structs.get(genericType.baseType);
+  if (!baseInfo) {
+    return err("Struct '" + genericType.baseType + "' is not defined");
+  }
+
+  const substitutions = createTypeParameterSubstitutions(
+    baseInfo.typeParameters,
+    genericType.typeArguments,
+    genericType.baseType,
+    "Struct",
+  );
+  if (!substitutions.ok) {
+    return substitutions;
+  }
+
+  const specializedFields: StructField[] = [];
+  for (const field of baseInfo.fields) {
+    const specializedType = substituteTypeParameters(
+      parser,
+      field.type,
+      substitutions.value,
+    );
+    if (!specializedType.ok) {
+      return specializedType;
+    }
+
+    specializedFields.push({
+      ...field,
+      type: specializedType.value,
+    });
+  }
+
+  const specializedStructInfo: StructInfo = {
+    typeParameters: [],
+    fields: specializedFields,
+  };
+  parser.structs.set(typeStr, specializedStructInfo);
+  return ok(specializedStructInfo);
+}
+
 export function isKnownNamedType(parser: Parser, typeStr: string): boolean {
+  if (isGenericTypeParameter(parser, typeStr)) {
+    return true;
+  }
+
+  const genericType = parseGenericTypeString(typeStr);
+  if (genericType) {
+    if (!parser.structNames.has(genericType.baseType)) {
+      return false;
+    }
+
+    const structInfo = parser.structs.get(genericType.baseType);
+    if (
+      structInfo &&
+      structInfo.typeParameters.length !== genericType.typeArguments.length
+    ) {
+      return false;
+    }
+
+    return genericType.typeArguments.every(
+      (typeArgument) => validateTypeWithStructs(parser, typeArgument).ok,
+    );
+  }
+
+  const directStructInfo = parser.structs.get(typeStr);
   return (
     VALID_TYPES.has(typeStr) ||
-    parser.structNames.has(typeStr) ||
+    (directStructInfo && directStructInfo.typeParameters.length === 0) ||
+    (!directStructInfo && parser.structNames.has(typeStr)) ||
     parser.aliasDeclarations.has(typeStr)
   );
 }
@@ -221,13 +843,18 @@ export function inferContainerMemberType(
   }
 
   const structInfo = parser.structs.get(objectType.value);
-  if (!structInfo) {
+  if (!structInfo && !parseGenericTypeString(objectType.value)) {
     return err(
       "Cannot access field on non-struct type '" + objectType.value + "'",
     );
   }
 
-  const field = structInfo.fields.find(
+  const resolvedStructInfo = getStructInfoForType(parser, objectType.value);
+  if (!resolvedStructInfo.ok) {
+    return resolvedStructInfo;
+  }
+
+  const field = resolvedStructInfo.value.fields.find(
     (candidate) => candidate.name === fieldName,
   );
   if (!field) {
@@ -463,96 +1090,71 @@ export function canonicalizeTypeString(
   typeStr: string,
   visiting: Set<string> = new Set<string>(),
 ): Result<string, string> {
-  if (typeStr.startsWith("*mut ")) {
-    const innerType = canonicalizeTypeString(
-      parser,
-      typeStr.slice(5),
-      visiting,
-    );
-    return innerType.ok ? ok("*mut " + innerType.value) : innerType;
-  }
+  return rewriteCompositeType(
+    parser,
+    typeStr,
+    (typeName: string): Result<string, string> => {
+      if (isGenericTypeParameter(parser, typeName)) {
+        return ok(typeName);
+      }
 
-  if (typeStr.startsWith("*")) {
-    const innerType = canonicalizeTypeString(
-      parser,
-      typeStr.slice(1),
-      visiting,
-    );
-    return innerType.ok ? ok("*" + innerType.value) : innerType;
-  }
+      if (VALID_TYPES.has(typeName) || parser.structNames.has(typeName)) {
+        const directStructInfo = parser.structs.get(typeName);
+        if (directStructInfo && directStructInfo.typeParameters.length > 0) {
+          return err(
+            "Invalid type annotation: generic struct '" +
+              typeName +
+              "' requires explicit type arguments",
+          );
+        }
 
-  const arrayType = parseArrayType(typeStr);
-  if (arrayType) {
-    const elementType = canonicalizeTypeString(
-      parser,
-      arrayType.elementType,
-      visiting,
-    );
-    return elementType.ok
-      ? ok("[" + elementType.value + ";" + arrayType.length + "]")
-      : elementType;
-  }
+        return ok(typeName);
+      }
 
-  const sliceType = parseSliceType(typeStr);
-  if (sliceType) {
-    const elementType = canonicalizeTypeString(
-      parser,
-      sliceType.elementType,
-      visiting,
-    );
-    return elementType.ok ? ok("[" + elementType.value + "]") : elementType;
-  }
+      if (parser.aliasDeclarations.has(typeName)) {
+        return resolveAliasName(parser, typeName, visiting);
+      }
 
-  const functionType = parseFunctionTypeString(typeStr);
-  if (functionType) {
-    const parameterTypes: string[] = [];
-    for (const parameterType of functionType.parameterTypes) {
-      const canonicalParameterType = canonicalizeTypeString(
+      return err("Invalid type annotation: " + typeName);
+    },
+    (
+      baseType: string,
+      mappedTypeArguments: string[],
+    ): Result<string, string> => {
+      if (!parser.structNames.has(baseType)) {
+        return err("Invalid type annotation: " + typeStr);
+      }
+
+      const baseInfo = parser.structs.get(baseType);
+      if (
+        baseInfo &&
+        baseInfo.typeParameters.length !== mappedTypeArguments.length
+      ) {
+        return err(
+          "Struct '" +
+            baseType +
+            "' expects " +
+            baseInfo.typeParameters.length +
+            " type arguments, got " +
+            mappedTypeArguments.length,
+        );
+      }
+
+      const canonicalGenericType =
+        baseType + "<" + mappedTypeArguments.join(", ") + ">";
+      if (!baseInfo) {
+        return ok(canonicalGenericType);
+      }
+
+      const specializedStructInfo = getStructInfoForType(
         parser,
-        parameterType,
-        visiting,
+        canonicalGenericType,
       );
-      if (!canonicalParameterType.ok) {
-        return canonicalParameterType;
-      }
-      parameterTypes.push(canonicalParameterType.value);
-    }
-
-    const returnType = canonicalizeTypeString(
-      parser,
-      functionType.returnType,
-      visiting,
-    );
-    if (!returnType.ok) {
-      return returnType;
-    }
-
-    return ok("(" + parameterTypes.join(", ") + ") => " + returnType.value);
-  }
-
-  const unionTypeArms = parseUnionTypeString(typeStr);
-  if (unionTypeArms) {
-    const canonicalArms: string[] = [];
-    for (const arm of unionTypeArms) {
-      const canonicalArm = canonicalizeTypeString(parser, arm, visiting);
-      if (!canonicalArm.ok) {
-        return canonicalArm;
-      }
-      canonicalArms.push(canonicalArm.value);
-    }
-
-    return ok(joinUnionTypeArms(canonicalArms));
-  }
-
-  if (VALID_TYPES.has(typeStr) || parser.structNames.has(typeStr)) {
-    return ok(typeStr);
-  }
-
-  if (parser.aliasDeclarations.has(typeStr)) {
-    return resolveAliasName(parser, typeStr, visiting);
-  }
-
-  return err("Invalid type annotation: " + typeStr);
+      return specializedStructInfo.ok
+        ? ok(canonicalGenericType)
+        : specializedStructInfo;
+    },
+  );
 }
 
 export function normalizeTypeName(
@@ -668,6 +1270,55 @@ export function coerceExpressionToType(
   expression: ASTNode,
   expectedType: string,
 ): Result<ASTNode, string> {
+  if (expression.kind === "struct-instantiation") {
+    const expectedStructInfo = getStructInfoForType(parser, expectedType);
+    if (expectedStructInfo.ok) {
+      const expectedGenericType = parseGenericTypeString(expectedType);
+      const expressionGenericType = parseGenericTypeString(
+        expression.structName,
+      );
+      const expressionBaseName =
+        expressionGenericType?.baseType ?? expression.structName;
+      const expectedBaseName = expectedGenericType?.baseType ?? expectedType;
+
+      if (expressionBaseName === expectedBaseName) {
+        const coercedFields = expression.fields.map((field) => ({ ...field }));
+        for (const field of coercedFields) {
+          const declaredField = expectedStructInfo.value.fields.find(
+            (candidate) => candidate.name === field.name,
+          );
+          if (!declaredField) {
+            return err(
+              "Unknown field '" + field.name + "' in struct instantiation",
+            );
+          }
+
+          const coercedFieldValue = coerceExpressionToType(
+            parser,
+            field.value,
+            declaredField.type,
+          );
+          if (!coercedFieldValue.ok) {
+            return err(
+              "Field '" +
+                field.name +
+                "' is invalid: " +
+                coercedFieldValue.error,
+            );
+          }
+          field.value = coercedFieldValue.value;
+        }
+
+        return ok({
+          ...expression,
+          structName: expectedType,
+          fields: coercedFields,
+          typeArguments: expectedGenericType?.typeArguments,
+        });
+      }
+    }
+  }
+
   const thisScope = resolveThisScopeNode(expression);
   if (thisScope) {
     const thisValidation = validateThisScopeAgainstStruct(
@@ -990,7 +1641,16 @@ export function inferExpressionType(
   }
 
   if (expr.kind === "struct-instantiation") {
-    return ok(expr.structName);
+    if (expr.typeArguments && expr.typeArguments.length > 0) {
+      return ok(expr.structName);
+    }
+
+    const resolvedStructInfo = parser.structs.get(expr.structName);
+    if (resolvedStructInfo && resolvedStructInfo.typeParameters.length === 0) {
+      return ok(expr.structName);
+    }
+
+    return err("Cannot infer type of generic struct instantiation");
   }
 
   if (expr.kind === "array-literal") {
@@ -1124,6 +1784,10 @@ export function inferExpressionType(
   }
 
   if (expr.kind === "function-call") {
+    if (expr.returnType) {
+      return ok(expr.returnType);
+    }
+
     const fnInfo = parser.functions.get(expr.name);
     if (fnInfo) {
       return ok(fnInfo.returnType);

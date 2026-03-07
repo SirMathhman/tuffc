@@ -2431,6 +2431,91 @@ test("closure: shadowing captured variable with parameter is error", () => {
   );
 });
 
+// ===== GENERIC FUNCTION + STRUCT TESTS =====
+
+test("generic function: explicit type arguments work", () => {
+  expectValue(executeTuff("fn id<T>(x : T) : T => x; id<I32>(42)"), 42);
+});
+
+test("generic function: type inference works", () => {
+  expectValue(executeTuff("fn id<T>(x : T) : T => x; id(42)"), 42);
+});
+
+test("generic function: generic function can call generic function", () => {
+  expectValue(
+    executeTuff(
+      "fn id<T>(x : T) : T => x; fn passthrough<T>(x : T) : T => id<T>(x); passthrough<I32>(9)",
+    ),
+    9,
+  );
+});
+
+test("generic function: arrays of T work", () => {
+  expectValue(
+    executeTuff(
+      "fn second<T>(items : [T; 2]) : T => items[1]; second<I32>([10, 20])",
+    ),
+    20,
+  );
+});
+
+test("generic function: slices of T work", () => {
+  expectValue(
+    executeTuff(
+      "fn first<T>(items : *[T]) : T => items[0]; let arr : [I32; 3] = [10, 20, 30]; first(&arr[1..3])",
+    ),
+    20,
+  );
+});
+
+test("generic struct: explicit type arguments in annotation and literal work", () => {
+  expectValue(
+    executeTuff(
+      "struct Box<T> { value : T; } let b : Box<I32> = Box<I32> { value : 7 }; b.value",
+    ),
+    7,
+  );
+});
+
+test("generic struct: literal infers type arguments from expected annotation", () => {
+  expectValue(
+    executeTuff(
+      "struct Box<T> { value : T; } let b : Box<I32> = Box { value : 11 }; b.value",
+    ),
+    11,
+  );
+});
+
+test("generic struct: nested generic structs work", () => {
+  expectValue(
+    executeTuff(
+      "struct Box<T> { value : T; } struct Outer<T> { inner : Box<T>; } let o : Outer<I32> = Outer<I32> { inner : Box<I32> { value : 42 } }; o.inner.value",
+    ),
+    42,
+  );
+});
+
+test("generic method: methods on generic structs work", () => {
+  expectValue(
+    executeTuff(
+      "struct Box<T> { value : T; } fn get<T>(this : Box<T>) : T => this.value; let b : Box<I32> = Box { value : 5 }; b.get()",
+    ),
+    5,
+  );
+});
+
+test("generic function: wrong explicit type argument count is error", () => {
+  expectError(executeTuff("fn id<T>(x : T) : T => x; id<I32, Bool>(42)"));
+});
+
+test("generic struct: wrong explicit type argument count is error", () => {
+  expectError(
+    executeTuff(
+      "struct Box<T> { value : T; } let b : Box<I32, Bool> = Box<I32, Bool> { value : 1 }; b.value",
+    ),
+  );
+});
+
 // Recursive function tests
 
 test("recursive: factorial without input", () => {

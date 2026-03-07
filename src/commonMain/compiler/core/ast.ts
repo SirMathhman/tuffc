@@ -382,6 +382,7 @@ export interface FunctionParameter {
 export interface FunctionNode {
   kind: "function";
   name: string;
+  typeParameters: string[];
   parameters: FunctionParameter[];
   returnType: string;
   body: ASTNode;
@@ -419,6 +420,9 @@ export interface FunctionCallNode {
   kind: "function-call";
   name: string;
   arguments: ASTNode[];
+  typeArguments?: string[];
+  parameterTypes?: string[];
+  returnType?: string;
 }
 
 export interface CallNode {
@@ -438,6 +442,7 @@ export interface StructField {
 export interface StructNode {
   kind: "struct";
   name: string;
+  typeParameters: string[];
   fields: StructField[];
 }
 
@@ -481,6 +486,7 @@ export interface StructInstantiationNode {
   kind: "struct-instantiation";
   structName: string;
   fields: StructInstantiationField[];
+  typeArguments?: string[];
 }
 
 export interface FieldAccessNode {
@@ -705,11 +711,13 @@ export interface ResolvedThisMemberAccess {
 }
 
 export interface FunctionInfo {
+  typeParameters: string[];
   parameters: FunctionParameter[];
   returnType: string;
 }
 
 export interface StructInfo {
+  typeParameters: string[];
   fields: StructField[];
 }
 
@@ -725,6 +733,7 @@ export interface Parser {
   structs: Map<string, StructInfo>;
   structNames: Set<string>;
   objects: Map<string, ObjectInfo>;
+  genericTypeParameters: string[];
   inLoop: boolean;
   currentFunctionReturnType: string | undefined;
   globalScope: ScopeFrame;

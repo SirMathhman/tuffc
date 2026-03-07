@@ -77,13 +77,18 @@ import {
   extractConstraintsFromComparison,
   getBracketedTypeParts,
   getCallableInfo,
+  getStructInfoForType,
   getTypeNarrowingFromCondition,
   getVariable,
   inferContainerMemberType,
   inferExpressionType,
+  inferTypeParameterBindings,
   inferFunctionReturnTypeFromBody,
+  instantiateFunctionInfo,
+  isGenericTypeParameter,
   normalizeTypeName,
   splitTopLevel,
+  substituteTypeParameters,
   validateCallArguments,
   validateConstraints,
 } from "../semantics/type-system";
@@ -191,6 +196,172 @@ export function parseValidatedCallArguments(
     argsResult.value,
     callableInfo.value.parameterTypes,
   );
+}
+
+export function isGenericListStartToken(token: Token): boolean {
+  return token.type === "COMPARISON" && token.value === "<";
+}
+
+export function isGenericListEndToken(token: Token): boolean {
+  return token.type === "COMPARISON" && token.value === ">";
+}
+
+export function parseGenericParameterList(
+  parser: Parser,
+): Result<string[], string> {
+  if (!isGenericListStartToken(current(parser))) {
+    return ok([]);
+  }
+  advance(parser);
+
+  const typeParameters: string[] = [];
+  const seenTypeParameters = new Set<string>();
+
+  while (!isGenericListEndToken(current(parser))) {
+    const typeParameterToken = current(parser);
+    if (typeParameterToken.type !== "IDENTIFIER") {
+      return err("Expected generic type parameter name");
+    }
+
+    const typeParameter = typeParameterToken.value;
+    if (seenTypeParameters.has(typeParameter)) {
+      return err("Duplicate generic type parameter '" + typeParameter + "'");
+    }
+
+    seenTypeParameters.add(typeParameter);
+    typeParameters.push(typeParameter);
+    advance(parser);
+
+    if (isGenericListEndToken(current(parser))) {
+      break;
+    }
+
+    if (current(parser).type !== "COMMA") {
+      return err("Expected ',' or '>' in generic parameter list");
+    }
+    advance(parser);
+  }
+
+  if (!isGenericListEndToken(current(parser))) {
+    return err("Expected '>' after generic parameter list");
+  }
+  advance(parser);
+
+  return ok(typeParameters);
+}
+
+export function parseTypeArgumentList(
+  parser: Parser,
+  resolveAliases: boolean = true,
+): Result<string[], string> {
+  if (!isGenericListStartToken(current(parser))) {
+    return err("Expected '<' to start type argument list");
+  }
+  advance(parser);
+
+  const typeArguments: string[] = [];
+  while (!isGenericListEndToken(current(parser))) {
+    const typeArgumentResult = parseTypeAnnotation(parser, resolveAliases);
+    if (!typeArgumentResult.ok) {
+      return typeArgumentResult;
+    }
+
+    typeArguments.push(typeArgumentResult.value);
+    if (isGenericListEndToken(current(parser))) {
+      break;
+    }
+
+    if (current(parser).type !== "COMMA") {
+      return err("Expected ',' or '>' in type argument list");
+    }
+    advance(parser);
+  }
+
+  if (!isGenericListEndToken(current(parser))) {
+    return err("Expected '>' after type argument list");
+  }
+  advance(parser);
+
+  return ok(typeArguments);
+}
+
+export function tryParseTypeArgumentList(
+  parser: Parser,
+  allowedFollowerTypes: string[],
+  resolveAliases: boolean = true,
+): Result<string[] | undefined, string> {
+  if (!isGenericListStartToken(current(parser))) {
+    return ok(undefined);
+  }
+
+  const savedPos = parser.pos;
+  const typeArgumentsResult = parseTypeArgumentList(parser, resolveAliases);
+  if (!typeArgumentsResult.ok) {
+    parser.pos = savedPos;
+    return ok(undefined);
+  }
+
+  if (!allowedFollowerTypes.includes(current(parser).type)) {
+    parser.pos = savedPos;
+    return ok(undefined);
+  }
+
+  return typeArgumentsResult;
+}
+
+export function createResolvedFunctionCallNode(
+  parser: Parser,
+  functionName: string,
+  args: ASTNode[],
+  explicitTypeArguments?: string[],
+): Result<ASTNode, string> {
+  const functionInfo = instantiateFunctionInfo(
+    parser,
+    functionName,
+    explicitTypeArguments,
+    args,
+  );
+  if (!functionInfo.ok) {
+    return functionInfo;
+  }
+
+  const parameterTypes = functionInfo.value.parameters.map(
+    (parameter) => parameter.type,
+  );
+  const validatedArgs = validateCallArguments(
+    parser,
+    functionName,
+    args,
+    parameterTypes,
+  );
+  if (!validatedArgs.ok) {
+    return validatedArgs;
+  }
+
+  return ok({
+    kind: "function-call",
+    name: functionName,
+    arguments: validatedArgs.value,
+    typeArguments: explicitTypeArguments,
+    parameterTypes,
+    returnType: functionInfo.value.returnType,
+  });
+}
+
+export function withTemporaryGenericTypeParameters<T>(
+  parser: Parser,
+  typeParameters: string[],
+  action: () => Result<T, string>,
+): Result<T, string> {
+  const savedGenericTypeParameters = [...parser.genericTypeParameters];
+  parser.genericTypeParameters = [
+    ...savedGenericTypeParameters,
+    ...typeParameters,
+  ];
+
+  const result = action();
+  parser.genericTypeParameters = savedGenericTypeParameters;
+  return result;
 }
 
 export function tryParseModuleReference(
@@ -492,9 +663,11 @@ export function canStartClosureParameterList(parser: Parser): boolean {
     return true;
   }
 
+  const currentToken = current(parser);
+
   if (
-    current(parser).type !== "IDENTIFIER" &&
-    !(current(parser).type === "KEYWORD" && current(parser).value === "this")
+    currentToken.type !== "IDENTIFIER" &&
+    !(currentToken.type === "KEYWORD" && currentToken.value === "this")
   ) {
     return false;
   }
@@ -630,15 +803,52 @@ export function parseTypeAnnotation(
     return err("Expected type annotation");
   }
   const baseType = (typeTok as IdentifierToken).value;
+  advance(parser);
+
+  let typeName = baseType;
+  if (isGenericListStartToken(current(parser))) {
+    if (isGenericTypeParameter(parser, baseType)) {
+      return err(
+        "Generic type parameter '" + baseType + "' cannot take type arguments",
+      );
+    }
+
+    const savedPos = parser.pos;
+    const typeArgumentsResult = parseTypeArgumentList(parser, resolveAliases);
+    if (typeArgumentsResult.ok) {
+      const follower = current(parser);
+      const validGenericFollower =
+        follower.type === "PIPE" ||
+        follower.type === "SEMICOLON" ||
+        follower.type === "COMMA" ||
+        follower.type === "RPAREN" ||
+        follower.type === "RBRACKET" ||
+        follower.type === "ARROW" ||
+        follower.type === "ASSIGN" ||
+        follower.type === "LOGICAL" ||
+        follower.type === "EOF" ||
+        follower.type === "RBRACE" ||
+        follower.type === "COLON" ||
+        (follower.type === "COMPARISON" && follower.value === ">");
+
+      if (validGenericFollower) {
+        typeName = baseType + "<" + typeArgumentsResult.value.join(", ") + ">";
+      } else {
+        parser.pos = savedPos;
+      }
+    } else {
+      parser.pos = savedPos;
+    }
+  }
+
   const normalizedTypeResult = normalizeTypeName(
     parser,
-    baseType,
+    typeName,
     resolveAliases,
   );
   if (!normalizedTypeResult.ok) {
     return normalizedTypeResult;
   }
-  advance(parser);
 
   // Construct pointer type string: e.g., "*I32", "*mut I32", "**I32", "*mut *I32"
   return parseTrailingUnionType(
@@ -672,10 +882,11 @@ export function parseTypeReference(
   parser: Parser,
   resolveAliases: boolean = true,
 ): Result<ParsedTypeReference, string> {
+  const currentToken = current(parser);
   const aliasType =
-    current(parser).type === "IDENTIFIER" &&
-    parser.aliasDeclarations.has(current(parser).value)
-      ? current(parser).value
+    currentToken.type === "IDENTIFIER" &&
+    parser.aliasDeclarations.has(currentToken.value)
+      ? currentToken.value
       : undefined;
 
   const typeResult = parseTypeAnnotation(parser, resolveAliases);
@@ -3104,7 +3315,8 @@ export function parseTypeAliasDeclaration(
   }
 
   let destructorName: string | undefined;
-  if (current(parser).type === "KEYWORD" && current(parser).value === "then") {
+  const nextToken = current(parser);
+  if (nextToken.type === "KEYWORD" && nextToken.value === "then") {
     advance(parser);
 
     const destructorTok = current(parser);
@@ -3158,6 +3370,7 @@ export interface ParsedNamedTypeDeclaration {
 
 export interface ParsedFunctionSignatureHead {
   name: string;
+  typeParameters: string[];
   parameters: FunctionParameter[];
   returnType: string;
   hasExplicitReturnType: boolean;
@@ -3253,6 +3466,7 @@ export function registerParsedFunctionSignature(
 ): Result<void, string> {
   if (!parser.functions.has(signature.name)) {
     parser.functions.set(signature.name, {
+      typeParameters: signature.typeParameters,
       parameters: signature.parameters,
       returnType: signature.returnType,
     });
@@ -3318,39 +3532,53 @@ export function parseFunctionSignatureHead(
   }
   advance(parser);
 
-  if (current(parser).type !== "LPAREN") {
-    return err("Expected '(' after function name");
-  }
-  advance(parser);
-
-  const parametersResult = parseFunctionParameters(parser, rejectShadowing);
-  if (!parametersResult.ok) {
-    return parametersResult;
+  const typeParametersResult = parseGenericParameterList(parser);
+  if (!typeParametersResult.ok) {
+    return typeParametersResult;
   }
 
-  let hasExplicitReturnType = false;
-  let returnType = "__inferred__";
-  if (current(parser).type === "COLON") {
-    advance(parser);
-    const returnTypeResult = parseTypeValue(parser);
-    if (!returnTypeResult.ok) {
-      return returnTypeResult;
-    }
-    returnType = returnTypeResult.value;
-    hasExplicitReturnType = true;
-    advance(parser);
-  }
+  return withTemporaryGenericTypeParameters(
+    parser,
+    typeParametersResult.value,
+    (): Result<ParsedFunctionSignatureHead, string> => {
+      if (current(parser).type !== "LPAREN") {
+        return err("Expected '(' after function name");
+      }
+      advance(parser);
 
-  if (requireExplicitReturnType && !hasExplicitReturnType) {
-    return err("Extern function declarations require an explicit return type");
-  }
+      const parametersResult = parseFunctionParameters(parser, rejectShadowing);
+      if (!parametersResult.ok) {
+        return parametersResult;
+      }
 
-  return ok({
-    name: functionName,
-    parameters: parametersResult.value,
-    returnType,
-    hasExplicitReturnType,
-  });
+      let hasExplicitReturnType = false;
+      let returnType = "__inferred__";
+      if (current(parser).type === "COLON") {
+        advance(parser);
+        const returnTypeResult = parseTypeValue(parser);
+        if (!returnTypeResult.ok) {
+          return returnTypeResult;
+        }
+        returnType = returnTypeResult.value;
+        hasExplicitReturnType = true;
+        advance(parser);
+      }
+
+      if (requireExplicitReturnType && !hasExplicitReturnType) {
+        return err(
+          "Extern function declarations require an explicit return type",
+        );
+      }
+
+      return ok({
+        name: functionName,
+        typeParameters: typeParametersResult.value,
+        parameters: parametersResult.value,
+        returnType,
+        hasExplicitReturnType,
+      });
+    },
+  );
 }
 
 export function ensureExternAllowed(parser: Parser): Result<void, string> {
@@ -3520,6 +3748,19 @@ export function parseExternStatement(parser: Parser): Result<ASTNode, string> {
   return parseExternModuleStatement(parser);
 }
 
+export function restoreFunctionParsingState(
+  parser: Parser,
+  savedVariables: Map<string, VariableInfo>,
+  savedScope: ScopeFrame,
+  savedInLoop: boolean,
+  savedGenericTypeParameters: string[],
+): void {
+  parser.variables = savedVariables;
+  parser.currentScope = savedScope;
+  parser.inLoop = savedInLoop;
+  parser.genericTypeParameters = savedGenericTypeParameters;
+}
+
 export function parseFunctionStatement(
   parser: Parser,
 ): Result<ASTNode, string> {
@@ -3528,6 +3769,7 @@ export function parseFunctionStatement(
     return signatureResult;
   }
   const functionName = signatureResult.value.name;
+  const typeParameters = signatureResult.value.typeParameters;
   const parameters = signatureResult.value.parameters;
   const explicitReturnType = signatureResult.value.hasExplicitReturnType
     ? signatureResult.value.returnType
@@ -3544,6 +3786,7 @@ export function parseFunctionStatement(
   // Register function in parser context BEFORE parsing body
   // This allows recursive calls to find the function
   parser.functions.set(functionName, {
+    typeParameters,
     parameters,
     returnType,
   });
@@ -3554,7 +3797,12 @@ export function parseFunctionStatement(
   const savedVariables = new Map(parser.variables);
   const savedScope = parser.currentScope;
   const savedInLoop = parser.inLoop;
+  const savedGenericTypeParameters = [...parser.genericTypeParameters];
   parser.inLoop = false;
+  parser.genericTypeParameters = [
+    ...savedGenericTypeParameters,
+    ...typeParameters,
+  ];
   enterCallableScope(parser, savedScope, parameters);
 
   const bodyTok = current(parser);
@@ -3570,6 +3818,7 @@ export function parseFunctionStatement(
       parser.variables = savedVariables;
       parser.currentScope = savedScope;
       parser.inLoop = savedInLoop;
+      parser.genericTypeParameters = savedGenericTypeParameters;
       return blockResult;
     }
 
@@ -3583,9 +3832,13 @@ export function parseFunctionStatement(
         result = exprResult.value;
       } else {
         if (current(parser).type !== "RBRACE") {
-          parser.variables = savedVariables;
-          parser.currentScope = savedScope;
-          parser.inLoop = savedInLoop;
+          restoreFunctionParsingState(
+            parser,
+            savedVariables,
+            savedScope,
+            savedInLoop,
+            savedGenericTypeParameters,
+          );
           return exprResult;
         }
       }
@@ -3597,6 +3850,7 @@ export function parseFunctionStatement(
         parser.variables = savedVariables;
         parser.currentScope = savedScope;
         parser.inLoop = savedInLoop;
+        parser.genericTypeParameters = savedGenericTypeParameters;
         return err(
           "Function body must end with an expression when return type is not Void",
         );
@@ -3605,9 +3859,13 @@ export function parseFunctionStatement(
 
     // Expect closing brace
     if (current(parser).type !== "RBRACE") {
-      parser.variables = savedVariables;
-      parser.currentScope = savedScope;
-      parser.inLoop = savedInLoop;
+      restoreFunctionParsingState(
+        parser,
+        savedVariables,
+        savedScope,
+        savedInLoop,
+        savedGenericTypeParameters,
+      );
       return err("Expected '}'");
     }
     advance(parser);
@@ -3624,6 +3882,7 @@ export function parseFunctionStatement(
       parser.variables = savedVariables;
       parser.currentScope = savedScope;
       parser.inLoop = savedInLoop;
+      parser.genericTypeParameters = savedGenericTypeParameters;
       return assignResult;
     }
 
@@ -3632,6 +3891,7 @@ export function parseFunctionStatement(
         parser.variables = savedVariables;
         parser.currentScope = savedScope;
         parser.inLoop = savedInLoop;
+        parser.genericTypeParameters = savedGenericTypeParameters;
         return err(
           "Function with non-Void return type must have an expression body",
         );
@@ -3642,6 +3902,7 @@ export function parseFunctionStatement(
         parser.variables = savedVariables;
         parser.currentScope = savedScope;
         parser.inLoop = savedInLoop;
+        parser.genericTypeParameters = savedGenericTypeParameters;
         return err(
           "Function with Void return type cannot have an expression body",
         );
@@ -3652,6 +3913,7 @@ export function parseFunctionStatement(
         parser.variables = savedVariables;
         parser.currentScope = savedScope;
         parser.inLoop = savedInLoop;
+        parser.genericTypeParameters = savedGenericTypeParameters;
         return exprResult;
       }
 
@@ -3664,6 +3926,7 @@ export function parseFunctionStatement(
       parser.variables = savedVariables;
       parser.currentScope = savedScope;
       parser.inLoop = savedInLoop;
+      parser.genericTypeParameters = savedGenericTypeParameters;
       return err("Expected ';' after function arrow expression");
     }
     advance(parser);
@@ -3675,6 +3938,7 @@ export function parseFunctionStatement(
       parser.variables = savedVariables;
       parser.currentScope = savedScope;
       parser.inLoop = savedInLoop;
+      parser.genericTypeParameters = savedGenericTypeParameters;
       return coercedBody;
     }
     body = coercedBody.value;
@@ -3684,11 +3948,13 @@ export function parseFunctionStatement(
       parser.variables = savedVariables;
       parser.currentScope = savedScope;
       parser.inLoop = savedInLoop;
+      parser.genericTypeParameters = savedGenericTypeParameters;
       return inferredReturnType;
     }
 
     returnType = inferredReturnType.value;
     parser.functions.set(functionName, {
+      typeParameters,
       parameters,
       returnType,
     });
@@ -3708,6 +3974,7 @@ export function parseFunctionStatement(
       parser.variables = savedVariables;
       parser.currentScope = savedScope;
       parser.inLoop = savedInLoop;
+      parser.genericTypeParameters = savedGenericTypeParameters;
       return inferredCoercedBody;
     }
 
@@ -3718,10 +3985,12 @@ export function parseFunctionStatement(
   parser.variables = savedVariables;
   parser.currentScope = savedScope;
   parser.inLoop = savedInLoop;
+  parser.genericTypeParameters = savedGenericTypeParameters;
 
   return ok({
     kind: "function",
     name: functionName,
+    typeParameters,
     parameters,
     returnType,
     body,
@@ -3984,7 +4253,16 @@ export function parseStructStatement(parser: Parser): Result<ASTNode, string> {
   const structName = (nameTok as IdentifierToken).value;
   advance(parser);
 
-  const fieldsResult = parseStructFieldList(parser);
+  const typeParametersResult = parseGenericParameterList(parser);
+  if (!typeParametersResult.ok) {
+    return typeParametersResult;
+  }
+
+  const fieldsResult = withTemporaryGenericTypeParameters(
+    parser,
+    typeParametersResult.value,
+    () => parseStructFieldList(parser),
+  );
   if (!fieldsResult.ok) {
     return fieldsResult;
   }
@@ -3992,6 +4270,7 @@ export function parseStructStatement(parser: Parser): Result<ASTNode, string> {
   return ok({
     kind: "struct",
     name: structName,
+    typeParameters: typeParametersResult.value,
     fields: fieldsResult.value,
   });
 }
@@ -4594,6 +4873,59 @@ export function tryGetExtensionMethodCallableInfo(
     return receiverType;
   }
 
+  if (fnInfo.typeParameters.length > 0) {
+    const bindings = new Map<string, string>();
+    const savedGenericTypeParameters = [...parser.genericTypeParameters];
+    parser.genericTypeParameters = [
+      ...savedGenericTypeParameters,
+      ...fnInfo.typeParameters,
+    ];
+
+    const bindingResult = inferTypeParameterBindings(
+      parser,
+      receiverParam.type,
+      receiverType.value,
+      bindings,
+    );
+    parser.genericTypeParameters = savedGenericTypeParameters;
+    if (!bindingResult.ok) {
+      return ok(undefined);
+    }
+
+    for (const typeParameter of fnInfo.typeParameters) {
+      if (!bindings.has(typeParameter)) {
+        return ok(undefined);
+      }
+    }
+
+    const parameterTypes: string[] = [];
+    for (const parameter of fnInfo.parameters.slice(1)) {
+      const substitutedParameterType = substituteTypeParameters(
+        parser,
+        parameter.type,
+        bindings,
+      );
+      if (!substitutedParameterType.ok) {
+        return substitutedParameterType;
+      }
+      parameterTypes.push(substitutedParameterType.value);
+    }
+
+    const substitutedReturnType = substituteTypeParameters(
+      parser,
+      fnInfo.returnType,
+      bindings,
+    );
+    if (!substitutedReturnType.ok) {
+      return substitutedReturnType;
+    }
+
+    return ok({
+      parameterTypes,
+      returnType: substitutedReturnType.value,
+    });
+  }
+
   if (!areTypesCompatible(receiverParam.type, receiverType.value)) {
     return ok(undefined);
   }
@@ -4647,10 +4979,20 @@ export function parsePostfixCall(
         return validatedArgs;
       }
 
+      const receiverType = inferExpressionType(callee.object, parser);
+      if (!receiverType.ok) {
+        return receiverType;
+      }
+
       return ok({
         kind: "function-call",
         name: callee.fieldName,
         arguments: [callee.object, ...validatedArgs.value],
+        parameterTypes: [
+          receiverType.value,
+          ...extensionCallable.value.parameterTypes,
+        ],
+        returnType: extensionCallable.value.returnType,
       });
     }
 
@@ -4787,38 +5129,96 @@ export function parsePrimary(parser: Parser): Result<ASTNode, string> {
     const name = tok.value;
     advance(parser);
 
-    // Check if this is a function call (identifier followed by LPAREN)
-    const nextTok = current(parser);
-    if (nextTok.type === "LPAREN") {
-      // Function call
-      advance(parser); // consume LPAREN
+    const explicitTypeArguments = tryParseTypeArgumentList(parser, [
+      "LPAREN",
+      "LBRACE",
+    ]);
+    if (!explicitTypeArguments.ok) {
+      return explicitTypeArguments;
+    }
 
-      const validatedArgs = parseValidatedCallArguments(
-        parser,
-        {
-          kind: "variable",
+    // Check if this is a function call (identifier followed by LPAREN)
+    if (current(parser).type === "LPAREN") {
+      advance(parser); // consume LPAREN
+      const argsResult = parseCallArguments(parser);
+      if (!argsResult.ok) {
+        return argsResult;
+      }
+
+      if (explicitTypeArguments.value || parser.functions.has(name)) {
+        return createResolvedFunctionCallNode(
+          parser,
           name,
-        },
+          argsResult.value,
+          explicitTypeArguments.value,
+        );
+      }
+
+      const callableInfo = getCallableInfo(parser, {
+        kind: "variable",
         name,
+      });
+      if (!callableInfo.ok) {
+        return callableInfo;
+      }
+
+      const validatedArgs = validateCallArguments(
+        parser,
+        name,
+        argsResult.value,
+        callableInfo.value.parameterTypes,
       );
       if (!validatedArgs.ok) {
         return validatedArgs;
       }
 
-      // Return a function call node
       return ok({
         kind: "function-call",
         name,
         arguments: validatedArgs.value,
+        parameterTypes: callableInfo.value.parameterTypes,
+        returnType: callableInfo.value.returnType,
       });
     }
 
     // Check if this is a struct instantiation (identifier followed by LBRACE)
-    if (nextTok.type === "LBRACE" && parser.structs.has(name)) {
+    if (current(parser).type === "LBRACE" && parser.structs.has(name)) {
       // Struct instantiation
       const structInfo = parser.structs.get(name);
       if (!structInfo) {
         return err("Struct '" + name + "' is not defined");
+      }
+
+      let resolvedStructName = name;
+      let resolvedStructInfo = structInfo;
+      if (
+        explicitTypeArguments.value &&
+        explicitTypeArguments.value.length > 0
+      ) {
+        if (
+          structInfo.typeParameters.length !==
+          explicitTypeArguments.value.length
+        ) {
+          return err(
+            "Struct '" +
+              name +
+              "' expects " +
+              structInfo.typeParameters.length +
+              " type arguments, got " +
+              explicitTypeArguments.value.length,
+          );
+        }
+
+        resolvedStructName =
+          name + "<" + explicitTypeArguments.value.join(", ") + ">";
+        const resolvedStructInfoResult = getStructInfoForType(
+          parser,
+          resolvedStructName,
+        );
+        if (!resolvedStructInfoResult.ok) {
+          return resolvedStructInfoResult;
+        }
+        resolvedStructInfo = resolvedStructInfoResult.value;
       }
 
       advance(parser); // consume LBRACE
@@ -4899,28 +5299,34 @@ export function parsePrimary(parser: Parser): Result<ASTNode, string> {
       }
 
       // Validate field value types match declared field types
-      for (const f of fields) {
-        const declaredField = structInfo.fields.find(
-          (sf) => sf.name === f.name,
-        );
-        if (!declaredField) continue;
-        const coercedFieldValue = coerceExpressionToType(
-          parser,
-          f.value,
-          declaredField.type,
-        );
-        if (!coercedFieldValue.ok) {
-          return err(
-            "Field '" + f.name + "' is invalid: " + coercedFieldValue.error,
+      if (
+        explicitTypeArguments.value?.length ||
+        resolvedStructInfo.typeParameters.length === 0
+      ) {
+        for (const f of fields) {
+          const declaredField = resolvedStructInfo.fields.find(
+            (sf) => sf.name === f.name,
           );
+          if (!declaredField) continue;
+          const coercedFieldValue = coerceExpressionToType(
+            parser,
+            f.value,
+            declaredField.type,
+          );
+          if (!coercedFieldValue.ok) {
+            return err(
+              "Field '" + f.name + "' is invalid: " + coercedFieldValue.error,
+            );
+          }
+          f.value = coercedFieldValue.value;
         }
-        f.value = coercedFieldValue.value;
       }
 
       return ok({
         kind: "struct-instantiation",
-        structName: name,
+        structName: resolvedStructName,
         fields,
+        typeArguments: explicitTypeArguments.value,
       });
     }
 
@@ -5239,7 +5645,17 @@ export function prescanStructDefinitions(parser: Parser): Result<void, string> {
     if (!nameResult.ok) return nameResult;
     const structName = nameResult.value;
 
-    const fieldsResult = parseStructFieldList(parser);
+    const typeParametersResult = parseGenericParameterList(parser);
+    if (!typeParametersResult.ok) {
+      parser.pos = savedPos;
+      return typeParametersResult;
+    }
+
+    const fieldsResult = withTemporaryGenericTypeParameters(
+      parser,
+      typeParametersResult.value,
+      () => parseStructFieldList(parser),
+    );
     if (!fieldsResult.ok) {
       parser.pos = savedPos;
       return fieldsResult;
@@ -5247,7 +5663,10 @@ export function prescanStructDefinitions(parser: Parser): Result<void, string> {
 
     // Register struct
     if (!parser.structs.has(structName)) {
-      parser.structs.set(structName, { fields: fieldsResult.value });
+      parser.structs.set(structName, {
+        typeParameters: typeParametersResult.value,
+        fields: fieldsResult.value,
+      });
     } else {
       parser.pos = savedPos;
       return err("Struct '" + structName + "' already declared");

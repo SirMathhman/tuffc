@@ -52,6 +52,7 @@ export function createParser(
     structs: new Map(),
     structNames: new Set(),
     objects: new Map(),
+    genericTypeParameters: [],
     inLoop: false,
     currentFunctionReturnType: undefined,
     globalScope: currentScope,
