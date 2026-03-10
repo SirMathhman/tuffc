@@ -19,6 +19,7 @@ import {
   codegenExternalProviderHelpers,
   codegenExternalProviderLoad,
   codegenProgramReturn,
+  codegenRuntimeHelpers,
   generateStatementCode,
 } from "./codegen";
 
@@ -50,7 +51,9 @@ export function compile(input: string): Result<string, string> {
     return astResult;
   }
 
-  return ok(codegenProgramReturn(astResult.value));
+  return ok(
+    codegenRuntimeHelpers() + " " + codegenProgramReturn(astResult.value),
+  );
 }
 
 export function compileProject(
@@ -104,6 +107,8 @@ export function compileProject(
 
   return ok(
     externalPrelude +
+      codegenRuntimeHelpers() +
+      " " +
       generateStatementCode(moduleNodes) +
       " return " +
       createModuleResultName(entryModule.runtimeName) +

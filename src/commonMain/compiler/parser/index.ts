@@ -203,7 +203,10 @@ export function parseVTableCallableType(
     return undefined;
   }
   const contractName = inner.slice(0, ltIdx);
-  const allArgs = inner.slice(ltIdx + 1, gtIdx).split(",").map((s) => s.trim());
+  const allArgs = inner
+    .slice(ltIdx + 1, gtIdx)
+    .split(",")
+    .map((s) => s.trim());
   const concreteType = allArgs[0];
   if (!concreteType) return undefined;
   const contractTypeArgs = allArgs.slice(1);
@@ -656,46 +659,29 @@ export function validateAliasDestructor(
     );
   }
 
-  if (fnInfo.returnType !== "Void") {
-    return err(
-      "Destructor function '" +
-        destructorName +
-        "' for alias '" +
-        aliasName +
-        "' must return Void",
+  const matchingOverload = getAllFunctionOverloads(fnInfo).find((candidate) => {
+    const firstParameter = candidate.parameters[0];
+    return (
+      candidate.returnType === "Void" &&
+      !!firstParameter &&
+      firstParameter.name === "this" &&
+      firstParameter.move === true &&
+      firstParameter.aliasType === aliasName &&
+      firstParameter.type.startsWith("*")
     );
-  }
+  });
 
-  const firstParameter = fnInfo.parameters[0];
-  if (!firstParameter) {
+  if (!matchingOverload) {
     return err(
       "Destructor function '" +
         destructorName +
         "' for alias '" +
         aliasName +
-        "' must take a this parameter",
-    );
-  }
-
-  if (firstParameter.name !== "this") {
-    return err(
-      "Destructor function '" +
+        "' must have signature 'fn " +
         destructorName +
-        "' for alias '" +
+        "(this : *move " +
         aliasName +
-        "' must use 'this' as its first parameter name",
-    );
-  }
-
-  if (firstParameter.aliasType !== aliasName) {
-    return err(
-      "Destructor function '" +
-        destructorName +
-        "' for alias '" +
-        aliasName +
-        "' must take '" +
-        aliasName +
-        "' as its first parameter type",
+        ") : Void'",
     );
   }
 
@@ -1020,6 +1006,7 @@ export function parseFunctionParameters(
       name: paramName,
       type: paramTypeResult.value.type,
       out: paramTypeResult.value.out,
+      move: paramTypeResult.value.move,
       aliasType: paramTypeResult.value.aliasType,
       destructorFunction: paramTypeResult.value.destructorFunction,
     });
@@ -1062,6 +1049,7 @@ export function canStartClosureParameterList(parser: Parser): boolean {
 export interface ParsedTypeAnnotationInfo {
   type: string;
   out: boolean;
+  move: boolean;
 }
 
 export function parseTypeAnnotation(
@@ -1076,11 +1064,13 @@ export function parseTypeAnnotationInfo(
   parser: Parser,
   resolveAliases: boolean = true,
   allowOut: boolean = false,
+  allowMove: boolean = false,
 ): Result<ParsedTypeAnnotationInfo, string> {
   // Count and consume any leading * for pointer types
   let pointerDepth = 0;
   let isMutable = false;
   let isOut = false;
+  let isMove = false;
   while (
     current(parser).type === "OPERATOR" &&
     (current(parser) as OperatorToken).value === "*"
@@ -1113,6 +1103,21 @@ export function parseTypeAnnotationInfo(
             return err("Pointer type cannot use 'out' more than once");
           }
           isOut = true;
+          consumedModifier = true;
+          advance(parser);
+          continue;
+        }
+
+        if (keyword === "move") {
+          if (!allowMove) {
+            return err(
+              "The 'move' modifier is only valid for function parameters",
+            );
+          }
+          if (isMove) {
+            return err("Pointer type cannot use 'move' more than once");
+          }
+          isMove = true;
           consumedModifier = true;
           advance(parser);
           continue;
@@ -1190,7 +1195,7 @@ export function parseTypeAnnotationInfo(
         resolveAliases,
       );
       return sliceType.ok
-        ? ok({ type: sliceType.value, out: isOut })
+        ? ok({ type: sliceType.value, out: isOut, move: isMove })
         : sliceType;
     }
 
@@ -1226,7 +1231,9 @@ export function parseTypeAnnotationInfo(
       ),
       resolveAliases,
     );
-    return arrayType.ok ? ok({ type: arrayType.value, out: isOut }) : arrayType;
+    return arrayType.ok
+      ? ok({ type: arrayType.value, out: isOut, move: isMove })
+      : arrayType;
   }
 
   // Function type: (T1, T2) => R
@@ -1275,7 +1282,7 @@ export function parseTypeAnnotationInfo(
       resolveAliases,
     );
     return functionType.ok
-      ? ok({ type: functionType.value, out: isOut })
+      ? ok({ type: functionType.value, out: isOut, move: isMove })
       : functionType;
   }
 
@@ -1345,7 +1352,7 @@ export function parseTypeAnnotationInfo(
     resolveAliases,
   );
   return typeResult.ok
-    ? ok({ type: typeResult.value, out: isOut })
+    ? ok({ type: typeResult.value, out: isOut, move: isMove })
     : typeResult;
 }
 
@@ -1374,9 +1381,7 @@ export function parseTypeValue(
   return err("Expected type");
 }
 
-function parseVTableHeader(
-  parser: Parser
-): Result<VTableHeader, string> {
+function parseVTableHeader(parser: Parser): Result<VTableHeader, string> {
   const contractTok = current(parser);
   if (contractTok.type !== "IDENTIFIER") {
     return err({
@@ -1559,11 +1564,45 @@ export function parseVTableLiteral(parser: Parser): Result<ASTNode, string> {
 }
 
 export function getCurrentAliasType(parser: Parser): string | undefined {
-  const currentToken = current(parser);
-  return currentToken.type === "IDENTIFIER" &&
-    parser.aliasDeclarations.has(currentToken.value)
-    ? currentToken.value
-    : undefined;
+  let lookaheadPos = parser.pos;
+
+  while (lookaheadPos < parser.tokens.length) {
+    const token = parser.tokens[lookaheadPos];
+    if (!token) {
+      return undefined;
+    }
+
+    if (token.type === "OPERATOR" && token.value === "*") {
+      lookaheadPos += 1;
+      continue;
+    }
+
+    if (
+      token.type === "KEYWORD" &&
+      (token.value === "mut" || token.value === "out" || token.value === "move")
+    ) {
+      lookaheadPos += 1;
+      continue;
+    }
+
+    if (token.type !== "IDENTIFIER") {
+      return undefined;
+    }
+
+    const nextToken = parser.tokens[lookaheadPos + 1];
+    const isExplicitLifetime =
+      isLifetimeAnnotationFollower(nextToken) &&
+      (parser.activeLifetimeNames.includes(token.value) ||
+        !isKnownTypeAnnotationName(parser, token.value));
+    if (isExplicitLifetime) {
+      lookaheadPos += 1;
+      continue;
+    }
+
+    return parser.aliasDeclarations.has(token.value) ? token.value : undefined;
+  }
+
+  return undefined;
 }
 
 export function parseTypeReference(
@@ -1588,6 +1627,7 @@ export function parseTypeReference(
 
 export interface ParsedFunctionParameterTypeReference extends ParsedTypeReference {
   out: boolean;
+  move: boolean;
 }
 
 export function parseFunctionParameterTypeReference(
@@ -1596,7 +1636,12 @@ export function parseFunctionParameterTypeReference(
 ): Result<ParsedFunctionParameterTypeReference, string> {
   const aliasType = getCurrentAliasType(parser);
 
-  const typeResult = parseTypeAnnotationInfo(parser, resolveAliases, true);
+  const typeResult = parseTypeAnnotationInfo(
+    parser,
+    resolveAliases,
+    true,
+    true,
+  );
   if (!typeResult.ok) {
     return typeResult;
   }
@@ -1604,6 +1649,7 @@ export function parseFunctionParameterTypeReference(
   return ok({
     type: typeResult.value.type,
     out: typeResult.value.out,
+    move: typeResult.value.move,
     aliasType,
     destructorFunction: aliasType
       ? parser.aliasDestructors.get(aliasType)
@@ -3906,6 +3952,7 @@ export function parseLetStatement(parser: Parser): Result<ASTNode, string> {
         }
 
         arrayLit.elemType = elemType;
+        arrayLit.elementDestructorFunction = undefined;
       } // close else (array-literal branch)
     }
   } else if (parseFunctionTypeString(typeStr)) {
@@ -4323,6 +4370,7 @@ export function isReservedKeyword(name: string): boolean {
     name === "object" ||
     name === "type" ||
     name === "then" ||
+    name === "finally" ||
     name === "this" ||
     name === "is" ||
     name === "mut" ||
@@ -4396,12 +4444,17 @@ export function parseTypeAliasDeclaration(
 
   let destructorName: string | undefined;
   const nextToken = current(parser);
-  if (nextToken.type === "KEYWORD" && nextToken.value === "then") {
+  if (
+    nextToken.type === "KEYWORD" &&
+    (nextToken.value === "then" || nextToken.value === "finally")
+  ) {
     advance(parser);
 
     const destructorTok = current(parser);
     if (destructorTok.type !== "IDENTIFIER") {
-      return err("Expected destructor function name after 'then'");
+      return err(
+        "Expected destructor function name after '" + nextToken.value + "'",
+      );
     }
     destructorName = destructorTok.value;
     advance(parser);
@@ -4792,7 +4845,10 @@ export function parseContractStatement(
 
   const typeParameters: string[] = [];
   if (isGenericListStartToken(current(parser))) {
-    const genericParamsResult = parseGenericParameterDeclarations(parser, false);
+    const genericParamsResult = parseGenericParameterDeclarations(
+      parser,
+      false,
+    );
     if (!genericParamsResult.ok) {
       return genericParamsResult;
     }
@@ -5965,8 +6021,7 @@ export function parseFunctionStatement(
       parser.genericTypeConstraints.set(typeParameter, [...constraints]);
     }
   }
-  parser.currentFunctionReturnType =
-    explicitReturnType ?? functionName;
+  parser.currentFunctionReturnType = explicitReturnType ?? functionName;
   enterCallableScope(parser, savedScope, parameters);
 
   const bodyTok = current(parser);
@@ -6883,10 +6938,7 @@ export function parseUnary(parser: Parser): Result<ASTNode, string> {
 
     // Check for 'move' keyword after & (ownership transfer)
     const nextTokForMove = current(parser);
-    if (
-      nextTokForMove.type === "KEYWORD" &&
-      nextTokForMove.value === "move"
-    ) {
+    if (nextTokForMove.type === "KEYWORD" && nextTokForMove.value === "move") {
       advance(parser);
       const operandResult = parseUnary(parser);
       if (!operandResult.ok) {
@@ -7249,22 +7301,29 @@ export function tryGetDirectMemberCallableInfo(
   const ownerTypeGtIdx = ownerType.value.lastIndexOf(">");
   if (ownerTypeLtIdx !== -1 && ownerTypeGtIdx > ownerTypeLtIdx) {
     const baseContractName = ownerType.value.slice(0, ownerTypeLtIdx);
-    const typeArgsStr = ownerType.value.slice(ownerTypeLtIdx + 1, ownerTypeGtIdx);
+    const typeArgsStr = ownerType.value.slice(
+      ownerTypeLtIdx + 1,
+      ownerTypeGtIdx,
+    );
     const genericContractInfo = parser.contracts.get(baseContractName);
     if (genericContractInfo && genericContractInfo.typeParameters.length > 0) {
       const typeArgs = typeArgsStr.split(",").map((s) => s.trim());
       const substitutions = new Map(
-        genericContractInfo.typeParameters.map((tp, i) => [tp, typeArgs[i] ?? tp]),
+        genericContractInfo.typeParameters.map((tp, i) => [
+          tp,
+          typeArgs[i] ?? tp,
+        ]),
       );
       const methodSig = genericContractInfo.methods.get(callee.fieldName);
       if (methodSig) {
         let substitutedReturn = methodSig.returnType;
         for (const [tp, replacement] of substitutions) {
-          substitutedReturn = substitutedReturn
-            .split(tp)
-            .join(replacement);
+          substitutedReturn = substitutedReturn.split(tp).join(replacement);
         }
-        return ok({ parameterTypes: methodSig.parameterTypes, returnType: substitutedReturn });
+        return ok({
+          parameterTypes: methodSig.parameterTypes,
+          returnType: substitutedReturn,
+        });
       }
       return ok(undefined);
     }
@@ -7836,6 +7895,7 @@ export function parsePrimary(parser: Parser): Result<ASTNode, string> {
             );
           }
           f.value = coercedFieldValue.value;
+          f.destructorFunction = declaredField.destructorFunction;
         }
       }
 

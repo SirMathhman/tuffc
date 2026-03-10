@@ -9,15 +9,21 @@ import type {
   ScopeFrame,
 } from "../../../commonMain/compiler/core/ast";
 import { createModuleResultName } from "../../../commonMain/compiler/core/project";
-import { isDigit } from "../../../commonMain/compiler/core/tokenization";
+import {
+  isDigit,
+  VALID_TYPES,
+} from "../../../commonMain/compiler/core/tokenization";
 
 interface CleanupBinding {
   name: string;
+  type?: string;
   destructorFunction: string;
 }
 
 interface CodegenBindingInfo {
+  type?: string;
   destructorFunction?: string;
+  dependencies?: string[];
 }
 
 interface CodegenContext {
@@ -29,6 +35,25 @@ interface GeneratedStatementCode {
   context: CodegenContext;
   cleanupBindings: CleanupBinding[];
 }
+
+const NON_BINDING_REFERENCE_KINDS = new Set<ASTNode["kind"]>([
+  "number",
+  "read",
+  "module-reference",
+  "this",
+  "boolean",
+  "char",
+  "string",
+  "break",
+  "continue",
+  "type-alias",
+  "contract",
+  "extern-module",
+  "extern-function",
+  "extern-let",
+  "extern-type",
+  "struct",
+]);
 
 export function createCodegenContext(): CodegenContext {
   return { variables: new Map() };
@@ -44,26 +69,82 @@ export function createFunctionCodegenContext(
   const context = createCodegenContext();
   for (const parameter of parameters) {
     context.variables.set(parameter.name, {
+      type: parameter.type,
       destructorFunction: parameter.destructorFunction,
+      dependencies: [],
     });
   }
   return context;
 }
 
+export function typeMayNeedCleanup(type: string | undefined): boolean {
+  if (!type || type === "Void") {
+    return false;
+  }
+
+  if (type.includes("|")) {
+    return type
+      .split("|")
+      .map((part) => part.trim())
+      .some((part) => typeMayNeedCleanup(part));
+  }
+
+  if (type.startsWith("*") || VALID_TYPES.has(type)) {
+    return false;
+  }
+
+  return true;
+}
+
+export function bindingNeedsCleanup(binding: CodegenBindingInfo): boolean {
+  return !!binding.destructorFunction || typeMayNeedCleanup(binding.type);
+}
+
+export function createCleanupBinding(
+  name: string,
+  type: string | undefined,
+  destructorFunction: string | undefined,
+): CleanupBinding {
+  return {
+    name,
+    type,
+    destructorFunction: destructorFunction ?? "undefined",
+  };
+}
+
+export function codegenManagedCleanupCall(
+  expression: string,
+  destructorFunction?: string,
+): string {
+  return (
+    "__tuffCleanupManagedValue(" +
+    expression +
+    ", " +
+    (destructorFunction ?? "undefined") +
+    ")"
+  );
+}
+
 export function getCleanupBindings(statement: ASTNode): CleanupBinding[] {
-  if (statement.kind === "let" && statement.destructorFunction) {
+  if (
+    statement.kind === "let" &&
+    bindingNeedsCleanup({
+      type: statement.type,
+      destructorFunction: statement.destructorFunction,
+    })
+  ) {
     return [
-      {
-        name: statement.name,
-        destructorFunction: statement.destructorFunction,
-      },
+      createCleanupBinding(
+        statement.name,
+        statement.type,
+        statement.destructorFunction,
+      ),
     ];
   }
 
   if (statement.kind === "destructure") {
-    return statement.statements.flatMap((nestedStatement) =>
-      getCleanupBindings(nestedStatement),
-    );
+    const sourceBinding = statement.statements[0];
+    return sourceBinding ? getCleanupBindings(sourceBinding) : [];
   }
 
   return [];
@@ -77,7 +158,13 @@ export function extendCodegenContextForStatement(
 
   if (statement.kind === "let") {
     nextContext.variables.set(statement.name, {
+      type: statement.type,
       destructorFunction: statement.destructorFunction,
+      dependencies: getPersistentBindingDependencies(
+        statement.type,
+        statement.initializer,
+        context,
+      ),
     });
     return nextContext;
   }
@@ -85,9 +172,25 @@ export function extendCodegenContextForStatement(
   if (statement.kind === "destructure") {
     for (const nestedStatement of statement.statements) {
       nextContext.variables.set(nestedStatement.name, {
+        type: nestedStatement.type,
         destructorFunction: nestedStatement.destructorFunction,
+        dependencies: getPersistentBindingDependencies(
+          nestedStatement.type,
+          nestedStatement.initializer,
+          context,
+        ),
       });
     }
+  }
+
+  if (statement.kind === "function") {
+    nextContext.variables.set(statement.name, {
+      dependencies: getFunctionBindingDependencies(
+        statement.parameters,
+        statement.body,
+        context,
+      ),
+    });
   }
 
   return nextContext;
@@ -99,10 +202,8 @@ export function codegenCleanup(binding: CleanupBinding): string {
     "if (" +
     emittedName +
     " !== undefined) { " +
-    binding.destructorFunction +
-    "(" +
-    emittedName +
-    "); " +
+    codegenManagedCleanupCall(emittedName, binding.destructorFunction) +
+    "; " +
     emittedName +
     " = undefined; }"
   );
@@ -117,6 +218,275 @@ export function codegenCleanupBindings(bindings: CleanupBinding[]): string {
 
 export function hasMeaningfulBlockResult(block: BlockNode): boolean {
   return !(block.result.kind === "number" && block.result.value === "0");
+}
+
+export function getReferencedCleanupBindingNames(
+  node: ASTNode,
+  context: CodegenContext,
+): string[] {
+  const names: string[] = [];
+
+  for (const name of context.variables.keys()) {
+    if (!astReferencesBinding(node, new Set([name]))) {
+      continue;
+    }
+
+    names.push(name);
+  }
+
+  return names;
+}
+
+export function getPersistentBindingDependencies(
+  type: string,
+  node: ASTNode,
+  context: CodegenContext,
+): string[] {
+  const isReferenceLike = type.startsWith("*") || type.includes("=>");
+  if (!isReferenceLike) {
+    return [];
+  }
+
+  if (node.kind === "variable") {
+    return [node.name];
+  }
+
+  if (node.kind === "field-access") {
+    return getReferencedCleanupBindingNames(node.object, context);
+  }
+
+  if (node.kind === "array-access" || node.kind === "array-slice") {
+    return getReferencedCleanupBindingNames(node.array, context);
+  }
+
+  if (
+    node.kind === "unary-op" &&
+    (node.operator === "&" || node.operator === "&mut")
+  ) {
+    return getReferencedCleanupBindingNames(node.operand, context);
+  }
+
+  return [];
+}
+
+export function getFunctionBindingDependencies(
+  parameters: FunctionParameter[],
+  body: ASTNode,
+  context: CodegenContext,
+): string[] {
+  const parameterNames = new Set(parameters.map((parameter) => parameter.name));
+  return getReferencedCleanupBindingNames(body, context).filter(
+    (name) => !parameterNames.has(name),
+  );
+}
+
+export function astReferencesBinding(
+  node: ASTNode,
+  bindingNames: Set<string>,
+): boolean {
+  if (node.kind === "variable" || node.kind === "move") {
+    return bindingNames.has(node.name);
+  }
+
+  if (NON_BINDING_REFERENCE_KINDS.has(node.kind)) {
+    return false;
+  }
+
+  if (node.kind === "let") {
+    return astReferencesBinding(node.initializer, bindingNames);
+  }
+
+  if (node.kind === "destructure") {
+    return node.statements.some((statement) =>
+      astReferencesBinding(statement, bindingNames),
+    );
+  }
+
+  if (node.kind === "assign") {
+    return astReferencesBinding(node.value, bindingNames);
+  }
+
+  if (node.kind === "field-assign") {
+    return (
+      astReferencesBinding(node.object, bindingNames) ||
+      astReferencesBinding(node.value, bindingNames)
+    );
+  }
+
+  if (node.kind === "deref-assign") {
+    return (
+      astReferencesBinding(node.target, bindingNames) ||
+      astReferencesBinding(node.value, bindingNames)
+    );
+  }
+
+  if (
+    node.kind === "binary" ||
+    node.kind === "comparison" ||
+    node.kind === "logical"
+  ) {
+    return (
+      astReferencesBinding(node.left, bindingNames) ||
+      astReferencesBinding(node.right, bindingNames)
+    );
+  }
+
+  if (node.kind === "unary-logical" || node.kind === "unary-op") {
+    return astReferencesBinding(node.operand, bindingNames);
+  }
+
+  if (
+    node.kind === "is" ||
+    node.kind === "union-wrap" ||
+    node.kind === "return"
+  ) {
+    return astReferencesBinding(node.expression ?? node.value, bindingNames);
+  }
+
+  if (node.kind === "field-access") {
+    return astReferencesBinding(node.object, bindingNames);
+  }
+
+  if (node.kind === "array-access") {
+    return (
+      astReferencesBinding(node.array, bindingNames) ||
+      astReferencesBinding(node.index, bindingNames)
+    );
+  }
+
+  if (node.kind === "array-slice") {
+    return astReferencesBinding(node.array, bindingNames);
+  }
+
+  if (node.kind === "array-assign") {
+    return (
+      astReferencesBinding(node.array, bindingNames) ||
+      astReferencesBinding(node.index, bindingNames) ||
+      astReferencesBinding(node.value, bindingNames)
+    );
+  }
+
+  if (node.kind === "block") {
+    return (
+      node.statements.some((statement) =>
+        astReferencesBinding(statement, bindingNames),
+      ) || astReferencesBinding(node.result, bindingNames)
+    );
+  }
+
+  if (node.kind === "if") {
+    return (
+      astReferencesBinding(node.condition, bindingNames) ||
+      astReferencesBinding(node.thenBranch, bindingNames) ||
+      (!!node.elseBranch && astReferencesBinding(node.elseBranch, bindingNames))
+    );
+  }
+
+  if (node.kind === "while") {
+    return (
+      astReferencesBinding(node.condition, bindingNames) ||
+      astReferencesBinding(node.body, bindingNames)
+    );
+  }
+
+  if (node.kind === "match") {
+    return (
+      astReferencesBinding(node.matchExpr, bindingNames) ||
+      node.cases.some((matchCase) =>
+        astReferencesBinding(matchCase.result, bindingNames),
+      )
+    );
+  }
+
+  if (node.kind === "function" || node.kind === "closure") {
+    return astReferencesBinding(node.body, bindingNames);
+  }
+
+  if (node.kind === "object") {
+    return node.body.some((statement) =>
+      astReferencesBinding(statement, bindingNames),
+    );
+  }
+
+  if (node.kind === "module") {
+    return astReferencesBinding(node.body, bindingNames);
+  }
+
+  if (node.kind === "function-call") {
+    return (
+      bindingNames.has(node.name) ||
+      node.arguments.some((argument) =>
+        astReferencesBinding(argument, bindingNames),
+      )
+    );
+  }
+
+  if (node.kind === "call") {
+    return (
+      astReferencesBinding(node.callee, bindingNames) ||
+      node.arguments.some((argument) =>
+        astReferencesBinding(argument, bindingNames),
+      )
+    );
+  }
+
+  if (node.kind === "struct-instantiation") {
+    return node.fields.some((field) =>
+      astReferencesBinding(field.value, bindingNames),
+    );
+  }
+
+  if (node.kind === "array-literal") {
+    return node.generator
+      ? astReferencesBinding(node.generator, bindingNames)
+      : node.elements.some((element) =>
+          astReferencesBinding(element, bindingNames),
+        );
+  }
+
+  if (node.kind === "vtable-literal") {
+    return node.entries.some((entry) =>
+      astReferencesBinding(entry.reference, bindingNames),
+    );
+  }
+
+  return false;
+}
+
+export function canEvaluateBlockResultAfterCleanup(
+  block: BlockNode,
+  cleanupBindings: CleanupBinding[],
+  context: CodegenContext,
+): boolean {
+  if (cleanupBindings.length === 0) {
+    return false;
+  }
+
+  const referencedBindings = new Set(
+    getReferencedCleanupBindingNames(block.result, context),
+  );
+  const pendingBindings = [...referencedBindings];
+
+  while (pendingBindings.length > 0) {
+    const bindingName = pendingBindings.pop();
+    if (!bindingName) {
+      continue;
+    }
+
+    const bindingInfo = context.variables.get(bindingName);
+    for (const dependency of bindingInfo?.dependencies ?? []) {
+      if (referencedBindings.has(dependency)) {
+        continue;
+      }
+
+      referencedBindings.add(dependency);
+      pendingBindings.push(dependency);
+    }
+  }
+
+  return !cleanupBindings.some((binding) =>
+    referencedBindings.has(binding.name),
+  );
 }
 
 export function generateStatementCodeWithContext(
@@ -183,6 +553,30 @@ export function codegenBlockFragment(
 export function codegenProgramReturn(node: ASTNode): string {
   const context = createCodegenContext();
   if (node.kind === "block") {
+    const statementResult = generateStatementCodeWithContext(
+      node.statements,
+      context,
+    );
+    if (
+      canEvaluateBlockResultAfterCleanup(
+        node,
+        statementResult.cleanupBindings,
+        statementResult.context,
+      )
+    ) {
+      const cleanupCode = codegenCleanupBindings(
+        statementResult.cleanupBindings,
+      );
+      return (
+        statementResult.code +
+        " " +
+        cleanupCode +
+        " return " +
+        codegenAST(node.result, statementResult.context) +
+        ";"
+      );
+    }
+
     return codegenBlockFragment(node, context, "value") + ";";
   }
 
@@ -198,6 +592,25 @@ export function codegenProgramEvaluation(
       node.statements,
       createCodegenContext(),
     );
+    if (
+      canEvaluateBlockResultAfterCleanup(
+        node,
+        statementResult.cleanupBindings,
+        statementResult.context,
+      )
+    ) {
+      return (
+        statementResult.code +
+        " " +
+        codegenCleanupBindings(statementResult.cleanupBindings) +
+        " " +
+        resultName +
+        " = " +
+        codegenAST(node.result, statementResult.context) +
+        ";"
+      );
+    }
+
     return (
       statementResult.code +
       " " +
@@ -222,6 +635,23 @@ export function codegenExternalProviderHelpers(): string {
     'if (typeof _tuffValue !== "function") { ' +
     'throw new Error(`External module "${_tuffModuleName}" export "${_tuffExportName}" is not callable`); ' +
     "} return _tuffValue; }"
+  );
+}
+
+export function codegenRuntimeHelpers(): string {
+  return (
+    "function __tuffCleanupNestedValue(_tuffValue) { " +
+    "if (_tuffValue === undefined || _tuffValue === null) { return; } " +
+    "const _tuffKind = typeof _tuffValue; " +
+    'if (_tuffKind !== "object" && _tuffKind !== "function") { return; } ' +
+    "if (_tuffValue.__tuffCleaned) { return; } " +
+    'if (typeof _tuffValue.__tuffCleanup === "function") { _tuffValue.__tuffCleaned = true; _tuffValue.__tuffCleanup(); } ' +
+    "} " +
+    "function __tuffCleanupManagedValue(_tuffValue, _tuffDestructor) { " +
+    "if (_tuffValue === undefined) { return; } " +
+    'if (typeof _tuffDestructor === "function") { _tuffDestructor(_tuffValue); } ' +
+    "__tuffCleanupNestedValue(_tuffValue); " +
+    "}"
   );
 }
 
@@ -313,6 +743,28 @@ export function codegenFunctionLikeBody(
   let bodyCode = "";
 
   if (body.kind === "block") {
+    if (returnType !== "Void" && body.result.kind === "this") {
+      const statementResult = generateStatementCodeWithContext(
+        body.statements,
+        context,
+      );
+      const cleanupCode = codegenCleanupBindings([
+        ...parameterCleanupBindings,
+        ...statementResult.cleanupBindings,
+      ]);
+      const blockBodyCode =
+        statementResult.code +
+        " return " +
+        codegenTransferredThisScopeObject(
+          body.result.scope,
+          statementResult.context,
+        ) +
+        ";";
+      return cleanupCode.length === 0
+        ? blockBodyCode
+        : "try { " + blockBodyCode + " } finally { " + cleanupCode + " }";
+    }
+
     return codegenBlockFragment(
       body,
       context,
@@ -327,6 +779,14 @@ export function codegenFunctionLikeBody(
     return cleanupCode.length === 0
       ? bodyCode
       : "try { " + bodyCode + "; } finally { " + cleanupCode + " }";
+  }
+
+  if (body.kind === "this") {
+    bodyCode =
+      "return " + codegenTransferredThisScopeObject(body.scope, context) + ";";
+    return cleanupCode.length === 0
+      ? bodyCode
+      : "try { " + bodyCode + " } finally { " + cleanupCode + " }";
   }
 
   bodyCode = "return " + codegenAST(body, context) + ";";
@@ -367,6 +827,98 @@ export function extractNumberValue(numericLiteral: string): string {
 
 export function codegenVariableName(name: string): string {
   return name === "this" ? "_tuffThisParam" : name;
+}
+
+export function getReferencedCleanupBindings(
+  node: ASTNode,
+  context: CodegenContext,
+  excludedNames: Set<string> = new Set<string>(),
+): CleanupBinding[] {
+  const referencedBindings: CleanupBinding[] = [];
+
+  for (const [name, bindingInfo] of context.variables) {
+    if (excludedNames.has(name) || !bindingNeedsCleanup(bindingInfo)) {
+      continue;
+    }
+
+    if (!astReferencesBinding(node, new Set([name]))) {
+      continue;
+    }
+
+    referencedBindings.push(
+      createCleanupBinding(
+        name,
+        bindingInfo.type,
+        bindingInfo.destructorFunction,
+      ),
+    );
+  }
+
+  return referencedBindings;
+}
+
+export function codegenClosureCapture(
+  node: ASTNode,
+  context: CodegenContext,
+): string | undefined {
+  if (node.kind !== "closure") {
+    return undefined;
+  }
+
+  const capturedBindings = getReferencedCleanupBindings(
+    node.body,
+    context,
+    new Set(node.parameters.map((parameter) => parameter.name)),
+  );
+  if (capturedBindings.length === 0) {
+    return undefined;
+  }
+
+  const captureNames = capturedBindings
+    .map((binding) => binding.name)
+    .join(", ");
+  const captureArgs = capturedBindings
+    .map((binding) => {
+      const emittedName = codegenVariableName(binding.name);
+      return (
+        "(() => { const _tuffCaptured = " +
+        emittedName +
+        "; " +
+        emittedName +
+        " = undefined; return _tuffCaptured; })()"
+      );
+    })
+    .join(", ");
+  const cleanupCode = capturedBindings
+    .map((binding) => {
+      const emittedName = codegenVariableName(binding.name);
+      return (
+        codegenManagedCleanupCall(emittedName, binding.destructorFunction) +
+        "; " +
+        emittedName +
+        " = undefined;"
+      );
+    })
+    .join(" ");
+  const closureFunction = codegenFunctionLikeDeclaration(
+    undefined,
+    node.parameters,
+    node.returnType,
+    node.body,
+    false,
+  );
+
+  return (
+    "((" +
+    captureNames +
+    ") => { const _tuffClosure = " +
+    closureFunction +
+    "; _tuffClosure.__tuffCleanup = () => { " +
+    cleanupCode +
+    " }; return _tuffClosure; })(" +
+    captureArgs +
+    ")"
+  );
 }
 
 export function generateStatementCode(
@@ -460,6 +1012,69 @@ export function codegenThisScopeObject(scope: ScopeFrame): string {
     " const _tuffThis = { " +
     memberDefinitions.join(", ") +
     " }; return _tuffThis; })()"
+  );
+}
+
+export function codegenTransferredThisScopeObject(
+  scope: ScopeFrame,
+  context: CodegenContext,
+): string {
+  const fieldInitializers: string[] = [];
+  const cleanupSteps: string[] = [];
+
+  for (const [name, binding] of scope.members) {
+    if (binding.kind === "function") {
+      fieldInitializers.push(
+        name +
+          ": (..._tuffArgs) => " +
+          name +
+          ".length === _tuffArgs.length + 1 ? " +
+          name +
+          "(_tuffObject, ..._tuffArgs) : " +
+          name +
+          "(..._tuffArgs)",
+      );
+      continue;
+    }
+
+    if (binding.kind !== "variable") {
+      continue;
+    }
+
+    const emittedName = codegenVariableName(name);
+    const bindingInfo = context.variables.get(name);
+    const needsCleanup = bindingInfo ? bindingNeedsCleanup(bindingInfo) : false;
+    const fieldValue = needsCleanup
+      ? "(() => { const _tuffMoved = " +
+        emittedName +
+        "; " +
+        emittedName +
+        " = undefined; return _tuffMoved; })()"
+      : emittedName;
+
+    fieldInitializers.push(name + ": " + fieldValue);
+
+    if (!needsCleanup) {
+      continue;
+    }
+
+    cleanupSteps.push(
+      codegenManagedCleanupCall(
+        "_tuffObject." + name,
+        bindingInfo.destructorFunction,
+      ) +
+        "; _tuffObject." +
+        name +
+        " = undefined;",
+    );
+  }
+
+  return (
+    "(() => { const _tuffObject = { " +
+    fieldInitializers.join(", ") +
+    " }; _tuffObject.__tuffCleanup = () => { " +
+    cleanupSteps.join(" ") +
+    " }; return _tuffObject; })()"
   );
 }
 
@@ -557,7 +1172,7 @@ export function codegenAST(
     const value = codegenAST(node.value, context);
     const bindingInfo = context.variables.get(node.name);
     const emittedName = codegenVariableName(node.name);
-    if (!bindingInfo?.destructorFunction) {
+    if (!bindingInfo || !bindingNeedsCleanup(bindingInfo)) {
       return emittedName + " = " + value;
     }
 
@@ -567,10 +1182,8 @@ export function codegenAST(
       "; if (" +
       emittedName +
       " !== undefined) { " +
-      bindingInfo.destructorFunction +
-      "(" +
-      emittedName +
-      "); } " +
+      codegenManagedCleanupCall(emittedName, bindingInfo.destructorFunction) +
+      "; } " +
       emittedName +
       " = _tuffValue; return _tuffValue; })()"
     );
@@ -640,7 +1253,17 @@ export function codegenAST(
       // Address-of: &x -> x (in our simple model, we just return the variable/value)
       return operand;
     } else if (node.operator === "&move") {
-      // Move: &move x -> x (ownership transfer is a type-system concept only)
+      if (node.operand.kind === "variable") {
+        const emittedName = codegenVariableName(node.operand.name);
+        return (
+          "(() => { const _tuffMoved = " +
+          emittedName +
+          "; " +
+          emittedName +
+          " = undefined; return _tuffMoved; })()"
+        );
+      }
+
       return codegenAST(node.operand, context);
     }
   }
@@ -763,6 +1386,26 @@ export function codegenAST(
   }
 
   if (node.kind === "return") {
+    if (node.value.kind === "this") {
+      return (
+        "return " + codegenTransferredThisScopeObject(node.value.scope, context)
+      );
+    }
+
+    if (node.value.kind === "variable") {
+      const bindingInfo = context.variables.get(node.value.name);
+      if (bindingInfo && bindingNeedsCleanup(bindingInfo)) {
+        const emittedName = codegenVariableName(node.value.name);
+        return (
+          "return (() => { const _tuffReturned = " +
+          emittedName +
+          "; " +
+          emittedName +
+          " = undefined; return _tuffReturned; })()"
+        );
+      }
+    }
+
     const value = codegenAST(node.value, context);
     return "return " + value;
   }
@@ -905,12 +1548,15 @@ export function codegenAST(
   }
 
   if (node.kind === "closure") {
-    return codegenFunctionLikeDeclaration(
-      undefined,
-      node.parameters,
-      node.returnType,
-      node.body,
-      false,
+    return (
+      codegenClosureCapture(node, context) ??
+      codegenFunctionLikeDeclaration(
+        undefined,
+        node.parameters,
+        node.returnType,
+        node.body,
+        false,
+      )
     );
   }
 
@@ -938,15 +1584,32 @@ export function codegenAST(
   }
 
   if (node.kind === "struct-instantiation") {
-    // Generate struct instantiation as JavaScript object
     const fields = node.fields
       .map((f) => {
         const value = codegenAST(f.value, context);
         return f.name + ": " + value;
       })
       .join(", ");
+    const cleanupSteps = node.fields
+      .map(
+        (field) =>
+          codegenManagedCleanupCall(
+            "_tuffObject." + field.name,
+            field.destructorFunction,
+          ) +
+          "; _tuffObject." +
+          field.name +
+          " = undefined;",
+      )
+      .join(" ");
 
-    return "{ " + fields + " }";
+    return (
+      "(() => { const _tuffObject = { " +
+      fields +
+      " }; _tuffObject.__tuffCleanup = () => { " +
+      cleanupSteps +
+      " }; return _tuffObject; })()"
+    );
   }
 
   if (node.kind === "array-literal") {
@@ -957,13 +1620,20 @@ export function codegenAST(
         generator +
         "); for (let _tuffIndex = 0; _tuffIndex < " +
         node.repeatCount +
-        "; _tuffIndex += 1) { _tuffArray.push(_tuffGenerator()); } return _tuffArray; })()"
+        "; _tuffIndex += 1) { _tuffArray.push(_tuffGenerator()); } _tuffArray.__tuffCleanup = () => { for (let _tuffIndex = 0; _tuffIndex < _tuffArray.length; _tuffIndex += 1) { __tuffCleanupManagedValue(_tuffArray[_tuffIndex], " +
+        (node.elementDestructorFunction ?? "undefined") +
+        "); _tuffArray[_tuffIndex] = undefined; } }; return _tuffArray; })()"
       );
     }
 
-    // Generate array literal as a JavaScript array.
     const elements = node.elements.map((elem) => codegenAST(elem, context));
-    return "[" + elements.join(", ") + "]";
+    return (
+      "(() => { const _tuffArray = [" +
+      elements.join(", ") +
+      "]; _tuffArray.__tuffCleanup = () => { for (let _tuffIndex = 0; _tuffIndex < _tuffArray.length; _tuffIndex += 1) { __tuffCleanupManagedValue(_tuffArray[_tuffIndex], " +
+      (node.elementDestructorFunction ?? "undefined") +
+      "); _tuffArray[_tuffIndex] = undefined; } }; return _tuffArray; })()"
+    );
   }
 
   if (node.kind === "array-access") {
@@ -1020,7 +1690,6 @@ export function codegenAST(
   }
 
   if (node.kind === "vtable-literal") {
-    // Generate: ((_e0, _e1, ...) => (inst) => ({ method0: () => _e0(inst), ... }))(ref0, ref1, ...)
     const paramNames = node.entries.map((_, i) => "_vtable_" + i);
     const refExprs = node.entries.map((e) => codegenAST(e.reference, context));
     const bindings = node.entries
@@ -1029,9 +1698,9 @@ export function codegenAST(
     return (
       "((" +
       paramNames.join(", ") +
-      ") => ((inst) => ({ " +
+      ") => ((inst) => { const _tuffObject = { " +
       bindings +
-      " })))(" +
+      " }; _tuffObject.__tuffCleanup = () => { __tuffCleanupManagedValue(inst, undefined); inst = undefined; }; return _tuffObject; })) (" +
       refExprs.join(", ") +
       ")"
     );

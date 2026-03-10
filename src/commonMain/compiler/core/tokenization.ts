@@ -413,6 +413,7 @@ export function tokenize(input: string): Result<Token[], string> {
         ident === "object" ||
         ident === "type" ||
         ident === "then" ||
+        ident === "finally" ||
         ident === "this" ||
         ident === "is" ||
         ident === "mut" ||

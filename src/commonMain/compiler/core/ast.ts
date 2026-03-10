@@ -53,6 +53,7 @@ export interface KeywordToken {
     | "object"
     | "type"
     | "then"
+    | "finally"
     | "this"
     | "is"
     | "mut"
@@ -385,6 +386,7 @@ export interface FunctionParameter {
   name: string;
   type: string;
   out?: boolean;
+  move?: boolean;
   aliasType?: string;
   destructorFunction?: string;
 }
@@ -523,6 +525,7 @@ export interface ExternTypeNode {
 export interface StructInstantiationField {
   name: string;
   value: ASTNode;
+  destructorFunction?: string;
 }
 
 export interface StructInstantiationNode {
@@ -545,6 +548,7 @@ export interface ArrayLiteralNode {
   generator?: ASTNode;
   repeatCount?: number;
   elemType?: string;
+  elementDestructorFunction?: string;
 }
 
 export interface ArrayAccessNode {

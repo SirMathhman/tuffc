@@ -696,10 +696,19 @@ test("type alias: mutual cycle is error", () => {
   expectError(executeTuff("type A = B; type B = A; let x : A = 1; x"));
 });
 
+test("destructor: scope end runs finally drop for top-level binding", () => {
+  expectValue(
+    executeTuff(
+      "type DroppableI32 = I32 finally drop; let mut counter : I32 = 0; fn drop(this : *move DroppableI32) : Void => counter += 1; let value : DroppableI32 = 1; counter",
+    ),
+    1,
+  );
+});
+
 test("destructor: local block drops bindings in reverse declaration order", () => {
   expectValue(
     executeTuff(
-      "let mut log : I32 = 0; type Counted = I32 then drop; fn drop(this : Counted) : Void => log = log * 10 + this; fn scoped() : I32 => { if true { let first : Counted = 1; let second : Counted = 2; } log } scoped()",
+      "let mut log : I32 = 0; type Counted = I32 finally drop; fn drop(this : *move Counted) : Void => log = log * 10 + *this; fn scoped() : I32 => { if true { let first : Counted = 1; let second : Counted = 2; } log } scoped()",
     ),
     21,
   );
@@ -708,7 +717,7 @@ test("destructor: local block drops bindings in reverse declaration order", () =
 test("destructor: reassignment drops previous value before overwrite", () => {
   expectValue(
     executeTuff(
-      "let mut log : I32 = 0; type Counted = I32 then drop; fn drop(this : Counted) : Void => log = log * 10 + this; let mut value : Counted = 1; value = 2; log * 10 + value",
+      "let mut log : I32 = 0; type Counted = I32 finally drop; fn drop(this : *move Counted) : Void => log = log * 10 + *this; let mut value : Counted = 1; value = 2; log * 10 + value",
     ),
     12,
   );
@@ -717,7 +726,7 @@ test("destructor: reassignment drops previous value before overwrite", () => {
 test("destructor: function return drops locals before caller continues", () => {
   expectValue(
     executeTuff(
-      "let mut log : I32 = 0; type Counted = I32 then drop; fn drop(this : Counted) : Void => log = log * 10 + this; fn make() : I32 => { let local : Counted = 3; 7 } let result : I32 = make(); log * 10 + result",
+      "let mut log : I32 = 0; type Counted = I32 finally drop; fn drop(this : *move Counted) : Void => log = log * 10 + *this; fn make() : I32 => { let local : Counted = 3; 7 } let result : I32 = make(); log * 10 + result",
     ),
     37,
   );
@@ -726,7 +735,7 @@ test("destructor: function return drops locals before caller continues", () => {
 test("destructor: drop function must return Void", () => {
   expectError(
     executeTuff(
-      "type Counted = I32 then drop; fn drop(this : Counted) : I32 => this; 0",
+      "type Counted = I32 finally drop; fn drop(this : *move Counted) : I32 => *this; 0",
     ),
   );
 });
@@ -734,30 +743,86 @@ test("destructor: drop function must return Void", () => {
 test("destructor: drop function first parameter must be named this", () => {
   expectError(
     executeTuff(
-      "type Counted = I32 then drop; fn drop(value : Counted) : Void => 0; 0",
+      "type Counted = I32 finally drop; fn drop(value : *move Counted) : Void => 0; 0",
     ),
   );
 });
 
-test("destructor: drop function parameter must use the alias type", () => {
+test("destructor: drop function parameter must use a move pointer to the alias type", () => {
   expectError(
     executeTuff(
-      "type Counted = I32 then drop; fn drop(this : I32) : Void => 0; 0",
+      "type Counted = I32 finally drop; fn drop(this : Counted) : Void => 0; 0",
     ),
   );
 });
 
 test("destructor: missing drop function is error", () => {
   expectError(
-    executeTuff("type Counted = I32 then drop; let value : Counted = 1; value"),
+    executeTuff(
+      "type Counted = I32 finally drop; let value : Counted = 1; value",
+    ),
   );
 });
 
 test("destructor: moved binding cannot be used after transfer", () => {
   expectError(
     executeTuff(
-      "type Counted = I32 then drop; fn drop(this : Counted) : Void => 0; let value : Counted = 1; let moved : Counted = value; value",
+      "type Counted = I32 finally drop; fn drop(this : *move Counted) : Void => 0; let value : Counted = 1; let moved : Counted = value; value",
     ),
+  );
+});
+
+test("destructor: struct binding recursively drops owned fields", () => {
+  expectValue(
+    executeTuff(
+      "let mut log : I32 = 0; type Counted = I32 finally drop; fn drop(this : *move Counted) : Void => log += *this; struct Payload { value : Counted; } let payload : Payload = Payload { value : 5 }; log",
+    ),
+    5,
+  );
+});
+
+test("destructor: array binding recursively drops owned compound elements", () => {
+  expectValue(
+    executeTuff(
+      "let mut log : I32 = 0; type Counted = I32 finally drop; fn drop(this : *move Counted) : Void => log += *this; struct Payload { value : Counted; } let payloads : [Payload; 2] = [Payload { value : 2 }, Payload { value : 3 }]; log",
+    ),
+    5,
+  );
+});
+
+test("destructor: contract wrapper drops underlying moved value", () => {
+  expectValue(
+    executeTuff(
+      "let mut log : I32 = 0; type Counted = I32 finally drop; fn drop(this : *move Counted) : Void => log += *this; contract Reader { fn get() : I32; } struct Payload { value : Counted; } fn makeReader() : Reader => { let payload : Payload = Payload { value : 7 }; (~Reader<Payload> { get : (this : Payload) => this.value; })(&move payload) } let reader : Reader = makeReader(); let value : I32 = reader.get(); log * 10 + value",
+    ),
+    77,
+  );
+});
+
+test("destructor: closure wrapper drops captured owned value", () => {
+  expectValue(
+    executeTuff(
+      "let mut log : I32 = 0; type Counted = I32 finally drop; fn drop(this : *move Counted) : Void => log += *this; struct Payload { value : Counted; } fn makeReader() : () => I32 => { let payload : Payload = Payload { value : 5 }; () => payload.value } let reader : () => I32 = makeReader(); let value : I32 = reader(); log * 10 + value",
+    ),
+    55,
+  );
+});
+
+test("destructor: alias destructor composes with owned compound cleanup", () => {
+  expectValue(
+    executeTuff(
+      "let mut log : I32 = 0; type Counted = I32 finally drop; fn drop(this : *move Counted) : Void => log += *this; struct Payload { value : Counted; } type ManagedPayload = Payload finally release; fn release(this : *move ManagedPayload) : Void => log += 100; let payload : ManagedPayload = Payload { value : 4 }; log",
+    ),
+    104,
+  );
+});
+
+test("destructor: constructor this return takes ownership of managed parameter", () => {
+  expectValue(
+    executeTuff(
+      "let mut log : I32 = 0; type Counted = I32 finally drop; fn drop(this : *move Counted) : Void => log += *this; struct Wrapper { value : Counted; } fn Wrapper(value : Counted) : Wrapper => this; let wrapper : Wrapper = Wrapper(6); let observed : I32 = wrapper.value; log * 10 + observed",
+    ),
+    66,
   );
 });
 
@@ -4134,22 +4199,14 @@ test("structless constructor: inline vtable call returns correct value", () => {
 
 test("structless constructor: type is usable in explicit annotation", () => {
   expectValue(
-    executeTuff(
-      STRUCTLESS_SQUARE +
-        " let square : Square = Square(5);" +
-        " 0",
-    ),
+    executeTuff(STRUCTLESS_SQUARE + " let square : Square = Square(5);" + " 0"),
     0,
   );
 });
 
 test("structless constructor: returning value with inferred type works", () => {
   expectValue(
-    executeTuff(
-      STRUCTLESS_SQUARE +
-        " let square = Square(7);" +
-        " 0",
-    ),
+    executeTuff(STRUCTLESS_SQUARE + " let square = Square(7);" + " 0"),
     0,
   );
 });
