@@ -1,15 +1,53 @@
-let mut list : *mut [I32] = ArrayList.create<I32>(0USize);
-list = ArrayList.push<I32>(list, 10);
-list = ArrayList.push<I32>(list, 20);
-list = ArrayList.push<I32>(list, 30);
-ArrayList.set<I32>(list, 1USize, 25);
+let mut cleanup : I32 = 0;
 
-let result : I32 =
-  ArrayList.get<I32>(list, 0USize) +
-  ArrayList.get<I32>(list, 1USize) +
-  ArrayList.get<I32>(list, 2USize) +
-  ArrayList.len<I32>(list) +
-  ArrayList.capacity<I32>(list);
+type Logged = I32 finally drop;
 
-ArrayList.free<I32>(list);
-result
+fn drop(this : *move Logged) : Void => cleanup += *this;
+
+struct Bonus {
+  value : Logged;
+}
+
+fn Bonus(value : Logged) : Bonus => this;
+
+contract ValueSource {
+  fn next() : I32;
+}
+
+struct DoubledSource {
+  base : I32;
+}
+
+fn DoubledSource(base : I32) : DoubledSource => this;
+
+fn makeMapper(offset : I32) : (I32) => I32 => {
+  let bonus : Bonus = Bonus(5);
+  (value : I32) => value + offset + bonus.value
+}
+
+fn makeSource() : ValueSource => {
+  let concrete : DoubledSource = DoubledSource(11);
+  (~ValueSource<DoubledSource> { next : (this : DoubledSource) => this.base + this.base; })(&move concrete)
+}
+
+fn run() : I32 => {
+  let mapper = makeMapper(1);
+  let source : ValueSource = makeSource();
+  let mut list : *mut [I32] = ArrayList.create<I32>(0USize);
+
+  list = ArrayList.push<I32>(list, 10);
+  list = ArrayList.push<I32>(list, source.next());
+  list = ArrayList.push<I32>(list, 30);
+
+  let total : I32 =
+    mapper(ArrayList.get<I32>(list, 0USize)) +
+    mapper(ArrayList.get<I32>(list, 1USize)) +
+    ArrayList.get<I32>(list, 2USize);
+  let stats : I32 = ArrayList.len<I32>(list) + ArrayList.capacity<I32>(list);
+
+  ArrayList.free<I32>(list);
+  total + stats
+}
+
+let result : I32 = run();
+cleanup * 100 + result

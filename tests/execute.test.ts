@@ -1373,7 +1373,7 @@ test("example: ArrayList .tuff project executes", () => {
       "Main",
       loadProjectFilesFromDirectory(arrayListExampleDir),
     ),
-    72,
+    581,
   );
 });
 
