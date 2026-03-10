@@ -47,6 +47,7 @@ export interface KeywordToken {
   type: "KEYWORD";
   value:
     | "let"
+    | "lifetime"
     | "contract"
     | "extern"
     | "object"
@@ -55,6 +56,7 @@ export interface KeywordToken {
     | "this"
     | "is"
     | "mut"
+    | "out"
     | "if"
     | "else"
     | "while"
@@ -376,6 +378,7 @@ export interface MatchNode {
 export interface FunctionParameter {
   name: string;
   type: string;
+  out?: boolean;
   aliasType?: string;
   destructorFunction?: string;
 }
@@ -783,6 +786,8 @@ export interface Parser {
   globalScope: ScopeFrame;
   currentScope: ScopeFrame;
   currentModuleName: string | undefined;
+  activeLifetimeNames: string[];
+  lifetimeDeclarationScopes: Set<string>[];
   // Type narrowing: track variables with proven constraints (from control flow guards)
   provenConstraints: Map<string, RefinementType>; // e.g., "x" -> I32 > 100
 }

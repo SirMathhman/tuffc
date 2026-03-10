@@ -681,6 +681,113 @@ export function consumeCommaOrClosingParen(
   return ok(undefined);
 }
 
+export function isTypeAnnotationStartToken(token: Token | undefined): boolean {
+  return (
+    !!token &&
+    (token.type === "IDENTIFIER" ||
+      token.type === "LBRACKET" ||
+      token.type === "LPAREN" ||
+      (token.type === "OPERATOR" && token.value === "*"))
+  );
+}
+
+export function isKnownTypeAnnotationName(
+  parser: Parser,
+  typeName: string,
+): boolean {
+  return (
+    VALID_TYPES.has(typeName) ||
+    parser.structNames.has(typeName) ||
+    parser.aliasDeclarations.has(typeName) ||
+    isGenericTypeParameter(parser, typeName)
+  );
+}
+
+export function isLifetimeAnnotationFollower(
+  token: Token | undefined,
+): boolean {
+  return (
+    isTypeAnnotationStartToken(token) ||
+    (token?.type === "KEYWORD" && token.value === "mut")
+  );
+}
+
+export function getCurrentLifetimeDeclarationScope(
+  parser: Parser,
+): Set<string> {
+  return parser.lifetimeDeclarationScopes[
+    parser.lifetimeDeclarationScopes.length - 1
+  ] as Set<string>;
+}
+
+export function enterLifetimeScope(
+  parser: Parser,
+  lifetimeName: string,
+): Result<void, string> {
+  const currentScope = getCurrentLifetimeDeclarationScope(parser);
+  if (currentScope.has(lifetimeName)) {
+    return err(
+      "Lifetime '" + lifetimeName + "' is already declared in this scope",
+    );
+  }
+
+  if (parser.activeLifetimeNames.includes(lifetimeName)) {
+    return err(
+      "Lifetime '" + lifetimeName + "' cannot shadow an enclosing lifetime",
+    );
+  }
+
+  currentScope.add(lifetimeName);
+  parser.activeLifetimeNames.push(lifetimeName);
+  parser.lifetimeDeclarationScopes.push(new Set<string>());
+  return ok(undefined);
+}
+
+export function exitLifetimeScope(parser: Parser): void {
+  parser.activeLifetimeNames.pop();
+  if (parser.lifetimeDeclarationScopes.length > 1) {
+    parser.lifetimeDeclarationScopes.pop();
+  }
+}
+
+export function parseLifetimeBlockHeader(
+  parser: Parser,
+): Result<string, string> {
+  const lifetimeKeyword = expectKeyword(
+    parser,
+    "lifetime",
+    "Expected 'lifetime'",
+  );
+  if (!lifetimeKeyword.ok) {
+    return lifetimeKeyword;
+  }
+
+  const nameToken = current(parser);
+  if (nameToken.type !== "IDENTIFIER") {
+    return err("Expected lifetime name");
+  }
+  const lifetimeName = nameToken.value;
+  advance(parser);
+
+  if (current(parser).type !== "LBRACE") {
+    return err("Expected '{' after lifetime name");
+  }
+  advance(parser);
+
+  return ok(lifetimeName);
+}
+
+export function parseAndEnterLifetimeScope(
+  parser: Parser,
+): Result<void, string> {
+  const lifetimeName = parseLifetimeBlockHeader(parser);
+  if (!lifetimeName.ok) {
+    return lifetimeName;
+  }
+
+  return enterLifetimeScope(parser, lifetimeName.value);
+}
+
 export function getImplicitReceiverType(
   parser: Parser,
 ): Result<string, string> {
@@ -716,6 +823,7 @@ export function parseImplicitReceiverParameterFromAmbient(
   return ok({
     name: "this",
     type: receiverType.value,
+    out: false,
   });
 }
 
@@ -826,13 +934,14 @@ export function parseFunctionParameters(
     }
     advance(parser);
 
-    const paramTypeResult = parseTypeReference(parser);
+    const paramTypeResult = parseFunctionParameterTypeReference(parser);
     if (!paramTypeResult.ok) {
       return paramTypeResult;
     }
     parameters.push({
       name: paramName,
       type: paramTypeResult.value.type,
+      out: paramTypeResult.value.out,
       aliasType: paramTypeResult.value.aliasType,
       destructorFunction: paramTypeResult.value.destructorFunction,
     });
@@ -872,13 +981,28 @@ export function canStartClosureParameterList(parser: Parser): boolean {
   return nextTok?.type === "COLON";
 }
 
+export interface ParsedTypeAnnotationInfo {
+  type: string;
+  out: boolean;
+}
+
 export function parseTypeAnnotation(
   parser: Parser,
   resolveAliases: boolean = true,
 ): Result<string, string> {
+  const typeInfo = parseTypeAnnotationInfo(parser, resolveAliases, false);
+  return typeInfo.ok ? ok(typeInfo.value.type) : typeInfo;
+}
+
+export function parseTypeAnnotationInfo(
+  parser: Parser,
+  resolveAliases: boolean = true,
+  allowOut: boolean = false,
+): Result<ParsedTypeAnnotationInfo, string> {
   // Count and consume any leading * for pointer types
   let pointerDepth = 0;
   let isMutable = false;
+  let isOut = false;
   while (
     current(parser).type === "OPERATOR" &&
     (current(parser) as OperatorToken).value === "*"
@@ -886,11 +1010,87 @@ export function parseTypeAnnotation(
     pointerDepth++;
     advance(parser);
 
-    // Check for 'mut' keyword after *
-    if (tryConsumeMutKeyword(parser)) {
-      isMutable = true;
-      break; // mut can only appear once, after the last *
+    let consumedModifier = false;
+    while (true) {
+      const typeToken = current(parser);
+      if (typeToken.type === "KEYWORD") {
+        const keyword = typeToken.value;
+        if (keyword === "mut") {
+          if (isMutable) {
+            return err("Pointer type cannot use 'mut' more than once");
+          }
+          isMutable = true;
+          consumedModifier = true;
+          advance(parser);
+          continue;
+        }
+
+        if (keyword === "out") {
+          if (!allowOut) {
+            return err(
+              "The 'out' modifier is only valid for function parameters",
+            );
+          }
+          if (isOut) {
+            return err("Pointer type cannot use 'out' more than once");
+          }
+          isOut = true;
+          consumedModifier = true;
+          advance(parser);
+          continue;
+        }
+
+        break;
+      }
+
+      if (typeToken.type === "IDENTIFIER") {
+        const nextToken = parser.tokens[parser.pos + 1];
+        const isExplicitLifetime =
+          isLifetimeAnnotationFollower(nextToken) &&
+          (parser.activeLifetimeNames.includes(typeToken.value) ||
+            !isKnownTypeAnnotationName(parser, typeToken.value));
+
+        if (!isExplicitLifetime) {
+          break;
+        }
+
+        if (!parser.activeLifetimeNames.includes(typeToken.value)) {
+          return err("Unknown lifetime '" + typeToken.value + "'");
+        }
+
+        consumedModifier = true;
+        advance(parser);
+        continue;
+      }
+
+      break;
     }
+
+    if (consumedModifier) {
+      break;
+    }
+  }
+
+  const currentTypeToken = current(parser);
+  if (
+    currentTypeToken.type === "IDENTIFIER" &&
+    parser.activeLifetimeNames.includes(currentTypeToken.value) &&
+    isLifetimeAnnotationFollower(parser.tokens[parser.pos + 1])
+  ) {
+    return err("Explicit lifetimes are only valid on pointer types");
+  }
+
+  if (
+    current(parser).type === "KEYWORD" &&
+    (current(parser) as KeywordToken).value === "out"
+  ) {
+    return allowOut
+      ? err("Out parameters must use pointer types")
+      : err("The 'out' modifier is only valid for function parameters");
+  }
+
+  if (isOut && !isMutable) {
+    return err("Out pointer parameters must also be marked 'mut'");
   }
 
   // Check for array or slice value type [ElementType; Length] / [ElementType]
@@ -906,11 +1106,14 @@ export function parseTypeAnnotation(
 
     if (current(parser).type === "RBRACKET") {
       advance(parser);
-      return parseTrailingUnionType(
+      const sliceType = parseTrailingUnionType(
         parser,
         applyPointerDecorators("[" + elemType + "]", pointerDepth, isMutable),
         resolveAliases,
       );
+      return sliceType.ok
+        ? ok({ type: sliceType.value, out: isOut })
+        : sliceType;
     }
 
     // Expect ;
@@ -936,7 +1139,7 @@ export function parseTypeAnnotation(
     }
     advance(parser);
 
-    return parseTrailingUnionType(
+    const arrayType = parseTrailingUnionType(
       parser,
       applyPointerDecorators(
         "[" + elemType + ";" + lengthValue + "]",
@@ -945,6 +1148,7 @@ export function parseTypeAnnotation(
       ),
       resolveAliases,
     );
+    return arrayType.ok ? ok({ type: arrayType.value, out: isOut }) : arrayType;
   }
 
   // Function type: (T1, T2) => R
@@ -983,7 +1187,7 @@ export function parseTypeAnnotation(
       return returnTypeResult;
     }
 
-    return parseTrailingUnionType(
+    const functionType = parseTrailingUnionType(
       parser,
       applyPointerDecorators(
         "(" + parameterTypes.join(", ") + ") => " + returnTypeResult.value,
@@ -992,6 +1196,9 @@ export function parseTypeAnnotation(
       ),
       resolveAliases,
     );
+    return functionType.ok
+      ? ok({ type: functionType.value, out: isOut })
+      : functionType;
   }
 
   const typeTok = current(parser);
@@ -1047,11 +1254,14 @@ export function parseTypeAnnotation(
   }
 
   // Construct pointer type string: e.g., "*I32", "*mut I32", "**I32", "*mut *I32"
-  return parseTrailingUnionType(
+  const typeResult = parseTrailingUnionType(
     parser,
     applyPointerDecorators(normalizedTypeResult.value, pointerDepth, isMutable),
     resolveAliases,
   );
+  return typeResult.ok
+    ? ok({ type: typeResult.value, out: isOut })
+    : typeResult;
 }
 
 export function parseTypeValue(
@@ -1074,16 +1284,19 @@ export function parseTypeValue(
   return err("Expected type");
 }
 
+export function getCurrentAliasType(parser: Parser): string | undefined {
+  const currentToken = current(parser);
+  return currentToken.type === "IDENTIFIER" &&
+    parser.aliasDeclarations.has(currentToken.value)
+    ? currentToken.value
+    : undefined;
+}
+
 export function parseTypeReference(
   parser: Parser,
   resolveAliases: boolean = true,
 ): Result<ParsedTypeReference, string> {
-  const currentToken = current(parser);
-  const aliasType =
-    currentToken.type === "IDENTIFIER" &&
-    parser.aliasDeclarations.has(currentToken.value)
-      ? currentToken.value
-      : undefined;
+  const aliasType = getCurrentAliasType(parser);
 
   const typeResult = parseTypeAnnotation(parser, resolveAliases);
   if (!typeResult.ok) {
@@ -1092,6 +1305,31 @@ export function parseTypeReference(
 
   return ok({
     type: typeResult.value,
+    aliasType,
+    destructorFunction: aliasType
+      ? parser.aliasDestructors.get(aliasType)
+      : undefined,
+  });
+}
+
+export interface ParsedFunctionParameterTypeReference extends ParsedTypeReference {
+  out: boolean;
+}
+
+export function parseFunctionParameterTypeReference(
+  parser: Parser,
+  resolveAliases: boolean = true,
+): Result<ParsedFunctionParameterTypeReference, string> {
+  const aliasType = getCurrentAliasType(parser);
+
+  const typeResult = parseTypeAnnotationInfo(parser, resolveAliases, true);
+  if (!typeResult.ok) {
+    return typeResult;
+  }
+
+  return ok({
+    type: typeResult.value.type,
+    out: typeResult.value.out,
     aliasType,
     destructorFunction: aliasType
       ? parser.aliasDestructors.get(aliasType)
@@ -2118,6 +2356,108 @@ export function consumeOptionalSemicolon(parser: Parser): void {
   }
 }
 
+export function parseLifetimeBlockMembers(
+  parser: Parser,
+  statements: ASTNode[],
+): Result<void, string> {
+  while (true) {
+    const token = current(parser);
+    if (token.type === "EOF" || token.type === "RBRACE") {
+      return ok(undefined);
+    }
+
+    if (token.type === "KEYWORD" && token.value === "extern") {
+      const externStatement = parseExternStatement(parser);
+      if (!externStatement.ok) {
+        return externStatement;
+      }
+      statements.push(externStatement.value);
+      continue;
+    }
+
+    if (token.type === "KEYWORD" && token.value === "type") {
+      const aliasStatement = parseTypeAliasStatement(parser);
+      if (!aliasStatement.ok) {
+        return aliasStatement;
+      }
+      statements.push(aliasStatement.value);
+      continue;
+    }
+
+    if (token.type === "KEYWORD" && token.value === "contract") {
+      const contractStatement = parseContractStatement(parser);
+      if (!contractStatement.ok) {
+        return contractStatement;
+      }
+      statements.push(contractStatement.value);
+      continue;
+    }
+
+    if (token.type === "KEYWORD" && token.value === "fn") {
+      const functionStatement = parseFunctionStatement(parser);
+      if (!functionStatement.ok) {
+        return functionStatement;
+      }
+      statements.push(functionStatement.value);
+      continue;
+    }
+
+    if (token.type === "KEYWORD" && token.value === "object") {
+      const objectStatement = parseObjectStatement(parser);
+      if (!objectStatement.ok) {
+        return objectStatement;
+      }
+      statements.push(objectStatement.value);
+      continue;
+    }
+
+    if (token.type === "KEYWORD" && token.value === "struct") {
+      const structStatement = parseStructStatement(parser);
+      if (!structStatement.ok) {
+        return structStatement;
+      }
+      statements.push(structStatement.value);
+      continue;
+    }
+
+    if (token.type === "KEYWORD" && token.value === "lifetime") {
+      const nestedLifetimeStatements = parseLifetimeStatement(parser);
+      if (!nestedLifetimeStatements.ok) {
+        return nestedLifetimeStatements;
+      }
+      statements.push(...nestedLifetimeStatements.value);
+      continue;
+    }
+
+    return err("Lifetime blocks only support declarations");
+  }
+}
+
+export function parseLifetimeStatement(
+  parser: Parser,
+): Result<ASTNode[], string> {
+  const scopeEntry = parseAndEnterLifetimeScope(parser);
+  if (!scopeEntry.ok) {
+    return scopeEntry;
+  }
+
+  const statements: ASTNode[] = [];
+  const blockResult = parseLifetimeBlockMembers(parser, statements);
+  if (!blockResult.ok) {
+    exitLifetimeScope(parser);
+    return blockResult;
+  }
+
+  if (current(parser).type !== "RBRACE") {
+    exitLifetimeScope(parser);
+    return err("Expected '}' after lifetime block");
+  }
+  advance(parser);
+  exitLifetimeScope(parser);
+
+  return ok(statements);
+}
+
 export function parseStatementBlock(
   parser: Parser,
   statements: ASTNode[],
@@ -2148,7 +2488,14 @@ export function parseStatementInBlock(
 ): Result<boolean, string> {
   const stmtTok = current(parser);
 
-  if (stmtTok.type === "KEYWORD" && stmtTok.value === "extern") {
+  if (stmtTok.type === "KEYWORD" && stmtTok.value === "lifetime") {
+    const lifetimeStatements = parseLifetimeStatement(parser);
+    if (!lifetimeStatements.ok) {
+      return lifetimeStatements;
+    }
+    statements.push(...lifetimeStatements.value);
+    return ok(true);
+  } else if (stmtTok.type === "KEYWORD" && stmtTok.value === "extern") {
     const externStmt = parseExternStatement(parser);
     if (!externStmt.ok) {
       return externStmt;
@@ -2468,6 +2815,7 @@ export function createBlockBodyWithOptionalExpression(
   // Check if it's a non-expression keyword
   const nonExprKeywords = new Set([
     "let",
+    "lifetime",
     "contract",
     "type",
     "fn",
@@ -3646,6 +3994,7 @@ export function parseDestructuringLetStatement(
 export function isReservedKeyword(name: string): boolean {
   return (
     name === "let" ||
+    name === "lifetime" ||
     name === "contract" ||
     name === "extern" ||
     name === "object" ||
@@ -3654,6 +4003,7 @@ export function isReservedKeyword(name: string): boolean {
     name === "this" ||
     name === "is" ||
     name === "mut" ||
+    name === "out" ||
     name === "if" ||
     name === "else" ||
     name === "while" ||
@@ -4516,6 +4866,637 @@ export function buildConstructorInstanceMetadata(
     : ok(undefined);
 }
 
+export interface OutParameterFlowResult {
+  normalStates: Set<string>[];
+  returnStates: Set<string>[];
+}
+
+export function cloneAssignedState(state: Set<string>): Set<string> {
+  return new Set(state);
+}
+
+export function cloneAssignedStates(states: Set<string>[]): Set<string>[] {
+  return states.map((state) => cloneAssignedState(state));
+}
+
+export function analyzeOutParameterChildren(
+  parser: Parser,
+  currentFunctionName: string,
+  outParameters: Set<string>,
+  states: Set<string>[],
+  children: ASTNode[],
+): Result<OutParameterFlowResult, string> {
+  let normalStates = cloneAssignedStates(states);
+  const returnStates: Set<string>[] = [];
+
+  for (const child of children) {
+    const childFlow = analyzeOutParameterFlow(
+      parser,
+      currentFunctionName,
+      outParameters,
+      normalStates,
+      child,
+    );
+    if (!childFlow.ok) {
+      return childFlow;
+    }
+
+    normalStates = childFlow.value.normalStates;
+    returnStates.push(...childFlow.value.returnStates);
+  }
+
+  return ok({ normalStates, returnStates });
+}
+
+export function getCallParameterMetadata(
+  parser: Parser,
+  currentFunctionName: string,
+  node: ASTNode,
+): FunctionParameter[] {
+  if (node.kind === "function-call") {
+    return node.name === currentFunctionName
+      ? []
+      : (parser.functions.get(node.name)?.parameters ?? []);
+  }
+
+  if (node.kind === "call" && node.callee.kind === "variable") {
+    return node.callee.name === currentFunctionName
+      ? []
+      : (parser.functions.get(node.callee.name)?.parameters ?? []);
+  }
+
+  return [];
+}
+
+export function markOutParametersAssignedFromCall(
+  parser: Parser,
+  currentFunctionName: string,
+  node: ASTNode,
+  outParameters: Set<string>,
+  states: Set<string>[],
+): Set<string>[] {
+  const parameters = getCallParameterMetadata(
+    parser,
+    currentFunctionName,
+    node,
+  );
+  if (!parameters.some((parameter) => parameter.out)) {
+    return states;
+  }
+
+  const args =
+    node.kind === "function-call" || node.kind === "call" ? node.arguments : [];
+
+  return states.map((state) => {
+    const nextState = cloneAssignedState(state);
+    for (let i = 0; i < parameters.length; i++) {
+      const parameter = parameters[i];
+      const arg = args[i];
+      if (
+        parameter?.out &&
+        arg?.kind === "variable" &&
+        outParameters.has(arg.name)
+      ) {
+        nextState.add(arg.name);
+      }
+    }
+    return nextState;
+  });
+}
+
+export function analyzeOutParameterFlow(
+  parser: Parser,
+  currentFunctionName: string,
+  outParameters: Set<string>,
+  states: Set<string>[],
+  node: ASTNode,
+): Result<OutParameterFlowResult, string> {
+  if (
+    node.kind === "number" ||
+    node.kind === "boolean" ||
+    node.kind === "char" ||
+    node.kind === "string" ||
+    node.kind === "read" ||
+    node.kind === "module-reference" ||
+    node.kind === "variable" ||
+    node.kind === "move" ||
+    node.kind === "this" ||
+    node.kind === "break" ||
+    node.kind === "continue" ||
+    node.kind === "type-alias" ||
+    node.kind === "contract" ||
+    node.kind === "extern-module" ||
+    node.kind === "extern-function" ||
+    node.kind === "extern-let" ||
+    node.kind === "extern-type" ||
+    node.kind === "struct" ||
+    node.kind === "function" ||
+    node.kind === "closure" ||
+    node.kind === "object" ||
+    node.kind === "module"
+  ) {
+    return ok({ normalStates: cloneAssignedStates(states), returnStates: [] });
+  }
+
+  if (node.kind === "let") {
+    return analyzeOutParameterFlow(
+      parser,
+      currentFunctionName,
+      outParameters,
+      states,
+      node.initializer,
+    );
+  }
+
+  if (node.kind === "destructure") {
+    return analyzeOutParameterChildren(
+      parser,
+      currentFunctionName,
+      outParameters,
+      states,
+      node.statements.map((statement) => statement.initializer),
+    );
+  }
+
+  if (node.kind === "deref-assign") {
+    const targetFlow = analyzeOutParameterFlow(
+      parser,
+      currentFunctionName,
+      outParameters,
+      states,
+      node.target,
+    );
+    if (!targetFlow.ok) {
+      return targetFlow;
+    }
+
+    const valueFlow = analyzeOutParameterFlow(
+      parser,
+      currentFunctionName,
+      outParameters,
+      targetFlow.value.normalStates,
+      node.value,
+    );
+    if (!valueFlow.ok) {
+      return valueFlow;
+    }
+
+    return ok({
+      normalStates: valueFlow.value.normalStates.map((state) => {
+        const nextState = cloneAssignedState(state);
+        if (
+          node.target.kind === "variable" &&
+          outParameters.has(node.target.name)
+        ) {
+          nextState.add(node.target.name);
+        }
+        return nextState;
+      }),
+      returnStates: [
+        ...targetFlow.value.returnStates,
+        ...valueFlow.value.returnStates,
+      ],
+    });
+  }
+
+  if (node.kind === "assign") {
+    return analyzeOutParameterFlow(
+      parser,
+      currentFunctionName,
+      outParameters,
+      states,
+      node.value,
+    );
+  }
+
+  if (node.kind === "field-assign") {
+    return analyzeOutParameterChildren(
+      parser,
+      currentFunctionName,
+      outParameters,
+      states,
+      [node.object, node.value],
+    );
+  }
+
+  if (node.kind === "array-assign") {
+    return analyzeOutParameterChildren(
+      parser,
+      currentFunctionName,
+      outParameters,
+      states,
+      [node.array, node.index, node.value],
+    );
+  }
+
+  if (node.kind === "block") {
+    let normalStates = cloneAssignedStates(states);
+    const returnStates: Set<string>[] = [];
+
+    for (const statement of node.statements) {
+      const statementFlow = analyzeOutParameterFlow(
+        parser,
+        currentFunctionName,
+        outParameters,
+        normalStates,
+        statement,
+      );
+      if (!statementFlow.ok) {
+        return statementFlow;
+      }
+
+      normalStates = statementFlow.value.normalStates;
+      returnStates.push(...statementFlow.value.returnStates);
+    }
+
+    const resultFlow = analyzeOutParameterFlow(
+      parser,
+      currentFunctionName,
+      outParameters,
+      normalStates,
+      node.result,
+    );
+    if (!resultFlow.ok) {
+      return resultFlow;
+    }
+
+    return ok({
+      normalStates: resultFlow.value.normalStates,
+      returnStates: [...returnStates, ...resultFlow.value.returnStates],
+    });
+  }
+
+  if (node.kind === "if") {
+    const conditionFlow = analyzeOutParameterFlow(
+      parser,
+      currentFunctionName,
+      outParameters,
+      states,
+      node.condition,
+    );
+    if (!conditionFlow.ok) {
+      return conditionFlow;
+    }
+
+    const thenFlow = analyzeOutParameterFlow(
+      parser,
+      currentFunctionName,
+      outParameters,
+      conditionFlow.value.normalStates,
+      node.thenBranch,
+    );
+    if (!thenFlow.ok) {
+      return thenFlow;
+    }
+
+    if (!node.elseBranch) {
+      return ok({
+        normalStates: [
+          ...cloneAssignedStates(conditionFlow.value.normalStates),
+          ...thenFlow.value.normalStates,
+        ],
+        returnStates: [
+          ...conditionFlow.value.returnStates,
+          ...thenFlow.value.returnStates,
+        ],
+      });
+    }
+
+    const elseFlow = analyzeOutParameterFlow(
+      parser,
+      currentFunctionName,
+      outParameters,
+      conditionFlow.value.normalStates,
+      node.elseBranch,
+    );
+    if (!elseFlow.ok) {
+      return elseFlow;
+    }
+
+    return ok({
+      normalStates: [
+        ...thenFlow.value.normalStates,
+        ...elseFlow.value.normalStates,
+      ],
+      returnStates: [
+        ...conditionFlow.value.returnStates,
+        ...thenFlow.value.returnStates,
+        ...elseFlow.value.returnStates,
+      ],
+    });
+  }
+
+  if (node.kind === "while") {
+    const conditionFlow = analyzeOutParameterFlow(
+      parser,
+      currentFunctionName,
+      outParameters,
+      states,
+      node.condition,
+    );
+    if (!conditionFlow.ok) {
+      return conditionFlow;
+    }
+
+    const bodyFlow = analyzeOutParameterFlow(
+      parser,
+      currentFunctionName,
+      outParameters,
+      conditionFlow.value.normalStates,
+      node.body,
+    );
+    if (!bodyFlow.ok) {
+      return bodyFlow;
+    }
+
+    return ok({
+      normalStates: conditionFlow.value.normalStates,
+      returnStates: [
+        ...conditionFlow.value.returnStates,
+        ...bodyFlow.value.returnStates,
+      ],
+    });
+  }
+
+  if (node.kind === "return") {
+    const valueFlow = analyzeOutParameterFlow(
+      parser,
+      currentFunctionName,
+      outParameters,
+      states,
+      node.value,
+    );
+    if (!valueFlow.ok) {
+      return valueFlow;
+    }
+
+    return ok({
+      normalStates: [],
+      returnStates: [
+        ...valueFlow.value.returnStates,
+        ...cloneAssignedStates(valueFlow.value.normalStates),
+      ],
+    });
+  }
+
+  if (node.kind === "match") {
+    const matchExprFlow = analyzeOutParameterFlow(
+      parser,
+      currentFunctionName,
+      outParameters,
+      states,
+      node.matchExpr,
+    );
+    if (!matchExprFlow.ok) {
+      return matchExprFlow;
+    }
+
+    const normalStates: Set<string>[] = [];
+    const returnStates = [...matchExprFlow.value.returnStates];
+    for (const matchCase of node.cases) {
+      const caseFlow = analyzeOutParameterFlow(
+        parser,
+        currentFunctionName,
+        outParameters,
+        matchExprFlow.value.normalStates,
+        matchCase.result,
+      );
+      if (!caseFlow.ok) {
+        return caseFlow;
+      }
+
+      normalStates.push(...caseFlow.value.normalStates);
+      returnStates.push(...caseFlow.value.returnStates);
+    }
+
+    return ok({ normalStates, returnStates });
+  }
+
+  if (node.kind === "function-call") {
+    const argFlow = analyzeOutParameterChildren(
+      parser,
+      currentFunctionName,
+      outParameters,
+      states,
+      node.arguments,
+    );
+    if (!argFlow.ok) {
+      return argFlow;
+    }
+
+    return ok({
+      normalStates: markOutParametersAssignedFromCall(
+        parser,
+        currentFunctionName,
+        node,
+        outParameters,
+        argFlow.value.normalStates,
+      ),
+      returnStates: argFlow.value.returnStates,
+    });
+  }
+
+  if (node.kind === "call") {
+    const callFlow = analyzeOutParameterChildren(
+      parser,
+      currentFunctionName,
+      outParameters,
+      states,
+      [node.callee, ...node.arguments],
+    );
+    if (!callFlow.ok) {
+      return callFlow;
+    }
+
+    return ok({
+      normalStates: markOutParametersAssignedFromCall(
+        parser,
+        currentFunctionName,
+        node,
+        outParameters,
+        callFlow.value.normalStates,
+      ),
+      returnStates: callFlow.value.returnStates,
+    });
+  }
+
+  if (node.kind === "binary" || node.kind === "comparison") {
+    return analyzeOutParameterChildren(
+      parser,
+      currentFunctionName,
+      outParameters,
+      states,
+      [node.left, node.right],
+    );
+  }
+
+  if (node.kind === "logical") {
+    const leftFlow = analyzeOutParameterFlow(
+      parser,
+      currentFunctionName,
+      outParameters,
+      states,
+      node.left,
+    );
+    if (!leftFlow.ok) {
+      return leftFlow;
+    }
+
+    const rightFlow = analyzeOutParameterFlow(
+      parser,
+      currentFunctionName,
+      outParameters,
+      leftFlow.value.normalStates,
+      node.right,
+    );
+    if (!rightFlow.ok) {
+      return rightFlow;
+    }
+
+    return ok({
+      normalStates: leftFlow.value.normalStates,
+      returnStates: [
+        ...leftFlow.value.returnStates,
+        ...rightFlow.value.returnStates,
+      ],
+    });
+  }
+
+  if (node.kind === "unary-logical") {
+    return analyzeOutParameterFlow(
+      parser,
+      currentFunctionName,
+      outParameters,
+      states,
+      node.operand,
+    );
+  }
+
+  if (node.kind === "unary-op") {
+    return analyzeOutParameterFlow(
+      parser,
+      currentFunctionName,
+      outParameters,
+      states,
+      node.operand,
+    );
+  }
+
+  if (node.kind === "is") {
+    return analyzeOutParameterFlow(
+      parser,
+      currentFunctionName,
+      outParameters,
+      states,
+      node.expression,
+    );
+  }
+
+  if (node.kind === "union-wrap") {
+    return analyzeOutParameterFlow(
+      parser,
+      currentFunctionName,
+      outParameters,
+      states,
+      node.expression,
+    );
+  }
+
+  if (node.kind === "field-access") {
+    return analyzeOutParameterFlow(
+      parser,
+      currentFunctionName,
+      outParameters,
+      states,
+      node.object,
+    );
+  }
+
+  if (node.kind === "struct-instantiation") {
+    return analyzeOutParameterChildren(
+      parser,
+      currentFunctionName,
+      outParameters,
+      states,
+      node.fields.map((field) => field.value),
+    );
+  }
+
+  if (node.kind === "array-literal") {
+    return analyzeOutParameterChildren(
+      parser,
+      currentFunctionName,
+      outParameters,
+      states,
+      node.generator ? [node.generator] : node.elements,
+    );
+  }
+
+  if (node.kind === "array-access") {
+    return analyzeOutParameterChildren(
+      parser,
+      currentFunctionName,
+      outParameters,
+      states,
+      [node.array, node.index],
+    );
+  }
+
+  if (node.kind === "array-slice") {
+    return analyzeOutParameterFlow(
+      parser,
+      currentFunctionName,
+      outParameters,
+      states,
+      node.array,
+    );
+  }
+
+  return ok({ normalStates: cloneAssignedStates(states), returnStates: [] });
+}
+
+export function validateOutParameterAssignments(
+  parser: Parser,
+  currentFunctionName: string,
+  parameters: FunctionParameter[],
+  body: ASTNode,
+): Result<void, string> {
+  const outParameters = new Set(
+    parameters
+      .filter((parameter) => parameter.out)
+      .map((parameter) => parameter.name),
+  );
+  if (outParameters.size === 0) {
+    return ok(undefined);
+  }
+
+  const flow = analyzeOutParameterFlow(
+    parser,
+    currentFunctionName,
+    outParameters,
+    [new Set<string>()],
+    body,
+  );
+  if (!flow.ok) {
+    return flow;
+  }
+
+  const exitStates = [...flow.value.returnStates, ...flow.value.normalStates];
+  for (const state of exitStates) {
+    for (const parameterName of outParameters) {
+      if (!state.has(parameterName)) {
+        return err(
+          "Out parameter '" +
+            parameterName +
+            "' must be assigned on all control-flow paths before the function returns",
+        );
+      }
+    }
+  }
+
+  return ok(undefined);
+}
+
 export function parseFunctionStatement(
   parser: Parser,
 ): Result<ASTNode, string> {
@@ -4815,6 +5796,25 @@ export function parseFunctionStatement(
     body = inferredCoercedBody.value;
   }
 
+  const outAssignmentValidation = validateOutParameterAssignments(
+    parser,
+    functionName,
+    parameters,
+    body,
+  );
+  if (!outAssignmentValidation.ok) {
+    restoreFunctionParsingState(
+      parser,
+      savedVariables,
+      savedScope,
+      savedInLoop,
+      savedGenericTypeParameters,
+      savedGenericTypeConstraints,
+      savedCurrentFunctionReturnType,
+    );
+    return outAssignmentValidation;
+  }
+
   const constructorMetadata = buildConstructorInstanceMetadata(
     parser,
     functionName,
@@ -4983,34 +5983,60 @@ export function tryParseClosureLiteral(
   enterCallableScope(parser, savedScope, parameters);
 
   let body: ASTNode;
-  const assignResult = tryParseAssignment(parser);
-  if (!assignResult.ok) {
-    parser.variables = savedVariables;
-    parser.currentScope = savedScope;
-    return assignResult;
-  }
-
-  if (assignResult.value !== undefined) {
-    body = assignResult.value;
-  } else {
-    const exprResult = parseExpression(parser);
-    if (!exprResult.ok) {
+  if (current(parser).type === "LBRACE") {
+    const statementsResult = parseBlockStatementsWithoutRbrace(parser);
+    if (!statementsResult.ok) {
       parser.variables = savedVariables;
       parser.currentScope = savedScope;
-      return exprResult;
+      return statementsResult;
     }
-    body = exprResult.value;
+
+    const blockBody = createBlockBodyWithOptionalExpression(
+      statementsResult.value,
+      parser,
+    );
+    if (!blockBody.ok) {
+      parser.variables = savedVariables;
+      parser.currentScope = savedScope;
+      return blockBody;
+    }
+
+    if (current(parser).type !== "RBRACE") {
+      parser.variables = savedVariables;
+      parser.currentScope = savedScope;
+      return err("Expected '}'");
+    }
+    advance(parser);
+
+    body = blockBody.value;
+  } else {
+    const assignResult = tryParseAssignment(parser);
+    if (!assignResult.ok) {
+      parser.variables = savedVariables;
+      parser.currentScope = savedScope;
+      return assignResult;
+    }
+
+    if (assignResult.value !== undefined) {
+      body = assignResult.value;
+    } else {
+      const exprResult = parseExpression(parser);
+      if (!exprResult.ok) {
+        parser.variables = savedVariables;
+        parser.currentScope = savedScope;
+        return exprResult;
+      }
+      body = exprResult.value;
+    }
   }
 
-  const returnTypeResult = inferExpressionType(body, parser);
-  const returnType =
-    returnTypeResult.ok &&
-    body.kind !== "assign" &&
-    body.kind !== "field-assign" &&
-    body.kind !== "array-assign" &&
-    body.kind !== "deref-assign"
-      ? returnTypeResult.value
-      : "Void";
+  const returnTypeResult = inferFunctionReturnTypeFromBody(parser, body);
+  if (!returnTypeResult.ok) {
+    parser.variables = savedVariables;
+    parser.currentScope = savedScope;
+    return returnTypeResult;
+  }
+  const returnType = returnTypeResult.value;
 
   parser.variables = savedVariables;
   parser.currentScope = savedScope;
@@ -6648,8 +7674,14 @@ export function walkPrescanDeclarations(
 ): Result<void, string> {
   const savedPos = parser.pos;
   const savedCurrentFunctionReturnType = parser.currentFunctionReturnType;
+  const savedActiveLifetimeNames = [...parser.activeLifetimeNames];
+  const savedLifetimeDeclarationScopes = parser.lifetimeDeclarationScopes.map(
+    (scope) => new Set(scope),
+  );
   parser.pos = 0;
-  const braceContexts: Array<"function" | "object" | "other"> = [];
+  parser.activeLifetimeNames = [];
+  parser.lifetimeDeclarationScopes = [new Set<string>()];
+  const braceContexts: Array<"function" | "object" | "other" | "lifetime"> = [];
   const functionReturnTypes: string[] = [];
   let pendingObjectBrace = false;
   let pendingFunctionReturnType: string | undefined;
@@ -6705,6 +7737,18 @@ export function walkPrescanDeclarations(
       continue;
     }
 
+    if (tok.type === "KEYWORD" && tok.value === "lifetime") {
+      const scopeEntry = parseAndEnterLifetimeScope(parser);
+      if (!scopeEntry.ok) {
+        return scopeEntry;
+      }
+
+      braceContexts.push("lifetime");
+      pendingObjectBrace = false;
+      pendingFunctionReturnType = undefined;
+      continue;
+    }
+
     if (tok.type === "LBRACE") {
       if (pendingObjectBrace) {
         braceContexts.push("object");
@@ -6727,6 +7771,8 @@ export function walkPrescanDeclarations(
       if (endedContext === "function") {
         functionReturnTypes.pop();
         updateCurrentFunctionReturnType();
+      } else if (endedContext === "lifetime") {
+        exitLifetimeScope(parser);
       }
       advance(parser);
       continue;
@@ -6809,6 +7855,8 @@ export function walkPrescanDeclarations(
 
   parser.pos = savedPos;
   parser.currentFunctionReturnType = savedCurrentFunctionReturnType;
+  parser.activeLifetimeNames = savedActiveLifetimeNames;
+  parser.lifetimeDeclarationScopes = savedLifetimeDeclarationScopes;
   return ok(undefined);
 }
 

@@ -1706,6 +1706,10 @@ export function coerceFunctionBodyToReturnType(
   }
 
   if (body.kind === "block") {
+    if (body.result.kind === "number" && body.result.value === "0") {
+      return ok(body);
+    }
+
     const coercedResult = coerceExpressionToType(
       parser,
       body.result,

@@ -582,9 +582,15 @@ export function codegenAST(
     if (node.targetVar) {
       return codegenVariableName(node.targetVar) + " = " + value;
     }
-    // Otherwise, fall back to assigning through the pointer
+    // Otherwise, fall back to assigning through a runtime reference wrapper
     const target = codegenAST(node.target, context);
-    return target + " = " + value;
+    return (
+      "(() => { const _tuffTarget = " +
+      target +
+      "; const _tuffValue = " +
+      value +
+      '; if (_tuffTarget && _tuffTarget.__tuffRef) { _tuffTarget.set(_tuffValue); return _tuffValue; } throw new Error("Cannot assign through non-reference pointer"); })()'
+    );
   }
 
   if (
@@ -609,11 +615,25 @@ export function codegenAST(
   if (node.kind === "unary-op") {
     if (node.operator === "*") {
       const operand = codegenAST(node.operand, context);
-      // Dereference: *ptr -> ptr (in a simple interpreter, values are already dereferenced)
-      return operand;
+      return (
+        "(() => { const _tuffRef = " +
+        operand +
+        "; return _tuffRef && _tuffRef.__tuffRef ? _tuffRef.get() : _tuffRef; })()"
+      );
     } else if (node.operator === "&" || node.operator === "&mut") {
       if (node.operand.kind === "array-slice") {
         return codegenAST(node.operand, context);
+      }
+
+      if (node.operator === "&mut" && node.operand.kind === "variable") {
+        const targetName = codegenVariableName(node.operand.name);
+        return (
+          "({ __tuffRef: true, get: () => " +
+          targetName +
+          ", set: (_tuffValue) => { " +
+          targetName +
+          " = _tuffValue; } })"
+        );
       }
 
       const operand = codegenAST(node.operand, context);

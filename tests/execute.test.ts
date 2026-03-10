@@ -1444,6 +1444,75 @@ test("function inference: omitted return type infers Void for assignment bodies"
   );
 });
 
+test("out parameter: assigned mutable pointer updates caller value", () => {
+  expectValue(
+    executeTuff(
+      "fn set(ptr : *out mut I32) : Void => *ptr = 100; let mut value : I32 = 0; set(&mut value); value",
+    ),
+    100,
+  );
+});
+
+test("out parameter: missing mut modifier is error", () => {
+  expectError(executeTuff("fn set(ptr : *out I32) : Void => *ptr = 100; 0"));
+});
+
+test("out parameter: non-pointer parameter is error", () => {
+  expectError(executeTuff("fn set(value : out I32) : Void => 0; 0"));
+});
+
+test("out parameter: all branches must assign pointee", () => {
+  expectError(
+    executeTuff(
+      "fn set(ptr : *out mut I32, flag : Bool) : Void => { if flag { *ptr = 1; } } 0",
+    ),
+  );
+});
+
+test("out parameter: conditional branches that all assign are valid", () => {
+  expectValue(
+    executeTuff(
+      "fn set(ptr : *out mut I32, flag : Bool) : Void => { if flag { *ptr = 1; } else { *ptr = 2; } } let mut value : I32 = 0; set(&mut value, false); value",
+    ),
+    2,
+  );
+});
+
+test("explicit lifetime: scoped pointer annotation allows pass-through borrow", () => {
+  expectValue(
+    executeTuff(
+      "lifetime t { fn pass<K>(this : *t K) : *t K => this; } let mut value : I32 = 41; *pass<I32>(&mut value) + 1",
+    ),
+    42,
+  );
+});
+
+test("explicit lifetime: unknown lifetime name is error", () => {
+  expectError(executeTuff("fn bad(ptr : *t I32) : *t I32 => ptr; 0"));
+});
+
+test("explicit lifetime: non-pointer lifetime annotation is error", () => {
+  expectError(
+    executeTuff("lifetime t { fn bad(value : t I32) : I32 => value; } 0"),
+  );
+});
+
+test("explicit lifetime: lifetime name is scoped to its block", () => {
+  expectError(
+    executeTuff(
+      "lifetime t { fn pass(ptr : *t I32) : *t I32 => ptr; } fn bad(ptr : *t I32) : *t I32 => ptr; 0",
+    ),
+  );
+});
+
+test("explicit lifetime: duplicate lifetime blocks in same scope are error", () => {
+  expectError(executeTuff("lifetime t { } lifetime t { } 0"));
+});
+
+test("explicit lifetime: nested lifetime shadowing is error", () => {
+  expectError(executeTuff("lifetime t { lifetime t { } } 0"));
+});
+
 // Comparison operator tests
 test("less than: true case", () => {
   expectValue(executeTuff("1 < 2"), 1);
@@ -2571,6 +2640,66 @@ test("closure: closure value captures outer variable", () => {
     ),
     7,
   );
+});
+
+test("lambda: generic map accepts expression-bodied mapper", () => {
+  expectValue(
+    executeTuff(
+      "fn map<T, R>(array : [T; 3], mapper : (T) => R) : [R; 3] => { let result : [R; 3] = [mapper(array[0]), mapper(array[1]), mapper(array[2])]; return result; } let temp : [I32; 3] = map<I32, I32>([1, 2, 3], (value : I32) => value + 1); temp[0] + temp[1] + temp[2]",
+    ),
+    9,
+  );
+});
+
+test("lambda: zero-parameter lambda is callable", () => {
+  expectValue(executeTuff("let make : () => I32 = () => 42; make()"), 42);
+});
+
+test("lambda: multiple parameters are callable", () => {
+  expectValue(
+    executeTuff(
+      "let add : (I32, I32) => I32 = (left : I32, right : I32) => left + right; add(4, 5)",
+    ),
+    9,
+  );
+});
+
+test("lambda: block-bodied lambda infers return type", () => {
+  expectValue(
+    executeTuff(
+      "let addOne : (I32) => I32 = (value : I32) => { let next : I32 = value + 1; return next; }; addOne(8)",
+    ),
+    9,
+  );
+});
+
+test("lambda: block-bodied lambda captures outer variable", () => {
+  expectValue(
+    executeTuff(
+      "let base : I32 = 2; let addBase : (I32) => I32 = (value : I32) => { return value + base; }; addBase(7)",
+    ),
+    9,
+  );
+});
+
+test("lambda: missing parameter type annotation is error", () => {
+  expectError(executeTuff("let addOne : (I32) => I32 = (value) => value + 1;"));
+});
+
+test("lambda: wrong callable argument count is error", () => {
+  expectError(
+    executeTuff(
+      "let add : (I32, I32) => I32 = (left : I32, right : I32) => left + right; add(1)",
+    ),
+  );
+});
+
+test("lambda: return type mismatch against expected function type is error", () => {
+  expectError(executeTuff("let truthy : () => Bool = () => 1;"));
+});
+
+test("lambda: using lambda where non-callable type expected is error", () => {
+  expectError(executeTuff("let value : I32 = (input : I32) => input + 1;"));
 });
 
 test("closure: reassigning captured immutable variable is error", () => {

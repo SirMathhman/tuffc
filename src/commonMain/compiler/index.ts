@@ -62,6 +62,8 @@ export function createParser(
     globalScope: currentScope,
     currentScope,
     currentModuleName,
+    activeLifetimeNames: [],
+    lifetimeDeclarationScopes: [new Set<string>()],
     provenConstraints: new Map(),
   };
 

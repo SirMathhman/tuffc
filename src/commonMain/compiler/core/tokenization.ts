@@ -404,6 +404,7 @@ export function tokenize(input: string): Result<Token[], string> {
       // Check if it's a keyword or boolean
       if (
         ident === "let" ||
+        ident === "lifetime" ||
         ident === "contract" ||
         ident === "extern" ||
         ident === "object" ||
@@ -412,6 +413,7 @@ export function tokenize(input: string): Result<Token[], string> {
         ident === "this" ||
         ident === "is" ||
         ident === "mut" ||
+        ident === "out" ||
         ident === "if" ||
         ident === "else" ||
         ident === "while" ||
