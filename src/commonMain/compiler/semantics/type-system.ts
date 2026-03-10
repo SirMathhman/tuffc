@@ -6,6 +6,7 @@ import type {
   ASTNode,
   ComparisonNode,
   EvaluationResult,
+  FieldAccessNode,
   FunctionInfo,
   FunctionParameter,
   InstanceMethodInfo,
@@ -37,6 +38,7 @@ import {
   getArrayLikeInfo,
   inferZeroArgCallableReturnType,
   parseArrayType,
+  parseCallableTypeString,
   parseFunctionTypeString,
   parseSliceType,
   parseUnionTypeString,
@@ -502,6 +504,7 @@ export function instantiateFunctionInfo(
     functionInfo.typeParameters,
     explicitTypeArguments,
     args,
+    functionInfo.typeParameterConstraints,
   );
   if (!instantiatedSignature.ok) {
     return instantiatedSignature;
@@ -535,6 +538,7 @@ export function instantiateParsedFunctionType(
   typeParameters: string[],
   explicitTypeArguments: string[] | undefined,
   args: ASTNode[],
+  typeParameterConstraints?: Map<string, string[]>,
 ): Result<ParsedFunctionType, string> {
   if (typeParameters.length === 0) {
     if (explicitTypeArguments && explicitTypeArguments.length > 0) {
@@ -634,6 +638,15 @@ export function instantiateParsedFunctionType(
           "'",
       );
     }
+  }
+
+  const constraintValidation = validateTypeParameterConstraints(
+    parser,
+    substitutions,
+    typeParameterConstraints,
+  );
+  if (!constraintValidation.ok) {
+    return constraintValidation;
   }
 
   const specializedParameterTypes: string[] = [];
@@ -935,6 +948,7 @@ export function cloneInstanceMetadata(
   return {
     methods: metadata.methods.map((method) => ({
       name: method.name,
+      receiverType: method.receiverType,
       parameterTypes: [...method.parameterTypes],
       returnType: method.returnType,
     })),
@@ -1019,6 +1033,167 @@ export function getInstanceMethodInfo(
   );
 }
 
+export function haveMatchingCallSignatures(
+  left: ParsedFunctionType,
+  right: ParsedFunctionType,
+): boolean {
+  if (left.returnType !== right.returnType) {
+    return false;
+  }
+
+  if (left.parameterTypes.length !== right.parameterTypes.length) {
+    return false;
+  }
+
+  return left.parameterTypes.every(
+    (parameterType, index) => parameterType === right.parameterTypes[index],
+  );
+}
+
+export function getContractMethodCallableInfo(
+  parser: Parser,
+  callee: FieldAccessNode,
+): Result<ParsedFunctionType | undefined, string> {
+  const receiverType = inferExpressionType(callee.object, parser);
+  if (!receiverType.ok) {
+    return ok(undefined);
+  }
+
+  if (!isGenericTypeParameter(parser, receiverType.value)) {
+    return ok(undefined);
+  }
+
+  const contractNames = parser.genericTypeConstraints.get(receiverType.value);
+  if (!contractNames || contractNames.length === 0) {
+    return ok(undefined);
+  }
+
+  let matchedSignature: ParsedFunctionType | undefined;
+  for (const contractName of contractNames) {
+    const contractInfo = parser.contracts.get(contractName);
+    if (!contractInfo) {
+      return err("Unknown contract '" + contractName + "'");
+    }
+
+    const methodSignature = contractInfo.methods.get(callee.fieldName);
+    if (!methodSignature) {
+      continue;
+    }
+
+    if (!matchedSignature) {
+      matchedSignature = methodSignature;
+      continue;
+    }
+
+    if (!haveMatchingCallSignatures(matchedSignature, methodSignature)) {
+      return err(
+        "Contract method '" +
+          callee.fieldName +
+          "' is ambiguous across generic constraints",
+      );
+    }
+  }
+
+  return ok(matchedSignature);
+}
+
+export function validateTypeSatisfiesContract(
+  parser: Parser,
+  actualType: string,
+  contractName: string,
+): Result<void, string> {
+  const contractInfo = parser.contracts.get(contractName);
+  if (!contractInfo) {
+    return err("Unknown contract '" + contractName + "'");
+  }
+
+  for (const [methodName, methodSignature] of contractInfo.methods) {
+    const functionInfo = parser.functions.get(methodName);
+    if (!functionInfo) {
+      return err(
+        "Type '" +
+          actualType +
+          "' does not satisfy contract '" +
+          contractName +
+          "': missing method '" +
+          methodName +
+          "'",
+      );
+    }
+
+    const receiverParameter = functionInfo.parameters[0];
+    if (
+      !receiverParameter ||
+      receiverParameter.name !== "this" ||
+      receiverParameter.type !== actualType
+    ) {
+      return err(
+        "Type '" +
+          actualType +
+          "' does not satisfy contract '" +
+          contractName +
+          "': method '" +
+          methodName +
+          "' must be declared with receiver 'this : " +
+          actualType +
+          "'",
+      );
+    }
+
+    const parameterTypes = functionInfo.parameters
+      .slice(1)
+      .map((parameter) => parameter.type);
+    const functionSignature: ParsedFunctionType = {
+      parameterTypes,
+      returnType: functionInfo.returnType,
+    };
+
+    if (!haveMatchingCallSignatures(functionSignature, methodSignature)) {
+      return err(
+        "Type '" +
+          actualType +
+          "' does not satisfy contract '" +
+          contractName +
+          "': method '" +
+          methodName +
+          "' has incompatible signature",
+      );
+    }
+  }
+
+  return ok(undefined);
+}
+
+export function validateTypeParameterConstraints(
+  parser: Parser,
+  substitutions: Map<string, string>,
+  typeParameterConstraints?: Map<string, string[]>,
+): Result<void, string> {
+  if (!typeParameterConstraints || typeParameterConstraints.size === 0) {
+    return ok(undefined);
+  }
+
+  for (const [typeParameter, contractNames] of typeParameterConstraints) {
+    const actualType = substitutions.get(typeParameter);
+    if (!actualType) {
+      continue;
+    }
+
+    for (const contractName of contractNames) {
+      const satisfaction = validateTypeSatisfiesContract(
+        parser,
+        actualType,
+        contractName,
+      );
+      if (!satisfaction.ok) {
+        return satisfaction;
+      }
+    }
+  }
+
+  return ok(undefined);
+}
+
 export function getCallableInfo(
   parser: Parser,
   callee: ASTNode,
@@ -1037,7 +1212,7 @@ export function getCallableInfo(
       return err("Function or closure '" + callee.name + "' is not defined");
     }
 
-    const parsedFunctionType = parseFunctionTypeString(variableInfo.value.type);
+    const parsedFunctionType = parseCallableTypeString(variableInfo.value.type);
     return parsedFunctionType
       ? ok(parsedFunctionType)
       : err("Variable '" + callee.name + "' is not callable");
@@ -1048,7 +1223,7 @@ export function getCallableInfo(
     return resolvedThisMember;
   }
   if (resolvedThisMember.value) {
-    const parsedFunctionType = parseFunctionTypeString(
+    const parsedFunctionType = parseCallableTypeString(
       resolvedThisMember.value.binding.type,
     );
     return parsedFunctionType
@@ -1065,7 +1240,7 @@ export function getCallableInfo(
     return calleeType;
   }
 
-  const parsedFunctionType = parseFunctionTypeString(calleeType.value);
+  const parsedFunctionType = parseCallableTypeString(calleeType.value);
   return parsedFunctionType
     ? ok(parsedFunctionType)
     : err("Expression is not callable");
@@ -1163,6 +1338,15 @@ export function isTypeAssignable(
   }
 
   if (expectedType.startsWith("*") || actualType.startsWith("*")) {
+    const expectedCallableType = parseCallableTypeString(expectedType);
+    const actualCallableType = parseCallableTypeString(actualType);
+    if (expectedCallableType && actualCallableType) {
+      return haveMatchingCallSignatures(
+        expectedCallableType,
+        actualCallableType,
+      );
+    }
+
     return arePointerTypesCompatible(expectedType, actualType);
   }
 
@@ -1948,7 +2132,7 @@ export function inferExpressionType(
 
     const varResult = getVariable(parser, expr.name);
     if (varResult.ok) {
-      const parsedFunctionType = parseFunctionTypeString(varResult.value.type);
+      const parsedFunctionType = parseCallableTypeString(varResult.value.type);
       if (parsedFunctionType) {
         return ok(parsedFunctionType.returnType);
       }

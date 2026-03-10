@@ -2512,8 +2512,13 @@ test("method syntax: callable field and extension candidate is ambiguous", () =>
   );
 });
 
-test("function: function called with no parentheses is error", () => {
-  expectError(executeTuff("fn getNumber() : I32 => 42; getNumber"));
+test("function: bare function reference is a callable value", () => {
+  expectValue(
+    executeTuff(
+      "fn getNumber() : I32 => 42; let ptr : *() => I32 = getNumber; ptr()",
+    ),
+    42,
+  );
 });
 
 test("function: using reserved keyword as function name is error", () => {
@@ -2580,6 +2585,61 @@ test("closure: shadowing captured variable with parameter is error", () => {
   expectError(
     executeTuff(
       "let counter : I32 = 1; fn add(counter : I32) : I32 => counter + 1; add(2)",
+    ),
+  );
+});
+
+test("contract: top-level declaration is compile-time only", () => {
+  expectValue(executeTuff("contract Sample { fn doAnAction() : Void; } 0"), 0);
+});
+
+test("contract: generic bound enables static dispatch to matching method", () => {
+  expectValue(
+    executeTuff(
+      "contract Sample { fn doAnAction() : I32; } struct Worker { value : I32; } fn doAnAction(this : Worker) : I32 => this.value + 1; fn run<T : Sample>(value : T) : I32 => value.doAnAction(); run(Worker { value : 6 })",
+    ),
+    7,
+  );
+});
+
+test("contract: duplicate contract names are rejected", () => {
+  expectError(
+    executeTuff(
+      "contract Sample { fn first() : Void; } contract Sample { fn second() : Void; } 0",
+    ),
+  );
+});
+
+test("contract: duplicate member names are rejected", () => {
+  expectError(
+    executeTuff(
+      "contract Sample { fn doAnAction() : Void; fn doAnAction() : Void; } 0",
+    ),
+  );
+});
+
+test("contract: declarations inside functions are rejected", () => {
+  expectError(
+    executeTuff(
+      "fn outer() : I32 => { contract Sample { fn doAnAction() : Void; } 0 } outer()",
+    ),
+  );
+});
+
+test("contract: reserved keyword names are rejected", () => {
+  expectError(executeTuff("contract fn { fn doAnAction() : Void; } 0"));
+});
+
+test("contract: member bodies are rejected", () => {
+  expectError(
+    executeTuff("contract Sample { fn doAnAction() : Void => 0; } 0"),
+  );
+});
+
+test("contract: constrained type without matching method is rejected", () => {
+  expectError(
+    executeTuff(
+      "contract Sample { fn doAnAction() : I32; } struct Worker { value : I32; } fn run<T : Sample>(value : T) : I32 => value.doAnAction(); run(Worker { value : 6 })",
     ),
   );
 });
@@ -3202,6 +3262,40 @@ test("pointer: pointer assignment from valid variable", () => {
   expectValue(
     executeTuff("let x : I32 = 100; let y : *I32 = &x; let z : *I32 = &x; *z"),
     100,
+  );
+});
+
+test("function pointer: top-level function reference can be called", () => {
+  expectValue(
+    executeTuff(
+      "fn addOne(x : I32) : I32 => x + 1; let ptr : *(I32) => I32 = addOne; ptr(41)",
+    ),
+    42,
+  );
+});
+
+test("function pointer: constructor-local method reference can be called with explicit receiver", () => {
+  expectValue(
+    executeTuff(
+      "struct Wrapper { value : I32; } fn Wrapper(value : I32) : Wrapper => { fn get() : I32 => value; this } let ptr : *(*Wrapper) => I32 = Wrapper::get; let wrapper : Wrapper = Wrapper(100); let result : I32 = ptr(&wrapper); result",
+    ),
+    100,
+  );
+});
+
+test("function pointer: unknown constructor-local method reference is error", () => {
+  expectError(
+    executeTuff(
+      "struct Wrapper { value : I32; } fn Wrapper(value : I32) : Wrapper => { fn get() : I32 => value; this } let ptr : *(*Wrapper) => I32 = Wrapper::missing; 0",
+    ),
+  );
+});
+
+test("function pointer: incompatible pointer type for method reference is error", () => {
+  expectError(
+    executeTuff(
+      "struct Wrapper { value : I32; } fn Wrapper(value : I32) : Wrapper => { fn get() : I32 => value; this } let ptr : *(Wrapper) => I32 = Wrapper::get; 0",
+    ),
   );
 });
 

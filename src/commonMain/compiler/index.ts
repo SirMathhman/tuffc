@@ -18,6 +18,7 @@ import {
   collectTypeDeclarationNames,
   current,
   parseProgram,
+  prescanContractDefinitions,
   prescanFunctionSignatures,
   prescanStructDefinitions,
   prescanTypeAliases,
@@ -46,6 +47,7 @@ export function createParser(
     pos: 0,
     variables: new Map(),
     functions: new Map(),
+    contracts: new Map(),
     modules,
     aliases: new Map(),
     aliasDeclarations: new Map(),
@@ -54,6 +56,7 @@ export function createParser(
     structNames: new Set(),
     objects: new Map(),
     genericTypeParameters: [],
+    genericTypeConstraints: new Map(),
     inLoop: false,
     currentFunctionReturnType: undefined,
     globalScope: currentScope,
@@ -85,6 +88,11 @@ export function prepareParser(parser: Parser): Result<void, string> {
   const structPrescanResult = prescanStructDefinitions(parser);
   if (!structPrescanResult.ok) {
     return structPrescanResult;
+  }
+
+  const contractPrescanResult = prescanContractDefinitions(parser);
+  if (!contractPrescanResult.ok) {
+    return contractPrescanResult;
   }
 
   return prescanFunctionSignatures(parser);
@@ -166,7 +174,8 @@ export function collectModuleExternMetadata(
     if (
       statement.kind === "extern-type" ||
       statement.kind === "type-alias" ||
-      statement.kind === "struct"
+      statement.kind === "struct" ||
+      statement.kind === "contract"
     ) {
       continue;
     }

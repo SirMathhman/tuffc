@@ -16,11 +16,15 @@ import type {
   CasePattern,
   ClosureNode,
   ComparisonNode,
+  ContractInfo,
+  ContractMethodSignature,
+  ContractNode,
   DerefAssignNode,
   DestructuredBinding,
   FieldAccessNode,
   FieldAssignNode,
   FunctionParameter,
+  GenericTypeParameterDeclaration,
   IdentifierToken,
   InstanceMethodInfo,
   InstanceValueMetadata,
@@ -81,20 +85,22 @@ import {
   getExpressionInstanceMetadata,
   getBracketedTypeParts,
   getCallableInfo,
+  getContractMethodCallableInfo,
   getInstanceMethodInfo,
   getStructInfoForType,
   getTypeNarrowingFromCondition,
   getVariable,
+  haveMatchingCallSignatures,
   inferContainerMemberType,
   inferExpressionType,
-  inferTypeParameterBindings,
   inferFunctionReturnTypeFromBody,
+  inferTypeParameterBindings,
   instantiateFunctionInfo,
   instantiateParsedFunctionType,
   isGenericTypeParameter,
   normalizeTypeName,
-  splitTopLevel,
   satisfiesRefinementConstraints,
+  splitTopLevel,
   substituteTypeParameters,
   validateCallArguments,
   validateConstraints,
@@ -152,6 +158,25 @@ export function parseFunctionTypeString(
     parameterTypes,
     returnType,
   };
+}
+
+export function parseCallableTypeString(
+  typeStr: string,
+): ParsedFunctionType | undefined {
+  const directCallable = parseFunctionTypeString(typeStr);
+  if (directCallable) {
+    return directCallable;
+  }
+
+  if (typeStr.startsWith("*mut ")) {
+    return parseFunctionTypeString(typeStr.slice(5));
+  }
+
+  if (typeStr.startsWith("*")) {
+    return parseFunctionTypeString(typeStr.slice(1));
+  }
+
+  return undefined;
 }
 
 export function parseCallArguments(parser: Parser): Result<ASTNode[], string> {
@@ -213,15 +238,16 @@ export function isGenericListEndToken(token: Token): boolean {
   return token.type === "COMPARISON" && token.value === ">";
 }
 
-export function parseGenericParameterList(
+export function parseGenericParameterDeclarations(
   parser: Parser,
-): Result<string[], string> {
+  allowConstraints: boolean,
+): Result<GenericTypeParameterDeclaration[], string> {
   if (!isGenericListStartToken(current(parser))) {
     return ok([]);
   }
   advance(parser);
 
-  const typeParameters: string[] = [];
+  const declarations: GenericTypeParameterDeclaration[] = [];
   const seenTypeParameters = new Set<string>();
 
   while (!isGenericListEndToken(current(parser))) {
@@ -236,8 +262,37 @@ export function parseGenericParameterList(
     }
 
     seenTypeParameters.add(typeParameter);
-    typeParameters.push(typeParameter);
     advance(parser);
+
+    const constraints: string[] = [];
+    if (allowConstraints && current(parser).type === "COLON") {
+      advance(parser);
+
+      while (true) {
+        const constraintToken = current(parser);
+        if (constraintToken.type !== "IDENTIFIER") {
+          return err("Expected contract name after ':' in generic constraint");
+        }
+
+        constraints.push(constraintToken.value);
+        advance(parser);
+
+        const separatorToken = current(parser);
+        if (
+          separatorToken.type !== "OPERATOR" ||
+          separatorToken.value !== "+"
+        ) {
+          break;
+        }
+
+        advance(parser);
+      }
+    }
+
+    declarations.push({
+      name: typeParameter,
+      constraints,
+    });
 
     if (isGenericListEndToken(current(parser))) {
       break;
@@ -254,7 +309,38 @@ export function parseGenericParameterList(
   }
   advance(parser);
 
-  return ok(typeParameters);
+  return ok(declarations);
+}
+
+export function parseGenericParameterList(
+  parser: Parser,
+): Result<string[], string> {
+  const declarationsResult = parseGenericParameterDeclarations(parser, false);
+  if (!declarationsResult.ok) {
+    return declarationsResult;
+  }
+
+  return ok(declarationsResult.value.map((declaration) => declaration.name));
+}
+
+export function parseConstrainedGenericParameterList(
+  parser: Parser,
+): Result<GenericTypeParameterDeclaration[], string> {
+  return parseGenericParameterDeclarations(parser, true);
+}
+
+export function createTypeParameterConstraintMap(
+  declarations: GenericTypeParameterDeclaration[],
+): Map<string, string[]> {
+  const constraints = new Map<string, string[]>();
+
+  for (const declaration of declarations) {
+    if (declaration.constraints.length > 0) {
+      constraints.set(declaration.name, [...declaration.constraints]);
+    }
+  }
+
+  return constraints;
 }
 
 export function parseTypeArgumentList(
@@ -1475,7 +1561,7 @@ export function inferZeroArgCallableReturnType(
       );
     }
 
-    const parsedFunctionType = parseFunctionTypeString(varResult.value.type);
+    const parsedFunctionType = parseCallableTypeString(varResult.value.type);
     if (!parsedFunctionType) {
       return err(
         "Array generator '" + expr.name + "' is not a function or closure",
@@ -1492,7 +1578,7 @@ export function inferZeroArgCallableReturnType(
     return err("Array generator must be a function or closure");
   }
 
-  const parsedFunctionType = parseFunctionTypeString(exprTypeResult.value);
+  const parsedFunctionType = parseCallableTypeString(exprTypeResult.value);
   if (!parsedFunctionType) {
     return err("Array generator must be a function or closure");
   }
@@ -2083,6 +2169,13 @@ export function parseStatementInBlock(
     }
     statements.push(aliasStmt.value);
     return ok(true);
+  } else if (stmtTok.type === "KEYWORD" && stmtTok.value === "contract") {
+    const contractStmt = parseContractStatement(parser);
+    if (!contractStmt.ok) {
+      return contractStmt;
+    }
+    statements.push(contractStmt.value);
+    return ok(true);
   } else if (stmtTok.type === "KEYWORD" && stmtTok.value === "fn") {
     // Function declaration
     const fnStmt = parseFunctionStatement(parser);
@@ -2375,6 +2468,7 @@ export function createBlockBodyWithOptionalExpression(
   // Check if it's a non-expression keyword
   const nonExprKeywords = new Set([
     "let",
+    "contract",
     "type",
     "fn",
     "struct",
@@ -3174,6 +3268,16 @@ export function parseLetStatement(parser: Parser): Result<ASTNode, string> {
       isCompatible = exprBase === typeBase;
     }
     if (!isCompatible) {
+      const declaredCallableType = parseCallableTypeString(typeStr);
+      const expressionCallableType = parseCallableTypeString(exprType);
+      if (declaredCallableType && expressionCallableType) {
+        isCompatible = haveMatchingCallSignatures(
+          declaredCallableType,
+          expressionCallableType,
+        );
+      }
+    }
+    if (!isCompatible) {
       return err(
         "Type mismatch: expression has type '" +
           exprType +
@@ -3542,6 +3646,7 @@ export function parseDestructuringLetStatement(
 export function isReservedKeyword(name: string): boolean {
   return (
     name === "let" ||
+    name === "contract" ||
     name === "extern" ||
     name === "object" ||
     name === "type" ||
@@ -3564,7 +3669,11 @@ export function isReservedKeyword(name: string): boolean {
 
 export function checkReservedKeyword(
   name: string,
-  context: "function name" | "parameter name" | "type alias name",
+  context:
+    | "function name"
+    | "parameter name"
+    | "type alias name"
+    | "contract name",
 ): Result<undefined, string> {
   if (isReservedKeyword(name)) {
     return err("Cannot use reserved keyword '" + name + "' as " + context);
@@ -3669,6 +3778,7 @@ export interface ParsedNamedTypeDeclaration {
 export interface ParsedFunctionSignatureHead {
   name: string;
   typeParameters: string[];
+  typeParameterConstraints?: Map<string, string[]>;
   parameters: FunctionParameter[];
   returnType: string;
   hasExplicitReturnType: boolean;
@@ -3765,6 +3875,7 @@ export function registerParsedFunctionSignature(
   if (!parser.functions.has(signature.name)) {
     parser.functions.set(signature.name, {
       typeParameters: signature.typeParameters,
+      typeParameterConstraints: signature.typeParameterConstraints,
       parameters: signature.parameters,
       returnType: signature.returnType,
     });
@@ -3830,14 +3941,22 @@ export function parseFunctionSignatureHead(
   }
   advance(parser);
 
-  const typeParametersResult = parseGenericParameterList(parser);
-  if (!typeParametersResult.ok) {
-    return typeParametersResult;
+  const typeParameterDeclarations =
+    parseConstrainedGenericParameterList(parser);
+  if (!typeParameterDeclarations.ok) {
+    return typeParameterDeclarations;
   }
+
+  const typeParameters = typeParameterDeclarations.value.map(
+    (declaration) => declaration.name,
+  );
+  const typeParameterConstraints = createTypeParameterConstraintMap(
+    typeParameterDeclarations.value,
+  );
 
   return withTemporaryGenericTypeParameters(
     parser,
-    typeParametersResult.value,
+    typeParameters,
     (): Result<ParsedFunctionSignatureHead, string> => {
       if (current(parser).type !== "LPAREN") {
         return err("Expected '(' after function name");
@@ -3870,13 +3989,147 @@ export function parseFunctionSignatureHead(
 
       return ok({
         name: functionName,
-        typeParameters: typeParametersResult.value,
+        typeParameters,
+        typeParameterConstraints,
         parameters: parametersResult.value,
         returnType,
         hasExplicitReturnType,
       });
     },
   );
+}
+
+export function ensureContractAllowed(parser: Parser): Result<void, string> {
+  if (parser.currentScope !== parser.globalScope) {
+    return err("Contract declarations are only allowed at top level");
+  }
+
+  return ok(undefined);
+}
+
+export function parseContractMethodSignature(
+  parser: Parser,
+): Result<ContractMethodSignature, string> {
+  const signatureResult = parseFunctionSignatureHead(parser, true, false);
+  if (!signatureResult.ok) {
+    return signatureResult;
+  }
+
+  if (
+    signatureResult.value.parameters.some(
+      (parameter) => parameter.name === "this",
+    )
+  ) {
+    return err(
+      "Contract methods use an implicit receiver and cannot declare 'this' explicitly",
+    );
+  }
+
+  if (current(parser).type !== "SEMICOLON") {
+    return err("Expected ';' after contract method signature");
+  }
+  advance(parser);
+
+  return ok({
+    name: signatureResult.value.name,
+    parameters: signatureResult.value.parameters,
+    returnType: signatureResult.value.returnType,
+  });
+}
+
+export function createContractInfo(
+  methods: ContractMethodSignature[],
+): ContractInfo {
+  return {
+    methods: new Map(
+      methods.map((method) => [
+        method.name,
+        {
+          parameterTypes: method.parameters.map((parameter) => parameter.type),
+          returnType: method.returnType,
+        },
+      ]),
+    ),
+  };
+}
+
+export function parseContractStatement(
+  parser: Parser,
+): Result<ASTNode, string> {
+  const contractKeyword = expectKeyword(
+    parser,
+    "contract",
+    "Expected 'contract'",
+  );
+  if (!contractKeyword.ok) {
+    return contractKeyword;
+  }
+
+  const placementResult = ensureContractAllowed(parser);
+  if (!placementResult.ok) {
+    return placementResult;
+  }
+
+  const nameToken = current(parser);
+  if (nameToken.type === "KEYWORD") {
+    return err(
+      "Cannot use reserved keyword '" + nameToken.value + "' as contract name",
+    );
+  }
+  if (nameToken.type !== "IDENTIFIER") {
+    return err("Expected contract name");
+  }
+
+  const contractName = nameToken.value;
+  const contractNameCheck = checkReservedKeyword(contractName, "contract name");
+  if (!contractNameCheck.ok) {
+    return contractNameCheck;
+  }
+  advance(parser);
+
+  if (current(parser).type !== "LBRACE") {
+    return err("Expected '{' after contract name");
+  }
+  advance(parser);
+
+  const methods: ContractMethodSignature[] = [];
+  const seenMethods = new Set<string>();
+
+  while (current(parser).type !== "RBRACE") {
+    const methodToken = current(parser);
+    if (methodToken.type !== "KEYWORD" || methodToken.value !== "fn") {
+      return err("Contracts only support function signatures");
+    }
+
+    const methodResult = parseContractMethodSignature(parser);
+    if (!methodResult.ok) {
+      return methodResult;
+    }
+
+    if (seenMethods.has(methodResult.value.name)) {
+      return err(
+        "Contract '" +
+          contractName +
+          "' already declares member '" +
+          methodResult.value.name +
+          "'",
+      );
+    }
+
+    seenMethods.add(methodResult.value.name);
+    methods.push(methodResult.value);
+  }
+
+  if (current(parser).type !== "RBRACE") {
+    return err("Expected '}' after contract body");
+  }
+  advance(parser);
+
+  return ok({
+    kind: "contract",
+    name: contractName,
+    methods,
+  });
 }
 
 export function ensureExternAllowed(parser: Parser): Result<void, string> {
@@ -4053,13 +4306,41 @@ export function restoreFunctionParsingState(
   savedScope: ScopeFrame,
   savedInLoop: boolean,
   savedGenericTypeParameters: string[],
+  savedGenericTypeConstraints: Map<string, string[]>,
   savedCurrentFunctionReturnType?: string,
 ): void {
   parser.variables = savedVariables;
   parser.currentScope = savedScope;
   parser.inLoop = savedInLoop;
   parser.genericTypeParameters = savedGenericTypeParameters;
+  parser.genericTypeConstraints = savedGenericTypeConstraints;
   parser.currentFunctionReturnType = savedCurrentFunctionReturnType;
+}
+
+export interface FunctionParsingStateSnapshot {
+  variables: Map<string, VariableInfo>;
+  scope: ScopeFrame;
+  inLoop: boolean;
+  genericTypeParameters: string[];
+  genericTypeConstraints: Map<string, string[]>;
+  currentFunctionReturnType?: string;
+}
+
+export function restoreFunctionParsingStateWithError<T>(
+  parser: Parser,
+  state: FunctionParsingStateSnapshot,
+  message: string,
+): Result<T, string> {
+  restoreFunctionParsingState(
+    parser,
+    state.variables,
+    state.scope,
+    state.inLoop,
+    state.genericTypeParameters,
+    state.genericTypeConstraints,
+    state.currentFunctionReturnType,
+  );
+  return err(message);
 }
 
 export function cloneOptionalInstanceMetadata(
@@ -4084,11 +4365,102 @@ export function getBoundInstanceMethodCallableInfo(
   return ok(
     instanceMethod.value
       ? {
-          parameterTypes: instanceMethod.value.parameterTypes.slice(1),
+          parameterTypes: instanceMethod.value.receiverType
+            ? instanceMethod.value.parameterTypes.slice(1)
+            : [...instanceMethod.value.parameterTypes],
           returnType: instanceMethod.value.returnType,
         }
       : undefined,
   );
+}
+
+export function createMethodReferenceClosure(
+  ownerType: string,
+  receiverType: string,
+  methodName: string,
+  parameterTypes: string[],
+  returnType: string,
+): ASTNode {
+  const receiverName = "$receiver";
+  const argumentParameters = parameterTypes.map((type, index) => ({
+    name: "$arg" + index,
+    type,
+  }));
+
+  const receiverExpression: ASTNode = receiverType.startsWith("*")
+    ? {
+        kind: "unary-op",
+        operator: "*",
+        operand: { kind: "variable", name: receiverName },
+      }
+    : { kind: "variable", name: receiverName };
+
+  return {
+    kind: "closure",
+    parameters: [
+      {
+        name: receiverName,
+        type: receiverType,
+      },
+      ...argumentParameters,
+    ],
+    returnType,
+    body: {
+      kind: "call",
+      callee: {
+        kind: "field-access",
+        object: receiverExpression,
+        fieldName: methodName,
+      },
+      arguments: argumentParameters.map((parameter) => ({
+        kind: "variable",
+        name: parameter.name,
+      })),
+      returnType,
+    },
+  };
+}
+
+export function tryParseTypeMethodReference(
+  parser: Parser,
+): Result<ASTNode | undefined, string> {
+  const ownerToken = current(parser);
+  const separatorToken = parser.tokens[parser.pos + 1];
+  const methodToken = parser.tokens[parser.pos + 2];
+
+  if (
+    ownerToken?.type !== "IDENTIFIER" ||
+    separatorToken?.type !== "DOUBLE_COLON" ||
+    methodToken?.type !== "IDENTIFIER"
+  ) {
+    return ok(undefined);
+  }
+
+  const ownerType = ownerToken.value;
+  const methodName = methodToken.value;
+  const constructorInfo = parser.functions.get(ownerType);
+  const instanceMethod = constructorInfo?.instanceMetadata?.methods.find(
+    (method) => method.name === methodName,
+  );
+
+  if (instanceMethod) {
+    parser.pos += 3;
+    const receiverType = instanceMethod.receiverType ?? "*" + ownerType;
+    const parameterTypes = instanceMethod.receiverType
+      ? instanceMethod.parameterTypes.slice(1)
+      : [...instanceMethod.parameterTypes];
+    return ok(
+      createMethodReferenceClosure(
+        ownerType,
+        receiverType,
+        methodName,
+        parameterTypes,
+        instanceMethod.returnType,
+      ),
+    );
+  }
+
+  return ok(undefined);
 }
 
 export function buildConstructorInstanceMetadata(
@@ -4130,6 +4502,10 @@ export function buildConstructorInstanceMetadata(
     seenNames.add(statement.name);
     methods.push({
       name: statement.name,
+      receiverType:
+        statement.parameters[0]?.name === "this"
+          ? statement.parameters[0].type
+          : undefined,
       parameterTypes: statement.parameters.map((parameter) => parameter.type),
       returnType: statement.returnType,
     });
@@ -4149,6 +4525,8 @@ export function parseFunctionStatement(
   }
   const functionName = signatureResult.value.name;
   const typeParameters = signatureResult.value.typeParameters;
+  const typeParameterConstraints =
+    signatureResult.value.typeParameterConstraints;
   const parameters = signatureResult.value.parameters;
   const explicitReturnType = signatureResult.value.hasExplicitReturnType
     ? signatureResult.value.returnType
@@ -4167,6 +4545,7 @@ export function parseFunctionStatement(
   // This allows recursive calls to find the function
   parser.functions.set(functionName, {
     typeParameters,
+    typeParameterConstraints,
     parameters,
     returnType,
   });
@@ -4184,12 +4563,19 @@ export function parseFunctionStatement(
   const savedScope = parser.currentScope;
   const savedInLoop = parser.inLoop;
   const savedGenericTypeParameters = [...parser.genericTypeParameters];
+  const savedGenericTypeConstraints = new Map(parser.genericTypeConstraints);
   const savedCurrentFunctionReturnType = parser.currentFunctionReturnType;
   parser.inLoop = false;
   parser.genericTypeParameters = [
     ...savedGenericTypeParameters,
     ...typeParameters,
   ];
+  parser.genericTypeConstraints = new Map(savedGenericTypeConstraints);
+  if (typeParameterConstraints) {
+    for (const [typeParameter, constraints] of typeParameterConstraints) {
+      parser.genericTypeConstraints.set(typeParameter, [...constraints]);
+    }
+  }
   parser.currentFunctionReturnType =
     explicitReturnType ??
     (parser.structs.has(functionName) ? functionName : undefined);
@@ -4211,6 +4597,7 @@ export function parseFunctionStatement(
         savedScope,
         savedInLoop,
         savedGenericTypeParameters,
+        savedGenericTypeConstraints,
         savedCurrentFunctionReturnType,
       );
       return blockResult;
@@ -4232,6 +4619,7 @@ export function parseFunctionStatement(
             savedScope,
             savedInLoop,
             savedGenericTypeParameters,
+            savedGenericTypeConstraints,
             savedCurrentFunctionReturnType,
           );
           return exprResult;
@@ -4242,11 +4630,16 @@ export function parseFunctionStatement(
       const lastStmt =
         statements.length > 0 ? statements[statements.length - 1] : undefined;
       if (!lastStmt || lastStmt.kind !== "return") {
-        parser.variables = savedVariables;
-        parser.currentScope = savedScope;
-        parser.inLoop = savedInLoop;
-        parser.genericTypeParameters = savedGenericTypeParameters;
-        return err(
+        return restoreFunctionParsingStateWithError(
+          parser,
+          {
+            variables: savedVariables,
+            scope: savedScope,
+            inLoop: savedInLoop,
+            genericTypeParameters: savedGenericTypeParameters,
+            genericTypeConstraints: savedGenericTypeConstraints,
+            currentFunctionReturnType: savedCurrentFunctionReturnType,
+          },
           "Function body must end with an expression when return type is not Void",
         );
       }
@@ -4260,6 +4653,7 @@ export function parseFunctionStatement(
         savedScope,
         savedInLoop,
         savedGenericTypeParameters,
+        savedGenericTypeConstraints,
         savedCurrentFunctionReturnType,
       );
       return err("Expected '}'");
@@ -4281,6 +4675,7 @@ export function parseFunctionStatement(
         savedScope,
         savedInLoop,
         savedGenericTypeParameters,
+        savedGenericTypeConstraints,
         savedCurrentFunctionReturnType,
       );
       return assignResult;
@@ -4294,6 +4689,7 @@ export function parseFunctionStatement(
           savedScope,
           savedInLoop,
           savedGenericTypeParameters,
+          savedGenericTypeConstraints,
           savedCurrentFunctionReturnType,
         );
         return err(
@@ -4310,6 +4706,7 @@ export function parseFunctionStatement(
           savedScope,
           savedInLoop,
           savedGenericTypeParameters,
+          savedGenericTypeConstraints,
           savedCurrentFunctionReturnType,
         );
         return exprResult;
@@ -4322,6 +4719,7 @@ export function parseFunctionStatement(
           savedScope,
           savedInLoop,
           savedGenericTypeParameters,
+          savedGenericTypeConstraints,
           savedCurrentFunctionReturnType,
         );
         return err(
@@ -4335,11 +4733,18 @@ export function parseFunctionStatement(
     // Expect ';' after expression
     const semiTok = current(parser);
     if (semiTok.type !== "SEMICOLON") {
-      parser.variables = savedVariables;
-      parser.currentScope = savedScope;
-      parser.inLoop = savedInLoop;
-      parser.genericTypeParameters = savedGenericTypeParameters;
-      return err("Expected ';' after function arrow expression");
+      return restoreFunctionParsingStateWithError(
+        parser,
+        {
+          variables: savedVariables,
+          scope: savedScope,
+          inLoop: savedInLoop,
+          genericTypeParameters: savedGenericTypeParameters,
+          genericTypeConstraints: savedGenericTypeConstraints,
+          currentFunctionReturnType: savedCurrentFunctionReturnType,
+        },
+        "Expected ';' after function arrow expression",
+      );
     }
     advance(parser);
   }
@@ -4353,6 +4758,7 @@ export function parseFunctionStatement(
         savedScope,
         savedInLoop,
         savedGenericTypeParameters,
+        savedGenericTypeConstraints,
         savedCurrentFunctionReturnType,
       );
       return coercedBody;
@@ -4367,6 +4773,7 @@ export function parseFunctionStatement(
         savedScope,
         savedInLoop,
         savedGenericTypeParameters,
+        savedGenericTypeConstraints,
         savedCurrentFunctionReturnType,
       );
       return inferredReturnType;
@@ -4375,6 +4782,7 @@ export function parseFunctionStatement(
     returnType = inferredReturnType.value;
     parser.functions.set(functionName, {
       typeParameters,
+      typeParameterConstraints,
       parameters,
       returnType,
     });
@@ -4398,6 +4806,7 @@ export function parseFunctionStatement(
         savedScope,
         savedInLoop,
         savedGenericTypeParameters,
+        savedGenericTypeConstraints,
         savedCurrentFunctionReturnType,
       );
       return inferredCoercedBody;
@@ -4418,6 +4827,7 @@ export function parseFunctionStatement(
       savedScope,
       savedInLoop,
       savedGenericTypeParameters,
+      savedGenericTypeConstraints,
       savedCurrentFunctionReturnType,
     );
     return constructorMetadata;
@@ -4426,6 +4836,7 @@ export function parseFunctionStatement(
 
   parser.functions.set(functionName, {
     typeParameters,
+    typeParameterConstraints,
     parameters,
     returnType,
     instanceMetadata,
@@ -4438,6 +4849,7 @@ export function parseFunctionStatement(
     savedScope,
     savedInLoop,
     savedGenericTypeParameters,
+    savedGenericTypeConstraints,
     savedCurrentFunctionReturnType,
   );
 
@@ -4445,6 +4857,7 @@ export function parseFunctionStatement(
     kind: "function",
     name: functionName,
     typeParameters,
+    typeParameterConstraints,
     parameters,
     returnType,
     body,
@@ -5279,7 +5692,7 @@ export function tryGetDirectMemberCallableInfo(
   }
 
   if (resolvedThisMember.value) {
-    const parsedCallableType = parseFunctionTypeString(
+    const parsedCallableType = parseCallableTypeString(
       resolvedThisMember.value.binding.type,
     );
     if (!parsedCallableType) {
@@ -5312,12 +5725,15 @@ export function tryGetDirectMemberCallableInfo(
       return ok(undefined);
     }
 
-    const parsedCallableType = parseFunctionTypeString(binding.type);
-    if (!parsedCallableType) {
+    const parsedBoundCallableType = parseCallableTypeString(binding.type);
+    if (!parsedBoundCallableType) {
       return ok(undefined);
     }
 
-    return instantiateBoundCallable(parsedCallableType, binding.typeParameters);
+    return instantiateBoundCallable(
+      parsedBoundCallableType,
+      binding.typeParameters,
+    );
   }
 
   const memberType = inferContainerMemberType(
@@ -5329,7 +5745,7 @@ export function tryGetDirectMemberCallableInfo(
     return ok(undefined);
   }
 
-  const parsedCallableType = parseFunctionTypeString(memberType.value);
+  const parsedCallableType = parseCallableTypeString(memberType.value);
   if (!parsedCallableType) {
     return ok(undefined);
   }
@@ -5343,6 +5759,14 @@ export function tryGetExtensionMethodCallableInfo(
 ): Result<ParsedFunctionType | undefined, string> {
   if (callee.fieldName === "length") {
     return ok(undefined);
+  }
+
+  const contractCallable = getContractMethodCallableInfo(parser, callee);
+  if (!contractCallable.ok) {
+    return contractCallable;
+  }
+  if (contractCallable.value) {
+    return contractCallable;
   }
 
   const fnInfo = parser.functions.get(callee.fieldName);
@@ -5628,6 +6052,14 @@ export function parsePrimary(parser: Parser): Result<ASTNode, string> {
   }
 
   if (tok.type === "IDENTIFIER") {
+    const typeMethodReference = tryParseTypeMethodReference(parser);
+    if (!typeMethodReference.ok) {
+      return typeMethodReference;
+    }
+    if (typeMethodReference.value) {
+      return ok(typeMethodReference.value);
+    }
+
     const moduleReference = tryParseModuleReference(parser);
     if (!moduleReference.ok) {
       return moduleReference;
@@ -5852,10 +6284,6 @@ export function parsePrimary(parser: Parser): Result<ASTNode, string> {
     const scopeBinding = findScopeBinding(parser.currentScope, name);
     if (!scopeBinding) {
       return err("Variable '" + name + "' is not defined");
-    }
-
-    if (scopeBinding.kind === "function") {
-      return err("Function '" + name + "' must be called with parentheses");
     }
 
     return ok({ kind: "variable", name });
@@ -6186,12 +6614,37 @@ export function prescanStructDefinitions(parser: Parser): Result<void, string> {
   });
 }
 
-/**
- * Helper to register all function signatures before parsing bodies
- * Supports mutual recursion by allowing functions to reference each other
- */
-export function prescanFunctionSignatures(
+/* eslint-disable no-unused-vars */
+export interface PrescanTraversalHandlers {
+  onTopLevelContract?(
+    declarationStart: number,
+    contractNode: ContractNode,
+  ): Result<void, string>;
+  onExternFunctionSignature?(
+    declarationStart: number,
+    signature: ParsedFunctionSignatureHead,
+  ): Result<void, string>;
+  onFunctionSignature?(
+    declarationStart: number,
+    signature: ParsedFunctionSignatureHead,
+  ): Result<void, string>;
+}
+/* eslint-enable no-unused-vars */
+
+export function getPendingFunctionReturnTypeFromSignature(
   parser: Parser,
+  signature: ParsedFunctionSignatureHead,
+): string | undefined {
+  return signature.hasExplicitReturnType
+    ? signature.returnType
+    : parser.structs.has(signature.name)
+      ? signature.name
+      : undefined;
+}
+
+export function walkPrescanDeclarations(
+  parser: Parser,
+  handlers: PrescanTraversalHandlers,
 ): Result<void, string> {
   const savedPos = parser.pos;
   const savedCurrentFunctionReturnType = parser.currentFunctionReturnType;
@@ -6222,6 +6675,33 @@ export function prescanFunctionSignatures(
     if (tok.type === "KEYWORD" && tok.value === "object") {
       pendingObjectBrace = true;
       advance(parser);
+      continue;
+    }
+
+    if (
+      tok.type === "KEYWORD" &&
+      tok.value === "contract" &&
+      braceContexts.length === 0
+    ) {
+      const contractStart = parser.pos;
+      const contractResult = parseContractStatement(parser);
+      if (!contractResult.ok) {
+        parser.pos = contractStart;
+        return contractResult;
+      }
+
+      if (handlers.onTopLevelContract) {
+        const contractRegistration = handlers.onTopLevelContract(
+          contractStart,
+          contractResult.value as ContractNode,
+        );
+        if (!contractRegistration.ok) {
+          return contractRegistration;
+        }
+      }
+
+      pendingObjectBrace = false;
+      pendingFunctionReturnType = undefined;
       continue;
     }
 
@@ -6278,13 +6758,14 @@ export function prescanFunctionSignatures(
       }
       advance(parser);
 
-      const registrationResult = registerParsedFunctionSignature(
-        parser,
-        externStart,
-        signatureResult.value,
-      );
-      if (!registrationResult.ok) {
-        return registrationResult;
+      if (handlers.onExternFunctionSignature) {
+        const externRegistration = handlers.onExternFunctionSignature(
+          externStart,
+          signatureResult.value,
+        );
+        if (!externRegistration.ok) {
+          return externRegistration;
+        }
       }
 
       pendingObjectBrace = false;
@@ -6304,21 +6785,21 @@ export function prescanFunctionSignatures(
         return signatureResult;
       }
 
-      const registrationResult = registerParsedFunctionSignature(
-        parser,
-        declarationStart,
-        signatureResult.value,
-      );
-      if (!registrationResult.ok) {
-        return registrationResult;
+      if (handlers.onFunctionSignature) {
+        const signatureRegistration = handlers.onFunctionSignature(
+          declarationStart,
+          signatureResult.value,
+        );
+        if (!signatureRegistration.ok) {
+          return signatureRegistration;
+        }
       }
 
-      pendingFunctionReturnType = signatureResult.value.hasExplicitReturnType
-        ? signatureResult.value.returnType
-        : parser.structs.has(signatureResult.value.name)
-          ? signatureResult.value.name
-          : undefined;
       pendingObjectBrace = false;
+      pendingFunctionReturnType = getPendingFunctionReturnTypeFromSignature(
+        parser,
+        signatureResult.value,
+      );
       continue;
     }
 
@@ -6329,4 +6810,45 @@ export function prescanFunctionSignatures(
   parser.pos = savedPos;
   parser.currentFunctionReturnType = savedCurrentFunctionReturnType;
   return ok(undefined);
+}
+
+export function prescanContractDefinitions(
+  parser: Parser,
+): Result<void, string> {
+  return walkPrescanDeclarations(parser, {
+    onTopLevelContract: (
+      declarationStart: number,
+      contractNode: ContractNode,
+    ) => {
+      if (parser.contracts.has(contractNode.name)) {
+        parser.pos = declarationStart;
+        return err("Contract '" + contractNode.name + "' already declared");
+      }
+
+      parser.contracts.set(
+        contractNode.name,
+        createContractInfo(contractNode.methods),
+      );
+      return ok(undefined);
+    },
+  });
+}
+
+/**
+ * Helper to register all function signatures before parsing bodies
+ * Supports mutual recursion by allowing functions to reference each other
+ */
+export function prescanFunctionSignatures(
+  parser: Parser,
+): Result<void, string> {
+  return walkPrescanDeclarations(parser, {
+    onExternFunctionSignature: (
+      declarationStart: number,
+      signature: ParsedFunctionSignatureHead,
+    ) => registerParsedFunctionSignature(parser, declarationStart, signature),
+    onFunctionSignature: (
+      declarationStart: number,
+      signature: ParsedFunctionSignatureHead,
+    ) => registerParsedFunctionSignature(parser, declarationStart, signature),
+  });
 }

@@ -868,6 +868,10 @@ export function codegenAST(
     return "0";
   }
 
+  if (node.kind === "contract") {
+    return "0";
+  }
+
   if (
     node.kind === "extern-module" ||
     node.kind === "extern-function" ||

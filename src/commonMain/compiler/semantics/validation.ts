@@ -111,6 +111,10 @@ export function validateAST(node: ASTNode): Result<undefined, string> {
     return ok(undefined);
   }
 
+  if (node.kind === "contract") {
+    return ok(undefined);
+  }
+
   if (node.kind === "destructure") {
     return validateStatementList(node.statements);
   }
@@ -462,7 +466,8 @@ export function validateStructSemantics(
   if (
     node.kind === "extern-module" ||
     node.kind === "extern-function" ||
-    node.kind === "extern-type"
+    node.kind === "extern-type" ||
+    node.kind === "contract"
   ) {
     return ok(undefined);
   }

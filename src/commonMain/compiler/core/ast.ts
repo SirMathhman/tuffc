@@ -47,6 +47,7 @@ export interface KeywordToken {
   type: "KEYWORD";
   value:
     | "let"
+    | "contract"
     | "extern"
     | "object"
     | "type"
@@ -379,8 +380,14 @@ export interface FunctionParameter {
   destructorFunction?: string;
 }
 
+export interface GenericTypeParameterDeclaration {
+  name: string;
+  constraints: string[];
+}
+
 export interface InstanceMethodInfo {
   name: string;
+  receiverType?: string;
   parameterTypes: string[];
   returnType: string;
 }
@@ -394,10 +401,23 @@ export interface FunctionNode {
   kind: "function";
   name: string;
   typeParameters: string[];
+  typeParameterConstraints?: Map<string, string[]>;
   parameters: FunctionParameter[];
   returnType: string;
   body: ASTNode;
   isDestructor?: boolean;
+}
+
+export interface ContractMethodSignature {
+  name: string;
+  parameters: FunctionParameter[];
+  returnType: string;
+}
+
+export interface ContractNode {
+  kind: "contract";
+  name: string;
+  methods: ContractMethodSignature[];
 }
 
 export interface ObjectNode {
@@ -566,6 +586,7 @@ export type ASTNode =
   | ReturnNode
   | MatchNode
   | FunctionNode
+  | ContractNode
   | ObjectNode
   | ModuleNode
   | ClosureNode
@@ -727,9 +748,14 @@ export interface ResolvedThisMemberAccess {
 
 export interface FunctionInfo {
   typeParameters: string[];
+  typeParameterConstraints?: Map<string, string[]>;
   parameters: FunctionParameter[];
   returnType: string;
   instanceMetadata?: InstanceValueMetadata;
+}
+
+export interface ContractInfo {
+  methods: Map<string, ParsedFunctionType>;
 }
 
 export interface StructInfo {
@@ -742,6 +768,7 @@ export interface Parser {
   pos: number;
   variables: Map<string, VariableInfo>;
   functions: Map<string, FunctionInfo>;
+  contracts: Map<string, ContractInfo>;
   modules: Map<string, ModuleCompilationInfo>;
   aliases: Map<string, string>;
   aliasDeclarations: Map<string, string>;
@@ -750,6 +777,7 @@ export interface Parser {
   structNames: Set<string>;
   objects: Map<string, ObjectInfo>;
   genericTypeParameters: string[];
+  genericTypeConstraints: Map<string, string[]>;
   inLoop: boolean;
   currentFunctionReturnType: string | undefined;
   globalScope: ScopeFrame;

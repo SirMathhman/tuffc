@@ -404,6 +404,7 @@ export function tokenize(input: string): Result<Token[], string> {
       // Check if it's a keyword or boolean
       if (
         ident === "let" ||
+        ident === "contract" ||
         ident === "extern" ||
         ident === "object" ||
         ident === "type" ||
