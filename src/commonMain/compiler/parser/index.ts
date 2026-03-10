@@ -203,8 +203,15 @@ export function parseVTableCallableType(
     return undefined;
   }
   const contractName = inner.slice(0, ltIdx);
-  const concreteType = inner.slice(ltIdx + 1, gtIdx);
-  return { parameterTypes: [concreteType], returnType: contractName };
+  const allArgs = inner.slice(ltIdx + 1, gtIdx).split(",").map((s) => s.trim());
+  const concreteType = allArgs[0];
+  if (!concreteType) return undefined;
+  const contractTypeArgs = allArgs.slice(1);
+  const returnType =
+    contractTypeArgs.length > 0
+      ? contractName + "<" + contractTypeArgs.join(", ") + ">"
+      : contractName;
+  return { parameterTypes: [concreteType], returnType };
 }
 
 export function parseCallArguments(parser: Parser): Result<ASTNode[], string> {
@@ -1404,6 +1411,19 @@ function parseVTableHeader(
   }
   const concreteType = concreteTok.value;
   advance(parser);
+
+  // Parse optional contract type arguments: ~Contract<ConcreteType, TypeArg1, TypeArg2>
+  const contractTypeArgs: string[] = [];
+  while (current(parser).type === "COMMA") {
+    advance(parser); // consume comma
+    const typeArgResult = parseTypeValue(parser);
+    if (!typeArgResult.ok) {
+      return typeArgResult;
+    }
+    advance(parser);
+    contractTypeArgs.push(typeArgResult.value);
+  }
+
   const gt = current(parser);
   if (gt.type !== "COMPARISON" || gt.value !== ">") {
     return err({
@@ -1414,21 +1434,22 @@ function parseVTableHeader(
     } as unknown as string);
   }
   advance(parser);
-  return ok({ contractName, concreteType });
+  return ok({ contractName, concreteType, contractTypeArgs });
 }
 
 export function parseVTableType(parser: Parser): Result<string, string> {
   advance(parser); // consume ~
   const header = parseVTableHeader(parser);
   if (!header.ok) return header;
-  return ok("~" + header.value.contractName + "<" + header.value.concreteType + ">");
+  const allArgs = [header.value.concreteType, ...header.value.contractTypeArgs];
+  return ok("~" + header.value.contractName + "<" + allArgs.join(", ") + ">");
 }
 
 export function parseVTableLiteral(parser: Parser): Result<ASTNode, string> {
   advance(parser); // consume ~
   const header = parseVTableHeader(parser);
   if (!header.ok) return header;
-  const { contractName, concreteType } = header.value;
+  const { contractName, concreteType, contractTypeArgs } = header.value;
 
   const contractInfo = parser.contracts.get(contractName);
   if (!contractInfo) {
@@ -1532,6 +1553,7 @@ export function parseVTableLiteral(parser: Parser): Result<ASTNode, string> {
     kind: "vtable-literal",
     contractName,
     concreteType,
+    contractTypeArgs,
     entries,
   });
 }
@@ -3650,6 +3672,53 @@ export function parseLetStatement(parser: Parser): Result<ASTNode, string> {
     return parseDestructuringLetStatement(parser, mutable);
   }
 
+  // Peek: if next tokens are `name =` (no colon), use inferred-type let
+  const peekNameTok = current(parser);
+  if (peekNameTok.type === "IDENTIFIER") {
+    const peekPos = parser.pos;
+    advance(parser); // consume name
+    const peekNext = current(parser);
+    if (peekNext.type === "ASSIGN") {
+      // Inferred-type let: `let name = expr`
+      const varName = peekNameTok.value;
+      if (parser.variables.has(varName)) {
+        return err("Variable '" + varName + "' already declared");
+      }
+      advance(parser); // consume =
+      const initResult = parseExpression(parser);
+      if (!initResult.ok) {
+        return initResult;
+      }
+      const semiTok = current(parser);
+      if (semiTok.type !== "SEMICOLON") {
+        return err("Expected ';' after let initializer");
+      }
+      advance(parser);
+      const initializerNode = initResult.value;
+      const inferredTypeResult = inferExpressionType(initializerNode, parser);
+      if (!inferredTypeResult.ok) {
+        return err(
+          "Cannot infer type of '" + varName + "': " + inferredTypeResult.error,
+        );
+      }
+      const inferredType = inferredTypeResult.value;
+      parser.variables.set(varName, {
+        type: inferredType,
+        mutable,
+      });
+      registerScopeVariable(parser, varName, inferredType, mutable, true);
+      return ok({
+        kind: "let",
+        name: varName,
+        type: inferredType,
+        mutable,
+        initializer: initializerNode,
+      } as LetNode);
+    }
+    // Not inferred-type — restore and fall through to normal parsing
+    parser.pos = peekPos;
+  }
+
   const declarationResult = parseNamedTypeDeclaration(parser);
   if (!declarationResult.ok) {
     return declarationResult;
@@ -4670,9 +4739,11 @@ export function parseContractMethodSignature(
 }
 
 export function createContractInfo(
+  typeParameters: string[],
   methods: ContractMethodSignature[],
 ): ContractInfo {
   return {
+    typeParameters,
     methods: new Map(
       methods.map((method) => [
         method.name,
@@ -4719,6 +4790,17 @@ export function parseContractStatement(
   }
   advance(parser);
 
+  const typeParameters: string[] = [];
+  if (isGenericListStartToken(current(parser))) {
+    const genericParamsResult = parseGenericParameterDeclarations(parser, false);
+    if (!genericParamsResult.ok) {
+      return genericParamsResult;
+    }
+    for (const entry of genericParamsResult.value) {
+      typeParameters.push(entry.name);
+    }
+  }
+
   if (current(parser).type !== "LBRACE") {
     return err("Expected '{' after contract name");
   }
@@ -4727,29 +4809,39 @@ export function parseContractStatement(
   const methods: ContractMethodSignature[] = [];
   const seenMethods = new Set<string>();
 
-  while (current(parser).type !== "RBRACE") {
-    const methodToken = current(parser);
-    if (methodToken.type !== "KEYWORD" || methodToken.value !== "fn") {
-      return err("Contracts only support function signatures");
-    }
+  const parseBodyResult = withTemporaryGenericTypeParameters(
+    parser,
+    typeParameters,
+    (): Result<ContractMethodSignature[], string> => {
+      while (current(parser).type !== "RBRACE") {
+        const methodToken = current(parser);
+        if (methodToken.type !== "KEYWORD" || methodToken.value !== "fn") {
+          return err("Contracts only support function signatures");
+        }
 
-    const methodResult = parseContractMethodSignature(parser);
-    if (!methodResult.ok) {
-      return methodResult;
-    }
+        const methodResult = parseContractMethodSignature(parser);
+        if (!methodResult.ok) {
+          return methodResult;
+        }
 
-    if (seenMethods.has(methodResult.value.name)) {
-      return err(
-        "Contract '" +
-          contractName +
-          "' already declares member '" +
-          methodResult.value.name +
-          "'",
-      );
-    }
+        if (seenMethods.has(methodResult.value.name)) {
+          return err(
+            "Contract '" +
+              contractName +
+              "' already declares member '" +
+              methodResult.value.name +
+              "'",
+          );
+        }
 
-    seenMethods.add(methodResult.value.name);
-    methods.push(methodResult.value);
+        seenMethods.add(methodResult.value.name);
+        methods.push(methodResult.value);
+      }
+      return ok(methods);
+    },
+  );
+  if (!parseBodyResult.ok) {
+    return parseBodyResult;
   }
 
   if (current(parser).type !== "RBRACE") {
@@ -4760,6 +4852,7 @@ export function parseContractStatement(
   return ok({
     kind: "contract",
     name: contractName,
+    typeParameters,
     methods,
   });
 }
@@ -5873,8 +5966,7 @@ export function parseFunctionStatement(
     }
   }
   parser.currentFunctionReturnType =
-    explicitReturnType ??
-    (parser.structs.has(functionName) ? functionName : undefined);
+    explicitReturnType ?? functionName;
   enterCallableScope(parser, savedScope, parameters);
 
   const bodyTok = current(parser);
@@ -6076,6 +6168,13 @@ export function parseFunctionStatement(
     }
 
     returnType = inferredReturnType.value;
+
+    // If this function infers its return type as its own name (constructor returning `this`),
+    // register it as a struct-like type so annotations like `let x : Square` are valid.
+    if (returnType === functionName && !parser.structNames.has(functionName)) {
+      parser.structNames.add(functionName);
+    }
+
     setOrUpdateFunctionOverload(parser, functionName, {
       typeParameters,
       typeParameterConstraints,
@@ -7144,6 +7243,31 @@ export function tryGetDirectMemberCallableInfo(
       return ok(methodSig);
     }
     return ok(undefined);
+  }
+
+  const ownerTypeLtIdx = ownerType.value.indexOf("<");
+  const ownerTypeGtIdx = ownerType.value.lastIndexOf(">");
+  if (ownerTypeLtIdx !== -1 && ownerTypeGtIdx > ownerTypeLtIdx) {
+    const baseContractName = ownerType.value.slice(0, ownerTypeLtIdx);
+    const typeArgsStr = ownerType.value.slice(ownerTypeLtIdx + 1, ownerTypeGtIdx);
+    const genericContractInfo = parser.contracts.get(baseContractName);
+    if (genericContractInfo && genericContractInfo.typeParameters.length > 0) {
+      const typeArgs = typeArgsStr.split(",").map((s) => s.trim());
+      const substitutions = new Map(
+        genericContractInfo.typeParameters.map((tp, i) => [tp, typeArgs[i] ?? tp]),
+      );
+      const methodSig = genericContractInfo.methods.get(callee.fieldName);
+      if (methodSig) {
+        let substitutedReturn = methodSig.returnType;
+        for (const [tp, replacement] of substitutions) {
+          substitutedReturn = substitutedReturn
+            .split(tp)
+            .join(replacement);
+        }
+        return ok({ parameterTypes: methodSig.parameterTypes, returnType: substitutedReturn });
+      }
+      return ok(undefined);
+    }
   }
 
   const memberType = inferContainerMemberType(
@@ -8300,7 +8424,7 @@ export function prescanContractDefinitions(
 
       parser.contracts.set(
         contractNode.name,
-        createContractInfo(contractNode.methods),
+        createContractInfo(contractNode.typeParameters, contractNode.methods),
       );
       return ok(undefined);
     },

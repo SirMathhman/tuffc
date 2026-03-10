@@ -895,8 +895,14 @@ export function isKnownNamedType(parser: Parser, typeStr: string): boolean {
 
   const genericType = parseGenericTypeString(typeStr);
   if (genericType) {
-    if (!parser.structNames.has(genericType.baseType)) {
+    if (!parser.structNames.has(genericType.baseType) && !parser.contracts.has(genericType.baseType)) {
       return false;
+    }
+
+    if (parser.contracts.has(genericType.baseType)) {
+      return genericType.typeArguments.every(
+        (typeArgument) => validateTypeWithStructs(parser, typeArgument).ok,
+      );
     }
 
     const structInfo = parser.structs.get(genericType.baseType);
@@ -1645,8 +1651,12 @@ export function canonicalizeTypeString(
       baseType: string,
       mappedTypeArguments: string[],
     ): Result<string, string> => {
-      if (!parser.structNames.has(baseType)) {
+      if (!parser.structNames.has(baseType) && !parser.contracts.has(baseType)) {
         return err("Invalid type annotation: " + typeStr);
+      }
+
+      if (parser.contracts.has(baseType)) {
+        return ok(baseType + "<" + mappedTypeArguments.join(", ") + ">");
       }
 
       const baseInfo = parser.structs.get(baseType);
@@ -2165,6 +2175,9 @@ export function inferExpressionType(
   }
 
   if (expr.kind === "this") {
+    if (parser.currentFunctionReturnType && parser.currentFunctionReturnType !== "__inferred__") {
+      return ok(parser.currentFunctionReturnType);
+    }
     return err("Cannot infer type of expression");
   }
 
@@ -2383,7 +2396,8 @@ export function inferExpressionType(
   }
 
   if (expr.kind === "vtable-literal") {
-    return ok("~" + expr.contractName + "<" + expr.concreteType + ">");
+    const allArgs = [expr.concreteType, ...expr.contractTypeArgs];
+    return ok("~" + expr.contractName + "<" + allArgs.join(", ") + ">");
   }
 
   return err("Cannot infer type of expression");

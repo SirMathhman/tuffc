@@ -427,6 +427,7 @@ export interface ContractMethodSignature {
 export interface ContractNode {
   kind: "contract";
   name: string;
+  typeParameters: string[];
   methods: ContractMethodSignature[];
 }
 
@@ -574,12 +575,14 @@ export interface VTableLiteralEntry {
 export interface VTableHeader {
   contractName: string;
   concreteType: string;
+  contractTypeArgs: string[];
 }
 
 export interface VTableLiteralNode {
   kind: "vtable-literal";
   contractName: string;
   concreteType: string;
+  contractTypeArgs: string[];
   entries: VTableLiteralEntry[];
 }
 
@@ -785,6 +788,7 @@ export interface FunctionInfo {
 }
 
 export interface ContractInfo {
+  typeParameters: string[];
   methods: Map<string, ParsedFunctionType>;
 }
 

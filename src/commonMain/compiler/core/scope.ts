@@ -190,6 +190,10 @@ export function validateThisScopeAgainstStruct(
 ): Result<undefined, string> {
   const structInfo = parser.structs.get(expectedType);
   if (!structInfo) {
+    // Structless constructor: no fields to validate, allow this return if the type is registered.
+    if (parser.structNames.has(expectedType)) {
+      return ok(undefined);
+    }
     return err(
       "Type mismatch: expression has type 'this' but variable declared as '" +
         expectedType +

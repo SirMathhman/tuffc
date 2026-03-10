@@ -4113,3 +4113,99 @@ test("move: &move passes value to vtable call", () => {
 test("move: &move on non-variable is rejected", () => {
   expectError(executeTuff("let x : I32 = &move 42;"));
 });
+
+// ===== STRUCTLESS CONSTRUCTOR TESTS =====
+
+const STRUCTLESS_SQUARE =
+  "contract Shape { fn getArea() : I32; } " +
+  "fn Square(length : I32) => { fn getArea() : I32 => length * 2; this }";
+
+test("structless constructor: inline vtable call returns correct value", () => {
+  expectValue(
+    executeTuff(
+      STRUCTLESS_SQUARE +
+        " let square = Square(100);" +
+        " let shape = (~Shape<Square> { getArea : Square::getArea; })(&move square);" +
+        " shape.getArea()",
+    ),
+    200,
+  );
+});
+
+test("structless constructor: type is usable in explicit annotation", () => {
+  expectValue(
+    executeTuff(
+      STRUCTLESS_SQUARE +
+        " let square : Square = Square(5);" +
+        " 0",
+    ),
+    0,
+  );
+});
+
+test("structless constructor: returning value with inferred type works", () => {
+  expectValue(
+    executeTuff(
+      STRUCTLESS_SQUARE +
+        " let square = Square(7);" +
+        " 0",
+    ),
+    0,
+  );
+});
+
+// ===== GENERIC CONTRACT TESTS =====
+
+const GENERIC_CONTAINER_CONTRACT = "contract Container<T> { fn get() : T; }";
+const BOX_CONSTRUCTOR_GENERIC =
+  "fn Box(value : I32) => { fn get() : I32 => value; this }";
+const BOX_VTABLE =
+  "let boxVTable : ~Container<Box, I32> = ~Container<Box, I32> { get : Box::get; };";
+
+test("generic contract: method dispatch returns substituted type", () => {
+  expectValue(
+    executeTuff(
+      GENERIC_CONTAINER_CONTRACT +
+        " " +
+        BOX_CONSTRUCTOR_GENERIC +
+        " " +
+        BOX_VTABLE +
+        " let b = Box(42); let c : Container<I32> = boxVTable(&move b); c.get()",
+    ),
+    42,
+  );
+});
+
+test("generic contract: inline vtable call returns substituted type", () => {
+  expectValue(
+    executeTuff(
+      GENERIC_CONTAINER_CONTRACT +
+        " " +
+        BOX_CONSTRUCTOR_GENERIC +
+        " let b = Box(7);" +
+        " let c = (~Container<Box, I32> { get : Box::get; })(&move b);" +
+        " c.get()",
+    ),
+    7,
+  );
+});
+
+test("generic contract: unknown contract in generic vtable is rejected", () => {
+  expectError(
+    executeTuff(
+      BOX_CONSTRUCTOR_GENERIC +
+        " let b = Box(1); let c = (~UnknownContract<Box, I32> { get : Box::get; })(&move b); 0",
+    ),
+  );
+});
+
+test("generic contract: missing method in generic vtable is rejected", () => {
+  expectError(
+    executeTuff(
+      "contract Multi<T> { fn first() : T; fn second() : T; } " +
+        BOX_CONSTRUCTOR_GENERIC +
+        " let b = Box(1);" +
+        " let c = (~Multi<Box, I32> { first : Box::get; })(&move b); 0",
+    ),
+  );
+});
