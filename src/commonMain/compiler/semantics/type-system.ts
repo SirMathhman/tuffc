@@ -917,7 +917,8 @@ export function isKnownNamedType(parser: Parser, typeStr: string): boolean {
     VALID_TYPES.has(typeStr) ||
     (directStructInfo && directStructInfo.typeParameters.length === 0) ||
     (!directStructInfo && parser.structNames.has(typeStr)) ||
-    parser.aliasDeclarations.has(typeStr)
+    parser.aliasDeclarations.has(typeStr) ||
+    parser.contracts.has(typeStr)
   );
 }
 
@@ -1634,6 +1635,10 @@ export function canonicalizeTypeString(
         return resolveAliasName(parser, typeName, visiting);
       }
 
+      if (parser.contracts.has(typeName)) {
+        return ok(typeName);
+      }
+
       return err("Invalid type annotation: " + typeName);
     },
     (
@@ -2250,6 +2255,10 @@ export function inferExpressionType(
       return inferReferenceType(parser, expr.operand, expr.operator);
     }
 
+    if (expr.operator === "&move") {
+      return inferExpressionType(expr.operand, parser);
+    }
+
     if (expr.operator === "*") {
       const operandTypeResult = inferExpressionType(expr.operand, parser);
       if (!operandTypeResult.ok) {
@@ -2371,6 +2380,10 @@ export function inferExpressionType(
     }
 
     return ok(combineBranchTypes(thenType.value, elseType.value));
+  }
+
+  if (expr.kind === "vtable-literal") {
+    return ok("~" + expr.contractName + "<" + expr.concreteType + ">");
   }
 
   return err("Cannot infer type of expression");

@@ -55,6 +55,8 @@ import type {
   UnaryOpNode,
   VariableInfo,
   VariableNode,
+  VTableHeader,
+  VTableLiteralEntry,
 } from "../core/ast";
 import {
   createObjectTypeName,
@@ -180,7 +182,29 @@ export function parseCallableTypeString(
     return parseFunctionTypeString(typeStr.slice(1));
   }
 
+  const vtableCallable = parseVTableCallableType(typeStr);
+  if (vtableCallable) {
+    return vtableCallable;
+  }
+
   return undefined;
+}
+
+export function parseVTableCallableType(
+  typeStr: string,
+): ParsedFunctionType | undefined {
+  if (!typeStr.startsWith("~")) {
+    return undefined;
+  }
+  const inner = typeStr.slice(1); // "Shape<Square>"
+  const ltIdx = inner.indexOf("<");
+  const gtIdx = inner.lastIndexOf(">");
+  if (ltIdx === -1 || gtIdx === -1 || gtIdx < ltIdx) {
+    return undefined;
+  }
+  const contractName = inner.slice(0, ltIdx);
+  const concreteType = inner.slice(ltIdx + 1, gtIdx);
+  return { parameterTypes: [concreteType], returnType: contractName };
 }
 
 export function parseCallArguments(parser: Parser): Result<ASTNode[], string> {
@@ -1250,6 +1274,13 @@ export function parseTypeAnnotationInfo(
 
   const typeTok = current(parser);
   if (typeTok.type !== "IDENTIFIER") {
+    if (typeTok.type === "TILDE") {
+      const vtableTypeResult = parseVTableType(parser);
+      if (!vtableTypeResult.ok) {
+        return vtableTypeResult;
+      }
+      return ok({ type: vtableTypeResult.value, out: isOut });
+    }
     return err("Expected type annotation");
   }
   const baseType = (typeTok as IdentifierToken).value;
@@ -1316,6 +1347,11 @@ export function parseTypeValue(
   resolveAliases: boolean = true,
 ): Result<string, string> {
   const typeTok = current(parser);
+
+  if (typeTok.type === "TILDE") {
+    return parseVTableType(parser);
+  }
+
   if (
     typeTok.type === "LBRACKET" ||
     typeTok.type === "LPAREN" ||
@@ -1329,6 +1365,175 @@ export function parseTypeValue(
   }
 
   return err("Expected type");
+}
+
+function parseVTableHeader(
+  parser: Parser
+): Result<VTableHeader, string> {
+  const contractTok = current(parser);
+  if (contractTok.type !== "IDENTIFIER") {
+    return err({
+      value: String(contractTok.type),
+      message: "Expected contract name after '~'",
+      reason: "A vtable type must be written as ~ContractName<ConcreteType>",
+      fix: "Write the contract name after '~', e.g. ~Shape<Square>",
+    } as unknown as string);
+  }
+  const contractName = contractTok.value;
+  advance(parser);
+  const lt = current(parser);
+  if (lt.type !== "COMPARISON" || lt.value !== "<") {
+    return err({
+      value: String(lt.type),
+      message: "Expected '<' after contract name in vtable type",
+      reason:
+        "A vtable type must specify the concrete type: ~ContractName<ConcreteType>",
+      fix: "Add '<ConcreteType>' after the contract name, e.g. ~Shape<Square>",
+    } as unknown as string);
+  }
+  advance(parser);
+  const concreteTok = current(parser);
+  if (concreteTok.type !== "IDENTIFIER") {
+    return err({
+      value: String(concreteTok.type),
+      message: "Expected concrete type name in vtable type",
+      reason:
+        "A vtable type must specify the concrete type: ~ContractName<ConcreteType>",
+      fix: "Provide the concrete type name inside '<>'",
+    } as unknown as string);
+  }
+  const concreteType = concreteTok.value;
+  advance(parser);
+  const gt = current(parser);
+  if (gt.type !== "COMPARISON" || gt.value !== ">") {
+    return err({
+      value: String(gt.type),
+      message: "Expected '>' to close vtable type parameter",
+      reason: "A vtable type uses angle brackets: ~ContractName<ConcreteType>",
+      fix: "Add '>' after the concrete type name",
+    } as unknown as string);
+  }
+  advance(parser);
+  return ok({ contractName, concreteType });
+}
+
+export function parseVTableType(parser: Parser): Result<string, string> {
+  advance(parser); // consume ~
+  const header = parseVTableHeader(parser);
+  if (!header.ok) return header;
+  return ok("~" + header.value.contractName + "<" + header.value.concreteType + ">");
+}
+
+export function parseVTableLiteral(parser: Parser): Result<ASTNode, string> {
+  advance(parser); // consume ~
+  const header = parseVTableHeader(parser);
+  if (!header.ok) return header;
+  const { contractName, concreteType } = header.value;
+
+  const contractInfo = parser.contracts.get(contractName);
+  if (!contractInfo) {
+    return err({
+      value: contractName,
+      message: "Unknown contract '" + contractName + "'",
+      reason: "The contract must be declared before creating a vtable for it",
+      fix:
+        "Declare the contract with 'contract " +
+        contractName +
+        " { ... }' before this vtable literal",
+    } as unknown as string);
+  }
+
+  const lbrace = current(parser);
+  if (lbrace.type !== "LBRACE") {
+    return err({
+      value: String(lbrace.type),
+      message: "Expected '{' to open vtable literal body",
+      reason:
+        "A vtable literal body is enclosed in braces: ~Contract<Type> { method: ref; }",
+      fix: "Add '{' after the type parameter",
+    } as unknown as string);
+  }
+  advance(parser);
+
+  const entries: VTableLiteralEntry[] = [];
+  while (current(parser).type !== "RBRACE") {
+    const methodNameTok = current(parser);
+    if (methodNameTok.type !== "IDENTIFIER") {
+      return err({
+        value: String(methodNameTok.type),
+        message: "Expected method name in vtable literal entry",
+        reason:
+          "Each vtable entry maps a contract method to a function reference: methodName : ref;",
+        fix: "Provide the method name as an identifier",
+      } as unknown as string);
+    }
+    const methodName = methodNameTok.value;
+    advance(parser);
+
+    const colon = current(parser);
+    if (colon.type !== "COLON") {
+      return err({
+        value: String(colon.type),
+        message:
+          "Expected ':' between method name and reference in vtable entry",
+        reason:
+          "Vtable entries use the syntax: methodName : ConcreteType::method;",
+        fix: "Add ':' after the method name",
+      } as unknown as string);
+    }
+    advance(parser);
+
+    const refResult = parseExpression(parser);
+    if (!refResult.ok) {
+      return refResult;
+    }
+
+    const semicolon = current(parser);
+    if (semicolon.type !== "SEMICOLON") {
+      return err({
+        value: String(semicolon.type),
+        message: "Expected ';' after vtable entry",
+        reason: "Each vtable entry must be terminated with a semicolon",
+        fix: "Add ';' after the method reference expression",
+      } as unknown as string);
+    }
+    advance(parser);
+
+    entries.push({ methodName, reference: refResult.value });
+  }
+  advance(parser); // consume }
+
+  // Validate all contract methods are covered
+  for (const [methodName] of contractInfo.methods) {
+    if (!entries.find((e) => e.methodName === methodName)) {
+      return err({
+        value: methodName,
+        message:
+          "Vtable literal for '" +
+          contractName +
+          "' is missing method '" +
+          methodName +
+          "'",
+        reason:
+          "A vtable must provide references for every method declared in the contract",
+        fix:
+          "Add '" +
+          methodName +
+          " : " +
+          concreteType +
+          "::" +
+          methodName +
+          ";' to the vtable literal",
+      } as unknown as string);
+    }
+  }
+
+  return ok({
+    kind: "vtable-literal",
+    contractName,
+    concreteType,
+    entries,
+  });
 }
 
 export function getCurrentAliasType(parser: Parser): string | undefined {
@@ -4902,9 +5107,6 @@ export function buildConstructorInstanceMetadata(
   }
 
   const structInfo = parser.structs.get(constructorName);
-  if (!structInfo) {
-    return ok(undefined);
-  }
 
   const methods: InstanceMethodInfo[] = [];
   const seenSignatures = new Set<string>(); // "name|returnType" to detect identical duplicates
@@ -4925,7 +5127,7 @@ export function buildConstructorInstanceMetadata(
       );
     }
     seenSignatures.add(sigKey);
-    if (structInfo.fields.some((field) => field.name === originalName)) {
+    if (structInfo?.fields.some((field) => field.name === originalName)) {
       return err(
         "Constructor-local method '" +
           originalName +
@@ -6580,6 +6782,33 @@ export function parseUnary(parser: Parser): Result<ASTNode, string> {
   if (tok.type === "ADDRESS_OF") {
     advance(parser);
 
+    // Check for 'move' keyword after & (ownership transfer)
+    const nextTokForMove = current(parser);
+    if (
+      nextTokForMove.type === "KEYWORD" &&
+      nextTokForMove.value === "move"
+    ) {
+      advance(parser);
+      const operandResult = parseUnary(parser);
+      if (!operandResult.ok) {
+        return operandResult;
+      }
+      const operandNode = operandResult.value;
+      if (operandNode.kind !== "variable") {
+        return err({
+          value: operandNode.kind,
+          message: "Cannot move a non-variable expression",
+          reason: "&move requires a named variable to transfer ownership",
+          fix: "Assign the expression to a variable first, then use &move on the variable",
+        } as unknown as string);
+      }
+      return ok({
+        kind: "unary-op",
+        operator: "&move",
+        operand: operandNode,
+      } as UnaryOpNode);
+    }
+
     // Check for 'mut' keyword after &
     const isMutable = tryConsumeMutKeyword(parser);
 
@@ -6908,6 +7137,15 @@ export function tryGetDirectMemberCallableInfo(
     );
   }
 
+  const contractInfo = parser.contracts.get(ownerType.value);
+  if (contractInfo) {
+    const methodSig = contractInfo.methods.get(callee.fieldName);
+    if (methodSig) {
+      return ok(methodSig);
+    }
+    return ok(undefined);
+  }
+
   const memberType = inferContainerMemberType(
     parser,
     callee.object,
@@ -7187,6 +7425,10 @@ export function createValidatedCallNode(
 
 export function parsePrimary(parser: Parser): Result<ASTNode, string> {
   const tok = current(parser);
+
+  if (tok.type === "TILDE") {
+    return parseVTableLiteral(parser);
+  }
 
   if (tok.type === "NUMBER") {
     advance(parser);

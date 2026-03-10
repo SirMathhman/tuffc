@@ -639,6 +639,9 @@ export function codegenAST(
       const operand = codegenAST(node.operand, context);
       // Address-of: &x -> x (in our simple model, we just return the variable/value)
       return operand;
+    } else if (node.operator === "&move") {
+      // Move: &move x -> x (ownership transfer is a type-system concept only)
+      return codegenAST(node.operand, context);
     }
   }
 
@@ -1014,6 +1017,24 @@ export function codegenAST(
     const obj = codegenAST(node.object, context);
     const value = codegenAST(node.value, context);
     return obj + "." + node.fieldName + " = " + value;
+  }
+
+  if (node.kind === "vtable-literal") {
+    // Generate: ((_e0, _e1, ...) => (inst) => ({ method0: () => _e0(inst), ... }))(ref0, ref1, ...)
+    const paramNames = node.entries.map((_, i) => "_vtable_" + i);
+    const refExprs = node.entries.map((e) => codegenAST(e.reference, context));
+    const bindings = node.entries
+      .map((e, i) => e.methodName + ": () => " + paramNames[i] + "(inst)")
+      .join(", ");
+    return (
+      "((" +
+      paramNames.join(", ") +
+      ") => ((inst) => ({ " +
+      bindings +
+      " })))(" +
+      refExprs.join(", ") +
+      ")"
+    );
   }
 
   return "0";

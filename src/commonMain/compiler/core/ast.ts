@@ -66,7 +66,8 @@ export interface KeywordToken {
     | "case"
     | "fn"
     | "return"
-    | "struct";
+    | "struct"
+    | "move";
 }
 
 export interface LParenToken {
@@ -157,6 +158,10 @@ export interface RBracketToken {
   type: "RBRACKET";
 }
 
+export interface TildeToken {
+  type: "TILDE";
+}
+
 export interface EOFToken {
   type: "EOF";
 }
@@ -193,6 +198,7 @@ export type Token =
   | PipeToken
   | DotToken
   | AddressOfToken
+  | TildeToken
   | EOFToken;
 
 // AST node interfaces
@@ -273,7 +279,7 @@ export interface UnaryLogicalNode {
 
 export interface UnaryOpNode {
   kind: "unary-op";
-  operator: "*" | "&" | "&mut";
+  operator: "*" | "&" | "&mut" | "&move";
   operand: ASTNode;
 }
 
@@ -560,6 +566,23 @@ export interface ArrayAssignNode {
   value: ASTNode;
 }
 
+export interface VTableLiteralEntry {
+  methodName: string;
+  reference: ASTNode;
+}
+
+export interface VTableHeader {
+  contractName: string;
+  concreteType: string;
+}
+
+export interface VTableLiteralNode {
+  kind: "vtable-literal";
+  contractName: string;
+  concreteType: string;
+  entries: VTableLiteralEntry[];
+}
+
 export type ASTNode =
   | NumberNode
   | ReadNode
@@ -607,7 +630,8 @@ export type ASTNode =
   | ArrayLiteralNode
   | ArrayAccessNode
   | ArraySliceNode
-  | ArrayAssignNode;
+  | ArrayAssignNode
+  | VTableLiteralNode;
 
 // Refinement type interfaces
 export interface RefinementConstraint {

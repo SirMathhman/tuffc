@@ -390,6 +390,9 @@ export function tokenize(input: string): Result<Token[], string> {
         tokens.push({ type: "PIPE" });
         pos++;
       }
+    } else if (char === "~") {
+      tokens.push({ type: "TILDE" });
+      pos++;
     } else if (isLetter(char) || char === "_") {
       // Parse identifier (e.g., 'read', 'let', 'mut', type like 'U8', or wildcard '_')
       let ident = "";
@@ -423,7 +426,8 @@ export function tokenize(input: string): Result<Token[], string> {
         ident === "case" ||
         ident === "fn" ||
         ident === "return" ||
-        ident === "struct"
+        ident === "struct" ||
+        ident === "move"
       ) {
         tokens.push({ type: "KEYWORD", value: ident });
       } else if (ident === "true") {

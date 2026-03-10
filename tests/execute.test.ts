@@ -3997,3 +3997,119 @@ test("overload: ambiguous return-type overload with no binding context is error"
     ),
   );
 });
+
+// ===== DYNAMIC DISPATCH (VTABLE) TESTS =====
+
+const SHAPE_CONTRACT = "contract Shape { fn getArea() : I32; }";
+const SQUARE_CONSTRUCTOR =
+  "struct Square { length : I32; } fn Square(length : I32) : Square => { fn getArea() : I32 => length * length; this }";
+const SQUARE_VTABLE =
+  "let squareVTable : ~Shape<Square> = ~Shape<Square> { getArea : Square::getArea; };";
+
+function makeDispatchProgram(body: string): string {
+  return (
+    SHAPE_CONTRACT + " " + SQUARE_CONSTRUCTOR + " " + SQUARE_VTABLE + " " + body
+  );
+}
+
+test("dynamic dispatch: vtable literal compiles without error", () => {
+  expectValue(
+    executeTuff(
+      makeDispatchProgram(
+        "let sq : Square = Square(5); let shape : Shape = squareVTable(&move sq); 0",
+      ),
+    ),
+    0,
+  );
+});
+
+test("dynamic dispatch: dispatched method returns correct value", () => {
+  expectValue(
+    executeTuff(
+      makeDispatchProgram(
+        "let sq : Square = Square(5); let shape : Shape = squareVTable(&move sq); shape.getArea()",
+      ),
+    ),
+    25,
+  );
+});
+
+test("dynamic dispatch: vtable works with different instances", () => {
+  expectValue(
+    executeTuff(
+      makeDispatchProgram(
+        "let sq : Square = Square(10); let shape : Shape = squareVTable(&move sq); shape.getArea()",
+      ),
+    ),
+    100,
+  );
+});
+
+test("dynamic dispatch: vtable contract with multiple methods dispatches correctly", () => {
+  expectValue(
+    executeTuff(
+      "contract Calc { fn double() : I32; fn triple() : I32; } " +
+        "struct Num { n : I32; } fn Num(n : I32) : Num => { fn double() : I32 => n * 2; fn triple() : I32 => n * 3; this } " +
+        "let vt : ~Calc<Num> = ~Calc<Num> { double : Num::double; triple : Num::triple; }; " +
+        "let c : Calc = vt(Num(4)); " +
+        "c.triple()",
+    ),
+    12,
+  );
+});
+
+test("dynamic dispatch: unknown contract in vtable literal is rejected", () => {
+  expectError(
+    executeTuff(
+      "struct Square { n : I32; } fn Square(n : I32) : Square => { fn getArea() : I32 => n * n; this } " +
+        "let vt : ~UnknownContract<Square> = ~UnknownContract<Square> { getArea : Square::getArea; }; 0",
+    ),
+  );
+});
+
+test("dynamic dispatch: missing method in vtable literal is rejected", () => {
+  expectError(
+    executeTuff(
+      "contract Shape { fn getArea() : I32; fn perimeter() : I32; } " +
+        "struct Square { n : I32; } fn Square(n : I32) : Square => { fn getArea() : I32 => n * n; this } " +
+        "let vt : ~Shape<Square> = ~Shape<Square> { getArea : Square::getArea; }; 0",
+    ),
+  );
+});
+
+test("dynamic dispatch: vtable declaration outside function is rejected inside function scope", () => {
+  expectValue(
+    executeTuff(
+      makeDispatchProgram(
+        "fn run() : I32 => { let sq : Square = Square(3); let shape : Shape = squareVTable(&move sq); shape.getArea() } run()",
+      ),
+    ),
+    9,
+  );
+});
+
+// ===== MOVE SEMANTICS TESTS =====
+
+test("move: &move expression compiles without error", () => {
+  expectValue(
+    executeTuff(
+      "struct Point { x : I32; } fn Point(x : I32) : Point => { this } let p : Point = Point(5); let q : Point = &move p; 0",
+    ),
+    0,
+  );
+});
+
+test("move: &move passes value to vtable call", () => {
+  expectValue(
+    executeTuff(
+      makeDispatchProgram(
+        "let sq : Square = Square(5); let shape : Shape = squareVTable(&move sq); shape.getArea()",
+      ),
+    ),
+    25,
+  );
+});
+
+test("move: &move on non-variable is rejected", () => {
+  expectError(executeTuff("let x : I32 = &move 42;"));
+});
