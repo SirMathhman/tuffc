@@ -393,6 +393,7 @@ export interface InstanceMethodInfo {
   receiverType?: string;
   parameterTypes: string[];
   returnType: string;
+  mangledName?: string;
 }
 
 export interface InstanceValueMetadata {
@@ -755,6 +756,8 @@ export interface FunctionInfo {
   parameters: FunctionParameter[];
   returnType: string;
   instanceMetadata?: InstanceValueMetadata;
+  overloads?: FunctionInfo[];
+  mangledName?: string;
 }
 
 export interface ContractInfo {
@@ -790,6 +793,7 @@ export interface Parser {
   lifetimeDeclarationScopes: Set<string>[];
   // Type narrowing: track variables with proven constraints (from control flow guards)
   provenConstraints: Map<string, RefinementType>; // e.g., "x" -> I32 > 100
+  currentExpectedType: string | undefined;
 }
 
 export interface ParsedNumberLiteral {

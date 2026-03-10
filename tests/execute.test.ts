@@ -3894,3 +3894,106 @@ test("slice: dynamic index without proof remains rejected", () => {
     ),
   );
 });
+
+// ---- overloading ----
+
+const AREA_AND_PERIMETER_STRUCTS = `struct AreaHolder { value : I32; }
+       struct PerimeterHolder { value : I32; }`;
+
+function makeOverloadedSquareIntoProgram(
+  constructorReturnType: string,
+  resultExpression: string,
+): string {
+  return `${AREA_AND_PERIMETER_STRUCTS}
+       struct Square { length : I32; }
+       fn Square(length : I32) : ${constructorReturnType} => {
+         fn into() : AreaHolder => AreaHolder { value : length * length };
+         fn into() : PerimeterHolder => PerimeterHolder { value : 4 * length };
+         this
+       }
+       ${resultExpression}`;
+}
+
+test("overload: two functions same name resolve by argument type (I32)", () => {
+  expectValue(
+    executeTuff(
+      "fn add(a : I32, b : I32) : I32 => a + b; fn add(a : F64, b : F64) : F64 => a + b; add(1, 2)",
+    ),
+    3,
+  );
+});
+
+test("overload: two functions same name resolve by argument type (F64)", () => {
+  expectValue(
+    executeTuff(
+      "fn add(a : I32, b : I32) : I32 => a + b; fn add(a : F64, b : F64) : F64 => a + b; add(1.0, 2.0)",
+    ),
+    3,
+  );
+});
+
+test("overload: different arities resolve correctly", () => {
+  expectValue(
+    executeTuff(
+      "fn greet() : I32 => 1; fn greet(x : I32) : I32 => x + 1; greet(5)",
+    ),
+    6,
+  );
+});
+
+test("overload: method syntax resolves overload by receiver type", () => {
+  expectValue(
+    executeTuff(
+      "fn process(this : I32, extra : I32) : I32 => this + extra + 0; fn process(this : F64, extra : F64) : F64 => this + extra + 10.0; 5.process(0)",
+    ),
+    5,
+  );
+});
+
+test("overload: return type discriminates via binding annotation", () => {
+  expectValue(
+    executeTuff(
+      makeOverloadedSquareIntoProgram(
+        "Square",
+        "let sq : AreaHolder = Square(5).into();\n       sq.value",
+      ),
+    ),
+    25,
+  );
+});
+
+test("overload: return type discriminates to second overload via binding annotation", () => {
+  expectValue(
+    executeTuff(
+      makeOverloadedSquareIntoProgram(
+        "Square",
+        "let sq : PerimeterHolder = Square(5).into();\n       sq.value",
+      ),
+    ),
+    20,
+  );
+});
+
+test("overload: duplicate identical signature is error", () => {
+  expectError(
+    executeTuff(
+      "fn add(a : I32, b : I32) : I32 => a + b; fn add(a : I32, b : I32) : I32 => a - b;",
+    ),
+  );
+});
+
+test("overload: no overload matches argument types is error", () => {
+  expectError(
+    executeTuff(
+      "fn add(a : I32, b : I32) : I32 => a + b; fn add(a : F64, b : F64) : F64 => a + b; add(true, false)",
+    ),
+  );
+});
+
+test("overload: ambiguous return-type overload with no binding context is error", () => {
+  expectError(
+    executeTuff(
+      makeOverloadedSquareIntoProgram("AreaHolder", "Square(5).into()"),
+    ),
+  );
+});

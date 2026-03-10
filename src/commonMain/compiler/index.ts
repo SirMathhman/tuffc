@@ -65,6 +65,7 @@ export function createParser(
     activeLifetimeNames: [],
     lifetimeDeclarationScopes: [new Set<string>()],
     provenConstraints: new Map(),
+    currentExpectedType: undefined,
   };
 
   registerProjectModulesAsObjects(parser, modules);

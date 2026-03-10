@@ -481,15 +481,166 @@ export function inferTypeParameterBindings(
   );
 }
 
+export function getAllFunctionOverloads(fnInfo: FunctionInfo): FunctionInfo[] {
+  return fnInfo.overloads ? [fnInfo, ...fnInfo.overloads] : [fnInfo];
+}
+
+export function functionParamSignature(fnInfo: FunctionInfo): string {
+  return fnInfo.parameters.map((p) => p.type).join("|");
+}
+
+export function setOrUpdateFunctionOverload(
+  parser: Parser,
+  name: string,
+  info: FunctionInfo,
+): void {
+  const existing = parser.functions.get(name);
+  if (!existing) {
+    parser.functions.set(name, info);
+    return;
+  }
+
+  const newSig = functionParamSignature(info);
+  if (functionParamSignature(existing) === newSig) {
+    // If return types differ with same params, this may be a new return-type overload
+    // or an update to an existing overload.
+    // "__inferred__" is a placeholder — treat it as an update, not a new overload.
+    if (
+      existing.returnType !== info.returnType &&
+      existing.returnType !== "__inferred__" &&
+      info.returnType !== "__inferred__"
+    ) {
+      // Check if there is already an overload with this return type (update case)
+      const existingReturnMatch = existing.overloads?.find(
+        (o) =>
+          functionParamSignature(o) === newSig &&
+          o.returnType === info.returnType,
+      );
+      if (existingReturnMatch) {
+        // Update the existing overload in-place, preserve mangled name
+        const overloads = existingReturnMatch.overloads;
+        const mangledName = existingReturnMatch.mangledName;
+        Object.assign(existingReturnMatch, info);
+        existingReturnMatch.overloads = overloads;
+        existingReturnMatch.mangledName = mangledName;
+        return;
+      }
+      // New return-type overload — add it
+      if (!existing.overloads) existing.overloads = [];
+      existing.overloads.push(info);
+      return;
+    }
+    // Same params AND same return type — update in-place, preserve structural fields
+    const overloads = existing.overloads;
+    const mangledName = existing.mangledName;
+    Object.assign(existing, info);
+    existing.overloads = overloads;
+    existing.mangledName = mangledName;
+    return;
+  }
+
+  if (existing.overloads) {
+    const match = existing.overloads.find(
+      (o) => functionParamSignature(o) === newSig,
+    );
+    if (match) {
+      const overloads = match.overloads;
+      const mangledName = match.mangledName;
+      Object.assign(match, info);
+      match.overloads = overloads;
+      match.mangledName = mangledName;
+      return;
+    }
+  }
+
+  if (!existing.overloads) existing.overloads = [];
+  existing.overloads.push(info);
+}
+
+export function resolveOverloadByArgTypes(
+  parser: Parser,
+  functionName: string,
+  overloads: FunctionInfo[],
+  args: ASTNode[],
+): Result<FunctionInfo, string> {
+  const arityMatches = overloads.filter(
+    (o) => o.parameters.length === args.length,
+  );
+
+  if (arityMatches.length === 0) {
+    const validArities = [
+      ...new Set(overloads.map((o) => o.parameters.length)),
+    ].join(" or ");
+    return err(
+      "No overload of '" +
+        functionName +
+        "' takes " +
+        args.length +
+        " argument(s); valid arities: " +
+        validArities,
+    );
+  }
+
+  if (arityMatches.length === 1) {
+    return ok(arityMatches[0]!);
+  }
+
+  const typeMatches = arityMatches.filter((o) =>
+    o.parameters.every((p, i) => {
+      const arg = args[i];
+      if (!arg) return false;
+      const argType = inferExpressionType(arg, parser);
+      return argType.ok && p.type === argType.value;
+    }),
+  );
+
+  if (typeMatches.length === 1) {
+    return ok(typeMatches[0]!);
+  }
+
+  if (typeMatches.length === 0) {
+    const validSigs = arityMatches
+      .map((o) => "(" + o.parameters.map((p) => p.type).join(", ") + ")")
+      .join(", ");
+    return err(
+      "No overload of '" +
+        functionName +
+        "' matches the provided argument types. Valid signatures: " +
+        validSigs,
+    );
+  }
+
+  return err(
+    "Ambiguous call to '" +
+      functionName +
+      "': multiple overloads match the provided arguments",
+  );
+}
+
 export function instantiateFunctionInfo(
   parser: Parser,
   functionName: string,
   explicitTypeArguments: string[] | undefined,
   args: ASTNode[],
 ): Result<FunctionInfo, string> {
-  const functionInfo = parser.functions.get(functionName);
-  if (!functionInfo) {
+  const primaryInfo = parser.functions.get(functionName);
+  if (!primaryInfo) {
     return err("Function '" + functionName + "' is not defined");
+  }
+
+  let functionInfo = primaryInfo;
+  if (primaryInfo.overloads) {
+    const allOverloads = getAllFunctionOverloads(primaryInfo);
+    const resolved = resolveOverloadByArgTypes(
+      parser,
+      functionName,
+      allOverloads,
+      args,
+    );
+    if (!resolved.ok) {
+      return resolved;
+    }
+    functionInfo = resolved.value;
   }
 
   const instantiatedSignature = instantiateParsedFunctionType(
@@ -528,6 +679,7 @@ export function instantiateFunctionInfo(
     typeParameters: [],
     parameters: specializedParameters,
     returnType: instantiatedSignature.value.returnType,
+    mangledName: functionInfo.mangledName,
   });
 }
 
@@ -980,7 +1132,12 @@ export function getExpressionInstanceMetadata(
   }
 
   if (expr.kind === "function-call") {
-    return ok(parser.functions.get(expr.name)?.instanceMetadata);
+    const fnPrimary = parser.functions.get(expr.name);
+    if (!fnPrimary) return ok(undefined);
+    if (!fnPrimary.overloads) return ok(fnPrimary.instanceMetadata);
+    const allOverloads = getAllFunctionOverloads(fnPrimary);
+    const match = allOverloads.find((o) => o.returnType === expr.returnType);
+    return ok(match?.instanceMetadata ?? fnPrimary.instanceMetadata);
   }
 
   if (expr.kind === "struct-instantiation") {
@@ -1022,14 +1179,39 @@ export function getInstanceMethodInfo(
   parser: Parser,
   expr: ASTNode,
   methodName: string,
+  expectedReturnType?: string,
 ): Result<InstanceMethodInfo | undefined, string> {
   const metadata = getExpressionInstanceMetadata(parser, expr);
   if (!metadata.ok) {
     return metadata;
   }
 
-  return ok(
-    metadata.value?.methods.find((method) => method.name === methodName),
+  const allMatches =
+    metadata.value?.methods.filter((method) => method.name === methodName) ??
+    [];
+
+  if (allMatches.length === 0) {
+    return ok(undefined);
+  }
+
+  if (allMatches.length === 1) {
+    return ok(allMatches[0]);
+  }
+
+  if (expectedReturnType) {
+    const typeMatch = allMatches.find(
+      (m) => m.returnType === expectedReturnType,
+    );
+    if (typeMatch) {
+      return ok(typeMatch);
+    }
+  }
+
+  return err(
+    "Ambiguous call to constructor-local method '" +
+      methodName +
+      "': multiple overloads exist with different return types. " +
+      "Add a type annotation to disambiguate.",
   );
 }
 

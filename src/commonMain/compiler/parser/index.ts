@@ -23,6 +23,7 @@ import type {
   DestructuredBinding,
   FieldAccessNode,
   FieldAssignNode,
+  FunctionInfo,
   FunctionParameter,
   GenericTypeParameterDeclaration,
   IdentifierToken,
@@ -82,7 +83,9 @@ import {
   evaluateIsType,
   expressionHasUnionType,
   extractConstraintsFromComparison,
+  functionParamSignature,
   getExpressionInstanceMetadata,
+  getAllFunctionOverloads,
   getBracketedTypeParts,
   getCallableInfo,
   getContractMethodCallableInfo,
@@ -100,6 +103,7 @@ import {
   isGenericTypeParameter,
   normalizeTypeName,
   satisfiesRefinementConstraints,
+  setOrUpdateFunctionOverload,
   splitTopLevel,
   substituteTypeParameters,
   validateCallArguments,
@@ -402,6 +406,49 @@ export function tryParseTypeArgumentList(
   return typeArgumentsResult;
 }
 
+export interface BoundInstanceMethodCallableInfo extends ParsedFunctionType {
+  mangledName?: string;
+}
+
+export interface ExtensionMethodCallableInfo extends ParsedFunctionType {
+  callName: string;
+}
+
+export function stripMangledOverloadSuffix(name: string): string {
+  const separatorIndex = name.lastIndexOf("$$");
+  if (separatorIndex < 0) {
+    return name;
+  }
+
+  const suffix = name.slice(separatorIndex + 2);
+  if (suffix.length === 0 || [...suffix].some((char) => !isDigit(char))) {
+    return name;
+  }
+
+  return name.slice(0, separatorIndex);
+}
+
+export function getCurrentFunctionMangledName(
+  parser: Parser,
+  name: string,
+  parameters: FunctionParameter[],
+  returnType?: string,
+): string {
+  const primary = parser.functions.get(name);
+  if (!primary?.overloads) return primary?.mangledName ?? name;
+  const sig = functionParamSignature({ parameters } as never);
+  const allOverloads = getAllFunctionOverloads(primary);
+  const sigMatches = allOverloads.filter(
+    (o) => functionParamSignature(o) === sig,
+  );
+  if (sigMatches.length === 1) return sigMatches[0]?.mangledName ?? name;
+  if (returnType) {
+    const retMatch = sigMatches.find((o) => o.returnType === returnType);
+    if (retMatch) return retMatch.mangledName ?? name;
+  }
+  return sigMatches[0]?.mangledName ?? name;
+}
+
 export function createResolvedFunctionCallNode(
   parser: Parser,
   functionName: string,
@@ -433,7 +480,7 @@ export function createResolvedFunctionCallNode(
 
   return ok({
     kind: "function-call",
-    name: functionName,
+    name: functionInfo.value.mangledName ?? functionName,
     arguments: validatedArgs.value,
     typeArguments: explicitTypeArguments,
     parameterTypes,
@@ -3428,7 +3475,9 @@ export function parseLetStatement(parser: Parser): Result<ASTNode, string> {
   }
   refinement = refinementResult.value;
 
+  parser.currentExpectedType = typeStr;
   const initResult = parseRequiredLetInitializer(parser);
+  parser.currentExpectedType = undefined;
   if (!initResult.ok) {
     return initResult;
   }
@@ -4222,7 +4271,8 @@ export function registerParsedFunctionSignature(
   declarationStart: number,
   signature: ParsedFunctionSignatureHead,
 ): Result<void, string> {
-  if (!parser.functions.has(signature.name)) {
+  const existing = parser.functions.get(signature.name);
+  if (!existing) {
     parser.functions.set(signature.name, {
       typeParameters: signature.typeParameters,
       typeParameterConstraints: signature.typeParameterConstraints,
@@ -4232,8 +4282,35 @@ export function registerParsedFunctionSignature(
     return ok(undefined);
   }
 
-  parser.pos = declarationStart;
-  return err("Function '" + signature.name + "' already declared");
+  const allOverloads = getAllFunctionOverloads(existing);
+  const isDuplicate = allOverloads.some(
+    (o) =>
+      o.parameters.length === signature.parameters.length &&
+      o.parameters.every((p, i) => p.type === signature.parameters[i]?.type) &&
+      o.returnType === signature.returnType,
+  );
+
+  if (isDuplicate) {
+    parser.pos = declarationStart;
+    return err(
+      "Function '" +
+        signature.name +
+        "' already declared with identical signature",
+    );
+  }
+
+  if (!existing.overloads) {
+    existing.mangledName = existing.mangledName ?? signature.name + "$$0";
+    existing.overloads = [];
+  }
+  existing.overloads.push({
+    typeParameters: signature.typeParameters,
+    typeParameterConstraints: signature.typeParameterConstraints,
+    parameters: signature.parameters,
+    returnType: signature.returnType,
+    mangledName: signature.name + "$$" + (existing.overloads.length + 1),
+  });
+  return ok(undefined);
 }
 
 export function scanTypeDeclarationKeywords(
@@ -4702,11 +4779,12 @@ export function cloneOptionalInstanceMetadata(
 export function getBoundInstanceMethodCallableInfo(
   parser: Parser,
   callee: FieldAccessNode,
-): Result<ParsedFunctionType | undefined, string> {
+): Result<BoundInstanceMethodCallableInfo | undefined, string> {
   const instanceMethod = getInstanceMethodInfo(
     parser,
     callee.object,
     callee.fieldName,
+    parser.currentExpectedType,
   );
   if (!instanceMethod.ok) {
     return instanceMethod;
@@ -4719,6 +4797,7 @@ export function getBoundInstanceMethodCallableInfo(
             ? instanceMethod.value.parameterTypes.slice(1)
             : [...instanceMethod.value.parameterTypes],
           returnType: instanceMethod.value.returnType,
+          mangledName: instanceMethod.value.mangledName,
         }
       : undefined,
   );
@@ -4828,30 +4907,37 @@ export function buildConstructorInstanceMetadata(
   }
 
   const methods: InstanceMethodInfo[] = [];
-  const seenNames = new Set<string>();
+  const seenSignatures = new Set<string>(); // "name|returnType" to detect identical duplicates
   for (const statement of body.statements) {
     if (statement.kind !== "function") {
       continue;
     }
 
-    if (seenNames.has(statement.name)) {
+    // Strip mangling suffix (e.g. "into$$0" → "into") to get the original name
+    const originalName = stripMangledOverloadSuffix(statement.name);
+    const mangledName =
+      statement.name !== originalName ? statement.name : undefined;
+
+    const sigKey = originalName + "|" + statement.returnType;
+    if (seenSignatures.has(sigKey)) {
       return err(
-        "Constructor-local method '" + statement.name + "' already declared",
+        "Constructor-local method '" + originalName + "' already declared",
       );
     }
-    if (structInfo.fields.some((field) => field.name === statement.name)) {
+    seenSignatures.add(sigKey);
+    if (structInfo.fields.some((field) => field.name === originalName)) {
       return err(
         "Constructor-local method '" +
-          statement.name +
+          originalName +
           "' conflicts with struct field '" +
-          statement.name +
+          originalName +
           "'",
       );
     }
 
-    seenNames.add(statement.name);
     methods.push({
-      name: statement.name,
+      name: originalName,
+      mangledName,
       receiverType:
         statement.parameters[0]?.name === "this"
           ? statement.parameters[0].type
@@ -5524,15 +5610,42 @@ export function parseFunctionStatement(
 
   // Register function in parser context BEFORE parsing body
   // This allows recursive calls to find the function
-  parser.functions.set(functionName, {
+  setOrUpdateFunctionOverload(parser, functionName, {
     typeParameters,
     typeParameterConstraints,
     parameters,
     returnType,
   });
+
+  // Assign mangled names for local overloads (like top-level prescan does)
+  // and update the scope registration to use the mangled name
+  const fnEntry = parser.functions.get(functionName);
+  let scopeRegistrationName = functionName;
+  if (fnEntry?.overloads) {
+    if (!fnEntry.mangledName) {
+      fnEntry.mangledName = functionName + "$$0";
+      const existingBinding = parser.currentScope.members.get(functionName);
+      if (existingBinding) {
+        parser.currentScope.members.delete(functionName);
+        parser.currentScope.members.set(fnEntry.mangledName, existingBinding);
+      }
+    }
+    const newOverload = fnEntry.overloads[fnEntry.overloads.length - 1];
+    if (newOverload && !newOverload.mangledName) {
+      newOverload.mangledName = functionName + "$$" + fnEntry.overloads.length;
+    }
+    // Use this function's specific mangled name based on its signature
+    scopeRegistrationName = getCurrentFunctionMangledName(
+      parser,
+      functionName,
+      parameters,
+      returnType,
+    );
+  }
+
   registerScopeFunction(
     parser,
-    functionName,
+    scopeRegistrationName,
     parameters,
     returnType,
     typeParameters,
@@ -5761,7 +5874,7 @@ export function parseFunctionStatement(
     }
 
     returnType = inferredReturnType.value;
-    parser.functions.set(functionName, {
+    setOrUpdateFunctionOverload(parser, functionName, {
       typeParameters,
       typeParameterConstraints,
       parameters,
@@ -5815,6 +5928,34 @@ export function parseFunctionStatement(
     return outAssignmentValidation;
   }
 
+  // Fix up local function FunctionNode names: when a function gains overloads
+  // after its FunctionNode was already emitted (with original name), update
+  // the node name to the correct mangled name.
+  if (body.kind === "block") {
+    for (const stmt of body.statements) {
+      if (stmt.kind !== "function") continue;
+      const baseName = stripMangledOverloadSuffix(stmt.name);
+      const fnInfo = parser.functions.get(baseName);
+      if (!fnInfo?.overloads) continue;
+      const mangledName = getCurrentFunctionMangledName(
+        parser,
+        baseName,
+        stmt.parameters,
+        stmt.returnType,
+      );
+      if (mangledName !== stmt.name) {
+        const previousName = stmt.name;
+        const binding = parser.currentScope.members.get(previousName);
+        stmt.name = mangledName;
+        // Also update the scope member key so the scope object getter uses the right name
+        if (binding) {
+          parser.currentScope.members.delete(previousName);
+          parser.currentScope.members.set(mangledName, binding);
+        }
+      }
+    }
+  }
+
   const constructorMetadata = buildConstructorInstanceMetadata(
     parser,
     functionName,
@@ -5834,7 +5975,7 @@ export function parseFunctionStatement(
   }
   instanceMetadata = constructorMetadata.value;
 
-  parser.functions.set(functionName, {
+  setOrUpdateFunctionOverload(parser, functionName, {
     typeParameters,
     typeParameterConstraints,
     parameters,
@@ -5855,7 +5996,12 @@ export function parseFunctionStatement(
 
   return ok({
     kind: "function",
-    name: functionName,
+    name: getCurrentFunctionMangledName(
+      parser,
+      functionName,
+      parameters,
+      returnType,
+    ),
     typeParameters,
     typeParameterConstraints,
     parameters,
@@ -6779,35 +6925,15 @@ export function tryGetDirectMemberCallableInfo(
   return instantiateBoundCallable(parsedCallableType);
 }
 
-export function tryGetExtensionMethodCallableInfo(
+export function tryGetExtensionMethodCallableInfoForOverload(
   parser: Parser,
   callee: FieldAccessNode,
+  fnInfo: FunctionInfo,
+  receiverType: string,
 ): Result<ParsedFunctionType | undefined, string> {
-  if (callee.fieldName === "length") {
-    return ok(undefined);
-  }
-
-  const contractCallable = getContractMethodCallableInfo(parser, callee);
-  if (!contractCallable.ok) {
-    return contractCallable;
-  }
-  if (contractCallable.value) {
-    return contractCallable;
-  }
-
-  const fnInfo = parser.functions.get(callee.fieldName);
-  if (!fnInfo) {
-    return ok(undefined);
-  }
-
   const receiverParam = fnInfo.parameters[0];
   if (!receiverParam || receiverParam.name !== "this") {
     return ok(undefined);
-  }
-
-  const receiverType = inferExpressionType(callee.object, parser);
-  if (!receiverType.ok) {
-    return receiverType;
   }
 
   if (fnInfo.typeParameters.length > 0) {
@@ -6821,7 +6947,7 @@ export function tryGetExtensionMethodCallableInfo(
     const bindingResult = inferTypeParameterBindings(
       parser,
       receiverParam.type,
-      receiverType.value,
+      receiverType,
       bindings,
     );
     parser.genericTypeParameters = savedGenericTypeParameters;
@@ -6863,16 +6989,65 @@ export function tryGetExtensionMethodCallableInfo(
     });
   }
 
-  if (!areTypesCompatible(receiverParam.type, receiverType.value)) {
+  if (!areTypesCompatible(receiverParam.type, receiverType)) {
     return ok(undefined);
   }
 
   return ok({
     parameterTypes: fnInfo.parameters
       .slice(1)
-      .map((parameter) => parameter.type),
+      .map((parameter: FunctionParameter) => parameter.type),
     returnType: fnInfo.returnType,
   });
+}
+
+export function tryGetExtensionMethodCallableInfo(
+  parser: Parser,
+  callee: FieldAccessNode,
+): Result<ExtensionMethodCallableInfo | undefined, string> {
+  if (callee.fieldName === "length") {
+    return ok(undefined);
+  }
+
+  const contractCallable = getContractMethodCallableInfo(parser, callee);
+  if (!contractCallable.ok) {
+    return contractCallable;
+  }
+  if (contractCallable.value) {
+    return ok({ ...contractCallable.value, callName: callee.fieldName });
+  }
+
+  const primaryInfo = parser.functions.get(callee.fieldName);
+  if (!primaryInfo) {
+    return ok(undefined);
+  }
+
+  const receiverType = inferExpressionType(callee.object, parser);
+  if (!receiverType.ok) {
+    return ok(undefined);
+  }
+
+  const allOverloads = getAllFunctionOverloads(primaryInfo);
+
+  for (const overload of allOverloads) {
+    const result = tryGetExtensionMethodCallableInfoForOverload(
+      parser,
+      callee,
+      overload,
+      receiverType.value,
+    );
+    if (!result.ok) {
+      return result;
+    }
+    if (result.value) {
+      return ok({
+        ...result.value,
+        callName: overload.mangledName ?? callee.fieldName,
+      });
+    }
+  }
+
+  return ok(undefined);
 }
 
 export function parsePostfixCall(
@@ -6942,7 +7117,7 @@ export function parsePostfixCall(
 
       return ok({
         kind: "function-call",
-        name: callee.fieldName,
+        name: extensionCallable.value.callName,
         arguments: [callee.object, ...validatedArgs.value],
         parameterTypes: [
           receiverType.value,
@@ -6953,9 +7128,17 @@ export function parsePostfixCall(
     }
 
     if (memberCallable.value) {
-      return createValidatedCallNode(
+      const boundMethodInfo = getBoundInstanceMethodCallableInfo(
         parser,
         callee,
+      );
+      const resolvedCallee =
+        boundMethodInfo.ok && boundMethodInfo.value?.mangledName
+          ? { ...callee, fieldName: boundMethodInfo.value.mangledName }
+          : callee;
+      return createValidatedCallNode(
+        parser,
+        resolvedCallee,
         argsResult.value,
         memberCallable.value.parameterTypes,
         memberCallable.value.returnType,
