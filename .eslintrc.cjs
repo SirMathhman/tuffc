@@ -19,7 +19,12 @@ module.exports = {
       },
       {
         selector: "TSTypeLiteral",
-        message: "Use named interfaces or types instead of anonymous object type literals",
+        message:
+          "Use named interfaces or types instead of anonymous object type literals",
+      },
+      {
+        selector: "TSTypeReference[typeName.name='Record']",
+        message: "Use Map<K, V> instead of Record",
       },
     ],
   },
