@@ -9,6 +9,7 @@
     "dev": "ts-node src/index.ts",
     "lint": "eslint . --ext .ts",
     "test": "jest",
+    "cpd": "pmd cpd --dir src --dir tests --language typescript --ignore-identifiers --minimum-tokens 35",
     "prepare": "husky install"
   },
   "devDependencies": {
