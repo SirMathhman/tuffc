@@ -25,9 +25,6 @@
     "lint-staged": "^14.0.0"
   },
   "lint-staged": {
-    "**/*.{ts,tsx,js,jsx}": [
-      "eslint --fix",
-      "git add"
-    ]
+    "**/*.{ts,tsx,js,jsx}": ["eslint --fix"]
   }
 }
