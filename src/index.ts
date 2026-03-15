@@ -115,6 +115,33 @@ function createVariableDeclarationSyntaxError(
   };
 }
 
+function createUndefinedVariableError(
+  input: string,
+  name: string,
+  fix: string,
+): CompilationError {
+  return {
+    code: CompilationErrorCode.PARSE_ERROR,
+    erroneousValue: input,
+    message: "Unable to parse input",
+    reason: `Undefined variable '${name}'`,
+    fix,
+  };
+}
+
+function createImmutableAssignmentError(
+  input: string,
+  name: string,
+): CompilationError {
+  return {
+    code: CompilationErrorCode.PARSE_ERROR,
+    erroneousValue: input,
+    message: "Unable to parse input",
+    reason: `Variable '${name}' is immutable and cannot be reassigned`,
+    fix: "Use 'let mut' for mutable declarations",
+  };
+}
+
 function getRangeViolationReason(
   typeName: string,
   range: TypeRange,
@@ -403,20 +430,34 @@ export function compileTuffToJS(
   }
 
   const processState: ProcessState = declTexts.reduce<ProcessState>(
-    (state, { name, type, initializer }) => {
+    (state, { name, isMutable, type, initializer }) => {
       if (state.error) return state;
 
       const jsName = `__tuffVar${state.nextBindingIdx}`;
 
       if (initializer === null) {
+        const shouldEmitMutableDeclaration = isMutable;
+
         return {
-          varDecls: state.varDecls,
+          varDecls: shouldEmitMutableDeclaration
+            ? [
+                ...state.varDecls,
+                {
+                  name,
+                  isMutable,
+                  type: type as string,
+                  initCode: null,
+                  jsName,
+                },
+              ]
+            : state.varDecls,
           varCtx: {
             ...state.varCtx,
             [name]: {
               type: type as string,
               isRead: false,
               isInitialized: false,
+              isMutable,
               value: undefined,
               jsName,
             },
@@ -451,7 +492,13 @@ export function compileTuffToJS(
         return {
           varDecls: [
             ...state.varDecls,
-            { name, type: resolvedType, initCode, jsName },
+            {
+              name,
+              isMutable,
+              type: resolvedType,
+              initCode,
+              jsName,
+            },
           ],
           varCtx: {
             ...state.varCtx,
@@ -459,6 +506,7 @@ export function compileTuffToJS(
               type: resolvedType,
               isRead: true,
               isInitialized: true,
+              isMutable,
               value: undefined,
               jsName,
             },
@@ -496,6 +544,7 @@ export function compileTuffToJS(
             ...state.varDecls,
             {
               name,
+              isMutable,
               type: resolvedType,
               initCode: value.toString(),
               jsName,
@@ -507,6 +556,7 @@ export function compileTuffToJS(
               type: resolvedType,
               isRead: false,
               isInitialized: true,
+              isMutable,
               value,
               jsName,
             },
@@ -535,16 +585,139 @@ export function compileTuffToJS(
 
   // If we had variable declarations, handle special code generation
   if (hasLetDeclarations) {
-    // Let bindings are immutable after declaration
-    if (currentInput.includes("=")) {
-      return new Err({
-        code: CompilationErrorCode.PARSE_ERROR,
-        erroneousValue: input,
-        message: "Unable to parse input",
-        reason: "Let bindings are immutable and cannot be reassigned",
-        fix: "Create a new let declaration instead of assigning to an existing name",
-      });
+    let remainingExpression = currentInput;
+    let assignmentReadCount = 0;
+    let assignmentCodes: string[] = [];
+
+    // Process leading assignment statements: x = value;
+    while (remainingExpression.length > 0) {
+      const trimmed = remainingExpression.trim();
+      if (!trimmed || !isLetter(trimmed[0])) {
+        remainingExpression = trimmed;
+        break;
+      }
+
+      let identEnd = 0;
+      while (
+        identEnd < trimmed.length &&
+        (isLetter(trimmed[identEnd]) || isDigit(trimmed[identEnd]))
+      ) {
+        identEnd++;
+      }
+      const name = trimmed.substring(0, identEnd);
+
+      let assignCursor = identEnd;
+      while (assignCursor < trimmed.length && trimmed[assignCursor] === " ") {
+        assignCursor++;
+      }
+
+      if (assignCursor >= trimmed.length || trimmed[assignCursor] !== "=") {
+        remainingExpression = trimmed;
+        break;
+      }
+
+      const binding = variableContext[name];
+      if (!binding) {
+        return new Err(
+          createUndefinedVariableError(
+            input,
+            name,
+            "Declare the variable before assigning to it",
+          ),
+        );
+      }
+
+      if (!binding.isMutable) {
+        return new Err(createImmutableAssignmentError(input, name));
+      }
+
+      assignCursor++;
+      while (assignCursor < trimmed.length && trimmed[assignCursor] === " ") {
+        assignCursor++;
+      }
+
+      let semicolonPos = assignCursor;
+      let depth = 0;
+      while (semicolonPos < trimmed.length) {
+        if (trimmed[semicolonPos] === "<") {
+          depth++;
+        } else if (trimmed[semicolonPos] === ">") {
+          depth--;
+        } else if (trimmed[semicolonPos] === ";" && depth === 0) {
+          break;
+        }
+        semicolonPos++;
+      }
+
+      if (semicolonPos >= trimmed.length || trimmed[semicolonPos] !== ";") {
+        return new Err({
+          code: CompilationErrorCode.PARSE_ERROR,
+          erroneousValue: input,
+          message: "Unable to parse input",
+          reason: "Expected ';' to end assignment statement",
+          fix: "Use format: x = value;",
+        });
+      }
+
+      const assignmentValue = trimmed
+        .substring(assignCursor, semicolonPos)
+        .trim();
+      if (!assignmentValue) {
+        return new Err({
+          code: CompilationErrorCode.PARSE_ERROR,
+          erroneousValue: input,
+          message: "Unable to parse input",
+          reason: "Expected assignment value after '='",
+          fix: "Use format: x = value;",
+        });
+      }
+
+      let assignedType = "";
+      let assignedCode = "";
+
+      const readTypeResult = extractReadTypeArg(assignmentValue);
+      if (!readTypeResult.isErr()) {
+        const readType = (readTypeResult as Ok<string>).value;
+        assignedType = readType;
+        assignedCode = generateReadOperandCode(
+          processState.stdinIdx + assignmentReadCount,
+        );
+        assignmentReadCount++;
+      } else if (
+        readTypeResult.error.code === CompilationErrorCode.UNKNOWN_TYPE
+      ) {
+        return readTypeResult;
+      } else {
+        const typedValue = parseTypedNumber(assignmentValue);
+        if (typedValue.isErr()) {
+          return typedValue;
+        }
+        assignedType = typedValue.value.type;
+        assignedCode = typedValue.value.value.toString();
+      }
+
+      if (assignedType !== binding.type && assignedType !== "untyped") {
+        return new Err({
+          code: CompilationErrorCode.TYPE_MISMATCH,
+          erroneousValue: input,
+          message: "Variable type mismatch in assignment",
+          reason: `Variable ${name} is type ${binding.type} but assigned value is type ${assignedType}`,
+          fix: `Assign values that match variable type ${binding.type}`,
+        });
+      }
+
+      variableContext[name] = {
+        ...binding,
+        isInitialized: true,
+      };
+      assignmentCodes = [
+        ...assignmentCodes,
+        `${binding.jsName} = ${assignedCode};`,
+      ];
+      remainingExpression = trimmed.substring(semicolonPos + 1).trim();
     }
+
+    currentInput = remainingExpression;
 
     // Validate all variable references are defined
     let i = 0;
@@ -578,13 +751,13 @@ export function compileTuffToJS(
         ) {
           // This might be a type suffix like "U8" or "U16"
           if (!TYPE_RANGES.has(ident)) {
-            return new Err({
-              code: CompilationErrorCode.PARSE_ERROR,
-              erroneousValue: input,
-              message: "Unable to parse input",
-              reason: `Undefined variable '${ident}'`,
-              fix: `Declare the variable before using it`,
-            });
+            return new Err(
+              createUndefinedVariableError(
+                input,
+                ident,
+                "Declare the variable before using it",
+              ),
+            );
           }
         } else if (binding && !binding.isInitialized) {
           return new Err({
@@ -617,17 +790,36 @@ export function compileTuffToJS(
     const hasReadInExpr = currentInput.includes("read<");
 
     let code =
-      hasReadVars || hasReadInExpr
+      hasReadVars || hasReadInExpr || assignmentReadCount > 0
         ? "const __stdinValues = __stdin.split(' ');\n"
         : "";
 
     // Add variable declarations
     for (const decl of varDeclarations) {
-      code += `const ${decl.jsName} = ${decl.initCode};\n`;
+      if (decl.initCode === null) {
+        code += `let ${decl.jsName};\n`;
+      } else {
+        code += `${decl.isMutable ? "let" : "const"} ${decl.jsName} = ${decl.initCode};\n`;
+      }
+    }
+
+    for (const assignmentCode of assignmentCodes) {
+      code += `${assignmentCode}\n`;
     }
 
     code += exprCompileResult.value;
     return new Ok(code);
+  }
+
+  if (input.includes("=")) {
+    return new Err({
+      code: CompilationErrorCode.PARSE_ERROR,
+      erroneousValue: input,
+      message: "Unable to parse input",
+      reason:
+        "Assignment requires a prior declaration in the same statement context",
+      fix: "Declare variables first using let/let mut before assigning",
+    });
   }
 
   // Check for chained operations (e.g., "100U8 + 50U8 + 30U8")
@@ -887,6 +1079,7 @@ interface VariableBinding {
   value?: number;
   isRead: boolean;
   isInitialized: boolean;
+  isMutable: boolean;
   jsName: string;
 }
 
@@ -896,13 +1089,15 @@ interface VariableContext {
 
 interface VariableDeclaration {
   name: string;
+  isMutable: boolean;
   type: string;
-  initCode: string;
+  initCode: string | null;
   jsName: string;
 }
 
 interface ParsedVariableDeclaration {
   name: string;
+  isMutable: boolean;
   type: string | null;
   initializer: string | null;
   remaining: string;
@@ -916,16 +1111,35 @@ interface ParseAllDeclsResult {
 function parseVariableDeclaration(
   input: string,
 ): Result<ParsedVariableDeclaration, CompilationError> {
-  // Find the variable name
-  let nameEnd = 4; // skip "let "
+  // Parse optional mutability keyword and find the variable name
+  let cursorAfterLet = 4; // skip "let "
+  while (cursorAfterLet < input.length && input[cursorAfterLet] === " ") {
+    cursorAfterLet++;
+  }
+
+  let isMutable = false;
+  if (
+    input.substring(cursorAfterLet, cursorAfterLet + 3) === "mut" &&
+    input[cursorAfterLet + 3] === " "
+  ) {
+    isMutable = true;
+    cursorAfterLet += 3;
+    while (cursorAfterLet < input.length && input[cursorAfterLet] === " ") {
+      cursorAfterLet++;
+    }
+  }
+
+  let nameEnd = cursorAfterLet;
   while (
     nameEnd < input.length &&
     input[nameEnd] !== " " &&
-    input[nameEnd] !== ":"
+    input[nameEnd] !== ":" &&
+    input[nameEnd] !== "=" &&
+    input[nameEnd] !== ";"
   ) {
     nameEnd++;
   }
-  const name = input.substring(4, nameEnd);
+  const name = input.substring(cursorAfterLet, nameEnd);
 
   // Validate variable name is alphanumeric
   for (let i = 0; i < name.length; i++) {
@@ -1041,6 +1255,7 @@ function parseVariableDeclaration(
 
   return new Ok({
     name,
+    isMutable,
     type: varType,
     initializer,
     remaining,

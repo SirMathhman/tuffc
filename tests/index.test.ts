@@ -357,4 +357,64 @@ describe("compileTuffToJS", () => {
   it("returns error for out-of-scope use after declaration block", () => {
     assertErr("let x: U8 = 1U8; y + x", "PARSE_ERROR");
   });
+
+  it("compiles mutable inferred declaration with reassignment", () => {
+    assertOk("let mut x = 0U8; x = 1U8; x", 1);
+  });
+
+  it("compiles mutable inferred declaration with multiple reassignments", () => {
+    assertOk("let mut x = 0U8; x = 1U8; x = 2U8; x", 2);
+  });
+
+  it("compiles mutable typed declaration without initializer after assignment", () => {
+    assertOk("let mut x: U8; x = 7U8; x + 1U8", 8);
+  });
+
+  it("returns error for reading mutable typed declaration before first assignment", () => {
+    assertErr("let mut x: U8; x + 1U8", "PARSE_ERROR");
+  });
+
+  it("returns error for mutable declaration missing type and initializer", () => {
+    assertErr("let mut x; x", "PARSE_ERROR");
+  });
+
+  it("returns error for assignment to immutable declaration", () => {
+    assertErr("let x = 0U8; x = 1U8; x", "PARSE_ERROR");
+  });
+
+  it("returns error for mutable reassignment type mismatch", () => {
+    assertErr("let mut x = 0U8; x = 1U16; x", "TYPE_MISMATCH");
+  });
+
+  it("returns error for mutable reassignment before declaration", () => {
+    assertErr("x = 1U8; let mut x = 0U8; x", "PARSE_ERROR");
+  });
+
+  it("compiles mutable reassignment from read initializer", () => {
+    assertOk("let mut x: U8 = 0U8; x = read<U8>(); x + 1U8", 2, "1");
+  });
+
+  it("returns error for mutable reassignment with invalid read type", () => {
+    assertErr("let mut x: U8 = 0U8; x = read<INVALID>(); x", "UNKNOWN_TYPE");
+  });
+
+  it("returns error for assignment to undefined variable after declarations", () => {
+    assertErr("let mut x = 0U8; y = 1U8; x", "PARSE_ERROR");
+  });
+
+  it("returns error for assignment statement missing semicolon", () => {
+    assertErr("let mut x = 0U8; x = 1U8 x", "PARSE_ERROR");
+  });
+
+  it("returns error for assignment statement missing value", () => {
+    assertErr("let mut x = 0U8; x = ; x", "PARSE_ERROR");
+  });
+
+  it("returns error for assignment with non-typed and non-read value", () => {
+    assertErr("let mut x = 0U8; x = hello; x", "PARSE_ERROR");
+  });
+
+  it("compiles declaration with extra spaces after let", () => {
+    assertOk("let   x = 1U8; x + 1U8", 2);
+  });
 });
