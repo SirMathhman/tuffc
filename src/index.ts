@@ -2,6 +2,6 @@ export function main() {
   console.log("Hello from tuffc (TypeScript)!");
 }
 
-export function compile(input: string): string {
-  return "";
+export function compileTuffToJS(input: string): string {
+  return "return 0";
 }
