@@ -7,7 +7,14 @@ export function compileTuffToJS(input: string): string {
     return "return 0";
   }
   // Extract the numeric part, ignoring type suffixes
-  const numericMatch = input.match(/^\d+/);
-  const numericValue = numericMatch ? numericMatch[0] : input;
-  return `return ${numericValue}`;
+  let numericValue = "";
+  for (let i = 0; i < input.length; i++) {
+    const char = input[i];
+    if (char >= "0" && char <= "9") {
+      numericValue += char;
+    } else {
+      break;
+    }
+  }
+  return `return ${numericValue || input}`;
 }

@@ -10,5 +10,12 @@ module.exports = {
       "error",
       { args: "none", ignoreRestSiblings: true },
     ],
+    "no-restricted-syntax": [
+      "error",
+      {
+        selector: "Literal[regex]",
+        message: "Regular expressions are not allowed",
+      },
+    ],
   },
 };
