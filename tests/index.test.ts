@@ -1,4 +1,4 @@
-import { main, compileTuffToJS } from "../src/index";
+import { compileTuffToJS } from "../src/index";
 import { Ok, Err } from "../src/types/result";
 
 function assertOkEvaluatesTo(input: string, expected: unknown) {
@@ -9,16 +9,6 @@ function assertOkEvaluatesTo(input: string, expected: unknown) {
     expect(evaluated).toBe(expected);
   }
 }
-
-describe("main", () => {
-  it("is a function", () => {
-    expect(typeof main).toBe("function");
-  });
-
-  it("executes without error", () => {
-    expect(() => main()).not.toThrow();
-  });
-});
 
 describe("Result", () => {
   it("Ok.isOk returns true", () => {

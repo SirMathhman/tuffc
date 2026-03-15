@@ -1,4 +1,4 @@
-import { main, compileTuffToJS } from "./index";
+import { compileTuffToJS } from "./index";
 import * as readline from "readline";
 
 async function runREPL() {
@@ -42,7 +42,6 @@ async function runREPL() {
   rl.close();
 }
 
-main();
 runREPL().catch((err) => {
   console.error("REPL Error:", err);
   process.exit(1);

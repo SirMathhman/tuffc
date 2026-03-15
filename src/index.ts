@@ -1,9 +1,5 @@
 import { Result, Ok, Err } from "./types/result";
 
-export function main() {
-  console.log("Tuff Compiler REPL (run with: npm start or npm run dev)");
-}
-
 export function compileTuffToJS(input: string): Result<string, string> {
   // Reject negative numbers with type suffixes (e.g., "-100U8")
   if (input.startsWith("-")) {
