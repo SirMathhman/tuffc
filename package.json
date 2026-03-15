@@ -7,7 +7,8 @@
     "build": "tsc",
     "start": "node dist/cli.js",
     "dev": "ts-node src/cli.ts",
-    "lint": "eslint . && ts-node --esm scripts/check-dead-exports.ts",
+    "typecheck": "tsc -p tsconfig.eslint.json --noEmit",
+    "lint": "pnpm run typecheck && eslint . && ts-node --esm scripts/check-dead-exports.ts",
     "test": "jest",
     "cpd": "pmd cpd --dir src --dir tests --language typescript --ignore-identifiers --ignore-literals --minimum-tokens 35",
     "prepare": "husky && git config core.hooksPath .husky"
