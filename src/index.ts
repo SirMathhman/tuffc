@@ -3,6 +3,25 @@ export function main() {
 }
 
 export function compileTuffToJS(input: string): string {
+  // Reject negative numbers with type suffixes (e.g., "-100U8")
+  if (input.startsWith("-")) {
+    let hasDigits = false;
+    let hasLetters = false;
+    for (let i = 1; i < input.length; i++) {
+      const char = input[i];
+      if (char >= "0" && char <= "9") {
+        hasDigits = true;
+      } else if ((char >= "a" && char <= "z") || (char >= "A" && char <= "Z")) {
+        hasLetters = true;
+      }
+    }
+    if (hasDigits && hasLetters) {
+      throw new Error(
+        `Negative numbers with type suffixes are not supported: ${input}`,
+      );
+    }
+  }
+
   if (input === "") {
     return "return 0";
   }

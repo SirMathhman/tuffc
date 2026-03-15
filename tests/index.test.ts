@@ -40,4 +40,20 @@ describe("compileTuffToJS", () => {
     const evaluated = new Function(result)();
     expect(evaluated).toBe("abc");
   });
+
+  it("compiles negative number without type suffix as string", () => {
+    const result = compileTuffToJS("-100");
+    const evaluated = new Function(result)();
+    expect(evaluated).toBe("-100");
+  });
+
+  it("compiles negative text as string", () => {
+    const result = compileTuffToJS("-abc");
+    const evaluated = new Function(result)();
+    expect(evaluated).toBe("-abc");
+  });
+
+  it("throws error for negative numbers with type suffixes", () => {
+    expect(() => compileTuffToJS("-100U8")).toThrow();
+  });
 });
