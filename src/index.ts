@@ -1,7 +1,7 @@
 import { Result, Ok, Err } from "./types/result";
 
 export function main() {
-  console.log("Hello from tuffc (TypeScript)!");
+  console.log("Tuff Compiler REPL (run with: npm start or npm run dev)");
 }
 
 export function compileTuffToJS(input: string): Result<string, string> {
