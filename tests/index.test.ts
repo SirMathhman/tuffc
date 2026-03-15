@@ -18,4 +18,10 @@ describe("compileTuffToJS", () => {
     const evaluated = new Function(result)();
     expect(evaluated).toBe(100);
   });
+
+  it("compiles '100U8' to JS code that evaluates to 100", () => {
+    const result = compileTuffToJS("100U8");
+    const evaluated = new Function(result)();
+    expect(evaluated).toBe(100);
+  });
 });
