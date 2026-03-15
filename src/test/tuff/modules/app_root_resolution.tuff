@@ -1,3 +1,0 @@
-let { call_nested } = nested::Caller;
-
-fn main() : I32 => call_nested();

@@ -1,3 +1,0 @@
-let { add } = com::meti::Math;
-
-out fn call_nested() : I32 => add(20, 22);

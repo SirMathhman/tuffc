@@ -1,1 +1,0 @@
-out expect fn println(message : *Str) : Void;

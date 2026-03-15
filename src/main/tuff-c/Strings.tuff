@@ -1,5 +1,0 @@
-extern let { strlen } = string;
-
-extern fn strlen(s : *Str) : USize;
-
-out fn length(this : *Str) : USize => strlen(this);

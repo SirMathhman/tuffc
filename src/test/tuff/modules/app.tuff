@@ -1,3 +1,0 @@
-let { add } = com::meti::Math;
-
-fn main() : I32 => add(40, 2);

@@ -1,3 +1,0 @@
-out expect fn panic(msg : *Str) : I32;
-out expect fn panic_with_code(code : *Str, msg : *Str, reason : *Str, fix : *Str) : I32;
-out expect fn panic_with_code_loc(code : *Str, msg : *Str, reason : *Str, fix : *Str, line : I32, col : I32) : I32;

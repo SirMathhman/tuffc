@@ -1,6 +1,0 @@
-let {
-    length
-}
- = Strings;
-let myString = "test";
-myString.length() // do something with this

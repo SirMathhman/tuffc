@@ -1,1 +1,0 @@
-out expect fn length(this : *Str) : USize;
