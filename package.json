@@ -5,12 +5,12 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
-    "start": "node dist/index.js",
-    "dev": "ts-node src/index.ts",
+    "start": "node dist/cli.js",
+    "dev": "ts-node src/cli.ts",
     "lint": "eslint . --ext .ts",
     "test": "jest",
     "cpd": "pmd cpd --dir src --dir tests --language typescript --ignore-identifiers --minimum-tokens 35",
-    "prepare": "husky && git config core.hooksPath ../.husky"
+    "prepare": "husky && git config core.hooksPath .husky"
   },
   "devDependencies": {
     "eslint": "^8.57.0",
