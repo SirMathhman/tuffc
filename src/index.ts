@@ -149,40 +149,48 @@ export function compileTuffToJS(
   const binaryOps = ["+", "-", "*", "/"];
 
   // Find all operators in the input
-  const operatorsWithPositions: OperatorPosition[] = [];
-  for (let i = 0; i < input.length; i++) {
-    const char = input[i];
-    if (
-      binaryOps.includes(char) &&
-      i > 0 &&
-      i < input.length - 1 &&
-      input[i - 1] === " " &&
-      input[i + 1] === " "
-    ) {
-      operatorsWithPositions.push({ op: char, index: i });
-    }
-  }
+  const operatorsWithPositions = Array.from(input).reduce<OperatorPosition[]>(
+    (positions, char, index) => {
+      if (
+        binaryOps.includes(char) &&
+        index > 0 &&
+        index < input.length - 1 &&
+        input[index - 1] === " " &&
+        input[index + 1] === " "
+      ) {
+        return [...positions, { op: char, index }];
+      }
+      return positions;
+    },
+    [],
+  );
 
   if (operatorsWithPositions.length > 0) {
     // Parse all operands
-    const operands: string[] = [];
-    let lastIndex = 0;
-    for (const { index } of operatorsWithPositions) {
-      operands.push(input.substring(lastIndex, index - 1).trim());
-      lastIndex = index + 2;
-    }
-    operands.push(input.substring(lastIndex).trim());
+    const leadingOperands = operatorsWithPositions.map(
+      ({ index }, position) => {
+        const startIndex =
+          position === 0 ? 0 : operatorsWithPositions[position - 1].index + 2;
+        return input.substring(startIndex, index - 1).trim();
+      },
+    );
+    const finalOperandStartIndex =
+      operatorsWithPositions[operatorsWithPositions.length - 1].index + 2;
+    const operands = [
+      ...leadingOperands,
+      input.substring(finalOperandStartIndex).trim(),
+    ];
 
     // Parse each operand
     const operators = operatorsWithPositions.map((o) => o.op);
-    const parsedOperands: BinaryOperandValue[] = [];
+    let parsedOperands: BinaryOperandValue[] = [];
 
     for (const operand of operands) {
       const result = parseOperandForBinaryOp(operand);
       if (result.isErr()) {
         return result;
       }
-      parsedOperands.push(result.value);
+      parsedOperands = [...parsedOperands, result.value];
     }
 
     // Validate all operands have the same type
@@ -204,33 +212,38 @@ export function compileTuffToJS(
 
     if (hasReadOperand) {
       // Generate code with stdin values
-      const operandCodes: string[] = [];
-      let readIndex = 0;
+      const operandCodeState = parsedOperands.reduce(
+        (state, operand) => {
+          if (operand.isRead) {
+            return {
+              operandCodes: [
+                ...state.operandCodes,
+                generateReadOperandCode(state.readIndex),
+              ],
+              readIndex: state.readIndex + 1,
+            };
+          }
 
-      for (const operand of parsedOperands) {
-        if (operand.isRead) {
-          operandCodes.push(generateReadOperandCode(readIndex));
-          readIndex++;
-        } else {
-          operandCodes.push((operand.value as number).toString());
-        }
-      }
+          return {
+            operandCodes: [
+              ...state.operandCodes,
+              (operand.value as number).toString(),
+            ],
+            readIndex: state.readIndex,
+          };
+        },
+        { operandCodes: [] as string[], readIndex: 0 },
+      );
+      const { operandCodes } = operandCodeState;
 
       // Build the chained operation
-      let operationCode = operandCodes[0];
-      for (let i = 0; i < operators.length; i++) {
-        const op = operators[i];
-        if (op === "+") {
-          operationCode += ` + ${operandCodes[i + 1]}`;
-        } else if (op === "-") {
-          operationCode += ` - ${operandCodes[i + 1]}`;
-        } else if (op === "*") {
-          operationCode += ` * ${operandCodes[i + 1]}`;
-        } else {
-          // op === "/"
-          operationCode += ` / ${operandCodes[i + 1]}`;
+      const operationCode = operators.reduce((code, op, index) => {
+        const nextOperandCode = operandCodes[index + 1];
+        if (op === "/") {
+          return `Math.floor(${code} / ${nextOperandCode})`;
         }
-      }
+        return `(${code} ${op} ${nextOperandCode})`;
+      }, operandCodes[0]);
 
       const code = `const __stdinValues = __stdin.split(' ');\nreturn ${operationCode}`;
       return new Ok(code);

@@ -7,7 +7,7 @@
     "build": "tsc",
     "start": "node dist/cli.js",
     "dev": "ts-node src/cli.ts",
-    "lint": "eslint --config .eslintrc.cjs . --ext .ts && eslint --config .eslintrc.src.cjs src/ --ext .ts && ts-node --esm scripts/check-dead-exports.ts",
+    "lint": "eslint --config .eslintrc.cjs . --ext .ts && eslint --config .eslintrc.src.cjs src/ --ext .ts && ts-node --esm scripts/check-dead-exports.ts && ts-node --esm scripts/ban-array-push.ts",
     "test": "jest",
     "cpd": "pmd cpd --dir src --dir tests --language typescript --ignore-identifiers --ignore-literals --minimum-tokens 35",
     "prepare": "husky && git config core.hooksPath .husky"
