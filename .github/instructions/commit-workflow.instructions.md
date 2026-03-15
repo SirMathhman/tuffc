@@ -13,12 +13,14 @@ applyTo: "**"
 Every completed piece of work — whether implementing a feature, fixing a bug, refactoring code, or changing configuration — must be committed to preserve history and track progress. Do not leave uncommitted changes when finishing work.
 
 ### When to Commit
+
 - After implementing a feature or fix
 - After migrating or reorganizing code
 - After adding tests or documentation
 - After updating configuration
 
 ### Example
+
 ```bash
 # After finishing task
 npm test
@@ -33,6 +35,7 @@ git commit -m "Implement feature X"
 **Never bypass the pre-commit hook with `--no-verify`.**
 
 The pre-commit hook enforces a three-stage quality check:
+
 1. **Tests** (`npm test`) — Run all unit tests
 2. **Duplicates** (`npm run cpd`) — Detect copy-paste violations with 35-token threshold
 3. **Lint** (`npx lint-staged`) — ESLint on staged files with auto-fix
@@ -40,12 +43,15 @@ The pre-commit hook enforces a three-stage quality check:
 If the hook fails, it means your changes violate quality standards and **should not be committed**. Fix the issues instead.
 
 ### Bypass is Prohibited
+
 ❌ **Never do this:**
+
 ```bash
 git commit --no-verify -m "message"  # BLOCKS quality checks
 ```
 
 ✅ **Do this instead:**
+
 ```bash
 # Fix and retry
 npm test           # Fix failing tests
