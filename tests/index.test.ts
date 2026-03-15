@@ -165,4 +165,28 @@ describe("compileTuffToJS", () => {
   it("returns error for literal exceeding type range in binary operation with read", () => {
     assertErr("256U8 + read<U8>()", "VALUE_OUT_OF_RANGE");
   });
+
+  it("compiles 'read<U8>() + read<U8>() + read<U8>()' with stdin '1 2 3' to 6", () => {
+    assertOk("read<U8>() + read<U8>() + read<U8>()", 6, "1 2 3");
+  });
+
+  it("compiles '10U8 + read<U8>() + 5U8' with stdin '20' to 35", () => {
+    assertOk("10U8 + read<U8>() + 5U8", 35, "20");
+  });
+
+  it("compiles 'read<U8>() - read<U8>() - read<U8>()' with stdin '100 30 20' to 50", () => {
+    assertOk("read<U8>() - read<U8>() - read<U8>()", 50, "100 30 20");
+  });
+
+  it("compiles '100U8 - read<U8>() - 10U8' with stdin '20' to 70", () => {
+    assertOk("100U8 - read<U8>() - 10U8", 70, "20");
+  });
+
+  it("returns error for mismatched types in chained operation", () => {
+    assertErr("10U8 + 20U16 + 5U8", "TYPE_MISMATCH");
+  });
+
+  it("returns error when chained operation result exceeds type range", () => {
+    assertErr("200U8 + 100U8 + 100U8", "VALUE_OUT_OF_RANGE");
+  });
 });

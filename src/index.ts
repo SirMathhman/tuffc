@@ -74,6 +74,11 @@ function generateReadOperandCode(stdinIndex: number): string {
   return `parseInt(__stdinValues[${stdinIndex}], 10)`;
 }
 
+interface OperatorPosition {
+  op: string;
+  index: number;
+}
+
 function extractReadTypeArg(operand: string): Result<string, CompilationError> {
   if (
     operand.startsWith("read<") &&
@@ -140,106 +145,133 @@ function parseOperandForBinaryOp(
 export function compileTuffToJS(
   input: string,
 ): Result<string, CompilationError> {
-  // Check for binary operations (e.g., "100U8 + 50U8")
+  // Check for chained operations (e.g., "100U8 + 50U8 + 30U8")
   const binaryOps = ["+", "-", "*", "/"];
-  for (const op of binaryOps) {
-    const opIndex = input.indexOf(` ${op} `);
-    if (opIndex !== -1) {
-      const leftStr = input.substring(0, opIndex);
-      const rightStr = input.substring(opIndex + 3); // Skip " op "
 
-      // Parse left operand
-      const leftOpResult = parseOperandForBinaryOp(leftStr);
-      if (leftOpResult.isErr()) {
-        return leftOpResult;
+  // Find all operators in the input
+  const operatorsWithPositions: OperatorPosition[] = [];
+  for (let i = 0; i < input.length; i++) {
+    const char = input[i];
+    if (
+      binaryOps.includes(char) &&
+      i > 0 &&
+      i < input.length - 1 &&
+      input[i - 1] === " " &&
+      input[i + 1] === " "
+    ) {
+      operatorsWithPositions.push({ op: char, index: i });
+    }
+  }
+
+  if (operatorsWithPositions.length > 0) {
+    // Parse all operands
+    const operands: string[] = [];
+    let lastIndex = 0;
+    for (const { index } of operatorsWithPositions) {
+      operands.push(input.substring(lastIndex, index - 1).trim());
+      lastIndex = index + 2;
+    }
+    operands.push(input.substring(lastIndex).trim());
+
+    // Parse each operand
+    const operators = operatorsWithPositions.map((o) => o.op);
+    const parsedOperands: BinaryOperandValue[] = [];
+
+    for (const operand of operands) {
+      const result = parseOperandForBinaryOp(operand);
+      if (result.isErr()) {
+        return result;
       }
-      const { type: leftType, isRead: leftIsRead } = leftOpResult.value;
+      parsedOperands.push(result.value);
+    }
 
-      // Parse right operand
-      const rightOpResult = parseOperandForBinaryOp(rightStr);
-      if (rightOpResult.isErr()) {
-        return rightOpResult;
-      }
-      const { type: rightType, isRead: rightIsRead } = rightOpResult.value;
-
-      // Require both sides to be the same type
-      if (leftType !== rightType) {
+    // Validate all operands have the same type
+    const firstType = parsedOperands[0].type;
+    for (let i = 1; i < parsedOperands.length; i++) {
+      if (parsedOperands[i].type !== firstType) {
         return new Err({
           code: CompilationErrorCode.TYPE_MISMATCH,
           erroneousValue: input,
-          message: "Binary operation operands must have the same type",
-          reason: `Left operand has type ${leftType}, but right operand has type ${rightType}`,
-          fix: `Change one operand to match the other type. For example: rename ${rightType} to ${leftType} or vice versa.`,
+          message: "All operands in chained operations must have the same type",
+          reason: `Operand at position ${i} has type ${parsedOperands[i].type}, but expected ${firstType}`,
+          fix: "Make all operands the same type by adding or removing type suffixes",
         });
       }
+    }
 
-      // If either operand is a read pattern, generate code instead of evaluating
-      if (leftIsRead || rightIsRead) {
-        let leftCode: string;
-        let rightCode: string;
+    // Check if any operand is a read pattern
+    const hasReadOperand = parsedOperands.some((op) => op.isRead);
 
-        if (leftIsRead) {
-          leftCode = generateReadOperandCode(0);
+    if (hasReadOperand) {
+      // Generate code with stdin values
+      const operandCodes: string[] = [];
+      let readIndex = 0;
+
+      for (const operand of parsedOperands) {
+        if (operand.isRead) {
+          operandCodes.push(generateReadOperandCode(readIndex));
+          readIndex++;
         } else {
-          leftCode = (leftOpResult.value.value as number).toString();
+          operandCodes.push((operand.value as number).toString());
         }
-
-        if (rightIsRead) {
-          const stdinIndex = leftIsRead ? 1 : 0;
-          rightCode = generateReadOperandCode(stdinIndex);
-        } else {
-          rightCode = (rightOpResult.value.value as number).toString();
-        }
-
-        // Build the operation code
-        const operationCode =
-          op === "+"
-            ? `${leftCode} + ${rightCode}`
-            : op === "-"
-              ? `${leftCode} - ${rightCode}`
-              : op === "*"
-                ? `${leftCode} * ${rightCode}`
-                : `Math.floor(${leftCode} / ${rightCode})`;
-
-        const code = `const __stdinValues = __stdin.split(' ');\nreturn ${operationCode}`;
-        return new Ok(code);
       }
 
-      // Both are literal values - evaluate at compile time
-      const leftValue = leftOpResult.value.value as number;
-      const rightValue = rightOpResult.value.value as number;
+      // Build the chained operation
+      let operationCode = operandCodes[0];
+      for (let i = 0; i < operators.length; i++) {
+        const op = operators[i];
+        if (op === "+") {
+          operationCode += ` + ${operandCodes[i + 1]}`;
+        } else if (op === "-") {
+          operationCode += ` - ${operandCodes[i + 1]}`;
+        } else if (op === "*") {
+          operationCode += ` * ${operandCodes[i + 1]}`;
+        } else {
+          // op === "/"
+          operationCode += ` / ${operandCodes[i + 1]}`;
+        }
+      }
 
-      // Evaluate the operation
-      let result: number;
+      const code = `const __stdinValues = __stdin.split(' ');\nreturn ${operationCode}`;
+      return new Ok(code);
+    }
+
+    // All are literal values - evaluate at compile time
+    let result = parsedOperands[0].value as number;
+    const range = TYPE_RANGES.get(firstType);
+
+    for (let i = 0; i < operators.length; i++) {
+      const op = operators[i];
+      const nextValue = parsedOperands[i + 1].value as number;
+
       if (op === "+") {
-        result = leftValue + rightValue;
+        result = result + nextValue;
       } else if (op === "-") {
-        result = leftValue - rightValue;
+        result = result - nextValue;
       } else if (op === "*") {
-        result = leftValue * rightValue;
+        result = result * nextValue;
       } else {
         // op === "/"
-        result = Math.floor(leftValue / rightValue);
+        result = Math.floor(result / nextValue);
       }
 
-      // Validate result against type constraints
-      const range = TYPE_RANGES.get(leftType);
+      // Validate result after each operation
       if (range && (result < range.min || result > range.max)) {
         return new Err({
           code: CompilationErrorCode.VALUE_OUT_OF_RANGE,
           erroneousValue: input,
-          message: `Result ${result} exceeds the range for type ${leftType}`,
+          message: `Result ${result} exceeds the range for type ${firstType}`,
           reason: getRangeViolationReason(
-            leftType,
+            firstType,
             range,
             `the operation produced ${result}`,
           ),
           fix: `Use a larger type (e.g., U16 instead of U8) or change the operands to produce a smaller result.`,
         });
       }
-
-      return new Ok(`return ${result}`);
     }
+
+    return new Ok(`return ${result}`);
   }
 
   // Check for read<TYPE>() pattern without regex
