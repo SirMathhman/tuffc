@@ -1,10 +1,14 @@
-// @ts-check
 import tseslint from "typescript-eslint";
-import localPlugin from "./eslint-local-rules.cjs";
+import localPlugin from "./eslint-local-rules";
 
 export default tseslint.config(
   {
-    ignores: ["coverage/**", "dist/**"],
+    ignores: [
+      "coverage/**",
+      "dist/**",
+      "eslint.config.ts",
+      "eslint-local-rules.ts",
+    ],
   },
   {
     files: ["**/*.ts"],

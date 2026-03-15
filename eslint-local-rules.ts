@@ -1,6 +1,3 @@
-"use strict";
-
-/** @type {import('@typescript-eslint/utils').TSESLint.RuleModule<'noPush', []>} */
 const banArrayPush = {
   meta: {
     type: "suggestion",
@@ -11,13 +8,21 @@ const banArrayPush = {
     },
     schema: [],
   },
-  create(context) {
+  create(context: any) {
     const services = context.sourceCode.parserServices;
+    if (
+      !services ||
+      !services.program ||
+      !services.esTreeNodeToTSNodeMap
+    ) {
+      return {};
+    }
+
     const checker = services.program.getTypeChecker();
 
     return {
       'CallExpression[callee.type="MemberExpression"][callee.property.name="push"]'(
-        node,
+        node: any,
       ) {
         const tsNode = services.esTreeNodeToTSNodeMap.get(node.callee.object);
         const type = checker.getTypeAtLocation(tsNode);
@@ -29,6 +34,8 @@ const banArrayPush = {
   },
 };
 
-module.exports = {
+const localPlugin = {
   rules: { "ban-array-push": banArrayPush },
 };
+
+export default localPlugin;
