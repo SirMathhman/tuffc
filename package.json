@@ -9,7 +9,7 @@
     "dev": "ts-node src/cli.ts",
     "lint": "eslint . --ext .ts",
     "test": "jest",
-    "cpd": "pmd cpd --dir src --dir tests --language typescript --ignore-identifiers --minimum-tokens 35",
+    "cpd": "pmd cpd --dir src --dir tests --language typescript --ignore-identifiers --ignore-literals --minimum-tokens 35",
     "prepare": "husky && git config core.hooksPath .husky"
   },
   "devDependencies": {
