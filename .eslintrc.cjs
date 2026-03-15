@@ -26,6 +26,16 @@ module.exports = {
         selector: "TSTypeReference[typeName.name='Record']",
         message: "Use Map<K, V> instead of Record",
       },
+      {
+        selector: "TemplateLiteral",
+        message:
+          "Template literals are not allowed; use string concatenation instead",
+      },
+      {
+        selector: "CallExpression[callee.property.name='push']",
+        message:
+          "Array.push is not allowed; use spread/concat for immutable array updates",
+      },
     ],
   },
 };
