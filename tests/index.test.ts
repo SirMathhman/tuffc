@@ -10,24 +10,22 @@ function evaluateCompiled(code: string, stdinValue?: string): unknown {
   return new Function(code)();
 }
 
-function assertOkEvaluatesCompiled(
-  input: string,
-  expected: unknown,
-  stdinValue?: string,
-) {
+function assertOk(input: string, expected: unknown, stdinValue?: string) {
   const result = compileTuffToJS(input);
-  expect(result.isErr()).toBe(false);
-  if (!result.isErr()) {
+  if (result.isErr()) {
+    expect(result.error).toBeUndefined(); // Force test failure if it's an error
+  } else {
     const evaluated = evaluateCompiled(result.value, stdinValue);
     expect(evaluated).toBe(expected);
   }
 }
 
-function assertErrorContains(input: string, expectedMessage: string) {
+function assertErr(input: string, expectedMessage: string) {
   const result = compileTuffToJS(input);
-  expect(result.isErr()).toBe(true);
   if (result.isErr()) {
     expect(result.error).toContain(expectedMessage);
+  } else {
+    expect(result.value).toBeUndefined(); // Force test failure if it's not an error
   }
 }
 
@@ -45,50 +43,50 @@ describe("Result", () => {
 
 describe("compileTuffToJS", () => {
   it("compiles empty string to JS code that evaluates to 0", () => {
-    assertOkEvaluatesCompiled("", 0);
+    assertOk("", 0);
   });
 
   it("compiles '100' to JS code that evaluates to 100", () => {
-    assertOkEvaluatesCompiled("100", 100);
+    assertOk("100", 100);
   });
 
   it("compiles '100U8' to JS code that evaluates to 100", () => {
-    assertOkEvaluatesCompiled("100U8", 100);
+    assertOk("100U8", 100);
   });
 
   it("compiles '42F64' to JS code that evaluates to 42", () => {
-    assertOkEvaluatesCompiled("42F64", 42);
+    assertOk("42F64", 42);
   });
 
   it("compiles non-numeric input by returning it as string expression", () => {
-    assertOkEvaluatesCompiled("abc", "abc");
+    assertOk("abc", "abc");
   });
 
   it("compiles negative number without type suffix as string", () => {
-    assertOkEvaluatesCompiled("-100", "-100");
+    assertOk("-100", "-100");
   });
 
   it("compiles negative text as string", () => {
-    assertOkEvaluatesCompiled("-abc", "-abc");
+    assertOk("-abc", "-abc");
   });
 
   it("returns error for negative numbers with type suffixes", () => {
-    assertErrorContains("-100U8", "Negative numbers with type suffixes");
+    assertErr("-100U8", "Negative numbers with type suffixes");
   });
 
   it("returns error for numbers that exceed their type suffix range", () => {
-    assertErrorContains("256U8", "exceeds");
+    assertErr("256U8", "exceeds");
   });
 
   it("compiles read<U8>() with stdin '100' to 100", () => {
-    assertOkEvaluatesCompiled("read<U8>()", 100, "100");
+    assertOk("read<U8>()", 100, "100");
   });
 
   it("returns error for read<> with unknown type", () => {
-    assertErrorContains("read<INVALID>()", "Unknown type");
+    assertErr("read<INVALID>()", "Unknown type");
   });
 
   it("returns error for read<> with non-alphanumeric type", () => {
-    assertErrorContains("read<U@8>()", "Unknown type");
+    assertErr("read<U@8>()", "Unknown type");
   });
 });
