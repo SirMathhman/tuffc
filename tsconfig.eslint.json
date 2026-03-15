@@ -4,5 +4,5 @@
     "noEmit": true,
     "rootDir": "."
   },
-  "include": ["src", "tests", "jest.config.ts"]
+  "include": ["src", "tests", "scripts", "jest.config.ts"]
 }

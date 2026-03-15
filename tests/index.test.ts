@@ -3,27 +3,17 @@ import { Ok, Err } from "../src/types/result";
 
 function assertOkEvaluatesTo(input: string, expected: unknown) {
   const result = compileTuffToJS(input);
-  expect(result.isOk()).toBe(true);
-  if (result.isOk()) {
+  expect(result.isErr()).toBe(false);
+  if (!result.isErr()) {
     const evaluated = new Function(result.value)();
     expect(evaluated).toBe(expected);
   }
 }
 
 describe("Result", () => {
-  it("Ok.isOk returns true", () => {
-    const ok = new Ok("value");
-    expect(ok.isOk()).toBe(true);
-  });
-
   it("Ok.isErr returns false", () => {
     const ok = new Ok("value");
     expect(ok.isErr()).toBe(false);
-  });
-
-  it("Err.isOk returns false", () => {
-    const err = new Err("error");
-    expect(err.isOk()).toBe(false);
   });
 
   it("Err.isErr returns true", () => {

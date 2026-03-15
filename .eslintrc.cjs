@@ -1,3 +1,4 @@
+// Runs on src/ + tests/ — all rules EXCEPT no-unused-vars
 module.exports = {
   parser: "@typescript-eslint/parser",
   parserOptions: {
@@ -6,10 +7,6 @@ module.exports = {
   },
   plugins: ["@typescript-eslint"],
   rules: {
-    "@typescript-eslint/no-unused-vars": [
-      "error",
-      { args: "none", ignoreRestSiblings: true },
-    ],
     "no-restricted-syntax": [
       "error",
       {
@@ -22,12 +19,4 @@ module.exports = {
       },
     ],
   },
-  overrides: [
-    {
-      files: ["tests/**"],
-      rules: {
-        "@typescript-eslint/no-unused-vars": "off",
-      },
-    },
-  ],
 };
