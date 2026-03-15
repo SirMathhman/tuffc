@@ -16,5 +16,9 @@ export function compileTuffToJS(input: string): string {
       break;
     }
   }
-  return `return ${numericValue || input}`;
+  // If we found a numeric value, return it; otherwise quote the input as a string
+  if (numericValue) {
+    return `return ${numericValue}`;
+  }
+  return `return "${input}"`;
 }

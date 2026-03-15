@@ -4,6 +4,10 @@ describe("main", () => {
   it("is a function", () => {
     expect(typeof main).toBe("function");
   });
+
+  it("executes without error", () => {
+    expect(() => main()).not.toThrow();
+  });
 });
 
 describe("compileTuffToJS", () => {
@@ -23,5 +27,17 @@ describe("compileTuffToJS", () => {
     const result = compileTuffToJS("100U8");
     const evaluated = new Function(result)();
     expect(evaluated).toBe(100);
+  });
+
+  it("compiles '42F64' to JS code that evaluates to 42", () => {
+    const result = compileTuffToJS("42F64");
+    const evaluated = new Function(result)();
+    expect(evaluated).toBe(42);
+  });
+
+  it("compiles non-numeric input by returning it as string expression", () => {
+    const result = compileTuffToJS("abc");
+    const evaluated = new Function(result)();
+    expect(evaluated).toBe("abc");
   });
 });
