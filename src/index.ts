@@ -21,6 +21,9 @@ interface TypeRange {
   max: number;
 }
 
+const VALID_TYPES = "U8, U16, U32, S8, S16, S32, F64";
+const INVALID_TYPE_MESSAGE = `is not a recognized type. Valid types are: ${VALID_TYPES}`;
+
 const TYPE_RANGES = new Map<string, TypeRange>([
   ["U8", { min: 0, max: 255 }],
   ["U16", { min: 0, max: 65535 }],
@@ -43,6 +46,97 @@ function getRangeViolationReason(
   return reason;
 }
 
+function validateReadTypeArg(typeArg: string): Result<void, CompilationError> {
+  // Validate type contains only alphanumeric characters
+  let isValidType = true;
+  for (let i = 0; i < typeArg.length; i++) {
+    const char = typeArg[i];
+    if (!(isDigit(char) || isLetter(char))) {
+      isValidType = false;
+      break;
+    }
+  }
+
+  if (!isValidType || !TYPE_RANGES.has(typeArg)) {
+    return new Err({
+      code: CompilationErrorCode.UNKNOWN_TYPE,
+      erroneousValue: typeArg,
+      message: `Unknown type parameter in read<>() expression`,
+      reason: `${typeArg} ${INVALID_TYPE_MESSAGE}`,
+      fix: `Use one of the valid types: ${VALID_TYPES}`,
+    });
+  }
+
+  return new Ok(void 0);
+}
+
+function generateReadOperandCode(stdinIndex: number): string {
+  return `parseInt(__stdinValues[${stdinIndex}], 10)`;
+}
+
+function extractReadTypeArg(operand: string): Result<string, CompilationError> {
+  if (
+    operand.startsWith("read<") &&
+    operand.endsWith(">()") &&
+    operand.length > "read<>()".length
+  ) {
+    const typeStart = 5; // "read<" length
+    const typeEnd = operand.length - 3; // ">()" length
+    const typeArg = operand.substring(typeStart, typeEnd).toUpperCase();
+
+    const validationResult = validateReadTypeArg(typeArg);
+    if (validationResult.isErr()) {
+      return validationResult;
+    }
+
+    return new Ok(typeArg);
+  }
+
+  return new Err({
+    code: CompilationErrorCode.PARSE_ERROR,
+    erroneousValue: operand,
+    message: "Invalid read pattern",
+    reason: "Does not match read<TYPE>() pattern",
+    fix: "Use format: read<TYPE>() where TYPE is one of the valid types",
+  });
+}
+
+interface BinaryOperandValue {
+  type: string;
+  isRead: boolean;
+  value?: number; // Only set if not a read pattern
+}
+
+function parseOperandForBinaryOp(
+  operand: string,
+): Result<BinaryOperandValue, CompilationError> {
+  // Check if operand is a read<TYPE>() pattern
+  const readTypeResult = extractReadTypeArg(operand);
+  if (!readTypeResult.isErr()) {
+    // For Ok case, we need to unwrap it properly
+    // Since Result doesn't have a direct value accessor for Ok, we'll check and cast
+    const okResult = readTypeResult as Ok<string>;
+    return new Ok({ type: okResult.value, isRead: true });
+  }
+
+  // If it's a validation error (UNKNOWN_TYPE), propagate it
+  if (readTypeResult.error.code === CompilationErrorCode.UNKNOWN_TYPE) {
+    return readTypeResult;
+  }
+
+  // Try to parse as typed number
+  const parseResult = parseTypedNumber(operand);
+  if (parseResult.isErr()) {
+    return parseResult;
+  }
+
+  return new Ok({
+    type: parseResult.value.type,
+    isRead: false,
+    value: parseResult.value.value,
+  });
+}
+
 export function compileTuffToJS(
   input: string,
 ): Result<string, CompilationError> {
@@ -55,20 +149,20 @@ export function compileTuffToJS(
       const rightStr = input.substring(opIndex + 3); // Skip " op "
 
       // Parse left operand
-      const leftResult = parseTypedNumber(leftStr);
-      if (leftResult.isErr()) {
-        return leftResult;
+      const leftOpResult = parseOperandForBinaryOp(leftStr);
+      if (leftOpResult.isErr()) {
+        return leftOpResult;
       }
-      const { value: leftValue, type: leftType } = leftResult.value;
+      const { type: leftType, isRead: leftIsRead } = leftOpResult.value;
 
       // Parse right operand
-      const rightResult = parseTypedNumber(rightStr);
-      if (rightResult.isErr()) {
-        return rightResult;
+      const rightOpResult = parseOperandForBinaryOp(rightStr);
+      if (rightOpResult.isErr()) {
+        return rightOpResult;
       }
-      const { value: rightValue, type: rightType } = rightResult.value;
+      const { type: rightType, isRead: rightIsRead } = rightOpResult.value;
 
-      // For now, require both sides to be the same type
+      // Require both sides to be the same type
       if (leftType !== rightType) {
         return new Err({
           code: CompilationErrorCode.TYPE_MISMATCH,
@@ -78,6 +172,42 @@ export function compileTuffToJS(
           fix: `Change one operand to match the other type. For example: rename ${rightType} to ${leftType} or vice versa.`,
         });
       }
+
+      // If either operand is a read pattern, generate code instead of evaluating
+      if (leftIsRead || rightIsRead) {
+        let leftCode: string;
+        let rightCode: string;
+
+        if (leftIsRead) {
+          leftCode = generateReadOperandCode(0);
+        } else {
+          leftCode = (leftOpResult.value.value as number).toString();
+        }
+
+        if (rightIsRead) {
+          const stdinIndex = leftIsRead ? 1 : 0;
+          rightCode = generateReadOperandCode(stdinIndex);
+        } else {
+          rightCode = (rightOpResult.value.value as number).toString();
+        }
+
+        // Build the operation code
+        const operationCode =
+          op === "+"
+            ? `${leftCode} + ${rightCode}`
+            : op === "-"
+              ? `${leftCode} - ${rightCode}`
+              : op === "*"
+                ? `${leftCode} * ${rightCode}`
+                : `Math.floor(${leftCode} / ${rightCode})`;
+
+        const code = `const __stdinValues = __stdin.split(' ');\nreturn ${operationCode}`;
+        return new Ok(code);
+      }
+
+      // Both are literal values - evaluate at compile time
+      const leftValue = leftOpResult.value.value as number;
+      const rightValue = rightOpResult.value.value as number;
 
       // Evaluate the operation
       let result: number;
@@ -113,35 +243,14 @@ export function compileTuffToJS(
   }
 
   // Check for read<TYPE>() pattern without regex
-  if (
-    input.startsWith("read<") &&
-    input.endsWith(">()") &&
-    input.length > "read<>()".length
-  ) {
-    const typeStart = 5; // "read<" length
-    const typeEnd = input.length - 3; // ">()" length
-    const typeArg = input.substring(typeStart, typeEnd).toUpperCase();
-
-    // Validate type contains only alphanumeric characters
-    let isValidType = true;
-    for (let i = 0; i < typeArg.length; i++) {
-      const char = typeArg[i];
-      if (!(isDigit(char) || isLetter(char))) {
-        isValidType = false;
-        break;
-      }
-    }
-
-    if (!isValidType || !TYPE_RANGES.has(typeArg)) {
-      return new Err({
-        code: CompilationErrorCode.UNKNOWN_TYPE,
-        erroneousValue: typeArg,
-        message: `Unknown type parameter in read<>() expression`,
-        reason: `${typeArg} is not a recognized type. Valid types are: U8, U16, U32, S8, S16, S32, F64`,
-        fix: `Replace ${typeArg} with one of the supported types: U8, U16, U32, S8, S16, S32, or F64.`,
-      });
-    }
+  const readTypeResult = extractReadTypeArg(input);
+  if (!readTypeResult.isErr()) {
     return new Ok(`return parseInt(__stdin, 10)`);
+  }
+
+  // If it's a validation error (invalid type), return it
+  if (readTypeResult.error.code !== CompilationErrorCode.PARSE_ERROR) {
+    return readTypeResult;
   }
 
   // Reject negative numbers with type suffixes (e.g., "-100U8")
