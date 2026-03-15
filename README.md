@@ -10,3 +10,5 @@ A simple TypeScript project.
 - `npm run dev`
 
 Temporary hook verification marker
+
+Second temporary hook verification marker
