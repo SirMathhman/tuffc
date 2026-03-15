@@ -23,18 +23,6 @@ function assertOkEvaluatesCompiled(
   }
 }
 
-function assertOkEvaluatesTo(input: string, expected: unknown) {
-  assertOkEvaluatesCompiled(input, expected);
-}
-
-function assertOkEvaluatesToWithStdin(
-  input: string,
-  stdinValue: string,
-  expected: unknown,
-) {
-  assertOkEvaluatesCompiled(input, expected, stdinValue);
-}
-
 function assertErrorContains(input: string, expectedMessage: string) {
   const result = compileTuffToJS(input);
   expect(result.isErr()).toBe(true);
@@ -57,31 +45,31 @@ describe("Result", () => {
 
 describe("compileTuffToJS", () => {
   it("compiles empty string to JS code that evaluates to 0", () => {
-    assertOkEvaluatesTo("", 0);
+    assertOkEvaluatesCompiled("", 0);
   });
 
   it("compiles '100' to JS code that evaluates to 100", () => {
-    assertOkEvaluatesTo("100", 100);
+    assertOkEvaluatesCompiled("100", 100);
   });
 
   it("compiles '100U8' to JS code that evaluates to 100", () => {
-    assertOkEvaluatesTo("100U8", 100);
+    assertOkEvaluatesCompiled("100U8", 100);
   });
 
   it("compiles '42F64' to JS code that evaluates to 42", () => {
-    assertOkEvaluatesTo("42F64", 42);
+    assertOkEvaluatesCompiled("42F64", 42);
   });
 
   it("compiles non-numeric input by returning it as string expression", () => {
-    assertOkEvaluatesTo("abc", "abc");
+    assertOkEvaluatesCompiled("abc", "abc");
   });
 
   it("compiles negative number without type suffix as string", () => {
-    assertOkEvaluatesTo("-100", "-100");
+    assertOkEvaluatesCompiled("-100", "-100");
   });
 
   it("compiles negative text as string", () => {
-    assertOkEvaluatesTo("-abc", "-abc");
+    assertOkEvaluatesCompiled("-abc", "-abc");
   });
 
   it("returns error for negative numbers with type suffixes", () => {
@@ -93,7 +81,7 @@ describe("compileTuffToJS", () => {
   });
 
   it("compiles read<U8>() with stdin '100' to 100", () => {
-    assertOkEvaluatesToWithStdin("read<U8>()", "100", 100);
+    assertOkEvaluatesCompiled("read<U8>()", 100, "100");
   });
 
   it("returns error for read<> with unknown type", () => {
