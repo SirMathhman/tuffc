@@ -1,5 +1,21 @@
 import { Result, Ok, Err } from "./types/result";
 
+enum CompilationErrorCode {
+  UNKNOWN_TYPE = "UNKNOWN_TYPE",
+  NEGATIVE_WITH_SUFFIX = "NEGATIVE_WITH_SUFFIX",
+  TYPE_MISMATCH = "TYPE_MISMATCH",
+  VALUE_OUT_OF_RANGE = "VALUE_OUT_OF_RANGE",
+  PARSE_ERROR = "PARSE_ERROR",
+}
+
+interface CompilationError {
+  code: CompilationErrorCode;
+  erroneousValue: string;
+  message: string;
+  reason: string;
+  fix: string;
+}
+
 interface TypeRange {
   min: number;
   max: number;
@@ -15,7 +31,21 @@ const TYPE_RANGES = new Map<string, TypeRange>([
   ["F64", { min: -Infinity, max: Infinity }],
 ]);
 
-export function compileTuffToJS(input: string): Result<string, string> {
+function getRangeViolationReason(
+  typeName: string,
+  range: TypeRange,
+  context?: string,
+): string {
+  let reason = `Type ${typeName} can only represent values between ${range.min} and ${range.max}`;
+  if (context) {
+    reason += `, but ${context}`;
+  }
+  return reason;
+}
+
+export function compileTuffToJS(
+  input: string,
+): Result<string, CompilationError> {
   // Check for binary operations (e.g., "100U8 + 50U8")
   const binaryOps = ["+", "-", "*", "/"];
   for (const op of binaryOps) {
@@ -40,9 +70,13 @@ export function compileTuffToJS(input: string): Result<string, string> {
 
       // For now, require both sides to be the same type
       if (leftType !== rightType) {
-        return new Err(
-          `Binary operation requires both operands to have the same type, got ${leftType} and ${rightType}`,
-        );
+        return new Err({
+          code: CompilationErrorCode.TYPE_MISMATCH,
+          erroneousValue: input,
+          message: "Binary operation operands must have the same type",
+          reason: `Left operand has type ${leftType}, but right operand has type ${rightType}`,
+          fix: `Change one operand to match the other type. For example: rename ${rightType} to ${leftType} or vice versa.`,
+        });
       }
 
       // Evaluate the operation
@@ -61,9 +95,17 @@ export function compileTuffToJS(input: string): Result<string, string> {
       // Validate result against type constraints
       const range = TYPE_RANGES.get(leftType);
       if (range && (result < range.min || result > range.max)) {
-        return new Err(
-          `Result ${result} of operation exceeds the range for type ${leftType} (${range.min}-${range.max})`,
-        );
+        return new Err({
+          code: CompilationErrorCode.VALUE_OUT_OF_RANGE,
+          erroneousValue: input,
+          message: `Result ${result} exceeds the range for type ${leftType}`,
+          reason: getRangeViolationReason(
+            leftType,
+            range,
+            `the operation produced ${result}`,
+          ),
+          fix: `Use a larger type (e.g., U16 instead of U8) or change the operands to produce a smaller result.`,
+        });
       }
 
       return new Ok(`return ${result}`);
@@ -91,7 +133,13 @@ export function compileTuffToJS(input: string): Result<string, string> {
     }
 
     if (!isValidType || !TYPE_RANGES.has(typeArg)) {
-      return new Err(`Unknown type in read<${typeArg}>(): ${typeArg}`);
+      return new Err({
+        code: CompilationErrorCode.UNKNOWN_TYPE,
+        erroneousValue: typeArg,
+        message: `Unknown type parameter in read<>() expression`,
+        reason: `${typeArg} is not a recognized type. Valid types are: U8, U16, U32, S8, S16, S32, F64`,
+        fix: `Replace ${typeArg} with one of the supported types: U8, U16, U32, S8, S16, S32, or F64.`,
+      });
     }
     return new Ok(`return parseInt(__stdin, 10)`);
   }
@@ -100,9 +148,13 @@ export function compileTuffToJS(input: string): Result<string, string> {
   if (input.startsWith("-")) {
     const { hasDigits, hasLetters } = scanForAlphanumeric(input, 1);
     if (hasDigits && hasLetters) {
-      return new Err(
-        `Negative numbers with type suffixes are not supported: ${input}`,
-      );
+      return new Err({
+        code: CompilationErrorCode.NEGATIVE_WITH_SUFFIX,
+        erroneousValue: input,
+        message: "Negative numbers with type suffixes are not supported",
+        reason: `Negative values cannot be used with explicit type suffixes like U8, S32, etc.`,
+        fix: `Remove the type suffix (e.g., use -100 instead of -100U8) or use a positive value with the type suffix.`,
+      });
     }
   }
 
@@ -172,7 +224,9 @@ interface ParsedTypedNumber {
   type: string;
 }
 
-function parseTypedNumber(input: string): Result<ParsedTypedNumber, string> {
+function parseTypedNumber(
+  input: string,
+): Result<ParsedTypedNumber, CompilationError> {
   // Extract the numeric part and type suffix
   let numericValue = "";
   let suffixStart = -1;
@@ -194,9 +248,13 @@ function parseTypedNumber(input: string): Result<ParsedTypedNumber, string> {
       if (range) {
         const value = parseInt(numericValue, 10);
         if (value < range.min || value > range.max) {
-          return new Err(
-            `Number ${value} exceeds the range for type ${suffix} (${range.min}-${range.max})`,
-          );
+          return new Err({
+            code: CompilationErrorCode.VALUE_OUT_OF_RANGE,
+            erroneousValue: input,
+            message: `Value ${value} exceeds the range for type ${suffix}`,
+            reason: getRangeViolationReason(suffix, range),
+            fix: `Use a different type with a larger range (e.g., U16 instead of U8) or provide a value within the valid range.`,
+          });
         }
         return new Ok({ value, type: suffix });
       }
@@ -205,5 +263,11 @@ function parseTypedNumber(input: string): Result<ParsedTypedNumber, string> {
     return new Ok({ value, type: "untyped" });
   }
 
-  return new Err(`Unable to parse: ${input}`);
+  return new Err({
+    code: CompilationErrorCode.PARSE_ERROR,
+    erroneousValue: input,
+    message: "Unable to parse input",
+    reason: `The input does not match any valid format (numeric literal, typed number, or function call)`,
+    fix: `Ensure the input is either a number (e.g., 100), a typed number (e.g., 100U8), or a function call (e.g., read<U8>()).`,
+  });
 }

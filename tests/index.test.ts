@@ -20,10 +20,10 @@ function assertOk(input: string, expected: unknown, stdinValue?: string) {
   }
 }
 
-function assertErr(input: string, expectedMessage: string) {
+function assertErrCode(input: string, expectedCode: string) {
   const result = compileTuffToJS(input);
   if (result.isErr()) {
-    expect(result.error).toContain(expectedMessage);
+    expect(result.error.code).toBe(expectedCode);
   } else {
     expect(result.value).toBeUndefined(); // Force test failure if it's not an error
   }
@@ -71,11 +71,11 @@ describe("compileTuffToJS", () => {
   });
 
   it("returns error for negative numbers with type suffixes", () => {
-    assertErr("-100U8", "Negative numbers with type suffixes");
+    assertErrCode("-100U8", "NEGATIVE_WITH_SUFFIX");
   });
 
   it("returns error for numbers that exceed their type suffix range", () => {
-    assertErr("256U8", "exceeds");
+    assertErrCode("256U8", "VALUE_OUT_OF_RANGE");
   });
 
   it("compiles read<U8>() with stdin '100' to 100", () => {
@@ -83,11 +83,11 @@ describe("compileTuffToJS", () => {
   });
 
   it("returns error for read<> with unknown type", () => {
-    assertErr("read<INVALID>()", "Unknown type");
+    assertErrCode("read<INVALID>()", "UNKNOWN_TYPE");
   });
 
   it("returns error for read<> with non-alphanumeric type", () => {
-    assertErr("read<U@8>()", "Unknown type");
+    assertErrCode("read<U@8>()", "UNKNOWN_TYPE");
   });
 
   it("compiles '100U8 + 50U8' to JS code that evaluates to 150", () => {
@@ -95,7 +95,7 @@ describe("compileTuffToJS", () => {
   });
 
   it("returns error when addition result exceeds type range", () => {
-    assertErr("200U8 + 100U8", "exceeds");
+    assertErrCode("200U8 + 100U8", "VALUE_OUT_OF_RANGE");
   });
 
   it("compiles '100U8 - 30U8' to JS code that evaluates to 70", () => {
@@ -111,15 +111,15 @@ describe("compileTuffToJS", () => {
   });
 
   it("returns error when operands have different types", () => {
-    assertErr("100U8 + 50U16", "same type");
+    assertErrCode("100U8 + 50U16", "TYPE_MISMATCH");
   });
 
   it("returns error when left operand exceeds type range in binary operation", () => {
-    assertErr("256U8 + 50U8", "exceeds");
+    assertErrCode("256U8 + 50U8", "VALUE_OUT_OF_RANGE");
   });
 
   it("returns error when right operand exceeds type range in binary operation", () => {
-    assertErr("100U8 + 260U8", "exceeds");
+    assertErrCode("100U8 + 260U8", "VALUE_OUT_OF_RANGE");
   });
 
   it("compiles input with special characters as string", () => {
