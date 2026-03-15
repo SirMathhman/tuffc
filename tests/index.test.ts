@@ -1,12 +1,45 @@
 import { compileTuffToJS } from "../src/index";
 import { Ok, Err } from "../src/types/result";
 
-function assertOkEvaluatesTo(input: string, expected: unknown) {
+function evaluateCompiled(code: string, stdinValue?: string): unknown {
+  // eslint-disable-next-line no-new-func
+  if (stdinValue !== undefined) {
+    return new Function("__stdin", code)(stdinValue);
+  }
+  // eslint-disable-next-line no-new-func
+  return new Function(code)();
+}
+
+function assertOkEvaluatesCompiled(
+  input: string,
+  expected: unknown,
+  stdinValue?: string,
+) {
   const result = compileTuffToJS(input);
   expect(result.isErr()).toBe(false);
   if (!result.isErr()) {
-    const evaluated = new Function(result.value)();
+    const evaluated = evaluateCompiled(result.value, stdinValue);
     expect(evaluated).toBe(expected);
+  }
+}
+
+function assertOkEvaluatesTo(input: string, expected: unknown) {
+  assertOkEvaluatesCompiled(input, expected);
+}
+
+function assertOkEvaluatesToWithStdin(
+  input: string,
+  stdinValue: string,
+  expected: unknown,
+) {
+  assertOkEvaluatesCompiled(input, expected, stdinValue);
+}
+
+function assertErrorContains(input: string, expectedMessage: string) {
+  const result = compileTuffToJS(input);
+  expect(result.isErr()).toBe(true);
+  if (result.isErr()) {
+    expect(result.error).toContain(expectedMessage);
   }
 }
 
@@ -52,18 +85,22 @@ describe("compileTuffToJS", () => {
   });
 
   it("returns error for negative numbers with type suffixes", () => {
-    const result = compileTuffToJS("-100U8");
-    expect(result.isErr()).toBe(true);
-    if (result.isErr()) {
-      expect(result.error).toContain("Negative numbers with type suffixes");
-    }
+    assertErrorContains("-100U8", "Negative numbers with type suffixes");
   });
 
   it("returns error for numbers that exceed their type suffix range", () => {
-    const result = compileTuffToJS("256U8");
-    expect(result.isErr()).toBe(true);
-    if (result.isErr()) {
-      expect(result.error).toContain("exceeds");
-    }
+    assertErrorContains("256U8", "exceeds");
+  });
+
+  it("compiles read<U8>() with stdin '100' to 100", () => {
+    assertOkEvaluatesToWithStdin("read<U8>()", "100", 100);
+  });
+
+  it("returns error for read<> with unknown type", () => {
+    assertErrorContains("read<INVALID>()", "Unknown type");
+  });
+
+  it("returns error for read<> with non-alphanumeric type", () => {
+    assertErrorContains("read<U@8>()", "Unknown type");
   });
 });

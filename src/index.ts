@@ -16,6 +16,32 @@ const TYPE_RANGES = new Map<string, TypeRange>([
 ]);
 
 export function compileTuffToJS(input: string): Result<string, string> {
+  // Check for read<TYPE>() pattern without regex
+  if (
+    input.startsWith("read<") &&
+    input.endsWith(">()") &&
+    input.length > "read<>()".length
+  ) {
+    const typeStart = 5; // "read<" length
+    const typeEnd = input.length - 3; // ">()" length
+    const typeArg = input.substring(typeStart, typeEnd).toUpperCase();
+
+    // Validate type contains only alphanumeric characters
+    let isValidType = true;
+    for (let i = 0; i < typeArg.length; i++) {
+      const char = typeArg[i];
+      if (!((char >= "0" && char <= "9") || (char >= "A" && char <= "Z"))) {
+        isValidType = false;
+        break;
+      }
+    }
+
+    if (!isValidType || !TYPE_RANGES.has(typeArg)) {
+      return new Err(`Unknown type in read<${typeArg}>(): ${typeArg}`);
+    }
+    return new Ok(`return parseInt(__stdin, 10)`);
+  }
+
   // Reject negative numbers with type suffixes (e.g., "-100U8")
   if (input.startsWith("-")) {
     let hasDigits = false;
