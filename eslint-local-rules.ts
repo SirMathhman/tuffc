@@ -10,11 +10,7 @@ const banArrayPush = {
   },
   create(context: any) {
     const services = context.sourceCode.parserServices;
-    if (
-      !services ||
-      !services.program ||
-      !services.esTreeNodeToTSNodeMap
-    ) {
+    if (!services || !services.program || !services.esTreeNodeToTSNodeMap) {
       return {};
     }
 
