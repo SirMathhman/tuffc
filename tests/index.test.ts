@@ -58,4 +58,12 @@ describe("compileTuffToJS", () => {
       expect(result.error).toContain("Negative numbers with type suffixes");
     }
   });
+
+  it("returns error for numbers that exceed their type suffix range", () => {
+    const result = compileTuffToJS("256U8");
+    expect(result.isErr()).toBe(true);
+    if (result.isErr()) {
+      expect(result.error).toContain("exceeds");
+    }
+  });
 });

@@ -1,5 +1,15 @@
 import { Result, Ok, Err } from "./types/result";
 
+const TYPE_RANGES: Record<string, { min: number; max: number }> = {
+  U8: { min: 0, max: 255 },
+  U16: { min: 0, max: 65535 },
+  U32: { min: 0, max: 4294967295 },
+  S8: { min: -128, max: 127 },
+  S16: { min: -32768, max: 32767 },
+  S32: { min: -2147483648, max: 2147483647 },
+  F64: { min: -Infinity, max: Infinity },
+};
+
 export function compileTuffToJS(input: string): Result<string, string> {
   // Reject negative numbers with type suffixes (e.g., "-100U8")
   if (input.startsWith("-")) {
@@ -23,18 +33,32 @@ export function compileTuffToJS(input: string): Result<string, string> {
   if (input === "") {
     return new Ok("return 0");
   }
-  // Extract the numeric part, ignoring type suffixes
+  // Extract the numeric part and type suffix
   let numericValue = "";
+  let suffixStart = -1;
   for (let i = 0; i < input.length; i++) {
     const char = input[i];
     if (char >= "0" && char <= "9") {
       numericValue += char;
     } else {
+      suffixStart = i;
       break;
     }
   }
-  // If we found a numeric value, return it; otherwise quote the input as a string
+  // If we found a numeric value, check type constraints
   if (numericValue) {
+    if (suffixStart !== -1) {
+      const suffix = input.substring(suffixStart).toUpperCase();
+      const range = TYPE_RANGES[suffix];
+      if (range) {
+        const value = parseInt(numericValue, 10);
+        if (value < range.min || value > range.max) {
+          return new Err(
+            `Number ${value} exceeds the range for type ${suffix} (${range.min}-${range.max})`,
+          );
+        }
+      }
+    }
     return new Ok(`return ${numericValue}`);
   }
   return new Ok(`return "${input}"`);
