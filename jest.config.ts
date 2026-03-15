@@ -12,10 +12,10 @@ const config: Config = {
   collectCoverageFrom: ["src/**/*.ts", "!src/cli.ts"],
   coverageThreshold: {
     global: {
-      branches: 98,
+      branches: 100,
       functions: 100,
-      lines: 99,
-      statements: 99,
+      lines: 100,
+      statements: 100,
     },
   },
 };

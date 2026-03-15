@@ -38,12 +38,14 @@ You have:
 function parseTypedNumber(input: string) {
   // ... parsing logic ...
   const value = parseInt(numericValue, 10);
-  
+
   // Defensive check: in case parseInt fails
   if (isNaN(value)) {
-    return new Err({ /* ... */ });
+    return new Err({
+      /* ... */
+    });
   }
-  
+
   return new Ok({ value, type: "untyped" });
 }
 ```
@@ -52,7 +54,7 @@ function parseTypedNumber(input: string) {
 
 - **Yes**: Keep it. Tests exercise this code path.
 - **No, and tests pass without it**: Delete it. If all test inputs produce valid numbers, this guard is not needed today.
-- **No, but it's defensive for real-world input**: Document *why* it's there in a comment. Consider writing a test for it anyway.
+- **No, but it's defensive for real-world input**: Document _why_ it's there in a comment. Consider writing a test for it anyway.
 
 ## How This Project Uses It
 

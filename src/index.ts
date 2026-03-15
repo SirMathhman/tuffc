@@ -178,7 +178,6 @@ export function compileTuffToJS(
 }
 
 function containsTypeSuffix(input: string): boolean {
-  if (!input) return false;
   for (let i = 0; i < input.length; i++) {
     const char = input[i];
     if (!isDigit(char) && !isLetter(char)) {
