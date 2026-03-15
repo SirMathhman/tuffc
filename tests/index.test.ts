@@ -89,4 +89,44 @@ describe("compileTuffToJS", () => {
   it("returns error for read<> with non-alphanumeric type", () => {
     assertErr("read<U@8>()", "Unknown type");
   });
+
+  it("compiles '100U8 + 50U8' to JS code that evaluates to 150", () => {
+    assertOk("100U8 + 50U8", 150);
+  });
+
+  it("returns error when addition result exceeds type range", () => {
+    assertErr("200U8 + 100U8", "exceeds");
+  });
+
+  it("compiles '100U8 - 30U8' to JS code that evaluates to 70", () => {
+    assertOk("100U8 - 30U8", 70);
+  });
+
+  it("compiles '10U8 * 5U8' to JS code that evaluates to 50", () => {
+    assertOk("10U8 * 5U8", 50);
+  });
+
+  it("compiles '100U8 / 4U8' to JS code that evaluates to 25", () => {
+    assertOk("100U8 / 4U8", 25);
+  });
+
+  it("returns error when operands have different types", () => {
+    assertErr("100U8 + 50U16", "same type");
+  });
+
+  it("returns error when left operand exceeds type range in binary operation", () => {
+    assertErr("256U8 + 50U8", "exceeds");
+  });
+
+  it("returns error when right operand exceeds type range in binary operation", () => {
+    assertErr("100U8 + 260U8", "exceeds");
+  });
+
+  it("compiles input with special characters as string", () => {
+    assertOk("hello@world", "hello@world");
+  });
+
+  it("treats unrecognized type suffix as numeric only", () => {
+    assertOk("100U9", 100);
+  });
 });
