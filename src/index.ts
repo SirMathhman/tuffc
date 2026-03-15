@@ -39,30 +39,41 @@ const TYPE_RANGES = new Map<string, TypeRange>([
 const BINARY_OPS: BinaryOperator[] = ["+", "-", "*", "/"];
 
 function getOperatorsWithPositions(input: string): OperatorPosition[] {
-  return Array.from(input).reduce<OperatorPosition[]>((positions, char, index) => {
-    if (
-      BINARY_OPS.includes(char as BinaryOperator) &&
-      index > 0 &&
-      index < input.length - 1 &&
-      input[index - 1] === " " &&
-      input[index + 1] === " "
-    ) {
-      return [...positions, { op: char, index }];
-    }
-    return positions;
-  }, []);
+  return Array.from(input).reduce<OperatorPosition[]>(
+    (positions, char, index) => {
+      if (
+        BINARY_OPS.includes(char as BinaryOperator) &&
+        index > 0 &&
+        index < input.length - 1 &&
+        input[index - 1] === " " &&
+        input[index + 1] === " "
+      ) {
+        return [...positions, { op: char, index }];
+      }
+      return positions;
+    },
+    [],
+  );
 }
 
-function extractOperands(input: string, operatorsWithPositions: OperatorPosition[]): string[] {
+function extractOperands(
+  input: string,
+  operatorsWithPositions: OperatorPosition[],
+): string[] {
   const leadingOperands = operatorsWithPositions.map(({ index }, position) => {
-    const startIndex = position === 0 ? 0 : operatorsWithPositions[position - 1].index + 2;
+    const startIndex =
+      position === 0 ? 0 : operatorsWithPositions[position - 1].index + 2;
     return input.substring(startIndex, index - 1).trim();
   });
-  const finalOperandStartIndex = operatorsWithPositions[operatorsWithPositions.length - 1].index + 2;
+  const finalOperandStartIndex =
+    operatorsWithPositions[operatorsWithPositions.length - 1].index + 2;
   return [...leadingOperands, input.substring(finalOperandStartIndex).trim()];
 }
 
-function createUnknownTypeError(typeName: string, message: string): CompilationError {
+function createUnknownTypeError(
+  typeName: string,
+  message: string,
+): CompilationError {
   return {
     code: CompilationErrorCode.UNKNOWN_TYPE,
     erroneousValue: typeName,
@@ -91,7 +102,10 @@ function createVariableDeclarationTypeMismatchError(
   };
 }
 
-function createVariableDeclarationSyntaxError(input: string, reason: string): CompilationError {
+function createVariableDeclarationSyntaxError(
+  input: string,
+  reason: string,
+): CompilationError {
   return {
     code: CompilationErrorCode.PARSE_ERROR,
     erroneousValue: input,
@@ -126,7 +140,10 @@ function validateReadTypeArg(typeArg: string): Result<void, CompilationError> {
 
   if (!isValidType || !TYPE_RANGES.has(typeArg)) {
     return new Err(
-      createUnknownTypeError(typeArg, "Unknown type parameter in read<>() expression"),
+      createUnknownTypeError(
+        typeArg,
+        "Unknown type parameter in read<>() expression",
+      ),
     );
   }
 
@@ -246,7 +263,11 @@ function compileExpressionWithVariables(
 
       if (firstType === null) {
         firstType = operandType;
-      } else if (operandType && firstType !== operandType && operandType !== "untyped") {
+      } else if (
+        operandType &&
+        firstType !== operandType &&
+        operandType !== "untyped"
+      ) {
         return new Err({
           code: CompilationErrorCode.TYPE_MISMATCH,
           erroneousValue: operand,
@@ -290,9 +311,32 @@ function compileExpressionWithVariables(
     }
   }
 
+  // Replace variable names with generated JS-safe bindings
+  let expressionWithBindings = "";
+  let cursor = 0;
+  while (cursor < cleanedExpr.length) {
+    if (isLetter(cleanedExpr[cursor])) {
+      let identEnd = cursor;
+      while (
+        identEnd < cleanedExpr.length &&
+        (isLetter(cleanedExpr[identEnd]) || isDigit(cleanedExpr[identEnd]))
+      ) {
+        identEnd++;
+      }
+
+      const ident = cleanedExpr.substring(cursor, identEnd);
+      const binding = variableContext[ident];
+      expressionWithBindings += binding ? binding.jsName : ident;
+      cursor = identEnd;
+    } else {
+      expressionWithBindings += cleanedExpr[cursor];
+      cursor++;
+    }
+  }
+
   // Just return it as a return statement
   // The variables are already defined by the caller
-  return new Ok(`return ${cleanedExpr}`);
+  return new Ok(`return ${expressionWithBindings}`);
 }
 
 export function compileTuffToJS(
@@ -309,8 +353,15 @@ export function compileTuffToJS(
   }
 
   // Recursively parse declarations immutably
-  const parseAllDeclarations = (): Result<ParseAllDeclsResult, CompilationError> => {
-    const result: DeclParseState = { decls: [], remaining: currentInput, error: null };
+  const parseAllDeclarations = (): Result<
+    ParseAllDeclsResult,
+    CompilationError
+  > => {
+    const result: DeclParseState = {
+      decls: [],
+      remaining: currentInput,
+      error: null,
+    };
     let state = result;
 
     while (state.remaining.startsWith("let ") && !state.error) {
@@ -339,6 +390,7 @@ export function compileTuffToJS(
   }
 
   const { decls: declTexts, remaining: exprInput } = declParseResult.value;
+  const hasLetDeclarations = declTexts.length > 0;
   currentInput = exprInput;
 
   // Process all declarations immutably using reduce
@@ -346,6 +398,7 @@ export function compileTuffToJS(
     varDecls: VariableDeclaration[];
     varCtx: VariableContext;
     stdinIdx: number;
+    nextBindingIdx: number;
     error: CompilationError | null;
   }
 
@@ -353,11 +406,34 @@ export function compileTuffToJS(
     (state, { name, type, initializer }) => {
       if (state.error) return state;
 
+      const jsName = `__tuffVar${state.nextBindingIdx}`;
+
+      if (initializer === null) {
+        return {
+          varDecls: state.varDecls,
+          varCtx: {
+            ...state.varCtx,
+            [name]: {
+              type: type as string,
+              isRead: false,
+              isInitialized: false,
+              value: undefined,
+              jsName,
+            },
+          },
+          stdinIdx: state.stdinIdx,
+          nextBindingIdx: state.nextBindingIdx + 1,
+          error: null,
+        };
+      }
+
       // Special handling for read<TYPE>() patterns
       const readTypeResult = extractReadTypeArg(initializer);
       if (!readTypeResult.isErr()) {
         const okResult = readTypeResult as Ok<string>;
-        if (okResult.value !== type) {
+        const resolvedType = type ?? okResult.value;
+
+        if (type !== null && okResult.value !== type) {
           return {
             ...state,
             error: createVariableDeclarationTypeMismatchError(
@@ -373,12 +449,22 @@ export function compileTuffToJS(
         // Generate code to read from stdin
         const initCode = generateReadOperandCode(state.stdinIdx);
         return {
-          varDecls: [...state.varDecls, { name, type, initCode }],
+          varDecls: [
+            ...state.varDecls,
+            { name, type: resolvedType, initCode, jsName },
+          ],
           varCtx: {
             ...state.varCtx,
-            [name]: { type, isRead: true, value: undefined },
+            [name]: {
+              type: resolvedType,
+              isRead: true,
+              isInitialized: true,
+              value: undefined,
+              jsName,
+            },
           },
           stdinIdx: state.stdinIdx + 1,
+          nextBindingIdx: state.nextBindingIdx + 1,
           error: null,
         };
       } else {
@@ -389,9 +475,10 @@ export function compileTuffToJS(
         }
 
         const { type: parsedType, value } = parseResult.value;
+        const resolvedType = type ?? parsedType;
 
         // Validate the parsed type matches declaration
-        if (parsedType !== type && parsedType !== "untyped") {
+        if (type !== null && parsedType !== type && parsedType !== "untyped") {
           return {
             ...state,
             error: createVariableDeclarationTypeMismatchError(
@@ -405,17 +492,38 @@ export function compileTuffToJS(
         }
 
         return {
-          varDecls: [...state.varDecls, { name, type, initCode: value.toString() }],
+          varDecls: [
+            ...state.varDecls,
+            {
+              name,
+              type: resolvedType,
+              initCode: value.toString(),
+              jsName,
+            },
+          ],
           varCtx: {
             ...state.varCtx,
-            [name]: { type, isRead: false, value },
+            [name]: {
+              type: resolvedType,
+              isRead: false,
+              isInitialized: true,
+              value,
+              jsName,
+            },
           },
           stdinIdx: state.stdinIdx,
+          nextBindingIdx: state.nextBindingIdx + 1,
           error: null,
         };
       }
     },
-    { varDecls: [], varCtx: {}, stdinIdx: 0, error: null },
+    {
+      varDecls: [],
+      varCtx: {},
+      stdinIdx: 0,
+      nextBindingIdx: 0,
+      error: null,
+    },
   );
 
   if (processState.error) {
@@ -426,13 +534,27 @@ export function compileTuffToJS(
   Object.assign(variableContext, processState.varCtx);
 
   // If we had variable declarations, handle special code generation
-  if (varDeclarations.length > 0) {
+  if (hasLetDeclarations) {
+    // Let bindings are immutable after declaration
+    if (currentInput.includes("=")) {
+      return new Err({
+        code: CompilationErrorCode.PARSE_ERROR,
+        erroneousValue: input,
+        message: "Unable to parse input",
+        reason: "Let bindings are immutable and cannot be reassigned",
+        fix: "Create a new let declaration instead of assigning to an existing name",
+      });
+    }
+
     // Validate all variable references are defined
     let i = 0;
     while (i < currentInput.length) {
       if (isLetter(currentInput[i])) {
         let j = i;
-        while (j < currentInput.length && (isLetter(currentInput[j]) || isDigit(currentInput[j]))) {
+        while (
+          j < currentInput.length &&
+          (isLetter(currentInput[j]) || isDigit(currentInput[j]))
+        ) {
           j++;
         }
         const ident = currentInput.substring(i, j);
@@ -446,8 +568,14 @@ export function compileTuffToJS(
           }
         }
 
+        const binding = variableContext[ident];
+
         // Check if it's an undefined variable (and not part of a type suffix)
-        if (variableContext[ident] === undefined && j < currentInput.length && !isDigit(currentInput[j])) {
+        if (
+          binding === undefined &&
+          j < currentInput.length &&
+          !isDigit(currentInput[j])
+        ) {
           // This might be a type suffix like "U8" or "U16"
           if (!TYPE_RANGES.has(ident)) {
             return new Err({
@@ -458,6 +586,14 @@ export function compileTuffToJS(
               fix: `Declare the variable before using it`,
             });
           }
+        } else if (binding && !binding.isInitialized) {
+          return new Err({
+            code: CompilationErrorCode.PARSE_ERROR,
+            erroneousValue: input,
+            message: "Unable to parse input",
+            reason: `Variable '${ident}' is declared but not initialized`,
+            fix: `Initialize '${ident}' at declaration time before using it`,
+          });
         }
         i = j;
       } else {
@@ -466,20 +602,28 @@ export function compileTuffToJS(
     }
 
     // Compile the final expression (may now contain variable references)
-    const exprCompileResult = compileExpressionWithVariables(currentInput, variableContext);
+    const exprCompileResult = compileExpressionWithVariables(
+      currentInput,
+      variableContext,
+    );
     if (exprCompileResult.isErr()) {
       return exprCompileResult;
     }
 
     // Check if we need stdin handling
-    const hasReadVars = varDeclarations.some((v) => variableContext[v.name].isRead);
+    const hasReadVars = varDeclarations.some(
+      (v) => variableContext[v.name].isRead,
+    );
     const hasReadInExpr = currentInput.includes("read<");
 
-    let code = hasReadVars || hasReadInExpr ? "const __stdinValues = __stdin.split(' ');\n" : "";
+    let code =
+      hasReadVars || hasReadInExpr
+        ? "const __stdinValues = __stdin.split(' ');\n"
+        : "";
 
     // Add variable declarations
     for (const decl of varDeclarations) {
-      code += `let ${decl.name} = ${decl.initCode};\n`;
+      code += `const ${decl.jsName} = ${decl.initCode};\n`;
     }
 
     code += exprCompileResult.value;
@@ -742,6 +886,8 @@ interface VariableBinding {
   type: string;
   value?: number;
   isRead: boolean;
+  isInitialized: boolean;
+  jsName: string;
 }
 
 interface VariableContext {
@@ -752,12 +898,13 @@ interface VariableDeclaration {
   name: string;
   type: string;
   initCode: string;
+  jsName: string;
 }
 
 interface ParsedVariableDeclaration {
   name: string;
-  type: string;
-  initializer: string;
+  type: string | null;
+  initializer: string | null;
   remaining: string;
 }
 
@@ -766,13 +913,16 @@ interface ParseAllDeclsResult {
   remaining: string;
 }
 
-function parseVariableDeclaration(input: string): Result<
-  ParsedVariableDeclaration,
-  CompilationError
-> {
+function parseVariableDeclaration(
+  input: string,
+): Result<ParsedVariableDeclaration, CompilationError> {
   // Find the variable name
   let nameEnd = 4; // skip "let "
-  while (nameEnd < input.length && input[nameEnd] !== " " && input[nameEnd] !== ":") {
+  while (
+    nameEnd < input.length &&
+    input[nameEnd] !== " " &&
+    input[nameEnd] !== ":"
+  ) {
     nameEnd++;
   }
   const name = input.substring(4, nameEnd);
@@ -790,53 +940,49 @@ function parseVariableDeclaration(input: string): Result<
     }
   }
 
-  // Skip spaces and find ":"
-  let typeStart = nameEnd;
-  while (typeStart < input.length && input[typeStart] === " ") {
-    typeStart++;
+  // Parse optional type and optional initializer
+  let cursor = nameEnd;
+  while (cursor < input.length && input[cursor] === " ") {
+    cursor++;
   }
 
-  if (typeStart >= input.length || input[typeStart] !== ":") {
-    return new Err(createVariableDeclarationSyntaxError(input, "Expected ':' after variable name"));
+  let varType: string | null = null;
+  if (cursor < input.length && input[cursor] === ":") {
+    cursor++; // skip ':'
+    while (cursor < input.length && input[cursor] === " ") {
+      cursor++;
+    }
+
+    let typeEnd = cursor;
+    while (
+      typeEnd < input.length &&
+      (isLetter(input[typeEnd]) || isDigit(input[typeEnd]))
+    ) {
+      typeEnd++;
+    }
+
+    varType = input.substring(cursor, typeEnd).toUpperCase();
+
+    // Validate type
+    if (!TYPE_RANGES.has(varType)) {
+      return new Err(
+        createUnknownTypeError(
+          varType,
+          "Unknown type parameter in variable declaration",
+        ),
+      );
+    }
+
+    cursor = typeEnd;
+    while (cursor < input.length && input[cursor] === " ") {
+      cursor++;
+    }
   }
 
-  // Extract type
-  typeStart++; // skip ":"
-  while (typeStart < input.length && input[typeStart] === " ") {
-    typeStart++;
-  }
-
-  let typeEnd = typeStart;
-  while (typeEnd < input.length && (isLetter(input[typeEnd]) || isDigit(input[typeEnd]))) {
-    typeEnd++;
-  }
-
-  const varType = input.substring(typeStart, typeEnd).toUpperCase();
-
-  // Validate type
-  if (!TYPE_RANGES.has(varType)) {
-    return new Err(
-      createUnknownTypeError(varType, "Unknown type parameter in variable declaration"),
-    );
-  }
-
-  // Skip spaces and find "="
-  let eqStart = typeEnd;
-  while (eqStart < input.length && input[eqStart] === " ") {
-    eqStart++;
-  }
-
-  if (eqStart >= input.length || input[eqStart] !== "=") {
-    return new Err(createVariableDeclarationSyntaxError(input, "Expected '=' after type"));
-  }
+  const hasInitializer = cursor < input.length && input[cursor] === "=";
 
   // Find the semicolon that ends this declaration
-  eqStart++; // skip "="
-  while (eqStart < input.length && input[eqStart] === " ") {
-    eqStart++;
-  }
-
-  let semicolonPos = eqStart;
+  let semicolonPos = hasInitializer ? cursor + 1 : cursor;
   let depth = 0;
   while (semicolonPos < input.length) {
     if (input[semicolonPos] === "<") {
@@ -850,10 +996,47 @@ function parseVariableDeclaration(input: string): Result<
   }
 
   if (semicolonPos >= input.length || input[semicolonPos] !== ";") {
-    return new Err(createVariableDeclarationSyntaxError(input, "Expected ';' to end variable declaration"));
+    return new Err(
+      createVariableDeclarationSyntaxError(
+        input,
+        "Expected ';' to end variable declaration",
+      ),
+    );
   }
 
-  const initializer = input.substring(eqStart, semicolonPos).trim();
+  if (!hasInitializer && varType === null) {
+    return new Err(
+      createVariableDeclarationSyntaxError(
+        input,
+        "Expected ':' or '=' after variable name",
+      ),
+    );
+  }
+
+  if (!hasInitializer && varType !== null && input[cursor] !== ";") {
+    return new Err(
+      createVariableDeclarationSyntaxError(input, "Expected '=' after type"),
+    );
+  }
+
+  let initializer: string | null = null;
+  if (hasInitializer) {
+    let initStart = cursor + 1;
+    while (initStart < input.length && input[initStart] === " ") {
+      initStart++;
+    }
+
+    initializer = input.substring(initStart, semicolonPos).trim();
+    if (!initializer) {
+      return new Err(
+        createVariableDeclarationSyntaxError(
+          input,
+          "Expected initializer after '='",
+        ),
+      );
+    }
+  }
+
   const remaining = input.substring(semicolonPos + 1).trim();
 
   return new Ok({

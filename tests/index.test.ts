@@ -272,7 +272,10 @@ describe("compileTuffToJS", () => {
   });
 
   it("compiles 'let m : U8 = 10U8; let n : U8 = 20U8; let p : U8 = 30U8; m + n + p' to 60", () => {
-    assertOk("let m : U8 = 10U8; let n : U8 = 20U8; let p : U8 = 30U8; m + n + p", 60);
+    assertOk(
+      "let m : U8 = 10U8; let n : U8 = 20U8; let p : U8 = 30U8; m + n + p",
+      60,
+    );
   });
 
   it("returns error for variable used before declaration", () => {
@@ -305,5 +308,53 @@ describe("compileTuffToJS", () => {
 
   it("returns error for variable declaration missing ';'", () => {
     assertErr("let x : U8 = 10U8 x", "PARSE_ERROR");
+  });
+
+  it("compiles inferred let declaration", () => {
+    assertOk("let x = 10U8; x + 1U8", 11);
+  });
+
+  it("compiles inferred let declaration with read initializer", () => {
+    assertOk("let x = read<U8>(); x + 1U8", 2, "1");
+  });
+
+  it("compiles typed declaration without initializer when not read", () => {
+    assertOk("let x: U8; 10U8 + 5U8", 15);
+  });
+
+  it("returns error for read of typed declaration without initializer", () => {
+    assertErr("let x: U8; x + 1U8", "PARSE_ERROR");
+  });
+
+  it("returns error for declaration missing both type and initializer", () => {
+    assertErr("let x; x", "PARSE_ERROR");
+  });
+
+  it("returns error for declaration with empty initializer", () => {
+    assertErr("let x = ; x", "PARSE_ERROR");
+  });
+
+  it("returns error when inferred declaration uses unknown initializer form", () => {
+    assertErr("let x = hello; x", "PARSE_ERROR");
+  });
+
+  it("returns error for immutable let reassignment", () => {
+    assertErr("let x: U8 = 1U8; x = 2U8; x", "PARSE_ERROR");
+  });
+
+  it("allows same-scope let redeclaration with latest declaration winning", () => {
+    assertOk("let x: U8 = 1U8; let x: U8 = 2U8; x + 1U8", 3);
+  });
+
+  it("returns error for type mismatch in inferred declaration operation", () => {
+    assertErr("let x = 1U8; x + 1U16", "TYPE_MISMATCH");
+  });
+
+  it("returns error for annotation mismatch in typed declaration", () => {
+    assertErr("let x: U8 = 1U16; x", "TYPE_MISMATCH");
+  });
+
+  it("returns error for out-of-scope use after declaration block", () => {
+    assertErr("let x: U8 = 1U8; y + x", "PARSE_ERROR");
   });
 });
