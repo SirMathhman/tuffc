@@ -3,5 +3,8 @@ export function main() {
 }
 
 export function compileTuffToJS(input: string): string {
-  return "return 0";
+  if (input === "") {
+    return "return 0";
+  }
+  return `return ${input}`;
 }
