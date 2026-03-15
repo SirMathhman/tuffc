@@ -10,7 +10,7 @@
     "lint": "eslint . --ext .ts",
     "test": "jest",
     "cpd": "pmd cpd --dir src --dir tests --language typescript --ignore-identifiers --minimum-tokens 35",
-    "prepare": "husky install"
+    "prepare": "husky && git config core.hooksPath ../.husky"
   },
   "devDependencies": {
     "eslint": "^8.57.0",
