@@ -1,6 +1,11 @@
 import { Result, Ok, Err } from "./types/result";
 
-const TYPE_RANGES: Record<string, { min: number; max: number }> = {
+interface TypeRange {
+  min: number;
+  max: number;
+}
+
+const TYPE_RANGES: Record<string, TypeRange> = {
   U8: { min: 0, max: 255 },
   U16: { min: 0, max: 65535 },
   U32: { min: 0, max: 4294967295 },

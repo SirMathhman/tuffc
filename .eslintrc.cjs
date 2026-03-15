@@ -17,6 +17,10 @@ module.exports = {
         selector: "ThrowStatement",
         message: "Use Result<T, E> instead of throw statements",
       },
+      {
+        selector: "TSTypeLiteral",
+        message: "Use named interfaces or types instead of anonymous object type literals",
+      },
     ],
   },
 };
