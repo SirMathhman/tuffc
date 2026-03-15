@@ -22,4 +22,12 @@ module.exports = {
       },
     ],
   },
+  overrides: [
+    {
+      files: ["tests/**"],
+      rules: {
+        "@typescript-eslint/no-unused-vars": "off",
+      },
+    },
+  ],
 };
