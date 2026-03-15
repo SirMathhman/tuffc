@@ -1,4 +1,14 @@
 import { main, compileTuffToJS } from "../src/index";
+import { Ok, Err } from "../src/types/result";
+
+function assertOkEvaluatesTo(input: string, expected: unknown) {
+  const result = compileTuffToJS(input);
+  expect(result.isOk()).toBe(true);
+  if (result.isOk()) {
+    const evaluated = new Function(result.value)();
+    expect(evaluated).toBe(expected);
+  }
+}
 
 describe("main", () => {
   it("is a function", () => {
@@ -10,50 +20,62 @@ describe("main", () => {
   });
 });
 
+describe("Result", () => {
+  it("Ok.isOk returns true", () => {
+    const ok = new Ok("value");
+    expect(ok.isOk()).toBe(true);
+  });
+
+  it("Ok.isErr returns false", () => {
+    const ok = new Ok("value");
+    expect(ok.isErr()).toBe(false);
+  });
+
+  it("Err.isOk returns false", () => {
+    const err = new Err("error");
+    expect(err.isOk()).toBe(false);
+  });
+
+  it("Err.isErr returns true", () => {
+    const err = new Err("error");
+    expect(err.isErr()).toBe(true);
+  });
+});
+
 describe("compileTuffToJS", () => {
   it("compiles empty string to JS code that evaluates to 0", () => {
-    const result = compileTuffToJS("");
-    const evaluated = new Function(result)();
-    expect(evaluated).toBe(0);
+    assertOkEvaluatesTo("", 0);
   });
 
   it("compiles '100' to JS code that evaluates to 100", () => {
-    const result = compileTuffToJS("100");
-    const evaluated = new Function(result)();
-    expect(evaluated).toBe(100);
+    assertOkEvaluatesTo("100", 100);
   });
 
   it("compiles '100U8' to JS code that evaluates to 100", () => {
-    const result = compileTuffToJS("100U8");
-    const evaluated = new Function(result)();
-    expect(evaluated).toBe(100);
+    assertOkEvaluatesTo("100U8", 100);
   });
 
   it("compiles '42F64' to JS code that evaluates to 42", () => {
-    const result = compileTuffToJS("42F64");
-    const evaluated = new Function(result)();
-    expect(evaluated).toBe(42);
+    assertOkEvaluatesTo("42F64", 42);
   });
 
   it("compiles non-numeric input by returning it as string expression", () => {
-    const result = compileTuffToJS("abc");
-    const evaluated = new Function(result)();
-    expect(evaluated).toBe("abc");
+    assertOkEvaluatesTo("abc", "abc");
   });
 
   it("compiles negative number without type suffix as string", () => {
-    const result = compileTuffToJS("-100");
-    const evaluated = new Function(result)();
-    expect(evaluated).toBe("-100");
+    assertOkEvaluatesTo("-100", "-100");
   });
 
   it("compiles negative text as string", () => {
-    const result = compileTuffToJS("-abc");
-    const evaluated = new Function(result)();
-    expect(evaluated).toBe("-abc");
+    assertOkEvaluatesTo("-abc", "-abc");
   });
 
-  it("throws error for negative numbers with type suffixes", () => {
-    expect(() => compileTuffToJS("-100U8")).toThrow();
+  it("returns error for negative numbers with type suffixes", () => {
+    const result = compileTuffToJS("-100U8");
+    expect(result.isErr()).toBe(true);
+    if (result.isErr()) {
+      expect(result.error).toContain("Negative numbers with type suffixes");
+    }
   });
 });

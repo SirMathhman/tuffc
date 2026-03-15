@@ -16,6 +16,10 @@ module.exports = {
         selector: "Literal[regex]",
         message: "Regular expressions are not allowed",
       },
+      {
+        selector: "ThrowStatement",
+        message: "Use Result<T, E> instead of throw statements",
+      },
     ],
   },
 };
