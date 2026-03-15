@@ -10,14 +10,19 @@ function evaluateCompiled(code: string, stdinValue?: string): unknown {
   return new Function(code)();
 }
 
-function assertOk(input: string, expected: unknown, stdinValue?: string) {
+function getCompiledCodeOrFail(input: string): string {
   const result = compileTuffToJS(input);
   if (result.isErr()) {
     expect(result.error).toBeUndefined(); // Force test failure if it's an error
-  } else {
-    const evaluated = evaluateCompiled(result.value, stdinValue);
-    expect(evaluated).toBe(expected);
+    return "";
   }
+  return result.value;
+}
+
+function assertOk(input: string, expected: unknown, stdinValue?: string) {
+  const code = getCompiledCodeOrFail(input);
+  const evaluated = evaluateCompiled(code, stdinValue);
+  expect(evaluated).toBe(expected);
 }
 
 function assertErr(input: string, expectedCode: string) {
@@ -27,6 +32,11 @@ function assertErr(input: string, expectedCode: string) {
   } else {
     expect(result.value).toBeUndefined(); // Force test failure if it's not an error
   }
+}
+
+function assertCompiles(input: string) {
+  const code = getCompiledCodeOrFail(input);
+  expect(code.length).toBeGreaterThan(0);
 }
 
 describe("Result", () => {
@@ -188,5 +198,112 @@ describe("compileTuffToJS", () => {
 
   it("returns error when chained operation result exceeds type range", () => {
     assertErr("200U8 + 100U8 + 100U8", "VALUE_OUT_OF_RANGE");
+  });
+
+  it("compiles 'let x : U8 = read<U8>(); x + x' with stdin '1' to 2", () => {
+    assertOk("let x : U8 = read<U8>(); x + x", 2, "1");
+  });
+
+  it("compiles 'let x : U8 = 50U8; x + x' to 100", () => {
+    assertOk("let x : U8 = 50U8; x + x", 100);
+  });
+
+  it("compiles 'let x : U8 = read<U8>(); let y : U8 = read<U8>(); x + y' with stdin '10 20' to 30", () => {
+    assertOk(
+      "let x : U8 = read<U8>(); let y : U8 = read<U8>(); x + y",
+      30,
+      "10 20",
+    );
+  });
+
+  it("compiles 'let x : U8 = 30U8; x - 10U8' to 20", () => {
+    assertOk("let x : U8 = 30U8; x - 10U8", 20);
+  });
+
+  it("compiles 'let x : U8 = read<U8>(); x * 3U8' with stdin '5' to 15", () => {
+    assertOk("let x : U8 = read<U8>(); x * 3U8", 15, "5");
+  });
+
+  it("compiles 'let x : U8 = 100U8; x / 4U8' to 25", () => {
+    assertOk("let x : U8 = 100U8; x / 4U8", 25);
+  });
+
+  it("returns error for variable with invalid type", () => {
+    assertErr("let x : INVALID = 50U8; x", "UNKNOWN_TYPE");
+  });
+
+  it("returns error for undefined variable usage", () => {
+    assertErr("x + 10U8", "PARSE_ERROR");
+  });
+
+  it("returns error for type mismatch in variable initialization", () => {
+    assertErr("let x : U8 = 300U8; x", "VALUE_OUT_OF_RANGE");
+  });
+
+  it("returns error for mismatched read type in variable initialization", () => {
+    assertErr("let x : U8 = read<U16>(); x", "TYPE_MISMATCH");
+  });
+
+  it("returns first declaration error when later declarations exist", () => {
+    assertErr(
+      "let x : U8 = read<U16>(); let y : U8 = 1U8; x + y",
+      "TYPE_MISMATCH",
+    );
+  });
+
+  it("returns error for mismatched typed literal in variable initialization", () => {
+    assertErr("let x : U8 = 10U16; x", "TYPE_MISMATCH");
+  });
+
+  it("returns error for type mismatch in variable operation", () => {
+    assertErr("let x : U8 = 50U8; x + 20U16", "TYPE_MISMATCH");
+  });
+
+  it("compiles 'let x : U16 = read<U16>(); x / 2U16' with stdin '100' to 50", () => {
+    assertOk("let x : U16 = read<U16>(); x / 2U16", 50, "100");
+  });
+
+  it("compiles chain with variable: 'let a : U8 = 5U8; a + a + 10U8' to 20", () => {
+    assertOk("let a : U8 = 5U8; a + a + 10U8", 20);
+  });
+
+  it("compiles 'let x : S8 = read<S8>(); x - 10S8' with stdin '-5' to -15", () => {
+    assertOk("let x : S8 = read<S8>(); x - 10S8", -15, "-5");
+  });
+
+  it("compiles 'let m : U8 = 10U8; let n : U8 = 20U8; let p : U8 = 30U8; m + n + p' to 60", () => {
+    assertOk("let m : U8 = 10U8; let n : U8 = 20U8; let p : U8 = 30U8; m + n + p", 60);
+  });
+
+  it("returns error for variable used before declaration", () => {
+    assertErr("x + 10U8; let x : U8 = 5U8", "PARSE_ERROR");
+  });
+
+  it("returns error for invalid variable name", () => {
+    assertErr("let x@y : U8 = 10U8; x@y", "PARSE_ERROR");
+  });
+
+  it("compiles declaration-only input to default return 0", () => {
+    assertOk("let x : U8 = 10U8;", 0);
+  });
+
+  it("compiles expression containing read<> after declarations", () => {
+    assertCompiles("let x : U8 = 10U8; x + read<U8>()");
+  });
+
+  it("returns error for undefined variable in expression after declaration", () => {
+    assertErr("let x : U8 = 10U8; y + 1U8", "PARSE_ERROR");
+  });
+
+  it("returns error for variable declaration missing ':'", () => {
+    assertErr("let x U8 = 10U8; x", "PARSE_ERROR");
+  });
+
+  it("returns error for variable declaration missing '='", () => {
+    assertErr("let x : U8 10U8; x", "PARSE_ERROR");
+  });
+
+  it("returns error for variable declaration missing ';'", () => {
+    assertErr("let x : U8 = 10U8 x", "PARSE_ERROR");
   });
 });
