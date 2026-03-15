@@ -7,23 +7,22 @@
     "build": "tsc",
     "start": "node dist/cli.js",
     "dev": "ts-node src/cli.ts",
-    "lint": "eslint --config .eslintrc.cjs . --ext .ts && eslint --config .eslintrc.src.cjs src/ --ext .ts && ts-node --esm scripts/check-dead-exports.ts",
+    "lint": "eslint . && ts-node --esm scripts/check-dead-exports.ts",
     "test": "jest",
     "cpd": "pmd cpd --dir src --dir tests --language typescript --ignore-identifiers --ignore-literals --minimum-tokens 35",
     "prepare": "husky && git config core.hooksPath .husky"
   },
   "devDependencies": {
     "@types/jest": "^29.5.14",
-    "@typescript-eslint/eslint-plugin": "^7.18.0",
-    "@typescript-eslint/parser": "^7.18.0",
-    "eslint": "^8.57.1",
+    "eslint": "^10.0.3",
     "husky": "^9.1.7",
     "jest": "^29.7.0",
     "lint-staged": "^14.0.1",
     "ts-jest": "^29.4.6",
     "ts-morph": "^22.0.0",
     "ts-node": "^10.9.2",
-    "typescript": "~5.5.4"
+    "typescript": "~5.5.4",
+    "typescript-eslint": "^8.57.0"
   },
   "lint-staged": {
     "**/*.{ts,tsx,js,jsx}": [
