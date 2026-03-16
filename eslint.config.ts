@@ -24,6 +24,7 @@ export default tseslint.config(
     },
     rules: {
       "local/ban-array-push": "error",
+      "@typescript-eslint/no-explicit-any": "error",
       "no-restricted-syntax": [
         "error",
         {
@@ -47,6 +48,14 @@ export default tseslint.config(
           selector: "TemplateLiteral",
           message:
             "Template literals are not allowed; use string concatenation instead",
+        },
+        {
+          selector: "Literal[value=null]",
+          message: "Use undefined instead of null",
+        },
+        {
+          selector: "TSNullKeyword",
+          message: "Use undefined instead of null",
         },
       ],
     },

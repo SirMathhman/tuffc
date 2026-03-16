@@ -8,7 +8,23 @@ const banArrayPush = {
     },
     schema: [],
   },
-  create(context: any) {
+  create(context: {
+    sourceCode: {
+      parserServices?: {
+        program?: {
+          getTypeChecker: () => {
+            getTypeAtLocation: (node: unknown) => unknown;
+            isArrayType: (type: unknown) => boolean;
+            isTupleType: (type: unknown) => boolean;
+          };
+        };
+        esTreeNodeToTSNodeMap?: {
+          get: (node: unknown) => unknown;
+        };
+      };
+    };
+    report: (descriptor: { node: unknown; messageId: string }) => void;
+  }) {
     const services = context.sourceCode.parserServices;
     if (!services || !services.program || !services.esTreeNodeToTSNodeMap) {
       return {};
@@ -18,9 +34,17 @@ const banArrayPush = {
 
     return {
       'CallExpression[callee.type="MemberExpression"][callee.property.name="push"]'(
-        node: any,
+        node: {
+          callee: {
+            object: unknown;
+          };
+        },
       ) {
-        const tsNode = services.esTreeNodeToTSNodeMap.get(node.callee.object);
+        const tsNodeMap = services.esTreeNodeToTSNodeMap;
+        if (!tsNodeMap) {
+          return;
+        }
+        const tsNode = tsNodeMap.get(node.callee.object);
         const type = checker.getTypeAtLocation(tsNode);
         if (checker.isArrayType(type) || checker.isTupleType(type)) {
           context.report({ node, messageId: "noPush" });
