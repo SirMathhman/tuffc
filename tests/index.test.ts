@@ -371,4 +371,32 @@ describe("compileTuffToJS", () => {
     assertErr("x =", "PARSE_ERROR"));
   it("compiles declaration with extra spaces after let", () =>
     assertOk("let   x = 1U8; x + 1U8", 2));
+  it("compiles standalone 'if (true) 3 else 5' to 3", () =>
+    assertOk("if (true) 3 else 5", 3));
+  it("compiles standalone 'if (false) 3 else 5' to 5", () =>
+    assertOk("if (false) 3 else 5", 5));
+  it("compiles 'let x = if (true) 3 else 5; x' to 3", () =>
+    assertOk("let x = if (true) 3 else 5; x", 3));
+  it("compiles 'let x = if (false) 3 else 5; x' to 5", () =>
+    assertOk("let x = if (false) 3 else 5; x", 5));
+  it("compiles 'if (1U8 < 2U8) 10U8 else 20U8' to 10", () =>
+    assertOk("if (1U8 < 2U8) 10U8 else 20U8", 10));
+  it("compiles 'if (2U8 < 1U8) 10U8 else 20U8' to 20", () =>
+    assertOk("if (2U8 < 1U8) 10U8 else 20U8", 20));
+  it("compiles 'if' expression in final expression after declarations", () =>
+    assertOk("let x: U8 = 3U8; if (x < 5U8) 1U8 else 2U8", 1));
+  it("returns error for invalid condition in 'if' expression", () =>
+    assertErr("if (256U8 < 1U8) 3 else 5", "VALUE_OUT_OF_RANGE"));
+  it("returns error for invalid then-branch in 'if' expression", () =>
+    assertErr("if (true) 256U8 + 1U8 else 5U8", "VALUE_OUT_OF_RANGE"));
+  it("returns error for invalid else-branch in 'if' expression", () =>
+    assertErr("if (false) 5U8 else 256U8 + 1U8", "VALUE_OUT_OF_RANGE"));
+  it("returns error for invalid condition in 'if' initializer", () =>
+    assertErr("let x = if (256U8 < 1U8) 3 else 5; x", "VALUE_OUT_OF_RANGE"));
+  it("compiles malformed 'if' with unclosed paren as string", () =>
+    assertCompiles("if (true 3 else 5"));
+  it("compiles malformed 'if' with no else clause as string", () =>
+    assertCompiles("if (true) 3"));
+  it("compiles malformed 'if' with empty condition as string", () =>
+    assertCompiles("if () 3 else 5"));
 });

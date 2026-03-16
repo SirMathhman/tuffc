@@ -652,6 +652,50 @@ function getRangeViolationReason(
   return reason;
 }
 
+interface ParsedIfExpression {
+  condition: string;
+  thenExpr: string;
+  elseExpr: string;
+}
+
+function parseIfExpression(input: string): ParsedIfExpression | undefined {
+  let depth = 0;
+  let condEnd = -1;
+  for (let i = 3; i < input.length; i++) {
+    if (input[i] === "(") {
+      depth++;
+    } else if (input[i] === ")") {
+      depth--;
+      if (depth === 0) {
+        condEnd = i;
+        break;
+      }
+    }
+  }
+
+  if (condEnd === -1) {
+    return undefined;
+  }
+
+  const condition = input.substring(4, condEnd).trim();
+  const afterCond = input.substring(condEnd + 1).trim();
+
+  const elseMarker = " else ";
+  const elseIndex = afterCond.indexOf(elseMarker);
+  if (elseIndex === -1) {
+    return undefined;
+  }
+
+  const thenExpr = afterCond.substring(0, elseIndex).trim();
+  const elseExpr = afterCond.substring(elseIndex + elseMarker.length).trim();
+
+  if (!condition || !thenExpr || !elseExpr) {
+    return undefined;
+  }
+
+  return { condition, thenExpr, elseExpr };
+}
+
 function compileExpressionWithVariables(
   expr: string,
   variableContext: VariableContext,
@@ -660,6 +704,51 @@ function compileExpressionWithVariables(
 
   if (!trimmed) {
     return new Ok("return 0");
+  }
+
+  if (trimmed.startsWith("if (")) {
+    const parsed = parseIfExpression(trimmed);
+    if (parsed !== undefined) {
+      const { condition, thenExpr, elseExpr } = parsed;
+
+      const condResult = compileExpressionWithVariables(
+        condition,
+        variableContext,
+      );
+      if (condResult.isErr()) {
+        return condResult;
+      }
+      const condCode = stripReturnStatement(condResult.value);
+      const condReadCount = countStdinValueReferences(condCode);
+
+      const thenResult = compileExpressionWithVariables(
+        thenExpr,
+        variableContext,
+      );
+      if (thenResult.isErr()) {
+        return thenResult;
+      }
+      const rawThenCode = stripReturnStatement(thenResult.value);
+      const thenCode = offsetStdinValueIndexes(rawThenCode, condReadCount);
+      const thenReadCount = countStdinValueReferences(rawThenCode);
+
+      const elseResult = compileExpressionWithVariables(
+        elseExpr,
+        variableContext,
+      );
+      if (elseResult.isErr()) {
+        return elseResult;
+      }
+      const rawElseCode = stripReturnStatement(elseResult.value);
+      const elseCode = offsetStdinValueIndexes(
+        rawElseCode,
+        condReadCount + thenReadCount,
+      );
+
+      return new Ok(
+        "return (" + condCode + " ? " + thenCode + " : " + elseCode + ")",
+      );
+    }
   }
 
   if (trimmed.startsWith("!") && !trimmed.startsWith("!=")) {
@@ -1032,6 +1121,45 @@ export function compileTuffToJS(
       continue;
     }
 
+    if (initializer.startsWith("if (")) {
+      const exprResult = compileExpressionWithVariables(
+        initializer,
+        processState.varCtx,
+      );
+      if (exprResult.isErr()) {
+        processState = { ...processState, error: exprResult.error };
+        continue;
+      }
+      const rawCode = stripReturnStatement(exprResult.value);
+      const readCount = countStdinValueReferences(rawCode);
+      const offsetCode = offsetStdinValueIndexes(
+        rawCode,
+        processState.stdinIdx,
+      );
+      const resolvedType = type ?? "untyped";
+      processState = {
+        varDecls: [
+          ...processState.varDecls,
+          { name, isMutable, type: resolvedType, initCode: offsetCode, jsName },
+        ],
+        varCtx: {
+          ...processState.varCtx,
+          [name]: {
+            type: resolvedType,
+            isRead: readCount > 0,
+            isInitialized: true,
+            isMutable,
+            value: undefined,
+            jsName,
+          },
+        },
+        stdinIdx: processState.stdinIdx + readCount,
+        nextBindingIdx: processState.nextBindingIdx + 1,
+        error: undefined,
+      };
+      continue;
+    }
+
     const readTypeResult = extractReadTypeArg(initializer);
     if (!readTypeResult.isErr()) {
       const okResult = readTypeResult as Ok<string>;
@@ -1370,6 +1498,10 @@ export function compileTuffToJS(
             i = j;
             continue;
           }
+          if (ident === "if" || ident === "else") {
+            i = j;
+            continue;
+          }
           // This might be a type suffix like "U8" or "U16"
           if (!VALID_TYPE_NAMES.has(ident)) {
             return new Err(
@@ -1437,6 +1569,10 @@ export function compileTuffToJS(
 
     code += exprCompileResult.value;
     return new Ok(code);
+  }
+
+  if (input.trim().startsWith("if (")) {
+    return compileExpressionWithVariables(input.trim(), {});
   }
 
   if (hasStandaloneAssignment(input)) {
