@@ -21,11 +21,24 @@ interface TypeRange {
   max: number;
 }
 
-type BinaryOperator = "+" | "-" | "*" | "/";
+type BinaryOperator = "+" | "-" | "*" | "/" | "&&" | "||" | "==" | "!=";
 
-const VALID_TYPES = "U8, U16, U32, S8, S16, S32, F64";
+type BooleanOperator = "&&" | "||" | "==" | "!=";
+
+const BOOL_TYPE = "BOOL";
+const VALID_TYPES = "U8, U16, U32, S8, S16, S32, F64, Bool";
 const INVALID_TYPE_MESSAGE =
   "is not a recognized type. Valid types are: " + VALID_TYPES;
+const VALID_TYPE_NAMES = new Set<string>([
+  "U8",
+  "U16",
+  "U32",
+  "S8",
+  "S16",
+  "S32",
+  "F64",
+  BOOL_TYPE,
+]);
 
 const TYPE_RANGES = new Map<string, TypeRange>([
   ["U8", { min: 0, max: 255 }],
@@ -37,33 +50,51 @@ const TYPE_RANGES = new Map<string, TypeRange>([
   ["F64", { min: -Infinity, max: Infinity }],
 ]);
 
-const BINARY_OPS: BinaryOperator[] = ["+", "-", "*", "/"];
+const BINARY_OPS: BinaryOperator[] = [
+  "&&",
+  "||",
+  "==",
+  "!=",
+  "+",
+  "-",
+  "*",
+  "/",
+];
 
-function appendOperatorPosition(
-  positions: OperatorPosition[],
-  char: string,
-  index: number,
-  input: string,
-): OperatorPosition[] {
-  if (
-    BINARY_OPS.includes(char as BinaryOperator) &&
-    index > 0 &&
-    index < input.length - 1 &&
-    input[index - 1] === " " &&
-    input[index + 1] === " "
-  ) {
-    return [...positions, { op: char, index }];
-  }
-
-  return positions;
+interface OperatorPosition {
+  op: BinaryOperator;
+  index: number;
+  length: number;
 }
 
 function getOperatorsWithPositions(input: string): OperatorPosition[] {
-  return Array.from(input).reduce<OperatorPosition[]>(
-    (positions, char, index) =>
-      appendOperatorPosition(positions, char, index, input),
-    [],
-  );
+  let positions: OperatorPosition[] = [];
+  let index = 0;
+
+  while (index < input.length) {
+    let matched = false;
+
+    for (const op of BINARY_OPS) {
+      if (
+        input.substring(index, index + op.length) === op &&
+        index > 0 &&
+        index + op.length < input.length &&
+        input[index - 1] === " " &&
+        input[index + op.length] === " "
+      ) {
+        positions = [...positions, { op, index, length: op.length }];
+        index += op.length;
+        matched = true;
+        break;
+      }
+    }
+
+    if (!matched) {
+      index++;
+    }
+  }
+
+  return positions;
 }
 
 function extractOperands(
@@ -75,7 +106,11 @@ function extractOperands(
   for (let position = 0; position < operatorsWithPositions.length; position++) {
     const index = operatorsWithPositions[position].index;
     const startIndex =
-      position === 0 ? 0 : operatorsWithPositions[position - 1].index + 2;
+      position === 0
+        ? 0
+        : operatorsWithPositions[position - 1].index +
+          operatorsWithPositions[position - 1].length +
+          1;
     leadingOperands = [
       ...leadingOperands,
       input.substring(startIndex, index - 1).trim(),
@@ -83,8 +118,276 @@ function extractOperands(
   }
 
   const finalOperandStartIndex =
-    operatorsWithPositions[operatorsWithPositions.length - 1].index + 2;
+    operatorsWithPositions[operatorsWithPositions.length - 1].index +
+    operatorsWithPositions[operatorsWithPositions.length - 1].length +
+    1;
   return [...leadingOperands, input.substring(finalOperandStartIndex).trim()];
+}
+
+function isBooleanType(typeName: string): boolean {
+  return typeName === BOOL_TYPE;
+}
+
+function parseBooleanLiteral(input: string): number | undefined {
+  if (input === "true") {
+    return 1;
+  }
+  if (input === "false") {
+    return 0;
+  }
+  return undefined;
+}
+
+function generateReadBoolOperandCode(stdinIndex: number): string {
+  return "(__stdinValues[" + stdinIndex + '] === "true" ? 1 : 0)';
+}
+
+function generateStandaloneReadBoolCode(): string {
+  return 'return (__stdin === "true" ? 1 : 0)';
+}
+
+function generateReadCodeForType(typeName: string, stdinIndex: number): string {
+  return isBooleanType(typeName)
+    ? generateReadBoolOperandCode(stdinIndex)
+    : generateReadOperandCode(stdinIndex);
+}
+
+function compileStandaloneReadExpression(typeName: string): string {
+  return isBooleanType(typeName)
+    ? generateStandaloneReadBoolCode()
+    : "return parseInt(__stdin, 10)";
+}
+
+function isArithmeticOperator(operator: BinaryOperator): boolean {
+  return (
+    operator === "+" || operator === "-" || operator === "*" || operator === "/"
+  );
+}
+
+function hasStandaloneAssignment(input: string): boolean {
+  for (let i = 0; i < input.length; i++) {
+    if (input[i] === "=") {
+      const previous = i > 0 ? input[i - 1] : "";
+      const next = i < input.length - 1 ? input[i + 1] : "";
+      if (previous !== "=" && previous !== "!" && next !== "=") {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function createUnsupportedBooleanOperatorError(
+  input: string,
+): CompilationError {
+  return {
+    code: CompilationErrorCode.PARSE_ERROR,
+    erroneousValue: input,
+    message: "Unable to parse input",
+    reason: "Boolean values only support &&, ||, !, ==, and !=",
+    fix: "Use boolean operators instead of arithmetic with Bool values",
+  };
+}
+
+function getUnsupportedBooleanOperatorError(
+  input: string,
+  operators: BinaryOperator[],
+): CompilationError | undefined {
+  for (const operator of operators) {
+    if (isArithmeticOperator(operator)) {
+      return createUnsupportedBooleanOperatorError(input);
+    }
+  }
+
+  return undefined;
+}
+
+interface BinaryOperandValue {
+  type: string;
+  isRead: boolean;
+  value?: number;
+}
+
+interface ExpressionOperandValue extends BinaryOperandValue {
+  jsCode: string;
+  isRuntime: boolean;
+}
+
+interface ReadAwareOperand {
+  isRead: boolean;
+}
+
+function buildOperandCodes<T extends ReadAwareOperand>(
+  operands: T[],
+  readCodeFactory: (readIndex: number) => string,
+  literalCodeFactory: (operand: T) => string,
+): string[] {
+  let operandCodes: string[] = [];
+  let readIndex = 0;
+
+  for (const operand of operands) {
+    if (operand.isRead) {
+      operandCodes = [...operandCodes, readCodeFactory(readIndex)];
+      readIndex++;
+    } else {
+      operandCodes = [...operandCodes, literalCodeFactory(operand)];
+    }
+  }
+
+  return operandCodes;
+}
+
+function createBooleanOperand(
+  value: number,
+  isRead: boolean,
+): BinaryOperandValue {
+  return {
+    type: BOOL_TYPE,
+    isRead,
+    value,
+  };
+}
+
+function evaluateBooleanChain(
+  operators: BooleanOperator[],
+  parsedOperands: BinaryOperandValue[],
+): number {
+  let result = parsedOperands[0].value as number;
+
+  for (let i = 0; i < operators.length; i++) {
+    const operator = operators[i];
+    const nextValue = parsedOperands[i + 1].value as number;
+
+    if (operator === "&&") {
+      result = result !== 0 && nextValue !== 0 ? 1 : 0;
+    } else if (operator === "||") {
+      result = result !== 0 || nextValue !== 0 ? 1 : 0;
+    } else if (operator === "==") {
+      result = result === nextValue ? 1 : 0;
+    } else if (operator === "!=") {
+      result = result !== nextValue ? 1 : 0;
+    }
+  }
+
+  return result;
+}
+
+function validateReadTypeArg(typeArg: string): Result<void, CompilationError> {
+  let isValidType = true;
+  for (let i = 0; i < typeArg.length; i++) {
+    const char = typeArg[i];
+    if (!(isDigit(char) || isLetter(char))) {
+      isValidType = false;
+      break;
+    }
+  }
+
+  if (!isValidType || !VALID_TYPE_NAMES.has(typeArg)) {
+    return new Err(
+      createUnknownTypeError(
+        typeArg,
+        "Unknown type parameter in read<>() expression",
+      ),
+    );
+  }
+
+  return new Ok(void 0);
+}
+
+function generateReadOperandCode(stdinIndex: number): string {
+  return "parseInt(__stdinValues[" + stdinIndex + "], 10)";
+}
+
+function extractReadTypeArg(operand: string): Result<string, CompilationError> {
+  if (
+    operand.startsWith("read<") &&
+    operand.endsWith(">()") &&
+    operand.length > "read<>()".length
+  ) {
+    const typeStart = 5;
+    const typeEnd = operand.length - 3;
+    const typeArg = operand.substring(typeStart, typeEnd).toUpperCase();
+
+    const validationResult = validateReadTypeArg(typeArg);
+    if (validationResult.isErr()) {
+      return validationResult;
+    }
+
+    return new Ok(typeArg);
+  }
+
+  return new Err({
+    code: CompilationErrorCode.PARSE_ERROR,
+    erroneousValue: operand,
+    message: "Invalid read pattern",
+    reason: "Does not match read<TYPE>() pattern",
+    fix: "Use format: read<TYPE>() where TYPE is one of the valid types",
+  });
+}
+
+function parseOperandForBinaryOp(
+  operand: string,
+): Result<BinaryOperandValue, CompilationError> {
+  const readTypeResult = extractReadTypeArg(operand);
+  if (!readTypeResult.isErr()) {
+    const okResult = readTypeResult as Ok<string>;
+    return new Ok({ type: okResult.value, isRead: true });
+  }
+
+  if (readTypeResult.error.code === CompilationErrorCode.UNKNOWN_TYPE) {
+    return readTypeResult;
+  }
+
+  const booleanValue = parseBooleanLiteral(operand);
+  if (booleanValue !== undefined) {
+    return new Ok(createBooleanOperand(booleanValue, false));
+  }
+
+  const parseResult = parseTypedNumber(operand);
+  if (parseResult.isErr()) {
+    return parseResult;
+  }
+
+  return new Ok({
+    type: parseResult.value.type,
+    isRead: false,
+    value: parseResult.value.value,
+  });
+}
+
+function parseExpressionOperand(
+  operand: string,
+  variableContext: VariableContext,
+): Result<ExpressionOperandValue, CompilationError> {
+  const binding = variableContext[operand];
+  if (binding !== undefined) {
+    return new Ok({
+      type: binding.type,
+      isRead: false,
+      value: binding.value,
+      jsCode: binding.jsName,
+      isRuntime: true,
+    });
+  }
+
+  const parseResult = parseOperandForBinaryOp(operand);
+  if (parseResult.isErr()) {
+    return parseResult;
+  }
+
+  if (parseResult.value.isRead) {
+    return new Ok({
+      ...parseResult.value,
+      jsCode: "",
+      isRuntime: true,
+    });
+  }
+
+  return new Ok({
+    ...parseResult.value,
+    jsCode: (parseResult.value.value as number).toString(),
+    isRuntime: false,
+  });
 }
 
 function createUnknownTypeError(
@@ -185,164 +488,133 @@ function getRangeViolationReason(
   return reason;
 }
 
-function validateReadTypeArg(typeArg: string): Result<void, CompilationError> {
-  // Validate type contains only alphanumeric characters
-  let isValidType = true;
-  for (let i = 0; i < typeArg.length; i++) {
-    const char = typeArg[i];
-    if (!(isDigit(char) || isLetter(char))) {
-      isValidType = false;
-      break;
-    }
-  }
-
-  if (!isValidType || !TYPE_RANGES.has(typeArg)) {
-    return new Err(
-      createUnknownTypeError(
-        typeArg,
-        "Unknown type parameter in read<>() expression",
-      ),
-    );
-  }
-
-  return new Ok(void 0);
-}
-
-function generateReadOperandCode(stdinIndex: number): string {
-  return "parseInt(__stdinValues[" + stdinIndex + "], 10)";
-}
-
-interface OperatorPosition {
-  op: string;
-  index: number;
-}
-
-function extractReadTypeArg(operand: string): Result<string, CompilationError> {
-  if (
-    operand.startsWith("read<") &&
-    operand.endsWith(">()") &&
-    operand.length > "read<>()".length
-  ) {
-    const typeStart = 5; // "read<" length
-    const typeEnd = operand.length - 3; // ">()" length
-    const typeArg = operand.substring(typeStart, typeEnd).toUpperCase();
-
-    const validationResult = validateReadTypeArg(typeArg);
-    if (validationResult.isErr()) {
-      return validationResult;
-    }
-
-    return new Ok(typeArg);
-  }
-
-  return new Err({
-    code: CompilationErrorCode.PARSE_ERROR,
-    erroneousValue: operand,
-    message: "Invalid read pattern",
-    reason: "Does not match read<TYPE>() pattern",
-    fix: "Use format: read<TYPE>() where TYPE is one of the valid types",
-  });
-}
-
-interface BinaryOperandValue {
-  type: string;
-  isRead: boolean;
-  value?: number; // Only set if not a read pattern
-}
-
-function parseOperandForBinaryOp(
-  operand: string,
-): Result<BinaryOperandValue, CompilationError> {
-  // Check if operand is a read<TYPE>() pattern
-  const readTypeResult = extractReadTypeArg(operand);
-  if (!readTypeResult.isErr()) {
-    // For Ok case, we need to unwrap it properly
-    // Since Result doesn't have a direct value accessor for Ok, we'll check and cast
-    const okResult = readTypeResult as Ok<string>;
-    return new Ok({ type: okResult.value, isRead: true });
-  }
-
-  // If it's a validation error (UNKNOWN_TYPE), propagate it
-  if (readTypeResult.error.code === CompilationErrorCode.UNKNOWN_TYPE) {
-    return readTypeResult;
-  }
-
-  // Try to parse as typed number
-  const parseResult = parseTypedNumber(operand);
-  if (parseResult.isErr()) {
-    return parseResult;
-  }
-
-  return new Ok({
-    type: parseResult.value.type,
-    isRead: false,
-    value: parseResult.value.value,
-  });
-}
-
 function compileExpressionWithVariables(
   expr: string,
   variableContext: VariableContext,
 ): Result<string, CompilationError> {
-  // Compile an expression that may contain variable references
-  // Validate type compatibility first
-
   const trimmed = expr.trim();
 
   if (!trimmed) {
     return new Ok("return 0");
   }
 
-  // Parse the expression to check for type mismatches
+  if (trimmed.startsWith("!") && !trimmed.startsWith("!=")) {
+    const negatedOperand = trimmed.substring(1).trim();
+    const operandResult = parseExpressionOperand(
+      negatedOperand,
+      variableContext,
+    );
+    if (operandResult.isErr()) {
+      return operandResult;
+    }
+    if (!isBooleanType(operandResult.value.type)) {
+      return new Err(createUnsupportedBooleanOperatorError(trimmed));
+    }
+    if (operandResult.value.isRuntime) {
+      return new Ok("return ((" + operandResult.value.jsCode + ") ? 0 : 1)");
+    }
+    return new Ok("return " + (operandResult.value.value === 0 ? 1 : 0));
+  }
+
   const operatorsWithPositions = getOperatorsWithPositions(trimmed);
 
   if (operatorsWithPositions.length > 0) {
-    // Parse operands and check types
     const operands = extractOperands(trimmed, operatorsWithPositions);
 
-    // Check types of all operands
-    let firstType: string | undefined = undefined;
+    let operators: BinaryOperator[] = [];
+    let parsedOperands: ExpressionOperandValue[] = [];
+
+    for (const operator of operatorsWithPositions) {
+      operators = [...operators, operator.op];
+    }
 
     for (const operand of operands) {
-      let operandType: string | undefined = undefined;
-
-      // Check if it's a variable reference
-      if (variableContext[operand] !== undefined) {
-        operandType = variableContext[operand].type;
-      } else {
-        // Try to parse as typed number
-        const parseResult = parseTypedNumber(operand);
-        if (parseResult.isErr()) {
-          // Not a typed number, might be an issue
-          continue;
-        }
-        operandType = parseResult.value.type;
+      const operandResult = parseExpressionOperand(operand, variableContext);
+      if (operandResult.isErr()) {
+        return operandResult;
       }
+      parsedOperands = [...parsedOperands, operandResult.value];
+    }
 
-      if (firstType === undefined) {
-        firstType = operandType;
-      } else if (
-        operandType &&
-        firstType !== operandType &&
-        operandType !== "untyped"
-      ) {
+    const firstType = parsedOperands[0].type;
+    for (
+      let operandIndex = 1;
+      operandIndex < parsedOperands.length;
+      operandIndex++
+    ) {
+      const operandType = parsedOperands[operandIndex].type;
+      if (operandType !== firstType && operandType !== "untyped") {
         return new Err({
           code: CompilationErrorCode.TYPE_MISMATCH,
-          erroneousValue: operand,
+          erroneousValue: operands[operandIndex],
           message: "All operands in operations must have the same type",
           reason: "Expected type " + firstType + " but got " + operandType,
           fix: "Use matching types in all operands",
         });
       }
     }
+
+    if (isBooleanType(firstType)) {
+      const booleanOperatorError = getUnsupportedBooleanOperatorError(
+        trimmed,
+        operators,
+      );
+      if (booleanOperatorError) {
+        return new Err(booleanOperatorError);
+      }
+
+      const hasRuntimeOperand = parsedOperands.some(
+        (operand) => operand.isRuntime,
+      );
+      if (!hasRuntimeOperand) {
+        const evaluation = evaluateBooleanChain(
+          operators as BooleanOperator[],
+          parsedOperands,
+        );
+        return new Ok("return " + evaluation);
+      }
+
+      const operandCodes = buildOperandCodes(
+        parsedOperands,
+        generateReadBoolOperandCode,
+        (operand) => operand.jsCode,
+      );
+      return new Ok(
+        "return " + buildChainedOperationCode(operators, operandCodes),
+      );
+    }
+
+    const operandCodes = buildOperandCodes(
+      parsedOperands,
+      generateReadOperandCode,
+      (operand) => operand.jsCode,
+    );
+    return new Ok(
+      "return " + buildChainedOperationCode(operators, operandCodes),
+    );
   }
 
-  // Remove type suffixes from literals for JavaScript compatibility
+  const binding = variableContext[trimmed];
+  if (binding !== undefined) {
+    return new Ok("return " + binding.jsName);
+  }
+
+  const booleanValue = parseBooleanLiteral(trimmed);
+  if (booleanValue !== undefined) {
+    return new Ok("return " + booleanValue);
+  }
+
+  const readTypeResult = extractReadTypeArg(trimmed);
+  if (!readTypeResult.isErr()) {
+    return new Ok(
+      compileStandaloneReadExpression((readTypeResult as Ok<string>).value),
+    );
+  }
+
   let cleanedExpr = "";
   let i = 0;
   while (i < trimmed.length) {
     if (isDigit(trimmed[i])) {
-      // Found a number, collect all digits
       let numEnd = i;
       while (numEnd < trimmed.length && isDigit(trimmed[numEnd])) {
         numEnd++;
@@ -351,12 +623,10 @@ function compileExpressionWithVariables(
       cleanedExpr += num;
       i = numEnd;
 
-      // Skip any following type suffix (letters followed by digits, like U8, U16, S32, F64)
       let suffixEnd = i;
       while (suffixEnd < trimmed.length && isLetter(trimmed[suffixEnd])) {
         suffixEnd++;
       }
-      // If we found letters, skip any following digits too
       if (suffixEnd > i) {
         while (suffixEnd < trimmed.length && isDigit(trimmed[suffixEnd])) {
           suffixEnd++;
@@ -369,32 +639,7 @@ function compileExpressionWithVariables(
     }
   }
 
-  // Replace variable names with generated JS-safe bindings
-  let expressionWithBindings = "";
-  let cursor = 0;
-  while (cursor < cleanedExpr.length) {
-    if (isLetter(cleanedExpr[cursor])) {
-      let identEnd = cursor;
-      while (
-        identEnd < cleanedExpr.length &&
-        (isLetter(cleanedExpr[identEnd]) || isDigit(cleanedExpr[identEnd]))
-      ) {
-        identEnd++;
-      }
-
-      const ident = cleanedExpr.substring(cursor, identEnd);
-      const binding = variableContext[ident];
-      expressionWithBindings += binding ? binding.jsName : ident;
-      cursor = identEnd;
-    } else {
-      expressionWithBindings += cleanedExpr[cursor];
-      cursor++;
-    }
-  }
-
-  // Just return it as a return statement
-  // The variables are already defined by the caller
-  return new Ok("return " + expressionWithBindings);
+  return new Ok("return " + cleanedExpr);
 }
 
 function parseAllDeclarations(
@@ -448,6 +693,12 @@ function buildChainedOperationCode(
     const nextOperandCode = operandCodes[index + 1];
     if (op === "/") {
       code = "Math.floor(" + code + " / " + nextOperandCode + ")";
+    } else if (op === "&&" || op === "||") {
+      code = "(" + code + " " + op + " " + nextOperandCode + ")";
+    } else if (op === "==") {
+      code = "((" + code + " == " + nextOperandCode + ") ? 1 : 0)";
+    } else if (op === "!=") {
+      code = "((" + code + " != " + nextOperandCode + ") ? 1 : 0)";
     } else {
       code = "(" + code + " " + op + " " + nextOperandCode + ")";
     }
@@ -488,6 +739,72 @@ export function compileTuffToJS(
     nextBindingIdx: 0,
     error: undefined,
   };
+
+  const createInitializedLiteralProcessState = (
+    state: ProcessState,
+    name: string,
+    isMutable: boolean,
+    resolvedType: string,
+    literalValue: number,
+    jsName: string,
+  ): ProcessState => ({
+    varDecls: [
+      ...state.varDecls,
+      {
+        name,
+        isMutable,
+        type: resolvedType,
+        initCode: literalValue.toString(),
+        jsName,
+      },
+    ],
+    varCtx: {
+      ...state.varCtx,
+      [name]: {
+        type: resolvedType,
+        isRead: false,
+        isInitialized: true,
+        isMutable,
+        value: literalValue,
+        jsName,
+      },
+    },
+    stdinIdx: state.stdinIdx,
+    nextBindingIdx: state.nextBindingIdx + 1,
+    error: undefined,
+  });
+
+  const createLiteralInitializerProcessState = (
+    state: ProcessState,
+    variableName: string,
+    mutable: boolean,
+    declaredType: string | undefined,
+    parsedType: string,
+    resolvedType: string,
+    literalValue: number,
+    jsBindingName: string,
+  ): ProcessState =>
+    declaredType !== undefined &&
+    parsedType !== declaredType &&
+    parsedType !== "untyped"
+      ? {
+          ...state,
+          error: createVariableDeclarationTypeMismatchError(
+            input,
+            variableName,
+            declaredType,
+            parsedType,
+            false,
+          ),
+        }
+      : createInitializedLiteralProcessState(
+          state,
+          variableName,
+          mutable,
+          resolvedType,
+          literalValue,
+          jsBindingName,
+        );
 
   for (const { name, isMutable, type, initializer } of declTexts) {
     if (processState.error) {
@@ -549,7 +866,10 @@ export function compileTuffToJS(
         continue;
       }
 
-      const initCode = generateReadOperandCode(processState.stdinIdx);
+      const initCode = generateReadCodeForType(
+        resolvedType,
+        processState.stdinIdx,
+      );
       processState = {
         varDecls: [
           ...processState.varDecls,
@@ -579,6 +899,23 @@ export function compileTuffToJS(
       continue;
     }
 
+    const booleanValue = parseBooleanLiteral(initializer);
+    if (booleanValue !== undefined) {
+      const parsedType = BOOL_TYPE;
+      const resolvedType = type ?? parsedType;
+      processState = createLiteralInitializerProcessState(
+        processState,
+        name,
+        isMutable,
+        type,
+        parsedType,
+        resolvedType,
+        booleanValue,
+        jsName,
+      );
+      continue;
+    }
+
     const parseResult = parseTypedNumber(initializer);
     if (parseResult.isErr()) {
       processState = { ...processState, error: parseResult.error };
@@ -587,47 +924,16 @@ export function compileTuffToJS(
 
     const { type: parsedType, value } = parseResult.value;
     const resolvedType = type ?? parsedType;
-
-    if (type !== undefined && parsedType !== type && parsedType !== "untyped") {
-      processState = {
-        ...processState,
-        error: createVariableDeclarationTypeMismatchError(
-          input,
-          name,
-          type,
-          parsedType,
-          false,
-        ),
-      };
-      continue;
-    }
-
-    processState = {
-      varDecls: [
-        ...processState.varDecls,
-        {
-          name,
-          isMutable,
-          type: resolvedType,
-          initCode: value.toString(),
-          jsName,
-        },
-      ],
-      varCtx: {
-        ...processState.varCtx,
-        [name]: {
-          type: resolvedType,
-          isRead: false,
-          isInitialized: true,
-          isMutable,
-          value,
-          jsName,
-        },
-      },
-      stdinIdx: processState.stdinIdx,
-      nextBindingIdx: processState.nextBindingIdx + 1,
-      error: undefined,
-    };
+    processState = createLiteralInitializerProcessState(
+      processState,
+      name,
+      isMutable,
+      type,
+      parsedType,
+      resolvedType,
+      value,
+      jsName,
+    );
   }
 
   if (processState.error) {
@@ -733,7 +1039,8 @@ export function compileTuffToJS(
       if (!readTypeResult.isErr()) {
         const readType = (readTypeResult as Ok<string>).value;
         assignedType = readType;
-        assignedCode = generateReadOperandCode(
+        assignedCode = generateReadCodeForType(
+          readType,
           processState.stdinIdx + assignmentReadCount,
         );
         assignmentReadCount++;
@@ -742,12 +1049,18 @@ export function compileTuffToJS(
       ) {
         return readTypeResult;
       } else {
-        const typedValue = parseTypedNumber(assignmentValue);
-        if (typedValue.isErr()) {
-          return typedValue;
+        const assignedBoolean = parseBooleanLiteral(assignmentValue);
+        if (assignedBoolean !== undefined) {
+          assignedType = BOOL_TYPE;
+          assignedCode = assignedBoolean.toString();
+        } else {
+          const typedValue = parseTypedNumber(assignmentValue);
+          if (typedValue.isErr()) {
+            return typedValue;
+          }
+          assignedType = typedValue.value.type;
+          assignedCode = typedValue.value.value.toString();
         }
-        assignedType = typedValue.value.type;
-        assignedCode = typedValue.value.value.toString();
       }
 
       if (assignedType !== binding.type && assignedType !== "untyped") {
@@ -809,8 +1122,12 @@ export function compileTuffToJS(
           j < currentInput.length &&
           !isDigit(currentInput[j])
         ) {
+          if (parseBooleanLiteral(ident) !== undefined) {
+            i = j;
+            continue;
+          }
           // This might be a type suffix like "U8" or "U16"
-          if (!TYPE_RANGES.has(ident)) {
+          if (!VALID_TYPE_NAMES.has(ident)) {
             return new Err(
               createUndefinedVariableError(
                 input,
@@ -878,7 +1195,7 @@ export function compileTuffToJS(
     return new Ok(code);
   }
 
-  if (input.includes("=")) {
+  if (hasStandaloneAssignment(input)) {
     return new Err({
       code: CompilationErrorCode.PARSE_ERROR,
       erroneousValue: input,
@@ -931,25 +1248,46 @@ export function compileTuffToJS(
       }
     }
 
+    if (isBooleanType(firstType)) {
+      const booleanOperatorError = getUnsupportedBooleanOperatorError(
+        input,
+        operators,
+      );
+      if (booleanOperatorError) {
+        return new Err(booleanOperatorError);
+      }
+
+      const hasReadOperand = parsedOperands.some((op) => op.isRead);
+      if (hasReadOperand) {
+        const operandCodes = buildOperandCodes(
+          parsedOperands,
+          generateReadBoolOperandCode,
+          (operand) => (operand.value as number).toString(),
+        );
+
+        return new Ok(
+          "const __stdinValues = __stdin.split(' ');\nreturn " +
+            buildChainedOperationCode(operators, operandCodes),
+        );
+      }
+
+      const evaluation = evaluateBooleanChain(
+        operators as BooleanOperator[],
+        parsedOperands,
+      );
+      return new Ok("return " + evaluation);
+    }
+
     // Check if any operand is a read pattern
     const hasReadOperand = parsedOperands.some((op) => op.isRead);
 
     if (hasReadOperand) {
       // Generate code with stdin values
-      let operandCodes: string[] = [];
-      let readIndex = 0;
-
-      for (const operand of parsedOperands) {
-        if (operand.isRead) {
-          operandCodes = [...operandCodes, generateReadOperandCode(readIndex)];
-          readIndex++;
-        } else {
-          operandCodes = [
-            ...operandCodes,
-            (operand.value as number).toString(),
-          ];
-        }
-      }
+      const operandCodes = buildOperandCodes(
+        parsedOperands,
+        generateReadOperandCode,
+        (operand) => (operand.value as number).toString(),
+      );
 
       // Build the chained operation
       const operationCode = buildChainedOperationCode(operators, operandCodes);
@@ -1001,7 +1339,9 @@ export function compileTuffToJS(
   // Check for read<TYPE>() pattern without regex
   const readTypeResult = extractReadTypeArg(input);
   if (!readTypeResult.isErr()) {
-    return new Ok("return parseInt(__stdin, 10)");
+    return new Ok(
+      compileStandaloneReadExpression((readTypeResult as Ok<string>).value),
+    );
   }
 
   // If it's a validation error (invalid type), return it
@@ -1026,6 +1366,18 @@ export function compileTuffToJS(
 
   if (input === "") {
     return new Ok("return 0");
+  }
+
+  if (input.startsWith("!") && !input.startsWith("!=")) {
+    const negatedValue = parseBooleanLiteral(input.substring(1).trim());
+    if (negatedValue !== undefined) {
+      return new Ok("return " + (negatedValue === 0 ? 1 : 0));
+    }
+  }
+
+  const booleanValue = parseBooleanLiteral(input);
+  if (booleanValue !== undefined) {
+    return new Ok("return " + booleanValue);
   }
 
   // Try to parse as a single typed number
@@ -1242,7 +1594,7 @@ function parseVariableDeclaration(
     varType = input.substring(cursor, typeEnd).toUpperCase();
 
     // Validate type
-    if (!TYPE_RANGES.has(varType)) {
+    if (!VALID_TYPE_NAMES.has(varType)) {
       return new Err(
         createUnknownTypeError(
           varType,
