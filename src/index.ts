@@ -21,7 +21,19 @@ interface TypeRange {
   max: number;
 }
 
-type BinaryOperator = "+" | "-" | "*" | "/" | "&&" | "||" | "==" | "!=";
+type BinaryOperator =
+  | "+"
+  | "-"
+  | "*"
+  | "/"
+  | "&&"
+  | "||"
+  | "=="
+  | "!="
+  | "<"
+  | "<="
+  | ">"
+  | ">=";
 
 type BooleanOperator = "&&" | "||" | "==" | "!=";
 
@@ -55,6 +67,10 @@ const BINARY_OPS: BinaryOperator[] = [
   "||",
   "==",
   "!=",
+  "<=",
+  ">=",
+  "<",
+  ">",
   "+",
   "-",
   "*",
@@ -164,17 +180,65 @@ function isArithmeticOperator(operator: BinaryOperator): boolean {
   );
 }
 
+function isComparisonOperator(operator: BinaryOperator): boolean {
+  return (
+    operator === "==" ||
+    operator === "!=" ||
+    operator === "<" ||
+    operator === "<=" ||
+    operator === ">" ||
+    operator === ">="
+  );
+}
+
+function isOrderingComparisonOperator(operator: BinaryOperator): boolean {
+  return (
+    operator === "<" ||
+    operator === "<=" ||
+    operator === ">" ||
+    operator === ">="
+  );
+}
+
 function hasStandaloneAssignment(input: string): boolean {
   for (let i = 0; i < input.length; i++) {
     if (input[i] === "=") {
       const previous = i > 0 ? input[i - 1] : "";
       const next = i < input.length - 1 ? input[i + 1] : "";
-      if (previous !== "=" && previous !== "!" && next !== "=") {
+      if (
+        previous !== "=" &&
+        previous !== "!" &&
+        previous !== "<" &&
+        previous !== ">" &&
+        next !== "="
+      ) {
         return true;
       }
     }
   }
   return false;
+}
+
+function createChainedComparisonError(input: string): CompilationError {
+  return {
+    code: CompilationErrorCode.PARSE_ERROR,
+    erroneousValue: input,
+    message: "Unable to parse input",
+    reason: "Chained comparison operators are not supported",
+    fix: "Compare one pair of operands at a time",
+  };
+}
+
+function createNumericComparisonTypeMismatchError(
+  input: string,
+): CompilationError {
+  return {
+    code: CompilationErrorCode.TYPE_MISMATCH,
+    erroneousValue: input,
+    message: "Comparison operands must have the same type",
+    reason: "Operators <, <=, >, and >= only support numeric operands",
+    fix: "Use numeric operands, or use == / != for Bool values",
+  };
 }
 
 function createUnsupportedBooleanOperatorError(
@@ -200,6 +264,10 @@ function getUnsupportedBooleanOperatorError(
   }
 
   return undefined;
+}
+
+function hasChainedOrderingComparison(operators: BinaryOperator[]): boolean {
+  return operators.length > 1 && operators.some(isOrderingComparisonOperator);
 }
 
 interface BinaryOperandValue {
@@ -270,6 +338,102 @@ function evaluateBooleanChain(
   }
 
   return result;
+}
+
+function stripReturnStatement(code: string): string {
+  return code.substring(7);
+}
+
+function offsetStdinValueIndexes(code: string, offset: number): string {
+  const marker = "__stdinValues[";
+  let result = "";
+  let index = 0;
+
+  while (index < code.length) {
+    if (code.substring(index, index + marker.length) === marker) {
+      let digitIndex = index + marker.length;
+      let digits = "";
+
+      while (digitIndex < code.length && isDigit(code[digitIndex])) {
+        digits += code[digitIndex];
+        digitIndex++;
+      }
+
+      if (digits && digitIndex < code.length && code[digitIndex] === "]") {
+        result += marker + (parseInt(digits, 10) + offset) + "]";
+        index = digitIndex + 1;
+        continue;
+      }
+    }
+
+    result += code[index];
+    index++;
+  }
+
+  return result;
+}
+
+function countStdinValueReferences(code: string): number {
+  const marker = "__stdinValues[";
+  let count = 0;
+  let index = 0;
+
+  while (index < code.length) {
+    if (code.substring(index, index + marker.length) === marker) {
+      count++;
+      index += marker.length;
+      continue;
+    }
+    index++;
+  }
+
+  return count;
+}
+
+interface CompiledComparisonExpression {
+  type: string;
+  code: string;
+  readCount: number;
+}
+
+function compileComparisonExpression(
+  input: string,
+  stdinOffset: number,
+): Result<CompiledComparisonExpression, CompilationError> {
+  const compileResult = compileExpressionWithVariables(input, {});
+  if (compileResult.isErr()) {
+    return compileResult;
+  }
+
+  const expressionCode = stripReturnStatement(compileResult.value);
+  const offsetCode = offsetStdinValueIndexes(expressionCode, stdinOffset);
+  return new Ok({
+    type: BOOL_TYPE,
+    code: offsetCode,
+    readCount: countStdinValueReferences(expressionCode),
+  });
+}
+
+function isReadTypeStart(input: string, index: number): boolean {
+  return index >= 4 && input.substring(index - 4, index) === "read";
+}
+
+function findStatementTerminator(input: string, startIndex: number): number {
+  let depth = 0;
+  let index = startIndex;
+
+  while (index < input.length) {
+    if (input[index] === "<" && isReadTypeStart(input, index)) {
+      depth++;
+    } else if (input[index] === ">" && depth > 0) {
+      depth--;
+    } else if (input[index] === ";" && depth === 0) {
+      return index;
+    }
+    index++;
+  }
+
+  return input.length;
 }
 
 function validateReadTypeArg(typeArg: string): Result<void, CompilationError> {
@@ -536,6 +700,10 @@ function compileExpressionWithVariables(
       parsedOperands = [...parsedOperands, operandResult.value];
     }
 
+    if (hasChainedOrderingComparison(operators)) {
+      return new Err(createChainedComparisonError(trimmed));
+    }
+
     const firstType = parsedOperands[0].type;
     for (
       let operandIndex = 1;
@@ -555,6 +723,10 @@ function compileExpressionWithVariables(
     }
 
     if (isBooleanType(firstType)) {
+      if (operators.some(isOrderingComparisonOperator)) {
+        return new Err(createNumericComparisonTypeMismatchError(trimmed));
+      }
+
       const booleanOperatorError = getUnsupportedBooleanOperatorError(
         trimmed,
         operators,
@@ -577,6 +749,17 @@ function compileExpressionWithVariables(
       const operandCodes = buildOperandCodes(
         parsedOperands,
         generateReadBoolOperandCode,
+        (operand) => operand.jsCode,
+      );
+      return new Ok(
+        "return " + buildChainedOperationCode(operators, operandCodes),
+      );
+    }
+
+    if (operators.some(isComparisonOperator)) {
+      const operandCodes = buildOperandCodes(
+        parsedOperands,
+        generateReadOperandCode,
         (operand) => operand.jsCode,
       );
       return new Ok(
@@ -695,6 +878,8 @@ function buildChainedOperationCode(
       code = "Math.floor(" + code + " / " + nextOperandCode + ")";
     } else if (op === "&&" || op === "||") {
       code = "(" + code + " " + op + " " + nextOperandCode + ")";
+    } else if (op === "<" || op === "<=" || op === ">" || op === ">=") {
+      code = "((" + code + " " + op + " " + nextOperandCode + ") ? 1 : 0)";
     } else if (op === "==") {
       code = "((" + code + " == " + nextOperandCode + ") ? 1 : 0)";
     } else if (op === "!=") {
@@ -916,6 +1101,58 @@ export function compileTuffToJS(
       continue;
     }
 
+    const initializerOperators = getOperatorsWithPositions(initializer);
+    if (
+      initializerOperators.some((operator) => isComparisonOperator(operator.op))
+    ) {
+      const comparisonResult = compileComparisonExpression(
+        initializer,
+        processState.stdinIdx,
+      );
+      if (comparisonResult.isErr()) {
+        processState = { ...processState, error: comparisonResult.error };
+        continue;
+      }
+
+      const resolvedType = type ?? comparisonResult.value.type;
+      processState = {
+        varDecls: [
+          ...processState.varDecls,
+          {
+            name,
+            isMutable,
+            type: resolvedType,
+            initCode: comparisonResult.value.code,
+            jsName,
+          },
+        ],
+        varCtx: {
+          ...processState.varCtx,
+          [name]: {
+            type: resolvedType,
+            isRead: comparisonResult.value.readCount > 0,
+            isInitialized: true,
+            isMutable,
+            value: undefined,
+            jsName,
+          },
+        },
+        stdinIdx: processState.stdinIdx + comparisonResult.value.readCount,
+        nextBindingIdx: processState.nextBindingIdx + 1,
+        error:
+          type !== undefined && type !== comparisonResult.value.type
+            ? createVariableDeclarationTypeMismatchError(
+                input,
+                name,
+                type,
+                comparisonResult.value.type,
+                comparisonResult.value.readCount > 0,
+              )
+            : undefined,
+      };
+      continue;
+    }
+
     const parseResult = parseTypedNumber(initializer);
     if (parseResult.isErr()) {
       processState = { ...processState, error: parseResult.error };
@@ -996,18 +1233,7 @@ export function compileTuffToJS(
         assignCursor++;
       }
 
-      let semicolonPos = assignCursor;
-      let depth = 0;
-      while (semicolonPos < trimmed.length) {
-        if (trimmed[semicolonPos] === "<") {
-          depth++;
-        } else if (trimmed[semicolonPos] === ">") {
-          depth--;
-        } else if (trimmed[semicolonPos] === ";" && depth === 0) {
-          break;
-        }
-        semicolonPos++;
-      }
+      const semicolonPos = findStatementTerminator(trimmed, assignCursor);
 
       if (semicolonPos >= trimmed.length || trimmed[semicolonPos] !== ";") {
         return new Err({
@@ -1049,17 +1275,35 @@ export function compileTuffToJS(
       ) {
         return readTypeResult;
       } else {
-        const assignedBoolean = parseBooleanLiteral(assignmentValue);
-        if (assignedBoolean !== undefined) {
-          assignedType = BOOL_TYPE;
-          assignedCode = assignedBoolean.toString();
-        } else {
-          const typedValue = parseTypedNumber(assignmentValue);
-          if (typedValue.isErr()) {
-            return typedValue;
+        const assignmentOperators = getOperatorsWithPositions(assignmentValue);
+        if (
+          assignmentOperators.some((operator) =>
+            isComparisonOperator(operator.op),
+          )
+        ) {
+          const comparisonResult = compileComparisonExpression(
+            assignmentValue,
+            processState.stdinIdx + assignmentReadCount,
+          );
+          if (comparisonResult.isErr()) {
+            return comparisonResult;
           }
-          assignedType = typedValue.value.type;
-          assignedCode = typedValue.value.value.toString();
+          assignedType = comparisonResult.value.type;
+          assignedCode = comparisonResult.value.code;
+          assignmentReadCount += comparisonResult.value.readCount;
+        } else {
+          const assignedBoolean = parseBooleanLiteral(assignmentValue);
+          if (assignedBoolean !== undefined) {
+            assignedType = BOOL_TYPE;
+            assignedCode = assignedBoolean.toString();
+          } else {
+            const typedValue = parseTypedNumber(assignmentValue);
+            if (typedValue.isErr()) {
+              return typedValue;
+            }
+            assignedType = typedValue.value.type;
+            assignedCode = typedValue.value.value.toString();
+          }
         }
       }
 
@@ -1228,6 +1472,10 @@ export function compileTuffToJS(
       parsedOperands = [...parsedOperands, result.value];
     }
 
+    if (hasChainedOrderingComparison(operators)) {
+      return new Err(createChainedComparisonError(input));
+    }
+
     // Validate all operands have the same type
     const firstType = parsedOperands[0].type;
     for (let i = 1; i < parsedOperands.length; i++) {
@@ -1249,6 +1497,10 @@ export function compileTuffToJS(
     }
 
     if (isBooleanType(firstType)) {
+      if (operators.some(isOrderingComparisonOperator)) {
+        return new Err(createNumericComparisonTypeMismatchError(input));
+      }
+
       const booleanOperatorError = getUnsupportedBooleanOperatorError(
         input,
         operators,
@@ -1276,6 +1528,26 @@ export function compileTuffToJS(
         parsedOperands,
       );
       return new Ok("return " + evaluation);
+    }
+
+    if (operators.some(isComparisonOperator)) {
+      const hasReadOperand = parsedOperands.some((op) => op.isRead);
+      const operandCodes = buildOperandCodes(
+        parsedOperands,
+        generateReadOperandCode,
+        (operand) => (operand.value as number).toString(),
+      );
+
+      if (hasReadOperand) {
+        return new Ok(
+          "const __stdinValues = __stdin.split(' ');\nreturn " +
+            buildChainedOperationCode(operators, operandCodes),
+        );
+      }
+
+      return new Ok(
+        "return " + buildChainedOperationCode(operators, operandCodes),
+      );
     }
 
     // Check if any operand is a read pattern
@@ -1612,18 +1884,10 @@ function parseVariableDeclaration(
   const hasInitializer = cursor < input.length && input[cursor] === "=";
 
   // Find the semicolon that ends this declaration
-  let semicolonPos = hasInitializer ? cursor + 1 : cursor;
-  let depth = 0;
-  while (semicolonPos < input.length) {
-    if (input[semicolonPos] === "<") {
-      depth++;
-    } else if (input[semicolonPos] === ">") {
-      depth--;
-    } else if (input[semicolonPos] === ";" && depth === 0) {
-      break;
-    }
-    semicolonPos++;
-  }
+  const semicolonPos = findStatementTerminator(
+    input,
+    hasInitializer ? cursor + 1 : cursor,
+  );
 
   if (semicolonPos >= input.length || input[semicolonPos] !== ";") {
     return new Err(

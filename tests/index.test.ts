@@ -108,10 +108,26 @@ describe("compileTuffToJS", () => {
     assertOk("true != false", 1));
   it("compiles 'false != false' to JS code that evaluates to 0", () =>
     assertOk("false != false", 0));
+  it("compiles '1U8 < 2U8' to JS code that evaluates to 1", () =>
+    assertOk("1U8 < 2U8", 1));
+  it("compiles '2U8 < 1U8' to JS code that evaluates to 0", () =>
+    assertOk("2U8 < 1U8", 0));
+  it("compiles '2U8 <= 2U8' to JS code that evaluates to 1", () =>
+    assertOk("2U8 <= 2U8", 1));
+  it("compiles '3U8 > 2U8' to JS code that evaluates to 1", () =>
+    assertOk("3U8 > 2U8", 1));
+  it("compiles '3U8 >= 4U8' to JS code that evaluates to 0", () =>
+    assertOk("3U8 >= 4U8", 0));
+  it("compiles '3U8 == 3U8' to JS code that evaluates to 1", () =>
+    assertOk("3U8 == 3U8", 1));
+  it("compiles '3U8 != 3U8' to JS code that evaluates to 0", () =>
+    assertOk("3U8 != 3U8", 0));
   it("compiles 'read<Bool>() == false' with stdin 'false' to 1", () =>
     assertOk("read<Bool>() == false", 1, "false"));
   it("compiles 'read<Bool>() != false' with stdin 'true' to 1", () =>
     assertOk("read<Bool>() != false", 1, "true"));
+  it("compiles 'read<U8>() < 10U8' with stdin '9' to 1", () =>
+    assertOk("read<U8>() < 10U8", 1, "9"));
   it("returns error when addition result exceeds type range", () =>
     assertErr("200U8 + 100U8", "VALUE_OUT_OF_RANGE"));
   it("compiles '100U8 - 30U8' to JS code that evaluates to 70", () =>
@@ -170,6 +186,14 @@ describe("compileTuffToJS", () => {
     assertOk("let x = false; x", 0));
   it("compiles Bool declaration from read initializer", () =>
     assertOk("let x : Bool = read<Bool>(); x", 1, "true"));
+  it("compiles numeric comparison in Bool declaration", () =>
+    assertOk("let x : Bool = 1U8 < 2U8; x", 1));
+  it("compiles inferred comparison declaration", () =>
+    assertOk("let x = 1U8 < 2U8; x", 1));
+  it("compiles comparison assignment from numeric read", () =>
+    assertOk("let mut x : Bool = false; x = read<U8>() < 10U8; x", 1, "9"));
+  it("compiles numeric comparison after declarations", () =>
+    assertOk("let x : U8 = 3U8; x > 2U8", 1));
   it("compiles Bool expression after declarations using read and variable", () =>
     assertOk("let x : Bool = true; read<Bool>() && x", 1, "true"));
   it("compiles unary Bool negation of variable after declarations", () =>
@@ -227,6 +251,22 @@ describe("compileTuffToJS", () => {
     assertErr("let x : U8 = 1U8; !x", "PARSE_ERROR"));
   it("returns error for invalid unary Bool read after declarations", () =>
     assertErr("let x : U8 = 1U8; !read<INVALID>()", "UNKNOWN_TYPE"));
+  it("returns error for Bool and numeric comparison mix", () =>
+    assertErr("1U8 < true", "TYPE_MISMATCH"));
+  it("returns error for numeric and Bool comparison mix", () =>
+    assertErr("false >= 1U8", "TYPE_MISMATCH"));
+  it("returns error for chained comparisons", () =>
+    assertErr("1U8 < 2U8 < 3U8", "PARSE_ERROR"));
+  it("returns error for comparison in numeric declaration", () =>
+    assertErr("let x : U8 = 1U8 < 2U8; x", "TYPE_MISMATCH"));
+  it("returns error for chained comparisons in Bool declaration", () =>
+    assertErr("let x : Bool = 1U8 < 2U8 < 3U8; x", "PARSE_ERROR"));
+  it("returns error for chained comparisons after declarations", () =>
+    assertErr("let x : U8 = 1U8; x < 2U8 < 3U8", "PARSE_ERROR"));
+  it("returns error for Bool ordering comparison", () =>
+    assertErr("true < false", "TYPE_MISMATCH"));
+  it("returns error for Bool ordering comparison after declarations", () =>
+    assertErr("let x : Bool = true; x < false", "TYPE_MISMATCH"));
   it("returns error for Bool mixed with numeric operand", () =>
     assertErr("true + 1U8", "TYPE_MISMATCH"));
   it("returns error for numeric operand mixed with Bool", () =>
@@ -310,6 +350,11 @@ describe("compileTuffToJS", () => {
     assertOk("let mut x: Bool = false; x = read<Bool>(); x", 1, "true"));
   it("compiles mutable Bool reassignment from Bool literal", () =>
     assertOk("let mut x: Bool = false; x = true; x", 1));
+  it("returns error for chained comparison assignment", () =>
+    assertErr(
+      "let mut x: Bool = false; x = 1U8 < 2U8 < 3U8; x",
+      "PARSE_ERROR",
+    ));
   it("returns error for mutable reassignment with invalid read type", () =>
     assertErr("let mut x: U8 = 0U8; x = read<INVALID>(); x", "UNKNOWN_TYPE"));
   it("returns error for assignment to undefined variable after declarations", () =>
