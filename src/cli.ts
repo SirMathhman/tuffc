@@ -9,11 +9,8 @@ async function runREPL() {
 
   console.log("Tuff Compiler REPL (type 'exit' to quit)");
 
-  const question = (prompt: string): Promise<string> => {
-    return new Promise((resolve) => {
-      rl.question(prompt, resolve);
-    });
-  };
+  const question = (prompt: string): Promise<string> =>
+    new Promise((resolve) => rl.question(prompt, resolve));
 
   let running = true;
   while (running) {
@@ -28,13 +25,13 @@ async function runREPL() {
     const result = compileTuffToJS(input);
 
     if (result.isErr()) {
-      console.log(`Error: ${result.error}`);
+      console.log("Error: " + result.error);
     } else {
       try {
         const output = new Function(result.value)();
-        console.log(`Result: ${output}`);
+        console.log("Result: " + output);
       } catch (err) {
-        console.log(`Evaluation error: ${err}`);
+        console.log("Evaluation error: " + err);
       }
     }
   }

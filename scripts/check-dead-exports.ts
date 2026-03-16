@@ -46,7 +46,13 @@ function checkNode(
   if (testUsages.length > 0 && srcUsages.length === 0) {
     const pos = node.getStartLineNumber();
     console.error(
-      `Dead export: '${label}' in ${declFile}:${pos} — only referenced in tests`,
+      "Dead export: '" +
+        label +
+        "' in " +
+        declFile +
+        ":" +
+        pos +
+        " — only referenced in tests",
     );
     return true;
   }
@@ -64,7 +70,7 @@ for (const srcFile of srcFiles) {
 
       if (Node.isClassDeclaration(decl)) {
         for (const method of (decl as ClassDeclaration).getMethods()) {
-          const label = `${name}.${method.getName()}`;
+          const label = name + "." + method.getName();
           if (checkNode(label, declFile, method, srcFile)) hasErrors = true;
         }
       }
