@@ -24,6 +24,7 @@ export default tseslint.config(
     },
     rules: {
       "local/ban-array-push": "error",
+      "local/ban-function-within-function": "error",
       "@typescript-eslint/no-explicit-any": "error",
       "no-restricted-syntax": [
         "error",

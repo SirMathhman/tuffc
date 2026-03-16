@@ -33,13 +33,11 @@ const banArrayPush = {
     const checker = services.program.getTypeChecker();
 
     return {
-      'CallExpression[callee.type="MemberExpression"][callee.property.name="push"]'(
-        node: {
-          callee: {
-            object: unknown;
-          };
-        },
-      ) {
+      'CallExpression[callee.type="MemberExpression"][callee.property.name="push"]'(node: {
+        callee: {
+          object: unknown;
+        };
+      }) {
         const tsNodeMap = services.esTreeNodeToTSNodeMap;
         if (!tsNodeMap) {
           return;
@@ -54,8 +52,76 @@ const banArrayPush = {
   },
 };
 
+interface FunctionLikeNode {
+  type: string;
+  parent?: FunctionLikeNode;
+  body?: {
+    type: string;
+  };
+}
+
+function isFunctionLike(type: string): boolean {
+  return (
+    type === "FunctionDeclaration" ||
+    type === "FunctionExpression" ||
+    type === "ArrowFunctionExpression"
+  );
+}
+
+function hasFunctionAncestor(node: FunctionLikeNode): boolean {
+  let cursor = node.parent;
+  while (cursor) {
+    if (isFunctionLike(cursor.type)) {
+      return true;
+    }
+    cursor = cursor.parent;
+  }
+  return false;
+}
+
+const banFunctionWithinFunction = {
+  meta: {
+    type: "problem",
+    docs: {
+      description:
+        "Disallow nested function declarations/expressions and block-bodied arrows inside functions",
+    },
+    messages: {
+      noNestedFunction:
+        "Do not declare functions inside functions. Move it to module scope or use a concise one-line arrow function.",
+      noBlockArrowInFunction:
+        "Arrow functions inside functions must be one-line concise expressions (no {}).",
+    },
+    schema: [],
+  },
+  create(context: {
+    report: (descriptor: { node: unknown; messageId: string }) => void;
+  }) {
+    return {
+      FunctionDeclaration(node: FunctionLikeNode) {
+        if (hasFunctionAncestor(node)) {
+          context.report({ node, messageId: "noNestedFunction" });
+        }
+      },
+      FunctionExpression(node: FunctionLikeNode) {
+        if (hasFunctionAncestor(node)) {
+          context.report({ node, messageId: "noNestedFunction" });
+        }
+      },
+      ArrowFunctionExpression(node: FunctionLikeNode) {
+        if (hasFunctionAncestor(node) && node.body?.type === "BlockStatement") {
+          context.report({ node, messageId: "noBlockArrowInFunction" });
+        }
+      },
+    };
+  },
+};
+
 const localPlugin = {
-  rules: { "ban-array-push": banArrayPush },
+  rules: {
+    "ban-array-push": banArrayPush,
+    "ban-function-within-function": banFunctionWithinFunction,
+  },
 };
 
 export default localPlugin;
