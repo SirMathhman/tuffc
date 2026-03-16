@@ -401,4 +401,45 @@ describe("compileTuffToJS", () => {
     assertCompiles("if (true) 3"));
   it("compiles malformed 'if' with empty condition as string", () =>
     assertCompiles("if () 3 else 5"));
+
+  it("compiles '{ 50U8 }' to 50", () => assertOk("{ 50U8 }", 50));
+  it("compiles '{ let x = 50U8; x }' to 50", () =>
+    assertOk("{ let x = 50U8; x }", 50));
+  it("compiles '{ true }' to 1", () => assertOk("{ true }", 1));
+  it("compiles nested block '{ { 7U8 } }' to 7", () =>
+    assertOk("{ { 7U8 } }", 7));
+  it("compiles nested block with scoped declaration '{ { let x = 3U8; x } }' to 3", () =>
+    assertOk("{ { let x = 3U8; x } }", 3));
+  it("returns UNDECLARED_VARIABLE when variable from block is used outside", () =>
+    assertErr("{ let x = 100U8; } x", "UNDECLARED_VARIABLE"));
+  it("returns UNDECLARED_VARIABLE when inner-nested block variable leaks to outer block", () =>
+    assertErr("{ { let x = 1U8; } x }", "UNDECLARED_VARIABLE"));
+  it("returns UNDECLARED_VARIABLE when two blocks declare same var and it is used after both", () =>
+    assertErr("{ let x = 1U8; } { let x = 2U8; } x", "UNDECLARED_VARIABLE"));
+  it("compiles outer variable that's not shadowed by inner block", () =>
+    assertOk("let x = 10U8; { let y = 5U8; y } + x", 15));
+  it("compiles '{ let x = read<U8>(); x }' with stdin '42' to 42", () =>
+    assertOk("{ let x = read<U8>(); x }", 42, "42"));
+  it("compiles block as operand in binary op '{ 5U8 } + 3U8' to 8", () =>
+    assertOk("{ 5U8 } + 3U8", 8));
+  it("compiles block as right operand '10U8 + { 3U8 }' to 13", () =>
+    assertOk("10U8 + { 3U8 }", 13));
+  it("compiles block as initializer 'let y = { 5U8 }; y' to 5", () =>
+    assertOk("let y = { 5U8 }; y", 5));
+  it("returns VALUE_OUT_OF_RANGE for block expression with invalid content", () =>
+    assertErr("{ 256U8 }", "VALUE_OUT_OF_RANGE"));
+  it("returns VALUE_OUT_OF_RANGE for block statement with invalid content", () =>
+    assertErr("{ 256U8 } x", "VALUE_OUT_OF_RANGE"));
+  it("returns VALUE_OUT_OF_RANGE for block operand with invalid content", () =>
+    assertErr("{ 256U8 } + 3U8", "VALUE_OUT_OF_RANGE"));
+  it("returns VALUE_OUT_OF_RANGE for block initializer with invalid content", () =>
+    assertErr("let y = { 256U8 }; y", "VALUE_OUT_OF_RANGE"));
+  it("compiles block statement followed by non-variable expression", () =>
+    assertOk("{ let x = 100U8; } 5U8", 5));
+  it("compiles malformed block with unmatched brace as string", () =>
+    assertOk("{ 5U8", "{ 5U8"));
+  it("compiles block arithmetic with two block operands '{ 5U8 } + { 3U8 }' to 8", () =>
+    assertOk("{ 5U8 } + { 3U8 }", 8));
+  it("compiles block in comparison '{ 5U8 } < 10U8' to 1", () =>
+    assertOk("{ 5U8 } < 10U8", 1));
 });

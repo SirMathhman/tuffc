@@ -7,6 +7,7 @@ enum CompilationErrorCode {
   VALUE_OUT_OF_RANGE = "VALUE_OUT_OF_RANGE",
   PARSE_ERROR = "PARSE_ERROR",
   UNDEFINED_VARIABLE = "UNDEFINED_VARIABLE",
+  UNDECLARED_VARIABLE = "UNDECLARED_VARIABLE",
   IMMUTABLE_ASSIGNMENT = "IMMUTABLE_ASSIGNMENT",
   UNINITIALIZED_VARIABLE = "UNINITIALIZED_VARIABLE",
   UNSUPPORTED_OPERATION = "UNSUPPORTED_OPERATION",
@@ -280,6 +281,7 @@ interface BinaryOperandValue {
   type: string;
   isRead: boolean;
   value?: number;
+  jsCode?: string;
 }
 
 interface ExpressionOperandValue extends BinaryOperandValue {
@@ -495,9 +497,53 @@ function extractReadTypeArg(operand: string): Result<string, CompilationError> {
   });
 }
 
+function findMatchingBrace(input: string, openIndex: number): number {
+  let depth = 0;
+  for (let i = openIndex; i < input.length; i++) {
+    if (input[i] === "{") {
+      depth++;
+    } else if (input[i] === "}") {
+      depth--;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+function startsWithBinaryOperator(s: string): boolean {
+  for (const op of BINARY_OPS) {
+    if (s.startsWith(op + " ")) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function compileBlockAsIIFE(
+  blockContent: string,
+): Result<string, CompilationError> {
+  const result = compileTuffToJS(blockContent);
+  if (result.isErr()) {
+    return result;
+  }
+  return new Ok("(function(){ " + result.value + "; })()");
+}
+
 function parseOperandForBinaryOp(
   operand: string,
 ): Result<BinaryOperandValue, CompilationError> {
+  if (operand.startsWith("{")) {
+    const blockEnd = findMatchingBrace(operand, 0);
+    if (blockEnd === operand.length - 1) {
+      const blockContent = operand.substring(1, blockEnd).trim();
+      const blockResult = compileBlockAsIIFE(blockContent);
+      if (blockResult.isErr()) {
+        return blockResult;
+      }
+      return new Ok({ type: "untyped", isRead: false, value: undefined, jsCode: blockResult.value });
+    }
+  }
+
   const readTypeResult = extractReadTypeArg(operand);
   if (!readTypeResult.isErr()) {
     const okResult = readTypeResult as Ok<string>;
@@ -558,6 +604,16 @@ function parseExpressionOperand(
     return new Ok({
       ...parseResult.value,
       jsCode: "",
+      isRuntime: true,
+    });
+  }
+
+  if (parseResult.value.jsCode !== undefined) {
+    return new Ok({
+      type: parseResult.value.type,
+      isRead: false,
+      value: undefined,
+      jsCode: parseResult.value.jsCode,
       isRuntime: true,
     });
   }
@@ -815,7 +871,11 @@ function compileExpressionWithVariables(
       operandIndex++
     ) {
       const operandType = parsedOperands[operandIndex].type;
-      if (operandType !== firstType && operandType !== "untyped") {
+      if (
+        operandType !== firstType &&
+        operandType !== "untyped" &&
+        firstType !== "untyped"
+      ) {
         return new Err({
           code: CompilationErrorCode.TYPE_MISMATCH,
           erroneousValue: operands[operandIndex],
@@ -969,6 +1029,35 @@ function getVariableBindingName(nextBindingIdx: number): string {
   return "__tuffVar" + nextBindingIdx;
 }
 
+function blockAwareLiteralCode(operand: BinaryOperandValue): string {
+  return operand.jsCode !== undefined
+    ? operand.jsCode
+    : (operand.value as number).toString();
+}
+
+function firstOutOfScopeIdent(
+  input: string,
+  outOfScopeVars: Set<string>,
+): string | undefined {
+  let i = 0;
+  while (i < input.length) {
+    if (isLetter(input[i])) {
+      let j = i;
+      while (j < input.length && (isLetter(input[j]) || isDigit(input[j]))) {
+        j++;
+      }
+      const ident = input.substring(i, j);
+      if (outOfScopeVars.has(ident)) {
+        return ident;
+      }
+      i = j;
+    } else {
+      i++;
+    }
+  }
+  return undefined;
+}
+
 function buildChainedOperationCode(
   operators: BinaryOperator[],
   operandCodes: string[],
@@ -1002,6 +1091,61 @@ export function compileTuffToJS(
   // Handle variable declarations - parse all declarations immutably
   const variableContext: VariableContext = {};
   let currentInput = input.trim();
+
+  // Handle leading block statements: { ... } followed by non-operator content
+  const outOfScopeVars = new Set<string>();
+  while (currentInput.startsWith("{")) {
+    const blockEnd = findMatchingBrace(currentInput, 0);
+    if (blockEnd === -1) {
+      break;
+    }
+    const blockContent = currentInput.substring(1, blockEnd).trim();
+    const afterBlock = currentInput.substring(blockEnd + 1).trim();
+
+    if (afterBlock.length === 0) {
+      return compileTuffToJS(blockContent);
+    }
+
+    if (startsWithBinaryOperator(afterBlock)) {
+      break;
+    }
+
+    // Block statement: compile in isolation (vars don't escape)
+    const blockResult = compileTuffToJS(blockContent);
+    if (blockResult.isErr()) {
+      return blockResult;
+    }
+
+    const blockDeclResult = parseAllDeclarations(blockContent);
+    if (!blockDeclResult.isErr()) {
+      for (const decl of blockDeclResult.value.decls) {
+        outOfScopeVars.add(decl.name);
+      }
+    }
+
+    currentInput = afterBlock;
+  }
+
+  if (outOfScopeVars.size > 0) {
+    const outOfScopeIdent = firstOutOfScopeIdent(currentInput, outOfScopeVars);
+    if (outOfScopeIdent !== undefined) {
+      return new Err({
+        code: CompilationErrorCode.UNDECLARED_VARIABLE,
+        erroneousValue: currentInput,
+        message: "Variable out of scope",
+        reason:
+          "Variable '" +
+          outOfScopeIdent +
+          "' was declared in a block that has already ended",
+        fix:
+          "Declare '" +
+          outOfScopeIdent +
+          "' in the current scope or move the reference inside the block",
+      });
+    }
+  }
+
+  input = currentInput;
 
   const declParseResult = parseAllDeclarations(currentInput);
   if (declParseResult.isErr()) {
@@ -1055,6 +1199,34 @@ export function compileTuffToJS(
         isInitialized: true,
         isMutable,
         value: literalValue,
+        jsName,
+      },
+    },
+    stdinIdx: state.stdinIdx,
+    nextBindingIdx: state.nextBindingIdx + 1,
+    error: undefined,
+  });
+
+  const createRuntimeInitializerProcessState = (
+    state: ProcessState,
+    name: string,
+    isMutable: boolean,
+    resolvedType: string,
+    initCode: string,
+    jsName: string,
+  ): ProcessState => ({
+    varDecls: [
+      ...state.varDecls,
+      { name, isMutable, type: resolvedType, initCode, jsName },
+    ],
+    varCtx: {
+      ...state.varCtx,
+      [name]: {
+        type: resolvedType,
+        isRead: false,
+        isInitialized: true,
+        isMutable,
+        value: undefined,
         jsName,
       },
     },
@@ -1134,6 +1306,28 @@ export function compileTuffToJS(
         error: undefined,
       };
       continue;
+    }
+
+    if (initializer.startsWith("{")) {
+      const blockEnd = findMatchingBrace(initializer, 0);
+      if (blockEnd === initializer.length - 1) {
+        const blockContent = initializer.substring(1, blockEnd).trim();
+        const blockResult = compileBlockAsIIFE(blockContent);
+        if (blockResult.isErr()) {
+          processState = { ...processState, error: blockResult.error };
+          continue;
+        }
+        const resolvedType = type ?? "untyped";
+        processState = createRuntimeInitializerProcessState(
+          processState,
+          name,
+          isMutable,
+          resolvedType,
+          blockResult.value,
+          jsName,
+        );
+        continue;
+      }
     }
 
     if (initializer.startsWith("if (")) {
@@ -1482,6 +1676,15 @@ export function compileTuffToJS(
     // Validate all variable references are defined
     let i = 0;
     while (i < currentInput.length) {
+      // Skip block contents (they have their own scope)
+      if (currentInput[i] === "{") {
+        const blockEnd = findMatchingBrace(currentInput, i);
+        if (blockEnd !== -1) {
+          i = blockEnd + 1;
+          continue;
+        }
+      }
+
       if (isLetter(currentInput[i])) {
         let j = i;
         while (
@@ -1654,7 +1857,11 @@ export function compileTuffToJS(
     // Validate all operands have the same type
     const firstType = parsedOperands[0].type;
     for (let i = 1; i < parsedOperands.length; i++) {
-      if (parsedOperands[i].type !== firstType) {
+      if (
+        parsedOperands[i].type !== firstType &&
+        parsedOperands[i].type !== "untyped" &&
+        firstType !== "untyped"
+      ) {
         return new Err({
           code: CompilationErrorCode.TYPE_MISMATCH,
           erroneousValue: input,
@@ -1671,7 +1878,16 @@ export function compileTuffToJS(
       }
     }
 
-    if (isBooleanType(firstType)) {
+    const hasBlockOperand = parsedOperands.some(
+      (op) => op.jsCode !== undefined,
+    );
+
+    const effectiveFirstType =
+      firstType === "untyped"
+        ? (parsedOperands.find((op) => op.type !== "untyped")?.type ?? "untyped")
+        : firstType;
+
+    if (isBooleanType(effectiveFirstType)) {
       if (operators.some(isOrderingComparisonOperator)) {
         return new Err(createNumericComparisonTypeMismatchError(input));
       }
@@ -1710,7 +1926,7 @@ export function compileTuffToJS(
       const operandCodes = buildOperandCodes(
         parsedOperands,
         generateReadOperandCode,
-        (operand) => (operand.value as number).toString(),
+        blockAwareLiteralCode,
       );
 
       if (hasReadOperand) {
@@ -1725,22 +1941,23 @@ export function compileTuffToJS(
       );
     }
 
-    // Check if any operand is a read pattern
+    // Check if any operand is a read pattern or block
     const hasReadOperand = parsedOperands.some((op) => op.isRead);
 
-    if (hasReadOperand) {
-      // Generate code with stdin values
+    if (hasReadOperand || hasBlockOperand) {
+      // Generate code with runtime values
       const operandCodes = buildOperandCodes(
         parsedOperands,
         generateReadOperandCode,
-        (operand) => (operand.value as number).toString(),
+        blockAwareLiteralCode,
       );
 
       // Build the chained operation
       const operationCode = buildChainedOperationCode(operators, operandCodes);
 
-      const code =
-        "const __stdinValues = __stdin.split(' ');\nreturn " + operationCode;
+      const code = hasReadOperand
+        ? "const __stdinValues = __stdin.split(' ');\nreturn " + operationCode
+        : "return " + operationCode;
       return new Ok(code);
     }
 
