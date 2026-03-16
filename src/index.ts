@@ -6,6 +6,10 @@ enum CompilationErrorCode {
   TYPE_MISMATCH = "TYPE_MISMATCH",
   VALUE_OUT_OF_RANGE = "VALUE_OUT_OF_RANGE",
   PARSE_ERROR = "PARSE_ERROR",
+  UNDEFINED_VARIABLE = "UNDEFINED_VARIABLE",
+  IMMUTABLE_ASSIGNMENT = "IMMUTABLE_ASSIGNMENT",
+  UNINITIALIZED_VARIABLE = "UNINITIALIZED_VARIABLE",
+  UNSUPPORTED_OPERATION = "UNSUPPORTED_OPERATION",
 }
 
 interface CompilationError {
@@ -201,7 +205,9 @@ function isOrderingComparisonOperator(operator: BinaryOperator): boolean {
 }
 
 function hasStandaloneAssignment(input: string): boolean {
-  for (let i = 0; i < input.length; i++) {
+  const letPos = input.indexOf("let ");
+  const searchEnd = letPos === -1 ? input.length : letPos;
+  for (let i = 0; i < searchEnd; i++) {
     if (input[i] === "=") {
       const previous = i > 0 ? input[i - 1] : "";
       const next = i < input.length - 1 ? input[i + 1] : "";
@@ -221,7 +227,7 @@ function hasStandaloneAssignment(input: string): boolean {
 
 function createChainedComparisonError(input: string): CompilationError {
   return {
-    code: CompilationErrorCode.PARSE_ERROR,
+    code: CompilationErrorCode.UNSUPPORTED_OPERATION,
     erroneousValue: input,
     message: "Unable to parse input",
     reason: "Chained comparison operators are not supported",
@@ -245,7 +251,7 @@ function createUnsupportedBooleanOperatorError(
   input: string,
 ): CompilationError {
   return {
-    code: CompilationErrorCode.PARSE_ERROR,
+    code: CompilationErrorCode.TYPE_MISMATCH,
     erroneousValue: input,
     message: "Unable to parse input",
     reason: "Boolean values only support &&, ||, !, ==, and !=",
@@ -509,6 +515,15 @@ function parseOperandForBinaryOp(
 
   const parseResult = parseTypedNumber(operand);
   if (parseResult.isErr()) {
+    if (isIdentifier(operand)) {
+      return new Err({
+        code: CompilationErrorCode.UNDEFINED_VARIABLE,
+        erroneousValue: operand,
+        message: "Unable to parse input",
+        reason: "Undefined variable '" + operand + "'",
+        fix: "Declare the variable before using it",
+      });
+    }
     return parseResult;
   }
 
@@ -613,7 +628,7 @@ function createUndefinedVariableError(
   fix: string,
 ): CompilationError {
   return {
-    code: CompilationErrorCode.PARSE_ERROR,
+    code: CompilationErrorCode.UNDEFINED_VARIABLE,
     erroneousValue: input,
     message: "Unable to parse input",
     reason: "Undefined variable '" + name + "'",
@@ -626,7 +641,7 @@ function createImmutableAssignmentError(
   name: string,
 ): CompilationError {
   return {
-    code: CompilationErrorCode.PARSE_ERROR,
+    code: CompilationErrorCode.IMMUTABLE_ASSIGNMENT,
     erroneousValue: input,
     message: "Unable to parse input",
     reason: "Variable '" + name + "' is immutable and cannot be reassigned",
@@ -1514,7 +1529,7 @@ export function compileTuffToJS(
           }
         } else if (binding && !binding.isInitialized) {
           return new Err({
-            code: CompilationErrorCode.PARSE_ERROR,
+            code: CompilationErrorCode.UNINITIALIZED_VARIABLE,
             erroneousValue: input,
             message: "Unable to parse input",
             reason: "Variable '" + ident + "' is declared but not initialized",
@@ -1576,6 +1591,30 @@ export function compileTuffToJS(
   }
 
   if (hasStandaloneAssignment(input)) {
+    const trimmed = input.trim();
+    let nameEnd = 0;
+    while (
+      nameEnd < trimmed.length &&
+      (isLetter(trimmed[nameEnd]) || isDigit(trimmed[nameEnd]))
+    ) {
+      nameEnd++;
+    }
+    const assignTarget = trimmed.substring(0, nameEnd).trim();
+    const afterName = trimmed.substring(nameEnd).trimStart();
+    if (
+      assignTarget &&
+      isIdentifier(assignTarget) &&
+      afterName.startsWith("=") &&
+      afterName.length > 1
+    ) {
+      return new Err(
+        createUndefinedVariableError(
+          input,
+          assignTarget,
+          "Declare the variable before assigning to it",
+        ),
+      );
+    }
     return new Err({
       code: CompilationErrorCode.PARSE_ERROR,
       erroneousValue: input,
@@ -1820,6 +1859,18 @@ function isDigit(char: string): boolean {
 
 function isLetter(char: string): boolean {
   return (char >= "a" && char <= "z") || (char >= "A" && char <= "Z");
+}
+
+function isIdentifier(input: string): boolean {
+  if (input.length === 0 || !isLetter(input[0])) {
+    return false;
+  }
+  for (let i = 1; i < input.length; i++) {
+    if (!isLetter(input[i]) && !isDigit(input[i])) {
+      return false;
+    }
+  }
+  return true;
 }
 
 interface AlphanumericScan {

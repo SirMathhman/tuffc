@@ -227,7 +227,9 @@ describe("compileTuffToJS", () => {
   it("returns error for variable with invalid type", () =>
     assertErr("let x : INVALID = 50U8; x", "UNKNOWN_TYPE"));
   it("returns error for undefined variable usage", () =>
-    assertErr("x + 10U8", "PARSE_ERROR"));
+    assertErr("x + 10U8", "UNDEFINED_VARIABLE"));
+  it("returns error for operand with invalid identifier characters", () =>
+    assertErr("x@y + 1U8", "PARSE_ERROR"));
   it("returns error for type mismatch in variable initialization", () =>
     assertErr("let x : U8 = 300U8; x", "VALUE_OUT_OF_RANGE"));
   it("returns error for Bool and numeric type mismatch in declaration", () =>
@@ -248,7 +250,7 @@ describe("compileTuffToJS", () => {
   it("returns error for invalid read type in expression after declarations", () =>
     assertErr("let x : U8 = 1U8; x + read<INVALID>()", "UNKNOWN_TYPE"));
   it("returns error for unary negation of numeric value after declarations", () =>
-    assertErr("let x : U8 = 1U8; !x", "PARSE_ERROR"));
+    assertErr("let x : U8 = 1U8; !x", "TYPE_MISMATCH"));
   it("returns error for invalid unary Bool read after declarations", () =>
     assertErr("let x : U8 = 1U8; !read<INVALID>()", "UNKNOWN_TYPE"));
   it("returns error for Bool and numeric comparison mix", () =>
@@ -256,13 +258,13 @@ describe("compileTuffToJS", () => {
   it("returns error for numeric and Bool comparison mix", () =>
     assertErr("false >= 1U8", "TYPE_MISMATCH"));
   it("returns error for chained comparisons", () =>
-    assertErr("1U8 < 2U8 < 3U8", "PARSE_ERROR"));
+    assertErr("1U8 < 2U8 < 3U8", "UNSUPPORTED_OPERATION"));
   it("returns error for comparison in numeric declaration", () =>
     assertErr("let x : U8 = 1U8 < 2U8; x", "TYPE_MISMATCH"));
   it("returns error for chained comparisons in Bool declaration", () =>
-    assertErr("let x : Bool = 1U8 < 2U8 < 3U8; x", "PARSE_ERROR"));
+    assertErr("let x : Bool = 1U8 < 2U8 < 3U8; x", "UNSUPPORTED_OPERATION"));
   it("returns error for chained comparisons after declarations", () =>
-    assertErr("let x : U8 = 1U8; x < 2U8 < 3U8", "PARSE_ERROR"));
+    assertErr("let x : U8 = 1U8; x < 2U8 < 3U8", "UNSUPPORTED_OPERATION"));
   it("returns error for Bool ordering comparison", () =>
     assertErr("true < false", "TYPE_MISMATCH"));
   it("returns error for Bool ordering comparison after declarations", () =>
@@ -272,9 +274,9 @@ describe("compileTuffToJS", () => {
   it("returns error for numeric operand mixed with Bool", () =>
     assertErr("1U8 + true", "TYPE_MISMATCH"));
   it("returns error for Bool arithmetic", () =>
-    assertErr("true + false", "PARSE_ERROR"));
+    assertErr("true + false", "TYPE_MISMATCH"));
   it("returns error for Bool arithmetic after declarations", () =>
-    assertErr("let x : U8 = 1U8; true + false", "PARSE_ERROR"));
+    assertErr("let x : U8 = 1U8; true + false", "TYPE_MISMATCH"));
   it("compiles constant Bool chain after declarations", () =>
     assertOk("let x : U8 = 1U8; true && false", 0));
   it("compiles 'let x : U16 = read<U16>(); x / 2U16' with stdin '100' to 50", () =>
@@ -289,7 +291,7 @@ describe("compileTuffToJS", () => {
       60,
     ));
   it("returns error for variable used before declaration", () =>
-    assertErr("x + 10U8; let x : U8 = 5U8", "PARSE_ERROR"));
+    assertErr("x + 10U8; let x : U8 = 5U8", "UNDEFINED_VARIABLE"));
   it("returns error for invalid variable name", () =>
     assertErr("let x@y : U8 = 10U8; x@y", "PARSE_ERROR"));
   it("compiles declaration-only input to default return 0", () =>
@@ -297,7 +299,7 @@ describe("compileTuffToJS", () => {
   it("compiles expression containing read<> after declarations", () =>
     assertCompiles("let x : U8 = 10U8; x + read<U8>()"));
   it("returns error for undefined variable in expression after declaration", () =>
-    assertErr("let x : U8 = 10U8; y + 1U8", "PARSE_ERROR"));
+    assertErr("let x : U8 = 10U8; y + 1U8", "UNDEFINED_VARIABLE"));
   it("returns error for variable declaration missing ':'", () =>
     assertErr("let x U8 = 10U8; x", "PARSE_ERROR"));
   it("returns error for variable declaration missing '='", () =>
@@ -311,7 +313,7 @@ describe("compileTuffToJS", () => {
   it("compiles typed declaration without initializer when not read", () =>
     assertOk("let x: U8; 10U8 + 5U8", 15));
   it("returns error for read of typed declaration without initializer", () =>
-    assertErr("let x: U8; x + 1U8", "PARSE_ERROR"));
+    assertErr("let x: U8; x + 1U8", "UNINITIALIZED_VARIABLE"));
   it("returns error for declaration missing both type and initializer", () =>
     assertErr("let x; x", "PARSE_ERROR"));
   it("returns error for declaration with empty initializer", () =>
@@ -319,7 +321,7 @@ describe("compileTuffToJS", () => {
   it("returns error when inferred declaration uses unknown initializer form", () =>
     assertErr("let x = hello; x", "PARSE_ERROR"));
   it("returns error for immutable let reassignment", () =>
-    assertErr("let x: U8 = 1U8; x = 2U8; x", "PARSE_ERROR"));
+    assertErr("let x: U8 = 1U8; x = 2U8; x", "IMMUTABLE_ASSIGNMENT"));
   it("allows same-scope let redeclaration with latest declaration winning", () =>
     assertOk("let x: U8 = 1U8; let x: U8 = 2U8; x + 1U8", 3));
   it("returns error for type mismatch in inferred declaration operation", () =>
@@ -327,7 +329,7 @@ describe("compileTuffToJS", () => {
   it("returns error for annotation mismatch in typed declaration", () =>
     assertErr("let x: U8 = 1U16; x", "TYPE_MISMATCH"));
   it("returns error for out-of-scope use after declaration block", () =>
-    assertErr("let x: U8 = 1U8; y + x", "PARSE_ERROR"));
+    assertErr("let x: U8 = 1U8; y + x", "UNDEFINED_VARIABLE"));
   it("compiles mutable inferred declaration with reassignment", () =>
     assertOk("let mut x = 0U8; x = 1U8; x", 1));
   it("compiles mutable inferred declaration with multiple reassignments", () =>
@@ -335,15 +337,15 @@ describe("compileTuffToJS", () => {
   it("compiles mutable typed declaration without initializer after assignment", () =>
     assertOk("let mut x: U8; x = 7U8; x + 1U8", 8));
   it("returns error for reading mutable typed declaration before first assignment", () =>
-    assertErr("let mut x: U8; x + 1U8", "PARSE_ERROR"));
+    assertErr("let mut x: U8; x + 1U8", "UNINITIALIZED_VARIABLE"));
   it("returns error for mutable declaration missing type and initializer", () =>
     assertErr("let mut x; x", "PARSE_ERROR"));
   it("returns error for assignment to immutable declaration", () =>
-    assertErr("let x = 0U8; x = 1U8; x", "PARSE_ERROR"));
+    assertErr("let x = 0U8; x = 1U8; x", "IMMUTABLE_ASSIGNMENT"));
   it("returns error for mutable reassignment type mismatch", () =>
     assertErr("let mut x = 0U8; x = 1U16; x", "TYPE_MISMATCH"));
   it("returns error for mutable reassignment before declaration", () =>
-    assertErr("x = 1U8; let mut x = 0U8; x", "PARSE_ERROR"));
+    assertErr("x = 1U8; let mut x = 0U8; x", "UNDEFINED_VARIABLE"));
   it("compiles mutable reassignment from read initializer", () =>
     assertOk("let mut x: U8 = 0U8; x = read<U8>(); x + 1U8", 2, "1"));
   it("compiles mutable Bool reassignment from Bool read", () =>
@@ -353,12 +355,12 @@ describe("compileTuffToJS", () => {
   it("returns error for chained comparison assignment", () =>
     assertErr(
       "let mut x: Bool = false; x = 1U8 < 2U8 < 3U8; x",
-      "PARSE_ERROR",
+      "UNSUPPORTED_OPERATION",
     ));
   it("returns error for mutable reassignment with invalid read type", () =>
     assertErr("let mut x: U8 = 0U8; x = read<INVALID>(); x", "UNKNOWN_TYPE"));
   it("returns error for assignment to undefined variable after declarations", () =>
-    assertErr("let mut x = 0U8; y = 1U8; x", "PARSE_ERROR"));
+    assertErr("let mut x = 0U8; y = 1U8; x", "UNDEFINED_VARIABLE"));
   it("returns error for assignment statement missing semicolon", () =>
     assertErr("let mut x = 0U8; x = 1U8 x", "PARSE_ERROR"));
   it("returns error for assignment statement missing value", () =>
