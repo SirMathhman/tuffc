@@ -4,17 +4,6 @@
  */
 type IntegerType = "U8" | "U16" | "U32" | "U64" | "I8" | "I16" | "I32" | "I64";
 
-const INTEGER_TYPES: IntegerType[] = [
-  "U8",
-  "U16",
-  "U32",
-  "U64",
-  "I8",
-  "I16",
-  "I32",
-  "I64",
-];
-
 const INTEGER_RANGES: Record<IntegerType, { min: bigint; max: bigint }> = {
   U8: { min: 0n, max: 255n },
   U16: { min: 0n, max: 65535n },
@@ -26,13 +15,10 @@ const INTEGER_RANGES: Record<IntegerType, { min: bigint; max: bigint }> = {
   I64: { min: -9223372036854775808n, max: 9223372036854775807n },
 };
 
-function parseTypedLiteral(term: string): { value: number } | null {
+function parseTypedLiteral(term: string): { value: number } {
   const typedLiteralMatch = term.match(
     /^(-?\d+)(U8|U16|U32|U64|I8|I16|I32|I64)$/,
-  );
-  if (!typedLiteralMatch) {
-    return null;
-  }
+  )!;
 
   const [, numberPart, typePart] = typedLiteralMatch;
   const integerType = typePart as IntegerType;
@@ -52,11 +38,8 @@ function parseTypedLiteral(term: string): { value: number } | null {
   return { value: Number(value) };
 }
 
-function parseReadTerm(term: string): IntegerType | null {
-  const readMatch = term.match(/^read<(U8|U16|U32|U64|I8|I16|I32|I64)>\(\)$/);
-  if (!readMatch) {
-    return null;
-  }
+function parseReadTerm(term: string): IntegerType {
+  const readMatch = term.match(/^read<(U8|U16|U32|U64|I8|I16|I32|I64)>\(\)$/)!;
 
   return readMatch[1] as IntegerType;
 }
@@ -75,73 +58,238 @@ function parseTypedStdInToken(token: string, integerType: IntegerType): number {
   return Number(value);
 }
 
-function isKnownTypedSuffix(term: string): boolean {
-  return INTEGER_TYPES.some((type) => term.endsWith(type));
+type Token =
+  | { kind: "literal"; value: string }
+  | { kind: "read"; value: string }
+  | { kind: "operator"; value: "+" | "-" | "*" | "/" | "%" }
+  | { kind: "lparen" }
+  | { kind: "rparen" };
+
+type EvalResult = { value: number; sourceType?: IntegerType };
+
+function throwUnknownTokenError(chunk: string): never {
+  if (chunk.endsWith("U8")) {
+    throw new Error("Invalid U8 literal");
+  }
+
+  throw new Error("Invalid Tuff source");
+}
+
+function tokenizeExpression(source: string): Token[] {
+  const tokens: Token[] = [];
+  let index = 0;
+
+  while (index < source.length) {
+    const remainder = source.slice(index);
+
+    const whitespaceMatch = remainder.match(/^\s+/);
+    if (whitespaceMatch) {
+      index += whitespaceMatch[0].length;
+      continue;
+    }
+
+    const previousToken = tokens[tokens.length - 1];
+    const canStartSignedLiteral =
+      !previousToken ||
+      previousToken.kind === "operator" ||
+      previousToken.kind === "lparen";
+
+    const readMatch = remainder.match(
+      /^read<(U8|U16|U32|U64|I8|I16|I32|I64)>\(\)/,
+    );
+    if (readMatch) {
+      tokens.push({ kind: "read", value: readMatch[0] });
+      index += readMatch[0].length;
+      continue;
+    }
+
+    if (canStartSignedLiteral) {
+      const signedLiteralMatch = remainder.match(
+        /^-[0-9]+(U8|U16|U32|U64|I8|I16|I32|I64)/,
+      );
+      if (signedLiteralMatch) {
+        tokens.push({ kind: "literal", value: signedLiteralMatch[0] });
+        index += signedLiteralMatch[0].length;
+        continue;
+      }
+    }
+
+    const literalMatch = remainder.match(
+      /^[0-9]+(U8|U16|U32|U64|I8|I16|I32|I64)/,
+    );
+    if (literalMatch) {
+      tokens.push({ kind: "literal", value: literalMatch[0] });
+      index += literalMatch[0].length;
+      continue;
+    }
+
+    const char = source[index];
+    if (
+      char === "+" ||
+      char === "-" ||
+      char === "*" ||
+      char === "/" ||
+      char === "%"
+    ) {
+      tokens.push({ kind: "operator", value: char });
+      index += 1;
+      continue;
+    }
+
+    if (char === "(") {
+      tokens.push({ kind: "lparen" });
+      index += 1;
+      continue;
+    }
+
+    if (char === ")") {
+      tokens.push({ kind: "rparen" });
+      index += 1;
+      continue;
+    }
+
+    const unknownChunkMatch = remainder.match(/^[^\s()+\-*/%]+/)!;
+    throwUnknownTokenError(unknownChunkMatch[0]);
+  }
+
+  return tokens;
+}
+
+function evaluateExpression(source: string, stdIn: string): number {
+  const tokens = tokenizeExpression(source);
+  const inputTokens = stdIn.trim().length > 0 ? stdIn.trim().split(/\s+/) : [];
+
+  let tokenIndex = 0;
+  let inputTokenIndex = 0;
+
+  const peek = (): Token | undefined => tokens[tokenIndex];
+  const consume = (): Token => {
+    const token = tokens[tokenIndex];
+    if (!token) {
+      throw new Error("Invalid Tuff source");
+    }
+
+    tokenIndex += 1;
+    return token;
+  };
+
+  const evaluatePrimary = (): EvalResult => {
+    const token = peek();
+    if (!token) {
+      throw new Error("Invalid Tuff source");
+    }
+
+    if (token.kind === "literal") {
+      consume();
+      const parsed = parseTypedLiteral(token.value);
+      const typeMatch = token.value.match(/(U8|U16|U32|U64|I8|I16|I32|I64)$/);
+      const sourceType = typeMatch?.[1] as IntegerType | undefined;
+      return { value: parsed.value, sourceType };
+    }
+
+    if (token.kind === "read") {
+      consume();
+      const integerType = parseReadTerm(token.value);
+      const inputToken = inputTokens[inputTokenIndex] ?? "";
+      inputTokenIndex += 1;
+      return {
+        value: parseTypedStdInToken(inputToken, integerType),
+        sourceType: integerType,
+      };
+    }
+
+    if (token.kind === "lparen") {
+      consume();
+      const value = evaluateAddSub();
+      const closing = consume();
+      if (closing.kind !== "rparen") {
+        throw new Error("Invalid Tuff source");
+      }
+
+      return { value: value.value };
+    }
+
+    throw new Error("Invalid Tuff source");
+  };
+
+  const evaluateUnary = (): EvalResult => {
+    const token = peek();
+    if (token?.kind === "operator" && token.value === "-") {
+      consume();
+      const inner = evaluateUnary();
+      return { value: -inner.value };
+    }
+
+    return evaluatePrimary();
+  };
+
+  const evaluateMulDivMod = (): EvalResult => {
+    let left = evaluateUnary();
+
+    while (true) {
+      const token = peek();
+      if (
+        !token ||
+        token.kind !== "operator" ||
+        !["*", "/", "%"].includes(token.value)
+      ) {
+        return left;
+      }
+
+      consume();
+      const right = evaluateUnary();
+
+      if (token.value === "*") {
+        left = { value: left.value * right.value };
+      } else if (token.value === "/") {
+        left = { value: Math.trunc(left.value / right.value) };
+      } else {
+        left = { value: left.value % right.value };
+      }
+    }
+  };
+
+  const evaluateAddSub = (): EvalResult => {
+    let left = evaluateMulDivMod();
+
+    while (true) {
+      const token = peek();
+      if (
+        !token ||
+        token.kind !== "operator" ||
+        (token.value !== "+" && token.value !== "-")
+      ) {
+        return left;
+      }
+
+      consume();
+      const right = evaluateMulDivMod();
+
+      if (token.value === "+") {
+        left = { value: left.value + right.value };
+      } else {
+        left = { value: left.value - right.value };
+      }
+    }
+  };
+
+  const result = evaluateAddSub();
+  if (tokenIndex !== tokens.length) {
+    throw new Error("Invalid Tuff source");
+  }
+
+  return result.value;
 }
 
 export function compileTuff(source: string, stdIn: string = ""): string {
   const trimmed = source.trim();
-  const inputTokens = stdIn.trim().length > 0 ? stdIn.trim().split(/\s+/) : [];
 
   if (trimmed.length === 0) {
     return "(() => 0)()";
   }
 
-  if (trimmed.includes("+")) {
-    const terms = trimmed.split("+").map((term) => term.trim());
-    let tokenIndex = 0;
-    let sum = 0;
-
-    for (const term of terms) {
-      const readType = parseReadTerm(term);
-      if (readType) {
-        const token = inputTokens[tokenIndex] ?? "";
-        tokenIndex += 1;
-        sum += parseTypedStdInToken(token, readType);
-        continue;
-      }
-
-      const typedLiteral = parseTypedLiteral(term);
-      if (typedLiteral) {
-        sum += typedLiteral.value;
-        continue;
-      }
-
-      if (isKnownTypedSuffix(term)) {
-        if (term.endsWith("U8")) {
-          throw new Error("Invalid U8 literal");
-        }
-
-        throw new Error("Invalid Tuff source");
-      }
-
-      throw new Error("Invalid Tuff source");
-    }
-
-    return `(() => ${sum})()`;
-  }
-
-  const typedLiteral = parseTypedLiteral(trimmed);
-  if (typedLiteral) {
-    return `(() => ${typedLiteral.value})()`;
-  }
-
-  const singleReadType = parseReadTerm(trimmed);
-  if (singleReadType) {
-    const firstToken = inputTokens[0] ?? "";
-    const readValue = parseTypedStdInToken(firstToken, singleReadType);
-    return `(() => ${readValue})()`;
-  }
-
-  if (isKnownTypedSuffix(trimmed)) {
-    if (trimmed.endsWith("U8")) {
-      throw new Error("Invalid U8 literal");
-    }
-
-    throw new Error("Invalid Tuff source");
-  }
-
-  throw new Error("Invalid Tuff source");
+  const value = evaluateExpression(trimmed, stdIn);
+  return `(() => ${value})()`;
 }
 
 /**

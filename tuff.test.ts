@@ -63,10 +63,8 @@ describe("executeTuff", () => {
     expect(executeTuff("read<U8>() + 5U8 + read<U8>()", "10 20")).toBe(35);
   });
 
-  it("throws for non-addition expression syntax", () => {
-    expect(() => executeTuff("read<U8>() - read<U8>()", "100 50")).toThrow(
-      "Invalid Tuff source",
-    );
+  it("supports subtraction expression syntax", () => {
+    expect(executeTuff("read<U8>() - read<U8>()", "100 50")).toBe(50);
   });
 
   describe("multiple integer types", () => {
@@ -143,6 +141,67 @@ describe("executeTuff", () => {
       expect(() => executeTuff("read<U16>() + read<U16>()", "10")).toThrow(
         "Invalid integer stdin",
       );
+    });
+  });
+
+  describe("extended arithmetic", () => {
+    it("supports subtraction", () => {
+      expect(executeTuff("10U16 - 3U8")).toBe(7);
+    });
+
+    it("supports multiplication", () => {
+      expect(executeTuff("4U8 * 3U8")).toBe(12);
+    });
+
+    it("supports truncated division toward zero", () => {
+      expect(executeTuff("7U16 / 2U8")).toBe(3);
+      expect(executeTuff("-7I16 / 2U8")).toBe(-3);
+    });
+
+    it("supports modulo", () => {
+      expect(executeTuff("17U16 % 5U8")).toBe(2);
+    });
+
+    it("supports unary negation for grouped expressions", () => {
+      expect(executeTuff("-(1U8 + 2U8)")).toBe(-3);
+    });
+
+    it("respects operator precedence", () => {
+      expect(executeTuff("2U8 + 3U8 * 4U8")).toBe(14);
+    });
+
+    it("supports parentheses overriding precedence", () => {
+      expect(executeTuff("(2U8 + 3U8) * 4U8")).toBe(20);
+    });
+
+    it("supports mixed operators with read terms", () => {
+      expect(executeTuff("read<U8>() * (read<U8>() + 2U8) - 3U8", "4 5")).toBe(
+        25,
+      );
+    });
+
+    it("throws for trailing operator", () => {
+      expect(() => executeTuff("1U8 +")).toThrow("Invalid Tuff source");
+    });
+
+    it("throws for leading binary operator", () => {
+      expect(() => executeTuff("* 1U8")).toThrow("Invalid Tuff source");
+    });
+
+    it("throws for unbalanced left parenthesis", () => {
+      expect(() => executeTuff("(1U8 + 2U8")).toThrow("Invalid Tuff source");
+    });
+
+    it("throws for unbalanced right parenthesis", () => {
+      expect(() => executeTuff("1U8 + 2U8)")).toThrow("Invalid Tuff source");
+    });
+
+    it("throws for missing operator inside parentheses", () => {
+      expect(() => executeTuff("(1U8 2U8)")).toThrow("Invalid Tuff source");
+    });
+
+    it("preserves invalid U8 behavior for signed U8 literals", () => {
+      expect(() => executeTuff("-1U8 + 2U8")).toThrow("Invalid U8 literal");
     });
   });
 });
