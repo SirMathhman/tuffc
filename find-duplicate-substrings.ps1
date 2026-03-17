@@ -26,6 +26,21 @@ foreach ($file in $files) {
 
 Write-Host "Scanning $($literals.Count) string literals (min length: $MinLength) across $($files.Count) file(s)..."
 
+# Check if a substring breaks up a word in a given string
+function Is-BreakingUpWord {
+    param([string]$str, [string]$substring)
+    $idx = $str.IndexOf($substring)
+    if ($idx -lt 0) { return $false }
+    
+    # Check left character
+    $hasAlphanumericLeft = ($idx -gt 0) -and ($str[$idx - 1] -match '[a-zA-Z0-9]')
+    # Check right character
+    $hasAlphanumericRight = ($idx + $substring.Length -lt $str.Length) -and ($str[$idx + $substring.Length] -match '[a-zA-Z0-9]')
+    
+    # Breaking up a word means alphanumeric on both sides
+    return $hasAlphanumericLeft -and $hasAlphanumericRight
+}
+
 # For each pair of literals, find their longest common substrings
 function Get-CommonSubstrings {
     param([string]$a, [string]$b, [int]$minLen)
@@ -34,7 +49,12 @@ function Get-CommonSubstrings {
         for ($len = $minLen; $i + $len -le $a.Length; $len++) {
             $sub = $a.Substring($i, $len)
             if ($b.Contains($sub)) {
-                $found.Add($sub) | Out-Null
+                # Only add if it doesn't break up words in both strings
+                $breaksInA = Is-BreakingUpWord -str $a -substring $sub
+                $breaksInB = Is-BreakingUpWord -str $b -substring $sub
+                if (-not ($breaksInA -and $breaksInB)) {
+                    $found.Add($sub) | Out-Null
+                }
             }
         }
     }
