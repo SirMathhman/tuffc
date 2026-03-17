@@ -3,7 +3,11 @@
 		"Stop": [
 			{
 				"type": "command",
-				"command": "npm run test"
+				"command": "npm run test; if ($LASTEXITCODE -ne 0) { exit 2 }"
+			},
+			{
+				"type": "command",
+				"command": "pmd cpd tuff.ts --language typescript --minimum-tokens 35 --ignore-identifiers; if ($LASTEXITCODE -ne 0) { exit 2 }"
 			}
 		]
 	}
