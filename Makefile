@@ -1,8 +1,8 @@
 CXX     = clang++
-CXXFLAGS = -Wall -Wextra -Wpedantic -Werror -std=c++11
+CXXFLAGS = -Wall -Wextra -Wpedantic -Werror -std=c++11 -Isrc
 
-SRCS    = compileTuffToC.cpp
-TEST_SRCS = test.cpp
+SRCS    = src/compileTuffToC.cpp
+TEST_SRCS = tests/test.cpp
 
 all: test
 
