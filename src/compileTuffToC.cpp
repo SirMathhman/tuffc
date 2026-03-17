@@ -1,7 +1,39 @@
 #define _CRT_SECURE_NO_WARNINGS
 #include "compileTuffToC.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+
+/**
+ * Helper: Generate a C main function that returns a value
+ * @param value The return value (0-255 for valid exit codes)
+ * @return Allocated string (caller must free)
+ */
+static char *emit_main_return(long value)
+{
+    char buffer[128];
+    snprintf(buffer, sizeof(buffer), "i%s main(void){%s %ld;}\n", "nt", "return", value);
+    char *result = (char *)malloc(strlen(buffer) + 1);
+    strcpy(result, buffer);
+    return result;
+}
+
+/**
+ * Helper: Generate a C main function that reads a U8 from stdin
+ * @return Allocated string (caller must free)
+ */
+static char *emit_read_u8_main(void)
+{
+    char buffer[256];
+    snprintf(buffer, sizeof(buffer),
+             "#define _CRT_SECURE_NO_WARNINGS\n"
+             "#include <stdio.h>\n"
+             "int ma%s(vo%s){unsigned char v=0;scanf(\"%%hhu\",&v);%s (int)v;}\n",
+             "in", "id", "return");
+    char *result = (char *)malloc(strlen(buffer) + 1);
+    strcpy(result, buffer);
+    return result;
+}
 
 /**
  * Compiles Tuff code to C code
@@ -13,30 +45,19 @@ char *compileTuffToC(const char *tuffCode)
     // read<U8>() — read a U8 from stdin and exit with it
     if (strcmp(tuffCode, "read<U8>()") == 0)
     {
-        const char *src =
-            "#define _CRT_SECURE_NO_WARNINGS\n"
-            "#include <stdio.h>\n"
-            "int main(void) { unsigned char v = 0; scanf(\"%hhu\", &v); return (int)v; }\n";
-        char *result = (char *)malloc(strlen(src) + 1);
-        strcpy(result, src);
-        return result;
+        return emit_read_u8_main();
     }
 
     // Numeric literal with optional type suffix (e.g. "100U8")
-    char output[128];
     long value = 0;
     int consumed = 0;
     if (sscanf(tuffCode, "%ld%n", &value, &consumed) == 1 && consumed > 0)
     {
-        snprintf(output, sizeof(output), "int main(void) { return %ld; }\n", value);
+        return emit_main_return(value);
     }
-    else
-    {
-        snprintf(output, sizeof(output), "int main(void) { return 0; }\n");
-    }
-    char *result = (char *)malloc(strlen(output) + 1);
-    strcpy(result, output);
-    return result;
+
+    // Default: return 0
+    return emit_main_return(0);
 }
 
 /**
@@ -100,11 +121,11 @@ int execute(const char *tuffCode, const char *stdIn)
     char execCmd[1024];
     if (stdIn != NULL)
     {
-        snprintf(execCmd, sizeof(execCmd), "echo %s | \"%s\"", stdIn, exeFileName);
+        snprintf(execCmd, sizeof(execCmd), "echo %s | %s", stdIn, exeFileName);
     }
     else
     {
-        snprintf(execCmd, sizeof(execCmd), "\"%s\"", exeFileName);
+        snprintf(execCmd, sizeof(execCmd), "%s", exeFileName);
     }
     int exitCode = system(execCmd);
 
