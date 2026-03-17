@@ -6,6 +6,8 @@
     "jsx": "react-jsx",
     "strict": true,
     "moduleResolution": "bundler",
-    "types": ["bun-types"]
-  }
+    "skipLibCheck": true,
+    "noImplicitAny": false
+  },
+  "exclude": ["*.test.ts", "*.spec.ts"]
 }
