@@ -37,8 +37,8 @@ function Is-BreakingUpWord {
     # Check right character
     $hasAlphanumericRight = ($idx + $substring.Length -lt $str.Length) -and ($str[$idx + $substring.Length] -match '[a-zA-Z0-9]')
     
-    # Breaking up a word means alphanumeric on both sides
-    return $hasAlphanumericLeft -and $hasAlphanumericRight
+    # Breaking up a word means alphanumeric on either side
+    return $hasAlphanumericLeft -or $hasAlphanumericRight
 }
 
 # For each pair of literals, find their longest common substrings
