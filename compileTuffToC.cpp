@@ -1,3 +1,4 @@
+#define _CRT_SECURE_NO_WARNINGS
 #include "compileTuffToC.h"
 #include <stdio.h>
 #include <string.h>
@@ -9,9 +10,10 @@
  */
 char *compileTuffToC(const char *tuffCode)
 {
-    // TODO: Implement Tuff to C compilation logic
-    char *result = (char *)malloc(1);
-    result[0] = '\0';
+    (void)tuffCode; // TODO: Implement Tuff to C compilation logic
+    const char *stub = "int main(void) { return 0; }\n";
+    char *result = (char *)malloc(strlen(stub) + 1);
+    strcpy(result, stub);
     return result;
 }
 
@@ -30,14 +32,23 @@ int execute(const char *tuffCode)
     }
 
     // Generate temp file names
-    char srcFileName[L_tmpnam];
-    char exeFileName[L_tmpnam];
+    char tmpBase[L_tmpnam];
+    char srcFileName[L_tmpnam + 2]; // +2 for ".c"
+    char exeFileName[L_tmpnam + 4]; // +4 for ".exe"
 
-    if (tmpnam(srcFileName) == NULL || tmpnam(exeFileName) == NULL)
+    if (tmpnam(tmpBase) == NULL)
     {
         free(cCode);
         return -1;
     }
+    snprintf(srcFileName, sizeof(srcFileName), "%s.c", tmpBase);
+
+    if (tmpnam(tmpBase) == NULL)
+    {
+        free(cCode);
+        return -1;
+    }
+    snprintf(exeFileName, sizeof(exeFileName), "%s.exe", tmpBase);
 
     // Write C code to temp file
     FILE *srcFile = fopen(srcFileName, "w");
@@ -51,9 +62,9 @@ int execute(const char *tuffCode)
     fclose(srcFile);
     free(cCode);
 
-    // Compile with clang
+    // Compile with clang using pedantic flags
     char compileCmd[512];
-    snprintf(compileCmd, sizeof(compileCmd), "clang \"%s\" -o \"%s.exe\"", srcFileName, exeFileName);
+    snprintf(compileCmd, sizeof(compileCmd), "clang -Wall -Wextra -Wpedantic -Werror \"%s\" -o \"%s\"", srcFileName, exeFileName);
     int compileResult = system(compileCmd);
 
     if (compileResult != 0)
@@ -64,14 +75,12 @@ int execute(const char *tuffCode)
 
     // Execute the compiled binary
     char execCmd[512];
-    snprintf(execCmd, sizeof(execCmd), "\"%s.exe\"", exeFileName);
+    snprintf(execCmd, sizeof(execCmd), "\"%s\"", exeFileName);
     int exitCode = system(execCmd);
 
     // Clean up temp files
     remove(srcFileName);
-    char exeToRemove[L_tmpnam + 5];
-    snprintf(exeToRemove, sizeof(exeToRemove), "%s.exe", exeFileName);
-    remove(exeToRemove);
+    remove(exeFileName);
 
     return exitCode;
 }
