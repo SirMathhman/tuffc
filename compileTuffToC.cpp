@@ -10,19 +10,42 @@
  */
 char *compileTuffToC(const char *tuffCode)
 {
-    (void)tuffCode; // TODO: Implement Tuff to C compilation logic
-    const char *stub = "int main(void) { return 0; }\n";
-    char *result = (char *)malloc(strlen(stub) + 1);
-    strcpy(result, stub);
+    // read<U8>() — read a U8 from stdin and exit with it
+    if (strcmp(tuffCode, "read<U8>()") == 0)
+    {
+        const char *src =
+            "#define _CRT_SECURE_NO_WARNINGS\n"
+            "#include <stdio.h>\n"
+            "int main(void) { unsigned char v = 0; scanf(\"%hhu\", &v); return (int)v; }\n";
+        char *result = (char *)malloc(strlen(src) + 1);
+        strcpy(result, src);
+        return result;
+    }
+
+    // Numeric literal with optional type suffix (e.g. "100U8")
+    char output[128];
+    long value = 0;
+    int consumed = 0;
+    if (sscanf(tuffCode, "%ld%n", &value, &consumed) == 1 && consumed > 0)
+    {
+        snprintf(output, sizeof(output), "int main(void) { return %ld; }\n", value);
+    }
+    else
+    {
+        snprintf(output, sizeof(output), "int main(void) { return 0; }\n");
+    }
+    char *result = (char *)malloc(strlen(output) + 1);
+    strcpy(result, output);
     return result;
 }
 
 /**
  * Compiles Tuff code, writes to temp .c file, compiles with clang, and executes
  * @param tuffCode The Tuff source code to compile (null-terminated)
+ * @param stdIn    String to feed as stdin to the process, or NULL for none
  * @return The exit code of the executed binary, or negative on error
  */
-int execute(const char *tuffCode)
+int execute(const char *tuffCode, const char *stdIn)
 {
     // Compile Tuff to C
     char *cCode = compileTuffToC(tuffCode);
@@ -73,9 +96,16 @@ int execute(const char *tuffCode)
         return -1; // Compilation failed
     }
 
-    // Execute the compiled binary
-    char execCmd[512];
-    snprintf(execCmd, sizeof(execCmd), "\"%s\"", exeFileName);
+    // Execute the compiled binary, optionally piping stdIn
+    char execCmd[1024];
+    if (stdIn != NULL)
+    {
+        snprintf(execCmd, sizeof(execCmd), "echo %s | \"%s\"", stdIn, exeFileName);
+    }
+    else
+    {
+        snprintf(execCmd, sizeof(execCmd), "\"%s\"", exeFileName);
+    }
     int exitCode = system(execCmd);
 
     // Clean up temp files

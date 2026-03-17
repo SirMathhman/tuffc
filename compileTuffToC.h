@@ -13,8 +13,9 @@ char *compileTuffToC(const char *tuffCode);
 /**
  * Compiles Tuff code, writes to temp .c file, compiles with clang, and executes
  * @param tuffCode The Tuff source code to compile (null-terminated)
+ * @param stdIn    String to feed as stdin to the process, or NULL for none
  * @return The exit code of the executed binary, or negative on error
  */
-int execute(const char *tuffCode);
+int execute(const char *tuffCode, const char *stdIn);
 
 #endif // COMPILE_TUFF_TO_C_H

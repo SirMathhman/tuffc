@@ -3,6 +3,8 @@
 
 int main(void)
 {
-    assert(execute("") == 0);
+    assert(execute("", NULL) == 0);
+    assert(execute("100U8", NULL) == 100);
+    assert(execute("read<U8>()", "100") == 100);
     return 0;
 }
