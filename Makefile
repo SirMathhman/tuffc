@@ -1,13 +1,13 @@
-CC      = clang
-CFLAGS  = -Wall -Wextra -Wpedantic -Werror -std=c99 -Isrc
+CXX      = clang++
+CXXFLAGS = -Wall -Wextra -Wpedantic -Werror -std=c++11 -Isrc
 
-SRCS    = src/main.c
-TEST_SRCS = tests/main.test.c
+SRCS    = src/main.cpp
+TEST_SRCS = tests/main.test.cpp
 
 all: test
 
 test: $(SRCS) $(TEST_SRCS)
-	$(CC) $(CFLAGS) $(SRCS) $(TEST_SRCS) -o test.exe
+	$(CXX) $(CXXFLAGS) $(SRCS) $(TEST_SRCS) -o test.exe
 
 run: test
 	./test.exe
