@@ -1,10 +1,8 @@
+import { describe, it, expect } from "bun:test";
 import { interpret } from "./interpret";
 
 describe("interpret", () => {
   it("should return 0 for empty string", () => {
-    const result = interpret("");
-    if (result !== 0) {
-      throw new Error(`Expected 0, but got ${result}`);
-    }
+    expect(interpret("")).toBe(0);
   });
 });
