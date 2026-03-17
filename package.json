@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "lint": "tsc --noEmit",
-    "test": "bun test"
+    "test": "bun test --coverage"
   },
   "dependencies": {
     "@types/bun": "^1.3.10",

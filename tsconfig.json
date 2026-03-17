@@ -9,5 +9,6 @@
     "skipLibCheck": true,
     "noImplicitAny": false
   },
-  "exclude": ["*.test.ts", "*.spec.ts"]
+  "include": ["src/**/*"],
+  "exclude": ["tests/**/*", "*.test.ts"]
 }
