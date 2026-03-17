@@ -28,4 +28,40 @@ describe("executeTuff", () => {
   it("throws for non-numeric U8 literals", () => {
     expect(() => executeTuff("abcU8")).toThrow("Invalid U8 literal");
   });
+
+  it("throws for plain garbage text", () => {
+    expect(() => executeTuff("random garbage")).toThrow("Invalid Tuff source");
+  });
+
+  it("throws for symbol garbage", () => {
+    expect(() => executeTuff("???")).toThrow("Invalid Tuff source");
+  });
+
+  it("throws for alphanumeric garbage", () => {
+    expect(() => executeTuff("asdf123")).toThrow("Invalid Tuff source");
+  });
+
+  it("returns stdin value for read<U8>()", () => {
+    expect(executeTuff("read<U8>()", "100")).toBe(100);
+  });
+
+  it("returns sum of two read<U8>() calls", () => {
+    expect(executeTuff("read<U8>() + read<U8>()", "100 50")).toBe(150);
+  });
+
+  it("returns sum of three read<U8>() calls", () => {
+    expect(executeTuff("read<U8>() + read<U8>() + read<U8>()", "1 2 3")).toBe(
+      6,
+    );
+  });
+
+  it("supports mixing read<U8>() with U8 literals", () => {
+    expect(executeTuff("read<U8>() + 5U8 + read<U8>()", "10 20")).toBe(35);
+  });
+
+  it("throws for non-addition expression syntax", () => {
+    expect(() => executeTuff("read<U8>() - read<U8>()", "100 50")).toThrow(
+      "Invalid Tuff source",
+    );
+  });
 });
