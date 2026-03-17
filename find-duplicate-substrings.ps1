@@ -4,7 +4,7 @@
 # Exit code 1 if any duplicates are found above the minimum length threshold.
 
 param(
-    [int]$MinLength = 6
+    [int]$MinLength = 2
 )
 
 $srcDir = Join-Path $PSScriptRoot "src"
@@ -49,10 +49,10 @@ function Get-CommonSubstrings {
         for ($len = $minLen; $i + $len -le $a.Length; $len++) {
             $sub = $a.Substring($i, $len)
             if ($b.Contains($sub)) {
-                # Only add if it doesn't break up words in both strings
+                # Only add if it doesn't break up words in either string
                 $breaksInA = Is-BreakingUpWord -str $a -substring $sub
                 $breaksInB = Is-BreakingUpWord -str $b -substring $sub
-                if (-not ($breaksInA -and $breaksInB)) {
+                if (-not ($breaksInA -or $breaksInB)) {
                     $found.Add($sub) | Out-Null
                 }
             }

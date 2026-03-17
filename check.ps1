@@ -25,7 +25,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host "==> Checking for duplicate string substrings..."
-& pwsh find-duplicate-substrings.ps1 -MinLength 6 2>&1 | Write-Host
+& pwsh find-duplicate-substrings.ps1 -MinLength 2 2>&1 | Write-Host
 if ($LASTEXITCODE -ne 0) {
     Write-Host "FAILED: Duplicate string substrings found." -ForegroundColor Red
     exit 1
