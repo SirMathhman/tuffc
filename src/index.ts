@@ -16,7 +16,12 @@ interface PointerTypeInfo {
   mutable: boolean;
 }
 
-type TuffTypeInfo = NumericTypeInfo | PointerTypeInfo;
+interface BoolTypeInfo {
+  kind: "bool";
+  suffix: "Bool";
+}
+
+type TuffTypeInfo = NumericTypeInfo | PointerTypeInfo | BoolTypeInfo;
 
 interface OkResult<T> {
   ok: true;
@@ -89,7 +94,14 @@ interface PointerValue {
   target: string;
 }
 
-type BoundValue = NumericValue | PointerValue;
+interface BoolValue {
+  kind: "bool";
+  value: boolean;
+  type: BoolTypeInfo;
+  mutable: boolean;
+}
+
+type BoundValue = NumericValue | PointerValue | BoolValue;
 
 interface UnaryPointerOperand {
   name: string;
@@ -198,6 +210,7 @@ const TUFF_SUFFIXES: TuffSuffix[] = [
   "I64",
 ];
 const DEFAULT_NUMERIC_TYPE = TUFF_TYPES.get("I32") as NumericTypeInfo;
+const BOOL_TYPE: BoolTypeInfo = { kind: "bool", suffix: "Bool" };
 
 function ok<T>(value: T): OkResult<T> {
   return { ok: true, value };
@@ -289,6 +302,41 @@ function isNumericValue(value: BoundValue): value is NumericValue {
 
 function isPointerValue(value: BoundValue): value is PointerValue {
   return value.kind === "pointer";
+}
+
+function isBoolValue(value: BoundValue): value is BoolValue {
+  return value.kind === "bool";
+}
+
+function makeNumericValue(
+  value: bigint,
+  type: NumericTypeInfo,
+  mutable: boolean,
+): NumericValue {
+  return {
+    kind: "numeric",
+    value,
+    type,
+    mutable,
+  };
+}
+
+function makeBoolValue(value: boolean, mutable: boolean): BoolValue {
+  return {
+    kind: "bool",
+    value,
+    type: BOOL_TYPE,
+    mutable,
+  };
+}
+
+function bindValue(
+  name: string,
+  value: BoundValue,
+  environment: Map<string, BoundValue>,
+): OkResult<BoundValue> {
+  environment.set(name, value);
+  return ok(value);
 }
 
 function makePointerType(target: NumericTypeInfo): PointerTypeInfo {
@@ -472,7 +520,43 @@ function parseExpression(input: string): Result<ExpressionParts, TuffError> {
   return unsupportedInput(input);
 }
 
+function parseLogicalExpression(
+  input: string,
+): Result<ExpressionParts, TuffError> {
+  const tryParse = (operator: "&&" | "||"): ExpressionParts | undefined => {
+    const operatorIndex = input.indexOf(operator);
+
+    if (operatorIndex <= 0 || operatorIndex >= input.length - 2) {
+      return undefined;
+    }
+
+    return {
+      left: input.slice(0, operatorIndex).trimEnd(),
+      operator,
+      right: input.slice(operatorIndex + 2).trimStart(),
+    };
+  };
+
+  const orExpression = tryParse("||");
+
+  if (orExpression) {
+    return ok(orExpression);
+  }
+
+  const andExpression = tryParse("&&");
+
+  if (andExpression) {
+    return ok(andExpression);
+  }
+
+  return unsupportedInput(input);
+}
+
 function parseTypeReference(input: string): Result<TuffTypeInfo, TuffError> {
+  if (input === "Bool") {
+    return ok(BOOL_TYPE);
+  }
+
   if (input.startsWith("*")) {
     let mutable = false;
     let remaining = input.slice(1).trim();
@@ -784,6 +868,56 @@ function evaluateExpression(
 ): Result<BoundValue, TuffError> {
   const trimmed = input.trim();
 
+  if (trimmed === "true" || trimmed === "false") {
+    return ok(makeBoolValue(trimmed === "true", false));
+  }
+
+  if (trimmed.startsWith("!")) {
+    const operand = evaluateExpression(trimmed.slice(1), environment);
+
+    if (!operand.ok) {
+      return operand;
+    }
+
+    if (!isBoolValue(operand.value)) {
+      return invalidPointer(input, "Logical negation requires a Bool operand.");
+    }
+
+    return ok(makeBoolValue(!operand.value.value, false));
+  }
+
+  const logicalExpression = parseLogicalExpression(trimmed);
+
+  if (logicalExpression.ok) {
+    const left = evaluateExpression(logicalExpression.value.left, environment);
+
+    if (!left.ok) {
+      return left;
+    }
+
+    const right = evaluateExpression(
+      logicalExpression.value.right,
+      environment,
+    );
+
+    if (!right.ok) {
+      return right;
+    }
+
+    if (!isBoolValue(left.value) || !isBoolValue(right.value)) {
+      return invalidPointer(input, "Logical operators require Bool operands.");
+    }
+
+    return ok(
+      makeBoolValue(
+        logicalExpression.value.operator === "&&"
+          ? left.value.value && right.value.value
+          : left.value.value || right.value.value,
+        false,
+      ),
+    );
+  }
+
   if (trimmed.startsWith("&")) {
     let mutable = false;
     let operand = trimmed.slice(1);
@@ -940,15 +1074,30 @@ function evaluateStatement(
         return outOfBounds(statement, inferredType.suffix);
       }
 
-      const boundValue: NumericValue = {
-        kind: "numeric",
-        value: initializer.value.value,
-        type: inferredType,
-        mutable: letStatement.value.mutable,
-      };
+      return bindValue(
+        letStatement.value.name,
+        makeNumericValue(
+          initializer.value.value,
+          inferredType,
+          letStatement.value.mutable,
+        ),
+        environment,
+      );
+    }
 
-      environment.set(letStatement.value.name, boundValue);
-      return ok(boundValue);
+    if (inferredType.kind === "bool") {
+      if (!isBoolValue(initializer.value)) {
+        return invalidPointer(
+          statement,
+          "Initializer type does not match the declared type.",
+        );
+      }
+
+      return bindValue(
+        letStatement.value.name,
+        makeBoolValue(initializer.value.value, letStatement.value.mutable),
+        environment,
+      );
     }
 
     if (!isPointerValue(initializer.value)) {
@@ -1020,15 +1169,26 @@ function evaluateStatement(
         return outOfBounds(statement, existing.type.suffix);
       }
 
-      const updatedValue: NumericValue = {
-        kind: "numeric",
-        value: assigned.value.value,
-        type: existing.type,
-        mutable: existing.mutable,
-      };
+      return bindValue(
+        assignmentStatement.value.name,
+        makeNumericValue(assigned.value.value, existing.type, existing.mutable),
+        environment,
+      );
+    }
 
-      environment.set(assignmentStatement.value.name, updatedValue);
-      return ok(updatedValue);
+    if (existing.type.kind === "bool") {
+      if (!isBoolValue(assigned.value)) {
+        return invalidPointer(
+          statement,
+          "Assigned value type does not match the variable type.",
+        );
+      }
+
+      return bindValue(
+        assignmentStatement.value.name,
+        makeBoolValue(assigned.value.value, existing.mutable),
+        environment,
+      );
     }
 
     if (!isPointerValue(assigned.value)) {
@@ -1120,15 +1280,13 @@ function evaluateStatement(
       return outOfBounds(statement, targetVar.type.suffix);
     }
 
-    const updatedTarget: NumericValue = {
-      kind: "numeric",
-      value: assigned.value.value,
-      type: targetVar.type,
-      mutable: true,
-    };
+    const updatedTarget = makeNumericValue(
+      assigned.value.value,
+      targetVar.type,
+      true,
+    );
 
-    environment.set(pointerVar.target, updatedTarget);
-    return ok(updatedTarget);
+    return bindValue(pointerVar.target, updatedTarget, environment);
   }
 
   return evaluateExpression(statement, environment);
@@ -1187,7 +1345,11 @@ function interpretTuff(input: string): Result<number, TuffError> {
   }
 
   if (!lastValue || lastValue.kind !== "numeric") {
-    return invalidPointer(input, "The final result must be numeric.");
+    if (lastValue && lastValue.kind === "bool") {
+      return ok(lastValue.value ? 1 : 0);
+    }
+
+    return invalidPointer(input, "The final result must be numeric or Bool.");
   }
 
   return ok(Number(lastValue.value));

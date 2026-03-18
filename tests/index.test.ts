@@ -46,6 +46,23 @@ describe("interpretTuff", () => {
   });
 
   it.each([
+    ["true", 1],
+    ["false", 0],
+    ["!false", 1],
+    ["!true", 0],
+    ["true && true", 1],
+    ["true && false", 0],
+    ["false || true", 1],
+    ["false || false", 0],
+    ["let flag : Bool = true; flag", 1],
+    ["let flag = false; !flag", 1],
+    ["let mut flag : Bool = true; flag = false; flag", 0],
+    ["let mut a : Bool = true; let b : Bool = false; a = a && !b; a", 1],
+  ])("evaluates Bool expression %s to %s", (input, expected) => {
+    expectOkValue(input, expected);
+  });
+
+  it.each([
     "",
     "foo",
     "100U9",
@@ -64,8 +81,49 @@ describe("interpretTuff", () => {
     "255U8 + 1U8",
     "1U8 / 0U8",
     "1U8 ^ 2U8",
+    "True",
+    "False",
   ])("returns an error for invalid input %s", (input) => {
     expect(interpretTuff(input).ok).toBe(false);
+  });
+
+  it("returns an error when assigning Bool to a numeric binding", () => {
+    expectErrorKind("let x : U8 = true; x", "InvalidPointer");
+  });
+
+  it("returns an error when assigning numeric to a Bool binding", () => {
+    expectErrorKind("let x : Bool = 1U8; x", "InvalidPointer");
+  });
+
+  it("returns an error when arithmetic mixes Bool and numeric values", () => {
+    expectErrorKind("true + 1U8", "InvalidPointer");
+  });
+
+  it("returns an error when unary not is used with numeric value", () => {
+    expectErrorKind("!1U8", "InvalidPointer");
+  });
+
+  it("returns an error when unary not operand cannot be resolved", () => {
+    expectErrorKind("!missingBool", "UndefinedVariable");
+  });
+
+  it("returns an error when logical and mixes numeric and Bool values", () => {
+    expectErrorKind("1U8 && true", "InvalidPointer");
+  });
+
+  it("returns an error when logical and left operand cannot be resolved", () => {
+    expectErrorKind("missingLeft && true", "UndefinedVariable");
+  });
+
+  it("returns an error when logical and right operand cannot be resolved", () => {
+    expectErrorKind("true && missingRight", "UndefinedVariable");
+  });
+
+  it("returns an error when reassigning a Bool variable with numeric value", () => {
+    expectErrorKind(
+      "let mut flag : Bool = true; flag = 1U8; flag",
+      "InvalidPointer",
+    );
   });
 
   it("includes detailed error metadata", () => {
