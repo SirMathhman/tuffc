@@ -68,6 +68,12 @@ interface IfExpressionParts {
   elseBranch: string;
 }
 
+interface IfStatementParts {
+  condition: string;
+  thenBranch: string;
+  elseBranch: string | undefined;
+}
+
 interface LetStatement {
   name: string;
   type: TuffTypeInfo | undefined;
@@ -107,7 +113,12 @@ interface BoolValue {
   mutable: boolean;
 }
 
+interface UnitValue {
+  kind: "unit";
+}
+
 type BoundValue = NumericValue | PointerValue | BoolValue;
+type StatementValue = BoundValue | UnitValue;
 
 interface UnaryPointerOperand {
   name: string;
@@ -222,6 +233,7 @@ const TUFF_SUFFIXES: TuffSuffix[] = [
 ];
 const DEFAULT_NUMERIC_TYPE = TUFF_TYPES.get("I32") as NumericTypeInfo;
 const BOOL_TYPE: BoolTypeInfo = { kind: "bool", suffix: "Bool" };
+const UNIT_VALUE: UnitValue = { kind: "unit" };
 
 function ok<T>(value: T): OkResult<T> {
   return { ok: true, value };
@@ -749,10 +761,16 @@ function evaluateBlockExpression(
       return evaluated;
     }
 
-    lastValue = evaluated.value;
+    if (evaluated.value.kind !== "unit") {
+      lastValue = evaluated.value;
+    }
   }
 
-  return ok(lastValue as BoundValue);
+  if (!lastValue) {
+    return unsupportedInput(input);
+  }
+
+  return ok(lastValue);
 }
 
 function parseExpression(input: string): Result<ExpressionParts, TuffError> {
@@ -917,19 +935,10 @@ function findElseForIf(input: string, startIndex: number): number {
   return -1;
 }
 
-function parseIfExpression(
+function parseIfHeader(
   input: string,
-): Result<IfExpressionParts | undefined, TuffError> {
-  const trimmed = input.trim();
-
-  if (!trimmed.startsWith("if")) {
-    return ok(undefined);
-  }
-
-  if (!startsWithKeywordAt(trimmed, "if", 0)) {
-    return unsupportedInput(input);
-  }
-
+  trimmed: string,
+): Result<{ condition: string; branchStart: number }, TuffError> {
   let index = 2;
 
   if (index >= trimmed.length || !isWhitespace(trimmed[index])) {
@@ -960,10 +969,21 @@ function parseIfExpression(
     return unsupportedInput(input);
   }
 
+  return ok({ condition, branchStart });
+}
+
+function parseIfBranches(
+  input: string,
+  trimmed: string,
+  branchStart: number,
+): Result<{ thenBranch: string; elseBranch: string | undefined }, TuffError> {
   const elseIndex = findElseForIf(trimmed, branchStart);
 
   if (elseIndex < 0) {
-    return unsupportedInput(input);
+    return ok({
+      thenBranch: trimmed.slice(branchStart).trim(),
+      elseBranch: undefined,
+    });
   }
 
   const thenBranch = trimmed.slice(branchStart, elseIndex).trim();
@@ -978,13 +998,83 @@ function parseIfExpression(
     return unsupportedInput(input);
   }
 
-  const elseBranch = trimmed.slice(elseStart).trim();
-
   return ok({
-    condition,
     thenBranch,
-    elseBranch,
+    elseBranch: trimmed.slice(elseStart).trim(),
   });
+}
+
+function parseIfParts(
+  input: string,
+  mode: "expression" | "statement",
+): Result<IfExpressionParts | IfStatementParts | undefined, TuffError> {
+  const trimmed = input.trim();
+
+  if (!trimmed.startsWith("if")) {
+    return ok(undefined);
+  }
+
+  if (!startsWithKeywordAt(trimmed, "if", 0)) {
+    return mode === "expression" ? unsupportedInput(input) : ok(undefined);
+  }
+
+  const parsedHeader = parseIfHeader(input, trimmed);
+
+  if (!parsedHeader.ok) {
+    return parsedHeader;
+  }
+
+  const parsedBranches = parseIfBranches(
+    input,
+    trimmed,
+    parsedHeader.value.branchStart,
+  );
+
+  if (!parsedBranches.ok) {
+    return parsedBranches;
+  }
+
+  const parsedIf = {
+    condition: parsedHeader.value.condition,
+    thenBranch: parsedBranches.value.thenBranch,
+    elseBranch: parsedBranches.value.elseBranch,
+  };
+
+  if (mode === "expression") {
+    if (parsedBranches.value.elseBranch === undefined) {
+      return unsupportedInput(input);
+    }
+
+    return ok(parsedIf);
+  }
+
+  if (
+    parsedBranches.value.elseBranch !== undefined &&
+    (!parsedBranches.value.thenBranch.startsWith("{") ||
+      !parsedBranches.value.elseBranch.startsWith("{"))
+  ) {
+    return ok(undefined);
+  }
+
+  return ok(parsedIf);
+}
+
+function parseIfExpression(
+  input: string,
+): Result<IfExpressionParts | undefined, TuffError> {
+  return parseIfParts(input, "expression") as Result<
+    IfExpressionParts | undefined,
+    TuffError
+  >;
+}
+
+function parseIfStatement(
+  input: string,
+): Result<IfStatementParts | undefined, TuffError> {
+  return parseIfParts(input, "statement") as Result<
+    IfStatementParts | undefined,
+    TuffError
+  >;
 }
 
 function parseTypeReference(input: string): Result<TuffTypeInfo, TuffError> {
@@ -1613,7 +1703,42 @@ function evaluateExpression(
 function evaluateStatement(
   statement: string,
   scope: Scope,
-): Result<BoundValue, TuffError> {
+): Result<StatementValue, TuffError> {
+  const ifStatement = parseIfStatement(statement);
+
+  if (!ifStatement.ok) {
+    return ifStatement;
+  }
+
+  if (ifStatement.value) {
+    const condition = evaluateExpression(ifStatement.value.condition, scope);
+
+    if (!condition.ok) {
+      return condition;
+    }
+
+    if (!isBoolValue(condition.value)) {
+      return invalidPointer(statement, "If condition must evaluate to Bool.");
+    }
+
+    const selectedBranch = condition.value.value
+      ? ifStatement.value.thenBranch
+      : ifStatement.value.elseBranch;
+
+    if (!selectedBranch) {
+      return ok(UNIT_VALUE);
+    }
+
+    const branchScope = createScope(scope);
+    const selectedResult = evaluateStatement(selectedBranch, branchScope);
+
+    if (!selectedResult.ok) {
+      return selectedResult;
+    }
+
+    return ok(UNIT_VALUE);
+  }
+
   const letStatement = parseLetStatement(statement);
 
   if (letStatement.ok) {
@@ -1911,7 +2036,7 @@ function interpretTuff(input: string): Result<number, TuffError> {
   }
 
   const rootScope = createScope(undefined);
-  let lastValue: BoundValue | undefined;
+  let lastValue: StatementValue | undefined;
 
   for (const statement of statements.value) {
     const evaluated = evaluateStatement(statement, rootScope);
@@ -1924,6 +2049,10 @@ function interpretTuff(input: string): Result<number, TuffError> {
   }
 
   if (!lastValue || lastValue.kind !== "numeric") {
+    if (lastValue && lastValue.kind === "unit") {
+      return ok(0);
+    }
+
     if (lastValue && lastValue.kind === "bool") {
       return ok(lastValue.value ? 1 : 0);
     }
