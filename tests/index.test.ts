@@ -113,6 +113,36 @@ describe("interpretTuff", () => {
     });
   });
 
+  it("evaluates a mutable binding reassigned before the final expression", () => {
+    expect(interpretTuff("let mut x = 0U8; x = 100U8; x")).toEqual({
+      ok: true,
+      value: 100,
+    });
+  });
+
+  it("evaluates a mutable binding reassigned with an expression", () => {
+    expect(interpretTuff("let mut x = 1U8; x = 2U8 + 3U8; x")).toEqual({
+      ok: true,
+      value: 5,
+    });
+  });
+
+  it("returns an error when assigning to an immutable binding", () => {
+    expectErrorKind("let x = 0U8; x = 100U8; x", "ImmutableVariable");
+  });
+
+  it("returns an error when assigning to an undefined variable", () => {
+    expectErrorKind("x = 100U8", "UndefinedVariable");
+  });
+
+  it("returns an error when a mutable assignment references an undefined variable", () => {
+    expectErrorKind("let mut x = 0U8; x = y; x", "UndefinedVariable");
+  });
+
+  it("returns an error when a mutable assignment overflows the declared type", () => {
+    expectErrorKind("let mut x = 0U8; x = 256U16; x", "OutOfBounds");
+  });
+
   it("returns an error when a variable is referenced before definition", () => {
     expectErrorKind("x", "UndefinedVariable");
   });
@@ -136,6 +166,7 @@ describe("interpretTuff", () => {
     "  + 1U8",
     "1U8 +   ",
     "letx : U8 = 1U8",
+    "let mutx = 1U8",
     "let 1x : U8 = 1U8",
     "let x U8 = 1U8",
     "let x : = 1U8",

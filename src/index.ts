@@ -38,7 +38,8 @@ interface TuffError {
     | "OutOfBounds"
     | "DivisionByZero"
     | "UnsupportedOperator"
-    | "UndefinedVariable";
+    | "UndefinedVariable"
+    | "ImmutableVariable";
   sourceCode: string;
   message: string;
   reason: string;
@@ -48,12 +49,19 @@ interface TuffError {
 interface BoundValue {
   value: bigint;
   type: TuffTypeInfo;
+  mutable: boolean;
 }
 
 interface LetStatement {
   name: string;
-  type: TuffTypeInfo;
+  type: TuffTypeInfo | undefined;
+  mutable: boolean;
   initializer: string;
+}
+
+interface AssignmentStatement {
+  name: string;
+  value: string;
 }
 
 const TUFF_TYPES = new Map<TuffSuffix, TuffTypeInfo>([
@@ -171,6 +179,16 @@ function undefinedVariable(input: string, name: string): ErrResult<TuffError> {
   });
 }
 
+function immutableVariable(input: string, name: string): ErrResult<TuffError> {
+  return err({
+    kind: "ImmutableVariable",
+    sourceCode: input,
+    message: `Immutable variable: ${name}`,
+    reason: "The variable was declared without mutability.",
+    suggestedFix: `Declare ${name} with let mut before reassigning it.`,
+  });
+}
+
 function parseLiteral(input: string): Result<LiteralValueResult, TuffError> {
   const suffix = getSuffix(input);
 
@@ -256,11 +274,28 @@ function parseLetStatement(input: string): Result<LetStatement, TuffError> {
 
   let index = 3;
 
-  if (index >= trimmed.length || !isWhitespace(trimmed[index])) {
-    return unsupportedInput(input);
+  const afterLet = consumeRequiredWhitespace(input, trimmed, index);
+
+  if (!afterLet.ok) {
+    return afterLet;
   }
 
-  index = skipWhitespace(trimmed, index);
+  index = afterLet.value;
+
+  let mutable = false;
+
+  if (trimmed.slice(index, index + 3) === "mut") {
+    mutable = true;
+    index += 3;
+
+    const afterMut = consumeRequiredWhitespace(input, trimmed, index);
+
+    if (!afterMut.ok) {
+      return afterMut;
+    }
+
+    index = afterMut.value;
+  }
 
   const nameStart = index;
 
@@ -277,36 +312,36 @@ function parseLetStatement(input: string): Result<LetStatement, TuffError> {
   const name = trimmed.slice(nameStart, index);
   index = skipWhitespace(trimmed, index);
 
-  if (index >= trimmed.length || trimmed[index] !== ":") {
-    return unsupportedInput(input);
-  }
+  let type: TuffTypeInfo | undefined;
 
-  index += 1;
-  index = skipWhitespace(trimmed, index);
-
-  const typeStart = index;
-
-  while (
-    index < trimmed.length &&
-    !isWhitespace(trimmed[index]) &&
-    trimmed[index] !== "="
-  ) {
+  if (index < trimmed.length && trimmed[index] === ":") {
     index += 1;
+    index = skipWhitespace(trimmed, index);
+
+    const typeStart = index;
+
+    while (
+      index < trimmed.length &&
+      !isWhitespace(trimmed[index]) &&
+      trimmed[index] !== "="
+    ) {
+      index += 1;
+    }
+
+    const suffix = trimmed.slice(typeStart, index);
+
+    if (suffix.length === 0) {
+      return unsupportedInput(input);
+    }
+
+    type = TUFF_TYPES.get(suffix as TuffSuffix);
+
+    if (!type) {
+      return unsupportedSuffix(input, suffix);
+    }
+
+    index = skipWhitespace(trimmed, index);
   }
-
-  const suffix = trimmed.slice(typeStart, index);
-
-  if (suffix.length === 0) {
-    return unsupportedInput(input);
-  }
-
-  const type = TUFF_TYPES.get(suffix as TuffSuffix);
-
-  if (!type) {
-    return unsupportedSuffix(input, suffix);
-  }
-
-  index = skipWhitespace(trimmed, index);
 
   if (index >= trimmed.length || trimmed[index] !== "=") {
     return unsupportedInput(input);
@@ -320,7 +355,44 @@ function parseLetStatement(input: string): Result<LetStatement, TuffError> {
     return unsupportedInput(input);
   }
 
-  return ok({ name, type, initializer });
+  return ok({ name, type, mutable, initializer });
+}
+
+function consumeRequiredWhitespace(
+  input: string,
+  text: string,
+  index: number,
+): Result<number, TuffError> {
+  if (index >= text.length || !isWhitespace(text[index])) {
+    return unsupportedInput(input);
+  }
+
+  return ok(skipWhitespace(text, index));
+}
+
+function parseAssignmentStatement(
+  input: string,
+): Result<AssignmentStatement, TuffError> {
+  const trimmed = input.trim();
+
+  if (trimmed.startsWith("let ")) {
+    return unsupportedInput(input);
+  }
+
+  const equalsIndex = trimmed.indexOf("=");
+
+  if (equalsIndex <= 0) {
+    return unsupportedInput(input);
+  }
+
+  const name = trimmed.slice(0, equalsIndex).trim();
+  const value = trimmed.slice(equalsIndex + 1).trim();
+
+  if (!isIdentifierText(name) || value.length === 0) {
+    return unsupportedInput(input);
+  }
+
+  return ok({ name, value });
 }
 
 function skipWhitespace(text: string, startIndex: number): number {
@@ -418,7 +490,11 @@ function evaluateExpression(
   const literal = parseLiteral(trimmed);
 
   if (literal.ok) {
-    return ok(literal.value);
+    return ok({
+      value: literal.value.value,
+      type: literal.value.type,
+      mutable: false,
+    });
   }
 
   const literalError = literal;
@@ -477,7 +553,7 @@ function evaluateExpression(
     return outOfBounds(input, resultType.suffix);
   }
 
-  return ok({ value: result, type: resultType });
+  return ok({ value: result, type: resultType, mutable: false });
 }
 
 function evaluateStatement(
@@ -487,7 +563,47 @@ function evaluateStatement(
   const letStatement = parseLetStatement(statement);
 
   if (!letStatement.ok) {
-    return evaluateExpression(statement, environment);
+    const assignmentStatement = parseAssignmentStatement(statement);
+
+    if (!assignmentStatement.ok) {
+      return evaluateExpression(statement, environment);
+    }
+
+    const existing = environment.get(assignmentStatement.value.name);
+
+    if (!existing) {
+      return undefinedVariable(statement, assignmentStatement.value.name);
+    }
+
+    if (!existing.mutable) {
+      return immutableVariable(statement, assignmentStatement.value.name);
+    }
+
+    const assigned = evaluateExpression(
+      assignmentStatement.value.value,
+      environment,
+    );
+
+    if (!assigned.ok) {
+      return assigned;
+    }
+
+    if (
+      assigned.value.value < existing.type.min ||
+      assigned.value.value > existing.type.max
+    ) {
+      return outOfBounds(statement, existing.type.suffix);
+    }
+
+    const updatedValue: BoundValue = {
+      value: assigned.value.value,
+      type: existing.type,
+      mutable: existing.mutable,
+    };
+
+    environment.set(assignmentStatement.value.name, updatedValue);
+
+    return ok(updatedValue);
   }
 
   const initializer = evaluateExpression(
@@ -499,16 +615,19 @@ function evaluateStatement(
     return initializer;
   }
 
+  const inferredType = letStatement.value.type ?? initializer.value.type;
+
   if (
-    initializer.value.value < letStatement.value.type.min ||
-    initializer.value.value > letStatement.value.type.max
+    initializer.value.value < inferredType.min ||
+    initializer.value.value > inferredType.max
   ) {
-    return outOfBounds(statement, letStatement.value.type.suffix);
+    return outOfBounds(statement, inferredType.suffix);
   }
 
   const boundValue: BoundValue = {
     value: initializer.value.value,
-    type: letStatement.value.type,
+    type: inferredType,
+    mutable: letStatement.value.mutable,
   };
 
   environment.set(letStatement.value.name, boundValue);
