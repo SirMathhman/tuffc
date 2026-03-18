@@ -248,3 +248,7 @@ if (opts.suppressNestedFlag) {
 const output = opts.json ? formatJson(cloneClasses) : formatText(cloneClasses);
 
 process.stdout.write(output + "\n");
+
+if (cloneClasses.length > 0) {
+  process.exit(2);
+}

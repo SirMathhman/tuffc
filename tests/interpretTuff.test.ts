@@ -98,3 +98,136 @@ describe("interpretTuff", () => {
     expect(() => interpretTuff("100F32")).toThrow();
   });
 });
+
+// ── Expression evaluation tests ────────────────────────────────────────────────
+
+describe("interpretTuff expressions", () => {
+  // Basic addition
+  test("Simple addition: 100U8 + 2U8 => 102", () => {
+    expect(interpretTuff("100U8 + 2U8")).toBe(102);
+  });
+
+  test("Addition with no spaces: 100U8+2U8 => 102", () => {
+    expect(interpretTuff("100U8+2U8")).toBe(102);
+  });
+
+  test("Addition: 50U16 + 100U16 => 150", () => {
+    expect(interpretTuff("50U16 + 100U16")).toBe(150);
+  });
+
+  test("Addition at boundary: 254U8 + 1U8 => 255", () => {
+    expect(interpretTuff("254U8 + 1U8")).toBe(255);
+  });
+
+  test("Addition overflow U8: 255U8 + 1U8 => Err", () => {
+    expect(() => interpretTuff("255U8 + 1U8")).toThrow();
+  });
+
+  // Basic subtraction
+  test("Subtraction: 100U8 - 50U8 => 50", () => {
+    expect(interpretTuff("100U8 - 50U8")).toBe(50);
+  });
+
+  test("Subtraction at boundary: 1U8 - 1U8 => 0", () => {
+    expect(interpretTuff("1U8 - 1U8")).toBe(0);
+  });
+
+  test("Subtraction underflow U8: 0U8 - 1U8 => Err (negative result)", () => {
+    expect(() => interpretTuff("0U8 - 1U8")).toThrow();
+  });
+
+  test("Subtraction underflow U8: 50U8 - 100U8 => Err (negative result)", () => {
+    expect(() => interpretTuff("50U8 - 100U8")).toThrow();
+  });
+
+  // Basic multiplication
+  test("Multiplication: 10U8 * 5U8 => 50", () => {
+    expect(interpretTuff("10U8 * 5U8")).toBe(50);
+  });
+
+  test("Multiplication: 20U16 * 30U16 => 600", () => {
+    expect(interpretTuff("20U16 * 30U16")).toBe(600);
+  });
+
+  test("Multiplication overflow: 200U8 * 2U8 => Err", () => {
+    expect(() => interpretTuff("200U8 * 2U8")).toThrow();
+  });
+
+  // Basic division
+  test("Division: 100U8 / 2U8 => 50", () => {
+    expect(interpretTuff("100U8 / 2U8")).toBe(50);
+  });
+
+  test("Integer division: 7U8 / 2U8 => 3", () => {
+    expect(interpretTuff("7U8 / 2U8")).toBe(3);
+  });
+
+  test("Division by zero: 100U8 / 0U8 => Err", () => {
+    expect(() => interpretTuff("100U8 / 0U8")).toThrow();
+  });
+
+  // Order of operations
+  test("Precedence: 2U8 + 3U8 * 4U8 => 14", () => {
+    expect(interpretTuff("2U8 + 3U8 * 4U8")).toBe(14);
+  });
+
+  test("Precedence: 10U8 - 2U8 * 3U8 => 4", () => {
+    expect(interpretTuff("10U8 - 2U8 * 3U8")).toBe(4);
+  });
+
+  test("Precedence: 100U8 / 2U8 + 30U8 => 80", () => {
+    expect(interpretTuff("100U8 / 2U8 + 30U8")).toBe(80);
+  });
+
+  test("Precedence: 30U8 + 100U8 / 2U8 => 80", () => {
+    expect(interpretTuff("30U8 + 100U8 / 2U8")).toBe(80);
+  });
+
+  // Parentheses
+  test("Parentheses: (2U8 + 3U8) * 4U8 => 20", () => {
+    expect(interpretTuff("(2U8 + 3U8) * 4U8")).toBe(20);
+  });
+
+  test("Parentheses: (100U8 - 20U8) / 2U8 => 40", () => {
+    expect(interpretTuff("(100U8 - 20U8) / 2U8")).toBe(40);
+  });
+
+  test("Nested parentheses: ((2U8 + 3U8) * 4U8) / 2U8 => 10", () => {
+    expect(interpretTuff("((2U8 + 3U8) * 4U8) / 2U8")).toBe(10);
+  });
+
+  // Type widening
+  test("Type widening U8 + U16: 50U8 + 100U16 => 150 (widest type U16)", () => {
+    expect(interpretTuff("50U8 + 100U16")).toBe(150);
+  });
+
+  test("Type widening U16 + U32: 1000U16 + 5000U32 => 6000 (widest type U32)", () => {
+    expect(interpretTuff("1000U16 + 5000U32")).toBe(6000);
+  });
+
+  test("Type widening multiple: 10U8 + 20U16 + 30U32 => 60 (widest type U32)", () => {
+    expect(interpretTuff("10U8 + 20U16 + 30U32")).toBe(60);
+  });
+
+  test("Type widening chain in expression: (5U8 + 10U16) * 2U8 => 30", () => {
+    expect(interpretTuff("(5U8 + 10U16) * 2U8")).toBe(30);
+  });
+
+  // Whitespace handling
+  test("Extra spaces: 100U8  +   2U8 => 102", () => {
+    expect(interpretTuff("100U8  +   2U8")).toBe(102);
+  });
+
+  test("Mixed spacing: 50U8+ 100U8 => 150", () => {
+    expect(interpretTuff("50U8+ 100U8")).toBe(150);
+  });
+
+  // Edge cases with range validation
+  test("Result within widest operand type: 200U8 + 50U8 with widened range", () => {
+    expect(interpretTuff("200U8 + 50U8")).toBe(250);
+  });
+
+  test("Underflow with subtraction when widened: 100U8 - 200U16 => Err (negative)", () => {
+    expect(() => interpretTuff("100U8 - 200U16")).toThrow();
+  });
+});
