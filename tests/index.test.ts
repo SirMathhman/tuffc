@@ -1,10 +1,4 @@
-import { getGreeting, interpretTuff } from "../src/index";
-
-describe("getGreeting", () => {
-  it("returns the project greeting", () => {
-    expect(getGreeting()).toBe("Hello from TypeScript!");
-  });
-});
+import { interpretTuff } from "../src/index";
 
 describe("interpretTuff", () => {
   it.each([

@@ -10,6 +10,30 @@ export default [
       parser: tsParser,
       sourceType: "module",
     },
-    rules: {},
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "TSTypeLiteral",
+          message: "Prefer named interfaces.",
+        },
+        {
+          selector: "TSTypeReference Identifier[name='Record']",
+          message: "Prefer Map instead of Record.",
+        },
+        {
+          selector: "Literal[regex]",
+          message: "Do not use regex syntax; parse manually.",
+        },
+        {
+          selector: "NewExpression[callee.name='RegExp']",
+          message: "Do not construct regexes; parse manually.",
+        },
+        {
+          selector: "CallExpression[callee.name='RegExp']",
+          message: "Do not construct regexes; parse manually.",
+        },
+      ],
+    },
   },
 ];
