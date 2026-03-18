@@ -15,7 +15,7 @@ console.log("\n[1/4] Running unit tests...");
 const testResult = spawnSync("bun", ["test"], { stdio: "inherit" });
 
 if (testResult.status !== 0) {
-  console.error("\n❌ Tests failed. Aborting check.");
+  console.error("\n[FAIL] Tests failed. Aborting check.");
   process.exit(2);
 }
 
@@ -23,7 +23,7 @@ console.log("\n[2/4] Running linter...");
 const lintResult = spawnSync("bun", ["run", "lint"], { stdio: "inherit" });
 
 if (lintResult.status !== 0) {
-  console.error("\n❌ Linting failed.");
+  console.error("\n[FAIL] Linting failed.");
   process.exit(2);
 }
 
@@ -43,7 +43,7 @@ const dupResult = spawnSync(
 );
 
 if (dupResult.status !== 0) {
-  console.error("\n❌ Duplicate check failed.");
+  console.error("\n[FAIL] Duplicate check failed.");
   process.exit(2);
 }
 
@@ -65,9 +65,9 @@ const cpdResult = spawnSync(
 );
 
 if (cpdResult.status !== 0) {
-  console.error("\n❌ Copy-paste check failed.");
+  console.error("\n[FAIL] Copy-paste check failed.");
   process.exit(2);
 }
 
-console.log("\n✅ All checks passed!");
+console.log("\n[PASS] All checks passed!");
 process.exit(0);

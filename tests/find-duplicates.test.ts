@@ -242,6 +242,37 @@ describe("collectCandidates", () => {
     const candidates = collectCandidates(sf, "fixture.ts", 1, 10);
     expect(candidates.length).toBe(0);
   });
+
+  test("skips low-value single-statement blocks", () => {
+    const sf = parse(
+      [
+        "class Parser {",
+        "  parse(): number {",
+        "    return 1;",
+        "  }",
+        "",
+        "  parseStatement(): number {",
+        "    if (true) {",
+        "      return 2;",
+        "    }",
+        "",
+        "    return 3;",
+        "  }",
+        "}",
+      ].join("\n"),
+    );
+
+    const candidates = collectCandidates(sf, "fixture.ts", 1, 1);
+    const blockSpans = candidates
+      .filter((candidate) => candidate.kindName === "Block")
+      .map(
+        (candidate) =>
+          String(candidate.lineStart) + "-" + String(candidate.lineEnd),
+      );
+
+    expect(blockSpans).not.toContain("2-4");
+    expect(blockSpans).not.toContain("7-9");
+  });
 });
 
 // ── suppressNested ────────────────────────────────────────────────────────────

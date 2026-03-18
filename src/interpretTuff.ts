@@ -18,6 +18,7 @@ type Token =
   | { type: "colon" }
   | { type: "equals" }
   | { type: "let" }
+  | { type: "mut" }
   | { type: "identifier"; name: string }
   | { type: "eof" };
 
@@ -41,7 +42,14 @@ type ASTNode =
       nodeType: "let";
       varName: string;
       init: ASTNode;
+      isMutable: boolean;
       explicitType?: string;
+      body: ASTNode;
+    }
+  | {
+      nodeType: "assignment";
+      varName: string;
+      value: ASTNode;
       body: ASTNode;
     }
   | {
@@ -116,6 +124,8 @@ function tokenize(input: string): Token[] {
       const ident = consumeWhile(/[a-zA-Z0-9_]/);
       if (ident === "let") {
         tokens.push({ type: "let" });
+      } else if (ident === "mut") {
+        tokens.push({ type: "mut" });
       } else {
         tokens.push({ type: "identifier", name: ident });
       }
@@ -133,20 +143,11 @@ function tokenize(input: string): Token[] {
       }
 
       // Validate single number within its type range
-      const range = TYPE_RANGES[typeStr];
-      if (value < range.min || value > range.max) {
-        throw new Error(
-          "Value " +
-            value +
-            " is out of range for type " +
-            typeStr +
-            " (" +
-            range.min +
-            " to " +
-            range.max +
-            ")",
-        );
-      }
+      validateValueInRange(
+        value,
+        typeStr,
+        TYPE_RANGES[typeStr].min + " to " + TYPE_RANGES[typeStr].max,
+      );
 
       tokens.push({ type: "number", value, typeStr });
       continue;
@@ -201,6 +202,10 @@ class Parser {
     return this.tokens[this.pos] || { type: "eof" };
   }
 
+  private peekNextToken(): Token {
+    return this.tokens[this.pos + 1] || { type: "eof" };
+  }
+
   private advance(): void {
     this.pos++;
   }
@@ -224,14 +229,7 @@ class Parser {
     const statements: ASTNode[] = [];
 
     while (this.currentToken().type !== "eof") {
-      if (this.currentToken().type === "let") {
-        statements.push(this.parseLetStatement());
-      } else {
-        statements.push(this.parseAdditive());
-        if (this.currentToken().type === "semicolon") {
-          this.advance();
-        }
-      }
+      statements.push(this.parseStatement());
     }
 
     if (statements.length === 1) {
@@ -240,8 +238,34 @@ class Parser {
     return { nodeType: "sequence", statements };
   }
 
+  private parseStatement(): ASTNode {
+    if (this.currentToken().type === "let") {
+      return this.parseLetStatement();
+    }
+
+    if (
+      this.currentToken().type === "identifier" &&
+      this.peekNextToken().type === "equals"
+    ) {
+      return this.parseAssignmentStatement();
+    }
+
+    const statement = this.parseAdditive();
+    if (this.currentToken().type === "semicolon") {
+      this.advance();
+    }
+    return statement;
+  }
+
   private parseLetStatement(): ASTNode {
     this.expect("let");
+
+    // Check for mut keyword
+    let isMutable = false;
+    if (this.currentToken().type === "mut") {
+      isMutable = true;
+      this.advance();
+    }
 
     // Parse variable name
     const nameToken = this.expect("identifier");
@@ -269,7 +293,33 @@ class Parser {
       nodeType: "let",
       varName,
       init,
+      isMutable,
       explicitType,
+      body,
+    };
+  }
+
+  private parseAssignmentStatement(): ASTNode {
+    // Parse variable name
+    const nameToken = this.expect("identifier");
+    const varName = (nameToken as Token & { type: "identifier" }).name;
+
+    // Parse equals
+    this.expect("equals");
+
+    // Parse value
+    const value = this.parseAdditive();
+
+    // Parse semicolon
+    this.expect("semicolon");
+
+    // Parse the body (rest of the statements)
+    const body = this.parseStatementSequence();
+
+    return {
+      nodeType: "assignment",
+      varName,
+      value,
       body,
     };
   }
@@ -341,7 +391,38 @@ class Parser {
   }
 }
 
-type Environment = Map<string, { value: number; typeStr: string }>;
+type Environment = Map<
+  string,
+  { value: number; typeStr: string; isMutable: boolean }
+>;
+
+function validateValueInRange(
+  value: number,
+  typeStr: string,
+  context?: string,
+): void {
+  const typeRange = TYPE_RANGES[typeStr];
+  if (value < typeRange.min || value > typeRange.max) {
+    throw new Error(
+      "Value " +
+        value +
+        " is out of range for type " +
+        typeStr +
+        (context ? " (" + context + ")" : ""),
+    );
+  }
+}
+
+function getOrThrowBinding(
+  varName: string,
+  env: Environment,
+): { value: number; typeStr: string; isMutable: boolean } {
+  const binding = env.get(varName);
+  if (!binding) {
+    throw new Error("Undefined variable: " + varName);
+  }
+  return binding;
+}
 
 function evaluate(
   node: ASTNode,
@@ -352,11 +433,7 @@ function evaluate(
       return { value: node.value, typeStr: node.typeStr };
 
     case "identifier": {
-      const binding = env.get(node.name);
-      if (!binding) {
-        throw new Error("Undefined variable: " + node.name);
-      }
-      return binding;
+      return getOrThrowBinding(node.name, env);
     }
 
     case "binary": {
@@ -412,9 +489,45 @@ function evaluate(
       // Determine the actual type (explicit type annotation or inferred)
       const varType = node.explicitType || initValue.typeStr;
 
+      // If explicit type is given, validate that the init value fits
+      if (node.explicitType) {
+        validateValueInRange(initValue.value, node.explicitType);
+      }
+
       // Create a new environment with the bound variable
       const newEnv = new Map(env);
-      newEnv.set(node.varName, { value: initValue.value, typeStr: varType });
+      newEnv.set(node.varName, {
+        value: initValue.value,
+        typeStr: varType,
+        isMutable: node.isMutable,
+      });
+
+      // Evaluate the body in the new environment
+      return evaluate(node.body, newEnv);
+    }
+
+    case "assignment": {
+      // Look up the variable
+      const binding = getOrThrowBinding(node.varName, env);
+
+      // Check that the variable is mutable
+      if (!binding.isMutable) {
+        throw new Error("Cannot assign to immutable variable: " + node.varName);
+      }
+
+      // Evaluate the value in the current environment
+      const newValue = evaluate(node.value, env);
+
+      // Validate the new value fits in the variable's type
+      validateValueInRange(newValue.value, binding.typeStr);
+
+      // Create a new environment with the updated variable
+      const newEnv = new Map(env);
+      newEnv.set(node.varName, {
+        value: newValue.value,
+        typeStr: binding.typeStr,
+        isMutable: binding.isMutable,
+      });
 
       // Evaluate the body in the new environment
       return evaluate(node.body, newEnv);

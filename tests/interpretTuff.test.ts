@@ -383,3 +383,170 @@ describe("interpretTuff let statements", () => {
     expect(() => interpretTuff("let x = 10U8 / 0U8;")).toThrow();
   });
 });
+
+describe("interpretTuff assignments", () => {
+  // Basic mutable binding and assignment
+  test("assignment > simple mutable binding: let mut x = 0U8; x => 0", () => {
+    expect(interpretTuff("let mut x = 0U8; x")).toBe(0);
+  });
+
+  test("assignment > single assignment: let mut x = 0U8; x = 5U8; x => 5", () => {
+    expect(interpretTuff("let mut x = 0U8; x = 5U8; x")).toBe(5);
+  });
+
+  test("assignment > assign and reference: let mut x = 10U8; x = 20U8; x => 20", () => {
+    expect(interpretTuff("let mut x = 10U8; x = 20U8; x")).toBe(20);
+  });
+
+  // Multiple assignments
+  test("assignment > multiple assignments: let mut x = 0U8; x = 1U8; x = 2U8; x => 2", () => {
+    expect(interpretTuff("let mut x = 0U8; x = 1U8; x = 2U8; x")).toBe(2);
+  });
+
+  test("assignment > four reassignments: let mut x = 10U8; x = 20U8; x = 30U8; x = 40U8; x => 40", () => {
+    expect(
+      interpretTuff("let mut x = 10U8; x = 20U8; x = 30U8; x = 40U8; x"),
+    ).toBe(40);
+  });
+
+  // Assignment in arithmetic
+  test("assignment > use after assignment in expression: let mut x = 5U8; x = 10U8; x + 5U8 => 15", () => {
+    expect(interpretTuff("let mut x = 5U8; x = 10U8; x + 5U8")).toBe(15);
+  });
+
+  test("assignment > assignment then multiplication: let mut x = 2U8; x = 3U8; x * 4U8 => 12", () => {
+    expect(interpretTuff("let mut x = 2U8; x = 3U8; x * 4U8")).toBe(12);
+  });
+
+  test("assignment > multiple mutable variables: let mut x = 5U8; let mut y = 10U8; x = 15U8; y = 20U8; x + y => 35", () => {
+    expect(
+      interpretTuff(
+        "let mut x = 5U8; let mut y = 10U8; x = 15U8; y = 20U8; x + y",
+      ),
+    ).toBe(35);
+  });
+
+  // Type specifications with assignment
+  test("assignment > explicit type on mutable: let mut x : U8 = 0U8; x = 50U8; x => 50", () => {
+    expect(interpretTuff("let mut x : U8 = 0U8; x = 50U8; x")).toBe(50);
+  });
+
+  test("assignment > explicit type U16: let mut x : U16 = 100U8; x = 200U16; x => 200", () => {
+    expect(interpretTuff("let mut x : U16 = 100U8; x = 200U16; x")).toBe(200);
+  });
+
+  // Assignment with arithmetic RHS
+  test("assignment > assign arithmetic expression: let mut x = 0U8; x = 2U8 + 3U8; x => 5", () => {
+    expect(interpretTuff("let mut x = 0U8; x = 2U8 + 3U8; x")).toBe(5);
+  });
+
+  test("assignment > assign with precedence: let mut x = 0U8; x = 2U8 + 3U8 * 4U8; x => 14", () => {
+    expect(interpretTuff("let mut x = 0U8; x = 2U8 + 3U8 * 4U8; x")).toBe(14);
+  });
+
+  test("assignment > assign with previous variable: let mut x = 10U8; x = x + 5U8; x => 15", () => {
+    expect(interpretTuff("let mut x = 10U8; x = x + 5U8; x")).toBe(15);
+  });
+
+  // Shadowing with mut
+  test("assignment > shadow immutable with mut: let x = 5U8; let mut x = 10U8; x = 15U8; x => 15", () => {
+    expect(interpretTuff("let x = 5U8; let mut x = 10U8; x = 15U8; x")).toBe(
+      15,
+    );
+  });
+
+  test("assignment > shadow mutable with mutable: let mut x = 5U8; let mut x = 10U8; x = 15U8; x => 15", () => {
+    expect(
+      interpretTuff("let mut x = 5U8; let mut x = 10U8; x = 15U8; x"),
+    ).toBe(15);
+  });
+
+  test("assignment > shadow with immutable new binding: let mut x = 5U8; let x = 10U8; x => 10", () => {
+    expect(interpretTuff("let mut x = 5U8; let x = 10U8; x")).toBe(10);
+  });
+
+  // Complex scoping with assignment
+  test("assignment > multiple mutable in scope: let mut a = 1U8; let mut b = 2U8; let mut c = 3U8; a = 10U8; b = 20U8; c = 30U8; a + b + c => 60", () => {
+    expect(
+      interpretTuff(
+        "let mut a = 1U8; let mut b = 2U8; let mut c = 3U8; a = 10U8; b = 20U8; c = 30U8; a + b + c",
+      ),
+    ).toBe(60);
+  });
+
+  // Whitespace variations
+  test("assignment > extra whitespace in assignment: let mut x = 0U8  ;  x = 5U8  ;  x => 5", () => {
+    expect(interpretTuff("let mut x = 0U8  ;  x = 5U8  ;  x")).toBe(5);
+  });
+
+  test("assignment > minimal whitespace: let mut x=0U8;x=5U8;x => 5", () => {
+    expect(interpretTuff("let mut x=0U8;x=5U8;x")).toBe(5);
+  });
+
+  // Error cases: assignment to immutable
+  test("assignment > error: cannot assign to immutable: let x = 5U8; x = 10U8; => Err", () => {
+    expect(() => interpretTuff("let x = 5U8; x = 10U8;")).toThrow();
+  });
+
+  test("assignment > error: shadowed immutable not mutable: let x = 5U8; let x = 10U8; x = 15U8; => Err", () => {
+    expect(() =>
+      interpretTuff("let x = 5U8; let x = 10U8; x = 15U8;"),
+    ).toThrow();
+  });
+
+  // Error cases: undefined variables
+  test("assignment > error: assign to undefined: x = 5U8; => Err", () => {
+    expect(() => interpretTuff("x = 5U8;")).toThrow();
+  });
+
+  test("assignment > error: assign to undefined in sequence: let mut x = 0U8; y = 5U8; => Err", () => {
+    expect(() => interpretTuff("let mut x = 0U8; y = 5U8;")).toThrow();
+  });
+
+  // Error cases: type violations
+  test("assignment > error: assign value out of range for type: let mut x = 0U8; x = 300U8; => Err", () => {
+    expect(() => interpretTuff("let mut x = 0U8; x = 300U8;")).toThrow();
+  });
+
+  test("assignment > error: assign wrong type U16 to U8 initial: let mut x : U8 = 0U8; x = 300U16; => Err", () => {
+    expect(() => interpretTuff("let mut x : U8 = 0U8; x = 300U16;")).toThrow();
+  });
+
+  test("assignment > error: assign overflow U8: let mut x = 0U8; x = 200U8 + 100U8; => Err", () => {
+    expect(() =>
+      interpretTuff("let mut x = 0U8; x = 200U8 + 100U8;"),
+    ).toThrow();
+  });
+
+  // Reference undefined variable in assignment RHS
+  test("assignment > error: undefined variable in RHS: let mut x = 0U8; x = y + 5U8; => Err", () => {
+    expect(() => interpretTuff("let mut x = 0U8; x = y + 5U8;")).toThrow();
+  });
+
+  // Edge cases
+  test("assignment > zero value: let mut x = 0U8; x = 0U8; x => 0", () => {
+    expect(interpretTuff("let mut x = 0U8; x = 0U8; x")).toBe(0);
+  });
+
+  test("assignment > max value U8: let mut x = 0U8; x = 255U8; x => 255", () => {
+    expect(interpretTuff("let mut x = 0U8; x = 255U8; x")).toBe(255);
+  });
+
+  test("assignment > max value U16: let mut x = 0U16; x = 65535U16; x => 65535", () => {
+    expect(interpretTuff("let mut x = 0U16; x = 65535U16; x")).toBe(65535);
+  });
+
+  test("assignment > increment pattern: let mut x = 0U8; x = x + 1U8; x = x + 1U8; x => 2", () => {
+    expect(interpretTuff("let mut x = 0U8; x = x + 1U8; x = x + 1U8; x")).toBe(
+      2,
+    );
+  });
+
+  test("assignment > accumulation: let mut sum = 0U8; sum = sum + 10U8; sum = sum + 20U8; sum => 30", () => {
+    expect(
+      interpretTuff(
+        "let mut sum = 0U8; sum = sum + 10U8; sum = sum + 20U8; sum",
+      ),
+    ).toBe(30);
+  });
+});

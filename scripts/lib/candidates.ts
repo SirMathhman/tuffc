@@ -48,13 +48,17 @@ export function collectCandidates(
     ts.SyntaxKind.VariableDeclaration,
   ]);
 
+  function isLowValueBlock(node: ts.Node): boolean {
+    return ts.isBlock(node) && node.statements.length <= 1;
+  }
+
   function visit(node: ts.Node): void {
     // Skip the synthetic EndOfFileToken
     if (node.kind === ts.SyntaxKind.EndOfFileToken) return;
 
     // Skip variable declaration nodes — their LHS binding name is noise;
     // the RHS expression is still visited and can be a candidate on its own.
-    const skipAsCandidate = SKIP_KINDS.has(node.kind);
+    const skipAsCandidate = SKIP_KINDS.has(node.kind) || isLowValueBlock(node);
 
     const nodeCount = countNodes(node);
 

@@ -54,14 +54,14 @@ export function formatText(classes: CloneClass[]): string {
 
   const lines: string[] = [
     "Found " + classes.length + " duplicate clone class(es).\n",
-    "─".repeat(72),
+    "-".repeat(72),
   ];
 
   for (const cls of classes) {
     lines.push(
       "Clone #" +
         cls.id +
-        " — hash " +
+        " - hash " +
         cls.hash +
         "  nodes: " +
         cls.nodeCount +
@@ -86,7 +86,7 @@ export function formatText(classes: CloneClass[]): string {
         }
       }
     }
-    lines.push("─".repeat(72));
+    lines.push("-".repeat(72));
   }
 
   return lines.join("\n");
