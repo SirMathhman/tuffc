@@ -54,13 +54,17 @@ function parseLiteral(input: string): { value: bigint; type: TuffTypeInfo } {
   const value = BigInt(match[1]);
   const type = TUFF_TYPES[match[3] as TuffSuffix];
 
+  enforceBounds(value, type, input);
+
+  return { value, type };
+}
+
+function enforceBounds(value: bigint, type: TuffTypeInfo, input: string): void {
   if (value < type.min || value > type.max) {
     throw new RangeError(
       `Tuff value out of bounds for ${type.suffix}: ${input}`,
     );
   }
-
-  return { value, type };
 }
 
 function promoteType(left: TuffTypeInfo, right: TuffTypeInfo): TuffTypeInfo {
@@ -128,11 +132,7 @@ export function interpretTuff(input: string): number {
       throw new Error(`Unsupported operator in Tuff input: ${input}`);
   }
 
-  if (result < resultType.min || result > resultType.max) {
-    throw new RangeError(
-      `Tuff value out of bounds for ${resultType.suffix}: ${input}`,
-    );
-  }
+  enforceBounds(result, resultType, input);
 
   return Number(result);
 }
