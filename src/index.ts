@@ -19,6 +19,28 @@ interface ExpressionParts {
   right: string;
 }
 
+interface OkResult<T> {
+  ok: true;
+  value: T;
+}
+
+interface ErrResult<E> {
+  ok: false;
+  error: E;
+}
+
+type Result<T, E> = OkResult<T> | ErrResult<E>;
+
+interface TuffError {
+  kind:
+    | "UnsupportedInput"
+    | "UnsupportedSuffix"
+    | "OutOfBounds"
+    | "DivisionByZero"
+    | "UnsupportedOperator";
+  message: string;
+}
+
 const TUFF_TYPES = new Map<TuffSuffix, TuffTypeInfo>([
   ["U8", { suffix: "U8", signed: false, bits: 8, min: 0n, max: 255n }],
   ["U16", { suffix: "U16", signed: false, bits: 16, min: 0n, max: 65535n }],
@@ -71,43 +93,74 @@ const TUFF_SUFFIXES: TuffSuffix[] = [
   "I64",
 ];
 
-function parseLiteral(input: string): LiteralValueResult {
+function ok<T>(value: T): OkResult<T> {
+  return { ok: true, value };
+}
+
+function err<E>(error: E): ErrResult<E> {
+  return { ok: false, error };
+}
+
+function unsupportedInput(input: string): ErrResult<TuffError> {
+  return err({
+    kind: "UnsupportedInput",
+    message: `Unsupported Tuff input: ${input}`,
+  });
+}
+
+function unsupportedSuffix(suffix: string): ErrResult<TuffError> {
+  return err({
+    kind: "UnsupportedSuffix",
+    message: `Unsupported Tuff suffix: ${suffix}`,
+  });
+}
+
+function outOfBounds(input: string, suffix: TuffSuffix): ErrResult<TuffError> {
+  return err({
+    kind: "OutOfBounds",
+    message: `Tuff value out of bounds for ${suffix}: ${input}`,
+  });
+}
+
+function divisionByZero(input: string): ErrResult<TuffError> {
+  return err({
+    kind: "DivisionByZero",
+    message: `Division by zero: ${input}`,
+  });
+}
+
+function unsupportedOperator(input: string): ErrResult<TuffError> {
+  return err({
+    kind: "UnsupportedOperator",
+    message: `Unsupported operator in Tuff input: ${input}`,
+  });
+}
+
+function parseLiteral(input: string): Result<LiteralValueResult, TuffError> {
   const suffix = getSuffix(input);
 
   if (!suffix) {
-    throw new Error(`Unsupported Tuff input: ${input}`);
+    return unsupportedInput(input);
   }
 
   const numericPart = input.slice(0, input.length - suffix.length);
 
   if (!isSignedIntegerText(numericPart)) {
-    throw new Error(`Unsupported Tuff input: ${input}`);
+    return unsupportedInput(input);
   }
 
   const value = BigInt(numericPart);
-  const type = getTuffType(suffix);
-
-  enforceBounds(value, type, input);
-
-  return { value, type };
-}
-
-function enforceBounds(value: bigint, type: TuffTypeInfo, input: string): void {
-  if (value < type.min || value > type.max) {
-    throw new RangeError(
-      `Tuff value out of bounds for ${type.suffix}: ${input}`,
-    );
-  }
-}
-
-function getTuffType(suffix: TuffSuffix): TuffTypeInfo {
   const type = TUFF_TYPES.get(suffix);
 
   if (!type) {
-    throw new Error(`Unsupported Tuff suffix: ${suffix}`);
+    return unsupportedSuffix(suffix);
   }
 
-  return type;
+  if (value < type.min || value > type.max) {
+    return outOfBounds(input, suffix);
+  }
+
+  return ok({ value, type });
 }
 
 function getSuffix(input: string): TuffSuffix | undefined {
@@ -146,7 +199,7 @@ function isSignedIntegerText(text: string): boolean {
   return true;
 }
 
-function parseExpression(input: string): ExpressionParts | undefined {
+function parseExpression(input: string): Result<ExpressionParts, TuffError> {
   for (let index = 1; index < input.length - 1; index += 1) {
     const operator = input[index];
 
@@ -161,10 +214,10 @@ function parseExpression(input: string): ExpressionParts | undefined {
       continue;
     }
 
-    return { left, operator, right };
+    return ok({ left, operator, right });
   }
 
-  return undefined;
+  return unsupportedInput(input);
 }
 
 function isExpressionOperator(value: string): boolean {
@@ -178,67 +231,84 @@ function promoteType(left: TuffTypeInfo, right: TuffTypeInfo): TuffTypeInfo {
   if (signed) {
     switch (bits) {
       case 8:
-        return getTuffType("I8");
+        return TUFF_TYPES.get("I8") as TuffTypeInfo;
       case 16:
-        return getTuffType("I16");
+        return TUFF_TYPES.get("I16") as TuffTypeInfo;
       case 32:
-        return getTuffType("I32");
+        return TUFF_TYPES.get("I32") as TuffTypeInfo;
       default:
-        return getTuffType("I64");
+        return TUFF_TYPES.get("I64") as TuffTypeInfo;
     }
   }
 
   switch (bits) {
     case 8:
-      return getTuffType("U8");
+      return TUFF_TYPES.get("U8") as TuffTypeInfo;
     case 16:
-      return getTuffType("U16");
+      return TUFF_TYPES.get("U16") as TuffTypeInfo;
     case 32:
-      return getTuffType("U32");
+      return TUFF_TYPES.get("U32") as TuffTypeInfo;
     default:
-      return getTuffType("U64");
+      return TUFF_TYPES.get("U64") as TuffTypeInfo;
   }
 }
 
-export function interpretTuff(input: string): number {
+export function interpretTuff(input: string): Result<number, TuffError> {
   const expressionMatch = parseExpression(input);
 
-  if (!expressionMatch) {
-    const { value } = parseLiteral(input);
-    return Number(value);
+  if (!expressionMatch.ok) {
+    const literal = parseLiteral(input);
+
+    if (!literal.ok) {
+      return literal;
+    }
+
+    return ok(Number(literal.value.value));
   }
 
-  const left = parseLiteral(expressionMatch.left);
-  const operator = expressionMatch.operator;
-  const right = parseLiteral(expressionMatch.right);
-  const resultType = promoteType(left.type, right.type);
+  const left = parseLiteral(expressionMatch.value.left);
+
+  if (!left.ok) {
+    return left;
+  }
+
+  const right = parseLiteral(expressionMatch.value.right);
+
+  if (!right.ok) {
+    return right;
+  }
+
+  const resultType = promoteType(left.value.type, right.value.type);
+  const operator = expressionMatch.value.operator;
 
   let result: bigint;
 
   switch (operator) {
     case "+":
-      result = left.value + right.value;
+      result = left.value.value + right.value.value;
       break;
     case "-":
-      result = left.value - right.value;
+      result = left.value.value - right.value.value;
       break;
     case "*":
-      result = left.value * right.value;
+      result = left.value.value * right.value.value;
       break;
     case "/":
-      if (right.value === 0n) {
-        throw new RangeError(`Division by zero: ${input}`);
+      if (right.value.value === 0n) {
+        return divisionByZero(input);
       }
 
-      result = left.value / right.value;
+      result = left.value.value / right.value.value;
       break;
     default:
-      throw new Error(`Unsupported operator in Tuff input: ${input}`);
+      return unsupportedOperator(input);
   }
 
-  enforceBounds(result, resultType, input);
+  if (result < resultType.min || result > resultType.max) {
+    return outOfBounds(input, resultType.suffix);
+  }
 
-  return Number(result);
+  return ok(Number(result));
 }
 
 export function main(): void {

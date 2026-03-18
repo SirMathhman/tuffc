@@ -13,7 +13,7 @@ describe("interpretTuff", () => {
     ["2147483647I32", 2147483647],
     ["-9223372036854775808I64", -9223372036854775808],
   ])("returns %s for %s", (input, expected) => {
-    expect(interpretTuff(input)).toBe(expected);
+    expect(interpretTuff(input)).toEqual({ ok: true, value: expected });
   });
 
   it.each([
@@ -23,7 +23,7 @@ describe("interpretTuff", () => {
     ["9U8 / 3U16", 3],
     ["1U8 + 2I16", 3],
   ])("evaluates %s to %s", (input, expected) => {
-    expect(interpretTuff(input)).toBe(expected);
+    expect(interpretTuff(input)).toEqual({ ok: true, value: expected });
   });
 
   it.each([
@@ -45,7 +45,7 @@ describe("interpretTuff", () => {
     "255U8 + 1U8",
     "1U8 / 0U8",
     "1U8 ^ 2U8",
-  ])("throws for invalid input %s", (input) => {
-    expect(() => interpretTuff(input)).toThrow();
+  ])("returns an error for invalid input %s", (input) => {
+    expect(interpretTuff(input).ok).toBe(false);
   });
 });

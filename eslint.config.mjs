@@ -33,6 +33,10 @@ export default [
           selector: "CallExpression[callee.name='RegExp']",
           message: "Do not construct regexes; parse manually.",
         },
+        {
+          selector: "ThrowStatement",
+          message: "Use a custom Result type instead of throw statements.",
+        },
       ],
     },
   },
