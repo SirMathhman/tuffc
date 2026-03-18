@@ -1,6 +1,7 @@
 type TuffSuffix = "U8" | "U16" | "U32" | "U64" | "I8" | "I16" | "I32" | "I64";
 
-interface TuffTypeInfo {
+interface NumericTypeInfo {
+  kind: "numeric";
   suffix: TuffSuffix;
   signed: boolean;
   bits: 8 | 16 | 32 | 64;
@@ -8,16 +9,14 @@ interface TuffTypeInfo {
   max: bigint;
 }
 
-interface LiteralValueResult {
-  value: bigint;
-  type: TuffTypeInfo;
+interface PointerTypeInfo {
+  kind: "pointer";
+  suffix: string;
+  target: NumericTypeInfo;
+  mutable: boolean;
 }
 
-interface ExpressionParts {
-  left: string;
-  operator: string;
-  right: string;
-}
+type TuffTypeInfo = NumericTypeInfo | PointerTypeInfo;
 
 interface OkResult<T> {
   ok: true;
@@ -39,17 +38,23 @@ interface TuffError {
     | "DivisionByZero"
     | "UnsupportedOperator"
     | "UndefinedVariable"
-    | "ImmutableVariable";
+    | "ImmutableVariable"
+    | "InvalidPointer";
   sourceCode: string;
   message: string;
   reason: string;
   suggestedFix: string;
 }
 
-interface BoundValue {
+interface LiteralValueResult {
   value: bigint;
-  type: TuffTypeInfo;
-  mutable: boolean;
+  type: NumericTypeInfo;
+}
+
+interface ExpressionParts {
+  left: string;
+  operator: string;
+  right: string;
 }
 
 interface LetStatement {
@@ -64,16 +69,71 @@ interface AssignmentStatement {
   value: string;
 }
 
-const TUFF_TYPES = new Map<TuffSuffix, TuffTypeInfo>([
-  ["U8", { suffix: "U8", signed: false, bits: 8, min: 0n, max: 255n }],
-  ["U16", { suffix: "U16", signed: false, bits: 16, min: 0n, max: 65535n }],
+interface DereferenceAssignmentStatement {
+  pointerName: string;
+  value: string;
+}
+
+interface NumericValue {
+  kind: "numeric";
+  value: bigint;
+  type: NumericTypeInfo;
+  mutable: boolean;
+}
+
+interface PointerValue {
+  kind: "pointer";
+  value: bigint;
+  type: PointerTypeInfo;
+  mutable: boolean;
+  target: string;
+}
+
+type BoundValue = NumericValue | PointerValue;
+
+interface UnaryPointerOperand {
+  name: string;
+  value: BoundValue;
+}
+
+const TUFF_TYPES = new Map<TuffSuffix, NumericTypeInfo>([
+  [
+    "U8",
+    {
+      kind: "numeric",
+      suffix: "U8",
+      signed: false,
+      bits: 8,
+      min: 0n,
+      max: 255n,
+    },
+  ],
+  [
+    "U16",
+    {
+      kind: "numeric",
+      suffix: "U16",
+      signed: false,
+      bits: 16,
+      min: 0n,
+      max: 65535n,
+    },
+  ],
   [
     "U32",
-    { suffix: "U32", signed: false, bits: 32, min: 0n, max: 4294967295n },
+    {
+      kind: "numeric",
+      suffix: "U32",
+      signed: false,
+      bits: 32,
+      min: 0n,
+      max: 4294967295n,
+    },
   ],
   [
     "U64",
     {
+      kind: "numeric",
       suffix: "U64",
       signed: false,
       bits: 64,
@@ -81,11 +141,32 @@ const TUFF_TYPES = new Map<TuffSuffix, TuffTypeInfo>([
       max: 18446744073709551615n,
     },
   ],
-  ["I8", { suffix: "I8", signed: true, bits: 8, min: -128n, max: 127n }],
-  ["I16", { suffix: "I16", signed: true, bits: 16, min: -32768n, max: 32767n }],
+  [
+    "I8",
+    {
+      kind: "numeric",
+      suffix: "I8",
+      signed: true,
+      bits: 8,
+      min: -128n,
+      max: 127n,
+    },
+  ],
+  [
+    "I16",
+    {
+      kind: "numeric",
+      suffix: "I16",
+      signed: true,
+      bits: 16,
+      min: -32768n,
+      max: 32767n,
+    },
+  ],
   [
     "I32",
     {
+      kind: "numeric",
       suffix: "I32",
       signed: true,
       bits: 32,
@@ -96,6 +177,7 @@ const TUFF_TYPES = new Map<TuffSuffix, TuffTypeInfo>([
   [
     "I64",
     {
+      kind: "numeric",
       suffix: "I64",
       signed: true,
       bits: 64,
@@ -115,6 +197,7 @@ const TUFF_SUFFIXES: TuffSuffix[] = [
   "I32",
   "I64",
 ];
+const DEFAULT_NUMERIC_TYPE = TUFF_TYPES.get("I32") as NumericTypeInfo;
 
 function ok<T>(value: T): OkResult<T> {
   return { ok: true, value };
@@ -129,9 +212,9 @@ function unsupportedInput(input: string): ErrResult<TuffError> {
     kind: "UnsupportedInput",
     sourceCode: input,
     message: `Unsupported Tuff input: ${input}`,
-    reason: "The input is not a supported literal or arithmetic expression.",
+    reason: "The input is not a supported literal, binding, or expression.",
     suggestedFix:
-      "Use a typed literal like 123U8 or an expression like 1U8 + 2U8.",
+      "Use a numeric literal, a let binding, or a supported arithmetic expression.",
   });
 }
 
@@ -189,27 +272,41 @@ function immutableVariable(input: string, name: string): ErrResult<TuffError> {
   });
 }
 
-function parseLiteral(input: string): Result<LiteralValueResult, TuffError> {
-  const suffix = getSuffix(input);
+function invalidPointer(input: string, detail: string): ErrResult<TuffError> {
+  return err({
+    kind: "InvalidPointer",
+    sourceCode: input,
+    message: `Invalid pointer usage: ${detail}`,
+    reason:
+      "The pointer operation requires a matching pointer or numeric value.",
+    suggestedFix: "Use & on a numeric variable or * on a pointer variable.",
+  });
+}
 
-  if (!suffix) {
-    return unsupportedInput(input);
-  }
+function isNumericValue(value: BoundValue): value is NumericValue {
+  return value.kind === "numeric";
+}
 
-  const numericPart = input.slice(0, input.length - suffix.length);
+function isPointerValue(value: BoundValue): value is PointerValue {
+  return value.kind === "pointer";
+}
 
-  if (!isSignedIntegerText(numericPart)) {
-    return unsupportedInput(input);
-  }
+function makePointerType(target: NumericTypeInfo): PointerTypeInfo {
+  return {
+    kind: "pointer",
+    suffix: `*${target.suffix}`,
+    target,
+    mutable: false,
+  };
+}
 
-  const value = BigInt(numericPart);
-  const type = TUFF_TYPES.get(suffix)!;
-
-  if (value < type.min || value > type.max) {
-    return outOfBounds(input, suffix);
-  }
-
-  return ok({ value, type });
+function makePointerTypeMutable(target: NumericTypeInfo): PointerTypeInfo {
+  return {
+    kind: "pointer",
+    suffix: `*mut ${target.suffix}`,
+    target,
+    mutable: true,
+  };
 }
 
 function getSuffix(input: string): TuffSuffix | undefined {
@@ -248,151 +345,40 @@ function isSignedIntegerText(text: string): boolean {
   return true;
 }
 
-function parseExpression(input: string): Result<ExpressionParts, TuffError> {
-  for (let index = 1; index < input.length - 1; index += 1) {
-    const operator = input[index];
+function parseLiteral(input: string): Result<LiteralValueResult, TuffError> {
+  const suffix = getSuffix(input);
 
-    if (!isExpressionOperator(operator)) {
-      continue;
-    }
-
-    const left = input.slice(0, index).trimEnd();
-    const right = input.slice(index + 1).trimStart();
-
-    return ok({ left, operator, right });
-  }
-
-  return unsupportedInput(input);
-}
-
-function parseLetStatement(input: string): Result<LetStatement, TuffError> {
-  const trimmed = input.trim();
-
-  if (!trimmed.startsWith("let")) {
-    return unsupportedInput(input);
-  }
-
-  let index = 3;
-
-  const afterLet = consumeRequiredWhitespace(input, trimmed, index);
-
-  if (!afterLet.ok) {
-    return afterLet;
-  }
-
-  index = afterLet.value;
-
-  let mutable = false;
-
-  if (trimmed.slice(index, index + 3) === "mut") {
-    mutable = true;
-    index += 3;
-
-    const afterMut = consumeRequiredWhitespace(input, trimmed, index);
-
-    if (!afterMut.ok) {
-      return afterMut;
-    }
-
-    index = afterMut.value;
-  }
-
-  const nameStart = index;
-
-  if (nameStart >= trimmed.length || !isIdentifierStart(trimmed[nameStart])) {
-    return unsupportedInput(input);
-  }
-
-  index += 1;
-
-  while (index < trimmed.length && isIdentifierPart(trimmed[index])) {
-    index += 1;
-  }
-
-  const name = trimmed.slice(nameStart, index);
-  index = skipWhitespace(trimmed, index);
-
-  let type: TuffTypeInfo | undefined;
-
-  if (index < trimmed.length && trimmed[index] === ":") {
-    index += 1;
-    index = skipWhitespace(trimmed, index);
-
-    const typeStart = index;
-
-    while (
-      index < trimmed.length &&
-      !isWhitespace(trimmed[index]) &&
-      trimmed[index] !== "="
-    ) {
-      index += 1;
-    }
-
-    const suffix = trimmed.slice(typeStart, index);
-
-    if (suffix.length === 0) {
+  if (!suffix) {
+    if (!isSignedIntegerText(input)) {
       return unsupportedInput(input);
     }
 
-    type = TUFF_TYPES.get(suffix as TuffSuffix);
-
-    if (!type) {
-      return unsupportedSuffix(input, suffix);
-    }
-
-    index = skipWhitespace(trimmed, index);
+    return ok({ value: BigInt(input), type: DEFAULT_NUMERIC_TYPE });
   }
 
-  if (index >= trimmed.length || trimmed[index] !== "=") {
+  const numericText = input.slice(0, input.length - suffix.length);
+
+  if (!isSignedIntegerText(numericText)) {
     return unsupportedInput(input);
   }
 
-  index += 1;
+  const type = TUFF_TYPES.get(suffix)!;
+  const value = BigInt(numericText);
 
-  const initializer = trimmed.slice(index).trim();
-
-  if (initializer.length === 0) {
-    return unsupportedInput(input);
+  if (value < type.min || value > type.max) {
+    return outOfBounds(input, suffix);
   }
 
-  return ok({ name, type, mutable, initializer });
+  return ok({ value, type });
 }
 
-function consumeRequiredWhitespace(
-  input: string,
-  text: string,
-  index: number,
-): Result<number, TuffError> {
-  if (index >= text.length || !isWhitespace(text[index])) {
-    return unsupportedInput(input);
-  }
-
-  return ok(skipWhitespace(text, index));
-}
-
-function parseAssignmentStatement(
-  input: string,
-): Result<AssignmentStatement, TuffError> {
-  const trimmed = input.trim();
-
-  if (trimmed.startsWith("let ")) {
-    return unsupportedInput(input);
-  }
-
-  const equalsIndex = trimmed.indexOf("=");
-
-  if (equalsIndex <= 0) {
-    return unsupportedInput(input);
-  }
-
-  const name = trimmed.slice(0, equalsIndex).trim();
-  const value = trimmed.slice(equalsIndex + 1).trim();
-
-  if (!isIdentifierText(name) || value.length === 0) {
-    return unsupportedInput(input);
-  }
-
-  return ok({ name, value });
+function isWhitespace(character: string): boolean {
+  return (
+    character === " " ||
+    character === "\t" ||
+    character === "\n" ||
+    character === "\r"
+  );
 }
 
 function skipWhitespace(text: string, startIndex: number): number {
@@ -405,22 +391,18 @@ function skipWhitespace(text: string, startIndex: number): number {
   return index;
 }
 
-function isWhitespace(value: string): boolean {
-  return value === " " || value === "\t" || value === "\n" || value === "\r";
-}
-
-function isIdentifierStart(value: string): boolean {
-  const code = value.charCodeAt(0);
+function isIdentifierStart(character: string): boolean {
+  const code = character.charCodeAt(0);
 
   return (
     code === 95 || (code >= 65 && code <= 90) || (code >= 97 && code <= 122)
   );
 }
 
-function isIdentifierPart(value: string): boolean {
-  const code = value.charCodeAt(0);
+function isIdentifierPart(character: string): boolean {
+  const code = character.charCodeAt(0);
 
-  return isIdentifierStart(value) || (code >= 48 && code <= 57);
+  return isIdentifierStart(character) || (code >= 48 && code <= 57);
 }
 
 function isIdentifierText(text: string): boolean {
@@ -467,6 +449,225 @@ function splitStatements(input: string): string[] {
   return statements;
 }
 
+function parseExpression(input: string): Result<ExpressionParts, TuffError> {
+  for (let index = 1; index < input.length - 1; index += 1) {
+    const operator = input[index];
+
+    if (
+      operator !== "+" &&
+      operator !== "-" &&
+      operator !== "*" &&
+      operator !== "/"
+    ) {
+      continue;
+    }
+
+    return ok({
+      left: input.slice(0, index).trimEnd(),
+      operator,
+      right: input.slice(index + 1).trimStart(),
+    });
+  }
+
+  return unsupportedInput(input);
+}
+
+function parseTypeReference(input: string): Result<TuffTypeInfo, TuffError> {
+  if (input.startsWith("*")) {
+    let mutable = false;
+    let remaining = input.slice(1).trim();
+
+    if (remaining.startsWith("mut ")) {
+      mutable = true;
+      remaining = remaining.slice(4);
+    }
+
+    const targetSuffix = remaining as TuffSuffix;
+    const target = TUFF_TYPES.get(targetSuffix);
+
+    if (!target) {
+      return unsupportedSuffix(input, input);
+    }
+
+    return ok(
+      mutable ? makePointerTypeMutable(target) : makePointerType(target),
+    );
+  }
+
+  const numeric = TUFF_TYPES.get(input as TuffSuffix);
+
+  if (!numeric) {
+    return unsupportedSuffix(input, input);
+  }
+
+  return ok(numeric);
+}
+
+function consumeRequiredWhitespace(
+  input: string,
+  text: string,
+  index: number,
+): Result<number, TuffError> {
+  if (index >= text.length || !isWhitespace(text[index])) {
+    return unsupportedInput(input);
+  }
+
+  return ok(skipWhitespace(text, index));
+}
+
+function parseLetStatement(input: string): Result<LetStatement, TuffError> {
+  const trimmed = input.trim();
+
+  if (!trimmed.startsWith("let")) {
+    return unsupportedInput(input);
+  }
+
+  let index = 3;
+
+  const afterLet = consumeRequiredWhitespace(input, trimmed, index);
+
+  if (!afterLet.ok) {
+    return afterLet;
+  }
+
+  index = afterLet.value;
+
+  let mutable = false;
+
+  if (trimmed.slice(index, index + 3) === "mut") {
+    mutable = true;
+    index += 3;
+
+    const afterMut = consumeRequiredWhitespace(input, trimmed, index);
+
+    if (!afterMut.ok) {
+      return afterMut;
+    }
+
+    index = afterMut.value;
+  }
+
+  if (index >= trimmed.length || !isIdentifierStart(trimmed[index])) {
+    return unsupportedInput(input);
+  }
+
+  const nameStart = index;
+  index += 1;
+
+  while (index < trimmed.length && isIdentifierPart(trimmed[index])) {
+    index += 1;
+  }
+
+  const name = trimmed.slice(nameStart, index);
+  index = skipWhitespace(trimmed, index);
+
+  let type: TuffTypeInfo | undefined;
+
+  if (index < trimmed.length && trimmed[index] === ":") {
+    index += 1;
+    index = skipWhitespace(trimmed, index);
+
+    const typeStart = index;
+
+    if (typeStart < trimmed.length && trimmed[typeStart] === "*") {
+      index = typeStart + 1;
+
+      if (index < trimmed.length && trimmed[index] === "m") {
+        index += 3;
+        index = skipWhitespace(trimmed, index);
+      }
+
+      while (
+        index < trimmed.length &&
+        !isWhitespace(trimmed[index]) &&
+        trimmed[index] !== "="
+      ) {
+        index += 1;
+      }
+    } else {
+      while (
+        index < trimmed.length &&
+        !isWhitespace(trimmed[index]) &&
+        trimmed[index] !== "="
+      ) {
+        index += 1;
+      }
+    }
+
+    const typeText = trimmed.slice(typeStart, index);
+
+    if (typeText.length === 0) {
+      return unsupportedInput(input);
+    }
+
+    const parsedType = parseTypeReference(typeText);
+
+    if (!parsedType.ok) {
+      return parsedType;
+    }
+
+    type = parsedType.value;
+    index = skipWhitespace(trimmed, index);
+  }
+
+  if (index >= trimmed.length || trimmed[index] !== "=") {
+    return unsupportedInput(input);
+  }
+
+  const initializer = trimmed.slice(index + 1).trim();
+
+  if (initializer.length === 0) {
+    return unsupportedInput(input);
+  }
+
+  return ok({ name, type, mutable, initializer });
+}
+
+function parseAssignmentStatement(
+  input: string,
+): Result<AssignmentStatement, TuffError> {
+  const trimmed = input.trim();
+  const equalsIndex = trimmed.indexOf("=");
+
+  if (equalsIndex <= 0) {
+    return unsupportedInput(input);
+  }
+
+  const name = trimmed.slice(0, equalsIndex).trim();
+  const value = trimmed.slice(equalsIndex + 1).trim();
+
+  if (!isIdentifierText(name) || value.length === 0) {
+    return unsupportedInput(input);
+  }
+
+  return ok({ name, value });
+}
+
+function parseDereferenceAssignmentStatement(
+  input: string,
+): Result<DereferenceAssignmentStatement, TuffError> {
+  const trimmed = input.trim();
+
+  if (!trimmed.startsWith("*")) {
+    return unsupportedInput(input);
+  }
+
+  const equalsIndex = trimmed.indexOf("=");
+
+  if (equalsIndex <= 1) {
+    return unsupportedInput(input);
+  }
+
+  const pointerName = trimmed.slice(1, equalsIndex).trim();
+  const value = trimmed.slice(equalsIndex + 1).trim();
+
+  if (!isIdentifierText(pointerName) || value.length === 0) {
+    return unsupportedInput(input);
+  }
+
+  return ok({ pointerName, value });
+}
+
 function resolveIdentifier(
   name: string,
   sourceCode: string,
@@ -481,36 +682,179 @@ function resolveIdentifier(
   return ok(value);
 }
 
+function resolveUnaryPointerOperand(
+  input: string,
+  operand: string,
+  environment: Map<string, BoundValue>,
+  detail: string,
+): Result<UnaryPointerOperand, TuffError> {
+  const name = operand.trim();
+
+  if (!isIdentifierText(name)) {
+    return invalidPointer(input, detail);
+  }
+
+  const resolved = resolveIdentifier(name, input, environment);
+
+  if (!resolved.ok) {
+    return resolved;
+  }
+
+  return ok({ name, value: resolved.value });
+}
+
+function buildAddressPointer(
+  name: string,
+  numericValue: NumericValue,
+): PointerValue {
+  return {
+    kind: "pointer",
+    value: 0n,
+    type: makePointerType(numericValue.type),
+    mutable: false,
+    target: name,
+  };
+}
+
+function buildMutableAddressPointer(
+  name: string,
+  numericValue: NumericValue,
+): PointerValue {
+  if (!numericValue.mutable) {
+    return {
+      kind: "pointer",
+      value: 0n,
+      type: makePointerTypeMutable(numericValue.type),
+      mutable: true,
+      target: "INVALID",
+    };
+  }
+
+  return {
+    kind: "pointer",
+    value: 0n,
+    type: makePointerTypeMutable(numericValue.type),
+    mutable: true,
+    target: name,
+  };
+}
+
+function buildDereferencedNumeric(
+  pointerValue: PointerValue,
+  environment: Map<string, BoundValue>,
+): NumericValue {
+  const pointedValue = environment.get(pointerValue.target) as NumericValue;
+
+  return {
+    kind: "numeric",
+    value: pointedValue.value,
+    type: pointedValue.type,
+    mutable: false,
+  };
+}
+
+function dereferencePointer(
+  input: string,
+  operand: string,
+  environment: Map<string, BoundValue>,
+): Result<BoundValue, TuffError> {
+  const resolved = resolveUnaryPointerOperand(
+    input,
+    operand,
+    environment,
+    "Dereference requires a named pointer variable.",
+  );
+
+  if (!resolved.ok) {
+    return resolved;
+  }
+
+  if (!isPointerValue(resolved.value.value)) {
+    const invalidMessage = `${resolved.value.name} cannot be used here.`;
+
+    return invalidPointer(input, invalidMessage);
+  }
+
+  return ok(buildDereferencedNumeric(resolved.value.value, environment));
+}
+
 function evaluateExpression(
   input: string,
   environment: Map<string, BoundValue>,
 ): Result<BoundValue, TuffError> {
   const trimmed = input.trim();
 
+  if (trimmed.startsWith("&")) {
+    let mutable = false;
+    let operand = trimmed.slice(1);
+
+    if (operand.trim().startsWith("mut ")) {
+      mutable = true;
+      operand = operand.trim().slice(4);
+    }
+
+    const resolved = resolveUnaryPointerOperand(
+      input,
+      operand,
+      environment,
+      "Address-of requires a named variable.",
+    );
+
+    if (!resolved.ok) {
+      return resolved;
+    }
+
+    if (!isNumericValue(resolved.value.value)) {
+      return invalidPointer(
+        input,
+        `${resolved.value.name} cannot be used here.`,
+      );
+    }
+
+    if (mutable) {
+      const result = buildMutableAddressPointer(
+        resolved.value.name,
+        resolved.value.value,
+      );
+
+      if (result.target === "INVALID") {
+        return invalidPointer(
+          input,
+          "Cannot take mutable address of immutable variable.",
+        );
+      }
+
+      return ok(result);
+    }
+
+    return ok(buildAddressPointer(resolved.value.name, resolved.value.value));
+  }
+
+  if (trimmed.startsWith("*")) {
+    return dereferencePointer(input, trimmed.slice(1), environment);
+  }
+
   const literal = parseLiteral(trimmed);
 
   if (literal.ok) {
     return ok({
+      kind: "numeric",
       value: literal.value.value,
       type: literal.value.type,
       mutable: false,
     });
   }
 
-  const literalError = literal;
-
-  if (isIdentifierText(trimmed)) {
-    return resolveIdentifier(trimmed, input, environment);
-  }
-
   const expression = parseExpression(trimmed);
 
   if (!expression.ok) {
-    if (literalError.error.kind !== "UnsupportedInput") {
-      return literalError;
+    if (isIdentifierText(trimmed)) {
+      return resolveIdentifier(trimmed, input, environment);
     }
 
-    return unsupportedInput(input);
+    return literal.error.kind === "UnsupportedInput"
+      ? unsupportedInput(input)
+      : literal;
   }
 
   const left = evaluateExpression(expression.value.left, environment);
@@ -525,12 +869,14 @@ function evaluateExpression(
     return right;
   }
 
-  const resultType = promoteType(left.value.type, right.value.type);
-  const operator = expression.value.operator;
+  if (!isNumericValue(left.value) || !isNumericValue(right.value)) {
+    return invalidPointer(input, "Arithmetic requires numeric operands.");
+  }
 
+  const resultType = promoteType(left.value.type, right.value.type);
   let result = 0n;
 
-  switch (operator as "+" | "-" | "*" | "/") {
+  switch (expression.value.operator) {
     case "+":
       result = left.value.value + right.value.value;
       break;
@@ -553,7 +899,12 @@ function evaluateExpression(
     return outOfBounds(input, resultType.suffix);
   }
 
-  return ok({ value: result, type: resultType, mutable: false });
+  return ok({
+    kind: "numeric",
+    value: result,
+    type: resultType,
+    mutable: false,
+  });
 }
 
 function evaluateStatement(
@@ -562,13 +913,79 @@ function evaluateStatement(
 ): Result<BoundValue, TuffError> {
   const letStatement = parseLetStatement(statement);
 
-  if (!letStatement.ok) {
-    const assignmentStatement = parseAssignmentStatement(statement);
+  if (letStatement.ok) {
+    const initializer = evaluateExpression(
+      letStatement.value.initializer,
+      environment,
+    );
 
-    if (!assignmentStatement.ok) {
-      return evaluateExpression(statement, environment);
+    if (!initializer.ok) {
+      return initializer;
     }
 
+    const inferredType = letStatement.value.type ?? initializer.value.type;
+
+    if (inferredType.kind === "numeric") {
+      if (!isNumericValue(initializer.value)) {
+        return invalidPointer(
+          statement,
+          "Initializer type does not match the declared type.",
+        );
+      }
+
+      if (
+        initializer.value.value < inferredType.min ||
+        initializer.value.value > inferredType.max
+      ) {
+        return outOfBounds(statement, inferredType.suffix);
+      }
+
+      const boundValue: NumericValue = {
+        kind: "numeric",
+        value: initializer.value.value,
+        type: inferredType,
+        mutable: letStatement.value.mutable,
+      };
+
+      environment.set(letStatement.value.name, boundValue);
+      return ok(boundValue);
+    }
+
+    if (!isPointerValue(initializer.value)) {
+      return invalidPointer(
+        statement,
+        "Initializer type does not match the declared type.",
+      );
+    }
+
+    const pointerInitializer = initializer.value;
+
+    if (inferredType.target.suffix !== pointerInitializer.type.target.suffix) {
+      return invalidPointer(
+        statement,
+        "Initializer type does not match the declared type.",
+      );
+    }
+
+    const boundValue: PointerValue = {
+      kind: "pointer",
+      value: pointerInitializer.value,
+      type: inferredType,
+      mutable: letStatement.value.mutable,
+      target: pointerInitializer.target,
+    };
+
+    environment.set(letStatement.value.name, boundValue);
+    return ok(boundValue);
+  }
+
+  if (statement.trim().startsWith("let")) {
+    return letStatement;
+  }
+
+  const assignmentStatement = parseAssignmentStatement(statement);
+
+  if (assignmentStatement.ok) {
     const existing = environment.get(assignmentStatement.value.name);
 
     if (!existing) {
@@ -588,87 +1005,168 @@ function evaluateStatement(
       return assigned;
     }
 
-    if (
-      assigned.value.value < existing.type.min ||
-      assigned.value.value > existing.type.max
-    ) {
-      return outOfBounds(statement, existing.type.suffix);
+    if (existing.type.kind === "numeric") {
+      if (!isNumericValue(assigned.value)) {
+        return invalidPointer(
+          statement,
+          "Assigned value type does not match the variable type.",
+        );
+      }
+
+      if (
+        assigned.value.value < existing.type.min ||
+        assigned.value.value > existing.type.max
+      ) {
+        return outOfBounds(statement, existing.type.suffix);
+      }
+
+      const updatedValue: NumericValue = {
+        kind: "numeric",
+        value: assigned.value.value,
+        type: existing.type,
+        mutable: existing.mutable,
+      };
+
+      environment.set(assignmentStatement.value.name, updatedValue);
+      return ok(updatedValue);
     }
 
-    const updatedValue: BoundValue = {
-      value: assigned.value.value,
+    if (!isPointerValue(assigned.value)) {
+      return invalidPointer(
+        statement,
+        "Assigned value type does not match the variable type.",
+      );
+    }
+
+    const pointerAssigned = assigned.value;
+
+    if (existing.type.mutable && !assigned.value.type.mutable) {
+      return invalidPointer(
+        statement,
+        "Cannot assign immutable pointer to mutable pointer binding.",
+      );
+    }
+
+    if (existing.type.target.suffix !== pointerAssigned.type.target.suffix) {
+      return invalidPointer(
+        statement,
+        "Assigned value type does not match the variable type.",
+      );
+    }
+
+    const updatedValue: PointerValue = {
+      kind: "pointer",
+      value: pointerAssigned.value,
       type: existing.type,
       mutable: existing.mutable,
+      target: pointerAssigned.target,
     };
 
     environment.set(assignmentStatement.value.name, updatedValue);
-
     return ok(updatedValue);
   }
 
-  const initializer = evaluateExpression(
-    letStatement.value.initializer,
-    environment,
-  );
+  const dereferenceAssignmentStatement =
+    parseDereferenceAssignmentStatement(statement);
 
-  if (!initializer.ok) {
-    return initializer;
+  if (dereferenceAssignmentStatement.ok) {
+    const pointerVar = environment.get(
+      dereferenceAssignmentStatement.value.pointerName,
+    );
+
+    if (!pointerVar) {
+      return undefinedVariable(
+        statement,
+        dereferenceAssignmentStatement.value.pointerName,
+      );
+    }
+
+    if (!isPointerValue(pointerVar)) {
+      return invalidPointer(
+        statement,
+        "Cannot dereference a non-pointer variable.",
+      );
+    }
+
+    if (!pointerVar.type.mutable) {
+      return invalidPointer(
+        statement,
+        "Cannot assign through an immutable pointer.",
+      );
+    }
+
+    const targetVar = environment.get(pointerVar.target) as NumericValue;
+
+    const assigned = evaluateExpression(
+      dereferenceAssignmentStatement.value.value,
+      environment,
+    );
+
+    if (!assigned.ok) {
+      return assigned;
+    }
+
+    if (!isNumericValue(assigned.value)) {
+      return invalidPointer(
+        statement,
+        "Cannot assign non-numeric value through pointer.",
+      );
+    }
+
+    if (
+      assigned.value.value < targetVar.type.min ||
+      assigned.value.value > targetVar.type.max
+    ) {
+      return outOfBounds(statement, targetVar.type.suffix);
+    }
+
+    const updatedTarget: NumericValue = {
+      kind: "numeric",
+      value: assigned.value.value,
+      type: targetVar.type,
+      mutable: true,
+    };
+
+    environment.set(pointerVar.target, updatedTarget);
+    return ok(updatedTarget);
   }
 
-  const inferredType = letStatement.value.type ?? initializer.value.type;
-
-  if (
-    initializer.value.value < inferredType.min ||
-    initializer.value.value > inferredType.max
-  ) {
-    return outOfBounds(statement, inferredType.suffix);
-  }
-
-  const boundValue: BoundValue = {
-    value: initializer.value.value,
-    type: inferredType,
-    mutable: letStatement.value.mutable,
-  };
-
-  environment.set(letStatement.value.name, boundValue);
-
-  return ok(boundValue);
+  return evaluateExpression(statement, environment);
 }
 
-function isExpressionOperator(value: string): boolean {
-  return value === "+" || value === "-" || value === "*" || value === "/";
-}
-
-function promoteType(left: TuffTypeInfo, right: TuffTypeInfo): TuffTypeInfo {
+function promoteType(
+  left: NumericTypeInfo,
+  right: NumericTypeInfo,
+): NumericTypeInfo {
   const bits = Math.max(left.bits, right.bits) as 8 | 16 | 32 | 64;
   const signed = left.signed || right.signed;
 
   if (signed) {
     switch (bits) {
       case 8:
-        return TUFF_TYPES.get("I8") as TuffTypeInfo;
+        return TUFF_TYPES.get("I8") as NumericTypeInfo;
       case 16:
-        return TUFF_TYPES.get("I16") as TuffTypeInfo;
+        return TUFF_TYPES.get("I16") as NumericTypeInfo;
       case 32:
-        return TUFF_TYPES.get("I32") as TuffTypeInfo;
+        return TUFF_TYPES.get("I32") as NumericTypeInfo;
       default:
-        return TUFF_TYPES.get("I64") as TuffTypeInfo;
+        return TUFF_TYPES.get("I64") as NumericTypeInfo;
     }
   }
 
   switch (bits) {
     case 8:
-      return TUFF_TYPES.get("U8") as TuffTypeInfo;
+      return TUFF_TYPES.get("U8") as NumericTypeInfo;
     case 16:
-      return TUFF_TYPES.get("U16") as TuffTypeInfo;
+      return TUFF_TYPES.get("U16") as NumericTypeInfo;
     case 32:
-      return TUFF_TYPES.get("U32") as TuffTypeInfo;
+      return TUFF_TYPES.get("U32") as NumericTypeInfo;
     default:
-      return TUFF_TYPES.get("U64") as TuffTypeInfo;
+      return TUFF_TYPES.get("U64") as NumericTypeInfo;
   }
 }
 
-export function interpretTuff(input: string): Result<number, TuffError> {
+function interpretTuff(input: string): Result<number, TuffError> {
   const statements = splitStatements(input);
 
   if (statements.length === 0) {
@@ -688,11 +1186,15 @@ export function interpretTuff(input: string): Result<number, TuffError> {
     lastValue = evaluated.value;
   }
 
-  const finalValue = lastValue as BoundValue;
+  if (!lastValue || lastValue.kind !== "numeric") {
+    return invalidPointer(input, "The final result must be numeric.");
+  }
 
-  return ok(Number(finalValue.value));
+  return ok(Number(lastValue.value));
 }
 
-export function main(): void {
+function main(): void {
   console.log("Hello from TypeScript!");
 }
+
+export { interpretTuff, main };

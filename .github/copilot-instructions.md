@@ -44,9 +44,11 @@
 - Do not reintroduce hooks-based workflows; the repo uses npm scripts instead.
 - Do not duplicate the commit workflow guidance here; see `.github/instructions/commit-workflow.instructions.md`.
 - Be careful with coverage-driven test changes: `npm run test` fails if coverage is below 100%.
+- Do not keep truly unreachable statements only to be defensive; remove/refactor dead code when it blocks coverage and cannot be hit by valid inputs.
 - Keep parser changes in sync with the existing tests and error semantics.
 
 ## Useful references
 
 - Commit workflow: `.github/instructions/commit-workflow.instructions.md`
+- Coverage/dead-code policy: `.github/instructions/coverage-dead-code.instructions.md`
 - Project overview: `README.md`

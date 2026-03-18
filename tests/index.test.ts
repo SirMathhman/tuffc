@@ -155,6 +155,225 @@ describe("interpretTuff", () => {
     expectErrorKind("let x : U8 = 255U16 + 1U16; x", "OutOfBounds");
   });
 
+  it("returns an error when a let initializer underflows the declared type", () => {
+    expectErrorKind("let x : U8 = -1I8; x", "OutOfBounds");
+  });
+
+  it("returns an error when a numeric let binding receives a pointer initializer", () => {
+    expectErrorKind("let y : I32 = 100; let x : U8 = &y; x", "InvalidPointer");
+  });
+
+  it("returns an error when a mutable assignment underflows the declared type", () => {
+    expectErrorKind("let mut x : U8 = 1U8; x = -1I8; x", "OutOfBounds");
+  });
+
+  it("returns an error when arithmetic uses a pointer operand", () => {
+    expectErrorKind(
+      "let x : I32 = 100; let y : *I32 = &x; y + 1I32",
+      "InvalidPointer",
+    );
+  });
+
+  it("returns an error when assigning a pointer to a numeric binding", () => {
+    expectErrorKind(
+      "let mut x : I32 = 100; let y : *I32 = &x; x = y; x",
+      "InvalidPointer",
+    );
+  });
+
+  it("evaluates a mutable pointer binding reassigned to the same address", () => {
+    expect(
+      interpretTuff("let x : I32 = 100; let mut y : *I32 = &x; y = &x; *y"),
+    ).toEqual({
+      ok: true,
+      value: 100,
+    });
+  });
+
+  it("returns an error when assigning a numeric value to a pointer binding", () => {
+    expectErrorKind(
+      "let x : I32 = 100; let mut y : *I32 = &x; y = 100; y",
+      "InvalidPointer",
+    );
+  });
+
+  it("returns an error when assigning a pointer with a mismatched target type", () => {
+    expectErrorKind(
+      "let x : I32 = 100; let mut y : *I32 = &x; let z : I64 = 200; y = &z; y",
+      "InvalidPointer",
+    );
+  });
+
+  it("evaluates a pointer binding and dereference", () => {
+    expect(interpretTuff("let x : I32 = 100; let y : *I32 = &x; *y")).toEqual({
+      ok: true,
+      value: 100,
+    });
+  });
+
+  it("evaluates a pointer binding across multiple statements and lines", () => {
+    expect(interpretTuff("let x : I32 = 100;\nlet y : *I32 = &x;\n*y")).toEqual(
+      {
+        ok: true,
+        value: 100,
+      },
+    );
+  });
+
+  it("returns an error when dereferencing a non-pointer", () => {
+    expectErrorKind("let x : I32 = 100; *x", "InvalidPointer");
+  });
+
+  it("returns an error when taking the address of an undefined variable", () => {
+    expectErrorKind("let y : *I32 = &x; y", "UndefinedVariable");
+  });
+
+  it("returns an error when the final value is a pointer", () => {
+    expectErrorKind("let x : I32 = 100; &x", "InvalidPointer");
+  });
+
+  it("returns an error when taking the address of a pointer variable", () => {
+    expectErrorKind(
+      "let x : I32 = 100; let y : *I32 = &x; &y",
+      "InvalidPointer",
+    );
+  });
+
+  it("returns an error when a pointer let binding targets the wrong type", () => {
+    expectErrorKind(
+      "let x : I32 = 100; let y : *I64 = &x; y",
+      "InvalidPointer",
+    );
+  });
+
+  it("returns an error when dereferencing a non-identifier operand", () => {
+    expectErrorKind("*&x", "InvalidPointer");
+  });
+
+  it("returns an error when declaring an unsupported pointer suffix", () => {
+    expectErrorKind("let y : *U9 = 100", "UnsupportedSuffix");
+  });
+
+  it("evaluates a mutable pointer with dereference assignment", () => {
+    expectOkValue(
+      "let mut x : I32 = 0; let y : *mut I32 = &mut x; *y = 100; x",
+      100,
+    );
+  });
+
+  it("evaluates multiple dereference assignments through the same mutable pointer", () => {
+    expectOkValue(
+      "let mut x : I32 = 0; let y : *mut I32 = &mut x; *y = 50; *y = 100; x",
+      100,
+    );
+  });
+
+  it("returns an error when assigning through an immutable pointer", () => {
+    expectErrorKind(
+      "let mut x : I32 = 100; let y : *I32 = &mut x; *y = 200; x",
+      "InvalidPointer",
+    );
+  });
+
+  it("returns an error when dereferencing and assigning with type mismatch", () => {
+    expectErrorKind(
+      "let mut x : I16 = 100; let y : *mut I32 = &mut x; *y = 50000I32; x",
+      "InvalidPointer",
+    );
+  });
+
+  it("returns an error when assigning non-&mut to a *mut binding", () => {
+    expectErrorKind(
+      "let mut x : I32 = 100; let y : *mut I32 = &x; y",
+      "InvalidPointer",
+    );
+  });
+
+  it("returns an error when assigning through a non-mutable pointer variable", () => {
+    expectErrorKind(
+      "let mut x : I32 = 100; let mut y : *I32 = &mut x; *y = 200; x",
+      "InvalidPointer",
+    );
+  });
+
+  it("returns an error when the target is not mutable during dereference assignment", () => {
+    expectErrorKind(
+      "let x : I32 = 100; let y : *mut I32 = &mut x; *y = 200; x",
+      "InvalidPointer",
+    );
+  });
+
+  it("returns an error when reassigning an immutable pointer binding", () => {
+    expectErrorKind(
+      "let mut x : I32 = 100; let mut z : I32 = 200; let y : *mut I32 = &mut x; y = &mut z; y",
+      "ImmutableVariable",
+    );
+  });
+
+  it("returns an error when dereferencing and assigning to a pointer with invalid target", () => {
+    expectErrorKind(
+      "let mut x : I32 = 100; let mut y : *mut I32 = &mut x; let z : I32 = 200; y = &mut z; *y = 50I32; x",
+      "InvalidPointer",
+    );
+  });
+
+  it("returns an error when assigning through pointer overflows target type", () => {
+    expectErrorKind(
+      "let mut x : I8 = 100; let y : *mut I8 = &mut x; *y = 128I32; x",
+      "OutOfBounds",
+    );
+  });
+
+  it("returns an error when assigning a pointer value through dereference", () => {
+    expectErrorKind(
+      "let mut x : I32 = 100; let y : *mut I32 = &mut x; let z : I32 = 200; let w : *I32 = &z; *y = w; x",
+      "InvalidPointer",
+    );
+  });
+
+  it("returns an error when dereferencing an undefined pointer", () => {
+    expectErrorKind("*undefined = 100I32", "UndefinedVariable");
+  });
+
+  it("returns an error when dereferencing a non-pointer in assignment", () => {
+    expectErrorKind("let x : I32 = 100; *x = 200I32; x", "InvalidPointer");
+  });
+
+  it("returns an error when assigning immutable pointer to mutable binding", () => {
+    expectErrorKind(
+      "let mut x : I32 = 100; let mut y : *mut I32 = &mut x; let z : I32 = 200; let w : *I32 = &z; y = w; y",
+      "InvalidPointer",
+    );
+  });
+
+  it("returns an error for underflow in dereference assignment", () => {
+    expectErrorKind(
+      "let mut x : U8 = 0; let y : *mut U8 = &mut x; *y = -1I8; x",
+      "OutOfBounds",
+    );
+  });
+
+  it("returns an error when assigning pointer through dereference", () => {
+    expectErrorKind(
+      "let mut x : I32 = 100; let mut y : *mut I32 = &mut x; let mut z : I32 = 200; let w : *I32 = &z; *y = w; x",
+      "InvalidPointer",
+    );
+  });
+
+  it("returns an error when dereference assignment value expression fails", () => {
+    expectErrorKind(
+      "let mut x : I32 = 100; let y : *mut I32 = &mut x; *y = 1U8 / 0U8; x",
+      "DivisionByZero",
+    );
+  });
+
+  it("returns an error when taking mutable address of immutable variable", () => {
+    expectErrorKind(
+      "let x : I32 = 100; let y : *mut I32 = &mut x; y",
+      "InvalidPointer",
+    );
+  });
+
   it.each([
     "let x : U8 x",
     "let x : U8 =",
@@ -171,6 +390,14 @@ describe("interpretTuff", () => {
     "let x U8 = 1U8",
     "let x : = 1U8",
     "let x : U9 = 1U8",
+    "let y : *I32 = 100",
+    "let y : *I32 = x",
+    "*x",
+    "&100",
+    "1=2",
+    "x =",
+    "*x =",
+    "*123 = 100I8",
   ])("returns an error for malformed or unresolved input %s", (input) => {
     const result = interpretTuff(input);
 
