@@ -741,6 +741,125 @@ describe("interpretTuff", () => {
     expect(result.ok).toBe(false);
   });
 
+  it("evaluates += on a numeric mutable binding", () => {
+    expectOkValue("let mut x = 3U8; x += 2U8; x", 5);
+  });
+
+  it("evaluates -= on a numeric mutable binding", () => {
+    expectOkValue("let mut x = 5U8; x -= 2U8; x", 3);
+  });
+
+  it("evaluates *= on a numeric mutable binding", () => {
+    expectOkValue("let mut x = 3U8; x *= 2U8; x", 6);
+  });
+
+  it("evaluates /= on a numeric mutable binding", () => {
+    expectOkValue("let mut x = 6U8; x /= 2U8; x", 3);
+  });
+
+  it("evaluates &&= on a Bool mutable binding", () => {
+    expectOkValue("let mut flag = true; flag &&= false; flag", 0);
+  });
+
+  it("evaluates ||= on a Bool mutable binding", () => {
+    expectOkValue("let mut flag = false; flag ||= true; flag", 1);
+  });
+
+  it("evaluates += through a mutable pointer dereference", () => {
+    expectOkValue(
+      "let mut x : I32 = 3; let p : *mut I32 = &mut x; *p += 2I32; x",
+      5,
+    );
+  });
+
+  it("returns an error when += is applied to an immutable binding", () => {
+    expectErrorKind("let x = 3U8; x += 1U8; x", "ImmutableVariable");
+  });
+
+  it("returns an error when += is applied to an undefined variable", () => {
+    expectErrorKind("x += 1U8", "UndefinedVariable");
+  });
+
+  it("returns an error when += mixes Bool and numeric types", () => {
+    expectErrorKind("let mut x = 3U8; x += true; x", "InvalidPointer");
+  });
+
+  it("returns an error when += overflows the declared type", () => {
+    expectErrorKind("let mut x = 255U8; x += 1U8; x", "OutOfBounds");
+  });
+
+  it("returns an error when &&= uses a numeric right operand", () => {
+    expectErrorKind(
+      "let mut flag = true; flag &&= 1U8; flag",
+      "InvalidPointer",
+    );
+  });
+
+  it("returns an error when += is applied through an immutable pointer", () => {
+    expectErrorKind(
+      "let mut x : I32 = 3; let p : *I32 = &x; *p += 1I32",
+      "InvalidPointer",
+    );
+  });
+
+  it("returns an error when += is applied through an undefined pointer", () => {
+    expectErrorKind("*x += 1U8", "UndefinedVariable");
+  });
+
+  it("returns an error when += right operand cannot be resolved", () => {
+    expectErrorKind("let mut x = 3U8; x += missing; x", "UndefinedVariable");
+  });
+
+  it("returns an error for malformed deref compound assignment", () => {
+    expectErrorKind("*123 += 1U8", "InvalidPointer");
+  });
+
+  it("returns an error when deref compound assignment target is not a pointer", () => {
+    expectErrorKind("let mut x = 3U8; *x += 1U8", "InvalidPointer");
+  });
+
+  it("returns an error when deref compound += rhs is not numeric", () => {
+    expectErrorKind(
+      "let mut x : I32 = 3; let p : *mut I32 = &mut x; *p += true",
+      "InvalidPointer",
+    );
+  });
+
+  it("returns an error when deref compound += rhs expression fails", () => {
+    expectErrorKind(
+      "let mut x : I32 = 3; let p : *mut I32 = &mut x; *p += missing",
+      "UndefinedVariable",
+    );
+  });
+
+  it("evaluates -= through a mutable pointer dereference", () => {
+    expectOkValue(
+      "let mut x : I32 = 5; let p : *mut I32 = &mut x; *p -= 2I32; x",
+      3,
+    );
+  });
+
+  it("evaluates *= through a mutable pointer dereference", () => {
+    expectOkValue(
+      "let mut x : I32 = 3; let p : *mut I32 = &mut x; *p *= 2I32; x",
+      6,
+    );
+  });
+
+  it("evaluates /= through a mutable pointer dereference", () => {
+    expectOkValue(
+      "let mut x : I32 = 6; let p : *mut I32 = &mut x; *p /= 2I32; x",
+      3,
+    );
+  });
+
+  it("returns an error when deref compound assignment overflows", () => {
+    expectErrorKind(
+      "let mut x : U8 = 200; let p : *mut U8 = &mut x; *p += 100U8",
+      "OutOfBounds",
+    );
+  });
+
   it("prints the greeting from main", () => {
     const spy = jest.spyOn(console, "log").mockImplementation(() => undefined);
 

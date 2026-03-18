@@ -86,9 +86,21 @@ interface AssignmentStatement {
   value: string;
 }
 
-interface DereferenceAssignmentStatement {
-  pointerName: string;
+interface CompoundAssignmentStatement {
+  name: string;
+  operator: string;
   value: string;
+}
+
+interface DereferenceCompoundAssignmentStatement {
+  pointerName: string;
+  operator: string;
+  value: string;
+}
+
+interface DerefContext {
+  pointerVar: PointerValue;
+  targetVar: NumericValue;
 }
 
 interface NumericValue {
@@ -1244,57 +1256,133 @@ function isComparisonEqualsUsage(
   );
 }
 
-function parseAssignmentStatement(
-  input: string,
-): Result<AssignmentStatement, TuffError> {
-  const trimmed = input.trim();
+function extractCompoundOperator(
+  trimmed: string,
+  equalsIndex: number,
+): string | undefined {
+  const prev = trimmed[equalsIndex - 1];
+
+  if (prev === "+" || prev === "-" || prev === "*" || prev === "/") {
+    return prev;
+  }
+
+  if (prev === "&" && trimmed[equalsIndex - 2] === "&") {
+    return "&&";
+  }
+
+  if (prev === "|" && trimmed[equalsIndex - 2] === "|") {
+    return "||";
+  }
+
+  return undefined;
+}
+
+interface EqualsBase {
+  operator: string;
+  lhs: string;
+  value: string;
+}
+
+function parseEqualsBase(
+  trimmed: string,
+  lhsStart: number,
+  minEqualsIndex: number,
+): EqualsBase | undefined {
   const equalsIndex = trimmed.indexOf("=");
 
-  if (equalsIndex <= 0) {
-    return unsupportedInput(input);
+  if (equalsIndex <= minEqualsIndex) {
+    return undefined;
   }
 
   if (isComparisonEqualsUsage(trimmed, equalsIndex)) {
-    return unsupportedInput(input);
+    return undefined;
   }
 
-  const name = trimmed.slice(0, equalsIndex).trim();
+  const operator = extractCompoundOperator(trimmed, equalsIndex) ?? "";
+  const lhs = trimmed.slice(lhsStart, equalsIndex - operator.length).trim();
   const value = trimmed.slice(equalsIndex + 1).trim();
 
-  if (!isIdentifierText(name) || value.length === 0) {
+  if (!isIdentifierText(lhs) || value.length === 0) {
+    return undefined;
+  }
+
+  return { operator, lhs, value };
+}
+
+function parseAssignmentStatement(
+  input: string,
+): Result<AssignmentStatement, TuffError> {
+  const base = parseEqualsBase(input.trim(), 0, 0);
+
+  if (!base || base.operator !== "") {
     return unsupportedInput(input);
   }
 
-  return ok({ name, value });
+  return ok({ name: base.lhs, value: base.value });
 }
 
-function parseDereferenceAssignmentStatement(
+function parseCompoundAssignmentStatement(
   input: string,
-): Result<DereferenceAssignmentStatement, TuffError> {
+): Result<CompoundAssignmentStatement, TuffError> {
+  const base = parseEqualsBase(input.trim(), 0, 1);
+
+  if (!base || base.operator === "") {
+    return unsupportedInput(input);
+  }
+
+  return ok({ name: base.lhs, operator: base.operator, value: base.value });
+}
+
+function parseAnyDereferenceAssignment(
+  input: string,
+): Result<DereferenceCompoundAssignmentStatement, TuffError> {
   const trimmed = input.trim();
 
   if (!trimmed.startsWith("*")) {
     return unsupportedInput(input);
   }
 
-  const equalsIndex = trimmed.indexOf("=");
+  const base = parseEqualsBase(trimmed, 1, 1);
 
-  if (equalsIndex <= 1) {
+  if (!base) {
     return unsupportedInput(input);
   }
 
-  if (isComparisonEqualsUsage(trimmed, equalsIndex)) {
-    return unsupportedInput(input);
+  return ok({
+    pointerName: base.lhs,
+    operator: base.operator,
+    value: base.value,
+  });
+}
+
+function validateMutableDerefTarget(
+  statement: string,
+  pointerName: string,
+  scope: Scope,
+): Result<DerefContext, TuffError> {
+  const ptrVar = resolveScopeBinding(scope, pointerName);
+
+  if (!ptrVar) {
+    return undefinedVariable(statement, pointerName);
   }
 
-  const pointerName = trimmed.slice(1, equalsIndex).trim();
-  const value = trimmed.slice(equalsIndex + 1).trim();
-
-  if (!isIdentifierText(pointerName) || value.length === 0) {
-    return unsupportedInput(input);
+  if (!isPointerValue(ptrVar)) {
+    return invalidPointer(
+      statement,
+      "Cannot dereference a non-pointer variable.",
+    );
   }
 
-  return ok({ pointerName, value });
+  if (!ptrVar.type.mutable) {
+    return invalidPointer(
+      statement,
+      "Cannot assign through an immutable pointer.",
+    );
+  }
+
+  const targetVar = resolveScopeBinding(scope, ptrVar.target) as NumericValue;
+
+  return ok({ pointerVar: ptrVar, targetVar });
 }
 
 function resolveIdentifier(
@@ -1825,6 +1913,78 @@ function evaluateStatement(
     return letStatement;
   }
 
+  const compoundAssignment = parseCompoundAssignmentStatement(statement);
+
+  if (compoundAssignment.ok) {
+    const existing = resolveScopeBinding(scope, compoundAssignment.value.name);
+
+    if (!existing) {
+      return undefinedVariable(statement, compoundAssignment.value.name);
+    }
+
+    if (!existing.mutable) {
+      return immutableVariable(statement, compoundAssignment.value.name);
+    }
+
+    const rhs = evaluateExpression(compoundAssignment.value.value, scope);
+
+    if (!rhs.ok) {
+      return rhs;
+    }
+
+    const op = compoundAssignment.value.operator;
+
+    if (op === "&&" || op === "||") {
+      if (!isBoolValue(existing) || !isBoolValue(rhs.value)) {
+        return invalidPointer(
+          statement,
+          "Logical compound assignment requires Bool operands.",
+        );
+      }
+
+      const newVal = makeBoolValue(
+        op === "&&"
+          ? existing.value && rhs.value.value
+          : existing.value || rhs.value.value,
+        existing.mutable,
+      );
+
+      assignScopeBinding(scope, compoundAssignment.value.name, newVal);
+      return ok(newVal);
+    }
+
+    if (!isNumericValue(existing) || !isNumericValue(rhs.value)) {
+      return invalidPointer(
+        statement,
+        "Arithmetic compound assignment requires numeric operands.",
+      );
+    }
+
+    let computed: bigint;
+
+    if (op === "+") {
+      computed = existing.value + rhs.value.value;
+    } else if (op === "-") {
+      computed = existing.value - rhs.value.value;
+    } else if (op === "*") {
+      computed = existing.value * rhs.value.value;
+    } else {
+      computed = existing.value / rhs.value.value;
+    }
+
+    if (computed < existing.type.min || computed > existing.type.max) {
+      return outOfBounds(statement, existing.type.suffix);
+    }
+
+    const updatedVal = makeNumericValue(
+      computed,
+      existing.type,
+      existing.mutable,
+    );
+    assignScopeBinding(scope, compoundAssignment.value.name, updatedVal);
+    return ok(updatedVal);
+  }
+
   const assignmentStatement = parseAssignmentStatement(statement);
 
   if (assignmentStatement.ok) {
@@ -1921,70 +2081,54 @@ function evaluateStatement(
     return ok(updatedValue);
   }
 
-  const dereferenceAssignmentStatement =
-    parseDereferenceAssignmentStatement(statement);
+  const anyDerefAssignment = parseAnyDereferenceAssignment(statement);
 
-  if (dereferenceAssignmentStatement.ok) {
-    const pointerVar = resolveScopeBinding(
-      scope,
-      dereferenceAssignmentStatement.value.pointerName,
-    );
-
-    if (!pointerVar) {
-      return undefinedVariable(
-        statement,
-        dereferenceAssignmentStatement.value.pointerName,
-      );
-    }
-
-    if (!isPointerValue(pointerVar)) {
-      return invalidPointer(
-        statement,
-        "Cannot dereference a non-pointer variable.",
-      );
-    }
-
-    if (!pointerVar.type.mutable) {
-      return invalidPointer(
-        statement,
-        "Cannot assign through an immutable pointer.",
-      );
-    }
-
-    const targetVar = resolveScopeBinding(
-      scope,
-      pointerVar.target,
-    ) as NumericValue;
-
-    const assigned = evaluateExpression(
-      dereferenceAssignmentStatement.value.value,
+  if (anyDerefAssignment.ok) {
+    const ctx = validateMutableDerefTarget(
+      statement,
+      anyDerefAssignment.value.pointerName,
       scope,
     );
 
-    if (!assigned.ok) {
-      return assigned;
+    if (!ctx.ok) {
+      return ctx;
     }
 
-    if (!isNumericValue(assigned.value)) {
+    const { pointerVar, targetVar } = ctx.value;
+
+    const rhs = evaluateExpression(anyDerefAssignment.value.value, scope);
+
+    if (!rhs.ok) {
+      return rhs;
+    }
+
+    if (!isNumericValue(rhs.value)) {
       return invalidPointer(
         statement,
         "Cannot assign non-numeric value through pointer.",
       );
     }
 
-    if (
-      assigned.value.value < targetVar.type.min ||
-      assigned.value.value > targetVar.type.max
-    ) {
+    const op = anyDerefAssignment.value.operator;
+    let computed: bigint;
+
+    if (op === "") {
+      computed = rhs.value.value;
+    } else if (op === "+") {
+      computed = targetVar.value + rhs.value.value;
+    } else if (op === "-") {
+      computed = targetVar.value - rhs.value.value;
+    } else if (op === "*") {
+      computed = targetVar.value * rhs.value.value;
+    } else {
+      computed = targetVar.value / rhs.value.value;
+    }
+
+    if (computed < targetVar.type.min || computed > targetVar.type.max) {
       return outOfBounds(statement, targetVar.type.suffix);
     }
 
-    const updatedTarget = makeNumericValue(
-      assigned.value.value,
-      targetVar.type,
-      true,
-    );
-
+    const updatedTarget = makeNumericValue(computed, targetVar.type, true);
     assignScopeBinding(scope, pointerVar.target, updatedTarget);
     return ok(updatedTarget);
   }
