@@ -1,0 +1,13 @@
+{
+  "name": "tuffc",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "test": "bun test",
+    "find-duplicates": "bun scripts/find-duplicates.ts"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "@types/node": "^20.0.0"
+  }
+}
