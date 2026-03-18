@@ -48,4 +48,21 @@ describe("interpretTuff", () => {
   ])("returns an error for invalid input %s", (input) => {
     expect(interpretTuff(input).ok).toBe(false);
   });
+
+  it("includes detailed error metadata", () => {
+    const result = interpretTuff("foo");
+
+    expect(result.ok).toBe(false);
+
+    if (!result.ok) {
+      expect(result.error).toEqual(
+        expect.objectContaining({
+          sourceCode: "foo",
+          message: expect.any(String),
+          reason: expect.any(String),
+          suggestedFix: expect.any(String),
+        }),
+      );
+    }
+  });
 });

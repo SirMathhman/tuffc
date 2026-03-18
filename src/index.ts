@@ -38,7 +38,10 @@ interface TuffError {
     | "OutOfBounds"
     | "DivisionByZero"
     | "UnsupportedOperator";
+  sourceCode: string;
   message: string;
+  reason: string;
+  suggestedFix: string;
 }
 
 const TUFF_TYPES = new Map<TuffSuffix, TuffTypeInfo>([
@@ -104,35 +107,55 @@ function err<E>(error: E): ErrResult<E> {
 function unsupportedInput(input: string): ErrResult<TuffError> {
   return err({
     kind: "UnsupportedInput",
+    sourceCode: input,
     message: `Unsupported Tuff input: ${input}`,
+    reason: "The input is not a supported literal or arithmetic expression.",
+    suggestedFix:
+      "Use a typed literal like 123U8 or an expression like 1U8 + 2U8.",
   });
 }
 
-function unsupportedSuffix(suffix: string): ErrResult<TuffError> {
+function unsupportedSuffix(
+  input: string,
+  suffix: string,
+): ErrResult<TuffError> {
   return err({
     kind: "UnsupportedSuffix",
+    sourceCode: input,
     message: `Unsupported Tuff suffix: ${suffix}`,
+    reason: "The literal suffix is not one of the supported Tuff families.",
+    suggestedFix: "Use one of U8, U16, U32, U64, I8, I16, I32, or I64.",
   });
 }
 
 function outOfBounds(input: string, suffix: TuffSuffix): ErrResult<TuffError> {
   return err({
     kind: "OutOfBounds",
+    sourceCode: input,
     message: `Tuff value out of bounds for ${suffix}: ${input}`,
+    reason:
+      "The numeric value is outside the allowed range for the target type.",
+    suggestedFix: "Choose a value within the type bounds or use a wider type.",
   });
 }
 
 function divisionByZero(input: string): ErrResult<TuffError> {
   return err({
     kind: "DivisionByZero",
+    sourceCode: input,
     message: `Division by zero: ${input}`,
+    reason: "Division requires a non-zero right-hand operand.",
+    suggestedFix: "Change the divisor to a non-zero typed literal.",
   });
 }
 
 function unsupportedOperator(input: string): ErrResult<TuffError> {
   return err({
     kind: "UnsupportedOperator",
+    sourceCode: input,
     message: `Unsupported operator in Tuff input: ${input}`,
+    reason: "Only +, -, *, and / are supported.",
+    suggestedFix: "Use one of the supported arithmetic operators.",
   });
 }
 
@@ -153,7 +176,7 @@ function parseLiteral(input: string): Result<LiteralValueResult, TuffError> {
   const type = TUFF_TYPES.get(suffix);
 
   if (!type) {
-    return unsupportedSuffix(suffix);
+    return unsupportedSuffix(input, suffix);
   }
 
   if (value < type.min || value > type.max) {
