@@ -860,6 +860,89 @@ describe("interpretTuff", () => {
     );
   });
 
+  // while statements
+
+  it("evaluates a basic while loop that runs to completion", () => {
+    expectOkValue("let mut x = 0U8; while (x < 3U8) { x += 1U8 }; x", 3);
+  });
+
+  it("evaluates a while loop with a single-statement body", () => {
+    expectOkValue("let mut x = 0U8; while (x < 5U8) x += 1U8; x", 5);
+  });
+
+  it("evaluates a while loop that never runs", () => {
+    expectOkValue("let mut x = 5U8; while (x < 3U8) { x += 1U8 }; x", 5);
+  });
+
+  it("evaluates a while loop that accumulates a value", () => {
+    expectOkValue(
+      "let mut i = 0U8; let mut sum = 0U8; while (i < 4U8) { i += 1U8; sum += i }; sum",
+      10,
+    );
+  });
+
+  it("evaluates a while loop body using a nested if-statement", () => {
+    expectOkValue(
+      "let mut x = 0U8; let mut c = 0U8; while (x < 6U8) { x += 1U8; if (x == 3U8) { c += 1U8 } }; c",
+      1,
+    );
+  });
+
+  it("returns unit from a while statement (not the body value)", () => {
+    const result = interpretTuff(
+      "let mut x = 0U8; while (x < 1U8) { x += 1U8 }",
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it("returns an error when the while condition does not evaluate to Bool", () => {
+    expectErrorKind("while (3U8) { }", "InvalidPointer");
+  });
+
+  it("returns an error when the while condition expression fails", () => {
+    expectErrorKind("while (missing) { }", "UndefinedVariable");
+  });
+
+  it("returns an error when the while body statement fails", () => {
+    expectErrorKind(
+      "let mut x = 0U8; while (x < 3U8) { x += missing }",
+      "UndefinedVariable",
+    );
+  });
+
+  it("returns an IterationLimit error when the loop exceeds 1024 iterations", () => {
+    expectErrorKind(
+      "let mut x = 0U8; while (true) { x += 0U8 }",
+      "IterationLimit",
+    );
+  });
+
+  it("returns an error for malformed while header (no parens)", () => {
+    const result = interpretTuff("while true { }");
+    expect(result.ok).toBe(false);
+  });
+
+  it("returns an error for malformed while header (empty condition)", () => {
+    const result = interpretTuff("while () { }");
+    expect(result.ok).toBe(false);
+  });
+
+  it("returns ok(undefined) when input starts with 'while' but is not a keyword", () => {
+    // 'whileish' is not a keyword so parseWhileStatement → ok(undefined) → falls through
+    const result = interpretTuff("whileish");
+    expect(result.ok).toBe(false);
+  });
+
+  it("returns an error when the while closing paren is missing", () => {
+    const result = interpretTuff("while (true { }");
+    expect(result.ok).toBe(false);
+  });
+
+  it("returns an error when there is no body after while condition", () => {
+    const result = interpretTuff("while (true)");
+    expect(result.ok).toBe(false);
+  });
+
   it("prints the greeting from main", () => {
     const spy = jest.spyOn(console, "log").mockImplementation(() => undefined);
 

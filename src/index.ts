@@ -44,7 +44,8 @@ interface TuffError {
     | "UnsupportedOperator"
     | "UndefinedVariable"
     | "ImmutableVariable"
-    | "InvalidPointer";
+    | "InvalidPointer"
+    | "IterationLimit";
   sourceCode: string;
   message: string;
   reason: string;
@@ -72,6 +73,11 @@ interface IfStatementParts {
   condition: string;
   thenBranch: string;
   elseBranch: string | undefined;
+}
+
+interface WhileStatement {
+  condition: string;
+  body: string;
 }
 
 interface LetStatement {
@@ -328,6 +334,17 @@ function invalidPointer(input: string, detail: string): ErrResult<TuffError> {
     reason:
       "The pointer operation requires a matching pointer or numeric value.",
     suggestedFix: "Use & on a numeric variable or * on a pointer variable.",
+  });
+}
+
+function iterationLimit(input: string): ErrResult<TuffError> {
+  return err({
+    kind: "IterationLimit",
+    sourceCode: input,
+    message: `While loop exceeded the 1024 iteration limit: ${input}`,
+    reason: "The loop condition remained true for more than 1024 iterations.",
+    suggestedFix:
+      "Ensure the loop condition eventually becomes false within 1024 steps.",
   });
 }
 
@@ -947,15 +964,17 @@ function findElseForIf(input: string, startIndex: number): number {
   return -1;
 }
 
-function parseIfHeader(
+interface ParenConditionResult {
+  condition: string;
+  afterIndex: number;
+}
+
+function parseParenCondition(
   input: string,
   trimmed: string,
-): Result<{ condition: string; branchStart: number }, TuffError> {
-  let index = 2;
-
-  if (index >= trimmed.length || !isWhitespace(trimmed[index])) {
-    return unsupportedInput(input);
-  }
+  startIndex: number,
+): Result<ParenConditionResult, TuffError> {
+  let index = startIndex;
 
   index = skipWhitespace(trimmed, index);
 
@@ -975,13 +994,33 @@ function parseIfHeader(
     return unsupportedInput(input);
   }
 
-  const branchStart = skipWhitespace(trimmed, conditionEnd + 1);
+  const afterIndex = skipWhitespace(trimmed, conditionEnd + 1);
 
-  if (branchStart >= trimmed.length) {
+  if (afterIndex >= trimmed.length) {
     return unsupportedInput(input);
   }
 
-  return ok({ condition, branchStart });
+  return ok({ condition, afterIndex });
+}
+
+function parseIfHeader(
+  input: string,
+  trimmed: string,
+): Result<{ condition: string; branchStart: number }, TuffError> {
+  if (trimmed.length < 3 || !isWhitespace(trimmed[2])) {
+    return unsupportedInput(input);
+  }
+
+  const parsed = parseParenCondition(input, trimmed, 2);
+
+  if (!parsed.ok) {
+    return parsed;
+  }
+
+  return ok({
+    condition: parsed.value.condition,
+    branchStart: parsed.value.afterIndex,
+  });
 }
 
 function parseIfBranches(
@@ -1087,6 +1126,32 @@ function parseIfStatement(
     IfStatementParts | undefined,
     TuffError
   >;
+}
+
+function parseWhileStatement(
+  input: string,
+): Result<WhileStatement | undefined, TuffError> {
+  const trimmed = input.trim();
+
+  if (!trimmed.startsWith("while")) {
+    return ok(undefined);
+  }
+
+  if (!startsWithKeywordAt(trimmed, "while", 0)) {
+    return ok(undefined);
+  }
+
+  let index = 5;
+
+  const parsed = parseParenCondition(input, trimmed, index);
+
+  if (!parsed.ok) {
+    return parsed;
+  }
+
+  const body = trimmed.slice(parsed.value.afterIndex).trim();
+
+  return ok({ condition: parsed.value.condition, body });
 }
 
 function parseTypeReference(input: string): Result<TuffTypeInfo, TuffError> {
@@ -1822,6 +1887,57 @@ function evaluateStatement(
 
     if (!selectedResult.ok) {
       return selectedResult;
+    }
+
+    return ok(UNIT_VALUE);
+  }
+
+  const whileStatement = parseWhileStatement(statement);
+
+  if (!whileStatement.ok) {
+    return whileStatement;
+  }
+
+  if (whileStatement.value) {
+    const ITERATION_LIMIT = 1024;
+    let iterations = 0;
+
+    while (iterations < ITERATION_LIMIT) {
+      const condition = evaluateExpression(
+        whileStatement.value.condition,
+        scope,
+      );
+
+      if (!condition.ok) {
+        return condition;
+      }
+
+      if (!isBoolValue(condition.value)) {
+        return invalidPointer(
+          statement,
+          "While condition must evaluate to Bool.",
+        );
+      }
+
+      if (!condition.value.value) {
+        break;
+      }
+
+      const bodyScope = createScope(scope);
+      const bodyResult = evaluateStatement(
+        whileStatement.value.body,
+        bodyScope,
+      );
+
+      if (!bodyResult.ok) {
+        return bodyResult;
+      }
+
+      iterations += 1;
+    }
+
+    if (iterations >= ITERATION_LIMIT) {
+      return iterationLimit(statement);
     }
 
     return ok(UNIT_VALUE);
