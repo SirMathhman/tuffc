@@ -8,17 +8,37 @@ describe("getGreeting", () => {
 
 describe("interpretTuff", () => {
   it.each([
-    ["100U8", 100],
     ["0U8", 0],
     ["255U8", 255],
-  ])("returns %i for %s", (input, expected) => {
+    ["65535U16", 65535],
+    ["4294967295U32", 4294967295],
+    ["18446744073709551615U64", 18446744073709551615],
+    ["-128I8", -128],
+    ["127I8", 127],
+    ["-32768I16", -32768],
+    ["2147483647I32", 2147483647],
+    ["-9223372036854775808I64", -9223372036854775808],
+  ])("returns %s for %s", (input, expected) => {
     expect(interpretTuff(input)).toBe(expected);
   });
 
-  it.each(["", "foo", "100U9", "U8", "-1U8"])(
-    "throws for invalid input %s",
-    (input) => {
-      expect(() => interpretTuff(input)).toThrow();
-    },
-  );
+  it.each([
+    "",
+    "foo",
+    "100U9",
+    "U8",
+    "-1U8",
+    "256U8",
+    "65536U16",
+    "4294967296U32",
+    "18446744073709551616U64",
+    "128I8",
+    "-129I8",
+    "32768I16",
+    "2147483648I32",
+    "9223372036854775808I64",
+    "-9223372036854775809I64",
+  ])("throws for invalid input %s", (input) => {
+    expect(() => interpretTuff(input)).toThrow();
+  });
 });
