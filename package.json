@@ -10,7 +10,8 @@
     "start": "node dist/index.js",
     "clean": "rimraf dist",
     "find-duplicates:token": "pmd cpd --dir src,tests --language typescript --minimum-tokens 35 --ignore-identifiers",
-    "precommit": "npm test && npm run find-duplicates:token"
+    "precommit": "npm test && npm run find-duplicates:token",
+    "prepare": "husky"
   },
   "devDependencies": {
     "@typescript-eslint/parser": "^8.0.0",
