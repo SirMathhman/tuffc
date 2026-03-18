@@ -82,6 +82,15 @@ function testSuppressNested(
   }
 }
 
+function assertCanonicalizeBehavior(
+  code1: string,
+  code2: string,
+  opts: CanonicalizeOptions,
+  expectedMatch: boolean,
+): void {
+  expect(testCanonicalize(code1, code2, opts)).toBe(expectedMatch);
+}
+
 // ── stableHash ────────────────────────────────────────────────────────────────
 
 describe("stableHash", () => {
@@ -141,24 +150,22 @@ describe("canonicalize", () => {
 
   test("normalizeIdentifiers=true: alpha-renamed code is identical", () => {
     const opts = { ...DEFAULT_OPTIONS, normalizeIdentifiers: true };
-    expect(
-      testCanonicalize(
-        "function add(a: number, b: number): number { return a + b; }",
-        "function sum(x: number, y: number): number { return x + y; }",
-        opts,
-      ),
-    ).toBe(true);
+    assertCanonicalizeBehavior(
+      "function add(a: number, b: number): number { return a + b; }",
+      "function sum(x: number, y: number): number { return x + y; }",
+      opts,
+      true,
+    );
   });
 
   test("normalizeIdentifiers=false: alpha-renamed code differs", () => {
     const opts = { ...DEFAULT_OPTIONS, normalizeIdentifiers: false };
-    expect(
-      testCanonicalize(
-        "function add(a: number, b: number): number { return a + b; }",
-        "function sum(x: number, y: number): number { return x + y; }",
-        opts,
-      ),
-    ).toBe(false);
+    assertCanonicalizeBehavior(
+      "function add(a: number, b: number): number { return a + b; }",
+      "function sum(x: number, y: number): number { return x + y; }",
+      opts,
+      false,
+    );
   });
 
   test("structurally different code produces different canonical form", () => {
@@ -173,24 +180,22 @@ describe("canonicalize", () => {
 
   test("normalizeLiterals=true: different literal values produce same form", () => {
     const opts = { ...DEFAULT_OPTIONS, normalizeLiterals: true };
-    expect(
-      testCanonicalize(
-        'function f() { return "hello"; }',
-        'function f() { return "world"; }',
-        opts,
-      ),
-    ).toBe(true);
+    assertCanonicalizeBehavior(
+      'function f() { return "hello"; }',
+      'function f() { return "world"; }',
+      opts,
+      true,
+    );
   });
 
   test("normalizeLiterals=false: different literal values produce different form", () => {
     const opts = { ...DEFAULT_OPTIONS, normalizeLiterals: false };
-    expect(
-      testCanonicalize(
-        'function f() { return "hello"; }',
-        'function f() { return "world"; }',
-        opts,
-      ),
-    ).toBe(false);
+    assertCanonicalizeBehavior(
+      'function f() { return "hello"; }',
+      'function f() { return "world"; }',
+      opts,
+      false,
+    );
   });
 
   test("keepTypeAnnotations=false: same logic with different types matches", () => {
