@@ -58,6 +58,19 @@ describe("interpretTuff", () => {
     ["let flag = false; !flag", 1],
     ["let mut flag : Bool = true; flag = false; flag", 0],
     ["let mut a : Bool = true; let b : Bool = false; a = a && !b; a", 1],
+    ["1U8 == 1U8", 1],
+    ["1U8 != 2U8", 1],
+    ["1U8 < 2U8", 1],
+    ["2U8 <= 2U8", 1],
+    ["3U8 > 2U8", 1],
+    ["3U8 >= 3U8", 1],
+    ["true == true", 1],
+    ["true != false", 1],
+    ["let x : I32 = 100; let y : *I32 = &x; let z : *I32 = &x; y == z", 1],
+    [
+      "let x : I32 = 100; let y : *I32 = &x; let z : I32 = 200; let w : *I32 = &z; y != w",
+      1,
+    ],
   ])("evaluates Bool expression %s to %s", (input, expected) => {
     expectOkValue(input, expected);
   });
@@ -124,6 +137,40 @@ describe("interpretTuff", () => {
       "let mut flag : Bool = true; flag = 1U8; flag",
       "InvalidPointer",
     );
+  });
+
+  it("returns an error when comparison mixes Bool and numeric values", () => {
+    expectErrorKind("true == 1U8", "InvalidPointer");
+  });
+
+  it("returns an error when relational comparison uses Bool operands", () => {
+    expectErrorKind("true < false", "InvalidPointer");
+  });
+
+  it("returns an error when relational comparison uses pointer operands", () => {
+    expectErrorKind(
+      "let x : I32 = 100; let y : *I32 = &x; y < y",
+      "InvalidPointer",
+    );
+  });
+
+  it("returns an error when pointer comparison uses unsupported operator", () => {
+    expectErrorKind(
+      "let x : I32 = 100; let y : *I32 = &x; y >= y",
+      "InvalidPointer",
+    );
+  });
+
+  it("returns an error when comparison left operand cannot be resolved", () => {
+    expectErrorKind("missingLeft == 1U8", "UndefinedVariable");
+  });
+
+  it("returns an error when comparison right operand cannot be resolved", () => {
+    expectErrorKind("1U8 == missingRight", "UndefinedVariable");
+  });
+
+  it("returns an error for chained comparison operators", () => {
+    expectErrorKind("1U8 < 2U8 < 3U8", "UnsupportedInput");
   });
 
   it("includes detailed error metadata", () => {
@@ -497,6 +544,8 @@ describe("interpretTuff", () => {
     "x =",
     "*x =",
     "*123 = 100I8",
+    "1U8 <",
+    "*x == 100I8",
   ])("returns an error for malformed or unresolved input %s", (input) => {
     const result = interpretTuff(input);
 

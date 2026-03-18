@@ -655,6 +655,64 @@ function parseExpression(input: string): Result<ExpressionParts, TuffError> {
   return unsupportedInput(input);
 }
 
+function parseComparisonExpression(
+  input: string,
+): Result<ExpressionParts | undefined, TuffError> {
+  const twoCharacterOperators = ["==", "!=", "<=", ">="];
+  const oneCharacterOperators = ["<", ">"];
+  const matches: Array<{ index: number; operator: string }> = [];
+
+  for (let index = 0; index < input.length; index += 1) {
+    let matchedOperator: string | undefined;
+
+    for (const operator of twoCharacterOperators) {
+      if (input.slice(index, index + 2) === operator) {
+        matchedOperator = operator;
+        break;
+      }
+    }
+
+    if (!matchedOperator) {
+      for (const operator of oneCharacterOperators) {
+        if (input[index] === operator) {
+          matchedOperator = operator;
+          break;
+        }
+      }
+    }
+
+    if (matchedOperator) {
+      matches.push({ index, operator: matchedOperator });
+
+      if (matchedOperator.length === 2) {
+        index += 1;
+      }
+    }
+  }
+
+  if (matches.length === 0) {
+    return ok(undefined);
+  }
+
+  if (matches.length > 1) {
+    return unsupportedInput(input);
+  }
+
+  const match = matches[0];
+  const left = input.slice(0, match.index).trimEnd();
+  const right = input.slice(match.index + match.operator.length).trimStart();
+
+  if (left.length === 0 || right.length === 0) {
+    return unsupportedInput(input);
+  }
+
+  return ok({
+    left,
+    operator: match.operator,
+    right,
+  });
+}
+
 function parseLogicalExpression(
   input: string,
 ): Result<ExpressionParts, TuffError> {
@@ -842,6 +900,18 @@ function parseLetStatement(input: string): Result<LetStatement, TuffError> {
   return ok({ name, type, mutable, initializer });
 }
 
+function isComparisonEqualsUsage(
+  trimmed: string,
+  equalsIndex: number,
+): boolean {
+  return (
+    (equalsIndex < trimmed.length - 1 && trimmed[equalsIndex + 1] === "=") ||
+    trimmed[equalsIndex - 1] === "!" ||
+    trimmed[equalsIndex - 1] === "<" ||
+    trimmed[equalsIndex - 1] === ">"
+  );
+}
+
 function parseAssignmentStatement(
   input: string,
 ): Result<AssignmentStatement, TuffError> {
@@ -849,6 +919,10 @@ function parseAssignmentStatement(
   const equalsIndex = trimmed.indexOf("=");
 
   if (equalsIndex <= 0) {
+    return unsupportedInput(input);
+  }
+
+  if (isComparisonEqualsUsage(trimmed, equalsIndex)) {
     return unsupportedInput(input);
   }
 
@@ -874,6 +948,10 @@ function parseDereferenceAssignmentStatement(
   const equalsIndex = trimmed.indexOf("=");
 
   if (equalsIndex <= 1) {
+    return unsupportedInput(input);
+  }
+
+  if (isComparisonEqualsUsage(trimmed, equalsIndex)) {
     return unsupportedInput(input);
   }
 
@@ -1055,6 +1133,70 @@ function evaluateExpression(
         false,
       ),
     );
+  }
+
+  const comparisonExpression = parseComparisonExpression(trimmed);
+
+  if (!comparisonExpression.ok) {
+    return comparisonExpression;
+  }
+
+  if (comparisonExpression.value) {
+    const left = evaluateExpression(comparisonExpression.value.left, scope);
+
+    if (!left.ok) {
+      return left;
+    }
+
+    const right = evaluateExpression(comparisonExpression.value.right, scope);
+
+    if (!right.ok) {
+      return right;
+    }
+
+    const operator = comparisonExpression.value.operator;
+
+    if (operator === "==" || operator === "!=") {
+      let result: boolean;
+
+      if (isNumericValue(left.value) && isNumericValue(right.value)) {
+        result = left.value.value === right.value.value;
+      } else if (isBoolValue(left.value) && isBoolValue(right.value)) {
+        result = left.value.value === right.value.value;
+      } else if (isPointerValue(left.value) && isPointerValue(right.value)) {
+        result =
+          left.value.target === right.value.target &&
+          left.value.type.target.suffix === right.value.type.target.suffix;
+      } else {
+        return invalidPointer(
+          input,
+          "Comparison requires operands of compatible types.",
+        );
+      }
+
+      return ok(makeBoolValue(operator === "==" ? result : !result, false));
+    }
+
+    if (!isNumericValue(left.value) || !isNumericValue(right.value)) {
+      return invalidPointer(
+        input,
+        "Relational comparison requires numeric operands.",
+      );
+    }
+
+    let result = false;
+
+    if (operator === "<") {
+      result = left.value.value < right.value.value;
+    } else if (operator === "<=") {
+      result = left.value.value <= right.value.value;
+    } else if (operator === ">") {
+      result = left.value.value > right.value.value;
+    } else {
+      result = left.value.value >= right.value.value;
+    }
+
+    return ok(makeBoolValue(result, false));
   }
 
   if (trimmed.startsWith("&")) {
