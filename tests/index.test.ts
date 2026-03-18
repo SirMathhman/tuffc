@@ -23,6 +23,16 @@ describe("interpretTuff", () => {
   });
 
   it.each([
+    ["1U8 + 2U8", 3],
+    ["7U16 - 3U8", 4],
+    ["3U8 * 4U16", 12],
+    ["9U8 / 3U16", 3],
+    ["1U8 + 2I16", 3],
+  ])("evaluates %s to %s", (input, expected) => {
+    expect(interpretTuff(input)).toBe(expected);
+  });
+
+  it.each([
     "",
     "foo",
     "100U9",
@@ -38,6 +48,9 @@ describe("interpretTuff", () => {
     "2147483648I32",
     "9223372036854775808I64",
     "-9223372036854775809I64",
+    "255U8 + 1U8",
+    "1U8 / 0U8",
+    "1U8 ^ 2U8",
   ])("throws for invalid input %s", (input) => {
     expect(() => interpretTuff(input)).toThrow();
   });
