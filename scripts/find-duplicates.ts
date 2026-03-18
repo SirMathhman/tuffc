@@ -103,7 +103,7 @@ function parseArgs(argv: string[]): CliOptions {
         if (!arg.startsWith("--")) {
           opts.paths.push(arg);
         } else {
-          console.error(`Unknown option: ${arg}`);
+          console.error("Unknown option: " + arg);
           process.exit(1);
         }
     }
@@ -117,23 +117,25 @@ function parseArgs(argv: string[]): CliOptions {
 }
 
 function printHelp(): void {
-  console.log(`
-find-duplicates — AST-level duplicate code detector for TypeScript
-
-Usage:
-  bun scripts/find-duplicates.ts [options] [paths...]
-
-Options:
-  --min-nodes  <n>         Min AST node count per candidate   (default: 25)
-  --min-lines  <n>         Min source-line span per candidate (default: 3)
-  --min-occurrences <n>    Min occurrences to surface a clone (default: 2)
-  --no-normalize-ids       Exact identifier matching (disables Type-2 detection)
-  --normalize-literals     Normalise string/number literal values
-  --no-type-annotations    Exclude type annotations from the canonical form
-  --suppress-nested        Hide clone classes subsumed by larger ones
-  --json                   Machine-readable JSON output
-  --help                   Show this help
-`);
+  console.log(
+    "\n" +
+      "find-duplicates — AST-level duplicate code detector for TypeScript\n" +
+      "\n" +
+      "Usage:\n" +
+      "  bun scripts/find-duplicates.ts [options] [paths...]\n" +
+      "\n" +
+      "Options:\n" +
+      "  --min-nodes  <n>         Min AST node count per candidate   (default: 25)\n" +
+      "  --min-lines  <n>         Min source-line span per candidate (default: 3)\n" +
+      "  --min-occurrences <n>    Min occurrences to surface a clone (default: 2)\n" +
+      "  --no-normalize-ids       Exact identifier matching (disables Type-2 detection)\n" +
+      "  --normalize-literals     Normalise string/number literal values\n" +
+      "  --no-type-annotations    Exclude type annotations from the canonical form\n" +
+      "  --suppress-nested        Hide clone classes subsumed by larger ones\n" +
+      "  --json                   Machine-readable JSON output\n" +
+      "  --help                   Show this help\n" +
+      "",
+  );
 }
 
 // ── File discovery ─────────────────────────────────────────────────────────────

@@ -48,7 +48,7 @@ export function canonicalize(
 
   function getCanonicalId(name: string): string {
     if (!identMap.has(name)) {
-      identMap.set(name, `$${identCounter++}`);
+      identMap.set(name, "$" + identCounter++);
     }
     return identMap.get(name)!;
   }
@@ -73,24 +73,26 @@ export function canonicalize(
           ts.isSetAccessorDeclaration(n.parent)) &&
         n.parent.name === n;
       if (options.normalizeIdentifiers && !isPropertyName) {
-        return `(Id:${getCanonicalId(text)})`;
+        return "(Id:" + getCanonicalId(text) + ")";
       }
-      return `(Id:${text})`;
+      return "(Id:" + text + ")";
     }
 
     // ── Literals ──
     if (ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n)) {
       return options.normalizeLiterals
         ? "(StrLit:$)"
-        : `(StrLit:${JSON.stringify(n.text)})`;
+        : "(StrLit:" + JSON.stringify(n.text) + ")";
     }
     if (ts.isNumericLiteral(n)) {
-      return options.normalizeLiterals ? "(NumLit:$)" : `(NumLit:${n.text})`;
+      return options.normalizeLiterals
+        ? "(NumLit:$)"
+        : "(NumLit:" + n.text + ")";
     }
     if (ts.isBigIntLiteral(n)) {
       return options.normalizeLiterals
         ? "(BigIntLit:$)"
-        : `(BigIntLit:${n.text})`;
+        : "(BigIntLit:" + n.text + ")" + ")";
     }
 
     // ── Type annotation nodes ──
@@ -111,7 +113,7 @@ export function canonicalize(
       if (s !== "") parts.push(s);
     });
 
-    return `(${kindName}:${parts.join(",")})`;
+    return "(" + kindName + ":" + parts.join(",") + ")";
   }
 
   return serialize(node);

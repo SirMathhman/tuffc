@@ -5,11 +5,20 @@ import { spawnSync } from "child_process";
  * check.ts
  *
  * Runs the full validation suite:
- * 1. Unit tests (bun test)
- * 2. Duplicate code detection (scripts/find-duplicates.ts)
+ * 1. Linting (eslint)
+ * 2. Unit tests (bun test)
+ * 3. Duplicate code detection (scripts/find-duplicates.ts)
  */
 
-console.log("\n[1/2] Running unit tests...");
+console.log("\n[1/3] Running linter...");
+const lintResult = spawnSync("bun", ["run", "lint"], { stdio: "inherit" });
+
+if (lintResult.status !== 0) {
+  console.error("\n❌ Linting failed.");
+  process.exit(lintResult.status ?? 1);
+}
+
+console.log("\n[2/3] Running unit tests...");
 const testResult = spawnSync("bun", ["test"], { stdio: "inherit" });
 
 if (testResult.status !== 0) {
@@ -17,7 +26,7 @@ if (testResult.status !== 0) {
   process.exit(testResult.status ?? 1);
 }
 
-console.log("\n[2/2] Checking for duplicate code...");
+console.log("\n[3/3] Checking for duplicate code...");
 const dupResult = spawnSync(
   "bun",
   [

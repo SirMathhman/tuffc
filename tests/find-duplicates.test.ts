@@ -154,8 +154,8 @@ describe("canonicalize", () => {
   });
 
   test("normalizeLiterals=true: different literal values produce same form", () => {
-    const sf1 = parse(`function f() { return "hello"; }`);
-    const sf2 = parse(`function f() { return "world"; }`);
+    const sf1 = parse('function f() { return "hello"; }');
+    const sf2 = parse('function f() { return "world"; }');
     const body1 = firstFunctionBody(sf1);
     const body2 = firstFunctionBody(sf2);
     const opts: CanonicalizeOptions = {
@@ -166,8 +166,8 @@ describe("canonicalize", () => {
   });
 
   test("normalizeLiterals=false: different literal values produce different form", () => {
-    const sf1 = parse(`function f() { return "hello"; }`);
-    const sf2 = parse(`function f() { return "world"; }`);
+    const sf1 = parse('function f() { return "hello"; }');
+    const sf2 = parse('function f() { return "world"; }');
     const body1 = firstFunctionBody(sf1);
     const body2 = firstFunctionBody(sf2);
     const opts: CanonicalizeOptions = {
@@ -194,13 +194,8 @@ describe("canonicalize", () => {
 
 describe("collectCandidates", () => {
   test("returns candidates above minNodeCount threshold", () => {
-    const code = `
-function bigFunction(x: number, y: number, z: number): number {
-  const a = x + y;
-  const b = y + z;
-  const c = a * b;
-  return c;
-}`;
+    const code =
+      "\nfunction bigFunction(x: number, y: number, z: number): number {\n  const a = x + y;\n  const b = y + z;\n  const c = a * b;\n  return c;\n}";
     const sf = parse(code);
     const candidates = collectCandidates(sf, "fixture.ts", 5, 1);
     expect(candidates.length).toBeGreaterThan(0);
@@ -241,7 +236,7 @@ describe("suppressNested", () => {
     }>,
   ): CloneClass => ({
     id,
-    hash: `hash${id}`,
+    hash: "hash" + id,
     nodeCount,
     occurrences: occurrences.map((o) => ({
       ...o,
@@ -394,13 +389,11 @@ describe("end-to-end duplicate detection", () => {
   }
 
   test("detects identical function bodies across two files", () => {
-    const sharedBody = `{
-  const result = a + b;
-  const extra = result * 2;
-  return extra;
-}`;
-    const src1 = `function compute(a: number, b: number): number ${sharedBody}`;
-    const src2 = `function calculate(a: number, b: number): number ${sharedBody}`;
+    const sharedBody =
+      "{\n  const result = a + b;\n  const extra = result * 2;\n  return extra;\n}";
+    const src1 = "function compute(a: number, b: number): number " + sharedBody;
+    const src2 =
+      "function calculate(a: number, b: number): number " + sharedBody;
 
     const classes = detectDuplicates(twoFileSources(src1, src2), 5, 3, {
       normalizeIdentifiers: false,
@@ -414,8 +407,8 @@ describe("end-to-end duplicate detection", () => {
   });
 
   test("does NOT detect non-structurally-equivalent code as duplicates", () => {
-    const src1 = `function add(a: number, b: number): number { return a + b; }`;
-    const src2 = `function mul(a: number, b: number): number { return a * b; }`;
+    const src1 = "function add(a: number, b: number): number { return a + b; }";
+    const src2 = "function mul(a: number, b: number): number { return a * b; }";
 
     // Use minNodeCount=15 to collect only whole function declarations, where
     // the differing operator (+ vs *) makes the two functions structurally inequivalent.
@@ -426,16 +419,10 @@ describe("end-to-end duplicate detection", () => {
   });
 
   test("detects alpha-renamed duplicates with normalizeIdentifiers=true", () => {
-    const src1 = `function add(a: number, b: number): number {
-  const sum = a + b;
-  const doubled = sum * 2;
-  return doubled;
-}`;
-    const src2 = `function compute(x: number, y: number): number {
-  const total = x + y;
-  const result = total * 2;
-  return result;
-}`;
+    const src1 =
+      "function add(a: number, b: number): number {\n  const sum = a + b;\n  const doubled = sum * 2;\n  return doubled;\n}";
+    const src2 =
+      "function compute(x: number, y: number): number {\n  const total = x + y;\n  const result = total * 2;\n  return result;\n}";
 
     const classes = detectDuplicates(twoFileSources(src1, src2), 8, 3, {
       normalizeIdentifiers: true,
@@ -444,16 +431,10 @@ describe("end-to-end duplicate detection", () => {
   });
 
   test("does NOT detect alpha-renamed duplicates with normalizeIdentifiers=false", () => {
-    const src1 = `function add(a: number, b: number): number {
-  const sum = a + b;
-  const doubled = sum * 2;
-  return doubled;
-}`;
-    const src2 = `function compute(x: number, y: number): number {
-  const total = x + y;
-  const result = total * 2;
-  return result;
-}`;
+    const src1 =
+      "function add(a: number, b: number): number {\n  const sum = a + b;\n  const doubled = sum * 2;\n  return doubled;\n}";
+    const src2 =
+      "function compute(x: number, y: number): number {\n  const total = x + y;\n  const result = total * 2;\n  return result;\n}";
 
     const classes = detectDuplicates(twoFileSources(src1, src2), 8, 3, {
       normalizeIdentifiers: false,

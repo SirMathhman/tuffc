@@ -53,21 +53,36 @@ export function formatText(classes: CloneClass[]): string {
   }
 
   const lines: string[] = [
-    `Found ${classes.length} duplicate clone class(es).\n`,
+    "Found " + classes.length + " duplicate clone class(es).\n",
     "─".repeat(72),
   ];
 
   for (const cls of classes) {
     lines.push(
-      `Clone #${cls.id} — hash ${cls.hash}  nodes: ${cls.nodeCount}  occurrences: ${cls.occurrences.length}`,
+      "Clone #" +
+        cls.id +
+        " — hash " +
+        cls.hash +
+        "  nodes: " +
+        cls.nodeCount +
+        "  occurrences: " +
+        cls.occurrences.length,
     );
     for (const occ of cls.occurrences) {
       lines.push(
-        `  ${occ.filePath}:${occ.lineStart}-${occ.lineEnd}  [${occ.kindName}]`,
+        "  " +
+          occ.filePath +
+          ":" +
+          occ.lineStart +
+          "-" +
+          occ.lineEnd +
+          "  [" +
+          occ.kindName +
+          "]",
       );
       if (occ.snippet) {
         for (const line of occ.snippet.split("\n")) {
-          lines.push(`    ${line}`);
+          lines.push("    " + line);
         }
       }
     }

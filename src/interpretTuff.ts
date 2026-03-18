@@ -30,14 +30,22 @@ export function interpretTuff(input: string): number {
 
   // Validate type suffix exists
   if (!TYPE_RANGES[typeSuffix]) {
-    throw new Error(`Unknown type: ${typeSuffix}`);
+    throw new Error("Unknown type: " + typeSuffix);
   }
 
   // Validate range
   const range = TYPE_RANGES[typeSuffix];
   if (value < range.min || value > range.max) {
     throw new Error(
-      `Value ${value} is out of range for type ${typeSuffix} (${range.min} to ${range.max})`,
+      "Value " +
+        value +
+        " is out of range for type " +
+        typeSuffix +
+        " (" +
+        range.min +
+        " to " +
+        range.max +
+        ")",
     );
   }
 
