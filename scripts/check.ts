@@ -36,7 +36,7 @@ const dupResult = spawnSync(
     "src",
     "tests",
     "--min-nodes",
-    "6",
+    "14",
     "--suppress-nested",
   ],
   { stdio: "inherit" },

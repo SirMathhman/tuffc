@@ -549,4 +549,826 @@ describe("interpretTuff assignments", () => {
       ),
     ).toBe(30);
   });
+
+  // Compound assignment
+  test("assignment > compound += increments mutable binding: let mut x = 1U8; x += 2U8; x => 3", () => {
+    expect(interpretTuff("let mut x = 1U8; x += 2U8; x")).toBe(3);
+  });
+
+  test("assignment > compound += uses arithmetic RHS precedence: let mut x = 1U8; x += 2U8 * 3U8; x => 7", () => {
+    expect(interpretTuff("let mut x = 1U8; x += 2U8 * 3U8; x")).toBe(7);
+  });
+
+  test("assignment > compound += behaves like x = x + rhs with widening: let mut x : U16 = 100U8; x += 200U16; x => 300", () => {
+    expect(interpretTuff("let mut x : U16 = 100U8; x += 200U16; x")).toBe(300);
+  });
+
+  test("assignment > compound += works in if statement branch: let mut x = 0U8; if (true) x += 5U8; x => 5", () => {
+    expect(interpretTuff("let mut x = 0U8; if (true) x += 5U8; x")).toBe(5);
+  });
+
+  test("assignment > error: compound += rejects immutable variable: let x = 1U8; x += 2U8; => Err", () => {
+    expect(() => interpretTuff("let x = 1U8; x += 2U8;")).toThrow();
+  });
+
+  test("assignment > error: compound += rejects undefined variable: x += 1U8; => Err", () => {
+    expect(() => interpretTuff("x += 1U8;")).toThrow();
+  });
+
+  test("assignment > error: compound += rejects Bool target: let mut flag : Bool = false; flag += true; => Err", () => {
+    expect(() =>
+      interpretTuff("let mut flag : Bool = false; flag += true;"),
+    ).toThrow();
+  });
+
+  test("assignment > error: compound += rejects Bool RHS for numeric target: let mut x = 1U8; x += true; => Err", () => {
+    expect(() => interpretTuff("let mut x = 1U8; x += true;")).toThrow();
+  });
+
+  test("assignment > error: compound += rejects overflow like addition: let mut x = 250U8; x += 10U8; => Err", () => {
+    expect(() => interpretTuff("let mut x = 250U8; x += 10U8;")).toThrow();
+  });
+
+  test("assignment > error: compound += is statement-only and cannot be used as initializer value", () => {
+    expect(() =>
+      interpretTuff("let mut x = 1U8; let y = x += 2U8; y"),
+    ).toThrow();
+  });
+
+  // Compound -= tests
+  test("assignment > compound -= decrements mutable binding: let mut x = 10U8; x -= 3U8; x => 7", () => {
+    expect(interpretTuff("let mut x = 10U8; x -= 3U8; x")).toBe(7);
+  });
+
+  test("assignment > compound -= uses arithmetic RHS precedence: let mut x = 10U8; x -= 2U8 + 1U8; x => 7", () => {
+    expect(interpretTuff("let mut x = 10U8; x -= 2U8 + 1U8; x")).toBe(7);
+  });
+
+  test("assignment > error: compound -= rejects immutable variable: let x = 10U8; x -= 3U8; => Err", () => {
+    expect(() => interpretTuff("let x = 10U8; x -= 3U8;")).toThrow();
+  });
+
+  test("assignment > error: compound -= rejects underflow: let mut x = 5U8; x -= 10U8; => Err", () => {
+    expect(() => interpretTuff("let mut x = 5U8; x -= 10U8;")).toThrow();
+  });
+
+  test("assignment > error: compound -= rejects Bool target: let mut flag : Bool = true; flag -= false; => Err", () => {
+    expect(() =>
+      interpretTuff("let mut flag : Bool = true; flag -= false;"),
+    ).toThrow();
+  });
+
+  // Compound *= tests
+  test("assignment > compound *= multiplies mutable binding: let mut x = 5U8; x *= 3U8; x => 15", () => {
+    expect(interpretTuff("let mut x = 5U8; x *= 3U8; x")).toBe(15);
+  });
+
+  test("assignment > compound *= uses arithmetic RHS precedence: let mut x = 2U8; x *= 3U8 + 2U8; x => 10", () => {
+    expect(interpretTuff("let mut x = 2U8; x *= 3U8 + 2U8; x")).toBe(10);
+  });
+
+  test("assignment > error: compound *= rejects undefined variable: x *= 2U8; => Err", () => {
+    expect(() => interpretTuff("x *= 2U8;")).toThrow();
+  });
+
+  test("assignment > error: compound *= rejects overflow: let mut x = 200U8; x *= 2U8; => Err", () => {
+    expect(() => interpretTuff("let mut x = 200U8; x *= 2U8;")).toThrow();
+  });
+
+  test("assignment > error: compound *= rejects Bool operand: let mut flag : Bool = true; flag *= false; => Err", () => {
+    expect(() =>
+      interpretTuff("let mut flag : Bool = true; flag *= false;"),
+    ).toThrow();
+  });
+
+  // Compound /= tests
+  test("assignment > compound /= divides mutable binding: let mut x = 20U8; x /= 4U8; x => 5", () => {
+    expect(interpretTuff("let mut x = 20U8; x /= 4U8; x")).toBe(5);
+  });
+
+  test("assignment > compound /= integer division: let mut x = 7U8; x /= 2U8; x => 3", () => {
+    expect(interpretTuff("let mut x = 7U8; x /= 2U8; x")).toBe(3);
+  });
+
+  test("assignment > error: compound /= rejects division by zero: let mut x = 10U8; x /= 0U8; => Err", () => {
+    expect(() => interpretTuff("let mut x = 10U8; x /= 0U8;")).toThrow();
+  });
+
+  test("assignment > error: compound /= rejects immutable variable: let x = 20U8; x /= 2U8; => Err", () => {
+    expect(() => interpretTuff("let x = 20U8; x /= 2U8;")).toThrow();
+  });
+
+  test("assignment > error: compound /= rejects Bool operand: let mut flag : Bool = false; flag /= true; => Err", () => {
+    expect(() =>
+      interpretTuff("let mut flag : Bool = false; flag /= true;"),
+    ).toThrow();
+  });
+});
+
+describe("interpretTuff booleans", () => {
+  // Basic literals
+  test("bool > true literal => 1", () => {
+    expect(interpretTuff("true")).toBe(1);
+  });
+
+  test("bool > false literal => 0", () => {
+    expect(interpretTuff("false")).toBe(0);
+  });
+
+  // Let bindings and inference
+  test("bool > let inference from true: let x = true; x => 1", () => {
+    expect(interpretTuff("let x = true; x")).toBe(1);
+  });
+
+  test("bool > let inference from false: let x = false; x => 0", () => {
+    expect(interpretTuff("let x = false; x")).toBe(0);
+  });
+
+  test("bool > explicit Bool annotation with true: let x : Bool = true; x => 1", () => {
+    expect(interpretTuff("let x : Bool = true; x")).toBe(1);
+  });
+
+  test("bool > explicit Bool annotation with false: let x : Bool = false; x => 0", () => {
+    expect(interpretTuff("let x : Bool = false; x")).toBe(0);
+  });
+
+  // Mutable bools and assignment
+  test("bool > mutable Bool assignment: let mut flag : Bool = false; flag = true; flag => 1", () => {
+    expect(
+      interpretTuff("let mut flag : Bool = false; flag = true; flag"),
+    ).toBe(1);
+  });
+
+  test("bool > inferred mutable Bool assignment: let mut flag = true; flag = false; flag => 0", () => {
+    expect(interpretTuff("let mut flag = true; flag = false; flag")).toBe(0);
+  });
+
+  // Unary not
+  test("bool > unary not on true: !true => 0", () => {
+    expect(interpretTuff("!true")).toBe(0);
+  });
+
+  test("bool > unary not on false: !false => 1", () => {
+    expect(interpretTuff("!false")).toBe(1);
+  });
+
+  test("bool > unary not with parens: !(true && false) => 1", () => {
+    expect(interpretTuff("!(true && false)")).toBe(1);
+  });
+
+  // Logical operators
+  test("bool > and true && true => 1", () => {
+    expect(interpretTuff("true && true")).toBe(1);
+  });
+
+  test("bool > and true && false => 0", () => {
+    expect(interpretTuff("true && false")).toBe(0);
+  });
+
+  test("bool > or false || true => 1", () => {
+    expect(interpretTuff("false || true")).toBe(1);
+  });
+
+  test("bool > or false || false => 0", () => {
+    expect(interpretTuff("false || false")).toBe(0);
+  });
+
+  test("bool > precedence not before and before or: !false && false || true => 1", () => {
+    expect(interpretTuff("!false && false || true")).toBe(1);
+  });
+
+  test("bool > parentheses with logical ops: !(false || false) && true => 1", () => {
+    expect(interpretTuff("!(false || false) && true")).toBe(1);
+  });
+
+  test("bool > logical ops in let binding: let x = true && false; x => 0", () => {
+    expect(interpretTuff("let x = true && false; x")).toBe(0);
+  });
+
+  test("bool > logical ops in assignment: let mut x : Bool = false; x = true || false; x => 1", () => {
+    expect(
+      interpretTuff("let mut x : Bool = false; x = true || false; x"),
+    ).toBe(1);
+  });
+
+  // Short-circuit behavior
+  test("bool > short-circuit and skips undefined RHS: false && missing => 0", () => {
+    expect(interpretTuff("false && missing")).toBe(0);
+  });
+
+  test("bool > short-circuit or skips undefined RHS: true || missing => 1", () => {
+    expect(interpretTuff("true || missing")).toBe(1);
+  });
+
+  // Error cases: arithmetic on booleans
+  test("bool > error: true + false => Err", () => {
+    expect(() => interpretTuff("true + false")).toThrow();
+  });
+
+  test("bool > error: true * false => Err", () => {
+    expect(() => interpretTuff("true * false")).toThrow();
+  });
+
+  test("bool > error: !1U8 => Err", () => {
+    expect(() => interpretTuff("!1U8")).toThrow();
+  });
+
+  // Error cases: mixed bool and numeric expressions
+  test("bool > error: true + 1U8 => Err", () => {
+    expect(() => interpretTuff("true + 1U8")).toThrow();
+  });
+
+  test("bool > error: 1U8 && true => Err", () => {
+    expect(() => interpretTuff("1U8 && true")).toThrow();
+  });
+
+  test("bool > error: false || 0U8 => Err", () => {
+    expect(() => interpretTuff("false || 0U8")).toThrow();
+  });
+
+  // Error cases: invalid type assignments
+  test("bool > error: assign number to Bool variable: let mut flag : Bool = false; flag = 1U8; => Err", () => {
+    expect(() =>
+      interpretTuff("let mut flag : Bool = false; flag = 1U8;"),
+    ).toThrow();
+  });
+
+  test("bool > error: assign Bool to numeric variable: let mut x : U8 = 0U8; x = true; => Err", () => {
+    expect(() => interpretTuff("let mut x : U8 = 0U8; x = true;")).toThrow();
+  });
+
+  test("bool > error: let Bool into numeric annotation: let x : U8 = true; => Err", () => {
+    expect(() => interpretTuff("let x : U8 = true;")).toThrow();
+  });
+
+  test("bool > error: let number into Bool annotation: let x : Bool = 1U8; => Err", () => {
+    expect(() => interpretTuff("let x : Bool = 1U8;")).toThrow();
+  });
+
+  // Error cases: unsupported spellings
+  test("bool > error: uppercase True is undefined", () => {
+    expect(() => interpretTuff("True")).toThrow();
+  });
+
+  test("bool > error: uppercase False is undefined", () => {
+    expect(() => interpretTuff("False")).toThrow();
+  });
+});
+
+describe("interpretTuff comparisons", () => {
+  // Numeric equality
+  test("comparison > numeric equality true: 5U8 == 5U8 => 1", () => {
+    expect(interpretTuff("5U8 == 5U8")).toBe(1);
+  });
+
+  test("comparison > numeric equality false: 5U8 == 6U8 => 0", () => {
+    expect(interpretTuff("5U8 == 6U8")).toBe(0);
+  });
+
+  test("comparison > numeric inequality true: 5U8 != 6U8 => 1", () => {
+    expect(interpretTuff("5U8 != 6U8")).toBe(1);
+  });
+
+  test("comparison > numeric inequality false: 5U8 != 5U8 => 0", () => {
+    expect(interpretTuff("5U8 != 5U8")).toBe(0);
+  });
+
+  // Numeric ordering
+  test("comparison > less-than true: 5U8 < 6U8 => 1", () => {
+    expect(interpretTuff("5U8 < 6U8")).toBe(1);
+  });
+
+  test("comparison > less-than false: 6U8 < 5U8 => 0", () => {
+    expect(interpretTuff("6U8 < 5U8")).toBe(0);
+  });
+
+  test("comparison > less-than-or-equal equal: 5U8 <= 5U8 => 1", () => {
+    expect(interpretTuff("5U8 <= 5U8")).toBe(1);
+  });
+
+  test("comparison > greater-than true: 6U8 > 5U8 => 1", () => {
+    expect(interpretTuff("6U8 > 5U8")).toBe(1);
+  });
+
+  test("comparison > greater-than-or-equal equal: 5U8 >= 5U8 => 1", () => {
+    expect(interpretTuff("5U8 >= 5U8")).toBe(1);
+  });
+
+  // Mixed numeric types
+  test("comparison > mixed numeric types equality: 5U8 == 5U16 => 1", () => {
+    expect(interpretTuff("5U8 == 5U16")).toBe(1);
+  });
+
+  test("comparison > mixed numeric types ordering: 5U8 < 1000U16 => 1", () => {
+    expect(interpretTuff("5U8 < 1000U16")).toBe(1);
+  });
+
+  // Bool equality only
+  test("comparison > bool equality true: true == true => 1", () => {
+    expect(interpretTuff("true == true")).toBe(1);
+  });
+
+  test("comparison > bool equality false: true == false => 0", () => {
+    expect(interpretTuff("true == false")).toBe(0);
+  });
+
+  test("comparison > bool inequality true: true != false => 1", () => {
+    expect(interpretTuff("true != false")).toBe(1);
+  });
+
+  test("comparison > bool inequality false: false != false => 0", () => {
+    expect(interpretTuff("false != false")).toBe(0);
+  });
+
+  // Precedence
+  test("comparison > arithmetic before comparison: 2U8 + 3U8 == 5U8 => 1", () => {
+    expect(interpretTuff("2U8 + 3U8 == 5U8")).toBe(1);
+  });
+
+  test("comparison > comparison before logical and: 2U8 < 3U8 && true => 1", () => {
+    expect(interpretTuff("2U8 < 3U8 && true")).toBe(1);
+  });
+
+  test("comparison > comparison before logical or: false || 2U8 < 3U8 => 1", () => {
+    expect(interpretTuff("false || 2U8 < 3U8")).toBe(1);
+  });
+
+  test("comparison > parentheses with comparison: !(2U8 > 3U8) => 1", () => {
+    expect(interpretTuff("!(2U8 > 3U8)")).toBe(1);
+  });
+
+  // Let and assignment integration
+  test("comparison > let binding from comparison: let x = 5U8 < 6U8; x => 1", () => {
+    expect(interpretTuff("let x = 5U8 < 6U8; x")).toBe(1);
+  });
+
+  test("comparison > explicit Bool from comparison: let x : Bool = 5U8 == 5U8; x => 1", () => {
+    expect(interpretTuff("let x : Bool = 5U8 == 5U8; x")).toBe(1);
+  });
+
+  test("comparison > mutable assignment from comparison: let mut x : Bool = false; x = 5U8 < 6U8; x => 1", () => {
+    expect(interpretTuff("let mut x : Bool = false; x = 5U8 < 6U8; x")).toBe(1);
+  });
+
+  // Short-circuit with comparisons
+  test("comparison > short-circuit and skips invalid comparison RHS: false && 1U8 < true => 0", () => {
+    expect(interpretTuff("false && 1U8 < true")).toBe(0);
+  });
+
+  test("comparison > short-circuit or skips invalid comparison RHS: true || 1U8 < true => 1", () => {
+    expect(interpretTuff("true || 1U8 < true")).toBe(1);
+  });
+
+  // Error cases: bool ordering unsupported
+  test("comparison > error: true < false => Err", () => {
+    expect(() => interpretTuff("true < false")).toThrow();
+  });
+
+  test("comparison > error: true >= false => Err", () => {
+    expect(() => interpretTuff("true >= false")).toThrow();
+  });
+
+  // Error cases: mixed bool/numeric comparisons
+  test("comparison > error: true == 1U8 => Err", () => {
+    expect(() => interpretTuff("true == 1U8")).toThrow();
+  });
+
+  test("comparison > error: 1U8 != false => Err", () => {
+    expect(() => interpretTuff("1U8 != false")).toThrow();
+  });
+
+  test("comparison > error: 1U8 < true => Err", () => {
+    expect(() => interpretTuff("1U8 < true")).toThrow();
+  });
+
+  test("comparison > error: false > 0U8 => Err", () => {
+    expect(() => interpretTuff("false > 0U8")).toThrow();
+  });
+});
+
+describe("interpretTuff braced blocks", () => {
+  // Basic block values
+  test("block > top-level block with final expression: { let x = 1U8; x } => 1", () => {
+    expect(interpretTuff("{ let x = 1U8; x }")).toBe(1);
+  });
+
+  test("block > block as let initializer: let x = { let y = 10U8; y }; x => 10", () => {
+    expect(interpretTuff("let x = { let y = 10U8; y }; x")).toBe(10);
+  });
+
+  test("block > block as assignment value: let mut x = 0U8; x = { 5U8 }; x => 5", () => {
+    expect(interpretTuff("let mut x = 0U8; x = { 5U8 }; x")).toBe(5);
+  });
+
+  test("block > block in arithmetic expression: 1U8 + { 2U8 } => 3", () => {
+    expect(interpretTuff("1U8 + { 2U8 }")).toBe(3);
+  });
+
+  test("block > nested blocks: { let x = { let y = 2U8; y + 3U8 }; x } => 5", () => {
+    expect(interpretTuff("{ let x = { let y = 2U8; y + 3U8 }; x }")).toBe(5);
+  });
+
+  // Scope behavior
+  test("block > outer variable visible inside block: let x = 5U8; { x + 1U8 } => 6", () => {
+    expect(interpretTuff("let x = 5U8; { x + 1U8 }")).toBe(6);
+  });
+
+  test("block > inner declarations do not escape: let x = { let y = 1U8; y }; y => Err", () => {
+    expect(() => interpretTuff("let x = { let y = 1U8; y }; y")).toThrow();
+  });
+
+  test("block > shadowing inside block does not escape: let x = 1U8; { let x = 2U8; x }; x => 1", () => {
+    expect(interpretTuff("let x = 1U8; { let x = 2U8; x }; x")).toBe(1);
+  });
+
+  // Mutation behavior
+  test("block > mutation of outer mutable persists: let mut x = 0U8; { x = 100U8; } x => 100", () => {
+    expect(interpretTuff("let mut x = 0U8; { x = 100U8; } x")).toBe(100);
+  });
+
+  test("block > inner shadowed mutable assignment does not affect outer binding: let mut x = 1U8; { let mut x = 2U8; x = 3U8; } x => 1", () => {
+    expect(
+      interpretTuff("let mut x = 1U8; { let mut x = 2U8; x = 3U8; } x"),
+    ).toBe(1);
+  });
+
+  // Bool and comparisons inside blocks
+  test("block > bool result block: { true && false } => 0", () => {
+    expect(interpretTuff("{ true && false }")).toBe(0);
+  });
+
+  test("block > comparison inside block: { 2U8 < 3U8 } => 1", () => {
+    expect(interpretTuff("{ 2U8 < 3U8 }")).toBe(1);
+  });
+
+  test("block > block used in comparison: { 2U8 + 3U8 } == 5U8 => 1", () => {
+    expect(interpretTuff("{ 2U8 + 3U8 } == 5U8")).toBe(1);
+  });
+
+  // Empty block rule
+  test("block > empty standalone block is valid: let x = 0U8; {} x => 0", () => {
+    expect(interpretTuff("let x = 0U8; {} x")).toBe(0);
+  });
+
+  test("block > empty block as value is invalid: let x = {}; x => Err", () => {
+    expect(() => interpretTuff("let x = {}; x")).toThrow();
+  });
+
+  test("block > empty nested value block is invalid: 1U8 + {} => Err", () => {
+    expect(() => interpretTuff("1U8 + {} ")).toThrow();
+  });
+
+  // Syntax and error cases
+  test("block > missing closing brace: { let x = 1U8; x => Err", () => {
+    expect(() => interpretTuff("{ let x = 1U8; x")).toThrow();
+  });
+
+  test("block > immutable assignment inside block still errors: let x = 1U8; { x = 2U8; } => Err", () => {
+    expect(() => interpretTuff("let x = 1U8; { x = 2U8; }")).toThrow();
+  });
+
+  test("block > undefined variable outside block after standalone block: { let y = 1U8; y } y => Err", () => {
+    expect(() => interpretTuff("{ let y = 1U8; y } y")).toThrow();
+  });
+});
+
+describe("interpretTuff if", () => {
+  // Expression form
+  test("if > expression chooses then branch: if (true) 1U8 else 2U8 => 1", () => {
+    expect(interpretTuff("if (true) 1U8 else 2U8")).toBe(1);
+  });
+
+  test("if > expression chooses else branch: if (false) 1U8 else 2U8 => 2", () => {
+    expect(interpretTuff("if (false) 1U8 else 2U8")).toBe(2);
+  });
+
+  test("if > expression branch can be block: if (true) { let x = 5U8; x } else { 2U8 } => 5", () => {
+    expect(interpretTuff("if (true) { let x = 5U8; x } else { 2U8 }")).toBe(5);
+  });
+
+  test("if > expression in let initializer: let x = if (true) 3U8 else 4U8; x => 3", () => {
+    expect(interpretTuff("let x = if (true) 3U8 else 4U8; x")).toBe(3);
+  });
+
+  test("if > expression in assignment RHS: let mut x = 0U8; x = if (false) 3U8 else 4U8; x => 4", () => {
+    expect(
+      interpretTuff("let mut x = 0U8; x = if (false) 3U8 else 4U8; x"),
+    ).toBe(4);
+  });
+
+  test("if > expression nested in arithmetic: 1U8 + if (true) 2U8 else 3U8 => 3", () => {
+    expect(interpretTuff("1U8 + if (true) 2U8 else 3U8")).toBe(3);
+  });
+
+  test("if > expression else-if chain: if (false) 1U8 else if (true) 2U8 else 3U8 => 2", () => {
+    expect(interpretTuff("if (false) 1U8 else if (true) 2U8 else 3U8")).toBe(2);
+  });
+
+  // Statement form
+  test("if > statement with else updates mutable binding: let mut x = 0U8; if (true) x = 1U8; else x = 2U8; x => 1", () => {
+    expect(
+      interpretTuff("let mut x = 0U8; if (true) x = 1U8; else x = 2U8; x"),
+    ).toBe(1);
+  });
+
+  test("if > statement without else may skip branch: let mut x = 0U8; if (false) x = 1U8; x => 0", () => {
+    expect(interpretTuff("let mut x = 0U8; if (false) x = 1U8; x")).toBe(0);
+  });
+
+  test("if > statement branch can be block with local scope: let mut x = 0U8; if (true) { let y = 1U8; x = y; } x => 1", () => {
+    expect(
+      interpretTuff("let mut x = 0U8; if (true) { let y = 1U8; x = y; } x"),
+    ).toBe(1);
+  });
+
+  test("if > statement else-if chain picks later branch: let mut x = 0U8; if (false) x = 1U8; else if (true) x = 2U8; else x = 3U8; x => 2", () => {
+    expect(
+      interpretTuff(
+        "let mut x = 0U8; if (false) x = 1U8; else if (true) x = 2U8; else x = 3U8; x",
+      ),
+    ).toBe(2);
+  });
+
+  // Scope and type behavior
+  test("if > branch-local declaration does not escape: if (true) { let y = 1U8; y } else { 2U8 }; y => Err", () => {
+    expect(() =>
+      interpretTuff("if (true) { let y = 1U8; y } else { 2U8 }; y"),
+    ).toThrow();
+  });
+
+  test("if > error: condition must be Bool in expression form", () => {
+    expect(() => interpretTuff("if (1U8) 2U8 else 3U8")).toThrow();
+  });
+
+  test("if > error: condition must be Bool in statement form", () => {
+    expect(() =>
+      interpretTuff("let mut x = 0U8; if (1U8) x = 1U8; x"),
+    ).toThrow();
+  });
+
+  test("if > error: missing parentheses around condition", () => {
+    expect(() => interpretTuff("if true 1U8 else 2U8")).toThrow();
+  });
+
+  test("if > error: expression form requires else", () => {
+    expect(() => interpretTuff("let x = if (true) 1U8; x")).toThrow();
+  });
+
+  test("if > error: expression branch types must match", () => {
+    expect(() => interpretTuff("if (true) 1U8 else false")).toThrow();
+  });
+
+  test("if > error: else-if expression chain still requires final else", () => {
+    expect(() =>
+      interpretTuff("let x = if (false) 1U8 else if (true) 2U8; x"),
+    ).toThrow();
+  });
+
+  test("if > error: missing closing brace in statement branch", () => {
+    expect(() =>
+      interpretTuff("let mut x = 0U8; if (true) { x = 1U8; else x = 2U8; x"),
+    ).toThrow();
+  });
+
+  test("if > error: branch-local declaration in statement does not escape", () => {
+    expect(() => interpretTuff("if (true) { let y = 1U8; } y")).toThrow();
+  });
+});
+
+describe("interpretTuff while", () => {
+  // Basic while loop tests
+  test("while > simple counter loop: let mut x = 0U8; while (x < 3U8) x = x + 1U8; x => 3", () => {
+    expect(
+      interpretTuff("let mut x = 0U8; while (x < 3U8) x = x + 1U8; x"),
+    ).toBe(3);
+  });
+
+  test("while > while with brace block: let mut x = 0U8; while (x < 2U8) { x = x + 1U8; } x => 2", () => {
+    expect(
+      interpretTuff("let mut x = 0U8; while (x < 2U8) { x = x + 1U8; } x"),
+    ).toBe(2);
+  });
+
+  test("while > while condition false skips loop: let mut x = 0U8; while (false) x = 1U8; x => 0", () => {
+    expect(interpretTuff("let mut x = 0U8; while (false) x = 1U8; x")).toBe(0);
+  });
+
+  test("while > while with break exits loop: let mut x = 0U8; while (true) { x = x + 1U8; if (x == 3U8) break; } x => 3", () => {
+    expect(
+      interpretTuff(
+        "let mut x = 0U8; while (true) { x = x + 1U8; if (x == 3U8) break; } x",
+      ),
+    ).toBe(3);
+  });
+
+  test("while > while with continue skips to next iteration: let mut x = 0U8; let mut s = 0U8; while (x < 5U8) { x = x + 1U8; if (x == 2U8) continue; s = s + x; } s => 13", () => {
+    expect(
+      interpretTuff(
+        "let mut x = 0U8; let mut s = 0U8; while (x < 5U8) { x = x + 1U8; if (x == 2U8) continue; s = s + x; } s",
+      ),
+    ).toBe(13);
+  });
+
+  test("while > while counting to larger value: let mut x = 0U8; while (x < 10U8) x = x + 1U8; x => 10", () => {
+    expect(
+      interpretTuff("let mut x = 0U8; while (x < 10U8) x = x + 1U8; x"),
+    ).toBe(10);
+  });
+
+  test("while > nested while loops: let mut x = 0U8; let mut y = 0U8; while (x < 2U8) { x = x + 1U8; y = 0U8; while (y < 3U8) y = y + 1U8; } y => 3", () => {
+    expect(
+      interpretTuff(
+        "let mut x = 0U8; let mut y = 0U8; while (x < 2U8) { x = x + 1U8; y = 0U8; while (y < 3U8) y = y + 1U8; } y",
+      ),
+    ).toBe(3);
+  });
+
+  test("while > while with compound assignment: let mut x = 0U8; let mut s = 0U8; while (x < 5U8) { x += 1U8; s += x; } s => 15", () => {
+    expect(
+      interpretTuff(
+        "let mut x = 0U8; let mut s = 0U8; while (x < 5U8) { x += 1U8; s += x; } s",
+      ),
+    ).toBe(15);
+  });
+
+  // Scope semantics
+  test("while > loop scope: fresh scope per iteration, local x does not persist: let mut x = 0U8; while (x < 2U8) { let y = 1U8; x = x + 1U8; } y => Err", () => {
+    expect(() =>
+      interpretTuff(
+        "let mut x = 0U8; while (x < 2U8) { let y = 1U8; x = x + 1U8; } y",
+      ),
+    ).toThrow();
+  });
+
+  test("while > outer mutable persists across iterations: let mut x = 0U8; let mut total = 0U8; while (x < 3U8) { x = x + 1U8; total = total + x; } total => 6", () => {
+    expect(
+      interpretTuff(
+        "let mut x = 0U8; let mut total = 0U8; while (x < 3U8) { x = x + 1U8; total = total + x; } total",
+      ),
+    ).toBe(6);
+  });
+
+  // Control flow edge cases
+  test("while > nested break affects inner loop only: let mut x = 0U8; let mut y = 0U8; while (x < 3U8) { x = x + 1U8; y = 0U8; while (y < 10U8) { y = y + 1U8; if (y == 2U8) break; } } y => 2", () => {
+    expect(
+      interpretTuff(
+        "let mut x = 0U8; let mut y = 0U8; while (x < 3U8) { x = x + 1U8; y = 0U8; while (y < 10U8) { y = y + 1U8; if (y == 2U8) break; } } y",
+      ),
+    ).toBe(2);
+  });
+
+  test("while > multiple iterations count correctly: let mut x = 0U8; while (x < 100U8) x = x + 10U8; x => 100", () => {
+    expect(
+      interpretTuff("let mut x = 0U8; while (x < 100U8) x = x + 10U8; x"),
+    ).toBe(100);
+  });
+
+  // Error cases
+  test("while > error: condition must be Bool: let mut x = 0U8; while (5U8) x = x + 1U8; => Err", () => {
+    expect(() =>
+      interpretTuff("let mut x = 0U8; while (5U8) x = x + 1U8;"),
+    ).toThrow();
+  });
+
+  test("while > error: Bool required, true works but numbers fail: let mut x = 0U8; while (1U8) x = x + 1U8; => Err", () => {
+    expect(() =>
+      interpretTuff("let mut x = 0U8; while (1U8) x = x + 1U8;"),
+    ).toThrow();
+  });
+
+  test("while > error: undefined variable in condition: let mut x = 0U8; while (y < 3U8) x = x + 1U8; => Err", () => {
+    expect(() =>
+      interpretTuff("let mut x = 0U8; while (y < 3U8) x = x + 1U8;"),
+    ).toThrow();
+  });
+
+  test("while > error: undefined variable in body: let mut x = 0U8; while (x < 2U8) { z = 1U8; } => Err", () => {
+    expect(() =>
+      interpretTuff("let mut x = 0U8; while (x < 2U8) { z = 1U8; }"),
+    ).toThrow();
+  });
+
+  test("while > error: break outside loop: break; => Err", () => {
+    expect(() => interpretTuff("break;")).toThrow();
+  });
+
+  test("while > error: continue outside loop: continue; => Err", () => {
+    expect(() => interpretTuff("continue;")).toThrow();
+  });
+
+  test("while > error: while as expression (not statement): let x = while (true) 1U8; => Err", () => {
+    expect(() => interpretTuff("let x = while (true) 1U8;")).toThrow();
+  });
+
+  test("while > error: missing closing parenthesis: let mut x = 0U8; while (x < 3U8 x = x + 1U8; => Err", () => {
+    expect(() =>
+      interpretTuff("let mut x = 0U8; while (x < 3U8 x = x + 1U8;"),
+    ).toThrow();
+  });
+});
+
+describe("interpretTuff functions", () => {
+  test("fn > simple definition with expression RHS and call: fn add(first : U8, second : U8) : U8 => first + second; add(2U8, 3U8) => 5", () => {
+    expect(
+      interpretTuff(
+        "fn add(first : U8, second : U8) : U8 => first + second; add(2U8, 3U8)",
+      ),
+    ).toBe(5);
+  });
+
+  test("fn > block expression RHS can use return statement for early exit", () => {
+    expect(
+      interpretTuff(
+        "fn classify(x : U8) : U8 => { if (x == 0U8) return 10U8; x + 1U8 }; classify(0U8)",
+      ),
+    ).toBe(10);
+  });
+
+  test("fn > block expression RHS without early return uses final expression", () => {
+    expect(
+      interpretTuff(
+        "fn classify(x : U8) : U8 => { if (x == 0U8) return 10U8; x + 1U8 }; classify(4U8)",
+      ),
+    ).toBe(5);
+  });
+
+  test("fn > recursion works: factorial(5) => 120", () => {
+    expect(
+      interpretTuff(
+        "fn fact(n : U8) : U8 => { if (n == 0U8) return 1U8; n * fact(n - 1U8) }; fact(5U8)",
+      ),
+    ).toBe(120);
+  });
+
+  test("fn > closure can mutate outer mutable binding", () => {
+    expect(
+      interpretTuff(
+        "let mut x = 1U8; fn bump() : U8 => { x = x + 1U8; x }; bump(); bump(); x",
+      ),
+    ).toBe(3);
+  });
+
+  test("fn > overloading by arity selects correct function", () => {
+    expect(
+      interpretTuff(
+        "fn add(x : U8) : U8 => x + 1U8; fn add(x : U8, y : U8) : U8 => x + y; add(2U8, 3U8)",
+      ),
+    ).toBe(5);
+  });
+
+  test("fn > overloading by arity selects unary overload", () => {
+    expect(
+      interpretTuff(
+        "fn add(x : U8) : U8 => x + 1U8; fn add(x : U8, y : U8) : U8 => x + y; add(2U8)",
+      ),
+    ).toBe(3);
+  });
+
+  test("fn > supports forward references", () => {
+    expect(
+      interpretTuff(
+        "useLater(9U8); fn useLater(v : U8) : U8 => v + 1U8; useLater(9U8)",
+      ),
+    ).toBe(10);
+  });
+
+  test("fn > error: return outside function", () => {
+    expect(() => interpretTuff("return 1U8;")).toThrow();
+  });
+
+  test("fn > error: undefined function call", () => {
+    expect(() => interpretTuff("missing(1U8)")).toThrow();
+  });
+
+  test("fn > error: arity mismatch", () => {
+    expect(() =>
+      interpretTuff("fn add(x : U8, y : U8) : U8 => x + y; add(1U8)"),
+    ).toThrow();
+  });
+
+  test("fn > error: duplicate identical signature is rejected", () => {
+    expect(() =>
+      interpretTuff(
+        "fn add(x : U8) : U8 => x; fn add(x : U8) : U8 => x + 1U8;",
+      ),
+    ).toThrow();
+  });
+
+  test("fn > error: parameter type mismatch", () => {
+    expect(() =>
+      interpretTuff("fn add(x : U8, y : U8) : U8 => x + y; add(true, 1U8)"),
+    ).toThrow();
+  });
+
+  test("fn > error: explicit return type mismatch", () => {
+    expect(() =>
+      interpretTuff("fn bad(x : U8) : Bool => x + 1U8; bad(1U8)"),
+    ).toThrow();
+  });
+
+  test("fn > error: function with value return type must return value", () => {
+    expect(() =>
+      interpretTuff("fn bad(x : U8) : U8 => {}; bad(1U8)"),
+    ).toThrow();
+  });
 });
