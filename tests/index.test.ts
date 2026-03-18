@@ -943,6 +943,342 @@ describe("interpretTuff", () => {
     expect(result.ok).toBe(false);
   });
 
+  it("defines a struct and reads first field", () => {
+    expectOkValue(
+      "struct Point { x : I32; y : I32 }; let p = Point { x: 7I32, y: 3I32 }; p.x",
+      7,
+    );
+  });
+
+  it("reads second field of a struct", () => {
+    expectOkValue(
+      "struct Point { x : I32; y : I32 }; let p = Point { x: 7I32, y: 3I32 }; p.y",
+      3,
+    );
+  });
+
+  it("supports a struct with a Bool field", () => {
+    expectOkValue(
+      "struct Flag { active : Bool }; let f = Flag { active: true }; f.active",
+      1,
+    );
+  });
+
+  it("allows field assignment when binding and field are both mutable", () => {
+    expectOkValue(
+      "struct Point { mut x : I32; y : I32 }; let mut p = Point { x: 1I32, y: 2I32 }; p.x = 9I32; p.x",
+      9,
+    );
+  });
+
+  it("allows compound field assignment on mutable binding and mutable field", () => {
+    expectOkValue(
+      "struct Counter { mut value : I32 }; let mut c = Counter { value: 10I32 }; c.value += 5I32; c.value",
+      15,
+    );
+  });
+
+  it("supports compound subtraction field assignment", () => {
+    expectOkValue(
+      "struct Counter { mut value : I32 }; let mut c = Counter { value: 10I32 }; c.value -= 3I32; c.value",
+      7,
+    );
+  });
+
+  it("supports compound multiplication field assignment", () => {
+    expectOkValue(
+      "struct Counter { mut value : I32 }; let mut c = Counter { value: 4I32 }; c.value *= 3I32; c.value",
+      12,
+    );
+  });
+
+  it("supports compound division field assignment", () => {
+    expectOkValue(
+      "struct Counter { mut value : I32 }; let mut c = Counter { value: 12I32 }; c.value /= 4I32; c.value",
+      3,
+    );
+  });
+
+  it("allows field access in an arithmetic expression", () => {
+    expectOkValue(
+      "struct Pair { x : I32; y : I32 }; let p = Pair { x: 3I32, y: 4I32 }; p.x + p.y",
+      7,
+    );
+  });
+
+  it("supports nested struct definition and field access", () => {
+    expectOkValue(
+      "struct Point { x : I32; y : I32 }; struct Line { start : Point; end_ : Point }; let ln = Line { start: Point { x: 1I32, y: 2I32 }, end_: Point { x: 5I32, y: 6I32 } }; ln.start.x",
+      1,
+    );
+  });
+
+  it("allows struct definition inside a block expression", () => {
+    expectOkValue(
+      "{ struct Inner { val : I32 }; let i = Inner { val: 42I32 }; i.val }",
+      42,
+    );
+  });
+
+  it("returns an error when the struct type is not defined", () => {
+    expectErrorKind("let p = Ghost { x: 1I32 }", "UndefinedType");
+  });
+
+  it("returns an error when assigning to a field of an immutable binding", () => {
+    expectErrorKind(
+      "struct Point { mut x : I32 }; let p = Point { x: 1I32 }; p.x = 5I32",
+      "ImmutableVariable",
+    );
+  });
+
+  it("returns an error when assigning to an immutable field", () => {
+    expectErrorKind(
+      "struct Point { x : I32 }; let mut p = Point { x: 1I32 }; p.x = 5I32",
+      "ImmutableVariable",
+    );
+  });
+
+  it("returns an error when accessing an undefined field on a struct", () => {
+    expectErrorKind(
+      "struct Point { x : I32 }; let p = Point { x: 1I32 }; p.z",
+      "UndefinedVariable",
+    );
+  });
+
+  it("returns an error when a struct literal has an unknown field", () => {
+    expect(
+      interpretTuff("struct Point { x : I32 }; let p = Point { z: 1I32 }"),
+    ).toEqual(expect.objectContaining({ ok: false }));
+  });
+
+  it("returns an error for field type mismatch in struct literal", () => {
+    expectErrorKind(
+      "struct Flag { active : Bool }; let f = Flag { active: 1I32 }",
+      "InvalidPointer",
+    );
+  });
+
+  it("returns an error when the struct value itself is the final result", () => {
+    expectErrorKind(
+      "struct Point { x : I32 }; let p = Point { x: 1I32 }; p",
+      "InvalidPointer",
+    );
+  });
+
+  it("returns an error when dividing a struct field by zero", () => {
+    expectErrorKind(
+      "struct Counter { mut value : I32 }; let mut c = Counter { value: 5I32 }; c.value /= 0I32",
+      "DivisionByZero",
+    );
+  });
+
+  it("returns an error when struct keyword has no whitespace after it", () => {
+    expect(interpretTuff("struct").ok).toBe(false);
+  });
+
+  it("returns an error when struct keyword has no identifier name", () => {
+    expect(interpretTuff("struct 123").ok).toBe(false);
+  });
+
+  it("returns an error when struct definition has no body braces", () => {
+    expect(interpretTuff("struct Point").ok).toBe(false);
+  });
+
+  it("returns an error when struct definition has trailing text after body", () => {
+    expect(interpretTuff("struct Point { x : I32 } extra").ok).toBe(false);
+  });
+
+  it("returns an error when struct field name is not an identifier", () => {
+    expect(interpretTuff("struct Point { 123 : I32 }").ok).toBe(false);
+  });
+
+  it("returns an error when struct field definition is missing colon", () => {
+    expect(interpretTuff("struct Point { x I32 }").ok).toBe(false);
+  });
+
+  it("returns an error when struct field has no type annotation", () => {
+    expect(interpretTuff("struct Point { x : }").ok).toBe(false);
+  });
+
+  it("returns an error when struct field has an invalid type suffix", () => {
+    expect(interpretTuff("struct Point { x : *999 }").ok).toBe(false);
+  });
+
+  it("returns an error when struct body is empty", () => {
+    expect(interpretTuff("struct Point { }").ok).toBe(false);
+  });
+
+  it("returns an error when struct instantiation field pair has no colon", () => {
+    expect(interpretTuff("struct P { x : I32 }; P { x 1I32 }").ok).toBe(false);
+  });
+
+  it("returns an error when struct instantiation has a trailing comma", () => {
+    expect(interpretTuff("struct P { x : I32 }; P { x: 1I32, }").ok).toBe(
+      false,
+    );
+  });
+
+  it("returns an error when struct instantiation has a non-identifier field name", () => {
+    expect(interpretTuff("struct P { x : I32 }; P { 123: 1I32 }").ok).toBe(
+      false,
+    );
+  });
+
+  it("returns an error when a struct is used in an arithmetic expression", () => {
+    expectErrorKind(
+      "struct P { x : I32 }; let p = P { x: 1I32 }; p + 1I32",
+      "InvalidPointer",
+    );
+  });
+
+  it("evaluates a field comparison expression as a Bool", () => {
+    expectOkValue(
+      "struct Point { x : I32 }; let p = Point { x: 3I32 }; p.x == 3I32",
+      1,
+    );
+  });
+
+  it("returns an error when field assignment has empty right-hand side", () => {
+    expect(
+      interpretTuff(
+        "struct P { mut x : I32 }; let mut p = P { x: 1I32 }; p.x =",
+      ),
+    ).toEqual(expect.objectContaining({ ok: false }));
+  });
+
+  it("returns an error for field assignment with non-identifier path segment", () => {
+    expect(interpretTuff("1.x = 5I32").ok).toBe(false);
+  });
+
+  it("returns an error when field access root variable is undefined", () => {
+    expectErrorKind("undefinedVar.x", "UndefinedVariable");
+  });
+
+  it("returns an error when field access is performed on a non-struct value", () => {
+    expectErrorKind("let x = 5I32; x.field", "InvalidPointer");
+  });
+
+  it("returns an error when field value expression fails during struct instantiation", () => {
+    expectErrorKind(
+      "struct P { x : I32 }; P { x: undefinedVar }",
+      "UndefinedVariable",
+    );
+  });
+
+  it("returns an error when struct type annotation does not match initializer kind", () => {
+    expectErrorKind("struct P { x : I32 }; let p : P = 1I32", "InvalidPointer");
+  });
+
+  it("returns an error when declared struct type does not match initializer struct type", () => {
+    expectErrorKind(
+      "struct P { x : I32 }; struct Q { x : I32 }; let v : P = Q { x: 1I32 }",
+      "InvalidPointer",
+    );
+  });
+
+  it("returns an error when field assignment binding does not exist", () => {
+    expectErrorKind("undefinedVar.x = 5I32", "UndefinedVariable");
+  });
+
+  it("returns an error when field assignment target is not a struct", () => {
+    expectErrorKind("let x = 5I32; x.y = 1I32", "InvalidPointer");
+  });
+
+  it("returns an error when field in assignment path is not found", () => {
+    expectErrorKind(
+      "struct P { mut x : I32 }; let mut p = P { x: 1I32 }; p.z = 5I32",
+      "UndefinedVariable",
+    );
+  });
+
+  it("supports nested struct field assignment through a mutable intermediate field", () => {
+    expectOkValue(
+      "struct P { mut x : I32 }; struct C { mut inner : P }; let mut c = C { inner: P { x: 1I32 } }; c.inner.x = 9I32; c.inner.x",
+      9,
+    );
+  });
+
+  it("returns an error when nested field assignment intermediate path is not found", () => {
+    expectErrorKind(
+      "struct P { mut x : I32 }; struct C { mut inner : P }; let mut c = C { inner: P { x: 1I32 } }; c.missing.x = 9I32",
+      "UndefinedVariable",
+    );
+  });
+
+  it("allows Bool field assignment when field and binding are both mutable", () => {
+    expectOkValue(
+      "struct Flag { mut active : Bool }; let mut f = Flag { active: false }; f.active = true; f.active",
+      1,
+    );
+  });
+
+  it("returns an error when assigning numeric to a Bool struct field", () => {
+    expectErrorKind(
+      "struct Flag { mut active : Bool }; let mut f = Flag { active: false }; f.active = 1I32",
+      "InvalidPointer",
+    );
+  });
+
+  it("returns an error when assigning Bool to a numeric struct field", () => {
+    expectErrorKind(
+      "struct P { mut x : I32 }; let mut p = P { x: 1I32 }; p.x = true",
+      "InvalidPointer",
+    );
+  });
+
+  it("returns an error when numeric field assignment is out of bounds", () => {
+    expectErrorKind(
+      "struct P { mut x : I8 }; let mut p = P { x: 1I8 }; p.x = 200I32",
+      "OutOfBounds",
+    );
+  });
+
+  it("returns an error when compound field assignment overflows", () => {
+    expectErrorKind(
+      "struct Counter { mut val : I8 }; let mut c = Counter { val: 100I8 }; c.val += 50I8",
+      "OutOfBounds",
+    );
+  });
+
+  it("returns an error when compound field assignment uses non-numeric field", () => {
+    expectErrorKind(
+      "struct Flag { mut active : Bool }; let mut f = Flag { active: false }; f.active += false",
+      "InvalidPointer",
+    );
+  });
+
+  it("returns an error when field assignment rhs expression fails", () => {
+    expectErrorKind(
+      "struct P { mut x : I32 }; let mut p = P { x: 1I32 }; p.x = undefinedRhs",
+      "UndefinedVariable",
+    );
+  });
+
+  it("returns an error when assigning to a struct-typed field directly", () => {
+    expectErrorKind(
+      "struct P { x : I32 }; struct C { mut inner : P }; let mut c = C { inner: P { x: 1I32 } }; c.inner = P { x: 5I32 }",
+      "InvalidPointer",
+    );
+  });
+
+  it("clones struct bindings correctly in if-expression scope", () => {
+    expectOkValue(
+      "struct P { x : I32 }; let p = P { x: 1I32 }; if (true) 1I32 else 2I32",
+      1,
+    );
+  });
+
+  it("returns an error when struct field type annotation is not a valid identifier or type", () => {
+    expect(interpretTuff("let x : 1invalid = 1I32").ok).toBe(false);
+  });
+
+  it("returns an error when nested field assignment path goes through a numeric value", () => {
+    expectErrorKind(
+      "struct P { mut x : I32 }; struct C { mut inner : P }; let mut c = C { inner: P { x: 1I32 } }; c.inner.x.y = 1I32",
+      "InvalidPointer",
+    );
+  });
+
   it("prints the greeting from main", () => {
     const spy = jest.spyOn(console, "log").mockImplementation(() => undefined);
 

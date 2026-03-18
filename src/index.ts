@@ -21,7 +21,11 @@ interface BoolTypeInfo {
   suffix: "Bool";
 }
 
-type TuffTypeInfo = NumericTypeInfo | PointerTypeInfo | BoolTypeInfo;
+type TuffTypeInfo =
+  | NumericTypeInfo
+  | PointerTypeInfo
+  | BoolTypeInfo
+  | StructTypeInfo;
 
 interface OkResult<T> {
   ok: true;
@@ -45,7 +49,8 @@ interface TuffError {
     | "UndefinedVariable"
     | "ImmutableVariable"
     | "InvalidPointer"
-    | "IterationLimit";
+    | "IterationLimit"
+    | "UndefinedType";
   sourceCode: string;
   message: string;
   reason: string;
@@ -78,6 +83,29 @@ interface IfStatementParts {
 interface WhileStatement {
   condition: string;
   body: string;
+}
+
+interface StructTypeInfo {
+  kind: "struct";
+  name: string;
+  suffix: string;
+}
+
+interface StructFieldDef {
+  name: string;
+  type: TuffTypeInfo;
+  mutable: boolean;
+}
+
+interface StructDefinition {
+  name: string;
+  fields: StructFieldDef[];
+}
+
+interface FieldAssignmentStatement {
+  path: string[];
+  operator: string;
+  rhs: string;
 }
 
 interface LetStatement {
@@ -131,11 +159,20 @@ interface BoolValue {
   mutable: boolean;
 }
 
+interface StructValue {
+  kind: "struct";
+  typeName: string;
+  type: StructTypeInfo;
+  fields: Map<string, BoundValue>;
+  definition: StructDefinition;
+  mutable: boolean;
+}
+
 interface UnitValue {
   kind: "unit";
 }
 
-type BoundValue = NumericValue | PointerValue | BoolValue;
+type BoundValue = NumericValue | PointerValue | BoolValue | StructValue;
 type StatementValue = BoundValue | UnitValue;
 
 interface UnaryPointerOperand {
@@ -145,6 +182,7 @@ interface UnaryPointerOperand {
 
 interface Scope {
   bindings: Map<string, BoundValue>;
+  typeDefinitions: Map<string, StructDefinition>;
   parent: Scope | undefined;
 }
 
@@ -348,6 +386,16 @@ function iterationLimit(input: string): ErrResult<TuffError> {
   });
 }
 
+function undefinedType(input: string, name: string): ErrResult<TuffError> {
+  return err({
+    kind: "UndefinedType",
+    sourceCode: input,
+    message: `Undefined struct type '${name}': ${input}`,
+    reason: `The struct type '${name}' has not been defined in the current scope.`,
+    suggestedFix: `Define the struct with 'struct ${name} { ... }' before using it.`,
+  });
+}
+
 function isNumericValue(value: BoundValue): value is NumericValue {
   return value.kind === "numeric";
 }
@@ -358,6 +406,29 @@ function isPointerValue(value: BoundValue): value is PointerValue {
 
 function isBoolValue(value: BoundValue): value is BoolValue {
   return value.kind === "bool";
+}
+
+function isStructValue(value: BoundValue): value is StructValue {
+  return value.kind === "struct";
+}
+
+function resolveTypeDefinition(
+  scope: Scope,
+  name: string,
+): StructDefinition | undefined {
+  let current: Scope | undefined = scope;
+
+  while (current) {
+    const def = current.typeDefinitions.get(name);
+
+    if (def) {
+      return def;
+    }
+
+    current = current.parent;
+  }
+
+  return undefined;
 }
 
 function makeNumericValue(
@@ -394,6 +465,7 @@ function bindValue(
 function createScope(parent: Scope | undefined): Scope {
   return {
     bindings: new Map<string, BoundValue>(),
+    typeDefinitions: new Map<string, StructDefinition>(),
     parent,
   };
 }
@@ -581,6 +653,23 @@ function cloneBoundValue(value: BoundValue): BoundValue {
     };
   }
 
+  if (value.kind === "struct") {
+    const clonedFields = new Map<string, BoundValue>();
+
+    for (const [fname, fval] of value.fields.entries()) {
+      clonedFields.set(fname, cloneBoundValue(fval));
+    }
+
+    return {
+      kind: "struct",
+      typeName: value.typeName,
+      type: value.type,
+      fields: clonedFields,
+      definition: value.definition,
+      mutable: value.mutable,
+    };
+  }
+
   return {
     kind: "pointer",
     value: value.value,
@@ -599,6 +688,7 @@ function cloneScope(scope: Scope): Scope {
 
   return {
     bindings: clonedBindings,
+    typeDefinitions: new Map<string, StructDefinition>(scope.typeDefinitions),
     parent: scope.parent ? cloneScope(scope.parent) : undefined,
   };
 }
@@ -614,6 +704,10 @@ function isTypeMatch(left: TuffTypeInfo, right: TuffTypeInfo): boolean {
 
   if (left.kind === "bool") {
     return true;
+  }
+
+  if (left.kind === "struct") {
+    return left.name === (right as StructTypeInfo).name;
   }
 
   const rightPointer = right as PointerTypeInfo;
@@ -673,6 +767,45 @@ function findMatchingDelimiter(
   }
 
   return -1;
+}
+
+function readIdentifier(
+  input: string,
+  trimmed: string,
+  index: number,
+): Result<{ name: string; next: number }, TuffError> {
+  if (index >= trimmed.length || !isIdentifierStart(trimmed[index])) {
+    return unsupportedInput(input);
+  }
+
+  const nameStart = index;
+  let pos = index + 1;
+
+  while (pos < trimmed.length && isIdentifierPart(trimmed[pos])) {
+    pos += 1;
+  }
+
+  return ok({
+    name: trimmed.slice(nameStart, pos),
+    next: skipWhitespace(trimmed, pos),
+  });
+}
+
+function splitIdentifierPath(text: string): string[] | undefined {
+  const path = text.split(".").map((s) => s.trim());
+
+  return path.length < 2 || !path.every(isIdentifierText) ? undefined : path;
+}
+
+function parseTypeOrError(
+  typeText: string,
+  input: string,
+): Result<TuffTypeInfo, TuffError> {
+  if (typeText.length === 0) {
+    return unsupportedInput(input);
+  }
+
+  return parseTypeReference(typeText);
 }
 
 function splitStatements(input: string): Result<string[], TuffError> {
@@ -1154,6 +1287,222 @@ function parseWhileStatement(
   return ok({ condition: parsed.value.condition, body });
 }
 
+function splitByComma(input: string): string[] {
+  const parts: string[] = [];
+  let current = "";
+  let depth = 0;
+
+  for (const character of input) {
+    if (character === "{" || character === "}") {
+      depth += character === "{" ? 1 : -1;
+      current += character;
+    } else if (character === "," && depth === 0) {
+      parts.push(current.trim());
+      current = "";
+    } else {
+      current += character;
+    }
+  }
+
+  if (current.trim().length > 0) {
+    parts.push(current.trim());
+  }
+
+  return parts;
+}
+
+function parseStructDefinitionStatement(
+  input: string,
+): Result<StructDefinition | undefined, TuffError> {
+  const trimmed = input.trim();
+
+  if (!startsWithKeywordAt(trimmed, "struct", 0)) {
+    return ok(undefined);
+  }
+
+  let index = 6;
+
+  const afterStruct = consumeRequiredWhitespace(input, trimmed, index);
+
+  if (!afterStruct.ok) {
+    return afterStruct;
+  }
+
+  index = afterStruct.value;
+
+  const identResult = readIdentifier(input, trimmed, index);
+
+  if (!identResult.ok) {
+    return identResult;
+  }
+
+  const { name, next: nextIndex } = identResult.value;
+  index = nextIndex;
+
+  if (index >= trimmed.length || trimmed[index] !== "{") {
+    return unsupportedInput(input);
+  }
+
+  const bodyEnd = findMatchingDelimiter(trimmed, index, "{", "}");
+
+  const bodyText = trimmed.slice(index + 1, bodyEnd);
+  const fieldTexts = bodyText
+    .split(";")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+
+  const fields: StructFieldDef[] = [];
+
+  for (const fieldText of fieldTexts) {
+    let fi = 0;
+    let mutable = false;
+
+    if (
+      fieldText.startsWith("mut") &&
+      (fieldText.length === 3 || isWhitespace(fieldText[3]))
+    ) {
+      mutable = true;
+      fi = skipWhitespace(fieldText, 3);
+    }
+
+    if (fi >= fieldText.length || !isIdentifierStart(fieldText[fi])) {
+      return unsupportedInput(input);
+    }
+
+    const fnameStart = fi;
+    fi += 1;
+
+    while (fi < fieldText.length && isIdentifierPart(fieldText[fi])) {
+      fi += 1;
+    }
+
+    const fieldName = fieldText.slice(fnameStart, fi);
+    fi = skipWhitespace(fieldText, fi);
+
+    if (fi >= fieldText.length || fieldText[fi] !== ":") {
+      return unsupportedInput(input);
+    }
+
+    fi += 1;
+    fi = skipWhitespace(fieldText, fi);
+
+    const typeText = fieldText.slice(fi).trim();
+
+    const parsedType = parseTypeOrError(typeText, input);
+
+    if (!parsedType.ok) {
+      return parsedType;
+    }
+
+    fields.push({ name: fieldName, type: parsedType.value, mutable });
+  }
+
+  if (fields.length === 0) {
+    return unsupportedInput(input);
+  }
+
+  return ok({ name, fields });
+}
+
+interface StructInstantiationParts {
+  typeName: string;
+  fieldPairs: Array<{ name: string; value: string }>;
+}
+
+function parseStructInstantiation(
+  input: string,
+): StructInstantiationParts | undefined {
+  const trimmed = input.trim();
+
+  if (trimmed.length === 0 || !isIdentifierStart(trimmed[0])) {
+    return undefined;
+  }
+
+  let index = 1;
+
+  while (index < trimmed.length && isIdentifierPart(trimmed[index])) {
+    index += 1;
+  }
+
+  const typeName = trimmed.slice(0, index);
+  index = skipWhitespace(trimmed, index);
+
+  if (index >= trimmed.length || trimmed[index] !== "{") {
+    return undefined;
+  }
+
+  const bodyEnd = findMatchingDelimiter(trimmed, index, "{", "}");
+
+  const bodyText = trimmed.slice(index + 1, bodyEnd);
+  const rawPairs = splitByComma(bodyText);
+  const fieldPairs: Array<{ name: string; value: string }> = [];
+
+  for (const pair of rawPairs) {
+    const colonIndex = pair.indexOf(":");
+
+    if (colonIndex < 0) {
+      return undefined;
+    }
+
+    const fieldName = pair.slice(0, colonIndex).trim();
+    const fieldValue = pair.slice(colonIndex + 1).trim();
+
+    if (!isIdentifierText(fieldName) || fieldValue.length === 0) {
+      return undefined;
+    }
+
+    fieldPairs.push({ name: fieldName, value: fieldValue });
+  }
+
+  return { typeName, fieldPairs };
+}
+
+function parseFieldAccess(input: string): string[] | undefined {
+  const trimmed = input.trim();
+
+  if (!trimmed.includes(".")) {
+    return undefined;
+  }
+
+  return splitIdentifierPath(trimmed);
+}
+
+function parseFieldAssignmentStatement(
+  input: string,
+): FieldAssignmentStatement | undefined {
+  const trimmed = input.trim();
+  const dotIndex = trimmed.indexOf(".");
+
+  if (dotIndex <= 0) {
+    return undefined;
+  }
+
+  const equalsIndex = trimmed.indexOf("=");
+
+  if (
+    equalsIndex <= dotIndex ||
+    isComparisonEqualsUsage(trimmed, equalsIndex)
+  ) {
+    return undefined;
+  }
+
+  const operator = extractCompoundOperator(trimmed, equalsIndex) ?? "";
+  const lhs = trimmed.slice(0, equalsIndex - operator.length).trim();
+  const rhs = trimmed.slice(equalsIndex + 1).trim();
+
+  if (rhs.length === 0) {
+    return undefined;
+  }
+
+  const path = splitIdentifierPath(lhs);
+
+  if (path === undefined) {
+    return undefined;
+  }
+
+  return { path, operator, rhs };
+}
+
 function parseTypeReference(input: string): Result<TuffTypeInfo, TuffError> {
   if (input === "Bool") {
     return ok(BOOL_TYPE);
@@ -1183,6 +1532,10 @@ function parseTypeReference(input: string): Result<TuffTypeInfo, TuffError> {
   const numeric = TUFF_TYPES.get(input as TuffSuffix);
 
   if (!numeric) {
+    if (isIdentifierText(input)) {
+      return ok({ kind: "struct", name: input, suffix: input });
+    }
+
     return unsupportedSuffix(input, input);
   }
 
@@ -1233,19 +1586,14 @@ function parseLetStatement(input: string): Result<LetStatement, TuffError> {
     index = afterMut.value;
   }
 
-  if (index >= trimmed.length || !isIdentifierStart(trimmed[index])) {
-    return unsupportedInput(input);
+  const identResult = readIdentifier(input, trimmed, index);
+
+  if (!identResult.ok) {
+    return identResult;
   }
 
-  const nameStart = index;
-  index += 1;
-
-  while (index < trimmed.length && isIdentifierPart(trimmed[index])) {
-    index += 1;
-  }
-
-  const name = trimmed.slice(nameStart, index);
-  index = skipWhitespace(trimmed, index);
+  const name = identResult.value.name;
+  index = identResult.value.next;
 
   let type: TuffTypeInfo | undefined;
 
@@ -1282,11 +1630,7 @@ function parseLetStatement(input: string): Result<LetStatement, TuffError> {
 
     const typeText = trimmed.slice(typeStart, index);
 
-    if (typeText.length === 0) {
-      return unsupportedInput(input);
-    }
-
-    const parsedType = parseTypeReference(typeText);
+    const parsedType = parseTypeOrError(typeText, input);
 
     if (!parsedType.ok) {
       return parsedType;
@@ -1563,6 +1907,59 @@ function dereferencePointer(
   return ok(buildDereferencedNumeric(resolved.value.value, scope));
 }
 
+function makeStructValue(
+  typeName: string,
+  fieldType: StructTypeInfo,
+  fields: Map<string, BoundValue>,
+  definition: StructDefinition,
+  mutable: boolean,
+): StructValue {
+  const clonedFields = new Map<string, BoundValue>();
+
+  for (const [fname, fval] of fields.entries()) {
+    clonedFields.set(fname, cloneBoundValue(fval));
+  }
+
+  return {
+    kind: "struct",
+    typeName,
+    type: fieldType,
+    fields: clonedFields,
+    definition,
+    mutable,
+  };
+}
+
+function resolveFieldChain(
+  path: string[],
+  input: string,
+  scope: Scope,
+): Result<BoundValue, TuffError> {
+  const rootBinding = resolveScopeBinding(scope, path[0]);
+
+  if (!rootBinding) {
+    return undefinedVariable(input, path[0]);
+  }
+
+  let current: BoundValue = rootBinding;
+
+  for (let i = 1; i < path.length; i += 1) {
+    if (!isStructValue(current)) {
+      return invalidPointer(input, "Field access requires a struct value.");
+    }
+
+    const fieldVal = current.fields.get(path[i]);
+
+    if (!fieldVal) {
+      return undefinedVariable(input, path[i]);
+    }
+
+    current = fieldVal;
+  }
+
+  return ok(current);
+}
+
 function evaluateExpression(
   input: string,
   scope: Scope,
@@ -1780,6 +2177,75 @@ function evaluateExpression(
     return dereferencePointer(input, trimmed.slice(1), scope);
   }
 
+  const structInst = parseStructInstantiation(trimmed);
+
+  if (structInst !== undefined) {
+    const definition = resolveTypeDefinition(scope, structInst.typeName);
+
+    if (!definition) {
+      return undefinedType(input, structInst.typeName);
+    }
+
+    const expectedNames = definition.fields.map((f) => f.name);
+    const providedNames = structInst.fieldPairs.map((p) => p.name);
+
+    const allExpectedProvided = expectedNames.every((n) =>
+      providedNames.includes(n),
+    );
+    const noUnknownFields = providedNames.every((n) =>
+      expectedNames.includes(n),
+    );
+
+    if (!allExpectedProvided || !noUnknownFields) {
+      return unsupportedInput(input);
+    }
+
+    const fieldsMap = new Map<string, BoundValue>();
+
+    for (const fieldDef of definition.fields) {
+      const pair = structInst.fieldPairs.find((p) => p.name === fieldDef.name)!;
+      const evaluated = evaluateExpression(pair.value, scope);
+
+      if (!evaluated.ok) {
+        return evaluated;
+      }
+
+      if (!isTypeMatch(fieldDef.type, evaluated.value.type)) {
+        return invalidPointer(
+          input,
+          `Field '${fieldDef.name}' type does not match the declared type.`,
+        );
+      }
+
+      fieldsMap.set(fieldDef.name, {
+        ...evaluated.value,
+        mutable: fieldDef.mutable,
+      } as BoundValue);
+    }
+
+    const structType: StructTypeInfo = {
+      kind: "struct",
+      name: definition.name,
+      suffix: definition.name,
+    };
+
+    return ok(
+      makeStructValue(
+        definition.name,
+        structType,
+        fieldsMap,
+        definition,
+        false,
+      ),
+    );
+  }
+
+  const fieldAccessPath = parseFieldAccess(trimmed);
+
+  if (fieldAccessPath !== undefined) {
+    return resolveFieldChain(fieldAccessPath, input, scope);
+  }
+
   const literal = parseLiteral(trimmed);
 
   if (literal.ok) {
@@ -1943,6 +2409,20 @@ function evaluateStatement(
     return ok(UNIT_VALUE);
   }
 
+  const structDefinition = parseStructDefinitionStatement(statement);
+
+  if (!structDefinition.ok) {
+    return structDefinition;
+  }
+
+  if (structDefinition.value) {
+    scope.typeDefinitions.set(
+      structDefinition.value.name,
+      structDefinition.value,
+    );
+    return ok(UNIT_VALUE);
+  }
+
   const letStatement = parseLetStatement(statement);
 
   if (letStatement.ok) {
@@ -1998,16 +2478,48 @@ function evaluateStatement(
       );
     }
 
-    if (!isPointerValue(initializer.value)) {
+    if (inferredType.kind === "struct") {
+      if (!isStructValue(initializer.value)) {
+        return invalidPointer(
+          statement,
+          "Initializer type does not match the declared type.",
+        );
+      }
+
+      if (inferredType.name !== initializer.value.typeName) {
+        return invalidPointer(
+          statement,
+          "Initializer type does not match the declared type.",
+        );
+      }
+
+      return bindValue(
+        letStatement.value.name,
+        makeStructValue(
+          initializer.value.typeName,
+          initializer.value.type,
+          initializer.value.fields,
+          initializer.value.definition,
+          letStatement.value.mutable,
+        ),
+        scope,
+      );
+    }
+
+    const pointerInitializer = initializer.value;
+    if (!isPointerValue(pointerInitializer)) {
       return invalidPointer(
         statement,
         "Initializer type does not match the declared type.",
       );
     }
 
-    const pointerInitializer = initializer.value;
+    const pointerInferredType = inferredType as PointerTypeInfo;
 
-    if (inferredType.target.suffix !== pointerInitializer.type.target.suffix) {
+    if (
+      pointerInferredType.target.suffix !==
+      pointerInitializer.type.target.suffix
+    ) {
       return invalidPointer(
         statement,
         "Initializer type does not match the declared type.",
@@ -2017,7 +2529,7 @@ function evaluateStatement(
     const boundValue: PointerValue = {
       kind: "pointer",
       value: pointerInitializer.value,
-      type: inferredType,
+      type: pointerInferredType,
       mutable: letStatement.value.mutable,
       target: pointerInitializer.target,
     };
@@ -2027,6 +2539,158 @@ function evaluateStatement(
 
   if (statement.trim().startsWith("let")) {
     return letStatement;
+  }
+
+  const fieldAssignment = parseFieldAssignmentStatement(statement);
+
+  if (fieldAssignment !== undefined) {
+    const bindingName = fieldAssignment.path[0];
+    const rootBinding = resolveScopeBinding(scope, bindingName);
+
+    if (!rootBinding) {
+      return undefinedVariable(statement, bindingName);
+    }
+
+    if (!isStructValue(rootBinding)) {
+      return invalidPointer(
+        statement,
+        "Field assignment requires a struct binding.",
+      );
+    }
+
+    if (!rootBinding.mutable) {
+      return immutableVariable(statement, bindingName);
+    }
+
+    const fieldName = fieldAssignment.path[fieldAssignment.path.length - 1];
+    let parentStruct: StructValue = rootBinding;
+
+    if (fieldAssignment.path.length > 2) {
+      const parentPath = fieldAssignment.path.slice(
+        0,
+        fieldAssignment.path.length - 1,
+      );
+      const parentResult = resolveFieldChain(parentPath, statement, scope);
+
+      if (!parentResult.ok) {
+        return parentResult;
+      }
+
+      if (!isStructValue(parentResult.value)) {
+        return invalidPointer(
+          statement,
+          "Field assignment requires a struct value.",
+        );
+      }
+
+      parentStruct = parentResult.value;
+    }
+
+    const fieldValue = parentStruct.fields.get(fieldName);
+
+    if (!fieldValue) {
+      return undefinedVariable(statement, fieldName);
+    }
+
+    if (!fieldValue.mutable) {
+      return immutableVariable(statement, fieldName);
+    }
+
+    const rhsResult = evaluateExpression(fieldAssignment.rhs, scope);
+
+    if (!rhsResult.ok) {
+      return rhsResult;
+    }
+
+    const op = fieldAssignment.operator;
+    let newFieldValue: BoundValue;
+
+    if (op === "") {
+      newFieldValue = {
+        ...fieldValue,
+        value: (rhsResult.value as NumericValue).value,
+      } as BoundValue;
+
+      if (!isNumericValue(fieldValue) && !isBoolValue(fieldValue)) {
+        return invalidPointer(
+          statement,
+          "Field assignment only supports numeric and Bool fields.",
+        );
+      }
+
+      if (isBoolValue(fieldValue)) {
+        if (!isBoolValue(rhsResult.value)) {
+          return invalidPointer(
+            statement,
+            "Assigned value type does not match field type.",
+          );
+        }
+
+        newFieldValue = makeBoolValue(
+          rhsResult.value.value,
+          fieldValue.mutable,
+        );
+      } else {
+        if (!isNumericValue(rhsResult.value)) {
+          return invalidPointer(
+            statement,
+            "Assigned value type does not match field type.",
+          );
+        }
+
+        if (
+          rhsResult.value.value < (fieldValue as NumericValue).type.min ||
+          rhsResult.value.value > (fieldValue as NumericValue).type.max
+        ) {
+          return outOfBounds(
+            statement,
+            (fieldValue as NumericValue).type.suffix,
+          );
+        }
+
+        newFieldValue = makeNumericValue(
+          rhsResult.value.value,
+          (fieldValue as NumericValue).type,
+          fieldValue.mutable,
+        );
+      }
+    } else {
+      if (!isNumericValue(fieldValue) || !isNumericValue(rhsResult.value)) {
+        return invalidPointer(
+          statement,
+          "Compound field assignment requires numeric operands.",
+        );
+      }
+
+      let computed: bigint;
+
+      if (op === "+") {
+        computed = fieldValue.value + rhsResult.value.value;
+      } else if (op === "-") {
+        computed = fieldValue.value - rhsResult.value.value;
+      } else if (op === "*") {
+        computed = fieldValue.value * rhsResult.value.value;
+      } else {
+        if (rhsResult.value.value === 0n) {
+          return divisionByZero(statement);
+        }
+
+        computed = fieldValue.value / rhsResult.value.value;
+      }
+
+      if (computed < fieldValue.type.min || computed > fieldValue.type.max) {
+        return outOfBounds(statement, fieldValue.type.suffix);
+      }
+
+      newFieldValue = makeNumericValue(
+        computed,
+        fieldValue.type,
+        fieldValue.mutable,
+      );
+    }
+
+    parentStruct.fields.set(fieldName, newFieldValue);
+    return ok(newFieldValue);
   }
 
   const compoundAssignment = parseCompoundAssignmentStatement(statement);
@@ -2170,15 +2834,18 @@ function evaluateStatement(
     }
 
     const pointerAssigned = assigned.value;
+    const existingPointerType = existing.type as PointerTypeInfo;
 
-    if (existing.type.mutable && !assigned.value.type.mutable) {
+    if (existingPointerType.mutable && !assigned.value.type.mutable) {
       return invalidPointer(
         statement,
         "Cannot assign immutable pointer to mutable pointer binding.",
       );
     }
 
-    if (existing.type.target.suffix !== pointerAssigned.type.target.suffix) {
+    if (
+      existingPointerType.target.suffix !== pointerAssigned.type.target.suffix
+    ) {
       return invalidPointer(
         statement,
         "Assigned value type does not match the variable type.",
@@ -2188,7 +2855,7 @@ function evaluateStatement(
     const updatedValue: PointerValue = {
       kind: "pointer",
       value: pointerAssigned.value,
-      type: existing.type,
+      type: existingPointerType,
       mutable: existing.mutable,
       target: pointerAssigned.target,
     };
