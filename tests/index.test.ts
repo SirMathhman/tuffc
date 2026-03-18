@@ -232,6 +232,105 @@ describe("interpretTuff", () => {
     });
   });
 
+  it("evaluates an if-expression in a let initializer", () => {
+    expectOkValue("let x = if (true) 3 else 5; x", 3);
+  });
+
+  it("evaluates an if-expression with false condition", () => {
+    expectOkValue("let x = if (false) 3 else 5; x", 5);
+  });
+
+  it("evaluates an if-expression with block branches", () => {
+    expectOkValue("let x = if (true) { 3 } else { 5 }; x", 3);
+  });
+
+  it("supports nested if-expressions", () => {
+    expectOkValue("let x = if (true) if (false) 1 else 2 else 3; x", 2);
+  });
+
+  it("supports Bool-valued if-expressions", () => {
+    expectOkValue("if (true) true else false", 1);
+  });
+
+  it("evaluates pointer-typed if-expression branches with matching pointer types", () => {
+    expectOkValue(
+      "let x : I32 = 1; let y : *I32 = &x; let z : *I32 = &x; let p = if (true) y else z; *p",
+      1,
+    );
+  });
+
+  it("evaluates if-expression when outer scope has existing bindings", () => {
+    expectOkValue("let y = 1U8; let x = if (true) y else y; x", 1);
+  });
+
+  it("evaluates if-expression when outer scope contains Bool binding", () => {
+    expectOkValue("let flag : Bool = true; let x = if (true) 1 else 2; x", 1);
+  });
+
+  it("evaluates if-expression inside nested block scope", () => {
+    expectOkValue("let a = 1; { let b = 2; if (true) b else b }", 2);
+  });
+
+  it("evaluates if-expression with nested delimiters in block branch", () => {
+    expectOkValue("if (true) { { 1 } } else 2", 1);
+  });
+
+  it("returns an error when if condition is not Bool", () => {
+    expectErrorKind("if (1U8) 3 else 5", "InvalidPointer");
+  });
+
+  it("returns an error when if branches have different types", () => {
+    expectErrorKind("if (true) 3 else false", "InvalidPointer");
+  });
+
+  it("returns an error when if-expression omits else", () => {
+    expectErrorKind("if (true) 3", "UnsupportedInput");
+  });
+
+  it("returns an error when if-expression condition cannot be resolved", () => {
+    expectErrorKind("if (missingFlag) 3 else 5", "UndefinedVariable");
+  });
+
+  it("returns an error when selected if branch expression fails", () => {
+    expectErrorKind("if (true) missingValue else 5", "UndefinedVariable");
+  });
+
+  it("returns an error when if-expression does not use if keyword boundary", () => {
+    expectErrorKind("ifx (true) 3 else 5", "UnsupportedInput");
+  });
+
+  it("returns an error when if-expression omits required whitespace after if", () => {
+    expectErrorKind("if(true) 3 else 5", "UnsupportedInput");
+  });
+
+  it("returns an error for malformed if-expression with missing condition delimiter", () => {
+    expectErrorKind("if (true 3 else 5", "UnsupportedInput");
+  });
+
+  it("returns an error for empty if-expression condition", () => {
+    expectErrorKind("if () 3 else 5", "UnsupportedInput");
+  });
+
+  it("returns an error for incomplete if-expression after condition", () => {
+    expectErrorKind("if (true)", "UnsupportedInput");
+  });
+
+  it("returns an error for if-expression with empty then-branch", () => {
+    expectErrorKind("if (true) else 5", "UnsupportedInput");
+  });
+
+  it("returns an error for if-expression with empty else-branch whitespace", () => {
+    expectErrorKind("if (true) 3 else   ", "UnsupportedInput");
+  });
+
+  it("returns an error for malformed if-expression condition grouping", () => {
+    expectErrorKind("if true 3 else 5", "UnsupportedInput");
+  });
+
+  it("returns an error when if-expression condition uses unsupported nested grouping", () => {
+    expectErrorKind("if ((true)) 3 else 5", "UnsupportedInput");
+  });
+
   it("evaluates assignment inside a block and updates outer mutable variable", () => {
     expectOkValue("let mut x = 0; { x = 100; } x", 100);
   });

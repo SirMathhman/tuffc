@@ -62,6 +62,12 @@ interface ExpressionParts {
   right: string;
 }
 
+interface IfExpressionParts {
+  condition: string;
+  thenBranch: string;
+  elseBranch: string;
+}
+
 interface LetStatement {
   name: string;
   type: TuffTypeInfo | undefined;
@@ -515,6 +521,119 @@ function isIdentifierText(text: string): boolean {
   return true;
 }
 
+function cloneBoundValue(value: BoundValue): BoundValue {
+  if (value.kind === "numeric") {
+    return {
+      kind: "numeric",
+      value: value.value,
+      type: value.type,
+      mutable: value.mutable,
+    };
+  }
+
+  if (value.kind === "bool") {
+    return {
+      kind: "bool",
+      value: value.value,
+      type: value.type,
+      mutable: value.mutable,
+    };
+  }
+
+  return {
+    kind: "pointer",
+    value: value.value,
+    type: value.type,
+    mutable: value.mutable,
+    target: value.target,
+  };
+}
+
+function cloneScope(scope: Scope): Scope {
+  const clonedBindings = new Map<string, BoundValue>();
+
+  for (const [name, value] of scope.bindings.entries()) {
+    clonedBindings.set(name, cloneBoundValue(value));
+  }
+
+  return {
+    bindings: clonedBindings,
+    parent: scope.parent ? cloneScope(scope.parent) : undefined,
+  };
+}
+
+function isTypeMatch(left: TuffTypeInfo, right: TuffTypeInfo): boolean {
+  if (left.kind !== right.kind) {
+    return false;
+  }
+
+  if (left.kind === "numeric") {
+    return left.suffix === (right as NumericTypeInfo).suffix;
+  }
+
+  if (left.kind === "bool") {
+    return true;
+  }
+
+  const rightPointer = right as PointerTypeInfo;
+
+  return (
+    left.mutable === rightPointer.mutable &&
+    left.target.suffix === rightPointer.target.suffix
+  );
+}
+
+function isKeywordBoundary(text: string, index: number): boolean {
+  if (index < 0 || index >= text.length) {
+    return true;
+  }
+
+  return !isIdentifierPart(text[index]);
+}
+
+function startsWithKeywordAt(
+  text: string,
+  keyword: string,
+  index: number,
+): boolean {
+  if (text.slice(index, index + keyword.length) !== keyword) {
+    return false;
+  }
+
+  return (
+    isKeywordBoundary(text, index - 1) &&
+    isKeywordBoundary(text, index + keyword.length)
+  );
+}
+
+function findMatchingDelimiter(
+  text: string,
+  startIndex: number,
+  openChar: string,
+  closeChar: string,
+): number {
+  let depth = 0;
+
+  for (let index = startIndex; index < text.length; index += 1) {
+    const character = text[index];
+
+    if (character === openChar) {
+      depth += 1;
+      continue;
+    }
+
+    if (character === closeChar) {
+      depth -= 1;
+
+      if (depth === 0) {
+        return index;
+      }
+    }
+  }
+
+  return -1;
+}
+
 function splitStatements(input: string): Result<string[], TuffError> {
   const statements: string[] = [];
   let current = "";
@@ -545,7 +664,11 @@ function splitStatements(input: string): Result<string[], TuffError> {
           nextIndex += 1;
         }
 
-        if (nextIndex < input.length && input[nextIndex] !== ";") {
+        if (
+          nextIndex < input.length &&
+          input[nextIndex] !== ";" &&
+          !startsWithKeywordAt(input, "else", nextIndex)
+        ) {
           statements.push(current.trim());
 
           current = "";
@@ -743,6 +866,125 @@ function parseLogicalExpression(
   }
 
   return unsupportedInput(input);
+}
+
+function findElseForIf(input: string, startIndex: number): number {
+  let parenDepth = 0;
+  let braceDepth = 0;
+  let nestedIfCount = 0;
+
+  for (let index = startIndex; index < input.length; index += 1) {
+    const character = input[index];
+
+    if (character === "(") {
+      parenDepth += 1;
+      continue;
+    }
+
+    if (character === ")") {
+      parenDepth -= 1;
+      continue;
+    }
+
+    if (character === "{") {
+      braceDepth += 1;
+      continue;
+    }
+
+    if (character === "}") {
+      braceDepth -= 1;
+      continue;
+    }
+
+    if (parenDepth !== 0 || braceDepth !== 0) {
+      continue;
+    }
+
+    if (startsWithKeywordAt(input, "if", index)) {
+      nestedIfCount += 1;
+      continue;
+    }
+
+    if (startsWithKeywordAt(input, "else", index)) {
+      if (nestedIfCount === 0) {
+        return index;
+      }
+
+      nestedIfCount -= 1;
+    }
+  }
+
+  return -1;
+}
+
+function parseIfExpression(
+  input: string,
+): Result<IfExpressionParts | undefined, TuffError> {
+  const trimmed = input.trim();
+
+  if (!trimmed.startsWith("if")) {
+    return ok(undefined);
+  }
+
+  if (!startsWithKeywordAt(trimmed, "if", 0)) {
+    return unsupportedInput(input);
+  }
+
+  let index = 2;
+
+  if (index >= trimmed.length || !isWhitespace(trimmed[index])) {
+    return unsupportedInput(input);
+  }
+
+  index = skipWhitespace(trimmed, index);
+
+  if (index >= trimmed.length || trimmed[index] !== "(") {
+    return unsupportedInput(input);
+  }
+
+  const conditionEnd = findMatchingDelimiter(trimmed, index, "(", ")");
+
+  if (conditionEnd < 0) {
+    return unsupportedInput(input);
+  }
+
+  const condition = trimmed.slice(index + 1, conditionEnd).trim();
+
+  if (condition.length === 0) {
+    return unsupportedInput(input);
+  }
+
+  const branchStart = skipWhitespace(trimmed, conditionEnd + 1);
+
+  if (branchStart >= trimmed.length) {
+    return unsupportedInput(input);
+  }
+
+  const elseIndex = findElseForIf(trimmed, branchStart);
+
+  if (elseIndex < 0) {
+    return unsupportedInput(input);
+  }
+
+  const thenBranch = trimmed.slice(branchStart, elseIndex).trim();
+
+  if (thenBranch.length === 0) {
+    return unsupportedInput(input);
+  }
+
+  const elseStart = skipWhitespace(trimmed, elseIndex + 4);
+
+  if (elseStart >= trimmed.length) {
+    return unsupportedInput(input);
+  }
+
+  const elseBranch = trimmed.slice(elseStart).trim();
+
+  return ok({
+    condition,
+    thenBranch,
+    elseBranch,
+  });
 }
 
 function parseTypeReference(input: string): Result<TuffTypeInfo, TuffError> {
@@ -1083,6 +1325,52 @@ function evaluateExpression(
   scope: Scope,
 ): Result<BoundValue, TuffError> {
   const trimmed = input.trim();
+
+  const ifExpression = parseIfExpression(trimmed);
+
+  if (!ifExpression.ok) {
+    return ifExpression;
+  }
+
+  if (ifExpression.value) {
+    const condition = evaluateExpression(ifExpression.value.condition, scope);
+
+    if (!condition.ok) {
+      return condition;
+    }
+
+    if (!isBoolValue(condition.value)) {
+      return invalidPointer(input, "If condition must evaluate to Bool.");
+    }
+
+    const selectedBranch = condition.value.value
+      ? ifExpression.value.thenBranch
+      : ifExpression.value.elseBranch;
+    const otherBranch = condition.value.value
+      ? ifExpression.value.elseBranch
+      : ifExpression.value.thenBranch;
+
+    const selectedValue = evaluateExpression(selectedBranch, scope);
+
+    if (!selectedValue.ok) {
+      return selectedValue;
+    }
+
+    const typeCheckScope = cloneScope(scope);
+    const otherValue = evaluateExpression(otherBranch, typeCheckScope);
+
+    if (
+      otherValue.ok &&
+      !isTypeMatch(selectedValue.value.type, otherValue.value.type)
+    ) {
+      return invalidPointer(
+        input,
+        "If branches must evaluate to the same type.",
+      );
+    }
+
+    return selectedValue;
+  }
 
   if (isBlockExpressionText(trimmed)) {
     return evaluateBlockExpression(trimmed, scope);
