@@ -36,6 +36,24 @@ function firstFunctionBody(sf: ts.SourceFile): ts.Block {
   return found;
 }
 
+function firstChildNodeCount(sf: ts.SourceFile): number {
+  let count = 0;
+  ts.forEachChild(sf, (n) => {
+    if (count === 0) count = countNodes(n);
+  });
+  return count;
+}
+
+function twoFileSources(
+  src1: string,
+  src2: string,
+): Array<{ fileName: string; code: string }> {
+  return [
+    { fileName: "a.ts", code: src1 },
+    { fileName: "b.ts", code: src2 },
+  ];
+}
+
 // ── stableHash ────────────────────────────────────────────────────────────────
 
 describe("stableHash", () => {
@@ -69,16 +87,8 @@ describe("countNodes", () => {
       "function f() { const x = 1; const y = 2; return x + y; }",
     );
 
-    let simpleCount = 0;
-    let complexCount = 0;
-    // Capture count only from the first child (FunctionDeclaration); the last
-    // child is always EndOfFileToken (count=1) which would mask the difference.
-    ts.forEachChild(simple, (n) => {
-      if (simpleCount === 0) simpleCount = countNodes(n);
-    });
-    ts.forEachChild(complex, (n) => {
-      if (complexCount === 0) complexCount = countNodes(n);
-    });
+    const simpleCount = firstChildNodeCount(simple);
+    const complexCount = firstChildNodeCount(complex);
 
     expect(complexCount).toBeGreaterThan(simpleCount);
   });
@@ -248,15 +258,17 @@ describe("suppressNested", () => {
     expect(suppressNested(classes)).toHaveLength(2);
   });
 
+  const sharedSmallOccurrences = [
+    { filePath: "a.ts", lineStart: 5, lineEnd: 10 },
+    { filePath: "b.ts", lineStart: 5, lineEnd: 10 },
+  ];
+
   test("suppresses smaller class fully contained in larger class", () => {
     const large = makeClass(1, 100, [
       { filePath: "a.ts", lineStart: 1, lineEnd: 20 },
       { filePath: "b.ts", lineStart: 1, lineEnd: 20 },
     ]);
-    const small = makeClass(2, 30, [
-      { filePath: "a.ts", lineStart: 5, lineEnd: 10 },
-      { filePath: "b.ts", lineStart: 5, lineEnd: 10 },
-    ]);
+    const small = makeClass(2, 30, sharedSmallOccurrences);
     const result = suppressNested([large, small]);
     expect(result.map((c) => c.id)).toContain(1);
     expect(result.map((c) => c.id)).not.toContain(2);
@@ -267,10 +279,7 @@ describe("suppressNested", () => {
       { filePath: "a.ts", lineStart: 1, lineEnd: 20 },
       // No occurrence in b.ts — small's second occurrence isn't covered
     ]);
-    const small = makeClass(2, 30, [
-      { filePath: "a.ts", lineStart: 5, lineEnd: 10 },
-      { filePath: "b.ts", lineStart: 5, lineEnd: 10 },
-    ]);
+    const small = makeClass(2, 30, sharedSmallOccurrences);
     const result = suppressNested([large, small]);
     expect(result.map((c) => c.id)).toContain(2);
   });
@@ -393,15 +402,9 @@ describe("end-to-end duplicate detection", () => {
     const src1 = `function compute(a: number, b: number): number ${sharedBody}`;
     const src2 = `function calculate(a: number, b: number): number ${sharedBody}`;
 
-    const classes = detectDuplicates(
-      [
-        { fileName: "a.ts", code: src1 },
-        { fileName: "b.ts", code: src2 },
-      ],
-      5,
-      3,
-      { normalizeIdentifiers: false },
-    );
+    const classes = detectDuplicates(twoFileSources(src1, src2), 5, 3, {
+      normalizeIdentifiers: false,
+    });
     expect(classes.length).toBeGreaterThan(0);
     const filesSeen = new Set(
       classes.flatMap((c) => c.occurrences.map((o) => o.filePath)),
@@ -418,14 +421,7 @@ describe("end-to-end duplicate detection", () => {
     // the differing operator (+ vs *) makes the two functions structurally inequivalent.
     // A lower threshold would also collect individual parameter nodes like
     // `a: number` which happen to be structurally identical between the two functions.
-    const classes = detectDuplicates(
-      [
-        { fileName: "a.ts", code: src1 },
-        { fileName: "b.ts", code: src2 },
-      ],
-      15,
-      1,
-    );
+    const classes = detectDuplicates(twoFileSources(src1, src2), 15, 1);
     expect(classes.length).toBe(0);
   });
 
@@ -441,15 +437,9 @@ describe("end-to-end duplicate detection", () => {
   return result;
 }`;
 
-    const classes = detectDuplicates(
-      [
-        { fileName: "a.ts", code: src1 },
-        { fileName: "b.ts", code: src2 },
-      ],
-      8,
-      3,
-      { normalizeIdentifiers: true },
-    );
+    const classes = detectDuplicates(twoFileSources(src1, src2), 8, 3, {
+      normalizeIdentifiers: true,
+    });
     expect(classes.length).toBeGreaterThan(0);
   });
 
@@ -465,15 +455,9 @@ describe("end-to-end duplicate detection", () => {
   return result;
 }`;
 
-    const classes = detectDuplicates(
-      [
-        { fileName: "a.ts", code: src1 },
-        { fileName: "b.ts", code: src2 },
-      ],
-      8,
-      3,
-      { normalizeIdentifiers: false },
-    );
+    const classes = detectDuplicates(twoFileSources(src1, src2), 8, 3, {
+      normalizeIdentifiers: false,
+    });
     expect(classes.length).toBe(0);
   });
 });

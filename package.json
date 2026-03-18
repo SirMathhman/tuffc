@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "test": "bun test",
-    "find-duplicates": "bun scripts/find-duplicates.ts"
+    "find-duplicates": "bun scripts/find-duplicates.ts",
+    "check": "bun scripts/check.ts"
   },
   "devDependencies": {
     "typescript": "^5.4.0",
