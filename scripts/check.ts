@@ -8,9 +8,10 @@ import { spawnSync } from "child_process";
  * 1. Linting (eslint)
  * 2. Unit tests (bun test)
  * 3. Duplicate code detection (scripts/find-duplicates.ts)
+ * 4. Copy-paste detection (pmd cpd)
  */
 
-console.log("\n[1/3] Running linter...");
+console.log("\n[1/4] Running linter...");
 const lintResult = spawnSync("bun", ["run", "lint"], { stdio: "inherit" });
 
 if (lintResult.status !== 0) {
@@ -18,7 +19,7 @@ if (lintResult.status !== 0) {
   process.exit(lintResult.status ?? 1);
 }
 
-console.log("\n[2/3] Running unit tests...");
+console.log("\n[2/4] Running unit tests...");
 const testResult = spawnSync("bun", ["test"], { stdio: "inherit" });
 
 if (testResult.status !== 0) {
@@ -26,7 +27,7 @@ if (testResult.status !== 0) {
   process.exit(testResult.status ?? 1);
 }
 
-console.log("\n[3/3] Checking for duplicate code...");
+console.log("\n[3/4] Checking for duplicate code...");
 const dupResult = spawnSync(
   "bun",
   [
@@ -44,6 +45,28 @@ const dupResult = spawnSync(
 if (dupResult.status !== 0) {
   console.error("\n❌ Duplicate check failed.");
   process.exit(dupResult.status ?? 1);
+}
+
+console.log("\n[4/4] Checking for copy-paste code...");
+const cpdResult = spawnSync(
+  "pmd",
+  [
+    "cpd",
+    "--dir",
+    "src,tests",
+    "--language",
+    "typescript",
+    "--minimum-tokens",
+    "35",
+    "--ignore-literals",
+    "--ignore-identifiers",
+  ],
+  { stdio: "inherit" },
+);
+
+if (cpdResult.status !== 0) {
+  console.error("\n❌ Copy-paste check failed.");
+  process.exit(cpdResult.status ?? 1);
 }
 
 console.log("\n✅ All checks passed!");

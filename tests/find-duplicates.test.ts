@@ -54,6 +54,34 @@ function twoFileSources(
   ];
 }
 
+function testCanonicalize(
+  code1: string,
+  code2: string,
+  opts: CanonicalizeOptions,
+): boolean {
+  const sf1 = parse(code1);
+  const sf2 = parse(code2);
+  const body1 = firstFunctionBody(sf1);
+  const body2 = firstFunctionBody(sf2);
+  return canonicalize(body1, opts) === canonicalize(body2, opts);
+}
+
+function testSuppressNested(
+  large: CloneClass,
+  small: CloneClass,
+  shouldContainLarge: boolean,
+  shouldContainSmall: boolean,
+): void {
+  const result = suppressNested([large, small]);
+  const ids = result.map((c) => c.id);
+  if (shouldContainLarge) {
+    expect(ids).toContain(1);
+  }
+  if (shouldContainSmall) {
+    expect(ids).toContain(2);
+  }
+}
+
 // ── stableHash ────────────────────────────────────────────────────────────────
 
 describe("stableHash", () => {
@@ -112,35 +140,25 @@ describe("canonicalize", () => {
   });
 
   test("normalizeIdentifiers=true: alpha-renamed code is identical", () => {
-    const sf1 = parse(
-      "function add(a: number, b: number): number { return a + b; }",
-    );
-    const sf2 = parse(
-      "function sum(x: number, y: number): number { return x + y; }",
-    );
-    const body1 = firstFunctionBody(sf1);
-    const body2 = firstFunctionBody(sf2);
-    const opts: CanonicalizeOptions = {
-      ...DEFAULT_OPTIONS,
-      normalizeIdentifiers: true,
-    };
-    expect(canonicalize(body1, opts)).toBe(canonicalize(body2, opts));
+    const opts = { ...DEFAULT_OPTIONS, normalizeIdentifiers: true };
+    expect(
+      testCanonicalize(
+        "function add(a: number, b: number): number { return a + b; }",
+        "function sum(x: number, y: number): number { return x + y; }",
+        opts,
+      ),
+    ).toBe(true);
   });
 
   test("normalizeIdentifiers=false: alpha-renamed code differs", () => {
-    const sf1 = parse(
-      "function add(a: number, b: number): number { return a + b; }",
-    );
-    const sf2 = parse(
-      "function sum(x: number, y: number): number { return x + y; }",
-    );
-    const body1 = firstFunctionBody(sf1);
-    const body2 = firstFunctionBody(sf2);
-    const opts: CanonicalizeOptions = {
-      ...DEFAULT_OPTIONS,
-      normalizeIdentifiers: false,
-    };
-    expect(canonicalize(body1, opts)).not.toBe(canonicalize(body2, opts));
+    const opts = { ...DEFAULT_OPTIONS, normalizeIdentifiers: false };
+    expect(
+      testCanonicalize(
+        "function add(a: number, b: number): number { return a + b; }",
+        "function sum(x: number, y: number): number { return x + y; }",
+        opts,
+      ),
+    ).toBe(false);
   });
 
   test("structurally different code produces different canonical form", () => {
@@ -154,27 +172,25 @@ describe("canonicalize", () => {
   });
 
   test("normalizeLiterals=true: different literal values produce same form", () => {
-    const sf1 = parse('function f() { return "hello"; }');
-    const sf2 = parse('function f() { return "world"; }');
-    const body1 = firstFunctionBody(sf1);
-    const body2 = firstFunctionBody(sf2);
-    const opts: CanonicalizeOptions = {
-      ...DEFAULT_OPTIONS,
-      normalizeLiterals: true,
-    };
-    expect(canonicalize(body1, opts)).toBe(canonicalize(body2, opts));
+    const opts = { ...DEFAULT_OPTIONS, normalizeLiterals: true };
+    expect(
+      testCanonicalize(
+        'function f() { return "hello"; }',
+        'function f() { return "world"; }',
+        opts,
+      ),
+    ).toBe(true);
   });
 
   test("normalizeLiterals=false: different literal values produce different form", () => {
-    const sf1 = parse('function f() { return "hello"; }');
-    const sf2 = parse('function f() { return "world"; }');
-    const body1 = firstFunctionBody(sf1);
-    const body2 = firstFunctionBody(sf2);
-    const opts: CanonicalizeOptions = {
-      ...DEFAULT_OPTIONS,
-      normalizeLiterals: false,
-    };
-    expect(canonicalize(body1, opts)).not.toBe(canonicalize(body2, opts));
+    const opts = { ...DEFAULT_OPTIONS, normalizeLiterals: false };
+    expect(
+      testCanonicalize(
+        'function f() { return "hello"; }',
+        'function f() { return "world"; }',
+        opts,
+      ),
+    ).toBe(false);
   });
 
   test("keepTypeAnnotations=false: same logic with different types matches", () => {
@@ -259,24 +275,24 @@ describe("suppressNested", () => {
   ];
 
   test("suppresses smaller class fully contained in larger class", () => {
-    const large = makeClass(1, 100, [
-      { filePath: "a.ts", lineStart: 1, lineEnd: 20 },
-      { filePath: "b.ts", lineStart: 1, lineEnd: 20 },
-    ]);
-    const small = makeClass(2, 30, sharedSmallOccurrences);
-    const result = suppressNested([large, small]);
-    expect(result.map((c) => c.id)).toContain(1);
-    expect(result.map((c) => c.id)).not.toContain(2);
+    testSuppressNested(
+      makeClass(1, 100, [
+        { filePath: "a.ts", lineStart: 1, lineEnd: 20 },
+        { filePath: "b.ts", lineStart: 1, lineEnd: 20 },
+      ]),
+      makeClass(2, 30, sharedSmallOccurrences),
+      true,
+      false,
+    );
   });
 
   test("keeps smaller class when only partially nested", () => {
-    const large = makeClass(1, 100, [
-      { filePath: "a.ts", lineStart: 1, lineEnd: 20 },
-      // No occurrence in b.ts — small's second occurrence isn't covered
-    ]);
-    const small = makeClass(2, 30, sharedSmallOccurrences);
-    const result = suppressNested([large, small]);
-    expect(result.map((c) => c.id)).toContain(2);
+    testSuppressNested(
+      makeClass(1, 100, [{ filePath: "a.ts", lineStart: 1, lineEnd: 20 }]),
+      makeClass(2, 30, sharedSmallOccurrences),
+      false,
+      true,
+    );
   });
 });
 
