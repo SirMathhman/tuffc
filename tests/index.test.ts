@@ -185,6 +185,46 @@ describe("interpretTuff", () => {
     });
   });
 
+  it("evaluates assignment inside a block and updates outer mutable variable", () => {
+    expectOkValue("let mut x = 0; { x = 100; } x", 100);
+  });
+
+  it("evaluates nested blocks and updates outer mutable variable", () => {
+    expectOkValue("let mut x = 0; { { x = 100; } } x", 100);
+  });
+
+  it("evaluates a block to the value of its last statement", () => {
+    expectOkValue("{ let x : U8 = 1U8; x }", 1);
+  });
+
+  it("keeps block-local bindings scoped to the block", () => {
+    expectErrorKind("{ let x : U8 = 1U8; x }; x", "UndefinedVariable");
+  });
+
+  it("supports shadowing in nested block scope", () => {
+    expectOkValue("let x : U8 = 1U8; { let x : U8 = 2U8; x }; x", 1);
+  });
+
+  it("returns an error when assigning to immutable outer binding inside block", () => {
+    expectErrorKind("let x = 0U8; { x = 100U8; } x", "ImmutableVariable");
+  });
+
+  it("returns an error for an empty block", () => {
+    expectErrorKind("{}", "UnsupportedInput");
+  });
+
+  it("returns an error for malformed nested block structure", () => {
+    expectErrorKind("{{}", "UnsupportedInput");
+  });
+
+  it("returns an error for unmatched top-level braces", () => {
+    expectErrorKind("let x = 1U8; { x = 2U8", "UnsupportedInput");
+  });
+
+  it("returns an error when multiple blocks are concatenated without separators", () => {
+    expectErrorKind("{}{}", "UnsupportedInput");
+  });
+
   it("returns an error when assigning to an immutable binding", () => {
     expectErrorKind("let x = 0U8; x = 100U8; x", "ImmutableVariable");
   });
@@ -452,6 +492,7 @@ describe("interpretTuff", () => {
     "let y : *I32 = x",
     "*x",
     "&100",
+    "}",
     "1=2",
     "x =",
     "*x =",

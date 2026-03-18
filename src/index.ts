@@ -108,6 +108,11 @@ interface UnaryPointerOperand {
   value: BoundValue;
 }
 
+interface Scope {
+  bindings: Map<string, BoundValue>;
+  parent: Scope | undefined;
+}
+
 const TUFF_TYPES = new Map<TuffSuffix, NumericTypeInfo>([
   [
     "U8",
@@ -333,10 +338,53 @@ function makeBoolValue(value: boolean, mutable: boolean): BoolValue {
 function bindValue(
   name: string,
   value: BoundValue,
-  environment: Map<string, BoundValue>,
+  scope: Scope,
 ): OkResult<BoundValue> {
-  environment.set(name, value);
+  scope.bindings.set(name, value);
   return ok(value);
+}
+
+function createScope(parent: Scope | undefined): Scope {
+  return {
+    bindings: new Map<string, BoundValue>(),
+    parent,
+  };
+}
+
+function resolveScopeBinding(
+  scope: Scope,
+  name: string,
+): BoundValue | undefined {
+  let current: Scope | undefined = scope;
+
+  while (current) {
+    const value = current.bindings.get(name);
+
+    if (value !== undefined) {
+      return value;
+    }
+
+    current = current.parent;
+  }
+
+  return undefined;
+}
+
+function assignScopeBinding(
+  scope: Scope,
+  name: string,
+  value: BoundValue,
+): void {
+  let current: Scope | undefined = scope;
+
+  while (current) {
+    if (current.bindings.has(name)) {
+      current.bindings.set(name, value);
+      return;
+    }
+
+    current = current.parent;
+  }
 }
 
 function makePointerType(target: NumericTypeInfo): PointerTypeInfo {
@@ -467,14 +515,47 @@ function isIdentifierText(text: string): boolean {
   return true;
 }
 
-function splitStatements(input: string): string[] {
+function splitStatements(input: string): Result<string[], TuffError> {
   const statements: string[] = [];
   let current = "";
+  let braceDepth = 0;
 
   for (let index = 0; index < input.length; index += 1) {
     const character = input[index];
 
-    if (character === ";") {
+    if (character === "{") {
+      braceDepth += 1;
+      current += character;
+      continue;
+    }
+
+    if (character === "}") {
+      braceDepth -= 1;
+
+      if (braceDepth < 0) {
+        return unsupportedInput(input);
+      }
+
+      current += character;
+
+      if (braceDepth === 0) {
+        let nextIndex = index + 1;
+
+        while (nextIndex < input.length && isWhitespace(input[nextIndex])) {
+          nextIndex += 1;
+        }
+
+        if (nextIndex < input.length && input[nextIndex] !== ";") {
+          statements.push(current.trim());
+
+          current = "";
+        }
+      }
+
+      continue;
+    }
+
+    if (character === ";" && braceDepth === 0) {
       const trimmed = current.trim();
 
       if (trimmed.length > 0) {
@@ -494,7 +575,61 @@ function splitStatements(input: string): string[] {
     statements.push(trimmed);
   }
 
-  return statements;
+  if (braceDepth !== 0) {
+    return unsupportedInput(input);
+  }
+
+  return ok(statements);
+}
+
+function isBlockExpressionText(text: string): boolean {
+  const trimmed = text.trim();
+
+  if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) {
+    return false;
+  }
+
+  let braceDepth = 0;
+
+  for (let index = 0; index < trimmed.length; index += 1) {
+    const character = trimmed[index];
+
+    if (character === "{") {
+      braceDepth += 1;
+    } else if (character === "}") {
+      braceDepth -= 1;
+    }
+  }
+
+  return braceDepth === 0;
+}
+
+function evaluateBlockExpression(
+  input: string,
+  scope: Scope,
+): Result<BoundValue, TuffError> {
+  const trimmed = input.trim();
+  const inner = trimmed.slice(1, trimmed.length - 1);
+  const blockStatements = (splitStatements(inner) as OkResult<string[]>).value;
+
+  if (blockStatements.length === 0) {
+    return unsupportedInput(input);
+  }
+
+  const blockScope = createScope(scope);
+  let lastValue: BoundValue | undefined;
+
+  for (const statement of blockStatements) {
+    const evaluated = evaluateStatement(statement, blockScope);
+
+    if (!evaluated.ok) {
+      return evaluated;
+    }
+
+    lastValue = evaluated.value;
+  }
+
+  return ok(lastValue as BoundValue);
 }
 
 function parseExpression(input: string): Result<ExpressionParts, TuffError> {
@@ -755,9 +890,9 @@ function parseDereferenceAssignmentStatement(
 function resolveIdentifier(
   name: string,
   sourceCode: string,
-  environment: Map<string, BoundValue>,
+  scope: Scope,
 ): Result<BoundValue, TuffError> {
-  const value = environment.get(name);
+  const value = resolveScopeBinding(scope, name);
 
   if (!value) {
     return undefinedVariable(sourceCode, name);
@@ -769,7 +904,7 @@ function resolveIdentifier(
 function resolveUnaryPointerOperand(
   input: string,
   operand: string,
-  environment: Map<string, BoundValue>,
+  scope: Scope,
   detail: string,
 ): Result<UnaryPointerOperand, TuffError> {
   const name = operand.trim();
@@ -778,7 +913,7 @@ function resolveUnaryPointerOperand(
     return invalidPointer(input, detail);
   }
 
-  const resolved = resolveIdentifier(name, input, environment);
+  const resolved = resolveIdentifier(name, input, scope);
 
   if (!resolved.ok) {
     return resolved;
@@ -825,9 +960,12 @@ function buildMutableAddressPointer(
 
 function buildDereferencedNumeric(
   pointerValue: PointerValue,
-  environment: Map<string, BoundValue>,
+  scope: Scope,
 ): NumericValue {
-  const pointedValue = environment.get(pointerValue.target) as NumericValue;
+  const pointedValue = resolveScopeBinding(
+    scope,
+    pointerValue.target,
+  ) as NumericValue;
 
   return {
     kind: "numeric",
@@ -840,12 +978,12 @@ function buildDereferencedNumeric(
 function dereferencePointer(
   input: string,
   operand: string,
-  environment: Map<string, BoundValue>,
+  scope: Scope,
 ): Result<BoundValue, TuffError> {
   const resolved = resolveUnaryPointerOperand(
     input,
     operand,
-    environment,
+    scope,
     "Dereference requires a named pointer variable.",
   );
 
@@ -859,21 +997,25 @@ function dereferencePointer(
     return invalidPointer(input, invalidMessage);
   }
 
-  return ok(buildDereferencedNumeric(resolved.value.value, environment));
+  return ok(buildDereferencedNumeric(resolved.value.value, scope));
 }
 
 function evaluateExpression(
   input: string,
-  environment: Map<string, BoundValue>,
+  scope: Scope,
 ): Result<BoundValue, TuffError> {
   const trimmed = input.trim();
+
+  if (isBlockExpressionText(trimmed)) {
+    return evaluateBlockExpression(trimmed, scope);
+  }
 
   if (trimmed === "true" || trimmed === "false") {
     return ok(makeBoolValue(trimmed === "true", false));
   }
 
   if (trimmed.startsWith("!")) {
-    const operand = evaluateExpression(trimmed.slice(1), environment);
+    const operand = evaluateExpression(trimmed.slice(1), scope);
 
     if (!operand.ok) {
       return operand;
@@ -889,16 +1031,13 @@ function evaluateExpression(
   const logicalExpression = parseLogicalExpression(trimmed);
 
   if (logicalExpression.ok) {
-    const left = evaluateExpression(logicalExpression.value.left, environment);
+    const left = evaluateExpression(logicalExpression.value.left, scope);
 
     if (!left.ok) {
       return left;
     }
 
-    const right = evaluateExpression(
-      logicalExpression.value.right,
-      environment,
-    );
+    const right = evaluateExpression(logicalExpression.value.right, scope);
 
     if (!right.ok) {
       return right;
@@ -930,7 +1069,7 @@ function evaluateExpression(
     const resolved = resolveUnaryPointerOperand(
       input,
       operand,
-      environment,
+      scope,
       "Address-of requires a named variable.",
     );
 
@@ -965,7 +1104,7 @@ function evaluateExpression(
   }
 
   if (trimmed.startsWith("*")) {
-    return dereferencePointer(input, trimmed.slice(1), environment);
+    return dereferencePointer(input, trimmed.slice(1), scope);
   }
 
   const literal = parseLiteral(trimmed);
@@ -983,7 +1122,7 @@ function evaluateExpression(
 
   if (!expression.ok) {
     if (isIdentifierText(trimmed)) {
-      return resolveIdentifier(trimmed, input, environment);
+      return resolveIdentifier(trimmed, input, scope);
     }
 
     return literal.error.kind === "UnsupportedInput"
@@ -991,13 +1130,13 @@ function evaluateExpression(
       : literal;
   }
 
-  const left = evaluateExpression(expression.value.left, environment);
+  const left = evaluateExpression(expression.value.left, scope);
 
   if (!left.ok) {
     return left;
   }
 
-  const right = evaluateExpression(expression.value.right, environment);
+  const right = evaluateExpression(expression.value.right, scope);
 
   if (!right.ok) {
     return right;
@@ -1043,14 +1182,14 @@ function evaluateExpression(
 
 function evaluateStatement(
   statement: string,
-  environment: Map<string, BoundValue>,
+  scope: Scope,
 ): Result<BoundValue, TuffError> {
   const letStatement = parseLetStatement(statement);
 
   if (letStatement.ok) {
     const initializer = evaluateExpression(
       letStatement.value.initializer,
-      environment,
+      scope,
     );
 
     if (!initializer.ok) {
@@ -1081,7 +1220,7 @@ function evaluateStatement(
           inferredType,
           letStatement.value.mutable,
         ),
-        environment,
+        scope,
       );
     }
 
@@ -1096,7 +1235,7 @@ function evaluateStatement(
       return bindValue(
         letStatement.value.name,
         makeBoolValue(initializer.value.value, letStatement.value.mutable),
-        environment,
+        scope,
       );
     }
 
@@ -1124,8 +1263,7 @@ function evaluateStatement(
       target: pointerInitializer.target,
     };
 
-    environment.set(letStatement.value.name, boundValue);
-    return ok(boundValue);
+    return bindValue(letStatement.value.name, boundValue, scope);
   }
 
   if (statement.trim().startsWith("let")) {
@@ -1135,7 +1273,7 @@ function evaluateStatement(
   const assignmentStatement = parseAssignmentStatement(statement);
 
   if (assignmentStatement.ok) {
-    const existing = environment.get(assignmentStatement.value.name);
+    const existing = resolveScopeBinding(scope, assignmentStatement.value.name);
 
     if (!existing) {
       return undefinedVariable(statement, assignmentStatement.value.name);
@@ -1145,10 +1283,7 @@ function evaluateStatement(
       return immutableVariable(statement, assignmentStatement.value.name);
     }
 
-    const assigned = evaluateExpression(
-      assignmentStatement.value.value,
-      environment,
-    );
+    const assigned = evaluateExpression(assignmentStatement.value.value, scope);
 
     if (!assigned.ok) {
       return assigned;
@@ -1169,11 +1304,14 @@ function evaluateStatement(
         return outOfBounds(statement, existing.type.suffix);
       }
 
-      return bindValue(
-        assignmentStatement.value.name,
-        makeNumericValue(assigned.value.value, existing.type, existing.mutable),
-        environment,
+      const updatedValue = makeNumericValue(
+        assigned.value.value,
+        existing.type,
+        existing.mutable,
       );
+
+      assignScopeBinding(scope, assignmentStatement.value.name, updatedValue);
+      return ok(updatedValue);
     }
 
     if (existing.type.kind === "bool") {
@@ -1184,11 +1322,13 @@ function evaluateStatement(
         );
       }
 
-      return bindValue(
-        assignmentStatement.value.name,
-        makeBoolValue(assigned.value.value, existing.mutable),
-        environment,
+      const updatedValue = makeBoolValue(
+        assigned.value.value,
+        existing.mutable,
       );
+
+      assignScopeBinding(scope, assignmentStatement.value.name, updatedValue);
+      return ok(updatedValue);
     }
 
     if (!isPointerValue(assigned.value)) {
@@ -1222,7 +1362,7 @@ function evaluateStatement(
       target: pointerAssigned.target,
     };
 
-    environment.set(assignmentStatement.value.name, updatedValue);
+    assignScopeBinding(scope, assignmentStatement.value.name, updatedValue);
     return ok(updatedValue);
   }
 
@@ -1230,7 +1370,8 @@ function evaluateStatement(
     parseDereferenceAssignmentStatement(statement);
 
   if (dereferenceAssignmentStatement.ok) {
-    const pointerVar = environment.get(
+    const pointerVar = resolveScopeBinding(
+      scope,
       dereferenceAssignmentStatement.value.pointerName,
     );
 
@@ -1255,11 +1396,14 @@ function evaluateStatement(
       );
     }
 
-    const targetVar = environment.get(pointerVar.target) as NumericValue;
+    const targetVar = resolveScopeBinding(
+      scope,
+      pointerVar.target,
+    ) as NumericValue;
 
     const assigned = evaluateExpression(
       dereferenceAssignmentStatement.value.value,
-      environment,
+      scope,
     );
 
     if (!assigned.ok) {
@@ -1286,10 +1430,11 @@ function evaluateStatement(
       true,
     );
 
-    return bindValue(pointerVar.target, updatedTarget, environment);
+    assignScopeBinding(scope, pointerVar.target, updatedTarget);
+    return ok(updatedTarget);
   }
 
-  return evaluateExpression(statement, environment);
+  return evaluateExpression(statement, scope);
 }
 
 function promoteType(
@@ -1327,15 +1472,19 @@ function promoteType(
 function interpretTuff(input: string): Result<number, TuffError> {
   const statements = splitStatements(input);
 
-  if (statements.length === 0) {
+  if (!statements.ok) {
+    return statements;
+  }
+
+  if (statements.value.length === 0) {
     return unsupportedInput(input);
   }
 
-  const environment = new Map<string, BoundValue>();
+  const rootScope = createScope(undefined);
   let lastValue: BoundValue | undefined;
 
-  for (const statement of statements) {
-    const evaluated = evaluateStatement(statement, environment);
+  for (const statement of statements.value) {
+    const evaluated = evaluateStatement(statement, rootScope);
 
     if (!evaluated.ok) {
       return evaluated;
