@@ -1,0 +1,12 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "type": "command",
+        "command": "npm test",
+        "windows": "pwsh -NoProfile -Command \"npm test; if ($LASTEXITCODE -ne 0) { exit 2 }\"",
+        "timeout": 120
+      }
+    ]
+  }
+}
