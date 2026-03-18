@@ -37,11 +37,23 @@ interface TuffError {
     | "UnsupportedSuffix"
     | "OutOfBounds"
     | "DivisionByZero"
-    | "UnsupportedOperator";
+    | "UnsupportedOperator"
+    | "UndefinedVariable";
   sourceCode: string;
   message: string;
   reason: string;
   suggestedFix: string;
+}
+
+interface BoundValue {
+  value: bigint;
+  type: TuffTypeInfo;
+}
+
+interface LetStatement {
+  name: string;
+  type: TuffTypeInfo;
+  initializer: string;
 }
 
 const TUFF_TYPES = new Map<TuffSuffix, TuffTypeInfo>([
@@ -149,13 +161,13 @@ function divisionByZero(input: string): ErrResult<TuffError> {
   });
 }
 
-function unsupportedOperator(input: string): ErrResult<TuffError> {
+function undefinedVariable(input: string, name: string): ErrResult<TuffError> {
   return err({
-    kind: "UnsupportedOperator",
+    kind: "UndefinedVariable",
     sourceCode: input,
-    message: `Unsupported operator in Tuff input: ${input}`,
-    reason: "Only +, -, *, and / are supported.",
-    suggestedFix: "Use one of the supported arithmetic operators.",
+    message: `Undefined variable: ${name}`,
+    reason: "The variable was referenced before it was defined.",
+    suggestedFix: `Define ${name} with a let binding before using it.`,
   });
 }
 
@@ -173,11 +185,7 @@ function parseLiteral(input: string): Result<LiteralValueResult, TuffError> {
   }
 
   const value = BigInt(numericPart);
-  const type = TUFF_TYPES.get(suffix);
-
-  if (!type) {
-    return unsupportedSuffix(input, suffix);
-  }
+  const type = TUFF_TYPES.get(suffix)!;
 
   if (value < type.min || value > type.max) {
     return outOfBounds(input, suffix);
@@ -233,14 +241,279 @@ function parseExpression(input: string): Result<ExpressionParts, TuffError> {
     const left = input.slice(0, index).trimEnd();
     const right = input.slice(index + 1).trimStart();
 
-    if (left.length === 0 || right.length === 0) {
-      continue;
-    }
-
     return ok({ left, operator, right });
   }
 
   return unsupportedInput(input);
+}
+
+function parseLetStatement(input: string): Result<LetStatement, TuffError> {
+  const trimmed = input.trim();
+
+  if (!trimmed.startsWith("let")) {
+    return unsupportedInput(input);
+  }
+
+  let index = 3;
+
+  if (index >= trimmed.length || !isWhitespace(trimmed[index])) {
+    return unsupportedInput(input);
+  }
+
+  index = skipWhitespace(trimmed, index);
+
+  const nameStart = index;
+
+  if (nameStart >= trimmed.length || !isIdentifierStart(trimmed[nameStart])) {
+    return unsupportedInput(input);
+  }
+
+  index += 1;
+
+  while (index < trimmed.length && isIdentifierPart(trimmed[index])) {
+    index += 1;
+  }
+
+  const name = trimmed.slice(nameStart, index);
+  index = skipWhitespace(trimmed, index);
+
+  if (index >= trimmed.length || trimmed[index] !== ":") {
+    return unsupportedInput(input);
+  }
+
+  index += 1;
+  index = skipWhitespace(trimmed, index);
+
+  const typeStart = index;
+
+  while (
+    index < trimmed.length &&
+    !isWhitespace(trimmed[index]) &&
+    trimmed[index] !== "="
+  ) {
+    index += 1;
+  }
+
+  const suffix = trimmed.slice(typeStart, index);
+
+  if (suffix.length === 0) {
+    return unsupportedInput(input);
+  }
+
+  const type = TUFF_TYPES.get(suffix as TuffSuffix);
+
+  if (!type) {
+    return unsupportedSuffix(input, suffix);
+  }
+
+  index = skipWhitespace(trimmed, index);
+
+  if (index >= trimmed.length || trimmed[index] !== "=") {
+    return unsupportedInput(input);
+  }
+
+  index += 1;
+
+  const initializer = trimmed.slice(index).trim();
+
+  if (initializer.length === 0) {
+    return unsupportedInput(input);
+  }
+
+  return ok({ name, type, initializer });
+}
+
+function skipWhitespace(text: string, startIndex: number): number {
+  let index = startIndex;
+
+  while (index < text.length && isWhitespace(text[index])) {
+    index += 1;
+  }
+
+  return index;
+}
+
+function isWhitespace(value: string): boolean {
+  return value === " " || value === "\t" || value === "\n" || value === "\r";
+}
+
+function isIdentifierStart(value: string): boolean {
+  const code = value.charCodeAt(0);
+
+  return (
+    code === 95 || (code >= 65 && code <= 90) || (code >= 97 && code <= 122)
+  );
+}
+
+function isIdentifierPart(value: string): boolean {
+  const code = value.charCodeAt(0);
+
+  return isIdentifierStart(value) || (code >= 48 && code <= 57);
+}
+
+function isIdentifierText(text: string): boolean {
+  if (text.length === 0 || !isIdentifierStart(text[0])) {
+    return false;
+  }
+
+  for (let index = 1; index < text.length; index += 1) {
+    if (!isIdentifierPart(text[index])) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function splitStatements(input: string): string[] {
+  const statements: string[] = [];
+  let current = "";
+
+  for (let index = 0; index < input.length; index += 1) {
+    const character = input[index];
+
+    if (character === ";") {
+      const trimmed = current.trim();
+
+      if (trimmed.length > 0) {
+        statements.push(trimmed);
+      }
+
+      current = "";
+      continue;
+    }
+
+    current += character;
+  }
+
+  const trimmed = current.trim();
+
+  if (trimmed.length > 0) {
+    statements.push(trimmed);
+  }
+
+  return statements;
+}
+
+function resolveIdentifier(
+  name: string,
+  sourceCode: string,
+  environment: Map<string, BoundValue>,
+): Result<BoundValue, TuffError> {
+  const value = environment.get(name);
+
+  if (!value) {
+    return undefinedVariable(sourceCode, name);
+  }
+
+  return ok(value);
+}
+
+function evaluateExpression(
+  input: string,
+  environment: Map<string, BoundValue>,
+): Result<BoundValue, TuffError> {
+  const trimmed = input.trim();
+
+  const literal = parseLiteral(trimmed);
+
+  if (literal.ok) {
+    return ok(literal.value);
+  }
+
+  const literalError = literal;
+
+  if (isIdentifierText(trimmed)) {
+    return resolveIdentifier(trimmed, input, environment);
+  }
+
+  const expression = parseExpression(trimmed);
+
+  if (!expression.ok) {
+    if (literalError.error.kind !== "UnsupportedInput") {
+      return literalError;
+    }
+
+    return unsupportedInput(input);
+  }
+
+  const left = evaluateExpression(expression.value.left, environment);
+
+  if (!left.ok) {
+    return left;
+  }
+
+  const right = evaluateExpression(expression.value.right, environment);
+
+  if (!right.ok) {
+    return right;
+  }
+
+  const resultType = promoteType(left.value.type, right.value.type);
+  const operator = expression.value.operator;
+
+  let result = 0n;
+
+  switch (operator as "+" | "-" | "*" | "/") {
+    case "+":
+      result = left.value.value + right.value.value;
+      break;
+    case "-":
+      result = left.value.value - right.value.value;
+      break;
+    case "*":
+      result = left.value.value * right.value.value;
+      break;
+    case "/":
+      if (right.value.value === 0n) {
+        return divisionByZero(input);
+      }
+
+      result = left.value.value / right.value.value;
+      break;
+  }
+
+  if (result < resultType.min || result > resultType.max) {
+    return outOfBounds(input, resultType.suffix);
+  }
+
+  return ok({ value: result, type: resultType });
+}
+
+function evaluateStatement(
+  statement: string,
+  environment: Map<string, BoundValue>,
+): Result<BoundValue, TuffError> {
+  const letStatement = parseLetStatement(statement);
+
+  if (!letStatement.ok) {
+    return evaluateExpression(statement, environment);
+  }
+
+  const initializer = evaluateExpression(
+    letStatement.value.initializer,
+    environment,
+  );
+
+  if (!initializer.ok) {
+    return initializer;
+  }
+
+  if (
+    initializer.value.value < letStatement.value.type.min ||
+    initializer.value.value > letStatement.value.type.max
+  ) {
+    return outOfBounds(statement, letStatement.value.type.suffix);
+  }
+
+  const boundValue: BoundValue = {
+    value: initializer.value.value,
+    type: letStatement.value.type,
+  };
+
+  environment.set(letStatement.value.name, boundValue);
+
+  return ok(boundValue);
 }
 
 function isExpressionOperator(value: string): boolean {
@@ -277,67 +550,30 @@ function promoteType(left: TuffTypeInfo, right: TuffTypeInfo): TuffTypeInfo {
 }
 
 export function interpretTuff(input: string): Result<number, TuffError> {
-  const expressionMatch = parseExpression(input);
+  const statements = splitStatements(input);
 
-  if (!expressionMatch.ok) {
-    const literal = parseLiteral(input);
+  if (statements.length === 0) {
+    return unsupportedInput(input);
+  }
 
-    if (!literal.ok) {
-      return literal;
+  const environment = new Map<string, BoundValue>();
+  let lastValue: BoundValue | undefined;
+
+  for (const statement of statements) {
+    const evaluated = evaluateStatement(statement, environment);
+
+    if (!evaluated.ok) {
+      return evaluated;
     }
 
-    return ok(Number(literal.value.value));
+    lastValue = evaluated.value;
   }
 
-  const left = parseLiteral(expressionMatch.value.left);
+  const finalValue = lastValue as BoundValue;
 
-  if (!left.ok) {
-    return left;
-  }
-
-  const right = parseLiteral(expressionMatch.value.right);
-
-  if (!right.ok) {
-    return right;
-  }
-
-  const resultType = promoteType(left.value.type, right.value.type);
-  const operator = expressionMatch.value.operator;
-
-  let result: bigint;
-
-  switch (operator) {
-    case "+":
-      result = left.value.value + right.value.value;
-      break;
-    case "-":
-      result = left.value.value - right.value.value;
-      break;
-    case "*":
-      result = left.value.value * right.value.value;
-      break;
-    case "/":
-      if (right.value.value === 0n) {
-        return divisionByZero(input);
-      }
-
-      result = left.value.value / right.value.value;
-      break;
-    default:
-      return unsupportedOperator(input);
-  }
-
-  if (result < resultType.min || result > resultType.max) {
-    return outOfBounds(input, resultType.suffix);
-  }
-
-  return ok(Number(result));
+  return ok(Number(finalValue.value));
 }
 
 export function main(): void {
   console.log("Hello from TypeScript!");
-}
-
-if (require.main === module) {
-  main();
 }

@@ -1,4 +1,18 @@
-import { interpretTuff } from "../src/index";
+import { interpretTuff, main } from "../src/index";
+
+function expectOkValue(input: string, expected: number): void {
+  expect(interpretTuff(input)).toEqual({ ok: true, value: expected });
+}
+
+function expectErrorKind(input: string, kind: string): void {
+  const result = interpretTuff(input);
+
+  expect(result.ok).toBe(false);
+
+  if (!result.ok) {
+    expect(result.error.kind).toBe(kind);
+  }
+}
 
 describe("interpretTuff", () => {
   it.each([
@@ -13,7 +27,7 @@ describe("interpretTuff", () => {
     ["2147483647I32", 2147483647],
     ["-9223372036854775808I64", -9223372036854775808],
   ])("returns %s for %s", (input, expected) => {
-    expect(interpretTuff(input)).toEqual({ ok: true, value: expected });
+    expectOkValue(input, expected);
   });
 
   it.each([
@@ -22,8 +36,13 @@ describe("interpretTuff", () => {
     ["3U8 * 4U16", 12],
     ["9U8 / 3U16", 3],
     ["1U8 + 2I16", 3],
+    ["1I8 + 1I8", 2],
+    ["1U32 + 1U32", 2],
+    ["1I32 + 1I32", 2],
+    ["1U64 + 1U64", 2],
+    ["1I64 + 1I64", 2],
   ])("evaluates %s to %s", (input, expected) => {
-    expect(interpretTuff(input)).toEqual({ ok: true, value: expected });
+    expectOkValue(input, expected);
   });
 
   it.each([
@@ -64,5 +83,76 @@ describe("interpretTuff", () => {
         }),
       );
     }
+  });
+
+  it("evaluates a typed let binding followed by a variable reference", () => {
+    expect(interpretTuff("let x : U8 = 100U8; x")).toEqual({
+      ok: true,
+      value: 100,
+    });
+  });
+
+  it("evaluates the same let binding across multiple lines", () => {
+    expect(interpretTuff("let x : U8 = 100U8;\nx")).toEqual({
+      ok: true,
+      value: 100,
+    });
+  });
+
+  it("ignores empty statements between semicolons", () => {
+    expect(interpretTuff("let x : U8 = 100U8;; x")).toEqual({
+      ok: true,
+      value: 100,
+    });
+  });
+
+  it("evaluates a let binding with an expression initializer", () => {
+    expect(interpretTuff("let total : U8 = 1U8 + 2U8; total")).toEqual({
+      ok: true,
+      value: 3,
+    });
+  });
+
+  it("returns an error when a variable is referenced before definition", () => {
+    expectErrorKind("x", "UndefinedVariable");
+  });
+
+  it("returns an error when a let initializer references an undefined variable", () => {
+    expectErrorKind("let x : U8 = y; x", "UndefinedVariable");
+  });
+
+  it("returns an error when a let assignment overflows the declared type", () => {
+    expectErrorKind("let x : U8 = 255U16 + 1U16; x", "OutOfBounds");
+  });
+
+  it.each([
+    "let x : U8 x",
+    "let x : U8 =",
+    "1foo",
+    "-U8",
+    "x + 1U8",
+    "1U8 + y",
+    "+1U8",
+    "  + 1U8",
+    "1U8 +   ",
+    "letx : U8 = 1U8",
+    "let 1x : U8 = 1U8",
+    "let x U8 = 1U8",
+    "let x : = 1U8",
+    "let x : U9 = 1U8",
+  ])("returns an error for malformed or unresolved input %s", (input) => {
+    const result = interpretTuff(input);
+
+    expect(result.ok).toBe(false);
+  });
+
+  it("prints the greeting from main", () => {
+    const spy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+    main();
+
+    expect(spy).toHaveBeenCalledWith("Hello from TypeScript!");
+
+    spy.mockRestore();
   });
 });
