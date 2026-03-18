@@ -231,3 +231,155 @@ describe("interpretTuff expressions", () => {
     expect(() => interpretTuff("100U8 - 200U16")).toThrow();
   });
 });
+
+describe("interpretTuff let statements", () => {
+  // Basic let statement tests
+  test("let > simple declaration and reference: let x = 5U8; x => 5", () => {
+    expect(interpretTuff("let x = 5U8; x")).toBe(5);
+  });
+
+  test("let > declaration with explicit type: let x : U8 = 10U8; x => 10", () => {
+    expect(interpretTuff("let x : U8 = 10U8; x")).toBe(10);
+  });
+
+  test("let > type inference from literal: let x = 20U16; x => 20", () => {
+    expect(interpretTuff("let x = 20U16; x")).toBe(20);
+  });
+
+  test("let > simple arithmetic with declared variable: let x = 5U8; x + 3U8 => 8", () => {
+    expect(interpretTuff("let x = 5U8; x + 3U8")).toBe(8);
+  });
+
+  test("let > chaining multiple let statements: let x = 1U8; let y = 2U8; x + y => 3", () => {
+    expect(interpretTuff("let x = 1U8; let y = 2U8; x + y")).toBe(3);
+  });
+
+  test("let > three chained lets: let a = 10U8; let b = 20U8; let c = 30U8; a + b + c => 60", () => {
+    expect(
+      interpretTuff("let a = 10U8; let b = 20U8; let c = 30U8; a + b + c"),
+    ).toBe(60);
+  });
+
+  test("let > referencing previous binding: let x = 5U8; let y = x; y => 5", () => {
+    expect(interpretTuff("let x = 5U8; let y = x; y")).toBe(5);
+  });
+
+  test("let > using previous binding in expression: let x = 5U8; let y = x + 3U8; y => 8", () => {
+    expect(interpretTuff("let x = 5U8; let y = x + 3U8; y")).toBe(8);
+  });
+
+  // Shadowing tests
+  test("let > variable shadowing: let x = 5U8; let x = 10U8; x => 10", () => {
+    expect(interpretTuff("let x = 5U8; let x = 10U8; x")).toBe(10);
+  });
+
+  test("let > shadowing with value from previous: let x = 5U8; let x = x + 1U8; x => 6", () => {
+    expect(interpretTuff("let x = 5U8; let x = x + 1U8; x")).toBe(6);
+  });
+
+  // Type inference tests
+  test("let > infer U8 from expression: let result = 50U8 + 25U8; result => 75", () => {
+    expect(interpretTuff("let result = 50U8 + 25U8; result")).toBe(75);
+  });
+
+  test("let > infer U16 from widened expression: let sum = 100U8 + 1000U16; sum => 1100", () => {
+    expect(interpretTuff("let sum = 100U8 + 1000U16; sum")).toBe(1100);
+  });
+
+  // Complex expressions with let
+  test("let > arithmetic in declaration: let x = 2U8 * 3U8; x => 6", () => {
+    expect(interpretTuff("let x = 2U8 * 3U8; x")).toBe(6);
+  });
+
+  test("let > parentheses in let binding: let x = (2U8 + 3U8) * 4U8; x => 20", () => {
+    expect(interpretTuff("let x = (2U8 + 3U8) * 4U8; x")).toBe(20);
+  });
+
+  test("let > precedence in let binding: let x = 2U8 + 3U8 * 4U8; x => 14", () => {
+    expect(interpretTuff("let x = 2U8 + 3U8 * 4U8; x")).toBe(14);
+  });
+
+  test("let > multiple operations: let x = 10U8; let y = x * 2U8; let z = y + 5U8; z => 25", () => {
+    expect(
+      interpretTuff("let x = 10U8; let y = x * 2U8; let z = y + 5U8; z"),
+    ).toBe(25);
+  });
+
+  // Error cases: undefined variables
+  test("let > error on undefined variable reference: let x = y; => Err", () => {
+    expect(() => interpretTuff("let x = y;")).toThrow();
+  });
+
+  test("let > error on undefined in expression: let x = 5U8; let y = x + z; => Err", () => {
+    expect(() => interpretTuff("let x = 5U8; let y = x + z;")).toThrow();
+  });
+
+  test("let > error referencing undefined final expression: let x = 5U8; y => Err", () => {
+    expect(() => interpretTuff("let x = 5U8; y")).toThrow();
+  });
+
+  // Error cases: type mismatches and range violations
+  test("let > error on overflow in let binding: let x = 300U8; => Err", () => {
+    expect(() => interpretTuff("let x = 300U8;")).toThrow();
+  });
+
+  test("let > error on result overflow: let x = 200U8; let y = x + 100U8; y => Err", () => {
+    expect(() =>
+      interpretTuff("let x = 200U8; let y = x + 100U8; y"),
+    ).toThrow();
+  });
+
+  // Whitespace variations
+  test("let > extra whitespace: let   x   =   5U8   ;   x => 5", () => {
+    expect(interpretTuff("let   x   =   5U8   ;   x")).toBe(5);
+  });
+
+  test("let > minimal whitespace: let x=5U8;x => 5", () => {
+    expect(interpretTuff("let x=5U8;x")).toBe(5);
+  });
+
+  test("let > newlines in let block (if supported): let x = 5U8; let y = 10U8; x + y => 15", () => {
+    expect(interpretTuff("let x = 5U8; let y = 10U8; x + y")).toBe(15);
+  });
+
+  // Mixed operations
+  test("let > division in let: let x = 100U8 / 4U8; x => 25", () => {
+    expect(interpretTuff("let x = 100U8 / 4U8; x")).toBe(25);
+  });
+
+  test("let > subtraction in let: let x = 100U8 - 50U8; x => 50", () => {
+    expect(interpretTuff("let x = 100U8 - 50U8; x")).toBe(50);
+  });
+
+  test("let > multiple operations chain: let a = 2U8; let b = a + 3U8; let c = b * 2U8; c => 10", () => {
+    expect(
+      interpretTuff("let a = 2U8; let b = a + 3U8; let c = b * 2U8; c"),
+    ).toBe(10);
+  });
+
+  // Type annotation with inference
+  test("let > explicit type U16: let x : U16 = 100U8; x => 100", () => {
+    expect(interpretTuff("let x : U16 = 100U8; x")).toBe(100);
+  });
+
+  test("let > explicit type matches result: let x : U32 = 100U8 + 1000U16; x => 1100", () => {
+    expect(interpretTuff("let x : U32 = 100U8 + 1000U16; x")).toBe(1100);
+  });
+
+  // Edge cases
+  test("let > zero value: let x = 0U8; x => 0", () => {
+    expect(interpretTuff("let x = 0U8; x")).toBe(0);
+  });
+
+  test("let > max value U8: let x = 255U8; x => 255", () => {
+    expect(interpretTuff("let x = 255U8; x")).toBe(255);
+  });
+
+  test("let > max value U16: let x = 65535U16; x => 65535", () => {
+    expect(interpretTuff("let x = 65535U16; x")).toBe(65535);
+  });
+
+  test("let > division by zero in let: let x = 10U8 / 0U8; => Err", () => {
+    expect(() => interpretTuff("let x = 10U8 / 0U8;")).toThrow();
+  });
+});

@@ -14,15 +14,40 @@ type Token =
   | { type: "operator"; op: "+" | "-" | "*" | "/" }
   | { type: "lparen" }
   | { type: "rparen" }
+  | { type: "semicolon" }
+  | { type: "colon" }
+  | { type: "equals" }
+  | { type: "let" }
+  | { type: "identifier"; name: string }
   | { type: "eof" };
 
-type ASTNode = {
-  value: number;
-  typeStr: string;
-  operator?: "+" | "-" | "*" | "/";
-  left?: ASTNode;
-  right?: ASTNode;
-};
+type ASTNode =
+  | {
+      nodeType: "binary";
+      operator: "+" | "-" | "*" | "/";
+      left: ASTNode;
+      right: ASTNode;
+    }
+  | {
+      nodeType: "number";
+      value: number;
+      typeStr: string;
+    }
+  | {
+      nodeType: "identifier";
+      name: string;
+    }
+  | {
+      nodeType: "let";
+      varName: string;
+      init: ASTNode;
+      explicitType?: string;
+      body: ASTNode;
+    }
+  | {
+      nodeType: "sequence";
+      statements: ASTNode[];
+    };
 
 function tokenize(input: string): Token[] {
   const tokens: Token[] = [];
@@ -46,6 +71,27 @@ function tokenize(input: string): Token[] {
       continue;
     }
 
+    // Semicolon
+    if (ch === ";") {
+      tokens.push({ type: "semicolon" });
+      pos++;
+      continue;
+    }
+
+    // Colon
+    if (ch === ":") {
+      tokens.push({ type: "colon" });
+      pos++;
+      continue;
+    }
+
+    // Equals
+    if (ch === "=") {
+      tokens.push({ type: "equals" });
+      pos++;
+      continue;
+    }
+
     // Parentheses
     if (ch === "(") {
       tokens.push({ type: "lparen" });
@@ -65,7 +111,18 @@ function tokenize(input: string): Token[] {
       continue;
     }
 
-    // Number with type suffix
+    // Keywords and identifiers
+    if (/[a-zA-Z_]/.test(ch)) {
+      const ident = consumeWhile(/[a-zA-Z0-9_]/);
+      if (ident === "let") {
+        tokens.push({ type: "let" });
+      } else {
+        tokens.push({ type: "identifier", name: ident });
+      }
+      continue;
+    }
+
+    // Number with type suffix (or just identifier like U8 after a number)
     if (/\d/.test(ch)) {
       const numStr = consumeWhile(/\d/);
       const typeStr = consumeWhile(/[A-Za-z0-9]/);
@@ -151,14 +208,70 @@ class Parser {
   private expect(type: string): Token {
     const token = this.currentToken();
     if (token.type !== type) {
-      throw new Error("Unexpected token: " + token.type);
+      throw new Error(
+        "Unexpected token: expected " + type + ", got " + token.type,
+      );
     }
     this.advance();
     return token;
   }
 
   parse(): ASTNode {
-    return this.parseAdditive();
+    return this.parseStatementSequence();
+  }
+
+  private parseStatementSequence(): ASTNode {
+    const statements: ASTNode[] = [];
+
+    while (this.currentToken().type !== "eof") {
+      if (this.currentToken().type === "let") {
+        statements.push(this.parseLetStatement());
+      } else {
+        statements.push(this.parseAdditive());
+        if (this.currentToken().type === "semicolon") {
+          this.advance();
+        }
+      }
+    }
+
+    if (statements.length === 1) {
+      return statements[0];
+    }
+    return { nodeType: "sequence", statements };
+  }
+
+  private parseLetStatement(): ASTNode {
+    this.expect("let");
+
+    // Parse variable name
+    const nameToken = this.expect("identifier");
+    const varName = (nameToken as Token & { type: "identifier" }).name;
+
+    // Parse optional type annotation
+    let explicitType: string | undefined;
+    if (this.currentToken().type === "colon") {
+      this.advance();
+      const typeToken = this.expect("identifier");
+      explicitType = (typeToken as Token & { type: "identifier" }).name;
+    }
+
+    // Parse initializer
+    this.expect("equals");
+    const init = this.parseAdditive();
+
+    // Parse semicolon
+    this.expect("semicolon");
+
+    // Parse the body (rest of the statements)
+    const body = this.parseStatementSequence();
+
+    return {
+      nodeType: "let",
+      varName,
+      init,
+      explicitType,
+      body,
+    };
   }
 
   private parseAdditive(): ASTNode {
@@ -189,7 +302,7 @@ class Parser {
       const op = token.op;
       this.advance();
       const right = parseNext();
-      left = { value: 0, typeStr: "", operator: op, left, right };
+      left = { nodeType: "binary", operator: op, left, right };
     }
 
     return left;
@@ -202,8 +315,18 @@ class Parser {
       const numToken = token as Token & { type: "number" };
       this.advance();
       return {
+        nodeType: "number",
         value: numToken.value,
         typeStr: numToken.typeStr,
+      };
+    }
+
+    if (token.type === "identifier") {
+      const idToken = token as Token & { type: "identifier" };
+      this.advance();
+      return {
+        nodeType: "identifier",
+        name: idToken.name,
       };
     }
 
@@ -218,57 +341,96 @@ class Parser {
   }
 }
 
-function evaluate(node: ASTNode): { value: number; typeStr: string } {
-  if (!node.operator) {
-    // Leaf node
-    return { value: node.value, typeStr: node.typeStr };
-  }
+type Environment = Map<string, { value: number; typeStr: string }>;
 
-  const left = evaluate(node.left!);
-  const right = evaluate(node.right!);
+function evaluate(
+  node: ASTNode,
+  env: Environment,
+): { value: number; typeStr: string } {
+  switch (node.nodeType) {
+    case "number":
+      return { value: node.value, typeStr: node.typeStr };
 
-  // Determine result type (widest of the two operands)
-  const resultType = getWidestType(left.typeStr, right.typeStr);
-  const typeRange = TYPE_RANGES[resultType];
-
-  let result: number;
-
-  switch (node.operator) {
-    case "+":
-      result = left.value + right.value;
-      break;
-    case "-":
-      result = left.value - right.value;
-      break;
-    case "*":
-      result = left.value * right.value;
-      break;
-    case "/":
-      if (right.value === 0) {
-        throw new Error("Division by zero");
+    case "identifier": {
+      const binding = env.get(node.name);
+      if (!binding) {
+        throw new Error("Undefined variable: " + node.name);
       }
-      result = Math.floor(left.value / right.value);
-      break;
-    default:
-      throw new Error("Unknown operator: " + node.operator);
-  }
+      return binding;
+    }
 
-  // Validate result fits in result type
-  if (result < typeRange.min || result > typeRange.max) {
-    throw new Error(
-      "Result " +
-        result +
-        " is out of range for type " +
-        resultType +
-        " (" +
-        typeRange.min +
-        " to " +
-        typeRange.max +
-        ")",
-    );
-  }
+    case "binary": {
+      const left = evaluate(node.left, env);
+      const right = evaluate(node.right, env);
 
-  return { value: result, typeStr: resultType };
+      // Determine result type (widest of the two operands)
+      const resultType = getWidestType(left.typeStr, right.typeStr);
+      const typeRange = TYPE_RANGES[resultType];
+
+      let result: number;
+
+      switch (node.operator) {
+        case "+":
+          result = left.value + right.value;
+          break;
+        case "-":
+          result = left.value - right.value;
+          break;
+        case "*":
+          result = left.value * right.value;
+          break;
+        case "/":
+          if (right.value === 0) {
+            throw new Error("Division by zero");
+          }
+          result = Math.floor(left.value / right.value);
+          break;
+      }
+
+      // Validate result fits in result type
+      if (result < typeRange.min || result > typeRange.max) {
+        throw new Error(
+          "Result " +
+            result +
+            " is out of range for type " +
+            resultType +
+            " (" +
+            typeRange.min +
+            " to " +
+            typeRange.max +
+            ")",
+        );
+      }
+
+      return { value: result, typeStr: resultType };
+    }
+
+    case "let": {
+      // Evaluate the initializer in the current environment
+      const initValue = evaluate(node.init, env);
+
+      // Determine the actual type (explicit type annotation or inferred)
+      const varType = node.explicitType || initValue.typeStr;
+
+      // Create a new environment with the bound variable
+      const newEnv = new Map(env);
+      newEnv.set(node.varName, { value: initValue.value, typeStr: varType });
+
+      // Evaluate the body in the new environment
+      return evaluate(node.body, newEnv);
+    }
+
+    case "sequence": {
+      let result: { value: number; typeStr: string } = {
+        value: 0,
+        typeStr: "U8",
+      };
+      for (const stmt of node.statements) {
+        result = evaluate(stmt, env);
+      }
+      return result;
+    }
+  }
 }
 
 export function interpretTuff(input: string): number {
@@ -288,8 +450,8 @@ export function interpretTuff(input: string): number {
   const parser = new Parser(tokens);
   const ast = parser.parse();
 
-  // Evaluate AST
-  const result = evaluate(ast);
+  // Evaluate AST with empty initial environment
+  const result = evaluate(ast, new Map());
 
   return result.value;
 }
