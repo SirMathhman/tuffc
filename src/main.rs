@@ -5,6 +5,7 @@ pub fn interpret_tuff(input: String) -> i32 {
     parser.parse_program()
 }
 
+#[derive(Clone)]
 struct Parser<'a> {
     input: &'a [u8],
     pos: usize,
@@ -49,6 +50,7 @@ struct Value {
     mutable_access: bool,
 }
 
+#[derive(Clone)]
 struct Variable {
     value: Value,
     mutable: bool,
@@ -75,6 +77,12 @@ enum ComparisonOp {
     LessOrEqual,
     Greater,
     GreaterOrEqual,
+}
+
+#[derive(Clone, Debug)]
+struct StatementValue {
+    value: Value,
+    allows_following_statement_without_separator: bool,
 }
 
 impl<'a> Parser<'a> {
@@ -107,22 +115,33 @@ impl<'a> Parser<'a> {
         }
 
         self.parse_statement_sequence(|parser, _| parser.is_eof(), "unexpected trailing input")
+            .value
             .as_int()
     }
 
-    fn parse_statement(&mut self) -> Value {
+    fn parse_statement(&mut self) -> StatementValue {
         self.skip_whitespace();
 
         if self.consume_keyword("let") {
             self.parse_let_statement()
+        } else if self.consume_keyword("if") {
+            self.parse_if_statement()
         } else if let Some(value) = self.try_parse_assignment_statement() {
-            value
+            StatementValue {
+                value,
+                allows_following_statement_without_separator: false,
+            }
         } else {
-            self.parse_expression()
+            let allows_following_statement_without_separator =
+                self.input.get(self.pos) == Some(&b'{');
+            StatementValue {
+                value: self.parse_expression(),
+                allows_following_statement_without_separator,
+            }
         }
     }
 
-    fn parse_let_statement(&mut self) -> Value {
+    fn parse_let_statement(&mut self) -> StatementValue {
         let mutable = self.consume_keyword("mut");
         let name = self.parse_identifier();
 
@@ -145,14 +164,22 @@ impl<'a> Parser<'a> {
                 location: location.clone(),
             },
         );
-        self.lookup_variable(&name)
-            .value
-            .clone()
-            .with_place(Some(location))
-            .with_access(mutable)
+        StatementValue {
+            value: self
+                .lookup_variable(&name)
+                .value
+                .clone()
+                .with_place(Some(location))
+                .with_access(mutable),
+            allows_following_statement_without_separator: false,
+        }
     }
 
-    fn parse_statement_sequence<F>(&mut self, mut is_finished: F, end_error: &'static str) -> Value
+    fn parse_statement_sequence<F>(
+        &mut self,
+        mut is_finished: F,
+        end_error: &'static str,
+    ) -> StatementValue
     where
         F: FnMut(&mut Self, &Value) -> bool,
     {
@@ -163,7 +190,7 @@ impl<'a> Parser<'a> {
 
             if self.consume(b';') {
                 self.skip_whitespace();
-                if is_finished(self, &last_value) {
+                if is_finished(self, &last_value.value) {
                     return last_value;
                 }
 
@@ -172,10 +199,12 @@ impl<'a> Parser<'a> {
                 }
 
                 last_value = self.parse_statement();
-            } else if is_finished(self, &last_value) {
+            } else if is_finished(self, &last_value.value) {
                 return last_value;
             } else if self.is_eof() {
                 panic!("{}", end_error);
+            } else if last_value.allows_following_statement_without_separator {
+                last_value = self.parse_statement();
             } else {
                 panic!("unexpected trailing input");
             }
@@ -343,9 +372,10 @@ impl<'a> Parser<'a> {
         }
 
         self.parse_statement_sequence(|parser, _| parser.consume(b'}'), "expected '}'")
+            .value
     }
 
-    fn parse_if_expression(&mut self) -> Value {
+    fn parse_if_condition(&mut self) -> Value {
         self.skip_whitespace();
         self.expect(b'(');
         let condition = self.parse_expression();
@@ -354,6 +384,33 @@ impl<'a> Parser<'a> {
         if condition.ty != Some(ValueType::Bool) {
             panic!("expected bool value");
         }
+
+        condition
+    }
+
+    fn parse_if_statement(&mut self) -> StatementValue {
+        let condition = self.parse_if_condition();
+
+        let mut branch_parser = self.clone();
+        let then_branch = branch_parser.parse_statement();
+
+        if condition.as_int() != 0 {
+            *self = branch_parser;
+            return StatementValue {
+                value: then_branch.value,
+                allows_following_statement_without_separator: true,
+            };
+        }
+
+        self.pos = branch_parser.pos;
+        StatementValue {
+            value: Value::int(0, None, false, None),
+            allows_following_statement_without_separator: true,
+        }
+    }
+
+    fn parse_if_expression(&mut self) -> Value {
+        let condition = self.parse_if_condition();
 
         let then_branch = self.parse_expression();
 
@@ -1171,18 +1228,71 @@ mod tests {
 
     #[test]
     fn if_expression_returns_then_branch_when_condition_is_true() {
-        assert_eq!(interpret_tuff("let x = if (true) 3 else 5; x".to_string()), 3);
+        assert_eq!(
+            interpret_tuff("let x = if (true) 3 else 5; x".to_string()),
+            3
+        );
     }
 
     #[test]
     fn if_expression_returns_else_branch_when_condition_is_false() {
-        assert_eq!(interpret_tuff("let x = if (false) 3 else 5; x".to_string()), 5);
+        assert_eq!(
+            interpret_tuff("let x = if (false) 3 else 5; x".to_string()),
+            5
+        );
     }
 
     #[test]
     fn if_expression_can_return_block_values() {
         assert_eq!(
-            interpret_tuff("let x = if (true) { let y = 3; y } else { let y = 5; y }; x".to_string()),
+            interpret_tuff(
+                "let x = if (true) { let y = 3; y } else { let y = 5; y }; x".to_string()
+            ),
+            3
+        );
+    }
+
+    #[test]
+    fn if_statement_with_single_statement_body_updates_binding() {
+        assert_eq!(
+            interpret_tuff("let mut x = 0; if (true) x = 3; x".to_string()),
+            3
+        );
+    }
+
+    #[test]
+    fn if_statement_with_block_body_updates_binding() {
+        assert_eq!(
+            interpret_tuff("let mut x = 0; if (true) { x = 3; } x".to_string()),
+            3
+        );
+    }
+
+    #[test]
+    fn if_statement_false_branch_leaves_state_unchanged() {
+        assert_eq!(
+            interpret_tuff("let mut x = 0; if (false) x = 3; x".to_string()),
+            0
+        );
+    }
+
+    #[test]
+    fn if_statement_false_branch_with_block_body_leaves_state_unchanged() {
+        assert_eq!(
+            interpret_tuff("let mut x = 0; if (false) { x = 3; } x".to_string()),
+            0
+        );
+    }
+
+    #[test]
+    fn block_statement_can_be_followed_by_another_statement_without_semicolon() {
+        assert_eq!(interpret_tuff("let mut x = 0; { x = 3; } x".to_string()), 3);
+    }
+
+    #[test]
+    fn if_statement_in_block_can_be_followed_by_statement_without_semicolon() {
+        assert_eq!(
+            interpret_tuff("let mut x = 0; { if (true) x = 3 x } x".to_string()),
             3
         );
     }
@@ -1195,8 +1305,14 @@ mod tests {
 
     #[test]
     #[should_panic]
+    fn panics_on_non_bool_if_condition_in_expression() {
+        interpret_tuff("let x = if (1) 3 else 5; x".to_string());
+    }
+
+    #[test]
+    #[should_panic]
     fn panics_on_missing_else_branch() {
-        interpret_tuff("if (true) 3".to_string());
+        interpret_tuff("let x = if (true) 3; x".to_string());
     }
 
     #[test]
@@ -1472,6 +1588,11 @@ mod tests {
             interpret_tuff("let x : U8 = 100U8 + 50U8; x".to_string()),
             150
         );
+    }
+
+    #[test]
+    fn program_with_trailing_semicolon_returns_last_value() {
+        assert_eq!(interpret_tuff("5U8;".to_string()), 5);
     }
 
     #[test]
