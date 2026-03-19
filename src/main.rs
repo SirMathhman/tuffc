@@ -28,6 +28,10 @@ enum ValueType {
         mutable: bool,
         pointee: Option<Box<ValueType>>,
     },
+    Array {
+        element: Option<Box<ValueType>>,
+        len: usize,
+    },
     Tuple(Vec<Option<ValueType>>),
 }
 
@@ -35,6 +39,7 @@ enum ValueType {
 enum RuntimeValue {
     Int(i32),
     Pointer(PointerValue),
+    Array(Vec<Value>),
     Tuple(Vec<Value>),
 }
 
@@ -63,6 +68,7 @@ struct Variable {
 enum AssignmentTarget {
     Variable(String),
     Deref(Box<AssignmentTarget>),
+    Index(Box<AssignmentTarget>, Value),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -295,24 +301,40 @@ impl<'a> Parser<'a> {
         };
 
         let value = self.parse_expression();
-        let location = self.resolve_assignment_location(&target);
+        let (location, indices, requires_binding_mutability) =
+            self.resolve_assignment_access(&target);
         let variable = self.lookup_variable_mut_by_location(&location);
 
-        if matches!(target, AssignmentTarget::Variable(_)) && !variable.mutable {
+        if requires_binding_mutability && !variable.mutable {
             panic!("assignment to immutable variable");
         }
 
-        let new_value = match assignment {
-            None => value,
-            Some(op) => apply_compound_assignment(variable.value.clone(), value, op),
-        };
+        if indices.is_empty() {
+            let new_value = match assignment {
+                None => value,
+                Some(op) => apply_compound_assignment(variable.value.clone(), value, op),
+            };
 
-        let merged_type = merge_assignment_type(variable.value.ty.clone(), new_value.ty.clone());
-        variable.value = new_value
-            .into_storage()
-            .with_ty(merged_type)
-            .with_access(variable.mutable);
-        Some(variable.value.clone().with_place(Some(location)))
+            let merged_type =
+                merge_assignment_type(variable.value.ty.clone(), new_value.ty.clone());
+            variable.value = new_value
+                .into_storage()
+                .with_ty(merged_type)
+                .with_access(variable.mutable);
+            Some(variable.value.clone().with_place(Some(location)))
+        } else {
+            let element = variable.value.array_element_mut(&indices);
+            let new_value = match assignment {
+                None => value,
+                Some(op) => apply_compound_assignment(element.clone(), value, op),
+            };
+            let merged_type = merge_assignment_type(element.ty.clone(), new_value.ty.clone());
+            *element = new_value
+                .into_storage()
+                .with_ty(merged_type)
+                .with_access(variable.mutable);
+            Some(element.clone())
+        }
     }
 
     fn parse_assignment_operator(&mut self) -> Option<Option<CompoundAssignmentOp>> {
@@ -337,21 +359,39 @@ impl<'a> Parser<'a> {
     fn parse_assignment_target(&mut self) -> Option<AssignmentTarget> {
         self.skip_whitespace();
 
-        if self.consume(b'*') {
+        let mut target = if self.consume(b'*') {
             let target = self.parse_assignment_target()?;
-            Some(AssignmentTarget::Deref(Box::new(target)))
+            AssignmentTarget::Deref(Box::new(target))
         } else if self.starts_identifier() {
-            Some(AssignmentTarget::Variable(self.parse_identifier()))
+            AssignmentTarget::Variable(self.parse_identifier())
         } else {
-            None
+            return None;
+        };
+
+        loop {
+            if self.consume(b'[') {
+                let index = self.parse_expression();
+                self.expect(b']');
+                target = AssignmentTarget::Index(Box::new(target), index);
+            } else {
+                break;
+            }
         }
+
+        Some(target)
     }
 
-    fn resolve_assignment_location(&self, target: &AssignmentTarget) -> String {
+    fn resolve_assignment_access(&self, target: &AssignmentTarget) -> (String, Vec<usize>, bool) {
         match target {
-            AssignmentTarget::Variable(name) => self.lookup_variable(name).location.clone(),
+            AssignmentTarget::Variable(name) => {
+                (self.lookup_variable(name).location.clone(), vec![], true)
+            }
             AssignmentTarget::Deref(inner) => {
-                let inner_location = self.resolve_assignment_location(inner);
+                let (inner_location, inner_indices, _) = self.resolve_assignment_access(inner);
+                if !inner_indices.is_empty() {
+                    panic!("assignment through immutable pointer");
+                }
+
                 let inner_value = self
                     .lookup_variable_by_location(&inner_location)
                     .value
@@ -363,7 +403,13 @@ impl<'a> Parser<'a> {
                     panic!("assignment through immutable pointer");
                 }
 
-                pointer.target.clone()
+                (pointer.target.clone(), vec![], false)
+            }
+            AssignmentTarget::Index(inner, index) => {
+                let (location, mut indices, requires_binding_mutability) =
+                    self.resolve_assignment_access(inner);
+                indices.push(parse_array_index_value(index.clone()));
+                (location, indices, requires_binding_mutability)
             }
         }
     }
@@ -530,6 +576,8 @@ impl<'a> Parser<'a> {
                 mutable,
                 pointee: Some(Box::new(pointee)),
             }
+        } else if self.consume(b'[') {
+            self.parse_array_type_annotation()
         } else if self.consume(b'(') {
             self.parse_tuple_type_annotation()
         } else {
@@ -545,6 +593,28 @@ impl<'a> Parser<'a> {
                 "Bool" => ValueType::Bool,
                 _ => panic!("invalid type annotation"),
             }
+        }
+    }
+
+    fn parse_array_type_annotation(&mut self) -> ValueType {
+        let element = self.parse_type_annotation();
+        self.expect(b';');
+        self.skip_whitespace();
+        let start = self.consume_ascii_digits();
+
+        if self.pos == start {
+            panic!("expected array length");
+        }
+
+        let length = std::str::from_utf8(&self.input[start..self.pos])
+            .expect("utf8")
+            .parse::<usize>()
+            .expect("invalid array length");
+        self.expect(b']');
+
+        ValueType::Array {
+            element: Some(Box::new(element)),
+            len: length,
         }
     }
 
@@ -735,6 +805,10 @@ impl<'a> Parser<'a> {
             if self.consume(b'.') {
                 let index = self.parse_tuple_index();
                 value = self.tuple_index(value, index);
+            } else if self.consume(b'[') {
+                let index = self.parse_expression();
+                self.expect(b']');
+                value = self.array_index(value, parse_array_index_value(index));
             } else {
                 break;
             }
@@ -766,6 +840,14 @@ impl<'a> Parser<'a> {
             .unwrap_or_else(|| panic!("tuple index out of bounds"))
     }
 
+    fn array_index(&self, value: Value, index: usize) -> Value {
+        value
+            .as_array()
+            .get(index)
+            .cloned()
+            .unwrap_or_else(|| panic!("array index out of bounds"))
+    }
+
     fn parse_primary(&mut self) -> Value {
         self.skip_whitespace();
 
@@ -773,6 +855,8 @@ impl<'a> Parser<'a> {
             self.parse_block_expression()
         } else if self.consume_keyword("if") {
             self.parse_if_expression()
+        } else if self.consume(b'[') {
+            self.parse_array_literal()
         } else if self.consume(b'(') {
             self.parse_parenthesized_or_tuple_expression()
         } else if self.consume_keyword("true") {
@@ -790,6 +874,31 @@ impl<'a> Parser<'a> {
         } else {
             self.parse_number_literal()
         }
+    }
+
+    fn parse_array_literal(&mut self) -> Value {
+        self.skip_whitespace();
+
+        if self.consume(b']') {
+            return Value::array(vec![], false, None);
+        }
+
+        let mut elements = vec![self.parse_expression().into_storage()];
+
+        loop {
+            if !self.consume(b',') {
+                self.expect(b']');
+                break;
+            }
+
+            if self.consume(b']') {
+                panic!("invalid array literal");
+            }
+
+            elements.push(self.parse_expression().into_storage());
+        }
+
+        Value::array(elements, false, None)
     }
 
     fn parse_parenthesized_or_tuple_expression(&mut self) -> Value {
@@ -872,6 +981,8 @@ impl<'a> Parser<'a> {
                 || byte == b'>'
                 || byte == b')'
                 || byte == b'}'
+                || byte == b'['
+                || byte == b']'
                 || byte == b','
                 || byte == b';'
                 || byte == b'='
@@ -977,6 +1088,11 @@ where
 
 fn panic_with_message(message: &str) -> ! {
     panic!("{}", message);
+}
+
+fn parse_array_index_value(index: Value) -> usize {
+    let numeric_index = index.ensure_numeric();
+    usize::try_from(numeric_index).unwrap_or_else(|_| panic!("array index out of bounds"))
 }
 
 fn merge_assignment_type(
@@ -1086,6 +1202,12 @@ fn negate_bool(value: Value) -> Value {
 }
 
 fn comparison_types_compatible(left: Option<&ValueType>, right: Option<&ValueType>) -> bool {
+    if matches!(left, Some(ValueType::Array { .. }))
+        || matches!(right, Some(ValueType::Array { .. }))
+    {
+        return false;
+    }
+
     if let (Some(ValueType::Tuple(left)), Some(ValueType::Tuple(right))) = (left, right) {
         return tuple_type_compatible(left, right);
     }
@@ -1110,6 +1232,8 @@ fn ordered_comparison_types_compatible(
 ) -> bool {
     if matches!(left, Some(ValueType::Bool))
         || matches!(right, Some(ValueType::Bool))
+        || matches!(left, Some(ValueType::Array { .. }))
+        || matches!(right, Some(ValueType::Array { .. }))
         || matches!(left, Some(ValueType::Tuple(_)))
         || matches!(right, Some(ValueType::Tuple(_)))
     {
@@ -1164,6 +1288,24 @@ fn type_is_compatible(expected: &ValueType, actual: Option<&ValueType>) -> bool 
                         _ => true,
                     }
             }
+            (
+                ValueType::Array {
+                    element: expected_element,
+                    len: expected_len,
+                },
+                ValueType::Array {
+                    element: actual_element,
+                    len: actual_len,
+                },
+            ) => {
+                expected_len == actual_len
+                    && match (expected_element.as_deref(), actual_element.as_deref()) {
+                        (Some(expected_element), Some(actual_element)) => {
+                            type_is_compatible(expected_element, Some(actual_element))
+                        }
+                        _ => true,
+                    }
+            }
             (ValueType::Tuple(expected), ValueType::Tuple(actual)) => {
                 tuple_type_compatible(expected, actual)
             }
@@ -1214,10 +1356,27 @@ impl Value {
         }
     }
 
+    fn array(elements: Vec<Value>, mutable_access: bool, place: Option<String>) -> Self {
+        let len = elements.len();
+        let element_type = elements.iter().fold(None, |acc, value| {
+            merge_assignment_type(acc, value.ty.clone())
+        });
+        Self {
+            runtime: RuntimeValue::Array(elements),
+            ty: Some(ValueType::Array {
+                element: element_type.map(Box::new),
+                len,
+            }),
+            place,
+            mutable_access,
+        }
+    }
+
     fn as_int(&self) -> i32 {
         match &self.runtime {
             RuntimeValue::Int(value) => *value,
             RuntimeValue::Pointer(_) => panic!("expected numeric value"),
+            RuntimeValue::Array(_) => panic!("expected numeric value"),
             RuntimeValue::Tuple(_) => panic!("expected numeric value"),
         }
     }
@@ -1233,8 +1392,32 @@ impl Value {
     fn as_pointer(&self) -> &PointerValue {
         match &self.runtime {
             RuntimeValue::Pointer(pointer) => pointer,
-            RuntimeValue::Int(_) | RuntimeValue::Tuple(_) => panic!("dereferencing non-pointer"),
+            RuntimeValue::Int(_) | RuntimeValue::Array(_) | RuntimeValue::Tuple(_) => {
+                panic!("dereferencing non-pointer")
+            }
         }
+    }
+
+    fn as_array(&self) -> &[Value] {
+        match &self.runtime {
+            RuntimeValue::Array(values) => values,
+            _ => panic!("expected array value"),
+        }
+    }
+
+    fn array_element_mut(&mut self, indices: &[usize]) -> &mut Value {
+        if indices.is_empty() {
+            return self;
+        }
+
+        let (first, rest) = indices.split_first().expect("indices checked above");
+        let RuntimeValue::Array(values) = &mut self.runtime else {
+            panic!("expected array value");
+        };
+        let element = values
+            .get_mut(*first)
+            .unwrap_or_else(|| panic!("array index out of bounds"));
+        element.array_element_mut(rest)
     }
 
     fn with_ty(mut self, ty: Option<ValueType>) -> Self {
@@ -1619,6 +1802,135 @@ mod tests {
     #[test]
     fn tuple_equality_allows_untyped_and_typed_element_compatibility() {
         assert_eq!(interpret_tuff("(1, 2) == (1U8, 2U8)".to_string()), 1);
+    }
+
+    #[test]
+    fn array_index_access_returns_expected_value() {
+        assert_eq!(
+            interpret_tuff("let a = [1U8, 2U8, 3U8]; a[1]".to_string()),
+            2
+        );
+    }
+
+    #[test]
+    fn array_type_annotation_accepts_matching_literal() {
+        assert_eq!(
+            interpret_tuff("let a : [U8; 3] = [1U8, 2U8, 3U8]; a[2]".to_string()),
+            3
+        );
+    }
+
+    #[test]
+    fn empty_array_literal_is_allowed_with_typed_binding() {
+        assert_eq!(interpret_tuff("let a : [U8; 0] = []; 0".to_string()), 0);
+    }
+
+    #[test]
+    fn nested_array_indexing_works() {
+        assert_eq!(
+            interpret_tuff("let a = [[1U8, 2U8], [3U8, 4U8]]; a[1][0]".to_string()),
+            3
+        );
+    }
+
+    #[test]
+    fn mutable_array_element_assignment_updates_value() {
+        assert_eq!(
+            interpret_tuff("let mut a = [1U8, 2U8, 3U8]; a[1] = 9U8; a[1]".to_string()),
+            9
+        );
+    }
+
+    #[test]
+    fn mutable_array_element_compound_assignment_updates_value() {
+        assert_eq!(
+            interpret_tuff("let mut a = [1U8, 2U8, 3U8]; a[1] += 7U8; a[1]".to_string()),
+            9
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_array_annotation_length_mismatch() {
+        interpret_tuff("let a : [U8; 2] = [1U8, 2U8, 3U8]; a[0]".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_array_annotation_element_type_mismatch() {
+        interpret_tuff("let a : [U8; 2] = [1U8, true]; a[0]".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_array_index_out_of_bounds() {
+        interpret_tuff("let a = [1U8, 2U8]; a[2]".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_array_index_with_non_numeric_value() {
+        interpret_tuff("let a = [1U8, 2U8]; a[true]".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_array_index_with_negative_value() {
+        interpret_tuff("let a = [1U8, 2U8]; a[-1]".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_array_indexing_non_array_value() {
+        interpret_tuff("1U8[0]".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_array_element_assignment_on_non_array_binding() {
+        interpret_tuff("let mut x = 1U8; x[0] = 2U8; x".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_array_element_assignment_through_immutable_binding() {
+        interpret_tuff("let a = [1U8, 2U8]; a[0] = 3U8; a[0]".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_array_element_assignment_out_of_bounds() {
+        interpret_tuff("let mut a = [1U8, 2U8]; a[2] = 3U8; a[0]".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_array_equality_not_supported_yet() {
+        interpret_tuff("[1U8, 2U8] == [1U8, 2U8]".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_mixed_array_equality_not_supported_yet() {
+        interpret_tuff("[1U8, 2U8] == 1U8".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_array_type_annotation_with_negative_length() {
+        interpret_tuff("let a : [U8; -1] = [1U8]; a[0]".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_array_literal_with_trailing_comma() {
+        interpret_tuff("[1U8, 2U8,]".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_when_array_value_is_used_as_numeric_directly() {
+        interpret_tuff("let a = [1U8, 2U8]; a + 1".to_string());
     }
 
     #[test]
