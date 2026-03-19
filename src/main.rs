@@ -21,6 +21,7 @@ enum ValueType {
     I16,
     I32,
     I64,
+    Bool,
     Pointer {
         mutable: bool,
         pointee: Option<Box<ValueType>>,
@@ -159,10 +160,12 @@ impl<'a> Parser<'a> {
         };
 
         self.skip_whitespace();
-        if !self.consume(b'=') {
+        if self.input.get(self.pos) != Some(&b'=') || self.input.get(self.pos + 1) == Some(&b'=') {
             self.pos = start;
             return None;
         }
+
+        self.pos += 1;
 
         let value = self.parse_expression();
         let location = self.resolve_assignment_location(&target);
@@ -176,7 +179,10 @@ impl<'a> Parser<'a> {
         }
 
         let merged_type = merge_assignment_type(variable.value.ty.clone(), value.ty.clone());
-        variable.value = value.into_storage().with_ty(merged_type).with_access(variable.mutable);
+        variable.value = value
+            .into_storage()
+            .with_ty(merged_type)
+            .with_access(variable.mutable);
         Some(variable.value.clone().with_place(Some(location)))
     }
 
@@ -186,12 +192,7 @@ impl<'a> Parser<'a> {
         if self.consume(b'*') {
             let target = self.parse_assignment_target()?;
             Some(AssignmentTarget::Deref(Box::new(target)))
-        } else if self
-            .input
-            .get(self.pos)
-            .copied()
-            .is_some_and(|byte| byte.is_ascii_alphabetic() || byte == b'_')
-        {
+        } else if self.starts_identifier() {
             Some(AssignmentTarget::Variable(self.parse_identifier()))
         } else {
             None
@@ -233,14 +234,15 @@ impl<'a> Parser<'a> {
             }
         } else {
             match self.parse_identifier().as_str() {
-            "U8" => ValueType::U8,
-            "U16" => ValueType::U16,
-            "U32" => ValueType::U32,
-            "U64" => ValueType::U64,
-            "I8" => ValueType::I8,
-            "I16" => ValueType::I16,
-            "I32" => ValueType::I32,
-            "I64" => ValueType::I64,
+                "U8" => ValueType::U8,
+                "U16" => ValueType::U16,
+                "U32" => ValueType::U32,
+                "U64" => ValueType::U64,
+                "I8" => ValueType::I8,
+                "I16" => ValueType::I16,
+                "I32" => ValueType::I32,
+                "I64" => ValueType::I64,
+                "Bool" => ValueType::Bool,
                 _ => panic!("invalid type annotation"),
             }
         }
@@ -250,6 +252,17 @@ impl<'a> Parser<'a> {
         self.skip_whitespace();
         if self.input.get(self.pos) == Some(&expected) {
             self.pos += 1;
+            true
+        } else {
+            false
+        }
+    }
+
+    fn consume_str(&mut self, expected: &str) -> bool {
+        self.skip_whitespace();
+        let bytes = expected.as_bytes();
+        if self.input.get(self.pos..self.pos + bytes.len()) == Some(bytes) {
+            self.pos += bytes.len();
             true
         } else {
             false
@@ -280,6 +293,22 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_expression(&mut self) -> Value {
+        let mut value = self.parse_additive();
+
+        loop {
+            if self.consume_str("==") {
+                value = compare_values(value, self.parse_additive(), true);
+            } else if self.consume_str("!=") {
+                value = compare_values(value, self.parse_additive(), false);
+            } else {
+                break;
+            }
+        }
+
+        value
+    }
+
+    fn parse_additive(&mut self) -> Value {
         let mut value = self.parse_term();
 
         loop {
@@ -334,6 +363,9 @@ impl<'a> Parser<'a> {
                 value.mutable_access,
                 value.place,
             )
+        } else if self.consume(b'!') {
+            let value = self.parse_factor();
+            negate_bool(value)
         } else if self.consume(b'&') {
             let mutable = self.consume_keyword("mut");
             let value = self.parse_factor();
@@ -353,17 +385,13 @@ impl<'a> Parser<'a> {
             let value = self.parse_expression();
             self.expect(b')');
             value
-        } else if self
-            .input
-            .get(self.pos)
-            .copied()
-            .is_some_and(|byte| byte.is_ascii_alphabetic() || byte == b'_')
-        {
+        } else if self.consume_keyword("true") {
+            Value::int(1, Some(ValueType::Bool), false, None)
+        } else if self.consume_keyword("false") {
+            Value::int(0, Some(ValueType::Bool), false, None)
+        } else if self.starts_identifier() {
             let name = self.parse_identifier();
-            let variable = self
-                .env
-                .get(&name)
-                .expect("undefined variable");
+            let variable = self.env.get(&name).expect("undefined variable");
             self.env
                 .get(&name)
                 .expect("undefined variable")
@@ -374,6 +402,13 @@ impl<'a> Parser<'a> {
         } else {
             self.parse_number_literal()
         }
+    }
+
+    fn starts_identifier(&self) -> bool {
+        self.input
+            .get(self.pos)
+            .copied()
+            .is_some_and(|byte| byte.is_ascii_alphabetic() || byte == b'_')
     }
 
     fn parse_identifier(&mut self) -> String {
@@ -458,6 +493,9 @@ impl<'a> Parser<'a> {
 
     fn apply_type_annotation(&self, value: Value, declared_type: Option<ValueType>) -> Value {
         match declared_type {
+            Some(ValueType::Bool) if value.ty != Some(ValueType::Bool) => {
+                panic!("type mismatch");
+            }
             Some(expected) if !type_is_compatible(&expected, value.ty.as_ref()) => {
                 panic!("type mismatch");
             }
@@ -504,7 +542,9 @@ fn combine_numeric_values<F>(left: Value, right: Value, op: F) -> Value
 where
     F: FnOnce(i32, i32) -> i32,
 {
-    Value::int(op(left.as_int(), right.as_int()), None, false, None)
+    let left = left.ensure_numeric();
+    let right = right.ensure_numeric();
+    Value::int(op(left, right), None, false, None)
 }
 
 fn merge_assignment_type(
@@ -525,11 +565,64 @@ fn merge_assignment_type(
     }
 }
 
+fn compare_values(left: Value, right: Value, equal: bool) -> Value {
+    let left_ty = left.ty.clone();
+    let right_ty = right.ty.clone();
+
+    if !comparison_types_compatible(left_ty.as_ref(), right_ty.as_ref()) {
+        panic!("type mismatch");
+    }
+
+    let result = if equal {
+        left.as_int() == right.as_int()
+    } else {
+        left.as_int() != right.as_int()
+    };
+
+    Value::int(
+        if result { 1 } else { 0 },
+        Some(ValueType::Bool),
+        false,
+        None,
+    )
+}
+
+fn negate_bool(value: Value) -> Value {
+    if value.ty != Some(ValueType::Bool) {
+        panic!("expected bool value");
+    }
+
+    Value::int(
+        if value.as_int() == 0 { 1 } else { 0 },
+        Some(ValueType::Bool),
+        false,
+        None,
+    )
+}
+
+fn comparison_types_compatible(left: Option<&ValueType>, right: Option<&ValueType>) -> bool {
+    match (left, right) {
+        (Some(ValueType::Bool), Some(ValueType::Bool)) => true,
+        (Some(ValueType::Pointer { .. }), Some(ValueType::Pointer { .. })) => false,
+        (Some(ValueType::Bool), Some(_)) | (Some(_), Some(ValueType::Bool)) => false,
+        _ => true,
+    }
+}
+
 fn type_is_compatible(expected: &ValueType, actual: Option<&ValueType>) -> bool {
     match actual {
         None => true,
         Some(actual) => match (expected, actual) {
-            (ValueType::Pointer { mutable: expected_mut, pointee: expected_inner }, ValueType::Pointer { mutable: actual_mut, pointee: actual_inner }) => {
+            (
+                ValueType::Pointer {
+                    mutable: expected_mut,
+                    pointee: expected_inner,
+                },
+                ValueType::Pointer {
+                    mutable: actual_mut,
+                    pointee: actual_inner,
+                },
+            ) => {
                 expected_mut == actual_mut
                     && match (expected_inner.as_deref(), actual_inner.as_deref()) {
                         (Some(expected_inner), Some(actual_inner)) => {
@@ -580,6 +673,14 @@ impl Value {
             RuntimeValue::Int(value) => *value,
             RuntimeValue::Pointer(_) => panic!("expected numeric value"),
         }
+    }
+
+    fn ensure_numeric(&self) -> i32 {
+        if self.ty == Some(ValueType::Bool) {
+            panic!("expected numeric value");
+        }
+
+        self.as_int()
     }
 
     fn as_pointer(&self) -> &PointerValue {
@@ -773,13 +874,96 @@ mod tests {
 
     #[test]
     fn infers_pointer_type_from_untyped_variable() {
-        assert_eq!(interpret_tuff("let mut x = 0; let p = &x; *p".to_string()), 0);
+        assert_eq!(
+            interpret_tuff("let mut x = 0; let p = &x; *p".to_string()),
+            0
+        );
     }
 
     #[test]
     #[should_panic]
     fn panics_when_program_result_is_pointer() {
         interpret_tuff("let x = 0; &x".to_string());
+    }
+
+    #[test]
+    fn true_literal_evaluates_to_one() {
+        assert_eq!(interpret_tuff("true".to_string()), 1);
+    }
+
+    #[test]
+    fn false_literal_evaluates_to_zero() {
+        assert_eq!(interpret_tuff("false".to_string()), 0);
+    }
+
+    #[test]
+    fn bool_binding_and_reassignment_work() {
+        assert_eq!(
+            interpret_tuff("let mut flag : Bool = true; flag = false; flag".to_string()),
+            0
+        );
+    }
+
+    #[test]
+    fn bool_annotation_infers_and_checks_values() {
+        assert_eq!(
+            interpret_tuff("let flag : Bool = true; flag".to_string()),
+            1
+        );
+    }
+
+    #[test]
+    fn bool_equality_returns_numeric_result() {
+        assert_eq!(interpret_tuff("true == false".to_string()), 0);
+        assert_eq!(interpret_tuff("true != false".to_string()), 1);
+    }
+
+    #[test]
+    fn numeric_equality_returns_numeric_result() {
+        assert_eq!(interpret_tuff("1 == 1".to_string()), 1);
+        assert_eq!(interpret_tuff("1 != 2".to_string()), 1);
+    }
+
+    #[test]
+    fn bool_not_operator_flips_truthiness() {
+        assert_eq!(interpret_tuff("!true".to_string()), 0);
+        assert_eq!(interpret_tuff("!false".to_string()), 1);
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_invalid_bool_annotation() {
+        interpret_tuff("let flag : Bool = 1; flag".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_bool_numeric_equality() {
+        interpret_tuff("let x : U8 = 1; true == x".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_pointer_equality() {
+        interpret_tuff("let x = 0; let p = &x; p == p".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_taking_mutable_address_of_immutable_binding() {
+        interpret_tuff("let x = 0; &mut x".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_bool_value_in_numeric_expression() {
+        interpret_tuff("true + 1".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_numeric_negation_of_bool() {
+        interpret_tuff("!1".to_string());
     }
 
     #[test]
