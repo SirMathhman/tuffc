@@ -126,6 +126,8 @@ impl<'a> Parser<'a> {
             self.parse_let_statement()
         } else if self.consume_keyword("if") {
             self.parse_if_statement()
+        } else if self.consume_keyword("while") {
+            self.parse_while_statement()
         } else if let Some(value) = self.try_parse_assignment_statement() {
             StatementValue {
                 value,
@@ -406,6 +408,33 @@ impl<'a> Parser<'a> {
         StatementValue {
             value: Value::int(0, None, false, None),
             allows_following_statement_without_separator: true,
+        }
+    }
+
+    fn parse_while_statement(&mut self) -> StatementValue {
+        let condition_start = self.pos;
+        let mut iterations = 0usize;
+
+        loop {
+            self.pos = condition_start;
+            let condition = self.parse_if_condition();
+
+            if condition.as_int() == 0 {
+                let mut branch_parser = self.clone();
+                branch_parser.parse_statement();
+                self.pos = branch_parser.pos;
+                return StatementValue {
+                    value: Value::int(0, None, false, None),
+                    allows_following_statement_without_separator: true,
+                };
+            }
+
+            if iterations >= 1024 {
+                panic!("while iteration limit exceeded");
+            }
+            iterations += 1;
+
+            self.parse_statement();
         }
     }
 
@@ -1282,6 +1311,58 @@ mod tests {
             interpret_tuff("let mut x = 0; if (false) { x = 3; } x".to_string()),
             0
         );
+    }
+
+    #[test]
+    fn while_statement_with_single_statement_body_updates_binding() {
+        assert_eq!(
+            interpret_tuff("let mut x = 0; while (x < 3) x += 1; x".to_string()),
+            3
+        );
+    }
+
+    #[test]
+    fn while_statement_with_block_body_updates_binding() {
+        assert_eq!(
+            interpret_tuff("let mut x = 0; while (x < 3) { x += 1; } x".to_string()),
+            3
+        );
+    }
+
+    #[test]
+    fn while_statement_evaluates_to_zero_when_condition_is_false() {
+        assert_eq!(interpret_tuff("while (false) 3".to_string()), 0);
+    }
+
+    #[test]
+    fn while_iteration_limit_allows_1024_iterations() {
+        assert_eq!(
+            interpret_tuff("let mut x = 0; while (x < 1024) x += 1; x".to_string()),
+            1024
+        );
+    }
+
+    #[test]
+    fn while_iteration_limit_is_per_loop_instance() {
+        assert_eq!(
+            interpret_tuff(
+                "let mut outer = 0; let mut sum = 0; while (outer < 2) { let mut inner = 0; while (inner < 1024) inner += 1; sum += inner; outer += 1; } sum"
+                    .to_string()
+            ),
+            2048
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_non_bool_while_condition() {
+        interpret_tuff("while (1) 3".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_when_while_iteration_limit_exceeded() {
+        interpret_tuff("let mut x = 0; while (x <= 1024) x += 1; x".to_string());
     }
 
     #[test]
