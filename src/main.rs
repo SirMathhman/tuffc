@@ -8,7 +8,12 @@ pub fn interpret_tuff(input: String) -> i32 {
 struct Parser<'a> {
     input: &'a [u8],
     pos: usize,
-    env: HashMap<String, i32>,
+    env: HashMap<String, Variable>,
+}
+
+struct Variable {
+    value: i32,
+    mutable: bool,
 }
 
 impl<'a> Parser<'a> {
@@ -64,12 +69,15 @@ impl<'a> Parser<'a> {
 
         if self.consume_keyword("let") {
             self.parse_let_statement()
+        } else if let Some(value) = self.try_parse_assignment_statement() {
+            value
         } else {
             self.parse_expression()
         }
     }
 
     fn parse_let_statement(&mut self) -> i32 {
+        let mutable = self.consume_keyword("mut");
         let name = self.parse_identifier();
 
         self.skip_whitespace();
@@ -78,8 +86,35 @@ impl<'a> Parser<'a> {
         self.expect(b'=');
 
         let value = self.parse_expression();
-        self.env.insert(name, value);
+        self.env.insert(name, Variable { value, mutable });
         value
+    }
+
+    fn try_parse_assignment_statement(&mut self) -> Option<i32> {
+        let start = self.pos;
+        let name = match self.input.get(self.pos).copied() {
+            Some(byte) if byte.is_ascii_alphabetic() || byte == b'_' => self.parse_identifier(),
+            _ => return None,
+        };
+
+        self.skip_whitespace();
+        if !self.consume(b'=') {
+            self.pos = start;
+            return None;
+        }
+
+        let value = self.parse_expression();
+        let variable = self
+            .env
+            .get_mut(&name)
+            .unwrap_or_else(|| panic!("assignment to undeclared variable"));
+
+        if !variable.mutable {
+            panic!("assignment to immutable variable");
+        }
+
+        variable.value = value;
+        Some(value)
     }
 
     fn parse_type_annotation(&mut self) {
@@ -189,10 +224,10 @@ impl<'a> Parser<'a> {
             .is_some_and(|byte| byte.is_ascii_alphabetic() || byte == b'_')
         {
             let name = self.parse_identifier();
-            *self
-                .env
+            self.env
                 .get(&name)
                 .unwrap_or_else(|| panic!("undefined variable"))
+                .value
         } else {
             self.parse_number_literal()
         }
@@ -295,6 +330,34 @@ fn split_literal(literal: &str) -> (&str, &str) {
 #[cfg(test)]
 mod tests {
     use super::interpret_tuff;
+
+    #[test]
+    fn mut_variable_can_be_reassigned() {
+        assert_eq!(
+            interpret_tuff("let mut x : U8 = 0; x = 100U8 + 50U8; x".to_string()),
+            150
+        );
+    }
+
+    #[test]
+    fn reassignment_result_is_visible_in_later_expression() {
+        assert_eq!(
+            interpret_tuff("let mut x : U8 = 1; x = x + 1; x + 1".to_string()),
+            3
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_reassignment_without_mut() {
+        interpret_tuff("let x : U8 = 0; x = 1; x".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_assignment_to_undeclared_variable() {
+        interpret_tuff("x = 1; x".to_string());
+    }
 
     #[test]
     fn unary_plus_evaluates_to_positive_value() {
