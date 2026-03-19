@@ -345,6 +345,32 @@ impl<'a> Parser<'a> {
         self.parse_statement_sequence(|parser, _| parser.consume(b'}'), "expected '}'")
     }
 
+    fn parse_if_expression(&mut self) -> Value {
+        self.skip_whitespace();
+        self.expect(b'(');
+        let condition = self.parse_expression();
+        self.expect(b')');
+
+        if condition.ty != Some(ValueType::Bool) {
+            panic!("expected bool value");
+        }
+
+        let then_branch = self.parse_expression();
+
+        if !self.consume_keyword("else") {
+            panic!("expected 'else'");
+        }
+
+        let else_branch = self.parse_expression();
+        let merged_type = merge_assignment_type(then_branch.ty.clone(), else_branch.ty.clone());
+
+        if condition.as_int() != 0 {
+            then_branch.with_ty(merged_type)
+        } else {
+            else_branch.with_ty(merged_type)
+        }
+    }
+
     fn parse_type_annotation(&mut self) -> ValueType {
         self.skip_whitespace();
 
@@ -436,9 +462,14 @@ impl<'a> Parser<'a> {
 
         loop {
             if self.consume_str("<=") {
-                value = compare_ordered_values(value, self.parse_additive(), ComparisonOp::LessOrEqual);
+                value =
+                    compare_ordered_values(value, self.parse_additive(), ComparisonOp::LessOrEqual);
             } else if self.consume_str(">=") {
-                value = compare_ordered_values(value, self.parse_additive(), ComparisonOp::GreaterOrEqual);
+                value = compare_ordered_values(
+                    value,
+                    self.parse_additive(),
+                    ComparisonOp::GreaterOrEqual,
+                );
             } else if self.consume(b'<') {
                 value = compare_ordered_values(value, self.parse_additive(), ComparisonOp::Less);
             } else if self.consume(b'>') {
@@ -526,6 +557,8 @@ impl<'a> Parser<'a> {
 
         if self.consume(b'{') {
             self.parse_block_expression()
+        } else if self.consume_keyword("if") {
+            self.parse_if_expression()
         } else if self.consume(b'(') {
             let value = self.parse_expression();
             self.expect(b')');
@@ -799,7 +832,10 @@ fn comparison_types_compatible(left: Option<&ValueType>, right: Option<&ValueTyp
     }
 }
 
-fn ordered_comparison_types_compatible(left: Option<&ValueType>, right: Option<&ValueType>) -> bool {
+fn ordered_comparison_types_compatible(
+    left: Option<&ValueType>,
+    right: Option<&ValueType>,
+) -> bool {
     if matches!(left, Some(ValueType::Bool)) || matches!(right, Some(ValueType::Bool)) {
         false
     } else {
@@ -1134,6 +1170,36 @@ mod tests {
     }
 
     #[test]
+    fn if_expression_returns_then_branch_when_condition_is_true() {
+        assert_eq!(interpret_tuff("let x = if (true) 3 else 5; x".to_string()), 3);
+    }
+
+    #[test]
+    fn if_expression_returns_else_branch_when_condition_is_false() {
+        assert_eq!(interpret_tuff("let x = if (false) 3 else 5; x".to_string()), 5);
+    }
+
+    #[test]
+    fn if_expression_can_return_block_values() {
+        assert_eq!(
+            interpret_tuff("let x = if (true) { let y = 3; y } else { let y = 5; y }; x".to_string()),
+            3
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_non_bool_if_condition() {
+        interpret_tuff("if (1) 3 else 5".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_missing_else_branch() {
+        interpret_tuff("if (true) 3".to_string());
+    }
+
+    #[test]
     fn numeric_comparisons_return_bool_values() {
         assert_eq!(interpret_tuff("1 < 2".to_string()), 1);
         assert_eq!(interpret_tuff("2 < 1".to_string()), 0);
@@ -1144,8 +1210,14 @@ mod tests {
 
     #[test]
     fn comparison_results_can_bind_to_bool_variables() {
-        assert_eq!(interpret_tuff("let flag : Bool = 1 < 2; flag".to_string()), 1);
-        assert_eq!(interpret_tuff("let mut flag : Bool = 3 >= 4; flag".to_string()), 0);
+        assert_eq!(
+            interpret_tuff("let flag : Bool = 1 < 2; flag".to_string()),
+            1
+        );
+        assert_eq!(
+            interpret_tuff("let mut flag : Bool = 3 >= 4; flag".to_string()),
+            0
+        );
     }
 
     #[test]
