@@ -69,6 +69,14 @@ enum CompoundAssignmentOp {
     Div,
 }
 
+#[derive(Clone, Copy, Debug)]
+enum ComparisonOp {
+    Less,
+    LessOrEqual,
+    Greater,
+    GreaterOrEqual,
+}
+
 impl<'a> Parser<'a> {
     fn new(input: &'a str) -> Self {
         Self {
@@ -408,13 +416,33 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_expression(&mut self) -> Value {
-        let mut value = self.parse_additive();
+        let mut value = self.parse_comparison();
 
         loop {
             if self.consume_str("==") {
-                value = compare_values(value, self.parse_additive(), true);
+                value = compare_values(value, self.parse_comparison(), true);
             } else if self.consume_str("!=") {
-                value = compare_values(value, self.parse_additive(), false);
+                value = compare_values(value, self.parse_comparison(), false);
+            } else {
+                break;
+            }
+        }
+
+        value
+    }
+
+    fn parse_comparison(&mut self) -> Value {
+        let mut value = self.parse_additive();
+
+        loop {
+            if self.consume_str("<=") {
+                value = compare_ordered_values(value, self.parse_additive(), ComparisonOp::LessOrEqual);
+            } else if self.consume_str(">=") {
+                value = compare_ordered_values(value, self.parse_additive(), ComparisonOp::GreaterOrEqual);
+            } else if self.consume(b'<') {
+                value = compare_ordered_values(value, self.parse_additive(), ComparisonOp::Less);
+            } else if self.consume(b'>') {
+                value = compare_ordered_values(value, self.parse_additive(), ComparisonOp::Greater);
             } else {
                 break;
             }
@@ -568,6 +596,8 @@ impl<'a> Parser<'a> {
                 || byte == b'-'
                 || byte == b'*'
                 || byte == b'/'
+                || byte == b'<'
+                || byte == b'>'
                 || byte == b')'
                 || byte == b'}'
                 || byte == b';'
@@ -719,6 +749,32 @@ fn compare_values(left: Value, right: Value, equal: bool) -> Value {
     )
 }
 
+fn compare_ordered_values(left: Value, right: Value, op: ComparisonOp) -> Value {
+    let left_ty = left.ty.clone();
+    let right_ty = right.ty.clone();
+
+    if !ordered_comparison_types_compatible(left_ty.as_ref(), right_ty.as_ref()) {
+        panic!("type mismatch");
+    }
+
+    let left = left.ensure_numeric();
+    let right = right.ensure_numeric();
+
+    let result = match op {
+        ComparisonOp::Less => left < right,
+        ComparisonOp::LessOrEqual => left <= right,
+        ComparisonOp::Greater => left > right,
+        ComparisonOp::GreaterOrEqual => left >= right,
+    };
+
+    Value::int(
+        if result { 1 } else { 0 },
+        Some(ValueType::Bool),
+        false,
+        None,
+    )
+}
+
 fn negate_bool(value: Value) -> Value {
     if value.ty != Some(ValueType::Bool) {
         panic!("expected bool value");
@@ -733,12 +789,27 @@ fn negate_bool(value: Value) -> Value {
 }
 
 fn comparison_types_compatible(left: Option<&ValueType>, right: Option<&ValueType>) -> bool {
-    match (left, right) {
-        (Some(ValueType::Bool), Some(ValueType::Bool)) => true,
-        (Some(ValueType::Pointer { .. }), Some(ValueType::Pointer { .. })) => false,
-        (Some(ValueType::Bool), Some(_)) | (Some(_), Some(ValueType::Bool)) => false,
-        _ => true,
+    let left_bool = matches!(left, Some(ValueType::Bool));
+    let right_bool = matches!(right, Some(ValueType::Bool));
+
+    if left_bool || right_bool {
+        left_bool && right_bool
+    } else {
+        comparison_operands_are_numeric(left, right)
     }
+}
+
+fn ordered_comparison_types_compatible(left: Option<&ValueType>, right: Option<&ValueType>) -> bool {
+    if matches!(left, Some(ValueType::Bool)) || matches!(right, Some(ValueType::Bool)) {
+        false
+    } else {
+        comparison_operands_are_numeric(left, right)
+    }
+}
+
+fn comparison_operands_are_numeric(left: Option<&ValueType>, right: Option<&ValueType>) -> bool {
+    !matches!(left, Some(ValueType::Pointer { .. }))
+        && !matches!(right, Some(ValueType::Pointer { .. }))
 }
 
 fn type_is_compatible(expected: &ValueType, actual: Option<&ValueType>) -> bool {
@@ -1063,13 +1134,70 @@ mod tests {
     }
 
     #[test]
+    fn numeric_comparisons_return_bool_values() {
+        assert_eq!(interpret_tuff("1 < 2".to_string()), 1);
+        assert_eq!(interpret_tuff("2 < 1".to_string()), 0);
+        assert_eq!(interpret_tuff("2 <= 2".to_string()), 1);
+        assert_eq!(interpret_tuff("3 > 2".to_string()), 1);
+        assert_eq!(interpret_tuff("3 >= 4".to_string()), 0);
+    }
+
+    #[test]
+    fn comparison_results_can_bind_to_bool_variables() {
+        assert_eq!(interpret_tuff("let flag : Bool = 1 < 2; flag".to_string()), 1);
+        assert_eq!(interpret_tuff("let mut flag : Bool = 3 >= 4; flag".to_string()), 0);
+    }
+
+    #[test]
+    fn comparison_precedence_is_lower_than_additive() {
+        assert_eq!(interpret_tuff("1 + 1 < 3".to_string()), 1);
+        assert_eq!(interpret_tuff("1 + 1 < 3 == true".to_string()), 1);
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_when_comparison_result_is_used_as_numeric() {
+        interpret_tuff("1 + (2 < 3)".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_when_comparison_result_is_bound_as_numeric() {
+        interpret_tuff("let x : U8 = 1 < 2; x".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_bool_ordered_comparison() {
+        interpret_tuff("true < false".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_pointer_ordered_comparison() {
+        interpret_tuff("let x = 0; let p = &x; p < p".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_pointer_ordered_comparison_with_pointer_on_right() {
+        interpret_tuff("let x = 0; let p = &x; 1 < p".to_string());
+    }
+
+    #[test]
     fn block_expression_returns_last_statement_value() {
-        assert_eq!(interpret_tuff("let x = { let y = 1; y + 2 }; x".to_string()), 3);
+        assert_eq!(
+            interpret_tuff("let x = { let y = 1; y + 2 }; x".to_string()),
+            3
+        );
     }
 
     #[test]
     fn block_shadowing_does_not_modify_outer_binding() {
-        assert_eq!(interpret_tuff("let mut x = 0; { let mut x = 1; x = 2; }; x".to_string()), 0);
+        assert_eq!(
+            interpret_tuff("let mut x = 0; { let mut x = 1; x = 2; }; x".to_string()),
+            0
+        );
     }
 
     #[test]
