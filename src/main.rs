@@ -11,7 +11,7 @@ struct Parser<'a> {
     env: HashMap<String, Variable>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 enum ValueType {
     U8,
     U16,
@@ -21,17 +21,41 @@ enum ValueType {
     I16,
     I32,
     I64,
+    Pointer {
+        mutable: bool,
+        pointee: Option<Box<ValueType>>,
+    },
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
+enum RuntimeValue {
+    Int(i32),
+    Pointer(PointerValue),
+}
+
+#[derive(Clone, Debug)]
+struct PointerValue {
+    target: String,
+    mutable: bool,
+}
+
+#[derive(Clone, Debug)]
 struct Value {
-    value: i32,
+    runtime: RuntimeValue,
     ty: Option<ValueType>,
+    place: Option<String>,
+    mutable_access: bool,
 }
 
 struct Variable {
     value: Value,
     mutable: bool,
+}
+
+#[derive(Clone, Debug)]
+enum AssignmentTarget {
+    Variable(String),
+    Deref(Box<AssignmentTarget>),
 }
 
 impl<'a> Parser<'a> {
@@ -70,12 +94,12 @@ impl<'a> Parser<'a> {
             if self.consume(b';') {
                 self.skip_whitespace();
                 if self.is_eof() {
-                    return last_value.value;
+                    return last_value.as_int();
                 }
 
                 last_value = self.parse_statement();
             } else if self.is_eof() {
-                return last_value.value;
+                return last_value.as_int();
             } else {
                 panic!("unexpected trailing input");
             }
@@ -109,20 +133,29 @@ impl<'a> Parser<'a> {
         let value = self.parse_expression();
         let stored_value = self.apply_type_annotation(value, declared_type);
         self.env.insert(
-            name,
+            name.clone(),
             Variable {
-                value: stored_value,
+                value: stored_value.into_storage().with_access(mutable),
                 mutable,
             },
         );
-        stored_value
+        self.env
+            .get(&name)
+            .unwrap()
+            .value
+            .clone()
+            .with_place(Some(name))
+            .with_access(mutable)
     }
 
     fn try_parse_assignment_statement(&mut self) -> Option<Value> {
         let start = self.pos;
-        let name = match self.input.get(self.pos).copied() {
-            Some(byte) if byte.is_ascii_alphabetic() || byte == b'_' => self.parse_identifier(),
-            _ => return None,
+        let target = match self.parse_assignment_target() {
+            Some(target) => target,
+            None => {
+                self.pos = start;
+                return None;
+            }
         };
 
         self.skip_whitespace();
@@ -132,22 +165,74 @@ impl<'a> Parser<'a> {
         }
 
         let value = self.parse_expression();
+        let location = self.resolve_assignment_location(&target);
         let variable = self
             .env
-            .get_mut(&name)
-            .unwrap_or_else(|| panic!("assignment to undeclared variable"));
+            .get_mut(&location)
+            .expect("assignment to undeclared variable");
 
-        if !variable.mutable {
+        if matches!(target, AssignmentTarget::Variable(_)) && !variable.mutable {
             panic!("assignment to immutable variable");
         }
 
-        variable.value.ty = merge_assignment_type(variable.value.ty, value.ty);
-        variable.value.value = value.value;
-        Some(variable.value)
+        let merged_type = merge_assignment_type(variable.value.ty.clone(), value.ty.clone());
+        variable.value = value.into_storage().with_ty(merged_type).with_access(variable.mutable);
+        Some(variable.value.clone().with_place(Some(location)))
+    }
+
+    fn parse_assignment_target(&mut self) -> Option<AssignmentTarget> {
+        self.skip_whitespace();
+
+        if self.consume(b'*') {
+            let target = self.parse_assignment_target()?;
+            Some(AssignmentTarget::Deref(Box::new(target)))
+        } else if self
+            .input
+            .get(self.pos)
+            .copied()
+            .is_some_and(|byte| byte.is_ascii_alphabetic() || byte == b'_')
+        {
+            Some(AssignmentTarget::Variable(self.parse_identifier()))
+        } else {
+            None
+        }
+    }
+
+    fn resolve_assignment_location(&self, target: &AssignmentTarget) -> String {
+        match target {
+            AssignmentTarget::Variable(name) => name.clone(),
+            AssignmentTarget::Deref(inner) => {
+                let inner_location = self.resolve_assignment_location(inner);
+                let inner_value = self
+                    .env
+                    .get(&inner_location)
+                    .expect("assignment to undeclared variable")
+                    .value
+                    .clone()
+                    .with_place(Some(inner_location.clone()));
+
+                let pointer = inner_value.as_pointer();
+                if !pointer.mutable {
+                    panic!("assignment through immutable pointer");
+                }
+
+                pointer.target.clone()
+            }
+        }
     }
 
     fn parse_type_annotation(&mut self) -> ValueType {
-        match self.parse_identifier().as_str() {
+        self.skip_whitespace();
+
+        if self.consume(b'*') {
+            let mutable = self.consume_keyword("mut");
+            let pointee = self.parse_type_annotation();
+            ValueType::Pointer {
+                mutable,
+                pointee: Some(Box::new(pointee)),
+            }
+        } else {
+            match self.parse_identifier().as_str() {
             "U8" => ValueType::U8,
             "U16" => ValueType::U16,
             "U32" => ValueType::U32,
@@ -156,7 +241,8 @@ impl<'a> Parser<'a> {
             "I16" => ValueType::I16,
             "I32" => ValueType::I32,
             "I64" => ValueType::I64,
-            _ => panic!("invalid type annotation"),
+                _ => panic!("invalid type annotation"),
+            }
         }
     }
 
@@ -223,7 +309,7 @@ impl<'a> Parser<'a> {
                 });
             } else if self.consume(b'/') {
                 let divisor = self.parse_factor();
-                if divisor.value == 0 {
+                if divisor.as_int() == 0 {
                     panic!("division by zero");
                 }
                 value = combine_numeric_values(value, divisor, |a, b| a / b);
@@ -242,10 +328,19 @@ impl<'a> Parser<'a> {
             self.parse_factor()
         } else if self.consume(b'-') {
             let value = self.parse_factor();
-            Value {
-                value: value.value.checked_neg().expect("negation overflow"),
-                ty: value.ty,
-            }
+            Value::int(
+                value.as_int().checked_neg().expect("negation overflow"),
+                value.ty,
+                value.mutable_access,
+                value.place,
+            )
+        } else if self.consume(b'&') {
+            let mutable = self.consume_keyword("mut");
+            let value = self.parse_factor();
+            self.address_of_value(value, mutable)
+        } else if self.consume(b'*') {
+            let value = self.parse_factor();
+            self.dereference_value(value)
         } else {
             self.parse_primary()
         }
@@ -265,10 +360,17 @@ impl<'a> Parser<'a> {
             .is_some_and(|byte| byte.is_ascii_alphabetic() || byte == b'_')
         {
             let name = self.parse_identifier();
+            let variable = self
+                .env
+                .get(&name)
+                .expect("undefined variable");
             self.env
                 .get(&name)
-                .unwrap_or_else(|| panic!("undefined variable"))
+                .expect("undefined variable")
                 .value
+                .clone()
+                .with_place(Some(name))
+                .with_access(variable.mutable)
         } else {
             self.parse_number_literal()
         }
@@ -351,23 +453,50 @@ impl<'a> Parser<'a> {
             panic!("numeric literal overflow");
         }
 
-        Value {
-            value: value as i32,
-            ty: parse_literal_type(suffix),
-        }
+        Value::int(value as i32, parse_literal_type(suffix), false, None)
     }
 
     fn apply_type_annotation(&self, value: Value, declared_type: Option<ValueType>) -> Value {
-        match (declared_type, value.ty) {
-            (Some(expected), Some(actual)) if expected != actual => {
+        match declared_type {
+            Some(expected) if !type_is_compatible(&expected, value.ty.as_ref()) => {
                 panic!("type mismatch");
             }
-            (Some(expected), _) => Value {
-                value: value.value,
-                ty: Some(expected),
-            },
-            (None, _) => value,
+            Some(expected) => value.with_ty(Some(expected)),
+            None => value,
         }
+    }
+
+    fn address_of_value(&self, value: Value, mutable: bool) -> Value {
+        let target = value
+            .place
+            .expect("taking address of unsupported expression");
+
+        if mutable && !value.mutable_access {
+            panic!("taking address of unsupported expression");
+        }
+
+        Value::pointer(
+            target,
+            mutable,
+            Some(pointer_type_from_value(value.ty.as_ref(), mutable)),
+            false,
+            None,
+        )
+    }
+
+    fn dereference_value(&self, value: Value) -> Value {
+        let pointer = value.as_pointer();
+        let target_value = self
+            .env
+            .get(&pointer.target)
+            .expect("dereferencing non-pointer");
+
+        let dereferenced = target_value
+            .value
+            .clone()
+            .with_place(Some(pointer.target.clone()));
+
+        dereferenced.with_access(pointer.mutable)
     }
 }
 
@@ -375,10 +504,7 @@ fn combine_numeric_values<F>(left: Value, right: Value, op: F) -> Value
 where
     F: FnOnce(i32, i32) -> i32,
 {
-    Value {
-        value: op(left.value, right.value),
-        ty: None,
-    }
+    Value::int(op(left.as_int(), right.as_int()), None, false, None)
 }
 
 fn merge_assignment_type(
@@ -386,10 +512,101 @@ fn merge_assignment_type(
     new_type: Option<ValueType>,
 ) -> Option<ValueType> {
     match (current_type, new_type) {
-        (Some(expected), Some(actual)) => if expected != actual { panic!("type mismatch"); } else { Some(expected) },
+        (Some(expected), Some(actual)) => {
+            if !type_is_compatible(&expected, Some(&actual)) {
+                panic!("type mismatch");
+            } else {
+                Some(expected)
+            }
+        }
         (Some(expected), None) => Some(expected),
         (None, Some(actual)) => Some(actual),
         (None, None) => None,
+    }
+}
+
+fn type_is_compatible(expected: &ValueType, actual: Option<&ValueType>) -> bool {
+    match actual {
+        None => true,
+        Some(actual) => match (expected, actual) {
+            (ValueType::Pointer { mutable: expected_mut, pointee: expected_inner }, ValueType::Pointer { mutable: actual_mut, pointee: actual_inner }) => {
+                expected_mut == actual_mut
+                    && match (expected_inner.as_deref(), actual_inner.as_deref()) {
+                        (Some(expected_inner), Some(actual_inner)) => {
+                            type_is_compatible(expected_inner, Some(actual_inner))
+                        }
+                        _ => true,
+                    }
+            }
+            _ => expected == actual,
+        },
+    }
+}
+
+fn pointer_type_from_value(value_type: Option<&ValueType>, mutable: bool) -> ValueType {
+    ValueType::Pointer {
+        mutable,
+        pointee: value_type.map(|ty| Box::new(ty.clone())),
+    }
+}
+
+impl Value {
+    fn int(value: i32, ty: Option<ValueType>, mutable_access: bool, place: Option<String>) -> Self {
+        Self {
+            runtime: RuntimeValue::Int(value),
+            ty,
+            place,
+            mutable_access,
+        }
+    }
+
+    fn pointer(
+        target: String,
+        mutable: bool,
+        ty: Option<ValueType>,
+        mutable_access: bool,
+        place: Option<String>,
+    ) -> Self {
+        Self {
+            runtime: RuntimeValue::Pointer(PointerValue { target, mutable }),
+            ty,
+            place,
+            mutable_access,
+        }
+    }
+
+    fn as_int(&self) -> i32 {
+        match &self.runtime {
+            RuntimeValue::Int(value) => *value,
+            RuntimeValue::Pointer(_) => panic!("expected numeric value"),
+        }
+    }
+
+    fn as_pointer(&self) -> &PointerValue {
+        match &self.runtime {
+            RuntimeValue::Pointer(pointer) => pointer,
+            RuntimeValue::Int(_) => panic!("dereferencing non-pointer"),
+        }
+    }
+
+    fn with_ty(mut self, ty: Option<ValueType>) -> Self {
+        self.ty = ty;
+        self
+    }
+
+    fn with_place(mut self, place: Option<String>) -> Self {
+        self.place = place;
+        self
+    }
+
+    fn with_access(mut self, mutable_access: bool) -> Self {
+        self.mutable_access = mutable_access;
+        self
+    }
+
+    fn into_storage(mut self) -> Self {
+        self.place = None;
+        self
     }
 }
 
@@ -480,12 +697,89 @@ mod tests {
 
     #[test]
     fn typed_mutable_binding_accepts_matching_typed_assignment() {
-        assert_eq!(interpret_tuff("let mut x : U8 = 0; x = 100U8; x".to_string()), 100);
+        assert_eq!(
+            interpret_tuff("let mut x : U8 = 0; x = 100U8; x".to_string()),
+            100
+        );
     }
 
     #[test]
     fn typed_mutable_binding_accepts_matching_variable_assignment() {
-        assert_eq!(interpret_tuff("let mut x : U8 = 7U8; x = x; x".to_string()), 7);
+        assert_eq!(
+            interpret_tuff("let mut x : U8 = 7U8; x = x; x".to_string()),
+            7
+        );
+    }
+
+    #[test]
+    fn pointer_address_and_dereference_round_trip() {
+        assert_eq!(
+            interpret_tuff("let x : U8 = 7U8; let p : *U8 = &x; *p".to_string()),
+            7
+        );
+    }
+
+    #[test]
+    fn nested_pointer_forms_work() {
+        assert_eq!(
+            interpret_tuff("let x : U8 = 9U8; let p : *U8 = &x; let q : *U8 = &*p; *q".to_string()),
+            9
+        );
+    }
+
+    #[test]
+    fn mutable_pointer_allows_assignment_through_deref() {
+        assert_eq!(
+            interpret_tuff("let mut x = 0; let y : *mut I32 = &mut x; *y = 100; x".to_string()),
+            100
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_pointer_annotation_type_mismatch() {
+        interpret_tuff("let x : U8 = 1U8; let p : *U16 = &x; *p".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_dereferencing_non_pointer() {
+        interpret_tuff("*5".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_taking_address_of_literal() {
+        interpret_tuff("&5".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_taking_mutable_address_of_immutable_variable() {
+        interpret_tuff("let x = 0; let p = &mut x; p".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_assignment_through_immutable_pointer() {
+        interpret_tuff("let x : U8 = 1U8; let p : *U8 = &x; *p = 2; x".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_assignment_through_undeclared_pointer_variable() {
+        interpret_tuff("*x = 1".to_string());
+    }
+
+    #[test]
+    fn infers_pointer_type_from_untyped_variable() {
+        assert_eq!(interpret_tuff("let mut x = 0; let p = &x; *p".to_string()), 0);
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_when_program_result_is_pointer() {
+        interpret_tuff("let x = 0; &x".to_string());
     }
 
     #[test]
