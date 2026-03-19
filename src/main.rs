@@ -268,9 +268,8 @@ impl<'a> Parser<'a> {
             panic!("invalid literal suffix");
         }
 
-        let value = digits
-            .parse::<i128>()
-            .unwrap_or_else(|_| panic!("invalid numeric literal"));
+        // safe: `digits` contains only ASCII digit bytes collected above
+        let value = digits.parse::<i128>().expect("invalid numeric literal");
 
         if value > i32::MAX as i128 {
             panic!("numeric literal overflow");
@@ -296,6 +295,62 @@ fn split_literal(literal: &str) -> (&str, &str) {
 #[cfg(test)]
 mod tests {
     use super::interpret_tuff;
+
+    #[test]
+    fn unary_plus_evaluates_to_positive_value() {
+        assert_eq!(interpret_tuff("+5".to_string()), 5);
+    }
+
+    #[test]
+    fn unary_minus_negates_value() {
+        assert_eq!(interpret_tuff("-5".to_string()), -5);
+    }
+
+    #[test]
+    fn binary_subtraction_evaluates_correctly() {
+        assert_eq!(interpret_tuff("8 - 3".to_string()), 5);
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_unexpected_trailing_input() {
+        interpret_tuff("5 10".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_when_expect_byte_not_found() {
+        interpret_tuff("let x U8 = 5; x".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_when_identifier_starts_with_digit() {
+        interpret_tuff("let 5 : U8 = 10; 5".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_invalid_character_in_literal_suffix() {
+        interpret_tuff("42$".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_invalid_named_literal_suffix() {
+        interpret_tuff("42X9".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_numeric_literal_overflow() {
+        interpret_tuff("2147483648".to_string());
+    }
+
+    #[test]
+    fn main_runs() {
+        super::main();
+    }
 
     #[test]
     fn evaluates_let_binding_and_final_expression() {
