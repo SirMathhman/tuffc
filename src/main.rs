@@ -11,6 +11,8 @@ struct Parser<'a> {
     pos: usize,
     env: Vec<HashMap<String, Variable>>,
     next_location: usize,
+    functions: HashMap<String, FunctionDefinition>,
+    in_function_body: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -93,6 +95,22 @@ struct StatementValue {
     allows_following_statement_without_separator: bool,
 }
 
+#[derive(Clone)]
+struct FunctionParameter {
+    name: String,
+    ty: ValueType,
+}
+
+#[derive(Clone)]
+struct FunctionDefinition {
+    parameters: Vec<FunctionParameter>,
+    return_type: ValueType,
+    body: String,
+}
+
+#[derive(Debug)]
+struct ReturnSignal(Value);
+
 impl<'a> Parser<'a> {
     fn new(input: &'a str) -> Self {
         Self {
@@ -100,6 +118,8 @@ impl<'a> Parser<'a> {
             pos: 0,
             env: vec![HashMap::new()],
             next_location: 0,
+            functions: HashMap::new(),
+            in_function_body: false,
         }
     }
 
@@ -137,6 +157,10 @@ impl<'a> Parser<'a> {
             self.parse_if_statement()
         } else if self.consume_keyword("while") {
             self.parse_while_statement()
+        } else if self.consume_keyword("fn") {
+            self.parse_function_definition_statement()
+        } else if self.consume_keyword("return") {
+            self.parse_return_statement()
         } else if let Some(value) = self.try_parse_assignment_statement() {
             StatementValue {
                 value,
@@ -190,6 +214,225 @@ impl<'a> Parser<'a> {
                 .with_access(mutable),
             allows_following_statement_without_separator: false,
         }
+    }
+
+    fn parse_function_definition_statement(&mut self) -> StatementValue {
+        let name = self.parse_identifier();
+
+        if self.functions.contains_key(&name) {
+            panic_with_message("duplicate function definition");
+        }
+
+        self.expect(b'(');
+        let parameters = self.parse_function_parameters();
+        self.expect(b':');
+        let return_type = self.parse_type_annotation();
+
+        self.skip_whitespace();
+        if !self.consume_str("=>") {
+            panic_with_message("expected '=>' ");
+        }
+
+        let (body_start, body_end) = self.parse_function_body_range();
+        let body = std::str::from_utf8(&self.input[body_start..body_end])
+            .expect("utf8")
+            .to_string();
+
+        self.functions.insert(
+            name,
+            FunctionDefinition {
+                parameters,
+                return_type,
+                body,
+            },
+        );
+
+        StatementValue {
+            value: Value::int(0, None, false, None),
+            allows_following_statement_without_separator: true,
+        }
+    }
+
+    fn parse_function_parameters(&mut self) -> Vec<FunctionParameter> {
+        self.skip_whitespace();
+
+        if self.consume(b')') {
+            return vec![];
+        }
+
+        let mut parameters = Vec::new();
+
+        loop {
+            let name = self.parse_identifier();
+            self.expect(b':');
+            let ty = self.parse_type_annotation();
+
+            if parameters
+                .iter()
+                .any(|parameter: &FunctionParameter| parameter.name == name)
+            {
+                panic_with_message("duplicate function parameter");
+            }
+
+            parameters.push(FunctionParameter { name, ty });
+
+            if self.consume(b',') {
+                self.skip_whitespace();
+                if self.consume(b')') {
+                    panic_with_message("invalid function parameter list");
+                }
+                continue;
+            }
+
+            self.expect(b')');
+            break;
+        }
+
+        parameters
+    }
+
+    fn parse_function_body_range(&mut self) -> (usize, usize) {
+        self.skip_whitespace();
+        let start = self.pos;
+
+        if self.input.get(self.pos) == Some(&b'{') {
+            let mut depth = 0usize;
+
+            while let Some(&byte) = self.input.get(self.pos) {
+                match byte {
+                    b'{' => {
+                        depth += 1;
+                        self.pos += 1;
+                    }
+                    b'}' => {
+                        self.pos += 1;
+                        if depth == 1 {
+                            let end = self.pos;
+                            self.skip_whitespace();
+                            let _ = self.consume(b';');
+                            return (start, end);
+                        }
+                        depth -= 1;
+                    }
+                    _ => self.pos += 1,
+                }
+            }
+
+            panic_with_message("expected '}}'")
+
+        } else {
+            let mut brace_depth = 0usize;
+
+            while let Some(&byte) = self.input.get(self.pos) {
+                match byte {
+                    b'{' => {
+                        brace_depth += 1;
+                        self.pos += 1;
+                    }
+                    b'}' => {
+                        if brace_depth == 0 {
+                            panic_with_message("expected ';'");
+                        }
+                        brace_depth -= 1;
+                        self.pos += 1;
+                    }
+                    b';' if brace_depth == 0 => {
+                        let end = self.pos;
+                        self.pos += 1;
+                        return (start, end);
+                    }
+                    _ => self.pos += 1,
+                }
+            }
+
+            panic_with_message("expected ';'")
+        }
+    }
+
+    fn parse_return_statement(&mut self) -> StatementValue {
+        if !self.in_function_body {
+            panic_with_message("return outside function");
+        }
+
+        let value = self.parse_expression();
+        std::panic::panic_any(ReturnSignal(value));
+    }
+
+    fn parse_function_call(&mut self, name: String) -> Value {
+        let function = self
+            .functions
+            .get(&name)
+            .unwrap_or_else(|| panic!("undefined function"))
+            .clone();
+        let arguments = self.parse_function_arguments();
+
+        if arguments.len() != function.parameters.len() {
+            panic_with_message("argument count mismatch");
+        }
+
+        let mut body_parser = Parser::new(function.body.as_str());
+        body_parser.functions = self.functions.clone();
+        body_parser.in_function_body = true;
+
+        for (parameter, argument) in function.parameters.iter().zip(arguments.into_iter()) {
+            let value = body_parser.apply_type_annotation(argument, Some(parameter.ty.clone()));
+            let location = body_parser.allocate_location();
+            body_parser.current_scope_mut().insert(
+                parameter.name.clone(),
+                Variable {
+                    value: value
+                        .into_storage()
+                        .with_access(false)
+                        .with_place(Some(location.clone())),
+                    mutable: false,
+                    location,
+                },
+            );
+        }
+
+        let result = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let value = body_parser.parse_expression();
+            body_parser.skip_whitespace();
+            if !body_parser.is_eof() {
+                panic_with_message("unexpected trailing input");
+            }
+            value
+        })) {
+            Ok(value) => value,
+            Err(payload) => match payload.downcast::<ReturnSignal>() {
+                Ok(signal) => signal.0,
+                Err(payload) => std::panic::resume_unwind(payload),
+            },
+        };
+
+        body_parser.apply_type_annotation(result, Some(function.return_type))
+    }
+
+    fn parse_function_arguments(&mut self) -> Vec<Value> {
+        self.expect(b'(');
+        self.skip_whitespace();
+
+        if self.consume(b')') {
+            return vec![];
+        }
+
+        let mut arguments = vec![self.parse_expression()];
+
+        loop {
+            if self.consume(b',') {
+                self.skip_whitespace();
+                if self.consume(b')') {
+                    panic_with_message("invalid function arguments");
+                }
+
+                arguments.push(self.parse_expression());
+            } else {
+                self.expect(b')');
+                break;
+            }
+        }
+
+        arguments
     }
 
     fn parse_tuple_destructuring_let_statement(&mut self, mutable: bool) -> StatementValue {
@@ -556,13 +799,59 @@ impl<'a> Parser<'a> {
             panic!("expected 'else'");
         }
 
-        let else_branch = self.parse_expression();
-        let merged_type = merge_assignment_type(then_branch.ty.clone(), else_branch.ty.clone());
-
         if condition.as_int() != 0 {
-            then_branch.with_ty(merged_type)
+            self.skip_expression();
+            then_branch
         } else {
+            let else_branch = self.parse_expression();
+            let merged_type = merge_assignment_type(then_branch.ty.clone(), else_branch.ty.clone());
             else_branch.with_ty(merged_type)
+        }
+    }
+
+    fn skip_expression(&mut self) {
+        let mut paren_depth = 0usize;
+        let mut brace_depth = 0usize;
+        let mut bracket_depth = 0usize;
+
+        loop {
+            self.skip_whitespace();
+
+            let Some(&byte) = self.input.get(self.pos) else {
+                break;
+            };
+
+            match byte {
+                b'(' => {
+                    paren_depth += 1;
+                    self.pos += 1;
+                }
+                b')' if paren_depth == 0 && brace_depth == 0 && bracket_depth == 0 => break,
+                b')' => {
+                    paren_depth -= 1;
+                    self.pos += 1;
+                }
+                b'{' => {
+                    brace_depth += 1;
+                    self.pos += 1;
+                }
+                b'}' if paren_depth == 0 && brace_depth == 0 && bracket_depth == 0 => break,
+                b'}' => {
+                    brace_depth -= 1;
+                    self.pos += 1;
+                }
+                b'[' => {
+                    bracket_depth += 1;
+                    self.pos += 1;
+                }
+                b']' if paren_depth == 0 && brace_depth == 0 && bracket_depth == 0 => break,
+                b']' => {
+                    bracket_depth -= 1;
+                    self.pos += 1;
+                }
+                b';' if paren_depth == 0 && brace_depth == 0 && bracket_depth == 0 => break,
+                _ => self.pos += 1,
+            }
         }
     }
 
@@ -865,12 +1154,18 @@ impl<'a> Parser<'a> {
             Value::int(0, Some(ValueType::Bool), false, None)
         } else if self.starts_identifier() {
             let name = self.parse_identifier();
-            let variable = self.lookup_variable(&name);
-            variable
-                .value
-                .clone()
-                .with_place(Some(variable.location.clone()))
-                .with_access(variable.mutable)
+            self.skip_whitespace();
+
+            if self.input.get(self.pos) == Some(&b'(') {
+                self.parse_function_call(name)
+            } else {
+                let variable = self.lookup_variable(&name);
+                variable
+                    .value
+                    .clone()
+                    .with_place(Some(variable.location.clone()))
+                    .with_access(variable.mutable)
+            }
         } else {
             self.parse_number_literal()
         }
@@ -2448,6 +2743,183 @@ mod tests {
     #[should_panic]
     fn panics_on_division_by_zero() {
         interpret_tuff("let x : U8 = 4 / 0; x".to_string());
+    }
+
+    #[test]
+    fn function_with_expression_body_returns_expected_value() {
+        assert_eq!(
+            interpret_tuff(
+                "fn add(first : I32, second : I32) : I32 => first + second; add(2, 3)".to_string()
+            ),
+            5
+        );
+    }
+
+    #[test]
+    fn function_with_block_body_returns_expected_value() {
+        assert_eq!(
+            interpret_tuff(
+                "fn add(first : I32, second : I32) : I32 => { first + second } add(4, 5)"
+                    .to_string()
+            ),
+            9
+        );
+    }
+
+    #[test]
+    fn function_with_block_body_allows_optional_trailing_semicolon() {
+        assert_eq!(
+            interpret_tuff("fn one() : I32 => { 1 }; one()".to_string()),
+            1
+        );
+    }
+
+    #[test]
+    fn function_with_block_body_can_return_nested_block_expression() {
+        assert_eq!(
+            interpret_tuff("fn nested() : I32 => { { 1 } } nested()".to_string()),
+            1
+        );
+    }
+
+    #[test]
+    fn function_with_explicit_return_statement_returns_expected_value() {
+        assert_eq!(
+            interpret_tuff(
+                "fn add(first : I32, second : I32) : I32 => { return first + second; } add(6, 7)"
+                    .to_string()
+            ),
+            13
+        );
+    }
+
+    #[test]
+    fn recursive_function_calls_work() {
+        assert_eq!(
+            interpret_tuff(
+                "fn fact(n : I32) : I32 => if (n == 0) 1 else n * fact(n - 1); fact(5)".to_string()
+            ),
+            120
+        );
+    }
+
+    #[test]
+    fn function_syntax_and_lazy_if_branches_cover_remaining_paths() {
+        assert_eq!(
+            interpret_tuff(
+                "fn choose_a() : I32 => (if (true) { 1 } else [1U8, 2U8][0]); choose_a()"
+                    .to_string()
+            ),
+            1
+        );
+        assert_eq!(
+            interpret_tuff("let x = (if (true) { 1 } else [1U8, 2U8][0]); x".to_string()),
+            1
+        );
+        assert_eq!(
+            interpret_tuff("let x = [if (true) 1 else 2]; x[0]".to_string()),
+            1
+        );
+        assert_eq!(
+            interpret_tuff("let x = if (true) 1 else { 2 }; x".to_string()),
+            1
+        );
+        assert_eq!(
+            interpret_tuff("fn pick() : I32 => { return if (true) 1 else 2 } pick()".to_string()),
+            1
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_duplicate_function_definition() {
+        interpret_tuff("fn dup() : I32 => 1; fn dup() : I32 => 2; dup()".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_missing_function_arrow() {
+        interpret_tuff("fn missing_arrow() : I32 1".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_duplicate_function_parameter() {
+        interpret_tuff(
+            "fn duplicate_param(a : I32, a : I32) : I32 => a; duplicate_param(1)".to_string(),
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_trailing_comma_in_function_parameter_list() {
+        interpret_tuff("fn trailing_param(a : I32,) : I32 => a; trailing_param(1)".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_missing_closing_brace_in_function_body() {
+        interpret_tuff("fn missing_brace() : I32 => { 1; missing_brace()".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_function_expression_body_without_semicolon() {
+        interpret_tuff("fn missing_semicolon() : I32 => 1".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_function_expression_body_with_unmatched_closing_brace() {
+        interpret_tuff("fn stray_brace() : I32 => }".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_function_body_runtime_error() {
+        interpret_tuff("fn body_panics() : I32 => x; body_panics()".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_trailing_comma_in_function_call_arguments() {
+        interpret_tuff(
+            "fn call_trailing_comma(a : I32) : I32 => a; call_trailing_comma(1,)".to_string(),
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_function_call_with_wrong_arity() {
+        interpret_tuff(
+            "fn add(first : I32, second : I32) : I32 => first + second; add(1)".to_string(),
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_call_to_undefined_function() {
+        interpret_tuff("missing()".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_function_call_with_argument_type_mismatch() {
+        interpret_tuff(
+            "fn add(first : I32, second : I32) : I32 => first + second; add(true, 1)".to_string(),
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_function_return_type_mismatch() {
+        interpret_tuff("fn bad() : I32 => true; bad()".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_return_outside_function_body() {
+        interpret_tuff("return 1".to_string());
     }
 }
 
