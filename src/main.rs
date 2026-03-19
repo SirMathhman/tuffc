@@ -8,7 +8,8 @@ pub fn interpret_tuff(input: String) -> i32 {
 struct Parser<'a> {
     input: &'a [u8],
     pos: usize,
-    env: HashMap<String, Variable>,
+    env: Vec<HashMap<String, Variable>>,
+    next_location: usize,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -51,6 +52,7 @@ struct Value {
 struct Variable {
     value: Value,
     mutable: bool,
+    location: String,
 }
 
 #[derive(Clone, Debug)]
@@ -72,7 +74,8 @@ impl<'a> Parser<'a> {
         Self {
             input: input.as_bytes(),
             pos: 0,
-            env: HashMap::new(),
+            env: vec![HashMap::new()],
+            next_location: 0,
         }
     }
 
@@ -95,24 +98,8 @@ impl<'a> Parser<'a> {
             panic!("empty input");
         }
 
-        let mut last_value = self.parse_statement();
-
-        loop {
-            self.skip_whitespace();
-
-            if self.consume(b';') {
-                self.skip_whitespace();
-                if self.is_eof() {
-                    return last_value.as_int();
-                }
-
-                last_value = self.parse_statement();
-            } else if self.is_eof() {
-                return last_value.as_int();
-            } else {
-                panic!("unexpected trailing input");
-            }
-        }
+        self.parse_statement_sequence(|parser, _| parser.is_eof(), "unexpected trailing input")
+            .as_int()
     }
 
     fn parse_statement(&mut self) -> Value {
@@ -141,20 +128,50 @@ impl<'a> Parser<'a> {
 
         let value = self.parse_expression();
         let stored_value = self.apply_type_annotation(value, declared_type);
-        self.env.insert(
+        let location = self.allocate_location();
+        self.current_scope_mut().insert(
             name.clone(),
             Variable {
                 value: stored_value.into_storage().with_access(mutable),
                 mutable,
+                location: location.clone(),
             },
         );
-        self.env
-            .get(&name)
-            .unwrap()
+        self.lookup_variable(&name)
             .value
             .clone()
-            .with_place(Some(name))
+            .with_place(Some(location))
             .with_access(mutable)
+    }
+
+    fn parse_statement_sequence<F>(&mut self, mut is_finished: F, end_error: &'static str) -> Value
+    where
+        F: FnMut(&mut Self, &Value) -> bool,
+    {
+        let mut last_value = self.parse_statement();
+
+        loop {
+            self.skip_whitespace();
+
+            if self.consume(b';') {
+                self.skip_whitespace();
+                if is_finished(self, &last_value) {
+                    return last_value;
+                }
+
+                if self.is_eof() {
+                    panic!("{}", end_error);
+                }
+
+                last_value = self.parse_statement();
+            } else if is_finished(self, &last_value) {
+                return last_value;
+            } else if self.is_eof() {
+                panic!("{}", end_error);
+            } else {
+                panic!("unexpected trailing input");
+            }
+        }
     }
 
     fn try_parse_assignment_statement(&mut self) -> Option<Value> {
@@ -178,10 +195,7 @@ impl<'a> Parser<'a> {
 
         let value = self.parse_expression();
         let location = self.resolve_assignment_location(&target);
-        let variable = self
-            .env
-            .get_mut(&location)
-            .expect("assignment to undeclared variable");
+        let variable = self.lookup_variable_mut_by_location(&location);
 
         if matches!(target, AssignmentTarget::Variable(_)) && !variable.mutable {
             panic!("assignment to immutable variable");
@@ -234,13 +248,11 @@ impl<'a> Parser<'a> {
 
     fn resolve_assignment_location(&self, target: &AssignmentTarget) -> String {
         match target {
-            AssignmentTarget::Variable(name) => name.clone(),
+            AssignmentTarget::Variable(name) => self.lookup_variable(name).location.clone(),
             AssignmentTarget::Deref(inner) => {
                 let inner_location = self.resolve_assignment_location(inner);
                 let inner_value = self
-                    .env
-                    .get(&inner_location)
-                    .expect("assignment to undeclared variable")
+                    .lookup_variable_by_location(&inner_location)
                     .value
                     .clone()
                     .with_place(Some(inner_location.clone()));
@@ -253,6 +265,76 @@ impl<'a> Parser<'a> {
                 pointer.target.clone()
             }
         }
+    }
+
+    fn allocate_location(&mut self) -> String {
+        let location = format!("#{}", self.next_location);
+        self.next_location += 1;
+        location
+    }
+
+    fn push_scope(&mut self) {
+        self.env.push(HashMap::new());
+    }
+
+    fn pop_scope(&mut self) {
+        self.env.pop().expect("scope underflow");
+    }
+
+    fn current_scope_mut(&mut self) -> &mut HashMap<String, Variable> {
+        self.env.last_mut().expect("scope underflow")
+    }
+
+    fn lookup_variable(&self, name: &str) -> &Variable {
+        for scope in self.env.iter().rev() {
+            if let Some(variable) = scope.get(name) {
+                return variable;
+            }
+        }
+
+        panic!("undefined variable");
+    }
+
+    fn lookup_variable_by_location(&self, location: &str) -> &Variable {
+        for scope in self.env.iter().rev() {
+            for variable in scope.values() {
+                if variable.location == location {
+                    return variable;
+                }
+            }
+        }
+
+        panic!("assignment to undeclared variable");
+    }
+
+    fn lookup_variable_mut_by_location(&mut self, location: &str) -> &mut Variable {
+        for scope in self.env.iter_mut().rev() {
+            if let Some(variable) = scope
+                .values_mut()
+                .find(|variable| variable.location == location)
+            {
+                return variable;
+            }
+        }
+
+        panic!("assignment to undeclared variable");
+    }
+
+    fn parse_block_expression(&mut self) -> Value {
+        self.push_scope();
+        let value = self.parse_block_contents();
+        self.pop_scope();
+        value
+    }
+
+    fn parse_block_contents(&mut self) -> Value {
+        self.skip_whitespace();
+
+        if self.consume(b'}') {
+            return Value::int(0, None, false, None);
+        }
+
+        self.parse_statement_sequence(|parser, _| parser.consume(b'}'), "expected '}'")
     }
 
     fn parse_type_annotation(&mut self) -> ValueType {
@@ -414,7 +496,9 @@ impl<'a> Parser<'a> {
     fn parse_primary(&mut self) -> Value {
         self.skip_whitespace();
 
-        if self.consume(b'(') {
+        if self.consume(b'{') {
+            self.parse_block_expression()
+        } else if self.consume(b'(') {
             let value = self.parse_expression();
             self.expect(b')');
             value
@@ -424,13 +508,11 @@ impl<'a> Parser<'a> {
             Value::int(0, Some(ValueType::Bool), false, None)
         } else if self.starts_identifier() {
             let name = self.parse_identifier();
-            let variable = self.env.get(&name).expect("undefined variable");
-            self.env
-                .get(&name)
-                .expect("undefined variable")
+            let variable = self.lookup_variable(&name);
+            variable
                 .value
                 .clone()
-                .with_place(Some(name))
+                .with_place(Some(variable.location.clone()))
                 .with_access(variable.mutable)
         } else {
             self.parse_number_literal()
@@ -487,6 +569,7 @@ impl<'a> Parser<'a> {
                 || byte == b'*'
                 || byte == b'/'
                 || byte == b')'
+                || byte == b'}'
                 || byte == b';'
                 || byte == b'='
                 || byte == b':'
@@ -557,10 +640,7 @@ impl<'a> Parser<'a> {
 
     fn dereference_value(&self, value: Value) -> Value {
         let pointer = value.as_pointer();
-        let target_value = self
-            .env
-            .get(&pointer.target)
-            .expect("dereferencing non-pointer");
+        let target_value = self.lookup_variable_by_location(&pointer.target);
 
         let dereferenced = target_value
             .value
@@ -983,6 +1063,57 @@ mod tests {
     }
 
     #[test]
+    fn block_expression_returns_last_statement_value() {
+        assert_eq!(interpret_tuff("let x = { let y = 1; y + 2 }; x".to_string()), 3);
+    }
+
+    #[test]
+    fn block_shadowing_does_not_modify_outer_binding() {
+        assert_eq!(interpret_tuff("let mut x = 0; { let mut x = 1; x = 2; }; x".to_string()), 0);
+    }
+
+    #[test]
+    fn empty_block_evaluates_to_zero() {
+        assert_eq!(interpret_tuff("{}".to_string()), 0);
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_when_block_local_binding_used_outside_block() {
+        interpret_tuff("let x = { let y = 1; y }; x + y".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_block_missing_statement_separator() {
+        interpret_tuff("let x = { let y = 1 y }; x".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_unterminated_block_after_semicolon() {
+        interpret_tuff("{ let x = 1;".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_unterminated_block_without_semicolon() {
+        interpret_tuff("{ let x = 1".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_dangling_pointer_dereference_after_block() {
+        interpret_tuff("let p = { let x = 1; &x }; *p".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_dangling_pointer_assignment_after_block() {
+        interpret_tuff("let p = { let mut x = 1; &mut x }; *p = 2".to_string());
+    }
+
+    #[test]
     #[should_panic]
     fn panics_on_invalid_bool_annotation() {
         interpret_tuff("let flag : Bool = 1; flag".to_string());
@@ -1029,7 +1160,9 @@ mod tests {
     #[test]
     fn compound_assignment_updates_mutable_pointer_target() {
         assert_eq!(
-            interpret_tuff("let mut x : U8 = 10U8; let y : *mut U8 = &mut x; *y += 5; x".to_string()),
+            interpret_tuff(
+                "let mut x : U8 = 10U8; let y : *mut U8 = &mut x; *y += 5; x".to_string()
+            ),
             15
         );
     }
