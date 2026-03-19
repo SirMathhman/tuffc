@@ -28,12 +28,14 @@ enum ValueType {
         mutable: bool,
         pointee: Option<Box<ValueType>>,
     },
+    Tuple(Vec<Option<ValueType>>),
 }
 
 #[derive(Clone, Debug)]
 enum RuntimeValue {
     Int(i32),
     Pointer(PointerValue),
+    Tuple(Vec<Value>),
 }
 
 #[derive(Clone, Debug)]
@@ -114,7 +116,8 @@ impl<'a> Parser<'a> {
             panic!("empty input");
         }
 
-        self.parse_statement_sequence(|parser, _| parser.is_eof(), "unexpected trailing input")
+        let mut is_finished = |parser: &mut Self, _: &Value| parser.is_eof();
+        self.parse_statement_sequence(&mut is_finished, "unexpected trailing input")
             .value
             .as_int()
     }
@@ -145,6 +148,12 @@ impl<'a> Parser<'a> {
 
     fn parse_let_statement(&mut self) -> StatementValue {
         let mutable = self.consume_keyword("mut");
+        self.skip_whitespace();
+
+        if self.consume(b'(') {
+            return self.parse_tuple_destructuring_let_statement(mutable);
+        }
+
         let name = self.parse_identifier();
 
         self.skip_whitespace();
@@ -177,14 +186,67 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_statement_sequence<F>(
+    fn parse_tuple_destructuring_let_statement(&mut self, mutable: bool) -> StatementValue {
+        let names = self.parse_tuple_binding_names();
+        self.expect(b'=');
+
+        let value = self.parse_expression();
+        let RuntimeValue::Tuple(elements) = value.runtime else {
+            panic!("type mismatch");
+        };
+
+        if elements.len() != names.len() {
+            panic!("type mismatch");
+        }
+
+        for (name, element) in names.into_iter().zip(elements.into_iter()) {
+            let location = self.allocate_location();
+            self.current_scope_mut().insert(
+                name,
+                Variable {
+                    value: element.into_storage().with_access(mutable),
+                    mutable,
+                    location,
+                },
+            );
+        }
+
+        StatementValue {
+            value: Value::int(0, None, false, None),
+            allows_following_statement_without_separator: false,
+        }
+    }
+
+    fn parse_tuple_binding_names(&mut self) -> Vec<String> {
+        let mut names = vec![self.parse_identifier()];
+
+        if !self.consume(b',') {
+            panic!("expected ','");
+        }
+
+        loop {
+            if self.consume(b')') {
+                panic!("invalid tuple binding pattern");
+            }
+
+            names.push(self.parse_identifier());
+
+            if self.consume(b',') {
+                continue;
+            }
+
+            self.expect(b')');
+            break;
+        }
+
+        names
+    }
+
+    fn parse_statement_sequence(
         &mut self,
-        mut is_finished: F,
+        is_finished: &mut dyn FnMut(&mut Self, &Value) -> bool,
         end_error: &'static str,
-    ) -> StatementValue
-    where
-        F: FnMut(&mut Self, &Value) -> bool,
-    {
+    ) -> StatementValue {
         let mut last_value = self.parse_statement();
 
         loop {
@@ -197,14 +259,14 @@ impl<'a> Parser<'a> {
                 }
 
                 if self.is_eof() {
-                    panic!("{}", end_error);
+                    panic_with_message(end_error);
                 }
 
                 last_value = self.parse_statement();
             } else if is_finished(self, &last_value.value) {
                 return last_value;
             } else if self.is_eof() {
-                panic!("{}", end_error);
+                panic_with_message(end_error);
             } else if last_value.allows_following_statement_without_separator {
                 last_value = self.parse_statement();
             } else {
@@ -373,7 +435,8 @@ impl<'a> Parser<'a> {
             return Value::int(0, None, false, None);
         }
 
-        self.parse_statement_sequence(|parser, _| parser.consume(b'}'), "expected '}'")
+        let mut is_finished = |parser: &mut Self, _: &Value| parser.consume(b'}');
+        self.parse_statement_sequence(&mut is_finished, "expected '}'")
             .value
     }
 
@@ -467,6 +530,8 @@ impl<'a> Parser<'a> {
                 mutable,
                 pointee: Some(Box::new(pointee)),
             }
+        } else if self.consume(b'(') {
+            self.parse_tuple_type_annotation()
         } else {
             match self.parse_identifier().as_str() {
                 "U8" => ValueType::U8,
@@ -481,6 +546,31 @@ impl<'a> Parser<'a> {
                 _ => panic!("invalid type annotation"),
             }
         }
+    }
+
+    fn parse_tuple_type_annotation(&mut self) -> ValueType {
+        let mut element_types = vec![Some(self.parse_type_annotation())];
+
+        if !self.consume(b',') {
+            panic!("expected ','");
+        }
+
+        loop {
+            if self.consume(b')') {
+                panic!("invalid tuple type annotation");
+            }
+
+            element_types.push(Some(self.parse_type_annotation()));
+
+            if self.consume(b',') {
+                continue;
+            }
+
+            self.expect(b')');
+            break;
+        }
+
+        ValueType::Tuple(element_types)
     }
 
     fn consume(&mut self, expected: u8) -> bool {
@@ -634,8 +724,46 @@ impl<'a> Parser<'a> {
             let value = self.parse_factor();
             self.dereference_value(value)
         } else {
-            self.parse_primary()
+            self.parse_postfix()
         }
+    }
+
+    fn parse_postfix(&mut self) -> Value {
+        let mut value = self.parse_primary();
+
+        loop {
+            if self.consume(b'.') {
+                let index = self.parse_tuple_index();
+                value = self.tuple_index(value, index);
+            } else {
+                break;
+            }
+        }
+
+        value
+    }
+
+    fn parse_tuple_index(&mut self) -> usize {
+        self.skip_whitespace();
+        let start = self.consume_ascii_digits();
+
+        if self.pos == start {
+            panic!("expected tuple index");
+        }
+
+        let index = std::str::from_utf8(&self.input[start..self.pos]).expect("utf8");
+        index.parse::<usize>().expect("invalid tuple index")
+    }
+
+    fn tuple_index(&self, value: Value, index: usize) -> Value {
+        let RuntimeValue::Tuple(elements) = value.runtime else {
+            panic!("expected tuple value");
+        };
+
+        elements
+            .get(index)
+            .cloned()
+            .unwrap_or_else(|| panic!("tuple index out of bounds"))
     }
 
     fn parse_primary(&mut self) -> Value {
@@ -646,9 +774,7 @@ impl<'a> Parser<'a> {
         } else if self.consume_keyword("if") {
             self.parse_if_expression()
         } else if self.consume(b'(') {
-            let value = self.parse_expression();
-            self.expect(b')');
-            value
+            self.parse_parenthesized_or_tuple_expression()
         } else if self.consume_keyword("true") {
             Value::int(1, Some(ValueType::Bool), false, None)
         } else if self.consume_keyword("false") {
@@ -664,6 +790,39 @@ impl<'a> Parser<'a> {
         } else {
             self.parse_number_literal()
         }
+    }
+
+    fn parse_parenthesized_or_tuple_expression(&mut self) -> Value {
+        self.skip_whitespace();
+
+        if self.consume(b')') {
+            panic!("empty tuple literal");
+        }
+
+        let first = self.parse_expression();
+        if !self.consume(b',') {
+            self.expect(b')');
+            return first;
+        }
+
+        let mut elements = vec![first.into_storage()];
+
+        loop {
+            if self.consume(b')') {
+                panic!("invalid tuple literal");
+            }
+
+            elements.push(self.parse_expression().into_storage());
+
+            if self.consume(b',') {
+                continue;
+            }
+
+            self.expect(b')');
+            break;
+        }
+
+        Value::tuple(elements, false, None)
     }
 
     fn starts_identifier(&self) -> bool {
@@ -697,13 +856,7 @@ impl<'a> Parser<'a> {
     fn parse_number_literal(&mut self) -> Value {
         self.skip_whitespace();
 
-        let start = self.pos;
-        while let Some(&byte) = self.input.get(self.pos) {
-            if !byte.is_ascii_digit() {
-                break;
-            }
-            self.pos += 1;
-        }
+        let start = self.consume_ascii_digits();
 
         if self.pos == start {
             panic!("expected numeric literal");
@@ -719,9 +872,11 @@ impl<'a> Parser<'a> {
                 || byte == b'>'
                 || byte == b')'
                 || byte == b'}'
+                || byte == b','
                 || byte == b';'
                 || byte == b'='
                 || byte == b':'
+                || byte == b'.'
             {
                 break;
             }
@@ -754,6 +909,17 @@ impl<'a> Parser<'a> {
         }
 
         Value::int(value as i32, parse_literal_type(suffix), false, None)
+    }
+
+    fn consume_ascii_digits(&mut self) -> usize {
+        let start = self.pos;
+        while let Some(&byte) = self.input.get(self.pos) {
+            if !byte.is_ascii_digit() {
+                break;
+            }
+            self.pos += 1;
+        }
+        start
     }
 
     fn apply_type_annotation(&self, value: Value, declared_type: Option<ValueType>) -> Value {
@@ -809,6 +975,10 @@ where
     Value::int(op(left, right), None, false, None)
 }
 
+fn panic_with_message(message: &str) -> ! {
+    panic!("{}", message);
+}
+
 fn merge_assignment_type(
     current_type: Option<ValueType>,
     new_type: Option<ValueType>,
@@ -854,11 +1024,8 @@ fn compare_values(left: Value, right: Value, equal: bool) -> Value {
         panic!("type mismatch");
     }
 
-    let result = if equal {
-        left.as_int() == right.as_int()
-    } else {
-        left.as_int() != right.as_int()
-    };
+    let values_equal = values_equal(&left, &right);
+    let result = if equal { values_equal } else { !values_equal };
 
     Value::int(
         if result { 1 } else { 0 },
@@ -866,6 +1033,17 @@ fn compare_values(left: Value, right: Value, equal: bool) -> Value {
         false,
         None,
     )
+}
+
+fn values_equal(left: &Value, right: &Value) -> bool {
+    match (&left.runtime, &right.runtime) {
+        (RuntimeValue::Int(left), RuntimeValue::Int(right)) => left == right,
+        (RuntimeValue::Pointer(_), RuntimeValue::Pointer(_)) => panic!("type mismatch"),
+        (RuntimeValue::Tuple(left), RuntimeValue::Tuple(right)) => {
+            slices_match(left, right, |left, right| values_equal(left, right))
+        }
+        _ => false,
+    }
 }
 
 fn compare_ordered_values(left: Value, right: Value, op: ComparisonOp) -> Value {
@@ -908,6 +1086,14 @@ fn negate_bool(value: Value) -> Value {
 }
 
 fn comparison_types_compatible(left: Option<&ValueType>, right: Option<&ValueType>) -> bool {
+    if let (Some(ValueType::Tuple(left)), Some(ValueType::Tuple(right))) = (left, right) {
+        return tuple_type_compatible(left, right);
+    }
+
+    if matches!(left, Some(ValueType::Tuple(_))) || matches!(right, Some(ValueType::Tuple(_))) {
+        return false;
+    }
+
     let left_bool = matches!(left, Some(ValueType::Bool));
     let right_bool = matches!(right, Some(ValueType::Bool));
 
@@ -922,7 +1108,11 @@ fn ordered_comparison_types_compatible(
     left: Option<&ValueType>,
     right: Option<&ValueType>,
 ) -> bool {
-    if matches!(left, Some(ValueType::Bool)) || matches!(right, Some(ValueType::Bool)) {
+    if matches!(left, Some(ValueType::Bool))
+        || matches!(right, Some(ValueType::Bool))
+        || matches!(left, Some(ValueType::Tuple(_)))
+        || matches!(right, Some(ValueType::Tuple(_)))
+    {
         false
     } else {
         comparison_operands_are_numeric(left, right)
@@ -932,6 +1122,24 @@ fn ordered_comparison_types_compatible(
 fn comparison_operands_are_numeric(left: Option<&ValueType>, right: Option<&ValueType>) -> bool {
     !matches!(left, Some(ValueType::Pointer { .. }))
         && !matches!(right, Some(ValueType::Pointer { .. }))
+}
+
+fn tuple_type_compatible(left: &[Option<ValueType>], right: &[Option<ValueType>]) -> bool {
+    slices_match(left, right, |left, right| {
+        match (left.as_ref(), right.as_ref()) {
+            (Some(left), Some(right)) => {
+                type_is_compatible(left, Some(right)) && type_is_compatible(right, Some(left))
+            }
+            _ => true,
+        }
+    })
+}
+
+fn slices_match<T, U, F>(left: &[T], right: &[U], mut predicate: F) -> bool
+where
+    F: FnMut(&T, &U) -> bool,
+{
+    left.len() == right.len() && left.iter().zip(right.iter()).all(|(l, r)| predicate(l, r))
 }
 
 fn type_is_compatible(expected: &ValueType, actual: Option<&ValueType>) -> bool {
@@ -955,6 +1163,9 @@ fn type_is_compatible(expected: &ValueType, actual: Option<&ValueType>) -> bool 
                         }
                         _ => true,
                     }
+            }
+            (ValueType::Tuple(expected), ValueType::Tuple(actual)) => {
+                tuple_type_compatible(expected, actual)
             }
             _ => expected == actual,
         },
@@ -993,10 +1204,21 @@ impl Value {
         }
     }
 
+    fn tuple(elements: Vec<Value>, mutable_access: bool, place: Option<String>) -> Self {
+        let tuple_type = ValueType::Tuple(elements.iter().map(|value| value.ty.clone()).collect());
+        Self {
+            runtime: RuntimeValue::Tuple(elements),
+            ty: Some(tuple_type),
+            place,
+            mutable_access,
+        }
+    }
+
     fn as_int(&self) -> i32 {
         match &self.runtime {
             RuntimeValue::Int(value) => *value,
             RuntimeValue::Pointer(_) => panic!("expected numeric value"),
+            RuntimeValue::Tuple(_) => panic!("expected numeric value"),
         }
     }
 
@@ -1011,7 +1233,7 @@ impl Value {
     fn as_pointer(&self) -> &PointerValue {
         match &self.runtime {
             RuntimeValue::Pointer(pointer) => pointer,
-            RuntimeValue::Int(_) => panic!("dereferencing non-pointer"),
+            RuntimeValue::Int(_) | RuntimeValue::Tuple(_) => panic!("dereferencing non-pointer"),
         }
     }
 
@@ -1065,7 +1287,18 @@ fn split_literal(literal: &str) -> (&str, &str) {
 
 #[cfg(test)]
 mod tests {
-    use super::interpret_tuff;
+    use super::{interpret_tuff, values_equal, Value, ValueType};
+
+    fn sample_tuple_value() -> Value {
+        Value::tuple(
+            vec![
+                Value::int(1, Some(ValueType::U8), false, None),
+                Value::int(2, Some(ValueType::U8), false, None),
+            ],
+            false,
+            None,
+        )
+    }
 
     #[test]
     fn untyped_mutable_binding_can_adopt_type_from_assignment() {
@@ -1351,6 +1584,187 @@ mod tests {
             ),
             2048
         );
+    }
+
+    #[test]
+    fn tuple_index_access_returns_expected_values() {
+        assert_eq!(
+            interpret_tuff("let t = (1U8, 2U8); t.0 + t.1".to_string()),
+            3
+        );
+    }
+
+    #[test]
+    fn tuple_type_annotation_accepts_matching_tuple() {
+        assert_eq!(
+            interpret_tuff("let t : (U8, Bool) = (1U8, true); t.0".to_string()),
+            1
+        );
+    }
+
+    #[test]
+    fn nested_tuple_access_works() {
+        assert_eq!(
+            interpret_tuff("let t = ((1U8, 2U8), (3U8, 4U8)); t.1.0".to_string()),
+            3
+        );
+    }
+
+    #[test]
+    fn tuple_equality_and_inequality_work() {
+        assert_eq!(interpret_tuff("(1U8, 2U8) == (1U8, 2U8)".to_string()), 1);
+        assert_eq!(interpret_tuff("(1U8, 2U8) != (1U8, 3U8)".to_string()), 1);
+    }
+
+    #[test]
+    fn tuple_equality_allows_untyped_and_typed_element_compatibility() {
+        assert_eq!(interpret_tuff("(1, 2) == (1U8, 2U8)".to_string()), 1);
+    }
+
+    #[test]
+    fn tuple_destructuring_binding_works() {
+        assert_eq!(
+            interpret_tuff("let (x, y) = (1U8, 2U8); x + y".to_string()),
+            3
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_tuple_type_annotation_mismatch() {
+        interpret_tuff("let t : (U8, Bool) = (1U8, 2U8); t.0".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_tuple_equality_arity_mismatch() {
+        interpret_tuff("(1U8, 2U8) == (1U8, 2U8, 3U8)".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_tuple_literal_with_single_element() {
+        interpret_tuff("(1U8,)".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_tuple_literal_with_trailing_comma() {
+        interpret_tuff("(1U8, 2U8,)".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_tuple_index_out_of_bounds() {
+        interpret_tuff("let t = (1U8, 2U8); t.2".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_tuple_index_on_non_tuple() {
+        interpret_tuff("1U8.0".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_tuple_destructuring_arity_mismatch() {
+        interpret_tuff("let (x, y) = (1U8, 2U8, 3U8); x".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_tuple_destructuring_non_tuple_value() {
+        interpret_tuff("let (x, y) = 1U8; x".to_string());
+    }
+
+    #[test]
+    fn tuple_destructuring_supports_more_than_two_bindings() {
+        assert_eq!(
+            interpret_tuff("let (a, b, c) = (1U8, 2U8, 3U8); a + b + c".to_string()),
+            6
+        );
+    }
+
+    #[test]
+    fn tuple_type_annotation_supports_more_than_two_elements() {
+        assert_eq!(
+            interpret_tuff("let t : (U8, U8, U8) = (1U8, 2U8, 3U8); t.2".to_string()),
+            3
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_tuple_destructuring_single_binding_pattern() {
+        interpret_tuff("let (x) = (1U8, 2U8); x".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_tuple_destructuring_trailing_comma_pattern() {
+        interpret_tuff("let (x,) = (1U8, 2U8); x".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_tuple_type_annotation_single_element() {
+        interpret_tuff("let t : (U8) = (1U8, 2U8); t.0".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_tuple_type_annotation_trailing_comma() {
+        interpret_tuff("let t : (U8,) = (1U8, 2U8); t.0".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_missing_tuple_index_after_dot() {
+        interpret_tuff("let t = (1U8, 2U8); t.".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_tuple_numeric_equality_mismatch() {
+        interpret_tuff("(1U8, 2U8) == 1U8".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn values_equal_panics_on_pointer_values() {
+        let pointer_type = Some(ValueType::Pointer {
+            mutable: false,
+            pointee: None,
+        });
+        let left = Value::pointer("#0".to_string(), false, pointer_type.clone(), false, None);
+        let right = Value::pointer("#1".to_string(), false, pointer_type, false, None);
+        values_equal(&left, &right);
+    }
+
+    #[test]
+    fn values_equal_returns_false_for_mismatched_runtime_kinds() {
+        let int_value = Value::int(1, None, false, None);
+        let tuple_value = sample_tuple_value();
+        assert!(!values_equal(&int_value, &tuple_value));
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_when_tuple_value_is_used_as_numeric_directly() {
+        let tuple_value = sample_tuple_value();
+        tuple_value.as_int();
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_tuple_element_assignment() {
+        interpret_tuff("let mut t = (1U8, 2U8); t.0 = 3U8; t.0".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_empty_tuple_literal() {
+        interpret_tuff("()".to_string());
     }
 
     #[test]
