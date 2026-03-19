@@ -118,6 +118,14 @@ struct FunctionDefinition {
     body: String,
 }
 
+impl FunctionDefinition {
+    fn is_method(&self) -> bool {
+        self.parameters
+            .first()
+            .is_some_and(|parameter| parameter.name == "this")
+    }
+}
+
 #[derive(Clone)]
 struct StructFieldDefinition {
     name: String,
@@ -431,14 +439,38 @@ impl<'a> Parser<'a> {
         std::panic::panic_any(ReturnSignal(value));
     }
 
-    fn parse_function_call(&mut self, name: String) -> Value {
-        let function = self
-            .functions
-            .get(&name)
+    fn function_definition(&self, name: &str) -> FunctionDefinition {
+        self.functions
+            .get(name)
             .unwrap_or_else(|| panic!("undefined function"))
-            .clone();
+            .clone()
+    }
+
+    fn parse_function_call(&mut self, name: String) -> Value {
+        let function = self.function_definition(&name);
         let arguments = self.parse_function_arguments();
 
+        self.execute_function_call(function, arguments)
+    }
+
+    fn parse_method_call(&mut self, receiver: Value, name: String) -> Value {
+        let function = self.function_definition(&name);
+
+        if !function.is_method() {
+            panic_with_message("function is not a method");
+        }
+
+        let mut arguments = vec![receiver.into_storage()];
+        arguments.extend(self.parse_function_arguments());
+
+        self.execute_function_call(function, arguments)
+    }
+
+    fn execute_function_call(
+        &mut self,
+        function: FunctionDefinition,
+        arguments: Vec<Value>,
+    ) -> Value {
         if arguments.len() != function.parameters.len() {
             panic_with_message("argument count mismatch");
         }
@@ -447,6 +479,22 @@ impl<'a> Parser<'a> {
         body_parser.functions = self.functions.clone();
         body_parser.structs = self.structs.clone();
         body_parser.in_function_body = true;
+        body_parser.next_location = self.next_location;
+
+        let captured_variables: Vec<(String, Variable)> = self
+            .env
+            .iter()
+            .flat_map(|scope| scope.values().cloned())
+            .enumerate()
+            .map(|(index, variable)| (format!("#capture{}", index), variable))
+            .collect();
+
+        let captured_locations: Vec<String> = captured_variables
+            .iter()
+            .map(|(_, variable)| variable.location.clone())
+            .collect();
+
+        body_parser.current_scope_mut().extend(captured_variables);
 
         for (parameter, argument) in function.parameters.iter().zip(arguments.into_iter()) {
             let value = body_parser.apply_type_annotation(argument, Some(parameter.ty.clone()));
@@ -478,6 +526,14 @@ impl<'a> Parser<'a> {
                 Err(payload) => std::panic::resume_unwind(payload),
             },
         };
+
+        for location in captured_locations {
+            let updated_value = body_parser
+                .lookup_variable_by_location(&location)
+                .value
+                .clone();
+            self.lookup_variable_mut_by_location(&location).value = updated_value;
+        }
 
         body_parser.apply_type_annotation(result, Some(function.return_type))
     }
@@ -1200,8 +1256,14 @@ impl<'a> Parser<'a> {
                     let index = self.parse_tuple_index();
                     value = self.tuple_index(value, index);
                 } else {
-                    let field = self.parse_identifier();
-                    value = self.struct_field(value, &field);
+                    let member_name = self.parse_identifier();
+                    self.skip_whitespace();
+
+                    value = if self.input.get(self.pos) == Some(&b'(') {
+                        self.parse_method_call(value, member_name)
+                    } else {
+                        self.struct_field(value, &member_name)
+                    };
                 }
             } else if self.consume(b'[') {
                 let index = self.parse_expression();
@@ -3193,6 +3255,50 @@ mod tests {
     }
 
     #[test]
+    fn function_with_this_parameter_can_be_called_as_method() {
+        assert_eq!(
+            interpret_tuff(
+                "struct Point { x : I32; } fn get_x(this : Point) : I32 => this.x; let point = Point { x: 7 }; point.get_x()"
+                    .to_string()
+            ),
+            7
+        );
+    }
+
+    #[test]
+    fn function_with_this_parameter_still_supports_plain_function_call() {
+        assert_eq!(
+            interpret_tuff(
+                "struct Point { x : I32; } fn get_x(this : Point) : I32 => this.x; let point = Point { x: 9 }; get_x(point)"
+                    .to_string()
+            ),
+            9
+        );
+    }
+
+    #[test]
+    fn method_call_distinguishes_field_access_from_method_call() {
+        assert_eq!(
+            interpret_tuff(
+                "struct Point { x : I32; } fn x(this : Point) : I32 => this.x + 1; let point = Point { x: 4 }; point.x + point.x()"
+                    .to_string()
+            ),
+            9
+        );
+    }
+
+    #[test]
+    fn method_call_supports_pointer_and_expression_receivers() {
+        assert_eq!(
+            interpret_tuff(
+                "fn read(this : *U8) : U8 => *this; fn add(this : I32, other : I32) : I32 => this + other; let value : U8 = 8U8; let pointer : *U8 = &value; pointer.read() + (1 + 2).add(4)"
+                    .to_string()
+            ),
+            15
+        );
+    }
+
+    #[test]
     fn function_syntax_and_lazy_if_branches_cover_remaining_paths() {
         assert_eq!(
             interpret_tuff(
@@ -3282,6 +3388,37 @@ mod tests {
     fn panics_on_function_call_with_wrong_arity() {
         interpret_tuff(
             "fn add(first : I32, second : I32) : I32 => first + second; add(1)".to_string(),
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_method_call_to_unknown_function() {
+        interpret_tuff("1.missing()".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_method_call_to_function_without_this_parameter() {
+        interpret_tuff(
+            "fn add(left : I32, right : I32) : I32 => left + right; 1.add(2)".to_string(),
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_method_call_with_wrong_arity() {
+        interpret_tuff(
+            "fn add(this : I32, other : I32) : I32 => this + other; 1.add()".to_string(),
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_method_call_with_receiver_type_mismatch() {
+        interpret_tuff(
+            "struct Point { x : I32; } fn get_x(this : Point) : I32 => this.x; 1.get_x()"
+                .to_string(),
         );
     }
 
