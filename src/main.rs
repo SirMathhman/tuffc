@@ -59,6 +59,14 @@ enum AssignmentTarget {
     Deref(Box<AssignmentTarget>),
 }
 
+#[derive(Clone, Copy, Debug)]
+enum CompoundAssignmentOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+}
+
 impl<'a> Parser<'a> {
     fn new(input: &'a str) -> Self {
         Self {
@@ -160,12 +168,13 @@ impl<'a> Parser<'a> {
         };
 
         self.skip_whitespace();
-        if self.input.get(self.pos) != Some(&b'=') || self.input.get(self.pos + 1) == Some(&b'=') {
-            self.pos = start;
-            return None;
-        }
-
-        self.pos += 1;
+        let assignment = match self.parse_assignment_operator() {
+            Some(assignment) => assignment,
+            None => {
+                self.pos = start;
+                return None;
+            }
+        };
 
         let value = self.parse_expression();
         let location = self.resolve_assignment_location(&target);
@@ -178,12 +187,36 @@ impl<'a> Parser<'a> {
             panic!("assignment to immutable variable");
         }
 
-        let merged_type = merge_assignment_type(variable.value.ty.clone(), value.ty.clone());
-        variable.value = value
+        let new_value = match assignment {
+            None => value,
+            Some(op) => apply_compound_assignment(variable.value.clone(), value, op),
+        };
+
+        let merged_type = merge_assignment_type(variable.value.ty.clone(), new_value.ty.clone());
+        variable.value = new_value
             .into_storage()
             .with_ty(merged_type)
             .with_access(variable.mutable);
         Some(variable.value.clone().with_place(Some(location)))
+    }
+
+    fn parse_assignment_operator(&mut self) -> Option<Option<CompoundAssignmentOp>> {
+        if self.consume_str("+=") {
+            Some(Some(CompoundAssignmentOp::Add))
+        } else if self.consume_str("-=") {
+            Some(Some(CompoundAssignmentOp::Sub))
+        } else if self.consume_str("*=") {
+            Some(Some(CompoundAssignmentOp::Mul))
+        } else if self.consume_str("/=") {
+            Some(Some(CompoundAssignmentOp::Div))
+        } else if self.input.get(self.pos) == Some(&b'=')
+            && self.input.get(self.pos + 1) != Some(&b'=')
+        {
+            self.pos += 1;
+            Some(None)
+        } else {
+            None
+        }
     }
 
     fn parse_assignment_target(&mut self) -> Option<AssignmentTarget> {
@@ -563,6 +596,25 @@ fn merge_assignment_type(
         (None, Some(actual)) => Some(actual),
         (None, None) => None,
     }
+}
+
+fn apply_compound_assignment(current: Value, rhs: Value, op: CompoundAssignmentOp) -> Value {
+    let left = current.ensure_numeric();
+    let right = rhs.ensure_numeric();
+
+    let value = match op {
+        CompoundAssignmentOp::Add => left.checked_add(right).expect("addition overflow"),
+        CompoundAssignmentOp::Sub => left.checked_sub(right).expect("subtraction overflow"),
+        CompoundAssignmentOp::Mul => left.checked_mul(right).expect("multiplication overflow"),
+        CompoundAssignmentOp::Div => {
+            if right == 0 {
+                panic!("division by zero");
+            }
+            left / right
+        }
+    };
+
+    Value::int(value, current.ty, current.mutable_access, current.place)
 }
 
 fn compare_values(left: Value, right: Value, equal: bool) -> Value {
@@ -964,6 +1016,40 @@ mod tests {
     #[should_panic]
     fn panics_on_numeric_negation_of_bool() {
         interpret_tuff("!1".to_string());
+    }
+
+    #[test]
+    fn compound_assignment_updates_mutable_variable() {
+        assert_eq!(
+            interpret_tuff("let mut x : U8 = 10U8; x += 5; x -= 3; x *= 2; x /= 4; x".to_string()),
+            6
+        );
+    }
+
+    #[test]
+    fn compound_assignment_updates_mutable_pointer_target() {
+        assert_eq!(
+            interpret_tuff("let mut x : U8 = 10U8; let y : *mut U8 = &mut x; *y += 5; x".to_string()),
+            15
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_compound_assignment_to_immutable_variable() {
+        interpret_tuff("let x : U8 = 1U8; x += 1; x".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_compound_assignment_through_immutable_pointer() {
+        interpret_tuff("let x : U8 = 1U8; let y : *U8 = &x; *y += 1; x".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_compound_division_by_zero() {
+        interpret_tuff("let mut x : U8 = 4U8; x /= 0; x".to_string());
     }
 
     #[test]
