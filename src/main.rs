@@ -74,6 +74,13 @@ enum AssignmentTarget {
     Variable(String),
     Deref(Box<AssignmentTarget>),
     Index(Box<AssignmentTarget>, Value),
+    Field(Box<AssignmentTarget>, String),
+}
+
+#[derive(Clone, Debug)]
+enum AssignmentStep {
+    Index(usize),
+    Field(String),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -114,6 +121,7 @@ struct FunctionDefinition {
 #[derive(Clone)]
 struct StructFieldDefinition {
     name: String,
+    mutable: bool,
     ty: ValueType,
 }
 
@@ -300,6 +308,7 @@ impl<'a> Parser<'a> {
                 break;
             }
 
+            let mutable = self.consume_keyword("mut");
             let name = self.parse_identifier();
             self.expect(b':');
             let ty = self.parse_type_annotation();
@@ -311,7 +320,7 @@ impl<'a> Parser<'a> {
                 panic_with_message("duplicate struct field");
             }
 
-            fields.push(StructFieldDefinition { name, ty });
+            fields.push(StructFieldDefinition { name, mutable, ty });
             self.expect(b';');
         }
 
@@ -609,15 +618,14 @@ impl<'a> Parser<'a> {
         };
 
         let value = self.parse_expression();
-        let (location, indices, requires_binding_mutability) =
-            self.resolve_assignment_access(&target);
+        let (location, path, requires_binding_mutability) = self.resolve_assignment_access(&target);
         let variable = self.lookup_variable_mut_by_location(&location);
 
         if requires_binding_mutability && !variable.mutable {
             panic!("assignment to immutable variable");
         }
 
-        if indices.is_empty() {
+        if path.is_empty() {
             let new_value = match assignment {
                 None => value,
                 Some(op) => apply_compound_assignment(variable.value.clone(), value, op),
@@ -631,7 +639,8 @@ impl<'a> Parser<'a> {
                 .with_access(variable.mutable);
             Some(variable.value.clone().with_place(Some(location)))
         } else {
-            let element = variable.value.array_element_mut(&indices);
+            let element = variable.value.projected_element_mut(&path);
+            let element_access = element.mutable_access;
             let new_value = match assignment {
                 None => value,
                 Some(op) => apply_compound_assignment(element.clone(), value, op),
@@ -640,7 +649,7 @@ impl<'a> Parser<'a> {
             *element = new_value
                 .into_storage()
                 .with_ty(merged_type)
-                .with_access(variable.mutable);
+                .with_access(element_access);
             Some(element.clone())
         }
     }
@@ -681,6 +690,19 @@ impl<'a> Parser<'a> {
                 let index = self.parse_expression();
                 self.expect(b']');
                 target = AssignmentTarget::Index(Box::new(target), index);
+            } else if self.consume(b'.') {
+                if !self
+                    .input
+                    .get(self.pos)
+                    .copied()
+                    .is_some_and(|byte| byte.is_ascii_alphabetic() || byte == b'_')
+                {
+                    self.pos -= 1;
+                    break;
+                }
+
+                let field = self.parse_identifier();
+                target = AssignmentTarget::Field(Box::new(target), field);
             } else {
                 break;
             }
@@ -689,14 +711,17 @@ impl<'a> Parser<'a> {
         Some(target)
     }
 
-    fn resolve_assignment_access(&self, target: &AssignmentTarget) -> (String, Vec<usize>, bool) {
+    fn resolve_assignment_access(
+        &self,
+        target: &AssignmentTarget,
+    ) -> (String, Vec<AssignmentStep>, bool) {
         match target {
             AssignmentTarget::Variable(name) => {
                 (self.lookup_variable(name).location.clone(), vec![], true)
             }
             AssignmentTarget::Deref(inner) => {
-                let (inner_location, inner_indices, _) = self.resolve_assignment_access(inner);
-                if !inner_indices.is_empty() {
+                let (inner_location, inner_path, _) = self.resolve_assignment_access(inner);
+                if !inner_path.is_empty() {
                     panic!("assignment through immutable pointer");
                 }
 
@@ -714,10 +739,18 @@ impl<'a> Parser<'a> {
                 (pointer.target.clone(), vec![], false)
             }
             AssignmentTarget::Index(inner, index) => {
-                let (location, mut indices, requires_binding_mutability) =
+                let (location, mut path, requires_binding_mutability) =
                     self.resolve_assignment_access(inner);
-                indices.push(parse_array_index_value(index.clone()));
-                (location, indices, requires_binding_mutability)
+                path.push(AssignmentStep::Index(parse_array_index_value(
+                    index.clone(),
+                )));
+                (location, path, requires_binding_mutability)
+            }
+            AssignmentTarget::Field(inner, field) => {
+                let (location, mut path, requires_binding_mutability) =
+                    self.resolve_assignment_access(inner);
+                path.push(AssignmentStep::Field(field.clone()));
+                (location, path, requires_binding_mutability)
             }
         }
     }
@@ -1210,14 +1243,18 @@ impl<'a> Parser<'a> {
     }
 
     fn struct_field(&self, value: Value, field: &str) -> Value {
+        let struct_mutable_access = value.mutable_access;
         let RuntimeValue::Struct(fields) = value.runtime else {
             panic!("expected struct value");
         };
 
-        fields
+        let field_value = fields
             .get(field)
             .cloned()
-            .unwrap_or_else(|| panic!("unknown struct field"))
+            .unwrap_or_else(|| panic!("unknown struct field"));
+        let field_mutable_access = field_value.mutable_access;
+
+        field_value.with_access(struct_mutable_access && field_mutable_access)
     }
 
     fn parse_primary(&mut self) -> Value {
@@ -1308,7 +1345,10 @@ impl<'a> Parser<'a> {
                 self.expect(b':');
                 let value = self.parse_expression();
                 let value = self.apply_type_annotation(value, Some(field_definition.ty.clone()));
-                fields.insert(field_name, value.into_storage());
+                fields.insert(
+                    field_name,
+                    value.into_storage().with_access(field_definition.mutable),
+                );
 
                 if self.consume(b',') {
                     if self.consume(b'}') {
@@ -1586,7 +1626,7 @@ fn values_equal(left: &Value, right: &Value) -> bool {
         (RuntimeValue::Int(left), RuntimeValue::Int(right)) => left == right,
         (RuntimeValue::Pointer(_), RuntimeValue::Pointer(_)) => panic!("type mismatch"),
         (RuntimeValue::Tuple(left), RuntimeValue::Tuple(right)) => {
-            slices_match(left, right, |left, right| values_equal(left, right))
+            slices_match(left, right, values_equal)
         }
         _ => false,
     }
@@ -1858,19 +1898,36 @@ impl Value {
         }
     }
 
-    fn array_element_mut(&mut self, indices: &[usize]) -> &mut Value {
-        if indices.is_empty() {
+    fn projected_element_mut(&mut self, path: &[AssignmentStep]) -> &mut Value {
+        if path.is_empty() {
             return self;
         }
 
-        let (first, rest) = indices.split_first().expect("indices checked above");
-        let RuntimeValue::Array(values) = &mut self.runtime else {
-            panic!("expected array value");
-        };
-        let element = values
-            .get_mut(*first)
-            .unwrap_or_else(|| panic!("array index out of bounds"));
-        element.array_element_mut(rest)
+        match &path[0] {
+            AssignmentStep::Index(index) => {
+                let RuntimeValue::Array(values) = &mut self.runtime else {
+                    panic!("expected array value");
+                };
+                let element = values
+                    .get_mut(*index)
+                    .unwrap_or_else(|| panic!("array index out of bounds"));
+                element.projected_element_mut(&path[1..])
+            }
+            AssignmentStep::Field(field) => {
+                let RuntimeValue::Struct(fields) = &mut self.runtime else {
+                    panic!("expected struct value");
+                };
+                let element = fields
+                    .get_mut(field)
+                    .unwrap_or_else(|| panic!("unknown struct field"));
+
+                if !element.mutable_access {
+                    panic!("assignment to immutable variable");
+                }
+
+                element.projected_element_mut(&path[1..])
+            }
+        }
     }
 
     fn with_ty(mut self, ty: Option<ValueType>) -> Self {
@@ -2417,11 +2474,31 @@ mod tests {
     }
 
     #[test]
+    fn mutable_struct_field_assignment_requires_mut_field_and_mut_binding() {
+        assert_eq!(
+            interpret_tuff(
+                "struct HasMutableField { mut field : I32; } let mut myStruct = HasMutableField { field : 100 }; myStruct.field = 250; myStruct.field"
+                    .to_string()
+            ),
+            250
+        );
+    }
+
+    #[test]
+    fn compound_assignment_updates_mutable_struct_field() {
+        assert_eq!(
+            interpret_tuff(
+                "struct HasMutableField { mut field : I32; } let mut myStruct = HasMutableField { field : 100 }; myStruct.field += 23; myStruct.field"
+                    .to_string()
+            ),
+            123
+        );
+    }
+
+    #[test]
     #[should_panic]
     fn panics_on_duplicate_struct_definition() {
-        interpret_tuff(
-            "struct Point { x : I32; } struct Point { y : I32; } 0".to_string(),
-        );
+        interpret_tuff("struct Point { x : I32; } struct Point { y : I32; } 0".to_string());
     }
 
     #[test]
@@ -2466,7 +2543,42 @@ mod tests {
     #[should_panic]
     fn panics_on_struct_field_type_mismatch() {
         interpret_tuff(
-            "struct Point { x : I32; y : I32; } let p = Point { x: true, y: 2 }; p.x"
+            "struct Point { x : I32; y : I32; } let p = Point { x: true, y: 2 }; p.x".to_string(),
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_assignment_to_non_mutable_struct_field() {
+        interpret_tuff(
+            "struct Point { field : I32; } let mut point = Point { field : 100 }; point.field = 200; point.field"
+                .to_string(),
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_assignment_to_mutable_struct_field_through_immutable_binding() {
+        interpret_tuff(
+            "struct HasMutableField { mut field : I32; } let myStruct = HasMutableField { field : 100 }; myStruct.field = 200; myStruct.field"
+                .to_string(),
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_compound_assignment_to_non_mutable_struct_field() {
+        interpret_tuff(
+            "struct Point { field : I32; } let mut point = Point { field : 100 }; point.field += 1; point.field"
+                .to_string(),
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_compound_assignment_to_mutable_struct_field_through_immutable_binding() {
+        interpret_tuff(
+            "struct HasMutableField { mut field : I32; } let myStruct = HasMutableField { field : 100 }; myStruct.field += 1; myStruct.field"
                 .to_string(),
         );
     }
@@ -2479,9 +2591,23 @@ mod tests {
 
     #[test]
     #[should_panic]
+    fn panics_on_field_assignment_on_non_struct_value() {
+        interpret_tuff("let mut value = 1; value.field = 2; value".to_string());
+    }
+
+    #[test]
+    #[should_panic]
     fn panics_on_unknown_field_access() {
         interpret_tuff(
             "struct Point { x : I32; y : I32; } let p = Point { x: 1, y: 2 }; p.z".to_string(),
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_assignment_to_unknown_struct_field() {
+        interpret_tuff(
+            "struct Point { mut x : I32; } let mut p = Point { x: 1 }; p.z = 2; p.x".to_string(),
         );
     }
 
@@ -2604,10 +2730,8 @@ mod tests {
     #[test]
     #[should_panic]
     fn values_equal_panics_on_pointer_values() {
-        let pointer_type = Some(ValueType::Pointer {
-            mutable: false,
-            pointee: None,
-        });
+        #[rustfmt::skip]
+        let pointer_type = Some(ValueType::Pointer { mutable: false, pointee: None });
         let left = Value::pointer("#0".to_string(), false, pointer_type.clone(), false, None);
         let right = Value::pointer("#1".to_string(), false, pointer_type, false, None);
         values_equal(&left, &right);
