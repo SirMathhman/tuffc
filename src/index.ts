@@ -50,7 +50,8 @@ interface TuffError {
     | "ImmutableVariable"
     | "InvalidPointer"
     | "IterationLimit"
-    | "UndefinedType";
+    | "UndefinedType"
+    | "ArgumentMismatch";
   sourceCode: string;
   message: string;
   reason: string;
@@ -172,17 +173,37 @@ interface UnitValue {
   kind: "unit";
 }
 
+interface ReturnSignal {
+  kind: "return";
+  value: BoundValue | UnitValue;
+}
+
 type BoundValue = NumericValue | PointerValue | BoolValue | StructValue;
-type StatementValue = BoundValue | UnitValue;
+type StatementValue = BoundValue | UnitValue | ReturnSignal;
 
 interface UnaryPointerOperand {
   name: string;
   value: BoundValue;
 }
 
+interface FunctionParameter {
+  name: string;
+  type: TuffTypeInfo;
+}
+
+interface FunctionDefinition {
+  name: string;
+  params: FunctionParameter[];
+  returnType: TuffTypeInfo | "Void" | undefined;
+  body: string;
+  isBlockBody: boolean;
+}
+
 interface Scope {
   bindings: Map<string, BoundValue>;
   typeDefinitions: Map<string, StructDefinition>;
+  functionDefinitions: Map<string, FunctionDefinition>;
+  callDepth: number;
   parent: Scope | undefined;
 }
 
@@ -396,6 +417,20 @@ function undefinedType(input: string, name: string): ErrResult<TuffError> {
   });
 }
 
+function argumentMismatch(input: string, detail: string): ErrResult<TuffError> {
+  return {
+    ok: false,
+    error: {
+      kind: "ArgumentMismatch",
+      sourceCode: input,
+      message: `Argument mismatch: ${detail}`,
+      reason: detail,
+      suggestedFix:
+        "Ensure the number and types of arguments match the function definition.",
+    },
+  };
+}
+
 function isNumericValue(value: BoundValue): value is NumericValue {
   return value.kind === "numeric";
 }
@@ -466,6 +501,8 @@ function createScope(parent: Scope | undefined): Scope {
   return {
     bindings: new Map<string, BoundValue>(),
     typeDefinitions: new Map<string, StructDefinition>(),
+    functionDefinitions: new Map<string, FunctionDefinition>(),
+    callDepth: parent?.callDepth ?? 0,
     parent,
   };
 }
@@ -689,6 +726,10 @@ function cloneScope(scope: Scope): Scope {
   return {
     bindings: clonedBindings,
     typeDefinitions: new Map<string, StructDefinition>(scope.typeDefinitions),
+    functionDefinitions: new Map<string, FunctionDefinition>(
+      scope.functionDefinitions,
+    ),
+    callDepth: scope.callDepth,
     parent: scope.parent ? cloneScope(scope.parent) : undefined,
   };
 }
@@ -901,6 +942,324 @@ function isBlockExpressionText(text: string): boolean {
   return braceDepth === 0;
 }
 
+function scanIdentifierFromStart(
+  input: string,
+): { trimmed: string; name: string; nameEnd: number } | undefined {
+  const trimmed = input.trim();
+
+  if (trimmed.length === 0 || !isIdentifierStart(trimmed[0])) {
+    return undefined;
+  }
+
+  let nameEnd = 1;
+
+  while (nameEnd < trimmed.length && isIdentifierPart(trimmed[nameEnd])) {
+    nameEnd += 1;
+  }
+
+  return { trimmed, name: trimmed.slice(0, nameEnd), nameEnd };
+}
+
+function parseFunctionCall(
+  input: string,
+): { name: string; argsStr: string } | undefined {
+  const scan = scanIdentifierFromStart(input);
+
+  if (!scan) {
+    return undefined;
+  }
+
+  const { trimmed, name, nameEnd } = scan;
+
+  if (nameEnd >= trimmed.length || trimmed[nameEnd] !== "(") {
+    return undefined;
+  }
+
+  let depth = 1;
+  let pos = nameEnd + 1;
+
+  while (pos < trimmed.length && depth > 0) {
+    if (trimmed[pos] === "(") {
+      depth += 1;
+    } else if (trimmed[pos] === ")") {
+      depth -= 1;
+    }
+    pos += 1;
+  }
+
+  if (depth !== 0 || pos !== trimmed.length) {
+    return undefined;
+  }
+
+  return {
+    name: trimmed.slice(0, nameEnd),
+    argsStr: trimmed.slice(nameEnd + 1, pos - 1),
+  };
+}
+
+function parseReturnStatement(
+  input: string,
+): { value: string | undefined } | undefined {
+  const trimmed = input.trim();
+
+  if (!startsWithKeywordAt(trimmed, "return", 0)) {
+    return undefined;
+  }
+
+  const afterReturn = trimmed.slice(6).trim();
+
+  return { value: afterReturn.length > 0 ? afterReturn : undefined };
+}
+
+function resolveFunctionDefinition(
+  scope: Scope,
+  name: string,
+): FunctionDefinition | undefined {
+  let current: Scope | undefined = scope;
+
+  while (current) {
+    const def = current.functionDefinitions.get(name);
+    if (def !== undefined) {
+      return def;
+    }
+    current = current.parent;
+  }
+
+  return undefined;
+}
+
+function parseFunctionDefinitionStatement(
+  input: string,
+): Result<FunctionDefinition | undefined, TuffError> {
+  const trimmed = input.trim();
+
+  if (!startsWithKeywordAt(trimmed, "fn", 0)) {
+    return ok(undefined);
+  }
+
+  let index = 2;
+  const afterFn = consumeRequiredWhitespace(input, trimmed, index);
+
+  if (!afterFn.ok) {
+    return afterFn;
+  }
+
+  index = afterFn.value;
+  const nameResult = readIdentifier(input, trimmed, index);
+
+  if (!nameResult.ok) {
+    return nameResult;
+  }
+
+  const fnName = nameResult.value.name;
+  index = nameResult.value.next;
+
+  if (index >= trimmed.length || trimmed[index] !== "(") {
+    return unsupportedInput(input);
+  }
+
+  index += 1;
+
+  let parenDepth = 1;
+  const paramsStart = index;
+
+  while (index < trimmed.length && parenDepth > 0) {
+    if (trimmed[index] === ")") {
+      parenDepth -= 1;
+    }
+    index += 1;
+  }
+
+  if (parenDepth !== 0) {
+    return unsupportedInput(input);
+  }
+
+  const paramsStr = trimmed.slice(paramsStart, index - 1);
+  index = skipWhitespace(trimmed, index);
+
+  const params: FunctionParameter[] = [];
+
+  if (paramsStr.trim().length > 0) {
+    for (const paramChunk of splitByComma(paramsStr)) {
+      const colonIdx = paramChunk.indexOf(":");
+
+      if (colonIdx < 0) {
+        return unsupportedInput(input);
+      }
+
+      const paramName = paramChunk.slice(0, colonIdx).trim();
+      const paramTypeText = paramChunk.slice(colonIdx + 1).trim();
+
+      if (!isIdentifierText(paramName)) {
+        return unsupportedInput(input);
+      }
+
+      const paramType = parseTypeOrError(paramTypeText, input);
+
+      if (!paramType.ok) {
+        return paramType;
+      }
+
+      params.push({ name: paramName, type: paramType.value });
+    }
+  }
+
+  let returnType: TuffTypeInfo | "Void" | undefined;
+
+  if (index < trimmed.length && trimmed[index] === ":") {
+    index = skipWhitespace(trimmed, index + 1);
+    const typeStart = index;
+
+    while (
+      index < trimmed.length &&
+      !isWhitespace(trimmed[index]) &&
+      trimmed[index] !== "="
+    ) {
+      index += 1;
+    }
+
+    const returnTypeText = trimmed.slice(typeStart, index).trim();
+
+    if (returnTypeText === "Void") {
+      returnType = "Void";
+    } else {
+      const rt = parseTypeOrError(returnTypeText, input);
+
+      if (!rt.ok) {
+        return rt;
+      }
+
+      returnType = rt.value;
+    }
+
+    index = skipWhitespace(trimmed, index);
+  }
+
+  if (
+    index >= trimmed.length - 1 ||
+    trimmed[index] !== "=" ||
+    trimmed[index + 1] !== ">"
+  ) {
+    return unsupportedInput(input);
+  }
+
+  index = skipWhitespace(trimmed, index + 2);
+
+  const body = trimmed.slice(index);
+
+  if (body.length === 0) {
+    return unsupportedInput(input);
+  }
+
+  return ok({
+    name: fnName,
+    params,
+    returnType,
+    body,
+    isBlockBody: body.trimStart().startsWith("{"),
+  });
+}
+
+function evaluateBlock(
+  input: string,
+  scope: Scope,
+  allowEmpty: boolean,
+): Result<StatementValue, TuffError> {
+  const trimmed = input.trim();
+  const inner = trimmed.slice(1, trimmed.length - 1);
+  const stmts = splitStatements(inner) as OkResult<string[]>;
+
+  if (!allowEmpty && stmts.value.length === 0) {
+    return unsupportedInput(input);
+  }
+
+  return runBlockStatements(stmts.value, scope);
+}
+
+const CALL_DEPTH_LIMIT = 128;
+
+function evaluateFunctionCall(
+  name: string,
+  argsStr: string,
+  input: string,
+  scope: Scope,
+): Result<BoundValue | UnitValue, TuffError> {
+  const def = resolveFunctionDefinition(scope, name);
+
+  if (!def) {
+    return undefinedVariable(input, name);
+  }
+
+  const actualArgs = splitByComma(argsStr);
+
+  if (actualArgs.length !== def.params.length) {
+    return argumentMismatch(
+      input,
+      `Expected ${def.params.length} argument(s) but got ${actualArgs.length}.`,
+    );
+  }
+
+  if (scope.callDepth >= CALL_DEPTH_LIMIT) {
+    return iterationLimit(input);
+  }
+
+  const callScope = createScope(scope);
+  callScope.callDepth = scope.callDepth + 1;
+
+  for (let i = 0; i < def.params.length; i += 1) {
+    const argResult = evaluateExpression(actualArgs[i], scope);
+
+    if (!argResult.ok) {
+      return argResult;
+    }
+
+    if (!isTypeMatch(argResult.value.type, def.params[i].type)) {
+      return argumentMismatch(
+        input,
+        `Argument ${i + 1} type does not match parameter '${def.params[i].name}'.`,
+      );
+    }
+
+    callScope.bindings.set(def.params[i].name, argResult.value);
+  }
+
+  let bodyResult: Result<StatementValue, TuffError>;
+
+  if (def.isBlockBody) {
+    bodyResult = evaluateBlock(def.body, callScope, true);
+  } else {
+    const exprResult = evaluateExpression(def.body, callScope);
+    bodyResult = exprResult.ok ? ok(exprResult.value) : exprResult;
+  }
+
+  if (!bodyResult.ok) {
+    return bodyResult;
+  }
+
+  const rawResult: BoundValue | UnitValue =
+    bodyResult.value.kind === "return"
+      ? bodyResult.value.value
+      : bodyResult.value;
+
+  if (def.returnType !== undefined && def.returnType !== "Void") {
+    if (rawResult.kind === "unit") {
+      return invalidPointer(
+        input,
+        "Function annotated with a non-Void return type returned Void.",
+      );
+    }
+
+    if (!isTypeMatch(rawResult.type, def.returnType)) {
+      return invalidPointer(
+        input,
+        "Return value type does not match the annotated return type.",
+      );
+    }
+  }
+
+  return ok(rawResult);
+}
+
 function evaluateBlockExpression(
   input: string,
   scope: Scope,
@@ -923,6 +1282,10 @@ function evaluateBlockExpression(
       return evaluated;
     }
 
+    if (evaluated.value.kind === "return") {
+      return unsupportedInput(input);
+    }
+
     if (evaluated.value.kind !== "unit") {
       lastValue = evaluated.value;
     }
@@ -936,8 +1299,24 @@ function evaluateBlockExpression(
 }
 
 function parseExpression(input: string): Result<ExpressionParts, TuffError> {
+  let depth = 0;
+
   for (let index = 1; index < input.length - 1; index += 1) {
     const operator = input[index];
+
+    if (operator === "(" || operator === "{") {
+      depth += 1;
+      continue;
+    }
+
+    if (operator === ")" || operator === "}") {
+      depth -= 1;
+      continue;
+    }
+
+    if (depth > 0) {
+      continue;
+    }
 
     if (
       operator !== "+" &&
@@ -964,8 +1343,25 @@ function parseComparisonExpression(
   const twoCharacterOperators = ["==", "!=", "<=", ">="];
   const oneCharacterOperators = ["<", ">"];
   const matches: Array<{ index: number; operator: string }> = [];
+  let depth = 0;
 
   for (let index = 0; index < input.length; index += 1) {
+    const character = input[index];
+
+    if (character === "(" || character === "{") {
+      depth += 1;
+      continue;
+    }
+
+    if (character === ")" || character === "}") {
+      depth -= 1;
+      continue;
+    }
+
+    if (depth > 0) {
+      continue;
+    }
+
     let matchedOperator: string | undefined;
 
     for (const operator of twoCharacterOperators) {
@@ -1019,27 +1415,37 @@ function parseComparisonExpression(
 function parseLogicalExpression(
   input: string,
 ): Result<ExpressionParts, TuffError> {
-  const tryParse = (operator: "&&" | "||"): ExpressionParts | undefined => {
-    const operatorIndex = input.indexOf(operator);
-
-    if (operatorIndex <= 0 || operatorIndex >= input.length - 2) {
-      return undefined;
+  const findLogical = (op: "&&" | "||"): ExpressionParts | undefined => {
+    let d = 0;
+    for (let i = 0; i < input.length - 1; i += 1) {
+      const c = input[i];
+      if (c === "(" || c === "{") {
+        d += 1;
+        continue;
+      }
+      if (c === ")" || c === "}") {
+        d -= 1;
+        continue;
+      }
+      if (d > 0) continue;
+      if (input.slice(i, i + 2) === op && i > 0 && i < input.length - 2) {
+        return {
+          left: input.slice(0, i).trimEnd(),
+          operator: op,
+          right: input.slice(i + 2).trimStart(),
+        };
+      }
     }
-
-    return {
-      left: input.slice(0, operatorIndex).trimEnd(),
-      operator,
-      right: input.slice(operatorIndex + 2).trimStart(),
-    };
+    return undefined;
   };
 
-  const orExpression = tryParse("||");
+  const orExpression = findLogical("||");
 
   if (orExpression) {
     return ok(orExpression);
   }
 
-  const andExpression = tryParse("&&");
+  const andExpression = findLogical("&&");
 
   if (andExpression) {
     return ok(andExpression);
@@ -1243,6 +1649,30 @@ function parseIfParts(
   return ok(parsedIf);
 }
 
+function runBlockStatements(
+  stmts: string[],
+  scope: Scope,
+): Result<StatementValue, TuffError> {
+  const blockScope = createScope(scope);
+  let lastValue: StatementValue = UNIT_VALUE;
+
+  for (const stmt of stmts) {
+    const result = evaluateStatement(stmt, blockScope);
+
+    if (!result.ok) {
+      return result;
+    }
+
+    if (result.value.kind === "return") {
+      return result;
+    }
+
+    lastValue = result.value;
+  }
+
+  return ok(lastValue);
+}
+
 function parseIfExpression(
   input: string,
 ): Result<IfExpressionParts | undefined, TuffError> {
@@ -1293,8 +1723,11 @@ function splitByComma(input: string): string[] {
   let depth = 0;
 
   for (const character of input) {
-    if (character === "{" || character === "}") {
-      depth += character === "{" ? 1 : -1;
+    if (character === "(" || character === "{") {
+      depth += 1;
+      current += character;
+    } else if (character === ")" || character === "}") {
+      depth -= 1;
       current += character;
     } else if (character === "," && depth === 0) {
       parts.push(current.trim());
@@ -1412,20 +1845,14 @@ interface StructInstantiationParts {
 function parseStructInstantiation(
   input: string,
 ): StructInstantiationParts | undefined {
-  const trimmed = input.trim();
+  const scan = scanIdentifierFromStart(input);
 
-  if (trimmed.length === 0 || !isIdentifierStart(trimmed[0])) {
+  if (!scan) {
     return undefined;
   }
 
-  let index = 1;
-
-  while (index < trimmed.length && isIdentifierPart(trimmed[index])) {
-    index += 1;
-  }
-
-  const typeName = trimmed.slice(0, index);
-  index = skipWhitespace(trimmed, index);
+  const { trimmed, name: typeName } = scan;
+  let index = skipWhitespace(trimmed, scan.nameEnd);
 
   if (index >= trimmed.length || trimmed[index] !== "{") {
     return undefined;
@@ -2177,6 +2604,27 @@ function evaluateExpression(
     return dereferencePointer(input, trimmed.slice(1), scope);
   }
 
+  const fnCall = parseFunctionCall(trimmed);
+
+  if (fnCall !== undefined) {
+    const fnResult = evaluateFunctionCall(
+      fnCall.name,
+      fnCall.argsStr,
+      input,
+      scope,
+    );
+
+    if (!fnResult.ok) {
+      return fnResult;
+    }
+
+    if (fnResult.value.kind === "unit") {
+      return unsupportedInput(input);
+    }
+
+    return ok(fnResult.value as BoundValue);
+  }
+
   const structInst = parseStructInstantiation(trimmed);
 
   if (structInst !== undefined) {
@@ -2323,6 +2771,33 @@ function evaluateStatement(
   statement: string,
   scope: Scope,
 ): Result<StatementValue, TuffError> {
+  const fnDef = parseFunctionDefinitionStatement(statement);
+
+  if (!fnDef.ok) {
+    return fnDef;
+  }
+
+  if (fnDef.value) {
+    scope.functionDefinitions.set(fnDef.value.name, fnDef.value);
+    return ok(UNIT_VALUE);
+  }
+
+  const returnStmt = parseReturnStatement(statement);
+
+  if (returnStmt !== undefined) {
+    if (returnStmt.value === undefined) {
+      return ok({ kind: "return", value: UNIT_VALUE });
+    }
+
+    const returnValue = evaluateExpression(returnStmt.value, scope);
+
+    if (!returnValue.ok) {
+      return returnValue;
+    }
+
+    return ok({ kind: "return", value: returnValue.value });
+  }
+
   const ifStatement = parseIfStatement(statement);
 
   if (!ifStatement.ok) {
@@ -2352,6 +2827,10 @@ function evaluateStatement(
     const selectedResult = evaluateStatement(selectedBranch, branchScope);
 
     if (!selectedResult.ok) {
+      return selectedResult;
+    }
+
+    if (selectedResult.value.kind === "return") {
       return selectedResult;
     }
 
@@ -2396,6 +2875,10 @@ function evaluateStatement(
       );
 
       if (!bodyResult.ok) {
+        return bodyResult;
+      }
+
+      if (bodyResult.value.kind === "return") {
         return bodyResult;
       }
 
@@ -2916,6 +3399,21 @@ function evaluateStatement(
     return ok(updatedTarget);
   }
 
+  const fnCallStmt = parseFunctionCall(statement);
+
+  if (fnCallStmt !== undefined) {
+    return evaluateFunctionCall(
+      fnCallStmt.name,
+      fnCallStmt.argsStr,
+      statement,
+      scope,
+    );
+  }
+
+  if (isBlockExpressionText(statement)) {
+    return evaluateBlock(statement, scope, false);
+  }
+
   return evaluateExpression(statement, scope);
 }
 
@@ -2970,6 +3468,10 @@ function interpretTuff(input: string): Result<number, TuffError> {
 
     if (!evaluated.ok) {
       return evaluated;
+    }
+
+    if (evaluated.value.kind === "return") {
+      return unsupportedInput(input);
     }
 
     lastValue = evaluated.value;

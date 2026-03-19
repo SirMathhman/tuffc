@@ -1279,6 +1279,241 @@ describe("interpretTuff", () => {
     );
   });
 
+  // ── Function definitions & calls ──────────────────────────────
+
+  it("calls a two-parameter function with explicit return type", () => {
+    expectOkValue(
+      "fn add(a : I32, b : I32) : I32 => { return a + b; }; add(3I32, 4I32)",
+      7,
+    );
+  });
+
+  it("calls a function whose return type is inferred from the return statement", () => {
+    expectOkValue("fn double(x : I32) => { return x + x; }; double(5I32)", 10);
+  });
+
+  it("calls a Void function and produces zero", () => {
+    expectOkValue("fn noop() : Void => {}; noop()", 0);
+  });
+
+  it("calls a function with a single-expression body", () => {
+    expectOkValue("fn inc(x : I32) : I32 => x + 1I32; inc(5I32)", 6);
+  });
+
+  it("function body accesses outer-scope binding (closure)", () => {
+    expectOkValue(
+      "let n = 10I32; fn addN(x : I32) : I32 => { return x + n; }; addN(5I32)",
+      15,
+    );
+  });
+
+  it("supports self-recursion (factorial)", () => {
+    expectOkValue(
+      "fn fact(n : I32) : I32 => { if (n <= 1I32) { return 1I32; } return n * fact(n - 1I32); }; fact(5I32)",
+      120,
+    );
+  });
+
+  it("supports mutual recursion (isEven / isOdd)", () => {
+    expectOkValue(
+      [
+        "fn isEven(n : I32) : Bool => { if (n == 0I32) { return true; } return isOdd(n - 1I32); }",
+        "fn isOdd(n : I32) : Bool => { if (n == 0I32) { return false; } return isEven(n - 1I32); }",
+        "isEven(4I32)",
+      ].join("; "),
+      1,
+    );
+  });
+
+  it("passes a Bool parameter and returns a Bool", () => {
+    expectOkValue("fn not(b : Bool) : Bool => { return !b; }; not(true)", 0);
+  });
+
+  it("returns early from the then-branch of an if-statement inside a function", () => {
+    expectOkValue(
+      "fn abs(x : I32) : I32 => { if (x < 0I32) { return 0I32 - x; } return x; }; abs(-5I32)",
+      5,
+    );
+  });
+
+  it("bare return in a Void function produces zero", () => {
+    expectOkValue("fn noop2() : Void => { return; }; noop2()", 0);
+  });
+
+  it("calls a no-parameter function", () => {
+    expectOkValue("fn pi() : I32 => { return 3I32; }; pi()", 3);
+  });
+
+  it("returns the last expression from a function body when there is no return statement", () => {
+    expectOkValue("fn sum(a : I32, b : I32) => { a + b }; sum(3I32, 4I32)", 7);
+  });
+
+  it("returns an error when calling an undefined function", () => {
+    expectErrorKind("foo(1I32)", "UndefinedVariable");
+  });
+
+  it("evaluates nested function calls correctly (covers splitFunctionArgs depth tracking)", () => {
+    expectOkValue(
+      [
+        "fn id(x : I32) : I32 => { return x; }",
+        "fn sum(a : I32, b : I32) : I32 => { return a + b; }",
+        "sum(id(3I32), id(4I32))",
+      ].join("; "),
+      7,
+    );
+  });
+
+  it("evaluates a function call inside an arithmetic expression", () => {
+    expectOkValue("fn id(x : I32) : I32 => { return x; }; id(3I32) + 4I32", 7);
+  });
+
+  it("supports return inside a while loop body within a function", () => {
+    expectOkValue(
+      [
+        "fn loop_return(x : I32) : I32 => {",
+        "  let mut n = 0I32;",
+        "  while (n < x) { if (n == 3I32) { return n; } n += 1I32; }",
+        "  return n;",
+        "}",
+        "loop_return(5I32)",
+      ].join(" "),
+      3,
+    );
+  });
+
+  it("returns UnsupportedInput when a return statement appears at the top level", () => {
+    expectErrorKind("return 1I32", "UnsupportedInput");
+  });
+
+  it("returns UnsupportedInput when fn keyword is not followed by whitespace", () => {
+    expectErrorKind("fn(x : I32) : I32 => { return x; }", "UnsupportedInput");
+  });
+
+  it("returns UnsupportedInput when fn name is not a valid identifier", () => {
+    expectErrorKind("fn 123() : I32 => { return 1I32; }", "UnsupportedInput");
+  });
+
+  it("returns UnsupportedInput when fn name is not followed by a paren", () => {
+    expectErrorKind("fn add : I32 => { return 1I32; }", "UnsupportedInput");
+  });
+
+  it("returns UnsupportedInput when fn parameter list has unclosed paren", () => {
+    expectErrorKind(
+      "fn bad(x : I32 => { return x; }; bad(1I32)",
+      "UnsupportedInput",
+    );
+  });
+
+  it("returns UnsupportedInput when fn parameter has no colon", () => {
+    expectErrorKind(
+      "fn bad(x) : I32 => { return 1I32; }; bad(1I32)",
+      "UnsupportedInput",
+    );
+  });
+
+  it("returns UnsupportedInput when fn parameter name is not a valid identifier", () => {
+    expectErrorKind(
+      "fn bad(123 : I32) : I32 => { return 1I32; }; bad(1I32)",
+      "UnsupportedInput",
+    );
+  });
+
+  it("returns an error when a fn parameter type annotation is invalid", () => {
+    expect(
+      interpretTuff("fn bad(x : 1invalid) => { return 1I32; }; bad(1I32)").ok,
+    ).toBe(false);
+  });
+
+  it("returns an error when a fn return type annotation is invalid", () => {
+    expect(
+      interpretTuff("fn bad(x : I32) : 1invalid => { return x; }; bad(1I32)")
+        .ok,
+    ).toBe(false);
+  });
+
+  it("returns UnsupportedInput when fn body is empty after =>", () => {
+    expectErrorKind("fn bad() : I32 =>", "UnsupportedInput");
+  });
+
+  it("returns UnsupportedInput when a Void function is used in an expression context", () => {
+    expectErrorKind(
+      "fn noop() : Void => {}; noop() + 0I32",
+      "UnsupportedInput",
+    );
+  });
+
+  it("returns an error when a function arg fails to evaluate", () => {
+    expectErrorKind(
+      "fn id(x : I32) : I32 => { return x; }; id(undefinedVar)",
+      "UndefinedVariable",
+    );
+  });
+
+  it("returns an error when a single-expression function body fails to evaluate", () => {
+    expectErrorKind(
+      "fn bad(x : I32) : I32 => undefinedVar; bad(1I32)",
+      "UndefinedVariable",
+    );
+  });
+
+  it("returns UnsupportedInput for an empty block used as a let initializer", () => {
+    expectErrorKind("let x = {}; x", "UnsupportedInput");
+  });
+
+  it("returns an error when an inner statement of a block expression fails", () => {
+    expectErrorKind("let x = { undefinedVar }; x", "UndefinedVariable");
+  });
+
+  it("returns UnsupportedInput when a return statement appears inside a block expression", () => {
+    expectErrorKind("let x = { return 1I32; }; x", "UnsupportedInput");
+  });
+
+  it("returns ArgumentMismatch when too few arguments are supplied", () => {
+    expectErrorKind(
+      "fn add(a : I32, b : I32) : I32 => { return a + b; }; add(1I32)",
+      "ArgumentMismatch",
+    );
+  });
+
+  it("returns ArgumentMismatch when too many arguments are supplied", () => {
+    expectErrorKind(
+      "fn add(a : I32, b : I32) : I32 => { return a + b; }; add(1I32, 2I32, 3I32)",
+      "ArgumentMismatch",
+    );
+  });
+
+  it("returns ArgumentMismatch when an argument type does not match the parameter type", () => {
+    expectErrorKind(
+      "fn add(a : I32, b : I32) : I32 => { return a + b; }; add(true, 1I32)",
+      "ArgumentMismatch",
+    );
+  });
+
+  it("returns InvalidPointer when return value does not match the annotated return type", () => {
+    expectErrorKind(
+      "fn bad(x : I32) : Bool => { return x; }; bad(1I32)",
+      "InvalidPointer",
+    );
+  });
+
+  it("returns InvalidPointer when a bare return is used in a non-Void annotated function", () => {
+    expectErrorKind("fn bad() : I32 => { return; }; bad()", "InvalidPointer");
+  });
+
+  it("returns UnsupportedInput for a malformed fn definition (missing =>)", () => {
+    expectErrorKind(
+      "fn add(a : I32) : I32 { return a; }; add(1I32)",
+      "UnsupportedInput",
+    );
+  });
+
+  it("returns IterationLimit when recursion depth is exceeded", () => {
+    expectErrorKind(
+      "fn inf() : I32 => { return inf(); }; inf()",
+      "IterationLimit",
+    );
+  });
+
   it("prints the greeting from main", () => {
     const spy = jest.spyOn(console, "log").mockImplementation(() => undefined);
 
