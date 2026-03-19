@@ -319,7 +319,6 @@ impl<'a> Parser<'a> {
             }
 
             panic_with_message("expected '}}'")
-
         } else {
             let mut brace_depth = 0usize;
 
