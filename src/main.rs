@@ -12,6 +12,7 @@ struct Parser<'a> {
     env: Vec<HashMap<String, Variable>>,
     next_location: usize,
     functions: HashMap<String, FunctionDefinition>,
+    structs: HashMap<String, StructDefinition>,
     in_function_body: bool,
 }
 
@@ -35,6 +36,7 @@ enum ValueType {
         len: usize,
     },
     Tuple(Vec<Option<ValueType>>),
+    Struct(String),
 }
 
 #[derive(Clone, Debug)]
@@ -43,6 +45,7 @@ enum RuntimeValue {
     Pointer(PointerValue),
     Array(Vec<Value>),
     Tuple(Vec<Value>),
+    Struct(HashMap<String, Value>),
 }
 
 #[derive(Clone, Debug)]
@@ -108,6 +111,17 @@ struct FunctionDefinition {
     body: String,
 }
 
+#[derive(Clone)]
+struct StructFieldDefinition {
+    name: String,
+    ty: ValueType,
+}
+
+#[derive(Clone)]
+struct StructDefinition {
+    fields: Vec<StructFieldDefinition>,
+}
+
 #[derive(Debug)]
 struct ReturnSignal(Value);
 
@@ -119,6 +133,7 @@ impl<'a> Parser<'a> {
             env: vec![HashMap::new()],
             next_location: 0,
             functions: HashMap::new(),
+            structs: HashMap::new(),
             in_function_body: false,
         }
     }
@@ -159,6 +174,8 @@ impl<'a> Parser<'a> {
             self.parse_while_statement()
         } else if self.consume_keyword("fn") {
             self.parse_function_definition_statement()
+        } else if self.consume_keyword("struct") {
+            self.parse_struct_definition_statement()
         } else if self.consume_keyword("return") {
             self.parse_return_statement()
         } else if let Some(value) = self.try_parse_assignment_statement() {
@@ -251,6 +268,54 @@ impl<'a> Parser<'a> {
             value: Value::int(0, None, false, None),
             allows_following_statement_without_separator: true,
         }
+    }
+
+    fn parse_struct_definition_statement(&mut self) -> StatementValue {
+        let name = self.parse_identifier();
+
+        if self.structs.contains_key(&name) {
+            panic_with_message("duplicate struct definition");
+        }
+
+        self.expect(b'{');
+        let fields = self.parse_struct_definition_fields();
+        self.expect(b'}');
+        let _ = self.consume(b';');
+
+        self.structs.insert(name, StructDefinition { fields });
+
+        StatementValue {
+            value: Value::int(0, None, false, None),
+            allows_following_statement_without_separator: true,
+        }
+    }
+
+    fn parse_struct_definition_fields(&mut self) -> Vec<StructFieldDefinition> {
+        let mut fields = Vec::new();
+
+        loop {
+            self.skip_whitespace();
+
+            if self.input.get(self.pos) == Some(&b'}') {
+                break;
+            }
+
+            let name = self.parse_identifier();
+            self.expect(b':');
+            let ty = self.parse_type_annotation();
+
+            if fields
+                .iter()
+                .any(|field: &StructFieldDefinition| field.name == name)
+            {
+                panic_with_message("duplicate struct field");
+            }
+
+            fields.push(StructFieldDefinition { name, ty });
+            self.expect(b';');
+        }
+
+        fields
     }
 
     fn parse_function_parameters(&mut self) -> Vec<FunctionParameter> {
@@ -371,6 +436,7 @@ impl<'a> Parser<'a> {
 
         let mut body_parser = Parser::new(function.body.as_str());
         body_parser.functions = self.functions.clone();
+        body_parser.structs = self.structs.clone();
         body_parser.in_function_body = true;
 
         for (parameter, argument) in function.parameters.iter().zip(arguments.into_iter()) {
@@ -879,6 +945,7 @@ impl<'a> Parser<'a> {
                 "I32" => ValueType::I32,
                 "I64" => ValueType::I64,
                 "Bool" => ValueType::Bool,
+                name if self.structs.contains_key(name) => ValueType::Struct(name.to_string()),
                 _ => panic!("invalid type annotation"),
             }
         }
@@ -1091,8 +1158,18 @@ impl<'a> Parser<'a> {
 
         loop {
             if self.consume(b'.') {
-                let index = self.parse_tuple_index();
-                value = self.tuple_index(value, index);
+                if self
+                    .input
+                    .get(self.pos)
+                    .copied()
+                    .is_some_and(|byte| byte.is_ascii_digit())
+                {
+                    let index = self.parse_tuple_index();
+                    value = self.tuple_index(value, index);
+                } else {
+                    let field = self.parse_identifier();
+                    value = self.struct_field(value, &field);
+                }
             } else if self.consume(b'[') {
                 let index = self.parse_expression();
                 self.expect(b']');
@@ -1108,10 +1185,6 @@ impl<'a> Parser<'a> {
     fn parse_tuple_index(&mut self) -> usize {
         self.skip_whitespace();
         let start = self.consume_ascii_digits();
-
-        if self.pos == start {
-            panic!("expected tuple index");
-        }
 
         let index = std::str::from_utf8(&self.input[start..self.pos]).expect("utf8");
         index.parse::<usize>().expect("invalid tuple index")
@@ -1136,6 +1209,17 @@ impl<'a> Parser<'a> {
             .unwrap_or_else(|| panic!("array index out of bounds"))
     }
 
+    fn struct_field(&self, value: Value, field: &str) -> Value {
+        let RuntimeValue::Struct(fields) = value.runtime else {
+            panic!("expected struct value");
+        };
+
+        fields
+            .get(field)
+            .cloned()
+            .unwrap_or_else(|| panic!("unknown struct field"))
+    }
+
     fn parse_primary(&mut self) -> Value {
         self.skip_whitespace();
 
@@ -1157,6 +1241,8 @@ impl<'a> Parser<'a> {
 
             if self.input.get(self.pos) == Some(&b'(') {
                 self.parse_function_call(name)
+            } else if self.input.get(self.pos) == Some(&b'{') {
+                self.parse_struct_literal(name)
             } else {
                 let variable = self.lookup_variable(&name);
                 variable
@@ -1193,6 +1279,56 @@ impl<'a> Parser<'a> {
         }
 
         Value::array(elements, false, None)
+    }
+
+    fn parse_struct_literal(&mut self, name: String) -> Value {
+        let struct_definition = self
+            .structs
+            .get(&name)
+            .cloned()
+            .unwrap_or_else(|| panic!("undefined struct"));
+
+        self.expect(b'{');
+        let mut fields = HashMap::new();
+
+        if !self.consume(b'}') {
+            loop {
+                let field_name = self.parse_identifier();
+
+                if fields.contains_key(&field_name) {
+                    panic!("duplicate struct field");
+                }
+
+                let field_definition = struct_definition
+                    .fields
+                    .iter()
+                    .find(|field| field.name == field_name)
+                    .unwrap_or_else(|| panic!("unknown struct field"));
+
+                self.expect(b':');
+                let value = self.parse_expression();
+                let value = self.apply_type_annotation(value, Some(field_definition.ty.clone()));
+                fields.insert(field_name, value.into_storage());
+
+                if self.consume(b',') {
+                    if self.consume(b'}') {
+                        panic!("invalid struct literal");
+                    }
+                    continue;
+                }
+
+                self.expect(b'}');
+                break;
+            }
+        }
+
+        for field_definition in &struct_definition.fields {
+            if !fields.contains_key(&field_definition.name) {
+                panic!("missing struct field");
+            }
+        }
+
+        Value::struct_value(name, fields, false, None)
     }
 
     fn parse_parenthesized_or_tuple_expression(&mut self) -> Value {
@@ -1506,7 +1642,9 @@ fn comparison_types_compatible(left: Option<&ValueType>, right: Option<&ValueTyp
         return tuple_type_compatible(left, right);
     }
 
-    if matches!(left, Some(ValueType::Tuple(_))) || matches!(right, Some(ValueType::Tuple(_))) {
+    if matches!(left, Some(ValueType::Tuple(_) | ValueType::Struct(_)))
+        || matches!(right, Some(ValueType::Tuple(_) | ValueType::Struct(_)))
+    {
         return false;
     }
 
@@ -1530,6 +1668,8 @@ fn ordered_comparison_types_compatible(
         || matches!(right, Some(ValueType::Array { .. }))
         || matches!(left, Some(ValueType::Tuple(_)))
         || matches!(right, Some(ValueType::Tuple(_)))
+        || matches!(left, Some(ValueType::Struct(_)))
+        || matches!(right, Some(ValueType::Struct(_)))
     {
         false
     } else {
@@ -1603,6 +1743,7 @@ fn type_is_compatible(expected: &ValueType, actual: Option<&ValueType>) -> bool 
             (ValueType::Tuple(expected), ValueType::Tuple(actual)) => {
                 tuple_type_compatible(expected, actual)
             }
+            (ValueType::Struct(expected), ValueType::Struct(actual)) => expected == actual,
             _ => expected == actual,
         },
     }
@@ -1666,12 +1807,27 @@ impl Value {
         }
     }
 
+    fn struct_value(
+        name: String,
+        fields: HashMap<String, Value>,
+        mutable_access: bool,
+        place: Option<String>,
+    ) -> Self {
+        Self {
+            runtime: RuntimeValue::Struct(fields),
+            ty: Some(ValueType::Struct(name)),
+            place,
+            mutable_access,
+        }
+    }
+
     fn as_int(&self) -> i32 {
         match &self.runtime {
             RuntimeValue::Int(value) => *value,
             RuntimeValue::Pointer(_) => panic!("expected numeric value"),
             RuntimeValue::Array(_) => panic!("expected numeric value"),
             RuntimeValue::Tuple(_) => panic!("expected numeric value"),
+            RuntimeValue::Struct(_) => panic!("expected numeric value"),
         }
     }
 
@@ -1686,7 +1842,10 @@ impl Value {
     fn as_pointer(&self) -> &PointerValue {
         match &self.runtime {
             RuntimeValue::Pointer(pointer) => pointer,
-            RuntimeValue::Int(_) | RuntimeValue::Array(_) | RuntimeValue::Tuple(_) => {
+            RuntimeValue::Int(_)
+            | RuntimeValue::Array(_)
+            | RuntimeValue::Tuple(_)
+            | RuntimeValue::Struct(_) => {
                 panic!("dereferencing non-pointer")
             }
         }
@@ -2225,6 +2384,113 @@ mod tests {
     #[should_panic]
     fn panics_when_array_value_is_used_as_numeric_directly() {
         interpret_tuff("let a = [1U8, 2U8]; a + 1".to_string());
+    }
+
+    #[test]
+    fn struct_literal_field_access_returns_expected_value() {
+        assert_eq!(
+            interpret_tuff(
+                "struct Point { x : I32; y : I32; } let p = Point { x: 3, y: 4 }; p.x + p.y"
+                    .to_string()
+            ),
+            7
+        );
+    }
+
+    #[test]
+    fn struct_type_annotation_accepts_matching_literal() {
+        assert_eq!(
+            interpret_tuff(
+                "struct Point { x : I32; y : I32; } let p : Point = Point { x: 1, y: 2 }; p.y"
+                    .to_string()
+            ),
+            2
+        );
+    }
+
+    #[test]
+    fn empty_struct_literal_is_allowed() {
+        assert_eq!(
+            interpret_tuff("struct Unit {} let unit = Unit {}; 0".to_string()),
+            0
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_duplicate_struct_definition() {
+        interpret_tuff(
+            "struct Point { x : I32; } struct Point { y : I32; } 0".to_string(),
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_duplicate_struct_field_in_definition() {
+        interpret_tuff("struct Point { x : I32; x : I32; } 0".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_unknown_struct_name() {
+        interpret_tuff("let p = Point { x: 1, y: 2 }; p.x".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_unknown_struct_field_in_literal() {
+        interpret_tuff(
+            "struct Point { x : I32; y : I32; } let p = Point { x: 1, z: 2, y: 3 }; p.x"
+                .to_string(),
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_missing_required_struct_field() {
+        interpret_tuff(
+            "struct Point { x : I32; y : I32; } let p = Point { x: 1 }; p.x".to_string(),
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_duplicate_struct_field_in_literal() {
+        interpret_tuff(
+            "struct Point { x : I32; y : I32; } let p = Point { x: 1, x: 2, y: 3 }; p.x"
+                .to_string(),
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_struct_field_type_mismatch() {
+        interpret_tuff(
+            "struct Point { x : I32; y : I32; } let p = Point { x: true, y: 2 }; p.x"
+                .to_string(),
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_field_access_on_non_struct_value() {
+        interpret_tuff("1.x".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_unknown_field_access() {
+        interpret_tuff(
+            "struct Point { x : I32; y : I32; } let p = Point { x: 1, y: 2 }; p.z".to_string(),
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_when_struct_value_is_used_as_numeric_directly() {
+        interpret_tuff(
+            "struct Point { x : I32; y : I32; } let p = Point { x: 1, y: 2 }; p + 1".to_string(),
+        );
     }
 
     #[test]
