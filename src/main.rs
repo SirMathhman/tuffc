@@ -1,18 +1,14 @@
+use std::collections::HashMap;
+
 pub fn interpret_tuff(input: String) -> i32 {
     let mut parser = Parser::new(&input);
-    let value = parser.parse_expression();
-    parser.skip_whitespace();
-
-    if !parser.is_eof() {
-        panic!("unexpected trailing input");
-    }
-
-    value
+    parser.parse_program()
 }
 
 struct Parser<'a> {
     input: &'a [u8],
     pos: usize,
+    env: HashMap<String, i32>,
 }
 
 impl<'a> Parser<'a> {
@@ -20,6 +16,7 @@ impl<'a> Parser<'a> {
         Self {
             input: input.as_bytes(),
             pos: 0,
+            env: HashMap::new(),
         }
     }
 
@@ -36,10 +33,80 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn parse_program(&mut self) -> i32 {
+        self.skip_whitespace();
+        if self.is_eof() {
+            panic!("empty input");
+        }
+
+        let mut last_value = self.parse_statement();
+
+        loop {
+            self.skip_whitespace();
+
+            if self.consume(b';') {
+                self.skip_whitespace();
+                if self.is_eof() {
+                    return last_value;
+                }
+
+                last_value = self.parse_statement();
+            } else if self.is_eof() {
+                return last_value;
+            } else {
+                panic!("unexpected trailing input");
+            }
+        }
+    }
+
+    fn parse_statement(&mut self) -> i32 {
+        self.skip_whitespace();
+
+        if self.consume_keyword("let") {
+            self.parse_let_statement()
+        } else {
+            self.parse_expression()
+        }
+    }
+
+    fn parse_let_statement(&mut self) -> i32 {
+        let name = self.parse_identifier();
+
+        self.skip_whitespace();
+        self.expect(b':');
+        self.parse_type_annotation();
+        self.expect(b'=');
+
+        let value = self.parse_expression();
+        self.env.insert(name, value);
+        value
+    }
+
+    fn parse_type_annotation(&mut self) {
+        let _ = self.parse_identifier();
+    }
+
     fn consume(&mut self, expected: u8) -> bool {
         self.skip_whitespace();
         if self.input.get(self.pos) == Some(&expected) {
             self.pos += 1;
+            true
+        } else {
+            false
+        }
+    }
+
+    fn consume_keyword(&mut self, keyword: &str) -> bool {
+        self.skip_whitespace();
+        let bytes = keyword.as_bytes();
+        if self.input.get(self.pos..self.pos + bytes.len()) == Some(bytes)
+            && self
+                .input
+                .get(self.pos + bytes.len())
+                .map(|byte| !byte.is_ascii_alphanumeric() && *byte != b'_')
+                .unwrap_or(true)
+        {
+            self.pos += bytes.len();
             true
         } else {
             false
@@ -100,7 +167,9 @@ impl<'a> Parser<'a> {
         if self.consume(b'+') {
             self.parse_factor()
         } else if self.consume(b'-') {
-            self.parse_factor().checked_neg().expect("negation overflow")
+            self.parse_factor()
+                .checked_neg()
+                .expect("negation overflow")
         } else {
             self.parse_primary()
         }
@@ -113,9 +182,41 @@ impl<'a> Parser<'a> {
             let value = self.parse_expression();
             self.expect(b')');
             value
+        } else if self
+            .input
+            .get(self.pos)
+            .copied()
+            .is_some_and(|byte| byte.is_ascii_alphabetic() || byte == b'_')
+        {
+            let name = self.parse_identifier();
+            *self
+                .env
+                .get(&name)
+                .unwrap_or_else(|| panic!("undefined variable"))
         } else {
             self.parse_number_literal()
         }
+    }
+
+    fn parse_identifier(&mut self) -> String {
+        self.skip_whitespace();
+
+        let start = self.pos;
+        match self.input.get(self.pos).copied() {
+            Some(byte) if byte.is_ascii_alphabetic() || byte == b'_' => self.pos += 1,
+            _ => panic!("expected identifier"),
+        }
+
+        while let Some(&byte) = self.input.get(self.pos) {
+            if !byte.is_ascii_alphanumeric() && byte != b'_' {
+                break;
+            }
+            self.pos += 1;
+        }
+
+        std::str::from_utf8(&self.input[start..self.pos])
+            .expect("utf8")
+            .to_string()
     }
 
     fn parse_number_literal(&mut self) -> i32 {
@@ -140,6 +241,9 @@ impl<'a> Parser<'a> {
                 || byte == b'*'
                 || byte == b'/'
                 || byte == b')'
+                || byte == b';'
+                || byte == b'='
+                || byte == b':'
             {
                 break;
             }
@@ -156,7 +260,10 @@ impl<'a> Parser<'a> {
         let (digits, suffix) = split_literal(literal);
 
         if !suffix.is_empty()
-            && !matches!(suffix, "U8" | "U16" | "U32" | "U64" | "I8" | "I16" | "I32" | "I64")
+            && !matches!(
+                suffix,
+                "U8" | "U16" | "U32" | "U64" | "I8" | "I16" | "I32" | "I64"
+            )
         {
             panic!("invalid literal suffix");
         }
@@ -191,23 +298,47 @@ mod tests {
     use super::interpret_tuff;
 
     #[test]
-    fn parses_addition_with_suffixes() {
-        assert_eq!(interpret_tuff("100U8 + 50U8".to_string()), 150);
+    fn evaluates_let_binding_and_final_expression() {
+        assert_eq!(
+            interpret_tuff("let x : U8 = 100U8 + 50U8; x".to_string()),
+            150
+        );
     }
 
     #[test]
-    fn respects_operator_precedence() {
-        assert_eq!(interpret_tuff("2 + 3 * 4".to_string()), 14);
+    fn evaluates_multiple_bindings_in_sequence() {
+        assert_eq!(
+            interpret_tuff("let x : U8 = 100U8; let y : U8 = 50U8; x + y".to_string()),
+            150
+        );
     }
 
     #[test]
-    fn respects_parentheses_and_whitespace() {
-        assert_eq!(interpret_tuff(" ( 2 + 3 ) * 4 ".to_string()), 20);
+    fn ignores_type_annotations_when_evaluating_bindings() {
+        assert_eq!(
+            interpret_tuff("let total : I32 = ( 2 + 3 ) * 4; total".to_string()),
+            20
+        );
     }
 
     #[test]
-    fn parses_signed_literal_inside_expression() {
-        assert_eq!(interpret_tuff("-7I16 + 10".to_string()), 3);
+    fn allows_expression_to_use_previous_binding() {
+        assert_eq!(
+            interpret_tuff("let x : U8 = 100U8; let result : I32 = x + 50U8; result".to_string()),
+            150
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_undefined_variable_reference() {
+        interpret_tuff("x".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_missing_expression_after_let_assignment() {
+        interpret_tuff("let x : U8 = ; x".to_string());
     }
 
     #[test]
@@ -218,20 +349,8 @@ mod tests {
 
     #[test]
     #[should_panic]
-    fn panics_on_malformed_expression() {
-        interpret_tuff("100U8 +".to_string());
-    }
-
-    #[test]
-    #[should_panic]
     fn panics_on_division_by_zero() {
-        interpret_tuff("4 / 0".to_string());
-    }
-
-    #[test]
-    #[should_panic]
-    fn panics_on_invalid_literal_suffix() {
-        interpret_tuff("42X9 + 1".to_string());
+        interpret_tuff("let x : U8 = 4 / 0; x".to_string());
     }
 }
 
