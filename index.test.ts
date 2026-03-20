@@ -2,7 +2,7 @@ import { compileTuffToTS, type CompileError, type Result } from ".";
 
 const transpiler = new Bun.Transpiler({ loader: "ts" });
 
-function executeTuffCode(tuffSource: string): Result<number, CompileError> {
+function executeTuff(tuffSource: string): Result<number, CompileError> {
   // Step 0: Compile Tuff code to TypeScript
   const compileResult = compileTuffToTS(tuffSource);
   if (compileResult.type === "err") {
@@ -66,7 +66,13 @@ describe("The Tuff Compiler", () => {
 
   it("should compile and execute an empty program", () => {
     const tuffSource = "";
-    const result = executeTuffCode(tuffSource);
+    const result = executeTuff(tuffSource);
     expect(result).toMatchObject({ type: "ok", value: 0 });
+  });
+
+  it("should compile and execute a literal number", () => {
+    const tuffSource = "100";
+    const result = executeTuff(tuffSource);
+    expect(result).toMatchObject({ type: "ok", value: 100 });
   });
 });

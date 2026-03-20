@@ -19,10 +19,20 @@ export type Result<T, X> = Ok<T> | Err<X>;
 export function compileTuffToTS(
   tuffSource: string,
 ): Result<string, CompileError> {
-  if (tuffSource.trim() === "") {
+  const trimmedSource = tuffSource.trim();
+
+  if (trimmedSource === "") {
     return {
       type: "ok",
       value: "return 0;",
+    };
+  }
+
+  // Literal numeric expressions are currently supported.
+  if (/^[0-9]+(?:\.[0-9]+)?$/.test(trimmedSource)) {
+    return {
+      type: "ok",
+      value: `return ${trimmedSource};`,
     };
   }
 
