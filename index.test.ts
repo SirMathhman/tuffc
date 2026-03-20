@@ -149,6 +149,11 @@ describe("The Tuff Compiler", () => {
     expect(result).toMatchObject({ type: "ok", value: 256 });
   });
 
+  it("should compile and execute mixed-typed-and-untagged addition", () => {
+    const result = executeTuff("1U8 + 255 + 1U16");
+    expect(result).toMatchObject({ type: "ok", value: 257 });
+  });
+
   it("should compile and execute 3-term U8 addition", () => {
     const result = executeTuff("1U8 + 2U8 + 3U8");
     expect(result).toMatchObject({ type: "ok", value: 6 });
