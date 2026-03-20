@@ -414,8 +414,8 @@ export function compileTuffToTS(
   }
 
   function combineBinary(
-    left: { expr: string; suffix: string; value: bigint } | any,
-    right: { expr: string; suffix: string; value: bigint } | any,
+    left: { expr: string; suffix: string; value: bigint },
+    right: { expr: string; suffix: string; value: bigint },
     op: string,
   ): { expr: string; suffix: string; value: bigint } {
     const suffix = sameSuffix(left.suffix, right.suffix);

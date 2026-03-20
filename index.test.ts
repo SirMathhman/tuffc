@@ -24,7 +24,8 @@ async function executeTuff(
     const { default: eslintConfig } = await import("./eslint.config.js");
     const { ESLint } = await import("eslint");
     const eslint = new ESLint({
-      overrideConfig: eslintConfig as any,
+      overrideConfig:
+        eslintConfig as unknown as import("eslint").Linter.Config[],
       overrideConfigFile: true,
     });
 
