@@ -37,9 +37,6 @@ function executeTuff(
 
   // Step 3: Execute the JavaScript code using new Function and capture the result
   try {
-    const readInit = `
-      const __readQueue = ${JSON.stringify("")};
-    `;
     const readSetup = `
       const __stdin = ${JSON.stringify(stdin)};
       const __readQueue = __stdin.trim() ? __stdin.trim().split(/\\s+/) : [];
