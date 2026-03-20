@@ -93,4 +93,42 @@ describe("The Tuff Compiler", () => {
     const result = executeTuff(tuffSource);
     expect(result).toMatchObject({ type: "err" });
   });
+
+  it("should compile and execute U16/U32/U64 values", () => {
+    expect(executeTuff("65535U16")).toMatchObject({ type: "ok", value: 65535 });
+    expect(executeTuff("4294967295U32")).toMatchObject({
+      type: "ok",
+      value: 4294967295,
+    });
+    expect(executeTuff("9223372036854775807U64")).toMatchObject({
+      type: "ok",
+      value: 9223372036854775807,
+    });
+  });
+
+  it("should compile and execute signed I8/I16/I32/I64 values", () => {
+    expect(executeTuff("-128I8")).toMatchObject({ type: "ok", value: -128 });
+    expect(executeTuff("127I8")).toMatchObject({ type: "ok", value: 127 });
+    expect(executeTuff("-32768I16")).toMatchObject({
+      type: "ok",
+      value: -32768,
+    });
+    expect(executeTuff("32767I16")).toMatchObject({ type: "ok", value: 32767 });
+    expect(executeTuff("-2147483648I32")).toMatchObject({
+      type: "ok",
+      value: -2147483648,
+    });
+    expect(executeTuff("2147483647I32")).toMatchObject({
+      type: "ok",
+      value: 2147483647,
+    });
+    expect(executeTuff("-9223372036854775808I64")).toMatchObject({
+      type: "ok",
+      value: -9223372036854775808,
+    });
+    expect(executeTuff("9223372036854775807I64")).toMatchObject({
+      type: "ok",
+      value: 9223372036854775807,
+    });
+  });
 });

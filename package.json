@@ -12,7 +12,7 @@
   },
   "scripts": {
     "lint": "bunx tsc --noEmit",
-    "find-duplicates": "pmd cpd index.ts index.test.ts --language typescript --minimum-tokens 35 --format markdown || exit 2",
+    "find-duplicates": "pmd cpd index.ts index.test.ts --language typescript --minimum-tokens 35 --ignore-literals --ignore-identifiers --format markdown || exit 2",
     "prepare": "husky"
   }
 }

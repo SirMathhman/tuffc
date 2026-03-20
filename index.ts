@@ -20,6 +20,19 @@ export interface Err<X> {
 }
 export type Result<T, X> = Ok<T> | Err<X>;
 
+function buildCompileError(
+  invalidSource: string,
+  reason: string,
+  fix: string,
+): CompileError {
+  return {
+    invalidSource,
+    message: "Compilation failed",
+    reason,
+    fix,
+  };
+}
+
 export function compileTuffToTS(
   tuffSource: string,
 ): Result<string, CompileError> {
@@ -33,40 +46,74 @@ export function compileTuffToTS(
   }
 
   // Literal numeric expressions are currently supported.
-  // Accepts integer and float forms with optional `U8` integer suffix.
+  // Accepts integer and float forms with optional integer width suffixes.
   const numericSuffixMatch = trimmedSource.match(
-    /^([0-9]+(?:\.[0-9]+)?)(U8)?$/,
+    /^([-+]?[0-9]+(?:\.[0-9]+)?)(U8|U16|U32|U64|I8|I16|I32|I64)?$/,
   );
   if (numericSuffixMatch) {
-    const numericText = numericSuffixMatch[1];
+    const numericText = numericSuffixMatch[1] ?? "";
     const suffix = numericSuffixMatch[2] ?? "";
 
-    if (suffix === "U8") {
-      if (!/^[0-9]+$/.test(numericText)) {
-        // U8 requires integer literal only.
+    if (suffix) {
+      if (numericText.includes(".")) {
         return {
           type: "err",
-          error: {
-            invalidSource: tuffSource,
-            message: "Compilation failed",
-            reason: "Syntax error",
-            fix: "Check the syntax of your Tuff code and try again.",
-          },
+          error: buildCompileError(
+            tuffSource,
+            "Syntax error",
+            "Integer width suffixes require integer literals without decimal points.",
+          ),
         };
       }
 
-      const value = Number(numericText);
-      if (value < 0 || value > 255) {
+      let value: bigint;
+      try {
+        value = BigInt(numericText);
+      } catch {
         return {
           type: "err",
-          error: {
-            invalidSource: tuffSource,
-            message: "Compilation failed",
-            reason: "Value out of range for U8",
-            fix: "Use a value between 0 and 255 for U8 literals.",
-          },
+          error: buildCompileError(
+            tuffSource,
+            "Syntax error",
+            "Use a valid integer literal.",
+          ),
         };
       }
+
+      const bitSize = Number(suffix.slice(1));
+      if (suffix.startsWith("U")) {
+        const max = 2n ** BigInt(bitSize) - 1n;
+        if (value < 0n || value > max) {
+          return {
+            type: "err",
+            error: buildCompileError(
+              tuffSource,
+              "Value out of range for unsigned integer",
+              `Use a value between 0 and ${max} for ${suffix} literals.`,
+            ),
+          };
+        }
+      } else {
+        // signed
+        const min = -(2n ** BigInt(bitSize - 1));
+        const max = 2n ** BigInt(bitSize - 1) - 1n;
+        if (value < min || value > max) {
+          return {
+            type: "err",
+            error: buildCompileError(
+              tuffSource,
+              "Value out of range for signed integer",
+              `Use a value between ${min} and ${max} for ${suffix} literals.`,
+            ),
+          };
+        }
+      }
+
+      // `U*` and `I*` produce number outputs when in safe range.
+      return {
+        type: "ok",
+        value: `return ${numericText};`,
+      };
     }
 
     return {
@@ -77,11 +124,10 @@ export function compileTuffToTS(
 
   return {
     type: "err",
-    error: {
-      invalidSource: tuffSource,
-      message: "Compilation failed",
-      reason: "Syntax error",
-      fix: "Check the syntax of your Tuff code and try again.",
-    },
+    error: buildCompileError(
+      tuffSource,
+      "Syntax error",
+      "Check the syntax of your Tuff code and try again.",
+    ),
   };
 }
