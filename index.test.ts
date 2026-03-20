@@ -50,4 +50,22 @@ describe("interpretTuff", () => {
       "Invalid Tuff input: 100U128",
     );
   });
+
+  it("should evaluate addition expression with U8 values", () => {
+    expect(interpretTuff("1U8 + 2U8")).toBe(3);
+  });
+
+  it("should evaluate addition expression with U8 and plain numeric", () => {
+    expect(interpretTuff("1U8 + 254")).toBe(255);
+  });
+
+  it("should throw for overflow of U8 on addition expression", () => {
+    expect(() => interpretTuff("1U8 + 255")).toThrow(
+      "Invalid Tuff input: 1U8 + 255",
+    );
+  });
+
+  it("should evaluate addition across U8 and U16 to wide result", () => {
+    expect(interpretTuff("1U8 + 255U16")).toBe(256);
+  });
 });

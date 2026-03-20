@@ -11,6 +11,7 @@
     "typescript": "^5"
   },
   "scripts": {
+    "find-duplicates": "pmd cpd index.ts --language typescript --minimum-tokens 35 --format markdown || exit 2",
     "prepare": "husky"
   }
 }

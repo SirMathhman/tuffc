@@ -7,7 +7,7 @@
       },
       {
         "type": "command",
-        "command": "pmd cpd index.ts --language typescript --minimum-tokens 35 --format markdown; if ($LASTEXITCODE -ne 0) { exit 2 }"
+        "command": "bun run find-duplicates; if ($LASTEXITCODE -ne 0) { exit 2 }"
       }
     ]
   }
