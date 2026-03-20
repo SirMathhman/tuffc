@@ -26,6 +26,25 @@ describe("interpretTuff", () => {
     },
   );
 
+  test.each([
+    ["2U8 + 3U8 * 4U8", 14],
+    ["(2U8 + 3U8) * 4U8", 20],
+    ["20U8 - 5U8 - 5U8", 10],
+    ["20U8 / 2U8 / 2U8", 5],
+    ["  25U8   +   75U8  ", 100],
+    ["25U8 + 75U8 + 0U8", 100],
+    ["100U8 - 25U8 * 2U8", 50],
+  ])("evaluates %s to %i", (input, expected) => {
+    expect(interpretTuff(input)).toBe(expected);
+  });
+
+  test.each(["25U8 / 0U8", "(25U8 + 75U8", "25U8 +", "* 25U8", "25U8 ++ 75U8"])(
+    "throws for invalid arithmetic expression %s",
+    (input) => {
+      expect(() => interpretTuff(input)).toThrow();
+    },
+  );
+
   test.each(["128I8", "32768I16", "2147483648I32"])(
     "throws for out-of-range input %s",
     (input) => {
