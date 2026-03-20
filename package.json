@@ -15,7 +15,7 @@
     "typescript": "^5"
   },
   "scripts": {
-    "lint": "eslint .",
+    "lint": "node ./node_modules/eslint/bin/eslint.js .",
     "typecheck": "bunx tsc --noEmit",
     "find-duplicates": "pmd cpd index.ts index.test.ts --language typescript --minimum-tokens 35 --ignore-literals --ignore-identifiers --format markdown || exit 2",
     "prepare": "husky"
