@@ -5,6 +5,12 @@
         "type": "command",
         "command": "bun test; if ($LASTEXITCODE -ne 0) { exit 2 }"
       }
+    ],
+    "PostToolUse": [
+      {
+        "type": "command",
+        "command": "pmd cpd index.ts --language typescript --minimum-tokens 35 --format markdown; if ($LASTEXITCODE -ne 0) { exit 2 }"
+      }
     ]
   }
 }
