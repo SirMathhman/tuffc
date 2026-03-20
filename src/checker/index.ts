@@ -1,1 +1,2 @@
-export const checkerScaffold = "checker";
+export * from "./checker";
+export * from "./types";
