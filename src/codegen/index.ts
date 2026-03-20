@@ -1,1 +1,1 @@
-export const codegenScaffold = "codegen";
+export * from "./codegen";
