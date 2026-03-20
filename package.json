@@ -1,0 +1,15 @@
+{
+  "name": "tuffc",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "bun test",
+    "cpd": "bun run scripts/run-cpd.js",
+    "check": "bun run scripts/precommit.js",
+    "precommit": "bun run scripts/precommit.js"
+  },
+  "devDependencies": {
+    "bun-types": "^1.3.11",
+    "typescript": "^5.9.3"
+  }
+}
