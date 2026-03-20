@@ -1,1 +1,2 @@
-export const parserScaffold = "parser";
+export * from "./ast";
+export * from "./parser";
