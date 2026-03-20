@@ -22,17 +22,61 @@ export type Result<T, X> = Ok<T> | Err<X>;
 
 type TypedExpr = { expr: string; suffix: string; value: bigint | null };
 
+function errResult<T>(error: CompileError): Result<T, CompileError> {
+  return {
+    type: "err",
+    error,
+  };
+}
+
 function buildCompileError(
   invalidSource: string,
+  message: string,
   reason: string,
   fix: string,
 ): CompileError {
   return {
     invalidSource,
-    message: "Compilation failed",
+    message,
     reason,
     fix,
   };
+}
+
+function buildSyntaxError(
+  invalidSource: string,
+  reason: string,
+  fix: string,
+  message = "Invalid Tuff syntax.",
+): CompileError {
+  return buildCompileError(invalidSource, message, reason, fix);
+}
+
+function buildTypeError(
+  invalidSource: string,
+  reason: string,
+  fix: string,
+  message = "Type mismatch in Tuff program.",
+): CompileError {
+  return buildCompileError(invalidSource, message, reason, fix);
+}
+
+function buildSemanticError(
+  invalidSource: string,
+  reason: string,
+  fix: string,
+  message = "Invalid program semantics.",
+): CompileError {
+  return buildCompileError(invalidSource, message, reason, fix);
+}
+
+function buildRangeError(
+  invalidSource: string,
+  reason: string,
+  fix: string,
+  message = "Integer literal is out of range.",
+): CompileError {
+  return buildCompileError(invalidSource, message, reason, fix);
 }
 
 function checkIntegerRange(
@@ -41,34 +85,28 @@ function checkIntegerRange(
   source: string,
 ): Result<null, CompileError> {
   const bitSize = Number(suffix.slice(1));
-  if (suffix.startsWith("U")) {
-    const max = 2n ** BigInt(bitSize) - 1n;
-    if (value < 0n || value > max) {
-      return {
-        type: "err",
-        error: buildCompileError(
-          source,
-          "Value out of range for unsigned integer",
-          `Use a value between 0 and ${max} for ${suffix} literals.`,
-        ),
-      };
-    }
-  } else {
-    const min = -(2n ** BigInt(bitSize - 1));
-    const max = 2n ** BigInt(bitSize - 1) - 1n;
-    if (value < min || value > max) {
-      return {
-        type: "err",
-        error: buildCompileError(
-          source,
-          "Value out of range for signed integer",
-          `Use a value between ${min} and ${max} for ${suffix} literals.`,
-        ),
-      };
-    }
+  const isUnsigned = suffix.startsWith("U");
+  const min = isUnsigned ? 0n : -(2n ** BigInt(bitSize - 1));
+  const max = isUnsigned
+    ? 2n ** BigInt(bitSize) - 1n
+    : 2n ** BigInt(bitSize - 1) - 1n;
+
+  if (value < min || value > max) {
+    const signedness = isUnsigned ? "Unsigned" : "Signed";
+    return errResult(
+      buildRangeError(
+        source,
+        `${value} does not fit in ${suffix}. ${signedness} ${suffix} values must be between ${min} and ${max}.`,
+        `Use a value between ${min} and ${max} for ${suffix} literals.`,
+      ),
+    );
   }
 
   return { type: "ok", value: null };
+}
+
+function normalizeTypeName(typeName: string): string {
+  return typeName.replace(/\s+/g, "");
 }
 
 function parseIntegerType(suffix: string): { signed: boolean; bits: number } {
@@ -77,21 +115,37 @@ function parseIntegerType(suffix: string): { signed: boolean; bits: number } {
   return { signed, bits };
 }
 
+function isPointerType(typeName: string): boolean {
+  return typeName.startsWith("*mut") || typeName.startsWith("*");
+}
+
+function getPointeeType(pointerType: string): string {
+  if (pointerType.startsWith("*mut")) {
+    return pointerType.slice("*mut".length);
+  }
+  if (pointerType.startsWith("*")) {
+    return pointerType.slice(1);
+  }
+  return "";
+}
+
 function isAssignable(sourceSuffix: string, targetSuffix: string): boolean {
+  sourceSuffix = normalizeTypeName(sourceSuffix);
+  targetSuffix = normalizeTypeName(targetSuffix);
+
   if (sourceSuffix === targetSuffix) {
     return true;
   }
 
-  const sourceIsPointer = sourceSuffix.startsWith("*");
-  const targetIsPointer = targetSuffix.startsWith("*");
+  const sourceIsPointer = isPointerType(sourceSuffix);
+  const targetIsPointer = isPointerType(targetSuffix);
 
   if (sourceIsPointer || targetIsPointer) {
     if (!sourceIsPointer || !targetIsPointer) {
       return false;
     }
 
-    // Pointer assignment requires exact pointee type match (no integer width widening
-    // for pointers, to preserve strict aliasing semantics in this language model).
+    // Pointer assignment requires exact pointer type match (including mutability).
     return sourceSuffix === targetSuffix;
   }
 
@@ -114,19 +168,23 @@ function normalizeNumericToken(
   source: string,
 ): Result<{ text: string; suffix: string }, CompileError> {
   const normalized = token.trim();
+  const typedIntegerSyntaxError = (
+    reason: string,
+    fix: string,
+    message: string,
+  ): Result<{ text: string; suffix: string }, CompileError> =>
+    errResult(buildSyntaxError(source, reason, fix, message));
+
   const numericSuffixMatch = normalized.match(
     /^([-+]?[0-9]+(?:\.[0-9]+)?)(U8|U16|U32|U64|I8|I16|I32|I64)?$/,
   );
 
   if (!numericSuffixMatch) {
-    return {
-      type: "err",
-      error: buildCompileError(
-        source,
-        "Syntax error",
-        "Check the syntax of your Tuff code and try again.",
-      ),
-    };
+    return typedIntegerSyntaxError(
+      `Could not parse ${JSON.stringify(normalized)} as a numeric literal or typed integer literal.`,
+      "Use an integer like 42 or a suffixed integer like 42U8.",
+      "Invalid numeric literal.",
+    );
   }
 
   const numericText = numericSuffixMatch[1] ?? "";
@@ -134,28 +192,22 @@ function normalizeNumericToken(
 
   if (suffix) {
     if (numericText.includes(".")) {
-      return {
-        type: "err",
-        error: buildCompileError(
-          source,
-          "Syntax error",
-          "Integer width suffixes require integer literals without decimal points.",
-        ),
-      };
+      return typedIntegerSyntaxError(
+        `The literal ${JSON.stringify(normalized)} uses an integer width suffix with a decimal value.`,
+        "Integer width suffixes require integer literals without decimal points.",
+        "Typed integer literal must be an integer.",
+      );
     }
 
     let value: bigint;
     try {
       value = BigInt(numericText);
     } catch {
-      return {
-        type: "err",
-        error: buildCompileError(
-          source,
-          "Syntax error",
-          "Use a valid integer literal.",
-        ),
-      };
+      return typedIntegerSyntaxError(
+        `The literal ${JSON.stringify(normalized)} is not a valid base-10 integer.`,
+        "Use a valid integer literal.",
+        "Invalid integer literal.",
+      );
     }
 
     const rangeCheck = checkIntegerRange(value, suffix, source);
@@ -174,6 +226,12 @@ export function compileTuffToTS(
   tuffSource: string,
 ): Result<string, CompileError> {
   const trimmedSource = tuffSource.trim();
+  const firstStatement = trimmedSource.split(";")[0]?.trim() ?? "";
+  const looksLikeStatementProgram =
+    trimmedSource.includes(";") ||
+    firstStatement.startsWith("let ") ||
+    /^[A-Za-z_]\w*\s*=/.test(firstStatement) ||
+    /^\*[A-Za-z_]\w*\s*=/.test(firstStatement);
 
   if (trimmedSource === "") {
     return {
@@ -197,10 +255,11 @@ export function compileTuffToTS(
     if (!/^[A-Za-z_]\w*$/.test(name) || !declaredVars.has(name)) {
       return {
         type: "err",
-        error: buildCompileError(
+        error: buildSemanticError(
           tuffSource,
-          "Semantic error",
-          `Undeclared variable: ${name}`,
+          `The variable ${name} is used before it is declared. Tuff requires variables to be declared with let before use.`,
+          `Declare ${name} with let before using it, or correct the variable name.`,
+          "Use of undeclared variable.",
         ),
       };
     }
@@ -227,13 +286,27 @@ export function compileTuffToTS(
 
   function resolveAddressOf(
     name: string,
+    mutable = false,
   ): Result<{ expr: string; suffix: string }, CompileError> {
+    if (mutable && !varMutability.get(name)) {
+      return {
+        type: "err",
+        error: buildTypeError(
+          tuffSource,
+          `Cannot take a mutable reference to ${name} because it was not declared with mut.`,
+          `Declare ${name} as let mut ${name} = ... before taking &mut ${name}.`,
+          "Mutable reference requires a mutable variable.",
+        ),
+      };
+    }
+
     return withResolvedVar(name, (innerType) => {
+      const pointerType = mutable ? `*mut${innerType}` : `*${innerType}`;
       return {
         type: "ok",
         value: {
           expr: `(function(){return {get:()=>${name}, set:(v)=>{${name}=v}}})()`,
-          suffix: `*${innerType}`,
+          suffix: pointerType,
         },
       };
     });
@@ -258,10 +331,11 @@ export function compileTuffToTS(
     if (!variableMatch) {
       return {
         type: "err",
-        error: buildCompileError(
+        error: buildSyntaxError(
           tuffSource,
-          "Syntax error",
-          "Invalid variable reference.",
+          "A variable name was expected after & or * but none was found.",
+          "Add a valid identifier after the operator, such as &x or *ptr.",
+          "Expected a variable name.",
         ),
       };
     }
@@ -274,31 +348,35 @@ export function compileTuffToTS(
     name: string,
   ): Result<{ expr: string; suffix: string }, CompileError> {
     return withResolvedVar(name, (sourceType) => {
-      if (!sourceType.startsWith("*")) {
+      if (!isPointerType(sourceType)) {
         return {
           type: "err",
-          error: buildCompileError(
+          error: buildTypeError(
             tuffSource,
-            "Type error",
-            "Cannot dereference a non-pointer value.",
+            `Cannot dereference ${name} because its type is ${sourceType}, not a pointer type.`,
+            `Take the address of a variable first, or dereference only values of type *T or *mut T.`,
+            "Dereference requires a pointer.",
           ),
         };
       }
+
+      const derefType = getPointeeType(sourceType);
 
       return {
         type: "ok",
         value: {
           expr: `${name}.get()`,
-          suffix: sourceType.slice(1),
+          suffix: derefType,
         },
       };
     });
   }
 
-  if (statements.length > 0 && statements[0]?.startsWith("let ")) {
+  if (statements.length > 0 && looksLikeStatementProgram) {
     const statementRegex =
-      /^let\s+(mut\s+)?([A-Za-z_]\w*)\s*(?::\s*(\*?(?:U8|U16|U32|U64|I8|I16|I32|I64)))?\s*=\s*(.+)$/;
+      /^let\s+(mut\s+)?([A-Za-z_]\w*)\s*(?::\s*([*]?(?:mut\s+)?(?:U8|U16|U32|U64|I8|I16|I32|I64)))?\s*=\s*(.+)$/;
     const assignmentRegex = /^([A-Za-z_]\w*)\s*=\s*(.+)$/;
+    const derefAssignmentRegex = /^\*([A-Za-z_]\w*)\s*=\s*(.+)$/;
     let compiledStatements = "";
 
     function resolveRhsExpression(
@@ -306,9 +384,14 @@ export function compileTuffToTS(
     ): Result<{ expr: string; suffix: string }, CompileError> {
       const trimmedRhs = rhsSource.trim();
 
+      if (trimmedRhs.startsWith("&mut ")) {
+        const inner = trimmedRhs.slice("&mut ".length).trim();
+        return resolveAddressOf(inner, true);
+      }
+
       if (trimmedRhs.startsWith("&")) {
         const inner = trimmedRhs.slice(1).trim();
-        return resolveAddressOf(inner);
+        return resolveAddressOf(inner, false);
       }
 
       if (trimmedRhs.startsWith("*")) {
@@ -365,10 +448,11 @@ export function compileTuffToTS(
       if (targetType && rhsSuffix && !isAssignable(rhsSuffix, targetType)) {
         return {
           type: "err",
-          error: buildCompileError(
+          error: buildTypeError(
             tuffSource,
-            "Type error",
-            `Cannot assign ${rhsSuffix} to ${targetType}.`,
+            `The right-hand side has type ${rhsSuffix}, which is not assignable to ${targetType}. Tuff only allows compatible integer widening or exactly matching pointer types.`,
+            `Change the expression type to ${targetType}, or change the target declaration to a compatible type.`,
+            "Assignment type mismatch.",
           ),
         };
       }
@@ -391,26 +475,28 @@ export function compileTuffToTS(
         if (!statementMatch) {
           return {
             type: "err",
-            error: buildCompileError(
+            error: buildSyntaxError(
               tuffSource,
-              "Syntax error",
-              "Invalid let statement syntax.",
+              "The let statement does not match the supported form `let [mut] name [: Type] = value`.",
+              "Rewrite the declaration using `let`, an identifier, an optional type, and an initializer.",
+              "Invalid let statement.",
             ),
           };
         }
 
         const isMutable = !!statementMatch[1];
         const varName = statementMatch[2] ?? "";
-        const typeName = statementMatch[3] ?? "";
+        const typeName = normalizeTypeName(statementMatch[3] ?? "");
         const rhsSource = (statementMatch[4] ?? "").trim();
 
         if (!varName) {
           return {
             type: "err",
-            error: buildCompileError(
+            error: buildSyntaxError(
               tuffSource,
-              "Syntax error",
-              "Invalid variable name in let statement.",
+              "The let statement is missing a valid variable name.",
+              "Use an identifier that starts with a letter or underscore.",
+              "Invalid variable name.",
             ),
           };
         }
@@ -418,10 +504,11 @@ export function compileTuffToTS(
         if (declaredVars.has(varName)) {
           return {
             type: "err",
-            error: buildCompileError(
+            error: buildSemanticError(
               tuffSource,
-              "Semantic error",
-              `Duplicate variable declaration: ${varName}`,
+              `${varName} is declared more than once in the same scope. Tuff does not allow duplicate let bindings.`,
+              `Rename one of the variables or reuse the existing ${varName} binding.`,
+              "Duplicate variable declaration.",
             ),
           };
         }
@@ -451,6 +538,41 @@ export function compileTuffToTS(
             compiledStatements += "return 0;";
           }
         }
+      } else if (derefAssignmentRegex.test(statement)) {
+        const derefAssignmentMatch =
+          statement.match(derefAssignmentRegex) ?? [];
+        const targetVar = derefAssignmentMatch[1] ?? "";
+        const rhsSource = (derefAssignmentMatch[2] ?? "").trim();
+
+        const targetResolve = resolveVarRef(targetVar);
+        if (targetResolve.type === "err") {
+          return targetResolve;
+        }
+
+        const pointerType = varTypes.get(targetVar) ?? "";
+        if (!pointerType.startsWith("*mut")) {
+          return {
+            type: "err",
+            error: buildTypeError(
+              tuffSource,
+              `Cannot assign through ${targetVar} because its type ${pointerType || "<unknown>"} is not a mutable pointer.`,
+              `Declare ${targetVar} as a *mut pointer or take a mutable reference with &mut before writing through it.`,
+              "Assignment through pointer requires *mut.",
+            ),
+          };
+        }
+
+        const pointeeType = getPointeeType(pointerType);
+        const rhsResolve = resolveAndCheckRhs(rhsSource, pointeeType);
+        if (rhsResolve.type === "err") {
+          return rhsResolve;
+        }
+
+        compiledStatements += `${targetVar}.set(${rhsResolve.value.expr});`;
+
+        if (isLast) {
+          compiledStatements += `return ${targetVar}.get();`;
+        }
       } else if (assignmentRegex.test(statement)) {
         const assignmentMatch = statement.match(assignmentRegex) ?? [];
         const targetVar = assignmentMatch[1] ?? "";
@@ -464,10 +586,11 @@ export function compileTuffToTS(
         if (!varMutability.get(targetVar)) {
           return {
             type: "err",
-            error: buildCompileError(
+            error: buildSemanticError(
               tuffSource,
-              "Semantic error",
-              `Cannot assign to immutable variable: ${targetVar}`,
+              `${targetVar} was declared without mut, so it cannot be reassigned.`,
+              `Change the declaration to let mut ${targetVar} = ... if reassignment is intended.`,
+              "Cannot assign to immutable variable.",
             ),
           };
         }
@@ -489,10 +612,11 @@ export function compileTuffToTS(
         if (!isLast) {
           return {
             type: "err",
-            error: buildCompileError(
+            error: buildSyntaxError(
               tuffSource,
-              "Syntax error",
-              "Only the last statement may be a value expression.",
+              "A bare value expression appeared before the end of the program. Only the final statement may produce the program result.",
+              "Move the expression to the end, or bind it to a variable with let.",
+              "Non-final value expression is not allowed.",
             ),
           };
         }
@@ -526,10 +650,11 @@ export function compileTuffToTS(
     if (!match || !match[1]) {
       return {
         type: "err",
-        error: buildCompileError(
+        error: buildSyntaxError(
           tuffSource,
-          "Syntax error",
-          "Check the syntax of your Tuff code and try again.",
+          "The parser expected a numeric literal, parenthesized expression, variable, pointer operation, or read<T>() call.",
+          "Check the expression syntax near the failing token.",
+          "Unexpected token in expression.",
         ),
       };
     }
@@ -551,6 +676,15 @@ export function compileTuffToTS(
   }
 
   function parseFactor(): Result<TypedExpr, CompileError> {
+    if (sourceNoSpaces.slice(pos).startsWith("&mut")) {
+      pos += 4;
+      const nameResult = parseVariableNameInFactor();
+      if (nameResult.type === "err") return nameResult;
+      const result = resolveAddressOf(nameResult.value, true);
+      if (result.type === "err") return result;
+      return toTypedResult(result);
+    }
+
     if (sourceNoSpaces.slice(pos).startsWith("&")) {
       pos += 1;
       const nameResult = parseVariableNameInFactor();
@@ -593,10 +727,11 @@ export function compileTuffToTS(
       if (pos >= sourceNoSpaces.length || sourceNoSpaces[pos] !== ")") {
         return {
           type: "err",
-          error: buildCompileError(
+          error: buildSyntaxError(
             tuffSource,
-            "Syntax error",
-            "Unmatched parenthesis in expression.",
+            "An opening parenthesis does not have a matching closing parenthesis.",
+            "Add the missing closing parenthesis to complete the expression.",
+            "Unmatched parenthesis.",
           ),
         };
       }
