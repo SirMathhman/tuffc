@@ -5,10 +5,13 @@
   "scripts": {
     "dev": "bun run src/index.ts",
     "build": "bun build src/index.ts --outdir dist",
-    "start": "bun run src/index.ts"
+    "start": "bun run src/index.ts",
+    "prepare": "husky",
+    "lint": "bunx tsc --noEmit"
   },
   "devDependencies": {
     "bun-types": "latest",
+    "husky": "^9.1.7",
     "typescript": "^5.8.0"
   }
 }

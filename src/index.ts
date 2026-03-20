@@ -1,7 +1,12 @@
 export function interpretTuff(input: string): number {
-	if (input === "") {
-		return 0;
-	}
+  if (input === "") {
+    return 0;
+  }
 
-	throw new Error("Unsupported Tuff input");
+  const parsed = Number(input);
+  if (!Number.isNaN(parsed)) {
+    return parsed;
+  }
+
+  throw new Error("Unsupported Tuff input");
 }
