@@ -69,6 +69,27 @@ function checkIntegerRange(
   return { type: "ok", value: null };
 }
 
+function parseIntegerType(suffix: string): { signed: boolean; bits: number } {
+  const signed = suffix.startsWith("I");
+  const bits = Number(suffix.slice(1));
+  return { signed, bits };
+}
+
+function isAssignable(sourceSuffix: string, targetSuffix: string): boolean {
+  const sourceType = parseIntegerType(sourceSuffix);
+  const targetType = parseIntegerType(targetSuffix);
+
+  if (sourceType.signed === targetType.signed) {
+    return sourceType.bits <= targetType.bits;
+  }
+
+  if (!sourceType.signed && targetType.signed) {
+    return sourceType.bits < targetType.bits;
+  }
+
+  return false;
+}
+
 function normalizeNumericToken(
   token: string,
   source: string,
@@ -142,6 +163,150 @@ export function compileTuffToTS(
     };
   }
 
+  const statements: string[] = trimmedSource
+    .split(";")
+    .map((s) => s.trim())
+    .filter((s): s is string => s.length > 0);
+
+  if (statements.length > 0 && statements[0]?.startsWith("let ")) {
+    const statementRegex =
+      /^let\s+([A-Za-z_]\w*)\s*(?::\s*(U8|U16|U32|U64|I8|I16|I32|I64))?\s*=\s*(.+)$/;
+    let compiledStatements = "";
+    const declaredVars = new Set<string>();
+    const varTypes = new Map<string, string>();
+
+    for (let i = 0; i < statements.length; i += 1) {
+      const isLast = i === statements.length - 1;
+      const statement = statements[i]!;
+
+      if (statement.startsWith("let ")) {
+        const statementMatch = statement.match(statementRegex);
+        if (!statementMatch) {
+          return {
+            type: "err",
+            error: buildCompileError(
+              tuffSource,
+              "Syntax error",
+              "Invalid let statement syntax.",
+            ),
+          };
+        }
+
+        const varName = statementMatch[1] ?? "";
+        const typeName = statementMatch[2] ?? "";
+        const rhsSource = (statementMatch[3] ?? "").trim();
+
+        if (!varName) {
+          return {
+            type: "err",
+            error: buildCompileError(
+              tuffSource,
+              "Syntax error",
+              "Invalid variable name in let statement.",
+            ),
+          };
+        }
+
+        if (declaredVars.has(varName)) {
+          return {
+            type: "err",
+            error: buildCompileError(
+              tuffSource,
+              "Semantic error",
+              `Duplicate variable declaration: ${varName}`,
+            ),
+          };
+        }
+
+        let rhsExpr: string;
+        let rhsType = "";
+
+        if (/^[A-Za-z_]\w*$/.test(rhsSource)) {
+          rhsExpr = rhsSource;
+          // variable reference type check
+          rhsType = varTypes.get(rhsSource) ?? "";
+          if (rhsType === "" && typeName) {
+            // no known type for rhs source, still allow and rely on runtime; no specific check
+          }
+        } else {
+          const rhsCompile = compileTuffToTS(rhsSource);
+          if (rhsCompile.type === "err") {
+            return rhsCompile;
+          }
+
+          rhsExpr = rhsCompile.value
+            .replace(/^return\s+/, "")
+            .replace(/;$/, "");
+          const normalizedRhs = normalizeNumericToken(rhsSource, tuffSource);
+          if (normalizedRhs.type === "ok") {
+            rhsType = normalizedRhs.value.suffix;
+          }
+        }
+
+        if (typeName && rhsType) {
+          if (!isAssignable(rhsType, typeName)) {
+            return {
+              type: "err",
+              error: buildCompileError(
+                tuffSource,
+                "Type error",
+                `Cannot assign ${rhsType} to ${typeName}.`,
+              ),
+            };
+          }
+        }
+
+        if (typeName === "" && rhsType) {
+          // infer type from RHS when not explicitly provided
+          varTypes.set(varName, rhsType);
+        } else if (typeName) {
+          varTypes.set(varName, typeName);
+        }
+
+        declaredVars.add(varName);
+
+        compiledStatements += `let ${varName} = ${rhsExpr};`;
+
+        if (isLast) {
+          // If this is the only statement and no expression after let, return 0.
+          if (statements.length === 1) {
+            compiledStatements += "return 0;";
+          }
+        }
+      } else {
+        if (!isLast) {
+          return {
+            type: "err",
+            error: buildCompileError(
+              tuffSource,
+              "Syntax error",
+              "Only the last statement may be a value expression.",
+            ),
+          };
+        }
+
+        if (/^[A-Za-z_]\w*$/.test(statement)) {
+          compiledStatements += `return ${statement};`;
+        } else {
+          const exprCompile = compileTuffToTS(statement);
+          if (exprCompile.type === "err") {
+            return exprCompile;
+          }
+
+          const expr = exprCompile.value
+            .replace(/^return\s+/, "")
+            .replace(/;$/, "");
+          compiledStatements += `return ${expr};`;
+        }
+      }
+    }
+
+    return {
+      type: "ok",
+      value: compiledStatements,
+    };
+  }
+
   // Arithmetic support: +, -, * with precedence.
   const sourceNoSpaces = trimmedSource.replace(/\s+/g, "");
 
@@ -184,6 +349,22 @@ export function compileTuffToTS(
     { expr: string; suffix: string; value: bigint },
     CompileError
   > {
+    const readMatch = sourceNoSpaces
+      .slice(pos)
+      .match(/^read<(U8|U16|U32|U64|I8|I16|I32|I64)>\(\)/);
+    if (readMatch) {
+      const readType = readMatch[1];
+      pos += readMatch[0].length;
+      return {
+        type: "ok",
+        value: {
+          expr: `read("${readType}")`,
+          suffix: "",
+          value: 0n,
+        },
+      };
+    }
+
     if (pos < sourceNoSpaces.length && sourceNoSpaces[pos] === "(") {
       pos += 1;
       const inner = parseExpression();
@@ -207,6 +388,20 @@ export function compileTuffToTS(
           expr: `(${inner.value.expr})`,
           suffix: inner.value.suffix,
           value: inner.value.value,
+        },
+      };
+    }
+
+    const variableMatch = sourceNoSpaces.slice(pos).match(/^([A-Za-z_]\w*)/);
+    if (variableMatch) {
+      const name = variableMatch[1]!;
+      pos += name.length;
+      return {
+        type: "ok",
+        value: {
+          expr: name,
+          suffix: "",
+          value: 0n,
         },
       };
     }

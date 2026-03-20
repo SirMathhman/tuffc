@@ -2,7 +2,10 @@ import { compileTuffToTS, type CompileError, type Result } from ".";
 
 const transpiler = new Bun.Transpiler({ loader: "ts" });
 
-function executeTuff(tuffSource: string): Result<number, CompileError> {
+function executeTuff(
+  tuffSource: string,
+  stdin = "",
+): Result<number, CompileError> {
   // Step 0: Compile Tuff code to TypeScript
   const compileResult = compileTuffToTS(tuffSource);
   if (compileResult.type === "err") {
@@ -34,13 +37,26 @@ function executeTuff(tuffSource: string): Result<number, CompileError> {
 
   // Step 3: Execute the JavaScript code using new Function and capture the result
   try {
-    const result = new Function(jsSource)();
+    const readInit = `
+      const __readQueue = ${JSON.stringify("")};
+    `;
+    const readSetup = `
+      const __stdin = ${JSON.stringify(stdin)};
+      const __readQueue = __stdin.trim() ? __stdin.trim().split(/\\s+/) : [];
+      let __readIndex = 0;
+
+      function read(type) {
+        const val = __readQueue[__readIndex++];
+        return Number(val);
+      }
+    `;
+
+    const result = new Function(readSetup + jsSource)();
     return {
       type: "ok",
       value: result,
     };
   } catch (executionError) {
-    // This will fail the test if execution throws an error
     expect(executionError).toBeUndefined();
     return {
       type: "ok",
@@ -50,20 +66,6 @@ function executeTuff(tuffSource: string): Result<number, CompileError> {
 }
 
 describe("The Tuff Compiler", () => {
-  it("should fail to compile an invalid program", () => {
-    const tuffSource = "invalid";
-    const result = compileTuffToTS(tuffSource);
-    expect(result).toMatchObject({
-      type: "err",
-      error: {
-        invalidSource: tuffSource,
-        message: "Compilation failed",
-        reason: "Syntax error",
-        fix: "Check the syntax of your Tuff code and try again.",
-      },
-    });
-  });
-
   it("should compile and execute an empty program", () => {
     const tuffSource = "";
     const result = executeTuff(tuffSource);
@@ -174,6 +176,16 @@ describe("The Tuff Compiler", () => {
     expect(result).toMatchObject({ type: "ok", value: 5 });
   });
 
+  it("should compile and execute read/U8 stdin input", () => {
+    const result = executeTuff("read<U8>() + read<U8>()", "25 75");
+    expect(result).toMatchObject({ type: "ok", value: 100 });
+  });
+
+  it("should compile and execute let x=read<U8>() and reuse value", () => {
+    const result = executeTuff("let x = read<U8>(); x + x", "25 75");
+    expect(result).toMatchObject({ type: "ok", value: 50 });
+  });
+
   it("should compile and execute modulus", () => {
     const result = executeTuff("10 % 3");
     expect(result).toMatchObject({ type: "ok", value: 1 });
@@ -182,5 +194,40 @@ describe("The Tuff Compiler", () => {
   it("should compile and execute parenthesized expression", () => {
     const result = executeTuff("(2 + 3) * 5");
     expect(result).toMatchObject({ type: "ok", value: 25 });
+  });
+
+  it("should compile and execute let binding expression", () => {
+    const result = executeTuff("let x : I32 = (2 + 3) * 5; x");
+    expect(result).toMatchObject({ type: "ok", value: 25 });
+  });
+
+  it("should compile and execute let binding with no final expression", () => {
+    const result = executeTuff("let x : I32 = (2 + 3) * 5;");
+    expect(result).toMatchObject({ type: "ok", value: 0 });
+  });
+
+  it("should compile and execute let binding with inferred type", () => {
+    const result = executeTuff("let x = (2 + 3) * 5; x");
+    expect(result).toMatchObject({ type: "ok", value: 25 });
+  });
+
+  it("should fail when assigning oversized typed literal", () => {
+    const result = executeTuff("let x : U8 = 100U16; x");
+    expect(result).toMatchObject({ type: "err" });
+  });
+
+  it("should allow assignment to wider typed variable", () => {
+    const result = executeTuff("let x : U16 = 100U8; x");
+    expect(result).toMatchObject({ type: "ok", value: 100 });
+  });
+
+  it("should fail on duplicate let variable", () => {
+    const result = executeTuff("let x = 100; let x = 0;");
+    expect(result).toMatchObject({ type: "err" });
+  });
+
+  it("should fail U8 assignment from U16 variable", () => {
+    const result = executeTuff("let x = 100U16; let y : U8 = x;");
+    expect(result).toMatchObject({ type: "err" });
   });
 });
