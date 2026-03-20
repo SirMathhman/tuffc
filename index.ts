@@ -1,6 +1,15 @@
 console.log("Hello via Bun!");
 
 export function interpretTuff(input: string): number {
-  // TODO: implement full interpreter logic
-  return 0;
+  const trimmed = input.trim();
+  if (trimmed === "") {
+    return 0;
+  }
+
+  const value = Number(trimmed);
+  if (Number.isNaN(value)) {
+    throw new Error(`Invalid Tuff input: ${input}`);
+  }
+
+  return value;
 }
