@@ -1,14 +1,14 @@
-import { compileTuffToTS, type Result } from ".";
+import { compileTuffToTS, type CompileError, type Result } from ".";
 
 const transpiler = new Bun.Transpiler({ loader: "ts" });
 
-function executeTuffCode(tuffSource: string): Result<number, Error> {
+function executeTuffCode(tuffSource: string): Result<number, CompileError> {
   // Step 0: Compile Tuff code to TypeScript
   const compileResult = compileTuffToTS(tuffSource);
   if (compileResult.type === "err") {
     return {
       type: "err",
-      error: new Error(`Compilation failed: ${compileResult.error.message}`),
+      error: compileResult.error,
     };
   }
 
@@ -18,9 +18,13 @@ function executeTuffCode(tuffSource: string): Result<number, Error> {
   try {
     jsSource = transpiler.transformSync(tsSource);
   } catch (transpileError) {
+    // This will fail the test if transpilation throws an error
+    expect(transpileError).toBeUndefined();
+
+    // Nothing is actually returned
     return {
-      type: "err",
-      error: new Error(`Transpilation failed: ${transpileError}`),
+      type: "ok",
+      value: 0,
     };
   }
 
@@ -32,14 +36,30 @@ function executeTuffCode(tuffSource: string): Result<number, Error> {
       value: result,
     };
   } catch (executionError) {
+    // This will fail the test if execution throws an error
+    expect(executionError).toBeUndefined();
     return {
-      type: "err",
-      error: new Error(`Execution failed: ${executionError}`),
+      type: "ok",
+      value: 0,
     };
   }
 }
 
 describe("The Tuff Compiler", () => {
+  it("should fail to compile an invalid program", () => {
+    const tuffSource = "invalid";
+    const result = compileTuffToTS(tuffSource);
+    expect(result).toMatchObject({
+      type: "err",
+      error: {
+        invalidSource: tuffSource,
+        message: "Compilation failed",
+        reason: "Syntax error",
+        fix: "Check the syntax of your Tuff code and try again.",
+      },
+    });
+  });
+
   it("should compile and execute an empty program", () => {
     const tuffSource = "";
     const result = executeTuffCode(tuffSource);
