@@ -3,6 +3,15 @@ export function interpretTuff(input: string): number {
     return 0;
   }
 
+  if (input.includes("+")) {
+    const parts = input.split("+").map((part) => part.trim());
+    if (parts.length < 2 || parts.some((part) => part === "")) {
+      throw new Error("Unsupported Tuff input");
+    }
+
+    return parts.reduce((total, part) => total + interpretTuff(part), 0);
+  }
+
   const suffixMatch = input.match(/^(-?\d+)(U8|U16|U32|U64|I8|I16|I32|I64)$/);
   if (suffixMatch) {
     const value = BigInt(suffixMatch[1]);

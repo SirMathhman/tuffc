@@ -19,7 +19,7 @@ describe("interpretTuff", () => {
     expect(interpretTuff(input)).toBe(expected);
   });
 
-  test.each(["256U8", "65536U16", "10X8", "100u8", "not empty"]) (
+  test.each(["256U8", "65536U16", "10X8", "100u8", "not empty"])(
     "throws for invalid input %s",
     (input) => {
       expect(() => interpretTuff(input)).toThrow();
@@ -32,6 +32,10 @@ describe("interpretTuff", () => {
       expect(() => interpretTuff(input)).toThrow();
     },
   );
+
+  test('returns 100 for "25U8 + 75U8"', () => {
+    expect(interpretTuff("25U8 + 75U8")).toBe(100);
+  });
 
   test('returns 100 for "100"', () => {
     expect(interpretTuff("100")).toBe(100);
