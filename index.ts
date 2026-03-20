@@ -170,12 +170,89 @@ export function compileTuffToTS(
 
   if (statements.length > 0 && statements[0]?.startsWith("let ")) {
     const statementRegex =
-      /^let\s+([A-Za-z_]\w*)\s*(?::\s*(U8|U16|U32|U64|I8|I16|I32|I64))?\s*=\s*(.+)$/;
+      /^let\s+(mut\s+)?([A-Za-z_]\w*)\s*(?::\s*(U8|U16|U32|U64|I8|I16|I32|I64))?\s*=\s*(.+)$/;
+    const assignmentRegex = /^([A-Za-z_]\w*)\s*=\s*(.+)$/;
     let compiledStatements = "";
     const declaredVars = new Set<string>();
     const varTypes = new Map<string, string>();
+    const varMutability = new Map<string, boolean>();
 
-    for (let i = 0; i < statements.length; i += 1) {
+    function resolveRhsExpression(
+      rhsSource: string,
+    ): Result<{ expr: string; suffix: string }, CompileError> {
+      if (/^[A-Za-z_]\w*$/.test(rhsSource)) {
+        return {
+          type: "ok",
+          value: {
+            expr: rhsSource,
+            suffix: varTypes.get(rhsSource) ?? "",
+          },
+        };
+      }
+
+      const rhsCompile = compileTuffToTS(rhsSource);
+      if (rhsCompile.type === "err") {
+        return rhsCompile;
+      }
+
+      const rhsExpr = rhsCompile.value
+        .replace(/^return\s+/, "")
+        .replace(/;$/, "");
+
+      let rhsSuffix = "";
+      const readMatch = rhsSource.match(
+        /^read<(U8|U16|U32|U64|I8|I16|I32|I64)>\(\)$/,
+      );
+      if (readMatch) {
+        rhsSuffix = readMatch[1] ?? "";
+      } else {
+        const normalizedRhs = normalizeNumericToken(rhsSource, tuffSource);
+        rhsSuffix =
+          normalizedRhs.type === "ok" ? normalizedRhs.value.suffix : "";
+      }
+
+      return {
+        type: "ok",
+        value: {
+          expr: rhsExpr,
+          suffix: rhsSuffix,
+        },
+      };
+    }
+
+    function resolveAndCheckRhs(
+      rhsSource: string,
+      targetType: string,
+    ): Result<{ expr: string; suffix: string }, CompileError> {
+      const rhsResolve = resolveRhsExpression(rhsSource);
+      if (rhsResolve.type === "err") {
+        return rhsResolve;
+      }
+
+      const rhsExpr = rhsResolve.value.expr;
+      const rhsSuffix = rhsResolve.value.suffix;
+
+      if (targetType && rhsSuffix && !isAssignable(rhsSuffix, targetType)) {
+        return {
+          type: "err",
+          error: buildCompileError(
+            tuffSource,
+            "Type error",
+            `Cannot assign ${rhsSuffix} to ${targetType}.`,
+          ),
+        };
+      }
+
+      return {
+        type: "ok",
+        value: {
+          expr: rhsExpr,
+          suffix: rhsSuffix,
+        },
+      };
+    }
+
+    for (let i = 0; i < statements.length; i++) {
       const isLast = i === statements.length - 1;
       const statement = statements[i]!;
 
@@ -192,9 +269,10 @@ export function compileTuffToTS(
           };
         }
 
-        const varName = statementMatch[1] ?? "";
-        const typeName = statementMatch[2] ?? "";
-        const rhsSource = (statementMatch[3] ?? "").trim();
+        const isMutable = !!statementMatch[1];
+        const varName = statementMatch[2] ?? "";
+        const typeName = statementMatch[3] ?? "";
+        const rhsSource = (statementMatch[4] ?? "").trim();
 
         if (!varName) {
           return {
@@ -218,43 +296,13 @@ export function compileTuffToTS(
           };
         }
 
-        let rhsExpr: string;
-        let rhsType = "";
-
-        if (/^[A-Za-z_]\w*$/.test(rhsSource)) {
-          rhsExpr = rhsSource;
-          // variable reference type check
-          rhsType = varTypes.get(rhsSource) ?? "";
-          if (rhsType === "" && typeName) {
-            // no known type for rhs source, still allow and rely on runtime; no specific check
-          }
-        } else {
-          const rhsCompile = compileTuffToTS(rhsSource);
-          if (rhsCompile.type === "err") {
-            return rhsCompile;
-          }
-
-          rhsExpr = rhsCompile.value
-            .replace(/^return\s+/, "")
-            .replace(/;$/, "");
-          const normalizedRhs = normalizeNumericToken(rhsSource, tuffSource);
-          if (normalizedRhs.type === "ok") {
-            rhsType = normalizedRhs.value.suffix;
-          }
+        const rhsResolve = resolveAndCheckRhs(rhsSource, typeName);
+        if (rhsResolve.type === "err") {
+          return rhsResolve;
         }
 
-        if (typeName && rhsType) {
-          if (!isAssignable(rhsType, typeName)) {
-            return {
-              type: "err",
-              error: buildCompileError(
-                tuffSource,
-                "Type error",
-                `Cannot assign ${rhsType} to ${typeName}.`,
-              ),
-            };
-          }
-        }
+        const rhsExpr = rhsResolve.value.expr;
+        const rhsType = rhsResolve.value.suffix;
 
         if (typeName === "" && rhsType) {
           // infer type from RHS when not explicitly provided
@@ -264,6 +312,7 @@ export function compileTuffToTS(
         }
 
         declaredVars.add(varName);
+        varMutability.set(varName, isMutable);
 
         compiledStatements += `let ${varName} = ${rhsExpr};`;
 
@@ -272,6 +321,46 @@ export function compileTuffToTS(
           if (statements.length === 1) {
             compiledStatements += "return 0;";
           }
+        }
+      } else if (assignmentRegex.test(statement)) {
+        const assignmentMatch = statement.match(assignmentRegex) ?? [];
+        const targetVar = assignmentMatch[1] ?? "";
+        const rhsSource = (assignmentMatch[2] ?? "").trim();
+
+        if (!declaredVars.has(targetVar)) {
+          return {
+            type: "err",
+            error: buildCompileError(
+              tuffSource,
+              "Semantic error",
+              `Undeclared variable: ${targetVar}`,
+            ),
+          };
+        }
+
+        if (!varMutability.get(targetVar)) {
+          return {
+            type: "err",
+            error: buildCompileError(
+              tuffSource,
+              "Semantic error",
+              `Cannot assign to immutable variable: ${targetVar}`,
+            ),
+          };
+        }
+
+        const targetType = varTypes.get(targetVar) ?? "";
+        const rhsResolve = resolveAndCheckRhs(rhsSource, targetType);
+        if (rhsResolve.type === "err") {
+          return rhsResolve;
+        }
+
+        const rhsExpr = rhsResolve.value.expr;
+
+        compiledStatements += `${targetVar} = ${rhsExpr};`;
+
+        if (isLast) {
+          compiledStatements += `return ${targetVar};`;
         }
       } else {
         if (!isLast) {

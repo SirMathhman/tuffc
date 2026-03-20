@@ -217,6 +217,27 @@ describe("The Tuff Compiler", () => {
     expect(result).toMatchObject({ type: "ok", value: 50 });
   });
 
+  it("should compile and execute mutable reassignment", async () => {
+    const result = await executeTuff(
+      "let mut x = read<U8>(); x = read<U8>(); x",
+      "1 2",
+    );
+    expect(result).toMatchObject({ type: "ok", value: 2 });
+  });
+
+  it("should fail on immutable reassignment", async () => {
+    const result = await executeTuff(
+      "let x = read<U8>(); x = read<U8>(); x",
+      "1 2",
+    );
+    expect(result).toMatchObject({ type: "err" });
+  });
+
+  it("should fail on assignment to undeclared variable", async () => {
+    const result = await executeTuff("x = read<U8>(); x", "1 2");
+    expect(result).toMatchObject({ type: "err" });
+  });
+
   it("should compile and execute modulus", async () => {
     const result = await executeTuff("10 % 3");
     expect(result).toMatchObject({ type: "ok", value: 1 });
