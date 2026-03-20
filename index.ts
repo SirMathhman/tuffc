@@ -184,6 +184,33 @@ export function compileTuffToTS(
     { expr: string; suffix: string; value: bigint },
     CompileError
   > {
+    if (pos < sourceNoSpaces.length && sourceNoSpaces[pos] === "(") {
+      pos += 1;
+      const inner = parseExpression();
+      if (inner.type === "err") return inner;
+
+      if (pos >= sourceNoSpaces.length || sourceNoSpaces[pos] !== ")") {
+        return {
+          type: "err",
+          error: buildCompileError(
+            tuffSource,
+            "Syntax error",
+            "Unmatched parenthesis in expression.",
+          ),
+        };
+      }
+
+      pos += 1;
+      return {
+        type: "ok",
+        value: {
+          expr: `(${inner.value.expr})`,
+          suffix: inner.value.suffix,
+          value: inner.value.value,
+        },
+      };
+    }
+
     return parseNumber();
   }
 

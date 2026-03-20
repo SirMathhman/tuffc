@@ -178,4 +178,9 @@ describe("The Tuff Compiler", () => {
     const result = executeTuff("10 % 3");
     expect(result).toMatchObject({ type: "ok", value: 1 });
   });
+
+  it("should compile and execute parenthesized expression", () => {
+    const result = executeTuff("(2 + 3) * 5");
+    expect(result).toMatchObject({ type: "ok", value: 25 });
+  });
 });
