@@ -75,4 +75,22 @@ describe("The Tuff Compiler", () => {
     const result = executeTuff(tuffSource);
     expect(result).toMatchObject({ type: "ok", value: 100 });
   });
+
+  it("should compile and execute a U8 literal number", () => {
+    const tuffSource = "100U8";
+    const result = executeTuff(tuffSource);
+    expect(result).toMatchObject({ type: "ok", value: 100 });
+  });
+
+  it("should fail to compile a negative U8 literal", () => {
+    const tuffSource = "-100U8";
+    const result = executeTuff(tuffSource);
+    expect(result).toMatchObject({ type: "err" });
+  });
+
+  it("should fail to compile U8 value out of range", () => {
+    const tuffSource = "256U8";
+    const result = executeTuff(tuffSource);
+    expect(result).toMatchObject({ type: "err" });
+  });
 });

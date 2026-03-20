@@ -33,10 +33,45 @@ export function compileTuffToTS(
   }
 
   // Literal numeric expressions are currently supported.
-  if (/^[0-9]+(?:\.[0-9]+)?$/.test(trimmedSource)) {
+  // Accepts integer and float forms with optional `U8` integer suffix.
+  const numericSuffixMatch = trimmedSource.match(
+    /^([0-9]+(?:\.[0-9]+)?)(U8)?$/,
+  );
+  if (numericSuffixMatch) {
+    const numericText = numericSuffixMatch[1];
+    const suffix = numericSuffixMatch[2] ?? "";
+
+    if (suffix === "U8") {
+      if (!/^[0-9]+$/.test(numericText)) {
+        // U8 requires integer literal only.
+        return {
+          type: "err",
+          error: {
+            invalidSource: tuffSource,
+            message: "Compilation failed",
+            reason: "Syntax error",
+            fix: "Check the syntax of your Tuff code and try again.",
+          },
+        };
+      }
+
+      const value = Number(numericText);
+      if (value < 0 || value > 255) {
+        return {
+          type: "err",
+          error: {
+            invalidSource: tuffSource,
+            message: "Compilation failed",
+            reason: "Value out of range for U8",
+            fix: "Use a value between 0 and 255 for U8 literals.",
+          },
+        };
+      }
+    }
+
     return {
       type: "ok",
-      value: `return ${trimmedSource};`,
+      value: `return ${numericText};`,
     };
   }
 
