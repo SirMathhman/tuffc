@@ -27,6 +27,7 @@ enum ValueType {
     I32,
     I64,
     Bool,
+    Char,
     Pointer {
         mutable: bool,
         pointee: Option<Box<ValueType>>,
@@ -1034,6 +1035,7 @@ impl<'a> Parser<'a> {
                 "I32" => ValueType::I32,
                 "I64" => ValueType::I64,
                 "Bool" => ValueType::Bool,
+                "Char" => ValueType::Char,
                 name if self.structs.contains_key(name) => ValueType::Struct(name.to_string()),
                 _ => panic!("invalid type annotation"),
             }
@@ -1334,6 +1336,8 @@ impl<'a> Parser<'a> {
             Value::int(1, Some(ValueType::Bool), false, None)
         } else if self.consume_keyword("false") {
             Value::int(0, Some(ValueType::Bool), false, None)
+        } else if self.input.get(self.pos) == Some(&b'\'') {
+            self.parse_char_literal()
         } else if self.starts_identifier() {
             let name = self.parse_identifier();
             self.skip_whitespace();
@@ -1353,6 +1357,47 @@ impl<'a> Parser<'a> {
         } else {
             self.parse_number_literal()
         }
+    }
+
+    fn parse_char_literal(&mut self) -> Value {
+        self.expect(b'\'');
+
+        let value = match self.input.get(self.pos).copied() {
+            Some(b'\\') => {
+                self.pos += 1;
+                match self.input.get(self.pos).copied() {
+                    Some(b'n') => {
+                        self.pos += 1;
+                        b'\n'
+                    }
+                    Some(b't') => {
+                        self.pos += 1;
+                        b'\t'
+                    }
+                    Some(b'\\') => {
+                        self.pos += 1;
+                        b'\\'
+                    }
+                    Some(b'\'') => {
+                        self.pos += 1;
+                        b'\''
+                    }
+                    _ => panic!("invalid char literal"),
+                }
+            }
+            Some(b'\'') | None => panic!("invalid char literal"),
+            Some(byte) if byte.is_ascii() => {
+                self.pos += 1;
+                byte
+            }
+            Some(_) => panic!("invalid char literal"),
+        };
+
+        if !self.consume(b'\'') {
+            panic!("invalid char literal");
+        }
+
+        Value::int(i32::from(value), Some(ValueType::Char), false, None)
     }
 
     fn parse_array_literal(&mut self) -> Value {
@@ -1639,7 +1684,13 @@ fn merge_assignment_type(
                 Some(expected)
             }
         }
-        (Some(expected), None) => Some(expected),
+        (Some(expected), None) => {
+            if !type_is_compatible(&expected, None) {
+                panic!("type mismatch");
+            }
+
+            Some(expected)
+        }
         (None, Some(actual)) => Some(actual),
         (None, None) => None,
     }
@@ -1702,8 +1753,11 @@ fn compare_ordered_values(left: Value, right: Value, op: ComparisonOp) -> Value 
         panic!("type mismatch");
     }
 
-    let left = left.ensure_numeric();
-    let right = right.ensure_numeric();
+    let (left, right) = if left_ty == Some(ValueType::Char) && right_ty == Some(ValueType::Char) {
+        (left.as_int(), right.as_int())
+    } else {
+        (left.ensure_numeric(), right.ensure_numeric())
+    };
 
     let result = match op {
         ComparisonOp::Less => left < right,
@@ -1752,9 +1806,13 @@ fn comparison_types_compatible(left: Option<&ValueType>, right: Option<&ValueTyp
 
     let left_bool = matches!(left, Some(ValueType::Bool));
     let right_bool = matches!(right, Some(ValueType::Bool));
+    let left_char = matches!(left, Some(ValueType::Char));
+    let right_char = matches!(right, Some(ValueType::Char));
 
     if left_bool || right_bool {
         left_bool && right_bool
+    } else if left_char || right_char {
+        left_char && right_char
     } else {
         comparison_operands_are_numeric(left, right)
     }
@@ -1766,6 +1824,8 @@ fn ordered_comparison_types_compatible(
 ) -> bool {
     if matches!(left, Some(ValueType::Bool))
         || matches!(right, Some(ValueType::Bool))
+        || matches!(left, Some(ValueType::Char))
+        || matches!(right, Some(ValueType::Char))
         || matches!(left, Some(ValueType::Array { .. }))
         || matches!(right, Some(ValueType::Array { .. }))
         || matches!(left, Some(ValueType::Tuple(_)))
@@ -1773,7 +1833,7 @@ fn ordered_comparison_types_compatible(
         || matches!(left, Some(ValueType::Struct(_)))
         || matches!(right, Some(ValueType::Struct(_)))
     {
-        false
+        matches!(left, Some(ValueType::Char)) && matches!(right, Some(ValueType::Char))
     } else {
         comparison_operands_are_numeric(left, right)
     }
@@ -1804,7 +1864,7 @@ where
 
 fn type_is_compatible(expected: &ValueType, actual: Option<&ValueType>) -> bool {
     match actual {
-        None => true,
+        None => type_accepts_untyped_numeric(expected),
         Some(actual) => match (expected, actual) {
             (
                 ValueType::Pointer {
@@ -1849,6 +1909,20 @@ fn type_is_compatible(expected: &ValueType, actual: Option<&ValueType>) -> bool 
             _ => expected == actual,
         },
     }
+}
+
+fn type_accepts_untyped_numeric(expected: &ValueType) -> bool {
+    matches!(
+        expected,
+        ValueType::U8
+            | ValueType::U16
+            | ValueType::U32
+            | ValueType::U64
+            | ValueType::I8
+            | ValueType::I16
+            | ValueType::I32
+            | ValueType::I64
+    )
 }
 
 fn pointer_type_from_value(value_type: Option<&ValueType>, mutable: bool) -> ValueType {
@@ -1934,7 +2008,7 @@ impl Value {
     }
 
     fn ensure_numeric(&self) -> i32 {
-        if self.ty == Some(ValueType::Bool) {
+        if matches!(self.ty, Some(ValueType::Bool | ValueType::Char)) {
             panic!("expected numeric value");
         }
 
@@ -2226,6 +2300,41 @@ mod tests {
     }
 
     #[test]
+    fn char_literal_evaluates_to_ascii_code() {
+        assert_eq!(interpret_tuff("'A'".to_string()), 65);
+    }
+
+    #[test]
+    fn char_annotation_accepts_matching_char_literal() {
+        assert_eq!(
+            interpret_tuff("let letter : Char = 'Z'; letter".to_string()),
+            90
+        );
+    }
+
+    #[test]
+    fn char_basic_escape_literals_work() {
+        assert_eq!(interpret_tuff("'\\n'".to_string()), 10);
+        assert_eq!(interpret_tuff("'\\t'".to_string()), 9);
+        assert_eq!(interpret_tuff("'\\\\'".to_string()), 92);
+        assert_eq!(interpret_tuff("'\\\''".to_string()), 39);
+    }
+
+    #[test]
+    fn char_equality_returns_numeric_result() {
+        assert_eq!(interpret_tuff("'a' == 'a'".to_string()), 1);
+        assert_eq!(interpret_tuff("'a' != 'b'".to_string()), 1);
+    }
+
+    #[test]
+    fn char_ordered_comparisons_work() {
+        assert_eq!(interpret_tuff("'a' < 'b'".to_string()), 1);
+        assert_eq!(interpret_tuff("'b' <= 'b'".to_string()), 1);
+        assert_eq!(interpret_tuff("'c' > 'b'".to_string()), 1);
+        assert_eq!(interpret_tuff("'a' >= 'b'".to_string()), 0);
+    }
+
+    #[test]
     fn bool_equality_returns_numeric_result() {
         assert_eq!(interpret_tuff("true == false".to_string()), 0);
         assert_eq!(interpret_tuff("true != false".to_string()), 1);
@@ -2235,6 +2344,54 @@ mod tests {
     fn numeric_equality_returns_numeric_result() {
         assert_eq!(interpret_tuff("1 == 1".to_string()), 1);
         assert_eq!(interpret_tuff("1 != 2".to_string()), 1);
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_empty_char_literal() {
+        interpret_tuff("''".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_multi_character_char_literal() {
+        interpret_tuff("'ab'".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_unterminated_char_literal() {
+        interpret_tuff("'a".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_invalid_char_escape() {
+        interpret_tuff("'\\q'".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_non_ascii_char_literal() {
+        interpret_tuff("'é'".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_when_char_value_is_used_as_numeric_directly() {
+        interpret_tuff("'a' + 1".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_char_integer_type_mismatch() {
+        interpret_tuff("let letter : Char = 65; letter".to_string());
+    }
+
+    #[test]
+    #[should_panic]
+    fn panics_on_char_reassignment_from_untyped_integer() {
+        interpret_tuff("let mut letter : Char = 'a'; letter = 65; letter".to_string());
     }
 
     #[test]
