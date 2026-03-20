@@ -52,6 +52,23 @@ describe("interpretTuff", () => {
     },
   );
 
+  test('returns 100 for "let x : U8 = 100U8; x"', () => {
+    expect(interpretTuff("let x : U8 = 100U8; x")).toBe(100);
+  });
+
+  test("returns 125 for chained let bindings", () => {
+    expect(interpretTuff("let x : U8 = 100U8; let y : U8 = x + 25U8; y")).toBe(
+      125,
+    );
+  });
+
+  test.each(["let x : U8 = 100I8; x", "x", "let x : U8 = 100U8; y"])(
+    "throws for variable binding error %s",
+    (input) => {
+      expect(() => interpretTuff(input)).toThrow();
+    },
+  );
+
   test('returns 100 for "25U8 + 75U8"', () => {
     expect(interpretTuff("25U8 + 75U8")).toBe(100);
   });

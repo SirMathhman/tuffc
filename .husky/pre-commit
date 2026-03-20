@@ -1,2 +1,3 @@
 bun test
 bun run lint
+pmd cpd --dir src --language typescript --minimum-tokens 35 --ignore-literals --ignore-identifiers
