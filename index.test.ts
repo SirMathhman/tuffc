@@ -238,6 +238,26 @@ describe("The Tuff Compiler", () => {
     expect(result).toMatchObject({ type: "err" });
   });
 
+  it("should fail on address-of undeclared variable", async () => {
+    const result = await executeTuff("let y : *I32 = &x; *y");
+    expect(result).toMatchObject({ type: "err" });
+  });
+
+  it("should compile and execute pointer dereference", async () => {
+    const result = await executeTuff("let x = 100; let y : *I32 = &x; *y");
+    expect(result).toMatchObject({ type: "ok", value: 100 });
+  });
+
+  it("should fail pointer assignment when pointee type mismatches", async () => {
+    const result = await executeTuff("let x = 100U16; let y : *I32 = &x; *y");
+    expect(result).toMatchObject({ type: "err" });
+  });
+
+  it("should fail dereference of non-pointer variable", async () => {
+    const result = await executeTuff("let x = 100; *x");
+    expect(result).toMatchObject({ type: "err" });
+  });
+
   it("should compile and execute modulus", async () => {
     const result = await executeTuff("10 % 3");
     expect(result).toMatchObject({ type: "ok", value: 1 });

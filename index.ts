@@ -20,6 +20,8 @@ export interface Err<X> {
 }
 export type Result<T, X> = Ok<T> | Err<X>;
 
+type TypedExpr = { expr: string; suffix: string; value: bigint | null };
+
 function buildCompileError(
   invalidSource: string,
   reason: string,
@@ -76,6 +78,23 @@ function parseIntegerType(suffix: string): { signed: boolean; bits: number } {
 }
 
 function isAssignable(sourceSuffix: string, targetSuffix: string): boolean {
+  if (sourceSuffix === targetSuffix) {
+    return true;
+  }
+
+  const sourceIsPointer = sourceSuffix.startsWith("*");
+  const targetIsPointer = targetSuffix.startsWith("*");
+
+  if (sourceIsPointer || targetIsPointer) {
+    if (!sourceIsPointer || !targetIsPointer) {
+      return false;
+    }
+
+    // Pointer assignment requires exact pointee type match (no integer width widening
+    // for pointers, to preserve strict aliasing semantics in this language model).
+    return sourceSuffix === targetSuffix;
+  }
+
   const sourceType = parseIntegerType(sourceSuffix);
   const targetType = parseIntegerType(targetSuffix);
 
@@ -168,29 +187,140 @@ export function compileTuffToTS(
     .map((s) => s.trim())
     .filter((s): s is string => s.length > 0);
 
+  const declaredVars = new Set<string>();
+  const varTypes = new Map<string, string>();
+  const varMutability = new Map<string, boolean>();
+
+  function resolveVarRef(
+    name: string,
+  ): Result<{ expr: string; suffix: string }, CompileError> {
+    if (!/^[A-Za-z_]\w*$/.test(name) || !declaredVars.has(name)) {
+      return {
+        type: "err",
+        error: buildCompileError(
+          tuffSource,
+          "Semantic error",
+          `Undeclared variable: ${name}`,
+        ),
+      };
+    }
+
+    return {
+      type: "ok",
+      value: {
+        expr: name,
+        suffix: varTypes.get(name) ?? "I32",
+      },
+    };
+  }
+
+  function withResolvedVar(
+    name: string,
+    cb: (
+      varType: string,
+    ) => Result<{ expr: string; suffix: string }, CompileError>,
+  ): Result<{ expr: string; suffix: string }, CompileError> {
+    const variable = resolveVarRef(name);
+    if (variable.type === "err") return variable;
+    return cb(variable.value.suffix);
+  }
+
+  function resolveAddressOf(
+    name: string,
+  ): Result<{ expr: string; suffix: string }, CompileError> {
+    return withResolvedVar(name, (innerType) => {
+      return {
+        type: "ok",
+        value: {
+          expr: `(function(){return {get:()=>${name}, set:(v)=>{${name}=v}}})()`,
+          suffix: `*${innerType}`,
+        },
+      };
+    });
+  }
+
+  function toTypedResult(
+    res: Result<{ expr: string; suffix: string }, CompileError>,
+  ): Result<TypedExpr, CompileError> {
+    if (res.type === "err") return res;
+    return {
+      type: "ok",
+      value: {
+        expr: res.value.expr,
+        suffix: res.value.suffix,
+        value: null,
+      },
+    };
+  }
+
+  function parseVariableNameInFactor(): Result<string, CompileError> {
+    const variableMatch = sourceNoSpaces.slice(pos).match(/^([A-Za-z_]\w*)/);
+    if (!variableMatch) {
+      return {
+        type: "err",
+        error: buildCompileError(
+          tuffSource,
+          "Syntax error",
+          "Invalid variable reference.",
+        ),
+      };
+    }
+    const name = variableMatch[1]!;
+    pos += name.length;
+    return { type: "ok", value: name };
+  }
+
+  function resolveDereference(
+    name: string,
+  ): Result<{ expr: string; suffix: string }, CompileError> {
+    return withResolvedVar(name, (sourceType) => {
+      if (!sourceType.startsWith("*")) {
+        return {
+          type: "err",
+          error: buildCompileError(
+            tuffSource,
+            "Type error",
+            "Cannot dereference a non-pointer value.",
+          ),
+        };
+      }
+
+      return {
+        type: "ok",
+        value: {
+          expr: `${name}.get()`,
+          suffix: sourceType.slice(1),
+        },
+      };
+    });
+  }
+
   if (statements.length > 0 && statements[0]?.startsWith("let ")) {
     const statementRegex =
-      /^let\s+(mut\s+)?([A-Za-z_]\w*)\s*(?::\s*(U8|U16|U32|U64|I8|I16|I32|I64))?\s*=\s*(.+)$/;
+      /^let\s+(mut\s+)?([A-Za-z_]\w*)\s*(?::\s*(\*?(?:U8|U16|U32|U64|I8|I16|I32|I64)))?\s*=\s*(.+)$/;
     const assignmentRegex = /^([A-Za-z_]\w*)\s*=\s*(.+)$/;
     let compiledStatements = "";
-    const declaredVars = new Set<string>();
-    const varTypes = new Map<string, string>();
-    const varMutability = new Map<string, boolean>();
 
     function resolveRhsExpression(
       rhsSource: string,
     ): Result<{ expr: string; suffix: string }, CompileError> {
-      if (/^[A-Za-z_]\w*$/.test(rhsSource)) {
-        return {
-          type: "ok",
-          value: {
-            expr: rhsSource,
-            suffix: varTypes.get(rhsSource) ?? "",
-          },
-        };
+      const trimmedRhs = rhsSource.trim();
+
+      if (trimmedRhs.startsWith("&")) {
+        const inner = trimmedRhs.slice(1).trim();
+        return resolveAddressOf(inner);
       }
 
-      const rhsCompile = compileTuffToTS(rhsSource);
+      if (trimmedRhs.startsWith("*")) {
+        const inner = trimmedRhs.slice(1).trim();
+        return resolveDereference(inner);
+      }
+
+      if (/^[A-Za-z_]\w*$/.test(trimmedRhs)) {
+        return resolveVarRef(trimmedRhs);
+      }
+
+      const rhsCompile = compileTuffToTS(trimmedRhs);
       if (rhsCompile.type === "err") {
         return rhsCompile;
       }
@@ -200,13 +330,13 @@ export function compileTuffToTS(
         .replace(/;$/, "");
 
       let rhsSuffix = "";
-      const readMatch = rhsSource.match(
+      const readMatch = trimmedRhs.match(
         /^read<(U8|U16|U32|U64|I8|I16|I32|I64)>\(\)$/,
       );
       if (readMatch) {
         rhsSuffix = readMatch[1] ?? "";
       } else {
-        const normalizedRhs = normalizeNumericToken(rhsSource, tuffSource);
+        const normalizedRhs = normalizeNumericToken(trimmedRhs, tuffSource);
         rhsSuffix =
           normalizedRhs.type === "ok" ? normalizedRhs.value.suffix : "";
       }
@@ -302,10 +432,9 @@ export function compileTuffToTS(
         }
 
         const rhsExpr = rhsResolve.value.expr;
-        const rhsType = rhsResolve.value.suffix;
+        const rhsType = rhsResolve.value.suffix || "I32";
 
-        if (typeName === "" && rhsType) {
-          // infer type from RHS when not explicitly provided
+        if (typeName === "") {
           varTypes.set(varName, rhsType);
         } else if (typeName) {
           varTypes.set(varName, typeName);
@@ -327,15 +456,9 @@ export function compileTuffToTS(
         const targetVar = assignmentMatch[1] ?? "";
         const rhsSource = (assignmentMatch[2] ?? "").trim();
 
-        if (!declaredVars.has(targetVar)) {
-          return {
-            type: "err",
-            error: buildCompileError(
-              tuffSource,
-              "Semantic error",
-              `Undeclared variable: ${targetVar}`,
-            ),
-          };
+        const targetResolve = resolveVarRef(targetVar);
+        if (targetResolve.type === "err") {
+          return targetResolve;
         }
 
         if (!varMutability.get(targetVar)) {
@@ -374,19 +497,12 @@ export function compileTuffToTS(
           };
         }
 
-        if (/^[A-Za-z_]\w*$/.test(statement)) {
-          compiledStatements += `return ${statement};`;
-        } else {
-          const exprCompile = compileTuffToTS(statement);
-          if (exprCompile.type === "err") {
-            return exprCompile;
-          }
-
-          const expr = exprCompile.value
-            .replace(/^return\s+/, "")
-            .replace(/;$/, "");
-          compiledStatements += `return ${expr};`;
+        const exprResolve = resolveRhsExpression(statement);
+        if (exprResolve.type === "err") {
+          return exprResolve;
         }
+
+        compiledStatements += `return ${exprResolve.value.expr};`;
       }
     }
 
@@ -434,22 +550,37 @@ export function compileTuffToTS(
     };
   }
 
-  function parseFactor(): Result<
-    { expr: string; suffix: string; value: bigint },
-    CompileError
-  > {
+  function parseFactor(): Result<TypedExpr, CompileError> {
+    if (sourceNoSpaces.slice(pos).startsWith("&")) {
+      pos += 1;
+      const nameResult = parseVariableNameInFactor();
+      if (nameResult.type === "err") return nameResult;
+      const result = resolveAddressOf(nameResult.value);
+      if (result.type === "err") return result;
+      return toTypedResult(result);
+    }
+
+    if (sourceNoSpaces.slice(pos).startsWith("*")) {
+      pos += 1;
+      const nameResult = parseVariableNameInFactor();
+      if (nameResult.type === "err") return nameResult;
+      const result = resolveDereference(nameResult.value);
+      if (result.type === "err") return result;
+      return toTypedResult(result);
+    }
+
     const readMatch = sourceNoSpaces
       .slice(pos)
       .match(/^read<(U8|U16|U32|U64|I8|I16|I32|I64)>\(\)/);
     if (readMatch) {
-      const readType = readMatch[1];
+      const readType = readMatch[1]!;
       pos += readMatch[0].length;
       return {
         type: "ok",
         value: {
           expr: `read("${readType}")`,
-          suffix: "",
-          value: 0n,
+          suffix: readType,
+          value: null,
         },
       };
     }
@@ -489,7 +620,7 @@ export function compileTuffToTS(
         type: "ok",
         value: {
           expr: name,
-          suffix: "",
+          suffix: varTypes.get(name) ?? "",
           value: 0n,
         },
       };
@@ -503,21 +634,25 @@ export function compileTuffToTS(
   }
 
   function combineBinary(
-    left: { expr: string; suffix: string; value: bigint },
-    right: { expr: string; suffix: string; value: bigint },
+    left: TypedExpr,
+    right: TypedExpr,
     op: string,
-  ): { expr: string; suffix: string; value: bigint } {
+  ): TypedExpr {
     const suffix = sameSuffix(left.suffix, right.suffix);
-    const value: bigint =
-      op === "+"
-        ? left.value + right.value
-        : op === "-"
-          ? left.value - right.value
-          : op === "*"
-            ? left.value * right.value
-            : op === "%"
-              ? left.value % right.value
-              : left.value / right.value;
+    let value: bigint | null = null;
+
+    if (left.value !== null && right.value !== null) {
+      value =
+        op === "+"
+          ? left.value + right.value
+          : op === "-"
+            ? left.value - right.value
+            : op === "*"
+              ? left.value * right.value
+              : op === "%"
+                ? left.value % right.value
+                : left.value / right.value;
+    }
 
     return {
       expr: `${left.expr}${op}${right.expr}`,
@@ -527,12 +662,9 @@ export function compileTuffToTS(
   }
 
   function parseBinaryExpression(
-    parseOperand: () => Result<
-      { expr: string; suffix: string; value: bigint },
-      CompileError
-    >,
+    parseOperand: () => Result<TypedExpr, CompileError>,
     validOps: Set<string>,
-  ): Result<{ expr: string; suffix: string; value: bigint }, CompileError> {
+  ): Result<TypedExpr, CompileError> {
     let left = parseOperand();
     if (left.type === "err") return left;
 
@@ -564,23 +696,21 @@ export function compileTuffToTS(
     return left;
   }
 
-  function parseTerm(): Result<
-    { expr: string; suffix: string; value: bigint },
-    CompileError
-  > {
+  function parseTerm(): Result<TypedExpr, CompileError> {
     return parseBinaryExpression(parseFactor, new Set(["*", "/", "%"]));
   }
 
-  function parseExpression(): Result<
-    { expr: string; suffix: string; value: bigint },
-    CompileError
-  > {
+  function parseExpression(): Result<TypedExpr, CompileError> {
     return parseBinaryExpression(parseTerm, new Set(["+", "-"]));
   }
 
   const parsed = parseExpression();
   if (parsed.type === "ok" && pos === sourceNoSpaces.length) {
-    if (parsed.value.suffix) {
+    if (parsed.value.suffix.startsWith("*")) {
+      return { type: "ok", value: `return ${parsed.value.expr};` };
+    }
+
+    if (parsed.value.suffix && parsed.value.value !== null) {
       const rangeCheck = checkIntegerRange(
         parsed.value.value,
         parsed.value.suffix,
