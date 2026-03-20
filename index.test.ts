@@ -68,4 +68,18 @@ describe("interpretTuff", () => {
   it("should evaluate addition across U8 and U16 to wide result", () => {
     expect(interpretTuff("1U8 + 255U16")).toBe(256);
   });
+
+  it("should evaluate subtraction expression with U8 values", () => {
+    expect(interpretTuff("5U8 - 2U8")).toBe(3);
+  });
+
+  it("should throw for underflow of U8 on subtraction expression", () => {
+    expect(() => interpretTuff("0U8 - 1U8")).toThrow(
+      "Invalid Tuff input: 0U8 - 1U8",
+    );
+  });
+
+  it("should evaluate operator precedence correctly", () => {
+    expect(interpretTuff("1 + 2 * 3")).toBe(7);
+  });
 });

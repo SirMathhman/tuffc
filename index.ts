@@ -30,15 +30,34 @@ const unsignedOrder: Array<Exclude<TuffType, null>> = [
 ];
 const signedOrder: Array<Exclude<TuffType, null>> = ["I8", "I16", "I32", "I64"];
 
+function throwInvalid(input: string): never {
+  throw new Error(`Invalid Tuff input: ${input}`);
+}
+
+function assertRange(
+  value: number,
+  min: number,
+  max: number,
+  input: string,
+): void {
+  if (value < min || value > max) {
+    throwInvalid(input);
+  }
+}
+
+function assertIsNumber(value: number, input: string): void {
+  if (Number.isNaN(value)) {
+    throwInvalid(input);
+  }
+}
+
 function validateRange(value: number, type: TuffType, input: string): void {
   if (type === null) {
     return;
   }
 
   const [min, max] = bounds[type];
-  if (value < min || value > max) {
-    throw new Error(`Invalid Tuff input: ${input}`);
-  }
+  assertRange(value, min, max, input);
 }
 
 function promoteType(a: TuffType, b: TuffType): TuffType {
@@ -65,14 +84,12 @@ function promoteType(a: TuffType, b: TuffType): TuffType {
   return aBounds[1] >= bBounds[1] ? a : b;
 }
 
-function evaluateTuff(input: string): { value: number; type: TuffType } {
-  const trimmed = input.trim();
-  if (trimmed === "") {
-    return { value: 0, type: null };
-  }
-
+function parseLiteral(
+  token: string,
+  input: string,
+): { value: number; type: TuffType } {
   const typedSuffix = /^([+-]?\d+)(U8|U16|U32|U64|I8|I16|I32|I64)$/i;
-  const typedMatch = trimmed.match(typedSuffix);
+  const typedMatch = token.match(typedSuffix);
   if (typedMatch) {
     const rawValue = Number(typedMatch[1]);
     const suffix = typedMatch[2]!.toUpperCase() as Exclude<TuffType, null>;
@@ -81,24 +98,189 @@ function evaluateTuff(input: string): { value: number; type: TuffType } {
     return { value: rawValue, type: suffix };
   }
 
-  const addExpr = /^(.+)\+(.+)$/;
-  const addMatch = trimmed.match(addExpr);
-  if (addMatch) {
-    const left = evaluateTuff(addMatch[1]!.trim());
-    const right = evaluateTuff(addMatch[2]!.trim());
-    const resultValue = left.value + right.value;
-    const resultType: TuffType = promoteType(left.type, right.type);
+  const value = Number(token);
+  assertIsNumber(value, input);
+  return { value, type: null };
+}
 
-    validateRange(resultValue, resultType, input);
-
-    return { value: resultValue, type: resultType };
+function consumeNumericToken(
+  input: string,
+  start: number,
+): { token: string; next: number } {
+  let j = start;
+  if (input[j] === "+" || input[j] === "-") {
+    j++;
   }
 
-  const value = Number(trimmed);
-  if (Number.isNaN(value)) {
+  const digitStart = j;
+  while (j < input.length && /\d/.test(input.charAt(j))) {
+    j++;
+  }
+  if (j === digitStart) {
+    throwInvalid(input);
+  }
+
+  const suffixMatch = input.slice(j).match(/^(U8|U16|U32|U64|I8|I16|I32|I64)/i);
+  if (suffixMatch) {
+    j += suffixMatch[0].length;
+  }
+
+  return { token: input.slice(start, j), next: j };
+}
+
+function tokenize(input: string): string[] {
+  const tokens: string[] = [];
+  let i = 0;
+
+  while (i < input.length) {
+    const ch = input.charAt(i);
+
+    if (/\s/.test(ch)) {
+      i++;
+      continue;
+    }
+
+    const previous = tokens[tokens.length - 1];
+    const isUnarySign =
+      (ch === "+" || ch === "-") && (!previous || /^[+\-*/(]$/.test(previous));
+
+    if (ch === "+" || ch === "-" || ch === "*" || ch === "/") {
+      if (isUnarySign) {
+        const { token, next } = consumeNumericToken(input, i);
+        tokens.push(token);
+        i = next;
+        continue;
+      }
+
+      tokens.push(ch);
+      i++;
+      continue;
+    }
+
+    if (ch === "(" || ch === ")") {
+      tokens.push(ch);
+      i++;
+      continue;
+    }
+
+    if (/\d/.test(ch)) {
+      const { token, next } = consumeNumericToken(input, i);
+      tokens.push(token);
+      i = next;
+      continue;
+    }
+
+    throwInvalid(input);
+  }
+
+  return tokens;
+}
+
+function ensureTokens(tokens: string[], input: string): void {
+  if (tokens.length === 0) {
+    throwInvalid(input);
+  }
+}
+
+function getPrecedence(): Record<string, number> {
+  return { "+": 1, "-": 1, "*": 2, "/": 2 };
+}
+
+function evaluateTuff(input: string): { value: number; type: TuffType } {
+  const trimmed = input.trim();
+  if (trimmed === "") {
+    return { value: 0, type: null };
+  }
+
+  const tokens = tokenize(trimmed);
+  ensureTokens(tokens, input);
+
+  const precedence = getPrecedence();
+  const outputQueue: string[] = [];
+  const opStack: string[] = [];
+
+  for (const token of tokens) {
+    if (/^[+\-]?[0-9]/.test(token)) {
+      outputQueue.push(token);
+    } else if (
+      token === "+" ||
+      token === "-" ||
+      token === "*" ||
+      token === "/"
+    ) {
+      while (opStack.length > 0) {
+        const topOp = opStack[opStack.length - 1] as keyof typeof precedence;
+        if (topOp === "(") {
+          break;
+        }
+
+        const topPrec = precedence[topOp];
+        const tokenPrec = precedence[token as keyof typeof precedence];
+
+        if (
+          topPrec === undefined ||
+          tokenPrec === undefined ||
+          topPrec < tokenPrec
+        ) {
+          break;
+        }
+
+        outputQueue.push(opStack.pop()!);
+      }
+      opStack.push(token);
+    } else if (token === "(") {
+      opStack.push(token);
+    } else if (token === ")") {
+      while (opStack.length > 0 && opStack[opStack.length - 1] !== "(") {
+        outputQueue.push(opStack.pop()!);
+      }
+      if (opStack.length === 0 || opStack.pop() !== "(") {
+        throw new Error(`Invalid Tuff input: ${input}`);
+      }
+    }
+  }
+
+  while (opStack.length > 0) {
+    const op = opStack.pop()!;
+    if (op === "(" || op === ")") {
+      throw new Error(`Invalid Tuff input: ${input}`);
+    }
+    outputQueue.push(op);
+  }
+
+  const evalStack: Array<{ value: number; type: TuffType }> = [];
+  for (const token of outputQueue) {
+    if (/^[+-]?[0-9]/.test(token)) {
+      evalStack.push(parseLiteral(token, input));
+    } else {
+      if (evalStack.length < 2) {
+        throw new Error(`Invalid Tuff input: ${input}`);
+      }
+      const right = evalStack.pop()!;
+      const left = evalStack.pop()!;
+      let resultValue: number;
+      if (token === "+") {
+        resultValue = left.value + right.value;
+      } else if (token === "-") {
+        resultValue = left.value - right.value;
+      } else if (token === "*") {
+        resultValue = left.value * right.value;
+      } else if (token === "/") {
+        resultValue = left.value / right.value;
+      } else {
+        throw new Error(`Invalid Tuff input: ${input}`);
+      }
+      const resultType = promoteType(left.type, right.type);
+      validateRange(resultValue, resultType, input);
+      evalStack.push({ value: resultValue, type: resultType });
+    }
+  }
+
+  if (evalStack.length !== 1) {
     throw new Error(`Invalid Tuff input: ${input}`);
   }
-  return { value, type: null };
+
+  return evalStack[0]!;
 }
 
 export function interpretTuff(input: string): number {
