@@ -1,3 +1,7 @@
+/*
+When working with this error, ensure that the content of the error actually applies to the situation
+and is not just a fall-through.
+*/
 export interface CompileError {
   invalidSource: string;
   message: string;
