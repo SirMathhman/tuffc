@@ -131,4 +131,46 @@ describe("The Tuff Compiler", () => {
       value: 9223372036854775807,
     });
   });
+
+  it("should compile and execute addition of U8 literals", () => {
+    const result = executeTuff("1U8 + 2U8");
+    expect(result).toMatchObject({ type: "ok", value: 3 });
+  });
+
+  it("should fail to compile addition overflow for U8 literals", () => {
+    const result = executeTuff("1U8 + 255U8");
+    expect(result).toMatchObject({ type: "err" });
+  });
+
+  it("should compile and execute mixed-suffix addition", () => {
+    const compileResult = compileTuffToTS("1U8 + 255U16");
+    console.log("compileResult", compileResult);
+    const result = executeTuff("1U8 + 255U16");
+    expect(result).toMatchObject({ type: "ok", value: 256 });
+  });
+
+  it("should compile and execute 3-term U8 addition", () => {
+    const result = executeTuff("1U8 + 2U8 + 3U8");
+    expect(result).toMatchObject({ type: "ok", value: 6 });
+  });
+
+  it("should compile and execute multiplication plus addition", () => {
+    const result = executeTuff("10 * 5 + 3");
+    expect(result).toMatchObject({ type: "ok", value: 53 });
+  });
+
+  it("should compile and execute addition with multiplication precedence", () => {
+    const result = executeTuff("10 + 5 * 3");
+    expect(result).toMatchObject({ type: "ok", value: 25 });
+  });
+
+  it("should compile and execute division", () => {
+    const result = executeTuff("10 / 2");
+    expect(result).toMatchObject({ type: "ok", value: 5 });
+  });
+
+  it("should compile and execute modulus", () => {
+    const result = executeTuff("10 % 3");
+    expect(result).toMatchObject({ type: "ok", value: 1 });
+  });
 });
