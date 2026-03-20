@@ -1,3 +1,0 @@
-fn main() => {
-  let value: I32 = true;
-};
