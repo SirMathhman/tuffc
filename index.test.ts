@@ -6,6 +6,10 @@ function executeTuffCode(tuffSource: string): Result<number, CompileError> {
   // Step 0: Compile Tuff code to TypeScript
   const compileResult = compileTuffToTS(tuffSource);
   if (compileResult.type === "err") {
+    /*
+    This ensures that when we expect an error, it actually occurs during compile-time
+    and not during transpilation or execution.
+    */
     return {
       type: "err",
       error: compileResult.error,
