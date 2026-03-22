@@ -177,3 +177,51 @@ test("compileTuffAndExecute returns 1.5 for 1.5F64", () => {
 test("compileTuffAndExecute returns -1.5 for -1.5F64", () => {
   assert.strictEqual(compileTuffAndExecute("-1.5F64"), -1.5);
 });
+
+// ── Arithmetic and generic reads ──────────────────────────────────────────
+
+test("compileTuffAndExecute respects precedence for multiplication", () => {
+  assert.strictEqual(compileTuffAndExecute("1U8 + 2U8 * 3U8"), 7);
+});
+
+test("compileTuffAndExecute respects parentheses for grouping", () => {
+  assert.strictEqual(compileTuffAndExecute("(1U8 + 2U8) * 3U8"), 9);
+});
+
+test("compileTuffAndExecute supports unary minus on expressions", () => {
+  assert.strictEqual(compileTuffAndExecute("-(read<I8>())", "5"), -5);
+});
+
+test("compileTuffAndExecute promotes integer addition when needed", () => {
+  assert.strictEqual(compileTuffAndExecute("200U8 + 100U8"), 300);
+});
+
+test("compileTuffAndExecute truncates integer division toward zero", () => {
+  assert.strictEqual(compileTuffAndExecute("5U8 / 2U8"), 2);
+});
+
+test("compileTuffAndExecute throws on division by zero", () => {
+  assert.throws(() => compileTuffAndExecute("5U8 / 0U8"));
+});
+
+test("compileTuffAndExecute reads whitespace-separated stdin tokens", () => {
+  assert.strictEqual(
+    compileTuffAndExecute("read<U8>() + read<U8>()", "100 200"),
+    300,
+  );
+});
+
+test("compileTuffAndExecute reads generic integer types", () => {
+  assert.strictEqual(
+    compileTuffAndExecute("read<I16>() + read<U8>()", "-50 200"),
+    150,
+  );
+});
+
+test("compileTuffAndExecute promotes mixed int and float arithmetic", () => {
+  assert.strictEqual(compileTuffAndExecute("1U8 + 2.5F32"), 3.5);
+});
+
+test("compileTuffAndExecute throws when integer arithmetic overflows", () => {
+  assert.throws(() => compileTuffAndExecute("18446744073709551615U64 + 1U64"));
+});

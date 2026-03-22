@@ -7,7 +7,8 @@
     "build": "tsc",
     "test": "npm run build && node --test dist/compiler.test.js",
     "start": "node dist/index.js",
-    "dev": "tsc --watch"
+    "dev": "tsc --watch",
+    "find-duplicates": "pmd cpd --dir src --language typescript --minimum-tokens 35 --ignore-literals --ignore-identifiers || exit 2"
   },
   "keywords": [],
   "author": "",
