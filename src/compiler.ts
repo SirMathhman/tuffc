@@ -2,8 +2,6 @@ import { ESLint } from "eslint";
 import ts from "typescript";
 import { resolve } from "path";
 
-const INTEGER_LITERAL = /^(-?\d+)(U8|U16|U32|U64|I8|I16|I32|I64)$/;
-
 const TYPE_RANGES: Record<string, { min: bigint; max: bigint }> = {
   U8: { min: 0n, max: 255n },
   U16: { min: 0n, max: 65535n },
@@ -15,21 +13,42 @@ const TYPE_RANGES: Record<string, { min: bigint; max: bigint }> = {
   I64: { min: -9223372036854775808n, max: 9223372036854775807n },
 };
 
+const TYPE_SUFFIXES = ["U64", "U32", "U16", "U8", "I64", "I32", "I16", "I8"];
+
+function isDigit(ch: string): boolean {
+  return ch >= "0" && ch <= "9";
+}
+
+// Returns the digits string (with optional leading '-') if source is a valid
+// in-range integer literal, or null if the source does not match the pattern.
+// Throws if the pattern matches but the value is out of range.
+function parseIntegerLiteral(source: string): string | null {
+  let i = 0;
+  if (source[i] === "-") i++;
+  const digitStart = i;
+  while (i < source.length && isDigit(source[i]!)) i++;
+  if (i === digitStart) return null; // no digits
+
+  const digits = source.slice(0, i);
+  const suffix = source.slice(i);
+  if (!TYPE_SUFFIXES.includes(suffix)) return null;
+
+  const range = TYPE_RANGES[suffix]!;
+  const value = BigInt(digits);
+  if (value < range.min || value > range.max) {
+    throw new Error(
+      `Value ${digits} is out of range for type ${suffix} (${range.min}–${range.max})`,
+    );
+  }
+  return digits;
+}
+
 export function compileTuffToTS(source: string): string {
   if (source === "") return "";
 
-  const match = INTEGER_LITERAL.exec(source);
-  if (match) {
-    const digits = match[1]!;
-    const type = match[2]!;
-    const value = BigInt(digits);
-    const range = TYPE_RANGES[type]!;
-    if (value < range.min || value > range.max) {
-      throw new Error(
-        `Value ${digits} is out of range for type ${type} (${range.min}–${range.max})`,
-      );
-    }
-    return `process.exit(${digits});`;
+  const parsed = parseIntegerLiteral(source);
+  if (parsed !== null) {
+    return `process.exit(${parsed});`;
   }
 
   throw new Error(`Unable to compile Tuff source: ${source}`);

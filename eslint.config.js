@@ -20,6 +20,17 @@ export default [
         "error",
         { argsIgnorePattern: "^_" },
       ],
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "Literal[regex]",
+          message: "Regex literals are banned in the bootstrap compiler.",
+        },
+        {
+          selector: "NewExpression[callee.name='RegExp']",
+          message: "RegExp construction is banned in the bootstrap compiler.",
+        },
+      ],
     },
   },
 ];
