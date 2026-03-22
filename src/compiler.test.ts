@@ -268,3 +268,40 @@ test("compileTuffAndExecute throws when reading an uninitialized let", () => {
 test("compileTuffAndExecute throws when initializer does not fit declared type", () => {
   assert.throws(() => compileTuffAndExecute("let x : U8 = 300U16; x"));
 });
+
+// ── Bool ──────────────────────────────────────────────────────────────────
+
+test("compileTuffAndExecute returns 1 for true", () => {
+  assert.strictEqual(compileTuffAndExecute("true"), 1);
+});
+
+test("compileTuffAndExecute returns 0 for false", () => {
+  assert.strictEqual(compileTuffAndExecute("false"), 0);
+});
+
+test("compileTuffAndExecute supports Bool let bindings", () => {
+  assert.strictEqual(compileTuffAndExecute("let x : Bool = true; x"), 1);
+});
+
+test("compileTuffAndExecute supports mutable Bool reassignment", () => {
+  assert.strictEqual(
+    compileTuffAndExecute("let mut x : Bool; x = false; x"),
+    0,
+  );
+});
+
+test("compileTuffAndExecute reads Bool stdin tokens", () => {
+  assert.strictEqual(compileTuffAndExecute("read<Bool>()", "true"), 1);
+});
+
+test("compileTuffAndExecute throws when Bool stdin token is invalid", () => {
+  assert.throws(() => compileTuffAndExecute("read<Bool>()", "yes"));
+});
+
+test("compileTuffAndExecute throws when assigning numeric values to Bool", () => {
+  assert.throws(() => compileTuffAndExecute("let mut x : Bool; x = 1U8; x"));
+});
+
+test("compileTuffAndExecute throws when Bool is used in arithmetic", () => {
+  assert.throws(() => compileTuffAndExecute("true + 1U8"));
+});

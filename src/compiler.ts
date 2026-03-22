@@ -3,9 +3,17 @@ import ts from "typescript";
 
 type IntegerType = "U8" | "U16" | "U32" | "U64" | "I8" | "I16" | "I32" | "I64";
 type FloatType = "F32" | "F64";
+type BoolType = "Bool";
 type NumericType = IntegerType | FloatType;
+type ValueType = NumericType | BoolType;
 
 type NumericValue = IntegerValue | FloatValue;
+type BoolValue = {
+  kind: "bool";
+  type: BoolType;
+  value: boolean;
+};
+type Value = NumericValue | BoolValue;
 
 type IntegerValue = {
   kind: "int";
@@ -22,9 +30,9 @@ type FloatValue = {
 type Binding = {
   name: string;
   mutable: boolean;
-  type: NumericType;
+  type: ValueType;
   initialized: boolean;
-  value?: NumericValue;
+  value?: Value;
 };
 
 type Program = {
@@ -37,7 +45,7 @@ type Statement =
       kind: "let";
       name: string;
       mutable: boolean;
-      declaredType?: NumericType;
+      declaredType?: ValueType;
       initializer?: Expr;
     }
   | {
@@ -51,8 +59,8 @@ type Statement =
     };
 
 type Expr =
-  | { kind: "literal"; text: string; type: NumericType }
-  | { kind: "read"; type: NumericType }
+  | { kind: "literal"; text: string; type: ValueType }
+  | { kind: "read"; type: ValueType }
   | { kind: "variable"; name: string }
   | { kind: "unary"; operator: "-"; operand: Expr }
   | {
@@ -102,7 +110,8 @@ class TuffRuntimeError extends Error {
 
 type Token =
   | { kind: "number"; text: string }
-  | { kind: "type"; text: NumericType }
+  | { kind: "boolean"; text: "true" | "false" }
+  | { kind: "type"; text: ValueType }
   | { kind: "ident"; text: string }
   | { kind: "keyword"; text: "let" | "mut" }
   | {
@@ -187,7 +196,11 @@ class Tokenizer {
         return { kind: "keyword", text };
       }
 
-      if (isNumericType(text)) {
+      if (text === "true" || text === "false") {
+        return { kind: "boolean", text };
+      }
+
+      if (isValueType(text)) {
         return { kind: "type", text };
       }
 
@@ -250,6 +263,14 @@ function isNumericType(type: string): type is NumericType {
     type === "F32" ||
     type === "F64"
   );
+}
+
+function isBoolType(type: string): type is BoolType {
+  return type === "Bool";
+}
+
+function isValueType(type: string): type is ValueType {
+  return isNumericType(type) || isBoolType(type);
 }
 
 function isFloatType(type: NumericType): type is FloatType {
@@ -337,13 +358,13 @@ function parseLetStatement(tokenizer: Tokenizer): Statement {
     throw new TuffParseError("let requires an identifier name.");
   }
 
-  let declaredType: NumericType | undefined;
+  let declaredType: ValueType | undefined;
   const maybeColon = tokenizer.peek();
   if (maybeColon.kind === "operator" && maybeColon.text === ":") {
     tokenizer.next();
     const typeToken = tokenizer.next();
     if (typeToken.kind !== "type") {
-      throw new TuffParseError("let type annotations must use a numeric type.");
+      throw new TuffParseError("let type annotations must use a valid type.");
     }
     declaredType = typeToken.text;
   }
@@ -443,6 +464,10 @@ function parseUnary(tokenizer: Tokenizer): Expr {
 function negateLiteralExpression(
   literal: Extract<Expr, { kind: "literal" }>,
 ): Expr {
+  if (!isNumericType(literal.type)) {
+    throw new TuffRuntimeError("Boolean values cannot be negated.");
+  }
+
   if (isIntegerType(literal.type) && literal.type.startsWith("U")) {
     throw new TuffRuntimeError(
       `Negative literals are not allowed for unsigned type ${literal.type}.`,
@@ -472,11 +497,19 @@ function parsePrimary(tokenizer: Tokenizer): Expr {
     };
   }
 
+  if (nextToken.kind === "boolean") {
+    return {
+      kind: "literal",
+      text: nextToken.text,
+      type: "Bool",
+    };
+  }
+
   if (nextToken.kind === "ident" && nextToken.text === "read") {
     expectOperator(tokenizer, "<");
     const typeToken = tokenizer.next();
     if (typeToken.kind !== "type") {
-      throw new TuffParseError("read<T>() requires a numeric type parameter.");
+      throw new TuffParseError("read<T>() requires a valid type parameter.");
     }
     expectOperator(tokenizer, ">");
     expectOperator(tokenizer, "(");
@@ -516,7 +549,29 @@ function expectOperator(
   }
 }
 
-function parseTypedValue(text: string, type: NumericType): NumericValue {
+function parseTypedValue(text: string, type: ValueType): Value {
+  if (isBoolType(type)) {
+    if (text === "true") {
+      return {
+        kind: "bool",
+        type,
+        value: true,
+      };
+    }
+
+    if (text === "false") {
+      return {
+        kind: "bool",
+        type,
+        value: false,
+      };
+    }
+
+    throw new TuffRuntimeError(
+      `Value '${text}' is not a valid ${type} boolean literal.`,
+    );
+  }
+
   if (isIntegerType(type)) {
     if (!/^-?\d+$/u.test(text)) {
       throw new TuffRuntimeError(
@@ -562,9 +617,27 @@ function parseTypedValue(text: string, type: NumericType): NumericValue {
 }
 
 function coerceValueToType(
-  value: NumericValue,
-  targetType: NumericType,
-): NumericValue {
+  value: Value,
+  targetType: ValueType,
+): Value {
+  if (isBoolType(targetType)) {
+    if (value.kind !== "bool") {
+      throw new TuffRuntimeError("Numeric values cannot be assigned to Bool.");
+    }
+
+    return {
+      kind: "bool",
+      type: targetType,
+      value: value.value,
+    };
+  }
+
+  if (value.kind === "bool") {
+    throw new TuffRuntimeError(
+      `Boolean value cannot be assigned to numeric type ${targetType}.`,
+    );
+  }
+
   if (isIntegerType(targetType)) {
     if (value.kind !== "int") {
       throw new TuffRuntimeError(
@@ -606,7 +679,7 @@ function coerceValueToType(
   };
 }
 
-function readTypedValue(read: () => string, type: NumericType): NumericValue {
+function readTypedValue(read: () => string, type: ValueType): Value {
   return parseTypedValue(read(), type);
 }
 
@@ -620,9 +693,9 @@ function resolveBinding(env: Binding[], name: string): Binding {
   throw new TuffRuntimeError(`Unknown variable '${name}'.`);
 }
 
-function evaluateProgram(program: Program, read: () => string): NumericValue {
+function evaluateProgram(program: Program, read: () => string): Value {
   const env: Binding[] = [];
-  let lastValue: NumericValue | null = null;
+  let lastValue: Value | null = null;
 
   for (const statement of program.statements) {
     const statementValue = evaluateStatement(statement, env, read);
@@ -644,7 +717,7 @@ function evaluateStatement(
   statement: Statement,
   env: Binding[],
   read: () => string,
-): NumericValue | null {
+): Value | null {
   switch (statement.kind) {
     case "let": {
       const binding: Binding = {
@@ -705,7 +778,7 @@ function evaluateExpression(
   expression: Expr,
   env: Binding[],
   read: () => string,
-): NumericValue {
+): Value {
   switch (expression.kind) {
     case "literal":
       return parseTypedValue(expression.text, expression.type);
@@ -723,6 +796,9 @@ function evaluateExpression(
     }
     case "unary": {
       const operand = evaluateExpression(expression.operand, env, read);
+      if (operand.kind === "bool") {
+        throw new TuffRuntimeError("Boolean values cannot be negated.");
+      }
       return negateValue(operand);
     }
     case "binary": {
@@ -743,9 +819,13 @@ function negateValue(value: NumericValue): NumericValue {
 
 function applyBinaryOperator(
   operator: "+" | "-" | "*" | "/",
-  left: NumericValue,
-  right: NumericValue,
+  left: Value,
+  right: Value,
 ): NumericValue {
+  if (left.kind === "bool" || right.kind === "bool") {
+    throw new TuffRuntimeError("Boolean values cannot be used in arithmetic.");
+  }
+
   if (left.kind === "float" || right.kind === "float") {
     const resultType = resolveFloatResultType(left.type, right.type);
     const leftValue = left.kind === "float" ? left.value : Number(left.value);
@@ -861,6 +941,10 @@ function stdinToTokens(stdIn: string): string[] {
 
 function executeProgramWithRead(program: Program, read: () => string): number {
   const result = evaluateProgram(program, read);
+  if (result.kind === "bool") {
+    return result.value ? 1 : 0;
+  }
+
   return result.kind === "int" ? Number(result.value) : result.value;
 }
 
