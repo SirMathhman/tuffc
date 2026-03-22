@@ -16,11 +16,15 @@ export async function executeTuff(source: string): Promise<number> {
   const eslint = new ESLint({
     overrideConfigFile: resolve(import.meta.dir, "..", "eslint.config.js"),
   });
-  const results = await eslint.lintText(tsCode, { filePath: "src/generated.ts" });
-  const errors = results.flatMap(r => r.messages.filter(m => m.severity === 2));
+  const results = await eslint.lintText(tsCode, {
+    filePath: "src/generated.ts",
+  });
+  const errors = results.flatMap((r) =>
+    r.messages.filter((m) => m.severity === 2),
+  );
   if (errors.length > 0) {
     throw new Error(
-      `ESLint validation failed:\n${errors.map(e => `  ${e.line}:${e.column}  ${e.message}  (${e.ruleId})`).join("\n")}`,
+      `ESLint validation failed:\n${errors.map((e) => `  ${e.line}:${e.column}  ${e.message}  (${e.ruleId})`).join("\n")}`,
     );
   }
 
