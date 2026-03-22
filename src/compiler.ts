@@ -19,6 +19,10 @@ export function compileTuffToTS(source: string): string {
     return `${Number(u8LiteralMatch[1])};`;
   }
 
+  if (/^read<\s*U8\s*>\(\)$/.test(trimmedSource)) {
+    return "read();";
+  }
+
   return "0;";
 }
 
@@ -29,7 +33,10 @@ export function compileTuffToTS(source: string): string {
  * Until `compileTuffToTS` produces TypeScript output, the provided source is
  * treated as TypeScript after the stub is invoked.
  */
-export function compileTuffAndExecute(tuffSource: string): number {
+export function compileTuffAndExecute(
+  tuffSource: string,
+  stdIn = "",
+): number {
   const tsSource = compileTuffToTS(tuffSource);
   const transpileResult = ts.transpileModule(tsSource, {
     compilerOptions: {
@@ -56,10 +63,21 @@ export function compileTuffAndExecute(tuffSource: string): number {
     filename: "generated.js",
   });
 
+  const read = () => {
+    const parsedStdIn = Number(stdIn);
+
+    if (!Number.isFinite(parsedStdIn)) {
+      throw new Error("Provided stdin did not contain a numeric value.");
+    }
+
+    return parsedStdIn;
+  };
+
   const result = script.runInNewContext({
     console,
     setTimeout,
     clearTimeout,
+    read,
   });
 
   if (typeof result !== "number") {
