@@ -8,13 +8,15 @@
     "test": "npm run build && node --test dist/compiler.test.js",
     "start": "node dist/index.js",
     "dev": "tsc --watch",
-    "find-duplicates": "pmd cpd --dir src --language typescript --minimum-tokens 35 --ignore-literals --ignore-identifiers || exit 2"
+    "find-duplicates": "pmd cpd --dir src --language typescript --minimum-tokens 35 --ignore-literals --ignore-identifiers || exit 2",
+    "prepare": "husky"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "husky": "^9.1.7",
     "typescript": "^5.9.0"
   }
 }

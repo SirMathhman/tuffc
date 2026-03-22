@@ -161,21 +161,11 @@ class Tokenizer {
 
     if (this.isDigit(currentChar)) {
       const start = this.index;
-      while (
-        this.index < this.source.length &&
-        this.isDigit(this.source[this.index])
-      ) {
-        this.index += 1;
-      }
+      this.consumeDigits();
 
       if (this.index < this.source.length && this.source[this.index] === ".") {
         this.index += 1;
-        while (
-          this.index < this.source.length &&
-          this.isDigit(this.source[this.index])
-        ) {
-          this.index += 1;
-        }
+        this.consumeDigits();
       }
 
       return { kind: "number", text: this.source.slice(start, this.index) };
@@ -247,6 +237,15 @@ class Tokenizer {
       character === "=" ||
       character === ";"
     );
+  }
+
+  private consumeDigits(): void {
+    while (
+      this.index < this.source.length &&
+      this.isDigit(this.source[this.index])
+    ) {
+      this.index += 1;
+    }
   }
 }
 
@@ -551,63 +550,59 @@ function expectOperator(
 
 function parseTypedValue(text: string, type: ValueType): Value {
   if (isBoolType(type)) {
-    if (text === "true") {
-      return {
-        kind: "bool",
-        type,
-        value: true,
-      };
-    }
-
-    if (text === "false") {
-      return {
-        kind: "bool",
-        type,
-        value: false,
-      };
-    }
-
-    throw new TuffRuntimeError(
-      `Value '${text}' is not a valid ${type} boolean literal.`,
-    );
+    return parseBoolValue(text);
   }
 
   if (isIntegerType(type)) {
-    if (!/^-?\d+$/u.test(text)) {
-      throw new TuffRuntimeError(
-        `Value '${text}' is not a valid ${type} integer literal.`,
-      );
-    }
-
-    const value = BigInt(text);
-    const range = INTEGER_RANGES[type];
-    if (value < range.min || value > range.max) {
-      throw new TuffRuntimeError(
-        `Value '${text}' is out of range for ${type}.`,
-      );
-    }
-
-    return {
-      kind: "int",
-      type,
-      value,
-    };
+    return parseIntegerValue(text, type);
   }
 
-  if (!/^-?\d+(?:\.\d+)?$/u.test(text)) {
-    throw new TuffRuntimeError(
-      `Value '${text}' is not a valid ${type} floating-point literal.`,
-    );
+  return parseFloatValue(text, type);
+}
+
+function parseBoolValue(text: string): BoolValue {
+  switch (text) {
+    case "true":
+      return {
+        kind: "bool",
+        type: "Bool",
+        value: true,
+      };
+    case "false":
+      return {
+        kind: "bool",
+        type: "Bool",
+        value: false,
+      };
+    default:
+      throw new TuffRuntimeError(
+        `Value '${text}' is not a valid Bool boolean literal.`,
+      );
   }
+}
+
+function parseIntegerValue(text: string, type: IntegerType): IntegerValue {
+  ensureLiteralMatches(text, /^-?\d+$/u, type, "integer");
+
+  const value = BigInt(text);
+  ensureIntegerInRange(text, type, value);
+
+  return {
+    kind: "int",
+    type,
+    value,
+  };
+}
+
+function parseFloatValue(text: string, type: FloatType): FloatValue {
+  ensureLiteralMatches(text, /^-?\d+(?:\.\d+)?$/u, type, "floating-point");
 
   const value = Number(text);
   if (!Number.isFinite(value)) {
     throw new TuffRuntimeError(`Value '${text}' is not finite.`);
   }
 
-  if (type === "F32" && Math.abs(value) > F32_MAX) {
-    throw new TuffRuntimeError(`Value '${text}' is out of range for F32.`);
-  }
+  ensureF32Range(text, type, value);
 
   return {
     kind: "float",
@@ -616,10 +611,41 @@ function parseTypedValue(text: string, type: ValueType): Value {
   };
 }
 
-function coerceValueToType(
-  value: Value,
-  targetType: ValueType,
-): Value {
+function ensureLiteralMatches(
+  text: string,
+  pattern: RegExp,
+  type: ValueType,
+  literalKind: string,
+): void {
+  if (!pattern.test(text)) {
+    throw new TuffRuntimeError(
+      `Value '${text}' is not a valid ${type} ${literalKind} literal.`,
+    );
+  }
+}
+
+function ensureIntegerInRange(
+  text: string,
+  type: IntegerType,
+  value: bigint,
+): void {
+  const range = INTEGER_RANGES[type];
+  if (value < range.min || value > range.max) {
+    throwOutOfRange(text, type);
+  }
+}
+
+function ensureF32Range(text: string, type: ValueType, value: number): void {
+  if (type === "F32" && Math.abs(value) > F32_MAX) {
+    throwOutOfRange(text, "F32");
+  }
+}
+
+function throwOutOfRange(text: string, type: ValueType): never {
+  throw new TuffRuntimeError(`Value '${text}' is out of range for ${type}.`);
+}
+
+function coerceValueToType(value: Value, targetType: ValueType): Value {
   if (isBoolType(targetType)) {
     if (value.kind !== "bool") {
       throw new TuffRuntimeError("Numeric values cannot be assigned to Bool.");
@@ -666,11 +692,7 @@ function coerceValueToType(
     );
   }
 
-  if (targetType === "F32" && Math.abs(numericValue) > F32_MAX) {
-    throw new TuffRuntimeError(
-      `Value '${numericValue.toString()}' is out of range for F32.`,
-    );
-  }
+  ensureF32Range(numericValue.toString(), targetType, numericValue);
 
   return {
     kind: "float",
@@ -832,53 +854,90 @@ function applyBinaryOperator(
     const rightValue =
       right.kind === "float" ? right.value : Number(right.value);
 
-    if (operator === "/" && rightValue === 0) {
-      throw new TuffRuntimeError("Division by zero.");
-    }
-
-    let resultValue: number;
-    switch (operator) {
-      case "+":
-        resultValue = leftValue + rightValue;
-        break;
-      case "-":
-        resultValue = leftValue - rightValue;
-        break;
-      case "*":
-        resultValue = leftValue * rightValue;
-        break;
-      case "/":
-        resultValue = leftValue / rightValue;
-        break;
-    }
-
-    return makeFloatValue(resultType, resultValue);
+    return applyArithmeticValue(
+      operator,
+      leftValue,
+      rightValue,
+      0,
+      (resultValue) => makeFloatValue(resultType, resultValue),
+    );
   }
 
   const leftValue = left.value;
   const rightValue = right.value;
 
-  if (operator === "/" && rightValue === 0n) {
+  return applyArithmeticValue(
+    operator,
+    leftValue,
+    rightValue,
+    0n,
+    normalizeIntegerResult,
+  );
+}
+
+function applyArithmeticValue<T extends number | bigint>(
+  operator: "+" | "-" | "*" | "/",
+  leftValue: T,
+  rightValue: T,
+  zeroValue: T,
+  convert: (value: T) => NumericValue,
+): NumericValue {
+  if (operator === "/" && rightValue === zeroValue) {
     throw new TuffRuntimeError("Division by zero.");
   }
 
-  let resultValue: bigint;
+  if (typeof zeroValue === "bigint") {
+    const resultValue = applyArithmeticOperator(
+      operator,
+      leftValue as bigint,
+      rightValue as bigint,
+      (left, right) => left + right,
+      (left, right) => left - right,
+      (left, right) => left * right,
+      (left, right) => left / right,
+    );
+
+    return convert(resultValue as T);
+  }
+
+  let resultValue: number;
   switch (operator) {
     case "+":
-      resultValue = leftValue + rightValue;
+      resultValue = (leftValue as number) + (rightValue as number);
       break;
     case "-":
-      resultValue = leftValue - rightValue;
+      resultValue = (leftValue as number) - (rightValue as number);
       break;
     case "*":
-      resultValue = leftValue * rightValue;
+      resultValue = (leftValue as number) * (rightValue as number);
       break;
     case "/":
-      resultValue = leftValue / rightValue;
+      resultValue = (leftValue as number) / (rightValue as number);
       break;
   }
 
-  return normalizeIntegerResult(resultValue);
+  return convert(resultValue as T);
+}
+
+function applyArithmeticOperator<T extends number | bigint>(
+  operator: "+" | "-" | "*" | "/",
+  leftValue: T,
+  rightValue: T,
+  add: (left: T, right: T) => T,
+  subtract: (left: T, right: T) => T,
+  multiply: (left: T, right: T) => T,
+  divide: (left: T, right: T) => T,
+): T {
+  switch (operator) {
+    case "+":
+      return add(leftValue, rightValue);
+    case "-":
+      return subtract(leftValue, rightValue);
+    case "*":
+      return multiply(leftValue, rightValue);
+    case "/":
+      return divide(leftValue, rightValue);
+  }
 }
 
 function resolveFloatResultType(
