@@ -4,9 +4,9 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "lint": "eslint --no-error-on-unmatched-pattern \"src/**/*.ts\" \"tests/**/*.ts\"",
+    "lint": "node ./node_modules/eslint/bin/eslint.js --no-error-on-unmatched-pattern \"src/**/*.ts\" \"tests/**/*.ts\"",
     "find-duplicates": "cmd /c pmd cpd --dir src,tests --language typescript --minimum-tokens 35 --ignore-identifiers --ignore-literals",
-    "check": "bun test && bun run lint && bun run find-duplicates"
+    "check": "bun test && node ./node_modules/eslint/bin/eslint.js --no-error-on-unmatched-pattern \"src/**/*.ts\" \"tests/**/*.ts\" && cmd /c pmd cpd --dir src,tests --language typescript --minimum-tokens 35 --ignore-identifiers --ignore-literals"
   },
   "devDependencies": {
     "@types/bun": "latest",
