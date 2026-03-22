@@ -284,7 +284,9 @@ function parseUnary(tokenizer: Tokenizer): Expr {
   return parsePrimary(tokenizer);
 }
 
-function negateLiteralExpression(literal: Extract<Expr, { kind: "literal" }>): Expr {
+function negateLiteralExpression(
+  literal: Extract<Expr, { kind: "literal" }>,
+): Expr {
   if (isIntegerType(literal.type) && literal.type.startsWith("U")) {
     throw new TuffRuntimeError(
       `Negative literals are not allowed for unsigned type ${literal.type}.`,
