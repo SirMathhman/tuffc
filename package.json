@@ -6,7 +6,7 @@
   "scripts": {
     "lint": "node ./node_modules/eslint/bin/eslint.js --no-error-on-unmatched-pattern \"src/**/*.ts\" \"tests/**/*.ts\"",
     "find-duplicates": "cmd /c pmd cpd --dir src,tests --language typescript --minimum-tokens 35 --ignore-identifiers --ignore-literals",
-    "check": "bun test && node ./node_modules/eslint/bin/eslint.js --no-error-on-unmatched-pattern \"src/**/*.ts\" \"tests/**/*.ts\" && cmd /c pmd cpd --dir src,tests --language typescript --minimum-tokens 35 --ignore-identifiers --ignore-literals"
+    "check": "node ./scripts/check.mjs"
   },
   "devDependencies": {
     "@types/bun": "latest",
