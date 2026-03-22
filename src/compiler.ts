@@ -76,6 +76,20 @@ function parseIntegerLiteral(
 export function compileTuffToTS(source: string): Result<string, string> {
   if (source === "") return ok("");
 
+  if (source === "read<U8>()") {
+    return ok(
+      [
+        "const __tuffInput = process.env.TUFFC_STDIN ?? '';",
+        "let __i = 0;",
+        "while (__i < __tuffInput.length && __tuffInput[__i] === ' ') __i++;",
+        "let __j = __i;",
+        "while (__j < __tuffInput.length && __tuffInput[__j] !== ' ') __j++;",
+        "const __tuffToken = __tuffInput.slice(__i, __j);",
+        "process.exit(Number.parseInt(__tuffToken, 10));",
+      ].join("\n"),
+    );
+  }
+
   const parsed = parseIntegerLiteral(source);
   if (!parsed.isOk) {
     return parsed;
@@ -91,7 +105,7 @@ function formatLintErrors(messages: string[]): string {
   return `ESLint validation failed:\n${messages.join("\n")}`;
 }
 
-export async function executeTuff(source: string): Promise<number> {
+export async function executeTuff(source: string, stdIn = ""): Promise<number> {
   const compileResult = compileTuffToTS(source);
   if (!compileResult.isOk) {
     return 1;
@@ -132,6 +146,11 @@ export async function executeTuff(source: string): Promise<number> {
   });
 
   // Execute the compiled JavaScript and return its exit code
-  const proc = Bun.spawnSync(["bun", "--eval", outputText]);
+  const proc = Bun.spawnSync(["bun", "--eval", outputText], {
+    env: {
+      ...process.env,
+      TUFFC_STDIN: stdIn,
+    },
+  });
   return proc.exitCode ?? 1;
 }
