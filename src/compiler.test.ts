@@ -305,3 +305,72 @@ test("compileTuffAndExecute throws when assigning numeric values to Bool", () =>
 test("compileTuffAndExecute throws when Bool is used in arithmetic", () => {
   assert.throws(() => compileTuffAndExecute("true + 1U8"));
 });
+
+// ── Bool operations ───────────────────────────────────────────────────────
+
+test("compileTuffAndExecute supports logical AND for Bool values", () => {
+  assert.strictEqual(compileTuffAndExecute("true && false"), 0);
+});
+
+test("compileTuffAndExecute supports logical OR for Bool values", () => {
+  assert.strictEqual(compileTuffAndExecute("false || true"), 1);
+});
+
+test("compileTuffAndExecute supports boolean negation", () => {
+  assert.strictEqual(compileTuffAndExecute("!true"), 0);
+  assert.strictEqual(compileTuffAndExecute("!false"), 1);
+});
+
+test("compileTuffAndExecute supports boolean equality and inequality", () => {
+  assert.strictEqual(compileTuffAndExecute("true == true"), 1);
+  assert.strictEqual(compileTuffAndExecute("true == false"), 0);
+  assert.strictEqual(compileTuffAndExecute("true != false"), 1);
+  assert.strictEqual(compileTuffAndExecute("true != true"), 0);
+});
+
+test("compileTuffAndExecute respects boolean operator precedence", () => {
+  assert.strictEqual(compileTuffAndExecute("true || false && false"), 1);
+  assert.strictEqual(compileTuffAndExecute("!false && false"), 0);
+});
+
+test("compileTuffAndExecute short-circuits logical AND", () => {
+  assert.strictEqual(compileTuffAndExecute("false && read<Bool>()"), 0);
+});
+
+test("compileTuffAndExecute short-circuits logical OR", () => {
+  assert.strictEqual(compileTuffAndExecute("true || read<Bool>()"), 1);
+});
+
+test("compileTuffAndExecute evaluates logical AND when needed", () => {
+  assert.strictEqual(compileTuffAndExecute("true && read<Bool>()", "false"), 0);
+});
+
+test("compileTuffAndExecute evaluates logical OR when needed", () => {
+  assert.strictEqual(compileTuffAndExecute("false || read<Bool>()", "true"), 1);
+});
+
+test("compileTuffAndExecute supports Bool let bindings with boolean ops", () => {
+  assert.strictEqual(
+    compileTuffAndExecute("let x : Bool = true && !false; x"),
+    1,
+  );
+});
+
+test("compileTuffAndExecute supports mutable Bool assignment with boolean ops", () => {
+  assert.strictEqual(
+    compileTuffAndExecute("let mut x : Bool; x = true || false; x"),
+    1,
+  );
+});
+
+test("compileTuffAndExecute throws when boolean AND mixes with numeric values", () => {
+  assert.throws(() => compileTuffAndExecute("true && 1U8"));
+});
+
+test("compileTuffAndExecute throws when boolean equality mixes with numeric values", () => {
+  assert.throws(() => compileTuffAndExecute("true == 1U8"));
+});
+
+test("compileTuffAndExecute throws when logical not is used on numeric values", () => {
+  assert.throws(() => compileTuffAndExecute("!1U8"));
+});

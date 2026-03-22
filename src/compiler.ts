@@ -6,6 +6,27 @@ type FloatType = "F32" | "F64";
 type BoolType = "Bool";
 type NumericType = IntegerType | FloatType;
 type ValueType = NumericType | BoolType;
+type ArithmeticBinaryOperator = "+" | "-" | "*" | "/";
+type BooleanBinaryOperator = "&&" | "||" | "==" | "!=";
+type BinaryOperator = ArithmeticBinaryOperator | BooleanBinaryOperator;
+type UnaryOperator = "-" | "!";
+type OperatorText =
+  | "+"
+  | "-"
+  | "*"
+  | "/"
+  | "!"
+  | "=="
+  | "!="
+  | "&&"
+  | "||"
+  | "<"
+  | ">"
+  | "("
+  | ")"
+  | ":"
+  | "="
+  | ";";
 
 type NumericValue = IntegerValue | FloatValue;
 type BoolValue = {
@@ -62,10 +83,10 @@ type Expr =
   | { kind: "literal"; text: string; type: ValueType }
   | { kind: "read"; type: ValueType }
   | { kind: "variable"; name: string }
-  | { kind: "unary"; operator: "-"; operand: Expr }
+  | { kind: "unary"; operator: UnaryOperator; operand: Expr }
   | {
       kind: "binary";
-      operator: "+" | "-" | "*" | "/";
+      operator: BinaryOperator;
       left: Expr;
       right: Expr;
     };
@@ -116,7 +137,7 @@ type Token =
   | { kind: "keyword"; text: "let" | "mut" }
   | {
       kind: "operator";
-      text: "+" | "-" | "*" | "/" | "<" | ">" | "(" | ")" | ":" | "=" | ";";
+      text: OperatorText;
     }
   | { kind: "eof" };
 
@@ -149,13 +170,39 @@ class Tokenizer {
 
     const currentChar = this.source[this.index];
 
+    if (currentChar === "=" && this.source[this.index + 1] === "=") {
+      this.index += 2;
+      return { kind: "operator", text: "==" };
+    }
+
+    if (currentChar === "!" && this.source[this.index + 1] === "=") {
+      this.index += 2;
+      return { kind: "operator", text: "!=" };
+    }
+
+    if (currentChar === "&") {
+      if (this.source[this.index + 1] === "&") {
+        this.index += 2;
+        return { kind: "operator", text: "&&" };
+      }
+
+      this.throwUnexpectedCharacter(currentChar);
+    }
+
+    if (currentChar === "|") {
+      if (this.source[this.index + 1] === "|") {
+        this.index += 2;
+        return { kind: "operator", text: "||" };
+      }
+
+      this.throwUnexpectedCharacter(currentChar);
+    }
+
     if (this.isOperator(currentChar)) {
       this.index += 1;
       return {
         kind: "operator",
-        text: currentChar as Token extends { kind: "operator"; text: infer T }
-          ? T
-          : never,
+        text: currentChar as OperatorText,
       };
     }
 
@@ -229,6 +276,9 @@ class Tokenizer {
       character === "-" ||
       character === "*" ||
       character === "/" ||
+      character === "!" ||
+      character === "&" ||
+      character === "|" ||
       character === "<" ||
       character === ">" ||
       character === "(" ||
@@ -246,6 +296,12 @@ class Tokenizer {
     ) {
       this.index += 1;
     }
+  }
+
+  private throwUnexpectedCharacter(character: string): never {
+    throw new TuffParseError(
+      `Unexpected character '${character}' at position ${this.index + 1}.`,
+    );
   }
 }
 
@@ -391,7 +447,70 @@ function parseLetStatement(tokenizer: Tokenizer): Statement {
 }
 
 function parseExpression(tokenizer: Tokenizer): Expr {
-  return parseAdditive(tokenizer);
+  return parseLogicalOr(tokenizer);
+}
+
+function parseLogicalOr(tokenizer: Tokenizer): Expr {
+  let expression = parseLogicalAnd(tokenizer);
+
+  while (true) {
+    const nextToken = tokenizer.peek();
+    if (nextToken.kind !== "operator" || nextToken.text !== "||") {
+      return expression;
+    }
+
+    tokenizer.next();
+    const right = parseLogicalAnd(tokenizer);
+    expression = {
+      kind: "binary",
+      operator: nextToken.text,
+      left: expression,
+      right,
+    };
+  }
+}
+
+function parseLogicalAnd(tokenizer: Tokenizer): Expr {
+  let expression = parseEquality(tokenizer);
+
+  while (true) {
+    const nextToken = tokenizer.peek();
+    if (nextToken.kind !== "operator" || nextToken.text !== "&&") {
+      return expression;
+    }
+
+    tokenizer.next();
+    const right = parseEquality(tokenizer);
+    expression = {
+      kind: "binary",
+      operator: nextToken.text,
+      left: expression,
+      right,
+    };
+  }
+}
+
+function parseEquality(tokenizer: Tokenizer): Expr {
+  let expression = parseAdditive(tokenizer);
+
+  while (true) {
+    const nextToken = tokenizer.peek();
+    if (
+      nextToken.kind !== "operator" ||
+      (nextToken.text !== "==" && nextToken.text !== "!=")
+    ) {
+      return expression;
+    }
+
+    tokenizer.next();
+    const right = parseAdditive(tokenizer);
+    expression = {
+      kind: "binary",
+      operator: nextToken.text,
+      left: expression,
+      right,
+    };
+  }
 }
 
 function parseAdditive(tokenizer: Tokenizer): Expr {
@@ -442,17 +561,20 @@ function parseMultiplicative(tokenizer: Tokenizer): Expr {
 
 function parseUnary(tokenizer: Tokenizer): Expr {
   const nextToken = tokenizer.peek();
-  if (nextToken.kind === "operator" && nextToken.text === "-") {
+  if (
+    nextToken.kind === "operator" &&
+    (nextToken.text === "-" || nextToken.text === "!")
+  ) {
     tokenizer.next();
     const operand = parseUnary(tokenizer);
 
     if (operand.kind === "literal") {
-      return negateLiteralExpression(operand);
+      return foldUnaryLiteralExpression(nextToken.text, operand);
     }
 
     return {
       kind: "unary",
-      operator: "-",
+      operator: nextToken.text,
       operand,
     };
   }
@@ -460,9 +582,22 @@ function parseUnary(tokenizer: Tokenizer): Expr {
   return parsePrimary(tokenizer);
 }
 
-function negateLiteralExpression(
+function foldUnaryLiteralExpression(
+  operator: UnaryOperator,
   literal: Extract<Expr, { kind: "literal" }>,
 ): Expr {
+  if (operator === "!") {
+    if (!isBoolType(literal.type)) {
+      throw new TuffRuntimeError("Boolean values cannot be negated.");
+    }
+
+    return {
+      kind: "literal",
+      text: literal.text === "true" ? "false" : "true",
+      type: "Bool",
+    };
+  }
+
   if (!isNumericType(literal.type)) {
     throw new TuffRuntimeError("Boolean values cannot be negated.");
   }
@@ -818,17 +953,100 @@ function evaluateExpression(
     }
     case "unary": {
       const operand = evaluateExpression(expression.operand, env, read);
+      return applyUnaryOperator(expression.operator, operand);
+    }
+    case "binary": {
+      return evaluateBinaryExpression(expression, env, read);
+    }
+  }
+}
+
+function applyUnaryOperator(operator: UnaryOperator, operand: Value): Value {
+  switch (operator) {
+    case "-":
       if (operand.kind === "bool") {
         throw new TuffRuntimeError("Boolean values cannot be negated.");
       }
       return negateValue(operand);
-    }
-    case "binary": {
+    case "!":
+      return invertBooleanValue(operand);
+  }
+}
+
+function invertBooleanValue(value: Value): BoolValue {
+  if (value.kind !== "bool") {
+    throw new TuffRuntimeError("Boolean values cannot be negated.");
+  }
+
+  return {
+    kind: "bool",
+    type: "Bool",
+    value: !value.value,
+  };
+}
+
+function evaluateBinaryExpression(
+  expression: Extract<Expr, { kind: "binary" }>,
+  env: Binding[],
+  read: () => string,
+): Value {
+  switch (expression.operator) {
+    case "&&":
+    case "||":
+    case "==":
+    case "!=":
+      return evaluateBooleanBinaryExpression(expression, env, read);
+    default: {
       const left = evaluateExpression(expression.left, env, read);
       const right = evaluateExpression(expression.right, env, read);
       return applyBinaryOperator(expression.operator, left, right);
     }
   }
+}
+
+function evaluateBooleanBinaryExpression(
+  expression: Extract<Expr, { kind: "binary" }>,
+  env: Binding[],
+  read: () => string,
+): BoolValue {
+  const left = requireBoolValue(
+    evaluateExpression(expression.left, env, read),
+    expression.operator,
+  );
+
+  if (expression.operator === "&&" || expression.operator === "||") {
+    const shortCircuitValue = expression.operator === "&&" ? false : true;
+    if (left.value === shortCircuitValue) {
+      return left;
+    }
+
+    return requireBoolValue(
+      evaluateExpression(expression.right, env, read),
+      expression.operator,
+    );
+  }
+
+  const right = requireBoolValue(
+    evaluateExpression(expression.right, env, read),
+    expression.operator,
+  );
+
+  const equals = left.value === right.value;
+  return {
+    kind: "bool",
+    type: "Bool",
+    value: expression.operator === "==" ? equals : !equals,
+  };
+}
+
+function requireBoolValue(value: Value, operator: string): BoolValue {
+  if (value.kind !== "bool") {
+    throw new TuffRuntimeError(
+      `Boolean operator '${operator}' requires Bool operands.`,
+    );
+  }
+
+  return value;
 }
 
 function negateValue(value: NumericValue): NumericValue {
