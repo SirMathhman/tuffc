@@ -2,9 +2,37 @@ import { ESLint } from "eslint";
 import ts from "typescript";
 import { resolve } from "path";
 
-export function compileTuffToTS(_source: string): string {
-  // TODO: implement Tuff -> TypeScript compilation
-  return "";
+const INTEGER_LITERAL = /^(-?\d+)(U8|U16|U32|U64|I8|I16|I32|I64)$/;
+
+const TYPE_RANGES: Record<string, { min: bigint; max: bigint }> = {
+  U8: { min: 0n, max: 255n },
+  U16: { min: 0n, max: 65535n },
+  U32: { min: 0n, max: 4294967295n },
+  U64: { min: 0n, max: 18446744073709551615n },
+  I8: { min: -128n, max: 127n },
+  I16: { min: -32768n, max: 32767n },
+  I32: { min: -2147483648n, max: 2147483647n },
+  I64: { min: -9223372036854775808n, max: 9223372036854775807n },
+};
+
+export function compileTuffToTS(source: string): string {
+  if (source === "") return "";
+
+  const match = INTEGER_LITERAL.exec(source);
+  if (match) {
+    const digits = match[1]!;
+    const type = match[2]!;
+    const value = BigInt(digits);
+    const range = TYPE_RANGES[type]!;
+    if (value < range.min || value > range.max) {
+      throw new Error(
+        `Value ${digits} is out of range for type ${type} (${range.min}–${range.max})`,
+      );
+    }
+    return `process.exit(${digits});`;
+  }
+
+  throw new Error(`Unable to compile Tuff source: ${source}`);
 }
 
 export async function executeTuff(source: string): Promise<number> {
