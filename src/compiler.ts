@@ -15,6 +15,13 @@ export async function executeTuff(source: string): Promise<number> {
   // Validate generated TypeScript with ESLint
   const eslint = new ESLint({
     overrideConfigFile: resolve(import.meta.dir, "..", "eslint.config.js"),
+    overrideConfig: [
+      {
+        languageOptions: {
+          parserOptions: { project: false },
+        },
+      },
+    ],
   });
   const results = await eslint.lintText(tsCode, {
     filePath: "src/generated.ts",
