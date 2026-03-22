@@ -374,3 +374,47 @@ test("compileTuffAndExecute throws when boolean equality mixes with numeric valu
 test("compileTuffAndExecute throws when logical not is used on numeric values", () => {
   assert.throws(() => compileTuffAndExecute("!1U8"));
 });
+
+// ── Numeric comparisons ───────────────────────────────────────────────────
+
+test("compileTuffAndExecute supports numeric ordering comparisons", () => {
+  assert.strictEqual(compileTuffAndExecute("1U8 < 2U8"), 1);
+  assert.strictEqual(compileTuffAndExecute("2U8 < 1U8"), 0);
+  assert.strictEqual(compileTuffAndExecute("2U8 <= 2U8"), 1);
+  assert.strictEqual(compileTuffAndExecute("3U8 > 2U8"), 1);
+  assert.strictEqual(compileTuffAndExecute("3U8 >= 4U8"), 0);
+});
+
+test("compileTuffAndExecute supports numeric equality and inequality", () => {
+  assert.strictEqual(compileTuffAndExecute("2U8 == 2U16"), 1);
+  assert.strictEqual(compileTuffAndExecute("2U8 != 2U16"), 0);
+  assert.strictEqual(compileTuffAndExecute("2U8 != 3U16"), 1);
+});
+
+test("compileTuffAndExecute supports mixed int/float numeric comparisons", () => {
+  assert.strictEqual(compileTuffAndExecute("1U8 < 1.5F32"), 1);
+  assert.strictEqual(compileTuffAndExecute("2.0F64 >= 2U8"), 1);
+  assert.strictEqual(compileTuffAndExecute("1.5F32 == 1.5F64"), 1);
+});
+
+test("compileTuffAndExecute gives arithmetic precedence over comparisons", () => {
+  assert.strictEqual(compileTuffAndExecute("1U8 + 2U8 < 4U8"), 1);
+  assert.strictEqual(compileTuffAndExecute("1U8 + 2U8 > 4U8"), 0);
+});
+
+test("compileTuffAndExecute composes numeric comparisons with boolean operators", () => {
+  assert.strictEqual(
+    compileTuffAndExecute("1U8 < 2U8 && 3U8 >= 3U8"),
+    1,
+  );
+});
+
+test("compileTuffAndExecute throws for chained numeric comparisons", () => {
+  assert.throws(() => compileTuffAndExecute("1U8 < 2U8 < 3U8"));
+  assert.throws(() => compileTuffAndExecute("1U8 <= 2U8 <= 3U8"));
+});
+
+test("compileTuffAndExecute throws when ordering comparisons use Bool operands", () => {
+  assert.throws(() => compileTuffAndExecute("true < false"));
+  assert.throws(() => compileTuffAndExecute("1U8 > false"));
+});

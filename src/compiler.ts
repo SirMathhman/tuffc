@@ -7,8 +7,14 @@ type BoolType = "Bool";
 type NumericType = IntegerType | FloatType;
 type ValueType = NumericType | BoolType;
 type ArithmeticBinaryOperator = "+" | "-" | "*" | "/";
-type BooleanBinaryOperator = "&&" | "||" | "==" | "!=";
-type BinaryOperator = ArithmeticBinaryOperator | BooleanBinaryOperator;
+type LogicalBinaryOperator = "&&" | "||";
+type EqualityBinaryOperator = "==" | "!=";
+type OrderingBinaryOperator = "<" | "<=" | ">" | ">=";
+type BinaryOperator =
+  | ArithmeticBinaryOperator
+  | LogicalBinaryOperator
+  | EqualityBinaryOperator
+  | OrderingBinaryOperator;
 type UnaryOperator = "-" | "!";
 type OperatorText =
   | "+"
@@ -21,7 +27,9 @@ type OperatorText =
   | "&&"
   | "||"
   | "<"
+  | "<="
   | ">"
+  | ">="
   | "("
   | ")"
   | ":"
@@ -178,6 +186,16 @@ class Tokenizer {
     if (currentChar === "!" && this.source[this.index + 1] === "=") {
       this.index += 2;
       return { kind: "operator", text: "!=" };
+    }
+
+    if (currentChar === "<" && this.source[this.index + 1] === "=") {
+      this.index += 2;
+      return { kind: "operator", text: "<=" };
+    }
+
+    if (currentChar === ">" && this.source[this.index + 1] === "=") {
+      this.index += 2;
+      return { kind: "operator", text: ">=" };
     }
 
     if (currentChar === "&") {
@@ -491,7 +509,7 @@ function parseLogicalAnd(tokenizer: Tokenizer): Expr {
 }
 
 function parseEquality(tokenizer: Tokenizer): Expr {
-  let expression = parseAdditive(tokenizer);
+  let expression = parseComparison(tokenizer);
 
   while (true) {
     const nextToken = tokenizer.peek();
@@ -503,7 +521,7 @@ function parseEquality(tokenizer: Tokenizer): Expr {
     }
 
     tokenizer.next();
-    const right = parseAdditive(tokenizer);
+    const right = parseComparison(tokenizer);
     expression = {
       kind: "binary",
       operator: nextToken.text,
@@ -511,6 +529,42 @@ function parseEquality(tokenizer: Tokenizer): Expr {
       right,
     };
   }
+}
+
+function parseComparison(tokenizer: Tokenizer): Expr {
+  const left = parseAdditive(tokenizer);
+  const nextToken = tokenizer.peek();
+  if (
+    nextToken.kind !== "operator" ||
+    (nextToken.text !== "<" &&
+      nextToken.text !== "<=" &&
+      nextToken.text !== ">" &&
+      nextToken.text !== ">=")
+  ) {
+    return left;
+  }
+
+  tokenizer.next();
+  const right = parseAdditive(tokenizer);
+  const expression: Expr = {
+    kind: "binary",
+    operator: nextToken.text,
+    left,
+    right,
+  };
+
+  const maybeChained = tokenizer.peek();
+  if (
+    maybeChained.kind === "operator" &&
+    (maybeChained.text === "<" ||
+      maybeChained.text === "<=" ||
+      maybeChained.text === ">" ||
+      maybeChained.text === ">=")
+  ) {
+    throw new TuffParseError("Chained comparisons are not supported.");
+  }
+
+  return expression;
 }
 
 function parseAdditive(tokenizer: Tokenizer): Expr {
@@ -993,9 +1047,15 @@ function evaluateBinaryExpression(
   switch (expression.operator) {
     case "&&":
     case "||":
+      return evaluateLogicalBinaryExpression(expression, env, read);
     case "==":
     case "!=":
-      return evaluateBooleanBinaryExpression(expression, env, read);
+      return evaluateEqualityBinaryExpression(expression, env, read);
+    case "<":
+    case "<=":
+    case ">":
+    case ">=":
+      return evaluateOrderingBinaryExpression(expression, env, read);
     default: {
       const left = evaluateExpression(expression.left, env, read);
       const right = evaluateExpression(expression.right, env, read);
@@ -1004,7 +1064,7 @@ function evaluateBinaryExpression(
   }
 }
 
-function evaluateBooleanBinaryExpression(
+function evaluateLogicalBinaryExpression(
   expression: Extract<Expr, { kind: "binary" }>,
   env: Binding[],
   read: () => string,
@@ -1014,29 +1074,130 @@ function evaluateBooleanBinaryExpression(
     expression.operator,
   );
 
-  if (expression.operator === "&&" || expression.operator === "||") {
-    const shortCircuitValue = expression.operator === "&&" ? false : true;
-    if (left.value === shortCircuitValue) {
-      return left;
-    }
-
-    return requireBoolValue(
-      evaluateExpression(expression.right, env, read),
-      expression.operator,
-    );
+  const shortCircuitValue = expression.operator === "&&" ? false : true;
+  if (left.value === shortCircuitValue) {
+    return left;
   }
 
-  const right = requireBoolValue(
+  return requireBoolValue(
     evaluateExpression(expression.right, env, read),
     expression.operator,
   );
+}
 
-  const equals = left.value === right.value;
+function evaluateEqualityBinaryExpression(
+  expression: Extract<Expr, { kind: "binary" }>,
+  env: Binding[],
+  read: () => string,
+): BoolValue {
+  const left = evaluateExpression(expression.left, env, read);
+  const right = evaluateExpression(expression.right, env, read);
+
+  if (left.kind === "bool" && right.kind === "bool") {
+    const equals = left.value === right.value;
+    return {
+      kind: "bool",
+      type: "Bool",
+      value: expression.operator === "==" ? equals : !equals,
+    };
+  }
+
+  if (left.kind === "bool" || right.kind === "bool") {
+    throw new TuffRuntimeError(
+      `Equality operator '${expression.operator}' requires both operands to be Bool or both numeric.`,
+    );
+  }
+
+  const equals = compareNumericValues(left, right) === 0;
   return {
     kind: "bool",
     type: "Bool",
     value: expression.operator === "==" ? equals : !equals,
   };
+}
+
+function evaluateOrderingBinaryExpression(
+  expression: Extract<Expr, { kind: "binary" }>,
+  env: Binding[],
+  read: () => string,
+): BoolValue {
+  const left = requireNumericValue(
+    evaluateExpression(expression.left, env, read),
+    expression.operator,
+  );
+  const right = requireNumericValue(
+    evaluateExpression(expression.right, env, read),
+    expression.operator,
+  );
+
+  const comparison = compareNumericValues(left, right);
+  const value = evaluateComparisonResult(
+    expression.operator as OrderingBinaryOperator,
+    comparison,
+  );
+
+  return {
+    kind: "bool",
+    type: "Bool",
+    value,
+  };
+}
+
+function compareNumericValues(left: NumericValue, right: NumericValue): number {
+  if (left.kind === "int" && right.kind === "int") {
+    if (left.value < right.value) {
+      return -1;
+    }
+
+    if (left.value > right.value) {
+      return 1;
+    }
+
+    return 0;
+  }
+
+  const leftValue = numericToNumber(left);
+  const rightValue = numericToNumber(right);
+
+  if (leftValue < rightValue) {
+    return -1;
+  }
+
+  if (leftValue > rightValue) {
+    return 1;
+  }
+
+  return 0;
+}
+
+function evaluateComparisonResult(
+  operator: OrderingBinaryOperator,
+  comparison: number,
+): boolean {
+  switch (operator) {
+    case "<":
+      return comparison < 0;
+    case "<=":
+      return comparison <= 0;
+    case ">":
+      return comparison > 0;
+    case ">=":
+      return comparison >= 0;
+  }
+}
+
+function requireNumericValue(value: Value, operator: string): NumericValue {
+  if (value.kind === "bool") {
+    throw new TuffRuntimeError(
+      `Comparison operator '${operator}' requires numeric operands.`,
+    );
+  }
+
+  return value;
+}
+
+function numericToNumber(value: NumericValue): number {
+  return value.kind === "float" ? value.value : Number(value.value);
 }
 
 function requireBoolValue(value: Value, operator: string): BoolValue {
@@ -1068,9 +1229,8 @@ function applyBinaryOperator(
 
   if (left.kind === "float" || right.kind === "float") {
     const resultType = resolveFloatResultType(left.type, right.type);
-    const leftValue = left.kind === "float" ? left.value : Number(left.value);
-    const rightValue =
-      right.kind === "float" ? right.value : Number(right.value);
+    const leftValue = numericToNumber(left);
+    const rightValue = numericToNumber(right);
 
     return applyArithmeticValue(
       operator,
