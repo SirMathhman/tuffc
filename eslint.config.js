@@ -30,6 +30,11 @@ export default [
           selector: "NewExpression[callee.name='RegExp']",
           message: "RegExp construction is banned in the bootstrap compiler.",
         },
+        {
+          selector: "TSTypeReference > Identifier[name='Record']",
+          message:
+            "Record is banned in the bootstrap compiler. Use Map instead.",
+        },
       ],
     },
   },
