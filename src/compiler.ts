@@ -1,8 +1,66 @@
+import vm from "node:vm";
+import ts from "typescript";
+
 type IntegerType = "U8" | "U16" | "U32" | "U64" | "I8" | "I16" | "I32" | "I64";
 type FloatType = "F32" | "F64";
 type NumericType = IntegerType | FloatType;
 
-type NumericKind = "int" | "float";
+type NumericValue = IntegerValue | FloatValue;
+
+type IntegerValue = {
+  kind: "int";
+  type: IntegerType;
+  value: bigint;
+};
+
+type FloatValue = {
+  kind: "float";
+  type: FloatType;
+  value: number;
+};
+
+type Binding = {
+  name: string;
+  mutable: boolean;
+  type: NumericType;
+  initialized: boolean;
+  value?: NumericValue;
+};
+
+type Program = {
+  kind: "program";
+  statements: Statement[];
+};
+
+type Statement =
+  | {
+      kind: "let";
+      name: string;
+      mutable: boolean;
+      declaredType?: NumericType;
+      initializer?: Expr;
+    }
+  | {
+      kind: "assign";
+      name: string;
+      expression: Expr;
+    }
+  | {
+      kind: "expression";
+      expression: Expr;
+    };
+
+type Expr =
+  | { kind: "literal"; text: string; type: NumericType }
+  | { kind: "read"; type: NumericType }
+  | { kind: "variable"; name: string }
+  | { kind: "unary"; operator: "-"; operand: Expr }
+  | {
+      kind: "binary";
+      operator: "+" | "-" | "*" | "/";
+      left: Expr;
+      right: Expr;
+    };
 
 const INTEGER_TYPE_ORDER: IntegerType[] = [
   "U8",
@@ -42,36 +100,15 @@ class TuffRuntimeError extends Error {
   }
 }
 
-type Expr =
-  | { kind: "literal"; text: string; type: NumericType }
-  | { kind: "read"; type: NumericType }
-  | { kind: "unary"; operator: "-"; operand: Expr }
-  | {
-      kind: "binary";
-      operator: "+" | "-" | "*" | "/";
-      left: Expr;
-      right: Expr;
-    };
-
-type IntegerValue = {
-  kind: "int";
-  type: IntegerType;
-  value: bigint;
-};
-
-type FloatValue = {
-  kind: "float";
-  type: FloatType;
-  value: number;
-};
-
-type TypedValue = IntegerValue | FloatValue;
-
 type Token =
   | { kind: "number"; text: string }
   | { kind: "type"; text: NumericType }
   | { kind: "ident"; text: string }
-  | { kind: "operator"; text: "+" | "-" | "*" | "/" | "<" | ">" | "(" | ")" }
+  | { kind: "keyword"; text: "let" | "mut" }
+  | {
+      kind: "operator";
+      text: "+" | "-" | "*" | "/" | "<" | ">" | "(" | ")" | ":" | "=" | ";";
+    }
   | { kind: "eof" };
 
 class Tokenizer {
@@ -82,9 +119,14 @@ class Tokenizer {
     this.source = source;
   }
 
-  peek(): Token {
+  peek(offset = 0): Token {
     const savedIndex = this.index;
-    const token = this.next();
+    let token: Token = { kind: "eof" };
+
+    for (let i = 0; i <= offset; i += 1) {
+      token = this.next();
+    }
+
     this.index = savedIndex;
     return token;
   }
@@ -98,18 +140,14 @@ class Tokenizer {
 
     const currentChar = this.source[this.index];
 
-    if (
-      currentChar === "+" ||
-      currentChar === "-" ||
-      currentChar === "*" ||
-      currentChar === "/" ||
-      currentChar === "<" ||
-      currentChar === ">" ||
-      currentChar === "(" ||
-      currentChar === ")"
-    ) {
+    if (this.isOperator(currentChar)) {
       this.index += 1;
-      return { kind: "operator", text: currentChar };
+      return {
+        kind: "operator",
+        text: currentChar as Token extends { kind: "operator"; text: infer T }
+          ? T
+          : never,
+      };
     }
 
     if (this.isDigit(currentChar)) {
@@ -145,6 +183,10 @@ class Tokenizer {
       }
 
       const text = this.source.slice(start, this.index);
+      if (text === "let" || text === "mut") {
+        return { kind: "keyword", text };
+      }
+
       if (isNumericType(text)) {
         return { kind: "type", text };
       }
@@ -177,6 +219,22 @@ class Tokenizer {
   private isIdentifierPart(character: string): boolean {
     return /[A-Za-z0-9_]/u.test(character);
   }
+
+  private isOperator(character: string): boolean {
+    return (
+      character === "+" ||
+      character === "-" ||
+      character === "*" ||
+      character === "/" ||
+      character === "<" ||
+      character === ">" ||
+      character === "(" ||
+      character === ")" ||
+      character === ":" ||
+      character === "=" ||
+      character === ";"
+    );
+  }
 }
 
 function isNumericType(type: string): type is NumericType {
@@ -202,16 +260,114 @@ function isIntegerType(type: NumericType): type is IntegerType {
   return !isFloatType(type);
 }
 
-function parseProgram(source: string): Expr {
+function parseProgram(source: string): Program {
   const tokenizer = new Tokenizer(source);
-  const expression = parseExpression(tokenizer);
-  const trailingToken = tokenizer.next();
+  const statements: Statement[] = [];
 
-  if (trailingToken.kind !== "eof") {
-    throw new TuffParseError("Unexpected trailing input.");
+  while (true) {
+    const nextToken = tokenizer.peek();
+    if (nextToken.kind === "eof") {
+      break;
+    }
+
+    statements.push(parseStatement(tokenizer));
+
+    const delimiter = tokenizer.peek();
+    if (delimiter.kind === "operator" && delimiter.text === ";") {
+      tokenizer.next();
+      continue;
+    }
+
+    if (delimiter.kind === "eof") {
+      break;
+    }
+
+    throw new TuffParseError("Expected ';' between statements.");
   }
 
-  return expression;
+  return {
+    kind: "program",
+    statements,
+  };
+}
+
+function parseStatement(tokenizer: Tokenizer): Statement {
+  const nextToken = tokenizer.peek();
+
+  if (nextToken.kind === "keyword" && nextToken.text === "let") {
+    tokenizer.next();
+    return parseLetStatement(tokenizer);
+  }
+
+  if (
+    nextToken.kind === "ident" &&
+    (() => {
+      const secondToken = tokenizer.peek(1);
+      return secondToken.kind === "operator" && secondToken.text === "=";
+    })()
+  ) {
+    const nameToken = tokenizer.next();
+    tokenizer.next();
+    if (nameToken.kind !== "ident") {
+      throw new TuffParseError("Assignment requires an identifier name.");
+    }
+    return {
+      kind: "assign",
+      name: nameToken.text,
+      expression: parseExpression(tokenizer),
+    };
+  }
+
+  return {
+    kind: "expression",
+    expression: parseExpression(tokenizer),
+  };
+}
+
+function parseLetStatement(tokenizer: Tokenizer): Statement {
+  let mutable = false;
+  const maybeMut = tokenizer.peek();
+  if (maybeMut.kind === "keyword" && maybeMut.text === "mut") {
+    tokenizer.next();
+    mutable = true;
+  }
+
+  const nameToken = tokenizer.next();
+  if (nameToken.kind !== "ident") {
+    throw new TuffParseError("let requires an identifier name.");
+  }
+
+  let declaredType: NumericType | undefined;
+  const maybeColon = tokenizer.peek();
+  if (maybeColon.kind === "operator" && maybeColon.text === ":") {
+    tokenizer.next();
+    const typeToken = tokenizer.next();
+    if (typeToken.kind !== "type") {
+      throw new TuffParseError("let type annotations must use a numeric type.");
+    }
+    declaredType = typeToken.text;
+  }
+
+  let initializer: Expr | undefined;
+  const maybeEquals = tokenizer.peek();
+  if (maybeEquals.kind === "operator" && maybeEquals.text === "=") {
+    tokenizer.next();
+    initializer = parseExpression(tokenizer);
+  }
+
+  if (!declaredType && !initializer) {
+    throw new TuffParseError(
+      "let declarations require a type annotation or an initializer.",
+    );
+  }
+
+  return {
+    kind: "let",
+    name: nameToken.text,
+    mutable,
+    declaredType,
+    initializer,
+  };
 }
 
 function parseExpression(tokenizer: Tokenizer): Expr {
@@ -293,13 +449,9 @@ function negateLiteralExpression(
     );
   }
 
-  const negatedText = literal.text.startsWith("-")
-    ? literal.text.slice(1)
-    : `-${literal.text}`;
-
   return {
     kind: "literal",
-    text: negatedText,
+    text: `-${literal.text}`,
     type: literal.type,
   };
 }
@@ -336,6 +488,13 @@ function parsePrimary(tokenizer: Tokenizer): Expr {
     };
   }
 
+  if (nextToken.kind === "ident") {
+    return {
+      kind: "variable",
+      name: nextToken.text,
+    };
+  }
+
   if (nextToken.kind === "operator" && nextToken.text === "(") {
     const expression = parseExpression(tokenizer);
     expectOperator(tokenizer, ")");
@@ -343,13 +502,13 @@ function parsePrimary(tokenizer: Tokenizer): Expr {
   }
 
   throw new TuffParseError(
-    "Expected a numeric literal, read<T>(), or grouped expression.",
+    "Expected a numeric literal, read<T>(), variable, or grouped expression.",
   );
 }
 
 function expectOperator(
   tokenizer: Tokenizer,
-  operator: "+" | "-" | "*" | "/" | "<" | ">" | "(" | ")",
+  operator: "+" | "-" | "*" | "/" | "<" | ">" | "(" | ")" | ":" | "=" | ";",
 ): void {
   const nextToken = tokenizer.next();
   if (nextToken.kind !== "operator" || nextToken.text !== operator) {
@@ -357,7 +516,7 @@ function expectOperator(
   }
 }
 
-function parseTypedValue(text: string, type: NumericType): TypedValue {
+function parseTypedValue(text: string, type: NumericType): NumericValue {
   if (isIntegerType(type)) {
     if (!/^-?\d+$/u.test(text)) {
       throw new TuffRuntimeError(
@@ -402,61 +561,191 @@ function parseTypedValue(text: string, type: NumericType): TypedValue {
   };
 }
 
-function readTokenValue(
-  stdinTokens: string[],
-  cursor: { index: number },
-  type: NumericType,
-): TypedValue {
-  if (cursor.index >= stdinTokens.length) {
+function coerceValueToType(
+  value: NumericValue,
+  targetType: NumericType,
+): NumericValue {
+  if (isIntegerType(targetType)) {
+    if (value.kind !== "int") {
+      throw new TuffRuntimeError(
+        `Float value cannot be assigned to integer type ${targetType}.`,
+      );
+    }
+
+    const range = INTEGER_RANGES[targetType];
+    if (value.value < range.min || value.value > range.max) {
+      throw new TuffRuntimeError(
+        `Value '${value.value.toString()}' is out of range for ${targetType}.`,
+      );
+    }
+
+    return {
+      kind: "int",
+      type: targetType,
+      value: value.value,
+    };
+  }
+
+  const numericValue = value.kind === "int" ? Number(value.value) : value.value;
+  if (!Number.isFinite(numericValue)) {
     throw new TuffRuntimeError(
-      `stdin ended before a ${type} value could be read.`,
+      `Value '${numericValue.toString()}' is not finite.`,
     );
   }
 
-  const token = stdinTokens[cursor.index];
-  cursor.index += 1;
-  return parseTypedValue(token, type);
+  if (targetType === "F32" && Math.abs(numericValue) > F32_MAX) {
+    throw new TuffRuntimeError(
+      `Value '${numericValue.toString()}' is out of range for F32.`,
+    );
+  }
+
+  return {
+    kind: "float",
+    type: targetType,
+    value: numericValue,
+  };
+}
+
+function readTypedValue(read: () => string, type: NumericType): NumericValue {
+  return parseTypedValue(read(), type);
+}
+
+function resolveBinding(env: Binding[], name: string): Binding {
+  for (let index = env.length - 1; index >= 0; index -= 1) {
+    if (env[index].name === name) {
+      return env[index];
+    }
+  }
+
+  throw new TuffRuntimeError(`Unknown variable '${name}'.`);
+}
+
+function evaluateProgram(program: Program, read: () => string): NumericValue {
+  const env: Binding[] = [];
+  let lastValue: NumericValue | null = null;
+
+  for (const statement of program.statements) {
+    const statementValue = evaluateStatement(statement, env, read);
+    if (statementValue !== null) {
+      lastValue = statementValue;
+    }
+  }
+
+  return (
+    lastValue ?? {
+      kind: "int",
+      type: "U8",
+      value: 0n,
+    }
+  );
+}
+
+function evaluateStatement(
+  statement: Statement,
+  env: Binding[],
+  read: () => string,
+): NumericValue | null {
+  switch (statement.kind) {
+    case "let": {
+      const binding: Binding = {
+        name: statement.name,
+        mutable: statement.mutable,
+        type: statement.declaredType ?? "U8",
+        initialized: false,
+      };
+
+      if (statement.initializer) {
+        const initializerValue = evaluateExpression(
+          statement.initializer,
+          env,
+          read,
+        );
+        const assignedValue = coerceValueToType(
+          initializerValue,
+          statement.declaredType ?? initializerValue.type,
+        );
+        binding.type = assignedValue.type;
+        binding.value = assignedValue;
+        binding.initialized = true;
+        env.push(binding);
+        return assignedValue;
+      }
+
+      if (!statement.declaredType) {
+        throw new TuffRuntimeError(
+          `let ${statement.name} requires a type annotation when no initializer is present.`,
+        );
+      }
+
+      env.push(binding);
+      return null;
+    }
+    case "assign": {
+      const binding = resolveBinding(env, statement.name);
+      if (!binding.mutable) {
+        throw new TuffRuntimeError(
+          `Variable '${statement.name}' is immutable.`,
+        );
+      }
+
+      const assignedValue = coerceValueToType(
+        evaluateExpression(statement.expression, env, read),
+        binding.type,
+      );
+      binding.value = assignedValue;
+      binding.initialized = true;
+      return assignedValue;
+    }
+    case "expression":
+      return evaluateExpression(statement.expression, env, read);
+  }
 }
 
 function evaluateExpression(
   expression: Expr,
-  stdinTokens: string[],
-  cursor: { index: number },
-): TypedValue {
+  env: Binding[],
+  read: () => string,
+): NumericValue {
   switch (expression.kind) {
     case "literal":
       return parseTypedValue(expression.text, expression.type);
     case "read":
-      return readTokenValue(stdinTokens, cursor, expression.type);
+      return readTypedValue(read, expression.type);
+    case "variable": {
+      const binding = resolveBinding(env, expression.name);
+      if (!binding.initialized || !binding.value) {
+        throw new TuffRuntimeError(
+          `Variable '${expression.name}' is used before it is initialized.`,
+        );
+      }
+
+      return binding.value;
+    }
     case "unary": {
-      const operand = evaluateExpression(
-        expression.operand,
-        stdinTokens,
-        cursor,
-      );
+      const operand = evaluateExpression(expression.operand, env, read);
       return negateValue(operand);
     }
     case "binary": {
-      const left = evaluateExpression(expression.left, stdinTokens, cursor);
-      const right = evaluateExpression(expression.right, stdinTokens, cursor);
+      const left = evaluateExpression(expression.left, env, read);
+      const right = evaluateExpression(expression.right, env, read);
       return applyBinaryOperator(expression.operator, left, right);
     }
   }
 }
 
-function negateValue(value: TypedValue): TypedValue {
+function negateValue(value: NumericValue): NumericValue {
   if (value.kind === "int") {
     return normalizeIntegerResult(-value.value);
   }
 
-  return makeFloatValue(value.type as FloatType, -value.value);
+  return makeFloatValue(value.type, -value.value);
 }
 
 function applyBinaryOperator(
   operator: "+" | "-" | "*" | "/",
-  left: TypedValue,
-  right: TypedValue,
-): TypedValue {
+  left: NumericValue,
+  right: NumericValue,
+): NumericValue {
   if (left.kind === "float" || right.kind === "float") {
     const resultType = resolveFloatResultType(left.type, right.type);
     const leftValue = left.kind === "float" ? left.value : Number(left.value);
@@ -486,8 +775,8 @@ function applyBinaryOperator(
     return makeFloatValue(resultType, resultValue);
   }
 
-  const leftValue = left.value as bigint;
-  const rightValue = right.value as bigint;
+  const leftValue = left.value;
+  const rightValue = right.value;
 
   if (operator === "/" && rightValue === 0n) {
     throw new TuffRuntimeError("Division by zero.");
@@ -526,7 +815,7 @@ function resolveFloatResultType(
   return leftFloatType ?? rightFloatType ?? "F64";
 }
 
-function makeFloatValue(type: FloatType, value: number): TypedValue {
+function makeFloatValue(type: FloatType, value: number): FloatValue {
   if (!Number.isFinite(value)) {
     throw new TuffRuntimeError(
       "Floating-point arithmetic produced a non-finite value.",
@@ -544,7 +833,7 @@ function makeFloatValue(type: FloatType, value: number): TypedValue {
   };
 }
 
-function normalizeIntegerResult(value: bigint): TypedValue {
+function normalizeIntegerResult(value: bigint): NumericValue {
   for (const type of INTEGER_TYPE_ORDER) {
     const range = INTEGER_RANGES[type];
     if (value >= range.min && value <= range.max) {
@@ -570,25 +859,9 @@ function stdinToTokens(stdIn: string): string[] {
   return trimmed.split(/\s+/u);
 }
 
-function typedValueToNumber(value: TypedValue): number {
-  return value.kind === "int" ? Number(value.value) : value.value;
-}
-
-function emitExpression(expression: Expr): string {
-  switch (expression.kind) {
-    case "literal":
-      return `__tuffLiteral(${JSON.stringify(expression.text)}, ${JSON.stringify(
-        expression.type,
-      )})`;
-    case "read":
-      return `__tuffRead(${JSON.stringify(expression.type)})`;
-    case "unary":
-      return `__tuffNeg(${emitExpression(expression.operand)})`;
-    case "binary":
-      return `__tuffBinary(${JSON.stringify(expression.operator)}, ${emitExpression(
-        expression.left,
-      )}, ${emitExpression(expression.right)})`;
-  }
+function executeProgramWithRead(program: Program, read: () => string): number {
+  const result = evaluateProgram(program, read);
+  return result.kind === "int" ? Number(result.value) : result.value;
 }
 
 export function compileTuffToTS(source: string): string {
@@ -598,40 +871,65 @@ export function compileTuffToTS(source: string): string {
     return "0;";
   }
 
-  try {
-    return `${emitExpression(parseProgram(trimmedSource))};`;
-  } catch (error) {
-    if (error instanceof TuffParseError) {
-      return "0;";
-    }
-
-    throw error;
-  }
+  const program = parseProgram(trimmedSource);
+  return `__tuffEval(${JSON.stringify(program)}, read);`;
 }
 
 /**
  * Compiles and executes a Tuff program, returning the numeric result.
  */
 export function compileTuffAndExecute(tuffSource: string, stdIn = ""): number {
-  const trimmedSource = tuffSource.trim();
+  const tsSource = compileTuffToTS(tuffSource);
+  const transpileResult = ts.transpileModule(tsSource, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2022,
+    },
+    reportDiagnostics: true,
+  });
 
-  if (trimmedSource === "") {
-    return 0;
-  }
+  if (transpileResult.diagnostics?.length) {
+    const diagnosticMessage = ts.formatDiagnosticsWithColorAndContext(
+      transpileResult.diagnostics,
+      {
+        getCanonicalFileName: (fileName) => fileName,
+        getCurrentDirectory: () => process.cwd(),
+        getNewLine: () => "\n",
+      },
+    );
 
-  let expression: Expr;
-  try {
-    expression = parseProgram(trimmedSource);
-  } catch (error) {
-    if (error instanceof TuffParseError) {
-      return 0;
-    }
-
-    throw error;
+    throw new Error(`TypeScript transpilation failed:\n${diagnosticMessage}`);
   }
 
   const stdinTokens = stdinToTokens(stdIn);
-  const cursor = { index: 0 };
-  const value = evaluateExpression(expression, stdinTokens, cursor);
-  return typedValueToNumber(value);
+  let stdinIndex = 0;
+  const read = () => {
+    if (stdinIndex >= stdinTokens.length) {
+      throw new TuffRuntimeError(
+        "Provided stdin ran out of whitespace-separated tokens.",
+      );
+    }
+
+    const token = stdinTokens[stdinIndex];
+    stdinIndex += 1;
+    return token;
+  };
+
+  const script = new vm.Script(transpileResult.outputText, {
+    filename: "generated.js",
+  });
+
+  const result = script.runInNewContext({
+    console,
+    setTimeout,
+    clearTimeout,
+    read,
+    __tuffEval: executeProgramWithRead,
+  });
+
+  if (typeof result !== "number") {
+    throw new Error("Executed JavaScript did not return a number.");
+  }
+
+  return result;
 }

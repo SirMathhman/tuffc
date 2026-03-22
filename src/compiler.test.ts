@@ -225,3 +225,46 @@ test("compileTuffAndExecute promotes mixed int and float arithmetic", () => {
 test("compileTuffAndExecute throws when integer arithmetic overflows", () => {
   assert.throws(() => compileTuffAndExecute("18446744073709551615U64 + 1U64"));
 });
+
+// ── Let statements ────────────────────────────────────────────────────────
+
+test("compileTuffAndExecute supports let with typed read initializer", () => {
+  assert.strictEqual(
+    compileTuffAndExecute("let x : U8 = read<U8>(); x", "100"),
+    100,
+  );
+});
+
+test("compileTuffAndExecute supports inferred let bindings", () => {
+  assert.strictEqual(compileTuffAndExecute("let x = 100U8; x"), 100);
+});
+
+test("compileTuffAndExecute supports mutable let reassignment", () => {
+  assert.strictEqual(
+    compileTuffAndExecute("let mut x = 0U8; x = 100U8; x"),
+    100,
+  );
+});
+
+test("compileTuffAndExecute supports uninitialized mutable bindings", () => {
+  assert.strictEqual(
+    compileTuffAndExecute("let mut x : U8; x = read<U8>(); x", "100"),
+    100,
+  );
+});
+
+test("compileTuffAndExecute allows redeclaration to shadow earlier lets", () => {
+  assert.strictEqual(compileTuffAndExecute("let x = 1U8; let x = 2U8; x"), 2);
+});
+
+test("compileTuffAndExecute throws when assigning to an immutable let", () => {
+  assert.throws(() => compileTuffAndExecute("let x = 0U8; x = 1U8; x"));
+});
+
+test("compileTuffAndExecute throws when reading an uninitialized let", () => {
+  assert.throws(() => compileTuffAndExecute("let mut x : U8; x"));
+});
+
+test("compileTuffAndExecute throws when initializer does not fit declared type", () => {
+  assert.throws(() => compileTuffAndExecute("let x : U8 = 300U16; x"));
+});
