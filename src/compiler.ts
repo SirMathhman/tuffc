@@ -2,7 +2,32 @@ import { ESLint } from "eslint";
 import ts from "typescript";
 import { resolve } from "path";
 
-const TYPE_RANGES = new Map<string, { min: bigint; max: bigint }>([
+interface NumericRange {
+  min: bigint;
+  max: bigint;
+}
+
+interface OkResult<T> {
+  isOk: true;
+  value: T;
+}
+
+interface ErrResult<X> {
+  isOk: false;
+  error: X;
+}
+
+export type Result<T, X> = OkResult<T> | ErrResult<X>;
+
+function ok<T>(value: T): Result<T, never> {
+  return { isOk: true, value };
+}
+
+function err<X>(error: X): Result<never, X> {
+  return { isOk: false, error };
+}
+
+const TYPE_RANGES = new Map<string, NumericRange>([
   ["U8", { min: 0n, max: 255n }],
   ["U16", { min: 0n, max: 65535n }],
   ["U32", { min: 0n, max: 4294967295n }],
@@ -19,44 +44,59 @@ function isDigit(ch: string): boolean {
   return ch >= "0" && ch <= "9";
 }
 
-// Returns the digits string (with optional leading '-') if source is a valid
-// in-range integer literal, or null if the source does not match the pattern.
-// Throws if the pattern matches but the value is out of range.
-function parseIntegerLiteral(source: string): string | null {
+// Returns Ok(digits) if source is a valid in-range integer literal,
+// Ok(undefined) if source does not match the pattern,
+// and Err(message) if pattern matches but value is out of range.
+function parseIntegerLiteral(
+  source: string,
+): Result<string | undefined, string> {
   let i = 0;
   if (source[i] === "-") i++;
   const digitStart = i;
-  while (i < source.length && isDigit(source[i]!)) i++;
-  if (i === digitStart) return null; // no digits
+  while (i < source.length && isDigit(source[i]!)) {
+    i++;
+  }
+  if (i === digitStart) return ok(undefined); // no digits
 
   const digits = source.slice(0, i);
   const suffix = source.slice(i);
-  if (!TYPE_SUFFIXES.includes(suffix)) return null;
+  if (!TYPE_SUFFIXES.includes(suffix)) return ok(undefined);
 
   const range = TYPE_RANGES.get(suffix);
-  if (!range) return null;
+  if (!range) return ok(undefined);
   const value = BigInt(digits);
   if (value < range.min || value > range.max) {
-    throw new Error(
+    return err(
       `Value ${digits} is out of range for type ${suffix} (${range.min}–${range.max})`,
     );
   }
-  return digits;
+  return ok(digits);
 }
 
-export function compileTuffToTS(source: string): string {
-  if (source === "") return "";
+export function compileTuffToTS(source: string): Result<string, string> {
+  if (source === "") return ok("");
 
   const parsed = parseIntegerLiteral(source);
-  if (parsed !== null) {
-    return `process.exit(${parsed});`;
+  if (!parsed.isOk) {
+    return parsed;
+  }
+  if (parsed.value !== undefined) {
+    return ok(`process.exit(${parsed.value});`);
   }
 
-  throw new Error(`Unable to compile Tuff source: ${source}`);
+  return err(`Unable to compile Tuff source: ${source}`);
+}
+
+function formatLintErrors(messages: string[]): string {
+  return `ESLint validation failed:\n${messages.join("\n")}`;
 }
 
 export async function executeTuff(source: string): Promise<number> {
-  const tsCode = compileTuffToTS(source);
+  const compileResult = compileTuffToTS(source);
+  if (!compileResult.isOk) {
+    return 1;
+  }
+  const tsCode = compileResult.value;
 
   // Validate generated TypeScript with ESLint
   const eslint = new ESLint({
@@ -76,9 +116,11 @@ export async function executeTuff(source: string): Promise<number> {
     r.messages.filter((m) => m.severity === 2),
   );
   if (errors.length > 0) {
-    throw new Error(
-      `ESLint validation failed:\n${errors.map((e) => `  ${e.line}:${e.column}  ${e.message}  (${e.ruleId})`).join("\n")}`,
+    const errorMessages = errors.map(
+      (e) => `  ${e.line}:${e.column}  ${e.message}  (${e.ruleId})`,
     );
+    void formatLintErrors(errorMessages);
+    return 1;
   }
 
   // Compile TypeScript to JavaScript

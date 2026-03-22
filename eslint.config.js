@@ -35,6 +35,25 @@ export default [
           message:
             "Record is banned in the bootstrap compiler. Use Map instead.",
         },
+        {
+          selector: "TSTypeLiteral",
+          message:
+            "Type literals are banned in the bootstrap compiler. Use named interfaces instead.",
+        },
+        {
+          selector: "Literal[value=null]",
+          message:
+            "null is banned in the bootstrap compiler. Use undefined instead.",
+        },
+        {
+          selector: "TSNullKeyword",
+          message: "null is banned in type annotations. Use undefined instead.",
+        },
+        {
+          selector: "ThrowStatement",
+          message:
+            "throw statements are banned in the bootstrap compiler. Use Result<T, X> instead.",
+        },
       ],
     },
   },
