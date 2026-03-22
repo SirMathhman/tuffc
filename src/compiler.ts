@@ -1,8 +1,6 @@
 import { ESLint } from "eslint";
 import ts from "typescript";
-import { writeFileSync, unlinkSync } from "fs";
-import { join, resolve } from "path";
-import { tmpdir } from "os";
+import { resolve } from "path";
 
 export function compileTuffToTS(_source: string): string {
   // TODO: implement Tuff -> TypeScript compilation
@@ -44,15 +42,6 @@ export async function executeTuff(source: string): Promise<number> {
   });
 
   // Execute the compiled JavaScript and return its exit code
-  const tmpFile = join(
-    tmpdir(),
-    `tuffc_${Date.now()}_${Math.random().toString(36).slice(2)}.js`,
-  );
-  writeFileSync(tmpFile, outputText);
-  try {
-    const proc = Bun.spawnSync(["bun", tmpFile]);
-    return proc.exitCode ?? 1;
-  } finally {
-    unlinkSync(tmpFile);
-  }
+  const proc = Bun.spawnSync(["bun", "--eval", outputText]);
+  return proc.exitCode ?? 1;
 }
