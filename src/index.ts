@@ -1,5 +1,10 @@
+import { compileTuffAndExecute } from "./compiler";
+
 function main(): void {
-  console.log("Hello from TypeScript!");
+  const tuffSource = "exit 0";
+  const exitCode = compileTuffAndExecute(tuffSource);
+
+  console.log(`Executed program exit code: ${exitCode}`);
 }
 
 main();
