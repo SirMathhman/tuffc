@@ -44,6 +44,39 @@ function isDigit(ch: string): boolean {
   return ch >= "0" && ch <= "9";
 }
 
+function stripSpaces(value: string): string {
+  let out = "";
+  for (let i = 0; i < value.length; i++) {
+    if (value[i] !== " ") {
+      out += value[i];
+    }
+  }
+  return out;
+}
+
+function buildReadU8Program(readCount: number): string {
+  const lines = [
+    "const __tuffInput = process.env.TUFFC_STDIN ?? '';",
+    "let __k = 0;",
+    "function __nextToken() {",
+    "  while (__k < __tuffInput.length && __tuffInput[__k] === ' ') __k++;",
+    "  let __start = __k;",
+    "  while (__k < __tuffInput.length && __tuffInput[__k] !== ' ') __k++;",
+    "  return __tuffInput.slice(__start, __k);",
+    "}",
+  ];
+
+  if (readCount === 1) {
+    lines.push("process.exit(Number.parseInt(__nextToken(), 10));");
+    return lines.join("\n");
+  }
+
+  lines.push("const __a = Number.parseInt(__nextToken(), 10);");
+  lines.push("const __b = Number.parseInt(__nextToken(), 10);");
+  lines.push("process.exit(__a + __b);");
+  return lines.join("\n");
+}
+
 // Returns Ok(digits) if source is a valid in-range integer literal,
 // Ok(undefined) if source does not match the pattern,
 // and Err(message) if pattern matches but value is out of range.
@@ -76,18 +109,14 @@ function parseIntegerLiteral(
 export function compileTuffToTS(source: string): Result<string, string> {
   if (source === "") return ok("");
 
+  const compactSource = stripSpaces(source);
+
   if (source === "read<U8>()") {
-    return ok(
-      [
-        "const __tuffInput = process.env.TUFFC_STDIN ?? '';",
-        "let __i = 0;",
-        "while (__i < __tuffInput.length && __tuffInput[__i] === ' ') __i++;",
-        "let __j = __i;",
-        "while (__j < __tuffInput.length && __tuffInput[__j] !== ' ') __j++;",
-        "const __tuffToken = __tuffInput.slice(__i, __j);",
-        "process.exit(Number.parseInt(__tuffToken, 10));",
-      ].join("\n"),
-    );
+    return ok(buildReadU8Program(1));
+  }
+
+  if (compactSource === "read<U8>()+read<U8>()") {
+    return ok(buildReadU8Program(2));
   }
 
   const parsed = parseIntegerLiteral(source);

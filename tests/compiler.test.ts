@@ -66,6 +66,14 @@ describe("compileTuffToTS", () => {
         expect(compiled.value).toContain("process.exit");
       }
     });
+    test("read<U8>() + read<U8>() compiles", () => {
+      const compiled = compileTuffToTS("read<U8>() + read<U8>()");
+      expect(compiled.isOk).toBe(true);
+      if (compiled.isOk) {
+        expect(compiled.value).toContain("process.exit");
+        expect(compiled.value).toContain("+");
+      }
+    });
 
     // --- error: out of range ---
     test("U8 value 256 returns Err", () => {
@@ -115,6 +123,14 @@ describe("executeTuff", () => {
 
     test("read<U8>() uses first space-delimited token", async () => {
       expect(await executeTuff("read<U8>()", "100 200")).toBe(100);
+    });
+
+    test("read<U8>() + read<U8>() sums two tokens", async () => {
+      expect(await executeTuff("read<U8>() + read<U8>()", "100 50")).toBe(150);
+    });
+
+    test("read<U8>()+read<U8>() also sums two tokens", async () => {
+      expect(await executeTuff("read<U8>()+read<U8>()", "100 50")).toBe(150);
     });
   });
 });
