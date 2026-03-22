@@ -4,11 +4,11 @@ import ts from "typescript";
 /**
  * Stub Tuff-to-TypeScript compiler.
  *
- * For now this only returns a numeric status code to reserve the public API.
+ * For now this only returns a numeric literal to reserve the public API.
  */
 export function compileTuffToTS(source: string): string {
   void source;
-  return "return 0;";
+  return "0;";
 }
 
 /**
