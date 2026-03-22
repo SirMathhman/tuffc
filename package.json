@@ -1,0 +1,20 @@
+{
+  "name": "tuffc",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "lint": "eslint --no-error-on-unmatched-pattern \"src/**/*.ts\" \"tests/**/*.ts\"",
+    "find-duplicates": "cmd /c pmd cpd --dir src,tests --language typescript --minimum-tokens 35 --ignore-identifiers --ignore-literals",
+    "check": "bun test && bun run lint && bun run find-duplicates"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@typescript-eslint/eslint-plugin": "^8.57.1",
+    "@typescript-eslint/parser": "^8.57.1",
+    "eslint": "^10.1.0"
+  },
+  "peerDependencies": {
+    "typescript": "^5.9.3"
+  }
+}
