@@ -1,12 +1,19 @@
 import vm from "node:vm";
 import ts from "typescript";
 
-/**
- * Stub Tuff-to-TypeScript compiler.
- *
- * For now this recognizes a minimal numeric literal form and otherwise
- * preserves the public API's zero baseline.
- */
+const INTEGER_RANGES: Record<string, { min: bigint; max: bigint }> = {
+  U8: { min: 0n, max: 255n },
+  U16: { min: 0n, max: 65535n },
+  U32: { min: 0n, max: 4294967295n },
+  U64: { min: 0n, max: 18446744073709551615n },
+  I8: { min: -128n, max: 127n },
+  I16: { min: -32768n, max: 32767n },
+  I32: { min: -2147483648n, max: 2147483647n },
+  I64: { min: -9223372036854775808n, max: 9223372036854775807n },
+};
+
+const F32_MAX = 3.4028234663852886e38;
+
 export function compileTuffToTS(source: string): string {
   const trimmedSource = source.trim();
 
@@ -14,9 +21,38 @@ export function compileTuffToTS(source: string): string {
     return "0;";
   }
 
-  const u8LiteralMatch = /^(\d+)U8$/.exec(trimmedSource);
-  if (u8LiteralMatch) {
-    return `${Number(u8LiteralMatch[1])};`;
+  const intLiteralMatch = /^(-?\d+)(U8|U16|U32|U64|I8|I16|I32|I64)$/.exec(
+    trimmedSource,
+  );
+  if (intLiteralMatch) {
+    const valueStr = intLiteralMatch[1];
+    const typeSuffix = intLiteralMatch[2];
+    const range = INTEGER_RANGES[typeSuffix];
+    const bigValue = BigInt(valueStr);
+    if (bigValue < range.min || bigValue > range.max) {
+      throw new Error(
+        `Value ${valueStr} is out of range for type ${typeSuffix} (${range.min}..${range.max})`,
+      );
+    }
+    return `${Number(valueStr)};`;
+  }
+
+  const floatLiteralMatch = /^(-?\d+(?:\.\d+)?)(F32|F64)$/.exec(trimmedSource);
+  if (floatLiteralMatch) {
+    const valueStr = floatLiteralMatch[1];
+    const typeSuffix = floatLiteralMatch[2];
+    const value = Number(valueStr);
+    if (!Number.isFinite(value)) {
+      throw new Error(
+        `Value ${valueStr} is not a finite number for type ${typeSuffix}`,
+      );
+    }
+    if (typeSuffix === "F32" && Math.abs(value) > F32_MAX) {
+      throw new Error(
+        `Value ${valueStr} is out of range for type F32 (max ±${F32_MAX})`,
+      );
+    }
+    return `${value};`;
   }
 
   if (/^read<\s*U8\s*>\(\)$/.test(trimmedSource)) {
@@ -33,10 +69,7 @@ export function compileTuffToTS(source: string): string {
  * Until `compileTuffToTS` produces TypeScript output, the provided source is
  * treated as TypeScript after the stub is invoked.
  */
-export function compileTuffAndExecute(
-  tuffSource: string,
-  stdIn = "",
-): number {
+export function compileTuffAndExecute(tuffSource: string, stdIn = ""): number {
   const tsSource = compileTuffToTS(tuffSource);
   const transpileResult = ts.transpileModule(tsSource, {
     compilerOptions: {
