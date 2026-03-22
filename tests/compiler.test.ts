@@ -74,6 +74,18 @@ describe("compileTuffToTS", () => {
         expect(compiled.value).toContain("+");
       }
     });
+    test("read<U8>() + 50U8 compiles", () => {
+      expect(compileTuffToTS("read<U8>() + 50U8").isOk).toBe(true);
+    });
+    test("50U8 + read<U8>() compiles", () => {
+      expect(compileTuffToTS("50U8 + read<U8>()").isOk).toBe(true);
+    });
+    test("read<U8>() + token returns Err", () => {
+      expect(compileTuffToTS("read<U8>() + token").isOk).toBe(false);
+    });
+    test("trailing operator returns Err", () => {
+      expect(compileTuffToTS("read<U8>() +").isOk).toBe(false);
+    });
 
     // --- error: out of range ---
     test("U8 value 256 returns Err", () => {
@@ -131,6 +143,26 @@ describe("executeTuff", () => {
 
     test("read<U8>()+read<U8>() also sums two tokens", async () => {
       expect(await executeTuff("read<U8>()+read<U8>()", "100 50")).toBe(150);
+    });
+
+    test("read<U8>() + literal works", async () => {
+      expect(await executeTuff("read<U8>() + 50U8", "100")).toBe(150);
+    });
+
+    test("literal + read<U8>() works", async () => {
+      expect(await executeTuff("50U8 + read<U8>()", "100")).toBe(150);
+    });
+
+    test("supports multiplication and precedence", async () => {
+      expect(await executeTuff("read<U8>() + 2U8 * 3U8", "10")).toBe(16);
+    });
+
+    test("supports subtraction", async () => {
+      expect(await executeTuff("read<U8>() - 30U8", "100")).toBe(70);
+    });
+
+    test("supports integer division truncation", async () => {
+      expect(await executeTuff("read<U8>() / 3U8", "10")).toBe(3);
     });
   });
 });

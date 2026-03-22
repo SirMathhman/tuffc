@@ -39,41 +39,234 @@ const TYPE_RANGES = new Map<string, NumericRange>([
 ]);
 
 const TYPE_SUFFIXES = ["U64", "U32", "U16", "U8", "I64", "I32", "I16", "I8"];
+const READ_U8_CALL = "read<U8>()";
+const OPERATOR_CHARS = ["+", "-", "*", "/"];
 
 function isDigit(ch: string): boolean {
   return ch >= "0" && ch <= "9";
 }
 
-function stripSpaces(value: string): string {
-  let out = "";
-  for (let i = 0; i < value.length; i++) {
-    if (value[i] !== " ") {
-      out += value[i];
-    }
-  }
-  return out;
+function isWhitespace(ch: string): boolean {
+  return ch === " " || ch === "\t" || ch === "\n" || ch === "\r";
 }
 
-function buildReadU8Program(readCount: number): string {
-  const lines = [
-    "const __tuffInput = process.env.TUFFC_STDIN ?? '';",
-    "let __k = 0;",
-    "function __nextToken() {",
-    "  while (__k < __tuffInput.length && __tuffInput[__k] === ' ') __k++;",
-    "  let __start = __k;",
-    "  while (__k < __tuffInput.length && __tuffInput[__k] !== ' ') __k++;",
-    "  return __tuffInput.slice(__start, __k);",
-    "}",
-  ];
+function consumeWhitespace(source: string, start: number): number {
+  let i = start;
+  while (i < source.length && isWhitespace(source[i]!)) {
+    i++;
+  }
+  return i;
+}
 
-  if (readCount === 1) {
-    lines.push("process.exit(Number.parseInt(__nextToken(), 10));");
-    return lines.join("\n");
+function startsWithAt(source: string, start: number, value: string): boolean {
+  return source.slice(start, start + value.length) === value;
+}
+
+function isOperatorChar(ch: string): boolean {
+  return OPERATOR_CHARS.includes(ch);
+}
+
+function operatorPrecedence(op: string): number {
+  if (op === "+" || op === "-") return 1;
+  if (op === "*" || op === "/") return 2;
+  return 0;
+}
+
+interface ParseTermResult {
+  termJs: string;
+  nextIndex: number;
+  usesRead: boolean;
+}
+
+interface CompileExpressionResult {
+  expressionJs: string;
+  usesRead: boolean;
+}
+
+function parseTermAt(
+  source: string,
+  start: number,
+): Result<ParseTermResult | undefined, string> {
+  const i = consumeWhitespace(source, start);
+  if (i >= source.length) return ok(undefined);
+
+  if (startsWithAt(source, i, READ_U8_CALL)) {
+    return ok({
+      termJs: "__readU8()",
+      nextIndex: i + READ_U8_CALL.length,
+      usesRead: true,
+    });
   }
 
-  lines.push("const __a = Number.parseInt(__nextToken(), 10);");
-  lines.push("const __b = Number.parseInt(__nextToken(), 10);");
-  lines.push("process.exit(__a + __b);");
+  let j = i;
+  if (source[j] === "-" && j + 1 < source.length && isDigit(source[j + 1]!)) {
+    j++;
+  }
+  while (
+    j < source.length &&
+    !isWhitespace(source[j]!) &&
+    !isOperatorChar(source[j]!)
+  ) {
+    j++;
+  }
+  if (j === i) {
+    return ok(undefined);
+  }
+
+  const token = source.slice(i, j);
+  const parsedLiteral = parseIntegerLiteral(token);
+  if (!parsedLiteral.isOk) {
+    return parsedLiteral;
+  }
+  if (parsedLiteral.value === undefined) {
+    return err(`Invalid term: ${token}`);
+  }
+
+  return ok({
+    termJs: parsedLiteral.value,
+    nextIndex: j,
+    usesRead: false,
+  });
+}
+
+function toPostfix(
+  terms: string[],
+  operators: string[],
+): Result<string[], string> {
+  const output: string[] = [];
+  const opStack: string[] = [];
+
+  for (let i = 0; i < terms.length; i++) {
+    output.push(terms[i]!);
+    if (i >= operators.length) continue;
+
+    const op = operators[i]!;
+    while (opStack.length > 0) {
+      const top = opStack[opStack.length - 1]!;
+      if (operatorPrecedence(top) < operatorPrecedence(op)) break;
+      output.push(opStack.pop()!);
+    }
+    opStack.push(op);
+  }
+
+  while (opStack.length > 0) {
+    output.push(opStack.pop()!);
+  }
+
+  return ok(output);
+}
+
+function postfixToJs(postfix: string[]): Result<string, string> {
+  const stack: string[] = [];
+
+  for (let i = 0; i < postfix.length; i++) {
+    const token = postfix[i]!;
+    if (!isOperatorChar(token)) {
+      stack.push(token);
+      continue;
+    }
+
+    if (stack.length < 2) {
+      return err("Invalid expression structure");
+    }
+
+    const right = stack.pop()!;
+    const left = stack.pop()!;
+    if (token === "/") {
+      stack.push(`Math.trunc(${left} / ${right})`);
+    } else {
+      stack.push(`(${left} ${token} ${right})`);
+    }
+  }
+
+  if (stack.length !== 1) {
+    return err("Invalid expression structure");
+  }
+
+  return ok(stack[0]!);
+}
+
+function compileArithmeticExpression(
+  source: string,
+): Result<CompileExpressionResult | undefined, string> {
+  let i = 0;
+  let expectingTerm = true;
+  const terms: string[] = [];
+  const operators: string[] = [];
+  let usesRead = false;
+
+  while (i < source.length) {
+    if (expectingTerm) {
+      const parsedTerm = parseTermAt(source, i);
+      if (!parsedTerm.isOk) {
+        return parsedTerm;
+      }
+      if (parsedTerm.value === undefined) {
+        if (terms.length === 0) return ok(undefined);
+        return err("Expected a term");
+      }
+
+      terms.push(parsedTerm.value.termJs);
+      if (parsedTerm.value.usesRead) {
+        usesRead = true;
+      }
+      i = parsedTerm.value.nextIndex;
+      expectingTerm = false;
+      continue;
+    }
+
+    i = consumeWhitespace(source, i);
+    if (i >= source.length) break;
+
+    const op = source[i]!;
+    if (!isOperatorChar(op)) {
+      return err(`Expected operator at position ${i}`);
+    }
+    operators.push(op);
+    i++;
+    expectingTerm = true;
+  }
+
+  if (terms.length === 0) return ok(undefined);
+  if (expectingTerm) return err("Expression cannot end with an operator");
+  if (terms.length !== operators.length + 1) {
+    return err("Invalid expression layout");
+  }
+
+  const postfix = toPostfix(terms, operators);
+  if (!postfix.isOk) return postfix;
+
+  const expressionJs = postfixToJs(postfix.value);
+  if (!expressionJs.isOk) return expressionJs;
+
+  return ok({ expressionJs: expressionJs.value, usesRead });
+}
+
+function buildExpressionProgram(
+  expressionJs: string,
+  usesRead: boolean,
+): string {
+  const lines: string[] = [];
+
+  if (usesRead) {
+    lines.push("const __tuffInput = process.env.TUFFC_STDIN ?? '';");
+    lines.push("let __k = 0;");
+    lines.push("function __nextToken() {");
+    lines.push(
+      "  while (__k < __tuffInput.length && __tuffInput[__k] === ' ') __k++;",
+    );
+    lines.push("  let __start = __k;");
+    lines.push(
+      "  while (__k < __tuffInput.length && __tuffInput[__k] !== ' ') __k++;",
+    );
+    lines.push("  return __tuffInput.slice(__start, __k);");
+    lines.push("}");
+    lines.push("function __readU8() {");
+    lines.push("  return Number.parseInt(__nextToken(), 10);");
+    lines.push("}");
+  }
+
+  lines.push(`process.exit(${expressionJs});`);
   return lines.join("\n");
 }
 
@@ -109,22 +302,15 @@ function parseIntegerLiteral(
 export function compileTuffToTS(source: string): Result<string, string> {
   if (source === "") return ok("");
 
-  const compactSource = stripSpaces(source);
-
-  if (source === "read<U8>()") {
-    return ok(buildReadU8Program(1));
-  }
-
-  if (compactSource === "read<U8>()+read<U8>()") {
-    return ok(buildReadU8Program(2));
-  }
-
-  const parsed = parseIntegerLiteral(source);
-  if (!parsed.isOk) {
-    return parsed;
-  }
-  if (parsed.value !== undefined) {
-    return ok(`process.exit(${parsed.value});`);
+  const parsedExpression = compileArithmeticExpression(source);
+  if (!parsedExpression.isOk) return parsedExpression;
+  if (parsedExpression.value !== undefined) {
+    return ok(
+      buildExpressionProgram(
+        parsedExpression.value.expressionJs,
+        parsedExpression.value.usesRead,
+      ),
+    );
   }
 
   return err(`Unable to compile Tuff source: ${source}`);
