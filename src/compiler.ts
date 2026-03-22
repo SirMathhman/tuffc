@@ -4,10 +4,21 @@ import ts from "typescript";
 /**
  * Stub Tuff-to-TypeScript compiler.
  *
- * For now this only returns a numeric literal to reserve the public API.
+ * For now this recognizes a minimal numeric literal form and otherwise
+ * preserves the public API's zero baseline.
  */
 export function compileTuffToTS(source: string): string {
-  void source;
+  const trimmedSource = source.trim();
+
+  if (trimmedSource === "") {
+    return "0;";
+  }
+
+  const u8LiteralMatch = /^(\d+)U8$/.exec(trimmedSource);
+  if (u8LiteralMatch) {
+    return `${Number(u8LiteralMatch[1])};`;
+  }
+
   return "0;";
 }
 
