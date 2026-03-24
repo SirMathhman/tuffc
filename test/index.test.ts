@@ -69,4 +69,28 @@ describe("interpretTuff", () => {
     expect(() => interpretTuff("9223372036854775808I64")).toThrow();
     expect(() => interpretTuff("-9223372036854775809I64")).toThrow();
   });
+
+  test("adds two U8 values", () => {
+    expect(interpretTuff("1U8 + 2U8")).toBe(3);
+  });
+
+  test("rejects U8 addition overflow", () => {
+    expect(() => interpretTuff("1U8 + 255U8")).toThrow();
+  });
+
+  test("adds a typed value with a plain number", () => {
+    expect(interpretTuff("1U8 + 254")).toBe(255);
+  });
+
+  test("adds two plain numbers", () => {
+    expect(interpretTuff("1 + 2")).toBe(3);
+  });
+
+  test("adds a plain number to a typed value on the right", () => {
+    expect(interpretTuff("254 + 1U8")).toBe(255);
+  });
+
+  test("rejects signed addition overflow", () => {
+    expect(() => interpretTuff("127I8 + 1")).toThrow();
+  });
 });
