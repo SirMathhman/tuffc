@@ -16,6 +16,31 @@ fn parses_uppercase_u64_suffix() {
 }
 
 #[test]
+fn adds_typed_literals() {
+    assert_eq!(interpretTuff("1U8 + 2U8"), Ok(3));
+}
+
+#[test]
+fn respects_operator_precedence() {
+    assert_eq!(interpretTuff("1U8 + 2U8 * 3U8"), Ok(7));
+}
+
+#[test]
+fn respects_parentheses() {
+    assert_eq!(interpretTuff("(1U8 + 2U8) * 3U8"), Ok(9));
+}
+
+#[test]
+fn supports_unary_minus() {
+    assert_eq!(interpretTuff("-1I8 + 2I8"), Ok(1));
+}
+
+#[test]
+fn supports_subtraction_and_division() {
+    assert_eq!(interpretTuff("8U8 - 3U8 / 2U8"), Ok(7));
+}
+
+#[test]
 fn trims_whitespace_before_parsing() {
     assert_eq!(interpretTuff("  100U8  "), Ok(100));
 }
@@ -33,4 +58,20 @@ fn rejects_lowercase_suffix() {
 #[test]
 fn rejects_out_of_range_u8() {
     assert!(interpretTuff("256U8").is_err());
+}
+
+#[test]
+fn rejects_division_by_zero() {
+    assert!(interpretTuff("1U8 / 0U8").is_err());
+}
+
+#[test]
+fn rejects_malformed_expression() {
+    assert!(interpretTuff("1U8 +").is_err());
+}
+
+#[test]
+fn rejects_arithmetic_overflow() {
+    let input = format!("{} + 1", i128::MAX);
+    assert!(interpretTuff(&input).is_err());
 }
