@@ -1,16 +1,25 @@
 export function interpretTuff(input: string): number {
-  const signedIMatch = input.match(/^(-\d+)I\d+$/);
-  if (signedIMatch) {
-    return Number(signedIMatch[1]);
+  const unsignedMatch = input.match(/^(\d+)U(8|16|32|64)$/);
+  if (unsignedMatch) {
+    const value = BigInt(unsignedMatch[1]);
+    const bitWidth = Number(unsignedMatch[2]);
+    const maxValue = (1n << BigInt(bitWidth)) - 1n;
+    if (value > maxValue) {
+      throw new Error(`U${bitWidth} value out of range.`);
+    }
+    return Number(value);
   }
 
-  const unsignedU8Match = input.match(/^(\d+)U8$/);
-  if (unsignedU8Match) {
-    const value = Number(unsignedU8Match[1]);
-    if (value > 255) {
-      throw new Error("U8 value out of range.");
+  const signedMatch = input.match(/^(-?\d+)I(8|16|32|64)$/);
+  if (signedMatch) {
+    const value = BigInt(signedMatch[1]);
+    const bitWidth = Number(signedMatch[2]);
+    const maxValue = (1n << (BigInt(bitWidth) - 1n)) - 1n;
+    const minValue = -(1n << (BigInt(bitWidth) - 1n));
+    if (value < minValue || value > maxValue) {
+      throw new Error(`I${bitWidth} value out of range.`);
     }
-    return value;
+    return Number(value);
   }
 
   if (input.startsWith("-")) {
