@@ -29,3 +29,19 @@ test("100U8 compiles to exit code 100", () => {
 test("10U8 compiles to exit code 10", () => {
   expectValid("10U8", 10);
 });
+
+test("1U8 + 2U8 compiles to exit code 3", () => {
+  expectValid("1U8 + 2U8", 3);
+});
+
+test("let x : U8 = 1U8 + 2U8; x compiles to exit code 3", () => {
+  expectValid("let x : U8 = 1U8 + 2U8; x", 3);
+});
+
+test("unsupported let initializer falls back to empty output", () => {
+  expect(compileTuffToTS("let x : U8 = foo; x")).toBe("");
+});
+
+test("unsupported compiled let initializer falls back to empty output", () => {
+  expect(compileTSToTuff("const x = foo; return x;")).toBe("");
+});
