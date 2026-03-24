@@ -14,7 +14,14 @@ pub fn interpret_tuff(input: &str) -> Result<i128, String> {
 struct Parser<'a> {
     input: &'a str,
     position: usize,
-    env: HashMap<String, i128>,
+    env: HashMap<String, Binding>,
+}
+
+#[derive(Clone)]
+struct Binding {
+    value: i128,
+    mutable: bool,
+    annotation: Option<String>,
 }
 
 impl<'a> Parser<'a> {
@@ -29,22 +36,21 @@ impl<'a> Parser<'a> {
     fn parse_program(&mut self) -> Result<i128, String> {
         self.skip_whitespace();
 
-        while self.peek_keyword("let") {
-            self.parse_let_statement()?;
-            self.skip_whitespace();
-
-            if !self.consume_char(';') {
-                return Err("expected ';' after let binding".to_string());
+        loop {
+            if self.peek_keyword("let") {
+                self.parse_let_statement()?;
+                self.expect_statement_terminator("let binding")?;
+            } else if self.peek_assignment_statement() {
+                self.parse_assignment_statement()?;
+                self.expect_statement_terminator("assignment")?;
+            } else {
+                break;
             }
 
             self.skip_whitespace();
 
             if self.is_eof() {
                 return Err("missing final expression".to_string());
-            }
-
-            if !self.peek_keyword("let") {
-                break;
             }
         }
 
@@ -61,6 +67,14 @@ impl<'a> Parser<'a> {
     fn parse_let_statement(&mut self) -> Result<(), String> {
         self.expect_keyword("let")?;
         self.skip_whitespace();
+
+        let mutable = if self.peek_keyword("mut") {
+            self.expect_keyword("mut")?;
+            self.skip_whitespace();
+            true
+        } else {
+            false
+        };
 
         let name = self
             .parse_identifier()
@@ -88,9 +102,55 @@ impl<'a> Parser<'a> {
 
         if let Some(annotation) = annotation {
             self.validate_annotation(&annotation, value)?;
+            self.env.insert(
+                name,
+                Binding {
+                    value,
+                    mutable,
+                    annotation: Some(annotation),
+                },
+            );
+        } else {
+            self.env.insert(
+                name,
+                Binding {
+                    value,
+                    mutable,
+                    annotation: None,
+                },
+            );
         }
 
-        self.env.insert(name, value);
+        Ok(())
+    }
+
+    fn parse_assignment_statement(&mut self) -> Result<(), String> {
+        let name = self
+            .parse_identifier()
+            .ok_or_else(|| "expected variable name in assignment".to_string())?;
+
+        self.skip_whitespace();
+
+        if !self.consume_char('=') {
+            return Err("expected '=' in assignment".to_string());
+        }
+
+        let value = self.parse_expression()?;
+        let binding = self
+            .env
+            .get(&name)
+            .cloned()
+            .ok_or_else(|| format!("unknown variable: {name}"))?;
+
+        if !binding.mutable {
+            return Err(format!("cannot reassign immutable binding: {name}"));
+        }
+
+        if let Some(annotation) = binding.annotation.as_deref() {
+            self.validate_annotation(annotation, value)?;
+        }
+
+        self.env.insert(name, Binding { value, ..binding });
         Ok(())
     }
 
@@ -197,7 +257,7 @@ impl<'a> Parser<'a> {
             } else {
                 self.env
                     .get(&ident)
-                    .copied()
+                    .map(|binding| binding.value)
                     .ok_or_else(|| format!("unknown variable: {ident}"))
             }
         } else {
@@ -294,12 +354,62 @@ impl<'a> Parser<'a> {
             .is_none_or(|ch| !Self::is_ident_continue(ch))
     }
 
+    fn peek_assignment_statement(&self) -> bool {
+        let mut position = self.position;
+
+        while self.input[position..]
+            .chars()
+            .next()
+            .is_some_and(|ch| ch.is_whitespace())
+        {
+            position += self.input[position..].chars().next().unwrap().len_utf8();
+        }
+
+        let Some(first) = self.input[position..].chars().next() else {
+            return false;
+        };
+
+        if !Self::is_ident_start(first) {
+            return false;
+        }
+
+        position += first.len_utf8();
+
+        while self.input[position..]
+            .chars()
+            .next()
+            .is_some_and(Self::is_ident_continue)
+        {
+            position += self.input[position..].chars().next().unwrap().len_utf8();
+        }
+
+        while self.input[position..]
+            .chars()
+            .next()
+            .is_some_and(|ch| ch.is_whitespace())
+        {
+            position += self.input[position..].chars().next().unwrap().len_utf8();
+        }
+
+        self.input[position..].starts_with('=')
+    }
+
     fn expect_keyword(&mut self, keyword: &str) -> Result<(), String> {
         if self.peek_keyword(keyword) {
             self.position += keyword.len();
             Ok(())
         } else {
             Err(format!("expected keyword '{keyword}'"))
+        }
+    }
+
+    fn expect_statement_terminator(&mut self, statement_name: &str) -> Result<(), String> {
+        self.skip_whitespace();
+
+        if self.consume_char(';') {
+            Ok(())
+        } else {
+            Err(format!("expected ';' after {statement_name}"))
         }
     }
 

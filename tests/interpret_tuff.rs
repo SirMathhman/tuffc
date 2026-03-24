@@ -36,6 +36,36 @@ fn lets_can_shadow_previous_bindings() {
 }
 
 #[test]
+fn evaluates_mutable_reassignment_and_reference() {
+    assert_eq!(interpretTuff("let mut x = 0U8; x = 1U8 + 2U8; x"), Ok(3));
+}
+
+#[test]
+fn mutable_bindings_support_annotations() {
+    assert_eq!(interpretTuff("let mut x : U8 = 0U8; x = 3U8; x"), Ok(3));
+}
+
+#[test]
+fn rejects_reassigning_immutable_binding() {
+    assert!(interpretTuff("let x = 0U8; x = 1U8; x").is_err());
+}
+
+#[test]
+fn rejects_reassigning_unknown_variable() {
+    assert!(interpretTuff("let mut x = 0U8; y = 1U8; x").is_err());
+}
+
+#[test]
+fn rejects_reassignment_that_violates_annotation() {
+    assert!(interpretTuff("let mut x : U8 = 0U8; x = 300U8; x").is_err());
+}
+
+#[test]
+fn rejects_malformed_reassignment_statement() {
+    assert!(interpretTuff("let mut x = 0U8; x = ; x").is_err());
+}
+
+#[test]
 fn validates_let_annotations() {
     assert!(interpretTuff("let x : U8 = 300U8; x").is_err());
 }
