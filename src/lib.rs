@@ -243,11 +243,7 @@ impl<'a> Parser<'a> {
             }
         }
 
-        if remaining
-            .chars()
-            .next()
-            .is_some_and(Self::is_ident_start)
-        {
+        if remaining.chars().next().is_some_and(Self::is_ident_start) {
             return Err(format!("invalid literal: {literal}{remaining}"));
         }
 
