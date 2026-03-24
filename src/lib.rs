@@ -8,7 +8,7 @@ pub fn interpret_tuff(input: &str) -> Result<i128, String> {
     }
 
     let mut parser = Parser::new(trimmed);
-    parser.parse_program()
+    parser.parse_program().map(Value::into_public_result)
 }
 
 struct Parser<'a> {
@@ -19,9 +19,21 @@ struct Parser<'a> {
 
 #[derive(Clone)]
 struct Binding {
-    value: i128,
+    value: Value,
     mutable: bool,
-    annotation: Option<String>,
+    annotation: Option<TypeAnnotation>,
+}
+
+#[derive(Clone)]
+enum TypeAnnotation {
+    Integer(&'static str),
+    Bool,
+}
+
+#[derive(Clone)]
+enum Value {
+    Integer(i128),
+    Bool(bool),
 }
 
 impl<'a> Parser<'a> {
@@ -33,7 +45,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_program(&mut self) -> Result<i128, String> {
+    fn parse_program(&mut self) -> Result<Value, String> {
         self.skip_whitespace();
 
         loop {
@@ -79,15 +91,13 @@ impl<'a> Parser<'a> {
         let name = self
             .parse_identifier()
             .ok_or_else(|| "expected variable name after let".to_string())?;
+        self.validate_identifier_name(&name)?;
 
         self.skip_whitespace();
 
         let annotation = if self.consume_char(':') {
             self.skip_whitespace();
-            Some(
-                self.parse_identifier()
-                    .ok_or_else(|| "expected type annotation after ':'".to_string())?,
-            )
+            Some(self.parse_type_annotation()?)
         } else {
             None
         };
@@ -101,7 +111,7 @@ impl<'a> Parser<'a> {
         let value = self.parse_expression()?;
 
         if let Some(annotation) = annotation {
-            self.validate_annotation(&annotation, value)?;
+            self.validate_annotation(&annotation, &value)?;
             self.env.insert(
                 name,
                 Binding {
@@ -128,6 +138,7 @@ impl<'a> Parser<'a> {
         let name = self
             .parse_identifier()
             .ok_or_else(|| "expected variable name in assignment".to_string())?;
+        self.validate_identifier_name(&name)?;
 
         self.skip_whitespace();
 
@@ -146,29 +157,104 @@ impl<'a> Parser<'a> {
             return Err(format!("cannot reassign immutable binding: {name}"));
         }
 
-        if let Some(annotation) = binding.annotation.as_deref() {
-            self.validate_annotation(annotation, value)?;
+        if let Some(annotation) = binding.annotation.as_ref() {
+            self.validate_annotation(annotation, &value)?;
         }
 
         self.env.insert(name, Binding { value, ..binding });
         Ok(())
     }
 
-    fn validate_annotation(&self, annotation: &str, value: i128) -> Result<(), String> {
+    fn parse_type_annotation(&mut self) -> Result<TypeAnnotation, String> {
+        let annotation = self
+            .parse_identifier()
+            .ok_or_else(|| "expected type annotation after ':'".to_string())?;
+
+        if annotation == "Bool" {
+            return Ok(TypeAnnotation::Bool);
+        }
+
         for (suffix, min, max) in Self::typed_suffixes() {
             if suffix == annotation {
-                if value < min || value > max {
-                    return Err(format!("value out of range for {annotation}: {value}"));
-                }
-
-                return Ok(());
+                let _ = (min, max);
+                return Ok(TypeAnnotation::Integer(suffix));
             }
         }
 
         Err(format!("unsupported type annotation: {annotation}"))
     }
 
-    fn parse_expression(&mut self) -> Result<i128, String> {
+    fn validate_annotation(
+        &self,
+        annotation: &TypeAnnotation,
+        value: &Value,
+    ) -> Result<(), String> {
+        match annotation {
+            TypeAnnotation::Bool => match value {
+                Value::Bool(_) => Ok(()),
+                _ => Err(format!("expected Bool value, found {}", value.type_name())),
+            },
+            TypeAnnotation::Integer(suffix) => {
+                let integer = value.expect_integer("type annotation")?;
+
+                for (candidate, min, max) in Self::typed_suffixes() {
+                    if candidate == *suffix {
+                        if integer < min || integer > max {
+                            return Err(format!("value out of range for {suffix}: {integer}"));
+                        }
+
+                        return Ok(());
+                    }
+                }
+
+                Err(format!("unsupported type annotation: {suffix}"))
+            }
+        }
+    }
+
+    fn parse_expression(&mut self) -> Result<Value, String> {
+        self.parse_or_expression()
+    }
+
+    fn parse_or_expression(&mut self) -> Result<Value, String> {
+        let mut value = self.parse_and_expression()?;
+
+        loop {
+            self.skip_whitespace();
+
+            if self.consume_str("||") {
+                let rhs = self.parse_and_expression()?;
+                let lhs = value.expect_bool("logical or")?;
+                let rhs = rhs.expect_bool("logical or")?;
+                value = Value::Bool(lhs || rhs);
+            } else {
+                break;
+            }
+        }
+
+        Ok(value)
+    }
+
+    fn parse_and_expression(&mut self) -> Result<Value, String> {
+        let mut value = self.parse_additive_expression()?;
+
+        loop {
+            self.skip_whitespace();
+
+            if self.consume_str("&&") {
+                let rhs = self.parse_additive_expression()?;
+                let lhs = value.expect_bool("logical and")?;
+                let rhs = rhs.expect_bool("logical and")?;
+                value = Value::Bool(lhs && rhs);
+            } else {
+                break;
+            }
+        }
+
+        Ok(value)
+    }
+
+    fn parse_additive_expression(&mut self) -> Result<Value, String> {
         let mut value = self.parse_term()?;
 
         loop {
@@ -176,14 +262,20 @@ impl<'a> Parser<'a> {
 
             if self.consume_char('+') {
                 let rhs = self.parse_term()?;
-                value = value
-                    .checked_add(rhs)
-                    .ok_or_else(|| self.arithmetic_error("addition"))?;
+                let lhs = value.expect_integer("addition")?;
+                let rhs = rhs.expect_integer("addition")?;
+                value = Value::Integer(
+                    lhs.checked_add(rhs)
+                        .ok_or_else(|| self.arithmetic_error("addition"))?,
+                );
             } else if self.consume_char('-') {
                 let rhs = self.parse_term()?;
-                value = value
-                    .checked_sub(rhs)
-                    .ok_or_else(|| self.arithmetic_error("subtraction"))?;
+                let lhs = value.expect_integer("subtraction")?;
+                let rhs = rhs.expect_integer("subtraction")?;
+                value = Value::Integer(
+                    lhs.checked_sub(rhs)
+                        .ok_or_else(|| self.arithmetic_error("subtraction"))?,
+                );
             } else {
                 break;
             }
@@ -192,7 +284,7 @@ impl<'a> Parser<'a> {
         Ok(value)
     }
 
-    fn parse_term(&mut self) -> Result<i128, String> {
+    fn parse_term(&mut self) -> Result<Value, String> {
         let mut value = self.parse_factor()?;
 
         loop {
@@ -200,18 +292,24 @@ impl<'a> Parser<'a> {
 
             if self.consume_char('*') {
                 let rhs = self.parse_factor()?;
-                value = value
-                    .checked_mul(rhs)
-                    .ok_or_else(|| self.arithmetic_error("multiplication"))?;
+                let lhs = value.expect_integer("multiplication")?;
+                let rhs = rhs.expect_integer("multiplication")?;
+                value = Value::Integer(
+                    lhs.checked_mul(rhs)
+                        .ok_or_else(|| self.arithmetic_error("multiplication"))?,
+                );
             } else if self.consume_char('/') {
                 let rhs = self.parse_factor()?;
+                let lhs = value.expect_integer("division")?;
+                let rhs = rhs.expect_integer("division")?;
                 if rhs == 0 {
                     return Err("division by zero".to_string());
                 }
 
-                value = value
-                    .checked_div(rhs)
-                    .ok_or_else(|| self.arithmetic_error("division"))?;
+                value = Value::Integer(
+                    lhs.checked_div(rhs)
+                        .ok_or_else(|| self.arithmetic_error("division"))?,
+                );
             } else {
                 break;
             }
@@ -220,22 +318,28 @@ impl<'a> Parser<'a> {
         Ok(value)
     }
 
-    fn parse_factor(&mut self) -> Result<i128, String> {
+    fn parse_factor(&mut self) -> Result<Value, String> {
         self.skip_whitespace();
 
-        if self.consume_char('+') {
-            self.parse_factor()
-        } else if self.consume_char('-') {
+        if self.consume_char('!') {
             let value = self.parse_factor()?;
-            value
-                .checked_neg()
-                .ok_or_else(|| self.arithmetic_error("negation"))
+            Ok(Value::Bool(!value.expect_bool("logical not")?))
+        } else if self.consume_char('+') {
+            let value = self.parse_factor()?;
+            Ok(Value::Integer(value.expect_integer("unary plus")?))
+        } else if self.consume_char('-') {
+            let value = self.parse_factor()?.expect_integer("negation")?;
+            Ok(Value::Integer(
+                value
+                    .checked_neg()
+                    .ok_or_else(|| self.arithmetic_error("negation"))?,
+            ))
         } else {
             self.parse_primary()
         }
     }
 
-    fn parse_primary(&mut self) -> Result<i128, String> {
+    fn parse_primary(&mut self) -> Result<Value, String> {
         self.skip_whitespace();
 
         if self.consume_char('(') {
@@ -247,17 +351,23 @@ impl<'a> Parser<'a> {
             } else {
                 Err("missing closing ')'".to_string())
             }
+        } else if self.peek_keyword("true") {
+            self.expect_keyword("true")?;
+            Ok(Value::Bool(true))
+        } else if self.peek_keyword("false") {
+            self.expect_keyword("false")?;
+            Ok(Value::Bool(false))
         } else if self.peek_char().is_some_and(Self::is_ident_start) {
             let ident = self
                 .parse_identifier()
                 .ok_or_else(|| "expected identifier".to_string())?;
 
-            if ident == "let" {
-                Err("unexpected keyword 'let'".to_string())
+            if Self::is_reserved_identifier(&ident) {
+                Err(format!("unexpected keyword '{ident}'"))
             } else {
                 self.env
                     .get(&ident)
-                    .map(|binding| binding.value)
+                    .map(|binding| binding.value.clone())
                     .ok_or_else(|| format!("unknown variable: {ident}"))
             }
         } else {
@@ -265,7 +375,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_literal(&mut self) -> Result<i128, String> {
+    fn parse_literal(&mut self) -> Result<Value, String> {
         self.skip_whitespace();
         let start = self.position;
 
@@ -299,7 +409,7 @@ impl<'a> Parser<'a> {
                     return Err(format!("value out of range for {suffix}: {value}"));
                 }
 
-                return Ok(value);
+                return Ok(Value::Integer(value));
             }
         }
 
@@ -309,6 +419,7 @@ impl<'a> Parser<'a> {
 
         literal
             .parse::<i128>()
+            .map(Value::Integer)
             .map_err(|_| format!("invalid literal: {literal}"))
     }
 
@@ -339,6 +450,16 @@ impl<'a> Parser<'a> {
         }
 
         Some(self.input[start..self.position].to_string())
+    }
+
+    fn validate_identifier_name(&self, name: &str) -> Result<(), String> {
+        if Self::is_reserved_identifier(name) {
+            Err(format!(
+                "reserved keyword cannot be used as identifier: {name}"
+            ))
+        } else {
+            Ok(())
+        }
     }
 
     fn peek_keyword(&self, keyword: &str) -> bool {
@@ -422,6 +543,15 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn consume_str(&mut self, expected: &str) -> bool {
+        if self.remaining().starts_with(expected) {
+            self.position += expected.len();
+            true
+        } else {
+            false
+        }
+    }
+
     fn peek_char(&self) -> Option<char> {
         self.input[self.position..].chars().next()
     }
@@ -448,8 +578,54 @@ impl<'a> Parser<'a> {
         ch.is_ascii_alphanumeric() || ch == '_'
     }
 
+    fn is_reserved_identifier(identifier: &str) -> bool {
+        matches!(identifier, "let" | "mut" | "Bool" | "true" | "false")
+    }
+
     fn arithmetic_error(&self, operation: &str) -> String {
         format!("arithmetic overflow during {operation}")
+    }
+}
+
+impl Value {
+    fn into_public_result(self) -> i128 {
+        match self {
+            Value::Integer(value) => value,
+            Value::Bool(value) => {
+                if value {
+                    1
+                } else {
+                    0
+                }
+            }
+        }
+    }
+
+    fn type_name(&self) -> &'static str {
+        match self {
+            Value::Integer(_) => "integer",
+            Value::Bool(_) => "Bool",
+        }
+    }
+
+    fn expect_integer(&self, context: &str) -> Result<i128, String> {
+        match self {
+            Value::Integer(value) => Ok(*value),
+            Value::Bool(_) => Err(format!(
+                "expected integer for {context}, found {}",
+                self.type_name()
+            )),
+        }
+    }
+
+    fn expect_bool(&self, context: &str) -> Result<bool, String> {
+        match self {
+            Value::Bool(value) => Ok(*value),
+            Value::Integer(_) => Err(format!(
+                "expected Bool for {context}, found {}",
+                self.type_name()
+            )),
+        }
     }
 }
 

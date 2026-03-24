@@ -16,6 +16,12 @@ fn parses_uppercase_u64_suffix() {
 }
 
 #[test]
+fn maps_bool_literals_to_public_numeric_results() {
+    assert_eq!(interpretTuff("true"), Ok(1));
+    assert_eq!(interpretTuff("false"), Ok(0));
+}
+
+#[test]
 fn adds_typed_literals() {
     assert_eq!(interpretTuff("1U8 + 2U8"), Ok(3));
 }
@@ -66,6 +72,20 @@ fn rejects_malformed_reassignment_statement() {
 }
 
 #[test]
+fn evaluates_bool_bindings_and_references() {
+    assert_eq!(interpretTuff("let x : Bool = true; x"), Ok(1));
+    assert_eq!(interpretTuff("let x = false; x"), Ok(0));
+}
+
+#[test]
+fn supports_mutable_bool_reassignment() {
+    assert_eq!(
+        interpretTuff("let mut x : Bool = false; x = true; x"),
+        Ok(1)
+    );
+}
+
+#[test]
 fn validates_let_annotations() {
     assert!(interpretTuff("let x : U8 = 300U8; x").is_err());
 }
@@ -96,6 +116,12 @@ fn supports_subtraction_and_division() {
 }
 
 #[test]
+fn supports_boolean_operators_with_standard_precedence() {
+    assert_eq!(interpretTuff("!false && false || true"), Ok(1));
+    assert_eq!(interpretTuff("!(false || true) && true"), Ok(0));
+}
+
+#[test]
 fn trims_whitespace_before_parsing() {
     assert_eq!(interpretTuff("  100U8  "), Ok(100));
 }
@@ -103,6 +129,24 @@ fn trims_whitespace_before_parsing() {
 #[test]
 fn rejects_invalid_input() {
     assert!(interpretTuff("abc").is_err());
+}
+
+#[test]
+fn rejects_non_bool_values_for_bool_annotations() {
+    assert!(interpretTuff("let x : Bool = 1U8; x").is_err());
+}
+
+#[test]
+fn rejects_mixed_boolean_and_numeric_operators() {
+    assert!(interpretTuff("true + 1U8").is_err());
+    assert!(interpretTuff("1U8 && true").is_err());
+    assert!(interpretTuff("!1U8").is_err());
+}
+
+#[test]
+fn rejects_reserved_bool_keywords_as_identifiers() {
+    assert!(interpretTuff("let true = false; true").is_err());
+    assert!(interpretTuff("let Bool = false; Bool").is_err());
 }
 
 #[test]
