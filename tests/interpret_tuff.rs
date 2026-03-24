@@ -21,6 +21,31 @@ fn adds_typed_literals() {
 }
 
 #[test]
+fn evaluates_let_binding_and_reference() {
+    assert_eq!(interpretTuff("let x : U8 = 1U8 + 2U8; x"), Ok(3));
+}
+
+#[test]
+fn lets_can_omit_annotations() {
+    assert_eq!(interpretTuff("let x = 1U8 + 2U8; x + 4U8"), Ok(7));
+}
+
+#[test]
+fn lets_can_shadow_previous_bindings() {
+    assert_eq!(interpretTuff("let x = 1U8; let x = x + 2U8; x"), Ok(3));
+}
+
+#[test]
+fn validates_let_annotations() {
+    assert!(interpretTuff("let x : U8 = 300U8; x").is_err());
+}
+
+#[test]
+fn rejects_unknown_variables() {
+    assert!(interpretTuff("x").is_err());
+}
+
+#[test]
 fn respects_operator_precedence() {
     assert_eq!(interpretTuff("1U8 + 2U8 * 3U8"), Ok(7));
 }
@@ -68,6 +93,11 @@ fn rejects_division_by_zero() {
 #[test]
 fn rejects_malformed_expression() {
     assert!(interpretTuff("1U8 +").is_err());
+}
+
+#[test]
+fn rejects_trailing_semicolon() {
+    assert!(interpretTuff("let x = 1U8; x;").is_err());
 }
 
 #[test]
