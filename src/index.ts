@@ -49,7 +49,10 @@ type TK =
   | "SLASH"
   | "SEMI"
   | "COLON"
-  | "EQ";
+  | "EQ"
+  | "PIPE_PIPE"
+  | "AMP_AMP"
+  | "BANG";
 
 interface Tok {
   kind: TK;
@@ -68,6 +71,7 @@ const CH_TO_TK: Readonly<Record<string, TK>> = {
   ";": "SEMI",
   ":": "COLON",
   "=": "EQ",
+  "!": "BANG",
 };
 
 function tokenize(src: string): Tok[] {
@@ -90,10 +94,18 @@ function tokenize(src: string): Tok[] {
       tokens.push({ kind: "NAME", val: src.slice(i, j) });
       i = j;
     } else {
-      const kind: TK | undefined = CH_TO_TK[ch];
-      if (!kind) throw new Error(`Syntax error: unexpected character "${ch}"`);
-      tokens.push({ kind, val: ch });
-      i++;
+      if (ch === "|" && src[i + 1] === "|") {
+        tokens.push({ kind: "PIPE_PIPE", val: "||" });
+        i += 2;
+      } else if (ch === "&" && src[i + 1] === "&") {
+        tokens.push({ kind: "AMP_AMP", val: "&&" });
+        i += 2;
+      } else {
+        const kind: TK | undefined = CH_TO_TK[ch];
+        if (!kind) throw new Error(`Syntax error: unexpected character "${ch}"`);
+        tokens.push({ kind, val: ch });
+        i++;
+      }
     }
   }
   return tokens;
@@ -271,6 +283,43 @@ function parseProgram(tokens: Tok[]): string {
     return parseBinaryLevel(parseMul, ADD_OPS);
   }
 
+  function parseBoolBinary(
+    inner: () => TypedExpr,
+    opTk: TK,
+    opStr: string,
+  ): TypedExpr {
+    let left: TypedExpr = inner();
+    while (peek()?.kind === opTk) {
+      consume();
+      const right: TypedExpr = inner();
+      if (left.type !== "Bool" || right.type !== "Bool") {
+        throw new Error(`Type error: ${opStr} requires Bool operands`);
+      }
+      left = { code: `${left.code} ${opStr} ${right.code}`, type: "Bool" };
+    }
+    return left;
+  }
+
+  function parseNot(): TypedExpr {
+    if (peek()?.kind === "BANG") {
+      consume();
+      const operand: TypedExpr = parseNot();
+      if (operand.type !== "Bool") {
+        throw new Error(`Type error: ! requires Bool operand`);
+      }
+      return { code: `!${operand.code}`, type: "Bool" };
+    }
+    return parseAdd();
+  }
+
+  function parseAnd(): TypedExpr {
+    return parseBoolBinary(parseNot, "AMP_AMP", "&&");
+  }
+
+  function parseOr(): TypedExpr {
+    return parseBoolBinary(parseAnd, "PIPE_PIPE", "||");
+  }
+
   const stmts: string[] = [];
 
   while (pos < tokens.length) {
@@ -294,7 +343,7 @@ function parseProgram(tokens: Tok[]): string {
         declaredType = "I32"; // placeholder; overwritten after RHS parse
       }
       expect("EQ");
-      const rhs: TypedExpr = parseAdd();
+      const rhs: TypedExpr = parseOr();
       expect("SEMI");
       if (!hasAnnotation) {
         declaredType = rhs.type;
@@ -310,7 +359,7 @@ function parseProgram(tokens: Tok[]): string {
     } else if (peek()?.kind === "NAME" && tokens[pos + 1]?.kind === "EQ") {
       const nameTok: Tok = consume();
       consume(); // EQ
-      const rhs: TypedExpr = parseAdd();
+      const rhs: TypedExpr = parseOr();
       expect("SEMI");
       const binding: Binding = requireBinding(nameTok.val);
       if (!binding.mutable) {
@@ -321,13 +370,15 @@ function parseProgram(tokens: Tok[]): string {
       assertTypeCompatible(binding.type, rhs.type);
       stmts.push(`${binding.jsName} = ${rhs.code};`);
     } else {
-      const expr: TypedExpr = parseAdd();
+      const expr: TypedExpr = parseOr();
       if (pos < tokens.length) {
         throw new Error(
           `Syntax error: unexpected token "${tokens[pos]!.val}" after expression`,
         );
       }
-      stmts.push(`return ${expr.type === "Bool" ? `${expr.code} ? 1 : 0` : expr.code};`);
+      stmts.push(
+        `return ${expr.type === "Bool" ? `${expr.code} ? 1 : 0` : expr.code};`,
+      );
       return stmts.join("\n");
     }
   }

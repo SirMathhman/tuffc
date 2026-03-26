@@ -22,13 +22,13 @@ type := IntSuffix | 'Bool'
 
 ## Code generation
 
-| Tuff                      | Generated JS                     |
-|---------------------------|----------------------------------|
-| `true`                    | `true`                           |
-| `false`                   | `false`                          |
-| `read<Bool>()`            | `readBool()`                     |
-| Final Bool expression     | `return <expr> ? 1 : 0;`         |
-| Final Int expression      | `return <expr>;` (unchanged)     |
+| Tuff                  | Generated JS                 |
+| --------------------- | ---------------------------- |
+| `true`                | `true`                       |
+| `false`               | `false`                      |
+| `read<Bool>()`        | `readBool()`                 |
+| Final Bool expression | `return <expr> ? 1 : 0;`     |
+| Final Int expression  | `return <expr>;` (unchanged) |
 
 ## Runtime / stdin
 

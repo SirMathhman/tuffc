@@ -35,10 +35,9 @@ function expectTuff(
     stdinTokens[readIdx++] === "true";
   const raw: number | undefined =
     stdin !== undefined
-      ? (new Function("read", "readBool", tsCode)(
-          mockRead,
-          mockReadBool,
-        ) as number | undefined)
+      ? (new Function("read", "readBool", tsCode)(mockRead, mockReadBool) as
+          | number
+          | undefined)
       : (new Function(tsCode)() as number | undefined);
   const exitCode: number = raw ?? 0;
   expect(exitCode).toBe(expectedExitCode);
@@ -280,6 +279,68 @@ describe("Bool", () => {
 
     test("assign integer to Bool type throws", () => {
       expect(() => compileTuffToTS("let x: Bool = 5U8;")).toThrow();
+    });
+  });
+});
+
+describe("bool operators", () => {
+  describe("valid", () => {
+    test("true || false exits 1", () => {
+      expectTuff("true || false", 1);
+    });
+
+    test("false || false exits 0", () => {
+      expectTuff("false || false", 0);
+    });
+
+    test("true && true exits 1", () => {
+      expectTuff("true && true", 1);
+    });
+
+    test("true && false exits 0", () => {
+      expectTuff("true && false", 0);
+    });
+
+    test("!true exits 0", () => {
+      expectTuff("!true", 0);
+    });
+
+    test("!false exits 1", () => {
+      expectTuff("!false", 1);
+    });
+
+    test("!!true exits 1 (double negation)", () => {
+      expectTuff("!!true", 1);
+    });
+
+    test("!true || false exits 0 (! binds tighter than ||)", () => {
+      expectTuff("!true || false", 0);
+    });
+
+    test("true || false && false exits 1 (&& binds tighter than ||)", () => {
+      expectTuff("true || false && false", 1);
+    });
+
+    test("bool variable in operator", () => {
+      expectTuff("let x: Bool = true;\nlet y: Bool = false;\nx || y", 1);
+    });
+
+    test("read<Bool> with &&", () => {
+      expectTuff("read<Bool>() && read<Bool>()", "true true", 1);
+    });
+  });
+
+  describe("invalid", () => {
+    test("integer left operand of || throws", () => {
+      expect(() => compileTuffToTS("1U8 || true")).toThrow();
+    });
+
+    test("integer right operand of && throws", () => {
+      expect(() => compileTuffToTS("true && 1U8")).toThrow();
+    });
+
+    test("! on integer throws", () => {
+      expect(() => compileTuffToTS("!5U8")).toThrow();
     });
   });
 });
