@@ -1,10 +1,33 @@
 type IntSuffix = "U8" | "I8" | "U16" | "I16" | "U32" | "I32" | "U64" | "I64";
 type PrimitiveType = IntSuffix | "Bool" | "Void";
-type TuffType =
-  | PrimitiveType
-  | { kind: "Pointer"; mutable: boolean; pointee: TuffType }
-  | { kind: "FunctionPointer"; params: TuffType[]; returnType: TuffType }
-  | { kind: "Enum"; name: string };
+
+interface PointerType {
+  kind: "Pointer";
+  mutable: boolean;
+  pointee: TuffType;
+}
+
+interface FunctionPointerType {
+  kind: "FunctionPointer";
+  params: TuffType[];
+  returnType: TuffType;
+}
+
+interface EnumType {
+  kind: "Enum";
+  name: string;
+}
+
+interface FunctionParam {
+  name: string;
+  type: TuffType;
+}
+
+interface EnumDef {
+  variants: string[];
+}
+
+type TuffType = PrimitiveType | PointerType | FunctionPointerType | EnumType;
 
 const INT_RANGES: Record<IntSuffix, [number, number]> = {
   U8: [0, 255],
@@ -184,19 +207,15 @@ function isPrimitiveType(t: TuffType): t is PrimitiveType {
   return typeof t === "string";
 }
 
-function isPointerType(
-  t: TuffType,
-): t is { kind: "Pointer"; mutable: boolean; pointee: TuffType } {
+function isPointerType(t: TuffType): t is PointerType {
   return typeof t === "object" && t.kind === "Pointer";
 }
 
-function isFunctionPointerType(
-  t: TuffType,
-): t is { kind: "FunctionPointer"; params: TuffType[]; returnType: TuffType } {
+function isFunctionPointerType(t: TuffType): t is FunctionPointerType {
   return typeof t === "object" && t.kind === "FunctionPointer";
 }
 
-function isEnumType(t: TuffType): t is { kind: "Enum"; name: string } {
+function isEnumType(t: TuffType): t is EnumType {
   return typeof t === "object" && t.kind === "Enum";
 }
 
@@ -353,7 +372,7 @@ interface Binding {
 
 interface FunctionSignature {
   name: string;
-  params: Array<{ name: string; type: TuffType }>;
+  params: FunctionParam[];
   returnType: TuffType;
 }
 
@@ -361,7 +380,7 @@ interface ParserScopeSnapshot {
   env: Map<string, Binding>;
   nameCounter: Map<string, number>;
   typeAliasEnv: Map<string, TuffType>;
-  enumEnv: Map<string, { variants: string[] }>;
+  enumEnv: Map<string, EnumDef>;
 }
 
 class NotAStatementBlockError extends Error {}
@@ -369,9 +388,9 @@ class NotAStatementBlockError extends Error {}
 function parseProgram(tokens: Tok[]): string {
   let pos: number = 0;
   let env: Map<string, Binding> = new Map();
-  let functionEnv: Map<string, FunctionSignature> = new Map();
+  const functionEnv: Map<string, FunctionSignature> = new Map();
   let typeAliasEnv: Map<string, TuffType> = new Map();
-  let enumEnv: Map<string, { variants: string[] }> = new Map();
+  let enumEnv: Map<string, EnumDef> = new Map();
   let nameCounter: Map<string, number> = new Map();
 
   function peek(): Tok | undefined {
@@ -699,11 +718,7 @@ function parseProgram(tokens: Tok[]): string {
 
   function fpTypeToFakeSig(
     name: string,
-    fpType: {
-      kind: "FunctionPointer";
-      params: TuffType[];
-      returnType: TuffType;
-    },
+    fpType: FunctionPointerType,
   ): FunctionSignature {
     return {
       name,
@@ -747,7 +762,7 @@ function parseProgram(tokens: Tok[]): string {
     // Type check arguments
     for (let i: number = 0; i < args.length; i++) {
       const arg: TypedExpr = args[i]!;
-      const param: { name: string; type: TuffType } = funcSig.params[i]!;
+      const param: FunctionParam = funcSig.params[i]!;
       if (!isTypeCompatible(param.type, arg.type)) {
         throw new Error(
           "Type error: argument " +
@@ -847,7 +862,7 @@ function parseProgram(tokens: Tok[]): string {
     // Enum variant access: EnumName::VariantName
     if (t.kind === "NAME" && tokens[pos + 1]?.kind === "COLON_COLON") {
       const enumName: string = t.val;
-      const enumDef: { variants: string[] } | undefined = enumEnv.get(enumName);
+      const enumDef: EnumDef | undefined = enumEnv.get(enumName);
       if (!enumDef) {
         throw new Error("Type error: unknown type or enum '" + enumName + "'");
       }
@@ -977,9 +992,7 @@ function parseProgram(tokens: Tok[]): string {
           code: funcSig.name,
           type: {
             kind: "FunctionPointer",
-            params: funcSig.params.map(
-              (p: { name: string; type: TuffType }) => p.type,
-            ),
+            params: funcSig.params.map((p: FunctionParam) => p.type),
             returnType: funcSig.returnType,
           },
         };
@@ -1353,10 +1366,14 @@ function parseProgram(tokens: Tok[]): string {
     stmts.push("while (" + cond.code + ") {\n" + bodyStmts.join("\n") + "\n}");
   }
 
-  function withBlockScope<T>(parseBody: (innerStmts: string[]) => T): {
+  interface BlockScopeResult<T> {
     innerStmts: string[];
     result: T;
-  } {
+  }
+
+  function withBlockScope<T>(
+    parseBody: (innerStmts: string[]) => T,
+  ): BlockScopeResult<T> {
     expect("LBRACE");
     const savedScope: ParserScopeSnapshot = snapshotParserScope();
     env = new Map(env);
@@ -1468,14 +1485,7 @@ function parseProgram(tokens: Tok[]): string {
         const fakeSig: FunctionSignature =
           isVoidNamedFn && funcSig
             ? funcSig
-            : fpTypeToFakeSig(
-                callName,
-                binding!.type as {
-                  kind: "FunctionPointer";
-                  params: TuffType[];
-                  returnType: TuffType;
-                },
-              );
+            : fpTypeToFakeSig(callName, binding!.type as FunctionPointerType);
 
         const args: TypedExpr[] = parseFunctionCallArgs(callName, fakeSig);
 
@@ -1570,7 +1580,7 @@ function parseProgram(tokens: Tok[]): string {
         expect("LPAREN");
 
         // Parse parameter list
-        const params: Array<{ name: string; type: TuffType }> = [];
+        const params: FunctionParam[] = [];
         if (peek()?.kind !== "RPAREN") {
           do {
             if (peek()?.kind === "COMMA") consume(); // consume comma between params
@@ -1664,7 +1674,7 @@ function parseProgram(tokens: Tok[]): string {
 
     // Add parameters to environment
     for (let i: number = 0; i < funcSig.params.length; i++) {
-      const param: { name: string; type: TuffType } = funcSig.params[i]!;
+      const param: FunctionParam = funcSig.params[i]!;
       env.set(param.name, {
         type: param.type,
         jsName: jsParams[i]!,
@@ -1674,7 +1684,10 @@ function parseProgram(tokens: Tok[]): string {
 
     // Parse function body
     // Helper to wrap function body with parameter initialization
-    const wrapFunctionBody = (stmts: string[], returnExpr: string): string => {
+    const wrapFunctionBody: (stmts: string[], returnExpr: string) => string = (
+      stmts: string[],
+      returnExpr: string,
+    ): string => {
       const paramWraps: string[] = jsParams.map(
         (p: string) => p + " = {val: " + p + "};",
       );

@@ -4,7 +4,7 @@ import tseslint from "typescript-eslint";
 
 export default tseslint.config(
   {
-    ignores: ["dist/**", "node_modules/**"],
+    ignores: ["dist/**", "node_modules/**", "refactor.js"],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
@@ -27,6 +27,10 @@ export default tseslint.config(
           selector: "TemplateLiteral",
           message:
             "Template literals are banned. Use string concatenation instead.",
+        },
+        {
+          selector: "TSTypeLiteral",
+          message: "Type literals are banned. Use interfaces instead.",
         },
       ],
     },
