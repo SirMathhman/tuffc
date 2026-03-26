@@ -32,6 +32,10 @@ export default tseslint.config(
           selector: "TSTypeLiteral",
           message: "Type literals are banned. Use interfaces instead.",
         },
+        {
+          selector: "TSTypeReference[typeName.name='Record']",
+          message: "Record types are banned. Use Map instead.",
+        },
       ],
     },
   },

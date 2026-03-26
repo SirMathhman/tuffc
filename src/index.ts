@@ -29,16 +29,16 @@ interface EnumDef {
 
 type TuffType = PrimitiveType | PointerType | FunctionPointerType | EnumType;
 
-const INT_RANGES: Record<IntSuffix, [number, number]> = {
-  U8: [0, 255],
-  I8: [-128, 127],
-  U16: [0, 65535],
-  I16: [-32768, 32767],
-  U32: [0, 2 ** 32 - 1],
-  I32: [-(2 ** 31), 2 ** 31 - 1],
-  U64: [0, 2 ** 64 - 1],
-  I64: [-(2 ** 63), 2 ** 63 - 1],
-};
+const INT_RANGES: Map<IntSuffix, [number, number]> = new Map([
+  ["U8", [0, 255]],
+  ["I8", [-128, 127]],
+  ["U16", [0, 65535]],
+  ["I16", [-32768, 32767]],
+  ["U32", [0, 2 ** 32 - 1]],
+  ["I32", [-(2 ** 31), 2 ** 31 - 1]],
+  ["U64", [0, 2 ** 64 - 1]],
+  ["I64", [-(2 ** 63), 2 ** 63 - 1]],
+]);
 
 const VALID_SUFFIXES: Set<string> = new Set([
   "U8",
@@ -103,23 +103,23 @@ interface Tok {
   val: string;
 }
 
-const CH_TO_TK: Readonly<Record<string, TK>> = {
-  "<": "LT",
-  ">": "GT",
-  "(": "LPAREN",
-  ")": "RPAREN",
-  "+": "PLUS",
-  "-": "MINUS",
-  "*": "STAR",
-  "/": "SLASH",
-  ";": "SEMI",
-  ":": "COLON",
-  "=": "EQ",
-  "!": "BANG",
-  "{": "LBRACE",
-  "}": "RBRACE",
-  ",": "COMMA",
-};
+const CH_TO_TK: Readonly<Map<string, TK>> = new Map([
+  ["<", "LT"],
+  [">", "GT"],
+  ["(", "LPAREN"],
+  [")", "RPAREN"],
+  ["+", "PLUS"],
+  ["-", "MINUS"],
+  ["*", "STAR"],
+  ["/", "SLASH"],
+  [";", "SEMI"],
+  [":", "COLON"],
+  ["=", "EQ"],
+  ["!", "BANG"],
+  ["{", "LBRACE"],
+  ["}", "RBRACE"],
+  [",", "COMMA"],
+]);
 
 function tokenize(src: string): Tok[] {
   const tokens: Tok[] = [];
@@ -187,7 +187,7 @@ function tokenize(src: string): Tok[] {
         tokens.push({ kind: "AMP", val: "&" });
         i += 1;
       } else {
-        const kind: TK | undefined = CH_TO_TK[ch];
+        const kind: TK | undefined = CH_TO_TK.get(ch);
         if (!kind)
           throw new Error('Syntax error: unexpected character "' + ch + '"');
         tokens.push({ kind, val: ch });
@@ -263,12 +263,12 @@ function promoteTypes(a: TuffType, b: TuffType): IntSuffix {
   if (a === "Void" || b === "Void") {
     throw new Error("Type error: Void cannot be used in arithmetic");
   }
-  const [aMin, aMax]: [number, number] = INT_RANGES[a as IntSuffix];
-  const [bMin, bMax]: [number, number] = INT_RANGES[b as IntSuffix];
+  const [aMin, aMax]: [number, number] = INT_RANGES.get(a as IntSuffix)!;
+  const [bMin, bMax]: [number, number] = INT_RANGES.get(b as IntSuffix)!;
   const combinedMin: number = Math.min(aMin, bMin);
   const combinedMax: number = Math.max(aMax, bMax);
   for (const suffix of SUFFIX_ORDER) {
-    const [min, max]: [number, number] = INT_RANGES[suffix];
+    const [min, max]: [number, number] = INT_RANGES.get(suffix)!;
     if (min <= combinedMin && max >= combinedMax) return suffix;
   }
   throw new Error("Type error: no integer type covers " + a + " and " + b);
@@ -296,8 +296,8 @@ function isTypeCompatible(declared: TuffType, inferred: TuffType): boolean {
   if (declared === "Void" || inferred === "Void") {
     return declared === inferred;
   }
-  const [dMin, dMax]: [number, number] = INT_RANGES[declared as IntSuffix];
-  const [iMin, iMax]: [number, number] = INT_RANGES[inferred as IntSuffix];
+  const [dMin, dMax]: [number, number] = INT_RANGES.get(declared as IntSuffix)!;
+  const [iMin, iMax]: [number, number] = INT_RANGES.get(inferred as IntSuffix)!;
   return dMin <= iMin && dMax >= iMax;
 }
 
@@ -348,7 +348,7 @@ function findCommonType(t1: TuffType, t2: TuffType): TuffType {
 
 function validateIntLiteral(rawNum: string, suffix: IntSuffix): void {
   const value: number = parseInt(rawNum, 10);
-  const [min, max]: [number, number] = INT_RANGES[suffix];
+  const [min, max]: [number, number] = INT_RANGES.get(suffix)!;
   if (value < min || value > max) {
     throw new Error(
       "Range error: " +
