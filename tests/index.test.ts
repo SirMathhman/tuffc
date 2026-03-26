@@ -839,7 +839,10 @@ describe("compound assignment", () => {
 describe("while statements", () => {
   describe("valid", () => {
     test("countdown with decrement", () => {
-      expectTuff("let mut x: U8 = 5U8;\nwhile (x > 0U8) {\n  x -= 1U8;\n}\nx", 0);
+      expectTuff(
+        "let mut x: U8 = 5U8;\nwhile (x > 0U8) {\n  x -= 1U8;\n}\nx",
+        0,
+      );
     });
 
     test("sum 1 to 10", () => {
@@ -899,9 +902,182 @@ describe("while statements", () => {
     });
 
     test("while as expression throws", () => {
-      expect(() =>
-        compileTuffToTS("let x = while (true) {\n};"),
-      ).toThrow();
+      expect(() => compileTuffToTS("let x = while (true) {\n};")).toThrow();
+    });
+  });
+
+  describe("pointers", () => {
+    describe("valid", () => {
+      test("basic immutable pointer", () => {
+        expectTuff("let x = 100; let y: *I32 = &x; *y", 100);
+      });
+
+      test("mutable pointer with assignment", () => {
+        expectTuff("let mut x = 100; let p: *mut I32 = &mut x; *p = 42; x", 42);
+      });
+
+      test("immutable pointer to mutable variable", () => {
+        expectTuff("let mut x = 100; let p: *I32 = &x; *p", 100);
+      });
+
+      test("nested pointers (double)", () => {
+        expectTuff(
+          "let x = 100; let p: *I32 = &x; let pp: **I32 = &p; **pp",
+          100,
+        );
+      });
+
+      test("nested pointers (triple)", () => {
+        expectTuff(
+          "let x = 42; let p: *I32 = &x; let pp: **I32 = &p; let ppp: ***I32 = &pp; ***ppp",
+          42,
+        );
+      });
+
+      test("nested mutable pointer", () => {
+        expectTuff(
+          "let mut x = 10; let p: *mut I32 = &mut x; let pp: *(*mut I32) = &p; **pp = 20; x",
+          20,
+        );
+      });
+
+      test("pointer comparison - same variable", () => {
+        expectTuff(
+          "let x = 100; let p1: *I32 = &x; let p2: *I32 = &x; p1 == p2",
+          1,
+        );
+      });
+
+      test("pointer comparison - different variables", () => {
+        expectTuff(
+          "let x = 100; let y = 100; let p1: *I32 = &x; let p2: *I32 = &y; p1 != p2",
+          1,
+        );
+      });
+
+      test("dereferenced value comparison", () => {
+        expectTuff(
+          "let x = 100; let y = 100; let px: *I32 = &x; let py: *I32 = &y; *px == *py",
+          1,
+        );
+      });
+
+      test("pointer with arithmetic on dereferenced value", () => {
+        expectTuff("let mut x = 50; let p: *mut I32 = &mut x; *p + 10U8", 60);
+      });
+
+      test("multiple operations with mutable pointer", () => {
+        expectTuff(
+          "let mut x = 10; let p: *mut I32 = &mut x; *p = *p * 2; x",
+          20,
+        );
+      });
+
+      test("pointer to U8", () => {
+        expectTuff("let x = 255U8; let p: *U8 = &x; *p", 255);
+      });
+
+      test("pointer to Bool", () => {
+        expectTuff("let x = true; let p: *Bool = &x; *p", 1);
+      });
+
+      test("mutable pointer to Bool", () => {
+        expectTuff(
+          "let mut x = true; let p: *mut Bool = &mut x; *p = false; x",
+          0,
+        );
+      });
+
+      test("pointer in block expression", () => {
+        expectTuff("let x = 100; { let p: *I32 = &x; *p }", 100);
+      });
+
+      test("pointer with if-statement", () => {
+        expectTuff(
+          "let mut x = 10; let p: *mut I32 = &mut x; if (true) { *p = 20; } x",
+          20,
+        );
+      });
+
+      test("pointer with comparison operators", () => {
+        expectTuff(
+          "let x = 100; let y = 50; let px: *I32 = &x; let py: *I32 = &y; *px > *py",
+          1,
+        );
+      });
+
+      test("address-of in if-expression", () => {
+        expectTuff(
+          "let x = 100; let y = 200; let p: *I32 = if (true) &x else &y; *p",
+          100,
+        );
+      });
+
+      test("pointer shadowing variable", () => {
+        expectTuff("let x = 100; let x: *I32 = &x; *x", 100);
+      });
+    });
+
+    describe("invalid", () => {
+      test("cannot take mutable address of immutable variable", () => {
+        expect(() =>
+          compileTuffToTS("let x = 100; let p: *mut I32 = &mut x;"),
+        ).toThrow(/cannot take mutable.*immutable/i);
+      });
+
+      test("cannot assign through immutable pointer", () => {
+        expect(() =>
+          compileTuffToTS("let mut x = 100; let p: *I32 = &x; *p = 42;"),
+        ).toThrow(/cannot assign.*immutable pointer/i);
+      });
+
+      test("cannot take address of expression", () => {
+        expect(() => compileTuffToTS("let p: *I32 = &(100 + 200);")).toThrow(
+          /address.*variable/i,
+        );
+      });
+
+      test("cannot use pointers in arithmetic", () => {
+        expect(() =>
+          compileTuffToTS("let x = 100; let p: *I32 = &x; p + 1"),
+        ).toThrow(/pointer.*arithmetic/i);
+      });
+
+      test("cannot use pointer in boolean operation", () => {
+        expect(() =>
+          compileTuffToTS("let x = 100; let p: *I32 = &x; !p"),
+        ).toThrow(/pointer.*boolean/i);
+      });
+
+      test("cannot use pointer as if-condition", () => {
+        expect(() =>
+          compileTuffToTS("let x = 100; let p: *I32 = &x; if (p) x else 0"),
+        ).toThrow(/condition.*Bool/i);
+      });
+
+      test("cannot end program with pointer", () => {
+        expect(() => compileTuffToTS("let x = 100; &x")).toThrow(
+          /pointer.*exit/i,
+        );
+      });
+
+      test("cannot take address of literal", () => {
+        expect(() => compileTuffToTS("let p: *I32 = &100;")).toThrow(
+          /address.*variable/i,
+        );
+      });
+
+      test("type mismatch - pointer type vs non-pointer type", () => {
+        expect(() => compileTuffToTS("let x = 100; let p: I32 = &x;")).toThrow(
+          /type/i,
+        );
+      });
+
+      test("type mismatch - wrong pointer target type", () => {
+        expect(() => compileTuffToTS("let x = 100; let p: *U8 = &x;")).toThrow(
+          /type/i,
+        );
+      });
     });
   });
 });

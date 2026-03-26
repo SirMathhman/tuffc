@@ -1,5 +1,8 @@
 type IntSuffix = "U8" | "I8" | "U16" | "I16" | "U32" | "I32" | "U64" | "I64";
-type TuffType = IntSuffix | "Bool";
+type PrimitiveType = IntSuffix | "Bool";
+type TuffType =
+  | PrimitiveType
+  | { kind: "Pointer"; mutable: boolean; pointee: TuffType };
 
 const INT_RANGES: Record<IntSuffix, [number, number]> = {
   U8: [0, 255],
@@ -52,6 +55,7 @@ type TK =
   | "EQ"
   | "PIPE_PIPE"
   | "AMP_AMP"
+  | "AMP"
   | "BANG"
   | "LT_EQ"
   | "GT_EQ"
@@ -144,6 +148,9 @@ function tokenize(src: string): Tok[] {
       } else if (ch === "|" && src[i + 1] === "=") {
         tokens.push({ kind: "PIPE_EQ", val: "|=" });
         i += 2;
+      } else if (ch === "&") {
+        tokens.push({ kind: "AMP", val: "&" });
+        i += 1;
       } else {
         const kind: TK | undefined = CH_TO_TK[ch];
         if (!kind)
@@ -161,7 +168,33 @@ interface TypedExpr {
   type: TuffType;
 }
 
+function isPrimitiveType(t: TuffType): t is PrimitiveType {
+  return typeof t === "string";
+}
+
+function isPointerType(
+  t: TuffType,
+): t is { kind: "Pointer"; mutable: boolean; pointee: TuffType } {
+  return typeof t === "object" && t.kind === "Pointer";
+}
+
+function typeToString(t: TuffType): string {
+  if (isPrimitiveType(t)) return t;
+  return `${t.mutable ? "*mut" : "*"}${typeToString(t.pointee)}`;
+}
+
+function typesEqual(t1: TuffType, t2: TuffType): boolean {
+  if (isPrimitiveType(t1) && isPrimitiveType(t2)) return t1 === t2;
+  if (isPointerType(t1) && isPointerType(t2)) {
+    return t1.mutable === t2.mutable && typesEqual(t1.pointee, t2.pointee);
+  }
+  return false;
+}
+
 function promoteTypes(a: TuffType, b: TuffType): IntSuffix {
+  if (isPointerType(a) || isPointerType(b)) {
+    throw new Error(`Type error: pointers cannot be used in arithmetic`);
+  }
   if (a === "Bool" || b === "Bool") {
     throw new Error(`Type error: Bool cannot be used in arithmetic`);
   }
@@ -177,6 +210,11 @@ function promoteTypes(a: TuffType, b: TuffType): IntSuffix {
 }
 
 function isTypeCompatible(declared: TuffType, inferred: TuffType): boolean {
+  // Pointers must match exactly (including mutability)
+  if (isPointerType(declared) || isPointerType(inferred)) {
+    return typesEqual(declared, inferred);
+  }
+
   if (declared === "Bool" || inferred === "Bool") {
     return declared === inferred;
   }
@@ -186,11 +224,18 @@ function isTypeCompatible(declared: TuffType, inferred: TuffType): boolean {
 }
 
 function throwNoCommonType(t1: TuffType, t2: TuffType): never {
-  throw new Error(`Type error: no common type for ${t1} and ${t2}`);
+  throw new Error(
+    `Type error: no common type for ${typeToString(t1)} and ${typeToString(t2)}`,
+  );
 }
 
 function findCommonType(t1: TuffType, t2: TuffType): TuffType {
-  if (t1 === t2) return t1;
+  if (typesEqual(t1, t2)) return t1;
+
+  // Pointers don't have a common type with other types
+  if (isPointerType(t1) || isPointerType(t2)) {
+    throwNoCommonType(t1, t2);
+  }
 
   if (t1 === "Bool" || t2 === "Bool") {
     throwNoCommonType(t1, t2);
@@ -253,12 +298,39 @@ function parseProgram(tokens: Tok[]): string {
 
   function expectType(context: string): TuffType {
     const t: Tok | undefined = peek();
+
+    // Check for pointer type: * or *mut
+    if (t?.kind === "STAR") {
+      consume(); // consume *
+      
+      // Check for "mut" keyword
+      const mutTok = peek();
+      let mutable = false;
+      if (mutTok?.kind === "NAME" && mutTok.val === "mut") {
+        consume(); // consume mut
+        mutable = true;
+      }
+      
+      // Check for parenthesized type: *(...)
+      if (peek()?.kind === "LPAREN") {
+        consume(); // consume (
+        const pointee = expectType("in parenthesized pointer type");
+        expect("RPAREN");
+        return { kind: "Pointer", mutable, pointee };
+      }
+      
+      // Otherwise parse pointee type recursively
+      const pointee = expectType("after pointer qualifier");
+      return { kind: "Pointer", mutable, pointee };
+    }
+
+    // Otherwise expect a primitive type name
     if (!t || t.kind !== "NAME" || !VALID_TYPES.has(t.val)) {
       throw new Error(
         `Syntax error: expected type ${context} but got "${t?.val ?? "end of input"}"`,
       );
     }
-    return consume().val as TuffType;
+    return consume().val as PrimitiveType;
   }
 
   function consumeSuffix(): IntSuffix {
@@ -370,7 +442,8 @@ function parseProgram(tokens: Tok[]): string {
     if (t.kind === "NAME") {
       const binding: Binding = requireBinding(t.val);
       consume();
-      return { code: binding.jsName, type: binding.type };
+      // All variables are wrapped in {val: ...}, so always access through .val
+      return { code: `${binding.jsName}.val`, type: binding.type };
     }
 
     if (t.kind === "LBRACE") {
@@ -388,7 +461,76 @@ function parseProgram(tokens: Tok[]): string {
   }
 
   function parseMul(): TypedExpr {
-    return parseBinaryLevel(parseAtom, MUL_OPS);
+    return parseBinaryLevel(parseUnary, MUL_OPS);
+  }
+
+  function parseUnary(): TypedExpr {
+    const t: Tok | undefined = peek();
+
+    // Handle dereference: *expr
+    if (t?.kind === "STAR") {
+      // Peek ahead to check if this is a dereference or multiplication
+      // If followed by something that can start an expression, it's dereference
+      const nextPos = pos + 1;
+      const nextTok = tokens[nextPos];
+      const canStartExpr =
+        nextTok?.kind === "NAME" ||
+        nextTok?.kind === "NUM" ||
+        nextTok?.kind === "LPAREN" ||
+        nextTok?.kind === "LBRACE" ||
+        nextTok?.kind === "MINUS" ||
+        nextTok?.kind === "BANG" ||
+        nextTok?.kind === "STAR" ||
+        nextTok?.kind === "AMP";
+
+      if (canStartExpr) {
+        consume(); // consume *
+        const operand: TypedExpr = parseUnary();
+        if (!isPointerType(operand.type)) {
+          throw new Error(
+            `Type error: cannot dereference non-pointer type ${typeToString(operand.type)}`,
+          );
+        }
+        // operand.code is the pointer value (e.g., "p.val" for variable p)
+        // Dereference accesses .val of the pointer
+        return { code: `${operand.code}.val`, type: operand.type.pointee };
+      }
+    }
+
+    // Handle address-of: &expr or &mut expr
+    if (t?.kind === "AMP") {
+      consume(); // consume &
+      let mutable = false;
+      const mutTok = peek();
+      if (mutTok?.kind === "NAME" && mutTok.val === "mut") {
+        consume(); // consume mut
+        mutable = true;
+      }
+
+      // Address-of requires a variable name
+      const varTok = peek();
+      if (varTok?.kind !== "NAME") {
+        throw new Error(
+          `Type error: can only take address of variables, not expressions`,
+        );
+      }
+      const binding = requireBinding(varTok.val);
+      consume();
+
+      // Check if we're taking mutable address of immutable variable
+      if (mutable && !binding.mutable) {
+        throw new Error(
+          `Type error: cannot take mutable address of immutable variable "${varTok.val}"`,
+        );
+      }
+
+      const pointerType: TuffType = { kind: "Pointer", mutable, pointee: binding.type };
+      // Address-of returns the wrapped value itself (the object containing the value)
+      // For variable x (stored as {val: actualValue}), &x returns x (the object)
+      return { code: binding.jsName, type: pointerType };
+    }
+
+    return parseAtom();
   }
 
   function parseAdd(): TypedExpr {
@@ -405,6 +547,9 @@ function parseProgram(tokens: Tok[]): string {
       consume();
       const right: TypedExpr = inner();
       if (left.type !== "Bool" || right.type !== "Bool") {
+        if (isPointerType(left.type) || isPointerType(right.type)) {
+          throw new Error(`Type error: cannot use pointer in boolean operation ${opStr}`);
+        }
         throw new Error(`Type error: ${opStr} requires Bool operands`);
       }
       left = { code: `${left.code} ${opStr} ${right.code}`, type: "Bool" };
@@ -428,11 +573,31 @@ function parseProgram(tokens: Tok[]): string {
     if (op === undefined || !CMP_OPS.has(op.kind)) return left;
     consume();
     const right: TypedExpr = parseAdd();
+
+    const leftIsPtr = isPointerType(left.type);
+    const rightIsPtr = isPointerType(right.type);
+
     if (ORDERED_CMP_OPS.has(op.kind)) {
+      // Ordered comparisons: <, <=, >, >=
       if (left.type === "Bool" || right.type === "Bool") {
         throw new Error(`Type error: ${op.val} requires integer operands`);
       }
+      if (leftIsPtr || rightIsPtr) {
+        throw new Error(`Type error: cannot use ${op.val} on pointer types`);
+      }
     } else {
+      // Equality comparisons: ==, !=
+      // Pointers can be compared with each other (must be same type)
+      if (leftIsPtr || rightIsPtr) {
+        if (!typesEqual(left.type, right.type)) {
+          throw new Error(
+            `Type error: cannot compare ${typeToString(left.type)} with ${typeToString(right.type)}`,
+          );
+        }
+        // Pointer comparison uses JavaScript === and !==
+        return { code: `${left.code} ${op.val} ${right.code}`, type: "Bool" };
+      }
+      // Non-pointer comparisons
       if ((left.type === "Bool") !== (right.type === "Bool")) {
         throw new Error(`Type error: cannot compare Bool with integer`);
       }
@@ -445,7 +610,11 @@ function parseProgram(tokens: Tok[]): string {
       consume();
       const operand: TypedExpr = parseNot();
       if (operand.type !== "Bool") {
-        throw new Error(`Type error: ! requires Bool operand`);
+        const typeName = typeToString(operand.type);
+        if (isPointerType(operand.type)) {
+          throw new Error(`Type error: cannot use pointer ${typeName} in boolean operation`);
+        }
+        throw new Error(`Type error: ! requires Bool operand, got ${typeName}`);
       }
       return { code: `!${operand.code}`, type: "Bool" };
     }
@@ -506,7 +675,8 @@ function parseProgram(tokens: Tok[]): string {
     const jsName: string = n === 1 ? nameTok.val : `${nameTok.val}_${n}`;
     env.set(nameTok.val, { type: declaredType, jsName, mutable: isMut });
     const keyword: string = isMut ? "let" : "const";
-    stmts.push(`${keyword} ${jsName} = ${rhs.code};`);
+    // Always wrap value in object to support pointers
+    stmts.push(`${keyword} ${jsName} = {val: ${rhs.code}};`);
   }
 
   function parseAssignmentStatement(stmts: string[]): void {
@@ -516,7 +686,56 @@ function parseProgram(tokens: Tok[]): string {
     expect("SEMI");
     const binding: Binding = requireMutableBinding(nameTok.val);
     assertTypeCompatible(binding.type, rhs.type);
-    stmts.push(`${binding.jsName} = ${rhs.code};`);
+    // Variables are wrapped, so assign to .val
+    stmts.push(`${binding.jsName}.val = ${rhs.code};`);
+  }
+
+  function parseDerefAssignmentStatement(stmts: string[]): void {
+    // Parse the left-hand side: a chain of * operators followed by a variable name
+    // E.g., *p, **pp, ***ppp
+    
+    // Count the number of dereferences
+    let derefCount = 0;
+    while (peek()?.kind === "STAR") {
+      consume();
+      derefCount++;
+    }
+    
+    const nameTok: Tok = expect("NAME");
+    const binding: Binding = requireBinding(nameTok.val);
+    
+    // Check that the variable type has enough pointer levels
+    let currentType: TuffType = binding.type;
+    for (let i = 0; i < derefCount; i++) {
+      if (!isPointerType(currentType)) {
+        throw new Error(
+          `Type error: cannot dereference non-pointer type ${typeToString(currentType)}`,
+        );
+      }
+      
+      // For the last dereference, check if the pointer is mutable
+      if (i === derefCount - 1 && !currentType.mutable) {
+        throw new Error(
+          `Type error: cannot assign through immutable pointer ${typeToString(currentType)}`,
+        );
+      }
+      
+      currentType = currentType.pointee;
+    }
+    
+    consume(); // consume =
+    const rhs: TypedExpr = parseOr();
+    expect("SEMI");
+    
+    assertTypeCompatible(currentType, rhs.type);
+    
+    // Generate code: binding.jsName.val.val...val = rhs.code
+    // The number of .val depends on derefCount + 1 (for the variable wrapping)
+    let code = binding.jsName;
+    for (let i = 0; i <= derefCount; i++) {
+      code += ".val";
+    }
+    stmts.push(`${code} = ${rhs.code};`);
   }
 
   function parseCompoundAssignmentStatement(stmts: string[]): void {
@@ -530,6 +749,9 @@ function parseProgram(tokens: Tok[]): string {
     // Desugar: x op= rhs becomes x = x op rhs
     let desugaredExpr: TypedExpr;
     let useJsCompoundOp: boolean = false;
+
+    // All variables are wrapped, so always access via .val
+    const varAccess = `${binding.jsName}.val`;
 
     if (
       opTok.kind === "PLUS_EQ" ||
@@ -547,7 +769,7 @@ function parseProgram(tokens: Tok[]): string {
               : "/";
       desugaredExpr = createArithmeticCompoundExpr(
         binding.type,
-        binding.jsName,
+        varAccess,
         jsOp,
         rhs,
       );
@@ -565,7 +787,7 @@ function parseProgram(tokens: Tok[]): string {
       }
       const jsOp: string = opTok.kind === "AMP_EQ" ? "&&" : "||";
       desugaredExpr = {
-        code: `${binding.jsName} ${jsOp} ${rhs.code}`,
+        code: `${varAccess} ${jsOp} ${rhs.code}`,
         type: "Bool",
       };
       useJsCompoundOp = false;
@@ -576,9 +798,9 @@ function parseProgram(tokens: Tok[]): string {
     assertTypeCompatible(binding.type, desugaredExpr.type);
 
     if (useJsCompoundOp) {
-      stmts.push(`${binding.jsName} ${opTok.val} ${rhs.code};`);
+      stmts.push(`${varAccess} ${opTok.val} ${rhs.code};`);
     } else {
-      stmts.push(`${binding.jsName} = ${desugaredExpr.code};`);
+     stmts.push(`${varAccess} = ${desugaredExpr.code};`);
     }
   }
 
@@ -589,7 +811,7 @@ function parseProgram(tokens: Tok[]): string {
     expect("RPAREN");
     if (cond.type !== "Bool") {
       throw new Error(
-        `Type error: ${contextName} condition must be Bool, got ${cond.type}`,
+        `Type error: ${contextName} condition must be Bool, got ${typeToString(cond.type)}`,
       );
     }
     return cond;
@@ -705,6 +927,19 @@ function parseProgram(tokens: Tok[]): string {
         throw error;
       }
     }
+    // Handle pointer dereference assignment: *ptr = value; or **ptr = value; etc.
+    if (peek()?.kind === "STAR") {
+      // Peek ahead to check if this looks like a dereference assignment
+      // We need to find if there's an = sign after the dereferences
+      let checkPos = pos;
+      while (tokens[checkPos]?.kind === "STAR") {
+        checkPos++;
+      }
+      if (tokens[checkPos]?.kind === "NAME" && tokens[checkPos + 1]?.kind === "EQ") {
+        parseDerefAssignmentStatement(stmts);
+        return true;
+      }
+    }
     if (peek()?.kind === "NAME" && tokens[pos + 1]?.kind === "EQ") {
       parseAssignmentStatement(stmts);
       return true;
@@ -797,8 +1032,16 @@ function parseProgram(tokens: Tok[]): string {
   }
   const finalExpr: TypedExpr = parseOr();
   assertNoTrailing(false);
+
+  // Check that program doesn't end with pointer type
+  if (isPointerType(finalExpr.type)) {
+    throw new Error(
+      `Type error: pointer type ${typeToString(finalExpr.type)} cannot be used as program exit value`,
+    );
+  }
+
   stmts.push(
-    `return ${finalExpr.type === "Bool" ? `${finalExpr.code} ? 1 : 0` : finalExpr.code};`,
+    `return ${isPrimitiveType(finalExpr.type) && finalExpr.type === "Bool" ? `${finalExpr.code} ? 1 : 0` : finalExpr.code};`,
   );
   return stmts.join("\n");
 }
