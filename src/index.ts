@@ -14,9 +14,23 @@ const INT_RANGES: Record<IntSuffix, [number, number]> = {
 const LITERAL_RE: RegExp =
   /^(-?\d+(?:\.\d+)?)(U8|I8|U16|I16|U32|I32|U64|I64)?$/;
 
+const READ_RE: RegExp =
+  /^read<(U8|I8|U16|I16|U32|I32|U64|I64)>\(\)$/;
+
+const READ_CALL_RE: RegExp = /^read\b/;
+
 export function compileTuffToTS(tuffSourceCode: string): string {
   const trimmed: string = tuffSourceCode.trim();
   if (trimmed === "") return "";
+
+  // read<T>() built-in
+  if (READ_CALL_RE.test(trimmed)) {
+    const readMatch: RegExpMatchArray | null = trimmed.match(READ_RE);
+    if (!readMatch) {
+      throw new Error(`Syntax error: invalid read expression "${trimmed}"`);
+    }
+    return "return read();";
+  }
 
   const match: RegExpMatchArray | null = trimmed.match(LITERAL_RE);
   if (!match) {
