@@ -3,3 +3,4 @@ dist/
 .DS_Store
 .env
 bun.lockb
+src/_lint_tmp.ts

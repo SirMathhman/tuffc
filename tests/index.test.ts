@@ -1,6 +1,5 @@
-import { expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import path from "node:path";
-import { ESLint } from "eslint";
 import { compileTuffToTS } from "../src/index";
 
 async function expectTuff(
@@ -10,28 +9,44 @@ async function expectTuff(
   // Compile the Tuff source code to TypeScript
   const tsCode: string = compileTuffToTS(tuffSourceCode);
 
-  // Apply the config at eslint.config.ts to the generated TypeScript code
-  const configPath: string = path.resolve(
-    import.meta.dir,
-    "../eslint.config.ts",
-  );
-  const eslint: ESLint = new ESLint({ overrideConfigFile: configPath });
-  const lintResults: ESLint.LintResult[] = await eslint.lintText(tsCode, {
-    filePath: path.resolve(import.meta.dir, "../src/generated.ts"),
-  });
-  const hasErrors: boolean = lintResults.some(
-    (r: ESLint.LintResult) => r.errorCount > 0,
-  );
-  expect(hasErrors).toBe(false);
+  // Apply the config at eslint.config.ts to the generated TypeScript code.
+  // ESLint is run in a child node process – importing it in-process, or running
+  // it via "bun x ...", causes a Bun 1.2.21 / Windows segfault.
+  const repoRoot: string = path.resolve(import.meta.dir, "..");
+  const tmpFile: string = path.resolve(repoRoot, "src/_lint_tmp.ts");
+  const eslintBin: string = path.resolve(repoRoot, "node_modules/eslint/bin/eslint.js");
+  await Bun.write(tmpFile, tsCode);
+  let lintExitCode: number;
+  try {
+    const lintResult: ReturnType<typeof Bun.spawnSync> = Bun.spawnSync(
+      ["node", eslintBin, tmpFile],
+      { cwd: repoRoot, stdout: "pipe", stderr: "pipe" },
+    );
+    lintExitCode = lintResult.exitCode ?? 1;
+  } finally {
+    const deleteScript: string = "require('fs').unlinkSync(process.argv[1])";
+    Bun.spawnSync(["node", "-e", deleteScript, tmpFile], { cwd: repoRoot });
+  }
+  expect(lintExitCode).toBe(0);
 
+  // Run the compiled TypeScript and check the exit code
   const result: ReturnType<typeof Bun.spawnSync> = Bun.spawnSync(
     ["bun", "run", "--eval", tsCode],
-    {
-      stdout: "inherit",
-      stderr: "inherit",
-    },
+    { stdout: "pipe", stderr: "pipe" },
   );
-
-  // Check the exit code
   expect(result.exitCode).toBe(expectedExitCode);
 }
+
+describe("whitespace", () => {
+  test("empty string exits 0", async () => {
+    await expectTuff("", 0);
+  }, 30_000);
+
+  test("single space exits 0", async () => {
+    await expectTuff(" ", 0);
+  }, 30_000);
+
+  test("mixed whitespace exits 0", async () => {
+    await expectTuff("\t\n  ", 0);
+  }, 30_000);
+});
