@@ -276,35 +276,10 @@ function parseProgram(tokens: Tok[]): string {
     return binding;
   }
 
-  function requireMutableBinding(name: string): Binding {
-    const binding: Binding = requireBinding(name);
-    if (!binding.mutable) {
-      throw new Error(
-        `Type error: cannot assign to immutable variable "${name}"`,
-      );
-    }
-    return binding;
-  }
-
   function assertTypeCompatible(target: TuffType, source: TuffType): void {
     if (!isTypeCompatible(target, source)) {
       throw new Error(`Type error: cannot assign ${source} to ${target}`);
     }
-  }
-
-  function createArithmeticCompoundExpr(
-    varType: TuffType,
-    varCode: string,
-    op: string,
-    rhs: TypedExpr,
-  ): TypedExpr {
-    if (varType === "Bool") {
-      throw new Error(
-        "Type error: Bool not compatible with arithmetic operators",
-      );
-    }
-    const resultType: TuffType = promoteTypes(varType, rhs.type);
-    return { code: `${varCode} ${op} ${rhs.code}`, type: resultType };
   }
 
   function parseBinaryLevel(inner: () => TypedExpr, ops: Set<TK>): TypedExpr {
@@ -514,7 +489,12 @@ function parseProgram(tokens: Tok[]): string {
     consume(); // EQ
     const rhs: TypedExpr = parseOr();
     expect("SEMI");
-    const binding: Binding = requireMutableBinding(nameTok.val);
+    const binding: Binding = requireBinding(nameTok.val);
+    if (!binding.mutable) {
+      throw new Error(
+        `Type error: cannot assign to immutable variable "${nameTok.val}"`,
+      );
+    }
     assertTypeCompatible(binding.type, rhs.type);
     stmts.push(`${binding.jsName} = ${rhs.code};`);
   }
@@ -525,60 +505,72 @@ function parseProgram(tokens: Tok[]): string {
     const rhs: TypedExpr = parseOr();
     expect("SEMI");
 
-    const binding: Binding = requireMutableBinding(nameTok.val);
+    const binding: Binding = requireBinding(nameTok.val);
+    if (!binding.mutable) {
+      throw new Error(
+        `Type error: cannot assign to immutable variable "${nameTok.val}"`,
+      );
+    }
 
     // Desugar: x op= rhs becomes x = x op rhs
+    // Create a synthetic expression representing "x op rhs"
     let desugaredExpr: TypedExpr;
-    let useJsCompoundOp: boolean = false;
 
-    if (
-      opTok.kind === "PLUS_EQ" ||
-      opTok.kind === "MINUS_EQ" ||
-      opTok.kind === "STAR_EQ" ||
-      opTok.kind === "SLASH_EQ"
-    ) {
-      const jsOp: string =
-        opTok.kind === "PLUS_EQ"
-          ? "+"
-          : opTok.kind === "MINUS_EQ"
-            ? "-"
-            : opTok.kind === "STAR_EQ"
-              ? "*"
-              : "/";
-      desugaredExpr = createArithmeticCompoundExpr(
-        binding.type,
-        binding.jsName,
-        jsOp,
-        rhs,
-      );
-      useJsCompoundOp = true;
-    } else if (opTok.kind === "AMP_EQ" || opTok.kind === "PIPE_EQ") {
+    if (opTok.kind === "PLUS_EQ") {
+      if (binding.type === "Bool") {
+        throw new Error("Type error: Bool not compatible with arithmetic operators");
+      }
+      const resultType: TuffType = promoteTypes(binding.type, rhs.type);
+      desugaredExpr = { code: `${binding.jsName} + ${rhs.code}`, type: resultType };
+    } else if (opTok.kind === "MINUS_EQ") {
+      if (binding.type === "Bool") {
+        throw new Error("Type error: Bool not compatible with arithmetic operators");
+      }
+      const resultType: TuffType = promoteTypes(binding.type, rhs.type);
+      desugaredExpr = { code: `${binding.jsName} - ${rhs.code}`, type: resultType };
+    } else if (opTok.kind === "STAR_EQ") {
+      if (binding.type === "Bool") {
+        throw new Error("Type error: Bool not compatible with arithmetic operators");
+      }
+      const resultType: TuffType = promoteTypes(binding.type, rhs.type);
+      desugaredExpr = { code: `${binding.jsName} * ${rhs.code}`, type: resultType };
+    } else if (opTok.kind === "SLASH_EQ") {
+      if (binding.type === "Bool") {
+        throw new Error("Type error: Bool not compatible with arithmetic operators");
+      }
+      const resultType: TuffType = promoteTypes(binding.type, rhs.type);
+      desugaredExpr = { code: `${binding.jsName} / ${rhs.code}`, type: resultType };
+    } else if (opTok.kind === "AMP_EQ") {
       if (binding.type !== "Bool") {
-        throw new Error(
-          "Type error: integer not compatible with bool operators",
-        );
+        throw new Error("Type error: integer not compatible with bool operators");
       }
       if (rhs.type !== "Bool") {
-        throw new Error(
-          "Type error: integer not compatible with bool operators",
-        );
+        throw new Error("Type error: integer not compatible with bool operators");
       }
-      const jsOp: string = opTok.kind === "AMP_EQ" ? "&&" : "||";
-      desugaredExpr = {
-        code: `${binding.jsName} ${jsOp} ${rhs.code}`,
-        type: "Bool",
-      };
-      useJsCompoundOp = false;
+      desugaredExpr = { code: `${binding.jsName} && ${rhs.code}`, type: "Bool" };
+    } else if (opTok.kind === "PIPE_EQ") {
+      if (binding.type !== "Bool") {
+        throw new Error("Type error: integer not compatible with bool operators");
+      }
+      if (rhs.type !== "Bool") {
+        throw new Error("Type error: integer not compatible with bool operators");
+      }
+      desugaredExpr = { code: `${binding.jsName} || ${rhs.code}`, type: "Bool" };
     } else {
       throw new Error(`Unexpected compound operator: ${opTok.kind}`);
     }
 
+    // Type check the desugared expression against the variable's type
     assertTypeCompatible(binding.type, desugaredExpr.type);
 
-    if (useJsCompoundOp) {
-      stmts.push(`${binding.jsName} ${opTok.val} ${rhs.code};`);
-    } else {
+    // Generate code: for arithmetic we can use JS compound assignment directly
+    // For bool operators, we must expand fully
+    if (opTok.kind === "AMP_EQ" || opTok.kind === "PIPE_EQ") {
       stmts.push(`${binding.jsName} = ${desugaredExpr.code};`);
+    } else {
+      // Use JS compound assignment
+      const jsOp: string = opTok.val; // += -= *= /=
+      stmts.push(`${binding.jsName} ${jsOp} ${rhs.code};`);
     }
   }
 

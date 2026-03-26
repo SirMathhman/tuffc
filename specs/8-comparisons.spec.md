@@ -19,11 +19,11 @@ No chaining: `a < b < c` is a compile error because `a < b` produces Bool and
 
 ## Type rules
 
-| Operator            | Left operand | Right operand | Result |
-|---------------------|-------------|---------------|--------|
-| `<`, `<=`, `>`, `>=` | integer     | integer       | Bool   |
-| `==`, `!=`          | integer     | integer       | Bool   |
-| `==`, `!=`          | Bool        | Bool          | Bool   |
+| Operator             | Left operand | Right operand | Result |
+| -------------------- | ------------ | ------------- | ------ |
+| `<`, `<=`, `>`, `>=` | integer      | integer       | Bool   |
+| `==`, `!=`           | integer      | integer       | Bool   |
+| `==`, `!=`           | Bool         | Bool          | Bool   |
 
 - Mixed-type integer comparisons are allowed; operand types are checked with the
   same promotion logic used by arithmetic (types can differ as long as both are integers).

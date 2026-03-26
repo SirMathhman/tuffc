@@ -624,11 +624,7 @@ describe("if-statements", () => {
     });
 
     test("if-stmt with condition from read<Bool>()", () => {
-      expectTuff(
-        "let mut x = 0U8;\nif (read<Bool>()) x = 5U8;\nx",
-        "true",
-        5,
-      );
+      expectTuff("let mut x = 0U8;\nif (read<Bool>()) x = 5U8;\nx", "true", 5);
     });
 
     test("else-if chaining", () => {
@@ -639,10 +635,7 @@ describe("if-statements", () => {
     });
 
     test("nested if-stmt inside statement block", () => {
-      expectTuff(
-        "let mut x = 0U8;\nif (true) { if (true) x = 5U8; }\nx",
-        5,
-      );
+      expectTuff("let mut x = 0U8;\nif (true) { if (true) x = 5U8; }\nx", 5);
     });
 
     test("program ending with if-stmt exits 0", () => {
@@ -652,7 +645,9 @@ describe("if-statements", () => {
 
   describe("invalid", () => {
     test("if-stmt condition must be Bool", () => {
-      expect(() => compileTuffToTS("let mut x = 0U8;\nif (5U8) x = 1U8;")).toThrow();
+      expect(() =>
+        compileTuffToTS("let mut x = 0U8;\nif (5U8) x = 1U8;"),
+      ).toThrow();
     });
 
     test("expression in then-branch without else is invalid", () => {
@@ -725,11 +720,15 @@ describe("if-expressions", () => {
     });
 
     test("if-expr branches must have common type", () => {
-      expect(() => compileTuffToTS("let x = if (true) 5U8 else true;")).toThrow();
+      expect(() =>
+        compileTuffToTS("let x = if (true) 5U8 else true;"),
+      ).toThrow();
     });
 
     test("if-expr branches must be compatible with declared type", () => {
-      expect(() => compileTuffToTS("let x: U8 = if (true) 5U8 else 256U16;")).toThrow();
+      expect(() =>
+        compileTuffToTS("let x: U8 = if (true) 5U8 else 256U16;"),
+      ).toThrow();
     });
 
     test("if-expr condition must be Bool", () => {
@@ -737,7 +736,95 @@ describe("if-expressions", () => {
     });
 
     test("empty statement blocks cannot be used as if-expression", () => {
-      expect(() => compileTuffToTS("let x: U8 = if (true) { } else { };")).toThrow();
+      expect(() =>
+        compileTuffToTS("let x: U8 = if (true) { } else { };"),
+      ).toThrow();
+    });
+  });
+});
+
+describe("compound assignment", () => {
+  describe("valid", () => {
+    test("x += adds to mutable variable", () => {
+      expectTuff("let mut x = 10U8;\nx += 5U8;\nx", 15);
+    });
+
+    test("x -= subtracts from mutable variable", () => {
+      expectTuff("let mut x = 10U8;\nx -= 3U8;\nx", 7);
+    });
+
+    test("x *= multiplies mutable variable", () => {
+      expectTuff("let mut x = 5U8;\nx *= 3U8;\nx", 15);
+    });
+
+    test("x /= divides mutable variable", () => {
+      expectTuff("let mut x = 20U8;\nx /= 4U8;\nx", 5);
+    });
+
+    test("bool &= with true and false", () => {
+      expectTuff("let mut flag = true;\nflag &= false;\nflag", 0);
+    });
+
+    test("bool &= with true and true", () => {
+      expectTuff("let mut flag = true;\nflag &= true;\nflag", 1);
+    });
+
+    test("bool |= with false and true", () => {
+      expectTuff("let mut flag = false;\nflag |= true;\nflag", 1);
+    });
+
+    test("bool |= with false and false", () => {
+      expectTuff("let mut flag = false;\nflag |= false;\nflag", 0);
+    });
+
+    test("mixed widths: U8 into U16", () => {
+      expectTuff("let mut x: U16 = 100U16;\nx += 50U8;\nx", 150);
+    });
+
+    test("multiple compound assignments", () => {
+      expectTuff("let mut x = 10U8;\nlet mut y = 5U8;\nx += 2U8;\ny -= 1U8;\nx + y", 16);
+    });
+
+    test("compound assignment in statement block", () => {
+      expectTuff("let mut x = 10U8;\n{ x += 5U8; }\nx", 15);
+    });
+
+    test("compound assignment with read<T>()", () => {
+      expectTuff("let mut x = 10U8;\nx += read<U8>();\nx", "5", 15);
+    });
+
+    test("compound assignment with arithmetic RHS", () => {
+      expectTuff("let mut x = 10U8;\nx += 2U8 + 3U8;\nx", 15);
+    });
+
+    test("program ending with compound assignment exits 0", () => {
+      expectTuff("let mut x = 10U8;\nx += 5U8;", 0);
+    });
+  });
+
+  describe("invalid", () => {
+    test("compound assignment on immutable variable throws", () => {
+      expect(() => compileTuffToTS("let x = 5U8;\nx += 10U8;")).toThrow();
+    });
+
+    test("compound assignment on undeclared variable throws", () => {
+      expect(() => compileTuffToTS("y += 5U8;")).toThrow();
+    });
+
+    test("arithmetic compound op on Bool throws", () => {
+      expect(() => compileTuffToTS("let mut b = true;\nb += false;")).toThrow();
+    });
+
+    test("bool compound op on integer throws", () => {
+      expect(() => compileTuffToTS("let mut x = 5U8;\nx &= 10U8;")).toThrow();
+    });
+
+    test("type incompatible RHS throws", () => {
+      expect(() => compileTuffToTS("let mut x: U8 = 10U8;\nx += 500U16;")).toThrow();
+    });
+
+    test("chaining compound assignment throws (not expression)", () => {
+      expect(() => compileTuffToTS("let mut x = 0U8;\nlet mut y = 0U8;\nx += y += 5U8;")).toThrow();
     });
   });
 });

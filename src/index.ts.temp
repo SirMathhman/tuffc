@@ -276,35 +276,10 @@ function parseProgram(tokens: Tok[]): string {
     return binding;
   }
 
-  function requireMutableBinding(name: string): Binding {
-    const binding: Binding = requireBinding(name);
-    if (!binding.mutable) {
-      throw new Error(
-        `Type error: cannot assign to immutable variable "${name}"`,
-      );
-    }
-    return binding;
-  }
-
   function assertTypeCompatible(target: TuffType, source: TuffType): void {
     if (!isTypeCompatible(target, source)) {
       throw new Error(`Type error: cannot assign ${source} to ${target}`);
     }
-  }
-
-  function createArithmeticCompoundExpr(
-    varType: TuffType,
-    varCode: string,
-    op: string,
-    rhs: TypedExpr,
-  ): TypedExpr {
-    if (varType === "Bool") {
-      throw new Error(
-        "Type error: Bool not compatible with arithmetic operators",
-      );
-    }
-    const resultType: TuffType = promoteTypes(varType, rhs.type);
-    return { code: `${varCode} ${op} ${rhs.code}`, type: resultType };
   }
 
   function parseBinaryLevel(inner: () => TypedExpr, ops: Set<TK>): TypedExpr {
@@ -509,281 +484,51 @@ function parseProgram(tokens: Tok[]): string {
     stmts.push(`${keyword} ${jsName} = ${rhs.code};`);
   }
 
+  // Helper function to validate and get mutable binding
+  function requireMutableBinding(nameTok: Tok): Binding {
+    const binding: Binding = requireBinding(nameTok.val);
+    if (!binding.mutable) {
+      throw new Error(
+        `Type error: cannot assign to immutable variable "${nameTok.val}"`,
+      );
+    }
+    return binding;
+  }
+
+  // Helper function to create arithmetic compound assignment expression
+  function createArithmeticCompoundExpr(
+    binding: Binding,
+    rhs: TypedExpr,
+    jsOp: string
+  ): TypedExpr {
+    if (binding.type === "Bool") {
+      throw new Error("Type error: Bool not compatible with arithmetic operators");
+    }
+    const resultType: TuffType = promoteTypes(binding.type, rhs.type);
+    return { code: `${binding.jsName} ${jsOp} ${rhs.code}`, type: resultType };
+  }
+
+  // Helper function to create boolean compound assignment expression
+  function createBoolCompoundExpr(
+    binding: Binding,
+    rhs: TypedExpr,
+    jsOp: string
+  ): TypedExpr {
+    if (binding.type !== "Bool") {
+      throw new Error("Type error: integer not compatible with bool operators");
+    }
+    if (rhs.type !== "Bool") {
+      throw new Error("Type error: integer not compatible with bool operators");
+    }
+    return { code: `${binding.jsName} ${jsOp} ${rhs.code}`, type: "Bool" };
+  }
+
   function parseAssignmentStatement(stmts: string[]): void {
     const nameTok: Tok = consume();
     consume(); // EQ
     const rhs: TypedExpr = parseOr();
     expect("SEMI");
-    const binding: Binding = requireMutableBinding(nameTok.val);
+    const binding: Binding = requireMutableBinding(nameTok);
     assertTypeCompatible(binding.type, rhs.type);
     stmts.push(`${binding.jsName} = ${rhs.code};`);
   }
-
-  function parseCompoundAssignmentStatement(stmts: string[]): void {
-    const nameTok: Tok = consume();
-    const opTok: Tok = consume(); // compound operator
-    const rhs: TypedExpr = parseOr();
-    expect("SEMI");
-
-    const binding: Binding = requireMutableBinding(nameTok.val);
-
-    // Desugar: x op= rhs becomes x = x op rhs
-    let desugaredExpr: TypedExpr;
-    let useJsCompoundOp: boolean = false;
-
-    if (
-      opTok.kind === "PLUS_EQ" ||
-      opTok.kind === "MINUS_EQ" ||
-      opTok.kind === "STAR_EQ" ||
-      opTok.kind === "SLASH_EQ"
-    ) {
-      const jsOp: string =
-        opTok.kind === "PLUS_EQ"
-          ? "+"
-          : opTok.kind === "MINUS_EQ"
-            ? "-"
-            : opTok.kind === "STAR_EQ"
-              ? "*"
-              : "/";
-      desugaredExpr = createArithmeticCompoundExpr(
-        binding.type,
-        binding.jsName,
-        jsOp,
-        rhs,
-      );
-      useJsCompoundOp = true;
-    } else if (opTok.kind === "AMP_EQ" || opTok.kind === "PIPE_EQ") {
-      if (binding.type !== "Bool") {
-        throw new Error(
-          "Type error: integer not compatible with bool operators",
-        );
-      }
-      if (rhs.type !== "Bool") {
-        throw new Error(
-          "Type error: integer not compatible with bool operators",
-        );
-      }
-      const jsOp: string = opTok.kind === "AMP_EQ" ? "&&" : "||";
-      desugaredExpr = {
-        code: `${binding.jsName} ${jsOp} ${rhs.code}`,
-        type: "Bool",
-      };
-      useJsCompoundOp = false;
-    } else {
-      throw new Error(`Unexpected compound operator: ${opTok.kind}`);
-    }
-
-    assertTypeCompatible(binding.type, desugaredExpr.type);
-
-    if (useJsCompoundOp) {
-      stmts.push(`${binding.jsName} ${opTok.val} ${rhs.code};`);
-    } else {
-      stmts.push(`${binding.jsName} = ${desugaredExpr.code};`);
-    }
-  }
-
-  function parseIfCondition(): TypedExpr {
-    consume(); // "if"
-    expect("LPAREN");
-    const cond: TypedExpr = parseOr();
-    expect("RPAREN");
-    if (cond.type !== "Bool") {
-      throw new Error(
-        `Type error: if condition must be Bool, got ${cond.type}`,
-      );
-    }
-    return cond;
-  }
-
-  function parseIfStatement(stmts: string[]): void {
-    const cond: TypedExpr = parseIfCondition();
-
-    const thenStmts: string[] = [];
-    if (!tryParseStatement(thenStmts)) {
-      throw new Error(
-        "Syntax error: expected statement in if-then branch, got expression",
-      );
-    }
-
-    if (peek()?.kind === "NAME" && peek()?.val === "else") {
-      consume(); // "else"
-      const elseStmts: string[] = [];
-
-      if (peek()?.kind === "NAME" && peek()?.val === "if") {
-        // else-if chain: recursively parse nested if-statement
-        parseIfStatement(elseStmts);
-      } else {
-        if (!tryParseStatement(elseStmts)) {
-          throw new Error(
-            "Syntax error: expected statement in if-else branch, got expression",
-          );
-        }
-      }
-
-      stmts.push(
-        `if (${cond.code}) {\n${thenStmts.join("\n")}\n} else {\n${elseStmts.join("\n")}\n}`,
-      );
-    } else {
-      // no else clause
-      stmts.push(`if (${cond.code}) {\n${thenStmts.join("\n")}\n}`);
-    }
-  }
-
-  function withBlockScope<T>(parseBody: (innerStmts: string[]) => T): {
-    innerStmts: string[];
-    result: T;
-  } {
-    expect("LBRACE");
-    const savedEnv: Map<string, Binding> = env;
-    const savedNameCounter: Map<string, number> = nameCounter;
-    env = new Map(env);
-    nameCounter = new Map();
-    const innerStmts: string[] = [];
-    const result: T = parseBody(innerStmts);
-    expect("RBRACE");
-    env = savedEnv;
-    nameCounter = savedNameCounter;
-    return { innerStmts, result };
-  }
-
-  function parseStatementBlock(stmts: string[]): void {
-    const { innerStmts } = withBlockScope((inner: string[]) => {
-      while (peek()?.kind !== "RBRACE") {
-        if (!tryParseStatement(inner)) {
-          throw new NotAStatementBlockError();
-        }
-      }
-    });
-    stmts.push(`{\n${innerStmts.join("\n")}\n}`);
-  }
-
-  function tryParseStatement(stmts: string[]): boolean {
-    if (peek()?.kind === "NAME" && peek()?.val === "let") {
-      parseLetStatement(stmts);
-      return true;
-    }
-    if (peek()?.kind === "NAME" && peek()?.val === "if") {
-      const savedPos: number = pos;
-      const savedEnv: Map<string, Binding> = env;
-      const savedNameCounter: Map<string, number> = nameCounter;
-      try {
-        parseIfStatement(stmts);
-        return true;
-      } catch (error: unknown) {
-        // Check if this was an "expected statement" error from if-statement parsing
-        // If so, this is probably an if-expression, so backtrack and return false
-        if (
-          error instanceof Error &&
-          error.message.includes("expected statement in if")
-        ) {
-          pos = savedPos;
-          env = savedEnv;
-          nameCounter = savedNameCounter;
-          return false;
-        }
-        throw error;
-      }
-    }
-    if (peek()?.kind === "NAME" && tokens[pos + 1]?.kind === "EQ") {
-      parseAssignmentStatement(stmts);
-      return true;
-    }
-    if (
-      peek()?.kind === "NAME" &&
-      (tokens[pos + 1]?.kind === "PLUS_EQ" ||
-        tokens[pos + 1]?.kind === "MINUS_EQ" ||
-        tokens[pos + 1]?.kind === "STAR_EQ" ||
-        tokens[pos + 1]?.kind === "SLASH_EQ" ||
-        tokens[pos + 1]?.kind === "AMP_EQ" ||
-        tokens[pos + 1]?.kind === "PIPE_EQ")
-    ) {
-      parseCompoundAssignmentStatement(stmts);
-      return true;
-    }
-    if (peek()?.kind === "LBRACE") {
-      const savedPos: number = pos;
-      const savedEnv: Map<string, Binding> = env;
-      const savedNameCounter: Map<string, number> = nameCounter;
-      try {
-        parseStatementBlock(stmts);
-        return true;
-      } catch (error: unknown) {
-        pos = savedPos;
-        env = savedEnv;
-        nameCounter = savedNameCounter;
-        if (error instanceof NotAStatementBlockError) {
-          return false;
-        }
-        throw error;
-      }
-    }
-    return false;
-  }
-
-  function parseBlockExpr(): TypedExpr {
-    const { innerStmts, result: blockFinal } = withBlockScope(
-      (inner: string[]) => {
-        while (tryParseStatement(inner)) {
-          // keep consuming statements that appear before the final expression
-        }
-        if (peek()?.kind === "RBRACE") {
-          throw new Error("Syntax error: block must end with an expression");
-        }
-        const finalExpr: TypedExpr = parseOr();
-        assertNoTrailing(true);
-        return finalExpr;
-      },
-    );
-    innerStmts.push(`return ${blockFinal.code};`);
-    return {
-      code: `(() => {\n${innerStmts.join("\n")}\n})()`,
-      type: blockFinal.type,
-    };
-  }
-
-  function parseIfExpression(): TypedExpr {
-    const cond: TypedExpr = parseIfCondition();
-
-    const thenExpr: TypedExpr = parseOr();
-
-    if (peek()?.kind !== "NAME" || peek()?.val !== "else") {
-      throw new Error("Syntax error: if-expression requires else clause");
-    }
-    consume(); // "else"
-
-    let elseExpr: TypedExpr;
-    if (peek()?.kind === "NAME" && peek()?.val === "if") {
-      // else-if chain: recursively parse nested if-expression
-      elseExpr = parseIfExpression();
-    } else {
-      elseExpr = parseOr();
-    }
-
-    const resultType: TuffType = findCommonType(thenExpr.type, elseExpr.type);
-
-    return {
-      code: `(${cond.code} ? ${thenExpr.code} : ${elseExpr.code})`,
-      type: resultType,
-    };
-  }
-
-  const stmts: string[] = [];
-  while (tryParseStatement(stmts)) {
-    // consume all leading statements
-  }
-  if (pos >= tokens.length) {
-    return stmts.join("\n");
-  }
-  const finalExpr: TypedExpr = parseOr();
-  assertNoTrailing(false);
-  stmts.push(
-    `return ${finalExpr.type === "Bool" ? `${finalExpr.code} ? 1 : 0` : finalExpr.code};`,
-  );
-  return stmts.join("\n");
-}
-
-export function compileTuffToTS(tuffSourceCode: string): string {
-  const trimmed: string = tuffSourceCode.trim();
-  if (trimmed === "") return "";
-  return parseProgram(tokenize(trimmed));
-}
