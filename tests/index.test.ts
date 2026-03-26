@@ -1270,4 +1270,155 @@ describe("while statements", () => {
       });
     });
   });
+
+  describe("function pointers", () => {
+    describe("valid", () => {
+      test("store function pointer and call it", () => {
+        expectTuff(
+          "fn double(x: I32) : I32 => x * 2; let op: *(I32) => I32 = &double; op(21)",
+          42,
+        );
+      });
+
+      test("infer function pointer type from address-of", () => {
+        expectTuff(
+          "fn double(x: I32) : I32 => x * 2; let op = &double; op(21)",
+          42,
+        );
+      });
+
+      test("reassign mutable function pointer", () => {
+        expectTuff(
+          "fn double(x: I32) : I32 => x * 2; fn triple(x: I32) : I32 => x * 3; let mut op = &double; op = &triple; op(14)",
+          42,
+        );
+      });
+
+      test("pass function pointer as argument", () => {
+        expectTuff(
+          "fn double(x: I32) : I32 => x * 2; fn apply(f: *(I32) => I32, x: I32) : I32 => f(x); apply(&double, 21)",
+          42,
+        );
+      });
+
+      test("pass function pointer as argument, call inside", () => {
+        expectTuff(
+          "fn add(x: I32, y: I32) : I32 => x + y; fn apply(f: *(I32, I32) => I32, a: I32, b: I32) : I32 => f(a, b); apply(&add, 10, 32)",
+          42,
+        );
+      });
+
+      test("return function pointer from function and store", () => {
+        expectTuff(
+          "fn double(x: I32) : I32 => x * 2; fn getOp() : *(I32) => I32 => &double; let op = getOp(); op(21)",
+          42,
+        );
+      });
+
+      test("Void function pointer called as statement", () => {
+        expectTuff(
+          "fn doNothing() : Void => { }; let action: *() => Void = &doNothing; action(); 42",
+          42,
+        );
+      });
+
+      test("zero-parameter function pointer", () => {
+        expectTuff(
+          "fn getFive() : I32 => 5; let get: *() => I32 = &getFive; get() + get()",
+          10,
+        );
+      });
+
+      test("function pointer with bool return", () => {
+        expectTuff(
+          "fn isPos(x: I32) : Bool => x > 0; let check: *(I32) => Bool = &isPos; check(5)",
+          1,
+        );
+      });
+
+      test("function pointer in let binding used in arithmetic", () => {
+        expectTuff(
+          "fn inc(x: I32) : I32 => x + 1; let f: *(I32) => I32 = &inc; f(41)",
+          42,
+        );
+      });
+
+      test("higher-order function with function pointer parameter", () => {
+        expectTuff(
+          "fn double(x: I32) : I32 => x * 2; fn triple(x: I32) : I32 => x * 3; fn apply(f: *(I32) => I32, x: I32) : I32 => f(x); let op = &double; apply(op, 21)",
+          42,
+        );
+      });
+    });
+
+    describe("invalid", () => {
+      test("type mismatch when storing function pointer", () => {
+        expect(() =>
+          compileTuffToTS(
+            "fn f(x: I32) : I32 => x; let p: *(I32) => Bool = &f;",
+          ),
+        ).toThrow(/type|assign|compatible/i);
+      });
+
+      test("wrong arity when calling function pointer", () => {
+        expect(() =>
+          compileTuffToTS(
+            "fn add(x: I32, y: I32) : I32 => x + y; let p = &add; p(1)",
+          ),
+        ).toThrow(/argument|arity/i);
+      });
+
+      test("too many arguments when calling function pointer", () => {
+        expect(() =>
+          compileTuffToTS(
+            "fn inc(x: I32) : I32 => x + 1; let p = &inc; p(1, 2)",
+          ),
+        ).toThrow(/argument|arity/i);
+      });
+
+      test("argument type mismatch when calling function pointer", () => {
+        expect(() =>
+          compileTuffToTS("fn f(x: I32) : I32 => x; let p = &f; p(true)"),
+        ).toThrow(/type|argument/i);
+      });
+
+      test("Void function pointer in expression context", () => {
+        expect(() =>
+          compileTuffToTS(
+            "fn doNothing() : Void => { }; let p = &doNothing; let x = p();",
+          ),
+        ).toThrow(/void/i);
+      });
+
+      test("calling non-function-pointer variable", () => {
+        expect(() => compileTuffToTS("let x: I32 = 5; x(1)")).toThrow(
+          /function/i,
+        );
+      });
+
+      test("cannot take mutable address of function", () => {
+        expect(() =>
+          compileTuffToTS("fn f(x: I32) : I32 => x; let p = &mut f;"),
+        ).toThrow(/function|mut|address/i);
+      });
+
+      test("reassign function pointer with incompatible type", () => {
+        expect(() =>
+          compileTuffToTS(
+            "fn f(x: I32) : I32 => x; fn g(x: Bool) : I32 => 1; let mut p = &f; p = &g;",
+          ),
+        ).toThrow(/type|assign|compatible/i);
+      });
+
+      test("function pointer in arithmetic", () => {
+        expect(() =>
+          compileTuffToTS("fn f(x: I32) : I32 => x; let p = &f; p + 1"),
+        ).toThrow(/pointer|arithmetic/i);
+      });
+
+      test("address of unknown name", () => {
+        expect(() => compileTuffToTS("let p = &unknown;")).toThrow(/unknown/i);
+      });
+    });
+  });
 });

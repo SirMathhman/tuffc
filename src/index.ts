@@ -2,7 +2,8 @@ type IntSuffix = "U8" | "I8" | "U16" | "I16" | "U32" | "I32" | "U64" | "I64";
 type PrimitiveType = IntSuffix | "Bool" | "Void";
 type TuffType =
   | PrimitiveType
-  | { kind: "Pointer"; mutable: boolean; pointee: TuffType };
+  | { kind: "Pointer"; mutable: boolean; pointee: TuffType }
+  | { kind: "FunctionPointer"; params: TuffType[]; returnType: TuffType };
 
 const INT_RANGES: Record<IntSuffix, [number, number]> = {
   U8: [0, 255],
@@ -184,8 +185,18 @@ function isPointerType(
   return typeof t === "object" && t.kind === "Pointer";
 }
 
+function isFunctionPointerType(
+  t: TuffType,
+): t is { kind: "FunctionPointer"; params: TuffType[]; returnType: TuffType } {
+  return typeof t === "object" && t.kind === "FunctionPointer";
+}
+
 function typeToString(t: TuffType): string {
   if (isPrimitiveType(t)) return t;
+  if (isFunctionPointerType(t)) {
+    const paramStrs: string = t.params.map(typeToString).join(", ");
+    return `*(${paramStrs}) => ${typeToString(t.returnType)}`;
+  }
   return `${t.mutable ? "*mut" : "*"}${typeToString(t.pointee)}`;
 }
 
@@ -194,11 +205,23 @@ function typesEqual(t1: TuffType, t2: TuffType): boolean {
   if (isPointerType(t1) && isPointerType(t2)) {
     return t1.mutable === t2.mutable && typesEqual(t1.pointee, t2.pointee);
   }
+  if (isFunctionPointerType(t1) && isFunctionPointerType(t2)) {
+    return (
+      t1.params.length === t2.params.length &&
+      typesEqual(t1.returnType, t2.returnType) &&
+      t1.params.every((p: TuffType, i: number) => typesEqual(p, t2.params[i]!))
+    );
+  }
   return false;
 }
 
 function promoteTypes(a: TuffType, b: TuffType): IntSuffix {
-  if (isPointerType(a) || isPointerType(b)) {
+  if (
+    isPointerType(a) ||
+    isPointerType(b) ||
+    isFunctionPointerType(a) ||
+    isFunctionPointerType(b)
+  ) {
     throw new Error(`Type error: pointers cannot be used in arithmetic`);
   }
   if (a === "Bool" || b === "Bool") {
@@ -219,8 +242,13 @@ function promoteTypes(a: TuffType, b: TuffType): IntSuffix {
 }
 
 function isTypeCompatible(declared: TuffType, inferred: TuffType): boolean {
-  // Pointers must match exactly (including mutability)
-  if (isPointerType(declared) || isPointerType(inferred)) {
+  // Pointers and function pointers must match exactly
+  if (
+    isPointerType(declared) ||
+    isPointerType(inferred) ||
+    isFunctionPointerType(declared) ||
+    isFunctionPointerType(inferred)
+  ) {
     return typesEqual(declared, inferred);
   }
 
@@ -244,8 +272,13 @@ function throwNoCommonType(t1: TuffType, t2: TuffType): never {
 function findCommonType(t1: TuffType, t2: TuffType): TuffType {
   if (typesEqual(t1, t2)) return t1;
 
-  // Pointers don't have a common type with other types
-  if (isPointerType(t1) || isPointerType(t2)) {
+  // Pointers and function pointers don't have a common type with other types
+  if (
+    isPointerType(t1) ||
+    isPointerType(t2) ||
+    isFunctionPointerType(t1) ||
+    isFunctionPointerType(t2)
+  ) {
     throwNoCommonType(t1, t2);
   }
 
@@ -330,8 +363,37 @@ function parseProgram(tokens: Tok[]): string {
         mutable = true;
       }
 
-      // Check for parenthesized type: *(...)
-      if (peek()?.kind === "LPAREN") {
+      // Check for parenthesized type or function pointer type: *(T) or *(T1, T2) => R
+      if (!mutable && peek()?.kind === "LPAREN") {
+        consume(); // consume (
+        // Parse comma-separated types until )
+        const innerTypes: TuffType[] = [];
+        if (peek()?.kind !== "RPAREN") {
+          do {
+            if (peek()?.kind === "COMMA") consume();
+            innerTypes.push(expectType("in function pointer type"));
+          } while (peek()?.kind === "COMMA");
+        }
+        expect("RPAREN");
+        // If followed by =>, this is a function pointer type: *(params) => ReturnType
+        if (peek()?.kind === "ARROW") {
+          consume(); // consume =>
+          const returnType: TuffType = expectType(
+            "in function pointer return type",
+          );
+          return { kind: "FunctionPointer", params: innerTypes, returnType };
+        }
+        // Otherwise it's a parenthesized pointer type — must have exactly one type
+        if (innerTypes.length === 1) {
+          return { kind: "Pointer", mutable: false, pointee: innerTypes[0]! };
+        }
+        throw new Error(
+          `Syntax error: expected => for function pointer type after *(${innerTypes.map(typeToString).join(", ")})`,
+        );
+      }
+
+      // For *mut (...) check regular parenthesized type
+      if (mutable && peek()?.kind === "LPAREN") {
         consume(); // consume (
         const pointee: TuffType = expectType("in parenthesized pointer type");
         expect("RPAREN");
@@ -378,7 +440,7 @@ function parseProgram(tokens: Tok[]): string {
   }
 
   function assertNotPointerInBooleanContext(operand: TypedExpr): void {
-    if (isPointerType(operand.type)) {
+    if (isPointerType(operand.type) || isFunctionPointerType(operand.type)) {
       const typeName: string = typeToString(operand.type);
       throw new Error(
         `Type error: cannot use pointer ${typeName} in boolean operation`,
@@ -387,7 +449,7 @@ function parseProgram(tokens: Tok[]): string {
   }
 
   function assertNotPointer(operand: TypedExpr, operation: string): void {
-    if (isPointerType(operand.type)) {
+    if (isPointerType(operand.type) || isFunctionPointerType(operand.type)) {
       throw new Error(
         `Type error: cannot use pointer in ${operation} operation`,
       );
@@ -444,6 +506,24 @@ function parseProgram(tokens: Tok[]): string {
 
   const MUL_OPS: Set<TK> = new Set<TK>(["STAR", "SLASH"]);
   const ADD_OPS: Set<TK> = new Set<TK>(["PLUS", "MINUS"]);
+
+  function fpTypeToFakeSig(
+    name: string,
+    fpType: {
+      kind: "FunctionPointer";
+      params: TuffType[];
+      returnType: TuffType;
+    },
+  ): FunctionSignature {
+    return {
+      name,
+      params: fpType.params.map((pt: TuffType, i: number) => ({
+        name: `arg${i}`,
+        type: pt,
+      })),
+      returnType: fpType.returnType,
+    };
+  }
 
   function parseFunctionCallArgs(
     funcName: string,
@@ -525,26 +605,39 @@ function parseProgram(tokens: Tok[]): string {
       return parseIfExpression();
     }
 
-    // Function call: NAME(args)
+    // Function call: NAME(args) — named function or function pointer variable
     if (t.kind === "NAME" && tokens[pos + 1]?.kind === "LPAREN") {
-      const funcName: string = t.val;
-      consume(); // consume function name
-      const funcSig: FunctionSignature | undefined = functionEnv.get(funcName);
-      if (!funcSig) {
-        throw new Error(`Type error: unknown function '${funcName}'`);
+      const callName: string = t.val;
+      const funcSig: FunctionSignature | undefined = functionEnv.get(callName);
+      const binding: Binding | undefined = env.get(callName);
+
+      let sig: FunctionSignature;
+      let jsCallCode: string;
+
+      if (funcSig) {
+        sig = funcSig;
+        jsCallCode = callName;
+      } else if (binding && isFunctionPointerType(binding.type)) {
+        sig = fpTypeToFakeSig(callName, binding.type);
+        jsCallCode = `${binding.jsName}.val`;
+      } else {
+        throw new Error(
+          `Type error: unknown function or function pointer '${callName}'`,
+        );
       }
 
-      const args: TypedExpr[] = parseFunctionCallArgs(funcName, funcSig);
+      consume(); // consume function name / variable name
+      const args: TypedExpr[] = parseFunctionCallArgs(callName, sig);
 
       // Void function calls cannot be used in expressions
-      if (funcSig.returnType === "Void") {
+      if (sig.returnType === "Void") {
         throw new Error(
-          `Type error: Void function ${funcName} cannot be used in expression context`,
+          `Type error: Void function ${callName} cannot be used in expression context`,
         );
       }
 
       const jsArgs: string = args.map((a: TypedExpr) => a.code).join(", ");
-      return { code: `${funcName}(${jsArgs})`, type: funcSig.returnType };
+      return { code: `${jsCallCode}(${jsArgs})`, type: sig.returnType };
     }
 
     if (t.kind === "NAME") {
@@ -620,15 +713,48 @@ function parseProgram(tokens: Tok[]): string {
           `Type error: can only take address of variables, not expressions`,
         );
       }
+
+      // Check if this is a function pointer (&funcName)
+      const funcSig: FunctionSignature | undefined = functionEnv.get(
+        varTok.val,
+      );
+
+      // Handle mutable address-of upfront
+      if (mutable) {
+        let mutableError: string;
+        if (funcSig) {
+          mutableError = `function "${varTok.val}"`;
+        } else {
+          const mBinding: Binding = requireBinding(varTok.val);
+          consume();
+          if (mBinding.mutable) {
+            return {
+              code: mBinding.jsName,
+              type: { kind: "Pointer", mutable: true, pointee: mBinding.type },
+            };
+          }
+          mutableError = `immutable variable "${varTok.val}"`;
+        }
+        throw new Error(`Type error: cannot take mutable address of ${mutableError}`);
+      }
+
+      // Immutable address-of: function pointer or data pointer
+      if (funcSig) {
+        consume(); // consume function name
+        return {
+          code: funcSig.name,
+          type: {
+            kind: "FunctionPointer",
+            params: funcSig.params.map(
+              (p: { name: string; type: TuffType }) => p.type,
+            ),
+            returnType: funcSig.returnType,
+          },
+        };
+      }
+
       const binding: Binding = requireBinding(varTok.val);
       consume();
-
-      // Check if we're taking mutable address of immutable variable
-      if (mutable && !binding.mutable) {
-        throw new Error(
-          `Type error: cannot take mutable address of immutable variable "${varTok.val}"`,
-        );
-      }
 
       const pointerType: TuffType = {
         kind: "Pointer",
@@ -683,8 +809,10 @@ function parseProgram(tokens: Tok[]): string {
     consume();
     const right: TypedExpr = parseAdd();
 
-    const leftIsPtr: boolean = isPointerType(left.type);
-    const rightIsPtr: boolean = isPointerType(right.type);
+    const leftIsPtr: boolean =
+      isPointerType(left.type) || isFunctionPointerType(left.type);
+    const rightIsPtr: boolean =
+      isPointerType(right.type) || isFunctionPointerType(right.type);
 
     if (ORDERED_CMP_OPS.has(op.kind)) {
       // Ordered comparisons: <, <=, >, >=
@@ -1073,17 +1201,37 @@ function parseProgram(tokens: Tok[]): string {
         throw error;
       }
     }
-    // Void function call statement: funcName();
+    // Void function call statement: funcName(); or voidFpVar();
     if (peek()?.kind === "NAME" && tokens[pos + 1]?.kind === "LPAREN") {
-      const funcName: string = peek()!.val;
-      const funcSig: FunctionSignature | undefined = functionEnv.get(funcName);
-      if (funcSig && funcSig.returnType === "Void") {
+      const callName: string = peek()!.val;
+      const funcSig: FunctionSignature | undefined = functionEnv.get(callName);
+      const binding: Binding | undefined = env.get(callName);
+      const isVoidNamedFn: boolean =
+        funcSig !== undefined && funcSig.returnType === "Void";
+      const isVoidFpVar: boolean =
+        binding !== undefined &&
+        isFunctionPointerType(binding.type) &&
+        binding.type.returnType === "Void";
+
+      if (isVoidNamedFn || isVoidFpVar) {
         // Save position in case we need to backtrack
         const savedPos: number = pos;
 
         consume(); // consume function name
 
-        const args: TypedExpr[] = parseFunctionCallArgs(funcName, funcSig);
+        const fakeSig: FunctionSignature =
+          isVoidNamedFn && funcSig
+            ? funcSig
+            : fpTypeToFakeSig(
+                callName,
+                binding!.type as {
+                  kind: "FunctionPointer";
+                  params: TuffType[];
+                  returnType: TuffType;
+                },
+              );
+
+        const args: TypedExpr[] = parseFunctionCallArgs(callName, fakeSig);
 
         // Check if there's a semicolon - if not, this is not a statement (it's a void call in expression context)
         if (peek()?.kind !== "SEMI") {
@@ -1095,7 +1243,11 @@ function parseProgram(tokens: Tok[]): string {
         expect("SEMI");
 
         const jsArgs: string = args.map((a: TypedExpr) => a.code).join(", ");
-        stmts.push(`${funcName}(${jsArgs});`);
+        if (isVoidFpVar && binding) {
+          stmts.push(`${binding.jsName}.val(${jsArgs});`);
+        } else {
+          stmts.push(`${callName}(${jsArgs});`);
+        }
         return true;
       }
     }
@@ -1356,7 +1508,7 @@ function parseProgram(tokens: Tok[]): string {
   assertNoTrailing(false);
 
   // Check that program doesn't end with pointer or Void type
-  if (isPointerType(finalExpr.type)) {
+  if (isPointerType(finalExpr.type) || isFunctionPointerType(finalExpr.type)) {
     throw new Error(
       `Type error: pointer type ${typeToString(finalExpr.type)} cannot be used as program exit value`,
     );
