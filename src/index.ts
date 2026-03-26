@@ -17,7 +17,13 @@ export function compileTuffToTS(source: string): string {
     throw new RangeError("Unsigned integer literals cannot be signed.");
   }
 
-  return `export default ${match[2]};`;
+  const value = Number(match[2]);
+
+  if (!Number.isSafeInteger(value) || value < 0 || value > 255) {
+    throw new RangeError("U8 literals must be between 0 and 255.");
+  }
+
+  return `export default ${value};`;
 }
 
 export function evaluateTuff(tuffSource: string): number {

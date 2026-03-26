@@ -36,6 +36,17 @@ describe("compileTuffToTS", () => {
       }
     }
   });
+
+  test("rejects U8 values above 255", () => {
+    for (const source of ["256U8", "999U8"]) {
+      try {
+        compileTuffToTS(source);
+        throw new Error("Expected compileTuffToTS to throw.");
+      } catch (error) {
+        expect(error).toBeInstanceOf(RangeError);
+      }
+    }
+  });
 });
 
 describe("evaluateTuff", () => {
@@ -53,6 +64,17 @@ describe("evaluateTuff", () => {
 
   test("rejects signed unsigned integer literals", () => {
     for (const source of ["-1U8", "+1U8"]) {
+      try {
+        evaluateTuff(source);
+        throw new Error("Expected evaluateTuff to throw.");
+      } catch (error) {
+        expect(error).toBeInstanceOf(RangeError);
+      }
+    }
+  });
+
+  test("rejects U8 values above 255", () => {
+    for (const source of ["256U8", "999U8"]) {
       try {
         evaluateTuff(source);
         throw new Error("Expected evaluateTuff to throw.");
