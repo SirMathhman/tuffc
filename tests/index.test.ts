@@ -1080,4 +1080,194 @@ describe("while statements", () => {
       });
     });
   });
+
+  describe("functions", () => {
+    describe("valid", () => {
+      test("simple function with expression body", () => {
+        expectTuff("fn double(x: I32) : I32 => x * 2; double(21)", 42);
+      });
+
+      test("function with multiple parameters", () => {
+        expectTuff(
+          "fn add(first: I32, second: I32) : I32 => first + second; add(10, 32)",
+          42,
+        );
+      });
+
+      test("function with zero parameters", () => {
+        expectTuff("fn getFive() : I32 => 5; getFive()", 5);
+      });
+
+      test("function with block body", () => {
+        expectTuff(
+          "fn compute() : I32 => { let x = 10; let y = 32; x + y }; compute()",
+          42,
+        );
+      });
+
+      test("Void function", () => {
+        expectTuff("fn doNothing() : Void => { }; doNothing(); 42", 42);
+      });
+
+      test("recursive function", () => {
+        expectTuff(
+          "fn factorial(n: I32) : I32 => { if (n <= 1) 1 else n * factorial(n - 1) }; factorial(5)",
+          120,
+        );
+      });
+
+      test("forward reference", () => {
+        expectTuff(
+          "fn callFoo() : I32 => foo(); fn foo() : I32 => 42; callFoo()",
+          42,
+        );
+      });
+
+      test("mutual recursion", () => {
+        expectTuff(
+          "fn isEven(n: I32) : Bool => { if (n == 0) true else isOdd(n - 1) }; fn isOdd(n: I32) : Bool => { if (n == 0) false else isEven(n - 1) }; isEven(4)",
+          1,
+        );
+      });
+
+      test("nested function calls", () => {
+        expectTuff(
+          "fn double(x: I32) : I32 => x * 2; fn add(a: I32, b: I32) : I32 => a + b; add(double(5), double(7))",
+          24,
+        );
+      });
+
+      test("function with pointer parameter", () => {
+        expectTuff(
+          "fn deref(ptr: *I32) : I32 => *ptr; let x = 42; let p = &x; deref(p)",
+          42,
+        );
+      });
+
+      test("function returning pointer", () => {
+        expectTuff(
+          "fn identity(ptr: *I32) : *I32 => ptr; let x = 42; let p = &x; *identity(p)",
+          42,
+        );
+      });
+
+      test("function with Bool parameter", () => {
+        expectTuff("fn not(x: Bool) : Bool => !x; not(false)", 1);
+      });
+
+      test("function with U8 parameter", () => {
+        expectTuff(
+          "fn addU8(x: U8, y: U8) : U8 => x + y; addU8(100U8, 55U8)",
+          155,
+        );
+      });
+
+      test("function call in let binding", () => {
+        expectTuff("fn getFive() : I32 => 5; let x = getFive(); x", 5);
+      });
+
+      test("function call in arithmetic", () => {
+        expectTuff("fn getFive() : I32 => 5; getFive() + 10", 15);
+      });
+
+      test("function call in if condition", () => {
+        expectTuff("fn isTrue() : Bool => true; if (isTrue()) 42 else 0", 42);
+      });
+
+      test("function with while loop", () => {
+        expectTuff(
+          "fn sumToN(n: I32) : I32 => { let mut sum = 0; let mut i = n; while (i > 0) { sum = sum + i; i = i - 1; } sum }; sumToN(5)",
+          15,
+        );
+      });
+
+      test("multiple functions", () => {
+        expectTuff(
+          "fn double(x: I32) : I32 => x * 2; fn triple(x: I32) : I32 => x * 3; double(10) + triple(10)",
+          50,
+        );
+      });
+
+      test("function shadowing parameter", () => {
+        expectTuff(
+          "fn useParam(x: I32) : I32 => x; let x = 100; useParam(42)",
+          42,
+        );
+      });
+
+      test("type promotion in arguments", () => {
+        expectTuff("fn takesU16(x: U16) : U16 => x; takesU16(100U8)", 100);
+      });
+    });
+
+    describe("invalid", () => {
+      test("cannot redeclare function", () => {
+        expect(() =>
+          compileTuffToTS("fn foo() : I32 => 1; fn foo() : I32 => 2;"),
+        ).toThrow(/redeclare.*foo/i);
+      });
+
+      test("wrong arity - too few arguments", () => {
+        expect(() =>
+          compileTuffToTS("fn add(x: I32, y: I32) : I32 => x + y; add(1)"),
+        ).toThrow(/argument/i);
+      });
+
+      test("wrong arity - too many arguments", () => {
+        expect(() =>
+          compileTuffToTS("fn getFive() : I32 => 5; getFive(1)"),
+        ).toThrow(/argument/i);
+      });
+
+      test("unknown function", () => {
+        expect(() => compileTuffToTS("foo()")).toThrow(/unknown.*foo/i);
+      });
+
+      test("Void in expression context", () => {
+        expect(() =>
+          compileTuffToTS("fn nothing() : Void => { }; let x = nothing();"),
+        ).toThrow(/void.*expression/i);
+      });
+
+      test("Void with expression body", () => {
+        expect(() => compileTuffToTS("fn bad() : Void => 42;")).toThrow(
+          /void.*expression/i,
+        );
+      });
+
+      test("empty non-Void body", () => {
+        expect(() => compileTuffToTS("fn bad() : I32 => { };")).toThrow(
+          /return.*I32/i,
+        );
+      });
+
+      test("return type mismatch", () => {
+        expect(() => compileTuffToTS("fn bad() : U8 => 300;")).toThrow(/type/i);
+      });
+
+      test("argument type mismatch", () => {
+        expect(() =>
+          compileTuffToTS("fn takesU8(x: U8) : U8 => x; takesU8(300);"),
+        ).toThrow(/type/i);
+      });
+
+      test("Void function call in arithmetic", () => {
+        expect(() =>
+          compileTuffToTS("fn nothing() : Void => { }; nothing() + 1;"),
+        ).toThrow(/void.*expression/i);
+      });
+
+      test("incompatible final expression type", () => {
+        expect(() => compileTuffToTS("fn bad() : I32 => { true };")).toThrow(
+          /type/i,
+        );
+      });
+
+      test("cannot end program with Void function call", () => {
+        expect(() =>
+          compileTuffToTS("fn nothing() : Void => { }; nothing()"),
+        ).toThrow(/void|program/i);
+      });
+    });
+  });
 });

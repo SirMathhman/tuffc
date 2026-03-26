@@ -1,5 +1,5 @@
 type IntSuffix = "U8" | "I8" | "U16" | "I16" | "U32" | "I32" | "U64" | "I64";
-type PrimitiveType = IntSuffix | "Bool";
+type PrimitiveType = IntSuffix | "Bool" | "Void";
 type TuffType =
   | PrimitiveType
   | { kind: "Pointer"; mutable: boolean; pointee: TuffType };
@@ -26,7 +26,7 @@ const VALID_SUFFIXES: Set<string> = new Set([
   "I64",
 ]);
 
-const VALID_TYPES: Set<string> = new Set([...VALID_SUFFIXES, "Bool"]);
+const VALID_TYPES: Set<string> = new Set([...VALID_SUFFIXES, "Bool", "Void"]);
 
 const SUFFIX_ORDER: IntSuffix[] = [
   "U8",
@@ -68,7 +68,9 @@ type TK =
   | "STAR_EQ"
   | "SLASH_EQ"
   | "AMP_EQ"
-  | "PIPE_EQ";
+  | "PIPE_EQ"
+  | "ARROW"
+  | "COMMA";
 
 interface Tok {
   kind: TK;
@@ -90,6 +92,7 @@ const CH_TO_TK: Readonly<Record<string, TK>> = {
   "!": "BANG",
   "{": "LBRACE",
   "}": "RBRACE",
+  ",": "COMMA",
 };
 
 function tokenize(src: string): Tok[] {
@@ -123,6 +126,9 @@ function tokenize(src: string): Tok[] {
         i += 2;
       } else if (ch === ">" && src[i + 1] === "=") {
         tokens.push({ kind: "GT_EQ", val: ">=" });
+        i += 2;
+      } else if (ch === "=" && src[i + 1] === ">") {
+        tokens.push({ kind: "ARROW", val: "=>" });
         i += 2;
       } else if (ch === "=" && src[i + 1] === "=") {
         tokens.push({ kind: "EQ_EQ", val: "===" });
@@ -198,8 +204,11 @@ function promoteTypes(a: TuffType, b: TuffType): IntSuffix {
   if (a === "Bool" || b === "Bool") {
     throw new Error(`Type error: Bool cannot be used in arithmetic`);
   }
-  const [aMin, aMax]: [number, number] = INT_RANGES[a];
-  const [bMin, bMax]: [number, number] = INT_RANGES[b];
+  if (a === "Void" || b === "Void") {
+    throw new Error(`Type error: Void cannot be used in arithmetic`);
+  }
+  const [aMin, aMax]: [number, number] = INT_RANGES[a as IntSuffix];
+  const [bMin, bMax]: [number, number] = INT_RANGES[b as IntSuffix];
   const combinedMin: number = Math.min(aMin, bMin);
   const combinedMax: number = Math.max(aMax, bMax);
   for (const suffix of SUFFIX_ORDER) {
@@ -218,8 +227,11 @@ function isTypeCompatible(declared: TuffType, inferred: TuffType): boolean {
   if (declared === "Bool" || inferred === "Bool") {
     return declared === inferred;
   }
-  const [dMin, dMax]: [number, number] = INT_RANGES[declared];
-  const [iMin, iMax]: [number, number] = INT_RANGES[inferred];
+  if (declared === "Void" || inferred === "Void") {
+    return declared === inferred;
+  }
+  const [dMin, dMax]: [number, number] = INT_RANGES[declared as IntSuffix];
+  const [iMin, iMax]: [number, number] = INT_RANGES[inferred as IntSuffix];
   return dMin <= iMin && dMax >= iMax;
 }
 
@@ -271,11 +283,18 @@ interface Binding {
   mutable: boolean;
 }
 
+interface FunctionSignature {
+  name: string;
+  params: Array<{ name: string; type: TuffType }>;
+  returnType: TuffType;
+}
+
 class NotAStatementBlockError extends Error {}
 
 function parseProgram(tokens: Tok[]): string {
   let pos: number = 0;
   let env: Map<string, Binding> = new Map();
+  let functionEnv: Map<string, FunctionSignature> = new Map();
   let nameCounter: Map<string, number> = new Map();
 
   function peek(): Tok | undefined {
@@ -302,25 +321,25 @@ function parseProgram(tokens: Tok[]): string {
     // Check for pointer type: * or *mut
     if (t?.kind === "STAR") {
       consume(); // consume *
-      
+
       // Check for "mut" keyword
-      const mutTok = peek();
-      let mutable = false;
+      const mutTok: Tok | undefined = peek();
+      let mutable: boolean = false;
       if (mutTok?.kind === "NAME" && mutTok.val === "mut") {
         consume(); // consume mut
         mutable = true;
       }
-      
+
       // Check for parenthesized type: *(...)
       if (peek()?.kind === "LPAREN") {
         consume(); // consume (
-        const pointee = expectType("in parenthesized pointer type");
+        const pointee: TuffType = expectType("in parenthesized pointer type");
         expect("RPAREN");
         return { kind: "Pointer", mutable, pointee };
       }
-      
+
       // Otherwise parse pointee type recursively
-      const pointee = expectType("after pointer qualifier");
+      const pointee: TuffType = expectType("after pointer qualifier");
       return { kind: "Pointer", mutable, pointee };
     }
 
@@ -356,6 +375,35 @@ function parseProgram(tokens: Tok[]): string {
       );
     }
     return binding;
+  }
+
+  function assertNotPointerInBooleanContext(operand: TypedExpr): void {
+    if (isPointerType(operand.type)) {
+      const typeName: string = typeToString(operand.type);
+      throw new Error(
+        `Type error: cannot use pointer ${typeName} in boolean operation`,
+      );
+    }
+  }
+
+  function assertNotPointer(operand: TypedExpr, operation: string): void {
+    if (isPointerType(operand.type)) {
+      throw new Error(
+        `Type error: cannot use pointer in ${operation} operation`,
+      );
+    }
+  }
+
+  function assertIsPointerType(type: TuffType): void {
+    if (!isPointerType(type)) {
+      throw new Error(
+        `Type error: cannot dereference non-pointer type ${typeToString(type)}`,
+      );
+    }
+  }
+
+  function assertNotDereferencingNonPointer(operand: TypedExpr): void {
+    assertIsPointerType(operand.type);
   }
 
   function assertTypeCompatible(target: TuffType, source: TuffType): void {
@@ -396,6 +444,44 @@ function parseProgram(tokens: Tok[]): string {
 
   const MUL_OPS: Set<TK> = new Set<TK>(["STAR", "SLASH"]);
   const ADD_OPS: Set<TK> = new Set<TK>(["PLUS", "MINUS"]);
+
+  function parseFunctionCallArgs(
+    funcName: string,
+    funcSig: FunctionSignature,
+  ): TypedExpr[] {
+    expect("LPAREN");
+
+    // Parse arguments
+    const args: TypedExpr[] = [];
+    if (peek()?.kind !== "RPAREN") {
+      do {
+        if (peek()?.kind === "COMMA") consume();
+        args.push(parseOr());
+      } while (peek()?.kind === "COMMA");
+    }
+
+    expect("RPAREN");
+
+    // Check arity
+    if (args.length !== funcSig.params.length) {
+      throw new Error(
+        `Type error: function ${funcName} expects ${funcSig.params.length} arguments, got ${args.length}`,
+      );
+    }
+
+    // Type check arguments
+    for (let i: number = 0; i < args.length; i++) {
+      const arg: TypedExpr = args[i]!;
+      const param: { name: string; type: TuffType } = funcSig.params[i]!;
+      if (!isTypeCompatible(param.type, arg.type)) {
+        throw new Error(
+          `Type error: argument ${i + 1} to ${funcName} must be ${typeToString(param.type)}, got ${typeToString(arg.type)}`,
+        );
+      }
+    }
+
+    return args;
+  }
 
   function parseAtom(): TypedExpr {
     const t: Tok | undefined = peek();
@@ -439,6 +525,28 @@ function parseProgram(tokens: Tok[]): string {
       return parseIfExpression();
     }
 
+    // Function call: NAME(args)
+    if (t.kind === "NAME" && tokens[pos + 1]?.kind === "LPAREN") {
+      const funcName: string = t.val;
+      consume(); // consume function name
+      const funcSig: FunctionSignature | undefined = functionEnv.get(funcName);
+      if (!funcSig) {
+        throw new Error(`Type error: unknown function '${funcName}'`);
+      }
+
+      const args: TypedExpr[] = parseFunctionCallArgs(funcName, funcSig);
+
+      // Void function calls cannot be used in expressions
+      if (funcSig.returnType === "Void") {
+        throw new Error(
+          `Type error: Void function ${funcName} cannot be used in expression context`,
+        );
+      }
+
+      const jsArgs: string = args.map((a: TypedExpr) => a.code).join(", ");
+      return { code: `${funcName}(${jsArgs})`, type: funcSig.returnType };
+    }
+
     if (t.kind === "NAME") {
       const binding: Binding = requireBinding(t.val);
       consume();
@@ -471,9 +579,9 @@ function parseProgram(tokens: Tok[]): string {
     if (t?.kind === "STAR") {
       // Peek ahead to check if this is a dereference or multiplication
       // If followed by something that can start an expression, it's dereference
-      const nextPos = pos + 1;
-      const nextTok = tokens[nextPos];
-      const canStartExpr =
+      const nextPos: number = pos + 1;
+      const nextTok: Tok | undefined = tokens[nextPos];
+      const canStartExpr: boolean =
         nextTok?.kind === "NAME" ||
         nextTok?.kind === "NUM" ||
         nextTok?.kind === "LPAREN" ||
@@ -486,13 +594,11 @@ function parseProgram(tokens: Tok[]): string {
       if (canStartExpr) {
         consume(); // consume *
         const operand: TypedExpr = parseUnary();
-        if (!isPointerType(operand.type)) {
-          throw new Error(
-            `Type error: cannot dereference non-pointer type ${typeToString(operand.type)}`,
-          );
-        }
+        assertNotDereferencingNonPointer(operand);
         // operand.code is the pointer value (e.g., "p.val" for variable p)
         // Dereference accesses .val of the pointer
+        // Type guard for TypeScript (assertion guarantees this)
+        if (!isPointerType(operand.type)) throw new Error("unreachable");
         return { code: `${operand.code}.val`, type: operand.type.pointee };
       }
     }
@@ -500,21 +606,21 @@ function parseProgram(tokens: Tok[]): string {
     // Handle address-of: &expr or &mut expr
     if (t?.kind === "AMP") {
       consume(); // consume &
-      let mutable = false;
-      const mutTok = peek();
+      let mutable: boolean = false;
+      const mutTok: Tok | undefined = peek();
       if (mutTok?.kind === "NAME" && mutTok.val === "mut") {
         consume(); // consume mut
         mutable = true;
       }
 
       // Address-of requires a variable name
-      const varTok = peek();
+      const varTok: Tok | undefined = peek();
       if (varTok?.kind !== "NAME") {
         throw new Error(
           `Type error: can only take address of variables, not expressions`,
         );
       }
-      const binding = requireBinding(varTok.val);
+      const binding: Binding = requireBinding(varTok.val);
       consume();
 
       // Check if we're taking mutable address of immutable variable
@@ -524,7 +630,11 @@ function parseProgram(tokens: Tok[]): string {
         );
       }
 
-      const pointerType: TuffType = { kind: "Pointer", mutable, pointee: binding.type };
+      const pointerType: TuffType = {
+        kind: "Pointer",
+        mutable,
+        pointee: binding.type,
+      };
       // Address-of returns the wrapped value itself (the object containing the value)
       // For variable x (stored as {val: actualValue}), &x returns x (the object)
       return { code: binding.jsName, type: pointerType };
@@ -547,9 +657,8 @@ function parseProgram(tokens: Tok[]): string {
       consume();
       const right: TypedExpr = inner();
       if (left.type !== "Bool" || right.type !== "Bool") {
-        if (isPointerType(left.type) || isPointerType(right.type)) {
-          throw new Error(`Type error: cannot use pointer in boolean operation ${opStr}`);
-        }
+        assertNotPointerInBooleanContext(left);
+        assertNotPointerInBooleanContext(right);
         throw new Error(`Type error: ${opStr} requires Bool operands`);
       }
       left = { code: `${left.code} ${opStr} ${right.code}`, type: "Bool" };
@@ -574,8 +683,8 @@ function parseProgram(tokens: Tok[]): string {
     consume();
     const right: TypedExpr = parseAdd();
 
-    const leftIsPtr = isPointerType(left.type);
-    const rightIsPtr = isPointerType(right.type);
+    const leftIsPtr: boolean = isPointerType(left.type);
+    const rightIsPtr: boolean = isPointerType(right.type);
 
     if (ORDERED_CMP_OPS.has(op.kind)) {
       // Ordered comparisons: <, <=, >, >=
@@ -610,10 +719,8 @@ function parseProgram(tokens: Tok[]): string {
       consume();
       const operand: TypedExpr = parseNot();
       if (operand.type !== "Bool") {
-        const typeName = typeToString(operand.type);
-        if (isPointerType(operand.type)) {
-          throw new Error(`Type error: cannot use pointer ${typeName} in boolean operation`);
-        }
+        assertNotPointerInBooleanContext(operand);
+        const typeName: string = typeToString(operand.type);
         throw new Error(`Type error: ! requires Bool operand, got ${typeName}`);
       }
       return { code: `!${operand.code}`, type: "Bool" };
@@ -693,46 +800,44 @@ function parseProgram(tokens: Tok[]): string {
   function parseDerefAssignmentStatement(stmts: string[]): void {
     // Parse the left-hand side: a chain of * operators followed by a variable name
     // E.g., *p, **pp, ***ppp
-    
+
     // Count the number of dereferences
-    let derefCount = 0;
+    let derefCount: number = 0;
     while (peek()?.kind === "STAR") {
       consume();
       derefCount++;
     }
-    
+
     const nameTok: Tok = expect("NAME");
     const binding: Binding = requireBinding(nameTok.val);
-    
+
     // Check that the variable type has enough pointer levels
     let currentType: TuffType = binding.type;
-    for (let i = 0; i < derefCount; i++) {
-      if (!isPointerType(currentType)) {
-        throw new Error(
-          `Type error: cannot dereference non-pointer type ${typeToString(currentType)}`,
-        );
-      }
-      
+    for (let i: number = 0; i < derefCount; i++) {
+      assertIsPointerType(currentType);
+      // Type guard for TypeScript
+      if (!isPointerType(currentType)) throw new Error("unreachable");
+
       // For the last dereference, check if the pointer is mutable
       if (i === derefCount - 1 && !currentType.mutable) {
         throw new Error(
           `Type error: cannot assign through immutable pointer ${typeToString(currentType)}`,
         );
       }
-      
+
       currentType = currentType.pointee;
     }
-    
+
     consume(); // consume =
     const rhs: TypedExpr = parseOr();
     expect("SEMI");
-    
+
     assertTypeCompatible(currentType, rhs.type);
-    
+
     // Generate code: binding.jsName.val.val...val = rhs.code
     // The number of .val depends on derefCount + 1 (for the variable wrapping)
-    let code = binding.jsName;
-    for (let i = 0; i <= derefCount; i++) {
+    let code: string = binding.jsName;
+    for (let i: number = 0; i <= derefCount; i++) {
       code += ".val";
     }
     stmts.push(`${code} = ${rhs.code};`);
@@ -748,10 +853,9 @@ function parseProgram(tokens: Tok[]): string {
 
     // Desugar: x op= rhs becomes x = x op rhs
     let desugaredExpr: TypedExpr;
-    let useJsCompoundOp: boolean = false;
 
     // All variables are wrapped, so always access via .val
-    const varAccess = `${binding.jsName}.val`;
+    const varAccess: string = `${binding.jsName}.val`;
 
     if (
       opTok.kind === "PLUS_EQ" ||
@@ -773,7 +877,6 @@ function parseProgram(tokens: Tok[]): string {
         jsOp,
         rhs,
       );
-      useJsCompoundOp = true;
     } else if (opTok.kind === "AMP_EQ" || opTok.kind === "PIPE_EQ") {
       if (binding.type !== "Bool") {
         throw new Error(
@@ -790,18 +893,12 @@ function parseProgram(tokens: Tok[]): string {
         code: `${varAccess} ${jsOp} ${rhs.code}`,
         type: "Bool",
       };
-      useJsCompoundOp = false;
     } else {
       throw new Error(`Unexpected compound operator: ${opTok.kind}`);
     }
 
     assertTypeCompatible(binding.type, desugaredExpr.type);
-
-    if (useJsCompoundOp) {
-      stmts.push(`${varAccess} ${opTok.val} ${rhs.code};`);
-    } else {
-     stmts.push(`${varAccess} = ${desugaredExpr.code};`);
-    }
+    stmts.push(`${varAccess} = ${desugaredExpr.code};`);
   }
 
   function parseBoolCondition(contextName: string): TypedExpr {
@@ -931,11 +1028,14 @@ function parseProgram(tokens: Tok[]): string {
     if (peek()?.kind === "STAR") {
       // Peek ahead to check if this looks like a dereference assignment
       // We need to find if there's an = sign after the dereferences
-      let checkPos = pos;
+      let checkPos: number = pos;
       while (tokens[checkPos]?.kind === "STAR") {
         checkPos++;
       }
-      if (tokens[checkPos]?.kind === "NAME" && tokens[checkPos + 1]?.kind === "EQ") {
+      if (
+        tokens[checkPos]?.kind === "NAME" &&
+        tokens[checkPos + 1]?.kind === "EQ"
+      ) {
         parseDerefAssignmentStatement(stmts);
         return true;
       }
@@ -971,6 +1071,32 @@ function parseProgram(tokens: Tok[]): string {
           return false;
         }
         throw error;
+      }
+    }
+    // Void function call statement: funcName();
+    if (peek()?.kind === "NAME" && tokens[pos + 1]?.kind === "LPAREN") {
+      const funcName: string = peek()!.val;
+      const funcSig: FunctionSignature | undefined = functionEnv.get(funcName);
+      if (funcSig && funcSig.returnType === "Void") {
+        // Save position in case we need to backtrack
+        const savedPos: number = pos;
+
+        consume(); // consume function name
+
+        const args: TypedExpr[] = parseFunctionCallArgs(funcName, funcSig);
+
+        // Check if there's a semicolon - if not, this is not a statement (it's a void call in expression context)
+        if (peek()?.kind !== "SEMI") {
+          // Restore position and return false to let parseOr() handle it and error appropriately
+          pos = savedPos;
+          return false;
+        }
+
+        expect("SEMI");
+
+        const jsArgs: string = args.map((a: TypedExpr) => a.code).join(", ");
+        stmts.push(`${funcName}(${jsArgs});`);
+        return true;
       }
     }
     return false;
@@ -1023,21 +1149,220 @@ function parseProgram(tokens: Tok[]): string {
     };
   }
 
+  // PASS 1: Collect function signatures
+  function collectFunctionSignatures(): void {
+    while (pos < tokens.length) {
+      const t: Tok | undefined = peek();
+      if (t?.kind === "NAME" && t.val === "fn") {
+        consume(); // consume 'fn'
+        const funcName: string = expect("NAME").val;
+
+        // Check for redeclaration
+        if (functionEnv.has(funcName)) {
+          throw new Error(
+            `Type error: cannot redeclare function '${funcName}'`,
+          );
+        }
+
+        expect("LPAREN");
+
+        // Parse parameter list
+        const params: Array<{ name: string; type: TuffType }> = [];
+        if (peek()?.kind !== "RPAREN") {
+          do {
+            if (peek()?.kind === "COMMA") consume(); // consume comma between params
+            const paramName: string = expect("NAME").val;
+            expect("COLON");
+            const paramType: TuffType = expectType("for function parameter");
+            params.push({ name: paramName, type: paramType });
+          } while (peek()?.kind === "COMMA");
+        }
+
+        expect("RPAREN");
+        expect("COLON");
+        const returnType: TuffType = expectType("for function return type");
+
+        functionEnv.set(funcName, { name: funcName, params, returnType });
+
+        // Skip function body (=> ... ;)
+        expect("ARROW");
+
+        // Check if block or expression body
+        if (peek()?.kind === "LBRACE") {
+          // Block body: skip until matching }
+          let braceDepth: number = 1;
+          consume(); // consume {
+          while (pos < tokens.length && braceDepth > 0) {
+            const tok: Tok | undefined = peek();
+            if (tok?.kind === "LBRACE") {
+              braceDepth++;
+              consume();
+            } else if (tok?.kind === "RBRACE") {
+              braceDepth--;
+              consume();
+            } else {
+              consume();
+            }
+          }
+          // Optionally consume trailing semicolon
+          if (peek()?.kind === "SEMI") {
+            consume();
+          }
+        } else {
+          // Expression body: skip until ;
+          while (pos < tokens.length && peek()?.kind !== "SEMI") {
+            consume();
+          }
+          expect("SEMI"); // consume the semicolon
+        }
+      } else {
+        break; // Stop when we hit non-function tokens
+      }
+    }
+  }
+
+  // PASS 2: Parse functions and main program
+  function parseFunctionDeclaration(stmts: string[]): void {
+    consume(); // consume 'fn'
+    const funcName: string = expect("NAME").val;
+
+    const funcSig: FunctionSignature | undefined = functionEnv.get(funcName);
+    if (!funcSig)
+      throw new Error(`Internal error: function ${funcName} not found`);
+
+    expect("LPAREN");
+
+    // Parse parameters (we already have the types from pass 1)
+    const jsParams: string[] = [];
+    if (peek()?.kind !== "RPAREN") {
+      let paramIdx: number = 0;
+      do {
+        if (peek()?.kind === "COMMA") consume();
+        const paramName: string = expect("NAME").val;
+        expect("COLON");
+        expectType("for function parameter"); // consume type annotation
+
+        jsParams.push(paramName);
+        paramIdx++;
+      } while (peek()?.kind === "COMMA");
+    }
+
+    expect("RPAREN");
+    expect("COLON");
+    expectType("for function return type"); // consume return type
+
+    expect("ARROW");
+
+    // Save current environment
+    const savedEnv: Map<string, Binding> = env;
+    const savedNameCounter: Map<string, number> = nameCounter;
+    env = new Map();
+    nameCounter = new Map();
+
+    // Add parameters to environment
+    for (let i: number = 0; i < funcSig.params.length; i++) {
+      const param: { name: string; type: TuffType } = funcSig.params[i]!;
+      env.set(param.name, {
+        type: param.type,
+        jsName: jsParams[i]!,
+        mutable: false,
+      });
+    }
+
+    // Parse function body
+    // Helper to wrap function body with parameter initialization
+    const wrapFunctionBody = (stmts: string[], returnExpr: string): string => {
+      const paramWraps: string[] = jsParams.map(
+        (p: string) => `${p} = {val: ${p}};`,
+      );
+      const allStmts: string[] = [...paramWraps, ...stmts];
+      return allStmts.length > 0
+        ? `{\n${allStmts.join("\n")}\nreturn ${returnExpr};\n}`
+        : `{\nreturn ${returnExpr};\n}`;
+    };
+
+    let bodyCode: string;
+    let bodyType: TuffType;
+
+    if (peek()?.kind === "LBRACE") {
+      // Block body: => { statements; expr }
+      const { innerStmts, result } = withBlockScope((inner: string[]) => {
+        while (peek()?.kind !== "RBRACE") {
+          if (!tryParseStatement(inner)) {
+            // Final expression
+            return parseOr();
+          }
+        }
+        // Empty body (no final expression)
+        return { code: "undefined", type: "Void" as TuffType };
+      });
+      bodyCode = wrapFunctionBody(innerStmts, result.code);
+      bodyType = result.type;
+
+      // Optionally consume trailing semicolon for block form
+      if (peek()?.kind === "SEMI") {
+        consume();
+      }
+    } else {
+      // Expression body: => expr ;
+      const expr: TypedExpr = parseOr();
+      bodyCode = wrapFunctionBody([], expr.code);
+      bodyType = expr.type;
+      expect("SEMI");
+    }
+
+    // Special check: Void functions must have Void body (no expression)
+    if (funcSig.returnType === "Void" && bodyType !== "Void") {
+      throw new Error(`Type error: Void function cannot have expression body`);
+    }
+
+    // Type check return type
+    if (!isTypeCompatible(funcSig.returnType, bodyType)) {
+      throw new Error(
+        `Type error: function ${funcName} must return ${typeToString(funcSig.returnType)}, got ${typeToString(bodyType)}`,
+      );
+    }
+
+    // Generate JavaScript function
+    stmts.push(`function ${funcName}(${jsParams.join(", ")}) ${bodyCode}`);
+
+    // Restore environment
+    env = savedEnv;
+    nameCounter = savedNameCounter;
+  }
+
+  // Execute Pass 1
+  collectFunctionSignatures();
+
+  // Reset position for Pass 2
+  pos = 0;
+
   const stmts: string[] = [];
+
+  // Parse all function declarations
+  while (peek()?.kind === "NAME" && peek()?.val === "fn") {
+    parseFunctionDeclaration(stmts);
+  }
+
+  // Parse top-level statements
   while (tryParseStatement(stmts)) {
     // consume all leading statements
   }
+
   if (pos >= tokens.length) {
     return stmts.join("\n");
   }
   const finalExpr: TypedExpr = parseOr();
   assertNoTrailing(false);
 
-  // Check that program doesn't end with pointer type
+  // Check that program doesn't end with pointer or Void type
   if (isPointerType(finalExpr.type)) {
     throw new Error(
       `Type error: pointer type ${typeToString(finalExpr.type)} cannot be used as program exit value`,
     );
+  }
+  if (finalExpr.type === "Void") {
+    throw new Error(`Type error: program cannot end with Void expression`);
   }
 
   stmts.push(
