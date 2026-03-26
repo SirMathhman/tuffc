@@ -14,15 +14,29 @@ describe("greet", () => {
 });
 
 describe("compileTuffToTS", () => {
-  test("returns a string placeholder", () => {
-    expect(typeof compileTuffToTS("print hello")).toBe("string");
-    expect(compileTuffToTS("print hello")).toBe("");
+  test("compiles an unsigned integer literal to TS", () => {
+    expect(compileTuffToTS("100U8")).toBe("export default 100;");
+  });
+
+  test("ignores surrounding whitespace", () => {
+    expect(compileTuffToTS(" 100U8 ")).toBe("export default 100;");
+  });
+
+  test("throws on invalid input", () => {
+    expect(() => compileTuffToTS("print hello")).toThrow(SyntaxError);
   });
 });
 
 describe("evaluateTuff", () => {
-  test("always returns a number", () => {
-    expect(typeof evaluateTuff("print hello")).toBe("number");
-    expect(evaluateTuff("print hello")).toBe(0);
+  test("evaluates an unsigned integer literal to a number", () => {
+    expect(evaluateTuff("100U8")).toBe(100);
+  });
+
+  test("ignores surrounding whitespace", () => {
+    expect(evaluateTuff(" 100U8 ")).toBe(100);
+  });
+
+  test("throws on invalid input", () => {
+    expect(() => evaluateTuff("print hello")).toThrow(SyntaxError);
   });
 });

@@ -1,54 +1,58 @@
 import * as ts from "typescript";
 
+const U8_LITERAL = /^\s*(\d+)U8\s*$/;
+
 export function greet(name: string): string {
   return `Hello, ${name}!`;
 }
 
 export function compileTuffToTS(source: string): string {
-  void source;
-  return "";
+  const match = U8_LITERAL.exec(source);
+
+  if (!match) {
+    throw new SyntaxError("Unsupported Tuff source.");
+  }
+
+  return `export default ${match[1]};`;
 }
 
 export function evaluateTuff(tuffSource: string): number {
   const tsSource = compileTuffToTS(tuffSource);
+  const jsSource = ts.transpileModule(tsSource, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2022,
+    },
+  }).outputText;
 
-  try {
-    const jsSource = ts.transpileModule(tsSource, {
-      compilerOptions: {
-        module: ts.ModuleKind.CommonJS,
-        target: ts.ScriptTarget.ES2022,
-      },
-    }).outputText;
+  const module = { exports: {} as unknown };
+  const executionResult = new Function(
+    "module",
+    "exports",
+    `${jsSource}\nreturn module.exports;`,
+  )(module, module.exports);
 
-    const module = { exports: {} as unknown };
-    const executionResult = new Function(
-      "module",
-      "exports",
-      `${jsSource}\nreturn module.exports;`,
-    )(module, module.exports);
+  const possibleValues = [executionResult, module.exports];
 
-    const possibleValues = [executionResult, module.exports];
-
-    for (const value of possibleValues) {
-      if (typeof value === "number" && Number.isFinite(value)) {
-        return value;
-      }
-
-      if (
-        value !== null &&
-        typeof value === "object" &&
-        "default" in value &&
-        typeof (value as { default: unknown }).default === "number" &&
-        Number.isFinite((value as { default: number }).default)
-      ) {
-        return (value as { default: number }).default;
-      }
+  for (const value of possibleValues) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
     }
-  } catch {
-    // Fall through to the guaranteed numeric return below.
+
+    if (
+      value !== null &&
+      typeof value === "object" &&
+      "default" in value &&
+      typeof (value as { default: unknown }).default === "number" &&
+      Number.isFinite((value as { default: number }).default)
+    ) {
+      return (value as { default: number }).default;
+    }
   }
 
-  return 0;
+  throw new TypeError(
+    "evaluateTuff expected compiled code to produce a number.",
+  );
 }
 
 if (import.meta.main) {
