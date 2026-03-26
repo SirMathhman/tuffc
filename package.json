@@ -8,14 +8,21 @@
     "dev": "bun run src/index.ts",
     "test": "bun test",
     "build": "bunx tsc -p tsconfig.json",
-    "lint": "bunx tsc --noEmit",
-    "check": "bun run test && bun run lint && bun run find-duplicates",
+    "lint": "eslint .",
+    "lint:eslint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "typecheck": "bunx tsc --noEmit",
+    "check": "bun run test && bun run typecheck && bun run find-duplicates",
     "start": "bun run dist/index.js",
     "prepare": "husky",
     "find-duplicates": "pmd cpd --dir src,tests --minimum-tokens 40 --language typescript --format markdown --ignore-literals --ignore-identifiers"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "bun-types": "latest",
-    "typescript": "^5.8.3"
+    "eslint": "^10.1.0",
+    "globals": "^17.4.0",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.57.2"
   }
 }
