@@ -1,19 +1,23 @@
 import * as ts from "typescript";
 
-const U8_LITERAL = /^\s*(\d+)U8\s*$/;
+const SIGNED_U8_LITERAL = /^\s*([+-])?(\d+)U8\s*$/;
 
 export function greet(name: string): string {
   return `Hello, ${name}!`;
 }
 
 export function compileTuffToTS(source: string): string {
-  const match = U8_LITERAL.exec(source);
+  const match = SIGNED_U8_LITERAL.exec(source);
 
   if (!match) {
     throw new SyntaxError("Unsupported Tuff source.");
   }
 
-  return `export default ${match[1]};`;
+  if (match[1] !== undefined) {
+    throw new RangeError("Unsigned integer literals cannot be signed.");
+  }
+
+  return `export default ${match[2]};`;
 }
 
 export function evaluateTuff(tuffSource: string): number {
