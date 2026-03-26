@@ -1,6 +1,14 @@
 import * as ts from "typescript";
 
-type IntegerSuffix = "U8" | "U16" | "U32" | "U64" | "I8" | "I16" | "I32" | "I64";
+type IntegerSuffix =
+  | "U8"
+  | "U16"
+  | "U32"
+  | "U64"
+  | "I8"
+  | "I16"
+  | "I32"
+  | "I64";
 
 interface IntegerSpec {
   readonly min: bigint;
@@ -9,6 +17,8 @@ interface IntegerSpec {
 }
 
 const INTEGER_LITERAL = /^\s*([+-])?(\d+)(U8|U16|U32|U64|I8|I16|I32|I64)\s*$/;
+const READ_LITERAL = /^\s*read<(U8|U16|U32|U64|I8|I16|I32|I64)>\(\)\s*$/;
+const STDIN_LITERAL = /^\s*([+-])?(\d+)\s*$/;
 
 const INTEGER_SPECS: Record<IntegerSuffix, IntegerSpec> = {
   U8: { min: 0n, max: 255n, emitBigInt: false },
@@ -67,6 +77,47 @@ function parseIntegerLiteral(source: string): {
   return { value, spec };
 }
 
+function parseNumericText(source: string): bigint {
+  const match = STDIN_LITERAL.exec(source);
+
+  if (!match) {
+    throw new RangeError("Invalid stdin literal.");
+  }
+
+  const sign = match[1] ?? "";
+  const magnitudeText = match[2];
+
+  if (magnitudeText === undefined) {
+    throw new RangeError("Invalid stdin literal.");
+  }
+
+  const magnitude = BigInt(magnitudeText);
+
+  return sign === "-" ? -magnitude : magnitude;
+}
+
+function normalizeIntegerValue(value: bigint, suffix: IntegerSuffix): number | bigint {
+  const spec = INTEGER_SPECS[suffix];
+
+  if (value < spec.min || value > spec.max) {
+    throw new RangeError(`${suffix} literals must be within range.`);
+  }
+
+  return spec.emitBigInt ? value : Number(value);
+}
+
+function createStdInReader(stdIn: string) {
+  return (suffix: IntegerSuffix): number | bigint => {
+    const value = parseNumericText(stdIn);
+
+    if (value < 0n && suffix.startsWith("U")) {
+      throw new RangeError("Unsigned integer literals cannot be signed.");
+    }
+
+    return normalizeIntegerValue(value, suffix);
+  };
+}
+
 function readExecutedValue(value: unknown): number | bigint | undefined {
   if (typeof value === "number" || typeof value === "bigint") {
     return value;
@@ -88,13 +139,32 @@ export function greet(name: string): string {
 }
 
 export function compileTuffToTS(source: string): string {
+  const readSuffix = parseReadLiteralMaybe(source);
+
+  if (readSuffix !== undefined) {
+    return `export default __tuffRead("${readSuffix}");`;
+  }
+
   const { value, spec } = parseIntegerLiteral(source);
   const emittedValue = spec.emitBigInt ? `${value}n` : `${value}`;
 
   return `export default ${emittedValue};`;
 }
 
-export function evaluateTuff(tuffSource: string): number | bigint {
+function parseReadLiteralMaybe(source: string): IntegerSuffix | undefined {
+  const match = READ_LITERAL.exec(source);
+
+  if (!match) {
+    return undefined;
+  }
+
+  return match[1] as IntegerSuffix;
+}
+
+export function evaluateTuff(
+  tuffSource: string,
+  stdIn = "",
+): number | bigint {
   const tsSource = compileTuffToTS(tuffSource);
   const jsSource = ts.transpileModule(tsSource, {
     compilerOptions: {
@@ -104,11 +174,13 @@ export function evaluateTuff(tuffSource: string): number | bigint {
   }).outputText;
 
   const module = { exports: {} as unknown };
+  const __tuffRead = createStdInReader(stdIn);
   const executionResult = new Function(
     "module",
     "exports",
+    "__tuffRead",
     `${jsSource}\nreturn module.exports;`,
-  )(module, module.exports);
+  )(module, module.exports, __tuffRead);
 
   const possibleValues = [executionResult, module.exports];
 

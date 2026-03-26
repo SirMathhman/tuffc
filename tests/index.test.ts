@@ -11,11 +11,36 @@ const supportedIntegerCases = [
   { source: "100U64", ts: "export default 100n;", value: 100n },
   { source: "-1I8", ts: "export default -1;", value: -1 },
   { source: "+1I16", ts: "export default 1;", value: 1 },
-  { source: "-2147483648I32", ts: "export default -2147483648;", value: -2147483648 },
+  {
+    source: "-2147483648I32",
+    ts: "export default -2147483648;",
+    value: -2147483648,
+  },
   {
     source: "9223372036854775807I64",
     ts: "export default 9223372036854775807n;",
     value: 9223372036854775807n,
+  },
+] as const;
+
+const readCases = [
+  { source: "read<U8>()", stdIn: "100", ts: 'export default __tuffRead("U8");', value: 100 },
+  { source: "read<U16>()", stdIn: "65535", ts: 'export default __tuffRead("U16");', value: 65535 },
+  { source: "read<U32>()", stdIn: "4294967295", ts: 'export default __tuffRead("U32");', value: 4294967295 },
+  {
+    source: "read<U64>()",
+    stdIn: "18446744073709551615",
+    ts: 'export default __tuffRead("U64");',
+    value: 18446744073709551615n,
+  },
+  { source: "read<I8>()", stdIn: "-1", ts: 'export default __tuffRead("I8");', value: -1 },
+  { source: "read<I16>()", stdIn: "-32768", ts: 'export default __tuffRead("I16");', value: -32768 },
+  { source: "read<I32>()", stdIn: "2147483647", ts: 'export default __tuffRead("I32");', value: 2147483647 },
+  {
+    source: "read<I64>()",
+    stdIn: "-9223372036854775808",
+    ts: 'export default __tuffRead("I64");',
+    value: -9223372036854775808n,
   },
 ] as const;
 
@@ -80,6 +105,18 @@ describe("evaluateTuff", () => {
   test("evaluates supported integer literals to their numeric value", () => {
     for (const { source, value } of supportedIntegerCases) {
       expect(evaluateTuff(source) as any).toBe(value as any);
+    }
+  });
+
+  test("compiles read expressions to TypeScript", () => {
+    for (const { source, ts: expectedTs } of readCases) {
+      expect(compileTuffToTS(source)).toBe(expectedTs);
+    }
+  });
+
+  test("evaluates read expressions using stdin", () => {
+    for (const { source, stdIn, value } of readCases) {
+      expect(evaluateTuff(source, stdIn) as any).toBe(value as any);
     }
   });
 
