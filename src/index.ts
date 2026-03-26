@@ -110,6 +110,13 @@ function parseExpr(tokens: Tok[]): string {
     return consume();
   }
 
+  function consumeSuffix(): IntSuffix {
+    const maybeSuffix: Tok | undefined = peek();
+    return maybeSuffix?.kind === "NAME" && VALID_SUFFIXES.has(maybeSuffix.val)
+      ? (consume().val as IntSuffix)
+      : "I32";
+  }
+
   function parseAtom(): string {
     const t: Tok | undefined = peek();
     if (!t) throw new Error("Syntax error: unexpected end of expression");
@@ -118,22 +125,13 @@ function parseExpr(tokens: Tok[]): string {
       consume();
       const numTok: Tok = expect("NUM");
       const rawNum: string = `-${numTok.val}`;
-      const maybeSuffix: Tok | undefined = peek();
-      const suffix: IntSuffix =
-        maybeSuffix?.kind === "NAME" && VALID_SUFFIXES.has(maybeSuffix.val)
-          ? (consume().val as IntSuffix)
-          : "I32";
-      validateIntLiteral(rawNum, suffix);
+      validateIntLiteral(rawNum, consumeSuffix());
       return rawNum;
     }
 
     if (t.kind === "NUM") {
       consume();
-      const maybeSuffix: Tok | undefined = peek();
-      const suffix: IntSuffix =
-        maybeSuffix?.kind === "NAME" && VALID_SUFFIXES.has(maybeSuffix.val)
-          ? (consume().val as IntSuffix)
-          : "I32";
+      const suffix: IntSuffix = consumeSuffix();
       validateIntLiteral(t.val, suffix);
       return t.val;
     }
