@@ -3,6 +3,7 @@
 ## Summary
 
 Two new features:
+
 1. **Type aliases** — `type Name = SomeType;` binds a name to a resolved type.
 2. **`is` operator** — `expr is Type` checks whether the expression's compile-time type matches, returning `Bool`.
 
@@ -37,11 +38,11 @@ A type alias can appear **anywhere a statement can appear**: at the top level, b
 
 ### Error Cases
 
-| Input | Error |
-|-------|-------|
-| `type Foo = I32; type Foo = Bool;` | duplicate type alias 'Foo' |
-| `type A = A;` | unknown / expected type (alias not yet defined) |
-| `type I32 = Bool;` | cannot shadow built-in type 'I32' |
+| Input                              | Error                                           |
+| ---------------------------------- | ----------------------------------------------- |
+| `type Foo = I32; type Foo = Bool;` | duplicate type alias 'Foo'                      |
+| `type A = A;`                      | unknown / expected type (alias not yet defined) |
+| `type I32 = Bool;`                 | cannot shadow built-in type 'I32'               |
 
 ---
 
@@ -66,19 +67,19 @@ IsExpr = Expr "is" Type
 
 ### Valid Examples
 
-| Expression | Result |
-|------------|--------|
-| `42 is I32` | `1` (true) |
-| `42 is Bool` | `0` (false) |
-| `true is Bool` | `1` |
-| `true is I32` | `0` |
-| `type Num = I32; 42 is Num` | `1` |
+| Expression                  | Result      |
+| --------------------------- | ----------- |
+| `42 is I32`                 | `1` (true)  |
+| `42 is Bool`                | `0` (false) |
+| `true is Bool`              | `1`         |
+| `true is I32`               | `0`         |
+| `type Num = I32; 42 is Num` | `1`         |
 
 ### Error Cases
 
-| Input | Error |
-|-------|-------|
-| `42 is Void` | cannot use `is` with `Void` |
+| Input           | Error                         |
+| --------------- | ----------------------------- |
+| `42 is Void`    | cannot use `is` with `Void`   |
 | `42 is Unknown` | expected type … got "Unknown" |
 
 ---
@@ -86,16 +87,21 @@ IsExpr = Expr "is" Type
 ## Implementation Notes
 
 ### `typeAliasEnv`
+
 A `Map<string, TuffType>` declared inside `parseProgram`. Not block-scoped — any alias declared anywhere is globally visible from that point forward (simple model for now).
 
 ### Pass 1 changes
+
 `collectFunctionSignatures` must also handle `type` declarations so that aliases defined before functions are available when parsing function signatures.
 
 ### Pass 2 changes
+
 Top-level loop must handle interleaved `fn` and `type` declarations.
 
 ### `expectType` changes
+
 After checking for `*`, when a `NAME` token is encountered, check `typeAliasEnv` before `VALID_TYPES`.
 
 ### `parseCmp` changes
+
 After `parseAdd()`, before checking `CMP_OPS`, check for `NAME` token with value `"is"`.

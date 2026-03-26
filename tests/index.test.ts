@@ -1437,7 +1437,10 @@ describe("while statements", () => {
       });
 
       test("alias used in function parameter type", () => {
-        expectTuff("type Num = I32; fn double(x: Num) : Num => x * 2; double(21)", 42);
+        expectTuff(
+          "type Num = I32; fn double(x: Num) : Num => x * 2; double(21)",
+          42,
+        );
       });
 
       test("alias used in fn return type annotation", () => {
@@ -1445,7 +1448,10 @@ describe("while statements", () => {
       });
 
       test("alias to pointer type", () => {
-        expectTuff("type IntPtr = *I32; let x = 42; let p: IntPtr = &x; *p", 42);
+        expectTuff(
+          "type IntPtr = *I32; let x = 42; let p: IntPtr = &x; *p",
+          42,
+        );
       });
 
       test("alias to function pointer type", () => {
@@ -1456,7 +1462,10 @@ describe("while statements", () => {
       });
 
       test("alias declared inside function body", () => {
-        expectTuff("fn foo() : I32 => { type Num = I32; let x: Num = 42; x }; foo()", 42);
+        expectTuff(
+          "fn foo() : I32 => { type Num = I32; let x: Num = 42; x }; foo()",
+          42,
+        );
       });
 
       test("alias declared inside block expression", () => {
@@ -1479,13 +1488,15 @@ describe("while statements", () => {
       });
 
       test("recursive alias (self-referential)", () => {
-        expect(() => compileTuffToTS("type A = A; 0")).toThrow(/type|expected/i);
+        expect(() => compileTuffToTS("type A = A; 0")).toThrow(
+          /type|expected/i,
+        );
       });
 
       test("alias shadows built-in type name", () => {
-        expect(() =>
-          compileTuffToTS("type I32 = Bool; 0"),
-        ).toThrow(/shadow|built.in|I32/i);
+        expect(() => compileTuffToTS("type I32 = Bool; 0")).toThrow(
+          /shadow|built.in|I32/i,
+        );
       });
 
       test("alias used before declaration", () => {
@@ -1554,7 +1565,170 @@ describe("while statements", () => {
       });
 
       test("is with unknown type is an error", () => {
-        expect(() => compileTuffToTS("42 is Unknown")).toThrow(/type|expected/i);
+        expect(() => compileTuffToTS("42 is Unknown")).toThrow(
+          /type|expected/i,
+        );
+      });
+    });
+  });
+
+  describe("enums", () => {
+    describe("valid", () => {
+      test("access first variant (index 0)", () => {
+        expectTuff(
+          "enum Color { Red, Green, Blue } Color::Red == Color::Red",
+          1,
+        );
+      });
+
+      test("access second variant (index 1)", () => {
+        expectTuff(
+          "enum Color { Red, Green, Blue } Color::Green == Color::Red",
+          0,
+        );
+      });
+
+      test("access third variant (index 2)", () => {
+        expectTuff(
+          "enum Color { Red, Green, Blue } Color::Blue != Color::Red",
+          1,
+        );
+      });
+
+      test("store in let with type annotation", () => {
+        expectTuff(
+          "enum Dir { North, South, East, West } let d: Dir = Dir::South; d is Dir",
+          1,
+        );
+      });
+
+      test("inferred let binding holds enum type", () => {
+        expectTuff("enum Dir { North, South } let d = Dir::North; d is Dir", 1);
+      });
+
+      test("equality comparison same variant", () => {
+        expectTuff("enum Color { Red, Green } Color::Red == Color::Red", 1);
+      });
+
+      test("equality comparison different variant", () => {
+        expectTuff("enum Color { Red, Green } Color::Red == Color::Green", 0);
+      });
+
+      test("inequality comparison", () => {
+        expectTuff("enum Color { Red, Green } Color::Red != Color::Green", 1);
+      });
+
+      test("enum as function parameter type", () => {
+        expectTuff(
+          "enum Color { Red, Green } fn isRed(c: Color) : Bool => c == Color::Red; isRed(Color::Red)",
+          1,
+        );
+      });
+
+      test("enum as function return type", () => {
+        expectTuff(
+          "enum Dir { North, South } fn flip(d: Dir) : Dir => if (d == Dir::North) Dir::South else Dir::North; flip(Dir::North) == Dir::South",
+          1,
+        );
+      });
+
+      test("enum usable in if condition as comparison result", () => {
+        expectTuff(
+          "enum Color { Red, Green } let c = Color::Red; if (c == Color::Red) 1 else 0",
+          1,
+        );
+      });
+
+      test("is with enum type — match", () => {
+        expectTuff("enum Color { Red } Color::Red is Color", 1);
+      });
+
+      test("is with enum type — mismatch against integer", () => {
+        expectTuff("enum Color { Red } Color::Red is I32", 0);
+      });
+
+      test("is with enum type — mismatch against different enum", () => {
+        expectTuff("enum A { X } enum B { Y } A::X is B", 0);
+      });
+
+      test("pointer to enum variable", () => {
+        expectTuff(
+          "enum Color { Red, Green } let mut c = Color::Red; let p = &mut c; *p = Color::Green; c == Color::Green",
+          1,
+        );
+      });
+
+      test("enum declared inside function body", () => {
+        expectTuff(
+          "fn getVal() : Bool => { enum Size { Small, Large } Size::Large == Size::Large }; getVal()",
+          1,
+        );
+      });
+
+      test("single-variant enum", () => {
+        expectTuff("enum Unit { Only } Unit::Only is Unit", 1);
+      });
+    });
+
+    describe("invalid", () => {
+      test("duplicate enum name", () => {
+        expect(() =>
+          compileTuffToTS("enum Foo { A } enum Foo { B } 0"),
+        ).toThrow(/duplicate.*enum|enum.*duplicate/i);
+      });
+
+      test("duplicate variant in enum", () => {
+        expect(() => compileTuffToTS("enum Foo { A, A } 0")).toThrow(
+          /duplicate.*variant|variant.*duplicate/i,
+        );
+      });
+
+      test("access unknown enum", () => {
+        expect(() => compileTuffToTS("Nope::Variant")).toThrow(/unknown|type/i);
+      });
+
+      test("access unknown variant", () => {
+        expect(() =>
+          compileTuffToTS("enum Color { Red } Color::Purple"),
+        ).toThrow(/variant|Color/i);
+      });
+
+      test("enum in arithmetic", () => {
+        expect(() =>
+          compileTuffToTS("enum Color { Red } Color::Red + 1"),
+        ).toThrow(/arithmetic|enum/i);
+      });
+
+      test("enum in boolean if condition", () => {
+        expect(() =>
+          compileTuffToTS("enum Color { Red } if (Color::Red) 1 else 0"),
+        ).toThrow(/bool|enum/i);
+      });
+
+      test("enum as program exit value", () => {
+        expect(() => compileTuffToTS("enum Color { Red } Color::Red")).toThrow(
+          /program|exit|enum/i,
+        );
+      });
+
+      test("compare different enum types", () => {
+        expect(() =>
+          compileTuffToTS("enum A { X } enum B { Y } A::X == B::Y"),
+        ).toThrow(/type|compare|enum/i);
+      });
+
+      test("assign wrong enum type", () => {
+        expect(() =>
+          compileTuffToTS("enum A { X } enum B { Y } let c: A = B::Y;"),
+        ).toThrow(/type|assign|compatible/i);
+      });
+
+      test("ordered comparison on enums", () => {
+        expect(() =>
+          compileTuffToTS(
+            "enum Color { Red, Green } Color::Red < Color::Green",
+          ),
+        ).toThrow(/enum|comparison|integer/i);
       });
     });
   });

@@ -3,7 +3,8 @@ type PrimitiveType = IntSuffix | "Bool" | "Void";
 type TuffType =
   | PrimitiveType
   | { kind: "Pointer"; mutable: boolean; pointee: TuffType }
-  | { kind: "FunctionPointer"; params: TuffType[]; returnType: TuffType };
+  | { kind: "FunctionPointer"; params: TuffType[]; returnType: TuffType }
+  | { kind: "Enum"; name: string };
 
 const INT_RANGES: Record<IntSuffix, [number, number]> = {
   U8: [0, 255],
@@ -71,7 +72,8 @@ type TK =
   | "AMP_EQ"
   | "PIPE_EQ"
   | "ARROW"
-  | "COMMA";
+  | "COMMA"
+  | "COLON_COLON";
 
 interface Tok {
   kind: TK;
@@ -116,7 +118,10 @@ function tokenize(src: string): Tok[] {
       tokens.push({ kind: "NAME", val: src.slice(i, j) });
       i = j;
     } else {
-      if (ch === "|" && src[i + 1] === "|") {
+      if (ch === ":" && src[i + 1] === ":") {
+        tokens.push({ kind: "COLON_COLON", val: "::" });
+        i += 2;
+      } else if (ch === "|" && src[i + 1] === "|") {
         tokens.push({ kind: "PIPE_PIPE", val: "||" });
         i += 2;
       } else if (ch === "&" && src[i + 1] === "&") {
@@ -161,7 +166,7 @@ function tokenize(src: string): Tok[] {
       } else {
         const kind: TK | undefined = CH_TO_TK[ch];
         if (!kind)
-          throw new Error(`Syntax error: unexpected character "${ch}"`);
+          throw new Error('Syntax error: unexpected character "' + ch + '"');
         tokens.push({ kind, val: ch });
         i++;
       }
@@ -191,13 +196,18 @@ function isFunctionPointerType(
   return typeof t === "object" && t.kind === "FunctionPointer";
 }
 
+function isEnumType(t: TuffType): t is { kind: "Enum"; name: string } {
+  return typeof t === "object" && t.kind === "Enum";
+}
+
 function typeToString(t: TuffType): string {
   if (isPrimitiveType(t)) return t;
   if (isFunctionPointerType(t)) {
     const paramStrs: string = t.params.map(typeToString).join(", ");
-    return `*(${paramStrs}) => ${typeToString(t.returnType)}`;
+    return "*(" + paramStrs + ") => " + typeToString(t.returnType);
   }
-  return `${t.mutable ? "*mut" : "*"}${typeToString(t.pointee)}`;
+  if (isEnumType(t)) return t.name;
+  return (t.mutable ? "*mut" : "*") + typeToString(t.pointee);
 }
 
 function typesEqual(t1: TuffType, t2: TuffType): boolean {
@@ -212,6 +222,7 @@ function typesEqual(t1: TuffType, t2: TuffType): boolean {
       t1.params.every((p: TuffType, i: number) => typesEqual(p, t2.params[i]!))
     );
   }
+  if (isEnumType(t1) && isEnumType(t2)) return t1.name === t2.name;
   return false;
 }
 
@@ -222,13 +233,16 @@ function promoteTypes(a: TuffType, b: TuffType): IntSuffix {
     isFunctionPointerType(a) ||
     isFunctionPointerType(b)
   ) {
-    throw new Error(`Type error: pointers cannot be used in arithmetic`);
+    throw new Error("Type error: pointers cannot be used in arithmetic");
+  }
+  if (isEnumType(a) || isEnumType(b)) {
+    throw new Error("Type error: enum cannot be used in arithmetic");
   }
   if (a === "Bool" || b === "Bool") {
-    throw new Error(`Type error: Bool cannot be used in arithmetic`);
+    throw new Error("Type error: Bool cannot be used in arithmetic");
   }
   if (a === "Void" || b === "Void") {
-    throw new Error(`Type error: Void cannot be used in arithmetic`);
+    throw new Error("Type error: Void cannot be used in arithmetic");
   }
   const [aMin, aMax]: [number, number] = INT_RANGES[a as IntSuffix];
   const [bMin, bMax]: [number, number] = INT_RANGES[b as IntSuffix];
@@ -238,7 +252,7 @@ function promoteTypes(a: TuffType, b: TuffType): IntSuffix {
     const [min, max]: [number, number] = INT_RANGES[suffix];
     if (min <= combinedMin && max >= combinedMax) return suffix;
   }
-  throw new Error(`Type error: no integer type covers ${a} and ${b}`);
+  throw new Error("Type error: no integer type covers " + a + " and " + b);
 }
 
 function isTypeCompatible(declared: TuffType, inferred: TuffType): boolean {
@@ -249,6 +263,11 @@ function isTypeCompatible(declared: TuffType, inferred: TuffType): boolean {
     isFunctionPointerType(declared) ||
     isFunctionPointerType(inferred)
   ) {
+    return typesEqual(declared, inferred);
+  }
+
+  // Enums must match exactly (by name)
+  if (isEnumType(declared) || isEnumType(inferred)) {
     return typesEqual(declared, inferred);
   }
 
@@ -265,7 +284,10 @@ function isTypeCompatible(declared: TuffType, inferred: TuffType): boolean {
 
 function throwNoCommonType(t1: TuffType, t2: TuffType): never {
   throw new Error(
-    `Type error: no common type for ${typeToString(t1)} and ${typeToString(t2)}`,
+    "Type error: no common type for " +
+      typeToString(t1) +
+      " and " +
+      typeToString(t2),
   );
 }
 
@@ -279,6 +301,11 @@ function findCommonType(t1: TuffType, t2: TuffType): TuffType {
     isFunctionPointerType(t1) ||
     isFunctionPointerType(t2)
   ) {
+    throwNoCommonType(t1, t2);
+  }
+
+  // Enums don't have a common type with anything other than themselves
+  if (isEnumType(t1) || isEnumType(t2)) {
     throwNoCommonType(t1, t2);
   }
 
@@ -305,7 +332,15 @@ function validateIntLiteral(rawNum: string, suffix: IntSuffix): void {
   const [min, max]: [number, number] = INT_RANGES[suffix];
   if (value < min || value > max) {
     throw new Error(
-      `Range error: ${rawNum} is out of range for ${suffix} (${min}..${max})`,
+      "Range error: " +
+        rawNum +
+        " is out of range for " +
+        suffix +
+        " (" +
+        min +
+        ".." +
+        max +
+        ")",
     );
   }
 }
@@ -322,6 +357,13 @@ interface FunctionSignature {
   returnType: TuffType;
 }
 
+interface ParserScopeSnapshot {
+  env: Map<string, Binding>;
+  nameCounter: Map<string, number>;
+  typeAliasEnv: Map<string, TuffType>;
+  enumEnv: Map<string, { variants: string[] }>;
+}
+
 class NotAStatementBlockError extends Error {}
 
 function parseProgram(tokens: Tok[]): string {
@@ -329,6 +371,7 @@ function parseProgram(tokens: Tok[]): string {
   let env: Map<string, Binding> = new Map();
   let functionEnv: Map<string, FunctionSignature> = new Map();
   let typeAliasEnv: Map<string, TuffType> = new Map();
+  let enumEnv: Map<string, { variants: string[] }> = new Map();
   let nameCounter: Map<string, number> = new Map();
 
   function peek(): Tok | undefined {
@@ -343,7 +386,11 @@ function parseProgram(tokens: Tok[]): string {
     const t: Tok | undefined = peek();
     if (!t || t.kind !== kind) {
       throw new Error(
-        `Syntax error: expected "${kind}" but got "${t?.val ?? "end of input"}"`,
+        'Syntax error: expected "' +
+          kind +
+          '" but got "' +
+          (t?.val ?? "end of input") +
+          '"',
       );
     }
     return consume();
@@ -389,7 +436,9 @@ function parseProgram(tokens: Tok[]): string {
           return { kind: "Pointer", mutable: false, pointee: innerTypes[0]! };
         }
         throw new Error(
-          `Syntax error: expected => for function pointer type after *(${innerTypes.map(typeToString).join(", ")})`,
+          "Syntax error: expected => for function pointer type after *(" +
+            innerTypes.map(typeToString).join(", ") +
+            ")",
         );
       }
 
@@ -412,10 +461,20 @@ function parseProgram(tokens: Tok[]): string {
       return typeAliasEnv.get(t.val)!;
     }
 
+    // Check for enum type
+    if (t?.kind === "NAME" && enumEnv.has(t.val)) {
+      consume();
+      return { kind: "Enum", name: t.val };
+    }
+
     // Otherwise expect a primitive type name
     if (!t || t.kind !== "NAME" || !VALID_TYPES.has(t.val)) {
       throw new Error(
-        `Syntax error: expected type ${context} but got "${t?.val ?? "end of input"}"`,
+        "Syntax error: expected type " +
+          context +
+          ' but got "' +
+          (t?.val ?? "end of input") +
+          '"',
       );
     }
     return consume().val as PrimitiveType;
@@ -431,7 +490,7 @@ function parseProgram(tokens: Tok[]): string {
   function requireBinding(name: string): Binding {
     const binding: Binding | undefined = env.get(name);
     if (binding === undefined) {
-      throw new Error(`Type error: unknown variable "${name}"`);
+      throw new Error('Type error: unknown variable "' + name + '"');
     }
     return binding;
   }
@@ -440,7 +499,7 @@ function parseProgram(tokens: Tok[]): string {
     const binding: Binding = requireBinding(name);
     if (!binding.mutable) {
       throw new Error(
-        `Type error: cannot assign to immutable variable "${name}"`,
+        'Type error: cannot assign to immutable variable "' + name + '"',
       );
     }
     return binding;
@@ -450,7 +509,14 @@ function parseProgram(tokens: Tok[]): string {
     if (isPointerType(operand.type) || isFunctionPointerType(operand.type)) {
       const typeName: string = typeToString(operand.type);
       throw new Error(
-        `Type error: cannot use pointer ${typeName} in boolean operation`,
+        "Type error: cannot use pointer " + typeName + " in boolean operation",
+      );
+    }
+    if (isEnumType(operand.type)) {
+      throw new Error(
+        "Type error: cannot use enum type " +
+          operand.type.name +
+          " in boolean context",
       );
     }
   }
@@ -458,7 +524,12 @@ function parseProgram(tokens: Tok[]): string {
   function assertNotPointer(operand: TypedExpr, operation: string): void {
     if (isPointerType(operand.type) || isFunctionPointerType(operand.type)) {
       throw new Error(
-        `Type error: cannot use pointer in ${operation} operation`,
+        "Type error: cannot use pointer in " + operation + " operation",
+      );
+    }
+    if (isEnumType(operand.type)) {
+      throw new Error(
+        "Type error: cannot use enum in " + operation + " operation",
       );
     }
   }
@@ -466,7 +537,7 @@ function parseProgram(tokens: Tok[]): string {
   function assertIsPointerType(type: TuffType): void {
     if (!isPointerType(type)) {
       throw new Error(
-        `Type error: cannot dereference non-pointer type ${typeToString(type)}`,
+        "Type error: cannot dereference non-pointer type " + typeToString(type),
       );
     }
   }
@@ -477,7 +548,12 @@ function parseProgram(tokens: Tok[]): string {
 
   function assertTypeCompatible(target: TuffType, source: TuffType): void {
     if (!isTypeCompatible(target, source)) {
-      throw new Error(`Type error: cannot assign ${source} to ${target}`);
+      throw new Error(
+        "Type error: cannot assign " +
+          typeToString(source) +
+          " to " +
+          typeToString(target),
+      );
     }
   }
 
@@ -493,7 +569,7 @@ function parseProgram(tokens: Tok[]): string {
       );
     }
     const resultType: TuffType = promoteTypes(varType, rhs.type);
-    return { code: `${varCode} ${op} ${rhs.code}`, type: resultType };
+    return { code: varCode + " " + op + " " + rhs.code, type: resultType };
   }
 
   function parseBinaryLevel(inner: () => TypedExpr, ops: Set<TK>): TypedExpr {
@@ -503,7 +579,7 @@ function parseProgram(tokens: Tok[]): string {
       consume();
       const right: TypedExpr = inner();
       left = {
-        code: `${left.code} ${op.val} ${right.code}`,
+        code: left.code + " " + op.val + " " + right.code,
         type: promoteTypes(left.type, right.type),
       };
       op = peek();
@@ -514,23 +590,59 @@ function parseProgram(tokens: Tok[]): string {
   const MUL_OPS: Set<TK> = new Set<TK>(["STAR", "SLASH"]);
   const ADD_OPS: Set<TK> = new Set<TK>(["PLUS", "MINUS"]);
 
+  function snapshotParserScope(): ParserScopeSnapshot {
+    return {
+      env,
+      nameCounter,
+      typeAliasEnv,
+      enumEnv,
+    };
+  }
+
+  function restoreParserScope(state: ParserScopeSnapshot): void {
+    env = state.env;
+    nameCounter = state.nameCounter;
+    typeAliasEnv = state.typeAliasEnv;
+    enumEnv = state.enumEnv;
+  }
+
+  function buildTypedComparison(
+    left: TypedExpr,
+    opVal: string,
+    right: TypedExpr,
+  ): TypedExpr {
+    return { code: left.code + " " + opVal + " " + right.code, type: "Bool" };
+  }
+
+  function buildSpecialEqualityComparison(
+    left: TypedExpr,
+    opVal: string,
+    right: TypedExpr,
+  ): TypedExpr {
+    if (!typesEqual(left.type, right.type)) {
+      throw new Error(
+        "Type error: cannot compare " +
+          typeToString(left.type) +
+          " with " +
+          typeToString(right.type),
+      );
+    }
+    return buildTypedComparison(left, opVal, right);
+  }
+
   function withBacktrack(
     attempt: () => void,
     isBacktrackable: (e: unknown) => boolean,
   ): boolean {
     const savedPos: number = pos;
-    const savedEnv: Map<string, Binding> = env;
-    const savedNameCounter: Map<string, number> = nameCounter;
-    const savedTypeAliasEnv: Map<string, TuffType> = typeAliasEnv;
+    const savedScope: ParserScopeSnapshot = snapshotParserScope();
     try {
       attempt();
       return true;
     } catch (error: unknown) {
       if (isBacktrackable(error)) {
         pos = savedPos;
-        env = savedEnv;
-        nameCounter = savedNameCounter;
-        typeAliasEnv = savedTypeAliasEnv;
+        restoreParserScope(savedScope);
         return false;
       }
       throw error;
@@ -541,17 +653,48 @@ function parseProgram(tokens: Tok[]): string {
     consume(); // consume 'type'
     const aliasName: string = expect("NAME").val;
     if (typeAliasEnv.has(aliasName)) {
-      throw new Error(`Type error: duplicate type alias '${aliasName}'`);
+      throw new Error("Type error: duplicate type alias '" + aliasName + "'");
     }
     if (VALID_TYPES.has(aliasName)) {
       throw new Error(
-        `Type error: cannot shadow built-in type '${aliasName}'`,
+        "Type error: cannot shadow built-in type '" + aliasName + "'",
       );
     }
     expect("EQ");
     const resolvedType: TuffType = expectType("for type alias");
     expect("SEMI");
     typeAliasEnv.set(aliasName, resolvedType);
+  }
+
+  function parseEnumDeclaration(): void {
+    consume(); // consume 'enum'
+    const enumName: string = expect("NAME").val;
+    if (enumEnv.has(enumName)) {
+      throw new Error("Type error: duplicate enum '" + enumName + "'");
+    }
+    if (VALID_TYPES.has(enumName) || typeAliasEnv.has(enumName)) {
+      throw new Error(
+        "Type error: cannot shadow built-in type '" + enumName + "'",
+      );
+    }
+    expect("LBRACE");
+    const variants: string[] = [];
+    while (peek()?.kind !== "RBRACE") {
+      const variantTok: Tok = expect("NAME");
+      if (variants.includes(variantTok.val)) {
+        throw new Error(
+          "Type error: duplicate variant '" +
+            variantTok.val +
+            "' in enum '" +
+            enumName +
+            "'",
+        );
+      }
+      variants.push(variantTok.val);
+      if (peek()?.kind === "COMMA") consume();
+    }
+    expect("RBRACE");
+    enumEnv.set(enumName, { variants });
   }
 
   function fpTypeToFakeSig(
@@ -565,7 +708,7 @@ function parseProgram(tokens: Tok[]): string {
     return {
       name,
       params: fpType.params.map((pt: TuffType, i: number) => ({
-        name: `arg${i}`,
+        name: "arg" + i,
         type: pt,
       })),
       returnType: fpType.returnType,
@@ -592,7 +735,12 @@ function parseProgram(tokens: Tok[]): string {
     // Check arity
     if (args.length !== funcSig.params.length) {
       throw new Error(
-        `Type error: function ${funcName} expects ${funcSig.params.length} arguments, got ${args.length}`,
+        "Type error: function " +
+          funcName +
+          " expects " +
+          funcSig.params.length +
+          " arguments, got " +
+          args.length,
       );
     }
 
@@ -602,7 +750,14 @@ function parseProgram(tokens: Tok[]): string {
       const param: { name: string; type: TuffType } = funcSig.params[i]!;
       if (!isTypeCompatible(param.type, arg.type)) {
         throw new Error(
-          `Type error: argument ${i + 1} to ${funcName} must be ${typeToString(param.type)}, got ${typeToString(arg.type)}`,
+          "Type error: argument " +
+            (i + 1) +
+            " to " +
+            funcName +
+            " must be " +
+            typeToString(param.type) +
+            ", got " +
+            typeToString(arg.type),
         );
       }
     }
@@ -617,7 +772,7 @@ function parseProgram(tokens: Tok[]): string {
     if (t.kind === "MINUS") {
       consume();
       const numTok: Tok = expect("NUM");
-      const rawNum: string = `-${numTok.val}`;
+      const rawNum: string = "-" + numTok.val;
       const suffix: IntSuffix = consumeSuffix();
       validateIntLiteral(rawNum, suffix);
       return { code: rawNum, type: suffix };
@@ -666,10 +821,10 @@ function parseProgram(tokens: Tok[]): string {
         jsCallCode = callName;
       } else if (binding && isFunctionPointerType(binding.type)) {
         sig = fpTypeToFakeSig(callName, binding.type);
-        jsCallCode = `${binding.jsName}.val`;
+        jsCallCode = binding.jsName + ".val";
       } else {
         throw new Error(
-          `Type error: unknown function or function pointer '${callName}'`,
+          "Type error: unknown function or function pointer '" + callName + "'",
         );
       }
 
@@ -679,19 +834,47 @@ function parseProgram(tokens: Tok[]): string {
       // Void function calls cannot be used in expressions
       if (sig.returnType === "Void") {
         throw new Error(
-          `Type error: Void function ${callName} cannot be used in expression context`,
+          "Type error: Void function " +
+            callName +
+            " cannot be used in expression context",
         );
       }
 
       const jsArgs: string = args.map((a: TypedExpr) => a.code).join(", ");
-      return { code: `${jsCallCode}(${jsArgs})`, type: sig.returnType };
+      return { code: jsCallCode + "(" + jsArgs + ")", type: sig.returnType };
+    }
+
+    // Enum variant access: EnumName::VariantName
+    if (t.kind === "NAME" && tokens[pos + 1]?.kind === "COLON_COLON") {
+      const enumName: string = t.val;
+      const enumDef: { variants: string[] } | undefined = enumEnv.get(enumName);
+      if (!enumDef) {
+        throw new Error("Type error: unknown type or enum '" + enumName + "'");
+      }
+      consume(); // consume enum name
+      consume(); // consume ::
+      const variantTok: Tok = expect("NAME");
+      const variantIdx: number = enumDef.variants.indexOf(variantTok.val);
+      if (variantIdx === -1) {
+        throw new Error(
+          "Type error: unknown variant '" +
+            variantTok.val +
+            "' in enum '" +
+            enumName +
+            "'",
+        );
+      }
+      return {
+        code: String(variantIdx),
+        type: { kind: "Enum", name: enumName },
+      };
     }
 
     if (t.kind === "NAME") {
       const binding: Binding = requireBinding(t.val);
       consume();
       // All variables are wrapped in {val: ...}, so always access through .val
-      return { code: `${binding.jsName}.val`, type: binding.type };
+      return { code: binding.jsName + ".val", type: binding.type };
     }
 
     if (t.kind === "LBRACE") {
@@ -705,7 +888,7 @@ function parseProgram(tokens: Tok[]): string {
       return expr;
     }
 
-    throw new Error(`Syntax error: unexpected token "${t.val}"`);
+    throw new Error('Syntax error: unexpected token "' + t.val + '"');
   }
 
   function parseMul(): TypedExpr {
@@ -739,7 +922,7 @@ function parseProgram(tokens: Tok[]): string {
         // Dereference accesses .val of the pointer
         // Type guard for TypeScript (assertion guarantees this)
         if (!isPointerType(operand.type)) throw new Error("unreachable");
-        return { code: `${operand.code}.val`, type: operand.type.pointee };
+        return { code: operand.code + ".val", type: operand.type.pointee };
       }
     }
 
@@ -757,7 +940,7 @@ function parseProgram(tokens: Tok[]): string {
       const varTok: Tok | undefined = peek();
       if (varTok?.kind !== "NAME") {
         throw new Error(
-          `Type error: can only take address of variables, not expressions`,
+          "Type error: can only take address of variables, not expressions",
         );
       }
 
@@ -770,7 +953,7 @@ function parseProgram(tokens: Tok[]): string {
       if (mutable) {
         let mutableError: string;
         if (funcSig) {
-          mutableError = `function "${varTok.val}"`;
+          mutableError = 'function "' + varTok.val + '"';
         } else {
           const mBinding: Binding = requireBinding(varTok.val);
           consume();
@@ -780,10 +963,10 @@ function parseProgram(tokens: Tok[]): string {
               type: { kind: "Pointer", mutable: true, pointee: mBinding.type },
             };
           }
-          mutableError = `immutable variable "${varTok.val}"`;
+          mutableError = 'immutable variable "' + varTok.val + '"';
         }
         throw new Error(
-          `Type error: cannot take mutable address of ${mutableError}`,
+          "Type error: cannot take mutable address of " + mutableError,
         );
       }
 
@@ -834,9 +1017,9 @@ function parseProgram(tokens: Tok[]): string {
       if (left.type !== "Bool" || right.type !== "Bool") {
         assertNotPointerInBooleanContext(left);
         assertNotPointerInBooleanContext(right);
-        throw new Error(`Type error: ${opStr} requires Bool operands`);
+        throw new Error("Type error: " + opStr + " requires Bool operands");
       }
-      left = { code: `${left.code} ${opStr} ${right.code}`, type: "Bool" };
+      left = { code: left.code + " " + opStr + " " + right.code, type: "Bool" };
     }
     return left;
   }
@@ -863,7 +1046,7 @@ function parseProgram(tokens: Tok[]): string {
         throw new Error("Type error: cannot use 'is' with Void type");
       }
       const matches: boolean = typesEqual(left.type, checkType);
-      return { code: `(${left.code}, ${matches})`, type: "Bool" };
+      return { code: "(" + left.code + ", " + matches + ")", type: "Bool" };
     }
 
     if (op === undefined || !CMP_OPS.has(op.kind)) return left;
@@ -878,29 +1061,35 @@ function parseProgram(tokens: Tok[]): string {
     if (ORDERED_CMP_OPS.has(op.kind)) {
       // Ordered comparisons: <, <=, >, >=
       if (left.type === "Bool" || right.type === "Bool") {
-        throw new Error(`Type error: ${op.val} requires integer operands`);
+        throw new Error("Type error: " + op.val + " requires integer operands");
       }
       if (leftIsPtr || rightIsPtr) {
-        throw new Error(`Type error: cannot use ${op.val} on pointer types`);
+        throw new Error(
+          "Type error: cannot use " + op.val + " on pointer types",
+        );
+      }
+      if (isEnumType(left.type) || isEnumType(right.type)) {
+        throw new Error(
+          "Type error: enum cannot be used in comparison " + op.val,
+        );
       }
     } else {
       // Equality comparisons: ==, !=
-      // Pointers can be compared with each other (must be same type)
-      if (leftIsPtr || rightIsPtr) {
-        if (!typesEqual(left.type, right.type)) {
-          throw new Error(
-            `Type error: cannot compare ${typeToString(left.type)} with ${typeToString(right.type)}`,
-          );
-        }
-        // Pointer comparison uses JavaScript === and !==
-        return { code: `${left.code} ${op.val} ${right.code}`, type: "Bool" };
+      // Pointers and enums can only be compared for equality with the same type.
+      if (
+        leftIsPtr ||
+        rightIsPtr ||
+        isEnumType(left.type) ||
+        isEnumType(right.type)
+      ) {
+        return buildSpecialEqualityComparison(left, op.val, right);
       }
       // Non-pointer comparisons
       if ((left.type === "Bool") !== (right.type === "Bool")) {
-        throw new Error(`Type error: cannot compare Bool with integer`);
+        throw new Error("Type error: cannot compare Bool with integer");
       }
     }
-    return { code: `${left.code} ${op.val} ${right.code}`, type: "Bool" };
+    return buildTypedComparison(left, op.val, right);
   }
 
   function parseNot(): TypedExpr {
@@ -910,9 +1099,9 @@ function parseProgram(tokens: Tok[]): string {
       if (operand.type !== "Bool") {
         assertNotPointerInBooleanContext(operand);
         const typeName: string = typeToString(operand.type);
-        throw new Error(`Type error: ! requires Bool operand, got ${typeName}`);
+        throw new Error("Type error: ! requires Bool operand, got " + typeName);
       }
-      return { code: `!${operand.code}`, type: "Bool" };
+      return { code: "!" + operand.code, type: "Bool" };
     }
     return parseCmp();
   }
@@ -927,7 +1116,7 @@ function parseProgram(tokens: Tok[]): string {
 
   function failUnexpectedAfterExpression(actual: string): never {
     throw new Error(
-      `Syntax error: unexpected token "${actual}" after expression`,
+      'Syntax error: unexpected token "' + actual + '" after expression',
     );
   }
 
@@ -968,11 +1157,11 @@ function parseProgram(tokens: Tok[]): string {
     }
     const n: number = (nameCounter.get(nameTok.val) ?? 0) + 1;
     nameCounter.set(nameTok.val, n);
-    const jsName: string = n === 1 ? nameTok.val : `${nameTok.val}_${n}`;
+    const jsName: string = n === 1 ? nameTok.val : nameTok.val + "_" + n;
     env.set(nameTok.val, { type: declaredType, jsName, mutable: isMut });
     const keyword: string = isMut ? "let" : "const";
     // Always wrap value in object to support pointers
-    stmts.push(`${keyword} ${jsName} = {val: ${rhs.code}};`);
+    stmts.push(keyword + " " + jsName + " = {val: " + rhs.code + "};");
   }
 
   function parseAssignmentStatement(stmts: string[]): void {
@@ -983,7 +1172,7 @@ function parseProgram(tokens: Tok[]): string {
     const binding: Binding = requireMutableBinding(nameTok.val);
     assertTypeCompatible(binding.type, rhs.type);
     // Variables are wrapped, so assign to .val
-    stmts.push(`${binding.jsName}.val = ${rhs.code};`);
+    stmts.push(binding.jsName + ".val = " + rhs.code + ";");
   }
 
   function parseDerefAssignmentStatement(stmts: string[]): void {
@@ -1010,7 +1199,8 @@ function parseProgram(tokens: Tok[]): string {
       // For the last dereference, check if the pointer is mutable
       if (i === derefCount - 1 && !currentType.mutable) {
         throw new Error(
-          `Type error: cannot assign through immutable pointer ${typeToString(currentType)}`,
+          "Type error: cannot assign through immutable pointer " +
+            typeToString(currentType),
         );
       }
 
@@ -1029,7 +1219,7 @@ function parseProgram(tokens: Tok[]): string {
     for (let i: number = 0; i <= derefCount; i++) {
       code += ".val";
     }
-    stmts.push(`${code} = ${rhs.code};`);
+    stmts.push(code + " = " + rhs.code + ";");
   }
 
   function parseCompoundAssignmentStatement(stmts: string[]): void {
@@ -1044,7 +1234,7 @@ function parseProgram(tokens: Tok[]): string {
     let desugaredExpr: TypedExpr;
 
     // All variables are wrapped, so always access via .val
-    const varAccess: string = `${binding.jsName}.val`;
+    const varAccess: string = binding.jsName + ".val";
 
     if (
       opTok.kind === "PLUS_EQ" ||
@@ -1079,15 +1269,15 @@ function parseProgram(tokens: Tok[]): string {
       }
       const jsOp: string = opTok.kind === "AMP_EQ" ? "&&" : "||";
       desugaredExpr = {
-        code: `${varAccess} ${jsOp} ${rhs.code}`,
+        code: varAccess + " " + jsOp + " " + rhs.code,
         type: "Bool",
       };
     } else {
-      throw new Error(`Unexpected compound operator: ${opTok.kind}`);
+      throw new Error("Unexpected compound operator: " + opTok.kind);
     }
 
     assertTypeCompatible(binding.type, desugaredExpr.type);
-    stmts.push(`${varAccess} = ${desugaredExpr.code};`);
+    stmts.push(varAccess + " = " + desugaredExpr.code + ";");
   }
 
   function parseBoolCondition(contextName: string): TypedExpr {
@@ -1097,7 +1287,10 @@ function parseProgram(tokens: Tok[]): string {
     expect("RPAREN");
     if (cond.type !== "Bool") {
       throw new Error(
-        `Type error: ${contextName} condition must be Bool, got ${typeToString(cond.type)}`,
+        "Type error: " +
+          contextName +
+          " condition must be Bool, got " +
+          typeToString(cond.type),
       );
     }
     return cond;
@@ -1133,11 +1326,17 @@ function parseProgram(tokens: Tok[]): string {
       }
 
       stmts.push(
-        `if (${cond.code}) {\n${thenStmts.join("\n")}\n} else {\n${elseStmts.join("\n")}\n}`,
+        "if (" +
+          cond.code +
+          ") {\n" +
+          thenStmts.join("\n") +
+          "\n} else {\n" +
+          elseStmts.join("\n") +
+          "\n}",
       );
     } else {
       // no else clause
-      stmts.push(`if (${cond.code}) {\n${thenStmts.join("\n")}\n}`);
+      stmts.push("if (" + cond.code + ") {\n" + thenStmts.join("\n") + "\n}");
     }
   }
 
@@ -1151,7 +1350,7 @@ function parseProgram(tokens: Tok[]): string {
       );
     }
 
-    stmts.push(`while (${cond.code}) {\n${bodyStmts.join("\n")}\n}`);
+    stmts.push("while (" + cond.code + ") {\n" + bodyStmts.join("\n") + "\n}");
   }
 
   function withBlockScope<T>(parseBody: (innerStmts: string[]) => T): {
@@ -1159,18 +1358,15 @@ function parseProgram(tokens: Tok[]): string {
     result: T;
   } {
     expect("LBRACE");
-    const savedEnv: Map<string, Binding> = env;
-    const savedNameCounter: Map<string, number> = nameCounter;
-    const savedTypeAliasEnv: Map<string, TuffType> = typeAliasEnv;
+    const savedScope: ParserScopeSnapshot = snapshotParserScope();
     env = new Map(env);
     nameCounter = new Map();
     typeAliasEnv = new Map(typeAliasEnv);
+    enumEnv = new Map(enumEnv);
     const innerStmts: string[] = [];
     const result: T = parseBody(innerStmts);
     expect("RBRACE");
-    env = savedEnv;
-    nameCounter = savedNameCounter;
-    typeAliasEnv = savedTypeAliasEnv;
+    restoreParserScope(savedScope);
     return { innerStmts, result };
   }
 
@@ -1182,12 +1378,16 @@ function parseProgram(tokens: Tok[]): string {
         }
       }
     });
-    stmts.push(`{\n${innerStmts.join("\n")}\n}`);
+    stmts.push("{\n" + innerStmts.join("\n") + "\n}");
   }
 
   function tryParseStatement(stmts: string[]): boolean {
     if (peek()?.kind === "NAME" && peek()?.val === "type") {
       parseTypeAliasStatement();
+      return true;
+    }
+    if (peek()?.kind === "NAME" && peek()?.val === "enum") {
+      parseEnumDeclaration();
       return true;
     }
     if (peek()?.kind === "NAME" && peek()?.val === "let") {
@@ -1202,8 +1402,7 @@ function parseProgram(tokens: Tok[]): string {
       const succeeded: boolean = withBacktrack(
         () => parseIfStatement(stmts),
         (e) =>
-          e instanceof Error &&
-          e.message.includes("expected statement in if"),
+          e instanceof Error && e.message.includes("expected statement in if"),
       );
       if (succeeded) return true;
       // backtracked: fall through (this is an if-expression, not a statement)
@@ -1291,9 +1490,9 @@ function parseProgram(tokens: Tok[]): string {
 
         const jsArgs: string = args.map((a: TypedExpr) => a.code).join(", ");
         if (isVoidFpVar && binding) {
-          stmts.push(`${binding.jsName}.val(${jsArgs});`);
+          stmts.push(binding.jsName + ".val(" + jsArgs + ");");
         } else {
-          stmts.push(`${callName}(${jsArgs});`);
+          stmts.push(callName + "(" + jsArgs + ");");
         }
         return true;
       }
@@ -1315,9 +1514,9 @@ function parseProgram(tokens: Tok[]): string {
         return finalExpr;
       },
     );
-    innerStmts.push(`return ${blockFinal.code};`);
+    innerStmts.push("return " + blockFinal.code + ";");
     return {
-      code: `(() => {\n${innerStmts.join("\n")}\n})()`,
+      code: "(() => {\n" + innerStmts.join("\n") + "\n})()",
       type: blockFinal.type,
     };
   }
@@ -1343,7 +1542,8 @@ function parseProgram(tokens: Tok[]): string {
     const resultType: TuffType = findCommonType(thenExpr.type, elseExpr.type);
 
     return {
-      code: `(${cond.code} ? ${thenExpr.code} : ${elseExpr.code})`,
+      code:
+        "(" + cond.code + " ? " + thenExpr.code + " : " + elseExpr.code + ")",
       type: resultType,
     };
   }
@@ -1354,6 +1554,8 @@ function parseProgram(tokens: Tok[]): string {
       const t: Tok | undefined = peek();
       if (t?.kind === "NAME" && t.val === "type") {
         parseTypeAliasStatement();
+      } else if (t?.kind === "NAME" && t.val === "enum") {
+        parseEnumDeclaration();
       } else if (t?.kind === "NAME" && t.val === "fn") {
         consume(); // consume 'fn'
         const funcName: string = expect("NAME").val;
@@ -1361,7 +1563,7 @@ function parseProgram(tokens: Tok[]): string {
         // Check for redeclaration
         if (functionEnv.has(funcName)) {
           throw new Error(
-            `Type error: cannot redeclare function '${funcName}'`,
+            "Type error: cannot redeclare function '" + funcName + "'",
           );
         }
 
@@ -1429,7 +1631,7 @@ function parseProgram(tokens: Tok[]): string {
 
     const funcSig: FunctionSignature | undefined = functionEnv.get(funcName);
     if (!funcSig)
-      throw new Error(`Internal error: function ${funcName} not found`);
+      throw new Error("Internal error: function " + funcName + " not found");
 
     expect("LPAREN");
 
@@ -1474,12 +1676,12 @@ function parseProgram(tokens: Tok[]): string {
     // Helper to wrap function body with parameter initialization
     const wrapFunctionBody = (stmts: string[], returnExpr: string): string => {
       const paramWraps: string[] = jsParams.map(
-        (p: string) => `${p} = {val: ${p}};`,
+        (p: string) => p + " = {val: " + p + "};",
       );
       const allStmts: string[] = [...paramWraps, ...stmts];
       return allStmts.length > 0
-        ? `{\n${allStmts.join("\n")}\nreturn ${returnExpr};\n}`
-        : `{\nreturn ${returnExpr};\n}`;
+        ? "{\n" + allStmts.join("\n") + "\nreturn " + returnExpr + ";\n}"
+        : "{\nreturn " + returnExpr + ";\n}";
     };
 
     let bodyCode: string;
@@ -1514,18 +1716,25 @@ function parseProgram(tokens: Tok[]): string {
 
     // Special check: Void functions must have Void body (no expression)
     if (funcSig.returnType === "Void" && bodyType !== "Void") {
-      throw new Error(`Type error: Void function cannot have expression body`);
+      throw new Error("Type error: Void function cannot have expression body");
     }
 
     // Type check return type
     if (!isTypeCompatible(funcSig.returnType, bodyType)) {
       throw new Error(
-        `Type error: function ${funcName} must return ${typeToString(funcSig.returnType)}, got ${typeToString(bodyType)}`,
+        "Type error: function " +
+          funcName +
+          " must return " +
+          typeToString(funcSig.returnType) +
+          ", got " +
+          typeToString(bodyType),
       );
     }
 
     // Generate JavaScript function
-    stmts.push(`function ${funcName}(${jsParams.join(", ")}) ${bodyCode}`);
+    stmts.push(
+      "function " + funcName + "(" + jsParams.join(", ") + ") " + bodyCode,
+    );
 
     // Restore environment
     env = savedEnv;
@@ -1538,16 +1747,19 @@ function parseProgram(tokens: Tok[]): string {
   // Reset position for Pass 2
   pos = 0;
   typeAliasEnv.clear(); // aliases will be re-processed in Pass 2
+  enumEnv.clear(); // enums will be re-processed in Pass 2
 
   const stmts: string[] = [];
 
-  // Parse all top-level declarations (fn and type, interleaved)
+  // Parse all top-level declarations (fn, type, and enum, interleaved)
   while (
     peek()?.kind === "NAME" &&
-    (peek()?.val === "fn" || peek()?.val === "type")
+    (peek()?.val === "fn" || peek()?.val === "type" || peek()?.val === "enum")
   ) {
     if (peek()?.val === "fn") {
       parseFunctionDeclaration(stmts);
+    } else if (peek()?.val === "enum") {
+      parseEnumDeclaration();
     } else {
       parseTypeAliasStatement();
     }
@@ -1564,18 +1776,31 @@ function parseProgram(tokens: Tok[]): string {
   const finalExpr: TypedExpr = parseOr();
   assertNoTrailing(false);
 
-  // Check that program doesn't end with pointer or Void type
+  // Check that program doesn't end with pointer, enum, or Void type
   if (isPointerType(finalExpr.type) || isFunctionPointerType(finalExpr.type)) {
     throw new Error(
-      `Type error: pointer type ${typeToString(finalExpr.type)} cannot be used as program exit value`,
+      "Type error: pointer type " +
+        typeToString(finalExpr.type) +
+        " cannot be used as program exit value",
+    );
+  }
+  if (isEnumType(finalExpr.type)) {
+    throw new Error(
+      "Type error: enum type " +
+        finalExpr.type.name +
+        " cannot be used as program exit value",
     );
   }
   if (finalExpr.type === "Void") {
-    throw new Error(`Type error: program cannot end with Void expression`);
+    throw new Error("Type error: program cannot end with Void expression");
   }
 
   stmts.push(
-    `return ${isPrimitiveType(finalExpr.type) && finalExpr.type === "Bool" ? `${finalExpr.code} ? 1 : 0` : finalExpr.code};`,
+    "return " +
+      (isPrimitiveType(finalExpr.type) && finalExpr.type === "Bool"
+        ? finalExpr.code + " ? 1 : 0"
+        : finalExpr.code) +
+      ";",
   );
   return stmts.join("\n");
 }

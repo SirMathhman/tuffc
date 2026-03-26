@@ -20,6 +20,15 @@ export default tseslint.config(
     rules: {
       "@typescript-eslint/no-unused-vars": "off",
       "@typescript-eslint/typedef": ["error", { variableDeclaration: true }],
+      "no-template-curly-in-string": "error",
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "TemplateLiteral",
+          message:
+            "Template literals are banned. Use string concatenation instead.",
+        },
+      ],
     },
   },
 );
