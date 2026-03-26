@@ -22,6 +22,17 @@ const VALID_SUFFIXES: Set<string> = new Set([
   "I64",
 ]);
 
+const SUFFIX_ORDER: IntSuffix[] = [
+  "U8",
+  "I8",
+  "U16",
+  "I16",
+  "U32",
+  "I32",
+  "U64",
+  "I64",
+];
+
 type TK =
   | "NUM"
   | "NAME"
@@ -32,7 +43,10 @@ type TK =
   | "PLUS"
   | "MINUS"
   | "STAR"
-  | "SLASH";
+  | "SLASH"
+  | "SEMI"
+  | "COLON"
+  | "EQ";
 
 interface Tok {
   kind: TK;
@@ -48,6 +62,9 @@ const CH_TO_TK: Readonly<Record<string, TK>> = {
   "-": "MINUS",
   "*": "STAR",
   "/": "SLASH",
+  ";": "SEMI",
+  ":": "COLON",
+  "=": "EQ",
 };
 
 function tokenize(src: string): Tok[] {
@@ -79,6 +96,29 @@ function tokenize(src: string): Tok[] {
   return tokens;
 }
 
+interface TypedExpr {
+  code: string;
+  type: IntSuffix;
+}
+
+function promoteTypes(a: IntSuffix, b: IntSuffix): IntSuffix {
+  const [aMin, aMax]: [number, number] = INT_RANGES[a];
+  const [bMin, bMax]: [number, number] = INT_RANGES[b];
+  const combinedMin: number = Math.min(aMin, bMin);
+  const combinedMax: number = Math.max(aMax, bMax);
+  for (const suffix of SUFFIX_ORDER) {
+    const [min, max]: [number, number] = INT_RANGES[suffix];
+    if (min <= combinedMin && max >= combinedMax) return suffix;
+  }
+  throw new Error(`Type error: no integer type covers ${a} and ${b}`);
+}
+
+function isTypeCompatible(declared: IntSuffix, inferred: IntSuffix): boolean {
+  const [dMin, dMax]: [number, number] = INT_RANGES[declared];
+  const [iMin, iMax]: [number, number] = INT_RANGES[inferred];
+  return dMin <= iMin && dMax >= iMax;
+}
+
 function validateIntLiteral(rawNum: string, suffix: IntSuffix): void {
   const value: number = parseInt(rawNum, 10);
   const [min, max]: [number, number] = INT_RANGES[suffix];
@@ -89,8 +129,15 @@ function validateIntLiteral(rawNum: string, suffix: IntSuffix): void {
   }
 }
 
-function parseExpr(tokens: Tok[]): string {
+interface Binding {
+  type: IntSuffix;
+  jsName: string;
+}
+
+function parseProgram(tokens: Tok[]): string {
   let pos: number = 0;
+  const env: Map<string, Binding> = new Map();
+  const nameCounter: Map<string, number> = new Map();
 
   function peek(): Tok | undefined {
     return tokens[pos];
@@ -110,6 +157,16 @@ function parseExpr(tokens: Tok[]): string {
     return consume();
   }
 
+  function expectSuffix(context: string): IntSuffix {
+    const t: Tok | undefined = peek();
+    if (!t || t.kind !== "NAME" || !VALID_SUFFIXES.has(t.val)) {
+      throw new Error(
+        `Syntax error: expected type suffix ${context} but got "${t?.val ?? "end of input"}"`,
+      );
+    }
+    return consume().val as IntSuffix;
+  }
+
   function consumeSuffix(): IntSuffix {
     const maybeSuffix: Tok | undefined = peek();
     return maybeSuffix?.kind === "NAME" && VALID_SUFFIXES.has(maybeSuffix.val)
@@ -117,7 +174,28 @@ function parseExpr(tokens: Tok[]): string {
       : "I32";
   }
 
-  function parseAtom(): string {
+  function parseBinaryLevel(
+    inner: () => TypedExpr,
+    ops: Set<TK>,
+  ): TypedExpr {
+    let left: TypedExpr = inner();
+    let op: Tok | undefined = peek();
+    while (op !== undefined && ops.has(op.kind)) {
+      consume();
+      const right: TypedExpr = inner();
+      left = {
+        code: `${left.code} ${op.val} ${right.code}`,
+        type: promoteTypes(left.type, right.type),
+      };
+      op = peek();
+    }
+    return left;
+  }
+
+  const MUL_OPS: Set<TK> = new Set<TK>(["STAR", "SLASH"]);
+  const ADD_OPS: Set<TK> = new Set<TK>(["PLUS", "MINUS"]);
+
+  function parseAtom(): TypedExpr {
     const t: Tok | undefined = peek();
     if (!t) throw new Error("Syntax error: unexpected end of expression");
 
@@ -125,71 +203,86 @@ function parseExpr(tokens: Tok[]): string {
       consume();
       const numTok: Tok = expect("NUM");
       const rawNum: string = `-${numTok.val}`;
-      validateIntLiteral(rawNum, consumeSuffix());
-      return rawNum;
+      const suffix: IntSuffix = consumeSuffix();
+      validateIntLiteral(rawNum, suffix);
+      return { code: rawNum, type: suffix };
     }
 
     if (t.kind === "NUM") {
       consume();
       const suffix: IntSuffix = consumeSuffix();
       validateIntLiteral(t.val, suffix);
-      return t.val;
+      return { code: t.val, type: suffix };
     }
 
     if (t.kind === "NAME" && t.val === "read") {
       consume();
       expect("LT");
-      const suffixTok: Tok | undefined = peek();
-      if (
-        !suffixTok ||
-        suffixTok.kind !== "NAME" ||
-        !VALID_SUFFIXES.has(suffixTok.val)
-      ) {
-        throw new Error(
-          `Syntax error: expected valid type suffix after "read<" but got "${suffixTok?.val ?? "end of input"}"`,
-        );
-      }
-      consume();
+      const readType: IntSuffix = expectSuffix('after "read<"');
       expect("GT");
       expect("LPAREN");
       expect("RPAREN");
-      return "read()";
+      return { code: "read()", type: readType };
+    }
+
+    if (t.kind === "NAME") {
+      const binding: Binding | undefined = env.get(t.val);
+      if (binding === undefined) {
+        throw new Error(`Type error: unknown variable "${t.val}"`);
+      }
+      consume();
+      return { code: binding.jsName, type: binding.type };
     }
 
     throw new Error(`Syntax error: unexpected token "${t.val}"`);
   }
 
-  function parseMul(): string {
-    let left: string = parseAtom();
-    while (peek()?.kind === "STAR" || peek()?.kind === "SLASH") {
-      const op: string = consume().val;
-      const right: string = parseAtom();
-      left = `${left} ${op} ${right}`;
-    }
-    return left;
+  function parseMul(): TypedExpr {
+    return parseBinaryLevel(parseAtom, MUL_OPS);
   }
 
-  function parseAdd(): string {
-    let left: string = parseMul();
-    while (peek()?.kind === "PLUS" || peek()?.kind === "MINUS") {
-      const op: string = consume().val;
-      const right: string = parseMul();
-      left = `${left} ${op} ${right}`;
-    }
-    return left;
+  function parseAdd(): TypedExpr {
+    return parseBinaryLevel(parseMul, ADD_OPS);
   }
 
-  const expr: string = parseAdd();
-  if (pos < tokens.length) {
-    throw new Error(
-      `Syntax error: unexpected token "${tokens[pos]!.val}" after expression`,
-    );
+  const stmts: string[] = [];
+
+  while (pos < tokens.length) {
+    if (peek()?.kind === "NAME" && peek()?.val === "let") {
+      consume();
+      const nameTok: Tok = expect("NAME");
+      expect("COLON");
+      const declaredType: IntSuffix = expectSuffix("for declared type");
+      expect("EQ");
+      const rhs: TypedExpr = parseAdd();
+      expect("SEMI");
+      if (!isTypeCompatible(declaredType, rhs.type)) {
+        throw new Error(
+          `Type error: cannot assign ${rhs.type} to ${declaredType}`,
+        );
+      }
+      const n: number = (nameCounter.get(nameTok.val) ?? 0) + 1;
+      nameCounter.set(nameTok.val, n);
+      const jsName: string = n === 1 ? nameTok.val : `${nameTok.val}_${n}`;
+      env.set(nameTok.val, { type: declaredType, jsName });
+      stmts.push(`const ${jsName} = ${rhs.code};`);
+    } else {
+      const expr: TypedExpr = parseAdd();
+      if (pos < tokens.length) {
+        throw new Error(
+          `Syntax error: unexpected token "${tokens[pos]!.val}" after expression`,
+        );
+      }
+      stmts.push(`return ${expr.code};`);
+      return stmts.join("\n");
+    }
   }
-  return `return ${expr};`;
+
+  throw new Error("Syntax error: program must end with an expression");
 }
 
 export function compileTuffToTS(tuffSourceCode: string): string {
   const trimmed: string = tuffSourceCode.trim();
   if (trimmed === "") return "";
-  return parseExpr(tokenize(trimmed));
+  return parseProgram(tokenize(trimmed));
 }

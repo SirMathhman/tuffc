@@ -165,6 +165,62 @@ describe("arithmetic", () => {
   });
 });
 
+describe("let statements", () => {
+  describe("valid", () => {
+    test("let x: U8 = 5U8; x exits 5", () => {
+      expectTuff("let x: U8 = 5U8;\nx", 5);
+    });
+
+    test("let x: U8 = 5U8; x + 3U8 exits 8 (variable in expression)", () => {
+      expectTuff("let x: U8 = 5U8;\nx + 3U8", 8);
+    });
+
+    test("let with read<T>() RHS", () => {
+      expectTuff("let x: U8 = read<U8>();\nx", "42", 42);
+    });
+
+    test("let with arithmetic RHS", () => {
+      expectTuff("let x: I16 = read<U8>() + read<I8>();\nx", "10 5", 15);
+    });
+
+    test("compatible declared type (U16 declared, U8 inferred)", () => {
+      expectTuff("let x: U16 = 5U8;\nx", 5);
+    });
+
+    test("multiple lets, last expression uses both", () => {
+      expectTuff("let x: U8 = 3U8;\nlet y: U8 = 4U8;\nx + y", 7);
+    });
+
+    test("shadowing: second let shadows first", () => {
+      expectTuff("let x: U8 = 1U8;\nlet x: U8 = 10U8;\nx", 10);
+    });
+
+    test("let with I32 compatible type (bare literal RHS)", () => {
+      expectTuff("let x: I32 = 100;\nx", 100);
+    });
+  });
+
+  describe("invalid", () => {
+    test("unknown variable throws", () => {
+      expect(() => compileTuffToTS("x")).toThrow();
+    });
+
+    test("incompatible type: U8 declared, I16 inferred throws", () => {
+      expect(() =>
+        compileTuffToTS("let x: U8 = read<U8>() + read<I8>();\nx"),
+      ).toThrow();
+    });
+
+    test("last statement is let throws", () => {
+      expect(() => compileTuffToTS("let x: U8 = 5U8;")).toThrow();
+    });
+
+    test("arithmetic type with no covering type throws", () => {
+      expect(() => compileTuffToTS("read<U64>() + read<I64>()")).toThrow();
+    });
+  });
+});
+
 describe("whitespace", () => {
   test("empty string exits 0", () => {
     expectTuff("", 0);
