@@ -177,6 +177,8 @@ interface Binding {
   mutable: boolean;
 }
 
+class NotAStatementBlockError extends Error {}
+
 function parseProgram(tokens: Tok[]): string {
   let pos: number = 0;
   let env: Map<string, Binding> = new Map();
@@ -294,7 +296,7 @@ function parseProgram(tokens: Tok[]): string {
     }
 
     if (t.kind === "LBRACE") {
-      return parseBlock();
+      return parseBlockExpr();
     }
 
     throw new Error(`Syntax error: unexpected token "${t.val}"`);
@@ -391,17 +393,125 @@ function parseProgram(tokens: Tok[]): string {
     failUnexpectedAfterExpression(next?.val ?? "end of input");
   }
 
-  function parseBlock(): TypedExpr {
+  function parseLetStatement(stmts: string[]): void {
+    consume();
+    const isMut: boolean =
+      peek()?.kind === "NAME" && peek()?.val === "mut"
+        ? (consume(), true)
+        : false;
+    const nameTok: Tok = expect("NAME");
+    const hasAnnotation: boolean = peek()?.kind === "COLON";
+    let declaredType: TuffType;
+    if (hasAnnotation) {
+      consume();
+      declaredType = expectType("for declared type");
+    } else if (!isMut) {
+      throw new Error(`Syntax error: immutable let requires a type annotation`);
+    } else {
+      declaredType = "I32"; // placeholder; overwritten after RHS parse
+    }
+    expect("EQ");
+    const rhs: TypedExpr = parseOr();
+    expect("SEMI");
+    if (!hasAnnotation) {
+      declaredType = rhs.type;
+    } else {
+      assertTypeCompatible(declaredType, rhs.type);
+    }
+    const n: number = (nameCounter.get(nameTok.val) ?? 0) + 1;
+    nameCounter.set(nameTok.val, n);
+    const jsName: string = n === 1 ? nameTok.val : `${nameTok.val}_${n}`;
+    env.set(nameTok.val, { type: declaredType, jsName, mutable: isMut });
+    const keyword: string = isMut ? "let" : "const";
+    stmts.push(`${keyword} ${jsName} = ${rhs.code};`);
+  }
+
+  function parseAssignmentStatement(stmts: string[]): void {
+    const nameTok: Tok = consume();
+    consume(); // EQ
+    const rhs: TypedExpr = parseOr();
+    expect("SEMI");
+    const binding: Binding = requireBinding(nameTok.val);
+    if (!binding.mutable) {
+      throw new Error(
+        `Type error: cannot assign to immutable variable "${nameTok.val}"`,
+      );
+    }
+    assertTypeCompatible(binding.type, rhs.type);
+    stmts.push(`${binding.jsName} = ${rhs.code};`);
+  }
+
+  function withBlockScope<T>(parseBody: (innerStmts: string[]) => T): {
+    innerStmts: string[];
+    result: T;
+  } {
     expect("LBRACE");
     const savedEnv: Map<string, Binding> = env;
     const savedNameCounter: Map<string, number> = nameCounter;
     env = new Map(env);
     nameCounter = new Map();
     const innerStmts: string[] = [];
-    const blockFinal: TypedExpr = parseBody(true, innerStmts);
+    const result: T = parseBody(innerStmts);
     expect("RBRACE");
     env = savedEnv;
     nameCounter = savedNameCounter;
+    return { innerStmts, result };
+  }
+
+  function parseStatementBlock(stmts: string[]): void {
+    const { innerStmts } = withBlockScope((inner: string[]) => {
+      while (peek()?.kind !== "RBRACE") {
+        if (!tryParseStatement(inner)) {
+          throw new NotAStatementBlockError();
+        }
+      }
+    });
+    stmts.push(`{\n${innerStmts.join("\n")}\n}`);
+  }
+
+  function tryParseStatement(stmts: string[]): boolean {
+    if (peek()?.kind === "NAME" && peek()?.val === "let") {
+      parseLetStatement(stmts);
+      return true;
+    }
+    if (peek()?.kind === "NAME" && tokens[pos + 1]?.kind === "EQ") {
+      parseAssignmentStatement(stmts);
+      return true;
+    }
+    if (peek()?.kind === "LBRACE") {
+      const savedPos: number = pos;
+      const savedEnv: Map<string, Binding> = env;
+      const savedNameCounter: Map<string, number> = nameCounter;
+      try {
+        parseStatementBlock(stmts);
+        return true;
+      } catch (error: unknown) {
+        pos = savedPos;
+        env = savedEnv;
+        nameCounter = savedNameCounter;
+        if (error instanceof NotAStatementBlockError) {
+          return false;
+        }
+        throw error;
+      }
+    }
+    return false;
+  }
+
+  function parseBlockExpr(): TypedExpr {
+    const { innerStmts, result: blockFinal } = withBlockScope(
+      (inner: string[]) => {
+        while (tryParseStatement(inner)) {
+          // keep consuming statements that appear before the final expression
+        }
+        if (peek()?.kind === "RBRACE") {
+          throw new Error("Syntax error: block must end with an expression");
+        }
+        const finalExpr: TypedExpr = parseOr();
+        assertNoTrailing(true);
+        return finalExpr;
+      },
+    );
     innerStmts.push(`return ${blockFinal.code};`);
     return {
       code: `(() => {\n${innerStmts.join("\n")}\n})()`,
@@ -409,70 +519,15 @@ function parseProgram(tokens: Tok[]): string {
     };
   }
 
-  function parseBody(stopAtRBrace: boolean, stmts: string[]): TypedExpr {
-    while (true) {
-      if (stopAtRBrace && peek()?.kind === "RBRACE") {
-        throw new Error("Syntax error: block must end with an expression");
-      }
-      if (!stopAtRBrace && pos >= tokens.length) {
-        throw new Error("Syntax error: program must end with an expression");
-      }
-      if (peek()?.kind === "NAME" && peek()?.val === "let") {
-        consume();
-        const isMut: boolean =
-          peek()?.kind === "NAME" && peek()?.val === "mut"
-            ? (consume(), true)
-            : false;
-        const nameTok: Tok = expect("NAME");
-        const hasAnnotation: boolean = peek()?.kind === "COLON";
-        let declaredType: TuffType;
-        if (hasAnnotation) {
-          consume();
-          declaredType = expectType("for declared type");
-        } else if (!isMut) {
-          throw new Error(
-            `Syntax error: immutable let requires a type annotation`,
-          );
-        } else {
-          declaredType = "I32"; // placeholder; overwritten after RHS parse
-        }
-        expect("EQ");
-        const rhs: TypedExpr = parseOr();
-        expect("SEMI");
-        if (!hasAnnotation) {
-          declaredType = rhs.type;
-        } else {
-          assertTypeCompatible(declaredType, rhs.type);
-        }
-        const n: number = (nameCounter.get(nameTok.val) ?? 0) + 1;
-        nameCounter.set(nameTok.val, n);
-        const jsName: string = n === 1 ? nameTok.val : `${nameTok.val}_${n}`;
-        env.set(nameTok.val, { type: declaredType, jsName, mutable: isMut });
-        const keyword: string = isMut ? "let" : "const";
-        stmts.push(`${keyword} ${jsName} = ${rhs.code};`);
-      } else if (peek()?.kind === "NAME" && tokens[pos + 1]?.kind === "EQ") {
-        const nameTok: Tok = consume();
-        consume(); // EQ
-        const rhs: TypedExpr = parseOr();
-        expect("SEMI");
-        const binding: Binding = requireBinding(nameTok.val);
-        if (!binding.mutable) {
-          throw new Error(
-            `Type error: cannot assign to immutable variable "${nameTok.val}"`,
-          );
-        }
-        assertTypeCompatible(binding.type, rhs.type);
-        stmts.push(`${binding.jsName} = ${rhs.code};`);
-      } else {
-        const expr: TypedExpr = parseOr();
-        assertNoTrailing(stopAtRBrace);
-        return expr;
-      }
-    }
-  }
-
   const stmts: string[] = [];
-  const finalExpr: TypedExpr = parseBody(false, stmts);
+  while (tryParseStatement(stmts)) {
+    // consume all leading statements
+  }
+  if (pos >= tokens.length) {
+    return stmts.join("\n");
+  }
+  const finalExpr: TypedExpr = parseOr();
+  assertNoTrailing(false);
   stmts.push(
     `return ${finalExpr.type === "Bool" ? `${finalExpr.code} ? 1 : 0` : finalExpr.code};`,
   );

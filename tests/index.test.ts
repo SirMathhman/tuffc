@@ -202,6 +202,10 @@ describe("let statements", () => {
     test("let with I32 compatible type (bare literal RHS)", () => {
       expectTuff("let x: I32 = 100;\nx", 100);
     });
+
+    test("program ending in let exits 0", () => {
+      expectTuff("let x: U8 = 5U8;", 0);
+    });
   });
 
   describe("invalid", () => {
@@ -214,11 +218,6 @@ describe("let statements", () => {
         compileTuffToTS("let x: U8 = read<U8>() + read<I8>();\nx"),
       ).toThrow();
     });
-
-    test("last statement is let throws", () => {
-      expect(() => compileTuffToTS("let x: U8 = 5U8;")).toThrow();
-    });
-
     test("arithmetic type with no covering type throws", () => {
       expect(() => compileTuffToTS("read<U64>() + read<I64>()")).toThrow();
     });
@@ -334,18 +333,58 @@ describe("block expressions", () => {
   });
 
   describe("invalid", () => {
-    test("empty block throws", () => {
-      expect(() => compileTuffToTS("{ }")).toThrow();
+    test("empty block expression throws", () => {
+      expect(() => compileTuffToTS("let x: U8 = { };\nx")).toThrow();
     });
 
-    test("block ending in let throws", () => {
-      expect(() => compileTuffToTS("{ let x: U8 = 5U8; }")).toThrow();
+    test("block expression ending in let throws", () => {
+      expect(() =>
+        compileTuffToTS("let y: U8 = { let x: U8 = 5U8; };\ny"),
+      ).toThrow();
     });
 
     test("block-local variable out of scope throws", () => {
       expect(() =>
         compileTuffToTS("let y: U8 = { let z: U8 = 5U8;\nz };\nz"),
       ).toThrow();
+    });
+  });
+});
+
+describe("statement blocks", () => {
+  describe("valid", () => {
+    test("empty statement block program exits 0", () => {
+      expectTuff("{ }", 0);
+    });
+
+    test("statement-only program exits 0", () => {
+      expectTuff("let mut x = 1U8;\n{ x = 2U8; }", 0);
+    });
+
+    test("block can reassign outer mutable variable", () => {
+      expectTuff("let mut x = 5U8;\n{ x = 10U8; }\nx", 10);
+    });
+
+    test("nested statement blocks", () => {
+      expectTuff("let mut x = 1U8;\n{ { x = 2U8; } }\nx", 2);
+    });
+
+    test("block-local shadow does not escape", () => {
+      expectTuff("let x: U8 = 1U8;\n{ let x: U8 = 2U8; }\nx", 1);
+    });
+
+    test("block-local variable may be mutated internally", () => {
+      expectTuff("let x: U8 = 1U8;\n{ let mut y = 2U8;\ny = 3U8; }\nx", 1);
+    });
+  });
+
+  describe("invalid", () => {
+    test("bare expression inside statement block is invalid", () => {
+      expect(() => compileTuffToTS("let x: U8 = 100U8;\n{ x }\nx")).toThrow();
+    });
+
+    test("block-local variable remains out of scope after statement block", () => {
+      expect(() => compileTuffToTS("{ let y: U8 = 2U8; }\ny")).toThrow();
     });
   });
 });
