@@ -19,6 +19,7 @@ export default tseslint.config(
     },
     rules: {
       "@typescript-eslint/no-unused-vars": "off",
+      "@typescript-eslint/typedef": ["error", { variableDeclaration: true }],
     },
   },
 );
