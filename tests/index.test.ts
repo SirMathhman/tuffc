@@ -119,6 +119,56 @@ const arithmeticCases = [
   },
 ] as const;
 
+const letCases = [
+  {
+    source: "let x = 100U8; x",
+    ts: "const x = 100;\nexport default x;",
+    stdIn: "",
+    value: 100,
+  },
+  {
+    source: "let x: I32 = 100; x",
+    ts: "const x = 100;\nexport default x;",
+    stdIn: "",
+    value: 100,
+  },
+  {
+    source: "let x = read<U8>(); x + 1U8",
+    ts: 'const x = __tuffRead("U8");\nexport default (x + 1);',
+    stdIn: "41",
+    value: 42,
+  },
+  {
+    source: "let x = 2U8; let y: U16 = x + 3U8; y * 4U8",
+    ts: "const x = 2;\nconst y = (x + 3);\nexport default (y * 4);",
+    stdIn: "",
+    value: 20,
+  },
+  {
+    source: "let x: U8 = 100U8;",
+    ts: "const x = 100;\nexport default 0;",
+    stdIn: "",
+    value: 0,
+  },
+  {
+    source: "let x = 100U8;",
+    ts: "const x = 100;\nexport default 0;",
+    stdIn: "",
+    value: 0,
+  },
+] as const;
+
+const invalidLetCases = [
+  "let x = 100U8",
+  "let x: U8 = 100U8",
+  "let x = 1U8; x = 2U8; x",
+] as const;
+
+const invalidTypedLetCases = [
+  "let x: U8 = 256U16; x",
+  "let x: U8 = -1I8; x",
+] as const;
+
 const overflowCases = [
   "256U8",
   "65536U16",
@@ -173,6 +223,24 @@ describe("compileTuffToTS", () => {
       expectRangeError(() => compileTuffToTS(source));
     }
   });
+
+  test("compiles let statements to TypeScript", () => {
+    for (const { source, ts: expectedTs } of letCases) {
+      expect(compileTuffToTS(source)).toBe(expectedTs);
+    }
+  });
+
+  test("rejects invalid let syntax", () => {
+    for (const source of invalidLetCases) {
+      expect(() => compileTuffToTS(source)).toThrow(SyntaxError);
+    }
+  });
+
+  test("rejects invalid typed let initializers", () => {
+    for (const source of invalidTypedLetCases) {
+      expectRangeError(() => compileTuffToTS(source));
+    }
+  });
 });
 
 describe("evaluateTuff", () => {
@@ -206,6 +274,12 @@ describe("evaluateTuff", () => {
     }
   });
 
+  test("evaluates let statements", () => {
+    for (const { source, stdIn, value } of letCases) {
+      expect(evaluateTuff(source, stdIn) as any).toBe(value as any);
+    }
+  });
+
   test("rejects division by zero", () => {
     for (const source of ["1U8 / 0U8", "1U64 % 0U64"]) {
       expectRangeError(() => evaluateTuff(source));
@@ -224,6 +298,18 @@ describe("evaluateTuff", () => {
 
   test("rejects values outside supported ranges", () => {
     for (const source of overflowCases) {
+      expectRangeError(() => evaluateTuff(source));
+    }
+  });
+
+  test("rejects invalid let syntax", () => {
+    for (const source of invalidLetCases) {
+      expect(() => evaluateTuff(source)).toThrow(SyntaxError);
+    }
+  });
+
+  test("rejects invalid typed let initializers", () => {
+    for (const source of invalidTypedLetCases) {
       expectRangeError(() => evaluateTuff(source));
     }
   });
