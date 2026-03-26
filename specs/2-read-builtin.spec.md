@@ -20,25 +20,25 @@ injected as a mock function parameter rather than performing real I/O.
 
 ## Valid inputs
 
-| Tuff source    | Compiled TypeScript |
-|----------------|---------------------|
-| `read<U8>()`   | `return read();`    |
-| `read<I8>()`   | `return read();`    |
-| `read<U16>()`  | `return read();`    |
-| `read<I16>()`  | `return read();`    |
-| `read<U32>()`  | `return read();`    |
-| `read<I32>()`  | `return read();`    |
-| `read<U64>()`  | `return read();`    |
-| `read<I64>()`  | `return read();`    |
+| Tuff source   | Compiled TypeScript |
+| ------------- | ------------------- |
+| `read<U8>()`  | `return read();`    |
+| `read<I8>()`  | `return read();`    |
+| `read<U16>()` | `return read();`    |
+| `read<I16>()` | `return read();`    |
+| `read<U32>()` | `return read();`    |
+| `read<I32>()` | `return read();`    |
+| `read<U64>()` | `return read();`    |
+| `read<I64>()` | `return read();`    |
 
 ## Invalid inputs (compile error)
 
-| Tuff source      | Reason                  |
-|------------------|-------------------------|
-| `read<U9>()`     | Unknown type suffix     |
-| `read<>()`       | Empty type parameter    |
-| `read()`         | Missing type parameter  |
-| `read<U8>(foo)`  | Arguments not allowed   |
+| Tuff source     | Reason                 |
+| --------------- | ---------------------- |
+| `read<U9>()`    | Unknown type suffix    |
+| `read<>()`      | Empty type parameter   |
+| `read()`        | Missing type parameter |
+| `read<U8>(foo)` | Arguments not allowed  |
 
 ## Test harness contract
 

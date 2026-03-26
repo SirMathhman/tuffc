@@ -22,12 +22,18 @@ function expectTuff(
 
   // Wrap the generated code in a Function and invoke it; the return value is
   // the program's exit code (undefined/void programs default to 0).
-  // When stdin is provided, inject a mock read() function.
+  // When stdin is provided, inject a mock read() that consumes space-separated
+  // tokens left-to-right.
+  let readIdx: number = 0;
+  const stdinTokens: string[] =
+    stdin !== undefined
+      ? stdin.split(/\s+/).filter((t: string): boolean => t.length > 0)
+      : [];
+  const mockRead: () => number = (): number =>
+    parseInt(stdinTokens[readIdx++]!, 10);
   const raw: number | undefined =
     stdin !== undefined
-      ? (new Function("read", tsCode)(
-          (): number => parseInt(stdin, 10),
-        ) as number | undefined)
+      ? (new Function("read", tsCode)(mockRead) as number | undefined)
       : (new Function(tsCode)() as number | undefined);
   const exitCode: number = raw ?? 0;
   expect(exitCode).toBe(expectedExitCode);
@@ -105,6 +111,56 @@ describe("read built-in", () => {
 
     test("read<U8>(foo) throws (arguments not allowed)", () => {
       expect(() => compileTuffToTS("read<U8>(foo)")).toThrow();
+    });
+  });
+});
+
+describe("arithmetic", () => {
+  describe("valid", () => {
+    test("read<U8>() + read<U8>() = 3", () => {
+      expectTuff("read<U8>() + read<U8>()", "1 2", 3);
+    });
+
+    test("read<U8>() - read<U8>() = 2", () => {
+      expectTuff("read<U8>() - read<U8>()", "5 3", 2);
+    });
+
+    test("read<U8>() * read<U8>() = 12", () => {
+      expectTuff("read<U8>() * read<U8>()", "4 3", 12);
+    });
+
+    test("read<U8>() / read<U8>() = 4", () => {
+      expectTuff("read<U8>() / read<U8>()", "12 3", 4);
+    });
+
+    test("chaining: read<U8>() + read<U8>() + read<U8>() = 6", () => {
+      expectTuff("read<U8>() + read<U8>() + read<U8>()", "1 2 3", 6);
+    });
+
+    test("precedence: 2 + read<U8>() * read<U8>() = 14", () => {
+      expectTuff("2 + read<U8>() * read<U8>()", "3 4", 14);
+    });
+
+    test("mixed: read<U8>() + 5U8 = 8", () => {
+      expectTuff("read<U8>() + 5U8", "3", 8);
+    });
+
+    test("literal + literal: 3 + 5 = 8", () => {
+      expectTuff("3 + 5", 8);
+    });
+  });
+
+  describe("invalid", () => {
+    test("trailing operator throws", () => {
+      expect(() => compileTuffToTS("1 +")).toThrow();
+    });
+
+    test("leading operator throws", () => {
+      expect(() => compileTuffToTS("+ 1")).toThrow();
+    });
+
+    test("unknown character throws", () => {
+      expect(() => compileTuffToTS("1 % 2")).toThrow();
     });
   });
 });
