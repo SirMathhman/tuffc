@@ -1,0 +1,17 @@
+{
+  "name": "tuffc",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "bun@1.2.0",
+  "scripts": {
+    "dev": "bun run src/index.ts",
+    "build": "bunx tsc -p tsconfig.json",
+    "check": "bunx tsc --noEmit",
+    "start": "bun run dist/index.js"
+  },
+  "devDependencies": {
+    "bun-types": "latest",
+    "typescript": "^5.8.3"
+  }
+}
