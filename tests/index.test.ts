@@ -1421,4 +1421,141 @@ describe("while statements", () => {
       });
     });
   });
+
+  describe("type aliases", () => {
+    describe("valid", () => {
+      test("alias used in let annotation", () => {
+        expectTuff("type Num = I32; let x: Num = 42; x", 42);
+      });
+
+      test("alias used in inferred let binding", () => {
+        expectTuff("type Flag = Bool; let f: Flag = true; f", 1);
+      });
+
+      test("transitive alias", () => {
+        expectTuff("type A = I32; type B = A; let x: B = 100; x", 100);
+      });
+
+      test("alias used in function parameter type", () => {
+        expectTuff("type Num = I32; fn double(x: Num) : Num => x * 2; double(21)", 42);
+      });
+
+      test("alias used in fn return type annotation", () => {
+        expectTuff("type Num = I32; fn id(x: I32) : Num => x; id(42)", 42);
+      });
+
+      test("alias to pointer type", () => {
+        expectTuff("type IntPtr = *I32; let x = 42; let p: IntPtr = &x; *p", 42);
+      });
+
+      test("alias to function pointer type", () => {
+        expectTuff(
+          "type Op = *(I32) => I32; fn double(x: I32) : I32 => x * 2; let f: Op = &double; f(21)",
+          42,
+        );
+      });
+
+      test("alias declared inside function body", () => {
+        expectTuff("fn foo() : I32 => { type Num = I32; let x: Num = 42; x }; foo()", 42);
+      });
+
+      test("alias declared inside block expression", () => {
+        expectTuff("{ type Num = I32; let x: Num = 21; x } * 2", 42);
+      });
+
+      test("multiple aliases used together", () => {
+        expectTuff(
+          "type X = I32; type Y = Bool; let n: X = 5; let b: Y = false; if (b) n else n * 2",
+          10,
+        );
+      });
+    });
+
+    describe("invalid", () => {
+      test("duplicate alias name", () => {
+        expect(() =>
+          compileTuffToTS("type Foo = I32; type Foo = Bool; 0"),
+        ).toThrow(/duplicate.*alias|alias.*duplicate/i);
+      });
+
+      test("recursive alias (self-referential)", () => {
+        expect(() => compileTuffToTS("type A = A; 0")).toThrow(/type|expected/i);
+      });
+
+      test("alias shadows built-in type name", () => {
+        expect(() =>
+          compileTuffToTS("type I32 = Bool; 0"),
+        ).toThrow(/shadow|built.in|I32/i);
+      });
+
+      test("alias used before declaration", () => {
+        expect(() =>
+          compileTuffToTS("let x: Num = 5; type Num = I32; x"),
+        ).toThrow(/type|expected/i);
+      });
+    });
+  });
+
+  describe("is operator", () => {
+    describe("valid", () => {
+      test("integer literal matches its type", () => {
+        expectTuff("42 is I32", 1);
+      });
+
+      test("integer literal does not match Bool", () => {
+        expectTuff("42 is Bool", 0);
+      });
+
+      test("Bool literal matches Bool", () => {
+        expectTuff("true is Bool", 1);
+      });
+
+      test("Bool literal does not match integer type", () => {
+        expectTuff("true is I32", 0);
+      });
+
+      test("variable check matches declared type", () => {
+        expectTuff("let x: I32 = 5; x is I32", 1);
+      });
+
+      test("variable check mismatches type", () => {
+        expectTuff("let x: I32 = 5; x is Bool", 0);
+      });
+
+      test("is with alias type that resolves to match", () => {
+        expectTuff("type Num = I32; 42 is Num", 1);
+      });
+
+      test("is with alias type that resolves to mismatch", () => {
+        expectTuff("type Flag = Bool; 42 is Flag", 0);
+      });
+
+      test("is evaluates expression for side effects", () => {
+        // the expression is evaluated (no error); result type mismatch → false
+        expectTuff("fn inc(x: I32) : I32 => x + 1; inc(5) is Bool", 0);
+      });
+
+      test("is on pointer type match", () => {
+        expectTuff("let mut x = 42; let p = &x; p is *I32", 1);
+      });
+
+      test("is on pointer type mismatch", () => {
+        expectTuff("let mut x = 42; let p = &x; p is *Bool", 0);
+      });
+
+      test("is inside expression context", () => {
+        expectTuff("if (42 is I32) 1 else 0", 1);
+      });
+    });
+
+    describe("invalid", () => {
+      test("is with Void type is an error", () => {
+        expect(() => compileTuffToTS("42 is Void")).toThrow(/void/i);
+      });
+
+      test("is with unknown type is an error", () => {
+        expect(() => compileTuffToTS("42 is Unknown")).toThrow(/type|expected/i);
+      });
+    });
+  });
 });

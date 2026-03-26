@@ -328,6 +328,7 @@ function parseProgram(tokens: Tok[]): string {
   let pos: number = 0;
   let env: Map<string, Binding> = new Map();
   let functionEnv: Map<string, FunctionSignature> = new Map();
+  let typeAliasEnv: Map<string, TuffType> = new Map();
   let nameCounter: Map<string, number> = new Map();
 
   function peek(): Tok | undefined {
@@ -403,6 +404,12 @@ function parseProgram(tokens: Tok[]): string {
       // Otherwise parse pointee type recursively
       const pointee: TuffType = expectType("after pointer qualifier");
       return { kind: "Pointer", mutable, pointee };
+    }
+
+    // Check for type alias
+    if (t?.kind === "NAME" && typeAliasEnv.has(t.val)) {
+      consume();
+      return typeAliasEnv.get(t.val)!;
     }
 
     // Otherwise expect a primitive type name
@@ -506,6 +513,46 @@ function parseProgram(tokens: Tok[]): string {
 
   const MUL_OPS: Set<TK> = new Set<TK>(["STAR", "SLASH"]);
   const ADD_OPS: Set<TK> = new Set<TK>(["PLUS", "MINUS"]);
+
+  function withBacktrack(
+    attempt: () => void,
+    isBacktrackable: (e: unknown) => boolean,
+  ): boolean {
+    const savedPos: number = pos;
+    const savedEnv: Map<string, Binding> = env;
+    const savedNameCounter: Map<string, number> = nameCounter;
+    const savedTypeAliasEnv: Map<string, TuffType> = typeAliasEnv;
+    try {
+      attempt();
+      return true;
+    } catch (error: unknown) {
+      if (isBacktrackable(error)) {
+        pos = savedPos;
+        env = savedEnv;
+        nameCounter = savedNameCounter;
+        typeAliasEnv = savedTypeAliasEnv;
+        return false;
+      }
+      throw error;
+    }
+  }
+
+  function parseTypeAliasStatement(): void {
+    consume(); // consume 'type'
+    const aliasName: string = expect("NAME").val;
+    if (typeAliasEnv.has(aliasName)) {
+      throw new Error(`Type error: duplicate type alias '${aliasName}'`);
+    }
+    if (VALID_TYPES.has(aliasName)) {
+      throw new Error(
+        `Type error: cannot shadow built-in type '${aliasName}'`,
+      );
+    }
+    expect("EQ");
+    const resolvedType: TuffType = expectType("for type alias");
+    expect("SEMI");
+    typeAliasEnv.set(aliasName, resolvedType);
+  }
 
   function fpTypeToFakeSig(
     name: string,
@@ -735,7 +782,9 @@ function parseProgram(tokens: Tok[]): string {
           }
           mutableError = `immutable variable "${varTok.val}"`;
         }
-        throw new Error(`Type error: cannot take mutable address of ${mutableError}`);
+        throw new Error(
+          `Type error: cannot take mutable address of ${mutableError}`,
+        );
       }
 
       // Immutable address-of: function pointer or data pointer
@@ -805,6 +854,18 @@ function parseProgram(tokens: Tok[]): string {
   function parseCmp(): TypedExpr {
     const left: TypedExpr = parseAdd();
     const op: Tok | undefined = peek();
+
+    // Handle the 'is' operator (same precedence as comparisons)
+    if (op?.kind === "NAME" && op.val === "is") {
+      consume(); // consume 'is'
+      const checkType: TuffType = expectType("after 'is'");
+      if (checkType === "Void") {
+        throw new Error("Type error: cannot use 'is' with Void type");
+      }
+      const matches: boolean = typesEqual(left.type, checkType);
+      return { code: `(${left.code}, ${matches})`, type: "Bool" };
+    }
+
     if (op === undefined || !CMP_OPS.has(op.kind)) return left;
     consume();
     const right: TypedExpr = parseAdd();
@@ -1100,13 +1161,16 @@ function parseProgram(tokens: Tok[]): string {
     expect("LBRACE");
     const savedEnv: Map<string, Binding> = env;
     const savedNameCounter: Map<string, number> = nameCounter;
+    const savedTypeAliasEnv: Map<string, TuffType> = typeAliasEnv;
     env = new Map(env);
     nameCounter = new Map();
+    typeAliasEnv = new Map(typeAliasEnv);
     const innerStmts: string[] = [];
     const result: T = parseBody(innerStmts);
     expect("RBRACE");
     env = savedEnv;
     nameCounter = savedNameCounter;
+    typeAliasEnv = savedTypeAliasEnv;
     return { innerStmts, result };
   }
 
@@ -1122,6 +1186,10 @@ function parseProgram(tokens: Tok[]): string {
   }
 
   function tryParseStatement(stmts: string[]): boolean {
+    if (peek()?.kind === "NAME" && peek()?.val === "type") {
+      parseTypeAliasStatement();
+      return true;
+    }
     if (peek()?.kind === "NAME" && peek()?.val === "let") {
       parseLetStatement(stmts);
       return true;
@@ -1131,26 +1199,14 @@ function parseProgram(tokens: Tok[]): string {
       return true;
     }
     if (peek()?.kind === "NAME" && peek()?.val === "if") {
-      const savedPos: number = pos;
-      const savedEnv: Map<string, Binding> = env;
-      const savedNameCounter: Map<string, number> = nameCounter;
-      try {
-        parseIfStatement(stmts);
-        return true;
-      } catch (error: unknown) {
-        // Check if this was an "expected statement" error from if-statement parsing
-        // If so, this is probably an if-expression, so backtrack and return false
-        if (
-          error instanceof Error &&
-          error.message.includes("expected statement in if")
-        ) {
-          pos = savedPos;
-          env = savedEnv;
-          nameCounter = savedNameCounter;
-          return false;
-        }
-        throw error;
-      }
+      const succeeded: boolean = withBacktrack(
+        () => parseIfStatement(stmts),
+        (e) =>
+          e instanceof Error &&
+          e.message.includes("expected statement in if"),
+      );
+      if (succeeded) return true;
+      // backtracked: fall through (this is an if-expression, not a statement)
     }
     // Handle pointer dereference assignment: *ptr = value; or **ptr = value; etc.
     if (peek()?.kind === "STAR") {
@@ -1185,21 +1241,12 @@ function parseProgram(tokens: Tok[]): string {
       return true;
     }
     if (peek()?.kind === "LBRACE") {
-      const savedPos: number = pos;
-      const savedEnv: Map<string, Binding> = env;
-      const savedNameCounter: Map<string, number> = nameCounter;
-      try {
-        parseStatementBlock(stmts);
-        return true;
-      } catch (error: unknown) {
-        pos = savedPos;
-        env = savedEnv;
-        nameCounter = savedNameCounter;
-        if (error instanceof NotAStatementBlockError) {
-          return false;
-        }
-        throw error;
-      }
+      const succeeded: boolean = withBacktrack(
+        () => parseStatementBlock(stmts),
+        (e) => e instanceof NotAStatementBlockError,
+      );
+      if (succeeded) return true;
+      // backtracked: fall through (this is a block expression, not a statement block)
     }
     // Void function call statement: funcName(); or voidFpVar();
     if (peek()?.kind === "NAME" && tokens[pos + 1]?.kind === "LPAREN") {
@@ -1305,7 +1352,9 @@ function parseProgram(tokens: Tok[]): string {
   function collectFunctionSignatures(): void {
     while (pos < tokens.length) {
       const t: Tok | undefined = peek();
-      if (t?.kind === "NAME" && t.val === "fn") {
+      if (t?.kind === "NAME" && t.val === "type") {
+        parseTypeAliasStatement();
+      } else if (t?.kind === "NAME" && t.val === "fn") {
         consume(); // consume 'fn'
         const funcName: string = expect("NAME").val;
 
@@ -1368,7 +1417,7 @@ function parseProgram(tokens: Tok[]): string {
           expect("SEMI"); // consume the semicolon
         }
       } else {
-        break; // Stop when we hit non-function tokens
+        break; // Stop when we hit non-declaration tokens
       }
     }
   }
@@ -1488,12 +1537,20 @@ function parseProgram(tokens: Tok[]): string {
 
   // Reset position for Pass 2
   pos = 0;
+  typeAliasEnv.clear(); // aliases will be re-processed in Pass 2
 
   const stmts: string[] = [];
 
-  // Parse all function declarations
-  while (peek()?.kind === "NAME" && peek()?.val === "fn") {
-    parseFunctionDeclaration(stmts);
+  // Parse all top-level declarations (fn and type, interleaved)
+  while (
+    peek()?.kind === "NAME" &&
+    (peek()?.val === "fn" || peek()?.val === "type")
+  ) {
+    if (peek()?.val === "fn") {
+      parseFunctionDeclaration(stmts);
+    } else {
+      parseTypeAliasStatement();
+    }
   }
 
   // Parse top-level statements
