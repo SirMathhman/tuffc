@@ -161,6 +161,31 @@ function isTypeCompatible(declared: TuffType, inferred: TuffType): boolean {
   return dMin <= iMin && dMax >= iMax;
 }
 
+function throwNoCommonType(t1: TuffType, t2: TuffType): never {
+  throw new Error(`Type error: no common type for ${t1} and ${t2}`);
+}
+
+function findCommonType(t1: TuffType, t2: TuffType): TuffType {
+  if (t1 === t2) return t1;
+
+  if (t1 === "Bool" || t2 === "Bool") {
+    throwNoCommonType(t1, t2);
+  }
+
+  // Try each type in order from smallest to largest
+  for (const candidate of SUFFIX_ORDER) {
+    if (
+      isTypeCompatible(candidate, t1 as IntSuffix) &&
+      isTypeCompatible(candidate, t2 as IntSuffix)
+    ) {
+      return candidate;
+    }
+  }
+
+  // No compatible integer type found
+  throwNoCommonType(t1, t2);
+}
+
 function validateIntLiteral(rawNum: string, suffix: IntSuffix): void {
   const value: number = parseInt(rawNum, 10);
   const [min, max]: [number, number] = INT_RANGES[suffix];
@@ -289,6 +314,10 @@ function parseProgram(tokens: Tok[]): string {
       return { code: "read()", type: readType as IntSuffix };
     }
 
+    if (t.kind === "NAME" && t.val === "if") {
+      return parseIfExpression();
+    }
+
     if (t.kind === "NAME") {
       const binding: Binding = requireBinding(t.val);
       consume();
@@ -297,6 +326,13 @@ function parseProgram(tokens: Tok[]): string {
 
     if (t.kind === "LBRACE") {
       return parseBlockExpr();
+    }
+
+    if (t.kind === "LPAREN") {
+      consume();
+      const expr: TypedExpr = parseOr();
+      expect("RPAREN");
+      return expr;
     }
 
     throw new Error(`Syntax error: unexpected token "${t.val}"`);
@@ -405,8 +441,6 @@ function parseProgram(tokens: Tok[]): string {
     if (hasAnnotation) {
       consume();
       declaredType = expectType("for declared type");
-    } else if (!isMut) {
-      throw new Error(`Syntax error: immutable let requires a type annotation`);
     } else {
       declaredType = "I32"; // placeholder; overwritten after RHS parse
     }
@@ -441,6 +475,53 @@ function parseProgram(tokens: Tok[]): string {
     stmts.push(`${binding.jsName} = ${rhs.code};`);
   }
 
+  function parseIfCondition(): TypedExpr {
+    consume(); // "if"
+    expect("LPAREN");
+    const cond: TypedExpr = parseOr();
+    expect("RPAREN");
+    if (cond.type !== "Bool") {
+      throw new Error(
+        `Type error: if condition must be Bool, got ${cond.type}`,
+      );
+    }
+    return cond;
+  }
+
+  function parseIfStatement(stmts: string[]): void {
+    const cond: TypedExpr = parseIfCondition();
+
+    const thenStmts: string[] = [];
+    if (!tryParseStatement(thenStmts)) {
+      throw new Error(
+        "Syntax error: expected statement in if-then branch, got expression",
+      );
+    }
+
+    if (peek()?.kind === "NAME" && peek()?.val === "else") {
+      consume(); // "else"
+      const elseStmts: string[] = [];
+
+      if (peek()?.kind === "NAME" && peek()?.val === "if") {
+        // else-if chain: recursively parse nested if-statement
+        parseIfStatement(elseStmts);
+      } else {
+        if (!tryParseStatement(elseStmts)) {
+          throw new Error(
+            "Syntax error: expected statement in if-else branch, got expression",
+          );
+        }
+      }
+
+      stmts.push(
+        `if (${cond.code}) {\n${thenStmts.join("\n")}\n} else {\n${elseStmts.join("\n")}\n}`,
+      );
+    } else {
+      // no else clause
+      stmts.push(`if (${cond.code}) {\n${thenStmts.join("\n")}\n}`);
+    }
+  }
+
   function withBlockScope<T>(parseBody: (innerStmts: string[]) => T): {
     innerStmts: string[];
     result: T;
@@ -473,6 +554,28 @@ function parseProgram(tokens: Tok[]): string {
     if (peek()?.kind === "NAME" && peek()?.val === "let") {
       parseLetStatement(stmts);
       return true;
+    }
+    if (peek()?.kind === "NAME" && peek()?.val === "if") {
+      const savedPos: number = pos;
+      const savedEnv: Map<string, Binding> = env;
+      const savedNameCounter: Map<string, number> = nameCounter;
+      try {
+        parseIfStatement(stmts);
+        return true;
+      } catch (error: unknown) {
+        // Check if this was an "expected statement" error from if-statement parsing
+        // If so, this is probably an if-expression, so backtrack and return false
+        if (
+          error instanceof Error &&
+          error.message.includes("expected statement in if")
+        ) {
+          pos = savedPos;
+          env = savedEnv;
+          nameCounter = savedNameCounter;
+          return false;
+        }
+        throw error;
+      }
     }
     if (peek()?.kind === "NAME" && tokens[pos + 1]?.kind === "EQ") {
       parseAssignmentStatement(stmts);
@@ -516,6 +619,32 @@ function parseProgram(tokens: Tok[]): string {
     return {
       code: `(() => {\n${innerStmts.join("\n")}\n})()`,
       type: blockFinal.type,
+    };
+  }
+
+  function parseIfExpression(): TypedExpr {
+    const cond: TypedExpr = parseIfCondition();
+
+    const thenExpr: TypedExpr = parseOr();
+
+    if (peek()?.kind !== "NAME" || peek()?.val !== "else") {
+      throw new Error("Syntax error: if-expression requires else clause");
+    }
+    consume(); // "else"
+
+    let elseExpr: TypedExpr;
+    if (peek()?.kind === "NAME" && peek()?.val === "if") {
+      // else-if chain: recursively parse nested if-expression
+      elseExpr = parseIfExpression();
+    } else {
+      elseExpr = parseOr();
+    }
+
+    const resultType: TuffType = findCommonType(thenExpr.type, elseExpr.type);
+
+    return {
+      code: `(${cond.code} ? ${thenExpr.code} : ${elseExpr.code})`,
+      type: resultType,
     };
   }
 

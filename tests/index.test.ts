@@ -590,3 +590,154 @@ describe("whitespace", () => {
     expectTuff("\t\n  ", 0);
   });
 });
+
+describe("if-statements", () => {
+  describe("valid", () => {
+    test("if-stmt with assignment, condition true", () => {
+      expectTuff("let mut x = 0U8;\nif (true) x = 5U8;\nx", 5);
+    });
+
+    test("if-stmt with assignment, condition false", () => {
+      expectTuff("let mut x = 0U8;\nif (false) x = 5U8;\nx", 0);
+    });
+
+    test("if-stmt with statement block", () => {
+      expectTuff("let mut x = 0U8;\nif (true) { let y = 5U8; x = y; }\nx", 5);
+    });
+
+    test("if-else with statement blocks, then taken", () => {
+      expectTuff(
+        "let mut x = 0U8;\nif (true) { x = 5U8; } else { x = 10U8; }\nx",
+        5,
+      );
+    });
+
+    test("if-else with statement blocks, else taken", () => {
+      expectTuff(
+        "let mut x = 0U8;\nif (false) { x = 5U8; } else { x = 10U8; }\nx",
+        10,
+      );
+    });
+
+    test("if-else with empty statement blocks", () => {
+      expectTuff("let mut x = 7U8;\nif (true) { } else { }\nx", 7);
+    });
+
+    test("if-stmt with condition from read<Bool>()", () => {
+      expectTuff(
+        "let mut x = 0U8;\nif (read<Bool>()) x = 5U8;\nx",
+        "true",
+        5,
+      );
+    });
+
+    test("else-if chaining", () => {
+      expectTuff(
+        "let mut x = 0U8;\nlet a = false;\nlet b = true;\nif (a) x = 1U8; else if (b) x = 2U8; else x = 3U8;\nx",
+        2,
+      );
+    });
+
+    test("nested if-stmt inside statement block", () => {
+      expectTuff(
+        "let mut x = 0U8;\nif (true) { if (true) x = 5U8; }\nx",
+        5,
+      );
+    });
+
+    test("program ending with if-stmt exits 0", () => {
+      expectTuff("let mut x = 0U8;\nif (true) x = 5U8;", 0);
+    });
+  });
+
+  describe("invalid", () => {
+    test("if-stmt condition must be Bool", () => {
+      expect(() => compileTuffToTS("let mut x = 0U8;\nif (5U8) x = 1U8;")).toThrow();
+    });
+
+    test("expression in then-branch without else is invalid", () => {
+      expect(() => compileTuffToTS("if (true) 5U8;")).toThrow();
+    });
+
+    test("block expression in then-branch without else is invalid", () => {
+      expect(() => compileTuffToTS("if (true) { 5U8 }")).toThrow();
+    });
+  });
+});
+
+describe("if-expressions", () => {
+  describe("valid", () => {
+    test("simple if-expr, then taken", () => {
+      expectTuff("if (true) 5U8 else 10U8", 5);
+    });
+
+    test("simple if-expr, else taken", () => {
+      expectTuff("if (false) 5U8 else 10U8", 10);
+    });
+
+    test("if-expr assigned to variable", () => {
+      expectTuff("let x = if (true) 5U8 else 10U8;\nx", 5);
+    });
+
+    test("if-expr with declared type, compatible branches", () => {
+      expectTuff("let x: U16 = if (true) 5U8 else 10U16;\nx", 5);
+    });
+
+    test("if-expr with no declared type, infer common type", () => {
+      expectTuff("let x = if (true) 5U8 else 10U16;\nx", 5);
+    });
+
+    test("if-expr with block-expr as then-branch", () => {
+      expectTuff("if (true) { let y = 5U8; y } else 10U8", 5);
+    });
+
+    test("if-expr with block-expr as else-branch", () => {
+      expectTuff("if (false) 5U8 else { let z = 10U8; z }", 10);
+    });
+
+    test("else-if chaining in expression", () => {
+      expectTuff(
+        "let a = false;\nlet b = true;\nif (a) 1U8 else if (b) 2U8 else 3U8",
+        2,
+      );
+    });
+
+    test("if-expr in arithmetic", () => {
+      expectTuff("(if (true) 5U8 else 10U8) + 1U8", 6);
+    });
+
+    test("if-expr with Bool values", () => {
+      expectTuff("if (true) true else false", 1);
+    });
+
+    test("nested if-expr", () => {
+      expectTuff("if (true) (if (false) 1U8 else 2U8) else 3U8", 2);
+    });
+
+    test("if-expr with condition from read<Bool>()", () => {
+      expectTuff("if (read<Bool>()) 5U8 else 10U8", "true", 5);
+    });
+  });
+
+  describe("invalid", () => {
+    test("if-expr requires else clause", () => {
+      expect(() => compileTuffToTS("if (true) 5U8")).toThrow();
+    });
+
+    test("if-expr branches must have common type", () => {
+      expect(() => compileTuffToTS("let x = if (true) 5U8 else true;")).toThrow();
+    });
+
+    test("if-expr branches must be compatible with declared type", () => {
+      expect(() => compileTuffToTS("let x: U8 = if (true) 5U8 else 256U16;")).toThrow();
+    });
+
+    test("if-expr condition must be Bool", () => {
+      expect(() => compileTuffToTS("if (5U8) 5U8 else 10U8")).toThrow();
+    });
+
+    test("empty statement blocks cannot be used as if-expression", () => {
+      expect(() => compileTuffToTS("let x: U8 = if (true) { } else { };")).toThrow();
+    });
+  });
+});
