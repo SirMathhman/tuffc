@@ -16,26 +16,38 @@ interface IntegerSpec {
   readonly emitBigInt: boolean;
 }
 
-const INTEGER_LITERAL = /^\s*([+-])?(\d+)(U8|U16|U32|U64|I8|I16|I32|I64)\s*$/;
-const READ_LITERAL = /^\s*read<(U8|U16|U32|U64|I8|I16|I32|I64)>\(\)\s*$/;
-const STDIN_LITERAL = /^\s*([+-])?(\d+)\s*$/;
+interface ParsedIntegerTerm {
+  readonly kind: "integer";
+  readonly value: bigint;
+  readonly suffix: IntegerSuffix;
+  readonly emitBigInt: boolean;
+}
+
+interface ParsedReadTerm {
+  readonly kind: "read";
+  readonly suffix: IntegerSuffix;
+  readonly emitBigInt: boolean;
+}
+
+type ParsedTerm = ParsedIntegerTerm | ParsedReadTerm;
+
+interface ParsedProgram {
+  readonly terms: ParsedTerm[];
+  readonly needsBigInt: boolean;
+}
+
+const INTEGER_LITERAL = /^\s*([+-])?(\d+)(U8|U16|U32|U64|I8|I16|I32|I64)/;
+const READ_LITERAL = /^\s*read<(U8|U16|U32|U64|I8|I16|I32|I64)>\(\)/;
+const STDIN_TOKEN = /^([+-])?(\d+)$/;
 
 const INTEGER_SPECS: Record<IntegerSuffix, IntegerSpec> = {
   U8: { min: 0n, max: 255n, emitBigInt: false },
   U16: { min: 0n, max: 65535n, emitBigInt: false },
   U32: { min: 0n, max: 4294967295n, emitBigInt: false },
-  U64: {
-    min: 0n,
-    max: 18446744073709551615n,
-    emitBigInt: true,
-  },
+  U64: { min: 0n, max: 18446744073709551615n, emitBigInt: true },
   I8: { min: -128n, max: 127n, emitBigInt: false },
   I16: { min: -32768n, max: 32767n, emitBigInt: false },
-  I32: {
-    min: -2147483648n,
-    max: 2147483647n,
-    emitBigInt: false,
-  },
+  I32: { min: -2147483648n, max: 2147483647n, emitBigInt: false },
   I64: {
     min: -9223372036854775808n,
     max: 9223372036854775807n,
@@ -43,10 +55,7 @@ const INTEGER_SPECS: Record<IntegerSuffix, IntegerSpec> = {
   },
 };
 
-function parseIntegerLiteral(source: string): {
-  readonly value: bigint;
-  readonly spec: IntegerSpec;
-} {
+function parseIntegerLiteral(source: string): ParsedIntegerTerm {
   const match = INTEGER_LITERAL.exec(source);
 
   if (!match) {
@@ -70,15 +79,122 @@ function parseIntegerLiteral(source: string): {
 
   const value = sign === "-" ? -magnitude : magnitude;
 
-  if (value < spec.min || value > spec.max) {
-    throw new RangeError(`${suffix} literals must be within range.`);
-  }
+  assertIntegerInRange(value, suffix);
 
-  return { value, spec };
+  return {
+    kind: "integer",
+    value,
+    suffix,
+    emitBigInt: spec.emitBigInt,
+  };
 }
 
-function parseNumericText(source: string): bigint {
-  const match = STDIN_LITERAL.exec(source);
+function parseReadLiteral(source: string): ParsedReadTerm {
+  const match = READ_LITERAL.exec(source);
+
+  if (!match) {
+    throw new SyntaxError("Unsupported Tuff source.");
+  }
+
+  const suffix = match[1] as IntegerSuffix;
+
+  return {
+    kind: "read",
+    suffix,
+    emitBigInt: INTEGER_SPECS[suffix].emitBigInt,
+  };
+}
+
+function parseTermFrom(source: string): {
+  readonly term: ParsedTerm;
+  readonly length: number;
+} {
+  const readMatch = READ_LITERAL.exec(source);
+
+  if (readMatch) {
+    return {
+      term: parseReadLiteral(source),
+      length: readMatch[0].length,
+    };
+  }
+
+  const integerMatch = INTEGER_LITERAL.exec(source);
+
+  if (integerMatch) {
+    return {
+      term: parseIntegerLiteral(source),
+      length: integerMatch[0].length,
+    };
+  }
+
+  throw new SyntaxError("Unsupported Tuff source.");
+}
+
+function parseProgram(source: string): ParsedProgram {
+  const terms: ParsedTerm[] = [];
+  let index = 0;
+
+  while (index < source.length) {
+    index = skipWhitespace(source, index);
+
+    if (index >= source.length) {
+      break;
+    }
+
+    const { term, length } = parseTermFrom(source.slice(index));
+    terms.push(term);
+    index += length;
+    index = skipWhitespace(source, index);
+
+    if (index >= source.length) {
+      break;
+    }
+
+    if (source[index] !== "+") {
+      throw new SyntaxError("Unsupported Tuff source.");
+    }
+
+    index += 1;
+  }
+
+  if (terms.length === 0) {
+    throw new SyntaxError("Unsupported Tuff source.");
+  }
+
+  return {
+    terms,
+    needsBigInt: terms.some((term) => term.emitBigInt),
+  };
+}
+
+function compileTermToTs(term: ParsedTerm, needsBigInt: boolean): string {
+  if (term.kind === "read") {
+    if (needsBigInt && !term.emitBigInt) {
+      return `BigInt(__tuffRead("${term.suffix}"))`;
+    }
+
+    return `__tuffRead("${term.suffix}")`;
+  }
+
+  if (needsBigInt && !term.emitBigInt) {
+    return `BigInt(${term.value})`;
+  }
+
+  return term.emitBigInt ? `${term.value}n` : `${term.value}`;
+}
+
+function skipWhitespace(source: string, index: number): number {
+  let nextIndex = index;
+
+  while (nextIndex < source.length && /\s/.test(source[nextIndex] ?? "")) {
+    nextIndex += 1;
+  }
+
+  return nextIndex;
+}
+
+function parseStdInToken(token: string): bigint {
+  const match = STDIN_TOKEN.exec(token);
 
   if (!match) {
     throw new RangeError("Invalid stdin literal.");
@@ -92,29 +208,43 @@ function parseNumericText(source: string): bigint {
   }
 
   const magnitude = BigInt(magnitudeText);
-
   return sign === "-" ? -magnitude : magnitude;
 }
 
-function normalizeIntegerValue(value: bigint, suffix: IntegerSuffix): number | bigint {
+function assertIntegerInRange(value: bigint, suffix: IntegerSuffix): void {
   const spec = INTEGER_SPECS[suffix];
 
   if (value < spec.min || value > spec.max) {
     throw new RangeError(`${suffix} literals must be within range.`);
   }
-
-  return spec.emitBigInt ? value : Number(value);
 }
 
 function createStdInReader(stdIn: string) {
+  const tokens = stdIn.trim() === "" ? [] : stdIn.trim().split(/\s+/);
+  let index = 0;
+
   return (suffix: IntegerSuffix): number | bigint => {
-    const value = parseNumericText(stdIn);
+    if (index >= tokens.length) {
+      throw new RangeError("Missing stdin value.");
+    }
+
+    const token = tokens[index++];
+
+    if (token === undefined) {
+      throw new RangeError("Missing stdin value.");
+    }
+
+    const value = parseStdInToken(token);
 
     if (value < 0n && suffix.startsWith("U")) {
       throw new RangeError("Unsigned integer literals cannot be signed.");
     }
 
-    return normalizeIntegerValue(value, suffix);
+    assertIntegerInRange(value, suffix);
+
+    const spec = INTEGER_SPECS[suffix];
+
+    return spec.emitBigInt ? value : Number(value);
   };
 }
 
@@ -139,32 +269,15 @@ export function greet(name: string): string {
 }
 
 export function compileTuffToTS(source: string): string {
-  const readSuffix = parseReadLiteralMaybe(source);
+  const program = parseProgram(source);
+  const tsExpression = program.terms
+    .map((term) => compileTermToTs(term, program.needsBigInt))
+    .join(" + ");
 
-  if (readSuffix !== undefined) {
-    return `export default __tuffRead("${readSuffix}");`;
-  }
-
-  const { value, spec } = parseIntegerLiteral(source);
-  const emittedValue = spec.emitBigInt ? `${value}n` : `${value}`;
-
-  return `export default ${emittedValue};`;
+  return `export default ${tsExpression};`;
 }
 
-function parseReadLiteralMaybe(source: string): IntegerSuffix | undefined {
-  const match = READ_LITERAL.exec(source);
-
-  if (!match) {
-    return undefined;
-  }
-
-  return match[1] as IntegerSuffix;
-}
-
-export function evaluateTuff(
-  tuffSource: string,
-  stdIn = "",
-): number | bigint {
+export function evaluateTuff(tuffSource: string, stdIn = ""): number | bigint {
   const tsSource = compileTuffToTS(tuffSource);
   const jsSource = ts.transpileModule(tsSource, {
     compilerOptions: {

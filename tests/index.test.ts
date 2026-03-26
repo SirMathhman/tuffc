@@ -24,23 +24,62 @@ const supportedIntegerCases = [
 ] as const;
 
 const readCases = [
-  { source: "read<U8>()", stdIn: "100", ts: 'export default __tuffRead("U8");', value: 100 },
-  { source: "read<U16>()", stdIn: "65535", ts: 'export default __tuffRead("U16");', value: 65535 },
-  { source: "read<U32>()", stdIn: "4294967295", ts: 'export default __tuffRead("U32");', value: 4294967295 },
+  {
+    source: "read<U8>()",
+    stdIn: "100",
+    ts: 'export default __tuffRead("U8");',
+    value: 100,
+  },
+  {
+    source: "read<U16>()",
+    stdIn: "65535",
+    ts: 'export default __tuffRead("U16");',
+    value: 65535,
+  },
+  {
+    source: "read<U32>()",
+    stdIn: "4294967295",
+    ts: 'export default __tuffRead("U32");',
+    value: 4294967295,
+  },
   {
     source: "read<U64>()",
     stdIn: "18446744073709551615",
     ts: 'export default __tuffRead("U64");',
     value: 18446744073709551615n,
   },
-  { source: "read<I8>()", stdIn: "-1", ts: 'export default __tuffRead("I8");', value: -1 },
-  { source: "read<I16>()", stdIn: "-32768", ts: 'export default __tuffRead("I16");', value: -32768 },
-  { source: "read<I32>()", stdIn: "2147483647", ts: 'export default __tuffRead("I32");', value: 2147483647 },
+  {
+    source: "read<I8>()",
+    stdIn: "-1",
+    ts: 'export default __tuffRead("I8");',
+    value: -1,
+  },
+  {
+    source: "read<I16>()",
+    stdIn: "-32768",
+    ts: 'export default __tuffRead("I16");',
+    value: -32768,
+  },
+  {
+    source: "read<I32>()",
+    stdIn: "2147483647",
+    ts: 'export default __tuffRead("I32");',
+    value: 2147483647,
+  },
   {
     source: "read<I64>()",
     stdIn: "-9223372036854775808",
     ts: 'export default __tuffRead("I64");',
     value: -9223372036854775808n,
+  },
+] as const;
+
+const expressionCases = [
+  {
+    source: "read<U8>() + read<U8>() + 3U8",
+    stdIn: "1 2",
+    ts: 'export default __tuffRead("U8") + __tuffRead("U8") + 3;',
+    value: 6,
   },
 ] as const;
 
@@ -56,6 +95,15 @@ const overflowCases = [
 ] as const;
 
 const unsignedNegativeCases = ["-1U8", "-1U16", "-1U32", "-1U64"] as const;
+
+function expectRangeError(fn: () => unknown): void {
+  try {
+    fn();
+    throw new Error("Expected function to throw.");
+  } catch (error) {
+    expect(error).toBeInstanceOf(RangeError);
+  }
+}
 
 describe("greet", () => {
   test("greets the provided name", () => {
@@ -80,23 +128,13 @@ describe("compileTuffToTS", () => {
 
   test("rejects signed unsigned integer literals", () => {
     for (const source of unsignedNegativeCases) {
-      try {
-        compileTuffToTS(source);
-        throw new Error("Expected compileTuffToTS to throw.");
-      } catch (error) {
-        expect(error).toBeInstanceOf(RangeError);
-      }
+      expectRangeError(() => compileTuffToTS(source));
     }
   });
 
   test("rejects values outside supported ranges", () => {
     for (const source of overflowCases) {
-      try {
-        compileTuffToTS(source);
-        throw new Error("Expected compileTuffToTS to throw.");
-      } catch (error) {
-        expect(error).toBeInstanceOf(RangeError);
-      }
+      expectRangeError(() => compileTuffToTS(source));
     }
   });
 });
@@ -114,8 +152,20 @@ describe("evaluateTuff", () => {
     }
   });
 
+  test("compiles addition expressions with multiple stdin reads", () => {
+    for (const { source, ts: expectedTs } of expressionCases) {
+      expect(compileTuffToTS(source)).toBe(expectedTs);
+    }
+  });
+
   test("evaluates read expressions using stdin", () => {
     for (const { source, stdIn, value } of readCases) {
+      expect(evaluateTuff(source, stdIn) as any).toBe(value as any);
+    }
+  });
+
+  test("evaluates addition expressions using stdin", () => {
+    for (const { source, stdIn, value } of expressionCases) {
       expect(evaluateTuff(source, stdIn) as any).toBe(value as any);
     }
   });
@@ -126,23 +176,13 @@ describe("evaluateTuff", () => {
 
   test("rejects signed unsigned integer literals", () => {
     for (const source of unsignedNegativeCases) {
-      try {
-        evaluateTuff(source);
-        throw new Error("Expected evaluateTuff to throw.");
-      } catch (error) {
-        expect(error).toBeInstanceOf(RangeError);
-      }
+      expectRangeError(() => evaluateTuff(source));
     }
   });
 
   test("rejects values outside supported ranges", () => {
     for (const source of overflowCases) {
-      try {
-        evaluateTuff(source);
-        throw new Error("Expected evaluateTuff to throw.");
-      } catch (error) {
-        expect(error).toBeInstanceOf(RangeError);
-      }
+      expectRangeError(() => evaluateTuff(source));
     }
   });
 });

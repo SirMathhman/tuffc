@@ -9,9 +9,10 @@
     "test": "bun test",
     "build": "bunx tsc -p tsconfig.json",
     "lint": "bunx tsc --noEmit",
-    "check": "bun run test && bun run lint",
+    "check": "bun run test && bun run lint && bun run find-duplicates",
     "start": "bun run dist/index.js",
-    "prepare": "husky"
+    "prepare": "husky",
+    "find-duplicates": "pmd cpd --dir src,tests --minimum-tokens 40 --language typescript --format markdown --ignore-literals --ignore-identifiers"
   },
   "devDependencies": {
     "bun-types": "latest",

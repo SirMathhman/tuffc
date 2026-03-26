@@ -9,12 +9,14 @@ Provide a function that compiles Tuff source to TypeScript, compiles that TypeSc
 - `evaluateTuff("100U8")` should produce `100`.
 - Integer literals with suffixes `U8`, `U16`, `U32`, `U64`, `I8`, `I16`, `I32`, and `I64` should be supported.
 - `read<T>()` should read a textual numeric literal from `stdIn`, validate it against `T`, and return the typed value.
+- Addition expressions combining literals and `read<T>()` should be supported, with `stdIn` tokens consumed from left to right.
 - The compile step should happen first, before TypeScript-to-JavaScript compilation.
 - Whitespace around the literal should be accepted.
 - Signed unsigned literals such as `-1U8` and `+1U8` should be rejected with `RangeError`.
 - U8 values above `255` such as `256U8` and `999U8` should be rejected with `RangeError`.
 - 64-bit literals should evaluate as `bigint` values when needed.
 - `read<U64>()` and `read<I64>()` should return `bigint` values when needed.
+- `evaluateTuff("read<U8>() + read<U8>() + 3U8", "1 2")` should produce `6`.
 - Invalid or unsupported input should cause an error.
 - The public return type should be `number | bigint`.
 
