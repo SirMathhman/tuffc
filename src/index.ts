@@ -582,17 +582,21 @@ function parseProgram(tokens: Tok[]): string {
     }
   }
 
-  function parseIfCondition(): TypedExpr {
-    consume(); // "if"
+  function parseBoolCondition(contextName: string): TypedExpr {
+    consume(); // keyword (if/while)
     expect("LPAREN");
     const cond: TypedExpr = parseOr();
     expect("RPAREN");
     if (cond.type !== "Bool") {
       throw new Error(
-        `Type error: if condition must be Bool, got ${cond.type}`,
+        `Type error: ${contextName} condition must be Bool, got ${cond.type}`,
       );
     }
     return cond;
+  }
+
+  function parseIfCondition(): TypedExpr {
+    return parseBoolCondition("if");
   }
 
   function parseIfStatement(stmts: string[]): void {
@@ -629,6 +633,19 @@ function parseProgram(tokens: Tok[]): string {
     }
   }
 
+  function parseWhileStatement(stmts: string[]): void {
+    const cond: TypedExpr = parseBoolCondition("while");
+
+    const bodyStmts: string[] = [];
+    if (!tryParseStatement(bodyStmts)) {
+      throw new Error(
+        "Syntax error: expected statement in while body, got expression",
+      );
+    }
+
+    stmts.push(`while (${cond.code}) {\n${bodyStmts.join("\n")}\n}`);
+  }
+
   function withBlockScope<T>(parseBody: (innerStmts: string[]) => T): {
     innerStmts: string[];
     result: T;
@@ -660,6 +677,10 @@ function parseProgram(tokens: Tok[]): string {
   function tryParseStatement(stmts: string[]): boolean {
     if (peek()?.kind === "NAME" && peek()?.val === "let") {
       parseLetStatement(stmts);
+      return true;
+    }
+    if (peek()?.kind === "NAME" && peek()?.val === "while") {
+      parseWhileStatement(stmts);
       return true;
     }
     if (peek()?.kind === "NAME" && peek()?.val === "if") {

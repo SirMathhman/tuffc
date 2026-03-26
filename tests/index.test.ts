@@ -782,7 +782,10 @@ describe("compound assignment", () => {
     });
 
     test("multiple compound assignments", () => {
-      expectTuff("let mut x = 10U8;\nlet mut y = 5U8;\nx += 2U8;\ny -= 1U8;\nx + y", 16);
+      expectTuff(
+        "let mut x = 10U8;\nlet mut y = 5U8;\nx += 2U8;\ny -= 1U8;\nx + y",
+        16,
+      );
     });
 
     test("compound assignment in statement block", () => {
@@ -820,11 +823,85 @@ describe("compound assignment", () => {
     });
 
     test("type incompatible RHS throws", () => {
-      expect(() => compileTuffToTS("let mut x: U8 = 10U8;\nx += 500U16;")).toThrow();
+      expect(() =>
+        compileTuffToTS("let mut x: U8 = 10U8;\nx += 500U16;"),
+      ).toThrow();
     });
 
     test("chaining compound assignment throws (not expression)", () => {
-      expect(() => compileTuffToTS("let mut x = 0U8;\nlet mut y = 0U8;\nx += y += 5U8;")).toThrow();
+      expect(() =>
+        compileTuffToTS("let mut x = 0U8;\nlet mut y = 0U8;\nx += y += 5U8;"),
+      ).toThrow();
+    });
+  });
+});
+
+describe("while statements", () => {
+  describe("valid", () => {
+    test("countdown with decrement", () => {
+      expectTuff("let mut x: U8 = 5U8;\nwhile (x > 0U8) {\n  x -= 1U8;\n}\nx", 0);
+    });
+
+    test("sum 1 to 10", () => {
+      expectTuff(
+        "let mut sum: U16 = 0U16;\nlet mut i: U16 = 1U16;\nwhile (i <= 10U16) {\n  sum += i;\n  i += 1U16;\n}\nsum",
+        55,
+      );
+    });
+
+    test("single statement body", () => {
+      expectTuff("let mut x: U8 = 3U8;\nwhile (x > 0U8) x -= 1U8;\nx", 0);
+    });
+
+    test("condition false on first check, body never executes", () => {
+      expectTuff("let mut x: U8 = 0U8;\nwhile (false) {\n  x = 10U8;\n}\nx", 0);
+    });
+
+    test("empty statement block body", () => {
+      expectTuff("let mut x: U8 = 0U8;\nwhile (x > 0U8) {\n}\n5U8", 5);
+    });
+
+    test("nested while loops", () => {
+      expectTuff(
+        "let mut outer: U8 = 3U8;\nlet mut sum: U8 = 0U8;\nwhile (outer > 0U8) {\n  let mut inner: U8 = 2U8;\n  while (inner > 0U8) {\n    sum += 1U8;\n    inner -= 1U8;\n  }\n  outer -= 1U8;\n}\nsum",
+        6,
+      );
+    });
+
+    test("while with if-statement inside", () => {
+      expectTuff(
+        "let mut x: U8 = 10U8;\nlet mut evens: U8 = 0U8;\nwhile (x > 0U8) {\n  if (x == 2U8 || x == 4U8 || x == 6U8 || x == 8U8 || x == 10U8) {\n    evens += 1U8;\n  }\n  x -= 1U8;\n}\nevens",
+        5,
+      );
+    });
+
+    test("while condition from read<Bool>()", () => {
+      expectTuff("while (read<Bool>()) {\n}\n0", "false", 0);
+    });
+
+    test("while with multiple statements in body", () => {
+      expectTuff(
+        "let mut x: U8 = 5U8;\nlet mut y: U8 = 0U8;\nwhile (x > 0U8) {\n  y += x;\n  x -= 1U8;\n}\ny",
+        15,
+      );
+    });
+
+    test("program ending with while exits 0", () => {
+      expectTuff("let mut x: U8 = 3U8;\nwhile (x > 0U8) {\n  x -= 1U8;\n}", 0);
+    });
+  });
+
+  describe("invalid", () => {
+    test("while condition must be Bool", () => {
+      expect(() => compileTuffToTS("while (5) {\n}")).toThrow(
+        /while condition must be Bool/,
+      );
+    });
+
+    test("while as expression throws", () => {
+      expect(() =>
+        compileTuffToTS("let x = while (true) {\n};"),
+      ).toThrow();
     });
   });
 });

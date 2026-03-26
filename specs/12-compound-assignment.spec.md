@@ -35,10 +35,12 @@ Where `op` is one of: `+`, `-`, `*`, `/`, `&`, `|`
 ### Operator Restrictions
 
 **Arithmetic operators** (`+=`, `-=`, `*=`, `/=`):
+
 - Only valid for **integer types** (U8, I8, U16, I16, U32, I32, U64, I64)
 - Error if applied to Bool
 
 **Bool operators** (`&=`, `|=`):
+
 - Only valid for **Bool type**
 - Error if applied to integers
 
