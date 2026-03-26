@@ -27,7 +27,18 @@ interface EnumDef {
   variants: string[];
 }
 
-type TuffType = PrimitiveType | PointerType | FunctionPointerType | EnumType;
+interface ArrayType {
+  kind: "Array";
+  base: TuffType;
+  length: number;
+}
+
+type TuffType =
+  | PrimitiveType
+  | PointerType
+  | FunctionPointerType
+  | EnumType
+  | ArrayType;
 
 const INT_RANGES: Map<IntSuffix, [number, number]> = new Map([
   ["U8", [0, 255]],
@@ -102,7 +113,9 @@ type TK =
   | "ARROW"
   | "COMMA"
   | "COLON_COLON"
-  | "CHAR_LIT";
+  | "CHAR_LIT"
+  | "LBRACKET"
+  | "RBRACKET";
 
 interface Tok {
   kind: TK;
@@ -125,6 +138,8 @@ const CH_TO_TK: Readonly<Map<string, TK>> = new Map([
   ["{", "LBRACE"],
   ["}", "RBRACE"],
   [",", "COMMA"],
+  ["[", "LBRACKET"],
+  ["]", "RBRACKET"],
 ]);
 
 function tokenize(src: string): Tok[] {
@@ -247,6 +262,10 @@ function isEnumType(t: TuffType): t is EnumType {
   return typeof t === "object" && t.kind === "Enum";
 }
 
+function isArrayType(t: TuffType): t is ArrayType {
+  return typeof t === "object" && t.kind === "Array";
+}
+
 function typeToString(t: TuffType): string {
   if (isPrimitiveType(t)) return t;
   if (isFunctionPointerType(t)) {
@@ -254,6 +273,7 @@ function typeToString(t: TuffType): string {
     return "*(" + paramStrs + ") => " + typeToString(t.returnType);
   }
   if (isEnumType(t)) return t.name;
+  if (isArrayType(t)) return "[" + typeToString(t.base) + "; " + t.length + "]";
   return (t.mutable ? "*mut" : "*") + typeToString(t.pointee);
 }
 
@@ -270,6 +290,9 @@ function typesEqual(t1: TuffType, t2: TuffType): boolean {
     );
   }
   if (isEnumType(t1) && isEnumType(t2)) return t1.name === t2.name;
+  if (isArrayType(t1) && isArrayType(t2)) {
+    return typesEqual(t1.base, t2.base) && t1.length === t2.length;
+  }
   return false;
 }
 
@@ -282,8 +305,8 @@ function promoteTypes(a: TuffType, b: TuffType): IntSuffix {
   ) {
     throw new Error("Type error: pointers cannot be used in arithmetic");
   }
-  if (isEnumType(a) || isEnumType(b)) {
-    throw new Error("Type error: enum cannot be used in arithmetic");
+  if (isEnumType(a) || isEnumType(b) || isArrayType(a) || isArrayType(b)) {
+    throw new Error("Type error: enum or array cannot be used in arithmetic");
   }
   if (a === "Bool" || b === "Bool") {
     throw new Error("Type error: Bool cannot be used in arithmetic");
@@ -311,7 +334,9 @@ function isTypeCompatible(declared: TuffType, inferred: TuffType): boolean {
     isPointerType(declared) ||
     isPointerType(inferred) ||
     isFunctionPointerType(declared) ||
-    isFunctionPointerType(inferred)
+    isFunctionPointerType(inferred) ||
+    isArrayType(declared) ||
+    isArrayType(inferred)
   ) {
     return typesEqual(declared, inferred);
   }
@@ -358,7 +383,7 @@ function findCommonType(t1: TuffType, t2: TuffType): TuffType {
   }
 
   // Enums don't have a common type with anything other than themselves
-  if (isEnumType(t1) || isEnumType(t2)) {
+  if (isEnumType(t1) || isEnumType(t2) || isArrayType(t1) || isArrayType(t2)) {
     throwNoCommonType(t1, t2);
   }
 
@@ -422,6 +447,7 @@ interface ParserScopeSnapshot {
 }
 
 class NotAStatementBlockError extends Error {}
+class NotAnAssignmentError extends Error {}
 
 function parseProgram(tokens: Tok[]): string {
   let pos: number = 0;
@@ -455,6 +481,16 @@ function parseProgram(tokens: Tok[]): string {
 
   function expectType(context: string): TuffType {
     const t: Tok | undefined = peek();
+
+    if (t?.kind === "LBRACKET") {
+      consume(); // consume [
+      const base: TuffType = expectType(context);
+      expect("SEMI");
+      const lenTok: Tok = expect("NUM");
+      expect("RBRACKET");
+      const length: number = parseInt(lenTok.val, 10);
+      return { kind: "Array", base, length };
+    }
 
     // Check for pointer type: * or *mut
     if (t?.kind === "STAR") {
@@ -818,9 +854,83 @@ function parseProgram(tokens: Tok[]): string {
     return args;
   }
 
+  function parsePostfix(): TypedExpr {
+    let expr = parseAtom();
+    while (peek()?.kind === "LBRACKET") {
+      consume(); // [
+      const indexExpr = parseOr();
+      expect("RBRACKET");
+      if (!isArrayType(expr.type)) {
+        throw new Error("Type error: can only index into arrays");
+      }
+      if (
+        isEnumType(indexExpr.type) ||
+        indexExpr.type === "Bool" ||
+        indexExpr.type === "Char" ||
+        indexExpr.type === "Void" ||
+        isPointerType(indexExpr.type) ||
+        isFunctionPointerType(indexExpr.type) ||
+        isArrayType(indexExpr.type)
+      ) {
+        throw new Error("Type error: array index must be an integer");
+      }
+      expr = {
+        code: expr.code + "[" + indexExpr.code + "]",
+        type: expr.type.base,
+      };
+    }
+    return expr;
+  }
+
+  function parseArrayLiteral(): TypedExpr {
+    consume(); // [
+    const firstExpr = parseOr();
+    if (peek()?.kind === "SEMI") {
+      consume(); // ;
+      const lengthTok = expect("NUM");
+      const length = parseInt(lengthTok.val, 10);
+      expect("RBRACKET");
+      if (
+        isFunctionPointerType(firstExpr.type) &&
+        firstExpr.type.params.length === 0
+      ) {
+        return {
+          code: "Array.from({length: " + length + "}, " + firstExpr.code + ")",
+          type: { kind: "Array", base: firstExpr.type.returnType, length },
+        };
+      } else {
+        return {
+          code: "Array(" + length + ").fill(" + firstExpr.code + ")",
+          type: { kind: "Array", base: firstExpr.type, length },
+        };
+      }
+    } else {
+      // comma list
+      const items = [firstExpr];
+      while (peek()?.kind === "COMMA") {
+        consume();
+        if (peek()?.kind === "RBRACKET") break;
+        items.push(parseOr());
+      }
+      expect("RBRACKET");
+      let baseType = items[0]!.type;
+      for (let i = 1; i < items.length; i++) {
+        baseType = findCommonType(baseType, items[i]!.type);
+      }
+      return {
+        code: "[" + items.map((i) => i.code).join(", ") + "]",
+        type: { kind: "Array", base: baseType, length: items.length },
+      };
+    }
+  }
+
   function parseAtom(): TypedExpr {
     const t: Tok | undefined = peek();
     if (!t) throw new Error("Syntax error: unexpected end of expression");
+
+    if (t.kind === "LBRACKET") {
+      return parseArrayLiteral();
+    }
 
     if (t.kind === "MINUS") {
       consume();
@@ -1054,7 +1164,7 @@ function parseProgram(tokens: Tok[]): string {
       return { code: binding.jsName, type: pointerType };
     }
 
-    return parseAtom();
+    return parsePostfix();
   }
 
   function parseAdd(): TypedExpr {
@@ -1447,7 +1557,28 @@ function parseProgram(tokens: Tok[]): string {
     stmts.push("{\n" + innerStmts.join("\n") + "\n}");
   }
 
+  function parseArrayIndexAssignmentStatement(stmts: string[]): void {
+    const lhs = parsePostfix();
+    if (peek()?.kind !== "EQ") {
+      throw new NotAnAssignmentError();
+    }
+    consume(); // EQ
+    const rhs = parseOr();
+    expect("SEMI");
+
+    assertTypeCompatible(lhs.type, rhs.type);
+    stmts.push(lhs.code + " = " + rhs.code + ";");
+  }
+
   function tryParseStatement(stmts: string[]): boolean {
+    // Array assignment statement check `arr[idx] = ...;`
+    if (peek()?.kind === "NAME" && tokens[pos + 1]?.kind === "LBRACKET") {
+      const succeeded: boolean = withBacktrack(
+        () => parseArrayIndexAssignmentStatement(stmts),
+        (e) => e instanceof NotAnAssignmentError,
+      );
+      if (succeeded) return true;
+    }
     if (peek()?.kind === "NAME" && peek()?.val === "type") {
       parseTypeAliasStatement();
       return true;

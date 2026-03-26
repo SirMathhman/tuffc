@@ -1791,4 +1791,56 @@ describe("while statements", () => {
       });
     });
   });
+
+  describe("Arrays", () => {
+    describe("valid", () => {
+      test("variable array type", () => {
+        const out = compileTuffToTS("let x: [I32; 3] = [1, 2, 3]; x[0]");
+        expect(out).toContain("[1, 2, 3]");
+      });
+
+      test("list initialization", () => {
+        expectTuff("let arr = [5, 10, 15]; arr[1]", 10);
+      });
+
+      test("repeat value initialization", () => {
+        expectTuff("let arr = [0; 5]; arr[4]", 0);
+      });
+
+      test("generator initialization", () => {
+        expectTuff(
+          "fn getNum(): I32 => { 42 }; let arr = [&getNum; 3]; arr[0] + arr[2]",
+          84,
+        );
+      });
+
+      test("array assignment", () => {
+        expectTuff("let arr = [0; 5]; arr[0] = 42; arr[0]", 42);
+      });
+    });
+
+    describe("invalid", () => {
+      test("index non-array", () => {
+        expect(() => compileTuffToTS("let x = 5; x[0]")).toThrow(/Type error/i);
+      });
+
+      test("bad array type length", () => {
+        expect(() => compileTuffToTS("let x: [U8; foo] = [1, 2];")).toThrow(
+          /error/i,
+        );
+      });
+
+      test("mismatched elements", () => {
+        expect(() => compileTuffToTS("let arr = [1U8, true];")).toThrow(
+          /Type/i,
+        );
+      });
+
+      test("wrong assignment type", () => {
+        expect(() =>
+          compileTuffToTS("let arr = [1, 2]; arr[0] = true;"),
+        ).toThrow(/Type error/i);
+      });
+    });
+  });
 });
