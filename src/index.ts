@@ -52,7 +52,11 @@ type TK =
   | "EQ"
   | "PIPE_PIPE"
   | "AMP_AMP"
-  | "BANG";
+  | "BANG"
+  | "LT_EQ"
+  | "GT_EQ"
+  | "EQ_EQ"
+  | "BANG_EQ";
 
 interface Tok {
   kind: TK;
@@ -100,9 +104,22 @@ function tokenize(src: string): Tok[] {
       } else if (ch === "&" && src[i + 1] === "&") {
         tokens.push({ kind: "AMP_AMP", val: "&&" });
         i += 2;
+      } else if (ch === "<" && src[i + 1] === "=") {
+        tokens.push({ kind: "LT_EQ", val: "<=" });
+        i += 2;
+      } else if (ch === ">" && src[i + 1] === "=") {
+        tokens.push({ kind: "GT_EQ", val: ">=" });
+        i += 2;
+      } else if (ch === "=" && src[i + 1] === "=") {
+        tokens.push({ kind: "EQ_EQ", val: "===" });
+        i += 2;
+      } else if (ch === "!" && src[i + 1] === "=") {
+        tokens.push({ kind: "BANG_EQ", val: "!==" });
+        i += 2;
       } else {
         const kind: TK | undefined = CH_TO_TK[ch];
-        if (!kind) throw new Error(`Syntax error: unexpected character "${ch}"`);
+        if (!kind)
+          throw new Error(`Syntax error: unexpected character "${ch}"`);
         tokens.push({ kind, val: ch });
         i++;
       }
@@ -300,6 +317,34 @@ function parseProgram(tokens: Tok[]): string {
     return left;
   }
 
+  const CMP_OPS: Set<TK> = new Set<TK>([
+    "LT",
+    "LT_EQ",
+    "GT",
+    "GT_EQ",
+    "EQ_EQ",
+    "BANG_EQ",
+  ]);
+  const ORDERED_CMP_OPS: Set<TK> = new Set<TK>(["LT", "LT_EQ", "GT", "GT_EQ"]);
+
+  function parseCmp(): TypedExpr {
+    const left: TypedExpr = parseAdd();
+    const op: Tok | undefined = peek();
+    if (op === undefined || !CMP_OPS.has(op.kind)) return left;
+    consume();
+    const right: TypedExpr = parseAdd();
+    if (ORDERED_CMP_OPS.has(op.kind)) {
+      if (left.type === "Bool" || right.type === "Bool") {
+        throw new Error(`Type error: ${op.val} requires integer operands`);
+      }
+    } else {
+      if ((left.type === "Bool") !== (right.type === "Bool")) {
+        throw new Error(`Type error: cannot compare Bool with integer`);
+      }
+    }
+    return { code: `${left.code} ${op.val} ${right.code}`, type: "Bool" };
+  }
+
   function parseNot(): TypedExpr {
     if (peek()?.kind === "BANG") {
       consume();
@@ -309,7 +354,7 @@ function parseProgram(tokens: Tok[]): string {
       }
       return { code: `!${operand.code}`, type: "Bool" };
     }
-    return parseAdd();
+    return parseCmp();
   }
 
   function parseAnd(): TypedExpr {

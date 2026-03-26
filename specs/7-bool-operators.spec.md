@@ -17,7 +17,7 @@ not_expr   := '!' not_expr | add_expr
 ## Precedence (highest to lowest, within bool tier)
 
 | Operator | Associativity |
-|----------|--------------|
+| -------- | ------------- |
 | `!`      | Right (unary) |
 | `&&`     | Left          |
 | `\|\|`   | Left          |
@@ -33,11 +33,11 @@ so they bind tighter than any boolean operator.
 
 ## Code generation
 
-| Tuff      | Generated JS |
-|-----------|-------------|
-| `a \|\| b` | `a \|\| b`  |
-| `a && b`  | `a && b`    |
-| `!a`      | `!a`        |
+| Tuff       | Generated JS |
+| ---------- | ------------ |
+| `a \|\| b` | `a \|\| b`   |
+| `a && b`   | `a && b`     |
+| `!a`       | `!a`         |
 
 Short-circuit evaluation is inherited from JS.
 

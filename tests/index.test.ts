@@ -283,6 +283,84 @@ describe("Bool", () => {
   });
 });
 
+describe("comparisons", () => {
+  describe("valid", () => {
+    test("1U8 < 2U8 exits 1", () => {
+      expectTuff("1U8 < 2U8", 1);
+    });
+
+    test("2U8 < 1U8 exits 0", () => {
+      expectTuff("2U8 < 1U8", 0);
+    });
+
+    test("1U8 <= 1U8 exits 1", () => {
+      expectTuff("1U8 <= 1U8", 1);
+    });
+
+    test("2U8 > 1U8 exits 1", () => {
+      expectTuff("2U8 > 1U8", 1);
+    });
+
+    test("1U8 >= 1U8 exits 1", () => {
+      expectTuff("1U8 >= 1U8", 1);
+    });
+
+    test("1U8 == 1U8 exits 1", () => {
+      expectTuff("1U8 == 1U8", 1);
+    });
+
+    test("1U8 == 2U8 exits 0", () => {
+      expectTuff("1U8 == 2U8", 0);
+    });
+
+    test("1U8 != 2U8 exits 1", () => {
+      expectTuff("1U8 != 2U8", 1);
+    });
+
+    test("true == true exits 1", () => {
+      expectTuff("true == true", 1);
+    });
+
+    test("true == false exits 0", () => {
+      expectTuff("true == false", 0);
+    });
+
+    test("true != false exits 1", () => {
+      expectTuff("true != false", 1);
+    });
+
+    test("mixed integer types: read<U8>() < read<U16>()", () => {
+      expectTuff("read<U8>() < read<U16>()", "10 20", 1);
+    });
+
+    test("comparison result used in &&", () => {
+      expectTuff("1U8 < 2U8 && 3U8 > 2U8", 1);
+    });
+
+    test("comparison binds tighter than &&: 1+1 == 2 && 3 > 2", () => {
+      expectTuff("1U8 + 1U8 == 2U8 && 3U8 > 2U8", 1);
+    });
+
+    test("let x: Bool = 5U8 > 3U8; x", () => {
+      expectTuff("let x: Bool = 5U8 > 3U8;\nx", 1);
+    });
+  });
+
+  describe("invalid", () => {
+    test("Bool < Bool throws", () => {
+      expect(() => compileTuffToTS("true < false")).toThrow();
+    });
+
+    test("Bool == integer throws", () => {
+      expect(() => compileTuffToTS("true == 1U8")).toThrow();
+    });
+
+    test("integer == Bool throws", () => {
+      expect(() => compileTuffToTS("1U8 == true")).toThrow();
+    });
+  });
+});
+
 describe("bool operators", () => {
   describe("valid", () => {
     test("true || false exits 1", () => {
