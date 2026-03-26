@@ -283,6 +283,73 @@ describe("Bool", () => {
   });
 });
 
+describe("block expressions", () => {
+  describe("valid", () => {
+    test("bare block as program { 5U8 } exits 5", () => {
+      expectTuff("{ 5U8 }", 5);
+    });
+
+    test("block with let as program finalexpr", () => {
+      expectTuff("{ let y: U8 = 3U8;\ny }", 3);
+    });
+
+    test("block as RHS of let", () => {
+      expectTuff("let x: U8 = { 5U8 };\nx", 5);
+    });
+
+    test("block with inner let as RHS", () => {
+      expectTuff("let x: U8 = { let y: U8 = 3U8;\ny };\nx", 3);
+    });
+
+    test("outer variable accessible inside block", () => {
+      expectTuff("let x: U8 = 10U8;\nlet y: U8 = { x };\ny", 10);
+    });
+
+    test("outer mut reassigned inside block", () => {
+      expectTuff("let mut x = 5U8;\nlet y: U8 = { x = 10U8;\nx };\nx", 10);
+    });
+
+    test("inner let shadows outer, outer unchanged after block", () => {
+      expectTuff(
+        "let x: U8 = 5U8;\nlet y: U8 = { let x: U8 = 10U8;\nx };\nx",
+        5,
+      );
+    });
+
+    test("nested blocks", () => {
+      expectTuff("let x: U8 = { let y: U8 = { 3U8 };\ny };\nx", 3);
+    });
+
+    test("block used as arithmetic operand", () => {
+      expectTuff("{ 3U8 } + 2U8", 5);
+    });
+
+    test("block returning Bool", () => {
+      expectTuff("let x: Bool = { true };\nx", 1);
+    });
+
+    test("block with read<T>() inside", () => {
+      expectTuff("let x: U8 = { read<U8>() };\nx", "42", 42);
+    });
+  });
+
+  describe("invalid", () => {
+    test("empty block throws", () => {
+      expect(() => compileTuffToTS("{ }")).toThrow();
+    });
+
+    test("block ending in let throws", () => {
+      expect(() => compileTuffToTS("{ let x: U8 = 5U8; }")).toThrow();
+    });
+
+    test("block-local variable out of scope throws", () => {
+      expect(() =>
+        compileTuffToTS("let y: U8 = { let z: U8 = 5U8;\nz };\nz"),
+      ).toThrow();
+    });
+  });
+});
+
 describe("comparisons", () => {
   describe("valid", () => {
     test("1U8 < 2U8 exits 1", () => {
