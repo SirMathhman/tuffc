@@ -6,6 +6,7 @@
   "packageManager": "bun@1.2.0",
   "scripts": {
     "dev": "bun run src/index.ts",
+    "test": "bun test",
     "build": "bunx tsc -p tsconfig.json",
     "check": "bunx tsc --noEmit",
     "start": "bun run dist/index.js"
