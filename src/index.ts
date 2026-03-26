@@ -1,4 +1,5 @@
 type IntSuffix = "U8" | "I8" | "U16" | "I16" | "U32" | "I32" | "U64" | "I64";
+type TuffType = IntSuffix | "Bool";
 
 const INT_RANGES: Record<IntSuffix, [number, number]> = {
   U8: [0, 255],
@@ -21,6 +22,8 @@ const VALID_SUFFIXES: Set<string> = new Set([
   "U64",
   "I64",
 ]);
+
+const VALID_TYPES: Set<string> = new Set([...VALID_SUFFIXES, "Bool"]);
 
 const SUFFIX_ORDER: IntSuffix[] = [
   "U8",
@@ -98,10 +101,13 @@ function tokenize(src: string): Tok[] {
 
 interface TypedExpr {
   code: string;
-  type: IntSuffix;
+  type: TuffType;
 }
 
-function promoteTypes(a: IntSuffix, b: IntSuffix): IntSuffix {
+function promoteTypes(a: TuffType, b: TuffType): IntSuffix {
+  if (a === "Bool" || b === "Bool") {
+    throw new Error(`Type error: Bool cannot be used in arithmetic`);
+  }
   const [aMin, aMax]: [number, number] = INT_RANGES[a];
   const [bMin, bMax]: [number, number] = INT_RANGES[b];
   const combinedMin: number = Math.min(aMin, bMin);
@@ -113,7 +119,10 @@ function promoteTypes(a: IntSuffix, b: IntSuffix): IntSuffix {
   throw new Error(`Type error: no integer type covers ${a} and ${b}`);
 }
 
-function isTypeCompatible(declared: IntSuffix, inferred: IntSuffix): boolean {
+function isTypeCompatible(declared: TuffType, inferred: TuffType): boolean {
+  if (declared === "Bool" || inferred === "Bool") {
+    return declared === inferred;
+  }
   const [dMin, dMax]: [number, number] = INT_RANGES[declared];
   const [iMin, iMax]: [number, number] = INT_RANGES[inferred];
   return dMin <= iMin && dMax >= iMax;
@@ -130,7 +139,7 @@ function validateIntLiteral(rawNum: string, suffix: IntSuffix): void {
 }
 
 interface Binding {
-  type: IntSuffix;
+  type: TuffType;
   jsName: string;
   mutable: boolean;
 }
@@ -158,14 +167,14 @@ function parseProgram(tokens: Tok[]): string {
     return consume();
   }
 
-  function expectSuffix(context: string): IntSuffix {
+  function expectType(context: string): TuffType {
     const t: Tok | undefined = peek();
-    if (!t || t.kind !== "NAME" || !VALID_SUFFIXES.has(t.val)) {
+    if (!t || t.kind !== "NAME" || !VALID_TYPES.has(t.val)) {
       throw new Error(
-        `Syntax error: expected type suffix ${context} but got "${t?.val ?? "end of input"}"`,
+        `Syntax error: expected type ${context} but got "${t?.val ?? "end of input"}"`,
       );
     }
-    return consume().val as IntSuffix;
+    return consume().val as TuffType;
   }
 
   function consumeSuffix(): IntSuffix {
@@ -183,7 +192,7 @@ function parseProgram(tokens: Tok[]): string {
     return binding;
   }
 
-  function assertTypeCompatible(target: IntSuffix, source: IntSuffix): void {
+  function assertTypeCompatible(target: TuffType, source: TuffType): void {
     if (!isTypeCompatible(target, source)) {
       throw new Error(`Type error: cannot assign ${source} to ${target}`);
     }
@@ -227,14 +236,22 @@ function parseProgram(tokens: Tok[]): string {
       return { code: t.val, type: suffix };
     }
 
+    if (t.kind === "NAME" && (t.val === "true" || t.val === "false")) {
+      consume();
+      return { code: t.val, type: "Bool" };
+    }
+
     if (t.kind === "NAME" && t.val === "read") {
       consume();
       expect("LT");
-      const readType: IntSuffix = expectSuffix('after "read<"');
+      const readType: TuffType = expectType('after "read<"');
       expect("GT");
       expect("LPAREN");
       expect("RPAREN");
-      return { code: "read()", type: readType };
+      if (readType === "Bool") {
+        return { code: "readBool()", type: "Bool" };
+      }
+      return { code: "read()", type: readType as IntSuffix };
     }
 
     if (t.kind === "NAME") {
@@ -265,10 +282,10 @@ function parseProgram(tokens: Tok[]): string {
           : false;
       const nameTok: Tok = expect("NAME");
       const hasAnnotation: boolean = peek()?.kind === "COLON";
-      let declaredType: IntSuffix;
+      let declaredType: TuffType;
       if (hasAnnotation) {
         consume();
-        declaredType = expectSuffix("for declared type");
+        declaredType = expectType("for declared type");
       } else if (!isMut) {
         throw new Error(
           `Syntax error: immutable let requires a type annotation`,
@@ -310,7 +327,7 @@ function parseProgram(tokens: Tok[]): string {
           `Syntax error: unexpected token "${tokens[pos]!.val}" after expression`,
         );
       }
-      stmts.push(`return ${expr.code};`);
+      stmts.push(`return ${expr.type === "Bool" ? `${expr.code} ? 1 : 0` : expr.code};`);
       return stmts.join("\n");
     }
   }

@@ -31,9 +31,14 @@ function expectTuff(
       : [];
   const mockRead: () => number = (): number =>
     parseInt(stdinTokens[readIdx++]!, 10);
+  const mockReadBool: () => boolean = (): boolean =>
+    stdinTokens[readIdx++] === "true";
   const raw: number | undefined =
     stdin !== undefined
-      ? (new Function("read", tsCode)(mockRead) as number | undefined)
+      ? (new Function("read", "readBool", tsCode)(
+          mockRead,
+          mockReadBool,
+        ) as number | undefined)
       : (new Function(tsCode)() as number | undefined);
   const exitCode: number = raw ?? 0;
   expect(exitCode).toBe(expectedExitCode);
@@ -217,6 +222,64 @@ describe("let statements", () => {
 
     test("arithmetic type with no covering type throws", () => {
       expect(() => compileTuffToTS("read<U64>() + read<I64>()")).toThrow();
+    });
+  });
+});
+
+describe("Bool", () => {
+  describe("valid", () => {
+    test("true exits 1", () => {
+      expectTuff("true", 1);
+    });
+
+    test("false exits 0", () => {
+      expectTuff("false", 0);
+    });
+
+    test("let x: Bool = true; x", () => {
+      expectTuff("let x: Bool = true;\nx", 1);
+    });
+
+    test("let x: Bool = false; x", () => {
+      expectTuff("let x: Bool = false;\nx", 0);
+    });
+
+    test("let mut x = true; x = false; x exits 0", () => {
+      expectTuff("let mut x = true;\nx = false;\nx", 0);
+    });
+
+    test("read<Bool>() exits 1 for stdin true", () => {
+      expectTuff("read<Bool>()", "true", 1);
+    });
+
+    test("read<Bool>() exits 0 for stdin false", () => {
+      expectTuff("read<Bool>()", "false", 0);
+    });
+
+    test("let mut x: Bool = false; x = read<Bool>(); x", () => {
+      expectTuff("let mut x: Bool = false;\nx = read<Bool>();\nx", "true", 1);
+    });
+
+    test("read<Bool>() and read<U8>() share stdin index", () => {
+      expectTuff(
+        "let a: U8 = read<U8>();\nlet b: Bool = read<Bool>();\na",
+        "42 true",
+        42,
+      );
+    });
+  });
+
+  describe("invalid", () => {
+    test("Bool in arithmetic throws", () => {
+      expect(() => compileTuffToTS("true + 1U8")).toThrow();
+    });
+
+    test("assign Bool to integer type throws", () => {
+      expect(() => compileTuffToTS("let x: U8 = true;")).toThrow();
+    });
+
+    test("assign integer to Bool type throws", () => {
+      expect(() => compileTuffToTS("let x: Bool = 5U8;")).toThrow();
     });
   });
 });
