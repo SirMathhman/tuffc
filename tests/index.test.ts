@@ -1,7 +1,7 @@
 /// <reference types="bun-types" />
 
 import { describe, expect, test } from "bun:test";
-import { compileTuffToTS, evaluateTuff, greet } from "../src/index";
+import { compileTuffToTS, evaluateTuff, greet } from "../src/index.ts";
 
 const supportedIntegerCases = [
   { source: "100U8", ts: "export default 100;", value: 100 },
@@ -74,12 +74,48 @@ const readCases = [
   },
 ] as const;
 
-const expressionCases = [
+const arithmeticCases = [
+  {
+    source: "1U8 + 2U8 * 3U8",
+    ts: "export default (1 + (2 * 3));",
+    stdIn: "",
+    value: 7,
+  },
+  {
+    source: "(1U8 + 2U8) * 3U8",
+    ts: "export default ((1 + 2) * 3);",
+    stdIn: "",
+    value: 9,
+  },
+  {
+    source: "10U8 - 3U8 - 2U8",
+    ts: "export default ((10 - 3) - 2);",
+    stdIn: "",
+    value: 5,
+  },
+  {
+    source: "8U8 / 2U8",
+    ts: "export default __tuffDiv(8, 2);",
+    stdIn: "",
+    value: 4,
+  },
+  {
+    source: "9U8 % 4U8",
+    ts: "export default __tuffMod(9, 4);",
+    stdIn: "",
+    value: 1,
+  },
   {
     source: "read<U8>() + read<U8>() + 3U8",
     stdIn: "1 2",
-    ts: 'export default __tuffRead("U8") + __tuffRead("U8") + 3;',
+    ts: 'export default ((__tuffRead("U8") + __tuffRead("U8")) + 3);',
     value: 6,
+  },
+  {
+    source: "read<U64>() + 2U8",
+    stdIn: "100",
+    ts: 'export default (__tuffRead("U64") + BigInt(2));',
+    value: 102n,
   },
 ] as const;
 
@@ -152,8 +188,8 @@ describe("evaluateTuff", () => {
     }
   });
 
-  test("compiles addition expressions with multiple stdin reads", () => {
-    for (const { source, ts: expectedTs } of expressionCases) {
+  test("compiles arithmetic expressions to TypeScript", () => {
+    for (const { source, ts: expectedTs } of arithmeticCases) {
       expect(compileTuffToTS(source)).toBe(expectedTs);
     }
   });
@@ -164,9 +200,15 @@ describe("evaluateTuff", () => {
     }
   });
 
-  test("evaluates addition expressions using stdin", () => {
-    for (const { source, stdIn, value } of expressionCases) {
+  test("evaluates arithmetic expressions", () => {
+    for (const { source, stdIn, value } of arithmeticCases) {
       expect(evaluateTuff(source, stdIn) as any).toBe(value as any);
+    }
+  });
+
+  test("rejects division by zero", () => {
+    for (const source of ["1U8 / 0U8", "1U64 % 0U64"]) {
+      expectRangeError(() => evaluateTuff(source));
     }
   });
 

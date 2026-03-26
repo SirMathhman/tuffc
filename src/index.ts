@@ -10,31 +10,42 @@ type IntegerSuffix =
   | "I32"
   | "I64";
 
+type BinaryOperator = "+" | "-" | "*" | "/" | "%";
+type UnaryOperator = "+" | "-";
+
 interface IntegerSpec {
   readonly min: bigint;
   readonly max: bigint;
   readonly emitBigInt: boolean;
 }
 
-interface ParsedIntegerTerm {
+interface IntegerNode {
   readonly kind: "integer";
   readonly value: bigint;
   readonly suffix: IntegerSuffix;
   readonly emitBigInt: boolean;
 }
 
-interface ParsedReadTerm {
+interface ReadNode {
   readonly kind: "read";
   readonly suffix: IntegerSuffix;
   readonly emitBigInt: boolean;
 }
 
-type ParsedTerm = ParsedIntegerTerm | ParsedReadTerm;
-
-interface ParsedProgram {
-  readonly terms: ParsedTerm[];
-  readonly needsBigInt: boolean;
+interface UnaryNode {
+  readonly kind: "unary";
+  readonly operator: UnaryOperator;
+  readonly operand: ExprNode;
 }
+
+interface BinaryNode {
+  readonly kind: "binary";
+  readonly operator: BinaryOperator;
+  readonly left: ExprNode;
+  readonly right: ExprNode;
+}
+
+type ExprNode = IntegerNode | ReadNode | UnaryNode | BinaryNode;
 
 const INTEGER_LITERAL = /^\s*([+-])?(\d+)(U8|U16|U32|U64|I8|I16|I32|I64)/;
 const READ_LITERAL = /^\s*read<(U8|U16|U32|U64|I8|I16|I32|I64)>\(\)/;
@@ -55,142 +66,230 @@ const INTEGER_SPECS: Record<IntegerSuffix, IntegerSpec> = {
   },
 };
 
-function parseIntegerLiteral(source: string): ParsedIntegerTerm {
-  const match = INTEGER_LITERAL.exec(source);
+class Parser {
+  private index = 0;
 
-  if (!match) {
-    throw new SyntaxError("Unsupported Tuff source.");
-  }
+  public constructor(private readonly source: string) {}
 
-  const sign = match[1] ?? "";
-  const magnitudeText = match[2];
+  public parseProgram(): ExprNode {
+    const expression = this.parseExpression();
+    this.skipWhitespace();
 
-  if (magnitudeText === undefined) {
-    throw new SyntaxError("Unsupported Tuff source.");
-  }
-
-  const magnitude = BigInt(magnitudeText);
-  const suffix = match[3] as IntegerSuffix;
-  const spec = INTEGER_SPECS[suffix];
-
-  if (sign === "-" && suffix.startsWith("U")) {
-    throw new RangeError("Unsigned integer literals cannot be signed.");
-  }
-
-  const value = sign === "-" ? -magnitude : magnitude;
-
-  assertIntegerInRange(value, suffix);
-
-  return {
-    kind: "integer",
-    value,
-    suffix,
-    emitBigInt: spec.emitBigInt,
-  };
-}
-
-function parseReadLiteral(source: string): ParsedReadTerm {
-  const match = READ_LITERAL.exec(source);
-
-  if (!match) {
-    throw new SyntaxError("Unsupported Tuff source.");
-  }
-
-  const suffix = match[1] as IntegerSuffix;
-
-  return {
-    kind: "read",
-    suffix,
-    emitBigInt: INTEGER_SPECS[suffix].emitBigInt,
-  };
-}
-
-function parseTermFrom(source: string): {
-  readonly term: ParsedTerm;
-  readonly length: number;
-} {
-  const readMatch = READ_LITERAL.exec(source);
-
-  if (readMatch) {
-    return {
-      term: parseReadLiteral(source),
-      length: readMatch[0].length,
-    };
-  }
-
-  const integerMatch = INTEGER_LITERAL.exec(source);
-
-  if (integerMatch) {
-    return {
-      term: parseIntegerLiteral(source),
-      length: integerMatch[0].length,
-    };
-  }
-
-  throw new SyntaxError("Unsupported Tuff source.");
-}
-
-function parseProgram(source: string): ParsedProgram {
-  const terms: ParsedTerm[] = [];
-  let index = 0;
-
-  while (index < source.length) {
-    index = skipWhitespace(source, index);
-
-    if (index >= source.length) {
-      break;
-    }
-
-    const { term, length } = parseTermFrom(source.slice(index));
-    terms.push(term);
-    index += length;
-    index = skipWhitespace(source, index);
-
-    if (index >= source.length) {
-      break;
-    }
-
-    if (source[index] !== "+") {
+    if (!this.isAtEnd()) {
       throw new SyntaxError("Unsupported Tuff source.");
     }
 
-    index += 1;
+    return expression;
   }
 
-  if (terms.length === 0) {
+  private parseExpression(): ExprNode {
+    let node = this.parseTerm();
+
+    while (true) {
+      this.skipWhitespace();
+      const operator = this.peek();
+
+      if (operator !== "+" && operator !== "-") {
+        break;
+      }
+
+      this.index += 1;
+      const right = this.parseTerm();
+      node = { kind: "binary", operator, left: node, right };
+    }
+
+    return node;
+  }
+
+  private parseTerm(): ExprNode {
+    let node = this.parseFactor();
+
+    while (true) {
+      this.skipWhitespace();
+      const operator = this.peek();
+
+      if (operator !== "*" && operator !== "/" && operator !== "%") {
+        break;
+      }
+
+      this.index += 1;
+      const right = this.parseFactor();
+      node = { kind: "binary", operator, left: node, right };
+    }
+
+    return node;
+  }
+
+  private parseFactor(): ExprNode {
+    this.skipWhitespace();
+
+    const integer = this.tryParseIntegerLiteral();
+
+    if (integer !== undefined) {
+      return integer;
+    }
+
+    const read = this.tryParseReadLiteral();
+
+    if (read !== undefined) {
+      return read;
+    }
+
+    const current = this.peek();
+
+    if (current === "+" || current === "-") {
+      this.index += 1;
+      const operand = this.parseFactor();
+      return { kind: "unary", operator: current, operand };
+    }
+
+    if (current === "(") {
+      this.index += 1;
+      const expression = this.parseExpression();
+      this.skipWhitespace();
+
+      if (this.peek() !== ")") {
+        throw new SyntaxError("Unsupported Tuff source.");
+      }
+
+      this.index += 1;
+      return expression;
+    }
+
     throw new SyntaxError("Unsupported Tuff source.");
   }
 
-  return {
-    terms,
-    needsBigInt: terms.some((term) => term.emitBigInt),
-  };
-}
+  private tryParseIntegerLiteral(): IntegerNode | undefined {
+    const match = INTEGER_LITERAL.exec(this.remaining());
 
-function compileTermToTs(term: ParsedTerm, needsBigInt: boolean): string {
-  if (term.kind === "read") {
-    if (needsBigInt && !term.emitBigInt) {
-      return `BigInt(__tuffRead("${term.suffix}"))`;
+    if (!match) {
+      return undefined;
     }
 
-    return `__tuffRead("${term.suffix}")`;
+    this.index += match[0].length;
+
+    const sign = match[1] ?? "";
+    const magnitudeText = match[2];
+
+    if (magnitudeText === undefined) {
+      throw new SyntaxError("Unsupported Tuff source.");
+    }
+
+    const magnitude = BigInt(magnitudeText);
+    const suffix = match[3] as IntegerSuffix;
+
+    if (sign === "-" && suffix.startsWith("U")) {
+      throw new RangeError("Unsigned integer literals cannot be signed.");
+    }
+
+    const value = sign === "-" ? -magnitude : magnitude;
+    assertIntegerInRange(value, suffix);
+
+    return {
+      kind: "integer",
+      value,
+      suffix,
+      emitBigInt: INTEGER_SPECS[suffix].emitBigInt,
+    };
   }
 
-  if (needsBigInt && !term.emitBigInt) {
-    return `BigInt(${term.value})`;
+  private tryParseReadLiteral(): ReadNode | undefined {
+    const match = READ_LITERAL.exec(this.remaining());
+
+    if (!match) {
+      return undefined;
+    }
+
+    this.index += match[0].length;
+
+    const suffix = match[1] as IntegerSuffix;
+
+    return {
+      kind: "read",
+      suffix,
+      emitBigInt: INTEGER_SPECS[suffix].emitBigInt,
+    };
   }
 
-  return term.emitBigInt ? `${term.value}n` : `${term.value}`;
+  private skipWhitespace(): void {
+    while (
+      this.index < this.source.length &&
+      /\s/.test(this.source[this.index] ?? "")
+    ) {
+      this.index += 1;
+    }
+  }
+
+  private isAtEnd(): boolean {
+    return this.index >= this.source.length;
+  }
+
+  private peek(): string {
+    return this.source[this.index] ?? "";
+  }
+
+  private remaining(): string {
+    return this.source.slice(this.index);
+  }
 }
 
-function skipWhitespace(source: string, index: number): number {
-  let nextIndex = index;
+function assertIntegerInRange(value: bigint, suffix: IntegerSuffix): void {
+  const spec = INTEGER_SPECS[suffix];
 
-  while (nextIndex < source.length && /\s/.test(source[nextIndex] ?? "")) {
-    nextIndex += 1;
+  if (value < spec.min || value > spec.max) {
+    throw new RangeError(`${suffix} literals must be within range.`);
   }
+}
 
-  return nextIndex;
+function expressionUsesBigInt(node: ExprNode): boolean {
+  switch (node.kind) {
+    case "integer":
+    case "read":
+      return node.emitBigInt;
+    case "unary":
+      return expressionUsesBigInt(node.operand);
+    case "binary":
+      return (
+        expressionUsesBigInt(node.left) || expressionUsesBigInt(node.right)
+      );
+  }
+}
+
+function compileExpression(node: ExprNode, needsBigInt: boolean): string {
+  switch (node.kind) {
+    case "integer":
+      if (needsBigInt && !node.emitBigInt) {
+        return `BigInt(${node.value})`;
+      }
+
+      return node.emitBigInt ? `${node.value}n` : `${node.value}`;
+    case "read":
+      if (needsBigInt && !node.emitBigInt) {
+        return `BigInt(__tuffRead("${node.suffix}"))`;
+      }
+
+      return `__tuffRead("${node.suffix}")`;
+    case "unary":
+      if (node.operator === "+") {
+        return compileExpression(node.operand, needsBigInt);
+      }
+
+      return `-(${compileExpression(node.operand, needsBigInt)})`;
+    case "binary": {
+      const left = compileExpression(node.left, needsBigInt);
+      const right = compileExpression(node.right, needsBigInt);
+
+      if (node.operator === "/") {
+        return `__tuffDiv(${left}, ${right})`;
+      }
+
+      if (node.operator === "%") {
+        return `__tuffMod(${left}, ${right})`;
+      }
+
+      return `(${left} ${node.operator} ${right})`;
+    }
+  }
 }
 
 function parseStdInToken(token: string): bigint {
@@ -209,14 +308,6 @@ function parseStdInToken(token: string): bigint {
 
   const magnitude = BigInt(magnitudeText);
   return sign === "-" ? -magnitude : magnitude;
-}
-
-function assertIntegerInRange(value: bigint, suffix: IntegerSuffix): void {
-  const spec = INTEGER_SPECS[suffix];
-
-  if (value < spec.min || value > spec.max) {
-    throw new RangeError(`${suffix} literals must be within range.`);
-  }
 }
 
 function createStdInReader(stdIn: string) {
@@ -248,6 +339,29 @@ function createStdInReader(stdIn: string) {
   };
 }
 
+function createDivisionHelper(operator: "/" | "%") {
+  return (left: number | bigint, right: number | bigint): number | bigint => {
+    const isZero =
+      (typeof right === "number" && right === 0) ||
+      (typeof right === "bigint" && right === 0n);
+
+    if (isZero) {
+      throw new RangeError(
+        operator === "/" ? "Division by zero." : "Modulo by zero.",
+      );
+    }
+
+    if (typeof left === "bigint" || typeof right === "bigint") {
+      const bigLeft = typeof left === "bigint" ? left : BigInt(left);
+      const bigRight = typeof right === "bigint" ? right : BigInt(right);
+
+      return operator === "/" ? bigLeft / bigRight : bigLeft % bigRight;
+    }
+
+    return operator === "/" ? left / right : left % right;
+  };
+}
+
 function readExecutedValue(value: unknown): number | bigint | undefined {
   if (typeof value === "number" || typeof value === "bigint") {
     return value;
@@ -269,12 +383,11 @@ export function greet(name: string): string {
 }
 
 export function compileTuffToTS(source: string): string {
-  const program = parseProgram(source);
-  const tsExpression = program.terms
-    .map((term) => compileTermToTs(term, program.needsBigInt))
-    .join(" + ");
+  const ast = new Parser(source).parseProgram();
+  const needsBigInt = expressionUsesBigInt(ast);
+  const expression = compileExpression(ast, needsBigInt);
 
-  return `export default ${tsExpression};`;
+  return `export default ${expression};`;
 }
 
 export function evaluateTuff(tuffSource: string, stdIn = ""): number | bigint {
@@ -288,12 +401,16 @@ export function evaluateTuff(tuffSource: string, stdIn = ""): number | bigint {
 
   const module = { exports: {} as unknown };
   const __tuffRead = createStdInReader(stdIn);
+  const __tuffDiv = createDivisionHelper("/");
+  const __tuffMod = createDivisionHelper("%");
   const executionResult = new Function(
     "module",
     "exports",
     "__tuffRead",
+    "__tuffDiv",
+    "__tuffMod",
     `${jsSource}\nreturn module.exports;`,
-  )(module, module.exports, __tuffRead);
+  )(module, module.exports, __tuffRead, __tuffDiv, __tuffMod);
 
   const possibleValues = [executionResult, module.exports];
 
