@@ -221,6 +221,54 @@ describe("let statements", () => {
   });
 });
 
+describe("let mut", () => {
+  describe("valid", () => {
+    test("let mut x = 5U8; x exits 5", () => {
+      expectTuff("let mut x = 5U8;\nx", 5);
+    });
+
+    test("let mut x = 5U8; x = 10U8; x exits 10", () => {
+      expectTuff("let mut x = 5U8;\nx = 10U8;\nx", 10);
+    });
+
+    test("let mut with explicit annotation (widening)", () => {
+      expectTuff("let mut x: U16 = 5U8;\nx", 5);
+    });
+
+    test("reassign with compatible (wider) type", () => {
+      expectTuff("let mut x: U16 = 5U8;\nx = 200U8;\nx", 200);
+    });
+
+    test("let mut with arithmetic RHS", () => {
+      expectTuff("let mut x = read<U8>() + read<U8>();\nx", "3 4", 7);
+    });
+
+    test("reassign using other variables", () => {
+      expectTuff("let mut x = 1U8;\nlet y: U8 = 2U8;\nx = y;\nx", 2);
+    });
+
+    test("multiple reassignments", () => {
+      expectTuff("let mut x = 1U8;\nx = 2U8;\nx = 3U8;\nx", 3);
+    });
+  });
+
+  describe("invalid", () => {
+    test("reassign immutable let throws", () => {
+      expect(() => compileTuffToTS("let x: U8 = 5U8;\nx = 10U8;\nx")).toThrow();
+    });
+
+    test("reassign undeclared variable throws", () => {
+      expect(() => compileTuffToTS("x = 5U8;\nx")).toThrow();
+    });
+
+    test("reassign with incompatible type throws", () => {
+      expect(() =>
+        compileTuffToTS("let mut x = 5U8;\nx = read<I8>();\nx"),
+      ).toThrow();
+    });
+  });
+});
+
 describe("whitespace", () => {
   test("empty string exits 0", () => {
     expectTuff("", 0);

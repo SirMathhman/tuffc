@@ -132,6 +132,7 @@ function validateIntLiteral(rawNum: string, suffix: IntSuffix): void {
 interface Binding {
   type: IntSuffix;
   jsName: string;
+  mutable: boolean;
 }
 
 function parseProgram(tokens: Tok[]): string {
@@ -174,10 +175,21 @@ function parseProgram(tokens: Tok[]): string {
       : "I32";
   }
 
-  function parseBinaryLevel(
-    inner: () => TypedExpr,
-    ops: Set<TK>,
-  ): TypedExpr {
+  function requireBinding(name: string): Binding {
+    const binding: Binding | undefined = env.get(name);
+    if (binding === undefined) {
+      throw new Error(`Type error: unknown variable "${name}"`);
+    }
+    return binding;
+  }
+
+  function assertTypeCompatible(target: IntSuffix, source: IntSuffix): void {
+    if (!isTypeCompatible(target, source)) {
+      throw new Error(`Type error: cannot assign ${source} to ${target}`);
+    }
+  }
+
+  function parseBinaryLevel(inner: () => TypedExpr, ops: Set<TK>): TypedExpr {
     let left: TypedExpr = inner();
     let op: Tok | undefined = peek();
     while (op !== undefined && ops.has(op.kind)) {
@@ -226,10 +238,7 @@ function parseProgram(tokens: Tok[]): string {
     }
 
     if (t.kind === "NAME") {
-      const binding: Binding | undefined = env.get(t.val);
-      if (binding === undefined) {
-        throw new Error(`Type error: unknown variable "${t.val}"`);
-      }
+      const binding: Binding = requireBinding(t.val);
       consume();
       return { code: binding.jsName, type: binding.type };
     }
@@ -250,22 +259,50 @@ function parseProgram(tokens: Tok[]): string {
   while (pos < tokens.length) {
     if (peek()?.kind === "NAME" && peek()?.val === "let") {
       consume();
+      const isMut: boolean =
+        peek()?.kind === "NAME" && peek()?.val === "mut"
+          ? (consume(), true)
+          : false;
       const nameTok: Tok = expect("NAME");
-      expect("COLON");
-      const declaredType: IntSuffix = expectSuffix("for declared type");
+      const hasAnnotation: boolean = peek()?.kind === "COLON";
+      let declaredType: IntSuffix;
+      if (hasAnnotation) {
+        consume();
+        declaredType = expectSuffix("for declared type");
+      } else if (!isMut) {
+        throw new Error(
+          `Syntax error: immutable let requires a type annotation`,
+        );
+      } else {
+        declaredType = "I32"; // placeholder; overwritten after RHS parse
+      }
       expect("EQ");
       const rhs: TypedExpr = parseAdd();
       expect("SEMI");
-      if (!isTypeCompatible(declaredType, rhs.type)) {
-        throw new Error(
-          `Type error: cannot assign ${rhs.type} to ${declaredType}`,
-        );
+      if (!hasAnnotation) {
+        declaredType = rhs.type;
+      } else {
+        assertTypeCompatible(declaredType, rhs.type);
       }
       const n: number = (nameCounter.get(nameTok.val) ?? 0) + 1;
       nameCounter.set(nameTok.val, n);
       const jsName: string = n === 1 ? nameTok.val : `${nameTok.val}_${n}`;
-      env.set(nameTok.val, { type: declaredType, jsName });
-      stmts.push(`const ${jsName} = ${rhs.code};`);
+      env.set(nameTok.val, { type: declaredType, jsName, mutable: isMut });
+      const keyword: string = isMut ? "let" : "const";
+      stmts.push(`${keyword} ${jsName} = ${rhs.code};`);
+    } else if (peek()?.kind === "NAME" && tokens[pos + 1]?.kind === "EQ") {
+      const nameTok: Tok = consume();
+      consume(); // EQ
+      const rhs: TypedExpr = parseAdd();
+      expect("SEMI");
+      const binding: Binding = requireBinding(nameTok.val);
+      if (!binding.mutable) {
+        throw new Error(
+          `Type error: cannot assign to immutable variable "${nameTok.val}"`,
+        );
+      }
+      assertTypeCompatible(binding.type, rhs.type);
+      stmts.push(`${binding.jsName} = ${rhs.code};`);
     } else {
       const expr: TypedExpr = parseAdd();
       if (pos < tokens.length) {
