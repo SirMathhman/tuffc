@@ -1732,4 +1732,63 @@ describe("while statements", () => {
       });
     });
   });
+
+  describe("Char Type", () => {
+    describe("valid", () => {
+      test("simple character literal", () => {
+        expectTuff("let c: Char = 'a'; c", 97);
+      });
+
+      test("newline escape sequence", () => {
+        expectTuff("let c: Char = '\\n'; c", 10);
+      });
+
+      test("return char from function", () => {
+        expectTuff("fn getChar() : Char => { 'Z' }; getChar()", 90);
+      });
+
+      test("equality and inequality comparisons", () => {
+        expectTuff("'a' == 'a'", 1);
+        expectTuff("'a' != 'b'", 1);
+        expectTuff("'a' < 'b'", 1);
+        expectTuff("'z' >= 'a'", 1);
+      });
+    });
+
+    describe("invalid", () => {
+      test("unclosed char literal", () => {
+        expect(() => compileTuffToTS("let c = 'a;")).toThrow(
+          /Expected ' after char|unexpected/i,
+        );
+      });
+
+      test("multi-character literal", () => {
+        expect(() => compileTuffToTS("let c = 'abc';")).toThrow(
+          /Expected ' after char|unexpected/i,
+        );
+      });
+
+      test("arithmetic on char", () => {
+        expect(() => compileTuffToTS("let c = 'a' + 'b';")).toThrow(
+          /arithmetic/i,
+        );
+      });
+
+      test("assign char to int", () => {
+        expect(() => compileTuffToTS("let x: U8 = 'a';")).toThrow(
+          /assign/i,
+        );
+      });
+
+      test("non-ASCII char", () => {
+        expect(() => compileTuffToTS("let c = 'ñ';")).toThrow(/ASCII/i);
+      });
+
+      test("invalid escape", () => {
+        expect(() => compileTuffToTS("let c = '\\x';")).toThrow(
+          /escape sequence/i,
+        );
+      });
+    });
+  });
 });

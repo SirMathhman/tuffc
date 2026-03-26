@@ -1,5 +1,5 @@
 type IntSuffix = "U8" | "I8" | "U16" | "I16" | "U32" | "I32" | "U64" | "I64";
-type PrimitiveType = IntSuffix | "Bool" | "Void";
+type PrimitiveType = IntSuffix | "Bool" | "Void" | "Char";
 
 interface PointerType {
   kind: "Pointer";
@@ -51,7 +51,12 @@ const VALID_SUFFIXES: Set<string> = new Set([
   "I64",
 ]);
 
-const VALID_TYPES: Set<string> = new Set([...VALID_SUFFIXES, "Bool", "Void"]);
+const VALID_TYPES: Set<string> = new Set([
+  ...VALID_SUFFIXES,
+  "Bool",
+  "Void",
+  "Char",
+]);
 
 const SUFFIX_ORDER: IntSuffix[] = [
   "U8",
@@ -96,7 +101,8 @@ type TK =
   | "PIPE_EQ"
   | "ARROW"
   | "COMMA"
-  | "COLON_COLON";
+  | "COLON_COLON"
+  | "CHAR_LIT";
 
 interface Tok {
   kind: TK;
@@ -186,6 +192,28 @@ function tokenize(src: string): Tok[] {
       } else if (ch === "&") {
         tokens.push({ kind: "AMP", val: "&" });
         i += 1;
+      } else if (ch === "'") {
+        let val: string = "";
+        if (src[i + 1] === "\\") {
+          const esc: string | undefined = src[i + 2];
+          if (esc === "n") val = "\n";
+          else if (esc === "t") val = "\t";
+          else if (esc === "r") val = "\r";
+          else if (esc === "0") val = "\0";
+          else if (esc === "'") val = "'";
+          else if (esc === "\\") val = "\\";
+          else throw new Error("Invalid escape sequence: \\" + esc);
+          if (src[i + 3] !== "'") throw new Error("Expected ' after char");
+          i += 4;
+        } else {
+          val = src[i + 1]!;
+          if (src[i + 2] !== "'") throw new Error("Expected ' after char");
+          i += 3;
+        }
+        const code: number = val.charCodeAt(0);
+        if (code > 127 || isNaN(code))
+          throw new Error("Only ASCII chars are supported, got code " + code);
+        tokens.push({ kind: "CHAR_LIT", val: code.toString() });
       } else {
         const kind: TK | undefined = CH_TO_TK.get(ch);
         if (!kind)
@@ -263,6 +291,9 @@ function promoteTypes(a: TuffType, b: TuffType): IntSuffix {
   if (a === "Void" || b === "Void") {
     throw new Error("Type error: Void cannot be used in arithmetic");
   }
+  if (a === "Char" || b === "Char") {
+    throw new Error("Type error: Char cannot be used in arithmetic");
+  }
   const [aMin, aMax]: [number, number] = INT_RANGES.get(a as IntSuffix)!;
   const [bMin, bMax]: [number, number] = INT_RANGES.get(b as IntSuffix)!;
   const combinedMin: number = Math.min(aMin, bMin);
@@ -294,6 +325,9 @@ function isTypeCompatible(declared: TuffType, inferred: TuffType): boolean {
     return declared === inferred;
   }
   if (declared === "Void" || inferred === "Void") {
+    return declared === inferred;
+  }
+  if (declared === "Char" || inferred === "Char") {
     return declared === inferred;
   }
   const [dMin, dMax]: [number, number] = INT_RANGES.get(declared as IntSuffix)!;
@@ -329,6 +363,10 @@ function findCommonType(t1: TuffType, t2: TuffType): TuffType {
   }
 
   if (t1 === "Bool" || t2 === "Bool") {
+    throwNoCommonType(t1, t2);
+  }
+
+  if (t1 === "Char" || t2 === "Char") {
     throwNoCommonType(t1, t2);
   }
 
@@ -800,6 +838,11 @@ function parseProgram(tokens: Tok[]): string {
       return { code: t.val, type: suffix };
     }
 
+    if (t.kind === "CHAR_LIT") {
+      consume();
+      return { code: t.val, type: "Char" };
+    }
+
     if (t.kind === "NAME" && (t.val === "true" || t.val === "false")) {
       consume();
       return { code: t.val, type: "Bool" };
@@ -1076,6 +1119,9 @@ function parseProgram(tokens: Tok[]): string {
       if (left.type === "Bool" || right.type === "Bool") {
         throw new Error("Type error: " + op.val + " requires integer operands");
       }
+      if ((left.type === "Char") !== (right.type === "Char")) {
+        throw new Error("Type error: cannot compare Char with other types");
+      }
       if (leftIsPtr || rightIsPtr) {
         throw new Error(
           "Type error: cannot use " + op.val + " on pointer types",
@@ -1100,6 +1146,9 @@ function parseProgram(tokens: Tok[]): string {
       // Non-pointer comparisons
       if ((left.type === "Bool") !== (right.type === "Bool")) {
         throw new Error("Type error: cannot compare Bool with integer");
+      }
+      if ((left.type === "Char") !== (right.type === "Char")) {
+        throw new Error("Type error: cannot compare Char with other types");
       }
     }
     return buildTypedComparison(left, op.val, right);
