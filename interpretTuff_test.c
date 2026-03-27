@@ -46,20 +46,42 @@ static int assert_result(
 int main(void)
 {
     int passed = 1;
+    typedef struct TestCase
+    {
+        const char *name;
+        const char *input;
+        int expected_ok;
+        int expected_value;
+        const char *expected_error;
+    } TestCase;
 
-    passed &= assert_result("valid 100U8", interpretTuff("100U8"), 1, 100, NULL);
-    passed &= assert_result("valid expression spaced", interpretTuff("100U8 + 50U8"), 1, 150, NULL);
-    passed &= assert_result("valid expression compact", interpretTuff("100U8+50U8"), 1, 150, NULL);
-    passed &= assert_result("valid expression chain", interpretTuff("1U8 + 2U8 + 3U8"), 1, 6, NULL);
+    const TestCase cases[] = {
+        {"valid 100U8", "100U8", 1, 100, NULL},
+        {"valid expression spaced", "100U8 + 50U8", 1, 150, NULL},
+        {"valid expression compact", "100U8+50U8", 1, 150, NULL},
+        {"valid expression chain", "1U8 + 2U8 + 3U8", 1, 6, NULL},
+        {"empty input", "", 0, 0, "empty input"},
+        {"missing suffix", "100", 0, 0, "missing U8 suffix"},
+        {"lowercase suffix", "100u8", 0, 0, "missing U8 suffix"},
+        {"non-digit", "10aU8", 0, 0, "invalid digits"},
+        {"out of range", "256U8", 0, 0, "value out of range"},
+        {"sum out of range", "200U8 + 100U8", 0, 0, "value out of range"},
+        {"missing rhs term", "100U8 +", 0, 0, "expected term"},
+        {"invalid operator", "100U8 - 50U8", 0, 0, "invalid operator"},
+    };
+    size_t case_count = sizeof(cases) / sizeof(cases[0]);
+    size_t i = 0;
+
     passed &= assert_result("null input", interpretTuff(NULL), 0, 0, "null input");
-    passed &= assert_result("empty input", interpretTuff(""), 0, 0, "empty input");
-    passed &= assert_result("missing suffix", interpretTuff("100"), 0, 0, "missing U8 suffix");
-    passed &= assert_result("lowercase suffix", interpretTuff("100u8"), 0, 0, "missing U8 suffix");
-    passed &= assert_result("non-digit", interpretTuff("10aU8"), 0, 0, "invalid digits");
-    passed &= assert_result("out of range", interpretTuff("256U8"), 0, 0, "value out of range");
-    passed &= assert_result("sum out of range", interpretTuff("200U8 + 100U8"), 0, 0, "value out of range");
-    passed &= assert_result("missing rhs term", interpretTuff("100U8 +"), 0, 0, "expected term");
-    passed &= assert_result("invalid operator", interpretTuff("100U8 - 50U8"), 0, 0, "invalid operator");
+    for (i = 0; i < case_count; i++)
+    {
+        passed &= assert_result(
+            cases[i].name,
+            interpretTuff(cases[i].input),
+            cases[i].expected_ok,
+            cases[i].expected_value,
+            cases[i].expected_error);
+    }
 
     if (!passed)
     {

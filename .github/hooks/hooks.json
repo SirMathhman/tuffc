@@ -7,7 +7,7 @@
       },
       {
         "type": "command",
-        "command": "make find-duplicates; if ($LASTEXITCODE -ne 0) { exit 2 }"
+        "command": "pmd cpd interpretTuff.c interpretTuff.h interpretTuff_test.c --language cpp --minimum-tokens 40 --ignore-literals --ignore-identifiers; if ($LASTEXITCODE -ne 0) { exit 2 }"
       }
     ]
   }

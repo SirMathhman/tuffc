@@ -58,10 +58,3 @@ ifeq ($(OS),Windows_NT)
 else
 	rm -f $(EXE)
 endif
-
-find-duplicates:
-ifeq ($(OS),Windows_NT)
-	@where cpd >nul 2>nul && cpd interpretTuff.c interpretTuff.h interpretTuff_test.c --language cpp --minimum-tokens 40 --ignore-literals --ignore-identifiers || echo cpd not found on PATH, skipping duplicate check.
-else
-	@command -v cpd >/dev/null 2>&1 && cpd interpretTuff.c interpretTuff.h interpretTuff_test.c --language cpp --minimum-tokens 40 --ignore-literals --ignore-identifiers || echo "cpd not found on PATH, skipping duplicate check."
-endif
