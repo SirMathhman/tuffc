@@ -9,6 +9,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 async function executeTuffCode(
   tuffSourceCode: string,
+  stdIn?: string,
 ): Promise<number | bigint> {
   const compileResult = compileTuffToTS(tuffSourceCode);
   if (!compileResult.ok) {
@@ -33,7 +34,10 @@ async function executeTuffCode(
   }
 
   const jsCode = compileTSToJS(tsCode);
-  return new Function("return " + jsCode)() as number | bigint;
+  const stdinFn = stdIn !== undefined ? () => stdIn : () => "";
+  return new Function("__tuff_stdin", "return " + jsCode)(stdinFn) as
+    | number
+    | bigint;
 }
 
 test("executeTuffCode('100') returns 100", async () => {
@@ -78,5 +82,27 @@ for (const input of OUT_OF_RANGE_CASES) {
         err instanceof Error &&
         err.message.toLowerCase().includes("out of range"),
     ),
+  );
+}
+
+type ReadCase = [string, string, number | bigint];
+
+const READ_CASES: ReadCase[] = [
+  ["read<U8>()", "100", 100],
+  ["read<U16>()", "1000", 1000],
+  ["read<U32>()", "100000", 100000],
+  ["read<U64>()", "100", 100n],
+  ["read<I8>()", "-50", -50],
+  ["read<I16>()", "-1000", -1000],
+  ["read<I32>()", "-100000", -100000],
+  ["read<I64>()", "-100", -100n],
+];
+
+for (const [expr, stdin, expected] of READ_CASES) {
+  test(
+    "executeTuffCode('" + expr + "', '" + stdin + "') returns " + String(expected),
+    async () => {
+      assert.equal(await executeTuffCode(expr, stdin), expected);
+    },
   );
 }

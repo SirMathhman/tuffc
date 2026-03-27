@@ -81,9 +81,28 @@ function parseNumericSuffix(src: string): ParsedSuffix | undefined {
   return undefined;
 }
 
+function parseReadExpr(src: string): NumericSuffix | undefined {
+  const trimmed = src.trim();
+  const READ_PREFIX = "read<";
+  const READ_SUFFIX = ">()";
+  if (!trimmed.startsWith(READ_PREFIX) || !trimmed.endsWith(READ_SUFFIX)) return undefined;
+  const candidate = trimmed.slice(READ_PREFIX.length, trimmed.length - READ_SUFFIX.length);
+  const knownSuffixes: readonly string[] = NUMERIC_SUFFIXES;
+  if (!knownSuffixes.includes(candidate)) return undefined;
+  return candidate as NumericSuffix;
+}
+
 export function compileTuffToTS(
   tuffSourceCode: string,
 ): Result<string, string> {
+  const readSuffix = parseReadExpr(tuffSourceCode);
+  if (readSuffix !== undefined) {
+    const range = SUFFIX_RANGES[readSuffix];
+    const castFn = range.bigint ? "BigInt" : "Number";
+    const returnType = range.bigint ? "bigint" : "number";
+    return ok("(function(): " + returnType + " { return " + castFn + "(__tuff_stdin()); })()");
+  }
+
   const parsed = parseNumericSuffix(tuffSourceCode);
   if (parsed) {
     const { value, suffix } = parsed;
