@@ -1,7 +1,41 @@
 import * as ts from "typescript";
 
+type NumericSuffix = "U8" | "U16" | "U32" | "U64" | "I8" | "I16" | "I32" | "I64";
+
+const SUFFIX_RANGES: Record<NumericSuffix, { min: bigint; max: bigint; bigint: boolean }> = {
+  U8:  { min: 0n, max: 255n,                 bigint: false },
+  U16: { min: 0n, max: 65535n,               bigint: false },
+  U32: { min: 0n, max: 4294967295n,          bigint: false },
+  U64: { min: 0n, max: 18446744073709551615n, bigint: true },
+  I8:  { min: -128n,        max: 127n,       bigint: false },
+  I16: { min: -32768n,      max: 32767n,     bigint: false },
+  I32: { min: -2147483648n, max: 2147483647n, bigint: false },
+  I64: { min: -9223372036854775808n, max: 9223372036854775807n, bigint: true },
+};
+
+const SUFFIX_PATTERN = /^(-?\d+)(U8|U16|U32|U64|I8|I16|I32|I64)$/;
+
+function parseNumericSuffix(src: string): { value: bigint; suffix: NumericSuffix } | null {
+  const m = SUFFIX_PATTERN.exec(src.trim());
+  if (!m) return null;
+  return { value: BigInt(m[1]), suffix: m[2] as NumericSuffix };
+}
+
 export function compileTuffToTS(tuffSourceCode: string): string {
-  // TODO: actual Tuff→TS compiler logic here
+  const parsed = parseNumericSuffix(tuffSourceCode);
+  if (parsed) {
+    const { value, suffix } = parsed;
+    const range = SUFFIX_RANGES[suffix];
+    if (value < range.min || value > range.max) {
+      throw new Error(
+        `Value ${value} is out of range for ${suffix} (${range.min}..${range.max})`,
+      );
+    }
+    const literal = range.bigint ? `${value}n` : `${value}`;
+    const returnType = range.bigint ? "bigint" : "number";
+    return `(function(): ${returnType} { return ${literal}; })()`;
+  }
+
   return `(function(): number { return ${tuffSourceCode}; })()`;
 }
 

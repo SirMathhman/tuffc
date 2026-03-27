@@ -361,7 +361,7 @@ function nodeHeader(nodeCount: number, kind: string, suffix: string): string {
 async function main(): Promise<void> {
   const threshold = parseThreshold();
   const root = path.resolve(__dirname, "..");
-  const scanDirs = ["src", "scripts"];
+  const scanDirs = ["src", "scripts", "tests"];
   const files = scanDirs.flatMap((dir) => scanTs(path.join(root, dir)));
 
   if (files.length === 0) {
