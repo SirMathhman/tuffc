@@ -1,0 +1,20 @@
+{
+  "name": "tuffc",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch src/index.ts",
+    "start": "bun run src/index.ts",
+    "build": "bun build src/index.ts --outdir dist",
+    "lint": "eslint .",
+    "check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.22.0",
+    "bun-types": "latest",
+    "eslint": "^9.22.0",
+    "typescript": "^5.8.2",
+    "typescript-eslint": "^8.29.0"
+  }
+}
