@@ -58,3 +58,5 @@ ifeq ($(OS),Windows_NT)
 else
 	rm -f $(EXE)
 endif
+
+find-duplicates: pmd cpd interpretTuff.c interpretTuff.h interpretTuff_test.c --language cpp --minimum-tokens 40 --ignore-literals --ignore-identifiers
