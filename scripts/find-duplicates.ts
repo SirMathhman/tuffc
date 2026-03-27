@@ -17,6 +17,22 @@ interface Location {
 
 type BucketMap = Map<string, { locs: Location[]; nodeCount: number }>;
 
+interface NodeEntry {
+  loc: Location;
+  nodeCount: number;
+  childKeys: string[];
+  key: string;
+}
+
+type KindRegistry = Map<ts.SyntaxKind, NodeEntry[]>;
+
+interface PartialMatch {
+  similarity: number;
+  nodeCount: number;
+  a: NodeEntry;
+  b: NodeEntry;
+}
+
 /** Skip leading whitespace and // or /* comments from `pos`. */
 function skipTrivia(content: string, pos: number): number {
   const len = content.length;
@@ -97,7 +113,11 @@ function getEffectiveChildren(node: ts.Node, sf: ts.SourceFile): ts.Node[] {
 }
 
 // Iterative post-order serialization — avoids recursion and all crashing TS APIs.
-function serialize(root: ts.Node, sf: ts.SourceFile, content: string): string {
+function serialize(
+  root: ts.Node,
+  sf: ts.SourceFile,
+  content: string,
+): { key: string; childKeys: string[] } {
   type Frame = {
     node: ts.Node;
     children: ts.Node[];
@@ -113,6 +133,7 @@ function serialize(root: ts.Node, sf: ts.SourceFile, content: string): string {
     },
   ];
   let result = "";
+  let rootChildKeys: string[] = [];
   while (stack.length > 0) {
     const frame = stack[stack.length - 1];
     if (frame.idx < frame.children.length) {
@@ -138,10 +159,11 @@ function serialize(root: ts.Node, sf: ts.SourceFile, content: string): string {
         stack[stack.length - 1].childKeys.push(key);
       } else {
         result = key;
+        rootChildKeys = frame.childKeys;
       }
     }
   }
-  return result;
+  return { key: result, childKeys: rootChildKeys };
 }
 
 const LITERAL_KINDS = new Set([
@@ -182,6 +204,55 @@ function countNodes(root: ts.Node, sf: ts.SourceFile): number {
   return n;
 }
 
+function jaccardKeys(a: string[], b: string[]): number {
+  const freqA = new Map<string, number>();
+  for (const k of a) freqA.set(k, (freqA.get(k) ?? 0) + 1);
+  const freqB = new Map<string, number>();
+  for (const k of b) freqB.set(k, (freqB.get(k) ?? 0) + 1);
+  let intersection = 0;
+  let union = 0;
+  const allKeys = new Set([...freqA.keys(), ...freqB.keys()]);
+  for (const k of allKeys) {
+    const ca = freqA.get(k) ?? 0;
+    const cb = freqB.get(k) ?? 0;
+    intersection += Math.min(ca, cb);
+    union += Math.max(ca, cb);
+  }
+  return union === 0 ? 0 : intersection / union;
+}
+
+function findPartialDuplicates(
+  registry: KindRegistry,
+  threshold: number,
+  exactKeys: Set<string>,
+): PartialMatch[] {
+  const matches: PartialMatch[] = [];
+  const seen = new Set<string>();
+  for (const entries of registry.values()) {
+    for (let i = 0; i < entries.length; i++) {
+      for (let j = i + 1; j < entries.length; j++) {
+        const a = entries[i];
+        const b = entries[j];
+        if (a.key === b.key) continue; // exact duplicate — already reported
+        const pairId =
+          a.key < b.key ? `${a.key}||${b.key}` : `${b.key}||${a.key}`;
+        if (seen.has(pairId)) continue;
+        seen.add(pairId);
+        const sim = jaccardKeys(a.childKeys, b.childKeys);
+        if (sim >= threshold) {
+          matches.push({
+            similarity: sim,
+            nodeCount: Math.max(a.nodeCount, b.nodeCount),
+            a,
+            b,
+          });
+        }
+      }
+    }
+  }
+  return matches;
+}
+
 function walk(
   root: ts.Node,
   sf: ts.SourceFile,
@@ -189,6 +260,7 @@ function walk(
   lineStarts: number[],
   filePath: string,
   map: BucketMap,
+  registry: KindRegistry,
 ): void {
   const stack: ts.Node[] = [root];
   while (stack.length > 0) {
@@ -222,13 +294,13 @@ function walk(
       for (const child of node.getChildren(sf)) stack.push(child);
       continue;
     }
-    const key = serialize(node, sf, content);
+    const { key, childKeys } = serialize(node, sf, content);
     const tokenStart = skipTrivia(content, node.pos);
     const { line, character } = posToLineChar(lineStarts, tokenStart);
     const rawText = content.slice(tokenStart, node.end);
-    const firstLine = rawText.indexOf("\n");
+    const lines = rawText.split("\n");
     const snippet =
-      firstLine === -1 ? rawText : rawText.slice(0, firstLine) + " \u2026";
+      lines.length <= 5 ? rawText : lines.slice(0, 5).join("\n") + " \u2026";
     const loc: Location = {
       file: filePath,
       line,
@@ -236,11 +308,19 @@ function walk(
       kind: ts.SyntaxKind[node.kind],
       text: snippet,
     };
+    const nodeCount = countNodes(node, sf);
     const bucket = map.get(key);
     if (bucket) {
       bucket.locs.push(loc);
     } else {
-      map.set(key, { locs: [loc], nodeCount: countNodes(node, sf) });
+      map.set(key, { locs: [loc], nodeCount });
+    }
+    const entry: NodeEntry = { loc, nodeCount, childKeys, key };
+    const kindEntries = registry.get(node.kind);
+    if (kindEntries) {
+      kindEntries.push(entry);
+    } else {
+      registry.set(node.kind, [entry]);
     }
     for (const child of node.getChildren(sf)) stack.push(child);
   }
@@ -256,7 +336,30 @@ function scanTs(dir: string): string[] {
   return results;
 }
 
+function parseThreshold(): number {
+  const idx = process.argv.indexOf("--threshold");
+  if (idx === -1) return 0.8;
+  const raw = process.argv[idx + 1];
+  const val = parseFloat(raw);
+  if (isNaN(val) || val <= 0 || val >= 1) {
+    console.error(`--threshold must be a number in (0, 1), got: ${raw}`);
+    process.exit(1);
+  }
+  return val;
+}
+
+function printLocation(root: string, loc: Location): void {
+  const rel = path.relative(root, loc.file).replace(/\\/g, "/");
+  console.log(`  ${rel}:${loc.line}:${loc.character}`);
+  for (const line of loc.text.split("\n")) console.log(`    ${line}`);
+}
+
+function nodeHeader(nodeCount: number, kind: string, suffix: string): string {
+  return `[${nodeCount} node(s)] ${kind} \u2014 ${suffix}`;
+}
+
 async function main(): Promise<void> {
+  const threshold = parseThreshold();
   const root = path.resolve(__dirname, "..");
   const scanDirs = ["src", "scripts"];
   const files = scanDirs.flatMap((dir) => scanTs(path.join(root, dir)));
@@ -267,6 +370,7 @@ async function main(): Promise<void> {
   }
 
   const map: BucketMap = new Map();
+  const registry: KindRegistry = new Map();
 
   for (const filePath of files) {
     const content = fs.readFileSync(filePath, "utf-8");
@@ -278,7 +382,7 @@ async function main(): Promise<void> {
       true,
     );
     for (const node of sf.getChildren(sf))
-      walk(node, sf, content, lineStarts, filePath, map);
+      walk(node, sf, content, lineStarts, filePath, map, registry);
   }
 
   const duplicates = [...map.entries()]
@@ -288,27 +392,42 @@ async function main(): Promise<void> {
         b.nodeCount - a.nodeCount || b.locs.length - a.locs.length,
     );
 
-  if (duplicates.length === 0) {
-    console.log("No AST subtree duplicates found.");
-    return;
+  if (duplicates.length > 0) {
+    console.log(`Found ${duplicates.length} exact duplicate AST subtree(s):\n`);
+    for (const [key, { locs, nodeCount }] of duplicates) {
+      const preview = key.length > 100 ? key.slice(0, 100) + "\u2026" : key;
+      console.log(
+        nodeHeader(nodeCount, locs[0].kind, `${locs.length} occurrence(s)`),
+      );
+      console.log(`  Key: ${preview}`);
+      for (const loc of locs) printLocation(root, loc);
+      console.log();
+    }
+  } else {
+    console.log("No exact AST subtree duplicates found.\n");
   }
 
-  console.log(`Found ${duplicates.length} duplicate AST subtree(s):\n`);
+  const exactKeys = new Set(map.keys());
+  const partial = findPartialDuplicates(registry, threshold, exactKeys).sort(
+    (a, b) => b.similarity - a.similarity || b.nodeCount - a.nodeCount,
+  );
 
-  for (const [key, { locs, nodeCount }] of duplicates) {
-    const preview = key.length > 100 ? key.slice(0, 100) + "…" : key;
+  if (partial.length > 0) {
+    const pct = Math.round(threshold * 100);
     console.log(
-      `[${nodeCount} node(s)] ${locs[0].kind} — ${locs.length} occurrence(s)`,
+      `Found ${partial.length} partial duplicate(s) (>= ${pct}% similar):\n`,
     );
-    console.log(`  Key: ${preview}`);
-    for (const loc of locs) {
-      const rel = path.relative(root, loc.file).replace(/\\/g, "/");
-      console.log(`  ${rel}:${loc.line}:${loc.character}`);
-      const displayText =
-        loc.text.length > 120 ? loc.text.slice(0, 120) + " \u2026" : loc.text;
-      console.log(`    ${displayText}`);
+    for (const { similarity, nodeCount, a, b } of partial) {
+      const simPct = Math.round(similarity * 100);
+      console.log(nodeHeader(nodeCount, a.loc.kind, `${simPct}% similar`));
+      printLocation(root, a.loc);
+      printLocation(root, b.loc);
+      console.log();
     }
-    console.log();
+  } else {
+    console.log(
+      `No partial duplicates found at threshold ${Math.round(threshold * 100)}%.`,
+    );
   }
 }
 
