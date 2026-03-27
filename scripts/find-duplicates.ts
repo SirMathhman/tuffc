@@ -349,9 +349,7 @@ function parseThreshold(): number {
 }
 
 function printLocation(root: string, loc: Location): void {
-  const rel = path
-    .relative(root, loc.file)
-    .replace(new RegExp("\\\\", "g"), "/");
+  const rel = path.relative(root, loc.file).split("\\").join("/");
   console.log("  " + rel + ":" + loc.line + ":" + loc.character);
   for (const line of loc.text.split("\n")) console.log("    " + line);
 }

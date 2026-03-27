@@ -24,14 +24,35 @@ const SUFFIX_RANGES: Record<
   I64: { min: -9223372036854775808n, max: 9223372036854775807n, bigint: true },
 };
 
+const NUMERIC_SUFFIXES: NumericSuffix[] = [
+  "U64",
+  "I64",
+  "U32",
+  "U16",
+  "U8",
+  "I32",
+  "I16",
+  "I8",
+];
+
 function parseNumericSuffix(
   src: string,
 ): { value: bigint; suffix: NumericSuffix } | null {
-  const m = new RegExp("^(-?\\d+)(U8|U16|U32|U64|I8|I16|I32|I64)$").exec(
-    src.trim(),
-  );
-  if (!m) return null;
-  return { value: BigInt(m[1]), suffix: m[2] as NumericSuffix };
+  const trimmed = src.trim();
+  for (const suffix of NUMERIC_SUFFIXES) {
+    if (!trimmed.endsWith(suffix)) continue;
+    const numPart = trimmed.slice(0, trimmed.length - suffix.length);
+    if (numPart.length === 0) continue;
+    const isValid =
+      (numPart[0] === "-" || (numPart[0] >= "0" && numPart[0] <= "9")) &&
+      numPart
+        .slice(numPart[0] === "-" ? 1 : 0)
+        .split("")
+        .every((c) => c >= "0" && c <= "9");
+    if (!isValid || numPart === "-") continue;
+    return { value: BigInt(numPart), suffix };
+  }
+  return null;
 }
 
 export function compileTuffToTS(tuffSourceCode: string): string {

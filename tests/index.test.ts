@@ -66,7 +66,9 @@ for (const input of OUT_OF_RANGE_CASES) {
   test("executeTuffCode('" + input + "') throws compile error", () =>
     assert.rejects(
       () => executeTuffCode(input),
-      new RegExp("out of range", "i"),
+      (err: unknown) =>
+        err instanceof Error &&
+        err.message.toLowerCase().includes("out of range"),
     ),
   );
 }

@@ -21,7 +21,11 @@ export default tseslint.config(
         },
         {
           selector: "Literal[regex]",
-          message: "Regex literals are not allowed. Use new RegExp() instead.",
+          message: "Regex literals are not allowed.",
+        },
+        {
+          selector: "NewExpression[callee.name='RegExp']",
+          message: "new RegExp() is not allowed.",
         },
       ],
     },
