@@ -338,7 +338,7 @@ function scanTs(dir: string): string[] {
 
 function parseThreshold(): number {
   const idx = process.argv.indexOf("--threshold");
-  if (idx === -1) return 0.8;
+  if (idx === -1) return 0.75;
   const raw = process.argv[idx + 1];
   const val = parseFloat(raw);
   if (isNaN(val) || val <= 0 || val >= 1) {
@@ -358,7 +358,7 @@ function nodeHeader(nodeCount: number, kind: string, suffix: string): string {
   return `[${nodeCount} node(s)] ${kind} \u2014 ${suffix}`;
 }
 
-async function main(): Promise<void>  {
+async function main(): Promise<void> {
   const threshold = parseThreshold();
   const root = path.resolve(__dirname, "..");
   const scanDirs = ["src", "scripts"];
@@ -402,7 +402,9 @@ async function main(): Promise<void>  {
       console.log(`  Key: ${preview}`);
       for (const loc of locs) printLocation(root, loc);
       console.log();
+      console.log();
     }
+    process.exit(1);
   } else {
     console.log("No exact AST subtree duplicates found.\n");
   }
@@ -424,6 +426,7 @@ async function main(): Promise<void>  {
       printLocation(root, b.loc);
       console.log();
     }
+    process.exit(1);
   } else {
     console.log(
       `No partial duplicates found at threshold ${Math.round(threshold * 100)}%.`,
