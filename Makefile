@@ -34,7 +34,7 @@ endif
 
 all: interpretTuff_test
 
-.PHONY: all run test clean
+.PHONY: all run test clean find-duplicates
 
 interpretTuff_test: interpretTuff.c interpretTuff_test.c
 ifeq ($(CC),cl)
@@ -59,4 +59,9 @@ else
 	rm -f $(EXE)
 endif
 
-find-duplicates: pmd cpd interpretTuff.c interpretTuff.h interpretTuff_test.c --language cpp --minimum-tokens 40 --ignore-literals --ignore-identifiers
+find-duplicates:
+ifeq ($(OS),Windows_NT)
+	@where cpd >nul 2>nul && cpd interpretTuff.c interpretTuff.h interpretTuff_test.c --language cpp --minimum-tokens 40 --ignore-literals --ignore-identifiers || echo cpd not found on PATH, skipping duplicate check.
+else
+	@command -v cpd >/dev/null 2>&1 && cpd interpretTuff.c interpretTuff.h interpretTuff_test.c --language cpp --minimum-tokens 40 --ignore-literals --ignore-identifiers || echo "cpd not found on PATH, skipping duplicate check."
+endif
