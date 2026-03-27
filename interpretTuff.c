@@ -1,18 +1,52 @@
-#include <stdio.h>
+#include <ctype.h>
+#include <stddef.h>
 
-// Stub implementation of interpretTuff.
-// Parameters:
-//   source - null-terminated string input to interpret
-// Returns:
-//   integer status code (0 for success, non-zero for error)
-int interpretTuff(const char *source)
+#include "interpretTuff.h"
+
+Result interpretTuff(const char *source)
 {
-    if (!source)
+    Result error = {0, 0, NULL};
+    int value = 0;
+    size_t i = 0;
+
+    if (source == NULL)
     {
-        return -1;
+        error.error = "null input";
+        return error;
     }
 
-    // TODO: implement interpreter logic
-    (void)source; // suppress unused parameter warning
-    return 0;
+    if (source[0] == '\0')
+    {
+        error.error = "empty input";
+        return error;
+    }
+
+    while (source[i] != '\0')
+    {
+        i++;
+    }
+
+    if (i < 3 || source[i - 2] != 'U' || source[i - 1] != '8')
+    {
+        error.error = "missing U8 suffix";
+        return error;
+    }
+
+    for (size_t j = 0; j < i - 2; j++)
+    {
+        if (!isdigit((unsigned char)source[j]))
+        {
+            error.error = "invalid digits";
+            return error;
+        }
+
+        value = (value * 10) + (source[j] - '0');
+        if (value > 255)
+        {
+            error.error = "value out of range";
+            return error;
+        }
+    }
+
+    return (Result){1, value, NULL};
 }
