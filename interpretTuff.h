@@ -4,7 +4,9 @@
 typedef struct Result
 {
     int ok;
-    int value;
+    unsigned long long uvalue;
+    long long svalue;
+    int is_unsigned;
     const char *error;
 } Result;
 
