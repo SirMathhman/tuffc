@@ -358,7 +358,7 @@ function nodeHeader(nodeCount: number, kind: string, suffix: string): string {
   return `[${nodeCount} node(s)] ${kind} \u2014 ${suffix}`;
 }
 
-async function main(): Promise<void> {
+async function main(): Promise<void>  {
   const threshold = parseThreshold();
   const root = path.resolve(__dirname, "..");
   const scanDirs = ["src", "scripts"];

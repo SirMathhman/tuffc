@@ -1,3 +1,4 @@
-const message = "Hello from Bun + TypeScript!";
-
-console.log(message);
+export function compileTuffToTS(tuffSourceCode: string): string {
+  // TODO: compiler logic
+  return "";
+}
