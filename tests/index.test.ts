@@ -40,10 +40,6 @@ async function executeTuffCode(
     | bigint;
 }
 
-test("executeTuffCode('100') returns 100", async () => {
-  assert.equal(await executeTuffCode("100"), 100);
-});
-
 const VALID_CASES: [string, number | bigint][] = [
   ["100U8", 100],
   ["0U8", 0],
@@ -150,14 +146,49 @@ const BINARY_ERROR_CASES: BinaryErrorCase[] = [
 ];
 
 for (const [expr, fragment] of BINARY_ERROR_CASES) {
+  test("executeTuffCode('" + expr + "') rejects with '" + fragment + "'", () =>
+    assert.rejects(
+      () => executeTuffCode(expr),
+      (e: unknown) =>
+        e instanceof Error &&
+        e.message.toLowerCase().includes(fragment.toLowerCase()),
+    ),
+  );
+}
+
+type LetCase = [string, string, number | bigint];
+
+const LET_CASES: LetCase[] = [
+  ["let x : U8 = read<U8>() + 50U8; x", "100", 150],
+  ["let x = 100U8; x + x", "", 200],
+  ["let x = 10U8; let y: U16 = x; y", "", 10],
+  ["let x = 10U8; let x = 20U16; x", "", 20],
+  ["let a = read<U16>(); let b = a * 2U16; b + a", "100", 300],
+];
+
+for (const [prog, stdin, expected] of LET_CASES) {
   test(
-    "executeTuffCode('" + expr + "') rejects with '" + fragment + "'",
-    () =>
-      assert.rejects(
-        () => executeTuffCode(expr),
-        (e: unknown) =>
-          e instanceof Error &&
-          e.message.toLowerCase().includes(fragment.toLowerCase()),
-      ),
+    "executeTuffCode let statement returns " + String(expected),
+    async () => {
+      assert.equal(await executeTuffCode(prog, stdin), expected);
+    },
+  );
+}
+
+type LetErrorCase = [string, string];
+
+const LET_ERROR_CASES: LetErrorCase[] = [
+  ["let x : U8 = 100U16; x", "not assignable"],
+  ["let x = 10U8; x + y", "undeclared"],
+];
+
+for (const [prog, fragment] of LET_ERROR_CASES) {
+  test("executeTuffCode('" + prog + "') rejects with '" + fragment + "'", () =>
+    assert.rejects(
+      () => executeTuffCode(prog),
+      (e: unknown) =>
+        e instanceof Error &&
+        e.message.toLowerCase().includes(fragment.toLowerCase()),
+    ),
   );
 }
