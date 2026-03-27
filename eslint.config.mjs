@@ -13,6 +13,17 @@ export default tseslint.config(
         "error",
         { argsIgnorePattern: "^_" },
       ],
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "TemplateLiteral",
+          message: "Template literals are not allowed.",
+        },
+        {
+          selector: "Literal[regex]",
+          message: "Regex literals are not allowed. Use new RegExp() instead.",
+        },
+      ],
     },
   },
 );

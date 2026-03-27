@@ -151,9 +151,9 @@ function serialize(
       if (frame.children.length === 0) {
         const tokenStart = skipTrivia(content, frame.node.pos);
         const text = content.slice(tokenStart, frame.node.end);
-        key = `${kind}:${JSON.stringify(text)}`;
+        key = kind + ":" + JSON.stringify(text);
       } else {
-        key = `${kind}(${frame.childKeys.join(",")})`;
+        key = kind + "(" + frame.childKeys.join(",") + ")";
       }
       if (stack.length > 0) {
         stack[stack.length - 1].childKeys.push(key);
@@ -224,7 +224,7 @@ function jaccardKeys(a: string[], b: string[]): number {
 function findPartialDuplicates(
   registry: KindRegistry,
   threshold: number,
-  exactKeys: Set<string>,
+  _exactKeys: Set<string>,
 ): PartialMatch[] {
   const matches: PartialMatch[] = [];
   const seen = new Set<string>();
@@ -235,7 +235,7 @@ function findPartialDuplicates(
         const b = entries[j];
         if (a.key === b.key) continue; // exact duplicate — already reported
         const pairId =
-          a.key < b.key ? `${a.key}||${b.key}` : `${b.key}||${a.key}`;
+          a.key < b.key ? a.key + "||" + b.key : b.key + "||" + a.key;
         if (seen.has(pairId)) continue;
         seen.add(pairId);
         const sim = jaccardKeys(a.childKeys, b.childKeys);
@@ -342,20 +342,22 @@ function parseThreshold(): number {
   const raw = process.argv[idx + 1];
   const val = parseFloat(raw);
   if (isNaN(val) || val <= 0 || val >= 1) {
-    console.error(`--threshold must be a number in (0, 1), got: ${raw}`);
+    console.error("--threshold must be a number in (0, 1), got: " + raw);
     process.exit(1);
   }
   return val;
 }
 
 function printLocation(root: string, loc: Location): void {
-  const rel = path.relative(root, loc.file).replace(/\\/g, "/");
-  console.log(`  ${rel}:${loc.line}:${loc.character}`);
-  for (const line of loc.text.split("\n")) console.log(`    ${line}`);
+  const rel = path
+    .relative(root, loc.file)
+    .replace(new RegExp("\\\\", "g"), "/");
+  console.log("  " + rel + ":" + loc.line + ":" + loc.character);
+  for (const line of loc.text.split("\n")) console.log("    " + line);
 }
 
 function nodeHeader(nodeCount: number, kind: string, suffix: string): string {
-  return `[${nodeCount} node(s)] ${kind} \u2014 ${suffix}`;
+  return "[" + nodeCount + " node(s)] " + kind + " \u2014 " + suffix;
 }
 
 async function main(): Promise<void> {
@@ -393,13 +395,15 @@ async function main(): Promise<void> {
     );
 
   if (duplicates.length > 0) {
-    console.log(`Found ${duplicates.length} exact duplicate AST subtree(s):\n`);
+    console.log(
+      "Found " + duplicates.length + " exact duplicate AST subtree(s):\n",
+    );
     for (const [key, { locs, nodeCount }] of duplicates) {
       const preview = key.length > 100 ? key.slice(0, 100) + "\u2026" : key;
       console.log(
-        nodeHeader(nodeCount, locs[0].kind, `${locs.length} occurrence(s)`),
+        nodeHeader(nodeCount, locs[0].kind, locs.length + " occurrence(s)"),
       );
-      console.log(`  Key: ${preview}`);
+      console.log("  Key: " + preview);
       for (const loc of locs) printLocation(root, loc);
       console.log();
       console.log();
@@ -417,11 +421,15 @@ async function main(): Promise<void> {
   if (partial.length > 0) {
     const pct = Math.round(threshold * 100);
     console.log(
-      `Found ${partial.length} partial duplicate(s) (>= ${pct}% similar):\n`,
+      "Found " +
+        partial.length +
+        " partial duplicate(s) (>= " +
+        pct +
+        "% similar):\n",
     );
     for (const { similarity, nodeCount, a, b } of partial) {
       const simPct = Math.round(similarity * 100);
-      console.log(nodeHeader(nodeCount, a.loc.kind, `${simPct}% similar`));
+      console.log(nodeHeader(nodeCount, a.loc.kind, simPct + "% similar"));
       printLocation(root, a.loc);
       printLocation(root, b.loc);
       console.log();
@@ -429,7 +437,9 @@ async function main(): Promise<void> {
     process.exit(1);
   } else {
     console.log(
-      `No partial duplicates found at threshold ${Math.round(threshold * 100)}%.`,
+      "No partial duplicates found at threshold " +
+        Math.round(threshold * 100) +
+        "%.",
     );
   }
 }
