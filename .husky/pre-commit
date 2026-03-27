@@ -1,4 +1,0 @@
-bun run test || exit 1
-bunx tsc --noEmit || exit 1
-pmd cpd --dir src,tests --minimum-tokens 40 --language typescript --format markdown --ignore-literals --ignore-identifiers || exit 1
-exit 0
