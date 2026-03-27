@@ -10,7 +10,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 async function executeTuffCode(
   tuffSourceCode: string,
 ): Promise<number | bigint> {
-  const tsCode = compileTuffToTS(tuffSourceCode);
+  const compileResult = compileTuffToTS(tuffSourceCode);
+  if (!compileResult.ok) {
+    return Promise.reject(new Error(compileResult.error));
+  }
+  const tsCode = compileResult.value;
 
   const eslint = new ESLint({ cwd: path.resolve(__dirname, "..") });
   const results = await eslint.lintText(tsCode, { filePath: "generated.ts" });
@@ -18,9 +22,13 @@ async function executeTuffCode(
     r.messages.filter((m) => m.severity === 2),
   );
   if (errors.length > 0) {
-    throw new Error(
-      "ESLint errors in generated code:\n" +
-        errors.map((e) => e.line + ":" + e.column + " " + e.message).join("\n"),
+    return Promise.reject(
+      new Error(
+        "ESLint errors in generated code:\n" +
+          errors
+            .map((e) => e.line + ":" + e.column + " " + e.message)
+            .join("\n"),
+      ),
     );
   }
 

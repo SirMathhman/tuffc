@@ -15,7 +15,12 @@ interface Location {
   text: string;
 }
 
-type BucketMap = Map<string, { locs: Location[]; nodeCount: number }>;
+interface Bucket {
+  locs: Location[];
+  nodeCount: number;
+}
+
+type BucketMap = Map<string, Bucket>;
 
 interface NodeEntry {
   loc: Location;
@@ -69,11 +74,13 @@ function buildLineStarts(content: string): number[] {
   return starts;
 }
 
+interface LineChar {
+  line: number;
+  character: number;
+}
+
 /** Binary-search lineStarts to get 1-based line + character for a byte offset. */
-function posToLineChar(
-  lineStarts: number[],
-  tokenStart: number,
-): { line: number; character: number } {
+function posToLineChar(lineStarts: number[], tokenStart: number): LineChar {
   let lo = 0,
     hi = lineStarts.length - 1;
   while (lo < hi) {
@@ -112,18 +119,24 @@ function getEffectiveChildren(node: ts.Node, sf: ts.SourceFile): ts.Node[] {
   return result;
 }
 
+interface SerializedNode {
+  key: string;
+  childKeys: string[];
+}
+
+interface Frame {
+  node: ts.Node;
+  children: ts.Node[];
+  idx: number;
+  childKeys: string[];
+}
+
 // Iterative post-order serialization — avoids recursion and all crashing TS APIs.
 function serialize(
   root: ts.Node,
   sf: ts.SourceFile,
   content: string,
-): { key: string; childKeys: string[] } {
-  type Frame = {
-    node: ts.Node;
-    children: ts.Node[];
-    idx: number;
-    childKeys: string[];
-  };
+): SerializedNode {
   const stack: Frame[] = [
     {
       node: root,

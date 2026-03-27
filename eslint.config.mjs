@@ -27,6 +27,23 @@ export default tseslint.config(
           selector: "NewExpression[callee.name='RegExp']",
           message: "new RegExp() is not allowed.",
         },
+        {
+          selector: "TSTypeLiteral",
+          message:
+            "Inline type literals are not allowed. Use a named interface instead.",
+        },
+        {
+          selector: "Literal[value=null]",
+          message: "null is not allowed. Use undefined instead.",
+        },
+        {
+          selector: "TSNullKeyword",
+          message: "null type is not allowed. Use undefined instead.",
+        },
+        {
+          selector: "ThrowStatement",
+          message: "throw is not allowed. Use Result<T, E> instead.",
+        },
       ],
     },
   },
