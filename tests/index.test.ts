@@ -100,7 +100,12 @@ const READ_CASES: ReadCase[] = [
 
 for (const [expr, stdin, expected] of READ_CASES) {
   test(
-    "executeTuffCode('" + expr + "', '" + stdin + "') returns " + String(expected),
+    "executeTuffCode('" +
+      expr +
+      "', '" +
+      stdin +
+      "') returns " +
+      String(expected),
     async () => {
       assert.equal(await executeTuffCode(expr, stdin), expected);
     },
