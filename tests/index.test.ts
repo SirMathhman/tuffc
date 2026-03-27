@@ -111,3 +111,53 @@ for (const [expr, stdin, expected] of READ_CASES) {
     },
   );
 }
+
+type BinaryCase = [string, string, number | bigint];
+
+const BINARY_CASES: BinaryCase[] = [
+  ["read<U8>() + 50U8", "100", 150],
+  ["read<U8>() - 50U8", "100", 50],
+  ["read<U16>() * 2U16", "10", 20],
+  ["read<U16>() / 2U16", "100", 50],
+  ["200U16 + read<U8>()", "50", 250],
+  ["read<U8>() + read<U8>()", "100", 200],
+  ["read<U8>() + 1000U16", "100", 1100],
+  ["read<I8>() + 10U8", "-50", -40],
+  ["100U8 + 100U8", "", 200],
+  ["read<U8>() + 100U64", "50", 150n],
+];
+
+for (const [expr, stdin, expected] of BINARY_CASES) {
+  test(
+    "executeTuffCode('" +
+      expr +
+      "', '" +
+      stdin +
+      "') returns " +
+      String(expected),
+    async () => {
+      assert.equal(await executeTuffCode(expr, stdin), expected);
+    },
+  );
+}
+
+type BinaryErrorCase = [string, string];
+
+const BINARY_ERROR_CASES: BinaryErrorCase[] = [
+  ["200U8 + 100U8", "out of range"],
+  ["100U8 - 200U8", "out of range"],
+  ["read<U64>() + 50I8", "incompatible"],
+];
+
+for (const [expr, fragment] of BINARY_ERROR_CASES) {
+  test(
+    "executeTuffCode('" + expr + "') rejects with '" + fragment + "'",
+    () =>
+      assert.rejects(
+        () => executeTuffCode(expr),
+        (e: unknown) =>
+          e instanceof Error &&
+          e.message.toLowerCase().includes(fragment.toLowerCase()),
+      ),
+  );
+}
