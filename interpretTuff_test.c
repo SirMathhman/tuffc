@@ -94,9 +94,10 @@ int main(void)
         {"i8 out of range", "128I8", 0, 0ULL, 0LL, 0, "value out of range"},
         {"sum out of range", "200U8 + 100U8", 0, 0ULL, 0LL, 0, "value out of range"},
         {"missing rhs term", "100U8 +", 0, 0ULL, 0LL, 0, "expected term"},
-        {"invalid operator", "100U8 - 50U8", 0, 0ULL, 0LL, 0, "invalid operator"},        {"let assignment simple", "let x: U8 = 100U8; x", 1, 100ULL, 100LL, 1, NULL},
+        {"invalid operator", "100U8 - 50U8", 0, 0ULL, 0LL, 0, "invalid operator"},
+        {"let assignment simple", "let x: U8 = 100U8; x", 1, 100ULL, 100LL, 1, NULL},
         {"let assignment spaced", "let x : I32 = -50I32 ; x", 1, 18446744073709551566ULL, -50LL, 0, NULL},
-        {"let zero trailing expr", "let x: I8 = 10I8;", 1, 0ULL, 0LL, 1, NULL}, 
+        {"let zero trailing expr", "let x: I8 = 10I8;", 1, 0ULL, 0LL, 1, NULL},
         {"let variable shadow", "let x: U8 = 10U8; let x: I16 = 20I16; x", 1, 20ULL, 20LL, 0, NULL},
         {"let var chain", "let x: U8 = 10U8; let y: U16 = 20U16; x + y", 1, 30ULL, 30LL, 1, NULL},
         {"let valid map size up", "let x: U16 = 200U8; x", 1, 200ULL, 200LL, 1, NULL},
@@ -108,7 +109,8 @@ int main(void)
         {"let missing equals", "let x: U8 1U8;", 0, 0ULL, 0LL, 0, "invalid operator"},
         {"let missing colon", "let x U8 = 1U8;", 0, 0ULL, 0LL, 0, "invalid operator"},
         {"let undefined variable", "let x: U8 = 1U8; y", 0, 0ULL, 0LL, 0, "unresolved variable"},
-        {"let self-referential failure", "let x: U8 = x;", 0, 0ULL, 0LL, 0, "unresolved variable"},    };
+        {"let self-referential failure", "let x: U8 = x;", 0, 0ULL, 0LL, 0, "unresolved variable"},
+    };
     size_t case_count = sizeof(cases) / sizeof(cases[0]);
     size_t i = 0;
 
