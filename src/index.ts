@@ -246,10 +246,7 @@ function compileExpr(src: string, env: Env): Result<ParsedExpr, string> {
     const resultSuffix = widenSuffixes(lhs.suffix, rhs.suffix);
     if (resultSuffix === undefined) {
       return err(
-        "Incompatible types: cannot widen " +
-          lhs.suffix +
-          " and " +
-          rhs.suffix,
+        "Incompatible types: cannot widen " + lhs.suffix + " and " + rhs.suffix,
       );
     }
     const range = SUFFIX_RANGES[resultSuffix];
@@ -282,8 +279,16 @@ function compileExpr(src: string, env: Env): Result<ParsedExpr, string> {
       resultValue = result;
     }
 
-    const lhsCode = castTypeScriptIfNeeded(lhs.tsCode, lhs.suffix, range.bigint);
-    const rhsCode = castTypeScriptIfNeeded(rhs.tsCode, rhs.suffix, range.bigint);
+    const lhsCode = castTypeScriptIfNeeded(
+      lhs.tsCode,
+      lhs.suffix,
+      range.bigint,
+    );
+    const rhsCode = castTypeScriptIfNeeded(
+      rhs.tsCode,
+      rhs.suffix,
+      range.bigint,
+    );
 
     return ok({
       suffix: resultSuffix,
@@ -349,10 +354,7 @@ export function compileTuffToTS(
     if (declaredType !== undefined) {
       if (!isAssignable(declaredType, expr.suffix)) {
         return err(
-          "Type " +
-            expr.suffix +
-            " is not assignable to " +
-            declaredType,
+          "Type " + expr.suffix + " is not assignable to " + declaredType,
         );
       }
       actualType = declaredType;
@@ -376,7 +378,13 @@ export function compileTuffToTS(
   const returnType = SUFFIX_RANGES[fin.suffix].bigint ? "bigint" : "number";
   tsBody += "  return " + fin.tsCode + ";\n";
 
-  return ok("(function(): " + returnType + " {\n/* eslint-disable */\n" + tsBody + "})()");
+  return ok(
+    "(function(): " +
+      returnType +
+      " {\n/* eslint-disable */\n" +
+      tsBody +
+      "})()",
+  );
 }
 
 export function compileTSToJS(tsCode: string): string {

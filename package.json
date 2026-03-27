@@ -8,6 +8,7 @@
     "start": "tsx src/index.ts",
     "build": "tsc --noEmit false --outDir dist",
     "find-duplicates": "tsx scripts/find-duplicates.ts --threshold 0.5",
+    "find-duplicates:ignore": "tsx scripts/find-duplicates.ts --threshold 0.5 --ignore-literals --ignore-identifiers",
     "test": "tsx --test tests/**/*.test.ts",
     "lint": "eslint .",
     "check": "tsc --noEmit"

@@ -38,6 +38,11 @@ interface PartialMatch {
   b: NodeEntry;
 }
 
+interface SerializeOptions {
+  ignoreIdentifiers: boolean;
+  ignoreLiterals: boolean;
+}
+
 /** Skip leading whitespace and // or /* comments from `pos`. */
 function skipTrivia(content: string, pos: number): number {
   const len = content.length;
@@ -100,7 +105,11 @@ function isTransparent(kind: ts.SyntaxKind): boolean {
   );
 }
 
-function getEffectiveChildren(node: ts.Node, sf: ts.SourceFile): ts.Node[] {
+function getEffectiveChildren(
+  node: ts.Node,
+  sf: ts.SourceFile,
+  opts: SerializeOptions,
+): ts.Node[] {
   const result: ts.Node[] = [];
   const pending = [...node.getChildren(sf)];
   while (pending.length > 0) {
@@ -108,8 +117,11 @@ function getEffectiveChildren(node: ts.Node, sf: ts.SourceFile): ts.Node[] {
     if (isTransparent(child.kind)) {
       pending.unshift(...child.getChildren(sf));
     } else if (child.kind === ts.SyntaxKind.VariableDeclaration) {
-      const init = (child as ts.VariableDeclaration).initializer;
-      if (init) result.push(init);
+      const decl = child as ts.VariableDeclaration;
+      // When identifiers are significant, include the name so `let foo = x`
+      // and `let bar = x` produce different keys.
+      if (!opts.ignoreIdentifiers) result.push(decl.name);
+      if (decl.initializer) result.push(decl.initializer);
     } else if (child.kind === ts.SyntaxKind.PropertyAssignment) {
       result.push((child as ts.PropertyAssignment).initializer);
     } else {
@@ -136,11 +148,12 @@ function serialize(
   root: ts.Node,
   sf: ts.SourceFile,
   content: string,
+  opts: SerializeOptions,
 ): SerializedNode {
   const stack: Frame[] = [
     {
       node: root,
-      children: getEffectiveChildren(root, sf),
+      children: getEffectiveChildren(root, sf, opts),
       idx: 0,
       childKeys: [],
     },
@@ -153,7 +166,7 @@ function serialize(
       const child = frame.children[frame.idx++];
       stack.push({
         node: child,
-        children: getEffectiveChildren(child, sf),
+        children: getEffectiveChildren(child, sf, opts),
         idx: 0,
         childKeys: [],
       });
@@ -162,9 +175,17 @@ function serialize(
       const kind = ts.SyntaxKind[frame.node.kind];
       let key: string;
       if (frame.children.length === 0) {
-        const tokenStart = skipTrivia(content, frame.node.pos);
-        const text = content.slice(tokenStart, frame.node.end);
-        key = kind + ":" + JSON.stringify(text);
+        const isIdentifier = frame.node.kind === ts.SyntaxKind.Identifier;
+        const isLiteral = LITERAL_KINDS.has(frame.node.kind);
+        if (isIdentifier && opts.ignoreIdentifiers) {
+          key = kind;
+        } else if (isLiteral && opts.ignoreLiterals) {
+          key = kind;
+        } else {
+          const tokenStart = skipTrivia(content, frame.node.pos);
+          const text = content.slice(tokenStart, frame.node.end);
+          key = kind + ":" + JSON.stringify(text);
+        }
       } else {
         key = kind + "(" + frame.childKeys.join(",") + ")";
       }
@@ -180,6 +201,11 @@ function serialize(
 }
 
 const LITERAL_KINDS = new Set([
+  ts.SyntaxKind.StringLiteral,
+  ts.SyntaxKind.NumericLiteral,
+  ts.SyntaxKind.TrueKeyword,
+  ts.SyntaxKind.FalseKeyword,
+  ts.SyntaxKind.NullKeyword,
   ts.SyntaxKind.RegularExpressionLiteral,
   ts.SyntaxKind.NoSubstitutionTemplateLiteral,
   ts.SyntaxKind.TemplateHead,
@@ -187,11 +213,17 @@ const LITERAL_KINDS = new Set([
   ts.SyntaxKind.TemplateTail,
 ]);
 
-function hasLiteralLeaf(root: ts.Node, sf: ts.SourceFile): boolean {
+function isSignificantLeaf(
+  root: ts.Node,
+  sf: ts.SourceFile,
+  opts: SerializeOptions,
+): boolean {
   const stack: ts.Node[] = [root];
   while (stack.length > 0) {
     const node = stack.pop()!;
     if (LITERAL_KINDS.has(node.kind)) return true;
+    if (opts.ignoreIdentifiers && node.kind === ts.SyntaxKind.Identifier)
+      return true;
     for (const child of node.getChildren(sf)) stack.push(child);
   }
   return false;
@@ -274,6 +306,8 @@ function walk(
   filePath: string,
   map: BucketMap,
   registry: KindRegistry,
+  opts: SerializeOptions,
+  minNodes: number,
 ): void {
   const stack: ts.Node[] = [root];
   while (stack.length > 0) {
@@ -291,10 +325,25 @@ function walk(
       stack.push((node as ts.PropertyAssignment).initializer);
       continue;
     }
+    // Skip import declarations entirely — they're boilerplate, not logic.
+    if (
+      node.kind === ts.SyntaxKind.ImportDeclaration ||
+      node.kind === ts.SyntaxKind.ImportClause ||
+      node.kind === ts.SyntaxKind.ImportSpecifier ||
+      node.kind === ts.SyntaxKind.NamedImports ||
+      node.kind === ts.SyntaxKind.NamespaceImport ||
+      node.kind === ts.SyntaxKind.MetaProperty
+    ) {
+      continue;
+    }
     // Skip trivial bare control-flow statements (return;  break;  continue;)
+    // Also skip `return <literal>;` — a return whose sole payload is a bare literal
+    // (true, false, null, a number, a string) is too trivial to be meaningful.
     if (
       (node.kind === ts.SyntaxKind.ReturnStatement &&
         !(node as ts.ReturnStatement).expression) ||
+      (node.kind === ts.SyntaxKind.ReturnStatement &&
+        LITERAL_KINDS.has((node as ts.ReturnStatement).expression!.kind)) ||
       (node.kind === ts.SyntaxKind.BreakStatement &&
         !(node as ts.BreakStatement).label) ||
       (node.kind === ts.SyntaxKind.ContinueStatement &&
@@ -302,12 +351,23 @@ function walk(
     ) {
       continue;
     }
-    // Skip nodes whose subtree contains no literal values — all-identifier shapes are noise.
-    if (!hasLiteralLeaf(node, sf)) {
+    // Skip single `-number` expressions (e.g. -1) when not in ignore-literals mode.
+    if (
+      !opts.ignoreLiterals &&
+      node.kind === ts.SyntaxKind.PrefixUnaryExpression &&
+      (node as ts.PrefixUnaryExpression).operator ===
+        ts.SyntaxKind.MinusToken &&
+      (node as ts.PrefixUnaryExpression).operand.kind ===
+        ts.SyntaxKind.NumericLiteral
+    ) {
+      continue;
+    }
+    // Skip nodes whose subtree contains no significant leaf values.
+    if (!isSignificantLeaf(node, sf, opts)) {
       for (const child of node.getChildren(sf)) stack.push(child);
       continue;
     }
-    const { key, childKeys } = serialize(node, sf, content);
+    const { key, childKeys } = serialize(node, sf, content, opts);
     const tokenStart = skipTrivia(content, node.pos);
     const { line, character } = posToLineChar(lineStarts, tokenStart);
     const rawText = content.slice(tokenStart, node.end);
@@ -322,6 +382,11 @@ function walk(
       text: snippet,
     };
     const nodeCount = countNodes(node, sf);
+    // Skip trivially small subtrees (single-identifier wrappers, bare type nodes, etc.)
+    if (nodeCount < minNodes) {
+      for (const child of node.getChildren(sf)) stack.push(child);
+      continue;
+    }
     const bucket = map.get(key);
     if (bucket) {
       bucket.locs.push(loc);
@@ -349,6 +414,25 @@ function scanTs(dir: string): string[] {
   return results;
 }
 
+function parseMinNodes(): number {
+  const idx = process.argv.indexOf("--min-nodes");
+  if (idx === -1) return 4;
+  const raw = process.argv[idx + 1];
+  const val = parseInt(raw, 10);
+  if (isNaN(val) || val < 1) {
+    console.error("--min-nodes must be a positive integer, got: " + raw);
+    process.exit(1);
+  }
+  return val;
+}
+
+function parseFlags(): SerializeOptions {
+  return {
+    ignoreIdentifiers: process.argv.includes("--ignore-identifiers"),
+    ignoreLiterals: process.argv.includes("--ignore-literals"),
+  };
+}
+
 function parseThreshold(): number {
   const idx = process.argv.indexOf("--threshold");
   if (idx === -1) return 0.75;
@@ -373,6 +457,8 @@ function nodeHeader(nodeCount: number, kind: string, suffix: string): string {
 
 async function main(): Promise<void> {
   const threshold = parseThreshold();
+  const opts = parseFlags();
+  const minNodes = parseMinNodes();
   const root = path.resolve(__dirname, "..");
   const scanDirs = ["src", "scripts", "tests"];
   const files = scanDirs.flatMap((dir) => scanTs(path.join(root, dir)));
@@ -395,7 +481,17 @@ async function main(): Promise<void> {
       true,
     );
     for (const node of sf.getChildren(sf))
-      walk(node, sf, content, lineStarts, filePath, map, registry);
+      walk(
+        node,
+        sf,
+        content,
+        lineStarts,
+        filePath,
+        map,
+        registry,
+        opts,
+        minNodes,
+      );
   }
 
   const duplicates = [...map.entries()]
