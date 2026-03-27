@@ -34,6 +34,8 @@ endif
 
 all: interpretTuff_test
 
+.PHONY: all run test clean
+
 interpretTuff_test: interpretTuff.c interpretTuff_test.c
 ifeq ($(CC),cl)
 	$(CC) $(CFLAGS) interpretTuff.c interpretTuff_test.c /Fe:$(EXE)
@@ -47,6 +49,8 @@ ifeq ($(OS),Windows_NT)
 else
 	./$(EXE)
 endif
+
+test: run
 
 clean:
 ifeq ($(OS),Windows_NT)
