@@ -1,5 +1,18 @@
 import { describe, expect, it } from "vitest";
+import ts from "typescript";
 import { compileTuffToTS } from "../src/compileTuffToTS";
+
+function runPipeline(tuffSource: string): unknown {
+  const tsCode = compileTuffToTS(tuffSource);
+  const jsCode = ts.transpileModule(tsCode, {
+    compilerOptions: {
+      target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.None,
+    },
+  }).outputText;
+
+  return new Function(`${jsCode}\nreturn __tuff_result;`)();
+}
 
 describe("compileTuffToTS", () => {
   it("returns stubbed TypeScript output", () => {
@@ -16,6 +29,10 @@ describe("compileTuffToTS", () => {
 
   it("handles empty input", () => {
     const output = compileTuffToTS("");
-    expect(output).toContain("Input size: 0 characters");
+    expect(output).toContain("const __tuff_result: number = 0;");
+  });
+
+  it("pipeline compiles and executes empty input to 0", () => {
+    expect(runPipeline("")).toBe(0);
   });
 });
