@@ -83,4 +83,36 @@ describe("compileTuffToTS", () => {
       expect(runPipeline(source, stdIn)).toBe(expected);
     }
   });
+
+  it("simple variable binding: let x : U8 = 100U8; x", () => {
+    expect(runPipeline("let x : U8 = 100U8; x")).toBe(100);
+  });
+
+  it("assignable upcast: let x : U8 = 10U8; let y : U16 = x; y", () => {
+    expect(runPipeline("let x : U8 = 10U8; let y : U16 = x; y")).toBe(10);
+  });
+
+  it("chained bindings with read", () => {
+    expect(
+      runPipeline("let x : U8 = 5U8; let y : U16 = read<U16>(); y", [
+        0x34, 0x12,
+      ]),
+    ).toBe(0x1234);
+  });
+
+  it("fails on out-of-scope variable reference", () => {
+    expect(() => compileTuffToTS("let x : U8 = 100U8; y")).toThrow(
+      /undefined|not found|out.?of.?scope/i,
+    );
+  });
+
+  it("fails on invalid type assignability (unsigned to signed)", () => {
+    expect(() => compileTuffToTS("let x : U8 = 100U8; let y : I8 = x; y")).toThrow(
+      /assignable|incompatible/i,
+    );
+  });
+
+  it("allows variable shadowing", () => {
+    expect(runPipeline("let x : U8 = 10U8; let x : U8 = 20U8; x")).toBe(20);
+  });
 });
