@@ -11,7 +11,7 @@ function runPipeline(tuffSource: string): unknown {
     },
   }).outputText;
 
-  return new Function(`${jsCode}\nreturn __tuff_result;`)();
+  return new Function(`${jsCode}`)();
 }
 
 describe("compileTuffToTS", () => {
