@@ -1,9 +1,9 @@
 import { spawnSync } from "node:child_process";
 
-function runStep(name, command, args) {
-  const result = spawnSync(command, args, {
+function runStep(name, command) {
+  const result = spawnSync(command, {
     stdio: "inherit",
-    shell: false,
+    shell: true,
   });
 
   if (result.error) {
@@ -19,9 +19,7 @@ function runStep(name, command, args) {
   }
 }
 
-const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm";
-
-runStep("unit tests", npmCmd, ["run", "test"]);
-runStep("duplicate check", npmCmd, ["run", "cpd"]);
+runStep("unit tests", "npm run test");
+runStep("duplicate check", "npm run cpd");
 
 console.log("[hook] Quality gate passed (tests + CPD).");

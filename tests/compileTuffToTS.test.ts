@@ -11,7 +11,7 @@ function runPipeline(tuffSource: string): unknown {
     },
   }).outputText;
 
-  return new Function(`${jsCode}`)();
+  return new Function(`${jsCode}\nreturn __tuff_result;`)();
 }
 
 describe("compileTuffToTS", () => {
@@ -34,5 +34,18 @@ describe("compileTuffToTS", () => {
 
   it("pipeline compiles and executes empty input to 0", () => {
     expect(runPipeline("")).toBe(0);
+  });
+
+  it("pipeline compiles and executes 100U8 to 100", () => {
+    expect(runPipeline("100U8")).toBe(100);
+  });
+
+  it("fails compilation for out-of-range literals", () => {
+    expect(() => compileTuffToTS("256U8")).toThrow(/out of range/i);
+  });
+
+  it("fails compilation for invalid literal syntax", () => {
+    expect(() => compileTuffToTS("abcU8")).toThrow(/invalid/i);
+    expect(() => compileTuffToTS("-1U8")).toThrow(/invalid/i);
   });
 });

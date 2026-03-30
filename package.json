@@ -8,9 +8,10 @@
     "start": "node dist/index.js",
     "dev": "ts-node src/index.ts",
     "clean": "rimraf dist",
+    "hooks:install": "git config core.hooksPath .github/githooks",
     "test": "vitest run",
     "test:watch": "vitest",
-    "cpd": "pmd cpd --minimum-tokens 40 --language typescript --dir src --dir tests --ignore-literals --ignore-literals"
+    "cpd": "pmd cpd --minimum-tokens 40 --language typescript --dir src --dir tests --ignore-literals"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
