@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import ts from "typescript";
 import { compileTuffToTS } from "../src/compileTuffToTS";
 
-function runPipeline(tuffSource: string): unknown {
+function runPipeline(tuffSource: string, stdIn: number[] = []): unknown {
   const tsCode = compileTuffToTS(tuffSource);
   const jsCode = ts.transpileModule(tsCode, {
     compilerOptions: {
@@ -11,7 +11,9 @@ function runPipeline(tuffSource: string): unknown {
     },
   }).outputText;
 
-  return new Function(`${jsCode}\nreturn __tuff_result;`)();
+  return new Function("__tuff_stdin", `${jsCode}\nreturn __tuff_result;`)(
+    stdIn,
+  );
 }
 
 describe("compileTuffToTS", () => {
@@ -47,5 +49,38 @@ describe("compileTuffToTS", () => {
   it("fails compilation for invalid literal syntax", () => {
     expect(() => compileTuffToTS("abcU8")).toThrow(/invalid/i);
     expect(() => compileTuffToTS("-1U8")).toThrow(/invalid/i);
+  });
+
+  it("pipeline supports read<T>() for integer families", () => {
+    const cases: Array<{
+      source: string;
+      stdIn: number[];
+      expected: number | bigint;
+    }> = [
+      { source: "read<U8>()", stdIn: [100], expected: 100 },
+      { source: "read<U16>()", stdIn: [0x34, 0x12], expected: 0x1234 },
+      {
+        source: "read<U32>()",
+        stdIn: [0x78, 0x56, 0x34, 0x12],
+        expected: 0x12345678,
+      },
+      {
+        source: "read<U64>()",
+        stdIn: [0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01],
+        expected: 0x0102030405060708n,
+      },
+      { source: "read<I8>()", stdIn: [0xff], expected: -1 },
+      { source: "read<I16>()", stdIn: [0x00, 0x80], expected: -32768 },
+      { source: "read<I32>()", stdIn: [0xff, 0xff, 0xff, 0xff], expected: -1 },
+      {
+        source: "read<I64>()",
+        stdIn: [0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff],
+        expected: -1n,
+      },
+    ];
+
+    for (const { source, stdIn, expected } of cases) {
+      expect(runPipeline(source, stdIn)).toBe(expected);
+    }
   });
 });
