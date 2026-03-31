@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { interpret } from "./index.js";
+import { compile } from "./index.js";
+
+function interpret(source) {
+  return new Function(compile(source))();
+}
 
 describe("interpret", () => {
   test("empty string => 0", () => {
