@@ -5,13 +5,11 @@ export function compile(source) {
     return "return 0;";
   }
 
-  const statements = trimmedSource
-    .split(";")
-    .map((statement) => statement.trim())
-    .filter((statement) => statement !== "");
+  const statements = splitStatements(trimmedSource);
 
   const lastIndex = statements.length - 1;
   let output = "";
+  const declaredVariables = new Set();
 
   for (let i = 0; i < lastIndex; i += 1) {
     const statement = statements[i];
@@ -19,7 +17,13 @@ export function compile(source) {
     const variableName = statement.slice(0, equalsIndex).trim();
     const rhs = statement.slice(equalsIndex + 1).trim();
 
+    if (declaredVariables.has(variableName)) {
+      output += `${variableName} = ${compileValue(rhs)};\n`;
+      continue;
+    }
+
     output += `let ${variableName} = ${compileValue(rhs)};\n`;
+    declaredVariables.add(variableName);
   }
 
   output += `return ${compileValue(statements[lastIndex])};`;
@@ -27,9 +31,31 @@ export function compile(source) {
 }
 
 function compileValue(value) {
-  if (value === "true") {
-    return "1";
+  return `Number(${value})`;
+}
+
+function splitStatements(source) {
+  const statements = [];
+  let current = "";
+
+  for (const char of source) {
+    if (char === ";" || char === "{" || char === "}") {
+      pushStatement(statements, current);
+      current = "";
+      continue;
+    }
+
+    current += char;
   }
 
-  return value;
+  pushStatement(statements, current);
+  return statements;
+}
+
+function pushStatement(statements, statement) {
+  const trimmedStatement = statement.trim();
+
+  if (trimmedStatement !== "") {
+    statements.push(trimmedStatement);
+  }
 }
