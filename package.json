@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "test": "bun test",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "cpd": "pmd cpd index.js index.test.js --language ecmascript --minimum-tokens 35 --ignore-literals --ignore-identifiers"
   },
   "devDependencies": {
     "eslint": "^10.1.0"
