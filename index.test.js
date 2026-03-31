@@ -202,3 +202,9 @@ describe("interpret", () => {
 test('"fn add(this, b) => { return this + b; } 3.add(4)" => 7', () => {
   expect(interpret("fn add(this, b) => { return this + b; } 3.add(4)")).toBe(7);
 });
+
+test('"fn get(this) => { return this.x; } { x : 100 }.get()" => 100', () => {
+  expect(
+    interpret("fn get(this) => { return this.x; } { x : 100 }.get()"),
+  ).toBe(100);
+});

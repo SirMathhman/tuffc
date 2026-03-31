@@ -82,7 +82,7 @@ function compileFunctionStatement(statement) {
   const bodyOutput = compileStatements(body, functionDeclaredVariables, false);
 
   if (params[0] === "this") {
-    return `Number.prototype.${name} = function(${params.slice(1).join(", ")}) {\n${bodyOutput}};\n`;
+    return `Object.prototype.${name} = function(${params.slice(1).join(", ")}) {\n${bodyOutput}};\n`;
   }
 
   return `function ${name}(${params.join(", ")}) {\n${bodyOutput}}\n`;
