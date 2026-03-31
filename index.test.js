@@ -33,4 +33,12 @@ describe("interpret", () => {
   test('"x = 0; { x = 100; } x" => 100', () => {
     expect(interpret("x = 0; { x = 100; } x")).toBe(100);
   });
+
+  test('"x = 5; if (false) { x = 100; } x" => 5', () => {
+    expect(interpret("x = 5; if (false) { x = 100; } x")).toBe(5);
+  });
+
+  test('"x = 100; if (true) { 200; } x" => 100', () => {
+    expect(interpret("x = 100; if (true) { 200; } x")).toBe(100);
+  });
 });
