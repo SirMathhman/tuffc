@@ -36,13 +36,14 @@ function compileStatement(
 ) {
   if (statement.type === "assignment") {
     const { name, value } = statement;
+    const compiledValue = compileAssignedValue(value);
 
     if (declaredVariables.includes(name)) {
-      return `${name} = ${compileValue(value)};\n`;
+      return `${name} = ${compiledValue};\n`;
     }
 
     declaredVariables.push(name);
-    return `let ${name} = ${compileValue(value)};\n`;
+    return `let ${name} = ${compiledValue};\n`;
   }
 
   if (statement.type === "if") {
@@ -51,6 +52,10 @@ function compileStatement(
 
   if (statement.type === "function") {
     return compileFunctionStatement(statement);
+  }
+
+  if (statement.type === "block") {
+    return compileStatements(statement.body, declaredVariables, false);
   }
 
   if (statement.type === "return") {
@@ -84,6 +89,10 @@ function compileFunctionStatement(statement) {
 }
 
 function compileValue(value) {
+  if (value.startsWith("{")) {
+    return value;
+  }
+
   let formattedValue = "";
 
   for (let i = 0; i < value.length; i += 1) {
@@ -110,6 +119,10 @@ function compileValue(value) {
   return `Number(${formattedValue})`;
 }
 
+function compileAssignedValue(value) {
+  return compileValue(value);
+}
+
 function parseStatements(source) {
   const statements = [];
   let pos = 0;
@@ -129,6 +142,16 @@ function parseStatements(source) {
       const { statement, endPos } = parseIfStatement(source, pos);
       statements.push(statement);
       pos = endPos;
+    } else if (source[pos] === "{") {
+      if (looksLikeObjectLiteralExpression(source, pos)) {
+        const { statement, endPos } = parseSimpleStatement(source, pos);
+        statements.push(statement);
+        pos = endPos;
+      } else {
+        const { body, endPos } = parseBlock(source, pos);
+        statements.push({ type: "block", body });
+        pos = endPos;
+      }
     } else if (isKeywordAt(source, pos, "return")) {
       const { statement, endPos } = parseReturnStatement(source, pos);
       statements.push(statement);
@@ -265,13 +288,23 @@ function parseSimpleStatement(source, startPos) {
 
 function scanUntilStatementEnd(source, startPos) {
   let pos = startPos;
+  let braceDepth = 0;
+  let parenDepth = 0;
 
   while (
     pos < source.length &&
-    source[pos] !== ";" &&
-    source[pos] !== "{" &&
-    source[pos] !== "}"
+    !(source[pos] === ";" && braceDepth === 0 && parenDepth === 0)
   ) {
+    if (source[pos] === "{") {
+      braceDepth += 1;
+    } else if (source[pos] === "}" && braceDepth > 0) {
+      braceDepth -= 1;
+    } else if (source[pos] === "(") {
+      parenDepth += 1;
+    } else if (source[pos] === ")" && parenDepth > 0) {
+      parenDepth -= 1;
+    }
+
     pos += 1;
   }
 
@@ -325,6 +358,29 @@ function skipWhitespace(source, startPos) {
 
 function isWhitespace(char) {
   return char === " " || char === "\t" || char === "\n" || char === "\r";
+}
+
+function looksLikeObjectLiteralExpression(source, startPos) {
+  let pos = startPos + 1;
+  let braceDepth = 1;
+
+  while (pos < source.length && braceDepth > 0) {
+    if (source[pos] === "{") {
+      braceDepth += 1;
+    } else if (source[pos] === "}") {
+      braceDepth -= 1;
+
+      if (braceDepth === 0) {
+        break;
+      }
+    } else if (source[pos] === ":" && braceDepth === 1) {
+      return true;
+    }
+
+    pos += 1;
+  }
+
+  return false;
 }
 
 function isKeywordAt(source, startPos, keyword) {

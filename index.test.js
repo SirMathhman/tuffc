@@ -14,6 +14,24 @@ describe("interpret", () => {
     expect(compile("x = 100")).toBe("let x = Number(100);\n");
   });
 
+  test('compile("x = { y : 100 }; x.y") preserves object literals and property access', () => {
+    expect(compile("x = { y : 100 }; x.y")).toBe(
+      "let x = { y : 100 };\nreturn Number(x.y);",
+    );
+  });
+
+  test('compile("{ y : 100 }.y") preserves object literal property access', () => {
+    expect(compile("{ y : 100 }.y")).toBe("return { y : 100 }.y;");
+  });
+
+  test('compile("{}") preserves plain block semantics', () => {
+    expect(compile("{}")).toBe("");
+  });
+
+  test('compile("{{}}") preserves nested block semantics', () => {
+    expect(compile("{{}}")).toBe("");
+  });
+
   test('compile("if true") falls back to a simple expression', () => {
     expect(compile("if true")).toBe("return Number(if true);");
   });
@@ -60,6 +78,22 @@ describe("interpret", () => {
 
   test('"x = 100; x" => 100', () => {
     expect(interpret("x = 100; x")).toBe(100);
+  });
+
+  test('"x = { y : 100 }; x.y" => 100', () => {
+    expect(interpret("x = { y : 100 }; x.y")).toBe(100);
+  });
+
+  test('"{ y : 100 }.y" => 100', () => {
+    expect(interpret("{ y : 100 }.y")).toBe(100);
+  });
+
+  test('"{}" => undefined', () => {
+    expect(interpret("{}")).toBeUndefined();
+  });
+
+  test('"{{}}" => undefined', () => {
+    expect(interpret("{{}}")).toBeUndefined();
   });
 
   test('"fn add(a, b) => { return a + b; } add(3, 4)" => 7', () => {
@@ -158,6 +192,10 @@ describe("interpret", () => {
 
   test('"returnx = 1; returnx" => 1', () => {
     expect(interpret("returnx = 1; returnx")).toBe(1);
+  });
+
+  test('"ifx = 1 <= 2; ifx" => 1', () => {
+    expect(interpret("ifx = 1 <= 2; ifx")).toBe(1);
   });
 });
 
