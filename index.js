@@ -12,12 +12,11 @@ export function interpret(source) {
   let result = 0;
 
   for (const statement of statements) {
-    const assignmentMatch = statement.match(/^([A-Za-z_]\w*)\s*=\s*(.+)$/);
+    const assignment = parseAssignment(statement);
 
-    if (assignmentMatch) {
-      const [, variableName, rhs] = assignmentMatch;
-      const value = evaluateExpression(rhs.trim(), scope);
-      scope[variableName] = value;
+    if (assignment) {
+      const value = evaluateExpression(assignment.rhs, scope);
+      scope[assignment.variableName] = value;
       result = value;
       continue;
     }
@@ -28,14 +27,64 @@ export function interpret(source) {
   return result;
 }
 
+function parseAssignment(statement) {
+  const equalsIndex = statement.indexOf("=");
+
+  if (equalsIndex <= 0) {
+    return null;
+  }
+
+  const variableName = statement.slice(0, equalsIndex).trim();
+  const rhs = statement.slice(equalsIndex + 1).trim();
+
+  if (rhs === "" || !isIdentifier(variableName)) {
+    return null;
+  }
+
+  return { variableName, rhs };
+}
+
 function evaluateExpression(expression, scope) {
-  if (/^-?\d+(?:\.\d+)?$/.test(expression)) {
+  if (isNumericLiteral(expression)) {
     return Number(expression);
   }
 
-  if (/^[A-Za-z_]\w*$/.test(expression)) {
+  if (isIdentifier(expression)) {
     return scope[expression];
   }
 
   return Number(expression);
+}
+
+function isNumericLiteral(value) {
+  if (value === "") {
+    return false;
+  }
+
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue);
+}
+
+function isIdentifier(value) {
+  if (value.length === 0 || !isIdentifierStart(value[0])) {
+    return false;
+  }
+
+  for (let i = 1; i < value.length; i += 1) {
+    if (!isIdentifierPart(value[i])) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function isIdentifierStart(char) {
+  return (
+    (char >= "a" && char <= "z") || (char >= "A" && char <= "Z") || char === "_"
+  );
+}
+
+function isIdentifierPart(char) {
+  return isIdentifierStart(char) || (char >= "0" && char <= "9");
 }
