@@ -24,7 +24,10 @@ const TYPE_BIT_WIDTHS: Record<IntegerType, number> = {
 
 const SIGNED_TYPES = new Set<IntegerType>(["I8", "I16", "I32", "I64"]);
 
-export function isAssignableTo(fromType: IntegerType, toType: IntegerType): boolean {
+export function isAssignableTo(
+  fromType: IntegerType,
+  toType: IntegerType,
+): boolean {
   const fromSigned = SIGNED_TYPES.has(fromType);
   const toSigned = SIGNED_TYPES.has(toType);
 
@@ -37,7 +40,10 @@ export function isAssignableTo(fromType: IntegerType, toType: IntegerType): bool
   return fromWidth <= toWidth;
 }
 
-export function compileVariableBinding(source: string): { code: string; resultVar: string } {
+export function compileVariableBinding(source: string): {
+  code: string;
+  resultVar: string;
+} {
   const scope = new Map<string, IntegerType>();
   const helperCode = [
     "// Helper functions for read<T>() support",
@@ -71,9 +77,10 @@ export function compileVariableBinding(source: string): { code: string; resultVa
 
   // Process bindings: first occurrence declares, subsequent ones reassign (shadowing)
   for (const binding of bindings) {
-    const letMatch = /^let\s+(\w+)\s*:\s*(U8|U16|U32|U64|I8|I16|I32|I64)\s*=\s*(.+)$/.exec(
-      binding,
-    );
+    const letMatch =
+      /^let\s+(\w+)\s*:\s*(U8|U16|U32|U64|I8|I16|I32|I64)\s*=\s*(.+)$/.exec(
+        binding,
+      );
     if (!letMatch) {
       throw new Error(`Invalid variable binding syntax: ${binding}`);
     }
@@ -97,11 +104,13 @@ export function compileVariableBinding(source: string): { code: string; resultVa
       bodyStatements.push(`let ${name}: number | bigint = ${compiledExpr};`);
       declaredVars.add(name);
     }
-    
+
     scope.set(name, type);
   }
 
-  bodyStatements.push(`const __tuff_result: number | bigint = ${compileExpression(finalExpr, scope)};`);
+  bodyStatements.push(
+    `const __tuff_result: number | bigint = ${compileExpression(finalExpr, scope)};`,
+  );
 
   return {
     code: [...helperCode, ...bodyStatements].join("\n"),
@@ -109,7 +118,10 @@ export function compileVariableBinding(source: string): { code: string; resultVa
   };
 }
 
-function inferExpressionType(expr: string, scope: Map<string, IntegerType>): IntegerType {
+function inferExpressionType(
+  expr: string,
+  scope: Map<string, IntegerType>,
+): IntegerType {
   expr = expr.trim();
 
   if (/^\d+(U8|U16|U32|U64|I8|I16|I32|I64)$/.test(expr)) {
@@ -133,7 +145,10 @@ function inferExpressionType(expr: string, scope: Map<string, IntegerType>): Int
   throw new Error(`Invalid expression: ${expr}`);
 }
 
-function compileExpression(expr: string, scope: Map<string, IntegerType>): string {
+function compileExpression(
+  expr: string,
+  scope: Map<string, IntegerType>,
+): string {
   expr = expr.trim();
 
   if (/^\d+(U8|U16|U32|U64|I8|I16|I32|I64)$/.test(expr)) {

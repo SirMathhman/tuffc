@@ -8,7 +8,15 @@
 import { compileVariableBinding } from "./bindingCompiler";
 import { compileReadExpressionCore } from "./typeUtils";
 
-export type IntegerType = "U8" | "U16" | "U32" | "U64" | "I8" | "I16" | "I32" | "I64";
+export type IntegerType =
+  | "U8"
+  | "U16"
+  | "U32"
+  | "U64"
+  | "I8"
+  | "I16"
+  | "I32"
+  | "I64";
 
 const INTEGER_RANGES: Record<IntegerType, { min: bigint; max: bigint }> = {
   U8: { min: 0n, max: 255n },

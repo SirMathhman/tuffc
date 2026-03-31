@@ -94,9 +94,10 @@ describe("compileTuffToTS", () => {
 
   it("chained bindings with read", () => {
     expect(
-      runPipeline("let x : U8 = 5U8; let y : U16 = read<U16>(); y", [
-        0x34, 0x12,
-      ]),
+      runPipeline(
+        "let x : U8 = 5U8; let y : U16 = read<U16>(); y",
+        [0x34, 0x12],
+      ),
     ).toBe(0x1234);
   });
 
@@ -107,9 +108,9 @@ describe("compileTuffToTS", () => {
   });
 
   it("fails on invalid type assignability (unsigned to signed)", () => {
-    expect(() => compileTuffToTS("let x : U8 = 100U8; let y : I8 = x; y")).toThrow(
-      /assignable|incompatible/i,
-    );
+    expect(() =>
+      compileTuffToTS("let x : U8 = 100U8; let y : I8 = x; y"),
+    ).toThrow(/assignable|incompatible/i);
   });
 
   it("allows variable shadowing", () => {
