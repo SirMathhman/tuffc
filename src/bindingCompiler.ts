@@ -11,6 +11,12 @@ export interface Variable {
   type: IntegerType;
 }
 
+interface BindingInfo {
+  type: IntegerType;
+  mutable: boolean;
+  compiledName: string;
+}
+
 const TYPE_BIT_WIDTHS: Record<IntegerType, number> = {
   U8: 8,
   U16: 16,
@@ -40,11 +46,42 @@ export function isAssignableTo(
   return fromWidth <= toWidth;
 }
 
+function parseLiteralType(expr: string): IntegerType | undefined {
+  const match = /^\d+(U8|U16|U32|U64|I8|I16|I32|I64)$/.exec(expr);
+  return match?.[1] as IntegerType | undefined;
+}
+
+function parseReadType(expr: string): IntegerType | undefined {
+  const match = /^read<(U8|U16|U32|U64|I8|I16|I32|I64)>\(\)$/.exec(expr);
+  return match?.[1] as IntegerType | undefined;
+}
+
+function getBindingOrThrow(
+  scope: Map<string, BindingInfo>,
+  name: string,
+): BindingInfo {
+  const binding = scope.get(name);
+  if (!binding) {
+    throw new Error(`Undefined variable: ${name}`);
+  }
+  return binding;
+}
+
+function assertAssignable(
+  fromType: IntegerType,
+  toType: IntegerType,
+  context: string,
+): void {
+  if (!isAssignableTo(fromType, toType)) {
+    throw new Error(`Type mismatch: ${fromType} is not assignable to ${toType} in ${context}`);
+  }
+}
+
 export function compileVariableBinding(source: string): {
   code: string;
   resultVar: string;
 } {
-  const scope = new Map<string, IntegerType>();
+  const scope = new Map<string, BindingInfo>();
   const helperCode = [
     "// Helper functions for read<T>() support",
     "const __readU8 = (): number => (__tuff_stdin[__tuff_stdin_offset++] & 0xff);",
@@ -63,7 +100,7 @@ export function compileVariableBinding(source: string): {
   ];
 
   const bodyStatements: string[] = [];
-  const declaredVars = new Set<string>();
+  let bindingCounter = 0;
 
   const parts = source.split(";");
   const trimmedParts = parts.map((p) => p.trim()).filter((p) => p.length > 0);
@@ -73,39 +110,47 @@ export function compileVariableBinding(source: string): {
   }
 
   const finalExpr = trimmedParts[trimmedParts.length - 1];
-  const bindings = trimmedParts.slice(0, -1);
+  const statements = trimmedParts.slice(0, -1);
 
-  // Process bindings: first occurrence declares, subsequent ones reassign (shadowing)
-  for (const binding of bindings) {
+  for (const statement of statements) {
     const letMatch =
-      /^let\s+(\w+)\s*:\s*(U8|U16|U32|U64|I8|I16|I32|I64)\s*=\s*(.+)$/.exec(
-        binding,
+      /^let\s+(mut\s+)?(\w+)\s*:\s*(U8|U16|U32|U64|I8|I16|I32|I64)\s*=\s*(.+)$/.exec(
+        statement,
       );
-    if (!letMatch) {
-      throw new Error(`Invalid variable binding syntax: ${binding}`);
+
+    if (letMatch) {
+      const [, mutToken, name, typeStr, expr] = letMatch;
+      const type = typeStr as IntegerType;
+      const mutable = typeof mutToken === "string";
+
+      const exprType = inferExpressionType(expr, scope);
+      assertAssignable(exprType, type, `binding "${name}"`);
+
+      const compiledExpr = compileExpression(expr, scope);
+      const compiledName = `__tuff_${name}_${bindingCounter}`;
+      bindingCounter += 1;
+
+      bodyStatements.push(`let ${compiledName}: number | bigint = ${compiledExpr};`);
+      scope.set(name, { type, mutable, compiledName });
+      continue;
     }
 
-    const [, name, typeStr, expr] = letMatch;
-    const type = typeStr as IntegerType;
+    const assignmentMatch = /^(\w+)\s*=\s*(.+)$/.exec(statement);
+    if (assignmentMatch) {
+      const [, name, expr] = assignmentMatch;
+      const binding = getBindingOrThrow(scope, name);
+      if (!binding.mutable) {
+        throw new Error(`Cannot reassign immutable variable: ${name}`);
+      }
 
-    const exprType = inferExpressionType(expr, scope);
-    if (!isAssignableTo(exprType, type)) {
-      throw new Error(
-        `Type mismatch: ${exprType} is not assignable to ${type} in binding "${name}"`,
-      );
+      const exprType = inferExpressionType(expr, scope);
+      assertAssignable(exprType, binding.type, `assignment "${name}"`);
+
+      bodyStatements.push(`${binding.compiledName} = ${compileExpression(expr, scope)};`);
+      continue;
     }
 
-    const compiledExpr = compileExpression(expr, scope);
-    if (declaredVars.has(name)) {
-      // Reassign (shadowing)
-      bodyStatements.push(`${name} = ${compiledExpr};`);
-    } else {
-      // First declaration
-      bodyStatements.push(`let ${name}: number | bigint = ${compiledExpr};`);
-      declaredVars.add(name);
-    }
-
-    scope.set(name, type);
+    throw new Error(`Invalid variable binding syntax: ${statement}`);
   }
 
   bodyStatements.push(
@@ -120,26 +165,22 @@ export function compileVariableBinding(source: string): {
 
 function inferExpressionType(
   expr: string,
-  scope: Map<string, IntegerType>,
+  scope: Map<string, BindingInfo>,
 ): IntegerType {
   expr = expr.trim();
 
-  if (/^\d+(U8|U16|U32|U64|I8|I16|I32|I64)$/.test(expr)) {
-    const match = /^\d+((U8|U16|U32|U64|I8|I16|I32|I64))$/.exec(expr);
-    return match![1] as IntegerType;
+  const literalType = parseLiteralType(expr);
+  if (literalType) {
+    return literalType;
   }
 
-  if (/^read<(U8|U16|U32|U64|I8|I16|I32|I64)>\(\)$/.test(expr)) {
-    const match = /^read<((U8|U16|U32|U64|I8|I16|I32|I64))>\(\)$/.exec(expr);
-    return match![1] as IntegerType;
+  const readType = parseReadType(expr);
+  if (readType) {
+    return readType;
   }
 
   if (/^\w+$/.test(expr)) {
-    const varType = scope.get(expr);
-    if (!varType) {
-      throw new Error(`Undefined variable: ${expr}`);
-    }
-    return varType;
+    return getBindingOrThrow(scope, expr).type;
   }
 
   throw new Error(`Invalid expression: ${expr}`);
@@ -147,26 +188,23 @@ function inferExpressionType(
 
 function compileExpression(
   expr: string,
-  scope: Map<string, IntegerType>,
+  scope: Map<string, BindingInfo>,
 ): string {
   expr = expr.trim();
 
-  if (/^\d+(U8|U16|U32|U64|I8|I16|I32|I64)$/.test(expr)) {
+  const literalType = parseLiteralType(expr);
+  if (literalType) {
     const match = /^(\d+)(U8|U16|U32|U64|I8|I16|I32|I64)$/.exec(expr);
     return match![1];
   }
 
-  if (/^read<(U8|U16|U32|U64|I8|I16|I32|I64)>\(\)$/.test(expr)) {
-    const match = /^read<((U8|U16|U32|U64|I8|I16|I32|I64))>\(\)$/.exec(expr);
-    const typeSuffix = match![1] as IntegerType;
-    return compileReadExpressionCore(typeSuffix);
+  const readType = parseReadType(expr);
+  if (readType) {
+    return compileReadExpressionCore(readType);
   }
 
   if (/^\w+$/.test(expr)) {
-    if (!scope.has(expr)) {
-      throw new Error(`Undefined variable: ${expr}`);
-    }
-    return expr;
+    return getBindingOrThrow(scope, expr).compiledName;
   }
 
   throw new Error(`Invalid expression: ${expr}`);

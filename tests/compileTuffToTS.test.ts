@@ -116,4 +116,32 @@ describe("compileTuffToTS", () => {
   it("allows variable shadowing", () => {
     expect(runPipeline("let x : U8 = 10U8; let x : U8 = 20U8; x")).toBe(20);
   });
+
+  it("supports mutable binding reassignment", () => {
+    expect(runPipeline("let mut x : U8 = 10U8; x = 20U8; x")).toBe(20);
+  });
+
+  it("supports mutable reassignment with read<T>()", () => {
+    expect(runPipeline("let mut x : U16 = 1U16; x = read<U16>(); x", [0x34, 0x12])).toBe(
+      0x1234,
+    );
+  });
+
+  it("fails assignment to immutable binding", () => {
+    expect(() => compileTuffToTS("let x : U8 = 10U8; x = 20U8; x")).toThrow(
+      /mutable|immutable|reassign/i,
+    );
+  });
+
+  it("fails mutable reassignment with incompatible type", () => {
+    expect(() => compileTuffToTS("let mut x : U8 = 10U8; x = 20I8; x")).toThrow(
+      /assignable|incompatible|type mismatch/i,
+    );
+  });
+
+  it("fails assignment to undefined variable", () => {
+    expect(() => compileTuffToTS("let mut x : U8 = 10U8; y = 20U8; x")).toThrow(
+      /undefined|not found|out.?of.?scope/i,
+    );
+  });
 });
