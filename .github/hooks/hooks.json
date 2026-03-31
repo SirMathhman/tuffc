@@ -1,0 +1,14 @@
+{
+	"hooks": {
+		"Stop": [
+			{
+				"type": "command",
+				"command": "npm run test; if ($LASTEXITCODE -ne 0) { exit 2 }"
+			},
+			{
+				"type": "command",
+				"command": "npm run lint; if ($LASTEXITCODE -ne 0) { exit 2 }"
+			}
+		]
+	}
+}
