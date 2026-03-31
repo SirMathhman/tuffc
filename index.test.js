@@ -22,12 +22,64 @@ describe("interpret", () => {
     expect(compile("if (true) 1")).toBe("return Number(if (true) 1);");
   });
 
+  test('compile("return 1") preserves return statements', () => {
+    expect(compile("return 1")).toBe("return Number(1);\n");
+  });
+
+  test('compile("fn add(a, b) => { return a + b; }") preserves final function statement', () => {
+    expect(compile("fn add(a, b) => { return a + b; }")).toBe(
+      "function add(a, b) {\nreturn Number(a + b);\n}\n",
+    );
+  });
+
+  test('compile("fn") falls back when the function name is missing', () => {
+    expect(compile("fn")).toBe("return Number(fn);");
+  });
+
+  test('compile("fn add") falls back when the parameter list is missing', () => {
+    expect(compile("fn add")).toBe("return Number(fn add);");
+  });
+
+  test('compile("fn add(") falls back when the parameter list is unclosed', () => {
+    expect(compile("fn add(")).toBe("return Number(fn add();");
+  });
+
+  test('compile("fn add(a, b)") falls back when the arrow is missing', () => {
+    expect(compile("fn add(a, b)")).toBe("return Number(fn add(a, b));");
+  });
+
+  test('compile("fn add(a, b) => 1") falls back when the body braces are missing', () => {
+    expect(compile("fn add(a, b) => 1")).toBe(
+      "let fn add(a, b) = Number(> 1);\n",
+    );
+  });
+
   test('"100" => 100', () => {
     expect(interpret("100")).toBe(100);
   });
 
   test('"x = 100; x" => 100', () => {
     expect(interpret("x = 100; x")).toBe(100);
+  });
+
+  test('"fn add(a, b) => { return a + b; } add(3, 4)" => 7', () => {
+    expect(interpret("fn add(a, b) => { return a + b; } add(3, 4)")).toBe(7);
+  });
+
+  test('"fn add(a, b) => { sum = a + b; return sum; } add(3, 4)" => 7', () => {
+    expect(
+      interpret("fn add(a, b) => { sum = a + b; return sum; } add(3, 4)"),
+    ).toBe(7);
+  });
+
+  test('"fn yes() => { return true; } yes()" => 1', () => {
+    expect(interpret("fn yes() => { return true; } yes()")).toBe(1);
+  });
+
+  test('"fn Add(a, b) => { if (true) { return a + b; } }; Add(3, 4)" => 7', () => {
+    expect(
+      interpret("fn Add(a, b) => { if (true) { return a + b; } }; Add(3, 4)"),
+    ).toBe(7);
   });
 
   test('"true" => 1', () => {
@@ -94,5 +146,17 @@ describe("interpret", () => {
     expect(compile("if (true) { x = 1; }")).toBe(
       "if (Number(true)) {\nlet x = Number(1);\n}\n",
     );
+  });
+
+  test('"ifx = 1; ifx" => 1', () => {
+    expect(interpret("ifx = 1; ifx")).toBe(1);
+  });
+
+  test('"fnx = 1; fnx" => 1', () => {
+    expect(interpret("fnx = 1; fnx")).toBe(1);
+  });
+
+  test('"returnx = 1; returnx" => 1', () => {
+    expect(interpret("returnx = 1; returnx")).toBe(1);
   });
 });

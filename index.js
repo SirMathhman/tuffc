@@ -6,37 +6,42 @@ export function compile(source) {
   }
 
   const statements = parseStatements(trimmedSource);
-  const declaredVariables = new Set();
+  return compileStatements(statements, [], true);
+}
 
+function compileStatements(
+  statements,
+  declaredVariables,
+  returnLastExpression,
+) {
   let output = "";
-  const lastIndex = statements.length - 1;
 
-  for (let i = 0; i < lastIndex; i += 1) {
-    output += compileStatement(statements[i], declaredVariables);
-  }
-
-  const lastStatement = statements[lastIndex];
-
-  if (lastStatement.type === "expression") {
-    output += `return ${compileValue(lastStatement.value)};`;
-  } else if (lastStatement.type === "if") {
-    output += compileIfStatement(lastStatement, declaredVariables);
-  } else {
-    output += compileStatement(lastStatement, declaredVariables);
+  for (let i = 0; i < statements.length; i += 1) {
+    const shouldReturnExpression =
+      returnLastExpression && i === statements.length - 1;
+    output += compileStatement(
+      statements[i],
+      declaredVariables,
+      shouldReturnExpression,
+    );
   }
 
   return output;
 }
 
-function compileStatement(statement, declaredVariables) {
+function compileStatement(
+  statement,
+  declaredVariables,
+  shouldReturnExpression = false,
+) {
   if (statement.type === "assignment") {
     const { name, value } = statement;
 
-    if (declaredVariables.has(name)) {
+    if (declaredVariables.includes(name)) {
       return `${name} = ${compileValue(value)};\n`;
     }
 
-    declaredVariables.add(name);
+    declaredVariables.push(name);
     return `let ${name} = ${compileValue(value)};\n`;
   }
 
@@ -44,18 +49,34 @@ function compileStatement(statement, declaredVariables) {
     return compileIfStatement(statement, declaredVariables);
   }
 
+  if (statement.type === "function") {
+    return compileFunctionStatement(statement);
+  }
+
+  if (statement.type === "return") {
+    return `return ${compileValue(statement.value)};\n`;
+  }
+
+  if (statement.type === "expression" && shouldReturnExpression) {
+    return `return ${compileValue(statement.value)};`;
+  }
+
   return "";
 }
 
 function compileIfStatement(statement, declaredVariables) {
   const { condition, body } = statement;
-  let bodyOutput = "";
-
-  for (const stmt of body) {
-    bodyOutput += compileStatement(stmt, declaredVariables);
-  }
+  const bodyOutput = compileStatements(body, declaredVariables, false);
 
   return `if (Number(${condition})) {\n${bodyOutput}}\n`;
+}
+
+function compileFunctionStatement(statement) {
+  const { name, params, body } = statement;
+  const functionDeclaredVariables = [...params];
+  const bodyOutput = compileStatements(body, functionDeclaredVariables, false);
+
+  return `function ${name}(${params.join(", ")}) {\n${bodyOutput}}\n`;
 }
 
 function compileValue(value) {
@@ -73,8 +94,16 @@ function parseStatements(source) {
       break;
     }
 
-    if (source.substr(pos, 2) === "if") {
+    if (isKeywordAt(source, pos, "fn")) {
+      const { statement, endPos } = parseFunctionStatement(source, pos);
+      statements.push(statement);
+      pos = endPos;
+    } else if (isKeywordAt(source, pos, "if")) {
       const { statement, endPos } = parseIfStatement(source, pos);
+      statements.push(statement);
+      pos = endPos;
+    } else if (isKeywordAt(source, pos, "return")) {
+      const { statement, endPos } = parseReturnStatement(source, pos);
       statements.push(statement);
       pos = endPos;
     } else {
@@ -117,9 +146,122 @@ function parseIfStatement(source, startPos) {
     return parseSimpleStatement(source, startPos);
   }
 
+  const block = parseBlock(source, pos);
+
+  return {
+    statement: { type: "if", condition, body: block.body },
+    endPos: block.endPos,
+  };
+}
+
+function parseFunctionStatement(source, startPos) {
+  let pos = startPos + 2;
+  pos = skipWhitespace(source, pos);
+
+  const nameStart = pos;
+
+  while (pos < source.length && isIdentifierChar(source[pos])) {
+    pos += 1;
+  }
+
+  const name = source.slice(nameStart, pos).trim();
+
+  if (name === "") {
+    return parseSimpleStatement(source, startPos);
+  }
+
+  pos = skipWhitespace(source, pos);
+
+  if (source[pos] !== "(") {
+    return parseSimpleStatement(source, startPos);
+  }
+
   pos += 1;
 
-  const bodyStart = pos;
+  const paramsStart = pos;
+  while (pos < source.length && source[pos] !== ")") {
+    pos += 1;
+  }
+
+  if (source[pos] !== ")") {
+    return parseSimpleStatement(source, startPos);
+  }
+
+  pos += 1;
+
+  const paramsSource = source.slice(paramsStart, pos - 1);
+  const params = splitParameters(paramsSource);
+
+  pos = skipWhitespace(source, pos);
+
+  if (source[pos] !== "=" || source[pos + 1] !== ">") {
+    return parseSimpleStatement(source, startPos);
+  }
+
+  pos += 2;
+  pos = skipWhitespace(source, pos);
+
+  if (source[pos] !== "{") {
+    return parseSimpleStatement(source, startPos);
+  }
+
+  const { body, endPos } = parseBlock(source, pos);
+
+  return { statement: { type: "function", name, params, body }, endPos };
+}
+
+function parseReturnStatement(source, startPos) {
+  const { text: value, endPos } = scanUntilStatementEnd(source, startPos + 6);
+  return { statement: { type: "return", value }, endPos };
+}
+
+function parseSimpleStatement(source, startPos) {
+  const { text: statementText, endPos } = scanUntilStatementEnd(
+    source,
+    startPos,
+  );
+
+  const equalsIndex = findAssignmentOperator(statementText);
+
+  if (equalsIndex !== -1) {
+    const name = statementText.slice(0, equalsIndex).trim();
+    const value = statementText.slice(equalsIndex + 1).trim();
+
+    return { statement: { type: "assignment", name, value }, endPos };
+  }
+
+  return {
+    statement: { type: "expression", value: statementText },
+    endPos,
+  };
+}
+
+function scanUntilStatementEnd(source, startPos) {
+  let pos = startPos;
+
+  while (
+    pos < source.length &&
+    source[pos] !== ";" &&
+    source[pos] !== "{" &&
+    source[pos] !== "}"
+  ) {
+    pos += 1;
+  }
+
+  const text = source.slice(startPos, pos).trim();
+
+  if (
+    pos < source.length &&
+    (source[pos] === ";" || source[pos] === "{" || source[pos] === "}")
+  ) {
+    pos += 1;
+  }
+
+  return { text, endPos: pos };
+}
+
+function parseBlock(source, startPos) {
+  let pos = startPos + 1;
   let braceDepth = 1;
 
   while (braceDepth > 0 && pos < source.length) {
@@ -132,8 +274,8 @@ function parseIfStatement(source, startPos) {
     pos += 1;
   }
 
-  const bodySource = source.slice(bodyStart, pos - 1);
-  const body = parseStatements(bodySource);
+  const blockSource = source.slice(startPos + 1, pos - 1);
+  const body = parseStatements(blockSource);
 
   pos = skipWhitespace(source, pos);
 
@@ -141,43 +283,7 @@ function parseIfStatement(source, startPos) {
     pos += 1;
   }
 
-  return { statement: { type: "if", condition, body }, endPos: pos };
-}
-
-function parseSimpleStatement(source, startPos) {
-  let pos = startPos;
-
-  while (
-    pos < source.length &&
-    source[pos] !== ";" &&
-    source[pos] !== "{" &&
-    source[pos] !== "}"
-  ) {
-    pos += 1;
-  }
-
-  const statementText = source.slice(startPos, pos).trim();
-
-  if (
-    pos < source.length &&
-    (source[pos] === ";" || source[pos] === "{" || source[pos] === "}")
-  ) {
-    pos += 1;
-  }
-
-  const equalsIndex = findAssignmentOperator(statementText);
-
-  if (equalsIndex !== -1) {
-    const name = statementText.slice(0, equalsIndex).trim();
-    const value = statementText.slice(equalsIndex + 1).trim();
-
-    return { statement: { type: "assignment", name, value }, endPos: pos };
-  }
-
-  return {
-    statement: { type: "expression", value: statementText },
-    endPos: pos,
-  };
+  return { body, endPos: pos };
 }
 
 function skipWhitespace(source, startPos) {
@@ -192,6 +298,47 @@ function skipWhitespace(source, startPos) {
 
 function isWhitespace(char) {
   return char === " " || char === "\t" || char === "\n" || char === "\r";
+}
+
+function isKeywordAt(source, startPos, keyword) {
+  if (source.slice(startPos, startPos + keyword.length) !== keyword) {
+    return false;
+  }
+
+  return !isIdentifierChar(source[startPos + keyword.length] ?? "");
+}
+
+function isIdentifierChar(char) {
+  return (
+    char !== "" &&
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_$".includes(
+      char,
+    )
+  );
+}
+
+function splitParameters(paramsSource) {
+  const trimmedParams = paramsSource.trim();
+
+  if (trimmedParams === "") {
+    return [];
+  }
+
+  const params = [];
+  let paramStart = 0;
+
+  for (let i = 0; i < paramsSource.length; i += 1) {
+    if (paramsSource[i] !== ",") {
+      continue;
+    }
+
+    params.push(paramsSource.slice(paramStart, i).trim());
+    paramStart = i + 1;
+  }
+
+  params.push(paramsSource.slice(paramStart).trim());
+
+  return params;
 }
 
 function findAssignmentOperator(statementText) {

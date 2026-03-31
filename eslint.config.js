@@ -27,6 +27,14 @@ export default [
           selector: "CallExpression[callee.name='RegExp']",
           message: "RegExp calls are not allowed.",
         },
+        {
+          selector: "NewExpression[callee.name='Set']",
+          message: "Set is not allowed. Use arrays instead.",
+        },
+        {
+          selector: "CallExpression[callee.name='Set']",
+          message: "Set is not allowed. Use arrays instead.",
+        },
       ],
     },
   },
