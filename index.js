@@ -45,6 +45,14 @@ function parseAssignment(statement) {
 }
 
 function evaluateExpression(expression, scope) {
+  if (expression === "true") {
+    return 1;
+  }
+
+  if (expression === "false") {
+    return 0;
+  }
+
   if (isNumericLiteral(expression)) {
     return Number(expression);
   }
