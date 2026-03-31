@@ -165,8 +165,9 @@ function parseSimpleStatement(source, startPos) {
     pos += 1;
   }
 
-  if (statementText.includes("=")) {
-    const equalsIndex = statementText.indexOf("=");
+  const equalsIndex = findAssignmentOperator(statementText);
+
+  if (equalsIndex !== -1) {
     const name = statementText.slice(0, equalsIndex).trim();
     const value = statementText.slice(equalsIndex + 1).trim();
 
@@ -191,4 +192,29 @@ function skipWhitespace(source, startPos) {
 
 function isWhitespace(char) {
   return char === " " || char === "\t" || char === "\n" || char === "\r";
+}
+
+function findAssignmentOperator(statementText) {
+  for (let i = 0; i < statementText.length; i += 1) {
+    if (statementText[i] !== "=") {
+      continue;
+    }
+
+    const previousChar = statementText[i - 1] ?? "";
+    const nextChar = statementText[i + 1] ?? "";
+
+    if (
+      previousChar === "<" ||
+      previousChar === ">" ||
+      previousChar === "!" ||
+      previousChar === "=" ||
+      nextChar === "="
+    ) {
+      continue;
+    }
+
+    return i;
+  }
+
+  return -1;
 }
