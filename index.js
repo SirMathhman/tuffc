@@ -76,11 +76,38 @@ function compileFunctionStatement(statement) {
   const functionDeclaredVariables = [...params];
   const bodyOutput = compileStatements(body, functionDeclaredVariables, false);
 
+  if (params[0] === "this") {
+    return `Number.prototype.${name} = function(${params.slice(1).join(", ")}) {\n${bodyOutput}};\n`;
+  }
+
   return `function ${name}(${params.join(", ")}) {\n${bodyOutput}}\n`;
 }
 
 function compileValue(value) {
-  return `Number(${value})`;
+  let formattedValue = "";
+
+  for (let i = 0; i < value.length; i += 1) {
+    if (value[i] === ".") {
+      const prevChar = i > 0 ? value[i - 1] : "";
+      const nextChar = i < value.length - 1 ? value[i + 1] : "";
+
+      const isPrevDigit = prevChar >= "0" && prevChar <= "9";
+      const isNextLetter =
+        (nextChar >= "a" && nextChar <= "z") ||
+        (nextChar >= "A" && nextChar <= "Z") ||
+        nextChar === "_";
+
+      if (isPrevDigit && isNextLetter) {
+        formattedValue += " .";
+      } else {
+        formattedValue += value[i];
+      }
+    } else {
+      formattedValue += value[i];
+    }
+  }
+
+  return `Number(${formattedValue})`;
 }
 
 function parseStatements(source) {

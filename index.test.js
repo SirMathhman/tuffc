@@ -160,3 +160,7 @@ describe("interpret", () => {
     expect(interpret("returnx = 1; returnx")).toBe(1);
   });
 });
+
+test('"fn add(this, b) => { return this + b; } 3.add(4)" => 7', () => {
+  expect(interpret("fn add(this, b) => { return this + b; } 3.add(4)")).toBe(7);
+});
