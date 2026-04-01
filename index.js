@@ -75,6 +75,10 @@ function compileStatement(
     return compileFunctionStatement(statement);
   }
 
+  if (statement.type === "externFunction") {
+    return compileExternFunctionStatement(statement);
+  }
+
   if (statement.type === "block") {
     return compileStatements(statement.body, declaredVariables, false);
   }
@@ -109,6 +113,24 @@ function compileFunctionStatement(statement) {
   return `function ${name}(${params.join(", ")}) {\n${bodyOutput}}\n`;
 }
 
+function compileExternFunctionStatement(statement) {
+  const { name, params } = statement;
+
+  if (params[0] !== "this") {
+    return "";
+  }
+
+  const forwardedParams = params.slice(1);
+  const forwardedArgs =
+    forwardedParams.length === 0
+      ? "this"
+      : `this, ${forwardedParams.join(", ")}`;
+
+  return `Object.prototype.${name} = function(${forwardedParams.join(", ")}) {
+return globalThis.${name}(${forwardedArgs});
+};
+`;
+}
 function compileValue(value) {
   if (value.startsWith("{")) {
     return value;
@@ -177,7 +199,11 @@ function parseStatements(source) {
       break;
     }
 
-    if (isKeywordAt(source, pos, "fn")) {
+    if (isKeywordAt(source, pos, "extern")) {
+      const { statement, endPos } = parseExternFunctionStatement(source, pos);
+      statements.push(statement);
+      pos = endPos;
+    } else if (isKeywordAt(source, pos, "fn")) {
       const { statement, endPos } = parseFunctionStatement(source, pos);
       statements.push(statement);
       pos = endPos;
@@ -251,45 +277,44 @@ function parseIfStatement(source, startPos) {
   };
 }
 
+function parseExternFunctionStatement(source, startPos) {
+  let pos = startPos + 6;
+  pos = skipWhitespace(source, pos);
+
+  if (!isKeywordAt(source, pos, "fn")) {
+    return parseSimpleStatement(source, startPos);
+  }
+
+  const signature = parseFunctionSignature(source, pos);
+
+  if (signature === null) {
+    return parseSimpleStatement(source, startPos);
+  }
+
+  pos = skipWhitespace(source, signature.endPos);
+
+  if (source[pos] === ";") {
+    pos += 1;
+  }
+
+  return {
+    statement: {
+      type: "externFunction",
+      name: signature.name,
+      params: signature.params,
+    },
+    endPos: pos,
+  };
+}
+
 function parseFunctionStatement(source, startPos) {
-  let pos = startPos + 2;
-  pos = skipWhitespace(source, pos);
+  const signature = parseFunctionSignature(source, startPos);
 
-  const nameStart = pos;
-
-  while (pos < source.length && isIdentifierChar(source[pos])) {
-    pos += 1;
-  }
-
-  const name = source.slice(nameStart, pos).trim();
-
-  if (name === "") {
+  if (signature === null) {
     return parseSimpleStatement(source, startPos);
   }
 
-  pos = skipWhitespace(source, pos);
-
-  if (source[pos] !== "(") {
-    return parseSimpleStatement(source, startPos);
-  }
-
-  pos += 1;
-
-  const paramsStart = pos;
-  while (pos < source.length && source[pos] !== ")") {
-    pos += 1;
-  }
-
-  if (source[pos] !== ")") {
-    return parseSimpleStatement(source, startPos);
-  }
-
-  pos += 1;
-
-  const paramsSource = source.slice(paramsStart, pos - 1);
-  const params = splitParameters(paramsSource);
-
-  pos = skipWhitespace(source, pos);
+  let pos = skipWhitespace(source, signature.endPos);
 
   if (source[pos] !== "=" || source[pos + 1] !== ">") {
     return parseSimpleStatement(source, startPos);
@@ -304,7 +329,57 @@ function parseFunctionStatement(source, startPos) {
 
   const { body, endPos } = parseBlock(source, pos);
 
-  return { statement: { type: "function", name, params, body }, endPos };
+  return {
+    statement: {
+      type: "function",
+      name: signature.name,
+      params: signature.params,
+      body,
+    },
+    endPos,
+  };
+}
+
+function parseFunctionSignature(source, startPos) {
+  let pos = startPos + 2;
+  pos = skipWhitespace(source, pos);
+
+  const nameStart = pos;
+
+  while (pos < source.length && isIdentifierChar(source[pos])) {
+    pos += 1;
+  }
+
+  const name = source.slice(nameStart, pos).trim();
+
+  if (name === "") {
+    return null;
+  }
+
+  pos = skipWhitespace(source, pos);
+
+  if (source[pos] !== "(") {
+    return null;
+  }
+
+  pos += 1;
+
+  const paramsStart = pos;
+
+  while (pos < source.length && source[pos] !== ")") {
+    pos += 1;
+  }
+
+  if (source[pos] !== ")") {
+    return null;
+  }
+
+  pos += 1;
+
+  const paramsSource = source.slice(paramsStart, pos - 1);
+  const params = splitParameters(paramsSource);
+
+  return { name, params, endPos: pos };
 }
 
 function parseReturnStatement(source, startPos) {

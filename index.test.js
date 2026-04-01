@@ -5,6 +5,32 @@ function interpret(source) {
   return new Function(compile(source))();
 }
 
+function interpretWithGlobals(source, globals = {}) {
+  const previousGlobals = new Map();
+
+  for (const [name, value] of Object.entries(globals)) {
+    previousGlobals.set(
+      name,
+      Object.prototype.hasOwnProperty.call(globalThis, name)
+        ? { exists: true, value: globalThis[name] }
+        : { exists: false },
+    );
+    globalThis[name] = value;
+  }
+
+  try {
+    return new Function(compile(source))();
+  } finally {
+    for (const [name, previousValue] of previousGlobals) {
+      if (previousValue.exists) {
+        globalThis[name] = previousValue.value;
+      } else {
+        delete globalThis[name];
+      }
+    }
+  }
+}
+
 describe("interpret", () => {
   test("empty string => 0", () => {
     expect(interpret("")).toBe(0);
@@ -84,6 +110,20 @@ describe("interpret", () => {
     );
   });
 
+  test('compile("extern fn add(this, other); 3.add(4)") injects a global-backed method wrapper', () => {
+    expect(compile("extern fn add(this, other); 3.add(4)")).toBe(
+      "Object.prototype.add = function(other) {\nreturn globalThis.add(this, other);\n};\nreturn Number(3 .add(4));",
+    );
+  });
+
+  test('compile("extern") falls back when fn is missing', () => {
+    expect(compile("extern")).toBe("return Number(extern);");
+  });
+
+  test('compile("extern fn") falls back when the extern signature is incomplete', () => {
+    expect(compile("extern fn")).toBe("return Number(extern fn);");
+  });
+
   test('"100" => 100', () => {
     expect(interpret("100")).toBe(100);
   });
@@ -125,6 +165,37 @@ describe("interpret", () => {
   test('"fn Add(a, b) => { if (true) { return a + b; } }; Add(3, 4)" => 7', () => {
     expect(
       interpret("fn Add(a, b) => { if (true) { return a + b; } }; Add(3, 4)"),
+    ).toBe(7);
+  });
+
+  test('"extern fn add(this, other); 3.add(4)" => 7', () => {
+    expect(
+      interpretWithGlobals("extern fn add(this, other); 3.add(4)", {
+        add: (first, second) => {
+          return first + second;
+        },
+      }),
+    ).toBe(7);
+  });
+
+  test('"extern fn add(first, second); add(3, 4)" => 7', () => {
+    expect(
+      interpretWithGlobals("extern fn add(first, second); add(3, 4)", {
+        add: (first, second) => {
+          return first + second;
+        },
+      }),
+    ).toBe(7);
+  });
+
+  test('"extern fn add(first, second); add(3, 4)" => 7 with existing globals', () => {
+    expect(
+      interpretWithGlobals("extern fn add(first, second); add(3, 4)", {
+        add: (first, second) => {
+          return first + second;
+        },
+        Math,
+      }),
     ).toBe(7);
   });
 
