@@ -118,6 +118,10 @@ describe("interpret", () => {
     expect(compile("out x")).toBe("return Number(out x);");
   });
 
+  test('interpret("x = ; x") => 0 for an empty compiled value', () => {
+    expect(interpret("x = ; x")).toBe(0);
+  });
+
   test('"100" => 100', () => {
     expect(interpret("100")).toBe(100);
   });
@@ -408,6 +412,21 @@ describe("interpret", () => {
         },
       ),
     ).toBe(11);
+  });
+
+  test("interpretAll jsModules side-effect import without from clause still evaluates exports", () => {
+    expect(
+      interpretAll(
+        "main",
+        {
+          main: "{ extern getValue } = extern helper; extern fn getValue(); getValue()",
+        },
+        {
+          helper:
+            'import "side-effect"; export function getValue() { return 13; }',
+        },
+      ),
+    ).toBe(13);
   });
 });
 

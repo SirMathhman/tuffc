@@ -428,30 +428,30 @@ function compileValue(value) {
     return value;
   }
 
-  return `Number(${formatValueCharacters(value, 0, "")})`;
+  return `Number(${formatValueCharacters(value)})`;
 }
 
-function formatValueCharacters(value, index, formattedValue) {
-  if (index >= value.length) {
-    return formattedValue;
-  }
+function formatValueCharacters(value) {
+  return value.split("").reduce((formattedValue, char, index, chars) => {
+    if (char === ".") {
+      const prevChar = index > 0 ? chars[index - 1] : "";
+      const isPrevDigit = prevChar >= "0" && prevChar <= "9";
+      const isNextLetter =
+        (index < chars.length - 1 &&
+          chars[index + 1] >= "a" &&
+          chars[index + 1] <= "z") ||
+        (index < chars.length - 1 &&
+          chars[index + 1] >= "A" &&
+          chars[index + 1] <= "Z") ||
+        (index < chars.length - 1 && chars[index + 1] === "_");
 
-  if (value[index] === ".") {
-    const prevChar = index > 0 ? value[index - 1] : "";
-    const nextChar = index < value.length - 1 ? value[index + 1] : "";
-
-    const isPrevDigit = prevChar >= "0" && prevChar <= "9";
-    const isNextLetter =
-      (nextChar >= "a" && nextChar <= "z") ||
-      (nextChar >= "A" && nextChar <= "Z") ||
-      nextChar === "_";
-
-    if (isPrevDigit && isNextLetter) {
-      return formatValueCharacters(value, index + 1, formattedValue + " .");
+      if (isPrevDigit && isNextLetter) {
+        return formattedValue + " .";
+      }
     }
-  }
 
-  return formatValueCharacters(value, index + 1, formattedValue + value[index]);
+    return formattedValue + char;
+  }, "");
 }
 
 function compileAssignedValue(value) {
@@ -535,13 +535,9 @@ function normalizeDestructuringPattern(pattern) {
 }
 
 function extractDestructuredNames(pattern) {
-  const inner = pattern.slice(1, -1).trim();
-
-  if (inner === "") {
-    return [];
-  }
-
-  return inner.split(",").map((part) => destructuringPartBinding(part.trim()));
+  return splitDestructuringParts(pattern).map((part) =>
+    destructuringPartBinding(part),
+  );
 }
 
 function trimTrailingDestructuringKey(part, keyEnd) {
@@ -553,13 +549,7 @@ function trimTrailingDestructuringKey(part, keyEnd) {
 }
 
 function extractExternDestructuredNames(pattern) {
-  const inner = pattern.slice(1, -1).trim();
-
-  if (inner === "") {
-    return [];
-  }
-
-  return inner.split(",").reduce((result, part) => {
+  return splitDestructuringParts(pattern).reduce((result, part) => {
     const trimmedPart = part.trim();
     const spaceIndex = trimmedPart.indexOf(" ");
 
@@ -572,6 +562,16 @@ function extractExternDestructuredNames(pattern) {
     }
     return result;
   }, []);
+}
+
+function splitDestructuringParts(pattern) {
+  const inner = pattern.slice(1, -1).trim();
+
+  if (inner === "") {
+    return [];
+  }
+
+  return inner.split(",");
 }
 
 function parseStatements(source) {
@@ -989,8 +989,7 @@ function looksLikeObjectLiteralExpression(source, startPos) {
     return false;
   }
 
-  let pos = startPos + 1;
-  return containsTopLevelObjectColon(source, pos, closeBraceIndex, 0);
+  return containsTopLevelObjectColon(source, startPos + 1, closeBraceIndex, 0);
 }
 
 function containsTopLevelObjectColon(source, pos, closeBraceIndex, braceDepth) {
