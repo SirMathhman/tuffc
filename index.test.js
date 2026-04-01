@@ -276,6 +276,14 @@ describe("interpret", () => {
       ),
     ).toBe(11);
   });
+
+  test('"[1, 2, 3][0]" => 1', () => {
+    expect(interpret("[1, 2, 3][0]")).toBe(1);
+  });
+
+  test('"x = [1, 2, 3]; x[0]" => 1', () => {
+    expect(interpret("x = [1, 2, 3]; x[0]")).toBe(1);
+  });
 });
 
 test('"fn add(this, b) => { return this + b; } 3.add(4)" => 7', () => {

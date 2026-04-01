@@ -189,6 +189,10 @@ function compileValue(value) {
 }
 
 function compileAssignedValue(value) {
+  if (value.startsWith("[")) {
+    return value;
+  }
+
   return compileValue(value);
 }
 
