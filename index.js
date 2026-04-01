@@ -10,6 +10,201 @@ export function compile(source) {
 }
 
 export function interpret(source, globals = {}) {
+  return runWithGlobals(globals, () => {
+    return new Function(compile(source))();
+  });
+}
+
+export function interpretAll(entryModuleName, modules, jsModules = {}) {
+  const moduleExports = {};
+
+  for (const moduleName of Object.keys(modules)) {
+    if (moduleName === entryModuleName) {
+      continue;
+    }
+
+    const source = modules[moduleName] ?? "";
+    const trimmedSource = source.trim();
+
+    if (trimmedSource === "") {
+      moduleExports[moduleName] = {};
+      continue;
+    }
+
+    const statements = parseStatements(trimmedSource);
+    const moduleOutput = compileStatements(statements, [], false, "__exports");
+
+    moduleExports[moduleName] = runWithGlobals(moduleExports, () => {
+      return new Function(`const __exports = {};
+${moduleOutput}
+return __exports;`)();
+    });
+  }
+
+  const jsModuleExports = evaluateJsModules(jsModules, moduleExports);
+
+  for (const name of Object.keys(jsModuleExports)) {
+    moduleExports[name] = jsModuleExports[name];
+  }
+
+  const entrySource = modules[entryModuleName] ?? "";
+  return interpret(entrySource, moduleExports);
+}
+
+function evaluateJsModules(jsModules, otherModules) {
+  const result = {};
+
+  for (const moduleName of Object.keys(jsModules)) {
+    const source = jsModules[moduleName] ?? "";
+    const trimmedSource = source.trim();
+
+    if (trimmedSource === "") {
+      result[moduleName] = {};
+      continue;
+    }
+
+    const allModules = {};
+
+    for (const key of Object.keys(otherModules)) {
+      allModules[key] = otherModules[key];
+    }
+
+    for (const key of Object.keys(result)) {
+      allModules[key] = result[key];
+    }
+
+    result[moduleName] = evaluateJsModuleSource(trimmedSource, allModules);
+  }
+
+  return result;
+}
+
+function evaluateJsModuleSource(source, otherModules) {
+  const exportedNames = [];
+  const importStatements = [];
+  let remaining = source;
+
+  remaining = extractJsImports(remaining, importStatements);
+  remaining = extractJsExports(remaining, exportedNames);
+
+  let fnBody = buildJsImportCode(importStatements);
+  fnBody += remaining;
+  fnBody += "\n";
+
+  for (const name of exportedNames) {
+    fnBody += "__exports." + name + " = " + name + ";\n";
+  }
+
+  const moduleExports = {};
+  const fn = new Function("__exports", "__importedModules", fnBody);
+  fn(moduleExports, otherModules);
+
+  return moduleExports;
+}
+
+function scanAndStrip(source, keyword, onMatch) {
+  let result = "";
+  let pos = 0;
+
+  while (pos < source.length) {
+    const atWordBoundary = pos === 0 || isWhitespace(source[pos - 1]);
+
+    if (atWordBoundary && source.slice(pos, pos + keyword.length) === keyword) {
+      pos = onMatch(source, pos);
+    } else {
+      result += source[pos];
+      pos += 1;
+    }
+  }
+
+  return result;
+}
+
+function extractJsImports(source, importStatements) {
+  return scanAndStrip(source, "import ", (src, pos) => {
+    const semiPos = src.indexOf(";", pos);
+    const end = semiPos === -1 ? src.length : semiPos + 1;
+    importStatements.push(src.slice(pos, end).trim());
+    return end;
+  });
+}
+
+function extractJsExports(source, exportedNames) {
+  return scanAndStrip(source, "export function ", (src, pos) => {
+    const nameStart = pos + 16;
+    let nameEnd = nameStart;
+
+    while (nameEnd < src.length && isIdentifierChar(src[nameEnd])) {
+      nameEnd += 1;
+    }
+
+    exportedNames.push(src.slice(nameStart, nameEnd));
+    return pos + 7;
+  });
+}
+
+function buildJsImportCode(importStatements) {
+  let code = "";
+
+  for (const stmt of importStatements) {
+    const fromIndex = stmt.indexOf(" from ");
+
+    if (fromIndex === -1) {
+      continue;
+    }
+
+    let rawRef = stmt.slice(fromIndex + 6).trim();
+
+    if (rawRef.length > 0 && rawRef[rawRef.length - 1] === ";") {
+      rawRef = rawRef.slice(0, -1).trim();
+    }
+
+    const moduleName = stripLeadingDotSlash(stripQuotes(rawRef));
+    const namesRaw = stmt.slice(stmt.indexOf("{") + 1, stmt.indexOf("}"));
+
+    for (const name of namesRaw.split(",").map((s) => s.trim())) {
+      if (name !== "") {
+        code +=
+          "const " +
+          name +
+          " = __importedModules." +
+          moduleName +
+          "." +
+          name +
+          ";\n";
+      }
+    }
+  }
+
+  return code;
+}
+
+function stripQuotes(str) {
+  let result = str;
+
+  if (result.length > 0 && (result[0] === '"' || result[0] === "'")) {
+    result = result.slice(1);
+  }
+
+  if (
+    result.length > 0 &&
+    (result[result.length - 1] === '"' || result[result.length - 1] === "'")
+  ) {
+    result = result.slice(0, -1);
+  }
+
+  return result;
+}
+
+function stripLeadingDotSlash(str) {
+  if (str.length >= 2 && str[0] === "." && str[1] === "/") {
+    return str.slice(2);
+  }
+
+  return str;
+}
+
+function runWithGlobals(globals, runner) {
   const previousGlobals = [];
 
   for (const [name, value] of Object.entries(globals)) {
@@ -23,7 +218,7 @@ export function interpret(source, globals = {}) {
   }
 
   try {
-    return new Function(compile(source))();
+    return runner();
   } finally {
     for (const [name, previousValue] of previousGlobals) {
       if (previousValue.exists) {
@@ -39,6 +234,7 @@ function compileStatements(
   statements,
   declaredVariables,
   returnLastExpression,
+  exportTarget = null,
 ) {
   let output = "";
 
@@ -49,6 +245,7 @@ function compileStatements(
       statements[i],
       declaredVariables,
       shouldReturnExpression,
+      exportTarget,
     );
   }
 
@@ -59,13 +256,27 @@ function compileStatement(
   statement,
   declaredVariables,
   shouldReturnExpression = false,
+  exportTarget = null,
 ) {
   if (statement.type === "assignment") {
     const { name, value } = statement;
 
     if (isDestructuringPattern(name)) {
       const boundNames = extractDestructuredNames(name);
-      const compiledValue = value;
+      const compiledValue = compileDestructuringRhsValue(value);
+      const jsPattern = normalizeDestructuringPattern(name);
+      const externNames = extractExternDestructuredNames(name);
+
+      if (externNames.length > 0) {
+        let output = "";
+
+        for (const externName of externNames) {
+          output += `globalThis.${externName} = ${compiledValue}.${externName};\n`;
+        }
+
+        return output;
+      }
+
       const shouldDeclare =
         boundNames.length === 0 ||
         boundNames.some((boundName) => !declaredVariables.includes(boundName));
@@ -77,10 +288,10 @@ function compileStatement(
           }
         }
 
-        return `let ${name} = ${compiledValue};\n`;
+        return `let ${jsPattern} = ${compiledValue};\n`;
       }
 
-      return `(${name} = ${compiledValue});\n`;
+      return `(${jsPattern} = ${compiledValue});\n`;
     }
 
     const compiledValue = compileAssignedValue(value);
@@ -94,11 +305,21 @@ function compileStatement(
   }
 
   if (statement.type === "if") {
-    return compileIfStatement(statement, declaredVariables);
+    return compileIfStatement(statement, declaredVariables, exportTarget);
   }
 
   if (statement.type === "function") {
     return compileFunctionStatement(statement);
+  }
+
+  if (statement.type === "outFunction") {
+    const functionOutput = compileFunctionStatement(statement);
+
+    if (exportTarget === null) {
+      return functionOutput;
+    }
+
+    return `${functionOutput}${exportTarget}.${statement.name} = ${statement.name};\n`;
   }
 
   if (statement.type === "externFunction") {
@@ -106,7 +327,12 @@ function compileStatement(
   }
 
   if (statement.type === "block") {
-    return compileStatements(statement.body, declaredVariables, false);
+    return compileStatements(
+      statement.body,
+      declaredVariables,
+      false,
+      exportTarget,
+    );
   }
 
   if (statement.type === "return") {
@@ -120,9 +346,14 @@ function compileStatement(
   return "";
 }
 
-function compileIfStatement(statement, declaredVariables) {
+function compileIfStatement(statement, declaredVariables, exportTarget) {
   const { condition, body } = statement;
-  const bodyOutput = compileStatements(body, declaredVariables, false);
+  const bodyOutput = compileStatements(
+    body,
+    declaredVariables,
+    false,
+    exportTarget,
+  );
 
   return `if (Number(${condition})) {\n${bodyOutput}}\n`;
 }
@@ -197,11 +428,80 @@ function compileAssignedValue(value) {
     return value;
   }
 
+  if (isExternExpression(value)) {
+    return compileExternExpression(value);
+  }
+
   return compileValue(value);
+}
+
+function compileDestructuringRhsValue(value) {
+  if (isExternExpression(value)) {
+    return compileExternExpression(value);
+  }
+
+  return value;
+}
+
+function isExternExpression(value) {
+  const trimmed = value.trim();
+  return trimmed.startsWith("extern ") && !trimmed.startsWith("extern fn ");
+}
+
+function compileExternExpression(value) {
+  const name = value.trim().slice("extern ".length).trim();
+  return `globalThis.${name}`;
 }
 
 function isDestructuringPattern(name) {
   return name.startsWith("{") && name.endsWith("}");
+}
+
+function destructuringPartBinding(trimmedPart) {
+  const colonIndex = trimmedPart.indexOf(":");
+
+  if (colonIndex !== -1) {
+    return trimmedPart.slice(colonIndex + 1).trim();
+  }
+
+  const spaceIndex = trimmedPart.indexOf(" ");
+
+  if (spaceIndex !== -1) {
+    return trimmedPart.slice(spaceIndex + 1).trim();
+  }
+
+  return trimmedPart;
+}
+
+function normalizeDestructuringPattern(pattern) {
+  const inner = pattern.slice(1, -1).trim();
+
+  if (inner === "") {
+    return "{}";
+  }
+
+  const parts = inner.split(",").map((part) => {
+    const trimmedPart = part.trim();
+    const binding = destructuringPartBinding(trimmedPart);
+
+    if (binding === trimmedPart) {
+      return trimmedPart;
+    }
+
+    let keyEnd = trimmedPart.length - binding.length;
+
+    while (
+      keyEnd > 0 &&
+      (trimmedPart[keyEnd - 1] === ":" || trimmedPart[keyEnd - 1] === " ")
+    ) {
+      keyEnd -= 1;
+    }
+
+    const key = trimmedPart.slice(0, keyEnd);
+    return key + ": " + binding;
+  });
+
+  return "{ " + parts.join(", ") + " }";
 }
 
 function extractDestructuredNames(pattern) {
@@ -211,15 +511,32 @@ function extractDestructuredNames(pattern) {
     return [];
   }
 
-  return inner.split(",").map((part) => {
-    const colonIndex = part.indexOf(":");
+  return inner.split(",").map((part) => destructuringPartBinding(part.trim()));
+}
 
-    if (colonIndex === -1) {
-      return part.trim();
+function extractExternDestructuredNames(pattern) {
+  const inner = pattern.slice(1, -1).trim();
+
+  if (inner === "") {
+    return [];
+  }
+
+  const result = [];
+
+  for (const part of inner.split(",")) {
+    const trimmedPart = part.trim();
+    const spaceIndex = trimmedPart.indexOf(" ");
+
+    if (spaceIndex !== -1) {
+      const keyword = trimmedPart.slice(0, spaceIndex).trim();
+
+      if (keyword === "extern") {
+        result.push(trimmedPart.slice(spaceIndex + 1).trim());
+      }
     }
+  }
 
-    return part.slice(colonIndex + 1).trim();
-  });
+  return result;
 }
 
 function parseStatements(source) {
@@ -233,7 +550,11 @@ function parseStatements(source) {
       break;
     }
 
-    if (isKeywordAt(source, pos, "extern")) {
+    if (isKeywordAt(source, pos, "out")) {
+      const { statement, endPos } = parseOutFunctionStatement(source, pos);
+      statements.push(statement);
+      pos = endPos;
+    } else if (isKeywordAt(source, pos, "extern")) {
       const { statement, endPos } = parseExternFunctionStatement(source, pos);
       statements.push(statement);
       pos = endPos;
@@ -338,6 +659,31 @@ function parseExternFunctionStatement(source, startPos) {
       params: signature.params,
     },
     endPos: pos,
+  };
+}
+
+function parseOutFunctionStatement(source, startPos) {
+  let pos = startPos + 3;
+  pos = skipWhitespace(source, pos);
+
+  if (!isKeywordAt(source, pos, "fn")) {
+    return parseSimpleStatement(source, startPos);
+  }
+
+  const parsedFunction = parseFunctionStatement(source, pos);
+
+  if (parsedFunction.statement.type !== "function") {
+    return parseSimpleStatement(source, startPos);
+  }
+
+  return {
+    statement: {
+      type: "outFunction",
+      name: parsedFunction.statement.name,
+      params: parsedFunction.statement.params,
+      body: parsedFunction.statement.body,
+    },
+    endPos: parsedFunction.endPos,
   };
 }
 

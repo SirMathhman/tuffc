@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { compile, interpret } from "./index.js";
+import { compile, interpret, interpretAll } from "./index.js";
 
 describe("interpret", () => {
   test("empty string => 0", () => {
@@ -96,6 +96,26 @@ describe("interpret", () => {
 
   test('compile("extern fn") falls back when the extern signature is incomplete', () => {
     expect(compile("extern fn")).toBe("return Number(extern fn);");
+  });
+
+  test('compile("x = extern foo; x") assigns a globalThis reference via extern expression', () => {
+    expect(compile("x = extern foo; x")).toBe(
+      "let x = globalThis.foo;\nreturn Number(x);",
+    );
+  });
+
+  test('compile("out fn get() => { return 4; }") preserves final out function statement', () => {
+    expect(compile("out fn get() => { return 4; }")).toBe(
+      "function get() {\nreturn Number(4);\n}\n",
+    );
+  });
+
+  test('compile("out fn") falls back when the out signature is incomplete', () => {
+    expect(compile("out fn")).toBe("return Number(out fn);");
+  });
+
+  test('compile("out x") falls back when out is not followed by fn', () => {
+    expect(compile("out x")).toBe("return Number(out x);");
   });
 
   test('"100" => 100', () => {
@@ -299,6 +319,95 @@ describe("interpret", () => {
 
   test('"x = [1, 2, 3, 4]; x.length" => 4', () => {
     expect(interpret("x = [1, 2, 3, 4]; x.length")).toBe(4);
+  });
+
+  test('interpretAll("main", { main, lib }) with out fn export => 4', () => {
+    expect(
+      interpretAll("main", {
+        main: "{ get } = lib; get()",
+        lib: "out fn get() => { return 4; }",
+      }),
+    ).toBe(4);
+  });
+
+  test("interpretAll skips empty non-entry module sources", () => {
+    expect(
+      interpretAll("main", {
+        main: "0",
+        lib: "   ",
+      }),
+    ).toBe(0);
+  });
+
+  test("interpretAll falls back to empty entry source when entry is missing", () => {
+    expect(
+      interpretAll("main", {
+        lib: "out fn get() => { return 4; }",
+      }),
+    ).toBe(0);
+  });
+  test("interpretAll with jsModules routes calls through extern fn wrapper => 4", () => {
+    expect(
+      interpretAll(
+        "main",
+        {
+          main: "{ extern wrapper } = extern fooJS; extern fn wrapper(); wrapper()",
+          lib: "out fn get() => { return 4; }",
+        },
+        {
+          fooJS:
+            'import { get } from "./lib"; export function wrapper() { return get(); }',
+        },
+      ),
+    ).toBe(4);
+  });
+
+  test("interpretAll skips empty jsModules entries", () => {
+    expect(interpretAll("main", { main: "0" }, { emptyMod: "   " })).toBe(0);
+  });
+
+  test("interpretAll jsModules second module imports from first", () => {
+    expect(
+      interpretAll(
+        "main",
+        {
+          main: "{ extern getValue } = extern modB; extern fn getValue(); getValue()",
+        },
+        {
+          modA: "export function base() { return 7; }",
+          modB: 'import { base } from "./modA"; export function getValue() { return base(); }',
+        },
+      ),
+    ).toBe(7);
+  });
+
+  test("interpretAll jsModules import without leading dot-slash resolves module", () => {
+    expect(
+      interpretAll(
+        "main",
+        {
+          main: "{ extern getValue } = extern helper; extern fn getValue(); getValue()",
+        },
+        {
+          helper: "export function getValue() { return 9; }",
+        },
+      ),
+    ).toBe(9);
+  });
+
+  test("interpretAll jsModules import with bare module name (no dot-slash)", () => {
+    expect(
+      interpretAll(
+        "main",
+        {
+          main: "{ extern getValue } = extern modB; extern fn getValue(); getValue()",
+        },
+        {
+          modA: "export function base() { return 11; }",
+          modB: 'import { base } from "modA"; export function getValue() { return base(); }',
+        },
+      ),
+    ).toBe(11);
   });
 });
 

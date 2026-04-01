@@ -1,4 +1,4 @@
-fn compile(source) => {
+out fn compile(source) => {
   trimmedSource = source.trim();
 
   if (trimmedSource == "") {
