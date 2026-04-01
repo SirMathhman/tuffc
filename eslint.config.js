@@ -35,6 +35,14 @@ export default [
           selector: "CallExpression[callee.name='Set']",
           message: "Set is not allowed. Use arrays instead.",
         },
+        {
+          selector: "NewExpression[callee.name='Map']",
+          message: "Map is not allowed. Use arrays instead.",
+        },
+        {
+          selector: "CallExpression[callee.name='Map']",
+          message: "Map is not allowed. Use arrays instead.",
+        },
       ],
     },
   },

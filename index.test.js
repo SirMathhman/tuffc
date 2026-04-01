@@ -28,6 +28,10 @@ describe("interpret", () => {
     expect(compile("{{}}")).toBe("");
   });
 
+  test('compile("{") gracefully handles unterminated brace input', () => {
+    expect(compile("{")).toBe("");
+  });
+
   test('compile("if true") falls back to a simple expression', () => {
     expect(compile("if true")).toBe("return Number(if true);");
   });

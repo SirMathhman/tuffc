@@ -10,15 +10,15 @@ export function compile(source) {
 }
 
 export function interpret(source, globals = {}) {
-  const previousGlobals = new Map();
+  const previousGlobals = [];
 
   for (const [name, value] of Object.entries(globals)) {
-    previousGlobals.set(
+    previousGlobals.push([
       name,
       Object.prototype.hasOwnProperty.call(globalThis, name)
         ? { exists: true, value: globalThis[name] }
         : { exists: false },
-    );
+    ]);
     globalThis[name] = value;
   }
 
@@ -516,7 +516,7 @@ function isWhitespace(char) {
   return char === " " || char === "\t" || char === "\n" || char === "\r";
 }
 
-function looksLikeObjectLiteralExpression(source, startPos) {
+function findMatchingBraceIndex(source, startPos) {
   let pos = startPos + 1;
   let braceDepth = 1;
 
@@ -527,9 +527,32 @@ function looksLikeObjectLiteralExpression(source, startPos) {
       braceDepth -= 1;
 
       if (braceDepth === 0) {
-        break;
+        return pos;
       }
-    } else if (source[pos] === ":" && braceDepth === 1) {
+    }
+
+    pos += 1;
+  }
+
+  return -1;
+}
+
+function looksLikeObjectLiteralExpression(source, startPos) {
+  const closeBraceIndex = findMatchingBraceIndex(source, startPos);
+
+  if (closeBraceIndex === -1) {
+    return false;
+  }
+
+  let pos = startPos + 1;
+  let braceDepth = 0;
+
+  while (pos < closeBraceIndex) {
+    if (source[pos] === "{") {
+      braceDepth += 1;
+    } else if (source[pos] === "}") {
+      braceDepth -= 1;
+    } else if (source[pos] === ":" && braceDepth === 0) {
       return true;
     }
 
@@ -540,24 +563,13 @@ function looksLikeObjectLiteralExpression(source, startPos) {
 }
 
 function looksLikeBraceAssignment(source, startPos) {
-  let pos = startPos + 1;
-  let braceDepth = 1;
+  const closeBraceIndex = findMatchingBraceIndex(source, startPos);
 
-  while (pos < source.length && braceDepth > 0) {
-    if (source[pos] === "{") {
-      braceDepth += 1;
-    } else if (source[pos] === "}") {
-      braceDepth -= 1;
-
-      if (braceDepth === 0) {
-        break;
-      }
-    }
-
-    pos += 1;
+  if (closeBraceIndex === -1) {
+    return false;
   }
 
-  pos = skipWhitespace(source, pos + 1);
+  const pos = skipWhitespace(source, closeBraceIndex + 1);
 
   return source[pos] === "=" && source[pos + 1] !== "=";
 }
