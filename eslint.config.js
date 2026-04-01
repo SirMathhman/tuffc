@@ -16,6 +16,10 @@ export default [
       "no-restricted-syntax": [
         "error",
         {
+          selector: "WhileStatement",
+          message: "While loops are not allowed. Use recursion instead.",
+        },
+        {
           selector: "Literal[regex]",
           message: "Regex literals are not allowed.",
         },

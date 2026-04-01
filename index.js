@@ -103,21 +103,33 @@ function evaluateJsModuleSource(source, otherModules) {
 }
 
 function scanAndStrip(source, keyword, onMatch) {
-  let result = "";
-  let pos = 0;
+  return scanAndStripFrom(source, keyword, onMatch, 0, "");
+}
 
-  while (pos < source.length) {
-    const atWordBoundary = pos === 0 || isWhitespace(source[pos - 1]);
-
-    if (atWordBoundary && source.slice(pos, pos + keyword.length) === keyword) {
-      pos = onMatch(source, pos);
-    } else {
-      result += source[pos];
-      pos += 1;
-    }
+function scanAndStripFrom(source, keyword, onMatch, pos, result) {
+  if (pos >= source.length) {
+    return result;
   }
 
-  return result;
+  const atWordBoundary = pos === 0 || isWhitespace(source[pos - 1]);
+
+  if (atWordBoundary && source.slice(pos, pos + keyword.length) === keyword) {
+    return scanAndStripFrom(
+      source,
+      keyword,
+      onMatch,
+      onMatch(source, pos),
+      result,
+    );
+  }
+
+  return scanAndStripFrom(
+    source,
+    keyword,
+    onMatch,
+    pos + 1,
+    result + source[pos],
+  );
 }
 
 function extractJsImports(source, importStatements) {
@@ -132,15 +144,19 @@ function extractJsImports(source, importStatements) {
 function extractJsExports(source, exportedNames) {
   return scanAndStrip(source, "export function ", (src, pos) => {
     const nameStart = pos + 16;
-    let nameEnd = nameStart;
-
-    while (nameEnd < src.length && isIdentifierChar(src[nameEnd])) {
-      nameEnd += 1;
-    }
+    const nameEnd = advanceIdentifierEnd(src, nameStart);
 
     exportedNames.push(src.slice(nameStart, nameEnd));
     return pos + 7;
   });
+}
+
+function advanceIdentifierEnd(source, pos) {
+  if (pos >= source.length || !isIdentifierChar(source[pos])) {
+    return pos;
+  }
+
+  return advanceIdentifierEnd(source, pos + 1);
 }
 
 function buildJsImportCode(importStatements) {
@@ -490,12 +506,7 @@ function normalizeDestructuringPattern(pattern) {
 
     let keyEnd = trimmedPart.length - binding.length;
 
-    while (
-      keyEnd > 0 &&
-      (trimmedPart[keyEnd - 1] === ":" || trimmedPart[keyEnd - 1] === " ")
-    ) {
-      keyEnd -= 1;
-    }
+    keyEnd = trimTrailingDestructuringKey(trimmedPart, keyEnd);
 
     const key = trimmedPart.slice(0, keyEnd);
     return key + ": " + binding;
@@ -512,6 +523,14 @@ function extractDestructuredNames(pattern) {
   }
 
   return inner.split(",").map((part) => destructuringPartBinding(part.trim()));
+}
+
+function trimTrailingDestructuringKey(part, keyEnd) {
+  if (keyEnd <= 0 || (part[keyEnd - 1] !== ":" && part[keyEnd - 1] !== " ")) {
+    return keyEnd;
+  }
+
+  return trimTrailingDestructuringKey(part, keyEnd - 1);
 }
 
 function extractExternDestructuredNames(pattern) {
@@ -540,58 +559,69 @@ function extractExternDestructuredNames(pattern) {
 }
 
 function parseStatements(source) {
-  const statements = [];
-  let pos = 0;
+  return parseStatementsFrom(source, 0, []);
+}
 
-  while (pos < source.length) {
-    pos = skipWhitespace(source, pos);
+function parseStatementsFrom(source, pos, statements) {
+  pos = skipWhitespace(source, pos);
 
-    if (pos >= source.length) {
-      break;
-    }
-
-    if (isKeywordAt(source, pos, "out")) {
-      const { statement, endPos } = parseOutFunctionStatement(source, pos);
-      statements.push(statement);
-      pos = endPos;
-    } else if (isKeywordAt(source, pos, "extern")) {
-      const { statement, endPos } = parseExternFunctionStatement(source, pos);
-      statements.push(statement);
-      pos = endPos;
-    } else if (isKeywordAt(source, pos, "fn")) {
-      const { statement, endPos } = parseFunctionStatement(source, pos);
-      statements.push(statement);
-      pos = endPos;
-    } else if (isKeywordAt(source, pos, "if")) {
-      const { statement, endPos } = parseIfStatement(source, pos);
-      statements.push(statement);
-      pos = endPos;
-    } else if (source[pos] === "{") {
-      if (looksLikeBraceAssignment(source, pos)) {
-        const { statement, endPos } = parseSimpleStatement(source, pos);
-        statements.push(statement);
-        pos = endPos;
-      } else if (looksLikeObjectLiteralExpression(source, pos)) {
-        const { statement, endPos } = parseSimpleStatement(source, pos);
-        statements.push(statement);
-        pos = endPos;
-      } else {
-        const { body, endPos } = parseBlock(source, pos);
-        statements.push({ type: "block", body });
-        pos = endPos;
-      }
-    } else if (isKeywordAt(source, pos, "return")) {
-      const { statement, endPos } = parseReturnStatement(source, pos);
-      statements.push(statement);
-      pos = endPos;
-    } else {
-      const { statement, endPos } = parseSimpleStatement(source, pos);
-      statements.push(statement);
-      pos = endPos;
-    }
+  if (pos >= source.length) {
+    return statements;
   }
 
-  return statements;
+  if (isKeywordAt(source, pos, "out")) {
+    const { statement, endPos } = parseOutFunctionStatement(source, pos);
+    statements.push(statement);
+    return parseStatementsFrom(source, endPos, statements);
+  }
+
+  if (isKeywordAt(source, pos, "extern")) {
+    const { statement, endPos } = parseExternFunctionStatement(source, pos);
+    statements.push(statement);
+    return parseStatementsFrom(source, endPos, statements);
+  }
+
+  if (isKeywordAt(source, pos, "fn")) {
+    const { statement, endPos } = parseFunctionStatement(source, pos);
+    statements.push(statement);
+    return parseStatementsFrom(source, endPos, statements);
+  }
+
+  if (isKeywordAt(source, pos, "if")) {
+    const { statement, endPos } = parseIfStatement(source, pos);
+    statements.push(statement);
+    return parseStatementsFrom(source, endPos, statements);
+  }
+
+  if (source[pos] === "{") {
+    if (looksLikeBraceAssignment(source, pos)) {
+      return parseAndContinueSimpleStatement(source, pos, statements);
+    }
+
+    if (looksLikeObjectLiteralExpression(source, pos)) {
+      return parseAndContinueSimpleStatement(source, pos, statements);
+    }
+
+    const { body, endPos } = parseBlock(source, pos);
+    statements.push({ type: "block", body });
+    return parseStatementsFrom(source, endPos, statements);
+  }
+
+  if (isKeywordAt(source, pos, "return")) {
+    const { statement, endPos } = parseReturnStatement(source, pos);
+    statements.push(statement);
+    return parseStatementsFrom(source, endPos, statements);
+  }
+
+  const { statement, endPos } = parseSimpleStatement(source, pos);
+  statements.push(statement);
+  return parseStatementsFrom(source, endPos, statements);
+}
+
+function parseAndContinueSimpleStatement(source, pos, statements) {
+  const { statement, endPos } = parseSimpleStatement(source, pos);
+  statements.push(statement);
+  return parseStatementsFrom(source, endPos, statements);
 }
 
 function parseIfStatement(source, startPos) {
@@ -605,17 +635,7 @@ function parseIfStatement(source, startPos) {
   pos += 1;
 
   const conditionStart = pos;
-  let parenDepth = 1;
-
-  while (parenDepth > 0 && pos < source.length) {
-    if (source[pos] === "(") {
-      parenDepth += 1;
-    } else if (source[pos] === ")") {
-      parenDepth -= 1;
-    }
-
-    pos += 1;
-  }
+  pos = advancePastMatchingParen(source, pos, 1);
 
   const condition = source.slice(conditionStart, pos - 1).trim();
   pos = skipWhitespace(source, pos);
@@ -630,6 +650,17 @@ function parseIfStatement(source, startPos) {
     statement: { type: "if", condition, body: block.body },
     endPos: block.endPos,
   };
+}
+
+function advancePastMatchingParen(source, pos, depth) {
+  if (pos >= source.length || depth === 0) {
+    return pos;
+  }
+
+  const nextDepth =
+    source[pos] === "(" ? depth + 1 : source[pos] === ")" ? depth - 1 : depth;
+
+  return advancePastMatchingParen(source, pos + 1, nextDepth);
 }
 
 function parseExternFunctionStatement(source, startPos) {
@@ -726,9 +757,7 @@ function parseFunctionSignature(source, startPos) {
 
   const nameStart = pos;
 
-  while (pos < source.length && isIdentifierChar(source[pos])) {
-    pos += 1;
-  }
+  pos = advanceIdentifierEnd(source, pos);
 
   const name = source.slice(nameStart, pos).trim();
 
@@ -746,9 +775,7 @@ function parseFunctionSignature(source, startPos) {
 
   const paramsStart = pos;
 
-  while (pos < source.length && source[pos] !== ")") {
-    pos += 1;
-  }
+  pos = advanceToChar(source, pos, ")");
 
   if (source[pos] !== ")") {
     return null;
@@ -760,6 +787,14 @@ function parseFunctionSignature(source, startPos) {
   const params = splitParameters(paramsSource);
 
   return { name, params, endPos: pos };
+}
+
+function advanceToChar(source, pos, target) {
+  if (pos >= source.length || source[pos] === target) {
+    return pos;
+  }
+
+  return advanceToChar(source, pos + 1, target);
 }
 
 function parseReturnStatement(source, startPos) {
@@ -789,52 +824,84 @@ function parseSimpleStatement(source, startPos) {
 }
 
 function scanUntilStatementEnd(source, startPos) {
-  let pos = startPos;
-  let braceDepth = 0;
-  let parenDepth = 0;
+  return scanUntilStatementEndFrom(source, startPos, startPos, 0, 0);
+}
 
-  while (
-    pos < source.length &&
-    !(source[pos] === ";" && braceDepth === 0 && parenDepth === 0)
+function scanUntilStatementEndFrom(
+  source,
+  startPos,
+  pos,
+  braceDepth,
+  parenDepth,
+) {
+  if (
+    pos >= source.length ||
+    (source[pos] === ";" && braceDepth === 0 && parenDepth === 0)
   ) {
-    if (source[pos] === "{") {
-      braceDepth += 1;
-    } else if (source[pos] === "}" && braceDepth > 0) {
-      braceDepth -= 1;
-    } else if (source[pos] === "(") {
-      parenDepth += 1;
-    } else if (source[pos] === ")" && parenDepth > 0) {
-      parenDepth -= 1;
+    const text = source.slice(startPos, pos).trim();
+    let endPos = pos;
+
+    if (
+      pos < source.length &&
+      (source[pos] === ";" || source[pos] === "{" || source[pos] === "}")
+    ) {
+      endPos += 1;
     }
 
-    pos += 1;
+    return { text, endPos };
   }
 
-  const text = source.slice(startPos, pos).trim();
-
-  if (
-    pos < source.length &&
-    (source[pos] === ";" || source[pos] === "{" || source[pos] === "}")
-  ) {
-    pos += 1;
+  if (source[pos] === "{") {
+    return scanUntilStatementEndFrom(
+      source,
+      startPos,
+      pos + 1,
+      braceDepth + 1,
+      parenDepth,
+    );
   }
 
-  return { text, endPos: pos };
+  if (source[pos] === "}" && braceDepth > 0) {
+    return scanUntilStatementEndFrom(
+      source,
+      startPos,
+      pos + 1,
+      braceDepth - 1,
+      parenDepth,
+    );
+  }
+
+  if (source[pos] === "(") {
+    return scanUntilStatementEndFrom(
+      source,
+      startPos,
+      pos + 1,
+      braceDepth,
+      parenDepth + 1,
+    );
+  }
+
+  if (source[pos] === ")" && parenDepth > 0) {
+    return scanUntilStatementEndFrom(
+      source,
+      startPos,
+      pos + 1,
+      braceDepth,
+      parenDepth - 1,
+    );
+  }
+
+  return scanUntilStatementEndFrom(
+    source,
+    startPos,
+    pos + 1,
+    braceDepth,
+    parenDepth,
+  );
 }
 
 function parseBlock(source, startPos) {
-  let pos = startPos + 1;
-  let braceDepth = 1;
-
-  while (braceDepth > 0 && pos < source.length) {
-    if (source[pos] === "{") {
-      braceDepth += 1;
-    } else if (source[pos] === "}") {
-      braceDepth -= 1;
-    }
-
-    pos += 1;
-  }
+  let pos = advancePastMatchingBrace(source, startPos + 1, 1);
 
   const blockSource = source.slice(startPos + 1, pos - 1);
   const body = parseStatements(blockSource);
@@ -848,14 +915,27 @@ function parseBlock(source, startPos) {
   return { body, endPos: pos };
 }
 
-function skipWhitespace(source, startPos) {
-  let pos = startPos;
-
-  while (pos < source.length && isWhitespace(source[pos])) {
-    pos += 1;
+function advancePastMatchingBrace(source, pos, depth) {
+  if (pos >= source.length || depth === 0) {
+    return pos;
   }
 
-  return pos;
+  const nextDepth =
+    source[pos] === "{" ? depth + 1 : source[pos] === "}" ? depth - 1 : depth;
+
+  return advancePastMatchingBrace(source, pos + 1, nextDepth);
+}
+
+function skipWhitespace(source, startPos) {
+  return skipWhitespaceFrom(source, startPos);
+}
+
+function skipWhitespaceFrom(source, pos) {
+  if (pos >= source.length || !isWhitespace(source[pos])) {
+    return pos;
+  }
+
+  return skipWhitespaceFrom(source, pos + 1);
 }
 
 function isWhitespace(char) {
@@ -863,24 +943,27 @@ function isWhitespace(char) {
 }
 
 function findMatchingBraceIndex(source, startPos) {
-  let pos = startPos + 1;
-  let braceDepth = 1;
+  return findMatchingBraceIndexFrom(source, startPos + 1, 1);
+}
 
-  while (pos < source.length && braceDepth > 0) {
-    if (source[pos] === "{") {
-      braceDepth += 1;
-    } else if (source[pos] === "}") {
-      braceDepth -= 1;
-
-      if (braceDepth === 0) {
-        return pos;
-      }
-    }
-
-    pos += 1;
+function findMatchingBraceIndexFrom(source, pos, braceDepth) {
+  if (pos >= source.length) {
+    return -1;
   }
 
-  return -1;
+  if (source[pos] === "{") {
+    return findMatchingBraceIndexFrom(source, pos + 1, braceDepth + 1);
+  }
+
+  if (source[pos] === "}") {
+    if (braceDepth === 1) {
+      return pos;
+    }
+
+    return findMatchingBraceIndexFrom(source, pos + 1, braceDepth - 1);
+  }
+
+  return findMatchingBraceIndexFrom(source, pos + 1, braceDepth);
 }
 
 function looksLikeObjectLiteralExpression(source, startPos) {
@@ -891,21 +974,42 @@ function looksLikeObjectLiteralExpression(source, startPos) {
   }
 
   let pos = startPos + 1;
-  let braceDepth = 0;
+  return containsTopLevelObjectColon(source, pos, closeBraceIndex, 0);
+}
 
-  while (pos < closeBraceIndex) {
-    if (source[pos] === "{") {
-      braceDepth += 1;
-    } else if (source[pos] === "}") {
-      braceDepth -= 1;
-    } else if (source[pos] === ":" && braceDepth === 0) {
-      return true;
-    }
-
-    pos += 1;
+function containsTopLevelObjectColon(source, pos, closeBraceIndex, braceDepth) {
+  if (pos >= closeBraceIndex) {
+    return false;
   }
 
-  return false;
+  if (source[pos] === "{") {
+    return containsTopLevelObjectColon(
+      source,
+      pos + 1,
+      closeBraceIndex,
+      braceDepth + 1,
+    );
+  }
+
+  if (source[pos] === "}") {
+    return containsTopLevelObjectColon(
+      source,
+      pos + 1,
+      closeBraceIndex,
+      braceDepth - 1,
+    );
+  }
+
+  if (source[pos] === ":" && braceDepth === 0) {
+    return true;
+  }
+
+  return containsTopLevelObjectColon(
+    source,
+    pos + 1,
+    closeBraceIndex,
+    braceDepth,
+  );
 }
 
 function looksLikeBraceAssignment(source, startPos) {
