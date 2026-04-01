@@ -36,8 +36,20 @@ describe("interpret", () => {
     expect(compile("if true")).toBe("return Number(if true);");
   });
 
+  test('compile("if") falls back to a simple expression', () => {
+    expect(compile("if")).toBe("return Number(if);");
+  });
+
   test('compile("if (true) 1") falls back when body braces are missing', () => {
     expect(compile("if (true) 1")).toBe("return Number(if (true) 1);");
+  });
+
+  test('compile("if (true)") falls back when the body is missing', () => {
+    expect(compile("if (true)")).toBe("return Number(if (true));");
+  });
+
+  test('compile("ifx (true)") falls back when if is part of an identifier', () => {
+    expect(compile("ifx (true)")).toBe("return Number(ifx (true));");
   });
 
   test('compile("return 1") preserves return statements', () => {
@@ -196,6 +208,32 @@ describe("interpret", () => {
 
   test('"ifx = 1 <= 2; ifx" => 1', () => {
     expect(interpret("ifx = 1 <= 2; ifx")).toBe(1);
+  });
+
+  test('"point = { x : 3, y : 4 }; { x, y } = point; x + y" => 7', () => {
+    expect(interpret("point = { x : 3, y : 4 }; { x, y } = point; x + y")).toBe(
+      7,
+    );
+  });
+
+  test('"point = { x : 3, y : 4 }; {} = point; point.x" => 3', () => {
+    expect(interpret("point = { x : 3, y : 4 }; {} = point; point.x")).toBe(3);
+  });
+
+  test('"point = { x : 3, y : 4 }; { x: left, y: right } = point; left + right" => 7', () => {
+    expect(
+      interpret(
+        "point = { x : 3, y : 4 }; { x: left, y: right } = point; left + right",
+      ),
+    ).toBe(7);
+  });
+
+  test('"point = { x : 3, y : 4 }; { x, y } = point; { x, y } = { x : 5, y : 6 }; x + y" => 11', () => {
+    expect(
+      interpret(
+        "point = { x : 3, y : 4 }; { x, y } = point; { x, y } = { x : 5, y : 6 }; x + y",
+      ),
+    ).toBe(11);
   });
 });
 

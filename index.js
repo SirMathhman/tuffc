@@ -36,6 +36,27 @@ function compileStatement(
 ) {
   if (statement.type === "assignment") {
     const { name, value } = statement;
+
+    if (isDestructuringPattern(name)) {
+      const boundNames = extractDestructuredNames(name);
+      const compiledValue = value;
+      const shouldDeclare =
+        boundNames.length === 0 ||
+        boundNames.some((boundName) => !declaredVariables.includes(boundName));
+
+      if (shouldDeclare) {
+        for (const boundName of boundNames) {
+          if (!declaredVariables.includes(boundName)) {
+            declaredVariables.push(boundName);
+          }
+        }
+
+        return `let ${name} = ${compiledValue};\n`;
+      }
+
+      return `(${name} = ${compiledValue});\n`;
+    }
+
     const compiledValue = compileAssignedValue(value);
 
     if (declaredVariables.includes(name)) {
@@ -123,6 +144,28 @@ function compileAssignedValue(value) {
   return compileValue(value);
 }
 
+function isDestructuringPattern(name) {
+  return name.startsWith("{") && name.endsWith("}");
+}
+
+function extractDestructuredNames(pattern) {
+  const inner = pattern.slice(1, -1).trim();
+
+  if (inner === "") {
+    return [];
+  }
+
+  return inner.split(",").map((part) => {
+    const colonIndex = part.indexOf(":");
+
+    if (colonIndex === -1) {
+      return part.trim();
+    }
+
+    return part.slice(colonIndex + 1).trim();
+  });
+}
+
 function parseStatements(source) {
   const statements = [];
   let pos = 0;
@@ -143,7 +186,11 @@ function parseStatements(source) {
       statements.push(statement);
       pos = endPos;
     } else if (source[pos] === "{") {
-      if (looksLikeObjectLiteralExpression(source, pos)) {
+      if (looksLikeBraceAssignment(source, pos)) {
+        const { statement, endPos } = parseSimpleStatement(source, pos);
+        statements.push(statement);
+        pos = endPos;
+      } else if (looksLikeObjectLiteralExpression(source, pos)) {
         const { statement, endPos } = parseSimpleStatement(source, pos);
         statements.push(statement);
         pos = endPos;
@@ -381,6 +428,29 @@ function looksLikeObjectLiteralExpression(source, startPos) {
   }
 
   return false;
+}
+
+function looksLikeBraceAssignment(source, startPos) {
+  let pos = startPos + 1;
+  let braceDepth = 1;
+
+  while (pos < source.length && braceDepth > 0) {
+    if (source[pos] === "{") {
+      braceDepth += 1;
+    } else if (source[pos] === "}") {
+      braceDepth -= 1;
+
+      if (braceDepth === 0) {
+        break;
+      }
+    }
+
+    pos += 1;
+  }
+
+  pos = skipWhitespace(source, pos + 1);
+
+  return source[pos] === "=" && source[pos + 1] !== "=";
 }
 
 function isKeywordAt(source, startPos, keyword) {
