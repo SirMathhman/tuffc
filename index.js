@@ -9,6 +9,32 @@ export function compile(source) {
   return compileStatements(statements, [], true);
 }
 
+export function interpret(source, globals = {}) {
+  const previousGlobals = new Map();
+
+  for (const [name, value] of Object.entries(globals)) {
+    previousGlobals.set(
+      name,
+      Object.prototype.hasOwnProperty.call(globalThis, name)
+        ? { exists: true, value: globalThis[name] }
+        : { exists: false },
+    );
+    globalThis[name] = value;
+  }
+
+  try {
+    return new Function(compile(source))();
+  } finally {
+    for (const [name, previousValue] of previousGlobals) {
+      if (previousValue.exists) {
+        globalThis[name] = previousValue.value;
+      } else {
+        delete globalThis[name];
+      }
+    }
+  }
+}
+
 function compileStatements(
   statements,
   declaredVariables,

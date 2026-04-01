@@ -1,35 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { compile } from "./index.js";
-
-function interpret(source) {
-  return new Function(compile(source))();
-}
-
-function interpretWithGlobals(source, globals = {}) {
-  const previousGlobals = new Map();
-
-  for (const [name, value] of Object.entries(globals)) {
-    previousGlobals.set(
-      name,
-      Object.prototype.hasOwnProperty.call(globalThis, name)
-        ? { exists: true, value: globalThis[name] }
-        : { exists: false },
-    );
-    globalThis[name] = value;
-  }
-
-  try {
-    return new Function(compile(source))();
-  } finally {
-    for (const [name, previousValue] of previousGlobals) {
-      if (previousValue.exists) {
-        globalThis[name] = previousValue.value;
-      } else {
-        delete globalThis[name];
-      }
-    }
-  }
-}
+import { compile, interpret } from "./index.js";
 
 describe("interpret", () => {
   test("empty string => 0", () => {
@@ -170,7 +140,7 @@ describe("interpret", () => {
 
   test('"extern fn add(this, other); 3.add(4)" => 7', () => {
     expect(
-      interpretWithGlobals("extern fn add(this, other); 3.add(4)", {
+      interpret("extern fn add(this, other); 3.add(4)", {
         add: (first, second) => {
           return first + second;
         },
@@ -180,7 +150,7 @@ describe("interpret", () => {
 
   test('"extern fn add(first, second); add(3, 4)" => 7', () => {
     expect(
-      interpretWithGlobals("extern fn add(first, second); add(3, 4)", {
+      interpret("extern fn add(first, second); add(3, 4)", {
         add: (first, second) => {
           return first + second;
         },
@@ -190,7 +160,7 @@ describe("interpret", () => {
 
   test('"extern fn add(first, second); add(3, 4)" => 7 with existing globals', () => {
     expect(
-      interpretWithGlobals("extern fn add(first, second); add(3, 4)", {
+      interpret("extern fn add(first, second); add(3, 4)", {
         add: (first, second) => {
           return first + second;
         },
