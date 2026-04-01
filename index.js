@@ -193,6 +193,10 @@ function compileAssignedValue(value) {
     return value;
   }
 
+  if (value.startsWith('"') || value.startsWith("'")) {
+    return value;
+  }
+
   return compileValue(value);
 }
 

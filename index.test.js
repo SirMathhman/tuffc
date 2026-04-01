@@ -284,6 +284,18 @@ describe("interpret", () => {
   test('"x = [1, 2, 3]; x[0]" => 1', () => {
     expect(interpret("x = [1, 2, 3]; x[0]")).toBe(1);
   });
+
+  test('"\"test\".length" => 4', () => {
+    expect(interpret('"test".length')).toBe(4);
+  });
+
+  test('"x = \"test\"; x.length" => 4', () => {
+    expect(interpret('x = "test"; x.length')).toBe(4);
+  });
+
+  test('"x = [1, 2, 3, 4]; x.length" => 4', () => {
+    expect(interpret("x = [1, 2, 3, 4]; x.length")).toBe(4);
+  });
 });
 
 test('"fn add(this, b) => { return this + b; } 3.add(4)" => 7', () => {
