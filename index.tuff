@@ -1,0 +1,10 @@
+fn compile(source) => {
+  trimmedSource = source.trim();
+
+  if (trimmedSource == "") {
+    return "return 0;";
+  }
+
+  statements = parseStatements(trimmedSource);
+  return compileStatements(statements, [], true);
+}
