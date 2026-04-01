@@ -18,9 +18,9 @@ export function interpret(source, globals = {}) {
 export function interpretAll(entryModuleName, modules, jsModules = {}) {
   const moduleExports = {};
 
-  for (const moduleName of Object.keys(modules)) {
+  Object.keys(modules).reduce((_, moduleName) => {
     if (moduleName === entryModuleName) {
-      continue;
+      return moduleExports;
     }
 
     const source = modules[moduleName] ?? "";
@@ -28,7 +28,7 @@ export function interpretAll(entryModuleName, modules, jsModules = {}) {
 
     if (trimmedSource === "") {
       moduleExports[moduleName] = {};
-      continue;
+      return moduleExports;
     }
 
     const statements = parseStatements(trimmedSource);
@@ -39,13 +39,15 @@ export function interpretAll(entryModuleName, modules, jsModules = {}) {
 ${moduleOutput}
 return __exports;`)();
     });
-  }
+    return moduleExports;
+  }, moduleExports);
 
   const jsModuleExports = evaluateJsModules(jsModules, moduleExports);
 
-  for (const name of Object.keys(jsModuleExports)) {
+  Object.keys(jsModuleExports).reduce((_, name) => {
     moduleExports[name] = jsModuleExports[name];
-  }
+    return moduleExports;
+  }, moduleExports);
 
   const entrySource = modules[entryModuleName] ?? "";
   return interpret(entrySource, moduleExports);
@@ -54,27 +56,28 @@ return __exports;`)();
 function evaluateJsModules(jsModules, otherModules) {
   const result = {};
 
-  for (const moduleName of Object.keys(jsModules)) {
+  Object.keys(jsModules).reduce((_, moduleName) => {
     const source = jsModules[moduleName] ?? "";
     const trimmedSource = source.trim();
 
     if (trimmedSource === "") {
       result[moduleName] = {};
-      continue;
+      return result;
     }
 
-    const allModules = {};
+    const allModules = Object.keys(otherModules).reduce((acc, key) => {
+      acc[key] = otherModules[key];
+      return acc;
+    }, {});
 
-    for (const key of Object.keys(otherModules)) {
-      allModules[key] = otherModules[key];
-    }
-
-    for (const key of Object.keys(result)) {
-      allModules[key] = result[key];
-    }
+    Object.keys(result).reduce((acc, key) => {
+      acc[key] = result[key];
+      return acc;
+    }, allModules);
 
     result[moduleName] = evaluateJsModuleSource(trimmedSource, allModules);
-  }
+    return result;
+  }, result);
 
   return result;
 }
@@ -91,9 +94,10 @@ function evaluateJsModuleSource(source, otherModules) {
   fnBody += remaining;
   fnBody += "\n";
 
-  for (const name of exportedNames) {
-    fnBody += "__exports." + name + " = " + name + ";\n";
-  }
+  fnBody = exportedNames.reduce(
+    (body, name) => body + "__exports." + name + " = " + name + ";\n",
+    fnBody,
+  );
 
   const moduleExports = {};
   const fn = new Function("__exports", "__importedModules", fnBody);
@@ -160,13 +164,11 @@ function advanceIdentifierEnd(source, pos) {
 }
 
 function buildJsImportCode(importStatements) {
-  let code = "";
-
-  for (const stmt of importStatements) {
+  return importStatements.reduce((code, stmt) => {
     const fromIndex = stmt.indexOf(" from ");
 
     if (fromIndex === -1) {
-      continue;
+      return code;
     }
 
     let rawRef = stmt.slice(fromIndex + 6).trim();
@@ -178,21 +180,26 @@ function buildJsImportCode(importStatements) {
     const moduleName = stripLeadingDotSlash(stripQuotes(rawRef));
     const namesRaw = stmt.slice(stmt.indexOf("{") + 1, stmt.indexOf("}"));
 
-    for (const name of namesRaw.split(",").map((s) => s.trim())) {
-      if (name !== "") {
-        code +=
+    return namesRaw
+      .split(",")
+      .map((s) => s.trim())
+      .reduce((nextCode, name) => {
+        if (name === "") {
+          return nextCode;
+        }
+
+        return (
+          nextCode +
           "const " +
           name +
           " = __importedModules." +
           moduleName +
           "." +
           name +
-          ";\n";
-      }
-    }
-  }
-
-  return code;
+          ";\n"
+        );
+      }, code);
+  }, "");
 }
 
 function stripQuotes(str) {
@@ -221,29 +228,41 @@ function stripLeadingDotSlash(str) {
 }
 
 function runWithGlobals(globals, runner) {
-  const previousGlobals = [];
-
-  for (const [name, value] of Object.entries(globals)) {
-    previousGlobals.push([
-      name,
-      Object.prototype.hasOwnProperty.call(globalThis, name)
-        ? { exists: true, value: globalThis[name] }
-        : { exists: false },
-    ]);
-    globalThis[name] = value;
-  }
+  const previousGlobals = Object.entries(globals).reduce(
+    (acc, [name, value]) => {
+      acc.push([
+        name,
+        Object.prototype.hasOwnProperty.call(globalThis, name)
+          ? { exists: true, value: globalThis[name] }
+          : { exists: false },
+      ]);
+      globalThis[name] = value;
+      return acc;
+    },
+    [],
+  );
 
   try {
     return runner();
   } finally {
-    for (const [name, previousValue] of previousGlobals) {
-      if (previousValue.exists) {
-        globalThis[name] = previousValue.value;
-      } else {
-        delete globalThis[name];
-      }
-    }
+    restoreGlobals(previousGlobals, 0);
   }
+}
+
+function restoreGlobals(previousGlobals, index) {
+  if (index >= previousGlobals.length) {
+    return;
+  }
+
+  const [name, previousValue] = previousGlobals[index];
+
+  if (previousValue.exists) {
+    globalThis[name] = previousValue.value;
+  } else {
+    delete globalThis[name];
+  }
+
+  restoreGlobals(previousGlobals, index + 1);
 }
 
 function compileStatements(
@@ -252,20 +271,20 @@ function compileStatements(
   returnLastExpression,
   exportTarget = null,
 ) {
-  let output = "";
-
-  for (let i = 0; i < statements.length; i += 1) {
+  return statements.reduce((output, statement, index) => {
     const shouldReturnExpression =
-      returnLastExpression && i === statements.length - 1;
-    output += compileStatement(
-      statements[i],
-      declaredVariables,
-      shouldReturnExpression,
-      exportTarget,
-    );
-  }
+      returnLastExpression && index === statements.length - 1;
 
-  return output;
+    return (
+      output +
+      compileStatement(
+        statement,
+        declaredVariables,
+        shouldReturnExpression,
+        exportTarget,
+      )
+    );
+  }, "");
 }
 
 function compileStatement(
@@ -284,13 +303,12 @@ function compileStatement(
       const externNames = extractExternDestructuredNames(name);
 
       if (externNames.length > 0) {
-        let output = "";
-
-        for (const externName of externNames) {
-          output += `globalThis.${externName} = ${compiledValue}.${externName};\n`;
-        }
-
-        return output;
+        return externNames.reduce(
+          (output, externName) =>
+            output +
+            `globalThis.${externName} = ${compiledValue}.${externName};\n`,
+          "",
+        );
       }
 
       const shouldDeclare =
@@ -298,11 +316,12 @@ function compileStatement(
         boundNames.some((boundName) => !declaredVariables.includes(boundName));
 
       if (shouldDeclare) {
-        for (const boundName of boundNames) {
-          if (!declaredVariables.includes(boundName)) {
+        boundNames
+          .filter((boundName) => !declaredVariables.includes(boundName))
+          .reduce((_, boundName) => {
             declaredVariables.push(boundName);
-          }
-        }
+            return declaredVariables;
+          }, declaredVariables);
 
         return `let ${jsPattern} = ${compiledValue};\n`;
       }
@@ -409,30 +428,30 @@ function compileValue(value) {
     return value;
   }
 
-  let formattedValue = "";
+  return `Number(${formatValueCharacters(value, 0, "")})`;
+}
 
-  for (let i = 0; i < value.length; i += 1) {
-    if (value[i] === ".") {
-      const prevChar = i > 0 ? value[i - 1] : "";
-      const nextChar = i < value.length - 1 ? value[i + 1] : "";
+function formatValueCharacters(value, index, formattedValue) {
+  if (index >= value.length) {
+    return formattedValue;
+  }
 
-      const isPrevDigit = prevChar >= "0" && prevChar <= "9";
-      const isNextLetter =
-        (nextChar >= "a" && nextChar <= "z") ||
-        (nextChar >= "A" && nextChar <= "Z") ||
-        nextChar === "_";
+  if (value[index] === ".") {
+    const prevChar = index > 0 ? value[index - 1] : "";
+    const nextChar = index < value.length - 1 ? value[index + 1] : "";
 
-      if (isPrevDigit && isNextLetter) {
-        formattedValue += " .";
-      } else {
-        formattedValue += value[i];
-      }
-    } else {
-      formattedValue += value[i];
+    const isPrevDigit = prevChar >= "0" && prevChar <= "9";
+    const isNextLetter =
+      (nextChar >= "a" && nextChar <= "z") ||
+      (nextChar >= "A" && nextChar <= "Z") ||
+      nextChar === "_";
+
+    if (isPrevDigit && isNextLetter) {
+      return formatValueCharacters(value, index + 1, formattedValue + " .");
     }
   }
 
-  return `Number(${formattedValue})`;
+  return formatValueCharacters(value, index + 1, formattedValue + value[index]);
 }
 
 function compileAssignedValue(value) {
@@ -540,9 +559,7 @@ function extractExternDestructuredNames(pattern) {
     return [];
   }
 
-  const result = [];
-
-  for (const part of inner.split(",")) {
+  return inner.split(",").reduce((result, part) => {
     const trimmedPart = part.trim();
     const spaceIndex = trimmedPart.indexOf(" ");
 
@@ -553,9 +570,8 @@ function extractExternDestructuredNames(pattern) {
         result.push(trimmedPart.slice(spaceIndex + 1).trim());
       }
     }
-  }
-
-  return result;
+    return result;
+  }, []);
 }
 
 function parseStatements(source) {
@@ -1048,44 +1064,34 @@ function splitParameters(paramsSource) {
     return [];
   }
 
-  const params = [];
-  let paramStart = 0;
-
-  for (let i = 0; i < paramsSource.length; i += 1) {
-    if (paramsSource[i] !== ",") {
-      continue;
-    }
-
-    params.push(paramsSource.slice(paramStart, i).trim());
-    paramStart = i + 1;
-  }
-
-  params.push(paramsSource.slice(paramStart).trim());
-
-  return params;
+  return paramsSource.split(",").map((param) => param.trim());
 }
 
 function findAssignmentOperator(statementText) {
-  for (let i = 0; i < statementText.length; i += 1) {
-    if (statementText[i] !== "=") {
-      continue;
-    }
+  return findAssignmentOperatorFrom(statementText, 0);
+}
 
-    const previousChar = statementText[i - 1] ?? "";
-    const nextChar = statementText[i + 1] ?? "";
-
-    if (
-      previousChar === "<" ||
-      previousChar === ">" ||
-      previousChar === "!" ||
-      previousChar === "=" ||
-      nextChar === "="
-    ) {
-      continue;
-    }
-
-    return i;
+function findAssignmentOperatorFrom(statementText, index) {
+  if (index >= statementText.length) {
+    return -1;
   }
 
-  return -1;
+  if (statementText[index] !== "=") {
+    return findAssignmentOperatorFrom(statementText, index + 1);
+  }
+
+  const previousChar = statementText[index - 1] ?? "";
+  const nextChar = statementText[index + 1] ?? "";
+
+  if (
+    previousChar === "<" ||
+    previousChar === ">" ||
+    previousChar === "!" ||
+    previousChar === "=" ||
+    nextChar === "="
+  ) {
+    return findAssignmentOperatorFrom(statementText, index + 1);
+  }
+
+  return index;
 }

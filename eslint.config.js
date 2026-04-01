@@ -20,6 +20,21 @@ export default [
           message: "While loops are not allowed. Use recursion instead.",
         },
         {
+          selector: "ForStatement",
+          message:
+            "For statements are not allowed. Use recursion or reduce instead.",
+        },
+        {
+          selector: "ForOfStatement",
+          message:
+            "For-of statements are not allowed. Use recursion or reduce instead.",
+        },
+        {
+          selector: "ForInStatement",
+          message:
+            "For-in statements are not allowed. Use recursion or reduce instead.",
+        },
+        {
           selector: "Literal[regex]",
           message: "Regex literals are not allowed.",
         },
