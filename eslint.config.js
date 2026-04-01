@@ -35,6 +35,11 @@ export default [
             "For-in statements are not allowed. Use recursion or reduce instead.",
         },
         {
+          selector: "IfStatement[alternate]",
+          message:
+            "Else statements are not allowed. Use separate if statements instead.",
+        },
+        {
           selector: "Literal[regex]",
           message: "Regex literals are not allowed.",
         },

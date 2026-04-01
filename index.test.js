@@ -1,7 +1,18 @@
 import { describe, expect, test } from "bun:test";
 import { compile, interpret, interpretAll } from "./index.js";
+import eslintConfig from "./eslint.config.js";
 
 describe("interpret", () => {
+  test("eslint config bans else alternates", () => {
+    const restrictedSyntax = eslintConfig[0].rules["no-restricted-syntax"];
+
+    expect(
+      restrictedSyntax.some(
+        (rule) => rule.selector === "IfStatement[alternate]",
+      ),
+    ).toBe(true);
+  });
+
   test("empty string => 0", () => {
     expect(interpret("")).toBe(0);
   });
@@ -116,6 +127,10 @@ describe("interpret", () => {
 
   test('compile("out x") falls back when out is not followed by fn', () => {
     expect(compile("out x")).toBe("return Number(out x);");
+  });
+
+  test('compile("3.add(4)") preserves dotted numeric property access formatting', () => {
+    expect(compile("3.add(4)")).toBe("return Number(3 .add(4));");
   });
 
   test('interpret("x = ; x") => 0 for an empty compiled value', () => {

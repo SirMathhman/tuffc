@@ -258,7 +258,9 @@ function restoreGlobals(previousGlobals, index) {
 
   if (previousValue.exists) {
     globalThis[name] = previousValue.value;
-  } else {
+  }
+
+  if (!previousValue.exists) {
     delete globalThis[name];
   }
 
