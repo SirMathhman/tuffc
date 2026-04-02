@@ -14,6 +14,24 @@ export default [
       },
     },
     rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "Literal[regex]",
+          message:
+            "Regex literals are not allowed. Use non-regex logic instead.",
+        },
+        {
+          selector: "NewExpression[callee.name='RegExp']",
+          message:
+            "Do not construct regular expressions with the RegExp constructor.",
+        },
+        {
+          selector: "CallExpression[callee.name='RegExp']",
+          message:
+            "Do not construct regular expressions with the RegExp constructor.",
+        },
+      ],
       ...js.configs.recommended.rules,
     },
   },

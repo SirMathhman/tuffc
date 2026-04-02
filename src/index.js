@@ -5,7 +5,11 @@ function compileTuffToJS(source) {
     return "return 0;";
   }
 
-  if (/^\d+$/.test(source)) {
+  if (
+    source !== "" &&
+    Number.isInteger(Number(source)) &&
+    String(Number(source)) === source
+  ) {
     return `return ${source};`;
   }
 
