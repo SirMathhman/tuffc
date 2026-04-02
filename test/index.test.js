@@ -13,6 +13,24 @@ test("compileTuffToJS leaves invalid length expressions unchanged", () => {
   expect(compileTuffToJS("foo.length")).toBe("foo.length");
 });
 
+test("compileTuffToJS leaves empty identifier assignment unchanged", () => {
+  expect(compileTuffToJS(' = "foo"; .length')).toBe(' = "foo"; .length');
+});
+
+test("compileTuffToJS leaves invalid first-character identifiers unchanged", () => {
+  expect(compileTuffToJS('1 = "foo"; 1.length')).toBe('1 = "foo"; 1.length');
+});
+
+test("compileTuffToJS leaves invalid identifier characters unchanged", () => {
+  expect(compileTuffToJS('x-1 = "foo"; x-1.length')).toBe(
+    'x-1 = "foo"; x-1.length',
+  );
+});
+
+test("compileTuffToJS leaves unquoted assigned values unchanged", () => {
+  expect(compileTuffToJS("x = foo; x.length")).toBe("x = foo; x.length");
+});
+
 test("executeTuff runs compiled JS and returns its result", () => {
   expect(executeTuff("return 2 + 3;")).toBe(5);
 });
@@ -27,4 +45,8 @@ test("executeTuff returns numeric literals", () => {
 
 test("executeTuff returns string length expressions", () => {
   expect(executeTuff('"foo".length')).toBe(3);
+});
+
+test("executeTuff returns assigned string length expressions", () => {
+  expect(executeTuff('x = "foo"; x.length')).toBe(3);
 });
