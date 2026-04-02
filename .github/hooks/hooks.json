@@ -1,0 +1,14 @@
+{
+	"hooks": {
+		"Stop": [
+			{
+				"type": "command",
+				"command": "bun run test; if ($LASTEXITCODE -ne 0) { Write-Error 'Tests failed. If this is a coverage issue, and you can't seem to get the code to be covered, it's most likely dead code.'; exit 2 }"
+			},
+			{
+				"type": "command",
+				"command": "bun run lint; if ($LASTEXITCODE -ne 0) { Write-Error 'Linting failed'; exit 2 }"
+			}
+		]
+	}
+}

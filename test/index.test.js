@@ -9,6 +9,10 @@ test("compileTuffToJS returns a string", () => {
   expect(compileTuffToJS("print 'hello'")).toBe("print 'hello'");
 });
 
+test("compileTuffToJS leaves invalid length expressions unchanged", () => {
+  expect(compileTuffToJS("foo.length")).toBe("foo.length");
+});
+
 test("executeTuff runs compiled JS and returns its result", () => {
   expect(executeTuff("return 2 + 3;")).toBe(5);
 });
@@ -19,4 +23,8 @@ test("executeTuff returns 0 for empty source", () => {
 
 test("executeTuff returns numeric literals", () => {
   expect(executeTuff("100")).toBe(100);
+});
+
+test("executeTuff returns string length expressions", () => {
+  expect(executeTuff('"foo".length')).toBe(3);
 });

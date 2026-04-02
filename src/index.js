@@ -5,6 +5,19 @@ function compileTuffToJS(source) {
     return "return 0;";
   }
 
+  const lengthSuffix = ".length";
+  if (source.endsWith(lengthSuffix)) {
+    const stringLiteral = source.slice(0, -lengthSuffix.length);
+    if (
+      stringLiteral.length >= 2 &&
+      stringLiteral[0] === '"' &&
+      stringLiteral[stringLiteral.length - 1] === '"' &&
+      stringLiteral.slice(1, -1).indexOf('"') === -1
+    ) {
+      return `return ${source};`;
+    }
+  }
+
   if (
     source !== "" &&
     Number.isInteger(Number(source)) &&
@@ -21,12 +34,4 @@ function executeTuff(source) {
   return new Function(compiledJS)();
 }
 
-function main() {
-  console.log(message);
-}
-
-if (import.meta.main) {
-  main();
-}
-
-export { compileTuffToJS, executeTuff, main, message };
+export { compileTuffToJS, executeTuff, message };

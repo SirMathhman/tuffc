@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "bun run src/index.js",
+    "start": "bun run src/cli.js",
     "lint": "eslint .",
     "test": "bun test"
   },
