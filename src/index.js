@@ -1,6 +1,14 @@
 const message = "Hello from Bun!";
 
 function compileTuffToJS(source) {
+  if (source === "") {
+    return "return 0;";
+  }
+
+  if (/^\d+$/.test(source)) {
+    return `return ${source};`;
+  }
+
   return String(source);
 }
 
