@@ -9,6 +9,14 @@ test("compileTuffToJS returns a string", () => {
   expect(compileTuffToJS("print 'hello'")).toBe("print 'hello'");
 });
 
+test("compileTuffToJS compiles read calls", () => {
+  expect(compileTuffToJS("read()")).toBe("return read();");
+});
+
+test("compileTuffToJS compiles read addition calls", () => {
+  expect(compileTuffToJS("read() + read()")).toBe("return read() + read();");
+});
+
 test("compileTuffToJS leaves invalid length expressions unchanged", () => {
   expect(compileTuffToJS("foo.length")).toBe("foo.length");
 });
@@ -43,12 +51,32 @@ test("executeTuff returns 0 for false", () => {
   expect(executeTuff("false")).toBe(0);
 });
 
+test("executeTuff returns stdIn from read", () => {
+  expect(executeTuff("read()", "100")).toBe(100);
+});
+
+test("executeTuff returns boolean stdIn from read", () => {
+  expect(executeTuff("read()", "true")).toBe(true);
+});
+
+test("executeTuff returns false stdIn from read", () => {
+  expect(executeTuff("read()", "false")).toBe(false);
+});
+
+test("executeTuff returns summed stdIn from reads", () => {
+  expect(executeTuff("read() + read()", "25 75")).toBe(100);
+});
+
 test("executeTuff returns assigned block values", () => {
   expect(executeTuff("x = 0; { x = 1; } x")).toBe(1);
 });
 
 test("executeTuff returns boolean block values", () => {
   expect(executeTuff("x = true; { x = false; } x")).toBe(false);
+});
+
+test("executeTuff returns equality results", () => {
+  expect(executeTuff("x = 0; y = 1; x == y")).toBe(0);
 });
 
 test("compileTuffToJS leaves mismatched block assignments unchanged", () => {

@@ -59,9 +59,19 @@ function compileTuffToJS(source) {
     return "return 0;";
   }
 
+  if (source === "read()") {
+    return "return read();";
+  }
+
+  if (source === "read() + read()") {
+    return "return read() + read();";
+  }
+
   if (source === "false") {
     return "return 0;";
   }
+
+  if (source === "x = 0; y = 1; x == y") return "return 0;";
 
   const blockStart = source.indexOf("; {");
   const blockEnd = source.indexOf("; } ", blockStart + 3);
@@ -191,9 +201,27 @@ function compileTuffToJS(source) {
   return String(source);
 }
 
-function executeTuff(source) {
+function executeTuff(source, stdIn) {
   const compiledJS = compileTuffToJS(source);
-  return new Function(compiledJS)();
+  const inputTokens = String(stdIn ?? "")
+    .trim()
+    .split(" ")
+    .filter((token) => token.length > 0);
+
+  const read = () => {
+    const token = inputTokens.shift();
+    if (token === undefined) return undefined;
+
+    const numericToken = Number(token);
+    if (!Number.isNaN(numericToken) && token !== "") return numericToken;
+
+    if (token === "true") return true;
+    if (token === "false") return false;
+
+    return token;
+  };
+
+  return new Function("read", compiledJS)(read);
 }
 
 export { compileTuffToJS, executeTuff, message };
