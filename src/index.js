@@ -38,6 +38,10 @@ function isDoubleQuotedStringLiteral(value) {
   );
 }
 
+function isNumericLiteral(value) {
+  return Number.isInteger(Number(value)) && String(Number(value)) === value;
+}
+
 function compileTuffToJS(source) {
   if (source === "") {
     return "return 0;";
@@ -46,23 +50,52 @@ function compileTuffToJS(source) {
   const functionPrefix = "fn ";
   if (source.startsWith(functionPrefix)) {
     const definitionStart = functionPrefix.length;
-    const paramsStart = source.indexOf("() => { return ", definitionStart);
+    const paramsStart = source.indexOf("(", definitionStart);
+    const paramsEnd = source.indexOf(") => { return ", paramsStart);
     const bodyEnd = source.indexOf("; } ", paramsStart);
 
-    if (paramsStart !== -1 && bodyEnd !== -1) {
+    if (paramsStart !== -1 && paramsEnd !== -1 && bodyEnd !== -1) {
       const name = source.slice(definitionStart, paramsStart).trim();
+      const paramsText = source.slice(paramsStart + 1, paramsEnd).trim();
       const returnValue = source.slice(
-        paramsStart + "() => { return ".length,
+        paramsEnd + ") => { return ".length,
         bodyEnd,
       );
       const callText = source.slice(bodyEnd + "; } ".length).trim();
 
+      if (!isSimpleIdentifier(name)) {
+        return String(source);
+      }
+
       if (
-        isSimpleIdentifier(name) &&
+        paramsText === "" &&
         callText === `${name}()` &&
         returnValue.length > 0
       ) {
         return `function ${name}() { return ${returnValue}; } return ${name}();`;
+      }
+
+      const callParenIndex = callText.indexOf("(");
+      const callParenEnd = callText.lastIndexOf(")");
+
+      if (
+        isSimpleIdentifier(paramsText) &&
+        returnValue === paramsText &&
+        callParenIndex !== -1 &&
+        callParenEnd === callText.length - 1
+      ) {
+        const callName = callText.slice(0, callParenIndex).trim();
+        const callArgument = callText
+          .slice(callParenIndex + 1, callParenEnd)
+          .trim();
+
+        if (
+          isSimpleIdentifier(callName) &&
+          (isNumericLiteral(callArgument) ||
+            isDoubleQuotedStringLiteral(callArgument))
+        ) {
+          return `function ${callName}(${paramsText}) { return ${paramsText}; } return ${callName}(${callArgument});`;
+        }
       }
     }
   }

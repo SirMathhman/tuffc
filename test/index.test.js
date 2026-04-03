@@ -55,8 +55,30 @@ test("executeTuff returns function call results", () => {
   expect(executeTuff("fn get() => { return 100; } get()")).toBe(100);
 });
 
+test("executeTuff returns parameterized function call results", () => {
+  expect(executeTuff("fn pass(param) => { return param; } get(100)")).toBe(100);
+});
+
+test("executeTuff returns parameterized string arguments", () => {
+  expect(executeTuff('fn pass(param) => { return param; } get("foo")')).toBe(
+    "foo",
+  );
+});
+
+test("compileTuffToJS leaves invalid parameterized fn arguments unchanged", () => {
+  expect(compileTuffToJS("fn pass(param) => { return param; } get(foo)")).toBe(
+    "fn pass(param) => { return param; } get(foo)",
+  );
+});
+
 test("compileTuffToJS leaves mismatched fn calls unchanged", () => {
   expect(compileTuffToJS("fn get() => { return 100; } nope()")).toBe(
     "fn get() => { return 100; } nope()",
+  );
+});
+
+test("compileTuffToJS leaves invalid fn names unchanged", () => {
+  expect(compileTuffToJS("fn 1() => { return 100; } 1()")).toBe(
+    "fn 1() => { return 100; } 1()",
   );
 });
