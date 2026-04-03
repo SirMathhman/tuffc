@@ -54,6 +54,18 @@ function isSimpleLiteral(value) {
   );
 }
 
+function parseSingleAssignment(statement) {
+  const equalsIndex = statement.indexOf("=");
+  if (equalsIndex === -1 || statement.indexOf("=", equalsIndex + 1) !== -1) {
+    return null;
+  }
+
+  return {
+    name: statement.slice(0, equalsIndex).trim(),
+    value: statement.slice(equalsIndex + 1).trim(),
+  };
+}
+
 function compileTuffToJS(source) {
   if (source === "") {
     return "return 0;";
@@ -71,6 +83,59 @@ function compileTuffToJS(source) {
     return "return 0;";
   }
 
+  const outerSemicolon = source.indexOf(";");
+  const ifPrefix = " if (";
+  const ifStart = source.indexOf(ifPrefix, outerSemicolon + 1);
+  if (outerSemicolon !== -1 && ifStart !== -1) {
+    const outerStatement = source.slice(0, outerSemicolon).trim();
+    const afterIf = source.slice(ifStart + 1);
+    const ifConditionStart = afterIf.indexOf("(");
+    const ifConditionEnd = afterIf.indexOf(") { ", ifConditionStart);
+    const thenEnd = afterIf.indexOf("; } else { ", ifConditionEnd);
+    const elseEnd = afterIf.indexOf("; } ", thenEnd + 11);
+
+    if (
+      ifConditionStart !== -1 &&
+      ifConditionEnd !== -1 &&
+      thenEnd !== -1 &&
+      elseEnd !== -1
+    ) {
+      const condition = afterIf
+        .slice(ifConditionStart + 1, ifConditionEnd)
+        .trim();
+      const thenStatement = afterIf
+        .slice(ifConditionEnd + ") { ".length, thenEnd)
+        .trim();
+      const elseStatement = afterIf
+        .slice(thenEnd + "; } else { ".length, elseEnd)
+        .trim();
+      const trailingStatement = afterIf.slice(elseEnd + "; } ".length).trim();
+
+      const outerAssignment = parseSingleAssignment(outerStatement);
+      const thenAssignment = parseSingleAssignment(thenStatement);
+      const elseAssignment = parseSingleAssignment(elseStatement);
+
+      if (outerAssignment && thenAssignment && elseAssignment) {
+        const { name: outerName, value: outerValue } = outerAssignment;
+        const { name: thenName, value: thenValue } = thenAssignment;
+        const { name: elseName, value: elseValue } = elseAssignment;
+
+        if (
+          isSimpleIdentifier(outerName) &&
+          isSimpleLiteral(outerValue) &&
+          isBooleanLiteral(condition) &&
+          outerName === thenName &&
+          outerName === elseName &&
+          isSimpleLiteral(thenValue) &&
+          isSimpleLiteral(elseValue) &&
+          trailingStatement === outerName
+        ) {
+          return `let ${outerName} = ${outerValue}; if (${condition}) { ${thenName} = ${thenValue}; } else { ${elseName} = ${elseValue}; } return ${outerName};`;
+        }
+      }
+    }
+  }
+
   if (source === "x = 0; y = 1; x == y") return "return 0;";
 
   const blockStart = source.indexOf("; {");
@@ -79,19 +144,13 @@ function compileTuffToJS(source) {
     const outerStatement = source.slice(0, blockStart).trim();
     const blockStatement = source.slice(blockStart + 3, blockEnd).trim();
     const trailingStatement = source.slice(blockEnd + "; } ".length).trim();
-    const outerEqualsIndex = outerStatement.indexOf("=");
-    const innerEqualsIndex = blockStatement.indexOf("=");
 
-    if (
-      outerEqualsIndex !== -1 &&
-      outerStatement.indexOf("=", outerEqualsIndex + 1) === -1 &&
-      innerEqualsIndex !== -1 &&
-      blockStatement.indexOf("=", innerEqualsIndex + 1) === -1
-    ) {
-      const outerName = outerStatement.slice(0, outerEqualsIndex).trim();
-      const outerValue = outerStatement.slice(outerEqualsIndex + 1).trim();
-      const innerName = blockStatement.slice(0, innerEqualsIndex).trim();
-      const innerValue = blockStatement.slice(innerEqualsIndex + 1).trim();
+    const outerAssignment = parseSingleAssignment(outerStatement);
+    const innerAssignment = parseSingleAssignment(blockStatement);
+
+    if (outerAssignment && innerAssignment) {
+      const { name: outerName, value: outerValue } = outerAssignment;
+      const { name: innerName, value: innerValue } = innerAssignment;
 
       if (
         isSimpleIdentifier(outerName) &&
@@ -175,14 +234,11 @@ function compileTuffToJS(source) {
   if (semicolonIndex !== -1 && source.indexOf(";", semicolonIndex + 1) === -1) {
     const firstStatement = source.slice(0, semicolonIndex).trim();
     const secondStatement = source.slice(semicolonIndex + 1).trim();
-    const equalsIndex = firstStatement.indexOf("=");
 
-    if (
-      equalsIndex !== -1 &&
-      firstStatement.indexOf("=", equalsIndex + 1) === -1
-    ) {
-      const identifier = firstStatement.slice(0, equalsIndex).trim();
-      const assignedValue = firstStatement.slice(equalsIndex + 1).trim();
+    const assignment = parseSingleAssignment(firstStatement);
+
+    if (assignment) {
+      const { name: identifier, value: assignedValue } = assignment;
 
       if (
         isSimpleIdentifier(identifier) &&

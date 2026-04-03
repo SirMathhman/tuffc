@@ -79,6 +79,24 @@ test("executeTuff returns equality results", () => {
   expect(executeTuff("x = 0; y = 1; x == y")).toBe(0);
 });
 
+test("executeTuff returns selected if-else branch values", () => {
+  expect(executeTuff("x = 0; if (true) { x = 1; } else { x = 2; } x", "")).toBe(
+    1,
+  );
+});
+
+test("executeTuff returns false branch if-else values", () => {
+  expect(
+    executeTuff("x = 0; if (false) { x = 1; } else { x = 2; } x", ""),
+  ).toBe(2);
+});
+
+test("compileTuffToJS leaves mismatched if-else assignments unchanged", () => {
+  expect(compileTuffToJS("x = 0; if (true) { y = 1; } else { x = 2; } x")).toBe(
+    "x = 0; if (true) { y = 1; } else { x = 2; } x",
+  );
+});
+
 test("compileTuffToJS leaves mismatched block assignments unchanged", () => {
   expect(compileTuffToJS("x = 0; { y = 1; } x")).toBe("x = 0; { y = 1; } x");
 });
