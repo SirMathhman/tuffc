@@ -1,14 +1,18 @@
 {
-	"hooks": {
-		"Stop": [
-			{
-				"type": "command",
-				"command": "bun run test; if ($LASTEXITCODE -ne 0) { Write-Error 'Tests failed. If this is a coverage issue, and you can't seem to get the code to be covered, it's most likely dead code.'; exit 2 }"
-			},
-			{
-				"type": "command",
-				"command": "bun run lint; if ($LASTEXITCODE -ne 0) { Write-Error 'Linting failed'; exit 2 }"
-			}
-		]
-	}
+  "hooks": {
+    "Stop": [
+      {
+        "type": "command",
+        "command": "bun run test; if ($LASTEXITCODE -ne 0) { Write-Error 'Tests failed. If this is a coverage issue, and you can't seem to get the code to be covered, it's most likely dead code.'; exit 2 }"
+      },
+      {
+        "type": "command",
+        "command": "bun run lint; if ($LASTEXITCODE -ne 0) { Write-Error 'Linting failed'; exit 2 }"
+      },
+      {
+        "type": "command",
+        "command": "pmd cpd --dir src,test --language ecmascript --minimum-tokens 35 --ignore-identifiers --ignore-literals | ForEach-Object { [Console]::Error.WriteLine($_) }; if ($LASTEXITCODE -ne 0) { Write-Error 'Code duplication detected'; exit 2 }"
+      }
+    ]
+  }
 }
