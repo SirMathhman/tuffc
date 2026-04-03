@@ -50,3 +50,13 @@ test("executeTuff returns string length expressions", () => {
 test("executeTuff returns assigned string length expressions", () => {
   expect(executeTuff('x = "foo"; x.length')).toBe(3);
 });
+
+test("executeTuff returns function call results", () => {
+  expect(executeTuff("fn get() => { return 100; } get()")).toBe(100);
+});
+
+test("compileTuffToJS leaves mismatched fn calls unchanged", () => {
+  expect(compileTuffToJS("fn get() => { return 100; } nope()")).toBe(
+    "fn get() => { return 100; } nope()",
+  );
+});

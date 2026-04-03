@@ -43,6 +43,30 @@ function compileTuffToJS(source) {
     return "return 0;";
   }
 
+  const functionPrefix = "fn ";
+  if (source.startsWith(functionPrefix)) {
+    const definitionStart = functionPrefix.length;
+    const paramsStart = source.indexOf("() => { return ", definitionStart);
+    const bodyEnd = source.indexOf("; } ", paramsStart);
+
+    if (paramsStart !== -1 && bodyEnd !== -1) {
+      const name = source.slice(definitionStart, paramsStart).trim();
+      const returnValue = source.slice(
+        paramsStart + "() => { return ".length,
+        bodyEnd,
+      );
+      const callText = source.slice(bodyEnd + "; } ".length).trim();
+
+      if (
+        isSimpleIdentifier(name) &&
+        callText === `${name}()` &&
+        returnValue.length > 0
+      ) {
+        return `function ${name}() { return ${returnValue}; } return ${name}();`;
+      }
+    }
+  }
+
   const lengthSuffix = ".length";
 
   if (source.endsWith(lengthSuffix)) {
