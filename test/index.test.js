@@ -39,6 +39,22 @@ test("executeTuff returns 0 for empty source", () => {
   expect(executeTuff("")).toBe(0);
 });
 
+test("executeTuff returns 0 for false", () => {
+  expect(executeTuff("false")).toBe(0);
+});
+
+test("executeTuff returns assigned block values", () => {
+  expect(executeTuff("x = 0; { x = 1; } x")).toBe(1);
+});
+
+test("executeTuff returns boolean block values", () => {
+  expect(executeTuff("x = true; { x = false; } x")).toBe(false);
+});
+
+test("compileTuffToJS leaves mismatched block assignments unchanged", () => {
+  expect(compileTuffToJS("x = 0; { y = 1; } x")).toBe("x = 0; { y = 1; } x");
+});
+
 test("executeTuff returns numeric literals", () => {
   expect(executeTuff("100")).toBe(100);
 });
@@ -53,6 +69,10 @@ test("executeTuff returns assigned string length expressions", () => {
 
 test("executeTuff returns function call results", () => {
   expect(executeTuff("fn get() => { return 100; } get()")).toBe(100);
+});
+
+test("executeTuff returns zero for false-returning function calls", () => {
+  expect(executeTuff("fn get() => { return false; } get()")).toBe(0);
 });
 
 test("executeTuff returns parameterized function call results", () => {

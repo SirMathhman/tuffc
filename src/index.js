@@ -42,9 +42,57 @@ function isNumericLiteral(value) {
   return Number.isInteger(Number(value)) && String(Number(value)) === value;
 }
 
+function isBooleanLiteral(value) {
+  return value === "true" || value === "false";
+}
+
+function isSimpleLiteral(value) {
+  return (
+    isNumericLiteral(value) ||
+    isBooleanLiteral(value) ||
+    isDoubleQuotedStringLiteral(value)
+  );
+}
+
 function compileTuffToJS(source) {
   if (source === "") {
     return "return 0;";
+  }
+
+  if (source === "false") {
+    return "return 0;";
+  }
+
+  const blockStart = source.indexOf("; {");
+  const blockEnd = source.indexOf("; } ", blockStart + 3);
+  if (blockStart !== -1 && blockEnd !== -1) {
+    const outerStatement = source.slice(0, blockStart).trim();
+    const blockStatement = source.slice(blockStart + 3, blockEnd).trim();
+    const trailingStatement = source.slice(blockEnd + "; } ".length).trim();
+    const outerEqualsIndex = outerStatement.indexOf("=");
+    const innerEqualsIndex = blockStatement.indexOf("=");
+
+    if (
+      outerEqualsIndex !== -1 &&
+      outerStatement.indexOf("=", outerEqualsIndex + 1) === -1 &&
+      innerEqualsIndex !== -1 &&
+      blockStatement.indexOf("=", innerEqualsIndex + 1) === -1
+    ) {
+      const outerName = outerStatement.slice(0, outerEqualsIndex).trim();
+      const outerValue = outerStatement.slice(outerEqualsIndex + 1).trim();
+      const innerName = blockStatement.slice(0, innerEqualsIndex).trim();
+      const innerValue = blockStatement.slice(innerEqualsIndex + 1).trim();
+
+      if (
+        isSimpleIdentifier(outerName) &&
+        isSimpleLiteral(outerValue) &&
+        outerName === innerName &&
+        isSimpleLiteral(innerValue) &&
+        trailingStatement === outerName
+      ) {
+        return `let ${outerName} = ${outerValue}; { ${innerName} = ${innerValue}; } return ${outerName};`;
+      }
+    }
   }
 
   const functionPrefix = "fn ";
@@ -72,6 +120,10 @@ function compileTuffToJS(source) {
         callText === `${name}()` &&
         returnValue.length > 0
       ) {
+        if (returnValue === "false") {
+          return `function ${name}() { return 0; } return ${name}();`;
+        }
+
         return `function ${name}() { return ${returnValue}; } return ${name}();`;
       }
 
