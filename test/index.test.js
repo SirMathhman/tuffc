@@ -371,8 +371,8 @@ test('executeTuff("fn get() => {\\n    return hello;\\n}\\n\\nread()", "50") thr
   ).toThrow();
 });
 
-test('executeTuff("fn get() => {\\n}\\n\\nread()", "50") throws', () => {
-  expect(() => executeTuff("fn get() => {\n}\n\nread()", "50")).toThrow();
+test('executeTuff("fn get() => {\\n}\\n\\nread()", "50") => 50', () => {
+  expect(executeTuff("fn get() => {\n}\n\nread()", "50")).toBe(50);
 });
 
 test('executeTuff("read() == read()", "true 1") => 0', () => {
@@ -509,6 +509,55 @@ test("executeTuff full extern import + extern fn decl + let fn call + read() => 
         "extern fn createRequire(arg);",
         "",
         "let __tuff_builtin_require = createRequire(import.meta.url);",
+        "",
+        "read()",
+      ].join("\n"),
+      "50",
+    ),
+  ).toBe(50);
+});
+
+// empty multi-line fn body (no-op)
+test('executeTuff("fn get() => {\\n    \\n}\\n\\nread()", "50") => 50', () => {
+  expect(executeTuff("fn get() => {\n    \n}\n\nread()", "50")).toBe(50);
+});
+
+// out fn as non-final block in multi-line program
+test('executeTuff("out fn noop(source) => {\\n    \\n}\\n\\nread()", "50") => 50', () => {
+  expect(executeTuff("out fn noop(source) => {\n    \n}\n\nread()", "50")).toBe(
+    50,
+  );
+});
+
+// multi-line fn with params
+test('executeTuff("fn add(a, b) => {\\n    return a;\\n}\\n\\nread()", "50") => 50', () => {
+  expect(
+    executeTuff("fn add(a, b) => {\n    return a;\n}\n\nread()", "50"),
+  ).toBe(50);
+});
+
+// multi-line fn with invalid param name throws
+test('executeTuff("fn bad(a, b-c) => {\\n    return a;\\n}\\n\\nread()", "50") throws', () => {
+  expect(() =>
+    executeTuff("fn bad(a, b-c) => {\n    return a;\n}\n\nread()", "50"),
+  ).toThrow();
+});
+
+// full main.tuff pattern
+test("executeTuff full main.tuff pattern => 50", () => {
+  expect(
+    executeTuff(
+      [
+        "let { extern readFileSync, extern writeFileSync, extern mkdirSync } = extern node::fs;",
+        "let { extern createRequire } = extern node::module;",
+        "",
+        "extern fn createRequire(arg);",
+        "",
+        "let __tuff_builtin_require = createRequire(import.meta.url);",
+        "",
+        "out fn compileTuffToJS(source) => {",
+        "    ",
+        "}",
         "",
         "read()",
       ].join("\n"),

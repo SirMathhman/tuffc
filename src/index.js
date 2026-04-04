@@ -767,16 +767,24 @@ function splitIntoBlocks(source) {
   const lines = source.split("\n");
   const blocks = [];
   let currentLines = [];
+  let braceDepth = 0;
 
   for (const line of lines) {
-    if (line.trim().length === 0) {
+    const normalized = line.endsWith("\r") ? line.slice(0, -1) : line;
+    for (const ch of normalized) {
+      if (ch === "{") {
+        braceDepth += 1;
+      } else if (ch === "}") {
+        braceDepth -= 1;
+      }
+    }
+    if (normalized.length === 0 && braceDepth === 0) {
       if (currentLines.length > 0) {
         blocks.push(currentLines.join("\n"));
         currentLines = [];
       }
     } else {
-      const trimmedLine = line.endsWith("\r") ? line.slice(0, -1) : line;
-      currentLines.push(trimmedLine);
+      currentLines.push(normalized);
     }
   }
 
@@ -803,38 +811,56 @@ function parseMultiLineFunctionDefinition(block) {
     return undefined;
   }
 
-  const funcPrefix = "fn ";
-  const funcSuffix = "() => {";
-
-  if (!firstLine.startsWith(funcPrefix) || !firstLine.endsWith(funcSuffix)) {
+  const funcSuffix = " => {";
+  if (!firstLine.endsWith(funcSuffix)) {
     return undefined;
   }
 
-  const functionName = firstLine.slice(
-    funcPrefix.length,
-    firstLine.length - funcSuffix.length,
-  );
+  const header = firstLine.slice(0, -funcSuffix.length);
+  const fnKeyword = header.startsWith("out fn ") ? "out fn " : "fn ";
+  if (!header.startsWith(fnKeyword)) {
+    return undefined;
+  }
 
+  const nameAndParams = header.slice(fnKeyword.length);
+  const parenOpenIndex = nameAndParams.indexOf("(");
+  const parenCloseIndex = nameAndParams.lastIndexOf(")");
+
+  if (parenOpenIndex <= 0 || parenCloseIndex !== nameAndParams.length - 1) {
+    return undefined;
+  }
+
+  const functionName = nameAndParams.slice(0, parenOpenIndex);
   if (!isValidIdentifier(functionName)) {
     return undefined;
   }
 
-  const compiledBody = parseMultiLineFunctionBody(bodyLines);
+  const paramsStr = nameAndParams.slice(parenOpenIndex + 1, parenCloseIndex);
+  const params =
+    paramsStr.trim().length === 0
+      ? []
+      : paramsStr.split(", ").map((p) => p.trim());
+
+  if (params.some((p) => !isValidIdentifier(p))) {
+    return undefined;
+  }
+
+  const compiledBody = parseMultiLineFunctionBody(bodyLines, params);
   if (compiledBody === undefined) {
     return undefined;
   }
 
-  return `function ${functionName}() { ${compiledBody} }`;
+  return `function ${functionName}(${params.join(", ")}) { ${compiledBody} }`;
 }
 
-function parseMultiLineFunctionBody(bodyLines) {
+function parseMultiLineFunctionBody(bodyLines, params) {
   if (bodyLines.length === 0) {
-    return undefined;
+    return "";
   }
 
   const compiledStatements = [];
   for (const line of bodyLines) {
-    const compiled = parseMultiLineFunctionBodyStatement(line);
+    const compiled = parseMultiLineFunctionBodyStatement(line, params);
     if (compiled === undefined) {
       return undefined;
     }
@@ -844,7 +870,7 @@ function parseMultiLineFunctionBody(bodyLines) {
   return compiledStatements.join(" ");
 }
 
-function parseMultiLineFunctionBodyStatement(statement) {
+function parseMultiLineFunctionBodyStatement(statement, params) {
   const returnPrefix = "return ";
   const returnSuffix = ";";
 
@@ -858,7 +884,7 @@ function parseMultiLineFunctionBodyStatement(statement) {
   const expr = statement
     .slice(returnPrefix.length, -returnSuffix.length)
     .trim();
-  const compiledExpr = parseBodyExpression(expr);
+  const compiledExpr = parseBodyExpression(expr, params);
 
   if (compiledExpr === undefined) {
     return undefined;
@@ -867,12 +893,20 @@ function parseMultiLineFunctionBodyStatement(statement) {
   return `return ${compiledExpr};`;
 }
 
-function parseBodyExpression(expr) {
+function parseBodyExpression(expr, params) {
   if (expr === "read()") {
     return "__tuff_coerce(__tuff_read())";
   }
 
   if (expr.length > 0 && !Number.isNaN(Number(expr))) {
+    return expr;
+  }
+
+  if (
+    isValidIdentifier(expr) &&
+    params !== undefined &&
+    params.includes(expr)
+  ) {
     return expr;
   }
 
