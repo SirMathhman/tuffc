@@ -673,3 +673,167 @@ test("executeTuff main.tuff with let binding in body => 50", () => {
     ),
   ).toBe(50);
 });
+
+// ── if statements ─────────────────────────────────────────────────────────────
+
+// simple if: condition true → return from if body
+test("executeTuff simple if true branch => 50", () => {
+  expect(
+    executeTuff(
+      "out fn f(x) => {\n    if (x != undefined) {\n        return x;\n    }\n}\n\nread()",
+      "50",
+    ),
+  ).toBe(50);
+});
+
+// simple if: condition false → fall through; read() still 50
+test("executeTuff simple if false branch falls through => 50", () => {
+  expect(
+    executeTuff(
+      "out fn f(x) => {\n    if (x == undefined) {\n        return x;\n    }\n}\n\nread()",
+      "50",
+    ),
+  ).toBe(50);
+});
+
+// if-else
+test("executeTuff if-else => 50", () => {
+  expect(
+    executeTuff(
+      [
+        "out fn pick(a, b) => {",
+        "    if (a != undefined) {",
+        "        return a;",
+        "    } else {",
+        "        return b;",
+        "    }",
+        "}",
+        "",
+        "read()",
+      ].join("\n"),
+      "50",
+    ),
+  ).toBe(50);
+});
+
+// if-else if-else chain
+test("executeTuff if-else if-else chain => 50", () => {
+  expect(
+    executeTuff(
+      [
+        "out fn classify(x) => {",
+        "    if (x == 1) {",
+        "        return x;",
+        "    } else if (x == 2) {",
+        "        return x;",
+        "    } else {",
+        "        return x;",
+        "    }",
+        "}",
+        "",
+        "read()",
+      ].join("\n"),
+      "50",
+    ),
+  ).toBe(50);
+});
+
+// nested if
+test("executeTuff nested if => 50", () => {
+  expect(
+    executeTuff(
+      [
+        "out fn f(a, b) => {",
+        "    if (a != undefined) {",
+        "        if (b != undefined) {",
+        "            return b;",
+        "        }",
+        "        return a;",
+        "    }",
+        "    return a;",
+        "}",
+        "",
+        "read()",
+      ].join("\n"),
+      "50",
+    ),
+  ).toBe(50);
+});
+
+// let + if + return combo (the main.tuff pattern)
+test("executeTuff let + if + return => 50", () => {
+  expect(
+    executeTuff(
+      [
+        "out fn f(source) => {",
+        "    let trimmed = source.trim();",
+        "    if (trimmed != undefined) {",
+        "        return trimmed;",
+        "    }",
+        "    return source;",
+        "}",
+        "",
+        "read()",
+      ].join("\n"),
+      "50",
+    ),
+  ).toBe(50);
+});
+
+// && condition
+test("executeTuff && condition => 50", () => {
+  expect(
+    executeTuff(
+      [
+        "out fn f(a, b) => {",
+        "    if (a != undefined && b != undefined) {",
+        "        return a;",
+        "    }",
+        "    return b;",
+        "}",
+        "",
+        "read()",
+      ].join("\n"),
+      "50",
+    ),
+  ).toBe(50);
+});
+
+// || condition
+test("executeTuff || condition => 50", () => {
+  expect(
+    executeTuff(
+      [
+        "out fn f(a, b) => {",
+        "    if (a == undefined || b != undefined) {",
+        "        return b;",
+        "    }",
+        "    return a;",
+        "}",
+        "",
+        "read()",
+      ].join("\n"),
+      "50",
+    ),
+  ).toBe(50);
+});
+
+// invalid condition token in if => throws
+test("executeTuff invalid condition token in if => throws", () => {
+  expect(() =>
+    executeTuff(
+      "out fn f(x) => {\n    if (x + 1) {\n        return x;\n    }\n}\n\nread()",
+      "50",
+    ),
+  ).toThrow();
+});
+
+// invalid body statement inside if => throws
+test("executeTuff invalid body statement inside if => throws", () => {
+  expect(() =>
+    executeTuff(
+      "out fn f(x) => {\n    if (x != undefined) {\n        x + 1;\n    }\n}\n\nread()",
+      "50",
+    ),
+  ).toThrow();
+});
