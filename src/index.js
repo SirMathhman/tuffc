@@ -951,13 +951,9 @@ function parseLetBodyStatement(statement) {
   return `let ${parsed.varName} = ${compiled};`;
 }
 
-function parseAssignableBodyExpression(tokens, pos) {
-  if (pos >= tokens.length || tokens[pos].type !== "id") {
-    return undefined;
-  }
-
-  let value = tokens[pos].value;
-  let p = pos + 1;
+function parseBracketIndexChain(tokens, startPos, baseValue) {
+  let value = baseValue;
+  let p = startPos;
 
   while (p < tokens.length && tokens[p].type === "[") {
     p++;
@@ -979,6 +975,14 @@ function parseAssignableBodyExpression(tokens, pos) {
   }
 
   return { value, pos: p };
+}
+
+function parseAssignableBodyExpression(tokens, pos) {
+  if (pos >= tokens.length || tokens[pos].type !== "id") {
+    return undefined;
+  }
+
+  return parseBracketIndexChain(tokens, pos + 1, tokens[pos].value);
 }
 
 function parseAssignmentBodyStatement(statement) {
@@ -1365,22 +1369,12 @@ function parseBodyExprNode(tokens, pos) {
       value = `${value} + ${rhs.value}`;
       p = rhs.pos;
     } else if (tokens[p].type === "[") {
-      p++;
-      if (p >= tokens.length || tokens[p].type === "]") {
+      const indexed = parseBracketIndexChain(tokens, p, value);
+      if (indexed === undefined) {
         return undefined;
       }
-
-      const indexExpr = parseBodyExprNode(tokens, p);
-      if (indexExpr === undefined) {
-        return undefined;
-      }
-
-      p = indexExpr.pos;
-      if (p >= tokens.length || tokens[p].type !== "]") {
-        return undefined;
-      }
-      p++;
-      value = `${value}[${indexExpr.value}]`;
+      value = indexed.value;
+      p = indexed.pos;
     } else {
       break;
     }
