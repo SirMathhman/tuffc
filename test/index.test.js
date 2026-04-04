@@ -1,5 +1,10 @@
 import { expect, test } from "bun:test";
-import { createMessage, executeTuff } from "../src/index.js";
+import {
+  createMessage,
+  executeAllTuff,
+  executeAllTuffWithNative,
+  executeTuff,
+} from "../src/index.js";
 
 test("createMessage uses the default name", () => {
   expect(createMessage()).toBe("Hello, world!");
@@ -19,6 +24,14 @@ test('executeTuff("read()", "100 200") => 100', () => {
 
 test('executeTuff("read()", "true") => 1', () => {
   expect(executeTuff("read()", "true")).toBe(1);
+});
+
+test('executeTuff("read()", "false") => 0', () => {
+  expect(executeTuff("read()", "false")).toBe(0);
+});
+
+test('executeTuff("read()", "   ") => NaN', () => {
+  expect(Number.isNaN(executeTuff("read()", "   "))).toBe(true);
 });
 
 test('executeTuff("let x = read(); x", "100") => 100', () => {
@@ -86,14 +99,6 @@ test('executeTuff("fn wah(foo) => { let x = foo + read(); return x; } wah(5)", "
   ).toBe(30);
 });
 
-test('executeTuff("read()", "false") => 0', () => {
-  expect(executeTuff("read()", "false")).toBe(0);
-});
-
-test('executeTuff("read()", "   ") => NaN', () => {
-  expect(Number.isNaN(executeTuff("read()", "   "))).toBe(true);
-});
-
 test('executeTuff("fn () => { return read(); } ()", "25") throws', () => {
   expect(() => executeTuff("fn () => { return read(); } ()", "25")).toThrow();
 });
@@ -140,4 +145,106 @@ test('executeTuff("let x = read(); let y = z; y", "25") throws', () => {
 
 test('executeTuff("let x = read(); x + y", "25") throws', () => {
   expect(() => executeTuff("let x = read(); x + y", "25")).toThrow();
+});
+
+test('executeAllTuff("main", [[ ["main"], "read()" ]], "100") => 100', () => {
+  expect(executeAllTuff("main", [[["main"], "read()"]], "100")).toBe(100);
+});
+
+test('executeAllTuff("main", [[ ["main"], "let { get } = lib; get()" ], [ ["lib"] ], "out fn get() => { return read(); }"]], "100") => 100', () => {
+  expect(
+    executeAllTuff(
+      "main",
+      [
+        [["main"], "let { get } = lib; get()"],
+        [["lib"]],
+        "out fn get() => { return read(); }",
+      ],
+      "100",
+    ),
+  ).toBe(100);
+});
+
+test('executeAllTuff("main", [[ ["main"], "let { wah } = lib; wah()" ], [ ["lib"] ], "out fn wah() => { return read(); }"]], "100") => 100', () => {
+  expect(
+    executeAllTuff(
+      "main",
+      [
+        [["main"], "let { wah } = lib; wah()"],
+        [["lib"]],
+        "out fn wah() => { return read(); }",
+      ],
+      "100",
+    ),
+  ).toBe(100);
+});
+
+test('executeAllTuff("missing", [[ ["main"], "read()" ]], "100") throws', () => {
+  expect(() =>
+    executeAllTuff("missing", [[["main"], "read()"]], "100"),
+  ).toThrow();
+});
+
+test('executeAllTuffWithNative("main", [[ ["main"], "let { extern get } = extern outsideJS; extern fn get(); get()" ]], [[ ["outsideJS"], "export function get() { return 100; }" ]], "100") => 100', () => {
+  expect(
+    executeAllTuffWithNative(
+      "main",
+      [
+        [
+          ["main"],
+          "let { extern get } = extern outsideJS; extern fn get(); get()",
+        ],
+      ],
+      [[["outsideJS"], "export function get() { return 100; }"]],
+      "100",
+    ),
+  ).toBe(100);
+});
+
+test('executeAllTuffWithNative("main", [[ ["main"], "let { extern get } = extern outsideJS; extern fn get(); get()" ]], [[ ["outsideJS"], "export function get() { return ; }" ]], "100") throws', () => {
+  expect(() =>
+    executeAllTuffWithNative(
+      "main",
+      [
+        [
+          ["main"],
+          "let { extern get } = extern outsideJS; extern fn get(); get()",
+        ],
+      ],
+      [[["outsideJS"], "export function get() { return ; }"]],
+      "100",
+    ),
+  ).toThrow();
+});
+
+test('executeAllTuffWithNative("main", [[ ["main"], "let { extern get } = extern outsideJS; extern fn get(); get()" ]], [], "100") throws', () => {
+  expect(() =>
+    executeAllTuffWithNative(
+      "main",
+      [
+        [
+          ["main"],
+          "let { extern get } = extern outsideJS; extern fn get(); get()",
+        ],
+      ],
+      [],
+      "100",
+    ),
+  ).toThrow();
+});
+
+test('executeAllTuffWithNative("main", [[ ["main"], "let { extern get } = extern wah::outsideJS; extern fn get(); get()" ]], [[ ["wah", "outsideJS"], "export function get() { return 100; }" ]], "100") => 100', () => {
+  expect(
+    executeAllTuffWithNative(
+      "main",
+      [
+        [
+          ["main"],
+          "let { extern get } = extern wah::outsideJS; extern fn get(); get()",
+        ],
+      ],
+      [[["wah", "outsideJS"], "export function get() { return 100; }"]],
+      "100",
+    ),
+  ).toBe(100);
 });

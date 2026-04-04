@@ -112,12 +112,53 @@ export function compileTuffToJS(source) {
 
 export function executeTuff(source, stdIn) {
   const compiledJS = compileTuffToJS(source);
+  const runtime = createTuffRuntime(stdIn);
+  const func = new Function("__tuff_read", "__tuff_coerce", compiledJS);
+  return func(runtime.read, runtime.coerce);
+}
+
+export function executeAllTuff(entrypointName, allTuff, stdIn) {
+  return executeAllTuffInternal(entrypointName, allTuff, undefined, stdIn);
+}
+
+export function executeAllTuffWithNative(
+  entrypointName,
+  allTuff,
+  nativeTuff,
+  stdIn,
+) {
+  return executeAllTuffInternal(entrypointName, allTuff, nativeTuff, stdIn);
+}
+
+function executeAllTuffInternal(entrypointName, allTuff, nativeTuff, stdIn) {
+  const definitions = collectTuffDefinitions(allTuff);
+  const entrypointBody = findTuffEntrypointBody(entrypointName, definitions);
+  if (entrypointBody === undefined) {
+    throw new Error(`Unsupported Tuff entrypoint: ${entrypointName}`);
+  }
+
+  const runtime = createTuffRuntime(stdIn);
+  const libExports = buildTuffLibraryExports(definitions, runtime);
+  const externModules =
+    nativeTuff === undefined ? {} : buildTuffNativeModules(nativeTuff);
+  const compiledJS = compileAllTuffSource(entrypointBody);
+  const func = new Function(
+    "lib",
+    "externModules",
+    "__tuff_read",
+    "__tuff_coerce",
+    compiledJS,
+  );
+  return func(libExports, externModules, runtime.read, runtime.coerce);
+}
+
+function createTuffRuntime(stdIn) {
   const tokens = tokenizeStdIn(stdIn);
   let tokenIndex = 0;
-  const func = new Function("__tuff_read", "__tuff_coerce", compiledJS);
-  return func(
-    () => tokens[tokenIndex++],
-    (value) => {
+
+  return {
+    read: () => tokens[tokenIndex++],
+    coerce: (value) => {
       if (value === "true") {
         return 1;
       }
@@ -128,7 +169,7 @@ export function executeTuff(source, stdIn) {
 
       return Number(value);
     },
-  );
+  };
 }
 
 function tokenizeStdIn(stdIn) {
@@ -157,6 +198,275 @@ function tokenizeStdIn(stdIn) {
   }
 
   return tokens;
+}
+
+function collectTuffDefinitions(allTuff) {
+  const definitions = [];
+  let pendingPath = undefined;
+
+  for (const item of allTuff) {
+    if (Array.isArray(item)) {
+      if (
+        item.length >= 2 &&
+        Array.isArray(item[0]) &&
+        typeof item[1] === "string"
+      ) {
+        definitions.push({ path: item[0], body: item[1] });
+        continue;
+      }
+
+      if (item.length === 1 && Array.isArray(item[0])) {
+        pendingPath = item[0];
+        continue;
+      }
+
+      const nestedDefinitions = collectTuffDefinitions(item);
+      for (const definition of nestedDefinitions) {
+        definitions.push(definition);
+      }
+
+      continue;
+    }
+
+    if (typeof item === "string" && pendingPath !== undefined) {
+      definitions.push({ path: pendingPath, body: item });
+      pendingPath = undefined;
+    }
+  }
+
+  return definitions;
+}
+
+function findTuffEntrypointBody(entrypointName, definitions) {
+  for (const definition of definitions) {
+    const { path: functionPath, body } = definition;
+    if (
+      Array.isArray(functionPath) &&
+      functionPath.length === 1 &&
+      functionPath[0] === entrypointName &&
+      typeof body === "string"
+    ) {
+      return body;
+    }
+  }
+
+  return undefined;
+}
+
+function buildTuffLibraryExports(definitions, runtime) {
+  const libraryBody = findTuffEntrypointBody("lib", definitions);
+  if (libraryBody === undefined) {
+    return {};
+  }
+
+  const compiledLibraryJS = compileTuffLibrarySource(libraryBody);
+  const libraryFunction = new Function(
+    "__tuff_read",
+    "__tuff_coerce",
+    compiledLibraryJS,
+  );
+
+  return libraryFunction(runtime.read, runtime.coerce);
+}
+
+function buildTuffNativeModules(nativeTuff) {
+  const nativeDefinitions = collectTuffDefinitions(nativeTuff);
+  const nativeModules = {};
+
+  for (const definition of nativeDefinitions) {
+    const nativeModuleName = renderModulePath(definition.path);
+    const compiledNativeSource = compileTuffNativeSource(definition.body);
+    const nativeModuleFunction = new Function(compiledNativeSource);
+    nativeModules[nativeModuleName] = nativeModuleFunction();
+  }
+
+  return nativeModules;
+}
+
+function compileAllTuffSource(source) {
+  const trimmed = source.trim();
+
+  const externImport = parseExternImportSource(trimmed);
+  if (externImport !== undefined) {
+    return externImport;
+  }
+
+  const libraryImportCall = parseLibraryImportCall(trimmed);
+  if (libraryImportCall !== undefined) {
+    return libraryImportCall;
+  }
+
+  return compileTuffToJS(trimmed);
+}
+
+function compileTuffLibrarySource(source) {
+  const trimmed = source.trim();
+
+  const outFunction = parseOutFunctionSource(trimmed);
+  if (outFunction !== undefined) {
+    return outFunction;
+  }
+
+  throw new Error(`Unsupported Tuff library source: ${source}`);
+}
+
+function compileTuffNativeSource(source) {
+  const trimmed = source.trim();
+
+  const nativeExport = parseNativeExportSource(trimmed);
+  if (nativeExport !== undefined) {
+    return nativeExport;
+  }
+
+  throw new Error(`Unsupported Tuff native source: ${source}`);
+}
+
+function parseExternImportSource(statement) {
+  const prefix = "let { extern ";
+  const declarationSeparator = " } = extern ";
+
+  const parsedSource = parseFunctionSourceNameAndTail(
+    statement,
+    prefix,
+    declarationSeparator,
+  );
+  if (parsedSource === undefined) {
+    return undefined;
+  }
+
+  const moduleSeparator = "; extern fn ";
+  const callSeparator = "(); ";
+  const moduleSeparatorIndex = parsedSource.tail.indexOf(moduleSeparator);
+  if (moduleSeparatorIndex <= 0) {
+    return undefined;
+  }
+
+  const moduleName = parsedSource.tail.slice(0, moduleSeparatorIndex);
+  const callTail = parsedSource.tail.slice(
+    moduleSeparatorIndex + moduleSeparator.length,
+  );
+  const callSeparatorIndex = callTail.indexOf(callSeparator);
+  if (callSeparatorIndex <= 0) {
+    return undefined;
+  }
+
+  const importedFunctionName = callTail.slice(0, callSeparatorIndex);
+  const callPart = callTail.slice(callSeparatorIndex + callSeparator.length);
+
+  if (
+    !isValidModulePath(moduleName) ||
+    !isValidIdentifier(importedFunctionName) ||
+    importedFunctionName !== parsedSource.functionName ||
+    callPart !== `${importedFunctionName}()`
+  ) {
+    return undefined;
+  }
+
+  return `const { ${importedFunctionName} } = externModules[${JSON.stringify(moduleName)}]; return ${importedFunctionName}();`;
+}
+
+function parseNativeExportSource(statement) {
+  const prefix = "export function ";
+  const declarationSeparator = "() { return ";
+
+  const parsedSource = parseFunctionSourceNameAndTail(
+    statement,
+    prefix,
+    declarationSeparator,
+  );
+  if (parsedSource === undefined || !parsedSource.tail.endsWith("; }")) {
+    return undefined;
+  }
+
+  const returnExpression = parsedSource.tail.slice(0, -3);
+  if (returnExpression.length === 0) {
+    return undefined;
+  }
+
+  return `return { ${parsedSource.functionName}: function ${parsedSource.functionName}() { return ${returnExpression}; } };`;
+}
+
+function parseLibraryImportCall(statement) {
+  const prefix = "let { ";
+  const declarationSeparator = " } = lib; ";
+
+  const parsedSource = parseFunctionSourceNameAndTail(
+    statement,
+    prefix,
+    declarationSeparator,
+  );
+  if (
+    parsedSource === undefined ||
+    parsedSource.tail !== `${parsedSource.functionName}()`
+  ) {
+    return undefined;
+  }
+
+  return `const { ${parsedSource.functionName} } = lib; return ${parsedSource.functionName}();`;
+}
+
+function parseOutFunctionSource(statement) {
+  const prefix = "out fn ";
+  const declarationSeparator = "() => { return read(); }";
+
+  const parsedSource = parseFunctionSourceNameAndTail(
+    statement,
+    prefix,
+    declarationSeparator,
+  );
+  if (parsedSource === undefined || parsedSource.tail.length !== 0) {
+    return undefined;
+  }
+
+  return `function ${parsedSource.functionName}() { return __tuff_coerce(__tuff_read()); } return { ${parsedSource.functionName} };`;
+}
+
+function parseFunctionSourceNameAndTail(
+  statement,
+  prefix,
+  declarationSeparator,
+) {
+  if (!statement.startsWith(prefix)) {
+    return undefined;
+  }
+
+  const declarationSeparatorIndex = statement.indexOf(declarationSeparator);
+  if (declarationSeparatorIndex <= prefix.length) {
+    return undefined;
+  }
+
+  const functionName = statement.slice(
+    prefix.length,
+    declarationSeparatorIndex,
+  );
+  if (!isValidIdentifier(functionName)) {
+    return undefined;
+  }
+
+  const tail = statement.slice(
+    declarationSeparatorIndex + declarationSeparator.length,
+  );
+
+  return { functionName, tail };
+}
+
+function renderModulePath(path) {
+  return path.join("::");
+}
+
+function isValidModulePath(modulePath) {
+  const pathParts = modulePath.split("::");
+  if (pathParts.length === 0) {
+    return false;
+  }
+
+  for (const pathPart of pathParts) {
+    if (!isValidIdentifier(pathPart)) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 function isValidIdentifier(identifier) {
@@ -220,28 +530,19 @@ function parseFunctionReadCall(statement) {
   const prefix = "fn ";
   const declarationSeparator = "() => { return read(); } ";
 
-  if (!statement.startsWith(prefix)) {
-    return undefined;
-  }
-
-  const declarationSeparatorIndex = statement.indexOf(declarationSeparator);
-  if (declarationSeparatorIndex <= prefix.length) {
-    return undefined;
-  }
-
-  const functionName = statement.slice(
-    prefix.length,
-    declarationSeparatorIndex,
+  const parsedSource = parseFunctionSourceNameAndTail(
+    statement,
+    prefix,
+    declarationSeparator,
   );
-  const callPart = statement.slice(
-    declarationSeparatorIndex + declarationSeparator.length,
-  );
-
-  if (!isValidIdentifier(functionName) || callPart !== `${functionName}()`) {
+  if (
+    parsedSource === undefined ||
+    parsedSource.tail !== `${parsedSource.functionName}()`
+  ) {
     return undefined;
   }
 
-  return `function ${functionName}() { return __tuff_coerce(__tuff_read()); } return ${functionName}();`;
+  return `function ${parsedSource.functionName}() { return __tuff_coerce(__tuff_read()); } return ${parsedSource.functionName}();`;
 }
 
 function parseFunctionParameterReadCall(statement) {
