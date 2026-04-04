@@ -1,4 +1,7 @@
 import { createInterface } from "node:readline";
+import { createRequire } from "node:module";
+
+const __tuff_require = createRequire(import.meta.url);
 
 function __tuff_tokenize(input) {
   const str = String(input).trim();
@@ -46,8 +49,8 @@ rl.on("close", () => {
   const __tokens = __tuff_tokenize(lines.join("\n"));
   let __tokenIndex = 0;
   const __tuff_read = () => __tokens[__tokenIndex++];
-  const __result = ((__tuff_read, __tuff_coerce) => {
+  const __result = ((__tuff_read, __tuff_coerce, __tuff_require) => {
     const { readFileSync } = __tuff_require("node:fs"); return __tuff_coerce(__tuff_read());
-  })(__tuff_read, __tuff_coerce);
+  })(__tuff_read, __tuff_coerce, __tuff_require);
   process.stdout.write(String(__result) + "\n");
 });
