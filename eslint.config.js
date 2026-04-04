@@ -19,6 +19,10 @@ export default [
       "no-restricted-syntax": [
         "error",
         {
+          selector: "Literal[value=null]",
+          message: "null is not allowed; use undefined instead.",
+        },
+        {
           selector: "Literal[regex]",
           message: "Regex literals are not allowed.",
         },

@@ -3,17 +3,17 @@ export function compileTuffToJS(source) {
 
   const functionParameterLocalReadCall =
     parseFunctionParameterLocalReadCall(trimmed);
-  if (functionParameterLocalReadCall !== null) {
+  if (functionParameterLocalReadCall !== undefined) {
     return functionParameterLocalReadCall;
   }
 
   const functionParameterReadCall = parseFunctionParameterReadCall(trimmed);
-  if (functionParameterReadCall !== null) {
+  if (functionParameterReadCall !== undefined) {
     return functionParameterReadCall;
   }
 
   const functionReadCall = parseFunctionReadCall(trimmed);
-  if (functionReadCall !== null) {
+  if (functionReadCall !== undefined) {
     return functionReadCall;
   }
 
@@ -22,7 +22,7 @@ export function compileTuffToJS(source) {
   }
 
   const readAdditionExpression = parseReadAdditionExpression(trimmed);
-  if (readAdditionExpression !== null) {
+  if (readAdditionExpression !== undefined) {
     return `return ${readAdditionExpression};`;
   }
 
@@ -32,18 +32,18 @@ export function compileTuffToJS(source) {
     const returnStatement = statements[statements.length - 1];
     const compiledStatements = [];
     const boundVariableNames = [];
-    let previousVariableName = null;
+    let previousVariableName = undefined;
 
     for (let index = 0; index < statements.length - 1; index += 1) {
       const statement = statements[index];
       const binding = parseLetBinding(statement);
       const assignment = parseAssignment(statement);
 
-      if (binding === null && assignment === null) {
+      if (binding === undefined && assignment === undefined) {
         break;
       }
 
-      if (binding !== null) {
+      if (binding !== undefined) {
         if (binding.initialValue === "read()") {
           compiledStatements.push(
             `let ${binding.variableName} = __tuff_coerce(__tuff_read());`,
@@ -63,7 +63,7 @@ export function compileTuffToJS(source) {
         continue;
       }
 
-      if (assignment !== null) {
+      if (assignment !== undefined) {
         if (
           index === 0 ||
           assignment.variableName !== previousVariableName ||
@@ -98,7 +98,8 @@ export function compileTuffToJS(source) {
 
     if (
       compiledStatements.length === statements.length - 1 &&
-      (returnStatement === previousVariableName || returnExpression !== null)
+      (returnStatement === previousVariableName ||
+        returnExpression !== undefined)
     ) {
       return `${compiledStatements.join(" ")} return ${
         returnExpression ?? returnStatement
@@ -185,7 +186,7 @@ function parseLetBinding(statement) {
 
 function parseAssignment(statement) {
   if (statement.startsWith("let ")) {
-    return null;
+    return undefined;
   }
 
   return parseNameAndValue(statement, "");
@@ -195,11 +196,11 @@ function parseAdditionExpression(statement, boundVariableNames) {
   return parseAdditionParts(statement, (term) => {
     const variableName = term.trim();
     if (!isValidIdentifier(variableName)) {
-      return null;
+      return undefined;
     }
 
     if (!boundVariableNames.includes(variableName)) {
-      return null;
+      return undefined;
     }
 
     return variableName;
@@ -209,7 +210,7 @@ function parseAdditionExpression(statement, boundVariableNames) {
 function parseReadAdditionExpression(statement) {
   return parseAdditionParts(statement, (term) => {
     if (term.trim() !== "read()") {
-      return null;
+      return undefined;
     }
 
     return "__tuff_coerce(__tuff_read())";
@@ -220,12 +221,12 @@ function parseFunctionReadCall(statement) {
   const declarationSeparator = "() => { return read(); } ";
 
   if (!statement.startsWith(prefix)) {
-    return null;
+    return undefined;
   }
 
   const declarationSeparatorIndex = statement.indexOf(declarationSeparator);
   if (declarationSeparatorIndex <= prefix.length) {
-    return null;
+    return undefined;
   }
 
   const functionName = statement.slice(
@@ -237,7 +238,7 @@ function parseFunctionReadCall(statement) {
   );
 
   if (!isValidIdentifier(functionName) || callPart !== `${functionName}()`) {
-    return null;
+    return undefined;
   }
 
   return `function ${functionName}() { return __tuff_coerce(__tuff_read()); } return ${functionName}();`;
@@ -250,7 +251,7 @@ function parseFunctionParameterReadCall(statement) {
   const readSuffixSeparator = " + read(); } ";
 
   if (!statement.startsWith(prefix)) {
-    return null;
+    return undefined;
   }
 
   const functionParameterSeparatorIndex = statement.indexOf(
@@ -266,7 +267,7 @@ function parseFunctionParameterReadCall(statement) {
     declarationEndSeparatorIndex <= functionParameterSeparatorIndex ||
     readSuffixSeparatorIndex <= declarationEndSeparatorIndex
   ) {
-    return null;
+    return undefined;
   }
 
   const functionName = statement.slice(
@@ -290,7 +291,7 @@ function parseFunctionParameterReadCall(statement) {
     !isValidIdentifier(parameterName) ||
     bodyExpression !== parameterName
   ) {
-    return null;
+    return undefined;
   }
 
   return renderFunctionCall(
@@ -310,7 +311,7 @@ function parseFunctionParameterLocalReadCall(statement) {
   const functionBodySuffix = "; } ";
 
   if (!statement.startsWith(prefix)) {
-    return null;
+    return undefined;
   }
 
   const functionParameterSeparatorIndex = statement.indexOf(
@@ -337,7 +338,7 @@ function parseFunctionParameterLocalReadCall(statement) {
     bodyReadSeparatorIndex <= bodyBindingSeparatorIndex ||
     functionBodySuffixIndex <= bodyReadSeparatorIndex
   ) {
-    return null;
+    return undefined;
   }
 
   const functionName = statement.slice(
@@ -371,7 +372,7 @@ function parseFunctionParameterLocalReadCall(statement) {
     bodyExpression !== parameterName ||
     returnExpression !== localVariableName
   ) {
-    return null;
+    return undefined;
   }
 
   return renderFunctionCall(
@@ -384,8 +385,8 @@ function parseFunctionParameterLocalReadCall(statement) {
 
 function renderFunctionCall(functionName, parameterName, callPart, body) {
   const callArgument = parseFunctionCallArgument(functionName, callPart);
-  if (callArgument === null) {
-    return null;
+  if (callArgument === undefined) {
+    return undefined;
   }
 
   return `function ${functionName}(${parameterName}) { ${body} } return ${functionName}(${callArgument});`;
@@ -393,12 +394,12 @@ function renderFunctionCall(functionName, parameterName, callPart, body) {
 
 function parseFunctionCallArgument(functionName, callPart) {
   if (!callPart.startsWith(`${functionName}(`) || !callPart.endsWith(")")) {
-    return null;
+    return undefined;
   }
 
   const callArgument = callPart.slice(functionName.length + 1, -1);
   if (callArgument.length === 0) {
-    return null;
+    return undefined;
   }
 
   return callArgument;
@@ -408,15 +409,15 @@ function parseAdditionParts(statement, parseTerm) {
   const terms = statement.split("+");
 
   if (terms.length < 2) {
-    return null;
+    return undefined;
   }
 
   const parsedTerms = [];
 
   for (const term of terms) {
     const parsedTerm = parseTerm(term);
-    if (parsedTerm === null) {
-      return null;
+    if (parsedTerm === undefined) {
+      return undefined;
     }
 
     parsedTerms.push(parsedTerm);
@@ -428,19 +429,19 @@ function parseAdditionParts(statement, parseTerm) {
 function parseNameAndValue(statement, prefix) {
   const equalsSeparator = " = ";
   if (!statement.startsWith(prefix)) {
-    return null;
+    return undefined;
   }
 
   const separatorIndex = statement.indexOf(equalsSeparator);
   if (separatorIndex <= prefix.length) {
-    return null;
+    return undefined;
   }
 
   const variableName = statement.slice(prefix.length, separatorIndex);
   const initialValue = statement.slice(separatorIndex + equalsSeparator.length);
 
   if (!isValidIdentifier(variableName)) {
-    return null;
+    return undefined;
   }
 
   return { variableName, initialValue };
