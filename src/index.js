@@ -293,12 +293,12 @@ function parseFunctionParameterReadCall(statement) {
     return null;
   }
 
-  const callArgument = parseFunctionCallArgument(functionName, callPart);
-  if (callArgument === null) {
-    return null;
-  }
-
-  return `function ${functionName}(${parameterName}) { return ${parameterName} + __tuff_coerce(__tuff_read()); } return ${functionName}(${callArgument});`;
+  return renderFunctionCall(
+    functionName,
+    parameterName,
+    callPart,
+    `return ${parameterName} + __tuff_coerce(__tuff_read());`,
+  );
 }
 
 function parseFunctionParameterLocalReadCall(statement) {
@@ -374,12 +374,21 @@ function parseFunctionParameterLocalReadCall(statement) {
     return null;
   }
 
+  return renderFunctionCall(
+    functionName,
+    parameterName,
+    callPart,
+    `let ${localVariableName} = ${parameterName} + __tuff_coerce(__tuff_read()); return ${localVariableName};`,
+  );
+}
+
+function renderFunctionCall(functionName, parameterName, callPart, body) {
   const callArgument = parseFunctionCallArgument(functionName, callPart);
   if (callArgument === null) {
     return null;
   }
 
-  return `function ${functionName}(${parameterName}) { let ${localVariableName} = ${parameterName} + __tuff_coerce(__tuff_read()); return ${localVariableName}; } return ${functionName}(${callArgument});`;
+  return `function ${functionName}(${parameterName}) { ${body} } return ${functionName}(${callArgument});`;
 }
 
 function parseFunctionCallArgument(functionName, callPart) {
