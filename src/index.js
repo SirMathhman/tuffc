@@ -5,6 +5,21 @@ export function compileTuffToJS(source) {
     return "return __tuff_coerce(__tuff_read());";
   }
 
+  const letReadMatch = trimmed.match(/^let ([A-Za-z_$][\w$]*) = read\(\); \1$/);
+  if (letReadMatch) {
+    const variableName = letReadMatch[1];
+    return `const ${variableName} = __tuff_coerce(__tuff_read()); return ${variableName};`;
+  }
+
+  const letChainMatch = trimmed.match(
+    /^let ([A-Za-z_$][\w$]*) = read\(\); let ([A-Za-z_$][\w$]*) = \1; \2$/,
+  );
+  if (letChainMatch) {
+    const firstVariableName = letChainMatch[1];
+    const secondVariableName = letChainMatch[2];
+    return `const ${firstVariableName} = __tuff_coerce(__tuff_read()); const ${secondVariableName} = ${firstVariableName}; return ${secondVariableName};`;
+  }
+
   throw new Error(`Unsupported Tuff source: ${source}`);
 }
 

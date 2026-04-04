@@ -20,3 +20,15 @@ test('executeTuff("read()", "100 200") => 100', () => {
 test('executeTuff("read()", "true") => 1', () => {
   expect(executeTuff("read()", "true")).toBe(1);
 });
+
+test('executeTuff("let x = read(); x", "100") => 100', () => {
+  expect(executeTuff("let x = read(); x", "100")).toBe(100);
+});
+
+test('executeTuff("let y = read(); y", "100") => 100', () => {
+  expect(executeTuff("let y = read(); y", "100")).toBe(100);
+});
+
+test('executeTuff("let y = read(); let z = y; z", "100") => 100', () => {
+  expect(executeTuff("let y = read(); let z = y; z", "100")).toBe(100);
+});

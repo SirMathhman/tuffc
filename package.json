@@ -5,6 +5,12 @@
   "type": "module",
   "scripts": {
     "start": "bun run src/index.js",
-    "test": "bun test"
+    "test": "bun test",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "eslint": "^9.0.0"
   }
 }
