@@ -3,15 +3,15 @@
 		"Stop": [
 			{
 				"type": "command",
-				"command": "npm run test; if ($LASTEXITCODE -ne 0) { exit 2 }"
+				"command": "npm run test; if ($LASTEXITCODE -ne 0) { Write-Error 'Tests failed. Coverage is required.'; exit 2 }"
 			},
 			{
 				"type": "command",
-				"command": "npm run lint; if ($LASTEXITCODE -ne 0) { exit 2 }"
+				"command": "npm run lint; if ($LASTEXITCODE -ne 0) { Write-Error 'Linting failed. Please fix the issues.'; exit 2 }"
 			},
 			{
 				"type": "command",
-				"command": "npm run cpd; if ($LASTEXITCODE -ne 0) { exit 2 }"
+				"command": "npm run cpd; if ($LASTEXITCODE -ne 0) { Write-Error 'CPD check failed. Please fix the issues.'; exit 2 }"
 			}
 		]
 	}

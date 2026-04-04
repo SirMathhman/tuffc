@@ -27,6 +27,10 @@ export default [
       "no-restricted-syntax": [
         "error",
         {
+          selector: "TemplateLiteral",
+          message: "Template literals are not allowed.",
+        },
+        {
           selector: "ThrowStatement",
           message:
             "throw statements are banned; return a Result<T, X> instead.",

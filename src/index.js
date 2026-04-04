@@ -72,12 +72,12 @@ export function compileTuffToJS(source) {
 
   const readAdditionExpression = parseReadAdditionExpression(trimmed);
   if (readAdditionExpression !== undefined) {
-    return ok(`return ${readAdditionExpression};`);
+    return ok("return " + readAdditionExpression + ";");
   }
 
   const readEqualityExpression = parseReadEqualityExpression(trimmed);
   if (readEqualityExpression !== undefined) {
-    return ok(`return ${readEqualityExpression};`);
+    return ok("return " + readEqualityExpression + ";");
   }
 
   const statements = trimmed.split("; ");
@@ -100,13 +100,13 @@ export function compileTuffToJS(source) {
       if (binding !== undefined) {
         if (binding.initialValue === "read()") {
           compiledStatements.push(
-            `let ${binding.variableName} = __tuff_coerce(__tuff_read());`,
+            "let " + binding.variableName + " = __tuff_coerce(__tuff_read());",
           );
         } else if (index === 0) {
           break;
         } else if (binding.initialValue === previousVariableName) {
           compiledStatements.push(
-            `let ${binding.variableName} = ${previousVariableName};`,
+            "let " + binding.variableName + " = " + previousVariableName + ";",
           );
         } else {
           break;
@@ -129,11 +129,11 @@ export function compileTuffToJS(source) {
 
         if (assignment.initialValue === "read()") {
           compiledStatements.push(
-            `${assignment.variableName} = __tuff_coerce(__tuff_read());`,
+            assignment.variableName + " = __tuff_coerce(__tuff_read());",
           );
         } else {
           compiledStatements.push(
-            `${assignment.variableName} = ${previousVariableName};`,
+            assignment.variableName + " = " + previousVariableName + ";",
           );
         }
 
@@ -156,19 +156,20 @@ export function compileTuffToJS(source) {
         returnExpression !== undefined)
     ) {
       return ok(
-        `${compiledStatements.join(" ")} return ${
-          returnExpression ?? returnStatement
-        };`,
+        compiledStatements.join(" ") +
+          " return " +
+          (returnExpression ?? returnStatement) +
+          ";",
       );
     }
   }
 
   const freeExpr = compileBodyExpression(trimmed);
   if (freeExpr !== undefined) {
-    return ok(`return ${freeExpr};`);
+    return ok("return " + freeExpr + ";");
   }
 
-  return err(`Unsupported Tuff source: ${source}`);
+  return err("Unsupported Tuff source: " + source);
 }
 
 export function executeTuff(source, stdIn) {
@@ -214,7 +215,7 @@ function executeAllTuffInternal(entrypointName, allTuff, nativeTuff, stdIn) {
   const definitions = collectTuffDefinitions(allTuff);
   const entrypointBody = findTuffEntrypointBody(entrypointName, definitions);
   if (entrypointBody === undefined) {
-    return err(`Unsupported Tuff entrypoint: ${entrypointName}`);
+    return err("Unsupported Tuff entrypoint: " + entrypointName);
   }
 
   const runtime = createTuffRuntime(stdIn);
@@ -438,7 +439,7 @@ function compileTuffLibrarySource(source) {
     return ok(outFunction);
   }
 
-  return err(`Unsupported Tuff library source: ${source}`);
+  return err("Unsupported Tuff library source: " + source);
 }
 
 function compileTuffNativeSource(source) {
@@ -449,7 +450,7 @@ function compileTuffNativeSource(source) {
     return ok(nativeExport);
   }
 
-  return err(`Unsupported Tuff native source: ${source}`);
+  return err("Unsupported Tuff native source: " + source);
 }
 
 function parseExternImportSource(statement) {
@@ -488,12 +489,20 @@ function parseExternImportSource(statement) {
     !isValidModulePath(moduleName) ||
     !isValidIdentifier(importedFunctionName) ||
     importedFunctionName !== parsedSource.functionName ||
-    callPart !== `${importedFunctionName}()`
+    callPart !== importedFunctionName + "()"
   ) {
     return undefined;
   }
 
-  return `const { ${importedFunctionName} } = externModules[${JSON.stringify(moduleName)}]; return ${importedFunctionName}();`;
+  return (
+    "const { " +
+    importedFunctionName +
+    " } = externModules[" +
+    JSON.stringify(moduleName) +
+    "]; return " +
+    importedFunctionName +
+    "();"
+  );
 }
 
 function parseNativeExportSource(statement) {
@@ -514,7 +523,15 @@ function parseNativeExportSource(statement) {
     return undefined;
   }
 
-  return `return { ${parsedSource.functionName}: function ${parsedSource.functionName}() { return ${returnExpression}; } };`;
+  return (
+    "return { " +
+    parsedSource.functionName +
+    ": function " +
+    parsedSource.functionName +
+    "() { return " +
+    returnExpression +
+    "; } };"
+  );
 }
 
 function parseLibraryImportCall(statement) {
@@ -543,12 +560,20 @@ function parseLibraryImportCall(statement) {
 
   if (
     !isValidModulePath(moduleName) ||
-    callPart !== `${parsedSource.functionName}()`
+    callPart !== parsedSource.functionName + "()"
   ) {
     return undefined;
   }
 
-  return `const { ${parsedSource.functionName} } = lib[${JSON.stringify(moduleName)}]; return ${parsedSource.functionName}();`;
+  return (
+    "const { " +
+    parsedSource.functionName +
+    " } = lib[" +
+    JSON.stringify(moduleName) +
+    "]; return " +
+    parsedSource.functionName +
+    "();"
+  );
 }
 
 function parseOutFunctionSource(statement) {
@@ -564,7 +589,13 @@ function parseOutFunctionSource(statement) {
     return undefined;
   }
 
-  return `function ${parsedSource.functionName}() { return __tuff_coerce(__tuff_read()); } return { ${parsedSource.functionName} };`;
+  return (
+    "function " +
+    parsedSource.functionName +
+    "() { return __tuff_coerce(__tuff_read()); } return { " +
+    parsedSource.functionName +
+    " };"
+  );
 }
 
 function parseFunctionSourceNameAndTail(
@@ -754,7 +785,11 @@ function parseExternNodeImportBlock(block) {
 
     const requirePath = modulePath.split("::").join(":");
     compiledLines.push(
-      `const { ${importedNames.join(", ")} } = __tuff_require(${JSON.stringify(requirePath)});`,
+      "const { " +
+        importedNames.join(", ") +
+        " } = __tuff_require(" +
+        JSON.stringify(requirePath) +
+        ");",
     );
   }
 
@@ -858,7 +893,9 @@ function parseLetFunctionCallBlock(block) {
     return undefined;
   }
 
-  return `const ${parsed.varName} = ${call.fnName}(${compiledArg});`;
+  return (
+    "const " + parsed.varName + " = " + call.fnName + "(" + compiledArg + ");"
+  );
 }
 
 function splitIntoBlocks(source) {
@@ -948,7 +985,15 @@ function parseMultiLineFunctionDefinition(block) {
     return undefined;
   }
 
-  return `function ${functionName}(${params.join(", ")}) { ${compiledBody} }`;
+  return (
+    "function " +
+    functionName +
+    "(" +
+    params.join(", ") +
+    ") { " +
+    compiledBody +
+    " }"
+  );
 }
 
 function parseMultiLineFunctionBody(bodyLines) {
@@ -1021,7 +1066,7 @@ function parseReturnBodyStatement(statement) {
     return undefined;
   }
 
-  return `return ${compiled};`;
+  return "return " + compiled + ";";
 }
 
 function parseLetBodyStatement(statement) {
@@ -1035,7 +1080,7 @@ function parseLetBodyStatement(statement) {
     return undefined;
   }
 
-  return `let ${parsed.varName} = ${compiled};`;
+  return "let " + parsed.varName + " = " + compiled + ";";
 }
 
 function parseBracketIndexChain(tokens, startPos, baseValue) {
@@ -1058,7 +1103,7 @@ function parseBracketIndexChain(tokens, startPos, baseValue) {
       return undefined;
     }
     p++;
-    value = `${value}[${indexExpr.value}]`;
+    value = value + "[" + indexExpr.value + "]";
   }
 
   return { value, pos: p };
@@ -1144,7 +1189,7 @@ function parseAssignmentBodyStatement(statement) {
     return undefined;
   }
 
-  return `${lhs.value} = ${rhs};`;
+  return lhs.value + " = " + rhs + ";";
 }
 
 function splitIfBlockSegments(lines) {
@@ -1203,14 +1248,14 @@ function parseIfBodyBlock(lines) {
     }
 
     if (seg.isElse) {
-      parts.push(`else { ${compiledBody} }`);
+      parts.push("else { " + compiledBody + " }");
     } else {
       const compiledCond = compileCondition(seg.cond);
       if (compiledCond === undefined) {
         return undefined;
       }
       const keyword = parts.length === 0 ? "if" : "else if";
-      parts.push(`${keyword} (${compiledCond}) { ${compiledBody} }`);
+      parts.push(keyword + " (" + compiledCond + ") { " + compiledBody + " }");
     }
   }
 
@@ -1241,7 +1286,7 @@ function parseWhileBodyBlock(lines) {
     return undefined;
   }
 
-  return `while (${compiledCondition}) { ${compiledBody} }`;
+  return "while (" + compiledCondition + ") { " + compiledBody + " }";
 }
 
 function tokenizeExpression(str) {
@@ -1400,13 +1445,13 @@ function parseBodyExprNode(tokens, pos) {
       return undefined;
     }
     p++;
-    value = `[${elements.join(", ")}]`;
+    value = "[" + elements.join(", ") + "]";
   } else if (tok.type === "op" && tok.value === "-") {
     const rhs = parseBodyExprNode(tokens, pos + 1);
     if (rhs === undefined) {
       return undefined;
     }
-    value = `-${rhs.value}`;
+    value = "-" + rhs.value;
     p = rhs.pos;
   } else {
     return undefined;
@@ -1417,7 +1462,7 @@ function parseBodyExprNode(tokens, pos) {
       if (p + 1 >= tokens.length || tokens[p + 1].type !== "id") {
         return undefined;
       }
-      value = `${value}.${tokens[p + 1].value}`;
+      value = value + "." + tokens[p + 1].value;
       p += 2;
     } else if (tokens[p].type === "(") {
       p++;
@@ -1446,14 +1491,14 @@ function parseBodyExprNode(tokens, pos) {
       value =
         value === "read" && args.length === 0
           ? "__tuff_coerce(__tuff_read())"
-          : `${value}(${args.join(", ")})`;
+          : value + "(" + args.join(", ") + ")";
     } else if (tokens[p].type === "op" && tokens[p].value === "+") {
       p++;
       const rhs = parseBodyExprNode(tokens, p);
       if (rhs === undefined) {
         return undefined;
       }
-      value = `${value} + ${rhs.value}`;
+      value = value + " + " + rhs.value;
       p = rhs.pos;
     } else if (tokens[p].type === "[") {
       const indexed = parseBracketIndexChain(tokens, p, value);
@@ -1541,12 +1586,18 @@ function parseFunctionReadCall(statement) {
   );
   if (
     parsedSource === undefined ||
-    parsedSource.tail !== `${parsedSource.functionName}()`
+    parsedSource.tail !== parsedSource.functionName + "()"
   ) {
     return undefined;
   }
 
-  return `function ${parsedSource.functionName}() { return __tuff_coerce(__tuff_read()); } return ${parsedSource.functionName}();`;
+  return (
+    "function " +
+    parsedSource.functionName +
+    "() { return __tuff_coerce(__tuff_read()); } return " +
+    parsedSource.functionName +
+    "();"
+  );
 }
 
 function parseFunctionParameterReadCall(statement) {
@@ -1603,7 +1654,7 @@ function parseFunctionParameterReadCall(statement) {
     functionName,
     parameterName,
     callPart,
-    `return ${parameterName} + __tuff_coerce(__tuff_read());`,
+    "return " + parameterName + " + __tuff_coerce(__tuff_read());",
   );
 }
 
@@ -1684,7 +1735,13 @@ function parseFunctionParameterLocalReadCall(statement) {
     functionName,
     parameterName,
     callPart,
-    `let ${localVariableName} = ${parameterName} + __tuff_coerce(__tuff_read()); return ${localVariableName};`,
+    "let " +
+      localVariableName +
+      " = " +
+      parameterName +
+      " + __tuff_coerce(__tuff_read()); return " +
+      localVariableName +
+      ";",
   );
 }
 
@@ -1694,11 +1751,23 @@ function renderFunctionCall(functionName, parameterName, callPart, body) {
     return undefined;
   }
 
-  return `function ${functionName}(${parameterName}) { ${body} } return ${functionName}(${callArgument});`;
+  return (
+    "function " +
+    functionName +
+    "(" +
+    parameterName +
+    ") { " +
+    body +
+    " } return " +
+    functionName +
+    "(" +
+    callArgument +
+    ");"
+  );
 }
 
 function parseFunctionCallArgument(functionName, callPart) {
-  if (!callPart.startsWith(`${functionName}(`) || !callPart.endsWith(")")) {
+  if (!callPart.startsWith(functionName + "(") || !callPart.endsWith(")")) {
     return undefined;
   }
 
@@ -1754,10 +1823,14 @@ function parseReadEqualityExpression(statement) {
   }
 
   if (parts.length === 2) {
-    return `Number(${parts[0]} === ${parts[1]})`;
+    return "Number(" + parts[0] + " === " + parts[1] + ")";
   }
 
-  return `Number([${parts.join(", ")}].every((v, i, a) => i === 0 || v === a[i - 1]))`;
+  return (
+    "Number([" +
+    parts.join(", ") +
+    "].every((v, i, a) => i === 0 || v === a[i - 1]))"
+  );
 }
 
 function parseNameAndValue(statement, prefix) {
@@ -1798,7 +1871,7 @@ function isIdentifierPartCharacter(character) {
 }
 
 export function createMessage(name = "world") {
-  return `Hello, ${name}!`;
+  return "Hello, " + name + "!";
 }
 
 export function buildBundleSource(compiledBody) {
@@ -1855,13 +1928,14 @@ export function buildBundleSource(compiledBody) {
     "  let __tokenIndex = 0;",
     "  const __tuff_read = () => __tokens[__tokenIndex++];",
     "  const __result = ((__tuff_read, __tuff_coerce, __tuff_require, __tuff_import_meta_url) => {",
-    `    ${compiledBody}`,
+    "    " + compiledBody,
     "  })(__tuff_read, __tuff_coerce, __tuff_require, import.meta.url);",
     '  process.stdout.write(String(__result) + "\\n");',
     "});",
   ].join("\n");
 }
 
+/* c8 ignore start */
 if (import.meta.main) {
   const tuffSource = readFileSync(
     new URL("main.tuff", import.meta.url),
@@ -1877,3 +1951,4 @@ if (import.meta.main) {
     process.exitCode = 1;
   }
 }
+/* c8 ignore stop */
