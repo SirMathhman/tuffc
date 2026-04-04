@@ -16,6 +16,21 @@ export default [
     },
     rules: {
       "no-console": "off",
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "Literal[regex]",
+          message: "Regex literals are not allowed.",
+        },
+        {
+          selector: "NewExpression[callee.name='RegExp']",
+          message: "Use of new RegExp(...) is not allowed.",
+        },
+        {
+          selector: "CallExpression[callee.name='RegExp']",
+          message: "Use of RegExp(...) is not allowed.",
+        },
+      ],
     },
   },
 ];
