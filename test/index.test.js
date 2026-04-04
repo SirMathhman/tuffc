@@ -16,3 +16,7 @@ test('executeTuff("read()", "100") => 100', () => {
 test('executeTuff("read()", "100 200") => 100', () => {
   expect(executeTuff("read()", "100 200")).toBe(100);
 });
+
+test('executeTuff("read()", "true") => 1', () => {
+  expect(executeTuff("read()", "true")).toBe(1);
+});
