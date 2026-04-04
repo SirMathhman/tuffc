@@ -254,19 +254,28 @@ function findTuffEntrypointBody(entrypointName, definitions) {
 }
 
 function buildTuffLibraryExports(definitions, runtime) {
-  const libraryBody = findTuffEntrypointBody("lib", definitions);
-  if (libraryBody === undefined) {
-    return {};
+  const libraryExports = {};
+
+  for (const definition of definitions) {
+    const trimmedBody = definition.body.trim();
+    if (!trimmedBody.startsWith("out fn ")) {
+      continue;
+    }
+
+    const compiledLibraryJS = compileTuffLibrarySource(definition.body);
+    const libraryFunction = new Function(
+      "__tuff_read",
+      "__tuff_coerce",
+      compiledLibraryJS,
+    );
+
+    libraryExports[renderModulePath(definition.path)] = libraryFunction(
+      runtime.read,
+      runtime.coerce,
+    );
   }
 
-  const compiledLibraryJS = compileTuffLibrarySource(libraryBody);
-  const libraryFunction = new Function(
-    "__tuff_read",
-    "__tuff_coerce",
-    compiledLibraryJS,
-  );
-
-  return libraryFunction(runtime.read, runtime.coerce);
+  return libraryExports;
 }
 
 function buildTuffNativeModules(nativeTuff) {
@@ -335,16 +344,16 @@ function parseExternImportSource(statement) {
   }
 
   const moduleSeparator = "; extern fn ";
-  const callSeparator = "(); ";
-  const moduleSeparatorIndex = parsedSource.tail.indexOf(moduleSeparator);
-  if (moduleSeparatorIndex <= 0) {
+  const moduleImportSource = parseModuleImportSource(
+    parsedSource,
+    moduleSeparator,
+  );
+  if (moduleImportSource === undefined) {
     return undefined;
   }
 
-  const moduleName = parsedSource.tail.slice(0, moduleSeparatorIndex);
-  const callTail = parsedSource.tail.slice(
-    moduleSeparatorIndex + moduleSeparator.length,
-  );
+  const { moduleName, callTail } = moduleImportSource;
+  const callSeparator = "(); ";
   const callSeparatorIndex = callTail.indexOf(callSeparator);
   if (callSeparatorIndex <= 0) {
     return undefined;
@@ -388,21 +397,36 @@ function parseNativeExportSource(statement) {
 
 function parseLibraryImportCall(statement) {
   const prefix = "let { ";
-  const declarationSeparator = " } = lib; ";
+  const declarationSeparator = " } = ";
 
   const parsedSource = parseFunctionSourceNameAndTail(
     statement,
     prefix,
     declarationSeparator,
   );
+  if (parsedSource === undefined) {
+    return undefined;
+  }
+
+  const moduleSeparator = "; ";
+  const moduleImportSource = parseModuleImportSource(
+    parsedSource,
+    moduleSeparator,
+  );
+  if (moduleImportSource === undefined) {
+    return undefined;
+  }
+
+  const { moduleName, callTail: callPart } = moduleImportSource;
+
   if (
-    parsedSource === undefined ||
-    parsedSource.tail !== `${parsedSource.functionName}()`
+    !isValidModulePath(moduleName) ||
+    callPart !== `${parsedSource.functionName}()`
   ) {
     return undefined;
   }
 
-  return `const { ${parsedSource.functionName} } = lib; return ${parsedSource.functionName}();`;
+  return `const { ${parsedSource.functionName} } = lib[${JSON.stringify(moduleName)}]; return ${parsedSource.functionName}();`;
 }
 
 function parseOutFunctionSource(statement) {
@@ -448,6 +472,20 @@ function parseFunctionSourceNameAndTail(
   );
 
   return { functionName, tail };
+}
+
+function parseModuleImportSource(parsedSource, moduleSeparator) {
+  const moduleSeparatorIndex = parsedSource.tail.indexOf(moduleSeparator);
+  if (moduleSeparatorIndex <= 0) {
+    return undefined;
+  }
+
+  return {
+    moduleName: parsedSource.tail.slice(0, moduleSeparatorIndex),
+    callTail: parsedSource.tail.slice(
+      moduleSeparatorIndex + moduleSeparator.length,
+    ),
+  };
 }
 
 function renderModulePath(path) {
