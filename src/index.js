@@ -5,11 +5,17 @@ export function compileTuffToJS(source) {
     return "return __tuff_coerce(__tuff_read());";
   }
 
+  const readAdditionExpression = parseReadAdditionExpression(trimmed);
+  if (readAdditionExpression !== null) {
+    return `return ${readAdditionExpression};`;
+  }
+
   const statements = trimmed.split("; ");
 
   if (statements.length >= 2) {
     const returnStatement = statements[statements.length - 1];
     const compiledStatements = [];
+    const boundVariableNames = [];
     let previousVariableName = null;
 
     for (let index = 0; index < statements.length - 1; index += 1) {
@@ -22,14 +28,12 @@ export function compileTuffToJS(source) {
       }
 
       if (binding !== null) {
-        if (index === 0) {
-          if (binding.initialValue !== "read()") {
-            break;
-          }
-
+        if (binding.initialValue === "read()") {
           compiledStatements.push(
             `let ${binding.variableName} = __tuff_coerce(__tuff_read());`,
           );
+        } else if (index === 0) {
+          break;
         } else if (binding.initialValue === previousVariableName) {
           compiledStatements.push(
             `let ${binding.variableName} = ${previousVariableName};`,
@@ -39,6 +43,7 @@ export function compileTuffToJS(source) {
         }
 
         previousVariableName = binding.variableName;
+        boundVariableNames.push(binding.variableName);
         continue;
       }
 
@@ -62,15 +67,26 @@ export function compileTuffToJS(source) {
           );
         }
 
+        if (!boundVariableNames.includes(assignment.variableName)) {
+          boundVariableNames.push(assignment.variableName);
+        }
+
         continue;
       }
     }
 
+    const returnExpression = parseAdditionExpression(
+      returnStatement,
+      boundVariableNames,
+    );
+
     if (
       compiledStatements.length === statements.length - 1 &&
-      returnStatement === previousVariableName
+      (returnStatement === previousVariableName || returnExpression !== null)
     ) {
-      return `${compiledStatements.join(" ")} return ${returnStatement};`;
+      return `${compiledStatements.join(" ")} return ${
+        returnExpression ?? returnStatement
+      };`;
     }
   }
 
@@ -157,6 +173,52 @@ function parseAssignment(statement) {
   }
 
   return parseNameAndValue(statement, "");
+}
+
+function parseAdditionExpression(statement, boundVariableNames) {
+  return parseAdditionParts(statement, (term) => {
+    const variableName = term.trim();
+    if (!isValidIdentifier(variableName)) {
+      return null;
+    }
+
+    if (!boundVariableNames.includes(variableName)) {
+      return null;
+    }
+
+    return variableName;
+  });
+}
+
+function parseReadAdditionExpression(statement) {
+  return parseAdditionParts(statement, (term) => {
+    if (term.trim() !== "read()") {
+      return null;
+    }
+
+    return "__tuff_coerce(__tuff_read())";
+  });
+}
+
+function parseAdditionParts(statement, parseTerm) {
+  const terms = statement.split("+");
+
+  if (terms.length < 2) {
+    return null;
+  }
+
+  const parsedTerms = [];
+
+  for (const term of terms) {
+    const parsedTerm = parseTerm(term);
+    if (parsedTerm === null) {
+      return null;
+    }
+
+    parsedTerms.push(parsedTerm);
+  }
+
+  return parsedTerms.join(" + ");
 }
 
 function parseNameAndValue(statement, prefix) {

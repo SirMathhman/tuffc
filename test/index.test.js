@@ -48,3 +48,17 @@ test('executeTuff("let y = read(); y = read(); let z = y; z", "25 75") => 75', (
     75,
   );
 });
+
+test('executeTuff("let x = read(); let y = read(); x + y", "25 75") => 100', () => {
+  expect(executeTuff("let x = read(); let y = read(); x + y", "25 75")).toBe(
+    100,
+  );
+});
+
+test('executeTuff("let x = read(); x + x", "25") => 50', () => {
+  expect(executeTuff("let x = read(); x + x", "25")).toBe(50);
+});
+
+test('executeTuff("read() + read()", "25 75") => 100', () => {
+  expect(executeTuff("read() + read()", "25 75")).toBe(100);
+});
