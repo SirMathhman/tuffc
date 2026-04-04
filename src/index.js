@@ -147,8 +147,20 @@ function isValidIdentifier(identifier) {
 
 function parseLetBinding(statement) {
   const prefix = "let ";
-  const equalsSeparator = " = ";
+  const binding = parseNameAndValue(statement, prefix);
+  return binding;
+}
 
+function parseAssignment(statement) {
+  if (statement.startsWith("let ")) {
+    return null;
+  }
+
+  return parseNameAndValue(statement, "");
+}
+
+function parseNameAndValue(statement, prefix) {
+  const equalsSeparator = " = ";
   if (!statement.startsWith(prefix)) {
     return null;
   }
@@ -159,28 +171,6 @@ function parseLetBinding(statement) {
   }
 
   const variableName = statement.slice(prefix.length, separatorIndex);
-  const initialValue = statement.slice(separatorIndex + equalsSeparator.length);
-
-  if (!isValidIdentifier(variableName)) {
-    return null;
-  }
-
-  return { variableName, initialValue };
-}
-
-function parseAssignment(statement) {
-  const equalsSeparator = " = ";
-  const separatorIndex = statement.indexOf(equalsSeparator);
-
-  if (separatorIndex <= 0) {
-    return null;
-  }
-
-  if (statement.startsWith("let ")) {
-    return null;
-  }
-
-  const variableName = statement.slice(0, separatorIndex);
   const initialValue = statement.slice(separatorIndex + equalsSeparator.length);
 
   if (!isValidIdentifier(variableName)) {

@@ -8,7 +8,7 @@
     "test": "bun test",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "cpd": "pmd cpd --dir src test --language ecmascript --minimum-tokens 35 --ignore-literals --ignore-identifiers"
+    "cpd": "pmd cpd --dir src test --language ecmascript --minimum-tokens 35 --ignore-literals --ignore-identifiers 1>&2"
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",
