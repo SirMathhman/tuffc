@@ -1,6 +1,11 @@
 export function compileTuffToJS(source) {
   const trimmed = source.trim();
 
+  const functionReadCall = parseFunctionReadCall(trimmed);
+  if (functionReadCall !== null) {
+    return functionReadCall;
+  }
+
   if (trimmed === "read()") {
     return "return __tuff_coerce(__tuff_read());";
   }
@@ -198,6 +203,33 @@ function parseReadAdditionExpression(statement) {
 
     return "__tuff_coerce(__tuff_read())";
   });
+}
+function parseFunctionReadCall(statement) {
+  const prefix = "fn ";
+  const declarationSeparator = "() => { return read(); } ";
+
+  if (!statement.startsWith(prefix)) {
+    return null;
+  }
+
+  const declarationSeparatorIndex = statement.indexOf(declarationSeparator);
+  if (declarationSeparatorIndex <= prefix.length) {
+    return null;
+  }
+
+  const functionName = statement.slice(
+    prefix.length,
+    declarationSeparatorIndex,
+  );
+  const callPart = statement.slice(
+    declarationSeparatorIndex + declarationSeparator.length,
+  );
+
+  if (!isValidIdentifier(functionName) || callPart !== `${functionName}()`) {
+    return null;
+  }
+
+  return `function ${functionName}() { return __tuff_coerce(__tuff_read()); } return ${functionName}();`;
 }
 
 function parseAdditionParts(statement, parseTerm) {

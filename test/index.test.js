@@ -62,3 +62,11 @@ test('executeTuff("let x = read(); x + x", "25") => 50', () => {
 test('executeTuff("read() + read()", "25 75") => 100', () => {
   expect(executeTuff("read() + read()", "25 75")).toBe(100);
 });
+
+test('executeTuff("fn get() => { return read(); } get()", "25") => 25', () => {
+  expect(executeTuff("fn get() => { return read(); } get()", "25")).toBe(25);
+});
+
+test('executeTuff("fn wah() => { return read(); } wah()", "25") => 25', () => {
+  expect(executeTuff("fn wah() => { return read(); } wah()", "25")).toBe(25);
+});
