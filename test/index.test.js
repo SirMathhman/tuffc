@@ -837,3 +837,81 @@ test("executeTuff invalid body statement inside if => throws", () => {
     ),
   ).toThrow();
 });
+
+// malformed else-if header (missing space before {) => throws
+test("executeTuff malformed else-if header => throws", () => {
+  expect(() =>
+    executeTuff(
+      [
+        "out fn f(x) => {",
+        "    if (x != undefined) {",
+        "        return x;",
+        "    } else if (x) {oops",
+        "        return x;",
+        "    }",
+        "}",
+        "",
+        "read()",
+      ].join("\n"),
+      "50",
+    ),
+  ).toThrow();
+});
+
+// < > <= >= comparison operators in condition
+test("executeTuff < and <= conditions => 50", () => {
+  expect(
+    executeTuff(
+      [
+        "out fn f(x) => {",
+        "    if (x > 0) {",
+        "        if (x <= 100) {",
+        "            return x;",
+        "        }",
+        "    }",
+        "    return x;",
+        "}",
+        "",
+        "read()",
+      ].join("\n"),
+      "50",
+    ),
+  ).toBe(50);
+});
+
+// grouping parens in condition
+test("executeTuff grouped condition => 50", () => {
+  expect(
+    executeTuff(
+      [
+        "out fn f(x) => {",
+        "    if ((x >= 0) && (x != undefined)) {",
+        "        return x;",
+        "    }",
+        "    return x;",
+        "}",
+        "",
+        "read()",
+      ].join("\n"),
+      "50",
+    ),
+  ).toBe(50);
+});
+
+// if with empty body (no statements)
+test("executeTuff if with empty body => 50", () => {
+  expect(
+    executeTuff(
+      [
+        "out fn f(x) => {",
+        "    if (x != undefined) {",
+        "    }",
+        "    return x;",
+        "}",
+        "",
+        "read()",
+      ].join("\n"),
+      "50",
+    ),
+  ).toBe(50);
+});
