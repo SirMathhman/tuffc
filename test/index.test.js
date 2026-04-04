@@ -32,3 +32,9 @@ test('executeTuff("let y = read(); y", "100") => 100', () => {
 test('executeTuff("let y = read(); let z = y; z", "100") => 100', () => {
   expect(executeTuff("let y = read(); let z = y; z", "100")).toBe(100);
 });
+
+test('executeTuff("let y = read(); let z = y; let a = z; a", "100") => 100', () => {
+  expect(executeTuff("let y = read(); let z = y; let a = z; a", "100")).toBe(
+    100,
+  );
+});

@@ -7,28 +7,41 @@ export function compileTuffToJS(source) {
 
   const statements = trimmed.split("; ");
 
-  if (statements.length === 2) {
-    const [bindingStatement, returnStatement] = statements;
-    const readBinding = parseReadBinding(bindingStatement);
+  if (statements.length >= 2) {
+    const returnStatement = statements[statements.length - 1];
+    const compiledStatements = [];
+    let previousVariableName = null;
 
-    if (readBinding !== null && returnStatement === readBinding) {
-      return `const ${readBinding} = __tuff_coerce(__tuff_read()); return ${readBinding};`;
+    for (let index = 0; index < statements.length - 1; index += 1) {
+      const binding = parseLetBinding(statements[index]);
+      if (binding === null) {
+        break;
+      }
+
+      if (index === 0) {
+        if (binding.initialValue !== "read()") {
+          break;
+        }
+
+        compiledStatements.push(
+          `const ${binding.variableName} = __tuff_coerce(__tuff_read());`,
+        );
+      } else if (binding.initialValue === previousVariableName) {
+        compiledStatements.push(
+          `const ${binding.variableName} = ${previousVariableName};`,
+        );
+      } else {
+        break;
+      }
+
+      previousVariableName = binding.variableName;
     }
-  }
-
-  if (statements.length === 3) {
-    const [firstBindingStatement, secondBindingStatement, returnStatement] =
-      statements;
-    const firstBinding = parseReadBinding(firstBindingStatement);
-    const secondBinding = parseLetBinding(secondBindingStatement);
 
     if (
-      firstBinding !== null &&
-      secondBinding !== null &&
-      secondBinding.initialValue === firstBinding &&
-      returnStatement === secondBinding.variableName
+      compiledStatements.length === statements.length - 1 &&
+      returnStatement === previousVariableName
     ) {
-      return `const ${firstBinding} = __tuff_coerce(__tuff_read()); const ${secondBinding.variableName} = ${firstBinding}; return ${secondBinding.variableName};`;
+      return `${compiledStatements.join(" ")} return ${returnStatement};`;
     }
   }
 
@@ -101,15 +114,6 @@ function isValidIdentifier(identifier) {
   }
 
   return true;
-}
-
-function parseReadBinding(statement) {
-  const binding = parseLetBinding(statement);
-  if (binding === null || binding.initialValue !== "read()") {
-    return null;
-  }
-
-  return binding.variableName;
 }
 
 function parseLetBinding(statement) {
