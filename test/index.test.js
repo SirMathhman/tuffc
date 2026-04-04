@@ -70,3 +70,9 @@ test('executeTuff("fn get() => { return read(); } get()", "25") => 25', () => {
 test('executeTuff("fn wah() => { return read(); } wah()", "25") => 25', () => {
   expect(executeTuff("fn wah() => { return read(); } wah()", "25")).toBe(25);
 });
+
+test('executeTuff("fn wah(foo) => { return foo + read(); } wah(5)", "25") => 30', () => {
+  expect(
+    executeTuff("fn wah(foo) => { return foo + read(); } wah(5)", "25"),
+  ).toBe(30);
+});

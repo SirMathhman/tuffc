@@ -1,6 +1,11 @@
 export function compileTuffToJS(source) {
   const trimmed = source.trim();
 
+  const functionParameterReadCall = parseFunctionParameterReadCall(trimmed);
+  if (functionParameterReadCall !== null) {
+    return functionParameterReadCall;
+  }
+
   const functionReadCall = parseFunctionReadCall(trimmed);
   if (functionReadCall !== null) {
     return functionReadCall;
@@ -230,6 +235,68 @@ function parseFunctionReadCall(statement) {
   }
 
   return `function ${functionName}() { return __tuff_coerce(__tuff_read()); } return ${functionName}();`;
+}
+
+function parseFunctionParameterReadCall(statement) {
+  const prefix = "fn ";
+  const functionParameterSeparator = "(";
+  const declarationEndSeparator = ") => { return ";
+  const readSuffixSeparator = " + read(); } ";
+
+  if (!statement.startsWith(prefix)) {
+    return null;
+  }
+
+  const functionParameterSeparatorIndex = statement.indexOf(
+    functionParameterSeparator,
+  );
+  const declarationEndSeparatorIndex = statement.indexOf(
+    declarationEndSeparator,
+  );
+  const readSuffixSeparatorIndex = statement.indexOf(readSuffixSeparator);
+
+  if (
+    functionParameterSeparatorIndex <= prefix.length ||
+    declarationEndSeparatorIndex <= functionParameterSeparatorIndex ||
+    readSuffixSeparatorIndex <= declarationEndSeparatorIndex
+  ) {
+    return null;
+  }
+
+  const functionName = statement.slice(
+    prefix.length,
+    functionParameterSeparatorIndex,
+  );
+  const parameterName = statement.slice(
+    functionParameterSeparatorIndex + functionParameterSeparator.length,
+    declarationEndSeparatorIndex,
+  );
+  const bodyExpression = statement.slice(
+    declarationEndSeparatorIndex + declarationEndSeparator.length,
+    readSuffixSeparatorIndex,
+  );
+  const callPart = statement.slice(
+    readSuffixSeparatorIndex + readSuffixSeparator.length,
+  );
+
+  if (
+    !isValidIdentifier(functionName) ||
+    !isValidIdentifier(parameterName) ||
+    bodyExpression !== parameterName
+  ) {
+    return null;
+  }
+
+  if (!callPart.startsWith(`${functionName}(`) || !callPart.endsWith(")")) {
+    return null;
+  }
+
+  const callArgument = callPart.slice(functionName.length + 1, -1);
+  if (callArgument.length === 0) {
+    return null;
+  }
+
+  return `function ${functionName}(${parameterName}) { return ${parameterName} + __tuff_coerce(__tuff_read()); } return ${functionName}(${callArgument});`;
 }
 
 function parseAdditionParts(statement, parseTerm) {
