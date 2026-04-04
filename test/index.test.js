@@ -916,6 +916,105 @@ test("executeTuff if with empty body => 50", () => {
   ).toBe(50);
 });
 
+// ── while statements ─────────────────────────────────────────────────────────
+
+// while true once (return exits loop immediately)
+test("executeTuff while true returns from body => 99", () => {
+  expect(
+    executeTuff(
+      [
+        "out fn f() => {",
+        "    while (read()) {",
+        "        return 99;",
+        "    }",
+        "    return 50;",
+        "}",
+        "",
+        "f()",
+      ].join("\n"),
+      "1",
+    ),
+  ).toBe(99);
+});
+
+// while false falls through
+test("executeTuff while false falls through => 50", () => {
+  expect(
+    executeTuff(
+      [
+        "out fn f() => {",
+        "    while (read()) {",
+        "        return 99;",
+        "    }",
+        "    return 50;",
+        "}",
+        "",
+        "f()",
+      ].join("\n"),
+      "0",
+    ),
+  ).toBe(50);
+});
+
+// nested while in if block
+test("executeTuff nested while in if block => 77", () => {
+  expect(
+    executeTuff(
+      [
+        "out fn f(x) => {",
+        "    if (x != undefined) {",
+        "        while (read()) {",
+        "            return 77;",
+        "        }",
+        "    }",
+        "    return 50;",
+        "}",
+        "",
+        "f(1)",
+      ].join("\n"),
+      "1",
+    ),
+  ).toBe(77);
+});
+
+// malformed while header should throw
+test("executeTuff malformed while header => throws", () => {
+  expect(() =>
+    executeTuff(
+      [
+        "out fn f() => {",
+        "    while (read()) oops {",
+        "        return 1;",
+        "    }",
+        "    return 0;",
+        "}",
+        "",
+        "f()",
+      ].join("\n"),
+      "1",
+    ),
+  ).toThrow();
+});
+
+// invalid while body statement should throw
+test("executeTuff invalid while body statement => throws", () => {
+  expect(() =>
+    executeTuff(
+      [
+        "out fn f() => {",
+        "    while (read()) {",
+        "        x + 1;",
+        "    }",
+        "    return 0;",
+        "}",
+        "",
+        "f()",
+      ].join("\n"),
+      "1",
+    ),
+  ).toThrow();
+});
+
 // ── string literals and + operator ───────────────────────────────────────────
 
 // return a double-quoted string literal

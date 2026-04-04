@@ -905,7 +905,7 @@ function compileBodyLines(bodyLines) {
     const stmt =
       group.length === 1
         ? parseMultiLineFunctionBodyStatement(group[0])
-        : parseIfBodyBlock(group);
+        : parseIfBodyBlock(group) ?? parseWhileBodyBlock(group);
     if (stmt === undefined) {
       return undefined;
     }
@@ -1017,6 +1017,33 @@ function parseIfBodyBlock(lines) {
   }
 
   return parts.join(" ");
+}
+
+function parseWhileBodyBlock(lines) {
+  if (lines.length < 2) {
+    return undefined;
+  }
+
+  if (lines[lines.length - 1] !== "}") {
+    return undefined;
+  }
+
+  const condition = stripBlockWrapper(lines[0], "while (", ") {");
+  if (condition === undefined) {
+    return undefined;
+  }
+
+  const compiledCondition = compileCondition(condition);
+  if (compiledCondition === undefined) {
+    return undefined;
+  }
+
+  const compiledBody = compileBodyLines(lines.slice(1, -1));
+  if (compiledBody === undefined) {
+    return undefined;
+  }
+
+  return `while (${compiledCondition}) { ${compiledBody} }`;
 }
 
 function tokenizeExpression(str) {
