@@ -76,3 +76,59 @@ test('executeTuff("fn wah(foo) => { return foo + read(); } wah(5)", "25") => 30'
     executeTuff("fn wah(foo) => { return foo + read(); } wah(5)", "25"),
   ).toBe(30);
 });
+
+test('executeTuff("read()", "false") => 0', () => {
+  expect(executeTuff("read()", "false")).toBe(0);
+});
+
+test('executeTuff("read()", "   ") => NaN', () => {
+  expect(Number.isNaN(executeTuff("read()", "   "))).toBe(true);
+});
+
+test('executeTuff("fn () => { return read(); } ()", "25") throws', () => {
+  expect(() => executeTuff("fn () => { return read(); } ()", "25")).toThrow();
+});
+
+test('executeTuff("fn bad() => { return read(); } other()", "25") throws', () => {
+  expect(() =>
+    executeTuff("fn bad() => { return read(); } other()", "25"),
+  ).toThrow();
+});
+
+test('executeTuff("fn wah(foo) => { return bar + read(); } wah(5)", "25") throws', () => {
+  expect(() =>
+    executeTuff("fn wah(foo) => { return bar + read(); } wah(5)", "25"),
+  ).toThrow();
+});
+
+test('executeTuff("fn wah(foo) => { return foo + read(); } other(5)", "25") throws', () => {
+  expect(() =>
+    executeTuff("fn wah(foo) => { return foo + read(); } other(5)", "25"),
+  ).toThrow();
+});
+
+test('executeTuff("fn wah(foo) => { return foo + read(); } wah()", "25") throws', () => {
+  expect(() =>
+    executeTuff("fn wah(foo) => { return foo + read(); } wah()", "25"),
+  ).toThrow();
+});
+
+test('executeTuff("let x=read(); x", "25") throws', () => {
+  expect(() => executeTuff("let x=read(); x", "25")).toThrow();
+});
+
+test('executeTuff("let 1x = read(); 1x", "25") throws', () => {
+  expect(() => executeTuff("let 1x = read(); 1x", "25")).toThrow();
+});
+
+test('executeTuff("let x = read(); y = read(); y", "25 75") throws', () => {
+  expect(() => executeTuff("let x = read(); y = read(); y", "25 75")).toThrow();
+});
+
+test('executeTuff("let x = read(); let y = z; y", "25") throws', () => {
+  expect(() => executeTuff("let x = read(); let y = z; y", "25")).toThrow();
+});
+
+test('executeTuff("let x = read(); x + y", "25") throws', () => {
+  expect(() => executeTuff("let x = read(); x + y", "25")).toThrow();
+});
