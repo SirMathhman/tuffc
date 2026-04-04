@@ -617,6 +617,40 @@ test('executeTuff("out fn f(s) => {\\n    let t = s.trim();\\n    return t;\\n}\
   ).toBe(50);
 });
 
+// invalid expression in return body throws (covers parseReturnBodyStatement compiled=undefined path)
+test('executeTuff("out fn f(s) => {\\n    return s + 1;\\n}\\n\\nread()", "50") throws', () => {
+  expect(() =>
+    executeTuff("out fn f(s) => {\n    return s + 1;\n}\n\nread()", "50"),
+  ).toThrow();
+});
+
+// bare expression statement (not let/return) in body throws (covers parseLetBodyStatement parsed=undefined path)
+test('executeTuff("out fn f(s) => {\\n    s.trim();\\n}\\n\\nread()", "50") throws', () => {
+  expect(() =>
+    executeTuff("out fn f(s) => {\n    s.trim();\n}\n\nread()", "50"),
+  ).toThrow();
+});
+
+// multi-arg call in body covers while-loop for additional args
+test('executeTuff("out fn f(a, b, c) => {\\n    return a.concat(b, c);\\n}\\n\\nread()", "50") => 50', () => {
+  expect(
+    executeTuff(
+      "out fn f(a, b, c) => {\n    return a.concat(b, c);\n}\n\nread()",
+      "50",
+    ),
+  ).toBe(50);
+});
+
+// import.meta.url in body expression compiles to __tuff_import_meta_url
+test('executeTuff("out fn f() => {\\n    return import.meta.url;\\n}\\n\\nread()", "50") => 50', () => {
+  expect(
+    executeTuff(
+      "out fn f() => {\n    return import.meta.url;\n}\n\nread()",
+      "50",
+    ),
+  ).toBe(50);
+});
+
 // full main.tuff pattern with let binding in body
 test("executeTuff main.tuff with let binding in body => 50", () => {
   expect(
