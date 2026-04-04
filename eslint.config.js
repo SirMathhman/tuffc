@@ -2,7 +2,13 @@ import js from "@eslint/js";
 
 export default [
   {
-    ignores: ["node_modules/**", "coverage/**", "bun.lock", "bun.lockb"],
+    ignores: [
+      "node_modules/**",
+      "coverage/**",
+      "dist/**",
+      "bun.lock",
+      "bun.lockb",
+    ],
   },
   js.configs.recommended,
   {

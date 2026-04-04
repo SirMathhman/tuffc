@@ -9,10 +9,12 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "build": "bun run src/index.js",
+    "dev": "nodemon --watch src --ext js,tuff --exec \"bun run src/index.js\"",
     "cpd": "pmd cpd --dir src test --language ecmascript --minimum-tokens 35 --ignore-literals --ignore-identifiers 1>&2"
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",
-    "eslint": "^9.0.0"
+    "eslint": "^9.0.0",
+    "nodemon": "^3.1.14"
   }
 }

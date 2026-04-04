@@ -3,6 +3,11 @@ import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 export function compileTuffToJS(source) {
   const trimmed = source.trim();
 
+  const multiLineSource = parseMultiLineSource(trimmed);
+  if (multiLineSource !== undefined) {
+    return multiLineSource;
+  }
+
   const functionParameterLocalReadCall =
     parseFunctionParameterLocalReadCall(trimmed);
   if (functionParameterLocalReadCall !== undefined) {
@@ -566,6 +571,147 @@ function parseReadAdditionExpression(statement) {
     return "__tuff_coerce(__tuff_read())";
   });
 }
+function parseMultiLineSource(source) {
+  if (!source.includes("\n")) {
+    return undefined;
+  }
+
+  const blocks = splitIntoBlocks(source);
+  if (blocks.length < 2) {
+    return undefined;
+  }
+
+  const finalBlock = blocks[blocks.length - 1];
+  const functionBlocks = blocks.slice(0, -1);
+
+  const compiledFunctions = [];
+  for (const block of functionBlocks) {
+    const compiled = parseMultiLineFunctionDefinition(block);
+    if (compiled === undefined) {
+      return undefined;
+    }
+    compiledFunctions.push(compiled);
+  }
+
+  const finalCompiled = compileTuffToJS(finalBlock);
+  return compiledFunctions.join(" ") + " " + finalCompiled;
+}
+
+function splitIntoBlocks(source) {
+  const lines = source.split("\n");
+  const blocks = [];
+  let currentLines = [];
+
+  for (const line of lines) {
+    if (line.trim().length === 0) {
+      if (currentLines.length > 0) {
+        blocks.push(currentLines.join("\n"));
+        currentLines = [];
+      }
+    } else {
+      currentLines.push(line);
+    }
+  }
+
+  if (currentLines.length > 0) {
+    blocks.push(currentLines.join("\n"));
+  }
+
+  return blocks;
+}
+
+function parseMultiLineFunctionDefinition(block) {
+  const lines = block.split("\n").map((line) => line.trim());
+  const nonEmptyLines = lines.filter((line) => line.length > 0);
+
+  if (nonEmptyLines.length < 2) {
+    return undefined;
+  }
+
+  const firstLine = nonEmptyLines[0];
+  const lastLine = nonEmptyLines[nonEmptyLines.length - 1];
+  const bodyLines = nonEmptyLines.slice(1, -1);
+
+  if (lastLine !== "}") {
+    return undefined;
+  }
+
+  const funcPrefix = "fn ";
+  const funcSuffix = "() => {";
+
+  if (!firstLine.startsWith(funcPrefix) || !firstLine.endsWith(funcSuffix)) {
+    return undefined;
+  }
+
+  const functionName = firstLine.slice(
+    funcPrefix.length,
+    firstLine.length - funcSuffix.length,
+  );
+
+  if (!isValidIdentifier(functionName)) {
+    return undefined;
+  }
+
+  const compiledBody = parseMultiLineFunctionBody(bodyLines);
+  if (compiledBody === undefined) {
+    return undefined;
+  }
+
+  return `function ${functionName}() { ${compiledBody} }`;
+}
+
+function parseMultiLineFunctionBody(bodyLines) {
+  if (bodyLines.length === 0) {
+    return undefined;
+  }
+
+  const compiledStatements = [];
+  for (const line of bodyLines) {
+    const compiled = parseMultiLineFunctionBodyStatement(line);
+    if (compiled === undefined) {
+      return undefined;
+    }
+    compiledStatements.push(compiled);
+  }
+
+  return compiledStatements.join(" ");
+}
+
+function parseMultiLineFunctionBodyStatement(statement) {
+  const returnPrefix = "return ";
+  const returnSuffix = ";";
+
+  if (
+    !statement.startsWith(returnPrefix) ||
+    !statement.endsWith(returnSuffix)
+  ) {
+    return undefined;
+  }
+
+  const expr = statement
+    .slice(returnPrefix.length, -returnSuffix.length)
+    .trim();
+  const compiledExpr = parseBodyExpression(expr);
+
+  if (compiledExpr === undefined) {
+    return undefined;
+  }
+
+  return `return ${compiledExpr};`;
+}
+
+function parseBodyExpression(expr) {
+  if (expr === "read()") {
+    return "__tuff_coerce(__tuff_read())";
+  }
+
+  if (expr.length > 0 && !Number.isNaN(Number(expr))) {
+    return expr;
+  }
+
+  return undefined;
+}
+
 function parseFunctionReadCall(statement) {
   const prefix = "fn ";
   const declarationSeparator = "() => { return read(); } ";

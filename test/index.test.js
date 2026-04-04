@@ -343,3 +343,34 @@ test("buildBundleSource embeds arbitrary compiled body", () => {
   const bundle = buildBundleSource(compiled);
   expect(bundle).toContain(compiled);
 });
+
+test('executeTuff("fn get() => {\\n    return 100;\\n}\\n\\nread()", "50") => 50', () => {
+  expect(executeTuff("fn get() => {\n    return 100;\n}\n\nread()", "50")).toBe(
+    50,
+  );
+});
+
+test('executeTuff("fn get() => {\\n    return read();\\n}\\n\\nread()", "50") => 50', () => {
+  expect(
+    executeTuff("fn get() => {\n    return read();\n}\n\nread()", "50"),
+  ).toBe(50);
+});
+
+test('executeTuff("fn a() => {\\n    return 1;\\n}\\n\\nfn b() => {\\n    return 2;\\n}\\n\\nread()", "50") => 50', () => {
+  expect(
+    executeTuff(
+      "fn a() => {\n    return 1;\n}\n\nfn b() => {\n    return 2;\n}\n\nread()",
+      "50",
+    ),
+  ).toBe(50);
+});
+
+test('executeTuff("fn get() => {\\n    return hello;\\n}\\n\\nread()", "50") throws', () => {
+  expect(() =>
+    executeTuff("fn get() => {\n    return hello;\n}\n\nread()", "50"),
+  ).toThrow();
+});
+
+test('executeTuff("fn get() => {\\n}\\n\\nread()", "50") throws', () => {
+  expect(() => executeTuff("fn get() => {\n}\n\nread()", "50")).toThrow();
+});
