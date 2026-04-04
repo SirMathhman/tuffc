@@ -122,6 +122,11 @@ export function compileTuffToJS(source) {
     }
   }
 
+  const freeExpr = compileBodyExpression(trimmed);
+  if (freeExpr !== undefined) {
+    return `return ${freeExpr};`;
+  }
+
   throw new Error(`Unsupported Tuff source: ${source}`);
 }
 

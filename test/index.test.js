@@ -935,10 +935,7 @@ test("executeTuff return single-quoted string literal => 50", () => {
 // string + string concatenation
 test("executeTuff string + string => 50", () => {
   expect(
-    executeTuff(
-      'out fn f() => {\n    return "5" + "0";\n}\n\nread()',
-      "50",
-    ),
+    executeTuff('out fn f() => {\n    return "5" + "0";\n}\n\nread()', "50"),
   ).toBe(50);
 });
 
@@ -952,10 +949,7 @@ test("executeTuff number + number in return => 50", () => {
 // identifier + string literal
 test("executeTuff identifier + string => 50", () => {
   expect(
-    executeTuff(
-      'out fn f(x) => {\n    return x + "";\n}\n\nread()',
-      "50",
-    ),
+    executeTuff('out fn f(x) => {\n    return x + "";\n}\n\nread()', "50"),
   ).toBe(50);
 });
 
@@ -983,16 +977,7 @@ test("executeTuff method call on string literal => 50", () => {
 test("executeTuff string in condition => 50", () => {
   expect(
     executeTuff(
-      [
-        'out fn f(x) => {',
-        '    if (x != "nope") {',
-        '        return x;',
-        '    }',
-        '    return x;',
-        '}',
-        '',
-        'read()',
-      ].join("\n"),
+      'out fn f(x) => {\n    if (x == "nope") {\n        return "bad";\n    }\n    return x;\n}\n\nread()',
       "50",
     ),
   ).toBe(50);
@@ -1008,9 +993,99 @@ test("executeTuff unclosed string literal => throws", () => {
 // unknown escape sequence => throws
 test("executeTuff unknown escape sequence in string => throws", () => {
   expect(() =>
+    executeTuff('out fn f() => {\n    return "he\\llo";\n}\n\nread()', "50"),
+  ).toThrow();
+});
+
+// ── free expression entry ─────────────────────────────────────────────────────
+
+// string literal as sole entry point
+test('executeTuff "hello" as entry => "hello"', () => {
+  expect(executeTuff('"hello"', "")).toBe("hello");
+});
+
+// number literal as sole entry point
+test("executeTuff 42 as entry => 42", () => {
+  expect(executeTuff("42", "")).toBe(42);
+});
+
+// read() as entry (existing behaviour unchanged)
+test("executeTuff read() as entry => 50 (unchanged)", () => {
+  expect(executeTuff("read()", "50")).toBe(50);
+});
+
+// method call on string literal as entry
+test('executeTuff "  hi  ".trim() as entry => "hi"', () => {
+  expect(executeTuff('"  hi  ".trim()', "")).toBe("hi");
+});
+
+// function call with string arg as entry in multi-block program
+test("executeTuff id(string) multi-block entry => 'hi'", () => {
+  expect(
     executeTuff(
-      'out fn f() => {\n    return "he\\llo";\n}\n\nread()',
+      ["out fn id(x) => {", "    return x;", "}", "", 'id("hi")'].join("\n"),
+      "",
+    ),
+  ).toBe("hi");
+});
+
+// function call with read() arg as entry in multi-block program
+test("executeTuff f(read()) via multi-block => 50", () => {
+  expect(
+    executeTuff(
+      [
+        "out fn passThrough(x) => {",
+        "    return x;",
+        "}",
+        "",
+        "passThrough(read())",
+      ].join("\n"),
       "50",
     ),
-  ).toThrow();
+  ).toBe(50);
+});
+
+// bare unsupported expression (comparison) still throws
+test("executeTuff free comparison expression => throws", () => {
+  expect(() => executeTuff("x == y", "")).toThrow();
+});
+
+// ── main.tuff self-host: read() dispatch ─────────────────────────────────────
+
+// self-hosted compileTuffToJS("read()") returns the correct JS
+test('executeTuff self-hosted compileTuffToJS("read()") => JS string', () => {
+  expect(
+    executeTuff(
+      [
+        "out fn compileTuffToJS(source) => {",
+        "    let trimmed = source.trim();",
+        '    if (trimmed == "read()") {',
+        '        return "return __tuff_coerce(__tuff_read());";',
+        "    }",
+        "}",
+        "",
+        'compileTuffToJS("read()")',
+      ].join("\n"),
+      "",
+    ),
+  ).toBe("return __tuff_coerce(__tuff_read());");
+});
+
+// self-hosted compileTuffToJS with non-matching input returns undefined
+test("executeTuff self-hosted compileTuffToJS(non-match) => undefined", () => {
+  expect(
+    executeTuff(
+      [
+        "out fn compileTuffToJS(source) => {",
+        "    let trimmed = source.trim();",
+        '    if (trimmed == "read()") {',
+        '        return "return __tuff_coerce(__tuff_read());";',
+        "    }",
+        "}",
+        "",
+        'compileTuffToJS("other")',
+      ].join("\n"),
+      "",
+    ),
+  ).toBeUndefined();
 });

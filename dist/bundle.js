@@ -50,7 +50,7 @@ rl.on("close", () => {
   let __tokenIndex = 0;
   const __tuff_read = () => __tokens[__tokenIndex++];
   const __result = ((__tuff_read, __tuff_coerce, __tuff_require, __tuff_import_meta_url) => {
-    const { readFileSync, writeFileSync, mkdirSync } = __tuff_require("node:fs"); const { createRequire } = __tuff_require("node:module"); const __tuff_builtin_require = createRequire(__tuff_import_meta_url); function compileTuffToJS(source) { let trimmed = source.trim(); } return __tuff_coerce(__tuff_read());
+    const { readFileSync, writeFileSync, mkdirSync } = __tuff_require("node:fs"); const { createRequire } = __tuff_require("node:module"); const __tuff_builtin_require = createRequire(__tuff_import_meta_url); function compileTuffToJS(source) { let trimmed = source.trim(); if (trimmed == "read()") { return "return __tuff_coerce(__tuff_read());"; } } return __tuff_coerce(__tuff_read());
   })(__tuff_read, __tuff_coerce, __tuff_require, import.meta.url);
   process.stdout.write(String(__result) + "\n");
 });
