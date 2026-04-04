@@ -33,6 +33,11 @@ export function compileTuffToJS(source) {
     return `return ${readAdditionExpression};`;
   }
 
+  const readEqualityExpression = parseReadEqualityExpression(trimmed);
+  if (readEqualityExpression !== undefined) {
+    return `return ${readEqualityExpression};`;
+  }
+
   const statements = trimmed.split("; ");
 
   if (statements.length >= 2) {
@@ -892,8 +897,8 @@ function parseFunctionCallArgument(functionName, callPart) {
   return callArgument;
 }
 
-function parseAdditionParts(statement, parseTerm) {
-  const terms = statement.split("+");
+function parseBinaryParts(statement, separator, parseTerm) {
+  const terms = statement.split(separator);
 
   if (terms.length < 2) {
     return undefined;
@@ -910,7 +915,32 @@ function parseAdditionParts(statement, parseTerm) {
     parsedTerms.push(parsedTerm);
   }
 
-  return parsedTerms.join(" + ");
+  return parsedTerms;
+}
+
+function parseAdditionParts(statement, parseTerm) {
+  const parts = parseBinaryParts(statement, "+", parseTerm);
+  if (parts === undefined) {
+    return undefined;
+  }
+
+  return parts.join(" + ");
+}
+
+function parseReadEqualityExpression(statement) {
+  const parts = parseBinaryParts(statement, " == ", (term) => {
+    if (term.trim() !== "read()") {
+      return undefined;
+    }
+
+    return "__tuff_read()";
+  });
+
+  if (parts === undefined) {
+    return undefined;
+  }
+
+  return `Number(${parts.join(" === ")})`;
 }
 
 function parseNameAndValue(statement, prefix) {

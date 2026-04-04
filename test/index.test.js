@@ -374,3 +374,11 @@ test('executeTuff("fn get() => {\\n    return hello;\\n}\\n\\nread()", "50") thr
 test('executeTuff("fn get() => {\\n}\\n\\nread()", "50") throws', () => {
   expect(() => executeTuff("fn get() => {\n}\n\nread()", "50")).toThrow();
 });
+
+test('executeTuff("read() == read()", "true 1") => 0', () => {
+  expect(executeTuff("read() == read()", "true 1")).toBe(0);
+});
+
+test('executeTuff("read() == read()", "42 42") => 1', () => {
+  expect(executeTuff("read() == read()", "42 42")).toBe(1);
+});
