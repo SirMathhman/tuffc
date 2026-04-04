@@ -1,12 +1,36 @@
 import { expect, test } from "bun:test";
+import assert from "node:assert/strict";
 import {
   buildBundleSource,
-  compileTuffToJS,
+  compileTuffToJS as compileTuffToJSResult,
   createMessage,
-  executeAllTuff,
-  executeAllTuffWithNative,
-  executeTuff,
+  executeAllTuff as executeAllTuffResult,
+  executeAllTuffWithNative as executeAllTuffWithNativeResult,
+  executeTuff as executeTuffResult,
 } from "../src/index.js";
+
+function unwrap(result) {
+  assert.equal(result.ok, true, result.ok ? "" : String(result.error));
+  return result.value;
+}
+
+function compileTuffToJS(source) {
+  return unwrap(compileTuffToJSResult(source));
+}
+
+function executeTuff(source, stdIn) {
+  return unwrap(executeTuffResult(source, stdIn));
+}
+
+function executeAllTuff(entrypointName, allTuff, stdIn) {
+  return unwrap(executeAllTuffResult(entrypointName, allTuff, stdIn));
+}
+
+function executeAllTuffWithNative(entrypointName, allTuff, nativeTuff, stdIn) {
+  return unwrap(
+    executeAllTuffWithNativeResult(entrypointName, allTuff, nativeTuff, stdIn),
+  );
+}
 
 test("createMessage uses the default name", () => {
   expect(createMessage()).toBe("Hello, world!");

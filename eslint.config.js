@@ -27,6 +27,11 @@ export default [
       "no-restricted-syntax": [
         "error",
         {
+          selector: "ThrowStatement",
+          message:
+            "throw statements are banned; return a Result<T, X> instead.",
+        },
+        {
           selector: "Literal[value=null]",
           message: "null is not allowed; use undefined instead.",
         },

@@ -3,42 +3,68 @@ import { createRequire } from "node:module";
 
 const __tuff_builtin_require = createRequire(import.meta.url);
 
+/**
+ * @template T
+ * @template X
+ * @typedef {{ ok: true, value: T } | { ok: false, error: X }} Result
+ */
+
+/**
+ * @template T
+ * @template X
+ * @param {T} value
+ * @returns {Result<T, X>}
+ */
+function ok(value) {
+  return { ok: true, value };
+}
+
+/**
+ * @template T
+ * @template X
+ * @param {X} error
+ * @returns {Result<T, X>}
+ */
+function err(error) {
+  return { ok: false, error };
+}
+
 export function compileTuffToJS(source) {
   const trimmed = source.trim();
 
   const multiLineSource = parseMultiLineSource(trimmed);
   if (multiLineSource !== undefined) {
-    return multiLineSource;
+    return ok(multiLineSource);
   }
 
   const functionParameterLocalReadCall =
     parseFunctionParameterLocalReadCall(trimmed);
   if (functionParameterLocalReadCall !== undefined) {
-    return functionParameterLocalReadCall;
+    return ok(functionParameterLocalReadCall);
   }
 
   const functionParameterReadCall = parseFunctionParameterReadCall(trimmed);
   if (functionParameterReadCall !== undefined) {
-    return functionParameterReadCall;
+    return ok(functionParameterReadCall);
   }
 
   const functionReadCall = parseFunctionReadCall(trimmed);
   if (functionReadCall !== undefined) {
-    return functionReadCall;
+    return ok(functionReadCall);
   }
 
   if (trimmed === "read()") {
-    return "return __tuff_coerce(__tuff_read());";
+    return ok("return __tuff_coerce(__tuff_read());");
   }
 
   const readAdditionExpression = parseReadAdditionExpression(trimmed);
   if (readAdditionExpression !== undefined) {
-    return `return ${readAdditionExpression};`;
+    return ok(`return ${readAdditionExpression};`);
   }
 
   const readEqualityExpression = parseReadEqualityExpression(trimmed);
   if (readEqualityExpression !== undefined) {
-    return `return ${readEqualityExpression};`;
+    return ok(`return ${readEqualityExpression};`);
   }
 
   const statements = trimmed.split("; ");
@@ -116,36 +142,50 @@ export function compileTuffToJS(source) {
       (returnStatement === previousVariableName ||
         returnExpression !== undefined)
     ) {
-      return `${compiledStatements.join(" ")} return ${
-        returnExpression ?? returnStatement
-      };`;
+      return ok(
+        `${compiledStatements.join(" ")} return ${
+          returnExpression ?? returnStatement
+        };`,
+      );
     }
   }
 
   const freeExpr = compileBodyExpression(trimmed);
   if (freeExpr !== undefined) {
-    return `return ${freeExpr};`;
+    return ok(`return ${freeExpr};`);
   }
 
-  throw new Error(`Unsupported Tuff source: ${source}`);
+  return err(`Unsupported Tuff source: ${source}`);
 }
 
 export function executeTuff(source, stdIn) {
-  const compiledJS = compileTuffToJS(source);
+  const compiledResult = compileTuffToJS(source);
+  if (!compiledResult.ok) {
+    return err(compiledResult.error);
+  }
+
+  const compiledJS = compiledResult.value;
   const runtime = createTuffRuntime(stdIn);
-  const func = new Function(
-    "__tuff_read",
-    "__tuff_coerce",
-    "__tuff_require",
-    "__tuff_import_meta_url",
-    compiledJS,
-  );
-  return func(
-    runtime.read,
-    runtime.coerce,
-    __tuff_builtin_require,
-    import.meta.url,
-  );
+
+  try {
+    const func = new Function(
+      "__tuff_read",
+      "__tuff_coerce",
+      "__tuff_require",
+      "__tuff_import_meta_url",
+      compiledJS,
+    );
+    return ok(
+      func(
+        runtime.read,
+        runtime.coerce,
+        __tuff_builtin_require,
+        import.meta.url,
+      ),
+    );
+  } catch (error) {
+    return err(String(error));
+  }
 }
 
 export function executeAllTuff(entrypointName, allTuff, stdIn) {
@@ -165,31 +205,52 @@ function executeAllTuffInternal(entrypointName, allTuff, nativeTuff, stdIn) {
   const definitions = collectTuffDefinitions(allTuff);
   const entrypointBody = findTuffEntrypointBody(entrypointName, definitions);
   if (entrypointBody === undefined) {
-    throw new Error(`Unsupported Tuff entrypoint: ${entrypointName}`);
+    return err(`Unsupported Tuff entrypoint: ${entrypointName}`);
   }
 
   const runtime = createTuffRuntime(stdIn);
-  const libExports = buildTuffLibraryExports(definitions, runtime);
-  const externModules =
+  const libExportsResult = buildTuffLibraryExports(definitions, runtime);
+  if (!libExportsResult.ok) {
+    return err(libExportsResult.error);
+  }
+
+  const externModulesResult =
     nativeTuff === undefined ? {} : buildTuffNativeModules(nativeTuff);
-  const compiledJS = compileAllTuffSource(entrypointBody);
-  const func = new Function(
-    "lib",
-    "externModules",
-    "__tuff_read",
-    "__tuff_coerce",
-    "__tuff_require",
-    "__tuff_import_meta_url",
-    compiledJS,
-  );
-  return func(
-    libExports,
-    externModules,
-    runtime.read,
-    runtime.coerce,
-    __tuff_builtin_require,
-    import.meta.url,
-  );
+  if (nativeTuff !== undefined && !externModulesResult.ok) {
+    return err(externModulesResult.error);
+  }
+
+  const externModules =
+    nativeTuff === undefined ? {} : externModulesResult.value;
+
+  const compiledResult = compileAllTuffSource(entrypointBody);
+  if (!compiledResult.ok) {
+    return err(compiledResult.error);
+  }
+
+  try {
+    const func = new Function(
+      "lib",
+      "externModules",
+      "__tuff_read",
+      "__tuff_coerce",
+      "__tuff_require",
+      "__tuff_import_meta_url",
+      compiledResult.value,
+    );
+    return ok(
+      func(
+        libExportsResult.value,
+        externModules,
+        runtime.read,
+        runtime.coerce,
+        __tuff_builtin_require,
+        import.meta.url,
+      ),
+    );
+  } catch (error) {
+    return err(String(error));
+  }
 }
 
 function createTuffRuntime(stdIn) {
@@ -302,20 +363,28 @@ function buildTuffLibraryExports(definitions, runtime) {
       continue;
     }
 
-    const compiledLibraryJS = compileTuffLibrarySource(definition.body);
-    const libraryFunction = new Function(
-      "__tuff_read",
-      "__tuff_coerce",
-      compiledLibraryJS,
-    );
+    const compiledLibraryResult = compileTuffLibrarySource(definition.body);
+    if (!compiledLibraryResult.ok) {
+      return compiledLibraryResult;
+    }
 
-    libraryExports[renderModulePath(definition.path)] = libraryFunction(
-      runtime.read,
-      runtime.coerce,
-    );
+    try {
+      const libraryFunction = new Function(
+        "__tuff_read",
+        "__tuff_coerce",
+        compiledLibraryResult.value,
+      );
+
+      libraryExports[renderModulePath(definition.path)] = libraryFunction(
+        runtime.read,
+        runtime.coerce,
+      );
+    } catch (error) {
+      return err(String(error));
+    }
   }
 
-  return libraryExports;
+  return ok(libraryExports);
 }
 
 function buildTuffNativeModules(nativeTuff) {
@@ -324,12 +393,20 @@ function buildTuffNativeModules(nativeTuff) {
 
   for (const definition of nativeDefinitions) {
     const nativeModuleName = renderModulePath(definition.path);
-    const compiledNativeSource = compileTuffNativeSource(definition.body);
-    const nativeModuleFunction = new Function(compiledNativeSource);
-    nativeModules[nativeModuleName] = nativeModuleFunction();
+    const compiledNativeResult = compileTuffNativeSource(definition.body);
+    if (!compiledNativeResult.ok) {
+      return compiledNativeResult;
+    }
+
+    try {
+      const nativeModuleFunction = new Function(compiledNativeResult.value);
+      nativeModules[nativeModuleName] = nativeModuleFunction();
+    } catch (error) {
+      return err(String(error));
+    }
   }
 
-  return nativeModules;
+  return ok(nativeModules);
 }
 
 function compileAllTuffSource(source) {
@@ -337,12 +414,12 @@ function compileAllTuffSource(source) {
 
   const externImport = parseExternImportSource(trimmed);
   if (externImport !== undefined) {
-    return externImport;
+    return ok(externImport);
   }
 
   const libraryImportCall = parseLibraryImportCall(trimmed);
   if (libraryImportCall !== undefined) {
-    return libraryImportCall;
+    return ok(libraryImportCall);
   }
 
   return compileTuffToJS(trimmed);
@@ -353,10 +430,10 @@ function compileTuffLibrarySource(source) {
 
   const outFunction = parseOutFunctionSource(trimmed);
   if (outFunction !== undefined) {
-    return outFunction;
+    return ok(outFunction);
   }
 
-  throw new Error(`Unsupported Tuff library source: ${source}`);
+  return err(`Unsupported Tuff library source: ${source}`);
 }
 
 function compileTuffNativeSource(source) {
@@ -364,10 +441,10 @@ function compileTuffNativeSource(source) {
 
   const nativeExport = parseNativeExportSource(trimmed);
   if (nativeExport !== undefined) {
-    return nativeExport;
+    return ok(nativeExport);
   }
 
-  throw new Error(`Unsupported Tuff native source: ${source}`);
+  return err(`Unsupported Tuff native source: ${source}`);
 }
 
 function parseExternImportSource(statement) {
@@ -630,7 +707,12 @@ function parseMultiLineSource(source) {
     compiledFunctions.push(compiled);
   }
 
-  const finalCompiled = compileTuffToJS(finalBlock);
+  const finalCompiledResult = compileTuffToJS(finalBlock);
+  if (!finalCompiledResult.ok) {
+    return undefined;
+  }
+
+  const finalCompiled = finalCompiledResult.value;
   const nonEmpty = compiledFunctions.filter((s) => s.length > 0);
   return [...nonEmpty, finalCompiled].join(" ");
 }
@@ -1780,8 +1862,13 @@ if (import.meta.main) {
     new URL("main.tuff", import.meta.url),
     "utf8",
   );
-  const compiledBody = compileTuffToJS(tuffSource);
-  const bundleSource = buildBundleSource(compiledBody);
-  mkdirSync(new URL("../dist", import.meta.url), { recursive: true });
-  writeFileSync(new URL("../dist/bundle.js", import.meta.url), bundleSource);
+  const compiledResult = compileTuffToJS(tuffSource);
+  if (compiledResult.ok) {
+    const bundleSource = buildBundleSource(compiledResult.value);
+    mkdirSync(new URL("../dist", import.meta.url), { recursive: true });
+    writeFileSync(new URL("../dist/bundle.js", import.meta.url), bundleSource);
+  } else {
+    console.error(compiledResult.error);
+    process.exitCode = 1;
+  }
 }
