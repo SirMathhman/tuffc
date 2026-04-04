@@ -1,6 +1,12 @@
 export function compileTuffToJS(source) {
   const trimmed = source.trim();
 
+  const functionParameterLocalReadCall =
+    parseFunctionParameterLocalReadCall(trimmed);
+  if (functionParameterLocalReadCall !== null) {
+    return functionParameterLocalReadCall;
+  }
+
   const functionParameterReadCall = parseFunctionParameterReadCall(trimmed);
   if (functionParameterReadCall !== null) {
     return functionParameterReadCall;
@@ -287,6 +293,96 @@ function parseFunctionParameterReadCall(statement) {
     return null;
   }
 
+  const callArgument = parseFunctionCallArgument(functionName, callPart);
+  if (callArgument === null) {
+    return null;
+  }
+
+  return `function ${functionName}(${parameterName}) { return ${parameterName} + __tuff_coerce(__tuff_read()); } return ${functionName}(${callArgument});`;
+}
+
+function parseFunctionParameterLocalReadCall(statement) {
+  const prefix = "fn ";
+  const functionParameterSeparator = "(";
+  const functionBodyPrefix = ") => { let ";
+  const bodyBindingSeparator = " = ";
+  const bodyReadSeparator = " + read(); return ";
+  const functionBodySuffix = "; } ";
+
+  if (!statement.startsWith(prefix)) {
+    return null;
+  }
+
+  const functionParameterSeparatorIndex = statement.indexOf(
+    functionParameterSeparator,
+  );
+  const functionBodyPrefixIndex = statement.indexOf(functionBodyPrefix);
+  const bodyBindingSeparatorIndex = statement.indexOf(
+    bodyBindingSeparator,
+    functionBodyPrefixIndex,
+  );
+  const bodyReadSeparatorIndex = statement.indexOf(
+    bodyReadSeparator,
+    bodyBindingSeparatorIndex,
+  );
+  const functionBodySuffixIndex = statement.indexOf(
+    functionBodySuffix,
+    bodyReadSeparatorIndex,
+  );
+
+  if (
+    functionParameterSeparatorIndex <= prefix.length ||
+    functionBodyPrefixIndex <= functionParameterSeparatorIndex ||
+    bodyBindingSeparatorIndex <= functionBodyPrefixIndex ||
+    bodyReadSeparatorIndex <= bodyBindingSeparatorIndex ||
+    functionBodySuffixIndex <= bodyReadSeparatorIndex
+  ) {
+    return null;
+  }
+
+  const functionName = statement.slice(
+    prefix.length,
+    functionParameterSeparatorIndex,
+  );
+  const parameterName = statement.slice(
+    functionParameterSeparatorIndex + functionParameterSeparator.length,
+    functionBodyPrefixIndex,
+  );
+  const localVariableName = statement.slice(
+    functionBodyPrefixIndex + functionBodyPrefix.length,
+    bodyBindingSeparatorIndex,
+  );
+  const bodyExpression = statement.slice(
+    bodyBindingSeparatorIndex + bodyBindingSeparator.length,
+    bodyReadSeparatorIndex,
+  );
+  const returnExpression = statement.slice(
+    bodyReadSeparatorIndex + bodyReadSeparator.length,
+    functionBodySuffixIndex,
+  );
+  const callPart = statement.slice(
+    functionBodySuffixIndex + functionBodySuffix.length,
+  );
+
+  if (
+    !isValidIdentifier(functionName) ||
+    !isValidIdentifier(parameterName) ||
+    !isValidIdentifier(localVariableName) ||
+    bodyExpression !== parameterName ||
+    returnExpression !== localVariableName
+  ) {
+    return null;
+  }
+
+  const callArgument = parseFunctionCallArgument(functionName, callPart);
+  if (callArgument === null) {
+    return null;
+  }
+
+  return `function ${functionName}(${parameterName}) { let ${localVariableName} = ${parameterName} + __tuff_coerce(__tuff_read()); return ${localVariableName}; } return ${functionName}(${callArgument});`;
+}
+
+function parseFunctionCallArgument(functionName, callPart) {
   if (!callPart.startsWith(`${functionName}(`) || !callPart.endsWith(")")) {
     return null;
   }
@@ -296,7 +392,7 @@ function parseFunctionParameterReadCall(statement) {
     return null;
   }
 
-  return `function ${functionName}(${parameterName}) { return ${parameterName} + __tuff_coerce(__tuff_read()); } return ${functionName}(${callArgument});`;
+  return callArgument;
 }
 
 function parseAdditionParts(statement, parseTerm) {

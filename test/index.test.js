@@ -77,6 +77,15 @@ test('executeTuff("fn wah(foo) => { return foo + read(); } wah(5)", "25") => 30'
   ).toBe(30);
 });
 
+test('executeTuff("fn wah(foo) => { let x = foo + read(); return x; } wah(5)", "25") => 30', () => {
+  expect(
+    executeTuff(
+      "fn wah(foo) => { let x = foo + read(); return x; } wah(5)",
+      "25",
+    ),
+  ).toBe(30);
+});
+
 test('executeTuff("read()", "false") => 0', () => {
   expect(executeTuff("read()", "false")).toBe(0);
 });
