@@ -29,6 +29,19 @@ function err(error) {
   return { ok: false, error };
 }
 
+/**
+ * @template T
+ * @param {() => T} operation
+ * @returns {Result<T, string>}
+ */
+function runWithResult(operation) {
+  try {
+    return ok(operation());
+  } catch (error) {
+    return err(String(error));
+  }
+}
+
 export function compileTuffToJS(source) {
   const trimmed = source.trim();
 
@@ -167,7 +180,7 @@ export function executeTuff(source, stdIn) {
   const compiledJS = compiledResult.value;
   const runtime = createTuffRuntime(stdIn);
 
-  try {
+  return runWithResult(() => {
     const func = new Function(
       "__tuff_read",
       "__tuff_coerce",
@@ -175,17 +188,13 @@ export function executeTuff(source, stdIn) {
       "__tuff_import_meta_url",
       compiledJS,
     );
-    return ok(
-      func(
-        runtime.read,
-        runtime.coerce,
-        __tuff_builtin_require,
-        import.meta.url,
-      ),
+    return func(
+      runtime.read,
+      runtime.coerce,
+      __tuff_builtin_require,
+      import.meta.url,
     );
-  } catch (error) {
-    return err(String(error));
-  }
+  });
 }
 
 export function executeAllTuff(entrypointName, allTuff, stdIn) {
@@ -228,7 +237,7 @@ function executeAllTuffInternal(entrypointName, allTuff, nativeTuff, stdIn) {
     return err(compiledResult.error);
   }
 
-  try {
+  return runWithResult(() => {
     const func = new Function(
       "lib",
       "externModules",
@@ -238,19 +247,15 @@ function executeAllTuffInternal(entrypointName, allTuff, nativeTuff, stdIn) {
       "__tuff_import_meta_url",
       compiledResult.value,
     );
-    return ok(
-      func(
-        libExportsResult.value,
-        externModules,
-        runtime.read,
-        runtime.coerce,
-        __tuff_builtin_require,
-        import.meta.url,
-      ),
+    return func(
+      libExportsResult.value,
+      externModules,
+      runtime.read,
+      runtime.coerce,
+      __tuff_builtin_require,
+      import.meta.url,
     );
-  } catch (error) {
-    return err(String(error));
-  }
+  });
 }
 
 function createTuffRuntime(stdIn) {
