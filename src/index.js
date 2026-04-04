@@ -13,28 +13,57 @@ export function compileTuffToJS(source) {
     let previousVariableName = null;
 
     for (let index = 0; index < statements.length - 1; index += 1) {
-      const binding = parseLetBinding(statements[index]);
-      if (binding === null) {
+      const statement = statements[index];
+      const binding = parseLetBinding(statement);
+      const assignment = parseAssignment(statement);
+
+      if (binding === null && assignment === null) {
         break;
       }
 
-      if (index === 0) {
-        if (binding.initialValue !== "read()") {
+      if (binding !== null) {
+        if (index === 0) {
+          if (binding.initialValue !== "read()") {
+            break;
+          }
+
+          compiledStatements.push(
+            `let ${binding.variableName} = __tuff_coerce(__tuff_read());`,
+          );
+        } else if (binding.initialValue === previousVariableName) {
+          compiledStatements.push(
+            `let ${binding.variableName} = ${previousVariableName};`,
+          );
+        } else {
           break;
         }
 
-        compiledStatements.push(
-          `const ${binding.variableName} = __tuff_coerce(__tuff_read());`,
-        );
-      } else if (binding.initialValue === previousVariableName) {
-        compiledStatements.push(
-          `const ${binding.variableName} = ${previousVariableName};`,
-        );
-      } else {
-        break;
+        previousVariableName = binding.variableName;
+        continue;
       }
 
-      previousVariableName = binding.variableName;
+      if (assignment !== null) {
+        if (
+          index === 0 ||
+          assignment.variableName !== previousVariableName ||
+          (assignment.initialValue !== "read()" &&
+            assignment.initialValue !== previousVariableName)
+        ) {
+          break;
+        }
+
+        if (assignment.initialValue === "read()") {
+          compiledStatements.push(
+            `${assignment.variableName} = __tuff_coerce(__tuff_read());`,
+          );
+        } else {
+          compiledStatements.push(
+            `${assignment.variableName} = ${previousVariableName};`,
+          );
+        }
+
+        continue;
+      }
     }
 
     if (
@@ -130,6 +159,28 @@ function parseLetBinding(statement) {
   }
 
   const variableName = statement.slice(prefix.length, separatorIndex);
+  const initialValue = statement.slice(separatorIndex + equalsSeparator.length);
+
+  if (!isValidIdentifier(variableName)) {
+    return null;
+  }
+
+  return { variableName, initialValue };
+}
+
+function parseAssignment(statement) {
+  const equalsSeparator = " = ";
+  const separatorIndex = statement.indexOf(equalsSeparator);
+
+  if (separatorIndex <= 0) {
+    return null;
+  }
+
+  if (statement.startsWith("let ")) {
+    return null;
+  }
+
+  const variableName = statement.slice(0, separatorIndex);
   const initialValue = statement.slice(separatorIndex + equalsSeparator.length);
 
   if (!isValidIdentifier(variableName)) {
