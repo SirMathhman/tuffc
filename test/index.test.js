@@ -382,3 +382,11 @@ test('executeTuff("read() == read()", "true 1") => 0', () => {
 test('executeTuff("read() == read()", "42 42") => 1', () => {
   expect(executeTuff("read() == read()", "42 42")).toBe(1);
 });
+
+test('executeTuff("read() == read() == read()", "42 42 42") => 1', () => {
+  expect(executeTuff("read() == read() == read()", "42 42 42")).toBe(1);
+});
+
+test('executeTuff("read() == read() == read()", "42 42 99") => 0', () => {
+  expect(executeTuff("read() == read() == read()", "42 42 99")).toBe(0);
+});

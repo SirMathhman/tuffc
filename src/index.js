@@ -940,7 +940,11 @@ function parseReadEqualityExpression(statement) {
     return undefined;
   }
 
-  return `Number(${parts.join(" === ")})`;
+  if (parts.length === 2) {
+    return `Number(${parts[0]} === ${parts[1]})`;
+  }
+
+  return `Number([${parts.join(", ")}].every((v, i, a) => i === 0 || v === a[i - 1]))`;
 }
 
 function parseNameAndValue(statement, prefix) {
