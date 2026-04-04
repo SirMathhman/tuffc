@@ -657,7 +657,8 @@ function splitIntoBlocks(source) {
         currentLines = [];
       }
     } else {
-      currentLines.push(line);
+      const trimmedLine = line.endsWith("\r") ? line.slice(0, -1) : line;
+      currentLines.push(trimmedLine);
     }
   }
 
