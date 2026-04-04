@@ -1017,6 +1017,7 @@ function parseIfBodyBlock(lines) {
 function tokenizeExpression(str) {
   const importMetaUrl = "import.meta.url";
   const twoCharOps = ["==", "!=", "<=", ">=", "&&", "||"];
+  const validEscapes = new Set(["n", "t", "r", "\\", '"', "'"]);
   const tokens = [];
   let i = 0;
 
@@ -1029,6 +1030,26 @@ function tokenizeExpression(str) {
     if (str.startsWith(importMetaUrl, i)) {
       tokens.push({ type: "special", value: "__tuff_import_meta_url" });
       i += importMetaUrl.length;
+      continue;
+    }
+
+    if (str[i] === '"' || str[i] === "'") {
+      const quote = str[i];
+      let j = i + 1;
+      while (j < str.length && str[j] !== quote) {
+        if (str[j] === "\\") {
+          j++;
+          if (j >= str.length || !validEscapes.has(str[j])) {
+            return undefined;
+          }
+        }
+        j++;
+      }
+      if (j >= str.length) {
+        return undefined;
+      }
+      tokens.push({ type: "str", value: str.slice(i, j + 1) });
+      i = j + 1;
       continue;
     }
 
@@ -1054,6 +1075,12 @@ function tokenizeExpression(str) {
 
     if (str[i] === "(" || str[i] === ")" || str[i] === "." || str[i] === ",") {
       tokens.push({ type: str[i] });
+      i++;
+      continue;
+    }
+
+    if (str[i] === "+") {
+      tokens.push({ type: "op", value: "+" });
       i++;
       continue;
     }
@@ -1092,7 +1119,12 @@ function parseBodyExprNode(tokens, pos) {
   let value;
   let p = pos + 1;
 
-  if (tok.type === "special" || tok.type === "id" || tok.type === "num") {
+  if (
+    tok.type === "special" ||
+    tok.type === "id" ||
+    tok.type === "num" ||
+    tok.type === "str"
+  ) {
     value = tok.value;
   } else {
     return undefined;
@@ -1133,6 +1165,14 @@ function parseBodyExprNode(tokens, pos) {
         value === "read" && args.length === 0
           ? "__tuff_coerce(__tuff_read())"
           : `${value}(${args.join(", ")})`;
+    } else if (tokens[p].type === "op" && tokens[p].value === "+") {
+      p++;
+      const rhs = parseBodyExprNode(tokens, p);
+      if (rhs === undefined) {
+        return undefined;
+      }
+      value = `${value} + ${rhs.value}`;
+      p = rhs.pos;
     } else {
       break;
     }
@@ -1172,7 +1212,8 @@ function compileCondition(str) {
     } else if (
       tok.type === "id" ||
       tok.type === "num" ||
-      tok.type === "special"
+      tok.type === "special" ||
+      tok.type === "str"
     ) {
       const result = parseBodyExprNode(tokens, p);
       if (result === undefined) {

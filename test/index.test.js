@@ -600,11 +600,11 @@ test('executeTuff("out fn f(a, b) => {\\n    return a.concat(b);\\n}\\n\\nread()
   ).toBe(50);
 });
 
-// invalid expression in rhs throws
-test('executeTuff("out fn f(s) => {\\n    let t = s + 1;\\n}\\n\\nread()", "50") throws', () => {
-  expect(() =>
+// s + 1 is now valid (+ was added); result is NaN but doesn't throw
+test('executeTuff("out fn f(s) => {\\n    let t = s + 1;\\n}\\n\\nread()", "50") => 50', () => {
+  expect(
     executeTuff("out fn f(s) => {\n    let t = s + 1;\n}\n\nread()", "50"),
-  ).toThrow();
+  ).toBe(50);
 });
 
 // let binding + return in body
@@ -617,11 +617,11 @@ test('executeTuff("out fn f(s) => {\\n    let t = s.trim();\\n    return t;\\n}\
   ).toBe(50);
 });
 
-// invalid expression in return body throws (covers parseReturnBodyStatement compiled=undefined path)
-test('executeTuff("out fn f(s) => {\\n    return s + 1;\\n}\\n\\nread()", "50") throws', () => {
-  expect(() =>
+// return s + 1 is now valid (+ added); read() still returns 50
+test('executeTuff("out fn f(s) => {\\n    return s + 1;\\n}\\n\\nread()", "50") => 50', () => {
+  expect(
     executeTuff("out fn f(s) => {\n    return s + 1;\n}\n\nread()", "50"),
-  ).toThrow();
+  ).toBe(50);
 });
 
 // bare expression statement (not let/return) in body throws (covers parseLetBodyStatement parsed=undefined path)
@@ -818,11 +818,11 @@ test("executeTuff || condition => 50", () => {
   ).toBe(50);
 });
 
-// invalid condition token in if => throws
+// invalid condition token in if (@ is not a valid token) => throws
 test("executeTuff invalid condition token in if => throws", () => {
   expect(() =>
     executeTuff(
-      "out fn f(x) => {\n    if (x + 1) {\n        return x;\n    }\n}\n\nread()",
+      "out fn f(x) => {\n    if (x @ 1) {\n        return x;\n    }\n}\n\nread()",
       "50",
     ),
   ).toThrow();
@@ -914,4 +914,103 @@ test("executeTuff if with empty body => 50", () => {
       "50",
     ),
   ).toBe(50);
+});
+
+// ── string literals and + operator ───────────────────────────────────────────
+
+// return a double-quoted string literal
+test('executeTuff return double-quoted string literal => "hello"', () => {
+  expect(
+    executeTuff('out fn f() => {\n    return "hello";\n}\n\nread()', "50"),
+  ).toBe(50);
+});
+
+// return a single-quoted string literal
+test("executeTuff return single-quoted string literal => 50", () => {
+  expect(
+    executeTuff("out fn f(x) => {\n    return 'yes';\n}\n\nread()", "50"),
+  ).toBe(50);
+});
+
+// string + string concatenation
+test("executeTuff string + string => 50", () => {
+  expect(
+    executeTuff(
+      'out fn f() => {\n    return "5" + "0";\n}\n\nread()',
+      "50",
+    ),
+  ).toBe(50);
+});
+
+// number + number (+ works for numbers too)
+test("executeTuff number + number in return => 50", () => {
+  expect(
+    executeTuff("out fn f() => {\n    return 25 + 25;\n}\n\nread()", "50"),
+  ).toBe(50);
+});
+
+// identifier + string literal
+test("executeTuff identifier + string => 50", () => {
+  expect(
+    executeTuff(
+      'out fn f(x) => {\n    return x + "";\n}\n\nread()',
+      "50",
+    ),
+  ).toBe(50);
+});
+
+// escape sequences: \n in string survives compilation
+test("executeTuff string with escape sequence compiles", () => {
+  expect(
+    executeTuff(
+      'out fn f() => {\n    let s = "a\\nb";\n    return s;\n}\n\nread()',
+      "50",
+    ),
+  ).toBe(50);
+});
+
+// method call on string literal
+test("executeTuff method call on string literal => 50", () => {
+  expect(
+    executeTuff(
+      'out fn f() => {\n    return "  50  ".trim();\n}\n\nread()',
+      "50",
+    ),
+  ).toBe(50);
+});
+
+// string in condition
+test("executeTuff string in condition => 50", () => {
+  expect(
+    executeTuff(
+      [
+        'out fn f(x) => {',
+        '    if (x != "nope") {',
+        '        return x;',
+        '    }',
+        '    return x;',
+        '}',
+        '',
+        'read()',
+      ].join("\n"),
+      "50",
+    ),
+  ).toBe(50);
+});
+
+// unclosed string literal => throws
+test("executeTuff unclosed string literal => throws", () => {
+  expect(() =>
+    executeTuff('out fn f() => {\n    return "hello;\n}\n\nread()', "50"),
+  ).toThrow();
+});
+
+// unknown escape sequence => throws
+test("executeTuff unknown escape sequence in string => throws", () => {
+  expect(() =>
+    executeTuff(
+      'out fn f() => {\n    return "he\\llo";\n}\n\nread()',
+      "50",
+    ),
+  ).toThrow();
 });
