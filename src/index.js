@@ -637,12 +637,17 @@ function parseExternNodeImportBlock(block) {
   const importedName = inner.slice(0, separatorIndex);
   const modulePath = inner.slice(separatorIndex + separator.length);
 
-  if (!isValidIdentifier(importedName) || !isValidModulePath(modulePath)) {
+  const importedNames = importedName.split(", extern ");
+
+  if (
+    importedNames.some((name) => !isValidIdentifier(name)) ||
+    !isValidModulePath(modulePath)
+  ) {
     return undefined;
   }
 
   const requirePath = modulePath.split("::").join(":");
-  return `const { ${importedName} } = __tuff_require(${JSON.stringify(requirePath)});`;
+  return `const { ${importedNames.join(", ")} } = __tuff_require(${JSON.stringify(requirePath)});`;
 }
 
 function splitIntoBlocks(source) {

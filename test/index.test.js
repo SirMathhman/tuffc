@@ -432,3 +432,21 @@ test('executeTuff("let { extern readFileSync } = extern node::bad-path;\\n\\nrea
     ),
   ).toThrow();
 });
+
+test('executeTuff("let { extern readFileSync, extern writeFileSync, extern mkdirSync } = extern node::fs;\\n\\nread()", "50") => 50', () => {
+  expect(
+    executeTuff(
+      "let { extern readFileSync, extern writeFileSync, extern mkdirSync } = extern node::fs;\n\nread()",
+      "50",
+    ),
+  ).toBe(50);
+});
+
+test('executeTuff("let { extern readFileSync, extern bad-name } = extern node::fs;\\n\\nread()", "50") throws', () => {
+  expect(() =>
+    executeTuff(
+      "let { extern readFileSync, extern bad-name } = extern node::fs;\n\nread()",
+      "50",
+    ),
+  ).toThrow();
+});
