@@ -1,3 +1,8 @@
 let { extern readFileSync, extern writeFileSync, extern mkdirSync } = extern node::fs;
+let { extern createRequire } = extern node::module;
+
+extern fn createRequire(arg);
+
+let __tuff_builtin_require = createRequire(import.meta.url);
 
 read()

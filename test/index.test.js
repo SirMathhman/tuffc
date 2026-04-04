@@ -450,3 +450,69 @@ test('executeTuff("let { extern readFileSync, extern bad-name } = extern node::f
     ),
   ).toThrow();
 });
+
+// multi-line extern import block (two consecutive import lines in one block)
+test('executeTuff("let { extern readFileSync } = extern node::fs;\\nlet { extern createRequire } = extern node::module;\\n\\nread()", "50") => 50', () => {
+  expect(
+    executeTuff(
+      "let { extern readFileSync } = extern node::fs;\nlet { extern createRequire } = extern node::module;\n\nread()",
+      "50",
+    ),
+  ).toBe(50);
+});
+
+// extern fn declaration compiles to nothing
+test('executeTuff("let { extern createRequire } = extern node::module;\\n\\nextern fn createRequire(arg);\\n\\nread()", "50") => 50', () => {
+  expect(
+    executeTuff(
+      "let { extern createRequire } = extern node::module;\n\nextern fn createRequire(arg);\n\nread()",
+      "50",
+    ),
+  ).toBe(50);
+});
+
+// extern fn declaration with invalid name throws
+test('executeTuff("extern fn bad-name(arg);\\n\\nread()", "50") throws', () => {
+  expect(() =>
+    executeTuff("extern fn bad-name(arg);\n\nread()", "50"),
+  ).toThrow();
+});
+
+// let-fn-call with import.meta.url
+test('executeTuff("let { extern createRequire } = extern node::module;\\n\\nlet r = createRequire(import.meta.url);\\n\\nread()", "50") => 50', () => {
+  expect(
+    executeTuff(
+      "let { extern createRequire } = extern node::module;\n\nlet r = createRequire(import.meta.url);\n\nread()",
+      "50",
+    ),
+  ).toBe(50);
+});
+
+// let-fn-call with invalid arg throws
+test('executeTuff("let { extern createRequire } = extern node::module;\\n\\nlet r = createRequire(123);\\n\\nread()", "50") throws', () => {
+  expect(() =>
+    executeTuff(
+      "let { extern createRequire } = extern node::module;\n\nlet r = createRequire(123);\n\nread()",
+      "50",
+    ),
+  ).toThrow();
+});
+
+// full complex program matching main.tuff pattern
+test("executeTuff full extern import + extern fn decl + let fn call + read() => 50", () => {
+  expect(
+    executeTuff(
+      [
+        "let { extern readFileSync, extern writeFileSync, extern mkdirSync } = extern node::fs;",
+        "let { extern createRequire } = extern node::module;",
+        "",
+        "extern fn createRequire(arg);",
+        "",
+        "let __tuff_builtin_require = createRequire(import.meta.url);",
+        "",
+        "read()",
+      ].join("\n"),
+      "50",
+    ),
+  ).toBe(50);
+});

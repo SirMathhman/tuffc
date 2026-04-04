@@ -132,9 +132,15 @@ export function executeTuff(source, stdIn) {
     "__tuff_read",
     "__tuff_coerce",
     "__tuff_require",
+    "__tuff_import_meta_url",
     compiledJS,
   );
-  return func(runtime.read, runtime.coerce, __tuff_builtin_require);
+  return func(
+    runtime.read,
+    runtime.coerce,
+    __tuff_builtin_require,
+    import.meta.url,
+  );
 }
 
 export function executeAllTuff(entrypointName, allTuff, stdIn) {
@@ -168,6 +174,7 @@ function executeAllTuffInternal(entrypointName, allTuff, nativeTuff, stdIn) {
     "__tuff_read",
     "__tuff_coerce",
     "__tuff_require",
+    "__tuff_import_meta_url",
     compiledJS,
   );
   return func(
@@ -176,6 +183,7 @@ function executeAllTuffInternal(entrypointName, allTuff, nativeTuff, stdIn) {
     runtime.read,
     runtime.coerce,
     __tuff_builtin_require,
+    import.meta.url,
   );
 }
 
@@ -608,7 +616,9 @@ function parseMultiLineSource(source) {
   for (const block of functionBlocks) {
     const compiled =
       parseMultiLineFunctionDefinition(block) ??
-      parseExternNodeImportBlock(block);
+      parseExternNodeImportBlock(block) ??
+      parseExternFnDeclarationBlock(block) ??
+      parseLetFunctionCallBlock(block);
     if (compiled === undefined) {
       return undefined;
     }
@@ -616,7 +626,8 @@ function parseMultiLineSource(source) {
   }
 
   const finalCompiled = compileTuffToJS(finalBlock);
-  return compiledFunctions.join(" ") + " " + finalCompiled;
+  const nonEmpty = compiledFunctions.filter((s) => s.length > 0);
+  return [...nonEmpty, finalCompiled].join(" ");
 }
 
 function parseExternNodeImportBlock(block) {
@@ -624,30 +635,132 @@ function parseExternNodeImportBlock(block) {
   const separator = " } = extern ";
   const suffix = ";";
 
+  const lines = block.split("\n");
+  const compiledLines = [];
+
+  for (const line of lines) {
+    if (!line.startsWith(prefix) || !line.endsWith(suffix)) {
+      return undefined;
+    }
+
+    const inner = line.slice(prefix.length, -suffix.length);
+    const separatorIndex = inner.indexOf(separator);
+    if (separatorIndex <= 0) {
+      return undefined;
+    }
+
+    const importedName = inner.slice(0, separatorIndex);
+    const modulePath = inner.slice(separatorIndex + separator.length);
+    const importedNames = importedName.split(", extern ");
+
+    if (
+      importedNames.some((name) => !isValidIdentifier(name)) ||
+      !isValidModulePath(modulePath)
+    ) {
+      return undefined;
+    }
+
+    const requirePath = modulePath.split("::").join(":");
+    compiledLines.push(
+      `const { ${importedNames.join(", ")} } = __tuff_require(${JSON.stringify(requirePath)});`,
+    );
+  }
+
+  if (compiledLines.length === 0) {
+    return undefined;
+  }
+
+  return compiledLines.join(" ");
+}
+
+function stripBlockWrapper(block, prefix) {
+  const suffix = ";";
   if (!block.startsWith(prefix) || !block.endsWith(suffix)) {
     return undefined;
   }
 
-  const inner = block.slice(prefix.length, -suffix.length);
-  const separatorIndex = inner.indexOf(separator);
-  if (separatorIndex <= 0) {
+  return block.slice(prefix.length, -suffix.length);
+}
+
+function parseFunctionCallExpression(str) {
+  const parenOpenIndex = str.indexOf("(");
+  const parenCloseIndex = str.lastIndexOf(")");
+
+  if (parenOpenIndex <= 0 || parenCloseIndex !== str.length - 1) {
     return undefined;
   }
 
-  const importedName = inner.slice(0, separatorIndex);
-  const modulePath = inner.slice(separatorIndex + separator.length);
-
-  const importedNames = importedName.split(", extern ");
-
-  if (
-    importedNames.some((name) => !isValidIdentifier(name)) ||
-    !isValidModulePath(modulePath)
-  ) {
+  const fnName = str.slice(0, parenOpenIndex);
+  if (!isValidIdentifier(fnName)) {
     return undefined;
   }
 
-  const requirePath = modulePath.split("::").join(":");
-  return `const { ${importedNames.join(", ")} } = __tuff_require(${JSON.stringify(requirePath)});`;
+  return { fnName, argsStr: str.slice(parenOpenIndex + 1, parenCloseIndex) };
+}
+
+function parseExternFnDeclarationBlock(block) {
+  const inner = stripBlockWrapper(block, "extern fn ");
+  if (inner === undefined) {
+    return undefined;
+  }
+
+  const call = parseFunctionCallExpression(inner);
+  if (call === undefined) {
+    return undefined;
+  }
+
+  if (call.argsStr.length > 0) {
+    const params = call.argsStr.split(", ");
+    if (params.some((p) => !isValidIdentifier(p.trim()))) {
+      return undefined;
+    }
+  }
+
+  return "";
+}
+
+function compileFunctionCallArgument(expr) {
+  if (expr === "import.meta.url") {
+    return "__tuff_import_meta_url";
+  }
+
+  if (isValidIdentifier(expr)) {
+    return expr;
+  }
+
+  return undefined;
+}
+
+function parseLetFunctionCallBlock(block) {
+  const inner = stripBlockWrapper(block, "let ");
+  if (inner === undefined) {
+    return undefined;
+  }
+
+  const equalsSeparator = " = ";
+  const equalsIndex = inner.indexOf(equalsSeparator);
+
+  if (equalsIndex <= 0) {
+    return undefined;
+  }
+
+  const variableName = inner.slice(0, equalsIndex);
+  if (!isValidIdentifier(variableName)) {
+    return undefined;
+  }
+
+  const callExpr = inner.slice(equalsIndex + equalsSeparator.length);
+  const call = parseFunctionCallExpression(callExpr);
+  if (call === undefined) {
+    return undefined;
+  }
+
+  const compiledArg = compileFunctionCallArgument(call.argsStr);
+  if (compiledArg === undefined) {
+    return undefined;
+  }
+
+  return `const ${variableName} = ${call.fnName}(${compiledArg});`;
 }
 
 function splitIntoBlocks(source) {
@@ -1090,9 +1203,9 @@ export function buildBundleSource(compiledBody) {
     '  const __tokens = __tuff_tokenize(lines.join("\\n"));',
     "  let __tokenIndex = 0;",
     "  const __tuff_read = () => __tokens[__tokenIndex++];",
-    "  const __result = ((__tuff_read, __tuff_coerce, __tuff_require) => {",
+    "  const __result = ((__tuff_read, __tuff_coerce, __tuff_require, __tuff_import_meta_url) => {",
     `    ${compiledBody}`,
-    "  })(__tuff_read, __tuff_coerce, __tuff_require);",
+    "  })(__tuff_read, __tuff_coerce, __tuff_require, import.meta.url);",
     '  process.stdout.write(String(__result) + "\\n");',
     "});",
   ].join("\n");
