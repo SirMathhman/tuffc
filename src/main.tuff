@@ -1,5 +1,3 @@
-fn get() => {
-    return read();
-}
+let { extern readFileSync } = extern node:fs;
 
 read()

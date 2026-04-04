@@ -1,4 +1,7 @@
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { createRequire } from "node:module";
+
+const __tuff_builtin_require = createRequire(import.meta.url);
 
 export function compileTuffToJS(source) {
   const trimmed = source.trim();
@@ -125,8 +128,13 @@ export function compileTuffToJS(source) {
 export function executeTuff(source, stdIn) {
   const compiledJS = compileTuffToJS(source);
   const runtime = createTuffRuntime(stdIn);
-  const func = new Function("__tuff_read", "__tuff_coerce", compiledJS);
-  return func(runtime.read, runtime.coerce);
+  const func = new Function(
+    "__tuff_read",
+    "__tuff_coerce",
+    "__tuff_require",
+    compiledJS,
+  );
+  return func(runtime.read, runtime.coerce, __tuff_builtin_require);
 }
 
 export function executeAllTuff(entrypointName, allTuff, stdIn) {
@@ -159,9 +167,16 @@ function executeAllTuffInternal(entrypointName, allTuff, nativeTuff, stdIn) {
     "externModules",
     "__tuff_read",
     "__tuff_coerce",
+    "__tuff_require",
     compiledJS,
   );
-  return func(libExports, externModules, runtime.read, runtime.coerce);
+  return func(
+    libExports,
+    externModules,
+    runtime.read,
+    runtime.coerce,
+    __tuff_builtin_require,
+  );
 }
 
 function createTuffRuntime(stdIn) {
@@ -591,7 +606,9 @@ function parseMultiLineSource(source) {
 
   const compiledFunctions = [];
   for (const block of functionBlocks) {
-    const compiled = parseMultiLineFunctionDefinition(block);
+    const compiled =
+      parseMultiLineFunctionDefinition(block) ??
+      parseExternNodeImportBlock(block);
     if (compiled === undefined) {
       return undefined;
     }
@@ -600,6 +617,32 @@ function parseMultiLineSource(source) {
 
   const finalCompiled = compileTuffToJS(finalBlock);
   return compiledFunctions.join(" ") + " " + finalCompiled;
+}
+
+function parseExternNodeImportBlock(block) {
+  const prefix = "let { extern ";
+  const separator = " } = extern ";
+  const suffix = ";";
+
+  if (!block.startsWith(prefix) || !block.endsWith(suffix)) {
+    return undefined;
+  }
+
+  const inner = block.slice(prefix.length, -suffix.length);
+  const separatorIndex = inner.indexOf(separator);
+  if (separatorIndex <= 0) {
+    return undefined;
+  }
+
+  const importedName = inner.slice(0, separatorIndex);
+  const modulePath = inner.slice(separatorIndex + separator.length);
+
+  if (!isValidIdentifier(importedName) || !isValidModulePath(modulePath)) {
+    return undefined;
+  }
+
+  const requirePath = modulePath.split("::").join(":");
+  return `const { ${importedName} } = __tuff_require(${JSON.stringify(requirePath)});`;
 }
 
 function splitIntoBlocks(source) {

@@ -390,3 +390,45 @@ test('executeTuff("read() == read() == read()", "42 42 42") => 1', () => {
 test('executeTuff("read() == read() == read()", "42 42 99") => 0', () => {
   expect(executeTuff("read() == read() == read()", "42 42 99")).toBe(0);
 });
+
+test('executeTuff("let { extern readFileSync } = extern node::fs;\\n\\nread()", "50") => 50', () => {
+  expect(
+    executeTuff(
+      "let { extern readFileSync } = extern node::fs;\n\nread()",
+      "50",
+    ),
+  ).toBe(50);
+});
+
+test('executeTuff("fn get() => {\\n    return 1;\\n}\\n\\nlet { extern readFileSync } = extern node::fs;\\n\\nread()", "50") => 50', () => {
+  expect(
+    executeTuff(
+      "fn get() => {\n    return 1;\n}\n\nlet { extern readFileSync } = extern node::fs;\n\nread()",
+      "50",
+    ),
+  ).toBe(50);
+});
+
+test('executeTuff("let { extern readFileSync } = extern node::fs;\\n\\nlet { extern join } = extern node::path;\\n\\nread()", "50") => 50', () => {
+  expect(
+    executeTuff(
+      "let { extern readFileSync } = extern node::fs;\n\nlet { extern join } = extern node::path;\n\nread()",
+      "50",
+    ),
+  ).toBe(50);
+});
+
+test('executeTuff("let { extern bad-name } = extern node::fs;\\n\\nread()", "50") throws', () => {
+  expect(() =>
+    executeTuff("let { extern bad-name } = extern node::fs;\n\nread()", "50"),
+  ).toThrow();
+});
+
+test('executeTuff("let { extern readFileSync } = extern node::bad-path;\\n\\nread()", "50") throws', () => {
+  expect(() =>
+    executeTuff(
+      "let { extern readFileSync } = extern node::bad-path;\n\nread()",
+      "50",
+    ),
+  ).toThrow();
+});

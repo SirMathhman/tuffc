@@ -47,7 +47,10 @@ rl.on("close", () => {
   let __tokenIndex = 0;
   const __tuff_read = () => __tokens[__tokenIndex++];
   const __result = ((__tuff_read, __tuff_coerce) => {
-    function get() { return __tuff_coerce(__tuff_read()); } return __tuff_coerce(__tuff_read());
+    function get() {
+      return __tuff_coerce(__tuff_read());
+    }
+    return __tuff_coerce(__tuff_read());
   })(__tuff_read, __tuff_coerce);
   process.stdout.write(String(__result) + "\n");
 });
