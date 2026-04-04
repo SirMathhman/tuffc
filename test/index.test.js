@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
 import {
+  buildBundleSource,
+  compileTuffToJS,
   createMessage,
   executeAllTuff,
   executeAllTuffWithNative,
@@ -324,4 +326,20 @@ test('executeAllTuffWithNative("main", [[ ["main"], "let { extern get } = extern
       "100",
     ),
   ).toThrow();
+});
+
+test("buildBundleSource wraps compiled body in Node.js readable runtime", () => {
+  const compiled = compileTuffToJS("read()");
+  const bundle = buildBundleSource(compiled);
+  expect(bundle).toContain('import { createInterface } from "node:readline"');
+  expect(bundle).toContain("__tuff_read");
+  expect(bundle).toContain("__tuff_coerce");
+  expect(bundle).toContain("__tuff_tokenize");
+  expect(bundle).toContain(compiled);
+});
+
+test("buildBundleSource embeds arbitrary compiled body", () => {
+  const compiled = "return 42;";
+  const bundle = buildBundleSource(compiled);
+  expect(bundle).toContain(compiled);
 });

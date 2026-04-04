@@ -1,3 +1,5 @@
+import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+
 export function compileTuffToJS(source) {
   const trimmed = source.trim();
 
@@ -806,6 +808,71 @@ export function createMessage(name = "world") {
   return `Hello, ${name}!`;
 }
 
+export function buildBundleSource(compiledBody) {
+  return [
+    'import { createInterface } from "node:readline";',
+    "",
+    "function __tuff_tokenize(input) {",
+    "  const str = String(input).trim();",
+    "  if (str.length === 0) {",
+    "    return [];",
+    "  }",
+    "",
+    "  const tokens = [];",
+    '  let current = "";',
+    "",
+    "  for (const ch of str) {",
+    '    if (ch.trim() === "") {',
+    "      if (current.length > 0) {",
+    "        tokens.push(current);",
+    '        current = "";',
+    "      }",
+    "    } else {",
+    "      current += ch;",
+    "    }",
+    "  }",
+    "",
+    "  if (current.length > 0) {",
+    "    tokens.push(current);",
+    "  }",
+    "",
+    "  return tokens;",
+    "}",
+    "",
+    "function __tuff_coerce(value) {",
+    '  if (value === "true") {',
+    "    return 1;",
+    "  }",
+    "",
+    '  if (value === "false") {',
+    "    return 0;",
+    "  }",
+    "",
+    "  return Number(value);",
+    "}",
+    "",
+    "const rl = createInterface({ input: process.stdin, terminal: false });",
+    "const lines = [];",
+    'rl.on("line", (line) => lines.push(line));',
+    'rl.on("close", () => {',
+    '  const __tokens = __tuff_tokenize(lines.join("\\n"));',
+    "  let __tokenIndex = 0;",
+    "  const __tuff_read = () => __tokens[__tokenIndex++];",
+    "  const __result = ((__tuff_read, __tuff_coerce) => {",
+    `    ${compiledBody}`,
+    "  })(__tuff_read, __tuff_coerce);",
+    '  process.stdout.write(String(__result) + "\\n");',
+    "});",
+  ].join("\n");
+}
+
 if (import.meta.main) {
-  console.log(createMessage());
+  const tuffSource = readFileSync(
+    new URL("main.tuff", import.meta.url),
+    "utf8",
+  );
+  const compiledBody = compileTuffToJS(tuffSource);
+  const bundleSource = buildBundleSource(compiledBody);
+  mkdirSync(new URL("../dist", import.meta.url), { recursive: true });
+  writeFileSync(new URL("../dist/bundle.js", import.meta.url), bundleSource);
 }

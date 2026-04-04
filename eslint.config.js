@@ -12,6 +12,8 @@ export default [
       ecmaVersion: "latest",
       globals: {
         console: "readonly",
+        URL: "readonly",
+        process: "readonly",
       },
     },
     rules: {

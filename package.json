@@ -8,6 +8,7 @@
     "test": "bun test",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
+    "build": "bun run src/index.js",
     "cpd": "pmd cpd --dir src test --language ecmascript --minimum-tokens 35 --ignore-literals --ignore-identifiers 1>&2"
   },
   "devDependencies": {
