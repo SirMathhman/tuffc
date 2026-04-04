@@ -365,10 +365,10 @@ test('executeTuff("fn a() => {\\n    return 1;\\n}\\n\\nfn b() => {\\n    return
   ).toBe(50);
 });
 
-test('executeTuff("fn get() => {\\n    return hello;\\n}\\n\\nread()", "50") throws', () => {
-  expect(() =>
+test('executeTuff("fn get() => {\\n    return hello;\\n}\\n\\nread()", "50") => 50 (hello is runtime undefined, read() still returns 50)', () => {
+  expect(
     executeTuff("fn get() => {\n    return hello;\n}\n\nread()", "50"),
-  ).toThrow();
+  ).toBe(50);
 });
 
 test('executeTuff("fn get() => {\\n}\\n\\nread()", "50") => 50', () => {
@@ -557,6 +557,80 @@ test("executeTuff full main.tuff pattern => 50", () => {
         "",
         "out fn compileTuffToJS(source) => {",
         "    ",
+        "}",
+        "",
+        "read()",
+      ].join("\n"),
+      "50",
+    ),
+  ).toBe(50);
+});
+
+// let binding in body
+test('executeTuff("out fn f(s) => {\\n    let t = s.trim();\\n}\\n\\nread()", "50") => 50', () => {
+  expect(
+    executeTuff("out fn f(s) => {\n    let t = s.trim();\n}\n\nread()", "50"),
+  ).toBe(50);
+});
+
+// return method call expression
+test('executeTuff("out fn f(s) => {\\n    return s.trim();\\n}\\n\\nread()", "50") => 50', () => {
+  expect(
+    executeTuff("out fn f(s) => {\n    return s.trim();\n}\n\nread()", "50"),
+  ).toBe(50);
+});
+
+// chained method call
+test('executeTuff("out fn f(s) => {\\n    return s.trim().toString();\\n}\\n\\nread()", "50") => 50', () => {
+  expect(
+    executeTuff(
+      "out fn f(s) => {\n    return s.trim().toString();\n}\n\nread()",
+      "50",
+    ),
+  ).toBe(50);
+});
+
+// method call with param argument
+test('executeTuff("out fn f(a, b) => {\\n    return a.concat(b);\\n}\\n\\nread()", "50") => 50', () => {
+  expect(
+    executeTuff(
+      "out fn f(a, b) => {\n    return a.concat(b);\n}\n\nread()",
+      "50",
+    ),
+  ).toBe(50);
+});
+
+// invalid expression in rhs throws
+test('executeTuff("out fn f(s) => {\\n    let t = s + 1;\\n}\\n\\nread()", "50") throws', () => {
+  expect(() =>
+    executeTuff("out fn f(s) => {\n    let t = s + 1;\n}\n\nread()", "50"),
+  ).toThrow();
+});
+
+// let binding + return in body
+test('executeTuff("out fn f(s) => {\\n    let t = s.trim();\\n    return t;\\n}\\n\\nread()", "50") => 50', () => {
+  expect(
+    executeTuff(
+      "out fn f(s) => {\n    let t = s.trim();\n    return t;\n}\n\nread()",
+      "50",
+    ),
+  ).toBe(50);
+});
+
+// full main.tuff pattern with let binding in body
+test("executeTuff main.tuff with let binding in body => 50", () => {
+  expect(
+    executeTuff(
+      [
+        "let { extern readFileSync, extern writeFileSync, extern mkdirSync } = extern node::fs;",
+        "let { extern createRequire } = extern node::module;",
+        "",
+        "extern fn createRequire(arg);",
+        "",
+        "let __tuff_builtin_require = createRequire(import.meta.url);",
+        "",
+        "out fn compileTuffToJS(source) => {",
+        "    let trimmed = source.trim();",
         "}",
         "",
         "read()",

@@ -731,7 +731,7 @@ function compileFunctionCallArgument(expr) {
   return undefined;
 }
 
-function parseLetFunctionCallBlock(block) {
+function parseLetNameAndRhs(block) {
   const inner = stripBlockWrapper(block, "let ");
   if (inner === undefined) {
     return undefined;
@@ -739,18 +739,25 @@ function parseLetFunctionCallBlock(block) {
 
   const equalsSeparator = " = ";
   const equalsIndex = inner.indexOf(equalsSeparator);
-
   if (equalsIndex <= 0) {
     return undefined;
   }
 
-  const variableName = inner.slice(0, equalsIndex);
-  if (!isValidIdentifier(variableName)) {
+  const varName = inner.slice(0, equalsIndex);
+  if (!isValidIdentifier(varName)) {
     return undefined;
   }
 
-  const callExpr = inner.slice(equalsIndex + equalsSeparator.length);
-  const call = parseFunctionCallExpression(callExpr);
+  return { varName, rhs: inner.slice(equalsIndex + equalsSeparator.length) };
+}
+
+function parseLetFunctionCallBlock(block) {
+  const parsed = parseLetNameAndRhs(block);
+  if (parsed === undefined) {
+    return undefined;
+  }
+
+  const call = parseFunctionCallExpression(parsed.rhs);
   if (call === undefined) {
     return undefined;
   }
@@ -760,7 +767,7 @@ function parseLetFunctionCallBlock(block) {
     return undefined;
   }
 
-  return `const ${variableName} = ${call.fnName}(${compiledArg});`;
+  return `const ${parsed.varName} = ${call.fnName}(${compiledArg});`;
 }
 
 function splitIntoBlocks(source) {
@@ -845,7 +852,7 @@ function parseMultiLineFunctionDefinition(block) {
     return undefined;
   }
 
-  const compiledBody = parseMultiLineFunctionBody(bodyLines, params);
+  const compiledBody = parseMultiLineFunctionBody(bodyLines);
   if (compiledBody === undefined) {
     return undefined;
   }
@@ -853,14 +860,14 @@ function parseMultiLineFunctionDefinition(block) {
   return `function ${functionName}(${params.join(", ")}) { ${compiledBody} }`;
 }
 
-function parseMultiLineFunctionBody(bodyLines, params) {
+function parseMultiLineFunctionBody(bodyLines) {
   if (bodyLines.length === 0) {
     return "";
   }
 
   const compiledStatements = [];
   for (const line of bodyLines) {
-    const compiled = parseMultiLineFunctionBodyStatement(line, params);
+    const compiled = parseMultiLineFunctionBodyStatement(line);
     if (compiled === undefined) {
       return undefined;
     }
@@ -870,47 +877,159 @@ function parseMultiLineFunctionBody(bodyLines, params) {
   return compiledStatements.join(" ");
 }
 
-function parseMultiLineFunctionBodyStatement(statement, params) {
-  const returnPrefix = "return ";
-  const returnSuffix = ";";
-
-  if (
-    !statement.startsWith(returnPrefix) ||
-    !statement.endsWith(returnSuffix)
-  ) {
-    return undefined;
-  }
-
-  const expr = statement
-    .slice(returnPrefix.length, -returnSuffix.length)
-    .trim();
-  const compiledExpr = parseBodyExpression(expr, params);
-
-  if (compiledExpr === undefined) {
-    return undefined;
-  }
-
-  return `return ${compiledExpr};`;
+function parseMultiLineFunctionBodyStatement(statement) {
+  return (
+    parseReturnBodyStatement(statement) ?? parseLetBodyStatement(statement)
+  );
 }
 
-function parseBodyExpression(expr, params) {
-  if (expr === "read()") {
-    return "__tuff_coerce(__tuff_read())";
+function parseReturnBodyStatement(statement) {
+  const inner = stripBlockWrapper(statement, "return ");
+  if (inner === undefined) {
+    return undefined;
   }
 
-  if (expr.length > 0 && !Number.isNaN(Number(expr))) {
-    return expr;
+  const compiled = compileBodyExpression(inner.trim());
+  if (compiled === undefined) {
+    return undefined;
   }
 
-  if (
-    isValidIdentifier(expr) &&
-    params !== undefined &&
-    params.includes(expr)
-  ) {
-    return expr;
+  return `return ${compiled};`;
+}
+
+function parseLetBodyStatement(statement) {
+  const parsed = parseLetNameAndRhs(statement);
+  if (parsed === undefined) {
+    return undefined;
   }
 
-  return undefined;
+  const compiled = compileBodyExpression(parsed.rhs.trim());
+  if (compiled === undefined) {
+    return undefined;
+  }
+
+  return `let ${parsed.varName} = ${compiled};`;
+}
+
+function tokenizeBodyExpression(str) {
+  const importMetaUrl = "import.meta.url";
+  const tokens = [];
+  let i = 0;
+
+  while (i < str.length) {
+    if (str[i] === " ") {
+      i++;
+      continue;
+    }
+
+    if (str.startsWith(importMetaUrl, i)) {
+      tokens.push({ type: "special", value: "__tuff_import_meta_url" });
+      i += importMetaUrl.length;
+      continue;
+    }
+
+    if (isIdentifierStartCharacter(str[i])) {
+      let j = i + 1;
+      while (j < str.length && isIdentifierPartCharacter(str[j])) {
+        j++;
+      }
+      tokens.push({ type: "id", value: str.slice(i, j) });
+      i = j;
+      continue;
+    }
+
+    if (str[i] >= "0" && str[i] <= "9") {
+      let j = i + 1;
+      while (j < str.length && str[j] >= "0" && str[j] <= "9") {
+        j++;
+      }
+      tokens.push({ type: "num", value: str.slice(i, j) });
+      i = j;
+      continue;
+    }
+
+    if (str[i] === "(" || str[i] === ")" || str[i] === "." || str[i] === ",") {
+      tokens.push({ type: str[i] });
+      i++;
+      continue;
+    }
+
+    return undefined;
+  }
+
+  return tokens;
+}
+
+function parseBodyExprNode(tokens, pos) {
+  if (pos >= tokens.length) {
+    return undefined;
+  }
+
+  const tok = tokens[pos];
+  let value;
+  let p = pos + 1;
+
+  if (tok.type === "special" || tok.type === "id" || tok.type === "num") {
+    value = tok.value;
+  } else {
+    return undefined;
+  }
+
+  while (p < tokens.length) {
+    if (tokens[p].type === ".") {
+      if (p + 1 >= tokens.length || tokens[p + 1].type !== "id") {
+        return undefined;
+      }
+      value = `${value}.${tokens[p + 1].value}`;
+      p += 2;
+    } else if (tokens[p].type === "(") {
+      p++;
+      const args = [];
+      if (p < tokens.length && tokens[p].type !== ")") {
+        const arg = parseBodyExprNode(tokens, p);
+        if (arg === undefined) {
+          return undefined;
+        }
+        args.push(arg.value);
+        p = arg.pos;
+        while (p < tokens.length && tokens[p].type === ",") {
+          p++;
+          const next = parseBodyExprNode(tokens, p);
+          if (next === undefined) {
+            return undefined;
+          }
+          args.push(next.value);
+          p = next.pos;
+        }
+      }
+      if (p >= tokens.length || tokens[p].type !== ")") {
+        return undefined;
+      }
+      p++;
+      value =
+        value === "read" && args.length === 0
+          ? "__tuff_coerce(__tuff_read())"
+          : `${value}(${args.join(", ")})`;
+    } else {
+      break;
+    }
+  }
+
+  return { value, pos: p };
+}
+
+function compileBodyExpression(expr) {
+  const tokens = tokenizeBodyExpression(expr);
+  if (tokens === undefined || tokens.length === 0) {
+    return undefined;
+  }
+
+  const result = parseBodyExprNode(tokens, 0);
+  if (result === undefined || result.pos !== tokens.length) {
+    return undefined;
+  }
+
+  return result.value;
 }
 
 function parseFunctionReadCall(statement) {

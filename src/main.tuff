@@ -6,7 +6,7 @@ extern fn createRequire(arg);
 let __tuff_builtin_require = createRequire(import.meta.url);
 
 out fn compileTuffToJS(source) => {
-
+    let trimmed = source.trim();
 }
 
 read()
