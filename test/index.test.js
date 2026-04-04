@@ -1015,6 +1015,134 @@ test("executeTuff invalid while body statement => throws", () => {
   ).toThrow();
 });
 
+// ── arrays ───────────────────────────────────────────────────────────────────
+
+test('executeTuff "[1, 2, 3]" as entry => [1,2,3]', () => {
+  expect(executeTuff("[1, 2, 3]", "")).toEqual([1, 2, 3]);
+});
+
+test('executeTuff "[[1], [2]][1][0]" as entry => 2', () => {
+  expect(executeTuff("[[1], [2]][1][0]", "")).toBe(2);
+});
+
+test("executeTuff array literal + index return => 20", () => {
+  expect(
+    executeTuff(
+      [
+        "out fn f() => {",
+        "    let arr = [10, 20, 30];",
+        "    return arr[1];",
+        "}",
+        "",
+        "f()",
+      ].join("\n"),
+      "",
+    ),
+  ).toBe(20);
+});
+
+test("executeTuff array reassignment => 6", () => {
+  expect(
+    executeTuff(
+      [
+        "out fn f() => {",
+        "    let arr = [1];",
+        "    arr = [5, 6];",
+        "    return arr[1];",
+        "}",
+        "",
+        "f()",
+      ].join("\n"),
+      "",
+    ),
+  ).toBe(6);
+});
+
+test("executeTuff array element assignment with expression index => 99", () => {
+  expect(
+    executeTuff(
+      [
+        "out fn f(i) => {",
+        "    let arr = [10, 20, 30];",
+        "    arr[i + 1] = 99;",
+        "    return arr[2];",
+        "}",
+        "",
+        "f(1)",
+      ].join("\n"),
+      "",
+    ),
+  ).toBe(99);
+});
+
+test("executeTuff out-of-bounds array index => undefined", () => {
+  expect(
+    executeTuff(
+      [
+        "out fn f() => {",
+        "    let arr = [1];",
+        "    return arr[5];",
+        "}",
+        "",
+        "f()",
+      ].join("\n"),
+      "",
+    ),
+  ).toBeUndefined();
+});
+
+test("executeTuff negative array index => undefined", () => {
+  expect(
+    executeTuff(
+      [
+        "out fn f() => {",
+        "    let arr = [1];",
+        "    return arr[-1];",
+        "}",
+        "",
+        "f()",
+      ].join("\n"),
+      "",
+    ),
+  ).toBeUndefined();
+});
+
+test("executeTuff trailing comma in array literal => throws", () => {
+  expect(() => executeTuff("[1, 2,]", "")).toThrow();
+});
+
+test("executeTuff empty index access => throws", () => {
+  expect(() =>
+    executeTuff(
+      [
+        "out fn f() => {",
+        "    let arr = [1];",
+        "    return arr[];",
+        "}",
+        "",
+        "f()",
+      ].join("\n"),
+      "",
+    ),
+  ).toThrow();
+});
+
+test("executeTuff non-assignable LHS assignment => throws", () => {
+  expect(() =>
+    executeTuff(
+      [
+        "out fn f() => {",
+        "    [1, 2] = 3;",
+        "    return 0;",
+        "}",
+        "",
+        "f()",
+      ].join("\n"),
+      "",
+    ),
+  ).toThrow();
+});
+
 // ── string literals and + operator ───────────────────────────────────────────
 
 // return a double-quoted string literal

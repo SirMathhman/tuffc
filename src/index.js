@@ -905,7 +905,7 @@ function compileBodyLines(bodyLines) {
     const stmt =
       group.length === 1
         ? parseMultiLineFunctionBodyStatement(group[0])
-        : parseIfBodyBlock(group) ?? parseWhileBodyBlock(group);
+        : (parseIfBodyBlock(group) ?? parseWhileBodyBlock(group));
     if (stmt === undefined) {
       return undefined;
     }
@@ -917,7 +917,9 @@ function compileBodyLines(bodyLines) {
 
 function parseMultiLineFunctionBodyStatement(statement) {
   return (
-    parseReturnBodyStatement(statement) ?? parseLetBodyStatement(statement)
+    parseReturnBodyStatement(statement) ??
+    parseLetBodyStatement(statement) ??
+    parseAssignmentBodyStatement(statement)
   );
 }
 
@@ -947,6 +949,111 @@ function parseLetBodyStatement(statement) {
   }
 
   return `let ${parsed.varName} = ${compiled};`;
+}
+
+function parseAssignableBodyExpression(tokens, pos) {
+  if (pos >= tokens.length || tokens[pos].type !== "id") {
+    return undefined;
+  }
+
+  let value = tokens[pos].value;
+  let p = pos + 1;
+
+  while (p < tokens.length && tokens[p].type === "[") {
+    p++;
+    if (p >= tokens.length || tokens[p].type === "]") {
+      return undefined;
+    }
+
+    const indexExpr = parseBodyExprNode(tokens, p);
+    if (indexExpr === undefined) {
+      return undefined;
+    }
+
+    p = indexExpr.pos;
+    if (p >= tokens.length || tokens[p].type !== "]") {
+      return undefined;
+    }
+    p++;
+    value = `${value}[${indexExpr.value}]`;
+  }
+
+  return { value, pos: p };
+}
+
+function parseAssignmentBodyStatement(statement) {
+  const inner = stripBlockWrapper(statement, "", ";");
+  if (inner === undefined) {
+    return undefined;
+  }
+
+  const trimmed = inner.trim();
+  if (trimmed.length === 0) {
+    return undefined;
+  }
+
+  const tokens = tokenizeExpression(trimmed);
+  if (tokens === undefined || tokens.length === 0) {
+    return undefined;
+  }
+
+  let parenDepth = 0;
+  let bracketDepth = 0;
+  let assignIndex = -1;
+
+  for (let i = 0; i < tokens.length; i += 1) {
+    const tok = tokens[i];
+
+    if (tok.type === "(") {
+      parenDepth++;
+      continue;
+    }
+    if (tok.type === ")") {
+      parenDepth--;
+      if (parenDepth < 0) {
+        return undefined;
+      }
+      continue;
+    }
+    if (tok.type === "[") {
+      bracketDepth++;
+      continue;
+    }
+    if (tok.type === "]") {
+      bracketDepth--;
+      if (bracketDepth < 0) {
+        return undefined;
+      }
+      continue;
+    }
+
+    if (tok.type === "assign" && parenDepth === 0 && bracketDepth === 0) {
+      if (assignIndex !== -1) {
+        return undefined;
+      }
+      assignIndex = i;
+    }
+  }
+
+  if (parenDepth !== 0 || bracketDepth !== 0) {
+    return undefined;
+  }
+
+  if (assignIndex <= 0 || assignIndex >= tokens.length - 1) {
+    return undefined;
+  }
+
+  const lhs = parseAssignableBodyExpression(tokens, 0);
+  if (lhs === undefined || lhs.pos !== assignIndex) {
+    return undefined;
+  }
+
+  const rhs = compileBodyExpressionFromTokens(tokens.slice(assignIndex + 1));
+  if (rhs === undefined) {
+    return undefined;
+  }
+
+  return `${lhs.value} = ${rhs};`;
 }
 
 function splitIfBlockSegments(lines) {
@@ -1105,14 +1212,21 @@ function tokenizeExpression(str) {
       continue;
     }
 
-    if (str[i] === "(" || str[i] === ")" || str[i] === "." || str[i] === ",") {
+    if (
+      str[i] === "(" ||
+      str[i] === ")" ||
+      str[i] === "." ||
+      str[i] === "," ||
+      str[i] === "[" ||
+      str[i] === "]"
+    ) {
       tokens.push({ type: str[i] });
       i++;
       continue;
     }
 
-    if (str[i] === "+") {
-      tokens.push({ type: "op", value: "+" });
+    if (str[i] === "+" || str[i] === "-") {
+      tokens.push({ type: "op", value: str[i] });
       i++;
       continue;
     }
@@ -1127,6 +1241,12 @@ function tokenizeExpression(str) {
       }
     }
     if (opMatched) {
+      continue;
+    }
+
+    if (str[i] === "=") {
+      tokens.push({ type: "assign" });
+      i++;
       continue;
     }
 
@@ -1158,6 +1278,45 @@ function parseBodyExprNode(tokens, pos) {
     tok.type === "str"
   ) {
     value = tok.value;
+  } else if (tok.type === "[") {
+    p = pos + 1;
+    const elements = [];
+
+    if (p < tokens.length && tokens[p].type !== "]") {
+      const first = parseBodyExprNode(tokens, p);
+      if (first === undefined) {
+        return undefined;
+      }
+      elements.push(first.value);
+      p = first.pos;
+
+      while (p < tokens.length && tokens[p].type === ",") {
+        p++;
+        if (p < tokens.length && tokens[p].type === "]") {
+          return undefined;
+        }
+
+        const next = parseBodyExprNode(tokens, p);
+        if (next === undefined) {
+          return undefined;
+        }
+        elements.push(next.value);
+        p = next.pos;
+      }
+    }
+
+    if (p >= tokens.length || tokens[p].type !== "]") {
+      return undefined;
+    }
+    p++;
+    value = `[${elements.join(", ")}]`;
+  } else if (tok.type === "op" && tok.value === "-") {
+    const rhs = parseBodyExprNode(tokens, pos + 1);
+    if (rhs === undefined) {
+      return undefined;
+    }
+    value = `-${rhs.value}`;
+    p = rhs.pos;
   } else {
     return undefined;
   }
@@ -1205,6 +1364,23 @@ function parseBodyExprNode(tokens, pos) {
       }
       value = `${value} + ${rhs.value}`;
       p = rhs.pos;
+    } else if (tokens[p].type === "[") {
+      p++;
+      if (p >= tokens.length || tokens[p].type === "]") {
+        return undefined;
+      }
+
+      const indexExpr = parseBodyExprNode(tokens, p);
+      if (indexExpr === undefined) {
+        return undefined;
+      }
+
+      p = indexExpr.pos;
+      if (p >= tokens.length || tokens[p].type !== "]") {
+        return undefined;
+      }
+      p++;
+      value = `${value}[${indexExpr.value}]`;
     } else {
       break;
     }
@@ -1216,6 +1392,14 @@ function parseBodyExprNode(tokens, pos) {
 function compileBodyExpression(expr) {
   const tokens = tokenizeExpression(expr);
   if (tokens === undefined || tokens.length === 0) {
+    return undefined;
+  }
+
+  return compileBodyExpressionFromTokens(tokens);
+}
+
+function compileBodyExpressionFromTokens(tokens) {
+  if (tokens.length === 0) {
     return undefined;
   }
 
@@ -1245,7 +1429,8 @@ function compileCondition(str) {
       tok.type === "id" ||
       tok.type === "num" ||
       tok.type === "special" ||
-      tok.type === "str"
+      tok.type === "str" ||
+      tok.type === "["
     ) {
       const result = parseBodyExprNode(tokens, p);
       if (result === undefined) {
